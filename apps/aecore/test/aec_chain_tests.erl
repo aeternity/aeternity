@@ -2074,8 +2074,8 @@ meck_minerva_fork_height(Height) ->
     meck:expect(aec_hard_forks, protocol_effective_at_height,
                 fun(H) ->
                     case H >= Height of
-                        true -> ?MINERVA_PROTOCOL_VSN;
-                        false -> ?ROMA_PROTOCOL_VSN
+                        true  -> {ok, ?MINERVA_PROTOCOL_VSN};
+                        false -> {ok, ?ROMA_PROTOCOL_VSN}
                     end
                 end).
 

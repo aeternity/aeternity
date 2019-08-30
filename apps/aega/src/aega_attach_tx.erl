@@ -132,13 +132,13 @@ call_id(#ga_attach_tx{} = Tx) ->
 
 is_legal_version_at_height(#{vm := VMVersion, abi := ABIVersion}, Height) ->
     case aec_hard_forks:protocol_effective_at_height(Height) of
-        ?FORTUNA_PROTOCOL_VSN when ABIVersion == ?ABI_AEVM_SOPHIA_1 ->
+        {ok, ?FORTUNA_PROTOCOL_VSN} when ABIVersion == ?ABI_AEVM_SOPHIA_1 ->
             VMVersion == ?VM_AEVM_SOPHIA_3;
-        P when P >= ?LIMA_PROTOCOL_VSN, ABIVersion == ?ABI_AEVM_SOPHIA_1 ->
+        {ok, P} when P >= ?LIMA_PROTOCOL_VSN, ABIVersion == ?ABI_AEVM_SOPHIA_1 ->
             VMVersion == ?VM_AEVM_SOPHIA_4;
-        P when P >= ?LIMA_PROTOCOL_VSN, ABIVersion == ?ABI_FATE_SOPHIA_1 ->
+        {ok, P} when P >= ?LIMA_PROTOCOL_VSN, ABIVersion == ?ABI_FATE_SOPHIA_1 ->
             VMVersion == ?VM_FATE_SOPHIA_1;
-        _ ->
+        {ok, _} ->
             false
     end.
 
@@ -307,4 +307,3 @@ valid_at_protocol(P, #ga_attach_tx{}) ->
 
 %%%===================================================================
 %%% Internal functions
-

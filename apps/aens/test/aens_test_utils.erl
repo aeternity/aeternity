@@ -112,7 +112,8 @@ fullname(RootName) ->
     fullname_in_protocol(RootName, latest_protocol_version()).
 
 fullname(RootName, Height) ->
-    fullname_in_protocol(RootName, aec_hard_forks:protocol_effective_at_height(Height)).
+    {ok, Protocol} = aec_hard_forks:protocol_effective_at_height(Height),
+    fullname_in_protocol(RootName, Protocol).
 
 fullname_in_protocol(RootName, Protocol) ->
     Reg = case Protocol >= ?LIMA_PROTOCOL_VSN of

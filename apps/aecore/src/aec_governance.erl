@@ -157,8 +157,8 @@ byte_gas() ->
 
 minimum_gas_price(Height) ->
     case aec_hard_forks:protocol_effective_at_height(Height) of
-        ?ROMA_PROTOCOL_VSN -> 1;
-        Vsn when Vsn >= ?MINERVA_PROTOCOL_VSN -> 1000000
+        {ok, ?ROMA_PROTOCOL_VSN} -> 1;
+        {ok, Vsn} when Vsn >= ?MINERVA_PROTOCOL_VSN -> 1000000
     end.
 
 %% In key blocks / generations

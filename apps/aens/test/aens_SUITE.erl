@@ -91,13 +91,14 @@ init_per_group(transactions, Cfg) ->
     %% Disable name auction
     meck:expect(aec_governance, name_claim_bid_timeout, fun(_, _) -> 0 end),
     %% dependening on how we call 'make' we get different protocols
-    [{protocol, aec_hard_forks:protocol_effective_at_height(1)},
+    {ok, Protocol} = aec_hard_forks:protocol_effective_at_height(1),
+    [{protocol, Protocol},
      {name, ?NAME} | Cfg];
 init_per_group(no_auction_long_names, Cfg) ->
-    Protocol = aec_hard_forks:protocol_effective_at_height(1),
+    {ok, Protocol} = aec_hard_forks:protocol_effective_at_height(1),
     [{protocol, Protocol}, {name, <<"ascii-name-of-32-characters-long">>} | Cfg];
 init_per_group(_, Cfg) ->
-    Protocol = aec_hard_forks:protocol_effective_at_height(1),
+    {ok, Protocol} = aec_hard_forks:protocol_effective_at_height(1),
     %% One day auction open with cheapest possible name (31 char)
     if Protocol < ?LIMA_PROTOCOL_VSN -> {skip, no_auction_before_lima};
        true -> [{protocol, Protocol}, {name, <<"asciiname-of-31-characters-long">>} | Cfg]

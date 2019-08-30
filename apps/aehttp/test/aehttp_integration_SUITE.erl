@@ -2328,8 +2328,8 @@ nameservice_transaction_claim(MinerAddress, MinerPubkey, Height) ->
     %% Mine a block and check mempool empty again
     ok = wait_for_tx_hash_on_chain(PreclaimTxHash),
     {ok, []} = rpc(aec_tx_pool, peek, [infinity]),
-    Protocol = aec_hard_forks:protocol_effective_at_height(Height),
 
+    {ok, Protocol} = aec_hard_forks:protocol_effective_at_height(Height),
     Encoded =
         case Protocol >= ?LIMA_PROTOCOL_VSN of
             true ->
@@ -3084,7 +3084,7 @@ naming_system_manage_name(_Config) ->
     ?assertEqual(Balance1, Balance - Fee),
 
     %% Submit name claim tx and check it is in mempool
-    Protocol = aec_hard_forks:protocol_effective_at_height(Height),
+    {ok, Protocol} = aec_hard_forks:protocol_effective_at_height(Height),
     {ClaimData, NameFee} =
         case Protocol >= ?LIMA_PROTOCOL_VSN of
             true ->

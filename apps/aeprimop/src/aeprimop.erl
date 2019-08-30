@@ -549,7 +549,7 @@ spend({From, To, Amount, Mode}, #state{} = S) when is_integer(Amount), Amount >=
 
 lock_namefee(Kind, From, Amount, #state{height = Height} = S) ->
     LockFee = aec_governance:name_claim_locked_fee(),
-    Protocol = aec_hard_forks:protocol_effective_at_height(Height),
+    {ok, Protocol} = aec_hard_forks:protocol_effective_at_height(Height),
     {Account, S1} = get_account(From, S),
     assert_account_balance(Account, Amount),
     S2 = account_spend(Account, Amount, S1),
@@ -748,11 +748,11 @@ name_claim({AccountPubkey, PlainName, NameSalt, NameFee, PreclaimDelta}, S) ->
     NameHash = aens_hash:name_hash(NameAscii),
     AuctionHash = aens_hash:to_auction_hash(NameHash),
     %% Cannot compute CommitmentHash before we know whether in auction
-    Protocol = aec_hard_forks:protocol_effective_at_height(S#state.height),
+    {ok, Protocol} = aec_hard_forks:protocol_effective_at_height(S#state.height),
     BidTimeout = aec_governance:name_claim_bid_timeout(NameAscii, Protocol),
     S0 = lock_namefee(if BidTimeout == 0 -> lock;
                         true -> spend
-                     end, AccountPubkey, NameFee, S),
+                      end, AccountPubkey, NameFee, S),
     case aec_governance:name_claim_bid_timeout(NameAscii, Protocol) of
         0 ->
             %% No auction for this name, preclaim delta suffices
@@ -1743,15 +1743,15 @@ assert_valid_overbid(NewNameFee, OldNameFee) ->
 
 
 assert_name_registrar(Registrar, Height) ->
-    ProtoVsn = aec_hard_forks:protocol_effective_at_height(Height),
-    case lists:member(Registrar, aec_governance:name_registrars(ProtoVsn)) of
+    {ok, Protocol} = aec_hard_forks:protocol_effective_at_height(Height),
+    case lists:member(Registrar, aec_governance:name_registrars(Protocol)) of
         true  -> ok;
         false -> runtime_error(invalid_registrar)
     end.
 
 assert_name_bid_fee(Name, NameFee, Height) ->
-    ProtoVsn = aec_hard_forks:protocol_effective_at_height(Height),
-    case aec_governance:name_claim_fee(Name, ProtoVsn) =< NameFee of
+    {ok, Protocol} = aec_hard_forks:protocol_effective_at_height(Height),
+    case aec_governance:name_claim_fee(Name, Protocol) =< NameFee of
         true  -> ok; %% always true before Lima
         false -> runtime_error(invalid_name_fee)
     end.
@@ -1859,9 +1859,9 @@ assert_contract_create_version(ABIVersion, VMVersion, S) ->
 assert_ga_active(S) ->
     Height = S#state.height,
     case aec_hard_forks:protocol_effective_at_height(Height) of
-        P when P < ?FORTUNA_PROTOCOL_VSN ->
+        {ok, P} when P < ?FORTUNA_PROTOCOL_VSN ->
             runtime_error(generalize_accounts_not_available_at_height);
-        _P ->
+        {ok, _P} ->
             ok
     end.
 

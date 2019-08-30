@@ -137,7 +137,7 @@ register_name(Pubkey, Name, #{height := Height} = S) ->
                     , nonce => 1
                     },
     {ok, Preclaim} = aens_preclaim_tx:new(PreclaimSpec),
-    Protocol = aec_hard_forks:protocol_effective_at_height(Height),
+    {ok, Protocol} = aec_hard_forks:protocol_effective_at_height(Height),
     NameFee =
         case Protocol >= ?LIMA_PROTOCOL_VSN of
             true -> aec_governance:name_claim_fee(Name, Protocol);

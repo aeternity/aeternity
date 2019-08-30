@@ -4449,4 +4449,3 @@ check_block_hash(BlockHash,
         error ->
             {error, unknown_block_hash}
     end.
-

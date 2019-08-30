@@ -765,4 +765,3 @@ add_spend_tx(Node, Amount, Fee, Nonce, TTL, Payload, Sender, Recipient) ->
 new_pubkey() ->
     #{ public := PubKey } = enacl:sign_keypair(),
     PubKey.
-

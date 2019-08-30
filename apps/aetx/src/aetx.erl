@@ -235,7 +235,7 @@ deep_fee(AeTx, Trees, AccFee0) ->
 
 -spec gas_limit(Tx :: tx(), Height :: aec_blocks:height()) -> Gas :: non_neg_integer().
 gas_limit(Tx, Height) ->
-    Version = aec_hard_forks:protocol_effective_at_height(Height),
+    {ok, Version} = aec_hard_forks:protocol_effective_at_height(Height),
     gas_limit(Tx, Height, Version).
 
 %% In case 0 is returned, the tx will not be included in the micro block
@@ -316,7 +316,7 @@ min_fee(#aetx{} = AeTx, Height) ->
 
 -spec min_gas(Tx :: tx(), Height :: aec_blocks:height()) -> MinGasPrice :: non_neg_integer().
 min_gas(Tx, Height) ->
-    Version = aec_hard_forks:protocol_effective_at_height(Height),
+    {ok, Version} = aec_hard_forks:protocol_effective_at_height(Height),
     min_gas(Tx, Height, Version).
 
 -spec min_gas(Tx :: tx(), Height :: aec_blocks:height(), Version :: aec_hard_forks:protocol_vsn()) ->

@@ -423,7 +423,8 @@ tx_pool_test_() ->
                  %% Bring the chain to height 1
                  {ok, KeyBlock1} = aec_block_key_candidate:create(aec_chain:top_block(), PK1),
                  {ok,_} = aec_chain_state:insert_block(KeyBlock1),
-                 WithMetaTx = aec_hard_forks:protocol_effective_at_height(1) >= ?FORTUNA_PROTOCOL_VSN,
+                 {ok, Version} = aec_hard_forks:protocol_effective_at_height(1),
+                 WithMetaTx = Version >= ?FORTUNA_PROTOCOL_VSN,
 
                  STxs =
                    [ a_signed_tx        (_Sender=PK1, me,_Nonce=1,_Fee=300000)
@@ -532,7 +533,8 @@ tx_pool_test_() ->
                ?assertEqual({ok, [STx3, STx5, STx6]}, aec_tx_pool:get_candidate(MaxGas, aec_chain:top_block_hash())),
 
                %% If applicable, add a MetaTx
-               case aec_hard_forks:protocol_effective_at_height(1) >= ?FORTUNA_PROTOCOL_VSN of
+               {ok, Version} = aec_hard_forks:protocol_effective_at_height(1),
+               case Version >= ?FORTUNA_PROTOCOL_VSN of
                    true ->
                        aec_tx_pool:restore_mempool(),
                        STx7 = a_meta_tx(PK, 200000, 1, 1),

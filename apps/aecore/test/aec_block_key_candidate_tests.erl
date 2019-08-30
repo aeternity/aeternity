@@ -42,7 +42,7 @@ new_key_block_test_() ->
                ?assertError(_, aec_blocks:txs(NewBlock)),
                ?assertEqual(17, aec_blocks:target(NewBlock)),
                ?assertEqual(aec_hard_forks:protocol_effective_at_height(12),
-                            aec_blocks:version(NewBlock)),
+                            {ok, aec_blocks:version(NewBlock)}),
                ?assertEqual(?MINER_PUBKEY, aec_blocks:miner(NewBlock)),
                ?assertEqual(?BENEFICIARY_PUBKEY, aec_blocks:beneficiary(NewBlock))
        end}]}.
@@ -54,7 +54,7 @@ difficulty_recalculation_test_() ->
                  GoodDifficulty = 50.0,
                  GoodTarget     = aeminer_pow:integer_to_scientific(round(?HIGHEST_TARGET_INT / GoodDifficulty)),
                  Height0        = 30,
-                 Vsn            = aec_hard_forks:protocol_effective_at_height(Height0),
+                 {ok, Vsn}      = aec_hard_forks:protocol_effective_at_height(Height0),
 
                  Block0 = aec_blocks:new_key(Height0, <<0:32/unit:8>>, <<0:32/unit:8>>, <<0:32/unit:8>>, undefined,
                                              12345, Now, Vsn, ?MINER_PUBKEY, ?BENEFICIARY_PUBKEY),
@@ -77,7 +77,7 @@ difficulty_recalculation_test_() ->
                  GoodDifficulty = 50.0,
                  GoodTarget     = aeminer_pow:integer_to_scientific(round(?HIGHEST_TARGET_INT / GoodDifficulty)),
                  Height0        = 30,
-                 Vsn            = aec_hard_forks:protocol_effective_at_height(Height0),
+                 {ok, Vsn}      = aec_hard_forks:protocol_effective_at_height(Height0),
 
                  Block0 = aec_blocks:new_key(Height0, <<0:32/unit:8>>, <<0:32/unit:8>>, <<0:32/unit:8>>, undefined,
                                              12345, Now, Vsn, ?MINER_PUBKEY, ?BENEFICIARY_PUBKEY),
@@ -98,7 +98,7 @@ difficulty_recalculation_test_() ->
                  GoodDifficulty = 50.0,
                  GoodTarget     = aeminer_pow:integer_to_scientific(round(?HIGHEST_TARGET_INT / GoodDifficulty)),
                  Height0        = 30,
-                 Vsn            = aec_hard_forks:protocol_effective_at_height(Height0),
+                 {ok, Vsn}      = aec_hard_forks:protocol_effective_at_height(Height0),
 
 
                  Block0 = aec_blocks:new_key(Height0, <<0:32/unit:8>>, <<0:32/unit:8>>, <<0:32/unit:8>>, undefined,
@@ -120,7 +120,7 @@ compute_chain(Now, Height, Target, MiningOffset) ->
     N        = aec_governance:key_blocks_to_check_difficulty_count(),
     RawHeader = raw_key_header(),
     lists:foldr(fun(H, Bs) ->
-                    Vsn = aec_hard_forks:protocol_effective_at_height(H),
+                    {ok, Vsn} = aec_hard_forks:protocol_effective_at_height(H),
                     H1 = aec_headers:set_version_and_height(RawHeader, Vsn, H),
                     H2 = aec_headers:set_target(H1, Target),
                     [aec_headers:set_time_in_msecs(H2, Now - ((Height - H) * MineTime)) | Bs]

@@ -409,7 +409,10 @@ create_keyblock_with_state([{PrevBlock, TreesIn} | _] = Chain, MinerAccount, Ben
     {ok, PrevBlockHash} = aec_blocks:hash_internal_representation(PrevBlock),
     Height = aec_blocks:height(PrevBlock) + 1,
     Version = get_config(version, BlockCfg,
-                         fun() -> aec_hard_forks:protocol_effective_at_height(Height) end),
+                         fun() ->
+                                 {ok, V} = aec_hard_forks:protocol_effective_at_height(Height),
+                                 V
+                         end),
     PrevVersion = aec_blocks:version(PrevBlock),
     Trees1 = aec_trees:perform_pre_transformations(TreesIn, Height, Version, PrevVersion),
     Delay = aec_governance:beneficiary_reward_delay(),

@@ -52,9 +52,9 @@ info_test_() ->
      fun() ->
              meck:new(aec_hard_forks, [passthrough]),
              meck:expect(aec_hard_forks, protocol_effective_at_height,
-                         fun(X) when X <  MinervaHeight -> ?ROMA_PROTOCOL_VSN;
-                            (X) when X <  FortunaHeight -> ?MINERVA_PROTOCOL_VSN;
-                            (X) when X >= FortunaHeight -> ?FORTUNA_PROTOCOL_VSN
+                         fun(X) when X <  MinervaHeight -> {ok, ?ROMA_PROTOCOL_VSN};
+                            (X) when X <  FortunaHeight -> {ok, ?MINERVA_PROTOCOL_VSN};
+                            (X) when X >= FortunaHeight -> {ok, ?FORTUNA_PROTOCOL_VSN}
                          end),
              ok
      end,

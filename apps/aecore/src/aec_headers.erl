@@ -133,12 +133,14 @@
         ]).
 
 raw_key_header() ->
-  #key_header{ root_hash = <<0:32/unit:8>>,
-               version = aec_hard_forks:protocol_effective_at_height(0) }.
+    {ok, Version} = aec_hard_forks:protocol_effective_at_height(0),
+    #key_header{ root_hash = <<0:32/unit:8>>,
+                 version = Version }.
 
 raw_micro_header() ->
-  #mic_header{ root_hash = <<0:32/unit:8>>,
-               version = aec_hard_forks:protocol_effective_at_height(0) }.
+    {ok, Version} = aec_hard_forks:protocol_effective_at_height(0),
+    #mic_header{ root_hash = <<0:32/unit:8>>,
+                 version = Version }.
 
 set_version(#key_header{} = H, Version) -> H#key_header{version = Version};
 set_version(#mic_header{} = H, Version) -> H#mic_header{version = Version}.

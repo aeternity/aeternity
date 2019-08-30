@@ -416,10 +416,10 @@ end_per_suite(_Config) ->
 
 init_per_group(fork_awareness, Config) ->
     meck:expect(aec_hard_forks, protocol_effective_at_height,
-                fun(V) when V < ?MINERVA_FORK_HEIGHT -> ?ROMA_PROTOCOL_VSN;
-                   (V) when V < ?FORTUNA_FORK_HEIGHT -> ?MINERVA_PROTOCOL_VSN;
-                   (V) when V < ?LIMA_FORK_HEIGHT    -> ?FORTUNA_PROTOCOL_VSN;
-                   (_)                               -> ?LIMA_PROTOCOL_VSN
+                fun(V) when V < ?MINERVA_FORK_HEIGHT -> {ok, ?ROMA_PROTOCOL_VSN};
+                   (V) when V < ?FORTUNA_FORK_HEIGHT -> {ok, ?MINERVA_PROTOCOL_VSN};
+                   (V) when V < ?LIMA_FORK_HEIGHT    -> {ok, ?FORTUNA_PROTOCOL_VSN};
+                   (_)                               -> {ok, ?LIMA_PROTOCOL_VSN}
                 end),
     %% This is orthogonal to vm version, but we need to set one up.
     aect_test_utils:init_per_group(aevm, Config);
@@ -4488,7 +4488,8 @@ create_payload_spec(#{initiator_amount  := IAmt,
                 use_no_updates_vsn ->
                     aect_test_utils:latest_protocol_version();
                 ChainHeight ->
-                    aec_hard_forks:protocol_effective_at_height(ChainHeight)
+                    {ok, Version} = aec_hard_forks:protocol_effective_at_height(ChainHeight),
+                    Version
             end,
         PayloadSpec01 =
             case Protocol of
@@ -4568,7 +4569,7 @@ set_tx_env(Height, TimeStamp, Beneficiary) ->
 
 tx_env(#{height := Height} = Props) ->
     Time = maps:get(timestamp, Props, aeu_time:now_in_msecs()),
-    ConsensusVersion = aec_hard_forks:protocol_effective_at_height(Height),
+    {ok, ConsensusVersion} = aec_hard_forks:protocol_effective_at_height(Height),
     KeyBlockHash = <<42:?BLOCK_HEADER_HASH_BYTES/unit:8>>,
     Beneficiary = maps:get(beneficiary, Props,
                           <<24:?BENEFICIARY_PUB_BYTES/unit:8>>),
@@ -5246,7 +5247,7 @@ register_name(Name, Pointers0) ->
             fun(#{state := S, name_owner := NameOwner, height := Height0} = Props) ->
                 PrivKey = aesc_test_utils:priv_key(NameOwner, S),
                 Delta = aec_governance:name_claim_preclaim_delta(),
-                Protocol = aec_hard_forks:protocol_effective_at_height(Height0),
+                {ok, Protocol} = aec_hard_forks:protocol_effective_at_height(Height0),
                 NameFee =
                         case Protocol >= ?LIMA_PROTOCOL_VSN of
                             true -> aec_governance:name_claim_fee(Name, Protocol);

@@ -162,7 +162,7 @@ verify_signatures(PubKeys,_Bin, Sigs, _Height) ->
     {error, signature_check_failed}.
 
 verify_one_pubkey(Sigs, PubKey, Bin, Height) when ?VALID_PUBK(PubKey) ->
-    Protocol = aec_hard_forks:protocol_effective_at_height(Height),
+    {ok, Protocol} = aec_hard_forks:protocol_effective_at_height(Height),
     HashSign = Protocol >= ?LIMA_PROTOCOL_VSN,
     verify_one_pubkey(Sigs, PubKey, Bin, HashSign, []);
 verify_one_pubkey(_Sigs, _PubKey, _Bin, _Height) ->

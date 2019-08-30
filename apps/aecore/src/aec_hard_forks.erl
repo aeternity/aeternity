@@ -10,11 +10,7 @@
 -export([sorted_protocol_versions/0]).
 -endif.
 
--include("blocks.hrl").
 -include_lib("aecontract/include/hard_forks.hrl").
-
--define(is_version(V), (is_integer(V) andalso (V >= 0))).
--define(is_height(H), (is_integer(H) andalso (H >= ?GENESIS_HEIGHT))).
 
 -type version() :: non_neg_integer().
 
@@ -57,14 +53,16 @@ fork(Height) ->
 
 -spec ensure_env() -> ok.
 ensure_env() ->
-    Protocols = protocols(),
+    NetworkId = aec_governance:get_network_id(),
+    Protocols = protocols_from_network_id(NetworkId),
     ForkConfig = fork_config(),
     assert_protocols(Protocols),
     ensure_fork_env(ForkConfig, Protocols).
 
--spec protocol_effective_at_height(aec_blocks:height()) -> version().
-protocol_effective_at_height(H) ->
-    protocol_effective_at_height(H, protocols()).
+-spec protocol_effective_at_height(aec_blocks:height()) ->
+                                          {ok, version()} | {error, term()}.
+protocol_effective_at_height(Height) ->
+    protocol_effective_at_height(Height, protocols()).
 
 %%%===================================================================
 %%% Internal functions
@@ -127,20 +125,45 @@ fork_from_height(Height) ->
 sorted_protocol_versions() ->
     lists:sort(maps:keys(protocols())).
 
-protocols_sorted_by_version(Ps) ->
-    lists:keysort(1, maps:to_list(Ps)).
+protocols_sorted_by_version(Protocols) ->
+    lists:keysort(1, maps:to_list(Protocols)).
 
-protocol_effective_at_height(H, Protocols) ->
-    assert_height(H),
+protocol_effective_at_height(Height, Protocols) ->
+    assert_height(Height),
     SortedProtocols = protocols_sorted_by_version(Protocols),
     %% Find the last protocol version effective before or at the
     %% specified height: that is the one effective at the specified
     %% height.  This assumes that the height is strictly increasing
     %% with the version so also assert that for the sake of clarity.
     ProtocolsEffectiveSinceBeforeOrAtHeight = [_|_] =
-        lists:takewhile(fun({_, HH}) -> H >= HH end, SortedProtocols),
-    {V, _} = lists:last(ProtocolsEffectiveSinceBeforeOrAtHeight),
-    V.
+        lists:takewhile(fun({_, H}) -> Height >= H end, SortedProtocols),
+    {Protocol, _ForkHeight} = lists:last(ProtocolsEffectiveSinceBeforeOrAtHeight),
+    maybe_protocol_from_fork(aeu_env:get_env(aecore, fork), Protocol, Height).
+
+maybe_protocol_from_fork(undefined, Protocol, _Height) ->
+    %% No community fork configured.
+    {ok, Protocol};
+maybe_protocol_from_fork({ok, #{fork_height := ForkHeight}}, Protocol, Height)
+  when Height < ForkHeight ->
+    %% Height is below community fork height, so the last protocol before the
+    %% community fork is returned.
+    {ok, Protocol};
+maybe_protocol_from_fork({ok, #{fork_height := ForkHeight} = Fork}, Protocol, Height)
+  when Height >= ForkHeight ->
+    %% Height is equal or greated than community fork height. The fork
+    %% signalling result needs to be taken from aec_fork_signalling module for
+    %% the last key block before the fork height.
+    case aec_chain:get_key_block_by_height(ForkHeight - 1) of
+        {ok, Block} ->
+            {ok, BlockHash} = aec_blocks:hash_internal_representation(Block),
+            case aec_fork_signalling:get_fork_result(Block, BlockHash, Fork) of
+                {ok, true}             -> {ok, maps:get(version, Fork)};
+                {ok, false}            -> {ok, Protocol};
+                {error, pending} = Err -> Err
+            end;
+        {error, _Rsn} ->
+            {error, last_block_before_fork_not_found}
+    end.
 
 fork_config() ->
     case aeu_env:user_map([<<"fork_management">>, <<"fork">>]) of
@@ -161,29 +184,28 @@ fork_config() ->
             undefined
     end.
 
-assert_protocols(M) ->
-    GenesisVersion = aec_block_genesis:version(),
-    Vs = [GenesisVersion | _] = sorted_protocol_versions(),
+assert_protocols(Protocols) ->
+    GP = aec_block_genesis:version(),
+    Ps = [GP | _] = sorted_protocol_versions(),
     %% Assert versions are sorted.
-    Vs = lists:sort(Vs),
+    Ps = lists:sort(Ps),
     %% Assert versions are distinct.
-    [] = lists:sort(Vs) -- lists:usort(Vs),
-    {[], _} = {maps:keys(M) -- Vs, check_no_extra_protocol_versions},
-    {[], _} = {Vs -- maps:keys(M), check_no_missing_protocol_versions},
-    assert_heights_strictly_increasing(M),
+    [] = lists:sort(Ps) -- lists:usort(Ps),
+    {[], _} = {maps:keys(Protocols) -- Ps, check_no_extra_protocol_versions},
+    {[], _} = {Ps -- maps:keys(Protocols), check_no_missing_protocol_versions},
+    assert_heights_strictly_increasing(Protocols),
     ok.
 
-assert_height(H) ->
-    case is_integer(H) andalso H >= aec_block_genesis:height() of
+assert_height(Height) ->
+    case is_integer(Height) andalso (Height >= aec_block_genesis:height()) of
         true  -> ok;
-        false -> error({illegal_height, H})
+        false -> error({illegal_height, Height})
     end.
 
 assert_heights_strictly_increasing(Ps) ->
     GenesisVersion = aec_block_genesis:version(),
     GenesisHeight = aec_block_genesis:height(),
-    [{GenesisVersion, GenesisHeight} = G | VHs] =
-        protocols_sorted_by_version(Ps),
+    [{GenesisVersion, GenesisHeight} = G | VHs] = protocols_sorted_by_version(Ps),
     _ = lists:foldl(
           fun(P, PrevP) ->
                   {true, _} =

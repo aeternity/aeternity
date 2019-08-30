@@ -106,7 +106,7 @@ int_create_block(PrevBlockHash, PrevBlock, KeyBlock, Trees, Txs) ->
     %% Assert correctness of last block protocol version, as minimum
     %% sanity check on previous block and state (mainly for potential
     %% stale state persisted in DB and for development testing).
-    ExpectedPrevBlockVersion =
+    {ok, ExpectedPrevBlockVersion} =
         aec_hard_forks:protocol_effective_at_height(PrevBlockHeight),
     {ExpectedPrevBlockVersion, _} = {aec_blocks:version(PrevBlock),
                                      {expected, ExpectedPrevBlockVersion}},
@@ -116,7 +116,7 @@ int_create_block(PrevBlockHash, PrevBlock, KeyBlock, Trees, Txs) ->
                       key   -> PrevBlockHash
                   end,
     Height = aec_blocks:height(KeyBlock),
-    Version = aec_hard_forks:protocol_effective_at_height(Height),
+    {ok, Version} = aec_hard_forks:protocol_effective_at_height(Height),
 
     Time = determine_new_time(PrevBlock),
     KeyHeader = aec_blocks:to_header(KeyBlock),

@@ -169,20 +169,20 @@ register_oracle_negative(_Cfg) ->
     RTx8 = aeo_test_utils:register_tx(PubKey, ABISophia#{query_format => <<"foo">>}, S1),
     RTx9 = aeo_test_utils:register_tx(PubKey, ABISophia#{response_format => <<"foo">>}, S1),
     RTx10 = aeo_test_utils:register_tx(PubKey, ABISophia, S1),
-    meck:expect(aec_hard_forks, protocol_effective_at_height, fun(_) -> ?ROMA_PROTOCOL_VSN end),
+    meck:expect(aec_hard_forks, protocol_effective_at_height, fun(_) -> {ok, ?ROMA_PROTOCOL_VSN} end),
     ?assertMatch({ok, _, _}, aetx:process(RTx8, Trees, Env)),
     ?assertMatch({ok, _, _}, aetx:process(RTx9, Trees, Env)),
     % set same minimum gas price as in Roma
     meck:expect(aec_governance, minimum_gas_price, fun(_) -> 1 end),
 
     %% Test Minerva release
-    meck:expect(aec_hard_forks, protocol_effective_at_height, fun(_) -> ?MINERVA_PROTOCOL_VSN end),
+    meck:expect(aec_hard_forks, protocol_effective_at_height, fun(_) -> {ok, ?MINERVA_PROTOCOL_VSN} end),
     ?assertEqual({error, bad_query_format}, aetx:process(RTx8, Trees, Env)),
     ?assertEqual({error, bad_response_format}, aetx:process(RTx9, Trees, Env)),
     ?assertMatch({ok, _, _}, aetx:process(RTx10, Trees, Env)),
 
     %% Test Fortuna release
-    meck:expect(aec_hard_forks, protocol_effective_at_height, fun(_) -> ?FORTUNA_PROTOCOL_VSN end),
+    meck:expect(aec_hard_forks, protocol_effective_at_height, fun(_) -> {ok, ?FORTUNA_PROTOCOL_VSN} end),
     ?assertEqual({error, bad_query_format}, aetx:process(RTx8, Trees, Env)),
     ?assertEqual({error, bad_response_format}, aetx:process(RTx9, Trees, Env)),
     ?assertMatch({ok, _, _}, aetx:process(RTx10, Trees, Env)),
@@ -802,4 +802,3 @@ do_prune_until(N1, N1, Trees) ->
     aeo_state_tree:prune(N1, Trees);
 do_prune_until(N1, N2, Trees) ->
     do_prune_until(N1 + 1, N2, aeo_state_tree:prune(N1, Trees)).
-

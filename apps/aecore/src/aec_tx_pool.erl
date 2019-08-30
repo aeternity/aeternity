@@ -779,7 +779,7 @@ check_tx_ttl(STx, _Hash, Height, _Event) ->
     end.
 
 check_valid_at_protocol(STx, _Hash, Height, _Event) ->
-    Protocol = aec_hard_forks:protocol_effective_at_height(Height),
+    {ok, Protocol} = aec_hard_forks:protocol_effective_at_height(Height),
     aetx:check_protocol(aetx_sign:tx(STx), Protocol).
 
 check_signature(Tx, Hash, Height, _Event) ->

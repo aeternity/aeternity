@@ -65,7 +65,7 @@ new(Trees, TxEnv) ->
     new(Trees, Height, TxEnv).
 
 new(Trees, Height, TxEnv) ->
-    ProtocolVersion = aec_hard_forks:protocol_effective_at_height(Height),
+    {ok, ProtocolVersion} = aec_hard_forks:protocol_effective_at_height(Height),
     #state{ trees = Trees
           , cache = dict:new()
           , env   = dict:new()

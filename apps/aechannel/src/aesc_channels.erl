@@ -288,8 +288,8 @@ new(InitiatorPubKey, InitiatorAmount, ResponderPubKey, ResponderAmount, InitAcco
     Height, Round) ->
     PubKey = pubkey(InitiatorPubKey, Nonce, ResponderPubKey),
     Version = case aec_hard_forks:protocol_effective_at_height(Height) of
-                  Vsn when Vsn >= ?FORTUNA_PROTOCOL_VSN -> ?CHANNEL_VSN_2;
-                  Vsn when Vsn <  ?FORTUNA_PROTOCOL_VSN -> ?CHANNEL_VSN_1
+                  {ok, Vsn} when Vsn >= ?FORTUNA_PROTOCOL_VSN -> ?CHANNEL_VSN_2;
+                  {ok, Vsn} when Vsn <  ?FORTUNA_PROTOCOL_VSN -> ?CHANNEL_VSN_1
               end,
     #channel{id                   = aeser_id:create(channel, PubKey),
              initiator_id         = aeser_id:create(account, InitiatorPubKey),

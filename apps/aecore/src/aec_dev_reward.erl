@@ -73,7 +73,8 @@ allocated_shares() ->
 activated(Height) ->
     case env(dev_reward_activated, undefined) of %% for eunit to avoid mocking
         undefined ->
-            aec_hard_forks:protocol_effective_at_height(Height) >= ?FORTUNA_PROTOCOL_VSN;
+            {ok, Protocol} = aec_hard_forks:protocol_effective_at_height(Height),
+            Protocol >= ?FORTUNA_PROTOCOL_VSN;
         Val when is_boolean(Val) ->
             Val
     end.

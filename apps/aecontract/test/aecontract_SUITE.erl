@@ -472,7 +472,7 @@ init_tests(Release, VMName) ->
                            IfAEVM(?ABI_AEVM_SOPHIA_1, ?ABI_FATE_SOPHIA_1),
                            IfAEVM(?VM_AEVM_SOPHIA_4, ?VM_FATE_SOPHIA_1)}}],
     {Proto, Sophia, ABI, VM} = proplists:get_value(Release, Versions),
-    meck:expect(aec_hard_forks, protocol_effective_at_height, fun(_) -> Proto end),
+    meck:expect(aec_hard_forks, protocol_effective_at_height, fun(_) -> {ok, Proto} end),
     Cfg = [{sophia_version, Sophia}, {vm_version, VM},
            {abi_version, ABI}, {protocol, Release}],
     init_per_testcase_common(interactive, Cfg).
@@ -487,10 +487,10 @@ init_per_group(protocol_interaction, Cfg) ->
             MHeight = 10,
             FHeight = 15,
             LHeight = 20,
-            Fun = fun(H) when H <  MHeight -> ?ROMA_PROTOCOL_VSN;
-                     (H) when H <  FHeight -> ?MINERVA_PROTOCOL_VSN;
-                     (H) when H <  LHeight -> ?FORTUNA_PROTOCOL_VSN;
-                     (H) when H >= LHeight -> ?LIMA_PROTOCOL_VSN
+            Fun = fun(H) when H <  MHeight -> {ok, ?ROMA_PROTOCOL_VSN};
+                     (H) when H <  FHeight -> {ok, ?MINERVA_PROTOCOL_VSN};
+                     (H) when H <  LHeight -> {ok, ?FORTUNA_PROTOCOL_VSN};
+                     (H) when H >= LHeight -> {ok, ?LIMA_PROTOCOL_VSN}
                   end,
             meck:expect(aec_hard_forks, protocol_effective_at_height, Fun),
             [{sophia_version, ?SOPHIA_MINERVA}, {vm_version, ?VM_AEVM_SOPHIA_2},

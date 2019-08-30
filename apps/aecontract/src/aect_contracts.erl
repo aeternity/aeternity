@@ -126,7 +126,7 @@ is_legal_call(_, _) -> false.
 
 -spec is_legal_version_at_height(vm_usage_type(), version(), height()) -> boolean().
 is_legal_version_at_height(Operation, Version, Height) ->
-    ProtocolVSN = aec_hard_forks:protocol_effective_at_height(Height),
+    {ok, ProtocolVSN} = aec_hard_forks:protocol_effective_at_height(Height),
     is_legal_version_in_protocol(Operation, Version, ProtocolVSN).
 
 is_legal_serialization_at_height(?ABI_SOLIDITY_1, _, _Height) ->
@@ -541,4 +541,3 @@ pack_vm_abi(#{vm := ABI, abi := ABI}) when ABI =< ?ABI_SOLIDITY_1 ->
 pack_vm_abi(#{vm := VM, abi := ABI}) ->
     <<VMABI:32>> = <<VM:16, ABI:16>>,
     VMABI.
-

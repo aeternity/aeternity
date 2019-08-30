@@ -149,7 +149,8 @@ check(#ns_claim_tx{}, Trees, _Env) ->
 -spec process(tx(), aec_trees:trees(), aetx_env:env()) -> {ok, aec_trees:trees()} | {error, term()}.
 process(#ns_claim_tx{} = ClaimTx, Trees, Env) ->
     Height = aetx_env:height(Env),
-    case {name_fee(ClaimTx), aec_hard_forks:protocol_effective_at_height(Height) >= ?LIMA_PROTOCOL_VSN} of
+    {ok, Protocol} = aec_hard_forks:protocol_effective_at_height(Height),
+    case {name_fee(ClaimTx), Protocol >= ?LIMA_PROTOCOL_VSN} of
         {prelima, false} -> process_(ClaimTx, aec_governance:name_claim_locked_fee(), Trees, Env);
         {NameFee, true} when is_integer(NameFee) -> process_(ClaimTx, NameFee, Trees, Env);
         _ -> {error, bad_transaction}

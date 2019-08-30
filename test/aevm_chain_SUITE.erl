@@ -59,7 +59,7 @@ setup_chain() ->
     {Contract2, S4} = create_contract(Account2, S3),
     Trees = aect_test_utils:trees(S4),
     Height = 1,
-    Vsn = aec_hard_forks:protocol_effective_at_height(Height),
+    {ok, Vsn} = aec_hard_forks:protocol_effective_at_height(Height),
     TxEnv = aetx_env:contract_env(Height, Vsn,
                                   aeu_time:now_in_msecs(),
                                   ?BENEFICIARY_PUBKEY, _Difficulty = 0,
