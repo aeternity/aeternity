@@ -35,6 +35,7 @@ Changelog:
   running an older node version, add `version_offchain_update=1` to the channel params.
   * Name preclaims are no longer allowed to use 0 as Salt value
   * New name hash computation
+  * New auction hash in names state tree from Lima height
 
 The node is able to start from a database produced by v4.* releases. For the rest, this release is not backward compatible with v4.* releases.
 
