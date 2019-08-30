@@ -6,3 +6,7 @@ contract ChannelEnv =
   public function block_height() : int = Chain.block_height
 
   public function difficulty() : int = Chain.difficulty
+
+  public function caller() : address = Call.caller
+
+  public function origin() : address = Call.origin

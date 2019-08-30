@@ -6,3 +6,9 @@ contract ChannelEnv =
   entrypoint block_height() : int = Chain.block_height
 
   entrypoint difficulty() : int = Chain.difficulty
+
+  entrypoint caller() : address = Call.caller
+
+  entrypoint origin() : address = Call.origin
+
+  entrypoint creator() : address = Contract.creator
