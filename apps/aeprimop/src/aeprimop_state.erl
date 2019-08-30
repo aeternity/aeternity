@@ -331,7 +331,7 @@ cache_put(commitment, Val, #state{cache = C} = S) ->
     Hash = aens_commitments:hash(Val),
     S#state{cache = dict:store({commitment, Hash}, Val, C)};
 cache_put(name_auction, Val, #state{cache = C} = S) ->
-    Hash = aens_auctions:name_hash(Val),
+    Hash = aens_auctions:hash(Val),
     S#state{cache = dict:store({name_auction, Hash}, Val, C)};
 cache_put(name, Val, #state{cache = C} = S) ->
     Hash = aens_names:hash(Val),

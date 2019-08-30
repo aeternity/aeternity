@@ -741,6 +741,7 @@ name_claim({AccountPubkey, PlainName, NameSalt, NameFee, DeltaTTL, PreclaimDelta
     NameAscii = name_to_ascii(PlainName),
     NameRegistrar = name_registrar(PlainName),
     NameHash = aens_hash:name_hash(NameAscii),
+    AuctionHash = aens_hash:to_auction_hash(NameHash),
     CommitmentHash = aens_hash:commitment_hash(NameAscii, NameSalt),
     Protocol = aec_hard_forks:protocol_effective_at_height(S#state.height),
     case aec_governance:name_claim_bid_timeout(NameAscii, Protocol) of
@@ -753,11 +754,11 @@ name_claim({AccountPubkey, PlainName, NameSalt, NameFee, DeltaTTL, PreclaimDelta
             put_name(Name, S2);
         Timeout when NameSalt == 0  ->
             %% Auction should be running, new bid
-            {Auction, S1} = get_name_auction(NameHash, name_not_in_auction, S),
+            {Auction, S1} = get_name_auction(AuctionHash, name_not_in_auction, S),
             runtime_error(not_yet_implemented);
         Timeout when NameSalt =/= 0 ->
             %% This is the first claim that starts an auction
-            assert_not_name_auction(NameHash, S),
+            assert_not_name_auction(AuctionHash, S),
             {Commitment, S1} = get_commitment(CommitmentHash, name_not_preclaimed, S),
             assert_claim_after_preclaim({AccountPubkey, Commitment, NameAscii, NameRegistrar, NameFee, PreclaimDelta}, S1),
 
