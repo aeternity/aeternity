@@ -295,6 +295,7 @@ trees_find(oracle_query, Key, #state{trees = Trees} = S) ->
                     orelse (X =:= oracle)
                     orelse (X =:= oracle_query)
                     orelse (X =:= commitment)
+                    orelse (X =:= name_auction)
                     orelse (X =:= name)
                    )
        ).

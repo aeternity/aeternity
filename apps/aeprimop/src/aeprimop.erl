@@ -64,6 +64,7 @@
                         , find_channel/2
                         , find_commitment/2
                         , find_name/2
+                        , find_name_auction/2
                         , find_oracle/2
                         , find_oracle_query/3
                         , get_account/2
@@ -74,6 +75,7 @@
                         , get_contract_no_cache/2
                         , get_contract_without_store/2
                         , get_name/2
+                        , get_name_auction/3
                         , get_oracle/3
                         , get_oracle_query/3
                         , get_var/3
@@ -85,6 +87,7 @@
                         , put_commitment/2
                         , put_contract/2
                         , put_name/2
+                        , put_name_auction/2
                         , put_oracle/2
                         , put_oracle_query/2
                         ]).
@@ -737,18 +740,42 @@ name_claim_op(AccountPubkey, PlainName, NameSalt, NameFee, DeltaTTL, PreclaimDel
 name_claim({AccountPubkey, PlainName, NameSalt, NameFee, DeltaTTL, PreclaimDelta}, S) ->
     NameAscii = name_to_ascii(PlainName),
     NameRegistrar = name_registrar(PlainName),
-    CommitmentHash = aens_hash:commitment_hash(NameAscii, NameSalt),
-    {Commitment, S1} = get_commitment(CommitmentHash, name_not_preclaimed, S),
-    assert_commitment_owner(Commitment, AccountPubkey),
-    assert_preclaim_delta(Commitment, PreclaimDelta, S1#state.height),
-    %% here assert that an .aes name is pre-claimed after Lime height
     NameHash = aens_hash:name_hash(NameAscii),
-    assert_not_name(NameHash, S1),   %% what is the likelyhood of a collision old hash and new hash of different names?
-    assert_name_registrar(NameRegistrar, S1#state.height),
-    assert_name_bid_fee(NameAscii, NameFee, S1#state.height),  %% always ok pre Lima.
-    Name = aens_names:new(NameHash, AccountPubkey, S1#state.height + DeltaTTL),
-    S2 = delete_x(commitment, CommitmentHash, S1),
-    put_name(Name, S2).
+    CommitmentHash = aens_hash:commitment_hash(NameAscii, NameSalt),
+    Protocol = aec_hard_forks:protocol_effective_at_height(S#state.height),
+    case aec_governance:name_claim_bid_timeout(NameAscii, Protocol) of
+        0 ->
+            %% No auction for this name, preclaim delta suffices
+            {Commitment, S1} = get_commitment(CommitmentHash, name_not_preclaimed, S),
+            assert_claim_after_preclaim({AccountPubkey, Commitment, NameAscii, NameRegistrar, NameFee, PreclaimDelta}, S1),
+            Name = aens_names:new(NameHash, AccountPubkey, S1#state.height + DeltaTTL),
+            S2 = delete_x(commitment, CommitmentHash, S1),
+            put_name(Name, S2);
+        Timeout when NameSalt == 0  ->
+            %% Auction should be running, new bid
+            {Auction, S1} = get_name_auction(NameHash, name_not_in_auction, S),
+            runtime_error(not_yet_implemented);
+        Timeout when NameSalt =/= 0 ->
+            %% This is the first claim that starts an auction
+            assert_not_name_auction(NameHash, S),
+            {Commitment, S1} = get_commitment(CommitmentHash, name_not_preclaimed, S),
+            assert_claim_after_preclaim({AccountPubkey, Commitment, NameAscii, NameRegistrar, NameFee, PreclaimDelta}, S1),
+
+            Name = aens_names:new(NameHash, AccountPubkey, S1#state.height + DeltaTTL),
+            S2 = delete_x(commitment, CommitmentHash, S1),
+            put_name(Name, S2)
+    end.
+
+assert_claim_after_preclaim({AccountPubkey, Commitment, NameAscii, NameRegistrar, NameFee, PreclaimDelta}, S) ->
+    NameHash = aens_hash:name_hash(NameAscii),
+    assert_commitment_owner(Commitment, AccountPubkey),
+    assert_preclaim_delta(Commitment, PreclaimDelta, S#state.height),
+    %% here assert that an .aes name is pre-claimed after Lime height
+    assert_not_name(NameHash, S),
+    %% Testing here for backward compatibility in error reporting
+    assert_name_registrar(NameRegistrar, S#state.height),
+    assert_name_bid_fee(NameAscii, NameFee, S#state.height).  %% always ok pre Lima.
+
 
 name_to_ascii(PlainName) ->
     case aens_utils:to_ascii(PlainName) of
@@ -1644,6 +1671,12 @@ assert_preclaim_delta(Commitment, PreclaimDelta, Height) ->
 assert_not_name(NameHash, S) ->
     case find_name(NameHash, S) of
         {_, _} -> runtime_error(name_already_taken);
+        none   -> ok
+    end.
+
+assert_not_name_auction(NameHash, S) ->
+    case find_name_auction(NameHash, S) of
+        {_, _} -> runtime_error(name_already_in_auction);
         none   -> ok
     end.
 
