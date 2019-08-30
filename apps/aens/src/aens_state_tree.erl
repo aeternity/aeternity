@@ -43,7 +43,7 @@
 %%% Types
 %%%===================================================================
 
--type mkey() :: aens_hash:commitment_hash() | aens_hash:name_hash().
+-type mkey() :: aens_hash:commitment_hash() | aens_hash:name_hash() | aens_hash:auction_hash().
 -type mvalue() :: aens_commitments:serialized() | aens_names:serialized().
 -type nstree() :: aeu_mtrees:mtree(mkey(), mvalue()).
 -type commitment() :: aens_commitments:commitment().
@@ -134,11 +134,11 @@ enter_commitment(Commitment, Tree) ->
 
 -spec enter_name_auction(auction(), tree()) -> tree().
 enter_name_auction(Auction, Tree) ->
-    NameHash = aens_auctions:name_hash(Auction),
+    AuctionHash = aens_auctions:hash(Auction),
     Serialized = aens_auctions:serialize(Auction),
     TTL = aens_auctions:ttl(Auction),
-    Cache1 = cache_push(TTL, NameHash, aens_auctions, Tree#ns_tree.cache),
-    MTree1 = aeu_mtrees:enter(NameHash, Serialized, Tree#ns_tree.mtree),
+    Cache1 = cache_push(TTL, AuctionHash, aens_auctions, Tree#ns_tree.cache),
+    MTree1 = aeu_mtrees:enter(AuctionHash, Serialized, Tree#ns_tree.mtree),
     Tree#ns_tree{cache = Cache1, mtree = MTree1}.
 
 -spec enter_name(name(), tree()) -> tree().

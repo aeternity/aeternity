@@ -27,7 +27,7 @@
         ]).
 
 %% Getters
--export([name_hash/1,
+-export([hash/1,
          bidder_pubkey/1,
          ttl/1,
          name_fee/1,
@@ -64,8 +64,9 @@
 %%% API
 %%%===================================================================
 
--spec new(aens_hash:name_hash(), aec_keys:pubkey(), non_neg_integer(), non_neg_integer(), aec_blocks:height()) -> auction().
-new(NameHash, BidderId, NameFee, DeltaTTL, BlockHeight) ->
+-spec new(aens_hash:auction_hash(), aec_keys:pubkey(), non_neg_integer(), non_neg_integer(), aec_blocks:height()) -> auction().
+new(AuctionHash, BidderId, NameFee, DeltaTTL, BlockHeight) ->
+    NameHash = aens_hash:from_auction_hash(AuctionHash),
     #auction{id        = aeser_id:create(name, NameHash),
              bidder_id = aeser_id:create(account, BidderId),
              started   = BlockHeight,
@@ -73,8 +74,7 @@ new(NameHash, BidderId, NameFee, DeltaTTL, BlockHeight) ->
              ttl       = BlockHeight + DeltaTTL}.
 
 -spec serialize(auction()) -> serialized().
-serialize(#auction{id        = Id,
-                   bidder_id = BidderId,
+serialize(#auction{bidder_id = BidderId,
                    bid       = NameFee,
                    started  = Started,
                    ttl      = TTL}) ->
@@ -87,8 +87,9 @@ serialize(#auction{id        = Id,
       , {started, Started}
       , {ttl, TTL}]).
 
--spec deserialize(aens_hash:name_hash(), binary()) -> auction().
-deserialize(NameHash, Bin) ->
+-spec deserialize(aens_hash:auction_hash(), binary()) -> auction().
+deserialize(AuctionHash, Bin) ->
+    NameHash = aens_hash:from_auction_hash(AuctionHash),
     Fields = aeser_chain_objects:deserialize(
                   ?AUCTION_TYPE,
                   ?AUCTION_VSN,
@@ -118,9 +119,10 @@ serialization_type() -> ?AUCTION_TYPE.
 %%% Getters
 %%%===================================================================
 
--spec name_hash(auction()) -> aens_hash:name_hash().
-name_hash(#auction{id = Id}) ->
-    aeser_id:specialize(Id, name).
+-spec hash(auction()) -> aens_hash:auction_hash().
+hash(#auction{id = Id}) ->
+    NameHash = aeser_id:specialize(Id, name),
+    aens_hash:to_auction_hash(NameHash).
 
 -spec bidder_pubkey(auction()) -> pubkey().
 bidder_pubkey(#auction{bidder_id = BidderId}) ->
