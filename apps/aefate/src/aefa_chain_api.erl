@@ -279,9 +279,11 @@ oracle_register(Pubkey, QFee, TTLType, TTLVal,
     Height = aetx_env:height(tx_env(State)),
     case to_relative_ttl(TTLType, TTLVal, Height) of
         {ok, RelTTL} ->
+            Gas = ttl_gas(oracle_register_tx, RelTTL) +
+                size_gas([QFormat, RFormat]),
             eval_primops([ aeprimop:oracle_register_op(Pubkey, QFormat, RFormat,
                                                        QFee, RelTTL, ABIVersion)
-                         ], State);
+                         ], State, Gas);
         {error, _} = Err ->
             Err
     end.
@@ -290,8 +292,9 @@ oracle_extend(Pubkey, TTLType, TTLVal, State) when ?IS_ONCHAIN(State) ->
     Height = aetx_env:height(tx_env(State)),
     case to_relative_ttl(TTLType, TTLVal, Height) of
         {ok, RelTTL} ->
+            Gas = ttl_gas(oracle_extend_tx, RelTTL),
             eval_primops([ aeprimop:oracle_extend_op(Pubkey, RelTTL)
-                         ], State);
+                         ], State, Gas);
         {error, _} = Err ->
             Err
     end.
@@ -307,13 +310,15 @@ oracle_query(OraclePubkey, SenderPubkey, Question, QFee, QTTLType, QTTL, RTTL,
                     %% So, we need to bump it.
                     {SAcc, PState2} = aeprimop_state:get_account(SenderPubkey, PState1),
                     Nonce = aec_accounts:nonce(SAcc) + 1,
+                    Gas = ttl_gas(oracle_query_tx, QTTL1) + size_gas([Question1]),
                     Ins   = [ aeprimop:force_inc_account_nonce_op(SenderPubkey, Nonce)
                             , aeprimop:spend_fee_op(SenderPubkey, QFee)
                             , aeprimop:oracle_query_op_with_return(
                                 OraclePubkey, SenderPubkey, Nonce,
                                 Question1, QFee, QTTL1, RTTL)
                             ],
-                    eval_primops(Ins, State#state{ primop_state = PState2});
+                    eval_primops(Ins, State#state{ primop_state = PState2},
+                                 Gas);
                 {error, _} = Err ->
                     Err
             end;
@@ -328,7 +333,17 @@ oracle_respond(OraclePubkey, QueryId, Response, ABIVersion, QType, RType,
             Ins = [ aeprimop:oracle_respond_op(OraclePubkey, QueryId, Response1)
                   , aeprimop:oracle_earn_query_fee_op(OraclePubkey, QueryId)
                   ],
-            eval_primops(Ins, State#state{ primop_state = PState1});
+            %% Note: The response TTL is calculated on return when we know the
+            %%       query can be found.
+            case eval_primops(Ins, State#state{ primop_state = PState1}) of
+                {ok, #state{ primop_state = PState2} = State1} ->
+                    {Query, _} = aeprimop_state:find_oracle_query(OraclePubkey, QueryId, PState2),
+                    {delta, RTTL} = aeo_query:response_ttl(Query),
+                    Gas = size_gas([Response1]) + ttl_gas(oracle_response_tx, RTTL),
+                    {ok, Gas, State1};
+                {error, _} = Err ->
+                    Err
+            end;
         {error, _} = Err ->
             Err
     end.
@@ -627,7 +642,7 @@ aens_claim(Pubkey, NameBin, SaltInt, #state{} = S) when ?IS_ONCHAIN(S) ->
                    , aeprimop:name_claim_op(Pubkey, NameBin, SaltInt,
                                             DeltaTTL, PreclaimDelta)
                    ],
-    eval_primops(Instructions, S).
+    eval_primops(Instructions, S, size_gas([NameBin])).
 
 aens_transfer(FromPubkey, HashBin, ToPubkey, #state{} = S) when ?IS_ONCHAIN(S) ->
     Instructions = [aeprimop:name_transfer_op(FromPubkey, account, ToPubkey, HashBin)
@@ -643,13 +658,30 @@ aens_revoke(Pubkey, HashBin, #state{} = S) when ?IS_ONCHAIN(S) ->
 %%%-------------------------------------------------------------------
 %%% Interface to primop evaluation
 
-eval_primops(Ops, #state{primop_state = PState} = S) ->
+eval_primops(Ops, #state{} = S) ->
+  eval_primops(Ops, S, none).
+
+eval_primops(Ops, #state{primop_state = PState} = S, OptReturn) ->
     case aeprimop:eval_on_primop_state(Ops, PState) of
-        {ok, PState1} ->
+        {ok, PState1} when OptReturn =:= none ->
             {ok, S#state{primop_state = PState1}};
-        {ok, Return, PState1} ->
+        {ok, PState1} when OptReturn =/= none ->
+            {ok, OptReturn, S#state{primop_state = PState1}};
+        {ok, Return, PState1} when OptReturn =:= none ->
             {ok, Return, S#state{primop_state = PState1}};
+        {ok, Return, PState1} when OptReturn =/= none ->
+            {ok, Return, OptReturn, S#state{primop_state = PState1}};
         {error, Atom} = Err when is_atom(Atom) ->
             Err
     end.
 
+%%%-------------------------------------------------------------------
+%%% Gas costs
+
+ttl_gas(Tag, RelativeTTL) when is_integer(RelativeTTL), RelativeTTL > 0 ->
+    aec_governance_utils:state_gas(
+      aec_governance:state_gas_per_block(Tag),
+      RelativeTTL).
+
+size_gas(List) ->
+    lists:sum([byte_size(X) || X <- List]).

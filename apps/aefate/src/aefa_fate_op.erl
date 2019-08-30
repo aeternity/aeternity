@@ -859,9 +859,10 @@ oracle_register_(Arg0, ?FATE_BYTES(Signature), ?FATE_ADDRESS(Address),
     case aefa_chain_api:oracle_register(Address, QFee, TTLType, TTLVal,
                                         QFormat, RFormat, ?ABI_FATE_SOPHIA_1,
                                         API) of
-        {ok, API1} ->
+        {ok, DynamicGas, API1} ->
             ES2 = aefa_engine_state:set_chain_api(API1, ES1),
-            write(Arg0, ?FATE_ORACLE(Address), ES2);
+            ES3 = spend_gas(DynamicGas, ES2),
+            write(Arg0, ?FATE_ORACLE(Address), ES3);
         {error, What} ->
             aefa_fate:abort({primop_error, oracle_register, What}, ES1)
     end.
@@ -901,9 +902,10 @@ oracle_query(Arg0, Arg1, Arg2, Arg3, Arg4, Arg5, Arg6, Arg7, EngineState) ->
     case aefa_chain_api:oracle_query(OraclePubkey, SenderPubkey, Question,
                                      QFeeVal, QTTLType, QTTLVal, RTTLVal,
                                      ?ABI_FATE_SOPHIA_1, QType, RType, API) of
-        {ok, QueryId, API1} ->
+        {ok, QueryId, DynamicGas, API1} ->
             ES2 = aefa_engine_state:set_chain_api(API1, ES1),
-            write(Arg0, aeb_fate_data:make_oracle_query(QueryId), ES2);
+            ES3 = spend_gas(DynamicGas, ES2),
+            write(Arg0, aeb_fate_data:make_oracle_query(QueryId), ES3);
         {error, What} ->
             aefa_fate:abort({primop_error, oracle_query, What}, ES1)
     end.
@@ -930,8 +932,9 @@ oracle_respond(Arg0, Arg1, Arg2, Arg3, Arg4, Arg5, EngineState) ->
     API = aefa_engine_state:chain_api(ES2),
     case aefa_chain_api:oracle_respond(OraclePubkey, QueryId, Response,
                                        ?ABI_FATE_SOPHIA_1, QType, RType, API) of
-        {ok, API1} ->
-            aefa_engine_state:set_chain_api(API1, ES2);
+        {ok, DynamicGas, API1} ->
+            ES3 = spend_gas(DynamicGas, ES2),
+            aefa_engine_state:set_chain_api(API1, ES3);
         {error, What} ->
             aefa_fate:abort({primop_error, oracle_respond, What}, ES2)
     end.
@@ -959,8 +962,9 @@ oracle_extend(Arg0, Arg1, Arg2, EngineState) ->
     ES2 = check_delegation_signature(oracle_extend, OraclePubkey, SignBin, ES1),
     API = aefa_engine_state:chain_api(ES2),
     case aefa_chain_api:oracle_extend(OraclePubkey, TTLType, TTLVal, API) of
-        {ok, API1} ->
-            aefa_engine_state:set_chain_api(API1, ES2);
+        {ok, DynamicGas, API1} ->
+            ES3 = spend_gas(DynamicGas, ES2),
+            aefa_engine_state:set_chain_api(API1, ES3);
         {error, What} ->
             aefa_fate:abort({primop_error, oracle_extend, What}, ES2)
     end.
@@ -1196,8 +1200,9 @@ aens_claim(Arg0, Arg1, Arg2, Arg3, EngineState) ->
             SaltInt = ?FATE_INTEGER_VALUE(Salt),
             API = aefa_engine_state:chain_api(ES2),
             case aefa_chain_api:aens_claim(Pubkey, NameBin, SaltInt, API) of
-                {ok, API1} ->
-                    aefa_engine_state:set_chain_api(API1, ES2);
+                {ok, DynamicGas, API1} ->
+                    ES3 = spend_gas(DynamicGas, ES2),
+                    aefa_engine_state:set_chain_api(API1, ES3);
                 {error, What} ->
                     aefa_fate:abort({primop_error, aens_claim, What}, ES2)
             end
@@ -1296,6 +1301,14 @@ delegation_signature_data(Type, {Pubkey, Hash}, Current) when Type =:= aens_clai
                                                               Type =:= aens_transfer;
                                                               Type =:= aens_revoke ->
     {<<Pubkey/binary, Hash/binary, Current/binary>>, Pubkey}.
+
+spend_gas(Delta, ES) when is_integer(Delta), Delta > 0 ->
+    case aefa_engine_state:gas(ES) of
+        Gas when Gas >= Delta ->
+            aefa_engine_state:set_gas(Gas - Delta, ES);
+        _ ->
+            aefa_fate:abort(out_of_gas, ES)
+    end.
 
 verify_sig(Arg0, Arg1, Arg2, Arg3, ES) ->
     ter_op(verify_sig, {Arg0, Arg1, Arg2, Arg3}, ES).
