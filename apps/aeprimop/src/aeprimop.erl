@@ -764,6 +764,10 @@ name_claim({AccountPubkey, PlainName, NameSalt, NameFee, DeltaTTL, PreclaimDelta
             Name = aens_names:new(NameHash, AccountPubkey, S1#state.height + DeltaTTL),
             S2 = delete_x(commitment, CommitmentHash, S1),
             put_name(Name, S2)
+            %% Now put this Name in Auction instead of in Names
+            %% Auction = aens_auctions:new(NameHash, AccountPubkey, NameFee, Timeout, S1#state.height),
+            %% S2 = delete_x(commitment, CommitmentHash, S1),
+            %% put_name_auction(Auction, S2)
     end.
 
 assert_claim_after_preclaim({AccountPubkey, Commitment, NameAscii, NameRegistrar, NameFee, PreclaimDelta}, S) ->
