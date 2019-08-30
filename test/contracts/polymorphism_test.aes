@@ -1,7 +1,7 @@
 
 contract Identity =
 
-  entrypoint zip_with(f, xs, ys) =
+  function zip_with(f, xs, ys) =
     switch((xs, ys))
       (x :: xs, y :: ys) => f(x, y) :: zip_with(f, xs, ys)
       _ => []

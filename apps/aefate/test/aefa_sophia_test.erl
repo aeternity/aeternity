@@ -463,7 +463,7 @@ remote() ->
       "contract Remote =\n"
       "  entrypoint remote : int => int\n"
       "contract Main =\n"
-      "  entrypoint bla(r : Remote) = r.remote\n"
+      "  function bla(r : Remote) = r.remote\n"
       "  stateful entrypoint test(r : Remote) =\n"
       "    r.remote(42)\n"
       "      + r.remote(value = 10, 100)\n"
