@@ -39,6 +39,7 @@
 commitment_hash(NameAscii, Salt) ->
     case aens_utils:name_domain(NameAscii) of
         {ok, Domain} when Domain =:= <<"aet">> ->
+            assert_salt_positive(Salt),
             SaltBin = int_to_bin(Salt),
             hash(<<NameAscii/binary, SaltBin/binary>>);
         _ ->
@@ -87,3 +88,7 @@ hash(Bin) ->
 
 int_to_bin(Int) ->
     <<Int:?COMMITMENT_HASH_BYTES/integer-unit:8>>.
+
+assert_salt_positive(Salt) when Salt > 0 -> ok;
+assert_salt_positive(_) ->
+    error(illegal_salt_value).
