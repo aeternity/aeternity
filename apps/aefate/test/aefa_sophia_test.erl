@@ -60,11 +60,11 @@ expect(Chain, Contract, Function, Arguments, Expect) ->
 
 %% For now, implement pipeline here.
 compile_contract(Code) ->
-    compile_contract(Code, [{debug, [scode, opt, opt_rules, compile]}, pp_fcode]).
+    compile_contract(Code, [{debug, [scode, opt, opt_rules, compile]}, pp_fcode, {include, {file_system, ["."]}}]).
 
 compile_contract(Code, Options) ->
     try
-        {ok, Ast} = aeso_parser:string(Code),
+        {ok, Ast} = aeso_parser:string(Code, Options),
         TypedAst  = aeso_ast_infer_types:infer(Ast, Options),
         FCode     = aeso_ast_to_fcode:ast_to_fcode(TypedAst, Options),
         Fate      = aeso_fcode_to_fate:compile(FCode, Options),
@@ -77,14 +77,15 @@ compile_contract(Code, Options) ->
         {error, {type_errors, Err}}
     end.
 
+-define(CALL_GAS, 1000000).
 
 make_call_spec(Contract, Function0, Arguments) ->
     Function = aeb_fate_code:symbol_identifier(Function0),
     EncArgs  = list_to_tuple([aefate_test_utils:encode(A) || A <- Arguments]),
     Calldata = {tuple, {Function, {tuple, EncArgs}}},
     #{ contract => pad_contract_name(Contract),
-       gas      => 1000000,
-       value    => 10000,
+       gas      => ?CALL_GAS,
+       value    => 0,
        call     => aeb_fate_encoding:serialize(Calldata),
        store    => aect_contracts_store:new() }.
 
@@ -104,11 +105,12 @@ run_call(Code, Fun, Args) ->
     Cache = compile_contracts([{<<"test">>, Code}]),
     case run(Cache, <<"test">>, list_to_binary(Fun), Args) of
         {ok, ES} ->
-            Trace = aefa_engine_state:trace(ES),
-            Red   = fun({_, {reductions, R}}) -> R end,
+            GasUsed    = ?CALL_GAS - aefa_engine_state:gas(ES),
+            Trace      = aefa_engine_state:trace(ES),
+            Red        = fun({_, {reductions, R}}) -> R end,
             Reductions = Red(hd(Trace)) - Red(lists:last(Trace)),
             Steps      = length(Trace),
-            io:format("~p steps (~p reductions)\n", [Steps, Reductions]),
+            io:format("~p steps / ~p gas / ~p reductions\n", [Steps, GasUsed, Reductions]),
             aefa_engine_state:accumulator(ES);
         {error, Err, ES} ->
             io:format("~s\n", [Err]),
@@ -468,7 +470,7 @@ remote() ->
       "      + bla(r)(value = 11, gas = 88, 99)\n"},
      {<<"remote">>,
       "contract Remote =\n"
-      "  entrypoint remote(x : int) = x * (2 + Call.value)\n"}].
+      "  payable entrypoint remote(x : int) = x * (2 + Call.value)\n"}].
 
 remote_tests() ->
     lists:flatten(

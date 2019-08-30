@@ -29,11 +29,11 @@ contract Oracles =
                                       ttl  : ttl) : oracle(string, string) =
      Oracle.register(acct, qfee, ttl)
 
-  stateful entrypoint createQueryStringStringOracle(o    : oracle(string, string),
-                                                  q    : string,
-                                                  qfee : fee,
-                                                  qttl : ttl,
-                                                  rttl : ttl) : oracle_query(string, string) =
+  stateful payable entrypoint createQueryStringStringOracle(o    : oracle(string, string),
+                                                            q    : string,
+                                                            qfee : fee,
+                                                            qttl : ttl,
+                                                            rttl : ttl) : oracle_query(string, string) =
     require(qfee =< Call.value, "insufficient value for qfee")
     Oracle.query(o, q, qfee, qttl, rttl)
 
@@ -45,37 +45,37 @@ contract Oracles =
                                        q : oracle_query(string, string)) : string =
     Oracle.get_question(o, q)
 
-  stateful entrypoint signedRegisterOracle(acct : address,
-                                sign : signature,
-                                qfee : fee,
-                                ttl  : ttl) : oracle_id =
+  stateful payable entrypoint signedRegisterOracle(acct : address,
+                                                   sign : signature,
+                                                   qfee : fee,
+                                                   ttl  : ttl) : oracle_id =
      Oracle.register(acct, qfee, ttl, signature = sign)
 
   entrypoint queryFee(o : oracle_id) : fee =
     Oracle.query_fee(o)
 
-  stateful entrypoint createQuery(o    : oracle_id,
-                       q    : query_t,
-                       qfee : fee,
-                       qttl : ttl,
-                       rttl : ttl) : query_id =
+  stateful payable entrypoint createQuery(o    : oracle_id,
+                                          q    : query_t,
+                                          qfee : fee,
+                                          qttl : ttl,
+                                          rttl : ttl) : query_id =
     require(qfee =< Call.value, "insufficient value for qfee")
     Oracle.query(o, q, qfee, qttl, rttl)
 
   // Do not use in production!
-  stateful entrypoint unsafeCreateQuery(o    : oracle_id,
-                       q    : query_t,
-                       qfee : fee,
-                       qttl : ttl,
-                       rttl : ttl) : query_id =
+  stateful payable entrypoint unsafeCreateQuery(o    : oracle_id,
+                                                q    : query_t,
+                                                qfee : fee,
+                                                qttl : ttl,
+                                                rttl : ttl) : query_id =
     Oracle.query(o, q, qfee, qttl, rttl)
 
   // Do not use in production!
-  stateful entrypoint unsafeCreateQueryThenErr(o    : oracle_id,
-                       q    : query_t,
-                       qfee : fee,
-                       qttl : ttl,
-                       rttl : ttl) : query_id =
+  stateful payable entrypoint unsafeCreateQueryThenErr(o    : oracle_id,
+                                                       q    : query_t,
+                                                       qfee : fee,
+                                                       qttl : ttl,
+                                                       rttl : ttl) : query_id =
     let res = Oracle.query(o, q, qfee, qttl, rttl)
     require(qfee >= 100000000000000000, "causing a late error")
     res
@@ -84,9 +84,9 @@ contract Oracles =
                         ttl  : ttl) : unit =
     Oracle.extend(o, ttl)
 
-  stateful entrypoint signedExtendOracle(o    : oracle_id,
-                              sign : signature,   // Signed oracle address
-                              ttl  : ttl) : unit =
+  stateful payable entrypoint signedExtendOracle(o    : oracle_id,
+                                                 sign : signature,   // Signed oracle address
+                                                 ttl  : ttl) : unit =
     Oracle.extend(o, signature = sign, ttl)
 
   stateful entrypoint respond(o    : oracle_id,
@@ -94,10 +94,10 @@ contract Oracles =
                    r    : answer_t) : unit =
     Oracle.respond(o, q, r)
 
-  stateful entrypoint signedRespond(o    : oracle_id,
-                         q    : query_id,
-                         sign : signature,
-                         r    : answer_t) : unit =
+  stateful payable entrypoint signedRespond(o    : oracle_id,
+                                            q    : query_id,
+                                            sign : signature,
+                                            r    : answer_t) : unit =
     Oracle.respond(o, q, signature = sign, r)
 
   entrypoint getQuestion(o : oracle_id,

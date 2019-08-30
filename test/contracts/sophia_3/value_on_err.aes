@@ -1,0 +1,7 @@
+contract ValueOnErr =
+
+  entrypoint err() : int =
+    switch(0) 1 => 5
+
+  entrypoint ok() : int =
+    11

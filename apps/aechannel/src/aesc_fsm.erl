@@ -28,7 +28,8 @@
 %% API
 -export([ start_link/1
         , attach_responder/2      %% (fsm(), map())
-        , close_solo/1
+        , close_solo/1            %% (fsm())
+        , snapshot_solo/1         %% (fsm())
         , reconnect_client/2      %% (fsm(), signed_tx())
         , reconnect_client/3      %% (fsm(), Client :: pid(), signed_tx())
         , connection_died/1       %% (fsm())
@@ -48,6 +49,7 @@
         , upd_create_contract/2   %%
         , upd_deposit/2           %% (fsm() , map())
         , upd_transfer/4          %% (fsm() , from(), to(), amount())
+        , upd_transfer/5          %% (fsm() , from(), to(), amount(), #{})
         , upd_withdraw/2          %% (fsm() , map())
         , where/2
         ]).
@@ -63,6 +65,7 @@
         , record_fields/1
         , report_tags/0
         , timeouts/0
+        , version_tags/0
         ]).
 
 %% Used by noise session
@@ -144,6 +147,10 @@ attach_responder(Fsm, AttachInfo) when is_map(AttachInfo) ->
 close_solo(Fsm) ->
     lager:debug("close_solo(~p)", [Fsm]),
     gen_statem:call(Fsm, close_solo).
+
+snapshot_solo(Fsm) ->
+    lager:debug("snapshot_solo(~p)", [Fsm]),
+    gen_statem:call(Fsm, snapshot_solo).
 
 -spec reconnect_client(pid(), aetx_sign:signed_tx()) -> ok | {error, any()}.
 reconnect_client(Fsm, Tx) ->
@@ -254,11 +261,14 @@ upd_deposit(Fsm, #{amount := Amt} = Opts) when is_integer(Amt) ->
     lager:debug("upd_deposit(~p)", [Opts]),
     gen_statem:call(Fsm, {upd_deposit, Opts}).
 
-upd_transfer(_Fsm, _From, _To, Amount) when Amount < 0 ->
+upd_transfer(Fsm, From, To, Amount) ->
+    upd_transfer(Fsm, From, To, Amount, #{}).
+
+upd_transfer(_Fsm, _From, _To, Amount, _Opts) when Amount < 0 ->
     {error, negative_amount};
-upd_transfer(Fsm, From, To, Amount) when is_integer(Amount) ->
-    lager:debug("upd_transfer(~p, ~p, ~p, ~p)", [Fsm, From, To, Amount]),
-    gen_statem:call(Fsm, {upd_transfer, From, To, Amount}).
+upd_transfer(Fsm, From, To, Amount, Opts) when is_integer(Amount), is_map(Opts) ->
+    lager:debug("upd_transfer(~p, ~p, ~p, ~p, ~p)", [Fsm, From, To, Amount, Opts]),
+    gen_statem:call(Fsm, {upd_transfer, From, To, Amount, Opts}).
 
 upd_withdraw(_Fsm, #{amount := Amt}) when Amt < 0 ->
     {error, negative_amount};
@@ -291,6 +301,9 @@ record_fields(Other) -> aesc_offchain_state:record_fields(Other).
 
 report_tags() ->
     maps:keys(?DEFAULT_REPORT_FLAGS).
+
+version_tags() ->
+    [offchain_update].
 
 timeouts() ->
     maps:keys(?DEFAULT_TIMEOUTS).
@@ -716,7 +729,7 @@ awaiting_signature(cast, {?SIGNED, ?UPDATE_ACK, SignedTx} = Msg,
         fun() ->
             D1 = send_update_ack_msg(SignedTx, D),
             {OnChainEnv, OnChainTrees} =
-                aetx_env:tx_env_and_trees_from_top(aetx_contract),
+                tx_env_and_trees_from_top(aetx_contract),
             State = aesc_offchain_state:set_signed_tx(SignedTx, Updates, D1#data.state,
                                                       OnChainTrees, OnChainEnv, Opts),
             D2 = D1#data{ log   = log_msg(rcv, ?SIGNED, Msg, D1#data.log)
@@ -749,6 +762,20 @@ awaiting_signature(cast, {?SIGNED, ?SHUTDOWN_ACK, SignedTx} = Msg,
             report_on_chain_tx(close_mutual, SignedTx, D1),
             close(close_mutual, D2)
         end, D);
+awaiting_signature(cast, {?SIGNED, snapshot_solo_tx, SignedTx} = Msg,
+                   #data{op = #op_sign{ tag = snapshot_solo_tx
+                                      , data = OpData }} = D) ->
+    lager:debug("snapshot_solo_tx signed", []),
+    #op_data{updates = Updates} = OpData,
+    D1 = D#data{ log = log_msg(rcv, ?SIGNED, Msg, D#data.log)
+               , op  = ?NO_OP },
+    case verify_signatures_onchain_check(pubkeys(me, D, SignedTx), SignedTx) of
+        ok ->
+            snapshot_solo_signed(SignedTx, Updates, D1);
+        {error,_} = Error ->
+            lager:debug("Failed signature check: ~p", [Error]),
+            next_state(open, D1)
+    end;
 awaiting_signature(cast, {?SIGNED, close_solo_tx, SignedTx} = Msg,
                    #data{op = #op_sign{ tag = close_solo_tx
                                       , data = OpData}} = D) ->
@@ -1383,37 +1410,48 @@ check_accept_msg(#{ chain_hash           := ChainHash
     end.
 
 new_onchain_tx_for_signing(Type, Opts, D) ->
-    try new_onchain_tx_for_signing_(Type, Opts, D)
+    new_onchain_tx_for_signing(Type, Opts, fail, D).
+
+new_onchain_tx_for_signing(Type, Opts, OnErr, D) when OnErr == fail;
+                                                      OnErr == return ->
+    try new_onchain_tx_for_signing_(Type, Opts, OnErr, D)
     catch
         error:Reason ->
             ?LOG_CAUGHT(Reason),
             error(Reason)
     end.
 
-new_onchain_tx_for_signing_(Type, Opts, D) ->
+new_onchain_tx_for_signing_(Type, Opts, OnErr, D) ->
     Defaults = tx_defaults(Type, Opts, D),
     Opts1 = maps:merge(Defaults, Opts),
     CurrHeight = curr_height(),
     %% TODO PT-165214367: maybe set block_hash
     BlockHash = ?NOT_SET_BLOCK_HASH,
-    {ok, Tx, Updates} = new_onchain_tx(Type, Opts1, D, CurrHeight),
-    case {aetx:min_fee(Tx, CurrHeight), aetx:fee(Tx)} of
-        {MinFee, Fee} when MinFee =< Fee ->
-            {ok, Tx, Updates, BlockHash};
-        {MinFee, Fee} ->
-            lager:debug("Fee (~p) is too low for ~p (Min: ~p)",
-                        [Fee, Type, MinFee]),
-            error(too_low_fee)
+    case {new_onchain_tx(Type, Opts1, D, CurrHeight), OnErr} of
+        {{ok, Tx, Updates}, _} ->
+            case {aetx:min_fee(Tx, CurrHeight), aetx:fee(Tx)} of
+                {MinFee, Fee} when MinFee =< Fee ->
+                    {ok, Tx, Updates, BlockHash};
+                {MinFee, Fee} ->
+                    lager:debug("Fee (~p) is too low for ~p (Min: ~p)",
+                                [Fee, Type, MinFee]),
+                    error(too_low_fee)
+            end;
+        {{error, Reason}, fail} ->
+            error(Reason);
+        {{error, Reason}, return} ->
+            {error, Reason}
     end.
 
 -spec new_onchain_tx(channel_create_tx
                    | channel_close_mutual_tx
                    | channel_deposit_tx
                    | channel_withdraw_tx
+                   | channel_snapshot_solo_tx
                    | channel_close_solo_tx
                    | channel_slash_tx
                    | channel_settle_tx, map(), #data{}, aec_blocks:height()) ->
-    {ok, aetx:tx(), [aesc_offchain_update:update()]}.
+    {ok, aetx:tx(), [aesc_offchain_update:update()]} | {error, atom()}.
 new_onchain_tx(channel_close_mutual_tx, #{ acct := From } = Opts,
                #data{opts = DOpts, on_chain_id = Chan, state = State}, _) ->
     #{initiator := Initiator,
@@ -1441,7 +1479,7 @@ new_onchain_tx(channel_deposit_tx, #{acct := FromId,
                #data{on_chain_id = ChanId, state=State}, CurrHeight) ->
     Updates = [aesc_offchain_update:op_deposit(aeser_id:create(account, FromId), Amount)],
     {OnChainEnv, OnChainTrees} =
-        aetx_env:tx_env_and_trees_from_top(aetx_contract),
+        tx_env_and_trees_from_top(aetx_contract),
     Height = aetx_env:height(OnChainEnv),
     ActiveProtocol = aec_hard_forks:protocol_effective_at_height(Height),
     UpdatedStateTx = aesc_offchain_state:make_update_tx(Updates, State,
@@ -1466,7 +1504,7 @@ new_onchain_tx(channel_withdraw_tx, #{acct := ToId,
                #data{on_chain_id = ChanId, state=State}, CurrHeight) ->
     Updates = [aesc_offchain_update:op_withdraw(aeser_id:create(account, ToId), Amount)],
     {OnChainEnv, OnChainTrees} =
-        aetx_env:tx_env_and_trees_from_top(aetx_contract),
+        tx_env_and_trees_from_top(aetx_contract),
     Height = aetx_env:height(OnChainEnv),
     ActiveProtocol = aec_hard_forks:protocol_effective_at_height(Height),
     UpdatedStateTx = aesc_offchain_state:make_update_tx(Updates, State,
@@ -1541,6 +1579,30 @@ new_onchain_tx(channel_close_solo_tx, Opts,
                , ttl        => TTL},
     {ok, Tx} = new_onchain_tx_(aesc_close_solo_tx, Opts1, CurrHeight),
     {ok, Tx, []};
+new_onchain_tx(channel_snapshot_solo_tx, Opts,
+               #data{ on_chain_id = ChanId
+                    , state       = State } = D, CurrHeight) ->
+    Account = my_account(D),
+    TTL = adjust_ttl(maps:get(ttl, Opts, 0)),
+    {Round, SignedTx} = aesc_offchain_state:get_latest_signed_tx(State),
+    case aesc_utils:is_offchain_tx(SignedTx) of
+        true ->
+            case later_round_than_onchain(ChanId, Round) of
+                true ->
+                    Payload = aetx_sign:serialize_to_binary(SignedTx),
+                    Opts1 =
+                        Opts#{ channel_id => aeser_id:create(channel, ChanId)
+                             , from_id    => aeser_id:create(account, Account)
+                             , payload    => Payload
+                             , ttl        => TTL },
+                    {ok, Tx} = new_onchain_tx_(aesc_snapshot_solo_tx, Opts1, CurrHeight),
+                    {ok, Tx, []};
+                false ->
+                    {error, already_onchain}
+            end;
+        false ->
+            {error, not_offchain_tx}
+    end;
 new_onchain_tx(channel_slash_tx, Opts,
                #data{ on_chain_id = ChanId
                     , opts = #{initiator := Initiator,
@@ -1564,6 +1626,7 @@ new_onchain_tx_(Mod, Opts, CurrHeight) when Mod =:= aesc_create_tx;
                                             Mod =:= aesc_withdraw_tx;
                                             Mod =:= aesc_deposit_tx;
                                             Mod =:= aesc_close_solo_tx;
+                                            Mod =:= aesc_snapshot_solo_tx;
                                             Mod =:= aesc_slash_tx;
                                             Mod =:= aesc_settle_tx ->
     case maps:is_key(fee, Opts) of
@@ -1664,6 +1727,11 @@ close_solo_tx_for_signing(D) ->
     Account = my_account(D),
     new_onchain_tx_for_signing(channel_close_solo_tx, #{acct => Account}, D).
 
+snapshot_solo_tx_for_signing(D) ->
+    Account = my_account(D),
+    new_onchain_tx_for_signing(channel_snapshot_solo_tx, #{acct => Account},
+                               _OnErr = return, D).
+
 tx_defaults(Type, Opts, #data{ on_chain_id = ChanId } = D) ->
     Default = tx_defaults_(Type, Opts, D),
     Default#{ channel_id => ChanId
@@ -1677,6 +1745,8 @@ tx_defaults_(channel_deposit_tx = Tx, Opts, D) ->
 tx_defaults_(channel_withdraw_tx, Opts, D) ->
     tx_defaults_(channel_deposit_tx, Opts, D); %% same as deposit defaults
 tx_defaults_(channel_slash_tx = Tx, Opts, D) ->
+    default_ttl(Tx, Opts, D);
+tx_defaults_(channel_snapshot_solo_tx = Tx, Opts, D) ->
     default_ttl(Tx, Opts, D);
 tx_defaults_(channel_close_solo_tx = Tx, Opts, D) ->
     default_ttl(Tx, Opts, D);
@@ -1736,7 +1806,7 @@ new_contract_tx_for_signing(Opts, From, #data{ state = State
     Id = aeser_id:create(account, Owner),
     Updates = [aesc_offchain_update:op_new_contract(Id, VmVersion, ABIVersion, Code,
                                                     Deposit, CallData)],
-    {OnChainEnv, OnChainTrees} = aetx_env:tx_env_and_trees_from_top(aetx_contract),
+    {OnChainEnv, OnChainTrees} = tx_env_and_trees_from_top(aetx_contract),
     Height = aetx_env:height(OnChainEnv),
     %% TODO PT-165214367: maybe set block_hash
     BlockHash = ?NOT_SET_BLOCK_HASH,
@@ -2111,14 +2181,14 @@ check_signed_update_tx(Type, SignedTx, Updates,
 
 check_update_tx_initial(SignedTx, Updates, State, Opts) ->
     {OnChainEnv, OnChainTrees} =
-        aetx_env:tx_env_and_trees_from_top(aetx_contract),
+        tx_env_and_trees_from_top(aetx_contract),
     aesc_offchain_state:check_initial_update_tx(SignedTx, Updates, State,
                                                 OnChainTrees, OnChainEnv,
                                                 Opts).
 
 check_update_tx(SignedTx, Updates, State, Opts, ChannelPubkey) ->
     {OnChainEnv, OnChainTrees} =
-        aetx_env:tx_env_and_trees_from_top(aetx_contract),
+        tx_env_and_trees_from_top(aetx_contract),
     Height = aetx_env:height(OnChainEnv),
     ActiveProtocol = aec_hard_forks:protocol_effective_at_height(Height),
     aesc_offchain_state:check_update_tx(SignedTx, Updates, State,
@@ -2160,7 +2230,7 @@ check_signed_update_ack_tx(SignedTx, Msg,
                                              not_offchain_tx) of
               ok ->
                   {OnChainEnv, OnChainTrees} =
-                      aetx_env:tx_env_and_trees_from_top(aetx_contract),
+                      tx_env_and_trees_from_top(aetx_contract),
                   {ok, D#data{state = aesc_offchain_state:set_signed_tx(
                                         SignedTx, Updates, State, OnChainTrees, OnChainEnv, Opts),
                               log = log_msg(rcv, ?UPDATE_ACK, Msg, D#data.log)}};
@@ -2184,18 +2254,19 @@ check_update_ack_(SignedTx, HalfSignedTx) ->
     lager:debug("Txes are the same", []),
     ok.
 
-handle_upd_transfer(FromPub, ToPub, Amount, From, #data{ state = State
-                                                       , opts = Opts
-                                                       , on_chain_id = ChannelId
-                                                       } = D) ->
-    Updates = [aesc_offchain_update:op_transfer(aeser_id:create(account, FromPub),
-                                                aeser_id:create(account, ToPub), Amount)],
-    {OnChainEnv, OnChainTrees} = aetx_env:tx_env_and_trees_from_top(aetx_contract),
+handle_upd_transfer(FromPub, ToPub, Amount, From, UOpts, #data{ state = State
+                                                              , opts = Opts
+                                                              , on_chain_id = ChannelId
+                                                              } = D) ->
+    {OnChainEnv, OnChainTrees} = tx_env_and_trees_from_top(aetx_contract),
     Height = aetx_env:height(OnChainEnv),
     %% TODO PT-165214367: maybe set block_hash
     BlockHash = ?NOT_SET_BLOCK_HASH,
     ActiveProtocol = aec_hard_forks:protocol_effective_at_height(Height),
     try
+        Updates = [aesc_offchain_update:op_transfer(aeser_id:create(account, FromPub),
+                                                    aeser_id:create(account, ToPub), Amount)
+                   | meta_updates(UOpts)],
         Tx1 = aesc_offchain_state:make_update_tx(Updates, State, ChannelId, ActiveProtocol,
                                                  OnChainTrees, OnChainEnv, Opts),
         case request_signing(?UPDATE, Tx1, Updates, BlockHash, D, defer) of
@@ -2212,6 +2283,11 @@ handle_upd_transfer(FromPub, ToPub, Amount, From, #data{ state = State
         error:Reason ->
             process_update_error(Reason, From, D)
     end.
+
+meta_updates(Opts) when is_map(Opts) ->
+    L = maps:get(meta, Opts, []),
+    [aesc_offchain_update:op_meta(D) || D <- L,
+                                        is_binary(D)].
 
 send_leave_msg(#data{ on_chain_id = ChId
                     , session     = Session} = Data) ->
@@ -2617,10 +2693,32 @@ report_leave(#data{state = State} = D) ->
     cache_state(D).
 
 report_on_chain_tx(Info, SignedTx, D) ->
-    {Type,_} = aetx:specialize_type(aetx_sign:innermost_tx(SignedTx)),
+    report_on_chain_tx(Info, signed_tx_type(SignedTx), SignedTx, D).
+
+report_on_chain_tx(Info, Type, SignedTx, D) ->
     report(on_chain_tx, #{ tx => SignedTx
                          , type => Type
                          , info => Info}, D).
+
+maybe_act_on_tx(channel_snapshot_solo_tx, SignedTx, D) ->
+    MyPubkey = my_account(D),
+    case call_cb(aetx_sign:innermost_tx(SignedTx), origin, []) of
+        MyPubkey ->
+            lager:debug("snapshot_solo_tx from my client", []),
+            #data{op = OrigOp} = D,
+            %% We want to order a local min_depth watch, but not log it as a wait state op.
+            {ok, D1} = start_min_depth_watcher({?MIN_DEPTH, ?WATCH_SNAPSHOT_SOLO}, SignedTx, [], D),
+            D1#data{op = OrigOp};
+        OtherPubkey ->
+            lager:debug("snapshot_solo_tx from other client (~p)", [OtherPubkey]),
+            D
+    end;
+maybe_act_on_tx(_, _, D) ->
+    D.
+
+signed_tx_type(SignedTx) ->
+    {Type, _} = aetx:specialize_type(aetx_sign:innermost_tx(SignedTx)),
+    Type.
 
 report(Tag, Info, D) ->
     report_info(do_rpt(Tag, D), #{ type => report
@@ -2754,7 +2852,7 @@ verify_signatures_channel_create(SignedTx, Who) ->
 verify_signatures_onchain_check(Pubkeys, SignedTx) ->
     {Mod, Tx} = aetx:specialize_callback(aetx_sign:innermost_tx(SignedTx)),
     {OnChainEnv, OnChainTrees} =
-        aetx_env:tx_env_and_trees_from_top(aetx_contract),
+        tx_env_and_trees_from_top(aetx_contract),
     {ok, Participants} = Mod:signers(Tx, OnChainTrees),
     SkipKeys = Participants -- Pubkeys,
     case aesc_utils:verify_signatures_onchain(SignedTx, OnChainTrees, OnChainEnv,
@@ -2765,7 +2863,7 @@ verify_signatures_onchain_check(Pubkeys, SignedTx) ->
 
 verify_signatures_onchain_skip(SkipKeys, SignedTx) ->
     {OnChainEnv, OnChainTrees} =
-        aetx_env:tx_env_and_trees_from_top(aetx_contract),
+        tx_env_and_trees_from_top(aetx_contract),
     case aesc_utils:verify_signatures_onchain(SignedTx, OnChainTrees, OnChainEnv,
                                               SkipKeys) of
         ok -> ok;
@@ -2774,7 +2872,7 @@ verify_signatures_onchain_skip(SkipKeys, SignedTx) ->
 
 verify_signatures_offchain(ChannelPubkey, Pubkeys, SignedTx) ->
     {OnChainEnv, OnChainTrees} =
-        aetx_env:tx_env_and_trees_from_top(aetx_contract),
+        tx_env_and_trees_from_top(aetx_contract),
     {ok, Channel} = aec_chain:get_channel(ChannelPubkey),
     InitiatorPubkey = aesc_channels:initiator_pubkey(Channel),
     ResponderPubkey = aesc_channels:responder_pubkey(Channel),
@@ -2786,6 +2884,11 @@ verify_signatures_offchain(ChannelPubkey, Pubkeys, SignedTx) ->
         ok -> ok;
         _ -> {error, bad_signature}
     end.
+
+later_round_than_onchain(ChannelPubkey, Round) ->
+    {ok, Channel} = aec_chain:get_channel(ChannelPubkey),
+    OnChainRound = aesc_channels:round(Channel),
+    Round > OnChainRound.
 
 check_tx_and_verify_signatures(SignedTx, Updates, Mod, Data, Pubkeys, ErrTypeMsg) ->
     ChannelPubkey = cur_channel_id(Data),
@@ -2971,7 +3074,8 @@ init(#{opts := Opts0} = Arg) ->
               fun(O) -> check_minimum_depth_opt(DefMinDepth, Role, O) end,
               fun check_timeout_opt/1,
               fun check_rpt_opt/1,
-              fun check_log_opt/1
+              fun check_log_opt/1,
+              fun check_version_opts/1
              ], Opts2),
     #{initiator := Initiator} = Opts,
     Session = start_session(Arg, Reestablish, Opts#{role => Role}),
@@ -3067,6 +3171,29 @@ check_timeout_opt(#{timeouts := TOs} = Opts) ->
     Opts1;
 check_timeout_opt(Opts) ->
     check_timeout_opt(Opts#{timeouts => #{}}).
+
+check_version_opts(#{versions := S} = Opts) ->
+    case maps:fold(
+           fun(_, _, {error,_} = E) ->
+                   E;
+              (offchain_update = Cat, V, ok) ->
+                   try aesc_offchain_update:set_vsn(V)
+                   catch
+                       error:_ ->
+                           {error, {invalid_vsn, Cat}}
+                   end;
+              (Cat, _V, ok) ->
+                   lager:debug("Unsupported version option ~p - ignoring", [Cat]),
+                   ok
+           end, ok, S) of
+        ok ->
+            Opts;
+        {error, _} = Error ->
+            lager:error("Invalid serialization: ~p", [Error]),
+            maps:remove(versions, Opts)
+    end;
+check_version_opts(Opts) ->
+    Opts.
 
 check_rpt_opt(#{report := R} = Opts) when is_map(R) ->
     L = [{K,V} || {K,V} <- maps:to_list(R),
@@ -3240,14 +3367,14 @@ is_channel_locked(LockedUntil) ->
     LockedUntil >= curr_height().
 
 withdraw_locked_complete(SignedTx, Updates, #data{state = State, opts = Opts} = D) ->
-    {OnChainEnv, OnChainTrees} = aetx_env:tx_env_and_trees_from_top(aetx_contract),
+    {OnChainEnv, OnChainTrees} = tx_env_and_trees_from_top(aetx_contract),
     State1 = aesc_offchain_state:set_signed_tx(SignedTx, Updates, State,
                                                OnChainTrees, OnChainEnv, Opts),
     D1 = D#data{state = State1},
     next_state(open, D1).
 
 deposit_locked_complete(SignedTx, Updates, #data{state = State , opts = Opts} = D) ->
-    {OnChainEnv, OnChainTrees} = aetx_env:tx_env_and_trees_from_top(aetx_contract),
+    {OnChainEnv, OnChainTrees} = tx_env_and_trees_from_top(aetx_contract),
     lager:debug("Applying updates: ~p", [Updates]),
     State1 = aesc_offchain_state:set_signed_tx(SignedTx, Updates, State,
                                                OnChainTrees, OnChainEnv, Opts),
@@ -3270,6 +3397,28 @@ settle_signed(SignedTx, Updates, #data{ on_chain_id = ChId} = D) ->
                         start_min_depth_watcher(close, SignedTx, Updates, D)
                 end,
             next_state(channel_closing, D1);
+        {error,_} = Error ->
+            close(Error, D)
+    end.
+
+snapshot_solo_signed(SignedTx, _Updates, #data{ on_chain_id = ChId } = D) ->
+    lager:debug("SignedTx = ~p", [SignedTx]),
+    case aec_chain:get_channel(ChId) of
+        {ok, Ch} ->
+            case aesc_channels:is_active(Ch) of
+                true ->
+                    case aec_tx_pool:push(SignedTx) of
+                        ok ->
+                            ok;
+                        {error, Reason} ->
+                            lager:debug("Snapshot_solo tx failed: ~p", [Reason]),
+                            ok
+                    end;
+                false ->
+                    lager:debug("Snapshot_solo tx failed: channel not active", []),
+                    ok
+            end,
+            next_state(open, D);
         {error,_} = Error ->
             close(Error, D)
     end.
@@ -3304,7 +3453,7 @@ funding_locked_complete(#data{ op = #op_lock{ tag = create
                              , create_tx = CreateTx
                              , state = State
                              , opts = Opts} = D) ->
-    {OnChainEnv, OnChainTrees} = aetx_env:tx_env_and_trees_from_top(aetx_contract),
+    {OnChainEnv, OnChainTrees} = tx_env_and_trees_from_top(aetx_contract),
     State1 = aesc_offchain_state:set_signed_tx(CreateTx, Updates, State, OnChainTrees,
                                                OnChainEnv, Opts),
     D1 = D#data{state = State1},
@@ -3380,11 +3529,11 @@ handle_call_(_AnyState, {inband_msg, ToPub, Msg}, From, #data{} = D) ->
         _ ->
             keep_state(D, [{reply, From, {error, unknown_recipient}}])
     end;
-handle_call_(open, {upd_transfer, FromPub, ToPub, Amount}, From,
+handle_call_(open, {upd_transfer, FromPub, ToPub, Amount, Opts}, From,
             #data{opts = #{initiator := I, responder := R}} = D) ->
     case FromPub =/= ToPub andalso ([] == [FromPub, ToPub] -- [I, R]) of
         true ->
-            handle_upd_transfer(FromPub, ToPub, Amount, From, set_ongoing(D));
+            handle_upd_transfer(FromPub, ToPub, Amount, From, Opts, set_ongoing(D));
         false ->
             keep_state(set_ongoing(D), [{reply, From, {error, invalid_pubkeys}}])
     end;
@@ -3458,7 +3607,7 @@ handle_call_(open, {upd_call_contract, Opts, ExecType}, From,
                                                    CallData, CallStack),
     Updates = [Update],
     {OnChainEnv, OnChainTrees} =
-        aetx_env:tx_env_and_trees_from_top(aetx_contract),
+        tx_env_and_trees_from_top(aetx_contract),
     Height = aetx_env:height(OnChainEnv),
     ActiveProtocol = aec_hard_forks:protocol_effective_at_height(Height),
     try  Tx1 = aesc_offchain_state:make_update_tx(Updates, State,
@@ -3631,6 +3780,28 @@ handle_call_(St, close_solo, From, D) ->
                     keep_state(D)
             end
     end;
+handle_call_(St, snapshot_solo = Req, From, D) ->
+    case St of
+        channel_closing ->
+            keep_state(D, [{reply, From, {error, channel_closing}}]);
+        _ ->
+            D1 = log(rcv, Req, Req, D),
+            case snapshot_solo_tx_for_signing(D1) of
+                {ok, SnapshotSoloTx, Updates, BlockHash} ->
+                    case request_signing(
+                           snapshot_solo_tx, SnapshotSoloTx, Updates, BlockHash, D1, defer) of
+                        {ok, Send, D2, Actions} ->
+                            %% reply before sending sig request
+                            gen_statem:reply(From, ok),
+                            Send(),
+                            next_state(awaiting_signature, set_ongoing(D2), Actions);
+                        {error, _} = Error ->
+                            keep_state(D1, [{reply, From, Error}])
+                    end;
+                {error, _} = Error ->
+                    keep_state(D1, [{reply, From, Error}])
+            end
+    end;
 handle_call_(St, slash, From, D) ->
     case St of
         channel_closing ->
@@ -3752,9 +3923,21 @@ handle_common_event_(cast, {?CHANNEL_CHANGED, #{tx_hash := TxHash} = Info} = Msg
             close({error, unexpected_tx_on_chain}, D);
         _ ->
             lager:debug("Fsm notes channel change ~p", [Info]),
-            report_on_chain_tx(channel_changed, maps:get(tx, Info), D1),
-            keep_state(D1)
+            SignedTx = maps:get(tx, Info),
+            Type = signed_tx_type(SignedTx),
+            report_on_chain_tx(channel_changed, Type, SignedTx, D1),
+            keep_state(maybe_act_on_tx(Type, SignedTx, D1))
     end;
+handle_common_event_(cast, {?MIN_DEPTH_ACHIEVED, _ChainId,
+                            ?WATCH_SNAPSHOT_SOLO, TxHash}, _St, _, D) ->
+    %% This min_depth notification is handled unconventionally, since only the
+    %% requesting client is to get a min_depth notification, and the fsm is not
+    %% locked while waiting for it.
+    lager:debug("Received min_depth confirmation of snapshot_solo_tx ~p", [TxHash]),
+    report(info, #{ event => min_depth_achieved
+                  , type => aesc_snapshot_solo_tx:type()
+                  , tx_hash => TxHash }, D),
+    keep_state(D);
 handle_common_event_(cast, {?CHANNEL_CLOSED, #{tx := SignedTx} = _Info} = Msg, _St, _, D) ->
     %% Start a minimum-depth watch, then (if confirmed) terminate
     report_on_chain_tx(channel_closed, SignedTx, D),
@@ -3826,3 +4009,5 @@ block_hash_from_op(#op_watch{data = #op_data{block_hash = BlockHash}}) ->
 block_hash_from_op(?NO_OP) -> %% in case of unexpected close
     ?NOT_SET_BLOCK_HASH.
 
+tx_env_and_trees_from_top(Type) ->
+    aesc_tx_env_cache:tx_env_and_trees_from_top(Type).

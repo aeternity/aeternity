@@ -1,0 +1,70 @@
+
+contract MapOfMaps =
+
+  type board = map(int, map(int, string))
+  type map2('a, 'b, 'c) = map('a, map('b, 'c))
+
+  record state = { big1   : map2(string, string, string),
+                   big2   : map2(string, string, string),
+                   small1 : map(string, string),
+                   small2 : map(string, string)  }
+
+  function empty_state() =
+    { big1   = {}, big2   = {},
+      small1 = {}, small2 = {} }
+
+  entrypoint init() = empty_state()
+
+  stateful entrypoint setup_state() =
+    let small = {["key"] = "val"}
+    put({ big1 = {["one"] = small},
+          big2 = {["two"] = small},
+          small1 = small,
+          small2 = small })
+
+  // -- Garbage collection of inner map when outer map is garbage collected
+  stateful entrypoint test1_setup() =
+    let inner = {["key"] = "val"}
+    put(empty_state() { big1 = {["one"] = inner} })
+
+  stateful entrypoint test1_execute() =
+    put(state{ big1 = {} })
+
+  entrypoint test1_check() =
+    state.big1
+
+  // -- Inplace update
+
+  function small1() = state.small1
+
+  stateful entrypoint test2_setup() =
+    put(empty_state() { small1 = {["key"] = "val"} })
+
+  stateful entrypoint test2_execute() =
+    put(state{ small1 = small1() })
+    put(state{ small1["key2"] = "val2" })
+
+  entrypoint test2_check() =
+    state.small1
+
+  // -- Map equality
+
+  stateful entrypoint test3_setup() =
+    put(empty_state() { small2 = {["a"] = "b"} })
+
+  entrypoint test3_execute() =
+    ()
+
+  entrypoint test3_check() =
+    state.small2["a"] == "b"  // Can't compare maps in AEVM
+
+  // -- Returning nested maps
+
+  stateful entrypoint test4_setup() =
+    put(empty_state())
+
+  stateful entrypoint test4_execute() =
+    put(state{ big1 = {["a"] = {["b"] = "c"}} })
+
+  entrypoint test4_check() = state.big1
+

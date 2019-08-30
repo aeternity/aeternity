@@ -52,6 +52,7 @@ references:
   machine_config: &machine_config
     resource_class: large
     machine:
+      image: ubuntu-1604:201903-01
       docker_layer_caching: true
     working_directory: ~/aeternity
     environment:
@@ -84,11 +85,13 @@ references:
         OTP_VERSION: "20.1"
       command: |
         # Install OTP package deps
-        sudo apt-get update && sudo apt-get install libwxbase3.0-dev libwxgtk3.0-dev
+        sudo apt-get update && sudo apt-get install libwxbase3.0-dev libwxgtk3.0-dev libsctp1
         # Install OTP binary package
-        PACKAGE_NAME=esl-erlang_${OTP_VERSION}-1~ubuntu~trusty_amd64.deb
+        PACKAGE_NAME=esl-erlang_${OTP_VERSION}-1~ubuntu~xenial_amd64.deb
         OTP_DOWNLOAD_URL=https://packages.erlang-solutions.com/erlang/debian/pool/${PACKAGE_NAME}
-        curl -fsSL -o ${PACKAGE_NAME} "$OTP_DOWNLOAD_URL"
+        # TODO temporary disable SSL checks on erlang-solutions.com until they fix their certificate
+        # FIXME ^^ (multi-editor support :))
+        curl -fsSL --insecure -o ${PACKAGE_NAME} "$OTP_DOWNLOAD_URL"
         sudo dpkg -i ${PACKAGE_NAME}
 
   install_libsodium: &install_libsodium
@@ -106,7 +109,7 @@ references:
           && ./configure && make -j$(nproc) && sudo make install && sudo ldconfig
 
   tag_regex: &tag_regex /^v.*$/
-  stable_tag_regex: &stable_tag_regex /^v4\..*$/
+  master_branch: &master_branch master
 
   rebar_cache_key: &rebar_cache_key rebar-cache-{{ checksum "rebar.lock" }}-{{ checksum "rebar.config" }}
   restore_rebar_cache: &restore_rebar_cache
@@ -123,19 +126,20 @@ references:
     restore_cache:
       key: *build_otp21_cache_key
 
-  machine_build_cache_key: &machine_build_cache_key machine-build-cache-v6-{{ .Branch }}-{{ .Revision }}
+  machine_build_cache_key: &machine_build_cache_key machine-build-cache-v7-{{ .Branch }}-{{ .Revision }}
   restore_machine_build_cache: &restore_machine_build_cache
     restore_cache:
       keys:
         - *machine_build_cache_key
-        - machine-build-cache-v6-{{ .Branch }}-
-        - machine-build-cache-v6-
+        - machine-build-cache-v7-{{ .Branch }}-
+        - machine-build-cache-v7-
 
   save_machine_build_cache: &save_machine_build_cache
     save_cache:
       key: *machine_build_cache_key
       paths:
         - "_build"
+        - ".contracts_test_cache"
 
   macos_package_cache_key: &macos_package_cache_key macos-package-cache-v1
   restore_macos_package_cache: &restore_macos_package_cache
@@ -211,6 +215,12 @@ references:
         mkdir ${PACKAGE_TESTS_DIR:?}
         make python-package-win32-test python-release-test WORKDIR=${PACKAGE_TESTS_DIR:?} PACKAGE=${PACKAGE_TARBALL:?}
 
+  test_arch_os_dependencies: &test_arch_os_dependencies
+    run:
+      name: Test architecture or OS specific functions
+      command: |
+        make test-arch-os-dependencies
+
   store_package_artifacts: &store_package_artifacts
     store_artifacts:
       path: *packages_workspace
@@ -254,7 +264,7 @@ references:
     run:
       name: Send failure notification
       environment:
-        NOTIFY_BRANCH: master
+        NOTIFY_BRANCH: *master_branch
         HOOK_TEMPLATE: |
           {
             "text": "CircleCI job **%s** failed on branch **%s** by @%s",
@@ -279,7 +289,7 @@ references:
     run:
       name: Send failure notification on system test
       environment:
-        NOTIFY_BRANCH: master
+        NOTIFY_BRANCH: *master_branch
         HOOK_TEMPLATE: |
           {
             "text": "CircleCI job **%s** failed on branch **%s** by @%s",
@@ -413,7 +423,7 @@ commands:
       - run:
           name: Start branch docker image
           command: |
-            docker run --name ae_${CIRCLE_SHA1:?} ${DOCKERHUB_REPO:?}:${CIRCLE_BRANCH/\//_} -network_id ae_test
+            docker run --name ae_${CIRCLE_SHA1:?} ${DOCKERHUB_REPO:?}:${CIRCLE_BRANCH/\//_} bin/aeternity console -noinput -network_id ae_test
           background: true
       - run:
           name: Health check
@@ -467,7 +477,7 @@ jobs:
   test_roma:
     executor: builder_container_stable
     <<: *container_config
-    parallelism: 2
+    parallelism: 3
     environment:
       - MAKE_TARGET: ct-roma
     steps: *test_steps
@@ -475,7 +485,7 @@ jobs:
   test_minerva:
     executor: builder_container_stable
     <<: *container_config
-    parallelism: 2
+    parallelism: 3
     environment:
       - MAKE_TARGET: ct-minerva
     steps: *test_steps
@@ -483,7 +493,7 @@ jobs:
   test_fortuna:
     executor: builder_container_stable
     <<: *container_config
-    parallelism: 2
+    parallelism: 3
     environment:
       - MAKE_TARGET: ct-fortuna
     steps: *test_steps
@@ -491,7 +501,7 @@ jobs:
   test_lima:
     executor: builder_container_stable
     <<: *container_config
-    parallelism: 2
+    parallelism: 3
     environment:
       - MAKE_TARGET: ct-lima
     steps: *test_steps
@@ -499,7 +509,7 @@ jobs:
   test_mnesia_leveled:
     executor: builder_container_stable
     <<: *container_config
-    parallelism: 2
+    parallelism: 3
     environment:
       - MAKE_TARGET: ct-mnesia-leveled
     steps: *test_steps
@@ -507,7 +517,7 @@ jobs:
   test_mnesia_rocksdb:
     executor: builder_container_stable
     <<: *container_config
-    parallelism: 2
+    parallelism: 3
     environment:
       - MAKE_TARGET: ct-mnesia-rocksdb
     steps: *test_steps
@@ -626,6 +636,7 @@ jobs:
     steps:
       - checkout
       - *set_package_path
+      - *test_arch_os_dependencies
       - *build_package
       - *test_package
       - store_artifacts:
@@ -700,6 +711,7 @@ jobs:
             for erlang_dep in $(brew deps file://`pwd`/deployment/homebrew/erlang.rb); do brew link $erlang_dep; done
       - *save_macos_package_cache
       - *set_package_path
+      - *test_arch_os_dependencies
       - *build_package
       - *test_package
       - store_artifacts:
@@ -800,7 +812,6 @@ jobs:
       - *install_otp
       - *install_libsodium
       - *restore_machine_build_cache
-      # keep user preparation step after cache restore because of perms
       - *prepare_ubuntu_user
       - *install_system_test_deps
       - run:
@@ -981,12 +992,11 @@ workflows:
                 - env/dev1
                 - env/dev2
                 - system-tests
-                - master
                 - /releases\/.*/
+                - *master_branch
 
       - docker_system_smoke_tests:
-          requires:
-            - docker_smoke_tests
+          requires: []
           filters:
             branches:
               ignore:
@@ -1177,10 +1187,10 @@ workflows:
           filters:
             branches:
               only:
-                - master
                 - /releases\/.*/
+                - *master_branch
             tags:
-              only: *stable_tag_regex
+              only: *tag_regex
 
       - upload_build_artifacts:
           context: ae-node-builds
@@ -1199,8 +1209,8 @@ workflows:
           filters:
             branches:
               only:
-                - master
                 - /releases\/.*/
+                - *master_branch
             tags:
               only: *tag_regex
 
@@ -1247,12 +1257,17 @@ workflows:
           filters:
             branches:
               only:
-                - master
+                - *master_branch
 
       - deploy_next:
           context: ae-node-builds
           requires:
+            - test_roma
+            - test_minerva
+            - test_fortuna
             - test_lima
+            - test_mnesia_leveled
+            - test_mnesia_rocksdb
             - eunit_roma
             - eunit_minerva
             - eunit_fortuna
@@ -1262,9 +1277,10 @@ workflows:
             - static_analysis
             - rebar_lock_check
             - linux_package
+            - linux_package
           filters:
             branches:
-              only: master
+              only: *master_branch
 
       - deploy_dev1:
           context: ae-node-builds
@@ -1288,7 +1304,7 @@ workflows:
             branches:
               ignore: /.*/
             tags:
-              only: *stable_tag_regex
+              only: *tag_regex
 
       - hodl_blue:
           type: approval
@@ -1296,7 +1312,7 @@ workflows:
             branches:
               ignore: /.*/
             tags:
-              only: *stable_tag_regex
+              only: *tag_regex
 
       - hodl_green:
           type: approval
@@ -1304,7 +1320,7 @@ workflows:
             branches:
               ignore: /.*/
             tags:
-              only: *stable_tag_regex
+              only: *tag_regex
 
       - deploy_uat_blue:
           context: ae-node-builds
@@ -1321,7 +1337,7 @@ workflows:
             branches:
               ignore: /.*/
             tags:
-              only: *stable_tag_regex
+              only: *tag_regex
 
       - deploy_uat_green:
           context: ae-node-builds
@@ -1332,7 +1348,7 @@ workflows:
             branches:
               ignore: /.*/
             tags:
-              only: *stable_tag_regex
+              only: *tag_regex
 
       - upload_packages_linux:
           context: ae-node-builds
@@ -1349,7 +1365,7 @@ workflows:
             branches:
               ignore: /.*/
             tags:
-              only: *stable_tag_regex
+              only: *tag_regex
 
       - upload_packages_osx:
           context: ae-node-builds
@@ -1366,7 +1382,7 @@ workflows:
             branches:
               ignore: /.*/
             tags:
-              only: *stable_tag_regex
+              only: *tag_regex
 
       - docker_push_tag:
           context: ae-node-builds
@@ -1382,7 +1398,7 @@ workflows:
             branches:
               ignore: /.*/
             tags:
-              only: *stable_tag_regex
+              only: *tag_regex
 
       - hodl_latest:
           type: approval
@@ -1390,7 +1406,7 @@ workflows:
             branches:
               ignore: /.*/
             tags:
-              only: *stable_tag_regex
+              only: *tag_regex
 
       - upload_latest_packages_linux:
           context: ae-node-builds
@@ -1401,7 +1417,7 @@ workflows:
             branches:
               ignore: /.*/
             tags:
-              only: *stable_tag_regex
+              only: *tag_regex
 
       - upload_latest_packages_osx:
           context: ae-node-builds
@@ -1412,7 +1428,7 @@ workflows:
             branches:
               ignore: /.*/
             tags:
-              only: *stable_tag_regex
+              only: *tag_regex
 
       - deploy_api_docs:
           requires:
@@ -1421,7 +1437,7 @@ workflows:
             branches:
               ignore: /.*/
             tags:
-              only: *stable_tag_regex
+              only: *tag_regex
 
       - docker_push_latest:
           context: ae-node-builds
@@ -1431,7 +1447,7 @@ workflows:
             branches:
               ignore: /.*/
             tags:
-              only: *stable_tag_regex
+              only: *tag_regex
 
       - verify_release_artifacts:
           context: ae-node-builds
@@ -1447,7 +1463,7 @@ workflows:
             branches:
               ignore: /.*/
             tags:
-              only: *stable_tag_regex
+              only: *tag_regex
 
       - build_uml_diagrams:
           requires:
@@ -1469,6 +1485,6 @@ workflows:
           filters:
             branches:
               only:
-                - master
+                - *master_branch
     jobs:
       - docker_system_tests

@@ -28,9 +28,3 @@
 -define(VM_AEVM_SOLIDITY_1_enabled, false).
 -endif.
 
--ifdef(TEST).
--define(VM_FATE_SOPHIA_1_enabled, true).
--else.
--define(VM_FATE_SOPHIA_1_enabled, false).
--endif.
-

@@ -19,6 +19,14 @@
 %% for testing from a shell
 -export([ init_tests/2 ]).
 
+%% Running contracts
+-export([ state/0, state/1
+        , new_account/2
+        , create_contract/5
+        , create_contract_with_code/5
+        , call_contract/7
+        ]).
+
 %% test case exports
 -export([ call_contract/1
         , call_contract_error_value/1
@@ -49,6 +57,8 @@
         , fate_environment/1
         , state_tree/1
         , sophia_identity/1
+        , sophia_list_comp/1
+        , sophia_stdlib_tests/1
         , sophia_remote_identity/1
         , sophia_vm_interaction/1
         , sophia_state/1
@@ -57,6 +67,9 @@
         , sophia_typed_calls/1
         , sophia_call_origin/1
         , sophia_call_value/1
+        , sophia_payable_contract/1
+        , sophia_payable_entrypoint/1
+        , sophia_private_entrypoint/1
         , sophia_contract_creator/1
         , sophia_no_reentrant/1
         , sophia_aevm_exploits/1
@@ -109,6 +122,9 @@
         , sophia_big_map_benchmark/1
         , sophia_pmaps/1
         , sophia_map_of_maps/1
+        , sophia_maps_gc/1
+        , sophia_polymorphic_entrypoint/1
+        , sophia_arity_check/1
         , sophia_chess/1
         , sophia_variant_types/1
         , sophia_chain/1
@@ -117,7 +133,9 @@
         , sophia_aens_resolve/1
         , sophia_aens_transactions/1
         , sophia_state_handling/1
-        , sophia_state_gas/1
+        , sophia_remote_state/1
+        , sophia_state_gas_arguments/1
+        , sophia_state_gas_store_size/1
         , sophia_no_callobject_for_remote_calls/1
         , sophia_operators/1
         , sophia_bits/1
@@ -167,6 +185,7 @@
 
 -define(CONTRACT_SERIALIZATION_VSN_ROMA,    1).
 -define(CONTRACT_SERIALIZATION_VSN_MINERVA, 2).
+-define(CONTRACT_SERIALIZATION_VSN_LIMA,    3).
 
 %% Arguments like <<_:256>> are encoded as addresses.
 %% For FATE we need to distinguish between the type of object.
@@ -179,12 +198,12 @@
 -define(qid(__X__), {'@oq', __X__}).
 
 
--define(assertMatchAEVM(Res, ExpVm1, ExpVm2, ExpVm3),
+-define(assertMatchAEVM(Res, ExpVm1, ExpVm2, ExpVm3, ExpVm4),
     case vm_version() of
         ?VM_AEVM_SOPHIA_1 -> ?assertMatch(ExpVm1, Res);
         ?VM_AEVM_SOPHIA_2 -> ?assertMatch(ExpVm2, Res);
         ?VM_AEVM_SOPHIA_3 -> ?assertMatch(ExpVm3, Res);
-        ?VM_AEVM_SOPHIA_4 -> ?assertMatch(ExpVm3, Res); %% So far no difference
+        ?VM_AEVM_SOPHIA_4 -> ?assertMatch(ExpVm4, Res);
         ?VM_FATE_SOPHIA_1 -> ok
     end).
 
@@ -250,10 +269,10 @@ all() ->
                        , {group, sophia_aevm_specific}]).
 
 -define(FATE_SPECIFIC, [ fate_environment
+                       , sophia_polymorphic_entrypoint
                        ]).
 
--define(FATE_TODO, [ {group, sophia_oracles_gas_ttl}
-                   , sophia_state_gas
+-define(FATE_TODO, [sophia_state_gas_arguments
                    ]).
 
 groups() ->
@@ -297,6 +316,8 @@ groups() ->
                                     ]}
     , {state_tree, [sequence], [ state_tree ]}
     , {sophia,     [sequence], [ sophia_identity,
+                                 sophia_list_comp,
+                                 sophia_stdlib_tests,
                                  sophia_remote_identity,
                                  sophia_remote_gas,
                                  sophia_call_out_of_gas,
@@ -307,6 +328,9 @@ groups() ->
                                  sophia_typed_calls,
                                  sophia_call_origin,
                                  sophia_call_value,
+                                 sophia_payable_contract,
+                                 sophia_payable_entrypoint,
+                                 sophia_private_entrypoint,
                                  sophia_contract_creator,
                                  sophia_functions,
                                  sophia_oracles,
@@ -322,14 +346,19 @@ groups() ->
                                  sophia_maps,
                                  sophia_map_benchmark,
                                  sophia_big_map_benchmark,
+                                 sophia_map_of_maps,
+                                 sophia_maps_gc,
                                  sophia_variant_types,
+                                 sophia_arity_check,
                                  sophia_chain,
                                  sophia_savecoinbase,
                                  sophia_fundme,
                                  sophia_aens_resolve,
                                  sophia_aens_transactions,
                                  sophia_state_handling,
-                                 sophia_state_gas,
+                                 sophia_remote_state,
+                                 sophia_state_gas_arguments,
+                                 sophia_state_gas_store_size,
                                  sophia_no_callobject_for_remote_calls,
                                  sophia_operators,
                                  sophia_bits,
@@ -415,7 +444,7 @@ init_tests(Release, VMName) ->
     Versions = [{roma,    {?ROMA_PROTOCOL_VSN,    ?SOPHIA_ROMA,    ?ABI_AEVM_SOPHIA_1, ?VM_AEVM_SOPHIA_1}},
                 {minerva, {?MINERVA_PROTOCOL_VSN, ?SOPHIA_MINERVA, ?ABI_AEVM_SOPHIA_1, ?VM_AEVM_SOPHIA_2}},
                 {fortuna, {?FORTUNA_PROTOCOL_VSN, ?SOPHIA_FORTUNA, ?ABI_AEVM_SOPHIA_1, ?VM_AEVM_SOPHIA_3}},
-                {lima,    {IfAEVM(?FORTUNA_PROTOCOL_VSN, ?LIMA_PROTOCOL_VSN),
+                {lima,    {?LIMA_PROTOCOL_VSN,
                            IfAEVM(?SOPHIA_LIMA_AEVM, ?SOPHIA_LIMA_FATE),
                            IfAEVM(?ABI_AEVM_SOPHIA_1, ?ABI_FATE_SOPHIA_1),
                            IfAEVM(?VM_AEVM_SOPHIA_4, ?VM_FATE_SOPHIA_1)}}],
@@ -718,27 +747,17 @@ create_version_too_high(Cfg) ->
     Res = sign_and_apply_transaction(Tx, PrivKey, S1),
     %% Test that the create transaction is accepted/rejected accordingly
     case proplists:get_value(protocol, Cfg) of
-        roma ->
+        P when P =:= roma; P =:= lima ->
             {error, illegal_contract_compiler_version, _} = Res;
-        P when P =:= minerva; P =:= fortuna; P =:= lima ->
+        P when P =:= minerva; P =:= fortuna ->
             {ok, _} = Res
     end.
 
-hack_bytecode(Code, OP) when is_integer(OP), 0 =< OP, OP =< 255 ->
-    #{ source_hash := Hash,
-       type_info := TypeInfo,
-       byte_code := ByteCode } = aect_sophia:deserialize(Code),
-    Version = 1,
+hack_bytecode(SerCode, OP) when is_integer(OP), 0 =< OP, OP =< 255 ->
+    Code = #{ byte_code := ByteCode } = aect_sophia:deserialize(SerCode),
     HackedByteCode = <<OP:1/integer-unsigned-unit:8, ByteCode/binary>>,
-    Fields = [ {source_hash, Hash}
-             , {type_info, TypeInfo}
-             , {byte_code, HackedByteCode}
-             ],
-    Template =
-        [ {source_hash, binary}
-        , {type_info, [{binary, binary, binary, binary}]}
-        , {byte_code, binary}],
-    aeser_chain_objects:serialize(compiler_sophia, Version, Template, Fields).
+    aect_sophia:serialize(Code#{ byte_code := HackedByteCode, compiler_version => <<"Hacked">> },
+                          maps:get(contract_vsn, Code)).
 
 create_contract(_Cfg) -> create_contract_(aec_test_utils:min_gas_price()).
 
@@ -1104,7 +1123,7 @@ call(Fun, Xs) when is_function(Fun, 1 + length(Xs)) ->
     S = state(),
     {R, S1} = try apply(Fun, Xs ++ [S])
               catch
-                _:{fail, Error} -> error(Error);
+                _:{fail, Error} -> ct:fail(Error);
                 _:Reason -> {{'EXIT', Reason, erlang:get_stacktrace()}, S}
               end,
     state(S1),
@@ -1216,17 +1235,22 @@ compile_contract(Name) ->
 
 compile_contract_vsn(Name, Vsn) ->
     case compile_contract(Name) of
-        {ok, ByteCode} ->
-            Map = aect_sophia:deserialize(ByteCode),
-            case maps:get(contract_vsn, Map) of
-                Vsn -> {ok, ByteCode};
+        {ok, SerCode} ->
+            CodeMap = #{ type_info := TIs } = aect_sophia:deserialize(SerCode),
+            case maps:get(contract_vsn, CodeMap) of
+                Vsn -> {ok, SerCode};
                 _   ->
-                    {ok, BinSrc} = aect_test_utils:read_contract(sophia_version(), Name),
-                    {ok, aect_sophia:serialize(Map#{contract_source => maps:get(contract_source, Map, binary_to_list(BinSrc)),
-                                                    compiler_version => maps:get(compiler_version, Map, <<"1.4.0">>)}, Vsn)}
+                    TIs1 = [ patch_type_info(TI, Vsn) || TI <- TIs ],
+                    Compiler = maps:get(compiler_version, CodeMap, <<"1.4.0">>),
+                    CodeMap1 = CodeMap#{ type_info := TIs1, compiler_version => Compiler },
+                    {ok, aect_sophia:serialize(CodeMap1, Vsn)}
             end;
         Err -> Err
     end.
+
+patch_type_info({H, F, As, R}, 3) -> {H, F, true, As, R};
+patch_type_info({H, F, _, As, R}, N) when N < 3 -> {H, F, As, R};
+patch_type_info(TI, _) -> TI.
 
 create_contract(Owner, Name, Args, S) ->
     create_contract(Owner, Name, Args, #{}, S).
@@ -1439,6 +1463,39 @@ format_fate_args(M) when is_map(M) ->
 format_fate_args(X) ->
     X.
 
+sophia_list_comp(_Cfg) ->
+    ?skipRest(sophia_version() =< ?SOPHIA_FORTUNA, no_list_comprehensions_in_fortuna),
+    state(aect_test_utils:new_state()),
+    Acc = ?call(new_account, 100000000000 * aec_test_utils:min_gas_price()),
+    C   = ?call(create_contract, Acc, list_comp, {}),
+
+    R1  = ?call(call_contract, Acc, C, l1,      {list, word}, {}),
+    R1T = ?call(call_contract, Acc, C, l1_true, {list, word}, {}),
+    ?assertEqual(R1T, R1),
+
+    R2  = ?call(call_contract, Acc, C, l2,      {list, word}, {}),
+    R2T = ?call(call_contract, Acc, C, l2_true, {list, word}, {}),
+    ?assertEqual(R2T, R2),
+
+    R3  = ?call(call_contract, Acc, C, l3,      {list, {list, string}}, {}),
+    R3T = ?call(call_contract, Acc, C, l3_true, {list, {list, string}}, {}),
+    ?assertEqual(R3T, R3),
+
+    R4  = ?call(call_contract, Acc, C, l4,      {list, {tuple, [word, word, word]}}, {}),
+    R4T = ?call(call_contract, Acc, C, l4_true, {list, {tuple, [word, word, word]}}, {}),
+    ?assertEqual(R4T, R4),
+
+    ok.
+
+sophia_stdlib_tests(_Cfg) ->
+    ?skipRest(sophia_version() =< ?SOPHIA_FORTUNA, no_stdlib_in_fortuna),
+    state(aect_test_utils:new_state()),
+    Acc = ?call(new_account, 100000000000 * aec_test_utils:min_gas_price()),
+    C   = ?call(create_contract, Acc, stdlib_tests, {}),
+    {} = ?call(call_contract, Acc, C, test, {tuple, []}, {}),
+    ok.
+
+
 sophia_identity(_Cfg) ->
     state(aect_test_utils:new_state()),
     Acc1 = ?call(new_account, 10000000 * aec_test_utils:min_gas_price()),
@@ -1480,7 +1537,7 @@ sophia_remote_gas(_Cfg) ->
     %% Check that the stored state was not affected by the error cases.
     {5, Gas1} = ?call(call_contract, Acc, Ctr2, call, word, {?cid(Ctr1), 6, 600000}, Opts),
 
-    %% Check that the gas limit is effective also when doing a tail
+    %% Check that the gas limit is effective also when doing a
     %% call that ends up having the wrong type.
     %% This only works for FATE. AEVM will treat this as an unknown call and burn all the gas.
     {{error, _}, Gas4} = ?call(call_contract, Acc, Ctr2, bogus_remote, word, {?cid(Ctr1), 872, 1000}, Opts),
@@ -1518,6 +1575,8 @@ sophia_vm_interaction(Cfg) ->
                       fee => 1000000 * MinGasPrice},
     {ok, IdCode}  = compile_contract_vsn(identity, ?CONTRACT_SERIALIZATION_VSN_ROMA),
     {ok, RemCode} = compile_contract_vsn(remote_call, ?CONTRACT_SERIALIZATION_VSN_ROMA),
+    {ok, IdCode2}  = compile_contract_vsn(identity, ?CONTRACT_SERIALIZATION_VSN_LIMA),
+    {ok, RemCode2} = compile_contract_vsn(remote_call, ?CONTRACT_SERIALIZATION_VSN_LIMA),
 
     %% Create contracts on all sides of the fork
     IdCRoma     = ?call(create_contract_with_code, Acc, IdCode, {}, RomaSpec),
@@ -1526,8 +1585,8 @@ sophia_vm_interaction(Cfg) ->
     RemCMinerva = ?call(create_contract_with_code, Acc, RemCode, {}, MinervaSpec),
     IdCFortuna  = ?call(create_contract_with_code, Acc, IdCode, {}, FortunaSpec),
     RemCFortuna = ?call(create_contract_with_code, Acc, RemCode, {}, FortunaSpec),
-    IdCLima     = ?call(create_contract_with_code, Acc, IdCode, {}, LimaSpec),
-    RemCLima    = ?call(create_contract_with_code, Acc, RemCode, {}, LimaSpec),
+    IdCLima     = ?call(create_contract_with_code, Acc, IdCode2, {}, LimaSpec),
+    RemCLima    = ?call(create_contract_with_code, Acc, RemCode2, {}, LimaSpec),
 
     %% Check that we cannot create contracts with old vms after the forks
     BadSpec1   = RomaSpec#{height => MinervaHeight},
@@ -1595,27 +1654,21 @@ sophia_aevm_exploits(_Cfg) ->
     Err = ?call(call_contract, Acc, C, pair, string, 1000000000),
     ok.
 
-hack_type(HackFun, NewType, Code) ->
-    #{ source_hash := Hash,
-       type_info := TypeInfo,
-       byte_code := ByteCode } = aect_sophia:deserialize(Code),
-    Version     = 1,
-    Hack = fun(Info = {_, Fun, _, _}) when Fun == HackFun ->
-                case NewType of
-                    {return, T} -> setelement(4, Info, T);
-                    {arg, T} -> setelement(3, Info, T)
-                end;
-              (Info) -> Info end,
+hack_type(HackFun, NewType, SerCode) ->
+    CodeMap = #{ type_info := TypeInfo } = aect_sophia:deserialize(SerCode),
+    Hack = fun(TI) ->
+               Set = case TI of
+                         {_, HackFun, _, _} -> fun(Ix, I, T) -> setelement(Ix, I, T) end;
+                         {_, HackFun, _, _, _} -> fun(Ix, I, T) -> setelement(Ix+1, I, T) end;
+                         _ -> fun(_, I, _) -> I end
+                     end,
+               case NewType of
+                   {arg, T}    -> Set(3, TI, T);
+                   {return, T} -> Set(4, TI, T)
+               end end,
     HackedTypeInfo = lists:map(Hack, TypeInfo),
-    Fields = [ {source_hash, Hash}
-             , {type_info, HackedTypeInfo}
-             , {byte_code, ByteCode}
-             ],
-    Template =
-        [ {source_hash, binary}
-        , {type_info, [{binary, binary, binary, binary}]}
-        , {byte_code, binary}],
-    aeser_chain_objects:serialize(compiler_sophia, Version, Template, Fields).
+    aect_sophia:serialize(CodeMap#{ type_info := HackedTypeInfo, compiler_version => <<"Hacked">> },
+                          maps:get(contract_vsn, CodeMap)).
 
 sophia_functions(_Cfg) ->
     ?skipRest(sophia_version() =< ?SOPHIA_MINERVA, letfun_broken_pre_sophia_3),
@@ -1653,6 +1706,14 @@ sophia_state(_Cfg) ->
     PopFail      = ?call(call_contract, Acc1, Stack, pop, string, {}),
     ?assertMatchAEVM({error, <<"out_of_gas">>}, PopFail),
     ?assertMatchFATE({error, <<"Incomplete patterns">>}, PopFail),
+    ok.
+
+sophia_remote_state(_Cfg) ->
+    state(aect_test_utils:new_state()),
+    Acc = ?call(new_account, 10000000 * aec_test_utils:min_gas_price()),
+    Ct1 = ?call(create_contract, Acc, remote_state2, {<<"ct1-initial">>}),
+    Ct2 = ?call(create_contract, Acc, remote_state2, {<<"ct2-initial">>}),
+    <<"ct2-updated">> = ?call(call_contract, Acc, Ct1, test, string, {?cid(Ct2), <<"ct2-updated">>}),
     ok.
 
 %% There was a bug matching on _::_.
@@ -1732,6 +1793,7 @@ sophia_call_origin(_Cfg) ->
         RemCInt,
         %% After Roma, the Call.caller and Call.origin is NOT the same.
         AccInt,
+        AccInt,
         AccInt),
     ?assertMatchFATE({address, AccInt}, Origin2),
     Caller2 = ?call(call_contract, Acc, RemC, nested_caller, word, {}),
@@ -1782,7 +1844,7 @@ sophia_oracles(_Cfg) ->
     ?assertMatchAEVM(
         ?call(call_contract, Acc, Ct, queryFee, word, BogusOracle),
         32,          %% On ROMA this is broken, returns 32.
-        {error, _}, {error, _}), %% Fixed in MINERVA
+        {error, _}, {error, _}, {error, _}), %% Fixed in MINERVA
     none              = ?call(call_contract, Acc, Ct, getAnswer, {option, word}, {Oracle, QId}),
     {}                = ?call(call_contract, Acc, Ct, respond, {tuple, []}, {Oracle, QId, 4001}),
     NonceAfterRespond = aec_accounts:nonce(aect_test_utils:get_account(Ct, state())),
@@ -3296,8 +3358,9 @@ sophia_oracles_gas_ttl__oracle_registration(_Cfg) ->
     ?assert(RelGas < AbsGas + 10),
     ?assert(AbsGas < RelGas + 10),
     %% Enough gas for base cost though not enough for all TTL causes out-of-gas.
-    ?assertMatch(
+    ?assertMatchVM(
        {{error, <<"out_of_gas">>}, _},
+       {{error, <<"Out of gas">>}, _},
        MM(H,
           ?CHAIN_RELATIVE_TTL_MEMORY_ENCODING(1 + Whole),
           G(Rel(H, 1))
@@ -3328,8 +3391,9 @@ sophia_oracles_gas_ttl__oracle_extension(_Cfg) ->
     ?assertEqual(Part + G(Rel(H, 1 +   Whole)), G(Rel(H, 1 + 2*Whole))),
     ?assertEqual(Part + G(Rel(H, 1 + 2*Whole)), G(Rel(H, 1 + 3*Whole))),
     %% Enough gas for base cost though not enough for all TTL causes out-of-gas.
-    ?assertMatch(
+    ?assertMatchVM(
        {{error, <<"out_of_gas">>}, _},
+       {{error, <<"Out of gas">>}, _},
        MM(H,
           ?CHAIN_RELATIVE_TTL_MEMORY_ENCODING(1 + Whole),
           G(Rel(H, 1))
@@ -3366,8 +3430,9 @@ sophia_oracles_gas_ttl__query(_Cfg) ->
     ?assert(RelGas < AbsGas + 10),
     ?assert(AbsGas < RelGas + 10),
     %% Enough gas for base cost though not enough for all TTL causes out-of-gas.
-    ?assertMatch(
+    ?assertMatchVM(
        {{error, <<"out_of_gas">>}, _},
+       {{error, <<"Out of gas">>}, _},
        MM(H,
           ?CHAIN_RELATIVE_TTL_MEMORY_ENCODING(1 + Whole),
           G(Rel(H, 1))
@@ -3398,8 +3463,9 @@ sophia_oracles_gas_ttl__response(_Cfg) ->
     ?assertEqual(Part + G(Rel(H, 1 +   Whole)), G(Rel(H, 1 + 2*Whole))),
     ?assertEqual(Part + G(Rel(H, 1 + 2*Whole)), G(Rel(H, 1 + 3*Whole))),
     %% Enough gas for base cost though not enough for all TTL causes out-of-gas.
-    ?assertMatch(
+    ?assertMatchVM(
        {{error, <<"out_of_gas">>}, _},
+       {{error, <<"Out of gas">>}, _},
        MM(H,
           ?CHAIN_RELATIVE_TTL_MEMORY_ENCODING(1 + Whole),
           G(Rel(H, 1))
@@ -3574,7 +3640,7 @@ sophia_maps(_Cfg) ->
     MkOption = fun(undefined) -> none; (X) -> {some, X} end,
 
     OogErr = case ?IS_FATE_SOPHIA(vm_version()) of
-                 true  -> {error, <<"Maps: Key does not exists">>};
+                 true  -> {error, <<"Maps: Key does not exist">>};
                  false -> {error, <<"out_of_gas">>}
              end,
     Calls = lists:append(
@@ -3654,7 +3720,7 @@ sophia_maps(_Cfg) ->
             Actual  = {Call(size_state_i, word, {}),
                        Call(size_state_s, word, {})},
             %% Maps.size was broken i ROMA, fixed in Minerva
-            ?assertMatchAEVM(Actual, Expect1, Expect2, Expect2)
+            ?assertMatchAEVM(Actual, Expect1, Expect2, Expect2, Expect2)
         end,
 
     %% Reset the state
@@ -3923,17 +3989,18 @@ sophia_big_map_benchmark(Cfg) ->
     N     = proplists:get_value(n, Cfg, 1000),
     Batch = proplists:get_value(batch, Cfg, N),
     Key   = proplists:get_value(key, Cfg, 0),
-    Val   = integer_to_binary(Key div Batch),
+    Val   = integer_to_binary((Key div Batch) * Batch),
     Ct  = ?call(create_contract, Acc, maps_benchmark, {?cid(<<777:256>>), #{}}),
+    Ms  = fun(T) -> io_lib:format("~.2fms", [T / 1000]) end,
     _   = [ begin
                 ?call(call_contract, Acc, Ct, update, {tuple, []}, {I, I + Batch - 1, integer_to_binary(I)}, #{ gas => 1000000000 }),
                 io:format(".")
             end || I <- lists:seq(0, N - 1, Batch) ],
     io:format("\n"),
     io:format("-- Timed call --\n"),
-    {Time, Val} = timer:tc(fun() -> ?call(call_contract, Acc, Ct, get, string, Key) end),
-    {Time1, {}} = timer:tc(fun() -> ?call(call_contract, Acc, Ct, noop, {tuple, []}, {}) end),
-    io:format("Get: ~.2fms\nNop: ~.2fms\n", [Time / 1000, Time1 / 1000]),
+    {Time, {Val, GasGet}} = timer:tc(fun() -> ?call(call_contract, Acc, Ct, get, string, Key, #{ return_gas_used => true }) end),
+    {Time1, {{}, GasNop}} = timer:tc(fun() -> ?call(call_contract, Acc, Ct, noop, {tuple, []}, {}, #{ return_gas_used => true }) end),
+    io:format("Get: ~s (~p gas)\nNop: ~s (~p gas)\n", [Ms(Time), GasGet, Ms(Time1), GasNop]),
     ok.
 
 sophia_pmaps(_Cfg) ->
@@ -3997,13 +4064,93 @@ sophia_map_of_maps(_Cfg) ->
     state(aect_test_utils:new_state()),
     Acc = ?call(new_account, 1000000000 * aec_test_utils:min_gas_price()),
     {Ct, _Gas} = ?call(create_contract, Acc, map_of_maps, {}, #{gas => 1000000, return_gas_used => true}),
-    {}         = ?call(call_contract, Acc, Ct, setup_state, {tuple, []}, {}),
+    %% {}         = ?call(call_contract, Acc, Ct, setup_state, {tuple, []}, {}),
+
+    RunTest = fun(I, Type) ->
+                Fun = fun(Tag) -> list_to_atom(lists:concat([test, I, "_", Tag])) end,
+                {} = ?call(call_contract, Acc, Ct, Fun(setup),   {tuple, []}, {}),
+                {} = ?call(call_contract, Acc, Ct, Fun(execute), {tuple, []}, {}),
+                ?call(call_contract, Acc, Ct, Fun(check), Type, {})
+              end,
+    Test = fun(I, Type, Expect) ->
+                Actual = RunTest(I, Type),
+                ?assertMatch({I, X, X}, {I, Actual, Expect})
+           end,
 
     %% Test 1 - garbage collection of inner map when outer map is garbage collected
-    Empty = #{},
-    {}    = ?call(call_contract, Acc, Ct, test1_setup, {tuple, []}, {}),
-    {}    = ?call(call_contract, Acc, Ct, test1_execute, {tuple, []}, {}),
-    Empty = ?call(call_contract, Acc, Ct, test1_check, {map, string, string}, {}),
+    Test(1, {map, string, string}, #{}),
+
+    %% Test 2 - ...
+    Test(2, {map, string, string}, #{<<"key">> => <<"val">>, <<"key2">> => <<"val2">>}),
+
+    %% Test 3
+    Test(3, bool, true),
+
+    %% Test 4 -- Broken pre VM_AEVM_SOPHIA_4
+
+    Res4 = RunTest(4, {map, string, {map, string, string}}),
+    Good = #{<<"a">> => #{<<"b">> => <<"c">>}},
+    ?assertMatchAEVM(Res4, {'EXIT', {badmatch, _}, _},
+                           {'EXIT', {badmatch, _}, _},
+                           {'EXIT', {badmatch, _}, _},
+                           Good),
+    ?assertMatchFATE(Res4, Good),
+
+    ok.
+
+sophia_maps_gc(_Cfg) ->
+    ?skipRest(vm_version() =< ?VM_AEVM_SOPHIA_3, only_lima),
+    state(aect_test_utils:new_state()),
+    Acc = ?call(new_account, 10000000 * aec_test_utils:min_gas_price()),
+    %% Big to make sure it ends up in the store.
+    InitA = maps:from_list([ {integer_to_binary(I), integer_to_binary(I + 100)}
+                             || I <- lists:seq(1, 100) ]),
+    InitB = #{},
+
+    Prune = fun(M) -> maps:without(maps:keys(InitA), M) end,
+
+    Ct  = ?call(create_contract, Acc, maps_gc, {InitA, InitB},
+                #{fee => 2000000 * aec_test_utils:min_gas_price(),
+                  gas => 200000}),
+
+    StateT = {tuple, [{map, string, string}, {map, string, string}]},
+
+    KeyA1 = <<"KeyA1">>,
+    KeyA2 = <<"KeyA2">>,
+    ValA  = <<"ValA">>,
+    {} = ?call(call_contract, Acc, Ct, upd_a, {tuple, []}, {KeyA1, KeyA2, ValA}),
+
+    A1 = InitA#{ KeyA1 => ValA },
+    B1 = InitA#{ KeyA2 => ValA },
+    {ResA1, ResB1} = ?call(call_contract, Acc, Ct, get_state, StateT, {}),
+    ?assertEqual({Prune(A1), Prune(B1)}, {Prune(ResA1), Prune(ResB1)}),
+
+    KeyB1 = <<"KeyB1">>,
+    KeyB2 = <<"KeyB2">>,
+    ValB  = <<"ValB">>,
+    {} = ?call(call_contract, Acc, Ct, upd_b, {tuple, []}, {KeyB1, KeyB2, ValB}),
+
+    A2 = B1#{ KeyB1 => ValB },
+    B2 = B1#{ KeyB2 => ValB },
+    {ResA2, ResB2} = ?call(call_contract, Acc, Ct, get_state, StateT, {}),
+    ?assertEqual({Prune(A2), Prune(B2)}, {Prune(ResA2), Prune(ResB2)}),
+    ok.
+
+sophia_polymorphic_entrypoint(_Cfg) ->
+    state(aect_test_utils:new_state()),
+    Acc = ?call(new_account, 10000000 * aec_test_utils:min_gas_price()),
+    Ct1 = ?call(create_contract, Acc, polymorphic_entrypoint, {}, #{fee => 2000000 * aec_test_utils:min_gas_price()}),
+    Ct2 = ?call(create_contract, Acc, polymorphic_entrypoint, {}, #{fee => 2000000 * aec_test_utils:min_gas_price()}),
+
+    Res = ?call(call_contract, Acc, Ct1, test, {map, string, {map, string, string}}, {?cid(Ct2), #{}, #{}}),
+    ?assertEqual(#{<<"">> => #{}}, Res),
+
+    ?assertMatch({error, <<"Type of remote function does not match expected type">>},
+        ?call(call_contract, Acc, Ct1, test_bad, string, {?cid(Ct2), <<>>, #{}})),
+
+    ?assertMatch({error, <<"Type of remote function does not match expected type">>},
+        ?call(call_contract, Acc, Ct1, test_bad_mono, string, {?cid(Ct2), <<>>, #{}})),
+
     ok.
 
 sophia_variant_types(_Cfg) ->
@@ -4026,6 +4173,17 @@ sophia_variant_types(_Cfg) ->
     {started, {ExpectAccId, 123, green}} = Call(get_state, State, {}),
     ?assertMatchFATE({address, AccId}, ExpectAccId),
     ?assertMatchAEVM(AccId, ExpectAccId),
+    ok.
+
+sophia_arity_check(_Cfg) ->
+    state(aect_test_utils:new_state()),
+    Acc = ?call(new_account, 10000000 * aec_test_utils:min_gas_price()),
+    Id = ?call(create_contract, Acc, identity,    {}, #{fee => 2000000 * aec_test_utils:min_gas_price()}),
+    Ct = ?call(create_contract, Acc, remote_fail, {}, #{fee => 2000000 * aec_test_utils:min_gas_price()}),
+    Res = ?call(call_contract, Acc, Ct, fail, word, {?cid(Id)}),
+    ?assertMatchVM({error, <<"out_of_gas">>},
+                   {error, <<"Expected 1 arguments, got 2">>}, Res),
+
     ok.
 
 
@@ -4338,36 +4496,6 @@ sophia_crypto(_Cfg) ->
                   ?call(create_contract, Acc, crypto, {})
           end,
 
-    Message = <<"The secret message">>,
-    MsgHash = aec_hash:hash(evm, Message),
-    PubKey  = Acc,
-    PrivKey = aect_test_utils:priv_key(PubKey, state()),
-    Sig1    = ?sig(enacl:sign_detached(MsgHash, PrivKey)),
-
-    [ begin
-          TestRes = ?call(call_contract, Acc, IdC, Fun, bool, {Msg, PubKey, Sig1}),
-          ?assertMatchAEVM1OOG(Exp, TestRes),
-          ?assertMatchFATE(Exp, TestRes)
-      end || {Fun, Msg, Exp} <- [ {test_verify, ?hsh(MsgHash), true}
-                                , {test_verify, ?hsh(PubKey), false}
-                                , {test_string_verify, Message, true}
-                                , {test_string_verify, <<"Not the secret message">>, false}] ],
-
-    %% SECP256K1
-    {SECP_Pub0, SECP_Priv} = crypto:generate_key(ecdh, secp256k1),
-    SECP_Pub = ?sig(aeu_crypto:ecdsa_from_der_pk(SECP_Pub0)),
-    SECP_Sig = ?sig(aeu_crypto:ecdsa_from_der_sig(
-                      crypto:sign(ecdsa, sha256, {digest, MsgHash}, [SECP_Priv, secp256k1]))),
-
-    [ begin
-          TestRes = ?call(call_contract, Acc, IdC, Fun, bool, {Msg, SECP_Pub, SECP_Sig}),
-          ?assertMatchAEVM2OOG(Exp, TestRes),
-          ?assertMatchFATE(Exp, TestRes)
-      end || {Fun, Msg, Exp} <- [ {test_verify_secp256k1, ?hsh(MsgHash), true}
-                                , {test_verify_secp256k1, ?hsh(PubKey), false}
-                                , {test_string_verify_secp256k1, Message, true}
-                                , {test_string_verify_secp256k1, <<"Not the secret message">>, false}] ],
-
     %% Test hash functions
     String = <<"12345678901234567890123456789012-andsomemore">>,
     Data   = [{none, <<"foo">>}, {{some, 100432}, String}],
@@ -4401,6 +4529,90 @@ sophia_crypto(_Cfg) ->
     ?assertMatchFATE({bytes, Sha256},    ResSha256),
     ?assertMatchFATE({bytes, Blake2b},   ResBlake2b),
 
+    %% Test plain signature verification.
+    Message = <<"The secret message">>,
+    MsgHash = aec_hash:hash(evm, Message),
+    PubKey  = Acc,
+    PrivKey = aect_test_utils:priv_key(PubKey, state()),
+    Sig1    = ?sig(enacl:sign_detached(MsgHash, PrivKey)),
+
+    [ begin
+          TestRes = ?call(call_contract, Acc, IdC, Fun, bool, {Msg, PubKey, Sig1}),
+          ?assertMatchAEVM1OOG(Exp, TestRes),
+          ?assertMatchFATE(Exp, TestRes)
+      end || {Fun, Msg, Exp} <- [ {test_verify, ?hsh(MsgHash), true}
+                                , {test_verify, ?hsh(PubKey), false}
+                                , {test_string_verify, Message, true}
+                                , {test_string_verify, <<"Not the secret message">>, false}] ],
+
+    %% SECP256K1 signature verification
+    {SECP_Pub0, SECP_Priv} = crypto:generate_key(ecdh, secp256k1),
+    SECP_Pub = aeu_crypto:ecdsa_from_der_pk(SECP_Pub0),
+    SECP_Der_Sig = crypto:sign(ecdsa, sha256, {digest, MsgHash}, [SECP_Priv, secp256k1]),
+    SECP_Sig = ?sig(aeu_crypto:ecdsa_from_der_sig(SECP_Der_Sig)),
+
+    [ begin
+          TestRes = ?call(call_contract, Acc, IdC, Fun, bool, {Msg, ?sig(SECP_Pub), SECP_Sig}),
+          ?assertMatchAEVM2OOG(Exp, TestRes),
+          ?assertMatchFATE(Exp, TestRes)
+      end || {Fun, Msg, Exp} <- [ {test_verify_secp256k1, ?hsh(MsgHash), true}
+                                , {test_verify_secp256k1, ?hsh(PubKey), false}
+                                , {test_string_verify_secp256k1, Message, true}
+                                , {test_string_verify_secp256k1, <<"Not the secret message">>, false}] ],
+
+    ?skipRest(sophia_version() =< ?SOPHIA_FORTUNA, ecrecover_not_pre_lima),
+
+    %% Test ecrecover
+
+    %%   Static examples are taken from
+    %%   https://github.com/aeternity/parity-ethereum/blob/master/ethcore/builtin/src/lib.rs#L656
+
+    GoodHexSig1 = "47173285a8d7341e5e972fc677286384f802f8ef42a5ec5f03bbfa254cb01fad000000000000000000000000000000000000000000000000000000000000001b650acf9d3f5f0a2c799776a1254355d5f4061762a237396a99a0e0e3fc2bcd6729514a0dacb2e623ac4abd157cb18163ff942280db4d5caad66ddf941ba12e03",
+    GoodHexAcc1 = "c08b5542d177ac6686946920409741463a15dddb",
+    BadHexSig   = "47173285a8d7341e5e972fc677286384f802f8ef42a5ec5f03bbfa254cb01fad000000000000000000000000000000000000000000000000000000000000001a650acf9d3f5f0a2c799776a1254355d5f4061762a237396a99a0e0e3fc2bcd6729514a0dacb2e623ac4abd157cb18163ff942280db4d5caad66ddf941ba12e03",
+    <<GoodMsg1:32/binary, _:31/binary, GoodSig1_v:65/binary>> = aeu_hex:hex_to_bin(GoodHexSig1),
+    <<BadMsg:32/binary, _:31/binary, BadSig:65/binary>> = aeu_hex:hex_to_bin(BadHexSig),
+    <<_:1/binary, GoodSig:64/binary>> = GoodSig1_v,
+    {ok, GoodPubHash} = aeu_crypto:ecrecover(secp256k1, GoodMsg1, GoodSig1_v),
+    GoodSig1_v2 = aeu_crypto:ecdsa_recoverable_from_ecdsa(GoodMsg1, GoodSig, GoodPubHash),
+
+    %%    Static example pre-generated via JS
+    GoodSig2_v = aeu_hex:hex_to_bin("1cfab9762e816133bae486b7396dced722a7315a42e90f17d31e191d5e36bbf46210a7b86c915beea013660252366808a88cfdb58b3ef7e13f64e99588628229cc"),
+    GoodHexAcc2 = "0dED50440139Bb2a3C4240286A85df3baC17EBfc",
+    GoodMsg2 = aeu_hex:hex_to_bin("38d18acb67d25c8bb9942764b62f18e17054f66a817bd4295423adf9ed98873e"),
+
+    %%    Dynamic example
+
+    SECP_Pub_Hash0 = sha3:hash(256, SECP_Pub),
+    SECP_Pub_Hash = binary:part(SECP_Pub_Hash0, byte_size(SECP_Pub_Hash0), -20),
+    SECP_Sig_v = aeu_crypto:ecdsa_recoverable_from_ecdsa(MsgHash, aeu_crypto:ecdsa_from_der_sig(SECP_Der_Sig),
+                                                         SECP_Pub_Hash),
+
+    FixRes = fun({some, Word}) when is_integer(Word) ->
+                    <<Bytes:20/binary, _/binary>> = <<Word:32/unit:8>>,
+                    {some, {bytes, Bytes}};
+                (Res) -> Res end,
+    [ begin
+          TestRes = FixRes(?call(call_contract, Acc, IdC, Fun, {option, word}, {Msg, Sig})),
+          ?assertMatchAEVM(Exp, TestRes),
+          ?assertMatchFATE(Exp, TestRes)
+      end || {Fun, Msg, Sig, Exp} <-
+             [ {test_recover_secp256k1, ?hsh(GoodMsg1), {bytes, GoodSig1_v},  {some, {bytes, aeu_hex:hex_to_bin(GoodHexAcc1)}}}
+             , {test_recover_secp256k1, ?hsh(BadMsg),   {bytes, BadSig},      none}
+             , {test_recover_secp256k1, ?hsh(GoodMsg1), {bytes, GoodSig1_v2}, {some, {bytes, aeu_hex:hex_to_bin(GoodHexAcc1)}}}
+             , {test_recover_secp256k1, ?hsh(MsgHash),  {bytes, SECP_Sig_v},  {some, {bytes, SECP_Pub_Hash}}}
+             , {test_recover_secp256k1, ?hsh(GoodMsg2), {bytes, GoodSig2_v},  {some, {bytes, aeu_hex:hex_to_bin(GoodHexAcc2)}}}
+             ] ],
+
+    %% Test ecverify
+    [ begin
+          TestRes = ?call(call_contract, Acc, IdC, test_ecverify_secp256k1, bool, {Msg, Addr, Sig}),
+          ?assertEqual(Exp, TestRes)
+      end || {Msg, Addr, Sig, Exp} <-
+             [ {?hsh(GoodMsg1), {bytes, GoodPubHash},   {bytes, GoodSig1_v}, true}
+             , {?hsh(GoodMsg1), {bytes, SECP_Pub_Hash}, {bytes, GoodSig1_v}, false}
+             , {?hsh(MsgHash),  {bytes, SECP_Pub_Hash}, {bytes, SECP_Sig_v}, true} ] ],
+
     ok.
 
 sophia_safe_math(Cfg) ->
@@ -4433,9 +4645,9 @@ sophia_safe_math() ->
           end,
 
     %% Test vectors
-    Values = [ Z || X <- [1, 2, 5, 173, 255, 256, 1 bsl 128 - 1, 1 bsl 128, Medium, 1 bsl 255 - 2,
-                          1 bsl 255 - 1, 1 bsl 255, Large],
-                    Z <- [X, -X], Z < 1 bsl 255 ],
+    Values = [ Z || Z <- [1, -1, 2, -2, 255, 256, -256, 1 bsl 128 - 1, 1 bsl 128, - (1 bsl 128),
+                          Medium, -Medium, 1 bsl 255 - 1, 1 bsl 255, Large, -Large],
+                    Z < 1 bsl 255 ],
     Ops    = [{add, fun erlang:'+'/2}, {sub,   fun erlang:'-'/2},
               {mul, fun erlang:'*'/2}, {'div', fun erlang:'div'/2},
               {pow, fun(X, Y) -> Pow(X, Y, 1) end}],
@@ -4513,6 +4725,7 @@ hack_dup(A, B, <<A:8, Rest/binary>>) -> <<B:8, (hack_dup(A, B, Rest))/binary>>;
 hack_dup(A, B, <<X:8, Rest/binary>>) -> <<X:8, (hack_dup(A, B, Rest))/binary>>.
 
 sophia_aevm_bad_init(_Cfg) ->
+    ?skipRest(vm_version() >= ?VM_AEVM_SOPHIA_4, old_bytecode_format_not_allowed_in_lima),
     state(aect_test_utils:new_state()),
     Acc   = ?call(new_account, 1000000000 * aec_test_utils:min_gas_price()),
 
@@ -4554,7 +4767,7 @@ sophia_heap_to_heap_bug(_Cfg) ->
     ?assertMatchAEVM(
         ?call(call_contract, Acc, IdC, f, word, {100}, #{return_gas_used => true}),
         {{error,<<"out_of_gas">>}, _Gas}, %% Bad size check kicks in
-        {1, _Gas}, {1, _Gas}),            %% But works on new VM.
+        {1, _Gas}, {1, _Gas}, {1, _Gas}), %% But works on new VM.
 
     ok.
 
@@ -4695,7 +4908,7 @@ sophia_too_little_gas_for_mem(_Cfg) ->
     Res = ?call(call_contract, Acc, IdC, tick, word, {}, #{gas => GasUsed - 1}),
     ?assertMatchAEVM(Res, {error,{throw,{aevm_eval_error,out_of_gas,0}}},
                         {error,{throw,{aevm_eval_error,out_of_gas,0}}},
-                        {error,<<"out_of_gas">>}).
+                        {error,<<"out_of_gas">>}, {error, <<"out_of_gas">>}).
 
 
 %% The crowd funding example.
@@ -5086,7 +5299,7 @@ sophia_state_handling(_Cfg) ->
 
     ok.
 
-sophia_state_gas(_Cfg) ->
+sophia_state_gas_arguments(_Cfg) ->
     state(aect_test_utils:new_state()),
     Acc      = ?call(new_account, 20000000 * aec_test_utils:min_gas_price()),
     ContractName =
@@ -5133,6 +5346,67 @@ sophia_state_gas(_Cfg) ->
     ?assertMatch(true, Gas9 > Gas8),
     ok.
 
+sophia_state_gas_store_size(_Cfg) ->
+    ?skipRest(not ?IS_FATE_SOPHIA(vm_version()), only_valid_for_fate),
+    state(aect_test_utils:new_state()),
+    Acc      = ?call(new_account, 20000000 * aec_test_utils:min_gas_price()),
+    Ct0      = ?call(create_contract, Acc, remote_state, {}, #{ amount => 100000 }),
+    Ct1      = ?call(create_contract, Acc, state_handling, {?cid(Ct0), 1}, #{ amount => 100000 }),
+
+    UnitT    = {tuple, []},
+
+    %% Test that gas usage varies when the state changes size
+    %% Baseline
+    {{}, Gas0} = ?call(call_contract, Acc, Ct1, update_m, UnitT, {#{1 => 1}}, #{ return_gas_used => true }),
+
+    %% Same state size
+    {{}, Gas1} = ?call(call_contract, Acc, Ct1, update_m, UnitT, {#{2 => 2}}, #{ return_gas_used => true }),
+    ?assertEqual(Gas0, Gas1),
+
+    %% Smaller state size
+    {{}, Gas2} = ?call(call_contract, Acc, Ct1, update_m, UnitT, {#{}}, #{ return_gas_used => true }),
+    ?assertEqual({true, Gas0, Gas2}, {Gas0 > Gas2, Gas0, Gas2}),
+
+    %% Bigger state size
+    {{}, Gas3} = ?call(call_contract, Acc, Ct1, update_m, UnitT, {#{1 => 1, 2 => 2}}, #{ return_gas_used => true }),
+    ?assertEqual({true, Gas0, Gas3}, {Gas0 < Gas3, Gas0, Gas3}),
+
+    %% Create a map that is big enough to end up as a store map.
+    BigMap = maps:from_list([{X, X} || X <- lists:seq(1, 1000)]),
+    {{}, _} = ?call(call_contract, Acc, Ct1, update_m, UnitT, {BigMap}, #{ return_gas_used => true }),
+
+    %% Updating one key in the store map should cost the same even if the old key didn't exist.
+    {{}, Gas4} = ?call(call_contract, Acc, Ct1, update_mk, UnitT, {1, 2}, #{ return_gas_used => true }),
+    {{}, Gas5} = ?call(call_contract, Acc, Ct1, update_mk, UnitT, {2, 1}, #{ return_gas_used => true }),
+    {{}, Gas6} = ?call(call_contract, Acc, Ct1, update_mk, UnitT, {0, 1}, #{ return_gas_used => true }),
+    ?assertEqual(Gas4, Gas5),
+    ?assertEqual(Gas5, Gas6),
+
+    %% Updating one key in the store map should cost more if the value takes up more space
+    {{}, Gas7} = ?call(call_contract, Acc, Ct1, update_mk, UnitT, {0, 257}, #{ return_gas_used => true }),
+    ?assertEqual({true, Gas6, Gas7}, {Gas6 < Gas7, Gas6, Gas7}),
+
+    %% Updating one key in the store map should cost more if the key takes up more space
+    {{}, Gas8} = ?call(call_contract, Acc, Ct1, update_mk, UnitT, {257, 0}, #{ return_gas_used => true }),
+    ?assertEqual({true, Gas6, Gas8}, {Gas6 < Gas8, Gas6, Gas8}),
+
+    %% Test that gas usage varies when the state changes size for the integer component
+    %% Baseline
+    {{}, Gas9} = ?call(call_contract, Acc, Ct1, update_i, UnitT, {256}, #{ return_gas_used => true }),
+
+    %% Same state size
+    {{}, Gas10} = ?call(call_contract, Acc, Ct1, update_i, UnitT, {257}, #{ return_gas_used => true }),
+    ?assertEqual(Gas9, Gas10),
+
+    %% Smaller state size
+    {{}, Gas11} = ?call(call_contract, Acc, Ct1, update_i, UnitT, {0}, #{ return_gas_used => true }),
+    ?assertEqual({true, Gas10, Gas11}, {Gas10 > Gas11, Gas10, Gas11}),
+
+    %% Bigger state size
+    {{}, Gas12} = ?call(call_contract, Acc, Ct1, update_i, UnitT, {1024}, #{ return_gas_used => true }),
+    ?assertEqual({true, Gas10, Gas12}, {Gas10 < Gas12, Gas10, Gas12}),
+
+    ok.
 
 %%%===================================================================
 %%% Store
@@ -5231,7 +5505,7 @@ call_missing(_Cfg) ->
 
 call_wrong_type(_Cfg) ->
     state(aect_test_utils:new_state()),
-    Acc1     = ?call(new_account, 10000000 * aec_test_utils:min_gas_price()),
+    Acc1     = ?call(new_account, 1000000000 * aec_test_utils:min_gas_price()),
     Contract1 = ?call(create_contract, Acc1, remote_type_check, {}),
     Contract2 = ?call(create_contract, Acc1, remote_type_check, {}),
     42        = ?call(call_contract, Acc1, Contract1, remote_id, word, {?cid(Contract2), 42}),
@@ -5240,13 +5514,21 @@ call_wrong_type(_Cfg) ->
     ?assertMatchVM(<<"out_of_gas">>, <<"Type error on call:", _/binary>>, Error1),
     {error, Error2} = ?call(call_contract, Acc1, Contract1, remote_wrong_ret, {tuple, [string]},
                             {?cid(Contract2), <<"hello">>}),
-    ?assertMatchVM(<<"out_of_gas">>, <<"Type error on return:", _/binary>>, Error2),
+    ?assertMatchVM(<<"out_of_gas">>, <<"Type of remote function does not match expected type">>, Error2),
     {error, Error3} = ?call(call_contract, Acc1, Contract1, remote_wrong_ret_tailcall, word,
                             {?cid(Contract2), <<"hello">>}),
-    ?assertMatchVM(<<"out_of_gas">>, <<"Type error on return:", _/binary>>, Error3),
+    ?assertMatchVM(<<"out_of_gas">>, <<"Type of remote function does not match expected type">>, Error3),
     {error, Error4} = ?call(call_contract, Acc1, Contract1, remote_wrong_ret_tailcall_type_vars, word,
                             {?cid(Contract2), <<"hello">>}),
-    ?assertMatchVM(<<"out_of_gas">>, <<"Type error on return:", _/binary>>, Error4),
+    ?assertMatchVM(<<"out_of_gas">>, <<"Type of remote function does not match expected type">>, Error4),
+
+    {error, Error5} = ?call(call_contract, Acc1, Contract1, remote_wrong_put, {tuple, []}, {?cid(Contract2), 42}),
+    ?assertMatchVM(<<"out_of_gas">>, <<"Type of remote function does not match expected type">>, Error5),
+    1 = ?call(call_contract, Acc1, Contract1, next_state, word, {}),
+
+    {error, Error6} = ?call(call_contract, Acc1, Contract1, remote_wrong_put_polymorphic, {tuple, []}, {?cid(Contract2), 43}),
+    ?assertMatchVM(<<"out_of_gas">>, <<"Type of remote function does not match expected type">>, Error6),
+    1 = ?call(call_contract, Acc1, Contract1, next_state, word, {}),
     ok.
 
 %%%===================================================================
@@ -5328,6 +5610,105 @@ sophia_call_value(_Cfg) ->
     Bal4     = ?call(call_contract, Acc, C1, get_balance, word, {}, #{}),
     ?assertEqual(Bal3, Bal4),
     ok.
+
+sophia_payable_contract(_Cfg) ->
+    ?skipRest(sophia_version() =< ?SOPHIA_FORTUNA, payable_not_pre_lima),
+    state(aect_test_utils:new_state()),
+    Acc = ?call(new_account, 10000000000 * aec_test_utils:min_gas_price()),
+    C1  = ?call(create_contract, Acc, payable, {}, #{}),
+    C2  = ?call(create_contract, Acc, non_payable, {}, #{}),
+
+    Cx  = ?call(create_contract, Acc, remote_payable, {}, #{amount => 50000}),
+
+    Gas    = 50000,
+    Params = #{gas => Gas, return_gas_used => true},
+    {Ok1, Gas1} = ?call(call_contract, Acc, Cx, r_spend, bool, {?cid(C1), 100}, Params),
+    ?assertEqual(true, Ok1), ?assert(Gas1 < Gas),
+
+
+    {Err1, Gas2} = ?call(call_contract, Acc, Cx, r_spend, bool, {?cid(C2), 100}, Params),
+    ?assertMatchVM({error,<<"account_is_not_payable">>},
+                   {error,<<"Error in spend: account_is_not_payable">>}, Err1),
+    ?assertEqual(Gas, Gas2),
+
+    {Ok2, Gas3} = ?call(call_contract, Acc, Cx, r_cond_spend, bool, {?cid(C1), 100}, Params),
+    ?assertEqual(true, Ok2), ?assert(Gas3 < Gas),
+
+
+    {Ok3, Gas4} = ?call(call_contract, Acc, Cx, r_cond_spend, bool, {?cid(C2), 100}, Params),
+    ?assertEqual(false, Ok3), ?assert(Gas4 < Gas3),
+
+    ok.
+
+sophia_payable_entrypoint(_Cfg) ->
+    ?skipRest(sophia_version() =< ?SOPHIA_FORTUNA, payable_not_pre_lima),
+    state(aect_test_utils:new_state()),
+    Acc = ?call(new_account, 10000000000 * aec_test_utils:min_gas_price()),
+    C1  = ?call(create_contract, Acc, payable, {}, #{}),
+
+    Gas    = 20000,
+    Params = #{gas => Gas, return_gas_used => true},
+
+    {Ok1, Gas1} = ?call(call_contract, Acc, C1, foo, bool, {100}, Params#{amount => 50}),
+    ?assertEqual(true, Ok1), ?assert(Gas1 < Gas),
+
+    {Err1, Gas2} = ?call(call_contract, Acc, C1, bar, bool, {42}, Params#{amount => 50}),
+    ?assertMatchVM({error,<<"function_is_not_payable">>},
+                   {error,<<"Function with hash <<", _/binary>>}, Err1),
+    ?assertEqual(Gas, Gas2),
+
+    C2 = ?call(create_contract, Acc, remote_payable, {}, #{amount => 1000}),
+
+    {Ok2, Gas3} = ?call(call_contract, Acc, C2, r_foo, bool, {?cid(C1), 42}, Params),
+    ?assertEqual(false, Ok2), ?assert(Gas3 < Gas),
+
+    {Err2, Gas4} = ?call(call_contract, Acc, C2, r_bar, bool, {?cid(C1), 42}, Params),
+    ?assertMatchVM({error,<<"function_is_not_payable">>},
+                   {error,<<"Function with hash <<", _/binary>>}, Err2),
+    ?assertEqual(Gas, Gas4),
+
+    ok.
+
+sophia_private_entrypoint(_Cfg) ->
+    state(aect_test_utils:new_state()),
+    Acc = ?call(new_account, 10000000000 * aec_test_utils:min_gas_price()),
+    C1  = ?call(create_contract, Acc, remote_private, {}, #{}),
+    C2  = ?call(create_contract, Acc, remote_private, {}, #{}),
+
+    Gas    = 20000,
+    Params = #{gas => Gas},
+    IntArg = 42,
+    RemoteArgs = {?cid(C2), IntArg},
+
+    %% Check that we can make a remote call to the private endpoint if
+    %% we go through the exported endpoint.
+    Ok1 = ?call(call_contract, Acc, C1, call_exported, word, RemoteArgs, Params),
+    ?assertEqual(IntArg, Ok1),
+
+    %% Check that we cannot make a remote call to the private endpoint directly.
+    %% In AEVM this private endpoint has no clause in the dispatch entrypoint,
+    %% so it is not reachable.
+    %% In FATE this private endpoint has a different name, so it will not
+    %% find the function.
+    Err1 = ?call(call_contract, Acc, C1, call_private, word, RemoteArgs, Params),
+    ?assertMatchVM({error,<<"out_of_gas">>},
+                   {error,<<"Trying to call undefined function: ", _/binary>>}, Err1),
+    ct:log("Err1: ~p", [Err1]),
+
+    %% However, in FATE we can mock up the internal name and try to call it directly.
+    %% We will get a different error message for this.
+    case ?IS_FATE_SOPHIA(vm_version()) of
+        true ->
+            InternalName = '.RemotePrivate.private_endpoint',
+            Identifier = aeb_fate_code:symbol_identifier(atom_to_binary(InternalName, utf8)),
+            Err2 = ?call(call_contract, Acc, C1, InternalName, word, {42}, Params),
+            ExpErr = iolist_to_binary(
+                       io_lib:format("Function with hash ~w is private",
+                                     [Identifier])),
+            ?assertMatch({error, ExpErr}, Err2);
+        false ->
+            ok
+    end.
 
 sophia_call_out_of_gas(_Cfg) ->
     state(aect_test_utils:new_state()),

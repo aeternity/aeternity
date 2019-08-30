@@ -29,8 +29,8 @@ contract Environment =
     remote.call_caller()
 
   // Value
-  entrypoint call_value() : int = Call.value
-  stateful entrypoint remote_call_value(remote : Interface, value : int) : int =
+  payable entrypoint call_value() : int = Call.value
+  stateful payable entrypoint remote_call_value(remote : Interface, value : int) : int =
     remote.call_value(value = value / 2)
 
   // Gas price

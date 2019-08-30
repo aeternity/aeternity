@@ -1,4 +1,4 @@
-# CUDA Miner
+# Introduction
 
 The Ubuntu release packages ships with a CUDA miner.
 This documentation describes how to use the CUDA miner shipped in the Ubuntu release package, how to build it yourself (if you prefer to do so), and the related configuration of the Aeternity node.
@@ -6,7 +6,7 @@ This documentation describes how to use the CUDA miner shipped in the Ubuntu rel
 The documentation below assumes that an Aeternity node is already installed either by [release package](installation.md) or [from source](build.md), thus its dependencies are also installed.
 The documentation below assumes that the Aeternity node's source code resides in `~/aeternity/node` directory.
 
-## How to use the CUDA miner that is shipped in the release packages
+## Pre-built miner
 
 This section describes how to use the CUDA miner shipped in the Ubuntu release package.
 
@@ -16,9 +16,9 @@ In order to use the CUDA miner shipped in the Ubuntu release package, you need t
 
 Please refer to the NVIDIA documentation for how to [download][cuda-downloads] and [install][cuda-installation] the CUDA driver.
 
-### Configuration of the manually built CUDA miner
+### Configuration of the pre-built CUDA miner
 
-Once the CUDA Drive is installed, one should change the node configuration to start using the CUDA miner.
+Once the CUDA driver is installed, one should change the node configuration to start using the CUDA miner.
 The `mining.cuckoo.miner` section of `~/aeternity/node/aeternity.yaml` should be changed to:
 
 ```yaml
@@ -41,7 +41,7 @@ After configuration the node could be started (or restarted if it's already runn
 
 Available executables are: `cuda29`, `lcuda29`.
 
-## How to build a CUDA miner
+## Building
 
 This section describes how to build the CUDA miner yourself.
 

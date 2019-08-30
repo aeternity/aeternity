@@ -13,7 +13,6 @@
 !hooks
 !data
 !docs
-!docker/entrypoint.sh
 !docker/healthcheck.sh
 !README.md
 !LICENSE

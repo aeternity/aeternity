@@ -1,25 +1,28 @@
-# Quick install
+# Introduction
 
-Run below command to install latest version of aeternity node.
+This document describes how to install an Aeternity node using a release binary either by:
+
+* [Quick install](#quick-install);
+* Manual install.
+
+In order to install an Aeternity node manually, you need to:
+
+* [Retrieve the release binary](#retrieve-release-binary) corresponding to your platform;
+* [Install the required dependencies](#install-dependencies);
+* [Deploy the node](#deploy-node).
+
+## Quick install
+
+Run below command to install latest version of aeternity node and follow the instructions:
 
 ```bash
 bash <(curl -s https://raw.githubusercontent.com/aeternity/installer/v2.0.0/install.sh)
 ```
 
-See the documentation below detailed instructions for manual installation.
-
-# Install an Aeternity node using a release binary
-
-This document describes how to install an Aeternity node using a release binary.
-
-In order to install an Aeternity node using a release binary, you need to:
-* Retrieve the release binary corresponding to your platform;
-* Install the required dependencies;
-* Deploy the node.
-
 ## Retrieve release binary
 
 The release binaries are published on [GitHub](https://github.com/aeternity/aeternity/releases) and are tested on the following platforms:
+
 * Ubuntu 16.04.3 LTS (x86-64);
 * Ubuntu 18.04 LTS (x86-64);
 * macOS High Sierra 10.13 (x86-64);
@@ -28,6 +31,7 @@ The release binaries are published on [GitHub](https://github.com/aeternity/aete
 ## Install dependencies
 
 Package dependencies are:
+
 * [Libsodium](https://download.libsodium.org/doc/) v1.0.16
 * [Openssl](https://www.openssl.org) 1.0.0
 
@@ -75,6 +79,7 @@ brew install openssl libsodium
 ```
 
 The macOS package has:
+
 * A hard dependency on OpenSSL v1.0.0 installed with [Homebrew](https://brew.sh/) in its default path `/usr/local/opt/openssl/lib/libcrypto.1.0.0.dylib`;
 * A hard dependency on libsodium v1.0.16 installed with [Homebrew](https://brew.sh/) in its default path `/usr/local/opt/libsodium/lib/libsodium.23.dylib`.
 
@@ -88,13 +93,13 @@ ln -s "$(brew --prefix libsodium)"/lib/libsodium.23.dylib /usr/local/opt/libsodi
 ## Deploy node
 
 In the instructions below, the node is deployed in directory `~/aeternity/node`: you may prefer to deploy the node in an alternative location by amending the instructions accordingly.
+
 It is recommended that the partition where the node directory is has at least 40 GB free: this is needed for the chain and the log files.
 
 Open a Terminal window or get to the command line.
-
 Create a directory and unpack the downloaded package (you may need to amend the directory and/or file name of the package):
 ```bash
 mkdir -p ~/aeternity/node
 cd ~/aeternity/node
-tar xf ~/Downloads/aeternity-4.2.1-macos-x86_64.tar.gz
+tar xf ~/Downloads/aeternity-5.0.0-rc.1-macos-x86_64.tar.gz
 ```

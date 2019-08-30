@@ -1,7 +1,7 @@
 swagger: '2.0'
 info:
   description: 'This is the [Aeternity](https://www.aeternity.com/) node API.'
-  version: 4.2.1
+  version: 5.0.0-rc.1
   title: Aeternity node
   termsOfService: 'https://www.aeternity.com/terms/'
   contact:
@@ -1855,6 +1855,9 @@ definitions:
       nonce:
         description: 'Nonce'
         $ref: '#/definitions/UInt64'
+      payable:
+        description: 'Payable'
+        type: boolean
       kind:
         type: string
         enum: [basic, generalized]
@@ -2615,9 +2618,8 @@ definitions:
       hash:
         $ref: '#/definitions/EncodedHash'
       signatures:
-        description: 'signatures required unless for Generalized Account Meta transactions'
+        description: 'At least one signature is required unless for Generalized Account Meta transactions'
         type: array
-        minItems: 1
         items:
           $ref: '#/definitions/EncodedValue'
     required:
@@ -2720,6 +2722,14 @@ definitions:
     allOf:
       - $ref: '#/definitions/GenericTx'
       - $ref: '#/definitions/ContractCallTx'
+  GAAttachTxJSON:
+    allOf:
+      - $ref: '#/definitions/GenericTx'
+      - $ref: '#/definitions/GAAttachTx'
+  GAMetaTxJSON:
+    allOf:
+      - $ref: '#/definitions/GenericTx'
+      - $ref: '#/definitions/GAMetaTx'
   TxInfoObject:
      type: object
      properties:
@@ -3193,7 +3203,81 @@ definitions:
       total:
         description: Sum of all tokens from other fields
         $ref: '#/definitions/UInt'
-
+  GAAttachTx:
+    type: object
+    properties:
+      owner_id:
+        $ref: '#/definitions/EncodedPubkey'
+        description: Contract owner pub_key
+      nonce:
+        description: 'Owner''s nonce'
+        $ref: '#/definitions/UInt64'
+      code:
+        description: 'Contract''s code'
+        $ref: '#/definitions/EncodedByteArray'
+      vm_version:
+        description: 'Virtual machine''s version'
+        $ref: '#/definitions/UInt16'
+      abi_version:
+        description: 'ABI version'
+        $ref: '#/definitions/UInt16'
+      gas:
+        $ref: '#/definitions/UInt64'
+      gas_price:
+        $ref: '#/definitions/UInt'
+      fee:
+        $ref: '#/definitions/UInt'
+      ttl:
+        $ref: '#/definitions/UInt64'
+      call_data:
+        description: Contract call data
+        $ref: '#/definitions/EncodedByteArray'
+      auth_fun:
+        description: Contract authorization function hash (hex encoded)
+        type: string
+        pattern: ^(0x|0X)?[a-fA-F0-9]+$'
+    required:
+      - owner_id
+      - code
+      - vm_version
+      - abi_version
+      - gas
+      - gas_price
+      - fee
+      - call_data
+      - auth_fun
+  GAMetaTx:
+    type: object
+    properties:
+      ga_id:
+        $ref: '#/definitions/EncodedPubkey'
+        description: Account owner pub_key
+      abi_version:
+        description: 'ABI version'
+        $ref: '#/definitions/UInt16'
+      gas:
+        $ref: '#/definitions/UInt64'
+      gas_price:
+        $ref: '#/definitions/UInt'
+      fee:
+        $ref: '#/definitions/UInt'
+      ttl:
+        $ref: '#/definitions/UInt64'
+      auth_data:
+        description: Contract authorization function call data
+        $ref: '#/definitions/EncodedByteArray'
+      tx:
+        description: Enclosed signed transaction
+        $ref: '#/definitions/GenericSignedTx'
+    required:
+      - ga_id
+      - abi_version
+      - gas
+      - gas_price
+      - fee
+      - auth_data
+      - tx
+    
 externalDocs:
   description: Find out more about Aeternity
   url: 'http://www.aeternity.com'

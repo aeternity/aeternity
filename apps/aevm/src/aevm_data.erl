@@ -11,6 +11,7 @@
         ]).
 
 -include_lib("aebytecode/include/aeb_heap.hrl").
+-include_lib("../../aecontract/include/aecontract.hrl").
 
 -type store() :: aect_contracts:store().  %% #{ binary() => binary() }
 
@@ -155,9 +156,7 @@ convert(Input, Output, MaxSize, Store, Visited, {list, T}, Val, Heap, BaseAddr) 
         _   -> convert(Input, Output, MaxSize, Store, Visited, {tuple, [T, {list, T}]}, Val, Heap, BaseAddr)
     end;
 convert(Input, binary, MaxSize, Store, _Visited, {map, KeyT, ValT}, MapId, Heap, BaseAddr) ->
-    {_NoMaps, Map0} = convert_map(Input, binary, Store, KeyT, ValT, MapId, Heap),
-    %% Will be a no-op if Input == binary
-    Map  = aevm_eeevm_maps:flatten_map(Store, MapId, Map0),
+    {_NoMaps, Map} = convert_map(Input, binary, Store, KeyT, ValT, MapId, Heap),
     KVs  = maps:to_list(Map#pmap.data),
     Size = maps:size(Map#pmap.data),
     {RMem, FinalBase} =
@@ -245,7 +244,12 @@ get_map(binary, KeyT, ValT, Ptr, Heap) ->
     #pmap{ key_t = KeyT, val_t = ValT, size = maps:size(Map), parent = none, data = Map }.
 
 convert_map(Input, Output, Store, KeyT, ValT, Ptr, Heap) ->
-    Map = #pmap{ data = Data } = get_map(Input, KeyT, ValT, Ptr, Heap),
+    Map0 = get_map(Input, KeyT, ValT, Ptr, Heap),
+    Map = #pmap{ data = Data } =
+        case Output of  %% Will be a no-op if Input == binary
+            binary -> aevm_eeevm_maps:flatten_map(Store, Ptr, Map0);
+            heap   -> Map0
+        end,
     {InnerMaps, Data1} =
         convert_map_values(Input, Output, Store, ValT, Data, Heap),
     {InnerMaps, Map#pmap{ data = Data1 }}.

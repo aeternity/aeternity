@@ -1,4 +1,4 @@
-# Configure an Aeternity node installed using a release binary
+# Introduction
 
 This document describes how to configure your Aeternity node installed using a release binary for joining a public network of nodes (e.g. testnet) knowing an initial network peer to join.
 
@@ -10,6 +10,7 @@ The `aeternity` system supports user-provided parameters via a JSON- or YAML-for
 The format of the config file is determined from the file extension: `.json` for JSON, or `.yaml` for YAML.
 
 The location of the file can be specified in a few different ways, in order of priority:
+
 1. The OS environment variable `AETERNITY_CONFIG` contains a filename
 2. The Erlang/OTP environment variable `-aecore config` contains a filename
 3. A file named `aeternity.{yaml,json}` exists in `${HOME}/.aeternity/aeternity/`
@@ -20,7 +21,7 @@ If all above checks fail, no user configuration is applied.
 ### Validation
 The contents of the config file will be validated against a JSON-Schema, located in the node at path `data/aeternity_config_schema.json`. If any parameters violate the schema, the node will fail to start.
 
-## Notable user configuration parameters
+## Notable parameters
 
 ### Peer-to-peer network
 
@@ -58,10 +59,11 @@ Example scheme: `node (sync > port) <-> router (sync > external_port) <-> Intern
 If you don't have port forwarding configured in your router, but your router supports UPnP or NAT-PMP, the node provides UPnP/NAT-PMP service to streamline network configuration.
 
 In order to start UPnP/NAT-PMP service:
+
 * make sure UPnP/NAT-PMP is enabled on your router;
 * in your user configuration file, set `sync` > `upnp_enabled` parameter to `true`.
 
-Then, the node will automatically create appropriate port mapping based on the configuration params.
+Then, the node will automatically create appropriate port mapping based on the configuration parameters.
 
 #### Port Check
 
@@ -73,15 +75,16 @@ nc -zv $(curl -s https://api.ipify.org) 3015
 
 Example output:
 ```
-Connection to 13.53.161.215 3015 port [tcp/*] succeeded!
+Connection to 203.0.113.27 3015 port [tcp/*] succeeded!
 ```
 
-Where the IP address should be the external IP address of the node under test (it's one of the seed nodes in this example).
+Where the IP address shown in the output is the external IP address of the node under test.
 
 ### Channels
 
-The node provides an infrastructure for using state channes. There are two
+The node provides an infrastructure for using state channels. There are two
 distinct protocols involved:
+
 * WebSocket client one
 * Noise encoded one
 
@@ -123,9 +126,94 @@ peers: []
 
 Please note that this do not prevent incoming connections, thus the node still might be connected to a network if its address is already known in that network.
 
-## Instructions
+## Miner configuration
 
-The instructions below assume that:
+The instructions below assume that you already know your `beneficiary` account public key (if you don't, see [Beneficiary account section](#beneficiary-account)).
+
+If you want to use your node to mine, you can use the default mining by setting
+```yaml
+mining:
+    beneficiary: "beneficiary_pubkey_to_be_replaced"
+    autostart: true
+```
+in the aeternity.yaml configuration file.
+
+Make sure you replace `mining` > `beneficiary` parameter with your public key!
+
+Note that in order to improve sync performance, before configuring your miner, you should start a node with `autostart: false`.
+Change this value to `autostart: true` when you are in sync, then restart the node.
+
+Your mining setup needs to meet your hardware capacity. Therefore, you need to make a choice in how you want to configure your miner. You can read the documentation on setting up CUDA mining, or you can use all but one of the cores on your computer to mine (keep one core available for transaction gossiping, synchronising, etc).
+If you have 16 cores, you could (loosely spoken) assign 14 of them to mining using the following configuration:
+```yaml
+mining:
+    beneficiary: "beneficiary_pubkey_to_be_replaced"
+    cuckoo:
+        edge_bits: 29
+        miners:
+            - executable: mean29-avx2
+              extra_args: -t 14
+```
+
+#### Combining different miners
+
+Your mining setup may also contain multiple miners, which will be run simultaneously by your node.
+For example, to combine CPU miner with CUDA miner the following configuration can be used:
+```yaml
+mining:
+    beneficiary: "beneficiary_pubkey_to_be_replaced"
+    cuckoo:
+        edge_bits: 29
+        miners:
+            - executable: mean29-generic
+              extra_args: -t 2
+            - executable_group: aecuckooprebuilt
+              executable: cuda29
+              extra_args: -t 1
+              hex_encoded_header: true
+```
+
+For more details on CUDA mining go to [dedicated CUDA miner documentation](cuda-miner.md).
+
+## Beneficiary account
+
+In order to configure who receives fees from mining on a node, you must configure a beneficiary public key.
+
+If you don't have your public key yet, you can generate a public/private key pair by using any one of the following tools:
+
+* [AirGap wallet](https://airgap.it/).
+
+If stratum is enabled, a beneficiary accounts from the stratum configuration are used instead, as stratum disables local mining.
+
+For configuring stratum, please consult [stratum operator user guide](stratum.md).
+
+
+#### Generating a beneficiary account for testing purposes only
+
+An alternative tool `keys_gen` for generating a public-private key pair **for testing purposes only** is included in the package.
+
+The key pair will be encrypted with a password that you shall pass to `keys_gen` tool (below assumes the node is deployed in directory `~/aeternity/node`).
+Generated public-private key pair will be located in `~/aeternity/node/generated_keys`, and public key is to be put in the configuration file (`mining` > `beneficiary` parameter).
+
+Do make sure you back up `~/aeternity/node/generated_keys` (and remember the password): if you destroy the node, you can setup a new node and use the same account (public key) as a beneficiary.
+You shall not share the private key (or the password) with anyone.
+
+e.g.
+
+```bash
+cd ~/aeternity/node
+bin/aeternity keys_gen my_secret_password ## This way of generating a key-pair is only for testing purpose, use a proper wallet/mechanism for your mainnet tokens: e.g., [AirGap wallet](https://airgap.it/).
+```
+```
+Generated keypair with encoded pubkey: ak_2D9REvQsrAgnJgmdwPq585D8YksJC8PSAA8MscQdxinbkFC7rq
+```
+
+In the example the generated public key is `ak_2D9REvQsrAgnJgmdwPq585D8YksJC8PSAA8MscQdxinbkFC7rq`, but **do not use it in your config**!
+This is just an **example** value to show what public key format you should expect after running `bin/aeternity keys_gen` command.
+
+## Example
+
+The example below assume that:
 
 * The node is deployed in directory `~/aeternity/node`;
 * You are aiming at joining mainnet.
@@ -184,87 +272,3 @@ You shall read output like the following:
 OK
 ```
 If the file is valid YAML but does not contain a valid configuration, it prints a helpful output.
-
-## Miner configuration
-
-The instructions below assume that you already know your `beneficiary` account public key (if you don't, see [Beneficiary account section](#beneficiary-account)).
-
-If you want to use your node to mine, you can use the default mining by setting
-```yaml
-mining:
-    beneficiary: "beneficiary_pubkey_to_be_replaced"
-    autostart: true
-```
-in the aeternity.yaml configuration file.
-
-Make sure you replace `mining` > `beneficiary` parameter with your public key!
-
-Note that in order to improve sync performance, before configuring your miner, you should start a node with `autostart: false`.
-Change this value to `autostart: true` when you are in sync, then restart the node.
-
-Your mining setup needs to meet your hardware capacity. Therefore, you need to make a choice in how you want to configure your miner. You can read the documentation on setting up CUDA mining, or you can use all but one of the cores on your computer to mine (keep one core available for transaction gossiping, synchronising, etc).
-If you have 16 cores, you could (loosely spoken) assign 14 of them to mining using the following configuration:
-```yaml
-mining:
-    beneficiary: "beneficiary_pubkey_to_be_replaced"
-    cuckoo:
-        edge_bits: 29
-        miners:
-            - executable: mean29-avx2
-              extra_args: -t 14
-```
-
-#### Combining different miners
-
-Your mining setup may also contain multiple miners, which will be run simultaneously by your node.
-For example, to combine CPU miner with CUDA miner the following configuration can be used:
-```yaml
-mining:
-    beneficiary: "beneficiary_pubkey_to_be_replaced"
-    cuckoo:
-        edge_bits: 29
-        miners:
-            - executable: mean29-generic
-              extra_args: -t 2
-            - executable_group: aecuckooprebuilt
-              executable: cuda29
-              extra_args: -t 1
-              hex_encoded_header: true
-```
-
-For more details on CUDA mining go to [dedicated CUDA miner documentation](cuda-miner.md).
-
-## Beneficiary account
-
-In order to configure who receives fees from mining on a node, you must configure a beneficiary public key.
-
-If you don't have your public key yet, you can generate a public/private key pair by using any one of the following tools:
-* [AirGap wallet](https://airgap.it/).
-
-If stratum is enabled, a beneficiary accounts from the stratum configuration are used instead, as stratum disables local mining.
-
-For configuring stratum, please consult [stratum operator user guide](stratum.md).
-
-
-#### Generating a beneficiary account for testing purposes only
-
-An alternative tool `keys_gen` for generating a public-private key pair **for testing purposes only** is included in the package.
-
-The key pair will be encrypted with a password that you shall pass to `keys_gen` tool (below assumes the node is deployed in directory `~/aeternity/node`).
-Generated public-private key pair will be located in `~/aeternity/node/generated_keys`, and public key is to be put in the configuration file (`mining` > `beneficiary` parameter).
-
-Do make sure you back up `~/aeternity/node/generated_keys` (and remember the password): if you destroy the node, you can setup a new node and use the same account (public key) as a beneficiary.
-You shall not share the private key (or the password) with anyone.
-
-e.g.
-
-```bash
-cd ~/aeternity/node
-bin/aeternity keys_gen my_secret_password ## This way of generating a key-pair is only for testing purpose, use a proper wallet/mechanism for your mainnet tokens: e.g., [AirGap wallet](https://airgap.it/).
-```
-```
-Generated keypair with encoded pubkey: ak_2D9REvQsrAgnJgmdwPq585D8YksJC8PSAA8MscQdxinbkFC7rq
-```
-
-In the example the generated public key is `ak_2D9REvQsrAgnJgmdwPq585D8YksJC8PSAA8MscQdxinbkFC7rq`, but **do not use it in your config**!
-This is just an **example** value to show what public key format you should expect after running `bin/aeternity keys_gen` command.

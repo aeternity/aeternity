@@ -2,9 +2,14 @@
 
 %=== EXPORTS ===================================================================
 
--export([sc_open/2]).
--export([sc_withdraw/3]).
--export([sc_close_mutual/2]).
+-export([ sc_open/2
+        , sc_withdraw/3
+        , sc_close_mutual/2
+        , sc_transfer/3
+        , sc_deploy_contract/4
+        , sc_call_contract/4
+        , sc_leave/1
+        , sc_reestablish/5]).
 
 %=== INCLUDES ==================================================================
 
@@ -51,24 +56,22 @@ sc_open(Params, Cfg) ->
     #{ pubkey := RPubKey, privkey := RPrivKey } = RAccount,
 
     {Host, _Port} = node_ws_int_addr(RNodeName, Cfg),
-    Opts = #{
-        protocol => <<"json-rpc">>,
-        host => Host,
-        port => maps:get(responder_port, Params, 9000),
-        initiator_id => aeser_api_encoder:encode(account_pubkey, IPubKey),
-        responder_id => aeser_api_encoder:encode(account_pubkey, RPubKey),
-        lock_period => maps:get(lock_period, Params, 10),
-        push_amount => maps:get(push_amount, Params, 10),
-        initiator_amount => IAmt,
-        responder_amount => RAmt,
-        channel_reserve => maps:get(channel_reserve, Params, 2)
-    },
+    Opts = maps:merge(
+             #{
+               protocol => <<"json-rpc">>,
+               host => Host,
+               port => maps:get(responder_port, Params, 9000),
+               initiator_id => aeser_api_encoder:encode(account_pubkey, IPubKey),
+               responder_id => aeser_api_encoder:encode(account_pubkey, RPubKey),
+               lock_period => maps:get(lock_period, Params, 10),
+               push_amount => maps:get(push_amount, Params, 10),
+               initiator_amount => IAmt,
+               responder_amount => RAmt,
+               channel_reserve => maps:get(channel_reserve, Params, 2)
+              },
+             maybe_version_opts(Cfg)),
 
-    {ok, IConn} = sc_start_ws(INodeName, initiator, Opts, Cfg),
-    ok = ?WS:register_test_for_channel_events(IConn, [info, sign, on_chain_tx]),
-    {ok, RConn} = sc_start_ws(RNodeName, responder, Opts, Cfg),
-    ok = ?WS:register_test_for_channel_events(RConn, [info, sign, on_chain_tx]),
-
+    {IConn, RConn} = sc_start_ws_peers(INodeName, RNodeName, Opts, Cfg),
     ok = sc_wait_channel_open(IConn, RConn),
 
     %% initiator gets to sign a create_tx
@@ -93,6 +96,7 @@ sc_open(Params, Cfg) ->
     IPubKey = aesc_create_tx:initiator_pubkey(Tx),
     RPubKey = aesc_create_tx:responder_pubkey(Tx),
     Fee = aesc_create_tx:fee(Tx),
+    ChannelId = aesc_create_tx:channel_pubkey(Tx),
 
     ok = sc_wait_channel_changed(IConn, RConn, <<"channel_create_tx">>),
 
@@ -100,11 +104,33 @@ sc_open(Params, Cfg) ->
 
     ok = sc_wait_open(IConn, RConn),
 
-    Channel = #{ initiator => {IAccount, IConn}, responder => {RAccount, RConn} },
+    Channel = #{ channel_id => ChannelId, initiator => {IAccount, IConn}, responder => {RAccount, RConn} },
 
     TxHash = aeser_api_encoder:encode(tx_hash, aetx_sign:hash(SignedCrTx)),
 
     {ok, Channel, TxHash, Fee}.
+
+-spec sc_reestablish(channel(), atom(), atom(), binary(), aest_nodes:test_ctx()) -> {ok, channel()}.
+sc_reestablish(#{ channel_id := ChannelId
+                , initiator := {IAccount, _}
+                , responder := {RAccount, _}} = Chan
+              , INodeName, RNodeName, LatestState, Cfg) ->
+    {Host, _Port} = node_ws_int_addr(RNodeName, Cfg),
+    Opts = maps:merge(
+             #{
+               existing_channel_id => aeser_api_encoder:encode(channel, ChannelId),
+               host => Host,
+               offchain_tx => LatestState,
+               port => 9000,
+               protocol => <<"json-rpc">>
+              }, maybe_version_opts(Cfg)),
+
+    {IConn, RConn} = sc_start_ws_peers(INodeName, RNodeName, Opts, Cfg),
+    {ok, #{ <<"event">> := <<"channel_reestablished">> }} = sc_wait_for_channel_event(IConn, info),
+    {ok, #{ <<"event">> := <<"channel_reestablished">> }} = sc_wait_for_channel_event(RConn, info),
+    ok = sc_wait_reestablish(IConn, RConn),
+
+    {ok, Chan#{initiator => {IAccount, IConn}, responder => {RAccount, RConn}}}.
 
 -spec sc_withdraw(channel(), party(), non_neg_integer())
     -> {ok, binary(), non_neg_integer()}.
@@ -150,6 +176,50 @@ sc_close_mutual(Channel, Closer)
 
     {ok, TxHash, Fee, IChange, RChange}.
 
+-spec sc_transfer(channel(), party(), non_neg_integer()) -> ok.
+sc_transfer(Channel, Sender, Amount) when Sender =:= initiator orelse Sender =:= responder ->
+    #{ initiator := {IAccount, IConn}, responder := {RAccount, RConn} } = Channel,
+    #{ pubkey := IPubKey, privkey := IPrivKey } = IAccount,
+    #{ pubkey := RPubKey, privkey := RPrivKey } = RAccount,
+
+    case Sender of
+        initiator -> sc_transfer(IConn, IPubKey, IPrivKey, RConn, RPubKey, RPrivKey, Amount);
+        responder -> sc_transfer(RConn, RPubKey, RPrivKey, IConn, IPubKey, IPrivKey, Amount)
+    end.
+
+-spec sc_deploy_contract(channel(), party(), map(), binary()) -> {ok, map()}.
+sc_deploy_contract(Channel, Who, Contract, CallData) ->
+    #{ initiator := {IAccount, IConn}, responder := {RAccount, RConn} } = Channel,
+    #{ pubkey := IPubKey, privkey := IPrivKey } = IAccount,
+    #{ pubkey := RPubKey, privkey := RPrivKey } = RAccount,
+
+    case Who of
+        initiator -> sc_deploy_contract(IConn, IPubKey, IPrivKey, RConn, RPrivKey, Contract, CallData);
+        responder -> sc_deploy_contract(RConn, RPubKey, RPrivKey, IConn, IPrivKey, Contract, CallData)
+    end.
+
+-spec sc_call_contract(channel(), party(), map(), binary()) -> {ok, term()}.
+sc_call_contract(Channel, Who, Contract, CallData) ->
+    #{ initiator := {IAccount, IConn}, responder := {RAccount, RConn} } = Channel,
+    #{ pubkey := IPubKey, privkey := IPrivKey } = IAccount,
+    #{ pubkey := RPubKey, privkey := RPrivKey } = RAccount,
+
+    case Who of
+        initiator -> sc_call_contract(IConn, IPubKey, IPrivKey, RConn, RPrivKey, Contract, CallData);
+        responder -> sc_call_contract(RConn, RPubKey, RPrivKey, IConn, IPrivKey, Contract, CallData)
+    end.
+
+-spec sc_leave(channel()) -> {ok, binary()}.
+sc_leave(Channel) ->
+    #{ initiator := {_, IConn}, responder := {_, RConn} } = Channel,
+    ws_send(IConn, <<"leave">>, #{}),
+    {ok, #{ <<"state">> := LatestState }} = sc_wait_for_channel_event(IConn, leave),
+    {ok, #{ <<"event">> := <<"died">> }} = sc_wait_for_channel_event(IConn, info),
+    {ok, #{ <<"state">> := LatestState }} = sc_wait_for_channel_event(RConn, leave),
+    {ok, #{ <<"event">> := <<"died">> }} = sc_wait_for_channel_event(RConn, info),
+
+    {ok, LatestState}.
+
 %--- NODE FUNCTIONS ------------------------------------------------------------
 
 node_ws_int_addr(NodeName, Cfg) ->
@@ -164,6 +234,13 @@ node_ws_ext_addr(NodeName, Cfg) ->
 
 %--- CHANNEL FUNCTIONS ---------------------------------------------------------
 
+sc_start_ws_peers(INodeName, RNodeName, Opts, Cfg) ->
+    {ok, IConn} = sc_start_ws(INodeName, initiator, Opts, Cfg),
+    ok = ?WS:register_test_for_channel_events(IConn, [info, sign, get, on_chain_tx, update, leave]),
+    {ok, RConn} = sc_start_ws(RNodeName, responder, Opts, Cfg),
+    ok = ?WS:register_test_for_channel_events(RConn, [info, sign, get, on_chain_tx, update, leave]),
+    {IConn, RConn}.
+
 sc_start_ws(NodeName, Role, Opts, Cfg) ->
     {Host, Port} = node_ws_ext_addr(NodeName, Cfg),
     ?WS:start_channel(Host, Port, Role, Opts).
@@ -175,6 +252,60 @@ sc_wait_for_channel_event(ConnPid, Action) ->
         {ok, Tag, #{ <<"params">> := #{ <<"data">> := Data }}} ->
             {ok, Tag, Data}
     end.
+
+sc_deploy_contract(SenderConn, SenderPubKey, SenderPrivKey, AckConn, AckPrivKey, Contract, CallData) ->
+    #{ bytecode := Bytecode, vm := Vm, abi := Abi } = Contract,
+    ws_send(SenderConn, <<"update.new_contract">>, #{ <<"code">>        => Bytecode
+                                                    , <<"call_data">>   => CallData
+                                                    , <<"vm_version">>  => Vm
+                                                    , <<"abi_version">> => Abi
+                                                    , <<"deposit">>     => 0}),
+    OffchainTx = sc_process_offchain_tx(SenderConn, SenderPrivKey, AckConn, AckPrivKey),
+    {CB, Tx} = aetx:specialize_callback(OffchainTx),
+    Round = CB:round(Tx),
+    Address = aect_contracts:compute_contract_pubkey(SenderPubKey, Round),
+    {ok, Contract#{address => Address}}.
+
+sc_call_contract(SenderConn, SenderPubKey, SenderPrivKey, AckConn, AckPrivKey, Contract, CallData) ->
+    #{ address := ContractAddress, abi := Abi } = Contract,
+    SenderPub = aeser_api_encoder:encode(account_pubkey, SenderPubKey),
+    ContractPub = aeser_api_encoder:encode(contract_pubkey, ContractAddress),
+    ws_send(SenderConn, <<"update.call_contract">>, #{ <<"contract_id">> => ContractPub
+                                                     , <<"call_data">>   => CallData
+                                                     , <<"abi_version">> => Abi
+                                                     , <<"amount">>      => 0}),
+    OffchainTx = sc_process_offchain_tx(SenderConn, SenderPrivKey, AckConn, AckPrivKey),
+    {CB, Tx} = aetx:specialize_callback(OffchainTx),
+    Round = CB:round(Tx),
+    ws_send(SenderConn, <<"get.contract_call">>, #{ <<"caller_id">>   => SenderPub
+                                                  , <<"contract_id">> => ContractPub
+                                                  , <<"round">>       => Round}),
+    {ok, <<"contract_call">>, CallRes} = sc_wait_for_channel_event(SenderConn, get),
+    {ok, CallRes}.
+
+sc_transfer(SenderConn, SenderPubKey, SenderPrivKey, AckConn, AckPubKey, AckPrivKey, Amount) ->
+    SenderPub = aeser_api_encoder:encode(account_pubkey, SenderPubKey),
+    AckPub = aeser_api_encoder:encode(account_pubkey, AckPubKey),
+    ws_send(SenderConn, <<"update.new">>, #{ <<"amount">> => Amount
+                                          , <<"from">>   => SenderPub
+                                          , <<"to">>     => AckPub}),
+    _ = sc_process_offchain_tx(SenderConn, SenderPrivKey, AckConn, AckPrivKey),
+    ok.
+
+sc_process_offchain_tx(SenderConn, SenderPrivKey, AckConn, AckPrivKey) ->
+    UnsignedStateTx = sc_wait_and_sign(SenderConn, SenderPrivKey, <<"update">>),
+    {ok, #{ <<"event">> := <<"update">> }} = sc_wait_for_channel_event(AckConn, info),
+    UnsignedStateTx = sc_wait_and_sign(AckConn, AckPrivKey, <<"update_ack">>),
+
+    {ok, #{ <<"state">> := EncodedSignedTx }} = sc_wait_for_channel_event(SenderConn, update),
+    {ok, #{ <<"state">> := EncodedSignedTx }} = sc_wait_for_channel_event(AckConn, update),
+
+    %% Assert we received an offchain_update
+    {ok, OffchainTxBin} = aeser_api_encoder:safe_decode(transaction, EncodedSignedTx),
+    OffchainTx = aetx_sign:deserialize_from_binary(OffchainTxBin),
+    Tx = aetx_sign:innermost_tx(OffchainTx),
+    {aesc_offchain_tx, _} = aetx:specialize_callback(Tx),
+    Tx.
 
 sc_close_mutual(CloserConn, CloserPrivKey, OtherConn, OtherPrivKey) ->
     ws_send(CloserConn, <<"shutdown">>, #{}),
@@ -234,8 +365,25 @@ sc_wait_funding_locked(InitiatorConn, ResponderConn) ->
     ok.
 
 sc_wait_open(IConn, RConn) ->
+    sc_wait_open_(IConn, RConn, aesc_create_tx).
+
+sc_wait_reestablish(IConn, RConn) ->
+    sc_wait_open_(IConn, RConn, aesc_offchain_tx).
+
+sc_wait_open_(IConn, RConn, Type) ->
     {ok, #{ <<"event">> := <<"open">> }} = sc_wait_for_channel_event(IConn, info),
     {ok, #{ <<"event">> := <<"open">> }} = sc_wait_for_channel_event(RConn, info),
+
+    %% Both peers receive the same initial state
+    {ok, #{<<"state">> := InitialState}} = sc_wait_for_channel_event(IConn, update),
+    {ok, #{<<"state">> := InitialState}} = sc_wait_for_channel_event(RConn, update),
+
+    %% Assert we received a channel_create_tx
+    {ok, InitialStateTxBin} = aeser_api_encoder:safe_decode(transaction, InitialState),
+    InitialStateTx = aetx_sign:deserialize_from_binary(InitialStateTxBin),
+    Tx = aetx_sign:innermost_tx(InitialStateTx),
+    {Type, _} = aetx:specialize_callback(Tx),
+
     ok.
 
 sc_wait_withdraw_locked(SenderConn, AckConn) ->
@@ -243,6 +391,15 @@ sc_wait_withdraw_locked(SenderConn, AckConn) ->
     {ok, #{ <<"event">> := <<"own_withdraw_locked">> }} = sc_wait_for_channel_event(AckConn, info),
     {ok, #{ <<"event">> := <<"withdraw_locked">> }} = sc_wait_for_channel_event(SenderConn, info),
     {ok, #{ <<"event">> := <<"withdraw_locked">> }} = sc_wait_for_channel_event(AckConn, info),
+
+    {ok, #{ <<"state">> := EncodedSignedTx }} = sc_wait_for_channel_event(SenderConn, update),
+    {ok, #{ <<"state">> := EncodedSignedTx }} = sc_wait_for_channel_event(AckConn, update),
+
+    %% Assert we received an widthdraw_tx
+    {ok, WithdrawTxBin} = aeser_api_encoder:safe_decode(transaction, EncodedSignedTx),
+    WithdrawTx = aetx_sign:deserialize_from_binary(WithdrawTxBin),
+    Tx = aetx_sign:innermost_tx(WithdrawTx),
+    {aesc_withdraw_tx, _} = aetx:specialize_callback(Tx),
     ok.
 
 %--- TRANSACTION FUNCTIONS -----------------------------------------------------
@@ -252,3 +409,16 @@ ws_send(ConnPid, Tag, Data) ->
     ?WS:json_rpc_notify(ConnPid,
         #{ <<"method">> => Method
          , <<"params">> => Data}).
+
+%--- HELPER TO MANAGE ENCODING OPTIONS -----------------------------------------
+
+maybe_version_opts(Cfg) ->
+    case lists:keyfind(channel_opts, 1, Cfg) of
+        {_, Opts} ->
+            version_opts(Opts);
+        false ->
+            #{}
+    end.
+
+version_opts(Params) ->
+    maps:with([version_offchain_update], Params).

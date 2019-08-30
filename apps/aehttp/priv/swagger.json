@@ -2,7 +2,7 @@
   "swagger" : "2.0",
   "info" : {
     "description" : "This is the [Aeternity](https://www.aeternity.com/) node API.",
-    "version" : "4.2.1",
+    "version" : "5.0.0-rc.1",
     "title" : "Aeternity node",
     "termsOfService" : "https://www.aeternity.com/terms/",
     "contact" : {
@@ -2227,6 +2227,10 @@
           "description" : "Nonce",
           "$ref" : "#/definitions/UInt64"
         },
+        "payable" : {
+          "type" : "boolean",
+          "description" : "Payable"
+        },
         "kind" : {
           "type" : "string",
           "enum" : [ "basic", "generalized" ]
@@ -2242,6 +2246,7 @@
       },
       "example" : {
         "balance" : { },
+        "payable" : true,
         "kind" : "basic",
         "id" : { },
         "auth_fun" : "auth_fun",
@@ -3254,11 +3259,10 @@
         },
         "signatures" : {
           "type" : "array",
-          "description" : "signatures required unless for Generalized Account Meta transactions",
+          "description" : "At least one signature is required unless for Generalized Account Meta transactions",
           "items" : {
             "$ref" : "#/definitions/EncodedValue"
-          },
-          "minItems" : 1
+          }
         }
       },
       "example" : {
@@ -3433,6 +3437,20 @@
         "$ref" : "#/definitions/GenericTx"
       }, {
         "$ref" : "#/definitions/ContractCallTx"
+      } ]
+    },
+    "GAAttachTxJSON" : {
+      "allOf" : [ {
+        "$ref" : "#/definitions/GenericTx"
+      }, {
+        "$ref" : "#/definitions/GAAttachTx"
+      } ]
+    },
+    "GAMetaTxJSON" : {
+      "allOf" : [ {
+        "$ref" : "#/definitions/GenericTx"
+      }, {
+        "$ref" : "#/definitions/GAMetaTx"
       } ]
     },
     "TxInfoObject" : {
@@ -4166,6 +4184,87 @@
       },
       "example" : {
         "accounts" : { }
+      }
+    },
+    "GAAttachTx" : {
+      "type" : "object",
+      "required" : [ "abi_version", "auth_fun", "call_data", "code", "fee", "gas", "gas_price", "owner_id", "vm_version" ],
+      "properties" : {
+        "owner_id" : {
+          "description" : "Contract owner pub_key",
+          "$ref" : "#/definitions/EncodedPubkey"
+        },
+        "nonce" : {
+          "description" : "Owner's nonce",
+          "$ref" : "#/definitions/UInt64"
+        },
+        "code" : {
+          "description" : "Contract's code",
+          "$ref" : "#/definitions/EncodedByteArray"
+        },
+        "vm_version" : {
+          "description" : "Virtual machine's version",
+          "$ref" : "#/definitions/UInt16"
+        },
+        "abi_version" : {
+          "description" : "ABI version",
+          "$ref" : "#/definitions/UInt16"
+        },
+        "gas" : {
+          "$ref" : "#/definitions/UInt64"
+        },
+        "gas_price" : {
+          "$ref" : "#/definitions/UInt"
+        },
+        "fee" : {
+          "$ref" : "#/definitions/UInt"
+        },
+        "ttl" : {
+          "$ref" : "#/definitions/UInt64"
+        },
+        "call_data" : {
+          "description" : "Contract call data",
+          "$ref" : "#/definitions/EncodedByteArray"
+        },
+        "auth_fun" : {
+          "type" : "string",
+          "description" : "Contract authorization function hash (hex encoded)",
+          "pattern" : "^(0x|0X)?[a-fA-F0-9]+$'"
+        }
+      }
+    },
+    "GAMetaTx" : {
+      "type" : "object",
+      "required" : [ "abi_version", "auth_data", "fee", "ga_id", "gas", "gas_price", "tx" ],
+      "properties" : {
+        "ga_id" : {
+          "description" : "Account owner pub_key",
+          "$ref" : "#/definitions/EncodedPubkey"
+        },
+        "abi_version" : {
+          "description" : "ABI version",
+          "$ref" : "#/definitions/UInt16"
+        },
+        "gas" : {
+          "$ref" : "#/definitions/UInt64"
+        },
+        "gas_price" : {
+          "$ref" : "#/definitions/UInt"
+        },
+        "fee" : {
+          "$ref" : "#/definitions/UInt"
+        },
+        "ttl" : {
+          "$ref" : "#/definitions/UInt64"
+        },
+        "auth_data" : {
+          "description" : "Contract authorization function call data",
+          "$ref" : "#/definitions/EncodedByteArray"
+        },
+        "tx" : {
+          "description" : "Enclosed signed transaction",
+          "$ref" : "#/definitions/GenericSignedTx"
+        }
       }
     },
     "inline_response_200" : {

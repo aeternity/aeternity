@@ -1,0 +1,21 @@
+site_name: Aeternity node documentation
+site_url: https://aeternity.com
+repo_url: https://github.com/aeternity/aeternity
+theme:
+    name: readthedocs
+    highlightjs: true
+    hljs_languages:
+        - yaml
+        - json
+        - bash
+nav:
+- Installation: 'installation.md'
+- Configuration: 'configuration.md'
+- Operation: 'operation.md'
+- Docker: 'docker.md'
+- Build from source: 'build.md'
+- Build from source (Windows): 'build-windows.md'
+- CUDA Miner: 'cuda-miner.md'
+- Stratum: 'stratum.md'
+- Network Monitoring: 'monitoring.md'
+- Node API: 'api.md'

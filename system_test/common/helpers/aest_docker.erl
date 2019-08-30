@@ -248,12 +248,7 @@ setup_node(Spec, BackendState) ->
     {ok, ConfigString} = write_template(TemplateFile, ConfigFileHostPath, Context),
     Command =
         case maps:find(custom_command, Spec) of
-            error ->
-                case MineRate of
-                    default -> [];
-                    _ when is_integer(MineRate), MineRate > 0 ->
-                        ["-aecore", "expected_mine_rate", MineRate]
-                end;
+            error -> [];
             {ok, CustomCommand} -> CustomCommand
         end,
     LogPath = filename:join(TempDir, format("~s_logs", [Name])),

@@ -136,10 +136,10 @@ types(?PRIM_CALL_AENS_CLAIM,_HeapValue,_Store,_State) ->
     {[word, string, word, sign_t()], tuple0_t()};
 types(?PRIM_CALL_AENS_PRECLAIM,_HeapValue,_Store,_State) ->
     {[word, word, sign_t()], tuple0_t()};
-types(?PRIM_CALL_AENS_RESOLVE, HeapValue, Store,_State) ->
+types(?PRIM_CALL_AENS_RESOLVE, HeapValue, _Store, State) ->
     %% The out type is given in the third argument
     T = {tuple, [word, word, word, typerep]},
-    {ok, Bin} = aevm_data:heap_to_binary(T, Store, HeapValue),
+    {ok, Bin} = aevm_eeevm_state:heap_value_to_binary(T, HeapValue, State),
     {ok, {_Prim, _, _, OutType}} = aeb_heap:from_binary(T, Bin),
     {[string, string, typerep], option_t(OutType)};
 types(?PRIM_CALL_AENS_REVOKE,_HeapValue,_Store, State) ->
@@ -162,9 +162,9 @@ types(?PRIM_CALL_MAP_DELETE,_HeapValue,_Store,_State) ->
     {[word, word], word};
 types(?PRIM_CALL_MAP_EMPTY,_HeapValue,_Store,_State) ->
     {[typerep, typerep], word};
-types(?PRIM_CALL_MAP_GET, HeapValue, Store, State) ->
+types(?PRIM_CALL_MAP_GET, HeapValue, _Store, State) ->
     T = {tuple, [word, word]},
-    {ok, Bin} = aevm_data:heap_to_binary(T, Store, HeapValue),
+    {ok, Bin} = aevm_eeevm_state:heap_value_to_binary(T, HeapValue, State),
     {ok, {_Prim, Id}} = aeb_heap:from_binary(T, Bin),
     {_KeyType, ValType} = aevm_eeevm_maps:map_type(Id, State),
     {[word, word], option_t(ValType)};
@@ -172,9 +172,9 @@ types(?PRIM_CALL_MAP_PUT,_HeapValue,_Store,_State) ->
     {[word, word, word], word};
 types(?PRIM_CALL_MAP_SIZE,_HeapValue,_Store,_State) ->
     {[word], word};
-types(?PRIM_CALL_MAP_TOLIST, HeapValue, Store, State) ->
+types(?PRIM_CALL_MAP_TOLIST, HeapValue, _Store, State) ->
     T = {tuple, [word, word]},
-    {ok, Bin} = aevm_data:heap_to_binary(T, Store, HeapValue),
+    {ok, Bin} = aevm_eeevm_state:heap_value_to_binary(T, HeapValue, State),
     {ok, {_Prim, Id}} = aeb_heap:from_binary(T, Bin),
     {KeyType, ValType} = aevm_eeevm_maps:map_type(Id, State),
     {[word], {list, {tuple, [KeyType, ValType]}}};
@@ -218,10 +218,14 @@ types(?PRIM_CALL_ORACLE_CHECK_QUERY,_HeapValue,_Store,_State) ->
     {[word, word, typerep, typerep], word};
 types(?PRIM_CALL_SPEND,_HeapValue,_Store,_State) ->
     {[word], tuple0_t()};
-types(?PRIM_CALL_CRYPTO_ECVERIFY, _HeapValue, _Store, _State) ->
+types(?PRIM_CALL_CRYPTO_VERIFY_SIG, _HeapValue, _Store, _State) ->
     {[word, word, sign_t()], word};
-types(?PRIM_CALL_CRYPTO_ECVERIFY_SECP256K1, _HeapValue, _Store, _State) ->
+types(?PRIM_CALL_CRYPTO_VERIFY_SIG_SECP256K1, _HeapValue, _Store, _State) ->
     {[hash_t(), bytes_t(64), bytes_t(64)], word};
+types(?PRIM_CALL_CRYPTO_ECVERIFY_SECP256K1, _HeapValue, _Store, _State) ->
+    {[hash_t(), bytes_t(20), bytes_t(65)], word};
+types(?PRIM_CALL_CRYPTO_ECRECOVER_SECP256K1, _HeapValue, _Store, _State) ->
+    {[hash_t(), bytes_t(65)], option_t(word)};
 types(?PRIM_CALL_CRYPTO_SHA3, _HeapValue, _Store, _State) ->
     {[typerep, word], word};
 types(?PRIM_CALL_CRYPTO_SHA256, _HeapValue, _Store, _State) ->
@@ -234,6 +238,8 @@ types(?PRIM_CALL_CRYPTO_BLAKE2B_STRING, _HeapValue, _Store, _State) ->
     {[string], word};
 types(?PRIM_CALL_AUTH_TX_HASH, _HeapValue, _Store, _State) ->
     {[], option_t(word)};
+types(?PRIM_CALL_ADDR_IS_PAYABLE, _HeapValue, _Store, _State) ->
+    {[word], word};
 types(?PRIM_CALL_ADDR_IS_CONTRACT, _HeapValue, _Store, _State) ->
     {[word], word};
 types(?PRIM_CALL_ADDR_IS_ORACLE, _HeapValue, _Store, _State) ->
@@ -256,9 +262,9 @@ oracle_response_type_from_chain(HeapValue, Store, State) ->
 oracle_query_type_from_chain(HeapValue, Store, State) ->
     oracle_type_from_chain(HeapValue, Store, State, query).
 
-oracle_type_from_chain(HeapValue, Store, State, Which) ->
+oracle_type_from_chain(HeapValue, _Store, State, Which) ->
     T = {tuple, [word, word]},
-    {ok, Bin} = aevm_data:heap_to_binary(T, Store, HeapValue),
+    {ok, Bin} = aevm_eeevm_state:heap_value_to_binary(T, HeapValue, State),
     {ok, {_Prim, OracleID}} = aeb_heap:from_binary(T, Bin),
     API        = aevm_eeevm_state:chain_api(State),
     ChainState = aevm_eeevm_state:chain_state(State),
@@ -588,20 +594,24 @@ aens_call_revoke_common(Addr, Hash, Sign, #chain{api = API, state = State} = Cha
 %% Address operations.
 %% ------------------------------------------------------------------
 address_call(Op, _Value, Data, State = #chain{ vm_version = VMVersion })
-        when ?IS_AEVM_SOPHIA(VMVersion), VMVersion >= ?VM_AEVM_SOPHIA_3 ->
-    address_call(Op, Data, State);
+        when ?IS_AEVM_SOPHIA(VMVersion) ->
+    address_call_(VMVersion, Op, Data, State);
 address_call(_, _, _, _) ->
     {error, out_of_gas}.
 
-address_call(?PRIM_CALL_ADDR_IS_ORACLE, Data, State) ->
+address_call_(VM, ?PRIM_CALL_ADDR_IS_ORACLE, Data, State) when VM >= ?VM_AEVM_SOPHIA_3 ->
     [Addr] = get_args([word], Data),
     Callback = fun(API, ChainState) -> API:addr_is_oracle(<<Addr:256>>, ChainState) end,
     no_dynamic_gas(fun() -> query_chain(Callback, State) end);
-address_call(?PRIM_CALL_ADDR_IS_CONTRACT, Data, State) ->
+address_call_(VM, ?PRIM_CALL_ADDR_IS_CONTRACT, Data, State) when VM >= ?VM_AEVM_SOPHIA_3 ->
     [Addr] = get_args([word], Data),
     Callback = fun(API, ChainState) -> API:addr_is_contract(<<Addr:256>>, ChainState) end,
     no_dynamic_gas(fun() -> query_chain(Callback, State) end);
-address_call(_, _, _) ->
+address_call_(VM, ?PRIM_CALL_ADDR_IS_PAYABLE, Data, State) when VM >= ?VM_AEVM_SOPHIA_4 ->
+    [Addr] = get_args([word], Data),
+    Callback = fun(API, ChainState) -> API:addr_is_payable(<<Addr:256>>, ChainState) end,
+    no_dynamic_gas(fun() -> query_chain(Callback, State) end);
+address_call_(_, _, _, _) ->
     {error, out_of_gas}.
 
 %% ------------------------------------------------------------------
@@ -631,54 +641,80 @@ auth_call_tx_hash(_Gas, _Data, State) ->
 %% Crypto operations.
 %% ------------------------------------------------------------------
 crypto_call(Gas, Op, _Value, Data, State) ->
-    case aevm_eeevm_state:vm_version(State) of
-        ?VM_AEVM_SOPHIA_1 ->
-            {error, out_of_gas};
-        VMVersion when ?IS_AEVM_SOPHIA(VMVersion) andalso
-                       VMVersion >= ?VM_AEVM_SOPHIA_2 andalso
-                       Op < ?PRIM_CALL_CRYPTO_ECVERIFY_SECP256K1 ->
-            crypto_call(Gas, Op, Data, State);
-        VMVersion when ?IS_AEVM_SOPHIA(VMVersion) andalso
-                       VMVersion >= ?VM_AEVM_SOPHIA_3 ->
-            crypto_call(Gas, Op, Data, State)
-    end.
+    crypto_call_(Gas, Op, Data, State, aevm_eeevm_state:vm_version(State)).
 
-crypto_call(Gas, ?PRIM_CALL_CRYPTO_ECVERIFY, Data, State) ->
-    crypto_call_ecverify(Gas, Data, State);
-crypto_call(Gas, ?PRIM_CALL_CRYPTO_ECVERIFY_SECP256K1, Data, State) ->
-    crypto_call_ecverify_secp256k1(Gas, Data, State);
-crypto_call(Gas, ?PRIM_CALL_CRYPTO_SHA3, Data, State) ->
+crypto_call_(_Gas, ?PRIM_CALL_CRYPTO_VERIFY_SIG, Data, State, VM)
+        when VM >= ?VM_AEVM_SOPHIA_2 ->
+    crypto_call_verify_sig(Data, State);
+crypto_call_(_Gas, ?PRIM_CALL_CRYPTO_VERIFY_SIG_SECP256K1, Data, State, VM)
+        when VM >= ?VM_AEVM_SOPHIA_3 ->
+    crypto_call_verify_sig_secp256k1(Data, State);
+crypto_call_(_Gas, ?PRIM_CALL_CRYPTO_ECVERIFY_SECP256K1, Data, State, VM)
+        when VM >= ?VM_AEVM_SOPHIA_4 ->
+    crypto_call_ecverify_secp256k1(Data, State);
+crypto_call_(_Gas, ?PRIM_CALL_CRYPTO_ECRECOVER_SECP256K1, Data, State, VM)
+        when VM >= ?VM_AEVM_SOPHIA_4 ->
+    crypto_call_ecrecover_secp256k1(Data, State);
+crypto_call_(Gas, ?PRIM_CALL_CRYPTO_SHA3, Data, State, VM)
+        when VM >= ?VM_AEVM_SOPHIA_2 ->
     crypto_call_generic_hash(?PRIM_CALL_CRYPTO_SHA3, Gas, Data, State);
-crypto_call(Gas, ?PRIM_CALL_CRYPTO_SHA256, Data, State) ->
+crypto_call_(Gas, ?PRIM_CALL_CRYPTO_SHA256, Data, State, VM)
+        when VM >= ?VM_AEVM_SOPHIA_2 ->
     crypto_call_generic_hash(?PRIM_CALL_CRYPTO_SHA256, Gas, Data, State);
-crypto_call(Gas, ?PRIM_CALL_CRYPTO_BLAKE2B, Data, State) ->
+crypto_call_(Gas, ?PRIM_CALL_CRYPTO_BLAKE2B, Data, State, VM)
+        when VM >= ?VM_AEVM_SOPHIA_2 ->
     crypto_call_generic_hash(?PRIM_CALL_CRYPTO_BLAKE2B, Gas, Data, State);
-crypto_call(_Gas, ?PRIM_CALL_CRYPTO_SHA256_STRING, Data, State) ->
+crypto_call_(_Gas, ?PRIM_CALL_CRYPTO_SHA256_STRING, Data, State, VM)
+        when VM >= ?VM_AEVM_SOPHIA_2 ->
     crypto_call_string_hash(?PRIM_CALL_CRYPTO_SHA256_STRING, Data, State);
-crypto_call(_Gas, ?PRIM_CALL_CRYPTO_BLAKE2B_STRING, Data, State) ->
+crypto_call_(_Gas, ?PRIM_CALL_CRYPTO_BLAKE2B_STRING, Data, State, VM)
+        when VM >= ?VM_AEVM_SOPHIA_2 ->
     crypto_call_string_hash(?PRIM_CALL_CRYPTO_BLAKE2B_STRING, Data, State);
-crypto_call(_, _, _, _) ->
+crypto_call_(_, _, _, _, _) ->
     {error, out_of_gas}.
 
-crypto_call_ecverify(_Gas, Data, State) ->
+crypto_call_verify_sig(Data, State) ->
     [MsgHash, PK, Sig] = get_args([hash_t(), word, sign_t()], Data),
-    Res =
-        case enacl:sign_verify_detached(to_sign(Sig), <<MsgHash:256>>, <<PK:256>>) of
-            {ok, _}    -> {ok, <<1:256>>};
-            {error, _} -> {ok, <<0:256>>}
-        end,
-    {ok, Res, aec_governance:primop_base_gas(?PRIM_CALL_CRYPTO_ECVERIFY), State}.
+    Res = case aeu_crypto:verify_sig(<<MsgHash:256>>, <<PK:256>>, to_sign(Sig)) of
+              true  -> {ok, <<1:256>>};
+              false -> {ok, <<0:256>>}
+          end,
+    {ok, Res, aec_governance:primop_base_gas(?PRIM_CALL_CRYPTO_VERIFY_SIG), State}.
 
-crypto_call_ecverify_secp256k1(_Gas, Data, State) ->
+crypto_call_verify_sig_secp256k1(Data, State) ->
     [MsgHash0, Pubkey0, Sig0] = get_args([hash_t(), bytes_t(64), bytes_t(64)], Data),
-    MsgHash = <<MsgHash0:32/unit:8>>,
+    MsgHash = words_to_bin(32, MsgHash0),
     Pubkey  = words_to_bin(64, Pubkey0),
     Sig     = words_to_bin(64, Sig0),
+    Res = case aeu_crypto:verify_sig(secp256k1, MsgHash, Pubkey, Sig) of
+              true  -> {ok, <<1:256>>};
+              false -> {ok, <<0:256>>}
+          end,
+    {ok, Res, aec_governance:primop_base_gas(?PRIM_CALL_CRYPTO_VERIFY_SIG_SECP256K1), State}.
+
+crypto_call_ecverify_secp256k1(Data, State) ->
+    [MsgHash0, Pubkey0, Sig0] = get_args([hash_t(), bytes_t(20), bytes_t(65)], Data),
+    MsgHash = words_to_bin(32, MsgHash0),
+    Pubkey  = words_to_bin(20, Pubkey0),
+    Sig     = words_to_bin(65, Sig0),
     Res = case aeu_crypto:ecverify(secp256k1, MsgHash, Pubkey, Sig) of
-            true  -> {ok, <<1:256>>};
-            false -> {ok, <<0:256>>}
+              true  -> {ok, <<1:256>>};
+              false -> {ok, <<0:256>>}
           end,
     {ok, Res, aec_governance:primop_base_gas(?PRIM_CALL_CRYPTO_ECVERIFY_SECP256K1), State}.
+
+crypto_call_ecrecover_secp256k1(Data, State) ->
+    [MsgHash0, Sig0] = get_args([hash_t(), bytes_t(65)], Data),
+    MsgHash = words_to_bin(32, MsgHash0),
+    Sig     = words_to_bin(65, Sig0),
+    Res = case aeu_crypto:ecrecover(secp256k1, MsgHash, Sig) of
+              false ->
+                  {ok, aeb_heap:to_binary(none)};
+              {ok, ShortAddr} ->
+                  [AddrWord] = aeb_memory:binary_to_words(ShortAddr),
+                  {ok, aeb_heap:to_binary({some, AddrWord})}
+          end,
+    {ok, Res, aec_governance:primop_base_gas(?PRIM_CALL_CRYPTO_ECRECOVER_SECP256K1), State}.
 
 crypto_call_generic_hash(PrimOp, Gas, Data, State) ->
     [Type, Ptr] = get_args([typerep, word], Data),
@@ -865,4 +901,8 @@ state_gas(Tag, {delta, TTL}) ->
 to_sign(Sig) -> words_to_bin(64, Sig).
 
 words_to_bin(Len, Ws) when is_tuple(Ws) ->
-    binary:part(<< <<W:32/unit:8>> || W <- tuple_to_list(Ws) >>, 0, Len).
+    binary:part(<< <<W:32/unit:8>> || W <- tuple_to_list(Ws) >>, 0, Len);
+words_to_bin(Len, Word) when is_integer(Word) ->
+    <<Bytes:Len/binary, _/binary>> = <<Word:32/unit:8>>,
+    Bytes.
+

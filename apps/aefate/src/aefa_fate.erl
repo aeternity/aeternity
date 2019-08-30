@@ -21,7 +21,11 @@
 
 -export([ check_remote/2
         , check_return_type/1
-        , check_signature_and_bind_args/2
+        , check_signature_and_bind_args/3
+        , bind_args_from_signature/2
+        , ensure_contract_store/2
+        , unfold_store_maps/2
+        , unfold_store_maps_in_args/2
         , check_type/2
         , get_function_signature/2
         , push_gas_cap/2
@@ -30,7 +34,7 @@
         , runtime_exit/2
         , runtime_revert/2
         , set_local_function/2
-        , set_remote_function/3
+        , set_remote_function/5
         , terms_are_of_same_type/2
         ]
        ).
@@ -38,7 +42,7 @@
 
 %% Memory handling.
 -export([ lookup_var/2
-        , store_var/3]).
+        , store_var/3 ]).
 
 %% Stack handling.
 -export([ dup/1
@@ -175,8 +179,6 @@ abort({element_index_out_of_bounds, Index}, ES) ->
     ?t("Bad index argument to element, Index: ~p", [Index], ES);
 abort({bad_arguments_to_element, Index, Tuple}, ES) ->
     ?t("Bad argument to element, Tuple: ~p, Index: ~p", [Tuple, Index], ES);
-abort({bad_element_type, Type, Value}, ES) ->
-    ?t("Type error in element: ~p is not of type ~p", [Value, Type], ES);
 abort({bad_variant_tag, Tag}, ES) ->
     ?t("Type error in switch: tag ~p is larger than switch op", [Tag], ES);
 abort({bad_variant_size, Size}, ES) ->
@@ -194,23 +196,27 @@ abort(mod_by_zero, ES) ->
 abort(pow_too_large_exp, ES) ->
     ?t("Arithmetic error: pow with too large exponent", [], ES);
 abort(missing_map_key, ES) ->
-    ?t("Maps: Key does not exists", [], ES);
+    ?t("Maps: Key does not exist", [], ES);
+abort(bad_store_map_id, ES) ->
+    ?t("Maps: Map does not exist", [], ES);
 abort({type_error, cons}, ES) ->
     ?t("Type error in cons: creating polymorphic list", [], ES);
-abort({cannot_write_to_arg, N}, ES) ->
-    ?t("Arguments are read only: ~p", [N], ES);
 abort({undefined_var, Var}, ES) ->
     ?t("Undefined var: ~p", [Var], ES);
 abort({bad_return_type, Val, Type}, ES) ->
     ?t("Type error on return: ~p is not of type ~p", [Val, Type], ES);
+abort(remote_type_mismatch, ES) ->
+    ?t("Type of remote function does not match expected type", [], ES);
+abort({function_arity_mismatch, Got, Expected}, ES) ->
+    ?t("Expected ~p arguments, got ~p", [Expected, Got], ES);
 abort({value_does_not_match_type, Val, Type}, ES) ->
     ?t("Type error on call: ~p is not of type ~p", [Val, Type], ES);
 abort({trying_to_reach_bb, BB}, ES) ->
     ?t("Trying to jump to non existing bb: ~p", [BB], ES);
 abort({trying_to_call_function, Name}, ES) ->
-    ?t("Trying to call undefined function: ~p", [Name], ES);
+    ?t("Trying to call undefined function: ~w", [Name], ES);
 abort({trying_to_call_contract, Pubkey}, ES) ->
-    ?t("Trying to call invalid contract: ~p", [Pubkey], ES);
+    ?t("Trying to call invalid contract: ~w", [Pubkey], ES);
 abort({not_allowed_in_auth_context, Op}, ES) ->
     ?t("Operation ~p not allowed in GA Authentication context", [Op], ES);
 abort({not_allowed_offchain, Op}, ES) ->
@@ -219,6 +225,10 @@ abort(negative_value_in_call, ES) ->
     ?t("Trying to transfer negative value in call", [], ES);
 abort({call_error, What}, ES) ->
     ?t("Error in call: ~w", [What], ES);
+abort({function_is_not_payable, Fun}, ES) ->
+    ?t("Function with hash ~w is not payable", [Fun], ES);
+abort({function_is_private, Fun}, ES) ->
+    ?t("Function with hash ~w is private", [Fun], ES);
 abort({primop_error, Which, What}, ES) ->
     ?t("Error in ~w: ~w", [Which, What], ES);
 abort(reentrant_call, ES) ->
@@ -238,7 +248,10 @@ execute(EngineState) ->
 loop(Instructions, EngineState) ->
     case step(Instructions, EngineState) of
         {stop, FinalState} ->
-            aefa_engine_state:finalize(FinalState);
+            case aefa_engine_state:finalize(FinalState) of
+                {ok, ES} -> ES;
+                {error, What} -> abort(What, FinalState)
+            end;
         {jump, BB, NewState} ->
             {NewInstructions, State2} = jump(BB, NewState),
             loop(NewInstructions, State2)
@@ -281,10 +294,10 @@ setup_engine(#{ contract := <<_:256>> = ContractPubkey
     Contract = aeb_fate_data:make_contract(ContractPubkey),
     Stores = aefa_stores:put_contract_store(ContractPubkey, Store, aefa_stores:new()),
     ES1 = aefa_engine_state:new(Gas, Value, Env, Stores, aefa_chain_api:new(Env), Cache),
-    ES2 = set_remote_function(Contract, Function, ES1),
+    ES2 = set_remote_function(Contract, Function, Value > 0, true, ES1),
     ES3 = aefa_engine_state:push_arguments(Arguments, ES2),
     Signature = get_function_signature(Function, ES3),
-    ES4 = check_signature_and_bind_args(Signature, ES3),
+    ES4 = check_signature_and_bind_args(length(Arguments), Signature, ES3),
     aefa_engine_state:set_caller(aeb_fate_data:make_address(maps:get(caller, Env)), ES4).
 
 check_remote(Contract, EngineState) when not ?IS_FATE_CONTRACT(Contract) ->
@@ -297,7 +310,7 @@ check_remote(Contract, EngineState) ->
             abort(reentrant_call, EngineState)
     end.
 
-set_remote_function(?FATE_CONTRACT(Pubkey), Function, ES) ->
+set_remote_function(?FATE_CONTRACT(Pubkey), Function, CheckPayable, CheckPrivate, ES) ->
     CodeCache = aefa_engine_state:code_cache(ES),
     case maps:get(Pubkey, CodeCache, void) of
         void ->
@@ -308,13 +321,25 @@ set_remote_function(?FATE_CONTRACT(Pubkey), Function, ES) ->
                     ES1 = aefa_engine_state:set_code_cache(CodeCache1, ES),
                     ES2 = aefa_engine_state:set_chain_api(APIState1, ES1),
                     ES3 = aefa_engine_state:update_for_remote_call(Pubkey, ContractCode, ES2),
-                    set_local_function(Function, ES3);
+                    check_flags_and_set_local_function(CheckPayable, CheckPrivate, Function, ES3);
                 error ->
                     abort({trying_to_call_contract, Pubkey}, ES)
             end;
         ContractCode ->
             ES1 = aefa_engine_state:update_for_remote_call(Pubkey, ContractCode, ES),
-            set_local_function(Function, ES1)
+            check_flags_and_set_local_function(CheckPayable, CheckPrivate, Function, ES1)
+    end.
+
+check_flags_and_set_local_function(false, false, Function, ES) ->
+    set_local_function(Function, ES);
+check_flags_and_set_local_function(CheckPayable, CheckPrivate, Function, ES) ->
+    case (not CheckPayable) orelse is_function_payable(Function, ES) of
+        true  ->
+            case CheckPrivate andalso is_function_private(Function, ES) of
+                false -> set_local_function(Function, ES);
+                true  -> abort({function_is_private, Function}, ES)
+            end;
+        false -> abort({function_is_not_payable, Function}, ES)
     end.
 
 set_local_function(Function, ES) ->
@@ -326,13 +351,25 @@ set_local_function(Function, ES) ->
 get_function_code(Name, ES) ->
     case maps:get(Name, aefa_engine_state:functions(ES), void) of
         void -> abort({trying_to_call_function, Name}, ES);
-        {_Signature, Code} -> Code
+        {_Attrs, _Signature, Code} -> Code
     end.
 
 get_function_signature(Name, ES) ->
     case maps:get(Name, aefa_engine_state:functions(ES), void) of
         void -> abort({trying_to_call_function, Name}, ES);
-        {Signature, _Code} -> Signature
+        {_Attrs, Signature, _Code} -> Signature
+    end.
+
+is_function_payable(Name, ES) ->
+    case maps:get(Name, aefa_engine_state:functions(ES), void) of
+        void -> abort({trying_to_call_function, Name}, ES);
+        {Attrs, _Signature, _Code} -> lists:member(payable, Attrs)
+    end.
+
+is_function_private(Name, ES) ->
+    case maps:get(Name, aefa_engine_state:functions(ES), void) of
+        void -> abort({trying_to_call_function, Name}, ES);
+        {Attrs, _Signature, _Code} -> lists:member(private, Attrs)
     end.
 
 check_return_type(ES) ->
@@ -352,12 +389,14 @@ check_return_type(RetType, TVars, ES) ->
             end
     end.
 
-check_signature_and_bind_args(Signature, ES) ->
-    {ok, Inst} = check_signature(Signature, ES),
+check_signature_and_bind_args(Arity, Signature, ES) ->
+    {ok, Inst} = check_signature(Arity, Signature, ES),
     ES1 = bind_args_from_signature(Signature, ES),
     aefa_engine_state:set_current_tvars(Inst, ES1).
 
-check_signature({ArgTypes, _RetSignature}, ES) ->
+check_signature(Arity, {ArgTypes, _RetSignature}, ES) when is_integer(Arity), length(ArgTypes) /= Arity ->
+    abort({function_arity_mismatch, Arity, length(ArgTypes)}, ES);
+check_signature(_Arity, {ArgTypes, _RetSignature}, ES) ->
     Stack = aefa_engine_state:accumulator_stack(ES),
     Args = [aefa_engine_state:accumulator(ES) | Stack],
     case check_arg_types(ArgTypes, Args) of
@@ -408,6 +447,8 @@ infer_type(X) when ?IS_FATE_MAP(X) ->
     KeyT = infer_element_type(Ks),
     ValT = infer_element_type(Vs),
     {map, KeyT, ValT};
+infer_type(?FATE_STORE_MAP(_, _)) ->
+    {map, any, any};    %% Should only happen for local calls
 infer_type(X) when ?IS_FATE_TUPLE(X) ->
     {tuple, [infer_type(Y) || Y <- ?FATE_TUPLE_ELEMENTS(X)]};
 infer_type(X) when ?IS_FATE_VARIANT(X) ->
@@ -423,7 +464,7 @@ infer_type(X) -> throw({not_a_fate_value, X}).
 infer_element_type(Xs) ->
     lists:foldl(fun intersect_types/2, any, [infer_type(X) || X <- Xs]).
 
-instantiate_type(TVars, {tvar, X})          -> maps:get(X, TVars, {tvar, X});
+instantiate_type(TVars, {tvar, X})          -> maps:get(X, TVars, any);
 instantiate_type(_TVars, T) when is_atom(T) -> T;
 instantiate_type(TVars, {list, T})          -> {list, instantiate_type(TVars, T)};
 instantiate_type(TVars, {tuple, Ts})        -> {tuple, [instantiate_type(TVars, T) || T <- Ts]};
@@ -545,13 +586,18 @@ push(V, ES) ->
 push_return_address(ES) ->
     aefa_engine_state:push_call_stack(ES).
 
-push_return_type_check({_,_CalleeRetType}, {_,CallerRetType}, CallerTVars, ES) ->
-    %% TODO: Figure out under what exact conditions the type test can be avoided.
-    %%       Obviously, with no type variables and with exactly the same type,
-    %%       the test is superfluous.
-    %% TODO: At this point we can also find out that the tail call will never
-    %%       succeed because the return types cannot match.
-    aefa_engine_state:push_return_type_check(CallerRetType, CallerTVars, ES).
+push_return_type_check({CalleeArgs, CalleeRet}, {CallerArgs, CallerRet}, CalleeTVars, ES) ->
+    CalleeSig = {tuple, [CalleeRet | CalleeArgs]},
+    CallerSig = {tuple, [CallerRet | CallerArgs]},
+
+    %% CallerTVars instantiates the type vars in CalleeSig, so we have to
+    %% unify CalleeSig and CallerSig to get the instantiation for the Caller
+    %% tvars.
+    InstCalleeSig = instantiate_type(CalleeTVars, CalleeSig),
+    case match_type(CallerSig, InstCalleeSig) of
+        false       -> abort(remote_type_mismatch, ES);
+        CallerTVars -> aefa_engine_state:push_return_type_check(CallerRet, CallerTVars, ES)
+    end.
 
 %% Push a gas cap on the call stack to limit the available gas, but keep the
 %% remaining gas around.
@@ -569,7 +615,8 @@ push_gas_cap(Gas, ES) when ?IS_FATE_INTEGER(Gas) ->
 pop_call_stack(ES) ->
     case aefa_engine_state:pop_call_stack(ES) of
         {empty, ES1} ->
-            {stop, ES1};
+            ES2 = unfold_store_maps(ES1),
+            {stop, ES2};
         {return_check, TVars, RetType, ES1} ->
             ES2 = check_return_type(RetType, TVars, ES1),
             pop_call_stack(ES2);
@@ -578,9 +625,40 @@ pop_call_stack(ES) ->
             ES3 = aefa_engine_state:set_current_tvars(TVars, ES2),
             {jump, BB, ES3};
         {remote, Contract, Function, TVars, BB, ES1} ->
-            ES2 = set_remote_function(Contract, Function, ES1),
-            ES3 = aefa_engine_state:set_current_tvars(TVars, ES2),
-            {jump, BB, ES3}
+            ES2 = unfold_store_maps(ES1),
+            ES3 = set_remote_function(Contract, Function, false, false, ES2),
+            ES4 = aefa_engine_state:set_current_tvars(TVars, ES3),
+            {jump, BB, ES4}
+    end.
+
+unfold_store_maps(ES) ->
+    {Acc, ES1} = unfold_store_maps(aefa_engine_state:accumulator(ES), ES),
+    aefa_engine_state:set_accumulator(Acc, ES1).
+
+unfold_store_maps_in_args(0, ES)     -> ES;
+unfold_store_maps_in_args(Arity, ES) ->
+    Acc   = aefa_engine_state:accumulator(ES),
+    Stack = aefa_engine_state:accumulator_stack(ES),
+    {Args, Rest} = lists:split(min(Arity, length(Stack) + 1), [Acc | Stack]),
+    {Args1, ES1} = unfold_store_maps(?MAKE_FATE_LIST(Args), ES),
+    [Acc1 | Stack1] = ?FATE_LIST_VALUE(Args1),
+    aefa_engine_state:set_accumulator(Acc1,
+        aefa_engine_state:set_accumulator_stack(Stack1 ++ Rest, ES1)).
+
+unfold_store_maps(Val, ES) ->
+    case aeb_fate_maps:has_store_maps(Val) of
+        true ->
+            Pubkey = aefa_engine_state:current_contract(ES),
+            {Store, ES1} = ensure_contract_store(Pubkey, ES),
+            Store1 = aefa_stores:cache_map_metadata(Pubkey, Store),
+            ES2    = aefa_engine_state:set_stores(Store1, ES1),
+            Unfold = fun(Id) ->
+                        {List, _Store2} = aefa_stores:store_map_to_list(Pubkey, Id, Store1),
+                        maps:from_list(List)
+                     end,
+            {aeb_fate_maps:unfold_store_maps(Unfold, Val), ES2};
+        false ->
+            {Val, ES}
     end.
 
 %% ------------------------------------------------------

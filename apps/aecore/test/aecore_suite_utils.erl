@@ -51,6 +51,7 @@
          node_name/1,
          peer_info/1,
          connect/1,
+         connect/2,
          subscribe/2,
          unsubscribe/2,
          events_since/3,
@@ -82,12 +83,21 @@
          sign_keys/1,
          meta_tx/4]).
 
+%% Mocking helpers for tests
+-export([start_mocks/2,
+         start_mock/2,
+         end_mocks/2,
+         end_mock/2]).
+
 -include_lib("kernel/include/file.hrl").
 -include_lib("common_test/include/ct.hrl").
 
 -define(OPS_BIN, "aeternity").
 -define(DEFAULT_CUSTOM_EXPECTED_MINE_RATE, 100).
 -define(DEFAULT_NODE, dev1).
+-record(mock_def, { module     :: atom()
+                  , init_fun   :: atom()
+                  , finish_fun :: atom()}).
 
 %% Keys for P2P communication
 peer_keys() ->
@@ -123,6 +133,13 @@ patron() ->
                     167,173,228,112,201,249,157,157,78,64,8,128,168,111,29,73,
                     187,68,75,98,241,26,158,187,100,187,207,235,115,254,243>>
       }.
+
+-spec known_mocks() -> #{atom() => #mock_def{}}.
+known_mocks() ->
+    #{ block_pow => #mock_def{ module     = aec_mining
+                             , init_fun   = mock_block_mining_init
+                             , finish_fun = mock_block_mining_end}
+     }.
 
 %%%=============================================================================
 %%% API
@@ -373,7 +390,6 @@ wait_for_new_block() ->
 wait_for_new_block(T) when is_integer(T), T >= 0 ->
     receive
         {gproc_ps_event, block_created, Info} ->
-            ct:log("key block created, Info=~p", [Info]),
             #{info := Block} = Info,
             {ok, Block};
         {gproc_ps_event, micro_block_created, Info} ->
@@ -476,9 +492,20 @@ node_name(N) when N == dev1; N == dev2; N == dev3 ->
     [_,H] = re:split(atom_to_list(node()), "@", [{return,list}]),
     list_to_atom("aeternity_" ++ atom_to_list(N) ++ "@" ++ H).
 
+-spec connect(atom(), list(atom()) | all_mocks) -> ok.
+connect(N, all_mocks) ->
+    Mocks = maps:keys(known_mocks()),
+    connect(N, Mocks);
+connect(N, Mocks) when is_list(Mocks) ->
+    ok = connect(N),
+    start_mocks(N, Mocks),
+    ok.
+
+-spec connect(atom()) -> ok.
 connect(N) ->
-    connect(N, 100),
-    report_node_config(N).
+    connect_(N, 100),
+    report_node_config(N),
+    ok.
 
 subscribe(N, Event) ->
     call_proxy(N, {subscribe, Event}).
@@ -590,7 +617,7 @@ delete_file(F) ->
 %%% Internal functions
 %%%=============================================================================
 
-connect(N, Timeout) when Timeout < 10000 ->
+connect_(N, Timeout) when Timeout < 10000 ->
     timer:sleep(Timeout),
     case net_kernel:hidden_connect(N) of
         true ->
@@ -599,15 +626,33 @@ connect(N, Timeout) when Timeout < 10000 ->
             true;
         false ->
             ct:log("hidden_connect(~p) -> false, retrying ...", [N]),
-            connect(N, Timeout * 2)
+            connect_(N, Timeout * 2)
     end;
-connect(N, _) ->
+connect_(N, _) ->
     ct:log("exhausted retries (~p)", [N]),
     erlang:error({could_not_connect, N}).
 
 report_node_config(N) ->
     [ct:log("~w env: ~p", [A, rpc:call(N, application, get_all_env, [A], 2000)]) ||
         A <- [aeutil, aecore, aehttp]].
+
+start_mocks(N, Mocks) ->
+    ct:log("Enabling mocks: ~p for node ~p", [Mocks, N]),
+    lists:foreach(fun(Mock) -> start_mock(N, Mock) end, Mocks).
+
+start_mock(N, Mock) ->
+    #mock_def{module = Module, init_fun = InitF} = maps:get(Mock, known_mocks()),
+    rpc:call(N, Module, InitF, [], 2000).
+
+end_mocks(N, Mocks) ->
+    lists:foreach(fun(Mock) -> end_mock(N, Mock) end, Mocks).
+
+end_mock(N, Mock) ->
+    #mock_def{module = Module, finish_fun = FinishF} = maps:get(Mock, known_mocks()),
+    rpc:call(N, Module, FinishF, [], 2000).
+
+end_all_mocks(N) ->
+    rpc:call(N, meck, unload, [], 2000).
 
 await_aehttp(N) ->
     subscribe(N, app_started),

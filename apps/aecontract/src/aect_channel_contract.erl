@@ -73,7 +73,7 @@ run_new(ContractPubKey, Call, CallData0, Trees0, OnChainTrees,
 
 prepare_init_call(VmVersion, Contract, Trees0) when ?IS_FATE_SOPHIA(VmVersion) ->
     %% Initialize the store before calling INIT
-    Store = aect_contracts_store:new(),
+    Store = aefa_stores:initial_contract_store(),
     Contract1 = aect_contracts:set_state(Store, Contract),
     ContractsTree0 = aec_trees:contracts(Trees0),
     ContractsTree1 = aect_state_tree:enter_contract(Contract1, ContractsTree0),

@@ -124,11 +124,12 @@ add_poi([{account, PK} | What], Trees, PoI) ->
 
 
 payload(CId, S = #{round := Rnd, sign := Sigs}, S0) ->
+    %% use only aesc_offchain_tx without updates since GAs are introduced in
+    %% Fortuna
     {ok, OffTx} = aesc_offchain_tx:new(
                       #{ channel_id => aeser_id:create(channel, CId)
                        , state_hash => state_hash(S)
-                       , round      => Rnd + 1
-                       , updates    => [] }),
+                       , round      => Rnd + 1}),
     SOffTx = sign_tx(aetx_sign:new(OffTx, []), Sigs, S0),
     aetx_sign:serialize_to_binary(SOffTx).
 
@@ -176,20 +177,15 @@ make_calldata(Name, Fun, Args) when length(Name) < 20 ->
     {ok, Src} = read_contract(Name),
     make_calldata(Src, Fun, Args);
 make_calldata(Code, Fun, Args) ->
-    Backend =
-        case aega_SUITE:abi_version() of
-            ?ABI_AEVM_SOPHIA_1 -> aevm;
-            ?ABI_FATE_SOPHIA_1 -> fate
-        end,
-    {ok, Calldata} = aeso_compiler:create_calldata(Code, Fun, Args, [{backend, Backend}]),
-    Calldata.
+    %% Use the memoized version to not waste 500 ms each time we make a meta tx with the same nonce -.-
+    {ok, CallData} = aect_test_utils:encode_call_data(aega_SUITE:sophia_version(), Code, Fun, Args),
+    CallData.
 
 get_contract(Name) ->
     SophiaVersion = aega_SUITE:sophia_version(),
     get_contract(SophiaVersion, Name).
 
-get_contract(SophiaVersion, Name0) ->
-    Name = filename:join("contracts", Name0),
+get_contract(SophiaVersion, Name) ->
     {ok, Serial} = aect_test_utils:compile_contract(SophiaVersion, Name),
     {ok, BinSrc} = aect_test_utils:read_contract(SophiaVersion, Name),
     {ok, #{ bytecode => Serial, map => aect_sophia:deserialize(Serial),

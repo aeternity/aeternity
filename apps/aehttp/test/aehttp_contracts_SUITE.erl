@@ -46,7 +46,8 @@
          spend_test_contract/1,
          stack_contract/1,
          remote_gas_test_contract/1,
-         events_contract/1
+         events_contract/1,
+         payable_contract/1
         ]).
 
 -define(NODE, dev1).
@@ -54,6 +55,13 @@
 -define(DEFAULT_GAS_PRICE, aec_test_utils:min_gas_price()).
 
 -define(MAX_MINED_BLOCKS, 20).
+
+-define(skipRest(Res, Reason),
+    case Res of
+        true  -> throw({skip, {skip_rest, Reason}});
+        false -> ok
+    end).
+
 
 all() ->
     [ {group, aevm}
@@ -77,6 +85,7 @@ all() ->
         , erc20_token_contract
         , remote_gas_test_contract
         , events_contract
+        , payable_contract
         ]).
 
 groups() ->
@@ -104,7 +113,7 @@ init_per_group(VM, Config) when VM == aevm; VM == fate ->
 init_per_vm(Config) ->
     NodeName = aecore_suite_utils:node_name(?NODE),
     aecore_suite_utils:start_node(?NODE, Config),
-    aecore_suite_utils:connect(NodeName),
+    aecore_suite_utils:connect(NodeName, [block_pow]),
 
     ToMine = max(0, aecore_suite_utils:latest_fork_height()),
     ct:pal("ToMine ~p\n", [ToMine]),
@@ -1154,7 +1163,7 @@ remote_gas_test_contract(Config) ->
     call_get(APub, APriv, EncC2Pub, Contract, 1),
     force_fun_calls(Node),
     Balance2 = get_balance(APub),
-    ?assertMatchVM(1610855, 1600034, (Balance1 - Balance2) div ?DEFAULT_GAS_PRICE),
+    ?assertMatchVM(1610855, 1600196, (Balance1 - Balance2) div ?DEFAULT_GAS_PRICE),
 
     %% Test remote call with limited gas (3) that fails (out of gas).
     [] = call_func(APub, APriv, EncC1Pub, Contract, "call", [EncC2Pub, "2", "3"], error),
@@ -1172,9 +1181,46 @@ remote_gas_test_contract(Config) ->
     [] = call_func(APub, APriv, EncC1Pub, Contract, "call", [ZeroContract, "2", "1"], error),
     force_fun_calls(Node),
     Balance5 = get_balance(APub),
-    ?assertEqual(900000 * ?DEFAULT_GAS_PRICE, Balance4 - Balance5),
+    ?assertMatchVM(900000, 800017, (Balance4 - Balance5) div ?DEFAULT_GAS_PRICE),
 
     ok.
+
+payable_contract(Config) ->
+    ?skipRest(aect_test_utils:vm_version() < ?VM_AEVM_SOPHIA_4, payable_not_pre_lima),
+    %% Set an account.
+    Node = proplists:get_value(node_name, Config),
+    %% Get account information.
+    #{acc_a := #{pub_key := APub, priv_key := APriv},
+      acc_b := #{pub_key := BPub, priv_key := BPriv}} = proplists:get_value(accounts, Config),
+
+    init_fun_calls(),
+    Payable = compile_test_contract("payable"),
+    NonPayable = compile_test_contract("non_payable"),
+
+    {_EncCPubP, DecP, _} = create_contract(Node, APub, APriv, Payable, []),
+    {_EncCPubNP, DecNP, _} = create_contract(Node, APub, APriv, NonPayable, []),
+
+    force_fun_calls(Node),
+
+    EAccP = aeser_api_encoder:encode(account_pubkey, DecP),
+    EAccNP = aeser_api_encoder:encode(account_pubkey, DecNP),
+    EAPub = aeser_api_encoder:encode(account_pubkey, APub),
+    EBPub = aeser_api_encoder:encode(account_pubkey, BPub),
+
+    {ok, 200, #{<<"tx">> := SpendTx1}} = create_spend_tx(EAPub, EAccP, 10000, 20000 * ?DEFAULT_GAS_PRICE, <<"good">>),
+    {ok, 200, #{<<"tx">> := SpendTx2}} = create_spend_tx(EBPub, EAccNP, 10000, 20000 * ?DEFAULT_GAS_PRICE, <<"bad">>),
+
+    #{tx_hash := TxHash1} = sign_and_post_tx(APriv, SpendTx1),
+    #{tx_hash := TxHash2} = sign_and_post_tx(BPriv, SpendTx2),
+
+    %% If both are mineable they _will_ end up in the same block.
+    wait_for_tx_hash_on_chain(Node, TxHash1),
+
+    ?assert(tx_in_chain(TxHash1)),
+    ?assert(not tx_in_chain(TxHash2)),
+
+    ok.
+
 
 %% Internal access functions.
 

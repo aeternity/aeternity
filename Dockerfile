@@ -33,13 +33,9 @@ RUN mkdir -p /home/aeternity/node/data/mnesia \
 
 WORKDIR /home/aeternity/node
 
-# Erl handle SIGQUIT instead of the default SIGINT
-STOPSIGNAL SIGQUIT
-
 EXPOSE 3013 3014 3015 3113
 
-COPY ./docker/entrypoint.sh /docker-entrypoint.sh
 COPY ./docker/healthcheck.sh /healthcheck.sh
-
-ENTRYPOINT ["/docker-entrypoint.sh"]
 HEALTHCHECK --timeout=3s CMD /healthcheck.sh
+
+CMD ["bin/aeternity", "console", "-noinput"]

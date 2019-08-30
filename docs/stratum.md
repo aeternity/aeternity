@@ -1,8 +1,7 @@
-AESTRATUM application (alpha)
-==========
-
 Introduction
 ==========
+
+Please note that this application is in **alpha** state.
 
 By setting the configuration value `stratum > enabled` to `true`, the node starts Aestratum app.
 Aestratum app is an implementation of server side part of the stratum protocol suited for Aeternity network [https://github.com/aeternity/protocol/blob/master/STRATUM.md].
@@ -79,7 +78,7 @@ It is advised to backup this keypair, as it may hold some tokens received in the
 Do not forget to put your accounts in `stratum > reward > beneficiaries`.
 
 
-CONNECTION section
+Connection
 ==========
 
 `host` - (optional) - used only for identification of the pool (default "localhost")
@@ -93,7 +92,7 @@ CONNECTION section
 `transport` - (optional) - what mode of transport for data to use (default "tcp", to be tested: "ssl")
 
 
-SESSION section
+Session
 ==========
 
 `extra_nonce_bytes` - (optional) - nonce (a number) has 8 bytes, and is composed of two parts - extra nonce and miner nonce.
@@ -137,7 +136,7 @@ You should only change this value if you plan to deploy your own network, becaus
 (default 15)
 
 
-REWARD section
+Reward
 ==========
 
 `reward_last_rounds` - (optional) - denoted how many epochs between keyblocks are rewarded out of the received mining reward. Higher number of epochs would cause that the mining reward will be distributed to more shares, but each partial reward will be smaller. Higher number incentivizes loyalty among miners, by raising a chance of rewarding miners who contributed shares for a longer period of time.

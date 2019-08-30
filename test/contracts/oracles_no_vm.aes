@@ -9,11 +9,11 @@ contract Oracles =
   type oracle_id = oracle(query_t, answer_t)
   type query_id  = oracle_query(query_t, answer_t)
 
-  stateful entrypoint createQuery(o    : oracle_id,
-                       q    : query_t,
-                       qfee : fee,
-                       qttl : ttl,
-                       rttl : ttl) : query_id =
+  stateful payable entrypoint createQuery(o    : oracle_id,
+                                          q    : query_t,
+                                          qfee : fee,
+                                          qttl : ttl,
+                                          rttl : ttl) : query_id =
     require(qfee =< Call.value, "insufficient value for qfee")
     Oracle.query(o, q, qfee, qttl, rttl)
 

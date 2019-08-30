@@ -12,7 +12,7 @@ contract DutchAuction =
       dec    = decrease,
       sold   = false }
 
-  stateful entrypoint bid() =
+  stateful payable entrypoint bid() =
     require( !(state.sold), "sold")
     let price =
       state.amount - (Chain.block_height - state.height) * state.dec

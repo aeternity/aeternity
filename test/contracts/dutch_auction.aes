@@ -27,7 +27,7 @@ contract DutchAuction =
   // -- API
 
   // We are the buyer... interesting case to buy for someone else and keep 10%
-  stateful entrypoint bid() =
+  stateful payable entrypoint bid() =
     require( !(state.sold), "sold")
     let cost =
       state.start_amount - (Chain.block_height - state.start_height) * state.dec
