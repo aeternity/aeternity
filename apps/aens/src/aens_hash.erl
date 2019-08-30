@@ -60,7 +60,7 @@ name_hash(NameAscii) ->
 
 -spec pre_lima_commitment_hash(binary(), integer()) -> commitment_hash().
 pre_lima_commitment_hash(NameAscii, Salt) ->
-    NameHash = name_hash(NameAscii),
+    NameHash = pre_lima_name_hash(NameAscii),
     SaltBin = int_to_bin(Salt),
     hash(<<NameHash/binary, SaltBin/binary>>).
 
