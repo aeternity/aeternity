@@ -33,6 +33,8 @@ Changelog:
   affect the offchain state trees. This is an incompatible change in the serialization of offchain
   updates, but old offchain updates can still be deserialized. When creating a channel with a party
   running an older node version, add `version_offchain_update=1` to the channel params.
+  * Name preclaims are no longer allowed to use 0 as Salt value
+  * New name hash computation
 
 The node is able to start from a database produced by v4.* releases. For the rest, this release is not backward compatible with v4.* releases.
 
