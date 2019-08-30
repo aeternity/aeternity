@@ -2712,7 +2712,7 @@ fp_use_onchain_enviroment(Cfg) ->
         fun(<<AddressInt:32/unit:8>> = Address) ->
             ?IF_AEVM(AddressInt, aeb_fate_data:make_address(Address))
         end,
-    ExpBeneficiary = EncAddress(Beneficiary), 
+    ExpBeneficiary = EncAddress(Beneficiary),
 
     Height2 = Height1 + LockPeriod + 1,
     Height3 = Height2 + LockPeriod + 1,
