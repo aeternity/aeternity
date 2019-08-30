@@ -42,11 +42,12 @@
 %%%===================================================================
 
 all() ->
-    [{group, all_tests}].
+    [{group, transactions},
+     {group, auction},
+     {group, no_auction_long_names}].
 
 groups() ->
     [
-     {all_tests, [sequence], [{group, transactions}]},
      {transactions, [sequence],
       [prune_preclaim,
        prune_claim,
@@ -63,18 +64,44 @@ groups() ->
        transfer_negative,
        revoke,
        revoke_negative,
-       registrar_change]}
+       registrar_change]},
+     {no_auction_long_names,
+      [claim,
+       claim_locked_coins_holder_gets_locked_fee,
+       claim_negative,
+       claim_race_negative]},
+     {auction,
+      [prune_preclaim,
+       prune_claim,
+       preclaim,
+       claim,
+       claim_locked_coins_holder_gets_locked_fee,
+       claim_race_negative]}
     ].
 
 -define(NAME, <<"詹姆斯詹姆斯"/utf8>>).
 -define(PRE_CLAIM_HEIGHT, 1).
 
-init_per_group(_Group, Cfg) ->
+init_per_group(transactions, Cfg) ->
+    %% Disable name auction
+    meck:expect(aec_governance, name_claim_bid_timeout, fun(_, _) -> 0 end),
     %% dependening on how we call 'make' we get different protocols
     [{protocol, aec_hard_forks:protocol_effective_at_height(1)},
-     {name, ?NAME} | Cfg].
+     {name, ?NAME} | Cfg];
+init_per_group(no_auction_long_names, Cfg) ->
+    Protocol = aec_hard_forks:protocol_effective_at_height(1),
+    NewCfg = [{protocol, Protocol}, {name, <<"ascii-name-of-32-characters-long">>} | Cfg];
+init_per_group(_, Cfg) ->
+    Protocol = aec_hard_forks:protocol_effective_at_height(1),
+    NewCfg = [{protocol, Protocol}, {name, ?NAME} | Cfg],
+    if Protocol < ?LIMA_PROTOCOL_VSN -> {skip, no_auction_before_lima};
+       true -> {skip, auction_not_yet_implemented}
+    end.
 
-end_per_group(_Grp, Cfg) ->
+end_per_group(transactions, Cfg) ->
+    meck:unload(aec_governance),
+    Cfg;
+end_per_group(_, Cfg) ->
     Cfg.
 
 %%%===================================================================
