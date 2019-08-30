@@ -179,7 +179,9 @@ init_per_suite(Config) ->
                    #{<<"persist">> => true,
                      <<"hard_forks">> => Forks},
                <<"mining">> =>
-                   #{<<"micro_block_cycle">> => 1}},
+                   #{<<"micro_block_cycle">> => 1,
+                     %% disable name claim auction
+                     <<"name_claim_bid_timeout">> => 0}},
     {ok, StartedApps} = application:ensure_all_started(gproc),
     Config1 = aecore_suite_utils:init_per_suite([?NODE], DefCfg, [{symlink_name, "latest.http_sc"}, {test_module, ?MODULE}] ++ Config),
     start_node([ {nodes, [aecore_suite_utils:node_tuple(?NODE)]}
