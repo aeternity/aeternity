@@ -507,6 +507,12 @@ init_per_testcase(fate_environment, Config) ->
                         aeb_fate_data:make_hash(<<N:256>>)
                 end),
     init_per_testcase_common(fate_environment, Config);
+init_per_testcase(TC, Config) when TC == sophia_aens_resolve;
+                                   TC == sophia_signatures_aens;
+                                   TC == sophia_aens_transactions ->
+    %% Disable name auction
+    meck:expect(aec_governance, name_claim_bid_timeout, fun(_, _) -> 0 end),
+    init_per_testcase_common(TC, Config);
 init_per_testcase(TC, Config) ->
     init_per_testcase_common(TC, Config).
 
@@ -538,6 +544,11 @@ init_per_testcase_common(TC, Config) ->
 
 end_per_testcase(fate_environment, _Config) ->
     meck:unload(aefa_chain_api),
+    ok;
+end_per_testcase(TC, Cfg) when TC == sophia_aens_resolve;
+                               TC == sophia_signatures_aens;
+                               TC == sophia_aens_transactions ->
+    meck:unload(aec_governance),
     ok;
 end_per_testcase(_TC,_Config) ->
     ok.

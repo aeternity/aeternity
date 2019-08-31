@@ -7,6 +7,9 @@
 
 %% common_test exports
 -export([ all/0
+        , groups/0
+        , init_per_group/2
+        , end_per_group/2
         ]).
 
 %% test case exports
@@ -32,11 +35,22 @@
 %%%===================================================================
 
 all() ->
+    [ {group, no_auction} ].
+
+groups() ->
+   [{no_auction,
     [ spend_to_name
     , spend_to_name_when_multiple_pointer_entries
     , transfer_name_to_named_account
     , transfer_name_to_named_account_when_multiple_pointer_entries
-    ].
+    ]}].
+
+init_per_group(no_auction, Cfg) ->
+    application:set_env(aecore, name_claim_bid_timeout, 0),
+    Cfg.
+
+end_per_group(_, Cfg) ->
+    Cfg.
 
 
 %%%===================================================================
