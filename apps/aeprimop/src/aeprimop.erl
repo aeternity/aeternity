@@ -39,7 +39,7 @@
 %% Direct op API (mainly for FATE).
 -export([ force_inc_account_nonce_op/2
         , lock_amount_op/2
-        , name_claim_op/6
+        , name_claim_op/5
         , name_preclaim_op/3
         , name_revoke_op/3
         , name_transfer_op/4
@@ -247,11 +247,10 @@ name_preclaim_tx_instructions(AccountPubkey, CommitmentHash, DeltaTTL,
                                  non_neg_integer(), fee(), nonce()) -> [op()].
 name_claim_tx_instructions(AccountPubkey, PlainName, NameSalt, NameFee, Fee, Nonce) ->
     PreclaimDelta = aec_governance:name_claim_preclaim_delta(),
-    DeltaTTL = aec_governance:name_claim_max_expiration(),
     [ inc_account_nonce_op(AccountPubkey, Nonce)
     , spend_fee_op(AccountPubkey, Fee)
     , lock_amount_op(AccountPubkey, NameFee)
-    , name_claim_op(AccountPubkey, PlainName, NameSalt, NameFee, DeltaTTL, PreclaimDelta)
+    , name_claim_op(AccountPubkey, PlainName, NameSalt, NameFee, PreclaimDelta)
     ].
 
 -spec name_revoke_tx_instructions(pubkey(), hash(), fee(), nonce()) -> [op()].
@@ -728,16 +727,15 @@ name_preclaim({AccountPubkey, CommitmentHash, DeltaTTL}, S) ->
 
 %%%-------------------------------------------------------------------
 
-name_claim_op(AccountPubkey, PlainName, NameSalt, NameFee, DeltaTTL, PreclaimDelta
+name_claim_op(AccountPubkey, PlainName, NameSalt, NameFee, PreclaimDelta
              ) when ?IS_HASH(AccountPubkey),
                     is_binary(PlainName),
                     ?IS_NON_NEG_INTEGER(NameSalt),
                     ?IS_NON_NEG_INTEGER(NameFee),
-                    ?IS_NON_NEG_INTEGER(DeltaTTL),
                     ?IS_NON_NEG_INTEGER(PreclaimDelta) ->
-    {name_claim, {AccountPubkey, PlainName, NameSalt, NameFee, DeltaTTL, PreclaimDelta}}.
+    {name_claim, {AccountPubkey, PlainName, NameSalt, NameFee, PreclaimDelta}}.
 
-name_claim({AccountPubkey, PlainName, NameSalt, NameFee, DeltaTTL, PreclaimDelta}, S) ->
+name_claim({AccountPubkey, PlainName, NameSalt, NameFee, PreclaimDelta}, S) ->
     NameAscii = name_to_ascii(PlainName),
     NameRegistrar = name_registrar(PlainName),
     NameHash = aens_hash:name_hash(NameAscii),
@@ -747,15 +745,20 @@ name_claim({AccountPubkey, PlainName, NameSalt, NameFee, DeltaTTL, PreclaimDelta
     case aec_governance:name_claim_bid_timeout(NameAscii, Protocol) of
         0 ->
             %% No auction for this name, preclaim delta suffices
+            %% For clarity DeltaTTL for name computed here
+            DeltaTTL = aec_governance:name_claim_max_expiration(),
             {Commitment, S1} = get_commitment(CommitmentHash, name_not_preclaimed, S),
             assert_claim_after_preclaim({AccountPubkey, Commitment, NameAscii, NameRegistrar, NameFee, PreclaimDelta}, S1),
             Name = aens_names:new(NameHash, AccountPubkey, S1#state.height + DeltaTTL),
             S2 = delete_x(commitment, CommitmentHash, S1),
             put_name(Name, S2);
         Timeout when NameSalt == 0  ->
-            %% Auction should be running, new bid
+            %% Auction should be running, new bid comes in
             {Auction, S1} = get_name_auction(AuctionHash, name_not_in_auction, S),
-            runtime_error(not_yet_implemented);
+            assert_valid_overbid(Protocol, NameAscii, NameFee, aens_auctions:name_fee(Auction)),
+            NewAuction = aens_auctions:new(AuctionHash, AccountPubkey, NameFee, Timeout, S1#state.height),
+            S2 = delete_x(name_auction, AuctionHash, S1),
+            put_name_auction(NewAuction, S2);
         Timeout when NameSalt =/= 0 ->
             %% This is the first claim that starts an auction
             assert_not_name_auction(AuctionHash, S),
@@ -1675,11 +1678,24 @@ assert_not_name(NameHash, S) ->
         none   -> ok
     end.
 
-assert_not_name_auction(NameHash, S) ->
-    case find_name_auction(NameHash, S) of
+assert_not_name_auction(AuctionHash, S) ->
+    case find_name_auction(AuctionHash, S) of
         {_, _} -> runtime_error(name_already_in_auction);
         none   -> ok
     end.
+
+assert_valid_overbid(Protocol, NameAscii, NewNameFee, OldNameFee) ->
+    Progression = aec_governance:name_claim_bid_increment(),
+    %% Stay within integer computations New bid must be Progression % higher
+    %% than previous bid
+    case (NewNameFee - OldNameFee) * 100 >= OldNameFee * Progression of
+        true ->
+            ok;
+        false ->
+            runtime_error(name_fee_increment_too_low)
+    end.
+
+
 
 assert_name_registrar(Registrar, Height) ->
     ProtoVsn = aec_hard_forks:protocol_effective_at_height(Height),

@@ -638,8 +638,7 @@ aens_claim(Pubkey, NameBin, SaltInt, NameFee, #state{} = S) when ?IS_ONCHAIN(S) 
     PreclaimDelta = aec_governance:name_claim_preclaim_delta(),
     DeltaTTL = aec_governance:name_claim_max_expiration(),
     Instructions = [ aeprimop:lock_amount_op(Pubkey, NameFee)
-                   , aeprimop:name_claim_op(Pubkey, NameBin, SaltInt, NameFee,
-                                            DeltaTTL, PreclaimDelta)
+                   , aeprimop:name_claim_op(Pubkey, NameBin, SaltInt, NameFee, PreclaimDelta)
                    ],
     eval_primops(Instructions, S, size_gas([NameBin])).
 
