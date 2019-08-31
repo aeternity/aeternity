@@ -762,6 +762,7 @@ name_claim({AccountPubkey, PlainName, NameSalt, NameFee, PreclaimDelta}, S) ->
             {Auction, S1} = get_name_auction(AuctionHash, name_not_in_auction, S),
             PreviousBidderPubkey = aens_auctions:bidder_pubkey(Auction),
             PreviousBid = aens_auctions:name_fee(Auction),
+            assert_name_bid_fee(NameAscii, NameFee, S#state.height), %% just in case, consensus may have changed
             assert_valid_overbid(Protocol, NameAscii, NameFee, aens_auctions:name_fee(Auction)),
             NewAuction = aens_auctions:new(AuctionHash, AccountPubkey, NameFee, Timeout, S1#state.height),
             S2 = delete_x(name_auction, AuctionHash, S1),
