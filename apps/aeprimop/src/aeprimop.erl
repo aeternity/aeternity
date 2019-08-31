@@ -743,12 +743,13 @@ name_claim({AccountPubkey, PlainName, NameSalt, NameFee, PreclaimDelta}, S) ->
     NameRegistrar = name_registrar(PlainName),
     NameHash = aens_hash:name_hash(NameAscii),
     AuctionHash = aens_hash:to_auction_hash(NameHash),
-    CommitmentHash = aens_hash:commitment_hash(NameAscii, NameSalt),
+    %% Cannot compute CommitmentHash before we know whether in auction
     Protocol = aec_hard_forks:protocol_effective_at_height(S#state.height),
     case aec_governance:name_claim_bid_timeout(NameAscii, Protocol) of
         0 ->
             %% No auction for this name, preclaim delta suffices
             %% For clarity DeltaTTL for name computed here
+            CommitmentHash = aens_hash:commitment_hash(NameAscii, NameSalt),
             DeltaTTL = aec_governance:name_claim_max_expiration(),
             {Commitment, S1} = get_commitment(CommitmentHash, name_not_preclaimed, S),
             assert_claim_after_preclaim({AccountPubkey, Commitment, NameAscii, NameRegistrar, NameFee, PreclaimDelta}, S1),
@@ -770,6 +771,7 @@ name_claim({AccountPubkey, PlainName, NameSalt, NameFee, PreclaimDelta}, S) ->
         Timeout when NameSalt =/= 0 ->
             %% This is the first claim that starts an auction
             assert_not_name_auction(AuctionHash, S),
+            CommitmentHash = aens_hash:commitment_hash(NameAscii, NameSalt),
             {Commitment, S1} = get_commitment(CommitmentHash, name_not_preclaimed, S),
             assert_claim_after_preclaim({AccountPubkey, Commitment, NameAscii, NameRegistrar, NameFee, PreclaimDelta}, S1),
 

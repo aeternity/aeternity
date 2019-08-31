@@ -421,12 +421,20 @@ claim_race_negative_auction(Cfg) ->
     {PubKey2, Name2, NameSalt2, S2} = preclaim([{state, S1}, {name, ?config(name, Cfg)}]),
     Trees = aens_test_utils:trees(S2),
     Height = ?PRE_CLAIM_HEIGHT + 1,
+    Env = aetx_env:tx_env(Height),
 
     %% Test second claim via preclaim of claim in auction
     TxSpec1 = aens_test_utils:claim_tx_spec(PubKey2, Name2, NameSalt2, namefee(Name2, Cfg), S2),
     {ok, Tx1} = aens_claim_tx:new(TxSpec1),
-    Env = aetx_env:tx_env(Height),
-    {error, name_already_in_auction} = aetx:process(Tx1, Trees, Env).
+    {error, name_already_in_auction} = aetx:process(Tx1, Trees, Env),
+
+    %% Test second claim via auction
+    TxSpec2 = aens_test_utils:claim_tx_spec(PubKey2, Name2, 0, namefee(Name2, Cfg), S2),
+    {ok, Tx2} = aens_claim_tx:new(TxSpec2),
+    {error, name_fee_increment_too_low} = aetx:process(Tx2, Trees, Env),
+
+
+    ok.
 
 %%%===================================================================
 %%% Update
