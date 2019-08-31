@@ -426,12 +426,15 @@ init_per_group(fork_awareness, Config) ->
 init_per_group(VM, Config) when VM == aevm; VM == fate ->
     aect_test_utils:init_per_group(VM, Config);
 init_per_group(_Group, Config) ->
+    %% Disable name auction for these groups
+    application:set_env(aecore, name_claim_bid_timeout, 0),
     Config.
 
 end_per_group(fork_awareness, _Config) ->
     meck:unload(aec_hard_forks),
     ok;
 end_per_group(_Group, _Config) ->
+    application:unset_env(aecore, name_claim_bid_timeout),
     ok.
 
 init_per_testcase(_, Config) ->
