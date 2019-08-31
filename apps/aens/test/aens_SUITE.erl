@@ -21,6 +21,7 @@
          preclaim_negative/1,
          claim/1,
          claim_auction/1,
+         ongoing_auction/1,
          claim_locked_coins_holder_gets_locked_fee/1,
          claim_negative/1,
          claim_empty_name/1,
@@ -78,6 +79,7 @@ groups() ->
        prune_claim_auction,
        preclaim,
        claim_auction,
+       ongoing_auction,
        claim_locked_coins_holder_gets_locked_fee,
        claim_race_negative_auction]}
     ].
@@ -93,7 +95,7 @@ init_per_group(transactions, Cfg) ->
      {name, ?NAME} | Cfg];
 init_per_group(no_auction_long_names, Cfg) ->
     Protocol = aec_hard_forks:protocol_effective_at_height(1),
-    NewCfg = [{protocol, Protocol}, {name, <<"ascii-name-of-32-characters-long">>} | Cfg];
+    [{protocol, Protocol}, {name, <<"ascii-name-of-32-characters-long">>} | Cfg];
 init_per_group(_, Cfg) ->
     Protocol = aec_hard_forks:protocol_effective_at_height(1),
     %% One day auction open with cheapest possible name (31 char)
@@ -232,7 +234,6 @@ claim_auction(Cfg) ->
 
     %% Create Claim tx and apply it on trees
     TxSpec = aens_test_utils:claim_tx_spec(PubKey, Name, NameSalt, namefee(NameAscii, Cfg), S1),
-    ct:pal("TxSpec ~p\n", [TxSpec]),
     {ok, Tx} = aens_claim_tx:new(TxSpec),
     SignedTx = aec_test_utils:sign_tx(Tx, PrivKey),
     Env      = aetx_env:tx_env(Height),
@@ -251,6 +252,44 @@ claim_auction(Cfg) ->
     NHash   = aens_hash:from_auction_hash(aens_auctions:hash(A)),
     PubKey  = aens_auctions:bidder_pubkey(A),
     {PubKey, NHash, S2}.
+
+ongoing_auction(Cfg) ->
+    {PubKey2, Name, _Salt, S0} = preclaim(Cfg),
+
+    {PubKey, NHash, S1} = claim_auction([{state, S0} | Cfg]),
+    Trees = aens_test_utils:trees(S1),
+    Height = ?PRE_CLAIM_HEIGHT + 1,
+    %% PrivKey = aens_test_utils:priv_key(PubKey, S1),
+    PrivKey2 = aens_test_utils:priv_key(PubKey2, S1),
+    {value, Account1} = aec_accounts_trees:lookup(PubKey, aec_trees:accounts(Trees)),
+    BalanceWithoutNameFee  = aec_accounts:balance(Account1),
+
+    %% Bidding over via Claim tx and apply it on trees
+    TxSpec = aens_test_utils:claim_tx_spec(PubKey2, Name, 0, 2*namefee(Name, Cfg), S1),
+    ct:pal("TxSpec ~p\n", [TxSpec]),
+    {ok, Tx} = aens_claim_tx:new(TxSpec),
+    SignedTx = aec_test_utils:sign_tx(Tx, PrivKey2),
+    Env      = aetx_env:tx_env(Height),
+
+    {ok, [SignedTx], Trees1, _} =
+        aec_block_micro_candidate:apply_block_txs([SignedTx], Trees, Env),
+    S2 = aens_test_utils:set_trees(Trees1, S1),
+
+    %% Check commitment removed and name entry not present and auction entry added
+    Trees2 = aens_test_utils:trees(S2),
+    NTrees = aec_trees:ns(Trees2),
+    none   = aens_state_tree:lookup_name(NHash, NTrees),
+    {value, A} = aens_state_tree:lookup_name_auction(aens_hash:to_auction_hash(NHash), NTrees),
+    ct:pal("Auction ongoing ~p", [A]),
+    NHash   = aens_hash:from_auction_hash(aens_auctions:hash(A)),
+    PubKey2  = aens_auctions:bidder_pubkey(A),
+
+    %% First bidder gets fee returned
+    {value, NewAccount1} = aec_accounts_trees:lookup(PubKey, aec_trees:accounts(Trees2)),
+    BalanceWithoutNameFee = aec_accounts:balance(NewAccount1) - namefee(Name, Cfg),
+
+    {PubKey2, NHash, S2}.
+
 
 claim_locked_coins_holder_gets_locked_fee(Cfg) ->
     {PubKey, Name, NameSalt, S1} = preclaim(Cfg),
@@ -428,12 +467,16 @@ claim_race_negative_auction(Cfg) ->
     {ok, Tx1} = aens_claim_tx:new(TxSpec1),
     {error, name_already_in_auction} = aetx:process(Tx1, Trees, Env),
 
-    %% Test second claim via auction
+    %% Test second claim via auction no increased fee
     TxSpec2 = aens_test_utils:claim_tx_spec(PubKey2, Name2, 0, namefee(Name2, Cfg), S2),
     {ok, Tx2} = aens_claim_tx:new(TxSpec2),
     {error, name_fee_increment_too_low} = aetx:process(Tx2, Trees, Env),
 
-
+    %% Test second claim via auction increased, but not enough increased
+    NameFee = namefee(Name2, Cfg) + (namefee(Name2, Cfg) * aec_governance:name_claim_bid_increment() div 100),
+    TxSpec3 = aens_test_utils:claim_tx_spec(PubKey2, Name2, 0, NameFee - 1, S2),
+    {ok, Tx3} = aens_claim_tx:new(TxSpec3),
+    {error, name_fee_increment_too_low} = aetx:process(Tx3, Trees, Env),
     ok.
 
 %%%===================================================================
