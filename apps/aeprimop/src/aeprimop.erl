@@ -754,6 +754,7 @@ name_claim({AccountPubkey, PlainName, NameSalt, NameFee, PreclaimDelta}, S) ->
             put_name(Name, S2);
         Timeout when NameSalt == 0  ->
             %% Auction should be running, new bid comes in
+            assert_not_name(NameHash, S), %% just to be sure
             {Auction, S1} = get_name_auction(AuctionHash, name_not_in_auction, S),
             assert_valid_overbid(Protocol, NameAscii, NameFee, aens_auctions:name_fee(Auction)),
             NewAuction = aens_auctions:new(AuctionHash, AccountPubkey, NameFee, Timeout, S1#state.height),
