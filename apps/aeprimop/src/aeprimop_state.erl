@@ -242,6 +242,11 @@ delete_x(channel, Hash, #state{trees = Trees} = S) ->
     CTree  = aec_trees:channels(Trees),
     CTree1 = aesc_state_tree:delete(Hash, CTree),
     S1#state{trees = aec_trees:set_channels(Trees, CTree1)};
+delete_x(name_auction, Hash, #state{trees = Trees} = S) ->
+    S1 = cache_drop(name_auction, Hash, S),
+    NTree  = aec_trees:ns(Trees),
+    NTree1 = aens_state_tree:delete_name_auction(Hash, NTree),
+    S1#state{trees = aec_trees:set_ns(Trees, NTree1)};
 delete_x(commitment, Hash, #state{trees = Trees} = S) ->
     S1 = cache_drop(commitment, Hash, S),
     NTree  = aec_trees:ns(Trees),
@@ -308,6 +313,8 @@ cache_find(Tag, Key, #state{cache = C} = S) when ?IS_TAG(Tag) ->
 
 cache_drop(channel, Hash, #state{cache = C} = S) ->
     S#state{cache = dict:erase({channel, Hash}, C)};
+cache_drop(name_auction, Hash, #state{cache = C} = S) ->
+    S#state{cache = dict:erase({name_auction, Hash}, C)};
 cache_drop(commitment, Hash, #state{cache = C} = S) ->
     S#state{cache = dict:erase({commitment, Hash}, C)}.
 

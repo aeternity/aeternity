@@ -117,6 +117,10 @@ run_elapsed([{aens_names, Id, Serialized}|Expired], Tree, Height) ->
     Name = aens_names:deserialize(Id, Serialized),
     {ok, Tree1} = run_elapsed_name(Name, Tree, Height),
     run_elapsed(Expired, Tree1, Height);
+run_elapsed([{aens_auctions, Id, Serialized}|Expired], Tree, Height) ->
+    Auction = aens_auctions:deserialize(Id, Serialized),
+    {ok, Tree1} = run_elapsed_name_auction(Auction, Tree, Height),
+    run_elapsed(Expired, Tree1, Height);
 run_elapsed([{aens_commitments, Id, Serialized}|Expired], Tree, Height) ->
     Commitment = aens_commitments:deserialize(Id, Serialized),
     {ok, Tree1} = run_elapsed_commitment(Commitment, Tree),
@@ -291,6 +295,24 @@ run_elapsed_name(Name, NamesTree0, NextBlockHeight) ->
         true when Status =:= revoked ->
             NameHash = aens_names:hash(Name),
             {ok, aens_state_tree:delete_name(NameHash, NamesTree0)}
+    end.
+
+run_elapsed_name_auction(Auction, NamesTree0, NextBlockHeight) ->
+    ExpirationBlockHeight = aens_auctions:ttl(Auction),
+    case ExpirationBlockHeight =:= (NextBlockHeight - 1) of
+        false ->
+            %% INFO: Do nothing.
+            %%       Name was updated and we triggered old cache event.
+            {ok, NamesTree0};
+        true ->
+            AuctionHash = aens_auctions:hash(Auction),
+            NameHash = aens_hash:from_auction_hash(AuctionHash),
+            DeltaTTL = aec_governance:name_claim_max_expiration(),
+            AccountPubkey = aens_auctions:bidder_pubkey(Auction),
+            Name = aens_names:new(NameHash, AccountPubkey, ExpirationBlockHeight + DeltaTTL),
+            NamesTree1 = aens_state_tree:delete_name_auction(AuctionHash, NamesTree0),
+            %% Do we want to unlock the name_fee and pay it to some foundation?
+            {ok, aens_state_tree:enter_name(Name, NamesTree1)}
     end.
 
 run_elapsed_commitment(Commitment, NamesTree0) ->

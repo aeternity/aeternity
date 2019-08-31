@@ -539,6 +539,8 @@ spend({From, To, Amount, Mode}, #state{} = S) when is_integer(Amount), Amount >=
 
 %%%-------------------------------------------------------------------
 %%% A special form of spending is to lock an amount.
+%%% For Lima auctioned names, the lock fee is returned
+%%% in case of overbidding
 
 lock_amount_op(From, Amount) when ?IS_HASH(From),
                                   ?IS_NON_NEG_INTEGER(Amount) ->
@@ -546,8 +548,9 @@ lock_amount_op(From, Amount) when ?IS_HASH(From),
 
 lock_amount({From, Amount}, #state{height = Height} = S) ->
     LockFee = aec_governance:name_claim_locked_fee(),
-    case aec_hard_forks:protocol_effective_at_height(Height) >= ?LIMA_PROTOCOL_VSN of
-        true when Amount > 0 -> ok;   %% can it be zero in Lima?
+    Protocol = aec_hard_forks:protocol_effective_at_height(Height),
+    case Protocol >= ?LIMA_PROTOCOL_VSN of
+        true when Amount > 0 -> ok;
         false when Amount == LockFee -> ok;
         _ -> runtime_error(illegal_name_fee)
     end,
@@ -754,11 +757,16 @@ name_claim({AccountPubkey, PlainName, NameSalt, NameFee, PreclaimDelta}, S) ->
             put_name(Name, S2);
         Timeout when NameSalt == 0  ->
             %% Auction should be running, new bid comes in
+            assert_not_name(NameHash, S), %% just to be sure
             {Auction, S1} = get_name_auction(AuctionHash, name_not_in_auction, S),
+            PreviousBidderPubkey = aens_auctions:bidder_pubkey(Auction),
+            PreviousBid = aens_auctions:name_fee(Auction),
             assert_valid_overbid(Protocol, NameAscii, NameFee, aens_auctions:name_fee(Auction)),
             NewAuction = aens_auctions:new(AuctionHash, AccountPubkey, NameFee, Timeout, S1#state.height),
             S2 = delete_x(name_auction, AuctionHash, S1),
-            put_name_auction(NewAuction, S2);
+            %% Return the locked funds to the previous bidder
+            S3 = int_unlock_amount(PreviousBidderPubkey, PreviousBid, S2),
+            put_name_auction(NewAuction, S3);
         Timeout when NameSalt =/= 0 ->
             %% This is the first claim that starts an auction
             assert_not_name_auction(AuctionHash, S),
@@ -1410,6 +1418,14 @@ int_lock_amount(Amount, S) when ?IS_NON_NEG_INTEGER(Amount) ->
     LockPubkey = aec_governance:locked_coins_holder_account(),
     {Account, S1} = ensure_account(LockPubkey, S),
     account_earn(Account, Amount, S1).
+
+int_unlock_amount(ToPubkey, Amount, #state{} = S)  when ?IS_NON_NEG_INTEGER(Amount) ->
+    LockPubkey = aec_governance:locked_coins_holder_account(),
+    {LockAccount, S1} = ensure_account(LockPubkey, S),
+    {ToAccount, S2} = ensure_account(ToPubkey, S1),
+    assert_account_balance(LockAccount, Amount),
+    S3 = account_spend(LockAccount, Amount, S2),
+    account_earn(ToAccount, Amount, S3).
 
 int_resolve_name(NameHash, S) ->
     Key = <<"account_pubkey">>,
