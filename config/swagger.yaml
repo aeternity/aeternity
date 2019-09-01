@@ -2411,9 +2411,7 @@ definitions:
       - round
       - update
       - state_hash
-      - addresses
       - fee
-      - poi
   ChannelCloseMutualTx:
     type: object
     properties:
@@ -3205,7 +3203,6 @@ definitions:
           - caller
           - contract
           - abi_version
-          - code
           - amount
           - call_data
           - gas
