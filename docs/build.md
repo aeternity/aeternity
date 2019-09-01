@@ -68,7 +68,7 @@ The easiest way to install package on MacOS is Homebrew, it can be installed by 
 Then install the build dependencies using the `brew` command:
 ```
 brew update
-brew install erlang openssl libsodium autoconf
+brew install erlang@21 openssl libsodium autoconf
 ```
 
 ## Building
