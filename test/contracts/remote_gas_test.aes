@@ -7,7 +7,7 @@ contract RemoteCall =
 
     entrypoint init(x) = { i = x }
 
-    entrypoint bogus_return(x) = x
+    entrypoint bogus_return(x : int) = x
 
     payable entrypoint bogus_remote(r : Remote1, x : int, g : int) =
        r.bogus_return(gas = g, x)
