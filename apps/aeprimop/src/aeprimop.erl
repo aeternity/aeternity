@@ -1417,14 +1417,6 @@ int_lock_amount(Amount, S) when ?IS_NON_NEG_INTEGER(Amount) ->
     {Account, S1} = ensure_account(LockPubkey, S),
     account_earn(Account, Amount, S1).
 
-int_unlock_amount(ToPubkey, Amount, #state{} = S)  when ?IS_NON_NEG_INTEGER(Amount) ->
-    LockPubkey = aec_governance:locked_coins_holder_account(),
-    {LockAccount, S1} = ensure_account(LockPubkey, S),
-    {ToAccount, S2} = ensure_account(ToPubkey, S1),
-    assert_account_balance(LockAccount, Amount),
-    S3 = account_spend(LockAccount, Amount, S2),
-    account_earn(ToAccount, Amount, S3).
-
 int_resolve_name(NameHash, S) ->
     Key = <<"account_pubkey">>,
     {Name, S1} = get_name(NameHash, S),
