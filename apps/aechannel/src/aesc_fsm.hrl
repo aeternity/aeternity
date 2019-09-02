@@ -49,6 +49,7 @@
         half_signed             -> funding_sign;
         initialized             -> accept;
         mutual_closing          -> accept;
+        mutual_closed           -> idle;
         open                    -> idle;
         reestablish_init        -> accept;
         signed                  -> funding_lock;
@@ -99,6 +100,7 @@
                          ; T =:= ?LEAVE_ACK
                          ; T =:= ?SHUTDOWN
                          ; T =:= ?SHUTDOWN_ACK
+                         ; T =:= ?SHUTDOWN_ERR
                          ; T =:= ?CH_REESTABL
                          ; T =:= ?CH_REEST_ACK).
 

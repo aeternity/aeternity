@@ -33,7 +33,8 @@
        , leave/2
        , leave_ack/2
        , shutdown/2
-       , shutdown_ack/2]).
+       , shutdown_ack/2
+       , shutdown_error/2]).
 
 -export([init/1
        , handle_call/3
@@ -98,6 +99,7 @@ leave              (Session, Msg) -> cast(Session, {msg, ?LEAVE        , Msg}).
 leave_ack          (Session, Msg) -> cast(Session, {msg, ?LEAVE_ACK    , Msg}).
 shutdown           (Session, Msg) -> cast(Session, {msg, ?SHUTDOWN     , Msg}).
 shutdown_ack       (Session, Msg) -> cast(Session, {msg, ?SHUTDOWN_ACK , Msg}).
+shutdown_error     (Session, Msg) -> cast(Session, {msg, ?SHUTDOWN_ERR , Msg}).
 
 close(Session) ->
     try call(Session, close)

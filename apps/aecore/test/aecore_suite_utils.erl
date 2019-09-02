@@ -316,6 +316,8 @@ mine_blocks_until_txs_on_chain(Node, TxHashes, MiningRate, Max) ->
     mine_blocks_until_txs_on_chain(Node, TxHashes, MiningRate, Max, #{}).
 
 mine_blocks_until_txs_on_chain(Node, TxHashes, MiningRate, Max, Opts) ->
+    %% Fail early rather than having to wait until max_reached if txs already on-chain
+    ok = assert_not_already_on_chain(Node, TxHashes),
     ok = rpc:call(
            Node, application, set_env, [aecore, expected_mine_rate, MiningRate],
            5000),
@@ -332,6 +334,18 @@ mine_blocks_until_txs_on_chain(Node, TxHashes, MiningRate, Max, Opts) ->
             {ok, lists:reverse(BlocksReverse)};
         {error, Reason} ->
             erlang:error(Reason)
+    end.
+
+assert_not_already_on_chain(Node, TxHashes) ->
+    Lookup = lists:map(
+               fun(TxHash) ->
+                       {TxHash, rpc:call(Node, aec_chain, find_tx_location, [TxHash])}
+               end, TxHashes),
+    case [T || {T, W} <- Lookup, is_binary(W)] of
+        [] ->
+            ok;
+        [_|_] = AlreadyOnChain ->
+            error({already_on_chain, AlreadyOnChain})
     end.
 
 mine_blocks_until_txs_on_chain_loop(_Node, _TxHashes, 0, _Acc) ->
@@ -1035,7 +1049,7 @@ call_proxy(N, Req, Tries, Timeout) when Tries > 0 ->
 call_proxy(N, _, _, _) ->
     erlang:error({proxy_not_running, N}).
 
-events() -> [block_created, micro_block_created, chain_sync].
+events() -> [block_created, micro_block_created, chain_sync, top_changed].
 
 tell_subscribers(Subs, Event, Msg) ->
     lists:foreach(

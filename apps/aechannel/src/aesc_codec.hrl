@@ -23,6 +23,7 @@
 -define(LEAVE_ACK    , leave_ack).
 -define(SHUTDOWN     , shutdown).
 -define(SHUTDOWN_ACK , shutdown_ack).
+-define(SHUTDOWN_ERR , shutdown_error).
 -define(INBAND_MSG   , inband_msg).
 
 -define(ID_CH_OPEN      , 1).
@@ -49,6 +50,7 @@
 -define(ID_ERROR        , 97).
 -define(ID_SHUTDOWN     , 98).
 -define(ID_SHUTDOWN_ACK , 99).
+-define(ID_SHUTDOWN_ERR , 100).
 
 %% Non-encoded cast types
 -define(DISCONNECT, disconnect).
