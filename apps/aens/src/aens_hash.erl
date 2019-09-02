@@ -38,10 +38,15 @@
 -spec commitment_hash(binary(), integer()) -> commitment_hash().
 commitment_hash(NameAscii, Salt) ->
     case aens_utils:name_domain(NameAscii) of
-        {ok, Domain} when Domain =:= <<"aet">> ->
-            assert_salt_positive(Salt),
-            SaltBin = int_to_bin(Salt),
-            hash(<<NameAscii/binary, SaltBin/binary>>);
+        {ok, Domain} ->
+            case lists:member(Domain, aec_governance:non_test_registrars()) of
+                true ->
+                    assert_salt_positive(Salt),
+                    SaltBin = int_to_bin(Salt),
+                    hash(<<NameAscii/binary, SaltBin/binary>>);
+                false ->
+                    pre_lima_commitment_hash(NameAscii, Salt)
+            end;
         _ ->
             %% This could be .test or any other wrong name backward compatible
             pre_lima_commitment_hash(NameAscii, Salt)
