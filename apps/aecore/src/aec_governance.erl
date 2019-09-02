@@ -326,7 +326,7 @@ name_registrars(_Protocol) ->
     [<<"test">>].
 
 non_test_registrars() ->
-    [<<"aet">>].
+    possible_name_registrars() -- [<<"test">>].
 
 %% union of all name_registrars above disregarding the height
 possible_name_registrars() ->
