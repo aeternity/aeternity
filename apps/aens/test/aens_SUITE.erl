@@ -304,8 +304,9 @@ claim_locked_coins_holder_gets_locked_fee(Cfg) ->
     Env      = aetx_env:tx_env(Height),
 
     LockedCoinsHolderPubKey = aec_governance:locked_coins_holder_account(),
+    Protocol = ?config(protocol, Cfg),
     LockedCoinsFee          =
-        case ?config(protocol, Cfg) >= ?LIMA_PROTOCOL_VSN of
+        case Protocol >= ?LIMA_PROTOCOL_VSN of
             false -> aec_governance:name_claim_locked_fee();
             true -> namefee(Name, Cfg)
         end,
@@ -314,8 +315,10 @@ claim_locked_coins_holder_gets_locked_fee(Cfg) ->
     none = aec_accounts_trees:lookup(LockedCoinsHolderPubKey, aec_trees:accounts(Trees)),
 
     %% Apply claim tx, and verify locked coins holder got locked coins
-    {ok, [SignedTx], Trees1, _} =
+    {ok, [SignedTx], Trees0, _} =
         aec_block_micro_candidate:apply_block_txs([SignedTx], Trees, Env),
+    BidTimeout = aec_governance:name_claim_bid_timeout(Name, Protocol),
+    Trees1 = aec_trees:perform_pre_transformations(Trees0, Height + BidTimeout + 1),
     {value, Account1} = aec_accounts_trees:lookup(LockedCoinsHolderPubKey, aec_trees:accounts(Trees1)),
     LockedCoinsFee    = aec_accounts:balance(Account1),
 
@@ -327,7 +330,8 @@ claim_locked_coins_holder_gets_locked_fee(Cfg) ->
     %% Apply claim tx, and verify locked coins holder got locked coins
     {ok, [SignedTx], Trees3, _} =
         aec_block_micro_candidate:apply_block_txs([SignedTx], Trees2, Env),
-    {value, Account3} = aec_accounts_trees:lookup(LockedCoinsHolderPubKey, aec_trees:accounts(Trees3)),
+    Trees4 = aec_trees:perform_pre_transformations(Trees3, Height + BidTimeout + 1),
+    {value, Account3} = aec_accounts_trees:lookup(LockedCoinsHolderPubKey, aec_trees:accounts(Trees4)),
     LockedCoinsFee = aec_accounts:balance(Account3) - aec_accounts:balance(Account2),
     ok.
 
@@ -736,7 +740,8 @@ prune_preclaim(Cfg) ->
 
     TTL = aens_commitments:ttl(C),
     GenesisHeight = aec_block_genesis:height(),
-    NSTree = do_prune_until(GenesisHeight, TTL + 1, aec_trees:ns(Trees2)),
+    Trees3 = aec_trees:perform_pre_transformations(Trees2, TTL+1),
+    NSTree = aec_trees:ns(Trees3),
     none = aens_state_tree:lookup_commitment(CHash, NSTree),
     ok.
 
@@ -754,19 +759,22 @@ prune_claim(Cfg) ->
     TTL1     = aens_names:ttl(N),
 
 
-    NTree2 = aens_state_tree:prune(TTL1+1, NTrees),
+    Trees3 = aec_trees:perform_pre_transformations(Trees2, TTL1 + 1),
+    NTree2 = aec_trees:ns(Trees3),
     {value, N2} = aens_state_tree:lookup_name(NHash, NTree2),
     NHash    = aens_names:hash(N2),
     PubKey   = aens_names:owner_pubkey(N2),
     revoked  = aens_names:status(N2),
     TTL2     = aens_names:ttl(N2),
 
-    NTree3 = aens_state_tree:prune(TTL2+1, NTree2),
+    Trees4 = aec_trees:perform_pre_transformations(Trees3, TTL2+1),
+    NTree3 = aec_trees:ns(Trees4),
     none = aens_state_tree:lookup_name(NHash, NTree3),
 
     {PubKey, NHash, S2}.
 
 prune_claim_auction(Cfg) ->
+    {_, _, _} = claim([{name, <<"a-very-long-name-to-make-sure-lock-account-exists-in-tree">>}|Cfg]),
     {PubKey, NHash, S2} = claim_auction(Cfg),
     %% Auction has now started
 
@@ -782,14 +790,17 @@ prune_claim_auction(Cfg) ->
         aec_governance:name_claim_bid_timeout(aens_test_utils:fullname(?config(name, Cfg)),
                                               ?config(protocol, Cfg)),
 
-    NTree2   = aens_state_tree:prune(TTL1, NTrees), %% latest possible bid
+    Trees3   = aec_trees:perform_pre_transformations(Trees2, TTL1), %% latest possible bid
+    NTree2   = aec_trees:ns(Trees3),
     none     = aens_state_tree:lookup_name(NHash, NTree2),
     {value, A2} = aens_state_tree:lookup_name_auction(aens_hash:to_auction_hash(NHash), NTree2),
     PubKey   = aens_auctions:bidder_pubkey(A2),
     TTL1     = aens_auctions:ttl(A2),  %% absolute TTLs
 
 
-    NTree3 = aens_state_tree:prune(TTL1+1, NTrees),
+    Trees4   = aec_trees:perform_pre_transformations(Trees2, TTL1+1),  %% used Trees2 un purpoose
+    NTree3   = aec_trees:ns(Trees4),
+
     none = aens_state_tree:lookup_name_auction(aens_hash:to_auction_hash(NHash), NTree3),
     {value, N} = aens_state_tree:lookup_name(NHash, NTree3),
     ct:pal("Name auction ready ~p", [N]),
@@ -799,10 +810,6 @@ prune_claim_auction(Cfg) ->
 
     {PubKey, NHash, S2}.
 
-do_prune_until(N1, N1, OTree) ->
-    aens_state_tree:prune(N1, OTree);
-do_prune_until(N1, N2, OTree) ->
-    do_prune_until(N1 + 1, N2, aens_state_tree:prune(N1, OTree)).
 
 %%%===================================================================
 %%% Change of registrar
