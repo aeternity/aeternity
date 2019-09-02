@@ -381,11 +381,11 @@ tuple(Arg0, Arg1, EngineState) ->
     end.
 
 make_tuple(To, Size, ES) ->
-    {Elements, ES2} = aefa_fate:pop_n(Size, ES),
+    {Elements, ES1} = aefa_fate:pop_n(Size, ES),
     Tuple = list_to_tuple(Elements),
     FateTuple = aeb_fate_data:make_tuple(Tuple),
+    ES2 = aefa_engine_state:spend_gas_for_new_cells(Size + 2, ES1),
     write(To, FateTuple, ES2).
-
 
 element_op(To, Which, TupleArg, ES) ->
     {Index, ES1} = get_op_arg(Which, ES),
@@ -405,6 +405,8 @@ element_op(To, Which, TupleArg, ES) ->
             end
     end.
 
+%% Setting an element of a tuple actually creates a copy of all elements in
+%% the original tuple, so we pay gas in relation to the size of the tuple.
 setelement(Arg0, Arg1, Arg2, Arg3, EngineState) ->
     {Index, ES1} = get_op_arg(Arg1, EngineState),
     {FateTuple, ES2} = get_op_arg(Arg2, ES1),
@@ -415,10 +417,12 @@ setelement(Arg0, Arg1, Arg2, Arg3, EngineState) ->
         false -> aefa_fate:abort({bad_arguments_to_setelement, Index, FateTuple}, ES3);
         true ->
             ?FATE_TUPLE(Tuple) = FateTuple,
-            case size(Tuple) > Index of
+            Size = size(Tuple),
+            case Size > Index of
                 true ->
                     NewT = ?FATE_TUPLE(erlang:setelement(Index+1, Tuple, Element)),
-                    write(Arg0, NewT, ES3);
+                    ES4 = aefa_engine_state:spend_gas_for_new_cells(Size + 2, ES3),
+                    write(Arg0, NewT, ES4);
                 false ->
                     aefa_fate:abort({element_index_out_of_bounds, Index}, ES3)
             end
