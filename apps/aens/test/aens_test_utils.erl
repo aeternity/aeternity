@@ -118,7 +118,7 @@ fullname_in_protocol(RootName, Protocol) ->
               true -> <<"aet">>;
               false -> <<"test">>
           end,
-    <<RootName/binary, ".", Reg/binary>>.
+    aens_utils:name_join([RootName, Reg]).
 
 %%%===================================================================
 %%% Names utils
@@ -232,4 +232,3 @@ revoke_tx_spec(PubKey, NameHash, Spec0, State) ->
 revoke_tx_default_spec(PubKey, State) ->
     #{nonce => try next_nonce(PubKey, State) catch _:_ -> 0 end,
       fee   => 50000 * aec_test_utils:min_gas_price()}.
-

@@ -18,6 +18,7 @@
          name_protection_period/0,
          name_claim_preclaim_delta/0,
          name_registrars/1,
+         non_test_registrars/0,
          possible_name_registrars/0,
          micro_block_cycle/0,
          accepted_future_block_time_shift/0,
@@ -246,9 +247,12 @@ name_claim_preclaim_delta() ->
 
 -spec name_registrars(aec_hard_forks:protocol_vsn()) -> list(binary()).
 name_registrars(Protocol) when Protocol >= ?LIMA_PROTOCOL_VSN ->
-    [<<"aet">>];
+    non_test_registrars();
 name_registrars(_Protocol) ->
     [<<"test">>].
+
+non_test_registrars() ->
+    [<<"aet">>].
 
 %% union of all name_registrars above disregarding the height
 possible_name_registrars() ->

@@ -9,7 +9,8 @@
 
 %% API
 -export([check_name_claimed_and_owned/3,
-         name_parts/1,
+         name_parts/1, name_join/1,
+         name_domain/1,
          to_ascii/1]).
 
 %%%===================================================================
@@ -44,6 +45,22 @@ to_ascii(Name) when is_binary(Name)->
             E
     end.
 
+-spec name_parts(binary()) -> [binary()].
+name_parts(Name) ->
+    binary:split(Name, ?LABEL_SEPARATOR, [global, trim]).
+
+%% inverse of name_parts
+-spec name_join([binary()]) -> binary().
+name_join(List) when is_list(List) ->
+    iolist_to_binary(lists:join(?LABEL_SEPARATOR, List)).
+
+-spec name_domain(binary()) -> {ok, binary()} | {error, invalid_name}.
+name_domain(Name) ->
+    case lists:reverse(name_parts(Name)) of
+        [Domain | _] -> {ok, Domain};
+        _ -> {error, invalid_name}
+    end.
+
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
@@ -59,9 +76,6 @@ check_claimed_status(Name) ->
         claimed -> ok;
         revoked -> {error, name_revoked}
     end.
-
-name_parts(Name) ->
-    binary:split(Name, ?LABEL_SEPARATOR, [global, trim]).
 
 validate_name(Name) ->
     case name_parts(Name) of
@@ -81,7 +95,7 @@ name_to_ascii(Name) when is_binary(Name) ->
     try idna:encode(NameUnicodeList, [{uts46, true}, {std3_rules, true}]) of
         NameAscii ->
             %% idna:to_ascii(".aet") returns just "aet"
-            case length(string:split(NameAscii, ".", all)) =:= 1 of
+            case length(string:split(NameAscii, ?LABEL_SEPARATOR, all)) =:= 1 of
                 true  -> {error, no_label_in_registrar};
                 false -> {ok, list_to_binary(NameAscii)}
             end
