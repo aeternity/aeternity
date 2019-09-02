@@ -28,7 +28,7 @@ contract StdTest =
     ((i1, s1)::t1, (i2, s2)::t2) => s1 == s2 && i1 == i2 && list_int_string_cmp(t1, t2)
     _ => false
 
-  entrypoint test() = List.foreach(assert,
+  entrypoint test() = List.foreach(
     [ (Func.id(1) == 1, "id")
     , (Func.const(1)(0) == 1, "const")
     , (Func.uncurry2(Func.const)(1,0) == 1, "uncurry2")
@@ -69,4 +69,4 @@ contract StdTest =
         Some(2)), Some(3)), "(+) <$> Just 1 <*> Just 2")
     , (list_int_cmp(Option.filter_options([Some(1), None, Some(2)]), [1,2]), "filter options")
     , (option_int_cmp(Option.choose_first([None, Some(1), None, Some(2)]), Some(1)), "choose fst")
-    ])
+    ], assert)
