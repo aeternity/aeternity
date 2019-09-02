@@ -1307,8 +1307,7 @@ random_unused_name(Attempts) when Attempts < 1->
 random_unused_name(Attempts) ->
     Size = 10,
     RandStr = base58:binary_to_base58(crypto:strong_rand_bytes(Size)),
-    NameL = RandStr ++ ".test",
-    Name = list_to_binary(NameL),
+    Name = aens_test_utils:fullname(list_to_binary(RandStr)),
     case get_names_entry_by_name_sut(Name) of
         {ok, 404, _Error} -> Name; % name not used yet
         _ -> random_unused_name(Attempts - 1)
@@ -3651,4 +3650,3 @@ sc_ws_broken_open_params(Config) ->
                                    #{lock_period => -1}, Config),
     Test(ChannelOpts8, <<"Value too low">>),
     ok.
-

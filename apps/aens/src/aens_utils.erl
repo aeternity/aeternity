@@ -9,6 +9,7 @@
 
 %% API
 -export([check_name_claimed_and_owned/3,
+         name_parts/1,
          to_ascii/1]).
 
 %%%===================================================================
@@ -59,12 +60,15 @@ check_claimed_status(Name) ->
         revoked -> {error, name_revoked}
     end.
 
+name_parts(Name) ->
+    binary:split(Name, ?LABEL_SEPARATOR, [global, trim]).
+
 validate_name(Name) ->
-    case binary:split(Name, ?LABEL_SEPARATOR, [global, trim]) of
+    case name_parts(Name) of
         [_Label, RegistrarNS] ->
-            case [RN || RN <- aec_governance:name_registrars(), RN =:= RegistrarNS] of
-                [] -> {error, registrar_unknown};
-                _  -> ok
+            case lists:member(RegistrarNS, aec_governance:possible_name_registrars()) of
+                true  -> ok;
+                false -> {error, registrar_unknown}
             end;
         [_Name] ->
             {error, no_registrar};

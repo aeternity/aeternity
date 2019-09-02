@@ -105,15 +105,15 @@ test_name_registration(Cfg) ->
     EncMPubKey = aeser_api_encoder:encode(account_pubkey, MPubKey),
     EncRPubKey = aeser_api_encoder:encode(account_pubkey, RPubKey),
 
-    Name = <<"richard.test">>,
-    NameSalt = 36346245,
-    EncNameId = aeser_api_encoder:encode(name, aens_hash:name_hash(Name)),
-
     %% Setup nodes
     NodeConfig = #{ beneficiary => EncMPubKey },
     setup([?NODE1], NodeConfig, Cfg),
     start_node(node1, Cfg),
-    wait_for_startup([node1], 4, Cfg),
+    wait_for_startup([node1], Height = 4, Cfg),
+
+    Name = aens_test_utils:fullname(<<"richard">>, Height),
+    NameSalt = 36346245,
+    EncNameId = aeser_api_encoder:encode(name, aens_hash:name_hash(Name)),
 
     %% Generate tokens for Mike
     wait_for_value({balance, MPubKey, 1000000 * GasPrice}, [node1], 10000, Cfg),
@@ -194,14 +194,14 @@ test_name_transfer(Cfg) ->
     RPubKey2 = maps:get(pubkey, ?ROBERT),
     EncMPubKey = aeser_api_encoder:encode(account_pubkey, MPubKey),
 
-    Name = <<"richard.test">>,
-    NameSalt = 36346245,
-
     %% Setup nodes
     NodeConfig = #{ beneficiary => EncMPubKey },
     setup([?NODE1], NodeConfig, Cfg),
     start_node(node1, Cfg),
-    wait_for_startup([node1], 4, Cfg),
+    wait_for_startup([node1], Height = 4, Cfg),
+
+    Name = aens_test_utils:fullname(<<"richard">>, Height),
+    NameSalt = 36346245,
 
     %% Generate tokens for Mike
     wait_for_value({balance, MPubKey, 2000000 * GasPrice}, [node1], 10000, Cfg),

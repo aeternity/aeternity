@@ -24,7 +24,11 @@
          transfer_tx_spec/4,
          transfer_tx_spec/5,
          revoke_tx_spec/3,
-         revoke_tx_spec/4]).
+         revoke_tx_spec/4,
+         fullname/1,
+         fullname/2 ]).
+
+-include_lib("aecontract/include/hard_forks.hrl").
 
 %%%===================================================================
 %%% Test state
@@ -97,6 +101,24 @@ set_account(Account, State) ->
     Trees   = trees(State),
     AccTree = aec_accounts_trees:enter(Account, aec_trees:accounts(Trees)),
     set_trees(aec_trees:set_accounts(Trees, AccTree), State).
+
+%% protocol dependent
+
+latest_protocol_version() ->
+    lists:last(aec_hard_forks:sorted_protocol_versions()).
+
+fullname(RootName) ->
+    fullname_in_protocol(RootName, latest_protocol_version()).
+
+fullname(RootName, Height) ->
+    fullname_in_protocol(RootName, aec_hard_forks:protocol_effective_at_height(Height)).
+
+fullname_in_protocol(RootName, Protocol) ->
+    Reg = case Protocol >= ?LIMA_PROTOCOL_VSN of
+              true -> <<"aet">>;
+              false -> <<"test">>
+          end,
+    <<RootName/binary, ".", Reg/binary>>.
 
 %%%===================================================================
 %%% Names utils
