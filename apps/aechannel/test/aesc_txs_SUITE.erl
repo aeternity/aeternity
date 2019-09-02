@@ -5235,7 +5235,12 @@ register_name(Name, Pointers0) ->
             fun(#{state := S, name_owner := NameOwner, height := Height0} = Props) ->
                 PrivKey = aesc_test_utils:priv_key(NameOwner, S),
                 Delta = aec_governance:name_claim_preclaim_delta(),
-                TxSpec = aens_test_utils:claim_tx_spec(NameOwner, Name, NameSalt, S),
+                NameFee =
+                        case aec_hard_forks:protocol_effective_at_height(Height0) >= ?LIMA_PROTOCOL_VSN of
+                            true -> 3400000;
+                            false -> prelima
+                        end,
+                TxSpec = aens_test_utils:claim_tx_spec(NameOwner, Name, NameSalt, NameFee, S),
                 {ok, Tx} = aens_claim_tx:new(TxSpec),
                 SignedTx = aec_test_utils:sign_tx(Tx, PrivKey),
                 apply_on_trees_(Props#{height := Height0 + Delta}, SignedTx, S, positive)

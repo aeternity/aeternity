@@ -24,7 +24,7 @@
         , ga_attach_tx_instructions/10
         , ga_meta_tx_instructions/7
         , ga_set_meta_tx_res_instructions/3
-        , name_claim_tx_instructions/5
+        , name_claim_tx_instructions/6
         , name_preclaim_tx_instructions/5
         , name_revoke_tx_instructions/4
         , name_transfer_tx_instructions/5
@@ -39,7 +39,7 @@
 %% Direct op API (mainly for FATE).
 -export([ force_inc_account_nonce_op/2
         , lock_amount_op/2
-        , name_claim_op/5
+        , name_claim_op/6
         , name_preclaim_op/3
         , name_revoke_op/3
         , name_transfer_op/4
@@ -241,15 +241,14 @@ name_preclaim_tx_instructions(AccountPubkey, CommitmentHash, DeltaTTL,
     ].
 
 -spec name_claim_tx_instructions(pubkey(), binary(), non_neg_integer(),
-                                 fee(), nonce()) -> [op()].
-name_claim_tx_instructions(AccountPubkey, PlainName, NameSalt, Fee, Nonce) ->
+                                 non_neg_integer(), fee(), nonce()) -> [op()].
+name_claim_tx_instructions(AccountPubkey, PlainName, NameSalt, NameFee, Fee, Nonce) ->
     PreclaimDelta = aec_governance:name_claim_preclaim_delta(),
     DeltaTTL = aec_governance:name_claim_max_expiration(),
-    LockedFee = aec_governance:name_claim_locked_fee(),
     [ inc_account_nonce_op(AccountPubkey, Nonce)
     , spend_fee_op(AccountPubkey, Fee)
-    , lock_amount_op(AccountPubkey, LockedFee)
-    , name_claim_op(AccountPubkey, PlainName, NameSalt, DeltaTTL, PreclaimDelta)
+    , lock_amount_op(AccountPubkey, NameFee)
+    , name_claim_op(AccountPubkey, PlainName, NameSalt, NameFee, DeltaTTL, PreclaimDelta)
     ].
 
 -spec name_revoke_tx_instructions(pubkey(), hash(), fee(), nonce()) -> [op()].
@@ -543,7 +542,13 @@ lock_amount_op(From, Amount) when ?IS_HASH(From),
                                   ?IS_NON_NEG_INTEGER(Amount) ->
     {lock_amount, {From, Amount}}.
 
-lock_amount({From, Amount}, #state{} = S) ->
+lock_amount({From, Amount}, #state{height = Height} = S) ->
+    LockFee = aec_governance:name_claim_locked_fee(),
+    case aec_hard_forks:protocol_effective_at_height(Height) >= ?LIMA_PROTOCOL_VSN of
+        true when Amount > 0 -> ok;   %% can it be zero in Lima?
+        false when Amount == LockFee -> ok;
+        _ -> runtime_error(illegal_name_fee)
+    end,
     {Account, S1} = get_account(From, S),
     assert_account_balance(Account, Amount),
     S2 = account_spend(Account, Amount, S1),
@@ -720,24 +725,27 @@ name_preclaim({AccountPubkey, CommitmentHash, DeltaTTL}, S) ->
 
 %%%-------------------------------------------------------------------
 
-name_claim_op(AccountPubkey, PlainName, NameSalt, DeltaTTL, PreclaimDelta
+name_claim_op(AccountPubkey, PlainName, NameSalt, NameFee, DeltaTTL, PreclaimDelta
              ) when ?IS_HASH(AccountPubkey),
                     is_binary(PlainName),
                     ?IS_NON_NEG_INTEGER(NameSalt),
+                    ?IS_NON_NEG_INTEGER(NameFee),
                     ?IS_NON_NEG_INTEGER(DeltaTTL),
                     ?IS_NON_NEG_INTEGER(PreclaimDelta) ->
-    {name_claim, {AccountPubkey, PlainName, NameSalt, DeltaTTL, PreclaimDelta}}.
+    {name_claim, {AccountPubkey, PlainName, NameSalt, NameFee, DeltaTTL, PreclaimDelta}}.
 
-name_claim({AccountPubkey, PlainName, NameSalt, DeltaTTL, PreclaimDelta}, S) ->
+name_claim({AccountPubkey, PlainName, NameSalt, NameFee, DeltaTTL, PreclaimDelta}, S) ->
     NameAscii = name_to_ascii(PlainName),
     NameRegistrar = name_registrar(PlainName),
     CommitmentHash = aens_hash:commitment_hash(NameAscii, NameSalt),
     {Commitment, S1} = get_commitment(CommitmentHash, name_not_preclaimed, S),
     assert_commitment_owner(Commitment, AccountPubkey),
     assert_preclaim_delta(Commitment, PreclaimDelta, S1#state.height),
+    %% here assert that an .aes name is pre-claimed after Lime height
     NameHash = aens_hash:name_hash(NameAscii),
-    assert_not_name(NameHash, S1),
+    assert_not_name(NameHash, S1),   %% what is the likelyhood of a collision old hash and new hash of different names?
     assert_name_registrar(NameRegistrar, S1#state.height),
+    assert_name_bid_fee(NameAscii, NameFee, S1#state.height),  %% always ok pre Lima.
     Name = aens_names:new(NameHash, AccountPubkey, S1#state.height + DeltaTTL),
     S2 = delete_x(commitment, CommitmentHash, S1),
     put_name(Name, S2).
@@ -750,6 +758,8 @@ name_to_ascii(PlainName) ->
             NameAscii
     end.
 
+
+%% Note that this raises an exception for empty binary as name
 name_registrar(PlainName) ->
     lists:last(aens_utils:name_parts(PlainName)).
 
@@ -1642,6 +1652,13 @@ assert_name_registrar(Registrar, Height) ->
     case lists:member(Registrar, aec_governance:name_registrars(ProtoVsn)) of
         true  -> ok;
         false -> runtime_error(invalid_registrar)
+    end.
+
+assert_name_bid_fee(Name, NameFee, Height) ->
+    ProtoVsn = aec_hard_forks:protocol_effective_at_height(Height),
+    case aec_governance:name_claim_fee(Name, ProtoVsn) =< NameFee of
+        true  -> ok; %% always true before Lima
+        false -> runtime_error(invalid_name_fee)
     end.
 
 assert_name_owner(Name, AccountPubKey) ->

@@ -114,7 +114,7 @@
         , is_payable/3
         , aens_resolve/5
         , aens_preclaim/4
-        , aens_claim/5
+        , aens_claim/6
         , aens_update/1
         , aens_transfer/5
         , aens_revoke/4
@@ -1172,9 +1172,9 @@ aens_preclaim(Arg0, Arg1, Arg2, EngineState) ->
     end.
 
 
-aens_claim(Arg0, Arg1, Arg2, Arg3, EngineState) ->
-    {[Signature, Account, NameString, Salt], ES1} =
-        get_op_args([Arg0, Arg1, Arg2, Arg3], EngineState),
+aens_claim(Arg0, Arg1, Arg2, Arg3, Arg4, EngineState) ->
+    {[Signature, Account, NameString, Salt, NameFee], ES1} =
+        get_op_args([Arg0, Arg1, Arg2, Arg3, Arg4], EngineState),
     if
         not ?IS_FATE_BYTES(64, Signature) ->
             aefa_fate:abort({value_does_not_match_type, Signature, bytes64}, ES1);
@@ -1186,6 +1186,10 @@ aens_claim(Arg0, Arg1, Arg2, Arg3, EngineState) ->
             aefa_fate:abort({value_does_not_match_type, Salt, integer}, ES1);
         not ?FATE_INTEGER_VALUE(Salt) >= 0 ->
             aefa_fate:abort({primop_error, aens_claim, negative_salt}, ES1);
+        not ?IS_FATE_INTEGER(NameFee) ->
+            aefa_fate:abort({value_does_not_match_type, NameFee, integer}, ES1);
+        not ?FATE_INTEGER_VALUE(NameFee) >= 0 ->
+            aefa_fate:abort({primop_error, aens_claim, negative_fee}, ES1);
         true ->
             ok
     end,
@@ -1198,8 +1202,9 @@ aens_claim(Arg0, Arg1, Arg2, Arg3, EngineState) ->
         {ok, HashBin} ->
             ES2 = check_delegation_signature(aens_claim, {Pubkey, HashBin}, SignBin, ES1),
             SaltInt = ?FATE_INTEGER_VALUE(Salt),
+            NameFeeInt = ?FATE_INTEGER_VALUE(NameFee),
             API = aefa_engine_state:chain_api(ES2),
-            case aefa_chain_api:aens_claim(Pubkey, NameBin, SaltInt, API) of
+            case aefa_chain_api:aens_claim(Pubkey, NameBin, SaltInt, NameFeeInt, API) of
                 {ok, DynamicGas, API1} ->
                     ES3 = spend_gas(DynamicGas, ES2),
                     aefa_engine_state:set_chain_api(API1, ES3);
@@ -1741,4 +1746,3 @@ pow(A, B) ->
 pow(_, 0, R)                   -> R;
 pow(A, B, R) when B rem 2 == 0 -> pow(A * A, B bsr 1, R);
 pow(A, B, R)                   -> pow(A * A, B bsr 1, R * A).
-

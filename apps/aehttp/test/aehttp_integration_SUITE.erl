@@ -2315,13 +2315,24 @@ nameservice_transaction_claim(MinerAddress, MinerPubkey, Height) ->
     ok = wait_for_tx_hash_on_chain(PreclaimTxHash),
     {ok, []} = rpc(aec_tx_pool, peek, [infinity]),
 
-    Encoded = #{account_id => MinerAddress,
-                name => aeser_api_encoder:encode(name, Name),
-                name_salt => Salt,
-                fee => 100000 * aec_test_utils:min_gas_price()},
+    Encoded =
+        case aec_hard_forks:protocol_effective_at_height(Height) >= ?LIMA_PROTOCOL_VSN of
+            true ->
+                #{account_id => MinerAddress,
+                  name => aeser_api_encoder:encode(name, Name),
+                  name_salt => Salt,
+                  name_fee => 340000,
+                  fee => 100000 * aec_test_utils:min_gas_price()};
+            false ->
+                #{account_id => MinerAddress,
+                  name => aeser_api_encoder:encode(name, Name),
+                  name_salt => Salt,
+                  fee => 100000 * aec_test_utils:min_gas_price()}
+        end,
     Decoded = maps:merge(Encoded,
                         #{account_id => aeser_id:create(account, MinerPubkey),
                           name => Name}),
+    ct:pal("Tx ~p and encoded ~p", [Decoded, Encoded]),
     unsigned_tx_positive_test(Decoded, Encoded,
                                fun get_name_claim/1,
                                fun aens_claim_tx:new/1, MinerPubkey),
@@ -2713,6 +2724,8 @@ unsigned_tx_positive_test(Data, Params0, HTTPCallFun, NewFun, Pubkey,
             {ok, ExpectedTx} = NewFun(maps:put(nonce, Nonce, Data)),
             {ok, 200, #{<<"tx">> := ActualTx}} = HTTPCallFun(P),
             {ok, SerializedTx} = aeser_api_encoder:safe_decode(transaction, ActualTx),
+                ct:pal("SerializedTx: ~p", [SerializedTx]),
+
             Tx = aetx:deserialize_from_binary(SerializedTx),
             ct:log("Expected ~p~nActual ~p", [ExpectedTx, Tx]),
             ExpectedTx = Tx,
@@ -3058,10 +3071,20 @@ naming_system_manage_name(_Config) ->
     ?assertEqual(Balance1, Balance - Fee),
 
     %% Submit name claim tx and check it is in mempool
-    ClaimData = #{account_id => PubKeyEnc,
+    {ClaimData, NameFee} =
+        case aec_hard_forks:protocol_effective_at_height(Height) >= ?LIMA_PROTOCOL_VSN of
+            true ->
+                {#{account_id => PubKeyEnc,
                   name       => aeser_api_encoder:encode(name, Name),
                   name_salt  => NameSalt,
-                  fee        => Fee},
+                  name_fee   => 340000,
+                  fee        => Fee}, 340000};
+            false ->
+                {#{account_id => PubKeyEnc,
+                  name       => aeser_api_encoder:encode(name, Name),
+                  name_salt  => NameSalt,
+                  fee        => Fee},  rpc(aec_governance, name_claim_locked_fee, [])}
+        end,
     {ok, 200, #{<<"tx">> := ClaimTxEnc}} = get_name_claim(ClaimData),
     ClaimTxHash = sign_and_post_tx(ClaimTxEnc, PrivKey),
 
@@ -3071,10 +3094,9 @@ naming_system_manage_name(_Config) ->
 
     %% Check tx fee taken from account, claim fee locked,
     %% then mine reward and fee added to account
-    ClaimLockedFee = rpc(aec_governance, name_claim_locked_fee, []),
     {ok, 200, #{<<"balance">> := Balance2}} = get_accounts_by_pubkey_sut(PubKeyEnc),
     {ok, 200, #{<<"height">> := Height3}} = get_key_blocks_current_sut(),
-    ?assertEqual(Balance2, Balance1 - Fee - ClaimLockedFee),
+    ?assertEqual(Balance2, Balance1 - Fee - NameFee),
 
     %% Check that name entry is present
     EncodedNHash = aeser_api_encoder:encode(name, NHash),

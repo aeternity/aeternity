@@ -38,7 +38,7 @@
           aens_resolve/4,
           aens_preclaim_tx/3,
           aens_preclaim/3,
-          aens_claim_tx/4,
+          aens_claim_tx/5,
           aens_claim/3,
           aens_transfer_tx/4,
           aens_transfer/3,
@@ -583,18 +583,19 @@ aens_preclaim_(Tx, Signature, State) ->
         Err = {error, _} -> Err
     end.
 
--spec aens_claim_tx(aec_keys:pubkey(), binary(), integer(), chain_state()) ->
+-spec aens_claim_tx(aec_keys:pubkey(), binary(), integer(), integer() | prelima, chain_state()) ->
     {ok, aetx:tx()} | {error, term()}.
-aens_claim_tx(Addr, Name, Salt, State) ->
-    on_chain_only(State, fun() -> aens_claim_tx_(Addr, Name, Salt, State) end).
+aens_claim_tx(Addr, Name, Salt, NameFee, State) ->
+    on_chain_only(State, fun() -> aens_claim_tx_(Addr, Name, Salt, NameFee, State) end).
 
-aens_claim_tx_(Addr, Name, Salt, State) ->
+aens_claim_tx_(Addr, Name, Salt, NameFee, State) ->
     Nonce = next_nonce(Addr, State),
     Spec =
         #{ account_id => aeser_id:create(account, Addr),
            nonce      => Nonce,
            name       => Name,
            name_salt  => Salt,
+           name_fee   => NameFee,
            fee        => 0
          },
     aens_claim_tx:new(Spec).

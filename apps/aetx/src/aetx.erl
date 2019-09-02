@@ -367,6 +367,11 @@ from_db_format(#aetx{ cb = aesc_force_progress_tx, tx = Tx } = AETx) ->
         Tx  -> AETx;
         Tx1 -> AETx#aetx{ tx = Tx1 }
     end;
+from_db_format(#aetx{ cb = aens_claim_tx, tx = Tx } = AETx) ->
+    case aens_claim_tx:from_db_format(Tx) of
+        Tx  -> AETx;
+        Tx1 -> AETx#aetx{ tx = Tx1 }
+    end;
 from_db_format(#aetx{} = Tx) ->
     Tx.
 

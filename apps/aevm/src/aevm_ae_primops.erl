@@ -132,8 +132,13 @@ is_local_primop(Data) ->
 %% find the types, and for some we need to know what types for which
 %% the argument was built.
 
-types(?PRIM_CALL_AENS_CLAIM,_HeapValue,_Store,_State) ->
-    {[word, string, word, sign_t()], tuple0_t()};
+types(?PRIM_CALL_AENS_CLAIM, _HeapValue, _Store, State) ->
+   case aevm_eeevm_state:vm_version(State) < ?VM_AEVM_SOPHIA_4 of
+        true ->
+            {[word, string, word, sign_t()], tuple0_t()};
+        false ->
+            {[word, string, word, word, sign_t()], tuple0_t()}
+    end;
 types(?PRIM_CALL_AENS_PRECLAIM,_HeapValue,_Store,_State) ->
     {[word, word, sign_t()], tuple0_t()};
 types(?PRIM_CALL_AENS_RESOLVE, HeapValue, _Store, State) ->
@@ -540,9 +545,18 @@ aens_call_preclaim(Data, #chain{api = API, state = State} = Chain) ->
         {error, _} = Err -> Err
     end.
 
+aens_call_claim(Data, #chain{api = API, state = State, vm_version = VM} = Chain) when VM >= ?VM_AEVM_SOPHIA_4 ->
+    [Addr, Name, Salt, NameFee, Sign0] = get_args([word, string, word, word, sign_t()], Data),
+    case API:aens_claim_tx(<<Addr:256>>, Name, Salt, NameFee, State) of
+        {ok, Tx} ->
+            SizeGas = size_gas(Tx),
+            Callback = fun(ChainAPI, ChainState) -> ChainAPI:aens_claim(Tx, to_sign(Sign0), ChainState) end,
+            {ok, SizeGas, fun() -> cast_chain(Callback, Chain) end};
+        {error, _} = Err -> Err
+    end;
 aens_call_claim(Data, #chain{api = API, state = State} = Chain) ->
     [Addr, Name, Salt, Sign0] = get_args([word, string, word, sign_t()], Data),
-    case API:aens_claim_tx(<<Addr:256>>, Name, Salt, State) of
+    case API:aens_claim_tx(<<Addr:256>>, Name, Salt, prelima, State) of
         {ok, Tx} ->
             SizeGas = size_gas(Tx),
             Callback = fun(ChainAPI, ChainState) -> ChainAPI:aens_claim(Tx, to_sign(Sign0), ChainState) end,
@@ -905,4 +919,3 @@ words_to_bin(Len, Ws) when is_tuple(Ws) ->
 words_to_bin(Len, Word) when is_integer(Word) ->
     <<Bytes:Len/binary, _/binary>> = <<Word:32/unit:8>>,
     Bytes.
-

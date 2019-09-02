@@ -24,6 +24,8 @@
 -include_lib("common_test/include/ct.hrl").
 -include_lib("stdlib/include/assert.hrl").
 -include_lib("aecore/include/blocks.hrl").
+-include_lib("aecontract/include/hard_forks.hrl").
+
 
 %%%===================================================================
 %%% Common test framework
@@ -110,7 +112,7 @@ name_owner_pubkey(NameID, #{trees := Trees}) ->
 register_name(Pubkey, #{height := Height} = S) ->
     register_name(Pubkey, aens_test_utils:fullname(<<"hello"/utf8>>, Height), S).
 
-register_name(Pubkey, Name, S) ->
+register_name(Pubkey, Name, #{height := Height} = S) ->
     {ok, Ascii} = aens_utils:to_ascii(Name),
     Hash   = aens_hash:name_hash(Ascii),
     Salt   = 42,
@@ -121,9 +123,15 @@ register_name(Pubkey, Name, S) ->
                     , nonce => 1
                     },
     {ok, Preclaim} = aens_preclaim_tx:new(PreclaimSpec),
+    NameFee =
+        case aec_hard_forks:protocol_effective_at_height(Height) >= ?LIMA_PROTOCOL_VSN of
+            true -> 3400000;
+            false -> prelima
+        end,
     ClaimSpec  = #{ account_id => account_id(Pubkey)
                   , name => Name
                   , name_salt => Salt
+                  , name_fee => NameFee
                   , fee  => 20000 * aec_test_utils:min_gas_price()
                   , nonce => 2
                   },

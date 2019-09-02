@@ -33,13 +33,13 @@ contract AENSTest =
   stateful entrypoint claim(addr : address,
                           name : string,
                           salt : int) : unit =
-    AENS.claim(addr, name, salt)
+    AENS.claim(addr, name, salt, 3400000)
 
   stateful entrypoint signedClaim(addr : address,
                                 name : string,
                                 salt : int,
                                 sign : signature) : unit =
-    AENS.claim(addr, name, salt, signature = sign)
+    AENS.claim(addr, name, salt, 3400000, signature = sign)
 
   // TODO: update() -- how to handle pointers?
 
