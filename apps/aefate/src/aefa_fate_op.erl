@@ -433,8 +433,10 @@ setelement(Arg0, Arg1, Arg2, Arg3, EngineState) ->
 %% Map instructions
 %% ------------------------------------------------------
 map_empty(Arg0, EngineState) ->
-    un_op(get, {Arg0, {immediate, aeb_fate_data:make_map(#{})}},
-          EngineState).
+    ES1 = un_op(get, {Arg0,
+                      {immediate, aeb_fate_data:make_map(#{})}},
+                EngineState),
+    aefa_engine_state:spend_gas_for_new_cells(2, ES1).
 
 map_lookup(Arg0, Arg1, Arg2, EngineState) ->
     {[Map, Key], ES1} = get_op_args([Arg1, Arg2], EngineState),
@@ -473,13 +475,18 @@ map_lookup1(Key, Map, _ES) ->
     error({map_lookup1, Key, Map}).
 
 map_update(Arg0, Arg1, Arg2, Arg3, EngineState) ->
-    ter_op(map_update, {Arg0, Arg1, Arg2, Arg3}, EngineState).
+    ES1 = ter_op(map_update, {Arg0, Arg1, Arg2, Arg3}, EngineState),
+    aefa_engine_state:spend_gas_for_new_cells(2, ES1).
 
 map_delete(Arg0, Arg1, Arg2, EngineState) ->
     bin_op(map_delete, {Arg0, Arg1, Arg2}, EngineState).
 
 map_from_list(Arg0, Arg1, EngineState) ->
-    un_op(map_from_list, {Arg0, Arg1}, EngineState).
+    {List, ES1} = get_op_arg(Arg1, EngineState),
+    Map = gop(map_from_list, List, ES1),
+    ES2 = write(Arg0, Map, ES1),
+    Size = map_size(?FATE_MAP_VALUE(Map)),
+    aefa_engine_state:spend_gas_for_new_cells(Size + 2, ES2).
 
 map_to_list(Arg0, Arg1, EngineState) ->
     {Map, ES1} = get_op_arg(Arg1, EngineState),
@@ -487,10 +494,14 @@ map_to_list(Arg0, Arg1, EngineState) ->
         _ when ?IS_FATE_MAP(Map) ->
             Tuples = [aeb_fate_data:make_tuple({K, V})
                       || {K, V} <- maps:to_list(?FATE_MAP_VALUE(Map))],
-            write(Arg0, aeb_fate_data:make_list(Tuples), ES1);
+            ES2 = write(Arg0, aeb_fate_data:make_list(Tuples), ES1),
+            Size = map_size(?FATE_MAP_VALUE(Map)),
+            aefa_engine_state:spend_gas_for_new_cells(Size * 2, ES2);
         ?FATE_STORE_MAP(Cache, MapId) ->
             {List, ES2} = store_map_to_list(Cache, MapId, ES1),
-            write(Arg0, List, ES2)
+            ES2 = write(Arg0, List, ES2),
+            Size = length(?FATE_LIST_VALUE(List)),
+            aefa_engine_state:spend_gas_for_new_cells(Size * 2, ES2)
     end.
 
 map_size_(Arg0, Arg1, EngineState) ->
