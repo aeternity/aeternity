@@ -3,7 +3,8 @@
 -export([ensure_env/0]).
 -export([protocols/0,
          fork/1,
-         protocol_effective_at_height/1
+         protocol_effective_at_height/1,
+         protocol_effective_at_height/2
         ]).
 
 -ifdef(TEST).
