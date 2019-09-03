@@ -64,11 +64,12 @@
 %%% API
 %%%===================================================================
 
--spec new(aens_hash:auction_hash(), aec_keys:pubkey(), non_neg_integer(), non_neg_integer(), aec_blocks:height()) -> auction().
-new(AuctionHash, BidderId, NameFee, DeltaTTL, BlockHeight) ->
+-spec new(aens_hash:auction_hash(), aec_keys:pubkey(), non_neg_integer(),
+          non_neg_integer(), aec_blocks:height()) -> auction().
+new(AuctionHash, Bidder, NameFee, DeltaTTL, BlockHeight) ->
     NameHash = aens_hash:from_auction_hash(AuctionHash),
     #auction{id        = aeser_id:create(name, NameHash),
-             bidder_id = aeser_id:create(account, BidderId),
+             bidder_id = aeser_id:create(account, Bidder),
              started   = BlockHeight,
              bid       = NameFee,
              ttl       = BlockHeight + DeltaTTL}.

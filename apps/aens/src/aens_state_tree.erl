@@ -44,7 +44,7 @@
 %%%===================================================================
 
 -type mkey() :: aens_hash:commitment_hash() | aens_hash:name_hash() | aens_hash:auction_hash().
--type mvalue() :: aens_commitments:serialized() | aens_names:serialized().
+-type mvalue() :: aens_commitments:serialized() | aens_names:serialized() | aens_auctions:serialized().
 -type nstree() :: aeu_mtrees:mtree(mkey(), mvalue()).
 -type commitment() :: aens_commitments:commitment().
 -type auction() :: aens_auctions:auction().

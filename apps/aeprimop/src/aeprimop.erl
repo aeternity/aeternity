@@ -762,8 +762,8 @@ name_claim({AccountPubkey, PlainName, NameSalt, NameFee, PreclaimDelta}, S) ->
             %% Return the tokens hold in the previous bid
             {PreviousBidderAccount, S2} = get_account(PreviousBidderPubkey, S1),
             S3 = account_earn(PreviousBidderAccount, PreviousBid, S2),
-            S4 = delete_x(name_auction, AuctionHash, S3),
-            put_name_auction(NewAuction, S4);
+            %% overwrite old auction with new one
+            put_name_auction(NewAuction, S3);
         Timeout when NameSalt =/= 0 ->
             %% This is the first claim that starts an auction
             assert_not_name_auction(AuctionHash, S),
