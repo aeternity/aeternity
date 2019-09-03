@@ -107,9 +107,8 @@ close(Session) ->
             unlink(Session),
             ok;
         exit:R ->
-            lager:error("CAUGHT exit:~p, ~p", [R, erlang:get_stacktrace()]),
+            lager:error("Unhandled exit error during session closing: ~p, ~p", [R, erlang:get_stacktrace()]),
             unlink(Session),
-            exit(Session, kill),
             ok
     end.
 
