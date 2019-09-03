@@ -527,7 +527,8 @@ is_nil(Arg0, Arg1, EngineState) ->
     un_op(is_nil, {Arg0, Arg1}, EngineState).
 
 cons(Arg0, Arg1, Arg2, EngineState) ->
-    bin_op(cons, {Arg0, Arg1, Arg2}, EngineState).
+    ES1 = bin_op(cons, {Arg0, Arg1, Arg2}, EngineState),
+    aefa_engine_state:spend_gas_for_new_cells(2, ES1).
 
 hd(Arg0, Arg1, EngineState) ->
     un_op(hd, {Arg0, Arg1}, EngineState).
@@ -539,7 +540,11 @@ length(Arg0, Arg1, EngineState) ->
     un_op(length, {Arg0, Arg1}, EngineState).
 
 append(Arg0, Arg1, Arg2, EngineState) ->
-    bin_op(append, {Arg0, Arg1, Arg2}, EngineState).
+    ES1 = bin_op(append, {Arg0, Arg1, Arg2}, EngineState),
+    %% We will create a new copy of the first list.
+    {List, _} = get_op_arg(Arg1, EngineState),
+    Size = length(?FATE_LIST_VALUE(List)),
+    aefa_engine_state:spend_gas_for_new_cells(Size * 2, ES1).
 
 %% ------------------------------------------------------
 %% String instructions
