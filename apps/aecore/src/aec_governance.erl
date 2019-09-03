@@ -15,6 +15,8 @@
          name_preclaim_expiration/0,
          name_claim_locked_fee/0,
          name_claim_fee/2,
+         name_claim_bid_timeout/2,
+         name_claim_bid_increment/0,
          name_claim_max_expiration/0,
          name_protection_period/0,
          name_claim_preclaim_delta/0,
@@ -63,6 +65,7 @@
 -define(BENEFICIARY_REWARD_DELAY, 180). %% in key blocks / generations
 -define(MICRO_BLOCK_CYCLE, 3000). %% in msecs
 -define(MULTIPLIER_14, 100000000000000).
+-define(MULTIPLIER_DAY, 480).
 
 -define(ACCEPTED_FUTURE_BLOCK_TIME_SHIFT, (?EXPECTED_BLOCK_MINE_RATE_MINUTES * 3 * 60 * 1000)). %% 9 min
 
@@ -251,13 +254,38 @@ name_claim_preclaim_delta() ->
 %% not only length of the bytes
 -spec name_claim_fee(binary(), non_neg_integer()) -> non_neg_integer().
 name_claim_fee(Name, Protocol) when Protocol >= ?LIMA_PROTOCOL_VSN ->
+    name_claim_size_fee(name_claim_size(Name));
+name_claim_fee(_Name, _Protocol) ->
+    0.
+
+%% local helper function
+name_claim_size(Name) ->
     %% Name fee is computed over ascii version
     {ok, AsciiName} = aens_utils:to_ascii(Name),
     {ok, Domain} = aens_utils:name_domain(AsciiName),
     %% No payment for registrars, Name should have been validated before
-    name_claim_size_fee(size(AsciiName) - size(Domain) - 1);
-name_claim_fee(_Name, _Protocol) ->
+    size(AsciiName) - size(Domain) - 1.
+
+%% Give possibility to have the actual name under consensus,
+%% possible to define different bid times for different names.
+%% No auction for names of 32 characters or longer
+-spec name_claim_bid_timeout(binary(), non_neg_integer()) -> non_neg_integer().
+name_claim_bid_timeout(Name, Protocol) when Protocol >= ?LIMA_PROTOCOL_VSN ->
+    NameSize = name_claim_size(Name),
+    BidTimeout =
+        if NameSize > 31 -> 0;
+           NameSize > 8  -> 1 * ?MULTIPLIER_DAY;  %% 480 blocks
+           NameSize > 4  -> 31 * ?MULTIPLIER_DAY; %% 14880 blocks
+           true          -> 62 * ?MULTIPLIER_DAY %% 29760 blocks
+        end,
+    %% allow overwrite by configuration for test
+    aeu_env:user_config_or_env([<<"mining">>, <<"name_claim_bid_timeout">>],
+                                   aecore, name_claim_bid_timeout, BidTimeout);
+name_claim_bid_timeout(_Name, _Protocol) ->
     0.
+
+name_claim_bid_increment() ->
+    5. %% 5%
 
 name_claim_size_fee(Size) when Size >= 31 -> 3 * ?MULTIPLIER_14;
 name_claim_size_fee(30) -> 5 * ?MULTIPLIER_14;
@@ -298,7 +326,7 @@ name_registrars(_Protocol) ->
     [<<"test">>].
 
 non_test_registrars() ->
-    [<<"aet">>].
+    possible_name_registrars() -- [<<"test">>].
 
 %% union of all name_registrars above disregarding the height
 possible_name_registrars() ->

@@ -15,7 +15,9 @@
 
 %% API
 -export([name_hash/1,
-         commitment_hash/2]).
+         commitment_hash/2,
+         to_auction_hash/1,
+         from_auction_hash/1]).
 
 %%%===================================================================
 %%% Types
@@ -23,12 +25,16 @@
 
 -type name_hash() :: binary().
 -type commitment_hash() :: binary().
+-type auction_hash() :: binary().
 
 -export_type([name_hash/0,
-              commitment_hash/0]).
+              commitment_hash/0,
+              auction_hash/0]).
 
 -define(NAME_HASH_BYTES, 32).
 -define(COMMITMENT_HASH_BYTES, 32).
+-define(AUCTION_HASH_BYTES, 33).
+
 
 %%%===================================================================
 %%% API
@@ -62,6 +68,14 @@ name_hash(NameAscii) ->
             pre_lima_name_hash(NameAscii)
     end.
 
+-spec to_auction_hash(name_hash()) -> auction_hash().
+to_auction_hash(NameHash) ->
+    <<NameHash/binary, 0:8>>.
+
+-spec from_auction_hash(auction_hash()) -> name_hash().
+from_auction_hash(AuctionHash) ->
+    <<NameHash:?NAME_HASH_BYTES/unit:8, 0:8>> = AuctionHash,
+    <<NameHash:?NAME_HASH_BYTES/unit:8>>.
 
 -spec pre_lima_commitment_hash(binary(), integer()) -> commitment_hash().
 pre_lima_commitment_hash(NameAscii, Salt) ->

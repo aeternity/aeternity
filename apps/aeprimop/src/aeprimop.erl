@@ -38,8 +38,7 @@
 
 %% Direct op API (mainly for FATE).
 -export([ force_inc_account_nonce_op/2
-        , lock_amount_op/2
-        , name_claim_op/6
+        , name_claim_op/5
         , name_preclaim_op/3
         , name_revoke_op/3
         , name_transfer_op/4
@@ -64,6 +63,7 @@
                         , find_channel/2
                         , find_commitment/2
                         , find_name/2
+                        , find_name_auction/2
                         , find_oracle/2
                         , find_oracle_query/3
                         , get_account/2
@@ -74,6 +74,7 @@
                         , get_contract_no_cache/2
                         , get_contract_without_store/2
                         , get_name/2
+                        , get_name_auction/3
                         , get_oracle/3
                         , get_oracle_query/3
                         , get_var/3
@@ -85,6 +86,7 @@
                         , put_commitment/2
                         , put_contract/2
                         , put_name/2
+                        , put_name_auction/2
                         , put_oracle/2
                         , put_oracle_query/2
                         ]).
@@ -244,11 +246,9 @@ name_preclaim_tx_instructions(AccountPubkey, CommitmentHash, DeltaTTL,
                                  non_neg_integer(), fee(), nonce()) -> [op()].
 name_claim_tx_instructions(AccountPubkey, PlainName, NameSalt, NameFee, Fee, Nonce) ->
     PreclaimDelta = aec_governance:name_claim_preclaim_delta(),
-    DeltaTTL = aec_governance:name_claim_max_expiration(),
     [ inc_account_nonce_op(AccountPubkey, Nonce)
     , spend_fee_op(AccountPubkey, Fee)
-    , lock_amount_op(AccountPubkey, NameFee)
-    , name_claim_op(AccountPubkey, PlainName, NameSalt, NameFee, DeltaTTL, PreclaimDelta)
+    , name_claim_op(AccountPubkey, PlainName, NameSalt, NameFee, PreclaimDelta)
     ].
 
 -spec name_revoke_tx_instructions(pubkey(), hash(), fee(), nonce()) -> [op()].
@@ -448,7 +448,6 @@ cache_write_through(S, Opts) ->
 eval_one({Op, Args}, S) ->
     case Op of
         inc_account_nonce         -> inc_account_nonce(Args, S);
-        lock_amount               -> lock_amount(Args, S);
         channel_create            -> channel_create(Args, S);
         channel_deposit           -> channel_deposit(Args, S);
         channel_withdraw          -> channel_withdraw(Args, S);
@@ -537,15 +536,14 @@ spend({From, To, Amount, Mode}, #state{} = S) when is_integer(Amount), Amount >=
 
 %%%-------------------------------------------------------------------
 %%% A special form of spending is to lock an amount.
+%%% For Lima auctioned names, the lock fee is returned
+%%% in case of overbidding
 
-lock_amount_op(From, Amount) when ?IS_HASH(From),
-                                  ?IS_NON_NEG_INTEGER(Amount) ->
-    {lock_amount, {From, Amount}}.
-
-lock_amount({From, Amount}, #state{height = Height} = S) ->
+lock_amount(From, Amount, #state{height = Height} = S) ->
     LockFee = aec_governance:name_claim_locked_fee(),
-    case aec_hard_forks:protocol_effective_at_height(Height) >= ?LIMA_PROTOCOL_VSN of
-        true when Amount > 0 -> ok;   %% can it be zero in Lima?
+    Protocol = aec_hard_forks:protocol_effective_at_height(Height),
+    case Protocol >= ?LIMA_PROTOCOL_VSN of
+        true when Amount > 0 -> ok;
         false when Amount == LockFee -> ok;
         _ -> runtime_error(illegal_name_fee)
     end,
@@ -725,30 +723,69 @@ name_preclaim({AccountPubkey, CommitmentHash, DeltaTTL}, S) ->
 
 %%%-------------------------------------------------------------------
 
-name_claim_op(AccountPubkey, PlainName, NameSalt, NameFee, DeltaTTL, PreclaimDelta
+name_claim_op(AccountPubkey, PlainName, NameSalt, NameFee, PreclaimDelta
              ) when ?IS_HASH(AccountPubkey),
                     is_binary(PlainName),
                     ?IS_NON_NEG_INTEGER(NameSalt),
                     ?IS_NON_NEG_INTEGER(NameFee),
-                    ?IS_NON_NEG_INTEGER(DeltaTTL),
                     ?IS_NON_NEG_INTEGER(PreclaimDelta) ->
-    {name_claim, {AccountPubkey, PlainName, NameSalt, NameFee, DeltaTTL, PreclaimDelta}}.
+    {name_claim, {AccountPubkey, PlainName, NameSalt, NameFee, PreclaimDelta}}.
 
-name_claim({AccountPubkey, PlainName, NameSalt, NameFee, DeltaTTL, PreclaimDelta}, S) ->
+name_claim({AccountPubkey, PlainName, NameSalt, NameFee, PreclaimDelta}, S) ->
     NameAscii = name_to_ascii(PlainName),
     NameRegistrar = name_registrar(PlainName),
-    CommitmentHash = aens_hash:commitment_hash(NameAscii, NameSalt),
-    {Commitment, S1} = get_commitment(CommitmentHash, name_not_preclaimed, S),
-    assert_commitment_owner(Commitment, AccountPubkey),
-    assert_preclaim_delta(Commitment, PreclaimDelta, S1#state.height),
-    %% here assert that an .aes name is pre-claimed after Lime height
     NameHash = aens_hash:name_hash(NameAscii),
-    assert_not_name(NameHash, S1),
-    assert_name_registrar(NameRegistrar, S1#state.height),
-    assert_name_bid_fee(NameAscii, NameFee, S1#state.height),  %% always ok pre Lima.
-    Name = aens_names:new(NameHash, AccountPubkey, S1#state.height + DeltaTTL),
-    S2 = delete_x(commitment, CommitmentHash, S1),
-    put_name(Name, S2).
+    AuctionHash = aens_hash:to_auction_hash(NameHash),
+    %% Cannot compute CommitmentHash before we know whether in auction
+    Protocol = aec_hard_forks:protocol_effective_at_height(S#state.height),
+    case aec_governance:name_claim_bid_timeout(NameAscii, Protocol) of
+        0 ->
+            %% No auction for this name, preclaim delta suffices
+            %% For clarity DeltaTTL for name computed here
+            DeltaTTL = aec_governance:name_claim_max_expiration(),
+            S0 = lock_amount(AccountPubkey, NameFee, S),
+            CommitmentHash = aens_hash:commitment_hash(NameAscii, NameSalt),
+            {Commitment, S1} = get_commitment(CommitmentHash, name_not_preclaimed, S0),
+            assert_claim_after_preclaim({AccountPubkey, Commitment, NameAscii, NameRegistrar, NameFee, PreclaimDelta}, S1),
+            Name = aens_names:new(NameHash, AccountPubkey, S1#state.height + DeltaTTL),
+            S2 = delete_x(commitment, CommitmentHash, S1),
+            put_name(Name, S2);
+        Timeout when NameSalt == 0  ->
+            %% Auction should be running, new bid comes in
+            assert_not_name(NameHash, S), %% just to be sure
+            {Auction, S1} = get_name_auction(AuctionHash, name_not_in_auction, S),
+            PreviousBidderPubkey = aens_auctions:bidder_pubkey(Auction),
+            PreviousBid = aens_auctions:name_fee(Auction),
+            assert_name_bid_fee(NameAscii, NameFee, S#state.height), %% just in case, consensus may have changed
+            assert_valid_overbid(Protocol, NameAscii, NameFee, aens_auctions:name_fee(Auction)),
+            NewAuction = aens_auctions:new(AuctionHash, AccountPubkey, NameFee, Timeout, S1#state.height),
+            %% Return the tokens hold in the previous bid
+            {PreviousBidderAccount, S2} = get_account(PreviousBidderPubkey, S1),
+            S3 = account_earn(PreviousBidderAccount, PreviousBid, S2),
+            %% overwrite old auction with new one
+            put_name_auction(NewAuction, S3);
+        Timeout when NameSalt =/= 0 ->
+            %% This is the first claim that starts an auction
+            assert_not_name_auction(AuctionHash, S),
+            CommitmentHash = aens_hash:commitment_hash(NameAscii, NameSalt),
+            {Commitment, S1} = get_commitment(CommitmentHash, name_not_preclaimed, S),
+            assert_claim_after_preclaim({AccountPubkey, Commitment, NameAscii, NameRegistrar, NameFee, PreclaimDelta}, S1),
+
+            %% Now put this Name in Auction instead of in Names
+            Auction = aens_auctions:new(AuctionHash, AccountPubkey, NameFee, Timeout, S1#state.height),
+            S2 = delete_x(commitment, CommitmentHash, S1),
+            put_name_auction(Auction, S2)
+    end.
+
+assert_claim_after_preclaim({AccountPubkey, Commitment, NameAscii, NameRegistrar, NameFee, PreclaimDelta}, S) ->
+    NameHash = aens_hash:name_hash(NameAscii),
+    assert_commitment_owner(Commitment, AccountPubkey),
+    assert_preclaim_delta(Commitment, PreclaimDelta, S#state.height),
+    %% here assert that an .aes name is pre-claimed after Lime height
+    assert_not_name(NameHash, S),
+    %% Testing here for backward compatibility in error reporting
+    assert_name_registrar(NameRegistrar, S#state.height),
+    assert_name_bid_fee(NameAscii, NameFee, S#state.height).  %% always ok pre Lima.
 
 name_to_ascii(PlainName) ->
     case aens_utils:to_ascii(PlainName) of
@@ -1646,6 +1683,25 @@ assert_not_name(NameHash, S) ->
         {_, _} -> runtime_error(name_already_taken);
         none   -> ok
     end.
+
+assert_not_name_auction(AuctionHash, S) ->
+    case find_name_auction(AuctionHash, S) of
+        {_, _} -> runtime_error(name_already_in_auction);
+        none   -> ok
+    end.
+
+assert_valid_overbid(Protocol, NameAscii, NewNameFee, OldNameFee) ->
+    Progression = aec_governance:name_claim_bid_increment(),
+    %% Stay within integer computations New bid must be Progression % higher
+    %% than previous bid
+    case (NewNameFee - OldNameFee) * 100 >= OldNameFee * Progression of
+        true ->
+            ok;
+        false ->
+            runtime_error(name_fee_increment_too_low)
+    end.
+
+
 
 assert_name_registrar(Registrar, Height) ->
     ProtoVsn = aec_hard_forks:protocol_effective_at_height(Height),

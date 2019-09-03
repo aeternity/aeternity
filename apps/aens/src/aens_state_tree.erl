@@ -11,14 +11,17 @@
 -export([commit_to_db/1,
          cache_root_hash/1,
          delete_commitment/2,
+         delete_name_auction/2,
          delete_name/2,
          empty/0,
          empty_with_backend/0,
          enter_commitment/2,
+         enter_name_auction/2,
          enter_name/2,
          get_name/2,
          prune/2,
          lookup_commitment/2,
+         lookup_name_auction/2,
          lookup_name/2,
          new_with_backend/2,
          root_hash/1]).
@@ -40,10 +43,11 @@
 %%% Types
 %%%===================================================================
 
--type mkey() :: aens_hash:commitment_hash() | aens_hash:name_hash().
--type mvalue() :: aens_commitments:serialized() | aens_names:serialized().
+-type mkey() :: aens_hash:commitment_hash() | aens_hash:name_hash() | aens_hash:auction_hash().
+-type mvalue() :: aens_commitments:serialized() | aens_names:serialized() | aens_auctions:serialized().
 -type nstree() :: aeu_mtrees:mtree(mkey(), mvalue()).
 -type commitment() :: aens_commitments:commitment().
+-type auction() :: aens_auctions:auction().
 -type name() :: aens_names:name().
 -type cache() :: aeu_mtrees:mtree(cache_key(), cache_value()).
 -type cache_key() :: binary(). %% Sext encoded
@@ -75,6 +79,11 @@ delete_commitment(Id, Tree) ->
     MTree1 = aeu_mtrees:delete(Id, Tree#ns_tree.mtree),
     Tree#ns_tree{mtree = MTree1}.
 
+-spec delete_name_auction(binary(), tree()) -> tree().
+delete_name_auction(Id, Tree) ->
+    MTree1 = aeu_mtrees:delete(Id, Tree#ns_tree.mtree),
+    Tree#ns_tree{mtree = MTree1}.
+
 -spec delete_name(binary(), tree()) -> tree().
 delete_name(Id, Tree) ->
     MTree1 = aeu_mtrees:delete(Id, Tree#ns_tree.mtree),
@@ -97,21 +106,26 @@ new_with_backend(RootHash, CacheRootHash) ->
     Cache = aeu_mtrees:new_with_backend(CacheRootHash, aec_db_backends:ns_cache_backend()),
     #ns_tree{mtree = MTree, cache = Cache}.
 
--spec prune(block_height(), tree()) -> tree().
-prune(NextBlockHeight, #ns_tree{} = Tree) ->
-    {Tree1, ExpiredActions} = int_prune(NextBlockHeight - 1, Tree),
-    run_elapsed(ExpiredActions, Tree1, NextBlockHeight).
+-spec prune(block_height(), aec_trees:trees()) -> aec_trees:trees().
+prune(NextBlockHeight, Trees) ->
+    {NTree, ExpiredActions} = int_prune(NextBlockHeight - 1, aec_trees:ns(Trees)),
+    Trees1 = aec_trees:set_ns(Trees, NTree),
+    run_elapsed(ExpiredActions, Trees1, NextBlockHeight).
 
-run_elapsed([], Tree, _) ->
-    Tree;
-run_elapsed([{aens_names, Id, Serialized}|Expired], Tree, Height) ->
+run_elapsed([], Trees, _) ->
+    Trees;
+run_elapsed([{aens_names, Id, Serialized}|Expired], Trees, Height) ->
     Name = aens_names:deserialize(Id, Serialized),
-    {ok, Tree1} = run_elapsed_name(Name, Tree, Height),
-    run_elapsed(Expired, Tree1, Height);
-run_elapsed([{aens_commitments, Id, Serialized}|Expired], Tree, Height) ->
+    {ok, Trees1} = run_elapsed_name(Name, Trees, Height),
+    run_elapsed(Expired, Trees1, Height);
+run_elapsed([{aens_auctions, Id, Serialized}|Expired], Trees, Height) ->
+    Auction = aens_auctions:deserialize(Id, Serialized),
+    {ok, Trees1} = run_elapsed_name_auction(Auction, Trees, Height),
+    run_elapsed(Expired, Trees1, Height);
+run_elapsed([{aens_commitments, Id, Serialized}|Expired], Trees, Height) ->
     Commitment = aens_commitments:deserialize(Id, Serialized),
-    {ok, Tree1} = run_elapsed_commitment(Commitment, Tree),
-    run_elapsed(Expired, Tree1, Height).
+    {ok, Trees1} = run_elapsed_commitment(Commitment, Trees),
+    run_elapsed(Expired, Trees1, Height).
 
 -spec enter_commitment(commitment(), tree()) -> tree().
 enter_commitment(Commitment, Tree) ->
@@ -121,6 +135,15 @@ enter_commitment(Commitment, Tree) ->
     %% TODO: consider two trees (names vs pre-claims/commitments)
     Cache1 = cache_push(TTL, CommitmentHash, aens_commitments, Tree#ns_tree.cache),
     MTree1 = aeu_mtrees:insert(CommitmentHash, Serialized, Tree#ns_tree.mtree),
+    Tree#ns_tree{cache = Cache1, mtree = MTree1}.
+
+-spec enter_name_auction(auction(), tree()) -> tree().
+enter_name_auction(Auction, Tree) ->
+    AuctionHash = aens_auctions:hash(Auction),
+    Serialized = aens_auctions:serialize(Auction),
+    TTL = aens_auctions:ttl(Auction),
+    Cache1 = cache_push(TTL, AuctionHash, aens_auctions, Tree#ns_tree.cache),
+    MTree1 = aeu_mtrees:enter(AuctionHash, Serialized, Tree#ns_tree.mtree),
     Tree#ns_tree{cache = Cache1, mtree = MTree1}.
 
 -spec enter_name(name(), tree()) -> tree().
@@ -140,6 +163,13 @@ get_name(Id, Tree) ->
 lookup_commitment(Id, Tree) ->
     case aeu_mtrees:lookup(Id, Tree#ns_tree.mtree) of
         {value, Val} -> {value, aens_commitments:deserialize(Id, Val)};
+        none -> none
+    end.
+
+-spec lookup_name_auction(binary(), tree()) -> {value, auction()} | none.
+lookup_name_auction(Id, Tree) ->
+    case aeu_mtrees:lookup(Id, Tree#ns_tree.mtree) of
+        {value, Val} -> {value, aens_auctions:deserialize(Id, Val)};
         none -> none
     end.
 
@@ -228,48 +258,80 @@ int_prune({HeightLower, Id, Mod}, NextBlockHeight, Cache, MTree, ExpiredAcc) ->
             int_prune(cache_safe_peek(Cache1), NextBlockHeight, Cache1, MTree, ExpiredAcc)
     end.
 
+%% TODO update this figure, we now may start an auction
 %% INFO: run_elapsed_name/3 and run_elapsed_commitment/2 implements 'expire' driven transitions:
 %%
+%%
 %%                   expire
-%%       unclaimed <-------- revoked
-%%           | ^              ^^
-%%           | |              || expire
-%%           | | expire       ||
-%% pre-claim | |              ||  _
-%%           | |       revoke || | | transfer
-%%           v |              || | v
-%%      pre-claimed -------> claimed
-%%                   claim    | ^
-%%                            | |
-%%                             -
-%%                           update
+%%       unclaimed <----------------------- revoked
+%%           | ^                               ^^
+%%           | |                               || expire
+%%           | | expire                        ||
+%% pre-claim | |                               ||  _
+%%           | |                        revoke || | | transfer
+%%           v |                               || | v
+%%      pre-claimed -------> auction ---->  claimed
+%%                   claim           expire   | ^
+%%                                            | |
+%%                                             -
+%%                                           update
 %%
 
-run_elapsed_name(Name, NamesTree0, NextBlockHeight) ->
+
+
+run_elapsed_name(Name, Trees, NextBlockHeight) ->
+    NamesTree0 = aec_trees:ns(Trees),
     ExpirationBlockHeight = aens_names:ttl(Name),
     Status = aens_names:status(Name),
     case ExpirationBlockHeight =:= (NextBlockHeight - 1) of
         false ->
             %% INFO: Do nothing.
             %%       Name was updated and we triggered old cache event.
-            {ok, NamesTree0};
+            {ok, Trees};
         true when Status =:= claimed ->
             NameHash = aens_names:hash(Name),
             Name0    = aens_state_tree:get_name(NameHash, NamesTree0),
             TTL      = aec_governance:name_protection_period(),
             Name1    = aens_names:revoke(Name0, TTL, ExpirationBlockHeight),
-            {ok, aens_state_tree:enter_name(Name1, NamesTree0)};
+            NamesTree1 = aens_state_tree:enter_name(Name1, NamesTree0),
+            {ok, aec_trees:set_ns(Trees, NamesTree1)};
         true when Status =:= revoked ->
             NameHash = aens_names:hash(Name),
-            {ok, aens_state_tree:delete_name(NameHash, NamesTree0)}
+            NamesTree1 = aens_state_tree:delete_name(NameHash, NamesTree0),
+            {ok, aec_trees:set_ns(Trees, NamesTree1)}
     end.
 
-run_elapsed_commitment(Commitment, NamesTree0) ->
+run_elapsed_name_auction(Auction, Trees, NextBlockHeight) ->
+    NamesTree0 = aec_trees:ns(Trees),
+    ExpirationBlockHeight = aens_auctions:ttl(Auction),
+    case ExpirationBlockHeight =:= (NextBlockHeight - 1) of
+        false ->
+            %% INFO: Do nothing.
+            %%       Name was updated and we triggered old cache event.
+            {ok, Trees};
+        true ->
+            AuctionHash = aens_auctions:hash(Auction),
+            NameHash   = aens_hash:from_auction_hash(AuctionHash),
+            DeltaTTL   = aec_governance:name_claim_max_expiration(),
+            AccountPubkey = aens_auctions:bidder_pubkey(Auction),
+            Name       = aens_names:new(NameHash, AccountPubkey, ExpirationBlockHeight + DeltaTTL),
+            NamesTree1 = aens_state_tree:delete_name_auction(AuctionHash, NamesTree0),
+            NamesTree2 = aens_state_tree:enter_name(Name, NamesTree1),
+            %% lock the final bid
+            NameFee = aens_auctions:name_fee(Auction),
+            ATree   = aec_trees:accounts(Trees),
+            ATree1  = lock_name_claim_fee(NameFee, ATree),
+            {ok, aec_trees:set_accounts(
+                   aec_trees:set_ns(Trees, NamesTree2), ATree1)}
+    end.
+
+run_elapsed_commitment(Commitment, Trees) ->
     %% INFO: We delete in both cases when name is claimed or not claimed
     %%       when it expires
+    NamesTree0 = aec_trees:ns(Trees),
     CommitmentHash = aens_commitments:hash(Commitment),
     NamesTree1 = aens_state_tree:delete_commitment(CommitmentHash, NamesTree0),
-    {ok, NamesTree1}.
+    {ok,  aec_trees:set_ns(Trees, NamesTree1)}.
 
 %%%===================================================================
 %%% TTL Cache
@@ -318,3 +380,14 @@ deserialize_name_or_commitment(Hash, Bin) ->
     Fields = aeserialization:decode_fields(Template, RawFields),
     Obj = Module:deserialize_from_fields(Vsn, Hash, Fields),
     {Module, Obj}.
+
+lock_name_claim_fee(NameFee, ATree) ->
+    LockPubkey = aec_governance:locked_coins_holder_account(),
+    case aec_accounts_trees:lookup(LockPubkey, ATree) of
+        {value, Account} ->
+            {ok, Account1} = aec_accounts:earn(Account, NameFee),
+            aec_accounts_trees:enter(Account1, ATree);
+        none ->
+            aec_accounts_trees:enter(
+              aec_accounts:new(LockPubkey, NameFee), ATree)
+    end.
