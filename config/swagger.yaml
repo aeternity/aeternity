@@ -1687,6 +1687,10 @@ parameters:
 ## Definitions
 ##
 
+# NOTE on $ref and description fields
+# According to JSON Schema we use (http://swagger.io/v2/schema.json#) only $ref is allow but not description
+# However for unknown reason (jesse bug?) if the description field is before $ref it passes the validation
+
 definitions:
   # Swagger doesn't have any proper integer types, we mainly use four
   # different unsigned integers
@@ -1800,8 +1804,8 @@ definitions:
       height:
         $ref: '#/definitions/UInt64'
       pof_hash:
-        $ref: '#/definitions/EncodedHash'
         description: '"no_fraud" | api encoded Proof of Fraud hash'
+        $ref: '#/definitions/EncodedHash'
       prev_hash:
         $ref: '#/definitions/EncodedHash'
       prev_key_hash:
@@ -2402,8 +2406,8 @@ definitions:
       nonce:
         $ref: '#/definitions/UInt64'
       offchain_trees:
-        $ref: '#/definitions/EncodedByteArray'
         description: 'The whole set of off-chain state trees'
+        $ref: '#/definitions/EncodedByteArray'
     required:
       - channel_id
       - from_id
@@ -2452,8 +2456,8 @@ definitions:
       nonce:
         $ref: '#/definitions/UInt64'
       poi:
-        $ref: '#/definitions/EncodedByteArray'
         description: 'Proof of inclusion containing information for closing the channel'
+        $ref: '#/definitions/EncodedByteArray'
     required:
       - channel_id
       - from_id
@@ -2476,8 +2480,8 @@ definitions:
       nonce:
         $ref: '#/definitions/UInt64'
       poi:
-        $ref: '#/definitions/EncodedByteArray'
         description: 'Proof of inclusion containing information for closing the channel'
+        $ref: '#/definitions/EncodedByteArray'
     required:
       - channel_id
       - from_id
@@ -2977,8 +2981,8 @@ definitions:
     type: object
     properties:
       owner_id:
-        $ref: '#/definitions/EncodedPubkey'
         description: Contract owner pub_key
+        $ref: '#/definitions/EncodedPubkey'
       nonce:
         description: 'Owner''s nonce'
         $ref: '#/definitions/UInt64'
@@ -3021,14 +3025,14 @@ definitions:
     type: object
     properties:
       caller_id:
-        $ref: '#/definitions/EncodedPubkey'
         description: Contract caller pub_key
+        $ref: '#/definitions/EncodedPubkey'
       nonce:
         description: 'Caller''s nonce'
         $ref: '#/definitions/UInt64'
       contract_id:
-        $ref: '#/definitions/EncodedPubkey'
         description: 'Contract''s pub_key'
+        $ref: '#/definitions/EncodedPubkey'
       abi_version:
         description: 'ABI version'
         $ref: '#/definitions/UInt16'
@@ -3076,8 +3080,8 @@ definitions:
       - type: object
         properties:
           contract_id:
-            $ref: '#/definitions/EncodedPubkey'
             description: Address of the contract to be created
+            $ref: '#/definitions/EncodedPubkey'
         required:
           - contract_id
   PoI:
@@ -3114,11 +3118,11 @@ definitions:
       - type: object
         properties:
           from:
-            $ref: '#/definitions/EncodedPubkey'
             description: Sender of tokens
-          to:
             $ref: '#/definitions/EncodedPubkey'
+          to:
             description: Receiver of tokens
+            $ref: '#/definitions/EncodedPubkey'
           amount:
             $ref: '#/definitions/UInt'
         required:
@@ -3131,8 +3135,8 @@ definitions:
       - type: object
         properties:
           to:
-            $ref: '#/definitions/EncodedPubkey'
             description: Withdrawer of tokens
+            $ref: '#/definitions/EncodedPubkey'
           amount:
             $ref: '#/definitions/UInt'
         required:
@@ -3144,8 +3148,8 @@ definitions:
       - type: object
         properties:
           from:
-            $ref: '#/definitions/EncodedPubkey'
             description: Depositor of tokens
+            $ref: '#/definitions/EncodedPubkey'
           amount:
             $ref: '#/definitions/UInt'
         required:
@@ -3157,8 +3161,8 @@ definitions:
       - type: object
         properties:
           owner:
-            $ref: '#/definitions/EncodedPubkey'
             description: Contract owner
+            $ref: '#/definitions/EncodedPubkey'
           vm_version:
             $ref: '#/definitions/UInt16'
           abi_version:
@@ -3183,11 +3187,11 @@ definitions:
       - type: object
         properties:
           caller:
-            $ref: '#/definitions/EncodedPubkey'
             description: Contract caller
-          contract:
             $ref: '#/definitions/EncodedPubkey'
+          contract:
             description: Contract address
+            $ref: '#/definitions/EncodedPubkey'
           abi_version:
             $ref: '#/definitions/UInt16'
           amount:
@@ -3238,8 +3242,8 @@ definitions:
     type: object
     properties:
       owner_id:
-        $ref: '#/definitions/EncodedPubkey'
         description: Contract owner pub_key
+        $ref: '#/definitions/EncodedPubkey'
       nonce:
         description: 'Owner''s nonce'
         $ref: '#/definitions/UInt64'
@@ -3281,8 +3285,8 @@ definitions:
     type: object
     properties:
       ga_id:
-        $ref: '#/definitions/EncodedPubkey'
         description: Account owner pub_key
+        $ref: '#/definitions/EncodedPubkey'
       abi_version:
         description: 'ABI version'
         $ref: '#/definitions/UInt16'
