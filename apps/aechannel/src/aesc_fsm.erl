@@ -72,7 +72,8 @@
 -export([message/2]).
 
 %% Used by client
--export([signing_response/3]).          %% (Fsm, Tag, Obj)
+-export([ signing_response/3          %% (Fsm, Tag, Obj)
+        , error_code_to_msg/1]).      %% (Code)
 
 %% Used by min-depth watcher
 -export([ minimum_depth_achieved/4      %% (Fsm, OnChainId, Type, TxHash)
@@ -367,6 +368,15 @@ message(Fsm, {T, _} = Msg) when ?KNOWN_MSG_TYPE(T) ->
 signing_response(Fsm, Tag, Obj) ->
     gen_statem:cast(Fsm, {?SIGNED, Tag, Obj}).
 
+error_code_to_msg(?ERR_VALIDATION) -> <<"validation error">>;
+error_code_to_msg(?ERR_CONFLICT  ) -> <<"conflict">>;
+error_code_to_msg(?ERR_TIMEOUT   ) -> <<"timeout">>;
+error_code_to_msg(?ERR_ABORT     ) -> <<"abort">>;
+error_code_to_msg(Code) when Code >= ?ERR_USER ->
+    <<"user-defined">>;
+error_code_to_msg(_) ->
+    <<"unknown">>.
+
 %% ==================================================================
 %% Used by min-depth watcher
 
@@ -573,8 +583,9 @@ awaiting_reestablish(cast, {?CH_REESTABL, Msg}, #data{role = responder} = D) ->
     case check_reestablish_msg(Msg, D) of
         {ok, D1} ->
             report(info, channel_reestablished, D1),
-            gproc_register(D1),
-            next_state(open, send_reestablish_ack_msg(D1));
+            D2 = maybe_restart_watcher(D1),
+            gproc_register(D2),
+            next_state(open, send_reestablish_ack_msg(D2));
         {error, _} = Error ->
             close(Error, D)
     end;
@@ -603,8 +614,9 @@ awaiting_reestablish(Type, Msg, D) ->
 awaiting_signature(enter, _OldSt, _D) -> keep_state_and_data;
 awaiting_signature(cast, {?SIGNED, Tag, {error, Code}} = Msg,
                    #data{op = #op_sign{ tag = Tag }} = D) ->
-    D1 =log(rcv, msg_type(Msg), Msg, D),
-    handle_recoverable_error(#{code => Code}, D1);
+    lager:debug("Error code as signing reply (Tag = ~p): ~p", [Tag, Code]),
+    D1 = log(rcv, msg_type(Msg), Msg, D),
+    handle_recoverable_error(#{code => Code, msg_type => Tag}, D1);
 awaiting_signature(cast, {Req, _} = Msg, #data{ongoing_update = true} = D)
   when ?UPDATE_CAST(Req) ->
     %% Race detection!
@@ -891,7 +903,7 @@ mutual_closed(cast, {?SHUTDOWN_ERR, Msg}, D) ->
 mutual_closed(timeout, _Msg, D) ->
     close(timeout, D);
 mutual_closed(Type, Msg, D) ->
-    handle_common_event(Type, Msg, error, D).
+    handle_common_event(Type, Msg, postpone, D).
 
 channel_closing(enter, _OldSt, D) ->
     D1 = enter_closing(D),
@@ -920,6 +932,7 @@ channel_closing(cast, {?SHUTDOWN, Msg}, D) ->
             lager:debug("Shutdown while channel_closing not allowed before the Lima fork"),
             keep_state(D);
         {true, {ok, SignedTx, Updates, BlockHash, D1}} ->
+            report(info, shutdown, D1),
             case request_signing_(?SHUTDOWN_ACK, SignedTx, Updates, BlockHash, D1) of
                 {ok, D2, Actions} ->
                     next_state(awaiting_signature, D2, Actions);
@@ -1043,7 +1056,9 @@ mutual_closing(cast, {?SHUTDOWN_ACK, Msg}, D) ->
             next_state(mutual_closed, D1);
         {error, _} = Error ->
             lager:debug("Validation of SHUTDOWN_ACK failed: ~p", [Error]),
-            handle_recoverable_error(#{ code => ?ERR_VALIDATION, msg_type => ?SHUTDOWN_ACK }, D)
+            handle_recoverable_error(#{ code => ?ERR_VALIDATION
+                                      , respond => true
+                                      , msg_type => ?SHUTDOWN_ACK }, D)
     end;
 mutual_closing(cast, {closing_signed, _Msg}, D) ->  %% TODO: not using this, right?
     close(closing_signed, D);
@@ -1133,6 +1148,7 @@ open(cast, {?LEAVE, Msg}, D) ->
 open(cast, {?SHUTDOWN, Msg}, D) ->
     case check_shutdown_msg(Msg, D) of
         {ok, SignedTx, Updates, BlockHash, D1} ->
+            report(info, shutdown, D1),
             case request_signing_(?SHUTDOWN_ACK, SignedTx, Updates, BlockHash, D1) of
                 {ok, D2, Actions} ->
                     next_state(awaiting_signature, D2, Actions);
@@ -1141,7 +1157,9 @@ open(cast, {?SHUTDOWN, Msg}, D) ->
                     keep_state(D1)
             end;
         {error, _E} ->
-            handle_recoverable_error(#{code => ?ERR_VALIDATION, msg_type => ?SHUTDOWN}, D)
+            handle_recoverable_error(#{ code => ?ERR_VALIDATION
+                                      , respond => true
+                                      , msg_type => ?SHUTDOWN}, D)
     end;
 open(Type, Msg, D) ->
     handle_common_event(Type, Msg, discard, D).
@@ -1151,7 +1169,9 @@ reestablish_init(cast, {?CH_REEST_ACK, Msg}, D) ->
     case check_reestablish_ack_msg(Msg, D) of
         {ok, D1} ->
             report(info, channel_reestablished, D1),
-            next_state(open, D1);
+            {ok, Pid} = aesc_chain_watcher:restart_watcher(
+                          D1#data.on_chain_id, ?MODULE),
+            next_state(open, D1#data{watcher = Pid});
         {error, _} = Err ->
             close(Err, D)
     end;
@@ -2514,6 +2534,7 @@ send_update_ack_msg(SignedTx, #data{ on_chain_id = OnChainId
 
 handle_update_conflict(Op, D) ->
     handle_recoverable_error(#{ code => ?ERR_CONFLICT
+                              , respond => true
                               , msg_type => Op }, D).
 
 handle_recoverable_error(ErrorInfo, D) ->
@@ -2535,22 +2556,34 @@ send_recoverable_error_msg(#{code := ErrorCode} = Info, #data{ state = State
     Msg = #{ channel_id => ChanId
            , round      => Round
            , error_code => ErrorCode },
-    maybe_send_error_msg(Info, Sn, Msg),
+    maybe_send_error_msg(Info, Sn, Msg, Data),
     report(conflict, Msg, Data),
     log(snd, error_msg_type(Info, Data), Msg, Data).
 
-maybe_send_error_msg(#{ msg_type := MsgType }, Sn, Msg) ->
-    lager:debug("sending error msg (type: ~p) to peer: ~p", [MsgType, Msg]),
-    send_recoverable_error_msg(error_msg_type(MsgType), Sn, Msg);
-maybe_send_error_msg(_, _, _) ->
-    lager:debug("no msg_type given - not sending error msg", []),
-    ok.
+maybe_send_error_msg(#{ respond := true } = Info, Sn, Msg, D) ->
+    send_recoverable_error_msg(error_msg_type(Info, D), Sn, Msg);
+maybe_send_error_msg(#{ code := Code, msg_type := MsgType }, Sn, Msg, _) ->
+    case starting_msg(MsgType) of
+        true when Code =/= ?ERR_CONFLICT  ->
+            %% Don't send; this hasn't touched the other fsm yet
+            lager:debug("Not sending error msg to peer", []),
+            ok;
+        _ ->
+            lager:debug("sending error msg (type: ~p) to peer: ~p", [MsgType, Msg]),
+            send_recoverable_error_msg(error_msg_type(MsgType), Sn, Msg)
+    end;
+maybe_send_error_msg(_, Sn, Msg, #data{error_msg_type = Type}) ->
+    case Type of
+        undefined ->
+            lager:debug("no msg_type given - not sending error msg", []),
+            ok;
+        _ ->
+            send_recoverable_error_msg(Type, Sn, Msg)
+    end.
 
-error_msg_type(#{msg_type := Type}, _)          -> Type;
+error_msg_type(#{msg_type := Type}, _)          -> error_msg_type(Type);
 error_msg_type(_, #data{error_msg_type = Type}) -> Type.
 
-error_msg_type(Msg) when is_tuple(Msg) ->
-    error_msg_type(element(1, Msg));
 error_msg_type(?UPDATE)         -> ?UPDATE_ERR;
 error_msg_type(?UPDATE_ACK)     -> ?UPDATE_ERR;
 error_msg_type(?DEP_CREATED)    -> ?DEP_ERR;
@@ -2565,6 +2598,14 @@ error_msg_type(A) when is_atom(A) ->
     lager:debug("No error_msg_type(~p); reusing ~p", [A, ?UPDATE_ERR]),
     ?UPDATE_ERR.  % TODO: error msg types for other sequences?
 
+%% These msg types indicate the start of a sequence. Unless otherwise specified,
+%% this would lead us to guess that the error should be reported only locally.
+starting_msg(?UPDATE    ) -> true;
+starting_msg(deposit_tx ) -> true;
+starting_msg(withdraw_tx) -> true;
+starting_msg(?SHUTDOWN  ) -> true;
+starting_msg(_) -> false.
+
 send_recoverable_error_msg(?UPDATE_ERR, Sn, Msg) ->
     lager:debug("send update_error: ~p", [Msg]),
     aesc_session_noise:update_error(Sn, Msg);
@@ -2575,8 +2616,14 @@ send_recoverable_error_msg(?WDRAW_ERR, Sn, Msg) ->
     lager:debug("send withdraw_error: ~p", [Msg]),
     aesc_session_noise:wdraw_error(Sn,Msg);
 send_recoverable_error_msg(?SHUTDOWN_ERR, Sn, Msg) ->
-    lager:debug("send shutdown_error: ~p", [Msg]),
-    aesc_session_noise:shutdown_error(Sn,Msg).
+    case aesc_offchain_update:get_vsn() of
+        V when V > 1 ->
+            lager:debug("send shutdown_error: ~p", [Msg]),
+            aesc_session_noise:shutdown_error(Sn,Msg);
+        _ ->
+            %% This message won't be defined in earlier FSMs
+            ok
+    end.
 
 request_signing(Tag, Aetx, Updates, BlockHash, #data{} = D) ->
     request_signing(Tag, Aetx, Updates, BlockHash, D, send).
@@ -2669,10 +2716,25 @@ has_my_signature(Me, SignedTx) ->
             ok =:= aetx_sign:verify_one_pubkey(Me, SignedTx, CurrHeight)
     end.
 
-start_min_depth_watcher(Type, SignedTx, Updates,
+
+maybe_restart_watcher(#data{ watcher = undefined
+                           , on_chain_id = ChId } = D) ->
+    {ok, Pid} = aesc_chain_watcher:restart_watcher(ChId, ?MODULE),
+    D#data{ watcher = Pid }.
+
+start_min_depth_watcher(Type, SignedTx, Updates, D) ->
+    try start_min_depth_watcher_(Type, SignedTx, Updates, D)
+    catch
+        error:E ->
+            T = erlang:get_stacktrace(),
+            lager:debug("CAUGHT E=~p / T = ~p", [E, pr_stacktrace(T)]),
+            error({caught,E})
+    end.
+start_min_depth_watcher_(Type, SignedTx, Updates,
                         #data{ watcher = Watcher0
                              , op = Op
-                             , opts = #{minimum_depth := MinDepth}} = D) ->
+                             , opts = Opts } = D) ->
+    MinDepth = maps:get(minimum_depth, Opts, ?MINIMUM_DEPTH),
     BlockHash = block_hash_from_op(Op),
     {Mod, Tx} = aetx:specialize_callback(aetx_sign:innermost_tx(SignedTx)),
     TxHash = aetx_sign:hash(SignedTx),
@@ -2723,8 +2785,6 @@ start_min_depth_watcher(Type, SignedTx, Updates,
                                                         , block_hash = BlockHash
                                                         , updates = Updates}}}}
     end.
-
-
 
 on_chain_id(#data{on_chain_id = ID} = D, _) when ID =/= undefined ->
     {ID, D};
@@ -3962,13 +4022,14 @@ handle_common_event_(timeout, Info, _St, _M, D) when D#data.ongoing_update == tr
     handle_recoverable_error(#{code => ?ERR_TIMEOUT}, D);
 handle_common_event_(timeout, St = T, St, _, D) ->
     close({timeout, T}, D);
-handle_common_event_(cast, {?DISCONNECT, _} = Msg, _St, _, D) ->
+handle_common_event_(cast, ?DISCONNECT = Msg, _St, _, D) ->
     D1 = log(rcv, ?DISCONNECT, Msg, D),
     case D1#data.channel_status of
         closing ->
             keep_state(D1);
         _ ->
-            close(disconnect, D1)
+            report(info, peer_disconnected, D1),
+            next_state(open, fallback_to_stable_state(D1))
     end;
 handle_common_event_(cast, {?INBAND_MSG, Msg}, _St, _, D) ->
     NewD = case check_inband_msg(Msg, D) of
@@ -4096,3 +4157,23 @@ block_hash_from_op(?NO_OP) -> %% in case of unexpected close
 
 tx_env_and_trees_from_top(Type) ->
     aesc_tx_env_cache:tx_env_and_trees_from_top(Type).
+
+%% This function is meant to prune and prettify stack traces
+%% containing #data{} records, which often are so large that printouts become
+%% unreadable.
+pr_stacktrace(T) ->
+    [{M,F,abbrev_args(A), St} || {M,F,A,St} <- T].
+
+abbrev_args(I) when is_integer(I) ->
+    I;
+abbrev_args(L) when is_list(L) ->
+    lists:map(
+      fun(#data{} = D) ->
+              pr_data(D);
+         (X) -> X
+      end, L).
+
+pr_data(D) ->
+    lager:pr(setelement(
+               #data.state,
+               setelement(#data.log, D, {snip}), {snip}), ?MODULE).

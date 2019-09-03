@@ -4,6 +4,7 @@
 
 -export([unpack/1,
          error_response/3,
+         error_code_to_msg/1,
          reply/3,
          notify/2,
          process_incoming/2
@@ -85,6 +86,9 @@ unpack(Msg) ->
         end,
         Msg),
     Msg.
+
+error_code_to_msg(Code) ->
+    aesc_fsm:error_code_to_msg(Code).
 
 error_response(Reason, Req, ChannelId) ->
     {reply, #{ <<"jsonrpc">>    => ?JSONRPC_VERSION
@@ -544,7 +548,8 @@ process_request(#{<<"method">> := Method,
     Tag = ?METHOD_TAG(Method),
     case valid_error_code(ErrorCode) of
         true ->
-            aesc_fsm:signing_response(FsmPid, Tag, {error, ErrorCode});
+            aesc_fsm:signing_response(FsmPid, Tag, {error, ErrorCode}),
+            no_reply;
         false ->
             {error, error_code}
     end;

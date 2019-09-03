@@ -120,7 +120,7 @@
                             ; S=:=mutual_closing ).
 
 -ifdef(TEST).
--define(LOG_CAUGHT(Err), lager:debug("CAUGHT ~p / ~p", [Err, erlang:get_stacktrace()])).
+-define(LOG_CAUGHT(Err), lager:debug("CAUGHT ~p / ~p", [Err, pr_stacktrace(erlang:get_stacktrace())])).
 -else.
 -define(LOG_CAUGHT(Err), lager:debug("CAUGHT ~p", [Err])).
 -endif.
