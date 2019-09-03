@@ -1,13 +1,9 @@
 # coding: utf-8
 
-import tempfile
 import os
-import shutil
-import time
-from nose.tools import assert_equals, assert_not_equals, assert_regexp_matches, with_setup
+from nose.tools import assert_regexp_matches
+
 import common
-from waiting import wait
-from swagger_client.rest import ApiException
 
 settings = common.test_settings(__name__.split(".")[-1])
 

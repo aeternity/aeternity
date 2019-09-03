@@ -1,19 +1,11 @@
 # coding: utf-8
 
-import tempfile
 import os
 import shutil
-import time
-from nose.tools import assert_equals, assert_not_equals,  assert_regexp_matches, with_setup
-import common
+from nose.tools import assert_equals
 from waiting import wait
-from swagger_client.rest import ApiException
 
-from swagger_client.models.tx import Tx
-from swagger_client.models.spend_tx import SpendTx
-from swagger_client.models.contract_create_tx import ContractCreateTx
-from swagger_client.models.contract_call_tx import ContractCallTx
-
+import common
 import keys
 
 settings = common.test_settings(__name__.split(".")[-1])
@@ -107,6 +99,7 @@ def test_contract_call():
 
     bytecode = common.compile_contract(id_contract())
     calldata = common.encode_calldata(id_contract(), call_contract["data"]["function"], call_contract["data"]["argument"])
+    ContractCallTx = internal_api.get_model('ContractCallTx')
     contract_call_obj = ContractCallTx(
         caller_id=test_settings["alice"]["pubkey"],
         contract_id=encoded_contract_id,
@@ -119,7 +112,7 @@ def test_contract_call():
         call_data=calldata)
 
 
-    call_tx_obj = internal_api.post_contract_call(contract_call_obj)
+    call_tx_obj = internal_api.PostContractCall(body=contract_call_obj).response().result
     encoded_call_tx = call_tx_obj.tx
 
     print("Unsigned encoded transaction: " + encoded_call_tx)
@@ -172,6 +165,7 @@ def test_spend():
     # Alice creates spend tx
     print("Tx amount " + str(test_settings["spend_tx"]["amount"]))
     print("Tx fee " + str(test_settings["spend_tx"]["fee"]))
+    SpendTx = internal_api.get_model('SpendTx')
     spend_data_obj = SpendTx(
             sender_id=alice_address,
             recipient_id=bob_address,
@@ -179,7 +173,7 @@ def test_spend():
             fee=test_settings["spend_tx"]["fee"],
             ttl=100,
             payload="foo")
-    unsigned_spend_obj = internal_api.post_spend(spend_data_obj)
+    unsigned_spend_obj = internal_api.PostSpend(body=spend_data_obj).response().result
     unsigned_spend_enc = unsigned_spend_obj.tx
     unsigned_tx = common.api_decode(unsigned_spend_enc)
 
@@ -222,6 +216,7 @@ def get_unsigned_contract_create(owner_id, contract, external_api, internal_api)
     calldata = common.encode_calldata(id_contract(), contract["function"], contract["argument"])
 
     print("OWNERID", owner_id)
+    ContractCreateTx = internal_api.get_model('ContractCreateTx')
     contract_create_tx_obj = ContractCreateTx(
         owner_id=owner_id,
         code=bytecode,
@@ -234,5 +229,5 @@ def get_unsigned_contract_create(owner_id, contract, external_api, internal_api)
         fee=contract["fee"],
         ttl=100,
         call_data=calldata)
-    tx_obj = internal_api.post_contract_create(contract_create_tx_obj)
+    tx_obj = internal_api.PostContractCreate(body=contract_create_tx_obj).response().result
     return (tx_obj.tx, tx_obj.contract_id)

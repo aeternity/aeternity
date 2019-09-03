@@ -45,8 +45,8 @@ Bob computes - off-chain, using the Aeternity node API - the initialization call
 
 Bob computes - off-chain, using the Aeternity node API - the unsigned contract create transaction.
 
->>> from swagger_client.models.contract_create_tx import ContractCreateTx
->>> raw_unsigned_contract_create_tx = ae_node['internal_api'].post_contract_create(ContractCreateTx(
+>>> ContractCreateTx = ae_node['internal_api'].get_model('ContractCreateTx')
+>>> contract_create_tx = ae_node['internal_api'].PostContractCreate(body=ContractCreateTx(
 ...   owner_id=users['b']['encoded_pub_key'],
 ...   nonce=1,
 ...   code=contract_bytecode,
@@ -58,6 +58,7 @@ Bob computes - off-chain, using the Aeternity node API - the unsigned contract c
 ...   gas_price=1000000000,
 ...   fee=200000000000000,
 ...   call_data=encoded_init_call_data))
+>>> raw_unsigned_contract_create_tx = contract_create_tx.response().result
 >>> contract_id = raw_unsigned_contract_create_tx.contract_id
 >>> print(contract_id) # doctest: +ELLIPSIS
 ct_...
@@ -75,16 +76,17 @@ tx_...
 
 Bob publishes the signed contract create transaction to an Aeternity node for inclusion in the chain.
 
->>> from swagger_client.models.tx import Tx
->>> contract_create_tx_hash = ae_node['external_api'].post_transaction(Tx(encoded_signed_contract_create_tx)).tx_hash
+>>> Tx = ae_node['external_api'].get_model('Tx')
+>>> tx_object = Tx(tx=encoded_signed_contract_create_tx)
+>>> contract_create_tx_hash = ae_node['external_api'].PostTransaction(body=tx_object).response().result.tx_hash
 >>> print(contract_create_tx_hash) # doctest: +ELLIPSIS
 th_...
 
 Bob ensures that the published contract create transaction is included in the chain.
 
 >>> def is_tx_confirmed(ext_api, tx_hash, min_confirmations):
-...  top_key_height = ext_api.get_current_key_block_height().height
-...  tx = ext_api.get_transaction_by_hash(tx_hash)
+...  top_key_height = ext_api.GetCurrentKeyBlockHeight().response().result['height']
+...  tx = ext_api.GetTransactionByHash(hash=tx_hash).response().result
 ...  if "none" == tx.block_hash:
 ...    return False
 ...  return (top_key_height - tx.block_height) >= min_confirmations
@@ -92,7 +94,7 @@ Bob ensures that the published contract create transaction is included in the ch
 >>> wait(lambda: is_tx_confirmed(ae_node['external_api'], contract_create_tx_hash, 2),
 ...      timeout_seconds=30)
 True
->>> contract_init_call_object = ae_node['external_api'].get_transaction_info_by_hash(contract_create_tx_hash)
+>>> contract_init_call_object = ae_node['external_api'].GetTransactionInfoByHash(hash=contract_create_tx_hash).response().result
 >>> print(contract_init_call_object.call_info.return_type)
 ok
 
@@ -109,8 +111,8 @@ Assumption: Alice has enough tokens.
 Alice computes - off-chain, using the Aeternity node API - the unsigned contract call transaction.
 
 >>> contract_call_data = common.encode_calldata(counter_contract_file, "get", "")
->>> from swagger_client.models.contract_call_tx import ContractCallTx
->>> unsigned_contract_call_tx = common.api_decode(ae_node['internal_api'].post_contract_call(ContractCallTx(
+>>> ContractCallTx = ae_node['internal_api'].get_model('ContractCallTx')
+>>> contract_call_tx = ae_node['internal_api'].PostContractCall(body=ContractCallTx(
 ...   caller_id=users['a']['encoded_pub_key'],
 ...   nonce=1,
 ...   contract_id=contract_id,
@@ -119,33 +121,34 @@ Alice computes - off-chain, using the Aeternity node API - the unsigned contract
 ...   amount=0,
 ...   gas=20000,
 ...   gas_price=1000000000,
-...   call_data=contract_call_data)).tx)
+...   call_data=contract_call_data))
 
 Alice signs - locally - the contract call transaction.
 
+>>> unsigned_contract_call_tx = common.api_decode(contract_call_tx.response().result.tx)
 >>> encoded_signed_contract_call_tx = keys.sign_verify_encode_tx(unsigned_contract_call_tx, users['a']['priv_key'], users['a']['pub_key'])
 >>> print(encoded_signed_contract_call_tx) # doctest: +ELLIPSIS
 tx_...
 
 Alice publishes the signed contract call transaction to an Aeternity node for inclusion in the chain.
 
->>> contract_call_tx_hash = ae_node['external_api'].post_transaction(Tx(encoded_signed_contract_call_tx)).tx_hash
+>>> contract_call_tx_hash = ae_node['external_api'].PostTransaction(body=Tx(tx=encoded_signed_contract_call_tx)).response().result.tx_hash
 >>> print(contract_call_tx_hash) # doctest: +ELLIPSIS
 th_...
 
 Alice ensures that the published contract call transaction is included in the chain.
 
 >>> def call_status(sync_call_api_with_http_info_fun):
-...   from swagger_client.rest import ApiException
+...   from requests.exceptions import ConnectionError
 ...   try:
 ...     (_, status, _) = sync_call_api_with_http_info_fun()
 ...     return status
-...   except ApiException as e:
-...     return e.status
+...   except ConnectionError as e:
+...     return False
 >>> wait(lambda: is_tx_confirmed(ae_node['external_api'], contract_call_tx_hash, 2),
 ...      timeout_seconds=30)
 True
->>> contract_call_object = ae_node['external_api'].get_transaction_info_by_hash(contract_call_tx_hash)
+>>> contract_call_object = ae_node['external_api'].GetTransactionInfoByHash(hash=contract_call_tx_hash).response().result
 >>> print(contract_call_object.call_info.return_type)
 ok
 

@@ -1,17 +1,9 @@
 # coding: utf-8
 
-import os
 import shutil
-from nose.tools import assert_equals, assert_not_equals, with_setup
-import common
-import json
-from swagger_client.models.tx import Tx
-from swagger_client.models.spend_tx import SpendTx
-from swagger_client.models.name_preclaim_tx import NamePreclaimTx
-from swagger_client.models.name_claim_tx import NameClaimTx
-from swagger_client.models.name_update_tx import NameUpdateTx
-from swagger_client.models.name_pointer import NamePointer
+from nose.tools import assert_equals
 
+import common
 import keys
 
 settings = common.test_settings(__name__.split(".")[-1])
@@ -66,7 +58,8 @@ def test_not_enough_tokens():
     many_tokens_to_send = test_settings["spend_tx"]["large_amount"]
     print("Bob is about to send " + str(many_tokens_to_send) + " to Alice")
     common.send_tokens(bob, alice_address, many_tokens_to_send, spend_tx_fee, ext_api, int_api)
-    common.wait_until_height(ext_api, ext_api.get_current_key_block().height + 3)
+    current_key_block = ext_api.GetCurrentKeyBlock().response().result
+    common.wait_until_height(ext_api, current_key_block.height + 3)
     alice_balance2 = common.get_account_balance(ext_api, pub_key=alice_address)
     bob_balance2 = common.get_account_balance(ext_api, pub_key=bob_address)
     print("Alice balance is " + str(alice_balance2))
@@ -150,39 +143,44 @@ def setup_node_with_tokens(test_settings, beneficiary, node_name):
 
 def register_name(name, address, external_api, internal_api, private_key, fee):
     salt = 42
-    commitment_id = internal_api.get_commitment_id(name, salt).commitment_id
+    commitment_id = internal_api.GetCommitmentId(name=name, salt=salt).response().result.commitment_id
 
     # preclaim
-    unsigned_preclaim = common.api_decode(\
-        internal_api.post_name_preclaim(\
-            NamePreclaimTx(commitment_id=commitment_id, fee=fee, ttl=100, account_id=address)).tx)
+    NamePreclaimTx = internal_api.get_model('NamePreclaimTx')
+    preclaim_tx = NamePreclaimTx(commitment_id=commitment_id, fee=fee, ttl=100, account_id=address)
+    encoded_preclaim = internal_api.PostNamePreclaim(body=preclaim_tx).response().result.tx
+    unsigned_preclaim = common.api_decode(encoded_preclaim)
     signed_preclaim = keys.sign_encode_tx(unsigned_preclaim, private_key)
     common.ensure_transaction_posted(external_api, signed_preclaim)
 
     # claim
     encoded_name = common.encode_name(name)
-    unsigned_claim = common.api_decode(\
-        internal_api.post_name_claim(\
-            NameClaimTx(name=encoded_name, name_salt=salt, fee=fee, ttl=100, account_id=address)).tx)
+    NameClaimTx = internal_api.get_model('NameClaimTx')
+    claim_tx = NameClaimTx(name=encoded_name, name_salt=salt, fee=fee, ttl=100, account_id=address)
+    encoded_claim = internal_api.PostNameClaim(body=claim_tx).response().result.tx
+    unsigned_claim = common.api_decode(encoded_claim)
     signed_claim = keys.sign_encode_tx(unsigned_claim, private_key)
     common.ensure_transaction_posted(external_api, signed_claim)
-    name_entry0 = external_api.get_name_entry_by_name(name)
+    name_entry0 = external_api.GetNameEntryByName(name=name).response().result
 
     # set pointers
+    NameUpdateTx = internal_api.get_model('NameUpdateTx')
+    NamePointer = internal_api.get_model('NamePointer')
     pointers = [ NamePointer(key='account_pubkey', id=address) ]
-    unsigned_update = common.api_decode(\
-        internal_api.post_name_update(\
-            NameUpdateTx(name_id=name_entry0.id, name_ttl=6000, client_ttl=50,\
-                pointers=pointers, fee=fee, ttl=100, account_id=address)).tx)
+    name_update_tx = NameUpdateTx(name_id=name_entry0.id, name_ttl=6000, client_ttl=50,\
+                pointers=pointers, fee=fee, ttl=100, account_id=address)
+
+    encoded_name_update = internal_api.PostNameUpdate(body=name_update_tx).response().result.tx
+    unsigned_update = common.api_decode(encoded_name_update)
     signed_update = keys.sign_encode_tx(unsigned_update, private_key)
     common.ensure_transaction_posted(external_api, signed_update)
-    name_entry = external_api.get_name_entry_by_name(name)
+    name_entry = external_api.GetNameEntryByName(name=name).response().result
     received_pointers = name_entry.pointers[0]
     assert_equals('account_pubkey', received_pointers.key)
     assert_equals(address, received_pointers.id)
 
 def get_address_by_name(name, ext_api):
-    name_entry = ext_api.get_name_entry_by_name(name)
+    name_entry = ext_api.GetNameEntryByName(name=name).response().result
     resolved_address = name_entry.pointers[0].id
     print("Name " + name + " resolved to address " + resolved_address)
     return resolved_address

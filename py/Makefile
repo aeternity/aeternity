@@ -26,11 +26,11 @@ endif
 
 .PHONY: uats
 uats:
-	( cd $(PYTHON_TESTS) && $(NOSE)  --nocapture -c $(PYTHON_TESTS)/nose.cfg --tc-file $(PYTHON_TESTS)/integration/setup.yaml --tc-format yaml $(PYTHON_TESTS)/integration/; )
+	( cd $(PYTHON_TESTS) && $(NOSE)  --nocapture --logging-level=INFO -c $(PYTHON_TESTS)/nose.cfg --tc-file $(PYTHON_TESTS)/integration/setup.yaml --tc-format yaml $(PYTHON_TESTS)/integration/; )
 
 .PHONY: single-uat
 single-uat:
-	( cd $(PYTHON_TESTS) && $(NOSE)  --nocapture -c $(PYTHON_TESTS)/nose.cfg --tc-file $(PYTHON_TESTS)/integration/setup.yaml --tc-format yaml $(PYTHON_TESTS)/integration/$(TEST_NAME); )
+	( cd $(PYTHON_TESTS) && $(NOSE)  --nocapture --logging-level=INFO  -c $(PYTHON_TESTS)/nose.cfg --tc-file $(PYTHON_TESTS)/integration/setup.yaml --tc-format yaml $(PYTHON_TESTS)/integration/$(TEST_NAME); )
 
 .PHONY: release-test
 release-test:
