@@ -404,7 +404,7 @@ references:
     - *fail_notification
 
   # Windows
-  windows_cache_version: &windows_cache_version "v11"
+  windows_cache_version: &windows_cache_version "v12"
   windows_artifacts: &windows_artifacts C:\Users\circleci\project\packages
   windows_working_directory: &windows_working_directory C:\Users\circleci\project
 
