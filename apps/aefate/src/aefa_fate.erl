@@ -113,10 +113,9 @@ final_trees(EngineState) ->
 
 verify_init_calldata(CallData) ->
     Init = aeb_fate_code:symbol_identifier(<<"init">>),
-    INIT = aeb_fate_code:symbol_identifier(<<"INIT">>),
     case decode_calldata(CallData) of
-        {Init, Args} -> {ok, encode_calldata(INIT, Args)};
-        _            -> error
+        {Init, _Args} -> ok;
+        _             -> error
     end.
 
 is_valid_calldata(CallData) ->
@@ -124,9 +123,6 @@ is_valid_calldata(CallData) ->
         {_FHash, _Args} -> true;
         false           -> false
     end.
-
-encode_calldata(FHash, Args) ->
-    aeb_fate_encoding:serialize(?FATE_TUPLE({FHash, Args})).
 
 decode_calldata(CallData) ->
     try aeb_fate_encoding:deserialize(CallData) of

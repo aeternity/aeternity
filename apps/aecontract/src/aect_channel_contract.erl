@@ -23,7 +23,7 @@ new(Owner, Round, CTVersion, Code, Deposit, Trees0) ->
 -spec run_new(aect_contracts:pubkey(), aect_call:call(), binary(),
               aec_trees:trees(), aec_trees:trees(),
               aetx_env:env()) -> aec_trees:trees().
-run_new(ContractPubKey, Call, CallData0, Trees0, OnChainTrees,
+run_new(ContractPubKey, Call, CallData, Trees0, OnChainTrees,
         OnChainEnv) ->
     ContractsTree  = aec_trees:contracts(Trees0),
     Contract0 = aect_state_tree:get_contract(ContractPubKey, ContractsTree),
@@ -35,7 +35,7 @@ run_new(ContractPubKey, Call, CallData0, Trees0, OnChainTrees,
     %% Assert VmVersion before running!
     [error({illegal_vm_version, VmVersion}) || not ?IS_AEVM_SOPHIA(VmVersion) andalso
                                                not ?IS_FATE_SOPHIA(VmVersion)],
-    CallData = assert_init_function(CallData0, VmVersion, Code),
+    assert_init_function(CallData, VmVersion, Code),
     {Contract, Trees1} = prepare_init_call(VmVersion, Contract0, Trees0),
     Store = aect_contracts:state(Contract),
     CallDef = make_call_def(OwnerPubKey, ContractPubKey,
@@ -82,8 +82,8 @@ prepare_init_call(_, Contract, Trees0) -> {Contract, Trees0}.
 
 assert_init_function(CallData, VMVersion,_SerializedCode) when ?IS_FATE_SOPHIA(VMVersion) ->
     case aefa_fate:verify_init_calldata(CallData) of
-        {ok, CallData1} ->
-            CallData1;
+        ok ->
+            ok;
         error ->
             error(contract_init_failed)
     end;
@@ -93,7 +93,7 @@ assert_init_function(CallData, VMVersion, SerializedCode) when ?IS_AEVM_SOPHIA(V
             case aeb_aevm_abi:get_function_hash_from_calldata(CallData) of
                 {ok, Hash} ->
                     case aeb_aevm_abi:function_name_from_type_hash(Hash, TypeInfo) of
-                        {ok, <<"init">>} -> CallData;
+                        {ok, <<"init">>} -> ok;
                         _ -> error(contract_init_failed)
                     end;
                 _Other -> error(contract_init_failed)
