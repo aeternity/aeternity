@@ -586,7 +586,7 @@ jobs:
           paths:
             - *container_otp_plt
       - run: make dialyzer
-      - run: make python-env && make swagger-check
+      - run: make python-env
       - run: ./rebar3 xref || true
       - run:
           name: Check OTP version (for effective CI caching)

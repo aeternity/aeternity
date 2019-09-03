@@ -27,7 +27,5 @@ apps/aefate/aefate
 apps/aefate/aefateasm
 apps/aefate/aefateasm.cmd
 apps/aefate/src/aefa_fate_eval.erl
-apps/aehttp/priv/swagger-docs
-apps/aehttp/priv/swagger-ui
 apps/aeutils/src/endpoints.erl
 otp_patches/*.erl
