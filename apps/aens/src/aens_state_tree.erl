@@ -24,7 +24,9 @@
          lookup_name_auction/2,
          lookup_name/2,
          new_with_backend/2,
-         root_hash/1]).
+         root_hash/1,
+         auction_iterator/1,
+         auction_iterator_next/1]).
 
 -export([ from_binary_without_backend/1
         , to_binary_without_backend/1
@@ -111,6 +113,26 @@ prune(NextBlockHeight, Trees) ->
     {NTree, ExpiredActions} = int_prune(NextBlockHeight - 1, aec_trees:ns(Trees)),
     Trees1 = aec_trees:set_ns(Trees, NTree),
     run_elapsed(ExpiredActions, Trees1, NextBlockHeight).
+
+-spec auction_iterator(tree()) -> aeu_mtrees:iterator().
+auction_iterator(#ns_tree{mtree = MTree}) ->
+    aeu_mtrees:iterator(MTree).
+
+-spec auction_iterator_next(aeu_mtrees:iterator()) ->
+                                   {mkey(), mvalue(), aeu_mtrees:iterator()} | '$end_of_table'.
+auction_iterator_next(Iter) ->
+    case aeu_mtrees:iterator_next(Iter) of
+        {Key, Value, NextIter} ->
+            case byte_size(Key) > 32 of
+                true ->
+                    {Key, Value, NextIter};
+                false ->
+                    auction_iterator_next(NextIter)
+            end;
+        '$end_of_table' ->
+            '$end_of_table'
+    end.
+
 
 run_elapsed([], Trees, _) ->
     Trees;
