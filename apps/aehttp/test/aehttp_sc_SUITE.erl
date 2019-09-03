@@ -3730,10 +3730,12 @@ sc_ws_broken_open_params(Config) ->
 sc_ws_pinned_update(Cfg) ->
     NOT = 10,
     NNT = 1,
+    Pick = 1,
     aecore_suite_utils:mine_key_blocks(aecore_suite_utils:node_name(?NODE),
                                        NOT + 1),
-    Config = sc_ws_open_(Cfg, #{bh_delta_not_older_than => NOT,
-                                bh_delta_not_newer_than => NNT}),
+    Config = sc_ws_open_(Cfg, #{ bh_delta_not_older_than => NOT
+                               , bh_delta_not_newer_than => NNT
+                               , bh_delta_pick => Pick}),
     Participants = proplists:get_value(participants, Config),
     Conns = proplists:get_value(channel_clients, Config),
     lists:foldl(
@@ -3752,10 +3754,12 @@ sc_ws_pinned_update(Cfg) ->
 sc_ws_pinned_deposit(Cfg) ->
     NOT = 10,
     NNT = 1,
+    Pick = 1,
     aecore_suite_utils:mine_key_blocks(aecore_suite_utils:node_name(?NODE),
                                        NOT + 1),
-    Config = sc_ws_open_(Cfg, #{bh_delta_not_older_than => NOT,
-                                bh_delta_not_newer_than => NNT}),
+    Config = sc_ws_open_(Cfg, #{ bh_delta_not_older_than => NOT
+                               , bh_delta_not_newer_than => NNT
+                               , bh_delta_pick => Pick}),
     lists:foldl(
         fun(Depositor, Round) ->
             HashNOT = aecore_suite_utils:get_key_hash_by_delta(dev1, NOT),
@@ -3772,10 +3776,12 @@ sc_ws_pinned_deposit(Cfg) ->
 sc_ws_pinned_withdraw(Cfg) ->
     NOT = 10,
     NNT = 1,
+    Pick = 1,
     aecore_suite_utils:mine_key_blocks(aecore_suite_utils:node_name(?NODE),
                                        NOT + 1),
-    Config = sc_ws_open_(Cfg, #{bh_delta_not_older_than => NOT,
-                                bh_delta_not_newer_than => NNT}),
+    Config = sc_ws_open_(Cfg, #{ bh_delta_not_older_than => NOT
+                               , bh_delta_not_newer_than => NNT
+                               , bh_delta_pick => Pick}),
     lists:foldl(
         fun(Depositor, Round) ->
             HashNOT = aecore_suite_utils:get_key_hash_by_delta(dev1, NOT),
@@ -3818,10 +3824,12 @@ sc_ws_pinned_error_withdraw(Cfg) ->
 sc_ws_pinned_error_(Tag, XOptsFun, ResponseTag, Cfg) ->
     NOT = 10,
     NNT = 2,
+    Pick = 1,
     aecore_suite_utils:mine_key_blocks(aecore_suite_utils:node_name(?NODE),
                                        NOT + 1),
-    Config = sc_ws_open_(Cfg, #{bh_delta_not_older_than => NOT,
-                                bh_delta_not_newer_than => NNT}),
+    Config = sc_ws_open_(Cfg, #{ bh_delta_not_older_than => NOT
+                               , bh_delta_not_newer_than => NNT
+                               , bh_delta_pick => Pick}),
     Participants = proplists:get_value(participants, Config),
     #{initiator := IConnPid,
       responder := RConnPid} = Conns = proplists:get_value(channel_clients, Config),
@@ -3866,10 +3874,12 @@ sc_ws_pinned_error_(Tag, XOptsFun, ResponseTag, Cfg) ->
 sc_ws_pinned_contract(Cfg) ->
     NOT = 10,
     NNT = 2,
+    Pick = 1,
     aecore_suite_utils:mine_key_blocks(aecore_suite_utils:node_name(?NODE),
                                        NOT + 1),
-    Config = sc_ws_open_(Cfg, #{bh_delta_not_older_than => NOT,
-                                bh_delta_not_newer_than => NNT}),
+    Config = sc_ws_open_(Cfg, #{ bh_delta_not_older_than => NOT
+                               , bh_delta_not_newer_than => NNT
+                               , bh_delta_pick => Pick}),
     #{initiator := #{pub_key  := IPubkey,
                      priv_key := IPrivkey},
       responder := #{pub_key  := RPubkey,

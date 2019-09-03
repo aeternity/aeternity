@@ -127,6 +127,7 @@
 
 -record(bh_delta, { not_older_than  :: integer()
                   , not_newer_than  :: integer()
+                  , pick            :: integer()
                   }).
 
 %% ==================================================================

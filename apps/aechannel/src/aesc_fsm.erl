@@ -1808,10 +1808,11 @@ curr_height() ->
     Height.
 
 pick_hash(#data{block_hash_delta = #bh_delta{ not_newer_than = NNT
-                                            , not_older_than = NOT}}) ->
+                                            , not_older_than = NOT
+                                            , pick           = PickDelta}}) ->
     %% Using the boundary of the range is a bit too risky with regard of
     %% synking. That's why we use an offset
-    Offset = floor((NOT - NNT) * 0.2),
+    Offset = min(NOT, NNT + PickDelta),
     TopHeader = aec_chain:top_header(),
     Height = aec_headers:height(TopHeader), 
     %% use upper limit
@@ -3318,12 +3319,15 @@ init(#{opts := Opts0} = Arg) ->
     BlockHashDelta =
         case maps:find(block_hash_delta, Opts) of
             error ->
-                #bh_delta{not_newer_than = 0, %% backwards compatibility
-                          not_older_than = 10};
+                #bh_delta{ not_newer_than = 0 %% backwards compatibility
+                         , not_older_than = 10
+                         , pick           = 0}; %% backwards compatibility
             {ok, #{ not_older_than := NOT
-                  , not_newer_than := NNT}} ->
+                  , not_newer_than := NNT
+                  , pick           := Pick}} ->
                 #bh_delta{ not_older_than = NOT
-                         , not_newer_than = NNT}
+                         , not_newer_than = NNT
+                         , pick           = Pick}
         end,
     Data = #data{ role             = Role
                 , client           = Client
@@ -3460,8 +3464,9 @@ check_log_opt(Opts) ->
     Opts#{log_keep => ?KEEP}.
 
 check_block_hash_deltas(#{block_hash_delta := #{ not_older_than := NOT
-                                               , not_newer_than := NNT}} = Opts)
-    when is_integer(NOT), is_integer(NNT), NOT >= 0, NNT >= 0, NOT >= NNT ->
+                                               , not_newer_than := NNT
+                                               , pick           := Pick}} = Opts)
+    when is_integer(NOT), is_integer(NNT), NOT >= 0, NNT >= 0, NOT >= NNT + Pick ->
     Opts;
 check_block_hash_deltas(#{block_hash_delta := InvalidBHDelta} = Opts) ->
     lager:error("Invalid 'block_hash_delta' option: ~p", [InvalidBHDelta]),

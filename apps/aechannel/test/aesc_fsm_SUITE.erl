@@ -2762,7 +2762,8 @@ request_unknown_bh(Cfg) ->
     #{ i := I
      , r := R
      , spec := Spec} = create_channel_([{block_hash_delta, #{ not_older_than => NOT
-                                                            , not_newer_than => NNT}},
+                                                            , not_newer_than => NNT
+                                                            , pick           => 1}},
                                         ?SLOGAN|Cfg]),
     #{ initiator := PubI
      , responder := PubR } = Spec,
@@ -2791,7 +2792,8 @@ request_too_new_bh(Cfg) ->
     #{ i := I
      , r := R
      , spec := Spec} = create_channel_([{block_hash_delta, #{ not_older_than => NOT
-                                                            , not_newer_than => NNT}},
+                                                            , not_newer_than => NNT
+                                                            , pick           => 1}},
                                         ?SLOGAN|Cfg]),
     #{ initiator := PubI
      , responder := PubR } = Spec,
@@ -2828,7 +2830,8 @@ request_too_old_bh(Cfg) ->
     #{ i := I
      , r := R
      , spec := Spec} = create_channel_([{block_hash_delta, #{ not_older_than => NOT
-                                                            , not_newer_than => NNT}},
+                                                            , not_newer_than => NNT
+                                                            , pick           => 1}},
                                         ?SLOGAN|Cfg]),
     mine_key_blocks(dev1, NOT + 2), % do not rely on min depth
     #{ initiator := PubI
@@ -2867,7 +2870,8 @@ positive_bh(Cfg) ->
     #{ i := #{fsm := FsmI} = I
      , r := R
      , spec := _Spec} = create_channel_([{block_hash_delta, #{ not_older_than => NOT
-                                                             , not_newer_than => NNT}},
+                                                             , not_newer_than => NNT
+                                                             , pick           => 1}},
                                         ?SLOGAN|Cfg]),
     mine_key_blocks(dev1, NOT + 2), % do not rely on min depth
     TestByDelta =
