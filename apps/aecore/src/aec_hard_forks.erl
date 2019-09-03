@@ -158,9 +158,12 @@ maybe_protocol_from_fork({ok, #{fork_height := ForkHeight} = Fork}, Protocol, He
         {ok, Block} ->
             {ok, BlockHash} = aec_blocks:hash_internal_representation(Block),
             case aec_fork_signalling:get_fork_result(Block, BlockHash, Fork) of
-                {ok, true}             -> {ok, maps:get(version, Fork)};
-                {ok, false}            -> {ok, Protocol};
-                {error, pending} = Err -> Err
+                {ok, true} ->
+                    {ok, maps:get(version, Fork)};
+                {ok, false} ->
+                    {ok, Protocol};
+                {error, pending_protocol} = Err ->
+                    Err
             end;
         {error, _Rsn} ->
             {error, last_block_before_fork_not_found}

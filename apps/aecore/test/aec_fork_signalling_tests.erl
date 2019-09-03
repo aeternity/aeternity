@@ -411,7 +411,7 @@ await_result(Block, BlockHash, Fork) ->
 
 await_result(Block, BlockHash, Fork, Retries) when Retries > 0 ->
     case ?TEST_MODULE:get_fork_result(Block, BlockHash, Fork) of
-        {ok, pending} ->
+        {ok, pending_protocol} ->
             timer:sleep(500),
             await_result(Block, BlockHash, Fork, Retries - 1);
         {ok, Result} when is_boolean(Result) ->

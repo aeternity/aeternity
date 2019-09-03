@@ -7,29 +7,30 @@
 %%% H2 - fork height, H2 is strictly greater than HE;
 %%%
 %%% The gen_server process (aec_fork_signalling) makes sure that there is a
-%%% fork result at H2 (true, false or pending). In order to compute the fork
-%%% result, it manages asynchronous processes that walk the chain and compute
-%%% how many blocks include a predefined info field between HE - 1 and HS
-%%% (inclusive).
+%%% fork result at H2 ('true', 'false' or 'pending_protocol'). In order to
+%%% compute the fork result, it manages asynchronous processes that walk the
+%%% chain and compute how many blocks include a predefined info field between
+%%% HE - 1 and HS (inclusive).
 %%%
 %%% The block at height HE - 1 is the last signalling block, and there must be
 %%% a result computed for it. Once a worker process that computes the result is
-%%% spawned, a 'pending' atom for the given block hash is stored in results
-%%% map. Once the worker process is done with the computation it will send a
-%%% boolean result and the 'pending' atom is replaced with the boolean result.
+%%% spawned, a 'pending_protocol' atom for the given block hash is stored in
+%%% results map. Once the worker process is done with the computation it will
+%%% send a boolean result and the 'pending_protocol' atom is replaced with the
+%%% boolean result.
 %%%
 %%% The blocks with height between HE and H2 - 1 (inclusive) are treated
 %%% differently. Once such block arrives, its previous key hash is looked up in
 %%% the results map. If it's present, it means that the previous key hash
 %%% belongs to the block at height HE - 1 (which has result set to 'true',
-%%% 'false' or 'pending'), or the previous key hash has a pointer (key block
-%%% hash) to a block at height HE - 1.
+%%% 'false' or 'pending_protocol'), or the previous key hash has a pointer (key
+%%% block hash) to a block at height HE - 1.
 %%%
 %%% The pointers are used because the result at height HE - 1 can change
-%%% asynchronosly (from 'pending' to a boolean value). Moreover, it's not
-%%% necessary to search a block at HE - 1 height to get the result in case a
-%%% new block arrives. Instead, the results map may have an entry for previous
-%%% key hash pointing to the block with HE - 1 height.
+%%% asynchronosly (from 'pending_protocol' to a boolean value). Moreover, it's
+%%% not necessary to search a block at HE - 1 height to get the result in case
+%%% a new block arrives. Instead, the results map may have an entry for
+%%% previous key hash pointing to the block with HE - 1 height.
 %%%
 %%% The worst case scenario is restarting the node at height H2 - 1. If the
 %%% node has the top key block at height H2 - 1 and the results map is empty,
@@ -67,7 +68,7 @@
 
 -type worker()           :: {pid(), reference()}.
 
--type result()           :: true | false | pending.
+-type result()           :: true | false | pending_protocol.
 
 %% The pointer is a key block hash which belongs to the last signalling block
 %% (the block at height HE - 1).
@@ -78,7 +79,7 @@
                }).
 
 -define(SERVER, ?MODULE).
--define(IS_RESULT(X), X =:= true orelse X =:= false orelse X =:= pending).
+-define(IS_RESULT(X), X =:= true orelse X =:= false orelse X =:= pending_protocol).
 -define(IS_POINTER(X), is_binary(X)).
 
 %% API
@@ -160,9 +161,9 @@ handle_get_fork_result(Block, BlockHash, Fork, #state{results = Results} = State
                     {{ok, Result}, State};
                 undefined ->
                     %% If there is no entry, a worker needs to be spawned and
-                    %% the returned result is 'pending'.
+                    %% the returned result is 'pending_protocol'.
                     State1 = spawn_worker(Block, BlockHash, Fork, State),
-                    {{ok, pending}, State1}
+                    {{ok, pending_protocol}, State1}
             end;
         false ->
             {{error, not_last_block_before_fork}, State}
@@ -184,7 +185,7 @@ handle_worker_msg(WorkerPid, {check_result, BlockHash, LastSigBlockHash},
         undefined ->
             send_server_msg(WorkerPid, compute),
             Results1 = add_result(BlockHash, LastSigBlockHash, Results),
-            Results2 = add_result(LastSigBlockHash, pending, Results1),
+            Results2 = add_result(LastSigBlockHash, pending_protocol, Results1),
             State#state{results = Results2}
     end;
 handle_worker_msg(_WorkerPid, {add_result, BlockHash, Result},
@@ -234,7 +235,7 @@ set_prev_result_or_spawn_worker(Block, BlockHash, Fork,
             %%
             %% #{B_block_hash               => last_signalling_block_hash,
             %%   A_block_hash               => last_signalling_block_hash,
-            %%   last_signalling_block_hash => pending | true | false}
+            %%   last_signalling_block_hash => pending_protocol | true | false}
             %%
             %% If C block arrives and its previous block is B, then the
             %% B_block_hash entry is deleted and replaced with
@@ -242,7 +243,7 @@ set_prev_result_or_spawn_worker(Block, BlockHash, Fork,
             %%
             %% #{C_block_hash               => last_signalling_block_hash,
             %%   A_block_hash               => last_signalling_block_hash,
-            %%   last_signalling_block_hash => pending | true | false}
+            %%   last_signalling_block_hash => pending_protocol | true | false}
             %%
             %% Note, that A_block_hash entry stays in the results map, which is
             %% not ideal. In case the check_result message comes out of order,
