@@ -62,6 +62,7 @@
 -define(POF_REWARD_DIVIDER, 20). %% 5% of the coinbase reward
 -define(BENEFICIARY_REWARD_DELAY, 180). %% in key blocks / generations
 -define(MICRO_BLOCK_CYCLE, 3000). %% in msecs
+-define(MULTIPLIER_14, 100000000000000).
 
 -define(ACCEPTED_FUTURE_BLOCK_TIME_SHIFT, (?EXPECTED_BLOCK_MINE_RATE_MINUTES * 3 * 60 * 1000)). %% 9 min
 
@@ -246,11 +247,49 @@ name_protection_period() ->
 name_claim_preclaim_delta() ->
     1.
 
+%% Give possibility to have the actual kind of name under consensus,
+%% not only length of the bytes
 -spec name_claim_fee(binary(), non_neg_integer()) -> non_neg_integer().
 name_claim_fee(Name, Protocol) when Protocol >= ?LIMA_PROTOCOL_VSN ->
-    1000 - size(Name);  %% here we can make a variable fee depending on name
+    %% Name fee is computed over ascii version
+    {ok, AsciiName} = aens_utils:to_ascii(Name),
+    {ok, Domain} = aens_utils:name_domain(AsciiName),
+    %% No payment for registrars, Name should have been validated before
+    name_claim_size_fee(size(AsciiName) - size(Domain) - 1);
 name_claim_fee(_Name, _Protocol) ->
     0.
+
+name_claim_size_fee(Size) when Size >= 31 -> 3 * ?MULTIPLIER_14;
+name_claim_size_fee(30) -> 5 * ?MULTIPLIER_14;
+name_claim_size_fee(29) -> 8 * ?MULTIPLIER_14;
+name_claim_size_fee(28) -> 13 * ?MULTIPLIER_14;
+name_claim_size_fee(27) -> 21 * ?MULTIPLIER_14;
+name_claim_size_fee(26) -> 34 * ?MULTIPLIER_14;
+name_claim_size_fee(25) -> 55 * ?MULTIPLIER_14;
+name_claim_size_fee(24) -> 89 * ?MULTIPLIER_14;
+name_claim_size_fee(23) -> 144 * ?MULTIPLIER_14;
+name_claim_size_fee(22) -> 233 * ?MULTIPLIER_14;
+name_claim_size_fee(21) -> 377 * ?MULTIPLIER_14;
+name_claim_size_fee(20) -> 610 * ?MULTIPLIER_14;
+name_claim_size_fee(19) -> 987 * ?MULTIPLIER_14;
+name_claim_size_fee(18) -> 1597 * ?MULTIPLIER_14;
+name_claim_size_fee(17) -> 2584 * ?MULTIPLIER_14;
+name_claim_size_fee(16) -> 4181 * ?MULTIPLIER_14;
+name_claim_size_fee(15) -> 6765 * ?MULTIPLIER_14;
+name_claim_size_fee(14) -> 10946 * ?MULTIPLIER_14;
+name_claim_size_fee(13) -> 17711 * ?MULTIPLIER_14;
+name_claim_size_fee(12) -> 28657 * ?MULTIPLIER_14;
+name_claim_size_fee(11) -> 46368 * ?MULTIPLIER_14;
+name_claim_size_fee(10) -> 75025 * ?MULTIPLIER_14;
+name_claim_size_fee(9) -> 121393 * ?MULTIPLIER_14;
+name_claim_size_fee(8) -> 196418 * ?MULTIPLIER_14;
+name_claim_size_fee(7) -> 317811 * ?MULTIPLIER_14;
+name_claim_size_fee(6) -> 514229 * ?MULTIPLIER_14;
+name_claim_size_fee(5) -> 832040 * ?MULTIPLIER_14;
+name_claim_size_fee(4) -> 1346269 * ?MULTIPLIER_14;
+name_claim_size_fee(3) -> 2178309 * ?MULTIPLIER_14;
+name_claim_size_fee(2) -> 3524578 * ?MULTIPLIER_14;
+name_claim_size_fee(1) -> 5702887 * ?MULTIPLIER_14.
 
 -spec name_registrars(aec_hard_forks:protocol_vsn()) -> list(binary()).
 name_registrars(Protocol) when Protocol >= ?LIMA_PROTOCOL_VSN ->

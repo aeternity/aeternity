@@ -270,6 +270,11 @@ reset_participants(Grp, Config) ->
     Node = ?config(node, Config),
 
     StartAmt = 50000000000 * aec_test_utils:min_gas_price(),
+        %% case aect_test_utils:latest_protocol_version() >= ?LIMA_PROTOCOL_VSN of
+        %%     false -> 50000000000 * aec_test_utils:min_gas_price();
+        %%     true  ->
+        %%         100 * 50000000000 * aec_test_utils:min_gas_price()
+        %% end,
 
     Initiator = {IPub, IPriv} = aecore_suite_utils:generate_key_pair(),
     Responder = {RPub, RPriv} = aecore_suite_utils:generate_key_pair(),
@@ -1636,7 +1641,7 @@ sc_ws_nameservice_contract_(Owner, GetVolley, CreateContract, ConnPid1, ConnPid2
     %% Register an oracle. It will be used in an off-chain contract
     %% Oracle ask itself a question and answers it
     {NamePubkey, NamePrivkey} = ?CAROL,
-    ok = initialize_account(2000000 * aec_test_utils:min_gas_price(), ?CAROL),
+    ok = initialize_account(4000000000000 * aec_test_utils:min_gas_price(), ?CAROL),
 
     EncodedCode = contract_byte_code("channel_on_chain_contract_name_resolution"),
     {ok, EncodedInitData} = encode_call_data(channel_on_chain_contract_name_resolution,
@@ -1674,9 +1679,10 @@ sc_ws_nameservice_contract_(Owner, GetVolley, CreateContract, ConnPid1, ConnPid2
         end,
 
     Test(Name, <<"oracle">>, false),
+    Protocol = aect_test_utils:latest_protocol_version(),
     NameFee =
-        case aect_test_utils:latest_protocol_version() >= ?LIMA_PROTOCOL_VSN of
-            true -> 3400000;
+        case Protocol >= ?LIMA_PROTOCOL_VSN of
+            true -> aec_governance:name_claim_fee(Name, Protocol);
             false -> prelima
         end,
 
@@ -1857,10 +1863,11 @@ sc_ws_remote_call_contract_refering_onchain_data_(Owner, GetVolley, CreateContra
 
     % registering the name on-chain
     {NamePubkey, NamePrivkey} = ?CAROL,
-    ok = initialize_account(2000000 * aec_test_utils:min_gas_price(), ?CAROL),
+    ok = initialize_account(4000000000000 * aec_test_utils:min_gas_price(), ?CAROL),
+    Protocol = aect_test_utils:latest_protocol_version(),
     NameFee =
-        case aect_test_utils:latest_protocol_version() >= ?LIMA_PROTOCOL_VSN of
-            true -> 3400000;
+        case  Protocol >= ?LIMA_PROTOCOL_VSN of
+            true -> aec_governance:name_claim_fee(Name, Protocol);
             false -> prelima
         end,
     register_name(NamePubkey, NamePrivkey, Name, NameFee,
@@ -1969,12 +1976,14 @@ initialize_account(Amount, KeyPair) ->
 initialize_account(Amount, {Pubkey, _Privkey}, Check) ->
     Fee = ?SPEND_FEE,
     Node = aecore_suite_utils:node_name(?NODE),
+    MaxMined = ?MAX_MINED_BLOCKS + (Amount div aec_governance:block_mine_reward(1)),
+    ct:pal("Mining ~p blocks at most for ~p tokens", [MaxMined, Amount]),
 
     {ok, 200, #{<<"tx">> := SpendTx}} =
         post_spend_tx(aeser_api_encoder:encode(account_pubkey, Pubkey), Amount, Fee),
     TxHash = sign_and_post_tx(SpendTx),
     if Check ->
-        aecore_suite_utils:mine_blocks_until_txs_on_chain(Node, [TxHash], ?MAX_MINED_BLOCKS),
+        aecore_suite_utils:mine_blocks_until_txs_on_chain(Node, [TxHash], MaxMined),
         assert_balance_at_least(Pubkey, Amount),
         ok;
        true ->
