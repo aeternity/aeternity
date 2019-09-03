@@ -40,13 +40,12 @@ WIN_C_DRV="C:\\"
 IN_CYGWIN=false
 CPPFLAGS='-D _WIN32'
 
-MSYS2_ROOT=${MSYS2_ROOT:-"${C_DRV}/msys64"}
-WIN_MSYS2_ROOT=${WIN_MSYS2_ROOT:-"${WIN_C_DRV}\\msys64"}
+WIN_MSYS2_ROOT="${WIN_MSYS2_ROOT:-"${WIN_C_DRV}\\msys64"}"
+MSYS2_ROOT=$(make_upath "${WIN_MSYS2_ROOT}")
 
 PRG_FLS64="$(make_upath "${PROGRAMFILES}")"
-WIN_PRG_FLS64="${PROGRAMFILES}"
-ERL_TOP="${PRG_FLS64}/erl${ERTS_VERSION}"
-WIN_ERL_TOP="${WIN_PRG_FLS64}\\erl${ERTS_VERSION}"
+WIN_OTP_PATH="${WIN_OTP_PATH:-${PROGRAMFILES}\\erl${ERTS_VERSION}}"
+OTP_PATH="$(make_upath "${WIN_OTP_PATH}")"
 JAVA_TOP="${JAVA_TOP:-${PRG_FLS64}/Java/jdk-${JAVA_VERSION}}"
 
 WIN_VISUAL_STUDIO_ROOT="${VSINSTALLDIR}"
@@ -59,10 +58,10 @@ MSVC_ROOT="$(make_upath "${WIN_MSVC_ROOT}")"
 MSVC="$(make_upath "${WIN_MSVC}")"
 
 PATH="/usr/local/bin:/usr/bin:/bin:/c/Windows/system32:/c/Windows:/c/Windows/System32/Wbem:${PATH}"
-PATH="${HOME}/.local/bin:${MSVC}:${ERL_TOP}/bin:${ERL_TOP}/erts-${ERTS_VERSION}/bin:${MSYS2_ROOT}/mingw64/bin:${PATH}"
+PATH="${HOME}/.local/bin:${MSVC}:${OTP_PATH}/bin:${OTP_PATH}/erts-${ERTS_VERSION}/bin:${MSYS2_ROOT}/mingw64/bin:${PATH}"
 PATH="${JAVA_TOP}/bin:${PATH}"
 
 INCLUDE="${INCLUDE};${WIN_MSYS2_ROOT}\\mingw64\\include;${WIN_MSYS2_ROOT}\\usr\\include"
-LIB="${LIB};${WIN_MSYS2_ROOT}\\mingw64\\lib;${WIN_MSYS2_ROOT}\\mingw64\\bin;${WIN_ERL_TOP}\\usr\\lib;"
+LIB="${LIB};${WIN_MSYS2_ROOT}\\mingw64\\lib;${WIN_MSYS2_ROOT}\\mingw64\\bin;${WIN_OTP_PATH}\\usr\\lib;"
 
-export INCLUDE LIB PATH ERL_TOP WIN_ERL_TOP COMSPEC CPPFLAGS
+export INCLUDE LIB PATH OTP_PATH JAVA_TOP COMSPEC CPPFLAGS

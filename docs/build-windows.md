@@ -3,7 +3,7 @@
 This document describes how to build an Aeternity node from source on Windows using
 [MSYS2][msys2].
 
-NOTE: Only 64-bit versions of Windows 10 and Windows Server 2016 are supported and tested.
+NOTE: Only 64-bit versions of Windows 10 and Windows Server 2016+ are supported and tested.
  
 Administrative privileges are required.
 
@@ -12,27 +12,12 @@ Administrative privileges are required.
 Note: You might consider easier to use [Chocolatey][chocolatey] package manager to
 install the requirements
 
-### [MSYS2][msys2]
-
-Install Msys2 using [Chocolatey][chocolatey] 
-
-```
-cinst msys2 -y
-```
-
-or manually
-
-**Download:** [MSYS2 Windows Installer][msys2_dl]
-
-- Execute installer and follow instructions
-- Keep note of install folder
-
 ### [Visual Studio 2017/2019][vs2017]
 
 Install only the required components of Visual Studio 2019 using [Chocolatey][chocolatey]
 
 ```
-cinst visualstudio2019-workload-vctools -y --params "--add Microsoft.VisualStudio.Component.VC.CLI.Support --locale en-US"
+choco install -y visualstudio2019-workload-vctools --params "--add Microsoft.VisualStudio.Component.VC.CLI.Support --locale en-US"
 ```
 
 or manually
@@ -46,48 +31,122 @@ Make sure to include the following components (use the VCTools workload as base)
 
 Alternatively can use [vs_buildtools.exe][vs_buildtools] to reduce install size.
 
+### [MSYS2][msys2]
+
+You could use `scripts/windows/msys2_prepare.bat` to install all missing tools to default locations.
+
+If you do so, you may skip to [Setup](#Setup)
+
+### [Install MSYS2][msys2] (optional)
+
+If you don't want to install [MSYS2][msys2] manually, the preparation script
+will do it automatically for you.
+
+Else you can use the provided helper script `scripts\windows\install_msys2.bat`.
+
+It will download and install all the dependencies and will dump the ENV vars used by the build scripts.
+You may optionally provide installation path as an argument. 
+
+*The default <install_path> could be specified in `WIN_MSYS2_ROOT` env var or fallback to "C:\tools\msys64"* 
+
+```
+> scripts\windows\install_msys2.bat C:\tools\msys64
+...
+SET "WIN_MSYS2_ROOT=C:\tools\msys64"
+SETX WIN_MSYS2_ROOT C:\tools\msys64
+```
+
+Alternatively you can install Msys2 using [Chocolatey][chocolatey] 
+
+```
+choco install -y msys2
+```
+
+or manually
+
+**Download:** [MSYS2 Windows Installer][msys2_dl]
+
+- Execute installer and follow instructions
+- Keep note of install folder
+
+*Note: You will need to set properly the var (e.g.):*
+```
+SET "WIN_MSYS2_ROOT=C:\tools\msys64"
+```
+
 ### [Erlang/OTP 20.3][otp] (optional)
 
 If you don't want to install [Erlang/OTP][otp] manually, the preparation script
 will do it automatically for you.
+
+Else you can use `scripts\windows\install_erlang.bat`.
+ 
+It will download and install Erlang/OTP and will dump the ENV vars used by the build scripts
+
+```
+> scripts\windows\install_erlang.bat 20.3 C:\tools\erl9.3
+...
+SET "WIN_OTP_PATH=C:\tools\erl9.3"
+SET OTP_VERSION=20.3
+SET ERTS_VERSION=9.3
+```
+
+Alternatively you can install Erlang/OTP using [Chocolatey][chocolatey] 
+
+```
+choco install -y erlang --version=20.3
+```
+
+or manually
 
 **Download:** [Erlang/OTP 20.3 Windows Installer][otp203_dl]
 
 - Execute installer and follow instructions
 - Keep note of install folder
 
+*Note: You will need to set properly the vars (e.g.):*
+```
+SET "WIN_OTP_PATH=C:\Program Files\erl9.3"
+SET OTP_VERSION=20.3
+SET ERTS_VERSION=9.3
+```
+
 ### [Java Development Kit 11][jdk] (optional)
 
 If you don't want to install Open JDK manually, the preparation script will do
 it automatically for you.
+
+You can configure java version and download url via env vars:
+```
+JDK_URL=https://download.java.net/java/GA/jdk11/9/GPL/openjdk-11.0.2_windows-x64_bin.zip
+JAVA_VERSIOIN=11.0.2
+WIN_JDK_BASEPATH=C:\Program Files\Java
+```
 
 ## Setup
 
 Now the [MSYS2][msys2] environment needs to be prepared. This can be done 
 automatically by the helper script `scripts/windows/msys2_prepare.bat`.
 
-This script uses the following environment variable default values. If your
-local setup differs, you need to set these variables yourself.
+This script uses the following environment variable default values:
 
 ```
+WIN_MSYS2_ROOT=C:\tools\msys64
 ERTS_VERSION=9.3
-FORCE_STYRENE_REINSTALL=false
-JDK_URL=https://download.java.net/java/GA/jdk11/9/GPL/openjdk-11.0.2_windows-x64_bin.zip
 OTP_VERSION=20.3
 PLATFORM=x64
+JDK_URL=https://download.java.net/java/GA/jdk11/9/GPL/openjdk-11.0.2_windows-x64_bin.zip
 WIN_JDK_BASEPATH=C:\Program Files\Java
 WIN_JDK_PATH=C:\Program Files\Java\jdk-11.0.2
 WIN_OTP_PATH=C:\Program Files\erl9.3
 JAVA_VERSIOIN=11.0.2
-
 ```
 
-Note: The helper scripts will try to detect where `msys2` is installed.
-If this fails, you can set `WIN_MSYS2_ROOT` environment variable with the proper path, i.e.:
+If your local setup differs, you need to set the proper values yourself.
 
-```
-WIN_MSYS2_ROOT=C:\msys64
-```
+*Note: The helper scripts will try to detect where `msys2` is installed if it is available in PATH.
+Otherwise you need to set `WIN_MSYS2_ROOT` environment variable with the proper path 
+if it does not match default one*
 
 You can execute the script directly in a `cmd` window.
 
@@ -100,6 +159,8 @@ Use the helper script `scripts/windows/msys2_shell.bat` to do so.
 That script uses the following environment variables (defaults):
 
 ```
+WIN_MSYS2_ROOT=C:\tools\msys64
+WIN_OTP_PATH=C:\tools\erl9.3
 PLATFORM=x64
 ERTS_VERSION=9.3
 JAVA_VERSION=11.0.2
@@ -114,6 +175,8 @@ make
 ```
 
 NOTE: Disk drives are mounted in the root folder (i.e. `C:` is `/c`)
+
+Note: For a release package build you can use `.circleci\windows\build.bat` which will build and produce ready-to-install packages
 
 Refer to `docs/build.md` for more information on how to build.
 

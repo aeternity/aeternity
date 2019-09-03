@@ -1,4 +1,8 @@
 version: 2.1
+
+orbs:
+  win: circleci/windows@1.0.0
+
 executors:
   infrastructure_container_unstable:
     docker:
@@ -399,6 +403,44 @@ references:
           envdir /secrets aws s3 cp --acl public-read ${PACKAGE_TARBALL:?} s3://${S3_RELEASES_BUCKET:?}/aeternity-latest-${PKG_SUFFIX:?}.tar.gz
     - *fail_notification
 
+  # Windows
+  windows_cache_version: &windows_cache_version "v11"
+  windows_artifacts: &windows_artifacts C:\Users\circleci\project\packages
+  windows_working_directory: &windows_working_directory C:\Users\circleci\project
+
+  windows_env: &windows_env
+    OTP_VERSION: << parameters.otp_version >>
+    ERTS_VERSION: << parameters.erts_version >>
+    WIN_OTP_PATH: C:\tools\erl<< parameters.erts_version >>
+    WIN_MSYS2_ROOT: C:\tools\msys64
+    JAVA_VERSION: 12.0.2
+    WIN_JDK_BASEPATH: C:\Program Files\OpenJDK
+    JAVA_TOP: /c/Program Files/OpenJDK/jdk-12.0.2
+    MSYSCON: defterm
+    ANSICON: true
+    MSVC_VERSION: 14.22.27905
+    VCVARSALL: C:\Program Files (x86)\Microsoft Visual Studio\2019\Community\VC\Auxiliary\Build\vcvarsall.bat
+
+  windows_container: &windows_container
+    executor:
+      name: win/vs2019
+      shell: cmd.exe
+    environment: *windows_env
+    parameters:
+      msys_install_path:
+        default: C:\tools\msys64
+        type: string
+      otp_install_path:
+        default: C:\tools\erl9.1
+        type: string
+      otp_version:
+        default: "20.1"
+        type: string
+      erts_version:
+        default: "9.1"
+        type: string
+    working_directory: *windows_working_directory
+
 commands:
   setup_secrets:
     steps:
@@ -432,6 +474,111 @@ commands:
             STATUS=$(docker inspect --format='{{.State.Health.Status}}' ae_${CIRCLE_SHA1:?})
             echo $STATUS
             [ $STATUS == 'healthy' ]
+
+  restore_windows_package_cache:
+    parameters:
+      win_cache_version:
+        default: *windows_cache_version
+        type: string
+    steps:
+     - restore_cache:
+        keys:
+          - windows-package-cache-<< parameters.win_cache_version >>-{{ .Branch }}-
+          - windows-package-cache-<< parameters.win_cache_version >>-master-
+          - windows-package-cache-<< parameters.win_cache_version >>-
+
+  save_windows_package_cache:
+    parameters:
+      win_cache_version:
+        type: string
+        default: *windows_cache_version
+      install_path:
+        type: string
+    steps:
+      - save_cache:
+          key: windows-package-cache-<< parameters.win_cache_version >>-{{ .Branch }}-
+          paths:
+            - << parameters.install_path >>
+
+  install_win_msys2:
+    parameters:
+      install_path:
+        default: C:\tools\msys64
+        type: string
+    steps:
+      - restore_windows_package_cache
+      - run:
+          name: Install MSYS2
+          command: .circleci\windows\msys2_prepare.bat
+      - save_windows_package_cache:
+          install_path: << parameters.install_path >>
+
+  restore_windows_erl_cache:
+    parameters:
+      win_cache_version:
+        default: *windows_cache_version
+        type: string
+      erts_version:
+        type: string
+    steps:
+      - restore_cache:
+          keys:
+            - windows-erl<< parameters.erts_version >>-cache-<< parameters.win_cache_version >>-{{ .Branch }}-
+            - windows-erl<< parameters.erts_version >>-cache-<< parameters.win_cache_version >>-master-
+            - windows-erl<< parameters.erts_version >>-cache-<< parameters.win_cache_version >>-
+
+  save_windows_erl_cache:
+    parameters:
+      win_cache_version:
+        default: *windows_cache_version
+        type: string
+      install_path:
+        type: string
+      erts_version:
+        type: string
+    steps:
+      - save_cache:
+          key: windows-erl<< parameters.erts_version >>-cache-<< parameters.win_cache_version >>-{{ .Branch }}-
+          paths:
+            - << parameters.install_path >>
+
+  install_win_otp:
+    parameters:
+      install_path:
+        type: string
+      otp_version:
+        type: string
+      erts_version:
+        type: string
+    steps:
+      - restore_windows_erl_cache:
+          erts_version: << parameters.erts_version >>
+      - run:
+          name: Install Erlang/OTP << parameters.otp_version >>
+          command: scripts\windows\install_erlang << parameters.otp_version >> << parameters.install_path >>
+      - save_windows_erl_cache:
+          erts_version: << parameters.erts_version >>
+          install_path: << parameters.install_path >>
+
+  windows_install_deps:
+    parameters:
+      msys_install_path:
+        type: string
+      otp_install_path:
+        type: string
+      otp_version:
+        type: string
+      erts_version:
+        type: string
+    steps:
+      - checkout
+      - install_win_otp:
+          install_path: << parameters.otp_install_path >>
+          otp_version: << parameters.otp_version >>
+          erts_version: << parameters.erts_version >>
+      - install_win_msys2:
+          install_path: << parameters.msys_install_path >>
+
 
 jobs:
   build:
@@ -954,6 +1101,49 @@ jobs:
           path: docs/state-channels
       - *fail_notification
 
+  # Windows jobs
+  win_build: &windows_build
+    <<: *windows_container
+    steps:
+      - windows_install_deps:
+          otp_install_path: << parameters.otp_install_path >>
+          otp_version: << parameters.otp_version >>
+          erts_version: << parameters.erts_version >>
+          msys_install_path: << parameters.msys_install_path >>
+      - run:
+          name: Build
+          command: .circleci\windows\build.bat
+      - store_artifacts:
+          path: *windows_artifacts
+          destination: /tmp/packages-<< parameters.otp_version >>
+      - persist_to_workspace:
+          root: *windows_artifacts
+          paths:
+            - "*.zip"
+            - "*.exe"
+
+  win_test: &windows_test
+    <<: *windows_container
+    steps:
+      - windows_install_deps:
+          otp_install_path: << parameters.otp_install_path >>
+          otp_version: << parameters.otp_version >>
+          erts_version: << parameters.erts_version >>
+          msys_install_path: << parameters.msys_install_path >>
+      - attach_workspace:
+          at: *windows_artifacts
+      - run:
+          name: Smoke test
+          command: .circleci\windows\test.bat
+      - store_artifacts:
+          path: *windows_artifacts
+          destination: /tmp/packages-<< parameters.otp_version >>
+
+  win_build_20_1: *windows_build
+  win_build_20_3: *windows_build
+  win_test_20_1: *windows_test
+  win_test_20_3: *windows_test
+
 # CircleCI skips a job for a tag by default.
 # A job must have a filters tags section to run as a part of a tag push
 # and all its transitively dependent jobs must also have a filters tags section.
@@ -961,6 +1151,58 @@ workflows:
   version: 2
   build_test_deploy:
     jobs:
+      - win_build_20_3:
+          otp_install_path: C:\tools\erl9.3
+          otp_version: "20.3"
+          erts_version: "9.3"
+          context: ae-node-builds
+          filters:
+            branches:
+              ignore:
+                - env/dev1
+                - env/dev2
+                - system-tests
+
+      - win_test_20_3:
+          otp_install_path: C:\tools\erl9.3
+          otp_version: "20.3"
+          erts_version: "9.3"
+          context: ae-node-builds
+          requires:
+            - win_build_20_3
+          filters:
+            branches:
+              ignore:
+                - env/dev1
+                - env/dev2
+                - system-tests
+
+      - win_build_20_1:
+          otp_install_path: C:\tools\erl9.1
+          otp_version: "20.1"
+          erts_version: "9.1"
+          context: ae-node-builds
+          filters:
+            branches:
+              ignore:
+                - env/dev1
+                - env/dev2
+                - system-tests
+
+      - win_test_20_1:
+          otp_install_path: C:\tools\erl9.1
+          otp_version: "20.1"
+          erts_version: "9.1"
+          context: ae-node-builds
+          requires:
+            - win_build_20_1
+          filters:
+            branches:
+              ignore:
+                - env/dev1
+                - env/dev2
+                - system-tests
+
       - build:
           filters:
             branches:
