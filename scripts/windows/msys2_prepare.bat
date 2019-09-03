@@ -1,6 +1,5 @@
 @echo off
-:: Pass -v as argument to enable echo
-@ECHO."%*" | FINDSTR /C:"-v" > nul && SET VFLAG=-v && echo on & echo
+:: Pass -v as an argument to enable echo
 @rem Script to prepare msys2 environment for builds.
 @rem Required vars:
 @rem    ERTS_VERSION
@@ -15,6 +14,8 @@
 @rem    WIN_OTP_PATH
 @rem Set VCVARSALL to the proper location of vcvarsall.bat to skip autodetection
 @rem Set MSVC_VERSION to the proper value to skip autodetection
+
+@echo."%*" | findstr /C:"-v" >nul && SET VFLAG=-v && echo on & echo
 
 :: Set required vars defaults
 
@@ -46,8 +47,7 @@ IF NOT "%ERRORLEVEL%"=="0" exit /b %ERRORLEVEL%
 
 :: Set the paths appropriately avoiding duplicates
 SET "_PATHS=%WIN_MSYS2_ROOT%\mingw64\bin;%WIN_MSYS2_ROOT%\usr\bin;%WIN_MSYS2_ROOT%"
-ECHO."%PATH%" | FINDSTR /V /C:"%_PATHS%">nul && SET "PATH=%_PATHS%;%PATH%"
-SET "_PATHS="
+path | findstr "%_PATHS%">nul || SET "PATH=%_PATHS%;%PATH%"
 
 @call:log Ensure Msys2 is installed in %WIN_MSYS2_ROOT%
 call %~dp0install_msys2 %VFLAG% %WIN_MSYS2_ROOT%
@@ -67,7 +67,7 @@ IF NOT "%ERRORLEVEL%"=="0" exit /b %ERRORLEVEL%
 @call:log Set the paths appropriately
 :: Set the paths appropriately avoiding duplicates
 SET "_PATHS=%WIN_OTP_PATH%\bin;%WIN_OTP_PATH%\erts-%ERTS_VERSION%\bin;%WIN_OTP_PATH%\erts-%ERTS_VERSION%"
-ECHO."%PATH%" | FINDSTR /V /C:"%_PATHS%">nul && SET "PATH=%_PATHS%;%PATH%"
+path | findstr "%_PATHS%">nul || SET "PATH=%_PATHS%;%PATH%"
 SET "_PATHS="
 SET VFLAG=
 
@@ -79,11 +79,13 @@ exit /b 0
 
 :INSTALL_JDK
 IF EXIST "%WIN_JDK_PATH%\bin\" @call:log Ok. && exit /b 0
+SETLOCAL
 SET "JDK_PACKAGE=jdk_package.zip"
 @call:log Download from %JDK_URL%
 PowerShell -Command "(New-Object System.Net.WebClient).DownloadFile(\"%JDK_URL%\", \"%TMP%\%JDK_PACKAGE%\")"
 @call:log Install to %WIN_JDK_PATH%
 PowerShell -Command "Expand-Archive -LiteralPath \"%TMP%\%JDK_PACKAGE%\" -DestinationPath \"%WIN_JDK_BASEPATH%\""
+ENDLOCAL
 exit /b %ERRORLEVEL%
 
 :MSVC_VERSION
@@ -93,7 +95,7 @@ FOR /F "tokens=* USEBACKQ delims=" %%F IN (`where /r "C:\Program Files (x86)\Mic
 exit /b %ERRORLEVEL%
 
 :VCVARSALL
-IF NOT "DevEnvDir%"=="" exit /b 0
+IF NOT "%DevEnvDir%"=="" exit /b 0
 IF NOT "%VCVARSALL%"=="" GOTO:VCVARSALLFOUND
 FOR /F "usebackq delims=" %%F IN (`where /r "C:\Program Files (x86)\Microsoft Visual Studio" vcvarsall`) DO SET "VCVARSALL=%%F"
 IF "%VCVARSALL%"=="" @call:log MSVC not installed && exit /b 2
@@ -103,7 +105,6 @@ call "%VCVARSALL%" %PLATFORM% 1>nul
 exit /b %ERRORLEVEL%
 
 :PREPARE_MSYS2
-:: Switch to local ENV
 SETLOCAL ENABLEEXTENSIONS
 
 SET "PIP=/mingw64/bin/pip3"
@@ -174,7 +175,6 @@ IF EXIST "%WIN_STYRENE_PATH%" IF NOT "%FORCE_STYRENE_REINSTALL%"=="true" @call:l
 %BASH% -lc "cd \"${ORIGINAL_TEMP}/styrene\" && %PIP% uninstall -y styrene"
 %BASH% -lc "cd \"${ORIGINAL_TEMP}/styrene\" && %PIP% install ."
 
-:: Revert ENV changes
 ENDLOCAL
 
 exit /b

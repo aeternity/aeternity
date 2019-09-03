@@ -1,5 +1,5 @@
 @echo off
-:: Pass -v as first argument to enable debug echo
+:: Pass -v as the first argument to enable debug echo
 :: Script to download and install Erlang/OTP from %OTP_URL% which defaults to a fast mirror
 :: Erlang/OTP versions could be switched by providing different <otp_version> for the same <install_path>
 :: Output is suitable for piping scripts
@@ -26,15 +26,17 @@ IF NOT "%~1"=="/?" IF NOT "%~1"=="--help" IF NOT "%~1"=="" GOTO:START
 exit /b 2
 
 :START
+IF NOT "%WIN_OTP_PATH%"=="" GOTO:CHECK_VERSION
 IF NOT "%~2"=="" SET "WIN_OTP_PATH=%~2"
 IF "%WIN_OTP_PATH%"=="" SET "WIN_OTP_PATH=C:\tools\erl%~1"
 
 :: Check if we have old install
+:CHECK_VERSION
 call:get_version OTP_VERSION ERTS_VERSION
 
 :: Installed version is different
 IF NOT "%OTP_VERSION%"=="%~1" GOTO:INSTALL
-IF EXIST "%WIN_OTP_PATH%\bin\" @call:log Erlang/OTP %OTP_VERSION% && GOTO:DONE
+IF EXIST "%WIN_OTP_PATH%\bin\" @call:log Erlang/OTP %OTP_VERSION% already installed. && GOTO:DONE
 :INSTALL
 @call:log Install Erlang/OTP %~1 into %WIN_OTP_PATH%
 IF "%OTP_URL%"=="" SET "OTP_URL=https://packages.erlang-solutions.com/erlang/erlang/esl-erlang/FLAVOUR_1_general/esl-erlang_%~1~windows_amd64.exe"
@@ -53,10 +55,11 @@ PowerShell start-process -wait '%TMP%\erl.exe' -ArgumentList '/S /D=%WIN_OTP_PAT
 :DONE
 @call:get_version OTP_VERSION ERTS_VERSION
 
-@call:log Dump ENV vars used by build scripts
+@call:log Make sure you have these ENV vars:
 @echo SET "WIN_OTP_PATH=%WIN_OTP_PATH%"
 @echo SET OTP_VERSION=%OTP_VERSION%
 @echo SET ERTS_VERSION=%ERTS_VERSION%
+@echo SET "PATH=%WIN_OTP_PATH%\bin;%WIN_OTP_PATH%\erts-%ERTS_VERSION%\bin;%WIN_OTP_PATH%\erts-%ERTS_VERSION%;%%PATH%%"
 
 exit /b 0
 

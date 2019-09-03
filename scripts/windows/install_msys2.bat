@@ -1,5 +1,5 @@
 @echo off
-:: Pass -v as first argument to enable debug echo
+:: Pass -v as the first argument to enable debug echo
 :: Script to download and install Msys2 from %MSYS2_URL%
 :: Output is suitable for piping scripts
 :: ENV vars will be updated accordingly
@@ -19,11 +19,12 @@ IF NOT "%~1"=="/?" IF NOT "%~1"=="--help" GOTO:START
 exit /b 2
 
 :START
+@call:log MSYS2 installer
 IF NOT "%~1"=="" SET "WIN_MSYS2_ROOT=%~1"
 IF "%WIN_MSYS2_ROOT%"=="" SET "WIN_MSYS2_ROOT=C:\tools\msys64"
 IF "%MSYS2_URL%"=="" SET "MSYS2_URL=https://netcologne.dl.sourceforge.net/project/msys2/Base/x86_64/msys2-base-x86_64-20190524.tar.xz"
 
-IF EXIST "%WIN_MSYS2_ROOT%\mingw64" call:log Ok && GOTO :MSYS2_INSTALLED
+IF EXIST "%WIN_MSYS2_ROOT%\mingw64" @call:log Already installed. && GOTO :MSYS2_INSTALLED
 @call:log Target directory %WIN_MSYS2_ROOT%
 
 IF EXIST "%WIN_MSYS2_ROOT%" rd /s/q "%WIN_MSYS2_ROOT%"
@@ -55,10 +56,9 @@ move %WIN_MSYS2_ROOT%\..\msys64 %WIN_MSYS2_ROOT% && del /q %TMP%\msys2*.*
 %WIN_MSYS2_ROOT%\usr\bin\bash -lc "pacman --noconfirm -Syuu"
 :MSYS2_INSTALLED
 
-@call:log Dump ENV vars used by build scripts
+@call:log Make sure you have these ENV vars:
 @echo SET "WIN_MSYS2_ROOT=%WIN_MSYS2_ROOT%"
-:: Persist WIN_MSYS2_ROOT var in registry
-@echo SETX WIN_MSYS2_ROOT %WIN_MSYS2_ROOT%
+@echo SET "PATH=%WIN_MSYS2_ROOT%\mingw64\bin;%WIN_MSYS2_ROOT%\usr\bin;%WIN_MSYS2_ROOT%;%%PATH%%"
 
 exit /b 0
 

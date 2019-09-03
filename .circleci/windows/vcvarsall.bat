@@ -10,17 +10,20 @@
 @IF "%PLATFORM%"=="" SET "PLATFORM=x64"
 
 @call:log Find and set MSVC_VERSION
-@IF NOT "%MSVC_VERSION%"=="" GOTO MSVC_VERSION_SET
+@IF NOT "%MSVC_VERSION%"=="" GOTO:MSVC_VERSION_SET
 @FOR /F "tokens=* USEBACKQ delims=" %%F IN (`where /r "C:\Program Files (x86)\Microsoft Visual Studio" Microsoft.VCToolsVersion.default.txt`) DO SET /p MSVC_VERSION=<"%%F"
 :MSVC_VERSION_SET
 
 @call:log Find and execute the VS env preparation script
-@IF NOT "%VCVARSALL%"=="" GOTO VCVARSALLFOUND
+:: Avoid multiple executions
+@IF NOT "%DevEnvDir%"=="" GOTO:DONE
+@IF NOT "%VCVARSALL%"=="" GOTO:VCVARSALLFOUND
 @FOR /F "tokens=* USEBACKQ delims=" %%F IN (`where /r "C:\Program Files (x86)\Microsoft Visual Studio" vcvarsall`) DO SET "VCVARSALL=%%F"
 :VCVARSALLFOUND
 
 call "%VCVARSALL%" %PLATFORM%
 
+:DONE
 @call:log Persist these env vars to speed up
 @echo SET MSVC_VERSION=%MSVC_VERSION%
 @echo SET VCVARSALL=%VCVARSALL%
