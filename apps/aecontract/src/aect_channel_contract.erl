@@ -72,13 +72,29 @@ run_new(ContractPubKey, Call, CallData, Trees0, OnChainTrees,
     end.
 
 prepare_init_call(VmVersion, Contract, Trees0) when ?IS_FATE_SOPHIA(VmVersion) ->
+    Code = #{ byte_code := ByteCode } = aect_sophia:deserialize(aect_contracts:code(Contract)),
+    FateCode  = aeb_fate_code:deserialize(ByteCode),
+    FateCode1 = aeb_fate_code:strip_init_function(FateCode),
+    ByteCode1 = aeb_fate_code:serialize(FateCode1),
+    Code1     = Code#{ byte_code := ByteCode1 },
+    SerCode   = aect_sophia:serialize(Code1, 3),
+
     %% Initialize the store before calling INIT
     Store = aefa_stores:initial_contract_store(),
     Contract1 = aect_contracts:set_state(Store, Contract),
+    Contract2 = aect_contracts:set_code(SerCode, Contract1),
     ContractsTree0 = aec_trees:contracts(Trees0),
-    ContractsTree1 = aect_state_tree:enter_contract(Contract1, ContractsTree0),
+    ContractsTree1 = aect_state_tree:enter_contract(Contract2, ContractsTree0),
     {Contract1, aec_trees:set_contracts(Trees0, ContractsTree1)};
-prepare_init_call(_, Contract, Trees0) -> {Contract, Trees0}.
+prepare_init_call(VmVersion, Contract, Trees0) when ?IS_AEVM_SOPHIA(VmVersion), VmVersion >= ?VM_AEVM_SOPHIA_4 ->
+    #{ type_info := TypeInfo } = Code = aect_sophia:deserialize(aect_contracts:code(Contract)),
+    TypeInfo1 = lists:keydelete(<<"init">>, 2, TypeInfo),
+    Code1     = Code#{ type_info := TypeInfo1 },
+    SerCode   = aect_sophia:serialize(Code1, maps:get(contract_vsn, Code)),
+    Contract1 = aect_contracts:set_code(SerCode, Contract),
+    {Contract1, Trees0};
+prepare_init_call(_, Contract, Trees0) ->
+    {Contract, Trees0}.
 
 assert_init_function(CallData, VMVersion,_SerializedCode) when ?IS_FATE_SOPHIA(VMVersion) ->
     case aefa_fate:verify_init_calldata(CallData) of
