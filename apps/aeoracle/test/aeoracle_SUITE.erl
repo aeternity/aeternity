@@ -145,7 +145,7 @@ register_oracle_negative(_Cfg) ->
 
     %% Test too high account nonce
     RTx3 = aeo_test_utils:register_tx(PubKey, #{nonce => 0}, S1),
-    {error, account_nonce_too_high} = aetx:process(RTx3, Trees, Env),
+    {error, tx_nonce_already_used_for_account} = aetx:process(RTx3, Trees, Env),
 
     %% Test too low fee
     RTx4 = aeo_test_utils:register_tx(PubKey, #{fee => 0}, S1),
@@ -293,7 +293,7 @@ extend_oracle_negative(Cfg) ->
 
     %% Test too high account nonce
     RTx4 = aeo_test_utils:extend_tx(OracleKey, #{nonce => 0}, S2),
-    {error, account_nonce_too_high} = aetx:process(RTx4, Trees2, Env2),
+    {error, tx_nonce_already_used_for_account} = aetx:process(RTx4, Trees2, Env2),
 
     %% Test too low fee
     RTx5 = aeo_test_utils:extend_tx(OracleKey, #{fee => 0}, S2),
@@ -390,7 +390,7 @@ query_oracle_negative(Cfg) ->
 
     %% Test too high nonce in account
     Q3 = aeo_test_utils:query_tx(SenderKey, OracleId, #{nonce => 0}, S2),
-    {error, account_nonce_too_high} = aetx:process(Q3, Trees, Env),
+    {error, tx_nonce_already_used_for_account} = aetx:process(Q3, Trees, Env),
 
     %% Test too low fee
     Q4 = aeo_test_utils:query_tx(SenderKey, OracleId, #{fee => 0}, S2),
@@ -528,7 +528,7 @@ query_response_negative(Cfg) ->
 
     %% Test too high nonce for account
     RTx2 = aeo_test_utils:response_tx(OracleKey, ID, <<"42">>, #{nonce => 0}, S1),
-    {error, account_nonce_too_high} = aetx:process(RTx2, Trees, Env),
+    {error, tx_nonce_already_used_for_account} = aetx:process(RTx2, Trees, Env),
 
     %% Test fee too low
     RTx3 = aeo_test_utils:response_tx(OracleKey, ID, <<"42">>, #{fee => 0}, S1),

@@ -595,7 +595,7 @@ create_contract_negative(_Cfg) ->
     %% Test too high account nonce
     RTx3 = create_tx(PubKey, #{nonce => 0}, S1),
     {error, _, S1} = sign_and_apply_transaction(RTx3, PrivKey, S1),
-    {error, account_nonce_too_high} = aetx:process(RTx3, Trees, Env),
+    {error, tx_nonce_already_used_for_account} = aetx:process(RTx3, Trees, Env),
 
     ok.
 

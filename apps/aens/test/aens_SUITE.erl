@@ -169,7 +169,7 @@ preclaim_negative(Cfg) ->
     %% Test too high account nonce
     TxSpec3 = aens_test_utils:preclaim_tx_spec(PubKey, CHash, #{nonce => 0}, S1),
     {ok, Tx3} = aens_preclaim_tx:new(TxSpec3),
-    {error, account_nonce_too_high} = aetx:process(Tx3, Trees, Env),
+    {error, tx_nonce_already_used_for_account} = aetx:process(Tx3, Trees, Env),
 
     %% Test commitment already present
     {PubKey2, Name, NameSalt, S3} = preclaim(Cfg),
@@ -366,7 +366,7 @@ claim_negative(Cfg) ->
     %% Test too high account nonce
     TxSpec3 = aens_test_utils:claim_tx_spec(PubKey, Name, NameSalt, namefee(Name, Cfg), #{nonce => 0}, S1),
     {ok, Tx3} = aens_claim_tx:new(TxSpec3),
-    {error, account_nonce_too_high} = aetx:process(Tx3, Trees, Env),
+    {error, tx_nonce_already_used_for_account} = aetx:process(Tx3, Trees, Env),
 
     %% Test commitment not found
     TxSpec4 = aens_test_utils:claim_tx_spec(PubKey, Name, NameSalt + 1, namefee(Name, Cfg), S1),
@@ -549,7 +549,7 @@ update_negative(Cfg) ->
     %% Test too high account nonce
     TxSpec4 = aens_test_utils:update_tx_spec(PubKey, NHash, #{nonce => 0}, S1),
     {ok, Tx4} = aens_update_tx:new(TxSpec4),
-    {error, account_nonce_too_high} = aetx:process(Tx4, Trees, Env),
+    {error, tx_nonce_already_used_for_account} = aetx:process(Tx4, Trees, Env),
 
     %% Test name not present
     {ok, NHash2} = aens:get_name_hash(aens_test_utils:fullname(<<"othername">>)),
@@ -626,7 +626,7 @@ transfer_negative(Cfg) ->
     %% Test too high account nonce
     TxSpec3 = aens_test_utils:transfer_tx_spec(PubKey, NHash, PubKey, #{nonce => 0}, S1),
     {ok, Tx3} = aens_transfer_tx:new(TxSpec3),
-    {error, account_nonce_too_high} = aetx:process(Tx3, Trees, Env),
+    {error, tx_nonce_already_used_for_account} = aetx:process(Tx3, Trees, Env),
 
     %% Test name not present
     {ok, NHash2} = aens:get_name_hash(aens_test_utils:fullname(<<"othername">>)),
@@ -700,7 +700,7 @@ revoke_negative(Cfg) ->
     %% Test too high account nonce
     TxSpec3 = aens_test_utils:revoke_tx_spec(PubKey, NHash, #{nonce => 0}, S1),
     {ok, Tx3} = aens_revoke_tx:new(TxSpec3),
-    {error, account_nonce_too_high} = aetx:process(Tx3, Trees, Env),
+    {error, tx_nonce_already_used_for_account} = aetx:process(Tx3, Trees, Env),
 
     %% Test name not present
     {ok, NHash2} = aens:get_name_hash(aens_test_utils:fullname(<<"othername">>)),

@@ -1496,8 +1496,8 @@ assert_ga_env(Pubkey, Nonce, #state{tx_env = Env}) ->
 assert_account_nonce(Account, Nonce) ->
     case aec_accounts:nonce(Account) of
         N when N + 1 =:= Nonce -> ok;
-        N when N >= Nonce -> runtime_error(account_nonce_too_high);
-        N when N < Nonce  -> runtime_error(account_nonce_too_low)
+        N when N >= Nonce -> runtime_error(tx_nonce_already_used_for_account);
+        N when N < Nonce  -> runtime_error(tx_nonce_too_high_for_account)
     end.
 
 assert_account_balance(Account, Balance) ->
