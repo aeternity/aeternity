@@ -63,3 +63,20 @@ contract AENSTest =
                                    sign      : signature) : unit =
     AENS.revoke(owner, name, signature = sign)
 
+  type pointee =
+    | Account(address)
+    | Oracle(address)
+    | Contract(address)
+
+  type subname_prefixes = map(string, map(string, pointee))
+
+  stateful entrypoint subname(owner    : address,
+                              name     : string,
+                              prefixes : subname_prefixes) : unit =
+    AENS.subname(owner, name, prefixes)
+
+  stateful entrypoint signedSubname(owner    : address,
+                                    name     : string,
+                                    prefixes : subname_prefixes,
+                                    sign     : signature) : unit =
+    AENS.subname(owner, name, prefixes, signature = sign)

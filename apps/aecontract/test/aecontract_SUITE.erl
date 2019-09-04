@@ -5198,6 +5198,10 @@ sophia_aens_transactions(Cfg) ->
     NonceAfterTransfer = aec_accounts:nonce(aect_test_utils:get_account(Ct, state())),
     ok = ?call(aens_update, Acc, NHash, Pointers),
 
+    {} = ?call(call_contract, Acc, Ct, subname, {tuple, []},
+                {Ct, Name1, #{<<"sub">> => #{<<"account_pubkey">> => Ct}}},
+                #{ height => 13 }),
+
     {some, Oracle} = ?call(call_contract, Acc, Ct, resolve_oracle, {option, word}, {Name1, <<"oracle_pubkey">>}),
     ?assertMatchVM(OPubkey, {oracle, OPubkey}, Oracle),
     BadRevoke = ?call(call_contract, Acc, Ct, revoke, {tuple, []}, {Ct, NameArg}, #{ height => 13 }),

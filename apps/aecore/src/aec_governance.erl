@@ -207,6 +207,7 @@ primop_base_gas(?PRIM_CALL_AENS_CLAIM                ) -> 12000;
 primop_base_gas(?PRIM_CALL_AENS_UPDATE               ) -> 12000;
 primop_base_gas(?PRIM_CALL_AENS_TRANSFER             ) -> 12000;
 primop_base_gas(?PRIM_CALL_AENS_REVOKE               ) -> 12000;
+primop_base_gas(?PRIM_CALL_AENS_SUBNAME              ) -> 12000;
 primop_base_gas(?PRIM_CALL_MAP_EMPTY                 ) -> 0;
 primop_base_gas(?PRIM_CALL_MAP_GET                   ) -> 0;
 primop_base_gas(?PRIM_CALL_MAP_PUT                   ) -> 0;

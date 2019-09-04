@@ -31,6 +31,8 @@ new({Key, Id}) -> new(Key, Id).
 new(Key, IdEnc) when is_binary(IdEnc) ->
     {ok, Id} = aens_pointer:decode_id(IdEnc),
     new(Key, Id);
+new(Key, {Type, Val}) when is_atom(Type), is_binary(Val) ->
+    new(Key, aeser_id:create(Type, Val));
 new(Key, Id) ->
     ok = assert_key(Key),
     ok = assert_id(Id),

@@ -118,6 +118,7 @@
         , aens_update/1
         , aens_transfer/5
         , aens_revoke/4
+        , aens_subname/5
         , verify_sig/5
         , verify_sig_secp256k1/5
         , ecverify_secp256k1/5
@@ -1259,6 +1260,34 @@ aens_revoke(Arg0, Arg1, Arg2, EngineState) ->
             aefa_fate:abort({primop_error, aens_revoke, What}, ES2)
     end.
 
+aens_subname(Arg0, Arg1, Arg2, Arg3, EngineState) ->
+    {[Signature, Account, NameString, Definition], ES1} =
+        get_op_args([Arg0, Arg1, Arg2, Arg3], EngineState),
+    if
+        not ?IS_FATE_BYTES(64, Signature) ->
+            aefa_fate:abort({value_does_not_match_type, Signature, bytes64}, ES1);
+        not ?IS_FATE_ADDRESS(Account) ->
+            aefa_fate:abort({value_does_not_match_type, Account, address}, ES1);
+        not ?IS_FATE_STRING(NameString) ->
+            aefa_fate:abort({value_does_not_match_type, NameString, string}, ES1);
+        not ?IS_FATE_MAP(Definition) ->
+            aefa_fate:abort({value_does_not_match_type, Definition, map}, ES1);
+        true ->
+            ok
+    end,
+    ?FATE_BYTES(SignBin) = Signature,
+    ?FATE_ADDRESS(Pubkey) = Account,
+    NameBin = ?FATE_STRING_VALUE(NameString),
+    ES2 = check_delegation_signature(aens_subname, Pubkey, SignBin, ES1),
+    API = aefa_engine_state:chain_api(ES2),
+    case aefa_chain_api:aens_subname(Pubkey, NameBin, Definition, API) of
+        {ok, API1} ->
+            aefa_engine_state:set_chain_api(API1, ES2);
+        {error, What} ->
+            aefa_fate:abort({primop_error, aens_subname, What}, ES2)
+    end.
+
+
 hash_name(Primop, NameString, ES) ->
     case aens_utils:to_ascii(NameString) of
         {ok, NameAscii} ->
@@ -1287,6 +1316,7 @@ check_delegation_signature(Type, Data, SignBin, Current, ES) ->
     end.
 
 delegation_signature_data(Type, Pubkey, Current) when Type =:= aens_preclaim;
+                                                      Type =:= aens_subname;
                                                       Type =:= oracle_register;
                                                       Type =:= oracle_extend ->
     {<<Pubkey/binary, Current/binary>>, Pubkey};
@@ -1728,4 +1758,3 @@ pow(A, B) ->
 pow(_, 0, R)                   -> R;
 pow(A, B, R) when B rem 2 == 0 -> pow(A * A, B bsr 1, R);
 pow(A, B, R)                   -> pow(A * A, B bsr 1, R * A).
-

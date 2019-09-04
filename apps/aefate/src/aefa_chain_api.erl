@@ -47,6 +47,7 @@
         , aens_resolve/3
         , aens_revoke/3
         , aens_transfer/4
+        , aens_subname/4
         ]).
 
 -export([ check_delegation_signature/4
@@ -639,6 +640,19 @@ aens_revoke(Pubkey, HashBin, #state{} = S) when ?IS_ONCHAIN(S) ->
     Instructions = [aeprimop:name_revoke_op(Pubkey, HashBin, ProtectedDeltaTTL)
                    ],
     eval_primops(Instructions, S).
+
+aens_subname(Pubkey, NameBin, Definition, #state{} = S) when ?IS_ONCHAIN(S) ->
+    try aens_subname_tx:definition_list(NameBin, Definition) of
+        DefinitionList ->
+            Instructions = [aeprimop:subname_op(Pubkey, NameBin, DefinitionList)
+                           ],
+            eval_primops(Instructions, S)
+    catch
+        error:{invalid_subname, _} ->
+            {error, invalid_subname};
+        error:Reason when is_atom(Reason) ->
+            {error, Reason}
+    end.
 
 %%%-------------------------------------------------------------------
 %%% Interface to primop evaluation
