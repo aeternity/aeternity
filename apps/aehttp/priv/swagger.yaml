@@ -2888,7 +2888,8 @@ definitions:
       txs:
         type: array
         description: Txs
-        items: {}
+        items:
+          type: object
           # TODO: oneOf is not supported in swagger v2, change after v3 upgrade
           # oneOf:
           #   - $ref: '#/definitions/EncodedByteArray'
