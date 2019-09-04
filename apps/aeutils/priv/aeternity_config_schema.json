@@ -845,29 +845,6 @@
                         }
                     }
                 },
-                "ws_handlers" : {
-                    "description" : "websocket handlers.",
-                    "type" : "object",
-                    "additionalProperties" : false,
-                    "properties" : {
-                        "counter" : {
-                            "type" : "integer",
-                            "default" : 10
-                        },
-                        "rate" : {
-                            "type" : "integer",
-                            "default" : 0
-                        },
-                        "max_size" : {
-                            "type" : "integer",
-                            "default" : 5
-                        },
-                        "max_time" : {
-                            "type" : "integer",
-                            "default" : 0
-                        }
-                    }
-                },
                 "sc_ws_handlers" : {
                     "description" : "State channel websocket handlers.",
                     "type" : "object",

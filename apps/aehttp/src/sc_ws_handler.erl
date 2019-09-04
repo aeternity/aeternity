@@ -354,4 +354,4 @@ read_channel_options(Params) ->
      ).
 
 jobs_ask() ->
-    jobs:ask(ws_handlers).
+    jobs:ask(sc_ws_handlers).
