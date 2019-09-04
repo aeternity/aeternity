@@ -777,7 +777,7 @@ assert_schema_node_name(#{persist := true}) ->
     case DbOwnerNode =:= node() of
         true -> ok;
         false ->
-            {ok, DbDir} = aeu_env:find_config([<<"chain">>, <<"db_path">>],
+            {ok,_DbDir} = aeu_env:find_config([<<"chain">>, <<"db_path">>],
                                               [user_config, schema_default]),
             error_logger:error_msg("Database cannot be loaded. "
                                    "It was created for the node ~p, and current node "

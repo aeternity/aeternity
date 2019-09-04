@@ -338,10 +338,6 @@ get_oracles_by_pubkey_sut(Pubkey) ->
     Host = external_address(),
     http_request(Host, get, "oracles/" ++ http_uri:encode(Pubkey), []).
 
-get_contract_sut(PubKey) ->
-    Host = external_address(),
-    http_request(Host, get, "contracts/" ++ binary_to_list(PubKey), []).
-
 get_balance_at_top() ->
     EncodedPubKey = get_pubkey(),
     get_accounts_by_pubkey_sut(EncodedPubKey).
@@ -1418,43 +1414,6 @@ sc_ws_contract_generic_(Origin, ContractSource, Fun, Config, Opts) ->
     ok = ?WS:unregister_test_for_channel_events(AckConnPid, [sign, info, get, error]),
     ok.
 
-post_contract_onchain(EncodedCode, EncodedInitCallData) ->
-    Pubkey = get_pubkey(),
-
-    ValidEncoded = #{ owner_id    => Pubkey,
-                      code        => EncodedCode,
-                      vm_version  => aect_test_utils:vm_version(),
-                      abi_version => aect_test_utils:abi_version(),
-                      deposit     => 0,
-                      amount      => 0,
-                      gas         => 600,
-                      gas_price   => aec_test_utils:min_gas_price(),
-                      fee         => 400000 * aec_test_utils:min_gas_price(),
-                      call_data   => EncodedInitCallData},
-
-    %% prepare a contract_create_tx and post it
-    {ok, 200, #{<<"tx">> := EncodedUnsignedContractCreateTx,
-                <<"contract_id">> := EncodedContractPubKey}} = get_contract_create(ValidEncoded),
-    %% {ok, ContractPubKey} = aeser_api_encoder:safe_decode(contract_pubkey, EncodedContractPubKey),
-    ContractCreateTxHash = sign_and_post_tx(EncodedUnsignedContractCreateTx),
-
-    ?assertMatch({ok, 200, _}, get_transactions_by_hash_sut(ContractCreateTxHash)),
-    ?assertEqual({ok, 404, #{<<"reason">> => <<"Tx not mined">>}}, get_contract_call_object(ContractCreateTxHash)),
-
-    % mine
-    ok = wait_for_tx_hash_on_chain(ContractCreateTxHash),
-    ?assert(tx_in_chain(ContractCreateTxHash)),
-
-    ?assertMatch({ok, 200, _}, get_transactions_by_hash_sut(ContractCreateTxHash)),
-    ?assertMatch({ok, 200, _}, get_contract_call_object(ContractCreateTxHash)),
-    ?assertMatch({ok, 200, #{<<"id">>          := EncodedContractPubKey,
-        <<"owner_id">>    := Pubkey,
-        <<"active">>      := true,
-        <<"deposit">>     := 0,
-        <<"referrer_ids">> := []}},
-        get_contract_sut(EncodedContractPubKey)),
-    EncodedContractPubKey.
-
 sc_ws_oracle_contract_(Owner, GetVolley, CreateContract, ConnPid1, ConnPid2,
                        OwnerPubkey, OtherPubkey, _Opts, Config) ->
     %% Register an oracle. It will be used in an off-chain contract
@@ -1727,7 +1686,7 @@ sc_ws_enviroment_contract_(Owner, GetVolley, CreateContract, ConnPid1, ConnPid2,
             {Result, Result, Who} = {Result, EncPubkey, Who},
             true
         end,
-    Test(<<"caller">>, CheckCaller), 
+    Test(<<"caller">>, CheckCaller),
     Test(<<"origin">>, CheckCaller),
     case aect_test_utils:latest_protocol_version() of
         PostFortuna when PostFortuna >= ?FORTUNA_PROTOCOL_VSN ->
@@ -3118,14 +3077,6 @@ format_arg(I) when is_integer(I) -> integer_to_list(I).
 %% HTTP Requests
 %% ============================================================
 
-get_contract_create(Data) ->
-    Host = internal_address(),
-    http_request(Host, post, "debug/contracts/create", Data).
-
-get_contract_call_object(TxHash) ->
-    Host = external_address(),
-    http_request(Host, get, "transactions/"++binary_to_list(TxHash)++"/info", []).
-
 get_pending_transactions() ->
     Host = internal_address(),
     http_request(Host, get, "debug/transactions/pending", []).
@@ -3224,15 +3175,6 @@ tx_in_mempool(TxHash) ->
         {ok, 200, #{<<"block_hash">> := Other}} ->
             ct:log("Tx not in mempool, but in chain: ~p", [Other]),
             false;
-        {ok, 404, _} -> false
-    end.
-
-tx_in_chain(TxHash) ->
-    case get_transactions_by_hash_sut(TxHash) of
-        {ok, 200, #{<<"block_hash">> := <<"none">>}} ->
-            ct:log("Tx not mined, but in mempool"),
-            false;
-        {ok, 200, #{<<"block_hash">> := _}} -> true;
         {ok, 404, _} -> false
     end.
 

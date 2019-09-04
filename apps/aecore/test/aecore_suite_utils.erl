@@ -666,9 +666,6 @@ end_mock(N, Mock) ->
     #mock_def{module = Module, finish_fun = FinishF} = maps:get(Mock, known_mocks()),
     rpc:call(N, Module, FinishF, [], 2000).
 
-end_all_mocks(N) ->
-    rpc:call(N, meck, unload, [], 2000).
-
 await_aehttp(N) ->
     subscribe(N, app_started),
     Events = events_since(N, app_started, 0),

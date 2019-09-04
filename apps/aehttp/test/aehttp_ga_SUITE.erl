@@ -655,12 +655,6 @@ new_account(Balance) ->
     {ok, 200, #{<<"tx_hash">> := SpendTxHash}} = post_tx(SignedSpendTx),
     {Pubkey, Privkey, SpendTxHash}.
 
-abi_version() ->
-    case get('$abi_version') of
-        undefined -> aect_test_utils:latest_sophia_abi_version();
-        X         -> X
-    end.
-
 do_dry_run(STx, ExpRes) ->
     Tx = try aetx_sign:tx(STx)
          catch _:_ -> STx end,
