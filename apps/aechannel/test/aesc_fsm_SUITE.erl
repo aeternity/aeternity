@@ -74,7 +74,7 @@
 -include("../../aecontract/include/aecontract.hrl").
 -include("../../aecontract/test/include/aect_sophia_vsn.hrl").
 -include_lib("aecontract/include/hard_forks.hrl").
--include_lib("aeutils/include/aeu_stacktrace.hrl").
+-include("../../aeutils/include/aeu_stacktrace.hrl").
 
 -define(TIMEOUT, 10000).
 -define(LONG_TIMEOUT, 60000).

@@ -15,7 +15,7 @@
         ]).
 
 -include_lib("aecontract/include/hard_forks.hrl").
--include_lib("aeutils/include/aeu_stacktrace.hrl").
+-include("../../aeutils/include/aeu_stacktrace.hrl").
 
 %% for testing from a shell
 -export([ init_tests/2 ]).

@@ -14,7 +14,7 @@
 -define(EUNIT_NOAUTO, true).
 -include_lib("eunit/include/eunit.hrl").
 -include("../../aecontract/include/aecontract.hrl").
--include_lib("aeutils/include/aeu_stacktrace.hrl").
+-include("../../aeutils/include/aeu_stacktrace.hrl").
 
 -define(opt_format(___Opts__, ___Fmt___, ___Args___),
         case maps:get(trace, ___Opts__, false) of

@@ -91,7 +91,7 @@
 
 -include_lib("kernel/include/file.hrl").
 -include_lib("common_test/include/ct.hrl").
--include_lib("aeutils/include/aeu_stacktrace.hrl").
+-include("../../aeutils/include/aeu_stacktrace.hrl").
 
 -define(OPS_BIN, "aeternity").
 -define(DEFAULT_CUSTOM_EXPECTED_MINE_RATE, 100).

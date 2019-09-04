@@ -101,7 +101,7 @@
 
 -export_type([privkey/0, pubkey/0]).
 
--include_lib("aeutils/include/aeu_stacktrace.hrl").
+-include("../../aeutils/include/aeu_stacktrace.hrl").
 
 
 %%%===================================================================
