@@ -333,7 +333,23 @@ modulo(Arg0, Arg1, Arg2, EngineState) ->
     bin_op(mod, {Arg0, Arg1, Arg2}, EngineState).
 
 pow(Arg0, Arg1, Arg2, EngineState) ->
-    bin_op(pow, {Arg0, Arg1, Arg2}, EngineState).
+    {Base, ES1} = get_op_arg(Arg1, EngineState),
+    {Exponent, ES2} = get_op_arg(Arg2, ES1),
+    if ?IS_FATE_INTEGER(Base) andalso ?IS_FATE_INTEGER(Exponent) ->
+            if Exponent < 0 ->
+                    aefa_fate:abort({arithmetic_error, negative_exponent}, ES2);
+               true ->
+                    case pow(Base, Exponent, aefa_engine_state:gas(ES2)) of
+                        {Res, NewGas} ->
+                            ES3 = aefa_engine_state:set_gas(NewGas, ES2),
+                            ES4 = aefa_engine_state:spend_gas_for_new_cells(words_used(Res), ES3),
+                            write(Arg0, Res, ES4);
+                        out_of_gas ->
+                            aefa_fate:abort(out_of_gas, ES2)
+                    end
+            end
+    end.
+
 
 %% ------------------------------------------------------
 %% Comparison instructions
@@ -551,22 +567,46 @@ append(Arg0, Arg1, Arg2, EngineState) ->
 %% ------------------------------------------------------
 
 str_join(Arg0, Arg1, Arg2, EngineState) ->
-    bin_op(str_join, {Arg0, Arg1, Arg2}, EngineState).
+    {LeftValue, ES1} = get_op_arg(Arg1, EngineState),
+    {RightValue, ES2} = get_op_arg(Arg2, ES1),
+    Result = gop(str_join, LeftValue, RightValue, ES2),
+    Cells = string_cells(Result),
+    ES3 = aefa_engine_state:spend_gas_for_new_cells(Cells + 1, ES2),
+    write(Arg0, Result, ES3).
 
 str_length(Arg0, Arg1, EngineState) ->
     un_op(str_length, {Arg0, Arg1}, EngineState).
 
 int_to_str(Arg0, Arg1, EngineState) ->
-    un_op(int_to_str, {Arg0, Arg1}, EngineState).
+    {LeftValue, ES1} = get_op_arg(Arg1, EngineState),
+    Result = gop(int_to_str, LeftValue, ES1),
+    Cells = string_cells(Result),
+    ES2 = aefa_engine_state:spend_gas_for_new_cells(Cells + 1, ES1),
+    write(Arg0, Result, ES2).
 
 addr_to_str(Arg0, Arg1, EngineState) ->
-    un_op(addr_to_str, {Arg0, Arg1}, EngineState).
+    {LeftValue, ES1} = get_op_arg(Arg1, EngineState),
+    Result = gop(addr_to_str, LeftValue, ES1),
+    Cells = string_cells(Result),
+    ES2 = aefa_engine_state:spend_gas_for_new_cells(Cells + 1, ES1),
+    write(Arg0, Result, ES2).
 
 str_reverse(Arg0, Arg1, EngineState) ->
-    un_op(str_reverse, {Arg0, Arg1}, EngineState).
+    {LeftValue, ES1} = get_op_arg(Arg1, EngineState),
+    Result = gop(str_reverse, LeftValue, ES1),
+    Cells = string_cells(Result),
+    ES2 = aefa_engine_state:spend_gas_for_new_cells(Cells + 1, ES1),
+    write(Arg0, Result, ES2).
 
 int_to_addr(Arg0, Arg1, EngineState) ->
-    un_op(int_to_addr, {Arg0, Arg1}, EngineState).
+    {LeftValue, ES1} = get_op_arg(Arg1, EngineState),
+    Result = gop(int_to_addr, LeftValue, ES1),
+    Cells = string_cells(Result),
+    ES2 = aefa_engine_state:spend_gas_for_new_cells(Cells + 1, ES1),
+    write(Arg0, Result, ES2).
+
+string_cells(String) when ?IS_FATE_STRING(String) ->
+    byte_size(?FATE_STRING_VALUE(String)) div 64.
 
 %% ------------------------------------------------------
 %% Variant instructions
@@ -607,23 +647,31 @@ variant_element(Arg0, Arg1, Arg2, EngineState) ->
 %% Bits.none : bits
 %% An empty bit set.
 bits_none(EngineState) ->
-    aefa_fate:push(?FATE_BITS(0), EngineState).
+    ES1 = aefa_engine_state:spend_gas_for_new_cells(1, EngineState),
+    aefa_fate:push(?FATE_BITS(0), ES1).
 
 bits_none(Arg0, EngineState) ->
-    un_op(get, {Arg0, {immediate, ?FATE_BITS(0)}}, EngineState).
+    ES1 = aefa_engine_state:spend_gas_for_new_cells(1, EngineState),
+    un_op(get, {Arg0, {immediate, ?FATE_BITS(0)}}, ES1).
 
 %% Bits.all : bits
 %% A bit field with all (an infinite amount) bits set
 bits_all(EngineState) ->
-    aefa_fate:push(?FATE_BITS(-1), EngineState).
+    ES1 = aefa_engine_state:spend_gas_for_new_cells(1, EngineState),
+    aefa_fate:push(?FATE_BITS(-1), ES1).
 
 bits_all(Arg0, EngineState) ->
-    un_op(get, {Arg0, {immediate, ?FATE_BITS(-1)}}, EngineState).
+    ES1 = aefa_engine_state:spend_gas_for_new_cells(1, EngineState),
+    un_op(get, {Arg0, {immediate, ?FATE_BITS(-1)}}, ES1).
 
 %% Bits.all_n : bits
 %% A bit field with n bits set
 bits_all_n(Arg0, Arg1, EngineState) ->
-    un_op(bits_all, {Arg0, Arg1}, EngineState).
+    {Value, ES1} = get_op_arg(Arg1, EngineState),
+    Result = gop(bits_all, Value, ES1),
+    Cells = Value div 64,
+    ES2 = aefa_engine_state:spend_gas_for_new_cells(Cells, ES1),
+    write(Arg0, Result, ES2).
 
 %% Bits.set(b : bits, i : int) : bits
 %% Set bit i
@@ -1464,20 +1512,15 @@ make_variant(Arities, Tag, NoElements, ES)  when ?IS_FATE_LIST(Arities)
                                               , ?IS_FATE_INTEGER(Tag)
                                               , ?IS_FATE_INTEGER(NoElements)
                                               , NoElements >= 0
-                                              , Tag < length(Arities)
+                                              , Tag < length(?FATE_LIST_VALUE(Arities))
                                               , Tag >= 0 ->
     {Elements, ES2} = aefa_fate:pop_n(NoElements, ES),
     Values = list_to_tuple(Elements),
-    {aeb_fate_data:make_variant(Arities, Tag, Values), ES2};
+    Cells = length(?FATE_LIST_VALUE(Arities)) * 2 + NoElements + 4,
+    ES3 = aefa_engine_state:spend_gas_for_new_cells(Cells, ES2),
+    {aeb_fate_data:make_variant(Arities, Tag, Values), ES3};
 make_variant(Arities, Tag, NoElements, ES) ->
     aefa_fate:abort({bad_arguments_to_make_variant, Arities, Tag, NoElements}, ES).
-
-%% ------------------------------------------------------
-%% Tuple instructions
-%% ------------------------------------------------------
-
-
-
 
 
 %% Unary operations
@@ -1567,12 +1610,6 @@ op('div', A, B)  when ?IS_FATE_INTEGER(A)
                     , ?IS_FATE_INTEGER(B) ->
     if B =:= 0 -> aefa_fate:abort(division_by_zero);
        true -> A div B
-    end;
-op(pow, A, B)  when ?IS_FATE_INTEGER(A), ?IS_FATE_INTEGER(B) ->
-    if B < 0 ->
-           aefa_fate:abort({arithmetic_error, negative_exponent});
-       true ->
-           pow(A, B)
     end;
 op(mod, A, B)  when ?IS_FATE_INTEGER(A)
                     , ?IS_FATE_INTEGER(B) ->
@@ -1769,10 +1806,23 @@ binary_reverse(Binary) ->
     <<X:Size/integer-little>> = Binary,
     <<X:Size/integer-big>>.
 
-%% TODO: we should check Gas as we go along here...
-pow(A, B) ->
-    pow(A, B, 1).
+pow(A, B, Gas) ->
+    power(A, B, 1, Gas).
 
-pow(_, 0, R)                   -> R;
-pow(A, B, R) when B rem 2 == 0 -> pow(A * A, B bsr 1, R);
-pow(A, B, R)                   -> pow(A * A, B bsr 1, R * A).
+power(_, _, _, Gas) when Gas < 0      -> out_of_gas;
+power(_, 0, R, Gas)                   -> {R, Gas};
+power(A, B, R, Gas) when B rem 2 == 0 -> power(A * A, B bsr 1, R, Gas - 1);
+power(A, B, R, Gas)                   ->
+    Res = R * A,
+    Words = words_used(Res),
+    power(A * A, B bsr 1, R * A, Gas - Words).
+
+words_used(0) -> 1;
+words_used(I) when is_integer(I) ->
+    A = abs(I),
+    shift_word(A, 0).
+
+shift_word(0, N) -> N;
+shift_word(A, N) ->
+    shift_word(A bsr 64, N + 1).
+
