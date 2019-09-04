@@ -797,17 +797,17 @@ cmd_run(Cmd, Dir, BinDir, Args, Env, FindLocalBin) ->
             {env, Env},
             exit_status,
             overlapped_io,
-	    stderr_to_stdout,
+            stderr_to_stdout,
             {args, Args},
             {cd, Dir}
            ],
     ct:log("Running command ~p in ~p with ~p, opts ~p", [Cmd, Dir, Args, Opts]),
     Bin = case FindLocalBin of
-	       true ->
-                    os:find_executable(Cmd, filename:join(Dir, BinDir));
-               false ->
-                    os:find_executable(Cmd)
-	  end,
+              true ->
+                  os:find_executable(Cmd, filename:join(Dir, BinDir));
+              false ->
+                  os:find_executable(Cmd)
+          end,
     Port = erlang:open_port({spawn_executable, Bin}, Opts),
     WaitFun = fun(Fun, P, Res) ->
                      receive
