@@ -2889,9 +2889,11 @@ definitions:
         type: array
         description: Txs
         items:
-          oneOf:
-            - $ref: '#/definitions/EncodedByteArray'
-            - $ref: '#/definitions/DryRunCallReq'
+          type: object
+          # TODO: oneOf is not supported in swagger v2, change after v3 upgrade
+          # oneOf:
+          #   - $ref: '#/definitions/EncodedByteArray'
+          #   - $ref: '#/definitions/DryRunCallReq'
     required:
       - txs
   DryRunCallReq:
