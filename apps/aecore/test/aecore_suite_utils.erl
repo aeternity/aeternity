@@ -944,7 +944,7 @@ backup_config(EpochConfig) ->
 %% Proxy process
 %% ============================================================
 
--define(PROXY, epoch_multi_node_test_proxy).
+-define(PROXY, aeternity_multi_node_test_proxy).
 -define(PROXY_CALL_RETRIES, 5).
 
 proxy() ->
