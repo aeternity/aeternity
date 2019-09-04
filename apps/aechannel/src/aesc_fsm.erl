@@ -583,7 +583,7 @@ awaiting_reestablish(cast, {?CH_REESTABL, Msg}, #data{role = responder} = D) ->
     case check_reestablish_msg(Msg, D) of
         {ok, D1} ->
             report(info, channel_reestablished, D1),
-            D2 = maybe_restart_watcher(D1),
+            D2 = restart_watcher(D1),
             gproc_register(D2),
             next_state(open, send_reestablish_ack_msg(D2));
         {error, _} = Error ->
@@ -1146,8 +1146,7 @@ reestablish_init(cast, {?CH_REEST_ACK, Msg}, D) ->
     case check_reestablish_ack_msg(Msg, D) of
         {ok, D1} ->
             report(info, channel_reestablished, D1),
-            {ok, Pid} = aesc_chain_watcher:restart_watcher(
-                          D1#data.on_chain_id, ?MODULE),
+            {ok, Pid} = aesc_chain_watcher:start_link(D1#data.on_chain_id, ?MODULE),
             next_state(open, D1#data{watcher = Pid});
         {error, _} = Err ->
             close(Err, D)
@@ -2733,9 +2732,9 @@ has_my_signature(Me, SignedTx) ->
     end.
 
 
-maybe_restart_watcher(#data{ watcher = undefined
+restart_watcher(#data{ watcher = undefined
                            , on_chain_id = ChId } = D) ->
-    {ok, Pid} = aesc_chain_watcher:restart_watcher(ChId, ?MODULE),
+    {ok, Pid} = aesc_chain_watcher:start_link(ChId, ?MODULE),
     D#data{ watcher = Pid }.
 
 start_min_depth_watcher(Type, SignedTx, Updates, D) ->

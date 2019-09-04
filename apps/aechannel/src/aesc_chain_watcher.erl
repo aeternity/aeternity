@@ -1,9 +1,9 @@
 -module(aesc_chain_watcher).
 -behaviour(gen_server).
 
--export([start_link/5,       %% (TxHash, ChanId, MinimumDepth, Mod) -> {ok, Pid}
+-export([start_link/2,       %% (ChanId, Mod) -> {ok, Pid}
+         start_link/5,       %% (TxHash, ChanId, MinimumDepth, Mod) -> {ok, Pid}
          watch/5,            %% (WatcherPid, Type, TxHash, MinimumDepth, Mod) -> ok
-         restart_watcher/2,  %% (ChanId, Mod) -> {ok, Pid}
          watch_for_channel_close/3,
          watch_for_unlock/2,
          watch_for_min_depth/5]).
@@ -190,6 +190,16 @@ get_txs_since_(StopCond, ChId) ->
     get_txs_since(StopCond, aec_chain:top_block_hash(), ChId, #{}).
 
 
+start_link(ChanId, Mod) ->
+    I = #{ callback_mod => Mod
+         , parent       => self() },
+    Reqs = [#{ mode => watch
+             , info => I#{ type => watch } }],
+    gen_server:start_link(?MODULE, #{ parent  => self()
+                                    , chan_id => ChanId
+                                    , requests => Reqs },
+                          ?GEN_SERVER_OPTS).
+
 start_link(Type, TxHash, ChanId, MinDepth, Mod) ->
     I = #{ parent       => self()
          , type         => Type
@@ -203,16 +213,6 @@ start_link(Type, TxHash, ChanId, MinDepth, Mod) ->
     gen_server:start_link(?MODULE, #{parent   => self(),
                                      chan_id  => ChanId,
                                      requests => Reqs},
-                          ?GEN_SERVER_OPTS).
-
-restart_watcher(ChanId, Mod) ->
-    I = #{ callback_mod => Mod
-         , parent       => self() },
-    Reqs = [#{ mode => watch
-             , info => I#{ type => watch } }],
-    gen_server:start_link(?MODULE, #{ parent  => self()
-                                    , chan_id => ChanId
-                                    , requests => Reqs },
                           ?GEN_SERVER_OPTS).
 
 watch(Watcher, Type, TxHash, MinDepth, Mod) ->

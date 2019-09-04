@@ -648,7 +648,7 @@ check_params(Method, Params) ->
     {error, {unknown, Method, Params}}.
 
 valid_error_code(ErrorCode) when is_integer(ErrorCode) ->
-    ErrorCode >= 1 andalso ErrorCode =< 16#ffFF;
+    ErrorCode >= 1 andalso ErrorCode =< 16#ffff;
 valid_error_code(ErrorCode) when is_binary(ErrorCode) ->
     try valid_error_code(binary_to_integer(ErrorCode))
     catch
