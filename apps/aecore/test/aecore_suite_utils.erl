@@ -284,15 +284,15 @@ mine_blocks(Node, NumBlocksToMine, MiningRate, Type, Opts) ->
            Node, application, set_env, [aecore, expected_mine_rate, MiningRate],
            5000),
     [] = flush_new_blocks(),
-    aecore_suite_utils:subscribe(Node, block_created),
-    aecore_suite_utils:subscribe(Node, micro_block_created),
+    subscribe(Node, block_created),
+    subscribe(Node, micro_block_created),
     StartRes = rpc:call(Node, aec_conductor, start_mining, [Opts], 5000),
     ct:log("aec_conductor:start_mining(~p) (~p) -> ~p", [Opts, Node, StartRes]),
     Res = mine_blocks_loop(NumBlocksToMine, Type),
     StopRes = rpc:call(Node, aec_conductor, stop_mining, [], 5000),
     ct:log("aec_conductor:stop_mining() (~p) -> ~p", [Node, StopRes]),
-    aecore_suite_utils:unsubscribe(Node, block_created),
-    aecore_suite_utils:unsubscribe(Node, micro_block_created),
+    unsubscribe(Node, block_created),
+    unsubscribe(Node, micro_block_created),
     case Res of
         {ok, BlocksReverse} ->
             {ok, lists:reverse(BlocksReverse)};
@@ -322,13 +322,13 @@ mine_blocks_until_txs_on_chain(Node, TxHashes, MiningRate, Max, Opts) ->
            Node, application, set_env, [aecore, expected_mine_rate, MiningRate],
            5000),
     [] = flush_new_blocks(),
-    aecore_suite_utils:subscribe(Node, block_created),
+    subscribe(Node, block_created),
     StartRes = rpc:call(Node, aec_conductor, start_mining, [Opts], 5000),
     ct:log("aec_conductor:start_mining() (~p) -> ~p", [Node, StartRes]),
     Res = mine_blocks_until_txs_on_chain_loop(Node, TxHashes, Max, []),
     StopRes = rpc:call(Node, aec_conductor, stop_mining, [], 5000),
     ct:log("aec_conductor:stop_mining() (~p) -> ~p", [Node, StopRes]),
-    aecore_suite_utils:unsubscribe(Node, block_created),
+    unsubscribe(Node, block_created),
     case Res of
         {ok, BlocksReverse} ->
             {ok, lists:reverse(BlocksReverse)};
@@ -436,11 +436,11 @@ flush_new_blocks_(Acc) ->
 %% there is a timeout of 30 seconds for a single block to be produced
 wait_for_height(Node, Height) ->
     [] = flush_new_blocks(),
-    aecore_suite_utils:subscribe(Node, block_created),
-    aecore_suite_utils:subscribe(Node, micro_block_created),
+    subscribe(Node, block_created),
+    subscribe(Node, micro_block_created),
     wait_for_height_(Node, Height),
-    aecore_suite_utils:unsubscribe(Node, block_created),
-    aecore_suite_utils:unsubscribe(Node, micro_block_created).
+    unsubscribe(Node, block_created),
+    unsubscribe(Node, micro_block_created).
 
 wait_for_height_(Node, Height) ->
     TopHeight =
@@ -488,10 +488,10 @@ latest_fork_height() ->
     lists:max(maps:values(forks())).
 
 mock_mempool_nonce_offset(Node, Offset) ->
-    ok = aecore_suite_utils:set_env(Node, aecore, mempool_nonce_offset, Offset).
+    ok = set_env(Node, aecore, mempool_nonce_offset, Offset).
 
 unmock_mempool_nonce_offset(Node) ->
-    ok = aecore_suite_utils:unset_env(Node, aecore, mempool_nonce_offset).
+    ok = unset_env(Node, aecore, mempool_nonce_offset).
 
 
 top_dir(DataDir) ->
@@ -580,9 +580,9 @@ expected_logs() ->
      "aeternity_pow_cuckoo.log", "aeternity_metrics.log"].
 
 await_sync_complete(T0, Nodes) ->
-    [ok = aecore_suite_utils:subscribe(N, chain_sync) || N <- Nodes],
+    [ok = subscribe(N, chain_sync) || N <- Nodes],
     AllEvents = lists:flatten(
-                  [aecore_suite_utils:events_since(N, chain_sync, T0) || N <- Nodes]
+                  [events_since(N, chain_sync, T0) || N <- Nodes]
                  ),
     ct:log("AllEvents = ~p", [AllEvents]),
     SyncNodes =
@@ -687,8 +687,6 @@ await_aehttp(N) ->
     end,
     unsubscribe(N, app_started),
     ok.
-
-
 
 setup_node(N, Top, Epoch, Config) ->
     ct:log("setup_node(~p,Config)", [N]),
@@ -959,7 +957,6 @@ proxy() ->
 start_proxy() ->
     io:fwrite("starting proxy...~n", []),
     proc_lib:spawn(?MODULE, proxy, []).
-
 
 proxy_loop(Subs, Events) ->
     receive
