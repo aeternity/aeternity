@@ -30,6 +30,7 @@
 %% test case exports
 -export([ call_contract/1
         , call_contract_error_value/1
+        , call_contract_error_sanitized/1
         , call_contract_negative_insufficient_funds/1
         , call_contract_negative_gas_price_zero/1
         , call_contract_negative/1
@@ -252,6 +253,13 @@
         false -> ok
     end).
 
+-define(call(Fun, X),                call(Fun, fun Fun/2, [X])).
+-define(call(Fun, X, Y),             call(Fun, fun Fun/3, [X, Y])).
+-define(call(Fun, X, Y, Z),          call(Fun, fun Fun/4, [X, Y, Z])).
+-define(call(Fun, X, Y, Z, U),       call(Fun, fun Fun/5, [X, Y, Z, U])).
+-define(call(Fun, X, Y, Z, U, V),    call(Fun, fun Fun/6, [X, Y, Z, U, V])).
+-define(call(Fun, X, Y, Z, U, V, W), call(Fun, fun Fun/7, [X, Y, Z, U, V, W])).
+
 %%%===================================================================
 %%% Common test framework
 %%%===================================================================
@@ -291,6 +299,7 @@ groups() ->
                          , {group, create_contract_upfront_charges}
                          , call_contract
                          , call_contract_error_value
+                         , call_contract_error_sanitized
                          , call_contract_negative_insufficient_funds
                          , call_contract_negative_gas_price_zero
                          , call_contract_negative
@@ -547,7 +556,7 @@ init_per_testcase_common(TC, Config) ->
 end_per_testcase(fate_environment, _Config) ->
     meck:unload(aefa_chain_api),
     ok;
-end_per_testcase(TC, Cfg) when TC == sophia_aens_resolve;
+end_per_testcase(TC,_Cfg) when TC == sophia_aens_resolve;
                                TC == sophia_signatures_aens;
                                TC == sophia_aens_transactions ->
     meck:unload(aec_governance),
@@ -888,10 +897,12 @@ sender_balance_in_create(CreateTxOpts) ->
 sign_and_apply_transaction(Tx, PrivKey, S1) ->
     sign_and_apply_transaction(Tx, PrivKey, S1, 1).
 
-sign_and_apply_transaction(Tx, PrivKey, S1, Height) ->
+sign_and_apply_transaction(Tx, PrivKey, S1, Height) when is_integer(Height) ->
+    sign_and_apply_transaction(Tx, PrivKey, S1, #{ height => Height });
+sign_and_apply_transaction(Tx, PrivKey, S1, Options) ->
     SignedTx = aec_test_utils:sign_tx(Tx, PrivKey),
     Trees    = aect_test_utils:trees(S1),
-    Env      = default_tx_env(Height),
+    Env      = default_tx_env(Options),
     case aec_block_micro_candidate:apply_block_txs_strict([SignedTx], Trees, Env) of
         {ok, [SignedTx], Trees1, _} ->
             S2 = aect_test_utils:set_trees(Trees1, S1),
@@ -906,14 +917,17 @@ sign_and_apply_transaction_strict(Tx, PrivKey, S1) ->
 sign_and_apply_transaction_strict(Tx, PrivKey, S1, Height) ->
     SignedTx = aec_test_utils:sign_tx(Tx, PrivKey),
     Trees    = aect_test_utils:trees(S1),
-    Env      = default_tx_env(Height),
+    Env      = default_tx_env(#{ height => Height }),
     {ok, AcceptedTxs, Trees1, _} =
         aec_block_micro_candidate:apply_block_txs_strict([SignedTx], Trees, Env),
     S2       = aect_test_utils:set_trees(Trees1, S1),
     {SignedTx, AcceptedTxs, S2}.
 
-default_tx_env(Height) ->
-    aetx_env:set_beneficiary(aetx_env:tx_env(Height), ?BENEFICIARY_PUBKEY).
+default_tx_env(Options) ->
+    Height = maps:get(height, Options, 1),
+    DryRun = maps:get(dry_run, Options, true),
+    Env0 = aetx_env:set_beneficiary(aetx_env:tx_env(Height), ?BENEFICIARY_PUBKEY),
+    aetx_env:set_dry_run(Env0, DryRun).
 
 %%%===================================================================
 %%% Call contract
@@ -1104,6 +1118,21 @@ call_contract_error_value(_Cfg) ->
     ?assertEqual(Bal(IdC, S4), Bal(IdC, S5)),
     ok.
 
+%% Tests in this test suite are run with `dry-run` set to `true` - i.e.
+%% they will not sanitize the error messages. This means we can test the
+%% error messages! However, we need to also test that the messages are
+%% sanitized under normal conditions.
+call_contract_error_sanitized(_Cfg) ->
+    state(aect_test_utils:new_state()),
+    Acc1 = call(fun new_account/2, [10000000 * aec_test_utils:min_gas_price()]),
+    IdC = ?call(create_contract, Acc1, value_on_err, {}),
+    {error, Err} = ?call(call_contract, Acc1, IdC, err, word, {}, #{amount => 5, dry_run => false}),
+
+    ?assertMatchAEVM(Err, <<"out_of_gas">>, <<"out_of_gas">>, <<"out_of_gas">>, <<>>),
+    ?assertMatchFATE(<<>>, Err),
+
+    ok.
+
 %%%===================================================================
 %%% State trees
 %%%===================================================================
@@ -1140,13 +1169,6 @@ call(Fun, Xs) when is_function(Fun, 1 + length(Xs)) ->
               end,
     state(S1),
     R.
-
--define(call(Fun, X),                call(Fun, fun Fun/2, [X])).
--define(call(Fun, X, Y),             call(Fun, fun Fun/3, [X, Y])).
--define(call(Fun, X, Y, Z),          call(Fun, fun Fun/4, [X, Y, Z])).
--define(call(Fun, X, Y, Z, U),       call(Fun, fun Fun/5, [X, Y, Z, U])).
--define(call(Fun, X, Y, Z, U, V),    call(Fun, fun Fun/6, [X, Y, Z, U, V])).
--define(call(Fun, X, Y, Z, U, V, W), call(Fun, fun Fun/7, [X, Y, Z, U, V, W])).
 
 perform_pre_transformations(Height, S) ->
     Trees = aec_trees:perform_pre_transformations(aect_test_utils:trees(S), Height),
@@ -1339,9 +1361,8 @@ call_contract_with_calldata(Caller, ContractKey, Type, Calldata, Options, S) ->
                  , amount      => 0
                  , gas         => 140000
                  }, maps:without([height, return_gas_used, return_logs], Options)), S),
-    Height   = maps:get(height, Options, 1),
     PrivKey  = aect_test_utils:priv_key(Caller, S),
-    case sign_and_apply_transaction(CallTx, PrivKey, S, Height) of
+    case sign_and_apply_transaction(CallTx, PrivKey, S, Options) of
         {ok, S1} ->
             CallKey  = aect_call:id(Caller, Nonce, ContractKey),
             CallTree = aect_test_utils:calls(S1),
@@ -5057,7 +5078,6 @@ aens_preclaim(PubKey, Name, S) ->
 aens_preclaim(PubKey, Name, Options, S) ->
     Salt   = rand:uniform(10000),
     Nonce  = aect_test_utils:next_nonce(PubKey, S),
-    Height = maps:get(height, Options, 1),
     Fee    = maps:get(fee, Options, 50000 * aec_test_utils:min_gas_price()),
     TTL    = maps:get(ttl, Options, 1000),
     {ok, NameAscii} = aens_utils:to_ascii(Name),
@@ -5068,7 +5088,7 @@ aens_preclaim(PubKey, Name, Options, S) ->
                                        fee => Fee,
                                        ttl => TTL }),
     PrivKey  = aect_test_utils:priv_key(PubKey, S),
-    {ok, S1} = sign_and_apply_transaction(Tx, PrivKey, S, Height),
+    {ok, S1} = sign_and_apply_transaction(Tx, PrivKey, S, Options),
     {Salt, S1}.
 
 aens_claim(PubKey, Name, Salt, S) ->
@@ -5092,7 +5112,7 @@ aens_claim(PubKey, Name, Salt, NameFee, Options, S) ->
                                     fee        => Fee,
                                     ttl        => TTL }),
     PrivKey  = aect_test_utils:priv_key(PubKey, S),
-    {ok, S1} = sign_and_apply_transaction(Tx, PrivKey, S, Height),
+    {ok, S1} = sign_and_apply_transaction(Tx, PrivKey, S, Options#{ height => Height }),
     {NameHash, S1}.
 
 aens_revoke(PubKey, Hash, S) ->
@@ -5109,7 +5129,7 @@ aens_revoke(PubKey, Hash, Options, S) ->
                                      fee        => Fee,
                                      ttl        => TTL }),
     PrivKey  = aect_test_utils:priv_key(PubKey, S),
-    {ok, S1} = sign_and_apply_transaction(Tx, PrivKey, S, Height),
+    {ok, S1} = sign_and_apply_transaction(Tx, PrivKey, S, Options#{ height => Height }),
     {ok, S1}.
 
 aens_update(PubKey, NameHash, Pointers, S) ->
@@ -5131,7 +5151,7 @@ aens_update(PubKey, NameHash, Pointers, Options, S) ->
                                       fee         => Fee,
                                       ttl         => TTL }),
     PrivKey  = aect_test_utils:priv_key(PubKey, S),
-    {ok, S1} = sign_and_apply_transaction(Tx, PrivKey, S, Height),
+    {ok, S1} = sign_and_apply_transaction(Tx, PrivKey, S, Options#{ height => Height }),
     {ok, S1}.
 
 sophia_aens_resolve(Cfg) ->
@@ -5587,7 +5607,7 @@ fate_environment(_Cfg) ->
                  ?call(call_contract, Acc, Contract, call_gas_price, word, {},
                        #{gas_price => GasPrice})),
     Height  = 3,
-    Env     = default_tx_env(Height),
+    Env     = default_tx_env(#{height => Height}),
     <<BeneficiaryInt:?BENEFICIARY_PUB_BYTES/unit:8>> = aetx_env:beneficiary(Env),
     ?assertEqual({address, BeneficiaryInt},
                  ?call(call_contract, Acc, Contract, beneficiary, word, {})),

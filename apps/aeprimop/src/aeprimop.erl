@@ -1392,8 +1392,10 @@ contract_call_success(Call, GasLimit, S) ->
     S2 = account_earn(CallerAccount, Refund, S1),
     put_call(set_call_object_id(Call, S2), S2).
 
-contract_call_fail(Call, Fee, S) ->
-    S1 = put_call(set_call_object_id(Call, S), S),
+contract_call_fail(Call0, Fee, S) ->
+    Call1 = set_call_object_id(Call0, S),
+    Call  = sanitize_error(S#state.protocol, S#state.tx_env, Call1),
+    S1 = put_call(Call, S),
     UsedAmount = aect_call:gas_used(Call) * aect_call:gas_price(Call) + Fee,
     S2 = case S#state.protocol >= ?FORTUNA_PROTOCOL_VSN of
              true  -> S1;
@@ -1965,3 +1967,18 @@ is_payable_contract(_)                       -> runtime_error(bad_bytecode).
 -spec runtime_error(term()) -> no_return().
 runtime_error(Error) ->
     throw({?MODULE, Error}).
+
+sanitize_error(P, _Env, Call) when P =< ?FORTUNA_PROTOCOL_VSN ->
+    Call;
+sanitize_error(_P, Env, Call) ->
+    case aect_call:return_type(Call) of
+        revert -> Call;
+        error  ->
+            case aetx_env:dry_run(Env) of
+                true  -> Call;
+                false ->
+                    lager:debug("Call object ~p: return value sanitized from '~s' to ''",
+                                [aect_call:id(Call), aect_call:return_value(Call)]),
+                    aect_call:set_return_value(<<>>, Call)
+            end
+    end.
