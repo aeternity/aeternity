@@ -132,7 +132,6 @@ references:
       keys:
         - *machine_build_cache_key
         - machine-build-cache-v7-{{ .Branch }}-
-        - machine-build-cache-v7-master-
         - machine-build-cache-v7-
 
   save_machine_build_cache: &save_machine_build_cache
@@ -993,6 +992,7 @@ workflows:
                 - env/dev1
                 - env/dev2
                 - system-tests
+                - /releases\/.*/
                 - *master_branch
 
       - docker_system_smoke_tests:
@@ -1187,6 +1187,7 @@ workflows:
           filters:
             branches:
               only:
+                - /releases\/.*/
                 - *master_branch
             tags:
               only: *tag_regex
@@ -1208,6 +1209,7 @@ workflows:
           filters:
             branches:
               only:
+                - /releases\/.*/
                 - *master_branch
             tags:
               only: *tag_regex

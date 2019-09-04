@@ -1688,7 +1688,7 @@ sc_ws_enviroment_contract_(Owner, GetVolley, CreateContract, ConnPid1, ConnPid2,
                                       Fun, Updates, Tx, Config),
             {R, R} = {R0, R},
             case is_function(Result) of
-                true -> true = Result(R);
+                true -> true = Result(Who, R);
                 false ->
                     {R, R} = {Result, R}
             end
@@ -1706,7 +1706,22 @@ sc_ws_enviroment_contract_(Owner, GetVolley, CreateContract, ConnPid1, ConnPid2,
 
     Test(<<"block_height">>, BlockHeight),
     Test(<<"coinbase">>, EncBeneficiary),
-    Test(<<"timestamp">>, fun(T) -> T > Time end),
+    Test(<<"timestamp">>, fun(_, T) -> T > Time end),
+    CheckCaller =
+        fun(Who, Result) ->
+            Participants = proplists:get_value(participants, Config),
+            #{pub_key := Pubkey} = maps:get(Who, Participants),
+            EncPubkey = aeser_api_encoder:encode(account_pubkey, Pubkey),
+            {Result, Result, Who} = {Result, EncPubkey, Who},
+            true
+        end,
+    Test(<<"caller">>, CheckCaller), 
+    Test(<<"origin">>, CheckCaller),
+    case aect_test_utils:latest_protocol_version() of
+        PostFortuna when PostFortuna >= ?FORTUNA_PROTOCOL_VSN ->
+            Test(<<"creator">>, fun(_, Res) -> CheckCaller(Owner, Res) end);
+        _PreFortuna -> pass
+    end,
     ok.
 
 sc_ws_remote_call_contract_(Owner, GetVolley, CreateContract, ConnPid1, ConnPid2,

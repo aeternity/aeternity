@@ -4,7 +4,7 @@
 
 -export([new/6,
          run_new/6,
-         run/11,
+         run/12,
          get_call/4,
          insert_failed_call/6
         ]).
@@ -38,7 +38,7 @@ run_new(ContractPubKey, Call, CallData, Trees0, OnChainTrees,
     assert_init_function(CallData, VmVersion, Code),
     {Contract, Trees1} = prepare_init_call(VmVersion, Contract0, Trees0),
     Store = aect_contracts:state(Contract),
-    CallDef = make_call_def(OwnerPubKey, ContractPubKey,
+    CallDef = make_call_def(OwnerPubKey, OwnerPubKey, ContractPubKey,
                             _Gas = 1000000, _GasPrice = 1,
                             _Amount = 0, %TODO: make this configurable
                             CallData, CallStack, Code, Store, Call, OnChainTrees, OnChainEnv, Trees1),
@@ -121,12 +121,12 @@ assert_init_function(CallData, VMVersion, SerializedCode) when ?IS_AEVM_SOPHIA(V
 -spec run(aect_contracts:pubkey(), aect_contracts:abi_version(), aect_call:call(),
           binary(), [non_neg_integer()], aec_trees:trees(),
           non_neg_integer(), non_neg_integer(), non_neg_integer(),
-          aec_trees:trees(), aetx_env:env()) -> aec_trees:trees().
+          aec_trees:trees(), aetx_env:env(), aec_keys:pubkey()) -> aec_trees:trees().
 run(ContractPubKey, ABIVersion, Call, CallData, CallStack, Trees0,
-    Amount, GasPrice, Gas, OnChainTrees, OnChainEnv) ->
+    Amount, GasPrice, Gas, OnChainTrees, OnChainEnv, CallerPubkey) ->
     ContractsTree  = aec_trees:contracts(Trees0),
     Contract = aect_state_tree:get_contract(ContractPubKey, ContractsTree),
-    OwnerPubKey = aect_contracts:owner_pubkey(Contract),
+    OwnerPubkey = aect_contracts:owner_pubkey(Contract),
     Code = aect_contracts:code(Contract),
     Store = aect_contracts:state(Contract),
     VmVersion = aect_contracts:vm_version(Contract),
@@ -136,7 +136,7 @@ run(ContractPubKey, ABIVersion, Call, CallData, CallStack, Trees0,
         true                                 -> erlang:error(wrong_vm_version);
         false                                -> erlang:error(wrong_abi_version)
     end,
-    CallDef = make_call_def(OwnerPubKey, ContractPubKey, Gas, GasPrice, Amount,
+    CallDef = make_call_def(CallerPubkey, OwnerPubkey, ContractPubKey, Gas, GasPrice, Amount,
               CallData, CallStack, Code, Store, Call, OnChainTrees, OnChainEnv, Trees0),
     {CallRes, Trees, _} = aect_dispatch:run(#{vm => VmVersion, abi => ABIVersion}, CallDef),
     UpdatedTrees = aect_utils:insert_call_in_trees(CallRes, Trees),
@@ -144,10 +144,10 @@ run(ContractPubKey, ABIVersion, Call, CallData, CallStack, Trees0,
 
 
 
-make_call_def(OwnerPubKey, ContractPubKey, GasLimit, GasPrice, Amount,
+make_call_def(CallerPubkey, OwnerPubKey, ContractPubKey, GasLimit, GasPrice, Amount,
               CallData, CallStack, Code, Store, Call, OnChainTrees, OnChainEnv,
               OffChainTrees) ->
-    #{caller          => OwnerPubKey
+    #{caller          => CallerPubkey
     , contract        => ContractPubKey
     , gas             => GasLimit
     , gas_price       => GasPrice
@@ -161,7 +161,7 @@ make_call_def(OwnerPubKey, ContractPubKey, GasLimit, GasPrice, Amount,
     , tx_env          => OnChainEnv
     , off_chain       => true
     , on_chain_trees  => OnChainTrees
-    , origin          => OwnerPubKey
+    , origin          => CallerPubkey
     , creator         => OwnerPubKey
     }.
 

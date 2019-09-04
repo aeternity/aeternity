@@ -204,10 +204,11 @@ process(#ga_meta_tx{} = Tx, Trees, Env0) ->
 
 set_meta_result(ok, _Tx, Trees, _Env) ->
     Trees;
-set_meta_result(Err = {error, _}, Tx, Trees, Env) ->
-    SetInstructions =
-        aeprimop:ga_set_meta_tx_res_instructions(
-            ga_pubkey(Tx), auth_data(Tx), Err),
+set_meta_result({error, Reason0}, Tx, Trees, Env) ->
+    Reason = inner_transaction_failed,
+    lager:debug("Inner transaction failed with reason: ~p", [Reason0]),
+    SetInstructions = aeprimop:ga_set_meta_tx_res_instructions(
+                          ga_pubkey(Tx), auth_data(Tx), {error, Reason}),
     {ok, Trees1, _Env} = aeprimop:eval(SetInstructions, Trees, Env),
     Trees1.
 

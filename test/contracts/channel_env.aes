@@ -6,3 +6,10 @@ contract ChannelEnv =
   payable entrypoint block_height() : int = Chain.block_height
 
   payable entrypoint difficulty() : int = Chain.difficulty
+
+  payable entrypoint caller() : address = Call.caller
+
+  payable entrypoint origin() : address = Call.origin
+
+  payable entrypoint creator() : address = Contract.creator
+

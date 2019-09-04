@@ -216,7 +216,8 @@ apply_on_trees(Update, Trees0, OnChainTrees, OnChainEnv, Round, Reserve) ->
             _Trees = aect_channel_contract:run(ContractPubKey, ABIVersion, Call,
                                                CallData, CallStack,
                                                Trees2, Amount, GasPrice, Gas,
-                                               OnChainTrees, OnChainEnv);
+                                               OnChainTrees, OnChainEnv,
+                                               Caller);
         #meta{} ->
             Trees0
     end.

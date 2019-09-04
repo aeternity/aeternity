@@ -91,6 +91,8 @@
         ?ABI_FATE_SOPHIA_1 -> ?assertMatch(FATE, Res)
     end).
 
+-define(INNER_ERROR(_Orig), <<"inner_transaction_failed">>).
+
 %%%===================================================================
 %%% Common test framework
 %%%===================================================================
@@ -338,8 +340,9 @@ simple_re_attach_fail(_Cfg) ->
     {ok, _} = ?call(attach, Acc1, "simple_auth", "authorize", ["123"]),
 
     AuthOpts = #{ prep_fun => fun(_) -> simple_auth(["123", "1"]) end },
-    {ok, #{tx_res := error, tx_value := <<"not_a_basic_account">>}} =
-        ?call(ga_attach, Acc1, AuthOpts, "simple_auth", "authorize", ["123"]),
+
+    {ok, #{tx_res := error, tx_value := ?INNER_ERROR(<<"not_a_basic_account">>)}} =
+           ?call(ga_attach, Acc1, AuthOpts, "simple_auth", "authorize", ["123"]),
 
     ok.
 
@@ -352,7 +355,7 @@ simple_spend_from_fail(_Cfg) ->
 
     AuthOpts   = #{ prep_fun => fun(_) -> simple_auth(["123", "1"]) end },
     PreBalance  = ?call(account_balance, Acc2),
-    {ok, #{tx_res := error, tx_value := <<"too_low_fee">>}} =
+    {ok, #{tx_res := error, tx_value := ?INNER_ERROR(<<"too_low_fee">>)}} =
         ?call(ga_spend, Acc1, AuthOpts, Acc2, 500, 20000),
     PostBalance = ?call(account_balance, Acc2),
     ?assertEqual(PreBalance, PostBalance),
@@ -447,8 +450,7 @@ basic_minimum_fee(_Cfg) ->
                                           fee          => MinimumInnerFee - 1
                                          }),
     AuthOpts1 = #{ prep_fun => fun(TxHash) -> ?call(basic_auth, Acc1, "1", TxHash) end },
-    ?assertMatch({ok, #{tx_res := error,
-                        tx_value := <<"too_low_fee">>}},
+    ?assertMatch({ok, #{tx_res := error, tx_value := ?INNER_ERROR(<<"too_low_fee">>)}},
                  ?call(meta, From, AuthOpts1, SpendTx1, #{})),
 
     %% But if we use just the right fee, the tx should be accepted.
@@ -738,7 +740,7 @@ multi_wrap_sc_solo_snapshot(_Cfg) ->
         ?call(ga_channel_create, Acc1, Auth1("1"), Acc2, Auth2("1"), OffState, #{}),
 
     BadOffState = aega_test_utils:new_state(Acc1, Amnt, {basic, "2"}, Acc2, Amnt, {basic, "1"}),
-    {ok, #{tx_res := error, tx_value := <<"signature_verification_failed_contract_error">>}} =
+    {ok, #{tx_res := error, tx_value := ?INNER_ERROR(<<"signature_verification_failed_contract_error">>)}} =
         ?call(ga_channel_snapshot_solo, Acc1, Auth1("2"), CId, BadOffState),
 
     {ok, #{tx_res := ok}} =
