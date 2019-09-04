@@ -97,9 +97,6 @@ PYTHON_TESTS = $(PYTHON_DIR)/tests
 export AEVM_EXTERNAL_TEST_DIR=aevm_external
 export AEVM_EXTERNAL_TEST_VERSION=348b0633f4a6ee3c100368bf0f4fca71394b4d01
 
-HTTP_APP = apps/aehttp
-SWTEMP := $(shell mktemp -d 2>/dev/null || mktemp -d -t 'mytmpdir')
-
 console:
 	@$(REBAR) as local shell --config config/dev.config --sname aeternity@localhost
 
@@ -401,7 +398,6 @@ clean:
 	@$(REBAR) clean
 	@-rm REVISION
 	@-rm $(SWAGGER_ENDPOINTS_SPEC)
-	( cd $(HTTP_APP) && $(MAKE) clean; )
 	@$(MAKE) multi-distclean
 	@$(MAKE) eqc-clean
 	@rm -rf _build/system_test+test _build/system_test _build/test _build/prod _build/local
@@ -417,7 +413,6 @@ eqc-clean:
 ## Do not delete `eqc`.
 distclean: clean
 	( cd otp_patches && $(MAKE) distclean; )
-	( cd $(HTTP_APP) && $(MAKE) distclean; )
 	@rm -rf _build/
 
 multi-build: dev1-build
