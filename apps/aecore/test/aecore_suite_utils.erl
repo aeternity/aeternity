@@ -950,7 +950,7 @@ backup_config(EpochConfig) ->
 proxy() ->
     register(?PROXY, self()),
     process_flag(trap_exit, true),
-    aec_test_event_handler:install(),
+    {ok, _} = aec_test_app_checker:start_link(self()),
     error_logger:info_msg("starting test suite proxy~n", []),
     proxy_loop([{marker, app_started}], dict:new()).
 
