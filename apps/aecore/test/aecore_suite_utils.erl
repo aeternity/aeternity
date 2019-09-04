@@ -633,13 +633,13 @@ delete_file(F) ->
 
 connect_(N, Timeout) when Timeout < 10000 ->
     timer:sleep(Timeout),
-    case net_kernel:hidden_connect(N) of
+    case net_kernel:hidden_connect_node(N) of
         true ->
-            ct:log("hidden_connect(~p) -> true", [N]),
+            ct:log("hidden_connect_node(~p) -> true", [N]),
             await_aehttp(N),
             true;
         false ->
-            ct:log("hidden_connect(~p) -> false, retrying ...", [N]),
+            ct:log("hidden_connect_node(~p) -> false, retrying ...", [N]),
             connect_(N, Timeout * 2)
     end;
 connect_(N, _) ->
