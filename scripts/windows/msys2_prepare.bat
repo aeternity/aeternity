@@ -28,7 +28,7 @@ IF "%WIN_MSYS2_ROOT%"=="" SET "WIN_MSYS2_ROOT=C:\tools\msys64"
 
 IF "%FORCE_STYRENE_REINSTALL%"=="" SET "FORCE_STYRENE_REINSTALL=false"
 IF "%JDK_URL%"=="" SET "JDK_URL=https://download.java.net/java/GA/jdk11/9/GPL/openjdk-11.0.2_windows-x64_bin.zip"
-IF "%WIN_JDK_BASEPATH%"=="" SET "WIN_JDK_BASEPATH=C:\Program Files\Java"
+IF "%WIN_JDK_BASEPATH%"=="" SET "WIN_JDK_BASEPATH=%ProgramFiles%\Java"
 IF "%JAVA_VERSION%"=="" SET "JAVA_VERSION=11.0.2"
 IF "%WIN_JDK_PATH%"=="" SET "WIN_JDK_PATH=%WIN_JDK_BASEPATH%\jdk-%JAVA_VERSION%"
 IF "%ERLANG_HOME%"=="" SET "ERLANG_HOME=%WIN_OTP_PATH%"
@@ -91,13 +91,13 @@ exit /b %ERRORLEVEL%
 :MSVC_VERSION
 ::locate the path to the version file and import into a var
 IF NOT "%MSVC_VERSION%"=="" exit /b 0
-FOR /F "tokens=* USEBACKQ delims=" %%F IN (`where /r "C:\Program Files (x86)\Microsoft Visual Studio" Microsoft.VCToolsVersion.default.txt`) DO SET /p MSVC_VERSION=<"%%F" && exit /b 0
+FOR /F "tokens=* USEBACKQ delims=" %%F IN (`where /r "%ProgramFiles(x86)%\Microsoft Visual Studio" Microsoft.VCToolsVersion.default.txt`) DO SET /p MSVC_VERSION=<"%%F" && exit /b 0
 exit /b %ERRORLEVEL%
 
 :VCVARSALL
 IF NOT "%DevEnvDir%"=="" exit /b 0
 IF NOT "%VCVARSALL%"=="" GOTO:VCVARSALLFOUND
-FOR /F "usebackq delims=" %%F IN (`where /r "C:\Program Files (x86)\Microsoft Visual Studio" vcvarsall`) DO SET "VCVARSALL=%%F"
+FOR /F "usebackq delims=" %%F IN (`where /r "%ProgramFiles(x86)%\Microsoft Visual Studio" vcvarsall`) DO SET "VCVARSALL=%%F"
 IF "%VCVARSALL%"=="" @call:log MSVC not installed && exit /b 2
 :VCVARSALLFOUND
 :: 1>nul to hide the banner

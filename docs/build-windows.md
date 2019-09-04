@@ -3,43 +3,57 @@
 This document describes how to build an Aeternity node from source on Windows using
 [MSYS2][msys2].
 
-NOTE: Only 64-bit versions of Windows 10 and Windows Server 2016+ are supported and tested.
- 
-Administrative privileges are required.
+NOTES:
+ - Only 64-bit versions of Windows 10 and Windows Server 2016 or later are supported and tested.
+ - Make sure you pull with `git config --global autocrlf input` as windows scripts might not work
+ - Administrative privileges are recommended.
 
 ## Dependencies
+
+You will need (minimal required):
+ - Visual Studio CLI Build tools (Community Edition 2017+)
+ - Msys2
+ - Erlang/OTP (20.1 or 20.3 is officially supported)
+ - Java/OpenJDK (11.0.2+)
 
 Note: You might consider easier to use [Chocolatey][chocolatey] package manager to
 install the requirements
 
-### [Visual Studio 2017/2019][vs2017]
+### [Install Visual Studio 2019][vs_install]
+First you will need to install Visual Studio in its default installation path, else the next steps will fail.
 
-Install only the required components of Visual Studio 2019 using [Chocolatey][chocolatey]
+To install only the required components of Visual Studio 2019 Community Edition using [Chocolatey][chocolatey] run:
 
 ```
-choco install -y visualstudio2019-workload-vctools --params "--add Microsoft.VisualStudio.Component.VC.CLI.Support --locale en-US"
+> choco install -y visualstudio2019-workload-vctools --params "--add Microsoft.VisualStudio.Component.VC.CLI.Support --locale en-US"
 ```
 
 or manually
 
-**Download:** [Visual Studio 2019 Installer][vs2019_dl]
+**Download:** [Visual Studio 2019 Installer][vs_dl]
 
 Make sure to include the following components (use the VCTools workload as base):
 
 - Command-line compiler support
 - Windows 10 SDK
 
-Alternatively can use [vs_buildtools.exe][vs_buildtools] to reduce install size.
+Alternatively you can use [vs_buildtools.exe][vs_buildtools] to reduce install size (no GUI).
 
-### [MSYS2][msys2]
+Note: Visual Studio 2017 Community Edition or later is supported
 
-You could use `scripts/windows/msys2_prepare.bat` to install all missing tools to default locations.
+### Quick install of MSYS2, Erlang/OTP, Java
+
+The easiest way to setup the environment is to run `scripts/windows/msys2_prepare.bat`.
+
+It will install any missing tools to their default locations, except Visual Studio.
 
 If you do so, you may skip to [Setup](#Setup)
 
+## Custom install of dependencies
+
 ### [Install MSYS2][msys2] (optional)
 
-If you don't want to install [MSYS2][msys2] manually, the preparation script
+Note: If you don't want to install [MSYS2][msys2] manually, the preparation script
 will do it automatically for you.
 
 Else you can use the provided helper script `scripts\windows\install_msys2.bat`.
@@ -51,12 +65,9 @@ You may optionally provide installation path as an argument.
 
 ```
 > scripts\windows\install_msys2.bat C:\tools\msys64
-...
-SET "WIN_MSYS2_ROOT=C:\tools\msys64"
-SETX WIN_MSYS2_ROOT C:\tools\msys64
 ```
 
-Alternatively you can install Msys2 using [Chocolatey][chocolatey] 
+Or if you prefer you can install Msys2 using [Chocolatey][chocolatey] 
 
 ```
 choco install -y msys2
@@ -67,12 +78,13 @@ or manually
 **Download:** [MSYS2 Windows Installer][msys2_dl]
 
 - Execute installer and follow instructions
-- Keep note of install folder
+- Keep note of the install folder
 
 *Note: You will need to set properly the var (e.g.):*
 ```
-SET "WIN_MSYS2_ROOT=C:\tools\msys64"
+> SET "WIN_MSYS2_ROOT=C:\tools\msys64"
 ```
+*Note: Odd quoting is not a typo*
 
 ### [Erlang/OTP 20.3][otp] (optional)
 
@@ -113,20 +125,25 @@ SET ERTS_VERSION=9.3
 
 ### [Java Development Kit 11][jdk] (optional)
 
-If you don't want to install Open JDK manually, the preparation script will do
+If you don't want to install JDK manually, the preparation script will do
 it automatically for you.
 
-You can configure java version and download url via env vars:
+You can configure java version and download url via env vars (set these before running the preparation script):
 ```
 JDK_URL=https://download.java.net/java/GA/jdk11/9/GPL/openjdk-11.0.2_windows-x64_bin.zip
 JAVA_VERSIOIN=11.0.2
 WIN_JDK_BASEPATH=C:\Program Files\Java
 ```
 
+If you download and install it manually, make sure you note the installation folder and JDK version
+
 ## Setup
 
 Now the [MSYS2][msys2] environment needs to be prepared. This can be done 
 automatically by the helper script `scripts/windows/msys2_prepare.bat`.
+
+The helper scripts will try to detect where `msys2.exe` is installed
+ if it is available in PATH and `WIN_MSYS2_ROOT` is unset.
 
 This script uses the following environment variable default values:
 
@@ -139,14 +156,32 @@ JDK_URL=https://download.java.net/java/GA/jdk11/9/GPL/openjdk-11.0.2_windows-x64
 WIN_JDK_BASEPATH=C:\Program Files\Java
 WIN_JDK_PATH=C:\Program Files\Java\jdk-11.0.2
 WIN_OTP_PATH=C:\Program Files\erl9.3
-JAVA_VERSIOIN=11.0.2
+JAVA_VERSION=11.0.2
 ```
 
-If your local setup differs, you need to set the proper values yourself.
+If your local setup differs, you need to set the proper values yourself before running the preparation script.
 
-*Note: The helper scripts will try to detect where `msys2` is installed if it is available in PATH.
-Otherwise you need to set `WIN_MSYS2_ROOT` environment variable with the proper path 
-if it does not match default one*
+```
+SET "WIN_MSYS2_ROOT=C:\tools\msys64"
+SET "WIN_OTP_PATH=C:\Program Files\erl9.3"
+SET OTP_VERSION=20.3
+SET ERTS_VERSION=9.3
+SET "WIN_JDK_BASEPATH=C:\Program Files\Java"
+SET JAVA_VERSION=11.0.2
+```
+*Note: Odd quoting is not a typo, it is used to escape any spaces in the values*
+
+It is recommend to persist these vars into the user environment, so you don't need to set it every time:
+```
+SETX WIN_MSYS2_ROOT C:\tools\msys64
+SETX WIN_OTP_PATH C:\Program Files\erl9.3
+SETX OTP_VERSION 20.3
+SETX ERTS_VERSION 9.3
+SETX JAVA_VERSIOIN 11.0.2
+SETX WIN_JDK_BASEPATH C:\Program Files\Java
+```
+*Note: In contrast of SET, do not put quotes in SETX commands, as they will end up in the values*
+
 
 You can execute the script directly in a `cmd` window.
 
@@ -186,6 +221,6 @@ Refer to `docs/build.md` for more information on how to build.
 [msys2_dl]: http://repo.msys2.org/distrib/x86_64/msys2-x86_64-20180531.exe
 [otp]: http://www.erlang.org/
 [otp203_dl]: http://erlang.org/download/otp_win64_20.3.exe
-[vs2017]: https://docs.microsoft.com/en-us/visualstudio/install/install-visual-studio
-[vs2019_dl]: https://visualstudio.microsoft.com/downloads/
+[vs_install]: https://docs.microsoft.com/en-us/visualstudio/install/install-visual-studio
+[vs_dl]: https://visualstudio.microsoft.com/downloads/
 [vs_buildtools]: https://visualstudio.microsoft.com/downloads/#build-tools-for-visual-studio-2019

@@ -11,14 +11,14 @@
 
 @call:log Find and set MSVC_VERSION
 @IF NOT "%MSVC_VERSION%"=="" GOTO:MSVC_VERSION_SET
-@FOR /F "tokens=* USEBACKQ delims=" %%F IN (`where /r "C:\Program Files (x86)\Microsoft Visual Studio" Microsoft.VCToolsVersion.default.txt`) DO SET /p MSVC_VERSION=<"%%F"
+@FOR /F "tokens=* USEBACKQ delims=" %%F IN (`where /r "%ProgramFiles(x86)%\Microsoft Visual Studio" Microsoft.VCToolsVersion.default.txt`) DO SET /p MSVC_VERSION=<"%%F"
 :MSVC_VERSION_SET
 
 @call:log Find and execute the VS env preparation script
 :: Avoid multiple executions
 @IF NOT "%DevEnvDir%"=="" GOTO:DONE
 @IF NOT "%VCVARSALL%"=="" GOTO:VCVARSALLFOUND
-@FOR /F "tokens=* USEBACKQ delims=" %%F IN (`where /r "C:\Program Files (x86)\Microsoft Visual Studio" vcvarsall`) DO SET "VCVARSALL=%%F"
+@FOR /F "tokens=* USEBACKQ delims=" %%F IN (`where /r "%ProgramFiles(x86)%\Microsoft Visual Studio" vcvarsall`) DO SET "VCVARSALL=%%F"
 :VCVARSALLFOUND
 
 call "%VCVARSALL%" %PLATFORM%
