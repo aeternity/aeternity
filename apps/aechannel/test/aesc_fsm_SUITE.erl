@@ -1489,7 +1489,12 @@ check_incorrect_mutual_close(Cfg) ->
                 fun(#{fsm := FsmPid}, Debug1) ->
                     log(Debug1, "checking state of ~p (Depositor=~p, Malicious=~p, FsmI = ~p, FsmR = ~p)",
                         [FsmPid, Depositor, Malicious, maps:get(fsm,I), maps:get(fsm,R)]),
-                    wait_for_open(FsmPid, Debug)
+                        case Depositor =:= Malicious of
+                            true ->
+                                mutual_closing = fsm_state(FsmPid, Debug);
+                            false ->
+                                mutual_closed = fsm_state(FsmPid, Debug)
+                        end
                 end),
             bump_idx(),
             ok
@@ -1786,7 +1791,6 @@ wrong_action({I, R, _Spec, _Port, Debug}, Poster, Malicious,
             ok = rpc(dev1, aesc_fsm, strict_checks, [FsmA, false], Debug),
             {_, _} = MaliciousSign(FsmCreatedAction, A, Debug),
             DetectConflictFun(A, Debug),
-            wait_for_open(FsmA, Debug),
             rpc(dev1, aesc_fsm, strict_checks, [FsmA, true], Debug)
     end,
     check_info(20),

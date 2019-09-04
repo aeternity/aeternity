@@ -892,8 +892,9 @@ mutual_closed(cast, {?SHUTDOWN_ERR, Msg}, D) ->
         {ok, _ErrorCode, D1} ->
             report(conflict, Msg, D1),
             next_state(open, D1);
-        {error, _} = Error ->
-            close(Error, D)
+        {error, Error} ->
+            report(conflict, Msg#{notice => Error}, D),
+            keep_state(log(rcv, ?SHUTDOWN_ERR, Msg, D))
     end;
 mutual_closed(timeout, _Msg, D) ->
     close(timeout, D);
@@ -2084,21 +2085,26 @@ check_shutdown_err_msg(_, _) ->
 
 check_op_error_msg(Op, #{ channel_id := ChanId
                         , error_code := ErrCode } = Msg,
-                   #data{ on_chain_id = ChanId
-                        , state = State
-                        , log = Log } = D) ->
-    {LastRound, _} = aesc_offchain_state:get_latest_signed_tx(State),
-    case aesc_offchain_state:get_fallback_state(State) of
-        {LastRound, State1} -> %% same round
-            Log1 = log_msg(rcv, Op, Msg, Log),
-            {ok, ErrCode, D#data{state = State1, log = Log1, op = ?NO_OP}};
+                   #data{ on_chain_id = ChanId } = D) ->
+    case fall_back_to_stable_state(D) of
+        {ok, D1} ->
+            {ok, ErrCode, log(rcv, Op, Msg, D1)};
         _Other ->
-            lager:debug("Fallback state mismatch: ~p/~p",
-                        [LastRound, _Other]),
             {error, fallback_state_mismatch}
     end;
 check_op_error_msg(_, _, _) ->
     {error, chain_id_mismatch}.
+
+fall_back_to_stable_state(#data{ state = State } = D) ->
+    {LastRound, _} = aesc_offchain_state:get_latest_signed_tx(State),
+    case aesc_offchain_state:get_fallback_state(State) of
+        {LastRound, State1} -> %% same round
+            {ok, D#data{state = State1, op = ?NO_OP}};
+        _Other ->
+            lager:debug("Fallback state mismatch: ~p/~p",
+                        [LastRound, _Other]),
+            {error, fallback_state_mismatch}
+    end.
 
 send_withdraw_created_msg(SignedTx, Updates,
                           #data{on_chain_id = Ch, session = Sn} = Data) ->
