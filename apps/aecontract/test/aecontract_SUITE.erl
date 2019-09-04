@@ -141,6 +141,7 @@
         , sophia_bits/1
         , sophia_aevm_bad_code/1
         , sophia_aevm_bad_init/1
+        , sophia_no_calls_to_init/1
         , sophia_int_to_str/1
         , sophia_events/1
         , sophia_crypto/1
@@ -357,6 +358,7 @@ groups() ->
                                  sophia_aens_transactions,
                                  sophia_state_handling,
                                  sophia_remote_state,
+                                 sophia_no_calls_to_init,
                                  sophia_state_gas_arguments,
                                  sophia_state_gas_store_size,
                                  sophia_no_callobject_for_remote_calls,
@@ -507,6 +509,12 @@ init_per_testcase(fate_environment, Config) ->
                         aeb_fate_data:make_hash(<<N:256>>)
                 end),
     init_per_testcase_common(fate_environment, Config);
+init_per_testcase(TC, Config) when TC == sophia_aens_resolve;
+                                   TC == sophia_signatures_aens;
+                                   TC == sophia_aens_transactions ->
+    %% Disable name auction
+    meck:expect(aec_governance, name_claim_bid_timeout, fun(_, _) -> 0 end),
+    init_per_testcase_common(TC, Config);
 init_per_testcase(TC, Config) ->
     init_per_testcase_common(TC, Config).
 
@@ -538,6 +546,11 @@ init_per_testcase_common(TC, Config) ->
 
 end_per_testcase(fate_environment, _Config) ->
     meck:unload(aefa_chain_api),
+    ok;
+end_per_testcase(TC, Cfg) when TC == sophia_aens_resolve;
+                               TC == sophia_signatures_aens;
+                               TC == sophia_aens_transactions ->
+    meck:unload(aec_governance),
     ok;
 end_per_testcase(_TC,_Config) ->
     ok.
@@ -584,7 +597,7 @@ create_contract_negative(_Cfg) ->
     %% Test too high account nonce
     RTx3 = create_tx(PubKey, #{nonce => 0}, S1),
     {error, _, S1} = sign_and_apply_transaction(RTx3, PrivKey, S1),
-    {error, account_nonce_too_high} = aetx:process(RTx3, Trees, Env),
+    {error, tx_nonce_already_used_for_account} = aetx:process(RTx3, Trees, Env),
 
     ok.
 
@@ -795,7 +808,6 @@ create_contract_(ContractCreateTxGasPrice) ->
     %% Check that the created contract has the correct details from the contract create tx
     ?assertEqual(PubKey, aect_contracts:owner_pubkey(Contract)),
     ?assertEqual(aect_create_tx:vm_version(aetx:tx(Tx)), aect_contracts:vm_version(Contract)),
-    ?assertEqual(aect_create_tx:code(aetx:tx(Tx)), aect_contracts:code(Contract)),
     ?assertEqual(aect_create_tx:deposit(aetx:tx(Tx)), aect_contracts:deposit(Contract)),
     %% Check that the created contract has the correct details not from the contract create tx
     _ = aect_contracts:log(Contract),
@@ -3535,10 +3547,10 @@ sophia_signatures_oracles(_Cfg) ->
 sophia_signatures_aens(Cfg) ->
     state(aect_test_utils:new_state()),
     %% AENS transactions from contract - using 3rd party account
-    Acc             = ?call(new_account, 20000000 * aec_test_utils:min_gas_price()),
-    NameAcc         = ?call(new_account, 20000000 * aec_test_utils:min_gas_price()),
+    Acc             = ?call(new_account, 40000000000000 * aec_test_utils:min_gas_price()),
+    NameAcc         = ?call(new_account, 40000000000000 * aec_test_utils:min_gas_price()),
     Ct              = ?call(create_contract, NameAcc, aens, {}, #{ amount => 100000 }),
-    Name1           = <<"bla.test">>,
+    Name1           = aens_test_utils:fullname(<<"bla">>),
     Salt1           = rand:uniform(10000),
     {ok, NameAscii} = aens_utils:to_ascii(Name1),
     CHash           = ?hsh(aens_hash:commitment_hash(NameAscii, Salt1)),
@@ -3549,9 +3561,8 @@ sophia_signatures_aens(Cfg) ->
                   VMVersion when ?IS_FATE_SOPHIA(VMVersion) -> Name1
               end,
     NameAccSig      = sign(<<NameAcc/binary, Ct/binary>>, NameAcc),
-    {ok, NameHash}  = aens:get_name_hash(<<"bla.test">>),
-    NameSig         = sign(<<NameAcc/binary, NameHash/binary, Ct/binary>>, NameAcc),
-    AccSig          = sign(<<Acc/binary, NameHash/binary, Ct/binary>>, Acc),
+    NameSig         = sign(<<NameAcc/binary, NHash/binary, Ct/binary>>, NameAcc),
+    AccSig          = sign(<<Acc/binary, NHash/binary, Ct/binary>>, Acc),
     APubkey  = 1,
     OPubkey  = 2,
     Pointers = [aens_pointer:new(<<"account_pubkey">>, aeser_id:create(account, <<APubkey:256>>)),
@@ -5061,9 +5072,12 @@ aens_preclaim(PubKey, Name, Options, S) ->
     {Salt, S1}.
 
 aens_claim(PubKey, Name, Salt, S) ->
-    aens_claim(PubKey, Name, Salt, #{}, S).
+    aens_claim(PubKey, Name, Salt, prelima, #{}, S).
 
-aens_claim(PubKey, Name, Salt, Options, S) ->
+aens_claim(PubKey, Name, Salt, NameFee, S) ->
+    aens_claim(PubKey, Name, Salt, NameFee, #{}, S).
+
+aens_claim(PubKey, Name, Salt, NameFee, Options, S) ->
     Nonce  = aect_test_utils:next_nonce(PubKey, S),
     Height = maps:get(height, Options, 2),
     Fee    = maps:get(fee, Options, 50000 * aec_test_utils:min_gas_price()),
@@ -5074,6 +5088,7 @@ aens_claim(PubKey, Name, Salt, Options, S) ->
                                     nonce      => Nonce,
                                     name       => Name,
                                     name_salt  => Salt,
+                                    name_fee   => NameFee,
                                     fee        => Fee,
                                     ttl        => TTL }),
     PrivKey  = aect_test_utils:priv_key(PubKey, S),
@@ -5119,11 +5134,11 @@ aens_update(PubKey, NameHash, Pointers, Options, S) ->
     {ok, S1} = sign_and_apply_transaction(Tx, PrivKey, S, Height),
     {ok, S1}.
 
-sophia_aens_resolve(_Cfg) ->
+sophia_aens_resolve(Cfg) ->
     state(aect_test_utils:new_state()),
-    Acc      = ?call(new_account, 20000000 * aec_test_utils:min_gas_price()),
+    Acc      = ?call(new_account, 400000000000000000000 * aec_test_utils:min_gas_price()),
     Ct       = ?call(create_contract, Acc, aens, {}, #{ amount => 100000 }),
-    Name     = <<"foo.test">>,
+    Name     = aens_test_utils:fullname(<<"foo">>),
     APubkey  = 1,
     OPubkey  = 2,
     CPubkey  = 3,
@@ -5134,7 +5149,12 @@ sophia_aens_resolve(_Cfg) ->
                ],
 
     Salt  = ?call(aens_preclaim, Acc, Name),
-    Hash  = ?call(aens_claim, Acc, Name, Salt),
+    NameFee = aec_governance:name_claim_fee(Name, ?config(protocol, Cfg)),
+    Hash  = case ?config(vm_version, Cfg) of
+                  VMVersion when ?IS_AEVM_SOPHIA(VMVersion), VMVersion >= ?VM_AEVM_SOPHIA_4 -> ?call(aens_claim, Acc, Name, Salt, NameFee);
+                  VMVersion when ?IS_AEVM_SOPHIA(VMVersion), VMVersion < ?VM_AEVM_SOPHIA_4 -> ?call(aens_claim, Acc, Name, Salt);
+                  VMVersion when ?IS_FATE_SOPHIA(VMVersion) -> ?call(aens_claim, Acc, Name, Salt, NameFee)
+            end,
     ok    = ?call(aens_update, Acc, Hash, Pointers),
 
     {some, Account} = ?call(call_contract, Acc, Ct, resolve_account, {option, word},   {Name, <<"account_pubkey">>}),
@@ -5174,8 +5194,8 @@ sophia_aens_resolve(_Cfg) ->
 sophia_aens_transactions(Cfg) ->
     %% AENS transactions from contract
     state(aect_test_utils:new_state()),
-    Acc      = ?call(new_account, 20000000 * aec_test_utils:min_gas_price()),
-    Ct       = ?call(create_contract, Acc, aens, {}, #{ amount => 100000 }),
+    Acc      = ?call(new_account, 40000000000000 * aec_test_utils:min_gas_price()),
+    Ct       = ?call(create_contract, Acc, aens, {}, #{ amount => 20000000000000 * aec_test_utils:min_gas_price() }),
 
     APubkey  = 1,
     OPubkey  = 2,
@@ -5185,20 +5205,30 @@ sophia_aens_transactions(Cfg) ->
                 aens_pointer:new(<<"oracle_pubkey">>, aeser_id:create(oracle, <<OPubkey:256>>)),
                 aens_pointer:new(<<"contract_pubkey">>, aeser_id:create(contract, <<CPubkey:256>>))
                ],
-    Name1           = <<"bla.test">>,
+    Name1           = aens_test_utils:fullname(<<"bla">>),
     Salt1           = rand:uniform(10000),
     {ok, NameAscii} = aens_utils:to_ascii(Name1),
     CHash           = aens_hash:commitment_hash(NameAscii, Salt1),
     NHash           = aens_hash:name_hash(NameAscii),
-    NameArg = case ?config(vm_version, Cfg) of
-                  VMVersion when ?IS_AEVM_SOPHIA(VMVersion), VMVersion >= ?VM_AEVM_SOPHIA_4 -> Name1;
-                  VMVersion when ?IS_AEVM_SOPHIA(VMVersion), VMVersion < ?VM_AEVM_SOPHIA_4 -> ?hsh(NHash);
-                  VMVersion when ?IS_FATE_SOPHIA(VMVersion) -> Name1
+    VMVersion = ?config(vm_version, Cfg),
+    NameArg = if ?IS_AEVM_SOPHIA(VMVersion), VMVersion >= ?VM_AEVM_SOPHIA_4 -> Name1;
+                 ?IS_AEVM_SOPHIA(VMVersion), VMVersion < ?VM_AEVM_SOPHIA_4 -> ?hsh(NHash);
+                 ?IS_FATE_SOPHIA(VMVersion) -> Name1
               end,
     NonceBeforePreclaim = aec_accounts:nonce(aect_test_utils:get_account(Ct, state())),
     {} = ?call(call_contract, Acc, Ct, preclaim, {tuple, []}, {Ct, ?hsh(CHash)},        #{ height => 10 }),
     NonceBeforeClaim = aec_accounts:nonce(aect_test_utils:get_account(Ct, state())),
-    {} = ?call(call_contract, Acc, Ct, claim,    {tuple, []}, {Ct, Name1, Salt1}, #{ height => 11 }),
+    if ?IS_AEVM_SOPHIA(VMVersion), VMVersion < ?VM_AEVM_SOPHIA_4 -> ok;
+       true ->
+            BadNameFee = ?call(call_contract, Acc, Ct, claim,    {tuple, []}, {Ct, Name1, Salt1, 1}, #{ height => 11 }),
+            ?assertMatchVM({error, <<"out_of_gas">>},
+                           {error,<<"Error in aens_claim: invalid_name_fee">>}, BadNameFee)
+    end,
+    {} = if?IS_AEVM_SOPHIA(VMVersion), VMVersion < ?VM_AEVM_SOPHIA_4 ->
+                 ?call(call_contract, Acc, Ct, claim,    {tuple, []}, {Ct, Name1, Salt1}, #{ height => 11 });
+           true ->
+                 ?call(call_contract, Acc, Ct, claim,    {tuple, []}, {Ct, Name1, Salt1, 360000000000000000000}, #{ height => 11 })
+         end,
     NonceBeforeTransfer = aec_accounts:nonce(aect_test_utils:get_account(Ct, state())),
     StateBeforeTransfer = state(),
     {} = ?call(call_contract, Acc, Ct, transfer, {tuple, []}, {Ct, Acc, NameArg},   #{ height => 12 }),
@@ -5744,4 +5774,17 @@ sophia_call_out_of_gas(_Cfg) ->
     ?assertEqual(UsedGas3, Gas),
     ?assertMatchFATE(<<"Reentrant call">>, Error), %% Fate looks at contract first
     ?assertMatchAEVM(<<"out_of_gas">>, Error),     %% AEVM cannot find function
+    ok.
+
+sophia_no_calls_to_init(_Cfg) ->
+    state(aect_test_utils:new_state()),
+    Acc = ?call(new_account, 10000000000 * aec_test_utils:min_gas_price()),
+    C   = ?call(create_contract, Acc, simple_auth, {123}, #{}),
+
+    {ok, Code} = compile_contract(simple_auth),
+    CallData   = make_calldata_from_code(Code, <<"init">>, {42}),
+
+    Res = ?call(call_contract_with_calldata, Acc, C, word, CallData, #{}),
+    ?assertMatchAEVM(Res, 32, 32, 32, {error, <<"unknown_function">>}),
+    ?assertMatchFATE({error, <<"Trying to call undefined function: <<68,214,68,31>>">>}, Res),
     ok.

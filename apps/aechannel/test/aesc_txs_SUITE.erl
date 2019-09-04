@@ -426,12 +426,15 @@ init_per_group(fork_awareness, Config) ->
 init_per_group(VM, Config) when VM == aevm; VM == fate ->
     aect_test_utils:init_per_group(VM, Config);
 init_per_group(_Group, Config) ->
+    %% Disable name auction for these groups
+    application:set_env(aecore, name_claim_bid_timeout, 0),
     Config.
 
 end_per_group(fork_awareness, _Config) ->
     meck:unload(aec_hard_forks),
     ok;
 end_per_group(_Group, _Config) ->
+    application:unset_env(aecore, name_claim_bid_timeout),
     ok.
 
 init_per_testcase(_, Config) ->
@@ -587,9 +590,9 @@ create_wrong_nonce(_Cfg) ->
             Env = aetx_env:set_signed_tx(Env0, {value, SignedTx}),
             {error, Err} = aetx:process(Tx, Trees, Env)
         end,
-    Test(Nonce - 1, account_nonce_too_high),
-    Test(Nonce, account_nonce_too_high),
-    Test(Nonce + 2, account_nonce_too_low),
+    Test(Nonce - 1, tx_nonce_already_used_for_account),
+    Test(Nonce, tx_nonce_already_used_for_account),
+    Test(Nonce + 2, tx_nonce_too_high_for_account),
     ok.
 
 create_exsisting(Cfg) ->
@@ -880,9 +883,9 @@ close_mutual_wrong_nonce(Cfg) ->
                  prepare_balances_for_mutual_close(),
                  negative(fun close_mutual_/2, {error, Error})])
         end,
-    Test(InitiatorNonce - 1,  account_nonce_too_high),
-    Test(InitiatorNonce,      account_nonce_too_high),
-    Test(InitiatorNonce + 2,  account_nonce_too_low),
+    Test(InitiatorNonce - 1,  tx_nonce_already_used_for_account),
+    Test(InitiatorNonce,      tx_nonce_already_used_for_account),
+    Test(InitiatorNonce + 2,  tx_nonce_too_high_for_account),
     ok.
 
 
@@ -957,7 +960,7 @@ reject_old_offchain_tx_vsn(Cfg) ->
                 set_prop(height, RomaHeight),
                 create_payload(),
                 set_prop(height, LimaHeight),
-                %% it fails after Lima 
+                %% it fails after Lima
                 negative(fun close_solo_/2, {error, invalid_at_height})
                 ])
         end,
@@ -1140,9 +1143,7 @@ slash_not_participant(Cfg) ->
                  set_prop(round, 5),
                  positive(fun close_solo_/2),
                  fun(#{state := S0} = Props) ->
-                    {NewAcc, S} = aesc_test_utils:setup_new_account(S0),
-                    S1 = aesc_test_utils:set_account_balance(NewAcc,
-                                                             500000 * aec_test_utils:min_gas_price(), S),
+                    {NewAcc, S1} = aesc_test_utils:setup_new_account(S0),
                     PrivKey = aesc_test_utils:priv_key(NewAcc, S1),
                     Props#{state => S1, from_pubkey => NewAcc, from_privkey => PrivKey}
                  end,
@@ -1608,9 +1609,9 @@ settle_wrong_nonce(Cfg) ->
     % settle tx amounts must be equal to the last on-chain tx
     ActualTest =
         fun(Closer, Setler) ->
-            Test(Closer, Setler, Nonce - 1,  account_nonce_too_high),
-            Test(Closer, Setler, Nonce    ,  account_nonce_too_high),
-            Test(Closer, Setler, Nonce + 2,  account_nonce_too_low)
+            Test(Closer, Setler, Nonce - 1,  tx_nonce_already_used_for_account),
+            Test(Closer, Setler, Nonce    ,  tx_nonce_already_used_for_account),
+            Test(Closer, Setler, Nonce + 2,  tx_nonce_too_high_for_account)
         end,
     [ActualTest(Closer, Setler) ||  Closer <- ?ROLES,
                                     Setler <- RolesWithKeys],
@@ -1675,9 +1676,7 @@ settle_not_participant(Cfg) ->
                 positive(fun close_solo_/2),
                 set_prop(height, 21),
                 fun(#{state := S0} = Props) ->
-                    {NewAcc, S} = aesc_test_utils:setup_new_account(S0),
-                    S1 = aesc_test_utils:set_account_balance(NewAcc,
-                                                             100000 * aec_test_utils:min_gas_price(), S),
+                    {NewAcc, S1} = aesc_test_utils:setup_new_account(S0),
                     PrivKey = aesc_test_utils:priv_key(NewAcc, S1),
                     Props#{state => S1, from_pubkey => NewAcc, from_privkey => PrivKey}
                 end,
@@ -2678,7 +2677,7 @@ fp_use_onchain_name_resolution(Cfg) ->
     FPRound = 20,
     LockPeriod = 10,
     FPHeight0 = 20,
-    Name = <<"lorem.test">>,
+    Name = aens_test_utils:fullname(<<"lorem">>),
     ForceCallCheckName =
         fun(Forcer, K, Found) when is_binary(K) andalso is_boolean(Found) ->
             fun(Props) ->
@@ -3035,10 +3034,8 @@ fp_not_participant(Cfg) ->
                 end,
                 set_prop(fee, 100000 * aec_test_utils:min_gas_price()),
                 fun(#{state := S0} = Props) ->
-                    {NewAcc, S} = aesc_test_utils:setup_new_account(S0),
-                    S1 = aesc_test_utils:set_account_balance(NewAcc,
-                                                             1000000 * aec_test_utils:min_gas_price(), S),
-                    PrivKey = aesc_test_utils:priv_key(NewAcc, S1),
+                    {NewAcc, S1} = aesc_test_utils:setup_new_account(S0),
+                     PrivKey = aesc_test_utils:priv_key(NewAcc, S1),
                     Props#{state => S1, from_pubkey => NewAcc, from_privkey => PrivKey}
                 end,
                 negative(fun force_progress_/2, {error, account_not_peer})])
@@ -3540,7 +3537,8 @@ fp_insufficent_gas_price(Cfg) ->
     ok.
 
 fp_register_name(Cfg) ->
-    Name = <<"bla.test">>,
+    %% protocol version in config is latest version w.r.t. 'make' target
+    Name = aens_test_utils:fullname(<<"bla">>),
     Salt = 42,
     {ok, NameAscii} = aens_utils:to_ascii(Name),
     CHash           = address_encode(hash, aens_hash:commitment_hash(NameAscii, Salt)),
@@ -3567,8 +3565,7 @@ fp_register_name(Cfg) ->
         [ % create account for being contract owner
           fun(#{} = Props) ->
               S0 = aesc_test_utils:new_state(),
-              {NewAcc, S} = aesc_test_utils:setup_new_account(S0),
-              S1 = aesc_test_utils:set_account_balance(NewAcc, 10000000 * aec_test_utils:min_gas_price(), S),
+              {NewAcc, S1} = aesc_test_utils:setup_new_account(S0),
               PrivKey = aesc_test_utils:priv_key(NewAcc, S1),
               ?TEST_LOG("Owner: pubkey ~p, privkey: ~p", [NewAcc, PrivKey]),
               Props#{state => S1, onchain_contract_owner_pubkey => NewAcc,
@@ -3883,8 +3880,7 @@ fp_oracle_action(Cfg, ProduceCallData) ->
           set_prop(height, 10),
           fun(#{} = Props) ->
               S0 = aesc_test_utils:new_state(),
-              {NewAcc, S} = aesc_test_utils:setup_new_account(S0),
-              S1 = aesc_test_utils:set_account_balance(NewAcc, 10000000 * aec_test_utils:min_gas_price(), S),
+              {NewAcc, S1} = aesc_test_utils:setup_new_account(S0),
               PrivKey = aesc_test_utils:priv_key(NewAcc, S1),
               ?TEST_LOG("Owner: pubkey ~p, privkey: ~p", [NewAcc, PrivKey]),
               Props#{state => S1, onchain_contract_owner_pubkey => NewAcc,
@@ -4078,8 +4074,7 @@ fp_register_oracle(Cfg) ->
         [ % create account for being contract owner
           fun(#{} = Props) ->
               S0 = aesc_test_utils:new_state(),
-              {NewAcc, S} = aesc_test_utils:setup_new_account(S0),
-              S1 = aesc_test_utils:set_account_balance(NewAcc, 10000000 * aec_test_utils:min_gas_price(), S),
+              {NewAcc, S1} = aesc_test_utils:setup_new_account(S0),
               PrivKey = aesc_test_utils:priv_key(NewAcc, S1),
               ?TEST_LOG("Owner: pubkey ~p, privkey: ~p", [NewAcc, PrivKey]),
               Props#{state => S1, onchain_contract_owner_pubkey => NewAcc,
@@ -4463,7 +4458,7 @@ create_payload() ->
 
 reuse_or_create_payload(Key, Props) ->
     case maps:get(Key, Props, not_specified) of
-        not_specified -> 
+        not_specified ->
             CreateFun = create_payload(Key),
             Props1 = CreateFun(Props),
             maps:get(Key, Props1);
@@ -4981,9 +4976,9 @@ test_both_wrong_nonce(Cfg, Fun, InitProps) ->
         end,
     lists:foreach(
         fun(Poster) ->
-            Test(Poster, AccountNonce - 1,  account_nonce_too_high),
-            Test(Poster, AccountNonce,      account_nonce_too_high),
-            Test(Poster, AccountNonce + 2,  account_nonce_too_low)
+            Test(Poster, AccountNonce - 1,  tx_nonce_already_used_for_account),
+            Test(Poster, AccountNonce,      tx_nonce_already_used_for_account),
+            Test(Poster, AccountNonce + 2,  tx_nonce_too_high_for_account)
         end,
         ?ROLES),
     ok.
@@ -5166,10 +5161,7 @@ test_not_participant(Cfg, Fun, InitProps) ->
     run(InitProps#{cfg => Cfg},
         [positive(fun create_channel_/2),
          fun(#{state := S0} = Props) ->
-            {NewAcc, S} = aesc_test_utils:setup_new_account(S0),
-            S1 = aesc_test_utils:set_account_balance(NewAcc,
-                                                     500000 * aec_test_utils:min_gas_price(),
-                                                     S),
+            {NewAcc, S1} = aesc_test_utils:setup_new_account(S0),
             PrivKey = aesc_test_utils:priv_key(NewAcc, S1),
             Props#{state => S1, from_pubkey => NewAcc, from_privkey => PrivKey}
          end,
@@ -5180,8 +5172,7 @@ register_new_oracle(QFormat, RFormat, QueryFee) ->
     fun(Props0) ->
         run(Props0,
            [fun(#{state := S0} = Props) ->
-                {NewAcc, S} = aesc_test_utils:setup_new_account(S0),
-                S1 = aesc_test_utils:set_account_balance(NewAcc, 500000 * aec_test_utils:min_gas_price(), S),
+                {NewAcc, S1} = aesc_test_utils:setup_new_account(S0),
                 Props#{state => S1, oracle => NewAcc}
             end,
             fun(#{state := S, oracle := Oracle} = Props) ->
@@ -5238,8 +5229,7 @@ register_name(Name, Pointers0) ->
         run(Props0,
            [% create dummy account to hold the name
             fun(#{state := S0} = Props) ->
-                {NewAcc, S} = aesc_test_utils:setup_new_account(S0),
-                S1 = aesc_test_utils:set_account_balance(NewAcc, 1000000 * aec_test_utils:min_gas_price(), S),
+                {NewAcc, S1} = aesc_test_utils:setup_new_account(S0),
                 Props#{state => S1, name_owner => NewAcc}
             end,
             % preclaim
@@ -5256,7 +5246,13 @@ register_name(Name, Pointers0) ->
             fun(#{state := S, name_owner := NameOwner, height := Height0} = Props) ->
                 PrivKey = aesc_test_utils:priv_key(NameOwner, S),
                 Delta = aec_governance:name_claim_preclaim_delta(),
-                TxSpec = aens_test_utils:claim_tx_spec(NameOwner, Name, NameSalt, S),
+                Protocol = aec_hard_forks:protocol_effective_at_height(Height0),
+                NameFee =
+                        case Protocol >= ?LIMA_PROTOCOL_VSN of
+                            true -> aec_governance:name_claim_fee(Name, Protocol);
+                            false -> prelima
+                        end,
+                TxSpec = aens_test_utils:claim_tx_spec(NameOwner, Name, NameSalt, NameFee, S),
                 {ok, Tx} = aens_claim_tx:new(TxSpec),
                 SignedTx = aec_test_utils:sign_tx(Tx, PrivKey),
                 apply_on_trees_(Props#{height := Height0 + Delta}, SignedTx, S, positive)
@@ -5514,7 +5510,7 @@ fp_sophia_versions(Cfg) ->
             OK          %% Lima
          },
          %% AEVM 2
-         {?VM_AEVM_SOPHIA_2, SophiaVsn1, 
+         {?VM_AEVM_SOPHIA_2, SophiaVsn1,
             ErrUnknown, %% Roma
             OK,         %% Minerva
             OK,         %% Fortuna
@@ -5640,4 +5636,3 @@ aevm_type(Type) -> Type.
 encode_sig(Sig) ->
     <<"0x", Hex/binary>> = aeu_hex:hexstring_encode(Sig),
     binary_to_list(<<"#", Hex/binary>>).
-

@@ -249,7 +249,7 @@ gc_cache(Trees, TreesToGC) ->
 perform_pre_transformations(Trees, Height) ->
     Trees0 = aect_call_state_tree:prune(Height, Trees),
     Trees1 = aeo_state_tree:prune(Height, Trees0),
-    Trees2 = set_ns(Trees1, aens_state_tree:prune(Height, ns(Trees1))),
+    Trees2 = aens_state_tree:prune(Height, Trees1),
     case Height =:= aec_block_genesis:height() of
         true -> Trees2; % genesis block
         false ->
@@ -289,18 +289,23 @@ set_contracts(Trees, Contracts) ->
                                   , 'oracles'          => non_neg_integer()
                                   , 'oracle_queries'   => non_neg_integer()
                                   , 'locked'           => non_neg_integer()
+                                  , 'auctions'         => non_neg_integer()
                                   }.
 sum_total_coin(Trees) ->
     Accounts  = accounts(Trees),
     Channels  = channels(Trees),
     Contracts = contracts(Trees),
     Oracles   = oracles(Trees),
+    Names     = ns(Trees),
     LockAccount   = aec_governance:locked_coins_holder_account(),
     AIterator     = aec_accounts_trees:mtree_iterator(Accounts),
     FirstAccount  = aeu_mtrees:iterator_next(AIterator),
     CIterator     = aesc_state_tree:mtree_iterator(Channels),
     FirstChannel  = aeu_mtrees:iterator_next(CIterator),
     ChannelAmount = sum_channels(FirstChannel, 0),
+    AuctionIter   = aens_state_tree:auction_iterator(Names),
+    FirstAuction  = aens_state_tree:auction_iterator_next(AuctionIter),
+    SumAuctions   = sum_auctions(FirstAuction, 0),
     Sum = #{ 'accounts'         => 0
            , 'channels'         => ChannelAmount
            , 'contracts'        => 0
@@ -308,6 +313,7 @@ sum_total_coin(Trees) ->
            , 'oracles'          => 0
            , 'oracle_queries'   => 0
            , 'locked'           => 0
+           , 'auctions'         => SumAuctions
            },
     sum_accounts(FirstAccount, LockAccount, Contracts, Oracles, Sum).
 
@@ -370,6 +376,13 @@ sum_channels({ChannelPubkey, SerChannel, Iter}, Acc) ->
     Channel = aesc_channels:deserialize(ChannelPubkey, SerChannel),
     Acc1 = Acc + aesc_channels:channel_amount(Channel),
     sum_channels(aeu_mtrees:iterator_next(Iter), Acc1).
+
+sum_auctions('$end_of_table', Acc) ->
+    Acc;
+sum_auctions({AuctionHash, SerAuction, Iter}, Acc) ->
+    Auction = aens_auctions:deserialize(AuctionHash, SerAuction),
+    Acc1 = Acc + aens_auctions:name_fee(Auction),
+    sum_auctions(aens_state_tree:auction_iterator_next(Iter), Acc1).
 
 %%%=============================================================================
 %%% Serialization for db storage

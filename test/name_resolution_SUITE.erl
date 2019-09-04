@@ -7,6 +7,9 @@
 
 %% common_test exports
 -export([ all/0
+        , groups/0
+        , init_per_group/2
+        , end_per_group/2
         ]).
 
 %% test case exports
@@ -24,17 +27,30 @@
 -include_lib("common_test/include/ct.hrl").
 -include_lib("stdlib/include/assert.hrl").
 -include_lib("aecore/include/blocks.hrl").
+-include_lib("aecontract/include/hard_forks.hrl").
+
 
 %%%===================================================================
 %%% Common test framework
 %%%===================================================================
 
 all() ->
+    [ {group, no_auction} ].
+
+groups() ->
+   [{no_auction,
     [ spend_to_name
     , spend_to_name_when_multiple_pointer_entries
     , transfer_name_to_named_account
     , transfer_name_to_named_account_when_multiple_pointer_entries
-    ].
+    ]}].
+
+init_per_group(no_auction, Cfg) ->
+    application:set_env(aecore, name_claim_bid_timeout, 0),
+    Cfg.
+
+end_per_group(_, Cfg) ->
+    Cfg.
 
 
 %%%===================================================================
@@ -48,7 +64,7 @@ init_state(N) ->
     Trees0 = aec_trees:new_without_backend(),
     ATrees = lists:foldl(fun(#{public := Pubkey}, AccTrees) ->
                                  Account = aec_accounts:new(Pubkey,
-                                                            100000 * aec_test_utils:min_gas_price()),
+                                                            400000000000000000000 * aec_test_utils:min_gas_price()),
                                  aec_accounts_trees:enter(Account, AccTrees)
                          end,
                          aec_trees:accounts(Trees0),
@@ -107,10 +123,10 @@ name_owner_pubkey(NameID, #{trees := Trees}) ->
 %%%===================================================================
 %%% Register a name
 
-register_name(Pubkey, S) ->
-    register_name(Pubkey, <<"hello.test"/utf8>>, S).
+register_name(Pubkey, #{height := Height} = S) ->
+    register_name(Pubkey, aens_test_utils:fullname(<<"hello"/utf8>>, Height), S).
 
-register_name(Pubkey, Name, S) ->
+register_name(Pubkey, Name, #{height := Height} = S) ->
     {ok, Ascii} = aens_utils:to_ascii(Name),
     Hash   = aens_hash:name_hash(Ascii),
     Salt   = 42,
@@ -121,9 +137,16 @@ register_name(Pubkey, Name, S) ->
                     , nonce => 1
                     },
     {ok, Preclaim} = aens_preclaim_tx:new(PreclaimSpec),
+    Protocol = aec_hard_forks:protocol_effective_at_height(Height),
+    NameFee =
+        case Protocol >= ?LIMA_PROTOCOL_VSN of
+            true -> aec_governance:name_claim_fee(Name, Protocol);
+            false -> prelima
+        end,
     ClaimSpec  = #{ account_id => account_id(Pubkey)
                   , name => Name
                   , name_salt => Salt
+                  , name_fee => NameFee
                   , fee  => 20000 * aec_test_utils:min_gas_price()
                   , nonce => 2
                   },
@@ -218,11 +241,11 @@ transfer_name_to_named_account_(PointersFun) ->
     {[Pubkey1, Pubkey2, Pubkey3], S1} = init_state(3),
 
     %% Pubkey1 holds the reference to the recipient account (Pubkey3)
-    {S2, NameId1} = register_name(Pubkey1, <<"foo.test"/utf8>>, S1),
+    {S2, NameId1} = register_name(Pubkey1, aens_test_utils:fullname(<<"foo"/utf8>>, maps:get(height, S1)), S1),
     S3 = update_and_check_pointers(PointersFun(account_pubkey, Pubkey3), Pubkey1, NameId1, 3, S2),
 
     %% Pubkey2 is the owner of the name
-    {S4, NameId2} = register_name(Pubkey2, <<"bar.test"/utf8>>, S3),
+    {S4, NameId2} = register_name(Pubkey2, aens_test_utils:fullname(<<"bar"/utf8>>, maps:get(height, S3)), S3),
 
     %% Pubkey2 now transfers the name to Pubkey3 by referencing its name
     TransferSpec = #{ account_id => account_id(Pubkey2)

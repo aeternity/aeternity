@@ -326,31 +326,6 @@ process_request(#{<<"method">> := <<"channels.update.new_contract">>,
             end;
         _ -> {error, {broken_encoding, [bytearray]}}
     end;
-process_request(#{<<"method">> := <<"channels.update.new_contract_from_onchain">>,
-                  <<"params">> := #{<<"deposit">>     := Deposit,
-                                    <<"contract_id">> := OnChainContractE,
-                                    <<"call_data">>   := CallDataE}}, FsmPid) ->
-    assert_integer(Deposit),
-    case {aeser_api_encoder:safe_decode(contract_pubkey, OnChainContractE),
-          bytearray_decode(CallDataE)} of
-        {{ok, OnChainContract}, {ok, CallData}} ->
-            case aec_chain:get_contract(OnChainContract) of
-                {ok, Contract} ->
-                    case aesc_fsm:upd_create_contract(FsmPid,
-                        #{vm_version    => aect_contracts:vm_version(Contract),
-                            abi_version => aect_contracts:abi_version(Contract),
-                            deposit     => Deposit,
-                            code        => aect_contracts:code(Contract),
-                            call_data   => CallData}) of
-                        ok -> no_reply;
-                        {error, _Reason} = Err -> Err
-                    end;
-                {error, _Reason} = Err -> Err
-            end;
-        {{error, _}, {ok, _}} -> {error, {broken_encoding, [contract]}};
-        {{ok, _}, {error, _}} -> {error, {broken_encoding, [bytearray]}};
-        {{error, _}, {error, _}} -> {error, {broken_encoding, [contract, bytearray]}}
-    end;
 process_request(#{<<"method">> := <<"channels.update.call_contract">>,
                   <<"params">> := #{<<"contract_id">> := ContractE,
                                     <<"abi_version">> := ABIVersion,

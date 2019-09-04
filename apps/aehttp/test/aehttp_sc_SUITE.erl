@@ -179,7 +179,9 @@ init_per_suite(Config) ->
                    #{<<"persist">> => true,
                      <<"hard_forks">> => Forks},
                <<"mining">> =>
-                   #{<<"micro_block_cycle">> => 1}},
+                   #{<<"micro_block_cycle">> => 1,
+                     %% disable name claim auction
+                     <<"name_claim_bid_timeout">> => 0}},
     {ok, StartedApps} = application:ensure_all_started(gproc),
     Config1 = aecore_suite_utils:init_per_suite([?NODE], DefCfg, [{symlink_name, "latest.http_sc"}, {test_module, ?MODULE}] ++ Config),
     start_node([ {nodes, [aecore_suite_utils:node_tuple(?NODE)]}
@@ -270,6 +272,11 @@ reset_participants(Grp, Config) ->
     Node = ?config(node, Config),
 
     StartAmt = 50000000000 * aec_test_utils:min_gas_price(),
+        %% case aect_test_utils:latest_protocol_version() >= ?LIMA_PROTOCOL_VSN of
+        %%     false -> 50000000000 * aec_test_utils:min_gas_price();
+        %%     true  ->
+        %%         100 * 50000000000 * aec_test_utils:min_gas_price()
+        %% end,
 
     Initiator = {IPub, IPriv} = aecore_suite_utils:generate_key_pair(),
     Responder = {RPub, RPriv} = aecore_suite_utils:generate_key_pair(),
@@ -1278,25 +1285,25 @@ sc_ws_oracle_contract(Config) ->
 sc_ws_nameservice_contract(Config) ->
     [sc_ws_contract_generic_(Role, ContractSource, fun sc_ws_nameservice_contract_/9, Config,
                             [])
-        || Role <- [initiator, responder], ContractSource <- [onchain, offchain]],
+        || Role <- [initiator, responder], ContractSource <- [offchain]],
     ok.
 
 sc_ws_environment_contract(Config) ->
     [sc_ws_contract_generic_(Role, ContractSource, fun sc_ws_enviroment_contract_/9, Config,
                             [])
-        || Role <- [initiator, responder], ContractSource <- [onchain, offchain]],
+        || Role <- [initiator, responder], ContractSource <- [offchain]],
     ok.
 
 sc_ws_remote_call_contract(Config) ->
     [sc_ws_contract_generic_(Role, ContractSource, fun sc_ws_remote_call_contract_/9, Config,
                             [])
-        || Role <- [initiator, responder], ContractSource <- [onchain, offchain]],
+        || Role <- [initiator, responder], ContractSource <- [offchain]],
     ok.
 
 sc_ws_remote_call_contract_refering_onchain_data(Config) ->
     [sc_ws_contract_generic_(Role, ContractSource, fun sc_ws_remote_call_contract_refering_onchain_data_/9, Config,
                             [])
-        || Role <- [initiator, responder], ContractSource <- [onchain, offchain]],
+        || Role <- [initiator, responder], ContractSource <- [offchain]],
     ok.
 
 random_unused_name() ->
@@ -1307,8 +1314,7 @@ random_unused_name(Attempts) when Attempts < 1->
 random_unused_name(Attempts) ->
     Size = 10,
     RandStr = base58:binary_to_base58(crypto:strong_rand_bytes(Size)),
-    NameL = RandStr ++ ".test",
-    Name = list_to_binary(NameL),
+    Name = aens_test_utils:fullname(list_to_binary(RandStr)),
     case get_names_entry_by_name_sut(Name) of
         {ok, 404, _Error} -> Name; % name not used yet
         _ -> random_unused_name(Attempts - 1)
@@ -1384,36 +1390,6 @@ sc_ws_contract_generic_(Origin, ContractSource, Fun, Config, Opts) ->
                         wait_for_channel_event(OwnerConnPid, error, Config),
                     % correct call
                     ws_send_tagged(OwnerConnPid, <<"channels.update.new_contract">>,
-                        NewContractOpts, Config),
-
-                    #{tx := UnsignedStateTx, updates := _Updates} = CreateVolley(),
-                    contract_id_from_create_update(OwnerPubKey, UnsignedStateTx)
-                end;
-            onchain ->
-                fun(Owner, EncodedCode, EncodedInitData, Deposit) ->
-                    EncodedOnChainPubkey = post_contract_onchain(EncodedCode, EncodedInitData),
-
-                    {CreateVolley, OwnerConnPid, OwnerPubKey} = GetVolley(Owner),
-                    NewContractOpts =
-                        #{deposit     => Deposit,
-                          contract_id => EncodedOnChainPubkey,
-                          call_data   => EncodedInitData},
-                    % incorrect call
-                    ws_send_tagged(OwnerConnPid, <<"channels.update.new_contract_from_onchain">>,
-                        NewContractOpts#{deposit => <<"1">>}, Config),
-                    {ok, #{<<"reason">> := <<"not_a_number">>}} =
-                        wait_for_channel_event(OwnerConnPid, error, Config),
-                    ws_send_tagged(OwnerConnPid, <<"channels.update.new_contract_from_onchain">>,
-                        NewContractOpts#{contract_id => <<"ABCDEF">>}, Config),
-                    {ok, #{<<"reason">> := <<"broken_encoding: contracts">>}} =
-                        wait_for_channel_event(OwnerConnPid, error, Config),
-                    ws_send_tagged(OwnerConnPid, <<"channels.update.new_contract_from_onchain">>,
-                        NewContractOpts#{call_data => <<"ABCDEF">>}, Config),
-                    {ok, #{<<"reason">> := <<"broken_encoding: bytearray">>}} =
-                        wait_for_channel_event(OwnerConnPid, error, Config),
-
-                    % correct call
-                    ws_send_tagged(OwnerConnPid, <<"channels.update.new_contract_from_onchain">>,
                         NewContractOpts, Config),
 
                     #{tx := UnsignedStateTx, updates := _Updates} = CreateVolley(),
@@ -1637,7 +1613,7 @@ sc_ws_nameservice_contract_(Owner, GetVolley, CreateContract, ConnPid1, ConnPid2
     %% Register an oracle. It will be used in an off-chain contract
     %% Oracle ask itself a question and answers it
     {NamePubkey, NamePrivkey} = ?CAROL,
-    ok = initialize_account(2000000 * aec_test_utils:min_gas_price(), ?CAROL),
+    ok = initialize_account(4000000000000 * aec_test_utils:min_gas_price(), ?CAROL),
 
     EncodedCode = contract_byte_code("channel_on_chain_contract_name_resolution"),
     {ok, EncodedInitData} = encode_call_data(channel_on_chain_contract_name_resolution,
@@ -1675,7 +1651,14 @@ sc_ws_nameservice_contract_(Owner, GetVolley, CreateContract, ConnPid1, ConnPid2
         end,
 
     Test(Name, <<"oracle">>, false),
-    register_name(NamePubkey, NamePrivkey, Name,
+    Protocol = aect_test_utils:latest_protocol_version(),
+    NameFee =
+        case Protocol >= ?LIMA_PROTOCOL_VSN of
+            true -> aec_governance:name_claim_fee(Name, Protocol);
+            false -> prelima
+        end,
+
+    register_name(NamePubkey, NamePrivkey, Name, NameFee,
                   [{<<"account_pubkey">>, aeser_id:create(account, <<1:256>>)},
                    {<<"oracle">>, aeser_id:create(oracle, <<2:256>>)},
                    {<<"unexpected_key">>, aeser_id:create(account, <<3:256>>)}]),
@@ -1867,8 +1850,14 @@ sc_ws_remote_call_contract_refering_onchain_data_(Owner, GetVolley, CreateContra
 
     % registering the name on-chain
     {NamePubkey, NamePrivkey} = ?CAROL,
-    ok = initialize_account(2000000 * aec_test_utils:min_gas_price(), ?CAROL),
-    register_name(NamePubkey, NamePrivkey, Name,
+    ok = initialize_account(4000000000000 * aec_test_utils:min_gas_price(), ?CAROL),
+    Protocol = aect_test_utils:latest_protocol_version(),
+    NameFee =
+        case  Protocol >= ?LIMA_PROTOCOL_VSN of
+            true -> aec_governance:name_claim_fee(Name, Protocol);
+            false -> prelima
+        end,
+    register_name(NamePubkey, NamePrivkey, Name, NameFee,
                   [{<<"account_pubkey">>, aeser_id:create(account, <<1:256>>)}]),
 
     % now the name is on-chain, both must return true:
@@ -1923,10 +1912,10 @@ sign_post_mine(Tx, Privkey) ->
     ok = post_tx(TxHash, EncodedSerializedSignedTx),
     ok = wait_for_tx_hash_on_chain(TxHash).
 
-register_name(Owner, OwnerPrivKey, Name, Pointers) ->
+register_name(Owner, OwnerPrivKey, Name, NameFee, Pointers) ->
     Salt = rand:uniform(10000),
     preclaim_name(Owner, OwnerPrivKey, Name, Salt),
-    claim_name(Owner, OwnerPrivKey, Name, Salt),
+    claim_name(Owner, OwnerPrivKey, Name, Salt, NameFee),
     update_pointers(Owner, OwnerPrivKey, Name, Pointers),
     ok.
 
@@ -1939,12 +1928,12 @@ preclaim_name(Owner, OwnerPrivKey, Name, Salt) ->
     sign_post_mine(Tx, OwnerPrivKey),
     ok.
 
-claim_name(Owner, OwnerPrivKey, Name, Salt) ->
+claim_name(Owner, OwnerPrivKey, Name, Salt, NameFee) ->
     Delta = aec_governance:name_claim_preclaim_delta(),
     Node = aecore_suite_utils:node_name(?NODE),
     aecore_suite_utils:mine_key_blocks(Node, Delta),
     {ok, Nonce} = rpc(aec_next_nonce, pick_for_account, [Owner]),
-    TxSpec = aens_test_utils:claim_tx_spec(Owner, Name, Salt,  #{nonce => Nonce},#{}),
+    TxSpec = aens_test_utils:claim_tx_spec(Owner, Name, Salt, NameFee, #{nonce => Nonce}, #{}),
     {ok, Tx} = aens_claim_tx:new(TxSpec),
     sign_post_mine(Tx, OwnerPrivKey),
     ok.
@@ -1974,12 +1963,14 @@ initialize_account(Amount, KeyPair) ->
 initialize_account(Amount, {Pubkey, _Privkey}, Check) ->
     Fee = ?SPEND_FEE,
     Node = aecore_suite_utils:node_name(?NODE),
+    MaxMined = ?MAX_MINED_BLOCKS + (Amount div aec_governance:block_mine_reward(1)),
+    ct:pal("Mining ~p blocks at most for ~p tokens", [MaxMined, Amount]),
 
     {ok, 200, #{<<"tx">> := SpendTx}} =
         post_spend_tx(aeser_api_encoder:encode(account_pubkey, Pubkey), Amount, Fee),
     TxHash = sign_and_post_tx(SpendTx),
     if Check ->
-        aecore_suite_utils:mine_blocks_until_txs_on_chain(Node, [TxHash], ?MAX_MINED_BLOCKS),
+        aecore_suite_utils:mine_blocks_until_txs_on_chain(Node, [TxHash], MaxMined),
         assert_balance_at_least(Pubkey, Amount),
         ok;
        true ->
@@ -3666,4 +3657,3 @@ sc_ws_broken_open_params(Config) ->
                                    #{lock_period => -1}, Config),
     Test(ChannelOpts8, <<"Value too low">>),
     ok.
-

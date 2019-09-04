@@ -15,6 +15,8 @@ contract BasicAuth =
   entrypoint to_sign(h : hash, n : int) =
     Crypto.blake2b((h, n))
 
+  entrypoint get_auth_tx_hash() = Auth.tx_hash
+
   // Not using builtin require because Sophia version handling in ga test
   // suites is a bit broken (TODO).
   function _require(b : bool, err : string) =

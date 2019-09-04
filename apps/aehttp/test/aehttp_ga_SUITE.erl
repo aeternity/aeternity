@@ -30,6 +30,8 @@
         , attach_fail/1
         , get_account_by_pubkey/1
         , get_account_by_pubkey_and_height/1
+        , dry_run/1
+        , dry_run_fail/1
         , meta_fail/1
         , meta_fail_auth/1
         , meta_spend/1
@@ -67,6 +69,8 @@ groups() ->
      {ga_txs, [sequence],
       [ attach_fail
       , attach
+      , dry_run
+      , dry_run_fail
       , meta_fail_auth
       , meta_fail
       , meta_spend
@@ -186,7 +190,10 @@ attach_account(Pub, Priv, _Config) ->
     Bal0 = maps:get(<<"balance">>, Account0),
     ?assertEqual(<<"basic">>, maps:get(<<"kind">>, Account0)),
 
-    #{tx_hash := AttachTx} = post_attach_tx(Pub, Priv),
+    #{tx_hash := AttachTx, sign_tx := STx} = post_attach_tx(Pub, Priv),
+
+    %% Check that we can dry-run GAAttachTx
+    do_dry_run(STx, ok),
 
     ?MINE_TXS([AttachTx]),
 
@@ -222,6 +229,34 @@ attach_fail(Config) ->
 
     ok.
 
+%% Dry-running GA transactions
+dry_run(Config) ->
+    #{acc_a := #{pub_key := APub, priv_key := APriv}} = proplists:get_value(accounts, Config),
+    #{public := XPub, secret := _XPriv} = enacl:sign_keypair(),
+
+    MGP = aec_test_utils:min_gas_price(),
+    SpendTx = spend_tx(APub, APriv, 0, XPub, 1234, 20000 * MGP),
+
+    do_dry_run(SpendTx, ok),
+
+    ok.
+
+
+dry_run_fail(Config) ->
+    #{acc_a := #{pub_key := APub, priv_key := APriv}} = proplists:get_value(accounts, Config),
+    #{public := XPub, secret := _XPriv} = enacl:sign_keypair(),
+
+    %% Ensure we cant dry-run a Meta transaction...
+    MGP = aec_test_utils:min_gas_price(),
+    SpendTx = spend_tx(APub, APriv, 0, XPub, 1234, 20000 * MGP),
+    SMetaTx = ga_spend_tx(["1"], APub, APriv, SpendTx, 100000 * MGP, 10000),
+    _MetaTx = aetx_sign:tx(SMetaTx),
+
+    do_dry_run(SMetaTx, error),
+
+    ok.
+
+
 %% A Meta with a failing authentication
 meta_fail_auth(Config) ->
     #{acc_a := #{pub_key := APub, priv_key := APriv},
@@ -249,7 +284,8 @@ meta_fail(Config) ->
     MetaFee = (5 * 15000 + 30000) * MGP,
 
     %% Fail inner tx by spending (far) too much
-    #{tx_hash := MetaTx} = post_ga_spend_tx(APub, APriv, ["1"], BPub, 1000 * MGP * MGP, MGP * 15000, MetaFee),
+    #{tx_hash := MetaTx} =
+        post_ga_spend_tx(APub, APriv, ["1"], BPub, 1000 * MGP * MGP, MGP * 15000, MetaFee),
 
     ?MINE_TXS([MetaTx]),
 
@@ -537,7 +573,7 @@ ga_spend_tx([Nonce|Nonces], AccPK, AccSK, InnerTx, MetaFee, AuthGas) ->
     ga_spend_tx(Nonces, AccPK, AccSK, MetaTx, MetaFee, AuthGas).
 
 sign_and_post_aetx(PrivKey, Tx) ->
-    SignedTx     = aec_test_utils:sign_tx(Tx, PrivKey),
+    SignedTx = aec_test_utils:sign_tx(Tx, PrivKey),
     post_aetx(SignedTx).
 
 post_aetx(SignedTx) ->
@@ -618,4 +654,24 @@ new_account(Balance) ->
     SignedSpendTx = sign_tx(SpendTx),
     {ok, 200, #{<<"tx_hash">> := SpendTxHash}} = post_tx(SignedSpendTx),
     {Pubkey, Privkey, SpendTxHash}.
+
+abi_version() ->
+    case get('$abi_version') of
+        undefined -> aect_test_utils:latest_sophia_abi_version();
+        X         -> X
+    end.
+
+do_dry_run(STx, ExpRes) ->
+    Tx = try aetx_sign:tx(STx)
+         catch _:_ -> STx end,
+    Host = aecore_suite_utils:internal_address(),
+    case http_request(Host, post, "debug/transactions/dry-run",
+                      #{ txs => [aeser_api_encoder:encode(transaction, aetx:serialize_to_binary(Tx))] }) of
+        {ok, 200, #{ <<"results">> := [#{ <<"result">> := Res } = ResObj] }} ->
+            ct:pal("ResObj: ~p", [ResObj]),
+            ?assertMatch(ExpRes, binary_to_atom(Res, utf8));
+        {ok, 403, #{<<"reason">> := Reason}} ->
+            ct:pal("Dry-run call failed with reason: ~s", [Reason]),
+            ?assertMatch(ExpRes, error)
+    end.
 

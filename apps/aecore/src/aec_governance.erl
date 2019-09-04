@@ -14,10 +14,15 @@
          minimum_gas_price/1,
          name_preclaim_expiration/0,
          name_claim_locked_fee/0,
+         name_claim_fee/2,
+         name_claim_bid_timeout/2,
+         name_claim_bid_increment/0,
          name_claim_max_expiration/0,
          name_protection_period/0,
          name_claim_preclaim_delta/0,
-         name_registrars/0,
+         name_registrars/1,
+         non_test_registrars/0,
+         possible_name_registrars/0,
          micro_block_cycle/0,
          accepted_future_block_time_shift/0,
          fraud_report_reward/1,
@@ -59,6 +64,8 @@
 -define(POF_REWARD_DIVIDER, 20). %% 5% of the coinbase reward
 -define(BENEFICIARY_REWARD_DELAY, 180). %% in key blocks / generations
 -define(MICRO_BLOCK_CYCLE, 3000). %% in msecs
+-define(MULTIPLIER_14, 100000000000000).
+-define(MULTIPLIER_DAY, 480).
 
 -define(ACCEPTED_FUTURE_BLOCK_TIME_SHIFT, (?EXPECTED_BLOCK_MINE_RATE_MINUTES * 3 * 60 * 1000)). %% 9 min
 
@@ -243,9 +250,88 @@ name_protection_period() ->
 name_claim_preclaim_delta() ->
     1.
 
--spec name_registrars() -> list(binary()).
-name_registrars() ->
+%% Give possibility to have the actual kind of name under consensus,
+%% not only length of the bytes
+-spec name_claim_fee(binary(), non_neg_integer()) -> non_neg_integer().
+name_claim_fee(Name, Protocol) when Protocol >= ?LIMA_PROTOCOL_VSN ->
+    name_claim_size_fee(name_claim_size(Name));
+name_claim_fee(_Name, _Protocol) ->
+    0.
+
+%% local helper function
+name_claim_size(Name) ->
+    %% Name fee is computed over ascii version
+    {ok, AsciiName} = aens_utils:to_ascii(Name),
+    {ok, Domain} = aens_utils:name_domain(AsciiName),
+    %% No payment for registrars, Name should have been validated before
+    size(AsciiName) - size(Domain) - 1.
+
+%% Give possibility to have the actual name under consensus,
+%% possible to define different bid times for different names.
+%% No auction for names of 32 characters or longer
+-spec name_claim_bid_timeout(binary(), non_neg_integer()) -> non_neg_integer().
+name_claim_bid_timeout(Name, Protocol) when Protocol >= ?LIMA_PROTOCOL_VSN ->
+    NameSize = name_claim_size(Name),
+    BidTimeout =
+        if NameSize > 31 -> 0;
+           NameSize > 8  -> 1 * ?MULTIPLIER_DAY;  %% 480 blocks
+           NameSize > 4  -> 31 * ?MULTIPLIER_DAY; %% 14880 blocks
+           true          -> 62 * ?MULTIPLIER_DAY %% 29760 blocks
+        end,
+    %% allow overwrite by configuration for test
+    aeu_env:user_config_or_env([<<"mining">>, <<"name_claim_bid_timeout">>],
+                                   aecore, name_claim_bid_timeout, BidTimeout);
+name_claim_bid_timeout(_Name, _Protocol) ->
+    0.
+
+name_claim_bid_increment() ->
+    5. %% 5%
+
+name_claim_size_fee(Size) when Size >= 31 -> 3 * ?MULTIPLIER_14;
+name_claim_size_fee(30) -> 5 * ?MULTIPLIER_14;
+name_claim_size_fee(29) -> 8 * ?MULTIPLIER_14;
+name_claim_size_fee(28) -> 13 * ?MULTIPLIER_14;
+name_claim_size_fee(27) -> 21 * ?MULTIPLIER_14;
+name_claim_size_fee(26) -> 34 * ?MULTIPLIER_14;
+name_claim_size_fee(25) -> 55 * ?MULTIPLIER_14;
+name_claim_size_fee(24) -> 89 * ?MULTIPLIER_14;
+name_claim_size_fee(23) -> 144 * ?MULTIPLIER_14;
+name_claim_size_fee(22) -> 233 * ?MULTIPLIER_14;
+name_claim_size_fee(21) -> 377 * ?MULTIPLIER_14;
+name_claim_size_fee(20) -> 610 * ?MULTIPLIER_14;
+name_claim_size_fee(19) -> 987 * ?MULTIPLIER_14;
+name_claim_size_fee(18) -> 1597 * ?MULTIPLIER_14;
+name_claim_size_fee(17) -> 2584 * ?MULTIPLIER_14;
+name_claim_size_fee(16) -> 4181 * ?MULTIPLIER_14;
+name_claim_size_fee(15) -> 6765 * ?MULTIPLIER_14;
+name_claim_size_fee(14) -> 10946 * ?MULTIPLIER_14;
+name_claim_size_fee(13) -> 17711 * ?MULTIPLIER_14;
+name_claim_size_fee(12) -> 28657 * ?MULTIPLIER_14;
+name_claim_size_fee(11) -> 46368 * ?MULTIPLIER_14;
+name_claim_size_fee(10) -> 75025 * ?MULTIPLIER_14;
+name_claim_size_fee(9) -> 121393 * ?MULTIPLIER_14;
+name_claim_size_fee(8) -> 196418 * ?MULTIPLIER_14;
+name_claim_size_fee(7) -> 317811 * ?MULTIPLIER_14;
+name_claim_size_fee(6) -> 514229 * ?MULTIPLIER_14;
+name_claim_size_fee(5) -> 832040 * ?MULTIPLIER_14;
+name_claim_size_fee(4) -> 1346269 * ?MULTIPLIER_14;
+name_claim_size_fee(3) -> 2178309 * ?MULTIPLIER_14;
+name_claim_size_fee(2) -> 3524578 * ?MULTIPLIER_14;
+name_claim_size_fee(1) -> 5702887 * ?MULTIPLIER_14.
+
+-spec name_registrars(aec_hard_forks:protocol_vsn()) -> list(binary()).
+name_registrars(Protocol) when Protocol >= ?LIMA_PROTOCOL_VSN ->
+    non_test_registrars();
+name_registrars(_Protocol) ->
     [<<"test">>].
+
+non_test_registrars() ->
+    possible_name_registrars() -- [<<"test">>].
+
+%% union of all name_registrars above disregarding the height
+possible_name_registrars() ->
+    [<<"aet">>, <<"test">>].
+
 
 fraud_report_reward(Height) ->
     Coinbase = block_mine_reward(Height),

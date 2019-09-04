@@ -13,6 +13,7 @@
         , find_auth_call/3
         , find_channel/2
         , find_commitment/2
+        , find_name_auction/2
         , find_contract_without_store/2
         , find_name/2
         , find_oracle/2
@@ -21,6 +22,7 @@
         , get_auth_call/3
         , get_channel/2
         , get_commitment/3
+        , get_name_auction/3
         , get_contract/2
         , get_contract_no_cache/2
         , get_contract_without_store/2
@@ -35,6 +37,7 @@
         , put_call/2
         , put_channel/2
         , put_commitment/2
+        , put_name_auction/2
         , put_contract/2
         , put_name/2
         , put_oracle/2
@@ -180,7 +183,7 @@ get_oracle(Key, Error, S) ->
     get_x(oracle, Key, Error, S).
 
 put_oracle(Object, S) ->
-   cache_put(oracle, Object, S).
+    cache_put(oracle, Object, S).
 
 %%----------
 
@@ -206,6 +209,16 @@ put_commitment(Object, S) ->
 
 %%----------
 
+find_name_auction(Hash, S) ->
+    find_x(name_auction, Hash, S).
+
+get_name_auction(Hash, Error, S) ->
+    get_x(name_auction, Hash, Error, S).
+
+put_name_auction(Object, S) ->
+    cache_put(name_auction, Object, S).
+%%----------
+
 find_x(Tag, Key, S) ->
     case cache_find(Tag, Key, S) of
         none ->
@@ -229,6 +242,11 @@ delete_x(channel, Hash, #state{trees = Trees} = S) ->
     CTree  = aec_trees:channels(Trees),
     CTree1 = aesc_state_tree:delete(Hash, CTree),
     S1#state{trees = aec_trees:set_channels(Trees, CTree1)};
+delete_x(name_auction, Hash, #state{trees = Trees} = S) ->
+    S1 = cache_drop(name_auction, Hash, S),
+    NTree  = aec_trees:ns(Trees),
+    NTree1 = aens_state_tree:delete_name_auction(Hash, NTree),
+    S1#state{trees = aec_trees:set_ns(Trees, NTree1)};
 delete_x(commitment, Hash, #state{trees = Trees} = S) ->
     S1 = cache_drop(commitment, Hash, S),
     NTree  = aec_trees:ns(Trees),
@@ -257,6 +275,9 @@ trees_find(contract, Key, #state{trees = Trees} = S) ->
 trees_find(commitment, Key, #state{trees = Trees} = S) ->
     NTree = aec_trees:ns(Trees),
     aens_state_tree:lookup_commitment(get_var(Key, commitment, S), NTree);
+trees_find(name_auction, Key, #state{trees = Trees} = S) ->
+    NTree = aec_trees:ns(Trees),
+    aens_state_tree:lookup_name_auction(get_var(Key, name_auction, S), NTree);
 trees_find(name, Key, #state{trees = Trees} = S) ->
     NTree = aec_trees:ns(Trees),
     aens_state_tree:lookup_name(get_var(Key, name, S), NTree);
@@ -279,6 +300,7 @@ trees_find(oracle_query, Key, #state{trees = Trees} = S) ->
                     orelse (X =:= oracle)
                     orelse (X =:= oracle_query)
                     orelse (X =:= commitment)
+                    orelse (X =:= name_auction)
                     orelse (X =:= name)
                    )
        ).
@@ -291,6 +313,8 @@ cache_find(Tag, Key, #state{cache = C} = S) when ?IS_TAG(Tag) ->
 
 cache_drop(channel, Hash, #state{cache = C} = S) ->
     S#state{cache = dict:erase({channel, Hash}, C)};
+cache_drop(name_auction, Hash, #state{cache = C} = S) ->
+    S#state{cache = dict:erase({name_auction, Hash}, C)};
 cache_drop(commitment, Hash, #state{cache = C} = S) ->
     S#state{cache = dict:erase({commitment, Hash}, C)}.
 
@@ -313,6 +337,9 @@ cache_put(contract, Val, #state{cache = C} = S) ->
 cache_put(commitment, Val, #state{cache = C} = S) ->
     Hash = aens_commitments:hash(Val),
     S#state{cache = dict:store({commitment, Hash}, Val, C)};
+cache_put(name_auction, Val, #state{cache = C} = S) ->
+    Hash = aens_auctions:hash(Val),
+    S#state{cache = dict:store({name_auction, Hash}, Val, C)};
 cache_put(name, Val, #state{cache = C} = S) ->
     Hash = aens_names:hash(Val),
     S#state{cache = dict:store({name, Hash}, Val, C)};
@@ -360,6 +387,10 @@ cache_write_through_fun({contract, Pubkey}, Contract, Trees) ->
 cache_write_through_fun({commitment,_Hash}, Commitment, Trees) ->
     NTree  = aec_trees:ns(Trees),
     NTree1 = aens_state_tree:enter_commitment(Commitment, NTree),
+    aec_trees:set_ns(Trees, NTree1);
+cache_write_through_fun({name_auction,_Hash}, Name, Trees) ->
+    NTree  = aec_trees:ns(Trees),
+    NTree1 = aens_state_tree:enter_name_auction(Name, NTree),
     aec_trees:set_ns(Trees, NTree1);
 cache_write_through_fun({name,_Hash}, Name, Trees) ->
     NTree  = aec_trees:ns(Trees),

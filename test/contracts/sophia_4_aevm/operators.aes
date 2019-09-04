@@ -1,0 +1,38 @@
+// - + * / mod 	arithmetic operators
+// bnot band bor bxor bsl bsr 	bitwise operators
+// ! && || 	logical operators
+// == != < > =< >= 	comparison operators
+// :: ++ 	list operators
+
+contract Operators =
+  entrypoint int_op(a : int, b : int, op : string) =
+    switch(op)
+      "+"    => a + b
+      "-"    => a - b
+      "*"    => a * b
+      "/"    => a / b
+      "mod"  => a mod b
+      "^"    => a ^ b
+
+  entrypoint bool_op(a : bool, b : bool, op : string) =
+    switch(op)
+      "!"  => !a
+      "&&" => a && b
+      "||" => a || b
+
+  entrypoint cmp_op(a : int, b : int, op : string) =
+    switch(op)
+      "==" => a == b
+      "!=" => a != b
+      "<"  => a < b
+      ">"  => a > b
+      "=<" => a =< b
+      ">=" => a >= b
+
+  entrypoint cons(a : int, l) = a :: l
+  entrypoint concat(l1, l2) : list(int) = l1 ++ l2
+
+  entrypoint hash(s) = // String.sha3(s)
+    let x = String.sha3(s)
+    let y = String.sha3(s)
+    (x, y)

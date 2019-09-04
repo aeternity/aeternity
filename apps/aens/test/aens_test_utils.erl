@@ -17,14 +17,18 @@
          revoke_name/2,
          preclaim_tx_spec/3,
          preclaim_tx_spec/4,
-         claim_tx_spec/4,
          claim_tx_spec/5,
+         claim_tx_spec/6,
          update_tx_spec/3,
          update_tx_spec/4,
          transfer_tx_spec/4,
          transfer_tx_spec/5,
          revoke_tx_spec/3,
-         revoke_tx_spec/4]).
+         revoke_tx_spec/4,
+         fullname/1,
+         fullname/2 ]).
+
+-include_lib("aecontract/include/hard_forks.hrl").
 
 %%%===================================================================
 %%% Test state
@@ -65,8 +69,9 @@ insert_key_pair(Pub, Priv, S) ->
 
 -define(PRIV_SIZE, 32).
 
+%% Names are expesive these days, need a lot of tokens
 setup_new_account(State) ->
-    setup_new_account(1000000 * aec_test_utils:min_gas_price(), State).
+    setup_new_account(4000000000000000000000 * aec_test_utils:min_gas_price(), State).
 
 set_account_balance(PubKey, NewBalance, State) ->
     A        = get_account(PubKey, State),
@@ -97,6 +102,24 @@ set_account(Account, State) ->
     Trees   = trees(State),
     AccTree = aec_accounts_trees:enter(Account, aec_trees:accounts(Trees)),
     set_trees(aec_trees:set_accounts(Trees, AccTree), State).
+
+%% protocol dependent
+
+latest_protocol_version() ->
+    lists:last(aec_hard_forks:sorted_protocol_versions()).
+
+fullname(RootName) ->
+    fullname_in_protocol(RootName, latest_protocol_version()).
+
+fullname(RootName, Height) ->
+    fullname_in_protocol(RootName, aec_hard_forks:protocol_effective_at_height(Height)).
+
+fullname_in_protocol(RootName, Protocol) ->
+    Reg = case Protocol >= ?LIMA_PROTOCOL_VSN of
+              true -> <<"aet">>;
+              false -> <<"test">>
+          end,
+    aens_utils:name_join([RootName, Reg]).
 
 %%%===================================================================
 %%% Names utils
@@ -131,15 +154,16 @@ preclaim_tx_default_spec(PubKey, State) ->
 %%% Claim tx
 %%%===================================================================
 
-claim_tx_spec(PubKey, Name, NameSalt, State) ->
-    claim_tx_spec(PubKey, Name, NameSalt, #{}, State).
+claim_tx_spec(PubKey, Name, NameSalt, NameFee, State) ->
+    claim_tx_spec(PubKey, Name, NameSalt, NameFee, #{}, State).
 
-claim_tx_spec(PubKey, Name, NameSalt, Spec0, State) ->
+claim_tx_spec(PubKey, Name, NameSalt, NameFee, Spec0, State) ->
     Spec = maps:merge(claim_tx_default_spec(PubKey, State), Spec0),
     #{account_id => aeser_id:create(account, PubKey),
       nonce      => maps:get(nonce, Spec),
       name       => Name,
       name_salt  => NameSalt,
+      name_fee   => NameFee,
       fee        => maps:get(fee, Spec),
       ttl        => maps:get(ttl, Spec, 0)}.
 
@@ -210,4 +234,3 @@ revoke_tx_spec(PubKey, NameHash, Spec0, State) ->
 revoke_tx_default_spec(PubKey, State) ->
     #{nonce => try next_nonce(PubKey, State) catch _:_ -> 0 end,
       fee   => 50000 * aec_test_utils:min_gas_price()}.
-

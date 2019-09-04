@@ -500,7 +500,9 @@ init_per_suite(Config) ->
                    #{<<"persist">> => true,
                      <<"hard_forks">> => Forks},
                <<"mining">> =>
-                   #{<<"micro_block_cycle">> => 1}},
+                   #{<<"micro_block_cycle">> => 1,
+                     <<"name_claim_bid_timeout">> => 0 %% NO name auctions
+                    }},
     {ok, StartedApps} = application:ensure_all_started(gproc),
     Config1 = aecore_suite_utils:init_per_suite([?NODE], DefCfg, [{symlink_name, "latest.http_endpoints"}, {test_module, ?MODULE}] ++ Config),
     [ {nodes, [aecore_suite_utils:node_tuple(?NODE)]}
@@ -1513,7 +1515,6 @@ get_contract(_Config) ->
                              <<"abi_version">> := ABI,
                              <<"referrer_ids">> := []}},
                  get_contract_sut(EncodedContractPubKey)),
-    ?assertEqual({ok, 200, #{<<"bytecode">> => EncodedCode}}, get_contract_code_sut(EncodedContractPubKey)),
     ?assertMatch({ok, 200, #{<<"store">> := [
         #{<<"key">> := <<"0x00">>, <<"value">> := _InitState},
         #{<<"key">> := <<"0x01">>, <<"value">> := _StateType}    %% We store the state type in the Store
@@ -2234,10 +2235,11 @@ oracle_transactions(_Config) ->
 %% GET revoke_tx unsigned transaction
 nameservice_transactions(_Config) ->
     {ok, 200, _} = get_balance_at_top(),
+    {ok, 200, #{<<"top_block_height">> := Height}} = get_status_sut(),
     MinerAddress = get_pubkey(),
     {ok, MinerPubkey} = aeser_api_encoder:safe_decode(account_pubkey, MinerAddress),
     nameservice_transaction_preclaim(MinerAddress, MinerPubkey),
-    nameservice_transaction_claim(MinerAddress, MinerPubkey),
+    nameservice_transaction_claim(MinerAddress, MinerPubkey, Height),
     nameservice_transaction_update(MinerAddress, MinerPubkey),
     nameservice_transaction_transfer(MinerAddress, MinerPubkey),
     nameservice_transaction_revoke(MinerAddress, MinerPubkey),
@@ -2294,8 +2296,8 @@ test_missing_address(Key, Encoded, APIFun) ->
         APIFun(maps:put(Key, RandAddress, Encoded)),
     ok.
 
-nameservice_transaction_claim(MinerAddress, MinerPubkey) ->
-    Name = <<"name.test">>,
+nameservice_transaction_claim(MinerAddress, MinerPubkey, Height) ->
+    Name = aens_test_utils:fullname(<<"name">>, Height),
     Salt = 1234,
 
     {ok, 200, #{<<"commitment_id">> := EncodedCHash}} = get_commitment_id(Name, Salt),
@@ -2313,11 +2315,22 @@ nameservice_transaction_claim(MinerAddress, MinerPubkey) ->
     %% Mine a block and check mempool empty again
     ok = wait_for_tx_hash_on_chain(PreclaimTxHash),
     {ok, []} = rpc(aec_tx_pool, peek, [infinity]),
+    Protocol = aec_hard_forks:protocol_effective_at_height(Height),
 
-    Encoded = #{account_id => MinerAddress,
-                name => aeser_api_encoder:encode(name, Name),
-                name_salt => Salt,
-                fee => 100000 * aec_test_utils:min_gas_price()},
+    Encoded =
+        case Protocol >= ?LIMA_PROTOCOL_VSN of
+            true ->
+                #{account_id => MinerAddress,
+                  name => aeser_api_encoder:encode(name, Name),
+                  name_salt => Salt,
+                  name_fee => 34000,  %% This is a negative test
+                  fee => 100000 * aec_test_utils:min_gas_price()};
+            false ->
+                #{account_id => MinerAddress,
+                  name => aeser_api_encoder:encode(name, Name),
+                  name_salt => Salt,
+                  fee => 100000 * aec_test_utils:min_gas_price()}
+        end,
     Decoded = maps:merge(Encoded,
                         #{account_id => aeser_id:create(account, MinerPubkey),
                           name => Name}),
@@ -3015,12 +3028,16 @@ peer_pub_key(_Config) ->
     ok.
 
 naming_system_manage_name(_Config) ->
-    {PubKey, PrivKey} = initialize_account(1000000000 *
+    {PubKey, PrivKey} = initialize_account(100000000 *
                                            aec_test_utils:min_gas_price()),
+    ok = give_tokens(PubKey, 8000000000000000000),
     PubKeyEnc   = aeser_api_encoder:encode(account_pubkey, PubKey),
+
+    {ok, 200, #{<<"top_block_height">> := Height}} = get_status_sut(),
+
     %% TODO: find out how to craete HTTP path with unicode chars
     %%Name        = <<"詹姆斯詹姆斯.test"/utf8>>,
-    Name        = <<"without-unicode.test">>,
+    Name        = aens_test_utils:fullname(<<"without-unicode">>, Height),
     NameSalt    = 12345,
     NameTTL     = 20000,
     Pointers    = [#{<<"key">> => <<"account_pubkey">>, <<"id">> => PubKeyEnc}],
@@ -3054,10 +3071,21 @@ naming_system_manage_name(_Config) ->
     ?assertEqual(Balance1, Balance - Fee),
 
     %% Submit name claim tx and check it is in mempool
-    ClaimData = #{account_id => PubKeyEnc,
+    Protocol = aec_hard_forks:protocol_effective_at_height(Height),
+    {ClaimData, NameFee} =
+        case Protocol >= ?LIMA_PROTOCOL_VSN of
+            true ->
+                {#{account_id => PubKeyEnc,
                   name       => aeser_api_encoder:encode(name, Name),
                   name_salt  => NameSalt,
-                  fee        => Fee},
+                  name_fee   => aec_governance:name_claim_fee(Name, Protocol),
+                  fee        => Fee}, aec_governance:name_claim_fee(Name, Protocol)};
+            false ->
+                {#{account_id => PubKeyEnc,
+                  name       => aeser_api_encoder:encode(name, Name),
+                  name_salt  => NameSalt,
+                  fee        => Fee},  rpc(aec_governance, name_claim_locked_fee, [])}
+        end,
     {ok, 200, #{<<"tx">> := ClaimTxEnc}} = get_name_claim(ClaimData),
     ClaimTxHash = sign_and_post_tx(ClaimTxEnc, PrivKey),
 
@@ -3067,10 +3095,9 @@ naming_system_manage_name(_Config) ->
 
     %% Check tx fee taken from account, claim fee locked,
     %% then mine reward and fee added to account
-    ClaimLockedFee = rpc(aec_governance, name_claim_locked_fee, []),
     {ok, 200, #{<<"balance">> := Balance2}} = get_accounts_by_pubkey_sut(PubKeyEnc),
     {ok, 200, #{<<"height">> := Height3}} = get_key_blocks_current_sut(),
-    ?assertEqual(Balance2, Balance1 - Fee - ClaimLockedFee),
+    ?assertEqual(Balance2, Balance1 - Fee - NameFee),
 
     %% Check that name entry is present
     EncodedNHash = aeser_api_encoder:encode(name, NHash),
@@ -3151,7 +3178,8 @@ naming_system_manage_name(_Config) ->
     ok.
 
 naming_system_broken_txs(_Config) ->
-    Name        = <<"fooo.test">>,
+    %% We reset the chain and hence on latest_protocol_height
+    Name        = aens_test_utils:fullname(<<"fooo">>),
     NameSalt    = 12345,
     {ok, NHash} = aens:get_name_hash(Name),
     CHash       = aens_hash:commitment_hash(Name, NameSalt),
@@ -3899,4 +3927,3 @@ http_datetime_to_unixtime(S) ->
     BaseSecs = calendar:datetime_to_gregorian_seconds({{1970,1,1},{0,0,0}}),
     ExpiresDt = httpd_util:convert_request_date(S),
     calendar:datetime_to_gregorian_seconds(ExpiresDt) - BaseSecs.
-

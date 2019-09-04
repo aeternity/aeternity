@@ -18,8 +18,6 @@
 %%% Types
 %%%===================================================================
 
--define(LABEL_SEPARATOR, <<".">>).
-
 %%%===================================================================
 %%% API
 %%%===================================================================
@@ -77,7 +75,7 @@ get_name_hash(Name) when is_binary(Name) ->
 %%%===================================================================
 
 is_name(Bin) ->
-    length(binary:split(Bin, ?LABEL_SEPARATOR)) > 1.
+    length(aens_utils:name_parts(Bin)) > 1.
 
 name_to_name_hash(Name) ->
     case aens_utils:to_ascii(Name) of
@@ -111,4 +109,3 @@ find_pointer_id(Key, [Pointer | Rest]) ->
     end;
 find_pointer_id(_Key, []) ->
     {error, pointer_id_not_found}.
-

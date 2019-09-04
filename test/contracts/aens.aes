@@ -31,15 +31,16 @@ contract AENSTest =
     AENS.preclaim(addr, chash, signature = sign)
 
   stateful entrypoint claim(addr : address,
-                          name : string,
-                          salt : int) : unit =
-    AENS.claim(addr, name, salt)
+                            name : string,
+                            salt : int,
+                            name_fee : int) : unit =
+    AENS.claim(addr, name, salt, name_fee)
 
   stateful entrypoint signedClaim(addr : address,
                                 name : string,
                                 salt : int,
                                 sign : signature) : unit =
-    AENS.claim(addr, name, salt, signature = sign)
+    AENS.claim(addr, name, salt, 360000000000000000000, signature = sign)
 
   // TODO: update() -- how to handle pointers?
 
@@ -62,4 +63,3 @@ contract AENSTest =
                                    name      : string,
                                    sign      : signature) : unit =
     AENS.revoke(owner, name, signature = sign)
-

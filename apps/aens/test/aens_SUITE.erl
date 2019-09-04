@@ -9,39 +9,49 @@
 
 %% common_test exports
 -export([all/0,
-         groups/0
+         groups/0,
+         init_per_group/2,
+         end_per_group/2
         ]).
 
 %% test case exports
 -export([preclaim/1,
          prune_claim/1,
+         prune_claim_auction/1,
          preclaim_negative/1,
          claim/1,
+         claim_auction/1,
+         ongoing_auction/1,
          claim_locked_coins_holder_gets_locked_fee/1,
          claim_negative/1,
+         claim_empty_name/1,
          claim_race_negative/1,
+         claim_race_negative_auction/1,
          update/1,
          update_negative/1,
          transfer/1,
          transfer_negative/1,
          revoke/1,
          revoke_negative/1,
-         prune_preclaim/1]).
+         prune_preclaim/1,
+         registrar_change/1]).
 
 -include_lib("common_test/include/ct.hrl").
-
 -include("../../aecore/include/blocks.hrl").
+-include_lib("aecontract/include/hard_forks.hrl").
+
 
 %%%===================================================================
 %%% Common test framework
 %%%===================================================================
 
 all() ->
-    [{group, all_tests}].
+    [{group, transactions},
+     {group, auction},
+     {group, no_auction_long_names}].
 
 groups() ->
     [
-     {all_tests, [sequence], [{group, transactions}]},
      {transactions, [sequence],
       [prune_preclaim,
        prune_claim,
@@ -50,17 +60,54 @@ groups() ->
        claim,
        claim_locked_coins_holder_gets_locked_fee,
        claim_negative,
+       claim_empty_name,
        claim_race_negative,
        update,
        update_negative,
        transfer,
        transfer_negative,
        revoke,
-       revoke_negative]}
+       revoke_negative,
+       registrar_change]},
+     {no_auction_long_names,
+      [claim,
+       claim_locked_coins_holder_gets_locked_fee,
+       claim_negative,
+       claim_race_negative]},
+     {auction,
+      [prune_preclaim,
+       prune_claim_auction,
+       preclaim,
+       claim_auction,
+       ongoing_auction,
+       claim_locked_coins_holder_gets_locked_fee,
+       claim_race_negative_auction]}
     ].
 
--define(NAME, <<"詹姆斯詹姆斯.test"/utf8>>).
+-define(NAME, <<"詹姆斯詹姆斯"/utf8>>).
 -define(PRE_CLAIM_HEIGHT, 1).
+
+init_per_group(transactions, Cfg) ->
+    %% Disable name auction
+    meck:expect(aec_governance, name_claim_bid_timeout, fun(_, _) -> 0 end),
+    %% dependening on how we call 'make' we get different protocols
+    [{protocol, aec_hard_forks:protocol_effective_at_height(1)},
+     {name, ?NAME} | Cfg];
+init_per_group(no_auction_long_names, Cfg) ->
+    Protocol = aec_hard_forks:protocol_effective_at_height(1),
+    [{protocol, Protocol}, {name, <<"ascii-name-of-32-characters-long">>} | Cfg];
+init_per_group(_, Cfg) ->
+    Protocol = aec_hard_forks:protocol_effective_at_height(1),
+    %% One day auction open with cheapest possible name (31 char)
+    if Protocol < ?LIMA_PROTOCOL_VSN -> {skip, no_auction_before_lima};
+       true -> [{protocol, Protocol}, {name, <<"asciiname-of-31-characters-long">>} | Cfg]
+    end.
+
+end_per_group(transactions, Cfg) ->
+    meck:unload(aec_governance),
+    Cfg;
+end_per_group(_, Cfg) ->
+    Cfg.
 
 %%%===================================================================
 %%% Preclaim
@@ -75,7 +122,7 @@ preclaim(Cfg) ->
     PrivKey = aens_test_utils:priv_key(PubKey, S1),
     Trees = aens_test_utils:trees(S1),
     Height = ?PRE_CLAIM_HEIGHT,
-    Name = ?NAME,
+    Name = aens_test_utils:fullname(?config(name, Cfg)),
     NameSalt = rand:uniform(10000),
     {ok, NameAscii} = aens_utils:to_ascii(Name),
     CHash = aens_hash:commitment_hash(NameAscii, NameSalt),
@@ -103,7 +150,7 @@ preclaim_negative(Cfg) ->
     Height = 1,
     Env = aetx_env:tx_env(Height),
 
-    {ok, NameAscii} = aens_utils:to_ascii(<<"詹姆斯詹姆斯.test"/utf8>>),
+    {ok, NameAscii} = aens_utils:to_ascii(aens_test_utils:fullname(<<"詹姆斯詹姆斯"/utf8>>)),
     CHash = aens_hash:commitment_hash(NameAscii, 123),
 
     %% Test bad account key
@@ -122,7 +169,7 @@ preclaim_negative(Cfg) ->
     %% Test too high account nonce
     TxSpec3 = aens_test_utils:preclaim_tx_spec(PubKey, CHash, #{nonce => 0}, S1),
     {ok, Tx3} = aens_preclaim_tx:new(TxSpec3),
-    {error, account_nonce_too_high} = aetx:process(Tx3, Trees, Env),
+    {error, tx_nonce_already_used_for_account} = aetx:process(Tx3, Trees, Env),
 
     %% Test commitment already present
     {PubKey2, Name, NameSalt, S3} = preclaim(Cfg),
@@ -152,7 +199,8 @@ claim(Cfg) ->
     CHash      = aens_commitments:hash(C),
 
     %% Create Claim tx and apply it on trees
-    TxSpec = aens_test_utils:claim_tx_spec(PubKey, Name, NameSalt, S1),
+    TxSpec = aens_test_utils:claim_tx_spec(PubKey, Name, NameSalt, namefee(NameAscii, Cfg), S1),
+    ct:pal("TxSpec ~p\n", [TxSpec]),
     {ok, Tx} = aens_claim_tx:new(TxSpec),
     SignedTx = aec_test_utils:sign_tx(Tx, PrivKey),
     Env      = aetx_env:tx_env(Height),
@@ -171,6 +219,78 @@ claim(Cfg) ->
     claimed = aens_names:status(N),
     {PubKey, NHash, S2}.
 
+claim_auction(Cfg) ->
+    {PubKey, Name, NameSalt, S1} = preclaim(Cfg),
+    Trees = aens_test_utils:trees(S1),
+    Height = ?PRE_CLAIM_HEIGHT + 1,
+    PrivKey = aens_test_utils:priv_key(PubKey, S1),
+    {ok, NameAscii} = aens_utils:to_ascii(Name),
+    CHash = aens_hash:commitment_hash(NameAscii, NameSalt),
+    NHash = aens_hash:name_hash(NameAscii),
+
+    %% Check commitment present
+    {value, C} = aens_state_tree:lookup_commitment(CHash, aec_trees:ns(Trees)),
+    CHash      = aens_commitments:hash(C),
+
+    %% Create Claim tx and apply it on trees
+    TxSpec = aens_test_utils:claim_tx_spec(PubKey, Name, NameSalt, namefee(NameAscii, Cfg), S1),
+    {ok, Tx} = aens_claim_tx:new(TxSpec),
+    SignedTx = aec_test_utils:sign_tx(Tx, PrivKey),
+    Env      = aetx_env:tx_env(Height),
+
+    {ok, [SignedTx], Trees1, _} =
+        aec_block_micro_candidate:apply_block_txs([SignedTx], Trees, Env),
+    S2 = aens_test_utils:set_trees(Trees1, S1),
+
+    %% Check commitment removed and name entry not present and auction entry added
+    Trees2 = aens_test_utils:trees(S2),
+    NTrees = aec_trees:ns(Trees2),
+    none   = aens_state_tree:lookup_commitment(CHash, NTrees),
+    none   = aens_state_tree:lookup_name(NHash, NTrees),
+    {value, A} = aens_state_tree:lookup_name_auction(aens_hash:to_auction_hash(NHash), NTrees),
+    ct:pal("Auction started ~p", [A]),
+    NHash   = aens_hash:from_auction_hash(aens_auctions:hash(A)),
+    PubKey  = aens_auctions:bidder_pubkey(A),
+    {PubKey, NHash, S2}.
+
+ongoing_auction(Cfg) ->
+    {PubKey2, Name, _Salt, S0} = preclaim(Cfg),
+
+    {PubKey, NHash, S1} = claim_auction([{state, S0} | Cfg]),
+    Trees = aens_test_utils:trees(S1),
+    Height = ?PRE_CLAIM_HEIGHT + 1,
+    %% PrivKey = aens_test_utils:priv_key(PubKey, S1),
+    PrivKey2 = aens_test_utils:priv_key(PubKey2, S1),
+    {value, Account1} = aec_accounts_trees:lookup(PubKey, aec_trees:accounts(Trees)),
+    BalanceWithoutNameFee  = aec_accounts:balance(Account1),
+
+    %% Bidding over via Claim tx and apply it on trees
+    TxSpec = aens_test_utils:claim_tx_spec(PubKey2, Name, 0, 2*namefee(Name, Cfg), S1),
+    ct:pal("TxSpec ~p\n", [TxSpec]),
+    {ok, Tx} = aens_claim_tx:new(TxSpec),
+    SignedTx = aec_test_utils:sign_tx(Tx, PrivKey2),
+    Env      = aetx_env:tx_env(Height),
+
+    {ok, [SignedTx], Trees1, _} =
+        aec_block_micro_candidate:apply_block_txs([SignedTx], Trees, Env),
+    S2 = aens_test_utils:set_trees(Trees1, S1),
+
+    %% Check commitment removed and name entry not present and auction entry added
+    Trees2 = aens_test_utils:trees(S2),
+    NTrees = aec_trees:ns(Trees2),
+    none   = aens_state_tree:lookup_name(NHash, NTrees),
+    {value, A} = aens_state_tree:lookup_name_auction(aens_hash:to_auction_hash(NHash), NTrees),
+    ct:pal("Auction ongoing ~p", [A]),
+    NHash   = aens_hash:from_auction_hash(aens_auctions:hash(A)),
+    PubKey2  = aens_auctions:bidder_pubkey(A),
+
+    %% First bidder gets fee returned
+    {value, NewAccount1} = aec_accounts_trees:lookup(PubKey, aec_trees:accounts(Trees2)),
+    BalanceWithoutNameFee = aec_accounts:balance(NewAccount1) - namefee(Name, Cfg),
+
+    {PubKey2, NHash, S2}.
+
+
 claim_locked_coins_holder_gets_locked_fee(Cfg) ->
     {PubKey, Name, NameSalt, S1} = preclaim(Cfg),
     Trees = aens_test_utils:trees(S1),
@@ -178,20 +298,27 @@ claim_locked_coins_holder_gets_locked_fee(Cfg) ->
     PrivKey = aens_test_utils:priv_key(PubKey, S1),
 
     %% Create Claim tx and apply it on trees
-    TxSpec = aens_test_utils:claim_tx_spec(PubKey, Name, NameSalt, S1),
+    TxSpec = aens_test_utils:claim_tx_spec(PubKey, Name, NameSalt, namefee(Name, Cfg), S1),
     {ok, Tx} = aens_claim_tx:new(TxSpec),
     SignedTx = aec_test_utils:sign_tx(Tx, PrivKey),
     Env      = aetx_env:tx_env(Height),
 
     LockedCoinsHolderPubKey = aec_governance:locked_coins_holder_account(),
-    LockedCoinsFee          = aec_governance:name_claim_locked_fee(),
+    Protocol = ?config(protocol, Cfg),
+    LockedCoinsFee          =
+        case Protocol >= ?LIMA_PROTOCOL_VSN of
+            false -> aec_governance:name_claim_locked_fee();
+            true -> namefee(Name, Cfg)
+        end,
 
     %% Locked coins holder is not present in state tree
     none = aec_accounts_trees:lookup(LockedCoinsHolderPubKey, aec_trees:accounts(Trees)),
 
     %% Apply claim tx, and verify locked coins holder got locked coins
-    {ok, [SignedTx], Trees1, _} =
+    {ok, [SignedTx], Trees0, _} =
         aec_block_micro_candidate:apply_block_txs([SignedTx], Trees, Env),
+    BidTimeout = aec_governance:name_claim_bid_timeout(Name, Protocol),
+    Trees1 = aec_trees:perform_pre_transformations(Trees0, Height + BidTimeout + 1),
     {value, Account1} = aec_accounts_trees:lookup(LockedCoinsHolderPubKey, aec_trees:accounts(Trees1)),
     LockedCoinsFee    = aec_accounts:balance(Account1),
 
@@ -203,7 +330,8 @@ claim_locked_coins_holder_gets_locked_fee(Cfg) ->
     %% Apply claim tx, and verify locked coins holder got locked coins
     {ok, [SignedTx], Trees3, _} =
         aec_block_micro_candidate:apply_block_txs([SignedTx], Trees2, Env),
-    {value, Account3} = aec_accounts_trees:lookup(LockedCoinsHolderPubKey, aec_trees:accounts(Trees3)),
+    Trees4 = aec_trees:perform_pre_transformations(Trees3, Height + BidTimeout + 1),
+    {value, Account3} = aec_accounts_trees:lookup(LockedCoinsHolderPubKey, aec_trees:accounts(Trees4)),
     LockedCoinsFee = aec_accounts:balance(Account3) - aec_accounts:balance(Account2),
     ok.
 
@@ -211,63 +339,149 @@ claim_negative(Cfg) ->
     {PubKey, Name, NameSalt, S1} = preclaim(Cfg),
     Trees = aens_test_utils:trees(S1),
     Height = ?PRE_CLAIM_HEIGHT,
-    Env = aetx_env:tx_env(Height),
+    Env0 = aetx_env:tx_env(Height),
 
     %% Test commitment delta too small
-    TxSpec = aens_test_utils:claim_tx_spec(PubKey, Name, NameSalt, S1),
+    TxSpec = aens_test_utils:claim_tx_spec(PubKey, Name, NameSalt, namefee(Name, Cfg), S1),
     {ok, Tx0} = aens_claim_tx:new(TxSpec),
-    {error, commitment_delta_too_small} = aetx:process(Tx0, Trees, Env),
+    {error, commitment_delta_too_small} = aetx:process(Tx0, Trees, Env0),
+
+    %% Bump height to pass commitment delta
+    %% Additional errors most interesting when we potentially could claim
+    Env      = aetx_env:tx_env(Height + 1),
 
     %% Test bad account key
     BadPubKey = <<42:32/unit:8>>,
-    TxSpec1 = aens_test_utils:claim_tx_spec(BadPubKey, Name, NameSalt, S1),
+    TxSpec1 = aens_test_utils:claim_tx_spec(BadPubKey, Name, NameSalt, namefee(Name, Cfg), S1),
     {ok, Tx1} = aens_claim_tx:new(TxSpec1),
     {error, account_not_found} = aetx:process(Tx1, Trees, Env),
 
     %% Insufficient funds
     S2 = aens_test_utils:set_account_balance(PubKey, 0, S1),
     Trees2 = aens_test_utils:trees(S2),
-    TxSpec2 = aens_test_utils:claim_tx_spec(PubKey, Name, NameSalt, S1),
+    TxSpec2 = aens_test_utils:claim_tx_spec(PubKey, Name, NameSalt, namefee(Name, Cfg), S1),
     {ok, Tx2} = aens_claim_tx:new(TxSpec2),
     {error, insufficient_funds} = aetx:process(Tx2, Trees2, Env),
 
     %% Test too high account nonce
-    TxSpec3 = aens_test_utils:claim_tx_spec(PubKey, Name, NameSalt, #{nonce => 0}, S1),
+    TxSpec3 = aens_test_utils:claim_tx_spec(PubKey, Name, NameSalt, namefee(Name, Cfg), #{nonce => 0}, S1),
     {ok, Tx3} = aens_claim_tx:new(TxSpec3),
-    {error, account_nonce_too_high} = aetx:process(Tx3, Trees, Env),
+    {error, tx_nonce_already_used_for_account} = aetx:process(Tx3, Trees, Env),
 
     %% Test commitment not found
-    TxSpec4 = aens_test_utils:claim_tx_spec(PubKey, Name, NameSalt + 1, S1),
+    TxSpec4 = aens_test_utils:claim_tx_spec(PubKey, Name, NameSalt + 1, namefee(Name, Cfg), S1),
     {ok, Tx4} = aens_claim_tx:new(TxSpec4),
     {error, name_not_preclaimed} = aetx:process(Tx4, Trees, Env),
 
     %% Test commitment not owned
     {PubKey2, S3} = aens_test_utils:setup_new_account(S1),
     Trees3 = aens_test_utils:trees(S3),
-    TxSpec5 = aens_test_utils:claim_tx_spec(PubKey2, Name, NameSalt, S3),
+    TxSpec5 = aens_test_utils:claim_tx_spec(PubKey2, Name, NameSalt, namefee(Name, Cfg), S3),
     {ok, Tx5} = aens_claim_tx:new(TxSpec5),
     {error, commitment_not_owned} = aetx:process(Tx5, Trees3, Env),
 
     %% Test bad name
-    TxSpec6 = aens_test_utils:claim_tx_spec(PubKey, <<"abcdefghi">>, NameSalt, S1),
+    TxSpec6 = aens_test_utils:claim_tx_spec(PubKey, <<"abcdefghi">>, NameSalt, namefee(Name, Cfg), S1),
     {ok, Tx6} = aens_claim_tx:new(TxSpec6),
     {error, no_registrar} = aetx:process(Tx6, Trees, Env),
+
+    %% Test name fee too low (for pre lima fees are not allowed, for Lima only fee >= 0 allowed)
+    TxSpec7 = aens_test_utils:claim_tx_spec(PubKey, Name, NameSalt, 0, S1),
+    {ok, Tx7} = aens_claim_tx:new(TxSpec7),
+    case ?config(protocol, Cfg) >= ?LIMA_PROTOCOL_VSN of
+        true ->
+            {error, illegal_name_fee} = aetx:process(Tx7, Trees, Env);
+        false ->
+            {error, invalid_at_height} = aetx:process(Tx7, Trees, Env)
+
+    end,
+
+    %% Test name fee too low (for pre lima fees are not allowed, for Lima too low)
+    {ok, AsciiName} = aens_utils:to_ascii(Name), %% Fee is based upon Ascii version of name
+    NameFee = max(0, aec_governance:name_claim_fee(AsciiName, ?config(protocol, Cfg)) - 1),
+    ct:pal("NameFee ~p", [NameFee]),
+    TxSpec8 = aens_test_utils:claim_tx_spec(PubKey, Name, NameSalt, NameFee, S1),
+    {ok, Tx8} = aens_claim_tx:new(TxSpec8),
+    case ?config(protocol, Cfg) >= ?LIMA_PROTOCOL_VSN of
+        true ->
+            {error, invalid_name_fee} = aetx:process(Tx8, Trees, Env);
+        false ->
+            {error, invalid_at_height} = aetx:process(Tx8, Trees, Env)
+
+    end,
     ok.
 
-claim_race_negative(_Cfg) ->
+%% Assure we cannot accidentally claim the empty name
+claim_empty_name(Cfg) ->
+    PreLima = ?config(protocl, Cfg) < ?LIMA_PROTOCOL_VSN,
+    {PubKey, S1} = aens_test_utils:setup_new_account(aens_test_utils:new_state()),
+    PrivKey = aens_test_utils:priv_key(PubKey, S1),
+    Trees = aens_test_utils:trees(S1),
+    Height = 1,
+    Env0 = aetx_env:tx_env(Height),
+
+    %% Test empty name preclaim
+    CHash = if PreLima -> aens_hash:commitment_hash(<<".test">>, 123);
+               true -> aens_hash:commitment_hash(<<".aet">>, 123)
+            end,
+    TxSpec1 = aens_test_utils:preclaim_tx_spec(PubKey, CHash, S1),
+    {ok, Tx1} = aens_preclaim_tx:new(TxSpec1),
+    SignedTx = aec_test_utils:sign_tx(Tx1, PrivKey),
+    {ok, [SignedTx], Trees1, _} =
+        aec_block_micro_candidate:apply_block_txs([SignedTx], Trees, Env0),
+    S2 = aens_test_utils:set_trees(Trees1, S1),
+    %% Claim committed empoty name
+    Trees2 = aens_test_utils:trees(S2),
+    Env1 = aetx_env:tx_env(Height + 1),
+
+    TxSpec2 = if PreLima -> aens_test_utils:claim_tx_spec(PubKey, <<".test">>, 123, prelima, S2);
+                 true -> aens_test_utils:claim_tx_spec(PubKey, <<".aet">>, 123, 36000000000000000000, S2)
+              end,
+    {ok, Tx2} = aens_claim_tx:new(TxSpec2),
+    {error, _} = aetx:process(Tx2, Trees2, Env1),
+    ok.
+
+claim_race_negative(Cfg) ->
     %% The first claim
-    {_PubKey, _NHash, S1} = claim([]),
+    {_PubKey, _NHash, S1} = claim(Cfg),
 
     %% The second claim of the same name (hardcoded in preclaim) decomposed
-    {PubKey2, Name2, NameSalt2, S2} = preclaim([{state, S1}]),
+    {PubKey2, Name2, NameSalt2, S2} = preclaim([{state, S1}, {name, ?config(name, Cfg)}]),
     Trees = aens_test_utils:trees(S2),
     Height = ?PRE_CLAIM_HEIGHT + 1,
 
     %% Test bad account key
-    TxSpec1 = aens_test_utils:claim_tx_spec(PubKey2, Name2, NameSalt2, S2),
+    TxSpec1 = aens_test_utils:claim_tx_spec(PubKey2, Name2, NameSalt2, namefee(Name2, Cfg), S2),
     {ok, Tx1} = aens_claim_tx:new(TxSpec1),
     Env = aetx_env:tx_env(Height),
     {error, name_already_taken} = aetx:process(Tx1, Trees, Env).
+
+claim_race_negative_auction(Cfg) ->
+    %% The first claim
+    {_PubKey, _NHash, S1} = claim_auction(Cfg),
+
+    %% The second claim of the same name (hardcoded in preclaim) decomposed
+    {PubKey2, Name2, NameSalt2, S2} = preclaim([{state, S1}, {name, ?config(name, Cfg)}]),
+    Trees = aens_test_utils:trees(S2),
+    Height = ?PRE_CLAIM_HEIGHT + 1,
+    Env = aetx_env:tx_env(Height),
+
+    %% Test second claim via preclaim of claim in auction
+    TxSpec1 = aens_test_utils:claim_tx_spec(PubKey2, Name2, NameSalt2, namefee(Name2, Cfg), S2),
+    {ok, Tx1} = aens_claim_tx:new(TxSpec1),
+    {error, name_already_in_auction} = aetx:process(Tx1, Trees, Env),
+
+    %% Test second claim via auction no increased fee
+    TxSpec2 = aens_test_utils:claim_tx_spec(PubKey2, Name2, 0, namefee(Name2, Cfg), S2),
+    {ok, Tx2} = aens_claim_tx:new(TxSpec2),
+    {error, name_fee_increment_too_low} = aetx:process(Tx2, Trees, Env),
+
+    %% Test second claim via auction increased, but not enough increased
+    NameFee = namefee(Name2, Cfg) + (namefee(Name2, Cfg) * aec_governance:name_claim_bid_increment() div 100),
+    TxSpec3 = aens_test_utils:claim_tx_spec(PubKey2, Name2, 0, NameFee - 1, S2),
+    {ok, Tx3} = aens_claim_tx:new(TxSpec3),
+    {error, name_fee_increment_too_low} = aetx:process(Tx3, Trees, Env),
+    ok.
 
 %%%===================================================================
 %%% Update
@@ -335,10 +549,10 @@ update_negative(Cfg) ->
     %% Test too high account nonce
     TxSpec4 = aens_test_utils:update_tx_spec(PubKey, NHash, #{nonce => 0}, S1),
     {ok, Tx4} = aens_update_tx:new(TxSpec4),
-    {error, account_nonce_too_high} = aetx:process(Tx4, Trees, Env),
+    {error, tx_nonce_already_used_for_account} = aetx:process(Tx4, Trees, Env),
 
     %% Test name not present
-    {ok, NHash2} = aens:get_name_hash(<<"othername.test">>),
+    {ok, NHash2} = aens:get_name_hash(aens_test_utils:fullname(<<"othername">>)),
     TxSpec5 = aens_test_utils:update_tx_spec(PubKey, NHash2, S1),
     {ok, Tx5} = aens_update_tx:new(TxSpec5),
     {error, name_does_not_exist} = aetx:process(Tx5, Trees, Env),
@@ -412,10 +626,10 @@ transfer_negative(Cfg) ->
     %% Test too high account nonce
     TxSpec3 = aens_test_utils:transfer_tx_spec(PubKey, NHash, PubKey, #{nonce => 0}, S1),
     {ok, Tx3} = aens_transfer_tx:new(TxSpec3),
-    {error, account_nonce_too_high} = aetx:process(Tx3, Trees, Env),
+    {error, tx_nonce_already_used_for_account} = aetx:process(Tx3, Trees, Env),
 
     %% Test name not present
-    {ok, NHash2} = aens:get_name_hash(<<"othername.test">>),
+    {ok, NHash2} = aens:get_name_hash(aens_test_utils:fullname(<<"othername">>)),
     TxSpec4 = aens_test_utils:transfer_tx_spec(PubKey, NHash2, PubKey, S1),
     {ok, Tx4} = aens_transfer_tx:new(TxSpec4),
     {error, name_does_not_exist} = aetx:process(Tx4, Trees, Env),
@@ -486,10 +700,10 @@ revoke_negative(Cfg) ->
     %% Test too high account nonce
     TxSpec3 = aens_test_utils:revoke_tx_spec(PubKey, NHash, #{nonce => 0}, S1),
     {ok, Tx3} = aens_revoke_tx:new(TxSpec3),
-    {error, account_nonce_too_high} = aetx:process(Tx3, Trees, Env),
+    {error, tx_nonce_already_used_for_account} = aetx:process(Tx3, Trees, Env),
 
     %% Test name not present
-    {ok, NHash2} = aens:get_name_hash(<<"othername.test">>),
+    {ok, NHash2} = aens:get_name_hash(aens_test_utils:fullname(<<"othername">>)),
     TxSpec4 = aens_test_utils:revoke_tx_spec(PubKey, NHash2, S1),
     {ok, Tx4} = aens_revoke_tx:new(TxSpec4),
     {error, name_does_not_exist} = aetx:process(Tx4, Trees, Env),
@@ -526,7 +740,8 @@ prune_preclaim(Cfg) ->
 
     TTL = aens_commitments:ttl(C),
     GenesisHeight = aec_block_genesis:height(),
-    NSTree = do_prune_until(GenesisHeight, TTL + 1, aec_trees:ns(Trees2)),
+    Trees3 = aec_trees:perform_pre_transformations(Trees2, TTL+1),
+    NSTree = aec_trees:ns(Trees3),
     none = aens_state_tree:lookup_commitment(CHash, NSTree),
     ok.
 
@@ -544,19 +759,94 @@ prune_claim(Cfg) ->
     TTL1     = aens_names:ttl(N),
 
 
-    NTree2 = aens_state_tree:prune(TTL1+1, NTrees),
+    Trees3 = aec_trees:perform_pre_transformations(Trees2, TTL1 + 1),
+    NTree2 = aec_trees:ns(Trees3),
     {value, N2} = aens_state_tree:lookup_name(NHash, NTree2),
     NHash    = aens_names:hash(N2),
     PubKey   = aens_names:owner_pubkey(N2),
     revoked  = aens_names:status(N2),
     TTL2     = aens_names:ttl(N2),
 
-    NTree3 = aens_state_tree:prune(TTL2+1, NTree2),
+    Trees4 = aec_trees:perform_pre_transformations(Trees3, TTL2+1),
+    NTree3 = aec_trees:ns(Trees4),
     none = aens_state_tree:lookup_name(NHash, NTree3),
 
     {PubKey, NHash, S2}.
 
-do_prune_until(N1, N1, OTree) ->
-    aens_state_tree:prune(N1, OTree);
-do_prune_until(N1, N2, OTree) ->
-    do_prune_until(N1 + 1, N2, aens_state_tree:prune(N1, OTree)).
+prune_claim_auction(Cfg) ->
+    {_, _, _} = claim([{name, <<"a-very-long-name-to-make-sure-lock-account-exists-in-tree">>}|Cfg]),
+    {PubKey, NHash, S2} = claim_auction(Cfg),
+    %% Auction has now started
+
+    %% Re-pull values for this test
+    Height = ?PRE_CLAIM_HEIGHT + 1,  %% height of the claim
+    Trees2 = aens_test_utils:trees(S2),
+    NTrees = aec_trees:ns(Trees2),
+    {value, A} = aens_state_tree:lookup_name_auction(aens_hash:to_auction_hash(NHash), NTrees),
+
+    PubKey   = aens_auctions:bidder_pubkey(A),
+    TTL1     = aens_auctions:ttl(A),
+    TTL1     = Height +
+        aec_governance:name_claim_bid_timeout(aens_test_utils:fullname(?config(name, Cfg)),
+                                              ?config(protocol, Cfg)),
+
+    Trees3   = aec_trees:perform_pre_transformations(Trees2, TTL1), %% latest possible bid
+    NTree2   = aec_trees:ns(Trees3),
+    none     = aens_state_tree:lookup_name(NHash, NTree2),
+    {value, A2} = aens_state_tree:lookup_name_auction(aens_hash:to_auction_hash(NHash), NTree2),
+    PubKey   = aens_auctions:bidder_pubkey(A2),
+    TTL1     = aens_auctions:ttl(A2),  %% absolute TTLs
+
+
+    Trees4   = aec_trees:perform_pre_transformations(Trees2, TTL1+1),  %% used Trees2 un purpoose
+    NTree3   = aec_trees:ns(Trees4),
+
+    none = aens_state_tree:lookup_name_auction(aens_hash:to_auction_hash(NHash), NTree3),
+    {value, N} = aens_state_tree:lookup_name(NHash, NTree3),
+    ct:pal("Name auction ready ~p", [N]),
+    NHash    = aens_names:hash(N),
+    PubKey   = aens_names:owner_pubkey(N),
+    claimed  = aens_names:status(N),
+
+    {PubKey, NHash, S2}.
+
+
+%%%===================================================================
+%%% Change of registrar
+%%%===================================================================
+
+registrar_change(Cfg) ->
+    State = aens_test_utils:new_state(),
+    {PubKey, S1} = aens_test_utils:setup_new_account(State),
+    PrivKey = aens_test_utils:priv_key(PubKey, S1),
+    NameSalt = rand:uniform(10000),
+    %% invalid name for protocol
+    Name = case ?config(protocol, Cfg) >= ?LIMA_PROTOCOL_VSN of
+               false -> <<"asdf.aet">>; %% we can't claim ".aet" name yet
+               true -> <<"asdf.test">> %% we no longer can claim ".test" name
+           end,
+
+    %% preclaim
+    Trees1 = aens_test_utils:trees(S1),
+    {ok, NameAscii} = aens_utils:to_ascii(Name),
+    CHash = aens_hash:commitment_hash(NameAscii, NameSalt),
+    TxSpec1 = aens_test_utils:preclaim_tx_spec(PubKey, CHash, S1),
+    {ok, Tx1} = aens_preclaim_tx:new(TxSpec1),
+    SignedTx1 = aec_test_utils:sign_tx(Tx1, PrivKey),
+    {ok, [_SignedTx1], Trees2, _} =
+        aec_block_micro_candidate:apply_block_txs(
+          [SignedTx1], Trees1, aetx_env:tx_env(1)),
+
+    %% claim
+    S2 = aens_test_utils:set_trees(Trees2, S1),
+    TxSpec2 = aens_test_utils:claim_tx_spec(PubKey, Name, NameSalt, namefee(Name, Cfg), S2),
+    {ok, Tx2} = aens_claim_tx:new(TxSpec2),
+    {error, invalid_registrar} = aetx:process(Tx2, Trees2, aetx_env:tx_env(2)).
+
+
+namefee(Name, Cfg) ->
+    case ?config(protocol, Cfg) >= ?LIMA_PROTOCOL_VSN of
+        true ->
+            aec_governance:name_claim_fee(Name, ?config(protocol, Cfg));
+        false -> prelima
+    end.

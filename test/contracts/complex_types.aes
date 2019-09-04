@@ -50,7 +50,7 @@ contract ComplexTypes =
   entrypoint remote_pair(n : int, s : string) : int * string =
     state.worker.pair(gas = 10000, n, s)
 
-  entrypoint map(f, xs) =
+  function map(f, xs) =
     switch(xs)
       []      => []
       x :: xs => f(x) :: map(f, xs)
