@@ -95,6 +95,7 @@
                          ; T =:= ?WDRAW_LOCKED
                          ; T =:= ?WDRAW_ERR
                          ; T =:= ?INBAND_MSG
+                         ; T =:= ?ERROR
                          ; T =:= disconnect
                          ; T =:= ?LEAVE
                          ; T =:= ?LEAVE_ACK
