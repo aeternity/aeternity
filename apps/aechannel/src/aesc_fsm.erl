@@ -2071,7 +2071,9 @@ check_shutdown_err_msg(#{ channel_id := ChanId } = Msg,
                 mempool ->
                     %% For now, treat it as if it's on chain
                     {error, tx_already_on_chain};
-                _ ->
+                not_found->
+                    {error, tx_not_found};
+                none ->
                     check_op_error_msg(?SHUTDOWN_ERR, Msg, D)
             end;
         _ ->
