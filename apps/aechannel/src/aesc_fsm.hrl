@@ -239,13 +239,17 @@
 -record(op_reestablish, {offchain_tx :: aetx_sign:signed_tx()
                         }).
 
+-record(op_close, { data :: #op_data{}
+                  }).
+
 -type latest_op() :: ?NO_OP % no pending op
                    | #op_sign{}
                    | #op_ack{}
                    | #op_lock{}
                    | #op_min_depth{}
                    | #op_watch{}
-                   | #op_reestablish{}.
+                   | #op_reestablish{}
+                   | #op_close{}.
 
 -define(DEFAULT_FSM_TX_GAS, 20000).
 
