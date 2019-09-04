@@ -506,6 +506,14 @@ jobs:
       - MAKE_TARGET: ct-lima
     steps: *test_steps
 
+  test_lima_otp21:
+    executor: builder_container_stable
+    <<: *container_otp21_config
+    parallelism: 3
+    environment:
+      - MAKE_TARGET: ct-lima
+    steps: *test_steps
+
   test_mnesia_leveled:
     executor: builder_container_stable
     <<: *container_config
