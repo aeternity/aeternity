@@ -1727,7 +1727,7 @@ assert_not_name_auction(AuctionHash, S) ->
         none   -> ok
     end.
 
-assert_valid_overbid(Protocol, NameAscii, NewNameFee, OldNameFee) ->
+assert_valid_overbid(_Protocol, _NameAscii, NewNameFee, OldNameFee) ->
     Progression = aec_governance:name_claim_bid_increment(),
     %% Stay within integer computations New bid must be Progression % higher
     %% than previous bid
