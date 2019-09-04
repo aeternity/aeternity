@@ -79,7 +79,6 @@ The source code of the Aeternity node can be obtained by cloning the public [Git
 git clone https://github.com/aeternity/aeternity.git aeternity_source && cd aeternity_source
 ```
 
-```
 **NOTE**: By default git will checkout the `master` (default) branch of the source code.
 To build a particular version it should be checkout first:
 
