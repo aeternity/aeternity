@@ -141,6 +141,7 @@
         , sophia_bits/1
         , sophia_aevm_bad_code/1
         , sophia_aevm_bad_init/1
+        , sophia_no_calls_to_init/1
         , sophia_int_to_str/1
         , sophia_events/1
         , sophia_crypto/1
@@ -357,6 +358,7 @@ groups() ->
                                  sophia_aens_transactions,
                                  sophia_state_handling,
                                  sophia_remote_state,
+                                 sophia_no_calls_to_init,
                                  sophia_state_gas_arguments,
                                  sophia_state_gas_store_size,
                                  sophia_no_callobject_for_remote_calls,
@@ -806,7 +808,6 @@ create_contract_(ContractCreateTxGasPrice) ->
     %% Check that the created contract has the correct details from the contract create tx
     ?assertEqual(PubKey, aect_contracts:owner_pubkey(Contract)),
     ?assertEqual(aect_create_tx:vm_version(aetx:tx(Tx)), aect_contracts:vm_version(Contract)),
-    ?assertEqual(aect_create_tx:code(aetx:tx(Tx)), aect_contracts:code(Contract)),
     ?assertEqual(aect_create_tx:deposit(aetx:tx(Tx)), aect_contracts:deposit(Contract)),
     %% Check that the created contract has the correct details not from the contract create tx
     _ = aect_contracts:log(Contract),
@@ -5773,4 +5774,17 @@ sophia_call_out_of_gas(_Cfg) ->
     ?assertEqual(UsedGas3, Gas),
     ?assertMatchFATE(<<"Reentrant call">>, Error), %% Fate looks at contract first
     ?assertMatchAEVM(<<"out_of_gas">>, Error),     %% AEVM cannot find function
+    ok.
+
+sophia_no_calls_to_init(_Cfg) ->
+    state(aect_test_utils:new_state()),
+    Acc = ?call(new_account, 10000000000 * aec_test_utils:min_gas_price()),
+    C   = ?call(create_contract, Acc, simple_auth, {123}, #{}),
+
+    {ok, Code} = compile_contract(simple_auth),
+    CallData   = make_calldata_from_code(Code, <<"init">>, {42}),
+
+    Res = ?call(call_contract_with_calldata, Acc, C, word, CallData, #{}),
+    ?assertMatchAEVM(Res, 32, 32, 32, {error, <<"unknown_function">>}),
+    ?assertMatchFATE({error, <<"Trying to call undefined function: <<68,214,68,31>>">>}, Res),
     ok.

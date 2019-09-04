@@ -47,8 +47,8 @@ serialize(CodeMap, SophiaContractVsn) ->
 
 serialize_(CompiledCode = #{ byte_code := ByteCode
                            , type_info := TypeInfo
-                           , source_hash := SourceHash
-                           , compiler_version := Version}, SophiaContractVersion) ->
+                           , source_hash := SourceHash }, SophiaContractVersion) ->
+    Version    = maps:get(version, CompiledCode, <<"unknown">>),
     BinVersion = if is_integer(Version) -> integer_to_binary(Version);
                     is_binary(Version) -> Version
                  end,

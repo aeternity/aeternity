@@ -1113,7 +1113,7 @@ ga_attach_op(OwnerPubkey, GasLimit, GasPrice, ABIVersion, VMVersion,
       SerializedCode, AuthFun, CallData, Fee, Nonce}}.
 
 ga_attach({OwnerPubkey, GasLimit, GasPrice, ABIVersion,
-           VMVersion, SerializedCode, AuthFun, CallData0, Fee, Nonce}, S) ->
+           VMVersion, SerializedCode, AuthFun, CallData, Fee, Nonce}, S) ->
     assert_ga_active(S),
     RollbackS = S,
     TotalAmount    = Fee + GasLimit * GasPrice,
@@ -1121,7 +1121,8 @@ ga_attach({OwnerPubkey, GasLimit, GasPrice, ABIVersion,
     assert_basic_account(Account), %% No re-attach
     assert_account_balance(Account, TotalAmount),
     assert_ga_create_version(ABIVersion, VMVersion, S),
-    CallData = assert_ga_attach_byte_code(ABIVersion, SerializedCode, CallData0, AuthFun, S),
+    Code           = assert_ga_attach_byte_code(ABIVersion, SerializedCode,
+                                                CallData, AuthFun, S),
     %% Charge the fee, the gas (the unused portion will be refunded)
     %% and the deposit (stored in the contract) to the contract owner (caller),
     CTVersion      = #{vm => VMVersion, abi => ABIVersion},
@@ -1129,10 +1130,10 @@ ga_attach({OwnerPubkey, GasLimit, GasPrice, ABIVersion,
     Contract       = aect_contracts:new(OwnerPubkey, Nonce, CTVersion,
                                         SerializedCode, 0),
     ContractPubkey  = aect_contracts:pubkey(Contract),
-    Payable         = is_payable_contract(SerializedCode),
+    Payable         = is_payable_contract(Code),
     {_CAccount, S3} = ensure_account(ContractPubkey, [non_payable || not Payable], S2),
     OwnerId         = aect_contracts:owner_id(Contract),
-    init_contract({attach, AuthFun}, OwnerId, Contract, GasLimit, GasPrice,
+    init_contract({attach, AuthFun}, OwnerId, Code, Contract, GasLimit, GasPrice,
                   CallData, OwnerPubkey, Fee, Nonce, RollbackS, S3).
 
 ga_set_meta_res_op(OwnerPubkey, AuthData, Res) ->
@@ -1251,14 +1252,14 @@ contract_create_op(OwnerPubkey, Amount, Deposit, GasLimit,
       CallData, Fee, Nonce}}.
 
 contract_create({OwnerPubkey, Amount, Deposit, GasLimit, GasPrice,
-                 ABIVersion, VMVersion, SerializedCode, CallData0, Fee, Nonce0},
+                 ABIVersion, VMVersion, SerializedCode, CallData, Fee, Nonce0},
                 S) ->
     RollbackS = S,
     TotalAmount    = Amount + Deposit + Fee + GasLimit * GasPrice,
     {Account, S1}  = get_account(OwnerPubkey, S),
     assert_account_balance(Account, TotalAmount),
     assert_contract_create_version(ABIVersion, VMVersion, S),
-    CallData = assert_contract_byte_code(ABIVersion, SerializedCode, CallData0, S),
+    Code = assert_contract_byte_code(ABIVersion, SerializedCode, CallData, S),
     %% Charge the fee, the gas (the unused portion will be refunded)
     %% and the deposit (stored in the contract) to the contract owner (caller),
     %% and transfer the funds (amount) to the contract account.
@@ -1271,11 +1272,11 @@ contract_create({OwnerPubkey, Amount, Deposit, GasLimit, GasPrice,
     Contract       = aect_contracts:new(OwnerPubkey, Nonce, CTVersion,
                                         SerializedCode, Deposit),
     ContractPubkey = aect_contracts:pubkey(Contract),
-    Payable        = is_payable_contract(SerializedCode),
+    Payable        = is_payable_contract(Code),
     {CAccount, S3} = ensure_account(ContractPubkey, [non_payable || not Payable], S2),
     S4             = account_earn(CAccount, Amount, S3),
     OwnerId        = aect_contracts:owner_id(Contract),
-    init_contract(contract, OwnerId, Contract, GasLimit, GasPrice,
+    init_contract(contract, OwnerId, Code, Contract, GasLimit, GasPrice,
                   CallData, OwnerPubkey, Fee, Nonce0, RollbackS, S4).
 
 %%%-------------------------------------------------------------------
@@ -1288,10 +1289,10 @@ tx_event(Name, #state{tx_env = Env} = S) ->
 
 %%%-------------------------------------------------------------------
 
-init_contract(Context, OwnerId, Contract, GasLimit, GasPrice, CallData,
+init_contract(Context, OwnerId, Code, Contract, GasLimit, GasPrice, CallData,
               OwnerPubkey, Fee, Nonce, RollbackS, S) ->
-    {Contract1, S1} = prepare_init_call(Contract, S),
-    {InitCall, S2} = run_contract(OwnerId, Contract1, GasLimit, GasPrice,
+    {InitContract, ChainContract, S1} = prepare_init_call(Code, Contract, S),
+    {InitCall, S2} = run_contract(OwnerId, Code, InitContract, GasLimit, GasPrice,
                                   CallData, OwnerPubkey, _InitAmount = 0,
                                   _CallStack = [], Nonce, S1),
     case aect_call:return_type(InitCall) of
@@ -1300,22 +1301,40 @@ init_contract(Context, OwnerId, Contract, GasLimit, GasPrice, CallData,
         revert ->
             contract_call_fail(InitCall, Fee, RollbackS);
         ok ->
-            contract_init_call_success(Context, InitCall, Contract1,
+            contract_init_call_success(Context, InitCall, ChainContract,
                                        GasLimit, Fee, RollbackS, S2)
     end.
 
-prepare_init_call(Contract, S) ->
+%% Prepare 2 contracts, one for the InitCall and one (without the init
+%% function) to store on chain.
+prepare_init_call(Code, Contract, S) ->
     case aect_contracts:ct_version(Contract) of
         #{vm := V} when ?IS_FATE_SOPHIA(V) ->
+            #{ byte_code := ByteCode } = Code,
+            FateCode  = aeb_fate_code:deserialize(ByteCode),
+            FateCode1 = aeb_fate_code:strip_init_function(FateCode),
+            ByteCode1 = aeb_fate_code:serialize(FateCode1),
+            Code1     = Code#{ byte_code := ByteCode1 },
+            SerCode   = aect_sophia:serialize(Code1, 3),
+
             %% In FATE we need to set up the store before the init call. This
             %% is because the FATE init function writes to the store explicitly
             %% instead of returning the initial state like the AEVM. This allows
             %% the compiler to decide the store layout.
             Store     = aefa_stores:initial_contract_store(),
             Contract1 = aect_contracts:set_state(Store, Contract),
-            S1 = put_contract(Contract1, S),
-            {Contract1, S1};
-        _ -> {Contract, S}
+            Contract2 = aect_contracts:set_code(SerCode, Contract1),
+            S1 = put_contract(Contract2, S),
+            {Contract1, Contract2, S1};
+        #{vm := V} when ?IS_AEVM_SOPHIA(V), V >= ?VM_AEVM_SOPHIA_4 ->
+            #{ type_info := TypeInfo } = Code,
+            TypeInfo1 = lists:keydelete(<<"init">>, 2, TypeInfo),
+            Code1     = Code#{ type_info := TypeInfo1 },
+            SerCode   = aect_sophia:serialize(Code1, 3),
+            Contract1 = aect_contracts:set_code(SerCode, Contract),
+            {Contract, Contract1, S};
+        _ ->
+            {Contract, Contract, S}
     end.
 
 contract_init_call_success(Type, InitCall, Contract, GasLimit, Fee, RollbackS, S) ->
@@ -1387,8 +1406,13 @@ contract_call_fail(Call, Fee, S) ->
     {Account, S3} = get_account(aect_call:caller_pubkey(Call), S2),
     account_spend(Account, UsedAmount, S3).
 
-run_contract(CallerId, Contract, GasLimit, GasPrice, CallData, Origin, Amount,
-             CallStack, Nonce, S) ->
+run_contract(CallerId, Contract, GasLimit, GasPrice, CallData,
+             Origin, Amount, CallStack, Nonce, S) ->
+    run_contract(CallerId, aect_contracts:code(Contract), Contract, GasLimit,
+                 GasPrice, CallData, Origin, Amount, CallStack, Nonce, S).
+
+run_contract(CallerId, Code, Contract, GasLimit, GasPrice, CallData,
+             Origin, Amount, CallStack, Nonce, S) ->
     %% We need to push all to the trees before running a contract.
     S1 = aeprimop_state:cache_write_through(S),
     ContractId = aect_contracts:id(Contract),
@@ -1401,7 +1425,7 @@ run_contract(CallerId, Contract, GasLimit, GasPrice, CallData, Origin, Amount,
                , call_data   => CallData
                , amount      => Amount
                , call_stack  => CallStack
-               , code        => aect_contracts:code(Contract)
+               , code        => Code
                , store       => aect_contracts:state(Contract)
                , call        => Call
                , trees       => S1#state.trees
@@ -1742,32 +1766,31 @@ assert_name_claimed(Name) ->
         revoked -> runtime_error(name_revoked)
     end.
 
-%% Note: returns updated calldata for FATE
+%% Note: returns deserialized Code to avoid extra work
 assert_ga_attach_byte_code(ABIVersion, SerializedCode, CallData, FunHash, S)
   when ABIVersion =:= ?ABI_AEVM_SOPHIA_1;
        ABIVersion =:= ?ABI_FATE_SOPHIA_1 ->
     try aect_sophia:deserialize(SerializedCode) of
-        #{type_info := TypeInfo, contract_vsn := Vsn, byte_code := ByteCode} ->
+        #{type_info := TypeInfo, contract_vsn := Vsn, byte_code := ByteCode} = Code ->
             case aect_sophia:is_legal_serialization_at_height(Vsn, S#state.height) of
                 true ->
                     assert_auth_function(ABIVersion, FunHash, TypeInfo, ByteCode),
-                    assert_contract_init_function(ABIVersion, CallData, TypeInfo);
+                    assert_contract_init_function(ABIVersion, CallData, Code);
                 false ->
                     runtime_error(illegal_contract_compiler_version)
             end
     catch _:_ -> runtime_error(bad_sophia_code)
     end.
 
-%% Note: returns updated calldata for FATE
+%% Note: returns deserialized Code to avoid extra work
 assert_contract_byte_code(ABIVersion, SerializedCode, CallData, S)
   when ABIVersion =:= ?ABI_AEVM_SOPHIA_1;
        ABIVersion =:= ?ABI_FATE_SOPHIA_1 ->
     try aect_sophia:deserialize(SerializedCode) of
-        #{type_info := TypeInfo,
-          contract_vsn := Vsn} ->
+        #{contract_vsn := Vsn} = Code ->
             case aect_sophia:is_legal_serialization_at_height(Vsn, S#state.height) of
                 true ->
-                    assert_contract_init_function(ABIVersion, CallData, TypeInfo);
+                    assert_contract_init_function(ABIVersion, CallData, Code);
                 false ->
                     runtime_error(illegal_contract_compiler_version)
             end
@@ -1776,19 +1799,18 @@ assert_contract_byte_code(ABIVersion, SerializedCode, CallData, S)
 assert_contract_byte_code(?ABI_SOLIDITY_1, _SerializedCode, CallData, _S) ->
     CallData.
 
-assert_contract_init_function(?ABI_FATE_SOPHIA_1, CallData,_TypeInfo) ->
+assert_contract_init_function(?ABI_FATE_SOPHIA_1, CallData, Code) ->
     case aefa_fate:verify_init_calldata(CallData) of
-        {ok, CallData1} ->
-            CallData1;
-        error ->
-            runtime_error(bad_init_function)
+        ok    -> Code;
+        error -> runtime_error(bad_init_function)
     end;
-assert_contract_init_function(?ABI_AEVM_SOPHIA_1, CallData, TypeInfo) ->
+assert_contract_init_function(?ABI_AEVM_SOPHIA_1, CallData, Code) ->
+    #{ type_info := TypeInfo } = Code,
     case aeb_aevm_abi:get_function_hash_from_calldata(CallData) of
         {ok, Hash} ->
             case aeb_aevm_abi:function_name_from_type_hash(Hash, TypeInfo) of
-                {ok, <<"init">>} -> CallData;
-                _ -> runtime_error(bad_init_function)
+                {ok, <<"init">>} -> Code;
+                _                -> runtime_error(bad_init_function)
             end;
         _Other -> runtime_error(bad_init_function)
     end.
@@ -1934,12 +1956,8 @@ assert_channel_withdraw_amount(Channel, Amount) ->
     Reserve = aesc_channels:channel_reserve(Channel),
     assert(ChannelAmount >= 2*Reserve + Amount, not_enough_channel_funds).
 
-is_payable_contract(SerializedCode) ->
-    try aect_sophia:deserialize(SerializedCode) of
-        #{ payable := Payable } -> Payable
-    catch error:{illegal_code_object, _} ->
-        runtime_error(bad_bytecode)
-    end.
+is_payable_contract(#{ payable := Payable }) -> Payable;
+is_payable_contract(_)                       -> runtime_error(bad_bytecode).
 
 %%%===================================================================
 %%% Error handling

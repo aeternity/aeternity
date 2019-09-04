@@ -1515,7 +1515,6 @@ get_contract(_Config) ->
                              <<"abi_version">> := ABI,
                              <<"referrer_ids">> := []}},
                  get_contract_sut(EncodedContractPubKey)),
-    ?assertEqual({ok, 200, #{<<"bytecode">> => EncodedCode}}, get_contract_code_sut(EncodedContractPubKey)),
     ?assertMatch({ok, 200, #{<<"store">> := [
         #{<<"key">> := <<"0x00">>, <<"value">> := _InitState},
         #{<<"key">> := <<"0x01">>, <<"value">> := _StateType}    %% We store the state type in the Store

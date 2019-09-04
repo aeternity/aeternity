@@ -35,9 +35,8 @@
 %% used.
 
 -spec run(map(), map()) -> {aect_call:call(), aec_trees:trees(), aetx_env:env()}.
-run(#{vm := VM} = Version, #{ code := SerializedCode} = CallDef) when ?IS_FATE_SOPHIA(VM) ->
-    #{ byte_code := Code
-     , type_info :=_TypeInfo} = aect_sophia:deserialize(SerializedCode),
+run(#{vm := VM} = Version, #{code := Code0} = CallDef) when ?IS_FATE_SOPHIA(VM) ->
+    #{byte_code := Code} = maybe_deserialize_code(Code0),
     case aefa_fate:is_valid_calldata(maps:get(call_data, CallDef)) of
         true ->
             CallDef1 = CallDef#{code => Code},
@@ -50,11 +49,11 @@ run(#{vm := VM} = Version, #{ code := SerializedCode} = CallDef) when ?IS_FATE_S
             {create_call(Gas, error, <<"bad_call_data">>, [], Call, VM), Trees, Env}
     end;
 run(#{vm := VM} = Version, CallDef) when ?IS_AEVM_SOPHIA(VM) ->
-    #{ code      := SerializedCode
+    #{ code      := Code0
      , call_data := CallData
      , amount    := Amount } = CallDef,
     #{ byte_code := Code
-     , type_info := TypeInfo} = aect_sophia:deserialize(SerializedCode),
+     , type_info := TypeInfo } = maybe_deserialize_code(Code0),
     %% TODO: update aeb_aevm_abi and pass Version
     case aeb_aevm_abi:check_calldata(CallData, TypeInfo, Amount > 0) of
         {ok, CallDataType, OutType} ->
@@ -278,3 +277,8 @@ get_origin(VMVersion, CallerAddr, OriginAddr) ->
         _ ->
             OriginAddr
     end.
+
+maybe_deserialize_code(#{ byte_code := _ } = Code) -> Code;
+maybe_deserialize_code(SerializedCode) ->
+    aect_sophia:deserialize(SerializedCode).
+

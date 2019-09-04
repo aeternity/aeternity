@@ -1285,25 +1285,25 @@ sc_ws_oracle_contract(Config) ->
 sc_ws_nameservice_contract(Config) ->
     [sc_ws_contract_generic_(Role, ContractSource, fun sc_ws_nameservice_contract_/9, Config,
                             [])
-        || Role <- [initiator, responder], ContractSource <- [onchain, offchain]],
+        || Role <- [initiator, responder], ContractSource <- [offchain]],
     ok.
 
 sc_ws_environment_contract(Config) ->
     [sc_ws_contract_generic_(Role, ContractSource, fun sc_ws_enviroment_contract_/9, Config,
                             [])
-        || Role <- [initiator, responder], ContractSource <- [onchain, offchain]],
+        || Role <- [initiator, responder], ContractSource <- [offchain]],
     ok.
 
 sc_ws_remote_call_contract(Config) ->
     [sc_ws_contract_generic_(Role, ContractSource, fun sc_ws_remote_call_contract_/9, Config,
                             [])
-        || Role <- [initiator, responder], ContractSource <- [onchain, offchain]],
+        || Role <- [initiator, responder], ContractSource <- [offchain]],
     ok.
 
 sc_ws_remote_call_contract_refering_onchain_data(Config) ->
     [sc_ws_contract_generic_(Role, ContractSource, fun sc_ws_remote_call_contract_refering_onchain_data_/9, Config,
                             [])
-        || Role <- [initiator, responder], ContractSource <- [onchain, offchain]],
+        || Role <- [initiator, responder], ContractSource <- [offchain]],
     ok.
 
 random_unused_name() ->
@@ -1390,36 +1390,6 @@ sc_ws_contract_generic_(Origin, ContractSource, Fun, Config, Opts) ->
                         wait_for_channel_event(OwnerConnPid, error, Config),
                     % correct call
                     ws_send_tagged(OwnerConnPid, <<"channels.update.new_contract">>,
-                        NewContractOpts, Config),
-
-                    #{tx := UnsignedStateTx, updates := _Updates} = CreateVolley(),
-                    contract_id_from_create_update(OwnerPubKey, UnsignedStateTx)
-                end;
-            onchain ->
-                fun(Owner, EncodedCode, EncodedInitData, Deposit) ->
-                    EncodedOnChainPubkey = post_contract_onchain(EncodedCode, EncodedInitData),
-
-                    {CreateVolley, OwnerConnPid, OwnerPubKey} = GetVolley(Owner),
-                    NewContractOpts =
-                        #{deposit     => Deposit,
-                          contract_id => EncodedOnChainPubkey,
-                          call_data   => EncodedInitData},
-                    % incorrect call
-                    ws_send_tagged(OwnerConnPid, <<"channels.update.new_contract_from_onchain">>,
-                        NewContractOpts#{deposit => <<"1">>}, Config),
-                    {ok, #{<<"reason">> := <<"not_a_number">>}} =
-                        wait_for_channel_event(OwnerConnPid, error, Config),
-                    ws_send_tagged(OwnerConnPid, <<"channels.update.new_contract_from_onchain">>,
-                        NewContractOpts#{contract_id => <<"ABCDEF">>}, Config),
-                    {ok, #{<<"reason">> := <<"broken_encoding: contracts">>}} =
-                        wait_for_channel_event(OwnerConnPid, error, Config),
-                    ws_send_tagged(OwnerConnPid, <<"channels.update.new_contract_from_onchain">>,
-                        NewContractOpts#{call_data => <<"ABCDEF">>}, Config),
-                    {ok, #{<<"reason">> := <<"broken_encoding: bytearray">>}} =
-                        wait_for_channel_event(OwnerConnPid, error, Config),
-
-                    % correct call
-                    ws_send_tagged(OwnerConnPid, <<"channels.update.new_contract_from_onchain">>,
                         NewContractOpts, Config),
 
                     #{tx := UnsignedStateTx, updates := _Updates} = CreateVolley(),
