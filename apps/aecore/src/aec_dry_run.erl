@@ -7,26 +7,41 @@
 -export([dry_run/3]).
 
 -include("blocks.hrl").
+-include("../../aecontract/include/aecontract.hrl").
+
+-define(MR_MAGIC, <<1:32/unit:8>>).
+-define(BIG_AMOUNT, 1000000000000000000000). %% 1000 AE
 
 dry_run(TopHash, Accounts, Txs) ->
-    try
-        {Env, Trees} = aetx_env:tx_env_and_trees_from_hash('aetx_transaction', TopHash),
-        Trees1 = add_accounts(Trees, Accounts),
-        dry_run_(Txs, Trees1, Env)
+    try setup_dry_run(TopHash, Accounts) of
+        {Env, Trees} -> dry_run_(Txs, Trees, Env)
     catch _E:_R ->
         {error, <<"Failed to get block state and environment">>}
     end.
 
+setup_dry_run(TopHash, Accounts) ->
+    {Env, Trees} = aetx_env:tx_env_and_trees_from_hash('aetx_transaction', TopHash),
+    Trees1 = add_accounts(Trees, [#{pub_key => ?MR_MAGIC, amount => ?BIG_AMOUNT} | Accounts]),
+    Env1   = aetx_env:set_dry_run(Env, true),
+    {Env1, Trees1}.
+
 dry_run_(Txs, Trees, Env) ->
-    STxs = dummy_sign_txs(Txs),
-    {ok, dry_run(STxs, Trees, Env, [])}.
+    try
+        STxs = prepare_txs(Txs),
+        {ok, dry_run(STxs, Trees, Env, [])}
+    catch _E:R ->
+        {error, iolist_to_binary(io_lib:format("Internal error ~120p", [R]))}
+    end.
 
 dry_run([], _Trees, _Env, Acc) ->
     lists:reverse(Acc);
-dry_run([Tx | Txs], Trees, Env, Acc) ->
-    case aec_trees:apply_txs_on_state_trees([Tx], Trees, Env,
-                                            [strict, dont_verify_signature]) of
-        {ok, [Tx], [], Trees1, _Env1} ->
+dry_run([{tx, Opts, Tx} | Txs], Trees, Env, Acc) ->
+    Stateless = proplists:get_value(stateless, Opts, false),
+    Env1 = prepare_env(Env, Opts),
+    case aec_trees:apply_txs_on_state_trees([Tx], Trees, Env1, [strict, dont_verify_signature]) of
+        {ok, [Tx], [], Trees1, _Env} when Stateless ->
+            dry_run(Txs, Trees, Env, [dry_run_res(Tx, Trees1, ok) | Acc]);
+        {ok, [Tx], [], Trees1, _Env} ->
             dry_run(Txs, Trees1, Env, [dry_run_res(Tx, Trees1, ok) | Acc]);
         Err = {error, _Reason} ->
             dry_run(Txs, Trees, Env, [dry_run_res(Tx, Trees, Err) | Acc])
@@ -37,12 +52,12 @@ dry_run_res(STx, Trees, ok) ->
     {Type, _} = aetx:specialize_type(Tx),
     case Type of
         _ when Type =:= contract_call_tx;
-               Type =:= contract_create_tx ->
+               Type =:= contract_create_tx;
+               Type =:= ga_attach_tx ->
             {CB, CTx} = aetx:specialize_callback(Tx),
             Contract  = CB:contract_pubkey(CTx),
             CallId    = CB:call_id(CTx),
-            CallTree = aec_trees:calls(Trees),
-            {value, CallObj} = aect_call_state_tree:lookup_call(Contract, CallId, CallTree),
+            CallObj   = lookup_call_object(Contract, CallId, Trees),
             {Type, {ok, CallObj}};
         spend_tx ->
             {Type, ok}
@@ -50,7 +65,6 @@ dry_run_res(STx, Trees, ok) ->
 dry_run_res(STx, _Trees, Err) ->
     {Type, _} = aetx:specialize_type(aetx_sign:tx(STx)),
     {Type, Err}.
-
 
 add_accounts(Trees, Accounts) ->
     AccountsTree = lists:foldl(fun add_account/2, aec_trees:accounts(Trees), Accounts),
@@ -64,8 +78,65 @@ add_account(#{pub_key := PK, amount := A}, AccountsTree) ->
         end,
     aec_accounts_trees:enter(Account, AccountsTree).
 
-dummy_sign_txs(Txs) ->
-    [ aetx_sign:new(Tx, [dummy_sign()]) || Tx <- Txs ].
+prepare_txs([]) -> [];
+prepare_txs([{tx, Tx} | Txs]) ->
+    [{tx, [], dummy_sign(Tx)} | prepare_txs(Txs)];
+prepare_txs([{call_req, Req} | Txs]) ->
+    [prepare_call_req(Req) | prepare_txs(Txs)].
 
-dummy_sign() ->
-    <<0:(?BLOCK_SIGNATURE_BYTES*8)>>.
+dummy_sign(Tx) ->
+    aetx_sign:new(Tx, [<<0:(?BLOCK_SIGNATURE_BYTES*8)>>]).
+
+prepare_call_req(ReqMap) ->
+    try %% Required
+        {ok, CallData} = aeser_api_encoder:safe_decode(contract_bytearray, maps:get(<<"calldata">>, ReqMap)),
+        {ok, CtPub}    = aeser_api_encoder:safe_decode(contract_pubkey, maps:get(<<"contract">>, ReqMap)),
+
+        %% Optional
+        Amount = maps:get(<<"amount">>, ReqMap, 0),
+        Caller = case maps:get(<<"caller">>, ReqMap, undefined) of
+                     undefined -> ?MR_MAGIC;
+                     EncCaller ->
+                         {ok, CallerX} = aeser_api_encoder:safe_decode(account_pubkey, EncCaller),
+                         CallerX
+                 end,
+        Gas    = maps:get(<<"gas">>, ReqMap, 1000000),
+        ABI    = maps:get(<<"abi_version">>, ReqMap, ?ABI_AEVM_SOPHIA_1),
+        Nonce  = maps:get(<<"nonce">>, ReqMap, 1),
+
+        {ok, CallTx} = aect_call_tx:new(#{caller_id   => aeser_id:create(account, Caller),
+                                          nonce       => Nonce,
+                                          contract_id => aeser_id:create(contract, CtPub),
+                                          abi_version => ABI,
+                                          fee         => 1000000 * 1000000,
+                                          amount      => Amount,
+                                          gas         => Gas,
+                                          gas_price   => 1000000,
+                                          call_data   => CallData}),
+
+        %% Other options
+        ContextMap = maps:get(<<"context">>, ReqMap, #{}),
+        TxHashCtxt = case maps:get(<<"tx_hash">>, ContextMap, none) of
+                         none -> [];
+                         TxHashEnc ->
+                            {ok, TxHash} = aeser_api_encoder:safe_decode(tx_hash, TxHashEnc),
+                            [{auth_tx, TxHash}]
+                     end,
+        StateCtxt  = [ stateless || maps:get(<<"stateful">>, ContextMap, false) /= true ],
+        Context    = TxHashCtxt ++ StateCtxt,
+        {tx, Context, dummy_sign(CallTx)}
+    catch _:_R ->
+        error({bad_dry_run_call_request, ReqMap})
+    end.
+
+prepare_env(Env, Opts) ->
+    case proplists:get_value(auth_tx, Opts, undefined) of
+        undefined -> Env;
+        TxHash    -> aetx_env:set_ga_tx_hash(Env, TxHash)
+    end.
+
+lookup_call_object(Key, CallId, Trees) ->
+    CallTree = aec_trees:calls(Trees),
+    {value, CallObj} = aect_call_state_tree:lookup_call(Key, CallId, CallTree),
+    CallObj.
+

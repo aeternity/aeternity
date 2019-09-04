@@ -205,7 +205,6 @@ process(#ga_meta_tx{} = Tx, Trees, Env0) ->
 set_meta_result(ok, _Tx, Trees, _Env) ->
     Trees;
 set_meta_result(Err = {error, _}, Tx, Trees, Env) ->
-    %% ct:pal("Setting error: ~p\n", [Err]),
     SetInstructions =
         aeprimop:ga_set_meta_tx_res_instructions(
             ga_pubkey(Tx), auth_data(Tx), Err),

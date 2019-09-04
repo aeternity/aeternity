@@ -393,10 +393,13 @@ swagger: config/swagger.yaml $(SWAGGER_CODEGEN_CLI) $(SWAGGER_ENDPOINTS_SPEC)
 	@( mkdir -p $(HTTP_APP)/priv && cp $(SWTEMP)/priv/swagger.json $(HTTP_APP)/priv/; )
 	@( cd $(HTTP_APP) && $(MAKE) updateswagger; )
 	@rm -fr $(SWTEMP)
-	@$(SWAGGER_CODEGEN) generate -i $< -l python -o $(SWTEMP) --import-mappings GAObject="from swagger_client.models.hack_ga_object import GAObject"
+	@$(SWAGGER_CODEGEN) generate -i $< -l python -o $(SWTEMP) \
+		--import-mappings GAObject="from swagger_client.models.hack_ga_object import GAObject" \
+		--import-mappings DryRunInput="from swagger_client.models.hack_dry_run_input import DryRunInput"
 	@echo "Swagger python tempdir: $(SWTEMP)"
 	@cp -r $(SWTEMP)/swagger_client $(PYTHON_TESTS)
 	@cp $(PYTHON_DIR)/hack_ga_object.py $(PYTHON_TESTS)/swagger_client/models
+	@cp $(PYTHON_DIR)/hack_dry_run_input.py $(PYTHON_TESTS)/swagger_client/models
 	@rm -fr $(SWTEMP)
 
 swagger-docs:

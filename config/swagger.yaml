@@ -2792,7 +2792,7 @@ definitions:
         description: The status of the call 'ok | error'.
         type: string
       inner_object:
-         $ref: '#/definitions/TxInfoObject'
+        $ref: '#/definitions/TxInfoObject'
     required:
       - caller_id
       - height
@@ -2887,9 +2887,41 @@ definitions:
         type: array
         description: Txs
         items:
-          $ref: '#/definitions/EncodedByteArray'
+          oneOf:
+            - $ref: '#/definitions/EncodedByteArray'
+            - $ref: '#/definitions/DryRunCallReq'
     required:
       - txs
+  DryRunCallReq:
+    type: object
+    properties:
+      calldata:
+        $ref: '#/definitions/EncodedByteArray'
+      contract:
+        $ref: '#/definitions/EncodedPubkey'
+      amount:
+        $ref: '#/definitions/UInt'
+      gas:
+        $ref: '#/definitions/UInt'
+      caller:
+        $ref: '#/definitions/EncodedPubkey'
+      nonce:
+        $ref: '#/definitions/UInt64'
+      abi_version:
+        $ref: '#/definitions/UInt16'
+      context:
+        $ref: '#/definitions/DryRunCallContext'
+    required:
+      - calldata
+      - contract
+  DryRunCallContext:
+    type: object
+    properties:
+      tx_hash:
+        $ref: '#/definitions/EncodedHash'
+      stateful:
+        description: 'This call will have effects on the next call in this dry-run (or not)'
+        type: boolean
   DryRunAccount:
     type: object
     properties:
