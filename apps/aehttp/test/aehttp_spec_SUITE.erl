@@ -60,7 +60,8 @@ get_api(Config) ->
 
     {ok, {{"HTTP/1.1", 200, "OK"}, _, Json}} = Repl1,
     ct:log("~p returned spec: ~p", [?NODE, Json]),
-    Yaml = yamerl_constr:file(SpecFile, [str_node_as_binary]),
+    Yamls = yamerl_constr:file(SpecFile, [str_node_as_binary]),
+    Yaml = lists:last(Yamls),
     Spec = jsx:prettify(jsx:encode(Yaml)),
     ct:log("read spec file ~s", [SpecFile]),
 
