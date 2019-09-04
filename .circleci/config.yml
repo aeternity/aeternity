@@ -1040,6 +1040,16 @@ workflows:
                 - env/dev2
                 - system-tests
 
+      - test_lima_otp21:
+          requires:
+            - build_otp21
+          filters:
+            branches:
+              ignore:
+                - env/dev1
+                - env/dev2
+                - system-tests
+
       - test_mnesia_leveled:
           requires:
             - build
