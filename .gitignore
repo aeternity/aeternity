@@ -20,6 +20,7 @@ py/local
 py/man
 py/pip-selfcheck.json
 py/share
+py/.Python
 nosetests.xml
 *.pyc
 .chain
