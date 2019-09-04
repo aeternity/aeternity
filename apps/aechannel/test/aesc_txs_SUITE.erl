@@ -2788,9 +2788,9 @@ fp_use_onchain_enviroment(Cfg) ->
                         , ForceCall(Forcer, <<"origin">>, word, ExpectedCaller)
                         , fun(#{height := H} = Props1) ->
                               case aec_hard_forks:protocol_effective_at_height(H) of
-                                  PreF when PreF < ?FORTUNA_PROTOCOL_VSN -> %% no creator
+                                  {ok, PreF} when PreF < ?FORTUNA_PROTOCOL_VSN -> %% no creator
                                       Props1;
-                                  _PostFortuna ->
+                                  {ok, _PostFortuna} ->
                                       (ForceCall(Forcer, <<"creator">>, word,
                                                  ExpectedCreator))(Props1)
                               end

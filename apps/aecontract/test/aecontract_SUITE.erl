@@ -1185,8 +1185,8 @@ call(Fun, Xs) when is_function(Fun, 1 + length(Xs)) ->
     R.
 
 perform_pre_transformations(Height, S) when Height > ?GENESIS_HEIGHT ->
-    Version = aec_hard_forks:protocol_effective_at_height(Height),
-    PrevVersion = aec_hard_forks:protocol_effective_at_height(Height - 1),
+    {ok, Version} = aec_hard_forks:protocol_effective_at_height(Height),
+    {ok, PrevVersion} = aec_hard_forks:protocol_effective_at_height(Height - 1),
     Trees = aect_test_utils:trees(S),
     Trees1 = aec_trees:perform_pre_transformations(Trees, Height, Version, PrevVersion),
     {ok, aect_test_utils:set_trees(Trees1, S)};
