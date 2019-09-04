@@ -7,7 +7,9 @@
 
 -spec json_spec() -> jsx:json_text().
 json_spec() ->
-    Yamls = yamerl_constr:file("config/swagger.yaml", [str_node_as_binary]),
+    {ok, AppName} = application:get_application(?MODULE),
+    Filename = filename:join(code:priv_dir(AppName), "swagger.yaml"),
+    Yamls = yamerl_constr:file(Filename, [str_node_as_binary]),
     Yaml = lists:last(Yamls),
     jsx:prettify(jsx:encode(Yaml)).
 
