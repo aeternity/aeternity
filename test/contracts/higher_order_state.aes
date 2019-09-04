@@ -1,0 +1,9 @@
+contract HigherOrderState =
+
+  record state = {f : int => int}
+
+  entrypoint init() = {f = (x) => x}
+  entrypoint apply(n) = state.f(n)
+  stateful entrypoint inc() =
+    let g = state.f
+    put(state{ f = (x) => g(x + 1) })
