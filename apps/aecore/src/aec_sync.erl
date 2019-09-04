@@ -187,6 +187,8 @@ handle_call({known_chain, Chain0 = #chain{ id = CId0 }, NewChainInfo}, _From, St
 handle_call({update_sync_task, Update, STId}, _From, State) ->
     State1 = do_update_sync_task(State, STId, Update),
     {reply, ok, State1};
+handle_call({next_work_item, _STId, _PeerId, {error, pending_protocol}}, _From, State) ->
+    {reply, take_a_break, State};
 handle_call({next_work_item, STId, PeerId, {error, _Reason}}, _From, State) ->
     State1 = do_update_sync_task(State, STId, {error, PeerId}),
     {reply, abort_work, State1};
