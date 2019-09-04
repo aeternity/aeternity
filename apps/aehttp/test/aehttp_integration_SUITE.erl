@@ -3573,8 +3573,9 @@ swagger_validation_schema(_Config) ->
                         <<"error">> := <<"missing_required_property">>,
                         <<"path">> := []
         }}} = http_request(Host, post, "debug/transactions/spend", #{
+                   sender_id => <<"">>,
                    amount => 0,
-                   fee => <<"fee">>,
+                   fee => 0,
                    ttl => 100,
                    payload => <<"">>}),
     {ok, 400, #{
@@ -3588,7 +3589,7 @@ swagger_validation_schema(_Config) ->
                    sender_id => <<"">>,
                    recipient_id => <<"">>,
                    amount => -1,
-                   fee => <<"fee">>,
+                   fee => 0,
                    ttl => 100,
                    payload => <<"">>}).
 
