@@ -539,18 +539,21 @@ spend({From, To, Amount, Mode}, #state{} = S) when is_integer(Amount), Amount >=
 %%% For Lima auctioned names, the lock fee is returned
 %%% in case of overbidding
 
-lock_amount(From, Amount, #state{height = Height} = S) ->
+lock_namefee(Kind, From, Amount, #state{height = Height} = S) ->
     LockFee = aec_governance:name_claim_locked_fee(),
     Protocol = aec_hard_forks:protocol_effective_at_height(Height),
-    case Protocol >= ?LIMA_PROTOCOL_VSN of
-        true when Amount > 0 -> ok;
-        false when Amount == LockFee -> ok;
-        _ -> runtime_error(illegal_name_fee)
-    end,
     {Account, S1} = get_account(From, S),
     assert_account_balance(Account, Amount),
     S2 = account_spend(Account, Amount, S1),
-    int_lock_amount(Amount, S2).
+    case Protocol >= ?LIMA_PROTOCOL_VSN of
+        true when Amount > 0, Kind == spend ->
+            S2;
+        true when Amount > 0, Kind == lock ->
+            int_lock_amount(Amount, S2);
+        false when Amount == LockFee, Kind == lock ->
+            int_lock_amount(Amount, S2);
+        _ -> runtime_error(illegal_name_fee)
+    end.
 
 %%%-------------------------------------------------------------------
 
@@ -738,12 +741,15 @@ name_claim({AccountPubkey, PlainName, NameSalt, NameFee, PreclaimDelta}, S) ->
     AuctionHash = aens_hash:to_auction_hash(NameHash),
     %% Cannot compute CommitmentHash before we know whether in auction
     Protocol = aec_hard_forks:protocol_effective_at_height(S#state.height),
+    BidTimeout = aec_governance:name_claim_bid_timeout(NameAscii, Protocol),
+    S0 = lock_namefee(if BidTimeout == 0 -> lock;
+                        true -> spend
+                     end, AccountPubkey, NameFee, S),
     case aec_governance:name_claim_bid_timeout(NameAscii, Protocol) of
         0 ->
             %% No auction for this name, preclaim delta suffices
             %% For clarity DeltaTTL for name computed here
             DeltaTTL = aec_governance:name_claim_max_expiration(),
-            S0 = lock_amount(AccountPubkey, NameFee, S),
             CommitmentHash = aens_hash:commitment_hash(NameAscii, NameSalt),
             {Commitment, S1} = get_commitment(CommitmentHash, name_not_preclaimed, S0),
             assert_claim_after_preclaim({AccountPubkey, Commitment, NameAscii, NameRegistrar, NameFee, PreclaimDelta}, S1),
@@ -752,8 +758,8 @@ name_claim({AccountPubkey, PlainName, NameSalt, NameFee, PreclaimDelta}, S) ->
             put_name(Name, S2);
         Timeout when NameSalt == 0  ->
             %% Auction should be running, new bid comes in
-            assert_not_name(NameHash, S), %% just to be sure
-            {Auction, S1} = get_name_auction(AuctionHash, name_not_in_auction, S),
+            assert_not_name(NameHash, S0), %% just to be sure
+            {Auction, S1} = get_name_auction(AuctionHash, name_not_in_auction, S0),
             PreviousBidderPubkey = aens_auctions:bidder_pubkey(Auction),
             PreviousBid = aens_auctions:name_fee(Auction),
             assert_name_bid_fee(NameAscii, NameFee, S#state.height), %% just in case, consensus may have changed
@@ -766,11 +772,10 @@ name_claim({AccountPubkey, PlainName, NameSalt, NameFee, PreclaimDelta}, S) ->
             put_name_auction(NewAuction, S3);
         Timeout when NameSalt =/= 0 ->
             %% This is the first claim that starts an auction
-            assert_not_name_auction(AuctionHash, S),
+            assert_not_name_auction(AuctionHash, S0),
             CommitmentHash = aens_hash:commitment_hash(NameAscii, NameSalt),
-            {Commitment, S1} = get_commitment(CommitmentHash, name_not_preclaimed, S),
+            {Commitment, S1} = get_commitment(CommitmentHash, name_not_preclaimed, S0),
             assert_claim_after_preclaim({AccountPubkey, Commitment, NameAscii, NameRegistrar, NameFee, PreclaimDelta}, S1),
-
             %% Now put this Name in Auction instead of in Names
             Auction = aens_auctions:new(AuctionHash, AccountPubkey, NameFee, Timeout, S1#state.height),
             S2 = delete_x(commitment, CommitmentHash, S1),

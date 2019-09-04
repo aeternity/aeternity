@@ -1355,6 +1355,9 @@ token_supply_test_() ->
      ] ++
          [{"Test sum of generalized accounts", fun token_supply_ga/0}
           || aect_test_utils:latest_protocol_version() >= ?FORTUNA_PROTOCOL_VSN
+         ] ++
+         [{"Test sum of auctions", fun token_supply_auctions/0}
+          || aect_test_utils:latest_protocol_version() >= ?LIMA_PROTOCOL_VSN
          ]
     }.
 
@@ -1691,6 +1694,86 @@ token_supply_ga() ->
 
     ok.
 
+token_supply_auctions() ->
+    TestHeight = 20,
+    %% We don't want to care about coinbase this time.
+    Delay = 1000,
+    #{ public := PubKey1, secret := PrivKey1 } = enacl:sign_keypair(),
+    #{ public := PubKey2, secret := PrivKey2 } = enacl:sign_keypair(),
+    PresetAmount = 4000000000000000 * aec_test_utils:min_gas_price(),
+    PresetAccounts = [{PubKey1, PresetAmount}, {PubKey2, PresetAmount}],
+    Fee  = 100000 * aec_test_utils:min_gas_price(),
+    NameFee = 400000000000000000,
+    Salt = 123,
+    Name1 = <<"expensive-name-in-auction.aet">>,
+    Name2 = <<"this-name-is-too-long-to-end-up-in-an-auction.aet">>,
+    PreclaimFun =
+        fun(Address, Nonce, Name) ->
+                make_name_preclaim_tx(Address, Nonce, Name, Salt, Fee)
+        end,
+    ClaimFun =
+        fun(Address, Nonce, Name, Slt, Bid) ->
+                make_name_claim_tx(Address, Nonce, Name, Slt, Fee, Bid)
+        end,
+    TxsFun = fun(1) -> [aec_test_utils:sign_tx(PreclaimFun(PubKey1, 1, Name1), PrivKey1)];
+                (2) -> [aec_test_utils:sign_tx(PreclaimFun(PubKey2, 1, Name2), PrivKey2)];
+                (3) -> [aec_test_utils:sign_tx(ClaimFun(PubKey1, 2, Name1, Salt, NameFee), PrivKey1)];
+                (4) -> [aec_test_utils:sign_tx(ClaimFun(PubKey2, 2, Name1, 0, NameFee + NameFee div 20), PrivKey2)];
+                (5) -> [aec_test_utils:sign_tx(ClaimFun(PubKey1, 3, Name1, 0, 2 * NameFee), PrivKey1)];
+                (6) -> [aec_test_utils:sign_tx(ClaimFun(PubKey2, 3, Name2, Salt, NameFee), PrivKey2)];
+                (_) -> []
+             end,
+    meck:expect(aec_fork_block_settings, genesis_accounts, 0, PresetAccounts),
+    meck:expect(aec_governance, beneficiary_reward_delay, 0, Delay),
+    Targets = lists:duplicate(TestHeight, ?GENESIS_TARGET),
+    Chain = gen_blocks_only_chain_by_target(PresetAccounts, Targets, 111, TxsFun),
+    ok = write_blocks_to_chain(Chain),
+
+    %% Only presets
+    {ok, Map1} = aec_chain:sum_tokens_at_height(1),
+    Total0 = PresetAmount * 2,
+    ?assertEqual(Total0, maps:get(accounts, Map1)),
+    ?assertEqual(0, maps:get(auctions, Map1)),
+
+    %% One preclaim done.
+    {ok, Map2} = aec_chain:sum_tokens_at_height(2),
+    Total1 = Total0 - Fee,
+    ?assertEqual(Total1, maps:get(accounts, Map2)),
+    ?assertEqual(0, maps:get(auctions, Map2)),
+
+    %% Second preclaim done.
+    {ok, Map3} = aec_chain:sum_tokens_at_height(3),
+    Total2 = Total1 - Fee,
+    ?assertEqual(Total2, maps:get(accounts, Map3)),
+    ?assertEqual(0, maps:get(auctions, Map3)),
+
+    %% first claim starts an auction
+    {ok, Map4} = aec_chain:sum_tokens_at_height(4),
+    Total3 = Total2 - Fee - NameFee,
+    ?assertEqual(Total3, maps:get(accounts, Map4)),
+    ?assertEqual(NameFee, maps:get(auctions, Map4)),
+
+    %% second claim
+    {ok, Map5} = aec_chain:sum_tokens_at_height(5),
+    Total4 = Total3 - Fee - NameFee div 20,  %% one returned, new fee reduced
+    ?assertEqual(Total4, maps:get(accounts, Map5)),
+    ?assertEqual(NameFee + NameFee div 20, maps:get(auctions, Map5)),
+
+    %% third claim
+    {ok, Map6} = aec_chain:sum_tokens_at_height(6),
+    Total5 = Total4 - Fee + NameFee div 20 - NameFee,  %% one returned, new fee reduced
+    ?assertEqual(Total5, maps:get(accounts, Map6)),
+    ?assertEqual(2*NameFee, maps:get(auctions, Map6)),
+
+    %% Second name does not end up in auction
+    {ok, Map7} = aec_chain:sum_tokens_at_height(7),
+    Total6 = Total5 - Fee - NameFee,  %% one returned, new fee reduced
+    ?assertEqual(Total6, maps:get(accounts, Map7)),
+    ?assertEqual(2 * NameFee, maps:get(auctions, Map7)),
+    ?assertEqual(NameFee, maps:get(locked, Map7)),
+
+    ok.
+
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
@@ -1881,6 +1964,26 @@ make_ga_meta_tx(Pubkey, AuthData, InnerTx, Fee, Gas, GasPrice) ->
                                  , gas_price   => GasPrice
                                  , fee         => Fee
                                  , tx          => InnerTx}),
+    Tx.
+
+make_name_preclaim_tx(Pubkey, Nonce, Name, Salt, Fee) ->
+    AccountId = aeser_id:create(account, Pubkey),
+    Commitment = aens_hash:commitment_hash(Name, Salt),
+    CommitmentId = aeser_id:create(commitment, Commitment),
+    {ok, Tx} = aens_preclaim_tx:new(#{account_id    => AccountId,
+                                      nonce         => Nonce,
+                                      commitment_id => CommitmentId,
+                                      fee           => Fee}),
+    Tx.
+
+make_name_claim_tx(Pubkey, Nonce, Name, Salt, Fee, Bid) ->
+    AccountId = aeser_id:create(account, Pubkey),
+    {ok, Tx} = aens_claim_tx:new(#{account_id => AccountId,
+                                   nonce      => Nonce,
+                                   name       => Name,
+                                   name_salt  => Salt,
+                                   name_fee   => Bid,
+                                   fee        => Fee}),
     Tx.
 
 reward_40(Fee) -> Fee * 4 div 10.
