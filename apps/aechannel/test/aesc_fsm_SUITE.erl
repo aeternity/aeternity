@@ -97,7 +97,7 @@
 
 -define(PEEK_MSGQ, peek_message_queue(?LINE, Debug)).
 
--define(MINIMUM_DEPTH, 2).
+-define(MINIMUM_DEPTH, 10).
 -define(MINIMUM_DEPTH_FACTOR, 0).
 
 -define(SLOGAN, {slogan, {?FUNCTION_NAME, ?LINE}}).
@@ -1086,11 +1086,13 @@ deposit_(#{fsm := FsmI} = I, R, Deposit, Opts, Round1, Debug, Cfg) ->
     {ok, I2, R2}.
 
 withdraw(Cfg) ->
+    % Use default values for minimum depth calculation
     Cfg1 = [?SLOGAN | Cfg],
     Amount = 2,
-    MinDepth = 2,
+    MinDepth = 3,
+    MinDepthChannel = 5,
     Round = 1,
-    {ok, _I, _R} = withdraw_full_cycle_(Amount, #{}, MinDepth, Round, Cfg1),
+    {ok, _I, _R} = withdraw_full_cycle_(Amount, #{}, MinDepth, MinDepthChannel, Round, Cfg1),
     ok.
 
 withdraw_high_amount_static_confirmation_time(Cfg) ->
@@ -1098,48 +1100,49 @@ withdraw_high_amount_static_confirmation_time(Cfg) ->
            % Factor of 0 sets min depths to 1 for all amounts
            , {minimum_depth, 0}
            ] ++ Cfg,
-    Amount = 200000,
+    Amount = 300000,
     MinDepth = 1,
+    MinDepthChannel = 1,
     Round = 1,
-    {ok, _I, _R} = withdraw_full_cycle_(Amount, #{}, MinDepth, Round, Cfg1),
+    {ok, _I, _R} = withdraw_full_cycle_(Amount, #{}, MinDepth, MinDepthChannel, Round, Cfg1),
     ok.
 
 withdraw_high_amount_short_confirmation_time(Cfg) ->
     Cfg1 = [ ?SLOGAN
-           % High base and very low factor should lead to single block required
-           , {minimum_depth, 4}
-           , {minimum_depth_factor, 1}
+           % High amount and high factor should lead to single block required
+           , {minimum_depth, 20}
            ] ++ Cfg,
-    Amount = 2000,
-    MinDepth = 0,
+    Amount = 300000,
+    MinDepth = 1,
+    MinDepthChannel = 1,
     Round = 1,
-    {ok, _I, _R} = withdraw_full_cycle_(Amount, #{}, MinDepth, Round, Cfg1),
+    {ok, _I, _R} = withdraw_full_cycle_(Amount, #{}, MinDepth, MinDepthChannel, Round, Cfg1),
     ok.
 
 withdraw_low_amount_long_confirmation_time(Cfg) ->
     Cfg1 = [ ?SLOGAN
-           % low base and high factor and low fee should lead to factor-based
+           % Low amount and low factor should lead to longer confirmation time
            % increased confirmation times
-           , {minimum_depth, 1}
-           , {minimum_depth_factor, 4000}
+           , {minimum_depth, 4}
            ] ++ Cfg,
     Amount = 1,
     MinDepth = 5,
+    MinDepthChannel = 10,
     Round = 1,
-    {ok, _I, _R} = withdraw_full_cycle_(Amount, #{}, MinDepth, Round, Cfg1),
+    {ok, _I, _R} = withdraw_full_cycle_(Amount, #{}, MinDepth, MinDepthChannel, Round, Cfg1),
     ok.
 
 withdraw_low_amount_long_confirmation_time_negative_test(Cfg) ->
     Cfg1 = [ ?SLOGAN
-           % low base and high factor and low fee should lead to factor-based
+           % Low amount and high factor should lead to single block required
            % increased confirmation times
-           , {minimum_depth, 1}
-           , {minimum_depth_factor, 4000}
+           , {minimum_depth, 20}
            ] ++ Cfg,
     Amount = 1,
-    MinDepth = 5,
+    MinDepth = 1,
+    MinDepthChannel = 1,
     Round = 1,
-    {ok, _I, _R} = withdraw_full_cycle_(Amount, #{}, MinDepth, Round, Cfg1),
+    {ok, _I, _R} = withdraw_full_cycle_(Amount, #{}, MinDepth, MinDepthChannel, Round, Cfg1),
     ok.
 
 channel_detects_close_solo(Cfg) ->
@@ -2276,11 +2279,11 @@ create_channel_from_spec(I, R, Spec, Port, UseAny, Debug, Cfg, MinDepth) ->
                    error(Err, ST)
                end,
     log(Debug, "mining blocks on dev1 for minimum depth", []),
-    SignedTx = await_on_chain_report(I2, ?TIMEOUT),
-    log(Debug, "=== SignedTx = ~p", [SignedTx]),
-    SignedTx = await_on_chain_report(R2, ?TIMEOUT), % same tx
-    ok = wait_for_signed_transaction_in_block(dev1, SignedTx, Debug),
-    log(Debug, "=== Signed tx in block: ~p", [SignedTx]),
+    SignedTx = await_on_chain_report(R2, #{info => funding_created}, ?TIMEOUT),
+    ct:log("=== SignedTx = ~p", [SignedTx]),
+    SignedTx = await_on_chain_report(I2, #{info => funding_signed}, ?TIMEOUT), % same tx
+    {ok, _} = wait_for_signed_transaction_in_block(dev1, SignedTx, Debug),
+    ct:log("=== Signed tx in block: ~p", [SignedTx]),
     SignedTx = await_channel_changed_report(I2, ?TIMEOUT),
     SignedTx = await_channel_changed_report(R2, ?TIMEOUT),
     CurrentHeight = current_height(dev1),
@@ -2311,6 +2314,8 @@ create_channel_from_spec(I, R, Spec, Port, UseAny, Debug, Cfg, MinDepth) ->
     log(Debug, "=== Update reports received ===", []),
     I5 = await_open_report(I4, ?TIMEOUT, Debug),
     R5 = await_open_report(R4, ?TIMEOUT, Debug),
+    SignedTx = await_on_chain_report(I5, #{info => channel_changed}, ?TIMEOUT),
+    SignedTx = await_on_chain_report(R5, #{info => channel_changed}, ?TIMEOUT),
     log(Debug, "=== Open reports received ===", []),
     log(Debug, "=== Message Q: ~p", [element(2,process_info(self(), messages))]),
     [] = check_info(0, Debug),
@@ -2825,7 +2830,7 @@ prep_responder(#{pub := IPub, balance := IBal} = _Initiator, Node) ->
     Amount = IBal div 2,
     {ok, SignedTx} = aecore_suite_utils:spend(NodeName, IPub, Pub, Amount,
                                               20000 * aec_test_utils:min_gas_price()),
-    ok = wait_for_signed_transaction_in_block(Node, SignedTx),
+    {ok, _} = wait_for_signed_transaction_in_block(Node, SignedTx),
     {ok, Amount} = rpc(Node, aehttp_logic, get_account_balance, [Pub]),
     #{role => responder,
       priv => Priv,
@@ -2941,9 +2946,9 @@ wait_for_signed_transaction_in_block(Node, SignedTx, Debug) ->
                           NotConfirmed =:= not_found ->
             EncTxHash = aeser_api_encoder:encode(tx_hash, TxHash),
             case mine_blocks_until_txs_on_chain(Node, [EncTxHash]) of
-                {ok, _Blocks} ->
-                    log(Debug, "Tx on-chain after mining ~p blocks", [length(_Blocks)]),
-                    ok;
+                {ok, Blocks} ->
+                    log(Debug, "Tx on-chain after mining ~p blocks", [length(Blocks)]),
+                    {ok, Blocks};
                 {error, _Reason} ->
                     log("Error: ~p - did not mine", [_Reason]),
                     did_not_mine
@@ -2951,12 +2956,12 @@ wait_for_signed_transaction_in_block(Node, SignedTx, Debug) ->
     end.
 
 check_fsm_state(Fsm) ->
-    {ok, #{initiator := Initiator,
-           responder := Responder,
-           init_amt  := IAmt,
-           resp_amt  := RAmt,
-           state_hash:= StateHash,
-           round     := Round}} = aesc_fsm:get_state(Fsm),
+    {ok, #{ initiator  := Initiator
+          , responder  := Responder
+          , init_amt   := IAmt
+          , resp_amt   := RAmt
+          , state_hash := StateHash
+          , round      := Round }} = aesc_fsm:get_state(Fsm),
     Trees =
         aec_test_utils:create_state_tree_with_accounts(
             [aec_accounts:new(Pubkey, Balance) ||
@@ -3348,14 +3353,14 @@ positive_bh(Cfg) ->
 %% ==================================================================
 %% Shared test cases
 
-withdraw_full_cycle_(Amount, Opts, MinDepth, Round, Cfg) ->
+withdraw_full_cycle_(Amount, Opts, MinDepth, MinDepthChannel, Round, Cfg) ->
     Debug = get_debug(Cfg),
     #{ i := #{ fsm := FsmI
              , initiator_amount := IAmt0
              , responder_amount := RAmt0 } = I
      , r := #{} = R
      , spec := #{ initiator := _PubI
-                , responder := _PubR }} = create_channel_(Cfg, Debug, MinDepth),
+                , responder := _PubR }} = create_channel_(Cfg, MinDepthChannel, Debug),
     ct:log("I = ~p", [I]),
     {ok, _, _} = withdraw_(I, R, Amount, Opts, MinDepth, Round, Debug, Cfg),
     shutdown_(I, R, Cfg),
@@ -3384,8 +3389,8 @@ withdraw_(#{fsm := FsmI} = I, R, Amount, Opts, MinDepth, Round0, Debug, Cfg) ->
     #{initiator_amount := IAmt2, responder_amount := RAmt2} = I1,
     Expected = {IAmt2, RAmt2},
     {Expected, Expected} = {{IAmt0 - Amount, RAmt0}, Expected},
-    SignedTx = await_on_chain_report(I1, #{info => channel_changed}, ?TIMEOUT), % same tx
-    SignedTx = await_on_chain_report(R1, #{info => channel_changed}, ?TIMEOUT), % same tx
+    SignedTx2 = await_on_chain_report(I1, #{info => channel_changed}, ?TIMEOUT), % same tx
+    SignedTx2 = await_on_chain_report(R1, #{info => channel_changed}, ?TIMEOUT), % same tx
     check_info(20),
     {ok, I1, R1}.
 
@@ -3393,7 +3398,13 @@ withdraw_(#{fsm := FsmI} = I, R, Amount, Opts, MinDepth, Round0, Debug, Cfg) ->
 %% Internal functions
 
 create_channel_(Cfg) ->
-    create_channel_(Cfg, ?MINIMUM_DEPTH, get_debug(Cfg)).
+    create_channel_(Cfg, get_debug(Cfg)).
+
+create_channel_(Cfg, Debug) ->
+    create_channel_(Cfg, ?MINIMUM_DEPTH, #{}, get_debug(Cfg)).
+
+create_channel_(Cfg, XOpts, Debug) when is_map(XOpts) ->
+    create_channel_(Cfg, ?MINIMUM_DEPTH, XOpts, Debug);
 
 create_channel_(Cfg, Debug) ->
     create_channel_(Cfg, ?MINIMUM_DEPTH, Debug).
@@ -3486,8 +3497,6 @@ config(K, Cfg, Def) ->
         Other     -> Other
     end.
 
-get_debug(Config) ->
-    proplists:get_bool(debug, Config).
 get_debug(Config) ->
     proplists:get_bool(debug, Config).
 

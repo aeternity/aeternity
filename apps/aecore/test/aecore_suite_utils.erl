@@ -285,9 +285,8 @@ mine_blocks(Node, NumBlocksToMine, MiningRate, Opts) ->
     mine_blocks(Node, NumBlocksToMine, MiningRate, any, Opts).
 
 mine_blocks(Node, NumBlocksToMine, MiningRate, Type, Opts) ->
-    ok = rpc:call(
-           Node, application, set_env, [aecore, expected_mine_rate, MiningRate],
-           5000),
+    ok = rpc:call(Node, application, set_env,
+                  [aecore, expected_mine_rate, MiningRate], 5000),
     [] = flush_new_blocks(),
     subscribe(Node, block_created),
     subscribe(Node, micro_block_created),

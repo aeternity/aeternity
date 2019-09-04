@@ -1517,11 +1517,11 @@ new_onchain_tx(channel_deposit_tx, #{acct := FromId,
     StateHash = aesc_offchain_tx:state_hash(UpdatedOffchainTx),
 
     {LastRound, _} = aesc_offchain_state:get_latest_signed_tx(State),
-    Opts1 = maps:merge(Opts, #{state_hash => StateHash,
-                               round      => LastRound + 1,
-                               channel_id => aeser_id:create(channel, ChanId),
-                               from_id    => aeser_id:create(account, FromId)
-                               }),
+    Opts1 = maps:merge(Opts, #{ state_hash => StateHash
+                              , round      => increment_round(LastRound)
+                              , channel_id => aeser_id:create(channel, ChanId)
+                              , from_id    => aeser_id:create(account, FromId)
+                              }),
     lager:debug("deposit_tx Opts = ~p", [Opts1]),
     PinnedHeight = aetx_env:height(OnChainEnv),
     {ok, DepositTx} = new_onchain_tx_(aesc_deposit_tx, Opts1, PinnedHeight),
@@ -1541,10 +1541,10 @@ new_onchain_tx(channel_withdraw_tx, #{acct := ToId,
     StateHash = aesc_offchain_tx:state_hash(UpdatedOffchainTx),
 
     {LastRound, _} = aesc_offchain_state:get_latest_signed_tx(State),
-    Opts1 = maps:merge(Opts, #{state_hash => StateHash,
-                               round      => LastRound + 1,
-                               channel_id => aeser_id:create(channel, ChanId),
-                               to_id      => aeser_id:create(account, ToId)
+    Opts1 = maps:merge(Opts, #{ state_hash => StateHash
+                              , round      => increment_round(LastRound)
+                              , channel_id => aeser_id:create(channel, ChanId)
+                              , to_id      => aeser_id:create(account, ToId)
                               }),
     lager:debug("withdraw_tx Opts = ~p", [Opts1]),
     PinnedHeight = aetx_env:height(OnChainEnv),
@@ -1673,13 +1673,14 @@ new_onchain_tx_(Mod, Opts, CurrHeight) when Mod =:= aesc_create_tx;
             create_with_minimum_fee(Mod, Opts#{fee => 0}, CurrHeight)
     end.
 
-%% @doc A valid transaction fee is a function on gas required and gas price
-%% used the following function uses the gas price the node would be using if
-%% it were mining
-%% gas required is a funcion of:
-%% * transaction type (base_gas)
-%% * transaction size (size_gas)
-%% * gas needed for contract execution in a channel_force_progress
+%% @doc A valid transaction fee is a function on gas required and gas price used
+%% the following function uses the gas price the node would be using if it
+%% were mining gas required is a funcion of:
+%%
+%%   * transaction type (base_gas)
+%%   * transaction size (size_gas)
+%%   * gas needed for contract execution in a channel_force_progress
+%%
 %% Since the fee is part of the serialization of the transaction,
 %% modifying the fee, might change the serialized transaction size and thus
 %% changing the size_gas required for the transaction. Increasing the number
@@ -1702,8 +1703,8 @@ create_with_minimum_fee(Mod, Opts, CurrHeight, Attempts) ->
         true ->
             {ok, Tx};
         false ->
-            create_with_minimum_fee(Mod, Opts#{fee => MinFee}, CurrHeight,
-                                     Attempts - 1)
+            Opts1 = Opts#{fee => MinFee},
+            create_with_minimum_fee(Mod, Opts1, CurrHeight, Attempts - 1)
     end.
 
 create_tx_for_signing(#data{opts = #{ initiator        := Initiator
@@ -3350,6 +3351,9 @@ pubkeys(Who, D, SignedTx) ->
 
 next_round(#data{state = State}) ->
     {Round, _} = aesc_offchain_state:get_latest_signed_tx(State),
+    increment_round(Round).
+
+increment_round(Round) ->
     Round + 1.
 
 account_type(Pubkey) ->
@@ -4120,7 +4124,7 @@ handle_call_(channel_closing, shutdown, From, #data{strict_checks = Strict} = D)
     end;
 handle_call_(_, get_state, From, #data{ on_chain_id = ChanId
                                       , opts        = Opts
-                                      , state       = State} = D) ->
+                                      , state       = State } = D) ->
     #{initiator := Initiator, responder := Responder} = Opts,
     {ok, IAmt} = aesc_offchain_state:balance(Initiator, State),
     {ok, RAmt} = aesc_offchain_state:balance(Responder, State),
