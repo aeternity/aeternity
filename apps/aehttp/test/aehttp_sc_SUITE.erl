@@ -2940,8 +2940,12 @@ sc_ws_slash_(Config, WhoCloses, WhoSlashes, WhoSettles) ->
     %% WhoSlashes initiates a slash
     %%
     SlasherPid = maps:get(WhoSlashes, Conns),
-    {ok, <<"ok">>} = request_slash(SlasherPid),
-    {ok, SignedSlashTx} = sign_slash_tx(SlasherPid, WhoSlashes, Config),
+    {ok, SignedSlashTx} = request_and_sign_slash_tx(
+                            SlasherPid, WhoSlashes, Config,
+                           fun() ->
+                                   {ok, <<"ok">>} = request_slash(SlasherPid),
+                                   ok
+                           end),
     ct:log("SignedSlashTx = ~p", [SignedSlashTx]),
     SlashTxHash = aeser_api_encoder:encode(tx_hash, aetx_sign:hash(SignedSlashTx)),
     ct:log("SlashTxHash = ~p", [SlashTxHash]),
@@ -2962,6 +2966,11 @@ sign_slash_tx(ConnPid, Who, Config) ->
     Participants = proplists:get_value(participants, Config),
     #{priv_key := PrivKey} = maps:get(Who, Participants),
     sign_tx(ConnPid, <<"slash_tx">>, <<"channels.slash_sign">>, PrivKey, Config).
+
+request_and_sign_slash_tx(ConnPid, Who, Config, ReqF) ->
+    Participants = proplists:get_value(participants, Config),
+    #{priv_key := PrivKey} = maps:get(Who, Participants),
+    request_and_sign(ConnPid, <<"slash_tx">>, <<"channels.slash_sign">>, PrivKey, Config, ReqF).
 
 %% This wrapper is used to ensure that event registration for signing is
 %% done before e.g. performing an rpc which triggers the signing.
