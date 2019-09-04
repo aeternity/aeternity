@@ -100,6 +100,7 @@
 
 -include("blocks.hrl").
 -include("aec_db.hrl").
+-include_lib("aeutils/include/aeu_stacktrace.hrl").
 
 %% - transactions
 %% - headers
@@ -680,7 +681,7 @@ wait_for_tables(Tabs, Sofar, Period, Max) when Sofar < Max ->
     end;
 wait_for_tables(Tabs, Sofar, _, _) ->
     lager:error("Tables not loaded after ~p minutes: ~p", [Sofar, Tabs]),
-    %% This is serious and user intervention needed. Stop the system instead 
+    %% This is serious and user intervention needed. Stop the system instead
     %% of keeping retrying, but also raise an error for the crash log.
     init:stop(),
     erlang:error({tables_not_loaded, Tabs}).
@@ -694,10 +695,9 @@ check_db() ->
         ok = application:ensure_started(mnesia),
         ok = assert_schema_node_name(Mode),
         initialize_db(Mode, Storage)
-    catch
-        error:Reason ->
-            error_logger:error_msg("CAUGHT error:~p / ~p~n", [Reason, erlang:get_stacktrace()]),
-            erlang:error(Reason)
+    ?_catch_(error, Reason, StackTrace)
+        error_logger:error_msg("CAUGHT error:~p / ~p~n", [Reason, StackTrace]),
+        erlang:error(Reason)
     end.
 
 %% Test interface

@@ -74,6 +74,7 @@
 -include("../../aecontract/include/aecontract.hrl").
 -include("../../aecontract/test/include/aect_sophia_vsn.hrl").
 -include_lib("aecontract/include/hard_forks.hrl").
+-include_lib("aeutils/include/aeu_stacktrace.hrl").
 
 -define(TIMEOUT, 10000).
 -define(LONG_TIMEOUT, 60000).
@@ -336,11 +337,9 @@ init_per_group_(Config) ->
                     {responder_amount, 10000000 * aec_test_utils:min_gas_price()}
                     | Config]
                 end
-            catch
-                error:Reason ->
-                    Trace = erlang:get_stacktrace(),
-                    catch stop_node(dev1, Config),
-                    error(Reason, Trace)
+            ?_catch_(error, Reason, Trace)
+                catch stop_node(dev1, Config),
+                error(Reason, Trace)
             end
     end.
 
@@ -1982,10 +1981,9 @@ retry(0, _, _, E, T) ->
     error(E, T);
 retry(N, T, F, _, _) when N > 0 ->
     try F()
-    catch
-        error:E ->
-            timer:sleep(T),
-            retry(N-1, T, F, E, erlang:get_stacktrace())
+    ?_catch_(error, E, ST)
+        timer:sleep(T),
+        retry(N-1, T, F, E, ST)
     end.
 
 
@@ -2136,11 +2134,10 @@ create_channel_from_spec(I, R, Spec, Port, UseAny, Debug, Cfg) ->
     log(Debug, "FSMs, I = ~p, R = ~p", [FsmI, FsmR]),
 
     {I2, R2} = try await_create_tx_i(I1, R1, Debug, Cfg)
-               catch
-                   error:Err ->
-                       log("Caught Err = ~p~nMessages = ~p",
-                           [Err, element(2, process_info(self(), messages))]),
-                       error(Err, erlang:get_stacktrace())
+               ?_catch_(error, Err, ST)
+                   log("Caught Err = ~p~nMessages = ~p",
+                       [Err, element(2, process_info(self(), messages))]),
+                   error(Err, ST)
                end,
     log(Debug, "mining blocks on dev1 for minimum depth", []),
     SignedTx = await_on_chain_report(I2, ?TIMEOUT),
@@ -2852,20 +2849,20 @@ with_trace(F, Config, File, When) ->
     TTBRes = aesc_ttb:on_nodes([node()|get_nodes()], File),
     ct:log("Trace set up: ~p", [TTBRes]),
     try F(Config)
-    catch
-	error:R ->
-	    Stack = erlang:get_stacktrace(),
-	    ct:pal("Error ~p~nStack = ~p", [R, Stack]),
-	    ttb_stop(),
-	    erlang:error(R);
-	exit:R ->
-	    Stack = erlang:get_stacktrace(),
-	    ct:pal("Exit ~p~nStack = ~p", [R, Stack]),
-	    ttb_stop(),
-	    exit(R);
-        throw:Res ->
-            ct:pal("Caught throw:~p", [Res]),
-            throw(Res)
+    ?_catch_(Error, Reason, Stack)
+        case {Error, Reason} of
+            {error, R} ->
+                ct:pal("Error ~p~nStack = ~p", [R, Stack]),
+                ttb_stop(),
+                erlang:error(R);
+            {exit, R} ->
+                ct:pal("Exit ~p~nStack = ~p", [R, Stack]),
+                ttb_stop(),
+                exit(R);
+            {throw, Res} ->
+                ct:pal("Caught throw:~p", [Res]),
+                throw(Res)
+        end
     end,
     case When of
         on_error ->

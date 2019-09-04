@@ -18,6 +18,8 @@
 %% Fetching tx history
 -export([get_txs_since/2]).
 
+-include_lib("aeutils/include/aeu_stacktrace.hrl").
+
 -define(GEN_SERVER_OPTS, []).
 -define(IS_INFO_OF_SCENARIO_HAS_TX(X),
         ( is_tuple(X)
@@ -374,10 +376,9 @@ check_requests(Reqs, St, C) ->
 check_requests(Reqs, St, C, []) ->
     Reqs1 = reset_if_fork_switch(Reqs, C),
     try check_requests_(Reqs1, St, C, [])
-    catch
-        error:E ->
-            lager:error("CAUGHT ~p / ~p", [E, erlang:get_stacktrace()]),
-            error(E)
+    ?_catch_(error, E, StackTrace)
+        lager:error("CAUGHT ~p / ~p", [E, StackTrace]),
+        error(E)
     end.
 
 %% If there's a fork switch, don't assume channel state or depth calculations
@@ -436,10 +437,9 @@ do_dirty(F) ->
       async_dirty,
       fun() ->
               try F()
-              catch
-                  error:E ->
-                      lager:error("CAUGHT ~p / ~p", [E, erlang:get_stacktrace()]),
-                      error(E)
+              ?_catch_(error, E, StackTrace)
+                  lager:error("CAUGHT ~p / ~p", [E, StackTrace]),
+                  error(E)
               end
       end).
 

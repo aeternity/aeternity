@@ -48,6 +48,7 @@
 -include_lib("common_test/include/ct.hrl").
 -include_lib("aecontract/include/hard_forks.hrl").
 -include("../../aecontract/test/include/aect_sophia_vsn.hrl").
+-include_lib("aeutils/include/aeu_stacktrace.hrl").
 
 -define(NODE, dev1).
 -define(DEFAULT_TESTS_COUNT, 5).
@@ -3536,20 +3537,20 @@ with_trace(F, Config, File, When) ->
     TTBRes = aesc_ttb:on_nodes([node()|get_nodes()], File),
     ct:log("Trace set up: ~p", [TTBRes]),
     try F(Config)
-    catch
-	error:R ->
-	    Stack = erlang:get_stacktrace(),
-	    ct:pal("Error ~p~nStack = ~p", [R, Stack]),
-	    ttb_stop(),
-	    erlang:error(R);
-	exit:R ->
-	    Stack = erlang:get_stacktrace(),
-	    ct:pal("Exit ~p~nStack = ~p", [R, Stack]),
-	    ttb_stop(),
-	    exit(R);
-        throw:Res ->
-            ct:pal("Caught throw:~p", [Res]),
-            throw(Res)
+    ?_catch_(E, R, Stack)
+        case E of
+            error ->
+                ct:pal("Error ~p~nStack = ~p", [R, Stack]),
+                ttb_stop(),
+                erlang:error(R);
+            exit ->
+                ct:pal("Exit ~p~nStack = ~p", [R, Stack]),
+                ttb_stop(),
+                exit(R);
+            throw ->
+                ct:pal("Caught throw:~p", [R]),
+                throw(R)
+        end
     end,
     case When of
         on_error ->

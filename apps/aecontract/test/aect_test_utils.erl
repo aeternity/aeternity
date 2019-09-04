@@ -62,6 +62,7 @@
 -include("include/aect_sophia_vsn.hrl").
 -include("../src/aect_sophia.hrl").
 -include("include/aect_contract_cache.hrl").
+-include_lib("aeutils/include/aeu_stacktrace.hrl").
 %%%===================================================================
 %%% Test state
 %%%===================================================================
@@ -429,8 +430,8 @@ encode_call_data_(Vsn, Code, Fun, Args0, _Backend) ->
     try
         [_, CalldataStr] = string:lexemes(Output, "\n"),
         aeser_api_encoder:safe_decode(contract_bytearray, list_to_binary(CalldataStr))
-    catch _:Err ->
-        {error, {<<"Compiler error">>, Err, erlang:get_stacktrace()}}
+    ?_catch_(_, Err, StackTrace)
+        {error, {<<"Compiler error">>, Err, StackTrace}}
     after
         cleanup_tempfiles()
     end.

@@ -91,6 +91,7 @@
 
 -include_lib("kernel/include/file.hrl").
 -include_lib("common_test/include/ct.hrl").
+-include_lib("aeutils/include/aeu_stacktrace.hrl").
 
 -define(OPS_BIN, "aeternity").
 -define(DEFAULT_CUSTOM_EXPECTED_MINE_RATE, 100).
@@ -1155,9 +1156,8 @@ process_http_return(R) ->
                             jsx:decode(BodyB, [return_maps])
                     end,
                 {ok, ReturnCode, Result}
-            catch
-                error:E ->
-                    {error, {parse_error, [E, erlang:get_stacktrace()]}}
+            ?_catch_(error, E, ST)
+                {error, {parse_error, [E, ST]}}
             end;
         {error, _} = Error ->
             Error

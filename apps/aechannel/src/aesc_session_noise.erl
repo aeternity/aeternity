@@ -2,6 +2,7 @@
 -behaviour(gen_server).
 
 -include("aesc_codec.hrl").
+-include_lib("aeutils/include/aeu_stacktrace.hrl").
 
 -export([connect/3
        , accept/2
@@ -103,15 +104,18 @@ shutdown_error     (Session, Msg) -> cast(Session, {msg, ?SHUTDOWN_ERR , Msg}).
 
 close(Session) ->
     try call(Session, close)
-    catch
-        error:_ -> ok;
-        exit:{noproc,_} ->
-            unlink(Session),
-            ok;
-        exit:R ->
-            lager:error("Unhandled exit error during session closing: ~p, ~p", [R, erlang:get_stacktrace()]),
-            unlink(Session),
-            ok
+    ?_catch_(E, R, StackTrace)
+        case {R, E} of
+            {error, _} ->
+                ok;
+            {exit, {noproc, _}} ->
+                unlink(Session),
+                ok;
+            {exit, R} ->
+                lager:error("Unhandled exit error during session closing: ~p, ~p", [R, StackTrace]),
+                unlink(Session),
+                ok
+        end
     end.
 
 -define(GEN_SERVER_OPTS, []).
@@ -277,11 +281,9 @@ handle_call(_Req, _From, St) ->
 
 handle_cast(Msg, St) ->
     try handle_cast_(Msg, St)
-    catch
-        error:Reason ->
-            Trace = erlang:get_stacktrace(),
-            lager:error("CAUGHT error:~p trace: ~p", [Reason, Trace]),
-            erlang:error(Reason, Trace)
+    ?_catch_(error, Reason, Trace)
+        lager:error("CAUGHT error:~p trace: ~p", [Reason, Trace]),
+        erlang:error(Reason, Trace)
     end.
 
 handle_cast_({msg, M, Info}, #st{econn = EConn} = St) ->
@@ -298,11 +300,9 @@ handle_info({'DOWN', Ref, process, Pid, _Reason},
     {stop, shutdown, St};
 handle_info(Msg, St) ->
     try handle_info_(Msg, St)
-    catch
-        error:Reason ->
-            Trace = erlang:get_stacktrace(),
-            lager:error("CAUGHT error:~p trace: ~p", [Reason, Trace]),
-            erlang:error(Reason, Trace)
+    ?_catch_(error, Reason, Trace)
+        lager:error("CAUGHT error:~p trace: ~p", [Reason, Trace]),
+        erlang:error(Reason, Trace)
     end.
 
 handle_info_({noise, EConn, Data}, #st{econn = EConn, fsm = Fsm} = St) ->

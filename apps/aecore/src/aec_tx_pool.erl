@@ -66,6 +66,7 @@
 
 -include("aec_tx_pool.hrl").
 -include_lib("aecontract/include/hard_forks.hrl").
+-include_lib("aeutils/include/aeu_stacktrace.hrl").
 
 -ifdef(TEST).
 -export([sync_garbage_collect/1]). %% Only for (Unit-)test
@@ -560,11 +561,10 @@ do_update_sync_top(NewSyncTop, GCHeight, Parent, Dbs) ->
             aec_tx_pool_gc:adjust_ttl(GCHeight - NewGCHeight, Dbs);
         false ->
             ok
-    catch
-        error:E ->
-            lager:error(
-              "do_update_sync_top(~p,~p,~p), LocalTop=~p, NewGCHeight=~p ERROR: ~p/~p",
-              [NewSyncTop, GCHeight, Parent, LocalTop, NewGCHeight, E, erlang:get_stacktrace()])
+    ?_catch_(error, E, StackTrace)
+        lager:error(
+          "do_update_sync_top(~p,~p,~p), LocalTop=~p, NewGCHeight=~p ERROR: ~p/~p",
+          [NewSyncTop, GCHeight, Parent, LocalTop, NewGCHeight, E, StackTrace])
     end.
 
 -spec pool_db_key(aetx_sign:signed_tx()) -> pool_db_key().
