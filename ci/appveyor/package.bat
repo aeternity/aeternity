@@ -56,7 +56,6 @@ bash -lc "mkdir -p \"%PACKAGE_PATH%/aeternity-windows-w64/usr/lib\""
 bash -lc "cp -R \"%RELEASE_PATH%\" \"%PACKAGE_PATH%/aeternity-windows-w64/usr/lib/\""
 bash -lc "mv -f \"%PACKAGE_PATH%/aeternity-windows-w64/usr/lib/aeternity/REVISION\" \"%PACKAGE_PATH%/aeternity-windows-w64/usr/lib/aeternity/VERSION\" \"%PACKAGE_PATH%/aeternity-windows-w64/\""
 bash -lc "mkdir -p \"%PACKAGE_PATH%/aeternity-windows-w64/data/aecore\""
-bash -lc "mkdir -p \"%PACKAGE_PATH%/aeternity-windows-w64/data/aehttp\""
 
 @echo Current time: %time%
 rem Copy genisis and hard-fork account migrations into top-level data folder
@@ -64,7 +63,6 @@ bash -lc "cp -R \"%RELEASE_PATH%/data/aecore/.genesis\" \"%PACKAGE_PATH%/aeterni
 bash -lc "cp -R \"%RELEASE_PATH%/data/aecore/.minerva\" \"%PACKAGE_PATH%/aeternity-windows-w64/data/aecore\""
 bash -lc "cp -R \"%RELEASE_PATH%/data/aecore/.fortuna\" \"%PACKAGE_PATH%/aeternity-windows-w64/data/aecore\""
 bash -lc "cp -R \"%RELEASE_PATH%/data/aecore/.lima\" \"%PACKAGE_PATH%/aeternity-windows-w64/data/aecore\""
-bash -lc "cp \"%RELEASE_PATH%/data/aehttp/swagger.yaml\" \"%PACKAGE_PATH%/aeternity-windows-w64/data/aehttp/swagger.yaml\""
 
 @echo Current time: %time%
 rem Build packages
