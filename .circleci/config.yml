@@ -1193,10 +1193,10 @@ workflows:
 
       - osx_package:
           filters:
-            branches:
-              only:
-                - /releases\/.*/
-                - *master_branch
+            # branches:
+            #   only:
+            #     - /releases\/.*/
+            #     - *master_branch
             tags:
               only: *tag_regex
 
