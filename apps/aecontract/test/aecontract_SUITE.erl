@@ -118,6 +118,7 @@
         , sophia_oracles_gas_ttl__query/1
         , sophia_oracles_gas_ttl__response/1
         , sophia_signatures_oracles/1
+        , sophia_signature_check_gas_cost/1
         , sophia_signatures_aens/1
         , sophia_maps/1
         , sophia_map_benchmark/1
@@ -354,6 +355,7 @@ groups() ->
                                  {group, sophia_oracles_query_fee_unhappy_path_remote},
                                  {group, sophia_oracles_gas_ttl},
                                  sophia_signatures_oracles,
+                                 sophia_signature_check_gas_cost,
                                  sophia_signatures_aens,
                                  sophia_maps,
                                  sophia_map_benchmark,
@@ -3581,6 +3583,35 @@ sophia_signatures_oracles(_Cfg) ->
     ?assertMatchProtocol(NonceAfterQuery, ExpectedNonceAfterQuery, ExpectedNonceAfterQuery),
     ?assertMatchProtocol(NonceAfterRespond, ExpectedNonceAfterRespondRoma, NonceBeforeRespond),
 
+    ok.
+
+sophia_signature_check_gas_cost(_Cfg) ->
+    ?skipRest(not ?IS_FATE_SOPHIA(vm_version()), only_valid_for_fate),
+    %% Check that when checking the delegation signature, the gas cost increases.
+    %% The delegation signature handling is handled jointly for all such
+    %% operations, so it is sufficient to test one operation.
+    state(aect_test_utils:new_state()),
+    FixedTTL            = fun(Height) -> ?CHAIN_ABSOLUTE_TTL_MEMORY_ENCODING(Height) end,
+    Acc                 = ?call(new_account, 1000000000 * aec_test_utils:min_gas_price()),
+    Orc                 = ?call(new_account, 1000000000 * aec_test_utils:min_gas_price()),
+    Ct                  = ?call(create_contract, Acc, oracles, {}),
+    QueryFee            = 13,
+    TTL                 = 50,
+    <<CtId:256>>        = Ct,
+    <<OrcId:256>>       = Orc,
+
+    RegSig              = sign(<<Orc/binary, Ct/binary>>, Orc),
+    ArgsRemote          = {Orc, RegSig, QueryFee, FixedTTL(TTL)},
+    ArgsSelfReg         = {Ct, RegSig, QueryFee, FixedTTL(TTL)},
+    Opts                = #{return_gas_used => true},
+    {SelfOracle, Gas1}  = ?call(call_contract, Acc, Ct, signedRegisterOracle, word,
+                                ArgsSelfReg, Opts),
+    {Oracle, Gas2}      = ?call(call_contract, Acc, Ct, signedRegisterOracle, word,
+                                ArgsRemote, Opts),
+    ?assertEqual({oracle, OrcId}, Oracle),
+    ?assertEqual({oracle, CtId}, SelfOracle),
+    ExpDiff             = aeb_fate_opcodes:gas_cost(aeb_fate_opcodes:m_to_op('VERIFY_SIG')),
+    ?assertEqual(ExpDiff, Gas2 - Gas1),
     ok.
 
 sophia_signatures_aens(Cfg) ->
