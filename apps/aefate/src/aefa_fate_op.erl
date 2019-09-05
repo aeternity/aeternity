@@ -318,19 +318,39 @@ dec(Arg0, EngineState) ->
     un_op(dec, {Arg0, Arg0}, EngineState).
 
 add(Arg0, Arg1, Arg2, EngineState) ->
-    bin_op(add, {Arg0, Arg1, Arg2}, EngineState).
+    {A, ES1} = get_op_arg(Arg1, EngineState),
+    {B, ES2} = get_op_arg(Arg2, ES1),
+    Res = gop(add, A, B, ES2),
+    ES3 = aefa_engine_state:spend_gas_for_new_cells(words_used(Res), ES2),
+    write(Arg0, Res, ES3).
 
 sub(Arg0, Arg1, Arg2, EngineState) ->
-    bin_op(sub, {Arg0, Arg1, Arg2}, EngineState).
+    {A, ES1} = get_op_arg(Arg1, EngineState),
+    {B, ES2} = get_op_arg(Arg2, ES1),
+    Res = gop(sub, A, B, ES2),
+    ES3 = aefa_engine_state:spend_gas_for_new_cells(words_used(Res), ES2),
+    write(Arg0, Res, ES3).
 
 mul(Arg0, Arg1, Arg2, EngineState) ->
-    bin_op(mul, {Arg0, Arg1, Arg2}, EngineState).
+    {A, ES1} = get_op_arg(Arg1, EngineState),
+    {B, ES2} = get_op_arg(Arg2, ES1),
+    Res = gop(mul, A, B, ES2),
+    ES3 = aefa_engine_state:spend_gas_for_new_cells(words_used(Res), ES2),
+    write(Arg0, Res, ES3).
 
 divide(Arg0, Arg1, Arg2, EngineState) ->
-    bin_op('div', {Arg0, Arg1, Arg2}, EngineState).
+    {A, ES1} = get_op_arg(Arg1, EngineState),
+    {B, ES2} = get_op_arg(Arg2, ES1),
+    Res = gop('div', A, B, ES2),
+    ES3 = aefa_engine_state:spend_gas_for_new_cells(words_used(Res), ES2),
+    write(Arg0, Res, ES3).
 
 modulo(Arg0, Arg1, Arg2, EngineState) ->
-    bin_op(mod, {Arg0, Arg1, Arg2}, EngineState).
+    {A, ES1} = get_op_arg(Arg1, EngineState),
+    {B, ES2} = get_op_arg(Arg2, ES1),
+    Res = gop(mod, A, B, ES2),
+    ES3 = aefa_engine_state:spend_gas_for_new_cells(words_used(Res), ES2),
+    write(Arg0, Res, ES3).
 
 pow(Arg0, Arg1, Arg2, EngineState) ->
     {Base, ES1} = get_op_arg(Arg1, EngineState),
