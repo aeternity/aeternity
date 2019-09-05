@@ -128,8 +128,9 @@
 %% -include_lib("trace_runner/include/trace_runner.hrl").
 
 -ifdef(TEST).
--export([strict_checks/2,
-         stop/1]).
+-export([ strict_checks/2
+        , stop/1
+        ]).
 -endif.
 
 %% ==================================================================
@@ -2741,11 +2742,9 @@ restart_watcher(#data{ watcher = undefined
 
 start_min_depth_watcher(Type, SignedTx, Updates, D) ->
     try start_min_depth_watcher_(Type, SignedTx, Updates, D)
-    catch
-        error:E ->
-            T = erlang:get_stacktrace(),
-            lager:debug("CAUGHT E=~p / T = ~p", [E, pr_stacktrace(T)]),
-            error({caught,E})
+    ?_catch_(error, E, _ST)
+        ?LOG_CAUGHT(E, _ST),
+        error(E)
     end.
 start_min_depth_watcher_(Type, SignedTx, Updates,
                         #data{ watcher = Watcher0
@@ -3664,8 +3663,8 @@ handle_call(_, {?RECONNECT_CLIENT, Pid, Tx} = Msg, From,
         {error, _} = Err ->
             lager:debug("Request failed: ~p", [Err]),
             keep_state(D, [{reply, From, Err}])
-    ?_catch_(error, E, StackTrace)
-        lager:debug("CAUGHT ~p / ~p", [E, StackTrace]),
+    ?_catch_(error, E, _ST)
+        ?LOG_CAUGHT(E, _ST),
         keep_state(D, [{reply, From, E}])
     end;
 handle_call(St, Req, From, #data{} = D) ->
@@ -4173,6 +4172,7 @@ block_hash_from_op(?NO_OP) -> %% in case of unexpected close
 tx_env_and_trees_from_top(Type) ->
     aesc_tx_env_cache:tx_env_and_trees_from_top(Type).
 
+-ifdef(TEST).
 %% This function is meant to prune and prettify stack traces
 %% containing #data{} records, which often are so large that printouts become
 %% unreadable.
@@ -4192,3 +4192,4 @@ pr_data(D) ->
     lager:pr(setelement(
                #data.state,
                setelement(#data.log, D, {snip}), {snip}), ?MODULE).
+-endif.
