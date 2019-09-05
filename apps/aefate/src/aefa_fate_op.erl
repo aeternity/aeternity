@@ -621,12 +621,15 @@ str_reverse(Arg0, Arg1, EngineState) ->
 int_to_addr(Arg0, Arg1, EngineState) ->
     {LeftValue, ES1} = get_op_arg(Arg1, EngineState),
     Result = gop(int_to_addr, LeftValue, ES1),
-    Cells = string_cells(Result),
+    Cells = address_cells(Result),
     ES2 = aefa_engine_state:spend_gas_for_new_cells(Cells + 1, ES1),
     write(Arg0, Result, ES2).
 
 string_cells(String) when ?IS_FATE_STRING(String) ->
     byte_size(?FATE_STRING_VALUE(String)) div 64.
+
+address_cells(A) when ?IS_FATE_ADDRESS(A) ->
+    byte_size(?FATE_ADDRESS_VALUE(A)) div 64.
 
 %% ------------------------------------------------------
 %% Variant instructions
