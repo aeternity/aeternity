@@ -2067,14 +2067,16 @@ check_shutdown_err_msg(#{ channel_id := ChanId } = Msg,
             TxHash = aetx_sign:hash(SignedTx),
             case aec_chain:find_tx_location(TxHash) of
                 Block when is_binary(Block) ->
-                    %% Tx is already on chain - ignore error msg
+                    lager:debug("Tx already on-chain. Ignore error msg", []),
                     {error, tx_already_on_chain};
                 mempool ->
-                    %% For now, treat it as if it's on chain
+                    lager:debug("Tx in mempool. Treat as if already on-chain. Ignore error", []),
                     {error, tx_already_on_chain};
                 not_found->
+                    lager:debug("Tx not found. Assume it may later appear on-chain. Ignore error", [])
                     {error, tx_not_found};
                 none ->
+                    lager:debug("Tx location: 'none', i.e. it has been rejected. Accept error msg", []),
                     check_op_error_msg(?SHUTDOWN_ERR, Msg, D)
             end;
         _ ->
