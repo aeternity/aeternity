@@ -23,7 +23,7 @@
          get_accounts_by_pubkey_sut/1,
          %% naming
          get_names_entry_by_name_sut/1,
-         get_name_preclaim/1, get_commitment_id/2, get_name_claim/1,
+         get_name_preclaim/1, get_commitment_id/2, get_name_claim/1
         ]
        ).
 
