@@ -2073,7 +2073,7 @@ check_shutdown_err_msg(#{ channel_id := ChanId } = Msg,
                     lager:debug("Tx in mempool. Treat as if already on-chain. Ignore error", []),
                     {error, tx_already_on_chain};
                 not_found->
-                    lager:debug("Tx not found. Assume it may later appear on-chain. Ignore error", [])
+                    lager:debug("Tx not found. Assume it may later appear on-chain. Ignore error", []),
                     {error, tx_not_found};
                 none ->
                     lager:debug("Tx location: 'none', i.e. it has been rejected. Accept error msg", []),
