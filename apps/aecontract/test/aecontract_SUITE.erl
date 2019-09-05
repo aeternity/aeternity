@@ -557,12 +557,12 @@ init_per_testcase_common(TC, Config) ->
 end_per_testcase(fate_environment, _Config) ->
     meck:unload(aefa_chain_api),
     ok;
-end_per_testcase(TC,_Cfg) when TC == sophia_aens_resolve;
-                               TC == sophia_signatures_aens;
-                               TC == sophia_aens_transactions ->
+end_per_testcase(TC, _Config) when TC == sophia_aens_resolve;
+                                   TC == sophia_signatures_aens;
+                                   TC == sophia_aens_transactions ->
     meck:unload(aec_governance),
     ok;
-end_per_testcase(_TC,_Config) ->
+end_per_testcase(_TC, _Config) ->
     ok.
 
 %%%===================================================================

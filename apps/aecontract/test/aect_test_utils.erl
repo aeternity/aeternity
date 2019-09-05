@@ -57,12 +57,13 @@
         ]).
 
 -include_lib("common_test/include/ct.hrl").
--include("../include/aecontract.hrl").
--include_lib("aecontract/include/hard_forks.hrl").
--include("include/aect_sophia_vsn.hrl").
--include("../src/aect_sophia.hrl").
--include("include/aect_contract_cache.hrl").
 -include_lib("aeutils/include/aeu_stacktrace.hrl").
+-include_lib("aecontract/include/aecontract.hrl").
+-include_lib("aecontract/include/hard_forks.hrl").
+-include_lib("aecontract/test/include/aect_sophia_vsn.hrl").
+-include_lib("aecontract/test/include/aect_contract_cache.hrl").
+-include("aect_sophia.hrl").
+
 %%%===================================================================
 %%% Test state
 %%%===================================================================

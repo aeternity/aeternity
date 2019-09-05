@@ -40,10 +40,10 @@ get_test() ->
     A1 = aec_accounts:new(K1, 10),
     K2 = <<"_______________k2_______________">>,
     T0 = aec_accounts_trees:empty(),
-    ?assertException(_, _, aec_accounts_trees:get(K1, T0)),
+    ?assertException(error, notexpected, aec_accounts_trees:get(K1, T0)),
     T1 = aec_accounts_trees:enter(A1, T0),
     ?assertEqual(A1, aec_accounts_trees:get(K1, T1)),
-    ?assertException(_, _, aec_accounts_trees:get(K2, T1)),
+    ?assertException(error, notexpected, aec_accounts_trees:get(K2, T1)),
     ok.
 
 get_all_accounts_balances_test() ->
@@ -65,7 +65,7 @@ account_for_locking_test() ->
     T0 = aec_accounts_trees:empty(),
 
     %% not present in empty tree
-    ?assertException(_, _, aec_accounts_trees:get(HolderPubKey, T0)),
+    ?assertException(error, notexpected, aec_accounts_trees:get(HolderPubKey, T0)),
 
     GetHolderBalance =
         fun(Tree) ->

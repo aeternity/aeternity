@@ -23,7 +23,6 @@
 %% diagrams</a> for a conceptual representation of this implementation.
 -module(aesc_fsm).
 
--include_lib("aeutils/include/aeu_stacktrace.hrl").
 -behaviour(gen_statem).
 
 %% API
@@ -116,6 +115,7 @@
         ]).
 
 -include_lib("aecontract/include/hard_forks.hrl").
+-include_lib("aeutils/include/aeu_stacktrace.hrl").
 -include("aesc_codec.hrl").
 -include("aesc_fsm.hrl").
 
@@ -1458,9 +1458,9 @@ new_onchain_tx_for_signing(Type, Opts, D) ->
 new_onchain_tx_for_signing(Type, Opts, OnErr, D) when OnErr == fail;
                                                       OnErr == return ->
     try new_onchain_tx_for_signing_(Type, Opts, OnErr, D)
-    ?_catch_(error, Reason, ST)
-        ?LOG_CAUGHT(Reason, ST),
-        error(Reason)
+    ?_catch_(error, E, _ST)
+        ?LOG_CAUGHT(E, _ST),
+        error(E)
     end.
 
 new_onchain_tx_for_signing_(Type, Opts, OnErr, D) ->
@@ -1694,7 +1694,7 @@ create_with_minimum_fee(Mod, Opts, CurrHeight) ->
     create_with_minimum_fee(Mod, Opts, CurrHeight, 5).
 
 create_with_minimum_fee(_, _, _, Attempts) when Attempts < 1 ->
-    erlang:error(could_not_compute_fee);
+    error(could_not_compute_fee);
 create_with_minimum_fee(Mod, Opts, CurrHeight, Attempts) ->
     {ok, Tx} = apply(Mod, new, [Opts]),
     MinTxFee = aetx:min_fee(Tx, CurrHeight),
@@ -1867,14 +1867,14 @@ new_contract_tx_for_signing(Opts, From, #data{ state = State
                 gen_statem:reply(From, Error),
                 keep_state(D)
         end
-    ?_catch_(error, Reason, ST)
-        process_update_error(Reason, From, D, ST)
+    ?_catch_(error, E, _ST)
+        process_update_error(E, From, D, _ST)
     end.
 
 pay_close_mutual_fee(Fee, IAmt, RAmt) ->
     Ceil  = trunc(math:ceil(Fee/2)),
     Floor = trunc(math:floor(Fee/2)),
-    if (IAmt + RAmt) < Fee                    -> erlang:error(insufficient_funds);
+    if (IAmt + RAmt) < Fee                    -> error(insufficient_funds);
        (IAmt >= Ceil) andalso (RAmt >= Floor) -> {IAmt - Ceil, RAmt - Floor};
        (RAmt >= Ceil) andalso (IAmt >= Floor) -> {IAmt - Floor, RAmt - Ceil};
        (IAmt > RAmt)                          -> {IAmt - Fee + RAmt, 0};
@@ -2203,8 +2203,8 @@ send_update_msg(SignedTx, Updates,
 check_update_msg(Type, Msg, D) ->
     lager:debug("check_update_msg(~p)", [Msg]),
     try check_update_msg_(Type, Msg, D)
-    ?_catch_(error, E, ST)
-        ?LOG_CAUGHT(E, ST),
+    ?_catch_(error, E, _ST)
+        ?LOG_CAUGHT(E, _ST),
         {error, E}
     end.
 
@@ -2222,8 +2222,8 @@ check_update_msg_(Type, #{ channel_id := ChanId
                 {error, _} = Err ->
                     Err
             end
-    ?_catch_(error, E, ST)
-        ?LOG_CAUGHT(E, ST),
+    ?_catch_(error, E, _ST)
+        ?LOG_CAUGHT(E, _ST),
         {error, {deserialize, E}}
     end.
 
@@ -2273,8 +2273,8 @@ check_update_tx(SignedTx, Updates, State, Opts, ChannelPubkey) ->
 check_update_ack_msg(Msg, D) ->
     lager:debug("check_update_ack_msg(~p)", [Msg]),
     try check_update_ack_msg_(Msg, D)
-    ?_catch_(error, E, ST)
-        ?LOG_CAUGHT(E, ST),
+    ?_catch_(error, E, _ST)
+        ?LOG_CAUGHT(E, _ST),
         {error, E}
     end.
 
@@ -2284,8 +2284,8 @@ check_update_ack_msg_(#{ channel_id := ChanId
     try aetx_sign:deserialize_from_binary(TxBin) of
         SignedTx ->
             check_signed_update_ack_tx(SignedTx, Msg, D)
-    ?_catch_(error, E, ST)
-        ?LOG_CAUGHT(E, ST),
+    ?_catch_(error, E, _ST)
+        ?LOG_CAUGHT(E, _ST),
         {error, {deserialize, E}}
     end.
 
@@ -2308,8 +2308,8 @@ check_signed_update_ack_tx(SignedTx, Msg,
                               log = log_msg(rcv, ?UPDATE_ACK, Msg, D#data.log)}};
               {error, _} = Err -> Err
           end
-    ?_catch_(error, E, ST)
-        ?LOG_CAUGHT(E, ST),
+    ?_catch_(error, E, _ST)
+        ?LOG_CAUGHT(E, _ST),
         {error, invalid_update_ack}
     end.
 
@@ -2350,8 +2350,8 @@ handle_upd_transfer(FromPub, ToPub, Amount, From, UOpts, #data{ state = State
                 gen_statem:reply(From, Error),
                 keep_state(D)
         end
-    ?_catch_(error, Reason, ST)
-        process_update_error(Reason, From, D, ST)
+    ?_catch_(error, E, _ST)
+        process_update_error(E, From, D, _ST)
     end.
 
 meta_updates(Opts) when is_map(Opts) ->
@@ -2560,9 +2560,9 @@ handle_recoverable_error(ErrorInfo, D) ->
     try
         D1 = send_recoverable_error_msg(ErrorInfo, fallback_to_stable_state(D)),
         next_state(open, D1)
-    ?_catch_(error, Err, ST)
-        ?LOG_CAUGHT(Err, ST),
-        erlang:error(Err)
+    ?_catch_(error, E, _ST)
+        ?LOG_CAUGHT(E, _ST),
+        error(E)
     end.
 
 send_recoverable_error_msg(#{code := ErrorCode} = Info, #data{ state = State
@@ -2937,18 +2937,18 @@ check_amounts(#{ initiator_amount   := InitiatorAmount0
         {false, false} -> {error, insufficient_amounts}
     end.
 
-process_update_error({off_chain_update_error, Reason}, From, D, ST) ->
-    ?LOG_CAUGHT(Reason, ST),
+process_update_error({off_chain_update_error, Reason}, From, D, _ST) ->
+    ?LOG_CAUGHT(Reason, _ST),
     keep_state(D, [{reply, From, {error, Reason}}]);
-process_update_error(Reason, From, D, ST) ->
-    ?LOG_CAUGHT(Reason, ST),
+process_update_error(Reason, From, D, _ST) ->
+    ?LOG_CAUGHT(Reason, _ST),
     keep_state(D, [{reply, From, {error, Reason}}]).
 
 check_closing_event(Info, D) ->
     aec_db:dirty(fun() ->
                          try check_closing_event_(Info, D)
-                         ?_catch_(error, E, ST)
-                             ?LOG_CAUGHT(E, ST),
+                         ?_catch_(error, E, _ST)
+                             ?LOG_CAUGHT(E, _ST),
                              error(E)
                          end
                  end).
@@ -3671,9 +3671,9 @@ handle_call(_, {?RECONNECT_CLIENT, Pid, Tx} = Msg, From,
 handle_call(St, Req, From, #data{} = D) ->
     lager:debug("handle_call(~p, ~p, ~p, ~p)", [St, Req, From, D]),
     try handle_call_(St, Req, From, D)
-    ?_catch_(error, Error, ST)
-        ?LOG_CAUGHT(Error, ST),
-        keep_state(D, [{reply, From, {error, Error}}])
+    ?_catch_(error, E, _ST)
+        ?LOG_CAUGHT(E, _ST),
+        keep_state(D, [{reply, From, {error, E}}])
     end;
 handle_call(_St, _Req, From, D) ->
     keep_state(D, [{reply, From, {error, unknown_request}}]).
@@ -3796,8 +3796,8 @@ handle_call_(open, {upd_call_contract, Opts, ExecType}, From,
                         keep_state(D)
                 end
          end
-    ?_catch_(error, Reason, ST)
-        process_update_error(Reason, From, D, ST)
+    ?_catch_(error, E, _ST)
+        process_update_error(E, From, D, _ST)
     end;
 handle_call_(awaiting_signature, Msg, From,
              #data{ongoing_update = true} = D)

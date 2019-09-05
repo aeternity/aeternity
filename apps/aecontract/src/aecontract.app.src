@@ -9,7 +9,8 @@
     crypto,
     aetx,
     aeserialization,
-    aebytecode
+    aebytecode,
+    aeutils
    ]},
   {env,[]},
   {modules, []},
