@@ -47,8 +47,8 @@
 -include_lib("stdlib/include/assert.hrl").
 -include_lib("common_test/include/ct.hrl").
 -include_lib("aecontract/include/hard_forks.hrl").
+-include_lib("aeutils/include/aeu_stacktrace.hrl").
 -include("../../aecontract/test/include/aect_sophia_vsn.hrl").
--include("../../aeutils/include/aeu_stacktrace.hrl").
 
 -define(NODE, dev1).
 -define(DEFAULT_TESTS_COUNT, 5).

@@ -771,7 +771,7 @@ name_claim({AccountPubkey, PlainName, NameSalt, NameFee, PreclaimDelta}, S) ->
             PreviousBidderPubkey = aens_auctions:bidder_pubkey(Auction),
             PreviousBid = aens_auctions:name_fee(Auction),
             assert_name_bid_fee(NameAscii, NameFee, S#state.height), %% just in case, consensus may have changed
-            assert_valid_overbid(Protocol, NameAscii, NameFee, aens_auctions:name_fee(Auction)),
+            assert_valid_overbid(NameFee, aens_auctions:name_fee(Auction)),
             NewAuction = aens_auctions:new(AuctionHash, AccountPubkey, NameFee, Timeout, S1#state.height),
             %% Return the tokens hold in the previous bid
             {PreviousBidderAccount, S2} = get_account(PreviousBidderPubkey, S1),
@@ -1729,7 +1729,7 @@ assert_not_name_auction(AuctionHash, S) ->
         none   -> ok
     end.
 
-assert_valid_overbid(_Protocol, _NameAscii, NewNameFee, OldNameFee) ->
+assert_valid_overbid(NewNameFee, OldNameFee) ->
     Progression = aec_governance:name_claim_bid_increment(),
     %% Stay within integer computations New bid must be Progression % higher
     %% than previous bid

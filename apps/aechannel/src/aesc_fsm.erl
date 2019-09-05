@@ -1458,8 +1458,8 @@ new_onchain_tx_for_signing(Type, Opts, D) ->
 new_onchain_tx_for_signing(Type, Opts, OnErr, D) when OnErr == fail;
                                                       OnErr == return ->
     try new_onchain_tx_for_signing_(Type, Opts, OnErr, D)
-    ?_catch_(error, Reason, StackTrace)
-        ?LOG_CAUGHT(Reason, StackTrace),
+    ?_catch_(error, Reason, ST)
+        ?LOG_CAUGHT(Reason, ST),
         error(Reason)
     end.
 
