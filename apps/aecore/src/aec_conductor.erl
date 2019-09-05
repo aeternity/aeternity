@@ -195,11 +195,13 @@ stratum_reply({Nonce, Evd}, HeaderBin) ->
 init(Options) ->
     process_flag(trap_exit, true),
     ok     = init_chain_state(),
-    TopBlockHash = aec_chain:top_block_hash(),
+    TopBlock = aec_chain:top_block(),
+    {ok, TopBlockHash} = aec_blocks:hash_internal_representation(TopBlock),
     TopKeyBlockHash = aec_chain:top_key_block_hash(),
     Consensus = #consensus{micro_block_cycle = aec_governance:micro_block_cycle(),
                            leader = false},
-    State1 = #state{ top_block_hash     = TopBlockHash,
+    State1 = #state{ top_block          = TopBlock,
+                     top_block_hash     = TopBlockHash,
                      top_key_block_hash = TopKeyBlockHash,
                      consensus          = Consensus},
     State2 = set_option(autostart, Options, State1),
@@ -240,17 +242,18 @@ handle_call({add_synced_block, Block},_From, State) ->
     {reply, Reply, State1};
 handle_call(get_key_block_candidate,_From, #state{beneficiary = undefined} = State) ->
     {reply, {error, beneficiary_not_configured}, State};
-handle_call(get_key_block_candidate,_From, State) ->
+handle_call(get_key_block_candidate,_From,
+            #state{top_block = TopBlock, top_block_hash = TopBlockHash} = State) ->
     {Res, State1} =
         case State#state.pending_key_block of
             undefined ->
-                get_pending_key_block(aec_chain:top_block_hash(), State);
+                get_pending_key_block(TopBlock, State);
             Block ->
-                case {aec_chain:top_block_hash(), aec_blocks:prev_hash(State#state.pending_key_block)} of
+                case {TopBlockHash, aec_blocks:prev_hash(State#state.pending_key_block)} of
                     {OldHash, OldHash} ->
                         {{ok, Block}, State};
-                    {NewHash, _OldHash} ->
-                        get_pending_key_block(NewHash, State)
+                    {_NewHash, _OldHash} ->
+                        get_pending_key_block(TopBlock, State)
                 end
         end,
     {reply, Res, State1};
@@ -287,9 +290,11 @@ handle_call(is_leader, _From, State = #state{ consensus = Cons }) ->
 handle_call(reinit_chain, _From, State1 = #state{ consensus = Cons }) ->
     %% NOTE: ONLY FOR TEST
     ok = reinit_chain_state(),
-    TopBlockHash = aec_chain:top_block_hash(),
+    TopBlock = aec_chain:top_block(),
+    {ok, TopBlockHash} = aec_blocks:hash_internal_representation(TopBlock),
     TopKeyBlockHash = aec_chain:top_key_block_hash(),
-    State2 = State1#state{top_block_hash = TopBlockHash,
+    State2 = State1#state{top_block = TopBlock,
+                          top_block_hash = TopBlockHash,
                           top_key_block_hash = TopKeyBlockHash},
     State =
         case State2#state.mining_state of
@@ -706,7 +711,7 @@ preempt_if_new_top(#state{ top_block_hash = OldHash,
                                              , height     => Height }),
             maybe_publish_top(Origin, NewBlock),
             aec_metrics:try_update([ae,epoch,aecore,chain,height], Height),
-            State1 = State#state{top_block_hash = NewHash},
+            State1 = State#state{top_block = NewBlock, top_block_hash = NewHash},
             KeyHash = aec_blocks:prev_key_hash(NewBlock),
             %% A new micro block from the same generation should
             %% not cause a pre-emption or full re-generation of key-block.
@@ -997,12 +1002,14 @@ create_key_block_candidate(#state{key_block_candidates = [{_, #candidate{top_has
                                   top_block_hash       = TopHash} = State) ->
     %% We have the most recent candidate already. Just start mining.
     start_mining_(State);
-create_key_block_candidate(#state{top_block_hash = TopHash,
+create_key_block_candidate(#state{top_block      = TopBlock,
+                                  top_block_hash = TopHash,
                                   beneficiary    = Beneficiary} = State) ->
     epoch_mining:info("Creating key block candidate on the top"),
-    Fun = fun() ->
-                  {aec_block_key_candidate:create(TopHash, Beneficiary), TopHash}
-          end,
+    Fun =
+        fun() ->
+                {aec_block_key_candidate:create(TopBlock, Beneficiary), TopHash}
+        end,
     {State1, _Pid} = dispatch_worker(create_key_block_candidate, Fun, State),
     State1.
 
@@ -1020,8 +1027,7 @@ handle_key_block_candidate_reply({{ok, KeyBlockCandidate}, TopHash},
                  end,
     State1 = State#state{key_block_candidates = Candidates},
     start_mining_(State1);
-handle_key_block_candidate_reply({{ok, _KeyBlockCandidate}, _OldTopHash},
-                                 #state{top_block_hash = _TopHash} = State) ->
+handle_key_block_candidate_reply({{ok, _KeyBlockCandidate}, _OldTopHash}, State) ->
     epoch_mining:debug("Created key block candidate is already stale, create a new one", []),
     create_key_block_candidate(State);
 handle_key_block_candidate_reply({{error, key_not_found}, _}, State) ->
@@ -1176,8 +1182,8 @@ setup_loop(State = #state{ consensus = Cons }, RestartMining, IsLeader, Origin) 
 
 get_pending_key_block(undefined, State) ->
     {{error, not_found}, State};
-get_pending_key_block(TopHash, #state{beneficiary = Beneficiary} = State) ->
-    case aec_block_key_candidate:create(TopHash, Beneficiary) of
+get_pending_key_block(TopBlock, #state{beneficiary = Beneficiary} = State) ->
+    case aec_block_key_candidate:create(TopBlock, Beneficiary) of
         {ok, Block} -> {{ok, Block}, State#state{ pending_key_block = Block }};
         {error, _}  -> {{error, not_found}, State}
     end.

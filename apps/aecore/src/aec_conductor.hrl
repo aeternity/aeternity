@@ -42,6 +42,7 @@
                 keys_ready              = false   :: boolean(),
                 mining_state            = stopped :: mining_state(),
                 mining_opts             = #{}     :: mining_opts(),
+                top_block                         :: aec_blocks:block() | 'undefined',
                 top_block_hash                    :: binary() | 'undefined',
                 top_key_block_hash                :: binary() | 'undefined',
                 workers                 = []      :: workers(),
