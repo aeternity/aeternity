@@ -122,13 +122,13 @@ setup_node(N, Top, Client, Cfg) ->
 
 connect(N, Timeout) when Timeout < 10000 ->
     timer:sleep(Timeout),
-    case net_kernel:hidden_connect(N) of
+    case net_kernel:hidden_connect_node(N) of
         true ->
-            ct:log("hidden_connect(~p) -> true", [N]),
+            ct:log("hidden_connect_node(~p) -> true", [N]),
             await_status(N, 5),
             true;
         false ->
-            ct:log("hidden_connect(~p) -> false, retrying ...", [N]),
+            ct:log("hidden_connect_node(~p) -> false, retrying ...", [N]),
             connect(N, Timeout * 2)
     end;
 connect(N, _) ->
