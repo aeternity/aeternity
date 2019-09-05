@@ -113,7 +113,7 @@ sync_fork_in_wrong_order(Config) ->
     timer:sleep(100),
     %% unexepctedly last block of dev1 arrives before rest of the chain
     %% This is no longer allowed, so it should fail.
-    ?assertMatch({error, {illegal_orphan, _}},
+    ?assertMatch({error, orphan_block_not_allowed},
                   rpc:call(N2, aec_conductor, post_block, [N1Top], 5000)),
 
     T0 = os:timestamp(),
@@ -124,5 +124,3 @@ sync_fork_in_wrong_order(Config) ->
       fun() -> rpc:call(N2, aec_chain, top_block, [], 5000) end,
       N1Top),
     ok.
-
-

@@ -236,12 +236,13 @@ chain_test_() ->
      ]}.
 
 test_start_mining_add_block() ->
-    Keys = beneficiary_keys(),
     %% Assert preconditions
-    assert_stopped_and_genesis_at_top(),
+    Chain0 = assert_stopped_and_genesis_at_top(),
+
+    [B1, B2] = aec_test_utils:blocks_only_chain(
+                 aec_test_utils:extend_block_chain_with_key_blocks(Chain0, 2)),
 
     ?TEST_MODULE:start_mining(),
-    [_GB, B1, B2] = aec_test_utils:gen_blocks_only_chain(3, preset_accounts(Keys)),
     BH2 = aec_blocks:to_header(B2),
     ?assertEqual(ok, ?TEST_MODULE:post_block(B1)),
     ?assertEqual(ok, ?TEST_MODULE:post_block(B2)),
@@ -250,12 +251,12 @@ test_start_mining_add_block() ->
       BH2).
 
 test_preemption_pushed() ->
-    Keys = beneficiary_keys(),
     %% Assert preconditions
-    assert_stopped_and_genesis_at_top(),
+    Chain0 = assert_stopped_and_genesis_at_top(),
 
-    %% Generate a chain
-    Chain = aec_test_utils:gen_blocks_only_chain(7, preset_accounts(Keys)),
+    Chain = aec_test_utils:blocks_only_chain(
+              aec_test_utils:extend_block_chain_with_key_blocks(Chain0, 6)),
+
     {Chain1, Chain2} = lists:split(3, Chain),
     Top1 = lists:last(Chain1),
     Top2 = lists:last(Chain2),
@@ -285,12 +286,12 @@ test_preemption_pushed() ->
     ok.
 
 test_preemption_pulled() ->
-    Keys = beneficiary_keys(),
     %% Assert preconditions
-    assert_stopped_and_genesis_at_top(),
+    Chain0 = assert_stopped_and_genesis_at_top(),
 
-    %% Generate a chain
-    Chain = aec_test_utils:gen_blocks_only_chain(7, preset_accounts(Keys)),
+    Chain = aec_test_utils:blocks_only_chain(
+              aec_test_utils:extend_block_chain_with_key_blocks(Chain0, 6)),
+
     {Chain1, Chain2} = lists:split(3, Chain),
     Top1 = lists:last(Chain1),
     Top2 = lists:last(Chain2),
@@ -321,11 +322,9 @@ test_preemption_pulled() ->
 -define(error_atom, {error, A} when is_atom(A)).
 
 test_chain_genesis_state() ->
-    Keys = beneficiary_keys(),
     %% Assert preconditions
-    assert_stopped_and_genesis_at_top(),
+    [{GB, GBS}] = assert_stopped_and_genesis_at_top(),
 
-    {GB, GBS} = aec_test_utils:genesis_block_with_state(preset_accounts(Keys)),
     GH = aec_blocks:to_header(GB),
     GHH = header_hash(GH),
 
@@ -341,6 +340,7 @@ test_chain_genesis_state() ->
     ?assertEqual(GHH, aec_chain:top_block_hash()),
 
     %% Check chain state functions
+    Keys = beneficiary_keys(),
     GenesisAccountsBalances = aec_test_utils:genesis_accounts_balances(preset_accounts(Keys)),
     ?assertEqual({ok, GenesisAccountsBalances},
                  aec_chain:all_accounts_balances_at_hash(GHH)),
@@ -352,13 +352,13 @@ test_chain_genesis_state() ->
     ok.
 
 test_block_publishing() ->
-    Keys = beneficiary_keys(),
     %% Assert preconditions
-    assert_stopped_and_genesis_at_top(),
+    Chain0 = assert_stopped_and_genesis_at_top(),
 
     %% Generate a chain
-    [_B0, B1, B2, B3, B4, B5] = Chain = aec_test_utils:gen_blocks_only_chain(6, preset_accounts(Keys)),
-    [_H0, H1, H2, H3, H4, H5] = [block_hash(B) || B <- Chain],
+    [B1, B2, B3, B4, B5] = Chain =
+        aec_test_utils:blocks_only_chain(aec_test_utils:extend_block_chain_with_key_blocks(Chain0, 5)),
+    [H1, H2, H3, H4, H5] = [block_hash(B) || B <- Chain],
 
     aec_events:subscribe(block_to_publish),
     aec_events:subscribe(top_changed),
@@ -548,9 +548,10 @@ assert_stopped_and_genesis_at_top() ->
     assert_stopped(),
     Keys = beneficiary_keys(),
     Preset = preset_accounts(Keys),
-    {Genesis, _} = aec_test_utils:genesis_block_with_state(Preset),
+    {Genesis, State} = aec_test_utils:genesis_block_with_state(Preset),
     ?assertEqual(aec_chain:top_block_hash(),
-                 header_hash( aec_blocks:to_header( Genesis ))).
+                 header_hash(aec_blocks:to_header(Genesis))),
+    [{Genesis, State}].
 
 assert_leader(Value) ->
     ?assertEqual(Value, ?TEST_MODULE:is_leader()).

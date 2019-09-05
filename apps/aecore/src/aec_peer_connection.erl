@@ -1298,7 +1298,7 @@ validate_connected_to_chain(MicroHeader) ->
     case aec_chain_state:hash_is_connected_to_genesis(
             aec_headers:prev_hash(MicroHeader)) of
         true -> ok;
-        false -> {error, orphan_blocks_not_allowed}
+        false -> {error, orphan_block_not_allowed}
     end.
 
 validate_delta_height(MicroHeader) ->
@@ -1335,7 +1335,7 @@ validate_prev_key_block(MicroHeader) ->
                     end
             end;
         none ->
-            {error, orphan_blocks_not_allowed}
+            {error, orphan_block_not_allowed}
     end.
 
 validate_micro_signature(MicroHeader) ->

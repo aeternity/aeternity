@@ -62,9 +62,8 @@ write_chain_test_() ->
      end,
      [{"Write a block to chain and read it back.",
        fun() ->
+               %% Genesis block is already in the db.
                GB = aec_test_utils:genesis_block(),
-               ok = aec_conductor:post_block(GB),
-
                Hash = block_hash(GB),
 
                Block = aec_db:get_block(Hash),
@@ -217,4 +216,3 @@ persisted_valid_gen_block_test_() ->
             ok
        end}
      ]}.
-

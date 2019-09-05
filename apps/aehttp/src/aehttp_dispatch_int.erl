@@ -59,6 +59,8 @@ handle_request_('PostKeyBlock', #{'KeyBlock' := Data}, _Context) ->
             case aec_conductor:post_block(KeyBlock) of
                 ok ->
                     {200, [], #{}};
+                {error, pending_protocol} ->
+                    {503, [], #{reason => <<"Fork signalling result computation in progress">>}};
                 {error, _Rsn} ->
                     {400, [], #{reason => <<"Block rejected">>}}
             end;
@@ -407,4 +409,3 @@ handle_request_(OperationID, Req, Context) ->
       [{OperationID, Req, Context}]
      ),
     {501, [], #{}}.
-

@@ -143,17 +143,27 @@ is_leader() ->
 
 -spec post_block(aec_blocks:block()) -> 'ok' | {'error', any()}.
 post_block(Block) ->
-    Height = aec_blocks:height(Block),
-    {ok, Version} = aec_hard_forks:protocol_effective_at_height(Height),
-    case aec_validation:validate_block(Block, Version) of
-        ok ->
-            gen_server:call(?SERVER, {post_block, Block}, 30000);
-        {error, {header, Reason}} ->
-            epoch_mining:info("Header failed validation: ~p", [Reason]),
-            {error, Reason};
-        {error, {block, Reason}} ->
-            epoch_mining:info("Block failed validation: ~p", [Reason]),
-            {error, Reason}
+    PrevBlockHash = aec_blocks:prev_hash(Block),
+    case aec_chain_state:hash_is_connected_to_genesis(PrevBlockHash) of
+        true ->
+            Height = aec_blocks:height(Block),
+            case aec_hard_forks:protocol_effective_at_height(Height) of
+                {ok, Protocol} ->
+                    case aec_validation:validate_block(Block, Protocol) of
+                        ok ->
+                            gen_server:call(?SERVER, {post_block, Block}, 30000);
+                        {error, {header, Reason}} ->
+                            epoch_mining:info("Header failed validation: ~p", [Reason]),
+                            {error, Reason};
+                        {error, {block, Reason}} ->
+                            epoch_mining:info("Block failed validation: ~p", [Reason]),
+                            {error, Reason}
+                    end;
+                {error, _Reason} = Error ->
+                    Error
+            end;
+        false ->
+            {error, orphan_block_not_allowed}
     end.
 
 -spec add_synced_block(aec_blocks:block()) -> 'ok' | {'error', any()}.
@@ -178,7 +188,7 @@ add_synced_block(Block) ->
                     Error
             end;
         false ->
-            {error, orphan_blocks_not_allowed}
+            {error, orphan_block_not_allowed}
     end.
 
 -spec get_key_block_candidate() -> {'ok', aec_blocks:block()} | {'error', atom()}.
