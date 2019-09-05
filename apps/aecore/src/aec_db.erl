@@ -100,7 +100,7 @@
 
 -include("blocks.hrl").
 -include("aec_db.hrl").
--include("../../aeutils/include/aeu_stacktrace.hrl").
+-include_lib("aeutils/include/aeu_stacktrace.hrl").
 
 %% - transactions
 %% - headers

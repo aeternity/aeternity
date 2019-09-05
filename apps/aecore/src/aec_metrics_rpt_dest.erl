@@ -31,7 +31,7 @@
 -define(TAB, ?MODULE).
 -define(SERVER, ?MODULE).
 
--include("../../aeutils/include/aeu_stacktrace.hrl").
+-include_lib("aeutils/include/aeu_stacktrace.hrl").
 
 get_destinations(Name, DP) ->
     %% TODO: come up with a more efficient handling of default datapoints

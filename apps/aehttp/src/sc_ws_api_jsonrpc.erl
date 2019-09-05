@@ -61,7 +61,7 @@
                                 <<"channels.settle_sign">>        -> settle_tx
                             end).
 
--include("../../aeutils/include/aeu_stacktrace.hrl").
+-include_lib("aeutils/include/aeu_stacktrace.hrl").
 
 %%%==================================================================
 %%% Trace settings

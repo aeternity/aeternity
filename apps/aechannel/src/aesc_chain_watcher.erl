@@ -18,7 +18,7 @@
 %% Fetching tx history
 -export([get_txs_since/2]).
 
--include("../../aeutils/include/aeu_stacktrace.hrl").
+-include_lib("aeutils/include/aeu_stacktrace.hrl").
 
 -define(GEN_SERVER_OPTS, []).
 -define(IS_INFO_OF_SCENARIO_HAS_TX(X),

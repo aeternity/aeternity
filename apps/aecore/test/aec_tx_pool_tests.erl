@@ -7,7 +7,7 @@
 
 -include_lib("eunit/include/eunit.hrl").
 -include("../../aecontract/include/aecontract.hrl").
--include("../../aeutils/include/aeu_stacktrace.hrl").
+-include_lib("aeutils/include/aeu_stacktrace.hrl").
 -include("../../aecontract/include/hard_forks.hrl").
 
 -define(TAB, aec_tx_pool_test_keys).

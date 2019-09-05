@@ -20,7 +20,7 @@
     validator :: jesse_state:state()
 }).
 
--include("../../aeutils/include/aeu_stacktrace.hrl").
+-include_lib("aeutils/include/aeu_stacktrace.hrl").
 
 -define(DEFAULT_HTTP_CACHE_ENABLED, false).
 

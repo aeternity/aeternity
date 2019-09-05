@@ -8,7 +8,7 @@
 -export([application_test/1]).
 
 -include_lib("common_test/include/ct.hrl").
--include("../../aeutils/include/aeu_stacktrace.hrl").
+-include_lib("aeutils/include/aeu_stacktrace.hrl").
 -compile({parse_transform, ct_eunit_xform}).
 
 -define(STARTED_APPS_WHITELIST,

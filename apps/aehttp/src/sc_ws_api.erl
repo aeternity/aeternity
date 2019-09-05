@@ -19,7 +19,7 @@
 -export([patterns/0]).
 
 -include_lib("trace_runner/include/trace_runner.hrl").
--include("../../aeutils/include/aeu_stacktrace.hrl").
+-include_lib("aeutils/include/aeu_stacktrace.hrl").
 
 
 %%%===================================================================

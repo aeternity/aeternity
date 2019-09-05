@@ -62,7 +62,7 @@
 -include("include/aect_sophia_vsn.hrl").
 -include("../src/aect_sophia.hrl").
 -include("include/aect_contract_cache.hrl").
--include("../../aeutils/include/aeu_stacktrace.hrl").
+-include_lib("aeutils/include/aeu_stacktrace.hrl").
 %%%===================================================================
 %%% Test state
 %%%===================================================================

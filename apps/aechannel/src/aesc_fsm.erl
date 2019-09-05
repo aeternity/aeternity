@@ -23,7 +23,7 @@
 %% diagrams</a> for a conceptual representation of this implementation.
 -module(aesc_fsm).
 
--include("../../aeutils/include/aeu_stacktrace.hrl").
+-include_lib("aeutils/include/aeu_stacktrace.hrl").
 -behaviour(gen_statem).
 
 %% API
