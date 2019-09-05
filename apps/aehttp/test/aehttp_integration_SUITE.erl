@@ -10,6 +10,23 @@
 -import(aecore_suite_utils, [http_request/4, httpc_request/4, process_http_return/1]).
 -import(aecore_suite_utils, [internal_address/0, external_address/0, rpc/3, rpc/4]).
 
+%% exports for another suites
+-export([
+         start_node/2,
+         stop_node/2,
+         end_per_testcase_all/1,
+         sign_and_post_tx/2,
+         get_transactions_by_hash_sut/1,
+         wait_for_tx_hash_on_chain/1,
+         %% account handling
+         initialize_account/1,
+         get_accounts_by_pubkey_sut/1,
+         %% naming
+         get_names_entry_by_name_sut/1,
+         get_name_preclaim/1, get_commitment_id/2, get_name_claim/1
+        ]
+       ).
+
 %% common_test exports
 -export(
    [
