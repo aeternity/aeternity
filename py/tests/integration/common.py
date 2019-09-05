@@ -31,7 +31,7 @@ INT_API = {}
 def create_client(node_name, port):
     node_config = config['nodes'][node_name]
     url = 'http://' + node_config['host'] + ':' + str(node_config['ports'][port]) + '/api'
-    client_config = {'validate_responses': False, 'validate_swagger_spec': False}
+    client_config = {'validate_responses': False}
     return SwaggerClient.from_url(url, config=client_config)
 
 def external_api(name):
