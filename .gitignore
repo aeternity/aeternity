@@ -19,8 +19,8 @@ py/lib
 py/local
 py/man
 py/pip-selfcheck.json
-py/tests/swagger_client
 py/share
+py/.Python
 nosetests.xml
 *.pyc
 .chain
@@ -37,11 +37,8 @@ apps/aefate/aefate
 apps/aefate/aefateasm
 apps/aefate/aefateasm.cmd
 apps/aefate/src/aefa_fate_eval.erl
-apps/aehttp/priv/swagger-docs
-apps/aehttp/priv/swagger-ui
 apps/aeutils/src/endpoints.erl
 otp_patches/*.erl
-swagger/swagger-codegen-cli-*.jar
 *.erl~
 *.aes~
 .virtualenv/

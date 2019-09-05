@@ -52,7 +52,7 @@ get_api(Config) ->
     aecore_suite_utils:connect(aecore_suite_utils:node_name(?NODE)),
 
     SpecFile = filename:join([proplists:get_value(top_dir, Config),
-                              "apps/aehttp/priv/swagger.json"]),
+                              "apps/aehttp/priv/swagger.yaml"]),
 
     Host = aecore_suite_utils:external_address(),
     URL = binary_to_list(iolist_to_binary([Host, "/api"])),
@@ -60,7 +60,9 @@ get_api(Config) ->
 
     {ok, {{"HTTP/1.1", 200, "OK"}, _, Json}} = Repl1,
     ct:log("~p returned spec: ~p", [?NODE, Json]),
-    {ok, Spec} = file:read_file(SpecFile),
+    Yamls = yamerl_constr:file(SpecFile, [str_node_as_binary]),
+    Yaml = lists:last(Yamls),
+    Spec = jsx:prettify(jsx:encode(Yaml)),
     ct:log("read spec file ~s", [SpecFile]),
 
     JsonObj = jsx:decode(Spec),

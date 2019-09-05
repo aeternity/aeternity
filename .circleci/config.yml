@@ -586,7 +586,7 @@ jobs:
           paths:
             - *container_otp_plt
       - run: make dialyzer
-      - run: make python-env && make swagger-check
+      - run: make python-env
       - run: ./rebar3 xref || true
       - run:
           name: Check OTP version (for effective CI caching)
@@ -680,18 +680,6 @@ jobs:
               envdir /secrets aws s3 cp --acl public-read ${PACKAGE_TARBALL:?} s3://${S3_BUILDS_BUCKET:?}/aeternity-latest-${PKG_SUFFIX:?}.tar.gz
             fi
       - *fail_notification
-
-  deploy_api_docs:
-    executor: builder_container_stable
-    <<: *container_config
-    steps:
-      - checkout
-      - add_ssh_keys:
-          fingerprints:
-            - "8b:3c:dd:50:78:e0:3b:a7:39:4e:7d:6e:0c:f9:fd:f6"
-      - run:
-          name: Deploy API docs
-          command: ./deployment/deploy_api_docs.sh
 
   osx_package:
     macos:
@@ -1423,15 +1411,6 @@ workflows:
           context: ae-node-builds
           requires:
             - osx_package
-            - hodl_latest
-          filters:
-            branches:
-              ignore: /.*/
-            tags:
-              only: *tag_regex
-
-      - deploy_api_docs:
-          requires:
             - hodl_latest
           filters:
             branches:

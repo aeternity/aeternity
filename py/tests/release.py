@@ -11,10 +11,9 @@ import time
 import urllib3
 from waiting import wait
 
-from swagger_client.rest import ApiException
-from swagger_client.api.external_api import ExternalApi
-from swagger_client.api_client import ApiClient
-from swagger_client.configuration import Configuration
+from bravado.client import SwaggerClient
+from bravado.exception import HTTPNotFound
+from requests.exceptions import ConnectionError
 
 # these are executed for every node
 NODE_SETUP_COMMANDS = [
@@ -23,7 +22,7 @@ NODE_SETUP_COMMANDS = [
 # node's setup
 SETUP = {
         "node1": {
-            "host": "localhost:9813/v2",
+            "api_url": "http://localhost:9813/api",
             "listen_address": "0.0.0.0:9813",
             "name": "aeternity1",
             "user_config": '''
@@ -72,7 +71,7 @@ fork_management:
                 ]
                 },
         "node2": {
-            "host": "localhost:9823/v2",
+            "api_url": "http://localhost:9823/api",
             "listen_address": "0.0.0.0:9823",
             "name": "aeternity2",
             "user_config": '''
@@ -119,7 +118,7 @@ fork_management:
                 ]
                 },
         "node3": {
-            "host": "localhost:9833/v2",
+            "api_url": "http://localhost:9833/api",
             "listen_address": "0.0.0.0:9833",
             "name": "aeternity3",
             "user_config": '''
@@ -167,25 +166,34 @@ fork_management:
                 }
         }
 
-def node_is_online(api):
+EXT_API = {}
+def external_api(name):
+    if not name in EXT_API:
+        url = SETUP[name]['api_url']
+        client_config = {'validate_responses': False, 'validate_swagger_spec': False}
+        EXT_API[name] = SwaggerClient.from_url(url, config=client_config).external
+    return EXT_API[name]
+
+def node_is_online(name):
     try:
-        top = api.get_top_block()
-        return top.key_block.height > -1
-    except Exception as e:
+        ext_api = external_api(name)
+        top = ext_api.GetCurrentKeyBlock().response().result
+        return top.height > -1
+    except ConnectionError as e:
         return False
 
 def node_has_version(api):
     try:
-        status = api.get_status()
+        status = api.GetStatus().response().result
         return len(status.node_version) > 0 and len(status.node_revision) > 0
     except Exception as e:
         return False
 
-def wait_all_nodes_are_online(apis, timeout_seconds):
-    wait(lambda: all([node_is_online(api) for api in apis]), timeout_seconds, sleep_seconds=1)
+def wait_all_nodes_are_online(names, timeout_seconds):
+    wait(lambda: all([node_is_online(name) for name in names]), timeout_seconds, sleep_seconds=1)
 
-def wait_all_nodes_are_offline(apis, timeout_seconds):
-    wait(lambda: not any([node_is_online(api) for api in apis]), timeout_seconds, sleep_seconds=1)
+def wait_all_nodes_are_offline(names, timeout_seconds):
+    wait(lambda: not any([node_is_online(name) for name in names]), timeout_seconds, sleep_seconds=1)
 
 def executable(temp_dir):
     filename = os.path.join(temp_dir, package_basepath(), "bin", "aeternity")
@@ -340,15 +348,13 @@ def main(argv):
     [setup_node(n, d, curr_dir, version) for n, d in zip(node_names, node_dirs)]
     [start_node(n, d) for n, d in zip(node_names, node_dirs)]
 
+    wait_all_nodes_are_online(node_names, 30)
+
     node_objs = []
     for n in node_names:
-        empty_config = Configuration()
-        empty_config.host = SETUP[n]["host"]
-        node_objs.append(ExternalApi(ApiClient(configuration=empty_config)))
+        node_objs.append(external_api(n))
 
-    wait_all_nodes_are_online(node_objs, 30)
-
-    top = node_objs[0].get_top_block()
+    top = node_objs[0].GetTopBlock().response().result
     height = top.key_block.height
     max_height = blocks_to_mine + height
     test_failed = False
@@ -359,11 +365,11 @@ def main(argv):
             time.sleep(1) # check every second
             sync_height = max_height
             for name, node in zip(node_names, node_objs):
-                top = node.get_top_block() # node is alive and mining
+                top = node.GetTopBlock().response().result # node is alive and mining
                 print("[" + name + "] height=" + str(top.key_block.height))
                 sync_height = min(sync_height, top.key_block.height)
             print("")
-    except ApiException as e:
+    except ConnectionError as e:
         test_failed = True
         print("node died")
     except urllib3.exceptions.MaxRetryError as e:
@@ -376,14 +382,14 @@ def main(argv):
             test_failed = True
 
     [stop_node(n, d) for n, d in zip(node_names, node_dirs)]
-    wait_all_nodes_are_offline(node_objs, 10)
+    wait_all_nodes_are_offline(node_names, 10)
 
     if not test_failed:
         print("Checking that nodes are able to start with persisted non-empty DB")
         [start_node(n, d) for n, d in zip(node_names, node_dirs)]
-        wait_all_nodes_are_online(node_objs, 60)
+        wait_all_nodes_are_online(node_names, 60)
         [stop_node(n, d) for n, d in zip(node_names, node_dirs)]
-        wait_all_nodes_are_offline(node_objs, 10)
+        wait_all_nodes_are_offline(node_names, 10)
 
     if test_failed:
         for name, node_dir in zip(node_names, node_dirs):

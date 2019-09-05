@@ -3,10 +3,10 @@
 import tempfile
 import os
 import shutil
-from nose.tools import assert_equals, assert_not_equals, assert_true, with_setup
-import common
+from nose.tools import assert_equals, assert_true
 from waiting import wait
-from swagger_client.models.peers import Peers
+
+import common
 
 settings = common.test_settings(__name__.split(".")[-1])
 
@@ -31,7 +31,7 @@ def test_syncing():
     blocks_to_mine = test_settings["blocks_to_mine"]
     print("Bob is mining")
     common.wait_until_height(bob_api, blocks_to_mine)
-    bob_top = bob_api.get_current_key_block()
+    bob_top = bob_api.GetCurrentKeyBlock().response().result
     assert_equals(bob_top.height >= blocks_to_mine, True)
     # Now Bob has at least blocks_to_mine blocks
     print("Bob has mined " + str(bob_top.height) + " blocks")
@@ -43,10 +43,10 @@ def test_syncing():
     print("Alice is not mining")
     alice_api = common.external_api(alice_node)
     common.wait_until_height(alice_api, blocks_to_mine)
-    alice_top = alice_api.get_current_key_block()
+    alice_top = alice_api.GetCurrentKeyBlock().response().result
     assert_equals(alice_top.height >= blocks_to_mine, True)
     if alice_top.height > bob_top.height: # bob had mined more blocks
-        bob_block = bob_api.get_key_block_by_hash(alice_top.hash) # this block is presnet
+        bob_block = bob_api.GetKeyBlockByHash(hash=alice_top.hash).response().result # this block is present
         assert_equals(bob_block.height, alice_top.height)
     else:
         assert_equals(alice_top.height, bob_top.height)
@@ -104,17 +104,17 @@ mining:
     # Insert some blocks in Bob's chain
     blocks_to_mine = test_settings["blocks_to_mine"]
     common.wait_until_height(bob_api, blocks_to_mine)
-    bob_top = bob_api.get_current_key_block()
+    bob_top = bob_api.GetCurrentKeyBlock().response().result
     assert_equals(bob_top.height >= blocks_to_mine, True)
     # Now Bob has at least blocks_to_mine blocks
 
     common.stop_node(bob_node)
 
     common.start_node(bob_node, minimal_user_config_with_persistence)
-    bob_new_top = bob_api.get_current_key_block()
+    bob_new_top = bob_api.GetCurrentKeyBlock().response().result
     if(bob_new_top.height > bob_top.height):
         # Bob's node had mined another block(s) before being stopped
-        bob_block = bob_api.get_key_block_by_hash(bob_top.hash) # this block is presnet
+        bob_block = bob_api.GetKeyBlockByHash(hash=bob_top.hash).response().result # this block is present
         assert_equals(bob_block.height, bob_top.height)
     else:
         assert_equals(bob_new_top.height, bob_top.height)
@@ -164,7 +164,7 @@ peers:
     # Insert some blocks in Alice's chain
     blocks_to_mine = test_settings["blocks_to_mine"]
     common.wait_until_height(alice_api, blocks_to_mine)
-    alice_top = alice_api.get_current_key_block()
+    alice_top = alice_api.GetCurrentKeyBlock().response().result
     assert_true(alice_top.height >= blocks_to_mine)
     # Now Alice has at least blocks_to_mine blocks
 
@@ -175,7 +175,8 @@ peers:
     # Check that Carol syncs with Alice's chain
     carol_api = common.external_api(carol_node)
     common.wait_until_height(carol_api, alice_top.height)
-    assert_equals(carol_api.get_key_block_by_hash(alice_top.hash).height, alice_top.height)
+    carol_key_block = carol_api.GetKeyBlockByHash(hash=alice_top.hash).response().result
+    assert_equals(carol_key_block.height, alice_top.height)
 
     # Check that Carol discovers Alice as a peer
     carol_int_api = common.internal_api(carol_node)
@@ -229,7 +230,7 @@ peers:
     # Insert some blocks in Alice's chain
     blocks_to_mine = test_settings["blocks_to_mine"]
     common.wait_until_height(alice_api, blocks_to_mine)
-    alice_top = alice_api.get_current_key_block()
+    alice_top = alice_api.GetCurrentKeyBlock().response().result
     assert_true(alice_top.height >= blocks_to_mine)
     # Now Alice has at least blocks_to_mine blocks
 
@@ -240,7 +241,8 @@ peers:
     # Check that Carol syncs with Alice's chain
     carol_api = common.external_api(carol_node)
     common.wait_until_height(carol_api, alice_top.height)
-    assert_equals(carol_api.get_key_block_by_hash(alice_top.hash).height, alice_top.height)
+    carol_key_block = carol_api.GetKeyBlockByHash(hash=alice_top.hash).response().result
+    assert_equals(carol_key_block.height, alice_top.height)
 
     # Check that Carol discovers Alice as a peer
     carol_int_api = common.internal_api(carol_node)
@@ -341,6 +343,6 @@ mining:
     return common.install_user_config(root_dir, file_name, conf)
 
 def get_peers(int_api):
-    peers = int_api.get_peers().peers
+    peers = int_api.GetPeers().response().result.peers
     print("Peers: " + str(peers))
     return peers

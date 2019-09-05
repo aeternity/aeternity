@@ -16,9 +16,6 @@ EQC_EUNIT_TEST_FLAGS ?=
 EQC_EUNIT_TESTING_TIME_MULTIPLIER ?= 1
 EQC_EUNIT_TEST_FLAGS_FINAL = $(EQC_EUNIT_TEST_FLAGS)
 
-SWAGGER_CODEGEN_CLI_V = 2.4.4
-SWAGGER_CODEGEN_CLI = swagger/swagger-codegen-cli-$(SWAGGER_CODEGEN_CLI_V).jar
-SWAGGER_CODEGEN = java -jar $(SWAGGER_CODEGEN_CLI)
 SWAGGER_ENDPOINTS_SPEC = apps/aeutils/src/endpoints.erl
 
 PACKAGE_SPEC_WIN32 ?= ../ci/appveyor/package.cfg
@@ -99,9 +96,6 @@ PYTHON_TESTS = $(PYTHON_DIR)/tests
 
 export AEVM_EXTERNAL_TEST_DIR=aevm_external
 export AEVM_EXTERNAL_TEST_VERSION=348b0633f4a6ee3c100368bf0f4fca71394b4d01
-
-HTTP_APP = apps/aehttp
-SWTEMP := $(shell mktemp -d 2>/dev/null || mktemp -d -t 'mytmpdir')
 
 console:
 	@$(REBAR) as local shell --config config/dev.config --sname aeternity@localhost
@@ -375,52 +369,17 @@ eqc-lib/eqc.zip.unchecked:
 python-env:
 	( cd $(PYTHON_DIR) && $(MAKE) env; )
 
-python-uats: swagger
+python-uats:
 	( cd $(PYTHON_DIR) && $(MAKE) uats; )
 
-python-single-uat: swagger
+python-single-uat:
 	( cd $(PYTHON_DIR) && TEST_NAME=$(TEST_NAME) $(MAKE) single-uat; )
 
-python-release-test: swagger
+python-release-test:
 	( cd $(PYTHON_DIR) && WORKDIR="$(WORKDIR)" PACKAGE=$(PACKAGE) VER=$(VER) $(MAKE) release-test; )
 
 python-package-win32-test:
 	( cd $(PYTHON_DIR) && WORKDIR="$(WORKDIR)" PACKAGESPECFILE=$(PACKAGE_SPEC_WIN32) $(MAKE) package-win32-test; )
-
-swagger: config/swagger.yaml $(SWAGGER_CODEGEN_CLI) $(SWAGGER_ENDPOINTS_SPEC)
-	@$(SWAGGER_CODEGEN) generate -i $< -l erlang-server -o $(SWTEMP)
-	@echo "Swagger tempdir: $(SWTEMP)"
-	@( mkdir -p $(HTTP_APP)/priv && cp $(SWTEMP)/priv/swagger.json $(HTTP_APP)/priv/; )
-	@( cd $(HTTP_APP) && $(MAKE) updateswagger; )
-	@rm -fr $(SWTEMP)
-	@$(SWAGGER_CODEGEN) generate -i $< -l python -o $(SWTEMP) \
-		--import-mappings GAObject="from swagger_client.models.hack_ga_object import GAObject" \
-		--import-mappings DryRunInput="from swagger_client.models.hack_dry_run_input import DryRunInput"
-	@echo "Swagger python tempdir: $(SWTEMP)"
-	@cp -r $(SWTEMP)/swagger_client $(PYTHON_TESTS)
-	@cp $(PYTHON_DIR)/hack_ga_object.py $(PYTHON_TESTS)/swagger_client/models
-	@cp $(PYTHON_DIR)/hack_dry_run_input.py $(PYTHON_TESTS)/swagger_client/models
-	@rm -fr $(SWTEMP)
-
-swagger-docs:
-	(cd ./apps/aehttp && $(MAKE) swagger-docs);
-
-swagger-version-check:
-	@( cd $(PYTHON_DIR) && \
-		VERSION="$(CURDIR)/VERSION" \
-		SWAGGER_YAML=$(CURDIR)/config/swagger.yaml \
-		SWAGGER_JSON=$(CURDIR)/apps/aehttp/priv/swagger.json \
-		$(MAKE) swagger-version-check )
-
-swagger-check: swagger-version-check
-	./swagger/check \
-		"$(CURDIR)/config/swagger.yaml" \
-		"swagger" \
-		"$(CURDIR)/apps/aehttp/priv/swagger.json" \
-		"$(CURDIR)/py/tests/swagger_client"
-
-$(SWAGGER_CODEGEN_CLI):
-	curl -fsS --create-dirs -o $@ http://central.maven.org/maven2/io/swagger/swagger-codegen-cli/$(SWAGGER_CODEGEN_CLI_V)/swagger-codegen-cli-$(SWAGGER_CODEGEN_CLI_V).jar
 
 rebar-lock-check:
 	./scripts/rebar_lock_check \
@@ -439,7 +398,6 @@ clean:
 	@$(REBAR) clean
 	@-rm REVISION
 	@-rm $(SWAGGER_ENDPOINTS_SPEC)
-	( cd $(HTTP_APP) && $(MAKE) clean; )
 	@$(MAKE) multi-distclean
 	@$(MAKE) eqc-clean
 	@rm -rf _build/system_test+test _build/system_test _build/test _build/prod _build/local
@@ -455,7 +413,6 @@ eqc-clean:
 ## Do not delete `eqc`.
 distclean: clean
 	( cd otp_patches && $(MAKE) distclean; )
-	( cd $(HTTP_APP) && $(MAKE) distclean; )
 	@rm -rf _build/
 
 multi-build: dev1-build
@@ -550,7 +507,6 @@ test-arch-os-dependencies:
 	test-arch-os-dependencies \
 	kill killall \
 	clean distclean \
-	swagger swagger-docs swagger-check swagger-version-check \
 	build-uml \
 	rebar-lock-check \
 	python-env python-ws-test python-uats python-single-uat python-release-test python-package-win32-test \

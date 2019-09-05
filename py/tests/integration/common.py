@@ -10,14 +10,9 @@ import base64
 import nacl.encoding
 import subprocess
 
-from swagger_client.rest import ApiException
-from swagger_client.api.external_api import ExternalApi
-from swagger_client.api.internal_api import InternalApi
-from swagger_client.api_client import ApiClient
-from swagger_client.models.account import Account
-from swagger_client.models.tx import Tx
-from swagger_client.models.spend_tx import SpendTx
-from swagger_client.configuration import Configuration
+from bravado.client import SwaggerClient
+from bravado.exception import HTTPNotFound
+from requests.exceptions import ConnectionError
 
 from nose.tools import assert_equals
 from nose.tools import assert_true
@@ -31,35 +26,52 @@ import rlp
 import integration.keys
 
 EXT_API = {}
-for node, node_config in config['nodes'].iteritems():
-    empty_config = Configuration()
-    empty_config.host = node_config['host'] + ':' + str(node_config['ports']['external_api']) + '/v2'
-    EXT_API[node] = ExternalApi(ApiClient(empty_config))
-
 INT_API = {}
-for node, node_config in config['nodes'].iteritems():
-    empty_config = Configuration()
-    empty_config.host = node_config['host'] + ':' + str(node_config['ports']['internal_api']) + '/v2'
-    INT_API[node] = InternalApi(ApiClient(empty_config))
+
+def create_client(node_name, port):
+    node_config = config['nodes'][node_name]
+    url = 'http://' + node_config['host'] + ':' + str(node_config['ports'][port]) + '/api'
+    client_config = {'validate_responses': False, 'validate_swagger_spec': False}
+    return SwaggerClient.from_url(url, config=client_config)
 
 def external_api(name):
+    if not name in EXT_API:
+        client = create_client(name, 'external_api')
+        api = client.external
+        def get_model(model):
+            return client.get_model(model)
+
+        api.get_model = get_model
+        EXT_API[name] = api
+
     return EXT_API[name]
 
 def internal_api(name):
+    if not name in INT_API:
+        client = create_client(name, 'internal_api')
+        api = client.internal
+        def get_model(model):
+            return client.get_model(model)
+
+        api.get_model = get_model
+        INT_API[name] = api
+
     return INT_API[name]
 
-def node_online(ext_api, int_api):
+def node_online(name):
     def is_ext_online():
         try:
-            top = ext_api.get_current_key_block()
+            ext_api = external_api(name)
+            top = ext_api.GetCurrentKeyBlock().response().result
             return top.height > -1
-        except Exception as e:
+        except ConnectionError as e:
             return False
     def is_int_online():
         try:
-            key = int_api.get_node_pubkey()
+            int_api = internal_api(name)
+            key = int_api.GetNodePubkey().response().result
             return key.pub_key is not None
-        except Exception as e:
+        except ConnectionError as e:
             return False
     return is_ext_online() and is_int_online()
 
@@ -85,13 +97,13 @@ def setup_node_with_tokens(node, beneficiary, blocks_to_mine):
     ext_api = external_api(node)
     int_api = internal_api(node)
 
-    top0 = ext_api.get_current_key_block()
+    top0 = ext_api.GetCurrentKeyBlock().response().result
     bal0 = get_account_balance(ext_api, beneficiary['enc_pubk'])
 
     # populate the chain so node had mined some blocks and has tokens
     # to spend
     wait_until_height(ext_api, top0.height + blocks_to_mine)
-    top1 = ext_api.get_current_key_block()
+    top1 = ext_api.GetCurrentKeyBlock().response().result
     assert_true(top1.height >= top0.height)
     assert_true(top1.height >= blocks_to_mine)
 
@@ -157,9 +169,8 @@ def start_node(name, config_filename):
         while 1:
             line = p.readline()
             if not line: break
-        ext_api = external_api(name)
-        int_api = internal_api(name)
-        wait(lambda: node_online(ext_api, int_api), timeout_seconds=30, sleep_seconds=0.5)
+
+        wait(lambda: node_online(name), timeout_seconds=30, sleep_seconds=0.5)
 
 def stop_node(name):
     if should_start_node(name):
@@ -184,21 +195,13 @@ def test_settings(test_name):
 def tool_settings(test_name):
     return config['tools'][test_name]
 
-def genesis_hash(api):
-    top = api.get_current_key_block()
-    if top.height == 0:
-        return top.hash
-    block = api.get_block_by_hash(top.hash)
-    while block.height != 1:
-        block = api.get_block_by_hash(block.prev_hash)
-    return block.prev_hash
-
-def wait_until_height(api, height):
-    wait(lambda: api.get_current_key_block().height >= height, timeout_seconds=120, sleep_seconds=0.25)
+def wait_until_height(ext_api, height):
+    wait(lambda: ext_api.GetCurrentKeyBlock().response().result.height >= height, timeout_seconds=120, sleep_seconds=0.25)
 
 def post_transaction(ext_api, signed_tx):
+    Tx = ext_api.get_model('Tx')
     tx_object = Tx(tx=signed_tx)
-    return ext_api.post_transaction(tx_object).tx_hash
+    return ext_api.PostTransaction(body=tx_object).response().result.tx_hash
 
 def ensure_transaction_posted(ext_api, signed_tx, min_confirmations=1):
     tx_hash = post_transaction(ext_api, signed_tx)
@@ -208,24 +211,28 @@ def ensure_transaction_confirmed(ext_api, tx_hash, min_confirmations):
     wait(lambda: is_tx_confirmed(ext_api, tx_hash, min_confirmations), timeout_seconds=20, sleep_seconds=0.25)
 
 def is_tx_confirmed(ext_api, tx_hash, min_confirmations):
-    top_key_height = ext_api.get_current_key_block_height().height
-    tx = ext_api.get_transaction_by_hash(tx_hash)
+    res = ext_api.GetCurrentKeyBlockHeight().response().result
+    top_key_height = res['height']
+    tx = ext_api.GetTransactionByHash(hash=tx_hash).response().result
     if "none" == tx.block_hash:
         return False
     return (top_key_height - tx.block_height) >= min_confirmations
 
 def get_account_balance(api, pub_key):
-    return _balance_from_get_account(lambda: api.get_account_by_pubkey(pub_key), pub_key)
+    AccountModel = api.get_model('Account')
+    return _balance_from_get_account(AccountModel, lambda: api.GetAccountByPubkey(pubkey=pub_key).response().result, pub_key)
 
 def send_tokens(sender, address, tokens, fee, ext_api, int_api):
+    SpendTx = int_api.get_model('SpendTx')
     spend_tx_obj = SpendTx(
         sender_id=sender['enc_pubk'],
         recipient_id=address,
         amount=tokens,
         fee=fee,
         ttl=100,
-        payload="sending tokens")
-    spend_tx = int_api.post_spend(spend_tx_obj).tx
+        payload="sending tokens"
+    )
+    spend_tx = int_api.PostSpend(body=spend_tx_obj).response().result.tx
     unsigned_tx = api_decode(spend_tx)
     signed_tx = integration.keys.sign_encode_tx(unsigned_tx, sender['privk'])
     return post_transaction(ext_api, signed_tx)
@@ -234,12 +241,12 @@ def ensure_send_tokens(sender, address, tokens, fee, ext_api, int_api, min_confi
     tx_hash = send_tokens(sender, address, tokens, fee, ext_api, int_api)
     ensure_transaction_confirmed(ext_api, tx_hash, min_confirmations)
 
-def _balance_from_get_account(get_account_fun, pub_key):
-    account = Account(id=pub_key, balance=0, nonce=0)
+def _balance_from_get_account(AccountModel, get_account_fun, pub_key):
+    account = AccountModel(id=pub_key, balance=0, nonce=0)
     try:
         account = get_account_fun()
-    except ApiException as e:
-        assert_equals(e.status, 404) # no account yet
+    except HTTPNotFound as e:
+        assert_equals(e.status_code, 404) # no account yet
     return account.balance
 
 def api_decode(encoded):
@@ -348,5 +355,3 @@ def decode_data(type, data):
     value = subprocess.check_output([compiler_cmd, '--decode_data', data,
                                      '--decode_type', type]).splitlines()[-1]
     return value
-
-logging.getLogger("urllib3").setLevel(logging.ERROR)
