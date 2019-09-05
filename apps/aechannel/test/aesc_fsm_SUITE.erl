@@ -1502,6 +1502,7 @@ check_incorrect_mutual_close(Cfg) ->
         fun(Depositor, Malicious) ->
             Cfg1 = load_idx(Cfg),
             Debug = true,
+            [] = check_info(0, Debug), %% ensure no hanging messages
             #{ i := I
              , r := R
              , spec := Spec} = create_channel_([?SLOGAN|Cfg1]),
@@ -1518,7 +1519,9 @@ check_incorrect_mutual_close(Cfg) ->
                                 mutual_closing = fsm_state(FsmPid, Debug);
                             false ->
                                 mutual_closed = fsm_state(FsmPid, Debug)
-                        end
+                        end,
+                    {ok, _} = receive_from_fsm(conflict, I, any_msg(), ?TIMEOUT, Debug),
+                    {ok, _} = receive_from_fsm(conflict, R, any_msg(), ?TIMEOUT, Debug)
                 end),
             bump_idx(),
             ok
