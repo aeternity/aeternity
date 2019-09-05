@@ -114,8 +114,8 @@ spend_txs(Config) ->
 
     #{ public := EPub } = enacl:sign_keypair(),
 
-    Tx1 = create_spend_tx(APub, EPub, 100000 * aec_test_utils:min_gas_price(), 20000 * aec_test_utils:min_gas_price(), 1, 100),
-    Tx2 = create_spend_tx(EPub, APub, 100, 20000 * aec_test_utils:min_gas_price(), 1, 100),
+    Tx1 = {tx, create_spend_tx(APub, EPub, 100000 * aec_test_utils:min_gas_price(), 20000 * aec_test_utils:min_gas_price(), 1, 100)},
+    Tx2 = {tx, create_spend_tx(EPub, APub, 100, 20000 * aec_test_utils:min_gas_price(), 1, 100)},
 
     {ok, 200, #{ <<"results">> := [#{ <<"result">> := <<"ok">>,
                                       <<"type">> := <<"spend">> },
@@ -136,10 +136,10 @@ identity_contract(Config) ->
     InitCallData = make_call_data(identity, <<"init">>, []),
     CallCallData = make_call_data(identity, <<"main">>, [<<"42">>]),
 
-    CreateTx  = create_contract_tx(APub, 1, Code, InitCallData),
-    CPub      = contract_id(CreateTx),
-    CallTx    = call_contract_tx(APub, CPub, 2, CallCallData),
-    BadCallTx = call_contract_tx(APub, CPub, 1, CallCallData),
+    CreateTx  = {tx, create_contract_tx(APub, 1, Code, InitCallData)},
+    CPub      = contract_id(element(2, CreateTx)),
+    CallTx    = {tx, call_contract_tx(APub, CPub, 2, CallCallData)},
+    BadCallTx = {tx, call_contract_tx(APub, CPub, 1, CallCallData)},
 
     {ok, 200, #{ <<"results">> := [#{ <<"result">> := <<"ok">>,
                                       <<"type">> := <<"contract_create">>,
@@ -172,9 +172,9 @@ authenticate_contract_(Config) ->
     InitCallData = make_call_data(basic_auth, "init", []),
     CallCallData = make_call_data(basic_auth, "get_auth_tx_hash", []),
 
-    CreateTx  = create_contract_tx(APub, 1, Code, InitCallData),
-    CPub      = contract_id(CreateTx),
-    CallTx    = call_contract_tx(APub, CPub, 2, CallCallData),
+    CreateTx  = {tx, create_contract_tx(APub, 1, Code, InitCallData)},
+    CPub      = contract_id(element(2, CreateTx)),
+    CallTx    = {tx, call_contract_tx(APub, CPub, 2, CallCallData)},
 
     DecodeOption =
         fun(SerRVal) ->
@@ -194,11 +194,11 @@ authenticate_contract_(Config) ->
 
     CallReq  = #{<<"contract">> => aeser_api_encoder:encode(contract_pubkey, CPub),
                  <<"calldata">> => aeser_api_encoder:encode(contract_bytearray, CallCallData)},
-    CallReq1 = CallReq#{<<"context">> => #{tx_hash => aeser_api_encoder:encode(tx_hash, <<12345:32/unit:8>>),
-                                           stateful => true}},
-    CallReq2 = CallReq#{<<"context">> => #{tx_hash => aeser_api_encoder:encode(tx_hash, <<12345:32/unit:8>>),
+    CallReq1 = {call_req, CallReq#{<<"context">> => #{tx_hash => aeser_api_encoder:encode(tx_hash, <<12345:32/unit:8>>),
+                                           stateful => true}}},
+    CallReq2 = {call_req, CallReq#{<<"context">> => #{tx_hash => aeser_api_encoder:encode(tx_hash, <<12345:32/unit:8>>),
                                            stateful => false},
-                        <<"nonce">> => 2},
+                        <<"nonce">> => 2}},
     {ok, 200, #{ <<"results">> := [_CreateRes,
                                    #{ <<"result">> := <<"ok">>,
                                       <<"type">> := <<"contract_call">>,
@@ -224,8 +224,8 @@ accounts(Config) ->
 
     #{ public := EPub } = enacl:sign_keypair(),
 
-    Tx1 = create_spend_tx(APub, EPub, 100000 * aec_test_utils:min_gas_price(), 20000 * aec_test_utils:min_gas_price(), 1, 100),
-    Tx2 = create_spend_tx(EPub, APub, 100, 20000 * aec_test_utils:min_gas_price(), 1, 100),
+    Tx1 = {tx, create_spend_tx(APub, EPub, 100000 * aec_test_utils:min_gas_price(), 20000 * aec_test_utils:min_gas_price(), 1, 100)},
+    Tx2 = {tx, create_spend_tx(EPub, APub, 100, 20000 * aec_test_utils:min_gas_price(), 1, 100)},
 
     %% Should work on TopHash
     {ok, 200, #{ <<"results">> := [#{ <<"result">> := <<"ok">> }, #{ <<"result">> := <<"ok">> }] }} =
@@ -269,7 +269,7 @@ dry_run(TopHash, Txs, Accounts) ->
                  #{ top => aeser_api_encoder:encode(key_block_hash, TopHash),
                     accounts => [ A#{pub_key => aeser_api_encoder:encode(account_pubkey, PK)}
                                   || A = #{pub_key := PK } <- Accounts ],
-                    txs => [EncTx(Tx) || Tx <- Txs] }).
+                    txs => [#{Type => EncTx(Tx)} || {Type, Tx} <- Txs] }).
 
 get_genesis_hash() ->
     {ok, 200, #{<<"genesis_key_block_hash">> := EncGenesisHash}} = get_status(),

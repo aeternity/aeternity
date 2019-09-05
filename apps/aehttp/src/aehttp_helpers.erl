@@ -565,7 +565,7 @@ dry_run_accounts_([Account | Accounts], Acc) ->
 
 dry_run_txs_([], Txs) ->
     {ok, lists:reverse(Txs)};
-dry_run_txs_([ETx | Txs], Acc) when is_binary(ETx) ->
+dry_run_txs_([#{ <<"tx">> := ETx } | Txs], Acc) ->
     case aeser_api_encoder:safe_decode(transaction, ETx) of
         {ok, DTx} ->
             Tx = aetx:deserialize_from_binary(DTx),
@@ -578,7 +578,7 @@ dry_run_txs_([ETx | Txs], Acc) when is_binary(ETx) ->
         Err = {error, _Reason} ->
             Err
     end;
-dry_run_txs_([CallReq | Txs], Acc) when is_map(CallReq) ->
+dry_run_txs_([#{ <<"call_req">> := CallReq } | Txs], Acc) ->
     dry_run_txs_(Txs, [{call_req, CallReq} | Acc]).
 
 

@@ -1304,7 +1304,7 @@ force_fun_calls(Node, MaxMinedBlocks) ->
     check_calls(Calls).
 
 dry_run_txs(Calls) ->
-    Txs = [ Tx || {#{tx_encoded := Tx}, _} <- Calls ],
+    Txs = [ #{tx => Tx} || {#{tx_encoded := Tx}, _} <- Calls ],
     {ok, 200, #{ <<"results">> := Results }} = dry_run(Txs),
     check_dry_calls(Calls, Results).
 
