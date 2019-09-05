@@ -62,6 +62,7 @@ enc(?LEAVE        , Msg) -> enc_leave(Msg);
 enc(?LEAVE_ACK    , Msg) -> enc_leave_ack(Msg);
 enc(?SHUTDOWN     , Msg) -> enc_shutdown(Msg);
 enc(?SHUTDOWN_ACK , Msg) -> enc_shutdown_ack(Msg);
+enc(?SHUTDOWN_ERR , Msg) -> enc_shutdown_err(Msg);
 enc(?INBAND_MSG   , Msg) -> enc_inband_msg(Msg).
 
 -define(c(C), C:1/unit:8).
@@ -89,6 +90,7 @@ dec(<<?c(?ID_LEAVE)        , B/bytes>>) -> {?LEAVE       , dec_leave(B)};
 dec(<<?c(?ID_LEAVE_ACK)    , B/bytes>>) -> {?LEAVE_ACK   , dec_leave_ack(B)};
 dec(<<?c(?ID_SHUTDOWN)     , B/bytes>>) -> {?SHUTDOWN    , dec_shutdown(B)};
 dec(<<?c(?ID_SHUTDOWN_ACK) , B/bytes>>) -> {?SHUTDOWN_ACK, dec_shutdown_ack(B)};
+dec(<<?c(?ID_SHUTDOWN_ERR) , B/bytes>>) -> {?SHUTDOWN_ERR, dec_shutdown_err(B)};
 dec(<<?c(?ID_INBAND_MSG)   , B/bytes>>) -> {?INBAND_MSG  , dec_inband_msg(B)}.
 
 -type ch_open_msg() :: #{chain_hash           := hash()
@@ -627,6 +629,27 @@ dec_shutdown_ack(<< ChanId:32/binary
     #{ channel_id => ChanId
      , block_hash => BlockHash
      , data       => #{tx => Tx} }.
+
+-type shutdown_err_msg() :: #{ channel_id := chan_id()
+                             , round      := non_neg_integer()
+                             , error_code := error_code() }.
+
+-spec enc_shutdown_err(shutdown_err_msg()) -> binary().
+enc_shutdown_err(#{ channel_id := ChanId
+                  , round      := Round
+                  , error_code := ErrCode }) ->
+    << ?ID_SHUTDOWN_ERR:1 /unit:8
+     , ChanId          :32/binary
+     , Round           :4 /unit:8
+     , ErrCode         :2 /unit:8 >>.
+
+-spec dec_shutdown_err(binary()) -> shutdown_err_msg().
+dec_shutdown_err(<< ChanId :32/binary
+                  , Round  :4 /unit:8
+                  , ErrCode:2 /unit:8 >>) ->
+    #{ channel_id => ChanId
+     , round      => Round
+     , error_code => ErrCode }.
 
 -type inband_msg() :: #{channel_id := chan_id(),
                         from       := binary(),

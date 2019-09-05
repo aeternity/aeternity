@@ -41,6 +41,8 @@
 -callback process_incoming(Msg :: map() | list(map()), FsmPid :: pid()) ->
     response().
 
+-callback error_code_to_msg(non_neg_integer()) -> binary().
+
 %%%==================================================================
 %%% Trace settings
 %%%==================================================================
@@ -193,6 +195,7 @@ process_fsm_(#{type := report,
                                                   orelse Tag =:= error
                                                   orelse Tag =:= debug
                                                   orelse Tag =:= on_chain_tx ->
+    Mod = protocol_to_impl(Protocol),
     Payload =
         case {Tag, Event} of
             {info, {died, _}} -> #{event => <<"died">>};
@@ -209,8 +212,11 @@ process_fsm_(#{type := report,
                                          aetx_sign:serialize_to_binary(NewState)),
                 #{state => Bin};
             {conflict, #{channel_id := ChId,
+                         error_code := Code,
                          round      := Round}} ->
                          #{channel_id => aeser_api_encoder:encode(channel, ChId),
+                           error_code => Code,
+                           error_msg  => Mod:error_code_to_msg(Code),
                            round => Round};
             {message, #{channel_id  := ChId,
                         from        := From,

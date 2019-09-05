@@ -24,6 +24,7 @@
     sc_ws_generic_messages/1,
     sc_ws_update_with_meta/1,
     sc_ws_update_conflict/1,
+    sc_ws_update_abort/1,
     sc_ws_snapshot_solo/1,
     sc_ws_close_mutual/1,
     sc_ws_close_solo/1,
@@ -122,7 +123,8 @@ groups() ->
         %% ensure port is reusable
         sc_ws_failed_update,
         sc_ws_generic_messages,
-        sc_ws_update_conflict
+        sc_ws_update_conflict,
+        sc_ws_update_abort
       ]},
 
      {aevm, [], [{group, sc_contracts}, {group, sc_ga}]},
@@ -406,6 +408,13 @@ channel_sign_tx(Pubkey, ConnPid, Privkey, Method, Config) ->
     ws_call_async_method(ConnPid, Method, #{signed_tx => EncSignedTx}, Config),
     #{tx => Tx, signed_tx => SignedTx, updates => Updates}.
 
+channel_abort_sign_tx(ConnPid, Code, Method, Config) ->
+    {ok, Tag, #{<<"signed_tx">> := _EncSignedTx0,
+                <<"updates">>   := _Updates}} = wait_for_channel_event(ConnPid, sign, Config),
+    Method = <<"channels.", (bin(Tag))/binary>>,
+    ws_call_async_method(ConnPid, Method, #{error => Code}, Config),
+    ok.
+
 sc_ws_open_(Config) ->
     sc_ws_open_(Config, #{}).
 
@@ -662,8 +671,10 @@ channel_conflict(#{initiator := IConnPid, responder :=RConnPid},
     SignUpdate(StarterPid, StarterPrivkey),
     SignUpdate(AcknowledgerPid, AcknowledgerPrivkey),
 
-    {ok, _} = wait_for_channel_event(StarterPid, conflict, Config),
-    {ok, _} = wait_for_channel_event(AcknowledgerPid, conflict, Config),
+    {ok, #{ <<"error_code">> := 2
+          , <<"error_msg">> := <<"conflict">> }} = wait_for_channel_event(StarterPid, conflict, Config),
+    {ok, #{ <<"error_code">> := 2
+          , <<"error_msg">> := <<"conflict">> }} = wait_for_channel_event(AcknowledgerPid, conflict, Config),
 
     ok = ?WS:unregister_test_for_channel_events(IConnPid, [sign, conflict]),
     ok = ?WS:unregister_test_for_channel_events(RConnPid, [sign, conflict]),
@@ -2700,7 +2711,8 @@ update_with_client_disconnected(SignAs, Role, Clients, Participants, Config) ->
                       = wait_for_channel_event(ConnPid, update, Config),
                   ok;
               Role ->
-                  {ok, _} = wait_for_channel_event(ConnPid, conflict, Config),
+                  {ok, Conflict} = wait_for_channel_event(ConnPid, conflict, Config),
+                  ct:log("Conflict: ~p", [Conflict]),
                   {error, conflict}
           end,
 
@@ -2811,6 +2823,29 @@ sc_ws_update_conflict(Config) ->
          responder]),
     ok.
 
+sc_ws_update_abort(Config) ->
+    #{ initiator := #{pub_key := IPubkey}
+     , responder := #{pub_key := RPubkey} } = proplists:get_value(participants, Config),
+    #{ initiator := IConnPid
+     , responder := RConnPid } = proplists:get_value(channel_clients, Config),
+    ok = ?WS:register_test_for_channel_events(IConnPid, [sign, info, update, conflict]),
+    ok = ?WS:register_test_for_channel_events(RConnPid, [sign, info, update, conflict]),
+    Balances = sc_ws_get_both_balances(IConnPid, IPubkey, RPubkey, Config),
+    {ok, {Bi0, Br0}} = Balances,
+    UpdateOpts = #{ from   => aeser_api_encoder:encode(account_pubkey, IPubkey)
+                  , to     => aeser_api_encoder:encode(account_pubkey, RPubkey)
+                  , amount => 1 },
+    ws_send_tagged(IConnPid, <<"channels.update.new">>, UpdateOpts, Config),
+    channel_abort_sign_tx(IConnPid, 147, <<"channels.update">>, Config),
+    {ok, #{ <<"error_code">> := 147
+          , <<"error_msg">> := <<"user-defined">>}} = wait_for_channel_event(IConnPid, conflict, Config),
+    %%
+    {ok, {Bi0, Br0}} = sc_ws_get_both_balances(IConnPid, IPubkey, RPubkey, Config),
+    %%
+    ok = ?WS:unregister_test_for_channel_events(IConnPid, [sign, info, update, conflict]),
+    ok = ?WS:unregister_test_for_channel_events(RConnPid, [sign, info, update, conflict]),
+    ok.
+
 sc_ws_close_mutual(Config) ->
     with_trace(fun sc_ws_close_mutual_/1, Config, "sc_ws_close_mutual").
 
@@ -2890,8 +2925,12 @@ sc_ws_slash_(Config, WhoCloses, WhoSlashes, WhoSettles) ->
     %% WhoSlashes initiates a slash
     %%
     SlasherPid = maps:get(WhoSlashes, Conns),
-    {ok, <<"ok">>} = request_slash(SlasherPid),
-    {ok, SignedSlashTx} = sign_slash_tx(SlasherPid, WhoSlashes, Config),
+    {ok, SignedSlashTx} = request_and_sign_slash_tx(
+                            SlasherPid, WhoSlashes, Config,
+                           fun() ->
+                                   {ok, <<"ok">>} = request_slash(SlasherPid),
+                                   ok
+                           end),
     ct:log("SignedSlashTx = ~p", [SignedSlashTx]),
     SlashTxHash = aeser_api_encoder:encode(tx_hash, aetx_sign:hash(SignedSlashTx)),
     ct:log("SlashTxHash = ~p", [SlashTxHash]),
@@ -2912,6 +2951,11 @@ sign_slash_tx(ConnPid, Who, Config) ->
     Participants = proplists:get_value(participants, Config),
     #{priv_key := PrivKey} = maps:get(Who, Participants),
     sign_tx(ConnPid, <<"slash_tx">>, <<"channels.slash_sign">>, PrivKey, Config).
+
+request_and_sign_slash_tx(ConnPid, Who, Config, ReqF) ->
+    Participants = proplists:get_value(participants, Config),
+    #{priv_key := PrivKey} = maps:get(Who, Participants),
+    request_and_sign(ConnPid, <<"slash_tx">>, <<"channels.slash_sign">>, PrivKey, Config, ReqF).
 
 %% This wrapper is used to ensure that event registration for signing is
 %% done before e.g. performing an rpc which triggers the signing.

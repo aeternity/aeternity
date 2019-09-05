@@ -136,9 +136,13 @@ op --> aw_lo_watchdeposit                                 : deposit_created [if 
 op --> op                                                 : deposit_created [if not checks_ok]
 
 state "Mutual Closing" as mu_cl
-mu_cl --> te                                              : shutdown_ack
+mu_cl --> mu_cld                                          : shutdown_ack
 mu_cl --> ch_cl                                           : (timeout) [if channel_status=closing]
 mu_cl --> mu_cl                                           : disconnect [if channel_status=closing]
+
+state "Mutual Closed" as mu_cld
+mu_cld --> te                                             : minimum_depth_achieved | timeout
+mu_cld --> op                                             : shutdown_error
 
 state "Channel Closing" as ch_cl
 ch_cl --> aw_si_shutdownack                               : shutdown [if checks_ok]

@@ -49,6 +49,7 @@
         half_signed             -> funding_sign;
         initialized             -> accept;
         mutual_closing          -> accept;
+        mutual_closed           -> idle;
         open                    -> idle;
         reestablish_init        -> accept;
         signed                  -> funding_lock;
@@ -94,11 +95,13 @@
                          ; T =:= ?WDRAW_LOCKED
                          ; T =:= ?WDRAW_ERR
                          ; T =:= ?INBAND_MSG
+                         ; T =:= ?ERROR
                          ; T =:= disconnect
                          ; T =:= ?LEAVE
                          ; T =:= ?LEAVE_ACK
                          ; T =:= ?SHUTDOWN
                          ; T =:= ?SHUTDOWN_ACK
+                         ; T =:= ?SHUTDOWN_ERR
                          ; T =:= ?CH_REESTABL
                          ; T =:= ?CH_REEST_ACK).
 
@@ -118,7 +121,7 @@
                             ; S=:=mutual_closing ).
 
 -ifdef(TEST).
--define(LOG_CAUGHT(Err), lager:debug("CAUGHT ~p / ~p", [Err, erlang:get_stacktrace()])).
+-define(LOG_CAUGHT(Err), lager:debug("CAUGHT ~p / ~p", [Err, pr_stacktrace(erlang:get_stacktrace())])).
 -else.
 -define(LOG_CAUGHT(Err), lager:debug("CAUGHT ~p", [Err])).
 -endif.
@@ -145,6 +148,7 @@
               %% checks
               , op = ?NO_OP                   :: latest_op()
               , ongoing_update = false        :: boolean()
+              , error_msg_type = undefined    :: undefined | error_msg_type()
               , last_reported_update          :: undefined | non_neg_integer()
               , log                           :: log()
               , strict_checks = true          :: boolean()
@@ -191,6 +195,10 @@
                   | ?SHUTDOWN
                   | ?SHUTDOWN_ACK.
 
+-type error_msg_type() :: ?UPDATE_ERR
+                        | ?DEP_ERR
+                        | ?WDRAW_ERR.
+
 -opaque opts() :: #{ minimum_depth => non_neg_integer() %% Defaulted for responder, not for initiator.
                    , timeouts := #{state_name() := pos_integer()
                    , report := map()
@@ -232,13 +240,17 @@
 -record(op_reestablish, {offchain_tx :: aetx_sign:signed_tx()
                         }).
 
+-record(op_close, { data :: #op_data{}
+                  }).
+
 -type latest_op() :: ?NO_OP % no pending op
                    | #op_sign{}
                    | #op_ack{}
                    | #op_lock{}
                    | #op_min_depth{}
                    | #op_watch{}
-                   | #op_reestablish{}.
+                   | #op_reestablish{}
+                   | #op_close{}.
 
 -define(DEFAULT_FSM_TX_GAS, 20000).
 

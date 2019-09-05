@@ -23,6 +23,7 @@
 -define(LEAVE_ACK    , leave_ack).
 -define(SHUTDOWN     , shutdown).
 -define(SHUTDOWN_ACK , shutdown_ack).
+-define(SHUTDOWN_ERR , shutdown_error).
 -define(INBAND_MSG   , inband_msg).
 
 -define(ID_CH_OPEN      , 1).
@@ -49,6 +50,7 @@
 -define(ID_ERROR        , 97).
 -define(ID_SHUTDOWN     , 98).
 -define(ID_SHUTDOWN_ACK , 99).
+-define(ID_SHUTDOWN_ERR , 100).
 
 %% Non-encoded cast types
 -define(DISCONNECT, disconnect).
@@ -64,3 +66,6 @@
 %% Error codes
 -define(ERR_VALIDATION, 1).
 -define(ERR_CONFLICT  , 2).
+-define(ERR_TIMEOUT   , 3).
+-define(ERR_ABORT     , 4).
+-define(ERR_USER      , 128).  % anything >= 128 is a user error

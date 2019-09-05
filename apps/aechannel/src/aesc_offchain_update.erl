@@ -68,7 +68,8 @@
          for_client/1,
          apply_on_trees/6]).
 
--export([set_vsn/1]).
+-export([set_vsn/1,
+         get_vsn/0]).
 
 -export([is_call/1,
          is_contract_create/1,
@@ -266,7 +267,7 @@ for_client(#meta{data = Data}) ->
 update_vsn_key() ->
     {?MODULE, update_vsn}.
 
-get_update_vsn() ->
+get_vsn() ->
     case get(update_vsn_key()) of
         undefined ->
             ?UPDATE_VSN;
@@ -282,7 +283,7 @@ set_vsn(V) when ?UPDATE_VSN_1_OR_2(V) ->
 -spec serialize(update()) -> binary().
 serialize(Update) ->
     Fields = update2fields(Update),
-    Vsn = get_update_vsn(),
+    Vsn = get_vsn(),
     UpdateType = record_to_update_type(Update),
     aeser_chain_objects:serialize(
       ut2type(UpdateType),
@@ -511,7 +512,7 @@ update_error(Err) ->
     error({off_chain_update_error, Err}).
 
 can_serialize(Op) ->
-    can_serialize(Op, get_update_vsn()).
+    can_serialize(Op, get_vsn()).
 
 can_serialize(meta, ?UPDATE_VSN_1) -> error(meta_not_allowed);
 can_serialize(_   ,             _) -> true.
