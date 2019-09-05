@@ -122,7 +122,7 @@
 
 -ifdef(TEST).
 -define(LOG_CAUGHT(Err, ErrorStackTrace), lager:debug("CAUGHT ~p / ~p",
-                                                      [Err, pr_stracktrace(ErrorStackTrace)])).
+                                                      [Err, pr_stacktrace(ErrorStackTrace)])).
 -else.
 -define(LOG_CAUGHT(Err, _), lager:debug("CAUGHT ~p", [Err])).
 -endif.
