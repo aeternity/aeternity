@@ -771,6 +771,8 @@ log(Arg0, Arg1, Arg2, Arg3, Arg4, EngineState) ->
 log(Arg0, Arg1, Arg2, Arg3, Arg4, Arg5, EngineState) ->
     log_([Arg0, Arg1, Arg2, Arg3, Arg4, Arg5], EngineState).
 
+-define(MAX_WORD_INT,
+        16#FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF).
 log_(Args, EngineState) ->
     Pubkey = aefa_engine_state:current_contract(EngineState),
     {[Payload | Indices], ES1} = get_op_args(Args, EngineState),
@@ -778,7 +780,9 @@ log_(Args, EngineState) ->
                (?FATE_BYTES(Bin))  -> Bin;
                (Other)             -> aefa_fate:abort({value_does_not_match_type, Other, string})
             end,
-    ToWord = fun(N) when is_integer(N) -> <<N:256>>;
+    ToWord = fun(N) when is_integer(N),
+                         N >= 0,
+                         N =< ?MAX_WORD_INT -> <<N:256>>;
                 (?FATE_FALSE)          -> <<0:256>>;
                 (?FATE_TRUE)           -> <<1:256>>;
                 (?FATE_BITS(N))        -> <<N:256>>;
@@ -789,10 +793,14 @@ log_(Args, EngineState) ->
                 (?FATE_BYTES(Bin)) when byte_size(Bin) =< 32 ->
                      W = byte_size(Bin),
                      <<0:(32 - W)/unit:8, Bin/binary>>;
-                (Other) -> aefa_fate:abort({value_does_not_match_type, Other, word})
+                (N) when is_integer(N) -> aefa_fate:abort({log_illegal_int, N}, EngineState);
+                (Other) -> aefa_fate:abort({value_does_not_match_type, Other, word}, EngineState)
              end,
-    LogEntry = {Pubkey, lists:map(ToWord, Indices), ToBin(Payload)},
-    aefa_engine_state:add_log(LogEntry, ES1).
+    PayloadBin = ToBin(Payload),
+    LogEntry = {Pubkey, lists:map(ToWord, Indices), PayloadBin},
+    Size = length(Indices) * 8 + byte_size(PayloadBin),
+    Gas = Size * aec_governance:byte_gas(),
+    spend_gas(Gas, aefa_engine_state:add_log(LogEntry, ES1)).
 
 deactivate(_EngineState) -> exit({error, op_not_implemented_yet}).
 

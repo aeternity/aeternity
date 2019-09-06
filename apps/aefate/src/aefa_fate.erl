@@ -229,6 +229,8 @@ abort({primop_error, Which, What}, ES) ->
     ?t("Error in ~w: ~w", [Which, What], ES);
 abort(reentrant_call, ES) ->
     ?t("Reentrant call", [], ES);
+abort({log_illegal_int, N}, ES) ->
+    ?t("Illegal integer in log: ~w", [N], ES);
 abort(out_of_gas, ES) ->
     ?t("Out of gas", [], ES);
 abort(bad_bytecode, ES) ->
