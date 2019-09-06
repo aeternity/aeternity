@@ -155,6 +155,7 @@
         , sophia_bytes_to_x/1
         , sophia_address_checks/1
         , sophia_remote_gas/1
+        , sophia_higher_order_state/1
         , create_store/1
         , read_store/1
         , store_zero_value/1
@@ -383,7 +384,8 @@ groups() ->
                                  sophia_bytes,
                                  sophia_bytes_to_x,
                                  sophia_address_checks,
-                                 sophia_too_little_gas_for_mem
+                                 sophia_too_little_gas_for_mem,
+                                 sophia_higher_order_state
                                ]}
     , {sophia_oracles_ttl, [],
           %% Test Oracle TTL handling
@@ -1583,6 +1585,19 @@ sophia_remote_gas(_Cfg) ->
 
     ok.
 
+sophia_higher_order_state(_Cfg) ->
+    ?skipRest(not ?IS_FATE_SOPHIA(vm_version()), higher_order_state_only_in_fate),
+    state(aect_test_utils:new_state()),
+    Acc = ?call(new_account, 1000000000 * aec_test_utils:min_gas_price()),
+    Ct  = ?call(create_contract, Acc, higher_order_state, {}),
+    1   = ?call(call_contract, Acc, Ct, apply, word, {1}),
+    {}  = ?call(call_contract, Acc, Ct, inc,  {tuple, []}, {}),
+    2   = ?call(call_contract, Acc, Ct, apply, word, {1}),
+    {}  = ?call(call_contract, Acc, Ct, inc,  {tuple, []}, {}),
+    3   = ?call(call_contract, Acc, Ct, apply, word, {1}),
+    {}  = ?call(call_contract, Acc, Ct, inc,  {tuple, []}, {}),
+    4   = ?call(call_contract, Acc, Ct, apply, word, {1}),
+    ok.
 
 sophia_vm_interaction(Cfg) ->
     state(aect_test_utils:new_state()),

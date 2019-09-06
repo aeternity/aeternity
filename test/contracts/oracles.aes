@@ -10,23 +10,23 @@ contract Oracles =
   type query_id  = oracle_query(query_t, answer_t)
 
   stateful entrypoint registerOracle(acct : address,
-                          qfee : fee,
-                          ttl  : ttl) : oracle_id =
+                                     qfee : fee,
+                                     ttl  : ttl) : oracle_id =
      Oracle.register(acct, qfee, ttl)
 
   stateful entrypoint registerIntIntOracle(acct : address,
-                                qfee : fee,
-                                ttl  : ttl) : oracle(int, int) =
+                                           qfee : fee,
+                                           ttl  : ttl) : oracle(int, int) =
      Oracle.register(acct, qfee, ttl)
 
-  stateful entrypoint respondIntIntOracle(o    : oracle(int, int),
-                                        q    : oracle_query(int, int),
-                                        r    : int) : unit =
+  stateful entrypoint respondIntIntOracle(o : oracle(int, int),
+                                          q : oracle_query(int, int),
+                                          r : int) : unit =
     Oracle.respond(o, q, r)
 
   stateful entrypoint registerStringStringOracle(acct : address,
-                                      qfee : fee,
-                                      ttl  : ttl) : oracle(string, string) =
+                                                 qfee : fee,
+                                                 ttl  : ttl) : oracle(string, string) =
      Oracle.register(acct, qfee, ttl)
 
   stateful payable entrypoint createQueryStringStringOracle(o    : oracle(string, string),
@@ -35,15 +35,19 @@ contract Oracles =
                                                             qttl : ttl,
                                                             rttl : ttl) : oracle_query(string, string) =
     require(qfee =< Call.value, "insufficient value for qfee")
-    Oracle.query(o, q, qfee, qttl, rttl)
+    let query = Oracle.query
+    query(o, q, qfee, qttl, rttl)
 
   entrypoint getAnswerIntIntOracle(o : oracle(int, int),
-                               q : oracle_query(int, int)) : option(int) =
+                                   q : oracle_query(int, int)) : option(int) =
     Oracle.get_answer(o, q)
 
+  function get_question() = Oracle.get_question : (oracle(string, string), _) => _
+
   entrypoint getQuestionStringStringOracle(o : oracle(string, string),
-                                       q : oracle_query(string, string)) : string =
-    Oracle.get_question(o, q)
+                                           q : oracle_query(string, string)) : string =
+    let get_q = get_question()
+    get_q(o, q)
 
   stateful payable entrypoint signedRegisterOracle(acct : address,
                                                    sign : signature,
