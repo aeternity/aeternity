@@ -1155,7 +1155,7 @@ remote_gas_test_contract(Config) ->
     call_get(APub, APriv, EncC2Pub, Contract, 100),
     force_fun_calls(Node),
     Balance1 = get_balance(APub),
-    ?assertMatchVM(1600596, 1600010, (Balance0 - Balance1) div ?DEFAULT_GAS_PRICE),
+    ?assertMatchVM(1600596, 1600040, (Balance0 - Balance1) div ?DEFAULT_GAS_PRICE),
 
     %% Test remote call with limited gas
     %% Call contract remote set function with limited gas
@@ -1163,13 +1163,13 @@ remote_gas_test_contract(Config) ->
     call_get(APub, APriv, EncC2Pub, Contract, 1),
     force_fun_calls(Node),
     Balance2 = get_balance(APub),
-    ?assertMatchVM(1610855, 1600196, (Balance1 - Balance2) div ?DEFAULT_GAS_PRICE),
+    ?assertMatchVM(1610855, 1600380, (Balance1 - Balance2) div ?DEFAULT_GAS_PRICE),
 
     %% Test remote call with limited gas (3) that fails (out of gas).
     [] = call_func(APub, APriv, EncC1Pub, Contract, "call", [EncC2Pub, "2", "3"], error),
     force_fun_calls(Node),
     Balance3 = get_balance(APub),
-    ?assertMatchVM(809981, 800019, (Balance2 - Balance3) div ?DEFAULT_GAS_PRICE),
+    ?assertMatchVM(809981, 800143, (Balance2 - Balance3) div ?DEFAULT_GAS_PRICE),
 
     %% Check that store/state not changed (we tried to write 2).
     call_get(APub, APriv, EncC2Pub, Contract, 1),
@@ -1181,7 +1181,7 @@ remote_gas_test_contract(Config) ->
     [] = call_func(APub, APriv, EncC1Pub, Contract, "call", [ZeroContract, "2", "1"], error),
     force_fun_calls(Node),
     Balance5 = get_balance(APub),
-    ?assertMatchVM(900000, 800017, (Balance4 - Balance5) div ?DEFAULT_GAS_PRICE),
+    ?assertMatchVM(900000, 800141, (Balance4 - Balance5) div ?DEFAULT_GAS_PRICE),
 
     ok.
 
