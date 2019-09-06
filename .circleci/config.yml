@@ -141,7 +141,7 @@ references:
         - "_build"
         - ".contracts_test_cache"
 
-  macos_package_cache_key: &macos_package_cache_key macos-package-cache-v1
+  macos_package_cache_key: &macos_package_cache_key macos-package-cache-v3
   restore_macos_package_cache: &restore_macos_package_cache
     restore_cache:
       key: *macos_package_cache_key
@@ -700,11 +700,8 @@ jobs:
           name: Install required tools
           command: |
             brew update
-            brew install libsodium
-            brew link libsodium
-            brew install file://`pwd`/deployment/homebrew/erlang.rb
-            brew link erlang
-            for erlang_dep in $(brew deps file://`pwd`/deployment/homebrew/erlang.rb); do brew link $erlang_dep; done
+            brew install libsodium erlang@20
+            brew link --force erlang@20
       - *save_macos_package_cache
       - *set_package_path
       - *test_arch_os_dependencies
