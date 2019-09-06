@@ -1542,10 +1542,6 @@ get_contract_sut(PubKey) ->
     Host = external_address(),
     http_request(Host, get, "contracts/" ++ binary_to_list(PubKey), []).
 
-get_contract_code_sut(PubKey) ->
-    Host = external_address(),
-    http_request(Host, get, "contracts/" ++ binary_to_list(PubKey) ++ "/code", []).
-
 get_contract_store_sut(PubKey) ->
     Host = external_address(),
     http_request(Host, get, "contracts/" ++ binary_to_list(PubKey) ++ "/store", []).

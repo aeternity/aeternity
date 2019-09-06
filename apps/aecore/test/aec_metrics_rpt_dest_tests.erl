@@ -11,18 +11,17 @@
 -define(match(A, B), {A,_} = {B,?LINE}).
 
 read_config_test_() ->
-    [{foreach,
-      fun setup/0,
-      fun teardown/1,
-      [
-       {"basic prefix filtering", fun prefix_filter/0}
-     , {"PT #154133896", fun system_log_only/0}
-     , {"Filter on metric type", fun send_histograms/0}
-     , {"Filter on datapoints", fun datapoint_filter/0}
-     , {"Filter new metric", fun filter_new_metric/0}
-     , {"Filter new metric on type", fun filter_new_metric_on_type/0}
-     , {"Filter non-existing metric", fun filter_non_existing_metric/0}
-      ]
+    [{ foreach
+     , fun setup/0
+     , fun teardown/1
+     , [ {"basic prefix filtering", fun prefix_filter/0}
+       , {"PT #154133896", fun system_log_only/0}
+       , {"Filter on metric type", fun send_histograms/0}
+       , {"Filter on datapoints", fun datapoint_filter/0}
+       , {"Filter new metric", fun filter_new_metric/0}
+       , {"Filter new metric on type", fun filter_new_metric_on_type/0}
+       , {"Filter non-existing metric", fun filter_non_existing_metric/0}
+       ]
      }].
 
 prefix_filter() ->
@@ -144,25 +143,22 @@ teardown({{OldRunningApps, OldLoadedApps}, Mocks}) ->
     ok = restore_stopped_and_unloaded_apps(OldRunningApps, OldLoadedApps).
 
 create_metrics() ->
-    [exometer:new(N, T, O)
-     || {N, T, O} <- metrics()].
+    [exometer:new(N, T, O) || {N, T, O} <- metrics()].
 
 metrics() ->
-    [
-     %% basically, some metrics predefined in aecore/priv/...
-     {[ae,epoch,aecore,mining,blocks_mined]      , counter     , []},
-     {[ae,epoch,aecore,mining,retries]           , counter     , []},
-     {[ae,epoch,aecore,mining,interval]          , histogram   , []},
-     {[ae,epoch,aecore,chain,height]             , gauge       , []},
-     {[ae,epoch,aecore,chain,top_change,interval], histogram   , []},
-     %% some system metrics
-     {[ae,epoch,system,procs]                    , gauge       , []},
-     {[ae,epoch,system,io,in]                    , gauge       , []},
-     {[ae,epoch,system,io,out]                   , gauge       , []},
-     {[ae,epoch,system,memory,total]             , gauge       , []},
-     {[ae,epoch,system,memory,processes,used]    , gauge       , []}
+    %% basically, some metrics predefined in aecore/priv/...
+    [ {[ae,epoch,aecore,mining,blocks_mined]      , counter     , []}
+    , {[ae,epoch,aecore,mining,retries]           , counter     , []}
+    , {[ae,epoch,aecore,mining,interval]          , histogram   , []}
+    , {[ae,epoch,aecore,chain,height]             , gauge       , []}
+    , {[ae,epoch,aecore,chain,top_change,interval], histogram   , []}
+      %% some system metrics
+    , {[ae,epoch,system,procs]                    , gauge       , []}
+    , {[ae,epoch,system,io,in]                    , gauge       , []}
+    , {[ae,epoch,system,io,out]                   , gauge       , []}
+    , {[ae,epoch,system,memory,total]             , gauge       , []}
+    , {[ae,epoch,system,memory,processes,used]    , gauge       , []}
     ].
-
 
 start_clean_dest() ->
     %% Start a fake supervisor, since it becomes the owner of the ets tab

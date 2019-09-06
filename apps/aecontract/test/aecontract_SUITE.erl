@@ -15,6 +15,7 @@
         ]).
 
 -include_lib("aecontract/include/hard_forks.hrl").
+-include_lib("aeutils/include/aeu_stacktrace.hrl").
 
 %% for testing from a shell
 -export([ init_tests/2 ]).
@@ -556,12 +557,12 @@ init_per_testcase_common(TC, Config) ->
 end_per_testcase(fate_environment, _Config) ->
     meck:unload(aefa_chain_api),
     ok;
-end_per_testcase(TC,_Cfg) when TC == sophia_aens_resolve;
-                               TC == sophia_signatures_aens;
-                               TC == sophia_aens_transactions ->
+end_per_testcase(TC, _Config) when TC == sophia_aens_resolve;
+                                   TC == sophia_signatures_aens;
+                                   TC == sophia_aens_transactions ->
     meck:unload(aec_governance),
     ok;
-end_per_testcase(_TC,_Config) ->
+end_per_testcase(_TC, _Config) ->
     ok.
 
 %%%===================================================================
@@ -1163,9 +1164,11 @@ call(Name, Fun, Xs) ->
 call(Fun, Xs) when is_function(Fun, 1 + length(Xs)) ->
     S = state(),
     {R, S1} = try apply(Fun, Xs ++ [S])
-              catch
-                _:{fail, Error} -> ct:fail(Error);
-                _:Reason -> {{'EXIT', Reason, erlang:get_stacktrace()}, S}
+              ?_catch_(_, Reason, StackTrace)
+                case Reason of
+                    {fail, Error} -> ct:fail(Error);
+                    _             -> {{'EXIT', Reason, StackTrace}, S}
+                end
               end,
     state(S1),
     R.

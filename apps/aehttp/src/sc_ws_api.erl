@@ -19,6 +19,7 @@
 -export([patterns/0]).
 
 -include_lib("trace_runner/include/trace_runner.hrl").
+-include_lib("aeutils/include/aeu_stacktrace.hrl").
 
 
 %%%===================================================================
@@ -113,18 +114,19 @@ try_seq(Seq, #{msg := Msg} = Data0) ->
         {ok, _Data}          -> no_reply;
         {reply, Resp}        -> {reply, Resp};
         stop                 -> stop
-    catch
-        throw:{decode_error, Reason} ->
-            lager:debug("CAUGHT THROW {decode_error, ~p} (Msg = ~p)",
-                        [Reason, Msg]),
-            no_reply;
-        throw:{die_anyway, E} ->
-            lager:debug("CAUGHT THROW E = ~p / Msg = ~p / ~p",
-                        [E, Msg, erlang:get_stacktrace()]),
-            erlang:error(E);
-        error:E ->
-            lager:debug("CAUGHT E=~p / Msg = ~p / ~p", [E, Msg, erlang:get_stacktrace()]),
-            no_reply
+    ?_catch_(E, R, StackTrace)
+        case {E, R} of
+            {throw, {decode_error, Reason}} ->
+                lager:debug("CAUGHT THROW {decode_error, ~p} (Msg = ~p)",
+                            [Reason, Msg]),
+                no_reply;
+            {throw, {die_anyway, Reason}} ->
+                lager:debug("CAUGHT THROW E = ~p / Msg = ~p / ~p", [Reason, Msg, StackTrace]),
+                erlang:error(E);
+            {error, _E} ->
+                lager:debug("CAUGHT E=~p / Msg = ~p / ~p", [R, Msg, StackTrace]),
+                no_reply
+        end
     end.
 
 jsx_decode(#{msg := Msg} = Data) ->
@@ -148,7 +150,7 @@ process_fsm(#{msg := Msg,
 -spec process_fsm_(term(), binary(), protocol()) -> no_reply | {reply, map()} | {error, atom()}.
 process_fsm_(#{type := sign,
                tag  := Tag,
-               info := #{signed_tx := STx, 
+               info := #{signed_tx := STx,
                          updates := Updates}},
                 ChannelId, Protocol) when Tag =:= create_tx
                                    orelse Tag =:= deposit_tx

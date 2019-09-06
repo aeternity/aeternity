@@ -201,7 +201,7 @@ db_new(Name, Opts) ->
 db_lookup(#{db := Tab, keypos := _P}, Key) ->
     ets:lookup(Tab, Key).
 
-db_delete(#{db := Tab, keypos := P} = Db, Key) ->
+db_delete(#{db := Tab, keypos := _P} = Db, Key) ->
     ets:delete(Tab, Key),
     Db.
 
@@ -212,7 +212,7 @@ db_insert(#{db := Tab, keypos := _P} = Db, Obj) ->
     ets:insert(Tab, Obj),
     Db.
 
-db_next(#{db := Tab, keypos := P}, Key) ->
+db_next(#{db := Tab, keypos := _P}, Key) ->
     ets:next(Tab, Key).
 
 db_select(#{db := Tab}, Pat) ->
@@ -223,7 +223,7 @@ list_pids(#{db := PortsTab}, P) ->
 
 get_lsock_info(pids, #{port := Port} = I, #st{ ports = Ports }) ->
     I#{pids => list_pids(Ports, Port)};
-get_lsock_info(responders, #{port := Port} = I, #st{ responders = Resps }) ->
+get_lsock_info(responders, #{port := Port}, #st{ responders = Resps }) ->
     lists:usort(
       db_select(Resps, [{ #resp{ key = { Port, '$1', '_'}, _ = '_' }, [], ['$1'] }]));
 get_lsock_info(Items, I, St) when is_list(Items) ->

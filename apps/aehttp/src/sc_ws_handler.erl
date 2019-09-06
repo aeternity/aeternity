@@ -12,7 +12,7 @@
                   channel_id         :: aesc_channels:id() | undefined,
                   enc_channel_id     :: aeser_api_encoder:encoded() | undefined,
                   job_id             :: term(),
-                  protocol           :: sc_ws_api:protocol(), 
+                  protocol           :: sc_ws_api:protocol(),
                   role               :: initiator | responder | undefined,
                   host               :: binary() | undefined,
                   port               :: non_neg_integer() | undefined}).
@@ -21,7 +21,7 @@
 -export_type([handler/0]).
 
 -define(ERROR_TO_CLIENT(Err), {?MODULE, send_to_client, {error, Err}}).
-
+-include_lib("aeutils/include/aeu_stacktrace.hrl").
 
 init(Req, _Opts) ->
     lager:debug("init(~p, ~p)", [Req, _Opts]),
@@ -174,7 +174,7 @@ terminate(Reason, _PartialReq, #{} = _H) ->
     % not initialized yet
     ok;
 terminate(Reason, _PartialReq, State) ->
-    lager:debug("WebSocket dying because of ~p/~p", [Reason, erlang:get_stacktrace()]),
+    lager:debug("WebSocket dying because of ~p", [Reason]),
     case fsm_pid(State) of
         undefined -> pass;
         FsmPid ->

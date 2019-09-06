@@ -180,7 +180,6 @@ setup_node(Spec, BackendState) ->
       privkey := PrivKey,
       peers := Peers,
       source := {pull, Image}} = Spec,
-    MineRate = maps:get(mine_rate, Spec, ?EPOCH_MINE_RATE),
     ExtraConfig = maps:get(config, Spec, #{}),
 
     Hostname = format("~s~s", [Name, Postfix]),

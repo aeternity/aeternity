@@ -739,7 +739,6 @@ prune_preclaim(Cfg) ->
     PubKey     = aens_commitments:owner_pubkey(C),
 
     TTL = aens_commitments:ttl(C),
-    GenesisHeight = aec_block_genesis:height(),
     Trees3 = aec_trees:perform_pre_transformations(Trees2, TTL+1),
     NSTree = aec_trees:ns(Trees3),
     none = aens_state_tree:lookup_commitment(CHash, NSTree),

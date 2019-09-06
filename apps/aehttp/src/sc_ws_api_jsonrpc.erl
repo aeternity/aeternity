@@ -61,6 +61,7 @@
                                 <<"channels.settle_sign">>        -> settle_tx
                             end).
 
+-include_lib("aeutils/include/aeu_stacktrace.hrl").
 
 %%%==================================================================
 %%% Trace settings
@@ -265,13 +266,14 @@ process_incoming(Msg, FsmPid) ->
                         {error, Err}   -> {error, Err};
                         no_reply       -> no_reply;
                         {reply, Reply} -> Reply
-                    catch
-                        error:{validation_error, not_a_number} ->
-                            {error, not_a_number};
-                        error:E ->
-                            lager:debug("CAUGHT E=~p / Req = ~p / ~p",
-                                        [E, Req, erlang:get_stacktrace()]),
-                            no_reply
+                    ?_catch_(error, Reason, StackTrace)
+                        case Reason of
+                            {validation_error, not_a_number} -> {error, not_a_number};
+                            _ ->
+                                lager:debug("CAUGHT E=~p / Req = ~p / ~p",
+                                            [Reason, Req, StackTrace]),
+                                no_reply
+                        end
                     end,
                 case R of
                     no_reply -> Accum;

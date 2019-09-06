@@ -708,9 +708,7 @@ net_split_mining_power(Cfg) ->
 
     ok.
 
-abrupt_stop_new_node(_Cfg) ->
-    {skip, database_restart_needs_fix};
-abrupt_stop_new_node(Cfg) ->
+abrupt_stop_new_node(database_restart_needs_fix = Cfg) ->
     RepairTimeout = 30000, % Time allowed for node to repair DB and finish sync
     Nodes = [n1, n2],
     setup_nodes(cluster(Nodes, #{}), Cfg),
@@ -722,11 +720,11 @@ abrupt_stop_new_node(Cfg) ->
     start_node(n2, Cfg),
     % Check that they synchronize
     Blocks = wait_for_value({height, 5}, Nodes, RepairTimeout, Cfg),
-    assert_in_sync(Blocks).
+    assert_in_sync(Blocks);
+abrupt_stop_new_node(_Cfg) ->
+    {skip, database_restart_needs_fix}.
 
-abrupt_stop_mining_node(_Cfg) ->
-    {skip, database_restart_needs_fix};
-abrupt_stop_mining_node(Cfg) ->
+abrupt_stop_mining_node(database_restart_needs_fix = Cfg) ->
     RepairTimeout = 30000, % Time allowed for node to repair DB and finish sync
     ShutdownTimeout = proplists:get_value(node_shutdown_time, Cfg),
     Nodes = [n1, n2],
@@ -749,7 +747,9 @@ abrupt_stop_mining_node(Cfg) ->
     ?assertEqual(Blocks, NewBlocks),
     % Check that they continue mining
     LatestBlocks = wait_for_value({height, 10}, Nodes, 5 * ?MINING_TIMEOUT, Cfg),
-    assert_in_sync(LatestBlocks).
+    assert_in_sync(LatestBlocks);
+abrupt_stop_mining_node(_Cfg) ->
+    {skip, database_restart_needs_fix}.
 
 %% helper functions
 

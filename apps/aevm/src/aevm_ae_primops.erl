@@ -16,6 +16,7 @@
 
 -include_lib("aebytecode/include/aeb_opcodes.hrl").
 -include("../../aecontract/include/aecontract.hrl").
+-include_lib("aeutils/include/aeu_stacktrace.hrl").
 -include("aevm_ae_primops.hrl").
 
 -record(chain, {api, state, abi_version, vm_version}).
@@ -27,10 +28,8 @@
             %% Enable setting up node with "test" rebar profile.
             error:undef -> ok
         end).
--define(ST, erlang:get_stacktrace()).
 -else.
 -define(TEST_LOG(Format, Data), ok).
--define(ST, ok).
 -endif.
 
 -spec call(Gas::non_neg_integer(), Value :: non_neg_integer(), Data::binary(), StateIn) ->
@@ -99,13 +98,11 @@ call_(Gas, Value, Data, StateIn) ->
             Ok;
         {error, _} = OuterErr ->
             OuterErr
-    catch _T:_Err ->
-            _ST = ?ST,
-            ?TEST_LOG("Primop illegal call ~p:~p:~p~n~p:~p(~p, ~p, State)",
-                      [_T, _Err,_ST,
-                       ?MODULE, ?FUNCTION_NAME, Value, Data]),
-            %% TODO: Better error for illegal call.
-            {error, illegal_primop_call}
+    ?_catch_(_T, _Err, _ST)
+        ?TEST_LOG("Primop illegal call ~p:~p:~p~n~p:~p(~p, ~p, State)",
+                  [_T, _Err,_ST, ?MODULE, ?FUNCTION_NAME, Value, Data]),
+        %% TODO: Better error for illegal call.
+        {error, illegal_primop_call}
     end.
 
 call_primop(?PRIM_CALL_SPEND, Value, Data, State) ->

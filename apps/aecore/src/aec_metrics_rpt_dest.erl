@@ -31,6 +31,8 @@
 -define(TAB, ?MODULE).
 -define(SERVER, ?MODULE).
 
+-include_lib("aeutils/include/aeu_stacktrace.hrl").
+
 get_destinations(Name, DP) ->
     %% TODO: come up with a more efficient handling of default datapoints
     case get_destinations_(Name, DP) of
@@ -194,11 +196,9 @@ populate_tab(Select, #st{rules = Rules, tab = Tab} = St) ->
               try
                   Found = Select([Cmd]),
                   make_destinations(Found, Actions, Tab)
-              catch
-                  error:E ->
-                      lager:error("CRASH: ~p; ~p",
-                                  [E, erlang:get_stacktrace()]),
-                      []
+              ?_catch_(error, E, StackTrace)
+                  lager:error("CRASH: ~p; ~p", [E, StackTrace]),
+                  []
               end
       end, Rules),
     St.

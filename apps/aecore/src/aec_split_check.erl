@@ -1,15 +1,20 @@
-% Utilities for checking the block reward (see module aec_dev_reward).
-%%
-%% Intended for Developer usage from the console of a node.
--module(aeu_split_check).
+%%%-------------------------------------------------------------------
+%%% @copyright (C) 2019, Aeternity Anstalt
+%%% @doc
+%%%     Utilities for checking the block reward (see module aec_dev_reward).
+%%%
+%%%     Intended for Developer usage from the console of a node.
+%%% @end
+%%%-------------------------------------------------------------------
 
--export([
-         run_for_mainnet/1,
-         run_for_testnet/1,
-         balance_mainnet/1,
-         balance_testnet/1,
-         balance/2,
-         rewards/1
+-module(aec_split_check).
+
+-export([ run_for_mainnet/1
+        , run_for_testnet/1
+        , balance_mainnet/1
+        , balance_testnet/1
+        , balance/2
+        , rewards/1
         ]).
 
 -include_lib("aecontract/include/hard_forks.hrl").
