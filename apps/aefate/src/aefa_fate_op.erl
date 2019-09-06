@@ -1528,6 +1528,8 @@ op(contract_to_address, A) when ?IS_FATE_CONTRACT(A) ->
 
 binary_for_hashing(S) when ?IS_FATE_STRING(S) ->
     ?FATE_STRING_VALUE(S);  %% Makes Crypto.sha3 and String.sha3 coincide.
+binary_for_hashing(?FATE_BYTES(Bin)) ->
+    Bin;    %% To make it possible to predict the result for the user.
 binary_for_hashing(X) ->
     aeb_fate_encoding:serialize(X).
 
