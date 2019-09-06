@@ -1281,12 +1281,15 @@ check_delegation_signature(Type, Data, Signature, ES) ->
     Current = aefa_engine_state:current_contract(ES),
     check_delegation_signature(Type, Data, Signature, Current, ES).
 
-check_delegation_signature(Type, Data, SignBin, Current, ES) ->
+check_delegation_signature(Type, Data, SignBin, Current, ES0) ->
     {Bin, Pubkey} = delegation_signature_data(Type, Data, Current),
     case Pubkey =:= Current of
         true ->
-            ES;
+            ES0;
         false ->
+            %% Charge gas for the extra work of verifying the signature
+            VerifyOp = aeb_fate_opcodes:m_to_op('VERIFY_SIG'),
+            ES = spend_gas(aeb_fate_opcodes:gas_cost(VerifyOp), ES0),
             API = aefa_engine_state:chain_api(ES),
             case aefa_chain_api:check_delegation_signature(Pubkey, Bin, SignBin, API) of
                 {ok, API1} ->
@@ -1308,12 +1311,7 @@ delegation_signature_data(Type, {Pubkey, Hash}, Current) when Type =:= aens_clai
     {<<Pubkey/binary, Hash/binary, Current/binary>>, Pubkey}.
 
 spend_gas(Delta, ES) when is_integer(Delta), Delta > 0 ->
-    case aefa_engine_state:gas(ES) of
-        Gas when Gas >= Delta ->
-            aefa_engine_state:set_gas(Gas - Delta, ES);
-        _ ->
-            aefa_fate:abort(out_of_gas, ES)
-    end.
+    aefa_engine_state:spend_gas(Delta, ES).
 
 verify_sig(Arg0, Arg1, Arg2, Arg3, ES) ->
     ter_op(verify_sig, {Arg0, Arg1, Arg2, Arg3}, ES).
