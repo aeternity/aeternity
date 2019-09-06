@@ -1999,7 +1999,7 @@ send_funding_signed_msg(SignedTx, #data{ channel_id = Ch
 
 check_funding_signed_msg(#{ temporary_channel_id := ChanId
                           %% since it is co-authenticated already, we don't
-                          %% the block hash being reported
+                          %% check the block hash being reported
                           , block_hash           := BlockHash
                           , data                 := #{tx := TxBin}} = Msg,
                           #data{ channel_id = ChanId } = Data) ->
@@ -2424,7 +2424,7 @@ check_signed_update_ack_tx(SignedTx, Msg,
            , data = #op_data{updates    = Updates,
                              block_hash = BlockHash}} = Op,
     HalfSignedTx = aesc_offchain_state:get_latest_half_signed_tx(State),
-    %% since it is co-authenticated already, we don't
+    %% since it is co-authenticated already, we ignore
     %% the block hash being reported
     Checks =
         [ fun() -> check_update_ack_(SignedTx, HalfSignedTx) end,
