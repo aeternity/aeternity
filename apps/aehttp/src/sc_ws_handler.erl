@@ -307,6 +307,8 @@ read_channel_options(Params) ->
                                                      mandatory => false}),
     ReadVsns = ReadMap(versions, <<"version">>, #{type => integer,
                                                   mandatory => false}),
+    ReadBHDelta = ReadMap(block_hash_delta, <<"bh_delta">>, #{ type => integer
+                                                            , mandatory => false }),
     OnChainOpts =
         case (sc_ws_utils:read_param(
                 <<"existing_channel_id">>, existing_channel_id,
@@ -351,6 +353,7 @@ read_channel_options(Params) ->
                                                         initialized])
       ++ lists:map(ReadReport, aesc_fsm:report_tags())
       ++ lists:map(ReadVsns, aesc_fsm:version_tags())
+      ++ lists:map(ReadBHDelta, aesc_fsm:bh_deltas())
      ).
 
 jobs_ask() ->

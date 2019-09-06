@@ -41,7 +41,14 @@
     sc_ws_remote_call_contract_refering_onchain_data/1,
     sc_ws_wrong_call_data/1,
     sc_ws_basic_client_reconnect_i/1,
-    sc_ws_basic_client_reconnect_r/1
+    sc_ws_basic_client_reconnect_r/1,
+    sc_ws_pinned_update/1,
+    sc_ws_pinned_deposit/1,
+    sc_ws_pinned_withdraw/1,
+    sc_ws_pinned_error_update/1,
+    sc_ws_pinned_error_deposit/1,
+    sc_ws_pinned_error_withdraw/1,
+    sc_ws_pinned_contract/1
    ]).
 
 -include_lib("stdlib/include/assert.hrl").
@@ -170,6 +177,17 @@ groups() ->
      {client_reconnect, [sequence],
       [ sc_ws_basic_client_reconnect_i,
         sc_ws_basic_client_reconnect_r
+      ]},
+
+     {pinned_env, [sequence],
+      [
+        sc_ws_pinned_update,
+        sc_ws_pinned_deposit,
+        sc_ws_pinned_withdraw,
+        sc_ws_pinned_error_update,
+        sc_ws_pinned_error_deposit,
+        sc_ws_pinned_error_withdraw,
+        sc_ws_pinned_contract
       ]}
 
     ].
@@ -215,6 +233,8 @@ init_per_group(plain, Config) ->
     reset_participants(plain, Config);
 init_per_group(client_reconnect, Config) ->
     reset_participants(client_reconnect, Config);
+init_per_group(pinned_env, Config) ->
+    aect_test_utils:init_per_group(aevm, reset_participants(pinned_env, Config));
 init_per_group(_Grp, Config) ->
     Config.
 
@@ -682,13 +702,18 @@ channel_update(Conns, Starter, Participants, Amount, Round, Config) ->
     channel_update(Conns, Starter, Participants, Amount, Round,
                    _TestErrors = true, Config).
 
+channel_update(Conns, Starter, Participants, Amount, Round,
+               TestErrors, Config) ->
+    channel_update(Conns, Starter, Participants, Amount, Round,
+                   TestErrors, Config, #{}).
+
 channel_update(#{initiator := IConnPid, responder :=RConnPid},
                StarterRole,
                #{initiator := #{pub_key := IPubkey,
                                 priv_key := IPrivkey},
                  responder := #{pub_key := RPubkey,
                                 priv_key := RPrivkey}},
-               Amount,_Round,TestErrors,Config) ->
+               Amount, _Round, TestErrors, Config, UpdateOpts0) ->
     true = undefined =/= process_info(IConnPid),
     true = undefined =/= process_info(RConnPid),
     {StarterPid, AcknowledgerPid, StarterPubkey, StarterPrivkey,
@@ -714,14 +739,15 @@ channel_update(#{initiator := IConnPid, responder :=RConnPid},
                       end,
     {ok, {Ba0, Bb0} = Bal0} = GetBothBalances(IConnPid),
     ct:log("Balances before: ~p", [Bal0]),
-    UpdateOpts0 = #{from => aeser_api_encoder:encode(account_pubkey, StarterPubkey),
-                   to => aeser_api_encoder:encode(account_pubkey, AcknowledgerPubkey),
-                   amount => Amount},
+    UpdateOpts1 =
+        UpdateOpts0#{ from => aeser_api_encoder:encode(account_pubkey, StarterPubkey)
+                    , to => aeser_api_encoder:encode(account_pubkey, AcknowledgerPubkey)
+                    , amount => Amount },
     MetaStr = <<"meta 1">>,
     UpdateOpts = if IncludeMeta ->
-                         UpdateOpts0#{ meta => [MetaStr] };
+                         UpdateOpts1#{ meta => [MetaStr] };
                     true ->
-                         UpdateOpts0
+                         UpdateOpts1
                  end,
     if TestErrors ->
             ws_send_tagged(StarterPid, <<"channels.update.new">>,
@@ -1125,8 +1151,8 @@ sc_ws_reestablish_(ReestablOptions, Config) ->
     [{channel_clients, ChannelClients} | Config].
 
 
-sc_ws_deposit_(Config, Origin) when Origin =:= initiator
-                            orelse Origin =:= responder ->
+sc_ws_deposit_(Config, Origin, XOpts) when Origin =:= initiator
+                                    orelse Origin =:= responder ->
     Participants= proplists:get_value(participants, Config),
     Clients = proplists:get_value(channel_clients, Config),
     {SenderRole, AckRole} =
@@ -1152,7 +1178,7 @@ sc_ws_deposit_(Config, Origin) when Origin =:= initiator
         wait_for_channel_event(SenderConnPid, error, Config),
     make_two_gen_messages_volleys(SenderConnPid, SenderPubkey, AckConnPid,
                                   AckPubkey, Config),
-    ws_send_tagged(SenderConnPid, <<"channels.deposit">>, #{amount => 2}, Config),
+    ws_send_tagged(SenderConnPid, <<"channels.deposit">>, XOpts#{amount => 2}, Config),
     #{tx := UnsignedStateTx,
       updates := Updates} = channel_sign_tx(SenderPubkey, SenderConnPid, SenderPrivkey, <<"channels.deposit_tx">>, Config),
     {ok, #{<<"event">> := <<"deposit_created">>}} = wait_for_channel_event(AckConnPid, info, Config),
@@ -1195,8 +1221,8 @@ sc_ws_deposit_(Config, Origin) when Origin =:= initiator
                                                              error]),
     ok.
 
-sc_ws_withdraw_(Config, Origin) when Origin =:= initiator
-                              orelse Origin =:= responder ->
+sc_ws_withdraw_(Config, Origin, XOpts) when Origin =:= initiator
+                                     orelse Origin =:= responder ->
     ct:log("withdraw test, Origin == ~p", [Origin]),
     Participants = proplists:get_value(participants, Config),
     Clients = proplists:get_value(channel_clients, Config),
@@ -1223,7 +1249,7 @@ sc_ws_withdraw_(Config, Origin) when Origin =:= initiator
         wait_for_channel_event(SenderConnPid, error, Config),
     make_two_gen_messages_volleys(SenderConnPid, SenderPubkey, AckConnPid,
                                   AckPubkey, Config),
-    ws_send_tagged(SenderConnPid, <<"channels.withdraw">>, #{amount => 2}, Config),
+    ws_send_tagged(SenderConnPid, <<"channels.withdraw">>, XOpts#{amount => 2}, Config),
     #{tx := UnsignedStateTx,
       updates := Updates} = channel_sign_tx(SenderPubkey, SenderConnPid, SenderPrivkey, <<"channels.withdraw_tx">>, Config),
     {ok, #{<<"event">> := <<"withdraw_created">>}} = wait_for_channel_event(AckConnPid, info, Config),
@@ -1297,7 +1323,7 @@ sc_ws_nameservice_contract(Config) ->
     ok.
 
 sc_ws_environment_contract(Config) ->
-    [sc_ws_contract_generic_(Role, ContractSource, fun sc_ws_enviroment_contract_/9, Config,
+    [sc_ws_contract_generic_(Role, ContractSource, fun sc_ws_environment_contract_/9, Config,
                             [])
         || Role <- [initiator, responder], ContractSource <- [offchain]],
     ok.
@@ -1481,11 +1507,15 @@ sc_ws_oracle_contract_(Owner, GetVolley, CreateContract, ConnPid1, ConnPid2,
     CallContract =
         fun(Who, Fun, Args, _ReturnType, Result) ->
             {UpdateVolley, UpdaterConnPid, _UpdaterPubKey} = GetVolley(Who),
+            TopHash = aecore_suite_utils:get_key_hash_by_delta(dev1, 0),
+            Hash = aeser_api_encoder:encode(key_block_hash, TopHash),
             R0 = dry_call_a_contract(Fun, Args, ContractPubKey,
-                                     channel_on_chain_contract_oracle, UpdaterConnPid, Config),
+                                     channel_on_chain_contract_oracle, UpdaterConnPid,
+                                     0, Config, #{block_hash => Hash}),
             #{tx := Tx, updates := Updates} =
                 call_a_contract(Fun, Args, ContractPubKey, channel_on_chain_contract_oracle,
-                                UpdaterConnPid, UpdateVolley, Config),
+                                UpdaterConnPid, UpdateVolley,
+                                0, Config, #{block_hash => Hash}),
             R =
                 ws_get_decoded_result(ConnPid1, ConnPid2, channel_on_chain_contract_oracle,
                                       Fun, Updates, Tx, Config),
@@ -1600,14 +1630,17 @@ sc_ws_nameservice_contract_(Owner, GetVolley, CreateContract, ConnPid1, ConnPid2
             QKey = AddQuotes(Key0),
             Args = [QName, QKey],
             FunctionName = "can_resolve",
+            TopHash = aecore_suite_utils:get_key_hash_by_delta(dev1, 0),
+            Hash = aeser_api_encoder:encode(key_block_hash, TopHash),
             R0 = dry_call_a_contract(FunctionName, Args, ContractPubKey,
                                      channel_on_chain_contract_name_resolution,
-                                     UpdaterConnPid, Config),
-
+                                     UpdaterConnPid,
+                                     0, Config, #{block_hash => Hash}),
             #{tx := Tx, updates := Updates} =
                 call_a_contract(FunctionName, Args, ContractPubKey,
                                 channel_on_chain_contract_name_resolution,
-                                UpdaterConnPid, UpdateVolley, Config),
+                                UpdaterConnPid, UpdateVolley,
+                                0, Config, #{block_hash => Hash}),
             R = ws_get_decoded_result(ConnPid1, ConnPid2,
                                       channel_on_chain_contract_name_resolution,
                                       FunctionName, Updates, Tx, Config),
@@ -1639,8 +1672,8 @@ sc_ws_nameservice_contract_(Owner, GetVolley, CreateContract, ConnPid1, ConnPid2
     Test(Name, <<"missing_key">>, false),
     ok.
 
-sc_ws_enviroment_contract_(Owner, GetVolley, CreateContract, ConnPid1, ConnPid2,
-                           _OwnerPubkey, _OtherPubkey, _Opts, Config) ->
+sc_ws_environment_contract_(Owner, GetVolley, CreateContract, ConnPid1, ConnPid2,
+                            _OwnerPubkey, _OtherPubkey, _Opts, Config) ->
     EncodedCode = contract_byte_code("channel_env"),
     {ok, EncodedInitData} = encode_call_data(channel_env, "init", []),
 
@@ -1650,11 +1683,15 @@ sc_ws_enviroment_contract_(Owner, GetVolley, CreateContract, ConnPid1, ConnPid2,
         fun(Who, Fun, Result) ->
             {UpdateVolley, UpdaterConnPid, _UpdaterPubKey} = GetVolley(Who),
             Args = [],
+            TopHash = aecore_suite_utils:get_key_hash_by_delta(dev1, 0),
+            Hash = aeser_api_encoder:encode(key_block_hash, TopHash),
             R0 = dry_call_a_contract(Fun, Args, ContractPubKey,
-                                     channel_env, UpdaterConnPid, Config),
+                                     channel_env, UpdaterConnPid,
+                                     0, Config, #{block_hash => Hash}),
             #{tx := Tx, updates := Updates} =
                 call_a_contract(Fun, Args, ContractPubKey, channel_env,
-                                UpdaterConnPid, UpdateVolley, Config),
+                                UpdaterConnPid, UpdateVolley,
+                                0, Config, #{block_hash => Hash}),
             R = ws_get_decoded_result(ConnPid1, ConnPid2, channel_env,
                                       Fun, Updates, Tx, Config),
             {R, R} = {R0, R},
@@ -1766,11 +1803,15 @@ sc_ws_remote_call_contract_refering_onchain_data_(Owner, GetVolley, CreateContra
     ContractCall =
         fun(Who, ContractPubKey, Contract, Fun, Args, Result, Amount) ->
                 {UpdateVolley, UpdaterConnPid, _UpdaterPubKey} = GetVolley(Who),
+                TopHash = aecore_suite_utils:get_key_hash_by_delta(dev1, 0),
+                Hash = aeser_api_encoder:encode(key_block_hash, TopHash),
                 R0 = dry_call_a_contract(Fun, Args, ContractPubKey, Contract,
-                                         UpdaterConnPid, Amount, Config),
+                                         UpdaterConnPid, Amount, Config,
+                                         #{block_hash => Hash}),
                 #{tx := Tx, updates := Updates} =
                     call_a_contract(Fun, Args, ContractPubKey, Contract,
-                                    UpdaterConnPid, UpdateVolley, Amount, Config),
+                                    UpdaterConnPid, UpdateVolley, Amount,
+                                    Config, #{block_hash => Hash}),
                 R = ws_get_decoded_result(ConnPid1, ConnPid2, Contract, Fun,
                                           Updates, Tx, Config),
                 {R, R} = {R0, R},
@@ -2203,14 +2244,20 @@ call_a_contract(Function, Argument, ContractPubKey, Contract,
                 SenderConnPid, UpdateVolley, Config) ->
     call_a_contract(Function, Argument, ContractPubKey, Contract,
                     SenderConnPid, UpdateVolley, 0, Config).
+
 call_a_contract(Function, Argument, ContractPubKey, Contract, SenderConnPid,
                 UpdateVolley, Amount, Config) ->
+    call_a_contract(Function, Argument, ContractPubKey, Contract, SenderConnPid,
+                UpdateVolley, Amount, Config, #{}).
+
+call_a_contract(Function, Argument, ContractPubKey, Contract, SenderConnPid,
+                UpdateVolley, Amount, Config, XOpts) ->
     {ok, EncodedMainData} = encode_call_data(Contract, Function, Argument),
     CallOpts =
-        #{contract_id => aeser_api_encoder:encode(contract_pubkey, ContractPubKey),
-          abi_version => aect_test_utils:abi_version(),
-          amount      => Amount,
-          call_data   => EncodedMainData},
+        XOpts#{ contract_id => aeser_api_encoder:encode(contract_pubkey, ContractPubKey)
+              , abi_version => aect_test_utils:abi_version()
+              , amount      => Amount
+              , call_data   => EncodedMainData },
     % invalid call
     ws_send_tagged(SenderConnPid, <<"channels.update.call_contract">>,
                    CallOpts#{amount => <<"1">>}, Config),
@@ -2237,13 +2284,18 @@ dry_call_a_contract(Function, Argument, CPubKey, Contract, SenderConnPid, Config
     dry_call_a_contract(Function, Argument, CPubKey, Contract, SenderConnPid, 0, Config).
 
 dry_call_a_contract(Function, Argument, ContractPubKey, Contract, SenderConnPid, Amount, Config) ->
+    dry_call_a_contract(Function, Argument, ContractPubKey, Contract,
+                        SenderConnPid, Amount, Config, #{}).
+
+dry_call_a_contract(Function, Argument, ContractPubKey, Contract, SenderConnPid,
+                    Amount, Config, XOpts) ->
     {ok, EncodedMainData} = encode_call_data(Contract, Function, Argument),
     ok = ?WS:register_test_for_channel_event(SenderConnPid, dry_run),
     CallOpts =
-        #{contract_id => aeser_api_encoder:encode(contract_pubkey, ContractPubKey),
-          abi_version => aect_test_utils:abi_version(),
-          amount      => Amount,
-          call_data   => EncodedMainData},
+        XOpts#{ contract_id => aeser_api_encoder:encode(contract_pubkey, ContractPubKey)
+              , abi_version => aect_test_utils:abi_version()
+              , amount      => Amount
+              , call_data   => EncodedMainData},
     % invalid call
     ws_send_tagged(SenderConnPid, <<"channels.dry_run.call_contract">>,
                    CallOpts#{amount => <<"1">>}, Config),
@@ -3027,7 +3079,7 @@ sc_ws_ping_pong(Config) ->
 sc_ws_deposit(Config) ->
     lists:foreach(
         fun(Depositor) ->
-            sc_ws_deposit_(Config, Depositor),
+            sc_ws_deposit_(Config, Depositor, #{}),
             ok
         end,
         [initiator, responder]).
@@ -3035,7 +3087,7 @@ sc_ws_deposit(Config) ->
 sc_ws_withdraw(Config) ->
     lists:foreach(
         fun(Depositor) ->
-            sc_ws_withdraw_(Config, Depositor),
+            sc_ws_withdraw_(Config, Depositor, #{}),
             ok
         end,
         [initiator, responder]).
@@ -3141,6 +3193,8 @@ log_basename(Config) ->
                 filename:join([Protocol, "generalized_accounts", "responder"]);
             ga_both ->
                 filename:join([Protocol, "generalized_accounts", "both"]);
+            pinned_env ->
+                filename:join([Protocol, "pinned_env"]);
             plain -> Protocol
         end,
     filename:join("channel_docs", SubDir).
@@ -3644,3 +3698,225 @@ sc_ws_broken_open_params(Config) ->
                                    #{lock_period => -1}, Config),
     Test(ChannelOpts8, <<"Value too low">>),
     ok.
+
+sc_ws_pinned_update(Cfg) ->
+    NOT = 10,
+    NNT = 1,
+    Pick = 1,
+    aecore_suite_utils:mine_key_blocks(aecore_suite_utils:node_name(?NODE),
+                                       NOT + 1),
+    Config = sc_ws_open_(Cfg, #{ bh_delta_not_older_than => NOT
+                               , bh_delta_not_newer_than => NNT
+                               , bh_delta_pick => Pick}),
+    Participants = proplists:get_value(participants, Config),
+    Conns = proplists:get_value(channel_clients, Config),
+    lists:foldl(
+        fun(Sender, Round) ->
+            HashNOT = aecore_suite_utils:get_key_hash_by_delta(dev1, NOT),
+            Hash1 = aeser_api_encoder:encode(key_block_hash, HashNOT),
+            channel_update(Conns, Sender, Participants, 1, Round,
+                           false, Cfg, #{block_hash => Hash1}),
+            Round + 1
+        end,
+        2, % we start from round 2
+        [initiator,
+         responder]),
+    ok = sc_ws_close_(Config).
+
+sc_ws_pinned_deposit(Cfg) ->
+    NOT = 10,
+    NNT = 1,
+    Pick = 1,
+    aecore_suite_utils:mine_key_blocks(aecore_suite_utils:node_name(?NODE),
+                                       NOT + 1),
+    Config = sc_ws_open_(Cfg, #{ bh_delta_not_older_than => NOT
+                               , bh_delta_not_newer_than => NNT
+                               , bh_delta_pick => Pick}),
+    lists:foldl(
+        fun(Depositor, Round) ->
+            HashNOT = aecore_suite_utils:get_key_hash_by_delta(dev1, NOT),
+            Hash1 = aeser_api_encoder:encode(key_block_hash, HashNOT),
+            sc_ws_deposit_(Config, Depositor,
+                           #{block_hash => Hash1}),
+            Round + 1
+        end,
+        2, % we start from round 2
+        [initiator,
+         responder]),
+    ok = sc_ws_close_(Config).
+
+sc_ws_pinned_withdraw(Cfg) ->
+    NOT = 10,
+    NNT = 1,
+    Pick = 1,
+    aecore_suite_utils:mine_key_blocks(aecore_suite_utils:node_name(?NODE),
+                                       NOT + 1),
+    Config = sc_ws_open_(Cfg, #{ bh_delta_not_older_than => NOT
+                               , bh_delta_not_newer_than => NNT
+                               , bh_delta_pick => Pick}),
+    lists:foldl(
+        fun(Depositor, Round) ->
+            HashNOT = aecore_suite_utils:get_key_hash_by_delta(dev1, NOT),
+            Hash1 = aeser_api_encoder:encode(key_block_hash, HashNOT),
+            sc_ws_withdraw_(Config, Depositor,
+                            #{block_hash => Hash1}),
+            Round + 1
+        end,
+        2, % we start from round 2
+        [initiator,
+         responder]),
+    ok = sc_ws_close_(Config).
+
+sc_ws_pinned_error_update(Cfg) ->
+    sc_ws_pinned_error_(
+        <<"channels.update.new">>,
+        fun(SenderPubkey, AckPubkey) ->                
+            #{from => aeser_api_encoder:encode(account_pubkey, SenderPubkey),
+              to => aeser_api_encoder:encode(account_pubkey, AckPubkey),
+              amount => 1}
+        end,
+        <<"channels.update">>, Cfg).
+
+sc_ws_pinned_error_deposit(Cfg) ->
+    sc_ws_pinned_error_(
+        <<"channels.deposit">>,
+        fun(_SenderPubkey, _AckPubkey) ->                
+            #{amount => 1}
+        end,
+        <<"channels.deposit_tx">>, Cfg).
+
+sc_ws_pinned_error_withdraw(Cfg) ->
+    sc_ws_pinned_error_(
+        <<"channels.withdraw">>,
+        fun(_SenderPubkey, _AckPubkey) ->                
+            #{amount => 1}
+        end,
+        <<"channels.withdraw_tx">>, Cfg).
+
+sc_ws_pinned_error_(Tag, XOptsFun, ResponseTag, Cfg) ->
+    NOT = 10,
+    NNT = 2,
+    Pick = 1,
+    aecore_suite_utils:mine_key_blocks(aecore_suite_utils:node_name(?NODE),
+                                       NOT + 1),
+    Config = sc_ws_open_(Cfg, #{ bh_delta_not_older_than => NOT
+                               , bh_delta_not_newer_than => NNT
+                               , bh_delta_pick => Pick}),
+    Participants = proplists:get_value(participants, Config),
+    #{initiator := IConnPid,
+      responder := RConnPid} = Conns = proplists:get_value(channel_clients, Config),
+    ok = ?WS:register_test_for_channel_events(IConnPid, [sign, conflict]),
+    ok = ?WS:register_test_for_channel_events(RConnPid, [sign, conflict]),
+    lists:foldl(
+        fun(SenderRole, Round) ->
+            {SenderRole, AckRole} =
+                case SenderRole of
+                    initiator -> {initiator, responder};
+                    responder -> {responder, initiator}
+                end,
+            #{pub_key := SenderPubkey,
+              priv_key:= SenderPrivkey} = maps:get(SenderRole, Participants),
+            #{pub_key := AckPubkey} = maps:get(AckRole, Participants),
+            Test =
+                fun(Delta) ->
+                    HashBin = aecore_suite_utils:get_key_hash_by_delta(dev1, Delta),
+                    Hash = aeser_api_encoder:encode(key_block_hash, HashBin),
+                    SenderConnPid = maps:get(SenderRole, Conns),
+                    AckConnPid = maps:get(AckRole, Conns),
+                    XOpts = XOptsFun(SenderPubkey, AckPubkey),
+                    ws_send_tagged(SenderConnPid, Tag,
+                                   XOpts#{block_hash => Hash}, Cfg),
+                    channel_sign_tx(SenderPubkey, SenderConnPid, SenderPrivkey,
+                                    ResponseTag, Cfg),
+                    {ok, _} = wait_for_channel_event(SenderConnPid, conflict, Cfg),
+                    {ok, _} = wait_for_channel_event(AckConnPid, conflict, Cfg)
+                end,
+            Test(NNT - 1), %% too nww
+            Test(NOT + 1), %% too old
+            Round %% not bumped
+        end,
+        2, % we start from round 2
+        [initiator,
+         responder]),
+    ok = ?WS:unregister_test_for_channel_events(IConnPid, [sign, conflict]),
+    ok = ?WS:unregister_test_for_channel_events(RConnPid, [sign, conflict]),
+
+    ok = sc_ws_close_(Config).
+
+sc_ws_pinned_contract(Cfg) ->
+    NOT = 10,
+    NNT = 2,
+    Pick = 1,
+    aecore_suite_utils:mine_key_blocks(aecore_suite_utils:node_name(?NODE),
+                                       NOT + 1),
+    Config = sc_ws_open_(Cfg, #{ bh_delta_not_older_than => NOT
+                               , bh_delta_not_newer_than => NNT
+                               , bh_delta_pick => Pick}),
+    #{initiator := #{pub_key  := IPubkey,
+                     priv_key := IPrivkey},
+      responder := #{pub_key  := RPubkey,
+                     priv_key := RPrivkey}} =
+        proplists:get_value(participants, Config),
+    #{initiator := IConnPid,
+      responder := RConnPid} = proplists:get_value(channel_clients, Config),
+    ok = ?WS:register_test_for_channel_events(IConnPid, [sign, info, get, error]),
+    ok = ?WS:register_test_for_channel_events(RConnPid, [sign, info, get, error]),
+    GetVolley =
+        fun(Actor) ->
+            case Actor =:= initiator of
+                true ->
+                    {fun() -> update_volley_(IPubkey, IConnPid, IPrivkey,
+                                             RPubkey, RConnPid, RPrivkey, Cfg) end,
+                     IConnPid, IPubkey};
+                false ->
+                    {fun() -> update_volley_(RPubkey, RConnPid, RPrivkey,
+                                             IPubkey, IConnPid, IPrivkey, Cfg) end,
+                     RConnPid, RPubkey}
+            end
+        end,
+    CreateContract =
+        fun(Owner) ->
+            EncodedCode = contract_byte_code("channel_env"),
+            {ok, EncodedInitData} = encode_call_data(channel_env, "init", []),
+            {CreateVolley, OwnerConnPid, OwnerPubKey} = GetVolley(Owner),
+            NewContractOpts =
+                #{vm_version  => aect_test_utils:vm_version(),
+                  abi_version => aect_test_utils:abi_version(),
+                  deposit     => 1,
+                  code        => EncodedCode,
+                  call_data   => EncodedInitData},
+            % correct call
+            ws_send_tagged(OwnerConnPid, <<"channels.update.new_contract">>,
+                NewContractOpts, Cfg),
+
+            #{tx := UnsignedStateTx, updates := _Updates} = CreateVolley(),
+            contract_id_from_create_update(OwnerPubKey, UnsignedStateTx)
+        end,
+
+    PinnedContractCall =
+        fun(Who, Delta) ->
+            {UpdateVolley, UpdaterConnPid, _UpdaterPubKey} = GetVolley(Who),
+            Fun = <<"block_height">>,
+            ContractPubKey = CreateContract(Who),
+            HashBin = aecore_suite_utils:get_key_hash_by_delta(dev1, Delta),
+            Hash = aeser_api_encoder:encode(key_block_hash, HashBin),
+            Args = [],
+            R0 = dry_call_a_contract(Fun, Args, ContractPubKey,
+                                     channel_env, UpdaterConnPid, 0, Cfg,
+                                     #{block_hash => Hash}),
+            #{tx := Tx, updates := Updates} =
+                call_a_contract(Fun, Args, ContractPubKey, channel_env,
+                                UpdaterConnPid, UpdateVolley, 0, Cfg,
+                                #{block_hash => Hash}),
+            R = ws_get_decoded_result(IConnPid, RConnPid, channel_env,
+                                      Fun, Updates, Tx, Cfg),
+            {R, R} = {R0, R}, %% dry run is the same
+            {ok, 200, #{<<"height">> := TopHeight}} = get_key_blocks_current_sut(),
+            ExpectedRes = TopHeight - Delta,
+            {R, R} = {ExpectedRes, R}
+        end,
+    [PinnedContractCall(Who, Delta)
+        || Who   <- [initiator, responder],
+           Delta <- [NNT, NOT, NNT + 1]],
+    ok = sc_ws_close_(Config).
+

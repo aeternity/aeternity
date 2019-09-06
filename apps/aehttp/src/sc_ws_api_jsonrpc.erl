@@ -317,18 +317,20 @@ process_request(#{<<"method">> := <<"channels.update.new_contract">>,
                                     <<"abi_version">> := ABIVersion,
                                     <<"deposit">>     := Deposit,
                                     <<"code">>        := CodeE,
-                                    <<"call_data">>   := CallDataE}}, FsmPid) ->
+                                    <<"call_data">>   := CallDataE} = Params}, FsmPid) ->
     assert_integer(Deposit),
     assert_integer(VmVersion),
     assert_integer(ABIVersion),
     case {bytearray_decode(CodeE), bytearray_decode(CallDataE)} of
         {{ok, Code}, {ok, CallData}} ->
-            case aesc_fsm:upd_create_contract(FsmPid,
-                                              #{vm_version  => VmVersion,
-                                                abi_version => ABIVersion,
-                                                deposit     => Deposit,
-                                                code        => Code,
-                                                call_data   => CallData}) of
+            MandatoryOpts =
+                #{ vm_version  => VmVersion
+                 , abi_version => ABIVersion
+                 , deposit     => Deposit
+                 , code        => Code
+                 , call_data   => CallData },
+            XOpts = maps:merge(maybe_read_bh(Params), MandatoryOpts),
+            case aesc_fsm:upd_create_contract(FsmPid, XOpts) of
                 ok -> no_reply;
                 {error, _Reason} = Err -> Err
             end;
@@ -338,17 +340,19 @@ process_request(#{<<"method">> := <<"channels.update.call_contract">>,
                   <<"params">> := #{<<"contract_id">> := ContractE,
                                     <<"abi_version">> := ABIVersion,
                                     <<"amount">>      := Amount,
-                                    <<"call_data">>   := CallDataE}}, FsmPid) ->
+                                    <<"call_data">>   := CallDataE} = Params}, FsmPid) ->
     assert_integer(Amount),
     assert_integer(ABIVersion),
     case {aeser_api_encoder:safe_decode(contract_pubkey, ContractE),
           bytearray_decode(CallDataE)} of
         {{ok, Contract}, {ok, CallData}} ->
-            case aesc_fsm:upd_call_contract(FsmPid,
-                                            #{contract    => Contract,
-                                              abi_version => ABIVersion,
-                                              amount      => Amount,
-                                              call_data   => CallData}) of
+            MandatoryOpts =
+                #{ contract    => Contract
+                 , abi_version => ABIVersion
+                 , amount      => Amount
+                 , call_data   => CallData },
+            XOpts = maps:merge(maybe_read_bh(Params), MandatoryOpts),
+            case aesc_fsm:upd_call_contract(FsmPid, XOpts) of
                 ok -> no_reply;
                 {error, _Reason} = Err -> Err
             end;
@@ -381,17 +385,19 @@ process_request(#{<<"method">> := <<"channels.dry_run.call_contract">>,
                   <<"params">> := #{<<"contract_id">> := ContractE,
                                     <<"abi_version">> := ABIVersion,
                                     <<"amount">>      := Amount,
-                                    <<"call_data">>   := CallDataE}}, FsmPid) ->
+                                    <<"call_data">>   := CallDataE} = Params}, FsmPid) ->
     assert_integer(Amount),
     assert_integer(ABIVersion),
     case {aeser_api_encoder:safe_decode(contract_pubkey, ContractE),
           bytearray_decode(CallDataE)} of
         {{ok, Contract}, {ok, CallData}} ->
-            case aesc_fsm:dry_run_contract(FsmPid,
-                                           #{contract     => Contract,
-                                             abi_version  => ABIVersion,
-                                             amount       => Amount,
-                                             call_data    => CallData}) of
+            MandatoryOpts =
+                #{ contract    => Contract
+                 , abi_version => ABIVersion
+                 , amount      => Amount
+                 , call_data   => CallData },
+            XOpts = maps:merge(maybe_read_bh(Params), MandatoryOpts),
+            case aesc_fsm:dry_run_contract(FsmPid, XOpts) of
                 {ok, Call} ->
                   {reply, #{ action     => <<"dry_run">>
                            , tag        => <<"call_contract">>
@@ -471,7 +477,6 @@ process_request(#{<<"method">> := <<"channels.get.poi">>,
                     {error, broken_encoding}
             end
         end,
-
     case {Parse(account_pubkey, AccountsE), Parse(contract_pubkey, ContractsE)} of
         {{ok, Accounts0}, {ok, Contracts0}} ->
             Accounts = [{account, A} || A <- Accounts0 ++ Contracts0],
@@ -506,16 +511,18 @@ process_request(#{<<"method">> := <<"channels.message">>,
         _ -> {error, {broken_encoding, [account]}}
     end;
 process_request(#{<<"method">> := <<"channels.deposit">>,
-                    <<"params">> := #{<<"amount">>  := Amount}}, FsmPid) ->
+                    <<"params">> := #{<<"amount">>  := Amount} = Props}, FsmPid) ->
     assert_integer(Amount),
-    case aesc_fsm:upd_deposit(FsmPid, #{amount => Amount}) of
+    XOpts = maps:merge(maybe_read_bh(Props), #{amount => Amount}),
+    case aesc_fsm:upd_deposit(FsmPid, XOpts) of
         ok -> no_reply;
         {error, _Reason} = Err -> Err
     end;
 process_request(#{<<"method">> := <<"channels.withdraw">>,
-                    <<"params">> := #{<<"amount">>  := Amount}}, FsmPid) ->
+                    <<"params">> := #{<<"amount">>  := Amount} = Props}, FsmPid) ->
     assert_integer(Amount),
-    case aesc_fsm:upd_withdraw(FsmPid, #{amount => Amount}) of
+    XOpts = maps:merge(maybe_read_bh(Props), #{amount => Amount}),
+    case aesc_fsm:upd_withdraw(FsmPid, XOpts) of
         ok -> no_reply;
         {error, _Reason} = Err -> Err
     end;
@@ -620,7 +627,9 @@ check_params(<<"channels.update.new">>, Params) when is_map(Params) ->
     Read = sc_ws_utils:read_f(Params),
     sc_ws_utils:check_params(
       [Read(<<"meta">>, meta, #{ type => {list, #{type => binary}}
-                               , mandatory => false})]);
+                               , mandatory => false }),
+       Read(<<"block_hash">>, block_hash, #{ type => {hash, block_hash}
+                                           , mandatory => false })]);
 check_params(Method, Params) ->
     {error, {unknown, Method, Params}}.
 
@@ -634,3 +643,10 @@ valid_error_code(ErrorCode) when is_binary(ErrorCode) ->
     end;
 valid_error_code(_) ->
     false.
+
+maybe_read_bh(Params) ->
+    Read = sc_ws_utils:read_f(Params),
+    sc_ws_utils:check_params(
+      [Read(<<"block_hash">>, block_hash, #{ type => {hash, block_hash}
+                                           , mandatory => false })]).
+
