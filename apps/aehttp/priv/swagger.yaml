@@ -2889,11 +2889,16 @@ definitions:
         type: array
         description: Txs
         items:
-          oneOf:
-            - $ref: '#/definitions/EncodedByteArray'
-            - $ref: '#/definitions/DryRunCallReq'
+          $ref: '#/definitions/DryRunInputItem'
     required:
       - txs
+  DryRunInputItem:
+    type: object
+    properties:
+      tx:
+        $ref: '#/definitions/EncodedByteArray'
+      call_req:
+        $ref: '#/definitions/DryRunCallReq'
   DryRunCallReq:
     type: object
     properties:

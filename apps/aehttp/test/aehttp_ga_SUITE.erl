@@ -658,9 +658,9 @@ new_account(Balance) ->
 do_dry_run(STx, ExpRes) ->
     Tx = try aetx_sign:tx(STx)
          catch _:_ -> STx end,
+    EncTx = aeser_api_encoder:encode(transaction, aetx:serialize_to_binary(Tx)),
     Host = aecore_suite_utils:internal_address(),
-    case http_request(Host, post, "debug/transactions/dry-run",
-                      #{ txs => [aeser_api_encoder:encode(transaction, aetx:serialize_to_binary(Tx))] }) of
+    case http_request(Host, post, "debug/transactions/dry-run", #{ txs => [#{tx => EncTx}] }) of
         {ok, 200, #{ <<"results">> := [#{ <<"result">> := Res } = ResObj] }} ->
             ct:pal("ResObj: ~p", [ResObj]),
             ?assertMatch(ExpRes, binary_to_atom(Res, utf8));

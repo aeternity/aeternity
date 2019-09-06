@@ -170,7 +170,7 @@ EXT_API = {}
 def external_api(name):
     if not name in EXT_API:
         url = SETUP[name]['api_url']
-        client_config = {'validate_responses': False, 'validate_swagger_spec': False}
+        client_config = {'validate_responses': False}
         EXT_API[name] = SwaggerClient.from_url(url, config=client_config).external
     return EXT_API[name]
 
