@@ -4545,6 +4545,9 @@ sophia_events_new(_Cfg) ->
     ?assertMatchFATE(ok, ECall(nodata1, [-1])),
     ?assertMatchFATE(ok, ECall(f1, [1 bsl 256, <<"Hello">>])),
     ?assertMatchFATE(ok, ECall(f1, [-1, <<"Hello">>])),
+    ?assertMatchFATE({error, <<"Illegal bits in log">>},
+                     ?call(call_contract, Acc, Ct, nodata2, {tuple, []}, {true, {bits, 1 bsl 256}})),
+
 
     %% Look at how the gas cost varies in FATE depending on the size of the log payload.
     OneByte = <<"1">>,

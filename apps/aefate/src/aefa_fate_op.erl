@@ -785,7 +785,8 @@ log_(Args, EngineState) ->
                          N =< ?MAX_WORD_INT -> <<N:256>>;
                 (?FATE_FALSE)          -> <<0:256>>;
                 (?FATE_TRUE)           -> <<1:256>>;
-                (?FATE_BITS(N))        -> <<N:256>>;
+                (?FATE_BITS(N)) when N >= 0,
+                                     N =< ?MAX_WORD_INT -> <<N:256>>;
                 (?FATE_ADDRESS(Addr))  -> Addr;
                 (?FATE_CONTRACT(Addr)) -> Addr;
                 (?FATE_ORACLE(Addr))   -> Addr;
@@ -794,6 +795,7 @@ log_(Args, EngineState) ->
                      W = byte_size(Bin),
                      <<0:(32 - W)/unit:8, Bin/binary>>;
                 (N) when is_integer(N) -> aefa_fate:abort({log_illegal_int, N}, EngineState);
+                (?FATE_BITS(_)) -> aefa_fate:abort(log_illegal_bits, EngineState);
                 (Other) -> aefa_fate:abort({value_does_not_match_type, Other, word}, EngineState)
              end,
     PayloadBin = ToBin(Payload),
