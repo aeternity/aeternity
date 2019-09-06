@@ -4605,9 +4605,11 @@ sophia_crypto(_Cfg) ->
     Data   = [{none, <<"foo">>}, {{some, 100432}, String}],
     Bin    = ?IF_AEVM(aeb_heap:to_binary(Data),
                       aeb_fate_encoding:serialize(aefate_test_utils:encode(Data))),
+
     <<Sha3_N:256>>      = Sha3      = aec_hash:hash(evm, Bin),
     <<Sha256_N:256>>    = Sha256    = aec_hash:sha256_hash(Bin),
     <<Blake2b_N:256>>   = Blake2b   = aec_hash:blake2b_256_hash(Bin),
+
     <<Sha3_S_N:256>>    = Sha3_S    = aec_hash:hash(evm, String),
     <<Sha256_S_N:256>>  = Sha256_S  = aec_hash:sha256_hash(String),
     <<Blake2b_S_N:256>> = Blake2b_S = aec_hash:blake2b_256_hash(String),
@@ -4615,6 +4617,7 @@ sophia_crypto(_Cfg) ->
     ResSha3_S    = ?call(call_contract, Acc, IdC, sha3_str,    word, String),
     ResSha256_S  = ?call(call_contract, Acc, IdC, sha256_str,  word, String),
     ResBlake2b_S = ?call(call_contract, Acc, IdC, blake2b_str, word, String),
+
     ResSha3      = ?call(call_contract, Acc, IdC, sha3,        word, Data  ),
     ResSha256    = ?call(call_contract, Acc, IdC, sha256,      word, Data  ),
     ResBlake2b   = ?call(call_contract, Acc, IdC, blake2b,     word, Data  ),
@@ -4632,6 +4635,52 @@ sophia_crypto(_Cfg) ->
     ?assertMatchFATE({bytes, Sha3},      ResSha3),
     ?assertMatchFATE({bytes, Sha256},    ResSha256),
     ?assertMatchFATE({bytes, Blake2b},   ResBlake2b),
+
+    %% Tests for bytes (which should hash as raw strings from lima)
+
+    case vm_version() >= ?VM_AEVM_SOPHIA_3 of   %% No bytes in minerva
+        false -> ok;
+        true  ->
+            Bytes1 = {bytes, <<"ARRAY OF 17 BYTES">>},
+            Bytes2 = {bytes, <<"A LONGER ARRAY OF 52 BYTES (CRUCIALLY, MORE THAN 32)">>},
+
+            BytesToHash = fun({bytes, Bytes}) ->
+                case vm_version() of
+                    VM when ?IS_FATE_SOPHIA(VM)     -> Bytes;
+                    VM when VM >= ?VM_AEVM_SOPHIA_4 -> Bytes;
+                    _ -> aeb_heap:to_binary(format_aevm_args({bytes, Bytes}))
+                end end,
+
+            <<Sha3_B1_N:256>>    = Sha3_B1    = aec_hash:hash(evm, BytesToHash(Bytes1)),
+            <<Sha256_B1_N:256>>  = Sha256_B1  = aec_hash:sha256_hash(BytesToHash(Bytes1)),
+            <<Blake2b_B1_N:256>> = Blake2b_B1 = aec_hash:blake2b_256_hash(BytesToHash(Bytes1)),
+
+            <<Sha3_B2_N:256>>    = Sha3_B2    = aec_hash:hash(evm, BytesToHash(Bytes2)),
+            <<Sha256_B2_N:256>>  = Sha256_B2  = aec_hash:sha256_hash(BytesToHash(Bytes2)),
+            <<Blake2b_B2_N:256>> = Blake2b_B2 = aec_hash:blake2b_256_hash(BytesToHash(Bytes2)),
+
+            ResSha3_B1    = ?call(call_contract, Acc, IdC, sha3_b17,    word, {Bytes1}),
+            ResSha256_B1  = ?call(call_contract, Acc, IdC, sha256_b17,  word, {Bytes1}),
+            ResBlake2b_B1 = ?call(call_contract, Acc, IdC, blake2b_b17, word, {Bytes1}),
+
+            ResSha3_B2    = ?call(call_contract, Acc, IdC, sha3_b52,    word, {Bytes2}),
+            ResSha256_B2  = ?call(call_contract, Acc, IdC, sha256_b52,  word, {Bytes2}),
+            ResBlake2b_B2 = ?call(call_contract, Acc, IdC, blake2b_b52, word, {Bytes2}),
+
+            ?assertMatchAEVM1OOG(Sha3_B1_N   , ResSha3_B1),
+            ?assertMatchAEVM1OOG(Sha256_B1_N , ResSha256_B1),
+            ?assertMatchAEVM1OOG(Blake2b_B1_N, ResBlake2b_B1),
+            ?assertMatchAEVM1OOG(Sha3_B2_N   , ResSha3_B2),
+            ?assertMatchAEVM1OOG(Sha256_B2_N , ResSha256_B2),
+            ?assertMatchAEVM1OOG(Blake2b_B2_N, ResBlake2b_B2),
+
+            ?assertMatchFATE({bytes, Sha3_B1},    ResSha3_B1),
+            ?assertMatchFATE({bytes, Sha256_B1},  ResSha256_B1),
+            ?assertMatchFATE({bytes, Blake2b_B1}, ResBlake2b_B1),
+            ?assertMatchFATE({bytes, Sha3_B2},    ResSha3_B2),
+            ?assertMatchFATE({bytes, Sha256_B2},  ResSha256_B2),
+            ?assertMatchFATE({bytes, Blake2b_B2}, ResBlake2b_B2)
+    end,
 
     %% Test plain signature verification.
     Message = <<"The secret message">>,
