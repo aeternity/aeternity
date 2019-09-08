@@ -4534,6 +4534,29 @@ sophia_events_new(_Cfg) ->
     Call(data2, [?oid(Bin1), {bytes, <<Bin1/binary, 77, Bin2/binary>>}, ?qid(Bin2)]),
     Call(data3, [1 bsl 255, false, {bytes, Bin2}, <<"another string">>]),
 
+    ECall = fun(Fun, [Int|_] = Args) ->
+                    {error, <<"Illegal integer in log: ", BinInt/binary>>} =
+                        ?call(call_contract, Acc, Ct, Fun, {tuple, []}, list_to_tuple(Args)),
+                    ?assertEqual(Int, binary_to_integer(BinInt)),
+                    ok
+            end,
+    %% These errors are only valid on FATE
+    ?assertMatchFATE(ok, ECall(nodata1, [1 bsl 256])),
+    ?assertMatchFATE(ok, ECall(nodata1, [-1])),
+    ?assertMatchFATE(ok, ECall(f1, [1 bsl 256, <<"Hello">>])),
+    ?assertMatchFATE(ok, ECall(f1, [-1, <<"Hello">>])),
+    ?assertMatchFATE({error, <<"Illegal bits in log">>},
+                     ?call(call_contract, Acc, Ct, nodata2, {tuple, []}, {true, {bits, 1 bsl 256}})),
+
+
+    %% Look at how the gas cost varies in FATE depending on the size of the log payload.
+    OneByte = <<"1">>,
+    TwoByte = <<"12">>,
+    {{}, Gas1} = ?call(call_contract, Acc, Ct, data0, {tuple, []}, {OneByte}, #{return_gas_used => true}),
+    {{}, Gas2} = ?call(call_contract, Acc, Ct, data0, {tuple, []}, {TwoByte}, #{return_gas_used => true}),
+    ExpDiff = aec_governance:byte_gas(),
+    ?assertMatchFATE(ExpDiff, Gas2 - Gas1),
+
     %% ?assertMatch({{}, [{
 
     %% ?assertMatch({{},[{_, _, <<"bar">>}]},
