@@ -198,7 +198,7 @@ inband_msg(Fsm, To, Msg) ->
         MsgBin ->
             lager:debug("INVALID inband_msg(~p): ~p", [Fsm, byte_size(MsgBin)]),
             {error, invalid_request}
-    ?_catch_(error, _E, _ST)
+    ?CATCH_LOG(_E)
         {error, invalid_request}
   end.
 
@@ -1299,8 +1299,7 @@ check_reestablish_msg(#{ chain_hash := ChainHash
                     {error, _} = TxErr ->
                         TxErr
                 end
-            ?_catch_(error, E, _ST)
-                ?LOG_CAUGHT(E, _ST),
+            ?CATCH_LOG(_E)
                 {error, invalid_reestablish}
             end;
         {error, _} = ChErr ->
@@ -1443,13 +1442,7 @@ new_onchain_tx_for_signing(Type, Opts, D) ->
 new_onchain_tx_for_signing(Type, Opts, OnErr, D) when OnErr == fail;
                                                       OnErr == return ->
     try new_onchain_tx_for_signing_(Type, Opts, OnErr, D)
-    ?_catch_(error, E, _ST)
-        case not ?IS_BH_ERROR(E) of
-            true ->
-                ?LOG_CAUGHT(E, _ST);
-            false ->
-                lager:debug("Block hash error ~p", [E])
-        end,
+    ?CATCH_LOG(E, "maybe_block_hash_error")
         error(E)
     end.
 
@@ -1804,7 +1797,7 @@ tx_defaults_(channel_close_mutual_tx, _Opts, _D) ->
 
 default_nonce(Opts, #data{opts = DOpts}) ->
     try maps:get(nonce, Opts, maps:get(nonce, DOpts))
-    ?_catch_(error, _E, _ST)
+    ?CATCH_LOG(_E)
         Pubkey = maps:get(acct, Opts),
         get_nonce(Pubkey)
     end.
@@ -1870,12 +1863,12 @@ load_pinned_env(BlockHash) ->
     try aetx_env:tx_env_and_trees_from_hash(aetx_contract, BlockHash) of
         {_OnChainEnv, _OnChainTrees} = Pinned ->
             Pinned
-    ?_catch_(error, {badmatch,error}, _ST)
+    ?CATCH_LOG({badmatch, error})
         error(unknown_block_hash)
     end.
 
 -spec pick_onchain_env(map(), #data{}) ->
-    {aec_blocks:block_header_hash(), aetx_env:env(), aec_trees:trees()}. 
+    {aec_blocks:block_header_hash(), aetx_env:env(), aec_trees:trees()}.
 pick_onchain_env(#{block_hash := ?NOT_SET_BLOCK_HASH}, _D) ->
     {OnChainEnv, OnChainTrees} =
         aetx_env:tx_env_and_trees_from_top(aetx_contract),
@@ -1921,8 +1914,8 @@ new_contract_tx_for_signing(Opts, From, #data{ state = State
                 gen_statem:reply(From, Error),
                 keep_state(D)
         end
-    ?_catch_(error, E, _ST)
-        process_update_error(E, From, D, _ST)
+    ?CATCH_LOG(E)
+        process_update_error(E, From, D)
     end.
 
 pay_close_mutual_fee(Fee, IAmt, RAmt) ->
@@ -1979,8 +1972,7 @@ check_funding_created_msg(#{ temporary_channel_id := ChanId
             {error, _} = Error ->
                 Error
         end
-    ?_catch_(error, E, _ST)
-        ?LOG_CAUGHT(E, _ST),
+    ?CATCH_LOG(_E)
         {error, invalid_funding}
     end.
 
@@ -2013,8 +2005,7 @@ check_funding_signed_msg(#{ temporary_channel_id := ChanId
             {error, _} = Err ->
                 Err
         end
-    ?_catch_(error, E, _ST)
-        ?LOG_CAUGHT(E, _ST),
+    ?CATCH_LOG(_E)
         {error, invalid_funding_ack}
     end.
 
@@ -2081,8 +2072,7 @@ check_deposit_created_msg(#{ channel_id := ChanId
                 {ok, SignedTx, Updates, BlockHash, log(rcv, ?DEP_CREATED, Msg, Data)};
             {error, _} = Err -> Err
         end
-    ?_catch_(error, E, _ST)
-        ?LOG_CAUGHT(E, _ST),
+    ?CATCH_LOG(_E)
         {error, invalid_deposit}
     end.
 
@@ -2122,8 +2112,7 @@ check_deposit_signed_msg(#{ channel_id := ChanId
             {error, _} = Err ->
                 Err
         end
-    ?_catch_(error, E, _ST)
-        ?LOG_CAUGHT(E, _ST),
+    ?CATCH_LOG(_E)
         {error, invalid_deposit_ack}
     end.
 
@@ -2246,8 +2235,7 @@ check_withdraw_created_msg(#{ channel_id := ChanId
             {error, _} = Err ->
                 Err
         end
-    ?_catch_(error, E, _ST)
-        ?LOG_CAUGHT(E, _ST),
+    ?CATCH_LOG(_E)
         {error, invalid_withdrawal}
     end;
 check_withdraw_created_msg(_, _) ->
@@ -2289,8 +2277,7 @@ check_withdraw_signed_msg(#{ channel_id := ChanId
             {error, _} = Err ->
                 Err
         end
-    ?_catch_(error, E, _ST)
-        ?LOG_CAUGHT(E, _ST),
+    ?CATCH_LOG(_E)
         {error, invalid_withdrawal_ack}
     end;
 check_withdraw_signed_msg(_, _) ->
@@ -2334,8 +2321,7 @@ send_update_msg(SignedTx, Updates,
 check_update_msg(Msg, D) ->
     lager:debug("check_update_msg(~p)", [Msg]),
     try check_update_msg_(Msg, D)
-    ?_catch_(error, E, _ST)
-        ?LOG_CAUGHT(E, _ST),
+    ?CATCH_LOG(E)
         {error, E}
     end.
 
@@ -2353,8 +2339,7 @@ check_update_msg_(#{ channel_id := ChanId
                 {error, _} = Err ->
                     Err
             end
-    ?_catch_(error, E, _ST)
-        ?LOG_CAUGHT(E, _ST),
+    ?CATCH_LOG(E)
         {error, {deserialize, E}}
     end.
 
@@ -2375,8 +2360,7 @@ check_signed_update_tx(SignedTx, Updates, BlockHash, #data{} = D) ->
         ok -> ok;
         {error, _} = Error ->
             Error
-    ?_catch_(error, E, _ST)
-        ?LOG_CAUGHT(E, _ST),
+    ?CATCH_LOG(_E)
         {error, invalid_update_ack}
     end.
 
@@ -2400,8 +2384,7 @@ check_update_tx(SignedTx, Updates, BlockHash, State, Opts, ChannelPubkey) ->
 check_update_ack_msg(Msg, D) ->
     lager:debug("check_update_ack_msg(~p)", [Msg]),
     try check_update_ack_msg_(Msg, D)
-    ?_catch_(error, E, _ST)
-        ?LOG_CAUGHT(E, _ST),
+    ?CATCH_LOG(E)
         {error, E}
     end.
 
@@ -2411,8 +2394,7 @@ check_update_ack_msg_(#{ channel_id := ChanId
     try aetx_sign:deserialize_from_binary(TxBin) of
         SignedTx ->
             check_signed_update_ack_tx(SignedTx, Msg, D)
-    ?_catch_(error, E, _ST)
-        ?LOG_CAUGHT(E, _ST),
+    ?CATCH_LOG(E)
         {error, {deserialize, E}}
     end.
 
@@ -2440,8 +2422,7 @@ check_signed_update_ack_tx(SignedTx, Msg,
                                     SignedTx, Updates, State, OnChainTrees, OnChainEnv, Opts)
                         , log = log_msg(rcv, ?UPDATE_ACK, Msg, D#data.log)}};
         {error, _} = Err -> Err
-    ?_catch_(error, E, _ST)
-        ?LOG_CAUGHT(E, _ST),
+    ?CATCH_LOG(_E)
         {error, invalid_update_ack}
     end.
 
@@ -2482,8 +2463,8 @@ handle_upd_transfer(FromPub, ToPub, Amount, From, UOpts, #data{ state = State
                 gen_statem:reply(From, Error),
                 keep_state(D)
         end
-    ?_catch_(error, E, _ST)
-        process_update_error(E, From, D, _ST)
+    ?CATCH_LOG(E)
+        process_update_error(E, From, D)
     end.
 
 meta_updates(Opts) when is_map(Opts) ->
@@ -2599,8 +2580,7 @@ check_shutdown_msg(#{ channel_id := ChanId
             {error, _} = Error ->
                 Error
         end
-    ?_catch_(error, E, _ST)
-        ?LOG_CAUGHT(E, _ST),
+    ?CATCH_LOG(_E)
         {error, invalid_shutdown}
     end.
 
@@ -2631,8 +2611,7 @@ check_shutdown_ack_msg(#{ data       := #{tx := TxBin}
             {error, _} = Error ->
                 Error
         end
-    ?_catch_(error, E, _ST)
-        ?LOG_CAUGHT(E, _ST),
+    ?CATCH_LOG(_E)
         {error, invalid_shutdown}
     end.
 
@@ -2720,8 +2699,7 @@ handle_recoverable_error(ErrorInfo, D) ->
     try
         D1 = send_recoverable_error_msg(ErrorInfo, fallback_to_stable_state(D)),
         next_state(open, D1)
-    ?_catch_(error, E, _ST)
-        ?LOG_CAUGHT(E, _ST),
+    ?CATCH_LOG(E)
         error(E)
     end.
 
@@ -2901,8 +2879,7 @@ restart_watcher(#data{ watcher = undefined
 
 start_min_depth_watcher(Type, SignedTx, Updates, D) ->
     try start_min_depth_watcher_(Type, SignedTx, Updates, D)
-    ?_catch_(error, E, _ST)
-        ?LOG_CAUGHT(E, _ST),
+    ?CATCH_LOG(E)
         error(E)
     end.
 start_min_depth_watcher_(Type, SignedTx, Updates,
@@ -3062,7 +3039,7 @@ rpt_message(Msg, #data{on_chain_id = OnChainId}) ->
 
 do_rpt(Tag, #data{opts = #{report := Rpt}}) ->
     try maps:get(Tag, Rpt, false)
-    ?_catch_(error, _E, _ST)
+    ?CATCH_LOG(_E)
         false
     end.
 
@@ -3095,18 +3072,15 @@ check_amounts(#{ initiator_amount   := InitiatorAmount0
         {false, false} -> {error, insufficient_amounts}
     end.
 
-process_update_error({off_chain_update_error, Reason}, From, D, _ST) ->
-    ?LOG_CAUGHT(Reason, _ST),
+process_update_error({off_chain_update_error, Reason}, From, D) ->
     keep_state(D, [{reply, From, {error, Reason}}]);
-process_update_error(Reason, From, D, _ST) ->
-    ?LOG_CAUGHT(Reason, _ST),
+process_update_error(Reason, From, D) ->
     keep_state(D, [{reply, From, {error, Reason}}]).
 
 check_closing_event(Info, D) ->
     aec_db:dirty(fun() ->
                          try check_closing_event_(Info, D)
-                         ?_catch_(error, E, _ST)
-                             ?LOG_CAUGHT(E, _ST),
+                         ?CATCH_LOG(E)
                              error(E)
                          end
                  end).
@@ -3228,7 +3202,7 @@ check_tx(SignedTx, Updates, BlockHash, Mod, Data, ErrTypeMsg) ->
                     ok;
                 _ ->
                     {error, invalid}
-            ?_catch_(error, _E, _ST)
+            ?CATCH_LOG(_E)
                 {error, invalid}
             end;
         {Mod, Tx} -> %% same callback module
@@ -3501,8 +3475,8 @@ terminate(Reason, _State, #data{session = Sn} = Data) ->
     report(info, {died, Reason}, Data),
     report(debug, {log, win_to_list(Data#data.log)}, Data),
     try aesc_session_noise:close(Sn)
-        ?_catch_(error, _E, _ST)
-            ok
+    ?CATCH_LOG(_E)
+        ok
     end,
     ok.
 
@@ -3565,7 +3539,7 @@ check_version_opts(#{versions := S} = Opts) ->
                    E;
               (offchain_update = Cat, V, ok) ->
                   try aesc_offchain_update:set_vsn(V)
-                  ?_catch_(error, _E, _ST)
+                  ?CATCH_LOG(_E)
                       {error, {invalid_vsn, Cat}}
                   end;
               (Cat, _V, ok) ->
@@ -3742,7 +3716,7 @@ try_gproc_reg(Key) ->
 
 try_gproc_reg(Key, Value) ->
     try gproc:reg(Key, Value)
-    ?_catch_(error, badarg, _ST)
+    ?CATCH_LOG(badarg)
         Prev = gproc:where(Key),
         lager:error("Couldn't register channel, K=~p, V=~p, Prev=~p",
                     [Key, Value, Prev]),
@@ -3761,7 +3735,7 @@ evt(_Msg) ->
 has_gproc_key(Fsm, #{gproc_key := K}) ->
     try _ = gproc:get_value(K, Fsm),
           true
-    ?_catch_(error, badarg, _ST)
+    ?CATCH_LOG(badarg)
         false
     end.
 
@@ -3898,7 +3872,7 @@ close_({timeout, _}, D) ->
     {stop, normal, D};
 close_(Reason, D) ->
     try send_error_msg(Reason, D)
-    ?_catch_(error, _E, _ST)
+    ?CATCH_LOG(_E)
         ignore
     end,
     {stop, Reason, D}.
@@ -3920,20 +3894,13 @@ handle_call(_, {?RECONNECT_CLIENT, Pid, Tx} = Msg, From,
         {error, _} = Err ->
             lager:debug("Request failed: ~p", [Err]),
             keep_state(D, [{reply, From, Err}])
-    ?_catch_(error, E, _ST)
-        ?LOG_CAUGHT(E, _ST),
+    ?CATCH_LOG(E)
         keep_state(D, [{reply, From, E}])
     end;
 handle_call(St, Req, From, #data{} = D) ->
     lager:debug("handle_call(~p, ~p, ~p, ~p)", [St, Req, From, D]),
     try handle_call_(St, Req, From, D)
-    ?_catch_(error, E, _ST)
-        case not ?IS_BH_ERROR(E) of
-            true ->
-                ?LOG_CAUGHT(E, _ST);
-            false ->
-                pass
-        end,
+    ?CATCH_LOG(E, "maybe_block_hash_error")
         keep_state(D, [{reply, From, {error, E}}])
     end;
 handle_call(_St, _Req, From, D) ->
@@ -4054,8 +4021,8 @@ handle_call_(open, {upd_call_contract, Opts, ExecType}, From,
                         keep_state(D)
                 end
          end
-    ?_catch_(error, E, _ST)
-        process_update_error(E, From, D, _ST)
+    ?CATCH_LOG(E)
+        process_update_error(E, From, D)
     end;
 handle_call_(awaiting_signature, Msg, From,
              #data{ongoing_update = true} = D)
@@ -4159,15 +4126,15 @@ handle_call_(_, {get_balances, Accounts}, From, #data{ state = State } = D) ->
                                    Acc
                            end
                    end, [], Accounts)}
-        ?_catch_(error, _E, _ST)
+        ?CATCH_LOG(_E)
             {error, invalid_arguments}
         end,
     lager:debug("get_balances(~p) -> ~p", [Accounts, Result]),
     keep_state(D, [{reply, From, Result}]);
 handle_call_(_, get_round, From, #data{ state = State } = D) ->
-    Res = try  {Round, _} = aesc_offchain_state:get_latest_signed_tx(State),
-               {ok, Round}
-          ?_catch_(error, _E, _ST)
+    Res = try {Round, _} = aesc_offchain_state:get_latest_signed_tx(State),
+              {ok, Round}
+          ?CATCH_LOG(_E)
               {error, no_state}
           end,
     keep_state(D, [{reply, From, Res}]);
