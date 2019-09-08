@@ -72,7 +72,8 @@ int_create(PrevBlockHash, PrevBlock, Beneficiary, AdjChain, Protocol) ->
     end.
 
 int_create(PrevBlockHash, PrevBlock, Miner, Beneficiary, AdjChain, Protocol) ->
-    {ok, Trees} = aec_chain_state:calculate_state_for_new_keyblock(PrevBlockHash, Miner, Beneficiary),
+    {ok, Trees} =
+        aec_chain_state:calculate_state_for_new_keyblock(PrevBlockHash, Miner,Beneficiary, Protocol),
     Block = int_create_block(PrevBlockHash, PrevBlock, Miner, Beneficiary, Trees, Protocol),
     case adjust_target(Block, AdjChain) of
         {ok, AdjBlock}  -> {ok, AdjBlock};
