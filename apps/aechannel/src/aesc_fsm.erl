@@ -1514,8 +1514,7 @@ new_onchain_tx(channel_deposit_tx, #{acct := FromId,
                #data{on_chain_id = ChanId, state=State},
                _BlockHash, OnChainEnv, OnChainTrees) ->
     Updates = [aesc_offchain_update:op_deposit(aeser_id:create(account, FromId), Amount)],
-    Height = aetx_env:height(OnChainEnv),
-    ActiveProtocol = aec_hard_forks:protocol_effective_at_height(Height),
+    ActiveProtocol = aetx_env:consensus_version(OnChainEnv),
     UpdatedStateTx = aesc_offchain_state:make_update_tx(Updates, State,
                                                         ChanId,
                                                         ActiveProtocol,
@@ -1540,8 +1539,7 @@ new_onchain_tx(channel_withdraw_tx, #{acct := ToId,
                BlockHash, OnChainEnv, OnChainTrees) ->
     Updates = [aesc_offchain_update:op_withdraw(aeser_id:create(account, ToId), Amount)],
     {BlockHash, OnChainEnv, OnChainTrees} = pick_onchain_env(Opts, D),
-    Height = aetx_env:height(OnChainEnv),
-    ActiveProtocol = aec_hard_forks:protocol_effective_at_height(Height),
+    ActiveProtocol = aetx_env:consensus_version(OnChainEnv),
     UpdatedStateTx = aesc_offchain_state:make_update_tx(Updates, State,
                                                         ChanId,
                                                         ActiveProtocol,
@@ -1841,13 +1839,18 @@ adjust_ttl(TTL) when is_integer(TTL), TTL >= 0 ->
 curr_hash_and_height() ->
     TopHeader = aec_chain:top_header(),
     {ok, Hash} = aec_headers:hash_header(TopHeader),
-    Height = aec_headers:height(TopHeader), 
+    Height = aec_headers:height(TopHeader),
     {Hash, Height}.
 
 -spec curr_height() -> aec_blocks:height().
 curr_height() ->
     {_, Height} = curr_hash_and_height(),
     Height.
+
+-spec protocol_at_height(aec_blocks:height()) -> aec_hard_forks:protocol_vsn().
+protocol_at_height(Height) ->
+    {ok, Header} = aec_chain:get_key_header_by_height(Height),
+    aec_headers:version(Header).
 
 pick_hash(#data{block_hash_delta = #bh_delta{ not_newer_than = NNT
                                             , not_older_than = NOT
@@ -1856,7 +1859,7 @@ pick_hash(#data{block_hash_delta = #bh_delta{ not_newer_than = NNT
     %% synking. That's why we use an offset
     Offset = min(NOT, NNT + PickDelta),
     TopHeader = aec_chain:top_header(),
-    Height = aec_headers:height(TopHeader), 
+    Height = aec_headers:height(TopHeader),
     %% use upper limit
     {ok, Header} = aec_chain:get_key_header_by_height(max(Height - NNT -
                                                           Offset, 0)),
@@ -1875,7 +1878,7 @@ load_pinned_env(BlockHash) ->
     end.
 
 -spec pick_onchain_env(map(), #data{}) ->
-    {aec_blocks:block_header_hash(), aetx_env:env(), aec_trees:trees()}. 
+    {aec_blocks:block_header_hash(), aetx_env:env(), aec_trees:trees()}.
 pick_onchain_env(#{block_hash := ?NOT_SET_BLOCK_HASH}, _D) ->
     {OnChainEnv, OnChainTrees} =
         aetx_env:tx_env_and_trees_from_top(aetx_contract),
@@ -1905,8 +1908,7 @@ new_contract_tx_for_signing(Opts, From, #data{ state = State
     Updates = [aesc_offchain_update:op_new_contract(Id, VmVersion, ABIVersion, Code,
                                                     Deposit, CallData)],
     {BlockHash, OnChainEnv, OnChainTrees} = pick_onchain_env(Opts, D),
-    Height = aetx_env:height(OnChainEnv),
-    ActiveProtocol = aec_hard_forks:protocol_effective_at_height(Height),
+    ActiveProtocol = aetx_env:consensus_version(OnChainEnv),
     try
         Tx1 = aesc_offchain_state:make_update_tx(Updates, State, ChannelId,
                                                  ActiveProtocol,
@@ -1947,7 +1949,7 @@ both_accounts(Data) ->
 
 send_funding_created_msg(SignedTx, #data{ channel_id = Ch
                                         , session    = Sn
-                                        , op = #op_ack{ tag  = create_tx 
+                                        , op = #op_ack{ tag  = create_tx
                                                       , data = OpData}} = Data) ->
     TxBin = aetx_sign:serialize_to_binary(SignedTx),
     #op_data{block_hash = BlockHash} = OpData,
@@ -2390,8 +2392,7 @@ check_update_tx_initial(SignedTx, Updates, State, Opts) ->
 
 check_update_tx(SignedTx, Updates, BlockHash, State, Opts, ChannelPubkey) ->
     {OnChainEnv, OnChainTrees} = load_pinned_env(BlockHash),
-    Height = aetx_env:height(OnChainEnv),
-    ActiveProtocol = aec_hard_forks:protocol_effective_at_height(Height),
+    ActiveProtocol = aetx_env:consensus_version(OnChainEnv),
     aesc_offchain_state:check_update_tx(SignedTx, Updates, State,
                                         ChannelPubkey,
                                         ActiveProtocol,
@@ -2462,10 +2463,9 @@ handle_upd_transfer(FromPub, ToPub, Amount, From, UOpts, #data{ state = State
                                                               , on_chain_id = ChannelId
                                                               } = D) ->
     {BlockHash, OnChainEnv, OnChainTrees} = pick_onchain_env(UOpts, D),
-    Height = aetx_env:height(OnChainEnv),
     %% off-chain transfers do not need to be pinned as their execution does not
     %% depend on a specific environment
-    ActiveProtocol = aec_hard_forks:protocol_effective_at_height(Height),
+    ActiveProtocol = aetx_env:consensus_version(OnChainEnv),
     try
         Updates = [aesc_offchain_update:op_transfer(aeser_id:create(account, FromPub),
                                                     aeser_id:create(account, ToPub), Amount)
@@ -4024,8 +4024,7 @@ handle_call_(open, {upd_call_contract, Opts, ExecType}, From,
                                                    CallData, CallStack),
     Updates = [Update],
     {BlockHash, OnChainEnv, OnChainTrees} = pick_onchain_env(Opts, D),
-    Height = aetx_env:height(OnChainEnv),
-    ActiveProtocol = aec_hard_forks:protocol_effective_at_height(Height),
+    ActiveProtocol = aetx_env:consensus_version(OnChainEnv),
     try  Tx1 = aesc_offchain_state:make_update_tx(Updates, State,
                                                   ChannelId,
                                                   ActiveProtocol,
@@ -4409,7 +4408,7 @@ init_checks(Opts) ->
 
 was_fork_activated(ProtocolVSN) ->
     %% Enable a new fork only after MINIMUM_DEPTH generations in order to avoid fork changes
-    ProtocolVSN =< aec_hard_forks:protocol_effective_at_height(max(curr_height() - ?MINIMUM_DEPTH, aec_block_genesis:height())).
+    ProtocolVSN =< protocol_at_height(max(curr_height() - ?MINIMUM_DEPTH, aec_block_genesis:height())).
 
 block_hash_from_op(#op_sign{data = #op_data{block_hash = BlockHash}}) ->
     BlockHash;
