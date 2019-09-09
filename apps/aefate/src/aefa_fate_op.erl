@@ -359,11 +359,9 @@ pow(Arg0, Arg1, Arg2, EngineState) ->
             if Exponent < 0 ->
                     aefa_fate:abort({arithmetic_error, negative_exponent}, ES2);
                true ->
-                    case pow(Base, Exponent, aefa_engine_state:gas(ES2)) of
-                        {Res, NewGas} ->
-                            ES3 = aefa_engine_state:set_gas(NewGas, ES2),
-                            ES4 = aefa_engine_state:spend_gas_for_new_cells(words_used(Res), ES3),
-                            write(Arg0, Res, ES4);
+                    case pow(Base, Exponent, ES2) of
+                        {Res, ES3} ->
+                            write(Arg0, Res, ES3);
                         out_of_gas ->
                             aefa_fate:abort(out_of_gas, ES2)
                     end
@@ -1829,16 +1827,23 @@ binary_reverse(Binary) ->
     <<X:Size/integer-little>> = Binary,
     <<X:Size/integer-big>>.
 
-pow(A, B, Gas) ->
-    power(A, B, 1, Gas).
+pow(A, B, ES) ->
+    power(A, B, 1, ES).
 
-power(_, _, _, Gas) when Gas < 0      -> out_of_gas;
-power(_, 0, R, Gas)                   -> {R, Gas};
-power(A, B, R, Gas) when B rem 2 == 0 -> power(A * A, B bsr 1, R, Gas - 1);
-power(A, B, R, Gas)                   ->
+power(_, 0, R, ES)                    -> {R, ES};
+power(A, B, R, ES) when B rem 2 == 0 ->
+    Words1 = words_used(A),
+    Words2 = Words1 * 2,
+    ES1 = aefa_engine_state:spend_gas_for_new_cells(Words2, ES),
+    power(A * A, B bsr 1, R, ES1);
+power(A, B, R, ES)                   ->
+    Words1 = words_used(R),
+    Words2 = words_used(A),
+    Words3 = Words1 + Words2 * 3,
+    ES1 = aefa_engine_state:spend_gas_for_new_cells(Words3, ES),
     Res = R * A,
-    Words = words_used(Res),
-    power(A * A, B bsr 1, R * A, Gas - Words).
+    power(A * A, B bsr 1, Res, ES1).
+
 
 words_used(0) -> 1;
 words_used(I) when is_integer(I) ->
