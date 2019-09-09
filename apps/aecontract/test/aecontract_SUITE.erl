@@ -5602,6 +5602,7 @@ sophia_state_gas_store_size(_Cfg) ->
 
 
 sophia_use_memory_gas(_Cfg) ->
+    ?skipRest(sophia_version() =< ?SOPHIA_FORTUNA, fate_gas_only_post_fortuna),
     state(aect_test_utils:new_state()),
     Acc      = ?call(new_account, 20000000 * aec_test_utils:min_gas_price()),
     ContractName = use_memory,
