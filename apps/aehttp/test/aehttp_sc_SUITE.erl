@@ -62,7 +62,6 @@
 -define(DEFAULT_TESTS_COUNT, 5).
 -define(WS, aehttp_ws_test_utils).
 -define(DEFAULT_MIN_DEPTH, 4).
--define(DEFAULT_MIN_DEPTH_FACTOR, 1).
 -define(MAX_MINED_BLOCKS, 20).
 -define(BOGUS_STATE_HASH, <<42:32/unit:8>>).
 -define(SPEND_FEE, 20000 * aec_test_utils:min_gas_price()).
