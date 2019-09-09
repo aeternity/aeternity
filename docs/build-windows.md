@@ -145,27 +145,25 @@ automatically by the helper script `scripts/windows/msys2_prepare.bat`.
 The helper scripts will try to detect where `msys2.exe` is installed
  if it is available in PATH and `WIN_MSYS2_ROOT` is unset.
 
-This script uses the following environment variable default values:
+This script uses the following environment variables and default values:
 
 ```
 WIN_MSYS2_ROOT=C:\tools\msys64
+WIN_OTP_PATH=C:\tools\erl20.3
 ERTS_VERSION=9.3
 OTP_VERSION=20.3
 PLATFORM=x64
 JDK_URL=https://download.java.net/java/GA/jdk11/9/GPL/openjdk-11.0.2_windows-x64_bin.zip
 WIN_JDK_BASEPATH=C:\Program Files\Java
 WIN_JDK_PATH=C:\Program Files\Java\jdk-11.0.2
-WIN_OTP_PATH=C:\Program Files\erl9.3
 JAVA_VERSION=11.0.2
 ```
 
 If your local setup differs, you need to set the proper values yourself before running the preparation script.
-
+e.g.:
 ```
 SET "WIN_MSYS2_ROOT=C:\tools\msys64"
 SET "WIN_OTP_PATH=C:\Program Files\erl9.3"
-SET OTP_VERSION=20.3
-SET ERTS_VERSION=9.3
 SET "WIN_JDK_BASEPATH=C:\Program Files\Java"
 SET JAVA_VERSION=11.0.2
 ```
@@ -175,10 +173,8 @@ It is recommend to persist these vars into the user environment, so you don't ne
 ```
 SETX WIN_MSYS2_ROOT C:\tools\msys64
 SETX WIN_OTP_PATH C:\Program Files\erl9.3
-SETX OTP_VERSION 20.3
-SETX ERTS_VERSION 9.3
-SETX JAVA_VERSIOIN 11.0.2
 SETX WIN_JDK_BASEPATH C:\Program Files\Java
+SETX JAVA_VERSIOIN 11.0.2
 ```
 *Note: In contrast of SET, do not put quotes in SETX commands, as they will end up in the values*
 

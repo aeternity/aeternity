@@ -19,8 +19,12 @@
 
 :: Set required vars defaults
 
+:: Auto-detect OTP_VERSION from the installation in WIN_OTP_PATH
+IF "%OTP_VERSION%"=="" IF NOT "%WIN_OTP_PATH%"=="" call:get_otp_version OTP_VERSION ERTS_VERSION
+:: default if autodetect failed
 IF "%ERTS_VERSION%"=="" SET "ERTS_VERSION=9.3"
 IF "%OTP_VERSION%"=="" SET "OTP_VERSION=20.3"
+IF "%WIN_OTP_PATH%"=="" SET "WIN_OTP_PATH=C:\tools\erl%OTP_VERSION%"
 IF "%PLATFORM%"=="" SET "PLATFORM=x64"
 IF "%WIN_MSYS2_ROOT%"=="" FOR /F %%F IN ('where msys2') DO SET "WIN_MSYS2_ROOT=%%~dpF"
 :: default if autodetect failed
@@ -57,8 +61,7 @@ IF NOT "%ERRORLEVEL%"=="0" exit /b %ERRORLEVEL%
 call:PREPARE_MSYS2
 
 @call:log Ensure Erlang/OTP %OTP_VERSION% is installed in %WIN_OTP_PATH%
-call %~dp0install_erlang %VFLAG% %OTP_VERSION% "%WIN_OTP_PATH%"
-IF NOT "%ERRORLEVEL%"=="0" exit /b %ERRORLEVEL%
+call:INSTALL_OTP
 
 @call:log Ensure JDK is installed in %WIN_JDK_PATH%
 call:INSTALL_JDK
@@ -76,6 +79,19 @@ SET VFLAG=
 exit /b 0
 
 :: Subroutines
+
+:INSTALL_OTP
+:: Detect VARS from existing OTP installation
+SETLOCAL
+call:get_otp_version OTP_DETECTED ERTS_DETECTED
+:: Check if versions match
+IF "%OTP_DETECTED%"=="%OTP_VERSION%" @call:log Ok. && exit /b 0
+:: Not installed or version is different force reinstall
+call %~dp0install_erlang %VFLAG% %OTP_VERSION% "%WIN_OTP_PATH%"
+ENDLOCAL
+:: Update version vars
+call:get_otp_version OTP_VERSION ERTS_VERSION
+exit /b %ERRORLEVEL%
 
 :INSTALL_JDK
 IF EXIST "%WIN_JDK_PATH%\bin\" @call:log Ok. && exit /b 0
@@ -178,6 +194,20 @@ IF EXIST "%WIN_STYRENE_PATH%" IF NOT "%FORCE_STYRENE_REINSTALL%"=="true" @call:l
 ENDLOCAL
 
 exit /b
+
+:: Detect the versions of an existing OTP/ERTS installed in WIN_OTP_PATH and update the arguments passed by reference
+:get_otp_version ::OTP_VERSION ERTS_VERSION
+IF NOT EXIST "%WIN_OTP_PATH%\Install.ini" exit /b
+FOR /F "tokens=* skip=1 USEBACKQ" %%F IN (`type "%WIN_OTP_PATH%\Install.ini"`) DO SET "_%%F"
+SET "_OTP_RELEASE_FILE=%WIN_OTP_PATH%\releases\%_SYSTEM_VSN%\OTP_VERSION"
+IF EXIST "%_OTP_RELEASE_FILE%" SET /p _OTP_VERSION= 0<"%_OTP_RELEASE_FILE%" 2>nul
+SET "%~1=%_OTP_VERSION%"
+SET "%~2=%_VSN%"
+SET _OTP_VERSION=
+SET _SYSTEM_VSN=
+SET _VSN=
+SET _OTP_RELEASE_FILE=
+exit /b %ERRORLEVEL%
 
 :log :: Display a log message
 @echo :: [1;33m %time% : %* [0m>con && exit /b
