@@ -2,7 +2,6 @@
 @rem Required vars:
 @rem    WIN_OTP_PATH
 @rem    WIN_MSYS2_ROOT
-@rem    ERTS_VERSION
 @rem    PACKAGE_TESTS_DIR
 @rem    PACKAGE_ZIPARCHIVE
 @rem    TEST_STEPS
@@ -11,9 +10,8 @@
 SETLOCAL ENABLEEXTENSIONS
 @call:log Set the paths appropriately
 
-:: Appropriately set paths
-SET "PATH=%WIN_MSYS2_ROOT%\mingw64\bin;%WIN_MSYS2_ROOT%\usr\bin;%WIN_MSYS2_ROOT%;%PATH%"
-SET "PATH=%WIN_OTP_PATH%\bin;%WIN_OTP_PATH%\erts-%ERTS_VERSION%\bin;%WIN_OTP_PATH%\erts-%ERTS_VERSION%;%PATH%"
+:: Run Env preparation script in verbose mode (echo on)
+call "%~dp0..\..\scripts\windows\msys2_prepare.bat" -v
 
 :: Construct unix paths
 FOR /f %%i IN ('cygpath -a %~dp0..\..') DO SET "PROJECT_ROOT=%%i"
@@ -34,7 +32,6 @@ SET /p PACKAGE_VERSION=<%~dp0..\..\REVISION
 
 :: Set required vars defaults
 
-IF "%ERTS_VERSION%"=="" SET "ERTS_VERSION=9.3"
 IF "%PACKAGE_TESTS_DIR%"=="" SET "PACKAGE_TESTS_DIR=/tmp/package_tests"
 IF "%PACKAGE_ZIPARCHIVE%"=="" SET "PACKAGE_ZIPARCHIVE=aeternity-%PACKAGE_VERSION%-windows-x86_64.zip"
 IF "%TEST_STEPS%"=="" SET "TEST_STEPS=release"

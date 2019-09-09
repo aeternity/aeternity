@@ -6,10 +6,10 @@
 @rem Target dir for artifacts can be passed as first argument or set in ARTIFACTS_PATH
 
 SETLOCAL ENABLEEXTENSIONS
+@call:log Set the paths appropriately
 
-:: Appropriately set paths
-SET "PATH=%WIN_MSYS2_ROOT%\mingw64\bin;%WIN_MSYS2_ROOT%\usr\bin;%WIN_MSYS2_ROOT%;%PATH%"
-SET "PATH=%WIN_OTP_PATH%\bin;%WIN_OTP_PATH%\erts-%ERTS_VERSION%\bin;%WIN_OTP_PATH%\erts-%ERTS_VERSION%;%PATH%"
+:: Run Env preparation script in verbose mode (echo on)
+call "%~dp0..\..\scripts\windows\msys2_prepare.bat" -v
 
 :: Construct unix paths
 FOR /f %%i IN ('cygpath -a %~dp0..\..') DO SET "PROJECT_ROOT=%%i"
@@ -22,7 +22,7 @@ IF NOT "%ARTIFACTS_PATH%"=="" FOR /f %%i IN ('cygpath -a %ARTIFACTS_PATH%') DO S
 
 IF "%PACKAGES_PATH%"=="" SET "PACKAGES_PATH=%PROJECT_ROOT%/packages"
 
-CALL "%~dp0vcvarsall.bat"
+call "%~dp0vcvarsall.bat"
 
 @call:log Build production release
 "%WIN_MSYS2_ROOT%\usr\bin\bash.exe" -lc "${PROJECT_ROOT}/.circleci/windows/build.sh %PACKAGES_PATH%"
