@@ -13,13 +13,14 @@ check_tables(Acc) ->
               M:check_tables(Acc1)
       end, Acc, modules()),
 
+    %% Run migrations for each migration error. This will be later moved to aec_db.
     [  ok = M:migrate(From, To)
     || {vsn_fail, M, [{expected, From}, {got, To}]} = Error <- Errors
-    ,  filter_migrations(Error)],
-    [Error || Error <- Errors, not filter_migrations(Error)].
+    ,  is_migration_error(Error)],
+    [Error || Error <- Errors, not is_migration_error(Error)].
 
 modules() ->
     [aesc_state_cache].
 
-filter_migrations({vsn_fail, _, _}) -> true;
-filter_migrations(_) -> false.
+is_migration_error({vsn_fail, _, _}) -> true;
+is_migration_error(_) -> false.

@@ -254,7 +254,7 @@ error_data_msgs() ->
      , 1014 => <<"Invalid meta object">>
      , 1015 => <<"Invalid error code (expect 1...65535)">>
      , 1016 => <<"Invalid password">>
-     , 1017 => <<"Missing field: state_password">>
+     , 2000 => <<"Missing field: state_password">>
      }.
 
 broken_encoding_code(account    ) -> 1005;
@@ -263,7 +263,7 @@ broken_encoding_code(bytearray  ) -> 1009;
 broken_encoding_code(transaction) -> 1010.
 
 %% TODO: Add more error codes and create a PT for it
-missing_field_code(state_password) -> 1017.
+missing_field_code(state_password) -> 2000.
 
 process_incoming(Msg, FsmPid) ->
     ResRev =

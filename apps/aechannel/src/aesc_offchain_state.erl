@@ -82,12 +82,12 @@ new_(#{ initiator          := InitiatorPubKey
     Trees = aec_trees:set_accounts(Trees0, Accounts),
     {ok, #state{trees=Trees, calls = aect_call_state_tree:empty()}}.
 
-recover_from_offchain_tx(#{ existing_channel_id   := ChId
-                          , offchain_tx           := SignedTx
-                          , state_password_getter := StatePasswordF} = Opts) ->
+recover_from_offchain_tx(#{ existing_channel_id    := ChId
+                          , offchain_tx            := SignedTx
+                          , state_password_wrapper := StatePasswordWrapper} = Opts) ->
     MyPubkey = my_pubkey(Opts),
     ReestablishResult =
-        case StatePasswordF() of
+        case aesc_state_password_wrapper:get(StatePasswordWrapper) of
             {ok, StatePassword} ->
                 aesc_state_cache:reestablish(ChId, MyPubkey, StatePassword);
             error ->
@@ -410,10 +410,11 @@ serialize_for_client_tx_or_notx(Tx) ->
     aeser_api_encoder:encode(transaction, STx).
 
 -spec serialize_to_binary(state()) -> binary().
-serialize_to_binary(#state{trees = Trees,
-                           calls = Calls,
-                           signed_tx = SignedTx,
-                           half_signed_tx = HalfSignedTx}) ->
+serialize_to_binary(#state{ trees = Trees
+                          , calls = Calls
+                          , signed_tx = SignedTx
+                          , half_signed_tx = HalfSignedTx
+                          }) ->
         aeser_rlp:encode([
             aec_trees:serialize_to_binary(Trees),
             aect_call_state_tree:to_binary_without_backend(Calls),
@@ -430,18 +431,16 @@ serialize_to_binary_tx_or_notx(Tx) ->
 -spec deserialize_from_binary(binary()) -> state().
 deserialize_from_binary(Bin) ->
     case aeser_rlp:decode(Bin) of
-        [
-            BinTrees,
-            BinCalls,
-            BinSignedTx,
-            BinHalfSignedTx
+        [ BinTrees
+        , BinCalls
+        , BinSignedTx
+        , BinHalfSignedTx
         ] ->
-            #state{
-                trees = aec_trees:deserialize_from_binary_without_backend(BinTrees),
-                calls = aect_call_state_tree:from_binary_without_backend(BinCalls),
-                signed_tx = deserialize_tx_or_notx_from_binary(BinSignedTx),
-                half_signed_tx = deserialize_tx_or_notx_from_binary(BinHalfSignedTx)
-            };
+            #state{ trees = aec_trees:deserialize_from_binary_without_backend(BinTrees)
+                  , calls = aect_call_state_tree:from_binary_without_backend(BinCalls)
+                  , signed_tx = deserialize_tx_or_notx_from_binary(BinSignedTx)
+                  , half_signed_tx = deserialize_tx_or_notx_from_binary(BinHalfSignedTx)
+                  };
         _ ->
             erlang:error("Failed to deserialize offchain state")
     end.

@@ -2941,11 +2941,15 @@ on_chain_id(D, SignedTx) ->
     {PubKey, D#data{on_chain_id = PubKey}}.
 
 initialize_cache(#data{ on_chain_id = ChId
-                      , state       = State } = D, {ok, StatePassword}) ->
-    aesc_state_cache:new(ChId, my_account(D), State, StatePassword);
-initialize_cache(#data{ on_chain_id = ChId
-                      , state       = State } = D, error) ->
-    aesc_state_cache:new(ChId, my_account(D), State).
+                      , state       = State
+                      , state_password_wrapper = StatePasswordWrapper} = D) ->
+    case aesc_state_password_wrapper:get(StatePasswordWrapper) of
+        {ok, StatePassword} ->
+            aesc_state_cache:new(ChId, my_account(D), State, StatePassword);
+        error ->
+            aesc_state_cache:new(ChId, my_account(D), State)
+    end,
+    D#data{state_password_wrapper = undefined}.
 
 cache_state(#data{ on_chain_id = ChId
                  , state       = State } = D) ->
@@ -3399,20 +3403,16 @@ callback_mode() ->
 -spec init(map()) -> {ok, InitialState, data(), [{timeout, Time::pos_integer(),
                                                    InitialState}, ...]}
                           when InitialState :: state_name().
-init(#{opts := Opts00} = Arg) ->
-    %% We must keep the password in the state until we are sure what the channel_id for this fsm should be
-    %% after that the password is removed from the state. The fsm may crash before the password is removed
-    %% from the state - to make sure that the password doesn't leak in a crash log, wrap the password in a
-    %% function so any crash log or lager:debug call doesn't expose it.
-    StatePassword = maps:find(state_password, Opts00),
-    Opts0 = maps:put(state_password_getter,
-        fun() -> StatePassword end, maps:remove(state_password, Opts00)),
-    {Role, Opts1} = maps:take(role, Opts0),
-    Client = maps:get(client, Opts1),
-    {Reestablish, ReestablishOpts, Opts2} =
-        { maps:is_key(existing_channel_id, Opts1)
-        , maps:with(?REESTABLISH_OPTS_KEYS, Opts1)
-        , maps:without(?REESTABLISH_OPTS_KEYS, Opts1)
+init(#{opts := Opts0} = Arg) ->
+    %% Protect the password from leakage
+    StatePasswordWrapper = aesc_state_password_wrapper:init(maps:find(state_password, Opts0)),
+    Opts1 = maps:remove(state_password, Opts0),
+    {Role, Opts2} = maps:take(role, Opts1),
+    Client = maps:get(client, Opts2),
+    {Reestablish, ReestablishOpts, Opts3} =
+        { maps:is_key(existing_channel_id, Opts2)
+        , maps:with(?REESTABLISH_OPTS_KEYS, Opts2)
+        , maps:without(?REESTABLISH_OPTS_KEYS, Opts2)
         },
     DefMinDepth = default_minimum_depth(Role),
     Opts = check_opts(
@@ -3422,44 +3422,47 @@ init(#{opts := Opts00} = Arg) ->
               fun check_rpt_opt/1,
               fun check_log_opt/1,
               fun check_block_hash_deltas/1
-             ], Opts2),
+             ], Opts3),
     #{initiator := Initiator} = Opts,
     Session = start_session(Arg, Reestablish, Opts#{role => Role}),
     StateInitF = fun(NewI) ->
-                          CheckedOpts = maps:merge(Opts#{role => Role}, ReestablishOpts),
+                          CheckedOpts = maps:merge(Opts#{ role => Role
+                                                        , state_password_wrapper => StatePasswordWrapper
+                                                        }, ReestablishOpts),
                           aesc_offchain_state:new(CheckedOpts#{initiator => NewI})
                   end,
     SessionEstablishF = fun(State) ->
         ClientMRef = erlang:monitor(process, Client),
-    BlockHashDelta =
-	case maps:find(block_hash_delta, Opts) of
-	    error ->
-	        #bh_delta{ not_newer_than = 0 %% backwards compatibility
-	                 , not_older_than = 10
-	                 , pick           = 0}; %% backwards compatibility
-	    {ok, #{ not_older_than := NOT
-	          , not_newer_than := NNT
-	          , pick           := Pick}} ->
-	        #bh_delta{ not_older_than = NOT
-	                 , not_newer_than = NNT
-	                 , pick           = Pick}
-	end,
+        BlockHashDelta =
+            case maps:find(block_hash_delta, Opts) of
+                error ->
+                    #bh_delta{ not_newer_than = 0 %% backwards compatibility
+                             , not_older_than = 10
+                             , pick           = 0}; %% backwards compatibility
+                {ok, #{ not_older_than := NOT
+                      , not_newer_than := NNT
+                      , pick           := Pick}} ->
+                    #bh_delta{ not_older_than = NOT
+                             , not_newer_than = NNT
+                             , pick           = Pick}
+            end,
         %% In case of reestablish we can garbage collect the password when exiting from this function
-        DataOpts = case Reestablish of
-                       true ->
-                           maps:remove(state_password_getter, Opts);
-                       false ->
-                           Opts
-                   end,
+        MaybeStatePasswordWrapper = case Reestablish of
+                                        true ->
+                                            undefined;
+                                        false ->
+                                            StatePasswordWrapper
+                                    end,
         Data = #data{ role             = Role
                     , client           = Client
                     , client_mref      = ClientMRef
                     , client_connected = true
-	            , block_hash_delta = BlockHashDelta
+	                , block_hash_delta = BlockHashDelta
+                    , state_password_wrapper = MaybeStatePasswordWrapper
                     , session = Session
-                    , opts    = DataOpts
+                    , opts    = Opts
                     , state   = State
-                    , log     = aesc_window:new(maps:get(log_keep, DataOpts)) },
+                    , log     = aesc_window:new(maps:get(log_keep, Opts)) },
         lager:debug("Session started, Data = ~p", [Data]),
         %% TODO: Amend the fsm above to include this step. We have transport-level
         %% connectivity, but not yet agreement on the channel parameters. We will next send
@@ -3840,20 +3843,16 @@ funding_locked_complete(#data{ op = #op_lock{ tag = create
                                             , data = OpData}
                              , create_tx = CreateTx
                              , state = State
-                             , opts = #{state_password_getter := StatePasswordF} = Opts} = D) ->
+                             , opts = Opts} = D) ->
     #op_data{ updates    = Updates
             , block_hash = BlockHash} = OpData,
     {OnChainEnv, OnChainTrees} = load_pinned_env(BlockHash),
     State1 = aesc_offchain_state:set_signed_tx(CreateTx, Updates, State, OnChainTrees,
                                                OnChainEnv, Opts),
-    Opts1 = maps:remove(state_password_getter, Opts),
-    D1 = D#data{state = State1, opts = Opts1},
-
-    initialize_cache(D1, StatePasswordF()),
     %% Garbage collecting here won't do anything as the old fsm state still
-    %% contains the state_password_getter - the password still is in use
+    %% contains the state_password_wrapper - the password still is in use
     %% TODO: Add a new state which would force garbage collection of the password
-    next_state(open, D1).
+    next_state(open, initialize_cache(D#data{state = State1})).
 
 close(Reason, D) ->
     close_(Reason, log(evt, close, Reason, D)).
@@ -3906,7 +3905,7 @@ handle_call(_, {?RECONNECT_CLIENT, Pid, Tx} = Msg, From,
         keep_state(D, [{reply, From, E}])
     end;
 handle_call(_, {change_state_password, StatePassword}, From, #data{channel_status = open, on_chain_id = ChId} = D) ->
-    case check_weak_password(StatePassword) of
+    case is_password_valid(StatePassword) of
         ok ->
             case aesc_state_cache:change_state_password(ChId, my_account(D), StatePassword) of
                 ok ->
@@ -4396,7 +4395,7 @@ init_checks(Opts) ->
 
 -spec check_state_password(map()) -> ok | {error, password_required_since_lima | invalid_password}.
 check_state_password(#{state_password := StatePassword}) ->
-    check_weak_password(StatePassword);
+    is_password_valid(StatePassword);
 check_state_password(_Opts) ->
     case was_fork_activated(?LIMA_PROTOCOL_VSN) of
         true ->
@@ -4405,12 +4404,11 @@ check_state_password(_Opts) ->
             ok
     end.
 
--spec check_weak_password(string()) -> ok | {error, invalid_password}.
-check_weak_password(StatePassword) when is_list(StatePassword), length(StatePassword) < 6 ->
-    %% No need for a stronger password policy
-    %% This check is only here to ensure that someone doesn't enter a 1-2 character password
+-spec is_password_valid(string()) -> ok | {error, invalid_password}.
+is_password_valid(StatePassword)
+    when is_list(StatePassword), length(StatePassword) < ?STATE_PASSWORD_MINIMUM_LENGTH ->
     {error, invalid_password};
-check_weak_password(StatePassword) when is_list(StatePassword) ->
+is_password_valid(StatePassword) when is_list(StatePassword) ->
     ok.
 
 was_fork_activated(ProtocolVSN) ->

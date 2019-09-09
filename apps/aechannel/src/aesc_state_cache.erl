@@ -8,6 +8,22 @@
 %%%    Please note that it is impossible to reestablish a channel without the state.
 %%%    TODO: Protect the state in case of an unexpected power failure
 %%%    TODO: for instance allow the user or a delegate to provide the missing state
+%%%
+%%%    Security details:
+%%%    The randomness source is crypto:strong_rand_bytes/1
+%%%    The encryption key is derived using enacl:pwhash/2 which uses Argon2 under the hood
+%%%    Encryption and decryption is done by enacl:secretbox/3 which encrypts the provided data
+%%%    with XSalsa20 and appends a Poly1305 MAC to the ciphertext.
+%%%
+%%%    Encryption can be summarized in pseudocode as:
+%%%    Salt       = rand_bytes(16)
+%%%    Nonce      = rand_bytes(24)
+%%%    Key        = argon2_hash(utf8_encode(Password) + Salt)
+%%%    Ciphertext = XSalsa20_Poly1305(serialize(ChannelState), Nonce, Key)
+%%%
+%%%    In the DB we persist the tuple (Ciphertext, Nonce, Salt), Password is thrown away
+%%%    immediately after generating the encryption key. After a state is decrypted a
+%%%    new Salt/Nonce pair is generated.
 %%% @end
 %%%=============================================================================
 -module(aesc_state_cache).
@@ -137,7 +153,7 @@ table_vsn(pch) -> ?VSN_pch;
 table_vsn(pch_encrypted_cache) -> ?VSN_pch_encrypted_cache.
 
 migrate(?VSN_pch, ?VSN_pch_encrypted_cache) ->
-    %% TODO: Move the migration logic partially to aec_db
+    %% TODO: PT-168377787 move the migration logic partially to aec_db
     %% TODO: this is only here because this is the first migration in the entire codebase :)
     ?VSN_pch = table_vsn(pch),
     ?VSN_pch_encrypted_cache = table_vsn(pch_encrypted_cache),

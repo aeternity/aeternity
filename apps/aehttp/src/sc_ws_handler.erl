@@ -28,7 +28,7 @@
 init(Req, _Opts) ->
     Parsed = cowboy_req:parse_qs(Req),
     lager:debug("init(~p, ~p), Parsed ~p",
-        [maps:remove(qs, Req), _Opts, aesc_utils:censor_init_opts(Parsed)]),
+        [aesc_utils:censor_ws_req(Req), _Opts, aesc_utils:censor_init_opts(Parsed)]),
     process_flag(trap_exit, true),
     {cowboy_websocket, Req,
      maps:from_list(Parsed)}.

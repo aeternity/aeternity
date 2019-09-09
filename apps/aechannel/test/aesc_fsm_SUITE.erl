@@ -86,6 +86,7 @@
 -define(TIMEOUT, 10000).
 -define(LONG_TIMEOUT, 60000).
 -define(PORT, 9325).
+-define(CHANNEL_CREATION_RETRIES, 3).
 
 -define(BOGUS_PUBKEY, <<12345:32/unit:8>>).
 -define(BOGUS_PRIVKEY, <<12345:64/unit:8>>).
@@ -2320,10 +2321,10 @@ create_channel_from_spec(I, R, Spec, Port, Debug, Cfg) ->
     create_channel_from_spec(I, R, Spec, Port, false, Debug, Cfg).
 
 create_channel_from_spec(I, R, Spec, Port, UseAny, Debug, Cfg) ->
-    %% TODO: Somehow there is a CI only race condition which occurs only in 2 tests cases
-    %% I was unable to reproduce the issue locally for 2 days :(
+    %% TODO: Somehow there is a CI only race condition which rarely occurs in
+    %% round_too_high.check_incorrect_* and round_too_low.check_incorrect_* tests
     %% For now just wrap this operation in a retry loop and come back to it later
-    {FsmI, FsmR, I1, R1} = retry(3, 100,
+    {FsmI, FsmR, I1, R1} = retry(?CHANNEL_CREATION_RETRIES, 100,
         fun() ->
             RProxy = spawn_responder(Port, Spec, R, UseAny, Debug),
             IProxy = spawn_initiator(Port, Spec, I, Debug),
