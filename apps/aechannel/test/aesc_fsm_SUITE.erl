@@ -4083,3 +4083,4 @@ expected_fsm_logs(channel_shutdown, responder, #{}) ->
     , {rcv, shutdown}
     ];
 expected_fsm_logs(_, _, _) -> [].
+

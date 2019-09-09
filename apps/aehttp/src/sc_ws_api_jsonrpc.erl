@@ -179,6 +179,7 @@ json_rpc_error_object(already_onchain      , R) -> error_obj(3, [1013], R);
 json_rpc_error_object({meta, invalid}      , R) -> error_obj(3, [1014], R);
 json_rpc_error_object(invalid_password     , R) -> error_obj(3, [1016], R);
 json_rpc_error_object(bad_signature        , R) -> error_obj(3, [1017], R);
+json_rpc_error_object(not_allowed_now      , R) -> error_obj(3, [1018], R);
 json_rpc_error_object({broken_encoding,What}, R) ->
     error_obj(3, [broken_encoding_code(W) || W <- What], R);
 json_rpc_error_object({What, missing}      , R) ->
@@ -258,6 +259,7 @@ error_data_msgs() ->
      , 1015 => <<"Invalid error code (expect 1...65535)">>
      , 1016 => <<"Invalid password">>
      , 1017 => <<"Bad signature">>
+     , 1018 => <<"Not allowed at current channel state">>
      , 2000 => <<"Missing field: state_password">>
      }.
 
@@ -551,6 +553,11 @@ process_request(#{<<"method">> := <<"channels.withdraw">>,
                                        Params),
                        #{amount => Amount}),
     case aesc_fsm:upd_withdraw(FsmPid, XOpts) of
+        ok -> no_reply;
+        {error, _Reason} = Err -> Err
+    end;
+process_request(#{<<"method">> := <<"channels.cancel">>}, FsmPid) ->
+    case aesc_fsm:cancel_update(FsmPid) of
         ok -> no_reply;
         {error, _Reason} = Err -> Err
     end;

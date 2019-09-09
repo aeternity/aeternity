@@ -50,6 +50,7 @@
         , upd_transfer/4          %% (fsm() , from(), to(), amount())
         , upd_transfer/5          %% (fsm() , from(), to(), amount(), #{})
         , upd_withdraw/2          %% (fsm() , map())
+        , cancel_update/1         %% (fsm())
         , where/2
         , change_state_password/2
         ]).
@@ -264,6 +265,9 @@ upd_withdraw(_Fsm, #{amount := Amt}) when Amt < 0 ->
 upd_withdraw(Fsm, #{amount := Amt} = Opts) when is_integer(Amt) ->
     lager:debug("upd_withdraw(~p)", [Opts]),
     gen_statem:call(Fsm, {upd_withdraw, Opts}).
+
+cancel_update(Fsm) ->
+    gen_statem:call(Fsm, cancel_update).
 
 where(ChanId, Role) when Role == initiator; Role == responder ->
     GprocKey = gproc_name_by_role(ChanId, Role),
@@ -865,8 +869,6 @@ awaiting_update_ack(cast, {?UPDATE_ERR, Msg}, D) ->
         {error, _} = Error ->
             close(Error, D)
     end;
-awaiting_update_ack({call, _}, _Req, D) ->
-    postpone(D);
 awaiting_update_ack(Type, Msg, D) ->
     handle_common_event(Type, Msg, postpone, D).
 
@@ -2790,30 +2792,56 @@ send_update_ack_msg(SignedTx, #data{ on_chain_id = OnChainId
     log(snd, ?UPDATE_ACK, Msg, Data).
 
 handle_update_conflict(Op, D) ->
+    handle_update_conflict(Op, D, []).
+
+%% @doc casts and calls have different expectations regarding responses:
+%% not providing a {reply, ClientPid, Response} in the options will result
+%% in dead-locking the WebSocket handler process
+handle_update_conflict(Op, D, Opts) ->
     handle_recoverable_error(#{ code => ?ERR_CONFLICT
                               , respond => true
-                              , msg_type => Op }, D).
+                              , msg_type => Op }, D, Opts).
 
 handle_recoverable_error(ErrorInfo, D) ->
+    handle_recoverable_error(ErrorInfo, D, []).
+
+handle_recoverable_error(ErrorInfo, D, Opts) ->
+    handle_recoverable_error(ErrorInfo, D, Opts, true).
+
+-spec handle_recoverable_error( #{ code := _
+                                 , msg_type => atom()
+                                 , respond => boolean()}
+                               , #data{}, list(), boolean()) -> next_fsm_state().
+handle_recoverable_error(ErrorInfo, D, Opts, ReportConflict) ->
     lager:debug("ErrorInfo = ~p", [ErrorInfo]),
     try
-        D1 = send_recoverable_error_msg(ErrorInfo, fallback_to_stable_state(D)),
-        next_state(open, D1)
+        D1 = send_recoverable_error_msg_(ErrorInfo,
+                                         fallback_to_stable_state(D),
+                                         ReportConflict),
+        next_state(open, D1, Opts)
     ?CATCH_LOG(E)
         error(E)
     end.
 
-send_recoverable_error_msg(#{code := ErrorCode} = Info, #data{ state = State
-                                                             , on_chain_id = ChanId
-                                                             , session     = Sn } = Data) ->
+make_recoverable_error_msg(#{code := ErrorCode}, #data{ state = State
+                                                      , on_chain_id = ChanId}) ->
     {_, SignedTx} = aesc_offchain_state:get_latest_signed_tx(State),
     Round = tx_round(aetx_sign:innermost_tx(SignedTx)),
-    Msg = #{ channel_id => ChanId
-           , round      => Round
-           , error_code => ErrorCode },
+    #{ channel_id => ChanId
+     , round      => Round
+     , error_code => ErrorCode }.
+
+-spec send_recoverable_error_msg_(map(), #data{}, boolean()) -> #data{}.
+send_recoverable_error_msg_(Info, #data{session = Sn } = Data, ReportConflict) ->
+    Msg = make_recoverable_error_msg(Info, Data),
     maybe_send_error_msg(Info, Sn, Msg, Data),
-    report(conflict, Msg, Data),
+    case ReportConflict of
+        true -> report(conflict, Msg, Data);
+        false -> pass
+    end,
     log(snd, error_msg_type(Info, Data), Msg, Data).
+
+
 
 maybe_send_error_msg(#{ respond := true } = Info, Sn, Msg, D) ->
     send_recoverable_error_msg(error_msg_type(Info, D), Sn, Msg);
@@ -4092,6 +4120,42 @@ handle_call(St, Req, From, #data{} = D) ->
 handle_call(_St, _Req, From, D) ->
     keep_state(D, [{reply, From, {error, unknown_request}}]).
 
+handle_call_(awaiting_signature, cancel_update, From, #data{} = D) ->
+    #data{op = #op_sign{tag = Tag}} = D,
+    %% cancelable tags for an action initiated by me:
+    CancelMyTags = [ slash_tx
+                   , deposit_tx
+                   , withdraw_tx
+                   , snapshot_solo_tx
+                   , close_solo_tx
+                   , settle_tx
+                   , ?UPDATE
+                   , ?SHUTDOWN],
+    %% cancelable tags for an action initiated by the other party:
+    CancelAckTags = [ ?DEP_CREATED
+                    , ?WDRAW_CREATED
+                    , ?UPDATE_ACK
+                    , ?SHUTDOWN_ACK],
+    case {lists:member(Tag, CancelMyTags), lists:member(Tag, CancelAckTags)} of
+        {true, _} ->
+            report(info, canceled_update, D),
+            lager:debug("update canceled", []),
+            next_state(open, clear_ongoing(D#data{op = ?NO_OP}),
+                      [{reply, From, ok}]);
+        {_, true} ->
+            report(info, canceled_update, D),
+            lager:debug("update canceled", []),
+            handle_recoverable_error(#{ code => ?ERR_ABORT
+                                      , respond => true
+                                      , msg_type => Tag }, D, [{reply, From, ok}],
+                                     _ReportConflictToClient = false);
+        {false, false} ->
+            lager:debug("update can not be canceled for ~p", [Tag]),
+            keep_state(D, [{reply, From, {error, not_allowed_now}}])
+    end;
+handle_call_(_NonSigningState, cancel_update, From, #data{} = D) ->
+    lager:debug("update can not be canceled while ~p", [_NonSigningState]),
+    keep_state(D, [{reply, From, {error, not_allowed_now}}]);
 handle_call_(_AnyState, {inband_msg, ToPub, Msg}, From, #data{} = D) ->
     case {ToPub, other_account(D)} of
         {X, X} ->
