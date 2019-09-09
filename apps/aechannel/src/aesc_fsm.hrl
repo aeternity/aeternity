@@ -121,13 +121,22 @@
                             ; S=:=mutual_closing ).
 
 -ifdef(TEST).
--define(LOG_CAUGHT(Err, ErrorStackTrace), lager:debug("CAUGHT ~p / ~p",
-                                                      [Err, pr_stacktrace(ErrorStackTrace)])).
+-define(CATCH_LOG(Err), ?_catch_(error, Err, ST)
+        lager:debug("CAUGHT ~p / ~p", [Err, pr_stacktrace(ST)]),
+       ).
+-define(CATCH_LOG(Err, Prefix), ?_catch_(error, Err, ST)
+        lager:debug("~s: CAUGHT ~p / ~p", [Prefix, Err, pr_stacktrace(ST)]),
+       ).
 -else.
--define(LOG_CAUGHT(Err, _), lager:debug("CAUGHT ~p", [Err])).
+% When not testing we don't use the stracktrace, therefore we don't acquire it
+% in the first place.
+-define(CATCH_LOG(Err), ?_catch_(error, Err)
+        lager:debug("CAUGHT ~p", [Err]),
+       ).
+-define(CATCH_LOG(Err, Prefix), ?_catch_(error, Err)
+        lager:debug("~s: CAUGHT ~p", [Prefix, Err]),
+       ).
 -endif.
-
-
 
 -record(bh_delta, { not_older_than  :: integer()
                   , not_newer_than  :: integer()
@@ -266,6 +275,3 @@
 -define(DEFAULT_FSM_TX_TTL_DELTA, 100).
 
 -type next_fsm_state() :: {next_state, atom(), #data{}, list()}.
-
--define(IS_BH_ERROR(_X_), (is_atom(_X_)
-                           andalso (_X_ =:= unknown_block_hash))).
