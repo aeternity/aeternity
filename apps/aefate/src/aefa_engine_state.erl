@@ -365,20 +365,18 @@ spend_gas(X, #es{gas = Gas} = ES) ->
         false -> ES#es{gas = NewGas}
     end.
 
--define(CHEAP_CELLS, 10000). %% TODO: move to governance.
--define(CELL_COST_GROWTH, 0.6).
-
+%% The gas price per cell increases by 1 for each kibiword (each 1024 64-bit word) used.
 -spec spend_gas_for_new_cells(non_neg_integer(), state()) -> state().
-spend_gas_for_new_cells(NewCells, #es{ created_cells = Cells } = ES) when NewCells + Cells =< ?CHEAP_CELLS ->
+spend_gas_for_new_cells(NewCells, #es{ created_cells = Cells } = ES) when NewCells + Cells =< 1024 ->
     TotalCells = Cells + NewCells,
     spend_gas(NewCells, ES#es{ created_cells = TotalCells });
-spend_gas_for_new_cells(1, #es{ created_cells = Cells } = ES) when Cells >= ?CHEAP_CELLS ->
+spend_gas_for_new_cells(1, #es{ created_cells = Cells } = ES) ->
     TotalCells = Cells + 1,
-    CellCost = round(math:pow(TotalCells - ?CHEAP_CELLS, ?CELL_COST_GROWTH)),
+    CellCost = 1 + (TotalCells bsr 10),
     spend_gas(CellCost, ES#es{ created_cells = TotalCells });
-spend_gas_for_new_cells(NewCells, #es{ created_cells = Cells } = ES) when NewCells + Cells > ?CHEAP_CELLS ->
+spend_gas_for_new_cells(NewCells, #es{ created_cells = Cells } = ES) ->
     TotalCells = Cells + NewCells,
-    CellCost = round(math:pow(TotalCells - ?CHEAP_CELLS, ?CELL_COST_GROWTH)),
+    CellCost = 1 + (TotalCells bsr 10),
     spend_gas(NewCells * CellCost, ES#es{ created_cells = TotalCells }).
 
 %%%------------------
