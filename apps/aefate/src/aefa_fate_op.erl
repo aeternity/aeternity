@@ -359,12 +359,8 @@ pow(Arg0, Arg1, Arg2, EngineState) ->
             if Exponent < 0 ->
                     aefa_fate:abort({arithmetic_error, negative_exponent}, ES2);
                true ->
-                    case pow(Base, Exponent, ES2) of
-                        {Res, ES3} ->
-                            write(Arg0, Res, ES3);
-                        out_of_gas ->
-                            aefa_fate:abort(out_of_gas, ES2)
-                    end
+                    {Res, ES3} = pow(Base, Exponent, ES2),
+                    write(Arg0, Res, ES3)
             end
     end.
 
