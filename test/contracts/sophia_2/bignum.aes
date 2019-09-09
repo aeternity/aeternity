@@ -1,0 +1,30 @@
+// Check that we get out of gas/arithmetic errors for big numbers.
+contract BigNum =
+
+  function mul_(a, b, r) =
+    if (b =< 0) r
+    else mul_(a + a, b / 2, if (b mod 2 == 1) (a + r) else r)
+
+  function mul(a, b) = mul_(a, b, 0)
+
+  function pow1_(a, b, r) =
+    if (b =< 0) r
+    else pow1_(mul(a, a), b / 2, if (b mod 2 == 1) mul(a, r) else r)
+
+  function pow1(a, b) = pow1_(a, b, 1)
+
+  function pow2_(a, b, r) =
+    if (b =< 0) r
+    else pow2_(a * a, b / 2, if (b mod 2 == 1) (a * r) else r)
+
+  function pow2(a, b) = pow2_(a, b, 1)
+
+  function tetr1(a, b) =
+    if (b =< 0) 1 else pow1(a, tetr1(a, b - 1))
+
+  function tetr2(a, b) =
+    if (b =< 0) 1 else pow2(a, tetr2(a, b - 1))
+
+  function tetr3(a, b) =
+    if (b =< 0) 1 else a ^ tetr3(a, b - 1)
+
