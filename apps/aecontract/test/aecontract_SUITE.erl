@@ -285,8 +285,7 @@ all() ->
                        , sophia_polymorphic_entrypoint
                        ]).
 
--define(FATE_TODO, [sophia_state_gas_arguments,
-                    sophia_bignum       %% Dynamic gas for arithmetic ops!
+-define(FATE_TODO, [
                    ]).
 
 groups() ->
@@ -5498,42 +5497,43 @@ sophia_state_gas_arguments(_Cfg) ->
             _                 -> state_handling
         end,
     Ct0      = ?call(create_contract, Acc, remote_state, {}, #{ amount => 100000 }),
-    Ct1      = ?call(create_contract, Acc, ContractName, {Ct0, 1}, #{ amount => 100000 }),
+    Ct1      = ?call(create_contract, Acc, ContractName, {?cid(Ct0), 1}, #{ amount => 100000 }),
     %% MapT     = {map, word, word},
     %% StateT   = {tuple, [word, string, MapT]},
     UnitT    = {tuple, []},
 
     %% Test that gas usage is the same for a contract not passing the state (state change
     %% but not gas used)
-    {{}, Gas0} = ?call(call_contract, Acc, Ct1, nop, UnitT, {Ct0}, #{ return_gas_used => true }),
+    ?call(call_contract, Acc, Ct1, update_m, UnitT, {#{2 => 1}}),
+    {{}, Gas0} = ?call(call_contract, Acc, Ct1, nop, UnitT, {?cid(Ct0)}, #{ return_gas_used => true }),
     ?call(call_contract, Acc, Ct1, update_m, UnitT, {#{2 => 2}}),
-    {{}, Gas1} = ?call(call_contract, Acc, Ct1, nop, UnitT, {Ct0}, #{ return_gas_used => true }),
+    {{}, Gas1} = ?call(call_contract, Acc, Ct1, nop, UnitT, {?cid(Ct0)}, #{ return_gas_used => true }),
     ?assertEqual(Gas0, Gas1),
 
     %% Test that one more key in map does mean more gas when used as an argument
-    %% to a remote call.
+    %% to a remote call on AEVM but not on FATE.
     ?call(call_contract, Acc, Ct1, update_m, UnitT, {#{}}),
-    {{}, Gas2} = ?call(call_contract, Acc, Ct1, pass_it, UnitT, {Ct0}, #{ return_gas_used => true }),
+    {{}, Gas2} = ?call(call_contract, Acc, Ct1, pass_it, UnitT, {?cid(Ct0)}, #{ return_gas_used => true }),
     ?call(call_contract, Acc, Ct1, update_m, UnitT, {#{1 => 1}}),
-    {{}, Gas3} = ?call(call_contract, Acc, Ct1, pass_it, UnitT, {Ct0}, #{ return_gas_used => true }),
-    ?assertMatch(true, Gas3 > Gas2),
+    {{}, Gas3} = ?call(call_contract, Acc, Ct1, pass_it, UnitT, {?cid(Ct0)}, #{ return_gas_used => true }),
+    ?assertMatchVM(true, false, Gas3 > Gas2),
 
-    %% Test that a longer string means more gas
+    %% Test that a longer string means more gas for AEVM
     ?call(call_contract, Acc, Ct1, update_s, UnitT, {<<"short">>}),
-    {{}, Gas4} = ?call(call_contract, Acc, Ct1, pass_it, UnitT, {Ct0}, #{ return_gas_used => true }),
+    {{}, Gas4} = ?call(call_contract, Acc, Ct1, pass_it, UnitT, {?cid(Ct0)}, #{ return_gas_used => true }),
     ?call(call_contract, Acc, Ct1, update_s, UnitT, {<<"at_least_32_bytes_long_in_order_to_use_an_extra_word">>}),
-    {{}, Gas5} = ?call(call_contract, Acc, Ct1, pass_it, UnitT, {Ct0}, #{ return_gas_used => true }),
-    ?assertMatch(true, Gas5 > Gas4),
+    {{}, Gas5} = ?call(call_contract, Acc, Ct1, pass_it, UnitT, {?cid(Ct0)}, #{ return_gas_used => true }),
+    ?assertMatchVM(true, false, Gas5 > Gas4),
 
-    %% Test that a bigger return value in remote (inner) call means more gas - strings
-    {_, Gas6} = ?call(call_contract, Acc, Ct1, return_it_s, word, {Ct0, 0}, #{ return_gas_used => true }),
-    {_, Gas7} = ?call(call_contract, Acc, Ct1, return_it_s, word, {Ct0, 1}, #{ return_gas_used => true }),
-    ?assertMatch(true, Gas7 > Gas6),
+    %% Test that a bigger return value in remote (inner) call means more gas - strings for AEVM
+    {_, Gas6} = ?call(call_contract, Acc, Ct1, return_it_s, word, {?cid(Ct0), 0}, #{ return_gas_used => true }),
+    {_, Gas7} = ?call(call_contract, Acc, Ct1, return_it_s, word, {?cid(Ct0), 1}, #{ return_gas_used => true }),
+    ?assertMatchVM(true, false, Gas7 > Gas6),
 
-    %% Test that a bigger return value in remote (inner) call means more gas - maps
-    {_, Gas8} = ?call(call_contract, Acc, Ct1, return_it_m, word, {Ct0, 0}, #{ return_gas_used => true }),
-    {_, Gas9} = ?call(call_contract, Acc, Ct1, return_it_m, word, {Ct0, 1}, #{ return_gas_used => true }),
-    ?assertMatch(true, Gas9 > Gas8),
+    %% Test that a bigger return value in remote (inner) call means more gas - maps for AEVM
+    {_, Gas8} = ?call(call_contract, Acc, Ct1, return_it_m, word, {?cid(Ct0), 0}, #{ return_gas_used => true }),
+    {_, Gas9} = ?call(call_contract, Acc, Ct1, return_it_m, word, {?cid(Ct0), 1}, #{ return_gas_used => true }),
+    ?assertMatchVM(true, false, Gas9 > Gas8),
     ok.
 
 sophia_state_gas_store_size(_Cfg) ->
