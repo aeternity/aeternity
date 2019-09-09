@@ -15,14 +15,6 @@ contract CryptoTest =
   function sha256  (x : complex) : hash = Crypto.sha256(x)
   function blake2b (x : complex) : hash = Crypto.blake2b(x)
 
-  function sha3_b17    (x : bytes(17)) : hash = Crypto.sha3(x)
-  function sha256_b17  (x : bytes(17)) : hash = Crypto.sha256(x)
-  function blake2b_b17 (x : bytes(17)) : hash = Crypto.blake2b(x)
-
-  function sha3_b52    (x : bytes(52)) : hash = Crypto.sha3(x)
-  function sha256_b52  (x : bytes(52)) : hash = Crypto.sha256(x)
-  function blake2b_b52 (x : bytes(52)) : hash = Crypto.blake2b(x)
-
   function test_verify_secp256k1(msg : hash, pk : bytes(64), sig : signature) =
     Crypto.ecverify_secp256k1(msg, pk, sig)
 
