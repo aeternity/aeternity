@@ -254,7 +254,6 @@ populate_db_with_channels_force_progress_tx(NodeName, Cfg) ->
     %% The state channel fsm sets its environment to be able to encode data using old
     %% protocols, but in this case, we're not producing the tx inside the fsm, so we
     %% must simulate the relevant part of the environment.
-    aest_channels_SUITE:simulate_fsm_vsn_env(Cfg),
     #{tx_hash := TxHash} =
         aest_nodes:post_force_progress_state_channel_tx(
           NodeName,

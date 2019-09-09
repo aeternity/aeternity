@@ -948,9 +948,9 @@ update_volley(#{pub := PubI} = I, #{pub := PubR} = R, Cfg) ->
     do_update(PubI, PubR, 1, I1, R1, false, Cfg).
 
 do_update(From, To, Amount, #{fsm := FsmI} = I, R, Debug, Cfg) ->
-    Opts = case proplists:get_value(use_meta, Cfg, true) of
-               true  -> #{meta => [<<"meta1">>, <<"meta2">>]};
-               false -> #{}
+    Opts = case aect_test_utils:latest_protocol_version() < ?LIMA_PROTOCOL_VSN of
+               false -> #{meta => [<<"meta1">>, <<"meta2">>]};
+               true  -> #{}
            end,
     case rpc(dev1, aesc_fsm, upd_transfer, [FsmI, From, To, Amount, Opts], Debug) of
         {error, _} = Error ->

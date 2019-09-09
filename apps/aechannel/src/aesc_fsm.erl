@@ -2768,14 +2768,8 @@ send_recoverable_error_msg(?WDRAW_ERR, Sn, Msg) ->
     lager:debug("send withdraw_error: ~p", [Msg]),
     aesc_session_noise:wdraw_error(Sn,Msg);
 send_recoverable_error_msg(?SHUTDOWN_ERR, Sn, Msg) ->
-    case was_fork_activated(?LIMA_PROTOCOL_VSN) of
-        true ->
-            lager:debug("send shutdown_error: ~p", [Msg]),
-            aesc_session_noise:shutdown_error(Sn,Msg);
-        _ ->
-            %% This message won't be defined pre Lima
-            ok
-    end.
+    lager:debug("send shutdown_error: ~p", [Msg]),
+    aesc_session_noise:shutdown_error(Sn, Msg).
 
 request_signing(Tag, Aetx, Updates, BlockHash, #data{} = D) ->
     request_signing(Tag, Aetx, Updates, BlockHash, D, send).
