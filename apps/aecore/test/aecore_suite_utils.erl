@@ -322,9 +322,8 @@ mine_blocks_until_txs_on_chain(Node, TxHashes, MiningRate, Max) ->
 mine_blocks_until_txs_on_chain(Node, TxHashes, MiningRate, Max, Opts) ->
     %% Fail early rather than having to wait until max_reached if txs already on-chain
     ok = assert_not_already_on_chain(Node, TxHashes),
-    ok = rpc:call(
-           Node, application, set_env, [aecore, expected_mine_rate, MiningRate],
-           5000),
+    ok = rpc:call(Node, application, set_env,
+                  [aecore, expected_mine_rate, MiningRate], 5000),
     [] = flush_new_blocks(),
     subscribe(Node, block_created),
     StartRes = rpc:call(Node, aec_conductor, start_mining, [Opts], 5000),
@@ -381,7 +380,7 @@ txs_not_in_microblock(MB, TxHashes) ->
 
 tx_in_microblock(MB, TxHash) ->
     lists:any(fun(STx) ->
-                aeser_api_encoder:encode(tx_hash, aetx_sign:hash(STx)) == TxHash
+                      aeser_api_encoder:encode(tx_hash, aetx_sign:hash(STx)) == TxHash
               end, aec_blocks:txs(MB)).
 
 mine_blocks_loop(Cnt, Type) ->
