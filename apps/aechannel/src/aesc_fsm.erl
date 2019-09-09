@@ -4456,3 +4456,36 @@ pr_data(D) ->
                #data.state,
                setelement(#data.log, D, {snip}), {snip}), ?MODULE).
 -endif.
+
+-spec check_block_hash(aec_keys:pubkey(), #data{}) -> ok.
+check_block_hash(?NOT_SET_BLOCK_HASH, _) -> ok;
+check_block_hash(BlockHash,
+                 #data{block_hash_delta = #bh_delta{ not_older_than = LowerDelta
+                                                   , not_newer_than = UpperDelta}}) ->
+    case aec_chain:get_header(BlockHash) of
+        {ok, Header} ->
+            Checks =
+                [ fun() ->
+                      CurrHeight = curr_height(),
+                      BlockHeight = aec_headers:height(Header),
+                      UpperLimit = CurrHeight - UpperDelta,
+                      LowerLimit = CurrHeight - LowerDelta,
+                      case BlockHeight of
+                          _ when BlockHeight > UpperLimit ->
+                              {error, block_hash_too_new};
+                          _ when BlockHeight < LowerLimit ->
+                              {error, block_hash_too_old};
+                          _ -> ok
+                      end
+                  end,
+                  fun() ->
+                      case aec_chain:hash_is_in_main_chain(BlockHash) of
+                          true -> ok;
+                          false -> {error, block_hash_in_fork}
+                      end
+                  end
+                ],
+            aeu_validation:run(Checks);
+        error ->
+            {error, unknown_block_hash}
+    end.

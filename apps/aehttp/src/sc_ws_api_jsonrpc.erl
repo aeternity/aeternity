@@ -176,7 +176,7 @@ json_rpc_error_object(participant_not_found, R) -> error_obj(3, [1011], R);
 json_rpc_error_object(not_offchain_tx      , R) -> error_obj(2, [1012], R);
 json_rpc_error_object(already_onchain      , R) -> error_obj(3, [1013], R);
 json_rpc_error_object({meta, invalid}      , R) -> error_obj(3, [1014], R);
-json_rpc_error_object(invalid_password     , R) -> error_obj(3, [1015], R);
+json_rpc_error_object(invalid_password     , R) -> error_obj(3, [1016], R);
 json_rpc_error_object({broken_encoding,What}, R) ->
     error_obj(3, [broken_encoding_code(W) || W <- What], R);
 json_rpc_error_object({What, missing}      , R) ->
@@ -660,3 +660,8 @@ valid_error_code(ErrorCode) when is_binary(ErrorCode) ->
 valid_error_code(_) ->
     false.
 
+maybe_read_bh(Params) ->
+    Read = sc_ws_utils:read_f(Params),
+    sc_ws_utils:check_params(
+      [Read(<<"block_hash">>, block_hash, #{ type => {hash, block_hash}
+                                           , mandatory => false })]).

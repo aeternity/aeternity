@@ -995,23 +995,24 @@ do_update(From, To, Amount, #{fsm := FsmI} = I, R, Debug, Cfg) ->
             {R1, _} = await_signing_request(update_ack, R, Debug, Cfg),
             %% TODO: Refactor remaining check_info calls - this one needed to be refactored together
             %% TODO: with state cache encryption because the tests failed randomly because of it
-            await_update_report(R1, ?TIMEOUT, Debug),
-            I2 = await_update(I1, ?TIMEOUT, Debug),
-            R2 = await_update(R1, ?TIMEOUT, Debug),
+            await_update_incoming_report(R1, ?TIMEOUT, Debug),
+            I2 = await_update_report(I1, ?TIMEOUT, Debug),
+            R2 = await_update_report(R1, ?TIMEOUT, Debug),
             {I2, R2}
     end.
 
 msg_volley(#{fsm := FsmI, pub := PubI} = I, #{fsm := FsmR, pub := PubR} = R, _) ->
     rpc(dev1, aesc_fsm, inband_msg, [FsmI, PubR, <<"ping">>], false),
+    %% A 1 second timeout might not be enough if there is a lot of CPU intensive
+    %% background processes in the OS, bump to 2 seconds to avoid random failures
     {ok,_} = receive_from_fsm(
                message, R,
-               fun(#{info := #{info := <<"ping">>}}) -> ok end, 1000, false),
-    rpc(dev1, aesc_fsm, inband_msg, [FsmR, PubI, <<"pong">>]),
+               fun(#{info := #{info := <<"ping">>}}) -> ok end, 2000, false),
+    rpc(dev1, aesc_fsm, inband_msg, [FsmR, PubI, <<"pong">>], false),
     {ok,_} = receive_from_fsm(
                message, I,
-               fun(#{info := #{info := <<"pong">>}}) -> ok end, 1000, false),
+               fun(#{info := #{info := <<"pong">>}}) -> ok end, 2000, false),
     {I, R}.
-
 
 deposit(Cfg) ->
     Debug = get_debug(Cfg),
@@ -1073,9 +1074,11 @@ deposit_(#{fsm := FsmI} = I, R, Deposit, Opts, Round1, Debug, Cfg) ->
     #{initiator_amount := IAmt2, responder_amount := RAmt2} = I1,
     Expected = {IAmt2, RAmt2},
     {Expected, Expected} = {{IAmt0 + Deposit, RAmt0}, Expected},
-    SignedTx = await_on_chain_report(I1, #{info => channel_changed}, ?TIMEOUT), % same tx
-    SignedTx = await_on_chain_report(R1, #{info => channel_changed}, ?TIMEOUT), % same tx
-    {ok, I1, R1}.
+    I2 = await_update_report(I1, ?TIMEOUT, Debug),
+    R2 = await_update_report(R1, ?TIMEOUT, Debug),
+    #{signed_tx := SignedTx} = I2, %% Same Tx
+    #{signed_tx := SignedTx} = R2, %% Same Tx
+    {ok, I2, R2}.
 
 withdraw(Cfg) ->
     Debug = get_debug(Cfg),
@@ -1697,7 +1700,7 @@ fsm_crash_action_during_shutdown( #{fsm := FsmI} = I
 check_invalid_reestablish_password(Cfg) ->
     Debug = get_debug(Cfg),
     {I0, R0, Spec0} = channel_spec(Cfg),
-    #{ i := #{ fsm := FsmI } = I
+    #{ i := I
      , r := R } = create_channel_from_spec(I0, R0, Spec0, ?PORT, Debug, Cfg),
     ct:log("I = ~p", [I]),
     ct:log("R = ~p", [R]),
@@ -2370,14 +2373,13 @@ create_channel_from_spec(I, R, Spec, Port, UseAny, Debug, Cfg) ->
     I3 = await_funding_locked(I2, ?TIMEOUT, Debug),
     R3 = await_funding_locked(R2, ?TIMEOUT, Debug),
     ct:log("=== Funding locked ===", []),
-    %%
+
     I4 = await_update_report(I3, ?TIMEOUT, Debug),
     R4 = await_update_report(R3, ?TIMEOUT, Debug),
     ct:log("=== Update reports received ===", []),
+
     I5 = await_open_report(I4, ?TIMEOUT, Debug),
     R5 = await_open_report(R4, ?TIMEOUT, Debug),
-    SignedTx = await_on_chain_report(I5, #{info => channel_changed}, ?TIMEOUT),
-    SignedTx = await_on_chain_report(R5, #{info => channel_changed}, ?TIMEOUT),
     #{i => I5, r => R5, spec => Spec}.
 
 spawn_responder(Port, Spec, R, UseAny, Debug) ->
@@ -2740,7 +2742,7 @@ await_open_report(#{fsm := Fsm} = R, Timeout, _Debug) ->
               error(timeout)
     end.
 
-await_update_report(#{fsm := Fsm, channel_id := ChannelId}, Timeout, _Debug) ->
+await_update_incoming_report(#{fsm := Fsm, channel_id := ChannelId}, Timeout, _Debug) ->
     receive {aesc_fsm, Fsm, #{type := report, tag := info, info := update} = Msg} ->
             {ok, ChannelId} = maps:find(channel_id, Msg)
     after Timeout ->
@@ -3285,6 +3287,7 @@ extract_nonce_from_btc_auth_store(Store) ->
                                 Encoded0),
     Nonce.
 
+
 peek_message_queue(L, Debug) ->
     {messages, Msgs} = process_info(self(), messages),
     case Msgs of
@@ -3295,4 +3298,152 @@ peek_message_queue(L, Debug) ->
                 "~p: message Q: ~p~n"
                "==================================================~n", [L, Msgs])
     end,
+    ok.
+
+request_unknown_bh(Cfg) ->
+    NOT = 10,
+    NNT = 0,
+    #{ i := I
+     , r := R
+     , spec := Spec} = create_channel_([{block_hash_delta, #{ not_older_than => NOT
+                                                            , not_newer_than => NNT
+                                                            , pick           => 1}},
+                                        ?SLOGAN|Cfg]),
+    #{ initiator := PubI
+     , responder := PubR } = Spec,
+    TryUnknown =
+        fun(#{fsm := Fsm}, Function, Args0) ->
+            Args =
+                case is_list(Args0) of
+                    true -> [Fsm] ++ Args0 ++ [#{block_hash => ?BOGUS_BLOCKHASH}]; %% transfer
+                    false -> [Fsm, Args0#{block_hash => ?BOGUS_BLOCKHASH}]
+                end,
+            {error, unknown_block_hash} = rpc(dev1, aesc_fsm, Function, Args)
+        end,
+    Funs = [ {upd_deposit, #{amount => 1}}
+           , {upd_withdraw, #{amount => 1}}
+           , {upd_transfer, [PubI, PubR, 1]}
+           ],
+    [TryUnknown(Who, Fun, Args) || Who <- [I, R],
+                                   {Fun, Args} <- Funs],
+    shutdown_(I, R, Cfg),
+    ok.
+
+request_too_new_bh(Cfg) ->
+    NOT = 10,
+    NNT = 1, % top not allowed
+    Debug = true,
+    #{ i := I
+     , r := R
+     , spec := Spec} = create_channel_([{block_hash_delta, #{ not_older_than => NOT
+                                                            , not_newer_than => NNT
+                                                            , pick           => 1}},
+                                        ?SLOGAN|Cfg]),
+    #{ initiator := PubI
+     , responder := PubR } = Spec,
+    TopHash = aecore_suite_utils:get_key_hash_by_delta(dev1, NNT - 1), %% actually uses Top Hash
+    TryTooNew =
+        fun({#{fsm := Fsm} = Participant, OtherP}, Function, Args0, TxType) ->
+            Args =
+                case is_list(Args0) of
+                    true -> [Fsm] ++ Args0 ++ [#{block_hash => TopHash}]; %% transfer
+                    false -> [Fsm, Args0#{block_hash => TopHash}]
+                end,
+            ok = rpc(dev1, aesc_fsm, Function, Args),
+            {Participant1, _} = await_signing_request(TxType, Participant, Cfg),
+            %% rejected by other party
+            {ok, _} = receive_from_fsm(conflict, OtherP, any_msg(),
+                                       ?TIMEOUT, Debug),
+            {ok, _} = receive_from_fsm(conflict, Participant1, any_msg(),
+                                       ?TIMEOUT, Debug),
+            Participant1
+        end,
+    Funs = [ {upd_deposit, #{amount => 1}, deposit_tx}
+           , {upd_withdraw, #{amount => 1}, withdraw_tx}
+           , {upd_transfer, [PubI, PubR, 1], update}
+           ],
+    [TryTooNew(Who, Fun, Args, TxType) || Who <- [{I, R}, {R, I}],
+                                          {Fun, Args, TxType} <- Funs],
+    shutdown_(I, R, Cfg),
+    ok.
+
+request_too_old_bh(Cfg) ->
+    NOT = 10, % top not allowed
+    NNT = 1,
+    Debug = true,
+    #{ i := I
+     , r := R
+     , spec := Spec} = create_channel_([{block_hash_delta, #{ not_older_than => NOT
+                                                            , not_newer_than => NNT
+                                                            , pick           => 1}},
+                                        ?SLOGAN|Cfg]),
+    mine_key_blocks(dev1, NOT + 2), % do not rely on min depth
+    #{ initiator := PubI
+     , responder := PubR } = Spec,
+    OldHash = aecore_suite_utils:get_key_hash_by_delta(dev1, NOT + 1),
+    TryTooOld =
+        fun({#{fsm := Fsm} = Participant, OtherP}, Function, Args0, TxType) ->
+            Args =
+                case is_list(Args0) of
+                    true -> [Fsm] ++ Args0 ++ [#{block_hash => OldHash}]; %% transfer
+                    false -> [Fsm, Args0#{block_hash => OldHash}]
+                end,
+            ok = rpc(dev1, aesc_fsm, Function, Args),
+            {Participant1, _} = await_signing_request(TxType, Participant, Cfg),
+            %% rejected by other party
+            {ok, _} = receive_from_fsm(conflict, OtherP, any_msg(),
+                                       ?TIMEOUT, Debug),
+            {ok, _} = receive_from_fsm(conflict, Participant1, any_msg(),
+                                       ?TIMEOUT, Debug),
+            Participant1
+        end,
+    Funs = [ {upd_deposit, #{amount => 1}, deposit_tx}
+           , {upd_withdraw, #{amount => 1}, withdraw_tx}
+           , {upd_transfer, [PubI, PubR, 1], update}
+           ],
+    [TryTooOld(Who, Fun, Args, TxType) || Who <- [{I, R}, {R, I}],
+                                          {Fun, Args, TxType} <- Funs],
+    shutdown_(I, R, Cfg),
+    ok.
+
+
+positive_bh(Cfg) ->
+    NOT = 10,
+    NNT = 1,
+    Debug = true,
+    #{ i := #{fsm := FsmI} = I
+     , r := R
+     , spec := _Spec} = create_channel_([{block_hash_delta, #{ not_older_than => NOT
+                                                             , not_newer_than => NNT
+                                                             , pick           => 1}},
+                                        ?SLOGAN|Cfg]),
+    mine_key_blocks(dev1, NOT + 2), % do not rely on min depth
+    TestByDelta =
+        fun(Delta, {_I, _R} = Participants) ->
+            lists:foldl(
+                fun(Fun, {I0, R0}) ->
+                    {_IAmt0, _RAmt0, _, Round} = check_fsm_state(FsmI),
+                    BlockHash = aecore_suite_utils:get_key_hash_by_delta(dev1,
+                                                                        Delta),
+                    {ok, I1, R1} = Fun(I0, R0, #{block_hash => BlockHash}, Round),
+                    {I1, R1}
+                end,
+                {_I, _R} = Participants,
+                [ fun(Il, Rl, Opts, Round) ->
+                      deposit_(Il, Rl, 1, Opts, Round, Debug, Cfg)
+                  end,
+                  fun(Il, Rl, Opts, Round) ->
+                      withdraw_(Il, Rl, 1, Opts, Round, Debug, Cfg)
+                  end
+                ])
+        end,
+    {IFinal, RFinal} =
+        lists:foldl(
+            TestByDelta,
+            {I, R},
+            [ NOT,      %% border condition
+              NNT,      %% border condition
+              NOT - 1,  %% in the range
+              NNT + 1]),%% in the range
+    shutdown_(IFinal, RFinal, Cfg),
     ok.
