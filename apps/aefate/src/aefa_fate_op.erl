@@ -619,11 +619,12 @@ int_to_addr(Arg0, Arg1, EngineState) ->
     ES2 = aefa_engine_state:spend_gas_for_new_cells(Cells + 1, ES1),
     write(Arg0, Result, ES2).
 
+%% One Cell per 64 bit word
 string_cells(String) when ?IS_FATE_STRING(String) ->
-    byte_size(?FATE_STRING_VALUE(String)) div 64.
+    byte_size(?FATE_STRING_VALUE(String)) div 8.
 
 address_cells(A) when ?IS_FATE_ADDRESS(A) ->
-    byte_size(?FATE_ADDRESS_VALUE(A)) div 64.
+    byte_size(?FATE_ADDRESS_VALUE(A)) div 8.
 
 %% ------------------------------------------------------
 %% Variant instructions
