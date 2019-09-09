@@ -154,6 +154,7 @@
         , sophia_too_little_gas_for_mem/1
         , sophia_bytes/1
         , sophia_bytes_to_x/1
+        , sophia_bytes_concat/1
         , sophia_address_checks/1
         , sophia_remote_gas/1
         , sophia_higher_order_state/1
@@ -387,6 +388,7 @@ groups() ->
                                  sophia_namespaces,
                                  sophia_bytes,
                                  sophia_bytes_to_x,
+                                 sophia_bytes_concat,
                                  sophia_address_checks,
                                  sophia_too_little_gas_for_mem,
                                  sophia_bignum,
@@ -1396,7 +1398,7 @@ call_result(?ABI_AEVM_SOPHIA_1, Type, Call) ->
         error  ->
             {error, aect_call:return_value(Call)};
         ok ->
-            {ok, Res} = aeb_heap:from_binary(Type, aect_call:return_value(Call)),
+            {ok, Res} = aeb_heap:from_binary(format_aevm_type(Type), aect_call:return_value(Call)),
             Res;
         revert ->
             {ok, Res} = aeb_heap:from_binary(string, aect_call:return_value(Call)),
@@ -1454,6 +1456,16 @@ make_fate_function_id(FunctionName) when is_binary(FunctionName) ->
 make_calldata_from_id(Id, Fun, Args, State) ->
     {{value, C}, _S} = lookup_contract_by_id(Id, State),
     make_calldata_from_code(aect_contracts:code(C), Fun, Args).
+
+format_aevm_type({bytes, N}) ->
+    case lists:seq(1, N, 32) of
+        []  -> word;
+        [_] -> word;
+        Ws  -> {tuple, lists:duplicate(length(Ws), word)}
+    end;
+format_aevm_type({tuple, Ts}) ->
+    {tuple, [format_aevm_type(T) || T <- Ts]};
+format_aevm_type(T) -> T.
 
 format_aevm_args(?cid(<<N:256>>)) -> N;
 format_aevm_args(?hsh(<<N:256>>)) -> N;
@@ -5000,6 +5012,35 @@ sophia_bytes_to_x(_Cfg) ->
     _ = [ ToInt(W) || W <- [12, 32, 42, 64, 65] ],
     _ = [ ToStr(W) || W <- [12, 32, 42, 64, 65] ],
 
+    ok.
+
+sophia_bytes_concat(_Cfg) ->
+    ?skipRest(sophia_version() =< ?SOPHIA_FORTUNA, bytes_concat_not_in_fortuna),
+    state(aect_test_utils:new_state()),
+    Acc = ?call(new_account, 10000000000 * aec_test_utils:min_gas_price()),
+    Ct  = ?call(create_contract, Acc, bytes_concat, {}),
+
+    Bytes = fun(N) -> list_to_binary([ rand:uniform(256) - 1 || _ <- lists:seq(1, N) ]) end,
+    Cat   = fun(A, B) -> <<A/binary, B/binary>> end,
+    Check = fun(Fun, C, B) ->
+                A    = C - B,
+                BinA = Bytes(A),
+                BinB = Bytes(B),
+                Arg  = Cat(BinA, BinB),
+                Exp  = case ?IS_FATE_SOPHIA(vm_version()) of
+                           true  -> {bytes, Cat(BinB, BinA)};
+                           false -> format_aevm_args({bytes, Cat(BinB, BinA)})
+                       end,
+                Res  = ?call(call_contract, Acc, Ct, Fun, {bytes, C}, {{bytes, Arg}}),
+                ?assertMatch({_, _, _, {Exp, '==', Exp}},
+                             {Fun, BinA, BinB, {Exp, '==', Res}})
+            end,
+
+    [ Check(Fun, A, B) || {Fun, A, B} <- [{rot_sss, 29, 5},
+                                          {rot_ssl, 44, 29},
+                                          {rot_lsl, 44, 10},
+                                          {rot_sll, 44, 36},
+                                          {rot_lll, 78, 34}] ],
     ok.
 
 sophia_address_checks(_Cfg) ->

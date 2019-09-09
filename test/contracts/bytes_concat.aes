@@ -1,0 +1,27 @@
+contract BytesConcat =
+
+  // (small, small) => small
+  entrypoint rot_sss(a : bytes(29)) =
+    switch (Bytes.split(a))
+      (b, c) => Bytes.concat(c : bytes(5), b)
+
+  // (small, small) => large
+  entrypoint rot_ssl(a : bytes(44)) =
+    switch (Bytes.split(a))
+      (b, c) => Bytes.concat(c : bytes(29), b)
+
+  // (large, small) => large
+  entrypoint rot_lsl(a : bytes(44)) =
+    switch (Bytes.split(a))
+      (b, c) => Bytes.concat(c : bytes(10), b)
+
+  // (small, large) => large
+  entrypoint rot_sll(a : bytes(44)) =
+    switch (Bytes.split(a))
+      (b, c) => Bytes.concat(c : bytes(36), b)
+
+  // (large, large) => large
+  entrypoint rot_lll(a : bytes(78)) =
+    switch (Bytes.split(a))
+      (b, c) => Bytes.concat(c : bytes(34), b)
+

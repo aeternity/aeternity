@@ -94,6 +94,7 @@ decode(?FATE_ORACLE(<<X:256>>), word)        -> {oracle, X};
 decode(?FATE_ORACLE_Q(<<X:256>>), word)      -> {oracle_query, X};
 decode(?FATE_CHANNEL(<<X:256>>), word)       -> {channel, X};
 decode(?FATE_BITS(Bits), word)               -> {bits, Bits};
+decode(?FATE_BYTES(Bytes), _)                -> {bytes, Bytes};
 decode(?FATE_TUPLE({}), word)                -> {tuple, []};
 decode(?FATE_TUPLE(Tuple), {tuple, Ts})      ->
     list_to_tuple([decode(E, T) || {E, T} <- lists:zip(tuple_to_list(Tuple), Ts)]);
