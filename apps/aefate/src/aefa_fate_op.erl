@@ -135,6 +135,8 @@
         , auth_tx_hash/2
         , bytes_to_int/3
         , bytes_to_str/3
+        , bytes_concat/4
+        , bytes_split/4
         ]).
 
 -include_lib("aebytecode/include/aeb_fate_data.hrl").
@@ -675,6 +677,12 @@ bytes_to_int(Arg0, Arg1, EngineState) ->
 
 bytes_to_str(Arg0, Arg1, EngineState) ->
     un_op(bytes_to_str, {Arg0, Arg1}, EngineState).
+
+bytes_concat(Arg0, Arg1, Arg2, EngineState) ->
+    bin_op(bytes_concat, {Arg0, Arg1, Arg2}, EngineState).
+
+bytes_split(Arg0, Arg1, Arg2, EngineState) ->
+    bin_op(bytes_split, {Arg0, Arg1, Arg2}, EngineState).
 
 balance_other(Arg0, Arg1, ES) ->
     API = aefa_engine_state:chain_api(ES),
@@ -1587,6 +1595,14 @@ op(str_join, A, B) when ?IS_FATE_STRING(A)
                          , ?IS_FATE_STRING(B) ->
     aeb_fate_data:make_string(<<?FATE_STRING_VALUE(A)/binary,
                             ?FATE_STRING_VALUE(B)/binary>>);
+op(bytes_concat, ?FATE_BYTES(A), ?FATE_BYTES(B)) ->
+    ?FATE_BYTES(<<A/binary, B/binary>>);
+op(bytes_split, ?FATE_BYTES(A), B) when ?IS_FATE_INTEGER(B) ->
+    N = ?FATE_INTEGER_VALUE(B),
+    case A of
+        <<L:N/binary, R/binary>> -> ?FATE_TUPLE({?FATE_BYTES(L), ?FATE_BYTES(R)});
+        _                        -> aefa_fate:abort({type_error, bytes_split})
+    end;
 op(variant_test, A, B)  when ?IS_FATE_VARIANT(A)
                          , ?IS_FATE_INTEGER(B)
                          , B >= 0 ->
