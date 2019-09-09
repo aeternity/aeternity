@@ -162,6 +162,7 @@
         , read_store/1
         , store_zero_value/1
         , merge_new_zero_value/1
+        , sophia_use_memory_gas/1
         ]).
 
 -include_lib("common_test/include/ct.hrl").
@@ -389,7 +390,8 @@ groups() ->
                                  sophia_address_checks,
                                  sophia_too_little_gas_for_mem,
                                  sophia_bignum,
-                                 sophia_higher_order_state
+                                 sophia_higher_order_state,
+                                 sophia_use_memory_gas
                                ]}
     , {sophia_oracles_ttl, [],
           %% Test Oracle TTL handling
@@ -5597,6 +5599,43 @@ sophia_state_gas_store_size(_Cfg) ->
     ?assertEqual({true, Gas10, Gas12}, {Gas10 < Gas12, Gas10, Gas12}),
 
     ok.
+
+
+sophia_use_memory_gas(_Cfg) ->
+    state(aect_test_utils:new_state()),
+    Acc      = ?call(new_account, 20000000 * aec_test_utils:min_gas_price()),
+    ContractName = use_memory,
+    Ct0      = ?call(create_contract, Acc, ContractName, {}, #{ amount => 100000 }),
+
+    %UnitT    = {tuple, []},
+
+    %% Test that creating a longer string means more gas
+    {_, Gas1} = ?call(call_contract, Acc, Ct0, str_concat, string, {<<"short">>, <<"str">>}, #{ return_gas_used => true }),
+    {_, Gas2} = ?call(call_contract, Acc, Ct0, str_concat, string,
+                       {<<"short">>,
+                        <<"at_least_32_bytes_long_in_order_to_use_an_extra_word_on_fate_and_aevm">>},
+                       #{ return_gas_used => true }),
+    ?assertEqual({true, Gas1, Gas2}, {Gas1 < Gas2, Gas1, Gas2}),
+
+    %% Test that strings taking as many machine words cost the same amount of gas
+    {_, Gas3} = ?call(call_contract, Acc, Ct0, str_concat, string, {<<"short">>, <<"string">>}, #{ return_gas_used => true }),
+    ?assertEqual({true, Gas1, Gas3}, {Gas1 == Gas3, Gas1, Gas3}),
+
+    %% Test that building a large string is ok, but costs lots of gas. size = 5*pow(2,10)
+    {_, Gas4} = ?call(call_contract, Acc, Ct0, dup_str, string, {<<"short">>, 10}, #{ return_gas_used => true
+                                                                                    , gas => 6000000}),
+    ?assertEqual({true, Gas1, Gas4, Gas2}, {Gas4 > (Gas2 - Gas1) * 100, Gas1, Gas4, Gas2}),
+
+
+    %% Test that building a realy large string uses all gas. size = 5*pow(2,20)
+    {E,_Gas5} = ?call(call_contract, Acc, Ct0, dup_str, string, {<<"short">>, 20}, #{ return_gas_used => true
+                                                                                    , gas => 6000000}),
+    ?assertMatchVM({error, <<"out_of_gas">>}, {error, <<"Out of gas">>}, E),
+
+    ok.
+
+
+
 
 %%%===================================================================
 %%% Store

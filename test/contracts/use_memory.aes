@@ -1,0 +1,7 @@
+contract UseMemory =
+
+  entrypoint str_concat(s1, s2) = String.concat(s1, s2)
+
+  entrypoint dup_str(s, n) =
+    if (n > 0) dup_str(String.concat(s, s), n - 1)
+    else s
