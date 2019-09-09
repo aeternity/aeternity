@@ -157,6 +157,7 @@
         , sophia_address_checks/1
         , sophia_remote_gas/1
         , sophia_higher_order_state/1
+        , sophia_bignum/1
         , create_store/1
         , read_store/1
         , store_zero_value/1
@@ -284,7 +285,8 @@ all() ->
                        , sophia_polymorphic_entrypoint
                        ]).
 
--define(FATE_TODO, [sophia_state_gas_arguments
+-define(FATE_TODO, [sophia_state_gas_arguments,
+                    sophia_bignum       %% Dynamic gas for arithmetic ops!
                    ]).
 
 groups() ->
@@ -387,6 +389,7 @@ groups() ->
                                  sophia_bytes_to_x,
                                  sophia_address_checks,
                                  sophia_too_little_gas_for_mem,
+                                 sophia_bignum,
                                  sophia_higher_order_state
                                ]}
     , {sophia_oracles_ttl, [],
@@ -1599,6 +1602,22 @@ sophia_higher_order_state(_Cfg) ->
     3   = ?call(call_contract, Acc, Ct, apply, word, {1}),
     {}  = ?call(call_contract, Acc, Ct, inc,  {tuple, []}, {}),
     4   = ?call(call_contract, Acc, Ct, apply, word, {1}),
+    ok.
+
+sophia_bignum(_Cfg) ->
+    ?skipRest(vm_version() < ?VM_AEVM_SOPHIA_2, no_arithmetic_errors_pre_minerva),
+    state(aect_test_utils:new_state()),
+    Acc = ?call(new_account, 1000000000 * aec_test_utils:min_gas_price()),
+    Ct  = ?call(create_contract, Acc, bignum, {}),
+    65536 = ?call(call_contract, Acc, Ct, tetr1, word, {2, 4}),
+    65536 = ?call(call_contract, Acc, Ct, tetr2, word, {2, 4}),
+    65536 = ?call(call_contract, Acc, Ct, tetr3, word, {2, 4}),
+    {error, Err1} = ?call(call_contract, Acc, Ct, tetr1, word, {100, 3}),
+    ?assertMatchVM(<<"arithmetic_error">>, <<"Out of gas">>, Err1),
+    {error, Err2} = ?call(call_contract, Acc, Ct, tetr2, word, {100, 3}),
+    ?assertMatchVM(<<"arithmetic_error">>, <<"Out of gas">>, Err2),
+    {error, Err3} = ?call(call_contract, Acc, Ct, tetr3, word, {100, 3}),
+    ?assertMatchVM(<<"arithmetic_error">>, <<"Out of gas">>, Err3),
     ok.
 
 sophia_vm_interaction(Cfg) ->
