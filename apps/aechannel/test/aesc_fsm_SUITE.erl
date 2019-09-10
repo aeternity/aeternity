@@ -319,7 +319,7 @@ init_per_group(Group, Config) when Group =:= initiator_is_ga;
                                             Params(?R_OWNER,
                                                    ?R_SECP256K1_PRIV)}}},
                  {ga_group, true},
-                 {bench_rounds, 100} %% a lower amount than the default 1000
+                 {bench_rounds, 1} %% a lower amount than the default 10
                     | Config1],
             case Group of
                 initiator_is_ga ->
@@ -956,7 +956,7 @@ update_bench(I, R, C0) ->
     set_proxy_debug(false, I),
     set_proxy_debug(false, R),
     C = set_debug(false, C0),
-    Rounds = proplists:get_value(bench_rounds, C, 1000),
+    Rounds = proplists:get_value(bench_rounds, C, 10),
     ct:log("=== Starting benchmark ===", []),
     {Time, I1, R1} = do_n(Rounds, fun update_volley/3,
                           cache_account_type(I),
