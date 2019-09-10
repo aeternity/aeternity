@@ -102,7 +102,8 @@ arithm_contract_test(_Cfg) ->
 
     {Trees, Env}   = init(),
     {Trees1, Env1} = create_contract(Sample, Trees, Env, [{fate, Fate, 2, undefined}, {aevm, Aevm, 1, undefined}], "init", ["100"]),
-    {Trees2, Env2} = create_contract(Sample, Trees1, Env1, [{fate, Fate, 2, undefined}, {aevm, Aevm, 1, undefined}], "init", ["10"]),
+    {Trees2, Env2_} = create_contract(Sample, Trees1, Env1, [{fate, Fate, 2, undefined}, {aevm, Aevm, 1, undefined}], "init", ["10"]),
+    Env2 = aetx_env:set_dry_run(Env2_, true),
 
     ct:log("100^10"),
     {Trees3, _Env3, _Calls} = call_contract(Sample, Trees2, Env2, [{fate, Fate, 4, id(2,1)}, {aevm, Aevm, 3, id(1,1)}], "pow", ["10"]),
@@ -119,6 +120,20 @@ arithm_contract_test(_Cfg) ->
     {Trees9, Env9, _} = call_contract(Sample, Trees8, Env8, [{fate, Fate, 4, id(2, Sample+1)}, {aevm, Aevm, 3, id(1, Sample+1)}], "pow", ["90"]),
     ct:log("10^100"),
     {_Trees10, _Env10, _} = call_contract(Sample, Trees9, Env9, [{fate, Fate, 4, id(2, Sample+1)}, {aevm, Aevm, 3, id(1, Sample+1)}], "pow", ["100"]),
+
+    ct:log("ackerman(2,5)"),
+    {_Trees11, _Env11, _} = call_contract(Sample, Trees2, Env2, [{fate, Fate, 4, id(2, 1)}, {aevm, Aevm, 3, id(1, 1)}], "ackermann", ["2", "5"]),
+
+    %% The tests below take several seconds. Only run them when changes are made
+    %% ct:log("ackerman(3,5)"),
+    %% {_Trees12, _Env12, _} = call_contract(Sample, Trees2, Env2, [{fate, Fate, 4, id(2, 1)}, {aevm, Aevm, 3, id(1, 1)}], "ackermann", ["3", "5"]),
+
+    %% ct:log("ackerman(3,8)"),
+    %% {_Trees13, _Env13, _} = call_contract(Sample, Trees2, Env2, [{fate, Fate, 4, id(2, 1)}, {aevm, Aevm, 3, id(1, 1)}], "ackermann", ["3", "8"]),
+
+    %% ct:log("ackerman(4,2)"),
+    %% {_Trees14, _Env14, _} = call_contract(Sample, Trees2, Env2, [{fate, Fate, 4, id(2, 1)}, {aevm, Aevm, 3, id(1, 1)}], "ackermann", ["4", "2"]),
+
 
     ok.
 
@@ -238,7 +253,7 @@ contract_call(Trees, Sender, ContractId, CompiledContract, Fun, Args, Backend) -
           abi_version => case Backend of aevm -> ?ABI_AEVM_SOPHIA_1; fate -> ?ABI_FATE_SOPHIA_1 end,
           fee =>  500000 * 1000000 * 20,
           gas_price => 1000000,
-          gas => 20000000,
+          gas => 6000000,
           nonce => nonce(Trees, Sender),
           amount => 0,
           call_data => CallData
@@ -290,9 +305,9 @@ calls_produced(Trees1, Trees2, Backend) ->
                    return => case Backend of
                                  aevm -> aect_call:return_value(Call);
                                  fate ->
-                                     case aect_call:return_value(Call) of
-                                         <<>> -> <<>>;
-                                         Bin -> aeb_fate_encoding:deserialize(Bin)
+                                     case {aect_call:return_type(Call), aect_call:return_value(Call)} of
+                                         {ok, Bin} when Bin =/= <<>> -> aeb_fate_encoding:deserialize(Bin);
+                                         {_, Bin} -> Bin
                                      end
                              end } || {_, Call} <- aect_call_state_tree:to_list(aec_trees:calls(Trees2)) --
                                                                   aect_call_state_tree:to_list(aec_trees:calls(Trees1))]).

@@ -13,3 +13,10 @@ contract Arithmatic =
     switch(i)
         0 => 1
         n => state * pow(n - 1)
+
+  entrypoint ackermann(x : int, y :int) =
+    switch(x)
+        0 => y + 1
+        _ => switch(y)
+                0 => ackermann(x - 1, 1)
+                _ => ackermann(x - 1, ackermann(x, y - 1))
