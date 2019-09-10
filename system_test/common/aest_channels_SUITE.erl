@@ -141,7 +141,7 @@ test_simple_same_node_channel(Cfg) ->
         push_amount => 2 * aest_nodes:gas_price(),
         bh_delta_not_newer_than => 0,
         bh_delta_not_older_than => 100,
-        bh_delta_pick           => 1
+        bh_delta_pick           => 10
     },
     simple_channel_test(ChannelOpts, #{}, #{}, Cfg).
 
@@ -169,7 +169,7 @@ test_different_nodes_channel_(InitiatorNodeBaseSpec, ResponderNodeBaseSpec, Cfg)
         push_amount => 2,
         bh_delta_not_newer_than => 0,
         bh_delta_not_older_than => 100,
-        bh_delta_pick           => 1
+        bh_delta_pick           => 10
     },
     simple_channel_test(ChannelOpts, InitiatorNodeBaseSpec, ResponderNodeBaseSpec, Cfg).
 
@@ -257,7 +257,7 @@ create_state_channel_perform_operations_leave({INodeName, RNodeName}, Config) ->
         push_amount => 2,
         bh_delta_not_newer_than => 0,
         bh_delta_not_older_than => 100,
-        bh_delta_pick           => 1
+        bh_delta_pick           => 10
     },
     IAccount = maps:get(initiator_id, ChannelOpts),
     RAccount = maps:get(responder_id, ChannelOpts),
