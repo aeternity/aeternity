@@ -34,7 +34,7 @@
         , specialize_callback/1
         , update_tx/2
         , valid_at_protocol/2
-        , check_protocol_at_height/2]).
+        , check_protocol/2]).
 
 -ifdef(TEST).
 -export([tx/1]).
@@ -395,7 +395,7 @@ check_tx(#aetx{ cb = CB, tx = Tx } = AeTx, Trees, Env) ->
         [fun() -> check_minimum_fee(AeTx, Env) end,
          fun() -> check_minimum_gas_price(AeTx, aetx_env:height(Env)) end,
          fun() -> check_ttl(AeTx, Env) end,
-         fun() -> check_protocol_at_height(AeTx, aetx_env:height(Env)) end
+         fun() -> check_protocol(AeTx, aetx_env:consensus_version(Env)) end
         ],
     case aeu_validation:run(Checks) of
         ok             -> CB:check(Tx, Trees, Env);
@@ -441,11 +441,10 @@ check_ttl(AeTx, Env) ->
         false -> {error, ttl_expired}
     end.
 
-check_protocol_at_height(AeTx, Height) ->
-    Protocol = aec_hard_forks:protocol_effective_at_height(Height),
+check_protocol(AeTx, Protocol) ->
     case valid_at_protocol(Protocol, AeTx) of
         true  -> ok;
-        false -> {error, invalid_at_height}
+        false -> {error, invalid_at_protocol}
     end.
 
 %%%===================================================================

@@ -961,7 +961,7 @@ reject_old_offchain_tx_vsn(Cfg) ->
                 create_payload(),
                 set_prop(height, LimaHeight),
                 %% it fails after Lima
-                negative(fun close_solo_/2, {error, invalid_at_height})
+                negative(fun close_solo_/2, {error, invalid_at_protocol})
                 ])
         end,
     [Test(Role) || Role <- ?ROLES],
@@ -5466,7 +5466,7 @@ fp_sophia_versions(Cfg) ->
                       trees := Trees0} = Props) ->
                     Contract = aect_test_utils:get_contract(ContractId, #{trees => Trees0}),
                     Code = aect_contracts:code(Contract),
-									  Deserialized = aect_sophia:deserialize(Code),
+                    Deserialized = aect_sophia:deserialize(Code),
                     %% ensure contract serialization version
                     CodeSVsn = maps:get(contract_vsn, Deserialized),
                     Props
