@@ -25,15 +25,11 @@
 -define(DEFAULT_HTTP_CACHE_ENABLED, false).
 
 init(Req, {OperationId, AllowedMethod, LogicHandler}) ->
-    %% TODO: make this validator a proper service.
-    JsonSpec = aehttp_api_validate:json_spec(),
-    Validator = aehttp_api_validate:validator(JsonSpec),
-
     State = #state{
         operation_id = OperationId,
         allowed_method = AllowedMethod,
         logic_handler = LogicHandler,
-        validator = Validator
+        validator = aehttp_api_validate:validator()
     },
     {cowboy_rest, Req, State}.
 
