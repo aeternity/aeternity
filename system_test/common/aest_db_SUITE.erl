@@ -126,12 +126,11 @@ tx_mempool_compatibility(PopulateF, Cfg) ->
     },
     node_can_reuse_db_of_other_node_(Test, Cfg).
 
-node_can_reuse_db_of_other_node_(T = #db_reuse_test_spec{}, Cfg0)
+node_can_reuse_db_of_other_node_(T = #db_reuse_test_spec{}, Cfg)
   when is_function(T#db_reuse_test_spec.create, 2),
        is_function(T#db_reuse_test_spec.populate, 2),
        is_function(T#db_reuse_test_spec.reuse, 2),
        is_function(T#db_reuse_test_spec.assert, 3) ->
-    Cfg = aest_channels_SUITE:set_old_update_vsn(Cfg0),
     DbHostPath = node_db_host_path(node1, Cfg),
     N1 = (T#db_reuse_test_spec.create)(node1, DbHostPath),
     aest_nodes:setup_nodes([N1], Cfg),
@@ -147,8 +146,7 @@ node_can_reuse_db_of_other_node_(T = #db_reuse_test_spec{}, Cfg0)
 
 sc_leave_upgrade_reestablish( {{BeforeNodeNameI, BeforeNodeTypeI}, {BeforeNodeNameR, BeforeNodeTypeR}}
                             , {{AfterNodeNameI, AfterNodeTypeI}, {AfterNodeNameR, AfterNodeTypeR}}
-                            , Cfg0) ->
-    Cfg = aest_channels_SUITE:set_old_update_vsn(Cfg0),
+                            , Cfg) ->
     HostPathI = node_db_host_path(BeforeNodeNameI, Cfg),
     HostPathR = node_db_host_path(BeforeNodeNameR, Cfg),
 
@@ -256,7 +254,6 @@ populate_db_with_channels_force_progress_tx(NodeName, Cfg) ->
     %% The state channel fsm sets its environment to be able to encode data using old
     %% protocols, but in this case, we're not producing the tx inside the fsm, so we
     %% must simulate the relevant part of the environment.
-    aest_channels_SUITE:simulate_fsm_vsn_env(Cfg),
     #{tx_hash := TxHash} =
         aest_nodes:post_force_progress_state_channel_tx(
           NodeName,

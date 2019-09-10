@@ -1,8 +1,7 @@
 -module(aesc_offchain_update).
 
--define(UPDATE_VSN, 2).
 -define(UPDATE_VSN_1, 1).
--define(UPDATE_VSN_1_OR_2(V), V =:= ?UPDATE_VSN_1; V =:= ?UPDATE_VSN).
+-define(UPDATE_VSN_2, 2).
 
 -record(transfer, {
           from_id      :: aeser_id:id(),
@@ -68,9 +67,6 @@
          for_client/1,
          apply_on_trees/6]).
 
--export([set_vsn/1,
-         get_vsn/0]).
-
 -export([is_call/1,
          is_contract_create/1,
          extract_call/1,
@@ -113,7 +109,6 @@ from_db_format(Tuple) ->
         #deposit{} -> Updated;
         #create_contract{} -> Updated;
         #call_contract{} -> Updated;
-        #meta{} -> Updated;
         _ ->
             error(illegal_db_format)
     end.
@@ -172,7 +167,6 @@ op_call_contract(CallerId, ContractId, ABIVersion, Amount, CallData, CallStack,
                    gas = Gas}.
 
 op_meta(Data) ->
-    true = can_serialize(meta),
     #meta{ data = Data }.
 
 -spec apply_on_trees(aesc_offchain_update:update(), aec_trees:trees(),
@@ -264,26 +258,13 @@ for_client(#meta{data = Data}) ->
     #{<<"op">>   => type2swagger_name(meta),
       <<"data">> => Data}.
 
-update_vsn_key() ->
-    {?MODULE, update_vsn}.
-
-get_vsn() ->
-    case get(update_vsn_key()) of
-        undefined ->
-            ?UPDATE_VSN;
-        V ->
-            V
-    end.
-
-set_vsn(V) when ?UPDATE_VSN_1_OR_2(V) ->
-    lager:debug("set serialization vsn to ~p", [V]),
-    put(update_vsn_key(), V),
-    ok.
+vsn(#meta{}) -> ?UPDATE_VSN_2;
+vsn(_) -> ?UPDATE_VSN_1.
 
 -spec serialize(update()) -> binary().
 serialize(Update) ->
     Fields = update2fields(Update),
-    Vsn = get_vsn(),
+    Vsn = vsn(Update),
     UpdateType = record_to_update_type(Update),
     aeser_chain_objects:serialize(
       ut2type(UpdateType),
@@ -389,23 +370,23 @@ type2swagger_name(call_contract)   -> <<"OffChainCallContract">>;
 type2swagger_name(meta)            -> <<"OffChainMeta">>.
 
 -spec update_serialization_template(non_neg_integer(), update_type()) -> list().
-update_serialization_template(V, transfer) when ?UPDATE_VSN_1_OR_2(V) ->
+update_serialization_template(V, transfer) when V =:= ?UPDATE_VSN_1 ->
     [ {from,    id},
       {to,      id},
       {amount,  int}];
-update_serialization_template(V, deposit) when ?UPDATE_VSN_1_OR_2(V) ->
+update_serialization_template(V, deposit) when V =:= ?UPDATE_VSN_1 ->
     [ {from,    id},
       {amount,  int}];
-update_serialization_template(V, withdraw) when ?UPDATE_VSN_1_OR_2(V) ->
+update_serialization_template(V, withdraw) when V =:= ?UPDATE_VSN_1 ->
     [ {to,      id},
       {amount,  int}];
-update_serialization_template(V, create_contract) when ?UPDATE_VSN_1_OR_2(V) ->
+update_serialization_template(V, create_contract) when V =:= ?UPDATE_VSN_1 ->
     [ {owner,       id},
       {ct_version,  int},
       {code,        binary},
       {deposit,     int},
       {call_data,   binary}];
-update_serialization_template(V, call_contract) when ?UPDATE_VSN_1_OR_2(V) ->
+update_serialization_template(V, call_contract) when V =:= ?UPDATE_VSN_1 ->
     [ {caller,      id},
       {contract,    id},
       {abi_version, int},
@@ -414,7 +395,7 @@ update_serialization_template(V, call_contract) when ?UPDATE_VSN_1_OR_2(V) ->
       {gas_price,   int},
       {call_data,   binary},
       {call_stack,  [int]}];
-update_serialization_template(?UPDATE_VSN, meta) ->
+update_serialization_template(?UPDATE_VSN_2, meta) ->
     [ {data, binary} ].
 
 -spec record_to_update_type(update()) -> update_type().
@@ -511,8 +492,3 @@ extract_abi_version(#call_contract{abi_version = ABIVersion}) ->
 update_error(Err) ->
     error({off_chain_update_error, Err}).
 
-can_serialize(Op) ->
-    can_serialize(Op, get_vsn()).
-
-can_serialize(meta, ?UPDATE_VSN_1) -> error(meta_not_allowed);
-can_serialize(_   ,             _) -> true.

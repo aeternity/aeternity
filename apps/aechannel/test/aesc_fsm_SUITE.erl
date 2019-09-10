@@ -26,7 +26,6 @@
         , channel_insufficent_tokens/1
         , inband_msgs/1
         , upd_transfer/1
-        , upd_transfer_meta_fails_on_old_vsn/1
         , update_with_conflict/1
         , update_with_soft_reject/1
         , deposit_with_conflict/1
@@ -146,7 +145,6 @@ groups() ->
       , channel_insufficent_tokens
       , inband_msgs
       , upd_transfer
-      , upd_transfer_meta_fails_on_old_vsn
       , update_with_conflict
       , update_with_soft_reject
       , deposit_with_conflict
@@ -639,36 +637,6 @@ upd_transfer(Cfg) ->
     check_info(20),
     ok.
 
-upd_transfer_meta_fails_on_old_vsn(Cfg) ->
-    Debug = get_debug(Cfg),
-    XOpts = #{versions => #{offchain_update => 1}},
-    #{ i := #{fsm := FsmI, channel_id := ChannelId} = I
-     , r := #{} = R
-     , spec := #{ initiator := PubI
-                , responder := PubR }} = create_channel_(
-                                           [?SLOGAN|Cfg], XOpts, Debug),
-    {BalI, BalR} = get_both_balances(FsmI, PubI, PubR),
-    try  do_update(PubI, PubR, 2, I, R, true, Cfg),
-         error(expected_to_fail)
-    catch
-        throw:{error, _} = Error->
-            log(Debug, "Got expected error: ~p", [Error]),
-            ok
-    end,
-    {I1, R1} = do_update(PubI, PubR, 2, I, R, true, [{use_meta,false}|Cfg]),
-    {BalI1, BalR1} = get_both_balances(FsmI, PubI, PubR),
-    BalI1 = BalI - 2,
-    BalR1 = BalR + 2,
-    ok = rpc(dev1, aesc_fsm, shutdown, [FsmI]),
-    {_I2, _} = await_signing_request(shutdown, I1, Cfg),
-    {_R2, _} = await_signing_request(shutdown_ack, R1, Cfg),
-    SignedTx = await_on_chain_report(I, ?TIMEOUT),
-    SignedTx = await_on_chain_report(R, ?TIMEOUT), % same tx
-    wait_for_signed_transaction_in_block(dev1, SignedTx, Debug),
-    verify_close_mutual_tx(SignedTx, ChannelId),
-    check_info(20),
-    ok.
-
 update_with_conflict(Cfg) ->
     Debug = true,
     #{ i := #{fsm := FsmI} = I
@@ -980,9 +948,9 @@ update_volley(#{pub := PubI} = I, #{pub := PubR} = R, Cfg) ->
     do_update(PubI, PubR, 1, I1, R1, false, Cfg).
 
 do_update(From, To, Amount, #{fsm := FsmI} = I, R, Debug, Cfg) ->
-    Opts = case proplists:get_value(use_meta, Cfg, true) of
-               true  -> #{meta => [<<"meta1">>, <<"meta2">>]};
-               false -> #{}
+    Opts = case aect_test_utils:latest_protocol_version() < ?LIMA_PROTOCOL_VSN of
+               false -> #{meta => [<<"meta1">>, <<"meta2">>]};
+               true  -> #{}
            end,
     case rpc(dev1, aesc_fsm, upd_transfer, [FsmI, From, To, Amount, Opts], Debug) of
         {error, _} = Error ->

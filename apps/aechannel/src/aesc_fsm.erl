@@ -65,7 +65,6 @@
         , record_fields/1
         , report_tags/0
         , timeouts/0
-        , version_tags/0
         , bh_deltas/0
         ]).
 
@@ -305,8 +304,6 @@ record_fields(Other) -> aesc_offchain_state:record_fields(Other).
 report_tags() ->
     maps:keys(?DEFAULT_REPORT_FLAGS).
 
-version_tags() ->
-    [offchain_update].
 
 bh_deltas() ->
     record_info(fields, bh_delta).
@@ -2771,14 +2768,8 @@ send_recoverable_error_msg(?WDRAW_ERR, Sn, Msg) ->
     lager:debug("send withdraw_error: ~p", [Msg]),
     aesc_session_noise:wdraw_error(Sn,Msg);
 send_recoverable_error_msg(?SHUTDOWN_ERR, Sn, Msg) ->
-    case aesc_offchain_update:get_vsn() of
-        V when V > 1 ->
-            lager:debug("send shutdown_error: ~p", [Msg]),
-            aesc_session_noise:shutdown_error(Sn,Msg);
-        _ ->
-            %% This message won't be defined in earlier FSMs
-            ok
-    end.
+    lager:debug("send shutdown_error: ~p", [Msg]),
+    aesc_session_noise:shutdown_error(Sn, Msg).
 
 request_signing(Tag, Aetx, Updates, BlockHash, #data{} = D) ->
     request_signing(Tag, Aetx, Updates, BlockHash, D, send).
@@ -3415,7 +3406,6 @@ init(#{opts := Opts0} = Arg) ->
               fun check_timeout_opt/1,
               fun check_rpt_opt/1,
               fun check_log_opt/1,
-              fun check_version_opts/1,
               fun check_block_hash_deltas/1
              ], Opts2),
     #{initiator := Initiator} = Opts,
@@ -3532,28 +3522,6 @@ check_timeout_opt(#{timeouts := TOs} = Opts) ->
     Opts1;
 check_timeout_opt(Opts) ->
     check_timeout_opt(Opts#{timeouts => #{}}).
-
-check_version_opts(#{versions := S} = Opts) ->
-    case maps:fold(
-           fun(_, _, {error,_} = E) ->
-                   E;
-              (offchain_update = Cat, V, ok) ->
-                  try aesc_offchain_update:set_vsn(V)
-                  ?CATCH_LOG(_E)
-                      {error, {invalid_vsn, Cat}}
-                  end;
-              (Cat, _V, ok) ->
-                   lager:debug("Unsupported version option ~p - ignoring", [Cat]),
-                   ok
-           end, ok, S) of
-        ok ->
-            Opts;
-        {error, _} = Error ->
-            lager:error("Invalid serialization: ~p", [Error]),
-            maps:remove(versions, Opts)
-    end;
-check_version_opts(Opts) ->
-    Opts.
 
 check_rpt_opt(#{report := R} = Opts) when is_map(R) ->
     L = [{K,V} || {K,V} <- maps:to_list(R),

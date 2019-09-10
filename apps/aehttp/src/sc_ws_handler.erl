@@ -305,8 +305,6 @@ read_channel_options(Params) ->
                                                      mandatory => false}),
     ReadReport = ReadMap(report, <<"report">>, #{type => boolean,
                                                      mandatory => false}),
-    ReadVsns = ReadMap(versions, <<"version">>, #{type => integer,
-                                                  mandatory => false}),
     ReadBHDelta = ReadMap(block_hash_delta, <<"bh_delta">>, #{ type => integer
                                                             , mandatory => false }),
     OnChainOpts =
@@ -352,7 +350,6 @@ read_channel_options(Params) ->
       ++ lists:map(ReadTimeout, aesc_fsm:timeouts() ++ [awaiting_open,
                                                         initialized])
       ++ lists:map(ReadReport, aesc_fsm:report_tags())
-      ++ lists:map(ReadVsns, aesc_fsm:version_tags())
       ++ lists:map(ReadBHDelta, aesc_fsm:bh_deltas())
      ).
 
