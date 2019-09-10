@@ -2,25 +2,43 @@
 
 -export([request/4]).
 -export([response/5]).
--export([validator/0, validator/1]).
+-export([validator/0]).
 -export([json_spec/0]).
 
+
+%% @doc
+%% Get the json specification by parsing the swagger.yaml file.
+%% Keep this specificstion cached, such that if we have read it once, we don't ready it again.
 -spec json_spec() -> jsx:json_text().
 json_spec() ->
     {ok, AppName} = application:get_application(?MODULE),
-    Filename = filename:join(code:priv_dir(AppName), "swagger.yaml"),
-    Yamls = yamerl_constr:file(Filename, [str_node_as_binary]),
-    Yaml = lists:last(Yamls),
-    jsx:prettify(jsx:encode(Yaml)).
+    try
+        [{spec, CachedJson}] = ets:lookup(swagger_json, spec),
+        CachedJson
+    catch
+        _:_ ->
+            Filename = filename:join(code:priv_dir(AppName), "swagger.yaml"),
+            Yamls = yamerl_constr:file(Filename, [str_node_as_binary]),
+            Yaml = lists:last(Yamls),
+            Json = jsx:prettify(jsx:encode(Yaml)),
+            ets:new(swagger_json, [named_table, {read_concurrency, true}, public]),
+            ets:insert(swagger_json, {spec, Json}),
+            Json
+    end.
 
 -spec validator() -> jesse_state:state().
 validator() ->
-    validator(json_spec()).
-
--spec validator(jsx:json_text()) -> jesse_state:state().
-validator(Json) ->
-    R = jsx:decode(Json),
-    jesse_state:new(R, [{default_schema_ver, <<"http://json-schema.org/draft-04/schema#">>}]).
+    try
+        [{validator, CachedValidator}] = ets:lookup(swagger_json, validator),
+        CachedValidator
+    catch
+        _:_ ->
+            Json = json_spec(),
+            R = jsx:decode(Json),
+            Validator = jesse_state:new(R, [{default_schema_ver, <<"http://json-schema.org/draft-04/schema#">>}]),
+            ets:insert(swagger_json, {validator, Validator}),
+            Validator
+    end.
 
 -spec response(
     OperationId :: atom(),

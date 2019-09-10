@@ -18,11 +18,11 @@
     spec :: jsx:json_text()
 }).
 
-init(Req, {OperationId, AllowedMethod, Spec}) ->
+init(Req, {OperationId, AllowedMethod}) ->
     State = #state{
         operation_id = OperationId,
         allowed_method = AllowedMethod,
-        spec = Spec
+        spec = aehttp_api_validate:json_spec()
     },
     {cowboy_rest, Req, State}.
 
