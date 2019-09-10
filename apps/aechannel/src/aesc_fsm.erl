@@ -3423,12 +3423,11 @@ init(#{opts := Opts0} = Arg) ->
         , maps:without(?REESTABLISH_OPTS_KEYS, Opts2)
         },
     Opts4 = check_opts(
-              [
-               fun(O) -> check_minimum_depth_opt(Role, O) end,
-               fun check_timeout_opt/1,
-               fun check_rpt_opt/1,
-               fun check_log_opt/1,
-               fun check_block_hash_deltas/1
+              [ fun check_minimum_depth_opt/1
+              , fun check_timeout_opt/1
+              , fun check_rpt_opt/1
+              , fun check_log_opt/1
+              , fun check_block_hash_deltas/1
               ], Opts3),
     #{initiator := Initiator} = Opts4,
     Opts = Opts4#{role => Role},
@@ -3551,7 +3550,7 @@ check_change_config(_, _) ->
     {error, invalid_config}.
 
 %% @doc Returns the minimum depth to watch for the given transaction and
-%% options. If the minimum_depth_factor is 0 or less the minimum_depth is
+%% options. If the minimum_depth factor is 0 or less the minimum_depth is
 %% returned. The minimum_depth_factor is used to as a means to manage risk.
 %% It allows the minimum depth to watch to be adjusted in both directions.
 %% The given minimum_depth_factor is divided by 100 to provide an increased level
@@ -3575,10 +3574,8 @@ min_depth(#{ minimum_depth := MinDepthFactor
                 [MinDepth, FeeCoefficient, MinDepthFactor]),
     MinDepth.
 
--spec check_minimum_depth_opt(role(), opts()) -> opts().
-check_minimum_depth_opt(initiator, Opts) ->
-    Opts;
-check_minimum_depth_opt(responder, Opts) ->
+-spec check_minimum_depth_opt(opts()) -> opts().
+check_minimum_depth_opt(Opts) ->
     MinDepthStrategy = maps:get(minimum_depth_strategy, Opts, ?DEFAULT_MINIMUM_DEPTH_STRATEGY),
     MinDepthFactor = maps:get(minimum_depth, Opts, ?DEFAULT_MINIMUM_DEPTH(MinDepthStrategy)),
     Opts#{ minimum_depth          => MinDepthFactor
