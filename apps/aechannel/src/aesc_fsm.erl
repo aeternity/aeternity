@@ -52,6 +52,7 @@
         , upd_transfer/5          %% (fsm() , from(), to(), amount(), #{})
         , upd_withdraw/2          %% (fsm() , map())
         , where/2
+        , change_state_password/2
         ]).
 
 %% Inspection and configuration functions
@@ -73,6 +74,7 @@
 
 %% Used by client
 -export([ signing_response/3          %% (Fsm, Tag, Obj)
+        , check_state_password/1      %% (Map)
         , error_code_to_msg/1]).      %% (Code)
 
 %% Used by min-depth watcher
@@ -202,7 +204,7 @@ inband_msg(Fsm, To, Msg) ->
   end.
 
 initiate(Host, Port, #{} = Opts0) ->
-    lager:debug("initiate(~p, ~p, ~p)", [Host, Port, Opts0]),
+    lager:debug("initiate(~p, ~p, ~p)", [Host, Port, aesc_utils:censor_init_opts(Opts0)]),
     Opts = maps:merge(#{client => self(),
                         role   => initiator}, Opts0),
     case init_checks(Opts) of
@@ -218,7 +220,7 @@ leave(Fsm) ->
     gen_statem:call(Fsm, leave).
 
 respond(Port, #{} = Opts0) ->
-    lager:debug("respond(~p, ~p)", [Port, Opts0]),
+    lager:debug("respond(~p, ~p)", [Port, aesc_utils:censor_init_opts(Opts0)]),
     Opts = maps:merge(#{client => self(),
                         role   => responder}, Opts0),
     case init_checks(Opts) of
@@ -287,6 +289,9 @@ where(ChanId, Role) when Role == initiator; Role == responder ->
         undefined ->
             undefined
     end.
+
+change_state_password(Fsm, StatePassword) ->
+    gen_statem:call(Fsm, {change_state_password, StatePassword}).
 
 %% ==================================================================
 %% Inspection and configuration functions
@@ -363,6 +368,7 @@ message(Fsm, {T, _} = Msg) when ?KNOWN_MSG_TYPE(T) ->
 %% ( corresponding to aetx_sign:sign(Obj, [PrivKey]), but likely involving a
 %%   remote client. )
 %% and reply by calling aesc_fsm:signing_response(Fsm, Tag, SignedObj)
+%%
 -spec signing_response(pid(), sign_tag(), any()) -> ok.
 signing_response(Fsm, Tag, Obj) ->
     gen_statem:cast(Fsm, {?SIGNED, Tag, Obj}).
@@ -736,6 +742,7 @@ awaiting_signature(cast, {?SIGNED, ?UPDATE_ACK, SignedTx} = Msg,
 awaiting_signature(cast, {?SIGNED, ?SHUTDOWN, SignedTx} = Msg,
                    #data{op = #op_sign{ tag = ?SHUTDOWN
                                       , data = OpData0}} = D) ->
+    #op_data{updates = Updates} = OpData0,
     lager:debug("SHUTDOWN signed", []),
     maybe_check_auth(SignedTx, OpData0, not_close_mutual_tx, me,
         fun() ->
@@ -2088,8 +2095,6 @@ send_deposit_signed_msg(SignedTx, #data{ on_chain_id = Ch
     log(snd, ?DEP_SIGNED, Msg, Data).
 
 check_deposit_signed_msg(#{ channel_id := ChanId
-                          %% since it is co-authenticated already, we ignore
-                          %% the block hash being reported
                           , block_hash := _BlockHash
                           , data       := #{tx := TxBin}} = Msg
                           , #data{ on_chain_id = ChanId
@@ -2936,8 +2941,15 @@ on_chain_id(D, SignedTx) ->
     {PubKey, D#data{on_chain_id = PubKey}}.
 
 initialize_cache(#data{ on_chain_id = ChId
-                      , state       = State } = D) ->
-    aesc_state_cache:new(ChId, my_account(D), State).
+                      , state       = State
+                      , state_password_wrapper = StatePasswordWrapper} = D) ->
+    case aesc_state_password_wrapper:get(StatePasswordWrapper) of
+        {ok, StatePassword} ->
+            aesc_state_cache:new(ChId, my_account(D), State, StatePassword);
+        error ->
+            aesc_state_cache:new(ChId, my_account(D), State)
+    end,
+    D#data{state_password_wrapper = undefined}.
 
 cache_state(#data{ on_chain_id = ChId
                  , state       = State } = D) ->
@@ -3388,16 +3400,19 @@ callback_mode() ->
                       %% state ..."
     ].
 
--spec init(term()) -> {ok, InitialState, data(), [{timeout, Time::pos_integer(),
+-spec init(map()) -> {ok, InitialState, data(), [{timeout, Time::pos_integer(),
                                                    InitialState}, ...]}
                           when InitialState :: state_name().
 init(#{opts := Opts0} = Arg) ->
-    {Role, Opts1} = maps:take(role, Opts0),
-    Client = maps:get(client, Opts1),
-    {Reestablish, ReestablishOpts, Opts2} =
-        { maps:is_key(existing_channel_id, Opts1)
-        , maps:with(?REESTABLISH_OPTS_KEYS, Opts1)
-        , maps:without(?REESTABLISH_OPTS_KEYS, Opts1)
+    %% Protect the password from leakage
+    StatePasswordWrapper = aesc_state_password_wrapper:init(maps:find(state_password, Opts0)),
+    Opts1 = maps:remove(state_password, Opts0),
+    {Role, Opts2} = maps:take(role, Opts1),
+    Client = maps:get(client, Opts2),
+    {Reestablish, ReestablishOpts, Opts3} =
+        { maps:is_key(existing_channel_id, Opts2)
+        , maps:with(?REESTABLISH_OPTS_KEYS, Opts2)
+        , maps:without(?REESTABLISH_OPTS_KEYS, Opts2)
         },
     DefMinDepth = default_minimum_depth(Role),
     Opts = check_opts(
@@ -3407,58 +3422,80 @@ init(#{opts := Opts0} = Arg) ->
               fun check_rpt_opt/1,
               fun check_log_opt/1,
               fun check_block_hash_deltas/1
-             ], Opts2),
+             ], Opts3),
     #{initiator := Initiator} = Opts,
     Session = start_session(Arg, Reestablish, Opts#{role => Role}),
     StateInitF = fun(NewI) ->
-                          CheckedOpts = maps:merge(Opts#{role => Role}, ReestablishOpts),
-                          {ok, State} = aesc_offchain_state:new(CheckedOpts#{initiator => NewI}),
-                          State
+                          CheckedOpts = maps:merge(Opts#{ role => Role
+                                                        , state_password_wrapper => StatePasswordWrapper
+                                                        }, ReestablishOpts),
+                          aesc_offchain_state:new(CheckedOpts#{initiator => NewI})
                   end,
-    State = case Initiator of
-                any -> StateInitF;
-                _   -> StateInitF(Initiator)
+    SessionEstablishF = fun(State) ->
+        ClientMRef = erlang:monitor(process, Client),
+        BlockHashDelta =
+            case maps:find(block_hash_delta, Opts) of
+                error ->
+                    #bh_delta{ not_newer_than = 0 %% backwards compatibility
+                             , not_older_than = 10
+                             , pick           = 0}; %% backwards compatibility
+                {ok, #{ not_older_than := NOT
+                      , not_newer_than := NNT
+                      , pick           := Pick}} ->
+                    #bh_delta{ not_older_than = NOT
+                             , not_newer_than = NNT
+                             , pick           = Pick}
             end,
-    ClientMRef = erlang:monitor(process, Client),
-    BlockHashDelta =
-        case maps:find(block_hash_delta, Opts) of
-            error ->
-                #bh_delta{ not_newer_than = 0 %% backwards compatibility
-                         , not_older_than = 10
-                         , pick           = 0}; %% backwards compatibility
-            {ok, #{ not_older_than := NOT
-                  , not_newer_than := NNT
-                  , pick           := Pick}} ->
-                #bh_delta{ not_older_than = NOT
-                         , not_newer_than = NNT
-                         , pick           = Pick}
+        %% In case of reestablish we can garbage collect the password when exiting from this function
+        MaybeStatePasswordWrapper = case Reestablish of
+                                        true ->
+                                            undefined;
+                                        false ->
+                                            StatePasswordWrapper
+                                    end,
+        Data = #data{ role             = Role
+                    , client           = Client
+                    , client_mref      = ClientMRef
+                    , client_connected = true
+	                , block_hash_delta = BlockHashDelta
+                    , state_password_wrapper = MaybeStatePasswordWrapper
+                    , session = Session
+                    , opts    = Opts
+                    , state   = State
+                    , log     = aesc_window:new(maps:get(log_keep, Opts)) },
+        lager:debug("Session started, Data = ~p", [Data]),
+        %% TODO: Amend the fsm above to include this step. We have transport-level
+        %% connectivity, but not yet agreement on the channel parameters. We will next send
+        %% a channel_open() message and await a channel_accept().
+        case {Role, Reestablish} of
+            {initiator, true} ->
+                ok_next(reestablish_init, send_reestablish_msg(ReestablishOpts, Data));
+            {initiator, false} ->
+                ok_next(initialized, send_open_msg(Data));
+            {responder, true} ->
+                ChanId = maps:get(existing_channel_id, ReestablishOpts),
+                ok_next(awaiting_reestablish,
+                        Data#data{ channel_id  = ChanId
+                                 , on_chain_id = ChanId });
+            {responder, false} ->
+                ok_next(awaiting_open, Data)
+        end
+    end,
+    StateRaw = case Initiator of
+            any -> StateInitF;
+            _   -> StateInitF(Initiator)
         end,
-    Data = #data{ role             = Role
-                , client           = Client
-                , client_mref      = ClientMRef
-                , client_connected = true
-                , block_hash_delta = BlockHashDelta
-                , session = Session
-                , opts    = Opts
-                , state   = State
-                , log     = aesc_window:new(maps:get(log_keep, Opts)) },
-    lager:debug("Session started, Data = ~p", [Data]),
-    %% TODO: Amend the fsm above to include this step. We have transport-level
-    %% connectivity, but not yet agreement on the channel parameters. We will next send
-    %% a channel_open() message and await a channel_accept().
-    case {Role, Reestablish} of
-        {initiator, true} ->
-            ok_next(reestablish_init, send_reestablish_msg(ReestablishOpts, Data));
-        {initiator, false} ->
-            ok_next(initialized, send_open_msg(Data));
-        {responder, true} ->
-            ChanId = maps:get(existing_channel_id, ReestablishOpts),
-            ok_next(awaiting_reestablish,
-                    Data#data{ channel_id  = ChanId
-                             , on_chain_id = ChanId });
-        {responder, false} ->
-            ok_next(awaiting_open, Data)
-    end.
+    InitRes = case StateRaw of
+        {ok, State} ->
+            SessionEstablishF(State);
+        StateFun when is_function(StateFun, 1) ->
+            SessionEstablishF(StateFun);
+        {error, invalid_password} ->
+            {stop, invalid_password}
+    end,
+    %% Always force garbage collection here, when reestablishing the password will be removed here
+    garbage_collect(),
+    InitRes.
 
 terminate(Reason, _State, #data{session = Sn} = Data) ->
     lager:debug("terminate(~p, ~p, _)", [Reason, _State]),
@@ -3589,7 +3626,8 @@ start_session(#{host := Host, port := Port}, _, #{role := initiator} = Opts) ->
 ok({ok, X}) -> X.
 
 maybe_initialize_offchain_state(any, NewI, #data{state = F} = D) when is_function(F, 1) ->
-    D#data{state = F(NewI)};
+    {ok, State} = F(NewI), %% Should not fail
+    D#data{state = State};
 maybe_initialize_offchain_state(_, _, D) ->
     D.
 
@@ -3811,9 +3849,10 @@ funding_locked_complete(#data{ op = #op_lock{ tag = create
     {OnChainEnv, OnChainTrees} = load_pinned_env(BlockHash),
     State1 = aesc_offchain_state:set_signed_tx(CreateTx, Updates, State, OnChainTrees,
                                                OnChainEnv, Opts),
-    D1 = D#data{state = State1},
-    initialize_cache(D1),
-    next_state(open, D1).
+    %% Garbage collecting here won't do anything as the old fsm state still
+    %% contains the state_password_wrapper - the password still is in use
+    %% TODO: Add a new state which would force garbage collection of the password
+    next_state(open, initialize_cache(D#data{state = State1})).
 
 close(Reason, D) ->
     close_(Reason, log(evt, close, Reason, D)).
@@ -3865,6 +3904,18 @@ handle_call(_, {?RECONNECT_CLIENT, Pid, Tx} = Msg, From,
     ?CATCH_LOG(E)
         keep_state(D, [{reply, From, E}])
     end;
+handle_call(_, {change_state_password, StatePassword}, From, #data{channel_status = open, on_chain_id = ChId} = D) ->
+    case is_password_valid(StatePassword) of
+        ok ->
+            case aesc_state_cache:change_state_password(ChId, my_account(D), StatePassword) of
+                ok ->
+                    keep_state(D, [{reply, From, ok}]);
+                {error, _} = Err ->
+                    keep_state(D, [{reply, From, Err}])
+            end;
+        {error, _} = Err ->
+            keep_state(D, [{reply, From, Err}])
+       end;
 handle_call(St, Req, From, #data{} = D) ->
     lager:debug("handle_call(~p, ~p, ~p, ~p)", [St, Req, From, D]),
     try handle_call_(St, Req, From, D)
@@ -4332,7 +4383,8 @@ init_checks(Opts) ->
                       true -> {error, lock_period_too_low};
                       false -> ok
                   end
-              end
+              end,
+              fun() -> check_state_password(Opts) end
               ],
     case aeu_validation:run(Checks) of
         {error, _Reason} = Err ->
@@ -4340,6 +4392,24 @@ init_checks(Opts) ->
         ok ->
             ok
     end.
+
+-spec check_state_password(map()) -> ok | {error, password_required_since_lima | invalid_password}.
+check_state_password(#{state_password := StatePassword}) ->
+    is_password_valid(StatePassword);
+check_state_password(_Opts) ->
+    case was_fork_activated(?LIMA_PROTOCOL_VSN) of
+        true ->
+            {error, password_required_since_lima};
+        false ->
+            ok
+    end.
+
+-spec is_password_valid(string()) -> ok | {error, invalid_password}.
+is_password_valid(StatePassword)
+    when is_list(StatePassword), length(StatePassword) < ?STATE_PASSWORD_MINIMUM_LENGTH ->
+    {error, invalid_password};
+is_password_valid(StatePassword) when is_list(StatePassword) ->
+    ok.
 
 was_fork_activated(ProtocolVSN) ->
     %% Enable a new fork only after MINIMUM_DEPTH generations in order to avoid fork changes
@@ -4417,4 +4487,3 @@ check_block_hash(BlockHash,
         error ->
             {error, unknown_block_hash}
     end.
-

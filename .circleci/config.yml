@@ -126,13 +126,13 @@ references:
     restore_cache:
       key: *build_otp21_cache_key
 
-  machine_build_cache_key: &machine_build_cache_key machine-build-cache-v7-{{ .Branch }}-{{ .Revision }}
+  machine_build_cache_key: &machine_build_cache_key machine-build-cache-v8-{{ .Branch }}-{{ .Revision }}
   restore_machine_build_cache: &restore_machine_build_cache
     restore_cache:
       keys:
         - *machine_build_cache_key
-        - machine-build-cache-v7-{{ .Branch }}-
-        - machine-build-cache-v7-
+        - machine-build-cache-v8-{{ .Branch }}-
+        - machine-build-cache-v8-
 
   save_machine_build_cache: &save_machine_build_cache
     save_cache:

@@ -32,7 +32,9 @@
         , hash/1                      %%  (State) -> hash()
         , balance/2                   %%  (Pubkey, State) -> Balance
         , poi/2                       %%  (Filter, State) -> {ok, PoI} | {error, not_found}
-        , serialize_for_client/1
+        , serialize_for_client/1      %%  (State) -> map()
+        , serialize_to_binary/1       %%  (State) -> binary()
+        , deserialize_from_binary/1   %%  (binary()) -> State
         ]).
 
 -export([get_contract_call/4,
@@ -48,7 +50,7 @@ record_fields(Other) -> aec_trees:record_fields(Other).
 %% ==================================================================
 
 
--spec new(map()) -> {ok, state()}.
+-spec new(map()) -> {ok, state()} | {error, any()}.
 new(Opts) ->
     lager:debug("offchain_tx:new(~p)", [Opts]),
     case Opts of
@@ -80,9 +82,18 @@ new_(#{ initiator          := InitiatorPubKey
     Trees = aec_trees:set_accounts(Trees0, Accounts),
     {ok, #state{trees=Trees, calls = aect_call_state_tree:empty()}}.
 
-recover_from_offchain_tx(#{ existing_channel_id := ChId
-                          , offchain_tx         := SignedTx } = Opts) ->
-    case aesc_state_cache:reestablish(ChId, my_pubkey(Opts)) of
+recover_from_offchain_tx(#{ existing_channel_id    := ChId
+                          , offchain_tx            := SignedTx
+                          , state_password_wrapper := StatePasswordWrapper} = Opts) ->
+    MyPubkey = my_pubkey(Opts),
+    ReestablishResult =
+        case aesc_state_password_wrapper:get(StatePasswordWrapper) of
+            {ok, StatePassword} ->
+                aesc_state_cache:reestablish(ChId, MyPubkey, StatePassword);
+            error ->
+                aesc_state_cache:reestablish(ChId, MyPubkey)
+        end,
+    case ReestablishResult of
         {ok, #state{} = State} ->
             case is_latest_signed_tx(SignedTx, State) of
                 true ->
@@ -90,8 +101,8 @@ recover_from_offchain_tx(#{ existing_channel_id := ChId
                 false ->
                     {error, latest_state_mismatch}
             end;
-        {error, _} ->
-            {error, state_tree_missing}
+        {error, _} = Error ->
+            Error
     end.
 
 -spec hash(state()) -> binary().
@@ -398,3 +409,44 @@ serialize_for_client_tx_or_notx(Tx) ->
     STx = aetx_sign:serialize_to_binary(Tx),
     aeser_api_encoder:encode(transaction, STx).
 
+-spec serialize_to_binary(state()) -> binary().
+serialize_to_binary(#state{ trees = Trees
+                          , calls = Calls
+                          , signed_tx = SignedTx
+                          , half_signed_tx = HalfSignedTx
+                          }) ->
+        aeser_rlp:encode([
+            aec_trees:serialize_to_binary(Trees),
+            aect_call_state_tree:to_binary_without_backend(Calls),
+            serialize_to_binary_tx_or_notx(SignedTx),
+            serialize_to_binary_tx_or_notx(HalfSignedTx)
+        ]).
+
+-spec serialize_to_binary_tx_or_notx(aetx_sign:signed_tx() | ?NO_TX) -> binary().
+serialize_to_binary_tx_or_notx(?NO_TX) ->
+    <<"">>;
+serialize_to_binary_tx_or_notx(Tx) ->
+    aetx_sign:serialize_to_binary(Tx).
+
+-spec deserialize_from_binary(binary()) -> state().
+deserialize_from_binary(Bin) ->
+    case aeser_rlp:decode(Bin) of
+        [ BinTrees
+        , BinCalls
+        , BinSignedTx
+        , BinHalfSignedTx
+        ] ->
+            #state{ trees = aec_trees:deserialize_from_binary_without_backend(BinTrees)
+                  , calls = aect_call_state_tree:from_binary_without_backend(BinCalls)
+                  , signed_tx = deserialize_tx_or_notx_from_binary(BinSignedTx)
+                  , half_signed_tx = deserialize_tx_or_notx_from_binary(BinHalfSignedTx)
+                  };
+        _ ->
+            erlang:error("Failed to deserialize offchain state")
+    end.
+
+-spec deserialize_tx_or_notx_from_binary(binary()) -> aetx_sign:signed_tx() | ?NO_TX.
+deserialize_tx_or_notx_from_binary(<<"">>) ->
+    ?NO_TX;
+deserialize_tx_or_notx_from_binary(Bin) ->
+    aetx_sign:deserialize_from_binary(Bin).

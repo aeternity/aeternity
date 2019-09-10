@@ -30,6 +30,7 @@
     sc_ws_close_solo/1,
     sc_ws_slash/1,
     sc_ws_leave_reestablish/1,
+    sc_ws_password_changeable/1,
     sc_ws_ping_pong/1,
     sc_ws_deposit/1,
     sc_ws_withdraw/1,
@@ -98,6 +99,8 @@
       93,11,3,93,177,65,197,27,123,127,177,165,190,211,20,112,79,108,
       85,78,88,181,26,207,191,211,40,225,138,154>>}).
 
+-define(CACHE_DEFAULT_PASSWORD, "correct horse battery staple").
+
 all() -> [{group, plain}, {group, aevm}, {group, fate}].
 
 groups() ->
@@ -118,6 +121,7 @@ groups() ->
         sc_ws_slash,
         %% possible to leave and reestablish channel
         sc_ws_leave_reestablish,
+        sc_ws_password_changeable,
         {group, with_open_channel},
         {group, client_reconnect}
       ]},
@@ -282,7 +286,7 @@ end_per_testcase(_Case, Config) ->
 start_node(Config) ->
     aecore_suite_utils:start_node(?NODE, Config),
     Node = aecore_suite_utils:node_name(?NODE),
-    aecore_suite_utils:connect(Node, [block_pow]),
+    aecore_suite_utils:connect(Node, [block_pow, sc_cache_kdf]),
 
     {ok, 404, _} = get_balance_at_top(),
     aecore_suite_utils:mine_key_blocks(Node, 10),
@@ -1120,18 +1124,19 @@ sc_ws_leave_(Config) ->
     Options = proplists:get_value(channel_options, Config),
     Port = maps:get(port, Options),
     RPort = Port+1,
-    ReestablOptions = #{existing_channel_id => IDi,
-                        offchain_tx => StI,
-                        port => RPort,
-                        protocol => maps:get(protocol, Options)},
-    ReestablOptions.
+    ReestablishOptions = #{ existing_channel_id => IDi
+                          , offchain_tx => StI
+                          , port => RPort
+                          , protocol => maps:get(protocol, Options)
+                          , state_password => maps:get(state_password, Options)},
+    ReestablishOptions.
 
 
-sc_ws_reestablish_(ReestablOptions, Config) ->
-    {ok, RrConnPid} = channel_ws_start(responder, ReestablOptions, Config),
+sc_ws_reestablish_(ReestablishOptions, Config) ->
+    {ok, RrConnPid} = channel_ws_start(responder, ReestablishOptions, Config),
     {ok, IrConnPid} = channel_ws_start(initiator, maps:put(
                                                     host, <<"localhost">>,
-                                                    ReestablOptions), Config),
+                                                    ReestablishOptions), Config),
     ok = ?WS:register_test_for_channel_events(RrConnPid, [info, update]),
     ok = ?WS:register_test_for_channel_events(IrConnPid, [info, update]),
     {ok, #{<<"event">> := <<"channel_reestablished">>}} =
@@ -3054,10 +3059,57 @@ sc_ws_cheating_close_solo_(Config, ChId, Poi, WhoCloses) ->
 
 sc_ws_leave_reestablish(Config0) ->
     Config = sc_ws_open_(Config0),
-    ReestablOptions = sc_ws_leave_(Config),
-    Config1 = sc_ws_reestablish_(ReestablOptions, Config),
+    ReestablishOptions = sc_ws_leave_(Config),
+
+    %% Test invalid password
+    ReestablishOptionsBroken = ReestablishOptions#{state_password => ?CACHE_DEFAULT_PASSWORD "_bogus"},
+    Roles = [initiator, responder],
+    [sc_ws_test_broken_params(Role, Config, ReestablishOptionsBroken, <<"Invalid password">>, Config) || Role <- Roles],
+
+    Config1 = sc_ws_reestablish_(ReestablishOptions, Config),
     ok = sc_ws_update_(Config1),
     ok = sc_ws_close_(Config1).
+
+sc_ws_password_changeable(Config0) ->
+    Config = sc_ws_open_(Config0),
+    Options = proplists:get_value(channel_options, Config),
+    StatePasswordOld = maps:get(state_password, Options),
+    Config1 = sc_ws_change_password_(Config),
+    ReestablishOptions = sc_ws_leave_(Config1),
+    ReestablishOptionsOld = ReestablishOptions#{state_password => StatePasswordOld},
+
+    %% Reestablish with old password should fail
+    Roles = [initiator, responder],
+    [sc_ws_test_broken_params(Role, Config, ReestablishOptionsOld, <<"Invalid password">>, Config) || Role <- Roles],
+
+    Config2 = sc_ws_reestablish_(ReestablishOptions, Config1),
+    ok = sc_ws_update_(Config2),
+    ok = sc_ws_close_(Config2).
+
+sc_ws_change_password_(Config) ->
+    ct:log("Changing password"),
+    #{ initiator := IConnPid
+     , responder := RConnPid } = proplists:get_value(channel_clients, Config),
+    Options = proplists:get_value(channel_options, Config),
+    StatePassword = maps:get(state_password, Options),
+    StatePassword1 = StatePassword ++ "_changed",
+    Fun = fun (Pid) ->
+        ok = ?WS:register_test_for_channel_events(Pid, [password_changed, error]),
+        %% Test weak password
+        ok = ws_send_tagged(Pid, <<"channels.change_state_password">>, #{ <<"state_password">> => "1234" }, Config),
+        {ok, #{<<"reason">> := <<"Invalid password">>}} = wait_for_channel_event(Pid, error, Config),
+
+        %% Test no password
+        ok = ws_send_tagged(Pid, <<"channels.change_state_password">>, #{}, Config),
+        {ok, #{<<"reason">> := <<"Missing field: state_password">>}} = wait_for_channel_event(Pid, error, Config),
+
+        %% Change password
+        ok = ws_send_tagged(Pid, <<"channels.change_state_password">>, #{ <<"state_password">> => StatePassword1 }, Config),
+        {ok, #{<<"action">> := <<"password_changed">>}} = wait_for_channel_event(Pid, password_changed, Config),
+        ok = ?WS:unregister_test_for_channel_events(Pid, [password_changed, error])
+    end,
+    [Fun(Pid) || Pid <- [IConnPid, RConnPid]],
+    [{channel_options, Options#{state_password => StatePassword1}} | Config].
 
 sc_ws_ping_pong(Config) ->
     #{initiator := IConnPid, responder :=RConnPid} =
@@ -3105,7 +3157,8 @@ channel_options(IPubkey, RPubkey, IAmt, RAmt, Other, Config) ->
                   initiator_amount => IAmt,
                   responder_amount => RAmt,
                   channel_reserve => 2,
-                  protocol => sc_ws_protocol(Config)
+                  protocol => sc_ws_protocol(Config),
+                  state_password => ?CACHE_DEFAULT_PASSWORD
                 }, Other).
 
 reconnect_channel_options(SignedTx, Config) ->
@@ -3641,6 +3694,17 @@ account_type(Pubkey) ->
     {value, Account} = rpc(aec_chain, get_account, [Pubkey]),
     aec_accounts:type(Account).
 
+sc_ws_test_broken_params(Role, Config, Opts, Error, Config) ->
+    {ok, Pid} = channel_ws_start(Role,
+                                       maps:put(host, <<"localhost">>,
+                                                Opts), Config),
+    ok = ?WS:register_test_for_channel_events(Pid, [closed, error]),
+    {ok, #{<<"reason">> := Error}}
+        = wait_for_channel_event(Pid, error, Config),
+    try ok = ?WS:wait_for_event(Pid, websocket, closed)
+    catch error:{connection_died, _Reason} -> ok
+    end.
+
 sc_ws_broken_open_params(Config) ->
     #{initiator := #{pub_key := IPubkey},
       responder := #{pub_key := RPubkey}} = proplists:get_value(participants, Config),
@@ -3650,17 +3714,10 @@ sc_ws_broken_open_params(Config) ->
 
     BogusPubkey = <<42:32/unit:8>>,
 
+    Roles = [initiator, responder],
     Test =
         fun(Opts, Error) ->
-            {ok, IConnPid} = channel_ws_start(initiator,
-                                               maps:put(host, <<"localhost">>,
-                                                        Opts), Config),
-            ok = ?WS:register_test_for_channel_events(IConnPid, [closed, error]),
-            {ok, #{<<"reason">> := Error}}
-                = wait_for_channel_event(IConnPid, error, Config),
-            try ok = ?WS:wait_for_event(IConnPid, websocket, closed)
-            catch error:{connection_died, _Reason} -> ok
-            end
+            [sc_ws_test_broken_params(Role, Config, Opts, Error, Config) || Role <- Roles]
         end,
 
     %% test initiator pubkey missing
@@ -3697,6 +3754,20 @@ sc_ws_broken_open_params(Config) ->
     ChannelOpts8 = channel_options(IPubkey, RPubkey, IAmt, RAmt,
                                    #{lock_period => -1}, Config),
     Test(ChannelOpts8, <<"Value too low">>),
+
+    % test weak state passwords
+    ChannelOpts9 = channel_options(IPubkey, RPubkey, IAmt, RAmt,
+                                   #{state_password => "1234"}, Config),
+    Test(ChannelOpts9, <<"Invalid password">>),
+
+    % test that after the lima fork the password is required
+    case aect_test_utils:latest_protocol_version() >= ?LIMA_PROTOCOL_VSN of
+        true ->
+            ChannelOpts10 = maps:remove(state_password, ChannelOpts9),
+            Test(ChannelOpts10, <<"Missing field: state_password">>);
+        false ->
+            ok
+    end,
     ok.
 
 sc_ws_pinned_update(Cfg) ->

@@ -29,7 +29,9 @@
          verify_signatures_onchain/3,
          verify_signatures_onchain/4,
          count_authentications/1,
-         channel_pubkey/1
+         channel_pubkey/1,
+         censor_init_opts/1,
+         censor_ws_req/1
         ]).
 
 -ifdef(TEST).
@@ -175,6 +177,26 @@ is_payload_valid_at_protocol(Protocol, Payload) ->
         {ok, SignedTx, _OffChainTx} ->
             aetx:valid_at_protocol(Protocol, aetx_sign:tx(SignedTx))
     end.
+
+-define(REDACTED, "REDACTED").
+-spec censor_init_opts(list() | map()) -> list() | map().
+censor_init_opts(Params) ->
+    ToCensor = [state_password, <<"state_password">>],
+    lists:foldl(fun censor_init_opt/2, Params, ToCensor).
+
+censor_init_opt(ToCensor, #{} = Opts) ->
+    case Opts of
+        #{ToCensor := _} ->
+            Opts#{ToCensor => ?REDACTED};
+        _ ->
+            Opts
+    end;
+censor_init_opt(ToCensor, [_|_] = Opts) ->
+    lists:keyreplace(ToCensor, 1, Opts, {ToCensor, ?REDACTED}).
+
+-spec censor_ws_req(map()) -> map().
+censor_ws_req(Req) ->
+    Req#{qs => ?REDACTED}.
 
 %%%===================================================================
 %%% Check payload for slash, solo close and snapshot

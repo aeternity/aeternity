@@ -7,6 +7,8 @@
 -export([websocket_info/2]).
 -export([terminate/3]).
 
+-include_lib("aecontract/include/hard_forks.hrl").
+
 -record(handler, {fsm_pid            :: pid() | undefined,
                   fsm_mref           :: reference() | undefined,
                   channel_id         :: aesc_channels:id() | undefined,
@@ -24,10 +26,12 @@
 -include_lib("aeutils/include/aeu_stacktrace.hrl").
 
 init(Req, _Opts) ->
-    lager:debug("init(~p, ~p)", [Req, _Opts]),
+    Parsed = cowboy_req:parse_qs(Req),
+    lager:debug("init(~p, ~p), Parsed ~p",
+        [aesc_utils:censor_ws_req(Req), _Opts, aesc_utils:censor_init_opts(Parsed)]),
     process_flag(trap_exit, true),
     {cowboy_websocket, Req,
-     maps:from_list(cowboy_req:parse_qs(Req))}.
+     maps:from_list(Parsed)}.
 
 -spec websocket_init(map()) -> {ok, handler()} | {stop, undefined}.
 websocket_init(#{ <<"reconnect_tx">> := _ } = Params) ->
@@ -40,16 +44,15 @@ websocket_init(#{ <<"reconnect_tx">> := _ } = Params) ->
 websocket_init(Params) ->
     case {prepare_handler(Params), read_channel_options(Params)} of
         {{error, Err}, _} ->
-            lager:info("Channel WS failed to start because of ~p; params ~p",
-                       [Err, Params]),
-            {stop, undefined};
-        {_, {error, Err}} ->
-            lager:info("Channel WS failed to start because of ~p; params ~p",
-                       [Err, Params]),
-            {stop, undefined};
+            %% Make dialyzer happy by providing a protocol - the protocol is not
+            %% relevant here as we will kill this process after sending a error code to the client
+            handler_parsing_error(Err, #handler{protocol = sc_ws_api:protocol(<<"json-rpc">>)}, Params);
+        {Handler, {error, Err}} ->
+            handler_parsing_error(Err, Handler, Params);
         {Handler, ChannelOpts} ->
-            lager:debug("Starting Channel WS with params ~p", [Params]),
-            lager:debug("ChannelOpts = ~p", [ChannelOpts]),
+            lager:debug("Starting Channel WS with params ~p",
+                [aesc_utils:censor_init_opts(Params)]),
+            lager:debug("ChannelOpts = ~p", [aesc_utils:censor_init_opts(ChannelOpts)]),
             case start_link_fsm(Handler, ChannelOpts) of
                 {ok, FsmPid} ->
                     MRef = erlang:monitor(process, FsmPid),
@@ -89,14 +92,36 @@ websocket_init_reconnect(#{ <<"reconnect_tx">> := ReconnectTx } = Params) ->
             {stop, undefined}
     end.
 
+handler_parsing_error(Err, Handler, Params) ->
+    %%TODO: Inform the client of wrong init params
+    HandledErrors = [{invalid_password            , invalid_password},
+                     {password_required_since_lima, {state_password, missing}}],
+    case proplists:get_value(Err, HandledErrors, not_handled_error) of
+        not_handled_error ->
+            lager:info("Channel WS failed to start because of ~p; params ~p",
+                [Err, aesc_utils:censor_init_opts(Params)]),
+            {stop, undefined};
+        ErrKey ->
+            %% because of tests' subscription mechanism, we
+            %% might have to give some time tolerance in order
+            %% to avoid race conditions
+            After = 0,
+            timer:send_after(After, ?ERROR_TO_CLIENT(ErrKey)),
+            timer:send_after(After + 1, stop),
+            {ok, Handler#handler{fsm_pid  = undefined,
+                                 fsm_mref = undefined}}
+    end.
+
 handler_init_error(Err, Handler) ->
-    HandledErrors =[{not_found, participant_not_found},
+    HandledErrors =[{not_found                    , participant_not_found},
                     {insufficient_initiator_amount, value_too_low},
                     {insufficient_responder_amount, value_too_low},
-                    {insufficient_amounts, value_too_low},
-                    {channel_reserve_too_low, value_too_low},
-                    {push_amount_too_low, value_too_low},
-                    {lock_period_too_low, value_too_low}
+                    {insufficient_amounts         , value_too_low},
+                    {channel_reserve_too_low      , value_too_low},
+                    {push_amount_too_low          , value_too_low},
+                    {lock_period_too_low          , value_too_low},
+                    {invalid_password             , invalid_password},
+                    {password_required_since_lima , {state_password, missing}}
                    ],
     case proplists:get_value(Err, HandledErrors, not_handled_error) of
         not_handled_error ->
@@ -243,7 +268,7 @@ reconnect_opts_to_handler(#{ <<"protocol">> := Protocol
             , job_id         = JobId }.
 
 prepare_handler(#{<<"protocol">> := Protocol} = Params) ->
-    lager:debug("prepare_handler() Params = ~p", [Params]),
+    lager:debug("prepare_handler() Params = ~p", [aesc_utils:censor_init_opts(Params)]),
     Read =
         fun(Key, RecordField, Opts) ->
             fun(H) ->
@@ -279,7 +304,9 @@ prepare_handler(#{<<"protocol">> := Protocol} = Params) ->
         fun(_, {error, _} = Err) -> Err;
             (Fun, Accum) -> Fun(Accum)
         end,
-        #handler{protocol    = sc_ws_api:protocol(Protocol)}, Validators).
+        #handler{protocol    = sc_ws_api:protocol(Protocol)}, Validators);
+prepare_handler(_Protocol) ->
+    {error, {protocol, missing}}.
 
 read_channel_options(Params) ->
     Read = sc_ws_utils:read_f(Params),
@@ -307,6 +334,15 @@ read_channel_options(Params) ->
                                                      mandatory => false}),
     ReadBHDelta = ReadMap(block_hash_delta, <<"bh_delta">>, #{ type => integer
                                                             , mandatory => false }),
+    CheckStatePasswordF =
+        fun(M) ->
+            case aesc_fsm:check_state_password(M) of
+                ok ->
+                    M;
+                Err ->
+                    Err
+            end
+        end,
     OnChainOpts =
         case (sc_ws_utils:read_param(
                 <<"existing_channel_id">>, existing_channel_id,
@@ -345,6 +381,9 @@ read_channel_options(Params) ->
     sc_ws_utils:check_params(
       [Read(<<"minimum_depth">>, minimum_depth, #{type => integer, mandatory => false}),
        Read(<<"ttl">>, ttl, #{type => integer, mandatory => false}),
+       %% The state_password is mandatory AFTER the lima fork - this is checked by CheckStatePasswordF
+       Read(<<"state_password">>, state_password, #{type => string, mandatory => false}),
+       CheckStatePasswordF,
        Put(noise, [{noise, <<"Noise_NN_25519_ChaChaPoly_BLAKE2b">>}])
       ] ++ OnChainOpts
       ++ lists:map(ReadTimeout, aesc_fsm:timeouts() ++ [awaiting_open,

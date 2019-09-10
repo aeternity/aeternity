@@ -24,6 +24,7 @@
           create_channel/1
         , multiple_responder_keys_per_port/1
         , channel_insufficent_tokens/1
+        , channel_invalid_state_password/1
         , inband_msgs/1
         , upd_transfer/1
         , update_with_conflict/1
@@ -54,6 +55,9 @@
         , check_incorrect_mutual_close/1
         , check_mutual_close_with_wrong_amounts/1
         , check_mutual_close_after_close_solo/1
+        , check_fsm_crash_reestablish/1
+        , check_invalid_reestablish_password/1
+        , check_password_is_changeable/1
         , attach_initiator/1
         , attach_responder/1
         , initiator_spend/1
@@ -82,6 +86,7 @@
 -define(TIMEOUT, 10000).
 -define(LONG_TIMEOUT, 60000).
 -define(PORT, 9325).
+-define(CHANNEL_CREATION_RETRIES, 3).
 
 -define(BOGUS_PUBKEY, <<12345:32/unit:8>>).
 -define(BOGUS_PRIVKEY, <<12345:64/unit:8>>).
@@ -137,12 +142,14 @@ groups() ->
                              , {group, round_too_high}
                              , {group, pinned_env}
                              , {group, generalized_accounts}
+                             , {group, no_kdf_mock}
                              ]},
      {transactions, [sequence],
       [
         create_channel
       , multiple_responder_keys_per_port
       , channel_insufficent_tokens
+      , channel_invalid_state_password
       , inband_msgs
       , upd_transfer
       , update_with_conflict
@@ -159,6 +166,7 @@ groups() ->
       , channel_detects_close_solo
       , leave_reestablish
       , leave_reestablish_close
+      , check_password_is_changeable
       , change_config_get_history
       ]},
      {throughput, [sequence],
@@ -170,6 +178,8 @@ groups() ->
       [
         check_mutual_close_with_wrong_amounts
       , check_mutual_close_after_close_solo
+      , check_fsm_crash_reestablish
+      , check_invalid_reestablish_password
       ]},
      {signing_abort, [sequence],
       [
@@ -205,7 +215,8 @@ groups() ->
       , request_too_new_bh
       , request_too_old_bh
       , positive_bh
-      ]}
+      ]},
+     {no_kdf_mock, [sequence], [create_channel]}
     ].
 
 ga_sequence() ->
@@ -327,6 +338,10 @@ init_per_group(Group, Config) when Group =:= initiator_is_ga;
     end;
 init_per_group(generalized_accounts, Config) ->
     Config;
+init_per_group(no_kdf_mock, Config) ->
+    Cfg = init_per_group_(Config),
+    aecore_suite_utils:end_mock(aecore_suite_utils:node_name(dev1), sc_cache_kdf),
+    Cfg;
 init_per_group(_Group, Config) ->
     init_per_group_(Config).
 
@@ -335,7 +350,7 @@ init_per_group_(Config) ->
         true -> Config;
         false ->
             aecore_suite_utils:start_node(dev1, Config),
-            aecore_suite_utils:connect(aecore_suite_utils:node_name(dev1), [block_pow]),
+            aecore_suite_utils:connect(aecore_suite_utils:node_name(dev1), [block_pow, sc_cache_kdf]),
             ct:log("dev1 connected", []),
             try begin
                     Initiator = prep_initiator(dev1),
@@ -383,11 +398,9 @@ end_per_testcase(_Case, _Config) ->
     bump_idx(),
     ok.
 
-
 stop_node(N, Config) ->
     aecore_suite_utils:stop_node(N, Config),
     Config.
-
 
 %%%===================================================================
 %%% Test state
@@ -581,23 +594,46 @@ t_create_channel_(Cfg) ->
 
 channel_insufficent_tokens(Cfg) ->
     Debug = get_debug(Cfg),
-    Port = 9325,
     Test =
         fun(IAmt, RAmt, ChannelReserve, PushAmount, Error) ->
-            {_, _, Spec} =
+            Params =
                 channel_spec([{initiator_amount, IAmt},
                               {responder_amount, RAmt},
                               ?SLOGAN|Cfg],
                               ChannelReserve, PushAmount),
-            {error, Error} =
-                rpc(dev1, aesc_fsm, respond, [Port, Spec], Debug),
-            {error, Error} =
-                rpc(dev1, aesc_fsm, initiate, ["localhost", Port, Spec], Debug)
+            channel_create_invalid_spec(Params, Error, Debug)
         end,
     Test(10, 10, 5, 6, insufficient_initiator_amount),
     Test(10, 1, 5, 3, insufficient_responder_amount),
     Test(1, 1, 5, 3, insufficient_amounts),
     ok.
+
+channel_invalid_state_password(Cfg) ->
+    Debug = get_debug(Cfg),
+    Test =
+        fun(Password, Error) ->
+            Params = channel_spec([{initiator_password, Password},
+                                         {responder_password, Password},
+                                         ?SLOGAN|Cfg]),
+            channel_create_invalid_spec(Params, Error, Debug)
+        end,
+    Test("A", invalid_password),
+    Test("12345", invalid_password),
+    case aect_test_utils:latest_protocol_version() >= ?LIMA_PROTOCOL_VSN of
+        true ->
+            Test(ignore, password_required_since_lima);
+        _ ->
+            ok
+    end.
+
+channel_create_invalid_spec({I, R, Spec}, Error, Debug) ->
+    Port = 9325,
+    SpecR = move_password_to_spec(R, Spec),
+    {error, Error} =
+        rpc(dev1, aesc_fsm, respond, [Port, SpecR], Debug),
+    SpecI = move_password_to_spec(I, Spec),
+    {error, Error} =
+        rpc(dev1, aesc_fsm, initiate, ["localhost", Port, SpecI], Debug).
 
 inband_msgs(Cfg) ->
     #{ i := #{fsm := FsmI} = I
@@ -958,21 +994,26 @@ do_update(From, To, Amount, #{fsm := FsmI} = I, R, Debug, Cfg) ->
         ok ->
             {I1, _} = await_signing_request(update, I, Debug, Cfg),
             {R1, _} = await_signing_request(update_ack, R, Debug, Cfg),
-            check_info(if_debug(Debug, 20, 0), Debug),
-            {I1, R1}
+            %% TODO: Refactor remaining check_info calls - this one needed to be refactored together
+            %% TODO: with state cache encryption because the tests failed randomly because of it
+            await_update_incoming_report(R1, ?TIMEOUT, Debug),
+            I2 = await_update_report(I1, ?TIMEOUT, Debug),
+            R2 = await_update_report(R1, ?TIMEOUT, Debug),
+            {I2, R2}
     end.
 
 msg_volley(#{fsm := FsmI, pub := PubI} = I, #{fsm := FsmR, pub := PubR} = R, _) ->
     rpc(dev1, aesc_fsm, inband_msg, [FsmI, PubR, <<"ping">>], false),
+    %% A 1 second timeout might not be enough if there is a lot of CPU intensive
+    %% background processes in the OS, bump to 4 seconds to avoid random failures
     {ok,_} = receive_from_fsm(
                message, R,
-               fun(#{info := #{info := <<"ping">>}}) -> ok end, 1000, false),
-    rpc(dev1, aesc_fsm, inband_msg, [FsmR, PubI, <<"pong">>]),
+               fun(#{info := #{info := <<"ping">>}}) -> ok end, 4000, false),
+    rpc(dev1, aesc_fsm, inband_msg, [FsmR, PubI, <<"pong">>], false),
     {ok,_} = receive_from_fsm(
                message, I,
-               fun(#{info := #{info := <<"pong">>}}) -> ok end, 1000, false),
+               fun(#{info := #{info := <<"pong">>}}) -> ok end, 4000, false),
     {I, R}.
-
 
 deposit(Cfg) ->
     Debug = get_debug(Cfg),
@@ -1034,7 +1075,11 @@ deposit_(#{fsm := FsmI} = I, R, Deposit, Opts, Round1, Debug, Cfg) ->
     #{initiator_amount := IAmt2, responder_amount := RAmt2} = I1,
     Expected = {IAmt2, RAmt2},
     {Expected, Expected} = {{IAmt0 + Deposit, RAmt0}, Expected},
-    {ok, I1, R1}.
+    I2 = await_update_report(I1, ?TIMEOUT, Debug),
+    R2 = await_update_report(R1, ?TIMEOUT, Debug),
+    #{signed_tx := SignedTx} = I2, %% Same Tx
+    #{signed_tx := SignedTx} = R2, %% Same Tx
+    {ok, I2, R2}.
 
 withdraw(Cfg) ->
     Debug = get_debug(Cfg),
@@ -1149,8 +1194,8 @@ leave_reestablish_(Cfg) ->
         fun(Idx, #{i := ILocal, r := RLocal}) ->
             ct:log("starting attempt ~p", [Idx]),
             Cache1 = cache_status(ChId),
-            [_,_] = in_ram(Cache1),
-            false = on_disk(Cache1),
+            [_, _] = in_ram(Cache1),
+            [] = on_disk(Cache1),
             #{fsm := FsmI} = ILocal,
             ok = rpc(dev1, aesc_fsm, leave, [FsmI]),
             {ok,Li} = await_leave(ILocal, ?TIMEOUT, Debug),
@@ -1163,7 +1208,7 @@ leave_reestablish_(Cfg) ->
                   fun() ->
                           Cache2 = cache_status(ChId),
                           [] = in_ram(Cache2),
-                          true = on_disk(Cache2)
+                          [_, _] = on_disk(Cache2)
                   end),
             %%
             %% reestablish
@@ -1171,7 +1216,7 @@ leave_reestablish_(Cfg) ->
             ChId = maps:get(channel_id, RLocal),
             mine_key_blocks(dev1, 6), % min depth at 4, so more than 4
             ct:log("reestablishing ...", []),
-            Res = reestablish(ChId, ILocal, RLocal, SignedTx,
+            Res = reestablish(ILocal, RLocal, SignedTx,
                                            Spec0, ?PORT, Debug),
             ct:log("ending attempt ~p", [Idx]),
             Res
@@ -1187,19 +1232,19 @@ leave_reestablish_close(Cfg) ->
     {I1, R1} = do_update(PubI, PubR, 1, I, R, Debug, Cfg),
     ChId = maps:get(channel_id, I1),
     Cache1 = cache_status(ChId),
-    [_,_] = in_ram(Cache1),
-    false = on_disk(Cache1),
+    [_, _] = in_ram(Cache1),
+    [] = on_disk(Cache1),
     shutdown_(I1, R1, Cfg),
     retry(3, 100,
           fun() ->
                   Cache2 = cache_status(ChId),
-                  []   = in_ram(Cache2),
-                  true = on_disk(Cache2)
+                  [] = in_ram(Cache2),
+                  [_, _] = on_disk(Cache2)
           end),
     mine_blocks(dev1, 5),
     Cache3 = cache_status(ChId),
-    []    = in_ram(Cache3),
-    false = on_disk(Cache3).
+    [] = in_ram(Cache3),
+    [] = on_disk(Cache3).
 
 
 change_config_get_history(Cfg) ->
@@ -1428,7 +1473,7 @@ check_incorrect_update(Cfg) ->
             ok = gen_statem:stop(AliveFsm),
             receive_dying_declaration(AliveFsm, OtherFsm, Debug),
             bump_idx(),
-            CurPort + 1
+            CurPort
           end,
     Roles = [initiator, responder],
     Combinations = [{Depositor, Malicious} || Depositor <- Roles,
@@ -1579,6 +1624,136 @@ check_mutual_close_after_close_solo(Cfg) ->
     end,
     ok.
 
+check_fsm_crash_reestablish(Cfg) ->
+    Debug = get_debug(Cfg),
+    {I0, R0, Spec0} = channel_spec(Cfg),
+    #{ i := I, r := R } = create_channel_from_spec(I0, R0, Spec0, ?PORT, Debug, Cfg),
+    ct:log("I = ~p", [I]),
+    ct:log("R = ~p", [R]),
+    {_, I1, R1} = do_n(4, fun update_volley/3, I, R, Cfg),
+    Actions = [
+        fun fsm_crash_action_during_transfer/3,
+        fun fsm_crash_action_during_withdraw/3,
+        fun fsm_crash_action_during_deposit/3,
+        fun fsm_crash_action_during_shutdown/3
+    ],
+    lists:foldl(fun (Action, {IA, RA}) ->
+        {IA1, RA1} = fsm_crash_reestablish(IA, RA, Spec0, Cfg, Action),
+        {_, IA2, RA2} = do_n(4, fun update_volley/3, IA1, RA1, Cfg),
+        {IA2, RA2}
+    end, {I1, R1}, Actions).
+
+fsm_crash_reestablish(#{channel_id := ChId, fsm := FsmI} = I, #{fsm := FsmR} = R, Spec, Cfg, Action) ->
+    Debug = get_debug(Cfg),
+    {ok, State} = rpc(dev1, aesc_fsm, get_offchain_state, [FsmI]),
+    {_, SignedTx} = aesc_offchain_state:get_latest_signed_tx(State),
+    ct:log("Performing action before crashing the FSM"),
+    ok = Action(I, R, Cfg),
+    ct:log("Simulating random crash"),
+    erlang:exit(FsmI, test_fsm_random_crash),
+    erlang:exit(FsmR, test_fsm_random_crash),
+    timer:sleep(20), %% Give some time for the cache to persist the state
+
+    Cache = cache_status(ChId),
+    [] = in_ram(Cache),
+    [_, _] = on_disk(Cache),
+    check_info(20),
+    ct:log("reestablishing ...", []),
+    #{i := I1, r := R1} = reestablish(I, R, SignedTx, Spec, ?PORT, Debug),
+    {I1, R1}.
+
+fsm_crash_action_during_transfer( #{fsm := FsmI, pub := PubI} = I
+                                , #{pub := PubR} = R
+                                , Cfg) ->
+    Debug = get_debug(Cfg),
+    rpc(dev1, aesc_fsm, upd_transfer, [FsmI, PubI, PubR, 1], Debug),
+    {_, _} = await_signing_request(update, I, Debug, Cfg),
+    {ok, _} = receive_from_fsm(update_ack, R, signing_req(), ?TIMEOUT, Debug),
+    ok.
+
+fsm_crash_action_during_withdraw( #{fsm := FsmI} = I
+                                , R
+                                , Cfg) ->
+    Debug = get_debug(Cfg),
+    rpc(dev1, aesc_fsm, upd_withdraw, [FsmI, #{amount => 1}], Debug),
+    {_, _} = await_signing_request(withdraw_tx, I, Debug, Cfg),
+    {ok, _} = receive_from_fsm(withdraw_created, R, signing_req(), ?TIMEOUT, Debug),
+    ok.
+
+fsm_crash_action_during_deposit( #{fsm := FsmI} = I
+                               , R
+                               , Cfg) ->
+    Debug = get_debug(Cfg),
+    rpc(dev1, aesc_fsm, upd_deposit, [FsmI, #{amount => 1}], Debug),
+    {_, _} = await_signing_request(deposit_tx, I, Debug, Cfg),
+    {ok, _} = receive_from_fsm(deposit_created, R, signing_req(), ?TIMEOUT, Debug),
+    ok.
+
+fsm_crash_action_during_shutdown( #{fsm := FsmI} = I
+                                , R
+                                , Cfg) ->
+    Debug = get_debug(Cfg),
+    rpc(dev1, aesc_fsm, shutdown, [FsmI], Debug),
+    {_, _} = await_signing_request(shutdown, I, Debug, Cfg),
+    {ok, _} = receive_from_fsm(shutdown_ack, R, signing_req(), ?TIMEOUT, Debug),
+    ok.
+
+check_invalid_reestablish_password(Cfg) ->
+    Debug = get_debug(Cfg),
+    {I0, R0, Spec0} = channel_spec(Cfg),
+    #{ i := I
+     , r := R } = create_channel_from_spec(I0, R0, Spec0, ?PORT, Debug, Cfg),
+    ct:log("I = ~p", [I]),
+    ct:log("R = ~p", [R]),
+    {_, I1, R1} = do_n(4, fun update_volley/3, I, R, Cfg),
+    {ok, SignedTx} = leave_channel(I1, R1, Debug),
+
+    %% Reestablish with wrong passwords
+    #{state_password := PwI} = I1,
+    #{state_password := PwR} = R1,
+    reestablish_wrong_password( I1#{state_password => PwI ++ "_bogus"}
+                              , R1#{state_password => PwR ++ "_bogus"}
+                              , SignedTx, Spec0, Debug),
+
+    %% Check that after an invalid password has been provided we can still reestablish the channel
+    _ = reestablish(I1, R1, SignedTx, Spec0, ?PORT, Debug),
+    ok.
+
+check_password_is_changeable(Cfg) ->
+    Debug = get_debug(Cfg),
+    {I0, R0, Spec0} = channel_spec(Cfg),
+    #{ i := I
+     , r := R } = create_channel_from_spec(I0, R0, Spec0, ?PORT, Debug, Cfg),
+    ct:log("I = ~p", [I]),
+    ct:log("R = ~p", [R]),
+    {_, I1, R1} = do_n(4, fun update_volley/3, I, R, Cfg),
+
+    I2 = change_password(I1),
+    R2 = change_password(R1),
+    {ok, SignedTx} = leave_channel(I2, R2, Debug),
+
+    %% Reestablish with old password should fail
+    reestablish_wrong_password(I1, R1, SignedTx, Spec0, Debug),
+    %% Reestablish with new password should succeed
+    _ = reestablish(I2, R2, SignedTx, Spec0, ?PORT, Debug),
+
+    ok.
+
+change_password(#{fsm := Fsm, state_password := StatePassword} = P) ->
+    StatePassword1 = StatePassword ++ "_changed",
+    ok = rpc(dev1, aesc_fsm, change_state_password, [Fsm, StatePassword1]),
+    P#{state_password => StatePassword1}.
+
+leave_channel(#{fsm := FsmI} = I, R, Debug) ->
+    ok = rpc(dev1, aesc_fsm, leave, [FsmI]),
+    {ok,Li} = await_leave(I, ?TIMEOUT, Debug),
+    {ok,Lr} = await_leave(R, ?TIMEOUT, Debug),
+    SignedTx = maps:get(info, Li),
+    SignedTx = maps:get(info, Lr),
+    {ok,_} = receive_from_fsm(info, I, fun died_normal/1, ?TIMEOUT, Debug),
+    {ok,_} = receive_from_fsm(info, R, fun died_normal/1, ?TIMEOUT, Debug),
+    {ok, SignedTx}.
+
 fsm_state(Pid, Debug) ->
     {State, _Data} = rpc(dev1, sys, get_state, [Pid, 1000], _RpcDebug = false),
     log(Debug, "fsm_state(~p) -> ~p", [Pid, State]),
@@ -1664,8 +1839,8 @@ wrong_create_({I, R, #{initiator_amount := IAmt0, responder_amount := RAmt0,
         end,
     IAmt = IAmt0 - PushAmount,
     RAmt = RAmt0 + PushAmount,
-    {ok, FsmR} = rpc(dev1, aesc_fsm, respond, [Port, Spec], Debug),
-    {ok, FsmI} = rpc(dev1, aesc_fsm, initiate, ["localhost", Port, Spec], Debug),
+    {ok, FsmR} = rpc(dev1, aesc_fsm, respond, [Port, move_password_to_spec(R, Spec)], Debug),
+    {ok, FsmI} = rpc(dev1, aesc_fsm, initiate, ["localhost", Port, move_password_to_spec(I, Spec)], Debug),
 
     log(Debug, "FSMs, I = ~p, R = ~p", [FsmI, FsmR]),
 
@@ -2111,7 +2286,27 @@ channel_spec(Cfg, ChannelReserve, PushAmount, XOpts) ->
             end,
             Spec,
             [nonce, block_hash_delta]),
-    {I, R, Spec1}.
+
+    I1 = prime_password(I, initiator_password, Cfg),
+    R1 = prime_password(R, responder_password, Cfg),
+
+    {I1, R1, Spec1}.
+
+prime_password(#{} = P, Key, Cfg) when Key =:= initiator_password; Key =:= responder_password ->
+    case ?config(Key, Cfg) of
+        undefined ->
+            P#{state_password => generate_password()};
+        ignore ->
+            ct:log("Ignoring password"),
+            maps:remove(state_password, P);
+        Password ->
+            ct:log("Using predefined password"),
+            P#{state_password => Password}
+     end.
+
+-spec generate_password() -> string().
+generate_password() ->
+    binary:bin_to_list(crypto:strong_rand_bytes(6)).
 
 config(K, Cfg, Def) ->
     case ?config(K, Cfg) of
@@ -2126,13 +2321,20 @@ create_channel_from_spec(I, R, Spec, Port, Debug, Cfg) ->
     create_channel_from_spec(I, R, Spec, Port, false, Debug, Cfg).
 
 create_channel_from_spec(I, R, Spec, Port, UseAny, Debug, Cfg) ->
-    RProxy = spawn_responder(Port, Spec, R, UseAny, Debug),
-    IProxy = spawn_initiator(Port, Spec, I, Debug),
-    log("RProxy = ~p, IProxy = ~p", [RProxy, IProxy]),
-    #{ i := #{ fsm := FsmI } = I1
-     , r := #{ fsm := FsmR } = R1 } = Info
-        = match_responder_and_initiator(RProxy, Debug),
-    log(Debug, "channel paired: ~p", [Info]),
+    %% TODO: Somehow there is a CI only race condition which rarely occurs in
+    %% round_too_high.check_incorrect_* and round_too_low.check_incorrect_* tests
+    %% For now just wrap this operation in a retry loop and come back to it later
+    {FsmI, FsmR, I1, R1} = retry(?CHANNEL_CREATION_RETRIES, 100,
+        fun() ->
+            RProxy = spawn_responder(Port, Spec, R, UseAny, Debug),
+            IProxy = spawn_initiator(Port, Spec, I, Debug),
+            log("RProxy = ~p, IProxy = ~p", [RProxy, IProxy]),
+            #{ i := #{ fsm := WFsmI } = WI1
+             , r := #{ fsm := WFsmR } = WR1 } = Info
+                = match_responder_and_initiator(RProxy, Debug),
+            log(Debug, "channel paired: ~p", [Info]),
+            {WFsmI, WFsmR, WI1, WR1}
+        end),
 
     log(Debug, "FSMs, I = ~p, R = ~p", [FsmI, FsmR]),
 
@@ -2172,24 +2374,23 @@ create_channel_from_spec(I, R, Spec, Port, UseAny, Debug, Cfg) ->
     I3 = await_funding_locked(I2, ?TIMEOUT, Debug),
     R3 = await_funding_locked(R2, ?TIMEOUT, Debug),
     ct:log("=== Funding locked ===", []),
-    %%
+
     I4 = await_update_report(I3, ?TIMEOUT, Debug),
     R4 = await_update_report(R3, ?TIMEOUT, Debug),
     ct:log("=== Update reports received ===", []),
+
     I5 = await_open_report(I4, ?TIMEOUT, Debug),
     R5 = await_open_report(R4, ?TIMEOUT, Debug),
-    ct:log("=== Open reports received ===", []),
-    ct:log("=== Message Q: ~p", [element(2,process_info(self(), messages))]),
-    [] = check_info(0, Debug),
     #{i => I5, r => R5, spec => Spec}.
 
 spawn_responder(Port, Spec, R, UseAny, Debug) ->
     Me = self(),
-    spawn_link(fun() ->
+    spawn(fun() ->
                        log("responder spawned: ~p", [Spec]),
                        Spec1 = maybe_use_any(UseAny, Spec#{ client => self() }),
-                       {ok, Fsm} = rpc(dev1, aesc_fsm, respond, [Port, Spec1], Debug),
-                       responder_instance_(Fsm, Spec1, R, Me, Debug)
+                       Spec2 = move_password_to_spec(R, Spec1),
+                       {ok, Fsm} = rpc(dev1, aesc_fsm, respond, [Port, Spec2], Debug),
+                       responder_instance_(Fsm, Spec2, R, Me, Debug)
                end).
 
 maybe_use_any(true, Spec) ->
@@ -2199,13 +2400,19 @@ maybe_use_any(false, Spec) ->
 
 spawn_initiator(Port, Spec, I, Debug) ->
     Me = self(),
-    spawn_link(fun() ->
+    spawn(fun() ->
                        log("initiator spawned: ~p", [Spec]),
                        Spec1 = Spec#{ client => self() },
+                       Spec2 = move_password_to_spec(I, Spec1),
                        {ok, Fsm} = rpc(dev1, aesc_fsm, initiate,
-                                       ["localhost", Port, Spec1], Debug),
-                       initiator_instance_(Fsm, Spec1, I, Me, Debug)
+                                       ["localhost", Port, Spec2], Debug),
+                       initiator_instance_(Fsm, Spec2, I, Me, Debug)
                end).
+
+move_password_to_spec(#{state_password := StatePassword}, Spec) ->
+    Spec#{state_password => StatePassword};
+move_password_to_spec(_, Spec) ->
+    Spec.
 
 match_responder_and_initiator(RProxy, Debug) ->
     receive
@@ -2294,33 +2501,34 @@ fsm_map(Fsm, #{ initiator_amount := IAmt
         , initiator_amount => IAmt - PushAmt
         , responder_amount => RAmt + PushAmt }.
 
-reestablish(ChId, I0, R0, SignedTx, Spec0, Port, Debug) ->
-    {IAmt, RAmt} = tx_amounts(SignedTx),
-    I = set_amounts(IAmt, RAmt, I0),
-    R = set_amounts(IAmt, RAmt, R0),
+reestablish( #{channel_id := ChId, initiator_amount := IAmt, responder_amount := RAmt} = I
+           , #{channel_id := ChId, initiator_amount := IAmt, responder_amount := RAmt} = R
+           , SignedTx, Spec0, Port, Debug) ->
     Spec = Spec0#{existing_channel_id => ChId, offchain_tx => SignedTx,
                   initiator_amount => IAmt, responder_amount => RAmt},
     {ok, FsmR} = rpc(dev1, aesc_fsm, respond,
-                     [Port, Spec]),
+                     [Port, move_password_to_spec(R, Spec)]),
     {ok, FsmI} = rpc(dev1, aesc_fsm, initiate,
-                     ["localhost", Port, Spec], Debug),
+                     ["localhost", Port, move_password_to_spec(I, Spec)], Debug),
     I1 = await_open_report(I#{fsm => FsmI}, ?TIMEOUT, Debug),
     R1 = await_open_report(R#{fsm => FsmR}, ?TIMEOUT, Debug),
     check_info(20),
     #{i => I1, r => R1, spec => Spec}.
 
-tx_amounts(SignedTx) ->
-    {Mod, TxI} = aetx:specialize_callback(aetx_sign:innermost_tx(SignedTx)),
-    {Mod:initiator_amount(TxI),
-     Mod:responder_amount(TxI)}.
+reestablish_wrong_password( #{channel_id := ChId, initiator_amount := IAmt, responder_amount := RAmt} = I
+                          , #{channel_id := ChId, initiator_amount := IAmt, responder_amount := RAmt} = R
+                          , SignedTx, Spec, Debug) ->
+    Spec1 = Spec#{existing_channel_id => ChId, offchain_tx => SignedTx,
+                  initiator_amount => IAmt, responder_amount => RAmt},
+    {error, invalid_password} = rpc(dev1, aesc_fsm, respond,
+                     [?PORT, move_password_to_spec(R, Spec1)]),
+    {error, invalid_password} = rpc(dev1, aesc_fsm, initiate,
+                     ["localhost", ?PORT, move_password_to_spec(I, Spec1)], Debug).
 
 update_tx(Tx0, F, Args) ->
     {Mod, TxI} = aetx:specialize_callback(Tx0),
     TxI1 = apply(Mod, F, [TxI|Args]),
     aetx:new(Mod, TxI1).
-
-set_amounts(IAmt, RAmt, Map) ->
-    Map#{initiator_amount => IAmt, responder_amount => RAmt}.
 
 verify_close_mutual_tx(SignedTx, ChannelId) ->
     {aesc_close_mutual_tx, Tx} =
@@ -2531,6 +2739,13 @@ await_open_report(#{fsm := Fsm} = R, Timeout, _Debug) ->
     receive {aesc_fsm, Fsm, #{type := report, tag := info, info := open} = Msg} ->
                 {ok, ChannelId} = maps:find(channel_id, Msg),
                 R#{channel_id => ChannelId}
+    after Timeout ->
+              error(timeout)
+    end.
+
+await_update_incoming_report(#{fsm := Fsm, channel_id := ChannelId}, Timeout, _Debug) ->
+    receive {aesc_fsm, Fsm, #{type := report, tag := info, info := update} = Msg} ->
+            {ok, ChannelId} = maps:find(channel_id, Msg)
     after Timeout ->
               error(timeout)
     end.
@@ -3051,14 +3266,16 @@ get_btc_auth_nonce(PubKey) ->
     extract_nonce_from_btc_auth_store(aect_contracts:state(Contract)).
 
 get_btc_offchain_nonce(ChannelPubKey, Owner) ->
-    case rpc(dev1, aec_chain, get_channel, [ChannelPubKey]) of
+    %% Disable debug logs here as in case of contract cache misses these debug
+    %% logs clutter the test logs significantly
+    case rpc(dev1, aec_chain, get_channel, [ChannelPubKey], false) of
         {ok, Channel} ->
             StoreKey = aesc_channels:auth_store_key(aeser_id:create(account, Owner),
                                                     Channel),
-            {ok, Trees} = rpc(dev1, aec_chain, get_top_state, []),
+            {ok, Trees} = rpc(dev1, aec_chain, get_top_state, [], false),
             ContractTree = aec_trees:contracts(Trees),
             {ok, Store} = rpc(dev1, aect_state_tree, read_contract_store, [StoreKey,
-                                                                          ContractTree]),
+                                                                          ContractTree], false),
             extract_nonce_from_btc_auth_store(Store);
         {error, not_found} -> 42 %% negative tests
     end.
@@ -3068,10 +3285,11 @@ get_btc_offchain_nonce(ChannelPubKey, Owner) ->
 %% nonce out of it. It heavily relies on the state of the contract being
 %% { nonce : int, owner : bytes(64) }
 extract_nonce_from_btc_auth_store(Store) ->
-    #{<<0>> := Encoded0} = rpc(dev1, aect_contracts_store, contents, [Store]),
+    #{<<0>> := Encoded0} = rpc(dev1, aect_contracts_store, contents, [Store], false),
     {ok, {Nonce, _}} = aeb_heap:from_binary({tuple, [word, {tuple, [word, word]}]},
                                 Encoded0),
     Nonce.
+
 
 peek_message_queue(L, Debug) ->
     {messages, Msgs} = process_info(self(), messages),
@@ -3232,4 +3450,3 @@ positive_bh(Cfg) ->
               NNT + 1]),%% in the range
     shutdown_(IFinal, RFinal, Cfg),
     ok.
-
