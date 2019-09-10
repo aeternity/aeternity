@@ -1093,7 +1093,7 @@ jobs:
       - *fail_notification
 
   # Windows jobs
-  win_build: &windows_build
+  windows_package:
     <<: *windows_container
     steps:
       - windows_install_deps:
@@ -1103,37 +1103,12 @@ jobs:
       - run:
           name: Build
           command: .circleci\windows\build.bat
-      - store_artifacts:
-          path: *windows_artifacts
-          destination: /tmp/packages-<< parameters.otp_version >>
-      - persist_to_workspace:
-          root: *windows_artifacts
-          paths:
-            - "*.zip"
-            - "*.exe"
-
-  win_test: &windows_test
-    <<: *windows_container
-    steps:
-      - windows_install_deps:
-          otp_install_path: << parameters.otp_install_path >>
-          otp_version: << parameters.otp_version >>
-          msys_install_path: << parameters.msys_install_path >>
-      - attach_workspace:
-          at: *windows_artifacts
       - run:
           name: Smoke test
           command: .circleci\windows\test.bat
       - store_artifacts:
           path: *windows_artifacts
           destination: /tmp/packages-<< parameters.otp_version >>
-
-  win_build_20_1: *windows_build
-  win_build_20_3: *windows_build
-  win_build_21_3: *windows_build
-  win_test_20_1: *windows_test
-  win_test_20_3: *windows_test
-  win_test_21_3: *windows_test
 
 # CircleCI skips a job for a tag by default.
 # A job must have a filters tags section to run as a part of a tag push
@@ -1142,65 +1117,9 @@ workflows:
   version: 2
   build_test_deploy:
     jobs:
-      - win_build_20_3:
+      - windows_package:
           otp_version: "20.3"
           context: ae-node-builds
-          filters:
-            branches:
-              ignore:
-                - env/dev1
-                - env/dev2
-                - system-tests
-
-      - win_test_20_3:
-          otp_version: "20.3"
-          context: ae-node-builds
-          requires:
-            - win_build_20_3
-          filters:
-            branches:
-              ignore:
-                - env/dev1
-                - env/dev2
-                - system-tests
-
-      - win_build_20_1:
-          otp_version: "20.1"
-          context: ae-node-builds
-          filters:
-            branches:
-              ignore:
-                - env/dev1
-                - env/dev2
-                - system-tests
-
-      - win_test_20_1:
-          otp_version: "20.1"
-          context: ae-node-builds
-          requires:
-            - win_build_20_1
-          filters:
-            branches:
-              ignore:
-                - env/dev1
-                - env/dev2
-                - system-tests
-
-      - win_build_21_3:
-          otp_version: "21.3"
-          context: ae-node-builds
-          filters:
-            branches:
-              ignore:
-                - env/dev1
-                - env/dev2
-                - system-tests
-
-      - win_test_21_3:
-          otp_version: "21.3"
-          context: ae-node-builds
-          requires:
-            - win_build_21_3
           filters:
             branches:
               ignore:
