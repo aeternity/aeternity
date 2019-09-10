@@ -71,6 +71,7 @@
         , push_gas_cap/2
         , push_return_type_check/3
         , spend_gas/2
+        , spend_gas_for_new_cells/2
         , update_for_remote_call/3
         ]).
 
@@ -93,6 +94,7 @@
             , call_value        :: non_neg_integer()
             , chain_api         :: aefa_chain_api:state()
             , code_cache        :: map() %% Cache for loaded contracts.
+            , created_cells     :: integer() %% Heap memory used
             , current_bb        :: non_neg_integer()
             , current_contract  :: ?FATE_VOID | pubkey()
             , current_function  :: ?FATE_VOID | binary()
@@ -123,6 +125,7 @@ new(Gas, Value, Spec, Stores, APIState, CodeCache) ->
        , call_value        = Value
        , chain_api         = APIState
        , code_cache        = CodeCache
+       , created_cells     = 0
        , current_bb        = 0
        , current_contract  = ?FATE_VOID
        , current_function  = ?FATE_VOID
@@ -287,31 +290,39 @@ push_return_type_check(RetType, TVars, #es{ call_stack = Stack} = ES) ->
 -spec push_accumulator(aeb_fate_data:fate_type(), state()) -> state().
 push_accumulator(V, #es{ accumulator = ?FATE_VOID
                        , accumulator_stack = [] } = ES) ->
-    ES#es{ accumulator = V
-         , accumulator_stack = []};
+    ES1 = ES#es{ accumulator = V
+               , accumulator_stack = []},
+    spend_gas_for_new_cells(1, ES1);
 push_accumulator(V, #es{ accumulator = X
                        , accumulator_stack = Stack } = ES) ->
-    ES#es{ accumulator = V
-         , accumulator_stack = [X|Stack]}.
+    ES1 = ES#es{ accumulator = V
+               , accumulator_stack = [X|Stack]},
+    spend_gas_for_new_cells(1, ES1).
 
 -spec pop_accumulator(state()) -> {aeb_fate_data:fate_type(), state()}.
-pop_accumulator(#es{accumulator = X, accumulator_stack = []} = ES) ->
-    {X, ES#es{accumulator = ?FATE_VOID}};
-pop_accumulator(#es{accumulator = X, accumulator_stack = [V|Stack]} = ES) ->
+pop_accumulator(#es{accumulator = X, accumulator_stack = [], created_cells = C} = ES) ->
+    {X, ES#es{ accumulator = ?FATE_VOID
+             , created_cells = C - 1}};
+pop_accumulator(#es{accumulator = X,
+                    accumulator_stack = [V|Stack],
+                    created_cells = C} = ES) ->
     {X, ES#es{ accumulator = V
              , accumulator_stack = Stack
-           }}.
+             , created_cells = C - 1
+             }}.
 
 -spec dup_accumulator(state()) -> state().
 dup_accumulator(#es{accumulator = X, accumulator_stack = Stack} = ES) ->
-    ES#es{ accumulator = X
-         , accumulator_stack = [X|Stack]}.
+    ES1 = ES#es{ accumulator = X
+               , accumulator_stack = [X|Stack]},
+    spend_gas_for_new_cells(1, ES1).
 
 -spec dup_accumulator(pos_integer(), state()) -> state().
 dup_accumulator(N, #es{accumulator = X, accumulator_stack = Stack} = ES) ->
     {X1, Stack1} = get_n(N, [X|Stack]),
-    ES#es{ accumulator = X1
-         , accumulator_stack = [X|Stack1]}.
+    ES1 = ES#es{ accumulator = X1
+               , accumulator_stack = [X|Stack1]},
+    spend_gas_for_new_cells(1, ES1).
 
 get_n(0, [X|XS]) -> {X, [X|XS]};
 get_n(N, [X|XS]) ->
@@ -320,10 +331,20 @@ get_n(N, [X|XS]) ->
 
 -spec drop_accumulator(non_neg_integer(), state()) -> state().
 drop_accumulator(0, ES) -> ES;
-drop_accumulator(N, #es{accumulator_stack = [V|Stack]} = ES) ->
-    drop_accumulator(N-1, ES#es{accumulator = V, accumulator_stack = Stack});
-drop_accumulator(N, #es{accumulator_stack = []} = ES) ->
-    drop_accumulator(N-1, ES#es{accumulator = ?FATE_VOID, accumulator_stack = []}).
+drop_accumulator(N, #es{accumulator_stack = [V|Stack],
+                        created_cells = C
+                       } = ES) ->
+    drop_accumulator(N-1, ES#es{ accumulator = V
+                               , accumulator_stack = Stack
+                               , created_cells = C - 1
+                               });
+drop_accumulator(N, #es{accumulator_stack = [],
+                        created_cells = C
+                       } = ES) ->
+    drop_accumulator(N-1, ES#es{accumulator = ?FATE_VOID
+                               , accumulator_stack = []
+                               , created_cells = C - 1
+                               }).
 
 %%%------------------
 
@@ -343,6 +364,20 @@ spend_gas(X, #es{gas = Gas} = ES) ->
         true  -> aefa_fate:abort(out_of_gas, ES);
         false -> ES#es{gas = NewGas}
     end.
+
+%% The gas price per cell increases by 1 for each kibiword (each 1024 64-bit word) used.
+-spec spend_gas_for_new_cells(non_neg_integer(), state()) -> state().
+spend_gas_for_new_cells(NewCells, #es{ created_cells = Cells } = ES) when NewCells + Cells =< 1024 ->
+    TotalCells = Cells + NewCells,
+    spend_gas(NewCells, ES#es{ created_cells = TotalCells });
+spend_gas_for_new_cells(1, #es{ created_cells = Cells } = ES) ->
+    TotalCells = Cells + 1,
+    CellCost = 1 + (TotalCells bsr 10),
+    spend_gas(CellCost, ES#es{ created_cells = TotalCells });
+spend_gas_for_new_cells(NewCells, #es{ created_cells = Cells } = ES) ->
+    TotalCells = Cells + NewCells,
+    CellCost = 1 + (TotalCells bsr 10),
+    spend_gas(NewCells * CellCost, ES#es{ created_cells = TotalCells }).
 
 %%%------------------
 

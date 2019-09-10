@@ -163,6 +163,7 @@
         , read_store/1
         , store_zero_value/1
         , merge_new_zero_value/1
+        , sophia_use_memory_gas/1
         ]).
 
 -include_lib("common_test/include/ct.hrl").
@@ -286,8 +287,7 @@ all() ->
                        , sophia_polymorphic_entrypoint
                        ]).
 
--define(FATE_TODO, [sophia_state_gas_arguments,
-                    sophia_bignum       %% Dynamic gas for arithmetic ops!
+-define(FATE_TODO, [
                    ]).
 
 groups() ->
@@ -392,7 +392,8 @@ groups() ->
                                  sophia_address_checks,
                                  sophia_too_little_gas_for_mem,
                                  sophia_bignum,
-                                 sophia_higher_order_state
+                                 sophia_higher_order_state,
+                                 sophia_use_memory_gas
                                ]}
     , {sophia_oracles_ttl, [],
           %% Test Oracle TTL handling
@@ -5539,42 +5540,43 @@ sophia_state_gas_arguments(_Cfg) ->
             _                 -> state_handling
         end,
     Ct0      = ?call(create_contract, Acc, remote_state, {}, #{ amount => 100000 }),
-    Ct1      = ?call(create_contract, Acc, ContractName, {Ct0, 1}, #{ amount => 100000 }),
+    Ct1      = ?call(create_contract, Acc, ContractName, {?cid(Ct0), 1}, #{ amount => 100000 }),
     %% MapT     = {map, word, word},
     %% StateT   = {tuple, [word, string, MapT]},
     UnitT    = {tuple, []},
 
     %% Test that gas usage is the same for a contract not passing the state (state change
     %% but not gas used)
-    {{}, Gas0} = ?call(call_contract, Acc, Ct1, nop, UnitT, {Ct0}, #{ return_gas_used => true }),
+    ?call(call_contract, Acc, Ct1, update_m, UnitT, {#{2 => 1}}),
+    {{}, Gas0} = ?call(call_contract, Acc, Ct1, nop, UnitT, {?cid(Ct0)}, #{ return_gas_used => true }),
     ?call(call_contract, Acc, Ct1, update_m, UnitT, {#{2 => 2}}),
-    {{}, Gas1} = ?call(call_contract, Acc, Ct1, nop, UnitT, {Ct0}, #{ return_gas_used => true }),
+    {{}, Gas1} = ?call(call_contract, Acc, Ct1, nop, UnitT, {?cid(Ct0)}, #{ return_gas_used => true }),
     ?assertEqual(Gas0, Gas1),
 
     %% Test that one more key in map does mean more gas when used as an argument
-    %% to a remote call.
+    %% to a remote call on AEVM but not on FATE.
     ?call(call_contract, Acc, Ct1, update_m, UnitT, {#{}}),
-    {{}, Gas2} = ?call(call_contract, Acc, Ct1, pass_it, UnitT, {Ct0}, #{ return_gas_used => true }),
+    {{}, Gas2} = ?call(call_contract, Acc, Ct1, pass_it, UnitT, {?cid(Ct0)}, #{ return_gas_used => true }),
     ?call(call_contract, Acc, Ct1, update_m, UnitT, {#{1 => 1}}),
-    {{}, Gas3} = ?call(call_contract, Acc, Ct1, pass_it, UnitT, {Ct0}, #{ return_gas_used => true }),
-    ?assertMatch(true, Gas3 > Gas2),
+    {{}, Gas3} = ?call(call_contract, Acc, Ct1, pass_it, UnitT, {?cid(Ct0)}, #{ return_gas_used => true }),
+    ?assertMatchVM(true, false, Gas3 > Gas2),
 
-    %% Test that a longer string means more gas
+    %% Test that a longer string means more gas for AEVM
     ?call(call_contract, Acc, Ct1, update_s, UnitT, {<<"short">>}),
-    {{}, Gas4} = ?call(call_contract, Acc, Ct1, pass_it, UnitT, {Ct0}, #{ return_gas_used => true }),
+    {{}, Gas4} = ?call(call_contract, Acc, Ct1, pass_it, UnitT, {?cid(Ct0)}, #{ return_gas_used => true }),
     ?call(call_contract, Acc, Ct1, update_s, UnitT, {<<"at_least_32_bytes_long_in_order_to_use_an_extra_word">>}),
-    {{}, Gas5} = ?call(call_contract, Acc, Ct1, pass_it, UnitT, {Ct0}, #{ return_gas_used => true }),
-    ?assertMatch(true, Gas5 > Gas4),
+    {{}, Gas5} = ?call(call_contract, Acc, Ct1, pass_it, UnitT, {?cid(Ct0)}, #{ return_gas_used => true }),
+    ?assertMatchVM(true, false, Gas5 > Gas4),
 
-    %% Test that a bigger return value in remote (inner) call means more gas - strings
-    {_, Gas6} = ?call(call_contract, Acc, Ct1, return_it_s, word, {Ct0, 0}, #{ return_gas_used => true }),
-    {_, Gas7} = ?call(call_contract, Acc, Ct1, return_it_s, word, {Ct0, 1}, #{ return_gas_used => true }),
-    ?assertMatch(true, Gas7 > Gas6),
+    %% Test that a bigger return value in remote (inner) call means more gas - strings for AEVM
+    {_, Gas6} = ?call(call_contract, Acc, Ct1, return_it_s, word, {?cid(Ct0), 0}, #{ return_gas_used => true }),
+    {_, Gas7} = ?call(call_contract, Acc, Ct1, return_it_s, word, {?cid(Ct0), 1}, #{ return_gas_used => true }),
+    ?assertMatchVM(true, false, Gas7 > Gas6),
 
-    %% Test that a bigger return value in remote (inner) call means more gas - maps
-    {_, Gas8} = ?call(call_contract, Acc, Ct1, return_it_m, word, {Ct0, 0}, #{ return_gas_used => true }),
-    {_, Gas9} = ?call(call_contract, Acc, Ct1, return_it_m, word, {Ct0, 1}, #{ return_gas_used => true }),
-    ?assertMatch(true, Gas9 > Gas8),
+    %% Test that a bigger return value in remote (inner) call means more gas - maps for AEVM
+    {_, Gas8} = ?call(call_contract, Acc, Ct1, return_it_m, word, {?cid(Ct0), 0}, #{ return_gas_used => true }),
+    {_, Gas9} = ?call(call_contract, Acc, Ct1, return_it_m, word, {?cid(Ct0), 1}, #{ return_gas_used => true }),
+    ?assertMatchVM(true, false, Gas9 > Gas8),
     ok.
 
 sophia_state_gas_store_size(_Cfg) ->
@@ -5638,6 +5640,44 @@ sophia_state_gas_store_size(_Cfg) ->
     ?assertEqual({true, Gas10, Gas12}, {Gas10 < Gas12, Gas10, Gas12}),
 
     ok.
+
+
+sophia_use_memory_gas(_Cfg) ->
+    ?skipRest(sophia_version() =< ?SOPHIA_FORTUNA, fate_gas_only_post_fortuna),
+    state(aect_test_utils:new_state()),
+    Acc      = ?call(new_account, 20000000 * aec_test_utils:min_gas_price()),
+    ContractName = use_memory,
+    Ct0      = ?call(create_contract, Acc, ContractName, {}, #{ amount => 100000 }),
+
+    %UnitT    = {tuple, []},
+
+    %% Test that creating a longer string means more gas
+    {_, Gas1} = ?call(call_contract, Acc, Ct0, str_concat, string, {<<"short">>, <<"str">>}, #{ return_gas_used => true }),
+    {_, Gas2} = ?call(call_contract, Acc, Ct0, str_concat, string,
+                       {<<"short">>,
+                        <<"at_least_32_bytes_long_in_order_to_use_an_extra_word_on_fate_and_aevm">>},
+                       #{ return_gas_used => true }),
+    ?assertEqual({true, Gas1, Gas2}, {Gas1 < Gas2, Gas1, Gas2}),
+
+    %% Test that strings taking as many machine words cost the same amount of gas
+    {_, Gas3} = ?call(call_contract, Acc, Ct0, str_concat, string, {<<"short">>, <<"string">>}, #{ return_gas_used => true }),
+    ?assertEqual({true, Gas1, Gas3}, {Gas1 == Gas3, Gas1, Gas3}),
+
+    %% Test that building a large string is ok, but costs lots of gas. size = 5*pow(2,10)
+    {_, Gas4} = ?call(call_contract, Acc, Ct0, dup_str, string, {<<"short">>, 10}, #{ return_gas_used => true
+                                                                                    , gas => 6000000}),
+    ?assertEqual({true, Gas1, Gas4, Gas2}, {Gas4 > (Gas2 - Gas1) * 100, Gas1, Gas4, Gas2}),
+
+
+    %% Test that building a realy large string uses all gas. size = 5*pow(2,20)
+    {E,_Gas5} = ?call(call_contract, Acc, Ct0, dup_str, string, {<<"short">>, 20}, #{ return_gas_used => true
+                                                                                    , gas => 6000000}),
+    ?assertMatchVM({error, <<"out_of_gas">>}, {error, <<"Out of gas">>}, E),
+
+    ok.
+
+
+
 
 %%%===================================================================
 %%% Store
