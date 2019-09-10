@@ -3266,14 +3266,16 @@ get_btc_auth_nonce(PubKey) ->
     extract_nonce_from_btc_auth_store(aect_contracts:state(Contract)).
 
 get_btc_offchain_nonce(ChannelPubKey, Owner) ->
-    case rpc(dev1, aec_chain, get_channel, [ChannelPubKey]) of
+    %% Disable debug logs here as in case of contract cache misses these debug
+    %% logs clutter the test logs significantly
+    case rpc(dev1, aec_chain, get_channel, [ChannelPubKey], false) of
         {ok, Channel} ->
             StoreKey = aesc_channels:auth_store_key(aeser_id:create(account, Owner),
                                                     Channel),
-            {ok, Trees} = rpc(dev1, aec_chain, get_top_state, []),
+            {ok, Trees} = rpc(dev1, aec_chain, get_top_state, [], false),
             ContractTree = aec_trees:contracts(Trees),
             {ok, Store} = rpc(dev1, aect_state_tree, read_contract_store, [StoreKey,
-                                                                          ContractTree]),
+                                                                          ContractTree], false),
             extract_nonce_from_btc_auth_store(Store);
         {error, not_found} -> 42 %% negative tests
     end.
@@ -3283,7 +3285,7 @@ get_btc_offchain_nonce(ChannelPubKey, Owner) ->
 %% nonce out of it. It heavily relies on the state of the contract being
 %% { nonce : int, owner : bytes(64) }
 extract_nonce_from_btc_auth_store(Store) ->
-    #{<<0>> := Encoded0} = rpc(dev1, aect_contracts_store, contents, [Store]),
+    #{<<0>> := Encoded0} = rpc(dev1, aect_contracts_store, contents, [Store], false),
     {ok, {Nonce, _}} = aeb_heap:from_binary({tuple, [word, {tuple, [word, word]}]},
                                 Encoded0),
     Nonce.
