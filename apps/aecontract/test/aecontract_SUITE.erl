@@ -137,6 +137,7 @@
         , sophia_fundme/1
         , sophia_aens_resolve/1
         , sophia_aens_transactions/1
+        , sophia_aens_update_transaction/1
         , sophia_state_handling/1
         , sophia_remote_state/1
         , sophia_state_gas_arguments/1
@@ -295,6 +296,7 @@ all() ->
                        , fate_list_of_maps
                        , sophia_polymorphic_entrypoint
                        , lima_migration
+                       , sophia_aens_update_transaction
                        ]).
 
 -define(FATE_TODO, [
@@ -556,6 +558,15 @@ init_per_testcase(TC, Config) when TC == sophia_aens_resolve;
     %% Disable name auction
     meck:expect(aec_governance, name_claim_bid_timeout, fun(_, _) -> 0 end),
     init_per_testcase_common(TC, Config);
+
+init_per_testcase(sophia_aens_update_transaction, Config) ->
+    meck:expect(aec_governance, name_claim_bid_timeout, fun(_, _) -> 0 end),
+    init_per_testcase_common(sophia_aens_update_transaction,
+                             [{sophia_version, ?SOPHIA_LIMA_FATE},
+                              {vm_version, ?VM_FATE_SOPHIA_1},
+                              {abi_version, ?ABI_FATE_SOPHIA_1},
+                              {protocol, lima} | Config]);
+
 init_per_testcase(TC, Config) ->
     init_per_testcase_common(TC, Config).
 
@@ -5567,6 +5578,98 @@ sophia_aens_transactions(Cfg) ->
     ?assertMatchProtocol(NonceBeforeTransfer, ExpectedNonceBeforeTransferRoma, NonceBeforePreclaim),
     ?assertMatchProtocol(NonceAfterTransfer, ExpectedNonceAfterTransferRoma, NonceBeforePreclaim),
     ?assertMatchProtocol(NonceAfterRevoke, ExpectedNonceAfterRevokeRoma, NonceBeforeRevoke),
+
+    ok.
+
+sophia_aens_update_transaction(Cfg) ->
+    %% AENS transactions from contract
+    state(aect_test_utils:new_state()),
+    Acc      = ?call(new_account, 40000000000000 * aec_test_utils:min_gas_price()),
+    Ct       = ?call(create_contract, Acc, aens, {}, #{ amount => 20000000000000 * aec_test_utils:min_gas_price() }),
+
+    APubkey  = 1,
+    OPubkey  = 2,
+    CPubkey  = 3,
+    Name1           = aens_test_utils:fullname(<<"bla">>),
+    Salt1           = rand:uniform(10000),
+    {ok, NameAscii} = aens_utils:to_ascii(Name1),
+    CHash           = aens_hash:commitment_hash(NameAscii, Salt1),
+    NHash           = aens_hash:name_hash(NameAscii),
+    GetNameRecord   = fun () ->
+                              NSTree = aec_trees:ns(aect_test_utils:trees(state())),
+                              {value, Rec} = aens_state_tree:lookup_name(NHash, NSTree),
+                              Rec
+                      end,
+
+    {} = ?call(call_contract, Acc, Ct, preclaim, {tuple, []}, {Ct, ?hsh(CHash)}, #{ height => 10 }),
+    {} = ?call(call_contract, Acc, Ct, claim,    {tuple, []}, {Ct, Name1, Salt1, 360000000000000000000}, #{ height => 11 }),
+
+    None = none,
+    Some = fun (X) -> {some, X} end,
+    RelTTL = fun (I) -> {variant, [1, 1], 0, {I}} end,
+    FixTTL = fun (I) -> {variant, [1, 1], 1, {I}} end,
+    AccountPointee  = fun (A) -> {variant, [1, 1, 1], 0, {A}} end,
+    OraclePointee   = fun (A) -> {variant, [1, 1, 1], 1, {A}} end,
+    ContractPointee = fun (A) -> {variant, [1, 1, 1], 2, {A}} end,
+
+    Rec0 = GetNameRecord(),
+    {} = ?call(call_contract, Acc, Ct, update, {tuple, []},
+               {Ct, Name1, None, None, None},
+               #{ height => 12 }),
+    ?assertEqual(Rec0, GetNameRecord()),
+
+    Delta1 = 100,
+    {} = ?call(call_contract, Acc, Ct, update, {tuple, []},
+               {Ct, Name1, Some(RelTTL(Delta1)), None, None},
+               #{ height => 13 }),
+    Rec1 = GetNameRecord(),
+    ?assertEqual(100 + 13, aens_names:ttl(Rec1)),
+
+    {} = ?call(call_contract, Acc, Ct, update, {tuple, []},
+               {Ct, Name1, Some(FixTTL(12345)), None, None},
+               #{ height => 14 }),
+    Rec2 = GetNameRecord(),
+    ?assertEqual(12345, aens_names:ttl(Rec2)),
+
+    {} = ?call(call_contract, Acc, Ct, update, {tuple, []},
+               {Ct, Name1, Some(FixTTL(23456)), Some(FixTTL(23456)), None},
+               #{ height => 15 }),
+    Rec3 = GetNameRecord(),
+    ?assertEqual(23456, aens_names:ttl(Rec3)),
+    ?assertEqual(23456, aens_names:client_ttl(Rec3)),
+
+    {} = ?call(call_contract, Acc, Ct, update, {tuple, []},
+               {Ct, Name1,
+                Some(RelTTL(13131)),
+                Some(FixTTL(34567)),
+                Some(#{<<"account_pubkey">> => AccountPointee(<<APubkey:256>>),
+                       <<"oracle_pubkey">> => OraclePointee(<<OPubkey:256>>),
+                       <<"contract_pubkey">> => ContractPointee(<<CPubkey:256>>)})},
+               #{ height => 16 }),
+    Rec4 = GetNameRecord(),
+    ?assertEqual(13131 + 16, aens_names:ttl(Rec4)),
+    ?assertEqual(34567, aens_names:client_ttl(Rec4)),
+    ?assertEqual(lists:sort(
+                   [aens_pointer:new(<<(atom_to_binary(T, utf8))/binary, "_pubkey">>,
+                                     aeser_id:create(T, <<A:256>>)) ||
+                       {T, A} <- [{account, APubkey}, {oracle, OPubkey}, {contract, CPubkey}]]),
+                 lists:sort(aens_names:pointers(Rec4))),
+
+    {} = ?call(call_contract, Acc, Ct, update, {tuple, []},
+               {Ct, Name1, None, None, Some(#{})},
+               #{ height => 17 }),
+    Rec5 = GetNameRecord(),
+    ?assertEqual([], aens_names:pointers(Rec5)),
+
+    {error, <<"Type error on call", _/binary>>} =
+        ?call(call_contract, Acc, Ct, update, {tuple, []},
+              {Ct, Name1, Some(<<"asdf">>), None, None},
+              #{ height => 18 }),
+
+    {error, <<"Type error on call", _/binary>>} =
+        ?call(call_contract, Acc, Ct, update, {tuple, []},
+              {Ct, Name1, None, None, Some([1, 2, 3])},
+              #{ height => 18 }),
 
     ok.
 

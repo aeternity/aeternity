@@ -42,6 +42,7 @@
         , name_preclaim_op/3
         , name_revoke_op/3
         , name_transfer_op/4
+        , name_update_op/5
         , oracle_earn_query_fee_op/2
         , oracle_extend_op/2
         , oracle_query_op_with_return/7
@@ -120,6 +121,13 @@
 -define(IS_NON_NEG_INTEGER(_X_), (is_integer(_X_) andalso _X_ >= 0)).
 -define(IS_NAME_RESOLVE_TYPE(_X_), (_X_ =:= account
                                     orelse _X_ =:= name)).
+
+-define(IS_CHAIN_TTL_OPTION(_X_), (_X_ =:= undefined
+                                   orelse (is_tuple(_X_)
+                                           andalso size(_X_) =:= 2
+                                           andalso (element(1, _X_) =:= relative_ttl
+                                                    orelse element(1, _X_) =:= fixed_ttl)
+                                           andalso ?IS_NON_NEG_INTEGER(element(2, _X_))))).
 
 -opaque op() :: {atom(), tuple()}.
 
@@ -273,11 +281,9 @@ name_transfer_tx_instructions(OwnerPubkey, RecipientID, NameHash, Fee, Nonce) ->
         fee(), nonce()) -> [op()].
 name_update_tx_instructions(OwnerPubkey, NameHash, DeltaTTL, ClientTTL,
                             Pointers, Fee, Nonce) ->
-    MaxTTL = aec_governance:name_claim_max_expiration(),
     [ inc_account_nonce_op(OwnerPubkey, Nonce)
     , spend_fee_op(OwnerPubkey, Fee)
-    , name_update_op(OwnerPubkey, NameHash, DeltaTTL, MaxTTL,
-                     ClientTTL, Pointers)
+    , name_update_op(OwnerPubkey, NameHash, DeltaTTL, ClientTTL, Pointers)
     ].
 
 -spec ga_attach_tx_instructions(pubkey(), amount(), amount(),
@@ -856,23 +862,52 @@ name_transfer({OwnerPubkey, RecipientType, RecipientHash, NameHash}, S) ->
 
 %%%-------------------------------------------------------------------
 
-name_update_op(OwnerPubkey, NameHash, DeltaTTL, MaxTTL, ClientTTL, Pointers
+name_update_op(OwnerPubkey, NameHash, DeltaTTL, ClientTTL, Pointers
               ) when ?IS_HASH(OwnerPubkey),
                      ?IS_HASH(NameHash),
                      ?IS_NON_NEG_INTEGER(DeltaTTL),
-                     ?IS_NON_NEG_INTEGER(MaxTTL),
                      ?IS_NON_NEG_INTEGER(ClientTTL),
                      is_list(Pointers) ->
-    {name_update , {OwnerPubkey, NameHash, DeltaTTL, MaxTTL, ClientTTL, Pointers}}.
+    {name_update,
+     {OwnerPubkey, NameHash, {relative_ttl, DeltaTTL}, {relative_ttl, ClientTTL}, Pointers}};
+name_update_op(OwnerPubkey, NameHash, TTL, ClientTTL, Pointers
+              ) when ?IS_HASH(OwnerPubkey),
+                     ?IS_HASH(NameHash),
+                     ?IS_CHAIN_TTL_OPTION(TTL),
+                     ?IS_CHAIN_TTL_OPTION(ClientTTL),
+                     (Pointers == undefined orelse is_list(Pointers)) ->
+    {name_update, {OwnerPubkey, NameHash, TTL, ClientTTL, Pointers}}.
 
-name_update({OwnerPubkey, NameHash, DeltaTTL, MaxTTL, ClientTTL, Pointers}, S) ->
-    [runtime_error(ttl_too_high) || DeltaTTL > MaxTTL],
-    {Name, S1} = get_name(NameHash, S),
-    assert_name_owner(Name, OwnerPubkey),
-    assert_name_claimed(Name),
-    AbsoluteTTL = S#state.height + DeltaTTL,
-    Name1 = aens_names:update(Name, AbsoluteTTL, ClientTTL, Pointers),
-    put_name(Name1, S1).
+
+name_update({OwnerPubkey, NameHash, TTL, ClientTTL, Pointers}, S) ->
+    TTL /= undefined andalso assert_ttl(TTL, S),
+    {Rec, S1} = get_name(NameHash, S),
+    TTL1       = ttl_or_from(TTL, {Rec, ttl}, S1),
+    ClientTTL1 = ttl_or_from(ClientTTL, {Rec, client_ttl}, S1),
+    Pointers1  = if Pointers == undefined -> aens_names:pointers(Rec);
+                    is_list(Pointers) -> Pointers
+                 end,
+    assert_ttl(TTL1, S1),
+    assert_name_owner(Rec, OwnerPubkey),
+    assert_name_claimed(Rec),
+    Rec1 = aens_names:update(Rec, TTL1, ClientTTL1, Pointers1),
+    put_name(Rec1, S1).
+
+ttl_or_from({relative_ttl, _} = TTL, _, S) -> ttl_val(TTL, S);
+ttl_or_from({fixed_ttl, _} = TTL, _, S) -> ttl_val(TTL, S);
+ttl_or_from(undefined, {Rec, Getter}, _S) -> aens_names:Getter(Rec).
+ttl_val({relative_ttl, Delta}, S) -> S#state.height + Delta;
+ttl_val({fixed_ttl, Abs}, _S) -> Abs.
+
+assert_ttl({relative_ttl, Delta}, #state{}) when ?IS_NON_NEG_INTEGER(Delta) ->
+    Delta =< aec_governance:name_claim_max_expiration() orelse runtime_error(ttl_too_high);
+assert_ttl({fixed_ttl, Abs}, #state{height = Current} = S) when ?IS_NON_NEG_INTEGER(Abs) ->
+    (Abs >= Current orelse runtime_error(ttl_too_low))
+        andalso assert_ttl({relative_ttl, Abs - Current}, S);
+assert_ttl(Height, #state{height = Current}) when ?IS_NON_NEG_INTEGER(Height) ->
+    Height >= Current orelse runtime_error(ttl_too_low);
+assert_ttl(_, _) ->
+    runtime_error(invalid_ttl).
 
 %%%-------------------------------------------------------------------
 
