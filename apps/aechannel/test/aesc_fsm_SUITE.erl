@@ -1005,14 +1005,14 @@ do_update(From, To, Amount, #{fsm := FsmI} = I, R, Debug, Cfg) ->
 msg_volley(#{fsm := FsmI, pub := PubI} = I, #{fsm := FsmR, pub := PubR} = R, _) ->
     rpc(dev1, aesc_fsm, inband_msg, [FsmI, PubR, <<"ping">>], false),
     %% A 1 second timeout might not be enough if there is a lot of CPU intensive
-    %% background processes in the OS, bump to 2 seconds to avoid random failures
+    %% background processes in the OS, bump to 4 seconds to avoid random failures
     {ok,_} = receive_from_fsm(
                message, R,
-               fun(#{info := #{info := <<"ping">>}}) -> ok end, 2000, false),
+               fun(#{info := #{info := <<"ping">>}}) -> ok end, 4000, false),
     rpc(dev1, aesc_fsm, inband_msg, [FsmR, PubI, <<"pong">>], false),
     {ok,_} = receive_from_fsm(
                message, I,
-               fun(#{info := #{info := <<"pong">>}}) -> ok end, 2000, false),
+               fun(#{info := #{info := <<"pong">>}}) -> ok end, 4000, false),
     {I, R}.
 
 deposit(Cfg) ->
@@ -1722,7 +1722,7 @@ check_invalid_reestablish_password(Cfg) ->
 check_password_is_changeable(Cfg) ->
     Debug = get_debug(Cfg),
     {I0, R0, Spec0} = channel_spec(Cfg),
-    #{ i := #{ fsm := FsmI } = I
+    #{ i := I
      , r := R } = create_channel_from_spec(I0, R0, Spec0, ?PORT, Debug, Cfg),
     ct:log("I = ~p", [I]),
     ct:log("R = ~p", [R]),
