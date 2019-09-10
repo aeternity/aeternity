@@ -628,6 +628,9 @@ string_cells(String) when ?IS_FATE_STRING(String) ->
 address_cells(A) when ?IS_FATE_ADDRESS(A) ->
     byte_size(?FATE_ADDRESS_VALUE(A)) div 8.
 
+bytes_cells(B) when ?IS_FATE_BYTES(B) ->
+    byte_size(?FATE_BYTES_VALUE(B)) div 8.
+
 %% ------------------------------------------------------
 %% Variant instructions
 %% ------------------------------------------------------
@@ -689,19 +692,33 @@ bits_all(Arg0, EngineState) ->
 bits_all_n(Arg0, Arg1, EngineState) ->
     {Value, ES1} = get_op_arg(Arg1, EngineState),
     Result = gop(bits_all, Value, ES1),
-    Cells = Value div 64,
+    ?FATE_BITS(AsInt) = Result,
+    Cells = words_used(AsInt),
     ES2 = aefa_engine_state:spend_gas_for_new_cells(Cells, ES1),
     write(Arg0, Result, ES2).
 
 %% Bits.set(b : bits, i : int) : bits
 %% Set bit i
 bits_set(Arg0, Arg1, Arg2, EngineState) ->
-    bin_op(bits_set, {Arg0, Arg1, Arg2}, EngineState).
+    {Bits, ES1} = get_op_arg(Arg1, EngineState),
+    {I, ES2} = get_op_arg(Arg2, ES1),
+    Result = gop(bits_set, Bits, I, ES2),
+    ?FATE_BITS(AsInt) = Result,
+    Cells = words_used(AsInt),
+    ES3 = aefa_engine_state:spend_gas_for_new_cells(Cells, ES2),
+    write(Arg0, Result, ES3).
 
 %% Bits.clear(b : bits, i : int) : bits
 %% Clear bit i
 bits_clear(Arg0, Arg1, Arg2, EngineState) ->
-    bin_op(bits_clear, {Arg0, Arg1, Arg2}, EngineState).
+    {Bits, ES1} = get_op_arg(Arg1, EngineState),
+    {I, ES2} = get_op_arg(Arg2, ES1),
+    Result = gop(bits_clear, Bits, I, ES2),
+    ?FATE_BITS(AsInt) = Result,
+    Cells = words_used(AsInt),
+    ES3 = aefa_engine_state:spend_gas_for_new_cells(Cells, ES2),
+    write(Arg0, Result, ES3).
+
 
 %% Bits.test(b : bits, i : int) : bool
 %% Check if bit i is set
@@ -765,7 +782,12 @@ bytes_to_str(Arg0, Arg1, EngineState) ->
     un_op(bytes_to_str, {Arg0, Arg1}, EngineState).
 
 bytes_concat(Arg0, Arg1, Arg2, EngineState) ->
-    bin_op(bytes_concat, {Arg0, Arg1, Arg2}, EngineState).
+    {Bytes1, ES1} = get_op_arg(Arg1, EngineState),
+    {Bytes2, ES2} = get_op_arg(Arg2, ES1),
+    Result = gop(bytes_concat, Bytes1, Bytes2, ES2),
+    Cells = bytes_cells(Result),
+    ES3 = aefa_engine_state:spend_gas_for_new_cells(Cells, ES2),
+    write(Arg0, Result, ES3).
 
 bytes_split(Arg0, Arg1, Arg2, EngineState) ->
     bin_op(bytes_split, {Arg0, Arg1, Arg2}, EngineState).
