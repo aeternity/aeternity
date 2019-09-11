@@ -31,7 +31,6 @@
         , get_oracle_query/3
         , get_var/3
         , new/2
-        , new/3
         , put_account/2
         , put_auth_call/2
         , put_call/2
@@ -61,17 +60,12 @@
 %%%===================================================================
 
 new(Trees, TxEnv) ->
-    Height = aetx_env:height(TxEnv),
-    new(Trees, Height, TxEnv).
-
-new(Trees, Height, TxEnv) ->
-    ProtocolVersion = aec_hard_forks:protocol_effective_at_height(Height),
     #state{ trees = Trees
           , cache = dict:new()
           , env   = dict:new()
-          , height = Height
+          , height = aetx_env:height(TxEnv)
           , tx_env = TxEnv
-          , protocol = ProtocolVersion
+          , protocol = aetx_env:consensus_version(TxEnv)
           }.
 
 final_trees(State) ->
