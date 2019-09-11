@@ -1058,8 +1058,10 @@ deposit_(#{fsm := FsmI} = I, R, Deposit, Opts, Round1, Debug, Cfg) ->
     await_deposit_locked(I1, ?TIMEOUT, Debug),
     await_deposit_locked(R1, ?TIMEOUT, Debug),
     
-    await_update_report(I1, ?TIMEOUT, Debug),
-    await_update_report(R1, ?TIMEOUT, Debug),
+    I2 = await_update_report(I1, ?TIMEOUT, Debug),
+    R2 = await_update_report(R1, ?TIMEOUT, Debug),
+    #{signed_tx := SignedTx} = I2, %% Same Tx
+    #{signed_tx := SignedTx} = R2, %% Same Tx
 
     {ok, Channel} = rpc(dev1, aec_chain, get_channel, [ChannelId]),
     {aesc_deposit_tx, DepositTx} =
@@ -1074,13 +1076,9 @@ deposit_(#{fsm := FsmI} = I, R, Deposit, Opts, Round1, Debug, Cfg) ->
     Round2 = aesc_deposit_tx:round(DepositTx), %% assert correct round
     StateHash = aesc_deposit_tx:state_hash(DepositTx), %% assert correct state hash
     ?LOG(Debug, "I1 = ~p", [I1]),
-    #{initiator_amount := IAmt2, responder_amount := RAmt2} = I1,
+    #{initiator_amount := IAmt2, responder_amount := RAmt2} = I2,
     Expected = {IAmt2, RAmt2},
     {Expected, Expected} = {{IAmt0 + Deposit, RAmt0}, Expected},
-    I2 = await_update_report(I1, ?TIMEOUT, Debug),
-    R2 = await_update_report(R1, ?TIMEOUT, Debug),
-    #{signed_tx := SignedTx} = I2, %% Same Tx
-    #{signed_tx := SignedTx} = R2, %% Same Tx
     {ok, I2, R2}.
 
 withdraw(Cfg) ->
@@ -1243,7 +1241,7 @@ leave_reestablish_(Cfg) ->
             mine_key_blocks(dev1, 6), % min depth at 4, so more than 4
             ?LOG(Debug, "reestablishing ...", []),
             #{i := ILocal1, r := RLocal1} = Res
-                    = reestablish(ChId, ILocal, RLocal, SignedTx,
+                    = reestablish(ILocal, RLocal, SignedTx,
                                   Spec0#{ initiator_amount => IAmt
                                         , responder_amount => RAmt },
                                   CSpec, ?PORT, Debug),
@@ -1688,7 +1686,7 @@ check_mutual_close_after_close_solo(Cfg) ->
 check_fsm_crash_reestablish(Cfg) ->
     Debug = get_debug(Cfg),
     {I0, R0, Spec0} = channel_spec(Cfg),
-    #{ i := I, r := R } = create_channel_from_spec(I0, R0, Spec0, ?PORT, Debug, Cfg),
+    #{ i := I, r := R } = CSpec = create_channel_from_spec(I0, R0, Spec0, ?PORT, Debug, Cfg),
     ct:log("I = ~p", [I]),
     ct:log("R = ~p", [R]),
     {_, I1, R1} = do_n(4, fun update_volley/3, I, R, Cfg),
@@ -1699,12 +1697,12 @@ check_fsm_crash_reestablish(Cfg) ->
         fun fsm_crash_action_during_shutdown/3
     ],
     lists:foldl(fun (Action, {IA, RA}) ->
-        {IA1, RA1} = fsm_crash_reestablish(IA, RA, Spec0, Cfg, Action),
+        {IA1, RA1} = fsm_crash_reestablish(IA, RA, Spec0, CSpec, Cfg, Action),
         {_, IA2, RA2} = do_n(4, fun update_volley/3, IA1, RA1, Cfg),
         {IA2, RA2}
     end, {I1, R1}, Actions).
 
-fsm_crash_reestablish(#{channel_id := ChId, fsm := FsmI} = I, #{fsm := FsmR} = R, Spec, Cfg, Action) ->
+fsm_crash_reestablish(#{channel_id := ChId, fsm := FsmI} = I, #{fsm := FsmR} = R, Spec, CSpec, Cfg, Action) ->
     Debug = get_debug(Cfg),
     {ok, State} = rpc(dev1, aesc_fsm, get_offchain_state, [FsmI]),
     {_, SignedTx} = aesc_offchain_state:get_latest_signed_tx(State),
@@ -1720,7 +1718,7 @@ fsm_crash_reestablish(#{channel_id := ChId, fsm := FsmI} = I, #{fsm := FsmR} = R
     [_, _] = on_disk(Cache),
     check_info(20),
     ct:log("reestablishing ...", []),
-    #{i := I1, r := R1} = reestablish(I, R, SignedTx, Spec, ?PORT, Debug),
+    #{i := I1, r := R1} = reestablish(I, R, SignedTx, Spec, CSpec, ?PORT, Debug),
     {I1, R1}.
 
 fsm_crash_action_during_transfer( #{fsm := FsmI, pub := PubI} = I
@@ -1763,7 +1761,7 @@ check_invalid_reestablish_password(Cfg) ->
     Debug = get_debug(Cfg),
     {I0, R0, Spec0} = channel_spec(Cfg),
     #{ i := I
-     , r := R } = create_channel_from_spec(I0, R0, Spec0, ?PORT, Debug, Cfg),
+     , r := R } = CSpec = create_channel_from_spec(I0, R0, Spec0, ?PORT, Debug, Cfg),
     ct:log("I = ~p", [I]),
     ct:log("R = ~p", [R]),
     {_, I1, R1} = do_n(4, fun update_volley/3, I, R, Cfg),
@@ -1777,14 +1775,14 @@ check_invalid_reestablish_password(Cfg) ->
                               , SignedTx, Spec0, Debug),
 
     %% Check that after an invalid password has been provided we can still reestablish the channel
-    _ = reestablish(I1, R1, SignedTx, Spec0, ?PORT, Debug),
+    _ = reestablish(I1, R1, SignedTx, Spec0, CSpec, ?PORT, Debug),
     ok.
 
 check_password_is_changeable(Cfg) ->
     Debug = get_debug(Cfg),
     {I0, R0, Spec0} = channel_spec(Cfg),
     #{ i := I
-     , r := R } = create_channel_from_spec(I0, R0, Spec0, ?PORT, Debug, Cfg),
+     , r := R } = CSpec = create_channel_from_spec(I0, R0, Spec0, ?PORT, Debug, Cfg),
     ct:log("I = ~p", [I]),
     ct:log("R = ~p", [R]),
     {_, I1, R1} = do_n(4, fun update_volley/3, I, R, Cfg),
@@ -1796,7 +1794,7 @@ check_password_is_changeable(Cfg) ->
     %% Reestablish with old password should fail
     reestablish_wrong_password(I1, R1, SignedTx, Spec0, Debug),
     %% Reestablish with new password should succeed
-    _ = reestablish(I2, R2, SignedTx, Spec0, ?PORT, Debug),
+    _ = reestablish(I2, R2, SignedTx, Spec0, CSpec, ?PORT, Debug),
 
     ok.
 
@@ -2579,7 +2577,9 @@ fsm_map(Fsm, #{ initiator_amount := IAmt
         , initiator_amount => IAmt - PushAmt
         , responder_amount => RAmt + PushAmt }.
 
-reestablish(ChId, I0, R0, SignedTx, Spec0, CSpec, Port, Debug) ->
+reestablish(I0, R0, SignedTx, Spec0, CSpec, Port, Debug) ->
+    ChId = maps:get(channel_id, I0),
+    ChId = maps:get(channel_id, R0),   % assertion
     ResponderStays = responder_stays(CSpec),
     #{initiator_amount := IAmt, responder_amount := RAmt} = Spec0,
     I = set_amounts(IAmt, RAmt, I0),
@@ -2614,6 +2614,9 @@ update_tx(Tx0, F, Args) ->
     {Mod, TxI} = aetx:specialize_callback(Tx0),
     TxI1 = apply(Mod, F, [TxI|Args]),
     aetx:new(Mod, TxI1).
+
+set_amounts(IAmt, RAmt, Map) ->
+    Map#{initiator_amount => IAmt, responder_amount => RAmt}.
 
 verify_close_mutual_tx(SignedTx, ChannelId) ->
     {aesc_close_mutual_tx, Tx} =
@@ -2662,7 +2665,7 @@ await_update_report(#{channel_id := ChId} = R, Timeout, Debug) ->
     {ok, Msg} = receive_from_fsm(
                   update, R,
                   fun(#{ channel_id := ChId1
-                         , info := SignedTx }) ->
+                       , info       := SignedTx }) ->
                           true =
                               ChId1 == ChId
                               andalso
