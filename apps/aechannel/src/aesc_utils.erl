@@ -245,6 +245,7 @@ check_slash_payload(ChannelPubKey, FromPubKey, Nonce, Fee, Payload,
     end.
 
 check_force_progress(Tx, Payload, OffChainTrees, Trees, Env) ->
+    Protocol = aetx_env:consensus_version(Env),
     Height = aetx_env:height(Env),
     ?TEST_LOG("Checking force progress:\nTx: ~p,\nPayload: ~p,\nOffChainTrees: ~p,\nHeight: ~p",
               [Tx, Payload, OffChainTrees, Height]),
@@ -265,7 +266,7 @@ check_force_progress(Tx, Payload, OffChainTrees, Trees, Env) ->
                   fun() ->
                       check_force_progress_(PayloadHash, Round,
                               Channel, FromPubKey, Nonce, Fee, Update,
-                              NextRound, OffChainTrees, Height, Trees, Env)
+                              NextRound, OffChainTrees, Protocol, Trees, Env)
                   end],
               aeu_validation:run(Checks);
 
@@ -283,14 +284,14 @@ check_force_progress(Tx, Payload, OffChainTrees, Trees, Env) ->
                   fun() ->
                       check_force_progress_(PayloadHash, Round,
                               Channel, FromPubKey, Nonce, Fee, Update,
-                              NextRound, OffChainTrees, Height, Trees, Env)
+                              NextRound, OffChainTrees, Protocol, Trees, Env)
                   end],
               aeu_validation:run(Checks)
     end.
 
 check_force_progress_(PayloadHash, PayloadRound,
                       Channel, FromPubKey, Nonce, Fee, Update,
-                      NextRound, OffChainTrees, Height, Trees, Env) ->
+                      NextRound, OffChainTrees, Protocol, Trees, Env) ->
     Checks =
         [ fun() ->
               case aesc_offchain_update:is_call(Update) of
@@ -328,9 +329,9 @@ check_force_progress_(PayloadHash, PayloadRound,
                             ABIVersion = aesc_offchain_update:extract_abi_version(Update),
                             CTVersion = aect_contracts:ct_version(Contract),
                             Code = aect_contracts:code(Contract),
-                            case check_abi_version(CTVersion, ABIVersion, Height) of
+                            case check_abi_version(CTVersion, ABIVersion, Protocol) of
                                 ok ->
-                                    check_code_serialization(Code, CTVersion, Height);
+                                    check_code_serialization(Code, CTVersion, Protocol);
                                 Error -> Error
                             end
                       end
@@ -345,10 +346,11 @@ check_force_progress_(PayloadHash, PayloadRound,
     ?TEST_LOG("check_force_progress result: ~p", [Res]),
     Res.
 
-check_code_serialization(Code, #{abi := ABI}, Height) ->
+check_code_serialization(Code, #{abi := ABI}, Protocol) ->
     case aect_sophia:deserialize(Code) of
         Deserialized ->
-            case aect_contracts:is_legal_serialization_at_height(ABI, maps:get(contract_vsn, Deserialized, 1), Height) of
+            case aect_contracts:is_legal_serialization_at_protocol(
+                   ABI, maps:get(contract_vsn, Deserialized, 1), Protocol) of
                 true ->
                     ok;
                 false ->
@@ -356,8 +358,8 @@ check_code_serialization(Code, #{abi := ABI}, Height) ->
             end
     end.
 
-check_abi_version(#{abi := ABI} = Version, ABI, Height) ->
-    case aect_contracts:is_legal_version_at_height(call, Version, Height) of
+check_abi_version(#{abi := ABI} = Version, ABI, Protocol) ->
+    case aect_contracts:is_legal_version_at_protocol(call, Version, Protocol) of
         true -> ok;
         false -> {error, unknown_vm_version}
     end;

@@ -1570,10 +1570,9 @@ assert_not_oracle(Pubkey, S) ->
         none -> ok
     end.
 
-assert_oracle_abi_version(ABIVersion, S) ->
+assert_oracle_abi_version(ABIVersion, #state{protocol = Protocol}) ->
     CTVersion = #{abi => ABIVersion, vm => 0}, %% VM version not used in check.
-    Height = S#state.height,
-    case aect_contracts:is_legal_version_at_height(oracle_register, CTVersion, Height) of
+    case aect_contracts:is_legal_version_at_protocol(oracle_register, CTVersion, Protocol) of
         true  -> ok;
         false -> runtime_error(bad_abi_version)
     end.
@@ -1765,12 +1764,12 @@ assert_name_claimed(Name) ->
     end.
 
 %% Note: returns deserialized Code to avoid extra work
-assert_ga_attach_byte_code(ABIVersion, SerializedCode, CallData, FunHash, S)
+assert_ga_attach_byte_code(ABIVersion, SerializedCode, CallData, FunHash, #state{protocol = Protocol})
   when ABIVersion =:= ?ABI_AEVM_SOPHIA_1;
        ABIVersion =:= ?ABI_FATE_SOPHIA_1 ->
     try aect_sophia:deserialize(SerializedCode) of
         #{type_info := TypeInfo, contract_vsn := Vsn, byte_code := ByteCode} = Code ->
-            case aect_sophia:is_legal_serialization_at_height(Vsn, S#state.height) of
+            case aect_sophia:is_legal_serialization_at_protocol(Vsn, Protocol) of
                 true ->
                     assert_auth_function(ABIVersion, FunHash, TypeInfo, ByteCode),
                     assert_contract_init_function(ABIVersion, CallData, Code);
@@ -1781,12 +1780,12 @@ assert_ga_attach_byte_code(ABIVersion, SerializedCode, CallData, FunHash, S)
     end.
 
 %% Note: returns deserialized Code to avoid extra work
-assert_contract_byte_code(ABIVersion, SerializedCode, CallData, S)
+assert_contract_byte_code(ABIVersion, SerializedCode, CallData, #state{protocol = Protocol})
   when ABIVersion =:= ?ABI_AEVM_SOPHIA_1;
        ABIVersion =:= ?ABI_FATE_SOPHIA_1 ->
     try aect_sophia:deserialize(SerializedCode) of
         #{contract_vsn := Vsn} = Code ->
-            case aect_sophia:is_legal_serialization_at_height(Vsn, S#state.height) of
+            case aect_sophia:is_legal_serialization_at_protocol(Vsn, Protocol) of
                 true ->
                     assert_contract_init_function(ABIVersion, CallData, Code);
                 false ->
@@ -1844,10 +1843,9 @@ assert_auth_function(?ABI_FATE_SOPHIA_1, Hash, _TypeInfo, ByteCode) ->
         {error, _}               -> runtime_error(bad_function_hash)
     end.
 
-assert_contract_create_version(ABIVersion, VMVersion, S) ->
+assert_contract_create_version(ABIVersion, VMVersion, #state{protocol = Protocol}) ->
     CTVersion = #{abi => ABIVersion, vm => VMVersion},
-    Height = S#state.height,
-    case aect_contracts:is_legal_version_at_height(create, CTVersion, Height) of
+    case aect_contracts:is_legal_version_at_protocol(create, CTVersion, Protocol) of
         true  -> ok;
         false -> runtime_error(illegal_vm_version)
     end.
@@ -1857,19 +1855,17 @@ assert_ga_active(#state{protocol = Protocol}) when Protocol < ?FORTUNA_PROTOCOL_
 assert_ga_active(_State) ->
     ok.
 
-assert_ga_create_version(ABIVersion, VMVersion, S) ->
+assert_ga_create_version(ABIVersion, VMVersion, #state{protocol = Protocol}) ->
     CTVersion = #{abi => ABIVersion, vm => VMVersion},
-    Height = S#state.height,
-    case aega_attach_tx:is_legal_version_at_height(CTVersion, Height) of
+    case aega_attach_tx:is_legal_version_at_protocol(CTVersion, Protocol) of
         true  -> ok;
         false -> runtime_error(illegal_vm_version)
     end.
 
-assert_contract_call_version(Pubkey, ABIVersion, S) ->
+assert_contract_call_version(Pubkey, ABIVersion, #state{protocol = Protocol} = S) ->
     Contract  = get_contract_without_store(Pubkey, S),
     CTVersion = #{abi := CABIVersion} = aect_contracts:ct_version(Contract),
-    Height    = S#state.height,
-    case aect_contracts:is_legal_version_at_height(call, CTVersion, Height) of
+    case aect_contracts:is_legal_version_at_protocol(call, CTVersion, Protocol) of
         true when ABIVersion =:= CABIVersion -> ok;
         true                                 -> runtime_error(wrong_abi_version);
         false                                -> runtime_error(wrong_vm_version)
