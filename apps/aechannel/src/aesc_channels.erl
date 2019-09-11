@@ -285,12 +285,13 @@ is_last_state_forced(#channel{solo_round = SoloRound}) ->
           sc_nonce(), aec_blocks:height(), non_neg_integer()) -> channel().
 new(InitiatorPubKey, InitiatorAmount, ResponderPubKey, ResponderAmount, InitAccount,
     RespAccount, ReserveAmount, DelegatePubkeys, StateHash, LockPeriod, Nonce,
-    Height, Round) ->
+    Protocol, Round) ->
     PubKey = pubkey(InitiatorPubKey, Nonce, ResponderPubKey),
-    Version = case aec_hard_forks:protocol_effective_at_height(Height) of
-                  Vsn when Vsn >= ?FORTUNA_PROTOCOL_VSN -> ?CHANNEL_VSN_2;
-                  Vsn when Vsn <  ?FORTUNA_PROTOCOL_VSN -> ?CHANNEL_VSN_1
-              end,
+    Version =
+        case Protocol of
+            P when P >= ?FORTUNA_PROTOCOL_VSN -> ?CHANNEL_VSN_2;
+            P when P <  ?FORTUNA_PROTOCOL_VSN -> ?CHANNEL_VSN_1
+        end,
     #channel{id                   = aeser_id:create(channel, PubKey),
              initiator_id         = aeser_id:create(account, InitiatorPubKey),
              responder_id         = aeser_id:create(account, ResponderPubKey),
