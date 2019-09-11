@@ -45,6 +45,7 @@
         , del_ga_auth_id/2
         , del_ga_nonce/2
         , set_beneficiary/2
+        , set_consensus_version/2
         , set_context/2
         , set_dry_run/2
         , set_ga_tx_hash/2
@@ -179,6 +180,9 @@ set_beneficiary(Env, X) -> Env#env{beneficiary = X}.
 
 -spec consensus_version(env()) -> non_neg_integer().
 consensus_version(#env{consensus_version = X}) -> X.
+
+-spec set_consensus_version(env(), aec_hard_forks:protocol_vsn()) -> env().
+set_consensus_version(Env, X) -> Env#env{consensus_version = X}.
 
 %%------
 
