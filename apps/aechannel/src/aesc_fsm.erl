@@ -1535,7 +1535,6 @@ new_onchain_tx(channel_withdraw_tx, #{acct := ToId,
                #data{on_chain_id = ChanId, state=State} = D,
                BlockHash, OnChainEnv, OnChainTrees) ->
     Updates = [aesc_offchain_update:op_withdraw(aeser_id:create(account, ToId), Amount)],
-    {BlockHash, OnChainEnv, OnChainTrees} = pick_onchain_env(Opts, D),
     ActiveProtocol = aetx_env:consensus_version(OnChainEnv),
     UpdatedStateTx = aesc_offchain_state:make_update_tx(Updates, State,
                                                         ChanId,
@@ -1777,7 +1776,7 @@ snapshot_solo_tx_for_signing(D) ->
 tx_defaults(Type, Opts, #data{ on_chain_id = ChanId } = D) ->
     Default = tx_defaults_(Type, Opts, D),
     Default#{ channel_id => ChanId
-            , nonce => default_nonce(Opts, D) }.
+            , nonce => default_nonce(Opts) }.
 
 tx_defaults_(channel_create_tx, _Opts, _D) ->
     #{};
@@ -1797,11 +1796,13 @@ tx_defaults_(channel_settle_tx = Tx, Opts, D) ->
 tx_defaults_(channel_close_mutual_tx, _Opts, _D) ->
     #{fee => default_fee(channel_close_mutual_tx)}.
 
-default_nonce(Opts, #data{opts = DOpts}) ->
-    try maps:get(nonce, Opts, maps:get(nonce, DOpts))
-    ?CATCH_LOG(_E)
-        Pubkey = maps:get(acct, Opts),
-        get_nonce(Pubkey)
+default_nonce(Opts) ->
+    case maps:find(nonce, Opts) of
+        {ok, Nonce} ->
+            Nonce;
+        error ->
+            Pubkey = maps:get(acct, Opts),
+            get_nonce(Pubkey)
     end.
 
 get_nonce(Pubkey) ->
