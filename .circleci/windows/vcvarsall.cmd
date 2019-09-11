@@ -21,14 +21,14 @@
 @FOR /F "tokens=* USEBACKQ delims=" %%F IN (`where /r "%ProgramFiles(x86)%\Microsoft Visual Studio" vcvarsall`) DO SET "VCVARSALL=%%F"
 :VCVARSALLFOUND
 
-call "%VCVARSALL%" %PLATFORM%
+call "%VCVARSALL%" %PLATFORM% || exit /b %ERRORLEVEL%
 
 :DONE
 @call:log Persist these env vars to speed up
 @echo SET MSVC_VERSION=%MSVC_VERSION%
 @echo SET VCVARSALL=%VCVARSALL%
 
-exit /b 0
+@exit /b 0
 
 :log :: Display a log message
 @echo :: [1;33m %time% : %* [0m>con && exit /b

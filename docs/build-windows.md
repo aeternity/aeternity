@@ -123,61 +123,56 @@ SET OTP_VERSION=20.3
 SET ERTS_VERSION=9.3
 ```
 
-### [Java Development Kit 11][jdk] (optional)
+### [Java Development Kit 11+][jdk] (not required)
 
-If you don't want to install JDK manually, the preparation script will do
-it automatically for you.
-
-You can configure java version and download url via env vars (set these before running the preparation script):
-```
-JDK_URL=https://download.java.net/java/GA/jdk11/9/GPL/openjdk-11.0.2_windows-x64_bin.zip
-JAVA_VERSIOIN=11.0.2
-WIN_JDK_BASEPATH=C:\Program Files\Java
-```
-
-If you download and install it manually, make sure you note the installation folder and JDK version
+JDK in no longer essential for building Aeternity and will not be installed by the preparation script.
 
 ## Setup
 
 Now the [MSYS2][msys2] environment needs to be prepared. This can be done 
-automatically by the helper script `scripts/windows/msys2_prepare.bat`.
-
-The helper scripts will try to detect where `msys2.exe` is installed
- if it is available in PATH and `WIN_MSYS2_ROOT` is unset.
+automatically by the helper script `scripts/windows/msys2_prepare`.
+It will set the environment variables and download any missing essential tools.
 
 This script uses the following environment variables and default values:
 
 ```
-WIN_MSYS2_ROOT=C:\tools\msys64
-WIN_OTP_PATH=C:\tools\erl20.3
-ERTS_VERSION=9.3
-OTP_VERSION=20.3
-PLATFORM=x64
-JDK_URL=https://download.java.net/java/GA/jdk11/9/GPL/openjdk-11.0.2_windows-x64_bin.zip
-WIN_JDK_BASEPATH=C:\Program Files\Java
-WIN_JDK_PATH=C:\Program Files\Java\jdk-11.0.2
-JAVA_VERSION=11.0.2
+SET "WIN_MSYS2_ROOT=C:\tools\msys64"
+SET "WIN_OTP_PATH=C:\tools\erl21.3"
+SET ERTS_VERSION=10.3
+SET OTP_VERSION=21.3
 ```
+*Note: Odd quoting is used to escape any spaces in the values. 
+Make sure paths do not include quotes and trailing slashes.*
 
 If your local setup differs, you need to set the proper values yourself before running the preparation script.
-e.g.:
-```
-SET "WIN_MSYS2_ROOT=C:\tools\msys64"
-SET "WIN_OTP_PATH=C:\Program Files\erl9.3"
-SET "WIN_JDK_BASEPATH=C:\Program Files\Java"
-SET JAVA_VERSION=11.0.2
-```
-*Note: Odd quoting is not a typo, it is used to escape any spaces in the values*
 
-It is recommend to persist these vars into the user environment, so you don't need to set it every time:
+It is recommend to persist these vars into the user registry, so you don't need to set it every session, e.g.:
 ```
 SETX WIN_MSYS2_ROOT C:\tools\msys64
 SETX WIN_OTP_PATH C:\Program Files\erl9.3
-SETX WIN_JDK_BASEPATH C:\Program Files\Java
-SETX JAVA_VERSIOIN 11.0.2
 ```
+
 *Note: In contrast of SET, do not put quotes in SETX commands, as they will end up in the values*
 
+### First time installation
+
+The helper scripts will try to detect where `msys2.exe` is installed searching `WIN_MSYS2_ROOT`
+or the system paths (`%PATH%`). If the detection fails, `install_msys2` script will be used to install it.
+
+Similarly, if Erlang/OTP is missing it will be installed using `install_erlang` script.
+
+After that script will download, install and update the Msys2 dependencies and tools.
+Any consecutive runs will check for new updates.
+
+### Additional environment config (optional)
+
+Msys2 specific paths can be specified in `MSYS_INCLUDE_PATH` which are in POSIX(Unix-style) form, separated by ":".
+
+For instance, to add Java in msys2 you have to set the path to its `bin` directory (the one that includes `java.exe`)
+
+```
+SET "MSYS_INCLUDE_PATH=/c/Program Files/OpenJDK/jdk-12.0.2/bin:%MSYS_INCLUDE_PATH%"
+```
 
 You can execute the script directly in a `cmd` window.
 
@@ -191,10 +186,10 @@ That script uses the following environment variables (defaults):
 
 ```
 WIN_MSYS2_ROOT=C:\tools\msys64
-WIN_OTP_PATH=C:\tools\erl9.3
+WIN_OTP_PATH=C:\tools\erl21.3
 PLATFORM=x64
-ERTS_VERSION=9.3
-JAVA_VERSION=11.0.2
+ERTS_VERSION=10.3
+OTP_VERSION=21.3
 ```
 
 In the opened shell (MinGW64) go into your build directory and build the system like on
@@ -207,7 +202,7 @@ make
 
 NOTE: Disk drives are mounted in the root folder (i.e. `C:` is `/c`)
 
-Note: For a release package build you can use `.circleci\windows\build.bat` which will build and produce ready-to-install packages
+Note: For a release package build you can use `.circleci\windows\build.cmd` which will build and produce ready-to-install packages
 
 Refer to `docs/build.md` for more information on how to build.
 

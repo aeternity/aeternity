@@ -6,7 +6,6 @@
 @rem    WIN_MSYS2_ROOT
 @rem    WIN_OTP_PATH
 @rem    ERTS_VERSION
-@rem    JAVA_VERSION
 
 SETLOCAL ENABLEEXTENSIONS
 
@@ -16,7 +15,6 @@ SETLOCAL ENABLEEXTENSIONS
 IF "%PLATFORM%"=="" SET "PLATFORM=x64"
 IF "%WIN_MSYS2_ROOT%"=="" FOR /F %%F IN ('where msys2') DO SET "WIN_MSYS2_ROOT=%%~dpF"
 IF "%ERTS_VERSION%"=="" SET "ERTS_VERSION=9.3"
-IF "%JAVA_VERSION%"=="" SET "JAVA_VERSION=11.0.2"
 :: Use 'defterm' to avoid opening separate shell window
 IF "%MSYSCON%"=="" SET "MSYSCON=defterm"
 
@@ -44,15 +42,11 @@ SET "_PATHS=%WIN_OTP_PATH%\bin;%WIN_OTP_PATH%\erts-%ERTS_VERSION%\bin;%WIN_OTP_P
 path | findstr "%_PATHS%">nul || SET "PATH=%_PATHS%;%PATH%"
 SET "_PATHS="
 
-echo :: You can set these vars to skip autodetection and speed up bootstrap
+echo :: You can set these vars to skip auto-detection and speed up bootstrap
 echo SET "WIN_MSYS2_ROOT=%WIN_MSYS2_ROOT%"
 echo SET "VCVARSALL=%VCVARSALL%"
 echo SET MSVC_VERSION=%MSVC_VERSION%
 echo SET WIN_OTP_PATH=%WIN_OTP_PATH%
-echo SET ERTS_VERSION=%ERTS_VERSION%
-echo SET JAVA_VERSION=%JAVA_VERSION%
-echo SET PLATFORM=%PLATFORM%
-echo SET MSYSCON=%MSYSCON%
 
 :: Open shell
 

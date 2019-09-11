@@ -7,7 +7,7 @@
 ::      MSYS2_URL
 :: Usage: install_msys2 /? | [<install_path>]
 
-SETLOCAL ENABLEEXTENSIONS
+SETLOCAL
 @IF "%~1"=="-v" shift /1 & echo on & echo
 
 IF NOT "%~1"=="/?" IF NOT "%~1"=="--help" GOTO:START
@@ -24,7 +24,7 @@ IF NOT "%~1"=="" SET "WIN_MSYS2_ROOT=%~1"
 IF "%WIN_MSYS2_ROOT%"=="" SET "WIN_MSYS2_ROOT=C:\tools\msys64"
 IF "%MSYS2_URL%"=="" SET "MSYS2_URL=https://netcologne.dl.sourceforge.net/project/msys2/Base/x86_64/msys2-base-x86_64-20190524.tar.xz"
 
-IF EXIST "%WIN_MSYS2_ROOT%\mingw64" @call:log Already installed. && GOTO :MSYS2_INSTALLED
+IF EXIST "%WIN_MSYS2_ROOT%\msys2.exe" @call:log Already installed. && GOTO :MSYS2_INSTALLED
 @call:log Target directory %WIN_MSYS2_ROOT%
 
 IF EXIST "%WIN_MSYS2_ROOT%" rd /s/q "%WIN_MSYS2_ROOT%"

@@ -2,16 +2,12 @@
 :: Pass -v as an argument to enable echo
 @rem Script to prepare msys2 environment for builds.
 @rem Required vars:
-@rem    ERTS_VERSION
-@rem    FORCE_STYRENE_REINSTALL
-@rem    JDK_URL
-@rem    OTP_VERSION
-@rem    PLATFORM
-@rem    WIN_JDK_BASEPATH
-@rem    JAVA_VERSION
-@rem    WIN_JDK_PATH
 @rem    WIN_MSYS2_ROOT
 @rem    WIN_OTP_PATH
+@rem Optional vars:
+@rem    OTP_VERSION
+@rem    ERTS_VERSION
+@rem    FORCE_STYRENE_REINSTALL
 @rem Set VCVARSALL to the proper location of vcvarsall.bat to skip autodetection
 @rem Set MSVC_VERSION to the proper value to skip autodetection
 
@@ -22,19 +18,14 @@
 :: Auto-detect OTP_VERSION from the installation in WIN_OTP_PATH
 IF "%OTP_VERSION%"=="" IF NOT "%WIN_OTP_PATH%"=="" call:get_otp_version OTP_VERSION ERTS_VERSION
 :: default if autodetect failed
-IF "%ERTS_VERSION%"=="" SET "ERTS_VERSION=9.3"
-IF "%OTP_VERSION%"=="" SET "OTP_VERSION=20.3"
+IF "%ERTS_VERSION%"=="" SET "ERTS_VERSION=10.3"
+IF "%OTP_VERSION%"=="" SET "OTP_VERSION=21.3"
 IF "%WIN_OTP_PATH%"=="" SET "WIN_OTP_PATH=C:\tools\erl%OTP_VERSION%"
 IF "%PLATFORM%"=="" SET "PLATFORM=x64"
 IF "%WIN_MSYS2_ROOT%"=="" FOR /F %%F IN ('where msys2') DO SET "WIN_MSYS2_ROOT=%%~dpF"
 :: default if autodetect failed
 IF "%WIN_MSYS2_ROOT%"=="" SET "WIN_MSYS2_ROOT=C:\tools\msys64"
 
-IF "%FORCE_STYRENE_REINSTALL%"=="" SET "FORCE_STYRENE_REINSTALL=false"
-IF "%JDK_URL%"=="" SET "JDK_URL=https://download.java.net/java/GA/jdk11/9/GPL/openjdk-11.0.2_windows-x64_bin.zip"
-IF "%WIN_JDK_BASEPATH%"=="" SET "WIN_JDK_BASEPATH=%ProgramFiles%\Java"
-IF "%JAVA_VERSION%"=="" SET "JAVA_VERSION=11.0.2"
-IF "%WIN_JDK_PATH%"=="" SET "WIN_JDK_PATH=%WIN_JDK_BASEPATH%\jdk-%JAVA_VERSION%"
 IF "%ERLANG_HOME%"=="" SET "ERLANG_HOME=%WIN_OTP_PATH%"
 
 :: Setup MSVC env
@@ -46,26 +37,20 @@ IF NOT "%ERRORLEVEL%"=="0" exit /b %ERRORLEVEL%
 @echo SET MSVC_VERSION=%MSVC_VERSION%
 
 @call:log Find and execute the VS env preparation script for %PLATFORM%
-call:VCVARSALL
-IF NOT "%ERRORLEVEL%"=="0" exit /b %ERRORLEVEL%
+call:VCVARSALL || exit /b %ERRORLEVEL%
 
 :: Set the paths appropriately avoiding duplicates
 SET "_PATHS=%WIN_MSYS2_ROOT%\mingw64\bin;%WIN_MSYS2_ROOT%\usr\bin;%WIN_MSYS2_ROOT%"
 path | findstr "%_PATHS%">nul || SET "PATH=%_PATHS%;%PATH%"
 
 @call:log Ensure Msys2 is installed in %WIN_MSYS2_ROOT%
-call %~dp0install_msys2 %VFLAG% %WIN_MSYS2_ROOT%
-IF NOT "%ERRORLEVEL%"=="0" exit /b %ERRORLEVEL%
+call %~dp0install_msys2 %VFLAG% %WIN_MSYS2_ROOT% || exit /b %ERRORLEVEL%
 
 @call:log Prepare Msys2 env
 call:PREPARE_MSYS2
 
 @call:log Ensure Erlang/OTP %OTP_VERSION% is installed in %WIN_OTP_PATH%
 call:INSTALL_OTP
-
-@call:log Ensure JDK is installed in %WIN_JDK_PATH%
-call:INSTALL_JDK
-IF NOT "%ERRORLEVEL%"=="0" exit /b %ERRORLEVEL%
 
 @call:log Set the paths appropriately
 :: Set the paths appropriately avoiding duplicates
@@ -91,17 +76,6 @@ call %~dp0install_erlang %VFLAG% %OTP_VERSION% "%WIN_OTP_PATH%"
 ENDLOCAL
 :: Update version vars
 call:get_otp_version OTP_VERSION ERTS_VERSION
-exit /b %ERRORLEVEL%
-
-:INSTALL_JDK
-IF EXIST "%WIN_JDK_PATH%\bin\" @call:log Ok. && exit /b 0
-SETLOCAL
-SET "JDK_PACKAGE=jdk_package.zip"
-@call:log Download from %JDK_URL%
-PowerShell -Command "(New-Object System.Net.WebClient).DownloadFile(\"%JDK_URL%\", \"%TMP%\%JDK_PACKAGE%\")"
-@call:log Install to %WIN_JDK_PATH%
-PowerShell -Command "Expand-Archive -LiteralPath \"%TMP%\%JDK_PACKAGE%\" -DestinationPath \"%WIN_JDK_BASEPATH%\""
-ENDLOCAL
 exit /b %ERRORLEVEL%
 
 :MSVC_VERSION
@@ -168,11 +142,11 @@ SET BASH="%WIN_MSYS2_ROOT%\usr\bin\bash.exe"
 
 @call:log Remove 32-bit tools
 
-%BASH% -lc "pacman -Qdt | grep i686 | awk '{ print $1; }' | xargs pacman --noconfirm -Rsc || true"
+%BASH% -lc "pacman -Qdt > /dev/null | grep i686 | awk '{ print $1; }' | xargs pacman --noconfirm -Rsc || true"
 
 @call:log Remove breaking tools
 
-%BASH% -lc "pacman --noconfirm -Rsc %PACMAN_PACKAGES_REMOVE% || true"
+%BASH% -lc "pacman --noconfirm -Rsc %PACMAN_PACKAGES_REMOVE% > /dev/null || true"
 
 @call:log Install required tools
 %BASH% -lc "pacman --noconfirm --needed -S %PACMAN_PACKAGES% %PACMAN_PYTHON_PACKAGES%"
@@ -207,7 +181,7 @@ SET _OTP_VERSION=
 SET _SYSTEM_VSN=
 SET _VSN=
 SET _OTP_RELEASE_FILE=
-exit /b %ERRORLEVEL%
+exit /b
 
 :log :: Display a log message
 @echo :: [1;33m %time% : %* [0m>con && exit /b

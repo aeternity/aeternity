@@ -412,13 +412,10 @@ references:
     OTP_VERSION: << parameters.otp_version >>
     WIN_OTP_PATH: << parameters.otp_install_path >>
     WIN_MSYS2_ROOT: << parameters.msys_install_path >>
-    JAVA_VERSION: 12.0.2
-    WIN_JDK_BASEPATH: C:\Program Files\OpenJDK
-    JAVA_TOP: /c/Program Files/OpenJDK/jdk-12.0.2
     MSYSCON: defterm
     ANSICON: true
     MSVC_VERSION: 14.22.27905
-    VCVARSALL: C:\Program Files (x86)\Microsoft Visual Studio\2019\Community\VC\Auxiliary\Build\vcvarsall.bat
+    VCVARSALL: C:\Program Files (x86)\Microsoft Visual Studio\2019\Community\VC\Auxiliary\Build\vcvarsall
 
   windows_container: &windows_container
     executor:
@@ -432,7 +429,7 @@ references:
         default: C:\tools\erl
         type: string
       otp_version:
-        default: "20.1"
+        default: "21.3"
         type: string
     working_directory: *windows_working_directory
     environment: *windows_env
@@ -505,7 +502,7 @@ commands:
       - restore_windows_package_cache
       - run:
           name: Install MSYS2
-          command: .circleci\windows\msys2_prepare.bat
+          command: .circleci\windows\msys2_prepare
       - save_windows_package_cache:
           install_path: << parameters.install_path >>
 
@@ -1096,16 +1093,17 @@ jobs:
   windows_package:
     <<: *windows_container
     steps:
+      - run: systeminfo
       - windows_install_deps:
           otp_install_path: << parameters.otp_install_path >>
           otp_version: << parameters.otp_version >>
           msys_install_path: << parameters.msys_install_path >>
       - run:
-          name: Build
-          command: .circleci\windows\build.bat
+          name: Build packages
+          command: .circleci\windows\build
       - run:
           name: Smoke test
-          command: .circleci\windows\test.bat
+          command: .circleci\windows\test
       - store_artifacts:
           path: *windows_artifacts
           destination: /tmp/packages-<< parameters.otp_version >>
@@ -1118,7 +1116,7 @@ workflows:
   build_test_deploy:
     jobs:
       - windows_package:
-          otp_version: "20.3"
+          otp_version: "21.3"
           context: ae-node-builds
           filters:
             branches:

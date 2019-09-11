@@ -7,11 +7,11 @@
 @rem    TEST_STEPS
 @rem    PROJECT_ROOT
 
-SETLOCAL ENABLEEXTENSIONS
+SETLOCAL
 @call:log Set the paths appropriately
 
 :: Run Env preparation script in verbose mode (echo on)
-call "%~dp0..\..\scripts\windows\msys2_prepare.bat" -v
+call "%~dp0..\..\scripts\windows\msys2_prepare" -v
 
 :: Construct unix paths
 FOR /f %%i IN ('cygpath -a %~dp0..\..') DO SET "PROJECT_ROOT=%%i"
@@ -28,7 +28,7 @@ SET BASH="%WIN_MSYS2_ROOT%\usr\bin\bash.exe"
 
 %BASH% -lc "cd ${PROJECT_ROOT} && make REVISION"
 
-SET /p PACKAGE_VERSION=<%~dp0..\..\REVISION
+SET /p PACKAGE_VERSION= 0<"%~dp0..\..\REVISION"
 
 :: Set required vars defaults
 
@@ -38,11 +38,11 @@ IF "%TEST_STEPS%"=="" SET "TEST_STEPS=release"
 
 @for /f "tokens=1* delims=, " %%i in ("%TEST_STEPS%") do @(
     @call:log Run test %%i
-	call :TEST_%%i
+	call :TEST_%%i || exit /b %ERRORLEVEL%
 )
 
 @call:log Finished test phase
-exit /b %ERRORLEVEL%
+exit /b 0
 
 :: Subroutines
 :TEST_ct

@@ -10,7 +10,7 @@
 ::      OTP_URL
 :: Usage: install_erlang [/?] | <otp_version> [<install_path>]
 
-SETLOCAL ENABLEEXTENSIONS
+SETLOCAL
 @IF "%~1"=="-v" shift /1 & echo on & echo
 
 IF NOT "%~1"=="/?" IF NOT "%~1"=="--help" IF NOT "%~1"=="" GOTO:START
@@ -78,5 +78,6 @@ SET _SYSTEM_VSN=
 SET _VSN=
 SET _OTP_RELEASE_FILE=
 exit /b
+
 :log :: Display a log message
 @echo :: [1;33m %time% : %* [0m>con && exit /b
