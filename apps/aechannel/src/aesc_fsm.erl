@@ -1851,6 +1851,10 @@ curr_height() ->
     {_, Height} = curr_hash_and_height(),
     Height.
 
+curr_protocol() ->
+    TopHeader = aec_chain:top_header(),
+    aec_headers:version(TopHeader).
+
 -spec protocol_at_height(aec_blocks:height()) -> aec_hard_forks:protocol_vsn().
 protocol_at_height(Height) ->
     {ok, Header} = aec_chain:get_key_header_by_height(Height),
@@ -2870,8 +2874,8 @@ has_my_signature(Me, SignedTx) ->
                 _Other -> has_my_signature(Me, aega_meta_tx:tx(Tx)) %% go deeper
             end;
         {_NotGA, _} -> %% innermost transaction
-            CurrHeight = curr_height(),
-            ok =:= aetx_sign:verify_one_pubkey(Me, SignedTx, CurrHeight)
+            Protocol = curr_protocol(),
+            ok =:= aetx_sign:verify_one_pubkey(Me, SignedTx, Protocol)
     end.
 
 

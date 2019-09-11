@@ -623,8 +623,8 @@ verify_signatures(SignedTx, Trees, Env, CheckedSigners,
         {_, _} -> % most inner tx
             {ok, Signers} = aetx:signers(Tx, Trees),
             BasicSigners  = Signers -- CheckedSigners,
-            Height        = aetx_env:height(Env),
-            aetx_sign:verify_half_signed(BasicSigners, SignedTx, Height)
+            Protocol      = aetx_env:consensus_version(Env),
+            aetx_sign:verify_half_signed(BasicSigners, SignedTx, Protocol)
     end.
 
 -spec is_delegate(aesc_channels:id(), aec_keys:pubkey(),

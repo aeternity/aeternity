@@ -13,7 +13,7 @@
 %% want to depend upon transaction types in this module, the user of
 %% {@module} should first obtain the signers of the transaction and then call this
 %% {@link sign/2} with these signers. There is a {@link sign/3} function that can sign
-%% with respect to a certain block height. This is handy whenever the governance
+%% with respect to a certain protocol version. This is handy whenever the governance
 %% variables on what crypto to use would change.
 -module(aetx_sign).
 
@@ -108,64 +108,63 @@ signatures(#signed_tx{signatures = Sigs}) ->
 -spec verify_w_env(signed_tx(), aec_trees:trees(), aetx_env:env()) ->
     ok | {error, signature_verification_failed}.
 verify_w_env(#signed_tx{tx = Tx, signatures = Sigs}, Trees, TxEnv) ->
-    Bin    = aetx:serialize_to_binary(Tx),
-    Height = aetx_env:height(TxEnv),
+    Bin      = aetx:serialize_to_binary(Tx),
+    Protocol = aetx_env:consensus_version(TxEnv),
     case aetx:signers(Tx, Trees) of
         {ok, Signers} ->
             RemainingSigners = Signers -- aetx_env:ga_auth_ids(TxEnv),
-            verify_signatures(RemainingSigners, Bin, Sigs, Height);
+            verify_signatures(RemainingSigners, Bin, Sigs, Protocol);
         {error, _Reason} ->
             {error, signature_verification_failed}
     end.
 
 %% this function is strict and does not allow having more signatures that the
 %% one being checked
--spec verify(signed_tx(), aec_trees:trees(), aec_blocks:height()) ->
+-spec verify(signed_tx(), aec_trees:trees(), aec_hard_forks:protocol_vsn()) ->
     ok | {error, signature_check_failed}.
-verify(#signed_tx{tx = Tx, signatures = Sigs}, Trees, Height) ->
+verify(#signed_tx{tx = Tx, signatures = Sigs}, Trees, Protocol) ->
     Bin = aetx:serialize_to_binary(Tx),
     case aetx:signers(Tx, Trees) of
         {ok, Signers} ->
-            verify_signatures(Signers, Bin, Sigs, Height);
+            verify_signatures(Signers, Bin, Sigs, Protocol);
         {error, _Reason} ->
             {error, signature_check_failed}
     end.
 
 
 %% this function allows having more signatures that the one being checked
--spec verify_one_pubkey(aec_keys:pubkey(), signed_tx(), aec_blocks:height()) ->
+-spec verify_one_pubkey(aec_keys:pubkey(), signed_tx(), aec_hard_forks:protocol_vsn()) ->
     ok | {error, signature_check_failed}.
-verify_one_pubkey(Signer, #signed_tx{tx = Tx, signatures = Sigs}, Height) ->
+verify_one_pubkey(Signer, #signed_tx{tx = Tx, signatures = Sigs}, Protocol) ->
     Bin = aetx:serialize_to_binary(Tx),
-    case verify_one_pubkey(Sigs, Signer, Bin, Height) of
+    case verify_one_pubkey(Sigs, Signer, Bin, Protocol) of
         {ok, _} -> ok;
         error -> {error, signature_check_failed}
     end.
 
 -spec verify_half_signed(aec_keys:pubkey() | [aec_keys:pubkey()],
-                         signed_tx(), aec_blocks:height()) ->
+                         signed_tx(), aec_hard_forks:protocol_vsn()) ->
     ok | {error, signature_check_failed}.
-verify_half_signed(Signer, SignedTx, Height) when is_binary(Signer) ->
-    verify_half_signed([Signer], SignedTx, Height);
-verify_half_signed(Signers, #signed_tx{tx = Tx, signatures = Sigs}, Height) ->
-    verify_signatures(Signers, aetx:serialize_to_binary(Tx), Sigs, Height).
+verify_half_signed(Signer, SignedTx, Protocol) when is_binary(Signer) ->
+    verify_half_signed([Signer], SignedTx, Protocol);
+verify_half_signed(Signers, #signed_tx{tx = Tx, signatures = Sigs}, Protocol) ->
+    verify_signatures(Signers, aetx:serialize_to_binary(Tx), Sigs, Protocol).
 
-verify_signatures([], _Bin, [], _Height) ->
+verify_signatures([], _Bin, [], _Protocol) ->
     ok;
-verify_signatures([PubKey|Left], Bin, Sigs, Height) ->
-    case verify_one_pubkey(Sigs, PubKey, Bin, Height) of
-        {ok, SigsLeft} -> verify_signatures(Left, Bin, SigsLeft, Height);
+verify_signatures([PubKey|Left], Bin, Sigs, Protocol) ->
+    case verify_one_pubkey(Sigs, PubKey, Bin, Protocol) of
+        {ok, SigsLeft} -> verify_signatures(Left, Bin, SigsLeft, Protocol);
         error          -> {error, signature_check_failed}
     end;
-verify_signatures(PubKeys,_Bin, Sigs, _Height) ->
+verify_signatures(PubKeys,_Bin, Sigs, _Protocol) ->
     lager:debug("Signature check failed: ~p ~p", [PubKeys, Sigs]),
     {error, signature_check_failed}.
 
-verify_one_pubkey(Sigs, PubKey, Bin, Height) when ?VALID_PUBK(PubKey) ->
-    Protocol = aec_hard_forks:protocol_effective_at_height(Height),
+verify_one_pubkey(Sigs, PubKey, Bin, Protocol) when ?VALID_PUBK(PubKey) ->
     HashSign = Protocol >= ?LIMA_PROTOCOL_VSN,
     verify_one_pubkey(Sigs, PubKey, Bin, HashSign, []);
-verify_one_pubkey(_Sigs, _PubKey, _Bin, _Height) ->
+verify_one_pubkey(_Sigs, _PubKey, _Bin, _Protocol) ->
     error. %% invalid pubkey
 
 verify_one_pubkey([Sig|Left], PubKey, Bin, HashSign, Acc)  ->
