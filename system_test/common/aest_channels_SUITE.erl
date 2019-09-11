@@ -21,7 +21,7 @@
 %% Helpers
 -export([
     create_state_channel_perform_operations_leave/2,
-    reestablish_state_channel_perform_operations/3
+    reestablish_state_channel_perform_operations_close/3
 ]).
 
 -import(aest_nodes, [
@@ -273,7 +273,7 @@ create_state_channel_perform_operations_leave({INodeName, RNodeName}, Config) ->
 
     #{config => Config1, latest_state => LatestState, channel => Chan}.
 
-reestablish_state_channel_perform_operations({INodeName, RNodeName},
+reestablish_state_channel_perform_operations_close({INodeName, RNodeName},
     #{ config := Config
      , latest_state := LatestState
      , channel := Chan
@@ -286,6 +286,10 @@ reestablish_state_channel_perform_operations({INodeName, RNodeName},
     ct:log("Testing mutual close"),
     {ok, CloseTxHash, _CloseFee, _IChange, _RChange} = sc_close_mutual(Chan1, initiator),
     wait_for_value({txs_on_chain, [CloseTxHash]}, NodeNames, 5000, Config),
+    %% wait for min depth to be reached so the channels die
+    #{height := TopHeight} = aest_nodes:get_top(INodeName),
+    KeyBlocksToMine = 4 + 2, % min depth is 4
+    wait_for_value({height, TopHeight + KeyBlocksToMine}, NodeNames, 10000, Config),
     ok.
 
 %=== INTERNAL FUNCTIONS ========================================================

@@ -193,7 +193,9 @@ sc_leave_upgrade_reestablish( {{BeforeNodeNameI, BeforeNodeTypeI}, {BeforeNodeNa
     %% Try reestablishing
     start_and_wait_nodes(AfterNames, ?STARTUP_TIMEOUT, Cfg),
     timer:sleep(1000),
-    ok = aest_channels_SUITE:reestablish_state_channel_perform_operations({AfterNodeNameI, AfterNodeNameR}, ReestablishOpts, Cfg).
+    ok = aest_channels_SUITE:reestablish_state_channel_perform_operations_close({AfterNodeNameI, AfterNodeNameR}, ReestablishOpts, Cfg),
+    timer:sleep(1000),
+    ok.
 
 populate_db(NodeName, Cfg) ->
     TargetHeight = 3,
