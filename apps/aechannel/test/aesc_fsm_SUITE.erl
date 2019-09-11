@@ -93,7 +93,7 @@
 -define(BOGUS_BLOCKHASH, <<42:32/unit:8>>).
 
 -define(LOG(E), ct:log("LINE ~p <== ~p", [?LINE, E])).
--define(LOG(Fmt, Args), log(Fmt, Args)).
+-define(LOG(Fmt, Args), log(?LINE, Fmt, Args)).
 -define(LOG(Debug, Fmt, Args), log(Debug, ?LINE, Fmt, Args)).
 
 -define(PEEK_MSGQ, peek_message_queue(?LINE, Debug)).
@@ -368,7 +368,7 @@ init_per_group_(Config) ->
         false ->
             aecore_suite_utils:start_node(dev1, Config),
             aecore_suite_utils:connect(aecore_suite_utils:node_name(dev1), [block_pow, sc_cache_kdf]),
-            log("dev1 connected", []),
+            ?LOG("dev1 connected", []),
             try begin
                     Initiator = prep_initiator(dev1),
                     Responder = prep_responder(Initiator, dev1),
@@ -1173,7 +1173,7 @@ close_solo_tx(#{ fsm        := Fsm
 
 leave_reestablish(Cfg) ->
     %% with_trace(fun t_leave_reestablish_/1, Cfg, "leave_reestablish").
-    t_leave_reestablish_(Cfg).
+    t_leave_reestablish_([{debug,true}|Cfg]).
 
 leave_reestablish_responder_stays(Cfg) ->
     with_trace(
@@ -1188,12 +1188,16 @@ t_leave_reestablish_(Cfg) ->
 
 leave_reestablish_(Cfg) ->
     Debug = get_debug(Cfg),
-    {I0, R0, Spec0} = channel_spec(Cfg),
+    {I0, R0, Spec0} = InitialSpec = channel_spec(Cfg),
+    ?LOG(Debug, "Initial spec = ~p", [InitialSpec]),
     #{ i := #{} = I
      , r := #{} = R
      , spec := #{ initiator := _PubI
                 , responder := _PubR }} = CSpec =
         create_channel_from_spec(I0, R0, Spec0, ?PORT, Debug, Cfg),
+    ?LOG(Debug,
+         "I = ~p~n"
+         "R = ~p", [I, R]),
     ok = verify_channel(I, R, Cfg, Debug),
     ResponderStays = responder_stays(CSpec),
     ?LOG(Debug, "I = ~p", [I]),
@@ -1201,10 +1205,14 @@ leave_reestablish_(Cfg) ->
     LeaveAndReestablish =
         fun(Idx, #{i := ILocal, r := RLocal}) ->
             ?LOG(Debug, "starting attempt ~p", [Idx]),
+            ?LOG(Debug,
+                 "ILocal = ~p~n"
+                 "RLocal = ~p", [ILocal, RLocal]),
             Cache1 = cache_status(ChId),
             [_, _] = in_ram(Cache1),
             [] = on_disk(Cache1),
             #{fsm := FsmI} = ILocal,
+            #{fsm := FsmR} = RLocal,
             {IAmt, RAmt, _, _} = check_fsm_state(FsmI),
             ok = rpc(dev1, aesc_fsm, leave, [FsmI]),
             {ok,Li} = await_leave(ILocal, ?TIMEOUT, Debug),
@@ -1218,7 +1226,7 @@ leave_reestablish_(Cfg) ->
             ?LOG(Debug, "Leave received; Lr = ~p", [Lr]),
             SignedTx = maps:get(info, Li),
             SignedTx = maps:get(info, Lr),
-            receive_dying_declaration(ILocal, RLocal, CSpec, Debug),
+            receive_dying_declaration(FsmI, FsmR, CSpec, Debug),
             %% {ok,_} = receive_from_fsm(info, ILocal, fun died_normal/1, ?TIMEOUT, Debug),
             %% if ResponderStays ->
             %%         {ok,_} = receive_from_fsm(info, RLocal, peer_disconnected, ?TIMEOUT, Debug),
@@ -1231,8 +1239,14 @@ leave_reestablish_(Cfg) ->
             retry(3, 100,
                   fun() ->
                           Cache2 = cache_status(ChId),
-                          [] = in_ram(Cache2),
-                          [_, _] = on_disk(Cache2)
+                          ?LOG(Debug, "Cache2 = ~p", [Cache2]),
+                          if ResponderStays ->
+                                  [_] = in_ram(Cache2),
+                                  [_] = on_disk(Cache2);
+                             true ->
+                                  [] = in_ram(Cache2),
+                                  [_, _] = on_disk(Cache2)
+                          end
                   end),
             %%
             %% reestablish
@@ -1530,11 +1544,12 @@ check_incorrect_update(Cfg) ->
 
 receive_dying_declaration(Fsm, OtherFsm, CSpec, Debug) ->
     #{r := #{fsm := FsmR}} = CSpec,
-    TRefI = erlang:send_after(?TIMEOUT, self(), {dying_declaration_i, ?LINE}),
-    TRefR = erlang:send_after(?TIMEOUT, self(), {dying_declaration_r, ?LINE}),
+    TRefI = erlang:start_timer(?TIMEOUT, self(), {dying_declaration_i, ?LINE}),
+    TRefR = erlang:start_timer(?TIMEOUT, self(), {dying_declaration_r, ?LINE}),
     receive_dying_(Fsm, TRefI, Debug),
     case {OtherFsm =:= FsmR, responder_stays(CSpec)} of
         {true, true} ->
+            ?LOG(Debug, "OtherFsm (~p) is responder, and is expected to remain", [OtherFsm]),
             receive
                 {aesc_fsm, OtherFsm, #{ tag  := info
                                       , type := report
@@ -1545,6 +1560,7 @@ receive_dying_declaration(Fsm, OtherFsm, CSpec, Debug) ->
                     error({timeout, Msg})
             end;
         _ ->
+            ?LOG(Debug, "OtherFsm (~p) is expected to die", [OtherFsm]),
             receive_dying_(OtherFsm, TRefR, Debug)
     end.
 
@@ -1555,6 +1571,7 @@ receive_dying_(_, TRef, true, true, _) ->
     erlang:cancel_timer(TRef),
     ok;
 receive_dying_(Fsm, TRef, Died, Log, Debug) ->
+    ?LOG(Debug, "receive_dying_(~p, ~p, ~p, ~p, _)", [Fsm, TRef, Died, Log]),
     receive
         {aesc_fsm, Fsm, #{info := {died, _}} = Msg} ->
             ?LOG(Debug, "from ~p: ~p", [Fsm, Msg]),
@@ -1562,8 +1579,12 @@ receive_dying_(Fsm, TRef, Died, Log, Debug) ->
         {aesc_fsm, Fsm, #{info := {log, _}} = Msg} ->
             ?LOG(Debug, "from ~p: ~p", [Fsm, Msg]),
             receive_dying_(Fsm, TRef, Died, true, Debug);
-        {timeout, TRef, Msg} ->
-            error({timeout, Msg})
+        {timeout, TRef, TOMsg} ->
+            ?LOG(Debug, "timeout (~p). Q = ~p", [TOMsg, element(2,process_info(self(),messages))]),
+            error({timeout, TOMsg})
+    after ?TIMEOUT + 1000 ->
+            ?LOG(Debug, "OUTER timeout. Q = ~p", [element(2,process_info(self(),messages))]),
+            error(outer_timeout)
     end.
 
 check_incorrect_mutual_close(Cfg) ->
@@ -2383,7 +2404,8 @@ create_channel_from_spec(I, R, Spec, Port, UseAny, Debug, Cfg) ->
     %% round_too_high.check_incorrect_* and round_too_low.check_incorrect_* tests
     %% For now just wrap this operation in a retry loop and come back to it later
     ?LOG("=== Create channel~n"
-         "Msg Q: ~p", [element(2, process_info(self(), messages))]),
+         "Spec = ~p"
+         "Msg Q: ~p", [Spec, element(2, process_info(self(), messages))]),
     RSpec = customize_spec(responder, Spec, Cfg),
     ISpec = customize_spec(initiator, Spec, Cfg),
     {FsmI, FsmR, I1, R1} = retry(?CHANNEL_CREATION_RETRIES, 100,
@@ -2439,7 +2461,7 @@ create_channel_from_spec(I, R, Spec, Port, UseAny, Debug, Cfg) ->
     %%
     I4 = await_update_report(I3, ?TIMEOUT, Debug),
     R4 = await_update_report(R3, ?TIMEOUT, Debug),
-    log(Debug, "=== Update reports received ===", []),
+    ?LOG(Debug, "=== Update reports received ===", []),
     I5 = await_open_report(I4, ?TIMEOUT, Debug),
     R5 = await_open_report(R4, ?TIMEOUT, Debug),
     ?LOG(Debug, "=== Open reports received ===", []),
@@ -2585,12 +2607,13 @@ reestablish(I0, R0, SignedTx, Spec0, CSpec, Port, Debug) ->
     I = set_amounts(IAmt, RAmt, I0),
     R = set_amounts(IAmt, RAmt, R0),
     Spec = Spec0#{existing_channel_id => ChId, offchain_tx => SignedTx},
+    ?LOG(Debug, "Reestablish Spec = ~p", [Spec]),
     FsmR = if ResponderStays ->
                    ?LOG(Debug, "Not trying to reestablish responder", []),
                    maps:get(fsm, R);
               true ->
                    {ok, NewFsmR} = rpc(dev1, aesc_fsm, respond,
-                                       [Port, Spec]),
+                                       [Port, move_password_to_spec(R, Spec)]),
                    NewFsmR
            end,
     {ok, FsmI} = rpc(dev1, aesc_fsm, initiate,
@@ -2888,6 +2911,9 @@ receive_from_fsm_(Tag, #{role := Role, fsm := Fsm} = R, Msg, TRef, Debug, Cont) 
         {timeout, TRef, receive_from_fsm} ->
             flush(),
             error(timeout)
+    after ?TIMEOUT ->
+            ?LOG(Debug, "Outer timeout. Q = ~p", [element(2,process_info(self(), messages))]),
+            error(outer_timeout)
     end.
 
 flush() ->
@@ -3040,14 +3066,14 @@ current_height(Node) ->
         Header -> aec_headers:height(Header)
     end.
 
-log(Fmt, Args) ->
+log(L, Fmt, Args) ->
     Debug = case config() of
                 undefined ->
                     false;
                 Cfg ->
                     config(debug, Cfg, false)
             end,
-    log(Debug, Fmt, Args).
+    log(Debug, L, Fmt, Args).
 
 log(true, L, Fmt, Args) ->
     ct:log("~p [~p]: " ++ Fmt, [self(), L|Args]);
@@ -3055,10 +3081,6 @@ log(#{debug := true}, L, Fmt, Args) ->
     ct:log("~p [~p]: " ++ Fmt, [self(), L|Args]);
 log(_, _, _, _) ->
     ok.
-
-if_debug(true, X, _) -> X;
-if_debug(#{debug := true}, X, _) -> X;
-if_debug(_, _, Y) -> Y.
 
 apply_updates([], R) ->
     R;
@@ -3559,8 +3581,8 @@ positive_bh(Cfg) ->
     shutdown_(IFinal, RFinal, Cfg),
     ok.
 
-should_responder_keep_running(Cfg) ->
-    maps:get(keep_running, proplists:get_value(responder_opts, Cfg, #{}), false).
+%% should_responder_keep_running(Cfg) ->
+%%     maps:get(keep_running, proplists:get_value(responder_opts, Cfg, #{}), false).
 
 cfg_responder_keeps_running(Cfg) ->
     cfg_responder_keeps_running(true, Cfg).
