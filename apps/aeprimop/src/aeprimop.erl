@@ -156,7 +156,7 @@ evaluate(_Instructions) ->
 -endif.
 
 do_eval(Instructions, Trees, TxEnv) ->
-    S = aeprimop_state:new(Trees, aetx_env:height(TxEnv), TxEnv),
+    S = aeprimop_state:new(Trees, TxEnv),
     case int_eval(Instructions, S) of
         {ok, S1} -> {ok, S1#state.trees, S1#state.tx_env};
         {ok, _, _} -> error(illegal_return);
@@ -168,7 +168,7 @@ do_eval(Instructions, Trees, TxEnv) ->
                               {ok, return_val(), aec_trees:trees(), aetx_env:env()}
                                   | {error, atom()}.
 eval_with_return([_|_] = Instructions, Trees, TxEnv) ->
-    S = aeprimop_state:new(Trees, aetx_env:height(TxEnv), TxEnv),
+    S = aeprimop_state:new(Trees, TxEnv),
     case int_eval(Instructions, S) of
         {ok, _} -> error(illegal_no_return);
         {ok, Return, S1} -> {ok, Return, S1#state.trees, S1#state.tx_env};
@@ -547,9 +547,8 @@ spend({From, To, Amount, Mode}, #state{} = S) when is_integer(Amount), Amount >=
 %%% For Lima auctioned names, the lock fee is returned
 %%% in case of overbidding
 
-lock_namefee(Kind, From, Amount, #state{height = Height} = S) ->
+lock_namefee(Kind, From, Amount, #state{protocol = Protocol} = S) ->
     LockFee = aec_governance:name_claim_locked_fee(),
-    Protocol = aec_hard_forks:protocol_effective_at_height(Height),
     {Account, S1} = get_account(From, S),
     assert_account_balance(Account, Amount),
     S2 = account_spend(Account, Amount, S1),
@@ -748,12 +747,11 @@ name_claim({AccountPubkey, PlainName, NameSalt, NameFee, PreclaimDelta}, S) ->
     NameHash = aens_hash:name_hash(NameAscii),
     AuctionHash = aens_hash:to_auction_hash(NameHash),
     %% Cannot compute CommitmentHash before we know whether in auction
-    Protocol = aec_hard_forks:protocol_effective_at_height(S#state.height),
-    BidTimeout = aec_governance:name_claim_bid_timeout(NameAscii, Protocol),
+    BidTimeout = aec_governance:name_claim_bid_timeout(NameAscii, S#state.protocol),
     S0 = lock_namefee(if BidTimeout == 0 -> lock;
                         true -> spend
                      end, AccountPubkey, NameFee, S),
-    case aec_governance:name_claim_bid_timeout(NameAscii, Protocol) of
+    case aec_governance:name_claim_bid_timeout(NameAscii, S#state.protocol) of
         0 ->
             %% No auction for this name, preclaim delta suffices
             %% For clarity DeltaTTL for name computed here
@@ -770,7 +768,7 @@ name_claim({AccountPubkey, PlainName, NameSalt, NameFee, PreclaimDelta}, S) ->
             {Auction, S1} = get_name_auction(AuctionHash, name_not_in_auction, S0),
             PreviousBidderPubkey = aens_auctions:bidder_pubkey(Auction),
             PreviousBid = aens_auctions:name_fee(Auction),
-            assert_name_bid_fee(NameAscii, NameFee, S#state.height), %% just in case, consensus may have changed
+            assert_name_bid_fee(NameAscii, NameFee, S#state.protocol), %% just in case, consensus may have changed
             assert_valid_overbid(NameFee, aens_auctions:name_fee(Auction)),
             NewAuction = aens_auctions:new(AuctionHash, AccountPubkey, NameFee, Timeout, S1#state.height),
             %% Return the tokens hold in the previous bid
@@ -797,8 +795,8 @@ assert_claim_after_preclaim({AccountPubkey, Commitment, NameAscii, NameRegistrar
     %% here assert that an .aes name is pre-claimed after Lime height
     assert_not_name(NameHash, S),
     %% Testing here for backward compatibility in error reporting
-    assert_name_registrar(NameRegistrar, S#state.height),
-    assert_name_bid_fee(NameAscii, NameFee, S#state.height).  %% always ok pre Lima.
+    assert_name_registrar(NameRegistrar, S#state.protocol),
+    assert_name_bid_fee(NameAscii, NameFee, S#state.protocol).  %% always ok pre Lima.
 
 name_to_ascii(PlainName) ->
     case aens_utils:to_ascii(PlainName) of
@@ -1742,16 +1740,14 @@ assert_valid_overbid(NewNameFee, OldNameFee) ->
 
 
 
-assert_name_registrar(Registrar, Height) ->
-    ProtoVsn = aec_hard_forks:protocol_effective_at_height(Height),
-    case lists:member(Registrar, aec_governance:name_registrars(ProtoVsn)) of
+assert_name_registrar(Registrar, Protocol) ->
+    case lists:member(Registrar, aec_governance:name_registrars(Protocol)) of
         true  -> ok;
         false -> runtime_error(invalid_registrar)
     end.
 
-assert_name_bid_fee(Name, NameFee, Height) ->
-    ProtoVsn = aec_hard_forks:protocol_effective_at_height(Height),
-    case aec_governance:name_claim_fee(Name, ProtoVsn) =< NameFee of
+assert_name_bid_fee(Name, NameFee, Protocol) ->
+    case aec_governance:name_claim_fee(Name, Protocol) =< NameFee of
         true  -> ok; %% always true before Lima
         false -> runtime_error(invalid_name_fee)
     end.
@@ -1856,14 +1852,10 @@ assert_contract_create_version(ABIVersion, VMVersion, S) ->
         false -> runtime_error(illegal_vm_version)
     end.
 
-assert_ga_active(S) ->
-    Height = S#state.height,
-    case aec_hard_forks:protocol_effective_at_height(Height) of
-        P when P < ?FORTUNA_PROTOCOL_VSN ->
-            runtime_error(generalize_accounts_not_available_at_height);
-        _P ->
-            ok
-    end.
+assert_ga_active(#state{protocol = Protocol}) when Protocol < ?FORTUNA_PROTOCOL_VSN ->
+    runtime_error(generalize_accounts_not_available_at_protocol);
+assert_ga_active(_State) ->
+    ok.
 
 assert_ga_create_version(ABIVersion, VMVersion, S) ->
     CTVersion = #{abi => ABIVersion, vm => VMVersion},
