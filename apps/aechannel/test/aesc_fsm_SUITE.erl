@@ -467,7 +467,7 @@ multiple_responder_keys_per_port(Cfg) ->
              {'DOWN', MRef, _, _, _} ->
                  ok
          after 5000 ->
-                 log("timed out"),
+                 log("timed out", []),
                  ?PEEK_MSGQ(Debug),
                  error({channel_not_dying, P})
          end
@@ -1178,6 +1178,39 @@ leave_reestablish_close(Cfg) ->
 
     mine_blocks(dev1, 5),
     assert_cache_is_gone(ChId),
+
+    % Verify final messages
+    IExpectedLog = [ {evt, close}
+                   , {rcv, channel_closed}
+                   , {rcv, shutdown_ack}
+                   , {rcv, signed}
+                   , {snd, shutdown}
+                   , {req, sign}
+                   , {rcv, update_ack}
+                   , {rcv, signed}
+                   , {snd, update}
+                   , {req, sign}
+                   , {rcv, channel_reest_ack}
+                   , {snd, channel_reestablish}
+                   ],
+    RExpectedLog = [ {evt, close}
+                   , {rcv, channel_closed}
+                   , {rcv, signed}
+                   , {snd, shutdown_ack}
+                   , {req, sign}
+                   , {rcv, shutdown}
+                   , {rcv, signed}
+                   , {snd, update_ack}
+                   , {req, sign}
+                   , {rcv, update}
+                   , {snd, channel_reest_ack}
+                   , {rcv, channel_reestablish}
+                   ],
+    {ok, #{info := {log, ILog}}} = receive_log(I1, Debug),
+    {ok, #{info := {log, RLog}}} = receive_log(R1, Debug),
+    ok = check_log(IExpectedLog, ILog),
+    ok = check_log(RExpectedLog, RLog),
+
     assert_empty_msgq(Debug),
     ok.
 
@@ -1923,14 +1956,22 @@ wait_for_fsm_state(St, FsmPid, Retries, Debug) when Retries > 0 ->
 
 shutdown_(#{fsm := FsmI, channel_id := ChannelId} = I, R, Cfg) ->
     Debug = get_debug(Cfg),
+    assert_empty_msgq(Debug),
+
+    % Send shutdown
     AlreadyClosing = proplists:get_value(already_closing, Cfg, false),
     ok = rpc(dev1, aesc_fsm, shutdown, [FsmI]),
+
+    % Verify shutdown process
     {I1, _} = await_signing_request(shutdown, I, Cfg),
     {ok, _} = receive_info(R, shutdown, Debug),
     {R1, _} = await_signing_request(shutdown_ack, R, Cfg),
     SignedTx = await_on_chain_report(I1, ?TIMEOUT),
     SignedTx = await_on_chain_report(R1, ?TIMEOUT), % same tx
+
+    % Mine until tx is on chain, but not confirmed
     wait_for_signed_transaction_in_block(dev1, SignedTx),
+
     verify_close_mutual_tx(SignedTx, ChannelId),
     if AlreadyClosing ->
             ok;
@@ -1941,18 +1982,21 @@ shutdown_(#{fsm := FsmI, channel_id := ChannelId} = I, R, Cfg) ->
     end,
     SignedTx = await_on_chain_report(I1, #{info => channel_closed}, ?TIMEOUT), % same tx
     SignedTx = await_on_chain_report(R1, #{info => channel_closed}, ?TIMEOUT), % same tx
-    ct:pal("=== Mining for minimum depth, close_mutual ===", []),
-    mine_blocks(dev1, ?MINIMUM_DEPTH,
+
+    % Mine until tx is confirmed
+    mine_blocks(dev1, 2,
                 opt_add_to_debug(#{ signed_tx => SignedTx
                                   , current_height => current_height(dev1) }, Debug)),
-    ct:pal("=== Mining stopped ===", []),
-    ?PEEK_MSGQ(Debug),
-    {ok,_} = receive_info(I1, #{info => closed_confirmed}, Debug),
-    {ok,_} = receive_info(R1, #{info => closed_confirmed}, Debug),
-    ct:pal("close confirmed", []),
-    {ok,_} = receive_info(I1, #{info => {died,normal}}, Debug),
-    {ok,_} = receive_info(R1, #{info => {died,normal}}, Debug),
-    ct:pal("died normal", []),
+
+    % Final checks
+    {ok,_} = receive_info(I1, closed_confirmed, Debug),
+    {ok,_} = receive_info(R1, closed_confirmed, Debug),
+    {ok, _} = receive_info(I1, fun died_normal/1, Debug),
+    {ok, _} = receive_info(R1, fun died_normal/1, Debug),
+
+    % We don't assert that no messages are left here because we don't know the
+    % context in which the shutdown was called. This must be handled by the
+    % caller.
     ok.
 
 settle_(TTL, MinDepth, #{fsm := FsmI, channel_id := ChannelId} = I, R, Debug,
@@ -2172,6 +2216,7 @@ create_channel_from_spec(I, R, Spec, Port, UseAny, Debug, Cfg) ->
     create_channel_from_spec(I, R, Spec, Port, UseAny, Debug, Cfg, ?MINIMUM_DEPTH).
 
 create_channel_from_spec(I, R, Spec, Port, UseAny, Debug, Cfg, MinDepth) ->
+    assert_empty_msgq(Debug),
     %% TODO: Somehow there is a CI only race condition which rarely occurs in
     %% round_too_high.check_incorrect_* and round_too_low.check_incorrect_* tests
     %% For now just wrap this operation in a retry loop and come back to it later
@@ -2229,9 +2274,7 @@ create_channel_from_spec(I, R, Spec, Port, UseAny, Debug, Cfg, MinDepth) ->
     log(Debug, "=== Update reports received ===", []),
     I5 = await_open_report(I4, ?TIMEOUT, Debug),
     R5 = await_open_report(R4, ?TIMEOUT, Debug),
-    SignedTx = await_on_chain_report(I5, #{info => channel_changed}, ?TIMEOUT),
-    SignedTx = await_on_chain_report(R5, #{info => channel_changed}, ?TIMEOUT),
-    [] = check_info(0, Debug),
+    assert_empty_msgq(Debug),
     #{i => I5, r => R5, spec => Spec}.
 
 spawn_responder(Port, Spec, R, UseAny, Debug) ->
@@ -2360,10 +2403,6 @@ reestablish_wrong_password( #{channel_id := ChId, initiator_amount := IAmt, resp
                      [?PORT, move_password_to_spec(R, Spec1)]),
     {error, invalid_password} = rpc(dev1, aesc_fsm, initiate,
                      ["localhost", ?PORT, move_password_to_spec(I, Spec1)], Debug).
-
-tx_amounts(SignedTx) ->
-    {Mod, TxI} = aetx:specialize_callback(aetx_sign:innermost_tx(SignedTx)),
-    {Mod:initiator_amount(TxI), Mod:responder_amount(TxI)}.
 
 update_tx(Tx0, F, Args) ->
     {Mod, TxI} = aetx:specialize_callback(Tx0),
@@ -2527,6 +2566,7 @@ await_on_chain_report(#{fsm := Fsm}, Match, Timeout) ->
             ok = match_info(I, Match),
             SignedTx
     after Timeout ->
+            ?PEEK_MSGQ(true),
             error(timeout)
     end.
 
@@ -2538,6 +2578,7 @@ await_channel_changed_report(#{fsm := Fsm}, Timeout) ->
                                     , tx := SignedTx } }} ->
             SignedTx
     after Timeout ->
+            ?PEEK_MSGQ(true),
             error(timeout)
     end.
 
@@ -3341,8 +3382,6 @@ leave_reestablish_loop_step_(Idx, Info, Debug) ->
     {ok, _} = receive_info(R, fun died_normal/1, Debug),
     {ok, #{info := {log, ILog}}} = receive_log(I, Debug),
     {ok, #{info := {log, RLog}}} = receive_log(R, Debug),
-    log(Debug, "Received log from initiator: ~p", [ILog]),
-    log(Debug, "Received log from responder: ~p", [RLog]),
     case InitialOpen of
         true ->
             ok = check_log(IOpenExpectedLog, ILog),
@@ -3371,13 +3410,13 @@ leave_reestablish_loop_step_(Idx, Info, Debug) ->
 reestablish_(Info, SignedTx, Port, Debug) ->
     assert_empty_msgq(Debug),
     #{ i := #{ channel_id := ChId
-             , fsm := Fsm } = I0
-     , r := #{} = R0
+             , fsm := Fsm
+             , initiator_amount := IAmt
+             , responder_amount := RAmt } = I0
+     , r := #{ initiator_amount := IAmt
+             , responder_amount := RAmt } = R0
      , spec := Spec0 } = Info,
 
-    {IAmt, RAmt} = tx_amounts(SignedTx),
-    I1 = set_amounts(IAmt, RAmt, I0),
-    R1 = set_amounts(IAmt, RAmt, R0),
     Spec = Spec0#{ existing_channel_id => ChId
                  , offchain_tx => SignedTx
                  , initiator_amount => IAmt
@@ -3385,24 +3424,24 @@ reestablish_(Info, SignedTx, Port, Debug) ->
                  },
 
     % Start new FSMs
-    ISpec = move_password_to_spec(I1, Spec),
-    RSpec = move_password_to_spec(R1, Spec),
+    ISpec = move_password_to_spec(I0, Spec),
+    RSpec = move_password_to_spec(R0, Spec),
     {ok, FsmR} = rpc(dev1, aesc_fsm, respond, [Port, RSpec]),
     {ok, FsmI} = rpc(dev1, aesc_fsm, initiate, ["localhost", Port, ISpec], Debug),
-    I2 = I1#{fsm => FsmI},
-    R2 = R1#{fsm => FsmR},
+    I1 = I0#{fsm => FsmI},
+    R1 = R0#{fsm => FsmR},
 
     % Verify FSM startup completed
-    #{signed_tx := SignedTx} = I3 = await_update_report(I2, ?TIMEOUT, Debug),
-    #{signed_tx := SignedTx} = R3 = await_update_report(R2, ?TIMEOUT, Debug),
-    I4 = await_open_report(I3, ?TIMEOUT, Debug),
-    R4 = await_open_report(R3, ?TIMEOUT, Debug),
-    {ok, _} = receive_info(I4, channel_reestablished, Debug),
-    {ok, _} = receive_info(R4, channel_reestablished, Debug),
+    #{signed_tx := SignedTx} = I2 = await_update_report(I1, ?TIMEOUT, Debug),
+    #{signed_tx := SignedTx} = R2 = await_update_report(R1, ?TIMEOUT, Debug),
+    I3 = await_open_report(I2, ?TIMEOUT, Debug),
+    R3 = await_open_report(R2, ?TIMEOUT, Debug),
+    {ok, _} = receive_info(I3, channel_reestablished, Debug),
+    {ok, _} = receive_info(R3, channel_reestablished, Debug),
 
     % Done
     assert_empty_msgq(Debug),
-    Info#{i => I4, r => R4, spec => Spec}.
+    Info#{i => I3, r => R3, spec => Spec}.
 
 withdraw_full_cycle_(Amount, Opts, MinDepth, MinDepthChannel, Round, Cfg) ->
     Debug = get_debug(Cfg),
