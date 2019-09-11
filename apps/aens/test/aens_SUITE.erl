@@ -318,7 +318,7 @@ claim_locked_coins_holder_gets_locked_fee(Cfg) ->
     {ok, [SignedTx], Trees0, _} =
         aec_block_micro_candidate:apply_block_txs([SignedTx], Trees, Env),
     BidTimeout = aec_governance:name_claim_bid_timeout(Name, Protocol),
-    Trees1 = aec_trees:perform_pre_transformations(Trees0, Height + BidTimeout + 1),
+    Trees1 = aec_trees:perform_pre_transformations(Trees0, aetx_env:tx_env(Height + BidTimeout + 1)),
     {value, Account1} = aec_accounts_trees:lookup(LockedCoinsHolderPubKey, aec_trees:accounts(Trees1)),
     LockedCoinsFee    = aec_accounts:balance(Account1),
 
@@ -330,7 +330,7 @@ claim_locked_coins_holder_gets_locked_fee(Cfg) ->
     %% Apply claim tx, and verify locked coins holder got locked coins
     {ok, [SignedTx], Trees3, _} =
         aec_block_micro_candidate:apply_block_txs([SignedTx], Trees2, Env),
-    Trees4 = aec_trees:perform_pre_transformations(Trees3, Height + BidTimeout + 1),
+    Trees4 = aec_trees:perform_pre_transformations(Trees3, aetx_env:tx_env(Height + BidTimeout + 1)),
     {value, Account3} = aec_accounts_trees:lookup(LockedCoinsHolderPubKey, aec_trees:accounts(Trees4)),
     LockedCoinsFee = aec_accounts:balance(Account3) - aec_accounts:balance(Account2),
     ok.
@@ -739,7 +739,7 @@ prune_preclaim(Cfg) ->
     PubKey     = aens_commitments:owner_pubkey(C),
 
     TTL = aens_commitments:ttl(C),
-    Trees3 = aec_trees:perform_pre_transformations(Trees2, TTL+1),
+    Trees3 = aec_trees:perform_pre_transformations(Trees2, aetx_env:tx_env(TTL+1)),
     NSTree = aec_trees:ns(Trees3),
     none = aens_state_tree:lookup_commitment(CHash, NSTree),
     ok.
@@ -758,7 +758,7 @@ prune_claim(Cfg) ->
     TTL1     = aens_names:ttl(N),
 
 
-    Trees3 = aec_trees:perform_pre_transformations(Trees2, TTL1 + 1),
+    Trees3 = aec_trees:perform_pre_transformations(Trees2, aetx_env:tx_env(TTL1 + 1)),
     NTree2 = aec_trees:ns(Trees3),
     {value, N2} = aens_state_tree:lookup_name(NHash, NTree2),
     NHash    = aens_names:hash(N2),
@@ -766,7 +766,7 @@ prune_claim(Cfg) ->
     revoked  = aens_names:status(N2),
     TTL2     = aens_names:ttl(N2),
 
-    Trees4 = aec_trees:perform_pre_transformations(Trees3, TTL2+1),
+    Trees4 = aec_trees:perform_pre_transformations(Trees3, aetx_env:tx_env(TTL2+1)),
     NTree3 = aec_trees:ns(Trees4),
     none = aens_state_tree:lookup_name(NHash, NTree3),
 
@@ -789,7 +789,7 @@ prune_claim_auction(Cfg) ->
         aec_governance:name_claim_bid_timeout(aens_test_utils:fullname(?config(name, Cfg)),
                                               ?config(protocol, Cfg)),
 
-    Trees3   = aec_trees:perform_pre_transformations(Trees2, TTL1), %% latest possible bid
+    Trees3   = aec_trees:perform_pre_transformations(Trees2, aetx_env:tx_env(TTL1)), %% latest possible bid
     NTree2   = aec_trees:ns(Trees3),
     none     = aens_state_tree:lookup_name(NHash, NTree2),
     {value, A2} = aens_state_tree:lookup_name_auction(aens_hash:to_auction_hash(NHash), NTree2),
@@ -797,7 +797,7 @@ prune_claim_auction(Cfg) ->
     TTL1     = aens_auctions:ttl(A2),  %% absolute TTLs
 
 
-    Trees4   = aec_trees:perform_pre_transformations(Trees2, TTL1+1),  %% used Trees2 un purpoose
+    Trees4   = aec_trees:perform_pre_transformations(Trees2, aetx_env:tx_env(TTL1+1)),  %% used Trees2 un purpoose
     NTree3   = aec_trees:ns(Trees4),
 
     none = aens_state_tree:lookup_name_auction(aens_hash:to_auction_hash(NHash), NTree3),

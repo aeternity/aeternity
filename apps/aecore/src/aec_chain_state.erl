@@ -822,7 +822,7 @@ apply_node_transactions(Node, Trees, ForkInfo, State) ->
             Env = aetx_env:tx_env_from_key_header(Header, hash(Node),
                                                   node_time(Node), prev_hash(Node)),
 
-            Trees1 = aec_trees:perform_pre_transformations(Trees, node_height(Node), Env),
+            Trees1 = aec_trees:perform_pre_transformations(Trees, Env),
             Delay  = aec_governance:beneficiary_reward_delay(),
             case node_height(Node) > aec_block_genesis:height() + Delay of
                 true  -> {grant_fees(Node, Trees1, Delay, FraudStatus, State), TotalFees, #{}};

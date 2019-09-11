@@ -150,6 +150,7 @@ mock_genesis_and_forks(PresetAccounts) ->
     meck:expect(aec_fork_block_settings, minerva_accounts, 0, []),
     meck:expect(aec_fork_block_settings, fortuna_accounts, 0, []),
     meck:expect(aec_fork_block_settings, lima_accounts, 0, []),
+    meck:expect(aec_fork_block_settings, lima_contracts, 0, []),
     ok.
 
 unmock_genesis_and_forks() ->
@@ -376,7 +377,7 @@ create_keyblock_with_state([{PrevBlock, TreesIn} | _] = Chain, MinerAccount, Ben
     {ok, PrevBlockHash} = aec_blocks:hash_internal_representation(PrevBlock),
     Height = aec_blocks:height(PrevBlock) + 1,
     Version = aec_hard_forks:protocol_effective_at_height(Height),
-    Trees1 = aec_trees:perform_pre_transformations(TreesIn, Height),
+    Trees1 = aec_trees:perform_pre_transformations(TreesIn, aetx_env:tx_env(Height)),
     Delay = aec_governance:beneficiary_reward_delay(),
     PrevKeyHash = case aec_blocks:type(PrevBlock) of
                       micro -> aec_blocks:prev_key_hash(PrevBlock);

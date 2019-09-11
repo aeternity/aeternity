@@ -1184,7 +1184,8 @@ call(Fun, Xs) when is_function(Fun, 1 + length(Xs)) ->
     R.
 
 perform_pre_transformations(Height, S) ->
-    Trees = aec_trees:perform_pre_transformations(aect_test_utils:trees(S), Height),
+    TxEnv = aetx_env:tx_env(Height),
+    Trees = aec_trees:perform_pre_transformations(aect_test_utils:trees(S), TxEnv),
     {ok, aect_test_utils:set_trees(Trees, S)}.
 
 new_account(Balance, S) ->

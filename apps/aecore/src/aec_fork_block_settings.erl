@@ -120,14 +120,7 @@ read_preset_contracts(?LIMA_PROTOCOL_VSN = Release) ->
     case file:read_file(PresetContractsFile) of
         {ok, _} = OK -> OK;
         {error, Err} -> {error, {Err, PresetContractsFile}}
-    end;
-read_preset_contracts(Release) ->
-    {error, {no_contracts_file_for_release, release_to_string(Release)}}.
-
-release_to_string(?ROMA_PROTOCOL_VSN) -> "Roma";
-release_to_string(?MINERVA_PROTOCOL_VSN) -> "Minerva";
-release_to_string(?FORTUNA_PROTOCOL_VSN) -> "Fortuna";
-release_to_string(?LIMA_PROTOCOL_VSN) -> "Lima".
+    end.
 
 accounts_file_name(Release) ->
     filename:join([dir(Release), accounts_json_file()]).
