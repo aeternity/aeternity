@@ -397,7 +397,7 @@ encode_call_data(Code, Fun, Args) ->
 
 encode_call_data(Vsn, Code, Fun, Args) ->
     %% Lookup the res in the cache - if not present just calculate the result
-    Backend = backend(),
+    Backend = backend(Vsn),
     CallId = #encode_call_id{vsn = Vsn, code_hash = crypto:hash(md5, Code), fun_name = Fun, args = Args, backend = Backend},
     case ets:lookup(?ENCODE_CALL_TAB, CallId) of
         [#encode_call_cache_entry{result = Result}] ->
@@ -601,6 +601,9 @@ backend() ->
         ?ABI_AEVM_SOPHIA_1 -> aevm;
         ?ABI_FATE_SOPHIA_1 -> fate
     end.
+
+backend(?SOPHIA_LIMA_FATE) -> fate;
+backend(_                ) -> aevm.
 
 %% setup a global memoization cache for contracts
 setup_contract_cache() ->

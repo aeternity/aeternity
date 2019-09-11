@@ -277,6 +277,8 @@ is_key_block(N) -> node_type(N) =:= key.
 
 is_micro_block(N) -> node_type(N) =:= micro.
 
+node_header(#node{header = H}) -> H.
+
 maybe_add_genesis_hash(#{genesis_block_hash := undefined} = State, Node) ->
     case node_height(Node) =:= aec_block_genesis:height() of
         true  -> State#{genesis_block_hash => hash(Node)};
@@ -816,7 +818,11 @@ apply_node_transactions(Node, Trees, ForkInfo, State) ->
             #fork_info{fees = FeesIn, fraud = FraudStatus} = ForkInfo,
             GasFees = calculate_gas_fee(aec_trees:calls(Trees)),
             TotalFees = GasFees + FeesIn,
-            Trees1 = aec_trees:perform_pre_transformations(Trees, node_height(Node)),
+            Header = node_header(Node),
+            Env = aetx_env:tx_env_from_key_header(Header, hash(Node),
+                                                  node_time(Node), prev_hash(Node)),
+
+            Trees1 = aec_trees:perform_pre_transformations(Trees, node_height(Node), Env),
             Delay  = aec_governance:beneficiary_reward_delay(),
             case node_height(Node) > aec_block_genesis:height() + Delay of
                 true  -> {grant_fees(Node, Trees1, Delay, FraudStatus, State), TotalFees, #{}};
