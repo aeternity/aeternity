@@ -47,7 +47,6 @@
         , withdraw_low_amount_long_confirmation_time/1
         , withdraw_low_amount_long_confirmation_time_negative_test/1
         , channel_detects_close_solo/1
-        , leave_reestablish/1
         , leave_reestablish_close/1
         , change_config_get_history/1
         , multiple_channels/1
@@ -170,7 +169,6 @@ groups() ->
       , withdraw_low_amount_long_confirmation_time
       , withdraw_low_amount_long_confirmation_time_negative_test
       , channel_detects_close_solo
-      , leave_reestablish
       , leave_reestablish_close
       , check_password_is_changeable
       , change_config_get_history
@@ -1154,80 +1152,34 @@ close_solo_tx(#{ fsm        := Fsm
               , nonce      => Nonce },
     {ok, _Tx} = aesc_close_solo_tx:new(TxSpec).
 
-leave_reestablish(Cfg) ->
-    %% with_trace(fun t_leave_reestablish_/1, Cfg, "leave_reestablish").
-    t_leave_reestablish_(Cfg).
-
-t_leave_reestablish_(Cfg) ->
-    #{i := I, r := R} = leave_reestablish_([?SLOGAN|Cfg]),
-    shutdown_(I, R, Cfg),
-    ok.
-
-leave_reestablish_(Cfg) ->
-    Debug = get_debug(Cfg),
-    {I0, R0, Spec0} = channel_spec(Cfg),
-    #{ i := #{} = I
-     , r := #{} = R
-     , spec := #{ initiator := _PubI
-                , responder := _PubR }} =
-        create_channel_from_spec(I0, R0, Spec0, ?PORT, Debug, Cfg),
-    log(Debug, "I = ~p", [I]),
-    ChId = maps:get(channel_id, I),
-    LeaveAndReestablish =
-        fun(Idx, #{i := ILocal, r := RLocal}) ->
-            log(Debug, "starting attempt ~p", [Idx]),
-            Cache1 = cache_status(ChId),
-            [_, _] = in_ram(Cache1),
-            [] = on_disk(Cache1),
-            #{fsm := FsmI} = ILocal,
-            ok = rpc(dev1, aesc_fsm, leave, [FsmI]),
-            {ok,Li} = await_leave(ILocal, ?TIMEOUT, Debug),
-            {ok,Lr} = await_leave(RLocal, ?TIMEOUT, Debug),
-            SignedTx = maps:get(info, Li),
-            SignedTx = maps:get(info, Lr),
-            {ok,_} = receive_from_fsm(info, ILocal, fun died_normal/1, ?TIMEOUT, Debug),
-            {ok,_} = receive_from_fsm(info, RLocal, fun died_normal/1, ?TIMEOUT, Debug),
-            retry(3, 100,
-                  fun() ->
-                          Cache2 = cache_status(ChId),
-                          [] = in_ram(Cache2),
-                          [_, _] = on_disk(Cache2)
-                  end),
-            %%
-            %% reestablish
-            %%
-            ChId = maps:get(channel_id, RLocal),
-            mine_key_blocks(dev1, 6), % min depth at 4, so more than 4
-            log(Debug, "reestablishing ...", []),
-            Res = reestablish(ILocal, RLocal, SignedTx, Spec0, ?PORT, Debug),
-            log(Debug, "ending attempt ~p", [Idx]),
-            Res
-        end,
-    lists:foldl(LeaveAndReestablish,
-                #{i => I, r => R},
-                lists:seq(1, 10)). % 10 iterations
-
+% Test leave-reestablish flow with unclean leave, where the FSM is closed upon
+% timeout
 leave_reestablish_close(Cfg) ->
     Debug = get_debug(Cfg),
-    #{i := I, r := R, spec := Spec} = leave_reestablish_([?SLOGAN|Cfg]),
-    #{initiator := PubI, responder := PubR} = Spec,
-    {I1, R1} = do_update(PubI, PubR, 1, I, R, Debug, Cfg),
-    ChId = maps:get(channel_id, I1),
-    Cache1 = cache_status(ChId),
-    [_, _] = in_ram(Cache1),
-    [] = on_disk(Cache1),
-    shutdown_(I1, R1, Cfg),
-    retry(3, 100,
-          fun() ->
-                  Cache2 = cache_status(ChId),
-                  [] = in_ram(Cache2),
-                  [_, _] = on_disk(Cache2)
-          end),
-    mine_blocks(dev1, 5),
-    Cache3 = cache_status(ChId),
-    [] = in_ram(Cache3),
-    [] = on_disk(Cache3).
+    Cfg1 = [?SLOGAN | Cfg],
+    assert_empty_msgq(Debug),
 
+    % Do common leave-reestablish routine
+    #{i := I, r := R, spec := Spec} = leave_reestablish_loop_(Cfg1),
+
+    % Verify that we can still perform updates
+    #{initiator := PubI, responder := PubR} = Spec,
+    {I1, R1} = do_update(PubI, PubR, 1, I, R, Debug, Cfg1),
+
+    % Ensure state is still in ram pre shutdown
+    ChId = maps:get(channel_id, I1),
+    assert_cache_is_in_ram(ChId),
+
+    % Do the shutdown
+    shutdown_(I1, R1, Cfg1),
+
+    % Ensure state is flushed to disk post shutdown
+    retry(3, 100, fun() -> assert_cache_is_on_disk(ChId) end),
+
+    mine_blocks(dev1, 5),
+    assert_cache_is_gone(ChId),
+    assert_empty_msgq(Debug),
+    ok.
 
 change_config_get_history(Cfg) ->
     #{ i := #{fsm := FsmI} = I
@@ -1294,9 +1246,9 @@ check_log([_|_], []) ->
 check_log([], _) ->
     ok.
 
-died_normal(#{info := {died,normal}}) -> ok.
+died_normal(#{info := {died, normal}}) -> ok.
 
-died_subverted(#{info := {died,_}}) -> ok.
+died_subverted(#{info := {died, _}}) -> ok.
 
 closing(#{info := closing} = Msg) ->
     log("matches #{info := closing} - ~p", [Msg]),
@@ -1641,7 +1593,8 @@ fsm_crash_reestablish(#{channel_id := ChId, fsm := FsmI} = I, #{fsm := FsmR} = R
     [_, _] = on_disk(Cache),
     check_info(20),
     ct:log("reestablishing ...", []),
-    #{i := I1, r := R1} = reestablish(I, R, SignedTx, Spec, ?PORT, Debug),
+    Info = #{i => I, r => R, spec => Spec},
+    #{i := I1, r := R1} = reestablish_(Info, SignedTx, ?PORT, Debug),
     {I1, R1}.
 
 fsm_crash_action_during_transfer( #{fsm := FsmI, pub := PubI} = I
@@ -1698,7 +1651,8 @@ check_invalid_reestablish_password(Cfg) ->
                               , SignedTx, Spec0, Debug),
 
     %% Check that after an invalid password has been provided we can still reestablish the channel
-    _ = reestablish(I1, R1, SignedTx, Spec0, ?PORT, Debug),
+    Info = #{i => I1, r => R1, spec => Spec0},
+    reestablish_(Info, SignedTx, ?PORT, Debug),
     ok.
 
 check_password_is_changeable(Cfg) ->
@@ -1717,7 +1671,8 @@ check_password_is_changeable(Cfg) ->
     %% Reestablish with old password should fail
     reestablish_wrong_password(I1, R1, SignedTx, Spec0, Debug),
     %% Reestablish with new password should succeed
-    _ = reestablish(I2, R2, SignedTx, Spec0, ?PORT, Debug),
+    Info = #{i => I2, r => R2, spec => Spec0},
+    reestablish_(Info, SignedTx, ?PORT, Debug),
 
     ok.
 
@@ -2126,14 +2081,13 @@ try_reconnect(Fsm, Round, Role, #{ channel_id := ChId
     rpc(dev1, aesc_fsm, reconnect_client, [Fsm, self(), SignedTx]).
 
 
-%% Retry N times, T ms apart, if F() raises an exception.
+%% @doc Retry N times, T ms apart, if F() raises an exception.
 %% Used in places where there could be a race.
-%%
 retry(N, T, F) ->
     retry(N, T, F, undefined, []).
 
-retry(0, _, _, E, T) ->
-    error(E, T);
+retry(0, _, _, E, ST) ->
+    error(E, ST);
 retry(N, T, F, _, _) when N > 0 ->
     try F()
     ?_catch_(error, E, ST)
@@ -2141,13 +2095,11 @@ retry(N, T, F, _, _) when N > 0 ->
         retry(N-1, T, F, E, ST)
     end.
 
-
 cache_status(ChId) ->
     rpc(dev1, aesc_state_cache, cache_status, [ChId]).
 
 in_ram(St)  -> proplists:get_value(in_ram, St).
 on_disk(St) -> proplists:get_value(on_disk, St).
-
 
 collect_acks([Pid | Pids], Tag, N) ->
     log("collect_acks, Tag = ~p, N = ~p", [Tag, N]),
@@ -2279,8 +2231,6 @@ create_channel_from_spec(I, R, Spec, Port, UseAny, Debug, Cfg, MinDepth) ->
     R5 = await_open_report(R4, ?TIMEOUT, Debug),
     SignedTx = await_on_chain_report(I5, #{info => channel_changed}, ?TIMEOUT),
     SignedTx = await_on_chain_report(R5, #{info => channel_changed}, ?TIMEOUT),
-    log(Debug, "=== Open reports received ===", []),
-    ?PEEK_MSGQ(Debug),
     [] = check_info(0, Debug),
     #{i => I5, r => R5, spec => Spec}.
 
@@ -2400,20 +2350,6 @@ fsm_map(Fsm, #{ initiator_amount := IAmt
         , slogan => Slogan
         , initiator_amount => IAmt - PushAmt
         , responder_amount => RAmt + PushAmt }.
-
-reestablish( #{channel_id := ChId, initiator_amount := IAmt, responder_amount := RAmt} = I
-           , #{channel_id := ChId, initiator_amount := IAmt, responder_amount := RAmt} = R
-           , SignedTx, Spec0, Port, Debug) ->
-    Spec = Spec0#{existing_channel_id => ChId, offchain_tx => SignedTx,
-                  initiator_amount => IAmt, responder_amount => RAmt},
-    {ok, FsmR} = rpc(dev1, aesc_fsm, respond,
-                     [Port, move_password_to_spec(R, Spec)]),
-    {ok, FsmI} = rpc(dev1, aesc_fsm, initiate,
-                     ["localhost", Port, move_password_to_spec(I, Spec)], Debug),
-    I1 = await_open_report(I#{fsm => FsmI}, ?TIMEOUT, Debug),
-    R1 = await_open_report(R#{fsm => FsmR}, ?TIMEOUT, Debug),
-    check_info(20),
-    #{i => I1, r => R1, spec => Spec}.
 
 reestablish_wrong_password( #{channel_id := ChId, initiator_amount := IAmt, responder_amount := RAmt} = I
                           , #{channel_id := ChId, initiator_amount := IAmt, responder_amount := RAmt} = R
@@ -2664,6 +2600,10 @@ await_leave(#{channel_id := ChId0} = R, Timeout, Debug) ->
             when ChId == ChId0, element(1, SignedTx) == signed_tx ->
               ok
       end, Timeout, Debug).
+
+receive_log(P, Debug) ->
+    Fun = fun(#{info := {log, _}}) -> ok end,
+    {ok, _} = receive_from_fsm(debug, P, Fun, ?LONG_TIMEOUT, Debug).
 
 receive_info(R, Msg, Debug) ->
     {ok, _} = receive_from_fsm(info, R, Msg, ?LONG_TIMEOUT, Debug).
@@ -3326,6 +3266,144 @@ positive_bh(Cfg) ->
 %% ==================================================================
 %% Shared test case logic
 
+leave_reestablish_loop_(Cfg) ->
+    Debug = get_debug(Cfg),
+
+    % Start channel
+    #{ i := I } = Info0 = create_channel_(Cfg, #{}, Debug),
+    ct:log("I = ~p", [I]),
+
+    % Mark that we opened the channel for the first time
+    Info1 = Info0#{initial_channel_open => true},
+
+    % Run steps 10 times
+    leave_reestablish_loop_step_(10, Info1, Debug).
+
+leave_reestablish_loop_step_(0, Info, _Debug) ->
+    Info;
+leave_reestablish_loop_step_(Idx, Info, Debug) ->
+    assert_empty_msgq(Debug),
+    #{ i := #{ channel_id := ChId
+             , fsm := Fsm } = I
+     , r := #{} = R
+     , initial_channel_open := InitialOpen
+     , spec := Spec } = Info,
+
+    % Set expected logs
+    IOpenExpectedLog = [ {evt, close}
+                       , {snd, leave_ack}
+                       , {rcv, leave}
+                       , {snd, leave}
+                       , {rcv, funding_locked}
+                       , {snd, funding_locked}
+                       , {rcv, channel_changed}
+                       , {rcv, funding_signed}
+                       , {snd, funding_created}
+                       , {rcv, signed}
+                       , {req, sign}
+                       , {rcv, channel_accept}
+                       , {snd, channel_open}
+                       ],
+    ROpenExpectedLog = [ {evt, close}
+                       , {rcv, leave}
+                       , {rcv, funding_locked}
+                       , {snd, funding_locked}
+                       , {rcv, channel_changed}
+                       , {snd, funding_created}
+                       , {rcv, signed}
+                       , {req, sign}
+                       , {rcv, funding_created}
+                       , {snd, channel_accept}
+                       , {rcv, channel_open}
+                       ],
+    IReestExpectedLog = [ {evt, close}
+                        , {snd, leave_ack}
+                        , {rcv, leave}
+                        , {snd, leave}
+                        , {rcv, channel_reest_ack}
+                        , {snd, channel_reestablish}
+                        ],
+    RReestExpectedLog = [ {evt, close}
+                        , {rcv, leave}
+                        , {snd, channel_reest_ack}
+                        , {rcv, channel_reestablish}
+                        ],
+
+    % Leave channel, but don't follow proper leave flow
+    ct:log("Starting leave_reestablish attempt ~p", [Idx]),
+    assert_cache_is_in_ram(ChId),
+    ok = rpc(dev1, aesc_fsm, leave, [Fsm]),
+
+    % Verify leave and FSM timeout
+    {ok, #{info := SignedTx} = I2} = await_leave(I, ?TIMEOUT, Debug),
+    {ok, #{info := SignedTx} = R2} = await_leave(R, ?TIMEOUT, Debug),
+    {ok, _} = receive_info(I, fun died_normal/1, Debug),
+    {ok, _} = receive_info(R, fun died_normal/1, Debug),
+    {ok, #{info := {log, ILog}}} = receive_log(I, Debug),
+    {ok, #{info := {log, RLog}}} = receive_log(R, Debug),
+    log(Debug, "Received log from initiator: ~p", [ILog]),
+    log(Debug, "Received log from responder: ~p", [RLog]),
+    case InitialOpen of
+        true ->
+            ok = check_log(IOpenExpectedLog, ILog),
+            ok = check_log(ROpenExpectedLog, RLog);
+        false ->
+            ok = check_log(IReestExpectedLog, ILog),
+            ok = check_log(RReestExpectedLog, RLog)
+    end,
+
+    retry(3, 100, fun() -> assert_cache_is_on_disk(ChId) end),
+    assert_empty_msgq(Debug),
+
+    % Mine to ensure all transaction are on chain and confirmed
+    mine_key_blocks(dev1, 3),
+
+    % Reestablish connection to channel
+    ct:log("reestablishing ...", []),
+    Info2 = reestablish_(Info, SignedTx, ?PORT, Debug),
+    Info3 = Info2#{initial_channel_open => false},
+
+    % Done, repeat
+    ct:log("Ending leave_reestablish attempt ~p", [Idx]),
+    assert_empty_msgq(Debug),
+    leave_reestablish_loop_step_(Idx - 1, Info3, Debug).
+
+reestablish_(Info, SignedTx, Port, Debug) ->
+    assert_empty_msgq(Debug),
+    #{ i := #{ channel_id := ChId
+             , fsm := Fsm } = I0
+     , r := #{} = R0
+     , spec := Spec0 } = Info,
+
+    {IAmt, RAmt} = tx_amounts(SignedTx),
+    I1 = set_amounts(IAmt, RAmt, I0),
+    R1 = set_amounts(IAmt, RAmt, R0),
+    Spec = Spec0#{ existing_channel_id => ChId
+                 , offchain_tx => SignedTx
+                 , initiator_amount => IAmt
+                 , responder_amount => RAmt
+                 },
+
+    % Start new FSMs
+    ISpec = move_password_to_spec(I1, Spec),
+    RSpec = move_password_to_spec(R1, Spec),
+    {ok, FsmR} = rpc(dev1, aesc_fsm, respond, [Port, RSpec]),
+    {ok, FsmI} = rpc(dev1, aesc_fsm, initiate, ["localhost", Port, ISpec], Debug),
+    I2 = I1#{fsm => FsmI},
+    R2 = R1#{fsm => FsmR},
+
+    % Verify FSM startup completed
+    #{signed_tx := SignedTx} = I3 = await_update_report(I2, ?TIMEOUT, Debug),
+    #{signed_tx := SignedTx} = R3 = await_update_report(R2, ?TIMEOUT, Debug),
+    I4 = await_open_report(I3, ?TIMEOUT, Debug),
+    R4 = await_open_report(R3, ?TIMEOUT, Debug),
+    {ok, _} = receive_info(I4, channel_reestablished, Debug),
+    {ok, _} = receive_info(R4, channel_reestablished, Debug),
+
+    % Done
+    assert_empty_msgq(Debug),
+    Info#{i => I4, r => R4, spec => Spec}.
+
 withdraw_full_cycle_(Amount, Opts, MinDepth, MinDepthChannel, Round, Cfg) ->
     Debug = get_debug(Cfg),
     #{ i := #{} = I
@@ -3342,7 +3420,7 @@ withdraw_(#{fsm := FsmI} = I, R, Amount, Opts, MinDepth, Round0, Debug, Cfg) ->
     #{initiator_amount := IAmt0, responder_amount := RAmt0} = I,
     {IAmt0, RAmt0, _, Round0} = FsmState0 = check_fsm_state(FsmI),
     ct:log("Round0 = ~p, IAmt0 = ~p, RAmt0 = ~p", [Round0, IAmt0, RAmt0]),
-    [] = check_info(0),
+    [] = check_info(20),
 
     % Perform update and verify flow and reports
     ok = rpc(dev1, aesc_fsm, upd_withdraw, [FsmI, Opts#{amount => Amount}]),
@@ -3365,7 +3443,7 @@ withdraw_(#{fsm := FsmI} = I, R, Amount, Opts, MinDepth, Round0, Debug, Cfg) ->
     await_withdraw_locked(R1, ?TIMEOUT, Debug),
     SignedTx = await_channel_changed_report(I1, ?TIMEOUT), % same tx
     SignedTx = await_channel_changed_report(R1, ?TIMEOUT), % same tx
-    check_info(20),
+    [] = check_info(20),
 
     {ok, I1, R1}.
 
@@ -3463,6 +3541,35 @@ assert_fsm_states(SignedTx, FsmSpec, MinDepth, Amount, {IAmt0, RAmt0, _, Round0}
     StateHash = TxCb:state_hash(Tx), %% assert correct state hash
 
     ok.
+
+assert_cache_is_in_ram(ChannelId) ->
+    Cache = cache_status(ChannelId),
+    [_,_] = in_ram(Cache),
+    [] = on_disk(Cache),
+    ok.
+
+assert_cache_is_on_disk(ChannelId) ->
+    Cache = cache_status(ChannelId),
+    [] = in_ram(Cache),
+    [_, _] = on_disk(Cache),
+    ok.
+
+assert_cache_is_gone(ChannelId) ->
+    Cache = cache_status(ChannelId),
+    [] = in_ram(Cache),
+    [] = on_disk(Cache),
+    ok.
+
+assert_empty_msgq(Debug) ->
+    Msgs = check_info(20, Debug),
+    case Msgs of
+        [] ->
+            ok;
+        _ ->
+            log(Debug, "Message queue length: ~p", [length(Msgs)]),
+            log(Debug, "Message queue entries: ~p", [Msgs]),
+            ct:fail("Message queue is not empty")
+    end.
 
 %% ==================================================================
 %% Internal functions
