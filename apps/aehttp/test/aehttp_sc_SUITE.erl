@@ -1138,7 +1138,11 @@ sc_ws_leave_(Config) ->
     %%
     Options = proplists:get_value(channel_options, Config),
     Port = maps:get(port, Options),
-    RPort = Port+1,
+    RPort = if ResponderLeaves ->
+                    Port+1;     % new port
+               true ->
+                    Port        % same port as before
+            end,
     ReestablishOptions = #{ existing_channel_id => IDi
                           , offchain_tx => StI
                           , port => RPort
@@ -1148,6 +1152,8 @@ sc_ws_leave_(Config) ->
 
 
 sc_ws_reestablish_(ReestablOptions, Config) ->
+    ct:log("ReestablOptions = ~p~n"
+           "Config = ~p", [ReestablOptions, Config]),
     ResponderLeaves = proplists:get_value(responder_leaves, Config, true),
     RrConnPid
         = if ResponderLeaves ->

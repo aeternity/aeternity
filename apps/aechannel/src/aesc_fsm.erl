@@ -2241,7 +2241,8 @@ fall_back_to_stable_state(#data{ state = State } = D) ->
     {LastRound, _} = aesc_offchain_state:get_latest_signed_tx(State),
     case aesc_offchain_state:get_fallback_state(State) of
         {LastRound, State1} -> %% same round
-            {ok, D#data{state = State1, op = ?NO_OP}};
+            {ok, clear_ongoing(D#data{ state = State1
+                                     , op    = ?NO_OP })};
         _Other ->
             lager:debug("Fallback state mismatch: ~p/~p",
                         [LastRound, _Other]),
@@ -2718,7 +2719,8 @@ check_client_reconnect_tx(Tx, D) ->
     {ok, D#data{ client_reconnect_nonce = Round }}.
 
 fallback_to_stable_state(#data{state = State} = D) ->
-    D#data{state = aesc_offchain_state:fallback_to_stable_state(State)}.
+    clear_ongoing(D#data{ state = aesc_offchain_state:fallback_to_stable_state(State)
+                        , op    = ?NO_OP }).
 
 tx_round(Tx) -> call_cb(Tx, round, []).
 
@@ -3568,7 +3570,7 @@ init(#{opts := Opts0} = Arg) ->
                     , opts    = Opts
                     , state   = State
                     , log     = aesc_window:new(maps:get(log_keep, Opts)) },
-        lager:debug("Session started, Data = ~p", [Data]),
+        lager:debug("Session started, Data = ~p", [pr_data(Data)]),
         %% TODO: Amend the fsm above to include this step. We have transport-level
         %% connectivity, but not yet agreement on the channel parameters. We will next send
         %% a channel_open() message and await a channel_accept().

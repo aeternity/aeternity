@@ -425,7 +425,7 @@ stop_node(N, Config) ->
 
 create_channel(Cfg) ->
     %% with_trace(fun t_create_channel_/1, Cfg, "create_channel").
-    t_create_channel_(Cfg).
+    t_create_channel_(set_debug(true, Cfg)).
 
 multiple_responder_keys_per_port(Cfg) ->
     Slogan = ?SLOGAN,
@@ -986,6 +986,7 @@ do_update(From, To, Amount, #{fsm := FsmI} = I, R, Debug, Cfg) ->
                false -> #{meta => [<<"meta1">>, <<"meta2">>]};
                true  -> #{}
            end,
+    ?PEEK_MSGQ,
     case rpc(dev1, aesc_fsm, upd_transfer, [FsmI, From, To, Amount, Opts], Debug) of
         {error, _} = Error ->
             throw(Error);
@@ -997,6 +998,8 @@ do_update(From, To, Amount, #{fsm := FsmI} = I, R, Debug, Cfg) ->
             await_update_incoming_report(R1, ?TIMEOUT, Debug),
             I2 = await_update_report(I1, ?TIMEOUT, Debug),
             R2 = await_update_report(R1, ?TIMEOUT, Debug),
+            ?LOG(Debug, "update successful", []),
+            ?PEEK_MSGQ,
             {I2, R2}
     end.
 
@@ -1075,7 +1078,6 @@ deposit_(#{fsm := FsmI} = I, R, Deposit, Opts, Round1, Debug, Cfg) ->
     {IAmt, _} = {IAmt0 + Deposit, IAmt}, %% assert correct amounts
     Round2 = aesc_deposit_tx:round(DepositTx), %% assert correct round
     StateHash = aesc_deposit_tx:state_hash(DepositTx), %% assert correct state hash
-    ?LOG(Debug, "I1 = ~p", [I1]),
     #{initiator_amount := IAmt2, responder_amount := RAmt2} = I2,
     Expected = {IAmt2, RAmt2},
     {Expected, Expected} = {{IAmt0 + Deposit, RAmt0}, Expected},
@@ -1178,7 +1180,7 @@ leave_reestablish(Cfg) ->
 leave_reestablish_responder_stays(Cfg) ->
     with_trace(
       fun(Cfg1) ->
-              t_leave_reestablish_(cfg_responder_keeps_running(Cfg1))
+              t_leave_reestablish_(cfg_responder_keeps_running(set_debug(true, Cfg1)))
       end, [{activate_trace, ?TR_CHANNEL_CREATED}|Cfg], "leave_reest_responder_stays").
 
 t_leave_reestablish_(Cfg) ->
@@ -1190,15 +1192,12 @@ leave_reestablish_(Cfg) ->
     Debug = get_debug(Cfg),
     {I0, R0, Spec0} = InitialSpec = channel_spec(Cfg),
     ?LOG(Debug, "Initial spec = ~p", [InitialSpec]),
-    #{ i := #{} = I
-     , r := #{} = R
+    #{ i := #{} = I01
+     , r := #{} = R01
      , spec := #{ initiator := _PubI
                 , responder := _PubR }} = CSpec =
         create_channel_from_spec(I0, R0, Spec0, ?PORT, Debug, Cfg),
-    ?LOG(Debug,
-         "I = ~p~n"
-         "R = ~p", [I, R]),
-    ok = verify_channel(I, R, Cfg, Debug),
+    {ok, I, R} = verify_channel(I01, R01, Cfg, Debug),
     ResponderStays = responder_stays(CSpec),
     ?LOG(Debug, "I = ~p", [I]),
     ChId = maps:get(channel_id, I),
@@ -1226,7 +1225,7 @@ leave_reestablish_(Cfg) ->
             ?LOG(Debug, "Leave received; Lr = ~p", [Lr]),
             SignedTx = maps:get(info, Li),
             SignedTx = maps:get(info, Lr),
-            receive_dying_declaration(FsmI, FsmR, CSpec, Debug),
+            receive_dying_declarations(FsmI, FsmR, CSpec, Debug),
             %% {ok,_} = receive_from_fsm(info, ILocal, fun died_normal/1, ?TIMEOUT, Debug),
             %% if ResponderStays ->
             %%         {ok,_} = receive_from_fsm(info, RLocal, peer_disconnected, ?TIMEOUT, Debug),
@@ -1259,9 +1258,9 @@ leave_reestablish_(Cfg) ->
                                   Spec0#{ initiator_amount => IAmt
                                         , responder_amount => RAmt },
                                   CSpec, ?PORT, Debug),
-            ok = verify_channel(ILocal1, RLocal1, Cfg, Debug),
+            {ok, ILocal2, RLocal2} = verify_channel(ILocal1, RLocal1, Cfg, Debug),
             ?LOG(Debug, "ending attempt ~p", [Idx]),
-            Res
+            Res#{i => ILocal2, r => RLocal2}
         end,
     lists:foldl(LeaveAndReestablish,
                 #{i => I, r => R},
@@ -1270,15 +1269,17 @@ leave_reestablish_(Cfg) ->
 verify_channel(#{pub := PubI, fsm := FsmI} = I,
                #{pub := PubR, fsm := FsmR} = R, Cfg, Debug) ->
     ?LOG(Debug, "verifying channel: Fsm states", []),
+    ?PEEK_MSGQ,
     FsmStateI = check_fsm_state(FsmI),
     FsmStateR = check_fsm_state(FsmR),
     {FsmStateI, FsmStateR} = {FsmStateR, FsmStateI},
     ?LOG(Debug, "verifying channel: update", []),
     {I1, R1} = do_update(PubI, PubR, 1, I, R, Debug, Cfg),
+    ?PEEK_MSGQ,
     ?LOG(Debug, "verifying channel: deposit", []),
-    {ok, _I2, _R2} = deposit_(I1, R1, 1, Debug, Cfg),
+    {ok, I2, R2} = deposit_(I1, R1, 1, Debug, Cfg),
     ?LOG("=== Channel verified~nMessage Q: ~p", [element(2,process_info(self(), messages))]),
-    ok.
+    {ok, I2, R2}.
 
 responder_stays(#{responder_opts := #{keep_running := Bool}}) ->
     Bool;
@@ -1532,7 +1533,7 @@ check_incorrect_update(Cfg) ->
                     responder -> {FsmR, FsmI}
                 end,
             ok = gen_statem:stop(AliveFsm),
-            receive_dying_declaration(AliveFsm, OtherFsm, CSpec, Debug),
+            receive_dying_declarations(AliveFsm, OtherFsm, CSpec, Debug),
             bump_idx(),
             CurPort
           end,
@@ -1542,7 +1543,7 @@ check_incorrect_update(Cfg) ->
     lists:foldl(Test, InitialPort, Combinations),
     ok.
 
-receive_dying_declaration(Fsm, OtherFsm, CSpec, Debug) ->
+receive_dying_declarations(Fsm, OtherFsm, CSpec, Debug) ->
     #{r := #{fsm := FsmR}} = CSpec,
     TRefI = erlang:start_timer(?TIMEOUT, self(), {dying_declaration_i, ?LINE}),
     TRefR = erlang:start_timer(?TIMEOUT, self(), {dying_declaration_r, ?LINE}),
@@ -1708,8 +1709,8 @@ check_fsm_crash_reestablish(Cfg) ->
     Debug = get_debug(Cfg),
     {I0, R0, Spec0} = channel_spec(Cfg),
     #{ i := I, r := R } = CSpec = create_channel_from_spec(I0, R0, Spec0, ?PORT, Debug, Cfg),
-    ct:log("I = ~p", [I]),
-    ct:log("R = ~p", [R]),
+    ?LOG(Debug, "I = ~p", [I]),
+    ?LOG(Debug, "R = ~p", [R]),
     {_, I1, R1} = do_n(4, fun update_volley/3, I, R, Cfg),
     Actions = [
         fun fsm_crash_action_during_transfer/3,
@@ -1727,9 +1728,9 @@ fsm_crash_reestablish(#{channel_id := ChId, fsm := FsmI} = I, #{fsm := FsmR} = R
     Debug = get_debug(Cfg),
     {ok, State} = rpc(dev1, aesc_fsm, get_offchain_state, [FsmI]),
     {_, SignedTx} = aesc_offchain_state:get_latest_signed_tx(State),
-    ct:log("Performing action before crashing the FSM"),
+    ?LOG(Debug, "Performing action before crashing the FSM"),
     ok = Action(I, R, Cfg),
-    ct:log("Simulating random crash"),
+    ?LOG(Debug, "Simulating random crash"),
     erlang:exit(FsmI, test_fsm_random_crash),
     erlang:exit(FsmR, test_fsm_random_crash),
     timer:sleep(20), %% Give some time for the cache to persist the state
@@ -1738,7 +1739,7 @@ fsm_crash_reestablish(#{channel_id := ChId, fsm := FsmI} = I, #{fsm := FsmR} = R
     [] = in_ram(Cache),
     [_, _] = on_disk(Cache),
     check_info(20),
-    ct:log("reestablishing ...", []),
+    ?LOG(Debug, "reestablishing ...", []),
     #{i := I1, r := R1} = reestablish(I, R, SignedTx, Spec, CSpec, ?PORT, Debug),
     {I1, R1}.
 
@@ -1783,10 +1784,10 @@ check_invalid_reestablish_password(Cfg) ->
     {I0, R0, Spec0} = channel_spec(Cfg),
     #{ i := I
      , r := R } = CSpec = create_channel_from_spec(I0, R0, Spec0, ?PORT, Debug, Cfg),
-    ct:log("I = ~p", [I]),
-    ct:log("R = ~p", [R]),
+    ?LOG(Debug, "I = ~p", [I]),
+    ?LOG(Debug, "R = ~p", [R]),
     {_, I1, R1} = do_n(4, fun update_volley/3, I, R, Cfg),
-    {ok, SignedTx} = leave_channel(I1, R1, Debug),
+    {ok, SignedTx} = leave_channel(I1, R1, CSpec, Debug),
 
     %% Reestablish with wrong passwords
     #{state_password := PwI} = I1,
@@ -1800,20 +1801,22 @@ check_invalid_reestablish_password(Cfg) ->
     ok.
 
 check_password_is_changeable(Cfg) ->
-    Debug = get_debug(Cfg),
+    %% Debug = get_debug(Cfg),
+    Debug = true,
     {I0, R0, Spec0} = channel_spec(Cfg),
     #{ i := I
      , r := R } = CSpec = create_channel_from_spec(I0, R0, Spec0, ?PORT, Debug, Cfg),
-    ct:log("I = ~p", [I]),
-    ct:log("R = ~p", [R]),
+    ?LOG(Debug, "I = ~p", [I]),
+    ?LOG(Debug, "R = ~p", [R]),
     {_, I1, R1} = do_n(4, fun update_volley/3, I, R, Cfg),
-
+    ?PEEK_MSGQ,
     I2 = change_password(I1),
     R2 = change_password(R1),
-    {ok, SignedTx} = leave_channel(I2, R2, Debug),
-
+    {ok, SignedTx} = leave_channel(I2, R2, CSpec, Debug),
+    ?PEEK_MSGQ,
     %% Reestablish with old password should fail
     reestablish_wrong_password(I1, R1, SignedTx, Spec0, Debug),
+    ?PEEK_MSGQ,
     %% Reestablish with new password should succeed
     _ = reestablish(I2, R2, SignedTx, Spec0, CSpec, ?PORT, Debug),
 
@@ -1824,14 +1827,13 @@ change_password(#{fsm := Fsm, state_password := StatePassword} = P) ->
     ok = rpc(dev1, aesc_fsm, change_state_password, [Fsm, StatePassword1]),
     P#{state_password => StatePassword1}.
 
-leave_channel(#{fsm := FsmI} = I, R, Debug) ->
+leave_channel(#{fsm := FsmI} = I, #{fsm := FsmR} = R, CSpec, Debug) ->
     ok = rpc(dev1, aesc_fsm, leave, [FsmI]),
     {ok,Li} = await_leave(I, ?TIMEOUT, Debug),
     {ok,Lr} = await_leave(R, ?TIMEOUT, Debug),
     SignedTx = maps:get(info, Li),
     SignedTx = maps:get(info, Lr),
-    {ok,_} = receive_from_fsm(info, I, fun died_normal/1, ?TIMEOUT, Debug),
-    {ok,_} = receive_from_fsm(info, R, fun died_normal/1, ?TIMEOUT, Debug),
+    ok = receive_dying_declarations(FsmI, FsmR, CSpec, Debug),
     {ok, SignedTx}.
 
 fsm_state(Pid, Debug) ->
@@ -2372,14 +2374,15 @@ channel_spec(Cfg, ChannelReserve, PushAmount, XOpts) ->
     {I1, R1, Spec1}.
 
 prime_password(#{} = P, Key, Cfg) when Key =:= initiator_password; Key =:= responder_password ->
+    Debug = get_debug(Cfg),
     case ?config(Key, Cfg) of
         undefined ->
             P#{state_password => generate_password()};
         ignore ->
-            ct:log("Ignoring password"),
+            ?LOG(Debug, "Ignoring password"),
             maps:remove(state_password, P);
         Password ->
-            ct:log("Using predefined password"),
+            ?LOG(Debug, "Using predefined password"),
             P#{state_password => Password}
      end.
 
@@ -2465,7 +2468,7 @@ create_channel_from_spec(I, R, Spec, Port, UseAny, Debug, Cfg) ->
     I5 = await_open_report(I4, ?TIMEOUT, Debug),
     R5 = await_open_report(R4, ?TIMEOUT, Debug),
     ?LOG(Debug, "=== Open reports received ===", []),
-    ?LOG(Debug, "=== Message Q: ~p", [element(2,process_info(self(), messages))]),
+    ?PEEK_MSGQ,
     [] = check_info(0, Debug),
     trace_checkpoint(?TR_CHANNEL_CREATED, Cfg),
     maps:merge(#{i => I5, r => R5, spec => Spec},
@@ -2618,10 +2621,22 @@ reestablish(I0, R0, SignedTx, Spec0, CSpec, Port, Debug) ->
            end,
     {ok, FsmI} = rpc(dev1, aesc_fsm, initiate,
                      ["localhost", Port, move_password_to_spec(I, Spec)], Debug),
+    ?PEEK_MSGQ,
     I1 = await_open_report(I#{fsm => FsmI}, ?TIMEOUT, Debug),
     R1 = await_open_report(R#{fsm => FsmR}, ?TIMEOUT, Debug),
-    check_info(20),
-    #{i => I1, r => R1, spec => Spec}.
+    ?PEEK_MSGQ,
+    receive_from_fsm(info, I1, channel_reestablished, ?TIMEOUT, Debug),
+    receive_from_fsm(info, R1, channel_reestablished, ?TIMEOUT, Debug),
+    ?PEEK_MSGQ,
+    {I2, R2} = if ResponderStays ->
+                       {await_update_report(I1, ?TIMEOUT, Debug), R1};
+                  true ->
+                       {await_update_report(I1, ?TIMEOUT, Debug),
+                        await_update_report(R1, ?TIMEOUT, Debug)}
+               end,
+    ?LOG(Debug, "Reestablish succeeded", []),
+    [] = element(2, process_info(self(), messages)),
+    #{i => I2, r => R2, spec => Spec}.
 
 reestablish_wrong_password( #{channel_id := ChId, initiator_amount := IAmt, responder_amount := RAmt} = I
                           , #{channel_id := ChId, initiator_amount := IAmt, responder_amount := RAmt} = R
