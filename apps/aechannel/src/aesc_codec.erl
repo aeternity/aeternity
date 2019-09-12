@@ -179,7 +179,7 @@ enc_ch_accept(#{ chain_hash             := ChainHash
      , Initiator        :32/binary
      , Responder        :32/binary >>;
 %% This function clause is kept for backwards compatibility where
-%% minimum_depth_strategy is not given. So if a initiator with the strategy
+%% minimum_depth_strategy is not given. So if an initiator with the strategy
 %% support connects to a responder without the support, it can gracefully handle
 %% it. The other way around is not supported.
 enc_ch_accept(#{ chain_hash             := ChainHash

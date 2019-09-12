@@ -1055,7 +1055,7 @@ withdraw_high_amount_static_confirmation_time(Cfg) ->
     % Factor of 0 sets min depths to 1 for all amounts
     Cfg2 = set_minimum_depth(Cfg1, 0),
     Amount = 300000,
-    MinDepth = 1,
+    MinDepth = 2,
     MinDepthChannel = 1,
     Round = 1,
     ok = withdraw_full_cycle_(Amount, #{}, MinDepth, MinDepthChannel, Round, Cfg2).
@@ -2381,7 +2381,7 @@ initiator_instance_(Fsm, Spec, I0, Parent, Debug) ->
     gproc:reg({n,l,{?MODULE,TmpChanId,initiator}}, #{ i => I1
                                                     , channel_accept => ChAccept }),
     {_RPid, #{ r := #{parent := NewParent}}}
-    = gproc:await({n,l,{?MODULE,TmpChanId,responder}}, ?TIMEOUT),
+        = gproc:await({n,l,{?MODULE,TmpChanId,responder}}, ?TIMEOUT),
     unlink(Parent),
     link(NewParent),
     fsm_relay(I1#{parent => NewParent}, NewParent, Debug).
@@ -3314,10 +3314,10 @@ positive_bh(Cfg) ->
                 end,
                 {_I, _R} = Participants,
                 [ fun(Il, Rl, Opts, Round) ->
-                      deposit_(Il, Rl, 1, Opts, 1, Round, Debug, Cfg)
+                      deposit_(Il, Rl, 1, Opts, 2, Round, Debug, Cfg)
                   end,
                   fun(Il, Rl, Opts, Round) ->
-                      withdraw_(Il, Rl, 1, Opts, 1, Round, Debug, Cfg)
+                      withdraw_(Il, Rl, 1, Opts, 2, Round, Debug, Cfg)
                   end
                 ])
         end,

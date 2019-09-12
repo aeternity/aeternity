@@ -2880,10 +2880,9 @@ start_chain_watcher(Type, SignedTx, Updates, D) ->
         error(E)
     end.
 
-start_chain_watcher_(Type, SignedTx, Updates,
-                    #data{ watcher = Watcher0
-                         , op = Op
-                         , opts = Opts } = D) ->
+start_chain_watcher_(Type, SignedTx, Updates, #data{ watcher = Watcher0
+                                                   , op = Op
+                                                   , opts = Opts } = D) ->
     MinDepth = min_depth(Opts, SignedTx),
     BlockHash = block_hash_from_op(Op),
     {Mod, Tx} = aetx:specialize_callback(aetx_sign:innermost_tx(SignedTx)),
@@ -4520,28 +4519,34 @@ check_block_hash(BlockHash,
 %% have been set previously in the channel options. This should only apply to
 %% the initiator. In case only one of the two parameters is defined, the other
 %% one will be set to the internal default value.
-maybe_use_minimum_depth_params(#{ minimum_depth := MinDepth
-                                , minimum_depth_strategy := MinDepthStrategy },
-                               Opts) ->
+maybe_use_minimum_depth_params(Msg, Opts) ->
+    MinDepth = maps:find(minimum_depth, Msg),
+    MinDepthStrategy = maps:find(minimum_depth_strategy, Msg),
     OptMinDepth = maps:find(minimum_depth, Opts),
     OptMinDepthStrategy = maps:find(minimum_depth_strategy, Opts),
+
+    MinDepthValid = is_valid_minimum_depth(MinDepth),
+    MinDepthStrategyValid = is_valid_minimum_depth_strategy(MinDepthStrategy),
     OptMinDepthValid = is_valid_minimum_depth(OptMinDepth),
     OptMinDepthStrategyValid = is_valid_minimum_depth_strategy(OptMinDepthStrategy),
+
     if
-        OptMinDepthValid andalso
-        OptMinDepthStrategyValid ->
+        OptMinDepthValid andalso OptMinDepthStrategyValid ->
             Opts;
         OptMinDepthValid ->
             Opts#{minimum_depth_strategy => ?DEFAULT_MINIMUM_DEPTH_STRATEGY};
         OptMinDepthStrategyValid ->
             Opts#{minimum_depth => ?DEFAULT_MINIMUM_DEPTH(OptMinDepthStrategy)};
-        true ->
+        MinDepthValid andalso MinDepthStrategyValid ->
             Opts#{ minimum_depth => MinDepth
-                 , minimum_depth_strategy => MinDepthStrategy }
+                 , minimum_depth_strategy => MinDepthStrategy };
+        true ->
+            Opts#{ minimum_depth_strategy => ?DEFAULT_MINIMUM_DEPTH_STRATEGY
+                 , minimum_depth => ?DEFAULT_MINIMUM_DEPTH }
     end.
 
 is_valid_minimum_depth_strategy({ok, txfee}) -> true;
 is_valid_minimum_depth_strategy(_)           -> false.
 
-is_valid_minimum_depth(Value) when is_integer(Value) -> Value > 0;
+is_valid_minimum_depth(Value) when is_integer(Value) -> Value >= 0;
 is_valid_minimum_depth(_)                            -> false.

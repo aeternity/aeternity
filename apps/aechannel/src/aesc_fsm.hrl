@@ -3,6 +3,7 @@
 -define(NOT_SET_BLOCK_HASH, <<0:32/unit:8>>).
 
 -define(DEFAULT_MINIMUM_DEPTH_STRATEGY, txfee).
+-define(DEFAULT_MINIMUM_DEPTH, ?DEFAULT_MINIMUM_DEPTH(?DEFAULT_MINIMUM_DEPTH_STRATEGY)).
 -define(DEFAULT_MINIMUM_DEPTH(Strategy),
         case Strategy of
             txfee ->
