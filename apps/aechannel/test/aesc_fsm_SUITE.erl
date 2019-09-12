@@ -1591,8 +1591,8 @@ check_fsm_crash_reestablish(Cfg) ->
     Debug = get_debug(Cfg),
     {I0, R0, Spec0} = channel_spec(Cfg),
     #{ i := I, r := R } = create_channel_from_spec(I0, R0, Spec0, ?PORT, Debug, Cfg),
-    ct:log("I = ~p", [I]),
-    ct:log("R = ~p", [R]),
+    log(Debug, "I = ~p", [I]),
+    log(Debug, "R = ~p", [R]),
     {_, I1, R1} = do_n(4, fun update_volley/3, I, R, Cfg),
     Actions = [
         fun fsm_crash_action_during_transfer/3,
@@ -1610,9 +1610,9 @@ fsm_crash_reestablish(#{channel_id := ChId, fsm := FsmI} = I, #{fsm := FsmR} = R
     Debug = get_debug(Cfg),
     {ok, State} = rpc(dev1, aesc_fsm, get_offchain_state, [FsmI]),
     {_, SignedTx} = aesc_offchain_state:get_latest_signed_tx(State),
-    ct:log("Performing action before crashing the FSM"),
+    log(Debug, "Performing action before crashing the FSM", []),
     ok = Action(I, R, Cfg),
-    ct:log("Simulating random crash"),
+    log(Debug, "Simulating random crash", []),
     erlang:exit(FsmI, test_fsm_random_crash),
     erlang:exit(FsmR, test_fsm_random_crash),
     timer:sleep(20), %% Give some time for the cache to persist the state
@@ -1621,7 +1621,7 @@ fsm_crash_reestablish(#{channel_id := ChId, fsm := FsmI} = I, #{fsm := FsmR} = R
     [] = in_ram(Cache),
     [_, _] = on_disk(Cache),
     check_info(20),
-    ct:log("reestablishing ...", []),
+    log(Debug, "reestablishing ...", []),
     Info = #{i => I, r => R, spec => Spec},
     #{i := I1, r := R1} = reestablish_(Info, SignedTx, ?PORT, Debug),
     {I1, R1}.
@@ -2276,10 +2276,10 @@ create_channel_from_spec(I, R, Spec, Port, UseAny, Debug, Cfg, MinDepth) ->
                end,
     log(Debug, "mining blocks on dev1 for minimum depth", []),
     SignedTx = await_on_chain_report(R2, #{info => funding_created}, ?TIMEOUT),
-    ct:log("=== SignedTx = ~p", [SignedTx]),
+    log(Debug, "=== SignedTx = ~p", [SignedTx]),
     SignedTx = await_on_chain_report(I2, #{info => funding_signed}, ?TIMEOUT), % same tx
     {ok, _} = wait_for_signed_transaction_in_block(dev1, SignedTx, Debug),
-    ct:log("=== Signed tx in block: ~p", [SignedTx]),
+    log(Debug, "=== Signed tx in block: ~p", [SignedTx]),
     SignedTx = await_channel_changed_report(I2, ?TIMEOUT),
     SignedTx = await_channel_changed_report(R2, ?TIMEOUT),
     CurrentHeight = current_height(dev1),
@@ -2870,10 +2870,6 @@ current_height(Node) ->
         Header -> aec_headers:height(Header)
     end.
 
-if_debug(true, X, _) -> X;
-if_debug(#{debug := true}, X, _) -> X;
-if_debug(_, _, Y) -> Y.
-
 apply_updates([], R) ->
     R;
 apply_updates([{meta, _} | T], R) ->
@@ -3342,7 +3338,7 @@ leave_reestablish_loop_(Cfg) ->
 
     % Start channel
     #{ i := I } = Info0 = create_channel_(Cfg, #{}, Debug),
-    ct:log("I = ~p", [I]),
+    log(Debug, "I = ~p", [I]),
 
     % Mark that we opened the channel for the first time
     Info1 = Info0#{initial_channel_open => true},
@@ -3358,7 +3354,7 @@ leave_reestablish_loop_step_(Idx, Info, Debug) ->
              , fsm := Fsm } = I
      , r := #{} = R
      , initial_channel_open := InitialOpen
-     , spec := Spec } = Info,
+     } = Info,
 
     % Set expected logs
     IOpenExpectedLog = [ {evt, close}
@@ -3401,7 +3397,7 @@ leave_reestablish_loop_step_(Idx, Info, Debug) ->
                         ],
 
     % Leave channel, but don't follow proper leave flow
-    ct:log("Starting leave_reestablish attempt ~p", [Idx]),
+    log(Debug, "Starting leave_reestablish attempt ~p", [Idx]),
     assert_cache_is_in_ram(ChId),
     ok = rpc(dev1, aesc_fsm, leave, [Fsm]),
 
@@ -3428,24 +3424,24 @@ leave_reestablish_loop_step_(Idx, Info, Debug) ->
     mine_key_blocks(dev1, 3),
 
     % Reestablish connection to channel
-    ct:log("reestablishing ...", []),
+    log(Debug, "reestablishing ...", []),
     Info2 = reestablish_(Info, SignedTx, ?PORT, Debug),
     Info3 = Info2#{initial_channel_open => false},
 
     % Done, repeat
-    ct:log("Ending leave_reestablish attempt ~p", [Idx]),
+    log(Debug, "Ending leave_reestablish attempt ~p", [Idx]),
     assert_empty_msgq(Debug),
     leave_reestablish_loop_step_(Idx - 1, Info3, Debug).
 
 reestablish_(Info, SignedTx, Port, Debug) ->
     assert_empty_msgq(Debug),
     #{ i := #{ channel_id := ChId
-             , fsm := Fsm
              , initiator_amount := IAmt
              , responder_amount := RAmt } = I0
      , r := #{ initiator_amount := IAmt
              , responder_amount := RAmt } = R0
-     , spec := Spec0 } = Info,
+     , spec := Spec0
+     } = Info,
 
     Spec = Spec0#{ existing_channel_id => ChId
                  , offchain_tx => SignedTx
@@ -3476,12 +3472,12 @@ reestablish_(Info, SignedTx, Port, Debug) ->
 reestablish_wrong_password_(Info, SignedTx, Port, Debug) ->
     assert_empty_msgq(Debug),
     #{ i := #{ channel_id := ChId
-             , fsm := Fsm
              , initiator_amount := IAmt
              , responder_amount := RAmt } = I0
      , r := #{ initiator_amount := IAmt
              , responder_amount := RAmt } = R0
-     , spec := Spec0 } = Info,
+     , spec := Spec0
+     } = Info,
 
     Spec = Spec0#{ existing_channel_id => ChId
                  , offchain_tx => SignedTx
@@ -3505,7 +3501,7 @@ withdraw_full_cycle_(Amount, Opts, MinDepth, MinDepthChannel, Round, Cfg) ->
      , r := #{} = R
      , spec := #{}
      } = create_channel_(Cfg, MinDepthChannel, Debug),
-    ct:log("I = ~p", [I]),
+    log(Debug, "I = ~p", [I]),
     {ok, _, _} = withdraw_(I, R, Amount, Opts, MinDepth, Round, Debug, Cfg),
     shutdown_(I, R, MinDepth, Cfg),
     ok.
@@ -3818,10 +3814,10 @@ prime_password(#{} = P, Key, Cfg) when Key =:= initiator_password; Key =:= respo
         undefined ->
             P#{state_password => generate_password()};
         ignore ->
-            ct:log("Ignoring password"),
+            log("Ignoring password", []),
             maps:remove(state_password, P);
         Password ->
-            ct:log("Using predefined password"),
+            log("Using predefined password", []),
             P#{state_password => Password}
      end.
 
