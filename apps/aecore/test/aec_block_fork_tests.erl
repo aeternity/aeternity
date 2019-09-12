@@ -42,7 +42,7 @@ apply_minerva_test_() ->
                   {Carol, BalC},
                   {David, _}] = generate_accounts(4),
                  T0 = make_trees([A, B]), % only Alice and Bob are present pre-minerva
-                 meck_minerva_accounts([{Alice, DeltaA = 10}, % Alice had migrared more
+                 meck_minerva_accounts([{Alice, DeltaA = 10}, % Alice had migrated more
                                         {Carol, BalC}, % Carol is new
                                         {David, 0}]), % David has a balance of 0
                  T1 = aec_block_fork:apply_minerva(T0),
@@ -72,7 +72,7 @@ apply_lima_test_() ->
                   {Carol, BalC},
                   {David, _}] = generate_accounts(4),
                  T0 = make_trees([A, B]), % only Alice and Bob are present pre-minerva
-                 meck_lima_accounts_and_contracts([{Alice, DeltaA = 10},%% Alice had migrared more
+                 meck_lima_accounts_and_contracts([{Alice, DeltaA = 10},%% Alice had migrated more
                                                    {Carol, BalC},       %% Carol is new
                                                    {David, 0}],         %% David has a balance of 0
                                                   []                    %% No contracts
@@ -95,7 +95,7 @@ apply_lima_test_() ->
                  ContractSpecs = [lima_contract(2, 10000),
                                   lima_contract(1, 40000)
                                  ],
-                 meck_lima_accounts_and_contracts([{Alice, DeltaA = 10},%% Alice had migrared more
+                 meck_lima_accounts_and_contracts([{Alice, DeltaA = 10},%% Alice had migrated more
                                                    {Carol, BalC},       %% Carol is new
                                                    {David, 0}],         %% David has a balance of 0
                                                   ContractSpecs
