@@ -1,3 +1,0 @@
-  * Name preclaims are no longer allowed to use 0 as Salt value
-  * New name hash computation
-

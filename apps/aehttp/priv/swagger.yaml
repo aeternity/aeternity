@@ -1,7 +1,7 @@
 swagger: '2.0'
 info:
   description: 'This is the [Aeternity](https://www.aeternity.com/) node API.'
-  version: 5.0.0-rc.1
+  version: 5.0.0-rc.2
   title: Aeternity node
   termsOfService: 'https://www.aeternity.com/terms/'
   contact:
