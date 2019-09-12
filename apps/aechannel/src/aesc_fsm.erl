@@ -3574,7 +3574,7 @@ check_minimum_depth_opt(#{role := initiator} = Opts) ->
     Opts;
 check_minimum_depth_opt(Opts) ->
     MinDepthStrategy = maps:get(minimum_depth_strategy, Opts, ?DEFAULT_MINIMUM_DEPTH_STRATEGY),
-    MinDepthFactor = maps:get(minimum_depth, Opts, ?DEFAULT_MINIMUM_DEPTH(MinDepthStrategy)),
+    MinDepthFactor = maps:get(minimum_depth, Opts, default_minimum_depth(MinDepthStrategy)),
     Opts#{ minimum_depth          => MinDepthFactor
          , minimum_depth_strategy => MinDepthStrategy }.
 
@@ -4536,17 +4536,28 @@ maybe_use_minimum_depth_params(Msg, Opts) ->
         OptMinDepthValid ->
             Opts#{minimum_depth_strategy => ?DEFAULT_MINIMUM_DEPTH_STRATEGY};
         OptMinDepthStrategyValid ->
-            Opts#{minimum_depth => ?DEFAULT_MINIMUM_DEPTH(OptMinDepthStrategy)};
+            Opts#{minimum_depth => default_minimum_depth(maps:get(minimum_depth_strategy, Opts))};
         MinDepthValid andalso MinDepthStrategyValid ->
             Opts#{ minimum_depth => MinDepth
                  , minimum_depth_strategy => MinDepthStrategy };
         true ->
             Opts#{ minimum_depth_strategy => ?DEFAULT_MINIMUM_DEPTH_STRATEGY
-                 , minimum_depth => ?DEFAULT_MINIMUM_DEPTH }
+                 , minimum_depth => default_minimum_depth() }
     end.
 
 is_valid_minimum_depth_strategy({ok, txfee}) -> true;
 is_valid_minimum_depth_strategy(_)           -> false.
 
-is_valid_minimum_depth(Value) when is_integer(Value) -> Value >= 0;
-is_valid_minimum_depth(_)                            -> false.
+is_valid_minimum_depth({ok, Value}) when is_integer(Value) -> Value >= 0;
+is_valid_minimum_depth(_)                                  -> false.
+
+default_minimum_depth() ->
+    default_minimum_depth(?DEFAULT_MINIMUM_DEPTH_STRATEGY).
+
+default_minimum_depth(Strategy) ->
+    case Strategy of
+        txfee ->
+            10;
+        _ ->
+            error(unknown_minimum_depth_strategy)
+    end.

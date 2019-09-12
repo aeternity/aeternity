@@ -3,15 +3,6 @@
 -define(NOT_SET_BLOCK_HASH, <<0:32/unit:8>>).
 
 -define(DEFAULT_MINIMUM_DEPTH_STRATEGY, txfee).
--define(DEFAULT_MINIMUM_DEPTH, ?DEFAULT_MINIMUM_DEPTH(?DEFAULT_MINIMUM_DEPTH_STRATEGY)).
--define(DEFAULT_MINIMUM_DEPTH(Strategy),
-        case Strategy of
-            txfee ->
-                10;
-            _ ->
-                erlang:error({unknown_minimum_depth_strategy, Strategy})
-        end
-       ).
 
 % Number of blocks until a fork will be considered active
 -define(FORK_MINIMUM_DEPTH, 4).
@@ -162,8 +153,8 @@
               , cur_statem_state                :: undefined | atom()
               , state                           :: aesc_offchain_state:state() | function()
               , session                         :: pid()
-              , client                          :: pid() | undefined
-              , client_mref                     :: reference() | undefined
+              , client                          :: undefined | pid()
+              , client_mref                     :: undefined | reference()
               , client_connected = true         :: boolean()
               , client_may_disconnect = false   :: boolean()
               , client_reconnect_nonce = 0      :: non_neg_integer()
@@ -178,7 +169,7 @@
               %% checks
               , op = ?NO_OP                   :: latest_op()
               , ongoing_update = false        :: boolean()
-              , error_msg_type = undefined    :: undefined | error_msg_type()
+              , error_msg_type                :: undefined | error_msg_type()
               , last_reported_update          :: undefined | non_neg_integer()
               , log                           :: log()
               , strict_checks = true          :: boolean()
@@ -230,18 +221,18 @@
                         | ?WDRAW_ERR.
 
 -opaque opts() :: #{ minimum_depth          => non_neg_integer() %% Defaulted for responder, not for initiator.
-                   , minimum_depth_strategy => txfee | undefined
+                   , minimum_depth_strategy => txfee
                    , timeouts               := #{state_name() := pos_integer()}
-                   , report                 := map()
+                   , report                 := #{boolean() := atom()}
                    , log_keep               := non_neg_integer()
                    , initiator              := aec_keys:pubkey()
                    , responder              := aec_keys:pubkey()
                    }.
 
--record(op_data, {signed_tx  :: aetx_sign:signed_tx(),
-                  updates    :: [aesc_offchain_update:update()],
-                  block_hash :: aec_blocks:block_header_hash()
-                  }).
+-record(op_data, { signed_tx  :: aetx_sign:signed_tx()
+                 , updates    :: [aesc_offchain_update:update()]
+                 , block_hash :: aec_blocks:block_header_hash()
+                 }).
 
 -record(op_sign, { tag  :: sign_tag()
                  , data :: #op_data{}
