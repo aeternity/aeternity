@@ -311,7 +311,10 @@ compile_contract(Compiler, File) ->
 compile(Vsn, File) ->
     %% Lookup the res in the cache - if not present just calculate the result
     CompilationId = #compilation_id{vsn = Vsn, filename = File},
+    NoCache = os:getenv("SOPHIA_NO_CACHE"),
     case ets:lookup(?COMPILE_TAB, CompilationId) of
+        _ when NoCache /= false ->
+            compile_(Vsn, File);
         [#compilation_cache_entry{result = Result}] ->
             %% This should save 200ms - 2000ms per invocation
             ct:log("Compilation cache HIT  :)"),
