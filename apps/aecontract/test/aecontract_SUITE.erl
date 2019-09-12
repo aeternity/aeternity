@@ -5013,6 +5013,10 @@ sophia_bytes_to_x(_Cfg) ->
     _ = [ ToInt(W) || W <- [12, 32, 42, 64, 65] ],
     _ = [ ToStr(W) || W <- [12, 32, 42, 64, 65] ],
 
+    <<"0X0CFA0000">> = ?call(call_contract, Acc, C, hex, string, {{bytes, <<12, 250, 0, 0>>}}),
+    Equal = ?call(call_contract, Acc, C, comp_hex, bool, {<<"0X0CFA0000">>, {bytes, <<12, 250, 0, 0>>}}),
+    Equal = (sophia_version() =/= ?SOPHIA_FORTUNA),  %% bug fixed in Lima
+
     ok.
 
 sophia_bytes_concat(_Cfg) ->
