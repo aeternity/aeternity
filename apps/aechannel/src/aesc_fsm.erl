@@ -1532,10 +1532,9 @@ new_onchain_tx(channel_deposit_tx, #{acct := FromId,
     {ok, DepositTx, Updates};
 new_onchain_tx(channel_withdraw_tx, #{acct := ToId,
                                       amount := Amount} = Opts,
-               #data{on_chain_id = ChanId, state=State} = D,
-               BlockHash, OnChainEnv, OnChainTrees) ->
+               #data{on_chain_id = ChanId, state=State},
+               _BlockHash, OnChainEnv, OnChainTrees) ->
     Updates = [aesc_offchain_update:op_withdraw(aeser_id:create(account, ToId), Amount)],
-    {BlockHash, OnChainEnv, OnChainTrees} = pick_onchain_env(Opts, D),
     ActiveProtocol = aetx_env:consensus_version(OnChainEnv),
     UpdatedStateTx = aesc_offchain_state:make_update_tx(Updates, State,
                                                         ChanId,
@@ -1711,16 +1710,22 @@ create_with_minimum_fee(Mod, Opts, CurrHeight, Attempts) ->
                                      Attempts - 1)
     end.
 
-create_tx_for_signing(#data{opts = #{ initiator := Initiator
+create_tx_for_signing(#data{opts = #{ initiator        := Initiator
                                     , initiator_amount := IAmt
                                     , responder_amount := RAmt
                                     , channel_reserve  := ChannelReserve
-                                    , lock_period      := LockPeriod }} = D) ->
-    new_onchain_tx_for_signing(channel_create_tx, #{ acct => Initiator
-                                                   , initiator_amount => IAmt
-                                                   , responder_amount => RAmt
-                                                   , channel_reserve  => ChannelReserve
-                                                   , lock_period      => LockPeriod }, D).
+                                    , lock_period      := LockPeriod } = Opts } = D) ->
+    Obligatory =
+        #{ acct => Initiator
+         , initiator_amount => IAmt
+         , responder_amount => RAmt
+         , channel_reserve  => ChannelReserve
+         , lock_period      => LockPeriod },
+    %% nonce is not exposed to the client via WebSocket but is used in tests
+    %% shall we expose it to the client as well?
+    Optional = maps:with([nonce], Opts),
+    new_onchain_tx_for_signing(channel_create_tx,
+                               maps:merge(Obligatory, Optional), D).
 
 dep_tx_for_signing(Opts, D) ->
     new_onchain_tx_for_signing(channel_deposit_tx, Opts, D).
@@ -1777,7 +1782,7 @@ snapshot_solo_tx_for_signing(D) ->
 tx_defaults(Type, Opts, #data{ on_chain_id = ChanId } = D) ->
     Default = tx_defaults_(Type, Opts, D),
     Default#{ channel_id => ChanId
-            , nonce => default_nonce(Opts, D) }.
+            , nonce => default_nonce(Opts) }.
 
 tx_defaults_(channel_create_tx, _Opts, _D) ->
     #{};
@@ -1797,11 +1802,13 @@ tx_defaults_(channel_settle_tx = Tx, Opts, D) ->
 tx_defaults_(channel_close_mutual_tx, _Opts, _D) ->
     #{fee => default_fee(channel_close_mutual_tx)}.
 
-default_nonce(Opts, #data{opts = DOpts}) ->
-    try maps:get(nonce, Opts, maps:get(nonce, DOpts))
-    ?CATCH_LOG(_E)
-        Pubkey = maps:get(acct, Opts),
-        get_nonce(Pubkey)
+default_nonce(Opts) ->
+    case maps:find(nonce, Opts) of
+        {ok, Nonce} ->
+            Nonce;
+        error ->
+            Pubkey = maps:get(acct, Opts),
+            get_nonce(Pubkey)
     end.
 
 get_nonce(Pubkey) ->

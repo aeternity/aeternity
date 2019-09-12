@@ -21,7 +21,7 @@
 %% Helpers
 -export([
     create_state_channel_perform_operations_leave/2,
-    reestablish_state_channel_perform_operations/3
+    reestablish_state_channel_perform_operations_close/3
 ]).
 
 -import(aest_nodes, [
@@ -141,7 +141,7 @@ test_simple_same_node_channel(Cfg) ->
         push_amount => 2 * aest_nodes:gas_price(),
         bh_delta_not_newer_than => 0,
         bh_delta_not_older_than => 100,
-        bh_delta_pick           => 1
+        bh_delta_pick           => 10
     },
     simple_channel_test(ChannelOpts, #{}, #{}, Cfg).
 
@@ -169,7 +169,7 @@ test_different_nodes_channel_(InitiatorNodeBaseSpec, ResponderNodeBaseSpec, Cfg)
         push_amount => 2,
         bh_delta_not_newer_than => 0,
         bh_delta_not_older_than => 100,
-        bh_delta_pick           => 1
+        bh_delta_pick           => 10
     },
     simple_channel_test(ChannelOpts, InitiatorNodeBaseSpec, ResponderNodeBaseSpec, Cfg).
 
@@ -186,7 +186,9 @@ simple_channel_test(ChannelOpts, InitiatorNodeBaseSpec, ResponderNodeBaseSpec, C
 
     MikePubkey = aeser_api_encoder:encode(account_pubkey, maps:get(pubkey, ?MIKE)),
     NodeConfig = #{ beneficiary => MikePubkey },
-    setup([spec(node1, [], InitiatorNodeBaseSpec), spec(node2, [node1], ResponderNodeBaseSpec)], NodeConfig, Cfg),
+    setup([spec(node1, [], InitiatorNodeBaseSpec),
+           spec(node2, [node1], ResponderNodeBaseSpec#{mining => #{autostart => false}})],
+          NodeConfig, Cfg),
     NodeNames = [INodeName, RNodeName],
     start_node(node1, Cfg),
     start_node(node2, Cfg),
@@ -257,7 +259,7 @@ create_state_channel_perform_operations_leave({INodeName, RNodeName}, Config) ->
         push_amount => 2,
         bh_delta_not_newer_than => 0,
         bh_delta_not_older_than => 100,
-        bh_delta_pick           => 1
+        bh_delta_pick           => 10
     },
     IAccount = maps:get(initiator_id, ChannelOpts),
     RAccount = maps:get(responder_id, ChannelOpts),
@@ -271,7 +273,7 @@ create_state_channel_perform_operations_leave({INodeName, RNodeName}, Config) ->
 
     #{config => Config1, latest_state => LatestState, channel => Chan}.
 
-reestablish_state_channel_perform_operations({INodeName, RNodeName},
+reestablish_state_channel_perform_operations_close({INodeName, RNodeName},
     #{ config := Config
      , latest_state := LatestState
      , channel := Chan
@@ -284,6 +286,10 @@ reestablish_state_channel_perform_operations({INodeName, RNodeName},
     ct:log("Testing mutual close"),
     {ok, CloseTxHash, _CloseFee, _IChange, _RChange} = sc_close_mutual(Chan1, initiator),
     wait_for_value({txs_on_chain, [CloseTxHash]}, NodeNames, 5000, Config),
+    %% wait for min depth to be reached so the channels die
+    #{height := TopHeight} = aest_nodes:get_top(INodeName),
+    KeyBlocksToMine = 4 + 2, % min depth is 4
+    wait_for_value({height, TopHeight + KeyBlocksToMine}, NodeNames, 10000, Config),
     ok.
 
 %=== INTERNAL FUNCTIONS ========================================================

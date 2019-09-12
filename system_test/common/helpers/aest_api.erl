@@ -217,6 +217,7 @@ sc_leave(Channel) ->
     {ok, #{ <<"event">> := <<"died">> }} = sc_wait_for_channel_event(IConn, info),
     {ok, #{ <<"state">> := LatestState }} = sc_wait_for_channel_event(RConn, leave),
     {ok, #{ <<"event">> := <<"died">> }} = sc_wait_for_channel_event(RConn, info),
+    timer:sleep(300),
 
     {ok, LatestState}.
 
