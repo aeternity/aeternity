@@ -11,6 +11,11 @@ Changelog:
 cat: docs/release-notes/next-lima/PT-168132312-new-name-hash: No such file or directory
 * No error messages in contract call objects - they will end up under consensus.
   Run your contract in `dry-run` to get the detailed error message.
+* Name preclaims are no longer allowed to use `0` as `salt` value
+* New name hash computation
+* New governance function determining if a name is subject to direct claim or auction
+* New governance function determining initial price of a name
+* New name auction mechanism using subsequent claim transactions with `salt` equal to `0`
 * State Channels: Changed configuration option name `ws_handlers` to `sc_ws_handlers` which
   correctly implies that the limit applies to SC websocket connections.
 * State Channels: It is now possible to abort a signing request by replying with an error code.
