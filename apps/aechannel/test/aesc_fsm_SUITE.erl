@@ -96,7 +96,7 @@
 -define(PEEK_MSGQ(_D), peek_message_queue(?LINE, _D)).
 
 -define(MINIMUM_DEPTH, 10).
--define(MINIMUM_DEPTH_FACTOR, 0).
+-define(MINIMUM_DEPTH_STRATEGY, txfee).
 
 -define(SLOGAN, {slogan, {?FUNCTION_NAME, ?LINE}}).
 -define(SLOGAN(I), {slogan, {?FUNCTION_NAME, ?LINE, I}}).
@@ -389,7 +389,11 @@ end_per_group(Group, Config) ->
 
 init_per_testcase(_, Config) ->
     Config1 = load_idx(Config),
-    [{debug, false} | Config1].
+    [ {debug, false}
+    , {minimum_depth, ?MINIMUM_DEPTH}
+    , {minimum_depth_strategy, ?MINIMUM_DEPTH_STRATEGY}
+    | Config1
+    ].
 
 end_per_testcase(T, _Config) when T==multiple_channels;
                                   T==many_chs_msg_loop ->
@@ -426,17 +430,18 @@ multiple_responder_keys_per_port(Cfg) ->
     MinerHelper = spawn_miner_helper(),
     CreateMultiChannel =
         fun(N, CustomCfg) ->
-            ChannelCfg0 =
-                [ {port, ?PORT},
-                  {ack_to, Me},
-                  {minimum_depth, 0},
-                  {slogan, {Slogan, N}} | CustomCfg],
+            ChannelCfg0 = [ {port, ?PORT}
+                          , {ack_to, Me}
+                          , {slogan, {Slogan, N}}
+                          | CustomCfg
+                          ],
+            ChannelCfg1 = set_minimum_depth(ChannelCfg0, 0),
             ChannelCfg =
                 case InitiatorAccountType of
                     basic -> % give away nonces in advance to avoid race conditions
-                        [{nonce, Nonce + N - 1} | ChannelCfg0];
+                        [{nonce, Nonce + N - 1} | ChannelCfg1];
                     generalized -> % nonce is 0
-                        ChannelCfg0
+                        ChannelCfg1
                 end,
             C = create_multi_channel(ChannelCfg, #{ mine_blocks => {ask, MinerHelper}
                                                   , debug => Debug }, false),
@@ -1046,32 +1051,29 @@ withdraw(Cfg) ->
     ok = withdraw_full_cycle_(Amount, #{}, MinDepth, MinDepthChannel, Round, Cfg1).
 
 withdraw_high_amount_static_confirmation_time(Cfg) ->
-    Cfg1 = [ ?SLOGAN
-           % Factor of 0 sets min depths to 1 for all amounts
-           , {minimum_depth, 0}
-           ] ++ Cfg,
+    Cfg1 = [?SLOGAN | Cfg],
+    % Factor of 0 sets min depths to 1 for all amounts
+    Cfg2 = set_minimum_depth(Cfg1, 0),
     Amount = 300000,
     MinDepth = 1,
     MinDepthChannel = 1,
     Round = 1,
-    ok = withdraw_full_cycle_(Amount, #{}, MinDepth, MinDepthChannel, Round, Cfg1).
+    ok = withdraw_full_cycle_(Amount, #{}, MinDepth, MinDepthChannel, Round, Cfg2).
 
 withdraw_high_amount_short_confirmation_time(Cfg) ->
-    Cfg1 = [ ?SLOGAN
-           % High amount and high factor should lead to single block required
-           , {minimum_depth, 60}
-           ] ++ Cfg,
+    Cfg1 = [?SLOGAN | Cfg],
+    % High amount and high factor should lead to single block required
+    Cfg2 = set_minimum_depth(Cfg1, 60),
     Amount = 300000,
     MinDepth = 2,
     MinDepthChannel = 1,
     Round = 1,
-    ok = withdraw_full_cycle_(Amount, #{}, MinDepth, MinDepthChannel, Round, Cfg1).
+    ok = withdraw_full_cycle_(Amount, #{}, MinDepth, MinDepthChannel, Round, Cfg2).
 
 withdraw_low_amount_long_confirmation_time(Cfg) ->
-    Cfg1 = [ ?SLOGAN
-           % Low amount and low factor should lead to comparitively long confirmation time
-           , {minimum_depth, 4}
-           ] ++ Cfg,
+    Cfg1 = [?SLOGAN | Cfg],
+    % Low amount and low factor should lead to comparitively long confirmation time
+    Cfg2 = set_minimum_depth(Cfg1, 4),
     Amount = 1,
     MinDepth = case config(ga_group, Cfg, false) of
                    true ->
@@ -1081,20 +1083,19 @@ withdraw_low_amount_long_confirmation_time(Cfg) ->
                end,
     MinDepthChannel = 10,
     Round = 1,
-    ok = withdraw_full_cycle_(Amount, #{}, MinDepth, MinDepthChannel, Round, Cfg1).
+    ok = withdraw_full_cycle_(Amount, #{}, MinDepth, MinDepthChannel, Round, Cfg2).
 
 withdraw_low_amount_long_confirmation_time_negative_test(Cfg) ->
-    Cfg1 = [ ?SLOGAN
-           % Low amount and low factor should lead to comparitively long confirmation time
-           , {minimum_depth, 4}
-           ] ++ Cfg,
+    Cfg1 = [?SLOGAN | Cfg],
+    % Low amount and low factor should lead to comparitively long confirmation time
+    Cfg2 = set_minimum_depth(Cfg1, 4),
     Amount = 1,
     MinDepth = 3,
     MinDepthChannel = 10,
     Round = 1,
     ErrorRound = 0,
     try
-        ok = withdraw_full_cycle_(Amount, #{}, MinDepth, MinDepthChannel, Round, Cfg1),
+        ok = withdraw_full_cycle_(Amount, #{}, MinDepth, MinDepthChannel, Round, Cfg2),
         ct:fail("Expected withdraw test to fail due to min depth being to small.")
     catch
         error:{badmatch, {_, _, ErrorRound}} ->
@@ -1299,12 +1300,14 @@ multiple_channels_t(NumCs, FromPort, Msg, {slogan, Slogan}, Cfg) ->
     aecore_suite_utils:mock_mempool_nonce_offset(Node, NumCs),
     MinerHelper = spawn_miner_helper(),
     {ok, Nonce} = rpc(dev1, aec_next_nonce, pick_for_account, [Initiator]),
-    Cs = [create_multi_channel([{port, FromPort},
-                                {ack_to, Me},
-                                {nonce, Nonce + N - 1},
-                                {minimum_depth, 0},
-                                {slogan, {Slogan,N}} | Cfg], #{mine_blocks => {ask, MinerHelper},
-                                                               debug => Debug})
+    MultiChCfg0 = [ {port, FromPort}
+                  , {ack_to, Me}
+                  | Cfg ],
+    MultiChCfg1 = set_minimum_depth(MultiChCfg0, 0),
+    Cs = [create_multi_channel([ {nonce, Nonce + N - 1}
+                               , {slogan, {Slogan,N}}
+                               | MultiChCfg1 ],
+                               #{mine_blocks => {ask, MinerHelper}, debug => Debug})
           || N <- lists:seq(1, NumCs)],
     log(Debug, "channels spawned", []),
     Cs = collect_acks(Cs, channel_ack, NumCs),
@@ -3289,15 +3292,15 @@ positive_bh(Cfg) ->
     NOT = 10,
     NNT = 1,
     Cfg1 = [ ?SLOGAN
-           % Factor of 0 sets min depths to 1 for all amounts
-           , {minimum_depth, 0}
            , {block_hash_delta, #{ not_older_than => NOT
                                  , not_newer_than => NNT
                                  , pick           => 1 }}
-           ] ++ Cfg,
+           | Cfg ],
+    % Factor of 0 sets min depths to 1 for all amounts
+    Cfg2 = set_minimum_depth(Cfg1, 0),
     #{ i := #{fsm := FsmI} = I
      , r := R
-     , spec := _Spec} = create_channel_(Cfg1),
+     , spec := _Spec} = create_channel_(Cfg2),
     mine_key_blocks(dev1, NOT + 2), % do not rely on min depth
     TestByDelta =
         fun(Delta, {_I, _R} = Participants) ->
@@ -3858,3 +3861,6 @@ change_password(#{fsm := Fsm, state_password := StatePassword} = P) ->
     StatePassword1 = StatePassword ++ "_changed",
     ok = rpc(dev1, aesc_fsm, change_state_password, [Fsm, StatePassword1]),
     P#{state_password => StatePassword1}.
+
+set_minimum_depth(Cfg, N) ->
+    lists:keyreplace(minimum_depth, 1, Cfg, {minimum_depth, N}).

@@ -309,7 +309,6 @@ record_fields(Other) -> aesc_offchain_state:record_fields(Other).
 report_tags() ->
     maps:keys(?DEFAULT_REPORT_FLAGS).
 
-
 bh_deltas() ->
     record_info(fields, bh_delta).
 
@@ -1412,8 +1411,6 @@ send_channel_accept(#data{ opts = Opts
 
 check_accept_msg(#{ chain_hash             := ChainHash
                   , temporary_channel_id   := ChanId
-                  , minimum_depth          := MinDepth
-                  , minimum_depth_strategy := MinDepthStrategy
                   , initiator_amount       := _InitiatorAmt
                   , responder_amount       := _ResponderAmt
                   , channel_reserve        := _ChanReserve
@@ -1426,11 +1423,9 @@ check_accept_msg(#{ chain_hash             := ChainHash
     case aec_chain:genesis_hash() of
         ChainHash ->
             Log1 = log_msg(rcv, ?CH_ACCEPT, Msg, Log),
-            Opts1 = Opts#{ minimum_depth          => MinDepth
-                         , minimum_depth_strategy => MinDepthStrategy
-                         , initiator              => Initiator
-                         , responder              => Responder },
-            Data1 = Data#data{opts = Opts1, log = Log1},
+            Opts1 = Opts#{initiator => Initiator , responder => Responder},
+            Opts2 = maybe_use_minimum_depth_params(Msg, Opts1),
+            Data1 = Data#data{opts = Opts2, log = Log1},
             {ok, Data1};
         _ ->
             {error, chain_hash_mismatch}
@@ -2875,7 +2870,7 @@ has_my_signature(Me, SignedTx) ->
     end.
 
 restart_chain_watcher(#data{ watcher = undefined
-                          , on_chain_id = ChId } = D) ->
+                           , on_chain_id = ChId } = D) ->
     {ok, Pid} = aesc_chain_watcher:start_link(ChId, ?MODULE),
     D#data{ watcher = Pid }.
 
@@ -3415,43 +3410,40 @@ init(#{opts := Opts0} = Arg) ->
     %% Protect the password from leakage
     StatePasswordWrapper = aesc_state_password_wrapper:init(maps:find(state_password, Opts0)),
     Opts1 = maps:remove(state_password, Opts0),
-    {Role, Opts2} = maps:take(role, Opts1),
-    Client = maps:get(client, Opts2),
-    {Reestablish, ReestablishOpts, Opts3} =
-        { maps:is_key(existing_channel_id, Opts2)
-        , maps:with(?REESTABLISH_OPTS_KEYS, Opts2)
-        , maps:without(?REESTABLISH_OPTS_KEYS, Opts2)
+    {Reestablish, ReestablishOpts, Opts2} =
+        { maps:is_key(existing_channel_id, Opts1)
+        , maps:with(?REESTABLISH_OPTS_KEYS, Opts1)
+        , maps:without(?REESTABLISH_OPTS_KEYS, Opts1)
         },
-    Opts4 = check_opts(
+    Opts3 = check_opts(
               [ fun check_minimum_depth_opt/1
               , fun check_timeout_opt/1
               , fun check_rpt_opt/1
               , fun check_log_opt/1
               , fun check_block_hash_deltas/1
-              ], Opts3),
-    #{initiator := Initiator} = Opts4,
-    Opts = Opts4#{role => Role},
-    Session = start_session(Arg, Reestablish, Opts),
+              ], Opts2),
+    Initiator = maps:get(initiator, Opts3),
+    Session = start_session(Arg, Reestablish, Opts3),
     StateInitF = fun(NewI) ->
-                          CheckedOpts = maps:merge(Opts#{ role => Role
-                                                        , state_password_wrapper => StatePasswordWrapper
-                                                        }, ReestablishOpts),
+                          CheckedOpts = maps:merge(Opts3#{state_password_wrapper => StatePasswordWrapper},
+                                                   ReestablishOpts),
                           aesc_offchain_state:new(CheckedOpts#{initiator => NewI})
                   end,
     SessionEstablishF = fun(State) ->
+        Client = maps:get(client, Opts3),
         ClientMRef = erlang:monitor(process, Client),
         BlockHashDelta =
-            case maps:find(block_hash_delta, Opts) of
+            case maps:find(block_hash_delta, Opts3) of
                 error ->
                     #bh_delta{ not_newer_than = 0 %% backwards compatibility
                              , not_older_than = 10
-                             , pick           = 0}; %% backwards compatibility
+                             , pick           = 0 }; %% backwards compatibility
                 {ok, #{ not_older_than := NOT
                       , not_newer_than := NNT
-                      , pick           := Pick}} ->
+                      , pick           := Pick }} ->
                     #bh_delta{ not_older_than = NOT
                              , not_newer_than = NNT
-                             , pick           = Pick}
+                             , pick           = Pick }
             end,
         %% In case of reestablish we can garbage collect the password when exiting from this function
         MaybeStatePasswordWrapper = case Reestablish of
@@ -3460,16 +3452,17 @@ init(#{opts := Opts0} = Arg) ->
                                         false ->
                                             StatePasswordWrapper
                                     end,
+        {Role, Opts4} = maps:take(role, Opts3),
         Data = #data{ role             = Role
                     , client           = Client
                     , client_mref      = ClientMRef
                     , client_connected = true
-	                , block_hash_delta = BlockHashDelta
+                    , block_hash_delta = BlockHashDelta
                     , state_password_wrapper = MaybeStatePasswordWrapper
                     , session = Session
-                    , opts    = Opts
+                    , opts    = Opts4
                     , state   = State
-                    , log     = aesc_window:new(maps:get(log_keep, Opts)) },
+                    , log     = aesc_window:new(maps:get(log_keep, Opts4)) },
         lager:debug("Session started, Data = ~p", [Data]),
         %% TODO: Amend the fsm above to include this step. We have transport-level
         %% connectivity, but not yet agreement on the channel parameters. We will next send
@@ -3575,6 +3568,11 @@ min_depth(#{ minimum_depth := MinDepthFactor
     MinDepth.
 
 -spec check_minimum_depth_opt(opts()) -> opts().
+%% @doc Set default minimum depth parameters. If the role is initiator, no
+%% change is made because the responder might provide these default when the
+%% channel is accepted.
+check_minimum_depth_opt(#{role := initiator} = Opts) ->
+    Opts;
 check_minimum_depth_opt(Opts) ->
     MinDepthStrategy = maps:get(minimum_depth_strategy, Opts, ?DEFAULT_MINIMUM_DEPTH_STRATEGY),
     MinDepthFactor = maps:get(minimum_depth, Opts, ?DEFAULT_MINIMUM_DEPTH(MinDepthStrategy)),
@@ -4517,3 +4515,33 @@ check_block_hash(BlockHash,
         error ->
             {error, unknown_block_hash}
     end.
+
+%% @doc Use the given minimum depth parameters from the message in case none
+%% have been set previously in the channel options. This should only apply to
+%% the initiator. In case only one of the two parameters is defined, the other
+%% one will be set to the internal default value.
+maybe_use_minimum_depth_params(#{ minimum_depth := MinDepth
+                                , minimum_depth_strategy := MinDepthStrategy },
+                               Opts) ->
+    OptMinDepth = maps:find(minimum_depth, Opts),
+    OptMinDepthStrategy = maps:find(minimum_depth_strategy, Opts),
+    OptMinDepthValid = is_valid_minimum_depth(OptMinDepth),
+    OptMinDepthStrategyValid = is_valid_minimum_depth_strategy(OptMinDepthStrategy),
+    if
+        OptMinDepthValid andalso
+        OptMinDepthStrategyValid ->
+            Opts;
+        OptMinDepthValid ->
+            Opts#{minimum_depth_strategy => ?DEFAULT_MINIMUM_DEPTH_STRATEGY};
+        OptMinDepthStrategyValid ->
+            Opts#{minimum_depth => ?DEFAULT_MINIMUM_DEPTH(OptMinDepthStrategy)};
+        true ->
+            Opts#{ minimum_depth => MinDepth
+                 , minimum_depth_strategy => MinDepthStrategy }
+    end.
+
+is_valid_minimum_depth_strategy({ok, txfee}) -> true;
+is_valid_minimum_depth_strategy(_)           -> false.
+
+is_valid_minimum_depth(Value) when is_integer(Value) -> Value > 0;
+is_valid_minimum_depth(_)                            -> false.

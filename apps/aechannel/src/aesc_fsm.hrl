@@ -172,7 +172,7 @@
               , on_chain_id                     :: undefined | binary()
               , create_tx                       :: undefined | any()
               , watcher                         :: undefined | pid()
-              , block_hash_delta = #bh_delta{}  :: #bh_delta{} 
+              , block_hash_delta = #bh_delta{}  :: #bh_delta{}
               %% we keep the latest operation so we can perform according
               %% checks
               , op = ?NO_OP                   :: latest_op()
