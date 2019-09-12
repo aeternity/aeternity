@@ -11,109 +11,120 @@
 %%%===================================================================
 
 apply_minerva_test_() ->
-    {foreach,
-     fun() ->
-         meck:new(aec_fork_block_settings, [passthrough]),
-         ok
-     end,
-     fun(ok) ->
-         meck:unload(aec_fork_block_settings),
-         ok
-     end,
-     [ {"Empty minerva migration does not change balances",
-        fun() ->
-            InitialAccounts =
-                [{Alice, BalA},
-                 {Bob,   BalB},
-                 {Carol, BalC}] = generate_accounts(3),
-            T0 = make_trees(InitialAccounts), % Alice, Bob and Carol
-            meck_minerva_accounts([]), % no accounts migrated
-            T1 = aec_block_fork:apply_minerva(T0),
-            ?assertEqual(aec_trees:hash(T0), aec_trees:hash(T1)),
-            assert_balance(T1, Alice, BalA),
-            assert_balance(T1, Bob,   BalB),
-            assert_balance(T1, Carol, BalC),
-            ok
-        end},
-       {"Minerva migration changes balances",
-        fun() ->
-            [{Alice,  BalA} = A,
-              {Bob,   BalB} = B,
-              {Carol, BalC},
-              {David, _}] = generate_accounts(4),
-            T0 = make_trees([A, B]), % only Alice and Bob are present pre-minerva
-            meck_minerva_accounts([{Alice, DeltaA = 10}, % Alice had migrared more
-                                   {Carol, BalC}, % Carol is new
-                                   {David, 0}]), % David has a balance of 0
-            T1 = aec_block_fork:apply_minerva(T0),
-            assert_only_accounts_tree_changed(T0, T1),
-            assert_balance(T1, Alice, BalA + DeltaA), % Alice balance is increased
-            assert_balance(T1, Bob,   BalB), % Bob is unchanged
-            assert_balance(T1, Carol, BalC), % Carol is inserted
-            assert_balance(T1, David, 0),    % David is present
-            ok
-        end},
-       {"Lima migration changes balances if no contracts are given",
-        fun() ->
-            [{Alice,  BalA} = A,
-             {Bob,   BalB} = B,
-             {Carol, BalC},
-             {David, _}] = generate_accounts(4),
-            T0 = make_trees([A, B]), % only Alice and Bob are present pre-minerva
-            meck_lima_accounts_and_contracts([{Alice, DeltaA = 10},%% Alice had migrared more
-                                              {Carol, BalC},       %% Carol is new
-                                              {David, 0}],         %% David has a balance of 0
-                                             []                    %% No contracts
-                                            ),
-            T1 = aec_block_fork:apply_lima(T0, tx_env()),
-            assert_only_accounts_tree_changed(T0, T1),
-            assert_balance(T1, Alice, BalA + DeltaA), % Alice balance is increased
-            assert_balance(T1, Bob,   BalB), % Bob is unchanged
-            assert_balance(T1, Carol, BalC), % Carol is inserted
-            assert_balance(T1, David, 0),    % David is present
-            ok
-        end},
-       {"Lima migration changes balances when contracts _are_ given",
-        fun() ->
-            [{Alice,  BalA} = A,
-             {Bob,   BalB} = B,
-             {Carol, BalC},
-             {David, _}] = generate_accounts(4),
-            T0 = make_trees([A, B]), % only Alice and Bob are present pre-minerva
-            ContractSpecs = [lima_contract(2, 10000),
-                             lima_contract(1, 40000)
-                            ],
-            meck_lima_accounts_and_contracts([{Alice, DeltaA = 10},%% Alice had migrared more
-                                              {Carol, BalC},       %% Carol is new
-                                              {David, 0}],         %% David has a balance of 0
-                                             ContractSpecs
-                                            ),
-            T1 = aec_block_fork:apply_lima(T0, tx_env()),
-            assert_only_accounts_and_contracts_trees_changed(T0, T1),
-            assert_balance(T1, Alice, BalA + DeltaA), % Alice balance is increased
-            assert_balance(T1, Bob,   BalB), % Bob is unchanged
-            assert_balance(T1, Carol, BalC), % Carol is inserted
-            assert_balance(T1, David, 0),    % David is present
-            %% Make sure the locked account balance didn't change.
-            LockedAccount = aec_governance:locked_coins_holder_account(),
-            assert_balance(T0, LockedAccount, 0),
-            assert_balance(T1, LockedAccount, 0),
-            Contracts0 = aec_trees:contracts(T0),
-            Contracts1 = aec_trees:contracts(T1),
-            %% Make sure the contracts didn't exist before
-            [?assert(not aect_state_tree:is_contract(maps:get(pubkey, S), Contracts0))
-             || S <- ContractSpecs],
-            %% Make sure the contracts now are present and have the right amount
-            [begin
-                 PK = maps:get(pubkey, S),
-                 ?assert(aect_state_tree:is_contract(PK, Contracts1)),
-                 Bal = maps:get(amount, S),
-                 assert_balance(T1, PK, Bal)
-             end || S <- ContractSpecs],
-            ok
-        end}
+    [{foreach,
+      fun() ->
+              meck:new(aec_fork_block_settings, [passthrough]),
+              ok
+      end,
+      fun(ok) ->
+              meck:unload(aec_fork_block_settings),
+              ok
+      end,
+      [ {"Empty minerva migration does not change balances",
+         fun() ->
+                 InitialAccounts =
+                     [{Alice, BalA},
+                      {Bob,   BalB},
+                      {Carol, BalC}] = generate_accounts(3),
+                 T0 = make_trees(InitialAccounts), % Alice, Bob and Carol
+                 meck_minerva_accounts([]), % no accounts migrated
+                 T1 = aec_block_fork:apply_minerva(T0),
+                 ?assertEqual(aec_trees:hash(T0), aec_trees:hash(T1)),
+                 assert_balance(T1, Alice, BalA),
+                 assert_balance(T1, Bob,   BalB),
+                 assert_balance(T1, Carol, BalC),
+                 ok
+         end},
+        {"Minerva migration changes balances",
+         fun() ->
+                 [{Alice,  BalA} = A,
+                  {Bob,   BalB} = B,
+                  {Carol, BalC},
+                  {David, _}] = generate_accounts(4),
+                 T0 = make_trees([A, B]), % only Alice and Bob are present pre-minerva
+                 meck_minerva_accounts([{Alice, DeltaA = 10}, % Alice had migrared more
+                                        {Carol, BalC}, % Carol is new
+                                        {David, 0}]), % David has a balance of 0
+                 T1 = aec_block_fork:apply_minerva(T0),
+                 assert_only_accounts_tree_changed(T0, T1),
+                 assert_balance(T1, Alice, BalA + DeltaA), % Alice balance is increased
+                 assert_balance(T1, Bob,   BalB), % Bob is unchanged
+                 assert_balance(T1, Carol, BalC), % Carol is inserted
+                 assert_balance(T1, David, 0),    % David is present
+                 ok
+         end}]}
+     || aect_test_utils:latest_protocol_version() >= ?MINERVA_PROTOCOL_VSN ].
 
-     ]}.
+apply_lima_test_() ->
+    [{foreach,
+      fun() ->
+              meck:new(aec_fork_block_settings, [passthrough]),
+              ok
+      end,
+      fun(ok) ->
+              meck:unload(aec_fork_block_settings),
+              ok
+      end,
+      [ {"Lima migration changes balances if no contracts are given",
+         fun() ->
+                 [{Alice,  BalA} = A,
+                  {Bob,   BalB} = B,
+                  {Carol, BalC},
+                  {David, _}] = generate_accounts(4),
+                 T0 = make_trees([A, B]), % only Alice and Bob are present pre-minerva
+                 meck_lima_accounts_and_contracts([{Alice, DeltaA = 10},%% Alice had migrared more
+                                                   {Carol, BalC},       %% Carol is new
+                                                   {David, 0}],         %% David has a balance of 0
+                                                  []                    %% No contracts
+                                                 ),
+                 T1 = aec_block_fork:apply_lima(T0, tx_env()),
+                 assert_only_accounts_tree_changed(T0, T1),
+                 assert_balance(T1, Alice, BalA + DeltaA), % Alice balance is increased
+                 assert_balance(T1, Bob,   BalB), % Bob is unchanged
+                 assert_balance(T1, Carol, BalC), % Carol is inserted
+                 assert_balance(T1, David, 0),    % David is present
+                 ok
+         end},
+        {"Lima migration changes balances when contracts _are_ given",
+         fun() ->
+                 [{Alice,  BalA} = A,
+                  {Bob,   BalB} = B,
+                  {Carol, BalC},
+                  {David, _}] = generate_accounts(4),
+                 T0 = make_trees([A, B]), % only Alice and Bob are present pre-minerva
+                 ContractSpecs = [lima_contract(2, 10000),
+                                  lima_contract(1, 40000)
+                                 ],
+                 meck_lima_accounts_and_contracts([{Alice, DeltaA = 10},%% Alice had migrared more
+                                                   {Carol, BalC},       %% Carol is new
+                                                   {David, 0}],         %% David has a balance of 0
+                                                  ContractSpecs
+                                                 ),
+                 T1 = aec_block_fork:apply_lima(T0, tx_env()),
+                 assert_only_accounts_and_contracts_trees_changed(T0, T1),
+                 assert_balance(T1, Alice, BalA + DeltaA), % Alice balance is increased
+                 assert_balance(T1, Bob,   BalB), % Bob is unchanged
+                 assert_balance(T1, Carol, BalC), % Carol is inserted
+                 assert_balance(T1, David, 0),    % David is present
+                 %% Make sure the locked account balance didn't change.
+                 LockedAccount = aec_governance:locked_coins_holder_account(),
+                 assert_balance(T0, LockedAccount, 0),
+                 assert_balance(T1, LockedAccount, 0),
+                 Contracts0 = aec_trees:contracts(T0),
+                 Contracts1 = aec_trees:contracts(T1),
+                 %% Make sure the contracts didn't exist before
+                 [?assert(not aect_state_tree:is_contract(maps:get(pubkey, S), Contracts0))
+                  || S <- ContractSpecs],
+                 %% Make sure the contracts now are present and have the right amount
+                 [begin
+                      PK = maps:get(pubkey, S),
+                      ?assert(aect_state_tree:is_contract(PK, Contracts1)),
+                      Bal = maps:get(amount, S),
+                      assert_balance(T1, PK, Bal)
+                  end || S <- ContractSpecs],
+                 ok
+         end}]}
+     || aect_test_utils:latest_protocol_version() >= ?LIMA_PROTOCOL_VSN ].
 
 tx_env() ->
     aetx_env:tx_env(42).
