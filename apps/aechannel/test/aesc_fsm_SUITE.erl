@@ -59,7 +59,6 @@
         , check_mutual_close_with_wrong_amounts/1
         , check_mutual_close_after_close_solo/1
         , check_fsm_crash_reestablish/1
-        , check_invalid_reestablish_password/1
         , check_password_is_changeable/1
         , attach_initiator/1
         , attach_responder/1
@@ -183,7 +182,6 @@ groups() ->
         check_mutual_close_with_wrong_amounts
       , check_mutual_close_after_close_solo
       , check_fsm_crash_reestablish
-      , check_invalid_reestablish_password
       ]},
      {signing_abort, [sequence],
       [
@@ -1173,12 +1171,6 @@ leave_reestablish_close(Cfg) ->
     % Do the shutdown
     shutdown_(I1, R1, Cfg1),
 
-    % Ensure state is flushed to disk post shutdown
-    retry(3, 100, fun() -> assert_cache_is_on_disk(ChId) end),
-
-    mine_blocks(dev1, 5),
-    assert_cache_is_gone(ChId),
-
     % Verify final messages
     IExpectedLog = [ {evt, close}
                    , {rcv, channel_closed}
@@ -1211,6 +1203,10 @@ leave_reestablish_close(Cfg) ->
     ok = check_log(IExpectedLog, ILog),
     ok = check_log(RExpectedLog, RLog),
 
+    % Ensure state is flushed gone post shutdown
+    assert_cache_is_gone_after_on_disk(ChId),
+
+    % Done
     assert_empty_msgq(Debug),
     ok.
 
@@ -1666,63 +1662,100 @@ fsm_crash_action_during_shutdown( #{fsm := FsmI} = I
     {ok, _} = receive_from_fsm(shutdown_ack, R, signing_req(), ?TIMEOUT, Debug),
     ok.
 
-check_invalid_reestablish_password(Cfg) ->
-    Debug = get_debug(Cfg),
-    {I0, R0, Spec0} = channel_spec(Cfg),
-    #{ i := I
-     , r := R } = create_channel_from_spec(I0, R0, Spec0, ?PORT, Debug, Cfg),
-    ct:log("I = ~p", [I]),
-    ct:log("R = ~p", [R]),
-    {_, I1, R1} = do_n(4, fun update_volley/3, I, R, Cfg),
-    {ok, SignedTx} = leave_channel(I1, R1, Debug),
-
-    %% Reestablish with wrong passwords
-    #{state_password := PwI} = I1,
-    #{state_password := PwR} = R1,
-    reestablish_wrong_password( I1#{state_password => PwI ++ "_bogus"}
-                              , R1#{state_password => PwR ++ "_bogus"}
-                              , SignedTx, Spec0, Debug),
-
-    %% Check that after an invalid password has been provided we can still reestablish the channel
-    Info = #{i => I1, r => R1, spec => Spec0},
-    reestablish_(Info, SignedTx, ?PORT, Debug),
-    ok.
-
 check_password_is_changeable(Cfg) ->
     Debug = get_debug(Cfg),
-    {I0, R0, Spec0} = channel_spec(Cfg),
-    #{ i := I
-     , r := R } = create_channel_from_spec(I0, R0, Spec0, ?PORT, Debug, Cfg),
-    ct:log("I = ~p", [I]),
-    ct:log("R = ~p", [R]),
-    {_, I1, R1} = do_n(4, fun update_volley/3, I, R, Cfg),
+    Cfg1 = [?SLOGAN | Cfg],
+    assert_empty_msgq(Debug),
 
+    % Start channel
+    #{ i := I, r := R } = Info0 = create_channel_(Cfg1, #{}, Debug),
+    log(Debug, "I = ~p", [I]),
+    log(Debug, "R = ~p", [R]),
+
+    % Perform updates
+    UpdateCount = 4,
+    {_, I1, R1} = do_n(UpdateCount, fun update_volley/3, I, R, Cfg),
+
+    % Change passwords
     I2 = change_password(I1),
     R2 = change_password(R1),
-    {ok, SignedTx} = leave_channel(I2, R2, Debug),
 
-    %% Reestablish with old password should fail
-    reestablish_wrong_password(I1, R1, SignedTx, Spec0, Debug),
-    %% Reestablish with new password should succeed
-    Info = #{i => I2, r => R2, spec => Spec0},
+    % Leave channel
+    {I3, R3, SignedTx} = leave_(I2, R2, Debug),
+
+    % Verify leave log
+    {ok, #{info := {log, ILog}}} = receive_log(I3, Debug),
+    {ok, #{info := {log, RLog}}} = receive_log(R3, Debug),
+    IUpdateLog = [ {rcv, update_ack}
+                 , {rcv, signed}
+                 , {snd, update}
+                 , {req, sign}
+                 ],
+    RUpdateLog = [ {rcv, signed}
+                 , {snd, update_ack}
+                 , {req, sign}
+                 , {rcv, update}
+                 ],
+    IExpectedLog = [ {evt, close}
+                   , {snd, leave_ack}
+                   , {rcv, leave}
+                   , {snd, leave}
+                   ]
+                   ++ lists:flatten([IUpdateLog || _ <- lists:seq(1, UpdateCount)]) ++
+                   [ {rcv, funding_locked}
+                   , {snd, funding_locked}
+                   , {rcv, channel_changed}
+                   , {rcv, funding_signed}
+                   , {snd, funding_created}
+                   , {rcv, signed}
+                   , {req, sign}
+                   , {rcv, channel_accept}
+                   , {snd, channel_open}
+                   ],
+    RExpectedLog = [ {evt, close}
+                   , {rcv, leave}
+                   ]
+                   ++ lists:flatten([RUpdateLog || _ <- lists:seq(1, UpdateCount)]) ++
+                   [ {rcv, funding_locked}
+                   , {snd, funding_locked}
+                   , {rcv, channel_changed}
+                   , {snd, funding_created}
+                   , {rcv, signed}
+                   , {req, sign}
+                   , {rcv, funding_created}
+                   , {snd, channel_accept}
+                   , {rcv, channel_open}
+                   ],
+    ok = check_log(IExpectedLog, ILog),
+    ok = check_log(RExpectedLog, RLog),
+
+    assert_empty_msgq(Debug),
+
+    % Reestablish with old password should fail
+    InfoWrong = Info0#{i => I1, r => R1},
+    reestablish_wrong_password_(InfoWrong, SignedTx, ?PORT, Debug),
+    assert_empty_msgq(Debug),
+
+    % Reestablish with new password should succeed
+    Info = Info0#{i => I3, r => R3},
     reestablish_(Info, SignedTx, ?PORT, Debug),
 
+    % Done
+    assert_empty_msgq(Debug),
     ok.
 
-change_password(#{fsm := Fsm, state_password := StatePassword} = P) ->
-    StatePassword1 = StatePassword ++ "_changed",
-    ok = rpc(dev1, aesc_fsm, change_state_password, [Fsm, StatePassword1]),
-    P#{state_password => StatePassword1}.
+leave_(#{channel_id := ChId, fsm := Fsm} = I, R, Debug) ->
+    assert_cache_is_in_ram(ChId),
+    ok = rpc(dev1, aesc_fsm, leave, [Fsm]),
 
-leave_channel(#{fsm := FsmI} = I, R, Debug) ->
-    ok = rpc(dev1, aesc_fsm, leave, [FsmI]),
-    {ok,Li} = await_leave(I, ?TIMEOUT, Debug),
-    {ok,Lr} = await_leave(R, ?TIMEOUT, Debug),
-    SignedTx = maps:get(info, Li),
-    SignedTx = maps:get(info, Lr),
-    {ok,_} = receive_from_fsm(info, I, fun died_normal/1, ?TIMEOUT, Debug),
-    {ok,_} = receive_from_fsm(info, R, fun died_normal/1, ?TIMEOUT, Debug),
-    {ok, SignedTx}.
+    % Verify leave and FSM timeout
+    {ok, #{info := SignedTx}} = await_leave(I, ?TIMEOUT, Debug),
+    {ok, #{info := SignedTx}} = await_leave(R, ?TIMEOUT, Debug),
+    {ok, _} = receive_info(I, fun died_normal/1, Debug),
+    {ok, _} = receive_info(R, fun died_normal/1, Debug),
+
+    retry(3, 100, fun() -> assert_cache_is_on_disk(ChId) end),
+    {I, R, SignedTx}.
 
 fsm_state(Pid, Debug) ->
     {State, _Data} = rpc(dev1, sys, get_state, [Pid, 1000], _RpcDebug = false),
@@ -1954,7 +1987,10 @@ wait_for_fsm_state(St, FsmPid, Retries, Debug) when Retries > 0 ->
             wait_for_fsm_state(St, FsmPid, Retries-1, Debug)
     end.
 
-shutdown_(#{fsm := FsmI, channel_id := ChannelId} = I, R, Cfg) ->
+shutdown_(I, R, Cfg) ->
+    shutdown_(I, R, ?MINIMUM_DEPTH, Cfg).
+
+shutdown_(#{fsm := FsmI, channel_id := ChannelId} = I, R, MinDepth, Cfg) ->
     Debug = get_debug(Cfg),
     assert_empty_msgq(Debug),
 
@@ -1984,13 +2020,13 @@ shutdown_(#{fsm := FsmI, channel_id := ChannelId} = I, R, Cfg) ->
     SignedTx = await_on_chain_report(R1, #{info => channel_closed}, ?TIMEOUT), % same tx
 
     % Mine until tx is confirmed
-    mine_blocks(dev1, 2,
+    mine_blocks(dev1, MinDepth,
                 opt_add_to_debug(#{ signed_tx => SignedTx
                                   , current_height => current_height(dev1) }, Debug)),
 
     % Final checks
-    {ok,_} = receive_info(I1, closed_confirmed, Debug),
-    {ok,_} = receive_info(R1, closed_confirmed, Debug),
+    {ok, _} = receive_info(I1, closed_confirmed, Debug),
+    {ok, _} = receive_info(R1, closed_confirmed, Debug),
     {ok, _} = receive_info(I1, fun died_normal/1, Debug),
     {ok, _} = receive_info(R1, fun died_normal/1, Debug),
 
@@ -2394,16 +2430,6 @@ fsm_map(Fsm, #{ initiator_amount := IAmt
         , initiator_amount => IAmt - PushAmt
         , responder_amount => RAmt + PushAmt }.
 
-reestablish_wrong_password( #{channel_id := ChId, initiator_amount := IAmt, responder_amount := RAmt} = I
-                          , #{channel_id := ChId, initiator_amount := IAmt, responder_amount := RAmt} = R
-                          , SignedTx, Spec, Debug) ->
-    Spec1 = Spec#{existing_channel_id => ChId, offchain_tx => SignedTx,
-                  initiator_amount => IAmt, responder_amount => RAmt},
-    {error, invalid_password} = rpc(dev1, aesc_fsm, respond,
-                     [?PORT, move_password_to_spec(R, Spec1)]),
-    {error, invalid_password} = rpc(dev1, aesc_fsm, initiate,
-                     ["localhost", ?PORT, move_password_to_spec(I, Spec1)], Debug).
-
 update_tx(Tx0, F, Args) ->
     {Mod, TxI} = aetx:specialize_callback(Tx0),
     TxI1 = apply(Mod, F, [TxI|Args]),
@@ -2742,7 +2768,11 @@ check_info(Timeout, Debug) ->
               []
     end.
 
-mine_blocks(Node, N) -> mine_blocks(Node, N, true).
+mine_blocks(Node) ->
+    mine_blocks(Node, ?MINIMUM_DEPTH).
+
+mine_blocks(Node, N) ->
+    mine_blocks(Node, N, true).
 
 mine_blocks(_Node, N, #{mine_blocks := {ask, Pid}} = Opt) when is_pid(Pid) ->
     Pid ! {self(), mine_blocks, N, maps:without([mine_blocks], Opt)},
@@ -3376,8 +3406,8 @@ leave_reestablish_loop_step_(Idx, Info, Debug) ->
     ok = rpc(dev1, aesc_fsm, leave, [Fsm]),
 
     % Verify leave and FSM timeout
-    {ok, #{info := SignedTx} = I2} = await_leave(I, ?TIMEOUT, Debug),
-    {ok, #{info := SignedTx} = R2} = await_leave(R, ?TIMEOUT, Debug),
+    {ok, #{info := SignedTx}} = await_leave(I, ?TIMEOUT, Debug),
+    {ok, #{info := SignedTx}} = await_leave(R, ?TIMEOUT, Debug),
     {ok, _} = receive_info(I, fun died_normal/1, Debug),
     {ok, _} = receive_info(R, fun died_normal/1, Debug),
     {ok, #{info := {log, ILog}}} = receive_log(I, Debug),
@@ -3443,6 +3473,32 @@ reestablish_(Info, SignedTx, Port, Debug) ->
     assert_empty_msgq(Debug),
     Info#{i => I3, r => R3, spec => Spec}.
 
+reestablish_wrong_password_(Info, SignedTx, Port, Debug) ->
+    assert_empty_msgq(Debug),
+    #{ i := #{ channel_id := ChId
+             , fsm := Fsm
+             , initiator_amount := IAmt
+             , responder_amount := RAmt } = I0
+     , r := #{ initiator_amount := IAmt
+             , responder_amount := RAmt } = R0
+     , spec := Spec0 } = Info,
+
+    Spec = Spec0#{ existing_channel_id => ChId
+                 , offchain_tx => SignedTx
+                 , initiator_amount => IAmt
+                 , responder_amount => RAmt
+                 },
+
+    % Fail to start new FSMs
+    ISpec = move_password_to_spec(I0, Spec),
+    RSpec = move_password_to_spec(R0, Spec),
+    {error, invalid_password} = rpc(dev1, aesc_fsm, respond, [Port, RSpec]),
+    {error, invalid_password} = rpc(dev1, aesc_fsm, initiate, ["localhost", Port, ISpec], Debug),
+
+    % Done
+    assert_empty_msgq(Debug),
+    Info#{spec => Spec}.
+
 withdraw_full_cycle_(Amount, Opts, MinDepth, MinDepthChannel, Round, Cfg) ->
     Debug = get_debug(Cfg),
     #{ i := #{} = I
@@ -3451,15 +3507,15 @@ withdraw_full_cycle_(Amount, Opts, MinDepth, MinDepthChannel, Round, Cfg) ->
      } = create_channel_(Cfg, MinDepthChannel, Debug),
     ct:log("I = ~p", [I]),
     {ok, _, _} = withdraw_(I, R, Amount, Opts, MinDepth, Round, Debug, Cfg),
-    shutdown_(I, R, Cfg),
+    shutdown_(I, R, MinDepth, Cfg),
     ok.
 
 withdraw_(#{fsm := FsmI} = I, R, Amount, Opts, MinDepth, Round0, Debug, Cfg) ->
+    assert_empty_msgq(Debug),
     % Check initial fsm state
     #{initiator_amount := IAmt0, responder_amount := RAmt0} = I,
     {IAmt0, RAmt0, _, Round0} = FsmState0 = check_fsm_state(FsmI),
-    ct:log("Round0 = ~p, IAmt0 = ~p, RAmt0 = ~p", [Round0, IAmt0, RAmt0]),
-    [] = check_info(20),
+    log(Debug, "Round0 = ~p, IAmt0 = ~p, RAmt0 = ~p", [Round0, IAmt0, RAmt0]),
 
     % Perform update and verify flow and reports
     ok = rpc(dev1, aesc_fsm, upd_withdraw, [FsmI, Opts#{amount => Amount}]),
@@ -3467,9 +3523,9 @@ withdraw_(#{fsm := FsmI} = I, R, Amount, Opts, MinDepth, Round0, Debug, Cfg) ->
     {R1, _} = await_signing_request(withdraw_created, R, Cfg),
     SignedTx = await_on_chain_report(I1, #{info => withdraw_signed}, ?TIMEOUT),
     SignedTx = await_on_chain_report(R1, #{info => withdraw_created}, ?TIMEOUT), % same tx
-    ct:log("=== SignedTx = ~p", [SignedTx]),
+    log(Debug, "=== SignedTx = ~p", [SignedTx]),
     receive_info(R1, withdraw_created, Debug), % probably an obsolete message?
-    [] = check_info(20),
+    assert_empty_msgq(Debug),
 
     % Verify changes of fsm state
     assert_fsm_states(SignedTx, I1, MinDepth, (-1 * Amount), FsmState0,
@@ -3482,9 +3538,12 @@ withdraw_(#{fsm := FsmI} = I, R, Amount, Opts, MinDepth, Round0, Debug, Cfg) ->
     await_withdraw_locked(R1, ?TIMEOUT, Debug),
     SignedTx = await_channel_changed_report(I1, ?TIMEOUT), % same tx
     SignedTx = await_channel_changed_report(R1, ?TIMEOUT), % same tx
-    [] = check_info(20),
+    #{signed_tx := SignedTx} = I2 = await_update_report(I1, ?TIMEOUT, Debug),
+    #{signed_tx := SignedTx} = R2 = await_update_report(R1, ?TIMEOUT, Debug),
 
-    {ok, I1, R1}.
+    % Done
+    assert_empty_msgq(Debug),
+    {ok, I2, R2}.
 
 deposit_(#{fsm := FsmI} = I, R, Amount, Debug, Cfg) ->
     {_IAmt0, _RAmt0, _, Round0} = check_fsm_state(FsmI),
@@ -3497,10 +3556,10 @@ deposit_(I, R, Amount, Opts, Round0, Debug, Cfg) ->
     deposit_(I, R, Amount, Opts, ?MINIMUM_DEPTH, Round0, Debug, Cfg).
 
 deposit_(#{fsm := FsmI} = I, R, Amount, Opts, MinDepth, Round0, Debug, Cfg) ->
+    assert_empty_msgq(Debug),
     % Check initial fsm state
     {IAmt0, RAmt0, _, Round0} = FsmState0 = check_fsm_state(FsmI),
-    ct:log("Round0 = ~p, IAmt0 = ~p, RAmt0 = ~p", [Round0, IAmt0, RAmt0]),
-    [] = check_info(20),
+    log(Debug, "Round0 = ~p, IAmt0 = ~p, RAmt0 = ~p", [Round0, IAmt0, RAmt0]),
 
     % Perform update and verify flow and reports
     ok = rpc(dev1, aesc_fsm, upd_deposit, [FsmI, Opts#{amount => Amount}]),
@@ -3508,9 +3567,9 @@ deposit_(#{fsm := FsmI} = I, R, Amount, Opts, MinDepth, Round0, Debug, Cfg) ->
     {R1, _} = await_signing_request(deposit_created, R, Cfg),
     SignedTx = await_on_chain_report(I1, #{info => deposit_signed}, ?TIMEOUT),
     SignedTx = await_on_chain_report(R1, #{info => deposit_created},  ?TIMEOUT), % same tx
-    ct:log("=== SignedTx = ~p", [SignedTx]),
+    log(Debug, "=== SignedTx = ~p", [SignedTx]),
     receive_info(R1, deposit_created, Debug), % probably an obsolete message?
-    [] = check_info(20),
+    assert_empty_msgq(Debug),
 
     % Verify changes of fsm state
     assert_fsm_states(SignedTx, I1, MinDepth, Amount, FsmState0,
@@ -3523,9 +3582,12 @@ deposit_(#{fsm := FsmI} = I, R, Amount, Opts, MinDepth, Round0, Debug, Cfg) ->
     await_deposit_locked(R1, ?TIMEOUT, Debug),
     SignedTx = await_channel_changed_report(I1, ?TIMEOUT), % same tx
     SignedTx = await_channel_changed_report(R1, ?TIMEOUT), % same tx
-    check_info(20),
+    #{signed_tx := SignedTx} = I2 = await_update_report(I1, ?TIMEOUT, Debug),
+    #{signed_tx := SignedTx} = R2 = await_update_report(R1, ?TIMEOUT, Debug),
 
-    {ok, I1, R1}.
+    % Done
+    assert_empty_msgq(Debug),
+    {ok, I2, R2}.
 
 %% @doc Assert FSM state before and after a deposit/withdraw transaction.
 assert_fsm_states(SignedTx, FsmSpec, MinDepth, Amount, {IAmt0, RAmt0, _, Round0},
@@ -3537,11 +3599,11 @@ assert_fsm_states(SignedTx, FsmSpec, MinDepth, Amount, {IAmt0, RAmt0, _, Round0}
     % Find position of transaction in the chain
     SignedTxHash = aeser_api_encoder:encode(tx_hash, aetx_sign:hash(SignedTx)),
     {ok, TxPos} = tx_position_in_blocks(SignedTxHash, lists:reverse(BlocksMined)),
-    ct:log("Tx position in blocks = ~p", [TxPos]),
+    log(Debug, "Tx position in blocks = ~p", [TxPos]),
 
     % Verify fsm state before transaction confirmation
     {IAmt1, RAmt1, _, Round1} = check_fsm_state(Fsm),
-    ct:log("After tx in block - Round1 = ~p, IAmt1 = ~p, RAmt1 = ~p", [Round1, IAmt1, RAmt1]),
+    log(Debug, "After tx in block - Round1 = ~p, IAmt1 = ~p, RAmt1 = ~p", [Round1, IAmt1, RAmt1]),
     % In case we mined further than the min depth the transaction might already
     % have been confirmed.
     case MinDepth - TxPos > 0 of
@@ -3556,7 +3618,7 @@ assert_fsm_states(SignedTx, FsmSpec, MinDepth, Amount, {IAmt0, RAmt0, _, Round0}
 
     % Verify fsm state after transaction confirmation
     {IAmt2, RAmt2, StateHash, Round2} = check_fsm_state(Fsm),
-    ct:log("After tx min depth - Round2 = ~p, IAmt2 = ~p, RAmt2 = ~p", [Round2, IAmt2, RAmt2]),
+    log(Debug, "After tx min depth - Round2 = ~p, IAmt2 = ~p, RAmt2 = ~p", [Round2, IAmt2, RAmt2]),
     case MinDepth - TxPos > 0 of
         true ->
             {IAmt1, RAmt0, Round1} = {IAmt2 + (-1 * Amount), RAmt2, Round2 - 1};
@@ -3570,7 +3632,7 @@ assert_fsm_states(SignedTx, FsmSpec, MinDepth, Amount, {IAmt0, RAmt0, _, Round0}
         aetx:specialize_callback(aetx_sign:innermost_tx(SignedTx)),
     ChannelRound = aesc_channels:round(Channel),
     TxRound = TxCb:round(Tx),
-    ct:log("Channel on-chain round ~p, expected round ~p", [ChannelRound, TxRound]),
+    log(Debug, "Channel on-chain round ~p, expected round ~p", [ChannelRound, TxRound]),
     {ChannelRound, ChannelRound} = {ChannelRound, TxRound},
 
     % Verify state hash
@@ -3598,6 +3660,18 @@ assert_cache_is_gone(ChannelId) ->
     [] = in_ram(Cache),
     [] = on_disk(Cache),
     ok.
+
+assert_cache_is_gone_after_on_disk(ChannelId) ->
+    try
+        retry(3, 100, fun() -> assert_cache_is_on_disk(ChannelId) end),
+        mine_blocks(dev1),
+        assert_cache_is_gone(ChannelId)
+    catch
+        error:{badmatch, []} ->
+            % At this point the cache could already be gone
+            assert_cache_is_gone(ChannelId),
+            ok
+    end.
 
 assert_empty_msgq(Debug) ->
     Msgs = check_info(20, Debug),
@@ -3783,3 +3857,8 @@ tx_position_in_blocks_(TxHash, [Block | Rest], Pos) ->
                     tx_position_in_blocks_(TxHash, Rest, Pos + 1)
             end
     end.
+
+change_password(#{fsm := Fsm, state_password := StatePassword} = P) ->
+    StatePassword1 = StatePassword ++ "_changed",
+    ok = rpc(dev1, aesc_fsm, change_state_password, [Fsm, StatePassword1]),
+    P#{state_password => StatePassword1}.
