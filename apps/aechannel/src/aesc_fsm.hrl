@@ -223,7 +223,7 @@
 -opaque opts() :: #{ minimum_depth          => non_neg_integer() %% Defaulted for responder, not for initiator.
                    , minimum_depth_strategy => txfee
                    , timeouts               := #{state_name() := pos_integer()}
-                   , report                 := #{boolean() := atom()}
+                   , report                 := #{atom() := boolean()}
                    , log_keep               := non_neg_integer()
                    , initiator              := aec_keys:pubkey()
                    , responder              := aec_keys:pubkey()
