@@ -1427,6 +1427,7 @@ workflows:
             branches:
               only:
                 - *master_branch
+                - aeuniverse-demo
 
       - deploy_next:
           context: ae-node-builds
