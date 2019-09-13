@@ -70,10 +70,10 @@ sign_txs_test_() ->
                case lists:last(aec_hard_forks:sorted_protocol_versions()) of
                    Vsn when Vsn < ?LIMA_PROTOCOL_VSN ->
                        ?assertEqual({error, signature_check_failed},
-                                    ?TEST_MODULE:verify(SignedTx, aec_trees:new(), ?TEST_HEIGHT));
-                   _Vsn ->
+                                    ?TEST_MODULE:verify(SignedTx, aec_trees:new(), Vsn));
+                   Vsn ->
                        ?assertEqual(ok,
-                                    ?TEST_MODULE:verify(SignedTx, aec_trees:new(), ?TEST_HEIGHT))
+                                    ?TEST_MODULE:verify(SignedTx, aec_trees:new(), Vsn))
                end
        end}
      ]}.

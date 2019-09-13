@@ -795,8 +795,8 @@ check_valid_at_protocol(Tx, _TxHash, Block, _BlockHash, _Trees, _Event) ->
     aetx:check_protocol(aetx_sign:tx(Tx), Protocol).
 
 check_signature(Tx, TxHash, Block, _BlockHash, Trees, _Event) ->
-    Height = aec_blocks:height(Block),
-    case aetx_sign:verify(Tx, Trees, Height) of
+    Protocol = aec_blocks:version(Block),
+    case aetx_sign:verify(Tx, Trees, Protocol) of
         {error, _} = E ->
             lager:info("Failed signature check on tx: ~p, ~p\n", [E, TxHash]),
             E;
