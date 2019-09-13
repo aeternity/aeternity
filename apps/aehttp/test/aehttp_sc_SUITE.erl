@@ -61,7 +61,8 @@
 -define(NODE, dev1).
 -define(DEFAULT_TESTS_COUNT, 5).
 -define(WS, aehttp_ws_test_utils).
--define(DEFAULT_MIN_DEPTH, 4).
+-define(DEFAULT_MIN_DEPTH_FACTOR, 10).
+-define(DEFAULT_MIN_DEPTH, 5).
 -define(MAX_MINED_BLOCKS, 20).
 -define(BOGUS_STATE_HASH, <<42:32/unit:8>>).
 -define(SPEND_FEE, 20000 * aec_test_utils:min_gas_price()).
@@ -2489,8 +2490,7 @@ sc_ws_min_depth_not_reached_timeout_(Config) ->
 
 
 sc_ws_min_depth_is_modifiable(Config0) ->
-    Config = sc_ws_open_(Config0, #{minimum_depth => ?DEFAULT_MIN_DEPTH},
-                         ?DEFAULT_MIN_DEPTH),
+    Config = sc_ws_open_(Config0, #{minimum_depth => 0}, 2),
     ok = sc_ws_update_(Config),
     ok = sc_ws_close_(Config).
 
