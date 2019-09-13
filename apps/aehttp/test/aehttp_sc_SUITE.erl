@@ -30,7 +30,6 @@
     sc_ws_close_solo/1,
     sc_ws_slash/1,
     sc_ws_leave_reestablish/1,
-    sc_ws_password_changeable/1,
     sc_ws_ping_pong/1,
     sc_ws_deposit/1,
     sc_ws_withdraw/1,
@@ -121,7 +120,6 @@ groups() ->
         sc_ws_slash,
         %% possible to leave and reestablish channel
         sc_ws_leave_reestablish,
-        sc_ws_password_changeable,
         {group, with_open_channel},
         {group, client_reconnect}
       ]},
@@ -3061,30 +3059,9 @@ sc_ws_leave_reestablish(Config0) ->
     Config = sc_ws_open_(Config0),
     ReestablishOptions = sc_ws_leave_(Config),
 
-    %% Test invalid password
-    ReestablishOptionsBroken = ReestablishOptions#{state_password => ?CACHE_DEFAULT_PASSWORD "_bogus"},
-    Roles = [initiator, responder],
-    [sc_ws_test_broken_params(Role, Config, ReestablishOptionsBroken, <<"Invalid password">>, Config) || Role <- Roles],
-
     Config1 = sc_ws_reestablish_(ReestablishOptions, Config),
     ok = sc_ws_update_(Config1),
     ok = sc_ws_close_(Config1).
-
-sc_ws_password_changeable(Config0) ->
-    Config = sc_ws_open_(Config0),
-    Options = proplists:get_value(channel_options, Config),
-    StatePasswordOld = maps:get(state_password, Options),
-    Config1 = sc_ws_change_password_(Config),
-    ReestablishOptions = sc_ws_leave_(Config1),
-    ReestablishOptionsOld = ReestablishOptions#{state_password => StatePasswordOld},
-
-    %% Reestablish with old password should fail
-    Roles = [initiator, responder],
-    [sc_ws_test_broken_params(Role, Config, ReestablishOptionsOld, <<"Invalid password">>, Config) || Role <- Roles],
-
-    Config2 = sc_ws_reestablish_(ReestablishOptions, Config1),
-    ok = sc_ws_update_(Config2),
-    ok = sc_ws_close_(Config2).
 
 sc_ws_change_password_(Config) ->
     ct:log("Changing password"),
@@ -3755,19 +3732,6 @@ sc_ws_broken_open_params(Config) ->
                                    #{lock_period => -1}, Config),
     Test(ChannelOpts8, <<"Value too low">>),
 
-    % test weak state passwords
-    ChannelOpts9 = channel_options(IPubkey, RPubkey, IAmt, RAmt,
-                                   #{state_password => "1234"}, Config),
-    Test(ChannelOpts9, <<"Invalid password">>),
-
-    % test that after the lima fork the password is required
-    case aect_test_utils:latest_protocol_version() >= ?LIMA_PROTOCOL_VSN of
-        true ->
-            ChannelOpts10 = maps:remove(state_password, ChannelOpts9),
-            Test(ChannelOpts10, <<"Missing field: state_password">>);
-        false ->
-            ok
-    end,
     ok.
 
 sc_ws_pinned_update(Cfg) ->

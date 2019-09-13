@@ -2522,7 +2522,7 @@ shutdown_msg_received(Msg, D) ->
     end.
 
 shutdown_msg_received(SignedTx, Updates, BlockHash, D) ->
-    report(info, shutdown, D),
+    %%report(info, shutdown, D), disabled for the demo, event not suppored by SDK
     case request_signing_(?SHUTDOWN_ACK, SignedTx, Updates, BlockHash, D) of
         {ok, D1, Actions} ->
             next_state(awaiting_signature, D1, Actions);
@@ -4404,12 +4404,7 @@ init_checks(Opts) ->
 check_state_password(#{state_password := StatePassword}) ->
     is_password_valid(StatePassword);
 check_state_password(_Opts) ->
-    case was_fork_activated(?LIMA_PROTOCOL_VSN) of
-        true ->
-            {error, password_required_since_lima};
-        false ->
-            ok
-    end.
+    ok.
 
 -spec is_password_valid(string()) -> ok | {error, invalid_password}.
 is_password_valid(StatePassword)
