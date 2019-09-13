@@ -1575,7 +1575,13 @@ paths:
           description: 'Name'
           required: true
           type: string
-        - $ref: '#/parameters/SaltIn'
+        - in: query
+          name: salt
+          description: 'Salt'
+          required: true
+          # UInt
+          type: integer
+          minimum: 0
       responses:
         '200':
           description: 'Successful operation'
@@ -1700,19 +1706,6 @@ paths:
           schema:
             $ref: '#/definitions/Error'
 
-##
-## Parameters
-##
-
-parameters:
-  SaltIn:
-    in: query
-    name: salt
-    description: 'Salt'
-    required: true
-    # UInt
-    type: integer
-    minimum: 0
 
 ##
 ## Definitions
