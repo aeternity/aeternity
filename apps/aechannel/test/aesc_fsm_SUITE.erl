@@ -1099,8 +1099,8 @@ withdraw_low_amount_long_confirmation_time_negative_test(Cfg) ->
         ok = withdraw_full_cycle_(Amount, #{}, MinDepth, MinDepthChannel, Round, Cfg2),
         ct:fail("Expected withdraw test to fail due to min depth being to small.")
     catch
-        error:{badmatch, {_, _, ErrorRound}} ->
-            % This badmatch when checking the fsm state is expected because the
+        error:timeout ->
+            % This timeout occurs when checking the fsm messages is expected because the
             % chosen min depth is too low.
             ok
     end.
@@ -3287,45 +3287,49 @@ request_too_old_bh(Cfg) ->
     shutdown_(I, R, Cfg),
     ok.
 
-
 positive_bh(Cfg) ->
     Debug = get_debug(Cfg),
     NOT = 10,
     NNT = 1,
+    Amount = 1,
     Cfg1 = [ ?SLOGAN
            , {block_hash_delta, #{ not_older_than => NOT
                                  , not_newer_than => NNT
                                  , pick           => 1 }}
            | Cfg ],
     % Factor of 0 sets min depths to 1 for all amounts
+    MinDepth = 1,
     Cfg2 = set_minimum_depth(Cfg1, 0),
     #{ i := #{fsm := FsmI} = I
      , r := R
      , spec := _Spec} = create_channel_(Cfg2),
     mine_key_blocks(dev1, NOT + 2), % do not rely on min depth
     TestByDelta =
-        fun(Delta, {_I, _R} = Participants) ->
+        fun(Delta, Acc) ->
             lists:foldl(
-                fun(Fun, {I0, R0}) ->
-                    {_IAmt0, _RAmt0, _, Round} = check_fsm_state(FsmI),
-                    BlockHash = aecore_suite_utils:get_key_hash_by_delta(dev1,
-                                                                        Delta),
-                    {ok, I1, R1} = Fun(I0, R0, #{block_hash => BlockHash}, Round),
-                    {I1, R1}
+                fun(Fun, {AccRound, #{fsm := AccIFsm} = AccI, AccR}) ->
+                    {_, _, _, AccRound} = check_fsm_state(AccIFsm),
+                    BlockHash = aecore_suite_utils:get_key_hash_by_delta(dev1, Delta),
+                    {ok, #{fsm := AccIFsm1} = AccI1, AccR1} = Fun(AccI, AccR, #{block_hash => BlockHash}, AccRound),
+                    % We trust the sub-routines to checks that the funds are correct
+                    {_, _, _, AccRound1} = check_fsm_state(AccIFsm1),
+                    true = (AccRound < AccRound1),
+                    {AccRound1, AccI1, AccR1}
                 end,
-                {_I, _R} = Participants,
-                [ fun(Il, Rl, Opts, Round) ->
-                      deposit_(Il, Rl, 1, Opts, 1, Round, Debug, Cfg)
+                Acc,
+                [ fun(IntI, IntR, IntOpts, IntRound) ->
+                      deposit_(IntI, IntR, Amount, IntOpts, MinDepth, IntRound, Debug, Cfg)
                   end,
-                  fun(Il, Rl, Opts, Round) ->
-                      withdraw_(Il, Rl, 1, Opts, 1, Round, Debug, Cfg)
+                  fun(IntI, IntR, IntOpts, IntRound) ->
+                      withdraw_(IntI, IntR, Amount, IntOpts, MinDepth, IntRound, Debug, Cfg)
                   end
                 ])
         end,
-    {IFinal, RFinal} =
+    {_, _, _, Round0} = check_fsm_state(FsmI),
+    {_, IFinal, RFinal} =
         lists:foldl(
             TestByDelta,
-            {I, R},
+            {Round0, I, R},
             [ NOT      %% border condition
             , NNT      %% border condition
             , NOT - 1  %% in the range
@@ -3527,23 +3531,26 @@ withdraw_(#{fsm := FsmI} = I, R, Amount, Opts, MinDepth, Round0, Debug, Cfg) ->
     receive_info(R1, withdraw_created, Debug), % probably an obsolete message?
     assert_empty_msgq(Debug),
 
-    % Verify changes of fsm state
-    assert_fsm_states(SignedTx, I1, MinDepth, (-1 * Amount), FsmState0,
-                      channel_withdraw_tx, aesc_withdraw_tx, Debug),
+    VerifyFun = fun() ->
+        % Verify flow and reports after transactions has been confirmed
+        await_own_withdraw_locked(I1, ?TIMEOUT, Debug),
+        await_own_withdraw_locked(R1, ?TIMEOUT, Debug),
+        await_withdraw_locked(I1, ?TIMEOUT, Debug),
+        await_withdraw_locked(R1, ?TIMEOUT, Debug),
+        SignedTx = await_channel_changed_report(I1, ?TIMEOUT), % same tx
+        SignedTx = await_channel_changed_report(R1, ?TIMEOUT), % same tx
+        #{signed_tx := SignedTx} = I2 = await_update_report(I1, ?TIMEOUT, Debug),
+        #{signed_tx := SignedTx} = R2 = await_update_report(R1, ?TIMEOUT, Debug),
+        {I2, R2}
+    end,
 
-    % Verify flow and reports after transactions has been confirmed
-    await_own_withdraw_locked(I1, ?TIMEOUT, Debug),
-    await_own_withdraw_locked(R1, ?TIMEOUT, Debug),
-    await_withdraw_locked(I1, ?TIMEOUT, Debug),
-    await_withdraw_locked(R1, ?TIMEOUT, Debug),
-    SignedTx = await_channel_changed_report(I1, ?TIMEOUT), % same tx
-    SignedTx = await_channel_changed_report(R1, ?TIMEOUT), % same tx
-    #{signed_tx := SignedTx} = I2 = await_update_report(I1, ?TIMEOUT, Debug),
-    #{signed_tx := SignedTx} = R2 = await_update_report(R1, ?TIMEOUT, Debug),
+    % Verify changes of fsm state
+    {I3, R3} = assert_fsm_states(SignedTx, I1, MinDepth, (-1 * Amount), FsmState0, VerifyFun,
+                                 channel_withdraw_tx, aesc_withdraw_tx, Debug),
 
     % Done
     assert_empty_msgq(Debug),
-    {ok, I2, R2}.
+    {ok, I3, R3}.
 
 deposit_(#{fsm := FsmI} = I, R, Amount, Debug, Cfg) ->
     {_IAmt0, _RAmt0, _, Round0} = check_fsm_state(FsmI),
@@ -3571,27 +3578,30 @@ deposit_(#{fsm := FsmI} = I, R, Amount, Opts, MinDepth, Round0, Debug, Cfg) ->
     receive_info(R1, deposit_created, Debug), % probably an obsolete message?
     assert_empty_msgq(Debug),
 
-    % Verify changes of fsm state
-    assert_fsm_states(SignedTx, I1, MinDepth, Amount, FsmState0,
-                      channel_deposit_tx, aesc_deposit_tx, Debug),
+    VerifyFun = fun() ->
+        % Verify flow and reports after transactions has been confirmed
+        await_own_deposit_locked(I1, ?TIMEOUT, Debug),
+        await_own_deposit_locked(R1, ?TIMEOUT, Debug),
+        await_deposit_locked(I1, ?TIMEOUT, Debug),
+        await_deposit_locked(R1, ?TIMEOUT, Debug),
+        SignedTx = await_channel_changed_report(I1, ?TIMEOUT), % same tx
+        SignedTx = await_channel_changed_report(R1, ?TIMEOUT), % same tx
+        #{signed_tx := SignedTx} = I2 = await_update_report(I1, ?TIMEOUT, Debug),
+        #{signed_tx := SignedTx} = R2 = await_update_report(R1, ?TIMEOUT, Debug),
+        {I2, R2}
+    end,
 
-    % Verify flow and reports after transactions has been confirmed
-    await_own_deposit_locked(I1, ?TIMEOUT, Debug),
-    await_own_deposit_locked(R1, ?TIMEOUT, Debug),
-    await_deposit_locked(I1, ?TIMEOUT, Debug),
-    await_deposit_locked(R1, ?TIMEOUT, Debug),
-    SignedTx = await_channel_changed_report(I1, ?TIMEOUT), % same tx
-    SignedTx = await_channel_changed_report(R1, ?TIMEOUT), % same tx
-    #{signed_tx := SignedTx} = I2 = await_update_report(I1, ?TIMEOUT, Debug),
-    #{signed_tx := SignedTx} = R2 = await_update_report(R1, ?TIMEOUT, Debug),
+    % Verify changes of fsm state
+    {I3, R3} = assert_fsm_states(SignedTx, I1, MinDepth, Amount, FsmState0, VerifyFun,
+                                 channel_deposit_tx, aesc_deposit_tx, Debug),
 
     % Done
     assert_empty_msgq(Debug),
-    {ok, I2, R2}.
+    {ok, I3, R3}.
 
 %% @doc Assert FSM state before and after a deposit/withdraw transaction.
 assert_fsm_states(SignedTx, FsmSpec, MinDepth, Amount, {IAmt0, RAmt0, _, Round0},
-                  TxType, TxCb, Debug) ->
+                  VerifyFun, TxType, TxCb, Debug) ->
     % Mine blocks until transaction is seen
     #{fsm := Fsm, channel_id := ChannelId} = FsmSpec,
     {ok, BlocksMined} = wait_for_signed_transaction_in_block(dev1, SignedTx, Debug),
@@ -3601,30 +3611,38 @@ assert_fsm_states(SignedTx, FsmSpec, MinDepth, Amount, {IAmt0, RAmt0, _, Round0}
     {ok, TxPos} = tx_position_in_blocks(SignedTxHash, lists:reverse(BlocksMined)),
     log(Debug, "Tx position in blocks = ~p", [TxPos]),
 
-    % Verify fsm state before transaction confirmation
-    {IAmt1, RAmt1, _, Round1} = check_fsm_state(Fsm),
-    log(Debug, "After tx in block - Round1 = ~p, IAmt1 = ~p, RAmt1 = ~p", [Round1, IAmt1, RAmt1]),
+    % Verify fsm state before additional mining
     % In case we mined further than the min depth the transaction might already
     % have been confirmed.
-    case MinDepth - TxPos > 0 of
+    {ExpectedState1, VerifyFunRes} = case MinDepth - TxPos > 0 of
         true ->
-            {IAmt0, RAmt0, Round0} = {IAmt1, RAmt1, Round1};
+            % no confirmation
+            {{IAmt0, RAmt0, Round0}, undefined};
         false ->
-            {IAmt0, RAmt0, Round0} = {IAmt1 + (-1 * Amount), RAmt1, Round1 - 1}
+            % confirmed, so also verify the incoming messages
+            Res = VerifyFun(),
+            {{IAmt0 - (-1 * Amount), RAmt0, Round0 + 1}, Res}
     end,
+    {IAmt1, RAmt1, _, Round1} = check_fsm_state(Fsm),
+    log(Debug, "After tx in block - Round1 = ~p, IAmt1 = ~p, RAmt1 = ~p", [Round1, IAmt1, RAmt1]),
+    ExpectedState1 = {IAmt1, RAmt1, Round1},
 
     % Mine until transaction confirmation is expected to occur
     mine_blocks(dev1, MinDepth),
 
-    % Verify fsm state after transaction confirmation
+    % Verify fsm state after additional mining
+    {ExpectedState2, VerifyFunRes1} = case MinDepth - TxPos > 0 of
+        true ->
+            % confirmed, so also verify the incoming messages
+            Res1 = VerifyFun(),
+            {{IAmt1 - (-1 * Amount), RAmt0, Round1 + 1}, Res1};
+        false ->
+            % previously confirmed and verified
+            {{IAmt1, RAmt0, Round1}, VerifyFunRes}
+    end,
     {IAmt2, RAmt2, StateHash, Round2} = check_fsm_state(Fsm),
     log(Debug, "After tx min depth - Round2 = ~p, IAmt2 = ~p, RAmt2 = ~p", [Round2, IAmt2, RAmt2]),
-    case MinDepth - TxPos > 0 of
-        true ->
-            {IAmt1, RAmt0, Round1} = {IAmt2 + (-1 * Amount), RAmt2, Round2 - 1};
-        false ->
-            {IAmt1, RAmt0, Round1} = {IAmt2, RAmt2, Round2}
-    end,
+    ExpectedState2 = {IAmt2, RAmt2, Round2},
 
     % Verify channel round
     {ok, Channel} = rpc(dev1, aec_chain, get_channel, [ChannelId]),
@@ -3641,7 +3659,8 @@ assert_fsm_states(SignedTx, FsmSpec, MinDepth, Amount, {IAmt0, RAmt0, _, Round0}
     Round2 = TxCb:round(Tx), %% assert correct round
     StateHash = TxCb:state_hash(Tx), %% assert correct state hash
 
-    ok.
+    assert_empty_msgq(Debug),
+    VerifyFunRes1.
 
 assert_cache_is_in_ram(ChannelId) ->
     Cache = cache_status(ChannelId),
