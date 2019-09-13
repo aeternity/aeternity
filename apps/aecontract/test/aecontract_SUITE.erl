@@ -602,7 +602,8 @@ end_per_testcase(fate_environment, _Config) ->
     ok;
 end_per_testcase(TC, _Config) when TC == sophia_aens_resolve;
                                    TC == sophia_signatures_aens;
-                                   TC == sophia_aens_transactions ->
+                                   TC == sophia_aens_transactions;
+                                   TC == sophia_aens_update_transaction ->
     meck:unload(aec_governance),
     ok;
 end_per_testcase(_TC, _Config) ->
