@@ -78,6 +78,7 @@ references:
     run:
       name: Install OS dependancies
       command: |
+        sudo apt-get update
         sudo apt-get -qq -y install git curl \
           autoconf build-essential ncurses-dev libssl-dev
 
