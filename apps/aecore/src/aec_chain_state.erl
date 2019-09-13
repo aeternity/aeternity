@@ -277,6 +277,8 @@ is_key_block(N) -> node_type(N) =:= key.
 
 is_micro_block(N) -> node_type(N) =:= micro.
 
+node_header(#node{header = H}) -> H.
+
 maybe_add_genesis_hash(#{genesis_block_hash := undefined} = State, Node) ->
     case node_height(Node) =:= aec_block_genesis:height() of
         true  -> State#{genesis_block_hash => hash(Node)};
@@ -339,9 +341,6 @@ wrap_header(Header, Hash) ->
          , hash = Hash
          , type = aec_headers:type(Header)
          }.
-
-export_header(#node{header = Header}) ->
-    Header.
 
 %% NOTE: Only return nodes in the main chain.
 %%       The function assumes that a node is in the main chain if
@@ -531,7 +530,7 @@ assert_calculated_target(Node, PrevNode, Delta, HeadersIn) ->
                 NextNode = db_get_node(NextHash),
                 get_n_key_headers_from({ok, NextNode}, Delta - N, HeadersIn)
         end,
-    case aec_target:verify(export_header(Node), Headers) of
+    case aec_target:verify(node_header(Node), Headers) of
         ok -> ok;
         {error, {wrong_target, Actual, Expected}} ->
             internal_error({wrong_target, Node, Actual, Expected})
@@ -551,7 +550,7 @@ get_n_key_headers_from({ok, Node}, N, Acc) ->
     %% Assert
     key = node_type(Node),
     MaybePrevKeyNode = db_find_node(prev_key_hash(Node)),
-    get_n_key_headers_from(MaybePrevKeyNode, N-1, [export_header(Node) | Acc]);
+    get_n_key_headers_from(MaybePrevKeyNode, N-1, [node_header(Node) | Acc]);
 get_n_key_headers_from(error, _N, _Acc) ->
     error.
 
@@ -608,7 +607,7 @@ assert_micro_signature(PrevNode, Node) ->
                     key   -> {ok, PrevNode};
                     micro -> db_find_node(prev_key_hash(Node))
                 end,
-            case aeu_sig:verify(export_header(Node), node_miner(KeyNode)) of
+            case aeu_sig:verify(node_header(Node), node_miner(KeyNode)) of
                 ok         -> ok;
                 {error, _} -> internal_error(signature_verification_failed)
             end;
@@ -816,7 +815,11 @@ apply_node_transactions(Node, Trees, ForkInfo, State) ->
             #fork_info{fees = FeesIn, fraud = FraudStatus} = ForkInfo,
             GasFees = calculate_gas_fee(aec_trees:calls(Trees)),
             TotalFees = GasFees + FeesIn,
-            Trees1 = aec_trees:perform_pre_transformations(Trees, node_height(Node)),
+            Header = node_header(Node),
+            Env = aetx_env:tx_env_from_key_header(Header, hash(Node),
+                                                  node_time(Node), prev_hash(Node)),
+
+            Trees1 = aec_trees:perform_pre_transformations(Trees, Env),
             Delay  = aec_governance:beneficiary_reward_delay(),
             case node_height(Node) > aec_block_genesis:height() + Delay of
                 true  -> {grant_fees(Node, Trees1, Delay, FraudStatus, State), TotalFees, #{}};
@@ -1118,7 +1121,7 @@ maybe_pof(Node, MicroSibHeaders) ->
             PrevKeyHash = prev_key_hash(Node),
             Miner = node_miner(db_get_node(PrevKeyHash)),
             [Header| _] = MicroSibHeaders,
-            aec_pof:new(export_header(Node), Header, Miner)
+            aec_pof:new(node_header(Node), Header, Miner)
     end.
 
 % if a miner is fraudulent - one does not receive a reward and it is locked

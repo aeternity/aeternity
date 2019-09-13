@@ -245,8 +245,9 @@ gc_cache(Trees, TreesToGC) ->
         Trees,
         TreesToGC).
 
--spec perform_pre_transformations(trees(), aec_blocks:height()) -> trees().
-perform_pre_transformations(Trees, Height) ->
+-spec perform_pre_transformations(trees(), aetx_env:env()) -> trees().
+perform_pre_transformations(Trees, TxEnv) ->
+    Height = aetx_env:height(TxEnv),
     Trees0 = aect_call_state_tree:prune(Height, Trees),
     Trees1 = aeo_state_tree:prune(Height, Trees0),
     Trees2 = aens_state_tree:prune(Height, Trees1),
@@ -259,7 +260,7 @@ perform_pre_transformations(Trees, Height) ->
                 {true, ?FORTUNA_PROTOCOL_VSN} -> % hard fork time
                     aec_block_fork:apply_fortuna(Trees2);
                 {true, ?LIMA_PROTOCOL_VSN} -> % hard fork time
-                    aec_block_fork:apply_lima(Trees2);
+                    aec_block_fork:apply_lima(Trees2, TxEnv);
                 {true, P} when P > ?LIMA_PROTOCOL_VSN ->
                     Trees2;
                 false -> Trees2

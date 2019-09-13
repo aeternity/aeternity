@@ -186,8 +186,8 @@ create_tx_default_spec(PubKey, State) ->
      , owner_id    => aeser_id:create(account, PubKey)
      , nonce       => try next_nonce(PubKey, State) catch _:_ -> 0 end
      , code        => dummy_bytecode()
-     , vm_version  => latest_sophia_vm_version()
-     , abi_version => latest_sophia_abi_version()
+     , vm_version  => vm_version()
+     , abi_version => abi_version()
      , deposit     => 10
      , amount      => 200
      , gas         => 10
@@ -223,7 +223,7 @@ call_tx_default_spec(PubKey, ContractKey, State) ->
      , contract_id => aeser_id:create(contract, ContractKey)
      , caller_id   => aeser_id:create(account, PubKey)
      , nonce       => try next_nonce(PubKey, State) catch _:_ -> 0 end
-     , abi_version => latest_sophia_abi_version()
+     , abi_version => abi_version()
      , amount      => 100
      , gas         => 10000
      , gas_price   => 1 * aec_test_utils:min_gas_price()
@@ -268,7 +268,7 @@ set_account(Account, State) ->
     set_trees(aec_trees:set_accounts(Trees, AccTree), State).
 
 read_contract(Name) ->
-    read_contract(latest_sophia_version(), Name).
+    read_contract(sophia_version(), Name).
 
 read_contract(Compiler, Name) ->
     file:read_file(contract_filename(Compiler, Name)).
@@ -297,13 +297,13 @@ contract_filename(Compiler, Name) ->
     end.
 
 compile_filename(FileName) ->
-    compile(latest_sophia_version(), FileName).
+    compile(sophia_version(), FileName).
 
 compile_filename(Compiler, FileName) ->
     compile(Compiler, FileName).
 
 compile_contract(File) ->
-    compile_contract(latest_sophia_version(), File).
+    compile_contract(sophia_version(), File).
 
 compile_contract(Compiler, File) ->
     compile_filename(Compiler, contract_filename(Compiler, File)).
@@ -396,11 +396,11 @@ to_str(Bin) when is_binary(Bin) -> binary_to_list(Bin);
 to_str(Str)                     -> Str.
 
 encode_call_data(Code, Fun, Args) ->
-    encode_call_data(latest_sophia_version(), Code, Fun, Args).
+    encode_call_data(sophia_version(), Code, Fun, Args).
 
 encode_call_data(Vsn, Code, Fun, Args) ->
     %% Lookup the res in the cache - if not present just calculate the result
-    Backend = backend(),
+    Backend = backend(Vsn),
     CallId = #encode_call_id{vsn = Vsn, code_hash = crypto:hash(md5, Code), fun_name = Fun, args = Args, backend = Backend},
     case ets:lookup(?ENCODE_CALL_TAB, CallId) of
         [#encode_call_cache_entry{result = Result}] ->
@@ -595,7 +595,7 @@ abi_version() ->
 
 sophia_version() ->
     case get('$sophia_version') of
-        undefined -> error(could_not_find_sophia_version);
+        undefined -> latest_sophia_version();
         X         -> X
     end.
 
@@ -604,6 +604,9 @@ backend() ->
         ?ABI_AEVM_SOPHIA_1 -> aevm;
         ?ABI_FATE_SOPHIA_1 -> fate
     end.
+
+backend(?SOPHIA_LIMA_FATE) -> fate;
+backend(_                ) -> aevm.
 
 %% setup a global memoization cache for contracts
 setup_contract_cache() ->
