@@ -92,8 +92,10 @@ apply_lima_test_() ->
                   {Carol, BalC},
                   {David, _}] = generate_accounts(4),
                  T0 = make_trees([A, B]), % only Alice and Bob are present pre-minerva
-                 ContractSpecs = [lima_contract(2, 10000),
-                                  lima_contract(1, 40000)
+                 ContractAmount1 = 10000,
+                 ContractAmount2 = 40000,
+                 ContractSpecs = [lima_contract(2, ContractAmount2),
+                                  lima_contract(1, ContractAmount1)
                                  ],
                  meck_lima_accounts_and_contracts([{Alice, DeltaA = 10},%% Alice had migrated more
                                                    {Carol, BalC},       %% Carol is new
@@ -122,6 +124,17 @@ apply_lima_test_() ->
                       Bal = maps:get(amount, S),
                       assert_balance(T1, PK, Bal)
                   end || S <- ContractSpecs],
+                 %% Make sure the total coin amount increased properly.
+                 Sums0 = aec_trees:sum_total_coin(T0),
+                 Sums1 = aec_trees:sum_total_coin(T1),
+                 ExpectedContractDelta = ContractAmount1 + ContractAmount2,
+                 ExpectedTotalDelta = ExpectedContractDelta + DeltaA + BalC,
+                 Total0 = maps:fold(fun(_, X, Acc) -> Acc + X end, 0, Sums0),
+                 Total1 = maps:fold(fun(_, X, Acc) -> Acc + X end, 0, Sums1),
+                 ?assertEqual(Total0 + ExpectedTotalDelta,
+                              Total1),
+                 ?assertEqual(maps:get(contracts, Sums0) + ExpectedContractDelta,
+                              maps:get(contracts, Sums1)),
                  ok
          end}]}
      || aect_test_utils:latest_protocol_version() >= ?LIMA_PROTOCOL_VSN ].
