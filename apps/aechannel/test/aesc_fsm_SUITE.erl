@@ -24,7 +24,6 @@
           create_channel/1
         , multiple_responder_keys_per_port/1
         , channel_insufficent_tokens/1
-        , channel_invalid_state_password/1
         , inband_msgs/1
         , upd_transfer/1
         , update_with_conflict/1
@@ -147,7 +146,6 @@ groups() ->
         create_channel
       , multiple_responder_keys_per_port
       , channel_insufficent_tokens
-      , channel_invalid_state_password
       , inband_msgs
       , upd_transfer
       , update_with_conflict
@@ -604,24 +602,6 @@ channel_insufficent_tokens(Cfg) ->
     Test(10, 1, 5, 3, insufficient_responder_amount),
     Test(1, 1, 5, 3, insufficient_amounts),
     ok.
-
-channel_invalid_state_password(Cfg) ->
-    Debug = get_debug(Cfg),
-    Test =
-        fun(Password, Error) ->
-            Params = channel_spec([{initiator_password, Password},
-                                         {responder_password, Password},
-                                         ?SLOGAN|Cfg]),
-            channel_create_invalid_spec(Params, Error, Debug)
-        end,
-    Test("A", invalid_password),
-    Test("12345", invalid_password),
-    case aect_test_utils:latest_protocol_version() >= ?LIMA_PROTOCOL_VSN of
-        true ->
-            Test(ignore, password_required_since_lima);
-        _ ->
-            ok
-    end.
 
 channel_create_invalid_spec({I, R, Spec}, Error, Debug) ->
     Port = 9325,
