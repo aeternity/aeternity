@@ -95,7 +95,8 @@
 
 -define(PEEK_MSGQ(_D), peek_message_queue(?LINE, _D)).
 
--define(MINIMUM_DEPTH, 10).
+-define(MINIMUM_DEPTH, 5).
+-define(MINIMUM_DEPTH_FACTOR, 10).
 -define(MINIMUM_DEPTH_STRATEGY, txfee).
 
 -define(SLOGAN, {slogan, {?FUNCTION_NAME, ?LINE}}).
@@ -390,7 +391,7 @@ end_per_group(Group, Config) ->
 init_per_testcase(_, Config) ->
     Config1 = load_idx(Config),
     [ {debug, false}
-    , {minimum_depth, ?MINIMUM_DEPTH}
+    , {minimum_depth, ?MINIMUM_DEPTH_FACTOR}
     , {minimum_depth_strategy, ?MINIMUM_DEPTH_STRATEGY}
     | Config1
     ].
@@ -1055,7 +1056,7 @@ withdraw_high_amount_static_confirmation_time(Cfg) ->
     % Factor of 0 sets min depths to 1 for all amounts
     Cfg2 = set_minimum_depth(Cfg1, 0),
     Amount = 300000,
-    MinDepth = 2,
+    MinDepth = 1,
     MinDepthChannel = 1,
     Round = 1,
     ok = withdraw_full_cycle_(Amount, #{}, MinDepth, MinDepthChannel, Round, Cfg2).
@@ -3314,10 +3315,10 @@ positive_bh(Cfg) ->
                 end,
                 {_I, _R} = Participants,
                 [ fun(Il, Rl, Opts, Round) ->
-                      deposit_(Il, Rl, 1, Opts, 2, Round, Debug, Cfg)
+                      deposit_(Il, Rl, 1, Opts, 1, Round, Debug, Cfg)
                   end,
                   fun(Il, Rl, Opts, Round) ->
-                      withdraw_(Il, Rl, 1, Opts, 2, Round, Debug, Cfg)
+                      withdraw_(Il, Rl, 1, Opts, 1, Round, Debug, Cfg)
                   end
                 ])
         end,
@@ -3424,7 +3425,7 @@ leave_reestablish_loop_step_(Idx, Info, Debug) ->
     assert_empty_msgq(Debug),
 
     % Mine to ensure all transaction are on chain and confirmed
-    mine_key_blocks(dev1, 3),
+    mine_key_blocks(dev1, ?MINIMUM_DEPTH),
 
     % Reestablish connection to channel
     log(Debug, "reestablishing ...", []),

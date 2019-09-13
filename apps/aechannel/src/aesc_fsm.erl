@@ -1319,6 +1319,7 @@ check_reestablish_ack_msg(#{data := #{tx := TxBin}} = Msg, Data) ->
            , fun chk_channel_id/3
            , fun chk_dual_sigs/3
            , fun chk_same_tx/3
+           , fun chk_mindepth_opts/3
            , fun log_reestabl_ack_msg/3
            ],
     run_checks(Funs, Msg, SignedTx, Data).
@@ -1382,6 +1383,15 @@ chk_same_tx(_, SignedTx, #data{state = State}) ->
     MySignedTxBin = aetx_sign:serialize_to_binary(MySignedTx),
     {SignedTxBin == MySignedTxBin, offchain_state_mismatch}.
 
+chk_mindepth_opts(Msg, _, #data{opts = Opts} = Data) ->
+    #{ minimum_depth := MinDepth
+     , minimum_depth_strategy := MinDepthStrategy }
+        = Opts1 = maybe_use_minimum_depth_params(Msg, Opts),
+    lager:debug("Checked minimum_depth parameters: ~p / ~p",
+                [MinDepthStrategy, MinDepth]),
+    Data1 = Data#data{opts = Opts1},
+    {data, Data1}.
+
 log_reestabl_ack_msg(Msg, _, #data{log = L} = D) ->
     {data, D#data{log = log_msg(rcv, ?CH_REEST_ACK, Msg, L)}}.
 
@@ -1424,9 +1434,9 @@ check_accept_msg(#{ chain_hash             := ChainHash
         ChainHash ->
             Log1 = log_msg(rcv, ?CH_ACCEPT, Msg, Log),
             Opts1 = Opts#{initiator => Initiator , responder => Responder},
-            Opts2 = maybe_use_minimum_depth_params(Msg, Opts1),
-            Data1 = Data#data{opts = Opts2, log = Log1},
-            {ok, Data1};
+            Data1 = Data#data{opts = Opts1, log = Log1},
+            {data, Data2} = chk_mindepth_opts(Msg, undefined, Data1),
+            {ok, Data2};
         _ ->
             {error, chain_hash_mismatch}
     end.
@@ -3575,6 +3585,8 @@ check_minimum_depth_opt(#{role := initiator} = Opts) ->
 check_minimum_depth_opt(Opts) ->
     MinDepthStrategy = maps:get(minimum_depth_strategy, Opts, ?DEFAULT_MINIMUM_DEPTH_STRATEGY),
     MinDepthFactor = maps:get(minimum_depth, Opts, default_minimum_depth(MinDepthStrategy)),
+    lager:debug("Final minimum_depth parameters for responder: ~p / ~p",
+                [MinDepthStrategy, MinDepthFactor]),
     Opts#{ minimum_depth          => MinDepthFactor
          , minimum_depth_strategy => MinDepthStrategy }.
 
@@ -4538,8 +4550,10 @@ maybe_use_minimum_depth_params(Msg, Opts) ->
         OptMinDepthStrategyValid ->
             Opts#{minimum_depth => default_minimum_depth(maps:get(minimum_depth_strategy, Opts))};
         MinDepthValid andalso MinDepthStrategyValid ->
-            Opts#{ minimum_depth => MinDepth
-                 , minimum_depth_strategy => MinDepthStrategy };
+            {ok, MinDepth1} = MinDepth,
+            {ok, MinDepthStrategy1} = MinDepthStrategy,
+            Opts#{ minimum_depth => MinDepth1
+                 , minimum_depth_strategy => MinDepthStrategy1 };
         true ->
             Opts#{ minimum_depth_strategy => ?DEFAULT_MINIMUM_DEPTH_STRATEGY
                  , minimum_depth => default_minimum_depth() }

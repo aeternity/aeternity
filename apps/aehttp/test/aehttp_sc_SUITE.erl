@@ -62,7 +62,7 @@
 -define(DEFAULT_TESTS_COUNT, 5).
 -define(WS, aehttp_ws_test_utils).
 -define(DEFAULT_MIN_DEPTH_FACTOR, 10).
--define(DEFAULT_MIN_DEPTH, 5).
+-define(DEFAULT_MIN_DEPTH, 3).
 -define(MAX_MINED_BLOCKS, 20).
 -define(BOGUS_STATE_HASH, <<42:32/unit:8>>).
 -define(SPEND_FEE, 20000 * aec_test_utils:min_gas_price()).
@@ -2452,10 +2452,11 @@ sc_ws_min_depth_not_reached_timeout_(Config) ->
     %% time to collect the `on_chain_tx` notifications for the `create_tx`. Also, not so long
     %% that the 12 second default timeout in `wait_for_channel_event/4` triggers.
     ChannelOpts = channel_options(IPubkey, RPubkey, IAmt, RAmt,
-                                  #{timeout_funding_lock => 3000,
-                                    slogan => S}, Config),
+                                  #{ timeout_funding_lock => 3000
+                                   , minimum_depth => 1
+                                   , slogan => S }, Config),
     {ok, IConnPid} = channel_ws_start(initiator,
-                                           maps:put(host, <<"localhost">>, ChannelOpts), Config),
+                                      maps:put(host, <<"localhost">>, ChannelOpts), Config),
     ok = ?WS:register_test_for_channel_events(IConnPid, [info, get, sign, on_chain_tx]),
 
     {ok, RConnPid} = channel_ws_start(responder, ChannelOpts, Config),
@@ -2466,10 +2467,9 @@ sc_ws_min_depth_not_reached_timeout_(Config) ->
 
     channel_create(Config, IConnPid, RConnPid),
 
-    % mine min depth - 1
-    %% (but actually -2 since min_depth often adds one for extra measure)
-    aecore_suite_utils:mine_key_blocks(aecore_suite_utils:node_name(?NODE),
-                                       ?DEFAULT_MIN_DEPTH - 2),
+    % We've set the minimum_depth factor very low at channel opening, so the
+    % transaction shouldn't be confirmed at this point.
+    aecore_suite_utils:mine_key_blocks(aecore_suite_utils:node_name(?NODE), ?DEFAULT_MIN_DEPTH),
 
     ConnDied =
         fun(Pid) ->
@@ -2487,7 +2487,6 @@ sc_ws_min_depth_not_reached_timeout_(Config) ->
     ConnDied(IConnPid),
     ConnDied(RConnPid),
     ok.
-
 
 sc_ws_min_depth_is_modifiable(Config0) ->
     Config = sc_ws_open_(Config0, #{minimum_depth => 0}, 2),
@@ -2960,14 +2959,6 @@ sc_ws_slash_(Config, WhoCloses, WhoSlashes, WhoSettles) ->
 
     settle_(Config, WhoSettles),
     ok.
-
-%% other(initiator) -> responder;
-%% other(responder) -> initiator.
-
-sign_slash_tx(ConnPid, Who, Config) ->
-    Participants = proplists:get_value(participants, Config),
-    #{priv_key := PrivKey} = maps:get(Who, Participants),
-    sign_tx(ConnPid, <<"slash_tx">>, <<"channels.slash_sign">>, PrivKey, Config).
 
 request_and_sign_slash_tx(ConnPid, Who, Config, ReqF) ->
     Participants = proplists:get_value(participants, Config),
@@ -3613,7 +3604,7 @@ with_trace(F, Config, File, When) ->
 ttb_stop() ->
     Dir = aesc_ttb:stop(),
     Out = filename:join(filename:dirname(Dir),
-			filename:basename(Dir) ++ ".txt"),
+                        filename:basename(Dir) ++ ".txt"),
     case aesc_ttb:format(Dir, Out, #{limit => 30000}) of
         {error, Reason} ->
             ct:pal("TTB formatting error: ~p", [Reason]);
@@ -3990,4 +3981,3 @@ sc_ws_pinned_contract(Cfg) ->
         || Who   <- [initiator, responder],
            Delta <- [NNT, NOT, NNT + 1]],
     ok = sc_ws_close_(Config).
-
