@@ -13,3 +13,5 @@ contract BytesToX =
   entrypoint to_str64(b : bytes(64)) : string = Bytes.to_str(b)
   entrypoint to_str65(b : bytes(65)) : string = Bytes.to_str(b)
 
+  entrypoint hex(b : bytes(4)) = String.concat("0X", Bytes.to_str(b))
+  entrypoint comp_hex(x : string, y : bytes(4)) = x == String.concat("0X", Bytes.to_str(y))
