@@ -3440,12 +3440,15 @@ init(#{opts := Opts0} = Arg) ->
         BlockHashDelta =
             case maps:find(block_hash_delta, Opts3) of
                 error ->
+                    lager:debug("block hash not set, fallback mode", []),
                     #bh_delta{ not_newer_than = 0 %% backwards compatibility
                              , not_older_than = 10
                              , pick           = 0 }; %% backwards compatibility
                 {ok, #{ not_older_than := NOT
                       , not_newer_than := NNT
                       , pick           := Pick }} ->
+                    lager:debug("block hash is set, not_newer_than ~p, not_older_than ~p, pick ~p",
+                                [NNT, NOT, Pick]),
                     #bh_delta{ not_older_than = NOT
                              , not_newer_than = NNT
                              , pick           = Pick }
@@ -3622,11 +3625,14 @@ check_block_hash_deltas(#{block_hash_delta := #{ not_older_than := NOT
                                                , not_newer_than := NNT
                                                , pick           := Pick}} = Opts)
     when is_integer(NOT), is_integer(NNT), NOT >= 0, NNT >= 0, NOT >= NNT + Pick ->
+    lager:debug("block hash is set, not_newer_than ~p, not_older_than ~p, pick ~p",
+                 [NNT, NOT, Pick]),
     Opts;
 check_block_hash_deltas(#{block_hash_delta := InvalidBHDelta} = Opts) ->
     lager:error("Invalid 'block_hash_delta' option: ~p", [InvalidBHDelta]),
     maps:remove(block_hash_delta, Opts);
 check_block_hash_deltas(Opts) ->
+    lager:debug("block hash not set", []),
     Opts.
 
 check_opts([], Opts) ->

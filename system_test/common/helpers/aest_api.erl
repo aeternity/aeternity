@@ -56,6 +56,8 @@ sc_open(Params, Cfg) ->
     #{ pubkey := RPubKey, privkey := RPrivKey } = RAccount,
 
     {Host, _Port} = node_ws_int_addr(RNodeName, Cfg),
+    MaybeOpts = maps:merge(maybe_version_opts(Cfg),
+                           maybe_block_hash_opts(Params)),
     Opts = maps:merge(
              #{
                protocol => <<"json-rpc">>,
@@ -69,7 +71,7 @@ sc_open(Params, Cfg) ->
                responder_amount => RAmt,
                channel_reserve => maps:get(channel_reserve, Params, 2)
               },
-             maybe_version_opts(Cfg)),
+             MaybeOpts),
 
     {IConn, RConn} = sc_start_ws_peers(INodeName, RNodeName, Opts, Cfg),
     ok = sc_wait_channel_open(IConn, RConn),
@@ -423,3 +425,17 @@ maybe_version_opts(Cfg) ->
 
 version_opts(Params) ->
     maps:with([version_offchain_update], Params).
+
+maybe_block_hash_opts(Params) ->
+    Find = fun(Key) -> maps:find(Key, Params) end,
+    case {Find(bh_delta_not_newer_than),
+          Find(bh_delta_not_older_than),
+          Find(bh_delta_pick)} of
+        {{ok, NNT}, {ok, NOT}, {ok, Pick}} ->
+            #{ bh_delta_not_newer_than => NNT
+             , bh_delta_not_older_than => NOT
+             , bh_delta_pick           => Pick};
+        {_, _, _} ->
+            #{}
+    end.
+

@@ -181,7 +181,10 @@ simple_channel_test(ChannelOpts, InitiatorNodeBaseSpec, ResponderNodeBaseSpec, C
         responder_node   := RNodeName,
         responder_id     := RAccount,
         responder_amount := RAmt,
-        push_amount      := PushAmount
+        push_amount      := PushAmount,
+        bh_delta_not_newer_than := _,
+        bh_delta_not_older_than := _,
+        bh_delta_pick           := _
     } = ChannelOpts,
 
     MikePubkey = aeser_api_encoder:encode(account_pubkey, maps:get(pubkey, ?MIKE)),
@@ -353,7 +356,10 @@ test_open_and_onchain_operations(#{
         initiator_amount := IAmt,
         responder_node   := RNodeName,
         responder_id     := RAccount,
-        responder_amount := RAmt
+        responder_amount := RAmt,
+        bh_delta_not_newer_than := _,
+        bh_delta_not_older_than := _,
+        bh_delta_pick           := _
     } = ChannelOpts,  Cfg) ->
     NodeNames = [INodeName, RNodeName],
 
