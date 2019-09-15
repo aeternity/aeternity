@@ -393,8 +393,14 @@ sc_wait_open_(IConn, RConn, Type) ->
 sc_wait_close(Channel) ->
     #{ initiator := {_IAccount, IConn}
      , responder := {_RAccount, RConn} } = Channel,
+    {ok, #{ <<"event">> := <<"closing">> }} = sc_wait_for_channel_event(IConn, info),
+    {ok, #{ <<"event">> := <<"closed_confirmed">> }} = sc_wait_for_channel_event(IConn, info),
+    {ok, #{ <<"event">> := <<"shutdown">> }} = sc_wait_for_channel_event(RConn, info),
+    {ok, #{ <<"event">> := <<"closing">> }} = sc_wait_for_channel_event(RConn, info),
+    {ok, #{ <<"event">> := <<"closed_confirmed">> }} = sc_wait_for_channel_event(RConn, info),
     {ok, #{ <<"event">> := <<"died">> }} = sc_wait_for_channel_event(IConn, info),
     {ok, #{ <<"event">> := <<"died">> }} = sc_wait_for_channel_event(RConn, info),
+    timer:sleep(1000),
     ok.
 
 sc_wait_withdraw_locked(SenderConn, AckConn) ->
