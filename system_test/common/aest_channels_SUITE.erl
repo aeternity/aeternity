@@ -41,7 +41,8 @@
     sc_deploy_contract/4,
     sc_call_contract/4,
     sc_leave/1,
-    sc_reestablish/5
+    sc_reestablish/5,
+    sc_wait_close/1
 ]).
 
 %=== INCLUDES ==================================================================
@@ -293,6 +294,7 @@ reestablish_state_channel_perform_operations_close({INodeName, RNodeName},
     #{height := TopHeight} = aest_nodes:get_top(INodeName),
     KeyBlocksToMine = 4 + 2, % min depth is 4
     wait_for_value({height, TopHeight + KeyBlocksToMine}, NodeNames, 10000, Config),
+    sc_wait_close(Chan1),
     ok.
 
 %=== INTERNAL FUNCTIONS ========================================================

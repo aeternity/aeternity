@@ -9,7 +9,8 @@
         , sc_deploy_contract/4
         , sc_call_contract/4
         , sc_leave/1
-        , sc_reestablish/5]).
+        , sc_reestablish/5
+        , sc_wait_close/1]).
 
 %=== INCLUDES ==================================================================
 
@@ -387,6 +388,13 @@ sc_wait_open_(IConn, RConn, Type) ->
     Tx = aetx_sign:innermost_tx(InitialStateTx),
     {Type, _} = aetx:specialize_callback(Tx),
 
+    ok.
+
+sc_wait_close(Channel) ->
+    #{ initiator := {_IAccount, IConn}
+     , responder := {_RAccount, RConn} } = Channel,
+    {ok, #{ <<"event">> := <<"died">> }} = sc_wait_for_channel_event(IConn, info),
+    {ok, #{ <<"event">> := <<"died">> }} = sc_wait_for_channel_event(RConn, info),
     ok.
 
 sc_wait_withdraw_locked(SenderConn, AckConn) ->
