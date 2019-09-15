@@ -1182,7 +1182,12 @@ sc_ws_reestablish_(ReestablOptions, Config) ->
     {ok, #{<<"event">> := <<"open">>}} =
         wait_for_channel_event(RrConnPid, info, Config),
     {ok, #{<<"state">> := NewState}} = wait_for_channel_event(IrConnPid, update, Config),
-    {ok, #{<<"state">> := NewState}} = wait_for_channel_event(RrConnPid, update, Config),
+    if ResponderLeaves ->
+            {ok, #{<<"state">> := NewState}} = wait_for_channel_event(RrConnPid, update, Config);
+       true ->
+            %% Responder doesn't issue a new update report, since its state didn't change
+            ok
+    end,
     ChannelClients = #{initiator => IrConnPid,
                        responder => RrConnPid},
     ok = ?WS:unregister_test_for_channel_events(RrConnPid, [info, update]),
