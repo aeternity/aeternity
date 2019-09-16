@@ -85,22 +85,36 @@ websocket_init(Params) ->
         {Handler, ChannelOpts} ->
             lager:debug("Starting Channel WS with params ~p",
                 [aesc_utils:censor_init_opts(Params)]),
-            lager:debug("ChannelOpts = ~p", [aesc_utils:censor_init_opts(ChannelOpts)]),
-            case start_link_fsm(Handler, ChannelOpts) of
-                {ok, FsmPid} ->
-                    MRef = erlang:monitor(process, FsmPid),
-                    {ok, Handler#handler{fsm_pid = FsmPid, fsm_mref = MRef}};
-                {error, Err} ->
-                    handler_init_error(Err, Handler)
-            end
+            websocket_init_parsed(Handler, ChannelOpts)
     end.
 
-websocket_init_reconnect(#{ <<"reconnect_tx">> := ReconnectTx } = Params) ->
+websocket_init_parsed(Handler, ChannelOpts) ->
+    lager:debug("ChannelOpts = ~p", [aesc_utils:censor_init_opts(ChannelOpts)]),
+    case start_link_fsm(Handler, ChannelOpts) of
+        {ok, FsmPid} ->
+            MRef = erlang:monitor(process, FsmPid),
+            {ok, Handler#handler{fsm_pid = FsmPid, fsm_mref = MRef}};
+        {error, Err} ->
+            handler_init_error(Err, Handler)
+    end.
+
+websocket_init_reconnect(#{ job_id := JobId
+                          , <<"protocol">> := Protocol
+                          , <<"reconnect_tx">> := ReconnectTx } = Params0) ->
+    Read = sc_ws_utils:read_f(Params0),
+    Params = sc_ws_utils:check_params(read_state_password(Read)),
     lager:debug("ReconnectTx = ~p", [ReconnectTx]),
     case check_reconnect_tx(ReconnectTx) of
         {ok, #{} = Opts} ->
-            Handler = reconnect_opts_to_handler(maps:merge(Params, Opts)),
-            case reconnect_to_fsm_(Opts, Handler, fun(E) -> {error, E} end) of
+            lager:debug("Reconnect tx Opts = ~p", [Opts]),
+            ReconnectOpts =
+                maps:merge(Params#{ job_id => JobId
+                                  , protocol => sc_ws_api:protocol(Protocol) }, Opts),
+            lager:debug("ReconnectOpts = ~p",
+                        [aesc_utils:censor_init_opts(ReconnectOpts)]),
+            Handler = reconnect_opts_to_handler(ReconnectOpts),
+            lager:debug("Handler = ~p", [Handler]),
+            case reconnect_to_fsm_(ReconnectOpts, Handler, fun(E) -> {error, E} end) of
                 {ok, _} = Ok ->
                     Ok;
                 {error, {existing_client, OldClient}} ->
@@ -138,19 +152,34 @@ reconnect_to_fsm_(#{ channel_id := ChanId
 %% The fsm is not running. Perhaps there is cached state, warranting a reestablish?
 %%
 maybe_reestablish(#{ channel_id := ChId
-                   , pub_key    := Pubkey } = ReconnectOpts, _Handler, OnError) ->
-    lager:debug("ReconnectOpts = ~p", [ReconnectOpts]),
-    case aesc_state_cache:fetch(ChId, Pubkey) of
-        {ok, State, Opts} ->
-            try aesc_offchain_state:get_latest_signed_tx(State) of
-                {_, SignedTx} ->
-                    websocket_init(Opts#{ existing_channel_id => ChId
-                                        , offchain_tx => SignedTx })
-            catch
-                error:_ ->
+                   , pub_key    := Pubkey } = ReconnectOpts, Handler0, OnError) ->
+    lager:debug("ReconnectOpts = ~p",
+                [aesc_utils:censor_init_opts(ReconnectOpts)]),
+    case maps:find(state_password, ReconnectOpts) of
+        {ok, Password} ->
+            case aesc_state_cache:reestablish(ChId, Pubkey, Password) of
+                {ok, State, Opts} ->
+                    lager:debug("Fetched state. Opts = ~p", [Opts]),
+                    Handler = update_handler_for_reestablish(Handler0, Opts),
+                    try aesc_offchain_state:get_latest_signed_tx(State) of
+                        {_, SignedTx} ->
+                            lager:debug("Latest tx = ~p", [SignedTx]),
+                            ExpandedOpts = expand_cached_opts(Opts),
+                            websocket_init_parsed(
+                              Handler,
+                              ExpandedOpts#{ existing_channel_id => ChId
+                                           , offchain_tx => SignedTx })
+                    catch
+                        error:_E ->
+                            lager:debug("Failed getting latest signed tx: ~p", [_E]),
+                            OnError(not_found)
+                    end;
+                error ->
+                    lager:debug("No cached state", []),
                     OnError(not_found)
             end;
         error ->
+            lager:debug("No state_password specified", []),
             OnError(not_found)
     end.
 
@@ -344,13 +373,14 @@ set_field(H, host, Val)         -> H#handler{host = Val};
 set_field(H, role, Val)         -> H#handler{role = Val};
 set_field(H, port, Val)         -> H#handler{port = Val}.
 
-reconnect_opts_to_handler(#{ <<"protocol">> := Protocol
+reconnect_opts_to_handler(#{ protocol       := Protocol
+                           , role           := Role
                            , channel_id     := ChId
                            , job_id         := JobId } = Params) ->
-    lager:debug("Params = ~p", [Params]),
     %% We don't fill in values like host, port, etc. since we don't
     %% have them, and they aren't needed afaict.
-    #handler{ protocol       = sc_ws_api:protocol(Protocol)
+    #handler{ protocol       = Protocol
+            , role           = Role
             , channel_id     = ChId
             , enc_channel_id = aeser_api_encoder:encode(channel, ChId)
             , job_id         = JobId }.
@@ -396,6 +426,18 @@ prepare_handler(#{<<"protocol">> := Protocol} = Params) ->
 prepare_handler(_Protocol) ->
     {error, {protocol, missing}}.
 
+update_handler_for_reestablish(Handler, Opts) ->
+    lager:debug("Handler = ~p; Opts = ~p", [lager:pr(Handler, ?MODULE), Opts]),
+    Conn = maps:get(connection, Opts),
+    Handler#handler{
+       role = maps:get(role, Opts)
+     , host = maps:get(host, Conn, undefined)
+     , port = maps:get(port, Conn) }.
+
+expand_cached_opts(Opts) ->
+    {Conn, Opts1} = maps:take(connection, Opts),
+    maps:merge(Opts1, Conn).
+
 read_channel_options(Params) ->
     Read = sc_ws_utils:read_f(Params),
     Put = sc_ws_utils:put_f(),
@@ -422,10 +464,6 @@ read_channel_options(Params) ->
                                                      mandatory => false}),
     ReadBHDelta = ReadMap(block_hash_delta, <<"bh_delta">>, #{ type => integer
                                                             , mandatory => false }),
-    CheckStatePasswordF =
-        fun(M) ->
-            maps:remove(state_password, M)
-        end,
     OnChainOpts =
         case (sc_ws_utils:read_param(
                 <<"existing_channel_id">>, existing_channel_id,
@@ -466,16 +504,33 @@ read_channel_options(Params) ->
     sc_ws_utils:check_params(
       [Read(<<"minimum_depth">>, minimum_depth, #{type => integer, mandatory => false}),
        Read(<<"ttl">>, ttl, #{type => integer, mandatory => false}),
-       %% The state_password is mandatory AFTER the lima fork - this is checked by CheckStatePasswordF
-       Read(<<"state_password">>, state_password, #{type => string, mandatory => false}),
-       CheckStatePasswordF,
        Put(noise, [{noise, <<"Noise_NN_25519_ChaChaPoly_BLAKE2b">>}])
-      ] ++ OnChainOpts
+      ]
+      ++ read_state_password(Read)
+      ++ OnChainOpts
       ++ lists:map(ReadTimeout, aesc_fsm:timeouts() ++ [awaiting_open,
                                                         initialized])
       ++ lists:map(ReadReport, aesc_fsm:report_tags())
       ++ lists:map(ReadBHDelta, aesc_fsm:bh_deltas())
      ).
+
+read_state_password(Read) ->
+    %% The state_password is mandatory AFTER the lima fork - this is checked by CheckStatePasswordF
+    CheckStatePasswordF
+        = fun(M) ->
+                  case aesc_fsm:check_state_password(M) of
+                      ok ->
+                          M;
+                      Err ->
+                          Err
+                  end
+          end,
+    [read_password(Read),
+     CheckStatePasswordF].
+
+read_password(Read) ->
+    Read(<<"state_password">>, state_password, #{type => string, mandatory => false,
+                                                 default => "correct horse battery staple"}).
 
 jobs_ask() ->
     jobs:ask(sc_ws_handlers).

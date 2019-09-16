@@ -60,7 +60,12 @@ read_param(ParamName, RecordField, Options) ->
             undefined when Mandatory ->
                 {error, {RecordField, missing}};
             undefined when not Mandatory ->
-                not_set;
+                case maps:find(default, Options) of
+                    {ok, Default} ->
+                        check_type(Options, Default, RecordField);
+                    error ->
+                        not_set
+                end;
             Val ->
                 check_type(Options, Val, RecordField)
         end

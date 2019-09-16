@@ -166,6 +166,7 @@ json_rpc_error_object(broken_encoding      , R) -> error_obj(3, [104] , R);
 json_rpc_error_object(broken_code          , R) -> error_obj(3, [104] , R);
 json_rpc_error_object(value_too_low        , R) -> error_obj(3, [105] , R);
 json_rpc_error_object(conflict             , R) -> error_obj(3, [107] , R);
+json_rpc_error_object(not_ready            , R) -> error_obj(3, [108] , R);
 json_rpc_error_object(insufficient_balance , R) -> error_obj(3, [1001], R);
 json_rpc_error_object(negative_amount      , R) -> error_obj(3, [1002], R);
 json_rpc_error_object(invalid_pubkeys      , R) -> error_obj(3, [1003], R);
@@ -237,6 +238,7 @@ error_data_msgs() ->
      , 105 => <<"Value too low">>
      , 106 => <<"Timeout">>
      , 107 => <<"Conflict">>
+     , 108 => <<"Not ready">>
      %% Aeternity error codes
      , 1001 => <<"Insufficient balance">>
      , 1002 => <<"Negative amount">>

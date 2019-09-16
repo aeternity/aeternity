@@ -207,12 +207,14 @@ initiate(Host, Port, #{} = Opts0) ->
     lager:debug("initiate(~p, ~p, ~p)", [Host, Port, aesc_utils:censor_init_opts(Opts0)]),
     Opts = maps:merge(#{client => self(),
                         role   => initiator}, Opts0),
-    case init_checks(Opts) of
+    try init_checks(Opts) of
         ok ->
             aesc_fsm_sup:start_child([#{ host => Host
                                        , port => Port
                                        , opts => Opts }]);
         {error, _Reason} = Err -> Err
+    ?CATCH_LOG(_E)
+        {error, _E}
     end.
 
 leave(Fsm) ->
@@ -3007,6 +3009,9 @@ initialize_cache(#data{ on_chain_id = ChId
 
 opts_to_cache() ->
     [ role
+    , initiator
+    , responder
+    , connection
     , minimum_depth
     , lock_period
     , timeouts
@@ -4525,6 +4530,16 @@ get_channel(ChainHash, ChId) ->
             {error, chain_hash_mismatch}
     end.
 
+init_checks(#{existing_channel_id := _} = Opts) ->
+    #{ role := Role
+     ,  offchain_tx := OffchainTx } = Opts,
+    Checks = [fun() -> check_state_password(Opts) end],
+    case aeu_validation:run(Checks) of
+        {error, _Reason} = Err ->
+            Err;
+        ok ->
+            ok
+    end;
 init_checks(Opts) ->
     #{ initiator   := Initiator
      , responder   := Responder

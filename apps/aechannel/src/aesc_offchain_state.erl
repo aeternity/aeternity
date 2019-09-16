@@ -94,7 +94,7 @@ recover_from_offchain_tx(#{ existing_channel_id    := ChId
                 aesc_state_cache:reestablish(ChId, MyPubkey)
         end,
     case ReestablishResult of
-        {ok, #state{} = State} ->
+        {ok, #state{} = State, _CachedOpts} ->
             case is_latest_signed_tx(SignedTx, State) of
                 true ->
                     {ok, State};

@@ -103,6 +103,8 @@
 
 -define(CACHE_DEFAULT_PASSWORD, "correct horse battery staple").
 
+-define(CHECK_INFO(Timeout), check_info(?LINE, Timeout)).
+
 all() -> [{group, plain}, {group, aevm}, {group, fate}].
 
 groups() ->
@@ -1133,6 +1135,9 @@ sc_ws_leave_(Config) ->
     if ResponderLeaves ->
             ok = ?WS:wait_for_event(RConnPid, websocket, closed);
        true ->
+            %% RConnPid remains. Need to unregister events
+            ok = ?WS:unregister_test_for_channel_events(RConnPid, [leave, info]),
+            ok = ?WS:unregister_test_for_events(RConnPid, websocket, [closed]),
             ok
     end,
     %%
@@ -1167,33 +1172,37 @@ sc_ws_reestablish_(ReestablOptions, Config) ->
     {ok, IrConnPid} = channel_ws_start(initiator, maps:put(
                                                     host, <<"localhost">>,
                                                     ReestablOptions), Config),
-    if ResponderLeaves ->
-            ok = ?WS:register_test_for_channel_events(RrConnPid, [info, update]);
-       true ->
-            ok
-    end,
-    ok = ?WS:register_test_for_channel_events(IrConnPid, [info, update]),
+    Config1 = lists:keystore(channel_clients, 1, Config,
+                             {channel_clients, #{ initiator => IrConnPid
+                                                , responder => RrConnPid}}),
+    ok = await_reestablish_reports(Config1),
+    Config1.
+
+await_reestablish_reports(Config) ->
+    ResponderLeaves = proplists:get_value(responder_leaves, Config, true),
+    #{initiator := IConnPid, responder := RConnPid}
+        = proplists:get_value(channel_clients, Config),
+    ok = ?WS:register_test_for_channel_events(RConnPid, [info, update]),
+    ok = ?WS:register_test_for_channel_events(IConnPid, [info, update]),
     {ok, #{<<"event">> := <<"channel_reestablished">>}} =
-        wait_for_channel_event(IrConnPid, info, Config),
+        wait_for_channel_event(IConnPid, info, Config),
     {ok, #{<<"event">> := <<"channel_reestablished">>}} =
-        wait_for_channel_event(RrConnPid, info, Config),
+        wait_for_channel_event(RConnPid, info, Config),
     {ok, #{<<"event">> := <<"open">>}} =
-        wait_for_channel_event(IrConnPid, info, Config),
+        wait_for_channel_event(IConnPid, info, Config),
     {ok, #{<<"event">> := <<"open">>}} =
-        wait_for_channel_event(RrConnPid, info, Config),
-    {ok, #{<<"state">> := NewState}} = wait_for_channel_event(IrConnPid, update, Config),
+        wait_for_channel_event(RConnPid, info, Config),
+    {ok, #{<<"state">> := NewState}} = wait_for_channel_event(IConnPid, update, Config),
     if ResponderLeaves ->
-            {ok, #{<<"state">> := NewState}} = wait_for_channel_event(RrConnPid, update, Config);
+            {ok, #{<<"state">> := NewState}} = wait_for_channel_event(RConnPid, update, Config);
        true ->
             %% Responder doesn't issue a new update report, since its state didn't change
             ok
     end,
-    ChannelClients = #{initiator => IrConnPid,
-                       responder => RrConnPid},
-    ok = ?WS:unregister_test_for_channel_events(RrConnPid, [info, update]),
-    ok = ?WS:unregister_test_for_channel_events(IrConnPid, [info, update]),
-    [{channel_clients, ChannelClients} | Config].
-
+    ok = ?WS:unregister_test_for_channel_events(RConnPid, [info, update]),
+    ok = ?WS:unregister_test_for_channel_events(IConnPid, [info, update]),
+    ?CHECK_INFO(20),
+    ok.
 
 sc_ws_deposit_(Config, Origin, XOpts) when Origin =:= initiator
                                     orelse Origin =:= responder ->
@@ -2797,8 +2806,15 @@ reconnect_client_(ChId, Round, Role, Pub, Priv, Config) ->
     ChannelOpts = reconnect_channel_options(SignedTxBin, Config),
     {ok, ConnPid} = channel_ws_start(Role, ChannelOpts, Config),
     {_, ChannelClients} = lists:keyfind(channel_clients, 1, Config),
-    lists:keyreplace(channel_clients, 1, Config,
-                     {channel_clients, ChannelClients#{ Role => ConnPid }}).
+    Config1 = lists:keyreplace(channel_clients, 1, Config,
+                               {channel_clients, ChannelClients#{ Role => ConnPid }}),
+    case proplists:get_value(reconnect_scenario, Config1, reconnect) of
+        reconnect ->
+            ok;
+        reestablish ->
+            await_reestablish_reports(Config1)
+    end,
+    Config1.
 
 sc_ws_failed_update(Config) ->
     ChannelClients = proplists:get_value(channel_clients, Config),
@@ -3003,10 +3019,10 @@ sc_ws_slash_(Config, WhoCloses, WhoSlashes, WhoSettles) ->
 %% other(initiator) -> responder;
 %% other(responder) -> initiator.
 
-sign_slash_tx(ConnPid, Who, Config) ->
-    Participants = proplists:get_value(participants, Config),
-    #{priv_key := PrivKey} = maps:get(Who, Participants),
-    sign_tx(ConnPid, <<"slash_tx">>, <<"channels.slash_sign">>, PrivKey, Config).
+%% sign_slash_tx(ConnPid, Who, Config) ->
+%%     Participants = proplists:get_value(participants, Config),
+%%     #{priv_key := PrivKey} = maps:get(Who, Participants),
+%%     sign_tx(ConnPid, <<"slash_tx">>, <<"channels.slash_sign">>, PrivKey, Config).
 
 request_and_sign_slash_tx(ConnPid, Who, Config, ReqF) ->
     Participants = proplists:get_value(participants, Config),
@@ -3099,7 +3115,7 @@ sc_ws_cheating_close_solo_(Config, ChId, Poi, WhoCloses) ->
 sc_ws_leave_reestablish(Config0) ->
     Config = sc_ws_open_(Config0),
     ReestablishOptions = sc_ws_leave_(Config),
-
+    ?CHECK_INFO(20),
     Config1 = sc_ws_reestablish_(ReestablishOptions, Config),
     ok = sc_ws_update_(Config1),
     ok = sc_ws_close_(Config1).
@@ -3114,19 +3130,21 @@ sc_ws_leave_reestablish_responder_stays(Config0) ->
 
 sc_ws_leave_reconnect(Config0) ->
     Config = sc_ws_open_(Config0, #{responder_opts => #{keep_running => true}}),
-    #{ initiator := IConnPid } = proplists:get_value(channel_clients, Config),
     Participants = proplists:get_value(participants, Config),
     #{ pub_key := Pub, priv_key := Priv } = maps:get(initiator, Participants),
     ct:log("*** Leaving channel ***", []),
+    Config1 = [{responder_leaves, false}|Config],
     #{ existing_channel_id := ChId
-     , offchain_tx         := Tx } = ReestOpts = sc_ws_leave_([{responder_leaves, false}|Config]),
+     , offchain_tx         := _Tx }
+        = ReestOpts = sc_ws_leave_(Config1),
     ct:log("ReestOpts = ~p", [ReestOpts]),
     ct:log("*** Reconnecting ... ***", []),
-    reconnect_client_(ChId, initiator, Pub, Priv, Config),
+    Config2 = reconnect_client_(ChId, initiator, Pub, Priv,
+                                [{reconnect_scenario, reestablish} | Config1]),
     ct:log("*** Verifying that channel is operational ***", []),
-    ok = sc_ws_update_(Config),
+    ok = sc_ws_update_(Config2),
     ct:log("*** Closing ... ***", []),
-    ok = sc_ws_close_(Config).
+    ok = sc_ws_close_(Config2).
 
 sc_ws_password_changeable(Config0) ->
     Config = sc_ws_open_(Config0),
@@ -3225,8 +3243,11 @@ special_channel_opts(Opts) ->
      maps:merge(Opts1, maps:get(responder_opts, Opts, #{}))}.
 
 reconnect_channel_options(SignedTx, Config) ->
+    Options = proplists:get_value(channel_options, Config),
+    StatePassword = maps:get(state_password, Options),
     #{ port => ?config(ws_port, Config)
      , reconnect_tx => SignedTx
+     , state_password => StatePassword
      , protocol => sc_ws_protocol(Config) }.
 
 current_height() ->
@@ -4041,3 +4062,11 @@ sc_ws_pinned_contract(Cfg) ->
            Delta <- [NNT, NOT, NNT + 1]],
     ok = sc_ws_close_(Config).
 
+check_info(L, Timeout) ->
+    receive
+        Msg ->
+            ct:log("[~p] UNEXPECTED: ~p", [L, Msg]),
+            [Msg|check_info(L, Timeout)]
+    after Timeout ->
+            []
+    end.

@@ -244,10 +244,10 @@ handle_call({new, ChId, PubKey, Pid, State, Opts, Password}, _From, St) ->
     Resp;
 handle_call({reestablish, ChId, PubKey, Pid, Password}, _From, St) ->
     Resp = case try_reestablish_cached(ChId, PubKey, Password) of
-        {ok, Result} ->
+        {ok, State, Opts} ->
             St1 = monitor_fsm(Pid, ChId, PubKey,
                               remove_watcher(ChId, St)),
-            {reply, {ok, Result}, St1};
+            {reply, {ok, State, Opts}, St1};
         {error, _} = Error ->
             {reply, Error, St}
     end,
@@ -334,8 +334,8 @@ cache_status_(ChId) ->
 try_reestablish_cached(ChId, PubKey, Password) ->
     CacheId = key(ChId, PubKey),
     case ets:lookup(?TAB, CacheId) of
-        [#ch_cache{state = State}] ->
-            {ok, State};
+        [#ch_cache{state = State, opts = Opts}] ->
+            {ok, State, Opts};
         [] ->
             case read_persistent(CacheId) of
                 {ok, Encrypted} ->
@@ -356,7 +356,7 @@ decrypt_with_key_and_move_to_ram(#pch_encrypted_cache{ cache_id = CacheId
             ets:insert(
                     ?TAB, [Cache#ch_cache{cache_id = CacheId, state = State, opts = Opts}]),
                     delete_persistent(CacheId),
-                    {ok, State};
+                    {ok, State, Opts};
         {error, _} ->
             {error, invalid_password}
     end.
