@@ -333,6 +333,9 @@ update_micro_candidate(#mic_block{} = Block, TxsRootHash, RootHash, Txs) ->
 %%% Serialization
 %%%===================================================================
 
+%% Serialization assumes the protocol version in the header to be valid for the
+%% provided height. This should have been validated before calling this
+%% function.
 -spec serialize_to_binary(block()) -> binary().
 serialize_to_binary(#key_block{} = Block) ->
     aec_headers:serialize_to_binary(to_key_header(Block));

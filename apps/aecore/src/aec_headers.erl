@@ -562,6 +562,10 @@ deserialize_from_binary_partial(<<_Version:32,
             {error, malformed_header}
     end.
 
+%% The function does not check the validity of the protocol version based on
+%% height. It gets the protocol version from the block header. The protocol
+%% version check based on height is performed before inserting it into the
+%% database (aec_conductor).
 -spec deserialize_key_from_binary(deterministic_header_binary()) ->
                                          {'ok', key_header()}
                                        | {'error', term()}.
@@ -600,6 +604,10 @@ deserialize_key_from_binary(_Other) ->
     {error, malformed_header}.
 
 
+%% The function does not check the validity of the protocol version based on
+%% height. It gets the protocol version from the block header. The protocol
+%% version check based on height is performed before inserting it into the
+%% database (aec_conductor).
 -spec deserialize_micro_from_binary(deterministic_header_binary()) ->
                                            {'ok', micro_header()}
                                          | {'error', term()}.
