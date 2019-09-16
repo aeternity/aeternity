@@ -390,11 +390,21 @@ end_per_group(Group, Config) ->
 
 init_per_testcase(_, Config) ->
     Config1 = load_idx(Config),
-    [ {debug, false}
-    , {minimum_depth, ?MINIMUM_DEPTH_FACTOR}
-    , {minimum_depth_strategy, ?MINIMUM_DEPTH_STRATEGY}
-    | Config1
-    ].
+    Config2 = case is_above_roma_protocol() of
+                  true ->
+                      [ {minimum_depth, ?MINIMUM_DEPTH}
+                      , {minimum_depth_factor, ?MINIMUM_DEPTH_FACTOR}
+                      , {minimum_depth_strategy, ?MINIMUM_DEPTH_STRATEGY}
+                      | Config1 ];
+                  false ->
+                      % Because the tx fees used to be lower in roma, more
+                      % blocks are required for tx to be confirmed.
+                      [ {minimum_depth, ?MINIMUM_DEPTH}
+                      , {minimum_depth_factor, ?MINIMUM_DEPTH_FACTOR * 2}
+                      , {minimum_depth_strategy, ?MINIMUM_DEPTH_STRATEGY}
+                      | Config1 ]
+              end,
+    [ {debug, true} | Config2 ].
 
 end_per_testcase(T, _Config) when T==multiple_channels;
                                   T==many_chs_msg_loop ->
@@ -596,12 +606,59 @@ txs_not_already_on_chain(Txs) ->
       end, Txs).
 
 t_create_channel_(Cfg) ->
+    Debug = get_debug(Cfg),
+    Cfg1 = [?SLOGAN | Cfg],
+    assert_empty_msgq(Debug),
+
     #{ i := #{channel_id := ChannelId} = I
-     , r := #{} = R} = create_channel_([?SLOGAN|Cfg]),
+     , r := #{} = R} = create_channel_(Cfg1, #{}, Debug),
+    assert_empty_msgq(Debug),
 
     {ok, _} = rpc(dev1, aec_chain, get_channel, [ChannelId]),
+
     shutdown_(I, R, Cfg),
-    check_info(20).
+
+    % Verify final messages
+    IExpectedLog = [ {evt, close}
+                   , {rcv, channel_closed}
+                   , {rcv, shutdown_ack}
+                   , {rcv, signed}
+                   , {snd, shutdown}
+                   , {req, sign}
+                   , {rcv, funding_locked}
+                   , {snd, funding_locked}
+                   , {rcv, channel_changed}
+                   , {rcv, funding_signed}
+                   , {snd, funding_created}
+                   , {rcv, signed}
+                   , {req, sign}
+                   , {rcv, channel_accept}
+                   , {snd, channel_open}
+                   ],
+    RExpectedLog = [ {evt, close}
+                   , {rcv, channel_closed}
+                   , {rcv, signed}
+                   , {snd, shutdown_ack}
+                   , {req, sign}
+                   , {rcv, shutdown}
+                   , {rcv, funding_locked}
+                   , {snd, funding_locked}
+                   , {rcv, channel_changed}
+                   , {snd, funding_created}
+                   , {rcv, signed}
+                   , {req, sign}
+                   , {rcv, funding_created}
+                   , {snd, channel_accept}
+                   , {rcv, channel_open}
+                   ],
+    {ok, #{info := {log, ILog}}} = receive_log(I, Debug),
+    {ok, #{info := {log, RLog}}} = receive_log(R, Debug),
+    ok = check_log(IExpectedLog, ILog),
+    ok = check_log(RExpectedLog, RLog),
+
+    % Done
+    assert_empty_msgq(Debug),
+    ok.
 
 channel_insufficent_tokens(Cfg) ->
     Debug = get_debug(Cfg),
@@ -1076,9 +1133,9 @@ withdraw_low_amount_long_confirmation_time(Cfg) ->
     % Low amount and low factor should lead to comparitively long confirmation time
     Cfg2 = set_minimum_depth(Cfg1, 4),
     Amount = 1,
-    MinDepth = case config(ga_group, Cfg, false) of
+    MinDepth = case config(ga_group, Cfg, false) orelse is_above_roma_protocol() of
                    true ->
-                       11;
+                       12;
                    false ->
                        6
                end,
@@ -1094,7 +1151,6 @@ withdraw_low_amount_long_confirmation_time_negative_test(Cfg) ->
     MinDepth = 3,
     MinDepthChannel = 10,
     Round = 1,
-    ErrorRound = 0,
     try
         ok = withdraw_full_cycle_(Amount, #{}, MinDepth, MinDepthChannel, Round, Cfg2),
         ct:fail("Expected withdraw test to fail due to min depth being to small.")
@@ -2632,6 +2688,7 @@ await_own_locked_rpt(Type, #{role := Role, fsm := Fsm}, Timeout, Debug)
             log(Debug, "~p got ~p: ~p", [Role, Type, Msg]),
             ok
     after Timeout ->
+            ?PEEK_MSGQ(Debug),
             error(timeout)
     end.
 
@@ -2649,19 +2706,21 @@ match_info(Info, Match) ->
                       end
               end, ok, Match).
 
-await_open_report(#{fsm := Fsm} = R, Timeout, _Debug) ->
+await_open_report(#{fsm := Fsm} = R, Timeout, Debug) ->
     receive {aesc_fsm, Fsm, #{type := report, tag := info, info := open} = Msg} ->
                 {ok, ChannelId} = maps:find(channel_id, Msg),
                 R#{channel_id => ChannelId}
     after Timeout ->
-              error(timeout)
+            ?PEEK_MSGQ(Debug),
+            error(timeout)
     end.
 
-await_update_incoming_report(#{fsm := Fsm, channel_id := ChannelId}, Timeout, _Debug) ->
+await_update_incoming_report(#{fsm := Fsm, channel_id := ChannelId}, Timeout, Debug) ->
     receive {aesc_fsm, Fsm, #{type := report, tag := info, info := update} = Msg} ->
             {ok, ChannelId} = maps:find(channel_id, Msg)
     after Timeout ->
-              error(timeout)
+            ?PEEK_MSGQ(Debug),
+            error(timeout)
     end.
 
 await_leave(#{channel_id := ChId0} = R, Timeout, Debug) ->
@@ -3752,7 +3811,7 @@ channel_spec(Cfg, ChannelReserve, PushAmount, XOpts) ->
              , push_amount          => PushAmount
              , lock_period          => 10
              , channel_reserve      => ChannelReserve
-             , minimum_depth        => config(minimum_depth, Cfg, ?MINIMUM_DEPTH)
+             , minimum_depth        => config(minimum_depth_factor, Cfg, ?MINIMUM_DEPTH_FACTOR)
              , client               => self()
              , noise                => [{noise, Proto}]
              , timeouts             => #{idle => 20000}
@@ -3884,3 +3943,6 @@ change_password(#{fsm := Fsm, state_password := StatePassword} = P) ->
 
 set_minimum_depth(Cfg, N) ->
     lists:keyreplace(minimum_depth, 1, Cfg, {minimum_depth, N}).
+
+is_above_roma_protocol() ->
+    aect_test_utils:latest_protocol_version() > ?ROMA_PROTOCOL_VSN.
