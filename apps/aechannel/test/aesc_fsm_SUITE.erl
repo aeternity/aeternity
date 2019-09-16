@@ -446,7 +446,7 @@ multiple_responder_keys_per_port(Cfg) ->
                           , {slogan, {Slogan, N}}
                           | CustomCfg
                           ],
-            ChannelCfg1 = set_minimum_depth(ChannelCfg0, 0),
+            ChannelCfg1 = set_minimum_depth_factor(ChannelCfg0, 0),
             ChannelCfg =
                 case InitiatorAccountType of
                     basic -> % give away nonces in advance to avoid race conditions
@@ -1111,7 +1111,7 @@ withdraw(Cfg) ->
 withdraw_high_amount_static_confirmation_time(Cfg) ->
     Cfg1 = [?SLOGAN | Cfg],
     % Factor of 0 sets min depths to 1 for all amounts
-    Cfg2 = set_minimum_depth(Cfg1, 0),
+    Cfg2 = set_minimum_depth_factor(Cfg1, 0),
     Amount = 300000,
     MinDepth = 1,
     MinDepthChannel = 1,
@@ -1121,7 +1121,7 @@ withdraw_high_amount_static_confirmation_time(Cfg) ->
 withdraw_high_amount_short_confirmation_time(Cfg) ->
     Cfg1 = [?SLOGAN | Cfg],
     % High amount and high factor should lead to single block required
-    Cfg2 = set_minimum_depth(Cfg1, 60),
+    Cfg2 = set_minimum_depth_factor(Cfg1, 60),
     Amount = 300000,
     MinDepth = 2,
     MinDepthChannel = 1,
@@ -1131,7 +1131,7 @@ withdraw_high_amount_short_confirmation_time(Cfg) ->
 withdraw_low_amount_long_confirmation_time(Cfg) ->
     Cfg1 = [?SLOGAN | Cfg],
     % Low amount and low factor should lead to comparitively long confirmation time
-    Cfg2 = set_minimum_depth(Cfg1, 4),
+    Cfg2 = set_minimum_depth_factor(Cfg1, 4),
     Amount = 1,
     MinDepth = case config(ga_group, Cfg, false) orelse is_above_roma_protocol() of
                    true ->
@@ -1146,7 +1146,7 @@ withdraw_low_amount_long_confirmation_time(Cfg) ->
 withdraw_low_amount_long_confirmation_time_negative_test(Cfg) ->
     Cfg1 = [?SLOGAN | Cfg],
     % Low amount and low factor should lead to comparitively long confirmation time
-    Cfg2 = set_minimum_depth(Cfg1, 4),
+    Cfg2 = set_minimum_depth_factor(Cfg1, 4),
     Amount = 1,
     MinDepth = 3,
     MinDepthChannel = 10,
@@ -1360,7 +1360,7 @@ multiple_channels_t(NumCs, FromPort, Msg, {slogan, Slogan}, Cfg) ->
     MultiChCfg0 = [ {port, FromPort}
                   , {ack_to, Me}
                   | Cfg ],
-    MultiChCfg1 = set_minimum_depth(MultiChCfg0, 0),
+    MultiChCfg1 = set_minimum_depth_factor(MultiChCfg0, 0),
     Cs = [create_multi_channel([ {nonce, Nonce + N - 1}
                                , {slogan, {Slogan,N}}
                                | MultiChCfg1 ],
@@ -3358,7 +3358,7 @@ positive_bh(Cfg) ->
            | Cfg ],
     % Factor of 0 sets min depths to 1 for all amounts
     MinDepth = 1,
-    Cfg2 = set_minimum_depth(Cfg1, 0),
+    Cfg2 = set_minimum_depth_factor(Cfg1, 0),
     #{ i := #{fsm := FsmI} = I
      , r := R
      , spec := _Spec} = create_channel_(Cfg2),
@@ -3941,8 +3941,8 @@ change_password(#{fsm := Fsm, state_password := StatePassword} = P) ->
     ok = rpc(dev1, aesc_fsm, change_state_password, [Fsm, StatePassword1]),
     P#{state_password => StatePassword1}.
 
-set_minimum_depth(Cfg, N) ->
-    lists:keyreplace(minimum_depth, 1, Cfg, {minimum_depth, N}).
+set_minimum_depth_factor(Cfg, N) ->
+    lists:keyreplace(minimum_depth_factor, 1, Cfg, {minimum_depth_factor, N}).
 
 is_above_roma_protocol() ->
     aect_test_utils:latest_protocol_version() > ?ROMA_PROTOCOL_VSN.
