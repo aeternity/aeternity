@@ -1122,9 +1122,9 @@ workflows:
           filters:
             branches:
               ignore:
-                - env/dev1
-                - env/dev2
                 - system-tests
+            tags:
+              only: *tag_regex
 
       - build:
           filters:
@@ -1446,7 +1446,6 @@ workflows:
             - uat_tests
             - static_analysis
             - rebar_lock_check
-            - linux_package
             - linux_package
           filters:
             branches:

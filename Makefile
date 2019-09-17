@@ -18,7 +18,7 @@ EQC_EUNIT_TEST_FLAGS_FINAL = $(EQC_EUNIT_TEST_FLAGS)
 
 SWAGGER_ENDPOINTS_SPEC = apps/aeutils/src/endpoints.erl
 
-PACKAGE_SPEC_WIN32 ?= ../ci/appveyor/package.cfg
+PACKAGE_SPEC_WIN32 ?= ../.circleci/windows/package.cfg
 
 # Packages from master MUST be pre-releases. Git master version
 # usually is higher then the last stable release. However

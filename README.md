@@ -1,7 +1,6 @@
 # Aeternity node
 
 [![CircleCI][circleci badge]][circleci]
-[![Appveyor][appveyor badge]][appveyor]
 [![License][license badge]][license]
 [![Build Tool][build tool]][rebar3]
 
@@ -69,8 +68,6 @@ docker run -p 3013:3013 -p 3015:3015 aeternity/aeternity
 
 [circleci]: https://circleci.com/gh/aeternity/aeternity
 [circleci badge]: https://circleci.com/gh/aeternity/aeternity.svg?style=shield
-[appveyor]: https://ci.appveyor.com/project/aeternity/aeternity
-[appveyor badge]: https://ci.appveyor.com/api/projects/status/github/aeternity/aeternity?branch=master&svg=true
 [license badge]: https://img.shields.io/badge/license-ISC-blue.svg
 [license]: https://github.com/aeternity/aeternity/blob/master/LICENSE
 [build tool]: https://img.shields.io/badge/build%20tool-rebar3-orange.svg
