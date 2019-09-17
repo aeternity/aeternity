@@ -42,7 +42,6 @@ references:
   container_otp21_plt: &container_otp21_plt _build/default/rebar3_21.3.8.6_plt
 
   infrastructure_config_environment: &infrastructure_config_environment
-    resource_class: large
     DOCKERHUB_REPO: aeternity/aeternity
     S3_BUILDS_BUCKET: aeternity-node-builds
     S3_RELEASES_BUCKET: aeternity-node-releases
@@ -52,6 +51,11 @@ references:
     working_directory: ~/aeternity
     environment:
       <<: *infrastructure_config_environment
+
+  upload_container_config: &upload_container_config
+    executor: infrastructure_container_stable
+    resource_class: large
+    working_directory: ~/aeternity
 
   machine_config: &machine_config
     resource_class: large
@@ -241,6 +245,12 @@ references:
       command: |
         envdir /secrets aws s3 cp --acl public-read ${PACKAGE_TARBALL:?} s3://${S3_RELEASES_BUCKET:?}/
 
+  upload_latest_artifacts: &upload_latest_artifacts
+    run:
+      name: Upload latest release artifacts to central repository (AWS)
+      command: |
+        envdir /secrets aws s3 cp --acl public-read ${PACKAGE_TARBALL:?} s3://${S3_RELEASES_BUCKET:?}/aeternity-latest-${PKG_SUFFIX:?}${PKG_EXT:-".tar.gz"}
+
   deploy_steps: &deploy_steps
     - checkout
     - *set_package_path
@@ -392,17 +402,15 @@ references:
       - *upload_github_release_asset
       - *upload_release_artifacts
 
-  upload_latest_artifacts: &upload_latest_artifacts
-    - checkout
-    - *set_package_path
-    - setup_secrets
-    - attach_workspace:
-        at: *packages_workspace
-    - run:
-        name: Upload build artifacts to central repository (AWS)
-        command: |
-          envdir /secrets aws s3 cp --acl public-read ${PACKAGE_TARBALL:?} s3://${S3_RELEASES_BUCKET:?}/aeternity-latest-${PKG_SUFFIX:?}.tar.gz
-    - *fail_notification
+  upload_latest_package: &upload_latest_package
+    steps:
+      - checkout
+      - *set_package_path
+      - setup_secrets
+      - attach_workspace:
+          at: *packages_workspace
+      - *upload_latest_artifacts
+      - *fail_notification
 
   # Windows
   windows_cache_version: &windows_cache_version "v1"
@@ -821,7 +829,7 @@ jobs:
           command: |
             envdir /secrets aws s3 cp --acl public-read ${PACKAGE_TARBALL:?} s3://${S3_BUILDS_BUCKET:?}/
             if [ -n "$CIRCLE_BRANCH" -a "$CIRCLE_BRANCH" = "master" ]; then
-              envdir /secrets aws s3 cp --acl public-read ${PACKAGE_TARBALL:?} s3://${S3_BUILDS_BUCKET:?}/aeternity-latest-${PKG_SUFFIX:?}.tar.gz
+              envdir /secrets aws s3 cp --acl public-read ${PACKAGE_TARBALL:?} s3://${S3_BUILDS_BUCKET:?}/aeternity-latest-${PKG_SUFFIX:?}${PKG_EXT:-".tar.gz"}
             fi
       - *fail_notification
 
@@ -1035,41 +1043,53 @@ jobs:
       - DEPLOY_DOWNTIME: 1800 #30M
     steps: *deploy_steps
 
+  # Upload artifacts
   upload_packages_osx:
-    executor: infrastructure_container_stable
-    <<: *infrastructure_config
+    <<: *upload_container_config
     <<: *upload_package
     environment:
       <<: *infrastructure_config_environment
       PKG_TARGET_OS: macos
 
   upload_packages_linux:
-    executor: infrastructure_container_stable
-    <<: *infrastructure_config
+    <<: *upload_container_config
     <<: *upload_package
     environment:
       <<: *infrastructure_config_environment
       PKG_TARGET_OS: ubuntu
 
+  upload_packages_windows:
+    <<: *upload_container_config
+    <<: *upload_package
+    environment:
+      <<: *infrastructure_config_environment
+      PKG_TARGET_OS: windows
+      PKG_EXT: .zip
+
   upload_latest_packages_osx:
-    executor: infrastructure_container_stable
-    <<: *infrastructure_config
+    <<: *upload_container_config
+    <<: *upload_latest_package
     environment:
       <<: *infrastructure_config_environment
       PKG_TARGET_OS: macos
-    steps: *upload_latest_artifacts
 
   upload_latest_packages_linux:
-    executor: infrastructure_container_stable
-    <<: *infrastructure_config
+    <<: *upload_container_config
+    <<: *upload_latest_package
     environment:
       <<: *infrastructure_config_environment
       PKG_TARGET_OS: ubuntu
-    steps: *upload_latest_artifacts
+
+  upload_latest_packages_windows:
+    <<: *upload_container_config
+    <<: *upload_latest_package
+    environment:
+      <<: *infrastructure_config_environment
+      PKG_TARGET_OS: windows
+      PKG_EXT: .zip
 
   verify_release_artifacts:
-    executor: infrastructure_container_stable
-    <<: *infrastructure_config
+    <<: *upload_container_config
     steps:
       - run:
           name: Verify release artifacts
@@ -1107,7 +1127,12 @@ jobs:
           command: .circleci\windows\test
       - store_artifacts:
           path: *windows_artifacts
-          destination: /tmp/packages-<< parameters.otp_version >>
+          destination: packages-<< parameters.otp_version >>
+      - persist_to_workspace:
+          root: *windows_artifacts
+          paths:
+            - "*.zip"
+            - "*.exe"
 
 # CircleCI skips a job for a tag by default.
 # A job must have a filters tags section to run as a part of a tag push
@@ -1553,6 +1578,23 @@ workflows:
             tags:
               only: *tag_regex
 
+      - upload_packages_windows:
+          context: ae-node-builds
+          requires:
+            - eunit_roma
+            - eunit_minerva
+            - eunit_fortuna
+            - eunit_lima
+            - static_analysis
+            - rebar_lock_check
+            - windows_package
+            - hodl_artefact_upload
+          filters:
+            branches:
+              ignore: /.*/
+            tags:
+              only: *tag_regex
+
       - docker_push_tag:
           context: ae-node-builds
           requires:
@@ -1599,6 +1641,17 @@ workflows:
             tags:
               only: *tag_regex
 
+      - upload_latest_packages_windows:
+          context: ae-node-builds
+          requires:
+            - windows_package
+            - hodl_latest
+          filters:
+            branches:
+              ignore: /.*/
+            tags:
+              only: *tag_regex
+
       - docker_push_latest:
           context: ae-node-builds
           requires:
@@ -1617,6 +1670,8 @@ workflows:
             - upload_latest_packages_linux
             - upload_packages_osx
             - upload_latest_packages_osx
+            - upload_packages_windows
+            - upload_latest_packages_windows
             - docker_push_tag
             - docker_push_latest
           filters:
