@@ -2407,7 +2407,7 @@ create_channel_from_spec(I, R, Spec, Port, UseAny, Debug, Cfg) ->
     %% TODO: Somehow there is a CI only race condition which rarely occurs in
     %% round_too_high.check_incorrect_* and round_too_low.check_incorrect_* tests
     %% For now just wrap this operation in a retry loop and come back to it later
-    ?LOG("=== Create channel~n"
+    ?LOG("=== Create channel~n", []),
     ?LOG("Spec = ~p", [Spec]),
     ?PEEK_MSGQ,
     RSpec = customize_spec(responder, Spec, Cfg),
