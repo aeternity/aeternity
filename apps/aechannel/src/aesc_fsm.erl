@@ -3091,7 +3091,7 @@ report_update(#data{state = State, last_reported_update = Last} = D) ->
 
 report_leave(#data{role = Role, opts = Opts, state = State} = D) ->
     {_, SignedTx} = aesc_offchain_state:get_latest_signed_tx(State),
-    case {Role, maps:find(keep_running, Opts)} of
+    case {Role, maps:get(keep_running, Opts, false)} of
         {responder, {ok, true}} ->
             report_with_notice(leave, SignedTx, keep_running, D);
         _ ->
