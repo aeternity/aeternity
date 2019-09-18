@@ -101,11 +101,11 @@
 -define(PTAB, aesc_state_cache).
 -define(CACHE_DEFAULT_PASSWORD, "correct horse battery staple").
 
--spec new(aeser_id:val(), aeser_id:val(), aesc_offchain_state:state(), map()) -> ok | {error, any()}.
+-spec new(aeser_id:val(), aeser_id:val(), aesc_offchain_state:state(), opts()) -> ok | {error, any()}.
 new(ChId, Pubkey, State, Opts) ->
     new(ChId, Pubkey, State, Opts, ?CACHE_DEFAULT_PASSWORD).
 
--spec new(aeser_id:val(), aeser_id:val(), aesc_offchain_state:state(), map(), string()) -> ok | {error, any()}.
+-spec new(aeser_id:val(), aeser_id:val(), aesc_offchain_state:state(), opts(), string()) -> ok | {error, any()}.
 new(ChId, PubKey, State, Opts, Password) ->
     gen_server:call(?SERVER, {new, ChId, PubKey, self(), State, Opts, unicode:characters_to_binary(Password)}).
 

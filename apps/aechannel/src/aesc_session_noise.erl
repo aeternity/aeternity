@@ -347,10 +347,7 @@ locate_fsm(Type, MInfo, #st{ init_op = {accept, SnInfo, _Opts} } = St) ->
     Info0 = maps:merge(maps:with([ initiator
                                  , responder
                                  , port ], SnInfo), MInfo),
-    Info = case Type of
-               ?CH_OPEN     -> Info0;
-               ?CH_REESTABL -> Info0#{reestablish => true}
-           end,
+    Info = Info0#{reestablish => (Type =:= ?CH_REESTABL)},
     Cands = get_cands(Type, Info),
     lager:debug("Cands = ~p", [Cands]),
     try_cands(Cands, 3, 0, Type, Info, St).

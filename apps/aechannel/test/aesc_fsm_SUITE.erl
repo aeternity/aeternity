@@ -2408,8 +2408,8 @@ create_channel_from_spec(I, R, Spec, Port, UseAny, Debug, Cfg) ->
     %% round_too_high.check_incorrect_* and round_too_low.check_incorrect_* tests
     %% For now just wrap this operation in a retry loop and come back to it later
     ?LOG("=== Create channel~n"
-         "Spec = ~p"
-         "Msg Q: ~p", [Spec, element(2, process_info(self(), messages))]),
+    ?LOG("Spec = ~p", [Spec]),
+    ?PEEK_MSGQ,
     RSpec = customize_spec(responder, Spec, Cfg),
     ISpec = customize_spec(initiator, Spec, Cfg),
     {FsmI, FsmR, I1, R1} = retry(?CHANNEL_CREATION_RETRIES, 100,
