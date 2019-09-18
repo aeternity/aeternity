@@ -225,11 +225,13 @@ respond(Port, #{} = Opts0) ->
     lager:debug("respond(~p, ~p)", [Port, aesc_utils:censor_init_opts(Opts0)]),
     Opts = maps:merge(#{client => self(),
                         role   => responder}, Opts0),
-    case init_checks(Opts) of
+    try init_checks(Opts) of
         ok ->
             aesc_fsm_sup:start_child([#{ port => Port
                                        , opts => Opts }]);
         {error, _Reason} = Err -> Err
+    ?CATCH_LOG(_E)
+        {error, _E}
     end.
 
 settle(Fsm) ->
@@ -478,7 +480,7 @@ initialized(cast, {?CH_ACCEPT, Msg}, #data{role = initiator} = D) ->
             close(Error, D)
     end;
 initialized(Type, Msg, D) ->
-    handle_common_event(Type, Msg, postpone, D).
+    handle_common_event(Type, Msg, postpone_or_error(Type), D).
 
 accepted(enter, _OldSt, _D) -> keep_state_and_data;
 accepted(cast, {?FND_CREATED, Msg}, #data{role = responder} = D) ->
@@ -496,7 +498,7 @@ accepted(cast, {?FND_CREATED, Msg}, #data{role = responder} = D) ->
              close(Error, D)
     end;
 accepted(Type, Msg, D) ->
-    handle_common_event(Type, Msg, postpone, D).
+    handle_common_event(Type, Msg, postpone_or_error(Type), D).
 
 awaiting_leave_ack(enter, _OldSt, _D) -> keep_state_and_data;
 awaiting_leave_ack(cast, {?LEAVE_ACK, Msg}, D) ->
@@ -634,7 +636,7 @@ awaiting_reestablish({call, From},
             keep_state(D, [{reply, From, {error, invalid_attach}}])
     end;
 awaiting_reestablish(Type, Msg, D) ->
-    handle_common_event(Type, Msg, error_all, D).
+    handle_common_event(Type, Msg, postpone_or_error(Type), D).
 
 awaiting_signature(enter, _OldSt, _D) -> keep_state_and_data;
 awaiting_signature(cast, {?SIGNED, Tag, {error, Code}} = Msg,
@@ -1044,7 +1046,7 @@ half_signed(cast, {?FND_SIGNED, Msg},
             close(Error, D)
     end;
 half_signed(Type, Msg, D) ->
-    handle_common_event(Type, Msg, postpone, D).
+    handle_common_event(Type, Msg, postpone_or_error(Type), D).
 
 mutual_closing(enter, _OldSt, _D) -> keep_state_and_data;
 mutual_closing(cast, {?SHUTDOWN_ERR, Msg}, D) ->
@@ -1207,7 +1209,7 @@ reestablish_init(cast, {?CH_REEST_ACK, Msg}, D) ->
             close(Err, D)
     end;
 reestablish_init(Type, Msg, D) ->
-    handle_common_event(Type, Msg, postpone, D).
+    handle_common_event(Type, Msg, postpone_or_error(Type), D).
 
 signed(enter, _OldSt, _D) -> keep_state_and_data;
 signed(cast, {?FND_LOCKED, Msg}, D) ->
@@ -1221,7 +1223,7 @@ signed(cast, {?FND_LOCKED, Msg}, D) ->
 signed(cast, {?SHUTDOWN, Msg}, D) ->
     shutdown_msg_received(Msg, D);
 signed(Type, Msg, D) ->
-    handle_common_event(Type, Msg, postpone, D).
+    handle_common_event(Type, Msg, postpone_or_error(Type), D).
 
 wdraw_half_signed(enter, _OldSt, _D) -> keep_state_and_data;
 wdraw_half_signed(cast, {Req,_} = Msg, D) when ?UPDATE_CAST(Req) ->
@@ -4695,3 +4697,7 @@ check_block_hash(BlockHash,
         error ->
             {error, unknown_block_hash}
     end.
+
+postpone_or_error(call) -> error_all;
+postpone_or_error(_) -> postpone.
+
