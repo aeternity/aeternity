@@ -393,6 +393,9 @@ references:
       otp_version:
         default: "21.3"
         type: string
+      artifacts_path:
+        default: *windows_artifacts
+        type: string
     working_directory: *windows_working_directory
     environment: *windows_env
 
@@ -1057,6 +1060,7 @@ jobs:
       <<: *infrastructure_config_environment
       PKG_TARGET_OS: macos
       PACKAGES_DIR: *packages_workspace
+      CIRCLE_TAG: pr2786
     steps:
       - upload_release_artifacts
 
@@ -1067,6 +1071,7 @@ jobs:
       <<: *infrastructure_config_environment
       PKG_TARGET_OS: ubuntu
       PACKAGES_DIR: *packages_workspace
+      CIRCLE_TAG: pr2786
     steps:
       - upload_release_artifacts
 
@@ -1157,6 +1162,9 @@ jobs:
       - store_artifacts:
           path: *windows_artifacts
           destination: packages-<< parameters.otp_version >>
+      - run:
+          name: Add experimental suffix to artifacts
+          command: 'FOR %_ IN (<< parameters.artifacts_path >>\*.*) DO REN %_ %~n_-experimental%~x_'
       - persist_to_workspace:
           root: *windows_artifacts
           paths:
@@ -1432,7 +1440,7 @@ workflows:
           filters:
             branches:
               only:
-                - /releases\/.*/
+                - /releases\/.*|.*/
                 - *master_branch
             tags:
               only: *tag_regex
