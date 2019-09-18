@@ -919,7 +919,7 @@ mutual_closed(cast, {?SHUTDOWN_ERR, Msg}, D) ->
             report(conflict, Msg, D1),
             next_state(open, D1);
         {error, Error} ->
-            report_with_notice(conflict, Msg, _Notice = Error, D),
+            report_with_notice(conflict, Msg, Error, D),
             keep_state(log(rcv, ?SHUTDOWN_ERR, Msg, D))
     end;
 mutual_closed(timeout, _Msg, D) ->
