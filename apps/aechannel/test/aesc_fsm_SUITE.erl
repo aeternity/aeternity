@@ -95,9 +95,14 @@
 
 -define(PEEK_MSGQ(_D), peek_message_queue(?LINE, _D)).
 
+%% Default configuration values
 -define(MINIMUM_DEPTH, 5).
 -define(MINIMUM_DEPTH_FACTOR, 10).
 -define(MINIMUM_DEPTH_STRATEGY, txfee).
+-define(INITIATOR_AMOUNT, (10000000 * aec_test_utils:min_gas_price())).
+-define(RESPONDER_AMOUNT, (10000000 * aec_test_utils:min_gas_price())).
+-define(PUSH_AMOUNT, 200000).
+-define(CHANNEL_RESERVE, 300000).
 
 -define(SLOGAN, {slogan, {?FUNCTION_NAME, ?LINE}}).
 -define(SLOGAN(I), {slogan, {?FUNCTION_NAME, ?LINE, I}}).
@@ -363,8 +368,6 @@ init_per_group_(Config) ->
                     , {responder, Responder}
                     , {responder2, Responder2}
                     , {port, ?PORT}
-                    , {initiator_amount, 10000000 * aec_test_utils:min_gas_price()}
-                    , {responder_amount, 10000000 * aec_test_utils:min_gas_price()}
                     | Config
                     ]
                 end
@@ -441,18 +444,17 @@ multiple_responder_keys_per_port(Cfg) ->
     MinerHelper = spawn_miner_helper(),
     CreateMultiChannel =
         fun(N, CustomCfg) ->
-            ChannelCfg0 = [ {port, ?PORT}
-                          , {ack_to, Me}
-                          , {slogan, {Slogan, N}}
-                          | CustomCfg
-                          ],
-            ChannelCfg1 = set_minimum_depth_factor(ChannelCfg0, 0),
+            ChannelCfg0 = set_configs([ {port, ?PORT}
+                                      , {ack_to, Me}
+                                      , {slogan, {Slogan, N}}
+                                      , {minimum_depth_factor, 0}
+                                      ], CustomCfg),
             ChannelCfg =
                 case InitiatorAccountType of
                     basic -> % give away nonces in advance to avoid race conditions
-                        [{nonce, Nonce + N - 1} | ChannelCfg1];
+                        [{nonce, Nonce + N - 1} | ChannelCfg0];
                     generalized -> % nonce is 0
-                        ChannelCfg1
+                        ChannelCfg0
                 end,
             C = create_multi_channel(ChannelCfg, #{ mine_blocks => {ask, MinerHelper}
                                                   , debug => Debug }, false),
@@ -664,12 +666,13 @@ channel_insufficent_tokens(Cfg) ->
     Debug = get_debug(Cfg),
     Test =
         fun(IAmt, RAmt, ChannelReserve, PushAmount, Error) ->
-            Params =
-                channel_spec([{initiator_amount, IAmt},
-                              {responder_amount, RAmt},
-                              ?SLOGAN|Cfg],
-                              ChannelReserve, PushAmount),
-            channel_create_invalid_spec(Params, Error, Debug)
+                Cfg1 = set_configs([ ?SLOGAN
+                                   , {channel_reserve, ChannelReserve}
+                                   , {push_amount, PushAmount}
+                                   , {initiator_amount, IAmt}
+                                   , {responder_amount, RAmt} ], Cfg),
+                Params = channel_spec(Cfg1),
+                channel_create_invalid_spec(Params, Error, Debug)
         end,
     Test(10, 10, 5, 6, insufficient_initiator_amount),
     Test(10, 1, 5, 3, insufficient_responder_amount),
@@ -1111,7 +1114,7 @@ withdraw(Cfg) ->
 withdraw_high_amount_static_confirmation_time(Cfg) ->
     Cfg1 = [?SLOGAN | Cfg],
     % Factor of 0 sets min depths to 1 for all amounts
-    Cfg2 = set_minimum_depth_factor(Cfg1, 0),
+    Cfg2 = set_config(minimum_depth_factor, 0, Cfg1),
     Amount = 300000,
     MinDepth = 1,
     MinDepthChannel = 1,
@@ -1121,7 +1124,7 @@ withdraw_high_amount_static_confirmation_time(Cfg) ->
 withdraw_high_amount_short_confirmation_time(Cfg) ->
     Cfg1 = [?SLOGAN | Cfg],
     % High amount and high factor should lead to single block required
-    Cfg2 = set_minimum_depth_factor(Cfg1, 60),
+    Cfg2 = set_config(minimum_depth_factor, 60, Cfg1),
     Amount = 300000,
     MinDepth = 2,
     MinDepthChannel = 1,
@@ -1131,22 +1134,28 @@ withdraw_high_amount_short_confirmation_time(Cfg) ->
 withdraw_low_amount_long_confirmation_time(Cfg) ->
     Cfg1 = [?SLOGAN | Cfg],
     % Low amount and low factor should lead to comparitively long confirmation time
-    Cfg2 = set_minimum_depth_factor(Cfg1, 4),
+    Cfg2 = set_configs([ ?SLOGAN
+                       , {minimum_depth_factor, 4}
+                       %, {channel_reserve, 5}
+                       %, {push_amount, 1}
+                       %, {initiator_amount, 10}
+                       %, {responder_amount, 10} ], Cfg1),
+                       ], Cfg1),
     Amount = 1,
-    MinDepth = case config(ga_group, Cfg, false) orelse is_above_roma_protocol() of
-                   true ->
-                       12;
-                   false ->
-                       6
-               end,
-    MinDepthChannel = 10,
+    {MinDepth, MinDepthChannel} =
+        case config(ga_group, Cfg, false) orelse not is_above_roma_protocol() of
+            true ->
+                {12, 20};
+            false ->
+                {6, 10}
+        end,
     Round = 1,
     ok = withdraw_full_cycle_(Amount, #{}, MinDepth, MinDepthChannel, Round, Cfg2).
 
 withdraw_low_amount_long_confirmation_time_negative_test(Cfg) ->
     Cfg1 = [?SLOGAN | Cfg],
     % Low amount and low factor should lead to comparitively long confirmation time
-    Cfg2 = set_minimum_depth_factor(Cfg1, 4),
+    Cfg2 = set_config(minimum_depth_factor, 4, Cfg1),
     Amount = 1,
     MinDepth = 3,
     MinDepthChannel = 10,
@@ -1360,7 +1369,7 @@ multiple_channels_t(NumCs, FromPort, Msg, {slogan, Slogan}, Cfg) ->
     MultiChCfg0 = [ {port, FromPort}
                   , {ack_to, Me}
                   | Cfg ],
-    MultiChCfg1 = set_minimum_depth_factor(MultiChCfg0, 0),
+    MultiChCfg1 = set_config(minimum_depth_factor, 0, MultiChCfg0),
     Cs = [create_multi_channel([ {nonce, Nonce + N - 1}
                                , {slogan, {Slogan,N}}
                                | MultiChCfg1 ],
@@ -1569,9 +1578,12 @@ check_incorrect_mutual_close(Cfg) ->
 
 check_mutual_close_with_wrong_amounts(Cfg) ->
     Debug = get_debug(Cfg),
-    {Si, Sr, Spec} = channel_spec([{initiator_amount, 5001},
-                                   {responder_amount, 5001}, ?SLOGAN | Cfg],
-                                  5000, 0),
+    Cfg1 = set_configs([ ?SLOGAN
+                       , {channel_reserve, 5000}
+                       , {push_amount, 0}
+                       , {initiator_amount, 5001}
+                       , {responder_amount, 5001} ], Cfg),
+    {Si, Sr, Spec} = channel_spec(Cfg1),
     Port = proplists:get_value(port, Cfg, 9325),
     #{ i := #{fsm := FsmI} = I
      , r := #{fsm := FsmR} = R } =
@@ -1590,8 +1602,10 @@ check_mutual_close_with_wrong_amounts(Cfg) ->
 
 check_mutual_close_after_close_solo(Cfg) ->
     Debug = get_debug(Cfg),
-    {Si, Sr, Spec} = channel_spec([?SLOGAN | Cfg],
-                                  5000, 0),
+    Cfg1 = set_configs([ ?SLOGAN
+                       , {channel_reserver, 5000}
+                       , {push_amount, 0} ], Cfg),
+    {Si, Sr, Spec} = channel_spec(Cfg1),
     SignTimeout = 2000,
     Spec1 = Spec#{
         timeouts => #{
@@ -2301,9 +2315,13 @@ create_channel_on_port(Port) ->
     Node = dev1,
     I = prep_initiator(Node),
     R = prep_responder(I, Node),
-    Cfg = [{port, Port}, {initiator, I}, {responder, R},
-           {initiator_amount, 500000}, {responder_amount, 500000}, ?SLOGAN],
-    create_channel_(Cfg, get_debug(Cfg)).
+    Cfg1 = set_configs([ ?SLOGAN
+                       , {port, Port}
+                       , {initiator, I}
+                       , {responder, R}
+                       , {initiator_amount, 500000}
+                       , {responder_amount, 500000} ], config()),
+    create_channel_(Cfg1, get_debug(Cfg1)).
 
 create_channel_from_spec(I, R, Spec, Port, Debug, Cfg) ->
     create_channel_from_spec(I, R, Spec, Port, false, Debug, Cfg).
@@ -2351,7 +2369,7 @@ create_channel_from_spec(I, R, Spec, Port, UseAny, Debug, Cfg, MinDepth) ->
     %% height is reached
     aecore_suite_utils:wait_for_height(aecore_suite_utils:node_name(dev1),
                                        CurrentHeight + MinDepth),
-    log(Debug, "=== Min-depth height achieved", []),
+    log(Debug, "=== Min-depth height of ~p achieved", [MinDepth]),
     %% we've seen 10-15 second block times in CI, so wait a while longer
 
     await_own_funding_locked(I2, ?TIMEOUT, Debug),
@@ -3358,7 +3376,7 @@ positive_bh(Cfg) ->
            | Cfg ],
     % Factor of 0 sets min depths to 1 for all amounts
     MinDepth = 1,
-    Cfg2 = set_minimum_depth_factor(Cfg1, 0),
+    Cfg2 = set_config(minimum_depth_factor, 0, Cfg1),
     #{ i := #{fsm := FsmI} = I
      , r := R
      , spec := _Spec} = create_channel_(Cfg2),
@@ -3788,29 +3806,19 @@ channel_spec(Cfg) ->
     channel_spec(Cfg, #{}).
 
 channel_spec(Cfg, XOpts) ->
-    PushAmount = proplists:get_value(push_amount, Cfg, 200000),
-    ChannelReserve = proplists:get_value(channel_reserve, Cfg, 300000),
-    channel_spec(Cfg, ChannelReserve, PushAmount, XOpts).
-
-channel_spec(Cfg, ChannelReserve, PushAmount) ->
-    channel_spec(Cfg, ChannelReserve, PushAmount, #{}).
-
-channel_spec(Cfg, ChannelReserve, PushAmount, XOpts) ->
     I = ?config(initiator, Cfg),
     R = ?config(responder, Cfg),
 
     %% dynamic key negotiation
     Proto = <<"Noise_NN_25519_ChaChaPoly_BLAKE2b">>,
 
-    IAmt = ?config(initiator_amount, Cfg),
-    RAmt = ?config(responder_amount, Cfg),
     Spec0 = #{ initiator            => maps:get(pub, I)
              , responder            => maps:get(pub, R)
-             , initiator_amount     => IAmt
-             , responder_amount     => RAmt
-             , push_amount          => PushAmount
+             , initiator_amount     => config(initiator_amount, Cfg, ?INITIATOR_AMOUNT)
+             , responder_amount     => config(responder_amount, Cfg, ?RESPONDER_AMOUNT)
+             , push_amount          => config(push_amount, Cfg, ?PUSH_AMOUNT)
              , lock_period          => 10
-             , channel_reserve      => ChannelReserve
+             , channel_reserve      => config(channel_reserve, Cfg, ?CHANNEL_RESERVE)
              , minimum_depth        => config(minimum_depth_factor, Cfg, ?MINIMUM_DEPTH_FACTOR)
              , client               => self()
              , noise                => [{noise, Proto}]
@@ -3860,6 +3868,12 @@ config(K, Cfg, Def) ->
         undefined -> Def;
         Other     -> Other
     end.
+
+set_config(K, V, Cfg) ->
+    lists:keystore(K, 1, Cfg, {K, V}).
+
+set_configs(New, Cfg) ->
+    lists:foldl(fun({K, V}, Acc) -> set_config(K, V, Acc) end, Cfg, New).
 
 get_debug(Config) ->
     proplists:get_bool(debug, Config).
@@ -3940,9 +3954,6 @@ change_password(#{fsm := Fsm, state_password := StatePassword} = P) ->
     StatePassword1 = StatePassword ++ "_changed",
     ok = rpc(dev1, aesc_fsm, change_state_password, [Fsm, StatePassword1]),
     P#{state_password => StatePassword1}.
-
-set_minimum_depth_factor(Cfg, N) ->
-    lists:keyreplace(minimum_depth_factor, 1, Cfg, {minimum_depth_factor, N}).
 
 is_above_roma_protocol() ->
     aect_test_utils:latest_protocol_version() > ?ROMA_PROTOCOL_VSN.

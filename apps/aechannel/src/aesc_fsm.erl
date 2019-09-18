@@ -1698,11 +1698,7 @@ create_with_minimum_fee(_, _, _, Attempts) when Attempts < 1 ->
     error(could_not_compute_fee);
 create_with_minimum_fee(Mod, Opts, CurrHeight, Attempts) ->
     {ok, Tx} = apply(Mod, new, [Opts]),
-    MinTxFee = aetx:min_fee(Tx, CurrHeight),
-    MinGas = aetx:min_gas(Tx, CurrHeight),
-    MinMinerGasPrice = aec_tx_pool:minimum_miner_gas_price(),
-    MinGasRequirements = MinGas * MinMinerGasPrice,
-    MinFee = max(MinTxFee, MinGasRequirements),
+    MinFee = min_tx_fee(Tx),
     TxFee = aetx:fee(Tx),
     case MinFee =< TxFee of
         true ->
@@ -3561,19 +3557,19 @@ check_change_config(_, _) ->
 min_depth(#{ minimum_depth := MinDepthFactor
            , minimum_depth_strategy := txfee }, SignedTx) when
       MinDepthFactor =/= undefined ->
-    CurrHeight = curr_height(),
     Tx = aetx_sign:tx(SignedTx),
-    MinFee = aetx:min_fee(Tx, CurrHeight),
+    MinGas = aec_tx_pool:minimum_miner_gas_price(),
     TxFee = aetx:fee(Tx),
-    FeeCoefficient = TxFee / MinFee,
+    FeeCoefficient = TxFee / MinGas,
     MinDepth = if
         MinDepthFactor > 0  ->
             ceil(math:pow(FeeCoefficient, 1 / MinDepthFactor));
         true ->
             1
     end,
-    lager:debug("Calculated txfee-based MinDepth = ~p with FeeCoefficient = ~p, MinDepthFactor = ~p",
-                [MinDepth, FeeCoefficient, MinDepthFactor]),
+    lager:debug("Calculated txfee-based MinDepth = ~p with FeeCoefficient = ~p, MinDepthFactor = ~p, "
+                "TxFee = ~p, MinGas = ~p",
+                [MinDepth, FeeCoefficient, MinDepthFactor, TxFee, MinGas]),
     MinDepth.
 
 -spec check_minimum_depth_opt(opts()) -> opts().
@@ -4575,3 +4571,15 @@ default_minimum_depth(Strategy) ->
         _ ->
             error(unknown_minimum_depth_strategy)
     end.
+
+min_tx_fee(Tx) ->
+    CurrHeight = curr_height(),
+    MinTxFee = aetx:min_fee(Tx, CurrHeight),
+    MinGasRequirements = min_gas(Tx),
+    max(MinTxFee, MinGasRequirements).
+
+min_gas(Tx) ->
+    CurrHeight = curr_height(),
+    MinGas = aetx:min_gas(Tx, CurrHeight),
+    MinMinerGasPrice = aec_tx_pool:minimum_miner_gas_price(),
+    MinGas * MinMinerGasPrice.
