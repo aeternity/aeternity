@@ -581,6 +581,7 @@ general_options(Read) ->
     [ Read(<<"minimum_depth">>, minimum_depth, #{type => integer, mandatory => false})
     , Read(<<"ttl">>, ttl, #{type => integer, mandatory => false})
     , Read(<<"keep_running">>, keep_running, #{type => boolean,
+                                               default => <<"true">>,
                                                mandatory => false})
     , Read(<<"reconnect_security">>, reconnect_security, #{mandatory => false,
                                                            type => atom,

@@ -3306,6 +3306,7 @@ channel_options(IPubkey, RPubkey, IAmt, RAmt, Other, Config) ->
                       initiator_amount => IAmt,
                       responder_amount => RAmt,
                       channel_reserve => 2,
+                      keep_running => false,
                       protocol => sc_ws_protocol(Config)
                     }, Other), Config), Config).
 
