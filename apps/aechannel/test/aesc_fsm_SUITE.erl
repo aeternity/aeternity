@@ -2380,10 +2380,10 @@ prime_password(#{} = P, Key, Cfg) when Key =:= initiator_password; Key =:= respo
         undefined ->
             P#{state_password => generate_password()};
         ignore ->
-            ?LOG(Debug, "Ignoring password"),
+            ?LOG(Debug, "Ignoring password", []),
             maps:remove(state_password, P);
         Password ->
-            ?LOG(Debug, "Using predefined password"),
+            ?LOG(Debug, "Using predefined password", []),
             P#{state_password => Password}
      end.
 
