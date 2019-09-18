@@ -1134,20 +1134,14 @@ withdraw_high_amount_short_confirmation_time(Cfg) ->
 withdraw_low_amount_long_confirmation_time(Cfg) ->
     Cfg1 = [?SLOGAN | Cfg],
     % Low amount and low factor should lead to comparitively long confirmation time
-    Cfg2 = set_configs([ ?SLOGAN
-                       , {minimum_depth_factor, 4}
-                       %, {channel_reserve, 5}
-                       %, {push_amount, 1}
-                       %, {initiator_amount, 10}
-                       %, {responder_amount, 10} ], Cfg1),
-                       ], Cfg1),
+    Cfg2 = set_configs([?SLOGAN , {minimum_depth_factor, 8}], Cfg1),
     Amount = 1,
     {MinDepth, MinDepthChannel} =
         case config(ga_group, Cfg, false) orelse not is_above_roma_protocol() of
             true ->
-                {12, 20};
+                {24, 20};
             false ->
-                {6, 10}
+                {12, 10}
         end,
     Round = 1,
     ok = withdraw_full_cycle_(Amount, #{}, MinDepth, MinDepthChannel, Round, Cfg2).
