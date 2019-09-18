@@ -1192,13 +1192,13 @@ sc_ws_leave_(Config) ->
     ReestablishOptions.
 
 
-sc_ws_reestablish_(ReestablOptions, Config) ->
-    ct:log("ReestablOptions = ~p~n"
-           "Config = ~p", [ReestablOptions, Config]),
+sc_ws_reestablish_(ReestablishOptions, Config) ->
+    ct:log("ReestablishOptions = ~p~n"
+           "Config = ~p", [ReestablishOptions, Config]),
     ResponderLeaves = proplists:get_value(responder_leaves, Config, true),
     RrConnPid
         = if ResponderLeaves ->
-                  {ok, RrCP} = channel_ws_start(responder, ReestablOptions, Config),
+                  {ok, RrCP} = channel_ws_start(responder, ReestablishOptions, Config),
                   RrCP;
              true ->
                   %% responder still running
@@ -1207,7 +1207,7 @@ sc_ws_reestablish_(ReestablOptions, Config) ->
     end,
     {ok, IrConnPid} = channel_ws_start(initiator, maps:put(
                                                     host, <<"localhost">>,
-                                                    ReestablOptions), Config),
+                                                    ReestablishOptions), Config),
     Config1 = lists:keystore(channel_clients, 1, Config,
                              {channel_clients, #{ initiator => IrConnPid
                                                 , responder => RrConnPid}}),
@@ -3208,8 +3208,8 @@ sc_ws_leave_reconnect(Config0) ->
     ct:log("Config1 = ~p", [Config1]),
     #{ existing_channel_id := ChId
      , offchain_tx         := _Tx }
-        = ReestOpts = sc_ws_leave_(Config1),
-    ct:log("ReestOpts = ~p", [ReestOpts]),
+        = ReestablishOpts = sc_ws_leave_(Config1),
+    ct:log("ReestablishOpts = ~p", [ReestablishOpts]),
     ct:log("*** Reconnecting ... ***", []),
     Config2 = reconnect_client_(ChId, initiator, Pub, Priv,
                                 [{reconnect_scenario, reestablish} | Config1]),
