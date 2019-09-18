@@ -632,7 +632,8 @@ awaiting_reestablish({call, From},
             gen:reply(From, ok),
             {Pid, _} = From,
             keep_state(D#data{ session = Pid }, [{reply, From, ok}]);
-        {error,_} ->
+        {error, Error} ->
+                lager:debug("Attach failed with ~p", [Error]),
             keep_state(D, [{reply, From, {error, invalid_attach}}])
     end;
 awaiting_reestablish(Type, Msg, D) ->

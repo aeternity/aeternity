@@ -425,7 +425,7 @@ stop_node(N, Config) ->
 
 create_channel(Cfg) ->
     %% with_trace(fun t_create_channel_/1, Cfg, "create_channel").
-    t_create_channel_(set_debug(true, Cfg)).
+    t_create_channel_(Cfg).
 
 multiple_responder_keys_per_port(Cfg) ->
     Slogan = ?SLOGAN,
@@ -1175,12 +1175,12 @@ close_solo_tx(#{ fsm        := Fsm
 
 leave_reestablish(Cfg) ->
     %% with_trace(fun t_leave_reestablish_/1, Cfg, "leave_reestablish").
-    t_leave_reestablish_([{debug,true}|Cfg]).
+    t_leave_reestablish_(Cfg).
 
 leave_reestablish_responder_stays(Cfg) ->
     with_trace(
       fun(Cfg1) ->
-              t_leave_reestablish_(cfg_responder_keeps_running(set_debug(true, Cfg1)))
+              t_leave_reestablish_(cfg_responder_keeps_running(Cfg1))
       end, [{activate_trace, ?TR_CHANNEL_CREATED}|Cfg], "leave_reest_responder_stays").
 
 t_leave_reestablish_(Cfg) ->
@@ -1278,7 +1278,8 @@ verify_channel(#{pub := PubI, fsm := FsmI} = I,
     ?PEEK_MSGQ,
     ?LOG(Debug, "verifying channel: deposit", []),
     {ok, I2, R2} = deposit_(I1, R1, 1, Debug, Cfg),
-    ?LOG("=== Channel verified~nMessage Q: ~p", [element(2,process_info(self(), messages))]),
+    ?LOG("=== Channel verified", []),
+    ?PEEK_MSGQ,
     {ok, I2, R2}.
 
 responder_stays(#{responder_opts := #{keep_running := Bool}}) ->
@@ -1802,7 +1803,7 @@ check_invalid_reestablish_password(Cfg) ->
 
 check_password_is_changeable(Cfg) ->
     %% Debug = get_debug(Cfg),
-    Debug = true,
+    Debug = get_debug(Cfg),
     {I0, R0, Spec0} = channel_spec(Cfg),
     #{ i := I
      , r := R } = CSpec = create_channel_from_spec(I0, R0, Spec0, ?PORT, Debug, Cfg),

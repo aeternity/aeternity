@@ -136,7 +136,7 @@ websocket_init_reconnect(#{ job_id := JobId
     lager:debug("ReconnectTx = ~p", [ReconnectTx]),
     case check_reconnect_tx(ReconnectTx) of
         {ok, #{} = Opts} ->
-            lager:debug("Reconnect tx Opts = ~p", [Opts]),
+            lager:debug("Reconnect tx Opts = ~p", [aesc_utils:censor_init_opts(Opts)]),
             ReconnectOpts =
                 maps:merge(Params#{ job_id => JobId
                                   , protocol => sc_ws_api:protocol(Protocol) }, Opts),
