@@ -1076,7 +1076,7 @@ jobs:
     environment:
       <<: *infrastructure_config_environment
       PKG_TARGET_OS: windows
-      PKG_EXT: .zip
+      PKG_EXT: -experimental.zip
       PACKAGES_DIR: *packages_workspace
       CIRCLE_TAG: pr2786
     steps:
@@ -1108,7 +1108,7 @@ jobs:
     environment:
       <<: *infrastructure_config_environment
       PKG_TARGET_OS: windows
-      PKG_EXT: .zip
+      PKG_EXT: -experimental.zip
       PACKAGES_DIR: *packages_workspace
     steps:
       - upload_latest_artifacts
