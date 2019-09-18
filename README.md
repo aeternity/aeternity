@@ -52,7 +52,7 @@ The `master` branch tracks the ongoing efforts towards the next stable release t
 
 By using the installer to install the latest stable version:
 ```bash
-bash <(curl -s https://raw.githubusercontent.com/aeternity/installer/v2.0.0/install.sh)
+bash <(curl -s https://install.aeternity.io/install.sh)
 ```
 
 Or running a docker container (latest tag):
