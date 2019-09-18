@@ -105,7 +105,7 @@ shutdown_error     (Session, Msg) -> cast(Session, {msg, ?SHUTDOWN_ERR , Msg}).
 close(Session) ->
     try call(Session, close)
     ?_catch_(E, R, StackTrace)
-        case {R, E} of
+        case {E, R} of
             {error, _} ->
                 ok;
             {exit, {noproc, _}} ->
@@ -142,7 +142,7 @@ connect(Host, Port, Opts) ->
 
 accept(#{ port := Port, responder := R } = Opts0, NoiseOpts) ->
     TcpOpts = tcp_opts(listen, NoiseOpts),
-    lager:debug("listen: TcpOpts = ~p", [TcpOpts]),
+    lager:debug("listen: Opts0 = ~p; TcpOpts = ~p", [Opts0, TcpOpts]),
     {ok, LSock} = aesc_listeners:listen(Port, R, TcpOpts),
     Opts = Opts0#{lsock => LSock},
     accept_(Opts, NoiseOpts).
@@ -152,11 +152,15 @@ accept_(#{ reestablish := true
          , channel_id  := ChId
          , responder   := R
          , port        := Port } = Opts, NoiseOpts) ->
-    gproc:reg(responder_reestabl_regkey(ChainH, ChId, R, Port)),
+    Regkey = responder_reestabl_regkey(ChainH, ChId, R, Port),
+    lager:debug("Regkey = ~p", [Regkey]),
+    gproc:reg(Regkey),
     {ok, _Pid} = aesc_sessions_sup:start_child(
                    [#{fsm => self(), op => {accept, Opts, NoiseOpts}}]);
 accept_(#{ initiator := I, responder := R, port := Port } = Opts, NoiseOpts) ->
-    gproc:reg(responder_regkey(R, I, Port)),
+    Regkey = responder_regkey(R, I, Port),
+    lager:debug("Regkey = ~p", [Regkey]),
+    gproc:reg(Regkey),
     aesc_sessions_sup:start_child([#{fsm => self(), op => {accept, Opts, NoiseOpts}}]).
 
 start_link(Arg) when is_map(Arg) ->
@@ -311,6 +315,7 @@ handle_info(Msg, St) ->
 
 handle_info_({noise, EConn, Data}, #st{econn = EConn, fsm = Fsm} = St) ->
     {Type, Info} = Msg = aesc_codec:dec(Data),
+    lager:debug("Msg = ~p", [Msg]),
     St1 = case {Type, Fsm} of
               {?CH_OPEN, undefined} ->
                   locate_fsm(Type, Info, St);
@@ -337,7 +342,12 @@ code_change(_FromVsn, St, _Extra) ->
     {ok, St}.
 
 locate_fsm(Type, MInfo, #st{ init_op = {accept, SnInfo, _Opts} } = St) ->
-    Info = maps:merge(SnInfo, MInfo),  % any duplicates overridden by what was received
+    lager:debug("Type = ~p, MInfo = ~p, SnInfo = ~p", [Type, MInfo, SnInfo]),
+    %% any duplicates overridden by what was received
+    Info0 = maps:merge(maps:with([ initiator
+                                 , responder
+                                 , port ], SnInfo), MInfo),
+    Info = Info0#{reestablish => (Type =:= ?CH_REESTABL)},
     Cands = get_cands(Type, Info),
     lager:debug("Cands = ~p", [Cands]),
     try_cands(Cands, 3, 0, Type, Info, St).

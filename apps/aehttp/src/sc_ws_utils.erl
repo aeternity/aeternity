@@ -8,6 +8,18 @@
         , read_param/3
         , check_type/3 ]).
 
+-export([patterns/0]).
+
+%%%==================================================================
+%%% Trace settings
+%%%==================================================================
+
+patterns() ->
+    [{?MODULE, F, A, []} || {F, A} <- [ {read_param, 3}
+                                      , {check_type, 3}
+                                      ]].
+
+
 check_params(Checks) ->
     check_params(Checks, #{}).
 
@@ -60,7 +72,12 @@ read_param(ParamName, RecordField, Options) ->
             undefined when Mandatory ->
                 {error, {RecordField, missing}};
             undefined when not Mandatory ->
-                not_set;
+                case maps:find(default, Options) of
+                    {ok, Default} ->
+                        check_type(Options, Default, RecordField);
+                    error ->
+                        not_set
+                end;
             Val ->
                 check_type(Options, Val, RecordField)
         end

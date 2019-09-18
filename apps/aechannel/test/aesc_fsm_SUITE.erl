@@ -43,6 +43,7 @@
         , withdraw/1
         , channel_detects_close_solo/1
         , leave_reestablish/1
+        , leave_reestablish_responder_stays/1
         , leave_reestablish_close/1
         , change_config_get_history/1
         , multiple_channels/1
@@ -91,6 +92,10 @@
 -define(BOGUS_PRIVKEY, <<12345:64/unit:8>>).
 -define(BOGUS_BLOCKHASH, <<42:32/unit:8>>).
 
+-define(LOG(E), ct:log("LINE ~p <== ~p", [?LINE, E])).
+-define(LOG(Fmt, Args), log(?LINE, Fmt, Args)).
+-define(LOG(Debug, Fmt, Args), log(Debug, ?LINE, Fmt, Args)).
+
 -define(PEEK_MSGQ, peek_message_queue(?LINE, Debug)).
 
 -define(MINIMUM_DEPTH, 3).
@@ -123,6 +128,21 @@
                             138,84,57,120,255>>).
 
 -define(R_OWNER, aega_test_utils:to_hex_lit(64, ?R_SECP256K1_PUB)).
+
+%% tracing checkpoints - to cut down on the amount of trace data collected
+%% When a given checkpoint is reached, there should be a call to
+%%
+%% trace_checkpoint(Checkpoint, Config).
+%%
+%% When tracing should be activated is controlled by adding the config option
+%% {activate_trace, Checkpoint}, for example:
+%%
+%% with_trace(fun my_test/1, [{activate_trace, ?TR_CHANNEL_CREATED}|Cfg], "my_test")
+%%
+%% If tracing is to be started from the beginning, no `activate_trace` option is needed,
+%% and {activate_trace, ?TR_START} is implied.
+-define(TR_START, start).
+-define(TR_CHANNEL_CREATED, channel_created).
 
 all() ->
     [{group, all_tests}].
@@ -161,6 +181,7 @@ groups() ->
       , withdraw
       , channel_detects_close_solo
       , leave_reestablish
+      , leave_reestablish_responder_stays
       , leave_reestablish_close
       , check_password_is_changeable
       , change_config_get_history
@@ -347,7 +368,7 @@ init_per_group_(Config) ->
         false ->
             aecore_suite_utils:start_node(dev1, Config),
             aecore_suite_utils:connect(aecore_suite_utils:node_name(dev1), [block_pow, sc_cache_kdf]),
-            log("dev1 connected", []),
+            ?LOG("dev1 connected", []),
             try begin
                     Initiator = prep_initiator(dev1),
                     Responder = prep_responder(Initiator, dev1),
@@ -410,7 +431,7 @@ multiple_responder_keys_per_port(Cfg) ->
     Slogan = ?SLOGAN,
     Debug = get_debug(Cfg),
     {_, Responder2} = lists:keyfind(responder2, 1, Cfg),
-    log(Debug, "Responder2 = ~p", [Responder2]),
+    ?LOG(Debug, "Responder2 = ~p", [Responder2]),
     Cfg2 = lists:keyreplace(responder, 1, Cfg, {responder, Responder2}),
     Me = self(),
     Initiator = maps:get(pub, ?config(initiator, Cfg)),
@@ -448,15 +469,15 @@ multiple_responder_keys_per_port(Cfg) ->
     Cs = [C1, C2],
     %% mine_blocks(dev1, ?MINIMUM_DEPTH),
     %% Cs = collect_acks(Cs, channel_ack, 2),
-    log(Debug, "channel pids collected: ~p", [Cs]),
+    ?LOG(Debug, "channel pids collected: ~p", [Cs]),
     %% At this point, we know the pairing worked
     [begin
          MRef = erlang:monitor(process, P),
-         log(Debug, "P (~p) info: ~p", [P, process_info(P)]),
+         ?LOG(Debug, "P (~p) info: ~p", [P, process_info(P)]),
          P ! die,
          receive {'DOWN', MRef, _, _, _} -> ok
          after 5000 ->
-                 log(Debug, "timed out: ~p", [process_info(self(), messages)]),
+                 ?LOG(Debug, "timed out: ~p", [process_info(self(), messages)]),
                  erlang:error({channel_not_dying, P})
          end
      end || P <- Cs],
@@ -934,13 +955,13 @@ update_bench(I, R, C0) ->
     set_proxy_debug(false, R),
     C = set_debug(false, C0),
     Rounds = proplists:get_value(bench_rounds, C, 1000),
-    log("=== Starting benchmark ===", []),
+    ?LOG("=== Starting benchmark ===", []),
     {Time, I1, R1} = do_n(Rounds, fun update_volley/3,
                           cache_account_type(I),
                           cache_account_type(R), C),
     Fmt = "Time (1*2*" ++ integer_to_list(Rounds) ++ "): ~.1f s; ~.1f mspt; ~.1f tps",
     Args = [Time/1000, Time/(2*Rounds), 2000*Rounds/Time],
-    log(Fmt, Args),
+    ?LOG(Fmt, Args),
     ct:comment(Fmt, Args),
     {I1, R1}.
 
@@ -965,6 +986,7 @@ do_update(From, To, Amount, #{fsm := FsmI} = I, R, Debug, Cfg) ->
                false -> #{meta => [<<"meta1">>, <<"meta2">>]};
                true  -> #{}
            end,
+    ?PEEK_MSGQ,
     case rpc(dev1, aesc_fsm, upd_transfer, [FsmI, From, To, Amount, Opts], Debug) of
         {error, _} = Error ->
             throw(Error);
@@ -976,6 +998,8 @@ do_update(From, To, Amount, #{fsm := FsmI} = I, R, Debug, Cfg) ->
             await_update_incoming_report(R1, ?TIMEOUT, Debug),
             I2 = await_update_report(I1, ?TIMEOUT, Debug),
             R2 = await_update_report(R1, ?TIMEOUT, Debug),
+            ?LOG(Debug, "update successful", []),
+            ?PEEK_MSGQ,
             {I2, R2}
     end.
 
@@ -1000,7 +1024,7 @@ deposit(Cfg) ->
      , spec := #{ initiator := _PubI
                 , responder := _PubR }} = create_channel_(
                                             [?SLOGAN|Cfg]),
-    log(Debug, "I = ~p", [I]),
+    ?LOG(Debug, "I = ~p", [I]),
     #{initiator_amount := IAmt0, responder_amount := RAmt0} = I,
     {IAmt0, RAmt0, _, Round0 = 1} = check_fsm_state(FsmI),
     check_info(0),
@@ -1032,30 +1056,31 @@ deposit_(#{fsm := FsmI} = I, R, Deposit, Opts, Round1, Debug, Cfg) ->
     Round2 = Round1 + 1,
     ?PEEK_MSGQ,
     mine_blocks(dev1, ?MINIMUM_DEPTH),
-    await_own_deposit_locked(I, ?TIMEOUT, Debug),
-    await_own_deposit_locked(R, ?TIMEOUT, Debug),
-    await_deposit_locked(I, ?TIMEOUT, Debug),
-    await_deposit_locked(R, ?TIMEOUT, Debug),
+    await_own_deposit_locked(I1, ?TIMEOUT, Debug),
+    await_own_deposit_locked(R1, ?TIMEOUT, Debug),
+    await_deposit_locked(I1, ?TIMEOUT, Debug),
+    await_deposit_locked(R1, ?TIMEOUT, Debug),
+    
+    I2 = await_update_report(I1, ?TIMEOUT, Debug),
+    R2 = await_update_report(R1, ?TIMEOUT, Debug),
+    #{signed_tx := SignedTx} = I2, %% Same Tx
+    #{signed_tx := SignedTx} = R2, %% Same Tx
+
     {ok, Channel} = rpc(dev1, aec_chain, get_channel, [ChannelId]),
     {aesc_deposit_tx, DepositTx} =
         aetx:specialize_callback(aetx_sign:innermost_tx(SignedTx)),
     ChannelRound = aesc_channels:round(Channel),
     DepositRound = aesc_deposit_tx:round(DepositTx),
-    log(Debug, "Channel on-chain round ~p, expected round ~p", [ChannelRound,
+    ?LOG(Debug, "Channel on-chain round ~p, expected round ~p", [ChannelRound,
                                                             DepositRound]),
     {ChannelRound, ChannelRound} = {ChannelRound, DepositRound},
     {IAmt, RAmt0, StateHash, Round2} = check_fsm_state(FsmI),
     {IAmt, _} = {IAmt0 + Deposit, IAmt}, %% assert correct amounts
     Round2 = aesc_deposit_tx:round(DepositTx), %% assert correct round
     StateHash = aesc_deposit_tx:state_hash(DepositTx), %% assert correct state hash
-    log(Debug, "I1 = ~p", [I1]),
-    #{initiator_amount := IAmt2, responder_amount := RAmt2} = I1,
+    #{initiator_amount := IAmt2, responder_amount := RAmt2} = I2,
     Expected = {IAmt2, RAmt2},
     {Expected, Expected} = {{IAmt0 + Deposit, RAmt0}, Expected},
-    I2 = await_update_report(I1, ?TIMEOUT, Debug),
-    R2 = await_update_report(R1, ?TIMEOUT, Debug),
-    #{signed_tx := SignedTx} = I2, %% Same Tx
-    #{signed_tx := SignedTx} = R2, %% Same Tx
     {ok, I2, R2}.
 
 withdraw(Cfg) ->
@@ -1066,7 +1091,7 @@ withdraw(Cfg) ->
      , spec := #{ initiator := _PubI
                 , responder := _PubR }} = create_channel_(
                                             [?SLOGAN|Cfg]),
-    log(Debug, "I = ~p", [I]),
+    ?LOG(Debug, "I = ~p", [I]),
     {_IAmt0, _RAmt0, _, Round = 1} = check_fsm_state(FsmI),
     {ok, _I, _R} = withdraw_(I, R, Withdrawal, #{}, Round,
                              Debug, Cfg),
@@ -1111,7 +1136,7 @@ channel_detects_close_solo(Cfg) ->
     mine_blocks_until_txs_on_chain(dev1, [TxHash]),
     LockPeriod = maps:get(lock_period, Spec),
     TTL = current_height(dev1) + LockPeriod,
-    log(Debug, "Expected TTL = ~p", [TTL]),
+    ?LOG(Debug, "Expected TTL = ~p", [TTL]),
     SignedTx = await_on_chain_report(I1, #{info => solo_closing}, ?TIMEOUT),
     SignedTx = await_on_chain_report(R, #{info => solo_closing}, ?TIMEOUT),
     {ok,_} = receive_from_fsm(info, I1, fun closing/1, ?TIMEOUT, Debug),
@@ -1127,7 +1152,7 @@ close_solo_tx(#{ fsm        := Fsm
           , initiator  := IPubKey
           , responder  := RPubKey
           , round      := Round }} = St = rpc(dev1, aesc_fsm, get_state, [Fsm]),
-    log("St = ~p", [St]),
+    ?LOG("St = ~p", [St]),
     {ok, PoI} =  rpc(dev1, aesc_fsm, get_poi, [Fsm, [{account, IPubKey},
                                                      {account, RPubKey}]]),
     Nonce =
@@ -1152,6 +1177,12 @@ leave_reestablish(Cfg) ->
     %% with_trace(fun t_leave_reestablish_/1, Cfg, "leave_reestablish").
     t_leave_reestablish_(Cfg).
 
+leave_reestablish_responder_stays(Cfg) ->
+    with_trace(
+      fun(Cfg1) ->
+              t_leave_reestablish_(cfg_responder_keeps_running(Cfg1))
+      end, [{activate_trace, ?TR_CHANNEL_CREATED}|Cfg], "leave_reest_responder_stays").
+
 t_leave_reestablish_(Cfg) ->
     #{i := I, r := R} = leave_reestablish_([?SLOGAN|Cfg]),
     shutdown_(I, R, Cfg),
@@ -1159,47 +1190,102 @@ t_leave_reestablish_(Cfg) ->
 
 leave_reestablish_(Cfg) ->
     Debug = get_debug(Cfg),
-    {I0, R0, Spec0} = channel_spec(Cfg),
-    #{ i := #{} = I
-     , r := #{} = R
+    {I0, R0, Spec0} = InitialSpec = channel_spec(Cfg),
+    ?LOG(Debug, "Initial spec = ~p", [InitialSpec]),
+    #{ i := #{} = I01
+     , r := #{} = R01
      , spec := #{ initiator := _PubI
-                , responder := _PubR }} =
+                , responder := _PubR }} = CSpec =
         create_channel_from_spec(I0, R0, Spec0, ?PORT, Debug, Cfg),
-    log(Debug, "I = ~p", [I]),
+    {ok, I, R} = verify_channel(I01, R01, Cfg, Debug),
+    ResponderStays = responder_stays(CSpec),
+    ?LOG(Debug, "I = ~p", [I]),
     ChId = maps:get(channel_id, I),
     LeaveAndReestablish =
         fun(Idx, #{i := ILocal, r := RLocal}) ->
-            log(Debug, "starting attempt ~p", [Idx]),
+            ?LOG(Debug, "starting attempt ~p", [Idx]),
+            ?LOG(Debug,
+                 "ILocal = ~p~n"
+                 "RLocal = ~p", [ILocal, RLocal]),
             Cache1 = cache_status(ChId),
             [_, _] = in_ram(Cache1),
             [] = on_disk(Cache1),
             #{fsm := FsmI} = ILocal,
+            #{fsm := FsmR} = RLocal,
+            {IAmt, RAmt, _, _} = check_fsm_state(FsmI),
             ok = rpc(dev1, aesc_fsm, leave, [FsmI]),
             {ok,Li} = await_leave(ILocal, ?TIMEOUT, Debug),
             {ok,Lr} = await_leave(RLocal, ?TIMEOUT, Debug),
+            error = maps:find(notice, Li),
+            if ResponderStays ->
+                    keep_running = maps:get(notice, Lr);
+               true ->
+                    ok
+            end,
+            ?LOG(Debug, "Leave received; Lr = ~p", [Lr]),
             SignedTx = maps:get(info, Li),
             SignedTx = maps:get(info, Lr),
-            {ok,_} = receive_from_fsm(info, ILocal, fun died_normal/1, ?TIMEOUT, Debug),
-            {ok,_} = receive_from_fsm(info, RLocal, fun died_normal/1, ?TIMEOUT, Debug),
+            receive_dying_declarations(FsmI, FsmR, CSpec, Debug),
+            %% {ok,_} = receive_from_fsm(info, ILocal, fun died_normal/1, ?TIMEOUT, Debug),
+            %% if ResponderStays ->
+            %%         {ok,_} = receive_from_fsm(info, RLocal, peer_disconnected, ?TIMEOUT, Debug),
+            %%         ?LOG(Debug, "Initiator died, Responder remains", []);
+            %%    true ->
+            %%         {ok,_} = receive_from_fsm(info, RLocal, fun died_normal/1, ?TIMEOUT, Debug),
+            %%         consume_dying_log_report(RLocal),
+            %%         ?LOG(Debug, "both fsms died", [])
+            %% end,
             retry(3, 100,
                   fun() ->
                           Cache2 = cache_status(ChId),
-                          [] = in_ram(Cache2),
-                          [_, _] = on_disk(Cache2)
+                          ?LOG(Debug, "Cache2 = ~p", [Cache2]),
+                          if ResponderStays ->
+                                  [_] = in_ram(Cache2),
+                                  [_] = on_disk(Cache2);
+                             true ->
+                                  [] = in_ram(Cache2),
+                                  [_, _] = on_disk(Cache2)
+                          end
                   end),
             %%
             %% reestablish
             %%
             ChId = maps:get(channel_id, RLocal),
             mine_key_blocks(dev1, 6), % min depth at 4, so more than 4
-            log(Debug, "reestablishing ...", []),
-            Res = reestablish(ILocal, RLocal, SignedTx, Spec0, ?PORT, Debug),
-            log(Debug, "ending attempt ~p", [Idx]),
-            Res
+            ?LOG(Debug, "reestablishing ...", []),
+            #{i := ILocal1, r := RLocal1} = Res
+                    = reestablish(ILocal, RLocal, SignedTx,
+                                  Spec0#{ initiator_amount => IAmt
+                                        , responder_amount => RAmt },
+                                  CSpec, ?PORT, Debug),
+            {ok, ILocal2, RLocal2} = verify_channel(ILocal1, RLocal1, Cfg, Debug),
+            ?LOG(Debug, "ending attempt ~p", [Idx]),
+            Res#{i => ILocal2, r => RLocal2}
         end,
     lists:foldl(LeaveAndReestablish,
                 #{i => I, r => R},
                 lists:seq(1, 10)). % 10 iterations
+
+verify_channel(#{pub := PubI, fsm := FsmI} = I,
+               #{pub := PubR, fsm := FsmR} = R, Cfg, Debug) ->
+    ?LOG(Debug, "verifying channel: Fsm states", []),
+    ?PEEK_MSGQ,
+    FsmStateI = check_fsm_state(FsmI),
+    FsmStateR = check_fsm_state(FsmR),
+    {FsmStateI, FsmStateR} = {FsmStateR, FsmStateI},
+    ?LOG(Debug, "verifying channel: update", []),
+    {I1, R1} = do_update(PubI, PubR, 1, I, R, Debug, Cfg),
+    ?PEEK_MSGQ,
+    ?LOG(Debug, "verifying channel: deposit", []),
+    {ok, I2, R2} = deposit_(I1, R1, 1, Debug, Cfg),
+    ?LOG("=== Channel verified", []),
+    ?PEEK_MSGQ,
+    {ok, I2, R2}.
+
+responder_stays(#{responder_opts := #{keep_running := Bool}}) ->
+    Bool;
+responder_stays(_) ->
+    false.
 
 leave_reestablish_close(Cfg) ->
     Debug = get_debug(Cfg),
@@ -1280,7 +1366,7 @@ get_both_balances(Fsm, PubI, PubR) ->
 check_log([{Op, Type}|T], [{Op, Type, _, _}|T1]) ->
     check_log(T, T1);
 check_log([H|_], [H1|_]) ->
-    log("ERROR: Expected ~p in log; got ~p", [H, H1]),
+    ?LOG("ERROR: Expected ~p in log; got ~p", [H, H1]),
     error(log_inconsistent);
 check_log([_|_], []) ->
     %% the log is a sliding window; events may be flushed at the tail
@@ -1290,10 +1376,10 @@ check_log([], _) ->
 
 died_normal(#{info := {died,normal}}) -> ok.
 
-died_subverted(#{info := {died,_}}) -> ok.
+%% died_subverted(#{info := {died,_}}) -> ok.
 
 closing(#{info := closing} = Msg) ->
-    log("matches #{info := closing} - ~p", [Msg]),
+    ?LOG("matches #{info := closing} - ~p", [Msg]),
     ok.
 
 multiple_channels(Cfg) ->
@@ -1304,9 +1390,9 @@ many_chs_msg_loop(Cfg) ->
 
 multiple_channels_t(NumCs, FromPort, Msg, {slogan, Slogan}, Cfg) ->
     Debug = get_debug(Cfg),
-    log(Debug, "spawning ~p channels", [NumCs]),
+    ?LOG(Debug, "spawning ~p channels", [NumCs]),
     Initiator = maps:get(pub, ?config(initiator, Cfg)),
-    log(Debug, "Initiator: ~p", [Initiator]),
+    ?LOG(Debug, "Initiator: ~p", [Initiator]),
     Me = self(),
     Node = aecore_suite_utils:node_name(dev1),
     aecore_suite_utils:mock_mempool_nonce_offset(Node, NumCs),
@@ -1319,9 +1405,9 @@ multiple_channels_t(NumCs, FromPort, Msg, {slogan, Slogan}, Cfg) ->
                                 {slogan, {Slogan,N}} | Cfg], #{mine_blocks => {ask, MinerHelper},
                                                                debug => Debug})
           || N <- lists:seq(1, NumCs)],
-    log(Debug, "channels spawned", []),
+    ?LOG(Debug, "channels spawned", []),
     Cs = collect_acks(Cs, channel_ack, NumCs),
-    log(Debug, "channel pids collected: ~p", [Cs]),
+    ?LOG(Debug, "channel pids collected: ~p", [Cs]),
     [P ! Msg || P <- Cs],
     T0 = erlang:system_time(millisecond),
     Cs = collect_acks(Cs, loop_ack, NumCs),
@@ -1330,13 +1416,14 @@ multiple_channels_t(NumCs, FromPort, Msg, {slogan, Slogan}, Cfg) ->
     Transfers = NumCs*2*100,
     Fmt = "Time (~w*2*100) ~.1f s: ~.1f mspt; ~.1f tps",
     Args = [NumCs, Time/1000, Time/Transfers, (Transfers*1000)/Time],
-    log(Debug, Fmt, Args),
+    ?LOG(Debug, Fmt, Args),
     ct:comment(Fmt, Args),
     [P ! die || P <- Cs],
     ok = stop_miner_helper(MinerHelper),
     ok.
 
-check_incorrect_create(Cfg) ->
+check_incorrect_create(Cfg0) ->
+    Cfg = cfg_responder_keeps_running(Cfg0),
     {I, R, Spec} = channel_spec(Cfg),
     config(Cfg),
     Port = proplists:get_value(port, Cfg, ?PORT),
@@ -1433,7 +1520,7 @@ check_incorrect_update(Cfg) ->
             Debug = get_debug(Cfg),
             #{ i := #{pub := IPub, fsm := FsmI} = I
             , r := #{pub := RPub, fsm := FsmR} = R
-            , spec := Spec} = create_channel_([{port, CurPort}, ?SLOGAN|Cfg1]),
+            , spec := Spec} = CSpec = create_channel_([{port, CurPort}, ?SLOGAN|Cfg1]),
             Data = {I, R, Spec, CurPort, Debug},
             Deposit =
                 fun() ->
@@ -1447,7 +1534,7 @@ check_incorrect_update(Cfg) ->
                     responder -> {FsmR, FsmI}
                 end,
             ok = gen_statem:stop(AliveFsm),
-            receive_dying_declaration(AliveFsm, OtherFsm, Debug),
+            receive_dying_declarations(AliveFsm, OtherFsm, CSpec, Debug),
             bump_idx(),
             CurPort
           end,
@@ -1457,31 +1544,49 @@ check_incorrect_update(Cfg) ->
     lists:foldl(Test, InitialPort, Combinations),
     ok.
 
-receive_dying_declaration(Fsm, OtherFsm, Debug) ->
-    TRef = erlang:send_after(?TIMEOUT, self(), {dying_declaration, ?LINE}),
-    receive_dying_(Fsm, TRef, false, false, Debug),
-    receive
-        {aesc_fsm, OtherFsm, #{ tag := info
-                              , type := report
-                              , info := peer_disconnected }} ->
-            ok
-    after ?TIMEOUT ->
-            error(timeout)
+receive_dying_declarations(Fsm, OtherFsm, CSpec, Debug) ->
+    #{r := #{fsm := FsmR}} = CSpec,
+    TRefI = erlang:start_timer(?TIMEOUT, self(), {dying_declaration_i, ?LINE}),
+    TRefR = erlang:start_timer(?TIMEOUT, self(), {dying_declaration_r, ?LINE}),
+    receive_dying_(Fsm, TRefI, Debug),
+    case {OtherFsm =:= FsmR, responder_stays(CSpec)} of
+        {true, true} ->
+            ?LOG(Debug, "OtherFsm (~p) is responder, and is expected to remain", [OtherFsm]),
+            receive
+                {aesc_fsm, OtherFsm, #{ tag  := info
+                                      , type := report
+                                      , info := peer_disconnected }} ->
+                    erlang:cancel_timer(TRefR),
+                    ok;
+                {timeout, TRefR, Msg} ->
+                    error({timeout, Msg})
+            end;
+        _ ->
+            ?LOG(Debug, "OtherFsm (~p) is expected to die", [OtherFsm]),
+            receive_dying_(OtherFsm, TRefR, Debug)
     end.
+
+receive_dying_(Fsm, TRef, Debug) ->
+    receive_dying_(Fsm, TRef, false, false, Debug).
 
 receive_dying_(_, TRef, true, true, _) ->
     erlang:cancel_timer(TRef),
     ok;
 receive_dying_(Fsm, TRef, Died, Log, Debug) ->
+    ?LOG(Debug, "receive_dying_(~p, ~p, ~p, ~p, _)", [Fsm, TRef, Died, Log]),
     receive
         {aesc_fsm, Fsm, #{info := {died, _}} = Msg} ->
-            log(Debug, "from ~p: ~p", [Fsm, Msg]),
+            ?LOG(Debug, "from ~p: ~p", [Fsm, Msg]),
             receive_dying_(Fsm, TRef, true, Log, Debug);
         {aesc_fsm, Fsm, #{info := {log, _}} = Msg} ->
-            log(Debug, "from ~p: ~p", [Fsm, Msg]),
+            ?LOG(Debug, "from ~p: ~p", [Fsm, Msg]),
             receive_dying_(Fsm, TRef, Died, true, Debug);
-        {timeout, TRef, Msg} ->
-            error({timeout, Msg})
+        {timeout, TRef, TOMsg} ->
+            ?LOG(Debug, "timeout (~p). Q = ~p", [TOMsg, element(2,process_info(self(),messages))]),
+            error({timeout, TOMsg})
+    after ?TIMEOUT + 1000 ->
+            ?LOG(Debug, "OUTER timeout. Q = ~p", [element(2,process_info(self(),messages))]),
+            error(outer_timeout)
     end.
 
 check_incorrect_mutual_close(Cfg) ->
@@ -1501,7 +1606,7 @@ check_incorrect_mutual_close(Cfg) ->
                 {shutdown, [], shutdown,
                  shutdown_ack},
                 fun(#{fsm := FsmPid}, Debug1) ->
-                    log(Debug1, "checking state of ~p (Depositor=~p, Malicious=~p, FsmI = ~p, FsmR = ~p)",
+                    ?LOG(Debug1, "checking state of ~p (Depositor=~p, Malicious=~p, FsmI = ~p, FsmR = ~p)",
                         [FsmPid, Depositor, Malicious, maps:get(fsm,I), maps:get(fsm,R)]),
                         case Depositor =:= Malicious of
                             true ->
@@ -1604,9 +1709,9 @@ check_mutual_close_after_close_solo(Cfg) ->
 check_fsm_crash_reestablish(Cfg) ->
     Debug = get_debug(Cfg),
     {I0, R0, Spec0} = channel_spec(Cfg),
-    #{ i := I, r := R } = create_channel_from_spec(I0, R0, Spec0, ?PORT, Debug, Cfg),
-    ct:log("I = ~p", [I]),
-    ct:log("R = ~p", [R]),
+    #{ i := I, r := R } = CSpec = create_channel_from_spec(I0, R0, Spec0, ?PORT, Debug, Cfg),
+    ?LOG(Debug, "I = ~p", [I]),
+    ?LOG(Debug, "R = ~p", [R]),
     {_, I1, R1} = do_n(4, fun update_volley/3, I, R, Cfg),
     Actions = [
         fun fsm_crash_action_during_transfer/3,
@@ -1615,18 +1720,18 @@ check_fsm_crash_reestablish(Cfg) ->
         fun fsm_crash_action_during_shutdown/3
     ],
     lists:foldl(fun (Action, {IA, RA}) ->
-        {IA1, RA1} = fsm_crash_reestablish(IA, RA, Spec0, Cfg, Action),
+        {IA1, RA1} = fsm_crash_reestablish(IA, RA, Spec0, CSpec, Cfg, Action),
         {_, IA2, RA2} = do_n(4, fun update_volley/3, IA1, RA1, Cfg),
         {IA2, RA2}
     end, {I1, R1}, Actions).
 
-fsm_crash_reestablish(#{channel_id := ChId, fsm := FsmI} = I, #{fsm := FsmR} = R, Spec, Cfg, Action) ->
+fsm_crash_reestablish(#{channel_id := ChId, fsm := FsmI} = I, #{fsm := FsmR} = R, Spec, CSpec, Cfg, Action) ->
     Debug = get_debug(Cfg),
     {ok, State} = rpc(dev1, aesc_fsm, get_offchain_state, [FsmI]),
     {_, SignedTx} = aesc_offchain_state:get_latest_signed_tx(State),
-    ct:log("Performing action before crashing the FSM"),
+    ?LOG(Debug, "Performing action before crashing the FSM"),
     ok = Action(I, R, Cfg),
-    ct:log("Simulating random crash"),
+    ?LOG(Debug, "Simulating random crash"),
     erlang:exit(FsmI, test_fsm_random_crash),
     erlang:exit(FsmR, test_fsm_random_crash),
     timer:sleep(20), %% Give some time for the cache to persist the state
@@ -1635,8 +1740,8 @@ fsm_crash_reestablish(#{channel_id := ChId, fsm := FsmI} = I, #{fsm := FsmR} = R
     [] = in_ram(Cache),
     [_, _] = on_disk(Cache),
     check_info(20),
-    ct:log("reestablishing ...", []),
-    #{i := I1, r := R1} = reestablish(I, R, SignedTx, Spec, ?PORT, Debug),
+    ?LOG(Debug, "reestablishing ...", []),
+    #{i := I1, r := R1} = reestablish(I, R, SignedTx, Spec, CSpec, ?PORT, Debug),
     {I1, R1}.
 
 fsm_crash_action_during_transfer( #{fsm := FsmI, pub := PubI} = I
@@ -1679,11 +1784,11 @@ check_invalid_reestablish_password(Cfg) ->
     Debug = get_debug(Cfg),
     {I0, R0, Spec0} = channel_spec(Cfg),
     #{ i := I
-     , r := R } = create_channel_from_spec(I0, R0, Spec0, ?PORT, Debug, Cfg),
-    ct:log("I = ~p", [I]),
-    ct:log("R = ~p", [R]),
+     , r := R } = CSpec = create_channel_from_spec(I0, R0, Spec0, ?PORT, Debug, Cfg),
+    ?LOG(Debug, "I = ~p", [I]),
+    ?LOG(Debug, "R = ~p", [R]),
     {_, I1, R1} = do_n(4, fun update_volley/3, I, R, Cfg),
-    {ok, SignedTx} = leave_channel(I1, R1, Debug),
+    {ok, SignedTx} = leave_channel(I1, R1, CSpec, Debug),
 
     %% Reestablish with wrong passwords
     #{state_password := PwI} = I1,
@@ -1693,26 +1798,28 @@ check_invalid_reestablish_password(Cfg) ->
                               , SignedTx, Spec0, Debug),
 
     %% Check that after an invalid password has been provided we can still reestablish the channel
-    _ = reestablish(I1, R1, SignedTx, Spec0, ?PORT, Debug),
+    _ = reestablish(I1, R1, SignedTx, Spec0, CSpec, ?PORT, Debug),
     ok.
 
 check_password_is_changeable(Cfg) ->
+    %% Debug = get_debug(Cfg),
     Debug = get_debug(Cfg),
     {I0, R0, Spec0} = channel_spec(Cfg),
     #{ i := I
-     , r := R } = create_channel_from_spec(I0, R0, Spec0, ?PORT, Debug, Cfg),
-    ct:log("I = ~p", [I]),
-    ct:log("R = ~p", [R]),
+     , r := R } = CSpec = create_channel_from_spec(I0, R0, Spec0, ?PORT, Debug, Cfg),
+    ?LOG(Debug, "I = ~p", [I]),
+    ?LOG(Debug, "R = ~p", [R]),
     {_, I1, R1} = do_n(4, fun update_volley/3, I, R, Cfg),
-
+    ?PEEK_MSGQ,
     I2 = change_password(I1),
     R2 = change_password(R1),
-    {ok, SignedTx} = leave_channel(I2, R2, Debug),
-
+    {ok, SignedTx} = leave_channel(I2, R2, CSpec, Debug),
+    ?PEEK_MSGQ,
     %% Reestablish with old password should fail
     reestablish_wrong_password(I1, R1, SignedTx, Spec0, Debug),
+    ?PEEK_MSGQ,
     %% Reestablish with new password should succeed
-    _ = reestablish(I2, R2, SignedTx, Spec0, ?PORT, Debug),
+    _ = reestablish(I2, R2, SignedTx, Spec0, CSpec, ?PORT, Debug),
 
     ok.
 
@@ -1721,19 +1828,18 @@ change_password(#{fsm := Fsm, state_password := StatePassword} = P) ->
     ok = rpc(dev1, aesc_fsm, change_state_password, [Fsm, StatePassword1]),
     P#{state_password => StatePassword1}.
 
-leave_channel(#{fsm := FsmI} = I, R, Debug) ->
+leave_channel(#{fsm := FsmI} = I, #{fsm := FsmR} = R, CSpec, Debug) ->
     ok = rpc(dev1, aesc_fsm, leave, [FsmI]),
     {ok,Li} = await_leave(I, ?TIMEOUT, Debug),
     {ok,Lr} = await_leave(R, ?TIMEOUT, Debug),
     SignedTx = maps:get(info, Li),
     SignedTx = maps:get(info, Lr),
-    {ok,_} = receive_from_fsm(info, I, fun died_normal/1, ?TIMEOUT, Debug),
-    {ok,_} = receive_from_fsm(info, R, fun died_normal/1, ?TIMEOUT, Debug),
+    ok = receive_dying_declarations(FsmI, FsmR, CSpec, Debug),
     {ok, SignedTx}.
 
 fsm_state(Pid, Debug) ->
     {State, _Data} = rpc(dev1, sys, get_state, [Pid, 1000], _RpcDebug = false),
-    log(Debug, "fsm_state(~p) -> ~p", [Pid, State]),
+    ?LOG(Debug, "fsm_state(~p) -> ~p", [Pid, State]),
     State.
 
 wrong_sig_action(ChannelStuff, Poster, Malicious,
@@ -1807,7 +1913,7 @@ wrong_create_({I, R, #{initiator_amount := IAmt0, responder_amount := RAmt0,
         fun(Tag, #{priv := Priv} = Signer, Debug1) ->
             receive {aesc_fsm, Fsm, #{type := sign, tag := Tag,
                                       info := #{signed_tx := SignedTx0, updates := Updates}} = Msg} ->
-                    log(Debug1, "await_signing(~p, ~p) <- ~p", [Tag, Fsm, Msg]),
+                    ?LOG(Debug1, "await_signing(~p, ~p) <- ~p", [Tag, Fsm, Msg]),
                     SignedTx = SignTxFun(SignedTx0, Priv),
                     Action(Tag, Signer, SignedTx, Updates)
             after ?TIMEOUT ->
@@ -1819,7 +1925,7 @@ wrong_create_({I, R, #{initiator_amount := IAmt0, responder_amount := RAmt0,
     {ok, FsmR} = rpc(dev1, aesc_fsm, respond, [Port, move_password_to_spec(R, Spec)], Debug),
     {ok, FsmI} = rpc(dev1, aesc_fsm, initiate, ["localhost", Port, move_password_to_spec(I, Spec)], Debug),
 
-    log(Debug, "FSMs, I = ~p, R = ~p", [FsmI, FsmR]),
+    ?LOG(Debug, "FSMs, I = ~p, R = ~p", [FsmI, FsmR]),
 
     I1 = I#{fsm => FsmI, initiator_amount => IAmt, responder_amount => RAmt},
     R1 = R#{fsm => FsmR, initiator_amount => IAmt, responder_amount => RAmt},
@@ -1843,9 +1949,8 @@ wrong_create_({I, R, #{initiator_amount := IAmt0, responder_amount := RAmt0,
             {ok,_} = receive_from_fsm(info, R1, ErrResponse, ?TIMEOUT, Debug),
             {ok,_} = receive_from_fsm(info, R1, fun(#{info := {died, normal}}) -> ok end,
                                       ?TIMEOUT, Debug),
-            {ok,_} = receive_from_fsm(info, I1, fun(#{info := peer_disconnected}) -> ok end,
-                                      ?TIMEOUT, Debug),
-            {ok,_} = receive_from_fsm(info, I1, fun died_subverted/1, ?TIMEOUT, Debug);
+            {ok,_} = receive_from_fsm(info, I1, fun(#{info := {died, disconnect}}) -> ok end,
+                                      ?TIMEOUT, Debug);
         responder ->
             {_I2, _} = await_signing_request(create_tx, I1, Debug, Cfg),
             receive_from_fsm(info, R1, funding_created, ?TIMEOUT, Debug),
@@ -1866,9 +1971,8 @@ wrong_create_({I, R, #{initiator_amount := IAmt0, responder_amount := RAmt0,
             {ok,_} = receive_from_fsm(info, I1, bad_signature, ?TIMEOUT, Debug),
             {ok,_} = receive_from_fsm(info, I1, fun(#{info := {died, normal}}) -> ok end,
                                       ?TIMEOUT, Debug),
-            {ok,_} = receive_from_fsm(info, R1, fun(#{info := peer_disconnected}) -> ok end,
-                                      ?TIMEOUT, Debug),
-            {ok,_} = receive_from_fsm(info, R1, fun died_subverted/1, ?TIMEOUT, Debug)
+            {ok,_} = receive_from_fsm(info, R1, fun(#{info := {died, disconnect}}) -> ok end,
+                                      ?TIMEOUT, Debug)
     end,
     ok.
 
@@ -1884,10 +1988,10 @@ wrong_action_modified_tx({I, R, _Spec, _Port, Debug}, Poster, Malicious,
                       receive {aesc_fsm, Fsm, #{type := sign, tag := Tag,
                                                 info := #{signed_tx := SignedTx0,
                                                           updates := Updates}} = Msg} ->
-                              log(Debug1, "await_signing(~p, ~p) <- ~p", [Tag, Fsm, Msg]),
+                              ?LOG(Debug1, "await_signing(~p, ~p) <- ~p", [Tag, Fsm, Msg]),
                               Tx0 = aetx_sign:innermost_tx(SignedTx0),
                               Tx = ModifyTxFun(Tx0, Fsm),
-                              log(Debug1, "modified ~p", [Tx]),
+                              ?LOG(Debug1, "modified ~p", [Tx]),
                               %% Note: this invalidates the authentication method of
                               %% the initial signer
                               SignedTx1 = aetx_sign:set_tx(SignedTx0, Tx),
@@ -1903,7 +2007,7 @@ wrong_action({I, R, _Spec, _Port, Debug}, Poster, Malicious,
               {FsmFun, FsmFunArg, FsmNewAction, FsmCreatedAction},
                DetectConflictFun, MaliciousSign, ErrMsg) ->
     Cfg = config(),
-    log(Debug, "Testing with Poster ~p, Malicious ~p",
+    ?LOG(Debug, "Testing with Poster ~p, Malicious ~p",
           [Poster, Malicious]),
     #{fsm := FsmI} = I,
     #{fsm := FsmR} = R,
@@ -1956,7 +2060,7 @@ wait_for_fsm_state(St, FsmPid, Retries, Debug) when Retries > 0 ->
         badrpc ->
             error(fsm_not_running);
         Other ->
-            log(Debug, "Fsm state (~p) is ~p - retrying for ~p", [FsmPid, Other, St]),
+            ?LOG(Debug, "Fsm state (~p) is ~p - retrying for ~p", [FsmPid, Other, St]),
             timer:sleep(50),
             wait_for_fsm_state(St, FsmPid, Retries-1, Debug)
     end.
@@ -1999,7 +2103,7 @@ settle_(TTL, MinDepth, #{fsm := FsmI, channel_id := ChannelId} = I, R, Debug,
        Cfg) ->
     ok = rpc(dev1, aesc_fsm, settle, [FsmI]),
     {_, SignedTx} = await_signing_request(settle_tx, I, Cfg),
-    log(Debug, "settle_tx signed", []),
+    ?LOG(Debug, "settle_tx signed", []),
     {ok, MinedKeyBlocks} = mine_blocks_until_txs_on_chain(
                              dev1,
                              [aeser_api_encoder:encode(tx_hash, aetx_sign:hash(SignedTx))]),
@@ -2013,11 +2117,11 @@ settle_(TTL, MinDepth, #{fsm := FsmI, channel_id := ChannelId} = I, R, Debug,
                 MinDepth + KeyBlocksMissingForTTL
         end,
     SignedTx = await_on_chain_report(I, #{info => channel_closed}, ?TIMEOUT), % same tx
-    log(Debug, "I received On-chain report: ~p", [SignedTx]),
+    ?LOG(Debug, "I received On-chain report: ~p", [SignedTx]),
     SignedTx = await_on_chain_report(R, #{info => channel_closed}, ?TIMEOUT), % same tx
-    log(Debug, "R received On-chain report: ~p", [SignedTx]),
+    ?LOG(Debug, "R received On-chain report: ~p", [SignedTx]),
     verify_settle_tx(SignedTx, ChannelId),
-    log(Debug, "settle_tx verified", []),
+    ?LOG(Debug, "settle_tx verified", []),
     if
         KeyBlocksMissingForMinDepth > 0 ->
             mine_key_blocks(dev1, KeyBlocksMissingForMinDepth);
@@ -2026,10 +2130,10 @@ settle_(TTL, MinDepth, #{fsm := FsmI, channel_id := ChannelId} = I, R, Debug,
     end,
     {ok, _} = receive_from_fsm(info, I, closed_confirmed, ?TIMEOUT, Debug),
     {ok, _} = receive_from_fsm(info, R, closed_confirmed, ?TIMEOUT, Debug),
-    log(Debug, "closed_confirmed received from both", []),
+    ?LOG(Debug, "closed_confirmed received from both", []),
     {ok,_} = receive_from_fsm(info, I, fun died_normal/1, ?TIMEOUT, Debug),
     {ok,_} = receive_from_fsm(info, R, fun died_normal/1, ?TIMEOUT, Debug),
-    log(Debug, "died_normal detected from both", []),
+    ?LOG(Debug, "died_normal detected from both", []),
     ok.
 
 client_reconnect_initiator(Cfg) ->
@@ -2048,15 +2152,15 @@ client_reconnect_(Role, Cfg) ->
                  responder -> r
              end,
     #{ fsm := Fsm, proxy := Proxy } = RoleI = maps:get(MapKey, Ch),
-    log(Debug, "Ch = ~p", [Ch]),
+    ?LOG(Debug, "Ch = ~p", [Ch]),
     {error, _} = Err = try_reconnect(Fsm, Role, RoleI, Debug),
-    log(Debug, "Reconnecting before disconnecting failed: ~p", [Err]),
+    ?LOG(Debug, "Reconnecting before disconnecting failed: ~p", [Err]),
     unlink(Proxy),
     exit(Proxy, kill),
     timer:sleep(50),  % give the above exit time to propagate
     ok = things_that_should_fail_if_no_client(Role, I, R, Debug, Cfg),
     Res = reconnect(Fsm, Role, RoleI, Debug),
-    log(Debug, "Reconnect req -> ~p", [Res]),
+    ?LOG(Debug, "Reconnect req -> ~p", [Res]),
     %% run tests here
     shutdown_(I, R, Cfg).
 
@@ -2092,7 +2196,7 @@ reconnect(Fsm, Role, #{} = R, Debug) ->
     NewProxy = spawn(fun() ->
                              erlang:monitor(process, Me),
                              ok = try_reconnect(Fsm, Role, R, Debug),
-                             log(Debug, "Reconnect successful; Fsm = ~p", [Fsm]),
+                             ?LOG(Debug, "Reconnect successful; Fsm = ~p", [Fsm]),
                              Me ! {self(), reconnected},
                              fsm_relay(R, Me, Debug)
                      end),
@@ -2116,7 +2220,7 @@ try_reconnect(Fsm, Round, Role, #{ channel_id := ChId
                                              , round      => Round
                                              , role       => Role
                                              , pub_key    => PubId }),
-    log(Debug, "Reconnect Tx = ~p", [Tx]),
+    ?LOG(Debug, "Reconnect Tx = ~p", [Tx]),
     SignedTx = aec_test_utils:sign_tx(Tx, Priv),
     rpc(dev1, aesc_fsm, reconnect_client, [Fsm, self(), SignedTx]).
 
@@ -2145,11 +2249,11 @@ on_disk(St) ->  proplists:get_value(on_disk, St).
 
 
 collect_acks([Pid | Pids], Tag, N) ->
-    log("collect_acks, Tag = ~p, N = ~p", [Tag, N]),
+    ?LOG("collect_acks, Tag = ~p, N = ~p", [Tag, N]),
     Timeout = 60000 + (N div 10)*5000,  % wild guess
     receive
         {Pid, Tag} ->
-            log("Ack from ~p (~p)", [Pid, Tag]),
+            ?LOG("Ack from ~p (~p)", [Pid, Tag]),
             [Pid | collect_acks(Pids, Tag, N)]
     after Timeout ->
             error(timeout)
@@ -2189,14 +2293,14 @@ ch_loop(I, R, Parent, Cfg) ->
             Parent ! {self(), loop_ack},
             ch_loop(I1, R1, Parent, Cfg);
         die ->
-            log("~p got die request", [self()]),
+            ?LOG("~p got die request", [self()]),
             #{ proxy := ProxyI } = I,
             #{ proxy := ProxyR } = R,
             ProxyI ! {self(), die},
             ProxyR ! {self(), die},
             exit(normal);
         Other ->
-            log(get_debug(Cfg), "Got Other = ~p, I = ~p~nR = ~p", [Other, I, R]),
+            ?LOG(get_debug(Cfg), "Got Other = ~p, I = ~p~nR = ~p", [Other, I, R]),
             ch_loop(I, R, Parent, Cfg)
     end.
 
@@ -2216,7 +2320,7 @@ create_channel_(Cfg, Debug) ->
 
 create_channel_(Cfg, XOpts, Debug) ->
     {I, R, Spec} = channel_spec(Cfg, XOpts),
-    log(Debug, "channel_spec: ~p", [{I, R, Spec}]),
+    ?LOG(Debug, "channel_spec: ~p", [{I, R, Spec}]),
     Port = proplists:get_value(port, Cfg, 9325),
     create_channel_from_spec(I, R, Spec, Port, proplists:get_bool(use_any, Cfg),
                              Debug, Cfg).
@@ -2271,14 +2375,15 @@ channel_spec(Cfg, ChannelReserve, PushAmount, XOpts) ->
     {I1, R1, Spec1}.
 
 prime_password(#{} = P, Key, Cfg) when Key =:= initiator_password; Key =:= responder_password ->
+    Debug = get_debug(Cfg),
     case ?config(Key, Cfg) of
         undefined ->
             P#{state_password => generate_password()};
         ignore ->
-            ct:log("Ignoring password"),
+            ?LOG(Debug, "Ignoring password", []),
             maps:remove(state_password, P);
         Password ->
-            ct:log("Using predefined password"),
+            ?LOG(Debug, "Using predefined password", []),
             P#{state_password => Password}
      end.
 
@@ -2302,32 +2407,37 @@ create_channel_from_spec(I, R, Spec, Port, UseAny, Debug, Cfg) ->
     %% TODO: Somehow there is a CI only race condition which rarely occurs in
     %% round_too_high.check_incorrect_* and round_too_low.check_incorrect_* tests
     %% For now just wrap this operation in a retry loop and come back to it later
+    ?LOG("=== Create channel~n", []),
+    ?LOG("Spec = ~p", [Spec]),
+    ?PEEK_MSGQ,
+    RSpec = customize_spec(responder, Spec, Cfg),
+    ISpec = customize_spec(initiator, Spec, Cfg),
     {FsmI, FsmR, I1, R1} = retry(?CHANNEL_CREATION_RETRIES, 100,
         fun() ->
-            RProxy = spawn_responder(Port, Spec, R, UseAny, Debug),
-            IProxy = spawn_initiator(Port, Spec, I, Debug),
-            log("RProxy = ~p, IProxy = ~p", [RProxy, IProxy]),
+            RProxy = spawn_responder(Port, RSpec, R, UseAny, Debug),
+            IProxy = spawn_initiator(Port, ISpec, I, Debug),
+            ?LOG("RProxy = ~p, IProxy = ~p", [RProxy, IProxy]),
             #{ i := #{ fsm := WFsmI } = WI1
              , r := #{ fsm := WFsmR } = WR1 } = Info
                 = match_responder_and_initiator(RProxy, Debug),
-            log(Debug, "channel paired: ~p", [Info]),
+            ?LOG(Debug, "channel paired: ~p", [Info]),
             {WFsmI, WFsmR, WI1, WR1}
         end),
 
-    log(Debug, "FSMs, I = ~p, R = ~p", [FsmI, FsmR]),
+    ?LOG(Debug, "FSMs, I = ~p, R = ~p", [FsmI, FsmR]),
 
     {I2, R2} = try await_create_tx_i(I1, R1, Debug, Cfg)
                ?_catch_(error, Err, ST)
-                   log("Caught Err = ~p~nMessages = ~p",
+                   ?LOG("Caught Err = ~p~nMessages = ~p",
                        [Err, element(2, process_info(self(), messages))]),
                    error(Err, ST)
                end,
-    log(Debug, "mining blocks on dev1 for minimum depth", []),
+    ?LOG(Debug, "mining blocks on dev1 for minimum depth", []),
     SignedTx = await_on_chain_report(I2, ?TIMEOUT),
-    log(Debug, "=== SignedTx = ~p", [SignedTx]),
+    ?LOG(Debug, "=== SignedTx = ~p", [SignedTx]),
     SignedTx = await_on_chain_report(R2, ?TIMEOUT), % same tx
     ok = wait_for_signed_transaction_in_block(dev1, SignedTx, Debug),
-    log(Debug, "=== Signed tx in block: ~p", [SignedTx]),
+    ?LOG(Debug, "=== Signed tx in block: ~p", [SignedTx]),
     SignedTx = await_channel_changed_report(I2, ?TIMEOUT),
     SignedTx = await_channel_changed_report(R2, ?TIMEOUT),
     CurrentHeight = current_height(dev1),
@@ -2339,7 +2449,7 @@ create_channel_from_spec(I, R, Spec, Port, UseAny, Debug, Cfg) ->
     %% height is reached
     aecore_suite_utils:wait_for_height(aecore_suite_utils:node_name(dev1),
                                        CurrentHeight + ?MINIMUM_DEPTH),
-    log(Debug, "=== Min-depth height achieved", []),
+    ?LOG(Debug, "=== Min-depth height achieved", []),
     %% we've seen 10-15 second block times in CI, so wait a while longer
 
     await_own_funding_locked(I2, ?TIMEOUT, Debug),
@@ -2351,22 +2461,34 @@ create_channel_from_spec(I, R, Spec, Port, UseAny, Debug, Cfg) ->
 
     I3 = await_funding_locked(I2, ?TIMEOUT, Debug),
     R3 = await_funding_locked(R2, ?TIMEOUT, Debug),
-    log(Debug, "=== Funding locked ===", []),
+    ?LOG(Debug, "=== Funding locked ===", []),
     %%
     I4 = await_update_report(I3, ?TIMEOUT, Debug),
     R4 = await_update_report(R3, ?TIMEOUT, Debug),
-    log(Debug, "=== Update reports received ===", []),
+    ?LOG(Debug, "=== Update reports received ===", []),
     I5 = await_open_report(I4, ?TIMEOUT, Debug),
     R5 = await_open_report(R4, ?TIMEOUT, Debug),
-    log(Debug, "=== Open reports received ===", []),
-    log(Debug, "=== Message Q: ~p", [element(2,process_info(self(), messages))]),
+    ?LOG(Debug, "=== Open reports received ===", []),
+    ?PEEK_MSGQ,
     [] = check_info(0, Debug),
-    #{i => I5, r => R5, spec => Spec}.
+    trace_checkpoint(?TR_CHANNEL_CREATED, Cfg),
+    maps:merge(#{i => I5, r => R5, spec => Spec},
+               maps:from_list([{K,V} || {K,V} <- Cfg,
+                                        lists:member(K, [initiator_opts,
+                                                         responder_opts])])).
+
+customize_spec(Role, Spec, Cfg) ->
+    maps:merge(Spec, custom_spec_opts(Role, Cfg)).
+
+custom_spec_opts(responder, Cfg) ->
+    proplists:get_value(responder_opts, Cfg, #{});
+custom_spec_opts(initiator, Cfg) ->
+    proplists:get_value(initiator_opts, Cfg, #{}).
 
 spawn_responder(Port, Spec, R, UseAny, Debug) ->
     Me = self(),
-    spawn(fun() ->
-                       log("responder spawned: ~p", [Spec]),
+    spawn_link(fun() ->
+                       ?LOG("responder spawned: ~p", [Spec]),
                        Spec1 = maybe_use_any(UseAny, Spec#{ client => self() }),
                        Spec2 = move_password_to_spec(R, Spec1),
                        {ok, Fsm} = rpc(dev1, aesc_fsm, respond, [Port, Spec2], Debug),
@@ -2381,7 +2503,7 @@ maybe_use_any(false, Spec) ->
 spawn_initiator(Port, Spec, I, Debug) ->
     Me = self(),
     spawn(fun() ->
-                       log("initiator spawned: ~p", [Spec]),
+                       ?LOG(Debug, "initiator spawned: ~p", [Spec]),
                        Spec1 = Spec#{ client => self() },
                        Spec2 = move_password_to_spec(I, Spec1),
                        {ok, Fsm} = rpc(dev1, aesc_fsm, initiate,
@@ -2397,17 +2519,17 @@ move_password_to_spec(_, Spec) ->
 match_responder_and_initiator(RProxy, Debug) ->
     receive
         {channel_up, RProxy, Info} ->
-            log(Debug, "Matched initiator/responder pair: ~p", [Info]),
+            ?LOG(Debug, "Matched initiator/responder pair: ~p", [Info]),
             Info
     after ?TIMEOUT ->
-            log(Debug, "Timed out waiting for matched pair", []),
+            ?LOG(Debug, "Timed out waiting for matched pair", []),
             error(timeout)
     end.
 
 responder_instance_(Fsm, Spec, R0, Parent, Debug) ->
     R = fsm_map(Fsm, Spec, R0),
     {ok, ChOpen} = receive_from_fsm(info, R, channel_open, ?TIMEOUT, Debug),
-    log(Debug, "Got ChOpen: ~p~nSpec = ~p", [ChOpen, Spec]),
+    ?LOG(Debug, "Got ChOpen: ~p~nSpec = ~p", [ChOpen, Spec]),
     #{data := #{temporary_channel_id := TmpChanId}} = ChOpen,
     R1 = R#{ proxy => self(), parent => Parent },
     gproc:reg({n,l,{?MODULE,TmpChanId,responder}}, #{ r => R1 }),
@@ -2423,7 +2545,7 @@ responder_instance_(Fsm, Spec, R0, Parent, Debug) ->
 initiator_instance_(Fsm, Spec, I0, Parent, Debug) ->
     I = fsm_map(Fsm, Spec, I0),
     {ok, ChAccept} = receive_from_fsm(info, I, channel_accept, ?TIMEOUT, Debug),
-    log(Debug, "Got ChAccept: ~p~nSpec = ~p", [ChAccept, Spec]),
+    ?LOG(Debug, "Got ChAccept: ~p~nSpec = ~p", [ChAccept, Spec]),
     #{data := #{temporary_channel_id := TmpChanId}} = ChAccept,
     I1 = I#{ proxy => self() },
     gproc:reg({n,l,{?MODULE,TmpChanId,initiator}}, #{ i => I1
@@ -2446,7 +2568,7 @@ set_proxy_debug(Bool, #{proxy := P}) when is_boolean(Bool) ->
 -record(relay_st, {parent, debug}).
 
 fsm_relay(Map, Parent, Debug) ->
-    log(Debug, "fsm_relay(~p, ~p, Debug)", [Map, Parent]),
+    ?LOG(Debug, "fsm_relay(~p, ~p, Debug)", [Map, Parent]),
     fsm_relay_(Map, #relay_st{ parent = Parent
                              , debug  = Debug }).
 
@@ -2454,20 +2576,20 @@ fsm_relay_(#{ fsm := Fsm } = Map, #relay_st{ parent = Parent
                                            , debug  = Debug } = St) ->
     St1 = receive
               {aesc_fsm, Fsm, _} = Msg ->
-                  log(Debug, "Relaying(~p) ~p", [Parent, Msg]),
+                  ?LOG(Debug, "Relaying(~p) ~p", [Parent, Msg]),
                   Parent ! Msg,
                   St;
               {Parent, debug, NewDebug} when is_boolean(NewDebug) ->
-                  log(NewDebug, "Applying new debug mode: ~p", [NewDebug]),
+                  ?LOG(NewDebug, "Applying new debug mode: ~p", [NewDebug]),
                   Parent ! {self(), debug_ack, Debug},
                   St#relay_st{ debug = NewDebug };
               {Parent, die} ->
-                  log(Debug, "Got 'die' from parent", []),
+                  ?LOG(Debug, "Got 'die' from parent", []),
                   aesc_fsm:stop(Fsm),
-                  log(Debug, "relay stopping (die)", []),
+                  ?LOG(Debug, "relay stopping (die)", []),
                   exit(normal);
               Other ->
-                  log(Debug, "Relay got Other: ~p", [Other]),
+                  ?LOG(Debug, "Relay got Other: ~p", [Other]),
                   St
           end,
     fsm_relay_(Map, St1).
@@ -2481,19 +2603,41 @@ fsm_map(Fsm, #{ initiator_amount := IAmt
         , initiator_amount => IAmt - PushAmt
         , responder_amount => RAmt + PushAmt }.
 
-reestablish( #{channel_id := ChId, initiator_amount := IAmt, responder_amount := RAmt} = I
-           , #{channel_id := ChId, initiator_amount := IAmt, responder_amount := RAmt} = R
-           , SignedTx, Spec0, Port, Debug) ->
-    Spec = Spec0#{existing_channel_id => ChId, offchain_tx => SignedTx,
-                  initiator_amount => IAmt, responder_amount => RAmt},
-    {ok, FsmR} = rpc(dev1, aesc_fsm, respond,
-                     [Port, move_password_to_spec(R, Spec)]),
+reestablish(I0, R0, SignedTx, Spec0, CSpec, Port, Debug) ->
+    ChId = maps:get(channel_id, I0),
+    ChId = maps:get(channel_id, R0),   % assertion
+    ResponderStays = responder_stays(CSpec),
+    #{initiator_amount := IAmt, responder_amount := RAmt} = Spec0,
+    I = set_amounts(IAmt, RAmt, I0),
+    R = set_amounts(IAmt, RAmt, R0),
+    Spec = Spec0#{existing_channel_id => ChId, offchain_tx => SignedTx},
+    ?LOG(Debug, "Reestablish Spec = ~p", [Spec]),
+    FsmR = if ResponderStays ->
+                   ?LOG(Debug, "Not trying to reestablish responder", []),
+                   maps:get(fsm, R);
+              true ->
+                   {ok, NewFsmR} = rpc(dev1, aesc_fsm, respond,
+                                       [Port, move_password_to_spec(R, Spec)]),
+                   NewFsmR
+           end,
     {ok, FsmI} = rpc(dev1, aesc_fsm, initiate,
                      ["localhost", Port, move_password_to_spec(I, Spec)], Debug),
+    ?PEEK_MSGQ,
     I1 = await_open_report(I#{fsm => FsmI}, ?TIMEOUT, Debug),
     R1 = await_open_report(R#{fsm => FsmR}, ?TIMEOUT, Debug),
-    check_info(20),
-    #{i => I1, r => R1, spec => Spec}.
+    ?PEEK_MSGQ,
+    receive_from_fsm(info, I1, channel_reestablished, ?TIMEOUT, Debug),
+    receive_from_fsm(info, R1, channel_reestablished, ?TIMEOUT, Debug),
+    ?PEEK_MSGQ,
+    {I2, R2} = if ResponderStays ->
+                       {await_update_report(I1, ?TIMEOUT, Debug), R1};
+                  true ->
+                       {await_update_report(I1, ?TIMEOUT, Debug),
+                        await_update_report(R1, ?TIMEOUT, Debug)}
+               end,
+    ?LOG(Debug, "Reestablish succeeded", []),
+    [] = element(2, process_info(self(), messages)),
+    #{i => I2, r => R2, spec => Spec}.
 
 reestablish_wrong_password( #{channel_id := ChId, initiator_amount := IAmt, responder_amount := RAmt} = I
                           , #{channel_id := ChId, initiator_amount := IAmt, responder_amount := RAmt} = R
@@ -2509,6 +2653,9 @@ update_tx(Tx0, F, Args) ->
     {Mod, TxI} = aetx:specialize_callback(Tx0),
     TxI1 = apply(Mod, F, [TxI|Args]),
     aetx:new(Mod, TxI1).
+
+set_amounts(IAmt, RAmt, Map) ->
+    Map#{initiator_amount => IAmt, responder_amount => RAmt}.
 
 verify_close_mutual_tx(SignedTx, ChannelId) ->
     {aesc_close_mutual_tx, Tx} =
@@ -2550,14 +2697,14 @@ await_locked_rpt(Type, #{role := Role} = R, Timeout, Debug) when Type==funding_l
                                                                  Type==deposit_locked;
                                                                  Type==withdraw_locked ->
     {ok, Msg} = receive_from_fsm(info, R, Type, Timeout, Debug),
-    log(Debug, "~p got ~p: ~p", [Role, Type, Msg]),
+    ?LOG(Debug, "~p got ~p: ~p", [Role, Type, Msg]),
     R#{channel_id => maps:get(channel_id, Msg)}.
 
 await_update_report(#{channel_id := ChId} = R, Timeout, Debug) ->
     {ok, Msg} = receive_from_fsm(
                   update, R,
                   fun(#{ channel_id := ChId1
-                         , info := SignedTx }) ->
+                       , info       := SignedTx }) ->
                           true =
                               ChId1 == ChId
                               andalso
@@ -2593,12 +2740,12 @@ await_signing_request(Tag, Signer, Action, Timeout, Debug, Cfg, SignatureType) -
 
 await_signing_request(Tag, #{fsm := Fsm, pub := Pub} = Signer, OtherSigs,
                       Action, Timeout, Debug, Cfg, SignatureType) ->
-    log(Debug, "await_signing_request, Fsm = ~p (Pub = ~p, Other = ~p)",
+    ?LOG(Debug, "await_signing_request, Fsm = ~p (Pub = ~p, Other = ~p)",
         [Fsm, Pub, [P || #{pub := P} <- OtherSigs]]),
     receive {aesc_fsm, Fsm, #{type := sign, tag := Tag,
                               info := #{signed_tx := SignedTx0,
                                         updates   := Updates}} = Msg} ->
-            log(Debug, "await_signing(~p, ~p, ~p, ~p) <- ~p",
+            ?LOG(Debug, "await_signing(~p, ~p, ~p, ~p) <- ~p",
                 [Tag, Pub, [P || #{pub := P} <- OtherSigs], Fsm, Msg]),
             {[Signer1|_], SignedTx} =
                 lists:mapfoldl(
@@ -2612,19 +2759,19 @@ await_signing_request(Tag, #{fsm := Fsm, pub := Pub} = Signer, OtherSigs,
                               end,
                           {S1, STx1}
                   end, SignedTx0, [Signer|OtherSigs]),
-            log(Debug,"SIGNED TX ~p", [SignedTx]),
+            ?LOG(Debug,"SIGNED TX ~p", [SignedTx]),
             Action(Tag, Signer1, SignedTx, Updates)
     after Timeout ->
             error(timeout)
     end.
 
 abort_signing_request(Tag, #{fsm := Fsm}, Code, Timeout, Debug) ->
-    log(Debug, "waiting to abort signing req, Fsm = ~p, (Code = ~p)",
+    ?LOG(Debug, "waiting to abort signing req, Fsm = ~p, (Code = ~p)",
         [Fsm, Code]),
     receive {aesc_fsm, Fsm, #{type := sign, tag := Tag,
                               info := #{signed_tx := SignedTx,
                                         updates   := _}} = Msg} ->
-            log(Debug, "abort_signing(~p, ~p, ~p) <- ~p", [Tag, Code, Fsm, Msg]),
+            ?LOG(Debug, "abort_signing(~p, ~p, ~p) <- ~p", [Tag, Code, Fsm, Msg]),
             aesc_fsm:signing_response(Fsm, Tag, {error, Code}),
             {ok, SignedTx}
     after Timeout ->
@@ -2655,15 +2802,15 @@ await_on_chain_report(R, Timeout) ->
     await_on_chain_report(R, #{}, Timeout).
 
 await_on_chain_report(#{fsm := Fsm}, Match, Timeout) ->
-    log("~p awaiting on-chain from ~p", [self(), Fsm]),
+    ?LOG("~p awaiting on-chain from ~p", [self(), Fsm]),
     receive
         {aesc_fsm, Fsm, #{info := {died, _}}} = Died ->
-            log("Fsm died while waiting for on-chain report:~n"
+            ?LOG("Fsm died while waiting for on-chain report:~n"
                    "~p", [Died]),
             error(fsm_died);
         {aesc_fsm, Fsm, #{type := report, tag := on_chain_tx,
                           info := #{tx := SignedTx} = I}} = M ->
-            log("OnChainRpt = ~p", [M]),
+            ?LOG("OnChainRpt = ~p", [M]),
             ok = match_info(I, Match),
             SignedTx
     after Timeout ->
@@ -2695,7 +2842,7 @@ await_own_locked_rpt(Type, #{role := Role, fsm := Fsm}, Timeout, Debug)
         {aesc_fsm, Fsm, #{ type := report
                          , tag  := info
                          , info := Type } = Msg} ->
-            log(Debug, "~p got ~p: ~p", [Role, Type, Msg]),
+            ?LOG(Debug, "~p got ~p: ~p", [Role, Type, Msg]),
             ok
     after Timeout ->
             error(timeout)
@@ -2749,11 +2896,11 @@ receive_from_fsm(Tag, R, Info, Timeout, Debug) ->
 
 receive_from_fsm(Tag, #{role := Role, fsm := Fsm} = R, Info, Timeout, Debug, _Cont)
   when is_atom(Info) ->
-    log(Debug, "receive_from_fsm_(~p, ~p, ~p, ~p, ~p, _Cont)",
+    ?LOG(Debug, "receive_from_fsm_(~p, ~p, ~p, ~p, ~p, _Cont)",
         [Tag, R, Info, Timeout, Debug]),
     receive
         {aesc_fsm, Fsm, #{type := _Type, tag := Tag, info := Info} = Msg} ->
-            log(Debug, "~p: received ~p:~p", [Role, Tag, Msg]),
+            ?LOG(Debug, "~p: received ~p:~p", [Role, Tag, Msg]),
             {ok, Msg}
     after Timeout ->
             flush(),
@@ -2764,15 +2911,15 @@ receive_from_fsm(Tag, R, Msg, Timeout, Debug, Cont) ->
     receive_from_fsm_(Tag, R, Msg, TRef, Debug, Cont).
 
 receive_from_fsm_(Tag, #{role := Role, fsm := Fsm} = R, Msg, TRef, Debug, Cont) ->
-    log(Debug, "receive_from_fsm_(~p, ~p, ~p, ~p, ~p, ~p)",
+    ?LOG(Debug, "receive_from_fsm_(~p, ~p, ~p, ~p, ~p, ~p)",
         [Tag, R, Msg, TRef, Debug, Cont]),
     receive
         {aesc_fsm, Fsm, #{type := Type, tag := Tag} = Msg1} ->
-            log(Debug, "~p: received ~p:~p/~p", [Role, Type, Tag, Msg1]),
+            ?LOG(Debug, "~p: received ~p:~p/~p", [Role, Type, Tag, Msg1]),
             try match_msgs(Msg, Msg1, Cont)
             catch
                 throw:continue ->
-                    log(Debug, "Failed match: ~p", [Msg1]),
+                    ?LOG(Debug, "Failed match: ~p", [Msg1]),
                     receive_from_fsm_(Tag, R, Msg, TRef, Debug, Cont)
             after
                 erlang:cancel_timer(TRef)
@@ -2780,11 +2927,14 @@ receive_from_fsm_(Tag, #{role := Role, fsm := Fsm} = R, Msg, TRef, Debug, Cont) 
         {timeout, TRef, receive_from_fsm} ->
             flush(),
             error(timeout)
+    after ?TIMEOUT ->
+            ?LOG(Debug, "Outer timeout. Q = ~p", [element(2,process_info(self(), messages))]),
+            error(outer_timeout)
     end.
 
 flush() ->
     receive M ->
-            log("<== ~p", [M]),
+            ?LOG("<== ~p", [M]),
             flush()
     after 0 ->
             ok
@@ -2799,8 +2949,8 @@ match_msgs(F, Msg, Cont) when is_function(F, 1) ->
                true ->
                     {module, Mod} = erlang:fun_info(F, module),
                     {name, Name} = erlang:fun_info(F, name),
-                    log("Message doesn't match fun: ~p / ~w:~w/1",
-                        [Msg, Mod, Name]),
+                    ?LOG("Message doesn't match fun: ~p / ~w:~w/1",
+                           [Msg, Mod, Name]),
                     error({message_mismatch, [Msg]})
             end
     end;
@@ -2818,7 +2968,7 @@ match_msgs(Pat, M, Cont) when is_map(M), is_map(Pat) ->
 match_msgs(_, _, true) ->
     throw(continue);
 match_msgs(A, B, false) ->
-    log("Messages don't match: ~p / ~p", [A, B]),
+    ?LOG("Messages don't match: ~p / ~p", [A, B]),
     erlang:error({message_mismatch, [A, B]}).
 
 check_info(Timeout) -> check_info(Timeout, false).
@@ -2826,10 +2976,10 @@ check_info(Timeout) -> check_info(Timeout, false).
 check_info(Timeout, Debug) ->
     receive
         Msg when element(1, Msg) == aesc_fsm ->
-            log(Debug, "UNEXPECTED: ~p", [Msg]),
+            ?LOG(Debug, "UNEXPECTED: ~p", [Msg]),
             [Msg|check_info(Timeout, Debug)]
     after Timeout ->
-            log(Debug, "unconsumed msgs: ~p",
+            ?LOG(Debug, "unconsumed msgs: ~p",
                 [element(2,process_info(self(),messages))]),
             []
     end.
@@ -2855,9 +3005,9 @@ opt_add_to_debug(_, Debug) ->
 
 prep_initiator(Node) ->
     {PrivKey, PubKey} = aecore_suite_utils:sign_keys(Node),
-    log("initiator Pubkey = ~p", [PubKey]),
+    ?LOG("initiator Pubkey = ~p", [PubKey]),
     mine_key_blocks(Node, 30),
-    log("initiator: 30 blocks mined on ~p", [Node]),
+    ?LOG("initiator: 30 blocks mined on ~p", [Node]),
     {ok, Balance} = rpc(Node, aehttp_logic, get_account_balance, [PubKey]),
     #{role => initiator,
       priv => PrivKey,
@@ -2883,7 +3033,7 @@ rpc(Node, Mod, Fun, Args) -> rpc(Node, Mod, Fun, Args, false).
 
 rpc(Node, Mod, Fun, Args, Debug) ->
     Res = rpc:call(aecore_suite_utils:node_name(Node), Mod, Fun, Args, 5000),
-    log(Debug, "rpc(~p,~p,~p,~p) -> ~p", [Node, Mod, Fun, Args, Res]),
+    ?LOG(Debug, "rpc(~p,~p,~p,~p) -> ~p", [Node, Mod, Fun, Args, Res]),
     Res.
 
 check_amounts(R, SignedTx, Updates) ->
@@ -2932,25 +3082,21 @@ current_height(Node) ->
         Header -> aec_headers:height(Header)
     end.
 
-log(Fmt, Args) ->
+log(L, Fmt, Args) ->
     Debug = case config() of
                 undefined ->
                     false;
                 Cfg ->
                     config(debug, Cfg, false)
             end,
-    log(Debug, Fmt, Args).
+    log(Debug, L, Fmt, Args).
 
-log(true, Fmt, Args) ->
-    ct:log("~p: " ++ Fmt, [self()|Args]);
-log(#{debug := true}, Fmt, Args) ->
-    ct:log("~p: " ++ Fmt, [self()|Args]);
-log(_, _, _) ->
+log(true, L, Fmt, Args) ->
+    ct:log("~p [~p]: " ++ Fmt, [self(), L|Args]);
+log(#{debug := true}, L, Fmt, Args) ->
+    ct:log("~p [~p]: " ++ Fmt, [self(), L|Args]);
+log(_, _, _, _) ->
     ok.
-
-if_debug(true, X, _) -> X;
-if_debug(#{debug := true}, X, _) -> X;
-if_debug(_, _, Y) -> Y.
 
 apply_updates([], R) ->
     R;
@@ -2993,21 +3139,21 @@ wait_for_signed_transaction_in_block(_, SignedTx, #{mine_blocks := {ask,Pid}}) -
             error(timeout)
     end;
 wait_for_signed_transaction_in_block(Node, SignedTx, Debug) ->
-    log(Debug, "waiting for tx ~p", [SignedTx]),
+    ?LOG(Debug, "waiting for tx ~p", [SignedTx]),
     TxHash = aetx_sign:hash(SignedTx),
     case rpc(dev1, aec_chain, find_tx_location, [TxHash], Debug) of
         BH when is_binary(BH) ->
-            log(Debug, "Found tx in block", []),
+            ?LOG(Debug, "Found tx in block", []),
             ok;
         NotConfirmed when NotConfirmed =:= mempool;
                           NotConfirmed =:= not_found ->
             EncTxHash = aeser_api_encoder:encode(tx_hash, TxHash),
             case mine_blocks_until_txs_on_chain(Node, [EncTxHash]) of
                 {ok, _Blocks} ->
-                    log(Debug, "Tx on-chain after mining ~p blocks", [length(_Blocks)]),
+                    ?LOG(Debug, "Tx on-chain after mining ~p blocks", [length(_Blocks)]),
                     ok;
                 {error, _Reason} ->
-                    log("Error: ~p - did not mine", [_Reason]),
+                    ?LOG(Debug, "Error: ~p - did not mine", [_Reason]),
                     did_not_mine
             end
     end.
@@ -3051,10 +3197,10 @@ mine_key_blocks(Node, KeyBlocks) ->
 with_trace(F, Config, File) ->
     with_trace(F, Config, File, on_error).
 
-with_trace(F, Config, File, When) ->
-    log("with_trace ...", []),
-    TTBRes = aesc_ttb:on_nodes([node()|get_nodes()], File),
-    log("Trace set up: ~p", [TTBRes]),
+with_trace(F, Config0, File, When) ->
+    ?LOG("with_trace ...", []),
+    Config = [{trace_destination, File}|Config0],
+    trace_checkpoint(?TR_START, Config),
     try F(Config)
     ?_catch_(Error, Reason, Stack)
         case {Error, Reason} of
@@ -3073,12 +3219,23 @@ with_trace(F, Config, File, When) ->
     end,
     case When of
         on_error ->
-            log("Discarding trace", []),
+            ?LOG("Discarding trace", []),
             aesc_ttb:stop_nofetch();
         always ->
             ttb_stop()
     end,
     ok.
+
+trace_checkpoint(CheckPoint, Config) ->
+    case ?config(activate_trace, Config) of
+        CheckPoint ->
+            {_, File} = lists:keyfind(trace_destination, 1, Config),
+            TTBRes = aesc_ttb:on_nodes([node()|get_nodes()], File),
+            ?LOG("Trace set up: ~p", [TTBRes]);
+        _ ->
+            ok
+    end.
+
 
 ttb_stop() ->
     Dir = aesc_ttb:stop(),
@@ -3285,7 +3442,7 @@ peek_message_queue(L, Debug) ->
     case Msgs of
         [] -> ok;
         _ ->
-            log(Debug,
+            ?LOG(Debug,
                 "==================================================~n"
                 "~p: message Q: ~p~n"
                "==================================================~n", [L, Msgs])
@@ -3439,3 +3596,18 @@ positive_bh(Cfg) ->
               NNT + 1]),%% in the range
     shutdown_(IFinal, RFinal, Cfg),
     ok.
+
+%% should_responder_keep_running(Cfg) ->
+%%     maps:get(keep_running, proplists:get_value(responder_opts, Cfg, #{}), false).
+
+cfg_responder_keeps_running(Cfg) ->
+    cfg_responder_keeps_running(true, Cfg).
+
+cfg_responder_keeps_running(Bool, Cfg) when is_boolean(Bool) ->
+    K = responder_opts,
+    case lists:keyfind(K, 1, Cfg) of
+        false ->
+            [{K, #{keep_running => Bool}}|Cfg];
+        {_, Opts} when is_map(Opts) ->
+            lists:keyreplace(K, 1, Cfg, {K, Opts#{keep_running => Bool}})
+    end.

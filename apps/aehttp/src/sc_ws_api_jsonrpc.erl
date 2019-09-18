@@ -166,6 +166,7 @@ json_rpc_error_object(broken_encoding      , R) -> error_obj(3, [104] , R);
 json_rpc_error_object(broken_code          , R) -> error_obj(3, [104] , R);
 json_rpc_error_object(value_too_low        , R) -> error_obj(3, [105] , R);
 json_rpc_error_object(conflict             , R) -> error_obj(3, [107] , R);
+json_rpc_error_object(not_ready            , R) -> error_obj(3, [108] , R);
 json_rpc_error_object(insufficient_balance , R) -> error_obj(3, [1001], R);
 json_rpc_error_object(negative_amount      , R) -> error_obj(3, [1002], R);
 json_rpc_error_object(invalid_pubkeys      , R) -> error_obj(3, [1003], R);
@@ -177,6 +178,7 @@ json_rpc_error_object(not_offchain_tx      , R) -> error_obj(2, [1012], R);
 json_rpc_error_object(already_onchain      , R) -> error_obj(3, [1013], R);
 json_rpc_error_object({meta, invalid}      , R) -> error_obj(3, [1014], R);
 json_rpc_error_object(invalid_password     , R) -> error_obj(3, [1016], R);
+json_rpc_error_object(bad_signature        , R) -> error_obj(3, [1017], R);
 json_rpc_error_object({broken_encoding,What}, R) ->
     error_obj(3, [broken_encoding_code(W) || W <- What], R);
 json_rpc_error_object({What, missing}      , R) ->
@@ -237,6 +239,7 @@ error_data_msgs() ->
      , 105 => <<"Value too low">>
      , 106 => <<"Timeout">>
      , 107 => <<"Conflict">>
+     , 108 => <<"Not ready">>
      %% Aeternity error codes
      , 1001 => <<"Insufficient balance">>
      , 1002 => <<"Negative amount">>
@@ -254,6 +257,7 @@ error_data_msgs() ->
      , 1014 => <<"Invalid meta object">>
      , 1015 => <<"Invalid error code (expect 1...65535)">>
      , 1016 => <<"Invalid password">>
+     , 1017 => <<"Bad signature">>
      , 2000 => <<"Missing field: state_password">>
      }.
 
@@ -300,6 +304,10 @@ process_incoming(Msg, FsmPid) ->
 process_request(#{<<"method">> := <<"channels.system">>,
                   <<"params">> := #{<<"action">> := <<"ping">>}}, _FsmPid) ->
     {reply, #{action => system, tag => pong}};
+process_request(#{<<"method">> := <<"channels.system">>,
+                  <<"params">> := #{<<"action">> := <<"stop">>}}, FsmPid) ->
+    ok = aesc_fsm:stop(FsmPid),
+    no_reply;
 process_request(#{<<"method">> := <<"channels.update.new">> = M,
                    <<"params">> := #{<<"from">>    := FromB,
                                      <<"to">>      := ToB,
