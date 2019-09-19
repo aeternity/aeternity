@@ -1112,29 +1112,26 @@ withdraw(Cfg) ->
     ok = withdraw_full_cycle_(Amount, #{}, MinDepth, MinDepthChannel, Round, Cfg1).
 
 withdraw_high_amount_static_confirmation_time(Cfg) ->
-    Cfg1 = [?SLOGAN | Cfg],
     % Factor of 0 sets min depths to 1 for all amounts
-    Cfg2 = set_config(minimum_depth_factor, 0, Cfg1),
+    Cfg1 = set_configs([?SLOGAN, {minimum_depth_factor, 0}], Cfg),
     Amount = 300000,
     MinDepth = 1,
     MinDepthChannel = 1,
     Round = 1,
-    ok = withdraw_full_cycle_(Amount, #{}, MinDepth, MinDepthChannel, Round, Cfg2).
+    ok = withdraw_full_cycle_(Amount, #{}, MinDepth, MinDepthChannel, Round, Cfg1).
 
 withdraw_high_amount_short_confirmation_time(Cfg) ->
-    Cfg1 = [?SLOGAN | Cfg],
     % High amount and high factor should lead to single block required
-    Cfg2 = set_config(minimum_depth_factor, 60, Cfg1),
+    Cfg1 = set_configs([?SLOGAN, {minimum_depth_factor, 60}], Cfg),
     Amount = 300000,
     MinDepth = 2,
     MinDepthChannel = 1,
     Round = 1,
-    ok = withdraw_full_cycle_(Amount, #{}, MinDepth, MinDepthChannel, Round, Cfg2).
+    ok = withdraw_full_cycle_(Amount, #{}, MinDepth, MinDepthChannel, Round, Cfg1).
 
 withdraw_low_amount_long_confirmation_time(Cfg) ->
-    Cfg1 = [?SLOGAN | Cfg],
     % Low amount and low factor should lead to comparitively long confirmation time
-    Cfg2 = set_configs([?SLOGAN , {minimum_depth_factor, 8}], Cfg1),
+    Cfg1 = set_configs([?SLOGAN, {minimum_depth_factor, 8}], Cfg),
     Amount = 1,
     {MinDepth, MinDepthChannel} =
         case config(ga_group, Cfg, false) orelse not is_above_roma_protocol() of
@@ -1144,18 +1141,17 @@ withdraw_low_amount_long_confirmation_time(Cfg) ->
                 {12, 10}
         end,
     Round = 1,
-    ok = withdraw_full_cycle_(Amount, #{}, MinDepth, MinDepthChannel, Round, Cfg2).
+    ok = withdraw_full_cycle_(Amount, #{}, MinDepth, MinDepthChannel, Round, Cfg1).
 
 withdraw_low_amount_long_confirmation_time_negative_test(Cfg) ->
-    Cfg1 = [?SLOGAN | Cfg],
     % Low amount and low factor should lead to comparitively long confirmation time
-    Cfg2 = set_config(minimum_depth_factor, 4, Cfg1),
+    Cfg1 = set_configs([?SLOGAN, {minimum_depth_factor, 4}], Cfg),
     Amount = 1,
     MinDepth = 3,
     MinDepthChannel = 10,
     Round = 1,
     try
-        ok = withdraw_full_cycle_(Amount, #{}, MinDepth, MinDepthChannel, Round, Cfg2),
+        ok = withdraw_full_cycle_(Amount, #{}, MinDepth, MinDepthChannel, Round, Cfg1),
         ct:fail("Expected withdraw test to fail due to min depth being to small.")
     catch
         error:timeout ->
@@ -3853,20 +3849,27 @@ log(#{debug := true}, Fmt, Args) ->
 log(_, _, _) ->
     ok.
 
-config() -> get(config).
+config() ->
+    Cfg = get(config),
+    case Cfg of
+        undefined ->
+            [];
+        _ ->
+            Cfg
+    end.
 
-config(Cfg) -> put(config, Cfg).
+config(Cfg) when is_list(Cfg) -> put(config, Cfg).
 
-config(K, Cfg, Def) ->
+config(K, Cfg, Def) when is_list(Cfg) ->
     case ?config(K, Cfg) of
         undefined -> Def;
         Other     -> Other
     end.
 
-set_config(K, V, Cfg) ->
+set_config(K, V, Cfg) when is_list(Cfg) ->
     lists:keystore(K, 1, Cfg, {K, V}).
 
-set_configs(New, Cfg) ->
+set_configs(New, Cfg) when is_list(Cfg) ->
     lists:foldl(fun({K, V}, Acc) -> set_config(K, V, Acc) end, Cfg, New).
 
 get_debug(Config) ->
