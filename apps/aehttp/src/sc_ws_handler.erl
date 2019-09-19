@@ -206,9 +206,7 @@ check_existing_client(Client, Opts, Handler) ->
               end,
     T = time_since_last_dispatch(Client),
     lager:debug("Time since last dispatch (~p): ~p", [Client, T]),
-    if is_integer(T), T < 5000 ->
-            handler_init_error(client_still_active, Handler);
-       is_integer(T) ->
+    if is_integer(T) ->
             %% It is actually a WS client
             MRef = erlang:monitor(process, Client),
             exit(Client, kill),
