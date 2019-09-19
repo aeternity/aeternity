@@ -288,7 +288,7 @@ mine_blocks(Node, NumBlocksToMine, MiningRate, Type, Opts) ->
     ok = rpc:call(
            Node, application, set_env, [aecore, expected_mine_rate, MiningRate],
            5000),
-    [] = flush_new_blocks(),
+    flush_new_blocks(),
     subscribe(Node, block_created),
     subscribe(Node, micro_block_created),
     StartRes = rpc:call(Node, aec_conductor, start_mining, [Opts], 5000),
@@ -326,7 +326,7 @@ mine_blocks_until_txs_on_chain(Node, TxHashes, MiningRate, Max, Opts) ->
     ok = rpc:call(
            Node, application, set_env, [aecore, expected_mine_rate, MiningRate],
            5000),
-    [] = flush_new_blocks(),
+    flush_new_blocks(),
     subscribe(Node, block_created),
     StartRes = rpc:call(Node, aec_conductor, start_mining, [Opts], 5000),
     ct:log("aec_conductor:start_mining() (~p) -> ~p", [Node, StartRes]),
@@ -440,7 +440,7 @@ flush_new_blocks_(Acc) ->
 %% this has the expectation that the Node is mining
 %% there is a timeout of 30 seconds for a single block to be produced
 wait_for_height(Node, Height) ->
-    [] = flush_new_blocks(),
+    flush_new_blocks(),
     subscribe(Node, block_created),
     subscribe(Node, micro_block_created),
     wait_for_height_(Node, Height),
