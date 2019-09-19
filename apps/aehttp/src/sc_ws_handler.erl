@@ -211,11 +211,9 @@ check_existing_client(Client, Opts, Handler) ->
             MRef = erlang:monitor(process, Client),
             exit(Client, kill),
             receive {'DOWN', MRef, _, _, _} ->
-                    timer:sleep(100),
                     reconnect_to_fsm_(Opts, Handler, OnError)
             end;
        true ->
-            timer:sleep(100),
             reconnect_to_fsm_(Opts, Handler, OnError)
     end.
 
