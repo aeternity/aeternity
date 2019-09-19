@@ -86,28 +86,12 @@ websocket_init(Params) ->
             case maps:is_key(existing_channel_id, ChannelOpts) of
                 true ->
                     lager:debug("existing_channel_id key exists", []),
-                    case {derive_reconnect_opts(ChannelOpts), maps:find(offchain_tx, ChannelOpts)} of
-                        {{ok, ReconnectOpts}, {ok, _}} ->
+                    case derive_reconnect_opts(ChannelOpts) of
+                        {ok, ReconnectOpts} ->
                             lager:debug("Will try to reconnect; ReconnectOpts = ~p",
                                         [ReconnectOpts]),
-                            case reconnect_to_fsm_(ReconnectOpts, Handler,
-                                                   fun(E) ->
-                                                           {error, E}
-                                                   end) of
-                                {ok, _} = Ok ->
-                                    Ok;
-                                {error, ReconnError} ->
-                                    %% The reconnect_to_fsm_() case above tries a reestablish
-                                    %% if the fsm isn't running. Don't try another reestablish
-                                    %% if this fails, since reestablishing if there is
-                                    %% already an fsm would be bad.
-                                    handler_init_error(ReconnError, Handler)
-                            end;
-                        {{ok, ReconnectOpts}, error} ->
-                            %% take the same path as reconnect (maybe reestablish from cache)
-                            lager:debug("no reconnect_tx, but ReconnectOpts = ~p", [ReconnectOpts]),
                             websocket_init_reconnect_(ReconnectOpts, Handler);
-                        {{error, _} = Err1, _} ->
+                        {error, _} = Err1 ->
                             lager:debug("Error deriving reconnect opts: ~p", [Err1]),
                             %% TODO: This is probably an error case, with insufficient info also
                             %% for reestablish. Can it even happen?
@@ -222,18 +206,14 @@ check_existing_client(Client, Opts, Handler) ->
               end,
     T = time_since_last_dispatch(Client),
     lager:debug("Time since last dispatch (~p): ~p", [Client, T]),
-    if is_integer(T), T < 5000 ->
-            handler_init_error(client_still_active, Handler);
-       is_integer(T) ->
+    if is_integer(T) ->
             %% It is actually a WS client
             MRef = erlang:monitor(process, Client),
             exit(Client, kill),
             receive {'DOWN', MRef, _, _, _} ->
-                    timer:sleep(100),
                     reconnect_to_fsm_(Opts, Handler, OnError)
             end;
        true ->
-            timer:sleep(100),
             reconnect_to_fsm_(Opts, Handler, OnError)
     end.
 
