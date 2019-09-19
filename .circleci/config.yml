@@ -1060,7 +1060,6 @@ jobs:
       <<: *infrastructure_config_environment
       PKG_TARGET_OS: macos
       PACKAGES_DIR: *packages_workspace
-      CIRCLE_TAG: pr2786
     steps:
       - upload_release_artifacts
 
@@ -1071,7 +1070,6 @@ jobs:
       <<: *infrastructure_config_environment
       PKG_TARGET_OS: ubuntu
       PACKAGES_DIR: *packages_workspace
-      CIRCLE_TAG: pr2786
     steps:
       - upload_release_artifacts
 
@@ -1083,7 +1081,6 @@ jobs:
       PKG_TARGET_OS: windows
       PKG_EXT: -experimental.zip
       PACKAGES_DIR: *packages_workspace
-      CIRCLE_TAG: pr2786
     steps:
       - upload_release_artifacts
 
@@ -1440,7 +1437,7 @@ workflows:
           filters:
             branches:
               only:
-                - /releases\/.*|.*/
+                - /releases\/.*/
                 - *master_branch
             tags:
               only: *tag_regex
@@ -1532,7 +1529,7 @@ workflows:
           type: approval
           filters:
             branches:
-              ignore: /v.*/
+              ignore: /.*/
             tags:
               only: *tag_regex
 
@@ -1593,7 +1590,7 @@ workflows:
             - hodl_artifact_upload
           filters:
             branches:
-              ignore: /v.*/
+              ignore: /.*/
             tags:
               only: *tag_regex
 
@@ -1610,7 +1607,7 @@ workflows:
             - hodl_artifact_upload
           filters:
             branches:
-              ignore: /v.*/
+              ignore: /.*/
             tags:
               only: *tag_regex
 
@@ -1627,7 +1624,7 @@ workflows:
             - hodl_artifact_upload
           filters:
             branches:
-              ignore: /v.*/
+              ignore: /.*/
             tags:
               only: *tag_regex
 
