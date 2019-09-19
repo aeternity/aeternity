@@ -124,7 +124,7 @@ abort_computation(BlockCfgs) ->
 
     %% The worker is spawned, it searches for HE - 1 block and asks server if
     %% should continue with computation.
-    ?assertEqual({ok, {check_result, BH5, BH5}}, receive_worker_msg(WorkerPid)),
+    ?assertEqual({ok, {check_result, BH5, LastSigBlockHeight, BH5}}, receive_worker_msg(WorkerPid)),
     %% Server can response with compute | abort.
     send_server_msg(WorkerPid, abort),
 
@@ -142,11 +142,11 @@ perform_computation(BlockCfgs, ExpectedForkResult) ->
 
     %% The worker is spawned, it searches for HE - 1 block and asks server if
     %% should continue with computation.
-    ?assertEqual({ok, {check_result, BH5, BH5}}, receive_worker_msg(WorkerPid)),
+    ?assertEqual({ok, {check_result, BH5, LastSigBlockHeight, BH5}}, receive_worker_msg(WorkerPid)),
     %% Server can response with compute | abort.
     send_server_msg(WorkerPid,  compute),
     %% Worker responds with fork result
-    ?assertEqual({ok, {add_result, BH5, ExpectedForkResult}}, receive_worker_msg(WorkerPid)),
+    ?assertEqual({ok, {update_result, BH5, ExpectedForkResult}}, receive_worker_msg(WorkerPid)),
 
     ?assertEqual({ok, dead}, ensure_worker_dead(WorkerPid)),
     ok.

@@ -3,14 +3,14 @@
 %%% @doc
 %%% H1 - height before the the signalling start height;
 %%% HS - signalling start height, HS is strictly greater than H1;
-%%% HE - signalling end height, HE is strictly greated than HS;
+%%% HE - signalling end height, HE is strictly greater than HS;
 %%% H2 - fork height, H2 is strictly greater than HE;
 %%%
 %%% The gen_server process (aec_fork_signalling) makes sure that there is a
-%%% fork result at H2 ('true', 'false' or 'pending_protocol'). In order to
-%%% compute the fork result, it manages asynchronous processes that walk the
-%%% chain and compute how many blocks include a predefined info field between
-%%% HE - 1 and HS (inclusive).
+%%% fork signalling result at H2 ('true', 'false' or 'pending_protocol'). In
+%%% order to compute the fork signalling result, it manages asynchronous
+%%% processes that walk the chain and compute how many blocks include a
+%%% predefined info field value between HE - 1 and HS (inclusive).
 %%%
 %%% The block at height HE - 1 is the last signalling block, and there must be
 %%% a result computed for it. Once a worker process that computes the result is
@@ -35,10 +35,11 @@
 %%% The worst case scenario is restarting the node at height H2 - 1. If the
 %%% node has the top key block at height H2 - 1 and the results map is empty,
 %%% it needs to start a worker process that will search for a block at HE - 1,
-%%% and then it will start computing the fork result. Some components of the
-%%% system may be waiting for the final result.
-%%% @end
-%%%============================================================================
+%%% and then it will start computing the fork signalling result. Some
+%%% components of the system may be waiting for the final result.
+%%
+%% @end
+%%% ============================================================================
 -module(aec_fork_signalling).
 
 -behaviour(gen_server).
@@ -64,23 +65,31 @@
 
 -type block_hash()       :: aec_blocks:block_header_hash().
 
+-type block_height()     :: aec_blocks:height().
+
 -type fork()             :: aec_hard_forks:fork().
 
 -type worker()           :: {pid(), reference()}.
 
 -type result()           :: true | false | pending_protocol.
 
+%% Result entry apart from the actual fork signalling result contains block
+%% hash and a block height associated with a pointer that currently points to
+%% this result entry. Based on the block height it is possible to keep just the
+%% pointer associated with the top block.
+-type result_entry()     :: {result(), block_hash(), block_height()}.
+
 %% The pointer is a key block hash which belongs to the last signalling block
 %% (the block at height HE - 1).
 -type pointer()          :: block_hash().
 
--record(state, {results  :: #{block_hash() := result() | pointer()},
+-record(state, {results  :: #{block_hash() := result_entry() | pointer()},
                 workers  :: #{worker() := block_hash()}
                }).
 
 -define(SERVER, ?MODULE).
--define(IS_RESULT(X), X =:= true orelse X =:= false orelse X =:= pending_protocol).
--define(IS_POINTER(X), is_binary(X)).
+-define(IS_RESULT_ENTRY(X), is_tuple(X)).
+-define(IS_POINTER(Hash), is_binary(Hash)).
 
 %% API
 
@@ -153,11 +162,11 @@ handle_get_fork_result(Block, BlockHash, Fork, #state{results = Results} = State
             %% HE < H2 wouldn't apply (the configuration check handles this
             %% situation).
             case get_result(BlockHash, Results) of
-                Pointer when ?IS_POINTER(Pointer) ->
+                LastSigBlockHash when ?IS_POINTER(LastSigBlockHash) ->
                     %% The block at height H2 - 1 is supposed to have a pointer
                     %% (in the best case scenario) to the block hash at height
                     %% HE - 1 with the actual result.
-                    Result = get_result(Pointer, Results),
+                    {Result, _BlockHash, _BlockHeight} = get_result(LastSigBlockHash, Results),
                     {{ok, Result}, State};
                 undefined ->
                     %% If there is no entry, a worker needs to be spawned and
@@ -174,23 +183,61 @@ handle_compute_fork_result(spawn_worker, Block, BlockHash, Fork, State) ->
 handle_compute_fork_result(set_prev_result_or_spawn_worker, Block, BlockHash, Fork, State) ->
     set_prev_result_or_spawn_worker(Block, BlockHash, Fork, State).
 
-handle_worker_msg(WorkerPid, {check_result, BlockHash, LastSigBlockHash},
+handle_worker_msg(WorkerPid, {check_result, BlockHash, BlockHeight, LastSigBlockHash},
                   #state{results = Results} = State) ->
     case get_result(LastSigBlockHash, Results) of
-        Result when Result =/= undefined ->
-            %% Another process computed or is computing the result for this
-            %% block hash (at height HE - 1).
+        {Result, BlockHash1, BlockHeight1} when BlockHeight > BlockHeight1 ->
+            %% Another process computed or is computing the result for the same
+            %% LastSigBlockHash (at height HE - 1). Since the process that sent
+            %% this message found the same LastSigBlockHash as another process
+            %% before, both processes do it on the same chain fork. Since the
+            %% results map now has an entry for LastSigBlockHash, which
+            %% includes the actual result of the fork signalling computation,
+            %% and info about the block at the top of this chain fork pointing
+            %% to this result (including the height), it's possible to update
+            %% this pointer based on the height - the process that sent this
+            %% message tries to compute the fork signalling result for a block
+            %% on the same chain fork, but it's at a greater height. Only the
+            %% pointer from the top of the chain is kept in the results map. In
+            %% other words, each LastSigblockHash has just one pointer pointing
+            %% to it, this pointer is associated witht the top block.
+
+            %% The process that sent this message is aborted as another one
+            %% computed/is computing the fork signalling result.
             send_server_msg(WorkerPid, abort),
-            State#state{results = add_result(BlockHash, LastSigBlockHash, Results)};
+            %% Update the result for LastSigblockHash
+            ResultEntry = {Result, BlockHash, BlockHeight},
+            Results1 = add_result(LastSigBlockHash, ResultEntry, Results),
+            %% Replace the old pointer with a new one (associated with a block
+            %% at greater height).
+            Results2 = add_result(BlockHash, LastSigBlockHash, Results1),
+            Results3 = del_result(BlockHash1, Results2),
+            State#state{results = Results3};
+        {_Result, _BlockHash1, _BlockHeight1} ->
+            State;
         undefined ->
+            %% The process that sent this message is the first one to find
+            %% LastSigBlockHash and so can continue with computation of the
+            %% fork signalling result.
             send_server_msg(WorkerPid, compute),
-            Results1 = add_result(BlockHash, LastSigBlockHash, Results),
-            Results2 = add_result(LastSigBlockHash, pending_protocol, Results1),
+            ResultEntry = {pending_protocol, BlockHash, BlockHeight},
+            Results1 = add_result(LastSigBlockHash, ResultEntry, Results),
+            %% If the BlockHash is the same as LastSigblockHash, it means that
+            %% the pointer to the LastSigblockHash is not needed (as it would
+            %% just point to itself).
+            Results2 =
+                case BlockHash =:= LastSigBlockHash of
+                    true  -> Results1;
+                    false -> add_result(BlockHash, LastSigBlockHash, Results1)
+                end,
             State#state{results = Results2}
     end;
-handle_worker_msg(_WorkerPid, {add_result, BlockHash, Result},
+handle_worker_msg(_WorkerPid, {update_result, LastSigBlockHash, Result},
                   #state{results = Results} = State) ->
-    State#state{results = add_result(BlockHash, Result, Results)}.
+    {_Result1, BlockHash, BlockHeight} = get_result(LastSigBlockHash, Results),
+    ResultEntry = {Result, BlockHash, BlockHeight},
+    Results1 = add_result(LastSigBlockHash, ResultEntry, Results),
+    State#state{results = Results1}.
 
 handle_down(Worker, _Rsn, #state{workers = Workers} = State) ->
     State#state{workers = del_worker(Worker, Workers)}.
@@ -205,73 +252,49 @@ kill_worker({Pid, Ref} = Worker, #state{workers = Workers} = State) ->
     flush_worker_msgs(),
     State#state{workers = del_worker(Worker, Workers)}.
 
-set_prev_result_or_spawn_worker(Block, BlockHash, Fork,
-                                #state{results = Results} = State) ->
-    PrevKeyHash = aec_blocks:prev_key_hash(Block),
-    case get_result(PrevKeyHash, Results) of
-        R when ?IS_RESULT(R) ->
-            %% The PrevKeyHash key is associated with a result (PrevKeyHash is
-            %% a block hash of block at height HE - 1). The BlockHash is set to
-            %% point to the PrevKeyHash (so it's possible to retrieve the
-            %% result for BlockHash).
-            State#state{results = add_result(BlockHash, PrevKeyHash, Results)};
-        P when ?IS_POINTER(P) ->
-            %% The PrevKeyhash is associated with a pointer that is a block
-            %% hash at height HE - 1, which has the result. The BlockHash is
-            %% set to point to the same block hash at height HE - 1.  The
-            %% PrevKeyhash associated with the pointer can now be discarded to
-            %% avoid caching results for all the blocks between HE and H2 - 1
-            %% (inclusive).
-            %%
-            %% If there are 2 workers for block A and block B started within a
-            %% short time span and A is a previous block of B (A worker started
-            %% first, followed by B), then it can happen that the check_result
-            %% message from worker B will come before A's message, which is out
-            %% of order. In this case, worker B will compute the fork
-            %% signalling result and worker A is aborted, but there will be a
-            %% new entry for A_block_hash which is a pointer to the
-            %% last_signalling_block_hash that the B worker is computing fork
-            %% signalling result for. The results map:
-            %%
-            %% #{B_block_hash               => last_signalling_block_hash,
-            %%   A_block_hash               => last_signalling_block_hash,
-            %%   last_signalling_block_hash => pending_protocol | true | false}
-            %%
-            %% If C block arrives and its previous block is B, then the
-            %% B_block_hash entry is deleted and replaced with
-            %% C_block_hash_entry.
-            %%
-            %% #{C_block_hash               => last_signalling_block_hash,
-            %%   A_block_hash               => last_signalling_block_hash,
-            %%   last_signalling_block_hash => pending_protocol | true | false}
-            %%
-            %% Note, that A_block_hash entry stays in the results map, which is
-            %% not ideal. In case the check_result message comes out of order,
-            %% there will be an additional entry in the results map. It's not
-            %% an issue as the key blocks are added to the database in the
-            %% correct (and compute_fork_result/3 is called for each inserted
-            %% key block) and the time between inserting two key blocks is ~3
-            %% min. That's why the out of order messages do not happen in
-            %% general.
-            Results1 = add_result(BlockHash, P, Results),
-            Results2 = del_result(PrevKeyHash, Results1),
+set_prev_result_or_spawn_worker(Block, BlockHash, Fork, #state{results = Results} = State) ->
+    PrevKeyBlockHash = aec_blocks:prev_key_hash(Block),
+    BlockHeight = aec_blocks:height(Block),
+    case get_result(PrevKeyBlockHash, Results) of
+        {Result, _BlockHash1, _BlockHeight1} ->
+            %% The PrevKeyBlockHash key is associated with a result
+            %% (PrevKeyBlockHash is a block hash of block at height HE - 1).
+            %% The BlockHash is set to point to the PrevKeyBlockHash (so
+            %% it's possible to retrieve the result for BlockHash).
+            ResultEntry = {Result, BlockHash, BlockHeight},
+            Results1 = add_result(PrevKeyBlockHash, ResultEntry, Results),
+            Results2 = add_result(BlockHash, PrevKeyBlockHash, Results1),
             State#state{results = Results2};
+        LastSigBlockHash when ?IS_POINTER(LastSigBlockHash) ->
+            %% The PrevKeyBlockHash is associated with a pointer that points to
+            %% a block hash at height HE - 1 (LastSigBlockHash), which has the
+            %% result. The BlockHash is set to point to the same block hash at
+            %% height HE - 1. The PrevKeyBlockHash associated with the pointer
+            %% can now be discarded as just the pointer associated with the top
+            %% block is needed (Block has greater height than PrevKeyBlock).
+            {Result, _BlockHash1, _BlockHeight1} = get_result(LastSigBlockHash, Results),
+            ResultEntry = {Result, BlockHash, BlockHeight},
+            Results1 = add_result(LastSigBlockHash, ResultEntry, Results),
+            Results2 = add_result(BlockHash, LastSigBlockHash, Results1),
+            Results3 = del_result(PrevKeyBlockHash, Results2),
+            State#state{results = Results3};
         undefined ->
-            %% There is no result reachable via PrevKeyhash. A new process is
-            %% spawned, it will set both a pointer (for BlockHash) and a result
-            %% for a block hash at height HE - 1.
+            %% There is no result reachable via PrevKeyBlockHash. A new process
+            %% is spawned, it will set both a pointer (for BlockHash) and a
+            %% result for a block hash at height HE - 1.
             spawn_worker(Block, BlockHash, Fork, State)
     end.
 
 worker_process(ParentPid, Block, BlockHash, Fork) ->
+    BlockHeight = aec_blocks:height(Block),
     case search_last_signalling_block(Block, BlockHash, Fork) of
         {ok, LastSigBlock, LastSigBlockHash} ->
-            send_worker_msg(ParentPid, {check_result, BlockHash, LastSigBlockHash}),
+            send_worker_msg(ParentPid, {check_result, BlockHash, BlockHeight, LastSigBlockHash}),
             case await_server_msg(ParentPid) of
                 {ok, compute} ->
                     case compute_fork_signalling_result(LastSigBlock, LastSigBlockHash, Fork) of
                         {ok, Result} ->
-                            send_worker_msg(ParentPid, {add_result, LastSigBlockHash, Result});
+                            send_worker_msg(ParentPid, {update_result, LastSigBlockHash, Result});
                         {error, _Rsn} = Err ->
                             Err
                     end;
@@ -289,10 +312,10 @@ search_last_signalling_block(Block, BlockHash, Fork) ->
         true ->
             {ok, Block, BlockHash};
         false ->
-            PrevKeyHash = aec_blocks:prev_key_hash(Block),
-            case get_key_block(PrevKeyHash) of
+            PrevKeyBlockHash = aec_blocks:prev_key_hash(Block),
+            case get_key_block(PrevKeyBlockHash) of
                 Block1 when Block1 =/= not_found ->
-                    search_last_signalling_block(Block1, PrevKeyHash, Fork);
+                    search_last_signalling_block(Block1, PrevKeyBlockHash, Fork);
                 not_found ->
                     {error, block_not_found}
             end
@@ -309,11 +332,11 @@ compute_fork_signalling_result(Block, _BlockHash, Fork, Count) ->
         true ->
             {ok, Count + count_inc(is_matching_info_present(Block, Fork))};
         false ->
-            PrevKeyHash = aec_blocks:prev_key_hash(Block),
-            case get_key_block(PrevKeyHash) of
+            PrevKeyBlockHash = aec_blocks:prev_key_hash(Block),
+            case get_key_block(PrevKeyBlockHash) of
                 Block1 when Block1 =/= not_found ->
                     Count1 = Count + count_inc(is_matching_info_present(Block, Fork)),
-                    compute_fork_signalling_result(Block1, PrevKeyHash, Fork, Count1);
+                    compute_fork_signalling_result(Block1, PrevKeyBlockHash, Fork, Count1);
                 not_found ->
                     {error, block_not_found}
             end
@@ -340,14 +363,16 @@ is_matching_info_present(Block, #{info_field := InfoField}) ->
     Info = aec_headers:info(aec_blocks:to_header(Block)),
     Info =:= InfoField.
 
-get_key_block(PrevKeyHash) ->
-    case aec_chain:get_block(PrevKeyHash) of
+get_key_block(BlockHash) ->
+    case aec_chain:get_block(BlockHash) of
         {ok, Block} -> Block;
         error       -> not_found
     end.
 
-add_result(BlockHash, Result, Results) ->
-    maps:put(BlockHash, Result, Results).
+add_result(BlockHash, LastSigBlockHash, Results) when ?IS_POINTER(LastSigBlockHash) ->
+    maps:put(BlockHash, LastSigBlockHash, Results);
+add_result(BlockHash, ResultEntry, Results) ->
+    maps:put(BlockHash, ResultEntry, Results).
 
 del_result(BlockHash, Results) ->
     maps:remove(BlockHash, Results).
