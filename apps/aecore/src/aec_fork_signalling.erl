@@ -286,24 +286,36 @@ set_prev_result_or_spawn_worker(Block, BlockHash, Fork, #state{results = Results
     end.
 
 worker_process(ParentPid, Block, BlockHash, Fork) ->
+    Self = self(),
     BlockHeight = aec_blocks:height(Block),
+    lager:debug("Worker started, block hash: ~p, block height: ~p, pid: ~p",
+                [BlockHash, BlockHeight, Self]),
     case search_last_signalling_block(Block, BlockHash, Fork) of
         {ok, LastSigBlock, LastSigBlockHash} ->
+            lager:debug("Worker found last signalling block: ~p, pid: ~p", [LastSigBlockHash, Self]),
             send_worker_msg(ParentPid, {check_result, BlockHash, BlockHeight, LastSigBlockHash}),
             case await_server_msg(ParentPid) of
                 {ok, compute} ->
+                    lager:debug("Worker started fork signalling result computation, pid: ~p", [Self]),
                     case compute_fork_signalling_result(LastSigBlock, LastSigBlockHash, Fork) of
                         {ok, Result} ->
+                            lager:debug("Worker computed fork signalling result: ~p, pid: ~p",
+                                        [Result, Self]),
                             send_worker_msg(ParentPid, {update_result, LastSigBlockHash, Result});
-                        {error, _Rsn} = Err ->
+                        {error, Rsn} = Err ->
+                            lager:error("Worker fork signalling result computation error: ~p, pid: ~p",
+                                        [Rsn, Self]),
                             Err
                     end;
                 {ok, abort} ->
+                    lager:debug("Worker fork signalling result computation aborted, pid: ~p", [Self]),
                     aborted;
-                {error, _Rsn} = Err ->
+                {error, Rsn} = Err ->
+                    lager:error("Worker await server message error: ~p, pid: ~p", [Rsn, Self]),
                     Err
             end;
-        {error, _Rsn} = Err ->
+        {error, Rsn} = Err ->
+            lager:error("Worker search last signalling block error: ~p, pid: ~p", [Rsn, Self]),
             Err
     end.
 
