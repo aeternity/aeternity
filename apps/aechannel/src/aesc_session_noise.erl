@@ -395,14 +395,12 @@ try_cands([], Tries, Races, Type, Info, St) ->
     lager:debug("Exhausted candidates (Races = ~p); retrying at once", [Races]),
     try_cands(get_cands(Type, Info), Tries, 0, Type, Info, St).
 
-
 close_econn(undefined) ->
     ok;
 close_econn(EConn) ->
     try enoise:close(EConn)
     catch _:_ -> ok
     end.
-
 
 cast(P, Msg) ->
     lager:debug("to noise session ~p: ~p", [P, Msg]),
@@ -417,21 +415,21 @@ tell_fsm({_, _} = Msg, #st{fsm = Fsm}) ->
 
 tcp_opts(_Op, Opts) ->
     case lists:keyfind(tcp, 1, Opts) of
-        false -> tcp_defaults();
+        false ->
+            tcp_defaults();
         {_, TcpOpts} ->
-            [Opt || Opt <- tcp_defaults(),
-                    not tcp_opt_member(Opt, TcpOpts)]
-                ++ TcpOpts
+            [Opt || Opt <- tcp_defaults(), not tcp_opt_member(Opt, TcpOpts)]
+            ++ TcpOpts
     end.
-
 
 noise_defaults() ->
     [{noise, <<"Noise_XK_25519_ChaChaPoly_BLAKE2b">>}].
 
 tcp_defaults() ->
-    [{active, true},
-     {reuseaddr, true},
-     {mode, binary}].
+    [ {active, true}
+    , {reuseaddr, true}
+    , {mode, binary}
+    ].
 
 tcp_opt_member({mode,M}, L) ->
     %% handle supported short forms 'binary' and 'list'
@@ -439,8 +437,7 @@ tcp_opt_member({mode,M}, L) ->
 tcp_opt_member({K,_}, L) ->
     lists:keymember(K, 1, L).
 
-
 enoise_opts(_Op, Opts0) ->
     Opts = lists:keydelete(tcp, 1, Opts0),
-    [Opt || {K,_} = Opt <- noise_defaults(),
-            not lists:keymember(K, 1, Opts)] ++ Opts.
+    [Opt || {K,_} = Opt <- noise_defaults(), not lists:keymember(K, 1, Opts)]
+    ++ Opts.
