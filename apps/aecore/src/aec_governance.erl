@@ -155,11 +155,11 @@ tx_base_gas(oracle_response_tx, _)        -> ?TX_BASE_GAS.
 byte_gas() ->
     ?BYTE_GAS.
 
-minimum_gas_price(Height) ->
-    case aec_hard_forks:protocol_effective_at_height(Height) of
-        ?ROMA_PROTOCOL_VSN -> 1;
-        Vsn when Vsn >= ?MINERVA_PROTOCOL_VSN -> 1000000
-    end.
+minimum_gas_price(?ROMA_PROTOCOL_VSN) ->
+    1;
+minimum_gas_price(Protocol) when Protocol >= ?MINERVA_PROTOCOL_VSN ->
+    1000000.
+
 
 %% In key blocks / generations
 %%

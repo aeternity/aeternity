@@ -899,12 +899,12 @@ check_minimum_miner_gas_price(Tx, _TxHash, Block, _BlockHash, _Trees, _Event) ->
     end.
 
 check_minimum_gas_price(Tx, _TxHash, Block, _BlockHash, _Trees, _Event) ->
-    Height = aec_blocks:height(Block),
+    Protocol = aec_blocks:version(Block),
     case aetx:gas_price(aetx_sign:tx(Tx)) of
         undefined ->
             ok;
         GasPrice when is_integer(GasPrice) ->
-            case GasPrice >= aec_governance:minimum_gas_price(Height) of
+            case GasPrice >= aec_governance:minimum_gas_price(Protocol) of
                 true  -> ok;
                 false -> {error, too_low_gas_price}
             end
