@@ -1330,7 +1330,7 @@ do_meta(Owner, AuthData, InnerTx, MetaTx, Opts, S) ->
             {oracle_register_tx, ORegTx} ->
                 {ok, Res0#{oracle_id => aeo_register_tx:account_pubkey(ORegTx)}};
             {oracle_query_tx, OQueryTx} ->
-                OPK = aeo_query_tx:oracle_pubkey(OQueryTx),
+                {_, OPK} = aeser_id:specialize(aeo_query_tx:oracle_id(OQueryTx)),
                 {ok, Res0#{oracle_query_id => aec_hash:hash(pubkey, <<AuthId/binary, OPK/binary>>)}};
             {channel_create_tx, CCTx} ->
                 ChannelId = aesc_channels:pubkey(aesc_create_tx:initiator_pubkey(CCTx),

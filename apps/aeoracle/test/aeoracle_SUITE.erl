@@ -23,6 +23,7 @@
         , prune_response_long/1
         , query_fee/1
         , query_oracle/1
+        , query_oracle_via_name/1
         , query_oracle_negative/1
         , query_oracle_negative_dynamic_fee/1
         , query_oracle_type_check/1
@@ -67,6 +68,7 @@ groups() ->
                                  , extend_oracle_negative
                                  , extend_oracle_negative_dynamic_fee
                                  , query_oracle
+                                 , query_oracle_via_name
                                  , query_oracle_negative
                                  , query_oracle_negative_dynamic_fee
                                  , query_oracle_type_check
@@ -85,6 +87,12 @@ groups() ->
                    ]}
     ].
 
+
+init_per_testcase(query_oracle_via_name, Config) ->
+    case aect_test_utils:latest_protocol_version() >= ?LIMA_PROTOCOL_VSN of
+        true -> Config;
+        _ -> {skip, requires_lima}
+    end;
 init_per_testcase(register_oracle_negative, Config) ->
     meck:new(aec_governance, [passthrough]),
     Config;
@@ -366,6 +374,66 @@ extend_oracle(Cfg) ->
 %%% Query oracle
 %%%===================================================================
 -define(ORACLE_QUERY_HEIGHT, 3).
+-define(NAME, aens_test_utils:fullname(<<"someverylongnameherewithfourpartbitseasy">>)).
+query_oracle_via_name(Cfg) ->
+    RegisterQueryFee = 5,
+    {OracleKey, InitS0}  = register_oracle(Cfg, #{query_fee => RegisterQueryFee}),
+    {SenderKey, S0}  = aeo_test_utils:setup_new_account(InitS0),
+    OracleId = aeser_id:create(oracle, OracleKey),
+
+    Trees0 = aeo_test_utils:trees(S0),
+    Env0   = aetx_env:tx_env(?ORACLE_QUERY_HEIGHT),
+    Salt   = 123,
+    CHash  = aens_hash:commitment_hash(?NAME, Salt),
+
+    {ok, PreclaimTx} = aens_preclaim_tx:new(
+                         aens_test_utils:preclaim_tx_spec(SenderKey, CHash, S0)),
+    {ok, Trees1, _}  = aetx:process(PreclaimTx, Trees0, Env0),
+    S1 = aeo_test_utils:set_trees(Trees1, S0),
+    {value, _} = aens_state_tree:lookup_commitment(CHash, aec_trees:ns(Trees1)),
+
+    NameFee = case aec_hard_forks:protocol_effective_at_height(?ORACLE_QUERY_HEIGHT) of
+                  V when V >= ?LIMA_PROTOCOL_VSN -> aec_governance:name_claim_fee(?NAME, V);
+                  _ -> prelima
+              end,
+    {ok, NameHash} = aens:get_name_hash(?NAME),
+    Env1   = aetx_env:tx_env(?ORACLE_QUERY_HEIGHT + 1),
+    {ok, ClaimTx} = aens_claim_tx:new(
+                      aens_test_utils:claim_tx_spec(SenderKey, ?NAME, Salt, NameFee,
+                                                    #{nonce => 2},
+                                                    S1)),
+    {ok, Trees2, _}  = aetx:process(ClaimTx, Trees1, Env1),
+    S2 = aeo_test_utils:set_trees(Trees2, S1),
+    {value, _} = aens_state_tree:lookup_name(NameHash, aec_trees:ns(Trees2)),
+
+    Pointer = aens_pointer:new(<<"oracle_pubkey">>, OracleId),
+    Env2   = aetx_env:tx_env(?ORACLE_QUERY_HEIGHT + 2),
+    {ok, UpdateTx} = aens_update_tx:new(
+                       aens_test_utils:update_tx_spec(SenderKey, NameHash,
+                                                      #{nonce => 3, pointers => [Pointer]},
+                                                      S2)),
+    {ok, Trees3, _}  = aetx:process(UpdateTx, Trees2, Env2),
+    S3 = aeo_test_utils:set_trees(Trees3, S2),
+    {value, NameObj} = aens_state_tree:lookup_name(NameHash, aec_trees:ns(Trees3)),
+    ?assertEqual(aens_names:pointers(NameObj), [Pointer]),
+
+    NameId = aeser_id:create(name, NameHash),
+    Q1     = aeo_test_utils:query_tx(SenderKey, NameId, #{nonce => 4}, S2),
+    Height = ?ORACLE_QUERY_HEIGHT + 3,
+    Env3   = aetx_env:tx_env(Height),
+    {ok, Trees4, _} = aetx:process(Q1, Trees3, Env3),
+    S4 = aeo_test_utils:set_trees(Trees4, S3),
+
+    {oracle_query_tx, QTx} = aetx:specialize_type(Q1),
+    ID = aeo_query:id(aeo_query:new(QTx, Height)),
+    Env4 = aetx_env:tx_env(Height),
+    RTx1 = aeo_test_utils:response_tx(OracleKey, ID, <<"42">>, #{nonce => 2}, S4),
+    {ok, Trees5, _} = aetx:process(RTx1, Trees4, Env4),
+    _TTL1 = aeo_oracles:ttl(aeo_state_tree:get_oracle(OracleKey, aec_trees:oracles(Trees5))),
+
+    ok.
+
+
 query_oracle_negative(Cfg) ->
     RegisterQueryFee = 5,
     {OracleKey, S}  = register_oracle(Cfg, #{query_fee => RegisterQueryFee}),

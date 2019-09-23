@@ -50,6 +50,7 @@
 %%% NS API
 -export([ name_entry/1
         , resolve_name/2
+        , resolve_namehash/2
         ]).
 
 %%% Oracles API
@@ -222,6 +223,14 @@ name_entry(Name) ->
 resolve_name(Key, Name) ->
     case get_top_state() of
         {ok, Trees} -> aens:resolve(Key, Name, aec_trees:ns(Trees));
+        error -> {error, no_state_trees}
+    end.
+
+-spec resolve_namehash(binary(), binary()) ->
+    {'ok', aeser_id:id()} | {error, atom()}.
+resolve_namehash(Key, NameHash) ->
+    case get_top_state() of
+        {ok, Trees} -> aens:resolve_hash(Key, NameHash, aec_trees:ns(Trees));
         error -> {error, no_state_trees}
     end.
 

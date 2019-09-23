@@ -209,16 +209,28 @@ get_nonce_from_account_id(AccountKey) ->
     fun(Req, State) ->
         case maps:get(nonce, Req, undefined) of
             undefined ->
-                Pubkey = case aeser_id:specialize(maps:get(AccountKey, State)) of
-                             {account, A} -> A;
-                             {oracle, O} -> O
-                         end,
-                case aec_next_nonce:pick_for_account(Pubkey) of
-                    {ok, Nonce} ->
-                        {ok, maps:put(nonce, Nonce, State)};
-                    {error, account_not_found} ->
-                        Msg = "Account of " ++ atom_to_list(AccountKey) ++ " not found",
-                        {error, {404, [], #{<<"reason">> => list_to_binary(Msg)}}}
+                Pick = fun (PK) ->
+                               case aec_next_nonce:pick_for_account(PK) of
+                                   {ok, Nonce} ->
+                                       {ok, maps:put(nonce, Nonce, State)};
+                                   {error, account_not_found} ->
+                                       Msg = "Account of " ++ atom_to_list(AccountKey)
+                                           ++ " not found",
+                                       {error, {404, [], #{<<"reason">> =>
+                                                               list_to_binary(Msg)}}}
+                               end
+                       end,
+                case aeser_id:specialize(maps:get(AccountKey, State)) of
+                    {account, A} -> Pick(A);
+                    {oracle, O} -> Pick(O);
+                    {name, N} ->
+                        case aec_chain:resolve_namehash(<<"oracle_pubkey">>, N) of
+                            {ok, OracleId} ->
+                                Pick(aeser_id:specialize(OracleId, oracle));
+                            {error, _} ->
+                                Msg = "Could not resolve oracle from name hash",
+                                {error, {404, [], #{<<"reason">> => list_to_binary(Msg)}}}
+                        end
                 end;
             Nonce ->
                 {ok, maps:put(nonce, Nonce, State)}
