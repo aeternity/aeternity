@@ -100,27 +100,26 @@ min_tx_gas() -> ?TX_BASE_GAS.
 -spec tx_base_gas(aetx:tx_type(), aec_hard_forks:protocol_vsn(), aect_contracts:abi_version()) ->
     non_neg_integer().
 %% Make sure we fail when we get unknown tx type
-tx_base_gas(contract_create_tx, Protocol, ABI) ->
-    case {ABI, Protocol} of
-        {?ABI_FATE_SOPHIA_1, ?LIMA_PROTOCOL_VSN} -> 5 *?TX_BASE_GAS;
-        _                                        -> 5 *?TX_BASE_GAS
+tx_base_gas(contract_create_tx, _Protocol, ABI) ->
+    case ABI of
+        ?ABI_FATE_SOPHIA_1 -> 5 * ?TX_BASE_GAS;
+        ?ABI_AEVM_SOPHIA_1 -> 5 * ?TX_BASE_GAS
     end;
 tx_base_gas(contract_call_tx, Protocol, ABI) ->
-    case {ABI, Protocol} of
-        {?ABI_FATE_SOPHIA_1, ?LIMA_PROTOCOL_VSN} -> 30 *?TX_BASE_GAS;
-        _                                        -> 30 *?TX_BASE_GAS
+    case ABI of
+        ?ABI_FATE_SOPHIA_1 -> 12 * ?TX_BASE_GAS;
+        ?ABI_AEVM_SOPHIA_1 -> 30 * ?TX_BASE_GAS
     end;
-tx_base_gas(ga_attach_tx, Protocol, ABI) ->
-    case {ABI, Protocol} of
-        {?ABI_FATE_SOPHIA_1, ?LIMA_PROTOCOL_VSN} -> 5 *?TX_BASE_GAS;
-        _                                        -> 5 *?TX_BASE_GAS
+tx_base_gas(ga_attach_tx, _Protocol, ABI) ->
+    case ABI of
+        ?ABI_FATE_SOPHIA_1 -> 5 * ?TX_BASE_GAS;
+        ?ABI_AEVM_SOPHIA_1 -> 5 * ?TX_BASE_GAS
     end;
-tx_base_gas(ga_meta_tx, Protocol, ABI) ->
-    case {ABI, Protocol} of
-        {?ABI_FATE_SOPHIA_1, ?LIMA_PROTOCOL_VSN} -> 5 *?TX_BASE_GAS;
-        _                                        -> 5 *?TX_BASE_GAS
+tx_base_gas(ga_meta_tx, _Protocol, ABI) ->
+    case ABI of
+        ?ABI_FATE_SOPHIA_1 -> 5 * ?TX_BASE_GAS;
+        ?ABI_AEVM_SOPHIA_1 -> 5 * ?TX_BASE_GAS
     end.
-
 
 
 -spec tx_base_gas(aetx:tx_type(), aec_hard_forks:protocol_vsn()) ->
