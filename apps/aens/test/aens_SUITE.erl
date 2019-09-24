@@ -95,12 +95,12 @@ init_per_group(transactions, Cfg) ->
      {name, ?NAME} | Cfg];
 init_per_group(no_auction_long_names, Cfg) ->
     Protocol = aec_hard_forks:protocol_effective_at_height(1),
-    [{protocol, Protocol}, {name, <<"ascii-name-of-32-characters-long">>} | Cfg];
+    [{protocol, Protocol}, {name, gen_name(aec_governance:name_max_length_starting_auction()+1)} | Cfg];
 init_per_group(_, Cfg) ->
     Protocol = aec_hard_forks:protocol_effective_at_height(1),
     %% One day auction open with cheapest possible name (31 char)
     if Protocol < ?LIMA_PROTOCOL_VSN -> {skip, no_auction_before_lima};
-       true -> [{protocol, Protocol}, {name, <<"asciiname-of-31-characters-long">>} | Cfg]
+       true -> [{protocol, Protocol}, {name, gen_name(aec_governance:name_max_length_starting_auction())} | Cfg]
     end.
 
 end_per_group(transactions, Cfg) ->
@@ -108,6 +108,13 @@ end_per_group(transactions, Cfg) ->
     Cfg;
 end_per_group(_, Cfg) ->
     Cfg.
+
+%%%===================================================================
+%%% Init helper
+%%%===================================================================
+
+gen_name(Length) ->
+    <<<<"x">>||_<-lists:seq(1,Length)>>.
 
 %%%===================================================================
 %%% Preclaim

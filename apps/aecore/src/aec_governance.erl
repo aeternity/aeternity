@@ -21,6 +21,7 @@
          name_protection_period/0,
          name_claim_preclaim_delta/0,
          name_registrars/1,
+         name_max_length_starting_auction/0,
          non_test_registrars/0,
          possible_name_registrars/0,
          micro_block_cycle/0,
@@ -265,17 +266,22 @@ name_claim_size(Name) ->
     %% No payment for registrars, Name should have been validated before
     size(AsciiName) - size(Domain) - 1.
 
+%% The longest name that triggers auction
+name_max_length_starting_auction() ->
+    12.
+
 %% Give possibility to have the actual name under consensus,
 %% possible to define different bid times for different names.
 %% No auction for names of 32 characters or longer
 -spec name_claim_bid_timeout(binary(), non_neg_integer()) -> non_neg_integer().
 name_claim_bid_timeout(Name, Protocol) when Protocol >= ?LIMA_PROTOCOL_VSN ->
     NameSize = name_claim_size(Name),
+    MaxAuctionName = name_max_length_starting_auction(),
     BidTimeout =
-        if NameSize > 31 -> 0;
+        if NameSize > MaxAuctionName -> 0;
            NameSize > 8  -> 1 * ?MULTIPLIER_DAY;  %% 480 blocks
            NameSize > 4  -> 31 * ?MULTIPLIER_DAY; %% 14880 blocks
-           true          -> 62 * ?MULTIPLIER_DAY %% 29760 blocks
+           true          -> 62 * ?MULTIPLIER_DAY  %% 29760 blocks
         end,
     %% allow overwrite by configuration for test
     aeu_env:user_config_or_env([<<"mining">>, <<"name_claim_bid_timeout">>],
