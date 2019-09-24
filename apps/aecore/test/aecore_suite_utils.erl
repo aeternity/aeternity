@@ -141,10 +141,7 @@ patron() ->
 known_mocks() ->
     #{ block_pow    => #mock_def{ module     = aec_mining
                                 , init_fun   = mock_block_mining_init
-                                , finish_fun = mock_block_mining_end},
-       sc_cache_kdf => #mock_def{ module     = aesc_state_cache
-                                , init_fun   = mock_kdf_init
-                                , finish_fun = mock_kdf_end}
+                                , finish_fun = mock_block_mining_end}
      }.
 
 %%%=============================================================================

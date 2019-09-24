@@ -46,7 +46,6 @@ respond(Port, #{} = Opts0) ->
 init_checks(#{existing_channel_id := ChId, offchain_tx := Tx, role := Role} = Opts)
   when is_binary(ChId) andalso Tx =/= undefined ->
     Checks = [ fun() -> aesc_checks:known_role(Role) end
-             , fun() -> aesc_checks:state_password_in_opts(Opts) end
              ],
     aeu_validation:run(Checks);
 init_checks(Opts) ->
@@ -58,6 +57,5 @@ init_checks(Opts) ->
              , fun() -> aesc_checks:amounts(Opts) end
              , fun() -> aesc_checks:accounts(Initiator, Responder, Role) end
              , fun() -> aesc_checks:lock_period(LockPeriod) end
-             , fun() -> aesc_checks:state_password_in_opts(Opts) end
              ],
     aeu_validation:run(Checks).

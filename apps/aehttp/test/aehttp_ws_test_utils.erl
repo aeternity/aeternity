@@ -25,6 +25,7 @@
          wait_for_channel_event/2,
          wait_for_msg/4,
          wait_for_channel_msg/2,
+         wait_for_any_channel_msg/1,
          wait_for_channel_msg_event/3,
          wait_for_connect/1,
          wait_for_connect_any/0,
@@ -293,6 +294,9 @@ wait_for_event(ConnPid, Origin, Action, Timeout) ->
 wait_for_msg(ConnPid, Origin, Action, Timeout) ->
     wait_for_msg(msg, ConnPid, Origin, Action, Timeout).
 
+wait_for_any_msg(ConnPid, Origin, Timeout) ->
+    wait_for_any_msg(msg, ConnPid, Origin, Timeout).
+
 %% consumes messages from the mailbox:
 %% {Sender::pid(), websocket_event, Origin::atom(), Action::atom()}
 %% {Sender::pid(), websocket_event, Origin::atom(), Action::atom(), Payload::map()}
@@ -308,6 +312,28 @@ wait_for_msg(Type, ConnPid, Origin, Action, Timeout) ->
             {ConnPid, websocket_event, Origin, Action, Msg} ->
                 {ok, msg_data(Type, Msg)};
             {ConnPid, websocket_event, Origin, Action} ->
+                ok;
+            {'DOWN', MRef, _, _, Reason} ->
+                error({connection_died, Reason})
+        after
+            Timeout ->
+                error({timeout, process_info(self(), messages)})
+        end
+    after
+        demonitor(MRef)
+    end.
+
+-spec wait_for_any_msg(msg | payload, pid(), atom(), integer()) ->
+    ok | {ok, map()} | {ok, atom(), Tag::term(), map()}.
+wait_for_any_msg(Type, ConnPid, Origin, Timeout) ->
+    MRef = monitor(process, ConnPid),
+    try
+        receive
+            {ConnPid, websocket_event, Origin, Action, Tag, Msg} ->
+                {ok, Action, Tag, msg_data(Type, Msg)};
+            {ConnPid, websocket_event, Origin, Action, Msg} ->
+                {ok, Action, msg_data(Type, Msg)};
+            {ConnPid, Action, websocket_event, Origin, Action} ->
                 ok;
             {'DOWN', MRef, _, _, Reason} ->
                 error({connection_died, Reason})
@@ -342,6 +368,9 @@ wait_for_msg_event(Type, ConnPid, Origin, Action, Event, Timeout) ->
 
 wait_for_channel_msg(ConnPid, Action) ->
     wait_for_msg(ConnPid, ?CHANNEL, Action, ?DEFAULT_EVENT_TIMEOUT).
+
+wait_for_any_channel_msg(ConnPid) ->
+    wait_for_any_msg(ConnPid, ?CHANNEL, ?DEFAULT_EVENT_TIMEOUT).
 
 wait_for_channel_msg_event(ConnPid, Action, Event) ->
     wait_for_msg_event(msg, ConnPid, ?CHANNEL, Action, Event, ?DEFAULT_EVENT_TIMEOUT).
@@ -770,6 +799,8 @@ maybe_produce_info_from_msg(#{<<"params">> := #{<<"data">> := #{<<"event">> := E
 maybe_produce_info_from_msg(_Msg, _S) ->
     pass.
 
+maybe_produce_info_for_event(<<"fsm_up">>, S) ->
+    do_log(info, "The local fsm has been started", S);
 maybe_produce_info_for_event(<<"channel_open">>, S) ->
     do_log(info, "Received an WebSocket opening request", S);
 maybe_produce_info_for_event(<<"channel_accept">>, S) ->

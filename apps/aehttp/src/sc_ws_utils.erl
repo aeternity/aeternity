@@ -123,6 +123,16 @@ parse_by_type({hash, Type}, V, RecordField) when is_binary(V) ->
             {error, {RecordField, broken_encoding}};
         {ok, _} = OK -> OK
     end;
+parse_by_type(fsm_id, V, RecordField) when is_binary(V) ->
+    case aeser_api_encoder:safe_decode(bytearray, V) of
+        {error, _} ->
+            %% This also includes the broken_encoding message
+            {error, invalid_fsm_id};
+        {ok, Result} when byte_size(Result) /= 32 ->
+            {error, invalid_fsm_id};
+        {ok, Result} ->
+            {ok, aesc_fsm_id:from_binary(Result)}
+    end;
 parse_by_type({alt, L}, V, RecordField) when is_list(L) ->
     lists:foldl(
       fun(_, {ok,_} = Ok) -> Ok;
