@@ -271,9 +271,7 @@ apply_pre_transformations(?MINERVA_PROTOCOL_VSN, Trees, _TxEnv) ->
 apply_pre_transformations(?FORTUNA_PROTOCOL_VSN, Trees, _TxEnv) ->
     aec_block_fork:apply_fortuna(Trees);
 apply_pre_transformations(?LIMA_PROTOCOL_VSN, Trees, TxEnv) ->
-    aec_block_fork:apply_lima(Trees, TxEnv);
-apply_pre_transformations(Version, Trees, _TxEnv) when Version > ?LIMA_PROTOCOL_VSN ->
-    Trees.
+    aec_block_fork:apply_lima(Trees, TxEnv).
 
 -spec calls(trees()) -> aect_call_state_tree:tree().
 calls(Trees) ->
