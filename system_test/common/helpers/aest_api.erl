@@ -393,13 +393,19 @@ sc_wait_open_(IConn, RConn, Type) ->
 sc_wait_close(Channel) ->
     #{ initiator := {_IAccount, IConn}
      , responder := {_RAccount, RConn} } = Channel,
-    {ok, #{ <<"event">> := <<"closing">> }} = sc_wait_for_channel_event(IConn, info),
-    {ok, #{ <<"event">> := <<"closed_confirmed">> }} = sc_wait_for_channel_event(IConn, info),
+    case sc_wait_for_channel_event(IConn, info) of
+        {ok, #{ <<"event">> := <<"closing">> }} ->
+            {ok, #{ <<"event">> := <<"closed_confirmed">> }} = sc_wait_for_channel_event(IConn, info),
+            {ok, #{ <<"event">> := <<"died">> }} = sc_wait_for_channel_event(IConn, info);
+        {ok, #{ <<"event">> := <<"close_mutual">> }} ->
+            %% initiator just dies
+            {ok, #{ <<"event">> := <<"died">> }} = sc_wait_for_channel_event(IConn, info)
+    end,
     {ok, #{ <<"event">> := <<"shutdown">> }} = sc_wait_for_channel_event(RConn, info),
     {ok, #{ <<"event">> := <<"closing">> }} = sc_wait_for_channel_event(RConn, info),
     {ok, #{ <<"event">> := <<"closed_confirmed">> }} = sc_wait_for_channel_event(RConn, info),
-    {ok, #{ <<"event">> := <<"died">> }} = sc_wait_for_channel_event(IConn, info),
     {ok, #{ <<"event">> := <<"died">> }} = sc_wait_for_channel_event(RConn, info),
+    %% remove timer at own risk
     timer:sleep(1000),
     ok.
 

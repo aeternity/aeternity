@@ -81,6 +81,17 @@ init_per_group(_TG, Config) ->
 init_per_testcase(_TC, Config) ->
     aest_nodes:ct_setup(Config).
 
+%% TODO: once We move from Fortuna to Lima compatibility, remove the conf
+%% key skip_log_verification_for_nodes. It is used only for temporarily
+%% silencing error log messages in aeternity.log
+end_per_testcase(sc_leave_upgrade_reestablish_same_node_upgrade, Config) ->
+    aest_nodes:ct_cleanup([{skip_log_verification_for_nodes, [node1]} | Config]);
+end_per_testcase(sc_leave_upgrade_reestablish_different_nodes_full_upgrade, Config) ->
+    aest_nodes:ct_cleanup([{skip_log_verification_for_nodes, [alice1, bob1]} | Config]);
+end_per_testcase(sc_leave_upgrade_reestablish_different_nodes_partial_upgrade, Config) ->
+    aest_nodes:ct_cleanup([{skip_log_verification_for_nodes, [alice1, bob1, alice2]} | Config]);
+end_per_testcase(sc_leave_upgrade_reestablish_different_nodes_partial_to_full_upgrade, Config) ->
+    aest_nodes:ct_cleanup([{skip_log_verification_for_nodes, [alice1]} | Config]);
 end_per_testcase(_TC, Config) ->
     aest_nodes:ct_cleanup(Config).
 
@@ -112,7 +123,7 @@ sc_leave_upgrade_reestablish_different_nodes_partial_upgrade(Cfg) ->
     sc_leave_upgrade_reestablish({{alice1, old}, {bob1, old}}, {{alice2, old}, {bob2, new}}, Cfg).
 
 sc_leave_upgrade_reestablish_different_nodes_partial_to_full_upgrade(Cfg) ->
-    sc_leave_upgrade_reestablish({{alice1, old}, {bob1, new}}, {{alice2, new}, {bob2, new}}, Cfg).
+    sc_leave_upgrade_reestablish({{alice1, new}, {bob1, old}}, {{alice2, new}, {bob2, new}}, Cfg).
 
 %=== INTERNAL FUNCTIONS ========================================================
 
