@@ -264,11 +264,7 @@ perform_pre_transformations(Trees, _TxEnv, Protocol, Protocol) ->
 perform_pre_transformations(Trees, TxEnv, Protocol, PrevProtocol)
   when Protocol > PrevProtocol ->
     %% Fork.
-    apply_pre_transformations(Protocol, Trees, TxEnv);
-perform_pre_transformations(Trees, _TxEnv, Protocol, PrevProtocol)
-  when PrevProtocol > Protocol ->
-    %% Should not happen.
-    Trees.
+    apply_pre_transformations(Protocol, Trees, TxEnv).
 
 apply_pre_transformations(?MINERVA_PROTOCOL_VSN, Trees, _TxEnv) ->
     aec_block_fork:apply_minerva(Trees);
