@@ -1191,7 +1191,7 @@ perform_pre_transformations(Height, S) when Height > ?GENESIS_HEIGHT ->
     Trees = aect_test_utils:trees(S),
     Trees1 = aec_trees:perform_pre_transformations(Trees, TxEnv, PrevProtocol),
     {ok, aect_test_utils:set_trees(Trees1, S)};
-perform_pre_transformations(0, S) ->
+perform_pre_transformations(?GENESIS_HEIGHT, S) ->
     {ok, S}.
 
 new_account(Balance, S) ->
