@@ -151,8 +151,14 @@ sc_leave_upgrade_reestablish( {{BeforeNodeNameI, BeforeNodeTypeI}, {BeforeNodeNa
     HostPathR = node_db_host_path(BeforeNodeNameR, Cfg),
 
     OldVersion = proplists:get_value(state_channels_vsn, Cfg),
-    OldNodeF = fun(NodeName, DbHostPath) -> node_spec(NodeName, OldVersion, DbHostPath, true) end,
-    NewNodeF = fun(NodeName, DbHostPath) -> node_spec(NodeName, "local", DbHostPath, true) end,
+    OldNodeF =
+        fun(NodeName, DbHostPath) ->
+            node_spec(NodeName, OldVersion, DbHostPath, is_mining_node(NodeName))
+        end,
+    NewNodeF =
+        fun(NodeName, DbHostPath) ->
+            node_spec(NodeName, "local", DbHostPath, is_mining_node(NodeName))
+        end,
     SpecF = fun(old) -> OldNodeF; (new) -> NewNodeF end,
 
     %% Create node specs
@@ -267,3 +273,9 @@ populate_db_with_channels_force_progress_tx(NodeName, Cfg) ->
 assert_db_with_tx_reused(NodeName, TxHash = _DbFingerprint, _Cfg) ->
     aest_nodes:wait_for_value({txs_on_node, [TxHash]}, [NodeName], ?STARTUP_TIMEOUT, []), %% Uses GetTransactionByHash
     ok.
+
+is_mining_node(Bob) when Bob =:= bob1;
+                         Bob =:= bob2 ->
+    false;
+is_mining_node(_) ->
+    true.
