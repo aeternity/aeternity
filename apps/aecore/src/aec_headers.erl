@@ -562,6 +562,10 @@ deserialize_from_binary_partial(<<_Version:32,
             {error, malformed_header}
     end.
 
+%% The function does not check the validity of the protocol version based on
+%% height. It gets the protocol version from the block header. The protocol
+%% version check based on height is performed before inserting it into the
+%% database (aec_conductor).
 -spec deserialize_key_from_binary(deterministic_header_binary()) ->
                                          {'ok', key_header()}
                                        | {'error', term()}.
@@ -581,30 +585,29 @@ deserialize_key_from_binary(<<Version:32,
                               Time:64,
                               Info/binary
                             >>) ->
-    case aec_hard_forks:protocol_effective_at_height(Height) =:= Version of
-        false ->
-            {error, illegal_version};
-        true ->
-            PowEvidence = deserialize_pow_evidence_from_binary(PowEvidenceBin),
-            H = #key_header{height = Height,
-                            prev_hash = PrevHash,
-                            prev_key = PrevKeyHash,
-                            root_hash = RootHash,
-                            miner = Miner,
-                            beneficiary = Beneficiary,
-                            target = Target,
-                            pow_evidence = PowEvidence,
-                            nonce = Nonce,
-                            time = Time,
-                            version = Version,
-                            info = Info
-                           },
-            {ok, H}
-    end;
+    PowEvidence = deserialize_pow_evidence_from_binary(PowEvidenceBin),
+    H = #key_header{height = Height,
+                    prev_hash = PrevHash,
+                    prev_key = PrevKeyHash,
+                    root_hash = RootHash,
+                    miner = Miner,
+                    beneficiary = Beneficiary,
+                    target = Target,
+                    pow_evidence = PowEvidence,
+                    nonce = Nonce,
+                    time = Time,
+                    version = Version,
+                    info = Info
+                   },
+    {ok, H};
 deserialize_key_from_binary(_Other) ->
     {error, malformed_header}.
 
 
+%% The function does not check the validity of the protocol version based on
+%% height. It gets the protocol version from the block header. The protocol
+%% version check based on height is performed before inserting it into the
+%% database (aec_conductor).
 -spec deserialize_micro_from_binary(deterministic_header_binary()) ->
                                            {'ok', micro_header()}
                                          | {'error', term()}.
@@ -624,22 +627,16 @@ deserialize_micro_from_binary(<<Version:32,
     case Rest of
         <<PoFHash:PoFHashSize/binary,
           Signature:?BLOCK_SIGNATURE_BYTES/binary>> ->
-            ExpectedVsn = aec_hard_forks:protocol_effective_at_height(Height),
-            case  ExpectedVsn =:= Version of
-                false ->
-                    {error, illegal_version};
-                true ->
-                    H = #mic_header{height = Height,
-                                    pof_hash = PoFHash,
-                                    prev_hash = PrevHash,
-                                    prev_key = PrevKeyHash,
-                                    root_hash = RootHash,
-                                    signature = Signature,
-                                    txs_hash = TxsHash,
-                                    time = Time,
-                                    version = Version},
-                    {ok, H}
-            end;
+            H = #mic_header{height = Height,
+                            pof_hash = PoFHash,
+                            prev_hash = PrevHash,
+                            prev_key = PrevKeyHash,
+                            root_hash = RootHash,
+                            signature = Signature,
+                            txs_hash = TxsHash,
+                            time = Time,
+                            version = Version},
+            {ok, H};
         _ ->
             {error, malformed_header}
     end;

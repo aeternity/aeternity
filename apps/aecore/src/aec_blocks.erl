@@ -333,28 +333,21 @@ update_micro_candidate(#mic_block{} = Block, TxsRootHash, RootHash, Txs) ->
 %%% Serialization
 %%%===================================================================
 
+%% Serialization assumes the protocol version in the header to be valid for the
+%% provided height. This should have been validated before calling this
+%% function.
 -spec serialize_to_binary(block()) -> binary().
 serialize_to_binary(#key_block{} = Block) ->
     aec_headers:serialize_to_binary(to_key_header(Block));
 serialize_to_binary(#mic_block{} = Block) ->
-    Hdr    = to_micro_header(Block),
+    Hdr = to_micro_header(Block),
     HdrBin = aec_headers:serialize_to_binary(Hdr),
-    Height = aec_headers:height(Hdr),
-    Vsn    = version(Block),
-    case serialization_template(micro, Height, Vsn) of
-        {error, What} ->
-            error({serialization_error, What});
-        {ok, Template} ->
-            Txs = [ aetx_sign:serialize_to_binary(Tx) || Tx <- txs(Block)],
-            Rest = aeser_chain_objects:serialize(
-                     micro_block,
-                     Vsn,
-                     Template,
-                     [ {txs, Txs}
-                     , {pof, aec_pof:serialize(pof(Block))}
-                     ]),
-            <<HdrBin/binary, Rest/binary>>
-    end.
+    Version = aec_headers:version(Hdr),
+    Template = serialization_template(micro),
+    Txs = [aetx_sign:serialize_to_binary(Tx) || Tx <- txs(Block)],
+    Fields = [{txs, Txs}, {pof, aec_pof:serialize(pof(Block))}],
+    Rest = aeser_chain_objects:serialize(micro_block, Version, Template, Fields),
+    <<HdrBin/binary, Rest/binary>>.
 
 -spec deserialize_from_binary(binary()) -> {'error', term()} | {'ok', block()}.
 deserialize_from_binary(Bin) ->
@@ -368,27 +361,16 @@ deserialize_from_binary(Bin) ->
     end.
 
 deserialize_micro_block_from_binary(Bin, Header) ->
-    Vsn = aec_headers:version(Header),
-    case serialization_template(micro, aec_headers:height(Header), Vsn) of
-        {ok, Template} ->
-            [{txs, Txs0}, {pof, PoF0}] =
-                aeser_chain_objects:deserialize(micro_block, Vsn, Template, Bin),
-            Txs = [aetx_sign:deserialize_from_binary(Tx)
-                   || Tx <- Txs0],
-            PoF = aec_pof:deserialize(PoF0),
-            {ok, #mic_block{header = Header, txs = Txs, pof = PoF}};
-        Err = {error, _} ->
-            Err
-    end.
+    Version = aec_headers:version(Header),
+    Template =  serialization_template(micro),
+    [{txs, Txs0}, {pof, PoF0}] =
+        aeser_chain_objects:deserialize(micro_block, Version, Template, Bin),
+    Txs = [aetx_sign:deserialize_from_binary(Tx) || Tx <- Txs0],
+    PoF = aec_pof:deserialize(PoF0),
+    {ok, #mic_block{header = Header, txs = Txs, pof = PoF}}.
 
-serialization_template(micro, Height, Vsn) ->
-    case aec_hard_forks:protocol_effective_at_height(Height) of
-        Vsn ->
-            {ok, [ {txs, [binary]}
-                 , {pof, [binary]}]};
-        Other ->
-            {error, {bad_block_vsn, Other}}
-    end.
+serialization_template(micro) ->
+    [{txs, [binary]}, {pof, [binary]}].
 
 %%%===================================================================
 %%% Validation
@@ -455,4 +437,3 @@ validate_pof(#mic_block{pof = PoF} = Block) ->
         true ->
             aec_pof:validate(PoF)
     end.
-
