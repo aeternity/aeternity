@@ -854,6 +854,15 @@ channel_closed(cast, {?MIN_DEPTH_ACHIEVED, ChainId, ?WATCH_CLOSED, TxHash},
                                         , tx_hash = TxHash % same tx hash
                                         } } = D) ->
     close(closed_confirmed, D);
+channel_closed(cast, {?CHANNEL_CHANGED, #{ tx_hash := TxHash
+                                         , chan_id := ChannelId } },
+               #data{ on_chain_id = ChannelId %% same channel id
+                    , op = #op_min_depth{ tag = ?WATCH_CLOSED
+                                        , tx_hash = TxHash % same tx hash
+                                        } } = D) ->
+    %% The close mutual transaction ended up in a micro fork but was included
+    %% again. This is an expected scenario
+    keep_state(D);
 channel_closed(cast, {?CHANNEL_CHANGED, _Info} = Msg, D) ->
     %% This is a weird case. The channel was closed, but now isn't.
     %% This would indicate a fork switch. TODO: detect channel status
