@@ -177,6 +177,8 @@
 -define(MINER_PUBKEY, <<12345:?MINER_PUB_BYTES/unit:8>>).
 -define(BENEFICIARY_PUBKEY, <<12345:?BENEFICIARY_PUB_BYTES/unit:8>>).
 
+-define(GENESIS_HEIGHT, 0).
+
 -define(CHAIN_RELATIVE_TTL_MEMORY_ENCODING_TYPE(X), tuple()).
 -define(CHAIN_ABSOLUTE_TTL_MEMORY_ENCODING_TYPE(X), tuple()).
 
@@ -1183,10 +1185,14 @@ call(Fun, Xs) when is_function(Fun, 1 + length(Xs)) ->
     state(S1),
     R.
 
-perform_pre_transformations(Height, S) ->
+perform_pre_transformations(Height, S) when Height > ?GENESIS_HEIGHT ->
     TxEnv = aetx_env:tx_env(Height),
-    Trees = aec_trees:perform_pre_transformations(aect_test_utils:trees(S), TxEnv),
-    {ok, aect_test_utils:set_trees(Trees, S)}.
+    PrevProtocol = aec_hard_forks:protocol_effective_at_height(Height - 1),
+    Trees = aect_test_utils:trees(S),
+    Trees1 = aec_trees:perform_pre_transformations(Trees, TxEnv, PrevProtocol),
+    {ok, aect_test_utils:set_trees(Trees1, S)};
+perform_pre_transformations(?GENESIS_HEIGHT, S) ->
+    {ok, S}.
 
 new_account(Balance, S) ->
     aect_test_utils:setup_new_account(Balance, S).
@@ -2152,7 +2158,7 @@ get_plain_oracle_response(PubKey, QId, S) ->
 %% Tests are checked by a little state machine keeping track of a single oracle
 %% and query.
 interpret_ttl(St, Cmds) ->
-    interpret_ttl(St, 0, Cmds).
+    interpret_ttl(St, ?GENESIS_HEIGHT, Cmds).
 
 interpret_ttl(St, _, []) -> St;
 interpret_ttl(St, H, [{H, Cmd} | Rest]) ->

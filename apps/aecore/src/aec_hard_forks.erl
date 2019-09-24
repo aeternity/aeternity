@@ -3,8 +3,7 @@
 -export([check_env/0]).
 -export([protocols/0,
          check_protocol_version_validity/2,
-         protocol_effective_at_height/1,
-         is_fork_height/1
+         protocol_effective_at_height/1
         ]).
 
 -ifdef(TEST).
@@ -58,14 +57,6 @@ check_protocol_version_validity(Version, Height) ->
 protocol_effective_at_height(H) ->
     protocol_effective_at_height(H, protocols()).
 
--spec is_fork_height(aec_blocks:height()) -> false | {true, protocol_vsn()}.
-is_fork_height(Height) ->
-    Protocols = maps:filter(fun(_P, H) -> H =:= Height end, protocols()),
-    case map_size(Protocols) of
-        0 -> false;
-        1 -> {true, hd(maps:keys(Protocols))}
-    end.
-
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
@@ -108,7 +99,7 @@ protocols_from_network_id(_ID) ->
              };
         M when is_map(M) ->
             maps:fold(fun(K, V, Acc) ->
-                              Acc#{binary_to_integer(K) => V} 
+                              Acc#{binary_to_integer(K) => V}
                       end, #{}, M)
     end.
 

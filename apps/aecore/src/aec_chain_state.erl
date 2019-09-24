@@ -273,11 +273,19 @@ node_type(#node{type = T}) -> T.
 
 node_time(#node{header = H}) -> aec_headers:time_in_msecs(H).
 
+version(#node{header = H}) -> aec_headers:version(H).
+
 is_key_block(N) -> node_type(N) =:= key.
 
 is_micro_block(N) -> node_type(N) =:= micro.
 
 node_header(#node{header = H}) -> H.
+
+prev_version(Node) ->
+    case node_height(Node) =:= aec_block_genesis:height() of
+        true  -> undefined;
+        false -> version(db_get_node(prev_hash(Node)))
+    end.
 
 maybe_add_genesis_hash(#{genesis_block_hash := undefined} = State, Node) ->
     case node_height(Node) =:= aec_block_genesis:height() of
@@ -813,15 +821,17 @@ apply_node_transactions(Node, Trees, ForkInfo, State) ->
             apply_micro_block_transactions(Node, FeesIn, Trees);
         false ->
             #fork_info{fees = FeesIn, fraud = FraudStatus} = ForkInfo,
+            Height = node_height(Node),
+            PrevVersion = prev_version(Node),
             GasFees = calculate_gas_fee(aec_trees:calls(Trees)),
             TotalFees = GasFees + FeesIn,
             Header = node_header(Node),
             Env = aetx_env:tx_env_from_key_header(Header, hash(Node),
                                                   node_time(Node), prev_hash(Node)),
 
-            Trees1 = aec_trees:perform_pre_transformations(Trees, Env),
+            Trees1 = aec_trees:perform_pre_transformations(Trees, Env, PrevVersion),
             Delay  = aec_governance:beneficiary_reward_delay(),
-            case node_height(Node) > aec_block_genesis:height() + Delay of
+            case Height > aec_block_genesis:height() + Delay of
                 true  -> {grant_fees(Node, Trees1, Delay, FraudStatus, State), TotalFees, #{}};
                 false -> {Trees1, TotalFees, #{}}
             end

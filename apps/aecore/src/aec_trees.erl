@@ -45,7 +45,7 @@
          apply_txs_on_state_trees/4,
          apply_txs_on_state_trees_strict/3,
          grant_fee/3,
-         perform_pre_transformations/2
+         perform_pre_transformations/3
         ]).
 
 %% Proof of inclusion
@@ -245,28 +245,33 @@ gc_cache(Trees, TreesToGC) ->
         Trees,
         TreesToGC).
 
--spec perform_pre_transformations(trees(), aetx_env:env()) -> trees().
-perform_pre_transformations(Trees, TxEnv) ->
+-spec perform_pre_transformations(trees(), aetx_env:env(),
+                                  aec_hard_forks:protocol_vsn() | undefined) -> trees().
+perform_pre_transformations(Trees, TxEnv, PrevProtocol) ->
     Height = aetx_env:height(TxEnv),
+    Protocol = aetx_env:consensus_version(TxEnv),
     Trees0 = aect_call_state_tree:prune(Height, Trees),
     Trees1 = aeo_state_tree:prune(Height, Trees0),
     Trees2 = aens_state_tree:prune(Height, Trees1),
-    case Height =:= aec_block_genesis:height() of
-        true -> Trees2; % genesis block
-        false ->
-            case aec_hard_forks:is_fork_height(Height) of
-                {true, ?MINERVA_PROTOCOL_VSN} -> % hard fork time
-                    aec_block_fork:apply_minerva(Trees2);
-                {true, ?FORTUNA_PROTOCOL_VSN} -> % hard fork time
-                    aec_block_fork:apply_fortuna(Trees2);
-                {true, ?LIMA_PROTOCOL_VSN} -> % hard fork time
-                    aec_block_fork:apply_lima(Trees2, TxEnv);
-                {true, P} when P > ?LIMA_PROTOCOL_VSN ->
-                    Trees2;
-                false -> Trees2
-            end
-    end.
+    perform_pre_transformations(Trees2, TxEnv, Protocol, PrevProtocol).
 
+perform_pre_transformations(Trees, _TxEnv, _Protocol, undefined) ->
+    %% Genesis block.
+    Trees;
+perform_pre_transformations(Trees, _TxEnv, Protocol, Protocol) ->
+    %% No version change in block.
+    Trees;
+perform_pre_transformations(Trees, TxEnv, Protocol, PrevProtocol)
+  when Protocol > PrevProtocol ->
+    %% Fork.
+    apply_pre_transformations(Protocol, Trees, TxEnv).
+
+apply_pre_transformations(?MINERVA_PROTOCOL_VSN, Trees, _TxEnv) ->
+    aec_block_fork:apply_minerva(Trees);
+apply_pre_transformations(?FORTUNA_PROTOCOL_VSN, Trees, _TxEnv) ->
+    aec_block_fork:apply_fortuna(Trees);
+apply_pre_transformations(?LIMA_PROTOCOL_VSN, Trees, TxEnv) ->
+    aec_block_fork:apply_lima(Trees, TxEnv).
 
 -spec calls(trees()) -> aect_call_state_tree:tree().
 calls(Trees) ->
