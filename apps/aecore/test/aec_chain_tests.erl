@@ -1700,12 +1700,12 @@ token_supply_auctions() ->
     Delay = 1000,
     #{ public := PubKey1, secret := PrivKey1 } = enacl:sign_keypair(),
     #{ public := PubKey2, secret := PrivKey2 } = enacl:sign_keypair(),
-    PresetAmount = 4000000000000000 * aec_test_utils:min_gas_price(),
+    PresetAmount = 400000000000000000 * aec_test_utils:min_gas_price(),
     PresetAccounts = [{PubKey1, PresetAmount}, {PubKey2, PresetAmount}],
     Fee  = 100000 * aec_test_utils:min_gas_price(),
-    NameFee = 400000000000000000,
+    NameFee = 40000000000000000000,
     Salt = 123,
-    Name1 = <<"expensive-name-in-auction.aet">>,
+    Name1 = <<"expensive.aet">>,
     Name2 = <<"this-name-is-too-long-to-end-up-in-an-auction.aet">>,
     PreclaimFun =
         fun(Address, Nonce, Name) ->
