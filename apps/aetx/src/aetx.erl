@@ -314,7 +314,10 @@ min_gas_price(AETx = #aetx{ type = Type, cb = CB, tx = Tx, size = Size }, Height
 
 -spec min_fee(Tx :: tx(), Height :: aec_blocks:height()) -> Fee :: non_neg_integer().
 min_fee(#aetx{} = AeTx, Height) ->
-    min_gas(AeTx, Height) * aec_governance:minimum_gas_price(Height).
+    %% This function will be removed later and replaced with min_fee/3 - the
+    %% last parameter will be the version.
+    Version = aec_hard_forks:protocol_effective_at_height(Height),
+    min_gas(AeTx, Height, Version) * aec_governance:minimum_gas_price(Version).
 
 -spec min_gas(Tx :: tx(), Height :: aec_blocks:height()) -> MinGasPrice :: non_neg_integer().
 min_gas(Tx, Height) ->
