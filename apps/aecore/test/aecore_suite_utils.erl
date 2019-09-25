@@ -438,7 +438,7 @@ flush_new_blocks_(Acc) ->
 %% this has the expectation that the Node is mining
 %% there is a timeout of 30 seconds for a single block to be produced
 wait_for_height(Node, Height) ->
-    [] = flush_new_blocks(),
+    flush_new_blocks(),
     subscribe(Node, block_created),
     subscribe(Node, micro_block_created),
     wait_for_height_(Node, Height),

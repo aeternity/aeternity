@@ -31,8 +31,8 @@
 
 -export([
           start_link/0
-        , new/3
         , new/4
+        , new/5
         , reestablish/2
         , reestablish/3
         , change_state_password/3
@@ -78,8 +78,10 @@
              min_depth = ?MIN_DEPTH}).
 -type ch_cache_id() :: { aeser_id:val()
                        , aeser_id:val() | atom()}.
+-type opts() :: map().
 -record(ch_cache, { cache_id    :: ch_cache_id() | undefined
                   , state       :: aesc_offchain_state:state() | atom() | undefined
+                  , opts = #{}  :: map() | '_'
                   , salt        :: binary() | atom()
                   , session_key :: binary() | atom()
                   }).
@@ -91,6 +93,7 @@
                              , salt            :: binary() | atom()
                              , nonce           :: binary() | atom()
                              , encrypted_state :: binary() | atom()
+                             , opts = #{}      :: opts() | '_'         % unencrypted
                              }).
 
 -define(SERVER, ?MODULE).
@@ -98,19 +101,19 @@
 -define(PTAB, aesc_state_cache).
 -define(CACHE_DEFAULT_PASSWORD, "correct horse battery staple").
 
--spec new(aeser_id:val(), aeser_id:val(), aesc_offchain_state:state()) -> ok | {error, any()}.
-new(ChId, Pubkey, State) ->
-    new(ChId, Pubkey, State, ?CACHE_DEFAULT_PASSWORD).
+-spec new(aeser_id:val(), aeser_id:val(), aesc_offchain_state:state(), opts()) -> ok | {error, any()}.
+new(ChId, Pubkey, State, Opts) ->
+    new(ChId, Pubkey, State, Opts, ?CACHE_DEFAULT_PASSWORD).
 
--spec new(aeser_id:val(), aeser_id:val(), aesc_offchain_state:state(), string()) -> ok | {error, any()}.
-new(ChId, PubKey, State, Password) ->
-    gen_server:call(?SERVER, {new, ChId, PubKey, self(), State, unicode:characters_to_binary(Password)}).
+-spec new(aeser_id:val(), aeser_id:val(), aesc_offchain_state:state(), opts(), string()) -> ok | {error, any()}.
+new(ChId, PubKey, State, Opts, Password) ->
+    gen_server:call(?SERVER, {new, ChId, PubKey, self(), State, Opts, unicode:characters_to_binary(Password)}).
 
--spec reestablish(aeser_id:val(), aeser_id:val()) -> {ok, aesc_offchain_state:state()} | {error, atom()}.
+-spec reestablish(aeser_id:val(), aeser_id:val()) -> {ok, aesc_offchain_state:state(), opts()} | {error, atom()}.
 reestablish(ChId, Pubkey) ->
     reestablish(ChId, Pubkey, ?CACHE_DEFAULT_PASSWORD).
 
--spec reestablish(aeser_id:val(), aeser_id:val(), string()) -> {ok, aesc_offchain_state:state()} | {error, atom()}.
+-spec reestablish(aeser_id:val(), aeser_id:val(), string()) -> {ok, aesc_offchain_state:state(), opts()} | {error, atom()}.
 reestablish(ChId, PubKey, Password) ->
     gen_server:call(?SERVER, {reestablish, ChId, PubKey, self(), unicode:characters_to_binary(Password)}).
 
@@ -197,7 +200,7 @@ transform_record_to_encrypted_form_with_default_password(#pch{id = ChId, pubkeys
     [encrypt_cache(Cache1)];
 transform_record_to_encrypted_form_with_default_password(#pch{pubkeys = [Pub1, Pub2]} = Record) ->
     Records = [Record#pch{pubkeys = [Pub1]}, Record#pch{pubkeys = [Pub2]}],
-    lists:flatten([transform_record_to_encrypted_form_with_default_password(Record) || Record <- Records]).
+    lists:flatten([transform_record_to_encrypted_form_with_default_password(R) || R <- Records]).
 
 start_link() ->
     case ets:info(?TAB, name) of
@@ -225,10 +228,10 @@ setup_keys_in_cache(Password) ->
             Err
     end.
 
-handle_call({new, ChId, PubKey, Pid, State, Password}, _From, St) ->
+handle_call({new, ChId, PubKey, Pid, State, Opts, Password}, _From, St) ->
     Resp = case setup_keys_in_cache(Password) of
         {ok, Result} ->
-            case ets:insert_new(?TAB, Result#ch_cache{cache_id = key(ChId, PubKey), state = State}) of
+            case ets:insert_new(?TAB, Result#ch_cache{cache_id = key(ChId, PubKey), state = State, opts = Opts}) of
                 true ->
                     St1 = monitor_fsm(Pid, ChId, PubKey, St),
                     {reply, ok, St1};
@@ -242,10 +245,10 @@ handle_call({new, ChId, PubKey, Pid, State, Password}, _From, St) ->
     Resp;
 handle_call({reestablish, ChId, PubKey, Pid, Password}, _From, St) ->
     Resp = case try_reestablish_cached(ChId, PubKey, Password) of
-        {ok, Result} ->
+        {ok, State, Opts} ->
             St1 = monitor_fsm(Pid, ChId, PubKey,
                               remove_watcher(ChId, St)),
-            {reply, {ok, Result}, St1};
+            {reply, {ok, State, Opts}, St1};
         {error, _} = Error ->
             {reply, Error, St}
     end,
@@ -253,8 +256,8 @@ handle_call({reestablish, ChId, PubKey, Pid, Password}, _From, St) ->
     Resp;
 handle_call({fetch, ChId, PubKey}, _From, St) ->
     case ets:lookup(?TAB, key(ChId, PubKey)) of
-        [#ch_cache{state = State}] ->
-            {reply, {ok, State}, St};
+        [#ch_cache{state = State, opts = Opts}] ->
+            {reply, {ok, State, Opts}, St};
         [] ->
             {reply, error, St}
     end;
@@ -332,8 +335,8 @@ cache_status_(ChId) ->
 try_reestablish_cached(ChId, PubKey, Password) ->
     CacheId = key(ChId, PubKey),
     case ets:lookup(?TAB, CacheId) of
-        [#ch_cache{state = State}] ->
-            {ok, State};
+        [#ch_cache{state = State, opts = Opts}] ->
+            {ok, State, Opts};
         [] ->
             case read_persistent(CacheId) of
                 {ok, Encrypted} ->
@@ -346,15 +349,17 @@ try_reestablish_cached(ChId, PubKey, Password) ->
 decrypt_with_key_and_move_to_ram(#pch_encrypted_cache{ cache_id = CacheId
                                                      , nonce = Nonce
                                                      , encrypted_state = EncryptedState
+                                                     , opts = Opts
                                                      }, Cache, SessionKey) ->
     case enacl:secretbox_open(EncryptedState, Nonce, SessionKey) of
         {ok, SerializedState} ->
             State = aesc_offchain_state:deserialize_from_binary(SerializedState),
             ets:insert(
-                    ?TAB, [Cache#ch_cache{cache_id = CacheId, state = State}]),
+                    ?TAB, [Cache#ch_cache{cache_id = CacheId, state = State, opts = Opts}]),
                     delete_persistent(CacheId),
-                    {ok, State};
+                    {ok, State, Opts};
         {error, _} ->
+            lager:debug("Invalid password (assumed) opening secretbox", []),
             {error, invalid_password}
     end.
 
@@ -387,6 +392,7 @@ encrypt_and_persist(Cache) ->
 encrypt_cache(#ch_cache{ cache_id = CacheId
                        , salt =  Salt
                        , state =  State
+                       , opts = Opts
                        , session_key = SessionKey}) ->
     Nonce = crypto:strong_rand_bytes(enacl:secretbox_nonce_size()),
     SerializedState = aesc_offchain_state:serialize_to_binary(State),
@@ -394,7 +400,8 @@ encrypt_cache(#ch_cache{ cache_id = CacheId
         cache_id = CacheId,
         salt = Salt,
         nonce = Nonce,
-        encrypted_state = enacl:secretbox(SerializedState, Nonce, SessionKey)
+        encrypted_state = enacl:secretbox(SerializedState, Nonce, SessionKey),
+        opts = Opts
     }.
 
 write_persistent(Pch) ->

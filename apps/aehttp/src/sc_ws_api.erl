@@ -49,6 +49,7 @@
 %%%==================================================================
 
 patterns() ->
+    sc_ws_utils:patterns() ++
     sc_ws_api_jsonrpc:patterns() ++
         [{sc_ws_handler, init, 2, []} |
          [{?MODULE, F, A, []} || {F, A} <- [ {protocol, 0}
