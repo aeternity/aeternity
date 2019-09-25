@@ -1309,7 +1309,7 @@ validate_micro_block_header(MicroHeader, _PrevHeader, PrevKeyHeader)
     Protocol = aec_headers:version(PrevKeyHeader),
     aec_headers:validate_micro_block_header(MicroHeader, Protocol);
 validate_micro_block_header(_MicroHeader, _PrevHeader, not_found) ->
-    {error, prev_key_block_not_found}. %% This is virtually impossible!
+    {error, prev_key_block_not_found}.
 
 validate_connected_to_chain(MicroHeader, _PrevHeader, _PrevKeyHeader) ->
     PrevHeaderHash = aec_headers:prev_hash(MicroHeader),
@@ -1363,4 +1363,4 @@ validate_micro_signature(MicroHeader, _PrevHeader, PrevKeyHeader)
         {error, _} -> {error, signature_verification_failed}
     end;
 validate_micro_signature(_MicroHeader, _PrevHeader, not_found) ->
-    {error, signer_not_found}. %% This is virtually impossible!
+    {error, signer_not_found}.
