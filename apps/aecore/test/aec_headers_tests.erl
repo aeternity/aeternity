@@ -247,64 +247,58 @@ validate_test_() ->
      end,
      [fun() ->
               Header = ?TEST_MODULE:set_version(raw_key_header(), 736),
-              ?assertEqual({error, unknown_protocol_version}, ?TEST_MODULE:validate_key_block_header(Header))
+              ?assertEqual({error, protocol_version_mismatch},
+                           ?TEST_MODULE:validate_key_block_header(Header, 1))
       end,
       fun() ->
               GV = ?GENESIS_VERSION,
-              Protocols = #{GV   =>       ?GENESIS_HEIGHT,
-                            1+GV => 100 + ?GENESIS_HEIGHT,
-                            3+GV => 150 + ?GENESIS_HEIGHT},
-              MockFun =
-                  fun(V, H) ->
-                          aec_hard_forks:check_protocol_version_validity(V, H, Protocols)
-                  end,
-              meck:expect(aec_hard_forks, check_protocol_version_validity,
-                          MockFun),
+
               %% Check for any off-by-one errors around first switch.
-              ?assertEqual({error, {protocol_version_mismatch, GV}},
+              ?assertEqual({error, protocol_version_mismatch},
                            ?TEST_MODULE:validate_key_block_header(
                               ?TEST_MODULE:set_version_and_height(
                                  raw_key_header(),
                                  1+GV,
-                                 99 + ?GENESIS_HEIGHT))),
-              ?assertEqual({error, {protocol_version_mismatch, 1+GV}},
+                                 99 + ?GENESIS_HEIGHT), GV)),
+              ?assertEqual({error, protocol_version_mismatch},
                            ?TEST_MODULE:validate_key_block_header(
                               ?TEST_MODULE:set_version_and_height(
                                  raw_key_header(),
                                  GV,
-                                 100 + ?GENESIS_HEIGHT))),
-              ?assertEqual({error, {protocol_version_mismatch, 1+GV}},
+                                 100 + ?GENESIS_HEIGHT), 1+GV)),
+              ?assertEqual({error, protocol_version_mismatch},
                            ?TEST_MODULE:validate_key_block_header(
                               ?TEST_MODULE:set_version_and_height(
                                  raw_key_header(),
                                  3+GV,
-                                 101 + ?GENESIS_HEIGHT))),
+                                 101 + ?GENESIS_HEIGHT), 1+GV)),
               %% Check for any off-by-one errors around second switch.
-              ?assertEqual({error, {protocol_version_mismatch, 1+GV}},
+              ?assertEqual({error, protocol_version_mismatch},
                            ?TEST_MODULE:validate_key_block_header(
                               ?TEST_MODULE:set_version_and_height(
                                  raw_key_header(),
                                  3+GV,
-                                 149 + ?GENESIS_HEIGHT))),
-              ?assertEqual({error, {protocol_version_mismatch, 3+GV}},
+                                 149 + ?GENESIS_HEIGHT), 1+GV)),
+              ?assertEqual({error, protocol_version_mismatch},
                            ?TEST_MODULE:validate_key_block_header(
                               ?TEST_MODULE:set_version_and_height(
                                  raw_key_header(),
                                  1+GV,
-                                 150 + ?GENESIS_HEIGHT))),
-              ?assertEqual({error, {protocol_version_mismatch, 3+GV}},
+                                 150 + ?GENESIS_HEIGHT), 3+GV)),
+              ?assertEqual({error, protocol_version_mismatch},
                            ?TEST_MODULE:validate_key_block_header(
                               ?TEST_MODULE:set_version_and_height(
                                  raw_key_header(),
                                  1+GV,
-                                 151 + ?GENESIS_HEIGHT))),
+                                 151 + ?GENESIS_HEIGHT), 3+GV)),
               ok
       end,
       fun() ->
               meck:expect(aec_mining, verify, 4, false),
               Header = ?TEST_MODULE:set_version_and_height(
                           raw_key_header(), ?GENESIS_VERSION, ?GENESIS_HEIGHT),
-              ?assertEqual({error, incorrect_pow}, ?TEST_MODULE:validate_key_block_header(Header))
+              ?assertEqual({error, incorrect_pow},
+                           ?TEST_MODULE:validate_key_block_header(Header, ?GENESIS_VERSION))
       end,
       fun() ->
               meck:expect(aec_mining, verify, 4, true),
@@ -313,21 +307,22 @@ validate_test_() ->
               Header0 = ?TEST_MODULE:set_version_and_height(
                            raw_key_header(), ?GENESIS_VERSION, ?GENESIS_HEIGHT),
               Header = ?TEST_MODULE:set_time_in_msecs(Header0, 2 * NowTime),
-              ?assertEqual({error, block_from_the_future}, ?TEST_MODULE:validate_key_block_header(Header))
+              ?assertEqual({error, block_from_the_future},
+                           ?TEST_MODULE:validate_key_block_header(Header, ?GENESIS_VERSION))
       end,
       fun() ->
               meck:expect(aec_mining, verify, 4, true),
               Header0 = ?TEST_MODULE:set_version_and_height(
                            raw_key_header(), ?GENESIS_VERSION, ?GENESIS_HEIGHT),
               Header = ?TEST_MODULE:set_time_in_msecs(Header0, ?GENESIS_TIME + 1),
-              ?assertEqual(ok, ?TEST_MODULE:validate_key_block_header(Header))
+              ?assertEqual(ok, ?TEST_MODULE:validate_key_block_header(Header, ?GENESIS_VERSION))
       end,
       fun() ->
               meck:expect(aec_mining, verify, 4, false),
               Header0 = ?TEST_MODULE:set_version_and_height(
                            raw_key_header(), ?GENESIS_VERSION, ?GENESIS_HEIGHT),
               Header = ?TEST_MODULE:set_time_in_msecs(Header0, ?GENESIS_TIME + 1),
-              ?assertEqual({error, incorrect_pow}, ?TEST_MODULE:validate_key_block_header(Header))
+              ?assertEqual({error, incorrect_pow}, ?TEST_MODULE:validate_key_block_header(Header, ?GENESIS_VERSION))
       end,
       fun() ->
               meck:expect(aec_mining, verify, 4, true),
@@ -335,31 +330,31 @@ validate_test_() ->
                            raw_key_header(), ?GENESIS_VERSION, ?GENESIS_HEIGHT),
               Header = ?TEST_MODULE:set_time_in_msecs(Header0,
                                                       aeu_time:now_in_msecs() + aec_governance:accepted_future_block_time_shift() + 100),
-              ?assertEqual({error, block_from_the_future}, ?TEST_MODULE:validate_key_block_header(Header))
+              ?assertEqual({error, block_from_the_future}, ?TEST_MODULE:validate_key_block_header(Header, ?GENESIS_VERSION))
       end,
       fun() ->
               meck:expect(aec_mining, verify, 4, true),
               Header0 = ?TEST_MODULE:set_version_and_height(
                            raw_key_header(), ?GENESIS_VERSION, ?GENESIS_HEIGHT),
               Header = ?TEST_MODULE:set_nonce(Header0, -1),
-              ?assertError(function_clause, ?TEST_MODULE:validate_key_block_header(Header))
+              ?assertError(function_clause, ?TEST_MODULE:validate_key_block_header(Header, ?GENESIS_VERSION))
       end,
       fun() ->
               meck:expect(aec_mining, verify, 4, true),
               Header0 = ?TEST_MODULE:set_version_and_height(
                            raw_key_header(), ?GENESIS_VERSION, ?GENESIS_HEIGHT),
               Header = ?TEST_MODULE:set_nonce(Header0, 16#1ffffffffffffffff),
-              ?assertError(function_clause, ?TEST_MODULE:validate_key_block_header(Header))
+              ?assertError(function_clause, ?TEST_MODULE:validate_key_block_header(Header, ?GENESIS_VERSION))
       end,
       fun() ->
               Header = ?TEST_MODULE:set_version_and_height(
                            raw_micro_header(), ?GENESIS_VERSION, ?GENESIS_HEIGHT),
-              ?assertEqual(ok, ?TEST_MODULE:validate_micro_block_header(Header))
+              ?assertEqual(ok, ?TEST_MODULE:validate_micro_block_header(Header, ?GENESIS_VERSION))
       end,
       fun() ->
               Header0 = ?TEST_MODULE:set_version_and_height(
                            raw_micro_header(), ?GENESIS_VERSION, ?GENESIS_HEIGHT),
               Header = ?TEST_MODULE:set_time_in_msecs(Header0,
                                                       aeu_time:now_in_msecs() + aec_governance:accepted_future_block_time_shift() + 100),
-              ?assertEqual({error, block_from_the_future}, ?TEST_MODULE:validate_micro_block_header(Header))
+              ?assertEqual({error, block_from_the_future}, ?TEST_MODULE:validate_micro_block_header(Header, ?GENESIS_VERSION))
       end]}.

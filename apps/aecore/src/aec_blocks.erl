@@ -50,8 +50,8 @@
          txs_hash/1,
          type/1,
          update_micro_candidate/4,
-         validate_key_block/1,
-         validate_micro_block/1,
+         validate_key_block/2,
+         validate_micro_block/2,
          version/1
         ]).
 
@@ -376,21 +376,23 @@ serialization_template(micro) ->
 %%% Validation
 %%%===================================================================
 
--spec validate_key_block(key_block()) -> 'ok' | {'error', {'header', term()}}.
-validate_key_block(#key_block{} = Block) ->
-    case aec_headers:validate_key_block_header(to_key_header(Block)) of
+-spec validate_key_block(key_block(), aec_hard_forks:protocol_vsn()) ->
+                                'ok' | {'error', {'header', term()}}.
+validate_key_block(#key_block{} = Block, Protocol) ->
+    case aec_headers:validate_key_block_header(to_key_header(Block), Protocol) of
         ok -> ok;
         {error, Reason} -> {error, {header, Reason}}
     end.
 
--spec validate_micro_block(micro_block()) -> 'ok' | {'error', {'header' | 'block', term()}}.
-validate_micro_block(#mic_block{} = Block) ->
+-spec validate_micro_block(micro_block(), aec_hard_forks:protocol_vsn()) ->
+                                  'ok' | {'error', {'header' | 'block', term()}}.
+validate_micro_block(#mic_block{} = Block, Protocol) ->
     Validators = [fun validate_txs_hash/1,
                   fun validate_gas_limit/1,
                   fun validate_txs_fee/1,
                   fun validate_pof/1
                  ],
-    case aec_headers:validate_micro_block_header(to_micro_header(Block)) of
+    case aec_headers:validate_micro_block_header(to_micro_header(Block), Protocol) of
         ok ->
             case aeu_validation:run(Validators, [Block]) of
                 ok              -> ok;

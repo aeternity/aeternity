@@ -66,7 +66,7 @@ validate_test_malformed_txs_root_hash() ->
               aec_blocks:root_hash(RawBlock),
               [SignedSpend]),
     ?assertEqual({error, {block, malformed_txs_hash}},
-                 ?TEST_MODULE:validate_micro_block(Block)).
+                 ?TEST_MODULE:validate_micro_block(Block, aec_blocks:version(Block))).
 
 validate_test_pass_validation_no_txs() ->
     Txs = [],
@@ -77,7 +77,7 @@ validate_test_pass_validation_no_txs() ->
               RawBlock, TxsRootHash,
               aec_blocks:root_hash(RawBlock),
               []),
-    ?assertEqual(ok, ?TEST_MODULE:validate_micro_block(Block)).
+    ?assertEqual(ok, ?TEST_MODULE:validate_micro_block(Block, aec_blocks:version(Block))).
 
 validate_test_pass_validation() ->
     SignedSpend =
@@ -96,6 +96,6 @@ validate_test_pass_validation() ->
               aec_blocks:root_hash(RawBlock),
               Txs),
 
-    ?assertEqual(ok, ?TEST_MODULE:validate_micro_block(Block)).
+    ?assertEqual(ok, ?TEST_MODULE:validate_micro_block(Block, aec_blocks:version(Block))).
 
 -endif.

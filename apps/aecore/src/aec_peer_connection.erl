@@ -973,10 +973,10 @@ handle_new_micro_block(S, Msg) ->
                         {ok, HH} = aec_headers:hash_header(Header),
                         epoch_sync:info("Got invalid light micro_block (~s): ~p", [pp(HH), E]),
                         case aec_chain:get_header(aec_headers:prev_key_hash(Header)) of
-                            {ok, PrevHeader} -> 
+                            {ok, PrevHeader} ->
                                 epoch_sync:debug("miner beneficiary: ~p", [aec_headers:beneficiary(PrevHeader)]),
                                 ok;
-                            _ -> 
+                            _ ->
                                 ok
                         end;
 
@@ -1277,22 +1277,48 @@ pre_assembly_check(MicroHeader) ->
     case aec_db:has_block(Hash) of
         true -> known;
         false ->
-            Validators = [fun validate_micro/1,
-                          fun validate_connected_to_chain/1,
-                          fun validate_delta_height/1,
-                          fun validate_prev_key_block/1,
-                          fun validate_micro_signature/1],
-            aeu_validation:run(Validators, [MicroHeader])
+            {PrevHeader, PrevKeyHeader} = get_onchain_env(MicroHeader),
+            Validators = [fun validate_micro_block_header/3,
+                          fun validate_connected_to_chain/3,
+                          fun validate_delta_height/3,
+                          fun validate_prev_key_block/3,
+                          fun validate_micro_signature/3],
+            aeu_validation:run(Validators, [MicroHeader, PrevHeader, PrevKeyHeader])
     end.
 
-validate_connected_to_chain(MicroHeader) ->
-    case aec_chain_state:hash_is_connected_to_genesis(
-            aec_headers:prev_hash(MicroHeader)) of
-        true -> ok;
+get_onchain_env(MicroHeader) ->
+    PrevHeaderHash = aec_headers:prev_hash(MicroHeader),
+    PrevKeyHash = aec_headers:prev_key_hash(MicroHeader),
+    case aec_chain:get_header(PrevHeaderHash) of
+        {ok, PrevHeader} ->
+            case aec_headers:type(PrevHeader) of
+                key ->
+                    {PrevHeader, PrevHeader};
+                micro ->
+                    case aec_chain:get_header(PrevKeyHash) of
+                        {ok, PrevKeyHeader} -> {PrevHeader, PrevKeyHeader};
+                        error               -> {PrevHeader, not_found}
+                    end
+            end;
+        error ->
+            {not_found, not_found}
+    end.
+
+validate_micro_block_header(MicroHeader, _PrevHeader, PrevKeyHeader)
+  when PrevKeyHeader =/= not_found ->
+    Protocol = aec_headers:version(PrevKeyHeader),
+    aec_headers:validate_micro_block_header(MicroHeader, Protocol);
+validate_micro_block_header(_MicroHeader, _PrevHeader, not_found) ->
+    {error, prev_key_block_not_found}. %% This is virtually impossible!
+
+validate_connected_to_chain(MicroHeader, _PrevHeader, _PrevKeyHeader) ->
+    PrevHeaderHash = aec_headers:prev_hash(MicroHeader),
+    case aec_chain_state:hash_is_connected_to_genesis(PrevHeaderHash) of
+        true  -> ok;
         false -> {error, orphan_blocks_not_allowed}
     end.
 
-validate_delta_height(MicroHeader) ->
+validate_delta_height(MicroHeader, _PrevHeader, _PrevKeyHeader) ->
     Height = aec_headers:height(MicroHeader),
     case aec_chain:top_header() of
         undefined -> ok;
@@ -1304,44 +1330,37 @@ validate_delta_height(MicroHeader) ->
             end
     end.
 
-validate_prev_key_block(MicroHeader) ->
-    case aec_db:find_header(aec_headers:prev_hash(MicroHeader)) of
-        {value, PrevHeader} ->
-            case aec_headers:height(PrevHeader) == aec_headers:height(MicroHeader) of
-                false -> {error, wrong_prev_key_block_height};
-                true ->
-                    case aec_headers:type(PrevHeader) of
-                        key ->
-                            case aec_headers:prev_key_hash(MicroHeader) ==
-                                    aec_headers:prev_hash(MicroHeader) of
-                                true -> ok;
-                                false -> {error, wrong_prev_key_hash}
-                            end;
-                        micro ->
-                            case aec_headers:prev_key_hash(MicroHeader) ==
-                                    aec_headers:prev_key_hash(PrevHeader) of
-                                true -> ok;
-                                false -> {error, wrong_prev_key_hash}
-                            end
+validate_prev_key_block(MicroHeader, PrevHeader, _PrevKeyHeader)
+  when PrevHeader =/= not_found ->
+    case aec_headers:height(PrevHeader) =:= aec_headers:height(MicroHeader) of
+        false -> {error, wrong_prev_key_block_height};
+        true ->
+            case aec_headers:type(PrevHeader) of
+                key ->
+                    case aec_headers:prev_key_hash(MicroHeader) =:=
+                        aec_headers:prev_hash(MicroHeader) of
+                        true -> ok;
+                        false -> {error, wrong_prev_key_hash}
+                    end;
+                micro ->
+                    case aec_headers:prev_key_hash(MicroHeader) =:=
+                        aec_headers:prev_key_hash(PrevHeader) of
+                        true -> ok;
+                        false -> {error, wrong_prev_key_hash}
                     end
-            end;
-        none ->
-            {error, orphan_blocks_not_allowed}
-    end.
-
-validate_micro(MicroHeader) ->
-    aec_headers:validate_micro_block_header(MicroHeader).
-
-validate_micro_signature(MicroHeader) ->
-    case aec_db:find_header(aec_headers:prev_key_hash(MicroHeader)) of
-        none -> {error, signer_not_found}; %% This is virtually impossible!
-        {value, KeyHeader} ->
-            Bin = aec_headers:serialize_to_signature_binary(MicroHeader),
-            Sig = aec_headers:signature(MicroHeader),
-            Signer = aec_headers:miner(KeyHeader),
-            case enacl:sign_verify_detached(Sig, Bin, Signer) of
-                {ok, _}    -> ok;
-                {error, _} -> {error, signature_verification_failed}
             end
-    end.
+    end;
+validate_prev_key_block(_MicroHeader, not_found, _PrevKeyHeader) ->
+    {error, orphan_blocks_not_allowed}.
 
+validate_micro_signature(MicroHeader, _PrevHeader, PrevKeyHeader)
+  when PrevKeyHeader =/= not_found ->
+    Bin = aec_headers:serialize_to_signature_binary(MicroHeader),
+    Sig = aec_headers:signature(MicroHeader),
+    Signer = aec_headers:miner(PrevKeyHeader),
+    case enacl:sign_verify_detached(Sig, Bin, Signer) of
+        {ok, _}    -> ok;
+        {error, _} -> {error, signature_verification_failed}
+    end;
+validate_micro_signature(_MicroHeader, _PrevHeader, not_found) ->
+    {error, signer_not_found}. %% This is virtually impossible!
