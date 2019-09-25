@@ -175,7 +175,7 @@ apply_hard_fork_contract_tx(Tx, Trees, TxEnv) ->
                 ok ->
                     CtTrees  = aec_trees:contracts(Trees1),
                     AccTrees = aec_trees:accounts(Trees1),
-                    Contract = aect_state_tree:get_contract(ContractPubkey, CtTrees),
+                    Contract = aect_state_tree:get_contract(ContractPubkey, CtTrees, [full_store_cache]),
                     Account  = aec_accounts_trees:get(ContractPubkey, AccTrees),
                     {{Account, Contract}, Trees1};
                 What ->
