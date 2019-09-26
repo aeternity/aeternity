@@ -235,8 +235,9 @@ difficulty(Block) ->
 
 -spec gas(micro_block()) -> non_neg_integer().
 gas(#mic_block{txs = Txs} = Block) ->
-    Height = aec_headers:height(to_header(Block)),
-    lists:foldl(fun(Tx, Acc) -> aetx:gas_limit(aetx_sign:tx(Tx), Height) + Acc end, 0, Txs).
+    Version = aec_blocks:version(Block),
+    Height = aec_blocks:height(Block),
+    lists:foldl(fun(Tx, Acc) -> aetx:gas_limit(aetx_sign:tx(Tx), Height, Version) + Acc end, 0, Txs).
 
 -spec time_in_msecs(block()) -> non_neg_integer().
 time_in_msecs(Block) ->

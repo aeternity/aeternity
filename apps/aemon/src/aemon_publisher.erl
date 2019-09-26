@@ -132,7 +132,7 @@ create_tx(Height, Protocol, Nonce, Payload) ->
 
 adjust_tx(Height, Protocol, Nonce, Payload, Tx0) ->
     GasPrice = aec_tx_pool:minimum_miner_gas_price(),
-    GasLimit = aetx:gas_limit(Tx0, Height),
+    GasLimit = aetx:gas_limit(Tx0, Height, Protocol),
     MinFee = aetx:min_fee(Tx0, Height, Protocol),
     MinGasFee = GasPrice * GasLimit,
 
