@@ -421,10 +421,11 @@ validate_gas_limit(#mic_block{} = Block) ->
 
 -spec validate_txs_fee(block()) -> ok | {error, invalid_minimal_tx_fee}.
 validate_txs_fee(#mic_block{header = Header, txs = STxs}) ->
+    Protocol = aec_headers:version(Header),
     Height = aec_headers:height(Header),
     case lists:all(fun(STx) ->
                            Tx = aetx_sign:tx(STx),
-                           aetx:fee(Tx) >= aetx:min_fee(Tx, Height)
+                           aetx:fee(Tx) >= aetx:min_fee(Tx, Height, Protocol)
                    end, STxs) of
         true -> ok;
         false -> {error, invalid_minimal_tx_fee}

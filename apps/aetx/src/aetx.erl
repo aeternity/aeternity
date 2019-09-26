@@ -22,7 +22,7 @@
         , min_gas_price/2
         , ttl/1
         , size/1
-        , min_fee/2
+        , min_fee/3
         , new/2
         , nonce/1
         , origin/1
@@ -312,11 +312,9 @@ min_gas_price(AETx = #aetx{ type = Type, cb = CB, tx = Tx, size = Size }, Height
             FeeGasPrice
     end.
 
--spec min_fee(Tx :: tx(), Height :: aec_blocks:height()) -> Fee :: non_neg_integer().
-min_fee(#aetx{} = AeTx, Height) ->
-    %% This function will be removed later and replaced with min_fee/3 - the
-    %% last parameter will be the version.
-    Version = aec_hard_forks:protocol_effective_at_height(Height),
+-spec min_fee(Tx :: tx(), Height :: aec_blocks:height(), Version :: aec_hard_forks:protocol_vsn()) ->
+                     Fee :: non_neg_integer().
+min_fee(#aetx{} = AeTx, Height, Version) ->
     min_gas(AeTx, Height, Version) * aec_governance:minimum_gas_price(Version).
 
 -spec min_gas(Tx :: tx(), Height :: aec_blocks:height()) -> MinGasPrice :: non_neg_integer().
@@ -422,6 +420,7 @@ check_tx(#aetx{ cb = CB, tx = Tx } = AeTx, Trees, Env) ->
     end.
 
 check_minimum_fee(AeTx, Env) ->
+    Protocol = aetx_env:consensus_version(Env),
     Height = aetx_env:height(Env),
     AeTx1 = case aetx_env:context(Env) of
                 aetx_ga ->
@@ -430,7 +429,7 @@ check_minimum_fee(AeTx, Env) ->
                 Ctx when Ctx =:= aetx_transaction; Ctx =:= aetx_contract ->
                     AeTx
             end,
-    case min_fee(AeTx1, Height) of
+    case min_fee(AeTx1, Height, Protocol) of
         MinFee when MinFee > 0 ->
             case fee(AeTx) >= MinFee of
                 true  -> ok;

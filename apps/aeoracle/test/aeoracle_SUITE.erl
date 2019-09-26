@@ -605,6 +605,7 @@ query_response_fee_depends_on_response_size(Cfg) ->
     {OracleKey, ID, S1} = query_oracle(Cfg, #{}, #{}),
     Trees               = aeo_test_utils:trees(S1),
     Env                 = aetx_env:tx_env(?ORACLE_RSP_HEIGHT),
+    Protocol            = aetx_env:consensus_version(Env),
 
     SmallResponse  = <<"small_response">>,
     BiggerResponse = <<"bigger_oracle_response">>,
@@ -612,7 +613,7 @@ query_response_fee_depends_on_response_size(Cfg) ->
 
     %% Deduce minimal fee for response tx with SmallResponse
     RTx0        = aeo_test_utils:response_tx(OracleKey, ID, SmallResponse, #{}, S1),
-    MinimalFee  = aetx:min_fee(RTx0, ?ORACLE_RSP_HEIGHT),
+    MinimalFee  = aetx:min_fee(RTx0, ?ORACLE_RSP_HEIGHT, Protocol),
 
     %% Test oracle response tx with SmallResponse is accepted with MinimalFee
     RTx1        = aeo_test_utils:response_tx(OracleKey, ID, SmallResponse, #{fee => MinimalFee}, S1),
@@ -621,13 +622,13 @@ query_response_fee_depends_on_response_size(Cfg) ->
 
     %% Test oracle response tx with BiggerResponse is not accepted with MinimalFee
     RTx2        = aeo_test_utils:response_tx(OracleKey, ID, BiggerResponse, #{fee => MinimalFee}, S1),
-    MinimalFee2 = aetx:min_fee(RTx2, ?ORACLE_RSP_HEIGHT),
+    MinimalFee2 = aetx:min_fee(RTx2, ?ORACLE_RSP_HEIGHT, Protocol),
     true        = MinimalFee2 > MinimalFee1,
     {error, too_low_fee} = aetx:process(RTx2, Trees, Env),
 
     %% Test oracle response tx with BiggerResponse is accepted with MinimalFee2
     RTx3        = aeo_test_utils:response_tx(OracleKey, ID, BiggerResponse, #{fee => MinimalFee2}, S1),
-    MinimalFee3 = aetx:min_fee(RTx3, ?ORACLE_RSP_HEIGHT),
+    MinimalFee3 = aetx:min_fee(RTx3, ?ORACLE_RSP_HEIGHT, Protocol),
     MinimalFee3 = MinimalFee2,
     {ok, _, _}  = aetx:process(RTx3, Trees, Env),
     ok.

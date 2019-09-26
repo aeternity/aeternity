@@ -883,9 +883,10 @@ get_account(AccountKey, {block_hash, BlockHash}) ->
     aec_chain:get_account_at_hash(AccountKey, BlockHash).
 
 check_minimum_fee(Tx, _TxHash, Block, _BlockHash, _Trees, _Event) ->
+    Protocol = aec_blocks:version(Block),
     Height = aec_blocks:height(Block),
     Tx1 = aetx_sign:tx(Tx),
-    case aetx:fee(Tx1) >= aetx:min_fee(Tx1, Height) of
+    case aetx:fee(Tx1) >= aetx:min_fee(Tx1, Height, Protocol) of
         true  -> ok;
         false -> {error, too_low_fee}
     end.
