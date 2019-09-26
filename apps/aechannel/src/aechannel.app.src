@@ -8,7 +8,7 @@
     stdlib,
     lager,
     gproc,
-    aetx,
+    aecontract,
     sext
    ]},
   {mod,{aesc_app,[]}},

@@ -3611,7 +3611,7 @@ init(#{opts := Opts0} = Arg) ->
                                         false ->
                                             StatePasswordWrapper
                                     end,
-        {Role, Opts5} = maps:take(role, Opts4),
+        Role = maps:get(role, Opts4),
         Data = #data{ role             = Role
                     , client           = Client
                     , client_mref      = ClientMRef
@@ -3619,9 +3619,9 @@ init(#{opts := Opts0} = Arg) ->
                     , block_hash_delta = BlockHashDelta
                     , state_password_wrapper = MaybeStatePasswordWrapper
                     , session = maybe_save_session(Role, Session)
-                    , opts    = Opts5
+                    , opts    = Opts4
                     , state   = State
-                    , log     = aesc_window:new(maps:get(log_keep, Opts5))
+                    , log     = aesc_window:new(maps:get(log_keep, Opts4))
                     },
         lager:debug("Session started, Data = ~p", [pr_data(Data)]),
         %% TODO: Amend the fsm above to include this step. We have transport-level

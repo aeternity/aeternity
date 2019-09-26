@@ -474,10 +474,9 @@ prepare_handler(_Protocol) ->
 update_handler_for_reestablish(Handler, Opts) ->
     lager:debug("Handler = ~p; Opts = ~p", [lager:pr(Handler, ?MODULE), Opts]),
     Conn = maps:get(connection, Opts),
-    Handler#handler{
-       role = maps:get(role, Opts)
-     , host = maps:get(host, Conn, undefined)
-     , port = maps:get(port, Conn) }.
+    Handler#handler{ role = maps:get(role, Opts)
+                   , host = maps:get(host, Conn, undefined)
+                   , port = maps:get(port, Conn) }.
 
 expand_cached_opts(Opts) ->
     {Conn, Opts1} = maps:take(connection, Opts),
