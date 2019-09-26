@@ -3499,7 +3499,23 @@ callback_mode() ->
 -spec init(map()) -> {ok, InitialState, data(), [{timeout, Time::pos_integer(),
                                                    InitialState}, ...]}
                           when InitialState :: state_name().
-init(#{opts := Opts0} = Arg) ->
+init(#{opts := Opts} = Arg) ->
+    case check_limits(Opts) of
+        ok ->
+            init_(Arg);
+        {error, Reason} ->
+            {stop, Reason}
+    end.
+
+check_limits(Opts) ->
+    case maps:is_key(existing_channel_id, Opts) of
+        true ->
+            aesc_limits:register_returning();
+        false ->
+            aesc_limits:allow_new()
+    end.
+
+init_(#{opts := Opts0} = Arg) ->
     %% Protect the password from leakage
     StatePasswordWrapper = aesc_state_password_wrapper:init(maps:find(state_password, Opts0)),
     Opts1 = maps:remove(state_password, Opts0),

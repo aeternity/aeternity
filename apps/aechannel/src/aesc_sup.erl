@@ -16,6 +16,7 @@ start_link() ->
 init([]) ->
     {ok, {{one_for_one, 5, 10}, [ ?CHILD(aesc_state_cache, 5000, worker)
                                 , ?CHILD(aesc_tx_env_cache, 5000, worker)
+                                , ?CHILD(aesc_limits, 5000, worker)
                                 , ?CHILD(aesc_fsm_sup, 5000, supervisor)
                                 , ?CHILD(aesc_sessions_sup, 5000, supervisor)
                                 , ?CHILD(aesc_listeners, 5000, worker)

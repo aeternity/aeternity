@@ -315,6 +315,17 @@
                 }
             }
         },
+        "channels" : {
+            "type" : "object",
+            "additionalProperties" : false,
+            "properties" : {
+                "max_count" : {
+                    "description" : "Max number of active state channel clients allowed on node",
+                    "type" : "integer",
+                    "default" : 1000
+                }
+            }
+        },
         "websocket" : {
             "type" : "object",
             "additionalProperties" : false,
