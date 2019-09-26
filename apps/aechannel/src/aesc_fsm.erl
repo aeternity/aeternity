@@ -2522,7 +2522,7 @@ shutdown_msg_received(Msg, D) ->
     end.
 
 shutdown_msg_received(SignedTx, Updates, BlockHash, D) ->
-    %%report(info, shutdown, D), disabled for the demo, event not suppored by SDK
+    report(info, shutdown, D),
     case request_signing_(?SHUTDOWN_ACK, SignedTx, Updates, BlockHash, D) of
         {ok, D1, Actions} ->
             next_state(awaiting_signature, D1, Actions);

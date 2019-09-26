@@ -1589,8 +1589,7 @@ check_mutual_close_after_close_solo(Cfg) ->
             % are still alive
             ok = rpc(dev1, aesc_fsm, shutdown, [FsmI]),
             {_, _} = await_signing_request(shutdown, I, Cfg),
-            %% disabled for the demo, event not suppored by SDK
-            %% {ok, _} = receive_from_fsm(info, R, shutdown, ?TIMEOUT, Debug),
+            {ok, _} = receive_from_fsm(info, R, shutdown, ?TIMEOUT, Debug),
             timer:sleep(SignTimeout + 100),
             channel_closing = fsm_state(FsmI, Debug),
             channel_closing = fsm_state(FsmR, Debug),
@@ -1966,8 +1965,7 @@ shutdown_(#{fsm := FsmI, channel_id := ChannelId} = I, R, Cfg) ->
     AlreadyClosing = proplists:get_value(already_closing, Cfg, false),
     ok = rpc(dev1, aesc_fsm, shutdown, [FsmI]),
     {I1, _} = await_signing_request(shutdown, I, Cfg),
-    %% disabled for the demo, event not suppored by SDK
-    %%{ok, _} = receive_from_fsm(info, R, shutdown, ?TIMEOUT, Debug),
+    {ok, _} = receive_from_fsm(info, R, shutdown, ?TIMEOUT, Debug),
     {R1, _} = await_signing_request(shutdown_ack, R, Cfg),
     SignedTx = await_on_chain_report(I1, ?TIMEOUT),
     SignedTx = await_on_chain_report(R1, ?TIMEOUT), % same tx
