@@ -308,8 +308,9 @@ grant_fees(FromHeight, Chain, TreesIn, BeneficiaryAccount) ->
     Beneficiary1Reward = round(0.4 * Fees),
     BlockReward = aec_governance:block_mine_reward(FromHeight + 1),
     Beneficiary2Reward = Fees - Beneficiary1Reward + BlockReward,
+    Protocol = aec_hard_forks:protocol_effective_at_height(FromHeight),
     {{Benefits1, Benefits2}, BenefitsProto} =
-        case aec_dev_reward:enabled() andalso aec_dev_reward:activated(FromHeight) of
+        case aec_dev_reward:enabled() andalso aec_dev_reward:activated(Protocol) of
             true ->
                 AllocShares = 100,
                 TotalShares = 1000,
