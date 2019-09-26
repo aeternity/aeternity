@@ -255,7 +255,8 @@ ga_sequence() ->
 update_sequence() ->
     [ check_incorrect_deposit
     , check_incorrect_withdrawal
-    , check_incorrect_update].
+    , check_incorrect_update
+    ].
 
 suite() ->
     [].
@@ -1412,17 +1413,18 @@ check_incorrect_withdrawal(Cfg) ->
     ok.
 
 check_incorrect_update(Cfg) ->
-    config(Cfg),
+    Debug = get_debug(Cfg),
+
     Fun = proplists:get_value(wrong_action, Cfg),
-    InitialPort = proplists:get_value(port, Cfg, ?PORT),
     Test =
-        fun({Depositor, Malicious}, CurPort) ->
-            Cfg1 = load_idx(Cfg),
-            Debug = get_debug(Cfg),
+        fun({Depositor, Malicious}, Cfg1) ->
+            Port = proplists:get_value(port, Cfg1, ?PORT),
+            Cfg2 = set_configs([?SLOGAN], load_idx(Cfg1)),
+
             #{ i := #{pub := IPub, fsm := FsmI} = I
-            , r := #{pub := RPub, fsm := FsmR} = R
-            , spec := Spec} = CSpec = create_channel_([{port, CurPort}, ?SLOGAN|Cfg1]),
-            Data = {I, R, Spec, CurPort, Debug},
+             , r := #{pub := RPub, fsm := FsmR} = R
+             , spec := Spec} = CSpec = create_channel_(Cfg2),
+            Data = {I, R, Spec, Port, Debug},
             Deposit =
                 fun() ->
                     Fun(Data, Depositor, Malicious,
@@ -1437,12 +1439,18 @@ check_incorrect_update(Cfg) ->
             ok = gen_statem:stop(AliveFsm),
             receive_dying_declarations(AliveFsm, OtherFsm, CSpec, Debug),
             bump_idx(),
-            CurPort
-          end,
+
+            % Verify dying log
+            {ok, #{info := {log, ILog}}} = receive_log(I, Debug),
+            {ok, #{info := {log, RLog}}} = receive_log(R, Debug),
+            ok = check_log(expected_fsm_logs(?FUNCTION_NAME, initiator, #{}), ILog),
+            ok = check_log(expected_fsm_logs(?FUNCTION_NAME, responder, #{}), RLog),
+
+            set_configs([{port, Port + 1}], Cfg2)
+        end,
     Roles = [initiator, responder],
-    Combinations = [{Depositor, Malicious} || Depositor <- Roles,
-                                              Malicious <- Roles],
-    lists:foldl(Test, InitialPort, Combinations),
+    Combinations = [{Depositor, Malicious} || Depositor <- Roles, Malicious <- Roles],
+    lists:foldl(Test, Cfg, Combinations),
     ok.
 
 receive_dying_declarations(Fsm, OtherFsm, CSpec, Debug) ->
@@ -1455,8 +1463,8 @@ receive_dying_declarations(Fsm, OtherFsm, CSpec, Debug) ->
             ?LOG(Debug, "OtherFsm (~p) is responder, and is expected to remain", [OtherFsm]),
             receive
                 {aesc_fsm, OtherFsm, #{ tag  := info
-                                      , type := report
-                                      , info := peer_disconnected }} ->
+                                        , type := report
+                                        , info := peer_disconnected }} ->
                     erlang:cancel_timer(TRefR),
                     ok;
                 {timeout, TRefR, Msg} ->
@@ -1489,24 +1497,24 @@ receive_dying_(Fsm, TRef, Died, Debug) ->
     end.
 
 check_incorrect_mutual_close(Cfg) ->
-    config(Cfg),
+    Debug = get_debug(Cfg),
+
     Fun = proplists:get_value(wrong_action_detailed, Cfg),
+    InitialPort = proplists:get_value(port, Cfg, ?PORT),
     Test =
-        fun(Depositor, Malicious) ->
-            Cfg1 = load_idx(Cfg),
-            Debug = get_debug(Cfg),
-            [] = check_info(0, Debug), %% ensure no hanging messages
-            #{ i := I
-             , r := R
-             , spec := Spec} = create_channel_([?SLOGAN|Cfg1]),
-            Port = proplists:get_value(port, Cfg, ?PORT),
-            Data = {I, R, Spec, Port, Debug},
+        fun({Depositor, Malicious}, CurPort) ->
+            Cfg1 = set_configs([?SLOGAN, {port, CurPort}], load_idx(Cfg)),
+
+            #{ i := #{pub := IPub, fsm := FsmI} = I
+             , r := #{pub := RPub, fsm := FsmR} = R
+             , spec := Spec} = create_channel_(Cfg1),
+
+            Data = {I, R, Spec, CurPort, Debug},
             Fun(Data, Depositor, Malicious,
-                {shutdown, [], shutdown,
-                 shutdown_ack},
+                {shutdown, [], shutdown, shutdown_ack},
                 fun(#{fsm := FsmPid}, Debug1) ->
                     ?LOG(Debug1, "checking state of ~p (Depositor=~p, Malicious=~p, FsmI = ~p, FsmR = ~p)",
-                        [FsmPid, Depositor, Malicious, maps:get(fsm,I), maps:get(fsm,R)]),
+                        [FsmPid, Depositor, Malicious, FsmI, FsmR]),
                         case Depositor =:= Malicious of
                             true ->
                                 mutual_closing = fsm_state(FsmPid, Debug);
@@ -1517,11 +1525,18 @@ check_incorrect_mutual_close(Cfg) ->
                     {ok, _} = receive_from_fsm(conflict, R, any_msg(), ?TIMEOUT, Debug)
                 end),
             bump_idx(),
-            ok
+
+            % Verify log
+            {ok, #{info := {log, ILog}}} = receive_log(I, Debug),
+            {ok, #{info := {log, RLog}}} = receive_log(R, Debug),
+            ok = check_log(expected_fsm_logs(?FUNCTION_NAME, initiator, #{}), ILog),
+            ok = check_log(expected_fsm_logs(?FUNCTION_NAME, responder, #{}), RLog),
+
+            CurPort + 1
           end,
     Roles = [initiator, responder],
-    [Test(Depositor, Malicious) || Depositor <- Roles,
-                                   Malicious <- Roles],
+    Combinations = [{Depositor, Malicious} || Depositor <- Roles, Malicious <- Roles],
+    lists:foldl(Test, InitialPort, Combinations),
     ok.
 
 check_mutual_close_with_wrong_amounts(Cfg) ->
@@ -1768,13 +1783,11 @@ wrong_sig_action({I, R, _Spec, _Port, Debug}, Poster, Malicious,
                   end,
                   bad_signature).
 
-wrong_id_action(ChannelStuff, Poster, Malicious,
-                 FsmStuff) ->
-    wrong_id_action(ChannelStuff, Poster, Malicious,
-                  FsmStuff,
-                  fun(Who, DebugL) ->
-                      {ok, _} = receive_from_fsm(conflict, Who, any_msg(), ?TIMEOUT, DebugL)
-                  end).
+wrong_id_action(ChannelStuff, Poster, Malicious, FsmStuff) ->
+    wrong_id_action(ChannelStuff, Poster, Malicious, FsmStuff,
+                    fun(Who, DebugL) ->
+                            {ok, _} = receive_from_fsm(conflict, Who, any_msg(), ?TIMEOUT, DebugL)
+                    end).
 
 wrong_id_action(ChannelStuff, Poster, Malicious,
                 FsmStuff, DetectConflictFun) ->
@@ -4013,5 +4026,36 @@ expected_fsm_logs(leave_reestablish_close, responder, _) ->
     , {rcv, update}
     , {snd, channel_reest_ack}
     , {rcv, channel_reestablish}
+    ];
+expected_fsm_logs(check_incorrect_update, initiator, _) ->
+    [ {rcv, update_error}
+    , {rcv, signed}
+    , {snd, update}
+    , {req, sign}
+    , {snd, undefined}
+    , {req, sign}
+    , {rcv, funding_locked}
+    , {snd, funding_locked}
+    , {rcv, channel_changed}
+    , {rcv, funding_signed}
+    , {snd, funding_created}
+    , {rcv, signed}
+    , {req, sign}
+    , {rcv, channel_accept}
+    , {snd, channel_open}
+    ];
+expected_fsm_logs(check_incorrect_update, responder, _) ->
+    [ {evt, close}
+    , {rcv, disconnect}
+    , {snd, update_error}
+    , {rcv, funding_locked}
+    , {snd, funding_locked}
+    , {rcv, channel_changed}
+    , {snd, funding_created}
+    , {rcv, signed}
+    , {req, sign}
+    , {rcv, funding_created}
+    , {snd, channel_accept}
+    , {rcv, channel_open}
     ];
 expected_fsm_logs(_, _, _) -> [].
