@@ -899,10 +899,10 @@ grant_fees(Node, Trees, Delay, FraudStatus, State) ->
         calc_rewards(FraudStatus1, FraudStatus2, KeyFees, MineReward2,
                      FraudReward1, node_is_genesis(KeyNode1, State)),
 
-    OldestBeneficiaryHeight = node_height(KeyNode1),
+    OldestBeneficiaryVersion = version(KeyNode1),
     {{AdjustedReward1, AdjustedReward2}, DevRewards} =
         aec_dev_reward:split(BeneficiaryReward1, BeneficiaryReward2,
-                             OldestBeneficiaryHeight),
+                             OldestBeneficiaryVersion),
 
     Trees1 = lists:foldl(
                fun({K, Amt}, TreesAccum) when Amt > 0 ->

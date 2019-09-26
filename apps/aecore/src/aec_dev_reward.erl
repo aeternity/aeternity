@@ -111,8 +111,8 @@ parse_beneficiaries([_|_] = BeneficiarySharesStrs) ->
     end.
 
 
-split(BeneficiaryReward1, BeneficiaryReward2, NewestNodeHeight) ->
-    case enabled() andalso activated(NewestNodeHeight) of
+split(BeneficiaryReward1, BeneficiaryReward2, NewestNodeVersion) ->
+    case enabled() andalso activated(NewestNodeVersion) of
         true ->
             split_int(BeneficiaryReward1, BeneficiaryReward2,
                       allocated_shares(), total_shares(),
