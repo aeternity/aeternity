@@ -4814,8 +4814,8 @@ min_tx_fee(Tx) ->
     max(MinTxFee, MinGasRequirements).
 
 min_gas(Tx) ->
-    CurrHeight = curr_height(),
-    MinGas = aetx:min_gas(Tx, CurrHeight),
+    {CurrHeight, CurrProtocol} = curr_height_and_protocol(),
+    MinGas = aetx:min_gas(Tx, CurrHeight, CurrProtocol),
     MinMinerGasPrice = aec_tx_pool:minimum_miner_gas_price(),
     MinGas * MinMinerGasPrice.
 

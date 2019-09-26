@@ -16,10 +16,9 @@
         , from_db_format/1
         , gas_limit/2
         , inner_gas_limit/2
-        , min_gas/2
         , min_gas/3
         , gas_price/1
-        , min_gas_price/2
+        , min_gas_price/3
         , ttl/1
         , size/1
         , min_fee/3
@@ -290,21 +289,22 @@ gas_price(#aetx{ type = Type, cb = CB, tx = Tx }) when ?HAS_GAS_TX(Type) ->
 gas_price(#aetx{}) ->
     undefined.
 
--spec min_gas_price(Tx :: tx(), Height :: aec_blocks:height()) -> MinGasPrice :: non_neg_integer().
-min_gas_price(AETx, Height) ->
-    min_gas_price(AETx, Height, outer).
+-spec min_gas_price(Tx :: tx(), Height :: aec_blocks:height(), Version :: aec_hard_forks:protocol_vsn()) ->
+                           MinGasPrice :: non_neg_integer().
+min_gas_price(AETx, Height, Version) ->
+    min_gas_price(AETx, Height, outer, Version).
 
-min_gas_price(AETx = #aetx{ type = Type, cb = CB, tx = Tx, size = Size }, Height, Kind) ->
+min_gas_price(AETx = #aetx{ type = Type, cb = CB, tx = Tx, size = Size }, Height, Kind, Version) ->
     %% Compute a fictive gas price from the given Fee
-    FeeGas = if Kind == outer -> min_gas(AETx, Height);
-                Kind == inner -> min_gas(AETx, Height) - size_gas(Size)
+    FeeGas = if Kind == outer -> min_gas(AETx, Height, Version);
+                Kind == inner -> min_gas(AETx, Height, Version) - size_gas(Size)
              end,
     FeeGasPrice = (CB:fee(Tx) + FeeGas - 1) div FeeGas,
     case Type of
         ga_meta_tx ->
             %% Also compute the minimum gas price for the wrapped Tx - make sure
             %% not to count the size twice!
-            InnerMinGasPrice = min_gas_price(aetx_sign:tx(CB:tx(Tx)), Height, inner),
+            InnerMinGasPrice = min_gas_price(aetx_sign:tx(CB:tx(Tx)), Height, inner, Version),
             lists:min([CB:gas_price(Tx), FeeGasPrice, InnerMinGasPrice]);
         _ when ?HAS_GAS_TX(Type) ->
             min(CB:gas_price(Tx), FeeGasPrice);
@@ -316,12 +316,6 @@ min_gas_price(AETx = #aetx{ type = Type, cb = CB, tx = Tx, size = Size }, Height
                      Fee :: non_neg_integer().
 min_fee(#aetx{} = AeTx, Height, Version) ->
     min_gas(AeTx, Height, Version) * aec_governance:minimum_gas_price(Version).
-
--spec min_gas(Tx :: tx(), Height :: aec_blocks:height()) -> MinGasPrice :: non_neg_integer().
-min_gas(Tx, Height) ->
-    %% This function will be removed later, so there will be just min_gas/3.
-    Version = aec_hard_forks:protocol_effective_at_height(Height),
-    min_gas(Tx, Height, Version).
 
 -spec min_gas(Tx :: tx(), Height :: aec_blocks:height(), Version :: aec_hard_forks:protocol_vsn()) ->
                      Gas :: non_neg_integer().
