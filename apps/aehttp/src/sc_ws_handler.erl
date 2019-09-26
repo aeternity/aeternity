@@ -246,6 +246,7 @@ handler_init_error(Err, Handler) ->
                     {channel_reserve_too_low      , value_too_low},
                     {push_amount_too_low          , value_too_low},
                     {lock_period_too_low          , value_too_low},
+                    {limit_exceeded               , limit_exceeded},
                     {invalid_password             , invalid_password},
                     {bad_signature                , bad_signature},
                     {password_required_since_lima , {state_password, missing}}
@@ -344,11 +345,6 @@ jobs_done(#handler{job_id = JobId} = H) when JobId =/= undefined ->
     H#handler{job_id = undefined};
 jobs_done(H) ->
     H.
-
--spec job_id(handler() | undefined) -> term().
-job_id(undefined) -> undefined;
-job_id(#handler{job_id = JobId}) ->
-    JobId.
 
 -spec fsm_pid(handler() | undefined) -> pid() | undefined.
 fsm_pid(undefined) -> undefined;

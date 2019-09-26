@@ -9,6 +9,7 @@
         ]).
 
 start(_StartType, _StartArgs) ->
+    aesc_fsm:register_aggregated_counter(),
     aesc_sup:start_link().
 
 start_phase(_Phase, _StartType, _PhaseArgs) ->

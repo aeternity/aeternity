@@ -16,6 +16,7 @@
 -export([schema/0, schema/1]).
 -export([user_config_or_env/3, user_config_or_env/4]).
 -export([user_map_or_env/4]).
+-export([config_value/4]).
 -export([find_config/2]).
 -export([nested_map_get/2]).
 -export([read_config/0]).

@@ -86,6 +86,11 @@
         , channel_unlocked/2
         ]). %% (Fsm, Info)
 
+%% Number of active fsms
+-export([ register_aggregated_counter/0
+        , number_of_fsms/0
+        , within_fsm_number_limit/0 ]).
+
 %% gen_statem callbacks
 -export([ init/1
         , callback_mode/0
@@ -206,16 +211,19 @@ inband_msg(Fsm, To, Msg) ->
 initiate(Host, Port, #{} = Opts0) ->
     lager:debug("initiate(~p, ~p, ~p)", [Host, Port, aesc_utils:censor_init_opts(Opts0)]),
     Opts = maps:merge(#{client => self(), role   => initiator}, Opts0),
-    try init_checks(Opts) of
-        ok ->
-            aesc_fsm_sup:start_child([#{ host => Host
-                                       , port => Port
-                                       , opts => Opts }]);
-        {error, _Reason} = Err ->
-            Err
-    ?CATCH_LOG(_E)
-        {error, _E}
-    end.
+    Proceed = fun() ->
+                      try init_checks(Opts) of
+                          ok ->
+                              aesc_fsm_sup:start_child([#{ host => Host
+                                                         , port => Port
+                                                         , opts => Opts }]);
+                          {error, _Reason} = Err ->
+                              Err
+                      ?CATCH_LOG(_E)
+                          {error, _E}
+                      end
+              end,
+    check_limits(Proceed, Opts).
 
 leave(Fsm) ->
     lager:debug("leave(~p)", [Fsm]),
@@ -225,14 +233,29 @@ respond(Port, #{} = Opts0) ->
     lager:debug("respond(~p, ~p)", [Port, aesc_utils:censor_init_opts(Opts0)]),
     Opts = maps:merge(#{client => self(),
                         role   => responder}, Opts0),
-    try init_checks(Opts) of
-        ok ->
-            aesc_fsm_sup:start_child([#{ port => Port
-                                       , opts => Opts }]);
-        {error, _Reason} = Err -> Err
-    ?CATCH_LOG(_E)
-        {error, _E}
+    Proceed = fun() ->
+                      try init_checks(Opts) of
+                          ok ->
+                              aesc_fsm_sup:start_child([#{ port => Port
+                                                         , opts => Opts }]);
+                          {error, _Reason} = Err ->
+                              Err
+                      ?CATCH_LOG(_E)
+                          {error, _E}
+                      end
+              end,
+    check_limits(Proceed, Opts).
+
+check_limits(Proceed, Opts) ->
+    case {within_fsm_number_limit(), maps:is_key(existing_channel_id, Opts)} of
+        {true, _} ->
+            Proceed();
+        {false, true} ->
+            Proceed();
+        {false, false} ->
+            {error, limit_exceeded}
     end.
+
 
 settle(Fsm) ->
     lager:debug("settle(~p)", [Fsm]),
@@ -460,6 +483,30 @@ channel_unlocked(Fsm, Info) ->
 strict_checks(Fsm, Strict) when is_boolean(Strict) ->
     gen_statem:call(Fsm, {strict_checks, Strict}).
 -endif.
+
+%% ======================================================================
+%% FSM count and limit
+
+register_aggregated_counter() ->
+    gproc:reg({a,l,?MODULE}),
+    lager:debug("Aggregated counter registered: value = ~p", [number_of_fsms()]),
+    ok.
+
+register_counter() ->
+    gproc:reg({c,l,?MODULE}, 1),
+    lager:debug("counter registered: current count: ~p", [number_of_fsms()]),
+    ok.
+
+number_of_fsms() ->
+    gproc:lookup_value({a,l,?MODULE}).
+
+within_fsm_number_limit() ->
+    {ok, Max} = aeu_env:find_config([ <<"channels">>, <<"max_count">> ] , [ user_config
+                                                                          , schema_default
+                                                                          , {value, 1000} ]),
+    N = number_of_fsms(),
+    lager:debug("Number of fsms: ~p; Max = ~p", [N, Max]),
+    N < Max.
 
 %% ======================================================================
 %% FSM states
@@ -3935,6 +3982,7 @@ cur_channel_id(#data{on_chain_id = undefined, channel_id = ChId}) -> ChId;
 cur_channel_id(#data{on_chain_id = ChId}) -> ChId.
 
 gproc_register(#data{role = Role, channel_id = ChanId} = D) ->
+    register_counter(),
     gproc_register_(ChanId, Role, D).
 
 gproc_register_on_chain_id(#data{role = Role, on_chain_id = Id} = D)
