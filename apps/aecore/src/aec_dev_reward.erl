@@ -70,10 +70,10 @@ allocated_shares() ->
     {ok, V} = aeu_env:get_env(aecore, dev_reward_allocated_shares),
     V.
 
-activated(Height) ->
+activated(Protocol) ->
     case env(dev_reward_activated, undefined) of %% for eunit to avoid mocking
         undefined ->
-            aec_hard_forks:protocol_effective_at_height(Height) >= ?FORTUNA_PROTOCOL_VSN;
+            Protocol >= ?FORTUNA_PROTOCOL_VSN;
         Val when is_boolean(Val) ->
             Val
     end.
