@@ -1829,10 +1829,10 @@ get_nonce(Pubkey) ->
 %% we have an actual transaction record (required by aetx:min_fee/2).
 %% The default should err on the side of being too low.
 default_fee(_Tx) ->
-    CurrHeight = aec_headers:height(aec_chain:top_header()),
+    CurrProtocol = curr_protocol(),
     %% this could be fragile on hard fork height if one participant's node had
     %% already forked and the other had not yet
-    ?DEFAULT_FSM_TX_GAS * max(aec_governance:minimum_gas_price(CurrHeight),
+    ?DEFAULT_FSM_TX_GAS * max(aec_governance:minimum_gas_price(CurrProtocol),
                               aec_tx_pool:minimum_miner_gas_price()).
 
 default_ttl(_Type, Opts, #data{opts = DOpts}) ->

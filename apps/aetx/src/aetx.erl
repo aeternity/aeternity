@@ -17,6 +17,7 @@
         , gas_limit/2
         , inner_gas_limit/2
         , min_gas/2
+        , min_gas/3
         , gas_price/1
         , min_gas_price/2
         , ttl/1
@@ -313,7 +314,10 @@ min_gas_price(AETx = #aetx{ type = Type, cb = CB, tx = Tx, size = Size }, Height
 
 -spec min_fee(Tx :: tx(), Height :: aec_blocks:height()) -> Fee :: non_neg_integer().
 min_fee(#aetx{} = AeTx, Height) ->
-    min_gas(AeTx, Height) * aec_governance:minimum_gas_price(Height).
+    %% This function will be removed later and replaced with min_fee/3 - the
+    %% last parameter will be the version.
+    Version = aec_hard_forks:protocol_effective_at_height(Height),
+    min_gas(AeTx, Height, Version) * aec_governance:minimum_gas_price(Version).
 
 -spec min_gas(Tx :: tx(), Height :: aec_blocks:height()) -> MinGasPrice :: non_neg_integer().
 min_gas(Tx, Height) ->
@@ -408,7 +412,7 @@ check_contract(#aetx{ cb = CB, tx = Tx }, Trees, Env) ->
 check_tx(#aetx{ cb = CB, tx = Tx } = AeTx, Trees, Env) ->
     Checks =
         [fun() -> check_minimum_fee(AeTx, Env) end,
-         fun() -> check_minimum_gas_price(AeTx, aetx_env:height(Env)) end,
+         fun() -> check_minimum_gas_price(AeTx, Env) end,
          fun() -> check_ttl(AeTx, Env) end,
          fun() -> check_protocol(AeTx, aetx_env:consensus_version(Env)) end
         ],
@@ -439,12 +443,13 @@ check_minimum_fee(AeTx, Env) ->
             {error, too_low_abs_ttl}
     end.
 
-check_minimum_gas_price(AeTx, Height) ->
+check_minimum_gas_price(AeTx, Env) ->
     case gas_price(AeTx) of
         undefined ->
             ok;
         GasPrice when is_integer(GasPrice) ->
-            case GasPrice >= aec_governance:minimum_gas_price(Height) of
+            Version = aetx_env:consensus_version(Env),
+            case GasPrice >= aec_governance:minimum_gas_price(Version) of
                 true  -> ok;
                 false -> {error, too_low_gas_price}
             end

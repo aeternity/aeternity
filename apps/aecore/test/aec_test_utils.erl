@@ -652,7 +652,8 @@ create_state_tree_with_accounts(Accounts, Backend) ->
     aec_trees:set_accounts(StateTrees0, AccountsTree1).
 
 min_gas_price() ->
-    max(aec_governance:minimum_gas_price(1), % latest prototocol on height 1
+    Protocol = aec_hard_forks:protocol_effective_at_height(1),
+    max(aec_governance:minimum_gas_price(Protocol),
         aec_tx_pool:minimum_miner_gas_price()).
 
 
