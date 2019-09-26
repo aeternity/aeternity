@@ -1413,11 +1413,13 @@ check_incorrect_withdrawal(Cfg) ->
     ok.
 
 check_incorrect_update(Cfg) ->
+    config(Cfg),
     Debug = get_debug(Cfg),
 
     Fun = proplists:get_value(wrong_action, Cfg),
     Test =
         fun({Depositor, Malicious}, Cfg1) ->
+            ?LOG(Debug, "check incorrect update from ~p to ~p", [Depositor, Malicious]),
             Port = proplists:get_value(port, Cfg1, ?PORT),
             Cfg2 = set_configs([?SLOGAN], load_idx(Cfg1)),
 
@@ -1443,8 +1445,9 @@ check_incorrect_update(Cfg) ->
             % Verify dying log
             {ok, #{info := {log, ILog}}} = receive_log(I, Debug),
             {ok, #{info := {log, RLog}}} = receive_log(R, Debug),
-            ok = check_log(expected_fsm_logs(?FUNCTION_NAME, initiator, #{}), ILog),
-            ok = check_log(expected_fsm_logs(?FUNCTION_NAME, responder, #{}), RLog),
+            LogInfo = #{depositor => Depositor, malicious => Malicious},
+            ok = check_log(expected_fsm_logs(?FUNCTION_NAME, initiator, LogInfo), ILog),
+            ok = check_log(expected_fsm_logs(?FUNCTION_NAME, responder, LogInfo), RLog),
 
             set_configs([{port, Port + 1}], Cfg2)
         end,
@@ -4027,14 +4030,49 @@ expected_fsm_logs(leave_reestablish_close, responder, _) ->
     , {snd, channel_reest_ack}
     , {rcv, channel_reestablish}
     ];
-expected_fsm_logs(check_incorrect_update, initiator, _) ->
+expected_fsm_logs(check_incorrect_update, R, #{depositor := D , malicious := M})
+  when (R =:= initiator andalso D =:= R andalso M =:= R) orelse
+       (R =:= responder andalso D =:= R andalso M =:= R) ->
     [ {rcv, update_error}
     , {rcv, signed}
     , {snd, update}
     , {req, sign}
     , {snd, undefined}
     , {req, sign}
-    , {rcv, funding_locked}
+    ]
+    ++ expected_fsm_logs(channel_open, R);
+expected_fsm_logs(check_incorrect_update, R, #{depositor := D , malicious := M})
+  when (R =:= initiator andalso D =/= R andalso M =/= R) orelse
+       (R =:= responder andalso D =/= R andalso M =/= R) ->
+    [ {evt, close}
+    , {rcv, disconnect}
+    , {snd, update_error}
+    ]
+    ++ expected_fsm_logs(channel_open, R);
+expected_fsm_logs(check_incorrect_update, R, #{depositor := D , malicious := M})
+  when (R =:= initiator andalso D =:= R andalso M =/= R) orelse
+       (R =:= responder andalso D =:= R andalso M =/= R) ->
+    [ {snd, update_error}
+    , {rcv, signed}
+    , {snd, update}
+    , {req, sign}
+    ]
+    ++ expected_fsm_logs(channel_open, R);
+expected_fsm_logs(check_incorrect_update, R, #{depositor := D , malicious := M})
+  when (R =:= initiator andalso D =/= R andalso M =:= R) orelse
+       (R =:= responder andalso D =/= R andalso M =:= R) ->
+    [ {evt, close}
+    , {rcv, disconnect}
+    , {rcv, signed}
+    , {snd, update_ack}
+    , {req, sign}
+    , {rcv, update}
+    ]
+    ++ expected_fsm_logs(channel_open, R);
+expected_fsm_logs(_, _, _) -> [].
+
+expected_fsm_logs(channel_open, initiator) ->
+    [ {rcv, funding_locked}
     , {snd, funding_locked}
     , {rcv, channel_changed}
     , {rcv, funding_signed}
@@ -4044,11 +4082,8 @@ expected_fsm_logs(check_incorrect_update, initiator, _) ->
     , {rcv, channel_accept}
     , {snd, channel_open}
     ];
-expected_fsm_logs(check_incorrect_update, responder, _) ->
-    [ {evt, close}
-    , {rcv, disconnect}
-    , {snd, update_error}
-    , {rcv, funding_locked}
+expected_fsm_logs(channel_open, responder) ->
+    [ {rcv, funding_locked}
     , {snd, funding_locked}
     , {rcv, channel_changed}
     , {snd, funding_created}
@@ -4057,5 +4092,4 @@ expected_fsm_logs(check_incorrect_update, responder, _) ->
     , {rcv, funding_created}
     , {snd, channel_accept}
     , {rcv, channel_open}
-    ];
-expected_fsm_logs(_, _, _) -> [].
+    ].
