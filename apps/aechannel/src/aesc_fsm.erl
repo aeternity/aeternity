@@ -4446,12 +4446,7 @@ init_checks(Opts) ->
 check_state_password(#{state_password := StatePassword}) ->
     is_password_valid(StatePassword);
 check_state_password(_Opts) ->
-    case was_fork_activated(?LIMA_PROTOCOL_VSN) of
-        true ->
-            {error, password_required_since_lima};
-        false ->
-            ok
-    end.
+    ok.
 
 -spec is_password_valid(string()) -> ok | {error, invalid_password}.
 is_password_valid(StatePassword)

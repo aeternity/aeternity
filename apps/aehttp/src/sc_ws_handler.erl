@@ -336,12 +336,7 @@ read_channel_options(Params) ->
                                                             , mandatory => false }),
     CheckStatePasswordF =
         fun(M) ->
-            case aesc_fsm:check_state_password(M) of
-                ok ->
-                    M;
-                Err ->
-                    Err
-            end
+            maps:remove(state_password, M)
         end,
     OnChainOpts =
         case (sc_ws_utils:read_param(
