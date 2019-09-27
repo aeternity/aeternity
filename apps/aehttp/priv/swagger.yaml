@@ -49,6 +49,7 @@ paths:
       description: 'Get the top block (either key or micro block)'
       produces:
         - application/json
+      parameters: []
       responses:
         '200':
           description: 'Successful operation'
@@ -67,6 +68,7 @@ paths:
       description: 'Get the current key block'
       produces:
         - application/json
+      parameters: []
       responses:
         '200':
           description: 'Successful operation'
@@ -85,6 +87,7 @@ paths:
       description: 'Get the hash of the current key block'
       produces:
         - application/json
+      parameters: []
       responses:
         '200':
           description: 'Successful operation'
@@ -106,6 +109,7 @@ paths:
       description: 'Get the height of the current key block'
       produces:
         - application/json
+      parameters: []
       responses:
         '200':
           description: 'Successful operation'
@@ -127,6 +131,7 @@ paths:
       description: 'Get the pending key block'
       produces:
         - application/json
+      parameters: []
       responses:
         '200':
           description: 'Successful operation'
@@ -180,7 +185,14 @@ paths:
       produces:
         - application/json
       parameters:
-        - $ref: '#/parameters/HeightIn'
+        - in: path
+          name: height
+          description: 'The height'
+          required: true
+          # UInt64
+          type : integer
+          minimum: 0
+          maximum: 18446744073709551615
       responses:
         '200':
           description: 'Successful operation'
@@ -354,6 +366,7 @@ paths:
       description: 'Get the current generation'
       produces:
         - application/json
+      parameters: []
       responses:
         '200':
           description: 'Successful operation'
@@ -403,7 +416,14 @@ paths:
       produces:
         - application/json
       parameters:
-        - $ref: '#/parameters/HeightIn'
+        - in: path
+          name: height
+          description: 'The height'
+          required: true
+          # UInt64
+          type : integer
+          minimum: 0
+          maximum: 18446744073709551615
       responses:
         '200':
           description: 'Successful operation'
@@ -460,7 +480,14 @@ paths:
           # Encoded account pubkey 'ak_...'
           # pattern: "^ak_[1-9A-HJ-NP-Za-km-z]*$"
           type: string
-        - $ref: '#/parameters/HeightIn'
+        - in: path
+          name: height
+          description: 'The height'
+          required: true
+          # UInt64
+          type : integer
+          minimum: 0
+          maximum: 18446744073709551615
       responses:
         '200':
           description: 'Successful operation'
@@ -927,6 +954,7 @@ paths:
       description: 'Get peer public key'
       produces:
         - application/json
+      parameters: []
       responses:
         '200':
           description: 'Successful operation'
@@ -941,6 +969,7 @@ paths:
       description: 'Get the status of a node'
       produces:
         - application/json
+      parameters: []
       responses:
         '200':
           description: 'Successful operation'
@@ -1524,6 +1553,7 @@ paths:
       description: 'Get pending transactions'
       produces:
         - application/json
+      parameters: []
       responses:
         '200':
           description: 'Successful operation'
@@ -1545,7 +1575,13 @@ paths:
           description: 'Name'
           required: true
           type: string
-        - $ref: '#/parameters/SaltIn'
+        - in: query
+          name: salt
+          description: 'Salt'
+          required: true
+          # UInt
+          type: integer
+          minimum: 0
       responses:
         '200':
           description: 'Successful operation'
@@ -1565,6 +1601,7 @@ paths:
       description: 'Get node''s beneficiary public key'
       produces:
         - application/json
+      parameters: []
       responses:
         '200':
           description: 'Successful operation'
@@ -1584,6 +1621,7 @@ paths:
       description: 'Get node''s public key'
       produces:
         - application/json
+      parameters: []
       responses:
         '200':
           description: 'Successful operation'
@@ -1603,6 +1641,7 @@ paths:
       description: 'Get node Peers'
       produces:
         - application/json
+      parameters: []
       responses:
         '200':
           description: successful operation
@@ -1649,7 +1688,14 @@ paths:
       produces:
         - application/json
       parameters:
-        - $ref: '#/parameters/HeightIn'
+        - in: path
+          name: height
+          description: 'The height'
+          required: true
+          # UInt64
+          type : integer
+          minimum: 0
+          maximum: 18446744073709551615
       responses:
         '200':
           description: Total token supply at height divided in categories
@@ -1660,28 +1706,6 @@ paths:
           schema:
             $ref: '#/definitions/Error'
 
-##
-## Parameters
-##
-
-parameters:
-  HeightIn:
-    in: path
-    name: height
-    description: 'The height'
-    required: true
-    # UInt64
-    type : integer
-    minimum: 0
-    maximum: 18446744073709551615
-  SaltIn:
-    in: query
-    name: salt
-    description: 'Salt'
-    required: true
-    # UInt
-    type: integer
-    minimum: 0
 
 ##
 ## Definitions
