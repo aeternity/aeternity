@@ -137,36 +137,35 @@ apply_lima_test_() ->
                               maps:get(contracts, Sums1)),
                  ok
          end},
-        {"Lima migration using real contract",
+        {"Lima migration using real contract and local data",
          fun() ->
-                 AccountSpecs = migration_account_specs(),
+                 lima_migration_test(mock)
+         end},
+        {"Lima migration using real contract - from UAT-JSON",
+         fun() ->
+                 lima_migration_test(json)
+         end},
+        {"Lima migration testing real contract - from Mainnet-JSON",
+         fun() ->
+                 ContractId = <<"ct_eJhrbPPS4V97VLKEVbSCJFpdA4uyXiZujQyLqMFoYV88TzDe6">>,
+                 RootHash   = <<"A35A7904038F12C5AEBBB2519330E662908E841C73BEEC5410A57EAA358E72EF">>,
+
                  [{Account, _}] = generate_accounts(1),
                  T0 = make_trees([{Account, 1000000000000000000000000}]),
-                 CNonce = 1,
-                 CAmount = lists:sum([A || #{amount := A} <- AccountSpecs]),
-                 ContractSpecs = [lima_contract(CNonce, CAmount)],
+                 ContractSpecs = lima_contract_json("contracts.json"),
                  meck_lima_accounts_and_contracts([], ContractSpecs),
                  T1 = aec_block_fork:apply_lima(T0, tx_env()),
-                 {Txs, _} = lists:mapfoldl(
-                              fun(Spec, Nonce) ->
-                                      {ok, Tx} = migrate_tx(Account, Nonce, Spec),
-                                      %% Fake signatures that won't be checked
-                                      {aetx_sign:new(Tx, [<<0:64/unit:8>>]),
-                                       Nonce + 1}
-                              end, 1, AccountSpecs),
-                 %% Migrate all accounts in one go
-                 {ok, Txs, [], T2, _} =
-                     aec_trees:apply_txs_on_state_trees(Txs, T1, tx_env(),[strict, dont_verify_signature]),
-                 CPubkey = contract_pubkey(CNonce),
-                 %% Before any account migrated, the contract should have all the tokens
-                 assert_balance(T1, CPubkey, CAmount),
-                 %% After all accounts migrated, the contract should have nothing left
-                 assert_balance(T2, CPubkey, 0),
-                 %% Check all individual balances
-                 lists:foreach(fun(#{ ae_pubkey := AEPubkey
-                                    , amount    := AEAmount}) ->
-                                       assert_balance(T2, AEPubkey, AEAmount)
-                               end, AccountSpecs),
+                 {ok, Tx} = root_hash_tx(Account, 1),
+                 STx = aetx_sign:new(Tx, [<<0:64/unit:8>>]),
+                 {ok, [STx], [], T2, _} =
+                     aec_trees:apply_txs_on_state_trees([STx], T1, tx_env(),[strict, dont_verify_signature]),
+                 {ok, ContractKey} = aeser_api_encoder:safe_decode(contract_pubkey, ContractId),
+
+                 CallId = aect_call:id(Account, 1, ContractKey),
+                 Call   = aect_call_state_tree:get_call(ContractKey, CallId, aec_trees:calls(T2)),
+                 ok     = aect_call:return_type(Call),
+                 ?assertEqual(RootHash,
+                              aeb_fate_encoding:deserialize(aect_call:return_value(Call))),
                  ok
          end}
       ]}
@@ -174,6 +173,40 @@ apply_lima_test_() ->
 
 tx_env() ->
     aetx_env:tx_env(42).
+
+lima_migration_test(Source) ->
+     AccountSpecs = migration_account_specs(),
+     [{Account, _}] = generate_accounts(1),
+     T0 = make_trees([{Account, 1000000000000000000000000}]),
+     CNonce = 1,
+     CAmount = lists:sum([A || #{amount := A} <- AccountSpecs]),
+     ContractSpecs = case Source of
+                         mock -> [lima_contract(CNonce, CAmount)];
+                         json -> lima_contract_json("contracts_uat.json")
+                     end,
+     meck_lima_accounts_and_contracts([], ContractSpecs),
+     T1 = aec_block_fork:apply_lima(T0, tx_env()),
+     {Txs, _} = lists:mapfoldl(
+                  fun(Spec, Nonce) ->
+                          {ok, Tx} = migrate_tx(Account, Nonce, Spec),
+                          %% Fake signatures that won't be checked
+                          {aetx_sign:new(Tx, [<<0:64/unit:8>>]),
+                           Nonce + 1}
+                  end, 1, AccountSpecs),
+     %% Migrate all accounts in one go
+     {ok, Txs, [], T2, _} =
+         aec_trees:apply_txs_on_state_trees(Txs, T1, tx_env(),[strict, dont_verify_signature]),
+     CPubkey = contract_pubkey(CNonce),
+     %% Before any account migrated, the contract should have all the tokens
+     assert_balance(T1, CPubkey, CAmount),
+     %% After all accounts migrated, the contract should have nothing left
+     assert_balance(T2, CPubkey, 0),
+     %% Check all individual balances
+     lists:foreach(fun(#{ ae_pubkey := AEPubkey
+                        , amount    := AEAmount}) ->
+                           assert_balance(T2, AEPubkey, AEAmount)
+                   end, AccountSpecs),
+     ok.
 
 lima_contract(Nonce, Amount) ->
     {ok, Code}     = aect_test_utils:compile_contract(?SOPHIA_LIMA_FATE, token_migration),
@@ -192,6 +225,19 @@ lima_contract(Nonce, Amount) ->
      , pubkey      => Pubkey
      , nonce       => Nonce
      }.
+
+lima_contract_json(File) ->
+    {ok, WorkDir} = file:get_cwd(),
+    DataAecoreDir = WorkDir ++ "/data/aecore/",
+    meck:expect(aec_fork_block_settings, contracts_file_name,
+                fun(_) -> DataAecoreDir ++ ".lima/" ++ File end),
+
+    Res = aec_fork_block_settings:lima_contracts(),
+
+    meck:expect(aec_fork_block_settings, contracts_file_name,
+                fun(Name) -> meck:passthrough([Name]) end),
+
+    Res.
 
 load_files_smoke_test_() ->
     [{foreach,
@@ -224,7 +270,10 @@ load_files_smoke_test_() ->
             T0 = make_trees(aec_fork_block_settings:genesis_accounts()),
             T1 = aec_block_fork:apply_minerva(T0),
             T2 = aec_block_fork:apply_fortuna(T1),
-            _T3 = aec_block_fork:apply_lima(T2, tx_env()),
+            case aect_test_utils:latest_protocol_version() >= ?LIMA_PROTOCOL_VSN of
+                true -> _T3 = aec_block_fork:apply_lima(T2, tx_env());
+                false -> ok
+            end,
             ok
         end}
      ]} || {AFile, CFile} <- [{"accounts.json", "contracts.json"},
@@ -308,7 +357,7 @@ generate_accounts(Count, Accum) ->
 assert_balance(Trees, Pubkey, Balance) ->
     Accounts = aec_trees:accounts(Trees),
     Account = aec_accounts_trees:get(Pubkey, Accounts),
-    ?assertEqual(Balance, aec_accounts:balance(Account)). 
+    ?assertEqual(Balance, aec_accounts:balance(Account)).
 
 migrate_tx(Account, Nonce, #{receiver  := Receiver,
                              amount    := Amount,
@@ -331,6 +380,21 @@ migrate_tx(Account, Nonce, #{receiver  := Receiver,
                        gas         => aec_governance:block_gas_limit() div 2,
                        gas_price   => aec_governance:minimum_gas_price(42),
                        call_data   => CallData}).
+
+root_hash_tx(Account, Nonce) ->
+    {ok, Contract} = aect_test_utils:read_contract(?SOPHIA_LIMA_FATE, token_migration),
+    {ok, CallData} = aect_test_utils:encode_call_data(?SOPHIA_LIMA_FATE, Contract, <<"root_hash">>, []),
+    aect_call_tx:new(#{caller_id   => aeser_id:create(account, Account),
+                       nonce       => Nonce,
+                       contract_id => contract_id(1),
+                       abi_version => ?ABI_FATE_SOPHIA_1,
+                       fee         => 1000000000000000,
+                       amount      => 0,
+                       gas         => 10000,
+                       gas_price   => aec_governance:minimum_gas_price(42),
+                       call_data   => CallData}).
+
+
 
 contract_id(N) ->
     CPubkey = contract_pubkey(N),
@@ -360,7 +424,6 @@ migration_account_specs() ->
         }
     end
     || S = #{sender   := Sender,
-             index    := Index,
              priv_key := PrivKey} <- migration_account_specs_()].
 
 migration_account_specs_() ->
