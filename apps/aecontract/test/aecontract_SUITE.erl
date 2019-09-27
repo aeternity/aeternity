@@ -164,6 +164,7 @@
         , store_zero_value/1
         , merge_new_zero_value/1
         , sophia_use_memory_gas/1
+        , lima_migration/1
         ]).
 
 -include_lib("common_test/include/ct.hrl").
@@ -285,6 +286,7 @@ all() ->
 
 -define(FATE_SPECIFIC, [ fate_environment
                        , sophia_polymorphic_entrypoint
+                       , lima_migration
                        ]).
 
 -define(FATE_TODO, [
@@ -393,7 +395,8 @@ groups() ->
                                  sophia_too_little_gas_for_mem,
                                  sophia_bignum,
                                  sophia_higher_order_state,
-                                 sophia_use_memory_gas
+                                 sophia_use_memory_gas,
+                                 lima_migration
                                ]}
     , {sophia_oracles_ttl, [],
           %% Test Oracle TTL handling
@@ -5676,6 +5679,120 @@ sophia_use_memory_gas(_Cfg) ->
     ?assertMatchVM({error, <<"out_of_gas">>}, {error, <<"Out of gas">>}, E),
 
     ok.
+
+lima_migration(_Config) ->
+    ?skipRest(sophia_version() /= ?SOPHIA_LIMA_FATE, lima_migration_only_on_fate_lima),
+
+    EthAccounts =
+        [{"0x015ae5A39E9811875D1e57e4E6e7b3ed83b97a4d", "0xd6a5e842e7410a52e0b5346c5f906052e236ce66744e9da827df43249b25414a"},
+         {"0xe39A80679c3aF15e207378D7Ab65d931ebf26253", "0x398eddb094f9bfe2f579538208142df7fced2d1fe2dc79ee3ed66e84203cdd13"},
+         {"0xdCfea837b9C9eFDaD2E7aF27179e09619fb982d0", "0x706aad5ca7cf2591d2c1f2073eb0535daa6f5a9fe5f32c48cc43e9ef39143786"},
+         {"0x03B9bCaf77B0B48618cDD61d86886C3e85f2a352", "0x2f91c22a3b457097c2245c949ef9194971543d891522e93d3e1bcc8086c94e79"},
+         {"0x5a0431783387718957A54D38aad31bA8D1404833", "0xdd4cfa444e085495353faf88e59e6a9cfc05720600d29a6e8c121bd5e4fedcc0"},
+         {"0x025b8302F4C7Cf2D52966104Ada6F07FC31f91C3", "0xc49bddc8d1765316ab42fb9b690d0a6bead860f046ef0684b610c9ac2595e3b7"},
+         {"0xbbaAabe6F5abEE05380413420dAd35f32c1D683f", "0x0ffb86dd9d3270efc14ff43578a9f79f4c500f866bf6d2d2b76da2637d8494de"},
+         {"0x201ac57463b9a6cD4485F75d8eDdFA60f9BAa65a", "0xd30dd1144062a776b4348280b243587d6a61ca464b13e9afd0caf851cbfd37da"},
+         {"0xC1d14222B373C3FaC50C556880DDAb260e711EF8", "0x13a145b48179e7603504f82f53fbf0710347ae1fedce541f57939d5815c20406"},
+         {"0x42a375e8e91Bdb621996950893161015cA9cCAca", "0xc63610d14407775346ddb68bb25e797d615101e0fcb4e0b6143f7cfa1ffa2817"}],
+    Migration =
+        #{ "0x015ae5A39E9811875D1e57e4E6e7b3ed83b97a4d" => 1000000000000000000,
+           "0xe39A80679c3aF15e207378D7Ab65d931ebf26253" => 123573389000000000,
+           "0xdCfea837b9C9eFDaD2E7aF27179e09619fb982d0" => 2045020302482322,
+           "0x03B9bCaf77B0B48618cDD61d86886C3e85f2a352" => 40000000000000000,
+           "0x5a0431783387718957A54D38aad31bA8D1404833" => 50000000000000000,
+           "0x025b8302F4C7Cf2D52966104Ada6F07FC31f91C3" => 60000000000000000,
+           "0xbbaAabe6F5abEE05380413420dAd35f32c1D683f" => 70000000000000000,
+           "0x201ac57463b9a6cD4485F75d8eDdFA60f9BAa65a" => 80000000000000000,
+           "0xC1d14222B373C3FaC50C556880DDAb260e711EF8" => 900000000000000000,
+           "0x42a375e8e91Bdb621996950893161015cA9cCAca" => 123000005000000000 },
+    Total = lists:sum([ X || {_, X} <- maps:to_list(Migration) ]),
+
+    TreeData = [{Addr, maps:get(Addr, Migration)} || {Addr, _} <- EthAccounts],
+    MTree    = mtree:mk_tree(TreeData),
+    RootStr  = mtree:root_hash(MTree),
+    ct:pal("Merkle-tree root hash: ~s", [RootStr]),
+
+    state(aect_test_utils:new_state()),
+    Acc = ?call(new_account, 200000000000 * aec_test_utils:min_gas_price()),
+    Ct  = ?call(create_contract, Acc, token_migration, {iolist_to_binary(RootStr), 0}, #{ amount => Total }),
+
+    Receivers = [begin #{ public := PubKey } = enacl:sign_keypair(),
+                 {Ix, PubKey} end || Ix <- lists:seq(0, 9) ],
+
+    MsgHash = fun(Addr) -> PK = aeser_api_encoder:encode(account_pubkey, Addr),
+                           Msg = ["\x19Ethereum Signed Message:\n", integer_to_list(byte_size(PK)),
+                                  binary_to_list(PK)],
+                           aec_hash:hash(evm, iolist_to_binary(Msg)) end,
+
+    Sign = fun("0x" ++ Addr, "0x" ++ PrivKey, MHash) ->
+               BinKey   = aeu_hex:hex_to_bin(PrivKey),
+               BinAddr  = aeu_hex:hex_to_bin(Addr),
+               DerSig   = crypto:sign(ecdsa, sha256, {digest, MHash}, [BinKey, secp256k1]),
+               ShortSig = aeu_crypto:ecdsa_from_der_sig(DerSig),
+               aeu_crypto:ecdsa_recoverable_from_ecdsa(MHash, ShortSig, BinAddr)
+           end,
+
+    Signatures = [Sign(Addr, PK, MsgHash(AEAddr))
+                  || {{Addr, PK}, {_, AEAddr}} <- lists:zip(EthAccounts, Receivers) ],
+
+    N = 1 + element(3, os:timestamp()) rem 10,
+    {EthAddr, _} = lists:nth(N, EthAccounts),
+    {Ix, AEAddr} = lists:nth(N, Receivers),
+    Sig          = lists:nth(N, Signatures),
+    Tokens       = maps:get(EthAddr, Migration),
+    Siblings     = [list_to_binary(S) || S <- mtree:get_poi(MTree, Ix)],
+
+    Fail1 = ?call(call_contract, Acc, Ct, migrate, word, {Tokens, AEAddr, Ix + 1, Siblings, ?sig(Sig)}),
+    ?assertEqual({revert,<<"From provided data, cannot be generated same root">>}, Fail1),
+
+    Fail2 = ?call(call_contract, Acc, Ct, migrate, word, {Tokens, AEAddr, Ix, tl(Siblings), ?sig(Sig)}),
+    ?assertEqual({revert,<<"From provided data, cannot be generated same root">>}, Fail2),
+
+    SiblingsX = [list_to_binary(S) || S <- mtree:get_poi(MTree, N rem 10)],
+    Fail3 = ?call(call_contract, Acc, Ct, migrate, word, {Tokens, AEAddr, Ix, SiblingsX, ?sig(Sig)}),
+    ?assertEqual({revert,<<"From provided data, cannot be generated same root">>}, Fail3),
+
+    Fail4 = ?call(call_contract, Acc, Ct, migrate, word, {Tokens - 100, AEAddr, Ix, Siblings, ?sig(Sig)}),
+    ?assertEqual({revert,<<"From provided data, cannot be generated same root">>}, Fail4),
+
+    Fail5 = ?call(call_contract, Acc, Ct, migrate, word, {Tokens, <<0:256>>, Ix, Siblings, ?sig(Sig)}),
+    ?assertEqual({revert,<<"From provided data, cannot be generated same root">>}, Fail5),
+
+    Fail6 = ?call(call_contract, Acc, Ct, migrate, word, {Tokens, AEAddr, Ix, Siblings, ?sig(<<0:65/unit:8>>)}),
+    ?assertEqual({revert,<<"Failed to recover address, bad signature">>}, Fail6),
+
+    Migrate = fun(EA, AEA, I, Sg) ->
+                  Sibs = [list_to_binary(S) || S <- mtree:get_poi(MTree, I)],
+                  Toks = maps:get(EA, Migration),
+                  Res = ?call(call_contract, Acc, Ct, migrate, word, {Toks, AEA, I, Sibs, ?sig(Sg)}),
+                  ?assertEqual(I + 1, Res)
+              end,
+
+    [ Migrate(EA, AEA, I, Sg)
+      || {{EA, _}, {I, AEA}, Sg} <- lists:zip3(EthAccounts, Receivers, Signatures) ],
+
+    CheckBal = fun(A, ExpBal) ->
+                   Bal = ?call(account_balance, A),
+                   ?assertEqual(ExpBal, Bal)
+               end,
+
+    [ CheckBal(AEA, maps:get(EA, Migration)) ||
+      {{EA, _}, {_, AEA}} <- lists:zip(EthAccounts, Receivers) ],
+
+    FailMigrate =
+        fun(EA, AEA, I, Sg) ->
+            Sibs = [list_to_binary(S) || S <- mtree:get_poi(MTree, I)],
+            Toks = maps:get(EA, Migration),
+            Res = ?call(call_contract, Acc, Ct, migrate, word, {Toks, AEA, I, Sibs, ?sig(Sg)}),
+            ?assertEqual({revert,<<"This account has already transferred its tokens">>}, Res)
+        end,
+
+    [ FailMigrate(EA, AEA, I, Sg)
+      || {{EA, _}, {I, AEA}, Sg} <- lists:zip3(EthAccounts, Receivers, Signatures) ],
+
+    ok.
+
+
 
 
 
