@@ -278,6 +278,7 @@ If the file is valid YAML but does not contain a valid configuration, it prints 
 ## Database backend
 
 Aeternity nodes support several types of database persistence backends:
+
  - RocksDB (default for Unix, available for Unix)
  - Mnesia (default for Win32, available for all)
  - Leveled (experimental, available for all)
@@ -303,6 +304,7 @@ However currently it has an experimental support.
 It is currently the default database when RocksDB is not available (i.e. Win32)
 
 Notes:
+
  - If using RocksDB, `db_path` should not point to an NTFS volume (like a mapped windows drive in WSL or volume mounts 
  in Docker for Windows).
  - You can not switch the backend of an existing DB.
