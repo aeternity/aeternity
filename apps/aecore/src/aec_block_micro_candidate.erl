@@ -101,22 +101,15 @@ int_create(BlockHash, Block, KeyBlock, Trees) ->
     int_create_block(BlockHash, Block, KeyBlock, Trees, Txs).
 
 int_create_block(PrevBlockHash, PrevBlock, KeyBlock, Trees, Txs) ->
+    %% Micro block always has the same protocol version as the last key block.
+    Protocol = aec_blocks:version(KeyBlock),
     PrevBlockHeight = aec_blocks:height(PrevBlock),
-
-    %% Assert correctness of last block protocol version, as minimum
-    %% sanity check on previous block and state (mainly for potential
-    %% stale state persisted in DB and for development testing).
-    ExpectedPrevBlockVersion =
-        aec_hard_forks:protocol_effective_at_height(PrevBlockHeight),
-    {ExpectedPrevBlockVersion, _} = {aec_blocks:version(PrevBlock),
-                                     {expected, ExpectedPrevBlockVersion}},
 
     PrevKeyHash = case aec_blocks:type(PrevBlock) of
                       micro -> aec_blocks:prev_key_hash(PrevBlock);
                       key   -> PrevBlockHash
                   end,
     Height = aec_blocks:height(KeyBlock),
-    Version = aec_hard_forks:protocol_effective_at_height(Height),
 
     Time = determine_new_time(PrevBlock),
     KeyHeader = aec_blocks:to_header(KeyBlock),
@@ -131,7 +124,7 @@ int_create_block(PrevBlockHash, PrevBlock, KeyBlock, Trees, Txs) ->
 
     NewBlock = aec_blocks:new_micro(Height, PrevBlockHash, PrevKeyHash,
                                     aec_trees:hash(Trees2), TxsRootHash, Txs1,
-                                    Time, PoF, Version),
+                                    Time, PoF, Protocol),
     Env1 = aetx_env:set_events(Env, Events),
     BlockInfo = #{ trees => Trees2, txs_tree => TxsTree, tx_env => Env1},
     {ok, NewBlock, BlockInfo}.
