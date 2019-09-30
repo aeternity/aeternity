@@ -123,6 +123,7 @@
         , ecverify_secp256k1/5
         , ecrecover_secp256k1/4
         , contract_to_address/3
+        , address_to_contract/3
         , sha3/3
         , sha256/3
         , blake2b/3
@@ -1464,6 +1465,9 @@ ecrecover_secp256k1(Arg0, Arg1, Arg2, ES) ->
 contract_to_address(Arg0, Arg1, ES) ->
     un_op(contract_to_address, {Arg0, Arg1}, ES).
 
+address_to_contract(Arg0, Arg1, ES) ->
+    un_op(address_to_contract, {Arg0, Arg1}, ES).
+
 sha3(Arg0, Arg1, EngineState) ->
     un_op(sha3, {Arg0, Arg1}, EngineState).
 
@@ -1645,7 +1649,9 @@ op(blake2b, A) ->
     Hash = aec_hash:blake2b_256_hash(Bin),
     ?FATE_BYTES(Hash);
 op(contract_to_address, A) when ?IS_FATE_CONTRACT(A) ->
-    ?FATE_ADDRESS(?FATE_CONTRACT_VALUE(A)).
+    ?FATE_ADDRESS(?FATE_CONTRACT_VALUE(A));
+op(address_to_contract, A) when ?IS_FATE_ADDRESS(A) ->
+    ?FATE_CONTRACT(?FATE_ADDRESS_VALUE(A)).
 
 binary_for_hashing(S) when ?IS_FATE_STRING(S) ->
     ?FATE_STRING_VALUE(S);  %% Makes Crypto.sha3 and String.sha3 coincide.
