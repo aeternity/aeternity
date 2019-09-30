@@ -2615,7 +2615,7 @@ shutdown_msg_received(Msg, D) ->
     end.
 
 shutdown_msg_received(SignedTx, Updates, BlockHash, D) ->
-    %%report(info, shutdown, D), disabled for the demo, event not suppored by SDK
+    report(info, shutdown, D),
     case request_signing_(?SHUTDOWN_ACK, SignedTx, Updates, BlockHash, D) of
         {ok, D1, Actions} ->
             next_state(awaiting_signature, D1, Actions);
@@ -3145,13 +3145,6 @@ report_with_notice(Tag, Info, Notice, D) ->
                                  , notice => Notice
                                  , info   => Info }, D).
 
-%% report_with_notice(Tag, St, Msg, Notice, D) ->
-%%     report_info(do_rpt(Tag, D), #{ type   => report
-%%                                  , tag    => Tag
-%%                                  , notice => Notice
-%%                                  , info   => St
-%%                                  , data   => Msg }, D).
-
 report(Tag, Info, D) ->
     report_info(do_rpt(Tag, D), #{ type => report
                                  , tag  => Tag
@@ -3516,7 +3509,6 @@ check_account(A) ->
         {ok, generalized} -> ok;
         _                 -> {error, not_found}
     end.
-
 
 check_attach_info(Info, #data{opts = Opts} = D) ->
     #{initiator := I, responder := R} = Opts,

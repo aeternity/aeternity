@@ -1614,8 +1614,7 @@ check_mutual_close_after_close_solo(Cfg) ->
             % are still alive
             ok = rpc(dev1, aesc_fsm, shutdown, [FsmI]),
             {_, _} = await_signing_request(shutdown, I, Cfg),
-            %% disabled for the demo, event not suppored by SDK
-            %% {ok, _} = receive_from_fsm(info, R, shutdown, ?TIMEOUT, Debug),
+            {ok, _} = receive_info(R, shutdown, Debug),
             timer:sleep(SignTimeout + 100),
             channel_closing = fsm_state(FsmI, Debug),
             channel_closing = fsm_state(FsmR, Debug),
@@ -2019,6 +2018,7 @@ shutdown_(#{fsm := FsmI, channel_id := ChannelId} = I, R, MinDepth, Cfg) ->
     % Final checks
     {ok, _} = receive_info(I1, closed_confirmed, Debug),
     {ok, _} = receive_info(R1, closed_confirmed, Debug),
+    {ok, _} = receive_info(R1, shutdown, Debug),
     {ok, _} = receive_info(I1, fun died_normal/1, Debug),
     {ok, _} = receive_info(R1, fun died_normal/1, Debug),
 
