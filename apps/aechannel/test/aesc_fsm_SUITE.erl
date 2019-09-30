@@ -1500,19 +1500,21 @@ receive_dying_(Fsm, TRef, Died, Debug) ->
     end.
 
 check_incorrect_mutual_close(Cfg) ->
+    config(Cfg),
     Debug = get_debug(Cfg),
 
     Fun = proplists:get_value(wrong_action_detailed, Cfg),
-    InitialPort = proplists:get_value(port, Cfg, ?PORT),
     Test =
-        fun({Depositor, Malicious}, CurPort) ->
-            Cfg1 = set_configs([?SLOGAN, {port, CurPort}], load_idx(Cfg)),
+        fun({Depositor, Malicious}, Cfg1) ->
+            ?LOG(Debug, "check incorrect mutual_close from ~p to ~p", [Depositor, Malicious]),
+            Port = proplists:get_value(port, Cfg1, ?PORT),
+            Cfg2 = set_configs([?SLOGAN], load_idx(Cfg1)),
 
             #{ i := #{pub := IPub, fsm := FsmI} = I
              , r := #{pub := RPub, fsm := FsmR} = R
-             , spec := Spec} = create_channel_(Cfg1),
+             , spec := Spec } = create_channel_(Cfg1),
+            Data = {I, R, Spec, Port, Debug},
 
-            Data = {I, R, Spec, CurPort, Debug},
             Fun(Data, Depositor, Malicious,
                 {shutdown, [], shutdown, shutdown_ack},
                 fun(#{fsm := FsmPid}, Debug1) ->
@@ -1529,17 +1531,13 @@ check_incorrect_mutual_close(Cfg) ->
                 end),
             bump_idx(),
 
-            % Verify log
-            {ok, #{info := {log, ILog}}} = receive_log(I, Debug),
-            {ok, #{info := {log, RLog}}} = receive_log(R, Debug),
-            ok = check_log(expected_fsm_logs(?FUNCTION_NAME, initiator, #{}), ILog),
-            ok = check_log(expected_fsm_logs(?FUNCTION_NAME, responder, #{}), RLog),
+            assert_empty_msgq(Debug),
 
-            CurPort + 1
+            set_configs([{port, Port + 1}], Cfg2)
           end,
     Roles = [initiator, responder],
     Combinations = [{Depositor, Malicious} || Depositor <- Roles, Malicious <- Roles],
-    lists:foldl(Test, InitialPort, Combinations),
+    lists:foldl(Test, Cfg, Combinations),
     ok.
 
 check_mutual_close_with_wrong_amounts(Cfg) ->
