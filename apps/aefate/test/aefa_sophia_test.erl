@@ -39,12 +39,16 @@ dummy_trees(Caller, Cache) ->
     aec_trees:set_accounts(Trees, ATrees).
 
 run(Cache, Contract, Function, Arguments) ->
+    {_, Res} = timed_run(Cache, Contract, Function, Arguments),
+    Res.
+
+timed_run(Cache, Contract, Function, Arguments) ->
     Spec = make_call_spec(Contract, Function, Arguments),
     Env = dummy_spec(Cache),
     try
-        aefa_fate:run_with_cache(Spec, Env, Cache)
+        timer:tc(fun() -> aefa_fate:run_with_cache(Spec, Env, Cache) end)
     catch _:{error, Err} ->
-              {error, Err, []}
+              {0, {error, Err, []}}
     end.
 
 expect(Chain, Contract, Function, Arguments, Expect) ->
@@ -77,7 +81,7 @@ compile_contract(Code, Options) ->
         {error, {type_errors, Err}}
     end.
 
--define(CALL_GAS, 1000000).
+-define(CALL_GAS, 6000000).
 
 make_call_spec(Contract, Function0, Arguments) ->
     Function = aeb_fate_code:symbol_identifier(Function0),
@@ -101,18 +105,25 @@ mk_test(Contracts, Tests) ->
       fun() -> expect(Chain, Main, list_to_binary(Fun), Args, Res) end}
     || {Fun, Args, Res} <- Tests ].
 
+print_run_stats(Time, ES) ->
+    GasUsed    = ?CALL_GAS - aefa_engine_state:gas(ES),
+    Trace      = aefa_engine_state:trace(ES),
+    Red        = fun({_, {reductions, R}}) -> R end,
+    Reductions = Red(hd(Trace)) - Red(lists:last(Trace)),
+    Steps      = length(Trace),
+    io:format("~p steps / ~p gas / ~p reductions / ~.2fms\n", [Steps, GasUsed, Reductions, Time / 1000]).
+
 run_call(Code, Fun, Args) ->
     Cache = compile_contracts([{<<"test">>, Code}]),
-    case run(Cache, <<"test">>, list_to_binary(Fun), Args) of
-        {ok, ES} ->
-            GasUsed    = ?CALL_GAS - aefa_engine_state:gas(ES),
-            Trace      = aefa_engine_state:trace(ES),
-            Red        = fun({_, {reductions, R}}) -> R end,
-            Reductions = Red(hd(Trace)) - Red(lists:last(Trace)),
-            Steps      = length(Trace),
-            io:format("~p steps / ~p gas / ~p reductions\n", [Steps, GasUsed, Reductions]),
+    case timed_run(Cache, <<"test">>, list_to_binary(Fun), Args) of
+        {Time, {ok, ES}} ->
+            print_run_stats(Time, ES),
             aefa_engine_state:accumulator(ES);
-        {error, Err, ES} ->
+        {Time, {error, <<"Out of gas">>, ES}} ->
+            print_run_stats(Time, ES),
+            {error, out_of_gas};
+        {Time, {error, Err, ES}} ->
+            print_run_stats(Time, ES),
             io:format("~s\n", [Err]),
             {error, Err, [I || {I, _} <- aefa_engine_state:trace(ES)]}
     end.
