@@ -279,13 +279,13 @@ If the file is valid YAML but does not contain a valid configuration, it prints 
 
 Aeternity nodes support several types of database persistence backends:
 
- - RocksDB (default for Unix, available for Unix)
- - Mnesia (default for Win32, available for all)
- - Leveled (experimental, available for all)
+ - RocksDB (default for Unix, supported by Unix)
+ - Mnesia (default for Win32, supported by all OS'es)
+ - Leveled (experimental, supported by all OS'es)
 
 You may choose the database backend by setting `chain.db_backend` to the corresponding value `rocksdb`, `mnesia`, `leveled`
 
-Example:
+Example (switch to Leveled):
 
 ```yaml
 chain:
@@ -300,7 +300,7 @@ RocksDB does not work with NTFS volumes.
 **Leveled** is designed to be a better alternative to RocksDB and is available for all OS'es.
 However currently it has an experimental support.
 
-**Mnesia** is the DB backend that is distributed with Erlang/OTP but is considered less reliable than the other two.
+**Mnesia** is the DB backend that is distributed with Erlang/OTP but is considered less performant than the other two.
 It is currently the default database when RocksDB is not available (i.e. Win32)
 
 Notes:
@@ -308,8 +308,10 @@ Notes:
  - If using RocksDB, `db_path` should not point to an NTFS volume (like a mapped windows drive in WSL or volume mounts 
  in Docker for Windows).
  - You can not switch the backend of an existing DB.
- - Upgrading a node will automatically upgrade the DB structure. Downgrades would require an empty db and a full blockchain sync.
- - Nodes can not simultaneously work with the same db files. However it is possible to make snapshots which could be used to speed up syncing of new nodes. 
- - Initial sync might take a lot of time and heavily depends on CPU/IOPS.
- - Starting a node will trigger a db tables check that might be slow on certain configurations.
+ - Upgrading a node will automatically upgrade the DB structure. 
+  Downgrades would require an empty db and a full blockchain sync.
+ - Nodes can not simultaneously work with the same DB files. 
+  However it is possible to make snapshots which could be used to speed up syncing of new nodes. 
+ - Initial sync might take a lot of time and that heavily depends on the available CPU/IOPS.
+ - Restarting a node might be slow on certain configurations due to intensive DB consistency checks.
  
