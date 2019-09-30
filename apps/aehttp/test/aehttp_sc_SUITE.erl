@@ -489,10 +489,12 @@ sc_ws_open_(Config, ChannelOpts0, MinBlocksToMine) ->
     {ok, IConnPid} = channel_ws_start(initiator,
                                            maps:put(host, <<"localhost">>, IChanOpts), Config),
     ct:log("initiator spawned", []),
+    ping_pong(IConnPid, Config),
     ok = ?WS:register_test_for_channel_events(IConnPid, [info, get, sign,
                                                          on_chain_tx, update]),
 
     {ok, RConnPid} = channel_ws_start(responder, RChanOpts, Config),
+    ping_pong(RConnPid, Config),
     ct:log("responder spawned", []),
     ok = ?WS:register_test_for_channel_events(RConnPid, [info, get, sign,
                                                          on_chain_tx, update]),
@@ -607,19 +609,27 @@ channel_create(Config, IConnPid, RConnPid) ->
                     priv_key := RPrivkey}} = proplists:get_value(participants, Config),
     %% initiator gets to sign a create_tx
     {IStartAmt, RStartAmt} = channel_participants_balances(IPubkey, RPubkey),
+    ping_pong(IConnPid, Config),
+    ping_pong(RConnPid, Config),
 
     #{tx := CrTx,
       updates := Updates} = channel_sign_tx(IPubkey, IConnPid, IPrivkey, <<"channels.initiator_sign">>, Config),
     {ok, #{<<"event">> := <<"funding_created">>}} = wait_for_channel_event(RConnPid, info, Config),
     %% responder gets to sign a create_tx
+    ping_pong(IConnPid, Config),
+    ping_pong(RConnPid, Config),
     #{tx := CrTx,
       updates := Updates} = channel_sign_tx(RPubkey, RConnPid, RPrivkey, <<"channels.responder_sign">>, Config),
     {ok, #{<<"event">> := <<"funding_signed">>}} = wait_for_channel_event(IConnPid, info, Config),
+    ping_pong(IConnPid, Config),
+    ping_pong(RConnPid, Config),
 
     %% both of them receive the same co-signed channel_create_tx
     {ok, #{<<"tx">> := EncodedSignedCrTx}} = wait_for_channel_event(IConnPid, on_chain_tx, Config),
     {ok, #{<<"tx">> := EncodedSignedCrTx}} = wait_for_channel_event(RConnPid, on_chain_tx, Config),
 
+    ping_pong(IConnPid, Config),
+    ping_pong(RConnPid, Config),
     {ok, SSignedCrTx} = aeser_api_encoder:safe_decode(transaction, EncodedSignedCrTx),
     SignedCrTx = aetx_sign:deserialize_from_binary(SSignedCrTx),
     %% same transaction
@@ -642,6 +652,8 @@ channel_create(Config, IConnPid, RConnPid) ->
 
     {ok, #{<<"tx">> := EncodedSignedCrTx}} = wait_for_channel_event(IConnPid, on_chain_tx, Config),
     {ok, #{<<"tx">> := EncodedSignedCrTx}} = wait_for_channel_event(RConnPid, on_chain_tx, Config),
+    ping_pong(IConnPid, Config),
+    ping_pong(RConnPid, Config),
 
     ChannelCreateFee.
 
@@ -3251,18 +3263,17 @@ sc_ws_change_password_(Config) ->
 sc_ws_ping_pong(Config) ->
     #{initiator := IConnPid, responder :=RConnPid} =
         proplists:get_value(channel_clients, Config),
-    PingPong =
-        fun(ConnPid) ->
-            ok = ?WS:register_test_for_channel_events(ConnPid, [system]),
-            ok = ws_send_tagged(ConnPid, <<"channels.system">>,
-                                #{<<"action">> => <<"ping">>}, Config),
-            {ok, <<"pong">>, #{}} =
-                wait_for_channel_event(ConnPid, system, Config),
-            ok = ?WS:unregister_test_for_channel_events(ConnPid, [system]),
-            ok
-        end,
-    PingPong(IConnPid),
-    PingPong(RConnPid),
+    ping_pong(IConnPid, Config),
+    ping_pong(RConnPid, Config),
+    ok.
+
+ping_pong(ConnPid, Config) ->
+    ok = ?WS:register_test_for_channel_events(ConnPid, [system]),
+    ok = ws_send_tagged(ConnPid, <<"channels.system">>,
+                        #{<<"action">> => <<"ping">>}, Config),
+    {ok, <<"pong">>, #{}} =
+        wait_for_channel_event(ConnPid, system, Config),
+    ok = ?WS:unregister_test_for_channel_events(ConnPid, [system]),
     ok.
 
 sc_ws_deposit(Config) ->
