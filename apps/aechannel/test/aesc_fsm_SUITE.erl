@@ -640,8 +640,8 @@ t_create_channel_(Cfg) ->
 
     {ok, #{info := {log, ILog}}} = receive_log(I, Debug),
     {ok, #{info := {log, RLog}}} = receive_log(R, Debug),
-    ok = check_log(expected_fsm_logs(?FUNCTION_NAME, initiator, #{}), ILog),
-    ok = check_log(expected_fsm_logs(?FUNCTION_NAME, responder, #{}), RLog),
+    ok = check_log(expected_fsm_logs(?FUNCTION_NAME, initiator), ILog),
+    ok = check_log(expected_fsm_logs(?FUNCTION_NAME, responder), RLog),
 
     % Done
     assert_empty_msgq(Debug),
@@ -1197,8 +1197,8 @@ leave_reestablish_close(Cfg) ->
 
     {ok, #{info := {log, ILog}}} = receive_log(I1, Debug),
     {ok, #{info := {log, RLog}}} = receive_log(R1, Debug),
-    ok = check_log(expected_fsm_logs(?FUNCTION_NAME, initiator, #{}), ILog),
-    ok = check_log(expected_fsm_logs(?FUNCTION_NAME, responder, #{}), RLog),
+    ok = check_log(expected_fsm_logs(?FUNCTION_NAME, initiator), ILog),
+    ok = check_log(expected_fsm_logs(?FUNCTION_NAME, responder), RLog),
 
     % Ensure state is flushed gone post shutdown
     assert_cache_is_gone_after_on_disk(ChId),
@@ -1510,8 +1510,8 @@ check_incorrect_mutual_close(Cfg) ->
             Port = proplists:get_value(port, Cfg1, ?PORT),
             Cfg2 = set_configs([?SLOGAN], load_idx(Cfg1)),
 
-            #{ i := #{pub := IPub, fsm := FsmI} = I
-             , r := #{pub := RPub, fsm := FsmR} = R
+            #{ i := #{fsm := FsmI} = I
+             , r := #{fsm := FsmR} = R
              , spec := Spec } = create_channel_(Cfg1),
             Data = {I, R, Spec, Port, Debug},
 
@@ -3885,6 +3885,9 @@ responder_stays(#{responder_opts := #{keep_running := Bool}}) ->
 responder_stays(_) ->
     false.
 
+expected_fsm_logs(Name, Role) ->
+    expected_fsm_logs(Name, Role, #{}).
+
 expected_fsm_logs(check_password_is_changeable, initiator, #{update_count := Count}) ->
     UpdateLog = [ {rcv, update_ack}
                 , {rcv, signed}
@@ -4067,9 +4070,7 @@ expected_fsm_logs(check_incorrect_update, R, #{depositor := D , malicious := M})
     , {rcv, update}
     ]
     ++ expected_fsm_logs(channel_open, R);
-expected_fsm_logs(_, _, _) -> [].
-
-expected_fsm_logs(channel_open, initiator) ->
+expected_fsm_logs(channel_open, initiator, #{}) ->
     [ {rcv, funding_locked}
     , {snd, funding_locked}
     , {rcv, channel_changed}
@@ -4080,7 +4081,7 @@ expected_fsm_logs(channel_open, initiator) ->
     , {rcv, channel_accept}
     , {snd, channel_open}
     ];
-expected_fsm_logs(channel_open, responder) ->
+expected_fsm_logs(channel_open, responder, #{}) ->
     [ {rcv, funding_locked}
     , {snd, funding_locked}
     , {rcv, channel_changed}
@@ -4090,4 +4091,5 @@ expected_fsm_logs(channel_open, responder) ->
     , {rcv, funding_created}
     , {snd, channel_accept}
     , {rcv, channel_open}
-    ].
+    ];
+expected_fsm_logs(_, _, _) -> [].

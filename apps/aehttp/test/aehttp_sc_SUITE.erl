@@ -1012,8 +1012,16 @@ query_contract_(ConnPid, Pubkey, <<"json-rpc">>) ->
         ConnPid, #{ <<"method">> => <<"channels.get.contract">>
                   , <<"params">> => #{<<"pubkey">> => Pubkey}})}.
 
-sc_ws_close_mutual_(Config, Closer) when Closer =:= initiator
-                                 orelse Closer =:= responder ->
+sc_ws_close_mutual_(Config0) ->
+    lists:foreach(
+        fun(WhoCloses) ->
+            Config = sc_ws_open_(Config0),
+            sc_ws_close_mutual_(Config, WhoCloses)
+        end,
+        [initiator, responder]).
+
+sc_ws_close_mutual_(Config, Closer) when Closer =:= initiator orelse
+                                         Closer =:= responder ->
     ct:log("ConfigList = ~p", [Config]),
     #{initiator := #{pub_key := IPubkey,
                     priv_key := IPrivkey},
@@ -1025,7 +1033,6 @@ sc_ws_close_mutual_(Config, Closer) when Closer =:= initiator
       responder := RConnPid} = proplists:get_value(channel_clients, Config),
     ok = ?WS:register_test_for_channel_events(IConnPid, [sign, info, on_chain_tx]),
     ok = ?WS:register_test_for_channel_events(RConnPid, [sign, info, on_chain_tx]),
-
 
     CloseMutual =
         fun(CloserPubkey, CloserConn, CloserPrivkey, OtherPubkey, OtherConn, OtherPrivkey) ->
@@ -2583,7 +2590,7 @@ sc_ws_basic_open_close(Config0) ->
     ok = sc_ws_close_(Config).
 
 sc_ws_basic_open_close_no_password(Config) ->
-    with_trace(fun(Cfg) -> 
+    with_trace(fun(Cfg) ->
                        sc_ws_basic_open_close([{no_password, true}|Cfg])
                end, Config, "sc_ws_basic_open_close_no_password").
 
@@ -2988,15 +2995,6 @@ sc_ws_update_abort(Config) ->
 
 sc_ws_close_mutual(Config) ->
     with_trace(fun sc_ws_close_mutual_/1, Config, "sc_ws_close_mutual").
-
-sc_ws_close_mutual_(Config0) ->
-    lists:foreach(
-        fun(WhoCloses) ->
-            Config = sc_ws_open_(Config0),
-            sc_ws_close_mutual_(Config, WhoCloses)
-        end,
-        [initiator,
-         responder]).
 
 sc_ws_close_solo(Config) ->
     with_trace(fun sc_ws_close_solo_/1, Config, "sc_ws_close_solo").

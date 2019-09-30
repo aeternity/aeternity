@@ -407,6 +407,9 @@ stop_ok({'EXIT', noproc}, _, _, MRef, _) ->
 stop_ok({'EXIT', {normal,{sys,terminate,_}}}, _, _, MRef, _) ->
     erlang:demonitor(MRef),
     ok;
+stop_ok({'EXIT', {disconnect,{sys,terminate,_}}}, _, _, MRef, _) ->
+    erlang:demonitor(MRef),
+    ok;
 stop_ok({'EXIT', timeout}, Fsm, Retries, MRef, BT) when Retries > 0 ->
     BT1 = process_info(Fsm, backtrace),
     lager:debug("Timed out stopping fsm (~p): ~p", [Fsm, process_info(Fsm)]),
