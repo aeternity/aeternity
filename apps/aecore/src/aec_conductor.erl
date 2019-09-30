@@ -143,7 +143,9 @@ is_leader() ->
 
 -spec post_block(aec_blocks:block()) -> 'ok' | {'error', any()}.
 post_block(Block) ->
-    case aec_validation:validate_block(Block) of
+    Height = aec_blocks:height(Block),
+    Protocol = aec_hard_forks:protocol_effective_at_height(Height),
+    case aec_validation:validate_block(Block, Protocol) of
         ok ->
             gen_server:call(?SERVER, {post_block, Block}, 30000);
         {error, {header, Reason}} ->
@@ -156,7 +158,9 @@ post_block(Block) ->
 
 -spec add_synced_block(aec_blocks:block()) -> 'ok' | {'error', any()}.
 add_synced_block(Block) ->
-    case aec_validation:validate_block(Block) of
+    Height = aec_blocks:height(Block),
+    Protocol = aec_hard_forks:protocol_effective_at_height(Height),
+    case aec_validation:validate_block(Block, Protocol) of
         ok ->
             gen_server:call(?SERVER, {add_synced_block, Block}, 30000);
         {error, {header, Reason}} ->

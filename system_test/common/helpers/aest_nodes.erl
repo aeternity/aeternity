@@ -904,7 +904,21 @@ check_crash_log(NodeName, LogPath, Cfg, Result) ->
             end
     end.
 
+check_log_for_errors(NodeName, LogPath, "aeternity.log" = LogName, Cfg, Result) ->
+    SkipCheck = lists:member(NodeName,
+                             proplists:get_value(skip_log_verification_for_nodes,
+                                                 Cfg, [])),
+    case SkipCheck of
+        true ->
+            aest_nodes_mgr:log("Skipping log ~p", [NodeName]),
+            Result;
+        false ->
+            check_log_for_errors_(NodeName, LogPath, LogName, Cfg, Result)
+    end;
 check_log_for_errors(NodeName, LogPath, LogName, Cfg, Result) ->
+    check_log_for_errors_(NodeName, LogPath, LogName, Cfg, Result).
+
+check_log_for_errors_(NodeName, LogPath, LogName, Cfg, Result) ->
     LogFile = binary_to_list(filename:join(LogPath, LogName)),
     case filelib:is_file(LogFile) of
         false -> Result;

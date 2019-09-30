@@ -3532,7 +3532,8 @@ fp_insufficent_gas_price(Cfg) ->
                 || Owner  <- ?ROLES,
                    Forcer <- ?ROLES]
         end,
-    TooLowGasPrice = aec_governance:minimum_gas_price(Height) - 1,
+    Protocol = aec_hard_forks:protocol_effective_at_height(Height),
+    TooLowGasPrice = aec_governance:minimum_gas_price(Protocol) - 1,
     Test(TooLowGasPrice, 1001),
     ok.
 
@@ -5416,10 +5417,11 @@ fp_sophia_versions(Cfg) ->
         fun(Height, Res) ->
             fun(Props0) ->
                 ct:log("Testing at height ~p, expecting ~p", [Height, Res]),
+                Protocol = aec_hard_forks:protocol_effective_at_height(Height),
                 run(Props0,
                     [ set_prop(height, Height),
-                      set_prop(fee, 500000 * aec_governance:minimum_gas_price(Height)),
-                      set_prop(gas_price, aec_governance:minimum_gas_price(Height)),
+                      set_prop(fee, 500000 * aec_governance:minimum_gas_price(Protocol)),
+                      set_prop(gas_price, aec_governance:minimum_gas_price(Protocol)),
                       %% recompute the update with the new gas price
                       fun(#{contract_id := ContractId, contract_file := CName} = Props) ->
                           (create_contract_call_payload(ContractId, CName, <<"main">>,

@@ -3175,7 +3175,6 @@ sc_ws_cheating_close_solo_(Config, ChId, Poi, WhoCloses) ->
 sc_ws_leave_reestablish(Config0) ->
     Config = sc_ws_open_([{slogan, ?SLOGAN}|Config0]),
     ReestablishOptions = sc_ws_leave_(Config),
-    ?CHECK_INFO(20),
     Config1 = sc_ws_reestablish_(ReestablishOptions, Config),
     ok = sc_ws_update_(Config1),
     ok = sc_ws_close_(Config1).

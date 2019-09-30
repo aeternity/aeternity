@@ -308,8 +308,9 @@ grant_fees(FromHeight, Chain, TreesIn, BeneficiaryAccount) ->
     Beneficiary1Reward = round(0.4 * Fees),
     BlockReward = aec_governance:block_mine_reward(FromHeight + 1),
     Beneficiary2Reward = Fees - Beneficiary1Reward + BlockReward,
+    Protocol = aec_hard_forks:protocol_effective_at_height(FromHeight),
     {{Benefits1, Benefits2}, BenefitsProto} =
-        case aec_dev_reward:enabled() andalso aec_dev_reward:activated(FromHeight) of
+        case aec_dev_reward:enabled() andalso aec_dev_reward:activated(Protocol) of
             true ->
                 AllocShares = 100,
                 TotalShares = 1000,
@@ -376,8 +377,10 @@ create_keyblock_with_state(Chain, MinerAccount) ->
 create_keyblock_with_state([{PrevBlock, TreesIn} | _] = Chain, MinerAccount, BeneficiaryAccount) ->
     {ok, PrevBlockHash} = aec_blocks:hash_internal_representation(PrevBlock),
     Height = aec_blocks:height(PrevBlock) + 1,
-    Version = aec_hard_forks:protocol_effective_at_height(Height),
-    Trees1 = aec_trees:perform_pre_transformations(TreesIn, aetx_env:tx_env(Height)),
+    TxEnv = aetx_env:tx_env(Height),
+    Protocol = aetx_env:consensus_version(TxEnv),
+    PrevProtocol = aec_blocks:version(PrevBlock),
+    Trees1 = aec_trees:perform_pre_transformations(TreesIn, TxEnv, PrevProtocol),
     Delay = aec_governance:beneficiary_reward_delay(),
     PrevKeyHash = case aec_blocks:type(PrevBlock) of
                       micro -> aec_blocks:prev_key_hash(PrevBlock);
@@ -386,7 +389,7 @@ create_keyblock_with_state([{PrevBlock, TreesIn} | _] = Chain, MinerAccount, Ben
     %% Dummy block to calculate the fees.
     Target = pick_prev_target(Chain),
     Block0 = aec_blocks:new_key(Height, PrevBlockHash, PrevKeyHash, aec_trees:hash(TreesIn),
-                                Target, 0, aeu_time:now_in_msecs(), Version,
+                                Target, 0, aeu_time:now_in_msecs(), Protocol,
                                 MinerAccount, BeneficiaryAccount),
     Trees2 = case Height > Delay of
                  true ->
@@ -396,7 +399,7 @@ create_keyblock_with_state([{PrevBlock, TreesIn} | _] = Chain, MinerAccount, Ben
                      Trees1
              end,
     Block = aec_blocks:new_key(Height, PrevBlockHash, PrevKeyHash, aec_trees:hash(Trees2),
-                               Target, 0, aeu_time:now_in_msecs(), Version,
+                               Target, 0, aeu_time:now_in_msecs(), Protocol,
                                MinerAccount, BeneficiaryAccount),
     {Block, Trees2}.
 
@@ -650,7 +653,8 @@ create_state_tree_with_accounts(Accounts, Backend) ->
     aec_trees:set_accounts(StateTrees0, AccountsTree1).
 
 min_gas_price() ->
-    max(aec_governance:minimum_gas_price(1), % latest prototocol on height 1
+    Protocol = aec_hard_forks:protocol_effective_at_height(1),
+    max(aec_governance:minimum_gas_price(Protocol),
         aec_tx_pool:minimum_miner_gas_price()).
 
 

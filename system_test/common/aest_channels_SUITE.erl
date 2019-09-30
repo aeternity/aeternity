@@ -41,7 +41,8 @@
     sc_deploy_contract/4,
     sc_call_contract/4,
     sc_leave/1,
-    sc_reestablish/5
+    sc_reestablish/5,
+    sc_wait_close/1
 ]).
 
 %=== INCLUDES ==================================================================
@@ -181,7 +182,10 @@ simple_channel_test(ChannelOpts, InitiatorNodeBaseSpec, ResponderNodeBaseSpec, C
         responder_node   := RNodeName,
         responder_id     := RAccount,
         responder_amount := RAmt,
-        push_amount      := PushAmount
+        push_amount      := PushAmount,
+        bh_delta_not_newer_than := _,
+        bh_delta_not_older_than := _,
+        bh_delta_pick           := _
     } = ChannelOpts,
 
     MikePubkey = aeser_api_encoder:encode(account_pubkey, maps:get(pubkey, ?MIKE)),
@@ -290,6 +294,7 @@ reestablish_state_channel_perform_operations_close({INodeName, RNodeName},
     #{height := TopHeight} = aest_nodes:get_top(INodeName),
     KeyBlocksToMine = 4 + 2, % min depth is 4
     wait_for_value({height, TopHeight + KeyBlocksToMine}, NodeNames, 10000, Config),
+    sc_wait_close(Chan1),
     ok.
 
 %=== INTERNAL FUNCTIONS ========================================================
@@ -353,7 +358,10 @@ test_open_and_onchain_operations(#{
         initiator_amount := IAmt,
         responder_node   := RNodeName,
         responder_id     := RAccount,
-        responder_amount := RAmt
+        responder_amount := RAmt,
+        bh_delta_not_newer_than := _,
+        bh_delta_not_older_than := _,
+        bh_delta_pick           := _
     } = ChannelOpts,  Cfg) ->
     NodeNames = [INodeName, RNodeName],
 

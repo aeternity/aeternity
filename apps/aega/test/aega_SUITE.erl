@@ -419,7 +419,8 @@ basic_contract_call(_Cfg) ->
 basic_minimum_fee(_Cfg) ->
     state(aect_test_utils:new_state()),
     Height = 1,
-    MinGP = aec_governance:minimum_gas_price(Height),
+    Protocol = aec_hard_forks:protocol_effective_at_height(Height),
+    MinGP = aec_governance:minimum_gas_price(Protocol),
     Acc1 = ?call(new_account, 1000000000000000 * MinGP),
     {ok, _} = ?call(attach, Acc1, "basic_auth", "authorize", []),
 

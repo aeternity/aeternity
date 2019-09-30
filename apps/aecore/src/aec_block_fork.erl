@@ -88,7 +88,7 @@ apply_hard_fork_contracts_file(Specs0, Trees, TxEnv) ->
 fork_contracts_static_specs(TxEnv) ->
     OwnerPubkey   = aec_governance:locked_coins_holder_account(),
     GasLimit      = aec_governance:block_gas_limit(),
-    GasPrice      = aec_governance:minimum_gas_price(aetx_env:height(TxEnv)),
+    GasPrice      = aec_governance:minimum_gas_price(aetx_env:consensus_version(TxEnv)),
     #{ owner_pubkey => OwnerPubkey
      , gas_limit    => GasLimit
      , gas_price    => GasPrice
@@ -185,4 +185,3 @@ apply_hard_fork_contract_tx(Tx, Trees, TxEnv) ->
         {error, What} ->
             error({failed_apply_hard_fork_contracts, What, Tx})
     end.
-

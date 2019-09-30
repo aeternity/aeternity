@@ -81,6 +81,17 @@ init_per_group(_TG, Config) ->
 init_per_testcase(_TC, Config) ->
     aest_nodes:ct_setup(Config).
 
+%% TODO: once We move from Fortuna to Lima compatibility, remove the conf
+%% key skip_log_verification_for_nodes. It is used only for temporarily
+%% silencing error log messages in aeternity.log
+end_per_testcase(sc_leave_upgrade_reestablish_same_node_upgrade, Config) ->
+    aest_nodes:ct_cleanup([{skip_log_verification_for_nodes, [node1]} | Config]);
+end_per_testcase(sc_leave_upgrade_reestablish_different_nodes_full_upgrade, Config) ->
+    aest_nodes:ct_cleanup([{skip_log_verification_for_nodes, [alice1, bob1]} | Config]);
+end_per_testcase(sc_leave_upgrade_reestablish_different_nodes_partial_upgrade, Config) ->
+    aest_nodes:ct_cleanup([{skip_log_verification_for_nodes, [alice1, bob1, alice2]} | Config]);
+end_per_testcase(sc_leave_upgrade_reestablish_different_nodes_partial_to_full_upgrade, Config) ->
+    aest_nodes:ct_cleanup([{skip_log_verification_for_nodes, [alice1]} | Config]);
 end_per_testcase(_TC, Config) ->
     aest_nodes:ct_cleanup(Config).
 
@@ -112,7 +123,7 @@ sc_leave_upgrade_reestablish_different_nodes_partial_upgrade(Cfg) ->
     sc_leave_upgrade_reestablish({{alice1, old}, {bob1, old}}, {{alice2, old}, {bob2, new}}, Cfg).
 
 sc_leave_upgrade_reestablish_different_nodes_partial_to_full_upgrade(Cfg) ->
-    sc_leave_upgrade_reestablish({{alice1, old}, {bob1, new}}, {{alice2, new}, {bob2, new}}, Cfg).
+    sc_leave_upgrade_reestablish({{alice1, new}, {bob1, old}}, {{alice2, new}, {bob2, new}}, Cfg).
 
 %=== INTERNAL FUNCTIONS ========================================================
 
@@ -151,8 +162,14 @@ sc_leave_upgrade_reestablish( {{BeforeNodeNameI, BeforeNodeTypeI}, {BeforeNodeNa
     HostPathR = node_db_host_path(BeforeNodeNameR, Cfg),
 
     OldVersion = proplists:get_value(state_channels_vsn, Cfg),
-    OldNodeF = fun(NodeName, DbHostPath) -> node_spec(NodeName, OldVersion, DbHostPath, true) end,
-    NewNodeF = fun(NodeName, DbHostPath) -> node_spec(NodeName, "local", DbHostPath, true) end,
+    OldNodeF =
+        fun(NodeName, DbHostPath) ->
+            node_spec(NodeName, OldVersion, DbHostPath, is_mining_node(NodeName))
+        end,
+    NewNodeF =
+        fun(NodeName, DbHostPath) ->
+            node_spec(NodeName, "local", DbHostPath, is_mining_node(NodeName))
+        end,
     SpecF = fun(old) -> OldNodeF; (new) -> NewNodeF end,
 
     %% Create node specs
@@ -194,7 +211,6 @@ sc_leave_upgrade_reestablish( {{BeforeNodeNameI, BeforeNodeTypeI}, {BeforeNodeNa
     start_and_wait_nodes(AfterNames, ?STARTUP_TIMEOUT, Cfg),
     timer:sleep(1000),
     ok = aest_channels_SUITE:reestablish_state_channel_perform_operations_close({AfterNodeNameI, AfterNodeNameR}, ReestablishOpts, Cfg),
-    timer:sleep(1000),
     ok.
 
 populate_db(NodeName, Cfg) ->
@@ -268,3 +284,9 @@ populate_db_with_channels_force_progress_tx(NodeName, Cfg) ->
 assert_db_with_tx_reused(NodeName, TxHash = _DbFingerprint, _Cfg) ->
     aest_nodes:wait_for_value({txs_on_node, [TxHash]}, [NodeName], ?STARTUP_TIMEOUT, []), %% Uses GetTransactionByHash
     ok.
+
+is_mining_node(Bob) when Bob =:= bob1;
+                         Bob =:= bob2 ->
+    false;
+is_mining_node(_) ->
+    true.
