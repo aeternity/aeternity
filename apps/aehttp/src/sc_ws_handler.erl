@@ -527,7 +527,8 @@ read_channel_options(Params) ->
                 case aec_chain:get_channel(ExistingID) of
                     {ok, Channel} ->
                         [ Put(existing_channel_id, ExistingID)
-                        , Read(<<"offchain_tx">>, offchain_tx, #{type => serialized_tx})
+                        , Read(<<"offchain_tx">>, offchain_tx, #{ type => serialized_tx
+                                                                , mandatory => false })
                         , read_role(Read, false)
                           % push_amount is only used in open and is not preserved.
                           % 0 guarantees passing checks (executed amount check is the
