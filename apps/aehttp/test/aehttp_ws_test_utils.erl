@@ -300,8 +300,9 @@ wait_for_msg(ConnPid, Origin, Action, Timeout) ->
 -spec wait_for_msg(msg | payload, pid(), atom(), atom(), integer()) ->
     ok | {ok, map()} | {ok, Tag::term(), map()}.
 wait_for_msg(Type, ConnPid, Origin, Action, Timeout) ->
-    MRef = erlang:monitor(process, ConnPid),
-    try receive
+    MRef = monitor(process, ConnPid),
+    try
+        receive
             {ConnPid, websocket_event, Origin, Action, Tag, Msg} ->
                 {ok, Tag, msg_data(Type, Msg)};
             {ConnPid, websocket_event, Origin, Action, Msg} ->
@@ -310,11 +311,12 @@ wait_for_msg(Type, ConnPid, Origin, Action, Timeout) ->
                 ok;
             {'DOWN', MRef, _, _, Reason} ->
                 error({connection_died, Reason})
-        after Timeout ->
-                erlang:error({timeout, process_info(self(), messages)})
+        after
+            Timeout ->
+                error({timeout, process_info(self(), messages)})
         end
     after
-        erlang:demonitor(MRef)
+        demonitor(MRef)
     end.
 
 -spec wait_for_msg_event(msg | payload, pid(), atom(), atom(), binary(), integer()) ->

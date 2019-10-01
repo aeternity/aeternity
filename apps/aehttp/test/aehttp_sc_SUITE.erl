@@ -1059,9 +1059,10 @@ sc_ws_close_mutual_(Config, Closer) when Closer =:= initiator orelse
     ShutdownTx = aetx_sign:tx(SignedMutualTx),
     ?PEEK_MSGQ,
     {channel_close_mutual_tx, MutualTx} = aetx:specialize_type(ShutdownTx),
-
-    {ok, #{<<"event">> := <<"closing">>}} = wait_for_channel_event(IConnPid, info, Config),
-    {ok, #{<<"event">> := <<"closing">>}} = wait_for_channel_event(RConnPid, info, Config),
+    IExpectedEvents = [<<"closing">>, {optional, <<"shutdown">>}],
+    RExpectedEvents = [<<"closing">>, {optional, <<"shutdown">>}],
+    wait_for_expected_events(IConnPid, Config, IExpectedEvents),
+    wait_for_expected_events(RConnPid, Config, RExpectedEvents),
 
     ok = wait_for_signed_transaction_in_pool(SignedMutualTx),
 
@@ -4159,4 +4160,17 @@ peek_msgq(L) ->
             ok;
         {_, Msgs} ->
             ct:log("[~p] PEEK = ~p", [L, Msgs])
+    end.
+
+wait_for_expected_events(Pid, Config, ExpectedEvents) ->
+    {ok, #{<<"event">> := Event}} =
+        wait_for_channel_event(Pid, info, Config),
+    ct:log("Received ~p for ~p", [Event, Pid]),
+    ExpectedEvents1 = ExpectedEvents -- [Event, {optional, Event}],
+    Mandatory = [E || E <- ExpectedEvents1, is_binary(E)],
+    case Mandatory of
+        [] ->
+            ok;
+        _ ->
+            wait_for_expected_events(Pid, Config, ExpectedEvents1)
     end.
