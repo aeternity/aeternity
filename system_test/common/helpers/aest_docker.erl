@@ -229,6 +229,8 @@ setup_node(Spec, BackendState) ->
                       lists:map(fun({V, H}) -> #{version => V, height => H} end,
                                 maps:to_list(HardForks))}
         end,
+    Mining = maps:merge(#{autostart => true}, maps:get(mining, Spec, #{})),
+    ct:log("~p has set mining ~p", [Name, Mining]),
     RootVars = (maps:merge(CuckooMinerVars, HardForkVars))#{
         hostname => Name,
         ext_addr => format("http://~s:~w/", [Hostname, ?EXT_HTTP_PORT]),
@@ -241,7 +243,7 @@ setup_node(Spec, BackendState) ->
             int_http => #{port => ?INT_HTTP_PORT},
             ext_ws => #{port => ?EXT_WS_PORT}
         },
-        mining => maps:merge(#{autostart => true}, maps:get(mining, Spec, #{}))
+        mining => Mining
     },
     Context = #{aeternity_config => RootVars},
     {ok, ConfigString} = write_template(TemplateFile, ConfigFileHostPath, Context),

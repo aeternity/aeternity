@@ -70,7 +70,8 @@ sc_open(Params, Cfg) ->
                push_amount => maps:get(push_amount, Params, 10),
                initiator_amount => IAmt,
                responder_amount => RAmt,
-               channel_reserve => maps:get(channel_reserve, Params, 2)
+               channel_reserve => maps:get(channel_reserve, Params, 2),
+               minimum_depth => 20
               },
              MaybeOpts),
 
