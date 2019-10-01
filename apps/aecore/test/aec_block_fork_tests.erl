@@ -9,6 +9,11 @@
 %%%===================================================================
 %%% Test cases
 %%%===================================================================
+-define(UAT_ROOT_HASH, "0BA96447352BA2C14D1F9AD03D6085A270FDC49704B7D2A190C60161B54207BF").
+-define(MAIN_ROOT_HASH, "E4DBC69BF2783B81B0423DA3F5B684C1D37CCFAE798474525C4001DB42C67669").
+
+-define(UAT_TOKENS, 2448618414302482322).
+-define(MAIN_TOKENS, 29622067581238053773524138).
 
 apply_minerva_test_() ->
     [{foreach,
@@ -137,6 +142,31 @@ apply_lima_test_() ->
                               maps:get(contracts, Sums1)),
                  ok
          end},
+        {"Lima migration tokens",
+         fun() ->
+                 CodeDir = filename:join(code:lib_dir(aecontract), "../../extras/test/"),
+
+                 UATTokens = mtree:total_sum_from_json(CodeDir ++ "/json/uat_contracts_accounts.json"),
+                 ?assertEqual(?UAT_TOKENS, UATTokens),
+
+                 MainTokens = mtree:total_sum_from_json(CodeDir ++ "/json/contracts_accounts.json"),
+                 ?assertEqual(?MAIN_TOKENS, MainTokens),
+
+                 ok
+         end},
+        {"Lima migration root-hashes",
+         fun() ->
+                 CodeDir = filename:join(code:lib_dir(aecontract), "../../extras/test/"),
+
+                 %% We got the data unsorted for some unit tests - so stick with that...
+                 UATTree = mtree:tree_from_json(CodeDir ++ "/json/uat_contracts_accounts.json", [no_sort]),
+                 ?assertEqual(?UAT_ROOT_HASH, mtree:root_hash(UATTree)),
+
+                 MainTree = mtree:tree_from_json(CodeDir ++ "/json/contracts_accounts.json"),
+                 ?assertEqual(?MAIN_ROOT_HASH, mtree:root_hash(MainTree)),
+
+                 ok
+         end},
         {"Lima migration using real contract and local data",
          fun() ->
                  lima_migration_test(mock)
@@ -148,13 +178,16 @@ apply_lima_test_() ->
         {"Lima migration testing real contract - from Mainnet-JSON",
          fun() ->
                  ContractId = <<"ct_eJhrbPPS4V97VLKEVbSCJFpdA4uyXiZujQyLqMFoYV88TzDe6">>,
-                 RootHash   = <<"A35A7904038F12C5AEBBB2519330E662908E841C73BEEC5410A57EAA358E72EF">>,
 
                  [{Account, _}] = generate_accounts(1),
                  T0 = make_trees([{Account, 1000000000000000000000000}]),
                  ContractSpecs = lima_contract_json("contracts.json"),
                  meck_lima_accounts_and_contracts([], ContractSpecs),
                  T1 = aec_block_fork:apply_lima(T0, tx_env()),
+
+                 %% Before any account migrated, the contract should have all the tokens
+                 assert_balance(T1, contract_pubkey(1), ?MAIN_TOKENS),
+
                  {ok, Tx} = root_hash_tx(Account, 1),
                  STx = aetx_sign:new(Tx, [<<0:64/unit:8>>]),
                  {ok, [STx], [], T2, _} =
@@ -164,8 +197,8 @@ apply_lima_test_() ->
                  CallId = aect_call:id(Account, 1, ContractKey),
                  Call   = aect_call_state_tree:get_call(ContractKey, CallId, aec_trees:calls(T2)),
                  ok     = aect_call:return_type(Call),
-                 ?assertEqual(RootHash,
-                              aeb_fate_encoding:deserialize(aect_call:return_value(Call))),
+                 ?assertEqual(?MAIN_ROOT_HASH,
+                              binary_to_list(aeb_fate_encoding:deserialize(aect_call:return_value(Call)))),
                  ok
          end}
       ]}
@@ -211,7 +244,7 @@ lima_migration_test(Source) ->
 lima_contract(Nonce, Amount) ->
     {ok, Code}     = aect_test_utils:compile_contract(?SOPHIA_LIMA_FATE, token_migration),
     {ok, Contract} = aect_test_utils:read_contract(?SOPHIA_LIMA_FATE, token_migration),
-    RootHash       = "\"0BA96447352BA2C14D1F9AD03D6085A270FDC49704B7D2A190C60161B54207BF\"",
+    RootHash       = "\"" ++ ?UAT_ROOT_HASH ++ "\"",
     {ok, CallData} = aect_test_utils:encode_call_data(?SOPHIA_LIMA_FATE, Contract,
                                                       <<"init">>,
                                                       [RootHash, "0"]),
