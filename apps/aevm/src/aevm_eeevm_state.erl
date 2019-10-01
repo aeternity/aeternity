@@ -77,6 +77,7 @@
         , vm_version/1
         ]).
 
+-include_lib("aecontract/include/hard_forks.hrl").
 -include_lib("../../aecontract/include/aecontract.hrl").
 -include_lib("aebytecode/include/aeb_opcodes.hrl").
 -include("aevm_eeevm.hrl").
@@ -393,7 +394,9 @@ save_store(#{ chain_state := ChainState
                     {Ptr, _} = aevm_eeevm_memory:load(Addr, State),
                     %% Note: this size check was not affected by the word size bug
                     case heap_to_heap(Type, Ptr, State, ?WORD_SIZE_BYTES) of
-                        {ok, StateValue1, GasUsed} ->
+                        {ok, StateValue1, MemGas} ->
+                            StoreGas = store_gas(StateValue1, State),
+                            GasUsed  = MemGas + StoreGas,
                             Store = aevm_eeevm_store:set_sophia_state(ct_version(State), StateValue1, storage(State)),
                             if VmVersion =< ?VM_AEVM_SOPHIA_2 ->
                                     {ok, spend_gas(GasUsed, State#{ chain_state => ChainAPI:set_store(Store, ChainState)})};
@@ -407,6 +410,15 @@ save_store(#{ chain_state := ChainState
                             {error, out_of_gas}
                     end
             end
+    end.
+
+store_gas(HeapValue, State) ->
+    Height = number(State),
+    case aec_hard_forks:protocol_effective_at_height(Height) of
+        Vsn when Vsn < ?LIMA_PROTOCOL_VSN -> 0;
+        _ ->
+            ByteSize = aeb_heap:heap_value_byte_size(HeapValue),
+            ByteSize * aec_governance:store_byte_gas()
     end.
 
 get_contract_call_input(Target, IOffset, ISize, State) ->

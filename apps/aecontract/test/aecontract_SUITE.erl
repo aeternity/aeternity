@@ -123,6 +123,7 @@
         , sophia_maps/1
         , sophia_map_benchmark/1
         , sophia_big_map_benchmark/1
+        , sophia_registry/1
         , sophia_pmaps/1
         , sophia_map_of_maps/1
         , sophia_maps_gc/1
@@ -365,6 +366,7 @@ groups() ->
                                  sophia_maps,
                                  sophia_map_benchmark,
                                  sophia_big_map_benchmark,
+                                 sophia_registry,
                                  sophia_map_of_maps,
                                  sophia_maps_gc,
                                  sophia_variant_types,
@@ -4117,7 +4119,20 @@ sophia_big_map_benchmark(Cfg) ->
     io:format("-- Timed call --\n"),
     {Time, {Val, GasGet}} = timer:tc(fun() -> ?call(call_contract, Acc, Ct, get, string, Key, #{ return_gas_used => true }) end),
     {Time1, {{}, GasNop}} = timer:tc(fun() -> ?call(call_contract, Acc, Ct, noop, {tuple, []}, {}, #{ return_gas_used => true }) end),
-    io:format("Get: ~s (~p gas)\nNop: ~s (~p gas)\n", [Ms(Time), GasGet, Ms(Time1), GasNop]),
+    {Time2, {{}, GasPut}} = timer:tc(fun() -> ?call(call_contract, Acc, Ct, update, {tuple, []}, {0, 0, <<"">>}, #{ return_gas_used => true }) end),
+    io:format("Get: ~s (~p gas)\nNop: ~s (~p gas)\nPut: ~s (~p gas)\n", [Ms(Time), GasGet, Ms(Time1), GasNop, Ms(Time2), GasPut]),
+    ok.
+
+sophia_registry(Cfg) ->
+    ?skipRest(vm_version() =< ?VM_AEVM_SOPHIA_3, only_lima),
+    state(aect_test_utils:new_state()),
+    N    = proplists:get_value(n, Cfg, 20),
+    Acc  = ?call(new_account, 100000000000000 * aec_test_utils:min_gas_price()),
+    Ct   = ?call(create_contract, Acc, registry, {}),
+    Poll = ?call(create_contract, Acc, poll, {}),
+    [ begin
+          ?assertMatch({I, _}, ?call(call_contract, Acc, Ct, add_poll, word, {?cid(Poll), true}, #{ return_gas_used => true }))
+      end || I <- lists:seq(0, N - 1) ],
     ok.
 
 sophia_pmaps(_Cfg) ->
