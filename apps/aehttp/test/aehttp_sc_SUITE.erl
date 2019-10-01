@@ -19,6 +19,7 @@
     sc_ws_min_depth_not_reached_timeout/1,
     sc_ws_min_depth_is_modifiable/1,
     sc_ws_basic_open_close/1,
+    sc_ws_basic_open_close_no_password/1,
     sc_ws_basic_open_close_server/1,
     sc_ws_failed_update/1,
     sc_ws_generic_messages/1,
@@ -30,6 +31,9 @@
     sc_ws_close_solo/1,
     sc_ws_slash/1,
     sc_ws_leave_reestablish/1,
+    sc_ws_leave_reestablish_responder_stays/1,
+    sc_ws_leave_reconnect/1,
+    sc_ws_password_changeable/1,
     sc_ws_ping_pong/1,
     sc_ws_deposit/1,
     sc_ws_withdraw/1,
@@ -42,6 +46,7 @@
     sc_ws_wrong_call_data/1,
     sc_ws_basic_client_reconnect_i/1,
     sc_ws_basic_client_reconnect_r/1,
+    sc_ws_basic_client_reconnect_i_w_reestablish/1,
     sc_ws_pinned_update/1,
     sc_ws_pinned_deposit/1,
     sc_ws_pinned_withdraw/1,
@@ -101,6 +106,9 @@
 
 -define(CACHE_DEFAULT_PASSWORD, "correct horse battery staple").
 
+-define(CHECK_INFO(Timeout), check_info(?LINE, Timeout)).
+-define(PEEK_MSGQ, peek_msgq(?LINE)).
+
 all() -> [{group, plain}, {group, aevm}, {group, fate}].
 
 groups() ->
@@ -110,6 +118,7 @@ groups() ->
         sc_ws_min_depth_not_reached_timeout,
         sc_ws_min_depth_is_modifiable,
         sc_ws_basic_open_close,
+        sc_ws_basic_open_close_no_password,
         sc_ws_basic_open_close_server,
         sc_ws_snapshot_solo,
         sc_ws_update_with_meta,
@@ -121,8 +130,12 @@ groups() ->
         sc_ws_slash,
         %% possible to leave and reestablish channel
         sc_ws_leave_reestablish,
+        sc_ws_leave_reestablish_responder_stays,
+        sc_ws_leave_reconnect,
+        sc_ws_password_changeable,
         {group, with_open_channel},
-        {group, client_reconnect}
+        {group, client_reconnect},
+        {group, client_reconnect_no_password}
       ]},
 
      {with_open_channel, [sequence],
@@ -179,7 +192,14 @@ groups() ->
 
      {client_reconnect, [sequence],
       [ sc_ws_basic_client_reconnect_i,
-        sc_ws_basic_client_reconnect_r
+        sc_ws_basic_client_reconnect_r,
+        sc_ws_basic_client_reconnect_i_w_reestablish
+      ]},
+
+     {client_reconnect_no_password, [sequence],
+      [ sc_ws_basic_client_reconnect_i,
+        sc_ws_basic_client_reconnect_r,
+        sc_ws_basic_client_reconnect_i_w_reestablish
       ]},
 
      {pinned_env, [sequence],
@@ -236,6 +256,8 @@ init_per_group(plain, Config) ->
     reset_participants(plain, Config);
 init_per_group(client_reconnect, Config) ->
     reset_participants(client_reconnect, Config);
+init_per_group(client_reconnect_no_password, Config) ->
+    reset_participants(client_reconnect, [{no_password, true}|Config]);
 init_per_group(pinned_env, Config) ->
     aect_test_utils:init_per_group(aevm, reset_participants(pinned_env, Config));
 init_per_group(_Grp, Config) ->
@@ -271,9 +293,15 @@ init_per_testcase(Case, Config) ->
     end,
     [{_, Node} | _] = ?config(nodes, Config),
     aecore_suite_utils:mock_mempool_nonce_offset(Node, 100),
+    ?CHECK_INFO(20),
     [{tc_start, os:timestamp()} | Config].
 
 end_per_testcase(_Case, Config) ->
+    case ?CHECK_INFO(20) of
+        [] -> ok;
+        [_|_] = L ->
+            ct:comment("~p unhandled messages", [length(L)])
+    end,
     [{_, Node} | _] = ?config(nodes, Config),
     aecore_suite_utils:unmock_mempool_nonce_offset(Node),
     Ts0 = ?config(tc_start, Config),
@@ -455,14 +483,17 @@ sc_ws_open_(Config, ChannelOpts0, MinBlocksToMine) ->
     {IStartAmt, RStartAmt} = channel_participants_balances(IPubkey, RPubkey),
 
     ChannelOpts = channel_options(IPubkey, RPubkey, IAmt, RAmt, ChannelOpts0, Config),
+    {IChanOpts, RChanOpts} = special_channel_opts(ChannelOpts),
+    ct:log("IChanOpts = ~p~n"
+           "RChanOpts = ~p~n", [IChanOpts, RChanOpts]),
     {ok, IConnPid} = channel_ws_start(initiator,
-                                           maps:put(host, <<"localhost">>, ChannelOpts), Config),
-
+                                           maps:put(host, <<"localhost">>, IChanOpts), Config),
+    ct:log("initiator spawned", []),
     ok = ?WS:register_test_for_channel_events(IConnPid, [info, get, sign,
                                                          on_chain_tx, update]),
 
-    {ok, RConnPid} = channel_ws_start(responder, ChannelOpts, Config),
-
+    {ok, RConnPid} = channel_ws_start(responder, RChanOpts, Config),
+    ct:log("responder spawned", []),
     ok = ?WS:register_test_for_channel_events(RConnPid, [info, get, sign,
                                                          on_chain_tx, update]),
 
@@ -864,12 +895,22 @@ channel_update_fail(#{initiator := IConnPid, responder :=RConnPid},
     Res.
 
 sc_ws_close_(ConfigList) ->
+    %% We cannot simply close the ConnPid if we want to also bring down the fsm
+    %% since the fsm may be configured to allow the client to disconnect/reconnect.
     #{initiator := IConnPid,
       responder := RConnPid} = proplists:get_value(channel_clients, ConfigList),
-
-
-    ok = ?WS:stop(IConnPid),
-    ok = ?WS:stop(RConnPid),
+    Close = fun(Pid) ->
+                    try ?WS:json_rpc_call(
+                           Pid, #{ <<"method">> => <<"channels.system">>
+                                 , <<"params">> => #{<<"action">> => <<"stop">>}})
+                    catch
+                        error:{connpid_died, Reason} when Reason == {error,closed}
+                                                        ; Reason == normal ->
+                            ok
+                    end
+            end,
+    Close(IConnPid),
+    Close(RConnPid),
     ok.
 
 sc_ws_get_balance(ConnPid, PubKey, Config) ->
@@ -971,8 +1012,16 @@ query_contract_(ConnPid, Pubkey, <<"json-rpc">>) ->
         ConnPid, #{ <<"method">> => <<"channels.get.contract">>
                   , <<"params">> => #{<<"pubkey">> => Pubkey}})}.
 
-sc_ws_close_mutual_(Config, Closer) when Closer =:= initiator
-                                 orelse Closer =:= responder ->
+sc_ws_close_mutual_(Config0) ->
+    lists:foreach(
+        fun(WhoCloses) ->
+            Config = sc_ws_open_(Config0),
+            sc_ws_close_mutual_(Config, WhoCloses)
+        end,
+        [initiator, responder]).
+
+sc_ws_close_mutual_(Config, Closer) when Closer =:= initiator orelse
+                                         Closer =:= responder ->
     ct:log("ConfigList = ~p", [Config]),
     #{initiator := #{pub_key := IPubkey,
                     priv_key := IPrivkey},
@@ -984,7 +1033,6 @@ sc_ws_close_mutual_(Config, Closer) when Closer =:= initiator
       responder := RConnPid} = proplists:get_value(channel_clients, Config),
     ok = ?WS:register_test_for_channel_events(IConnPid, [sign, info, on_chain_tx]),
     ok = ?WS:register_test_for_channel_events(RConnPid, [sign, info, on_chain_tx]),
-
 
     CloseMutual =
         fun(CloserPubkey, CloserConn, CloserPrivkey, OtherPubkey, OtherConn, OtherPrivkey) ->
@@ -1004,13 +1052,17 @@ sc_ws_close_mutual_(Config, Closer) when Closer =:= initiator
 
     {ok, #{<<"tx">> := EncodedSignedMutualTx}} = wait_for_channel_event(IConnPid, on_chain_tx, Config),
     {ok, #{<<"tx">> := EncodedSignedMutualTx}} = wait_for_channel_event(RConnPid, on_chain_tx, Config),
-
+    ?PEEK_MSGQ,
     {ok, SSignedMutualTx} = aeser_api_encoder:safe_decode(transaction, EncodedSignedMutualTx),
     SignedMutualTx = aetx_sign:deserialize_from_binary(SSignedMutualTx),
     %% same transaction
     ShutdownTx = aetx_sign:tx(SignedMutualTx),
-
+    ?PEEK_MSGQ,
     {channel_close_mutual_tx, MutualTx} = aetx:specialize_type(ShutdownTx),
+    IExpectedEvents = [<<"closing">>, {optional, <<"shutdown">>}],
+    RExpectedEvents = [<<"closing">>, {optional, <<"shutdown">>}],
+    wait_for_expected_events(IConnPid, Config, IExpectedEvents),
+    wait_for_expected_events(RConnPid, Config, RExpectedEvents),
 
     ok = wait_for_signed_transaction_in_pool(SignedMutualTx),
 
@@ -1031,6 +1083,7 @@ sc_ws_close_mutual_(Config, Closer) when Closer =:= initiator
 
 sc_ws_close_solo_(Config, Closer) when Closer =:= initiator;
                                        Closer =:= responder ->
+    ?PEEK_MSGQ,
     ct:log("ConfigList = ~p", [Config]),
     #{initiator := #{pub_key  := IPubKey,
                      priv_key := IPrivKey},
@@ -1057,7 +1110,7 @@ sc_ws_close_solo_(Config, Closer) when Closer =:= initiator;
                       initiator -> CloseSolo(IConnPid, IPrivKey);
                       responder -> CloseSolo(RConnPid, RPrivKey)
                   end,
-
+    ?PEEK_MSGQ,
     {ok, [ #{<<"tx">> := EncodedSignedSoloTx}
          , #{<<"tx">> := EncodedSignedSoloTx} ]} =
         wait_for_onchain_tx_events(
@@ -1065,7 +1118,7 @@ sc_ws_close_solo_(Config, Closer) when Closer =:= initiator;
           fun() ->
                   ok = wait_for_signed_transaction_in_block(CloseSoloTx)
           end, Config),
-
+    ?PEEK_MSGQ,
     {ok, SSignedSoloTx} = aeser_api_encoder:safe_decode(transaction, EncodedSignedSoloTx),
     SignedSoloTx = aetx_sign:deserialize_from_binary(SSignedSoloTx),
     SoloTx = aetx_sign:tx(SignedSoloTx),
@@ -1074,7 +1127,7 @@ sc_ws_close_solo_(Config, Closer) when Closer =:= initiator;
     ct:log("Close_solo tx verified", []),
 
     {ok, 200, #{<<"transactions">> := []}} = get_pending_transactions(),
-
+    ?PEEK_MSGQ,
     settle_(Config, Closer),
 
     ok.
@@ -1096,12 +1149,13 @@ settle_(Config, Closer) when Closer =:= initiator;
                              <<"channels.settle_sign">>, PrivKey, Config),
 
     ok = wait_for_signed_transaction_in_block(SettleTx),
-
+    ?PEEK_MSGQ,
     aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 15),
-
+    ?CHECK_INFO(20),
     ok.
 
 sc_ws_leave_(Config) ->
+    ResponderLeaves = proplists:get_value(responder_leaves, Config, true),
     #{initiator := IConnPid,
       responder := RConnPid} = proplists:get_value(channel_clients, Config),
     ok = ?WS:register_test_for_channel_events(IConnPid, [leave, info]),
@@ -1116,13 +1170,29 @@ sc_ws_leave_(Config) ->
     {IDi, IDr} = {IDr, IDi},
     {StI, StR} = {StR, StI},
     {ok, #{<<"event">> := <<"died">>}} = wait_for_channel_event(IConnPid, info, Config),
-    {ok, #{<<"event">> := <<"died">>}} = wait_for_channel_event(RConnPid, info, Config),
+    if ResponderLeaves ->
+            {ok, #{<<"event">> := <<"died">>}} = wait_for_channel_event(RConnPid, info, Config);
+       true ->
+            {ok, #{<<"event">> := <<"peer_disconnected">>}}
+                = wait_for_channel_event(RConnPid, info, Config)
+    end,
     ok = ?WS:wait_for_event(IConnPid, websocket, closed),
-    ok = ?WS:wait_for_event(RConnPid, websocket, closed),
+    if ResponderLeaves ->
+            ok = ?WS:wait_for_event(RConnPid, websocket, closed);
+       true ->
+            %% RConnPid remains. Need to unregister events
+            ok = ?WS:unregister_test_for_channel_events(RConnPid, [leave, info]),
+            ok = ?WS:unregister_test_for_events(RConnPid, websocket, [closed]),
+            ok
+    end,
     %%
     Options = proplists:get_value(channel_options, Config),
     Port = maps:get(port, Options),
-    RPort = Port+1,
+    RPort = if ResponderLeaves ->
+                    Port+1;     % new port
+               true ->
+                    Port        % same port as before
+            end,
     ReestablishOptions = #{ existing_channel_id => IDi
                           , offchain_tx => StI
                           , port => RPort
@@ -1132,28 +1202,52 @@ sc_ws_leave_(Config) ->
 
 
 sc_ws_reestablish_(ReestablishOptions, Config) ->
-    {ok, RrConnPid} = channel_ws_start(responder, ReestablishOptions, Config),
+    ct:log("ReestablishOptions = ~p~n"
+           "Config = ~p", [ReestablishOptions, Config]),
+    ResponderLeaves = proplists:get_value(responder_leaves, Config, true),
+    RrConnPid
+        = if ResponderLeaves ->
+                  {ok, RrCP} = channel_ws_start(responder, ReestablishOptions, Config),
+                  RrCP;
+             true ->
+                  %% responder still running
+                  #{responder := RCP} = proplists:get_value(channel_clients, Config),
+                  RCP
+    end,
     {ok, IrConnPid} = channel_ws_start(initiator, maps:put(
                                                     host, <<"localhost">>,
                                                     ReestablishOptions), Config),
-    ok = ?WS:register_test_for_channel_events(RrConnPid, [info, update]),
-    ok = ?WS:register_test_for_channel_events(IrConnPid, [info, update]),
-    {ok, #{<<"event">> := <<"channel_reestablished">>}} =
-        wait_for_channel_event(IrConnPid, info, Config),
-    {ok, #{<<"event">> := <<"channel_reestablished">>}} =
-        wait_for_channel_event(RrConnPid, info, Config),
-    {ok, #{<<"event">> := <<"open">>}} =
-        wait_for_channel_event(IrConnPid, info, Config),
-    {ok, #{<<"event">> := <<"open">>}} =
-        wait_for_channel_event(RrConnPid, info, Config),
-    {ok, #{<<"state">> := NewState}} = wait_for_channel_event(IrConnPid, update, Config),
-    {ok, #{<<"state">> := NewState}} = wait_for_channel_event(RrConnPid, update, Config),
-    ChannelClients = #{initiator => IrConnPid,
-                       responder => RrConnPid},
-    ok = ?WS:unregister_test_for_channel_events(RrConnPid, [info, update]),
-    ok = ?WS:unregister_test_for_channel_events(IrConnPid, [info, update]),
-    [{channel_clients, ChannelClients} | Config].
+    Config1 = lists:keystore(channel_clients, 1, Config,
+                             {channel_clients, #{ initiator => IrConnPid
+                                                , responder => RrConnPid}}),
+    ok = await_reestablish_reports(Config1),
+    Config1.
 
+await_reestablish_reports(Config) ->
+    ResponderLeaves = proplists:get_value(responder_leaves, Config, true),
+    #{initiator := IConnPid, responder := RConnPid}
+        = proplists:get_value(channel_clients, Config),
+    ok = ?WS:register_test_for_channel_events(RConnPid, [info, update]),
+    ok = ?WS:register_test_for_channel_events(IConnPid, [info, update]),
+    {ok, #{<<"event">> := <<"channel_reestablished">>}} =
+        wait_for_channel_event(IConnPid, info, Config),
+    {ok, #{<<"event">> := <<"channel_reestablished">>}} =
+        wait_for_channel_event(RConnPid, info, Config),
+    {ok, #{<<"event">> := <<"open">>}} =
+        wait_for_channel_event(IConnPid, info, Config),
+    {ok, #{<<"event">> := <<"open">>}} =
+        wait_for_channel_event(RConnPid, info, Config),
+    {ok, #{<<"state">> := NewState}} = wait_for_channel_event(IConnPid, update, Config),
+    if ResponderLeaves ->
+            {ok, #{<<"state">> := NewState}} = wait_for_channel_event(RConnPid, update, Config);
+       true ->
+            %% Responder doesn't issue a new update report, since its state didn't change
+            ok
+    end,
+    ok = ?WS:unregister_test_for_channel_events(RConnPid, [info, update]),
+    ok = ?WS:unregister_test_for_channel_events(IConnPid, [info, update]),
+    ?CHECK_INFO(20),
+    ok.
 
 sc_ws_deposit_(Config, Origin, XOpts) when Origin =:= initiator
                                     orelse Origin =:= responder ->
@@ -2496,6 +2590,11 @@ sc_ws_basic_open_close(Config0) ->
     ok = sc_ws_update_(Config),
     ok = sc_ws_close_(Config).
 
+sc_ws_basic_open_close_no_password(Config) ->
+    with_trace(fun(Cfg) ->
+                       sc_ws_basic_open_close([{no_password, true}|Cfg])
+               end, Config, "sc_ws_basic_open_close_no_password").
+
 sc_ws_basic_open_close_server(Config0) ->
     Config = sc_ws_open_([server_mode|Config0]),
     ok = sc_ws_update_(Config),
@@ -2654,6 +2753,9 @@ sc_ws_basic_client_reconnect_i(Config) ->
 sc_ws_basic_client_reconnect_r(Config) ->
     sc_ws_basic_client_reconnect_(responder, Config).
 
+sc_ws_basic_client_reconnect_i_w_reestablish(Config) ->
+    sc_ws_basic_client_reconnect_(initiator, [{reconnect_method, reestablish}|Config]).
+
 sc_ws_basic_client_reconnect_(Role, Config0) ->
     Config = sc_ws_open_(Config0),
     #{ Role := #{ pub_key  := Pubkey
@@ -2673,6 +2775,7 @@ sc_ws_basic_client_reconnect_(Role, Config0) ->
     ok = update_with_client_disconnected(
            both, OtherRole, Clients#{Role => undefined},
            Participants, Config),
+    ct:log("Reconnecting client ..." , []),
     Config1 = reconnect_client_(ChId, Role, Pubkey, Privkey, Config),
     sc_ws_close_mutual_(Config1, Role).
 
@@ -2738,7 +2841,31 @@ other_role(responder) -> initiator;
 other_role(initiator) -> responder.
 
 reconnect_client_(ChId, Role, Pub, Priv, Config) ->
-    reconnect_client_(ChId, 1, Role, Pub, Priv, Config).
+    case proplists:get_value(reconnect_method, Config, reconnect) of
+        reconnect ->
+            reconnect_client_(ChId, 1, Role, Pub, Priv, Config);
+        reestablish ->
+            ct:log("Will reconnect via reestablish", []),
+            ?CHECK_INFO(20),
+            #{ initiator_id := I
+             , responder_id := R
+             , port         := Port } = proplists:get_value(channel_options, Config),
+            ReestablishOpts = maybe_add_password(
+                                #{ existing_channel_id => ChId
+                                 , role                => Role
+                                 , protocol            => sc_ws_protocol(Config)
+                                 , host                => <<"localhost">>
+                                 , port                => Port
+                                 , initiator_id        => I
+                                 , responder_id        => R }, Config),
+            ct:log("ReestablishOpts = ~p", [ReestablishOpts]),
+            {ok, ConnPid} = channel_ws_start(Role, ReestablishOpts, Config),
+            ct:log("New ConnPid = ~p", [ConnPid]),
+            Config1 = lists:keystore(channel_clients, 1, Config,
+                                     {channel_clients, maps:put(Role, ConnPid,
+                                                                ?config(channel_clients, Config))}),
+            Config1
+    end.
 
 reconnect_client_(ChId, Round, Role, Pub, Priv, Config) ->
     ct:log("reconnecting ChId = ~p, Role = ~p, Pub = ~p", [ChId, Role, Pub]),
@@ -2755,8 +2882,15 @@ reconnect_client_(ChId, Round, Role, Pub, Priv, Config) ->
     ChannelOpts = reconnect_channel_options(SignedTxBin, Config),
     {ok, ConnPid} = channel_ws_start(Role, ChannelOpts, Config),
     {_, ChannelClients} = lists:keyfind(channel_clients, 1, Config),
-    lists:keyreplace(channel_clients, 1, Config,
-                     {channel_clients, ChannelClients#{ Role => ConnPid }}).
+    Config1 = lists:keyreplace(channel_clients, 1, Config,
+                               {channel_clients, ChannelClients#{ Role => ConnPid }}),
+    case proplists:get_value(reconnect_scenario, Config1, reconnect) of
+        reconnect ->
+            ok;
+        reestablish ->
+            await_reestablish_reports(Config1)
+    end,
+    Config1.
 
 sc_ws_failed_update(Config) ->
     ChannelClients = proplists:get_value(channel_clients, Config),
@@ -2862,15 +2996,6 @@ sc_ws_update_abort(Config) ->
 
 sc_ws_close_mutual(Config) ->
     with_trace(fun sc_ws_close_mutual_/1, Config, "sc_ws_close_mutual").
-
-sc_ws_close_mutual_(Config0) ->
-    lists:foreach(
-        fun(WhoCloses) ->
-            Config = sc_ws_open_(Config0),
-            sc_ws_close_mutual_(Config, WhoCloses)
-        end,
-        [initiator,
-         responder]).
 
 sc_ws_close_solo(Config) ->
     with_trace(fun sc_ws_close_solo_/1, Config, "sc_ws_close_solo").
@@ -3047,12 +3172,56 @@ sc_ws_cheating_close_solo_(Config, ChId, Poi, WhoCloses) ->
     ok.
 
 sc_ws_leave_reestablish(Config0) ->
-    Config = sc_ws_open_(Config0),
+    Config = sc_ws_open_([{slogan, ?SLOGAN}|Config0]),
     ReestablishOptions = sc_ws_leave_(Config),
-
     Config1 = sc_ws_reestablish_(ReestablishOptions, Config),
     ok = sc_ws_update_(Config1),
     ok = sc_ws_close_(Config1).
+
+sc_ws_leave_reestablish_responder_stays(Config0) ->
+    Config = sc_ws_open_([{slogan, ?SLOGAN}|Config0], #{responder_opts => #{keep_running => true}}),
+    Config1 = [{responder_leaves, false}|Config],
+    ReestablOptions = sc_ws_leave_(Config1),
+    Config2 = sc_ws_reestablish_(ReestablOptions, Config1),
+    ok = sc_ws_update_(Config2),
+    ok = sc_ws_close_(Config2).
+
+sc_ws_leave_reconnect(Config0) ->
+    ct:log("opening channel", []),
+    Config = sc_ws_open_([{slogan, ?SLOGAN}|Config0], #{responder_opts => #{keep_running => true}}),
+    ct:log("channel opened", []),
+    Participants = proplists:get_value(participants, Config),
+    #{ pub_key := Pub, priv_key := Priv } = maps:get(initiator, Participants),
+    ct:log("*** Leaving channel ***", []),
+    Config1 = [{responder_leaves, false}|Config],
+    ct:log("Config1 = ~p", [Config1]),
+    #{ existing_channel_id := ChId
+     , offchain_tx         := _Tx }
+        = ReestablishOpts = sc_ws_leave_(Config1),
+    ct:log("ReestablishOpts = ~p", [ReestablishOpts]),
+    ct:log("*** Reconnecting ... ***", []),
+    Config2 = reconnect_client_(ChId, initiator, Pub, Priv,
+                                [{reconnect_scenario, reestablish} | Config1]),
+    ct:log("*** Verifying that channel is operational ***", []),
+    ok = sc_ws_update_(Config2),
+    ct:log("*** Closing ... ***", []),
+    ok = sc_ws_close_(Config2).
+
+sc_ws_password_changeable(Config0) ->
+    Config = sc_ws_open_([{slogan, ?SLOGAN}|Config0]),
+    Options = proplists:get_value(channel_options, Config),
+    StatePasswordOld = maps:get(state_password, Options),
+    Config1 = sc_ws_change_password_(Config),
+    ReestablishOptions = sc_ws_leave_(Config1),
+    ReestablishOptionsOld = ReestablishOptions#{state_password => StatePasswordOld},
+
+    %% Reestablish with old password should fail
+    Roles = [initiator, responder],
+    [sc_ws_test_broken_params(Role, Config, ReestablishOptionsOld, <<"Invalid password">>, Config) || Role <- Roles],
+
+    Config2 = sc_ws_reestablish_(ReestablishOptions, Config1),
+    ok = sc_ws_update_(Config2),
+    ok = sc_ws_close_(Config2).
 
 sc_ws_change_password_(Config) ->
     ct:log("Changing password"),
@@ -3112,27 +3281,55 @@ sc_ws_withdraw(Config) ->
         end,
         [initiator, responder]).
 
-
 %% channel_options(IPubkey, RPubkey, IAmt, RAmt) ->
 %%     channel_options(IPubkey, RPubkey, IAmt, RAmt, #{}).
 
 channel_options(IPubkey, RPubkey, IAmt, RAmt, Other, Config) ->
-    maps:merge(#{ port => ?config(ws_port, Config),
-                  initiator_id => aeser_api_encoder:encode(account_pubkey, IPubkey),
-                  responder_id => aeser_api_encoder:encode(account_pubkey, RPubkey),
-                  lock_period => 10,
-                  push_amount => 1,
-                  initiator_amount => IAmt,
-                  responder_amount => RAmt,
-                  channel_reserve => 2,
-                  protocol => sc_ws_protocol(Config),
-                  state_password => ?CACHE_DEFAULT_PASSWORD
-                }, Other).
+    maybe_slogan(
+      maybe_add_password(
+        maps:merge(#{ port => ?config(ws_port, Config),
+                      initiator_id => aeser_api_encoder:encode(account_pubkey, IPubkey),
+                      responder_id => aeser_api_encoder:encode(account_pubkey, RPubkey),
+                      lock_period => 10,
+                      push_amount => 1,
+                      initiator_amount => IAmt,
+                      responder_amount => RAmt,
+                      channel_reserve => 2,
+                      keep_running => false,
+                      protocol => sc_ws_protocol(Config)
+                    }, Other), Config), Config).
+
+maybe_add_password(#{state_password := _} = Map, _) ->
+    Map;
+maybe_add_password(Map, Config) ->
+    case proplists:get_value(no_password, Config, false) of
+        true ->
+            Map;
+        _ ->
+            Map#{state_password => ?CACHE_DEFAULT_PASSWORD}
+    end.
+
+maybe_slogan(#{slogan := _} = Map, _) ->
+    Map;
+maybe_slogan(Map, Config) ->
+    case proplists:get_value(slogan, Config) of
+        undefined ->
+            Map;
+        S ->
+            Map#{slogan => S}
+    end.
+
+special_channel_opts(Opts) ->
+    Opts1 = maps:without([initiator_opts, responder_opts], Opts),
+    {maps:merge(Opts1, maps:get(initiator_opts, Opts, #{})),
+     maps:merge(Opts1, maps:get(responder_opts, Opts, #{}))}.
 
 reconnect_channel_options(SignedTx, Config) ->
-    #{ port => ?config(ws_port, Config)
-     , reconnect_tx => SignedTx
-     , protocol => sc_ws_protocol(Config) }.
+    maybe_add_password(
+      #{ port => ?config(ws_port, Config)
+       , reconnect_tx => SignedTx
+       %% , state_password => StatePassword
+       , protocol => sc_ws_protocol(Config) }, Config).
 
 current_height() ->
     case rpc(aec_chain, top_header, []) of
@@ -3205,6 +3402,8 @@ log_basename(Config) ->
             with_open_channel ->
                 filename:join(Protocol, "continuous");
             client_reconnect ->
+                filename:join(Protocol, "reconnect");
+            client_reconnect_no_password ->
                 filename:join(Protocol, "reconnect");
             sc_contracts ->
                 filename:join(Protocol, "contracts");
@@ -3665,7 +3864,7 @@ account_type(Pubkey) ->
 sc_ws_test_broken_params(Role, Config, Opts, Error, Config) ->
     {ok, Pid} = channel_ws_start(Role,
                                        maps:put(host, <<"localhost">>,
-                                                Opts), Config),
+                                                Opts), [{slogan, ?SLOGAN}|Config]),
     ok = ?WS:register_test_for_channel_events(Pid, [closed, error]),
     {ok, #{<<"reason">> := Error}}
         = wait_for_channel_event(Pid, error, Config),
@@ -3945,3 +4144,33 @@ sc_ws_pinned_contract(Cfg) ->
         || Who   <- [initiator, responder],
            Delta <- [NNT, NOT, NNT + 1]],
     ok = sc_ws_close_(Config).
+
+check_info(L, Timeout) ->
+    receive
+        Msg ->
+            ct:log("[~p] UNEXPECTED: ~p", [L, Msg]),
+            [Msg|check_info(L, Timeout)]
+    after Timeout ->
+            []
+    end.
+
+peek_msgq(L) ->
+    case process_info(self(), messages) of
+        {_, []} ->
+            ok;
+        {_, Msgs} ->
+            ct:log("[~p] PEEK = ~p", [L, Msgs])
+    end.
+
+wait_for_expected_events(Pid, Config, ExpectedEvents) ->
+    {ok, #{<<"event">> := Event}} =
+        wait_for_channel_event(Pid, info, Config),
+    ct:log("Received ~p for ~p", [Event, Pid]),
+    ExpectedEvents1 = ExpectedEvents -- [Event, {optional, Event}],
+    Mandatory = [E || E <- ExpectedEvents1, is_binary(E)],
+    case Mandatory of
+        [] ->
+            ok;
+        _ ->
+            wait_for_expected_events(Pid, Config, ExpectedEvents1)
+    end.
