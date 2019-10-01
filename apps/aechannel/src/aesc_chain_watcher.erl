@@ -1102,7 +1102,6 @@ top_height_(C) ->
 top_hash(C) ->
     cached_get(top_hash, C, fun aec_chain:top_block_hash/0).
 
-
 height(BHash, C) ->
     cached_get({height, BHash}, C, fun(C1) -> height_(BHash, C1) end).
 

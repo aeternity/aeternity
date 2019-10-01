@@ -1265,6 +1265,10 @@ get_both_balances(Fsm, PubI, PubR) ->
           {PubR, BalR}]} = rpc(dev1, aesc_fsm, get_balances, [Fsm, [PubI, PubR]]),
     {BalI, BalR}.
 
+check_log([{optional, Op, Type}|T], [{Op, Type, _, _}|T1]) ->
+    check_log(T, T1);
+check_log([{optional, _Op, _Type}|T], T1) ->
+    check_log(T, T1);
 check_log([{Op, Type}|T], [{Op, Type, _, _}|T1]) ->
     check_log(T, T1);
 check_log([H|_], [H1|_]) ->
@@ -2120,17 +2124,18 @@ roles_for_update(responder, I, R) -> {R, I}.
 
 reconnect(Fsm, Role, #{} = R, Debug) ->
     Me = self(),
-    NewProxy = spawn(fun() ->
-                             erlang:monitor(process, Me),
-                             ok = try_reconnect(Fsm, Role, R, Debug),
-                             ?LOG(Debug, "Reconnect successful; Fsm = ~p", [Fsm]),
-                             Me ! {self(), reconnected},
-                             fsm_relay(R, Me, Debug)
+    NewProxy = spawn_link(fun() ->
+                                  erlang:monitor(process, Me),
+                                  ok = try_reconnect(Fsm, Role, R, Debug),
+                                  ?LOG(Debug, "Reconnect successful; Fsm = ~p", [Fsm]),
+                                  Me ! {self(), reconnected},
+                                  fsm_relay(R, Me, Debug)
                      end),
     receive
         {NewProxy, reconnected} ->
             ok
-    after 1000 ->
+    after
+        1000 ->
             error(timeout)
     end,
     R#{ proxy => NewProxy }.
@@ -2333,7 +2338,7 @@ maybe_use_any(false, Spec) ->
 
 spawn_initiator(Port, Spec, I, Debug) ->
     Me = self(),
-    spawn(fun() ->
+    spawn_link(fun() ->
                        ?LOG(Debug, "initiator spawned: ~p", [Spec]),
                        Spec1 = Spec#{ client => self() },
                        Spec2 = move_password_to_spec(I, Spec1),
@@ -2771,7 +2776,10 @@ check_info(Timeout, Debug) ->
     receive
         Msg when element(1, Msg) == aesc_fsm ->
             ?LOG(Debug, "UNEXPECTED: ~p", [Msg]),
-            [Msg|check_info(Timeout, Debug)]
+            [Msg|check_info(Timeout, Debug)];
+        Other ->
+            ?LOG(Debug, "UNKNOWN MESSAGE: ~p", [Other]),
+            check_info(Timeout, Debug)
     after
         Timeout ->
             ?PEEK_MSGQ(Debug),
@@ -4005,6 +4013,7 @@ expected_fsm_logs(t_create_channel_, responder, _) ->
     ];
 expected_fsm_logs(leave_reestablish_close, initiator, _) ->
     [ {evt, close}
+    , {optional, rcv, disconnect} % this can occur in case the min depth achieved is delayed
     , {rcv, channel_closed}
     , {rcv, shutdown_ack}
     , {rcv, signed}
@@ -4019,6 +4028,7 @@ expected_fsm_logs(leave_reestablish_close, initiator, _) ->
     ];
 expected_fsm_logs(leave_reestablish_close, responder, _) ->
     [ {evt, close}
+    , {optional, rcv, disconnect} % this can occur in case the min depth achieved is delayed
     , {rcv, channel_closed}
     , {rcv, signed}
     , {snd, shutdown_ack}
