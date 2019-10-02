@@ -71,7 +71,7 @@ sc_open(Params, Cfg) ->
                initiator_amount => IAmt,
                responder_amount => RAmt,
                channel_reserve => maps:get(channel_reserve, Params, 2),
-               minimum_depth => 20
+               minimum_depth_factor => 0
               },
              MaybeOpts),
 

@@ -53,6 +53,7 @@
 
 -define(MINING_TIMEOUT,   3000).
 -define(SYNC_TIMEOUT,      100).
+-define(MIN_DEPTH, 11).
 
 -define(MIKE, #{
     pubkey => <<200,171,93,11,3,93,177,65,197,27,123,127,177,165,
@@ -292,8 +293,8 @@ reestablish_state_channel_perform_operations_close({INodeName, RNodeName},
     wait_for_value({txs_on_chain, [CloseTxHash]}, NodeNames, 5000, Config),
     %% wait for min depth to be reached so the channels die
     #{height := TopHeight} = aest_nodes:get_top(INodeName),
-    KeyBlocksToMine = 4 + 2, % min depth is 4
-    wait_for_value({height, TopHeight + KeyBlocksToMine}, NodeNames, 10000, Config),
+    KeyBlocksToMine = ?MIN_DEPTH + 2, % min depth is 4
+    wait_for_value({height, TopHeight + KeyBlocksToMine}, NodeNames, 20000, Config),
     sc_wait_close(Chan1),
     ok.
 
