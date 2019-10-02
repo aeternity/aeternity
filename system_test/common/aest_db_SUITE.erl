@@ -44,7 +44,7 @@
 %=== COMMON TEST FUNCTIONS =====================================================
 
 all() -> [{group, minerva_compatibility},
-          {group, fortuna_compatibility},
+          {group, lima_compatibility},
           {group, local_compatibility}
          ].
 
@@ -52,7 +52,7 @@ groups() ->
     [{minerva_compatibility, [sequence], [
         force_progress_mempool
     ]},
-    {fortuna_compatibility, [sequence], [
+    {lima_compatibility, [sequence], [
         {group, leave_upgrade_reestablish}
     ]},
     {local_compatibility, [sequence], [
@@ -71,8 +71,9 @@ init_per_suite(Config) ->
 
 init_per_group(minerva_compatibility, Config) ->
     [{tx_mempool_vsn, "v2.3.0"} | Config];
-init_per_group(fortuna_compatibility, Config) ->
-    [{state_channels_vsn, "v4.2.0"} | Config];
+init_per_group(lima_compatibility, Config) ->
+    %%[{state_channels_vsn, "v5.1.0"} | Config];
+    {skip, no_backwards_compatibility_until_5_1};
 init_per_group(local_compatibility, Config) ->
     [{block_mining_vsn, "local"} | Config];
 init_per_group(_TG, Config) ->
@@ -81,17 +82,6 @@ init_per_group(_TG, Config) ->
 init_per_testcase(_TC, Config) ->
     aest_nodes:ct_setup(Config).
 
-%% TODO: once We move from Fortuna to Lima compatibility, remove the conf
-%% key skip_log_verification_for_nodes. It is used only for temporarily
-%% silencing error log messages in aeternity.log
-end_per_testcase(sc_leave_upgrade_reestablish_same_node_upgrade, Config) ->
-    aest_nodes:ct_cleanup([{skip_log_verification_for_nodes, [node1]} | Config]);
-end_per_testcase(sc_leave_upgrade_reestablish_different_nodes_full_upgrade, Config) ->
-    aest_nodes:ct_cleanup([{skip_log_verification_for_nodes, [alice1, bob1]} | Config]);
-end_per_testcase(sc_leave_upgrade_reestablish_different_nodes_partial_upgrade, Config) ->
-    aest_nodes:ct_cleanup([{skip_log_verification_for_nodes, [alice1, bob1, alice2]} | Config]);
-end_per_testcase(sc_leave_upgrade_reestablish_different_nodes_partial_to_full_upgrade, Config) ->
-    aest_nodes:ct_cleanup([{skip_log_verification_for_nodes, [alice1]} | Config]);
 end_per_testcase(_TC, Config) ->
     aest_nodes:ct_cleanup(Config).
 

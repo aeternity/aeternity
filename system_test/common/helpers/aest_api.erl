@@ -216,24 +216,17 @@ sc_call_contract(Channel, Who, Contract, CallData) ->
 -spec sc_leave(channel()) -> {ok, binary()}.
 sc_leave(Channel) ->
     #{ initiator := {_, IConn}, responder := {_, RConn} } = Channel,
-    ws_send(IConn, <<"leave">>, #{}),
+    %% if the initiator drops or leaves, the responder waits for a while for it
+    %% to reconnect, so we make the responder to leave instead
+    ws_send(RConn, <<"leave">>, #{}),
     WaitEvents =
         fun(Conn) ->
             {ok, #{ <<"state">> := LatestState0 }} = sc_wait_for_channel_event(Conn, leave),
-            case sc_wait_for_channel_event(Conn, info) of
-                {ok, #{ <<"event">> := <<"died">> }} ->
-                    pass;
-                {ok, #{<<"event">> := <<"peer_disconnected">>}} ->
-                    %% we can receive the info for other party dropping before
-                    %% the WebSocket closing message. In that case wait for
-                    %% the closing message
-                    {ok, #{ <<"event">> := <<"died">> }} =
-                        sc_wait_for_channel_event(Conn, info)
-            end,
+            {ok, #{ <<"event">> := <<"died">> }} = sc_wait_for_channel_event(Conn, info),
             LatestState0
         end,
-    LatestState = WaitEvents(IConn),
     LatestState = WaitEvents(RConn),
+    LatestState = WaitEvents(IConn),
     timer:sleep(300),
 
     {ok, LatestState}.
