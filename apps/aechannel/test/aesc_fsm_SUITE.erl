@@ -410,6 +410,7 @@ end_per_group(Group, Config) ->
     ok.
 
 init_per_testcase(_, Config) ->
+    Debug = (os:getenv("CT_DEBUG") == "1"),
     Config1 = load_idx(Config),
     Config2 = case is_above_roma_protocol() of
                   true ->
@@ -425,7 +426,7 @@ init_per_testcase(_, Config) ->
                       , {minimum_depth_strategy, ?MINIMUM_DEPTH_STRATEGY}
                       | Config1 ]
               end,
-    [ {debug, true} | Config2 ].
+    [ {debug, Debug} | Config2 ].
 
 end_per_testcase(T, _Config) when T==multiple_channels;
                                   T==many_chs_msg_loop ->
