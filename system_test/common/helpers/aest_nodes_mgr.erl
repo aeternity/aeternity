@@ -111,7 +111,6 @@ handle_call(dump_logs, _From, #{nodes := Nodes} = State) ->
 handle_call({setup_nodes, NodeSpecs}, _From, State) ->
     #{backends := Backends, nodes := Nodes} = State,
     PreparedSpecs = mgr_prepare_specs(NodeSpecs, State),
-    ct:log("ASDF: prepared specs ~p", [PreparedSpecs]),
     SetupNodes = [mgr_setup_node(Spec, Backends) || Spec <- PreparedSpecs],
     NewNodes = add_nodes(SetupNodes, Nodes),
     {reply, ok, State#{nodes => NewNodes}};
