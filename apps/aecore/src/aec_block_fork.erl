@@ -16,7 +16,8 @@ apply_fortuna(Trees) ->
 -spec apply_lima(aec_trees:trees(), aetx_env:env()) -> aec_trees:trees().
 apply_lima(Trees, TxEnv) ->
     Trees1 = apply_accounts_file(Trees, aec_fork_block_settings:lima_accounts()),
-    apply_hard_fork_contracts_file(aec_fork_block_settings:lima_contracts(), Trees1, TxEnv).
+    Trees2 = apply_accounts_file(Trees1, aec_fork_block_settings:lima_extra_accounts()),
+    apply_hard_fork_contracts_file(aec_fork_block_settings:lima_contracts(), Trees2, TxEnv).
 
 apply_accounts_file(Trees, Accounts) ->
     AccTrees =

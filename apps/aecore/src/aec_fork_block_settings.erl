@@ -7,10 +7,12 @@
          minerva_accounts/0,
          fortuna_accounts/0,
          lima_accounts/0,
+         lima_extra_accounts/0,
          lima_contracts/0
         ]).
 
 -export([ accounts_file_name/1
+        , extra_accounts_file_name/1
         , contracts_file_name/1
         ]).
 
@@ -32,29 +34,33 @@ dir(ProtocolVsn) ->
     filename:join(aeu_env:data_dir(aecore), Dir).
 
 -spec genesis_accounts() -> list().
-genesis_accounts() -> preset_accounts(?ROMA_PROTOCOL_VSN,
+genesis_accounts() -> preset_accounts(accounts, ?ROMA_PROTOCOL_VSN,
                                       genesis_accounts_file_missing).
 
 -spec minerva_accounts() -> list().
-minerva_accounts() -> preset_accounts(?MINERVA_PROTOCOL_VSN,
+minerva_accounts() -> preset_accounts(accounts, ?MINERVA_PROTOCOL_VSN,
                                       minerva_accounts_file_missing).
 
 -spec fortuna_accounts() -> list().
-fortuna_accounts() -> preset_accounts(?FORTUNA_PROTOCOL_VSN,
+fortuna_accounts() -> preset_accounts(accounts, ?FORTUNA_PROTOCOL_VSN,
                                       fortuna_accounts_file_missing).
 
 -spec lima_accounts() -> list().
-lima_accounts() -> preset_accounts(?LIMA_PROTOCOL_VSN,
+lima_accounts() -> preset_accounts(accounts, ?LIMA_PROTOCOL_VSN,
                                    lima_accounts_file_missing).
+
+-spec lima_extra_accounts() -> list().
+lima_extra_accounts() -> preset_accounts(extra_accounts, ?LIMA_PROTOCOL_VSN,
+                                         lima_extra_accounts_file_missing).
 
 -spec lima_contracts() -> list().
 lima_contracts() -> preset_contracts(?LIMA_PROTOCOL_VSN,
                                      lima_contracts_file_missing).
 
 
--spec preset_accounts(aec_hard_forks:protocol_vsn(), atom()) -> list().
-preset_accounts(Release, ErrorMsg) ->
-    case read_preset_accounts(Release) of
+-spec preset_accounts(accounts | extra_accounts, aec_hard_forks:protocol_vsn(), atom()) -> list().
+preset_accounts(Type, Release, ErrorMsg) ->
+    case read_preset(Type, Release) of
         {error, {_Err, PresetAccountsFile}} ->
             % no setup, no preset accounts
             erlang:error({ErrorMsg, PresetAccountsFile});
@@ -80,14 +86,20 @@ preset_accounts(Release, ErrorMsg) ->
             lists:keysort(1, Accounts)
     end.
 
--spec read_preset_accounts(aec_hard_forks:protocol_vsn()) -> {ok, binary()}| {error, {atom(), string()}}.
-read_preset_accounts(Release) ->
+-spec read_preset(accounts | extra_accounts, aec_hard_forks:protocol_vsn()) ->
+        {ok, binary()}| {error, {atom(), string()}}.
+read_preset(accounts, Release) ->
     PresetAccountsFile = aec_fork_block_settings:accounts_file_name(Release),
     case file:read_file(PresetAccountsFile) of
         {ok, _} = OK -> OK;
         {error, Err} -> {error, {Err, PresetAccountsFile}}
+    end;
+read_preset(extra_accounts, Release) ->
+    PresetExtraFile = aec_fork_block_settings:extra_accounts_file_name(Release),
+    case file:read_file(PresetExtraFile) of
+        {ok, _} = OK -> OK;
+        {error, Err} -> {error, {Err, PresetExtraFile}}
     end.
-
 
 -spec preset_contracts(aec_hard_forks:protocol_vsn(), atom()) -> list().
 preset_contracts(Release, ErrorMsg) ->
@@ -190,12 +202,18 @@ read_preset_contracts(?LIMA_PROTOCOL_VSN = Release) ->
 accounts_file_name(Release) ->
     filename:join([dir(Release), accounts_json_file()]).
 
+extra_accounts_file_name(Release) ->
+    filename:join([dir(Release), extra_accounts_json_file()]).
+
 contracts_file_name(Release) ->
     filename:join([dir(Release), contracts_json_file()]).
 
 -ifdef(TEST).
 accounts_json_file() ->
     "accounts_test.json".
+
+extra_accounts_json_file() ->
+    "extra_accounts_test.json".
 
 contracts_json_file() ->
     "contracts_test.json".
@@ -206,6 +224,13 @@ accounts_json_file() ->
         <<"ae_mainnet">> -> "accounts.json";
         <<"ae_uat">>     -> "accounts_uat.json";
         _                -> "accounts_test.json"
+    end.
+
+extra_accounts_json_file() ->
+    case aec_governance:get_network_id() of
+        <<"ae_mainnet">> -> "extra_accounts.json";
+        <<"ae_uat">>     -> "extra_accounts_uat.json";
+        _                -> "extra_accounts_test.json"
     end.
 
 contracts_json_file() ->
