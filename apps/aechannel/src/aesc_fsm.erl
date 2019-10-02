@@ -2995,7 +2995,9 @@ start_chain_watcher(Type, SignedTx, Updates, D) ->
 start_chain_watcher_(Type, SignedTx, Updates, #data{ watcher = Watcher0
                                                    , op = Op
                                                    , opts = Opts } = D) ->
-    MinDepth = min_depth(Opts, SignedTx),
+    #{ minimum_depth := MinDepthFactor
+     , minimum_depth_strategy := MinDepthStrategy } = Opts,
+    MinDepth = min_depth(MinDepthStrategy, MinDepthFactor, SignedTx),
     BlockHash = block_hash_from_op(Op),
     {Mod, Tx} = aetx:specialize_callback(aetx_sign:innermost_tx(SignedTx)),
     TxHash = aetx_sign:hash(SignedTx),
@@ -3720,14 +3722,16 @@ check_change_config(_, _) ->
     {error, invalid_config}.
 
 %% @doc Returns the minimum depth to watch for the given transaction and
-%% options. If the minimum_depth factor is 0 or less the minimum_depth is
-%% returned. The minimum_depth_factor is used to as a means to manage risk.
-%% It allows the minimum depth to watch to be adjusted in both directions.
-%% The given minimum_depth_factor is divided by 100 to provide an increased level
-%% of precision.
--spec min_depth(map(), aetx_sign:signed_tx()) -> non_neg_integer().
-min_depth(#{ minimum_depth := MinDepthFactor
-           , minimum_depth_strategy := txfee }, SignedTx) when
+%% options. The calculation depends on the chosen strategy.
+%%
+%% Supported strategies: txfee
+%%
+%% txfee: A minimum_depth factor of 0 results in a static min_depth of 1 for all
+%% transactions. For factors greater than 0 then the min_depth is calculated as
+%% the nth root of the transaction fee divided by the minimum gas, where n is
+%% the given minimum_depth factor.
+-spec min_depth(minimum_depth_strategy(), minimum_depth_factor(), aetx_sign:signed_tx()) -> non_neg_integer().
+min_depth(txfee, MinDepthFactor, SignedTx) when
       MinDepthFactor =/= undefined ->
     Tx = aetx_sign:tx(SignedTx),
     MinGas = aec_tx_pool:minimum_miner_gas_price(),
@@ -3744,10 +3748,10 @@ min_depth(#{ minimum_depth := MinDepthFactor
                 [MinDepth, FeeCoefficient, MinDepthFactor, TxFee, MinGas]),
     MinDepth.
 
--spec check_minimum_depth_opt(opts()) -> opts().
 %% @doc Set default minimum depth parameters. If the role is initiator, no
-%% change is made because the responder might provide these default when the
+%% change is made because the responder might provide these defaults when the
 %% channel is accepted.
+-spec check_minimum_depth_opt(opts()) -> opts().
 check_minimum_depth_opt(#{role := initiator} = Opts) ->
     Opts;
 check_minimum_depth_opt(Opts) ->
