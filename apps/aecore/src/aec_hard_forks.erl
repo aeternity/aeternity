@@ -66,8 +66,8 @@ ensure_env() ->
 %% The function shouldn't be used elsewhere (apart from tests). With community
 %% forks the function can return different protocol versions at the same height.
 -spec protocol_effective_at_height(aec_blocks:height()) -> version().
-protocol_effective_at_height(H) ->
-    protocol_effective_at_height(H, protocols()).
+protocol_effective_at_height(Height) ->
+    protocol_effective_at_height(Height, protocols()).
 
 %%%===================================================================
 %%% Internal functions
@@ -137,18 +137,20 @@ fork_from_network_id(_Id) ->
     end.
 
 mainnet_fork_config() ->
-    #{signalling_start_height => undefined,
-      signalling_end_height => undefined,
-      signalling_block_count => undefined,
-      info_field => undefined,
-      version => undefined}.
+    undefined.
+    %% #{signalling_start_height => undefined,
+    %%   signalling_end_height   => undefined,
+    %%   signalling_block_count  => undefined,
+    %%   info_field              => undefined,
+    %%   version                 => undefined}.
 
 testnet_fork_config() ->
-    #{signalling_start_height => undefined,
-      signalling_end_height => undefined,
-      signalling_block_count => undefined,
-      info_field => undefined,
-      version => undefined}.
+    undefined.
+    %% #{signalling_start_height => undefined,
+    %%   signalling_end_height   => undefined,
+    %%   signalling_block_count  => undefined,
+    %%   info_field              => undefined,
+    %%   version                 => undefined}.
 
 %% Exported for tests
 sorted_protocol_versions() ->
@@ -157,17 +159,42 @@ sorted_protocol_versions() ->
 protocols_sorted_by_version(Ps) ->
     lists:keysort(1, maps:to_list(Ps)).
 
-protocol_effective_at_height(H, Protocols) ->
-    assert_height(H),
+protocol_effective_at_height(Height, Protocols) ->
+    assert_height(Height),
     SortedProtocols = protocols_sorted_by_version(Protocols),
     %% Find the last protocol version effective before or at the
     %% specified height: that is the one effective at the specified
     %% height.  This assumes that the height is strictly increasing
     %% with the version so also assert that for the sake of clarity.
     ProtocolsEffectiveSinceBeforeOrAtHeight = [_|_] =
-        lists:takewhile(fun({_, HH}) -> H >= HH end, SortedProtocols),
-    {V, _} = lists:last(ProtocolsEffectiveSinceBeforeOrAtHeight),
-    V.
+        lists:takewhile(fun({_, H}) -> Height >= H end, SortedProtocols),
+    {Protocol, _ForkHeight} = lists:last(ProtocolsEffectiveSinceBeforeOrAtHeight),
+    maybe_protocol_from_fork(aeu_env:get_env(aecore, fork), Height, Protocol).
+
+maybe_protocol_from_fork(undefined, _Heigth, Protocol) ->
+    %% No community fork configured.
+    Protocol;
+maybe_protocol_from_fork({ok, #{signalling_end_height := EndHeight}}, Height, Protocol)
+  when Height < EndHeight ->
+    %% Height is lower than signalling end height, so the greatest protocol
+    %% before the community fork is returned.
+    Protocol;
+maybe_protocol_from_fork({ok, #{signalling_end_height := Height} = Fork}, Height, Protocol) ->
+    %% Height is equal to the signalling end height which is the fork heght. The
+    %% fork signalling result needs to be taken from aec_chain_state module for
+    %% the last key block before the fork height (last signalling block height).
+    {ok, Block} = aec_chain:get_key_block_by_height(Height - 1),
+    case aec_chain_state:get_fork_result(Block, Fork) of
+        {ok, true}  -> maps:get(version, Fork);
+        {ok, false} -> Protocol
+    end;
+maybe_protocol_from_fork({ok, #{signalling_end_height := EndHeight}}, Height, _Protocol)
+  when Height > EndHeight ->
+    %% Height is greater than the signalling end height. The decision about the
+    %% protocol version already happened, so the protocol version at this height
+    %% is the same as the protocol version of the previous (key) block.
+    {ok, Block} = aec_chain:get_key_block_by_height(Height - 1),
+    aec_blocks:version(Block).
 
 fork_config() ->
     case aeu_env:user_map([<<"fork_management">>, <<"fork">>]) of

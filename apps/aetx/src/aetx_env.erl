@@ -17,6 +17,7 @@
 -ifdef(TEST).
 -export([ contract_env/6
         , tx_env/1
+        , tx_env/2
         ]).
 
 -include("../../aecore/include/blocks.hrl").
@@ -154,8 +155,11 @@ contract_env(Height, ConsensusVersion, Time, Beneficiary, Difficulty,
      }.
 
 tx_env(Height) ->
-    Vsn = aec_hard_forks:protocol_effective_at_height(Height),
-    #env{ consensus_version = Vsn
+    Version = aec_hard_forks:protocol_effective_at_height(Height),
+    tx_env(Height, Version).
+
+tx_env(Height, Version) ->
+    #env{ consensus_version = Version
         , context = aetx_transaction
         , height  = Height
         , signed_tx = none
