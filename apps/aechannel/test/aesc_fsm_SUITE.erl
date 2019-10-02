@@ -1290,12 +1290,13 @@ multiple_channels_t(NumCs, FromPort, Msg, {slogan, Slogan}, Cfg) ->
     aecore_suite_utils:mock_mempool_nonce_offset(Node, NumCs),
     MinerHelper = spawn_miner_helper(),
     {ok, Nonce} = rpc(dev1, aec_next_nonce, pick_for_account, [Initiator]),
-    MultiChCfg0 = [ {port, FromPort}
-                  , {ack_to, Me}
+    MultiChCfg0 = [ {ack_to, Me}
                   | Cfg ],
     MultiChCfg1 = set_configs([{minimum_depth_factor, 0}], MultiChCfg0),
-    Cs = [create_multi_channel([ {nonce, Nonce + N - 1}
-                               , {slogan, {Slogan,N}}
+    %% Ensure that the channels run on separate ports or spawn the channels sequentially.
+    Cs = [create_multi_channel([ {port, FromPort + N}
+                               , {nonce, Nonce + N - 1}
+                               , {slogan, {Slogan, N}}
                                | MultiChCfg1 ],
                                #{mine_blocks => {ask, MinerHelper}, debug => Debug})
           || N <- lists:seq(1, NumCs)],
@@ -2241,6 +2242,8 @@ create_channel_from_spec(I, R, Spec, Port, UseAny, Debug, Cfg, MinDepth) ->
         fun() ->
             RProxy = spawn_responder(Port, RSpec, R, UseAny, Debug),
             IProxy = spawn_initiator(Port, ISpec, I, Debug),
+            IProxy ! {self(), responder_proxy, RProxy},
+            RProxy ! {self(), initiator_proxy, IProxy},
             ?LOG("RProxy = ~p, IProxy = ~p", [RProxy, IProxy]),
             #{ i := #{ fsm := WFsmI } = WI1
              , r := #{ fsm := WFsmR } = WR1 } = Info
@@ -2313,10 +2316,16 @@ spawn_responder(Port, Spec, R, UseAny, Debug) ->
     Me = self(),
     spawn_link(fun() ->
                        ?LOG("responder spawned: ~p", [Spec]),
+                       IProxy = receive
+                            {Me, initiator_proxy, Pid} ->
+                                Pid
+                        after ?TIMEOUT ->
+                            error(timeout)
+                        end,
                        Spec1 = maybe_use_any(UseAny, Spec#{ client => self() }),
                        Spec2 = move_password_to_spec(R, Spec1),
                        {ok, Fsm} = rpc(dev1, aesc_fsm, respond, [Port, Spec2], Debug),
-                       responder_instance_(Fsm, Spec2, R, Me, Debug)
+                       responder_instance_(Fsm, IProxy, Spec2, R, Me, Debug)
                end).
 
 maybe_use_any(true, Spec) ->
@@ -2328,11 +2337,17 @@ spawn_initiator(Port, Spec, I, Debug) ->
     Me = self(),
     spawn_link(fun() ->
                        ?LOG(Debug, "initiator spawned: ~p", [Spec]),
+                       RProxy = receive
+                                    {Me, responder_proxy, Pid} ->
+                                        Pid
+                                after ?TIMEOUT ->
+                                    error(timeout)
+                                end,
                        Spec1 = Spec#{ client => self() },
                        Spec2 = move_password_to_spec(I, Spec1),
                        {ok, Fsm} = rpc(dev1, aesc_fsm, initiate,
                                        ["localhost", Port, Spec2], Debug),
-                       initiator_instance_(Fsm, Spec2, I, Me, Debug)
+                       initiator_instance_(Fsm, RProxy, Spec2, I, Me, Debug)
                end).
 
 move_password_to_spec(#{state_password := StatePassword}, Spec) ->
@@ -2350,31 +2365,35 @@ match_responder_and_initiator(RProxy, Debug) ->
             error(timeout)
     end.
 
-responder_instance_(Fsm, Spec, R0, Parent, Debug) ->
+responder_instance_(Fsm, IProxy, Spec, R0, Parent, Debug) ->
     R = fsm_map(Fsm, Spec, R0),
-    {ok, ChOpen} = receive_from_fsm(info, R, channel_open, ?TIMEOUT, Debug),
-    ?LOG(Debug, "Got ChOpen: ~p~nSpec = ~p", [ChOpen, Spec]),
-    #{data := #{temporary_channel_id := TmpChanId}} = ChOpen,
+    {ok, _} = receive_from_fsm(info, R, channel_open, ?TIMEOUT, Debug),
+    ?LOG(Debug, "Got ChOpen~nSpec = ~p", [Spec]),
     R1 = R#{ proxy => self(), parent => Parent },
-    gproc:reg({n,l,{?MODULE,TmpChanId,responder}}, #{ r => R1 }),
-    {_IPid, #{ i := I1 , channel_accept := ChAccept }}
-        = gproc:await({n,l,{?MODULE,TmpChanId,initiator}}, ?TIMEOUT),
-    Parent ! {channel_up, self(), #{ i => I1#{parent => Parent}
-                                     , r => R1
-                                     , channel_accept => ChAccept
-                                     , channel_open   => ChOpen }},
-    fsm_relay(R, Parent, Debug).
+    IProxy ! {self(), responder_ready, Parent},
+    I1 = receive
+             {IProxy, initiator_ready, I} ->
+                 I
+         after
+             ?TIMEOUT ->
+                 error(timeout)
+         end,
+    Parent ! {channel_up, self(), #{ i => I1#{parent => Parent}, r => R1}},
+    fsm_relay(R1, Parent, Debug).
 
-initiator_instance_(Fsm, Spec, I0, Parent, Debug) ->
+initiator_instance_(Fsm, RProxy, Spec, I0, Parent, Debug) ->
     I = fsm_map(Fsm, Spec, I0),
-    {ok, ChAccept} = receive_from_fsm(info, I, channel_accept, ?TIMEOUT, Debug),
-    ?LOG(Debug, "Got ChAccept: ~p~nSpec = ~p", [ChAccept, Spec]),
-    #{data := #{temporary_channel_id := TmpChanId}} = ChAccept,
+    {ok, _} = receive_from_fsm(info, I, channel_accept, ?TIMEOUT, Debug),
+    ?LOG(Debug, "Got ChAccept~nSpec = ~p", [Spec]),
     I1 = I#{ proxy => self() },
-    gproc:reg({n,l,{?MODULE,TmpChanId,initiator}}, #{ i => I1
-                                                    , channel_accept => ChAccept }),
-    {_RPid, #{ r := #{parent := NewParent}}}
-        = gproc:await({n,l,{?MODULE,TmpChanId,responder}}, ?TIMEOUT),
+    RProxy ! {self(), initiator_ready, I1},
+    NewParent = receive
+         {RProxy, responder_ready, NewParent1} ->
+             NewParent1
+     after
+         ?TIMEOUT ->
+             error(timeout)
+     end,
     unlink(Parent),
     link(NewParent),
     fsm_relay(I1#{parent => NewParent}, NewParent, Debug).

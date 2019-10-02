@@ -470,7 +470,7 @@ initialized(cast, {?CH_ACCEPT, Msg}, #data{role = initiator} = D) ->
         {ok, D1} ->
             lager:debug("Valid channel_accept: ~p", [Msg]),
             gproc_register(D1),
-            report(info, channel_accept, Msg, D1),
+            report(info, channel_accept, D1),
             {ok, CTx, Updates, BlockHash} = create_tx_for_signing(D1),
             case request_signing(create_tx, CTx, Updates, BlockHash, D1) of
                 {ok, D2, Actions} ->
@@ -572,7 +572,7 @@ awaiting_open(enter, _OldSt, _D) -> keep_state_and_data;
 awaiting_open(cast, {?CH_OPEN, Msg}, #data{role = responder} = D) ->
     case check_open_msg(Msg, D) of
         {ok, D1} ->
-            report(info, channel_open, Msg, D1),
+            report(info, channel_open, D1),
             gproc_register(D1),
             next_state(accepted, send_channel_accept(D1));
         {error, _} = Error ->
@@ -3149,12 +3149,6 @@ report(Tag, Info, D) ->
     report_info(do_rpt(Tag, D), #{ type => report
                                  , tag  => Tag
                                  , info => Info }, D).
-
-report(Tag, St, Msg, D) ->
-    report_info(do_rpt(Tag, D), #{ type => report
-                                 , tag  => Tag
-                                 , info => St
-                                 , data => Msg }, D).
 
 report_info(DoRpt, Msg, #data{client_connected = false}) ->
     lager:debug("No client. DoRpt = ~p, Msg = ~p", [DoRpt, Msg]),
