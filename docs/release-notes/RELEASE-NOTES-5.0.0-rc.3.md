@@ -12,7 +12,7 @@ Changelog:
 * Set Lima testnet hardfork height to 154300 (16th Oct 2019, 09:00 UTC)
 * Set Lima mainnet to 161150 (30th Oct 2019, 13:00 UTC)
 * Aligns AEVM store gas pricing with FATE.
-* ContractCallTX where the called contract uses FATE has a lower base cost (60% cheaper thana call to an AEVM contract).
+* ContractCallTX where the called contract uses FATE has a lower base cost (60% cheaper than a call to an AEVM contract).
 * State Channels: The support for state cache encryption (introduced in v5.0.0-rc.2)
   has been disabled. An improved approach is being developed which greatly improves API
   usability. This feature is expected to be released with v5.1.0.
