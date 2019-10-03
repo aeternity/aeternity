@@ -93,9 +93,7 @@ references:
         # Install OTP binary package
         PACKAGE_NAME=esl-erlang_${OTP_VERSION}-1~ubuntu~xenial_amd64.deb
         OTP_DOWNLOAD_URL=https://packages.erlang-solutions.com/erlang/debian/pool/${PACKAGE_NAME}
-        # TODO temporary disable SSL checks on erlang-solutions.com until they fix their certificate
-        # FIXME ^^ (multi-editor support :))
-        curl -fsSL --insecure -o ${PACKAGE_NAME} "$OTP_DOWNLOAD_URL"
+        curl -fsSL -o ${PACKAGE_NAME} "$OTP_DOWNLOAD_URL"
         sudo dpkg -i ${PACKAGE_NAME}
 
   install_libsodium: &install_libsodium
