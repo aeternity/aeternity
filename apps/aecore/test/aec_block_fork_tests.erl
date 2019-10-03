@@ -75,19 +75,22 @@ apply_lima_test_() ->
                  [{Alice,  BalA} = A,
                   {Bob,   BalB} = B,
                   {Carol, BalC},
-                  {David, _}] = generate_accounts(4),
+                  {Extra, BalE},
+                  {David, _}] = generate_accounts(5),
                  T0 = make_trees([A, B]), % only Alice and Bob are present pre-minerva
-                 meck_lima_accounts_and_contracts([{Alice, DeltaA = 10},%% Alice had migrated more
-                                                   {Carol, BalC},       %% Carol is new
-                                                   {David, 0}],         %% David has a balance of 0
-                                                  []                    %% No contracts
-                                                 ),
+                 meck_lima_accounts_extra_accounts_and_contracts([{Alice, DeltaA = 10},%% Alice had migrated more
+                                                                  {Carol, BalC},       %% Carol is new
+                                                                  {David, 0}],         %% David has a balance of 0
+                                                                 [{Extra, BalE}],      %% Extra accounts
+                                                                 []                    %% No contracts
+                                                                ),
                  T1 = aec_block_fork:apply_lima(T0, tx_env()),
                  assert_only_accounts_tree_changed(T0, T1),
                  assert_balance(T1, Alice, BalA + DeltaA), % Alice balance is increased
                  assert_balance(T1, Bob,   BalB), % Bob is unchanged
                  assert_balance(T1, Carol, BalC), % Carol is inserted
                  assert_balance(T1, David, 0),    % David is present
+                 assert_balance(T1, Extra, BalE), % Check the extra_accounts.
                  ok
          end},
         {"Lima migration changes balances when contracts _are_ given",
@@ -95,24 +98,27 @@ apply_lima_test_() ->
                  [{Alice,  BalA} = A,
                   {Bob,   BalB} = B,
                   {Carol, BalC},
-                  {David, _}] = generate_accounts(4),
+                  {Extra, BalE},
+                  {David, _}] = generate_accounts(5),
                  T0 = make_trees([A, B]), % only Alice and Bob are present pre-minerva
                  ContractAmount1 = 10000,
                  ContractAmount2 = 40000,
                  ContractSpecs = [lima_contract(2, ContractAmount2),
                                   lima_contract(1, ContractAmount1)
                                  ],
-                 meck_lima_accounts_and_contracts([{Alice, DeltaA = 10},%% Alice had migrated more
-                                                   {Carol, BalC},       %% Carol is new
-                                                   {David, 0}],         %% David has a balance of 0
-                                                  ContractSpecs
-                                                 ),
+                 meck_lima_accounts_extra_accounts_and_contracts([{Alice, DeltaA = 10},%% Alice had migrated more
+                                                                  {Carol, BalC},       %% Carol is new
+                                                                  {David, 0}],         %% David has a balance of 0
+                                                                 [{Extra, BalE}],      %% Extra accounts
+                                                                 ContractSpecs
+                                                                ),
                  T1 = aec_block_fork:apply_lima(T0, tx_env()),
                  assert_only_accounts_and_contracts_trees_changed(T0, T1),
                  assert_balance(T1, Alice, BalA + DeltaA), % Alice balance is increased
                  assert_balance(T1, Bob,   BalB), % Bob is unchanged
                  assert_balance(T1, Carol, BalC), % Carol is inserted
                  assert_balance(T1, David, 0),    % David is present
+                 assert_balance(T1, Extra, BalE), % Check the extra_accounts.
                  %% Make sure the locked account balance didn't change.
                  LockedAccount = aec_governance:locked_coins_holder_account(),
                  assert_balance(T0, LockedAccount, 0),
@@ -133,7 +139,7 @@ apply_lima_test_() ->
                  Sums0 = aec_trees:sum_total_coin(T0),
                  Sums1 = aec_trees:sum_total_coin(T1),
                  ExpectedContractDelta = ContractAmount1 + ContractAmount2,
-                 ExpectedTotalDelta = ExpectedContractDelta + DeltaA + BalC,
+                 ExpectedTotalDelta = ExpectedContractDelta + DeltaA + BalC + BalE,
                  Total0 = maps:fold(fun(_, X, Acc) -> Acc + X end, 0, Sums0),
                  Total1 = maps:fold(fun(_, X, Acc) -> Acc + X end, 0, Sums1),
                  ?assertEqual(Total0 + ExpectedTotalDelta,
@@ -182,7 +188,7 @@ apply_lima_test_() ->
                  [{Account, _}] = generate_accounts(1),
                  T0 = make_trees([{Account, 1000000000000000000000000}]),
                  ContractSpecs = lima_contract_json("contracts.json"),
-                 meck_lima_accounts_and_contracts([], ContractSpecs),
+                 meck_lima_accounts_extra_accounts_and_contracts([], [], ContractSpecs),
                  T1 = aec_block_fork:apply_lima(T0, tx_env()),
 
                  %% Before any account migrated, the contract should have all the tokens
@@ -217,7 +223,7 @@ lima_migration_test(Source) ->
                          mock -> [lima_contract(CNonce, CAmount)];
                          json -> lima_contract_json("contracts_uat.json")
                      end,
-     meck_lima_accounts_and_contracts([], ContractSpecs),
+     meck_lima_accounts_extra_accounts_and_contracts([], [], ContractSpecs),
      T1 = aec_block_fork:apply_lima(T0, tx_env()),
      {Txs, _} = lists:mapfoldl(
                   fun(Spec, Nonce) ->
@@ -292,6 +298,10 @@ load_files_smoke_test_() ->
             fun(?LIMA_PROTOCOL_VSN) ->
                     DataAecoreDir ++ ".lima/" ++ CFile
             end),
+         meck:expect(aec_fork_block_settings, extra_accounts_file_name,
+            fun(?LIMA_PROTOCOL_VSN) ->
+                    DataAecoreDir ++ ".lima/" ++ AIFile
+            end),
          ok
      end,
      fun(ok) ->
@@ -309,18 +319,20 @@ load_files_smoke_test_() ->
             end,
             ok
         end}
-     ]} || {AFile, CFile} <- [{"accounts.json", "contracts.json"},
-                              {"accounts_uat.json", "contracts_uat.json"},
-                              {"accounts_test.json", "contracts_test.json"}]
+     ]} || {AFile, CFile, AIFile} <- [{"accounts.json", "contracts.json", "extra_accounts.json"},
+                                      {"accounts_uat.json", "contracts_uat.json", "extra_accounts_uat.json"},
+                                      {"accounts_test.json", "contracts_test.json", "extra_accounts_test.json"}]
     ].
 
 meck_minerva_accounts(AccountsList) ->
     meck:expect(aec_fork_block_settings, minerva_accounts,
                 fun() -> AccountsList end).
 
-meck_lima_accounts_and_contracts(AccountsList, ContractsList) ->
+meck_lima_accounts_extra_accounts_and_contracts(AccountsList, ExtraAccountsList, ContractsList) ->
     meck:expect(aec_fork_block_settings, lima_accounts,
                 fun() -> AccountsList end),
+    meck:expect(aec_fork_block_settings, lima_extra_accounts,
+                fun() -> ExtraAccountsList end),
     meck:expect(aec_fork_block_settings, lima_contracts,
                 fun() -> ContractsList end).
 
