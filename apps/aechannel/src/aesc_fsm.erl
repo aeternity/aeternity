@@ -4315,14 +4315,18 @@ handle_call_(channel_closing, shutdown, From, #data{strict_checks = Strict} = D)
             %% Backwards compatibility
             keep_state(D, [{reply, From, {error, unknown_request}}])
     end;
-handle_call_(_, get_state, From, #data{ on_chain_id = ChanId
-                                      , opts        = Opts
+handle_call_(_, get_state, From, #data{ opts        = Opts
                                       , state       = State } = D) ->
     #{initiator := Initiator, responder := Responder} = Opts,
+    ChanId = cur_channel_id(D),
     {ok, IAmt} = aesc_offchain_state:balance(Initiator, State),
     {ok, RAmt} = aesc_offchain_state:balance(Responder, State),
     StateHash = aesc_offchain_state:hash(State),
-    {Round, _} = aesc_offchain_state:get_latest_signed_tx(State),
+    {Round, _} = try aesc_offchain_state:get_latest_signed_tx(State)
+                 catch
+                     error:no_tx ->
+                         {0, no_tx}
+                 end,
     Result =
         #{ channel_id => ChanId
          , initiator  => Initiator
