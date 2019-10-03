@@ -315,12 +315,16 @@ set_half_signed_tx(SignedTx, #state{}=State) ->
 
 -spec get_latest_half_signed_tx(state()) -> aetx_sign:signed_tx().
 get_latest_half_signed_tx(#state{half_signed_tx = Tx}) when Tx =/= ?NO_TX ->
-    Tx.
+    Tx;
+get_latest_half_signed_tx(#state{half_signed_tx = ?NO_TX}) ->
+    error(no_tx).
 
 -spec get_latest_signed_tx(state()) -> {non_neg_integer(), aetx_sign:signed_tx()}.
 get_latest_signed_tx(#state{signed_tx = LastSignedTx})
     when LastSignedTx =/= ?NO_TX ->
-    {tx_round(LastSignedTx), LastSignedTx}.
+    {tx_round(LastSignedTx), LastSignedTx};
+get_latest_signed_tx(#state{signed_tx = ?NO_TX}) ->
+    error(no_tx).
 
 -spec get_latest_trees(state()) -> aec_trees:trees().
 get_latest_trees(#state{trees = Trees}) ->
