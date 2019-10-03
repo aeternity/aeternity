@@ -49,6 +49,25 @@ get_poi(NodeH, DB, Ix) ->
             [aeu_hex:bin_to_hex(L) | get_poi(P, DB, Ix div 2)]
     end.
 
+tree_from_json(File) ->
+    tree_from_json(File, []).
+tree_from_json(File, Opts) ->
+    {ok, Bin} = file:read_file(File),
+    JSONData = jsx:decode(Bin),
+    Data0 = [{binary_to_list(Addr), binary_to_integer(Tokens, 10)} || {Addr, Tokens} <- JSONData ],
+    Data =
+        %% Some test data depends on entries not being sorted...
+        case lists:member(no_sort, Opts) of
+            true  -> Data0;
+            false -> lists:sort(Data0)
+        end,
+    mk_tree(Data).
+
+total_sum_from_json(File) ->
+    {ok, Bin} = file:read_file(File),
+    JSONData = jsx:decode(Bin),
+    lists:sum([ binary_to_integer(Tokens, 10) || {_Addr, Tokens} <- JSONData ]).
+
 %% Helper
 
 ix({leaf, Ix, _, _}) -> Ix;
