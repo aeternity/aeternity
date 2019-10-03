@@ -80,7 +80,7 @@ protocols_from_network_id(<<"ae_uat">>) ->
     #{ ?ROMA_PROTOCOL_VSN     => 0
      , ?MINERVA_PROTOCOL_VSN  => 40900
      , ?FORTUNA_PROTOCOL_VSN => 82900
-     , ?LIMA_PROTOCOL_VSN =>  154460
+     , ?LIMA_PROTOCOL_VSN =>  154300
      };
 protocols_from_network_id(<<"local_roma_testnet">>) ->
     #{ ?ROMA_PROTOCOL_VSN     => 0
