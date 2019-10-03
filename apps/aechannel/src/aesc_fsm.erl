@@ -25,6 +25,8 @@
 
 -behaviour(gen_statem).
 
+-compile({inline,[get_state_implementation/2]}).
+
 %% API
 -export([ start_link/1
         , attach_responder/2      %% (fsm(), map())
@@ -37,7 +39,6 @@
         , get_contract_call/4     %% (fsm(), contract_id(), caller(), round())
         , get_offchain_state/1
         , get_poi/2
-        , get_state/1
         , inband_msg/3
         , initiate/3              %% (host(), port(), Opts :: #{}
         , leave/1
@@ -131,6 +132,7 @@
 
 -ifdef(TEST).
 -export([ strict_checks/2
+        , get_state/1
         ]).
 -endif.
 
@@ -186,9 +188,11 @@ get_offchain_state(Fsm) ->
 get_poi(Fsm, Filter) ->
     gen_statem:call(Fsm, {get_poi, Filter}).
 
+-ifdef(TEST).
 -spec get_state(pid()) -> {ok, #{}}.
 get_state(Fsm) ->
     gen_statem:call(Fsm, get_state).
+-endif.
 
 inband_msg(Fsm, To, Msg) ->
     MaxSz = aesc_codec:max_inband_msg_size(),
@@ -4319,27 +4323,8 @@ handle_call_(channel_closing, shutdown, From, #data{strict_checks = Strict} = D)
             %% Backwards compatibility
             keep_state(D, [{reply, From, {error, unknown_request}}])
     end;
-handle_call_(_, get_state, From, #data{ opts        = Opts
-                                      , state       = State } = D) ->
-    #{initiator := Initiator, responder := Responder} = Opts,
-    ChanId = cur_channel_id(D),
-    {ok, IAmt} = aesc_offchain_state:balance(Initiator, State),
-    {ok, RAmt} = aesc_offchain_state:balance(Responder, State),
-    StateHash = aesc_offchain_state:hash(State),
-    {Round, _} = try aesc_offchain_state:get_latest_signed_tx(State)
-                 catch
-                     error:no_tx ->
-                         {0, no_tx}
-                 end,
-    Result =
-        #{ channel_id => ChanId
-         , initiator  => Initiator
-         , responder  => Responder
-         , init_amt   => IAmt
-         , resp_amt   => RAmt
-         , state_hash => StateHash
-         , round      => Round },
-    keep_state(D, [{reply, From, {ok, Result}}]);
+handle_call_(_, get_state, From, Data) ->
+    get_state_implementation(From, Data);
 handle_call_(_, get_offchain_state, From, #data{state = State} = D) ->
     keep_state(D, [{reply, From, {ok, State}}]);
 handle_call_(_, {get_contract, Pubkey}, From, #data{state = State} = D) ->
@@ -4474,6 +4459,33 @@ handle_call_(St, _Req, _From, D) when ?TRANSITION_STATE(St) ->
     postpone(D);
 handle_call_(_St, _Req, From, D) ->
     keep_state(D, [{reply, From, {error, unknown_request}}]).
+
+-ifdef(TEST).
+get_state_implementation(From, #data{ opts  = Opts
+                                    , state = State } = D) ->
+    #{initiator := Initiator, responder := Responder} = Opts,
+    ChanId = cur_channel_id(D),
+    {ok, IAmt} = aesc_offchain_state:balance(Initiator, State),
+    {ok, RAmt} = aesc_offchain_state:balance(Responder, State),
+    StateHash = aesc_offchain_state:hash(State),
+    {Round, _} = try aesc_offchain_state:get_latest_signed_tx(State)
+                 catch
+                     error:no_tx ->
+                         {0, no_tx}
+                 end,
+    Result =
+        #{ channel_id => ChanId
+         , initiator  => Initiator
+         , responder  => Responder
+         , init_amt   => IAmt
+         , resp_amt   => RAmt
+         , state_hash => StateHash
+         , round      => Round },
+    keep_state(D, [{reply, From, {ok, Result}}]).
+-else.
+get_state_implementation(From, D) ->
+    keep_state(D, [{reply, From, {error, unknown_request}}]).
+-endif.
 
 handle_info({'DOWN', MRef, process, Client, _} = M,
             #data{ client = Client
