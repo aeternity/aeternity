@@ -35,6 +35,7 @@
     sc_ws_leave_reconnect/1,
     sc_ws_password_changeable/1,
     sc_ws_ping_pong/1,
+    sc_ws_opening_ping_pong/1,
     sc_ws_deposit/1,
     sc_ws_withdraw/1,
     sc_ws_contracts/1,
@@ -120,6 +121,7 @@ groups() ->
         sc_ws_basic_open_close,
         sc_ws_basic_open_close_no_password,
         sc_ws_basic_open_close_server,
+        sc_ws_opening_ping_pong,
         sc_ws_snapshot_solo,
         sc_ws_update_with_meta,
         %% both can start close mutual
@@ -472,6 +474,11 @@ sc_ws_open_(Config, Opts) ->
 sc_ws_open_(Config, ChannelOpts0, MinBlocksToMine) ->
     #{initiator := #{pub_key := IPubkey},
       responder := #{pub_key := RPubkey}} = proplists:get_value(participants, Config),
+    TestPings = proplists:get_value(ping_pong, Config, false),
+    OptionallyPingPong =
+        fun(ConnPid) when TestPings =:= true -> ping_pong(ConnPid, Config);
+           (_) -> pass
+        end,
 
     {ok, 200, #{<<"balance">> := IStartAmt}} =
                  get_accounts_by_pubkey_sut(aeser_api_encoder:encode(account_pubkey, IPubkey)),
@@ -489,10 +496,12 @@ sc_ws_open_(Config, ChannelOpts0, MinBlocksToMine) ->
     {ok, IConnPid} = channel_ws_start(initiator,
                                            maps:put(host, <<"localhost">>, IChanOpts), Config),
     ct:log("initiator spawned", []),
+    OptionallyPingPong(IConnPid),
     ok = ?WS:register_test_for_channel_events(IConnPid, [info, get, sign,
                                                          on_chain_tx, update]),
 
     {ok, RConnPid} = channel_ws_start(responder, RChanOpts, Config),
+    OptionallyPingPong(IConnPid),
     ct:log("responder spawned", []),
     ok = ?WS:register_test_for_channel_events(RConnPid, [info, get, sign,
                                                          on_chain_tx, update]),
@@ -605,21 +614,32 @@ channel_create(Config, IConnPid, RConnPid) ->
                     priv_key := IPrivkey},
       responder := #{pub_key := RPubkey,
                     priv_key := RPrivkey}} = proplists:get_value(participants, Config),
+    TestPings = proplists:get_value(ping_pong, Config, false),
+    OptionallyPingPong =
+        fun() when TestPings =:= true ->
+            ping_pong(IConnPid, Config),
+            ping_pong(RConnPid, Config);
+           () -> pass
+        end,
     %% initiator gets to sign a create_tx
     {IStartAmt, RStartAmt} = channel_participants_balances(IPubkey, RPubkey),
+    OptionallyPingPong(),
 
     #{tx := CrTx,
       updates := Updates} = channel_sign_tx(IPubkey, IConnPid, IPrivkey, <<"channels.initiator_sign">>, Config),
     {ok, #{<<"event">> := <<"funding_created">>}} = wait_for_channel_event(RConnPid, info, Config),
     %% responder gets to sign a create_tx
+    OptionallyPingPong(),
     #{tx := CrTx,
       updates := Updates} = channel_sign_tx(RPubkey, RConnPid, RPrivkey, <<"channels.responder_sign">>, Config),
     {ok, #{<<"event">> := <<"funding_signed">>}} = wait_for_channel_event(IConnPid, info, Config),
+    OptionallyPingPong(),
 
     %% both of them receive the same co-signed channel_create_tx
     {ok, #{<<"tx">> := EncodedSignedCrTx}} = wait_for_channel_event(IConnPid, on_chain_tx, Config),
     {ok, #{<<"tx">> := EncodedSignedCrTx}} = wait_for_channel_event(RConnPid, on_chain_tx, Config),
 
+    OptionallyPingPong(),
     {ok, SSignedCrTx} = aeser_api_encoder:safe_decode(transaction, EncodedSignedCrTx),
     SignedCrTx = aetx_sign:deserialize_from_binary(SSignedCrTx),
     %% same transaction
@@ -642,6 +662,7 @@ channel_create(Config, IConnPid, RConnPid) ->
 
     {ok, #{<<"tx">> := EncodedSignedCrTx}} = wait_for_channel_event(IConnPid, on_chain_tx, Config),
     {ok, #{<<"tx">> := EncodedSignedCrTx}} = wait_for_channel_event(RConnPid, on_chain_tx, Config),
+    OptionallyPingPong(),
 
     ChannelCreateFee.
 
@@ -2610,6 +2631,10 @@ sc_ws_basic_open_close_server(Config0) ->
     ok = sc_ws_update_(Config),
     ok = sc_ws_close_(Config).
 
+sc_ws_opening_ping_pong(Config0) ->
+    Config = sc_ws_open_([{ping_pong, true} | Config0]),
+    ok = sc_ws_close_(Config).
+
 sc_ws_snapshot_solo(Config0) ->
     Config = sc_ws_open_(Config0),
     %% snapshots can only be taken when the latest state is
@@ -3261,18 +3286,17 @@ sc_ws_change_password_(Config) ->
 sc_ws_ping_pong(Config) ->
     #{initiator := IConnPid, responder :=RConnPid} =
         proplists:get_value(channel_clients, Config),
-    PingPong =
-        fun(ConnPid) ->
-            ok = ?WS:register_test_for_channel_events(ConnPid, [system]),
-            ok = ws_send_tagged(ConnPid, <<"channels.system">>,
-                                #{<<"action">> => <<"ping">>}, Config),
-            {ok, <<"pong">>, #{}} =
-                wait_for_channel_event(ConnPid, system, Config),
-            ok = ?WS:unregister_test_for_channel_events(ConnPid, [system]),
-            ok
-        end,
-    PingPong(IConnPid),
-    PingPong(RConnPid),
+    ping_pong(IConnPid, Config),
+    ping_pong(RConnPid, Config),
+    ok.
+
+ping_pong(ConnPid, Config) ->
+    ok = ?WS:register_test_for_channel_events(ConnPid, [system]),
+    ok = ws_send_tagged(ConnPid, <<"channels.system">>,
+                        #{<<"action">> => <<"ping">>}, Config),
+    {ok, <<"pong">>, #{}} =
+        wait_for_channel_event(ConnPid, system, Config),
+    ok = ?WS:unregister_test_for_channel_events(ConnPid, [system]),
     ok.
 
 sc_ws_deposit(Config) ->
