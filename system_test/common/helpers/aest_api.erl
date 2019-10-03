@@ -70,7 +70,8 @@ sc_open(Params, Cfg) ->
                push_amount => maps:get(push_amount, Params, 10),
                initiator_amount => IAmt,
                responder_amount => RAmt,
-               channel_reserve => maps:get(channel_reserve, Params, 2)
+               channel_reserve => maps:get(channel_reserve, Params, 2),
+               minimum_depth_factor => 0
               },
              MaybeOpts),
 
@@ -215,11 +216,17 @@ sc_call_contract(Channel, Who, Contract, CallData) ->
 -spec sc_leave(channel()) -> {ok, binary()}.
 sc_leave(Channel) ->
     #{ initiator := {_, IConn}, responder := {_, RConn} } = Channel,
-    ws_send(IConn, <<"leave">>, #{}),
-    {ok, #{ <<"state">> := LatestState }} = sc_wait_for_channel_event(IConn, leave),
-    {ok, #{ <<"event">> := <<"died">> }} = sc_wait_for_channel_event(IConn, info),
-    {ok, #{ <<"state">> := LatestState }} = sc_wait_for_channel_event(RConn, leave),
-    {ok, #{ <<"event">> := <<"died">> }} = sc_wait_for_channel_event(RConn, info),
+    %% if the initiator drops or leaves, the responder waits for a while for it
+    %% to reconnect, so we make the responder to leave instead
+    ws_send(RConn, <<"leave">>, #{}),
+    WaitEvents =
+        fun(Conn) ->
+            {ok, #{ <<"state">> := LatestState0 }} = sc_wait_for_channel_event(Conn, leave),
+            {ok, #{ <<"event">> := <<"died">> }} = sc_wait_for_channel_event(Conn, info),
+            LatestState0
+        end,
+    LatestState = WaitEvents(RConn),
+    LatestState = WaitEvents(IConn),
     timer:sleep(300),
 
     {ok, LatestState}.

@@ -94,6 +94,7 @@
          deposit_wrong_nonce/1,
          deposit_missing_channel/1,
          deposit_closing/1,
+         deposit_closed/1,
          deposit_older_round/1,
          deposit_can_not_replace_create/1,
          deposit_not_participant/1,
@@ -106,6 +107,7 @@
          withdraw_wrong_nonce/1,
          withdraw_missing_channel/1,
          withdraw_closing/1,
+         withdraw_closed/1,
          withdraw_older_round/1,
          withdraw_can_not_replace_create/1,
          withdraw_not_participant/1,
@@ -313,6 +315,7 @@ groups() ->
        deposit_wrong_nonce,
        deposit_missing_channel,
        deposit_closing,
+       deposit_closed,
        deposit_older_round,
        deposit_can_not_replace_create,
        deposit_not_participant,
@@ -324,6 +327,7 @@ groups() ->
        withdraw_wrong_nonce,
        withdraw_missing_channel,
        withdraw_closing,
+       withdraw_closed,
        withdraw_older_round,
        withdraw_can_not_replace_create,
        withdraw_not_participant,
@@ -1344,7 +1348,10 @@ deposit_missing_channel(Cfg) ->
     test_both_missing_channel(Cfg, fun deposit_/2, #{amount => 1, fee => 50000 * aec_test_utils:min_gas_price()}).
 
 deposit_closing(Cfg) ->
-    test_both_missing_channel(Cfg, fun deposit_/2, #{amount => 1, fee => 50000 * aec_test_utils:min_gas_price()}).
+    test_both_closing_channel(Cfg, fun deposit_/2, #{amount => 1}).
+
+deposit_closed(Cfg) ->
+    test_both_already_closed(Cfg, fun deposit_/2, #{amount => 1}).
 
 deposit_older_round(Cfg) ->
     test_both_old_round(Cfg, fun deposit_/2, #{amount => 1, fee => 50000 * aec_test_utils:min_gas_price()}, old_round).
@@ -1430,7 +1437,10 @@ withdraw_missing_channel(Cfg) ->
     test_both_missing_channel(Cfg, fun withdraw_/2, #{amount => 1, fee => 50000 * aec_test_utils:min_gas_price()}).
 
 withdraw_closing(Cfg) ->
-    test_both_missing_channel(Cfg, fun withdraw_/2, #{amount => 1, fee => 50000 * aec_test_utils:min_gas_price()}).
+    test_both_closing_channel(Cfg, fun withdraw_/2, #{amount => 1}).
+
+withdraw_closed(Cfg) ->
+    test_both_already_closed(Cfg, fun withdraw_/2, #{amount => 1}).
 
 withdraw_older_round(Cfg) ->
     test_both_old_round(Cfg, fun withdraw_/2, #{amount => 1, fee => 50000 * aec_test_utils:min_gas_price()}, old_round).
@@ -5024,6 +5034,26 @@ test_both_old_round(Cfg, Fun, Props, Reason) ->
                             Second <- ?ROLES],
     ok.
 
+test_both_already_closed(Cfg, Fun, InitProps0) ->
+    IAmt = 100000 * aec_test_utils:min_gas_price(),
+    RAmt = 100000 * aec_test_utils:min_gas_price(),
+
+    InitProps = InitProps0#{ initiator_amount => IAmt
+                           , responder_amount => RAmt
+                           , fee => 50000 * aec_test_utils:min_gas_price()},
+    Test =
+        fun(Poster) ->
+            run(InitProps#{cfg => Cfg},
+               [positive(fun create_channel_/2),
+                prepare_balances_for_mutual_close(),
+                positive(fun close_mutual_/2),
+                set_from(Poster),
+                negative(Fun, {error, channel_does_not_exist})
+               ])
+        end,
+    [Test(Role) || Role <- ?ROLES],
+    ok.
+
 test_both_can_not_replace_create(Cfg, Fun) ->
     test_both_can_not_replace_create(Cfg, Fun, #{}).
 
@@ -5098,9 +5128,12 @@ test_both_missing_channel(Cfg, Fun, InitProps) ->
     ok.
 
 test_both_closing_channel(Cfg, Fun) ->
+    test_both_closing_channel(Cfg, Fun, #{}).
+
+test_both_closing_channel(Cfg, Fun, InitProps) ->
     Test =
         fun(Closer, Poster) ->
-            run(#{cfg => Cfg},
+            run(InitProps#{cfg => Cfg},
                [positive(fun create_channel_/2),
                 set_from(Closer),
                 positive(fun close_solo_/2),
