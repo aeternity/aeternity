@@ -900,11 +900,21 @@ sc_ws_close_(ConfigList) ->
     #{initiator := IConnPid,
       responder := RConnPid} = proplists:get_value(channel_clients, ConfigList),
     Close = fun(Pid) ->
+                    %% send a `channels.system` stop message. It does not
+                    %% return a result. We rather wait for the channel FSM to
+                    %% die and to close the WebSocket connection.
+                    %% The actual WebSocket closing is the preferred solution,
+                    %% opposed to waiting a `died` WebSocket message because
+                    %% even if the `died` message is received, the WebSocket
+                    %% could still be running for a few milliseconds
                     try ?WS:json_rpc_call(
                            Pid, #{ <<"method">> => <<"channels.system">>
                                  , <<"params">> => #{<<"action">> => <<"stop">>}})
                     catch
+                        %% when the WebSocket process dies, it emmits a
+                        %% {connpid_died, Reason} message
                         error:{connpid_died, Reason} when Reason == {error,closed}
+                                                        ; Reason == noproc
                                                         ; Reason == normal ->
                             ok
                     end
