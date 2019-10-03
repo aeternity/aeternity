@@ -74,7 +74,7 @@ protocols_from_network_id(<<"ae_mainnet">>) ->
     #{ ?ROMA_PROTOCOL_VSN     => 0
      , ?MINERVA_PROTOCOL_VSN  => 47800
      , ?FORTUNA_PROTOCOL_VSN => 90800
-     , ?LIMA_PROTOCOL_VSN => 161120
+     , ?LIMA_PROTOCOL_VSN => 161150
     };
 protocols_from_network_id(<<"ae_uat">>) ->
     #{ ?ROMA_PROTOCOL_VSN     => 0
