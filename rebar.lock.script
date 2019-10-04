@@ -1,0 +1,25 @@
+%% -*- erlang -*-
+
+IsWindows = case os:type() of {win32, _} -> true; {_, _} -> false end,
+
+FilterRocksDbCheck = (IsWindows orelse os:getenv("DISABLE_ROCKSDB") == "1"),
+
+FilterRocksDb = fun(Apps) ->
+                    case FilterRocksDbCheck of
+                        false ->
+                            Apps;
+                        true ->
+                            lists:foldl(
+                                fun(App, Acc) ->
+                                    lists:keydelete(App, 1, Acc)
+                                end,
+                                Apps,
+                                [<<"rocksdb">>, <<"mnesia_rocksdb">>]
+                            )
+                    end
+                end,
+
+[{Version, Deps}, [{pkg_hash, Pkgs}]] = CONFIG,
+Deps1 = FilterRocksDb(Deps),
+Pkgs1 = FilterRocksDb(Pkgs),
+[{Version, Deps1}, [{pkg_hash, Pkgs1}]].
