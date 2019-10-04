@@ -319,6 +319,12 @@ init_per_group(state_hash, Config0) ->
      {wrong_action, fun wrong_hash_action/4},
      {wrong_action_detailed, fun wrong_hash_action/5}
      | Config];
+init_per_group(throughput, Config0) ->
+    Config = init_per_group_(Config0),
+    set_configs([ {minimum_depth, 2}
+                , {minimum_depth_factor, 0}
+                , {minimum_depth_channel, 2}
+                ], Config);
 init_per_group(Group, Config) when Group =:= initiator_is_ga;
                                    Group =:= responder_is_ga;
                                    Group =:= both_are_ga ->
@@ -373,7 +379,8 @@ init_per_group(_Group, Config) ->
 
 init_per_group_(Config) ->
     case proplists:get_value(ga_group, Config, false) of
-        true -> Config;
+        true ->
+            Config;
         false ->
             aecore_suite_utils:start_node(dev1, Config),
             aecore_suite_utils:connect(aecore_suite_utils:node_name(dev1), [block_pow, sc_cache_kdf]),
@@ -382,12 +389,11 @@ init_per_group_(Config) ->
                     Initiator = prep_initiator(dev1),
                     Responder = prep_responder(Initiator, dev1),
                     Responder2 = prep_responder(Initiator, dev1),
-                    [ {initiator, Initiator}
-                    , {responder, Responder}
-                    , {responder2, Responder2}
-                    , {port, ?PORT}
-                    | Config
-                    ]
+                    set_configs([ {initiator, Initiator}
+                                , {responder, Responder}
+                                , {responder2, Responder2}
+                                , {port, ?PORT}
+                                ], Config)
                 end
             ?_catch_(error, Reason, Trace)
                 catch stop_node(dev1, Config),
@@ -414,19 +420,19 @@ init_per_testcase(_, Config) ->
     Config1 = load_idx(Config),
     Config2 = case is_above_roma_protocol() of
                   true ->
-                      [ {minimum_depth, ?MINIMUM_DEPTH}
-                      , {minimum_depth_factor, ?MINIMUM_DEPTH_FACTOR}
-                      , {minimum_depth_strategy, ?MINIMUM_DEPTH_STRATEGY}
-                      | Config1 ];
+                      set_configs([ {minimum_depth, ?MINIMUM_DEPTH}
+                                  , {minimum_depth_factor, ?MINIMUM_DEPTH_FACTOR}
+                                  , {minimum_depth_strategy, ?MINIMUM_DEPTH_STRATEGY}
+                                  ], Config1, false);
                   false ->
                       % Because the tx fees used to be lower in roma, more
                       % blocks are required for tx to be confirmed.
-                      [ {minimum_depth, ?MINIMUM_DEPTH}
-                      , {minimum_depth_factor, ?MINIMUM_DEPTH_FACTOR * 2}
-                      , {minimum_depth_strategy, ?MINIMUM_DEPTH_STRATEGY}
-                      | Config1 ]
+                      set_configs([ {minimum_depth, ?MINIMUM_DEPTH}
+                                  , {minimum_depth_factor, ?MINIMUM_DEPTH_FACTOR * 2}
+                                  , {minimum_depth_strategy, ?MINIMUM_DEPTH_STRATEGY}
+                                  ], Config1, false)
               end,
-    [ {debug, Debug} | Config2 ].
+    set_configs([{debug, Debug}], Config2).
 
 end_per_testcase(T, _Config) when T==multiple_channels;
                                   T==many_chs_msg_loop ->
@@ -1073,54 +1079,65 @@ deposit(Cfg) ->
 
 withdraw(Cfg) ->
     % Use default values for minimum depth calculation
-    Cfg1 = [?SLOGAN | Cfg],
+    Cfg1 = set_configs([ ?SLOGAN
+                       , {minimum_depth, 3}
+                       , {minimum_depth_channel, 5}
+                       ], Cfg),
     Amount = 2,
-    MinDepth = 3,
-    MinDepthChannel = 5,
     Round = 1,
-    ok = withdraw_full_cycle_(Amount, #{}, MinDepth, MinDepthChannel, Round, Cfg1).
+    ok = withdraw_full_cycle_(Amount, #{}, Round, Cfg1).
 
 withdraw_high_amount_static_confirmation_time(Cfg) ->
     % Factor of 0 sets min depths to 1 for all amounts
-    Cfg1 = set_configs([?SLOGAN, {minimum_depth_factor, 0}], Cfg),
+    Cfg1 = set_configs([ ?SLOGAN
+                       , {minimum_depth, 1}
+                       , {minimum_depth_channel, 1}
+                       , {minimum_depth_factor, 0}
+                       ], Cfg),
     Amount = 300000,
-    MinDepth = 1,
-    MinDepthChannel = 1,
     Round = 1,
-    ok = withdraw_full_cycle_(Amount, #{}, MinDepth, MinDepthChannel, Round, Cfg1).
+    ok = withdraw_full_cycle_(Amount, #{}, Round, Cfg1).
 
 withdraw_high_amount_short_confirmation_time(Cfg) ->
     % High amount and high factor should lead to single block required
-    Cfg1 = set_configs([?SLOGAN, {minimum_depth_factor, 60}], Cfg),
+    Cfg1 = set_configs([ ?SLOGAN
+                       , {minimum_depth, 2}
+                       , {minimum_depth_channel, 1}
+                       , {minimum_depth_factor, 60}
+                       ], Cfg),
     Amount = 300000,
-    MinDepth = 2,
-    MinDepthChannel = 1,
     Round = 1,
-    ok = withdraw_full_cycle_(Amount, #{}, MinDepth, MinDepthChannel, Round, Cfg1).
+    ok = withdraw_full_cycle_(Amount, #{}, Round, Cfg1).
 
 withdraw_low_amount_long_confirmation_time(Cfg) ->
     % Low amount and low factor should lead to comparitively long confirmation time
     Cfg1 = set_configs([?SLOGAN, {minimum_depth_factor, 8}], Cfg),
     Amount = 1,
-    {MinDepth, MinDepthChannel} =
+    Round = 1,
+    Cfg2 =
         case config(ga_group, Cfg, false) orelse not is_above_roma_protocol() of
             true ->
-                {24, 20};
+                set_configs([ {minimum_depth, 24}
+                            , {minimum_depth_channel, 20}
+                            ], Cfg1);
             false ->
-                {12, 10}
+                set_configs([ {minimum_depth, 12}
+                            , {minimum_depth_channel, 10}
+                            ], Cfg1)
         end,
-    Round = 1,
-    ok = withdraw_full_cycle_(Amount, #{}, MinDepth, MinDepthChannel, Round, Cfg1).
+    ok = withdraw_full_cycle_(Amount, #{}, Round, Cfg2).
 
 withdraw_low_amount_long_confirmation_time_negative_test(Cfg) ->
     % Low amount and low factor should lead to comparitively long confirmation time
-    Cfg1 = set_configs([?SLOGAN, {minimum_depth_factor, 4}], Cfg),
+    Cfg1 = set_configs([ ?SLOGAN
+                       , {minimum_depth, 3}
+                       , {minimum_depth_channel, 10}
+                       , {minimum_depth_factor, 4}
+                       ], Cfg),
     Amount = 1,
-    MinDepth = 3,
-    MinDepthChannel = 10,
     Round = 1,
     try
-        ok = withdraw_full_cycle_(Amount, #{}, MinDepth, MinDepthChannel, Round, Cfg1),
+        ok = withdraw_full_cycle_(Amount, #{}, Round, Cfg1),
         ct:fail("Expected withdraw test to fail due to min depth being to small.")
     catch
         error:timeout ->
@@ -1290,15 +1307,17 @@ multiple_channels_t(NumCs, FromPort, Msg, {slogan, Slogan}, Cfg) ->
     aecore_suite_utils:mock_mempool_nonce_offset(Node, NumCs),
     MinerHelper = spawn_miner_helper(),
     {ok, Nonce} = rpc(dev1, aec_next_nonce, pick_for_account, [Initiator]),
-    MultiChCfg0 = [ {port, FromPort}
-                  , {ack_to, Me}
-                  | Cfg ],
-    MultiChCfg1 = set_configs([{minimum_depth_factor, 0}], MultiChCfg0),
-    Cs = [create_multi_channel([ {nonce, Nonce + N - 1}
-                               , {slogan, {Slogan,N}}
-                               | MultiChCfg1 ],
-                               #{mine_blocks => {ask, MinerHelper}, debug => Debug})
-          || N <- lists:seq(1, NumCs)],
+    Cs = lists:map(
+          fun(N) ->
+                  CustomCfg = set_configs([ {nonce, Nonce + N - 1}
+                                          , {slogan, {Slogan, N}}
+                                          , {port, FromPort}
+                                          , {ack_to, Me}
+                                          ], Cfg),
+                  CustomOpts = #{ mine_blocks => {ask, MinerHelper}
+                                , debug => Debug},
+                  create_multi_channel(CustomCfg, CustomOpts)
+          end, lists:seq(1, NumCs)),
     ?LOG(Debug, "channels spawned", []),
     Cs = collect_acks(Cs, channel_ack, NumCs),
     ?LOG(Debug, "channel pids collected: ~p", [Cs]),
@@ -1972,10 +1991,7 @@ wait_for_fsm_state(St, FsmPid, Retries, Debug) when Retries > 0 ->
             wait_for_fsm_state(St, FsmPid, Retries-1, Debug)
     end.
 
-shutdown_(I, R, Cfg) ->
-    shutdown_(I, R, ?MINIMUM_DEPTH, Cfg).
-
-shutdown_(#{fsm := FsmI, channel_id := ChannelId} = I, R, MinDepth, Cfg) ->
+shutdown_(#{fsm := FsmI, channel_id := ChannelId} = I, R, Cfg) ->
     Debug = get_debug(Cfg),
     assert_empty_msgq(Debug),
 
@@ -2003,6 +2019,7 @@ shutdown_(#{fsm := FsmI, channel_id := ChannelId} = I, R, MinDepth, Cfg) ->
     SignedTx = await_on_chain_report(R1, #{info => channel_closed}, ?TIMEOUT), % same tx
 
     % Mine until tx is confirmed
+    MinDepth = config(minimum_depth, Cfg, ?MINIMUM_DEPTH),
     mine_blocks(dev1, MinDepth,
                 opt_add_to_debug(#{ signed_tx => SignedTx
                                   , current_height => current_height(dev1) }, Debug)),
@@ -2226,9 +2243,6 @@ create_channel_from_spec(I, R, Spec, Port, Debug, Cfg) ->
     create_channel_from_spec(I, R, Spec, Port, false, Debug, Cfg).
 
 create_channel_from_spec(I, R, Spec, Port, UseAny, Debug, Cfg) ->
-    create_channel_from_spec(I, R, Spec, Port, UseAny, Debug, Cfg, ?MINIMUM_DEPTH).
-
-create_channel_from_spec(I, R, Spec, Port, UseAny, Debug, Cfg, MinDepth) ->
     assert_empty_msgq(Debug),
     %% TODO: Somehow there is a CI only race condition which rarely occurs in
     %% round_too_high.check_incorrect_* and round_too_low.check_incorrect_* tests
@@ -2255,7 +2269,6 @@ create_channel_from_spec(I, R, Spec, Port, UseAny, Debug, Cfg, MinDepth) ->
                    ?PEEK_MSGQ(Debug),
                    error(Err, ST)
                end,
-    ?LOG(Debug, "mining blocks on dev1 for minimum depth", []),
     SignedTx = await_on_chain_report(R2, #{info => funding_created}, ?TIMEOUT),
     ?LOG(Debug, "=== SignedTx = ~p", [SignedTx]),
     SignedTx = await_on_chain_report(I2, #{info => funding_signed}, ?TIMEOUT), % same tx
@@ -2265,6 +2278,8 @@ create_channel_from_spec(I, R, Spec, Port, UseAny, Debug, Cfg, MinDepth) ->
     SignedTx = await_channel_changed_report(I2, ?TIMEOUT),
     SignedTx = await_channel_changed_report(R2, ?TIMEOUT),
     CurrentHeight = current_height(dev1),
+    MinDepth = config(minimum_depth_channel, Cfg, ?MINIMUM_DEPTH),
+    ?LOG(Debug, "mining blocks on dev1 for minimum depth = ~p", [MinDepth]),
     mine_blocks(dev1, MinDepth, opt_add_to_debug(#{ signed_tx => SignedTx
                                                   , current_height => CurrentHeight }, Debug)),
     %% in case of multiple channels starting in parallel - the mining above
@@ -2273,7 +2288,7 @@ create_channel_from_spec(I, R, Spec, Port, UseAny, Debug, Cfg, MinDepth) ->
     %% height is reached
     aecore_suite_utils:wait_for_height(aecore_suite_utils:node_name(dev1),
                                        CurrentHeight + MinDepth),
-    ?LOG(Debug, "=== Min-depth height of ~p achieved", [MinDepth]),
+    ?LOG(Debug, "=== Min-depth height of ~p on top of ~p achieved", [MinDepth, CurrentHeight]),
     %% we've seen 10-15 second block times in CI, so wait a while longer
 
     await_own_funding_locked(I2, ?TIMEOUT, Debug),
@@ -3310,8 +3325,9 @@ positive_bh(Cfg) ->
                                              , not_newer_than => NNT
                                              , pick           => 1 }}
                        % Factor of 0 sets min depths to 1 for all amounts
+                       , {minimum_depth, 1}
+                       , {minimum_depth_channel, 1}
                        , {minimum_depth_factor, 0} ], Cfg),
-    MinDepth = 1,
     #{ i := #{fsm := FsmI} = I
      , r := R
      , spec := _Spec} = create_channel_(Cfg1),
@@ -3330,10 +3346,10 @@ positive_bh(Cfg) ->
                 end,
                 Acc,
                 [ fun(IntI, IntR, IntOpts, IntRound) ->
-                      deposit_(IntI, IntR, Amount, IntOpts, MinDepth, IntRound, Debug, Cfg)
+                      deposit_(IntI, IntR, Amount, IntOpts, IntRound, Debug, Cfg1)
                   end,
                   fun(IntI, IntR, IntOpts, IntRound) ->
-                      withdraw_(IntI, IntR, Amount, IntOpts, MinDepth, IntRound, Debug, Cfg)
+                      withdraw_(IntI, IntR, Amount, IntOpts, IntRound, Debug, Cfg1)
                   end
                 ])
         end,
@@ -3347,7 +3363,7 @@ positive_bh(Cfg) ->
             , NOT - 1  %% in the range
             , NNT + 1  %% in the range
             ]),
-    shutdown_(IFinal, RFinal, Cfg),
+    shutdown_(IFinal, RFinal, Cfg1),
     ok.
 
 %% ==================================================================
@@ -3480,18 +3496,18 @@ reestablish_wrong_password_(Info, SignedTx, Port, Debug) ->
     assert_empty_msgq(Debug),
     Info#{spec => Spec}.
 
-withdraw_full_cycle_(Amount, Opts, MinDepth, MinDepthChannel, Round, Cfg) ->
+withdraw_full_cycle_(Amount, Opts, Round, Cfg) ->
     Debug = get_debug(Cfg),
     #{ i := #{} = I
      , r := #{} = R
      , spec := #{}
-     } = create_channel_(Cfg, MinDepthChannel, Debug),
+     } = create_channel_(Cfg, Debug),
     ?LOG(Debug, "I = ~p", [I]),
-    {ok, _, _} = withdraw_(I, R, Amount, Opts, MinDepth, Round, Debug, Cfg),
-    shutdown_(I, R, MinDepth, Cfg),
+    {ok, _, _} = withdraw_(I, R, Amount, Opts, Round, Debug, Cfg),
+    shutdown_(I, R, Cfg),
     ok.
 
-withdraw_(#{fsm := FsmI} = I, R, Amount, Opts, MinDepth, Round0, Debug, Cfg) ->
+withdraw_(#{fsm := FsmI} = I, R, Amount, Opts, Round0, Debug, Cfg) ->
     assert_empty_msgq(Debug),
     % Check initial fsm state
     #{initiator_amount := IAmt0, responder_amount := RAmt0} = I,
@@ -3522,6 +3538,7 @@ withdraw_(#{fsm := FsmI} = I, R, Amount, Opts, MinDepth, Round0, Debug, Cfg) ->
     end,
 
     % Verify changes of fsm state
+    MinDepth = config(minimum_depth, Cfg, ?MINIMUM_DEPTH),
     {I3, R3} = assert_fsm_states(SignedTx, I1, MinDepth, (-1 * Amount), FsmState0, VerifyFun,
                                  channel_withdraw_tx, aesc_withdraw_tx, Debug),
 
@@ -3536,10 +3553,7 @@ deposit_(#{fsm := FsmI} = I, R, Amount, Debug, Cfg) ->
 deposit_(I, R, Amount, Round0, Debug, Cfg) ->
     deposit_(I, R, Amount, #{}, Round0, Debug, Cfg).
 
-deposit_(I, R, Amount, Opts, Round0, Debug, Cfg) ->
-    deposit_(I, R, Amount, Opts, ?MINIMUM_DEPTH, Round0, Debug, Cfg).
-
-deposit_(#{fsm := FsmI} = I, R, Amount, Opts, MinDepth, Round0, Debug, Cfg) ->
+deposit_(#{fsm := FsmI} = I, R, Amount, Opts, Round0, Debug, Cfg) ->
     assert_empty_msgq(Debug),
     % Check initial fsm state
     {IAmt0, RAmt0, _, Round0} = FsmState0 = check_fsm_state(FsmI),
@@ -3569,6 +3583,7 @@ deposit_(#{fsm := FsmI} = I, R, Amount, Opts, MinDepth, Round0, Debug, Cfg) ->
     end,
 
     % Verify changes of fsm state
+    MinDepth = config(minimum_depth, Cfg, ?MINIMUM_DEPTH),
     {I3, R3} = assert_fsm_states(SignedTx, I1, MinDepth, Amount, FsmState0, VerifyFun,
                                  channel_deposit_tx, aesc_deposit_tx, Debug),
 
@@ -3586,7 +3601,7 @@ assert_fsm_states(SignedTx, FsmSpec, MinDepth, Amount, {IAmt0, RAmt0, _, Round0}
     % Find position of transaction in the chain
     SignedTxHash = aeser_api_encoder:encode(tx_hash, aetx_sign:hash(SignedTx)),
     {ok, TxPos} = tx_position_in_blocks(SignedTxHash, lists:reverse(BlocksMined)),
-    ?LOG(Debug, "Tx position in blocks = ~p", [TxPos]),
+    ?LOG(Debug, "Tx position in blocks = ~p, with min depth = ~p", [TxPos, MinDepth]),
 
     % Verify fsm state before additional mining
     % In case we mined further than the min depth the transaction might already
@@ -3602,7 +3617,7 @@ assert_fsm_states(SignedTx, FsmSpec, MinDepth, Amount, {IAmt0, RAmt0, _, Round0}
     end,
     {IAmt1, RAmt1, _, Round1} = check_fsm_state(Fsm),
     ?LOG(Debug, "After tx in block - Round1 = ~p, IAmt1 = ~p, RAmt1 = ~p", [Round1, IAmt1, RAmt1]),
-    ExpectedState1 = {IAmt1, RAmt1, Round1},
+    {IAmt1, RAmt1, Round1} = ExpectedState1,
 
     % Mine until transaction confirmation is expected to occur
     mine_blocks(dev1, MinDepth),
@@ -3619,7 +3634,7 @@ assert_fsm_states(SignedTx, FsmSpec, MinDepth, Amount, {IAmt0, RAmt0, _, Round0}
     end,
     {IAmt2, RAmt2, StateHash, Round2} = check_fsm_state(Fsm),
     ?LOG(Debug, "After tx min depth - Round2 = ~p, IAmt2 = ~p, RAmt2 = ~p", [Round2, IAmt2, RAmt2]),
-    ExpectedState2 = {IAmt2, RAmt2, Round2},
+    {IAmt2, RAmt2, Round2} = ExpectedState2,
 
     % Verify channel round
     {ok, Channel} = rpc(dev1, aec_chain, get_channel, [ChannelId]),
@@ -3699,20 +3714,14 @@ create_channel_(Cfg) ->
     create_channel_(Cfg, get_debug(Cfg)).
 
 create_channel_(Cfg, Debug) ->
-    create_channel_(Cfg, ?MINIMUM_DEPTH, #{}, Debug).
+    create_channel_(Cfg, #{}, Debug).
 
-create_channel_(Cfg, XOpts, Debug) when is_map(XOpts) ->
-    create_channel_(Cfg, ?MINIMUM_DEPTH, XOpts, Debug);
-
-create_channel_(Cfg, MinDepth, Debug) ->
-    create_channel_(Cfg, MinDepth, #{}, Debug).
-
-create_channel_(Cfg, MinDepth, XOpts, Debug) ->
+create_channel_(Cfg, XOpts, Debug) ->
     {I, R, Spec} = channel_spec(Cfg, XOpts),
     ?LOG(Debug, "channel_spec: ~p", [{I, R, Spec}]),
     Port = proplists:get_value(port, Cfg, 9325),
     UseAny = proplists:get_bool(use_any, Cfg),
-    create_channel_from_spec(I, R, Spec, Port, UseAny, Debug, Cfg, MinDepth).
+    create_channel_from_spec(I, R, Spec, Port, UseAny, Debug, Cfg).
 
 channel_spec(Cfg) ->
     channel_spec(Cfg, #{}).
@@ -3779,18 +3788,24 @@ config(K, Cfg, Def) when is_list(Cfg) ->
         Other     -> Other
     end.
 
-set_config(slogan = K, V, Cfg) when is_list(Cfg) ->
+set_configs(New, Cfg) ->
+    set_configs(New, Cfg, true).
+
+set_configs(New, Cfg, Replace) when is_list(Cfg) ->
+    lists:foldl(fun({K, V}, Acc) -> set_config(K, V, Acc, Replace) end, Cfg, New).
+
+set_config(K, V, Cfg, Replace) when is_list(Cfg) ->
     case lists:keyfind(K, 1, Cfg) of
         false ->
             lists:keystore(K, 1, Cfg, {K, V});
         _ ->
-            Cfg
-    end;
-set_config(K, V, Cfg) when is_list(Cfg) ->
-    lists:keystore(K, 1, Cfg, {K, V}).
-
-set_configs(New, Cfg) when is_list(Cfg) ->
-    lists:foldl(fun({K, V}, Acc) -> set_config(K, V, Acc) end, Cfg, New).
+            case (K =/= slogan) andalso Replace of
+                true ->
+                    lists:keystore(K, 1, Cfg, {K, V});
+                false ->
+                    Cfg
+            end
+    end.
 
 get_debug(Config) ->
     proplists:get_bool(debug, Config).
