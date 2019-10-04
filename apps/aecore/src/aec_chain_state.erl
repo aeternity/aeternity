@@ -75,7 +75,7 @@
 
 -module(aec_chain_state).
 
--export([ calculate_state_for_new_keyblock/3
+-export([ calculate_state_for_new_keyblock/4
         , find_common_ancestor/2
         , get_key_block_hash_at_height/1
         , get_n_key_headers_backward_from/2
@@ -175,15 +175,17 @@ hash_is_in_main_chain(Hash) ->
     end.
 
 
--spec calculate_state_for_new_keyblock(binary(), aec_keys:pubkey(), aec_keys:pubkey()) ->
-                                              {'ok', aec_trees:trees()}
-                                                  | 'error'.
-
-calculate_state_for_new_keyblock(PrevHash, Miner, Beneficiary) ->
+-spec calculate_state_for_new_keyblock(
+        binary(),
+        aec_keys:pubkey(),
+        aec_keys:pubkey(),
+        aec_hard_forks:protocol_vsn()) -> {'ok', aec_trees:trees()} | 'error'.
+calculate_state_for_new_keyblock(PrevHash, Miner, Beneficiary, Protocol) ->
     case db_find_node(PrevHash) of
         error -> error;
         {ok, PrevNode} ->
-            Node  = fake_key_node(PrevNode, node_height(PrevNode) + 1, Miner, Beneficiary),
+            Height = node_height(PrevNode) + 1,
+            Node  = fake_key_node(PrevNode, Height, Miner, Beneficiary, Protocol),
             State = new_state_from_persistence(),
             case get_state_trees_in(Node, State) of
                 error -> error;
@@ -323,19 +325,18 @@ wrap_block(Block) ->
     Header = aec_blocks:to_header(Block),
     wrap_header(Header).
 
-fake_key_node(PrevNode, Height, Miner, Beneficiary) ->
+fake_key_node(PrevNode, Height, Miner, Beneficiary, Protocol) ->
     PrevKeyHash = case node_type(PrevNode) of
                       key   -> hash(PrevNode);
                       micro -> prev_key_hash(PrevNode)
                   end,
-    Vsn = aec_hard_forks:protocol_effective_at_height(Height),
     Block = aec_blocks:new_key(Height,
                                hash(PrevNode),
                                PrevKeyHash,
                                <<123:?STATE_HASH_BYTES/unit:8>>,
                                ?HIGHEST_TARGET_SCI,
                                0, aeu_time:now_in_msecs(),
-                               Vsn,
+                               Protocol,
                                Miner,
                                Beneficiary),
     wrap_header(aec_blocks:to_header(Block)).
