@@ -2,21 +2,29 @@
 
 IsWindows = case os:type() of {win32, _} -> true; {_, _} -> false end,
 
+FilterRocksDbCheck = (IsWindows orelse os:getenv("AE_DISABLE_ROCKSDB") =/= false),
+
 FilterRelxRocksDb = fun(Apps) ->
-                        case IsWindows of
+                        case FilterRocksDbCheck of
                             false ->
                                 Apps;
                             true ->
-                                Apps -- [rocksdb, mnesia_rocksdb]
+                                Apps -- [rocksdb, mnesia_rocksdb, {rocksdb, load}, {mnesia_rocksdb, load}]
                         end
                     end,
 
 FilterDepsRocksDb = fun(Deps) ->
-                        case IsWindows of
+                        case FilterRocksDbCheck of
                             false ->
                                 Deps;
                             true ->
-                                [D || {K, _} = D <- Deps, K =/= rocksdb, K =/= mnesia_rocksdb]
+                                lists:foldl(
+                                    fun(App, Acc) ->
+                                        lists:keydelete(App, 1, Acc)
+                                    end,
+                                    Deps,
+                                    [rocksdb, mnesia_rocksdb]
+                                )
                         end
                     end,
 
