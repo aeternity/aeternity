@@ -2,7 +2,7 @@
 
 IsWindows = case os:type() of {win32, _} -> true; {_, _} -> false end,
 
-FilterRocksDbCheck = (IsWindows orelse os:getenv("DISABLE_ROCKSDB") == "1"),
+FilterRocksDbCheck = (IsWindows orelse os:getenv("AE_DISABLE_ROCKSDB") =/= false),
 
 FilterRocksDb = fun(Apps) ->
                     case FilterRocksDbCheck of
@@ -19,7 +19,12 @@ FilterRocksDb = fun(Apps) ->
                     end
                 end,
 
-[{Version, Deps}, [{pkg_hash, Pkgs}]] = CONFIG,
-Deps1 = FilterRocksDb(Deps),
-Pkgs1 = FilterRocksDb(Pkgs),
-[{Version, Deps1}, [{pkg_hash, Pkgs1}]].
+case CONFIG of
+    [] ->
+        %% no lock file present, usually during unlock/upgrade
+        CONFIG;
+    [{Version, Deps}, [{pkg_hash, Pkgs}]] ->
+        Deps1 = FilterRocksDb(Deps),
+        Pkgs1 = FilterRocksDb(Pkgs),
+        [{Version, Deps1}, [{pkg_hash, Pkgs1}]]
+end.

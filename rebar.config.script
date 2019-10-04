@@ -2,7 +2,7 @@
 
 IsWindows = case os:type() of {win32, _} -> true; {_, _} -> false end,
 
-FilterRocksDbCheck = (IsWindows orelse os:getenv("DISABLE_ROCKSDB") == "1"),
+FilterRocksDbCheck = (IsWindows orelse os:getenv("AE_DISABLE_ROCKSDB") =/= false),
 
 FilterRelxRocksDb = fun(Apps) ->
                         case FilterRocksDbCheck of
