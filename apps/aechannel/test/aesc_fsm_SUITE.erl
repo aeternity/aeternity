@@ -3326,7 +3326,7 @@ positive_bh(Cfg) ->
                                              , pick           => 1 }}
                        % Factor of 0 sets min depths to 1 for all amounts
                        , {minimum_depth, 1}
-                       , {minimum_depth_channel, 2}
+                       , {minimum_depth_channel, 1}
                        , {minimum_depth_factor, 0} ], Cfg),
     #{ i := #{fsm := FsmI} = I
      , r := R
@@ -3346,10 +3346,10 @@ positive_bh(Cfg) ->
                 end,
                 Acc,
                 [ fun(IntI, IntR, IntOpts, IntRound) ->
-                      deposit_(IntI, IntR, Amount, IntOpts, IntRound, Debug, Cfg)
+                      deposit_(IntI, IntR, Amount, IntOpts, IntRound, Debug, Cfg1)
                   end,
                   fun(IntI, IntR, IntOpts, IntRound) ->
-                      withdraw_(IntI, IntR, Amount, IntOpts, IntRound, Debug, Cfg)
+                      withdraw_(IntI, IntR, Amount, IntOpts, IntRound, Debug, Cfg1)
                   end
                 ])
         end,
@@ -3363,7 +3363,7 @@ positive_bh(Cfg) ->
             , NOT - 1  %% in the range
             , NNT + 1  %% in the range
             ]),
-    shutdown_(IFinal, RFinal, Cfg),
+    shutdown_(IFinal, RFinal, Cfg1),
     ok.
 
 %% ==================================================================
@@ -3601,7 +3601,7 @@ assert_fsm_states(SignedTx, FsmSpec, MinDepth, Amount, {IAmt0, RAmt0, _, Round0}
     % Find position of transaction in the chain
     SignedTxHash = aeser_api_encoder:encode(tx_hash, aetx_sign:hash(SignedTx)),
     {ok, TxPos} = tx_position_in_blocks(SignedTxHash, lists:reverse(BlocksMined)),
-    ?LOG(Debug, "Tx position in blocks = ~p", [TxPos]),
+    ?LOG(Debug, "Tx position in blocks = ~p, with min depth = ~p", [TxPos, MinDepth]),
 
     % Verify fsm state before additional mining
     % In case we mined further than the min depth the transaction might already
@@ -3617,7 +3617,7 @@ assert_fsm_states(SignedTx, FsmSpec, MinDepth, Amount, {IAmt0, RAmt0, _, Round0}
     end,
     {IAmt1, RAmt1, _, Round1} = check_fsm_state(Fsm),
     ?LOG(Debug, "After tx in block - Round1 = ~p, IAmt1 = ~p, RAmt1 = ~p", [Round1, IAmt1, RAmt1]),
-    ExpectedState1 = {IAmt1, RAmt1, Round1},
+    {IAmt1, RAmt1, Round1} = ExpectedState1,
 
     % Mine until transaction confirmation is expected to occur
     mine_blocks(dev1, MinDepth),
@@ -3634,7 +3634,7 @@ assert_fsm_states(SignedTx, FsmSpec, MinDepth, Amount, {IAmt0, RAmt0, _, Round0}
     end,
     {IAmt2, RAmt2, StateHash, Round2} = check_fsm_state(Fsm),
     ?LOG(Debug, "After tx min depth - Round2 = ~p, IAmt2 = ~p, RAmt2 = ~p", [Round2, IAmt2, RAmt2]),
-    ExpectedState2 = {IAmt2, RAmt2, Round2},
+    {IAmt2, RAmt2, Round2} = ExpectedState2,
 
     % Verify channel round
     {ok, Channel} = rpc(dev1, aec_chain, get_channel, [ChannelId]),
