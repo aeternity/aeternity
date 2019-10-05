@@ -87,6 +87,7 @@
         , gossip_allowed_height_from_top/0
         , proof_of_fraud_report_delay/0
         , get_fork_result/2
+        , get_info_field/2
         ]).
 
 %% For tests
@@ -225,6 +226,14 @@ get_fork_result(Block, Fork) ->
             {error, not_last_signalling_block}
     end.
 
+get_info_field(Height, Fork) when Fork =/= undefined ->
+    case is_height_in_signalling_interval(Height, Fork) of
+        true  -> maps:get(info_field, Fork);
+        false -> default
+    end;
+get_info_field(_Height, undefined) ->
+    default.
+
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
@@ -353,6 +362,7 @@ fake_key_node(PrevNode, Height, Miner, Beneficiary, Protocol) ->
                                <<123:?STATE_HASH_BYTES/unit:8>>,
                                ?HIGHEST_TARGET_SCI,
                                0, aeu_time:now_in_msecs(),
+                               default,
                                Protocol,
                                Miner,
                                Beneficiary),
@@ -1223,7 +1233,8 @@ maybe_put_signal_count(_Block, _Hash, undefined) ->
     ok.
 
 count_blocks_with_signal(Block, Fork) ->
-    case is_block_in_signalling_interval(Block, Fork) of
+    BlockHeight = aec_blocks:height(Block),
+    case is_height_in_signalling_interval(BlockHeight, Fork) of
         true ->
             PrevKeyBlockHash = aec_blocks:prev_key_hash(Block),
             case db_find_signal_count(PrevKeyBlockHash) of
@@ -1252,12 +1263,11 @@ count_blocks_with_signal(Block, Fork, Count) ->
             count_blocks_with_signal(Block1, Fork, Count1)
     end.
 
-is_block_in_signalling_interval(Block, #{signalling_start_height := StartHeight,
-                                         signalling_end_height := EndHeight}) ->
-    BlockHeight = aec_blocks:height(Block),
+is_height_in_signalling_interval(Height, #{signalling_start_height := StartHeight,
+                                           signalling_end_height := EndHeight}) ->
     %% Block at EndHeight doesn't belong to the signalling interval! EndHeight
     %% is fork height and the signalling result must be known at this height.
-    (BlockHeight >= StartHeight) andalso (BlockHeight < EndHeight).
+    (Height >= StartHeight) andalso (Height < EndHeight).
 
 is_first_signalling_block(Block, #{signalling_start_height := StartHeight}) ->
     aec_blocks:height(Block) =:= StartHeight.

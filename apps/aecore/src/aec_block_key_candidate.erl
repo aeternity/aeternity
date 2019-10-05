@@ -85,11 +85,14 @@ int_create(PrevBlockHash, PrevBlock, Miner, Beneficiary, AdjChain, Protocol) ->
     end.
 
 int_create_block(PrevBlockHash, PrevBlock, Miner, Beneficiary, Trees, Protocol) ->
-    PrevBlockHeight = aec_blocks:height(PrevBlock),
+    Height = aec_blocks:height(PrevBlock) + 1,
     PrevKeyHash = case aec_blocks:type(PrevBlock) of
                       micro -> aec_blocks:prev_key_hash(PrevBlock);
                       key   -> PrevBlockHash
                   end,
-    aec_blocks:new_key(PrevBlockHeight + 1, PrevBlockHash, PrevKeyHash,
+    Fork = aeu_env:get_env(aecore, fork, undefined),
+    InfoField = aec_chain_state:get_info_field(Height, Fork),
+    aec_blocks:new_key(Height, PrevBlockHash, PrevKeyHash,
                        aec_trees:hash(Trees), ?HIGHEST_TARGET_SCI,
-                       0, aeu_time:now_in_msecs(), Protocol, Miner, Beneficiary).
+                       0, aeu_time:now_in_msecs(), InfoField, Protocol,
+                       Miner, Beneficiary).

@@ -57,7 +57,7 @@ difficulty_recalculation_test_() ->
                  Vsn            = aec_hard_forks:protocol_effective_at_height(Height0),
 
                  Block0 = aec_blocks:new_key(Height0, <<0:32/unit:8>>, <<0:32/unit:8>>, <<0:32/unit:8>>, undefined,
-                                             12345, Now, Vsn, ?MINER_PUBKEY, ?BENEFICIARY_PUBKEY),
+                                             12345, Now, default, Vsn, ?MINER_PUBKEY, ?BENEFICIARY_PUBKEY),
 
                  Chain = compute_chain(Now, Height0, GoodTarget, 0),
 
@@ -80,7 +80,7 @@ difficulty_recalculation_test_() ->
                  Vsn            = aec_hard_forks:protocol_effective_at_height(Height0),
 
                  Block0 = aec_blocks:new_key(Height0, <<0:32/unit:8>>, <<0:32/unit:8>>, <<0:32/unit:8>>, undefined,
-                                             12345, Now, Vsn, ?MINER_PUBKEY, ?BENEFICIARY_PUBKEY),
+                                             12345, Now, default, Vsn, ?MINER_PUBKEY, ?BENEFICIARY_PUBKEY),
 
                  %% Compute chain with almost perfect timing
                  Chain = compute_chain(Now, Height0, GoodTarget, Offset),
@@ -102,7 +102,7 @@ difficulty_recalculation_test_() ->
 
 
                  Block0 = aec_blocks:new_key(Height0, <<0:32/unit:8>>, <<0:32/unit:8>>, <<0:32/unit:8>>, undefined,
-                                             12345, Now, Vsn, ?MINER_PUBKEY, ?BENEFICIARY_PUBKEY),
+                                             12345, Now, default, Vsn, ?MINER_PUBKEY, ?BENEFICIARY_PUBKEY),
 
                  %% Compute chain with almost perfect timing
                  Chain = compute_chain(Now, Height0, GoodTarget, -Offset),

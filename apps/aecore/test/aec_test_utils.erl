@@ -423,8 +423,9 @@ create_keyblock_with_state([{PrevBlock, TreesIn} | _] = Chain, MinerAccount, Ben
                   end,
     %% Dummy block to calculate the fees.
     Target = get_config(target, BlockCfg, fun() -> pick_prev_target(Chain) end),
+    Info = get_config(info, BlockCfg, fun() -> default end),
     Block = aec_blocks:new_key(Height, PrevBlockHash, PrevKeyHash, aec_trees:hash(TreesIn),
-                               Target, 0, aeu_time:now_in_msecs(), Protocol,
+                               Target, 0, aeu_time:now_in_msecs(), Info, Protocol,
                                MinerAccount, BeneficiaryAccount),
     Trees2 = case Height > Delay of
                  true ->
@@ -434,13 +435,9 @@ create_keyblock_with_state([{PrevBlock, TreesIn} | _] = Chain, MinerAccount, Ben
                      Trees1
              end,
     Block1 = aec_blocks:new_key(Height, PrevBlockHash, PrevKeyHash, aec_trees:hash(Trees2),
-                                Target, 0, aeu_time:now_in_msecs(), Protocol,
+                                Target, 0, aeu_time:now_in_msecs(), Info, Protocol,
                                 MinerAccount, BeneficiaryAccount),
-    Info = get_config(info, BlockCfg,
-                      fun() -> aec_headers:info(aec_blocks:to_header(Block1)) end),
-    KeyHeader = aec_headers:set_info(aec_blocks:to_header(Block1), Info),
-    Block2 = aec_blocks:new_key_from_header(KeyHeader),
-    {Block2, Trees2}.
+    {Block1, Trees2}.
 
 pick_prev_target([{Block, _}|Left]) ->
     case aec_blocks:type(Block) of
