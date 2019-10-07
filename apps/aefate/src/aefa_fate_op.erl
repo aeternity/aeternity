@@ -532,9 +532,9 @@ map_to_list(Arg0, Arg1, EngineState) ->
             aefa_engine_state:spend_gas_for_new_cells(Size * 2, ES2);
         ?FATE_STORE_MAP(Cache, MapId) ->
             {List, ES2} = store_map_to_list(Cache, MapId, ES1),
-            ES2 = write(Arg0, List, ES2),
+            ES3 = write(Arg0, List, ES2),
             Size = length(?FATE_LIST_VALUE(List)),
-            aefa_engine_state:spend_gas_for_new_cells(Size * 2, ES2)
+            aefa_engine_state:spend_gas_for_new_cells(Size * 2, ES3)
     end.
 
 map_size_(Arg0, Arg1, EngineState) ->
