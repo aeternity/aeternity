@@ -47,7 +47,8 @@
          stack_contract/1,
          remote_gas_test_contract/1,
          events_contract/1,
-         payable_contract/1
+         payable_contract/1,
+         paysplit_contract/1
         ]).
 
 -define(NODE, dev1).
@@ -86,6 +87,7 @@ all() ->
         , remote_gas_test_contract
         , events_contract
         , payable_contract
+        , paysplit_contract
         ]).
 
 groups() ->
@@ -1186,7 +1188,7 @@ remote_gas_test_contract(Config) ->
     ok.
 
 payable_contract(Config) ->
-    ?skipRest(aect_test_utils:vm_version() < ?VM_AEVM_SOPHIA_4, payable_not_pre_lima),
+    ?skipRest(aect_test_utils:vm_version() =< ?VM_AEVM_SOPHIA_3, payable_not_pre_lima),
     %% Set an account.
     Node = proplists:get_value(node_name, Config),
     %% Get account information.
@@ -1221,6 +1223,38 @@ payable_contract(Config) ->
 
     ok.
 
+paysplit_contract(Config) ->
+    ?skipRest(aect_test_utils:vm_version() =< ?VM_AEVM_SOPHIA_3, payable_not_pre_lima),
+    %% Set an account.
+    Node = proplists:get_value(node_name, Config),
+    %% Get account information.
+    #{acc_a := #{pub_key := APub, priv_key := APriv},
+      acc_b := #{pub_key := BPub},
+      acc_c := #{pub_key := CPub},
+      acc_d := #{pub_key := DPub}} = proplists:get_value(accounts, Config),
+
+    init_fun_calls(),
+    Paysplit = compile_test_contract("paysplit"),
+
+    EAPub = aeser_api_encoder:encode(account_pubkey, APub),
+    EBPub = aeser_api_encoder:encode(account_pubkey, BPub),
+    ECPub = aeser_api_encoder:encode(account_pubkey, CPub),
+    EDPub = aeser_api_encoder:encode(account_pubkey, DPub),
+    SplitMap = "{ [" ++ binary_to_list(EBPub) ++ "] = 30, "
+               "  [" ++ binary_to_list(EAPub) ++ "] = 10, "
+               "  [" ++ binary_to_list(EDPub) ++ "] = 10, "
+               "  [" ++ binary_to_list(ECPub) ++ "] = 50 }",
+    {EncCPub, _Dec, _} = create_contract(Node, APub, APriv, Paysplit, [SplitMap]),
+
+    ECheck = fun([_]) -> ok end,
+
+    call_func(APub, APriv, EncCPub, Paysplit, "payAndSplit", [], #{<<"amount">> => 100000}, {log, ECheck}),
+    call_func(APub, APriv, EncCPub, Paysplit, "payAndSplit", [], #{}, revert),
+    call_func(APub, APriv, EncCPub, Paysplit, "payAndSplit", [], #{<<"amount">> => 100000, <<"gas">> => 1000}, error),
+
+    force_fun_calls(Node),
+
+    ok.
 
 %% Internal access functions.
 
