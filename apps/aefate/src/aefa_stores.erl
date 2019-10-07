@@ -375,7 +375,7 @@ perform_store_updates([], Meta, GasLeft, Store) ->
 
 spend_size_gas(GasLeft, Bytes) ->
     ?DEBUG_PRINT("GasLeft: ~w Bytes: ~w\n", [GasLeft, Bytes]),
-    case GasLeft - Bytes * aec_governance:byte_gas() of
+    case GasLeft - Bytes * aec_governance:store_byte_gas() of
         TooLittle when TooLittle < 0 ->
             throw(out_of_gas);
         Enough ->

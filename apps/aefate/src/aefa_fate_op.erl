@@ -123,6 +123,7 @@
         , ecverify_secp256k1/5
         , ecrecover_secp256k1/4
         , contract_to_address/3
+        , address_to_contract/3
         , sha3/3
         , sha256/3
         , blake2b/3
@@ -416,7 +417,7 @@ make_tuple(To, Size, ES) ->
     {Elements, ES1} = aefa_fate:pop_n(Size, ES),
     Tuple = list_to_tuple(Elements),
     FateTuple = aeb_fate_data:make_tuple(Tuple),
-    ES2 = aefa_engine_state:spend_gas_for_new_cells(Size + 2, ES1),
+    ES2 = spend_tuple_gas(Size, ES1),
     write(To, FateTuple, ES2).
 
 element_op(To, Which, TupleArg, ES) ->
@@ -453,7 +454,7 @@ setelement(Arg0, Arg1, Arg2, Arg3, EngineState) ->
             case Size > Index of
                 true ->
                     NewT = ?FATE_TUPLE(erlang:setelement(Index+1, Tuple, Element)),
-                    ES4 = aefa_engine_state:spend_gas_for_new_cells(Size + 2, ES3),
+                    ES4 = spend_tuple_gas(Size, ES3),
                     write(Arg0, NewT, ES4);
                 false ->
                     aefa_fate:abort({element_index_out_of_bounds, Index}, ES3)
@@ -518,7 +519,7 @@ map_from_list(Arg0, Arg1, EngineState) ->
     Map = gop(map_from_list, List, ES1),
     ES2 = write(Arg0, Map, ES1),
     Size = map_size(?FATE_MAP_VALUE(Map)),
-    aefa_engine_state:spend_gas_for_new_cells(Size + 2, ES2).
+    spend_tuple_gas(Size, ES2).
 
 map_to_list(Arg0, Arg1, EngineState) ->
     {Map, ES1} = get_op_arg(Arg1, EngineState),
@@ -531,9 +532,9 @@ map_to_list(Arg0, Arg1, EngineState) ->
             aefa_engine_state:spend_gas_for_new_cells(Size * 2, ES2);
         ?FATE_STORE_MAP(Cache, MapId) ->
             {List, ES2} = store_map_to_list(Cache, MapId, ES1),
-            ES2 = write(Arg0, List, ES2),
+            ES3 = write(Arg0, List, ES2),
             Size = length(?FATE_LIST_VALUE(List)),
-            aefa_engine_state:spend_gas_for_new_cells(Size * 2, ES2)
+            aefa_engine_state:spend_gas_for_new_cells(Size * 2, ES3)
     end.
 
 map_size_(Arg0, Arg1, EngineState) ->
@@ -770,16 +771,22 @@ balance(Arg0, EngineState) ->
 auth_tx_hash(Arg0, EngineState) ->
     API   = aefa_engine_state:chain_api(EngineState),
     TxEnv = aefa_chain_api:tx_env(API),
-    case aetx_env:ga_tx_hash(TxEnv) of
-        undefined -> write(Arg0, aeb_fate_data:make_variant([0, 1], 0, {}), EngineState);
-        TxHash    -> write(Arg0, aeb_fate_data:make_variant([0, 1], 1, {?FATE_BYTES(TxHash)}), EngineState)
-    end.
+    {Size, Val} =
+        case aetx_env:ga_tx_hash(TxEnv) of
+            undefined -> {1, aeb_fate_data:make_variant([0, 1], 0, {})};
+            TxHash    -> {2, aeb_fate_data:make_variant([0, 1], 1, {?FATE_BYTES(TxHash)})}
+        end,
+    write(Arg0, Val, spend_tuple_gas(Size, EngineState)).
 
 bytes_to_int(Arg0, Arg1, EngineState) ->
     un_op(bytes_to_int, {Arg0, Arg1}, EngineState).
 
 bytes_to_str(Arg0, Arg1, EngineState) ->
-    un_op(bytes_to_str, {Arg0, Arg1}, EngineState).
+    {LeftValue, ES1} = get_op_arg(Arg1, EngineState),
+    Result = gop(bytes_to_str, LeftValue, ES1),
+    Cells = string_cells(Result),
+    ES2 = aefa_engine_state:spend_gas_for_new_cells(Cells + 1, ES1),
+    write(Arg0, Result, ES2).
 
 bytes_concat(Arg0, Arg1, Arg2, EngineState) ->
     {Bytes1, ES1} = get_op_arg(Arg1, EngineState),
@@ -790,7 +797,8 @@ bytes_concat(Arg0, Arg1, Arg2, EngineState) ->
     write(Arg0, Result, ES3).
 
 bytes_split(Arg0, Arg1, Arg2, EngineState) ->
-    bin_op(bytes_split, {Arg0, Arg1, Arg2}, EngineState).
+    ES1  = bin_op(bytes_split, {Arg0, Arg1, Arg2}, EngineState),
+    spend_tuple_gas(2, ES1).
 
 balance_other(Arg0, Arg1, ES) ->
     API = aefa_engine_state:chain_api(ES),
@@ -1439,6 +1447,9 @@ delegation_signature_data(Type, {Pubkey, Hash}, Current) when Type =:= aens_clai
 spend_gas(Delta, ES) when is_integer(Delta), Delta > 0 ->
     aefa_engine_state:spend_gas(Delta, ES).
 
+spend_tuple_gas(TupleSize, ES) ->
+    aefa_engine_state:spend_gas_for_new_cells(TupleSize + 2, ES).
+
 verify_sig(Arg0, Arg1, Arg2, Arg3, ES) ->
     ter_op(verify_sig, {Arg0, Arg1, Arg2, Arg3}, ES).
 
@@ -1453,6 +1464,9 @@ ecrecover_secp256k1(Arg0, Arg1, Arg2, ES) ->
 
 contract_to_address(Arg0, Arg1, ES) ->
     un_op(contract_to_address, {Arg0, Arg1}, ES).
+
+address_to_contract(Arg0, Arg1, ES) ->
+    un_op(address_to_contract, {Arg0, Arg1}, ES).
 
 sha3(Arg0, Arg1, EngineState) ->
     un_op(sha3, {Arg0, Arg1}, EngineState).
@@ -1635,7 +1649,9 @@ op(blake2b, A) ->
     Hash = aec_hash:blake2b_256_hash(Bin),
     ?FATE_BYTES(Hash);
 op(contract_to_address, A) when ?IS_FATE_CONTRACT(A) ->
-    ?FATE_ADDRESS(?FATE_CONTRACT_VALUE(A)).
+    ?FATE_ADDRESS(?FATE_CONTRACT_VALUE(A));
+op(address_to_contract, A) when ?IS_FATE_ADDRESS(A) ->
+    ?FATE_CONTRACT(?FATE_ADDRESS_VALUE(A)).
 
 binary_for_hashing(S) when ?IS_FATE_STRING(S) ->
     ?FATE_STRING_VALUE(S);  %% Makes Crypto.sha3 and String.sha3 coincide.

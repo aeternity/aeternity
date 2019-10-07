@@ -35,6 +35,7 @@
 -include_lib("common_test/include/ct.hrl").
 -include_lib("eunit/include/eunit.hrl").
 -include_lib("aecontract/include/aecontract.hrl").
+-include_lib("aecontract/include/hard_forks.hrl").
 
 %% ------------------------------------------------------------------------
 %% Test cases
@@ -239,6 +240,7 @@ do_execute_call(#{ code := Code
                    , currentTimestamp => TS
                    , chainState => ChainState
                    , chainAPI => ChainAPI
+                   , protocol_version => ?ROMA_PROTOCOL_VSN
                    , vm_version => VmVersion
                    , abi_version => ABIVersion
                    },

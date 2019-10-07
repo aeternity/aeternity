@@ -156,19 +156,28 @@ enter_store_nodes(Prefix, Writes, CtTree) ->
 get_contract(PubKey, Tree) ->
     get_contract(PubKey, Tree, []).
 
--spec get_contract(aect_contracts:pubkey(), tree(), [no_store]) -> aect_contracts:contract().
+-spec get_contract(aect_contracts:pubkey(), tree(), [no_store | full_store_cache]) ->
+                      aect_contracts:contract().
 get_contract(Pubkey, #contract_tree{ contracts = CtTree }, Options) ->
     Contract = aect_contracts:deserialize(Pubkey, aeu_mtrees:get(Pubkey, CtTree)),
     case proplists:get_value(no_store, Options, false) of
-        false -> add_store(Contract, CtTree);
+        false -> add_store(Contract, CtTree, Options);
         true  -> Contract
     end.
 
-add_store(Contract, CtTree) ->
+add_store(Contract, CtTree, Options) ->
     StoreId = aect_contracts:store_id(Contract),
     {ok, Subtree} = aeu_mtrees:read_only_subtree(StoreId, CtTree),
     Store = aect_contracts_store:new(Subtree),
-    aect_contracts:set_state(Store, Contract).
+    Store1 = case proplists:get_value(full_store_cache, Options, false) of
+                 false ->
+                     Store;
+                 true ->
+                     %% Make sure all values are in the cache
+                     Map = aect_contracts_store:contents(Store),
+                     aect_contracts_store:put_map(Map, Store)
+             end,
+    aect_contracts:set_state(Store1, Contract).
 
 -spec is_contract(aect_contracts:pubkey(), tree()) -> boolean().
 is_contract(Pubkey, #contract_tree{ contracts = CtTree }) ->
@@ -181,7 +190,7 @@ is_contract(Pubkey, #contract_tree{ contracts = CtTree }) ->
 lookup_contract(Pubkey, Tree) ->
     lookup_contract(Pubkey, Tree, []).
 
--spec lookup_contract(aect_contracts:pubkey(), tree(), [no_store]) ->
+-spec lookup_contract(aect_contracts:pubkey(), tree(), [no_store | full_store_cache]) ->
         {value, aect_contracts:contract()} | none.
 lookup_contract(Pubkey, Tree, Options) ->
     CtTree = Tree#contract_tree.contracts,
@@ -189,7 +198,7 @@ lookup_contract(Pubkey, Tree, Options) ->
         {value, Val} ->
             Contract = aect_contracts:deserialize(Pubkey, Val),
             case proplists:get_value(no_store, Options, false) of
-                false -> {value, add_store(Contract, CtTree)};
+                false -> {value, add_store(Contract, CtTree, Options)};
                 true  -> {value, Contract}
             end;
         none         -> none

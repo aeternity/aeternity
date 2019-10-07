@@ -1,0 +1,3 @@
+contract Poll =
+  entrypoint title() = "The Poll"
+  entrypoint close_height() : option(int) = None

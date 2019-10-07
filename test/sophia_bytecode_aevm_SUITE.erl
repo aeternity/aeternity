@@ -58,6 +58,7 @@ execute_identity_fun_from_sophia_file(_Cfg) ->
                         currentTimestamp => 0,
                         chainState => aevm_dummy_chain:new_state(),
                         chainAPI => aevm_dummy_chain,
+                        protocol_version => aect_test_utils:latest_protocol_version(),
                         vm_version => VM,
                         abi_version => ABI},
                pre => #{}},

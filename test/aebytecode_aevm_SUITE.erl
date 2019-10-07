@@ -43,6 +43,7 @@ execute_identy_fun_from_file(_Cfg) ->
                         authTxHash => undefined,
                         chainState => ChainState,
                         chainAPI => aevm_dummy_chain,
+                        protocol_version => aect_test_utils:latest_protocol_version(),
                         vm_version => ?VM_AEVM_SOLIDITY_1,
                         abi_version => ?ABI_SOLIDITY_1},
                pre => #{}},
