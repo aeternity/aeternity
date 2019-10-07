@@ -1,0 +1,110 @@
+payable contract PaymentSplitter =
+   record state =
+      {  owner: address,
+         recipientConditions: map(address, int), // map of recipients with percentage to receive (value between 1 and 100)
+         totalAmountSplitted: int }
+
+   // CONTRACT EVENTS
+   datatype event = AddingInitialRecipients()
+      | RecipientAdded(indexed address, indexed int)
+      | AddressUpdated(indexed address, indexed address)
+      | UpdatingAllRecipients()
+      | PaymentReceivedAndSplitted(indexed address, indexed int, indexed int)
+
+   // CONSTRUCTOR
+   entrypoint init(recipientConditions': map(address, int)) : state =
+      require(sumWeights(recipientConditions') == 100, "sum of weights needs to be 100")
+      Chain.event(AddingInitialRecipients)
+      {  owner = Call.caller,
+         recipientConditions = recipientConditions',
+         totalAmountSplitted = 0}
+
+   // READ ONLY FUNCTIONS
+
+   entrypoint getOwner() : address =
+      state.owner
+
+   entrypoint getRecipientsCount() : int =
+      Map.size(state.recipientConditions)
+
+   entrypoint isRecipient(who': address) : bool =
+      Map.member(who', state.recipientConditions)
+
+   entrypoint getWeight(who': address) : int =
+      Map.lookup_default(who', state.recipientConditions, 0)
+
+   entrypoint getTotalAmountSplitted() : int =
+      state.totalAmountSplitted
+
+   // PAY-AND-SPLIT FUNCTION
+   stateful payable entrypoint payAndSplit() =
+      require(Contract.balance > 0, "contract didn't receive any payment")
+      let recipientConditions: list(address * int) = Map.to_list(state.recipientConditions)
+      put(state{totalAmountSplitted = Contract.balance + state.totalAmountSplitted})
+      split(recipientConditions, Contract.balance)
+      Chain.event(PaymentReceivedAndSplitted(Call.caller, Call.value, Contract.balance))
+
+   // STATEFUL FUNCTIONS
+
+   stateful entrypoint transferOwnership(newOwner': address) =
+      onlyOwner()
+      put(state{owner = newOwner'})
+
+   stateful entrypoint updateAddress(oldAddress': address, newAddress': address) =
+      onlyOwnerOrRecipient(oldAddress')
+      let weight: int = state.recipientConditions[oldAddress']
+      put(state{recipientConditions @ rc = Map.delete(oldAddress', rc)}) // remove old address
+      put(state{recipientConditions[newAddress'] = weight}) // add new address
+      Chain.event(AddressUpdated(oldAddress', newAddress'))
+
+   stateful entrypoint updateRecipientConditions(recipients': map(address, int)) =
+      onlyOwner()
+      Chain.event(UpdatingAllRecipients)
+      require(sumWeights(recipients') == 100, "sum of weights needs to be 100")
+      put(state{recipientConditions = recipients'})
+      fireRecipientAddedEvents(Map.to_list(state.recipientConditions))
+
+   // PRIVATE FUNCTIONS
+
+   function onlyOwner() =
+      require(Call.caller == state.owner, "caller must be the owner")
+
+   function onlyOwnerOrRecipient(recipient': address) =
+      require(Call.caller == state.owner || Call.caller == recipient', "caller must be the owner or the recipient")
+
+   function sumWeights(recipients': map(address, int)) : int =
+      let recipientList: list(address * int) = Map.to_list(recipients')
+      let intList: list(int) = map(pair_second, recipientList)
+      sum(intList, (x) => x)
+
+   function fireRecipientAddedEvents(recipientConditions': list(address * int)) =
+      switch(recipientConditions')
+         [] => ()
+         (recipient, weight) :: l' =>
+            Chain.event(RecipientAdded(recipient, weight))
+
+   stateful function split(recipientConditions': list(address * int), totalValue: int) =
+      switch(recipientConditions')
+         [] => ()
+         (recipient, weight) :: l' =>
+            Chain.spend(recipient, totalValue / 100 * weight)
+            split(l', totalValue)
+
+   // GENERIC HELPER FUNCTIONS
+
+   function map(f : 'a => 'b, l : list('a)) : list('b) =
+      switch(l)
+         [] => []
+         e :: l' => f(e) :: map(f, l')
+
+   function foldr(f : (('a, 'b) => 'b), z: 'b, l : list('a)) : 'b =
+      switch(l)
+         [] => z
+         e :: l' => f(e, foldr(f, z, l'))
+
+   function sum(l : list('a), f : 'a => int) : int =
+      foldr((x, y) => x + y, 0, map(f, l))
+
+   function pair_second(tuple) =
+      switch(tuple)
+         (_, e) => e
