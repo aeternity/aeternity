@@ -76,7 +76,7 @@
 -type   block()       :: key_block() | micro_block().
 -type   height()      :: non_neg_integer().
 -type   tx_list()     :: list(aetx_sign:signed_tx()).
--type   info()        :: non_neg_integer() | default.
+-type   info()        :: 0..16#ffffffff | default.
 
 -export_type([block/0,
               block_header_hash/0,
@@ -155,7 +155,7 @@ type(#mic_block{}) -> 'micro'.
 -spec new_key(height(), block_header_hash(), block_header_hash(), state_hash(),
               aeminer_pow:sci_target(),
               non_neg_integer(), non_neg_integer(), info(),
-              non_neg_integer(), miner_pubkey(), beneficiary_pubkey()
+              aec_hard_forks:protocol_vsn(), miner_pubkey(), beneficiary_pubkey()
              ) -> key_block().
 new_key(Height, PrevHash, PrevKeyHash, RootHash, Target,
         Nonce, Time, Info, Version, Miner, Beneficiary) ->

@@ -215,8 +215,8 @@ from_db_header(Tuple) when is_tuple(Tuple) ->
                      state_hash(), miner_pubkey(), beneficiary_pubkey(),
                      aeminer_pow:sci_target(),
                      aeminer_pow_cuckoo:solution() | 'no_value',
-                     non_neg_integer(), non_neg_integer(), non_neg_integer(),
-                     non_neg_integer()
+                     non_neg_integer(), non_neg_integer(), info(),
+                     aec_hard_forks:protocol_vsn()
                     ) -> header().
 new_key_header(Height, PrevHash, PrevKeyHash, RootHash, Miner, Beneficiary,
                Target, Evd, Nonce, Time, Info, Version) ->
