@@ -16,7 +16,11 @@ compile_and_run(Contracts, Contract, Function, Arguments) ->
     run(Chain, Contract, Function, Arguments).
 
 compile_contracts(Contracts) ->
-    maps:from_list([ {pad_contract_name(Name), compile_contract(Code)} || {Name, Code} <- Contracts ]).
+    compile_contracts(Contracts, default_options()).
+
+compile_contracts(Contracts, Options) ->
+    maps:from_list([ {pad_contract_name(Name), compile_contract(Code, Options)}
+                     || {Name, Code} <- Contracts ]).
 
 make_contract(Name) -> aeb_fate_data:make_contract(pad_contract_name(Name)).
 
@@ -36,14 +40,26 @@ dummy_trees(Caller, Cache) ->
                                  Account = aec_accounts:new(Pubkey, 10000),
                                  aec_accounts_trees:enter(Account, Acc)
                          end, aec_trees:accounts(Trees), Pubkeys),
-    aec_trees:set_accounts(Trees, ATrees).
+    CTrees = lists:foldl(fun(Pubkey, Acc) ->
+                                 Contract0 = aect_contracts:new(Pubkey, 1, #{vm => 5, abi => 3}, <<>>, 0),
+                                 Contract  = aect_contracts:set_pubkey(Pubkey, Contract0),
+                                 aect_state_tree:enter_contract(Contract, Acc)
+                         end, aec_trees:contracts(Trees), Pubkeys),
+    aec_trees:set_contracts(aec_trees:set_accounts(Trees, ATrees), CTrees).
 
 run(Cache, Contract, Function, Arguments) ->
     {_, Res} = timed_run(Cache, Contract, Function, Arguments),
     Res.
 
+run(Cache, Contract, Function, Arguments, Store) ->
+    {_, Res} = timed_run(Cache, Contract, Function, Arguments, Store),
+    Res.
+
 timed_run(Cache, Contract, Function, Arguments) ->
-    Spec = make_call_spec(Contract, Function, Arguments),
+    timed_run(Cache, Contract, Function, Arguments, #{}).
+
+timed_run(Cache, Contract, Function, Arguments, Store) ->
+    Spec = make_call_spec(Contract, Function, Arguments, Store),
     Env = dummy_spec(Cache),
     try
         timer:tc(fun() -> aefa_fate:run_with_cache(Spec, Env, Cache) end)
@@ -63,8 +79,12 @@ expect(Chain, Contract, Function, Arguments, Expect) ->
     end.
 
 %% For now, implement pipeline here.
+
+default_options() ->
+    [{debug, [scode, opt, opt_rules, compile]}, pp_fcode].
+
 compile_contract(Code) ->
-    compile_contract(Code, [{debug, [scode, opt, opt_rules, compile]}, pp_fcode, {include, {file_system, ["."]}}]).
+    compile_contract(Code, default_options()).
 
 compile_contract(Code, Options) ->
     try
@@ -83,7 +103,14 @@ compile_contract(Code, Options) ->
 
 -define(CALL_GAS, 6000000).
 
-make_call_spec(Contract, Function0, Arguments) ->
+make_store(Store) ->
+    maps:fold(fun(Reg, Val, S) ->
+                Key = <<0, (binary:encode_unsigned(Reg))/binary>>,
+                ValBin = aeb_fate_encoding:serialize(Val),
+                aect_contracts_store:put(Key, ValBin, S)
+              end, aefa_stores:initial_contract_store(), Store).
+
+make_call_spec(Contract, Function0, Arguments, Store) ->
     Function = aeb_fate_code:symbol_identifier(Function0),
     EncArgs  = list_to_tuple([aefate_test_utils:encode(A) || A <- Arguments]),
     Calldata = {tuple, {Function, {tuple, EncArgs}}},
@@ -91,7 +118,7 @@ make_call_spec(Contract, Function0, Arguments) ->
        gas      => ?CALL_GAS,
        value    => 0,
        call     => aeb_fate_encoding:serialize(Calldata),
-       store    => aect_contracts_store:new() }.
+       store    => make_store(Store) }.
 
 pad_contract_name(Name) ->
     PadSize = 32 - byte_size(Name),
@@ -113,11 +140,54 @@ print_run_stats(Time, ES) ->
     Steps      = length(Trace),
     io:format("~p steps / ~p gas / ~p reductions / ~.2fms\n", [Steps, GasUsed, Reductions, Time / 1000]).
 
+print_logs(_, []) -> ok;
+print_logs(EventMap, Logs) ->
+    io:format("Events:\n"),
+    print_logs(EventMap, none, Logs).
+
+print_logs(_, _, []) -> ok;
+print_logs(EventMap, Ct, [{Ct, [Hash | Ixs], Payload} | Logs]) ->
+    PayloadStr =
+        case Payload of
+            <<>> -> "";
+            _    -> io_lib:format(", ~s", [Payload])
+        end,
+    io:format("    ~s(~s~s)\n",
+        [maps:get(Hash, EventMap, Hash),
+         string:join([integer_to_list(N) || <<N:256>> <- Ixs], ", "),
+         PayloadStr]),
+    print_logs(EventMap, Ct, Logs);
+print_logs(EventMap, _, Logs = [{Ct, _, _} | _]) ->
+    io:format("  ~p\n", [Ct]),
+    print_logs(EventMap, Ct, Logs).
+
+run_file(File, Fun, Args) ->
+    run_file(File, Fun, Args, []).
+
+run_file(File, Fun, Args, Options) ->
+    {ok, Code} = file:read_file(File),
+    run_call(binary_to_list(Code), Fun, Args, Options).
+
 run_call(Code, Fun, Args) ->
-    Cache = compile_contracts([{<<"test">>, Code}]),
-    case timed_run(Cache, <<"test">>, list_to_binary(Fun), Args) of
+    run_call(Code, Fun, Args, []).
+
+run_call(Code, Fun, Args, Options) ->
+    Store = proplists:get_value(store, Options, #{}),
+    Cache = compile_contracts([{<<"test">>, Code}], Options),
+    EventMap = maps:from_list(
+                 [{element(2, eblake2:blake2b(32, list_to_binary(Con))), Con}
+                  || {con, _, Con} <- element(2, aeso_scan:scan(Code))]),
+    case timed_run(Cache, <<"test">>, list_to_binary(Fun), Args, Store) of
         {Time, {ok, ES}} ->
             print_run_stats(Time, ES),
+            GasUsed    = ?CALL_GAS - aefa_engine_state:gas(ES),
+            Trace      = aefa_engine_state:trace(ES),
+            Red        = fun({_, {reductions, R}}) -> R end,
+            Reductions = Red(hd(Trace)) - Red(lists:last(Trace)),
+            Steps      = length(Trace),
+            Logs       = aefa_engine_state:logs(ES),
+            print_logs(EventMap, Logs),
+            io:format("~p steps / ~p gas / ~p reductions\n", [Steps, GasUsed, Reductions]),
             aefa_engine_state:accumulator(ES);
         {Time, {error, <<"Out of gas">>, ES}} ->
             print_run_stats(Time, ES),
