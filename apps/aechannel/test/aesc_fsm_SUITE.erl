@@ -2369,7 +2369,8 @@ responder_instance_(Fsm, Spec, R0, Parent, Debug) ->
     R = fsm_map(Fsm, Spec, R0),
     {ok, ChOpen} = receive_from_fsm(info, R, channel_open, ?TIMEOUT, Debug),
     ?LOG(Debug, "Got ChOpen: ~p~nSpec = ~p", [ChOpen, Spec]),
-    #{data := #{temporary_channel_id := TmpChanId}} = ChOpen,
+    {ok, #{ channel_id := TmpChanId }} = rpc(dev1, aesc_fsm, get_state, [Fsm]),
+    ?LOG(Debug, "TmpChanId = ~p", [TmpChanId]),
     R1 = R#{ proxy => self(), parent => Parent },
     gproc:reg({n,l,{?MODULE,TmpChanId,responder}}, #{ r => R1 }),
     {_IPid, #{ i := I1 , channel_accept := ChAccept }}
@@ -2384,7 +2385,8 @@ initiator_instance_(Fsm, Spec, I0, Parent, Debug) ->
     I = fsm_map(Fsm, Spec, I0),
     {ok, ChAccept} = receive_from_fsm(info, I, channel_accept, ?TIMEOUT, Debug),
     ?LOG(Debug, "Got ChAccept: ~p~nSpec = ~p", [ChAccept, Spec]),
-    #{data := #{temporary_channel_id := TmpChanId}} = ChAccept,
+    {ok, #{ channel_id := TmpChanId }} = rpc(dev1, aesc_fsm, get_state, [Fsm]),
+    ?LOG(Debug, "TmpChanId = ~p", [TmpChanId]),
     I1 = I#{ proxy => self() },
     gproc:reg({n,l,{?MODULE,TmpChanId,initiator}}, #{ i => I1
                                                     , channel_accept => ChAccept }),
