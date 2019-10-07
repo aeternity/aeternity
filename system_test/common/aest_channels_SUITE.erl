@@ -95,7 +95,8 @@
     name    => node2,
     peers   => [node1],
     backend => aest_docker,
-    source  => {pull, "aeternity/aeternity:local"}
+    source  => {pull, "aeternity/aeternity:local"},
+    mining => #{autostart => false}
 }).
 
 %=== COMMON TEST FUNCTIONS =====================================================
