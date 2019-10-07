@@ -61,6 +61,7 @@
 
 -define(ABI_SOPHIA, aect_test_utils:latest_sophia_abi_version()).
 -define(VM_SOPHIA, aect_test_utils:latest_sophia_vm_version()).
+-define(PROTOCOL, aect_test_utils:latest_protocol_version()).
 
 
 all() -> [ execute_identity_fun_from_sophia_file,
@@ -132,6 +133,7 @@ execute_call_1(Contract, CallData, CallDataType, OutType, Code, ChainState, Opti
              currentTimestamp  => 0,
              chainState        => ChainState,
              chainAPI          => ?MODULE,
+             protocol_version  => ?PROTOCOL,
              vm_version        => ?VM_SOPHIA,
              abi_version       => ?ABI_SOPHIA}, Options),
           Trace),
@@ -158,6 +160,7 @@ do_execute_call(#{ code := Code
                  , currentTimestamp := TS
                  , chainState := ChainState
                  , chainAPI := ChainAPI
+                 , protocol_version := ProtocolVersion
                  , vm_version := VmVersion
                  , abi_version := ABIVersion
                  } = CallDef, Trace) ->
@@ -183,6 +186,7 @@ do_execute_call(#{ code := Code
                    , currentTimestamp => TS
                    , chainState => ChainState
                    , chainAPI => ChainAPI
+                   , protocol_version => ProtocolVersion
                    , vm_version => VmVersion
                    , abi_version => ABIVersion
                    },

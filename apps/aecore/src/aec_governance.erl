@@ -9,6 +9,7 @@
          tx_base_gas/2,
          tx_base_gas/3, %% VM depending operations
          byte_gas/0,
+         store_byte_gas/0,
          beneficiary_reward_delay/0,
          locked_coins_holder_account/0,
          minimum_gas_price/1,
@@ -62,6 +63,8 @@
 -define(TX_BASE_GAS, 15000).
 %% Gas for 1 byte of a serialized tx.
 -define(BYTE_GAS, 20).
+%% Gas for 1 byte written to the store.
+-define(STORE_BYTE_GAS, 5).
 -define(POF_REWARD_DIVIDER, 20). %% 5% of the coinbase reward
 -define(BENEFICIARY_REWARD_DELAY, 180). %% in key blocks / generations
 -define(MICRO_BLOCK_CYCLE, 3000). %% in msecs
@@ -151,6 +154,9 @@ tx_base_gas(oracle_extend_tx, _)          -> ?TX_BASE_GAS;
 tx_base_gas(oracle_query_tx, _)           -> ?TX_BASE_GAS;
 tx_base_gas(oracle_register_tx, _)        -> ?TX_BASE_GAS;
 tx_base_gas(oracle_response_tx, _)        -> ?TX_BASE_GAS.
+
+store_byte_gas() ->
+    ?STORE_BYTE_GAS.
 
 byte_gas() ->
     ?BYTE_GAS.

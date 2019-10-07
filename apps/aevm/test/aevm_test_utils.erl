@@ -14,6 +14,7 @@
 -define(EUNIT_NOAUTO, true).
 -include_lib("eunit/include/eunit.hrl").
 -include("../../aecontract/include/aecontract.hrl").
+-include("../../aecontract/include/hard_forks.hrl").
 -include_lib("aeutils/include/aeu_stacktrace.hrl").
 
 -define(opt_format(___Opts__, ___Fmt___, ___Args___),
@@ -212,6 +213,7 @@ get_config({DirPath, TestName,_Opts}) ->
     TestConfig = maps:get(TestName, Config),
     DefaultEnv = #{ chainState => aevm_ethereum_test_chain:new_state(TestConfig)
                   , chainAPI => aevm_ethereum_test_chain
+                  , protocol_version => ?ROMA_PROTOCOL_VSN
                   , vm_version => ?VM_AEVM_SOLIDITY_1
                   , abi_version => ?ABI_SOLIDITY_1
                   },
