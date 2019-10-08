@@ -155,10 +155,10 @@ contract_create_tx(#{ amount       := Amount
                call_data   => CallData,
                fee         => 1000000000000000}, %% Overshoot the size of the actual fee
     {ok, DummyTx} = aect_create_tx:new(TxSpec),
-    Height = aetx_env:height(TxEnv),
+    Height   = aetx_env:height(TxEnv),
     Protocol = aetx_env:consensus_version(TxEnv),
-    MinFee        = aetx:min_fee(DummyTx, Height, Protocol),
-    {ok, Tx}      = aect_create_tx:new(TxSpec#{fee => MinFee}),
+    MinFee   = aetx:min_fee(DummyTx, Height, Protocol),
+    {ok, Tx} = aect_create_tx:new(TxSpec#{fee => MinFee}),
     %% Make sure the transaction will give the expected pubkey.
     case aect_contracts:compute_contract_pubkey(OwnerPubkey, Nonce) of
         ExpectedPubkey -> Tx;
