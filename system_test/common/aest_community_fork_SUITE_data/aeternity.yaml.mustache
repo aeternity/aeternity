@@ -1,0 +1,48 @@
+{{#aeternity_config}}
+---
+peers: {{^peers}}[]{{/peers}}
+{{#peers}}
+    - {{peer}}
+{{/peers}}
+
+sync:
+    port: {{services.sync.port}}
+    single_outbound_per_group: false
+
+http:
+    external:
+        port: {{services.ext_http.port}}
+    internal:
+        listen_address: 0.0.0.0
+        port: {{services.int_http.port}}
+
+keys:
+    peer_password: {{key_password}}
+    dir: ./keys
+
+chain:
+    persist: true
+
+mining:
+    autostart: {{mining.autostart}}
+    beneficiary: "ak_2a1j2Mk9YSmC1gioUq4PWRm3bsv887MbuRVwyv4KaUGoR1eiKi"
+    beneficiary_reward_delay: 2
+    micro_block_cycle: 100
+    expected_mine_rate: 1000
+    cuckoo:
+        edge_bits: 15
+        miners:
+            - executable: mean15-generic
+
+fork_management:
+    network_id: "ae_system_test"
+    {{#fork_management}}
+    fork:
+        enabled: {{fork.enabled}}
+        signalling_start_height: {{fork.signalling_start_height}}
+        signalling_end_height: {{fork.signalling_end_height}}
+        signalling_block_count: {{fork.signalling_block_count}}
+        info_field: {{fork.info_field}}
+        version: {{fork.version}}
+    {{/fork_management}}
+{{/aeternity_config}}
