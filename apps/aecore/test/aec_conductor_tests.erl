@@ -576,18 +576,18 @@ test_add_new_block_after_fork(NetworkId, ProtocolChange, AddFunction)
     [H1, H2, H3, H4] = [block_hash(B) || B <- Chain1],
 
     Chain2SOld = aec_test_utils:extend_block_chain_with_key_blocks(
-                   Chain1S, 1, MinerAccount, MinerAccount,
+                   Chain1S, 2, MinerAccount, MinerAccount,
                    #{5 => #{version => OldProtocol}}),
 
-    [B5Old] = aec_test_utils:blocks_only_chain(Chain2SOld),
-    H5Old = block_hash(B5Old),
+    Chain2Old = [B5Old, B6Old] = aec_test_utils:blocks_only_chain(Chain2SOld),
+    [H5Old, H6Old] = [block_hash(B) || B <- Chain2Old],
 
     Chain2SNew = aec_test_utils:extend_block_chain_with_key_blocks(
-                   Chain1S, 1, MinerAccount, MinerAccount,
+                   Chain1S, 2, MinerAccount, MinerAccount,
                    #{5 => #{version => NewProtocol}}),
 
-    [B5New] = aec_test_utils:blocks_only_chain(Chain2SNew),
-    H5New = block_hash(B5New),
+    Chain2New = [B5New, B6New] = aec_test_utils:blocks_only_chain(Chain2SNew),
+    [H5New, H6New] = [block_hash(B) || B <- Chain2New],
 
     application:set_env(aecore, fork, Fork),
 
@@ -601,11 +601,17 @@ test_add_new_block_after_fork(NetworkId, ProtocolChange, AddFunction)
     case ProtocolChange of
         without_protocol_change ->
             ?assertEqual(OldProtocol, aec_blocks:version(KC)),
+            %% Add block at hard fork height.
             add_new_block_and_wait_for_top_hash(AddFunction, B5Old, H5Old),
+            %% Add block after hard fork height.
+            add_new_block_and_wait_for_top_hash(AddFunction, B6Old, H6Old),
             ?assertEqual({error, protocol_version_mismatch}, add_new_block(AddFunction, B5New));
         with_protocol_change ->
             ?assertEqual(NewProtocol, aec_blocks:version(KC)),
+            %% Add block at hard fork height.
             add_new_block_and_wait_for_top_hash(AddFunction, B5New, H5New),
+            %% Add block after hard fork height.
+            add_new_block_and_wait_for_top_hash(AddFunction, B6New, H6New),
             ?assertEqual({error, protocol_version_mismatch}, add_new_block(AddFunction, B5Old))
     end,
 
