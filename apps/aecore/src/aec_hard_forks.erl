@@ -43,6 +43,11 @@ protocols() ->
 check_env() ->
     assert_protocols(protocols()).
 
+%% This function is supposed to be used only when:
+%% - a new block is being added to the database (in aec_conductor);
+%% - a new key block candidate is prepared (aec_block_key_candidate).
+%% The function shouldn't be used elsewhere (apart from tests). With community
+%% forks the function can return different protocol versions at the same height.
 -spec protocol_effective_at_height(aec_blocks:height()) -> version().
 protocol_effective_at_height(H) ->
     protocol_effective_at_height(H, protocols()).
