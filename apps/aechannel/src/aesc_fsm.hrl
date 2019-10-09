@@ -153,7 +153,7 @@
               , channel_id                      :: undefined | binary()
               , on_chain_id                     :: undefined | binary()
               , create_tx                       :: undefined | any()
-              , watcher                         :: undefined | pid()
+              , watcher_registered = false      :: boolean()
               , block_hash_delta = #bh_delta{}  :: #bh_delta{}
               %% we keep the latest operation so we can perform according
               %% checks
@@ -243,6 +243,7 @@
                                  | ?WATCH_DEP
                                  | ?WATCH_WDRAW
                                  | ?WATCH_CLOSED
+                                 | ?WATCH_SNAPSHOT_SOLO
                       , tx_hash :: binary()
                       , data    :: #op_data{}
                       }).

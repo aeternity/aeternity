@@ -221,6 +221,7 @@ handle_cast(_Msg, St) ->
     {noreply, St}.
 
 handle_info({'DOWN', MRef, process, _Pid, _Reason}, St) ->
+    lager:debug("Received 'DOWN' from ~p", [_Pid]),
     case lookup_by_mref(MRef, St) of
         {ChId, PubKey} = CacheId ->
             move_state_to_persistent(CacheId),
@@ -231,9 +232,11 @@ handle_info({'DOWN', MRef, process, _Pid, _Reason}, St) ->
                 {ok, _WPid} ->
                     {noreply, St1};
                 error ->
+                    lager:debug("starting watcher for ~p", [ChId]),
                     {noreply, start_watcher(ChId, St1)}
             end;
         error ->
+            lager:debug("no state found for mref", []),
             {noreply, St}
     end;
 handle_info(Msg, St) ->
@@ -381,11 +384,30 @@ channel_watcher(ChId, #st{watchers = Ws}) ->
     end.
 
 start_watcher(ChId, #st{watchers = Ws, min_depth = Min} = St) ->
-    {ok, Pid} = aesc_chain_watcher:watch_for_channel_close(
-                  ChId, Min, ?MODULE),
+    Parent = self(),
+    Pid = proc_lib:spawn_link(
+            fun() ->
+                    ok = aesc_chain_watcher:register(
+                           ChId, ?MODULE, [aesc_chain_watcher:close_req(Min)]),
+                    watcher_loop(Parent, ChId)
+            end),
+    %% {ok, Pid} = aesc_chain_watcher:watch_for_channel_close(
+    %%               ChId, Min, ?MODULE),
     lager:debug("watcher started for ~p: ~p", [ChId, Pid]),
     ets:insert(Ws, {ChId, Pid}),
     St.
+
+watcher_loop(Parent, ChId) ->
+    %% Basically, we only need some receive clause to linger in,
+    %% keeping the watcher pid alive. The callbacks result in messages
+    %% directly to the state cache process.
+    receive
+        {Parent, die} ->
+            %% In remove_watcher/2 below, we use exit(Pid, kill) instead
+            lager:debug("Received 'die' (ChId=~p)", [ChId]),
+            Parent ! {self(), ok},
+            ok  % process will terminate
+    end.
 
 remove_watcher(ChId, #st{watchers = Ws} = St) ->
     case ets:lookup(Ws, ChId) of

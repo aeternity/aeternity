@@ -9,7 +9,9 @@
         , size/1
         , keyfind/3
         , keymember/3
+        , keyreplace/4
         , info_find/3
+        , info_select/3
         , to_list/1
         ]).
 
@@ -113,6 +115,14 @@ keymember(K, Pos, #w{a = A, b = B}) ->
     lists:keymember(K, Pos, A)
         orelse lists:keymember(K, Pos, B).
 
+keyreplace(K, Pos, #w{a = A, b = B} = W, New) ->
+    case lists:keymember(K, Pos, A) of
+        true ->
+            W#w{a = lists:keyreplace(K, Pos, A, New)};
+        false ->
+            W#w{b = lists:keyreplace(K, Pos, B, New)}
+    end.
+
 %% Like keyfind/3, but instead of `Key', A list of `{Key, Value}' pairs is
 %% matched against map values in position `Pos' (entries where the `Pos'th
 %% element is not a map are skipped). If a value in the `KVL' is `undefined',
@@ -128,16 +138,26 @@ info_find(KVL, Pos, #w{a = A, b = B}) when is_list(KVL) ->
             Other
     end.
 
-info_find_(KVL, Pos, [H|T]) when is_map(element(Pos, H)) ->
-    case match_info(KVL, element(Pos, H)) of
+info_find_(KVL, Pos, [H|T]) ->
+    case match_info_t(KVL, Pos, H) of
         true ->
             H;
         false ->
             info_find_(KVL, Pos, T)
     end;
-info_find_(KVL, Pos, [_|T]) ->
-    info_find_(KVL, Pos, T);
 info_find_(_, _, []) ->
+    false.
+
+info_select(KVL, Pos, #w{a = A, b = B}) when is_list(KVL) ->
+    info_select_(KVL, Pos, A) ++ info_select_(KVL, Pos, B).
+
+info_select_(KVL, Pos, L) ->
+    [Entry || Entry <- L,
+              match_info_t(KVL, Pos, Entry)].
+
+match_info_t(KVL, Pos, Entry) when is_map(element(Pos, Entry)) ->
+    match_info(KVL, element(Pos, Entry));
+match_info_t(_, _, _) ->
     false.
 
 match_info([{K, V}|T], Map) when is_map(Map) ->

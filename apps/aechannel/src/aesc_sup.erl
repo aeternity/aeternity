@@ -14,7 +14,8 @@ start_link() ->
     supervisor:start_link({local, ?SERVER}, ?MODULE, []).
 
 init([]) ->
-    {ok, {{one_for_one, 5, 10}, [ ?CHILD(aesc_state_cache, 5000, worker)
+    {ok, {{one_for_one, 5, 10}, [ ?CHILD(aesc_chain_watcher, 5000, worker)
+                                , ?CHILD(aesc_state_cache, 5000, worker)
                                 , ?CHILD(aesc_tx_env_cache, 5000, worker)
                                 , ?CHILD(aesc_limits, 5000, worker)
                                 , ?CHILD(aesc_fsm_sup, 5000, supervisor)
