@@ -432,7 +432,7 @@ basic_minimum_fee(_Cfg) ->
                                          amount       => 4711,
                                          height       => Height,
                                          nonce        => 0}),
-    MinimumSpendFee = aetx:min_fee(DummyTx, Height),
+    MinimumSpendFee = aetx:min_fee(DummyTx, Height, Protocol),
 
     %% When the transaction is wrapped in a meta transaction, the size of the
     %% inner transaction is paid for by the meta transaction.

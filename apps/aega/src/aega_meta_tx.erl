@@ -37,7 +37,7 @@
          call_id/2,
          ga_id/1,
          ga_pubkey/1,
-         gas_limit/2,
+         gas_limit/3,
          gas_price/1,
          inner_tx_was_succesful/2,
          tx/1
@@ -90,9 +90,9 @@ abi_version(#ga_meta_tx{abi_version = ABI}) ->
 gas(#ga_meta_tx{gas = Gas}) ->
     Gas.
 
--spec gas_limit(tx(), non_neg_integer()) -> amount().
-gas_limit(#ga_meta_tx{gas = Gas, tx = InnerTx}, Height) ->
-    aetx:inner_gas_limit(aetx_sign:tx(InnerTx), Height) + Gas.
+-spec gas_limit(tx(), non_neg_integer(), aec_hard_forks:protocol_vsn()) -> amount().
+gas_limit(#ga_meta_tx{gas = Gas, tx = InnerTx}, Height, Protocol) ->
+    aetx:inner_gas_limit(aetx_sign:tx(InnerTx), Height, Protocol) + Gas.
 
 -spec gas_price(tx()) -> amount().
 gas_price(#ga_meta_tx{gas_price = GasPrice}) ->

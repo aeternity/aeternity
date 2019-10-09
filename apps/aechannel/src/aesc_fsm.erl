@@ -1551,11 +1551,12 @@ new_onchain_tx_for_signing_(Type, Opts, OnErr, D) ->
     Opts1 = maps:merge(Defaults, Opts),
     {BlockHash, OnChainEnv, OnChainTrees} = pick_onchain_env(Opts, D),
     PinnedHeight = aetx_env:height(OnChainEnv),
+    PinnedProtocol = aetx_env:consensus_version(OnChainEnv),
     TxRes = new_onchain_tx(Type, Opts1, D, BlockHash, OnChainEnv,
                            OnChainTrees),
     case {TxRes, OnErr} of
         {{ok, Tx, Updates}, _} ->
-            case {aetx:min_fee(Tx, PinnedHeight), aetx:fee(Tx)} of
+            case {aetx:min_fee(Tx, PinnedHeight, PinnedProtocol), aetx:fee(Tx)} of
                 {MinFee, Fee} when MinFee =< Fee ->
                     {ok, Tx, Updates, BlockHash};
                 {MinFee, Fee} ->
@@ -1912,7 +1913,7 @@ get_nonce(Pubkey) ->
     end.
 
 %% @doc the default fee will be used as a base for adjustment, once
-%% we have an actual transaction record (required by aetx:min_fee/2).
+%% we have an actual transaction record (required by aetx:min_fee/3).
 %% The default should err on the side of being too low.
 default_fee(_Tx) ->
     CurrProtocol = curr_protocol(),
@@ -1938,6 +1939,10 @@ curr_hash_and_height() ->
     {ok, Hash} = aec_headers:hash_header(TopHeader),
     Height = aec_headers:height(TopHeader),
     {Hash, Height}.
+
+curr_height_and_protocol() ->
+    TopHeader = aec_chain:top_header(),
+    {aec_headers:height(TopHeader), aec_headers:version(TopHeader)}.
 
 -spec curr_height() -> aec_blocks:height().
 curr_height() ->
@@ -4803,14 +4808,14 @@ default_minimum_depth(Strategy) ->
     end.
 
 min_tx_fee(Tx) ->
-    CurrHeight = curr_height(),
-    MinTxFee = aetx:min_fee(Tx, CurrHeight),
+    {CurrHeight, CurrProtocol} = curr_height_and_protocol(),
+    MinTxFee = aetx:min_fee(Tx, CurrHeight, CurrProtocol),
     MinGasRequirements = min_gas(Tx),
     max(MinTxFee, MinGasRequirements).
 
 min_gas(Tx) ->
-    CurrHeight = curr_height(),
-    MinGas = aetx:min_gas(Tx, CurrHeight),
+    {CurrHeight, CurrProtocol} = curr_height_and_protocol(),
+    MinGas = aetx:min_gas(Tx, CurrHeight, CurrProtocol),
     MinMinerGasPrice = aec_tx_pool:minimum_miner_gas_price(),
     MinGas * MinMinerGasPrice.
 

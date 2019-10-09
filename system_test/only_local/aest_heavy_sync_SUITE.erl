@@ -114,7 +114,9 @@ many_spend_txs(Cfg) ->
                                      , ttl => 10000000
                                      , nonce => 1000
                                      , payload => <<"node3">>}),
-    Gas = aetx:gas_limit(FakeTx, 0),
+    Height = 0,
+    Protocol = aec_hard_forks:protocol_effective_at_height(0),
+    Gas = aetx:gas_limit(FakeTx, Height, Protocol),
 
     TxsPerMB = aec_governance:block_gas_limit() div Gas,
     ct:log("We can put approx ~p Txs in a micro block (gas per spend ~p, ~p)\n", [TxsPerMB, Gas, FakeTx]),
@@ -202,7 +204,6 @@ add_spend_tx(Node, Sender, Nonce) ->
     %% create new receiver
     GasPrice = aest_nodes:gas_price(),
     #{ public := RecvPubKey, secret := _RecvSecKey } =  enacl:sign_keypair(),
-    #{ tx_hash := TxHash} = post_spend_tx(Node, Sender, #{pubkey => RecvPubKey}, Nonce, 
+    #{ tx_hash := TxHash} = post_spend_tx(Node, Sender, #{pubkey => RecvPubKey}, Nonce,
                                           #{amount => 1, fee => 20000 * GasPrice}),
     {Nonce, TxHash}.
-

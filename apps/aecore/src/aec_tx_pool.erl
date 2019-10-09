@@ -428,37 +428,37 @@ int_get_candidate(Db, Gas, MinTxGas, MinMinerGasPrice, Trees, Header, DBs, Acc)
     int_get_candidate_fold(Gas, MinTxGas, MinMinerGasPrice, Db, DBs,
                            ets:select(Db, Pat, 20),
                            {account_trees, aec_trees:accounts(Trees)},
-                           aec_headers:height(Header), Acc);
+                           aec_headers:height(Header), aec_headers:version(Header), Acc);
 int_get_candidate(Gas, _, _, _, _, _, _, Acc) ->
     {ok, Gas, Acc}.
 
 int_get_candidate_fold(Gas, MinTxGas, _MinMinerGasPrice, _Db, _Dbs, _Txs,
-                       _ATrees, _Height, Acc) when Gas =< MinTxGas ->
+                       _ATrees, _Height, _Protocol, Acc) when Gas =< MinTxGas ->
     {ok, Gas, Acc};
 int_get_candidate_fold(Gas, MinTxGas, MinMinerGasPrice, Db, Dbs = #dbs{}, {Txs, Cont},
-                       AccountsTree, Height, Acc) when Gas > MinTxGas ->
+                       AccountsTree, Height, Protocol, Acc) when Gas > MinTxGas ->
     {RemGas, NewAcc} = fold_txs(Txs, Gas, MinTxGas, MinMinerGasPrice, Db, Dbs,
-                                AccountsTree, Height, Acc),
+                                AccountsTree, Height, Protocol, Acc),
     int_get_candidate_fold(RemGas, MinTxGas, MinMinerGasPrice, Db, Dbs, ets:select(Cont),
-                           AccountsTree, Height, NewAcc);
+                           AccountsTree, Height, Protocol, NewAcc);
 int_get_candidate_fold(RemGas, _GL, _MMGP, _Db, _Dbs, '$end_of_table', _AccountsTree,
-                       _Height, Acc) ->
+                       _Height, _Protocol, Acc) ->
     {ok, RemGas, Acc}.
 
-fold_txs([Tx|Txs], Gas, MinTxGas, MinMinerGasPrice, Db, Dbs, AccountsTree, Height, Acc) ->
+fold_txs([Tx|Txs], Gas, MinTxGas, MinMinerGasPrice, Db, Dbs, AccountsTree, Height, Protocol, Acc) ->
     if Gas > MinTxGas ->
             {Gas1, Acc1} =
                 int_get_candidate_(
-                  Tx, Gas, MinMinerGasPrice, Db, Dbs, AccountsTree, Height, Acc),
-            fold_txs(Txs, Gas1, MinTxGas, MinMinerGasPrice, Db, Dbs, AccountsTree, Height, Acc1);
+                  Tx, Gas, MinMinerGasPrice, Db, Dbs, AccountsTree, Height, Protocol, Acc),
+            fold_txs(Txs, Gas1, MinTxGas, MinMinerGasPrice, Db, Dbs, AccountsTree, Height, Protocol, Acc1);
        true ->
             {Gas, Acc}
     end;
-fold_txs([], Gas, _, _, _, _, _, _, Acc) ->
+fold_txs([], Gas, _, _, _, _, _, _, _, Acc) ->
     {Gas, Acc}.
 
 int_get_candidate_({?KEY(_, _, Account, Nonce, _) = Key, Tx},
-                   Gas, MinMinerGasPrice, Db, Dbs, AccountsTree, Height,
+                   Gas, MinMinerGasPrice, Db, Dbs, AccountsTree, Height, Protocol,
                    Acc = #{ tree := AccTree }) ->
     case gb_trees:is_defined({Account, Nonce}, AccTree) of
         true when Nonce > 0 ->
@@ -466,19 +466,19 @@ int_get_candidate_({?KEY(_, _, Account, Nonce, _) = Key, Tx},
             {Gas, Acc};
         false ->
             check_candidate(
-              Db, Dbs, Key, Tx, AccountsTree, Height, Gas, MinMinerGasPrice, Acc)
+              Db, Dbs, Key, Tx, AccountsTree, Height, Gas, MinMinerGasPrice, Protocol, Acc)
     end.
 
 check_candidate(Db, #dbs{gc_db = GCDb} = _Dbs,
                 ?KEY(_, _, Account, Nonce, TxHash) = Key, Tx,
-                AccountsTree, Height, Gas, MinMinerGasPrice,
+                AccountsTree, Height, Gas, MinMinerGasPrice, Protocol,
                 Acc = #{ tree := AccTree, txs := AccTxs }) ->
     Tx1 = aetx_sign:tx(Tx),
     TxTTL = aetx:ttl(Tx1),
-    TxGas = aetx:gas_limit(Tx1, Height),
+    TxGas = aetx:gas_limit(Tx1, Height, Protocol),
     case Height < TxTTL andalso TxGas > 0
          andalso ok =:= int_check_account(Tx, AccountsTree, check_candidate)
-         andalso MinMinerGasPrice =< aetx:min_gas_price(Tx1, Height) of
+         andalso MinMinerGasPrice =< aetx:min_gas_price(Tx1, Height, Protocol) of
         true ->
             case Gas - TxGas of
                 RemGas when RemGas >= 0 ->
@@ -883,17 +883,20 @@ get_account(AccountKey, {block_hash, BlockHash}) ->
     aec_chain:get_account_at_hash(AccountKey, BlockHash).
 
 check_minimum_fee(Tx, _TxHash, Block, _BlockHash, _Trees, _Event) ->
+    Protocol = aec_blocks:version(Block),
     Height = aec_blocks:height(Block),
     Tx1 = aetx_sign:tx(Tx),
-    case aetx:fee(Tx1) >= aetx:min_fee(Tx1, Height) of
+    case aetx:fee(Tx1) >= aetx:min_fee(Tx1, Height, Protocol) of
         true  -> ok;
         false -> {error, too_low_fee}
     end.
 
 check_minimum_miner_gas_price(Tx, _TxHash, Block, _BlockHash, _Trees, _Event) ->
+    Protocol = aec_blocks:version(Block),
     Height = aec_blocks:height(Block),
     MinMinerGasPrice = aec_tx_pool:minimum_miner_gas_price(),
-    case aetx:min_gas_price(aetx_sign:tx(Tx), Height) >= MinMinerGasPrice of
+    STx = aetx_sign:tx(Tx),
+    case aetx:min_gas_price(STx, Height, Protocol) >= MinMinerGasPrice of
         true  -> ok;
         false -> {error, too_low_gas_price_for_miner}
     end.

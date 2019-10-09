@@ -189,7 +189,9 @@ process_test_() ->
                                                   nonce => 11,
                                                   payload => <<"foo bar">>}),
 
-              ?assert(aetx:gas_limit(SpendTx1, 1) < aetx:gas_limit(SpendTx2, 1))
+              Height = 1,
+              Protocol = aec_hard_forks:protocol_effective_at_height(1),
+              ?assert(aetx:gas_limit(SpendTx1, Height, Protocol) < aetx:gas_limit(SpendTx2, Height, Protocol))
        end}]}.
 
 spend_tx(Data) ->

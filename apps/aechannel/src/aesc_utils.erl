@@ -500,6 +500,7 @@ verify_signature_onchain_(SignerId, AuthContractId, MetaTx, Trees, Env)
   {ok, binary(), aetx_sign:signed_tx()} | {error, atom()}.
 verify_meta_tx(SignerId, StoreKey, AuthContractId, MetaTx, Trees, Env, TxType)
     when StoreKey =/= undefined, AuthContractId =/= undefined ->
+    Protocol = aetx_env:consensus_version(Env),
     Height = aetx_env:height(Env),
     {_, SignerPK} = aeser_id:specialize(SignerId),
     {_, AuthContractPK} = aeser_id:specialize(AuthContractId),
@@ -511,7 +512,7 @@ verify_meta_tx(SignerId, StoreKey, AuthContractId, MetaTx, Trees, Env, TxType)
         {{value, Contract}, {ok, Store}} ->
             CallDef = #{ caller      => SignerPK
                        , contract    => AuthContractPK
-                       , gas         => aega_meta_tx:gas_limit(MetaTx, Height)
+                       , gas         => aega_meta_tx:gas_limit(MetaTx, Height, Protocol)
                        , gas_price   => aega_meta_tx:gas_price(MetaTx)
                        , call_data   => aega_meta_tx:auth_data(MetaTx)
                        , amount      => 0
