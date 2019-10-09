@@ -726,7 +726,7 @@ preempt_if_new_top(#state{ top_block_hash = OldHash,
 
                     [ aec_keys:promote_candidate(aec_blocks:miner(NewBlock)) || KeyOrNewForkMicro == key ],
 
-                    {changed, NewBlock, create_key_block_candidate(State5)}
+                    {changed, KeyOrNewForkMicro, NewBlock, create_key_block_candidate(State5)}
             end
     end.
 
@@ -1115,10 +1115,15 @@ handle_successfully_added_block(Block, Hash, Events, State, Origin) ->
             {ok, State};
         {micro_changed, State2 = #state{ consensus = Cons }} ->
             {ok, setup_loop(State2, false, Cons#consensus.leader, Origin)};
-        {changed, NewTopBlock, State2} ->
+        {changed, BlockType, NewTopBlock, State2} ->
             IsLeader = is_leader(NewTopBlock),
-            %% Don't spend time when we are the leader.
-            [ aec_tx_pool:garbage_collect() || not IsLeader ],
+            case IsLeader of
+                true ->
+                    ok; %% Don't spend time when we are the leader.
+                false ->
+                    aec_tx_pool:garbage_collect(),
+                    [ aec_db_gc:maybe_garbage_collect() || BlockType == key ]
+            end,
             {ok, setup_loop(State2, true, IsLeader, Origin)}
     end.
 
