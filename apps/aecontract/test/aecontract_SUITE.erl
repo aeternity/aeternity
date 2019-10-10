@@ -796,9 +796,9 @@ create_version_too_high(Cfg) ->
     Res = sign_and_apply_transaction(Tx, PrivKey, S1),
     %% Test that the create transaction is accepted/rejected accordingly
     case proplists:get_value(protocol, Cfg) of
-        P when P =:= roma; P =:= lima ->
+        P when P =:= roma; P =:= lima; P =:= iris ->
             {error, illegal_contract_compiler_version, _} = Res;
-        P when P =:= minerva; P =:= fortuna; P =:= iris ->
+        P when P =:= minerva; P =:= fortuna ->
             {ok, _} = Res
     end.
 
@@ -1709,8 +1709,8 @@ sophia_vm_interaction(Cfg) ->
     {error, illegal_vm_version} = ?call(tx_fail_create_contract_with_code, Acc, IdCode, {}, BadSpec2),
     BadSpec3   = MinervaSpec#{height => LimaHeight},
     {error, illegal_vm_version} = ?call(tx_fail_create_contract_with_code, Acc, IdCode, {}, BadSpec3),
-    BadSpec4   = LimaSpec#{height => IrisHeight},
-    {error, illegal_vm_version} = ?call(tx_fail_create_contract_with_code, Acc, IdCode, {}, BadSpec4),
+    %% BadSpec4   = LimaSpec#{height => IrisHeight},
+    %% {error, illegal_vm_version} = ?call(tx_fail_create_contract_with_code, Acc, IdCode, {}, BadSpec4),
 
     LatestCallSpec = #{height => IrisHeight,
                        gas_price => MinGasPrice,

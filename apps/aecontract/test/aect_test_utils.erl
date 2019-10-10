@@ -420,7 +420,8 @@ encode_call_data(Vsn, Code, Fun, Args) ->
             Result
     end.
 
-encode_call_data_(Vsn, Code, Fun, Args, Backend) when Vsn == ?SOPHIA_LIMA_AEVM; Vsn == ?SOPHIA_LIMA_FATE ->
+encode_call_data_(Vsn, Code, Fun, Args, Backend) when Vsn == ?SOPHIA_LIMA_AEVM; Vsn == ?SOPHIA_LIMA_FATE;
+                                                      Vsn == ?SOPHIA_IRIS_AEVM; Vsn == ?SOPHIA_IRIS_FATE ->
     try aeso_compiler:create_calldata(to_str(Code), to_str(Fun),
                                       lists:map(fun to_str/1, Args),
                                       [{backend, Backend}])
