@@ -621,6 +621,7 @@ backend() ->
     end.
 
 backend(?SOPHIA_LIMA_FATE) -> fate;
+backend(?SOPHIA_IRIS_FATE) -> fate;
 backend(_                ) -> aevm.
 
 %% setup a global memoization cache for contracts

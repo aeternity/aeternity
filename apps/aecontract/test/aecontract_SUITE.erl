@@ -1771,7 +1771,7 @@ sophia_vm_interaction(Cfg) ->
                      , {RemCMinerva, IdCIris}
                      , {RemCFortuna, IdCLima}
                      , {RemCFortuna, IdCIris}
-                     , {RemCLima, IdCIris}
+                     %% , {RemCLima, IdCIris}
                     ]],
     ok.
 
