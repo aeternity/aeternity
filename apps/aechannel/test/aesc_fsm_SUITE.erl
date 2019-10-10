@@ -2840,7 +2840,7 @@ prepare_patron(Node, Blocks) ->
     mine_key_blocks(Node, Blocks),
     {_PatronPriv, PatronPub} = patron_keys(Node),
     {ok, Balance} = rpc(Node, aehttp_logic, get_account_balance, [PatronPub]),
-    ?LOG("patron: 30 blocks mined on ~p, now has ~p aettos", [Node, Balance]),
+    ?LOG("patron: ~p blocks mined on ~p, now has ~p aettos", [Blocks, Node, Balance]),
     ok.
 
 patron_keys(Node) ->
