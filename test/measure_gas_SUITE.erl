@@ -52,7 +52,8 @@ init_per_suite(Cfg) ->
         ?ROMA_PROTOCOL_VSN -> {skip, no_fate_in_roma};
         ?MINERVA_PROTOCOL_VSN -> {skip, no_fate_in_minerva};
         ?FORTUNA_PROTOCOL_VSN -> {skip, no_fate_in_fortuna};
-        ?LIMA_PROTOCOL_VSN -> Cfg
+        ?LIMA_PROTOCOL_VSN -> Cfg;
+        ?IRIS_PROTOCOL_VSN -> Cfg
     end.
 
 end_per_suite(_Cfg) ->
