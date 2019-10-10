@@ -199,7 +199,10 @@ init_per_group(fate, Cfg) ->
         ?FORTUNA_PROTOCOL_VSN -> {skip, fate_not_in_fortuna};
         ?LIMA_PROTOCOL_VSN ->
             [{sophia_version, ?SOPHIA_LIMA_FATE}, {vm_version, ?VM_FATE_SOPHIA_1},
-             {abi_version, ?ABI_FATE_SOPHIA_1}, {protocol, lima} | Cfg]
+             {abi_version, ?ABI_FATE_SOPHIA_1}, {protocol, lima} | Cfg];
+        ?IRIS_PROTOCOL_VSN ->
+            [{sophia_version, ?SOPHIA_IRIS_FATE}, {vm_version, ?VM_FATE_SOPHIA_1},
+             {abi_version, ?ABI_FATE_SOPHIA_1}, {protocol, iris} | Cfg]
     end;
 init_per_group(ethereum, Cfg) ->
     case aect_test_utils:latest_protocol_version() of
@@ -221,7 +224,8 @@ init_per_testcase(_TC, Config) ->
                           roma    -> ?ROMA_PROTOCOL_VSN;
                           minerva -> ?MINERVA_PROTOCOL_VSN;
                           fortuna -> ?FORTUNA_PROTOCOL_VSN;
-                          lima    -> ?LIMA_PROTOCOL_VSN
+                          lima    -> ?LIMA_PROTOCOL_VSN;
+                          iris    -> ?IRIS_PROTOCOL_VSN
                       end,
     put('$vm_version', VmVersion),
     put('$abi_version', AbiVersion),

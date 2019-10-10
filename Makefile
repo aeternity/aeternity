@@ -3,7 +3,7 @@ VER := $(shell cat VERSION)
 
 REBAR ?= ./rebar3
 
-PROTOCOLS = roma minerva fortuna lima
+PROTOCOLS = roma minerva fortuna lima iris
 CT_TARGETS = $(patsubst %,ct-%,$(PROTOCOLS))
 LATEST_PROTOCOL = $(lastword $(PROTOCOLS))
 

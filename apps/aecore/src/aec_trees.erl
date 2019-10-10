@@ -261,6 +261,10 @@ perform_pre_transformations(Trees, _TxEnv, _Protocol, undefined) ->
 perform_pre_transformations(Trees, _TxEnv, Protocol, Protocol) ->
     %% No version change in block.
     Trees;
+perform_pre_transformations(Trees, _TxEnv, Protocol, _PrevProtocol)
+  when Protocol > ?LIMA_PROTOCOL_VSN ->
+    %% Trees shouldn't need transformations after Lima.
+    Trees;
 perform_pre_transformations(Trees, TxEnv, Protocol, PrevProtocol)
   when Protocol > PrevProtocol ->
     %% Fork.
