@@ -2841,8 +2841,6 @@ send_recoverable_error_msg_(Info, #data{session = Sn } = Data, ReportConflict) -
     end,
     log(snd, error_msg_type(Info, Data), Msg, Data).
 
-
-
 maybe_send_error_msg(#{ respond := true } = Info, Sn, Msg, D) ->
     send_recoverable_error_msg(error_msg_type(Info, D), Sn, Msg);
 maybe_send_error_msg(#{ code := Code, msg_type := MsgType }, Sn, Msg, _) ->
