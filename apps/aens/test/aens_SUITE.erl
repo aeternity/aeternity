@@ -29,6 +29,7 @@
          claim_race_negative_auction/1,
          update/1,
          update_negative/1,
+         update_expire_at_once/1,
          transfer/1,
          transfer_negative/1,
          revoke/1,
@@ -64,6 +65,7 @@ groups() ->
        claim_race_negative,
        update,
        update_negative,
+       update_expire_at_once,
        transfer,
        transfer_negative,
        revoke,
@@ -520,6 +522,40 @@ update(Cfg) ->
     {value, N1} = aens_state_tree:lookup_name(NHash, aec_trees:ns(Trees1)),
     Pointers = aens_names:pointers(N1),
     NameTTL  = aens_names:ttl(N1) - Height,
+    ok.
+
+update_expire_at_once(Cfg) ->
+    {PubKey, NHash, S1} = claim(Cfg),
+    Trees = aens_test_utils:trees(S1),
+    Height = ?PRE_CLAIM_HEIGHT+1,
+    PrivKey = aens_test_utils:priv_key(PubKey, S1),
+
+    %% Check name present, but neither pointers nor name TTL set
+    {value, N} = aens_state_tree:lookup_name(NHash, aec_trees:ns(Trees)),
+    [] = aens_names:pointers(N),
+    0  = aens_names:client_ttl(N),
+
+    %% Create Update tx and apply it on trees
+    Pointers = [aens_pointer:new(<<"account_pubkey">>, aeser_id:create(account, <<1:256>>))],
+    NameTTL  = 0,
+    TxSpec = aens_test_utils:update_tx_spec(
+               PubKey, NHash, #{pointers => Pointers, name_ttl => NameTTL}, S1),
+    {ok, Tx} = aens_update_tx:new(TxSpec),
+    SignedTx = aec_test_utils:sign_tx(Tx, PrivKey),
+    Env      = aetx_env:tx_env(Height),
+    {ok, [SignedTx], Trees1, _} =
+        aec_block_micro_candidate:apply_block_txs([SignedTx], Trees, Env),
+
+    %% Check name present, with both pointers and TTL set
+    {value, N1} = aens_state_tree:lookup_name(NHash, aec_trees:ns(Trees1)),
+    Pointers = aens_names:pointers(N1),
+    NameTTL  = aens_names:ttl(N1) - Height,
+    claimed = aens_names:status(N1),
+
+    %% The name is still claimed, but from next keyblock it is expired
+    Trees2 = perform_pre_transformations(Trees1, Height+1),
+    {value, N2} = aens_state_tree:lookup_name(NHash, aec_trees:ns(Trees2)),
+    revoked = aens_names:status(N2),
     ok.
 
 update_negative(Cfg) ->
