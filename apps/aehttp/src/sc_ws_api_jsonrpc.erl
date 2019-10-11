@@ -345,7 +345,9 @@ process_request(#{<<"method">> := <<"channels.update.new_contract">>,
                  , deposit     => Deposit
                  , code        => Code
                  , call_data   => CallData },
-            XOpts = maps:merge(maybe_read_bh(Params), MandatoryOpts),
+            XOpts = maps:merge(optional_params([bh_params()],
+                                               Params),
+                               MandatoryOpts),
             case aesc_fsm:upd_create_contract(FsmPid, XOpts) of
                 ok -> no_reply;
                 {error, _Reason} = Err -> Err
@@ -367,7 +369,9 @@ process_request(#{<<"method">> := <<"channels.update.call_contract">>,
                  , abi_version => ABIVersion
                  , amount      => Amount
                  , call_data   => CallData },
-            XOpts = maps:merge(maybe_read_bh(Params), MandatoryOpts),
+            XOpts = maps:merge(optional_params([bh_params()],
+                                               Params),
+                               MandatoryOpts),
             case aesc_fsm:upd_call_contract(FsmPid, XOpts) of
                 ok -> no_reply;
                 {error, _Reason} = Err -> Err
@@ -412,7 +416,9 @@ process_request(#{<<"method">> := <<"channels.dry_run.call_contract">>,
                  , abi_version => ABIVersion
                  , amount      => Amount
                  , call_data   => CallData },
-            XOpts = maps:merge(maybe_read_bh(Params), MandatoryOpts),
+            XOpts = maps:merge(optional_params([bh_params()],
+                                               Params),
+                               MandatoryOpts),
             case aesc_fsm:dry_run_contract(FsmPid, XOpts) of
                 {ok, Call} ->
                   {reply, #{ action     => <<"dry_run">>
@@ -529,7 +535,10 @@ process_request(#{<<"method">> := <<"channels.message">>,
 process_request(#{<<"method">> := <<"channels.deposit">>,
                     <<"params">> := #{<<"amount">>  := Amount} = Props}, FsmPid) ->
     assert_integer(Amount),
-    XOpts = maps:merge(maybe_read_bh(Props), #{amount => Amount}),
+    XOpts = maps:merge(optional_params([ bh_params()
+                                       , fee_params()],
+                                       Props),
+                        #{amount => Amount}),
     case aesc_fsm:upd_deposit(FsmPid, XOpts) of
         ok -> no_reply;
         {error, _Reason} = Err -> Err
@@ -537,7 +546,10 @@ process_request(#{<<"method">> := <<"channels.deposit">>,
 process_request(#{<<"method">> := <<"channels.withdraw">>,
                     <<"params">> := #{<<"amount">>  := Amount} = Props}, FsmPid) ->
     assert_integer(Amount),
-    XOpts = maps:merge(maybe_read_bh(Props), #{amount => Amount}),
+    XOpts = maps:merge(optional_params([ bh_params()
+                                        , fee_params()],
+                                        Props),
+                        #{amount => Amount}),
     case aesc_fsm:upd_withdraw(FsmPid, XOpts) of
         ok -> no_reply;
         {error, _Reason} = Err -> Err
@@ -668,8 +680,17 @@ valid_error_code(ErrorCode) when is_binary(ErrorCode) ->
 valid_error_code(_) ->
     false.
 
-maybe_read_bh(Params) ->
+optional_params(OptionalKeys, Params) ->
     Read = sc_ws_utils:read_f(Params),
     sc_ws_utils:check_params(
-      [Read(<<"block_hash">>, block_hash, #{ type => {hash, block_hash}
-                                           , mandatory => false })]).
+        lists:map(
+            fun({JSONKey, FSMKey, Opts}) ->
+                Read(JSONKey, FSMKey, Opts#{mandatory => false})
+            end,
+            OptionalKeys)).
+
+bh_params() ->
+    {<<"block_hash">>, block_hash, #{ type => {hash, block_hash} }}.
+
+fee_params() ->
+    {<<"fee">>, fee, #{ type => integer }}.

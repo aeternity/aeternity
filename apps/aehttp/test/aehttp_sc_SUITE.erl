@@ -54,7 +54,8 @@
     sc_ws_pinned_error_update/1,
     sc_ws_pinned_error_deposit/1,
     sc_ws_pinned_error_withdraw/1,
-    sc_ws_pinned_contract/1
+    sc_ws_pinned_contract/1,
+    sc_ws_high_fee/1
    ]).
 
 -include_lib("stdlib/include/assert.hrl").
@@ -137,7 +138,8 @@ groups() ->
         sc_ws_password_changeable,
         {group, with_open_channel},
         {group, client_reconnect},
-        {group, client_reconnect_no_password}
+        {group, client_reconnect_no_password},
+        {group, changeable_fee}
       ]},
 
      {with_open_channel, [sequence],
@@ -213,6 +215,11 @@ groups() ->
         sc_ws_pinned_error_deposit,
         sc_ws_pinned_error_withdraw,
         sc_ws_pinned_contract
+      ]},
+
+     {changeable_fee, [sequence],
+      [
+       sc_ws_high_fee
       ]}
 
     ].
@@ -508,7 +515,13 @@ sc_ws_open_(Config, ChannelOpts0, MinBlocksToMine) ->
 
     channel_send_conn_open_infos(RConnPid, IConnPid, Config),
 
-    ChannelCreateFee = channel_create(Config, IConnPid, RConnPid),
+    SignedCrTx = channel_create(Config, IConnPid, RConnPid),
+
+    CrTx = aetx_sign:innermost_tx(SignedCrTx),
+    {channel_create_tx, Tx} = aetx:specialize_type(CrTx),
+    IPubkey = aesc_create_tx:initiator_pubkey(Tx),
+    RPubkey = aesc_create_tx:responder_pubkey(Tx),
+    ChannelCreateFee = aesc_create_tx:fee(Tx),
 
     make_two_gen_messages_volleys(IConnPid, IPubkey, RConnPid,
                                   RPubkey, Config),
@@ -543,6 +556,7 @@ sc_ws_open_(Config, ChannelOpts0, MinBlocksToMine) ->
     ok = ?WS:unregister_test_for_channel_events(RConnPid, [info, get, sign,
                                                            on_chain_tx, update]),
     [{channel_clients, ChannelClients},
+     {create_tx, SignedCrTx},
      {channel_options, ChannelOpts} | Config].
 
 make_two_gen_messages_volleys(IConnPid, IPubkey, RConnPid,
@@ -663,7 +677,7 @@ channel_create(Config, IConnPid, RConnPid) ->
     {ok, _, #{<<"tx">> := EncodedSignedCrTx}} = wait_for_channel_event(RConnPid, on_chain_tx, Config),
     OptionallyPingPong(),
 
-    ChannelCreateFee.
+    SignedCrTx.
 
 sc_ws_update_(Config) ->
     Participants = proplists:get_value(participants, Config),
@@ -1347,7 +1361,7 @@ sc_ws_deposit_(Config, Origin, XOpts) when Origin =:= initiator
                                                                 error]),
     ok = ?WS:unregister_test_for_channel_events(AckConnPid, [sign, info, on_chain_tx,
                                                              error]),
-    ok.
+    {ok, SignedDepositTx}.
 
 sc_ws_withdraw_(Config, Origin, XOpts) when Origin =:= initiator
                                      orelse Origin =:= responder ->
@@ -1427,7 +1441,7 @@ sc_ws_withdraw_(Config, Origin, XOpts) when Origin =:= initiator
     ok = ?WS:unregister_test_for_channel_events(AckConnPid, [sign, info, on_chain_tx,
                                                             error]),
     ct:log("sequence successful", []),
-    ok.
+    {ok, SignedWTx}.
 
 sc_ws_contracts(Config) ->
     lists:foreach(
@@ -3316,19 +3330,21 @@ sc_ws_withdraw(Config) ->
 %%     channel_options(IPubkey, RPubkey, IAmt, RAmt, #{}).
 
 channel_options(IPubkey, RPubkey, IAmt, RAmt, Other, Config) ->
-    maybe_slogan(
-      maybe_add_password(
-        maps:merge(#{ port => ?config(ws_port, Config),
-                      initiator_id => aeser_api_encoder:encode(account_pubkey, IPubkey),
-                      responder_id => aeser_api_encoder:encode(account_pubkey, RPubkey),
-                      lock_period => 10,
-                      push_amount => 1,
-                      initiator_amount => IAmt,
-                      responder_amount => RAmt,
-                      channel_reserve => 2,
-                      keep_running => false,
-                      protocol => sc_ws_protocol(Config)
-                    }, Other), Config), Config).
+  %% TODO FIX THOSE MAYBES
+    maybe_fee(
+        maybe_slogan(
+          maybe_add_password(
+            maps:merge(#{ port => ?config(ws_port, Config),
+                          initiator_id => aeser_api_encoder:encode(account_pubkey, IPubkey),
+                          responder_id => aeser_api_encoder:encode(account_pubkey, RPubkey),
+                          lock_period => 10,
+                          push_amount => 1,
+                          initiator_amount => IAmt,
+                          responder_amount => RAmt,
+                          channel_reserve => 2,
+                          keep_running => false,
+                          protocol => sc_ws_protocol(Config)
+                        }, Other), Config), Config), Config).
 
 maybe_add_password(#{state_password := _} = Map, _) ->
     Map;
@@ -3348,6 +3364,16 @@ maybe_slogan(Map, Config) ->
             Map;
         S ->
             Map#{slogan => S}
+    end.
+
+maybe_fee(#{fee := _} = Map, _) ->
+    Map;
+maybe_fee(Map, Config) ->
+    case proplists:get_value(fee, Config) of
+        undefined ->
+            Map;
+        Fee ->
+            Map#{fee => Fee}
     end.
 
 special_channel_opts(Opts) ->
@@ -3446,6 +3472,8 @@ log_basename(Config) ->
                 filename:join([Protocol, "generalized_accounts", "both"]);
             pinned_env ->
                 filename:join([Protocol, "pinned_env"]);
+            changeable_fee ->
+                filename:join([Protocol, "changeable_fee"]);
             plain -> Protocol
         end,
     filename:join("channel_docs", SubDir).
@@ -4203,3 +4231,30 @@ wait_for_expected_events(Pid, Config, ExpectedEvents) ->
         _ ->
             wait_for_expected_events(Pid, Config, ExpectedEvents1)
     end.
+
+sc_ws_high_fee(Cfg0) ->
+    %% min fee is 17620000000000
+    Fee = 123456789876532,
+    GetFee =
+        fun(SignedTx) ->
+            Tx = aetx_sign:innermost_tx(SignedTx),
+            aetx:fee(Tx)
+        end,
+    Cfg = sc_ws_open_([{fee, Fee}
+                       |Cfg0]),
+
+    SignedCrTx = ?config(create_tx, Cfg),
+
+    ChannelCreateFee = GetFee(SignedCrTx),
+    Fee = ChannelCreateFee,
+
+    {ok, SignedDepositTx} = sc_ws_deposit_(Cfg, initiator, #{fee => Fee}),
+    DepositFee = GetFee(SignedDepositTx),
+    Fee = DepositFee,
+
+    {ok, SignedWithdrawTx} = sc_ws_withdraw_(Cfg, initiator, #{fee => Fee}),
+    WithdrawFee = GetFee(SignedWithdrawTx),
+    Fee = WithdrawFee,
+
+    sc_ws_close_mutual_(Cfg, initiator).
+

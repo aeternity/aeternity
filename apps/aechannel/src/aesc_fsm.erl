@@ -1811,7 +1811,7 @@ create_tx_for_signing(#data{opts = #{ initiator        := Initiator
          , lock_period      => LockPeriod },
     %% nonce is not exposed to the client via WebSocket but is used in tests
     %% shall we expose it to the client as well?
-    Optional = maps:with([nonce], Opts),
+    Optional = maps:with([nonce, fee], Opts),
     new_onchain_tx_for_signing(channel_create_tx,
                                maps:merge(Obligatory, Optional), D).
 

@@ -553,6 +553,7 @@ read_channel_options(Params) ->
         %% The state_password is mandatory AFTER the lima fork - this is checked by CheckStatePasswordF
       , Read(<<"state_password">>, state_password, #{type => string, mandatory => false})
       , Read(<<"ttl">>, ttl, #{type => integer, mandatory => false})
+      , Read(<<"fee">>, fee, #{type => integer, mandatory => false})
       , Put(noise, [{noise, <<"Noise_NN_25519_ChaChaPoly_BLAKE2b">>}])
       ]
       ++ OnChainOpts
