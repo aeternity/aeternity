@@ -1,14 +1,17 @@
 -module(aesc_window).
 
--export([new/0, new/1,
-         change_keep/2,
-         add/2,
-         pop/1,
-         size/1,
-         keyfind/3,
-         keymember/3,
-         info_find/3,
-         to_list/1]).
+-export([ new/0
+        , new/1
+        , change_keep/2
+        , add/2
+        , add_new/2
+        , pop/1
+        , size/1
+        , keyfind/3
+        , keymember/3
+        , info_find/3
+        , to_list/1
+        ]).
 
 -export([record_fields/1]).
 
@@ -70,6 +73,12 @@ add(Item, #w{na = N, a = A, keep = Keep} = W) when N < Keep ->
     W#w{na = N+1, a = [Item|A]};
 add(Item, #w{na = PrevNa, a = A} = W) ->
     W#w{na = 1, a = [Item], nb = PrevNa, b = A}.
+
+-spec add_new(Entry, window(Entry)) -> window(Entry) when Entry :: entry().
+add_new(Item, #w{a = [Item|_]} = W) ->
+    W;
+add_new(Item, W) ->
+    add(Item, W).
 
 -spec pop(window(Entry)) -> {Entry, window(Entry)} | error
   when Entry :: entry().
