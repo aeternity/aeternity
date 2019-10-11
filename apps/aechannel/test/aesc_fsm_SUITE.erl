@@ -87,7 +87,6 @@
 -define(TIMEOUT, 10000).
 -define(LONG_TIMEOUT, 60000).
 -define(PORT, 9325).
--define(CHANNEL_CREATION_RETRIES, 3).
 
 -define(BOGUS_PUBKEY, <<12345:32/unit:8>>).
 -define(BOGUS_PRIVKEY, <<12345:64/unit:8>>).
@@ -103,6 +102,7 @@
 -define(MINIMUM_DEPTH_STRATEGY, txfee).
 -define(INITIATOR_AMOUNT, (10000000 * aec_test_utils:min_gas_price())).
 -define(RESPONDER_AMOUNT, (10000000 * aec_test_utils:min_gas_price())).
+-define(ACCOUNT_BALANCE, max(?INITIATOR_AMOUNT, ?RESPONDER_AMOUNT) * 1000).
 -define(PUSH_AMOUNT, 200000).
 -define(CHANNEL_RESERVE, 300000).
 
@@ -386,9 +386,11 @@ init_per_group_(Config) ->
             aecore_suite_utils:connect(aecore_suite_utils:node_name(dev1), [block_pow, sc_cache_kdf]),
             ?LOG("dev1 connected", []),
             try begin
-                    Initiator = prep_initiator(dev1),
-                    Responder = prep_responder(Initiator, dev1),
-                    Responder2 = prep_responder(Initiator, dev1),
+                    Node = dev1,
+                    prepare_patron(Node),
+                    Initiator = prep_initiator(?ACCOUNT_BALANCE, Node),
+                    Responder = prep_responder(?ACCOUNT_BALANCE, Node),
+                    Responder2 = prep_responder(?ACCOUNT_BALANCE, Node),
                     set_configs([ {initiator, Initiator}
                                 , {responder, Responder}
                                 , {responder2, Responder2}
@@ -434,8 +436,8 @@ init_per_testcase(_, Config) ->
               end,
     set_configs([{debug, Debug}], Config2).
 
-end_per_testcase(T, _Config) when T==multiple_channels;
-                                  T==many_chs_msg_loop ->
+end_per_testcase(T, _Config) when T == multiple_channels;
+                                  T == many_chs_msg_loop ->
     Node = aecore_suite_utils:node_name(dev1),
     aecore_suite_utils:unmock_mempool_nonce_offset(Node),
     bump_idx(),
@@ -1300,24 +1302,32 @@ many_chs_msg_loop(Cfg) ->
 multiple_channels_t(NumCs, FromPort, Msg, {slogan, Slogan}, Cfg) ->
     Debug = get_debug(Cfg),
     ?LOG(Debug, "spawning ~p channels", [NumCs]),
-    Initiator = maps:get(pub, ?config(initiator, Cfg)),
-    ?LOG(Debug, "Initiator: ~p", [Initiator]),
     Me = self(),
-    Node = aecore_suite_utils:node_name(dev1),
-    aecore_suite_utils:mock_mempool_nonce_offset(Node, NumCs),
+    Node = dev1,
+    NodeName = aecore_suite_utils:node_name(Node),
+    aecore_suite_utils:mock_mempool_nonce_offset(NodeName, NumCs),
     MinerHelper = spawn_miner_helper(),
-    {ok, Nonce} = rpc(dev1, aec_next_nonce, pick_for_account, [Initiator]),
+    prepare_patron(Node, 1),
+    Participants =
+        lists:map(
+            fun(N) ->
+                Initiator = prep_initiator(?ACCOUNT_BALANCE, Node),
+                Responder = prep_responder(?ACCOUNT_BALANCE, Node),
+                {N, Initiator, Responder}
+            end,
+            lists:seq(1, NumCs)),
     Cs = lists:map(
-          fun(N) ->
-                  CustomCfg = set_configs([ {nonce, Nonce + N - 1}
-                                          , {slogan, {Slogan, N}}
+          fun({N, Initiator, Responder}) ->
+                  CustomCfg = set_configs([ {slogan, {Slogan, N}}
                                           , {port, FromPort}
                                           , {ack_to, Me}
+                                          , {initiator, Initiator}
+                                          , {responder, Responder}
                                           ], Cfg),
                   CustomOpts = #{ mine_blocks => {ask, MinerHelper}
                                 , debug => Debug},
                   create_multi_channel(CustomCfg, CustomOpts)
-          end, lists:seq(1, NumCs)),
+          end, Participants),
     ?LOG(Debug, "channels spawned", []),
     Cs = collect_acks(Cs, channel_ack, NumCs),
     ?LOG(Debug, "channel pids collected: ~p", [Cs]),
@@ -2251,17 +2261,14 @@ create_channel_from_spec(I, R, Spec, Port, UseAny, Debug, Cfg) ->
     ?LOG("Spec = ~p", [Spec]),
     RSpec = customize_spec(responder, Spec, Cfg),
     ISpec = customize_spec(initiator, Spec, Cfg),
-    {FsmI, FsmR, I1, R1} = retry(?CHANNEL_CREATION_RETRIES, 100,
-        fun() ->
-            RProxy = spawn_responder(Port, RSpec, R, UseAny, Debug),
-            IProxy = spawn_initiator(Port, ISpec, I, Debug),
-            ?LOG("RProxy = ~p, IProxy = ~p", [RProxy, IProxy]),
-            #{ i := #{ fsm := WFsmI } = WI1
-             , r := #{ fsm := WFsmR } = WR1 } = Info
-                = match_responder_and_initiator(RProxy, Debug),
-            ?LOG(Debug, "channel paired: ~p", [Info]),
-            {WFsmI, WFsmR, WI1, WR1}
-        end),
+    RProxy = spawn_responder(Port, RSpec, R, UseAny, Debug),
+    timer:sleep(100),
+    IProxy = spawn_initiator(Port, ISpec, I, Debug),
+    ?LOG("RProxy = ~p, IProxy = ~p", [RProxy, IProxy]),
+    Info = match_responder_and_initiator(RProxy, Debug),
+    #{ i := #{ fsm := FsmI } = I1
+     , r := #{ fsm := FsmR } = R1 } = Info,
+    ?LOG(Debug, "channel paired: ~p", [Info]),
     ?LOG(Debug, "FSMs, I = ~p, R = ~p", [FsmI, FsmR]),
     {I2, R2} = try await_create_tx_i(I1, R1, Debug, Cfg)
                ?_catch_(error, Err, ST)
@@ -2826,16 +2833,36 @@ prep_initiator(Node) ->
       balance => Balance,
       auth_idx => 1}.
 
-prep_responder(#{pub := IPub, balance := IBal} = _Initiator, Node) ->
+prepare_patron(Node) ->
+    prepare_patron(Node, 30).
+
+prepare_patron(Node, Blocks) ->
+    mine_key_blocks(Node, Blocks),
+    {_PatronPriv, PatronPub} = patron_keys(Node),
+    {ok, Balance} = rpc(Node, aehttp_logic, get_account_balance, [PatronPub]),
+    ?LOG("patron: ~p blocks mined on ~p, now has ~p aettos", [Blocks, Node, Balance]),
+    ok.
+
+patron_keys(Node) ->
+    {_PrivKey, _PubKey} = aecore_suite_utils:sign_keys(Node).
+
+prep_initiator(Amount, Node) ->
+    Responder = prep_account(Amount, Node),
+    Responder#{role => initiator}.
+
+prep_responder(Amount, Node) ->
+    Responder = prep_account(Amount, Node),
+    Responder#{role => responder}.
+
+prep_account(Amount, Node) ->
     NodeName = aecore_suite_utils:node_name(Node),
+    {_PatronPriv, PatronPub} = patron_keys(Node),
     #{ public := Pub, secret := Priv } = enacl:sign_keypair(),
-    Amount = IBal div 2,
-    {ok, SignedTx} = aecore_suite_utils:spend(NodeName, IPub, Pub, Amount,
+    {ok, SignedTx} = aecore_suite_utils:spend(NodeName, PatronPub, Pub, Amount,
                                               20000 * aec_test_utils:min_gas_price()),
     {ok, _} = wait_for_signed_transaction_in_block(Node, SignedTx),
     {ok, Amount} = rpc(Node, aehttp_logic, get_account_balance, [Pub]),
-    #{role => responder,
-      priv => Priv,
+    #{priv => Priv,
       pub  => Pub,
       balance => Amount,
       auth_idx => 1}.
@@ -3702,12 +3729,13 @@ assert_empty_msgq(Debug) ->
 
 create_channel_on_port(Port) ->
     Node = dev1,
-    I = prep_initiator(Node),
-    R = prep_responder(I, Node),
+    prepare_patron(Node),
+    Initiator = prep_initiator(?ACCOUNT_BALANCE, Node),
+    Responder = prep_responder(?ACCOUNT_BALANCE, Node),
     Cfg1 = set_configs([ ?SLOGAN
                        , {port, Port}
-                       , {initiator, I}
-                       , {responder, R}
+                       , {initiator, Initiator}
+                       , {responder, Responder}
                        , {initiator_amount, 500000}
                        , {responder_amount, 500000} ], config()),
     create_channel_(Cfg1).
@@ -3745,7 +3773,7 @@ channel_spec(Cfg, XOpts) ->
              , minimum_depth        => config(minimum_depth_factor, Cfg, ?MINIMUM_DEPTH_FACTOR)
              , client               => self()
              , noise                => [{noise, Proto}]
-             , timeouts             => #{idle => 20000}
+             , timeouts             => #{idle => 200000}
              , slogan               => slogan(Cfg)
              , report               => #{debug => true}
              },
