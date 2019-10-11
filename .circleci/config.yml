@@ -666,12 +666,20 @@ jobs:
       - MAKE_TARGET: ct-lima
     steps: *test_steps
 
-  test_lima_otp21:
+  test_latest:
+    executor: builder_container_stable
+    <<: *container_config
+    parallelism: 3
+    environment:
+      - MAKE_TARGET: ct-latest
+    steps: *test_steps
+
+  test_latest_otp21:
     executor: builder_container_stable
     <<: *container_otp21_config
     parallelism: 3
     environment:
-      - MAKE_TARGET: ct-lima
+      - MAKE_TARGET: ct-latest
     steps: *test_steps
 
   test_mnesia_leveled:
@@ -716,6 +724,13 @@ jobs:
     <<: *container_config
     environment:
       - MAKE_TARGET: eunit-lima
+    steps: *eunit_steps
+
+  eunit_latest:
+    executor: builder_container_stable
+    <<: *container_config
+    environment:
+      - MAKE_TARGET: eunit-latest
     steps: *eunit_steps
 
   aevm_tests:
@@ -1260,7 +1275,17 @@ workflows:
                 - env/dev2
                 - system-tests
 
-      - test_lima_otp21:
+      - test_latest:
+          requires:
+            - build
+          filters:
+            branches:
+              ignore:
+                - env/dev1
+                - env/dev2
+                - system-tests
+
+      - test_latest_otp21:
           requires:
             - build_otp21
           filters:
@@ -1327,6 +1352,18 @@ workflows:
               only: *tag_regex
 
       - eunit_lima:
+          requires:
+            - build
+          filters:
+            branches:
+              ignore:
+                - env/dev1
+                - env/dev2
+                - system-tests
+            tags:
+              only: *tag_regex
+
+      - eunit_latest:
           requires:
             - build
           filters:
@@ -1447,12 +1484,14 @@ workflows:
             - test_minerva
             - test_fortuna
             - test_lima
+            - test_latest
             - test_mnesia_leveled
             - test_mnesia_rocksdb
             - eunit_roma
             - eunit_minerva
             - eunit_fortuna
             - eunit_lima
+            - eunit_latest
             - aevm_tests
             - uat_tests
             - static_analysis
@@ -1470,12 +1509,14 @@ workflows:
             - test_minerva
             - test_fortuna
             - test_lima
+            - test_latest
             - test_mnesia_leveled
             - test_mnesia_rocksdb
             - eunit_roma
             - eunit_minerva
             - eunit_fortuna
             - eunit_lima
+            - eunit_latest
             - aevm_tests
             - uat_tests
             - static_analysis
@@ -1492,12 +1533,14 @@ workflows:
             - test_minerva
             - test_fortuna
             - test_lima
+            - test_latest
             - test_mnesia_leveled
             - test_mnesia_rocksdb
             - eunit_roma
             - eunit_minerva
             - eunit_fortuna
             - eunit_lima
+            - eunit_latest
             - aevm_tests
             - uat_tests
             - static_analysis
@@ -1554,6 +1597,7 @@ workflows:
             - eunit_minerva
             - eunit_fortuna
             - eunit_lima
+            - eunit_latest
             - static_analysis
             - rebar_lock_check
             - linux_package
@@ -1582,6 +1626,7 @@ workflows:
             - eunit_minerva
             - eunit_fortuna
             - eunit_lima
+            - eunit_latest
             - static_analysis
             - rebar_lock_check
             - linux_package
@@ -1599,6 +1644,7 @@ workflows:
             - eunit_minerva
             - eunit_fortuna
             - eunit_lima
+            - eunit_latest
             - static_analysis
             - rebar_lock_check
             - osx_package
@@ -1616,6 +1662,7 @@ workflows:
             - eunit_minerva
             - eunit_fortuna
             - eunit_lima
+            - eunit_latest
             - static_analysis
             - rebar_lock_check
             - windows_package
@@ -1633,6 +1680,7 @@ workflows:
             - eunit_minerva
             - eunit_fortuna
             - eunit_lima
+            - eunit_latest
             - static_analysis
             - rebar_lock_check
             - hodl_artifact_upload

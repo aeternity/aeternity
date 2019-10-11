@@ -115,7 +115,8 @@ latest_sophia_vm_version() ->
         ?ROMA_PROTOCOL_VSN    -> ?VM_AEVM_SOPHIA_1;
         ?MINERVA_PROTOCOL_VSN -> ?VM_AEVM_SOPHIA_2;
         ?FORTUNA_PROTOCOL_VSN -> ?VM_AEVM_SOPHIA_3;
-        ?LIMA_PROTOCOL_VSN    -> ?VM_AEVM_SOPHIA_4
+        ?LIMA_PROTOCOL_VSN    -> ?VM_AEVM_SOPHIA_4;
+        ?IRIS_PROTOCOL_VSN    -> ?VM_AEVM_SOPHIA_4
     end.
 
 latest_sophia_abi_version() ->
@@ -123,7 +124,8 @@ latest_sophia_abi_version() ->
         ?ROMA_PROTOCOL_VSN    -> ?ABI_AEVM_SOPHIA_1;
         ?MINERVA_PROTOCOL_VSN -> ?ABI_AEVM_SOPHIA_1;
         ?FORTUNA_PROTOCOL_VSN -> ?ABI_AEVM_SOPHIA_1;
-        ?LIMA_PROTOCOL_VSN    -> ?ABI_AEVM_SOPHIA_1
+        ?LIMA_PROTOCOL_VSN    -> ?ABI_AEVM_SOPHIA_1;
+        ?IRIS_PROTOCOL_VSN    -> ?ABI_AEVM_SOPHIA_1
     end.
 
 latest_sophia_version() ->
@@ -131,7 +133,8 @@ latest_sophia_version() ->
         ?ROMA_PROTOCOL_VSN    -> ?SOPHIA_ROMA;
         ?MINERVA_PROTOCOL_VSN -> ?SOPHIA_MINERVA;
         ?FORTUNA_PROTOCOL_VSN -> ?SOPHIA_FORTUNA;
-        ?LIMA_PROTOCOL_VSN    -> ?SOPHIA_LIMA_AEVM
+        ?LIMA_PROTOCOL_VSN    -> ?SOPHIA_LIMA_AEVM;
+        ?IRIS_PROTOCOL_VSN    -> ?SOPHIA_IRIS_AEVM
     end.
 
 latest_sophia_contract_version() ->
@@ -139,7 +142,8 @@ latest_sophia_contract_version() ->
         ?ROMA_PROTOCOL_VSN    -> ?SOPHIA_CONTRACT_VSN_1;
         ?MINERVA_PROTOCOL_VSN -> ?SOPHIA_CONTRACT_VSN_2;
         ?FORTUNA_PROTOCOL_VSN -> ?SOPHIA_CONTRACT_VSN_2;
-        ?LIMA_PROTOCOL_VSN    -> ?SOPHIA_CONTRACT_VSN_3
+        ?LIMA_PROTOCOL_VSN    -> ?SOPHIA_CONTRACT_VSN_3;
+        ?IRIS_PROTOCOL_VSN    -> ?SOPHIA_CONTRACT_VSN_3
     end.
 
 latest_protocol_version() ->
@@ -277,7 +281,9 @@ contract_dirs(?SOPHIA_ROMA)      -> ["sophia_1" | contract_dirs(?SOPHIA_MINERVA)
 contract_dirs(?SOPHIA_MINERVA)   -> ["sophia_2" | contract_dirs(?SOPHIA_FORTUNA)];
 contract_dirs(?SOPHIA_FORTUNA)   -> ["sophia_3" | contract_dirs(?SOPHIA_LIMA_AEVM)];
 contract_dirs(?SOPHIA_LIMA_AEVM) -> ["sophia_4_aevm", "sophia_4"];
-contract_dirs(?SOPHIA_LIMA_FATE) -> ["sophia_4_fate", "sophia_4"].
+contract_dirs(?SOPHIA_LIMA_FATE) -> ["sophia_4_fate", "sophia_4"];
+contract_dirs(?SOPHIA_IRIS_AEVM) -> ["sophia_4_aevm", "sophia_4"];
+contract_dirs(?SOPHIA_IRIS_FATE) -> ["sophia_4_fate", "sophia_4"].
 
 contract_filenames(Compiler, Name) when is_atom(Name) ->
     contract_filenames(Compiler, atom_to_list(Name));
@@ -326,14 +332,14 @@ compile(Vsn, File) ->
             Result
     end.
 
-compile_(?SOPHIA_LIMA_FATE, File) ->
+compile_(SophiaVsn, File) when SophiaVsn == ?SOPHIA_LIMA_FATE; SophiaVsn == ?SOPHIA_IRIS_FATE ->
     {ok, AsmBin} = file:read_file(File),
     Source = binary_to_list(AsmBin),
     case aeso_compiler:from_string(Source, [{backend, fate}]) of
         {ok, Map} -> {ok, aect_sophia:serialize(Map, latest_sophia_contract_version())};
         {error, E} = Err -> io:format("~s\n", [E]), Err
     end;
-compile_(SophiaVsn, File) when SophiaVsn == ?SOPHIA_LIMA_AEVM ->
+compile_(SophiaVsn, File) when SophiaVsn == ?SOPHIA_LIMA_AEVM; SophiaVsn == ?SOPHIA_IRIS_AEVM ->
     {ok, ContractBin} = file:read_file(File),
     case aeso_compiler:from_string(binary_to_list(ContractBin), []) of
         {ok, Map}        -> {ok, aect_sophia:serialize(Map, latest_sophia_contract_version())};
@@ -414,7 +420,8 @@ encode_call_data(Vsn, Code, Fun, Args) ->
             Result
     end.
 
-encode_call_data_(Vsn, Code, Fun, Args, Backend) when Vsn == ?SOPHIA_LIMA_AEVM; Vsn == ?SOPHIA_LIMA_FATE ->
+encode_call_data_(Vsn, Code, Fun, Args, Backend) when Vsn == ?SOPHIA_LIMA_AEVM; Vsn == ?SOPHIA_LIMA_FATE;
+                                                      Vsn == ?SOPHIA_IRIS_AEVM; Vsn == ?SOPHIA_IRIS_FATE ->
     try aeso_compiler:create_calldata(to_str(Code), to_str(Fun),
                                       lists:map(fun to_str/1, Args),
                                       [{backend, Backend}])
@@ -555,13 +562,20 @@ init_per_group(aevm, Cfg, Cont) ->
         ?LIMA_PROTOCOL_VSN ->
             ct:pal("Running tests under Lima protocol"),
             Cont([{sophia_version, ?SOPHIA_LIMA_AEVM}, {vm_version, ?VM_AEVM_SOPHIA_4},
-                  {abi_version, ?ABI_AEVM_SOPHIA_1}, {protocol, lima} | Cfg])
+                  {abi_version, ?ABI_AEVM_SOPHIA_1}, {protocol, lima} | Cfg]);
+        ?IRIS_PROTOCOL_VSN ->
+            ct:pal("Running tests under Iris protocol"),
+            Cont([{sophia_version, ?SOPHIA_IRIS_AEVM}, {vm_version, ?VM_AEVM_SOPHIA_4},
+                  {abi_version, ?ABI_AEVM_SOPHIA_1}, {protocol, iris} | Cfg])
     end;
 init_per_group(fate, Cfg, Cont) ->
     case aect_test_utils:latest_protocol_version() of
         ?LIMA_PROTOCOL_VSN ->
             Cont([{sophia_version, ?SOPHIA_LIMA_FATE}, {vm_version, ?VM_FATE_SOPHIA_1},
                   {abi_version, ?ABI_FATE_SOPHIA_1}, {protocol, lima} | Cfg]);
+        ?IRIS_PROTOCOL_VSN ->
+            Cont([{sophia_version, ?SOPHIA_IRIS_FATE}, {vm_version, ?VM_FATE_SOPHIA_1},
+                  {abi_version, ?ABI_FATE_SOPHIA_1}, {protocol, iris} | Cfg]);
         _ ->
             {skip, fate_not_available}
     end.
@@ -574,7 +588,8 @@ setup_testcase(Config) ->
                           roma    -> ?ROMA_PROTOCOL_VSN;
                           minerva -> ?MINERVA_PROTOCOL_VSN;
                           fortuna -> ?FORTUNA_PROTOCOL_VSN;
-                          lima    -> ?LIMA_PROTOCOL_VSN
+                          lima    -> ?LIMA_PROTOCOL_VSN;
+                          iris    -> ?IRIS_PROTOCOL_VSN
                       end,
     put('$vm_version', VmVersion),
     put('$abi_version', ABIVersion),
@@ -606,6 +621,7 @@ backend() ->
     end.
 
 backend(?SOPHIA_LIMA_FATE) -> fate;
+backend(?SOPHIA_IRIS_FATE) -> fate;
 backend(_                ) -> aevm.
 
 %% setup a global memoization cache for contracts

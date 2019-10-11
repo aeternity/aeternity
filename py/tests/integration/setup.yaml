@@ -80,18 +80,20 @@ tests: # test specific settings
         large_amount: 1000000000000000000000 # More than tokens that Bob has.
         fee: 20000000000000
     test_send_by_name:
-    # Bob registers a name 'bob.test'
+    # Bob registers a name 'bobbobbobboby.aet' (keep it > 12 to skip the auction)
+    # Name fee for 13 length names is minimum of 17711 * 10^14
     # Alice should be able to send tokens to Bob using that name
       nodes:
         miner: dev1
       blocks_to_mine: 3
       send_tokens:
         alice: 1000000000000000
-        bob: 1000000000000000
+        bob: 5000000000000000000
         spend_fee: 20000000000000
       name_register:
-        name: "bob.test"
+        name: "bobbobbobboby.aet"
         fee: 50000000000000
+        name_fee: 2000000000000000000
       spend_tx:
         amount: 7
         fee: 20000000000000
@@ -105,12 +107,12 @@ tests: # test specific settings
         amount: 1000000000000000
         fee: 200000000000000
       create_contract:
-        vm_version: 3
-        abi_version: 1
+        vm_version: 5
+        abi_version: 3
         deposit: 2
         amount: 1
         gas: 75000
-        gas_used: 193
+        gas_used: 56
         gas_price: 1000000000
         fee: 200000000000000
         function: "init"
@@ -123,11 +125,11 @@ tests: # test specific settings
         amount: 1000000000000000
         fee: 200000000000000
       contract_call:
-        abi_version: 1
+        abi_version: 3
         fee: 500000000000000
         amount: 10
         gas: 5500
-        gas_used: 192
+        gas_used: 11
         gas_price: 1000000000
         data:
           function: "main"

@@ -1,4 +1,3 @@
 
-contract Identity =
-  type state = ()
-  function main(x : int) = x
+payable contract Identity =
+  payable entrypoint main(x : int) = x

@@ -181,25 +181,11 @@ groups() ->
                      ]}
     ].
 
-init_per_group(aevm, Cfg) ->
+init_per_group(VM, Cfg) when VM == aevm; VM == fate ->
     case aect_test_utils:latest_protocol_version() of
         ?ROMA_PROTOCOL_VSN -> {skip, generalized_accounts_not_in_roma};
         ?MINERVA_PROTOCOL_VSN -> {skip, generalized_accounts_not_in_minerva};
-        ?FORTUNA_PROTOCOL_VSN ->
-            [{sophia_version, ?SOPHIA_FORTUNA}, {vm_version, ?VM_AEVM_SOPHIA_3},
-             {abi_version, ?ABI_AEVM_SOPHIA_1}, {protocol, fortuna} | Cfg];
-        ?LIMA_PROTOCOL_VSN ->
-            [{sophia_version, ?SOPHIA_LIMA_AEVM}, {vm_version, ?VM_AEVM_SOPHIA_4},
-             {abi_version, ?ABI_AEVM_SOPHIA_1}, {protocol, lima} | Cfg]
-    end;
-init_per_group(fate, Cfg) ->
-    case aect_test_utils:latest_protocol_version() of
-        ?ROMA_PROTOCOL_VSN -> {skip, generalized_accounts_not_in_roma};
-        ?MINERVA_PROTOCOL_VSN -> {skip, generalized_accounts_not_in_minerva};
-        ?FORTUNA_PROTOCOL_VSN -> {skip, fate_not_in_fortuna};
-        ?LIMA_PROTOCOL_VSN ->
-            [{sophia_version, ?SOPHIA_LIMA_FATE}, {vm_version, ?VM_FATE_SOPHIA_1},
-             {abi_version, ?ABI_FATE_SOPHIA_1}, {protocol, lima} | Cfg]
+        _P -> aect_test_utils:init_per_group(VM, Cfg)
     end;
 init_per_group(ethereum, Cfg) ->
     case aect_test_utils:latest_protocol_version() of
@@ -221,7 +207,8 @@ init_per_testcase(_TC, Config) ->
                           roma    -> ?ROMA_PROTOCOL_VSN;
                           minerva -> ?MINERVA_PROTOCOL_VSN;
                           fortuna -> ?FORTUNA_PROTOCOL_VSN;
-                          lima    -> ?LIMA_PROTOCOL_VSN
+                          lima    -> ?LIMA_PROTOCOL_VSN;
+                          iris    -> ?IRIS_PROTOCOL_VSN
                       end,
     put('$vm_version', VmVersion),
     put('$abi_version', AbiVersion),
