@@ -4120,21 +4120,8 @@ handle_call(_St, _Req, From, D) ->
 
 handle_call_(awaiting_signature, cancel_update, From, #data{} = D) ->
     #data{op = #op_sign{tag = Tag}} = D,
-    %% cancelable tags for an action initiated by me:
-    CancelMyTags = [ slash_tx
-                   , deposit_tx
-                   , withdraw_tx
-                   , snapshot_solo_tx
-                   , close_solo_tx
-                   , settle_tx
-                   , ?UPDATE
-                   , ?SHUTDOWN],
-    %% cancelable tags for an action initiated by the other party:
-    CancelAckTags = [ ?DEP_CREATED
-                    , ?WDRAW_CREATED
-                    , ?UPDATE_ACK
-                    , ?SHUTDOWN_ACK],
-    case {lists:member(Tag, CancelMyTags), lists:member(Tag, CancelAckTags)} of
+    case { lists:member(Tag, ?CANCEL_SIGN_TAGS)
+         , lists:member(Tag, ?CANCEL_ACK_TAGS )} of
         {true, _} ->
             report(info, canceled_update, D),
             lager:debug("update canceled", []),
