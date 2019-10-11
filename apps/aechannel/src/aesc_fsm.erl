@@ -710,14 +710,16 @@ awaiting_signature(cast, {?SIGNED, ?FND_CREATED, SignedTx} = Msg,
     maybe_check_sigs_create(SignedTx, Updates, both,
         fun() ->
             OpData = OpData0#op_data{signed_tx = SignedTx},
-            D1 = send_funding_signed_msg(
-                  SignedTx,
-                  log(rcv, ?SIGNED, Msg, D#data{ create_tx = SignedTx
-                                               , op = #op_ack{ tag = ?FND_CREATED
-                                                             , data = OpData}
-                                               , client_may_disconnect = true })),
+            D0 = D#data{ create_tx = SignedTx
+                       , op = #op_ack{ tag = ?FND_CREATED
+                                     , data = OpData}
+                       , client_may_disconnect = true },
+            %% start the watcher before sending the transaction to the other
+            %% participant
+            {ok, D1} = start_chain_watcher({?MIN_DEPTH, ?WATCH_FND}, SignedTx,
+                                           Updates, D0),
+            D2 = send_funding_signed_msg(SignedTx, log(rcv, ?SIGNED, Msg, D1)),
             report_on_chain_tx(?FND_CREATED, SignedTx, D1),
-            {ok, D2} = start_chain_watcher({?MIN_DEPTH, ?WATCH_FND}, SignedTx, Updates, D1),
             gproc_register_on_chain_id(D2),
             next_state(awaiting_locked, D2)
         end, D);
@@ -730,9 +732,12 @@ awaiting_signature(cast, {?SIGNED, ?DEP_CREATED, SignedTx} = Msg,
             OpData = OpData0#op_data{signed_tx = SignedTx},
             D1 = D0#data{op = #op_ack{ tag = ?DEP_CREATED
                                      , data = OpData }},
-            D2 = send_deposit_signed_msg(SignedTx, D1),
-            report_on_chain_tx(?DEP_CREATED, SignedTx, D2),
-            {ok, D3} = start_chain_watcher({?MIN_DEPTH, ?WATCH_DEP}, SignedTx, Updates, D2),
+            %% start the watcher before sending the transaction to the other
+            %% participant
+            {ok, D2} = start_chain_watcher({?MIN_DEPTH, ?WATCH_DEP}, SignedTx,
+                                           Updates, D1),
+            D3 = send_deposit_signed_msg(SignedTx, D2),
+            report_on_chain_tx(?DEP_CREATED, SignedTx, D3),
             next_state(awaiting_locked, log(rcv, ?SIGNED, Msg, D3))
         end, D0);
 awaiting_signature(cast, {?SIGNED, ?WDRAW_CREATED, SignedTx} = Msg,
@@ -744,9 +749,12 @@ awaiting_signature(cast, {?SIGNED, ?WDRAW_CREATED, SignedTx} = Msg,
             OpData = OpData0#op_data{signed_tx = SignedTx},
             D1 = D0#data{op = #op_ack{ tag = ?WDRAW_CREATED
                                      , data = OpData }},
-            D2 = send_withdraw_signed_msg(SignedTx, D1),
-            report_on_chain_tx(?WDRAW_CREATED, SignedTx, D1),
-            {ok, D3} = start_chain_watcher({?MIN_DEPTH, ?WATCH_WDRAW}, SignedTx, Updates, D2),
+            %% start the watcher before sending the transaction to the other
+            %% participant
+            {ok, D2} = start_chain_watcher({?MIN_DEPTH, ?WATCH_WDRAW},
+                                           SignedTx, Updates, D1),
+            D3 = send_withdraw_signed_msg(SignedTx, D2),
+            report_on_chain_tx(?WDRAW_CREATED, SignedTx, D3),
             next_state(awaiting_locked, log(rcv, ?SIGNED, Msg, D3))
         end, D0);
 awaiting_signature(cast, {?SIGNED, ?UPDATE, SignedTx} = Msg,
@@ -995,9 +1003,10 @@ dep_half_signed(cast, {?DEP_SIGNED, Msg},
     case check_deposit_signed_msg(Msg, D) of
         {ok, SignedTx, D1} ->
             report_on_chain_tx(?DEP_SIGNED, SignedTx, D1),
-            ok = aec_tx_pool:push(SignedTx),
             #op_data{updates = Updates} = OpData,
+            %% start the watcher before pushing the tx to the pool
             {ok, D2} = start_chain_watcher({?MIN_DEPTH, ?WATCH_DEP}, SignedTx, Updates, D1),
+            ok = aec_tx_pool:push(SignedTx),
             next_state(awaiting_locked, D2);
         {error, _Error} ->
             handle_update_conflict(?DEP_SIGNED, D)
@@ -1044,11 +1053,12 @@ half_signed(cast, {?FND_SIGNED, Msg},
             lager:debug("funding_signed ok", []),
             report(info, funding_signed, D1),
             report_on_chain_tx(?FND_SIGNED, SignedTx, D1),
-            ok = aec_tx_pool:push(SignedTx),
             D2 = D1#data{create_tx = SignedTx},
             #op_ack{ tag = create_tx
                    , data = #op_data{updates = Updates}} = Op,
+            %% start the watcher before pushing the tx to the pool
             {ok, D3} = start_chain_watcher({?MIN_DEPTH, ?WATCH_FND}, SignedTx, Updates, D2),
+            ok = aec_tx_pool:push(SignedTx),
             gproc_register_on_chain_id(D3),
             next_state(awaiting_locked, D3);
         {error, Error} ->
@@ -1245,9 +1255,10 @@ wdraw_half_signed(cast, {?WDRAW_SIGNED, Msg},
     case check_withdraw_signed_msg(Msg, D) of
         {ok, SignedTx, D1} ->
             report_on_chain_tx(?WDRAW_SIGNED, SignedTx, D1),
-            ok = aec_tx_pool:push(SignedTx),
             #op_data{updates = Updates} = OpData,
+            %% start the watcher before pushing the tx to the pool
             {ok, D2} = start_chain_watcher({?MIN_DEPTH, ?WATCH_WDRAW}, SignedTx, Updates, D1),
+            ok = aec_tx_pool:push(SignedTx),
             next_state(awaiting_locked, D2);
         {error, _Error} ->
             handle_update_conflict(?WDRAW_SIGNED, D)
@@ -2092,8 +2103,8 @@ check_funding_created_msg(#{ temporary_channel_id := ChanId
 
 send_funding_signed_msg(SignedTx, #data{ channel_id = Ch
                                        , session    = Sn
-                                       , op = #op_ack{ tag = ?FND_CREATED
-                                                     , data = OpData}} = Data) ->
+                                       , op = #op_min_depth{ tag = ?WATCH_FND
+                                                           , data = OpData}} = Data) ->
     TxBin = aetx_sign:serialize_to_binary(SignedTx),
     #op_data{block_hash = BlockHash} = OpData,
     Msg = #{ temporary_channel_id  => Ch
@@ -2192,8 +2203,8 @@ check_deposit_created_msg(#{ channel_id := ChanId
 
 send_deposit_signed_msg(SignedTx, #data{ on_chain_id = Ch
                                        , session     = Sn
-                                       , op = #op_ack{ tag  = ?DEP_CREATED
-                                                     , data = OpData}} = Data) ->
+                                       , op = #op_min_depth{ tag  = ?WATCH_DEP
+                                                           , data = OpData}} = Data) ->
     TxBin = aetx_sign:serialize_to_binary(SignedTx),
     #op_data{block_hash = BlockHash} = OpData,
     Msg = #{ channel_id  => Ch
@@ -2356,8 +2367,8 @@ check_withdraw_created_msg(_, _) ->
 
 send_withdraw_signed_msg(SignedTx, #data{ on_chain_id = Ch
                                         , session = Sn
-                                        , op = #op_ack{ tag  = ?WDRAW_CREATED
-                                                      , data = OpData}} = Data) ->
+                                        , op = #op_min_depth{ tag  = ?WATCH_WDRAW
+                                                            , data = OpData}} = Data) ->
     TxBin = aetx_sign:serialize_to_binary(SignedTx),
     #op_data{block_hash = BlockHash} = OpData,
     Msg = #{ channel_id  => Ch
@@ -4020,8 +4031,9 @@ settle_signed(SignedTx, Updates, #data{ on_chain_id = ChId} = D) ->
                         start_chain_watcher(unlock, SignedTx, Updates, D);
                     false ->
                         lager:debug("channel not locked, pushing settle", []),
+                        D01 = start_chain_watcher(close, SignedTx, Updates, D),
                         ok = aec_tx_pool:push(SignedTx),
-                        start_chain_watcher(close, SignedTx, Updates, D)
+                        D01
                 end,
             next_state(channel_closing, D1);
         {error,_} = Error ->
