@@ -692,10 +692,9 @@ bits_all(Arg0, EngineState) ->
 %% A bit field with n bits set
 bits_all_n(Arg0, Arg1, EngineState) ->
     {Value, ES1} = get_op_arg(Arg1, EngineState),
-    Result = gop(bits_all, Value, ES1),
-    ?FATE_BITS(AsInt) = Result,
-    Cells = words_used(AsInt),
+    Cells = Value div 64 + 1,
     ES2 = aefa_engine_state:spend_gas_for_new_cells(Cells, ES1),
+    Result = gop(bits_all, Value, ES2),
     write(Arg0, Result, ES2).
 
 %% Bits.set(b : bits, i : int) : bits
@@ -703,10 +702,9 @@ bits_all_n(Arg0, Arg1, EngineState) ->
 bits_set(Arg0, Arg1, Arg2, EngineState) ->
     {Bits, ES1} = get_op_arg(Arg1, EngineState),
     {I, ES2} = get_op_arg(Arg2, ES1),
-    Result = gop(bits_set, Bits, I, ES2),
-    ?FATE_BITS(AsInt) = Result,
-    Cells = words_used(AsInt),
+    Cells = I div 64 + 1,
     ES3 = aefa_engine_state:spend_gas_for_new_cells(Cells, ES2),
+    Result = gop(bits_set, Bits, I, ES3),
     write(Arg0, Result, ES3).
 
 %% Bits.clear(b : bits, i : int) : bits
@@ -714,17 +712,21 @@ bits_set(Arg0, Arg1, Arg2, EngineState) ->
 bits_clear(Arg0, Arg1, Arg2, EngineState) ->
     {Bits, ES1} = get_op_arg(Arg1, EngineState),
     {I, ES2} = get_op_arg(Arg2, ES1),
-    Result = gop(bits_clear, Bits, I, ES2),
-    ?FATE_BITS(AsInt) = Result,
-    Cells = words_used(AsInt),
+    Cells = I div 64 + 1,
     ES3 = aefa_engine_state:spend_gas_for_new_cells(Cells, ES2),
+    Result = gop(bits_clear, Bits, I, ES3),
     write(Arg0, Result, ES3).
 
 
 %% Bits.test(b : bits, i : int) : bool
 %% Check if bit i is set
 bits_test(Arg0, Arg1, Arg2, EngineState) ->
-    bin_op(bits_test, {Arg0, Arg1, Arg2}, EngineState).
+    {Bits, ES1} = get_op_arg(Arg1, EngineState),
+    {I, ES2} = get_op_arg(Arg2, ES1),
+    Cells = I div 64 + 1,
+    ES3 = aefa_engine_state:spend_gas_for_new_cells(Cells, ES2),
+    Result = gop(bits_test, Bits, I, ES3),
+    write(Arg0, Result, ES3).
 
 %% Bits.sum(b : bits) : int
 %% Count the number of set bits.
