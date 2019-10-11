@@ -702,157 +702,146 @@ awaiting_signature(cast, {?SIGNED, withdraw_tx, SignedTx} = Msg,
                               D#data{op = #op_ack{ tag = withdraw_tx
                                                  , data = OpData}})))
         end, D);
-awaiting_signature(cast, {?SIGNED, ?FND_CREATED, SignedTx} = Msg,
+awaiting_signature(cast, {?SIGNED, ?FND_CREATED = OpTag, SignedTx} = Msg,
                    #data{ role = responder
-                        , op = #op_sign{ tag = ?FND_CREATED
+                        , op = #op_sign{ tag = OpTag
                                        , data = OpData0 } } = D) ->
     #op_data{updates = Updates} = OpData0,
     maybe_check_sigs_create(SignedTx, Updates, both,
         fun() ->
             OpData = OpData0#op_data{signed_tx = SignedTx},
-            D0 = D#data{ create_tx = SignedTx
-                       , op = #op_ack{ tag = ?FND_CREATED
+            D1 = D#data{ create_tx = SignedTx
+                       , op = #op_ack{ tag = OpTag
                                      , data = OpData}
                        , client_may_disconnect = true },
-            %% start the watcher before sending the transaction to the other
-            %% participant
-            {ok, D1} = start_chain_watcher({?MIN_DEPTH, ?WATCH_FND}, SignedTx,
-                                           Updates, D0),
-            D2 = send_funding_signed_msg(SignedTx, log(rcv, ?SIGNED, Msg, D1)),
-            report_on_chain_tx(?FND_CREATED, SignedTx, D1),
+            ActionFun = fun(Tx, Data) -> send_funding_signed_msg(Tx, Data) end,
+            D2 = safe_watched_action_report(SignedTx, Msg, D1, Updates, ActionFun, ?WATCH_FND, OpTag, ?SIGNED),
             gproc_register_on_chain_id(D2),
             next_state(awaiting_locked, D2)
         end, D);
-awaiting_signature(cast, {?SIGNED, ?DEP_CREATED, SignedTx} = Msg,
-                   #data{op = #op_sign{ tag = ?DEP_CREATED
-                                      , data = OpData0 }} = D0) ->
+awaiting_signature(cast, {?SIGNED, ?DEP_CREATED = OpTag, SignedTx} = Msg,
+                   #data{op = #op_sign{ tag = OpTag
+                                      , data = OpData0 }} = D) ->
     #op_data{updates = Updates} = OpData0,
     maybe_check_auth(SignedTx, OpData0, not_deposit_tx, both,
         fun() ->
             OpData = OpData0#op_data{signed_tx = SignedTx},
-            D1 = D0#data{op = #op_ack{ tag = ?DEP_CREATED
-                                     , data = OpData }},
-            %% start the watcher before sending the transaction to the other
-            %% participant
-            {ok, D2} = start_chain_watcher({?MIN_DEPTH, ?WATCH_DEP}, SignedTx,
-                                           Updates, D1),
-            D3 = send_deposit_signed_msg(SignedTx, D2),
-            report_on_chain_tx(?DEP_CREATED, SignedTx, D3),
-            next_state(awaiting_locked, log(rcv, ?SIGNED, Msg, D3))
-        end, D0);
-awaiting_signature(cast, {?SIGNED, ?WDRAW_CREATED, SignedTx} = Msg,
-                   #data{op = #op_sign{ tag = ?WDRAW_CREATED
-                                      , data = OpData0 }} = D0) ->
+            D1 = D#data{op = #op_ack{ tag = OpTag
+                                    , data = OpData }},
+            ActionFun = fun(Tx, Data) -> send_deposit_signed_msg(Tx, Data) end,
+            D2 = safe_watched_action_report(SignedTx, Msg, D1, Updates, ActionFun, ?WATCH_DEP, OpTag, ?SIGNED),
+            next_state(awaiting_locked, D2)
+        end, D);
+awaiting_signature(cast, {?SIGNED, ?WDRAW_CREATED = OpTag, SignedTx} = Msg,
+                   #data{op = #op_sign{ tag = OpTag
+                                      , data = OpData0 }} = D) ->
     #op_data{updates = Updates} = OpData0,
     maybe_check_auth(SignedTx, OpData0, not_withdraw_tx, both,
         fun() ->
             OpData = OpData0#op_data{signed_tx = SignedTx},
-            D1 = D0#data{op = #op_ack{ tag = ?WDRAW_CREATED
-                                     , data = OpData }},
-            %% start the watcher before sending the transaction to the other
-            %% participant
-            {ok, D2} = start_chain_watcher({?MIN_DEPTH, ?WATCH_WDRAW},
-                                           SignedTx, Updates, D1),
-            D3 = send_withdraw_signed_msg(SignedTx, D2),
-            report_on_chain_tx(?WDRAW_CREATED, SignedTx, D3),
-            next_state(awaiting_locked, log(rcv, ?SIGNED, Msg, D3))
-        end, D0);
-awaiting_signature(cast, {?SIGNED, ?UPDATE, SignedTx} = Msg,
-                   #data{op = #op_sign{ tag = ?UPDATE
-                                      , data = OpData0 }} = D) ->
+            D1 = D#data{op = #op_ack{ tag = OpTag
+                                    , data = OpData }},
+            ActionFun = fun(Tx, Data) -> send_withdraw_signed_msg(Tx, Data) end,
+            D2 = safe_watched_action_report(SignedTx, Msg, D1, Updates, ActionFun, ?WATCH_WDRAW, OpTag, ?SIGNED),
+            next_state(awaiting_locked, D2)
+        end, D);
+awaiting_signature(cast, {?SIGNED, ?UPDATE = OpTag, SignedTx} = Msg,
+                   #data{ state = State
+                        , op = #op_sign{ tag = OpTag
+                                       , data = OpData0 }} = D) ->
     #op_data{updates = Updates} = OpData0,
     lager:debug("?UPDATE signed: ~p", [Updates]),
     maybe_check_auth(SignedTx, OpData0, not_offchain_tx, me,
         fun() ->
             OpData = OpData0#op_data{signed_tx = SignedTx},
-            D1 = send_update_msg(
-                  SignedTx, Updates,
-                  D#data{ state = aesc_offchain_state:set_half_signed_tx(
-                                    SignedTx,
-                                    D#data.state)
-                        , op = #op_ack{ tag = ?UPDATE
-                                      , data = OpData}}),
-            next_state(awaiting_update_ack, log(rcv, ?SIGNED, Msg, D1))
+            State1 = aesc_offchain_state:set_half_signed_tx(SignedTx, State),
+            D1 = D#data{ state = State1
+                       , op = #op_ack{ tag = OpTag
+                                     , data = OpData }},
+            D2 = log(rcv, ?SIGNED, Msg, D1),
+            D3 = send_update_msg(SignedTx, Updates, D2),
+            next_state(awaiting_update_ack, D3)
         end, D);
-awaiting_signature(cast, {?SIGNED, ?UPDATE_ACK, SignedTx} = Msg,
-                   #data{ op = #op_sign{ tag = ?UPDATE_ACK
-                                       , data = OpData0}
-                        , opts = Opts} = D) ->
+awaiting_signature(cast, {?SIGNED, ?UPDATE_ACK = OpTag, SignedTx} = Msg,
+                   #data{ op = #op_sign{ tag = OpTag
+                                       , data = OpData0 }
+                        , opts = Opts
+                        , state = State } = D) ->
     #op_data{ updates = Updates
-            , block_hash = BlockHash} = OpData0,
+            , block_hash = BlockHash } = OpData0,
     lager:debug("?UPDATE_ACK signed: ~p", [Updates]),
     maybe_check_auth(SignedTx, OpData0, not_offchain_tx, both,
         fun() ->
-            D1 = send_update_ack_msg(SignedTx, D),
+            D1 = log(rcv, ?SIGNED, Msg, D),
+            D2 = send_update_ack_msg(SignedTx, D1),
             {OnChainEnv, OnChainTrees} = load_pinned_env(BlockHash),
-            State = aesc_offchain_state:set_signed_tx(SignedTx, Updates, D1#data.state,
-                                                      OnChainTrees, OnChainEnv, Opts),
-            D2 = D1#data{ log   = log_msg(rcv, ?SIGNED, Msg, D1#data.log)
-                        , state = State
-                        , op    = ?NO_OP},
-            next_state(open, D2)
+            State1 = aesc_offchain_state:set_signed_tx(SignedTx, Updates, State,
+                                                       OnChainTrees, OnChainEnv, Opts),
+            D3 = D2#data{ state = State1
+                        , op    = ?NO_OP },
+            next_state(open, D3)
         end, D);
-awaiting_signature(cast, {?SIGNED, ?SHUTDOWN, SignedTx} = Msg,
-                   #data{op = #op_sign{ tag = ?SHUTDOWN
-                                      , data = OpData0}} = D) ->
+awaiting_signature(cast, {?SIGNED, ?SHUTDOWN = OpTag, SignedTx} = Msg,
+                   #data{op = #op_sign{ tag = OpTag
+                                      , data = OpData0 }} = D) ->
     lager:debug("SHUTDOWN signed", []),
     maybe_check_auth(SignedTx, OpData0, not_close_mutual_tx, me,
         fun() ->
-            D1 = send_shutdown_msg(SignedTx, D),
+            D1 = log(rcv, ?SIGNED, Msg, D),
+            D2 = send_shutdown_msg(SignedTx, D1),
             OpData = OpData0#op_data{signed_tx = SignedTx},
-            D2 = D1#data{ op = #op_ack{ tag = shutdown
-                                      , data = OpData}
-                        , log = log_msg(rcv, ?SIGNED, Msg, D1#data.log)},
-            next_state(mutual_closing, D2)
+            D3 = D2#data{ op = #op_ack{ tag = OpTag
+                                      , data = OpData }},
+            next_state(mutual_closing, D3)
         end, D);
-awaiting_signature(cast, {?SIGNED, ?SHUTDOWN_ACK, SignedTx} = Msg,
-                   #data{op = #op_sign{ tag = ?SHUTDOWN_ACK
-                                      , data = OpData0}} = D) ->
+awaiting_signature(cast, {?SIGNED, ?SHUTDOWN_ACK = OpTag, SignedTx} = Msg,
+                   #data{op = #op_sign{ tag = OpTag
+                                      , data = OpData0 }} = D) ->
     maybe_check_auth(SignedTx, OpData0, not_close_mutual_tx, both,
         fun() ->
-            D1 = send_shutdown_ack_msg(SignedTx, D),
-            D2 = D1#data{ op = ?NO_OP
-                        , log = log_msg(rcv, ?SIGNED, Msg, D1#data.log)},
-            report_on_chain_tx(close_mutual, SignedTx, D2),
-            D3 = D2#data{op = #op_close{data = OpData0#op_data{signed_tx = SignedTx}}},
-            next_state(mutual_closed, D3)
+            D1 = log(rcv, ?SIGNED, Msg, D),
+            D2 = send_shutdown_ack_msg(SignedTx, D1),
+            D3 = D2#data{op = ?NO_OP},
+            report_on_chain_tx(close_mutual, SignedTx, D3),
+            D4 = D3#data{op = #op_close{data = OpData0#op_data{signed_tx = SignedTx}}},
+            next_state(mutual_closed, D4)
         end, D);
-awaiting_signature(cast, {?SIGNED, snapshot_solo_tx, SignedTx} = Msg,
-                   #data{op = #op_sign{ tag = snapshot_solo_tx
+awaiting_signature(cast, {?SIGNED, snapshot_solo_tx = OpTag, SignedTx} = Msg,
+                   #data{op = #op_sign{ tag = OpTag
                                       , data = OpData }} = D) ->
     lager:debug("snapshot_solo_tx signed", []),
     #op_data{updates = Updates} = OpData,
-    D1 = D#data{ log = log_msg(rcv, ?SIGNED, Msg, D#data.log)
-               , op  = ?NO_OP },
+    D1 = log(rcv, ?SIGNED, Msg, D),
+    D2 = D1#data{op = ?NO_OP},
     case verify_signatures_onchain_check(pubkeys(me, D, SignedTx), SignedTx) of
         ok ->
-            snapshot_solo_signed(SignedTx, Updates, D1);
+            snapshot_solo_signed(SignedTx, Updates, D2);
         {error,_} = Error ->
             lager:debug("Failed signature check: ~p", [Error]),
-            next_state(open, D1)
+            next_state(open, D2)
     end;
-awaiting_signature(cast, {?SIGNED, close_solo_tx, SignedTx} = Msg,
-                   #data{op = #op_sign{ tag = close_solo_tx
-                                      , data = OpData}} = D) ->
+awaiting_signature(cast, {?SIGNED, close_solo_tx = OpTag, SignedTx} = Msg,
+                   #data{op = #op_sign{ tag = OpTag
+                                      , data = OpData }} = D) ->
     #op_data{updates = Updates} = OpData,
-    D1 = D#data{ log = log_msg(rcv, ?SIGNED, Msg, D#data.log)
-               , op  = ?NO_OP},
+    D1 = log(rcv, ?SIGNED, Msg, D),
+    D2 = D1#data{op = ?NO_OP},
     case verify_signatures_onchain_check(pubkeys(me, D, SignedTx), SignedTx) of
         ok ->
-            close_solo_signed(SignedTx, Updates, D1);
+            close_solo_signed(SignedTx, Updates, D2);
         {error,_} = Error ->
             lager:debug("Failed signature check: ~p", [Error]),
-            next_state(open, D1)
+            next_state(open, D2)
     end;
-awaiting_signature(cast, {?SIGNED, settle_tx, SignedTx} = Msg,
-                   #data{op = #op_sign{ tag = settle_tx
-                                      , data = OpData}} = D) ->
+awaiting_signature(cast, {?SIGNED, settle_tx = OpTag, SignedTx} = Msg,
+                   #data{op = #op_sign{ tag = OpTag
+                                      , data = OpData }} = D) ->
     #op_data{updates = Updates} = OpData,
     maybe_check_auth(SignedTx, OpData, not_settle_tx, me,
         fun() ->
-                D1 = D#data{ log = log_msg(rcv, ?SIGNED, Msg, D#data.log)
-                           , op = ?NO_OP},
-                settle_signed(SignedTx, Updates, D1)
+                D1 = log(rcv, ?SIGNED, Msg, D),
+                D2 = D1#data{op = ?NO_OP},
+                settle_signed(SignedTx, Updates, D2)
         end, D);
 
 %% Timeouts
@@ -998,15 +987,13 @@ dep_half_signed(cast, {Req, _} = Msg, D) when ?UPDATE_CAST(Req) ->
     %% arrived.
     lager:debug("race detected: ~p", [Msg]),
     handle_update_conflict(Req, D);
-dep_half_signed(cast, {?DEP_SIGNED, Msg},
+dep_half_signed(cast, {?DEP_SIGNED = OpTag, Msg},
                 #data{op = #op_ack{tag = deposit_tx, data = OpData}} = D) ->
     case check_deposit_signed_msg(Msg, D) of
         {ok, SignedTx, D1} ->
-            report_on_chain_tx(?DEP_SIGNED, SignedTx, D1),
             #op_data{updates = Updates} = OpData,
-            %% start the watcher before pushing the tx to the pool
-            {ok, D2} = start_chain_watcher({?MIN_DEPTH, ?WATCH_DEP}, SignedTx, Updates, D1),
-            ok = aec_tx_pool:push(SignedTx),
+            ActionFun = fun(Tx, Data) -> ok = aec_tx_pool:push(Tx), Data end,
+            D2 = safe_watched_action_report(SignedTx, Msg, D1, Updates, ActionFun, ?WATCH_DEP, OpTag),
             next_state(awaiting_locked, D2);
         {error, _Error} ->
             handle_update_conflict(?DEP_SIGNED, D)
@@ -1045,20 +1032,18 @@ dep_signed(Type, Msg, D) ->
     handle_common_event(Type, Msg, error, D).
 
 half_signed(enter, _OldSt, _D) -> keep_state_and_data;
-half_signed(cast, {?FND_SIGNED, Msg},
+half_signed(cast, {?FND_SIGNED = OpTag, Msg},
             #data{ role = initiator
                  , op = #op_ack{tag = create_tx} = Op } = D) ->
     case check_funding_signed_msg(Msg, D) of
         {ok, SignedTx, _BlockHash, D1} ->
             lager:debug("funding_signed ok", []),
             report(info, funding_signed, D1),
-            report_on_chain_tx(?FND_SIGNED, SignedTx, D1),
             D2 = D1#data{create_tx = SignedTx},
             #op_ack{ tag = create_tx
                    , data = #op_data{updates = Updates}} = Op,
-            %% start the watcher before pushing the tx to the pool
-            {ok, D3} = start_chain_watcher({?MIN_DEPTH, ?WATCH_FND}, SignedTx, Updates, D2),
-            ok = aec_tx_pool:push(SignedTx),
+            ActionFun = fun(Tx, Data) -> ok = aec_tx_pool:push(Tx), Data end,
+            D3 = safe_watched_action_report(SignedTx, Msg, D2, Updates, ActionFun, ?WATCH_FND, OpTag),
             gproc_register_on_chain_id(D3),
             next_state(awaiting_locked, D3);
         {error, Error} ->
@@ -1250,15 +1235,13 @@ wdraw_half_signed(cast, {Req,_} = Msg, D) when ?UPDATE_CAST(Req) ->
     %% arrived.
     lager:debug("race detected: ~p", [Msg]),
     handle_update_conflict(Req, D);
-wdraw_half_signed(cast, {?WDRAW_SIGNED, Msg},
+wdraw_half_signed(cast, {?WDRAW_SIGNED = OpTag, Msg},
                   #data{op = #op_ack{tag = withdraw_tx, data = OpData}} = D) ->
     case check_withdraw_signed_msg(Msg, D) of
         {ok, SignedTx, D1} ->
-            report_on_chain_tx(?WDRAW_SIGNED, SignedTx, D1),
             #op_data{updates = Updates} = OpData,
-            %% start the watcher before pushing the tx to the pool
-            {ok, D2} = start_chain_watcher({?MIN_DEPTH, ?WATCH_WDRAW}, SignedTx, Updates, D1),
-            ok = aec_tx_pool:push(SignedTx),
+            ActionFun = fun(Tx, Data) -> ok = aec_tx_pool:push(Tx), Data end,
+            D2 = safe_watched_action_report(SignedTx, Msg, D1, Updates, ActionFun, ?WATCH_WDRAW, OpTag),
             next_state(awaiting_locked, D2);
         {error, _Error} ->
             handle_update_conflict(?WDRAW_SIGNED, D)
@@ -1859,7 +1842,6 @@ fake_close_mutual_tx(Mod, Tx, D) ->
 new_close_mutual_tx(Opts, D) ->
     new_onchain_tx_for_signing(channel_close_mutual_tx, Opts, D).
 
-
 slash_tx_for_signing(#data{ state = St } = D) ->
     {Round, SignedTx} = aesc_offchain_state:get_latest_signed_tx(St),
     slash_tx_for_signing(Round, SignedTx, D).
@@ -2092,8 +2074,8 @@ check_funding_created_msg(#{ temporary_channel_id := ChanId
             ],
         case aeu_validation:run(Checks) of
             ok ->
-                {ok, SignedTx, Updates, BlockHash,
-                log(rcv, ?FND_CREATED, Msg, Data)};
+                Data1 = log(rcv, ?FND_CREATED, Msg, Data),
+                {ok, SignedTx, Updates, BlockHash, Data1};
             {error, _} = Error ->
                 Error
         end
@@ -2111,8 +2093,8 @@ send_funding_signed_msg(SignedTx, #data{ channel_id = Ch
            , block_hash            => BlockHash
            , data                  => #{tx => TxBin}},
     aesc_session_noise:funding_signed(Sn, Msg),
-    log(snd, ?FND_CREATED, Msg,
-        set_ongoing(?FND_CREATED, Data)).
+    log(snd, ?FND_SIGNED, Msg,
+        set_ongoing(?FND_SIGNED, Data)).
 
 check_funding_signed_msg(#{ temporary_channel_id := ChanId
                           %% since it is co-authenticated already, we don't
@@ -2126,7 +2108,8 @@ check_funding_signed_msg(#{ temporary_channel_id := ChanId
             ],
         case aeu_validation:run(Checks) of
             ok ->
-                {ok, SignedTx, BlockHash, log(rcv, ?FND_SIGNED, Msg, Data)};
+                Data1 = log(rcv, ?FND_SIGNED, Msg, Data),
+                {ok, SignedTx, BlockHash, Data1};
             {error, _} = Err ->
                 Err
         end
@@ -2231,7 +2214,8 @@ check_deposit_signed_msg(#{ channel_id := ChanId
             ],
         case aeu_validation:run(Checks) of
             ok ->
-                {ok, SignedTx, log(rcv, ?DEP_SIGNED, Msg, Data)};
+                Data1 = log(rcv, ?DEP_SIGNED, Msg, Data),
+                {ok, SignedTx, Data1};
             {error, _} = Err ->
                 Err
         end
@@ -2821,7 +2805,7 @@ do_apply(M, F, A) ->
     apply(M, F, A).
 
 send_update_ack_msg(SignedTx, #data{ on_chain_id = OnChainId
-                                   , session     = Sn} = Data) ->
+                                   , session     = Sn } = Data) ->
     TxBin = aetx_sign:serialize_to_binary(SignedTx),
     Msg = #{ channel_id => OnChainId
            , data       => #{tx => TxBin} },
@@ -2938,16 +2922,16 @@ request_signing_(Tag, SignedTx, BlockHash, Updates, D) ->
                             | {ok, fun(() -> ok), #data{}, [gen_statem:action()]}
                             | {error, any()}.
 request_signing_(Tag, SignedTx, Updates, BlockHash, #data{client = Client} = D, SendAction) ->
-    Info = #{signed_tx => SignedTx,
-             updates => Updates},
+    Info = #{ signed_tx => SignedTx
+            , updates => Updates },
     Msg = rpt_message(#{ type => sign
                        , tag  => Tag
                        , info => Info }, D),
     D1 = D#data{ op = #op_sign{ tag = Tag
                               , data = #op_data{ signed_tx = SignedTx
                                                , block_hash = BlockHash
-                                               , updates = Updates}}
-               , log    = log_msg(req, sign, Msg, D#data.log)},
+                                               , updates = Updates }}},
+    D2 = log(req, sign, Msg, D1),
     SendF = sig_request_f(Client, Tag, Msg),
     %% If we have a client pid: send the request
     %% If not: proceed if our sig is already on the tx
@@ -2958,11 +2942,10 @@ request_signing_(Tag, SignedTx, Updates, BlockHash, #data{client = Client} = D, 
     case IsOk of
         true ->
             if is_pid(Client) ->
-                    req_signing_ok(SendAction, SendF, D1, []);
+                    req_signing_ok(SendAction, SendF, D2, []);
                true ->
-                    req_signing_ok(SendAction, SendF, D1,
-                                   [{next_event, cast,
-                                     {?SIGNED, Tag, SignedTx}}])
+                    req_signing_ok(SendAction, SendF, D2,
+                                   [{next_event, cast, {?SIGNED, Tag, SignedTx}}])
             end;
         false ->
             {error, client_disconnected}
@@ -3202,7 +3185,7 @@ log(Op, Type, M, #data{log = Log0} = D) ->
     D#data{log = log_msg(Op, Type, M, Log0)}.
 
 log_msg(Op, Type, M, Log) ->
-    aesc_window:add({Op, Type, os:timestamp(), M}, Log).
+    aesc_window:add_new({Op, Type, os:timestamp(), M}, Log).
 
 win_to_list(Log) ->
     aesc_window:to_list(Log).
@@ -4612,11 +4595,10 @@ handle_common_event_(cast, {?MIN_DEPTH_ACHIEVED, _ChainId,
                   , type => aesc_snapshot_solo_tx:type()
                   , tx_hash => TxHash }, D),
     keep_state(D);
-handle_common_event_(cast, {?CHANNEL_CLOSED, #{tx := SignedTx} = _Info} = Msg, _St, _, D) ->
+handle_common_event_(cast, {?CHANNEL_CLOSED = OpTag, #{tx := SignedTx} = _Info} = Msg, _St, _, D) ->
     %% Start a minimum-depth watch, then (if confirmed) terminate
-    report_on_chain_tx(channel_closed, SignedTx, D),
-    {ok, D1} = start_chain_watcher({?MIN_DEPTH, ?WATCH_CLOSED}, SignedTx, [], D),
-    next_state(channel_closed, log(rcv, msg_type(Msg), Msg, D1));
+    D2 = safe_watched_action_report(SignedTx, Msg, D, [], undefined, ?WATCH_CLOSED, OpTag, msg_type(Msg)),
+    next_state(channel_closed, D2);
 handle_common_event_({call, From}, Req, St, Mode, D) ->
     case Mode of
         error_all ->
@@ -4833,3 +4815,25 @@ min_gas(Tx) ->
 
 postpone_or_error(call) -> error_all;
 postpone_or_error(_) -> postpone.
+
+%% @doc Starts the watcher before sending the transaction to the other
+%% participant, logs the message and reports the transaction.
+%% This ensures the correct order of execution to prevent a race condition.
+safe_watched_action_report(SignedTx, Msg, Data, Updates, ActionFun, WatchTag, ReportTag) ->
+    safe_watched_action_report(SignedTx, Msg, Data, Updates, ActionFun, WatchTag, ReportTag, undefined).
+safe_watched_action_report(SignedTx, Msg, Data, Updates, ActionFun, WatchTag, ReportTag, LogType) ->
+    {ok, Data1} = start_chain_watcher({?MIN_DEPTH, WatchTag}, SignedTx, Updates, Data),
+    Data2 = case LogType of
+                undefined ->
+                    Data1;
+                _ ->
+                    log(rcv, LogType, Msg, Data1)
+            end,
+    Data3 = case ActionFun of
+                undefined ->
+                    Data2;
+                _ ->
+                    ActionFun(SignedTx, Data2)
+            end,
+    report_on_chain_tx(ReportTag, SignedTx, Data3),
+    Data3.

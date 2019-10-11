@@ -3931,8 +3931,8 @@ expected_fsm_logs(Name, Role) ->
 
 expected_fsm_logs(check_password_is_changeable, initiator = R, #{update_count := Count}) ->
     UpdateLog = [ {rcv, update_ack}
-                , {rcv, signed}
                 , {snd, update}
+                , {rcv, signed}
                 , {req, sign}
                 ],
     [ {evt, close}
@@ -3942,8 +3942,8 @@ expected_fsm_logs(check_password_is_changeable, initiator = R, #{update_count :=
     lists:flatten([UpdateLog || _ <- lists:seq(1, Count)]) ++
     expected_fsm_logs(channel_open, R);
 expected_fsm_logs(check_password_is_changeable, responder = R, #{update_count := Count}) ->
-    UpdateLog = [ {rcv, signed}
-                , {snd, update_ack}
+    UpdateLog = [ {snd, update_ack}
+                , {rcv, signed}
                 , {req, sign}
                 , {rcv, update}
                 ],
@@ -3985,16 +3985,16 @@ expected_fsm_logs(t_create_channel_, responder = R, _) ->
 expected_fsm_logs(leave_reestablish_close, initiator = R, _) ->
     expected_fsm_logs(channel_shutdown, R) ++
     [ {rcv, update_ack}
-    , {rcv, signed}
     , {snd, update}
+    , {rcv, signed}
     , {req, sign}
     , {rcv, channel_reest_ack}
     , {snd, channel_reestablish}
     ];
 expected_fsm_logs(leave_reestablish_close, responder = R, _) ->
     expected_fsm_logs(channel_shutdown, R) ++
-    [ {rcv, signed}
-    , {snd, update_ack}
+    [ {snd, update_ack}
+    , {rcv, signed}
     , {req, sign}
     , {rcv, update}
     , {snd, channel_reest_ack}
@@ -4004,8 +4004,8 @@ expected_fsm_logs(check_incorrect_update, R, #{depositor := D , malicious := M})
   when (R =:= initiator andalso D =:= R andalso M =:= R) orelse
        (R =:= responder andalso D =:= R andalso M =:= R) ->
     [ {rcv, update_error}
-    , {rcv, signed}
     , {snd, update}
+    , {rcv, signed}
     , {req, sign}
     , {snd, undefined}
     , {req, sign}
@@ -4023,8 +4023,8 @@ expected_fsm_logs(check_incorrect_update, R, #{depositor := D , malicious := M})
   when (R =:= initiator andalso D =:= R andalso M =/= R) orelse
        (R =:= responder andalso D =:= R andalso M =/= R) ->
     [ {snd, update_error}
-    , {rcv, signed}
     , {snd, update}
+    , {rcv, signed}
     , {req, sign}
     ] ++
     expected_fsm_logs(channel_open, R);
@@ -4033,8 +4033,8 @@ expected_fsm_logs(check_incorrect_update, R, #{depositor := D , malicious := M})
        (R =:= responder andalso D =/= R andalso M =:= R) ->
     [ {evt, close}
     , {rcv, disconnect}
-    , {rcv, signed}
     , {snd, update_ack}
+    , {rcv, signed}
     , {req, sign}
     , {rcv, update}
     ] ++
@@ -4056,7 +4056,7 @@ expected_fsm_logs(channel_open, responder, #{}) ->
     [ {rcv, funding_locked}
     , {snd, funding_locked}
     , {rcv, channel_changed}
-    , {snd, funding_created}
+    , {snd, funding_signed}
     , {rcv, signed}
     , {req, sign}
     , {rcv, funding_created}
@@ -4068,16 +4068,16 @@ expected_fsm_logs(channel_shutdown, initiator, #{}) ->
     , {optional, rcv, disconnect} % this can occur in case the min depth achieved is delayed
     , {rcv, channel_closed}
     , {rcv, shutdown_ack}
-    , {rcv, signed}
     , {snd, shutdown}
+    , {rcv, signed}
     , {req, sign}
     ];
 expected_fsm_logs(channel_shutdown, responder, #{}) ->
     [ {evt, close}
     , {optional, rcv, disconnect} % this can occur in case the min depth achieved is delayed
     , {rcv, channel_closed}
-    , {rcv, signed}
     , {snd, shutdown_ack}
+    , {rcv, signed}
     , {req, sign}
     , {rcv, shutdown}
     ];
