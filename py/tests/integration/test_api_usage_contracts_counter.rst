@@ -11,15 +11,15 @@ contract Counter =
 <BLANKLINE>
   record state = { value : int }
 <BLANKLINE>
-  function init(val) = { value = val }
-  function get()     = state.value
-  function tick()    = put(state{ value = state.value + 1 })
+  entrypoint init(val) = { value = val }
+  entrypoint get()     = state.value
+  stateful function tick()    = put(state{ value = state.value + 1 })
 <BLANKLINE>
 <BLANKLINE>
 
-Please note that the return value of the "get" function is (inferred as) "int".
+It uses get function of the sample contract.
 
->>> counter_contract_get_function_return_value_type = "int"
+>>> counter_contract_function = "get"
 
 Step 1: Bob creates the counter contract on the chain
 =====================================================
@@ -50,8 +50,8 @@ Bob computes - off-chain, using the Aeternity node API - the unsigned contract c
 ...   owner_id=users['b']['encoded_pub_key'],
 ...   nonce=1,
 ...   code=contract_bytecode,
-...   vm_version=3,
-...   abi_version=1,
+...   vm_version=5,
+...   abi_version=3,
 ...   deposit=0,
 ...   amount=0,
 ...   gas=20000,
@@ -116,7 +116,7 @@ Alice computes - off-chain, using the Aeternity node API - the unsigned contract
 ...   caller_id=users['a']['encoded_pub_key'],
 ...   nonce=1,
 ...   contract_id=contract_id,
-...   abi_version=1,
+...   abi_version=3,
 ...   fee=500000000000000,
 ...   amount=0,
 ...   gas=20000,
@@ -156,5 +156,5 @@ Alice decodes the return value - off-chain, using the Aeternity node API.
 
 >>> print(contract_call_object.call_info.return_value) # doctest: +ELLIPSIS
 cb_...
->>> common.decode_data(counter_contract_get_function_return_value_type, contract_call_object.call_info.return_value)
+>>> common.call_result(counter_contract_file, counter_contract_function, contract_call_object.call_info.return_value)
 '21'

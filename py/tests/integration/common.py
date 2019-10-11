@@ -350,8 +350,8 @@ def encode_calldata(file, function, args):
                                         function, '--calldata_args', args]).splitlines()[-1]
     return calldata
 
-def decode_data(type, data):
+def call_result(source_file, fun, data):
     compiler_cmd = os.path.join(os.getcwd(), 'integration', 'aesophia_cli')
-    value = subprocess.check_output([compiler_cmd, '--decode_data', data,
-                                     '--decode_type', type]).splitlines()[-1]
+    value = subprocess.check_output([compiler_cmd, '--call_result', data,
+                                     '--call_result_fun', fun, source_file]).splitlines()[-1]
     return value
