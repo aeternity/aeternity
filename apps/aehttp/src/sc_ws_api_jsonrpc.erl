@@ -582,29 +582,39 @@ process_request(#{<<"method">> := <<"channels.leave">>}, FsmPid) ->
     lager:debug("Channel WS: leave channel message received"),
     aesc_fsm:leave(FsmPid),
     no_reply;
-process_request(#{<<"method">> := <<"channels.shutdown">>}, FsmPid) ->
+process_request(#{<<"method">> := <<"channels.shutdown">>} = Req, FsmPid) ->
     lager:warning("Channel WS: closing channel message received"),
-    aesc_fsm:shutdown(FsmPid),
+    Params = maps:get(<<"params">>, Req, #{}),
+    XOpts = optional_params([fee_params()], Params),
+    aesc_fsm:shutdown(FsmPid, XOpts),
     no_reply;
-process_request(#{<<"method">> := <<"channels.close_solo">>}, FsmPid) ->
+process_request(#{<<"method">> := <<"channels.close_solo">>} = Req, FsmPid) ->
+    Params = maps:get(<<"params">>, Req, #{}),
+    XOpts = optional_params([fee_params()], Params),
     lager:debug("Channel WS: close_solo message received"),
-    aesc_fsm:close_solo(FsmPid),
+    aesc_fsm:close_solo(FsmPid, XOpts),
     no_reply;
-process_request(#{<<"method">> := <<"channels.snapshot_solo">>}, FsmPid) ->
+process_request(#{<<"method">> := <<"channels.snapshot_solo">>} = Req, FsmPid) ->
     lager:debug("Channel WS: snapshot_solo message received"),
-    case aesc_fsm:snapshot_solo(FsmPid) of
+    Params = maps:get(<<"params">>, Req, #{}),
+    XOpts = optional_params([fee_params()], Params),
+    case aesc_fsm:snapshot_solo(FsmPid, XOpts) of
         ok -> no_reply;
         {error, _Reason} = Err -> Err
     end;
-process_request(#{<<"method">> := <<"channels.slash">>}, FsmPid) ->
+process_request(#{<<"method">> := <<"channels.slash">>} = Req, FsmPid) ->
     lager:debug("Channel WS: slash message received"),
-    case aesc_fsm:slash(FsmPid) of
+    Params = maps:get(<<"params">>, Req, #{}),
+    XOpts = optional_params([fee_params()], Params),
+    case aesc_fsm:slash(FsmPid, XOpts) of
         ok -> no_reply;
         {error, _Reason} = Err -> Err
     end;
-process_request(#{<<"method">> := <<"channels.settle">>}, FsmPid) ->
+process_request(#{<<"method">> := <<"channels.settle">>} = Req, FsmPid) ->
     lager:debug("Channel WS: settle message received"),
-    case aesc_fsm:settle(FsmPid) of
+    Params = maps:get(<<"params">>, Req, #{}),
+    XOpts = optional_params([fee_params()], Params),
+    case aesc_fsm:settle(FsmPid, XOpts) of
         ok -> no_reply;
         {error, _Reason} = Err -> Err
     end;
