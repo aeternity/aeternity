@@ -109,7 +109,7 @@ tx_base_gas(contract_create_tx, _Protocol, ABI) ->
         ?ABI_FATE_SOPHIA_1 -> 5 * ?TX_BASE_GAS;
         ?ABI_AEVM_SOPHIA_1 -> 5 * ?TX_BASE_GAS
     end;
-tx_base_gas(contract_call_tx, Protocol, ABI) ->
+tx_base_gas(contract_call_tx, _Protocol, ABI) ->
     case ABI of
         ?ABI_FATE_SOPHIA_1 -> 12 * ?TX_BASE_GAS;
         ?ABI_AEVM_SOPHIA_1 -> 30 * ?TX_BASE_GAS
