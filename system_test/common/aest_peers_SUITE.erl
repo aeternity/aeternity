@@ -157,7 +157,7 @@ test_inbound_limitation(Cfg) ->
     wait_for_value({height, 0}, [node4], StartupTimeout, Cfg),
     wait_for_internal_api([node4], StartupTimeout),
 
-    wait_for_value({height, Length * 2 + 1}, [node1, node2, node3, node4], ?MINING_TIMEOUT * Length, Cfg),
+    wait_for_value({height, Length * 2 + 1}, [node1, node2, node3, node4], ?MINING_TIMEOUT * (Length + (Length div 10)), Cfg),
     T2 = erlang:system_time(millisecond),
 
     try_until(T2 + 3 * ping_interval(node1),
