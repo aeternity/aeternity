@@ -40,10 +40,16 @@ start_link() ->
 start_link(Enabled, Interval, History) ->
     gen_statem:start_link({local, ?MODULE}, ?MODULE, [Enabled, Interval, History], []).
 
+
+-ifdef(TEST).
+maybe_garbage_collect() -> nop.
+-else.
+
 %% this should be called when there are no processes modifying the block state
 %% (e.g. aec_conductor on specific places)
 maybe_garbage_collect() ->
     gen_statem:call(?MODULE, maybe_garbage_collect).
+-endif.
 
 stop() ->
     gen_statem:stop(?MODULE).
