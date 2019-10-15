@@ -16,6 +16,7 @@
 
 %% API - Merkle tree
 -export([root_hash/1,
+         db/1,
          commit_to_db/1,
          mtree_iterator/1
         ]).
@@ -122,6 +123,10 @@ mtree_iterator(Tree) ->
 -spec root_hash(tree()) -> {ok, aeu_mtrees:root_hash()} | {error, empty}.
 root_hash(Tree) ->
     aeu_mtrees:root_hash(Tree).
+
+-spec db(tree()) -> {ok, aeu_mtrees:db()}.
+db(Tree) ->
+    aeu_mtrees:db(Tree).
 
 -spec add_poi(aec_keys:pubkey(), tree(), aec_poi:poi()) ->
                      {'ok', aec_poi:poi()}
