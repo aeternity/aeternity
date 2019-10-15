@@ -5,6 +5,7 @@ Fifth **Lima** release candidate.
 Changelog:
 
 * Fix bug in FATE gas computation for Bits operations.
+* Change top level namespace from .aet to .chain
 
 The node is able to start from a database produced by v4.* releases. For the rest, this release is not backward compatible with v4.* releases.
 
