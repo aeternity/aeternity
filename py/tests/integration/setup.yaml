@@ -80,7 +80,8 @@ tests: # test specific settings
         large_amount: 1000000000000000000000 # More than tokens that Bob has.
         fee: 20000000000000
     test_send_by_name:
-    # Bob registers a name 'bob.test'
+    # Bob registers a name 'bobbobbobboby.crypto' (keep it > 12 to skip the auction)
+    # Name fee for 13 length names is minimum of 17711 * 10^14
     # Alice should be able to send tokens to Bob using that name
       nodes:
         miner: dev1
@@ -90,7 +91,7 @@ tests: # test specific settings
         bob: 1000000000000000
         spend_fee: 20000000000000
       name_register:
-        name: "bob.test"
+        name: "bobbobbobboby.crypto"
         fee: 50000000000000
       spend_tx:
         amount: 7
