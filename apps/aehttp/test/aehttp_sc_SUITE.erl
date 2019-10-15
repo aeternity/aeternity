@@ -2696,8 +2696,8 @@ sc_ws_snapshot_solo(Config0) ->
                                             Ps, Cs, Config),
     ct:log("*** Responder tries snapshot (no interleaved updates)"
            " - should succeed ***", []),
-    {ok, no_update} = perform_snapshot_solo(responder, no_update,
-                                            Ps, Cs, Config),
+    {ok, no_update, _} = perform_snapshot_solo(responder, no_update,
+                                               Ps, Cs, Config),
     ct:log("*** Responder tries another snapshot"
            " - should fail (already on chain) ***", []),
     {error, AlreadyOnchain}
