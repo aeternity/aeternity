@@ -116,7 +116,7 @@ fullname(RootName, Height) ->
 
 fullname_in_protocol(RootName, Protocol) ->
     Reg = case Protocol >= ?LIMA_PROTOCOL_VSN of
-              true -> <<"aet">>;
+              true -> <<"chain">>;
               false -> <<"test">>
           end,
     aens_utils:name_join([RootName, Reg]).

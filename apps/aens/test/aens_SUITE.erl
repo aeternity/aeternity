@@ -429,7 +429,7 @@ claim_empty_name(Cfg) ->
 
     %% Test empty name preclaim
     CHash = if PreLima -> aens_hash:commitment_hash(<<".test">>, 123);
-               true -> aens_hash:commitment_hash(<<".aet">>, 123)
+               true -> aens_hash:commitment_hash(<<".chain">>, 123)
             end,
     TxSpec1 = aens_test_utils:preclaim_tx_spec(PubKey, CHash, S1),
     {ok, Tx1} = aens_preclaim_tx:new(TxSpec1),
@@ -442,7 +442,7 @@ claim_empty_name(Cfg) ->
     Env1 = aetx_env:tx_env(Height + 1),
 
     TxSpec2 = if PreLima -> aens_test_utils:claim_tx_spec(PubKey, <<".test">>, 123, prelima, S2);
-                 true -> aens_test_utils:claim_tx_spec(PubKey, <<".aet">>, 123, 36000000000000000000, S2)
+                 true -> aens_test_utils:claim_tx_spec(PubKey, <<".chain">>, 123, 36000000000000000000, S2)
               end,
     {ok, Tx2} = aens_claim_tx:new(TxSpec2),
     {error, _} = aetx:process(Tx2, Trees2, Env1),
@@ -828,7 +828,7 @@ registrar_change(Cfg) ->
     NameSalt = rand:uniform(10000),
     %% invalid name for protocol
     Name = case ?config(protocol, Cfg) >= ?LIMA_PROTOCOL_VSN of
-               false -> <<"asdf.aet">>; %% we can't claim ".aet" name yet
+               false -> <<"asdf.chain">>; %% we can't claim ".chain" name yet
                true -> <<"asdf.test">> %% we no longer can claim ".test" name
            end,
 
