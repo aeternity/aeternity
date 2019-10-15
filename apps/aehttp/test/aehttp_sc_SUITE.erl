@@ -118,6 +118,8 @@
 -define(CHECK_INFO(Timeout), check_info(?LINE, Timeout)).
 -define(PEEK_MSGQ, peek_msgq(?LINE)).
 
+-define(RANDOM_BIG_FEE, 123456789876543).
+
 all() -> [{group, plain}, {group, aevm}, {group, fate}].
 
 groups() ->
@@ -4259,14 +4261,13 @@ signed_tx_fee(SignedTx) ->
     Tx = aetx_sign:innermost_tx(SignedTx),
     aetx:fee(Tx).
 
-signned_channel_tx_round(SignedTx) ->
+signed_channel_tx_round(SignedTx) ->
     AeTx = aetx_sign:innermost_tx(SignedTx),
     {Mod, Tx} = aetx:specialize_callback(AeTx),
     Mod:round(Tx).
 
 sc_ws_set_fee_create(Cfg0) ->
-    %% min fee is 17620000000000
-    Fee = 123456789876532,
+    Fee = ?RANDOM_BIG_FEE,
     Cfg = sc_ws_open_([{fee, Fee}
                        |Cfg0]),
 
@@ -4296,7 +4297,7 @@ sc_ws_set_fee_snapshot(Cfg0) ->
             Ps = proplists:get_value(participants, Cfg),
             {ok, #{ signed_tx := StateSignedStateTx }} =
                 sc_ws_get_state(IConnPid, Cfg),
-            LatestRound = signned_channel_tx_round(StateSignedStateTx),
+            LatestRound = signed_channel_tx_round(StateSignedStateTx),
             channel_update(Cs, Who, Ps, 1, LatestRound + 1,
                           _TestErrors = false, Cfg),
             {ok, _, SignedSnapshotTx} =
@@ -4317,8 +4318,7 @@ sc_ws_set_fee_close_mutual(Cfg0) ->
     ok.
 
 sc_ws_set_fee_(Cfg0, MakeOnChainTxFun) ->
-    %% min fee is 17620000000000
-    Fee = 123456789876532,
+    Fee = ?RANDOM_BIG_FEE,
     Cfg = sc_ws_open_(Cfg0),
 
     Test =
@@ -4335,8 +4335,7 @@ sc_ws_set_fee_(Cfg0, MakeOnChainTxFun) ->
     ok.
 
 sc_ws_set_fee_close_solo(Cfg0) ->
-    %% min fee is 17620000000000
-    Fee = 123456789876532,
+    Fee = ?RANDOM_BIG_FEE,
     Test =
         fun(Who) ->
             Cfg = sc_ws_open_(Cfg0),
@@ -4350,8 +4349,7 @@ sc_ws_set_fee_close_solo(Cfg0) ->
     ok.
 
 sc_ws_set_fee_slash(Cfg0) ->
-    %% min fee is 17620000000000
-    Fee = 123456789876532,
+    Fee = ?RANDOM_BIG_FEE,
     Test =
         fun(Who) ->
             Cfg = sc_ws_open_(Cfg0),
@@ -4366,8 +4364,7 @@ sc_ws_set_fee_slash(Cfg0) ->
     ok.
 
 sc_ws_set_fee_settle(Cfg0) ->
-    %% min fee is 17620000000000
-    Fee = 123456789876532,
+    Fee = ?RANDOM_BIG_FEE,
     Test =
         fun(Who) ->
             Cfg = sc_ws_open_(Cfg0),

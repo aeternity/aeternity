@@ -1828,7 +1828,7 @@ wdraw_tx_for_signing(Opts, D) ->
 
 close_mutual_tx_for_signing(Opts, D) ->
     Account = my_account(D),
-    new_close_mutual_tx(Opts#{ acct => Account }, D).
+    new_close_mutual_tx(Opts#{acct => Account}, D).
 
 %% @doc The responding side creates a 'throwaway' close_mutual_tx, in order to
 %% validate the tx received from the initiating side. The critical parts to
@@ -1847,7 +1847,7 @@ fake_close_mutual_tx(Mod, Tx, D) ->
 new_close_mutual_tx(Opts, D) ->
     new_onchain_tx_for_signing(channel_close_mutual_tx, Opts, D).
 
-slash_tx_for_signing(Opts, #data{ state = St } = D) ->
+slash_tx_for_signing(Opts, #data{state = St} = D) ->
     {Round, SignedTx} = aesc_offchain_state:get_latest_signed_tx(St),
     slash_tx_for_signing(Round, SignedTx, Opts, D).
 
@@ -1855,7 +1855,7 @@ slash_tx_for_signing(_Round, SignedTx, Opts, D) ->
     Account = my_account(D),
     new_onchain_tx_for_signing(channel_slash_tx,
                                Opts#{ acct => Account
-                                    , payload    => aetx_sign:serialize_to_binary(SignedTx)
+                                    , payload => aetx_sign:serialize_to_binary(SignedTx)
                                     }, D).
 
 settle_tx_for_signing(Opts, D) ->
