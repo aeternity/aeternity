@@ -1427,7 +1427,7 @@ chk_chain_hash(#{ chain_hash := CH }, _, _) ->
     {CH == aec_chain:genesis_hash(), chain_hash_mismatch}.
 
 chk_channel_id(#{ channel_id := ChId }, _, #data{ on_chain_id = OCId }) ->
-    {ChId == OCId, channel_id_mismatch}.
+    {ChId =/= undefined andalso ChId == OCId, channel_id_mismatch}.
 
 chk_dual_sigs(_, SignedTx, #data{on_chain_id = ChannelPubkey}) ->
     {Mod, _Tx} = aetx:specialize_callback(aetx_sign:innermost_tx(SignedTx)),
@@ -3170,10 +3170,10 @@ report_info(DoRpt, Msg0, #data{role = Role, client = Client} = D) ->
     end,
     ok.
 
-rpt_message(Msg, #data{ on_chain_id = undefined }) ->
+rpt_message(Msg, #data{on_chain_id = undefined}) ->
     Msg;
 rpt_message(Msg, #data{on_chain_id = OnChainId}) ->
-    Msg#{ channel_id => OnChainId }.
+    Msg#{channel_id => OnChainId}.
 
 do_rpt(Tag, #data{opts = #{report := Rpt}}) ->
     try maps:get(Tag, Rpt, false)
@@ -4629,7 +4629,7 @@ get_channel(ChainHash, ChId) ->
 
 init_checks(#{existing_channel_id := _} = Opts) ->
     #{ role := _Role
-     ,  offchain_tx := _ } = Opts,
+     , offchain_tx := _ } = Opts,
     Checks = [fun() -> check_state_password(Opts) end],
     case aeu_validation:run(Checks) of
         {error, _Reason} = Err ->
