@@ -13,19 +13,19 @@
 -export([handle_event/4]).
 
 -record(data,
-        {enabled  :: boolean(),             % do we garbage collect?
-         interval :: non_neg_integer(),     % how often (every `interval` blocks) GC runs
-         history  :: non_neg_integer(),     % how many block state back from top to keep
-         synced   :: boolean(),             % we only run GC if chain is synced
-         height   :: non_neg_integer(),     % latest height of MPT hashes stored in tab
-         hashes   :: pid() | ets:table()}). % hashes tab (or process filling the tab 1st time)
+        {enabled  :: boolean(),                         % do we garbage collect?
+         interval :: non_neg_integer(),                 % how often (every `interval` blocks) GC runs
+         history  :: non_neg_integer(),                 % how many block state back from top to keep
+         synced   :: boolean(),                         % we only run GC if chain is synced
+         height   :: undefined | non_neg_integer(),     % latest height of MPT hashes stored in tab
+         hashes   :: undefined | pid() | reference()}). % hashes tab (or process filling the tab 1st time)
 
 -include_lib("aecore/include/aec_db.hrl").
 
 -define(DEFAULT_INTERVAL, 10000).
 -define(DEFAULT_HISTORY, 500).
 
--define(TIMED(Expr), (timer:tc(fun () -> Expr end))).
+-define(TIMED(Expr), timer:tc(fun () -> Expr end)).
 -define(LOG(Fmt), lager:info(Fmt, [])).         % io:format(Fmt"~n")
 -define(LOG(Fmt, Args), lager:info(Fmt, Args)). % io:format(Fmt"~n", Args)
 
@@ -96,8 +96,9 @@ handle_event(info, {_, top_changed, #{info := #{height := Height}}}, idle,
             end),
     {keep_state, Data#data{height = Height, hashes = Pid}};
 handle_event(info, {'ETS-TRANSFER', Hashes, _, Time}, idle, #data{enabled = true, hashes = Pid} = Data)
-  when is_pid(Pid), is_reference(Hashes) ->
-    ?LOG("GC scanning of ~p reachable hashes took ~p seconds", [ets:info(Hashes, size), Time / 1000000]),
+  when is_pid(Pid) ->
+    ?LOG("GC scanning of ~p reachable hashes took ~p seconds",
+         [ets:info(Hashes, size), Time / 1000000]),
     {next_state, ready, Data#data{hashes = Hashes}};
 
 handle_event(info, {_, top_changed, #{info := #{height := Height}}}, ready,
@@ -108,7 +109,7 @@ handle_event(info, {_, top_changed, #{info := #{height := Height}}}, ready,
 
 handle_event({call, From}, maybe_garbage_collect, ready,
              #data{enabled = true, synced = true, hashes = Hashes} = Data)
-  when is_reference(Hashes) ->
+  when Hashes /= undefined, not is_pid(Hashes) ->
     Header = aec_chain:top_header(),
     case aec_headers:type(Header) of
         key ->
@@ -178,10 +179,15 @@ write_nodes(Hashes) ->
                       mnesia:write(Rec)
               end, ok, Hashes).
 
+-spec get_mpt(non_neg_integer()) -> aeu_mp_trees:tree().
 get_mpt(Height) ->
     {ok, Hash0} = aec_chain_state:get_key_block_hash_at_height(Height),
     {ok, Trees} = aec_chain:get_block_state(Hash0),
-    aec_trees:accounts(Trees).
+    AccountTree = aec_trees:accounts(Trees),
+    {ok, RootHash} = aec_accounts_trees:root_hash(AccountTree),
+    {ok, DB}       = aec_accounts_trees:db(AccountTree),
+    aeu_mp_trees:new(RootHash, DB).
+
 
 store_hash(Hash, Node, Tab) ->
     ets:insert_new(Tab, {Hash, Node}),

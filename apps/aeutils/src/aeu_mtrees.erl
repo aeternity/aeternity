@@ -32,6 +32,7 @@
 
 %% API - Merkle tree
 -export([root_hash/1,
+         db/1,
          lookup_with_proof/2,
          lookup_with_proof/3,
          verify_proof/4,
@@ -57,6 +58,7 @@
               mtree/0,
               mtree/2,
               root_hash/0,
+              db/0,
               proof/0]).
 
 
@@ -81,6 +83,7 @@
 
 %% 256 bits as of ?HASH_BYTES * 8
 -type root_hash() :: <<_:256>>.
+-type db() :: aeu_mp_trees:db().
 
 -type proof() :: aeu_mp_trees_db:db().
 
@@ -204,6 +207,10 @@ root_hash(Tree) ->
             {ok, Hash}
     end.
 
+-spec db(mtree()) -> {ok, db()}.
+db(Tree) ->
+    {ok, aeu_mp_trees:db(Tree)}.
+
 -spec lookup_with_proof(key(), mtree()) -> none |
                                            {value_and_proof, value(), proof()}.
 
@@ -317,10 +324,9 @@ deserialize_(Bin, EmptyMTree) ->
         ValuesBin).
 
 serialization_template(?VSN) ->
-   [{values, [binary]}]. 
+   [{values, [binary]}].
 
 value_serialization_template(?VSN) ->
    [ {key, binary}
    , {val, binary}
-   ]. 
-
+   ].
