@@ -133,19 +133,21 @@ end_per_suite(_Config) -> ok.
 
 %=== TEST CASES ================================================================
 
+channel_opts(INode, RNode) ->
+    #{ initiator_node => INode
+     , initiator_id   => ?BOB
+     , initiator_amount => 50000 * aest_nodes:gas_price()
+     , responder_node => RNode
+     , responder_id => ?ALICE
+     , responder_amount => 50000 * aest_nodes:gas_price()
+     , push_amount => 2
+     , bh_delta_not_newer_than => 0
+     , bh_delta_not_older_than => 100
+     , bh_delta_pick           => 10
+    }.
+
 test_simple_same_node_channel(Cfg) ->
-    ChannelOpts = #{
-        initiator_node => node1,
-        initiator_id => ?BOB,
-        initiator_amount => 50000 * aest_nodes:gas_price(),
-        responder_node => node1,
-        responder_id => ?ALICE,
-        responder_amount => 50000 * aest_nodes:gas_price(),
-        push_amount => 2 * aest_nodes:gas_price(),
-        bh_delta_not_newer_than => 0,
-        bh_delta_not_older_than => 100,
-        bh_delta_pick           => 10
-    },
+    ChannelOpts = channel_opts(node1, node1),
     simple_channel_test(ChannelOpts, #{}, #{}, Cfg).
 
 test_simple_different_nodes_channel(Cfg) ->
@@ -162,18 +164,7 @@ test_compat_with_responder_node_using_latest_stable_version(Cfg) ->
                                   Cfg).
 
 test_different_nodes_channel_(InitiatorNodeBaseSpec, ResponderNodeBaseSpec, Cfg) ->
-    ChannelOpts = #{
-        initiator_node => node1,
-        initiator_id   => ?BOB,
-        initiator_amount => 50000 * aest_nodes:gas_price(),
-        responder_node => node2,
-        responder_id => ?ALICE,
-        responder_amount => 50000 * aest_nodes:gas_price(),
-        push_amount => 2,
-        bh_delta_not_newer_than => 0,
-        bh_delta_not_older_than => 100,
-        bh_delta_pick           => 10
-    },
+    ChannelOpts = channel_opts(node1, node2),
     simple_channel_test(ChannelOpts, InitiatorNodeBaseSpec, ResponderNodeBaseSpec, Cfg).
 
 simple_channel_test(ChannelOpts, InitiatorNodeBaseSpec, ResponderNodeBaseSpec, Cfg) ->
