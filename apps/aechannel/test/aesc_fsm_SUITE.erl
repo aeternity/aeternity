@@ -51,6 +51,7 @@
         , change_config_get_history/1
         , multiple_channels/1
         , many_chs_msg_loop/1
+        , too_many_fsms/1
         , check_incorrect_create/1
         , check_incorrect_deposit/1
         , check_incorrect_withdrawal/1
@@ -199,6 +200,10 @@ groups() ->
       [
         multiple_channels
       , many_chs_msg_loop
+      ]},
+     {limits, [sequence],
+      [
+       too_many_fsms
       ]},
      {errors, [sequence],
       [
@@ -1282,6 +1287,22 @@ many_chs_msg_loop(Cfg) ->
 
 multiple_channels_t(NumCs, FromPort, Msg, {slogan, Slogan}, Cfg) ->
     Debug = get_debug(Cfg),
+    F = fun(Cs, _MinerHelper) ->
+                [P ! Msg || P <- Cs],
+                T0 = erlang:system_time(millisecond),
+                Cs = collect_acks(Cs, loop_ack, NumCs),
+                T1 = erlang:system_time(millisecond),
+                Time = T1 - T0,
+                Transfers = NumCs*2*100,
+                Fmt = "Time (~w*2*100) ~.1f s: ~.1f mspt; ~.1f tps",
+                Args = [NumCs, Time/1000, Time/Transfers, (Transfers*1000)/Time],
+                ?LOG(Debug, Fmt, Args),
+                ct:comment(Fmt, Args)
+        end,
+    spawn_multiple_channels(F, NumCs, FromPort, Slogan, Cfg).
+
+spawn_multiple_channels(F, NumCs, FromPort, Slogan, Cfg) when is_function(F, 2) ->
+    Debug = get_debug(Cfg),
     ?LOG(Debug, "spawning ~p channels", [NumCs]),
     Initiator = maps:get(pub, ?config(initiator, Cfg)),
     ?LOG(Debug, "Initiator: ~p", [Initiator]),
@@ -1292,29 +1313,34 @@ multiple_channels_t(NumCs, FromPort, Msg, {slogan, Slogan}, Cfg) ->
     {ok, Nonce} = rpc(dev1, aec_next_nonce, pick_for_account, [Initiator]),
     MultiChCfg0 = [ {port, FromPort}
                   , {ack_to, Me}
-                  | Cfg ],
+                    | Cfg ],
     MultiChCfg1 = set_configs([{minimum_depth_factor, 0}], MultiChCfg0),
     Cs = [create_multi_channel([ {nonce, Nonce + N - 1}
                                , {slogan, {Slogan,N}}
-                               | MultiChCfg1 ],
+                                 | MultiChCfg1 ],
                                #{mine_blocks => {ask, MinerHelper}, debug => Debug})
           || N <- lists:seq(1, NumCs)],
     ?LOG(Debug, "channels spawned", []),
     Cs = collect_acks(Cs, channel_ack, NumCs),
     ?LOG(Debug, "channel pids collected: ~p", [Cs]),
-    [P ! Msg || P <- Cs],
-    T0 = erlang:system_time(millisecond),
-    Cs = collect_acks(Cs, loop_ack, NumCs),
-    T1 = erlang:system_time(millisecond),
-    Time = T1 - T0,
-    Transfers = NumCs*2*100,
-    Fmt = "Time (~w*2*100) ~.1f s: ~.1f mspt; ~.1f tps",
-    Args = [NumCs, Time/1000, Time/Transfers, (Transfers*1000)/Time],
-    ?LOG(Debug, Fmt, Args),
-    ct:comment(Fmt, Args),
+    F(Cs, MinerHelper),
     [P ! die || P <- Cs],
     ok = stop_miner_helper(MinerHelper),
     ok.
+
+
+too_many_fsms(Cfg) ->
+    Debug = get_debug(Cfg),
+    set_fsm_limit(10),
+    F = fun(_Cs, _MinerHelper) ->
+                timer:sleep(100),
+                Res = create_channel(Cfg),
+                ?LOG(Debug, "Res = ~p", [Res])
+        end,
+    spawn_multiple_channels(F, 10, 9450, ?SLOGAN, Cfg).
+
+set_fsm_limit(N) ->
+    rpc(dev1, aeu_env, update_config, [#{<<"channels">> => #{<<"max_count">> => N}}]).
 
 check_incorrect_create(Cfg0) ->
     Cfg = set_configs([{keep_running, true}], Cfg0),
