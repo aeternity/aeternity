@@ -167,6 +167,7 @@ groups() ->
                              , {group, pinned_env}
                              , {group, generalized_accounts}
                              , {group, no_kdf_mock}
+                             , {group, limits}
                              ]},
      {transactions, [sequence],
       [
@@ -1331,13 +1332,17 @@ spawn_multiple_channels(F, NumCs, FromPort, Slogan, Cfg) when is_function(F, 2) 
 
 too_many_fsms(Cfg) ->
     Debug = get_debug(Cfg),
-    set_fsm_limit(10),
+    MaxChannels = 5,
+    FSMLimit = MaxChannels * 2,
+    set_fsm_limit(FSMLimit),
     F = fun(_Cs, _MinerHelper) ->
                 timer:sleep(100),
-                Res = create_channel(Cfg),
-                ?LOG(Debug, "Res = ~p", [Res])
+                {_, _, Spec} = channel_spec(Cfg),
+                {error, limit_exceeded} = rpc(dev1, aesc_fsm, initiate,
+                                              ["localhost", _Port = 1234, Spec], Debug)
         end,
-    spawn_multiple_channels(F, 10, 9450, ?SLOGAN, Cfg).
+    spawn_multiple_channels(F, MaxChannels, 9450, ?SLOGAN, Cfg),
+    ok.
 
 set_fsm_limit(N) ->
     rpc(dev1, aeu_env, update_config, [#{<<"channels">> => #{<<"max_count">> => N}}]).
