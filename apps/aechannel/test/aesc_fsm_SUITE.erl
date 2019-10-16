@@ -677,10 +677,10 @@ channel_create_invalid_spec({I, R, Spec}, Error, Debug) ->
     Port = 9325,
     SpecR = move_password_to_spec(R, Spec),
     {error, Error} =
-        rpc(dev1, aesc_fsm, respond, [Port, SpecR], Debug),
+        rpc(dev1, aesc_client, respond, [Port, SpecR], Debug),
     SpecI = move_password_to_spec(I, Spec),
     {error, Error} =
-        rpc(dev1, aesc_fsm, initiate, ["localhost", Port, SpecI], Debug).
+        rpc(dev1, aesc_client, initiate, ["localhost", Port, SpecI], Debug).
 
 inband_msgs(Cfg) ->
     #{ i := #{fsm := FsmI} = I
@@ -1859,8 +1859,8 @@ wrong_create_({I, R, #{initiator_amount := IAmt0, responder_amount := RAmt0,
         end,
     IAmt = IAmt0 - PushAmount,
     RAmt = RAmt0 + PushAmount,
-    {ok, FsmR} = rpc(dev1, aesc_fsm, respond, [Port, move_password_to_spec(R, Spec)], Debug),
-    {ok, FsmI} = rpc(dev1, aesc_fsm, initiate, ["localhost", Port, move_password_to_spec(I, Spec)], Debug),
+    {ok, FsmR} = rpc(dev1, aesc_client, respond, [Port, move_password_to_spec(R, Spec)], Debug),
+    {ok, FsmI} = rpc(dev1, aesc_client, initiate, ["localhost", Port, move_password_to_spec(I, Spec)], Debug),
 
     ?LOG(Debug, "FSMs, I = ~p, R = ~p", [FsmI, FsmR]),
 
@@ -2338,7 +2338,7 @@ spawn_responder(Port, Spec, R, UseAny, Debug) ->
                        ?LOG("responder spawned: ~p", [Spec]),
                        Spec1 = maybe_use_any(UseAny, Spec#{ client => self() }),
                        Spec2 = move_password_to_spec(R, Spec1),
-                       {ok, Fsm} = rpc(dev1, aesc_fsm, respond, [Port, Spec2], Debug),
+                       {ok, Fsm} = rpc(dev1, aesc_client, respond, [Port, Spec2], Debug),
                        responder_instance_(Fsm, Spec2, R, Me, Debug)
                end).
 
@@ -2353,7 +2353,7 @@ spawn_initiator(Port, Spec, I, Debug) ->
                        ?LOG(Debug, "initiator spawned: ~p", [Spec]),
                        Spec1 = Spec#{ client => self() },
                        Spec2 = move_password_to_spec(I, Spec1),
-                       {ok, Fsm} = rpc(dev1, aesc_fsm, initiate,
+                       {ok, Fsm} = rpc(dev1, aesc_client, initiate,
                                        ["localhost", Port, Spec2], Debug),
                        initiator_instance_(Fsm, Spec2, I, Me, Debug)
                end).
@@ -3475,10 +3475,10 @@ reestablish_(Info, SignedTx, Port, Debug) ->
                    ?LOG(Debug, "Not trying to reestablish responder", []),
                    maps:get(fsm, R0);
               true ->
-                   {ok, NewFsmR} = rpc(dev1, aesc_fsm, respond, [Port, RSpec]),
+                   {ok, NewFsmR} = rpc(dev1, aesc_client, respond, [Port, RSpec]),
                    NewFsmR
            end,
-    {ok, FsmI} = rpc(dev1, aesc_fsm, initiate, ["localhost", Port, ISpec], Debug),
+    {ok, FsmI} = rpc(dev1, aesc_client, initiate, ["localhost", Port, ISpec], Debug),
     I1 = I0#{fsm => FsmI},
     R1 = R0#{fsm => FsmR},
 
@@ -3519,8 +3519,8 @@ reestablish_wrong_password_(Info, SignedTx, Port, Debug) ->
     % Fail to start new FSMs
     ISpec = move_password_to_spec(I0, Spec),
     RSpec = move_password_to_spec(R0, Spec),
-    {error, invalid_password} = rpc(dev1, aesc_fsm, respond, [Port, RSpec]),
-    {error, invalid_password} = rpc(dev1, aesc_fsm, initiate, ["localhost", Port, ISpec], Debug),
+    {error, invalid_password} = rpc(dev1, aesc_client, respond, [Port, RSpec]),
+    {error, invalid_password} = rpc(dev1, aesc_client, initiate, ["localhost", Port, ISpec], Debug),
 
     % Done
     assert_empty_msgq(Debug),

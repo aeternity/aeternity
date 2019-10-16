@@ -353,9 +353,9 @@ fsm_pid(#handler{fsm_pid = Pid}) ->
 
 -spec start_link_fsm(handler(), map()) -> {ok, pid()} | {error, atom()}.
 start_link_fsm(#handler{role = initiator, host=Host, port=Port}, Opts) ->
-    aesc_fsm:initiate(Host, Port, Opts);
+    aesc_client:initiate(Host, Port, Opts);
 start_link_fsm(#handler{role = responder, port=Port}, Opts) ->
-    aesc_fsm:respond(Port, Opts).
+    aesc_client:respond(Port, Opts).
 
 derive_reconnect_opts(#{ <<"reconnect_tx">> := ReconnectTx } = Params) ->
     lager:debug("Params = ~p", [Params]),
@@ -585,15 +585,14 @@ read_state_password(Read) ->
     %% The state_password is mandatory AFTER the lima fork - this is checked by CheckStatePasswordF
     CheckStatePasswordF
         = fun(M) ->
-                  case aesc_fsm:check_state_password(M) of
+                  case aesc_checks:state_password_in_opts(M) of
                       ok ->
                           M;
                       Err ->
                           Err
                   end
           end,
-    [read_password(Read),
-     CheckStatePasswordF].
+    [read_password(Read), CheckStatePasswordF].
 
 read_password(Read) ->
     Read(<<"state_password">>, state_password, #{type => string, mandatory => false,
