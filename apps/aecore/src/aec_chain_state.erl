@@ -450,7 +450,8 @@ internal_insert_transaction(Node, Block, Origin) ->
             case node_type(Node) of
                 key ->
                     KeyHeaders = assert_key_block_time_return_headers(Node),
-                    assert_key_block_target(Node, KeyHeaders);
+                    assert_key_block_target(Node, KeyHeaders),
+                    maybe_put_signal_count(Block, hash(Node), aeu_env:get_env(aecore, fork, undefined));
                 micro ->
                     assert_micro_block_time(PrevNode, Node),
                     assert_micro_signature(PrevNode, Node),
@@ -458,7 +459,6 @@ internal_insert_transaction(Node, Block, Origin) ->
             end
     end,
     ok = db_put_node(Block, hash(Node)),
-    maybe_put_signal_count(Block, hash(Node), aeu_env:get_env(aecore, fork, undefined)),
     {State3, Events} = update_state_tree(Node, State2),
     persist_state(State3),
     case maps:get(found_pof, State3) of
@@ -1220,14 +1220,9 @@ calc_rewards(FraudStatus1, FraudStatus2, GenerationFees,
 %%% Fork signalling related functions
 %%%-------------------------------------------------------------------
 maybe_put_signal_count(Block, Hash, Fork) when Fork =/= undefined ->
-    case aec_blocks:type(Block) of
-        key ->
-            case count_blocks_with_signal(Block, Fork) of
-                {ok, Count}   -> db_put_signal_count(Hash, Count);
-                {error, _Rsn} -> ok
-            end;
-       micro ->
-            ok
+    case count_blocks_with_signal(Block, Fork) of
+        {ok, Count}   -> db_put_signal_count(Hash, Count);
+        {error, _Rsn} -> ok
     end;
 maybe_put_signal_count(_Block, _Hash, undefined) ->
     ok.
