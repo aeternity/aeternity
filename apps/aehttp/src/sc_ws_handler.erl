@@ -294,10 +294,9 @@ websocket_info(?ERROR_TO_CLIENT(Err), #handler{protocol = Protocol} = H) ->
     {reply, {text, jsx:encode(Resp)}, H};
 websocket_info(stop, #handler{} = H) ->
     {stop, H};
-websocket_info({aesc_fsm, FsmPid, Msg}, #handler{fsm_pid = FsmPid,
-                                                 enc_channel_id = ChannelId,
-                                                 protocol = Protocol} = H) ->
-    H1 = set_channel_id(Msg, H),
+websocket_info({aesc_fsm, FsmPid, Msg}, #handler{ fsm_pid = FsmPid
+                                                , protocol = Protocol } = H) ->
+    #handler{enc_channel_id = ChannelId} = H1 = set_channel_id(Msg, H),
     case sc_ws_api:process_from_fsm(Protocol, Msg, ChannelId) of
         no_reply          -> {ok, H1};
         {reply, Resp}     -> {reply, {text, jsx:encode(Resp)}, H1};
