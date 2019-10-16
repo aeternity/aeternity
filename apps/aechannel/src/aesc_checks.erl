@@ -6,7 +6,7 @@
         , state_password_in_opts/1
         , known_role/1
         , amounts/1
-        , account/1
+        , account/2
         , accounts/3
         , lock_period/1
         ]).
@@ -51,22 +51,21 @@ lock_period(V) when is_integer(V) ->
     ok.
 
 accounts(any, Responder, responder) ->
-    account(Responder);
+    account(Responder, responder_not_found);
 accounts(Initiator, Responder, _Role) ->
-    case {account(Initiator), account(Responder)} of
-        {ok, ok}     -> ok;
-        {{error, _} = E, _} -> E;
-        {_, {error, _} = E} -> E
-    end.
+    Checks = [ fun() -> account(Initiator, initiator_not_found) end
+             , fun() -> account(Responder, responder_not_found) end
+             ],
+    aeu_validation:run(Checks).
 
-account(A) ->
+account(A, Error) ->
     case account_type(A) of
         {ok, basic} ->
             ok;
         {ok, generalized} ->
             ok;
         _ ->
-            {error, not_found}
+            {error, Error}
     end.
 
 amounts(#{channel_reserve := ChannelReserve})

@@ -3471,7 +3471,7 @@ check_attach_info(#{ initiator := I1
                    , gproc_key := _K} = Info, I, R, _D) ->
     lager:debug("Info = ~p, I = ~p, R = ~p", [Info, I, R]),
     if I =:= any, R1 =:= R ->
-            aesc_checks:account(I1);
+            aesc_checks:account(I1, initiator_not_found);
        I1 =:= I, R1 =:= R ->
             ok;
        R1 =/= R ->   %% shouldn't happen
