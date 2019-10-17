@@ -2,22 +2,22 @@
 
 -ifdef(TEST).
 -define(CATCH_LOG(Err), ?_catch_(error, Err, ST)
-        case is_function(pr_stacktrace, 1) of
+        ST1 = case is_function(pr_stacktrace, 1) of
             true ->
-                ST1 = apply(?MODULE, pr_stacktrace, [ST]),
-                lager:debug("CAUGHT ~p / ~p", [Err, ST1]);
+                apply(?MODULE, pr_stacktrace, [ST]);
             false ->
-                lager:debug("CAUGHT ~p / ~p", [Err, ST])
+                ST
         end,
+        lager:debug("CAUGHT ~p / ~p", [Err, ST1]),
        ).
 -define(CATCH_LOG(Err, Prefix), ?_catch_(error, Err, ST)
-        case is_function(pr_stacktrace, 1) of
+        ST1 = case is_function(pr_stacktrace, 1) of
             true ->
-                ST1 = apply(?MODULE, pr_stacktrace, [ST]),
-                lager:debug("~s: CAUGHT ~p / ~p", [Prefix, Err, ST1]);
+                apply(?MODULE, pr_stacktrace, [ST]);
             false ->
-                lager:debug("~s: CAUGHT ~p / ~p", [Prefix, Err, ST])
+                ST
         end,
+        lager:debug("~s: CAUGHT ~p / ~p", [Prefix, Err, ST1]),
        ).
 -else.
 % When not testing we don't use the stracktrace, therefore we don't acquire it
