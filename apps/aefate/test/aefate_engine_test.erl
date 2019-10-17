@@ -184,7 +184,7 @@ list() ->
         {F,A,R} <-
             [ {<<"make_nil">>, [], []}
             ,  {<<"cons">>, [42,[]], [42]}
-            ,  {<<"cons_error">>, [42,[true]], {error, <<"Type error in cons: creating polymorphic list">>}}
+            ,  {<<"cons_error">>, [42,[true]], {error, <<"Bad arguments to cons: [42,[true]]">>}}
             ,  {<<"head">>, [[42]], 42}
             ,  {<<"tail">>, [[42]], []}
             ,  {<<"length">>, [[1,2,3,4]], 4}

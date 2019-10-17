@@ -341,7 +341,7 @@ non_test_registrars() ->
 
 %% union of all name_registrars above disregarding the height
 possible_name_registrars() ->
-    [<<"aet">>, <<"test">>].
+    [<<"chain">>, <<"test">>].
 
 
 fraud_report_reward(Height) ->

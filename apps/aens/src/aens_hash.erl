@@ -4,7 +4,7 @@
 %%%    Naming System hashing functions
 %%%
 %%%    We hash names in .test domain in a legacy format, whereas names
-%%%    in the .aet domain are hashed differently.
+%%%    in the .chain domain are hashed differently.
 %%%    If additional domains are added, we need to make their hash function
 %%%    explicit in this code.
 %%%
@@ -61,7 +61,7 @@ commitment_hash(NameAscii, Salt) ->
 -spec name_hash(binary()) -> name_hash().
 name_hash(NameAscii) ->
     case aens_utils:name_domain(NameAscii) of
-        {ok, Domain} when Domain =:= <<"aet">> ->
+        {ok, Domain} when Domain =:= <<"chain">> ->
             hash(NameAscii);
         _ ->
             %% This could be .test or any other wrong name backward compatible
