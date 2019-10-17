@@ -102,7 +102,7 @@ genesis_block_with_state(Map) ->
 
     Block = aec_blocks:new_key(height(), prev_hash(), prev_key_hash(),
                                aec_trees:hash(Trees),
-                               target(), 0, time_in_msecs(),
+                               target(), 0, time_in_msecs(), default,
                                version(), miner(), beneficiary()),
     {Block, Trees}.
 

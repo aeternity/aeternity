@@ -507,6 +507,120 @@ test_received_block_signing() ->
     ok.
 
 %%%===================================================================
+%%% Fork signalling tests
+%%%===================================================================
+
+fork_signalling_test_() ->
+    {foreach,
+     fun() ->
+             TmpKeysDir = setup_common(),
+             {ok, _} = ?TEST_MODULE:start_link([{autostart, false}]),
+             meck:new(aeminer_pow_cuckoo, [passthrough]),
+             meck:new(aec_trees, [passthrough]),
+             meck:expect(aeminer_pow_cuckoo, verify, fun(_, _, _, _, _) -> true end),
+             meck:expect(aec_trees, perform_pre_transformations, fun(Trees, _, _) -> Trees end),
+             TmpKeysDir
+     end,
+     fun(TmpKeysDir) ->
+             teardown_common(TmpKeysDir),
+             meck:unload(aeminer_pow_cuckoo),
+             meck:unload(aec_trees),
+             ok
+     end,
+     [
+        {"No new protocol, post_block",
+         fun() -> test_add_new_block_after_fork(without_protocol_change, post_block) end},
+        {"New protocol, post_block",
+         fun() -> test_add_new_block_after_fork(with_protocol_change, post_block) end},
+        {"No new protocol, add_synced_block",
+         fun() -> test_add_new_block_after_fork(without_protocol_change, add_synced_block) end},
+        {"New protocol, add_synced_block",
+         fun() -> test_add_new_block_after_fork(with_protocol_change, add_synced_block) end}
+     ]}.
+
+test_add_new_block_after_fork(ProtocolChange, AddFunction) ->
+    NetworkId = aec_governance:get_network_id(),
+    test_add_new_block_after_fork(NetworkId, ProtocolChange, AddFunction).
+
+test_add_new_block_after_fork(NetworkId, ProtocolChange, AddFunction)
+  when NetworkId =/= <<"local_roma_testnet">> ->
+    OldProtocol = aec_hard_forks:protocol_effective_at_height(1),
+    NewProtocol = OldProtocol + 1,
+
+    InfoFieldSupport = 9999,
+    InfoFieldAgainst = 1000,
+
+    Fork =
+        #{signalling_start_height => 2,
+          signalling_end_height   => 5,
+          signalling_block_count  => 3,
+          info_field              => InfoFieldSupport,
+          version                 => NewProtocol},
+
+    {B0, S0} = aec_chain:top_block_with_state(),
+    Chain0 = [{B0, S0}],
+
+    MinerAccount = aec_blocks:miner(B0),
+
+    InfoField =
+        case ProtocolChange of
+            without_protocol_change -> InfoFieldAgainst;
+            with_protocol_change    -> InfoFieldSupport
+        end,
+
+    Chain1S = aec_test_utils:extend_block_chain_with_key_blocks(
+                Chain0, 4, MinerAccount, MinerAccount,
+                #{1 => #{version => OldProtocol, info => InfoField}}),
+
+    Chain1 = [B1, B2, B3, B4] = aec_test_utils:blocks_only_chain(Chain1S),
+    [H1, H2, H3, H4] = [block_hash(B) || B <- Chain1],
+
+    Chain2SOld = aec_test_utils:extend_block_chain_with_key_blocks(
+                   Chain1S, 2, MinerAccount, MinerAccount,
+                   #{5 => #{version => OldProtocol}}),
+
+    Chain2Old = [B5Old, B6Old] = aec_test_utils:blocks_only_chain(Chain2SOld),
+    [H5Old, H6Old] = [block_hash(B) || B <- Chain2Old],
+
+    Chain2SNew = aec_test_utils:extend_block_chain_with_key_blocks(
+                   Chain1S, 2, MinerAccount, MinerAccount,
+                   #{5 => #{version => NewProtocol}}),
+
+    Chain2New = [B5New, B6New] = aec_test_utils:blocks_only_chain(Chain2SNew),
+    [H5New, H6New] = [block_hash(B) || B <- Chain2New],
+
+    application:set_env(aecore, fork, Fork),
+
+    add_new_block_and_wait_for_top_hash(AddFunction, B1, H1),
+    add_new_block_and_wait_for_top_hash(AddFunction, B2, H2),
+    add_new_block_and_wait_for_top_hash(AddFunction, B3, H3),
+    add_new_block_and_wait_for_top_hash(AddFunction, B4, H4),
+
+    {ok, KC} = ?TEST_MODULE:get_key_block_candidate(),
+
+    case ProtocolChange of
+        without_protocol_change ->
+            ?assertEqual(OldProtocol, aec_blocks:version(KC)),
+            %% Add block at hard fork height.
+            add_new_block_and_wait_for_top_hash(AddFunction, B5Old, H5Old),
+            %% Add block after hard fork height.
+            add_new_block_and_wait_for_top_hash(AddFunction, B6Old, H6Old),
+            ?assertEqual({error, protocol_version_mismatch}, add_new_block(AddFunction, B5New));
+        with_protocol_change ->
+            ?assertEqual(NewProtocol, aec_blocks:version(KC)),
+            %% Add block at hard fork height.
+            add_new_block_and_wait_for_top_hash(AddFunction, B5New, H5New),
+            %% Add block after hard fork height.
+            add_new_block_and_wait_for_top_hash(AddFunction, B6New, H6New),
+            ?assertEqual({error, protocol_version_mismatch}, add_new_block(AddFunction, B5Old))
+    end,
+
+    application:unset_env(aecore, fork),
+    ok;
+test_add_new_block_after_fork(_NetworkId, _ProtocolChange, _AddFunction) ->
+    ok.
+
+%%%===================================================================
 %%% Helpers
 %%%===================================================================
 
@@ -540,6 +654,14 @@ prev_on_chain(Block, _, Target) ->
         {ok, NewBlock} -> prev_on_chain(NewBlock, block_hash(Block), Target)
     end.
 
+add_new_block_and_wait_for_top_hash(AddFunction, B, H) ->
+    add_new_block(AddFunction, B),
+    wait_for_top_block_hash(H).
+
+add_new_block(post_block, B) ->
+    ?TEST_MODULE:post_block(B);
+add_new_block(add_synced_block, B) ->
+    ?TEST_MODULE:add_synced_block(B).
 
 assert_stopped() ->
     ?assertEqual(stopped, ?TEST_MODULE:get_mining_state()).

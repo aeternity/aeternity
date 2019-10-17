@@ -86,6 +86,8 @@
         , insert_block/2
         , gossip_allowed_height_from_top/0
         , proof_of_fraud_report_delay/0
+        , get_fork_result/2
+        , get_info_field/2
         ]).
 
 %% For tests
@@ -207,6 +209,30 @@ gossip_allowed_height_from_top() ->
 
 proof_of_fraud_report_delay() ->
     ?POF_REPORT_DELAY.
+
+get_fork_result(Block, Fork) ->
+    case is_last_signalling_block(Block, Fork) of
+        true ->
+            {ok, BlockHash} = aec_blocks:hash_internal_representation(Block),
+            case db_find_signal_count(BlockHash) of
+                {ok, Count} ->
+                    {ok, fork_result(Count, Fork)};
+                error ->
+                    Count = count_blocks_with_signal(Block, Fork, 0),
+                    db_put_signal_count(BlockHash, Count),
+                    {ok, fork_result(Count, Fork)}
+            end;
+        false ->
+            {error, not_last_signalling_block}
+    end.
+
+get_info_field(Height, Fork) when Fork =/= undefined ->
+    case is_height_in_signalling_interval(Height, Fork) of
+        true  -> maps:get(info_field, Fork);
+        false -> default
+    end;
+get_info_field(_Height, undefined) ->
+    default.
 
 %%%===================================================================
 %%% Internal functions
@@ -336,6 +362,7 @@ fake_key_node(PrevNode, Height, Miner, Beneficiary, Protocol) ->
                                <<123:?STATE_HASH_BYTES/unit:8>>,
                                ?HIGHEST_TARGET_SCI,
                                0, aeu_time:now_in_msecs(),
+                               default,
                                Protocol,
                                Miner,
                                Beneficiary),
@@ -423,7 +450,8 @@ internal_insert_transaction(Node, Block, Origin) ->
             case node_type(Node) of
                 key ->
                     KeyHeaders = assert_key_block_time_return_headers(Node),
-                    assert_key_block_target(Node, KeyHeaders);
+                    assert_key_block_target(Node, KeyHeaders),
+                    maybe_put_signal_count(Block, hash(Node), aeu_env:get_env(aecore, fork, undefined));
                 micro ->
                     assert_micro_block_time(PrevNode, Node),
                     assert_micro_signature(PrevNode, Node),
@@ -1115,6 +1143,15 @@ db_sibling_blocks(Node) ->
              , micro_siblings => match_prev_at_height(Height    , PrevHash, Hash)}
     end.
 
+db_find_signal_count(Hash) ->
+    case aec_db:find_signal_count(Hash) of
+        {value, Count} -> {ok, Count};
+        none           -> error
+    end.
+
+db_put_signal_count(Hash, Count) ->
+    aec_db:write_signal_count(Hash, Count).
+
 match_prev_at_height(Height, PrevHash, Hash) ->
     [Header || {Header, H} <- aec_db:find_headers_and_hash_at_height(Height),
                H =/= Hash,
@@ -1178,3 +1215,69 @@ calc_rewards(FraudStatus1, FraudStatus2, GenerationFees,
         end,
     LockedAmount = TotalBlockAmount - B1Amt - B2Amt,
     {B1Amt, B2Amt, LockedAmount}.
+
+%%%-------------------------------------------------------------------
+%%% Fork signalling related functions
+%%%-------------------------------------------------------------------
+maybe_put_signal_count(Block, Hash, Fork) when Fork =/= undefined ->
+    case count_blocks_with_signal(Block, Fork) of
+        {ok, Count}   -> db_put_signal_count(Hash, Count);
+        {error, _Rsn} -> ok
+    end;
+maybe_put_signal_count(_Block, _Hash, undefined) ->
+    ok.
+
+count_blocks_with_signal(Block, Fork) ->
+    BlockHeight = aec_blocks:height(Block),
+    case is_height_in_signalling_interval(BlockHeight, Fork) of
+        true ->
+            PrevKeyBlockHash = aec_blocks:prev_key_hash(Block),
+            case db_find_signal_count(PrevKeyBlockHash) of
+                {ok, Count} ->
+                    %% There is count stored for the previous block.
+                    Count1 = Count + count_inc(is_matching_info_present(Block, Fork)),
+                    {ok, Count1};
+                error ->
+                    %% No count stored for the previus block, it must be
+                    %% computed by traversing to the first signalling block.
+                    {ok, count_blocks_with_signal(Block, Fork, 0)}
+            end;
+        false ->
+            {error, block_not_in_signalling_interval}
+    end.
+
+%% This function may take long time. It's called in the conductor's context, so
+%% it blocks the conductor process.
+count_blocks_with_signal(Block, Fork, Count) ->
+    Count1 = Count + count_inc(is_matching_info_present(Block, Fork)),
+    case is_first_signalling_block(Block, Fork) of
+        true ->
+            Count1;
+        false ->
+            {value, Block1} = aec_db:find_block(aec_blocks:prev_key_hash(Block)),
+            count_blocks_with_signal(Block1, Fork, Count1)
+    end.
+
+is_height_in_signalling_interval(Height, #{signalling_start_height := StartHeight,
+                                           signalling_end_height := EndHeight}) ->
+    %% Block at EndHeight doesn't belong to the signalling interval! EndHeight
+    %% is fork height and the signalling result must be known at this height.
+    (Height >= StartHeight) andalso (Height < EndHeight).
+
+is_first_signalling_block(Block, #{signalling_start_height := StartHeight}) ->
+    aec_blocks:height(Block) =:= StartHeight.
+
+is_last_signalling_block(Block, #{signalling_end_height := EndHeight}) ->
+    aec_blocks:height(Block) =:= (EndHeight - 1).
+
+count_inc(true)  -> 1;
+count_inc(false) -> 0.
+
+is_matching_info_present(Block, #{info_field := InfoField}) ->
+    Info = aec_headers:info(aec_blocks:to_header(Block)),
+    Info =:= InfoField.
+
+fork_result(Count, #{signalling_block_count := SigCount}) when Count >= SigCount ->
+    true;
+fork_result(_Count, _Fork) ->
+    false.

@@ -18,7 +18,7 @@
          is_block/1,
          is_key_block/1,
          miner/1,
-         new_key/10,
+         new_key/11,
          new_key_from_header/1,
          new_micro/9,
          new_micro_from_header/3,
@@ -76,12 +76,14 @@
 -type   block()       :: key_block() | micro_block().
 -type   height()      :: non_neg_integer().
 -type   tx_list()     :: list(aetx_sign:signed_tx()).
+-type   info()        :: 0..16#ffffffff | default.
 
 -export_type([block/0,
               block_header_hash/0,
               height/0,
               key_block/0,
-              micro_block/0
+              micro_block/0,
+              info/0
              ]).
 
 %%%===================================================================
@@ -152,14 +154,14 @@ type(#mic_block{}) -> 'micro'.
 
 -spec new_key(height(), block_header_hash(), block_header_hash(), state_hash(),
               aeminer_pow:sci_target(),
-              non_neg_integer(), non_neg_integer(), non_neg_integer(),
-              miner_pubkey(), beneficiary_pubkey()
+              non_neg_integer(), non_neg_integer(), info(),
+              aec_hard_forks:protocol_vsn(), miner_pubkey(), beneficiary_pubkey()
              ) -> key_block().
 new_key(Height, PrevHash, PrevKeyHash, RootHash, Target,
-        Nonce, Time, Version, Miner, Beneficiary) ->
+        Nonce, Time, Info, Version, Miner, Beneficiary) ->
     H = aec_headers:new_key_header(Height, PrevHash, PrevKeyHash, RootHash,
                                    Miner, Beneficiary, Target,
-                                   no_value, Nonce, Time, Version),
+                                   no_value, Nonce, Time, Info, Version),
     #key_block{header = H}.
 
 -spec new_key_from_header(aec_headers:key_header()) -> key_block().

@@ -1,0 +1,8 @@
+fork_management:
+    fork:
+        enabled: true
+        signalling_start_height: 1000
+        signalling_end_height: 900
+        signalling_block_count: 100
+        info_field: 0
+        version: 5

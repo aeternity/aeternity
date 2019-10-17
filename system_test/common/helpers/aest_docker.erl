@@ -222,16 +222,43 @@ setup_node(Spec, BackendState) ->
         end,
     HardForkVars =
         case maps:find(hard_forks, Spec) of
-            error -> #{};
             {ok, HardForks} ->
-                #{hard_forks_present => [#{}],
-                  hard_forks =>
-                      lists:map(fun({V, H}) -> #{version => V, height => H} end,
-                                maps:to_list(HardForks))}
+                #{hard_forks =>
+                      #{present => true,
+                        hard_fork_info =>
+                            lists:map(
+                              fun({V, H}) -> #{version => V, height => H} end,
+                              maps:to_list(HardForks))}};
+            error ->
+                #{hard_forks =>
+                      #{present => false,
+                        hard_fork_info => []}}
         end,
     Mining = maps:merge(#{autostart => true}, maps:get(mining, Spec, #{})),
     ct:log("~p has set mining ~p", [Name, Mining]),
-    RootVars = (maps:merge(CuckooMinerVars, HardForkVars))#{
+    ForkManagementVars =
+        case maps:find(fork_management, Spec) of
+            {ok, #{fork :=
+                       #{enabled := Enabled,
+                         signalling_start_height := SigStartHeight,
+                         signalling_end_height := SigEndHeight,
+                         signalling_block_count := SigBlockCount,
+                         info_field := InfoField,
+                         version := Version}}} ->
+                #{fork_management =>
+                      #{fork =>
+                            #{enabled => Enabled,
+                              signalling_start_height => SigStartHeight,
+                              signalling_end_height => SigEndHeight,
+                              signalling_block_count => SigBlockCount,
+                              info_field => InfoField,
+                              version => Version}}};
+            error ->
+                #{fork_management => false}
+        end,
+    RootVars = maps:merge(CuckooMinerVars, HardForkVars),
+    RootVars1 = maps:merge(RootVars, ForkManagementVars),
+    RootVars2 = RootVars1#{
         hostname => Name,
         ext_addr => format("http://~s:~w/", [Hostname, ?EXT_HTTP_PORT]),
         peers => PeerVars,
@@ -245,7 +272,7 @@ setup_node(Spec, BackendState) ->
         },
         mining => Mining
     },
-    Context = #{aeternity_config => RootVars},
+    Context = #{aeternity_config => RootVars2},
     {ok, ConfigString} = write_template(TemplateFile, ConfigFileHostPath, Context),
     Command =
         case maps:find(custom_command, Spec) of

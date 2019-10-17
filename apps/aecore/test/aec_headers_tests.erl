@@ -64,7 +64,7 @@ info_test_() ->
      [{"Serialization/deserialization of set info",
        fun() ->
                RawKey = raw_key_header_minerva(MinervaHeight),
-               WithInfo = ?TEST_MODULE:set_info(RawKey, <<123:?OPTIONAL_INFO_BYTES/unit:8>>),
+               WithInfo = ?TEST_MODULE:set_info(RawKey, 123),
                SerializedWithInfo = ?TEST_MODULE:serialize_to_binary(WithInfo),
                ?assertEqual(WithInfo,
                             ?TEST_MODULE:deserialize_from_binary(SerializedWithInfo)),
@@ -73,7 +73,7 @@ info_test_() ->
       {"Client serialization/deserialization of set info",
        fun() ->
                RawKey = raw_key_header_minerva(MinervaHeight),
-               WithInfo = ?TEST_MODULE:set_info(RawKey, <<123:?OPTIONAL_INFO_BYTES/unit:8>>),
+               WithInfo = ?TEST_MODULE:set_info(RawKey, 123),
                SerializedWithInfo = ?TEST_MODULE:serialize_for_client(WithInfo, key),
                Serialized = SerializedWithInfo#{<<"nonce">> => ?TEST_MODULE:nonce(WithInfo),
                                                 <<"pow">>   => ?TEST_MODULE:pow(WithInfo)
@@ -85,7 +85,7 @@ info_test_() ->
       {"Serialization/deserialization of unset info",
        fun() ->
                RawKey = raw_key_header_minerva(MinervaHeight),
-               WithInfo = ?TEST_MODULE:set_info(RawKey, <<>>),
+               WithInfo = ?TEST_MODULE:set_info(RawKey, default),
                SerializedWithInfo = ?TEST_MODULE:serialize_to_binary(WithInfo),
                ?assertEqual(WithInfo,
                             ?TEST_MODULE:deserialize_from_binary(SerializedWithInfo)),
@@ -94,7 +94,7 @@ info_test_() ->
       {"Client serialization/deserialization of unset info",
        fun() ->
                RawKey = raw_key_header_minerva(MinervaHeight),
-               WithInfo = ?TEST_MODULE:set_info(RawKey, <<>>),
+               WithInfo = ?TEST_MODULE:set_info(RawKey, default),
                SerializedWithInfo = ?TEST_MODULE:serialize_for_client(WithInfo, key),
                Serialized = SerializedWithInfo#{<<"nonce">> => ?TEST_MODULE:nonce(WithInfo),
                                                 <<"pow">>   => ?TEST_MODULE:pow(WithInfo)
@@ -103,34 +103,18 @@ info_test_() ->
                             ?TEST_MODULE:deserialize_from_client(key, Serialized)),
                ok
        end},
-      {"Serialization of too small info",
-       fun() ->
-               RawKey = raw_key_header_minerva(MinervaHeight),
-               Size = ?OPTIONAL_INFO_BYTES - 1,
-               WithInfo = ?TEST_MODULE:set_info(RawKey, <<123:Size/unit:8>>),
-               ?assertException(error, illegal_info_field, ?TEST_MODULE:serialize_to_binary(WithInfo)),
-               ok
-       end},
-      {"Serialization of too big info",
-       fun() ->
-               RawKey = raw_key_header_minerva(MinervaHeight),
-               Size = ?OPTIONAL_INFO_BYTES + 1,
-               WithInfo = ?TEST_MODULE:set_info(RawKey, <<123:Size/unit:8>>),
-               ?assertException(error, illegal_info_field, ?TEST_MODULE:serialize_to_binary(WithInfo)),
-               ok
-       end},
       {"Serialization of set info in Roma",
        fun() ->
                RawKey = raw_key_header_roma(MinervaHeight),
-               WithInfo = ?TEST_MODULE:set_info(RawKey, <<123:?OPTIONAL_INFO_BYTES/unit:8>>),
-               ?assertException(error, illegal_info_field, ?TEST_MODULE:serialize_to_binary(WithInfo)),
+               WithInfo = ?TEST_MODULE:set_info(RawKey, default),
+               ?assertMatch(X when is_binary(X), ?TEST_MODULE:serialize_to_binary(WithInfo)),
                ok
        end},
       {"Deserialization of set info in Roma",
        fun() ->
                RawKey = raw_key_header_minerva(MinervaHeight),
                RomaHeight = ?TEST_MODULE:height(raw_key_header_roma(MinervaHeight)),
-               WithInfo = ?TEST_MODULE:set_info(RawKey, <<123:?OPTIONAL_INFO_BYTES/unit:8>>),
+               WithInfo = ?TEST_MODULE:set_info(RawKey, 123),
                SerMinerva = ?TEST_MODULE:serialize_to_binary(WithInfo),
                CommonVersionBits = 32,
                CommonFlagsBits = 32,
@@ -144,7 +128,7 @@ info_test_() ->
       {"Deserialization of too big info",
        fun() ->
                RawKey = raw_key_header_minerva(MinervaHeight),
-               WithInfo = ?TEST_MODULE:set_info(RawKey, <<123:?OPTIONAL_INFO_BYTES/unit:8>>),
+               WithInfo = ?TEST_MODULE:set_info(RawKey, 123),
                SerMinerva = ?TEST_MODULE:serialize_to_binary(WithInfo),
                TestBinary = <<SerMinerva/binary, 0:8>>,
                ?assertException(error, malformed_header,
@@ -154,7 +138,7 @@ info_test_() ->
       {"Deserialization of too small info",
        fun() ->
                RawKey = raw_key_header_minerva(MinervaHeight),
-               WithInfo = ?TEST_MODULE:set_info(RawKey, <<123:?OPTIONAL_INFO_BYTES/unit:8>>),
+               WithInfo = ?TEST_MODULE:set_info(RawKey, 123),
                SerMinerva = ?TEST_MODULE:serialize_to_binary(WithInfo),
                Size = byte_size(SerMinerva) - 1,
                <<TestBinary:Size/binary, _:1/unit:8>> = SerMinerva,
@@ -165,7 +149,7 @@ info_test_() ->
       {"Deserialization of no info with info flag set",
        fun() ->
                RawKey = raw_key_header_minerva(MinervaHeight),
-               WithInfo = ?TEST_MODULE:set_info(RawKey, <<123:?OPTIONAL_INFO_BYTES/unit:8>>),
+               WithInfo = ?TEST_MODULE:set_info(RawKey, 123),
                SerMinerva = ?TEST_MODULE:serialize_to_binary(WithInfo),
                Size = byte_size(SerMinerva) - ?OPTIONAL_INFO_BYTES,
                <<TestBinary:Size/binary, _:?OPTIONAL_INFO_BYTES/unit:8>> = SerMinerva,
@@ -187,8 +171,9 @@ info_test_() ->
                              ?TEST_MODULE:pow(RawKey),
                              ?TEST_MODULE:nonce(RawKey),
                              ?TEST_MODULE:time_in_msecs(RawKey),
+                             default,
                              ?MINERVA_PROTOCOL_VSN),
-               Info = <<?KEY_HEADER_INFO_FORTUNA_POINT_RELEASE:?OPTIONAL_INFO_BYTES/unit:8>>,
+               Info = ?KEY_HEADER_INFO_FORTUNA_POINT_RELEASE,
                ?assertEqual(Info, ?TEST_MODULE:info(WithInfo))
        end},
       {"Default value of the info field in the pre release of Fortuna: Roma protocol",
@@ -205,8 +190,9 @@ info_test_() ->
                              ?TEST_MODULE:pow(RawKey),
                              ?TEST_MODULE:nonce(RawKey),
                              ?TEST_MODULE:time_in_msecs(RawKey),
+                             default,
                              ?ROMA_PROTOCOL_VSN),
-               Info = <<>>,
+               Info = undefined,
                ?assertEqual(Info, ?TEST_MODULE:info(WithInfo))
        end},
       {"Default value of the info field in the pre release of Fortuna: Fortuna protocol",
@@ -223,8 +209,9 @@ info_test_() ->
                              ?TEST_MODULE:pow(RawKey),
                              ?TEST_MODULE:nonce(RawKey),
                              ?TEST_MODULE:time_in_msecs(RawKey),
+                             default,
                              ?FORTUNA_PROTOCOL_VSN),
-               Info = <<?KEY_HEADER_INFO_FORTUNA_POINT_RELEASE:?OPTIONAL_INFO_BYTES/unit:8>>,
+               Info = ?KEY_HEADER_INFO_FORTUNA_POINT_RELEASE,
                ?assertEqual(Info, ?TEST_MODULE:info(WithInfo))
        end}
      ]}.

@@ -21,7 +21,7 @@
          height/1,
          info/1,
          miner/1,
-         new_key_header/11,
+         new_key_header/12,
          new_micro_header/8,
          nonce/1,
          pof_hash/1,
@@ -65,8 +65,11 @@
 %%% Records and types
 %%%===================================================================
 
+-define(IS_INT_INFO(I), is_integer(I) andalso (I >= 0) andalso (I =< 16#ffffffff)).
+
 -type height() :: aec_blocks:height().
--type optional_info() :: <<>> | <<_:32>>. %% ?OPTIONAL_INFO_BYTES * 8
+-type bin_info() :: <<>> | <<_:32>>. %% ?OPTIONAL_INFO_BYTES * 8
+-type info()     :: aec_blocks:info().
 
 -record(mic_header, {
           height       = 0                                     :: height(),
@@ -92,7 +95,7 @@
           pow_evidence = no_value                              :: aeminer_pow_cuckoo:solution() | no_value,
           miner        = <<0:?MINER_PUB_BYTES/unit:8>>         :: miner_pubkey(),
           beneficiary  = <<0:?BENEFICIARY_PUB_BYTES/unit:8>>   :: beneficiary_pubkey(),
-          info         = <<>>                                  :: optional_info()
+          info         = <<>>                                  :: bin_info()
          }).
 
 -record(db_key_header, {
@@ -212,11 +215,11 @@ from_db_header(Tuple) when is_tuple(Tuple) ->
                      state_hash(), miner_pubkey(), beneficiary_pubkey(),
                      aeminer_pow:sci_target(),
                      aeminer_pow_cuckoo:solution() | 'no_value',
-                     non_neg_integer(), non_neg_integer(), non_neg_integer()
+                     non_neg_integer(), non_neg_integer(), info(),
+                     aec_hard_forks:protocol_vsn()
                     ) -> header().
 new_key_header(Height, PrevHash, PrevKeyHash, RootHash, Miner, Beneficiary,
-               Target, Evd, Nonce, Time, Version) ->
-    Info = default_info_field(Version),
+               Target, Evd, Nonce, Time, Info, Version) ->
     #key_header{height       = Height,
                 prev_hash    = PrevHash,
                 prev_key     = PrevKeyHash,
@@ -227,14 +230,15 @@ new_key_header(Height, PrevHash, PrevKeyHash, RootHash, Miner, Beneficiary,
                 pow_evidence = Evd,
                 nonce        = Nonce,
                 time         = Time,
-                info         = Info,
+                info         = make_info(Version, Info),
                 version      = Version
                }.
 
-
-default_info_field(Vsn) when Vsn >= ?MINERVA_PROTOCOL_VSN ->
+make_info(Version, Info) when (Version >= ?MINERVA_PROTOCOL_VSN), ?IS_INT_INFO(Info) ->
+    <<Info:?OPTIONAL_INFO_BYTES/unit:8>>;
+make_info(Version, default) when Version >= ?MINERVA_PROTOCOL_VSN ->
     <<?KEY_HEADER_INFO_FORTUNA_POINT_RELEASE:?OPTIONAL_INFO_BYTES/unit:8>>;
-default_info_field(_Vsn) ->
+make_info(_Version, default) ->
     <<>>.
 
 -spec new_micro_header(height(), block_header_hash(), block_header_hash(),
@@ -277,11 +281,15 @@ height(#mic_header{height = H}) -> H.
 set_height(#key_header{} = H, Height) -> H#key_header{height = Height};
 set_height(#mic_header{} = H, Height) -> H#mic_header{height = Height}.
 
--spec info(key_header()) -> optional_info().
-info(#key_header{info = I}) -> I.
+-spec info(key_header()) -> non_neg_integer() | undefined.
+info(#key_header{info = <<>>}) ->
+    undefined;
+info(#key_header{info = <<I:?OPTIONAL_INFO_BYTES/unit:8>>}) ->
+    I.
 
--spec set_info(key_header(), optional_info()) -> key_header().
-set_info(#key_header{} = H, I) -> H#key_header{info = I}.
+-spec set_info(key_header(), info()) -> key_header().
+set_info(#key_header{version = Vsn} = H, I) ->
+    H#key_header{info = make_info(Vsn, I)}.
 
 -spec prev_hash(header()) -> block_header_hash().
 prev_hash(#key_header{prev_hash = H}) -> H;
