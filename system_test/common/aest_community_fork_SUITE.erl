@@ -34,7 +34,7 @@
 -define(SIGNALLING_END_HEIGHT, 15).
 -define(SIGNALLING_BLOCK_COUNT, 9).
 -define(INFO_FIELD, 1234).
--define(VERSION, 4).
+-define(VERSION, 3).
 
 -define(FORK_HEIGHT, ?SIGNALLING_END_HEIGHT).
 
