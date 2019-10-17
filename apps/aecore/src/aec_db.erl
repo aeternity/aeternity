@@ -757,6 +757,10 @@ ensure_mnesia_tables(Mode, Storage) ->
         existing_schema ->
             case check_mnesia_tables(Tables, []) of
                 [] -> ok;
+                [{missing_table, aec_signal_count = Table}] ->
+                    %% The table is new in node version 5.1.0.
+                    {Table, Spec} = lists:keyfind(Table, 1, Tables),
+                    {atomic, ok} = mnesia:create_table(Table, Spec);
                 Errors ->
                     lager:error("Database check failed: ~p", [Errors]),
                     erlang:error({table_check, Errors})
