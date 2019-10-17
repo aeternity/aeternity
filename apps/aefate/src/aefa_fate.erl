@@ -173,12 +173,12 @@ abort({invalid_tuple_size, Size}, ES) ->
     ?t("Invalid tuple size: ~p", [Size], ES);
 abort({element_index_out_of_bounds, Index}, ES) ->
     ?t("Bad index argument to element, Index: ~p", [Index], ES);
-abort({bad_arguments_to_element, Index, Tuple}, ES) ->
-    ?t("Bad argument to element, Tuple: ~p, Index: ~p", [Tuple, Index], ES);
 abort({bad_variant_tag, Tag}, ES) ->
     ?t("Type error in switch: tag ~p is larger than switch op", [Tag], ES);
 abort({bad_variant_size, Size}, ES) ->
     ?t("Type error in switch: wrong size ~p", [Size], ES);
+abort({type_error, Op, Args}, ES) ->
+    ?t("Bad arguments to ~p: ~p", [Op, Args], ES);
 abort(hd_on_empty_list, ES) ->
     ?t("Head on empty list", [], ES);
 abort(tl_on_empty_list, ES) ->
@@ -195,8 +195,6 @@ abort(missing_map_key, ES) ->
     ?t("Maps: Key does not exist", [], ES);
 abort(bad_store_map_id, ES) ->
     ?t("Maps: Map does not exist", [], ES);
-abort({type_error, cons}, ES) ->
-    ?t("Type error in cons: creating polymorphic list", [], ES);
 abort({undefined_var, Var}, ES) ->
     ?t("Undefined var: ~p", [Var], ES);
 abort({bad_return_type, Val, Type}, ES) ->

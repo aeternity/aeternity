@@ -94,7 +94,7 @@ name_to_ascii(Name) when is_binary(Name) ->
     NameUnicodeList = unicode:characters_to_list(Name, utf8),
     try idna:encode(NameUnicodeList, [{uts46, true}, {std3_rules, true}]) of
         NameAscii ->
-            %% idna:to_ascii(".aet") returns just "aet"
+            %% idna:to_ascii(".chain") returns just "chain"
             case length(string:split(NameAscii, ?LABEL_SEPARATOR, all)) =:= 1 of
                 true  -> {error, no_label_in_registrar};
                 false -> {ok, list_to_binary(NameAscii)}

@@ -426,7 +426,7 @@ element_op(To, Which, TupleArg, ES) ->
     case ?IS_FATE_INTEGER(Index)
         andalso (?FATE_INTEGER_VALUE(Index) >= 0)
         andalso ?IS_FATE_TUPLE(FateTuple) of
-        false -> aefa_fate:abort({bad_arguments_to_element, Index, FateTuple}, ES);
+        false -> aefa_fate:abort({type_error, element, [Index, FateTuple]}, ES);
         true ->
             ?FATE_TUPLE(Tuple) = FateTuple,
             case size(Tuple) > Index of
@@ -692,10 +692,9 @@ bits_all(Arg0, EngineState) ->
 %% A bit field with n bits set
 bits_all_n(Arg0, Arg1, EngineState) ->
     {Value, ES1} = get_op_arg(Arg1, EngineState),
-    Result = gop(bits_all, Value, ES1),
-    ?FATE_BITS(AsInt) = Result,
-    Cells = words_used(AsInt),
+    Cells = Value div 64 + 1,
     ES2 = aefa_engine_state:spend_gas_for_new_cells(Cells, ES1),
+    Result = gop(bits_all, Value, ES2),
     write(Arg0, Result, ES2).
 
 %% Bits.set(b : bits, i : int) : bits
@@ -703,10 +702,9 @@ bits_all_n(Arg0, Arg1, EngineState) ->
 bits_set(Arg0, Arg1, Arg2, EngineState) ->
     {Bits, ES1} = get_op_arg(Arg1, EngineState),
     {I, ES2} = get_op_arg(Arg2, ES1),
-    Result = gop(bits_set, Bits, I, ES2),
-    ?FATE_BITS(AsInt) = Result,
-    Cells = words_used(AsInt),
+    Cells = I div 64 + 1,
     ES3 = aefa_engine_state:spend_gas_for_new_cells(Cells, ES2),
+    Result = gop(bits_set, Bits, I, ES3),
     write(Arg0, Result, ES3).
 
 %% Bits.clear(b : bits, i : int) : bits
@@ -714,17 +712,21 @@ bits_set(Arg0, Arg1, Arg2, EngineState) ->
 bits_clear(Arg0, Arg1, Arg2, EngineState) ->
     {Bits, ES1} = get_op_arg(Arg1, EngineState),
     {I, ES2} = get_op_arg(Arg2, ES1),
-    Result = gop(bits_clear, Bits, I, ES2),
-    ?FATE_BITS(AsInt) = Result,
-    Cells = words_used(AsInt),
+    Cells = I div 64 + 1,
     ES3 = aefa_engine_state:spend_gas_for_new_cells(Cells, ES2),
+    Result = gop(bits_clear, Bits, I, ES3),
     write(Arg0, Result, ES3).
 
 
 %% Bits.test(b : bits, i : int) : bool
 %% Check if bit i is set
 bits_test(Arg0, Arg1, Arg2, EngineState) ->
-    bin_op(bits_test, {Arg0, Arg1, Arg2}, EngineState).
+    {Bits, ES1} = get_op_arg(Arg1, EngineState),
+    {I, ES2} = get_op_arg(Arg2, ES1),
+    Cells = I div 64 + 1,
+    ES3 = aefa_engine_state:spend_gas_for_new_cells(Cells, ES2),
+    Result = gop(bits_test, Bits, I, ES3),
+    write(Arg0, Result, ES3).
 
 %% Bits.sum(b : bits) : int
 %% Count the number of set bits.
@@ -1582,7 +1584,7 @@ make_variant(Arities, Tag, NoElements, ES)  when ?IS_FATE_LIST(Arities)
     ES3 = aefa_engine_state:spend_gas_for_new_cells(Cells, ES2),
     {aeb_fate_data:make_variant(Arities, Tag, Values), ES3};
 make_variant(Arities, Tag, NoElements, ES) ->
-    aefa_fate:abort({bad_arguments_to_make_variant, Arities, Tag, NoElements}, ES).
+    aefa_fate:abort({type_error, make_variant, [Arities, Tag, NoElements]}, ES).
 
 
 %% Unary operations
@@ -1651,7 +1653,9 @@ op(blake2b, A) ->
 op(contract_to_address, A) when ?IS_FATE_CONTRACT(A) ->
     ?FATE_ADDRESS(?FATE_CONTRACT_VALUE(A));
 op(address_to_contract, A) when ?IS_FATE_ADDRESS(A) ->
-    ?FATE_CONTRACT(?FATE_ADDRESS_VALUE(A)).
+    ?FATE_CONTRACT(?FATE_ADDRESS_VALUE(A));
+op(Op, Arg) ->
+    aefa_fate:abort({type_error, Op, [Arg]}).
 
 binary_for_hashing(S) when ?IS_FATE_STRING(S) ->
     ?FATE_STRING_VALUE(S);  %% Makes Crypto.sha3 and String.sha3 coincide.
@@ -1699,7 +1703,7 @@ op(cons, Hd, Tail) when ?IS_FATE_LIST(Tail) ->
                 true ->
                     aeb_fate_data:make_list([Hd|?FATE_LIST_VALUE(Tail)]);
                 false ->
-                    aefa_fate:abort({type_error, cons})
+                    aefa_fate:abort({type_error, cons, [Hd, Tail]})
             end
     end;
 op(append, A, B) when ?IS_FATE_LIST(A), ?IS_FATE_LIST(B) ->
@@ -1714,7 +1718,7 @@ op(bytes_split, ?FATE_BYTES(A), B) when ?IS_FATE_INTEGER(B) ->
     N = ?FATE_INTEGER_VALUE(B),
     case A of
         <<L:N/binary, R/binary>> -> ?FATE_TUPLE({?FATE_BYTES(L), ?FATE_BYTES(R)});
-        _                        -> aefa_fate:abort({type_error, bytes_split})
+        _                        -> aefa_fate:abort({type_error, bytes_split, [?FATE_BYTES(A), B]})
     end;
 op(variant_test, A, B)  when ?IS_FATE_VARIANT(A)
                          , ?IS_FATE_INTEGER(B)
@@ -1728,7 +1732,7 @@ op(variant_element, A, B)  when ?IS_FATE_VARIANT(A)
     if size(Values) > B ->
             element(B + 1, Values);
        true ->
-            aefa_fate:abort({type_error, variant_element, B, A})
+            aefa_fate:abort({type_error, variant_element, [A, B]})
     end;
 
 op(bits_set, A, B)  when ?IS_FATE_BITS(A), ?IS_FATE_INTEGER(B) ->
@@ -1770,7 +1774,9 @@ op(ecrecover_secp256k1, Msg, Sig) when ?IS_FATE_BYTES(32, Msg)
     case aeu_crypto:ecrecover(secp256k1, Msg1, Sig1) of
         false      -> aeb_fate_data:make_variant([0, 1], 0, {});
         {ok, Addr} -> aeb_fate_data:make_variant([0, 1], 1, {?FATE_BYTES(Addr)})
-    end.
+    end;
+op(Op, Arg1, Arg2) ->
+    aefa_fate:abort({type_error, Op, [Arg1, Arg2]}).
 
 %% Terinay operations
 op(map_update, Map, Key, Value) when ?IS_FATE_MAP(Map),
@@ -1793,7 +1799,9 @@ op(ecverify_secp256k1, Msg, PK, Sig) when ?IS_FATE_BYTES(32, Msg)
                                         , ?IS_FATE_BYTES(20, PK)
                                         , ?IS_FATE_BYTES(65, Sig) ->
     {?FATE_BYTES(Msg1), ?FATE_BYTES(PK1), ?FATE_BYTES(Sig1)} = {Msg, PK, Sig},
-    aeu_crypto:ecverify(secp256k1, Msg1, PK1, Sig1).
+    aeu_crypto:ecverify(secp256k1, Msg1, PK1, Sig1);
+op(Op, Arg1, Arg2, Arg3) ->
+    aefa_fate:abort({type_error, Op, [Arg1, Arg2, Arg3]}).
 
 
 bits_sum(0, Sum) -> Sum;

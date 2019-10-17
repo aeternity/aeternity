@@ -84,7 +84,7 @@ naming_system_auction(Config) ->
     PubKey1Enc = aeser_api_encoder:encode(account_pubkey, PubKey1),
     PubKey2Enc = aeser_api_encoder:encode(account_pubkey, PubKey2),
 
-    Name        = <<"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx.aet">>,
+    Name        = <<"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx.chain">>,
     NameSalt    = 12345,
     Fee         = 100000 * aec_test_utils:min_gas_price(),
 

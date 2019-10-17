@@ -91,7 +91,7 @@ tests: # test specific settings
         bob: 5000000000000000000
         spend_fee: 20000000000000
       name_register:
-        name: "bobbobbobboby.aet"
+        name: "bobbobbobboby.chain"
         fee: 50000000000000
         name_fee: 2000000000000000000
       spend_tx:
