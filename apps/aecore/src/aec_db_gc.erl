@@ -22,7 +22,7 @@
 
 -include_lib("aecore/include/aec_db.hrl").
 
--define(DEFAULT_INTERVAL, 10000).
+-define(DEFAULT_INTERVAL, 50000).
 -define(DEFAULT_HISTORY, 500).
 
 -define(TIMED(Expr), timer:tc(fun () -> Expr end)).
@@ -41,10 +41,9 @@ start_link(Enabled, Interval, History) ->
     gen_statem:start_link({local, ?MODULE}, ?MODULE, [Enabled, Interval, History], []).
 
 
--ifdef(TEST).
+-ifdef(EUNIT).
 maybe_garbage_collect() -> nop.
 -else.
-
 %% this should be called when there are no processes modifying the block state
 %% (e.g. aec_conductor on specific places)
 maybe_garbage_collect() ->
