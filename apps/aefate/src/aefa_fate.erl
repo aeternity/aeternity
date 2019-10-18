@@ -34,7 +34,7 @@
         , runtime_exit/2
         , runtime_revert/2
         , set_local_function/2
-        , set_remote_function/5
+        , set_remote_function/6
         , terms_are_of_same_type/2
         ]
        ).
@@ -292,11 +292,11 @@ setup_engine(#{ contract := <<_:256>> = ContractPubkey
     Contract = aeb_fate_data:make_contract(ContractPubkey),
     Stores = aefa_stores:put_contract_store(ContractPubkey, Store, aefa_stores:new()),
     ES1 = aefa_engine_state:new(Gas, Value, Env, Stores, aefa_chain_api:new(Env), Cache),
-    ES2 = set_remote_function(Contract, Function, Value > 0, true, ES1),
+    Caller = aeb_fate_data:make_address(maps:get(caller, Env)),
+    ES2 = set_remote_function(Caller, Contract, Function, Value > 0, true, ES1),
     ES3 = aefa_engine_state:push_arguments(Arguments, ES2),
     Signature = get_function_signature(Function, ES3),
-    ES4 = check_signature_and_bind_args(length(Arguments), Signature, ES3),
-    aefa_engine_state:set_caller(aeb_fate_data:make_address(maps:get(caller, Env)), ES4).
+    check_signature_and_bind_args(length(Arguments), Signature, ES3).
 
 check_remote(Contract, EngineState) when not ?IS_FATE_CONTRACT(Contract) ->
     abort({value_does_not_match_type, Contract, contract}, EngineState);
@@ -308,7 +308,7 @@ check_remote(Contract, EngineState) ->
             abort(reentrant_call, EngineState)
     end.
 
-set_remote_function(?FATE_CONTRACT(Pubkey), Function, CheckPayable, CheckPrivate, ES) ->
+set_remote_function(Caller, ?FATE_CONTRACT(Pubkey), Function, CheckPayable, CheckPrivate, ES) ->
     CodeCache = aefa_engine_state:code_cache(ES),
     case maps:get(Pubkey, CodeCache, void) of
         void ->
@@ -318,13 +318,13 @@ set_remote_function(?FATE_CONTRACT(Pubkey), Function, CheckPayable, CheckPrivate
                     CodeCache1 = maps:put(Pubkey, ContractCode, CodeCache),
                     ES1 = aefa_engine_state:set_code_cache(CodeCache1, ES),
                     ES2 = aefa_engine_state:set_chain_api(APIState1, ES1),
-                    ES3 = aefa_engine_state:update_for_remote_call(Pubkey, ContractCode, ES2),
+                    ES3 = aefa_engine_state:update_for_remote_call(Pubkey, ContractCode, Caller, ES2),
                     check_flags_and_set_local_function(CheckPayable, CheckPrivate, Function, ES3);
                 error ->
                     abort({trying_to_call_contract, Pubkey}, ES)
             end;
         ContractCode ->
-            ES1 = aefa_engine_state:update_for_remote_call(Pubkey, ContractCode, ES),
+            ES1 = aefa_engine_state:update_for_remote_call(Pubkey, ContractCode, Caller, ES),
             check_flags_and_set_local_function(CheckPayable, CheckPrivate, Function, ES1)
     end.
 
@@ -622,9 +622,9 @@ pop_call_stack(ES) ->
             ES2 = set_local_function(Function, ES1),
             ES3 = aefa_engine_state:set_current_tvars(TVars, ES2),
             {jump, BB, ES3};
-        {remote, Contract, Function, TVars, BB, ES1} ->
+        {remote, Caller, Contract, Function, TVars, BB, ES1} ->
             ES2 = unfold_store_maps(ES1),
-            ES3 = set_remote_function(Contract, Function, false, false, ES2),
+            ES3 = set_remote_function(Caller, Contract, Function, false, false, ES2),
             ES4 = aefa_engine_state:set_current_tvars(TVars, ES3),
             {jump, BB, ES4}
     end.

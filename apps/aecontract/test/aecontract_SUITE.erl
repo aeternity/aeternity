@@ -160,6 +160,7 @@
         , sophia_remote_gas/1
         , sophia_higher_order_state/1
         , sophia_bignum/1
+        , sophia_call_caller/1
         , create_store/1
         , read_store/1
         , store_zero_value/1
@@ -396,6 +397,7 @@ groups() ->
                                  sophia_address_checks,
                                  sophia_too_little_gas_for_mem,
                                  sophia_bignum,
+                                 sophia_call_caller,
                                  sophia_higher_order_state,
                                  sophia_use_memory_gas,
                                  lima_migration
@@ -1638,6 +1640,25 @@ sophia_bignum(_Cfg) ->
     {error, Err3} = ?call(call_contract, Acc, Ct, tetr3, word, {100, 3}),
     ?assertMatchVM(<<"arithmetic_error">>, <<"Out of gas">>, Err3),
     ok.
+
+sophia_call_caller(_Cfg) ->
+    state(aect_test_utils:new_state()),
+    Acc = ?call(new_account, 1000000000 * aec_test_utils:min_gas_price()),
+    CtR1 = ?call(create_contract, Acc, identity, {}),
+    CtR2 = ?call(create_contract, Acc, call_caller, {}),
+    Ct   = ?call(create_contract, Acc, call_caller, {}),
+
+    Res1 = ?call(call_contract, Acc, Ct, f1, word, {}),
+    Res2 = ?call(call_contract, Acc, Ct, f2, word, {?cid(CtR1)}),
+    Res3 = ?call(call_contract, Acc, Ct, f3, word, {?cid(CtR1), ?cid(CtR2)}),
+    Res4 = ?call(call_contract, Acc, Ct, f4, bool, {?cid(CtR1), ?cid(CtR2)}),
+
+    ?assertEqual(Res1, Res2),
+    ?assertEqual(Res3, Res2),
+    ?assertEqual(Res4, true),
+
+    ok.
+
 
 sophia_vm_interaction(Cfg) ->
     state(aect_test_utils:new_state()),
