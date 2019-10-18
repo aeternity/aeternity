@@ -1,0 +1,31 @@
+contract Identity =
+  function main : (int) => int
+
+contract Middle =
+  function call_id : (Identity) => int
+  function call_id_check : (Identity) => bool
+
+contract CallCaller =
+  function f1() =
+    Call.caller
+
+  function f2(r : Identity) =
+    r.main(42)
+    Call.caller
+
+  function f3(r : Identity, m : Middle) =
+    m.call_id(r)
+    Call.caller
+
+  function f4(r : Identity, m : Middle) =
+    let a = Call.caller
+    let res1 = m.call_id_check(r)
+    res1 && (a == Call.caller)
+
+  function call_id(r : Identity) =
+    r.main(42)
+
+  function call_id_check(r : Identity) =
+    let a = Call.caller
+    r.main(42)
+    Call.caller == a
