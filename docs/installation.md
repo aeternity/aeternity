@@ -101,5 +101,5 @@ Create a directory and unpack the downloaded package (you may need to amend the 
 ```bash
 mkdir -p ~/aeternity/node
 cd ~/aeternity/node
-tar xf ~/Downloads/aeternity-5.0.0-rc.5-macos-x86_64.tar.gz
+tar xf ~/Downloads/aeternity-5.0.0-rc.6-macos-x86_64.tar.gz
 ```
