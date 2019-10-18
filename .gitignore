@@ -58,6 +58,9 @@ debian/changelog
 debian/files
 eqc-lib
 eqc
+eqc_lager_mock.log
+.eqc-info
+current_counterexample.eqc
 /docs/.tools/
 /docs/state-channels/*.svg
 .contracts_test_cache
