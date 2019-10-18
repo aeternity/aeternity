@@ -194,10 +194,11 @@ call_gr(Arg0, Arg1, Arg2, Arg3, Arg4, Arg5, EngineState) ->
 
 remote_call_common(Contract, Function, ?FATE_TYPEREP({tuple, ArgTypes}), ?FATE_TYPEREP(RetType), Value, EngineState) ->
     Current   = aefa_engine_state:current_contract(EngineState),
+    Caller    = aeb_fate_data:make_address(Current),
     Arity     = length(ArgTypes),
     ES1       = aefa_fate:unfold_store_maps_in_args(Arity, EngineState),
     ES2       = aefa_fate:check_remote(Contract, ES1),
-    ES3       = aefa_fate:set_remote_function(Contract, Function, Value > 0, true, ES2),
+    ES3       = aefa_fate:set_remote_function(Caller, Contract, Function, Value > 0, true, ES2),
     Signature = aefa_fate:get_function_signature(Function, ES3),
     ES4       = aefa_fate:check_signature_and_bind_args(Arity, Signature, ES3),
     TVars     = aefa_engine_state:current_tvars(ES4),
