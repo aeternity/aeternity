@@ -623,6 +623,10 @@ create_contract_negative(_Cfg) ->
 
     {error, account_not_found} = aetx:process(RTx1, Trees, Env),
 
+    %% Bogus ABI
+    BTx1             = create_tx(PubKey, #{abi_version => 42}, S1),
+    {error, illegal_vm_version} = aetx:process(BTx1, Trees, Env),
+
     %% Insufficient funds
     S2     = aect_test_utils:set_account_balance(PubKey, 0, S1),
     Trees2 = aect_test_utils:trees(S2),
