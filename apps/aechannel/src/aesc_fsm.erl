@@ -4118,7 +4118,6 @@ handle_call(_St, _Req, From, D) ->
 
 handle_call_(awaiting_signature, {cancel_update, Code, Tag}, From,
              #data{op = #op_sign{tag = Tag}} = D) ->
-    lager:info("ASDF: ~p, ~p", [Code, Tag]),
     case { lists:member(Tag, ?CANCEL_SIGN_TAGS)
          , lists:member(Tag, ?CANCEL_ACK_TAGS )} of
         {true, _} ->

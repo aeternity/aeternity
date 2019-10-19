@@ -556,11 +556,6 @@ process_request(#{<<"method">> := <<"channels.withdraw">>,
         ok -> no_reply;
         {error, _Reason} = Err -> Err
     end;
-process_request(#{<<"method">> := <<"channels.cancel">>}, FsmPid) ->
-    case aesc_fsm:cancel_update(FsmPid) of
-        ok -> no_reply;
-        {error, _Reason} = Err -> Err
-    end;
 process_request(#{<<"method">> := Method,
                   <<"params">> := #{<<"error">> := ErrorCode}}, FsmPid)
   when ?METHOD_SIGNED(Method) ->
