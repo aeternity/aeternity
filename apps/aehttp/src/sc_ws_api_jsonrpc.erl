@@ -567,8 +567,10 @@ process_request(#{<<"method">> := Method,
     Tag = ?METHOD_TAG(Method),
     case valid_error_code(ErrorCode) of
         true ->
-            aesc_fsm:signing_response(FsmPid, Tag, {error, ErrorCode}),
-            no_reply;
+            case aesc_fsm:signing_response(FsmPid, Tag, {error, ErrorCode}) of
+                ok -> no_reply;
+                {error, _Reason} = Err -> Err
+            end;
         false ->
             {error, error_code}
     end;

@@ -3094,8 +3094,8 @@ sc_ws_update_abort(Config) ->
                   , amount => 1 },
     ws_send_tagged(IConnPid, <<"channels.update.new">>, UpdateOpts, Config),
     channel_abort_sign_tx(IConnPid, 147, <<"channels.update">>, Config),
-    {ok, _, #{ <<"error_code">> := 147
-             , <<"error_msg">> := <<"user-defined">> }} = wait_for_channel_event(IConnPid, conflict, Config),
+    {ok, _, #{<<"event">> := <<"canceled_update">>}} =
+        wait_for_channel_event(IConnPid, info, Config),
     %%
     {ok, {Bi0, Br0}} = sc_ws_get_both_balances(IConnPid, IPubkey, RPubkey, Config),
     %%
@@ -4435,7 +4435,7 @@ sc_ws_cancel_offchain_update(Cfg0) ->
                     ws_send_tagged(WhoPid, <<"channels.update.new">>, UpdateOpts, Cfg),
                     {ok, _, <<"update">> = Tag, Data} =
                         wait_for_channel_event(WhoPid, sign, Cfg),
-                    {Tag, Tag, Data}
+                    {Tag, Tag, Tag, Data}
                 end)
         end,
     cancel_update(InitUpdate, Cfg, can_cancel_ack),
@@ -4451,7 +4451,7 @@ sc_ws_cancel_deposit(Cfg0) ->
                     ws_send_tagged(WhoPid, <<"channels.deposit">>, #{amount => 2}, Cfg),
                     {ok, _, <<"deposit_tx">> = Tag, Data} =
                         wait_for_channel_event(WhoPid, sign, Cfg),
-                    {Tag, <<"deposit_created">>, Data}
+                    {Tag, Tag, <<"deposit_created">>, Data}
                 end)
         end,
     cancel_update(InitUpdate, Cfg, can_cancel_ack),
@@ -4467,7 +4467,7 @@ sc_ws_cancel_withdraw(Cfg0) ->
                     ws_send_tagged(WhoPid, <<"channels.withdraw">>, #{amount => 2}, Cfg),
                     {ok, _, <<"withdraw_tx">> = Tag, Data} =
                         wait_for_channel_event(WhoPid, sign, Cfg),
-                    {Tag, <<"withdraw_created">>, Data}
+                    {Tag, Tag, <<"withdraw_created">>, Data}
                 end)
         end,
     cancel_update(InitUpdate, Cfg, can_cancel_ack),
@@ -4489,7 +4489,7 @@ sc_ws_cancel_snapshot_solo(Cfg0) ->
                     ws_send_tagged(WhoPid, <<"channels.snapshot_solo">>, #{}, Cfg),
                     {ok, _, <<"snapshot_solo_tx">> = Tag, Data} =
                         wait_for_channel_event(WhoPid, sign, Cfg),
-                    {Tag, <<"snapshot_solo_sign">>, Data}
+                    {Tag, <<"snapshot_solo_sign">>, <<"snapshot_solo_sign">>, Data}
                 end)
         end,
     %% now test the snapshot
@@ -4506,7 +4506,7 @@ sc_ws_cancel_shutdown(Cfg0) ->
                     ws_send_tagged(WhoPid, <<"channels.shutdown">>, #{}, Cfg),
                     {ok, _, <<"shutdown_sign">> = Tag, Data} =
                         wait_for_channel_event(WhoPid, sign, Cfg),
-                    {Tag, <<"shutdown">>, Data}
+                    {Tag, Tag, <<"shutdown">>, Data}
                 end)
         end,
     cancel_update(InitUpdate, Cfg, can_cancel_ack),
@@ -4572,7 +4572,7 @@ sc_ws_cancel_slash_(WhoCloses, WhoRejects, Cfg0) ->
                 wait_for_channel_event(WhoPid, sign, Cfg)
         end),
     %% now test the snapshot
-    sc_ws_cancel_update_(WhoPid, Cfg),
+    sc_ws_cancel_update_(WhoPid, <<"slash_sign">>, Cfg),
     sc_ws_close_(Cfg),
     ok.
 
@@ -4588,7 +4588,7 @@ sc_ws_cancel_settle(Cfg0) ->
                         wait_for_channel_event(WhoPid, sign, Cfg),
                     {ok, _, #{<<"event">> := <<"closing">>}} =
                         wait_for_channel_event(WhoPid, info, Cfg),
-                    {Tag, <<"shutdown">>, Data}
+                    {Tag, Tag, <<"shutdown">>, Data}
                 end)
         end,
     cancel_update(InitUpdate, Cfg, cancel_own),
@@ -4601,17 +4601,17 @@ cancel_update(InitUpdate, Cfg, TestType) when TestType =:= cancel_own;
         proplists:get_value(channel_clients, Cfg),
     #{initiator := #{ pub_key  := IPubkey
                     , priv_key := IPrivkey}} = proplists:get_value(participants, Cfg),
-    InitUpdate(IConnPid),
-    sc_ws_cancel_update_(IConnPid, Cfg),
+    {_, AbortTag, _, _} = InitUpdate(IConnPid),
+    sc_ws_cancel_update_(IConnPid, AbortTag, Cfg),
 
-    InitUpdate(RConnPid),
-    sc_ws_cancel_update_(RConnPid, Cfg),
+    {_, AbortTag, _, _} = InitUpdate(RConnPid),
+    sc_ws_cancel_update_(RConnPid, AbortTag, Cfg),
 
     case TestType of
         cancel_own ->
             ok;
         can_cancel_ack ->
-            {Tag, Event,
+            {Tag, _, Event,
             #{ <<"signed_tx">> := EncSignedTx
               , <<"updates">>   := Updates}} = InitUpdate(IConnPid),
             ok = ?WS:register_test_for_channel_events(RConnPid, [info, sign, error]),
@@ -4621,29 +4621,30 @@ cancel_update(InitUpdate, Cfg, TestType) when TestType =:= cancel_own;
                              Cfg),
 
             %% once signed initiator can not cancel it anymore
-            ws_send_tagged(IConnPid, <<"channels.cancel">>, #{}, Cfg),
+            ws_send_tagged(IConnPid, Method, #{<<"error">> => 42}, Cfg),
             {ok, _, #{<<"reason">> := <<"Not allowed at current channel state">>}} =
                 wait_for_channel_event(IConnPid, error, Cfg),
             ok = ?WS:unregister_test_for_channel_events(IConnPid, [error]),
 
             %% on the other hand, responder can cancel it
             {ok, _, #{<<"event">> := Event}} = wait_for_channel_event(RConnPid, info, Cfg),
-            {ok, _, _Tag, _Data} = wait_for_channel_event(RConnPid, sign, Cfg),
+            {ok, _, AckTag, _Data} = wait_for_channel_event(RConnPid, sign, Cfg),
             ok = ?WS:unregister_test_for_channel_events(RConnPid, [info, sign]),
 
             with_registered_events([conflict], [IConnPid],
                 fun() ->
-                    sc_ws_cancel_update_(RConnPid, Cfg),
-                    {ok, _, #{ <<"error_code">> := 4
-                             , <<"error_msg">>  := <<"abort">> }} =
+                    sc_ws_cancel_update_(RConnPid, AckTag, Cfg),
+                    {ok, _, #{ <<"error_code">> := 42
+                             , <<"error_msg">>  := <<"unknown">> }} =
                         wait_for_channel_event(IConnPid, conflict, Cfg)
                 end)
     end,
     ok.
 
-sc_ws_cancel_update_(WhoPid, Cfg) ->
+sc_ws_cancel_update_(WhoPid, Tag, Cfg) ->
     ok = ?WS:register_test_for_channel_events(WhoPid, [info]),
-    ws_send_tagged(WhoPid, <<"channels.cancel">>, #{}, Cfg),
+    ws_send_tagged(WhoPid, <<"channels.", Tag/binary>>,
+                   #{<<"error">> => 42}, Cfg),
     {ok, _, #{<<"event">> := <<"canceled_update">>}} =
         wait_for_channel_event(WhoPid, info, Cfg),
     ok = ?WS:unregister_test_for_channel_events(WhoPid, [info]).
@@ -4674,7 +4675,7 @@ sc_ws_can_not_cancel_while_open(Cfg0) ->
     lists:foreach(
         fun(WhoPid) ->
             ok = ?WS:register_test_for_channel_events(WhoPid, [error]),
-            ws_send_tagged(WhoPid, <<"channels.cancel">>, #{}, Cfg),
+            ws_send_tagged(WhoPid, <<"channels.update">>, #{<<"error">> => 42}, Cfg),
             {ok, _, #{<<"reason">> := <<"Not allowed at current channel state">>}} =
                 wait_for_channel_event(WhoPid, error, Cfg),
             ok = ?WS:unregister_test_for_channel_events(WhoPid, [error]),

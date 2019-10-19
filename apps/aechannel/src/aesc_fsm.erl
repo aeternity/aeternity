@@ -50,7 +50,6 @@
         , upd_transfer/4          %% (fsm() , from(), to(), amount())
         , upd_transfer/5          %% (fsm() , from(), to(), amount(), #{})
         , upd_withdraw/2          %% (fsm() , map())
-        , cancel_update/1         %% (fsm())
         , where/2
         , change_state_password/2
         ]).
@@ -266,9 +265,6 @@ upd_withdraw(Fsm, #{amount := Amt} = Opts) when is_integer(Amt) ->
     lager:debug("upd_withdraw(~p)", [Opts]),
     gen_statem:call(Fsm, {upd_withdraw, Opts}).
 
-cancel_update(Fsm) ->
-    gen_statem:call(Fsm, cancel_update).
-
 where(ChanId, Role) when Role == initiator; Role == responder ->
     GprocKey = gproc_name_by_role(ChanId, Role),
     case gproc:where(GprocKey) of
@@ -357,9 +353,12 @@ message(Fsm, {T, _} = Msg) when ?KNOWN_MSG_TYPE(T) ->
 %%   remote client. )
 %% and reply by calling aesc_fsm:signing_response(Fsm, Tag, SignedObj)
 %%
--spec signing_response(pid(), sign_tag(), any()) -> ok.
-signing_response(Fsm, Tag, Obj) ->
-    gen_statem:cast(Fsm, {?SIGNED, Tag, Obj}).
+-spec signing_response(pid(), sign_tag(), aetx_sign:signed_tx()
+                                        | {error, integer()}) -> ok | {error, atom()}.
+signing_response(Fsm, Tag, {error, Code}) ->
+    gen_statem:call(Fsm, {cancel_update, Code, Tag});
+signing_response(Fsm, Tag, SignedTx) ->
+    gen_statem:cast(Fsm, {?SIGNED, Tag, SignedTx}).
 
 error_code_to_msg(?ERR_VALIDATION) -> <<"validation error">>;
 error_code_to_msg(?ERR_CONFLICT  ) -> <<"conflict">>;
@@ -616,11 +615,10 @@ awaiting_reestablish({call, From},
     case check_attach_info(Info, D) of
         ok ->
             gproc:unreg(K),
-            gen:reply(From, ok),
             {Pid, _} = From,
             keep_state(D#data{ session = Pid }, [{reply, From, ok}]);
         {error, Error} ->
-                lager:debug("Attach failed with ~p", [Error]),
+            lager:debug("Attach failed with ~p", [Error]),
             keep_state(D, [{reply, From, {error, invalid_attach}}])
     end;
 awaiting_reestablish(Type, Msg, D) ->
@@ -4118,8 +4116,9 @@ handle_call(St, Req, From, #data{} = D) ->
 handle_call(_St, _Req, From, D) ->
     keep_state(D, [{reply, From, {error, unknown_request}}]).
 
-handle_call_(awaiting_signature, cancel_update, From, #data{} = D) ->
-    #data{op = #op_sign{tag = Tag}} = D,
+handle_call_(awaiting_signature, {cancel_update, Code, Tag}, From,
+             #data{op = #op_sign{tag = Tag}} = D) ->
+    lager:info("ASDF: ~p, ~p", [Code, Tag]),
     case { lists:member(Tag, ?CANCEL_SIGN_TAGS)
          , lists:member(Tag, ?CANCEL_ACK_TAGS )} of
         {true, _} ->
@@ -4130,7 +4129,7 @@ handle_call_(awaiting_signature, cancel_update, From, #data{} = D) ->
         {_, true} ->
             report(info, canceled_update, D),
             lager:debug("update canceled", []),
-            handle_recoverable_error(#{ code => ?ERR_ABORT
+            handle_recoverable_error(#{ code => Code
                                       , respond => true
                                       , msg_type => Tag }, D, [{reply, From, ok}],
                                      _ReportConflictToClient = false);
@@ -4138,8 +4137,9 @@ handle_call_(awaiting_signature, cancel_update, From, #data{} = D) ->
             lager:debug("update can not be canceled for ~p", [Tag]),
             keep_state(D, [{reply, From, {error, not_allowed_now}}])
     end;
-handle_call_(_NonSigningState, cancel_update, From, #data{} = D) ->
-    lager:debug("update can not be canceled while ~p", [_NonSigningState]),
+handle_call_(_NonSigningState, {cancel_update, _, _Tag}, From, #data{} = D) ->
+    lager:debug("update can not be canceled while ~p with tag ~p",
+                [_NonSigningState, _Tag]),
     keep_state(D, [{reply, From, {error, not_allowed_now}}]);
 handle_call_(_AnyState, {inband_msg, ToPub, Msg}, From, #data{} = D) ->
     case {ToPub, other_account(D)} of
