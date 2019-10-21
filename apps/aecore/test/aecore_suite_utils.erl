@@ -287,7 +287,9 @@ mine_blocks(Node, NumBlocksToMine, MiningRate, Opts) ->
 mine_blocks(Node, NumBlocksToMine, MiningRate, Type, Opts) ->
     ok = rpc:call(Node, application, set_env,
                   [aecore, expected_mine_rate, MiningRate], 5000),
-    [] = flush_new_blocks(),
+    %% ensure not mining
+    stopped = rpc:call(Node, aec_conductor, get_mining_state, [], 5000),
+    _ = flush_new_blocks(), %% flush potential hanging message queue messages
     subscribe(Node, block_created),
     subscribe(Node, micro_block_created),
     StartRes = rpc:call(Node, aec_conductor, start_mining, [Opts], 5000),
