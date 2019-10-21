@@ -35,7 +35,6 @@
         , runtime_revert/2
         , set_local_function/2
         , set_remote_function/6
-        , terms_are_of_same_type/2
         ]
        ).
 
@@ -522,33 +521,6 @@ merge_match(Inst1, Inst2) ->
                          catch throw:_ -> false end
                 end end,
     lists:foldl(Ins, Inst2, maps:to_list(Inst1)).
-
-terms_are_of_same_type(X, Y) when ?IS_FATE_INTEGER(X), ?IS_FATE_INTEGER(Y) -> true;
-terms_are_of_same_type(X, Y) when ?IS_FATE_BOOLEAN(X), ?IS_FATE_BOOLEAN(Y) -> true;
-terms_are_of_same_type(X, Y) when ?IS_FATE_BITS(X), ?IS_FATE_BITS(Y) -> true;
-terms_are_of_same_type(X, Y) when ?IS_FATE_ADDRESS(X), ?IS_FATE_ADDRESS(Y) -> true;
-terms_are_of_same_type(X, Y) when ?IS_FATE_CONTRACT(X), ?IS_FATE_CONTRACT(Y) -> true;
-terms_are_of_same_type(X, Y) when ?IS_FATE_ORACLE(X), ?IS_FATE_ORACLE(Y) -> true;
-terms_are_of_same_type(X, Y) when ?IS_FATE_ORACLE_Q(X), ?IS_FATE_ORACLE_Q(Y) -> true;
-terms_are_of_same_type(X, Y) when ?IS_FATE_STRING(X), ?IS_FATE_STRING(Y) -> true;
-terms_are_of_same_type(X, Y) when ?IS_FATE_BYTES(X), ?IS_FATE_BYTES(Y) ->
-    byte_size(?FATE_BYTES_VALUE(X)) == byte_size(?FATE_BYTES_VALUE(Y));
-terms_are_of_same_type(X, Y) when ?IS_FATE_TUPLE(X), ?IS_FATE_TUPLE(Y) ->
-    %% NOTE: This could be more thorough, but it costs too much
-    ?FATE_TUPLE(T1) = X,
-    ?FATE_TUPLE(T2) = Y,
-    tuple_size(T1) =:= tuple_size(T2);
-terms_are_of_same_type(X, Y) when ?IS_FATE_VARIANT(X), ?IS_FATE_VARIANT(Y) ->
-    %% NOTE: This could be more thorough, but it costs too much
-    ?FATE_VARIANT(Arities1,_Tag1,_Value1) = X,
-    ?FATE_VARIANT(Arities2,_Tag2,_Value2) = Y,
-    Arities1 =:= Arities2;
-terms_are_of_same_type(X, Y) when ?IS_FATE_LIST(X), ?IS_FATE_LIST(Y) ->
-    L1 = ?FATE_LIST_VALUE(X),
-    L2 = ?FATE_LIST_VALUE(Y),
-    L1 =:= [] orelse L2 =:= [] orelse terms_are_of_same_type(hd(L1), hd(L2));
-terms_are_of_same_type(_X,_Y) ->
-    false.
 
 jump(BB, ES) ->
     NewES = aefa_engine_state:set_current_bb(BB, ES),

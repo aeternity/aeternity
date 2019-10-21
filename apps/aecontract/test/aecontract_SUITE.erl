@@ -57,6 +57,7 @@
         , create_version_too_high/1
         , sophia_call_out_of_gas/1
         , fate_environment/1
+        , fate_list_of_maps/1
         , state_tree/1
         , sophia_identity/1
         , sophia_list_comp/1
@@ -287,6 +288,7 @@ all() ->
                        , {group, sophia_aevm_specific}]).
 
 -define(FATE_SPECIFIC, [ fate_environment
+                       , fate_list_of_maps
                        , sophia_polymorphic_entrypoint
                        , lima_migration
                        ]).
@@ -6018,6 +6020,15 @@ fate_environment(_Cfg) ->
                  ?call(call_contract, Acc, Contract, block_hash, {option, word}, {BHHeight - 1}, #{height => BHHeight})),
     ?assertEqual({some, {bytes, <<(BHHeight - 255):256>>}},
                  ?call(call_contract, Acc, Contract, block_hash, {option, word}, {BHHeight - 255}, #{height => BHHeight})),
+    ok.
+
+fate_list_of_maps(_Cfg) ->
+    state(aect_test_utils:new_state()),
+    Acc = ?call(new_account, 10000000000 * aec_test_utils:min_gas_price()),
+    Ct  = ?call(create_contract, Acc, list_of_maps, {}, #{}),
+    Map1 = #{<<"a">> => <<"b">>},
+    Map2 = #{<<"b">> => <<"c">>, <<"d">> => <<"foo">>},
+    ?assertEqual([Map1, Map2], ?call(call_contract, Acc, Ct, cons, {list, {map, string, string}}, {Map1, [Map2]})),
     ok.
 
 sophia_call_value(_Cfg) ->
