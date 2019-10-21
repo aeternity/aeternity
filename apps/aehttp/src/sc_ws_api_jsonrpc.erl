@@ -522,8 +522,8 @@ process_request(#{<<"method">> := <<"channels.get.poi">>,
         {{error, _},  {error, _}} -> {error, {broken_encoding, [account, contract]}}
     end;
 process_request(#{<<"method">> := <<"channels.message">>,
-                    <<"params">> := #{<<"to">>    := ToB,
-                                      <<"info">>  := Msg}}, FsmPid) ->
+                  <<"params">> := #{ <<"to">>    := ToB
+                                   , <<"info">>  := Msg}}, FsmPid) ->
     case aeser_api_encoder:safe_decode(account_pubkey, ToB) of
         {ok, To} ->
             case aesc_fsm:inband_msg(FsmPid, To, Msg) of
@@ -533,23 +533,23 @@ process_request(#{<<"method">> := <<"channels.message">>,
         _ -> {error, {broken_encoding, [account]}}
     end;
 process_request(#{<<"method">> := <<"channels.deposit">>,
-                    <<"params">> := #{<<"amount">>  := Amount} = Props}, FsmPid) ->
+                  <<"params">> := #{<<"amount">>  := Amount} = Params}, FsmPid) ->
     assert_integer(Amount),
     XOpts = maps:merge(optional_params([ bh_params()
                                        , fee_params()],
-                                       Props),
+                                       Params),
                         #{amount => Amount}),
     case aesc_fsm:upd_deposit(FsmPid, XOpts) of
         ok -> no_reply;
         {error, _Reason} = Err -> Err
     end;
 process_request(#{<<"method">> := <<"channels.withdraw">>,
-                    <<"params">> := #{<<"amount">>  := Amount} = Props}, FsmPid) ->
+                  <<"params">> := #{<<"amount">>  := Amount} = Params}, FsmPid) ->
     assert_integer(Amount),
     XOpts = maps:merge(optional_params([ bh_params()
-                                        , fee_params()],
-                                        Props),
-                        #{amount => Amount}),
+                                       , fee_params()],
+                                       Params),
+                       #{amount => Amount}),
     case aesc_fsm:upd_withdraw(FsmPid, XOpts) of
         ok -> no_reply;
         {error, _Reason} = Err -> Err

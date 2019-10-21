@@ -118,7 +118,7 @@
 -define(CHECK_INFO(Timeout), check_info(?LINE, Timeout)).
 -define(PEEK_MSGQ, peek_msgq(?LINE)).
 
--define(RANDOM_BIG_FEE, 123456789876543).
+-define(ARBITRARY_BIG_FEE, 123456789876543).
 
 all() -> [{group, plain}, {group, aevm}, {group, fate}].
 
@@ -3355,21 +3355,25 @@ sc_ws_withdraw(Config) ->
 %%     channel_options(IPubkey, RPubkey, IAmt, RAmt, #{}).
 
 channel_options(IPubkey, RPubkey, IAmt, RAmt, Other, Config) ->
-  %% TODO FIX THOSE MAYBES
-    maybe_fee(
-        maybe_slogan(
-          maybe_add_password(
-            maps:merge(#{ port => ?config(ws_port, Config),
-                          initiator_id => aeser_api_encoder:encode(account_pubkey, IPubkey),
-                          responder_id => aeser_api_encoder:encode(account_pubkey, RPubkey),
-                          lock_period => 10,
-                          push_amount => 1,
-                          initiator_amount => IAmt,
-                          responder_amount => RAmt,
-                          channel_reserve => 2,
-                          keep_running => false,
-                          protocol => sc_ws_protocol(Config)
-                        }, Other), Config), Config), Config).
+    lists:foldl(
+        fun(MaybeSet, Accum) ->
+            MaybeSet(Accum, Config)
+        end,
+        maps:merge(#{ port => ?config(ws_port, Config),
+                      initiator_id => aeser_api_encoder:encode(account_pubkey, IPubkey),
+                      responder_id => aeser_api_encoder:encode(account_pubkey, RPubkey),
+                      lock_period => 10,
+                      push_amount => 1,
+                      initiator_amount => IAmt,
+                      responder_amount => RAmt,
+                      channel_reserve => 2,
+                      keep_running => false,
+                      protocol => sc_ws_protocol(Config)
+                    }, Other),
+        [fun maybe_add_fee/2,
+         fun maybe_add_slogan/2,
+         fun maybe_add_password/2
+        ]).
 
 maybe_add_password(#{state_password := _} = Map, _) ->
     Map;
@@ -3381,24 +3385,23 @@ maybe_add_password(Map, Config) ->
             Map#{state_password => ?CACHE_DEFAULT_PASSWORD}
     end.
 
-maybe_slogan(#{slogan := _} = Map, _) ->
-    Map;
-maybe_slogan(Map, Config) ->
-    case proplists:get_value(slogan, Config) of
-        undefined ->
-            Map;
-        S ->
-            Map#{slogan => S}
-    end.
+maybe_add_slogan(Map, Config) ->
+    maybe_add_param(slogan, Map, Config).
 
-maybe_fee(#{fee := _} = Map, _) ->
-    Map;
-maybe_fee(Map, Config) ->
-    case proplists:get_value(fee, Config) of
-        undefined ->
+maybe_add_fee(Map, Config) ->
+    maybe_add_param(fee, Map, Config).
+
+maybe_add_param(ParamName, Map, Config) ->
+    case maps:find(ParamName, Map) of
+        {ok, _Value} ->
             Map;
-        Fee ->
-            Map#{fee => Fee}
+        error ->
+            case proplists:get_value(ParamName, Config) of
+                undefined ->
+                    Map;
+                Value ->
+                    maps:put(ParamName, Value, Map)
+            end
     end.
 
 special_channel_opts(Opts) ->
@@ -4267,7 +4270,7 @@ signed_channel_tx_round(SignedTx) ->
     Mod:round(Tx).
 
 sc_ws_set_fee_create(Cfg0) ->
-    Fee = ?RANDOM_BIG_FEE,
+    Fee = ?ARBITRARY_BIG_FEE,
     Cfg = sc_ws_open_([{fee, Fee}
                        |Cfg0]),
 
@@ -4318,7 +4321,7 @@ sc_ws_set_fee_close_mutual(Cfg0) ->
     ok.
 
 sc_ws_set_fee_(Cfg0, MakeOnChainTxFun) ->
-    Fee = ?RANDOM_BIG_FEE,
+    Fee = ?ARBITRARY_BIG_FEE,
     Cfg = sc_ws_open_(Cfg0),
 
     Test =
@@ -4335,7 +4338,7 @@ sc_ws_set_fee_(Cfg0, MakeOnChainTxFun) ->
     ok.
 
 sc_ws_set_fee_close_solo(Cfg0) ->
-    Fee = ?RANDOM_BIG_FEE,
+    Fee = ?ARBITRARY_BIG_FEE,
     Test =
         fun(Who) ->
             Cfg = sc_ws_open_(Cfg0),
@@ -4349,7 +4352,7 @@ sc_ws_set_fee_close_solo(Cfg0) ->
     ok.
 
 sc_ws_set_fee_slash(Cfg0) ->
-    Fee = ?RANDOM_BIG_FEE,
+    Fee = ?ARBITRARY_BIG_FEE,
     Test =
         fun(Who) ->
             Cfg = sc_ws_open_(Cfg0),
@@ -4364,7 +4367,7 @@ sc_ws_set_fee_slash(Cfg0) ->
     ok.
 
 sc_ws_set_fee_settle(Cfg0) ->
-    Fee = ?RANDOM_BIG_FEE,
+    Fee = ?ARBITRARY_BIG_FEE,
     Test =
         fun(Who) ->
             Cfg = sc_ws_open_(Cfg0),
