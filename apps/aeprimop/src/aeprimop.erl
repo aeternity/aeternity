@@ -758,7 +758,7 @@ name_claim({AccountPubkey, PlainName, NameSalt, NameFee, PreclaimDelta}, S) ->
             %% No auction for this name, preclaim delta suffices
             %% For clarity DeltaTTL for name computed here
             DeltaTTL = aec_governance:name_claim_max_expiration(),
-            CommitmentHash = aens_hash:commitment_hash(NameAscii, NameSalt),
+            CommitmentHash = commitment_hash(NameAscii, NameSalt),
             {Commitment, S1} = get_commitment(CommitmentHash, name_not_preclaimed, S0),
             assert_claim_after_preclaim({AccountPubkey, Commitment, NameAscii, NameRegistrar, NameFee, PreclaimDelta}, S1),
             Name = aens_names:new(NameHash, AccountPubkey, S1#state.height + DeltaTTL),
@@ -781,7 +781,7 @@ name_claim({AccountPubkey, PlainName, NameSalt, NameFee, PreclaimDelta}, S) ->
         Timeout when NameSalt =/= 0 ->
             %% This is the first claim that starts an auction
             assert_not_name_auction(AuctionHash, S0),
-            CommitmentHash = aens_hash:commitment_hash(NameAscii, NameSalt),
+            CommitmentHash = commitment_hash(NameAscii, NameSalt),
             {Commitment, S1} = get_commitment(CommitmentHash, name_not_preclaimed, S0),
             assert_claim_after_preclaim({AccountPubkey, Commitment, NameAscii, NameRegistrar, NameFee, PreclaimDelta}, S1),
             %% Now put this Name in Auction instead of in Names
@@ -789,6 +789,10 @@ name_claim({AccountPubkey, PlainName, NameSalt, NameFee, PreclaimDelta}, S) ->
             S2 = delete_x(commitment, CommitmentHash, S1),
             put_name_auction(Auction, S2)
     end.
+
+commitment_hash(NameAscii, NameSalt) ->
+    try aens_hash:commitment_hash(NameAscii, NameSalt)
+    catch _:R -> runtime_error(R) end.
 
 assert_claim_after_preclaim({AccountPubkey, Commitment, NameAscii, NameRegistrar, NameFee, PreclaimDelta}, S) ->
     NameHash = aens_hash:name_hash(NameAscii),
