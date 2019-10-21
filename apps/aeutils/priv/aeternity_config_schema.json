@@ -299,7 +299,7 @@
                         "enabled": {
                             "description": "Enable HTTP cache headers (ETag and Expire)",
                             "type": "boolean",
-                            "default": false
+                            "default": true
                         },
                         "aged_blocks_time" : {
                             "description" : "Time (in seconds) after a block is considered aged. That is an Expire header is generated for such blocks API endpoints.",
