@@ -533,7 +533,7 @@ process_request(#{<<"method">> := <<"channels.message">>,
         _ -> {error, {broken_encoding, [account]}}
     end;
 process_request(#{<<"method">> := <<"channels.deposit">>,
-                  <<"params">> := #{<<"amount">>  := Amount} = Params}, FsmPid) ->
+                  <<"params">> := #{<<"amount">> := Amount} = Params}, FsmPid) ->
     assert_integer(Amount),
     XOpts = maps:merge(optional_params([ bh_params()
                                        , fee_params()],
@@ -544,7 +544,7 @@ process_request(#{<<"method">> := <<"channels.deposit">>,
         {error, _Reason} = Err -> Err
     end;
 process_request(#{<<"method">> := <<"channels.withdraw">>,
-                  <<"params">> := #{<<"amount">>  := Amount} = Params}, FsmPid) ->
+                  <<"params">> := #{<<"amount">> := Amount} = Params}, FsmPid) ->
     assert_integer(Amount),
     XOpts = maps:merge(optional_params([ bh_params()
                                        , fee_params()],
