@@ -2218,7 +2218,7 @@ create_multi_channel_(Cfg0, Debug, UseAny) when is_boolean(UseAny) ->
     Cfg = if UseAny -> [ use_any | Cfg0 ];
              true   -> Cfg0
           end,
-    #{i := I, r := R} = create_channel_(Cfg, Debug),
+    #{i := I, r := R} = create_channel_([{timeout, ?LONG_TIMEOUT} | Cfg], Debug),
     Parent = ?config(ack_to, Cfg),
     set_proxy_debug(false, I),
     set_proxy_debug(false, R),
@@ -2265,7 +2265,8 @@ create_channel_from_spec(I, R, Spec, Port, UseAny, Debug, Cfg) ->
     timer:sleep(100),
     IProxy = spawn_initiator(Port, ISpec, I, Debug),
     ?LOG("RProxy = ~p, IProxy = ~p", [RProxy, IProxy]),
-    Info = match_responder_and_initiator(RProxy, Debug),
+    Timeout = proplists:get_value(timeout, Cfg, ?TIMEOUT),
+    Info = match_responder_and_initiator(RProxy, Debug, Timeout),
     #{ i := #{ fsm := FsmI } = I1
      , r := #{ fsm := FsmR } = R1 } = Info,
     ?LOG(Debug, "channel paired: ~p", [Info]),
@@ -2362,12 +2363,12 @@ move_password_to_spec(#{state_password := StatePassword}, Spec) ->
 move_password_to_spec(_, Spec) ->
     Spec.
 
-match_responder_and_initiator(RProxy, Debug) ->
+match_responder_and_initiator(RProxy, Debug, Timeout) ->
     receive
         {channel_up, RProxy, Info} ->
             ?LOG(Debug, "Matched initiator/responder pair: ~p", [Info]),
             Info
-    after ?TIMEOUT ->
+    after Timeout ->
             ?LOG(Debug, "Timed out waiting for matched pair", []),
             error(timeout)
     end.
