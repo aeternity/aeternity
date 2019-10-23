@@ -29,7 +29,7 @@ The release binaries are published on [GitHub][releases] and are tested on the f
 * macOS Mojave 10.14 (x86-64).
 * Windows 10 (x86-64)
 
-[Releases]: https://github.com/aeternity/aeternity/releases
+[releases]: https://github.com/aeternity/aeternity/releases
 
 ## Install dependencies
 
@@ -117,7 +117,7 @@ You can choose between the following ways of running a node:
 
 ### Win32 (Native)
 
-Win32 binaries run as native Windows application and support CUDA mining. CLI control of the node is not yet supported.
+Win32 binaries run as native Windows applications and support CUDA mining. CLI control of the node is not yet supported.
 
 Installation:
 
@@ -126,12 +126,13 @@ Installation:
  3. Run `<installation_path>\aeternity.exe`.
  4. Safely close the MSYS2 console popup console that appears.
 
-You will have to click 'allow' of the firewall notifications that may popup on the first run.
+You will have to click 'Allow' in the firewall notifications that may popup on the first run.
 
 Node configuration is similar to [Linux CUDA miners](cuda-miner.md). The corresponding
 `node/aeternity/lib` directory referred in the other docs is located in `<installation_path>\usr\lib\aeternity\lib`.
 
 ### WSL (Windows Subsystem for Linux)
-WSL allows running the Ubuntu binary, but currently it has OS limitations that prevent using CUDA miners. This might change in the future.
+WSL allows running the Linux binaries in Windows as well as controlling the node from the cli.
+Unfortunately it has limitations that prevent using CUDA miners. This is expected to change in the future.
 
 For installation under WSL, follow the [the dedicated document](installation-windows.md)
