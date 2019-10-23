@@ -2218,7 +2218,7 @@ create_multi_channel_(Cfg0, Debug, UseAny) when is_boolean(UseAny) ->
     Cfg = if UseAny -> [ use_any | Cfg0 ];
              true   -> Cfg0
           end,
-    #{i := I, r := R} = create_channel_(Cfg, Debug),
+    #{i := I, r := R} = create_channel_([{timeout, ?LONG_TIMEOUT} | Cfg], Debug),
     Parent = ?config(ack_to, Cfg),
     set_proxy_debug(false, I),
     set_proxy_debug(false, R),
@@ -2265,7 +2265,8 @@ create_channel_from_spec(I, R, Spec, Port, UseAny, Debug, Cfg) ->
     timer:sleep(100),
     IProxy = spawn_initiator(Port, ISpec, I, Debug),
     ?LOG("RProxy = ~p, IProxy = ~p", [RProxy, IProxy]),
-    Info = match_responder_and_initiator(RProxy, Debug),
+    Timeout = proplists:get_value(timeout, Cfg, ?TIMEOUT),
+    Info = match_responder_and_initiator(RProxy, Debug, Timeout),
     #{ i := #{ fsm := FsmI } = I1
      , r := #{ fsm := FsmR } = R1 } = Info,
     ?LOG(Debug, "channel paired: ~p", [Info]),
@@ -2362,19 +2363,19 @@ move_password_to_spec(#{state_password := StatePassword}, Spec) ->
 move_password_to_spec(_, Spec) ->
     Spec.
 
-match_responder_and_initiator(RProxy, Debug) ->
+match_responder_and_initiator(RProxy, Debug, Timeout) ->
     receive
         {channel_up, RProxy, Info} ->
             ?LOG(Debug, "Matched initiator/responder pair: ~p", [Info]),
             Info
-    after ?TIMEOUT ->
+    after Timeout ->
             ?LOG(Debug, "Timed out waiting for matched pair", []),
             error(timeout)
     end.
 
 responder_instance_(Fsm, Spec, R0, Parent, Debug) ->
     R = fsm_map(Fsm, Spec, R0),
-    {ok, ChOpen} = receive_from_fsm(info, R, channel_open, ?TIMEOUT, Debug),
+    {ok, ChOpen} = receive_from_fsm(info, R, channel_open, ?LONG_TIMEOUT, Debug),
     ?LOG(Debug, "Got ChOpen: ~p~nSpec = ~p", [ChOpen, Spec]),
     {ok, #{ channel_id := TmpChanId }} = rpc(dev1, aesc_fsm, get_state, [Fsm]),
     ?LOG(Debug, "TmpChanId = ~p", [TmpChanId]),
@@ -2390,7 +2391,7 @@ responder_instance_(Fsm, Spec, R0, Parent, Debug) ->
 
 initiator_instance_(Fsm, Spec, I0, Parent, Debug) ->
     I = fsm_map(Fsm, Spec, I0),
-    {ok, ChAccept} = receive_from_fsm(info, I, channel_accept, ?TIMEOUT, Debug),
+    {ok, ChAccept} = receive_from_fsm(info, I, channel_accept, ?LONG_TIMEOUT, Debug),
     ?LOG(Debug, "Got ChAccept: ~p~nSpec = ~p", [ChAccept, Spec]),
     {ok, #{ channel_id := TmpChanId }} = rpc(dev1, aesc_fsm, get_state, [Fsm]),
     ?LOG(Debug, "TmpChanId = ~p", [TmpChanId]),

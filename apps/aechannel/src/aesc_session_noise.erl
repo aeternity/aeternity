@@ -352,7 +352,7 @@ locate_fsm(Type, MInfo, #st{ init_op = {accept, SnInfo, _Opts} } = St) ->
     Info = Info0#{reestablish => (Type =:= ?CH_REESTABL)},
     Cands = get_cands(Type, Info),
     lager:debug("Cands = ~p", [Cands]),
-    try_cands(Cands, 3, 0, Type, Info, St).
+    try_cands(Cands, 5, 0, Type, Info, St).
 
 get_cands(?CH_OPEN, #{ initiator := I
                      , responder := R
