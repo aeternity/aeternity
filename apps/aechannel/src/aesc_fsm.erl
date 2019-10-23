@@ -30,8 +30,8 @@
 %% API
 -export([ start_link/1
         , attach_responder/2      %% (fsm(), map())
-        , close_solo/1            %% (fsm())
-        , snapshot_solo/1         %% (fsm())
+        , close_solo/2            %% (fsm(), map())
+        , snapshot_solo/2         %% (fsm(), map())
         , reconnect_client/2      %% (fsm(), signed_tx())
         , reconnect_client/3      %% (fsm(), Client :: pid(), signed_tx())
         , connection_died/1       %% (fsm())
@@ -43,9 +43,9 @@
         , initiate/3              %% (host(), port(), Opts :: #{}
         , leave/1
         , respond/2               %% (port(), Opts :: #{})
-        , settle/1
-        , shutdown/1              %% (fsm())
-        , slash/1
+        , settle/2                %% (fsm(), map())
+        , shutdown/2              %% (fsm(), map())
+        , slash/2                 %% (fsm(), map())
         , upd_call_contract/2     %%
         , upd_create_contract/2   %%
         , upd_deposit/2           %% (fsm() , map())
@@ -151,13 +151,15 @@ attach_responder(Fsm, AttachInfo) when is_map(AttachInfo) ->
             {error, taken}
     end.
 
-close_solo(Fsm) ->
-    lager:debug("close_solo(~p)", [Fsm]),
-    gen_statem:call(Fsm, close_solo).
+-spec close_solo(pid(), #{fee := integer()}) -> ok | {error, atom()}.
+close_solo(Fsm, XOpts) ->
+    lager:debug("close_solo(~p, ~p)", [Fsm, XOpts]),
+    gen_statem:call(Fsm, {close_solo, XOpts}).
 
-snapshot_solo(Fsm) ->
-    lager:debug("snapshot_solo(~p)", [Fsm]),
-    gen_statem:call(Fsm, snapshot_solo).
+-spec snapshot_solo(pid(), #{fee := integer()}) -> ok | {error, atom()}.
+snapshot_solo(Fsm, XOpts) ->
+    lager:debug("snapshot_solo(~p, ~p)", [Fsm, XOpts]),
+    gen_statem:call(Fsm, {snapshot_solo, XOpts}).
 
 -spec reconnect_client(pid(), aetx_sign:signed_tx()) -> ok | {error, any()}.
 reconnect_client(Fsm, Tx) ->
@@ -238,17 +240,20 @@ respond(Port, #{} = Opts0) ->
         {error, _E}
     end.
 
-settle(Fsm) ->
-    lager:debug("settle(~p)", [Fsm]),
-    gen_statem:call(Fsm, settle).
+-spec settle(pid(), #{fee := integer()}) -> ok | {error, atom()}.
+settle(Fsm, XOpts) ->
+    lager:debug("settle(~p, ~p)", [Fsm, XOpts]),
+    gen_statem:call(Fsm, {settle, XOpts}).
 
-shutdown(Fsm) ->
-    lager:debug("shutdown(~p)", [Fsm]),
-    gen_statem:call(Fsm, shutdown).
+-spec shutdown(pid(), #{fee := integer()}) -> ok | {error, atom()}.
+shutdown(Fsm, XOpts) ->
+    lager:debug("shutdown(~p, ~p)", [Fsm, XOpts]),
+    gen_statem:call(Fsm, {shutdown, XOpts}).
 
-slash(Fsm) ->
-    lager:debug("slash(~p)", [Fsm]),
-    gen_statem:call(Fsm, slash).
+-spec slash(pid(), #{fee := integer()}) -> ok | {error, atom()}.
+slash(Fsm, XOpts) ->
+    lager:debug("slash(~p, ~p)", [Fsm, XOpts]),
+    gen_statem:call(Fsm, {slash, XOpts}).
 
 upd_call_contract(Fsm, #{contract    := _,
                          abi_version := _,
@@ -1811,7 +1816,7 @@ create_tx_for_signing(#data{opts = #{ initiator        := Initiator
          , lock_period      => LockPeriod },
     %% nonce is not exposed to the client via WebSocket but is used in tests
     %% shall we expose it to the client as well?
-    Optional = maps:with([nonce], Opts),
+    Optional = maps:with([nonce, fee], Opts),
     new_onchain_tx_for_signing(channel_create_tx,
                                maps:merge(Obligatory, Optional), D).
 
@@ -1821,9 +1826,9 @@ dep_tx_for_signing(Opts, D) ->
 wdraw_tx_for_signing(Opts, D) ->
     new_onchain_tx_for_signing(channel_withdraw_tx, Opts, D).
 
-close_mutual_tx_for_signing(D) ->
+close_mutual_tx_for_signing(Opts, D) ->
     Account = my_account(D),
-    new_close_mutual_tx(#{ acct => Account }, D).
+    new_close_mutual_tx(Opts#{acct => Account}, D).
 
 %% @doc The responding side creates a 'throwaway' close_mutual_tx, in order to
 %% validate the tx received from the initiating side. The critical parts to
@@ -1842,28 +1847,28 @@ fake_close_mutual_tx(Mod, Tx, D) ->
 new_close_mutual_tx(Opts, D) ->
     new_onchain_tx_for_signing(channel_close_mutual_tx, Opts, D).
 
-slash_tx_for_signing(#data{ state = St } = D) ->
+slash_tx_for_signing(Opts, #data{state = St} = D) ->
     {Round, SignedTx} = aesc_offchain_state:get_latest_signed_tx(St),
-    slash_tx_for_signing(Round, SignedTx, D).
+    slash_tx_for_signing(Round, SignedTx, Opts, D).
 
-slash_tx_for_signing(_Round, SignedTx, D) ->
+slash_tx_for_signing(_Round, SignedTx, Opts, D) ->
     Account = my_account(D),
     new_onchain_tx_for_signing(channel_slash_tx,
-                               #{acct => Account
-                               , payload    => aetx_sign:serialize_to_binary(SignedTx)
-                               }, D).
+                               Opts#{ acct => Account
+                                    , payload => aetx_sign:serialize_to_binary(SignedTx)
+                                    }, D).
 
-settle_tx_for_signing(D) ->
+settle_tx_for_signing(Opts, D) ->
     Account = my_account(D),
-    new_onchain_tx_for_signing(channel_settle_tx, #{acct => Account}, D).
+    new_onchain_tx_for_signing(channel_settle_tx, Opts#{acct => Account}, D).
 
-close_solo_tx_for_signing(D) ->
+close_solo_tx_for_signing(Opts, D) ->
     Account = my_account(D),
-    new_onchain_tx_for_signing(channel_close_solo_tx, #{acct => Account}, D).
+    new_onchain_tx_for_signing(channel_close_solo_tx, Opts#{acct => Account}, D).
 
-snapshot_solo_tx_for_signing(D) ->
+snapshot_solo_tx_for_signing(Opts, D) ->
     Account = my_account(D),
-    new_onchain_tx_for_signing(channel_snapshot_solo_tx, #{acct => Account},
+    new_onchain_tx_for_signing(channel_snapshot_solo_tx, Opts#{acct => Account},
                                _OnErr = return, D).
 
 tx_defaults(Type, Opts, #data{ on_chain_id = ChanId } = D) ->
@@ -4292,8 +4297,8 @@ handle_call_(open, {get_contract_call, Contract, Caller, Round}, From,
             {ok, Call} -> {ok, Call}
         end,
     keep_state(D, [{reply, From, Response}]);
-handle_call_(open, shutdown, From, D) ->
-    {ok, CloseTx, Updates, BlockHash} = close_mutual_tx_for_signing(D),
+handle_call_(open, {shutdown, XOpts}, From, D) ->
+    {ok, CloseTx, Updates, BlockHash} = close_mutual_tx_for_signing(XOpts, D),
     case request_signing(?SHUTDOWN, CloseTx, Updates, BlockHash, D, defer) of
         {ok, Send, D1, Actions} ->
             %% reply before sending sig request
@@ -4304,11 +4309,11 @@ handle_call_(open, shutdown, From, D) ->
             gen_statem:reply(From, Error),
             keep_state(D)
     end;
-handle_call_(channel_closing, shutdown, From, #data{strict_checks = Strict} = D) ->
+handle_call_(channel_closing, {shutdown, XOpts}, From, #data{strict_checks = Strict} = D) ->
     case (not Strict) or was_fork_activated(?LIMA_PROTOCOL_VSN) of
         true ->
             %% Initiate mutual close
-            {ok, CloseTx, Updates, BlockHash} = close_mutual_tx_for_signing(D),
+            {ok, CloseTx, Updates, BlockHash} = close_mutual_tx_for_signing(XOpts, D),
             case request_signing(?SHUTDOWN, CloseTx, Updates, BlockHash, D, defer) of
                 {ok, Send, D1, Actions} ->
                     %% reply before sending sig request
@@ -4377,12 +4382,12 @@ handle_call_(_, get_round, From, #data{ state = State } = D) ->
 handle_call_(_, prune_local_calls, From, #data{ state = State0 } = D) ->
     State = aesc_offchain_state:prune_calls(State0),
     keep_state(D#data{state = State}, [{reply, From, ok}]);
-handle_call_(St, close_solo, From, D) ->
+handle_call_(St, {close_solo, XOpts}, From, D) ->
     case St of
         channel_closing ->
             keep_state(D, [{reply, From, {error, channel_closing}}]);
         _ ->
-            {ok, CloseSoloTx, Updates, BlockHash} = close_solo_tx_for_signing(D),
+            {ok, CloseSoloTx, Updates, BlockHash} = close_solo_tx_for_signing(XOpts, D),
             case request_signing(close_solo_tx, CloseSoloTx, Updates, BlockHash, D, defer) of
                 {ok, Send, D1, Actions} ->
                     %% reply before sending sig request
@@ -4394,13 +4399,13 @@ handle_call_(St, close_solo, From, D) ->
                     keep_state(D)
             end
     end;
-handle_call_(St, snapshot_solo = Req, From, D) ->
+handle_call_(St, {snapshot_solo = Req, XOpts}, From, D) ->
     case St of
         channel_closing ->
             keep_state(D, [{reply, From, {error, channel_closing}}]);
         _ ->
             D1 = log(rcv, Req, Req, D),
-            case snapshot_solo_tx_for_signing(D1) of
+            case snapshot_solo_tx_for_signing(XOpts, D1) of
                 {ok, SnapshotSoloTx, Updates, BlockHash} ->
                     case request_signing(
                            snapshot_solo_tx, SnapshotSoloTx, Updates, BlockHash, D1, defer) of
@@ -4416,10 +4421,10 @@ handle_call_(St, snapshot_solo = Req, From, D) ->
                     keep_state(D1, [{reply, From, Error}])
             end
     end;
-handle_call_(St, slash, From, D) ->
+handle_call_(St, {slash, XOpts}, From, D) ->
     case St of
         channel_closing ->
-            {ok, SlashTx, Updates, BlockHash} = slash_tx_for_signing(D),
+            {ok, SlashTx, Updates, BlockHash} = slash_tx_for_signing(XOpts, D),
             gen_statem:reply(From, ok),
             case request_signing(slash_tx, SlashTx, Updates, BlockHash, D, defer) of
                 {ok, Send, D1, Actions} ->
@@ -4434,10 +4439,10 @@ handle_call_(St, slash, From, D) ->
         _ ->
             keep_state(D, [{reply, From, {error, channel_not_closing}}])
     end;
-handle_call_(St, settle, From, D) ->
+handle_call_(St, {settle, XOpts}, From, D) ->
     case St of
         channel_closing ->
-            {ok, SettleTx, Updates, BlockHash} = settle_tx_for_signing(D),
+            {ok, SettleTx, Updates, BlockHash} = settle_tx_for_signing(XOpts, D),
             gen_statem:reply(From, ok),
             case request_signing(settle_tx, SettleTx, Updates, BlockHash, D, defer) of
                 {ok, Send, D1, Actions} ->

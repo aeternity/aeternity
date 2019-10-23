@@ -54,7 +54,15 @@
     sc_ws_pinned_error_update/1,
     sc_ws_pinned_error_deposit/1,
     sc_ws_pinned_error_withdraw/1,
-    sc_ws_pinned_contract/1
+    sc_ws_pinned_contract/1,
+    sc_ws_set_fee_create/1,
+    sc_ws_set_fee_deposit/1,
+    sc_ws_set_fee_withdrawal/1,
+    sc_ws_set_fee_snapshot/1,
+    sc_ws_set_fee_close_mutual/1,
+    sc_ws_set_fee_close_solo/1,
+    sc_ws_set_fee_slash/1,
+    sc_ws_set_fee_settle/1
    ]).
 
 -include_lib("stdlib/include/assert.hrl").
@@ -110,6 +118,8 @@
 -define(CHECK_INFO(Timeout), check_info(?LINE, Timeout)).
 -define(PEEK_MSGQ, peek_msgq(?LINE)).
 
+-define(ARBITRARY_BIG_FEE, 123456789876543).
+
 all() -> [{group, plain}, {group, aevm}, {group, fate}].
 
 groups() ->
@@ -137,7 +147,8 @@ groups() ->
         sc_ws_password_changeable,
         {group, with_open_channel},
         {group, client_reconnect},
-        {group, client_reconnect_no_password}
+        {group, client_reconnect_no_password},
+        {group, changeable_fee}
       ]},
 
      {with_open_channel, [sequence],
@@ -213,6 +224,18 @@ groups() ->
         sc_ws_pinned_error_deposit,
         sc_ws_pinned_error_withdraw,
         sc_ws_pinned_contract
+      ]},
+
+     {changeable_fee, [sequence],
+      [
+       sc_ws_set_fee_create,
+       sc_ws_set_fee_deposit,
+       sc_ws_set_fee_withdrawal,
+       sc_ws_set_fee_snapshot,
+       sc_ws_set_fee_close_mutual,
+       sc_ws_set_fee_close_solo,
+       sc_ws_set_fee_slash,
+       sc_ws_set_fee_settle
       ]}
 
     ].
@@ -508,7 +531,13 @@ sc_ws_open_(Config, ChannelOpts0, MinBlocksToMine) ->
 
     channel_send_conn_open_infos(RConnPid, IConnPid, Config),
 
-    ChannelCreateFee = channel_create(Config, IConnPid, RConnPid),
+    SignedCrTx = channel_create(Config, IConnPid, RConnPid),
+
+    CrTx = aetx_sign:innermost_tx(SignedCrTx),
+    {channel_create_tx, Tx} = aetx:specialize_type(CrTx),
+    IPubkey = aesc_create_tx:initiator_pubkey(Tx),
+    RPubkey = aesc_create_tx:responder_pubkey(Tx),
+    ChannelCreateFee = aesc_create_tx:fee(Tx),
 
     make_two_gen_messages_volleys(IConnPid, IPubkey, RConnPid,
                                   RPubkey, Config),
@@ -543,6 +572,7 @@ sc_ws_open_(Config, ChannelOpts0, MinBlocksToMine) ->
     ok = ?WS:unregister_test_for_channel_events(RConnPid, [info, get, sign,
                                                            on_chain_tx, update]),
     [{channel_clients, ChannelClients},
+     {create_tx, SignedCrTx},
      {channel_options, ChannelOpts} | Config].
 
 make_two_gen_messages_volleys(IConnPid, IPubkey, RConnPid,
@@ -647,7 +677,6 @@ channel_create(Config, IConnPid, RConnPid) ->
     {channel_create_tx, Tx} = aetx:specialize_type(CrTx),
     IPubkey = aesc_create_tx:initiator_pubkey(Tx),
     RPubkey = aesc_create_tx:responder_pubkey(Tx),
-    ChannelCreateFee = aesc_create_tx:fee(Tx),
 
     %% ensure the tx is in the mempool
     ok = wait_for_signed_transaction_in_pool(SignedCrTx),
@@ -663,7 +692,7 @@ channel_create(Config, IConnPid, RConnPid) ->
     {ok, _, #{<<"tx">> := EncodedSignedCrTx}} = wait_for_channel_event(RConnPid, on_chain_tx, Config),
     OptionallyPingPong(),
 
-    ChannelCreateFee.
+    SignedCrTx.
 
 sc_ws_update_(Config) ->
     Participants = proplists:get_value(participants, Config),
@@ -965,9 +994,10 @@ query_balances_(ConnPid, Accounts, <<"json-rpc">>) ->
             ConnPid, #{ <<"method">> => <<"channels.get.balances">>
                       , <<"params">> => #{<<"accounts">> => Accounts} })}.
 
-request_slash(ConnPid) ->
+request_slash(ConnPid, Params) ->
     {ok, ?WS:json_rpc_call(
-            ConnPid, #{ <<"method">> => <<"channels.slash">> })}.
+            ConnPid, #{ <<"method">> => <<"channels.slash">>
+                      , <<"params">> => Params })}.
 
 sc_ws_get_state(ConnPid, Config) ->
     {ok, Res} = query_state(ConnPid, Config),
@@ -1050,8 +1080,11 @@ sc_ws_close_mutual_(Config0) ->
         end,
         [initiator, responder]).
 
-sc_ws_close_mutual_(Config, Closer) when Closer =:= initiator orelse
-                                         Closer =:= responder ->
+sc_ws_close_mutual_(Config, Closer) ->
+    sc_ws_close_mutual_(Config, Closer, #{}).
+
+sc_ws_close_mutual_(Config, Closer, Params) when Closer =:= initiator orelse
+                                                 Closer =:= responder ->
     ct:log("ConfigList = ~p", [Config]),
     #{initiator := #{pub_key := IPubkey,
                     priv_key := IPrivkey},
@@ -1066,7 +1099,7 @@ sc_ws_close_mutual_(Config, Closer) when Closer =:= initiator orelse
 
     CloseMutual =
         fun(CloserPubkey, CloserConn, CloserPrivkey, OtherPubkey, OtherConn, OtherPrivkey) ->
-                ws_send_tagged(CloserConn, <<"channels.shutdown">>, #{}, Config),
+                ws_send_tagged(CloserConn, <<"channels.shutdown">>, Params, Config),
 
                 #{tx := ShTx,
                   updates := Updates} = channel_sign_tx(CloserPubkey, CloserConn, CloserPrivkey, <<"channels.shutdown_sign">>, Config),
@@ -1109,10 +1142,10 @@ sc_ws_close_mutual_(Config, Closer) when Closer =:= initiator orelse
 
     % ensure tx is not hanging in mempool
     {ok, 200, #{<<"transactions">> := []}} = get_pending_transactions(),
-    ok.
+    {ok, SignedMutualTx}.
 
-sc_ws_close_solo_(Config, Closer) when Closer =:= initiator;
-                                       Closer =:= responder ->
+sc_ws_close_solo_(Config, Closer, Opts) when Closer =:= initiator;
+                                             Closer =:= responder ->
     ?PEEK_MSGQ,
     ct:log("ConfigList = ~p", [Config]),
     #{initiator := #{pub_key  := IPubKey,
@@ -1130,7 +1163,7 @@ sc_ws_close_solo_(Config, Closer) when Closer =:= initiator;
     CloseSolo =
         fun(CloserConn, CloserPrivKey) ->
                 ws_send_tagged(CloserConn, <<"channels.close_solo">>,
-                               #{}, Config),
+                               Opts, Config),
                 {ok, CSTx} = sign_tx(CloserConn, <<"close_solo_sign">>,
                                      <<"channels.close_solo_sign">>,
                                      CloserPrivKey, Config),
@@ -1158,12 +1191,13 @@ sc_ws_close_solo_(Config, Closer) when Closer =:= initiator;
 
     {ok, 200, #{<<"transactions">> := []}} = get_pending_transactions(),
     ?PEEK_MSGQ,
-    settle_(Config, Closer),
+    {ok, SignedSoloTx}.
 
-    ok.
+settle_(Config, Closer) ->
+    settle_(Config, Closer, #{}).
 
-settle_(Config, Closer) when Closer =:= initiator;
-                             Closer =:= responder ->
+settle_(Config, Closer, Params) when Closer =:= initiator;
+                                     Closer =:= responder ->
     #{initiator := #{priv_key := IPrivKey},
       responder := #{priv_key := RPrivKey}} =
           proplists:get_value(participants, Config),
@@ -1173,7 +1207,7 @@ settle_(Config, Closer) when Closer =:= initiator;
                              initiator -> {RConnPid, RPrivKey};
                              responder -> {IConnPid, IPrivKey}
                          end,
-    ws_send_tagged(ConnPid, <<"channels.settle">>, #{}, Config),
+    ws_send_tagged(ConnPid, <<"channels.settle">>, Params, Config),
 
     {ok, SettleTx} = sign_tx(ConnPid, <<"settle_sign">>,
                              <<"channels.settle_sign">>, PrivKey, Config),
@@ -1182,7 +1216,7 @@ settle_(Config, Closer) when Closer =:= initiator;
     ?PEEK_MSGQ,
     aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 15),
     ?CHECK_INFO(20),
-    ok.
+    {ok, SettleTx}.
 
 sc_ws_leave_(Config) ->
     ResponderLeaves = proplists:get_value(responder_leaves, Config, true),
@@ -1296,9 +1330,9 @@ sc_ws_deposit_(Config, Origin, XOpts) when Origin =:= initiator
     AckConnPid = maps:get(AckRole, Clients),
     {SStartB, AStartB} = channel_participants_balances(SenderPubkey, AckPubkey),
     ok = ?WS:register_test_for_channel_events(SenderConnPid, [sign, info, on_chain_tx,
-                                                              error]),
+                                                              update, error]),
     ok = ?WS:register_test_for_channel_events(AckConnPid, [sign, info, on_chain_tx,
-                                                           error]),
+                                                           update, error]),
     make_two_gen_messages_volleys(SenderConnPid, SenderPubkey, AckConnPid,
                                   AckPubkey, Config),
     ws_send_tagged(SenderConnPid, <<"channels.deposit">>, #{amount => <<"2">>}, Config),
@@ -1343,11 +1377,13 @@ sc_ws_deposit_(Config, Origin, XOpts) when Origin =:= initiator
 
     {ok, _, #{<<"event">> := <<"deposit_locked">>}} = wait_for_channel_event(SenderConnPid, info, Config),
     {ok, _, #{<<"event">> := <<"deposit_locked">>}} = wait_for_channel_event(AckConnPid, info, Config),
+    {ok, _, #{<<"state">> := _NewState}} = wait_for_channel_event(SenderConnPid, update, Config),
+    {ok, _, #{<<"state">> := _NewState}} = wait_for_channel_event(AckConnPid, update, Config),
     ok = ?WS:unregister_test_for_channel_events(SenderConnPid, [sign, info, on_chain_tx,
-                                                                error]),
+                                                                update, error]),
     ok = ?WS:unregister_test_for_channel_events(AckConnPid, [sign, info, on_chain_tx,
-                                                             error]),
-    ok.
+                                                             update, error]),
+    {ok, SignedDepositTx}.
 
 sc_ws_withdraw_(Config, Origin, XOpts) when Origin =:= initiator
                                      orelse Origin =:= responder ->
@@ -1367,9 +1403,9 @@ sc_ws_withdraw_(Config, Origin, XOpts) when Origin =:= initiator
     AckConnPid = maps:get(AckRole, Clients),
     {SStartB, AStartB} = channel_participants_balances(SenderPubkey, AckPubkey),
     ok = ?WS:register_test_for_channel_events(SenderConnPid, [sign, info, on_chain_tx,
-                                                              error]),
+                                                              update, error]),
     ok = ?WS:register_test_for_channel_events(AckConnPid, [sign, info, on_chain_tx,
-                                                           error]),
+                                                           update, error]),
     make_two_gen_messages_volleys(SenderConnPid, SenderPubkey, AckConnPid,
                                   AckPubkey, Config),
     ws_send_tagged(SenderConnPid, <<"channels.withdraw">>, #{amount => <<"2">>}, Config),
@@ -1421,13 +1457,15 @@ sc_ws_withdraw_(Config, Origin, XOpts) when Origin =:= initiator
     {ok, _, #{<<"event">> := <<"withdraw_locked">>}} = wait_for_channel_event(AckConnPid, info, Config),
 
     ct:log("withdraw_locked from both"),
+    {ok, _, #{<<"state">> := _NewState}} = wait_for_channel_event(SenderConnPid, update, Config),
+    {ok, _, #{<<"state">> := _NewState}} = wait_for_channel_event(AckConnPid, update, Config),
 
     ok = ?WS:unregister_test_for_channel_events(SenderConnPid, [sign, info, on_chain_tx,
-                                                                error]),
+                                                                update, error]),
     ok = ?WS:unregister_test_for_channel_events(AckConnPid, [sign, info, on_chain_tx,
-                                                            error]),
+                                                             update, error]),
     ct:log("sequence successful", []),
-    ok.
+    {ok, SignedWTx}.
 
 sc_ws_contracts(Config) ->
     lists:foreach(
@@ -2656,12 +2694,12 @@ sc_ws_snapshot_solo(Config0) ->
            " - should succeed ***", []),
     Round1 = sc_ws_update_basic_round_(Round0, Config),
     ct:log("*** Initiator tries snapshot - should succeed ***", []),
-    {ok, Round2} = perform_snapshot_solo(initiator, Round1,
-                                         Ps, Cs, Config),
+    {ok, Round2, _} = perform_snapshot_solo(initiator, Round1,
+                                            Ps, Cs, Config),
     ct:log("*** Responder tries snapshot (no interleaved updates)"
            " - should succeed ***", []),
-    {ok, no_update} = perform_snapshot_solo(responder, no_update,
-                                            Ps, Cs, Config),
+    {ok, no_update, _} = perform_snapshot_solo(responder, no_update,
+                                               Ps, Cs, Config),
     ct:log("*** Responder tries another snapshot"
            " - should fail (already on chain) ***", []),
     {error, AlreadyOnchain}
@@ -2677,8 +2715,8 @@ sc_ws_snapshot_solo(Config0) ->
     Round3 = sc_ws_update_basic_round_(Round2 + 1, Config),
     ct:log("*** Responder tries another snapshot"
            " - should succeed ***", []),
-    {ok, _Round4} = perform_snapshot_solo(responder, Round3,
-                                          Ps, Cs, Config),
+    {ok, _Round4, _} = perform_snapshot_solo(responder, Round3,
+                                             Ps, Cs, Config),
     ct:log("*** Closing ***", []),
     ok = sc_ws_close_(Config).
 
@@ -2690,6 +2728,9 @@ assert_no_registered_events(L, Config) ->
     ok.
 
 perform_snapshot_solo(Role, Round, Participants, Conns, Config) ->
+    perform_snapshot_solo(Role, Round, Participants, Conns, Config, #{}).
+
+perform_snapshot_solo(Role, Round, Participants, Conns, Config, Params) ->
     #{ priv_key := Privkey } = maps:get(Role, Participants),
     ConnPid = maps:get(Role, Conns),
     try {ok, SignedTx}
@@ -2699,7 +2740,7 @@ perform_snapshot_solo(Role, Round, Participants, Conns, Config) ->
                  fun() ->
                          case ?WS:json_rpc_call(
                                  ConnPid, #{ <<"method">> => <<"channels.snapshot_solo">>
-                                           , <<"params">> => #{} }) of
+                                           , <<"params">> => Params }) of
                              <<"ok">> -> ok;
                              Other    -> {error, Other}
                          end
@@ -2727,7 +2768,7 @@ perform_snapshot_solo(Role, Round, Participants, Conns, Config) ->
                      aecore_suite_utils:node_name(?NODE),
                      MinBlocksToMine +1)
            end, Config),
-         {ok, Round1}
+         {ok, Round1, SignedTx}
     catch
         error:Other ->
             ct:log("Got Other = ~p", [Other]),
@@ -3037,7 +3078,7 @@ sc_ws_close_solo_(Config0) ->
       fun(WhoCloses) ->
               S = ?SLOGAN(WhoCloses),
               Config = sc_ws_open_(Config0, #{slogan => S}),
-              sc_ws_close_solo_(Config, WhoCloses)
+              sc_ws_close_solo_(Config, WhoCloses, #{})
       end, [initiator, responder]).
 
 sc_ws_slash(Config) ->
@@ -3049,15 +3090,15 @@ sc_ws_slash_(Config0) ->
               S = ?SLOGAN([WhoCloses, ",", WhoSlashes]),
               Config = sc_ws_open_(Config0, #{slogan => S}),
               ct:log("Channel opened, Slogan = ~p", [S]),
-              sc_ws_slash_(Config, WhoCloses, WhoSlashes, WhoSettles)
+              sc_ws_slash_(Config, WhoCloses, WhoSlashes, #{}),
+              settle_(Config, WhoSettles)
       end, [{A,B, C} || A <- [initiator],
                         B <- [initiator, responder],
                         C <- [initiator]]).
 
-sc_ws_slash_(Config, WhoCloses, WhoSlashes, WhoSettles) ->
+sc_ws_slash_(Config, WhoCloses, WhoSlashes, Params) ->
     ct:log("WhoCloses  = ~p~n"
-           "WhoSlashes = ~p~n"
-           "WhoSettles = ~p~n", [WhoCloses, WhoSlashes, WhoSettles]),
+           "WhoSlashes = ~p~n", [WhoCloses, WhoSlashes]),
     true = lists:member(WhoCloses, ?ROLES),
     true = lists:member(WhoSlashes, ?ROLES),
     ct:log("ConfigList = ~p", [Config]),
@@ -3099,7 +3140,7 @@ sc_ws_slash_(Config, WhoCloses, WhoSlashes, WhoSettles) ->
     {ok, SignedSlashTx} = request_and_sign_slash_tx(
                             SlasherPid, WhoSlashes, Config,
                            fun() ->
-                                   {ok, <<"ok">>} = request_slash(SlasherPid),
+                                   {ok, <<"ok">>} = request_slash(SlasherPid, Params),
                                    ok
                            end),
     ct:log("SignedSlashTx = ~p", [SignedSlashTx]),
@@ -3111,9 +3152,7 @@ sc_ws_slash_(Config, WhoCloses, WhoSlashes, WhoSettles) ->
       fun() ->
               ok = wait_for_tx_hash_on_chain(SlashTxHash)
       end, Config),
-
-    settle_(Config, WhoSettles),
-    ok.
+    {ok, SignedSlashTx}.
 
 request_and_sign_slash_tx(ConnPid, Who, Config, ReqF) ->
     Participants = proplists:get_value(participants, Config),
@@ -3316,8 +3355,10 @@ sc_ws_withdraw(Config) ->
 %%     channel_options(IPubkey, RPubkey, IAmt, RAmt, #{}).
 
 channel_options(IPubkey, RPubkey, IAmt, RAmt, Other, Config) ->
-    maybe_slogan(
-      maybe_add_password(
+    lists:foldl(
+        fun(MaybeSet, Accum) ->
+            MaybeSet(Accum, Config)
+        end,
         maps:merge(#{ port => ?config(ws_port, Config),
                       initiator_id => aeser_api_encoder:encode(account_pubkey, IPubkey),
                       responder_id => aeser_api_encoder:encode(account_pubkey, RPubkey),
@@ -3328,7 +3369,11 @@ channel_options(IPubkey, RPubkey, IAmt, RAmt, Other, Config) ->
                       channel_reserve => 2,
                       keep_running => false,
                       protocol => sc_ws_protocol(Config)
-                    }, Other), Config), Config).
+                    }, Other),
+        [fun maybe_add_fee/2,
+         fun maybe_add_slogan/2,
+         fun maybe_add_password/2
+        ]).
 
 maybe_add_password(#{state_password := _} = Map, _) ->
     Map;
@@ -3340,14 +3385,23 @@ maybe_add_password(Map, Config) ->
             Map#{state_password => ?CACHE_DEFAULT_PASSWORD}
     end.
 
-maybe_slogan(#{slogan := _} = Map, _) ->
-    Map;
-maybe_slogan(Map, Config) ->
-    case proplists:get_value(slogan, Config) of
-        undefined ->
+maybe_add_slogan(Map, Config) ->
+    maybe_add_param(slogan, Map, Config).
+
+maybe_add_fee(Map, Config) ->
+    maybe_add_param(fee, Map, Config).
+
+maybe_add_param(ParamName, Map, Config) ->
+    case maps:find(ParamName, Map) of
+        {ok, _Value} ->
             Map;
-        S ->
-            Map#{slogan => S}
+        error ->
+            case proplists:get_value(ParamName, Config) of
+                undefined ->
+                    Map;
+                Value ->
+                    maps:put(ParamName, Value, Map)
+            end
     end.
 
 special_channel_opts(Opts) ->
@@ -3446,6 +3500,8 @@ log_basename(Config) ->
                 filename:join([Protocol, "generalized_accounts", "both"]);
             pinned_env ->
                 filename:join([Protocol, "pinned_env"]);
+            changeable_fee ->
+                filename:join([Protocol, "changeable_fee"]);
             plain -> Protocol
         end,
     filename:join("channel_docs", SubDir).
@@ -4203,3 +4259,124 @@ wait_for_expected_events(Pid, Config, ExpectedEvents) ->
         _ ->
             wait_for_expected_events(Pid, Config, ExpectedEvents1)
     end.
+
+signed_tx_fee(SignedTx) ->
+    Tx = aetx_sign:innermost_tx(SignedTx),
+    aetx:fee(Tx).
+
+signed_channel_tx_round(SignedTx) ->
+    AeTx = aetx_sign:innermost_tx(SignedTx),
+    {Mod, Tx} = aetx:specialize_callback(AeTx),
+    Mod:round(Tx).
+
+sc_ws_set_fee_create(Cfg0) ->
+    Fee = ?ARBITRARY_BIG_FEE,
+    Cfg = sc_ws_open_([{fee, Fee}
+                       |Cfg0]),
+
+    SignedCrTx = ?config(create_tx, Cfg),
+
+    ActualFee = signed_tx_fee(SignedCrTx),
+    Fee = ActualFee,
+    sc_ws_close_mutual_(Cfg, initiator),
+    ok.
+
+sc_ws_set_fee_deposit(Cfg0) ->
+    MakeDeposit = fun sc_ws_deposit_/3,
+    sc_ws_set_fee_(Cfg0, MakeDeposit).
+
+sc_ws_set_fee_withdrawal(Cfg0) ->
+    MakeDeposit =
+        fun(Cfg, Who, Opts) ->
+            sc_ws_withdraw_(Cfg, Who, Opts)
+        end,
+    sc_ws_set_fee_(Cfg0, MakeDeposit).
+
+sc_ws_set_fee_snapshot(Cfg0) ->
+    MakeDeposit =
+        fun(Cfg, Who, Opts) ->
+            #{ initiator := IConnPid } = Cs =
+                proplists:get_value(channel_clients, Cfg),
+            Ps = proplists:get_value(participants, Cfg),
+            {ok, #{ signed_tx := StateSignedStateTx }} =
+                sc_ws_get_state(IConnPid, Cfg),
+            LatestRound = signed_channel_tx_round(StateSignedStateTx),
+            channel_update(Cs, Who, Ps, 1, LatestRound + 1,
+                          _TestErrors = false, Cfg),
+            {ok, _, SignedSnapshotTx} =
+                perform_snapshot_solo(Who, LatestRound + 1,
+                                      Ps, Cs, Cfg, Opts),
+            {ok, SignedSnapshotTx}
+        end,
+    sc_ws_set_fee_(Cfg0, MakeDeposit).
+
+sc_ws_set_fee_close_mutual(Cfg0) ->
+    Cfg = sc_ws_open_(Cfg0),
+
+    DefaultMutualFee = 20000000000000,
+    ModifiedMutualFee = DefaultMutualFee + 1,
+    {ok, SignedMutualTx} = sc_ws_close_mutual_(Cfg, initiator, #{fee => ModifiedMutualFee}),
+    ActualMutualFee = signed_tx_fee(SignedMutualTx),
+    ModifiedMutualFee = ActualMutualFee,
+    ok.
+
+sc_ws_set_fee_(Cfg0, MakeOnChainTxFun) ->
+    Fee = ?ARBITRARY_BIG_FEE,
+    Cfg = sc_ws_open_(Cfg0),
+
+    Test =
+        fun(Who) ->
+            {ok, SignedTx} = MakeOnChainTxFun(Cfg, Who, #{fee => Fee}),
+            ActualFee = signed_tx_fee(SignedTx),
+            Fee = ActualFee
+        end,
+
+    Test(initiator),
+    Test(responder),
+
+    sc_ws_close_mutual_(Cfg, initiator),
+    ok.
+
+sc_ws_set_fee_close_solo(Cfg0) ->
+    Fee = ?ARBITRARY_BIG_FEE,
+    Test =
+        fun(Who) ->
+            Cfg = sc_ws_open_(Cfg0),
+            {ok, SignedTx} = sc_ws_close_solo_(Cfg, Who, #{fee => Fee}),
+            ActualFee = signed_tx_fee(SignedTx),
+            Fee = ActualFee,
+            settle_(Cfg, initiator)
+        end,
+    Test(initiator),
+    Test(responder),
+    ok.
+
+sc_ws_set_fee_slash(Cfg0) ->
+    Fee = ?ARBITRARY_BIG_FEE,
+    Test =
+        fun(Who) ->
+            Cfg = sc_ws_open_(Cfg0),
+            {ok, SignedTx} = sc_ws_slash_(Cfg, _WhoCloses = initiator,
+                                          Who, #{fee => Fee}),
+            ActualFee = signed_tx_fee(SignedTx),
+            Fee = ActualFee,
+            settle_(Cfg, initiator)
+        end,
+    Test(initiator),
+    Test(responder),
+    ok.
+
+sc_ws_set_fee_settle(Cfg0) ->
+    Fee = ?ARBITRARY_BIG_FEE,
+    Test =
+        fun(Who) ->
+            Cfg = sc_ws_open_(Cfg0),
+            sc_ws_close_solo_(Cfg, initiator, #{}),
+            {ok, SignedTx} = settle_(Cfg, Who, #{fee => Fee}),
+            ActualFee = signed_tx_fee(SignedTx),
+            Fee = ActualFee,
+            ok
+        end,
+    Test(initiator),
+    Test(responder),
+    ok.

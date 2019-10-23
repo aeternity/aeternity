@@ -710,7 +710,7 @@ upd_transfer(Cfg) ->
     BalI1 = BalI - 2,
     BalR1 = BalR + 2,
     {I1, R1} = update_bench(I0, R0, Cfg),
-    ok = rpc(dev1, aesc_fsm, shutdown, [FsmI]),
+    ok = rpc(dev1, aesc_fsm, shutdown, [FsmI, #{}]),
     {_I2, _} = await_signing_request(shutdown, I1, Cfg),
     {_R2, _} = await_signing_request(shutdown_ack, R1, Cfg),
     SignedTx = await_on_chain_report(I, ?TIMEOUT),
@@ -946,7 +946,7 @@ withdraw_with_signing_abort(Cfg) ->
 
 shutdown_with_signing_abort(Cfg) ->
     op_with_signing_abort(shutdown, fun(Fsm, _, _) ->
-                                            [Fsm]
+                                            [Fsm, #{}]
                                     end, shutdown, shutdown, shutdown_ack, Cfg).
 
 op_with_signing_abort(Op, Args, SignTag1, RptTag2, SignTag2, Cfg) ->
@@ -1537,7 +1537,7 @@ check_incorrect_mutual_close(Cfg) ->
             Data = {I, R, Spec, Port, Debug},
 
             Fun(Data, Depositor, Malicious,
-                {shutdown, [], shutdown, shutdown_ack},
+                {shutdown, [#{}], shutdown, shutdown_ack},
                 fun(#{fsm := FsmPid}, Debug1) ->
                     ?LOG(Debug1, "checking state of ~p (Depositor=~p, Malicious=~p, FsmI = ~p, FsmR = ~p)",
                         [FsmPid, Depositor, Malicious, FsmI, FsmR]),
@@ -1574,7 +1574,7 @@ check_mutual_close_with_wrong_amounts(Cfg) ->
      , r := #{fsm := FsmR} = R } =
         create_channel_from_spec(Si, Sr, Spec, Port, Debug, Cfg),
     %% We don't have enough funds to cover the closing fee
-    {error, insufficient_funds} = rpc(dev1, aesc_fsm, shutdown, [FsmI]),
+    {error, insufficient_funds} = rpc(dev1, aesc_fsm, shutdown, [FsmI, #{}]),
     timer:sleep(50),
     %% Fsms should be unaffected
     true = (rpc(dev1, erlang, process_info, [FsmI]) =/= undefined),
@@ -1604,19 +1604,19 @@ check_mutual_close_after_close_solo(Cfg) ->
      , r := #{fsm := FsmR} = R } =
         create_channel_from_spec(Si, Sr, Spec1, Port, Debug, Cfg),
     %% One of the parties solo closes the channel
-    ok = rpc(dev1, aesc_fsm, close_solo, [FsmI]),
+    ok = rpc(dev1, aesc_fsm, close_solo, [FsmI, #{}]),
     {_, SignedCloseSoloTx} = await_signing_request(close_solo_tx, I, Cfg),
     wait_for_signed_transaction_in_block(dev1, SignedCloseSoloTx),
     %% Before the lima fork the FSM should make sure that we
     %% cannot shutdown the channel after it was closed but before the TTL runs out
     case aect_test_utils:latest_protocol_version() < ?LIMA_PROTOCOL_VSN of
         true ->
-            {error, unknown_request} = rpc(dev1, aesc_fsm, shutdown, [FsmI]),
-            {error, unknown_request} = rpc(dev1, aesc_fsm, shutdown, [FsmR]),
+            {error, unknown_request} = rpc(dev1, aesc_fsm, shutdown, [FsmI, #{}]),
+            {error, unknown_request} = rpc(dev1, aesc_fsm, shutdown, [FsmR, #{}]),
 
             %% Check that a malicious shutdown request does not kill the FSM
             ok = rpc(dev1, aesc_fsm, strict_checks, [FsmI, false]),
-            ok = rpc(dev1, aesc_fsm, shutdown, [FsmI]),
+            ok = rpc(dev1, aesc_fsm, shutdown, [FsmI, #{}]),
             {_, _} = await_signing_request(shutdown, I, Cfg),
 
             %% TODO: Check if we receive an ?UpdateErr message
@@ -1625,15 +1625,15 @@ check_mutual_close_after_close_solo(Cfg) ->
             channel_closing = fsm_state(FsmI, Debug);
         false ->
             % Test that timeouts do not kill the FSM
-            ok = rpc(dev1, aesc_fsm, shutdown, [FsmI]),
-            ok = rpc(dev1, aesc_fsm, shutdown, [FsmR]),
+            ok = rpc(dev1, aesc_fsm, shutdown, [FsmI, #{}]),
+            ok = rpc(dev1, aesc_fsm, shutdown, [FsmR, #{}]),
             timer:sleep(SignTimeout + 100),
             channel_closing = fsm_state(FsmI, Debug),
             channel_closing = fsm_state(FsmR, Debug),
 
             % Test that after sending the SHUTDOWN message and timing out we
             % are still alive
-            ok = rpc(dev1, aesc_fsm, shutdown, [FsmI]),
+            ok = rpc(dev1, aesc_fsm, shutdown, [FsmI, #{}]),
             {_, _} = await_signing_request(shutdown, I, Cfg),
             {ok, _} = receive_info(R, shutdown, Debug),
             timer:sleep(SignTimeout + 100),
@@ -1716,7 +1716,7 @@ fsm_crash_action_during_shutdown( #{fsm := FsmI} = I
                                 , R
                                 , Cfg) ->
     Debug = get_debug(Cfg),
-    rpc(dev1, aesc_fsm, shutdown, [FsmI], Debug),
+    rpc(dev1, aesc_fsm, shutdown, [FsmI, #{}], Debug),
     {_, _} = await_signing_request(shutdown, I, Debug, Cfg),
     {ok, _} = receive_from_fsm(shutdown_ack, R, signing_req(), ?TIMEOUT, Debug),
     ok.
@@ -2007,7 +2007,7 @@ shutdown_(#{fsm := FsmI, channel_id := ChannelId} = I, R, Cfg) ->
 
     % Send shutdown
     AlreadyClosing = proplists:get_value(already_closing, Cfg, false),
-    ok = rpc(dev1, aesc_fsm, shutdown, [FsmI]),
+    ok = rpc(dev1, aesc_fsm, shutdown, [FsmI, #{}]),
 
     % Verify shutdown process
     {I1, _} = await_signing_request(shutdown, I, Cfg),
@@ -2048,7 +2048,7 @@ shutdown_(#{fsm := FsmI, channel_id := ChannelId} = I, R, Cfg) ->
 
 settle_(TTL, MinDepth, #{fsm := FsmI, channel_id := ChannelId} = I, R, Debug,
        Cfg) ->
-    ok = rpc(dev1, aesc_fsm, settle, [FsmI]),
+    ok = rpc(dev1, aesc_fsm, settle, [FsmI, #{}]),
     {_, SignedTx} = await_signing_request(settle_tx, I, Cfg),
     ?LOG(Debug, "settle_tx signed", []),
     {ok, MinedKeyBlocks} = mine_blocks_until_txs_on_chain(
