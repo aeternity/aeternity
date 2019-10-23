@@ -188,10 +188,7 @@ process(#ga_meta_tx{} = Tx, Trees, Env0) ->
             {InnerRes, Trees2, Env2} =
                 case aetx_sign:verify_w_env(tx(Tx), Trees1, Env11) of
                     ok ->
-                        case aetx:process(aetx_sign:tx(tx(Tx)), Trees1, Env11) of
-                            {ok, Trees21, Env21}    -> {ok, Trees21, Env21};
-                            Err = {error, _Reason}  -> {Err, Trees1, Env1}
-                        end;
+                        process_inner(aetx_sign:tx(tx(Tx)), Trees1, Env11);
                     Err = {error, _Reason} ->
                         {Err, Trees1, Env1}
                 end,
@@ -200,6 +197,23 @@ process(#ga_meta_tx{} = Tx, Trees, Env0) ->
             {ok, Trees22, Env22};
         Err = {error, _} ->
             Err
+    end.
+
+%% Starting from Lima catch crashes and convert to {error, Reason}
+process_inner(Tx, Trees, Env) ->
+    case aetx_env:consensus_version(Env) of
+        ?FORTUNA_PROTOCOL_VSN ->
+            case aetx:process(Tx, Trees, Env) of
+                {ok, Trees1, Env1}     -> {ok, Trees1, Env1};
+                Err = {error, _Reason} -> {Err, Trees, Env}
+            end;
+        Vsn when Vsn >= ?LIMA_PROTOCOL_VSN ->
+            try aetx:process(Tx, Trees, Env) of
+                {ok, Trees1, Env1}     -> {ok, Trees1, Env1};
+                Err = {error, _Reason} -> {Err, Trees, Env}
+            catch _:Reason ->
+                    {{error, Reason}, Trees, Env}
+            end
     end.
 
 set_meta_result(ok, _Tx, Trees, _Env) ->
