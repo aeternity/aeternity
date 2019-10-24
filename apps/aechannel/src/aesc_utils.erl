@@ -246,9 +246,9 @@ check_slash_payload(ChannelPubKey, FromPubKey, Nonce, Fee, Payload,
 
 check_force_progress(Tx, Payload, OffChainTrees, Trees, Env) ->
     Protocol = aetx_env:consensus_version(Env),
-    Height = aetx_env:height(Env),
+    _Height = aetx_env:height(Env),
     ?TEST_LOG("Checking force progress:\nTx: ~p,\nPayload: ~p,\nOffChainTrees: ~p,\nHeight: ~p",
-              [Tx, Payload, OffChainTrees, Height]),
+              [Tx, Payload, OffChainTrees, _Height]),
     ChannelPubKey = aesc_force_progress_tx:channel_pubkey(Tx),
     FromPubKey = aesc_force_progress_tx:origin(Tx),
     Nonce = aesc_force_progress_tx:nonce(Tx),

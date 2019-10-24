@@ -40,9 +40,7 @@
         , get_offchain_state/1
         , get_poi/2
         , inband_msg/3
-        , initiate/3              %% (host(), port(), Opts :: #{}
         , leave/1
-        , respond/2               %% (port(), Opts :: #{})
         , settle/2                %% (fsm(), map())
         , shutdown/2              %% (fsm(), map())
         , slash/2                 %% (fsm(), map())
@@ -75,7 +73,6 @@
 
 %% Used by client
 -export([ signing_response/3          %% (Fsm, Tag, Obj)
-        , check_state_password/1      %% (Map)
         , error_code_to_msg/1         %% (Code)
         , stop/1 ]).                  %% (Fsm)
 
@@ -120,6 +117,7 @@
 -include_lib("aecontract/include/hard_forks.hrl").
 -include_lib("aeutils/include/aeu_stacktrace.hrl").
 -include("aesc_codec.hrl").
+-include("aechannel.hrl").
 -include("aesc_fsm.hrl").
 
 %% mainly to avoid warnings during build
@@ -133,6 +131,7 @@
 -ifdef(TEST).
 -export([ strict_checks/2
         , get_state/1
+        , pr_stacktrace/1
         ]).
 -endif.
 
@@ -209,36 +208,9 @@ inband_msg(Fsm, To, Msg) ->
         {error, invalid_request}
   end.
 
-initiate(Host, Port, #{} = Opts0) ->
-    lager:debug("initiate(~p, ~p, ~p)", [Host, Port, aesc_utils:censor_init_opts(Opts0)]),
-    Opts = maps:merge(#{client => self(), role   => initiator}, Opts0),
-    try init_checks(Opts) of
-        ok ->
-            aesc_fsm_sup:start_child([#{ host => Host
-                                       , port => Port
-                                       , opts => Opts }]);
-        {error, _Reason} = Err ->
-            Err
-    ?CATCH_LOG(_E)
-        {error, _E}
-    end.
-
 leave(Fsm) ->
     lager:debug("leave(~p)", [Fsm]),
     gen_statem:call(Fsm, leave).
-
-respond(Port, #{} = Opts0) ->
-    lager:debug("respond(~p, ~p)", [Port, aesc_utils:censor_init_opts(Opts0)]),
-    Opts = maps:merge(#{client => self(),
-                        role   => responder}, Opts0),
-    try init_checks(Opts) of
-        ok ->
-            aesc_fsm_sup:start_child([#{ port => Port
-                                       , opts => Opts }]);
-        {error, _Reason} = Err -> Err
-    ?CATCH_LOG(_E)
-        {error, _E}
-    end.
 
 -spec settle(pid(), #{fee := integer()}) -> ok | {error, atom()}.
 settle(Fsm, XOpts) ->
@@ -3195,26 +3167,6 @@ log_msg(Op, Type, M, Log) ->
 win_to_list(Log) ->
     aesc_window:to_list(Log).
 
-check_amounts(#{ channel_reserve := ChannelReserve})
-    when ChannelReserve < 0 ->
-    {error, channel_reserve_too_low};
-check_amounts(#{ push_amount := PushAmount})
-    when PushAmount < 0 ->
-    {error, push_amount_too_low};
-check_amounts(#{ initiator_amount   := InitiatorAmount0
-               , responder_amount   := ResponderAmount0
-               , push_amount        := PushAmount
-               , channel_reserve    := ChannelReserve}) ->
-    InitiatorAmount = InitiatorAmount0 - PushAmount,
-    ResponderAmount = ResponderAmount0 + PushAmount,
-    case {InitiatorAmount >= ChannelReserve,
-          ResponderAmount >= ChannelReserve} of
-        {true,  true}  -> ok;
-        {false, true}  -> {error, insufficient_initiator_amount};
-        {true,  false} -> {error, insufficient_responder_amount};
-        {false, false} -> {error, insufficient_amounts}
-    end.
-
 process_update_error({off_chain_update_error, Reason}, From, D) ->
     keep_state(D, [{reply, From, {error, Reason}}]);
 process_update_error(Reason, From, D) ->
@@ -3491,29 +3443,6 @@ next_round(#data{state = State}) ->
 increment_round(Round) ->
     Round + 1.
 
-account_type(Pubkey) ->
-    case aec_chain:get_account(Pubkey) of
-        {value, Account} ->
-            {ok, aec_accounts:type(Account)};
-        _ -> not_found
-    end.
-
-check_accounts(any, Responder, responder) ->
-    check_account(Responder);
-check_accounts(Initiator, Responder, _Role) ->
-    case {check_account(Initiator), check_account(Responder)} of
-        {ok, ok}     -> ok;
-        {{error, _} = E, _} -> E;
-        {_, {error, _} = E} -> E
-    end.
-
-check_account(A) ->
-    case account_type(A) of
-        {ok, basic}       -> ok;
-        {ok, generalized} -> ok;
-        _                 -> {error, not_found}
-    end.
-
 check_attach_info(Info, #data{opts = Opts} = D) ->
     #{initiator := I, responder := R} = Opts,
     check_attach_info(Info, I, R, D).
@@ -3542,7 +3471,7 @@ check_attach_info(#{ initiator := I1
                    , gproc_key := _K} = Info, I, R, _D) ->
     lager:debug("Info = ~p, I = ~p, R = ~p", [Info, I, R]),
     if I =:= any, R1 =:= R ->
-            check_account(I1);
+            aesc_checks:account(I1, initiator_not_found);
        I1 =:= I, R1 =:= R ->
             ok;
        R1 =/= R ->   %% shouldn't happen
@@ -4143,7 +4072,7 @@ handle_call(_, {?RECONNECT_CLIENT, Pid, Tx} = Msg, From,
 handle_call(_, {?RECONNECT_CLIENT, _, _}, From, #data{ client = Client } = D) when is_pid(Client) ->
     keep_state(D, [{reply, From, {error, {existing_client, Client}}}]);
 handle_call(_, {change_state_password, StatePassword}, From, #data{channel_status = open, on_chain_id = ChId} = D) ->
-    case is_password_valid(StatePassword) of
+    case aesc_checks:state_password(StatePassword) of
         ok ->
             case aesc_state_cache:change_state_password(ChId, my_account(D), StatePassword) of
                 ok ->
@@ -4632,51 +4561,6 @@ get_channel(ChainHash, ChId) ->
             {error, chain_hash_mismatch}
     end.
 
-init_checks(#{existing_channel_id := _} = Opts) ->
-    #{ role := _Role
-     , offchain_tx := _ } = Opts,
-    Checks = [fun() -> check_state_password(Opts) end],
-    case aeu_validation:run(Checks) of
-        {error, _Reason} = Err ->
-            Err;
-        ok ->
-            ok
-    end;
-init_checks(Opts) ->
-    #{ initiator   := Initiator
-     , responder   := Responder
-     , role        := Role
-     , lock_period := LockPeriod } = Opts,
-    Checks = [fun() -> check_amounts(Opts) end,
-              fun() -> check_accounts(Initiator, Responder, Role) end,
-              fun() ->
-                  case LockPeriod < 0 of
-                      true -> {error, lock_period_too_low};
-                      false -> ok
-                  end
-              end,
-              fun() -> check_state_password(Opts) end
-              ],
-    case aeu_validation:run(Checks) of
-        {error, _Reason} = Err ->
-            Err;
-        ok ->
-            ok
-    end.
-
--spec check_state_password(map()) -> ok | {error, password_required_since_lima | invalid_password}.
-check_state_password(#{state_password := StatePassword}) ->
-    is_password_valid(StatePassword);
-check_state_password(_Opts) ->
-    ok.
-
--spec is_password_valid(string()) -> ok | {error, invalid_password}.
-is_password_valid(StatePassword)
-    when is_list(StatePassword), length(StatePassword) < ?STATE_PASSWORD_MINIMUM_LENGTH ->
-    {error, invalid_password};
-is_password_valid(StatePassword) when is_list(StatePassword) ->
-    ok.
-
 %% @doc Enable a new fork only after FORK_MINIMUM_DEPTH generations in order to avoid fork changes.
 was_fork_activated(ProtocolVSN) ->
     Height = max(curr_height() - ?FORK_MINIMUM_DEPTH, aec_block_genesis:height()),
@@ -4715,7 +4599,6 @@ abbrev_args(L) when is_list(L) ->
               pr_data(D);
          (X) -> X
       end, L).
-
 -endif.
 
 %% This is also used in some debug log entries

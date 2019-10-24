@@ -128,24 +128,6 @@
                             ; S=:=awaiting_leave_ack
                             ; S=:=mutual_closing ).
 
--ifdef(TEST).
--define(CATCH_LOG(Err), ?_catch_(error, Err, ST)
-        lager:debug("CAUGHT ~p / ~p", [Err, pr_stacktrace(ST)]),
-       ).
--define(CATCH_LOG(Err, Prefix), ?_catch_(error, Err, ST)
-        lager:debug("~s: CAUGHT ~p / ~p", [Prefix, Err, pr_stacktrace(ST)]),
-       ).
--else.
-% When not testing we don't use the stracktrace, therefore we don't acquire it
-% in the first place.
--define(CATCH_LOG(Err), ?_catch_(error, Err)
-        lager:debug("CAUGHT ~p", [Err]),
-       ).
--define(CATCH_LOG(Err, Prefix), ?_catch_(error, Err)
-        lager:debug("~s: CAUGHT ~p", [Prefix, Err]),
-       ).
--endif.
-
 -record(bh_delta, { not_older_than  :: integer()
                   , not_newer_than  :: integer()
                   , pick            :: integer()
@@ -207,7 +189,6 @@
                       | channel_closing
                       | channel_closed.
 
--type role() :: initiator | responder.
 -type sign_tag() :: create_tx
                   | slash_tx
                   | deposit_tx
@@ -290,8 +271,3 @@
 -define(DEFAULT_FSM_TX_TTL_DELTA, 100).
 
 -type next_fsm_state() :: {next_state, atom(), #data{}, list()}.
-
-%% TODO: Make this configurable
-%% No need for a stronger password policy
-%% This check is only here to ensure that someone doesn't enter a 1-2 character password
--define(STATE_PASSWORD_MINIMUM_LENGTH, 6).

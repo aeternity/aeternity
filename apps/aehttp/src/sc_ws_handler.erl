@@ -238,17 +238,18 @@ handler_parsing_error(Err, Handler, Params) ->
     end.
 
 handler_init_error(Err, Handler) ->
-    HandledErrors =[{not_found                    , participant_not_found},
-                    {client_still_active          , client_still_active},
-                    {insufficient_initiator_amount, value_too_low},
-                    {insufficient_responder_amount, value_too_low},
-                    {insufficient_amounts         , value_too_low},
-                    {channel_reserve_too_low      , value_too_low},
-                    {push_amount_too_low          , value_too_low},
-                    {lock_period_too_low          , value_too_low},
-                    {invalid_password             , invalid_password},
-                    {bad_signature                , bad_signature},
-                    {password_required_since_lima , {state_password, missing}}
+    HandledErrors =[ {initiator_not_found           , participant_not_found}
+                   , {responder_not_found           , participant_not_found}
+                   , {client_still_active           , client_still_active}
+                   , {insufficient_initiator_amount , value_too_low}
+                   , {insufficient_responder_amount , value_too_low}
+                   , {insufficient_amounts          , value_too_low}
+                   , {channel_reserve_too_low       , value_too_low}
+                   , {push_amount_too_low           , value_too_low}
+                   , {lock_period_too_low           , value_too_low}
+                   , {invalid_password              , invalid_password}
+                   , {bad_signature                 , bad_signature}
+                   , {password_required_since_lima  , {state_password, missing}}
                    ],
     case proplists:get_value(Err, HandledErrors, not_handled_error) of
         not_handled_error ->
@@ -353,9 +354,9 @@ fsm_pid(#handler{fsm_pid = Pid}) ->
 
 -spec start_link_fsm(handler(), map()) -> {ok, pid()} | {error, atom()}.
 start_link_fsm(#handler{role = initiator, host=Host, port=Port}, Opts) ->
-    aesc_fsm:initiate(Host, Port, Opts);
+    aesc_client:initiate(Host, Port, Opts);
 start_link_fsm(#handler{role = responder, port=Port}, Opts) ->
-    aesc_fsm:respond(Port, Opts).
+    aesc_client:respond(Port, Opts).
 
 derive_reconnect_opts(#{ <<"reconnect_tx">> := ReconnectTx } = Params) ->
     lager:debug("Params = ~p", [Params]),
@@ -585,15 +586,14 @@ read_state_password(Read) ->
     %% The state_password is mandatory AFTER the lima fork - this is checked by CheckStatePasswordF
     CheckStatePasswordF
         = fun(M) ->
-                  case aesc_fsm:check_state_password(M) of
+                  case aesc_checks:state_password_in_opts(M) of
                       ok ->
                           M;
                       Err ->
                           Err
                   end
           end,
-    [read_password(Read),
-     CheckStatePasswordF].
+    [read_password(Read), CheckStatePasswordF].
 
 read_password(Read) ->
     Read(<<"state_password">>, state_password, #{type => string, mandatory => false,
