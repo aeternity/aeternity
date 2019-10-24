@@ -4808,15 +4808,10 @@ default_minimum_depth(Strategy) ->
 
 min_tx_fee(Tx) ->
     {CurrHeight, CurrProtocol} = curr_height_and_protocol(),
-    MinTxFee = aetx:min_fee(Tx, CurrHeight, CurrProtocol),
-    MinGasRequirements = min_gas(Tx),
-    max(MinTxFee, MinGasRequirements).
-
-min_gas(Tx) ->
-    {CurrHeight, CurrProtocol} = curr_height_and_protocol(),
-    MinGas = aetx:min_gas(Tx, CurrHeight, CurrProtocol),
-    MinMinerGasPrice = aec_tx_pool:minimum_miner_gas_price(),
-    MinGas * MinMinerGasPrice.
+    MaxMinGasPrice = max(aec_tx_pool:minimum_miner_gas_price(),
+                         aec_governance:minimum_gas_price(CurrProtocol)),
+    FeeGas = aetx:fee_gas(Tx, CurrHeight, CurrProtocol),
+    FeeGas * MaxMinGasPrice.
 
 postpone_or_error(call) -> error_all;
 postpone_or_error(_) -> postpone.
