@@ -184,7 +184,6 @@ list() ->
         {F,A,R} <-
             [ {<<"make_nil">>, [], []}
             ,  {<<"cons">>, [42,[]], [42]}
-            ,  {<<"cons_error">>, [42,[true]], {error, <<"Bad arguments to cons: [42,[true]]">>}}
             ,  {<<"head">>, [[42]], 42}
             ,  {<<"tail">>, [[42]], []}
             ,  {<<"length">>, [[1,2,3,4]], 4}
@@ -586,11 +585,6 @@ contracts() ->
                ]}
            , {<<"cons">>
              , {[integer, {list, integer}], {list, integer}}
-             , [ {0, [ {'CONS', {stack, 0}, {arg, 0}, {arg, 1}}
-                     ,  'RETURN']}
-               ]}
-           , {<<"cons_error">>
-             , {[integer, {list, boolean}], {list, integer}}
              , [ {0, [ {'CONS', {stack, 0}, {arg, 0}, {arg, 1}}
                      ,  'RETURN']}
                ]}

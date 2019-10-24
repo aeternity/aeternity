@@ -57,6 +57,7 @@
         , create_version_too_high/1
         , sophia_call_out_of_gas/1
         , fate_environment/1
+        , fate_list_of_maps/1
         , state_tree/1
         , sophia_identity/1
         , sophia_list_comp/1
@@ -160,6 +161,7 @@
         , sophia_remote_gas/1
         , sophia_higher_order_state/1
         , sophia_bignum/1
+        , sophia_call_caller/1
         , create_store/1
         , read_store/1
         , store_zero_value/1
@@ -289,6 +291,7 @@ all() ->
                        , {group, sophia_aevm_specific}]).
 
 -define(FATE_SPECIFIC, [ fate_environment
+                       , fate_list_of_maps
                        , sophia_polymorphic_entrypoint
                        , lima_migration
                        ]).
@@ -399,6 +402,7 @@ groups() ->
                                  sophia_address_checks,
                                  sophia_too_little_gas_for_mem,
                                  sophia_bignum,
+                                 sophia_call_caller,
                                  sophia_higher_order_state,
                                  sophia_use_memory_gas,
                                  lima_migration
@@ -1657,6 +1661,25 @@ sophia_bignum(_Cfg) ->
     {error, Err3} = ?call(call_contract, Acc, Ct, tetr3, word, {100, 3}),
     ?assertMatchVM(<<"arithmetic_error">>, <<"Out of gas">>, Err3),
     ok.
+
+sophia_call_caller(_Cfg) ->
+    state(aect_test_utils:new_state()),
+    Acc = ?call(new_account, 1000000000 * aec_test_utils:min_gas_price()),
+    CtR1 = ?call(create_contract, Acc, identity, {}),
+    CtR2 = ?call(create_contract, Acc, call_caller, {}),
+    Ct   = ?call(create_contract, Acc, call_caller, {}),
+
+    Res1 = ?call(call_contract, Acc, Ct, f1, word, {}),
+    Res2 = ?call(call_contract, Acc, Ct, f2, word, {?cid(CtR1)}),
+    Res3 = ?call(call_contract, Acc, Ct, f3, word, {?cid(CtR1), ?cid(CtR2)}),
+    Res4 = ?call(call_contract, Acc, Ct, f4, bool, {?cid(CtR1), ?cid(CtR2)}),
+
+    ?assertEqual(Res1, Res2),
+    ?assertEqual(Res3, Res2),
+    ?assertEqual(Res4, true),
+
+    ok.
+
 
 sophia_vm_interaction(Cfg) ->
     state(aect_test_utils:new_state()),
@@ -6047,6 +6070,15 @@ fate_environment(_Cfg) ->
                  ?call(call_contract, Acc, Contract, block_hash, {option, word}, {BHHeight - 1}, #{height => BHHeight})),
     ?assertEqual({some, {bytes, <<(BHHeight - 255):256>>}},
                  ?call(call_contract, Acc, Contract, block_hash, {option, word}, {BHHeight - 255}, #{height => BHHeight})),
+    ok.
+
+fate_list_of_maps(_Cfg) ->
+    state(aect_test_utils:new_state()),
+    Acc = ?call(new_account, 10000000000 * aec_test_utils:min_gas_price()),
+    Ct  = ?call(create_contract, Acc, list_of_maps, {}, #{}),
+    Map1 = #{<<"a">> => <<"b">>},
+    Map2 = #{<<"b">> => <<"c">>, <<"d">> => <<"foo">>},
+    ?assertEqual([Map1, Map2], ?call(call_contract, Acc, Ct, cons, {list, {map, string, string}}, {Map1, [Map2]})),
     ok.
 
 sophia_call_value(_Cfg) ->
