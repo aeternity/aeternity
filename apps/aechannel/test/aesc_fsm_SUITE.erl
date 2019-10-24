@@ -51,6 +51,7 @@
         , change_config_get_history/1
         , multiple_channels/1
         , many_chs_msg_loop/1
+        , too_many_fsms/1
         , check_incorrect_create/1
         , check_incorrect_deposit/1
         , check_incorrect_withdrawal/1
@@ -199,6 +200,10 @@ groups() ->
       [
         multiple_channels
       , many_chs_msg_loop
+      ]},
+     {limits, [sequence],
+      [
+       too_many_fsms
       ]},
      {errors, [sequence],
       [
@@ -1301,6 +1306,22 @@ many_chs_msg_loop(Cfg) ->
 
 multiple_channels_t(NumCs, FromPort, Msg, {slogan, Slogan}, Cfg) ->
     Debug = get_debug(Cfg),
+    F = fun(Cs, _MinerHelper) ->
+                [P ! Msg || P <- Cs],
+                T0 = erlang:system_time(millisecond),
+                Cs = collect_acks(Cs, loop_ack, NumCs),
+                T1 = erlang:system_time(millisecond),
+                Time = T1 - T0,
+                Transfers = NumCs*2*100,
+                Fmt = "Time (~w*2*100) ~.1f s: ~.1f mspt; ~.1f tps",
+                Args = [NumCs, Time/1000, Time/Transfers, (Transfers*1000)/Time],
+                ?LOG(Debug, Fmt, Args),
+                ct:comment(Fmt, Args)
+        end,
+    spawn_multiple_channels(F, NumCs, FromPort, Slogan, Cfg).
+
+spawn_multiple_channels(F, NumCs, FromPort, Slogan, Cfg) when is_function(F, 2) ->
+    Debug = get_debug(Cfg),
     ?LOG(Debug, "spawning ~p channels", [NumCs]),
     Me = self(),
     Node = dev1,
@@ -1331,19 +1352,48 @@ multiple_channels_t(NumCs, FromPort, Msg, {slogan, Slogan}, Cfg) ->
     ?LOG(Debug, "channels spawned", []),
     Cs = collect_acks(Cs, channel_ack, NumCs),
     ?LOG(Debug, "channel pids collected: ~p", [Cs]),
-    [P ! Msg || P <- Cs],
-    T0 = erlang:system_time(millisecond),
-    Cs = collect_acks(Cs, loop_ack, NumCs),
-    T1 = erlang:system_time(millisecond),
-    Time = T1 - T0,
-    Transfers = NumCs*2*100,
-    Fmt = "Time (~w*2*100) ~.1f s: ~.1f mspt; ~.1f tps",
-    Args = [NumCs, Time/1000, Time/Transfers, (Transfers*1000)/Time],
-    ?LOG(Debug, Fmt, Args),
-    ct:comment(Fmt, Args),
+    F(Cs, MinerHelper),
     [P ! die || P <- Cs],
+    ok = await_fsm_normal_exits(Cs, Debug),
     ok = stop_miner_helper(MinerHelper),
     ok.
+
+await_fsm_normal_exits(Cs, Debug) ->
+    Monitored = [{P, erlang:monitor(process, P)} || P <- Cs],
+    receive_downs(Monitored, normal, Debug).
+
+receive_downs([{P, MRef}|T], Reason, Debug) ->
+    receive
+        {'DOWN', MRef, process, P, ActualReason} ->
+            {ActualReason, Reason} = {Reason, ActualReason},   % assertion
+            ?LOG(Debug, "~p died in the expected manner (~p)", [P, Reason]),
+            receive_downs(T, Reason, Debug)
+    after ?TIMEOUT ->
+            error(timeout)
+    end;
+receive_downs([], Reason, Debug) ->
+    ?LOG(Debug, "All fsms died with reason ~p", [Reason]),
+    ok.
+
+too_many_fsms(Cfg) ->
+    Debug = get_debug(Cfg),
+    MaxChannels = 10,
+    FSMLimit = MaxChannels * 2,  % both endpoints on same one
+    set_fsm_limit(FSMLimit),
+    F = fun(_Cs, _MinerHelper) ->
+                ?LOG(Debug, "Current limit info: ~p", [rpc(dev1, aesc_limits, info, [])]),
+                ?LOG(Debug, "******** Now trying to exceed the limit", []),
+                ok = fail_to_create_fsm(channel_count_limit_exceeded, Cfg),
+                ?LOG(Debug, "Got expected error trying to create fsm", [])
+        end,
+    ok = spawn_multiple_channels(F, MaxChannels, 9450, ?SLOGAN, Cfg),
+    %% With the other fsms gone, creating a channel should work again
+    timer:sleep(100),
+    #{i := _, r := _} = create_channel_(Cfg),
+    ok.
+
+set_fsm_limit(N) ->
+    rpc(dev1, aeu_env, update_config, [#{<<"channels">> => #{<<"max_count">> => N}}]).
 
 check_incorrect_create(Cfg0) ->
     Cfg = set_configs([{keep_running, true}], Cfg0),
@@ -2433,7 +2483,7 @@ fsm_relay_(#{ fsm := Fsm } = Map, #relay_st{ parent = Parent
                   St#relay_st{ debug = NewDebug };
               {Parent, die} ->
                   ?LOG(Debug, "Got 'die' from parent", []),
-                  aesc_fsm:stop(Fsm),
+                  rpc(dev1, aesc_fsm, stop, [Fsm]),
                   ?LOG(Debug, "relay stopping (die)", []),
                   exit(normal);
               Other ->
@@ -3753,6 +3803,13 @@ create_channel_(Cfg, XOpts, Debug) ->
     Port = proplists:get_value(port, Cfg, 9325),
     UseAny = proplists:get_bool(use_any, Cfg),
     create_channel_from_spec(I, R, Spec, Port, UseAny, Debug, Cfg).
+
+fail_to_create_fsm(Reason, Cfg) ->
+    Debug = get_debug(Cfg),
+    {_I, _R, Spec} = channel_spec(Cfg, #{}),
+    Port = proplists:get_value(port, Cfg, 9325),
+    {error, Reason} = rpc(dev1, aesc_fsm, respond, [Port, Spec], Debug),
+    ok.
 
 channel_spec(Cfg) ->
     channel_spec(Cfg, #{}).

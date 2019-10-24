@@ -107,7 +107,7 @@ websocket_init_parsed(Handler, ChannelOpts) ->
     case start_link_fsm(Handler, ChannelOpts) of
         {ok, FsmPid} ->
             MRef = erlang:monitor(process, FsmPid),
-            {ok, Handler#handler{fsm_pid = FsmPid, fsm_mref = MRef}};
+            {ok, jobs_done(Handler#handler{fsm_pid = FsmPid, fsm_mref = MRef})};
         {error, Err} ->
             handler_init_error(Err, Handler)
     end.
@@ -159,8 +159,8 @@ reconnect_to_fsm_(#{ channel_id := ChanId
             case aesc_fsm:reconnect_client(Fsm, self(), SignedTx) of
                 ok ->
                     MRef = erlang:monitor(process, Fsm),
-                    { ok, Handler#handler{ fsm_pid  = Fsm
-                                         , fsm_mref = MRef } };
+                    { ok, jobs_done(Handler#handler{ fsm_pid  = Fsm
+                                                   , fsm_mref = MRef }) };
                 {error, E} ->
                     OnError(E)
             end
@@ -247,6 +247,7 @@ handler_init_error(Err, Handler) ->
                    , {channel_reserve_too_low       , value_too_low}
                    , {push_amount_too_low           , value_too_low}
                    , {lock_period_too_low           , value_too_low}
+                   , {channel_count_limit_exceeded  , channel_count_limit_exceeded}
                    , {invalid_password              , invalid_password}
                    , {bad_signature                 , bad_signature}
                    , {password_required_since_lima  , {state_password, missing}}
@@ -336,16 +337,14 @@ terminate(Reason, _PartialReq, State) ->
         FsmPid ->
             true = unlink(FsmPid)
     end,
-    case job_id(State) of
-        undefined -> pass;
-        JobId -> jobs:done(JobId)
-    end,
+    _ = jobs_done(State), %% strictly speaking, we don't have to do this.
     ok.
 
--spec job_id(handler() | undefined) -> term().
-job_id(undefined) -> undefined;
-job_id(#handler{job_id = JobId}) ->
-    JobId.
+jobs_done(#handler{job_id = JobId} = H) when JobId =/= undefined ->
+    jobs:done(JobId),
+    H#handler{job_id = undefined};
+jobs_done(H) ->
+    H.
 
 -spec fsm_pid(handler() | undefined) -> pid() | undefined.
 fsm_pid(undefined) -> undefined;
