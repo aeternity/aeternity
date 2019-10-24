@@ -386,12 +386,12 @@ payout_call_tx_args(Transfers, TopHeight, Protocol) when is_integer(TopHeight) -
              gas         => Int256,
              gas_price   => Int256},
     Tx0    = ok_val_err(aect_call_tx:new(Args)),
-    MinGas = aetx:min_gas(Tx0, TopHeight, Protocol),
-    MinFee = GasPrice * MinGas,
+    FeeGas = aetx:fee_gas(Tx0, TopHeight, Protocol),
+    MinFee = GasPrice * FeeGas,
     RunGas = estimate_consumed_gas(maps:size(Transfers)),
     RunFee = GasPrice * RunGas,
     Args#{gas_price => GasPrice,
-          gas => MinGas, fee => MinFee,          % minimal for tx to pass mempool validation
+          gas => FeeGas, fee => MinFee,          % minimal for tx to pass mempool validation
           run_gas => RunGas, run_fee => RunFee}. % estimation for contract code to finish
 
 

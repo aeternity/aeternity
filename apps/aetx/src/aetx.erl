@@ -16,7 +16,7 @@
         , from_db_format/1
         , gas_limit/3
         , inner_gas_limit/3
-        , min_gas/3
+        , fee_gas/3
         , gas_price/1
         , min_gas_price/3
         , ttl/1
@@ -291,8 +291,8 @@ min_gas_price(AETx, Height, Version) ->
 
 min_gas_price(AETx = #aetx{ type = Type, cb = CB, tx = Tx, size = Size }, Height, Kind, Version) ->
     %% Compute a fictive gas price from the given Fee
-    FeeGas = if Kind == outer -> min_gas(AETx, Height, Version);
-                Kind == inner -> min_gas(AETx, Height, Version) - size_gas(Size)
+    FeeGas = if Kind == outer -> fee_gas(AETx, Height, Version);
+                Kind == inner -> fee_gas(AETx, Height, Version) - size_gas(Size)
              end,
     FeeGasPrice = (CB:fee(Tx) + FeeGas - 1) div FeeGas,
     case Type of
@@ -310,15 +310,18 @@ min_gas_price(AETx = #aetx{ type = Type, cb = CB, tx = Tx, size = Size }, Height
 -spec min_fee(Tx :: tx(), Height :: aec_blocks:height(), Version :: aec_hard_forks:protocol_vsn()) ->
                      Fee :: non_neg_integer().
 min_fee(#aetx{} = AeTx, Height, Version) ->
-    min_gas(AeTx, Height, Version) * aec_governance:minimum_gas_price(Version).
+    fee_gas(AeTx, Height, Version) * aec_governance:minimum_gas_price(Version).
 
--spec min_gas(Tx :: tx(), Height :: aec_blocks:height(), Version :: aec_hard_forks:protocol_vsn()) ->
+%% Returns the amount of gas that the fee should cover for a given transaction.
+%% It does not consider nested transactions, or gas (if any) used by the
+%% transaction.
+-spec fee_gas(Tx :: tx(), Height :: aec_blocks:height(), Version :: aec_hard_forks:protocol_vsn()) ->
                      Gas :: non_neg_integer().
-min_gas(#aetx{ type = Type, size = Size, cb = CB, tx = Tx }, _Height, Version) when ?IS_CONTRACT_TX(Type) ->
+fee_gas(#aetx{ type = Type, size = Size, cb = CB, tx = Tx }, _Height, Version) when ?IS_CONTRACT_TX(Type) ->
     base_gas(Type, Version, CB:abi_version(Tx)) + size_gas(Size);
-min_gas(#aetx{ type = Type, size = Size }, _Height, Version) when ?HAS_GAS_TX(Type) ->
+fee_gas(#aetx{ type = Type, size = Size }, _Height, Version) when ?HAS_GAS_TX(Type) ->
     base_gas(Type, Version) + size_gas(Size);
-min_gas(#aetx{} = Tx, Height, Version) ->
+fee_gas(#aetx{} = Tx, Height, Version) ->
     gas_limit(Tx, Height, Version).
 
 -spec nonce(Tx :: tx()) -> Nonce :: non_neg_integer().
