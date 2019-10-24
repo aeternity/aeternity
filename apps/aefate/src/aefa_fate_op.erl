@@ -194,10 +194,11 @@ call_gr(Arg0, Arg1, Arg2, Arg3, Arg4, Arg5, EngineState) ->
 
 remote_call_common(Contract, Function, ?FATE_TYPEREP({tuple, ArgTypes}), ?FATE_TYPEREP(RetType), Value, EngineState) ->
     Current   = aefa_engine_state:current_contract(EngineState),
+    Caller    = aeb_fate_data:make_address(Current),
     Arity     = length(ArgTypes),
     ES1       = aefa_fate:unfold_store_maps_in_args(Arity, EngineState),
     ES2       = aefa_fate:check_remote(Contract, ES1),
-    ES3       = aefa_fate:set_remote_function(Contract, Function, Value > 0, true, ES2),
+    ES3       = aefa_fate:set_remote_function(Caller, Contract, Function, Value > 0, true, ES2),
     Signature = aefa_fate:get_function_signature(Function, ES3),
     ES4       = aefa_fate:check_signature_and_bind_args(Arity, Signature, ES3),
     TVars     = aefa_engine_state:current_tvars(ES4),
@@ -1696,16 +1697,7 @@ op(map_delete, Map, Key) when ?IS_FATE_MAP(Map),
 op(map_delete, ?FATE_STORE_MAP(Cache, Id), Key) ->
     ?FATE_STORE_MAP(Cache#{ Key => ?FATE_MAP_TOMBSTONE }, Id);
 op(cons, Hd, Tail) when ?IS_FATE_LIST(Tail) ->
-    case ?FATE_LIST_VALUE(Tail) of
-        [] -> aeb_fate_data:make_list([Hd|?FATE_LIST_VALUE(Tail)]);
-        [OldHd|_] = Tail ->
-            case aefa_fate:terms_are_of_same_type(OldHd, Hd) of
-                true ->
-                    aeb_fate_data:make_list([Hd|?FATE_LIST_VALUE(Tail)]);
-                false ->
-                    aefa_fate:abort({type_error, cons, [Hd, Tail]})
-            end
-    end;
+    aeb_fate_data:make_list([Hd | ?FATE_LIST_VALUE(Tail)]);
 op(append, A, B) when ?IS_FATE_LIST(A), ?IS_FATE_LIST(B) ->
     aeb_fate_data:make_list(?FATE_LIST_VALUE(A) ++ ?FATE_LIST_VALUE(B));
 op(str_join, A, B) when ?IS_FATE_STRING(A)

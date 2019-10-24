@@ -53,7 +53,9 @@ resolve_from_name_object(Key, Name) when is_binary(Key) ->
     {ok, aens_hash:commitment_hash()} | {error, atom()}.
 get_commitment_hash(Name, Salt) when is_binary(Name) andalso is_integer(Salt) ->
     case aens_utils:to_ascii(Name) of
-        {ok, NameAscii} -> {ok, aens_hash:commitment_hash(NameAscii, Salt)};
+        {ok, NameAscii} ->
+          try {ok, aens_hash:commitment_hash(NameAscii, Salt)}
+          catch _:R -> {error, R} end;
         {error, _} = E  -> E
     end.
 

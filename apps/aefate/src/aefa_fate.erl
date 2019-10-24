@@ -34,8 +34,7 @@
         , runtime_exit/2
         , runtime_revert/2
         , set_local_function/2
-        , set_remote_function/5
-        , terms_are_of_same_type/2
+        , set_remote_function/6
         ]
        ).
 
@@ -292,11 +291,11 @@ setup_engine(#{ contract := <<_:256>> = ContractPubkey
     Contract = aeb_fate_data:make_contract(ContractPubkey),
     Stores = aefa_stores:put_contract_store(ContractPubkey, Store, aefa_stores:new()),
     ES1 = aefa_engine_state:new(Gas, Value, Env, Stores, aefa_chain_api:new(Env), Cache),
-    ES2 = set_remote_function(Contract, Function, Value > 0, true, ES1),
+    Caller = aeb_fate_data:make_address(maps:get(caller, Env)),
+    ES2 = set_remote_function(Caller, Contract, Function, Value > 0, true, ES1),
     ES3 = aefa_engine_state:push_arguments(Arguments, ES2),
     Signature = get_function_signature(Function, ES3),
-    ES4 = check_signature_and_bind_args(length(Arguments), Signature, ES3),
-    aefa_engine_state:set_caller(aeb_fate_data:make_address(maps:get(caller, Env)), ES4).
+    check_signature_and_bind_args(length(Arguments), Signature, ES3).
 
 check_remote(Contract, EngineState) when not ?IS_FATE_CONTRACT(Contract) ->
     abort({value_does_not_match_type, Contract, contract}, EngineState);
@@ -308,7 +307,7 @@ check_remote(Contract, EngineState) ->
             abort(reentrant_call, EngineState)
     end.
 
-set_remote_function(?FATE_CONTRACT(Pubkey), Function, CheckPayable, CheckPrivate, ES) ->
+set_remote_function(Caller, ?FATE_CONTRACT(Pubkey), Function, CheckPayable, CheckPrivate, ES) ->
     CodeCache = aefa_engine_state:code_cache(ES),
     case maps:get(Pubkey, CodeCache, void) of
         void ->
@@ -318,13 +317,13 @@ set_remote_function(?FATE_CONTRACT(Pubkey), Function, CheckPayable, CheckPrivate
                     CodeCache1 = maps:put(Pubkey, ContractCode, CodeCache),
                     ES1 = aefa_engine_state:set_code_cache(CodeCache1, ES),
                     ES2 = aefa_engine_state:set_chain_api(APIState1, ES1),
-                    ES3 = aefa_engine_state:update_for_remote_call(Pubkey, ContractCode, ES2),
+                    ES3 = aefa_engine_state:update_for_remote_call(Pubkey, ContractCode, Caller, ES2),
                     check_flags_and_set_local_function(CheckPayable, CheckPrivate, Function, ES3);
                 error ->
                     abort({trying_to_call_contract, Pubkey}, ES)
             end;
         ContractCode ->
-            ES1 = aefa_engine_state:update_for_remote_call(Pubkey, ContractCode, ES),
+            ES1 = aefa_engine_state:update_for_remote_call(Pubkey, ContractCode, Caller, ES),
             check_flags_and_set_local_function(CheckPayable, CheckPrivate, Function, ES1)
     end.
 
@@ -523,33 +522,6 @@ merge_match(Inst1, Inst2) ->
                 end end,
     lists:foldl(Ins, Inst2, maps:to_list(Inst1)).
 
-terms_are_of_same_type(X, Y) when ?IS_FATE_INTEGER(X), ?IS_FATE_INTEGER(Y) -> true;
-terms_are_of_same_type(X, Y) when ?IS_FATE_BOOLEAN(X), ?IS_FATE_BOOLEAN(Y) -> true;
-terms_are_of_same_type(X, Y) when ?IS_FATE_BITS(X), ?IS_FATE_BITS(Y) -> true;
-terms_are_of_same_type(X, Y) when ?IS_FATE_ADDRESS(X), ?IS_FATE_ADDRESS(Y) -> true;
-terms_are_of_same_type(X, Y) when ?IS_FATE_CONTRACT(X), ?IS_FATE_CONTRACT(Y) -> true;
-terms_are_of_same_type(X, Y) when ?IS_FATE_ORACLE(X), ?IS_FATE_ORACLE(Y) -> true;
-terms_are_of_same_type(X, Y) when ?IS_FATE_ORACLE_Q(X), ?IS_FATE_ORACLE_Q(Y) -> true;
-terms_are_of_same_type(X, Y) when ?IS_FATE_STRING(X), ?IS_FATE_STRING(Y) -> true;
-terms_are_of_same_type(X, Y) when ?IS_FATE_BYTES(X), ?IS_FATE_BYTES(Y) ->
-    byte_size(?FATE_BYTES_VALUE(X)) == byte_size(?FATE_BYTES_VALUE(Y));
-terms_are_of_same_type(X, Y) when ?IS_FATE_TUPLE(X), ?IS_FATE_TUPLE(Y) ->
-    %% NOTE: This could be more thorough, but it costs too much
-    ?FATE_TUPLE(T1) = X,
-    ?FATE_TUPLE(T2) = Y,
-    tuple_size(T1) =:= tuple_size(T2);
-terms_are_of_same_type(X, Y) when ?IS_FATE_VARIANT(X), ?IS_FATE_VARIANT(Y) ->
-    %% NOTE: This could be more thorough, but it costs too much
-    ?FATE_VARIANT(Arities1,_Tag1,_Value1) = X,
-    ?FATE_VARIANT(Arities2,_Tag2,_Value2) = Y,
-    Arities1 =:= Arities2;
-terms_are_of_same_type(X, Y) when ?IS_FATE_LIST(X), ?IS_FATE_LIST(Y) ->
-    L1 = ?FATE_LIST_VALUE(X),
-    L2 = ?FATE_LIST_VALUE(Y),
-    L1 =:= [] orelse L2 =:= [] orelse terms_are_of_same_type(hd(L1), hd(L2));
-terms_are_of_same_type(_X,_Y) ->
-    false.
-
 jump(BB, ES) ->
     NewES = aefa_engine_state:set_current_bb(BB, ES),
     Instructions = aefa_engine_state:current_bb_instructions(NewES),
@@ -622,9 +594,9 @@ pop_call_stack(ES) ->
             ES2 = set_local_function(Function, ES1),
             ES3 = aefa_engine_state:set_current_tvars(TVars, ES2),
             {jump, BB, ES3};
-        {remote, Contract, Function, TVars, BB, ES1} ->
+        {remote, Caller, Contract, Function, TVars, BB, ES1} ->
             ES2 = unfold_store_maps(ES1),
-            ES3 = set_remote_function(Contract, Function, false, false, ES2),
+            ES3 = set_remote_function(Caller, Contract, Function, false, false, ES2),
             ES4 = aefa_engine_state:set_current_tvars(TVars, ES3),
             {jump, BB, ES4}
     end.
