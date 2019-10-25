@@ -1478,13 +1478,13 @@ address_to_contract(Arg0, Arg1, ES) ->
     un_op(address_to_contract, {Arg0, Arg1}, ES).
 
 sha3(Arg0, Arg1, EngineState) ->
-    un_op(sha3, {Arg0, Arg1}, EngineState).
+    un_op_unfold(sha3, {Arg0, Arg1}, EngineState).
 
 sha256(Arg0, Arg1, EngineState) ->
-    un_op(sha256, {Arg0, Arg1}, EngineState).
+    un_op_unfold(sha256, {Arg0, Arg1}, EngineState).
 
 blake2b(Arg0, Arg1, EngineState) ->
-    un_op(blake2b, {Arg0, Arg1}, EngineState).
+    un_op_unfold(blake2b, {Arg0, Arg1}, EngineState).
 
 -spec abort(_, _) -> no_return().
 abort(Arg0, EngineState) ->
@@ -1536,6 +1536,12 @@ un_op(Op, {To, What}, ES) ->
     {Value, ES1} = get_op_arg(What, ES),
     Result = gop(Op, Value, ES1),
     write(To, Result, ES1).
+
+un_op_unfold(Op, {To, What}, ES) ->
+    {Value0, ES1} = get_op_arg(What, ES),
+    {Value,  ES2} = aefa_fate:unfold_store_maps(Value0, ES1),
+    Result = gop(Op, Value, ES2),
+    write(To, Result, ES2).
 
 bin_op(Op, {To, Left, Right}, ES) ->
     {LeftValue, ES1} = get_op_arg(Left, ES),
