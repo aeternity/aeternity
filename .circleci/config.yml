@@ -86,7 +86,7 @@ references:
       name: Install OTP
       environment:
         # See minimum_otp_vsn in rebar.config
-        OTP_VERSION: "20.3"
+        OTP_VERSION: 20.3.8.23
       command: |
         # Install OTP package deps
         sudo apt-get update && sudo apt-get install libwxbase3.0-dev libwxgtk3.0-dev libsctp1
