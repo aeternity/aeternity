@@ -155,6 +155,7 @@
         , sophia_namespaces/1
         , sophia_too_little_gas_for_mem/1
         , sophia_bytes/1
+        , sophia_bytes_remote/1
         , sophia_bytes_to_x/1
         , sophia_bytes_concat/1
         , sophia_address_checks/1
@@ -394,6 +395,7 @@ groups() ->
                                  sophia_heap_to_heap_bug,
                                  sophia_namespaces,
                                  sophia_bytes,
+                                 sophia_bytes_remote,
                                  sophia_bytes_to_x,
                                  sophia_bytes_concat,
                                  sophia_address_checks,
@@ -5025,6 +5027,20 @@ sophia_bytes(_Cfg) ->
             end,
     [ Test(Op, W, A, B) || W <- [16, 32, 47, 64, 65], Op <- [eq, ne], A <- Bytes(W), B <- Bytes(W) ],
     ok.
+
+sophia_bytes_remote(_Cfg) ->
+    ?skipRest(vm_version() < ?VM_AEVM_SOPHIA_3, bytes_not_in_minerva),
+    state(aect_test_utils:new_state()),
+    Acc  = ?call(new_account, 1000000000 * aec_test_utils:min_gas_price()),
+    C    = ?call(create_contract, Acc, bytes_remote, {}),
+    CR   = ?call(create_contract, Acc, bytes_remote, {}),
+
+    X = ?call(call_contract, Acc, C, remote, bool, {?cid(CR)}),
+
+    ?assertEqual(true, X),
+
+    ok.
+
 
 sophia_bytes_to_x(_Cfg) ->
     ?skipRest(sophia_version() =< ?SOPHIA_MINERVA, bytes_to_x_not_in_minerva),
