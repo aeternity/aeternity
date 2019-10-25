@@ -463,6 +463,7 @@ infer_element_type(Xs) ->
 
 instantiate_type(TVars, {tvar, X})          -> maps:get(X, TVars, any);
 instantiate_type(_TVars, T) when is_atom(T) -> T;
+instantiate_type(_TVars, T = {bytes, _})    -> T;
 instantiate_type(TVars, {list, T})          -> {list, instantiate_type(TVars, T)};
 instantiate_type(TVars, {tuple, Ts})        -> {tuple, [instantiate_type(TVars, T) || T <- Ts]};
 instantiate_type(TVars, {map, K, V})        -> {map, instantiate_type(TVars, K), instantiate_type(TVars, V)};
