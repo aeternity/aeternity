@@ -1,48 +1,49 @@
 -module(aesc_session_noise).
+
 -behaviour(gen_server).
 
 -include("aesc_codec.hrl").
 -include_lib("aeutils/include/aeu_stacktrace.hrl").
 
--export([connect/3
-       , accept/2
-       , close/1]).
+-export([ connect/3
+        , accept/2
+        , close/1]).
 
--export([channel_open/2
-       , channel_accept/2
-       , funding_created/2
-       , funding_signed/2
-       , funding_locked/2
-       , deposit_created/2
-       , deposit_signed/2
-       , deposit_locked/2
-       , channel_reestablish/2
-       , channel_reestablish_ack/2
-       , update/2
-       , update_ack/2
-       , update_error/2
-       , dep_created/2
-       , dep_signed/2
-       , dep_locked/2
-       , dep_error/2
-       , wdraw_created/2
-       , wdraw_signed/2
-       , wdraw_locked/2
-       , wdraw_error/2
-       , error/2
-       , inband_msg/2
-       , leave/2
-       , leave_ack/2
-       , shutdown/2
-       , shutdown_ack/2
-       , shutdown_error/2]).
+-export([ channel_open/2
+        , channel_accept/2
+        , funding_created/2
+        , funding_signed/2
+        , funding_locked/2
+        , deposit_created/2
+        , deposit_signed/2
+        , deposit_locked/2
+        , channel_reestablish/2
+        , channel_reestablish_ack/2
+        , update/2
+        , update_ack/2
+        , update_error/2
+        , dep_created/2
+        , dep_signed/2
+        , dep_locked/2
+        , dep_error/2
+        , wdraw_created/2
+        , wdraw_signed/2
+        , wdraw_locked/2
+        , wdraw_error/2
+        , error/2
+        , inband_msg/2
+        , leave/2
+        , leave_ack/2
+        , shutdown/2
+        , shutdown_ack/2
+        , shutdown_error/2]).
 
--export([init/1
-       , handle_call/3
-       , handle_cast/2
-       , handle_info/2
-       , terminate/2
-       , code_change/3]).
+-export([ init/1
+        , handle_call/3
+        , handle_cast/2
+        , handle_info/2
+        , terminate/2
+        , code_change/3]).
 
 -export([ patterns/0
         , record_fields/1]).
@@ -135,8 +136,8 @@ patterns() ->
 
 record_fields(st) -> record_info(fields, st);
 record_fields(_ ) -> no.
-%% ==================================================================
 
+%% ==================================================================
 %% Connection establishment
 
 connect(Host, Port, Opts) ->
@@ -157,13 +158,14 @@ accept_(#{ reestablish := true
     Regkey = responder_reestabl_regkey(ChainH, ChId, R, Port),
     lager:debug("Regkey = ~p", [Regkey]),
     gproc:reg(Regkey),
-    {ok, _Pid} = aesc_sessions_sup:start_child(
-                   [#{fsm => self(), op => {accept, Opts, NoiseOpts}}]);
+    StartOpts = [#{fsm => self(), op => {accept, Opts, NoiseOpts}}],
+    aesc_session_noise_sup:start_child(StartOpts);
 accept_(#{ initiator := I, responder := R, port := Port } = Opts, NoiseOpts) ->
     Regkey = responder_regkey(R, I, Port),
     lager:debug("Regkey = ~p", [Regkey]),
     gproc:reg(Regkey),
-    aesc_sessions_sup:start_child([#{fsm => self(), op => {accept, Opts, NoiseOpts}}]).
+    StartOpts = [#{fsm => self(), op => {accept, Opts, NoiseOpts}}],
+    aesc_session_noise_sup:start_child(StartOpts).
 
 start_link(Arg) when is_map(Arg) ->
     %% Res = gen_server:start_link(?MODULE, Arg#{parent => self()}, ?GEN_SERVER_OPTS),
@@ -179,7 +181,6 @@ init(#{fsm := Fsm, parent := Parent, op := Op} = Arg) ->
     lager:debug("Arg = ~p", [Arg]),
     %% trap exits to avoid ugly crash reports. We rely on the monitor to
     %% ensure that we close when the fsm dies
-    %%
     process_flag(trap_exit, true),
     proc_lib:init_ack(Parent, {ok, self()}),
     FsmMonRef = monitor(process, Fsm),
@@ -290,10 +291,11 @@ handle_call(_Req, _From, St) ->
     {reply, {error, unknown_call}, St}.
 
 handle_cast(Msg, St) ->
-    try handle_cast_(Msg, St)
+    try
+        handle_cast_(Msg, St)
     ?_catch_(error, Reason, Trace)
         lager:error("CAUGHT error:~p trace: ~p", [Reason, Trace]),
-        erlang:error(Reason, Trace)
+        error(Reason, Trace)
     end.
 
 handle_cast_({msg, M, Info}, #st{econn = EConn} = St) ->
@@ -309,10 +311,11 @@ handle_info({'DOWN', Ref, process, Pid, _Reason},
     close_econn(EConn),
     {stop, shutdown, St};
 handle_info(Msg, St) ->
-    try handle_info_(Msg, St)
+    try
+        handle_info_(Msg, St)
     ?_catch_(error, Reason, Trace)
         lager:error("CAUGHT error:~p trace: ~p", [Reason, Trace]),
-        erlang:error(Reason, Trace)
+        error(Reason, Trace)
     end.
 
 handle_info_({noise, EConn, Data}, #st{econn = EConn, fsm = Fsm} = St) ->
@@ -398,7 +401,7 @@ try_cands([{K, Pid, _} | Cands], Tries, Races, Type, Info, St) ->
                  , fsm_mon_ref = MRef }
     end;
 try_cands([], 0, 0, _, _, _) ->
-    erlang:error(cannot_locate_fsm);
+    error(cannot_locate_fsm);
 try_cands([], Tries, 0, Type, Info, St) ->
     lager:debug("Exhausted candidates (no races); retrying ...", []),
     receive after 100 -> ok end,
