@@ -50,6 +50,7 @@
 -endif.
 
 -include("../../aecontract/include/aecontract.hrl").
+-include("../../aecontract/include/hard_forks.hrl").
 
 %%%===================================================================
 %%% API
@@ -459,8 +460,18 @@ verify_signatures_offchain(Channel, SignedTx, Trees, Env) ->
     verify_signatures_offchain(Channel, SignedTx, Trees, Env, []).
 
 verify_signatures_offchain(Channel, SignedTx, Trees, Env, CheckedSigners) ->
+    VerifyOff     = fun(MTx, Ts, E) -> verify_signature_offchain(Channel, MTx, Ts, E) end,
+    BasicCheckOff = fun(Signer, Ts) -> is_basic_check_offchain(Channel, Signer, Ts) end,
     verify_signatures(SignedTx, Trees, Env, CheckedSigners,
-                      fun verify_signature_offchain/4, [Channel]).
+                      VerifyOff, BasicCheckOff).
+
+is_basic_check_offchain(Channel, SignerPubkey, _Trees) ->
+    SignerId = aeser_id:create(account, SignerPubkey),
+    case aesc_channels:auth_for_id(SignerId, Channel) of
+        {ok, basic}      -> ok;
+        {ok, _}          -> {error, ga_using_signature_not_allowed};
+        Err = {error, _} -> Err
+    end.
 
 verify_signature_offchain(Channel, MetaTx, Trees, Env) ->
     SignerId = aega_meta_tx:ga_id(MetaTx),
@@ -601,28 +612,56 @@ verify_signatures_onchain(SignedTx, Trees, Env) ->
 
 verify_signatures_onchain(SignedTx, Trees, Env, CheckedSigners) ->
     verify_signatures(SignedTx, Trees, Env, CheckedSigners,
-                      fun verify_signature_onchain/3, []).
+                      fun verify_signature_onchain/3,
+                      fun is_basic_check_onchain/2).
+
+is_basic_check_onchain(SignerPubkey, Trees) ->
+    case aec_accounts_trees:lookup(SignerPubkey, aec_trees:accounts(Trees)) of
+        none -> {error, account_not_in_trees};
+        {value, Account} ->
+            case aec_accounts:type(Account) of
+                basic       -> ok;
+                generalized -> {error, ga_using_signature_not_allowed}
+            end
+    end.
 
 -spec verify_signatures(aetx_sign:signed_tx(), aec_trees:trees(),
-                        aetx_env:env(), list(), fun(), list()) -> ok | {error, atom()}.
-verify_signatures(SignedTx, Trees, Env, CheckedSigners,
-                  VerifyFun, Params) ->
+                        aetx_env:env(), list(), fun(), fun()) -> ok | {error, atom()}.
+verify_signatures(SignedTx, Trees, Env, CheckedSigners, VerifyAuthFun, CheckBasicFun) ->
     Tx = aetx_sign:tx(SignedTx),
     case aetx:specialize_type(Tx) of
         {ga_meta_tx, GAMetaTx} ->
-            case apply(VerifyFun, Params ++ [GAMetaTx, Trees, Env]) of
+            case VerifyAuthFun(GAMetaTx, Trees, Env) of
                 {ok, Signer, InnerTx} ->
                     verify_signatures(InnerTx, Trees, Env,
                                       [Signer | CheckedSigners],
-                                      VerifyFun, Params);
+                                      VerifyAuthFun, CheckBasicFun);
                 Err = {error, _} ->
                     Err
             end;
         {_, _} -> % most inner tx
             {ok, Signers} = aetx:signers(Tx, Trees),
             BasicSigners  = Signers -- CheckedSigners,
-            Height        = aetx_env:height(Env),
-            aetx_sign:verify_half_signed(BasicSigners, SignedTx, Height)
+            Height = aetx_env:height(Env),
+            case is_basic_signers(CheckBasicFun, BasicSigners, Trees, Height) of
+                ok ->
+                    aetx_sign:verify_half_signed(BasicSigners, SignedTx, Height);
+                Err = {error, _} ->
+                    Err
+            end
+    end.
+
+is_basic_signers(CheckFun, Signers, Trees, Height) ->
+    case aec_hard_forks:protocol_effective_at_height(Height) of
+        Vsn when Vsn < ?LIMA_PROTOCOL_VSN  -> ok;
+        Vsn when Vsn >= ?LIMA_PROTOCOL_VSN -> is_basic_signers(CheckFun, Signers, Trees)
+    end.
+
+is_basic_signers(_, [], _) -> ok;
+is_basic_signers(CheckFun, [Signer | Signers], Trees) ->
+    case CheckFun(Signer, Trees) of
+        ok               -> is_basic_signers(CheckFun, Signers, Trees);
+        Err = {error, _} -> Err
     end.
 
 -spec is_delegate(aesc_channels:id(), aec_keys:pubkey(),
