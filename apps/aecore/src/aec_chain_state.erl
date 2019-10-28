@@ -420,22 +420,21 @@ hash_is_in_main_chain(Hash, TopHash) ->
 %%%-------------------------------------------------------------------
 
 internal_insert(Node, Block, Origin) ->
-    case db_find_node(hash(Node)) of
-        error ->
-            %% To preserve the invariants of the chain,
-            %% Only add the block if we can do the whole
-            %% transitive operation (i.e., calculate all the state
-            %% trees, and update the pointers)
-            Fun = fun() -> internal_insert_transaction(Node, Block, Origin)
-                  end,
-            try aec_db:ensure_transaction(Fun)
-            catch exit:{aborted, {throw, ?internal_error(What)}} -> internal_error(What)
-            end;
-        {ok, Node} -> ok;
-        {ok, Old} -> internal_error({same_key_different_content, Node, Old})
+    Fun = fun() -> internal_insert_transaction(Node, Block, Origin) end,
+    try
+        aec_db:ensure_transaction(Fun)
+    catch
+        exit:{aborted, {throw, ?internal_error(What)}} -> internal_error(What)
     end.
 
 internal_insert_transaction(Node, Block, Origin) ->
+    case db_find_node(hash(Node)) of
+        error      -> internal_insert_transaction1(Node, Block, Origin);
+        {ok, Node} -> ok;
+        {ok, Old}  -> internal_error({same_key_different_content, Node, Old})
+    end.
+
+internal_insert_transaction1(Node, Block, Origin) ->
     State1 = new_state_from_persistence(),
     assert_not_new_genesis(Node, State1),
     State2 = maybe_add_pof(maybe_add_genesis_hash(State1, Node), Block),
