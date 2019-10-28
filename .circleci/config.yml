@@ -128,7 +128,7 @@ references:
     restore_cache:
       key: *build_otp21_cache_key
 
-  machine_build_cache_key: &machine_build_cache_key machine-build-cache-v8-{{ .Branch }}-{{ .Revision }}
+  machine_build_cache_key: &machine_build_cache_key machine-build-cache-v9-{{ .Branch }}-{{ .Revision }}
   restore_machine_build_cache: &restore_machine_build_cache
     restore_cache:
       keys:
