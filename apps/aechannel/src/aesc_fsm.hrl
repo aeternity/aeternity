@@ -271,3 +271,27 @@
 -define(DEFAULT_FSM_TX_TTL_DELTA, 100).
 
 -type next_fsm_state() :: {next_state, atom(), #data{}, list()}.
+
+%% TODO: Make this configurable
+%% No need for a stronger password policy
+%% This check is only here to ensure that someone doesn't enter a 1-2 character password
+-define(STATE_PASSWORD_MINIMUM_LENGTH, 6).
+
+%% cancelable tags for an action initiated by this FSM's client. This cancels
+%% sign requests
+-define(CANCEL_SIGN_TAGS, [ slash_tx
+                          , deposit_tx
+                          , withdraw_tx
+                          , snapshot_solo_tx
+                          , close_solo_tx
+                          , settle_tx
+                          , ?UPDATE
+                          , ?SHUTDOWN]).
+
+%% cancelable tags for an action initiated by the other party. This cancels
+%% acknowledge requests
+-define(CANCEL_ACK_TAGS,  [ ?DEP_CREATED
+                          , ?WDRAW_CREATED
+                          , ?UPDATE_ACK
+                          , ?SHUTDOWN_ACK]).
+
