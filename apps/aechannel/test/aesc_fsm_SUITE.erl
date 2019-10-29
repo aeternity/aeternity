@@ -1353,14 +1353,16 @@ spawn_multiple_channels(F, NumCs, FromPort, Slogan, Cfg) when is_function(F, 2) 
     Cs = collect_acks(Cs, channel_ack, NumCs),
     ?LOG(Debug, "channel pids collected: ~p", [Cs]),
     F(Cs, MinerHelper),
+
+    % Before stopping the process we need to set up monitors to not run into a
+    % race condition
+    Monitored = [{P, erlang:monitor(process, P)} || P <- Cs],
     [P ! die || P <- Cs],
-    ok = await_fsm_normal_exits(Cs, Debug),
+    ok = receive_downs(Monitored, normal, Debug),
+
+    % All processes have been taken down, final cleanup
     ok = stop_miner_helper(MinerHelper),
     ok.
-
-await_fsm_normal_exits(Cs, Debug) ->
-    Monitored = [{P, erlang:monitor(process, P)} || P <- Cs],
-    receive_downs(Monitored, normal, Debug).
 
 receive_downs([{P, MRef}|T], Reason, Debug) ->
     receive
@@ -1368,7 +1370,8 @@ receive_downs([{P, MRef}|T], Reason, Debug) ->
             {ActualReason, Reason} = {Reason, ActualReason},   % assertion
             ?LOG(Debug, "~p died in the expected manner (~p)", [P, Reason]),
             receive_downs(T, Reason, Debug)
-    after ?TIMEOUT ->
+    after
+        ?TIMEOUT ->
             error(timeout)
     end;
 receive_downs([], Reason, Debug) ->
