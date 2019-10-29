@@ -30,7 +30,7 @@
         , wdraw_signed/2
         , wdraw_locked/2
         , wdraw_error/2
-        , error/2
+        , generic_error/2
         , inband_msg/2
         , leave/2
         , leave_ack/2
@@ -95,7 +95,7 @@ wdraw_created      (Session, Msg) -> cast(Session, {msg, ?WDRAW_CREATED, Msg}).
 wdraw_signed       (Session, Msg) -> cast(Session, {msg, ?WDRAW_SIGNED , Msg}).
 wdraw_locked       (Session, Msg) -> cast(Session, {msg, ?WDRAW_LOCKED , Msg}).
 wdraw_error        (Session, Msg) -> cast(Session, {msg, ?WDRAW_ERR    , Msg}).
-error              (Session, Msg) -> cast(Session, {msg, ?ERROR        , Msg}).
+generic_error      (Session, Msg) -> cast(Session, {msg, ?ERROR        , Msg}).
 inband_msg         (Session, Msg) -> cast(Session, {msg, ?INBAND_MSG   , Msg}).
 leave              (Session, Msg) -> cast(Session, {msg, ?LEAVE        , Msg}).
 leave_ack          (Session, Msg) -> cast(Session, {msg, ?LEAVE_ACK    , Msg}).
@@ -146,9 +146,13 @@ connect(Host, Port, Opts) ->
 accept(#{ port := Port, responder := R } = Opts0, NoiseOpts) ->
     TcpOpts = tcp_opts(listen, NoiseOpts),
     lager:debug("listen: Opts0 = ~p; TcpOpts = ~p", [Opts0, TcpOpts]),
-    {ok, LSock} = aesc_listeners:listen(Port, R, TcpOpts),
-    Opts = Opts0#{lsock => LSock},
-    accept_(Opts, NoiseOpts).
+    case aesc_listeners:listen(Port, R, TcpOpts) of
+        {ok, LSock} ->
+            Opts = Opts0#{lsock => LSock},
+            accept_(Opts, NoiseOpts);
+        {error, _} = E ->
+            E
+    end.
 
 accept_(#{ reestablish := true
          , chain_hash  := ChainH
@@ -182,43 +186,67 @@ init(#{fsm := Fsm, parent := Parent, op := Op} = Arg) ->
     %% trap exits to avoid ugly crash reports. We rely on the monitor to
     %% ensure that we close when the fsm dies
     process_flag(trap_exit, true),
-    proc_lib:init_ack(Parent, {ok, self()}),
     FsmMonRef = monitor(process, Fsm),
-    St = establish(Op, #st{ init_op = Op
-                          , fsm = Fsm
-                          , fsm_mon_ref = FsmMonRef }),
-    %% As the monitor was created and the session established we don't need the link anymore
-    unlink(Fsm),
-    gen_server:enter_loop(?MODULE, ?GEN_SERVER_OPTS, St).
+    St = #st{ init_op = Op
+            , fsm = Fsm
+            , fsm_mon_ref = FsmMonRef },
+    %% establish might take a long time. Therefore, we report back to the parent early.
+    %% Any error will make the process exit.
+    proc_lib:init_ack(Parent, {ok, self()}),
+    case establish(Op, St) of
+        {ok, St1} ->
+            %% As the monitor was created and the session established we don't need the link anymore
+            unlink(Fsm),
+            gen_server:enter_loop(?MODULE, ?GEN_SERVER_OPTS, St1);
+        {error, Err} ->
+            exit(Err)
+    end.
 
 establish({accept, #{responder := R, port := Port} = Opts, NoiseOpts}, St) ->
     LSock = maps:get(lsock, Opts),
     lager:debug("LSock = ~p", [LSock]),
     AcceptTimeout = proplists:get_value(accept_timeout, NoiseOpts, ?ACCEPT_TIMEOUT),
-    {ok, TcpSock} = accept_tcp(LSock, Port, R, AcceptTimeout),
-    lager:debug("Accept TcpSock = ~p", [TcpSock]),
-    %% TODO: extract/check something from FinalState?
-    EnoiseOpts = enoise_opts(accept, NoiseOpts),
-    lager:debug("EnoiseOpts (accept) = ~p", [EnoiseOpts]),
-    {ok, EConn, _FinalSt} = enoise:accept(TcpSock, EnoiseOpts),
-    %% At this point, we should de-couple from the parent fsm and instead
-    %% attach to the fsm we eventually pair with, once the `CH_OPEN`
-    %% (or `CH_REESTABL`) message arrives from the other side.
-    erlang:demonitor(St#st.fsm_mon_ref),
-    St#st{econn = EConn,
-          fsm = undefined,
-          fsm_mon_ref = undefined};
+    case accept_tcp(LSock, Port, R, AcceptTimeout) of
+        {ok, TcpSock} ->
+            lager:debug("Accept TcpSock = ~p", [TcpSock]),
+            %% TODO: extract/check something from FinalState?
+            EnoiseOpts = enoise_opts(accept, NoiseOpts),
+            lager:debug("EnoiseOpts (accept) = ~p", [EnoiseOpts]),
+            case enoise:accept(TcpSock, EnoiseOpts) of
+                {ok, EConn, _FinalSt} ->
+                    %% At this point, we should de-couple from the parent fsm and instead
+                    %% attach to the fsm we eventually pair with, once the `CH_OPEN`
+                    %% (or `CH_REESTABL`) message arrives from the other side.
+                    erlang:demonitor(St#st.fsm_mon_ref),
+                    St1 = St#st{ econn = EConn
+                               , fsm = undefined
+                               , fsm_mon_ref = undefined },
+                    {ok, St1};
+                Err1 ->
+                    Err1
+            end;
+        Err ->
+            Err
+    end;
 establish({connect, Host, Port, Opts}, St) ->
     TcpOpts = tcp_opts(connect, Opts),
     lager:debug("connect: TcpOpts = ~p", [TcpOpts]),
-    {ok, TcpSock} =
-        connect_tcp(Host, Port, St#st.fsm_mon_ref, TcpOpts),
-    lager:debug("Connect TcpSock = ~p", [TcpSock]),
-    %% TODO: extract/check something from FinalState?
-    EnoiseOpts = enoise_opts(connect, Opts),
-    lager:debug("EnoiseOpts (connect) = ~p", [EnoiseOpts]),
-    {ok, EConn, _FinalSt} = enoise:connect(TcpSock, EnoiseOpts),
-    St#st{econn = EConn}.
+    case connect_tcp(Host, Port, St#st.fsm_mon_ref, TcpOpts) of
+        {ok, TcpSock} ->
+            lager:debug("Connect TcpSock = ~p", [TcpSock]),
+            %% TODO: extract/check something from FinalState?
+            EnoiseOpts = enoise_opts(connect, Opts),
+            lager:debug("EnoiseOpts (connect) = ~p", [EnoiseOpts]),
+            case enoise:connect(TcpSock, EnoiseOpts) of
+                {ok, EConn, _FinalSt} ->
+                    St1 = St#st{econn = EConn},
+                    {ok, St1};
+                Err1 ->
+                    Err1
+            end;
+        Err ->
+            Err
+    end.
 
 accept_tcp(LSock, Port, R, AcceptTimeout) ->
     case gen_tcp:accept(LSock, AcceptTimeout) of
@@ -233,13 +261,13 @@ accept_tcp(LSock, Port, R, AcceptTimeout) ->
                             accept_tcp(LSock, Port, R, AcceptTimeout);
                         false ->
                             lager:debug("No listeners for ~p on this port", [R]),
-                            exit(normal)
+                            {error, accept_timeout}
                     end;
                 _ ->
-                    exit(normal)
+                    {error, accept_timeout}
             end;
         Error ->
-            error(Error)
+            Error
     end.
 
 connect_tcp(Host, Port, Ref, Opts) ->
@@ -247,7 +275,7 @@ connect_tcp(Host, Port, Ref, Opts) ->
     connect_tcp(Retries, Host, Port, Ref, Opts, Timeout).
 
 connect_tcp(0, _, _, _, _, _) ->
-    erlang:error(connect_timeout);
+    {error, connect_timeout};
 connect_tcp(Retries, Host, Port, Ref, Opts, Timeout)
   when Retries > 0 ->
     case gen_tcp:connect(Host, Port, Opts, Timeout) of

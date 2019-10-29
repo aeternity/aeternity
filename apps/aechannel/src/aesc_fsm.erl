@@ -3899,7 +3899,7 @@ send_error_msg(Reason, #data{session = Sn} = D) ->
                     Msg = #{ channel_id => ChId
                            , data       => Eb },
                     report(error, Eb, D),
-                    aesc_session_noise:error(Sn, Msg);
+                    aesc_session_noise:generic_error(Sn, Msg);
                 _ ->
                     no_msg
             end
