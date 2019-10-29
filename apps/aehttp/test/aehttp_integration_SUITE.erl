@@ -583,7 +583,7 @@ init_per_group(on_micro_block = Group, Config) ->
     {ok, Tx} = aecore_suite_utils:spend(Node, Pub, Pub, 1, ?SPEND_FEE),
     {ok, [Tx]} = rpc:call(Node, aec_tx_pool, peek, [infinity]),
     ct:log("Spend tx ~p", [Tx]),
-    case mine_micro_block_emptying_mempool_or_fail(Node, 3) of
+    case aecore_suite_utils:mine_micro_block_emptying_mempool_or_fail(Node) of
         {ok, [KeyBlock, MicroBlock]} ->
             true = aec_blocks:is_key_block(KeyBlock),
             false = aec_blocks:is_key_block(MicroBlock),
@@ -650,7 +650,7 @@ init_per_group(tx_is_pending = Group, Config) ->
 init_per_group(tx_is_on_chain = Group, Config) ->
     Config1 = start_node(Group, Config),
     Node = ?config(node, Config1),
-    case mine_micro_block_emptying_mempool_or_fail(Node, 3) of
+    case aecore_suite_utils:mine_micro_block_emptying_mempool_or_fail(Node) of
         {ok, [KeyBlock, MicroBlock]} ->
             true = aec_blocks:is_key_block(KeyBlock),
             false = aec_blocks:is_key_block(MicroBlock),
@@ -3907,35 +3907,6 @@ latest_sophia_abi() ->
 
 latest_sophia_vm() ->
     aect_test_utils:latest_sophia_vm_version().
-
-mine_micro_block_emptying_mempool_or_fail(_Node, 0) ->
-    {error, retries_exhausted};
-mine_micro_block_emptying_mempool_or_fail(Node, Retries) ->
-    %% Very rarely we get two key-blocks followed by a microblock
-    {ok, Blocks} = aecore_suite_utils:mine_micro_blocks(Node, 1),
-    [MicroBlock, KeyBlock | _] = lists:reverse(Blocks),
-    true = aec_blocks:is_key_block(KeyBlock),
-    false = aec_blocks:is_key_block(MicroBlock),
-
-    case rpc:call(Node, aec_tx_pool, peek, [infinity]) of
-        {ok, []} ->
-            {ok, [KeyBlock, MicroBlock]};
-        {ok, [_|_] = MempoolTxs} ->
-            %% So, Tx(s) is/are back in the mempool, this means (unless some Txs arrived
-            %% from thin air) that we had a micro-fork. Let's check what state we stopped in
-            timer:sleep(100), %% and avoid races...
-            NewBlocks = aecore_suite_utils:flush_new_blocks(),
-            case [ aec_blocks:type(B) || B <- NewBlocks ] of
-                [key, micro] -> %% We had a microfork but then added the Tx again!
-                    {ok, NewBlocks};
-                [key]        -> %% We had a microfork and stopped, we can retry
-                    mine_micro_block_emptying_mempool_or_fail(Node, Retries - 1);
-                _Other       ->
-                    ct:log("Key block mined shortly after micro block:\nTxs in mempool: ~p\n"
-                           "More blocks mined: ~p\n", [MempoolTxs, NewBlocks]),
-                    {error, micro_block_pushed_out_of_chain}
-            end
-    end.
 
 http_datetime_to_unixtime(S) ->
     BaseSecs = calendar:datetime_to_gregorian_seconds({{1970,1,1},{0,0,0}}),
