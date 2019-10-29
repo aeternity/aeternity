@@ -21,8 +21,10 @@
 
 -export([ check_remote/2
         , check_return_type/1
-        , check_signature_and_bind_args/3
-        , bind_args_from_signature/2
+        , check_signature/3
+        , pop_args_from_signature/2
+        , pop_args/2
+        , bind_args/2
         , ensure_contract_store/2
         , unfold_store_maps/2
         , unfold_store_maps_in_args/2
@@ -293,9 +295,9 @@ setup_engine(#{ contract := <<_:256>> = ContractPubkey
     ES1 = aefa_engine_state:new(Gas, Value, Env, Stores, aefa_chain_api:new(Env), Cache),
     Caller = aeb_fate_data:make_address(maps:get(caller, Env)),
     ES2 = set_remote_function(Caller, Contract, Function, Value > 0, true, ES1),
-    ES3 = aefa_engine_state:push_arguments(Arguments, ES2),
-    Signature = get_function_signature(Function, ES3),
-    check_signature_and_bind_args(length(Arguments), Signature, ES3).
+    Signature = get_function_signature(Function, ES2),
+    ES3 = check_signature(Arguments, Signature, ES2),
+    bind_args(Arguments, ES3).
 
 check_remote(Contract, EngineState) when not ?IS_FATE_CONTRACT(Contract) ->
     abort({value_does_not_match_type, Contract, contract}, EngineState);
@@ -386,27 +388,27 @@ check_return_type(RetType, TVars, ES) ->
             end
     end.
 
-check_signature_and_bind_args(Arity, Signature, ES) ->
-    {ok, Inst} = check_signature(Arity, Signature, ES),
-    ES1 = bind_args_from_signature(Signature, ES),
-    aefa_engine_state:set_current_tvars(Inst, ES1).
-
-check_signature(Arity, {ArgTypes, _RetSignature}, ES) when is_integer(Arity), length(ArgTypes) /= Arity ->
-    abort({function_arity_mismatch, Arity, length(ArgTypes)}, ES);
-check_signature(_Arity, {ArgTypes, _RetSignature}, ES) ->
-    Stack = aefa_engine_state:accumulator_stack(ES),
-    Args = [aefa_engine_state:accumulator(ES) | Stack],
+check_signature(Args, {ArgTypes, _RetSignature}, ES) when length(ArgTypes) /= length(Args) ->
+    abort({function_arity_mismatch, length(Args), length(ArgTypes)}, ES);
+check_signature(Args, {ArgTypes, _RetSignature}, ES) ->
     case check_arg_types(ArgTypes, Args) of
         {ok, Inst} ->
-            {ok, Inst};
+            aefa_engine_state:set_current_tvars(Inst, ES);
         {error, T, V}  ->
             abort({value_does_not_match_type, V, T}, ES)
     end.
 
-bind_args_from_signature({ArgTypes, _RetSignature}, ES) ->
-    Stack = aefa_engine_state:accumulator_stack(ES),
-    Args = [aefa_engine_state:accumulator(ES) | Stack],
-    bind_args(0, Args, ArgTypes, #{}, ES).
+pop_args_from_signature({ArgTypes, _RetSignature}, ES) ->
+    pop_args(length(ArgTypes), ES).
+
+pop_args(N, ES) ->
+    Tail  = aefa_engine_state:accumulator_stack(ES),
+    Stack = [aefa_engine_state:accumulator(ES) | Tail],
+    Args  = lists:sublist(Stack, N),
+    {Args, drop(N, ES)}.
+
+bind_args(Args, ES) ->
+    bind_args(0, Args, #{}, ES).
 
 check_arg_types(Ts, As0) ->
     As = lists:sublist(As0, length(Ts)),
@@ -415,11 +417,10 @@ check_arg_types(Ts, As0) ->
         Inst  -> {ok, Inst}
     end.
 
-bind_args(N, _, [], Mem, EngineState) ->
-    ES1 = drop(N, EngineState),
-    aefa_engine_state:set_memory(Mem, ES1);
-bind_args(N, [Arg|Args], [_Type|Types], Mem, EngineState) ->
-    bind_args(N+1, Args, Types, Mem#{{arg, N} => {val, Arg}}, EngineState).
+bind_args(_, [], Mem, EngineState) ->
+    aefa_engine_state:set_memory(Mem, EngineState);
+bind_args(N, [Arg|Args], Mem, EngineState) ->
+    bind_args(N + 1, Args, Mem#{{arg, N} => {val, Arg}}, EngineState).
 
 check_type(T, V) ->
     try
@@ -463,6 +464,7 @@ infer_element_type(Xs) ->
 
 instantiate_type(TVars, {tvar, X})          -> maps:get(X, TVars, any);
 instantiate_type(_TVars, T) when is_atom(T) -> T;
+instantiate_type(_TVars, T = {bytes, _})    -> T;
 instantiate_type(TVars, {list, T})          -> {list, instantiate_type(TVars, T)};
 instantiate_type(TVars, {tuple, Ts})        -> {tuple, [instantiate_type(TVars, T) || T <- Ts]};
 instantiate_type(TVars, {map, K, V})        -> {map, instantiate_type(TVars, K), instantiate_type(TVars, V)};

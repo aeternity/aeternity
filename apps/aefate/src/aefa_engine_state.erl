@@ -204,11 +204,16 @@ push_call_stack(#es{ current_bb = BB
                    , current_function = Function
                    , current_contract = Contract
                    , current_tvars    = TVars
+                   , accumulator = Acc
+                   , accumulator_stack = AccS
                    , call_stack = Stack
                    , call_value = Value
                    , caller = Caller
                    , memory = Mem} = ES) ->
-    ES#es{call_stack = [{Caller, Contract, Function, TVars, BB + 1, Mem, Value}|Stack]}.
+    AccS1 = [Acc || Acc /= void] ++ AccS,
+    ES#es{accumulator       = void,
+          accumulator_stack = [],
+          call_stack        = [{Caller, Contract, Function, TVars, BB + 1, AccS1, Mem, Value}|Stack]}.
 
 %% TODO: Make better types for all these things
 -spec pop_call_stack(state()) ->
@@ -217,7 +222,8 @@ push_call_stack(#es{ current_bb = BB
                             {'local', _, map(), non_neg_integer(), state()} |
                             {'remote', aeb_fate_data:fate_address(), aeb_fate_data:fate_contract(),
                                        _, map(), non_neg_integer(), state()}.
-pop_call_stack(#es{call_stack = Stack,
+pop_call_stack(#es{accumulator = ReturnValue,
+                   call_stack = Stack,
                    current_contract = Current} = ES) ->
     case Stack of
         [] -> {empty, ES};
@@ -228,16 +234,20 @@ pop_call_stack(#es{call_stack = Stack,
                        , call_stack = Rest
                        },
             pop_call_stack(ES1);
-        [{_Caller, Current, Function, TVars, BB, Mem, Value}| Rest] ->
+        [{_Caller, Current, Function, TVars, BB, AccS, Mem, Value}| Rest] ->
             {local, Function, TVars, BB,
              ES#es{ call_value = Value
+                  , accumulator = ReturnValue
+                  , accumulator_stack = AccS
                   , memory = Mem
                   , call_stack = Rest
                   }};
-        [{Caller, Pubkey, Function, TVars, BB, Mem, Value}| Rest] ->
+        [{Caller, Pubkey, Function, TVars, BB, AccS, Mem, Value}| Rest] ->
             Seen = pop_seen_contracts(Pubkey, ES),
             {remote, Caller, aeb_fate_data:make_contract(Pubkey), Function, TVars, BB,
              ES#es{ call_value = Value
+                  , accumulator = ReturnValue
+                  , accumulator_stack = AccS
                   , memory = Mem
                   , call_stack = Rest
                   , seen_contracts = Seen
@@ -260,7 +270,7 @@ collect_gas_stores([{gas_store, Gas}|Left], AccGas) ->
     collect_gas_stores(Left, AccGas + Gas);
 collect_gas_stores([{return_check, _, _}|Left], AccGas) ->
     collect_gas_stores(Left, AccGas);
-collect_gas_stores([{_, _, _, _, _, _, _}|Left], AccGas) ->
+collect_gas_stores([{_, _, _, _, _, _, _, _}|Left], AccGas) ->
     collect_gas_stores(Left, AccGas);
 collect_gas_stores([], AccGas) ->
     AccGas.

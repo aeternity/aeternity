@@ -909,6 +909,7 @@ channel_create({InitiatorPubkey, InitiatorAmount,
             end,
     {InitAccount, S1} = get_account(InitiatorPubkey, S),
     {RespAccount, S2} = get_account(ResponderPubkey, S1),
+    assert_party_kind(ResponderPubkey, RespAccount, S2),
     Channel = aesc_channels:new(InitiatorPubkey, InitiatorAmount,
                                 ResponderPubkey, ResponderAmount,
                                 InitAccount, RespAccount,
@@ -943,6 +944,7 @@ channel_deposit({FromPubkey, ChannelPubkey, Amount, StateHash, Round}, S) ->
     {Channel, S1} = get_channel(ChannelPubkey, S),
     assert_channel_active(Channel),
     assert_is_channel_peer(Channel, FromPubkey),
+    assert_other_party_kind(Channel, FromPubkey, S1),
     assert_channel_round(Channel, Round, deposit),
     Channel1 = aesc_channels:deposit(Channel, Amount, Round, StateHash),
     put_channel(Channel1, S1).
@@ -961,6 +963,7 @@ channel_withdraw({ToPubkey, ChannelPubkey, Amount, StateHash, Round}, S) ->
     {Channel, S1} = get_channel(ChannelPubkey, S),
     assert_channel_active(Channel),
     assert_is_channel_peer(Channel, ToPubkey),
+    assert_other_party_kind(Channel, ToPubkey, S1),
     assert_channel_withdraw_amount(Channel, Amount),
     assert_channel_round(Channel, Round, withdrawal),
     Channel1 = aesc_channels:withdraw(Channel, Amount, Round, StateHash),
@@ -984,7 +987,8 @@ channel_close_mutual_op(FromPubkey, ChannelPubkey,
 channel_close_mutual({FromPubkey, ChannelPubkey,
                       InitiatorAmount, ResponderAmount, Fee, ConsensusVersion}, S) ->
     {Channel, S1} = get_channel(ChannelPubkey, S),
-    assert_channel_origin(Channel, FromPubkey),
+    assert_is_channel_peer(Channel, FromPubkey),
+    assert_other_party_kind(Channel, FromPubkey, S1),
     assert_channel_active_before_fork(Channel, ConsensusVersion, ?LIMA_PROTOCOL_VSN),
     TotalAmount = InitiatorAmount + ResponderAmount + Fee,
     ChannelAmount = aesc_channels:channel_amount(Channel),
@@ -1534,6 +1538,26 @@ assert_ga_env(Pubkey, Nonce, #state{tx_env = Env}) ->
        true            -> ok
     end.
 
+assert_other_party_kind(Channel, PartyPubkey, S) ->
+    %% Run after assert_is_channel_peer
+    [OtherPartyPubkey] = aesc_channels:peers(Channel) -- [PartyPubkey],
+    {OtherAccount, _S} = get_account(OtherPartyPubkey, S),
+    assert_party_kind(OtherPartyPubkey, OtherAccount, S).
+
+assert_party_kind(Pubkey, Account, #state{ protocol = P, tx_env = Env }) ->
+    case P < ?LIMA_PROTOCOL_VSN of
+        true -> ok;
+        false ->
+            Kind       = aec_accounts:type(Account),
+            IsGaAuthed = lists:member(Pubkey, aetx_env:ga_auth_ids(Env)),
+            case {Kind, IsGaAuthed} of
+                {basic, false}       -> ok;
+                {generalized, true}  -> ok;
+                {generalized, false} -> runtime_error(ga_using_signature_not_allowed)
+                %% {basic, true} is impossible, if we get there we should crash
+            end
+    end.
+
 assert_account_nonce(Account, Nonce) ->
     case aec_accounts:nonce(Account) of
         N when N + 1 =:= Nonce -> ok;
@@ -1905,13 +1929,6 @@ assert_channel_reserve_amount(ReserveAmount, InitiatorAmount, ResponderAmount) -
             runtime_error(insufficient_responder_amount);
         true ->
             ok
-    end.
-
-assert_channel_origin(Channel, FromPubkey) ->
-    case (aesc_channels:initiator_pubkey(Channel) =:= FromPubkey
-          orelse aesc_channels:responder_pubkey(Channel) =:= FromPubkey) of
-        true  -> ok;
-        false -> runtime_error(illegal_origin)
     end.
 
 assert_channel_active(Channel) ->
