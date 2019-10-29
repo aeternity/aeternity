@@ -29,6 +29,7 @@
          mine_blocks/4,
          mine_blocks/5,
          mine_all_txs/2,
+         mine_micro_block_emptying_mempool_or_fail/1,
          mine_blocks_until_txs_on_chain/3,
          mine_blocks_until_txs_on_chain/4,
          mine_blocks_until_txs_on_chain/5,
@@ -311,6 +312,24 @@ mine_blocks_until_txs_on_chain(Node, TxHashes, MiningRate, Max, Opts) ->
               mine_blocks_until_txs_on_chain_loop(Node, TxHashes, Max, [])
           end,
     mine_safe_setup(Node, MiningRate, Opts, Fun).
+
+mine_micro_block_emptying_mempool_or_fail(Node) ->
+    Fun = fun() ->
+              mine_blocks_loop(2, any)
+          end,
+    {ok, Blocks} = mine_safe_setup(Node, expected_mine_rate(), #{}, Fun),
+    [key, micro] = [aec_blocks:type(B) || B <- Blocks],
+
+    case rpc:call(Node, aec_tx_pool, peek, [infinity]) of
+        {ok, []} ->
+            {ok, Blocks};
+        {ok, [_|_]} ->
+            %% So, Tx(s) is/are back in the mempool, this means (unless some Txs arrived
+            %% from thin air) that we had a micro-fork. Let's check what state we stopped in
+            {ok, NewBlocks} = mine_safe_setup(Node, expected_mine_rate(), #{}, Fun),
+            [key, micro] = [aec_blocks:type(B) || B <- NewBlocks],
+            {ok, NewBlocks}
+    end.
 
 assert_not_already_on_chain(Node, TxHashes) ->
     Lookup = lists:map(
