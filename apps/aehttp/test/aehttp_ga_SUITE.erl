@@ -39,6 +39,8 @@
         , meta_meta_fail/1
         , meta_meta_spend/1
         , attach_second/1
+        , meta_sc_create/1
+        , meta_sc_create_fail/1
         , meta_4_fail/1
         , mempool/1
         , mempool_rejects_normal_tx/1
@@ -78,6 +80,9 @@ groups() ->
       , meta_meta_fail
       , meta_meta_spend
       , meta_4_fail
+      , attach_second
+      , meta_sc_create
+      , meta_sc_create_fail
       ]},
 
      {ga_info, [sequence],
@@ -438,6 +443,61 @@ meta_4_fail(Config) ->
     ?assertEqual(ExpBal, ABal1),
     ok.
 
+meta_sc_create(Config) ->
+    %% Get account information.
+    #{acc_a := #{pub_key := APub, priv_key := APriv},
+      acc_b := #{pub_key := BPub, priv_key := BPriv}} = proplists:get_value(accounts, Config),
+    ABal0 = get_balance(APub),
+    MGP = aec_test_utils:min_gas_price(),
+
+    #{tx_hash := MetaTx} = post_ga_sc_create_tx(APub, APriv, "11", BPub, BPriv, "1"),
+
+    ?MINE_TXS([MetaTx]),
+
+    ABal1 = get_balance(APub),
+
+    %% test that we can return GAMetaTx via http interface
+    {ok, 200, #{<<"tx">> := #{<<"type">> := <<"GAMetaTx">>}}} = get_tx(MetaTx),
+
+    {ok, 200, #{<<"ga_info">> := #{<<"return_type">> := <<"ok">>,
+                                   <<"gas_used">> := Gas} = GI}} =
+        get_contract_call_object(MetaTx),
+
+    ct:pal("GAS: ~p\n", [Gas]),
+    ct:pal("Cost1: ~p", [ABal0 - ABal1]),
+    ct:pal("~p + ~p + ~p", [100000 * MGP, Gas * MGP, 20000 * MGP]),
+    ct:pal("GInfo: ~p\n", [GI]),
+    ExpBal = ABal0 - (100000 * MGP + Gas * 1000 * MGP + 20000 * MGP + 20000),
+    ?assertEqual(ExpBal, ABal1),
+    ok.
+
+meta_sc_create_fail(Config) ->
+    %% Get account information.
+    #{acc_a := #{pub_key := APub, priv_key := APriv},
+      acc_b := #{pub_key := BPub, priv_key := BPriv}} = proplists:get_value(accounts, Config),
+    ABal0 = get_balance(APub),
+
+    #{tx_hash := MetaTx} = post_ga_sc_create_fail_tx(APub, APriv, "12", BPub, BPriv),
+
+    ?MINE_TXS([MetaTx]),
+
+    %% test that we can return GAMetaTx via http interface
+    {ok, 200, #{<<"tx">> := #{<<"type">> := <<"GAMetaTx">>}}} = get_tx(MetaTx),
+
+    {ok, 200, #{<<"ga_info">> := #{<<"return_type">> := ReturnType}}} =
+        get_contract_call_object(MetaTx),
+
+    %% Until LIMA it was possible to use a GA account (as responder)
+    %% and sign with the private key...
+    case aect_test_utils:latest_protocol_version() of
+      Vsn when Vsn < ?LIMA_PROTOCOL_VSN ->
+        ?assertEqual(<<"ok">>, ReturnType);
+      _ ->
+        ?assertEqual(<<"error">>, ReturnType)
+    end,
+
+    ok.
+
 %% Test the minimum gas price check
 mempool(Config) ->
     %% Get account information.
@@ -503,8 +563,6 @@ get_account_by_pubkey_and_height(Config) ->
     ?assertEqual(<<"generalized">>, maps:get(<<"kind">>, Account2)),
     ok.
 
-
-
 %% Internal access functions.
 
 get_balance(Pubkey) ->
@@ -561,6 +619,43 @@ ga_spend_tx([Nonce|Nonces], AccPK, AccSK, InnerTx, MetaFee, AuthGas) ->
                     #{ gas => AuthGas, auth_data => AuthData,
                        tx => aetx_sign:new(InnerTx, []), fee => MetaFee }),
     ga_spend_tx(Nonces, AccPK, AccSK, MetaTx, MetaFee, AuthGas).
+
+sc_create_tx(APK, BPK) ->
+    SCMap = #{ initiator_id => aeser_id:create(account, APK),
+               responder_id => aeser_id:create(account, BPK),
+               nonce => 0,
+               initiator_amount => 20000,
+               responder_amount => 20000,
+               fee => 20000 * aec_test_utils:min_gas_price(),
+               channel_reserve => 100,
+               state_hash => <<0:32/unit:8>>,
+               lock_period => 42 },
+    {ok, Tx} = aesc_create_tx:new(SCMap),
+    Tx.
+
+post_ga_sc_create_tx(APK, ASK, NonceA, BPK, BSK, NonceB) ->
+    InnerTx = sc_create_tx(APK, BPK),
+    SMetaTx1 = ga_meta_tx(APK, ASK, NonceA, InnerTx, []),
+    SMetaTx2 = ga_meta_tx(BPK, BSK, NonceB, SMetaTx1, []),
+    post_aetx(aetx_sign:new(SMetaTx2, [])).
+
+%% Incorrectly use signature for "responder"
+post_ga_sc_create_fail_tx(APK, ASK, NonceA, BPK, BSK) ->
+    InnerTx = sc_create_tx(APK, BPK),
+    SigTx   = aec_test_utils:sign_tx(InnerTx, BSK),
+    [Sig]   = aetx_sign:signatures(SigTx),
+    SMetaTx1 = ga_meta_tx(APK, ASK, NonceA, InnerTx, [Sig]),
+    post_aetx(aetx_sign:new(SMetaTx1, [])).
+
+ga_meta_tx(PK, SK, Nonce, InnerTx, Sigs) ->
+    TxHash = aec_hash:hash(tx, aec_governance:add_network_id(aetx:serialize_to_binary(InnerTx))),
+    Sig    = aega_test_utils:basic_auth_sign(list_to_integer(Nonce), TxHash, SK),
+    Auth   = aega_test_utils:make_calldata("basic_auth", "authorize",
+                    [Nonce, aega_test_utils:to_hex_lit(64, Sig)]),
+    aega_test_utils:ga_meta_tx(PK, #{ gas => 10000, auth_data => Auth,
+                                      tx => aetx_sign:new(InnerTx, Sigs),
+                                      fee => 100000 * aec_test_utils:min_gas_price() }).
+
 
 sign_and_post_aetx(PrivKey, Tx) ->
     SignedTx = aec_test_utils:sign_tx(Tx, PrivKey),
