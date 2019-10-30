@@ -1080,18 +1080,18 @@ handle_add_block(Header, Block, State, Origin) ->
             handle_add_block(Block, Hash, Prev, State, Origin)
     end.
 
-handle_add_block(Block, Hash, Prev, State, Origin) ->
+handle_add_block(Block, Hash, Prev, #state{top_block_hash = TopBlockHash} = State, Origin) ->
     epoch_mining:debug("trying to add block (hash=~w, prev=~w)", [Hash, Prev]),
     case aec_chain:has_block(Hash) of
         true ->
-            epoch_mining:debug("Block already in chain", []),
+            epoch_mining:debug("Block (~p) already in chain when top is (~p) [conductor]", [Hash, TopBlockHash]),
             {ok, State};
         false ->
             %% Block validation is performed in the caller's context for
             %% external (gossip/sync) blocks and we trust the ones we
             %% produce ourselves.
             case aec_chain_state:insert_block(Block, Origin) of
-                {ok, Events} ->
+                {ok, Events}  ->
                     handle_successfully_added_block(Block, Hash, Events, State, Origin);
                 {pof,_PoF,Events} ->
                     %% TODO: should we really publish tx_events in this case?

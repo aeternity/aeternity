@@ -374,6 +374,12 @@ test_block_publishing() ->
     expect_publish_event_hashes([H2]),
     expect_top_event_hashes([H2]),
 
+    %% Repeat 2nd block, make sure it has no effect
+    ok = ?TEST_MODULE:post_block(B2),
+    wait_for_top_block_hash(H2),
+    expect_publish_event_hashes([]),
+    expect_top_event_hashes([]),
+
     %% Make sure there are no other messages waiting for us
     ?assertEqual([], flush_gproc()),
 
