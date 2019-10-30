@@ -431,7 +431,7 @@ internal_insert(Node, Block, Origin) ->
             try aec_db:ensure_transaction(Fun)
             catch exit:{aborted, {throw, ?internal_error(What)}} -> internal_error(What)
             end;
-        {ok, Node} -> ok;
+        {ok, Node} -> {error, already_in_db};
         {ok, Old} -> internal_error({same_key_different_content, Node, Old})
     end.
 
