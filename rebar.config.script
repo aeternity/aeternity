@@ -3,30 +3,36 @@
 IsWindows = case os:type() of {win32, _} -> true; {_, _} -> false end,
 
 FilterRocksDbCheck = (IsWindows orelse os:getenv("AE_DISABLE_ROCKSDB") =/= false),
+RocksDbDelRelxApps = [rocksdb, mnesia_rocksdb, {rocksdb, load}, {mnesia_rocksdb, load}],
+RocksDbDelDeps = [rocksdb, mnesia_rocksdb],
 
-FilterRelxRocksDb = fun(Apps) ->
-                        case FilterRocksDbCheck of
-                            false ->
-                                Apps;
-                            true ->
-                                Apps -- [rocksdb, mnesia_rocksdb, {rocksdb, load}, {mnesia_rocksdb, load}]
-                        end
-                    end,
+FilterStratumCheck = (os:getenv("AE_DISABLE_STRATUM") =/= false),
+StratumDelRelxApps = [aestratum],
+StratumDelDeps = [aestratum_lib],
 
-FilterDepsRocksDb = fun(Deps) ->
-                        case FilterRocksDbCheck of
-                            false ->
-                                Deps;
-                            true ->
-                                lists:foldl(
-                                    fun(App, Acc) ->
-                                        lists:keydelete(App, 1, Acc)
-                                    end,
-                                    Deps,
-                                    [rocksdb, mnesia_rocksdb]
-                                )
-                        end
-                    end,
+FilterRelx = fun(Check, Apps, DelApps) ->
+                     case Check of
+                         false ->
+                             Apps;
+                         true ->
+                             Apps -- DelApps
+                     end
+             end,
+
+FilterDeps = fun(Check, Deps, DelApps) ->
+                     case Check of
+                         false ->
+                             Deps;
+                         true ->
+                             lists:foldl(
+                               fun(App, Acc) ->
+                                       lists:keydelete(App, 1, Acc)
+                               end,
+                               Deps,
+                               DelApps
+                              )
+                     end
+             end,
 
 %% In order to avoid ugly dynamic module loading over rpc - inject meck into the common test release
 %% This does not inject any applications into the system tests, smoke tests and production releases
@@ -81,11 +87,14 @@ RelxT1 = lists:keyreplace(overlay, 1, RelxT0, {overlay, AdaptOverlayBin(RelxOver
 {ok, VersionBin} = file:read_file(<<"VERSION">>),
 Version = string:trim(binary_to_list(VersionBin)),
 %% the release should be in front
-RelxApps1 = FilterRelxRocksDb(RelxApps0),
-RelxApps2 = AddMeckInCommonTests(RelxApps1),
-Relx = {relx, [{release, {aeternity, Version}, RelxApps2}] ++ RelxT1},
+RelxApps1 = FilterRelx(FilterRocksDbCheck, RelxApps0, RocksDbDelRelxApps),
+RelxApps2 = FilterRelx(FilterStratumCheck, RelxApps1, StratumDelRelxApps),
+RelxApps3 = AddMeckInCommonTests(RelxApps2),
+Relx = {relx, [{release, {aeternity, Version}, RelxApps3}] ++ RelxT1},
 CONFIG1 = lists:keyreplace(relx, 1, CONFIG, Relx),
 
 %% Update rebar deps
 {deps, Deps0} = lists:keyfind(deps, 1, CONFIG1),
-lists:keyreplace(deps, 1, CONFIG1, {deps, FilterDepsRocksDb(Deps0)}).
+Deps1 = FilterDeps(FilterRocksDbCheck, Deps0, RocksDbDelDeps),
+Deps2 = FilterDeps(FilterStratumCheck, Deps1, StratumDelDeps),
+lists:keyreplace(deps, 1, CONFIG1, {deps, Deps1}).
