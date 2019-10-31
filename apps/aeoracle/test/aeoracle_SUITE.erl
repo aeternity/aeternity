@@ -89,7 +89,7 @@ groups() ->
 
 
 init_per_testcase(query_oracle_via_name, Config) ->
-    case aect_test_utils:latest_protocol_version() >= ?LIMA_PROTOCOL_VSN of
+    case aect_test_utils:latest_protocol_version() >= ?IRIS_PROTOCOL_VSN of
         true -> Config;
         _ -> {skip, requires_lima}
     end;
