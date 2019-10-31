@@ -8,7 +8,7 @@ RocksDbDelDeps = [rocksdb, mnesia_rocksdb],
 
 FilterStratumCheck = (os:getenv("AE_DISABLE_STRATUM") =/= false),
 StratumDelRelxApps = [aestratum],
-StratumDelDeps = [aestratum_lib],
+StratumDelDeps = [aestratum, aestratum_lib],
 
 FilterRelx = fun(Check, Apps, DelApps) ->
                      case Check of
@@ -97,4 +97,6 @@ CONFIG1 = lists:keyreplace(relx, 1, CONFIG, Relx),
 {deps, Deps0} = lists:keyfind(deps, 1, CONFIG1),
 Deps1 = FilterDeps(FilterRocksDbCheck, Deps0, RocksDbDelDeps),
 Deps2 = FilterDeps(FilterStratumCheck, Deps1, StratumDelDeps),
-lists:keyreplace(deps, 1, CONFIG1, {deps, Deps1}).
+
+%% Final config:
+lists:keyreplace(deps, 1, CONFIG1, {deps, Deps2}).
