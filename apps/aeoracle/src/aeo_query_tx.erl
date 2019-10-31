@@ -245,7 +245,7 @@ version(_) ->
 
 -spec valid_at_protocol(aec_hard_forks:protocol_vsn(), tx()) -> boolean().
 valid_at_protocol(Proto, Tx) ->
-    case {Proto >= ?LIMA_PROTOCOL_VSN, aeser_id:specialize_type(oracle_id(Tx))} of
+    case {Proto >= ?IRIS_PROTOCOL_VSN, aeser_id:specialize_type(oracle_id(Tx))} of
         {true, name} -> true;
         {_, oracle} -> true;
         _ -> false

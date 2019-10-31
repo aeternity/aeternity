@@ -666,7 +666,9 @@ oracle_query({OracleId, SenderPubkey, SenderNonce,
         {oracle, OraclePubkey} ->
             oracle_query({OraclePubkey, OracleId, SenderPubkey, SenderNonce,
                           Query, QueryFee, QTTL, RTTL, Return}, S);
-        {name, NameHash} when S#state.protocol >= ?LIMA_PROTOCOL_VSN ->
+        {name, NameHash} ->
+            S#state.protocol >= ?IRIS_PROTOCOL_VSN orelse
+                runtime_error(oracle_query_by_name_hash_not_available_at_protocol),
             {OraclePubkey, S1} = int_resolve_name(NameHash, <<"oracle_pubkey">>, S),
             oracle_query({OraclePubkey, OracleId, SenderPubkey, SenderNonce,
                           Query, QueryFee, QTTL, RTTL, Return}, S1)

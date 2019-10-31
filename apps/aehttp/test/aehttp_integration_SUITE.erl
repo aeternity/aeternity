@@ -719,9 +719,9 @@ end_per_group(Group, Config) ->
 
 
 init_per_testcase(named_oracle_transactions, Config) ->
-    case aect_test_utils:latest_protocol_version() >= ?LIMA_PROTOCOL_VSN of
+    case aect_test_utils:latest_protocol_version() >= ?IRIS_PROTOCOL_VSN of
         true -> Config;
-        false -> {skip, requires_lima_or_newer}
+        false -> {skip, requires_iris_or_newer}
     end;
 init_per_testcase(post_oracle_register, Config) ->
     %% TODO: assert there is enought balance
