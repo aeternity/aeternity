@@ -363,19 +363,7 @@ groups() ->
       ]},
      {force_progress_negative, [sequence], [{group, fp_with_payload},
                                             {group, fp_empty_payload}]},
-     {fp_with_payload, [sequence], [fp_payload_from_another_channel,
-                                    fp_payload_not_co_signed,
-                                    fp_payload_invalid_state_hash,
-                                    fp_payload_older_payload,
-                                    % solo signed payload tests
-                                    fp_solo_payload_invalid_state_hash,
-                                    fp_solo_payload_wrong_round,
-                                    fp_solo_payload_not_call_update,
-                                    fp_solo_payload_broken_call,
-                                    % closing, balances are checked
-                                    fp_solo_payload_closing_overflowing_balances,
-                                    fp_can_not_replace_create
-                                   ] ++
+     {fp_with_payload, [sequence],  force_progress_payload_negative_seq() ++
                                     force_progress_negative_seq()},
      {fp_empty_payload, [sequence], force_progress_negative_seq()},
      {fork_awareness, [sequence],
@@ -398,6 +386,21 @@ close_solo_negative_seq() ->
       close_solo_missing_channel,
       close_solo_already_closing,
       close_solo_delegate_not_allowed
+    ].
+
+force_progress_payload_negative_seq() ->
+    [ fp_payload_from_another_channel,
+      fp_payload_not_co_signed,
+      fp_payload_invalid_state_hash,
+      fp_payload_older_payload,
+      % solo signed payload tests
+      fp_solo_payload_invalid_state_hash,
+      fp_solo_payload_wrong_round,
+      fp_solo_payload_not_call_update,
+      fp_solo_payload_broken_call,
+      % closing, balances are checked
+      fp_solo_payload_closing_overflowing_balances,
+      fp_can_not_replace_create
     ].
 
 force_progress_negative_seq() ->
