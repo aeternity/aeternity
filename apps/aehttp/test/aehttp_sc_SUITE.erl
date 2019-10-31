@@ -2616,8 +2616,7 @@ sc_ws_timeout_open_(Config) ->
 
     ChannelOpts = channel_options(IPubkey, RPubkey, IAmt, RAmt,
                                   #{timeout_accept => 500}, Config),
-    {ok, IConnPid, _FsmId} = channel_ws_start(initiator, maps:put(host, <<"localhost">>, ChannelOpts), Config),
-    ok = ?WS:register_test_for_channel_event(IConnPid, info),
+    {ok, IConnPid, _FsmId} = channel_ws_start(initiator, maps:put(host, <<"localhost">>, ChannelOpts), Config, [info]),
     ok = wait_for_channel_event(<<"timeout">>, IConnPid, info, Config),
     ok = wait_for_channel_event(<<"died">>, IConnPid, info, Config),
     ok = ?WS:unregister_test_for_channel_event(IConnPid, info),
@@ -2654,13 +2653,11 @@ sc_ws_min_depth_not_reached_timeout_(Config) ->
                                   #{ timeout_funding_lock => 3000
                                    , minimum_depth => 1
                                    , slogan => S }, Config),
+    TestEvents = [info, get, sign, on_chain_tx],
     {ok, IConnPid, _IFsmId} = channel_ws_start(initiator,
-                                      maps:put(host, <<"localhost">>, ChannelOpts), Config),
-    ok = ?WS:register_test_for_channel_events(IConnPid, [info, get, sign, on_chain_tx]),
+                                      maps:put(host, <<"localhost">>, ChannelOpts), Config, TestEvents),
 
-    {ok, RConnPid, _RFsmId} = channel_ws_start(responder, ChannelOpts, Config),
-
-    ok = ?WS:register_test_for_channel_events(RConnPid, [info, get, sign, on_chain_tx]),
+    {ok, RConnPid, _RFsmId} = channel_ws_start(responder, ChannelOpts, Config, TestEvents),
 
     channel_send_conn_open_infos(RConnPid, IConnPid, Config),
 
@@ -2978,7 +2975,7 @@ reconnect_client_(ReestablishOpts, Role, Config) ->
                        end,
     {ok, ConnPid, FsmId} = channel_ws_start(Role, ReestablishOpts1, Config),
     ct:log("New ConnPid = ~p", [ConnPid]),
-    ct:log("Check if restablish resulted in a reconnect", []),
+    ct:log("Check if reestablish resulted in a reconnect", []),
     OldClients = ?config(channel_clients, Config),
     {OldFsmId, NewClients} = case Role of
                     initiator ->
@@ -2990,7 +2987,8 @@ reconnect_client_(ReestablishOpts, Role, Config) ->
                 end,
     ct:log("Old fsm id: ~p", [OldFsmId]),
     ct:log("New fsm id: ~p", [FsmId]),
-    case proplists:get_value(reconnect_scenario, Config, reconnect) of
+    Scenario = proplists:get_value(reconnect_scenario, Config, reconnect),
+    case Scenario of
         reconnect ->
             ct:log("Checking for reconnect", []),
             %% The FsmId should not change
@@ -3002,7 +3000,7 @@ reconnect_client_(ReestablishOpts, Role, Config) ->
     end,
     Config1 = lists:keystore(channel_clients, 1, Config,
         {channel_clients, maps:merge(OldClients, NewClients)}),
-    case proplists:get_value(reconnect_scenario, Config1, reconnect) of
+    case Scenario of
         reconnect ->
             ok;
         reestablish ->
@@ -3319,8 +3317,9 @@ sc_ws_leave_reconnect(Config0) ->
     ct:log("Config1 = ~p", [Config1]),
     ReestablishOptions = sc_ws_leave_(Config1),
     ct:log("ReestablishOpts = ~p", [ReestablishOptions]),
-    ct:log("*** Reconnecting ... ***", []),
+    ct:log("*** Testing invalid reconneciton requests ***", []),
     sc_ws_fsm_id_errors([initiator], ReestablishOptions, Config),
+    ct:log("*** Reconnecting ... ***", []),
     Config2 = reconnect_client_(ReestablishOptions, initiator,
                                 [{reconnect_scenario, reestablish} | Config1]),
     ct:log("*** Verifying that channel is operational ***", []),
