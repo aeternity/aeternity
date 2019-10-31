@@ -361,38 +361,23 @@ groups() ->
        fp_use_onchain_enviroment,
        fp_use_remote_call
       ]},
-     {force_progress_negative, [sequence],
-      [fp_closed_channel,
-       fp_not_participant,
-       fp_missing_channel,
-       % co-signed payload tests
-       fp_payload_from_another_channel,
-       fp_payload_not_co_signed,
-       fp_payload_invalid_state_hash,
-       fp_payload_older_payload,
-       fp_can_not_replace_create,
-       % solo signed payload tests
-       fp_solo_payload_invalid_state_hash,
-       fp_solo_payload_wrong_round,
-       fp_solo_payload_not_call_update,
-       fp_solo_payload_broken_call,
-       % closing, balances are checked
-       fp_solo_payload_closing_overflowing_balances,
-       % poi tests
-
-       fp_insufficent_tokens,
-       fp_insufficent_gas_price,
-
-       fp_use_onchain_contract,
-       % FP resets locked_until timer
-       fp_settle_too_soon,
-
-       fp_register_name,
-       fp_register_oracle,
-       fp_oracle_query,
-       fp_oracle_extend,
-       fp_oracle_respond
-      ]},
+     {force_progress_negative, [sequence], [{group, fp_with_payload},
+                                            {group, fp_empty_payload}]},
+     {fp_with_payload, [sequence], [fp_payload_from_another_channel,
+                                    fp_payload_not_co_signed,
+                                    fp_payload_invalid_state_hash,
+                                    fp_payload_older_payload,
+                                    % solo signed payload tests
+                                    fp_solo_payload_invalid_state_hash,
+                                    fp_solo_payload_wrong_round,
+                                    fp_solo_payload_not_call_update,
+                                    fp_solo_payload_broken_call,
+                                    % closing, balances are checked
+                                    fp_solo_payload_closing_overflowing_balances,
+                                    fp_can_not_replace_create
+                                   ] ++
+                                    force_progress_negative_seq()},
+     {fp_empty_payload, [sequence], force_progress_negative_seq()},
      {fork_awareness, [sequence],
       [ fp_sophia_versions,
         close_mutual_already_closing,
@@ -413,6 +398,26 @@ close_solo_negative_seq() ->
       close_solo_missing_channel,
       close_solo_already_closing,
       close_solo_delegate_not_allowed
+    ].
+
+force_progress_negative_seq() ->
+    [ fp_closed_channel,
+      fp_not_participant,
+      fp_missing_channel,
+      % poi tests
+
+      fp_insufficent_tokens,
+      fp_insufficent_gas_price,
+
+      fp_use_onchain_contract,
+      % FP resets locked_until timer
+      fp_settle_too_soon,
+
+      fp_register_name,
+      fp_register_oracle,
+      fp_oracle_query,
+      fp_oracle_extend,
+      fp_oracle_respond
     ].
 
 suite() ->
@@ -439,6 +444,10 @@ init_per_group(close_solo_with_payload_negative, Config) ->
     init_per_group_([{close_solo_use_payload, true} | Config]);
 init_per_group(close_solo_without_payload_negative, Config) ->
     init_per_group_([{close_solo_use_payload, false} | Config]);
+init_per_group(fp_with_payload, Config) ->
+    init_per_group_([{force_progress_use_payload, true} | Config]);
+init_per_group(fp_empty_payload, Config) ->
+    init_per_group_([{force_progress_use_payload, false} | Config]);
 init_per_group(_Group, Config) ->
     init_per_group_(Config).
 
@@ -3036,7 +3045,7 @@ fp_closed_channel(Cfg) ->
                     Props
                 end,
                 create_contract_poi_and_payload(Round - 1, 5, Owner),
-                negative_force_progress_sequence(Round, Forcer, channel_does_not_exist)])
+                negative_force_progress_sequence(Cfg, Round, Forcer, channel_does_not_exist)])
         end,
     [Test(Owner, Forcer) || Owner <- ?ROLES,
                             Forcer<- ?ROLES],
@@ -3048,19 +3057,50 @@ fp_not_participant(Cfg) ->
         fun(Owner, Forcer) ->
             run(#{cfg => Cfg},
                [positive(fun create_channel_/2),
+                fun(#{state := S0} = Props) ->
+                    {NewAcc, S1} = aesc_test_utils:setup_new_account(S0),
+                     PrivKey = aesc_test_utils:priv_key(NewAcc, S1),
+                    Props#{state => S1, from_pubkey => NewAcc, from_privkey => PrivKey}
+                end,
+                %% workaround for creating a new account in the off-chain
+                %% trees so it can be used for calling the contract later on
+                fun(#{ initiator_amount  := IAmt
+                     , responder_amount  := RAmt
+                     , initiator_pubkey  := IPubkey
+                     , responder_pubkey  := RPubkey
+                     , from_pubkey       := NotParticipant} = Props) ->
+                    Accounts = [aec_accounts:new(Pubkey, Balance) ||
+                            {Pubkey, Balance} <- [{IPubkey, IAmt - 10},
+                                                  {RPubkey, RAmt},
+                                                  {NotParticipant, 10}
+                                                ]],
+                    Trees = aec_test_utils:create_state_tree_with_accounts(Accounts, no_backend),
+                    Props#{trees => Trees}
+                end,
                 create_contract_poi_and_payload(Round - 1, 5, Owner),
                 get_onchain_balances(before_force),
                 set_prop(round, Round),
-                set_from(Forcer),
                 fun(#{contract_id := ContractId, contract_file := CName} = Props) ->
                     (create_contract_call_payload(ContractId, CName, <<"main">>,
                                                   [<<"42">>], 1))(Props)
                 end,
                 set_prop(fee, 100000 * aec_test_utils:min_gas_price()),
-                fun(#{state := S0} = Props) ->
-                    {NewAcc, S1} = aesc_test_utils:setup_new_account(S0),
-                     PrivKey = aesc_test_utils:priv_key(NewAcc, S1),
-                    Props#{state => S1, from_pubkey => NewAcc, from_privkey => PrivKey}
+                fun(Props) ->
+                    case proplists:get_value(force_progress_use_payload, Cfg, true) of
+                        true ->
+                            Props;
+                        false ->
+                            run(Props,
+                                [ rename_prop(from_pubkey, np_pubkey, keep_old),
+                                  rename_prop(from_privkey, np_privkey, keep_old),
+                                  set_from(initiator),
+                                  positive(fun snapshot_solo_/2),
+                                  set_prop(payload, <<>>),
+                                  set_prop(round, Round + 1),
+                                  rename_prop(np_pubkey, from_pubkey, keep_old),
+                                  rename_prop(np_privkey, from_privkey, keep_old)
+                                ])
+                    end
                 end,
                 negative(fun force_progress_/2, {error, account_not_peer})])
         end,
@@ -3078,7 +3118,7 @@ fp_missing_channel(Cfg) ->
                [positive(fun create_channel_/2),
                 set_prop(channel_pubkey, FakeChannelId),
                 create_contract_poi_and_payload(Round - 1, 5, Owner),
-                negative_force_progress_sequence(Round, Forcer, channel_does_not_exist)])
+                negative_force_progress_sequence(Cfg, Round, Forcer, channel_does_not_exist)])
         end,
     [Test(Owner, Forcer) || Owner  <- ?ROLES,
                             Forcer <- ?ROLES],
@@ -3109,7 +3149,8 @@ fp_payload_from_another_channel(Cfg) ->
                 fun(#{different_payload := Payload} = Props) ->
                     Props#{payload => Payload}
                 end,
-                negative_force_progress_sequence(Round, Forcer,
+                set_from(initiator),
+                negative_force_progress_sequence(Cfg, Round, Forcer,
                                                  bad_state_channel_pubkey)])
         end,
     [Test(Owner, Forcer) || Owner   <- ?ROLES,
@@ -3132,7 +3173,7 @@ fp_payload_not_co_signed(Cfg) ->
                                   aetx_sign:new(Tx, [OneSig])),
                     Props#{payload => Payload1}
                 end,
-                negative_force_progress_sequence(Round, Forcer,
+                negative_force_progress_sequence(Cfg, Round, Forcer,
                                                  signature_check_failed)])
         end,
     [Test(Owner, Forcer) || Owner <- ?ROLES,
@@ -3152,7 +3193,7 @@ fp_payload_older_payload(Cfg) ->
                 set_prop(state_hash, BogusStateHash),
                 positive(fun snapshot_solo_/2),
                 create_contract_poi_and_payload(Round - 1, 5, Owner),
-                negative_force_progress_sequence(Round, Forcer,
+                negative_force_progress_sequence(Cfg, Round, Forcer,
                                                  old_round)])
         end,
     [Test(Snapshotter, Owner, Forcer) ||  Owner       <- ?ROLES,
@@ -3167,7 +3208,7 @@ fp_can_not_replace_create(Cfg) ->
             run(#{cfg => Cfg},
                [positive(fun create_channel_/2),
                 create_contract_poi_and_payload(_Round = 1, 5, Owner),
-                negative_force_progress_sequence(Round, Forcer,
+                negative_force_progress_sequence(Cfg, Round, Forcer,
                                                  same_round)])
         end,
     [Test(Owner, Forcer) ||  Owner       <- ?ROLES,
@@ -3184,7 +3225,7 @@ fp_payload_invalid_state_hash(Cfg) ->
                [positive(fun create_channel_/2),
                 create_contract_poi_and_payload(Round - 1, 5, Owner,
                                                 #{fake_hash => FakeStateHash}),
-                negative_force_progress_sequence(Round, Forcer,
+                negative_force_progress_sequence(Cfg, Round, Forcer,
                                                  invalid_poi_hash)])
         end,
     [Test(Owner, Forcer) || Owner <- ?ROLES,
@@ -3201,7 +3242,7 @@ fp_solo_payload_wrong_round(Cfg) ->
                [positive(fun create_channel_/2),
 
                 create_contract_poi_and_payload(PayloadRound, ContractRound, Owner),
-                negative_force_progress_sequence(SoloPayloadRound, Forcer,
+                negative_force_progress_sequence(Cfg, SoloPayloadRound, Forcer,
                                                  wrong_round)])
         end,
     Test =
@@ -3512,15 +3553,16 @@ fp_insufficent_tokens(Cfg) ->
                               responder_amount => 30,
                  channel_reserve => 1},
                [positive(fun create_channel_/2),
+                set_prop(gas_price, GasPrice),
+                set_prop(gas_limit, GasLimit),
+                create_contract_poi_and_payload(Round - 1, ContractRound, Owner),
                 set_from(Forcer),
+                maybe_snapshot(Cfg, Round - 1),
                 fun(#{state := S0, from_pubkey := From} = Props) ->
                     S = aesc_test_utils:set_account_balance(From, TotalBalance, S0),
                     Props#{state => S}
                 end,
-                set_prop(gas_price, GasPrice),
-                set_prop(gas_limit, GasLimit),
-                create_contract_poi_and_payload(Round - 1, ContractRound, Owner),
-                negative_force_progress_sequence(Round, Forcer,
+                negative_force_progress_sequence(Cfg, Round, Forcer,
                                                  insufficient_funds)])
         end,
     Test =
@@ -3547,7 +3589,7 @@ fp_insufficent_gas_price(Cfg) ->
                 set_prop(gas_limit, GasLimit),
                 set_prop(height, Height),
                 create_contract_poi_and_payload(Round - 1, ContractRound, Owner),
-                negative_force_progress_sequence(Round, Forcer,
+                negative_force_progress_sequence(Cfg, Round, Forcer,
                                                  too_low_gas_price)])
         end,
     Test =
@@ -4313,7 +4355,19 @@ set_balances_in_trees(IBal, RBal) ->
         Props#{trees => Trees1}
     end.
 
-negative_force_progress_sequence(Round, Forcer, ErrMsg) ->
+maybe_snapshot(Cfg, Round) ->
+    fun(Props) ->
+        case proplists:get_value(force_progress_use_payload, Cfg, true) of
+            true ->
+                Props;
+            false ->
+                run(Props,
+                    [ set_prop(round, Round),
+                      positive(fun snapshot_solo_/2)])
+        end
+    end.
+
+negative_force_progress_sequence(Cfg, Round, Forcer, ErrMsg) ->
     Fee = 500000 * aec_test_utils:min_gas_price(),
     SetIfNotPresent =
         fun(Key, DefaultValue) ->
@@ -4330,9 +4384,18 @@ negative_force_progress_sequence(Round, Forcer, ErrMsg) ->
            [get_onchain_balances(before_force),
             set_from(Forcer),
             set_prop(round, Round),
-            fun(#{contract_id := ContractId, contract_file := CName} = Props) ->
+            fun(#{ contract_id := ContractId
+                  , contract_file := CName} = Props) ->
                 (create_contract_call_payload(ContractId, CName, <<"main">>,
                                               [<<"42">>], DepositAmt))(Props)
+            end,
+            fun(Props) ->
+                case proplists:get_value(force_progress_use_payload, Cfg, true) of
+                    true ->
+                        Props;
+                    false ->
+                        (set_prop(payload, <<>>))(Props)
+                end
             end,
             SetIfNotPresent(fee, Fee),
             SetIfNotPresent(height, 42),
@@ -4617,9 +4680,7 @@ create_trees_if_not_present() ->
     end.
 
 create_contract_in_trees(CreationRound, ContractName, InitArg, Deposit) ->
-    fun(#{trees := Trees0,
-          state := State,
-          owner := Owner} = Props) ->
+    fun(#{owner := Owner} = Props) ->
         {ok, BinCode}  =
             case maps:get(compiler_fun, Props, not_set) of
                 not_set -> compile_contract(ContractName);
@@ -4631,21 +4692,28 @@ create_contract_in_trees(CreationRound, ContractName, InitArg, Deposit) ->
         Update = aesc_offchain_update:op_new_contract(aeser_id:create(account, Owner),
                                                       VmVersion, ABIVersion, BinCode,
                                                       Deposit, CallData),
-        Reserve = maps:get(channel_reserve, Props, 0),
-        OnChainTrees = aesc_test_utils:trees(State),
-        Env = tx_env(Props),
-        Trees = aesc_offchain_update:apply_on_trees(Update, Trees0, OnChainTrees,
-                                                    Env, CreationRound, Reserve),
+        Props1 = apply_offchain_update(Props, CreationRound, Update),
         ContractId = aect_contracts:compute_contract_pubkey(Owner, CreationRound),
         ContractIds = maps:get(contract_ids, Props, []),
         case lists:member(ContractId, ContractIds) of
             true -> error(contract_already_present); % something is wrong with the test
             false -> pass
         end,
-        Props#{trees => Trees, contract_id => ContractId, contract_file => ContractName,
-               contract_ids => [ContractId | ContractIds]}
+        Props1#{contract_id => ContractId, contract_file => ContractName,
+                contract_ids => [ContractId | ContractIds]}
     end.
 
+apply_offchain_update(Props, Round, Update) ->
+    #{trees := Trees0,
+      state := State} = Props,
+    OnChainTrees = aesc_test_utils:trees(State),
+    Env = tx_env(Props),
+    Reserve = maps:get(channel_reserve, Props, 0),
+    Trees = aesc_offchain_update:apply_on_trees(Update, Trees0, OnChainTrees,
+                                                Env, Round, Reserve),
+    Props#{trees => Trees}.
+
+    
 run(Cfg, Funs) ->
     lists:foldl(
         fun(Fun, Props) -> Fun(Props) end,

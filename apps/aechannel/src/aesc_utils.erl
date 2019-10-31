@@ -311,6 +311,7 @@ check_force_progress_(PayloadHash, PayloadRound,
                   false -> {error, not_caller}
               end
           end,
+          fun() -> check_is_peer(FromPubKey, aesc_channels:peers(Channel)) end,
           fun() ->
               case PayloadRound =:= NextRound - 1 of
                   true -> ok;
