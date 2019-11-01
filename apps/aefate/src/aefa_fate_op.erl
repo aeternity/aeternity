@@ -1640,7 +1640,8 @@ op(length, A) when ?IS_FATE_LIST(A) ->
 op(int_to_str, A) when ?IS_FATE_INTEGER(A) ->
     aeb_fate_data:make_string(integer_to_binary(?FATE_INTEGER_VALUE(A)));
 op(int_to_addr, A) when ?IS_FATE_INTEGER(A) ->
-    aeb_fate_data:make_address(<<A:256>>);
+    %% aeb_fate_data:make_address(<<A:256>>);
+    aefa_fate:abort({disabled_operation, 'INT_TO_ADDR'});
 op(addr_to_str, A) when ?IS_FATE_ADDRESS(A) ->
     Val = ?FATE_ADDRESS_VALUE(A),
     aeser_api_encoder:encode(account_pubkey, Val);

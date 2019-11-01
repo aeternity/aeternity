@@ -235,8 +235,9 @@ abort(log_illegal_bits, ES) ->
 abort(out_of_gas, ES) ->
     ?t("Out of gas", [], ES);
 abort(bad_bytecode, ES) ->
-    ?t("Bad byte code", [], ES).
-
+    ?t("Bad byte code", [], ES);
+abort({disabled_operation, Op}, ES) ->
+    ?t("Error: operation ~p is disabled", [Op], ES).
 
 abort(E) -> throw({add_engine_state, E}).
 
