@@ -3057,7 +3057,7 @@ fp_closed_channel(Cfg) ->
 fp_not_participant(Cfg) ->
     Round = 10,
     Test =
-        fun(Owner, Forcer) ->
+        fun(Owner) ->
             run(#{cfg => Cfg},
                [positive(fun create_channel_/2),
                 fun(#{state := S0} = Props) ->
@@ -3107,8 +3107,7 @@ fp_not_participant(Cfg) ->
                 end,
                 negative(fun force_progress_/2, {error, account_not_peer})])
         end,
-    [Test(Owner, Forcer) || Owner <- ?ROLES,
-                            Forcer<- ?ROLES],
+    [Test(Owner) || Owner <- ?ROLES],
     ok.
 
 fp_missing_channel(Cfg) ->
@@ -4865,9 +4864,6 @@ close_solo_with_optional_payload(Cfg) ->
         true  -> fun close_solo_with_payload/2;
         false -> fun close_solo_without_payload/2
     end.
-
-negative_close_solo_with_optional_payload(Cfg, Error) ->
-    negative_close_solo_with_optional_payload(Cfg, Error, Error).
 
 negative_close_solo_with_optional_payload(Cfg, ErrorWithPayload,
                                           ErrorEmptyPayload) ->
