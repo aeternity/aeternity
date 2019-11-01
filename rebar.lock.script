@@ -8,10 +8,7 @@ FilterRocksDb = #{check => (IsWindows orelse os:getenv("AE_DISABLE_ROCKSDB") =/=
 FilterCuckoo = #{check => (os:getenv("AE_DISABLE_CUCKOO") =/= false),
                  del_apps => [<<"aecuckoo">>, <<"aecuckooprebuilt">>]},
 
-FilterStratum = #{check => (os:getenv("AE_DISABLE_STRATUM") =/= false),
-                  del_apps => [<<"aestratum_lib">>]},
-
-Filters = [FilterRocksDb, FilterCuckoo, FilterStratum],
+Filters = [FilterRocksDb, FilterCuckoo],
 
 ApplyFilter = fun(#{check := Check, del_apps := DelApps}, Apps) ->
                       case Check of

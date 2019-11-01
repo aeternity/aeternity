@@ -6,10 +6,6 @@ FilterRocksDbCheck = (IsWindows orelse os:getenv("AE_DISABLE_ROCKSDB") =/= false
 RocksDbDelRelxApps = [rocksdb, mnesia_rocksdb, {rocksdb, load}, {mnesia_rocksdb, load}],
 RocksDbDelDeps = [rocksdb, mnesia_rocksdb],
 
-FilterStratumCheck = (os:getenv("AE_DISABLE_STRATUM") =/= false),
-StratumDelRelxApps = [aestratum],
-StratumDelDeps = [aestratum, aestratum_lib],
-
 FilterRelx = fun(Check, Apps, DelApps) ->
                      case Check of
                          false ->
@@ -88,15 +84,13 @@ RelxT1 = lists:keyreplace(overlay, 1, RelxT0, {overlay, AdaptOverlayBin(RelxOver
 Version = string:trim(binary_to_list(VersionBin)),
 %% the release should be in front
 RelxApps1 = FilterRelx(FilterRocksDbCheck, RelxApps0, RocksDbDelRelxApps),
-RelxApps2 = FilterRelx(FilterStratumCheck, RelxApps1, StratumDelRelxApps),
-RelxApps3 = AddMeckInCommonTests(RelxApps2),
-Relx = {relx, [{release, {aeternity, Version}, RelxApps3}] ++ RelxT1},
+RelxApps2 = AddMeckInCommonTests(RelxApps1),
+Relx = {relx, [{release, {aeternity, Version}, RelxApps2}] ++ RelxT1},
 CONFIG1 = lists:keyreplace(relx, 1, CONFIG, Relx),
 
 %% Update rebar deps
 {deps, Deps0} = lists:keyfind(deps, 1, CONFIG1),
 Deps1 = FilterDeps(FilterRocksDbCheck, Deps0, RocksDbDelDeps),
-Deps2 = FilterDeps(FilterStratumCheck, Deps1, StratumDelDeps),
 
 %% Final config:
-lists:keyreplace(deps, 1, CONFIG1, {deps, Deps2}).
+lists:keyreplace(deps, 1, CONFIG1, {deps, Deps1}).
