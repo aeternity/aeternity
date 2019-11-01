@@ -68,7 +68,6 @@ start_link() ->
 init([]) ->
     {ok, #st{}}.
 
-
 handle_call({listen, Port, Responder, Opts}, {Pid,_Ref}, #st{ responders = Resps
                                                             , ports = Ports
                                                             , socks = Socks
