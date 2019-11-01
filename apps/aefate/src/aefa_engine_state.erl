@@ -19,6 +19,7 @@
         , caller/1
         , chain_api/1
         , code_cache/1
+        , creator_cache/1
         , current_bb/1
         , current_contract/1
         , current_function/1
@@ -40,6 +41,7 @@
         , set_caller/2
         , set_chain_api/2
         , set_code_cache/2
+        , set_creator_cache/2
         , set_current_bb/2
         , set_current_contract/2
         , set_current_function/2
@@ -94,6 +96,7 @@
             , call_value        :: non_neg_integer()
             , chain_api         :: aefa_chain_api:state()
             , code_cache        :: map() %% Cache for loaded contracts.
+            , creator_cache     :: map() %% Cache for creators of contracts
             , created_cells     :: integer() %% Heap memory used
             , current_bb        :: non_neg_integer()
             , current_contract  :: ?FATE_VOID | pubkey()
@@ -125,6 +128,7 @@ new(Gas, Value, Spec, Stores, APIState, CodeCache) ->
        , call_value        = Value
        , chain_api         = APIState
        , code_cache        = CodeCache
+       , creator_cache     = #{}
        , created_cells     = 0
        , current_bb        = 0
        , current_contract  = ?FATE_VOID
@@ -470,6 +474,16 @@ code_cache(#es{code_cache = X}) ->
 -spec set_code_cache(map(), state()) -> state().
 set_code_cache(X, ES) ->
     ES#es{code_cache = X}.
+
+%%%------------------
+
+-spec creator_cache(state()) -> map().
+creator_cache(#es{creator_cache = X}) ->
+    X.
+
+-spec set_creator_cache(map(), state()) -> state().
+set_creator_cache(X, ES) ->
+    ES#es{creator_cache = X}.
 
 %%%------------------
 

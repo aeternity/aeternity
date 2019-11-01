@@ -765,11 +765,22 @@ address(Arg0, EngineState) ->
     write(Arg0, Address, EngineState).
 
 contract_creator(Arg0, EngineState) ->
-    Pubkey  = aefa_engine_state:current_contract(EngineState),
-    API     = aefa_engine_state:chain_api(EngineState),
-    Creator = aefa_chain_api:creator(Pubkey, API),
-    Address = aeb_fate_data:make_address(Creator),
-    write(Arg0, Address, EngineState).
+    Pubkey       = aefa_engine_state:current_contract(EngineState),
+    CreatorCache = aefa_engine_state:creator_cache(EngineState),
+    {CreatorKey, ES1} =
+        case maps:get(Pubkey, CreatorCache, void) of
+            void ->
+                API     = aefa_engine_state:chain_api(EngineState),
+                Creator = aefa_chain_api:creator(Pubkey, API),
+                CCache1 = maps:put(Pubkey, Creator, CreatorCache),
+                {Creator, aefa_engine_state:set_creator_cache(CCache1, EngineState)};
+            Creator ->
+                {Creator, EngineState}
+        end,
+
+    Address = aeb_fate_data:make_address(CreatorKey),
+
+    write(Arg0, Address, ES1).
 
 balance(Arg0, EngineState) ->
     API = aefa_engine_state:chain_api(EngineState),
