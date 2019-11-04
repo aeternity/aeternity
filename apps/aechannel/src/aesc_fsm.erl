@@ -3829,7 +3829,8 @@ start_noise_session(#{existing_channel_id := ChId},
                    , chain_hash  => aec_chain:genesis_hash()
                    , channel_id  => ChId
                    , responder   => Responder },
-    aesc_session_noise:accept(SessionOpts, NoiseOpts);
+    maybe_log_error(noise_accept(SessionOpts, NoiseOpts, _Attempts = 3),
+                    COpts);
 start_noise_session(_,
                     #{ role       := responder
                      , responder  := Responder
@@ -3840,7 +3841,8 @@ start_noise_session(_,
     SessionOpts = #{ initiator => Initiator
                    , responder => Responder
                    , port      => Port },
-    aesc_session_noise:accept(SessionOpts, NoiseOpts);
+    maybe_log_error(noise_accept(SessionOpts, NoiseOpts, _Attempts = 3),
+                    COpts);
 start_noise_session(_,
                     #{ role       := initiator
                      , connection := #{ host := Host
@@ -3849,6 +3851,27 @@ start_noise_session(_,
     lager:debug("COpts = ~p", [COpts]),
     aesc_session_noise:connect(Host, Port, NoiseOpts).
 
+maybe_log_error({error, _} = Error, #{ responder := Responder
+                                      , initiator := Initiator}) ->
+    lager:error("Failed with ~p, Initiator: ~p, Responder: ~",
+                [Error, Initiator, Responder]),
+    Error;
+maybe_log_error(Ok, _) ->
+    Ok.
+
+noise_accept(_SessionOpts, _NoiseOpts, Attempts)
+    when Attempts < 1 ->
+    {error, failed_spawning_noise};
+noise_accept(SessionOpts, NoiseOpts, Attempts) ->
+    case aesc_session_noise:accept(SessionOpts, NoiseOpts) of
+        {ok, Pid} ->
+            {ok, Pid};
+        {error, Err} ->
+            lager:warning("Noise accept failed with ~p", [Err]),
+            noise_accept(SessionOpts, NoiseOpts, Attempts - 1)
+    end.
+
+    
 maybe_initialize_offchain_state(any, NewI, #data{state = F} = D) when is_function(F, 1) ->
     {ok, State} = F(NewI), %% Should not fail
     D#data{state = State};
