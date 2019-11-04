@@ -3988,9 +3988,14 @@ account_type(Pubkey) ->
     aec_accounts:type(Account).
 
 sc_ws_test_broken_params(Role, Config, Opts, Error, Config) ->
-    {ok, Pid} = channel_ws_start(Role,
-                                       maps:put(host, <<"localhost">>,
-                                                Opts), [{slogan, ?SLOGAN}|Config]),
+    Opts1 = case maps:is_key(host, Opts) of
+                true ->
+                    Opts;
+                false ->
+                    maps:put(host, <<"localhost">>, Opts)
+            end,
+    Config1 = [{slogan, ?SLOGAN}|Config],
+    {ok, Pid} = channel_ws_start(Role, Opts1, Config1),
     ok = ?WS:register_test_for_channel_events(Pid, [closed, error]),
     {ok, _, #{<<"reason">> := Error}} = wait_for_channel_event(Pid, error, Config),
     try ok = ?WS:wait_for_event(Pid, websocket, closed)
@@ -4012,40 +4017,30 @@ sc_ws_broken_open_params(Config) ->
             [sc_ws_test_broken_params(Role, Config, Opts, Error, Config) || Role <- Roles]
         end,
 
-    %% test initiator pubkey missing
-    ChannelOpts1 = channel_options(BogusPubkey, RPubkey, IAmt, RAmt, #{}, Config),
-    Test(ChannelOpts1, <<"Participant not found">>),
+    TestData = [ { "test initiator pubkey missing"
+                 , BogusPubkey, RPubkey, IAmt, RAmt, #{}, Config, <<"Participant not found">> }
+               , { "test responder pubkey missing"
+                 , IPubkey, BogusPubkey, IAmt, RAmt, #{}, Config, <<"Participant not found">> }
+               , { "test initiator having a negative amount"
+                 , IPubkey, RPubkey, -1, RAmt, #{}, Config, <<"Value too low">> }
+               , { "test initiator having a negative amount"
+                 , IPubkey, RPubkey, IAmt, -1, #{}, Config, <<"Value too low">> }
+               , { "test both having a negative amount"
+                 , IPubkey, RPubkey, -1, -1, #{}, Config, <<"Value too low">> }
+               , { "test channel_reserve having a negative amount"
+                 , IPubkey, RPubkey, IAmt, RAmt, #{channel_reserve => -1}, Config, <<"Value too low">> }
+               , { "test push_amount having a negative amount"
+                 , IPubkey, RPubkey, IAmt, RAmt, #{push_amount => -1}, Config, <<"Value too low">> }
+               , { "test lock_period having a negative value"
+                 , IPubkey, RPubkey, IAmt, RAmt, #{lock_period => -1}, Config, <<"Value too low">> }
+               ],
 
-    %% test responder pubkey missing
-    ChannelOpts2 = channel_options(IPubkey, BogusPubkey, IAmt, RAmt, #{}, Config),
-    Test(ChannelOpts2, <<"Participant not found">>),
-
-    % test initiator having a negative amount
-    ChannelOpts3 = channel_options(IPubkey, RPubkey, -1, RAmt, #{}, Config),
-    Test(ChannelOpts3, <<"Value too low">>),
-
-    % test initiator having a negative amount
-    ChannelOpts4 = channel_options(IPubkey, RPubkey, IAmt, -1, #{}, Config),
-    Test(ChannelOpts4, <<"Value too low">>),
-
-    % test both having a negative amount
-    ChannelOpts5 = channel_options(IPubkey, RPubkey, -1, -1, #{}, Config),
-    Test(ChannelOpts5, <<"Value too low">>),
-
-    % test channel_reserve having a negative amount
-    ChannelOpts6 = channel_options(IPubkey, RPubkey, IAmt, RAmt,
-                                   #{channel_reserve => -1}, Config),
-    Test(ChannelOpts6, <<"Value too low">>),
-
-    % test push_amount having a negative amount
-    ChannelOpts7 = channel_options(IPubkey, RPubkey, IAmt, RAmt,
-                                   #{push_amount => -1}, Config),
-    Test(ChannelOpts7, <<"Value too low">>),
-
-    % test lock_period having a negative value
-    ChannelOpts8 = channel_options(IPubkey, RPubkey, IAmt, RAmt,
-                                   #{lock_period => -1}, Config),
-    Test(ChannelOpts8, <<"Value too low">>),
+    lists:map(
+      fun({Name, IKey1, RKey1, IAmt1, RAmt1, Opts1, Config1, Error}) ->
+              ct:log(Name, []),
+              ChannelOpts = channel_options(IKey1, RKey1, IAmt1, RAmt1, Opts1, Config1),
+              Test(ChannelOpts, Error)
+      end, TestData),
 
     ok.
 

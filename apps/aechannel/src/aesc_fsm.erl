@@ -1878,8 +1878,11 @@ default_nonce(Opts) ->
 get_nonce(Pubkey) ->
     {value, Account} = aec_chain:get_account(Pubkey),
     case aec_accounts:type(Account) of
-        basic -> ok(aec_next_nonce:pick_for_account(Pubkey));
-        generalized -> 0
+        basic ->
+            {ok, N} = aec_next_nonce:pick_for_account(Pubkey),
+            N;
+        generalized ->
+            0
     end.
 
 %% @doc the default fee will be used as a base for adjustment, once
@@ -1930,7 +1933,7 @@ protocol_at_height(Height) ->
 
 pick_hash(#data{block_hash_delta = #bh_delta{ not_newer_than = NNT
                                             , not_older_than = NOT
-                                            , pick           = PickDelta}}) ->
+                                            , pick           = PickDelta }}) ->
     %% Using the boundary of the range is a bit too risky with regard of
     %% synking. That's why we use an offset
     Offset = min(NOT, NNT + PickDelta),
@@ -3062,7 +3065,7 @@ on_chain_id(D, SignedTx) ->
 initialize_cache(#data{ on_chain_id = ChId
                       , state       = State
                       , opts        = Opts0
-                      , state_password_wrapper = StatePasswordWrapper} = D) ->
+                      , state_password_wrapper = StatePasswordWrapper } = D) ->
     Opts = maps:with(opts_to_cache(), Opts0),
     case aesc_state_password_wrapper:get(StatePasswordWrapper) of
         {ok, StatePassword} ->
@@ -3543,12 +3546,12 @@ init_(#{opts := Opts0} = Arg) ->
     %% Protect the password from leakage
     StatePasswordWrapper = aesc_state_password_wrapper:init(maps:find(state_password, Opts0)),
     Opts1 = maps:remove(state_password, Opts0),
-    {Reestablish, ReestablishOpts, ConnectOpts, Opts2} =
-        { maps:is_key(existing_channel_id, Opts1)
-        , maps:with(?REESTABLISH_OPTS_KEYS, Opts1)
+    {ReestablishOpts, ConnectOpts, Opts2} =
+        { maps:with(?REESTABLISH_OPTS_KEYS, Opts1)
         , connection_opts(Arg)
         , maps:without(?REESTABLISH_OPTS_KEYS ++ ?CONNECT_OPTS_KEYS, Opts1)
         },
+    %% Verify parameters
     Opts3 = check_opts(
               [ fun check_minimum_depth_opt/1
               , fun check_timeout_opt/1
@@ -3559,81 +3562,29 @@ init_(#{opts := Opts0} = Arg) ->
               ], Opts2),
     Initiator = maps:get(initiator, Opts3),
     Opts4 = Opts3#{connection => ConnectOpts},
-    Session = start_session(ReestablishOpts, Opts4),
-    StateInitF = fun(NewI) ->
-                          CheckedOpts = maps:merge(Opts4#{state_password_wrapper => StatePasswordWrapper},
-                                                   ReestablishOpts),
-                          aesc_offchain_state:new(CheckedOpts#{initiator => NewI})
-                  end,
-    SessionEstablishF = fun(State) ->
-        Client = maps:get(client, Opts4),
-        ClientMRef = erlang:monitor(process, Client),
-        BlockHashDelta =
-            case maps:find(block_hash_delta, Opts4) of
-                error ->
-                    lager:debug("block hash not set, fallback mode", []),
-                    #bh_delta{ not_newer_than = 0 %% backwards compatibility
-                             , not_older_than = 10
-                             , pick           = 0 }; %% backwards compatibility
-                {ok, #{ not_older_than := NOT
-                      , not_newer_than := NNT
-                      , pick           := Pick }} ->
-                    lager:debug("block hash is set, not_newer_than ~p, not_older_than ~p, pick ~p",
-                                [NNT, NOT, Pick]),
-                    #bh_delta{ not_older_than = NOT
-                             , not_newer_than = NNT
-                             , pick           = Pick }
-            end,
-        %% In case of reestablish we can garbage collect the password when exiting from this function
-        MaybeStatePasswordWrapper = case Reestablish of
-                                        true ->
-                                            undefined;
-                                        false ->
-                                            StatePasswordWrapper
-                                    end,
-        Role = maps:get(role, Opts4),
-        Data = #data{ role             = Role
-                    , client           = Client
-                    , client_mref      = ClientMRef
-                    , client_connected = true
-                    , block_hash_delta = BlockHashDelta
-                    , state_password_wrapper = MaybeStatePasswordWrapper
-                    , session = maybe_save_session(Role, Session)
-                    , opts    = Opts4
-                    , state   = State
-                    , log     = aesc_window:new(maps:get(log_keep, Opts4))
-                    },
-        lager:debug("Session started, Data = ~p", [pr_data(Data)]),
-        %% TODO: Amend the fsm above to include this step. We have transport-level
-        %% connectivity, but not yet agreement on the channel parameters. We will next send
-        %% a channel_open() message and await a channel_accept().
-        case {Role, Reestablish} of
-            {initiator, true} ->
-                ok_next(reestablish_init, send_reestablish_msg(ReestablishOpts, Data));
-            {initiator, false} ->
-                ok_next(initialized, send_open_msg(Data));
-            {responder, true} ->
-                ChanId = maps:get(existing_channel_id, ReestablishOpts),
-                ok_next(awaiting_reestablish,
-                        Data#data{ channel_id  = ChanId
-                                 , on_chain_id = ChanId
-                                 , op = #op_reestablish{mode = restart} });
-            {responder, false} ->
-                ok_next(awaiting_open, Data)
-        end
-    end,
-    StateRaw = case Initiator of
-            any -> StateInitF;
-            _   -> StateInitF(Initiator)
-        end,
-    InitRes = case StateRaw of
-        {ok, State} ->
-            SessionEstablishF(State);
-        StateFun when is_function(StateFun, 1) ->
-            SessionEstablishF(StateFun);
-        {error, invalid_password} ->
-            {stop, invalid_password}
-    end,
+    SessionRes = start_noise_session(ReestablishOpts, Opts4),
+    InitRes = case {SessionRes, Initiator} of
+                  {{error, E}, _} ->
+                      lager:error("Failed to start noise session: Error = ~p", [E]),
+                      {stop, failed_noise_session_start};
+                  {{ok, SessionPid}, any} ->
+                      StateFun = fun(NewInitiator) ->
+                                         init_state(NewInitiator, Opts4, ReestablishOpts,
+                                                    StatePasswordWrapper)
+                                 end,
+                      prepare_initial_state(Opts4, StateFun, SessionPid,
+                                            ReestablishOpts, StatePasswordWrapper);
+                  {{ok, SessionPid}, _} ->
+                      InitStateRes = init_state(Initiator, Opts4, ReestablishOpts,
+                                                StatePasswordWrapper),
+                      case InitStateRes of
+                          {ok, State} ->
+                              prepare_initial_state(Opts4, State, SessionPid,
+                                                    ReestablishOpts, StatePasswordWrapper);
+                          {error, invalid_password = E} ->
+                              {stop, E}
+                      end
+              end,
     %% Always force garbage collection here, when reestablishing the password will be removed here
     garbage_collect(),
     InitRes.
@@ -3685,6 +3636,55 @@ cur_st(St, D) ->
 
 %% ==================================================================
 %% Internal functions
+
+init_state(Initiator, Opts, ReestablishOpts, StatePasswordWrapper) ->
+    Opts1 = Opts#{state_password_wrapper => StatePasswordWrapper},
+    CheckedOpts = maps:merge(Opts1, ReestablishOpts),
+    CheckedOpts1 = CheckedOpts#{initiator => Initiator},
+    aesc_offchain_state:new(CheckedOpts1).
+
+prepare_initial_state(Opts, State, SessionPid, ReestablishOpts, StatePasswordWrapper) ->
+    #{ client := Client
+     , role := Role
+     , block_hash_delta := BlockHashDelta
+     , log_keep := LogKeep } = Opts,
+    %% In case of reestablish we can garbage collect the password when exiting from this function
+    Reestablish = maps:is_key(existing_channel_id, ReestablishOpts),
+    MaybeStatePasswordWrapper = case Reestablish of
+                                    true ->
+                                        undefined;
+                                    false ->
+                                        StatePasswordWrapper
+                                    end,
+    Data = #data{ role                   = Role
+                , client                 = Client
+                , client_mref            = erlang:monitor(process, Client)
+                , client_connected       = true
+                , block_hash_delta       = BlockHashDelta
+                , state_password_wrapper = MaybeStatePasswordWrapper
+                , session                = maybe_save_session(Role, SessionPid)
+                , opts                   = Opts
+                , state                  = State
+                , log                    = aesc_window:new(LogKeep)
+                },
+    lager:debug("FSM started, Data = ~p", [pr_data(Data)]),
+    %% TODO: Amend the fsm above to include this step. We have transport-level
+    %% connectivity, but not yet agreement on the channel parameters. We will next send
+    %% a channel_open() message and await a channel_accept().
+    case {Role, Reestablish} of
+        {initiator, true} ->
+            ok_next(reestablish_init, send_reestablish_msg(ReestablishOpts, Data));
+        {initiator, false} ->
+            ok_next(initialized, send_open_msg(Data));
+        {responder, true} ->
+            ChanId = maps:get(existing_channel_id, ReestablishOpts),
+            Data1 = Data#data{ channel_id  = ChanId
+                             , on_chain_id = ChanId
+                             , op = #op_reestablish{mode = restart} },
+            ok_next(awaiting_reestablish, Data1);
+        {responder, false} ->
+            ok_next(awaiting_open, Data)
+    end.
 
 -spec check_change_config(atom(), any()) -> {ok, atom(), any()} | {error, invalid_config}.
 check_change_config(log_keep, Keep) when is_integer(Keep), Keep >= 0 ->
@@ -3767,17 +3767,24 @@ check_log_opt(Opts) ->
 
 check_block_hash_deltas(#{block_hash_delta := #{ not_older_than := NOT
                                                , not_newer_than := NNT
-                                               , pick           := Pick}} = Opts)
+                                               , pick           := Pick }} = Opts)
     when is_integer(NOT), is_integer(NNT), NOT >= 0, NNT >= 0, NOT >= NNT + Pick ->
     lager:debug("block hash is set, not_newer_than ~p, not_older_than ~p, pick ~p",
                  [NNT, NOT, Pick]),
-    Opts;
+    Delta = #bh_delta{ not_newer_than = NNT
+                     , not_older_than = NOT
+                     , pick           = Pick },
+    Opts#{block_hash_delta => Delta};
 check_block_hash_deltas(#{block_hash_delta := InvalidBHDelta} = Opts) ->
     lager:error("Invalid 'block_hash_delta' option: ~p", [InvalidBHDelta]),
-    maps:remove(block_hash_delta, Opts);
+    Opts1 = maps:remove(block_hash_delta, Opts),
+    check_block_hash_deltas(Opts1);
 check_block_hash_deltas(Opts) ->
-    lager:debug("block hash not set", []),
-    Opts.
+    lager:debug("block hash not set, fallback mode", []),
+    Delta = #bh_delta{ not_newer_than = 0 %% backwards compatibility
+                     , not_older_than = 10
+                     , pick           = 0 }, %% backwards compatibility
+    Opts#{block_hash_delta => Delta}.
 
 check_keep_running_opt(#{role := Role} = Opts) ->
     case {maps:find(keep_running, Opts), Role} of
@@ -3801,8 +3808,8 @@ check_opts([H|T], Opts) ->
 prepare_for_reestablish(#data{ opts = Opts
                              , on_chain_id = ChanId } = D) ->
     try
-        _Session = start_session(#{ existing_channel_id => ChanId },
-                                 Opts#{role => responder}),
+        {ok, _SessionPid} = start_noise_session(#{existing_channel_id => ChanId},
+                                                Opts#{role => responder}),
         %% We don't save the session pid here
         D
     ?CATCH_LOG(_E)
@@ -3811,32 +3818,36 @@ prepare_for_reestablish(#data{ opts = Opts
 
 %% @doc As per CHANNELS.md, the responder is regarded as the one typically
 %% providing the service, and the initiator connects.
-start_session(ReestablishOpts, #{ role       := responder
-                                , responder  := Responder
-                                , initiator  := Initiator
-                                , connection := #{ port := Port } = COpts }) ->
+start_noise_session(#{existing_channel_id := ChId},
+                    #{ role       := responder
+                     , responder  := Responder
+                     , connection := #{port := Port} = COpts }) ->
     NoiseOpts = maps:get(noise, COpts, []),
     lager:debug("NoiseOpts = ~p", [NoiseOpts]),
-    SessionOpts = case maps:find(existing_channel_id, ReestablishOpts) of
-                      {ok, ChId} ->
-                          #{ reestablish => true
-                           , port        => Port
-                           , chain_hash  => aec_chain:genesis_hash()
-                           , channel_id  => ChId
-                           , responder   => Responder };
-                      error ->
-                          #{ initiator => Initiator
-                           , responder => Responder
-                           , port      => Port }
-                  end,
-    ok(aesc_session_noise:accept(SessionOpts, NoiseOpts));
-start_session(_, #{ role       := initiator
-                  , connection := #{ host := Host, port := Port } = COpts}) ->
+    SessionOpts = #{ reestablish => true
+                   , port        => Port
+                   , chain_hash  => aec_chain:genesis_hash()
+                   , channel_id  => ChId
+                   , responder   => Responder },
+    aesc_session_noise:accept(SessionOpts, NoiseOpts);
+start_noise_session(_,
+                    #{ role       := responder
+                     , responder  := Responder
+                     , initiator  := Initiator
+                     , connection := #{port := Port} = COpts }) ->
+    NoiseOpts = maps:get(noise, COpts, []),
+    lager:debug("NoiseOpts = ~p", [NoiseOpts]),
+    SessionOpts = #{ initiator => Initiator
+                   , responder => Responder
+                   , port      => Port },
+    aesc_session_noise:accept(SessionOpts, NoiseOpts);
+start_noise_session(_,
+                    #{ role       := initiator
+                     , connection := #{ host := Host
+                                      , port := Port } = COpts }) ->
     NoiseOpts = maps:get(noise, COpts, []),
     lager:debug("COpts = ~p", [COpts]),
-    ok(aesc_session_noise:connect(Host, Port, NoiseOpts)).
-
-ok({ok, X}) -> X.
+    aesc_session_noise:connect(Host, Port, NoiseOpts).
 
 maybe_initialize_offchain_state(any, NewI, #data{state = F} = D) when is_function(F, 1) ->
     {ok, State} = F(NewI), %% Should not fail
@@ -3888,7 +3899,7 @@ send_error_msg(Reason, #data{session = Sn} = D) ->
                     Msg = #{ channel_id => ChId
                            , data       => Eb },
                     report(error, Eb, D),
-                    aesc_session_noise:error(Sn, Msg);
+                    aesc_session_noise:generic_error(Sn, Msg);
                 _ ->
                     no_msg
             end

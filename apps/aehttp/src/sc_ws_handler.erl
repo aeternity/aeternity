@@ -238,20 +238,21 @@ handler_parsing_error(Err, Handler, Params) ->
     end.
 
 handler_init_error(Err, Handler) ->
-    HandledErrors =[ {initiator_not_found           , participant_not_found}
-                   , {responder_not_found           , participant_not_found}
-                   , {client_still_active           , client_still_active}
-                   , {insufficient_initiator_amount , value_too_low}
-                   , {insufficient_responder_amount , value_too_low}
-                   , {insufficient_amounts          , value_too_low}
-                   , {channel_reserve_too_low       , value_too_low}
-                   , {push_amount_too_low           , value_too_low}
-                   , {lock_period_too_low           , value_too_low}
-                   , {channel_count_limit_exceeded  , channel_count_limit_exceeded}
-                   , {invalid_password              , invalid_password}
-                   , {bad_signature                 , bad_signature}
-                   , {password_required_since_lima  , {state_password, missing}}
-                   ],
+    HandledErrors = [ {initiator_not_found           , participant_not_found}
+                    , {responder_not_found           , participant_not_found}
+                    , {client_still_active           , client_still_active}
+                    , {insufficient_initiator_amount , value_too_low}
+                    , {insufficient_responder_amount , value_too_low}
+                    , {insufficient_amounts          , value_too_low}
+                    , {channel_reserve_too_low       , value_too_low}
+                    , {push_amount_too_low           , value_too_low}
+                    , {lock_period_too_low           , value_too_low}
+                    , {channel_count_limit_exceeded  , channel_count_limit_exceeded}
+                    , {invalid_password              , invalid_password}
+                    , {bad_signature                 , bad_signature}
+                    , {password_required_since_lima  , {state_password, missing}}
+                    , {failed_noise_session_start    , failed_noise_session_start}
+                    ],
     case proplists:get_value(Err, HandledErrors, not_handled_error) of
         not_handled_error ->
             lager:info("Failed to start because of unhandled error ~p", [Err]),
