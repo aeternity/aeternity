@@ -71,7 +71,7 @@
 -type responder_accept_opts() :: #{ reestablish   => false
                                   , initiator := aec_keys:pubkey() | any
                                   , responder := aec_keys:pubkey()
-                                  , lsock       := term()
+                                  , lsock     := term()
                                   , port      := port() }.
 -type responder_reestabl_opts() :: #{ reestablish := true
                                     , chain_hash  := binary()
