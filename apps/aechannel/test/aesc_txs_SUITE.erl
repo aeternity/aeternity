@@ -237,7 +237,8 @@ groups() ->
       [create,
        {group, create_negative},
        close_solo,
-       {group, close_solo_negative},
+       {group, close_solo_with_payload_negative},
+       {group, close_solo_without_payload_negative},
        close_mutual,
        {group, close_mutual_negative},
        slash,
@@ -269,20 +270,10 @@ groups() ->
        create_insufficient_funds_reserve,
        create_exsisting
       ]},
-     {close_solo_negative, [sequence],
-      [close_solo_unknown_from,
-       close_solo_wrong_amounts,
-       close_solo_not_participant,
-       close_solo_wrong_nonce,
-       close_solo_payload_from_another_channel,
-       close_solo_payload_not_co_signed,
-       close_solo_invalid_state_hash,
-       close_solo_older_payload,
-       close_solo_can_not_replace_create,
-       close_solo_missing_channel,
-       close_solo_already_closing,
-       close_solo_delegate_not_allowed
-      ]},
+     {close_solo_with_payload_negative, [sequence],
+      close_solo_negative_seq()},
+     {close_solo_without_payload_negative, [sequence],
+      close_solo_negative_seq()},
      {close_mutual_negative, [sequence],
       [close_mutual_wrong_amounts,
        close_mutual_wrong_nonce,
@@ -370,43 +361,66 @@ groups() ->
        fp_use_onchain_enviroment,
        fp_use_remote_call
       ]},
-     {force_progress_negative, [sequence],
-      [fp_closed_channel,
-       fp_not_participant,
-       fp_missing_channel,
-       % co-signed payload tests
-       fp_payload_from_another_channel,
-       fp_payload_not_co_signed,
-       fp_payload_invalid_state_hash,
-       fp_payload_older_payload,
-       fp_can_not_replace_create,
-       % solo signed payload tests
-       fp_solo_payload_invalid_state_hash,
-       fp_solo_payload_wrong_round,
-       fp_solo_payload_not_call_update,
-       fp_solo_payload_broken_call,
-       % closing, balances are checked
-       fp_solo_payload_closing_overflowing_balances,
-       % poi tests
-
-       fp_insufficent_tokens,
-       fp_insufficent_gas_price,
-
-       fp_use_onchain_contract,
-       % FP resets locked_until timer
-       fp_settle_too_soon,
-
-       fp_register_name,
-       fp_register_oracle,
-       fp_oracle_query,
-       fp_oracle_extend,
-       fp_oracle_respond
-      ]},
+     {force_progress_negative, [sequence], [{group, fp_with_payload},
+                                            {group, fp_empty_payload}]},
+     {fp_with_payload, [sequence],  force_progress_payload_negative_seq() ++
+                                    force_progress_negative_seq()},
+     {fp_empty_payload, [sequence], force_progress_negative_seq()},
      {fork_awareness, [sequence],
       [ fp_sophia_versions,
         close_mutual_already_closing,
         reject_old_offchain_tx_vsn
       ]}
+    ].
+
+close_solo_negative_seq() ->
+    [close_solo_unknown_from,
+      close_solo_wrong_amounts,
+      close_solo_not_participant,
+      close_solo_wrong_nonce,
+      close_solo_payload_from_another_channel,
+      close_solo_payload_not_co_signed,
+      close_solo_invalid_state_hash,
+      close_solo_older_payload,
+      close_solo_can_not_replace_create,
+      close_solo_missing_channel,
+      close_solo_already_closing,
+      close_solo_delegate_not_allowed
+    ].
+
+force_progress_payload_negative_seq() ->
+    [ fp_payload_from_another_channel,
+      fp_payload_not_co_signed,
+      fp_payload_invalid_state_hash,
+      fp_payload_older_payload,
+      % solo signed payload tests
+      fp_solo_payload_invalid_state_hash,
+      fp_solo_payload_wrong_round,
+      fp_solo_payload_not_call_update,
+      fp_solo_payload_broken_call,
+      % closing, balances are checked
+      fp_solo_payload_closing_overflowing_balances,
+      fp_can_not_replace_create
+    ].
+
+force_progress_negative_seq() ->
+    [ fp_closed_channel,
+      fp_not_participant,
+      fp_missing_channel,
+      % poi tests
+
+      fp_insufficent_tokens,
+      fp_insufficent_gas_price,
+
+      fp_use_onchain_contract,
+      % FP resets locked_until timer
+      fp_settle_too_soon,
+
+      fp_register_name,
+      fp_register_oracle,
+      fp_oracle_query,
+      fp_oracle_extend,
+      fp_oracle_respond
     ].
 
 suite() ->
@@ -429,7 +443,18 @@ init_per_group(fork_awareness, Config) ->
     aect_test_utils:init_per_group(aevm, Config);
 init_per_group(VM, Config) when VM == aevm; VM == fate ->
     aect_test_utils:init_per_group(VM, Config);
+init_per_group(close_solo_with_payload_negative, Config) ->
+    init_per_group_([{close_solo_use_payload, true} | Config]);
+init_per_group(close_solo_without_payload_negative, Config) ->
+    init_per_group_([{close_solo_use_payload, false} | Config]);
+init_per_group(fp_with_payload, Config) ->
+    init_per_group_([{force_progress_use_payload, true} | Config]);
+init_per_group(fp_empty_payload, Config) ->
+    init_per_group_([{force_progress_use_payload, false} | Config]);
 init_per_group(_Group, Config) ->
+    init_per_group_(Config).
+
+init_per_group_(Config) ->
     %% Disable name auction for these groups
     application:set_env(aecore, name_claim_bid_timeout, 0),
     Config.
@@ -619,7 +644,7 @@ close_solo(Cfg) ->
             run(#{cfg => Cfg},
                [positive(fun create_channel_/2),
                 set_from(Closer),
-                positive(fun close_solo_/2),
+                positive(fun close_solo_with_payload/2),
                 fun(#{channel_pubkey := ChannelPubKey, state := S} = Props) ->
                     % make sure the channel is not active any more
                     ClosedCh = aesc_test_utils:get_channel(ChannelPubKey, S),
@@ -637,9 +662,8 @@ close_solo(Cfg) ->
                  channel_reserve => 1},
                [positive(fun create_channel_/2),
                 set_from(Closer),
-                set_prop(payload, <<>>),
                 calc_poi_by_balances(IStartAmt, RStartAmt),
-                positive(fun close_solo_/2),
+                positive(fun close_solo_without_payload/2),
                 fun(#{channel_pubkey := ChannelPubKey, state := S} = Props) ->
                     % make sure the channel is not active any more
                     ClosedCh = aesc_test_utils:get_channel(ChannelPubKey, S),
@@ -666,8 +690,7 @@ close_solo(Cfg) ->
                 end,
                 positive(fun deposit_/2),
                 set_from(Closer),
-                set_prop(payload, <<>>),
-                positive(fun close_solo_/2),
+                positive(fun close_solo_without_payload/2),
                 fun(#{channel_pubkey := ChannelPubKey, state := S} = Props) ->
                     % make sure the channel is not active any more
                     ClosedCh = aesc_test_utils:get_channel(ChannelPubKey, S),
@@ -693,8 +716,7 @@ close_solo(Cfg) ->
                 end,
                 positive(fun withdraw_/2),
                 set_from(Closer),
-                set_prop(payload, <<>>),
-                positive(fun close_solo_/2),
+                positive(fun close_solo_without_payload/2),
                 fun(#{channel_pubkey := ChannelPubKey, state := S} = Props) ->
                     % make sure the channel is not active any more
                     ClosedCh = aesc_test_utils:get_channel(ChannelPubKey, S),
@@ -737,7 +759,8 @@ close_solo_unknown_from(Cfg) ->
         [positive(fun create_channel_/2),
          set_prop(from_pubkey, MissingAccount),
          set_prop(from_privkey, PrivKey),
-         negative(fun close_solo_/2, {error, account_not_found})]),
+         negative(fun close_solo_without_payload/2,
+                  {error, account_not_found})]),
     ok.
 
 %% Test wrong amounts (different than channel balance)
@@ -747,11 +770,14 @@ close_solo_wrong_amounts(Cfg) ->
     Test =
         fun(Closer, ICloseAmt, RCloseAmt) ->
             run(#{cfg => Cfg, initiator_amount => IAmt, responder_amount => RAmt},
-                [positive(fun create_channel_/2),
-                 set_prop(initiator_amount, ICloseAmt),
-                 set_prop(responder_amount, RCloseAmt),
-                 set_from(Closer),
-                 negative(fun close_solo_/2, {error, poi_amounts_change_channel_funds})])
+                [ positive(fun create_channel_/2),
+                  set_prop(initiator_amount, ICloseAmt),
+                  set_prop(responder_amount, RCloseAmt),
+                  set_from(Closer),
+                  negative_close_solo_with_optional_payload(Cfg,
+                      {error, poi_amounts_change_channel_funds}, % there is payload
+                      {error, invalid_poi_hash_in_channel} %  no payload
+                      )])
         end,
     lists:foreach(
         fun(Closer) ->
@@ -763,35 +789,35 @@ close_solo_wrong_amounts(Cfg) ->
 
 %% Test not a peer can not close channel
 close_solo_not_participant(Cfg) ->
-    test_not_participant(Cfg, fun close_solo_/2).
+    test_not_participant(Cfg, close_solo_with_optional_payload(Cfg)).
 
 close_solo_wrong_nonce(Cfg) ->
-    test_both_wrong_nonce(Cfg, fun close_solo_/2).
+    test_both_wrong_nonce(Cfg, close_solo_with_optional_payload(Cfg)).
 
 close_solo_payload_from_another_channel(Cfg) ->
-    test_both_payload_from_different_channel(Cfg, fun close_solo_/2).
+    test_both_payload_from_different_channel(Cfg, fun close_solo_with_payload/2).
 
 close_solo_payload_not_co_signed(Cfg) ->
     test_payload_not_both_signed(Cfg, fun aesc_test_utils:close_solo_tx_spec/5,
                                       fun aesc_close_solo_tx:new/1).
 
 close_solo_invalid_state_hash(Cfg) ->
-    test_both_invalid_poi_hash(Cfg, fun close_solo_/2).
+    test_both_invalid_poi_hash(Cfg, fun close_solo_with_payload/2).
 
 close_solo_older_payload(Cfg) ->
-    test_both_old_round(Cfg, fun close_solo_/2, #{}, old_round).
+    test_both_old_round(Cfg, fun close_solo_with_payload/2, #{}, old_round).
 
 close_solo_can_not_replace_create(Cfg) ->
-    test_both_can_not_replace_create(Cfg, fun close_solo_/2).
+    test_both_can_not_replace_create(Cfg, fun close_solo_with_payload/2).
 
 close_solo_missing_channel(Cfg) ->
-    test_both_missing_channel(Cfg, fun close_solo_/2).
+    test_both_missing_channel(Cfg, close_solo_with_optional_payload(Cfg)).
 
 close_solo_already_closing(Cfg) ->
-    test_both_closing_channel(Cfg, fun close_solo_/2).
+    test_both_closing_channel(Cfg, close_solo_with_optional_payload(Cfg)).
 
 close_solo_delegate_not_allowed(Cfg) ->
-    test_delegate_not_allowed(Cfg, fun close_solo_/2).
+    test_delegate_not_allowed(Cfg, close_solo_with_optional_payload(Cfg)).
 
 %%%===================================================================
 %%% Close mutual
@@ -923,7 +949,7 @@ close_mutual_already_closing(Cfg) ->
                [positive(fun create_channel_/2),
                 set_from(Closer),
                 set_prop(height, FortunaHeight),
-                positive(fun close_solo_/2),
+                positive(fun close_solo_with_payload/2),
                 fun(#{channel_pubkey := ChannelPubKey, state := S} = Props) ->
                     % make sure the channel is not active any more
                     ClosedCh = aesc_test_utils:get_channel(ChannelPubKey, S),
@@ -965,7 +991,8 @@ reject_old_offchain_tx_vsn(Cfg) ->
                 create_payload(),
                 set_prop(height, LimaHeight),
                 %% it fails after Lima
-                negative(fun close_solo_/2, {error, invalid_at_protocol})
+                negative(fun close_solo_with_payload/2,
+                         {error, invalid_at_protocol})
                 ])
         end,
     [Test(Role) || Role <- ?ROLES],
@@ -981,7 +1008,7 @@ slash(Cfg) ->
                [positive(fun create_channel_/2),
                 set_from(Closer),
                 set_prop(round, Round0),
-                positive(fun close_solo_/2),
+                positive(fun close_solo_with_payload/2),
                 fun(#{channel_pubkey := ChannelPubKey, state := S} = Props) ->
                     % make sure the channel is not active any more
                     ClosedCh = aesc_test_utils:get_channel(ChannelPubKey, S),
@@ -1015,7 +1042,7 @@ slash_after_lock_timer(Cfg) ->
                 set_from(Closer),
                 set_prop(round, 10),
                 set_prop(height, CloseHeight),
-                positive(fun close_solo_/2),
+                positive(fun close_solo_with_payload/2),
                 fun(#{channel_pubkey := ChannelPubKey, state := S} = Props) ->
                     % make sure the channel is not active any more
                     ClosedCh = aesc_test_utils:get_channel(ChannelPubKey, S),
@@ -1054,7 +1081,7 @@ slash_by_delegate(Cfg) ->
                 positive(fun create_channel_/2),
                 set_from(Closer),
                 set_prop(round, Round0),
-                positive(fun close_solo_/2),
+                positive(fun close_solo_with_payload/2),
                 fun(#{channel_pubkey := ChannelPubKey, state := S} = Props) ->
                     % make sure the channel is not active any more
                     ClosedCh = aesc_test_utils:get_channel(ChannelPubKey, S),
@@ -1097,7 +1124,7 @@ slash_unknown_from(Cfg) ->
             run(#{cfg => Cfg},
                 [positive(fun create_channel_/2),
                  set_from(Closer),
-                 positive(fun close_solo_/2),
+                 positive(fun close_solo_with_payload/2),
                  set_prop(from_pubkey, MissingAccount),
                  set_prop(from_privkey, PrivKey),
                  negative(fun slash_/2, {error, account_not_found})])
@@ -1117,7 +1144,7 @@ slash_wrong_amounts(Cfg) ->
                  set_prop(responder_amount, RCloseAmt0),
                  set_from(Closer),
                  set_prop(round, 5),
-                 positive(fun close_solo_/2),
+                 positive(fun close_solo_with_payload/2),
                  set_prop(initiator_amount, ICloseAmt),
                  set_prop(responder_amount, RCloseAmt),
                  set_from(Slasher),
@@ -1145,7 +1172,7 @@ slash_not_participant(Cfg) ->
                 [positive(fun create_channel_/2),
                  set_from(Closer),
                  set_prop(round, 5),
-                 positive(fun close_solo_/2),
+                 positive(fun close_solo_with_payload/2),
                  fun(#{state := S0} = Props) ->
                     {NewAcc, S1} = aesc_test_utils:setup_new_account(S0),
                     PrivKey = aesc_test_utils:priv_key(NewAcc, S1),
@@ -1173,7 +1200,7 @@ slash_payload_from_another_channel(Cfg) ->
                 % use the payload of channelA in a snapshot_tx for channelB
                 set_from(Closer),
                 set_prop(round, 5),
-                positive(fun close_solo_/2),
+                positive(fun close_solo_with_payload/2),
                 fun(#{different_payload := Payload} = Props) ->
                     Props#{payload => Payload}
                 end,
@@ -1191,7 +1218,7 @@ slash_payload_not_co_signed(Cfg) ->
                [positive(fun create_channel_/2), % create a channelA
                 set_from(Closer),
                 set_prop(round, 5),
-                positive(fun close_solo_/2),
+                positive(fun close_solo_with_payload/2),
                 set_prop(round, 10),
                 set_from(Slasher),
                 fun(#{channel_pubkey    := ChannelPubKey,
@@ -1237,7 +1264,7 @@ slash_invalid_state_hash(Cfg) ->
                [positive(fun create_channel_/2),
                 set_from(Closer),
                 set_prop(round, 5),
-                positive(fun close_solo_/2),
+                positive(fun close_solo_with_payload/2),
                 set_from(Slasher),
                 set_prop(round, 10),
                 set_prop(state_hash, FakeStateHash),
@@ -1256,7 +1283,7 @@ slash_older_payload(Cfg) ->
                [positive(fun create_channel_/2),
                 set_from(Closer),
                 set_prop(round, 5),
-                positive(fun close_solo_/2),
+                positive(fun close_solo_with_payload/2),
                 fun(#{channel_pubkey := ChannelPubKey, state := S} = Props) ->
                     % make sure the channel is not active any more
                     ClosedCh = aesc_test_utils:get_channel(ChannelPubKey, S),
@@ -1483,7 +1510,7 @@ settle(Cfg) ->
                 set_prop(height, 10),
                 set_prop(initiator_amount, IAmt1),
                 set_prop(responder_amount, RAmt1),
-                positive(fun close_solo_/2),
+                positive(fun close_solo_with_payload/2),
                 assert_locked_amount(0), % no tokens locked in solo close
                 set_from(Settler),
                 set_prop(height, 21),
@@ -1500,7 +1527,7 @@ settle(Cfg) ->
                 set_from(Closer),
                 set_prop(height, 10),
                 set_prop(round, 20),
-                positive(fun close_solo_/2),
+                positive(fun close_solo_with_payload/2),
                 assert_locked_amount(0), % no tokens locked in solo close
                 set_from(Slasher),
                 set_prop(height, 15),
@@ -1549,7 +1576,7 @@ settle_wrong_amounts(Cfg) ->
                 set_prop(height, 10),
                 set_prop(initiator_amount, CloseAmtI),
                 set_prop(responder_amount, CloseAmtR),
-                positive(fun close_solo_/2),
+                positive(fun close_solo_with_payload/2),
                 set_from(Settler),
                 set_prop(initiator_amount, IAmt1),
                 set_prop(responder_amount, RAmt1),
@@ -1585,7 +1612,7 @@ settle_missing_channel(Cfg) ->
                 [positive(fun create_channel_/2),
                 set_from(Closer),
                 set_prop(height, 10),
-                positive(fun close_solo_/2),
+                positive(fun close_solo_with_payload/2),
                 set_from(Settler),
                 set_prop(height, 21),
                 set_prop(channel_pubkey, FakeChannelPubKey),
@@ -1603,7 +1630,7 @@ settle_wrong_nonce(Cfg) ->
                [positive(fun create_channel_/2),
                 set_from(Closer),
                 set_prop(height, 10),
-                positive(fun close_solo_/2),
+                positive(fun close_solo_with_payload/2),
                 fun(#{state := S0} = Props) ->
                     Pubkey = maps:get(RoleKey, Props),
                     S = aesc_test_utils:set_account_nonce(Pubkey, Nonce, S0),
@@ -1645,7 +1672,7 @@ settle_not_yet_closable(Cfg) ->
                [positive(fun create_channel_/2),
                 set_from(Closer),
                 set_prop(height, 10),
-                positive(fun close_solo_/2),
+                positive(fun close_solo_with_payload/2),
                 set_from(Settler),
                 set_prop(height, 19),
                 negative(fun settle_/2, {error, channel_not_closed})
@@ -1661,7 +1688,7 @@ settle_not_yet_closable(Cfg) ->
                 set_from(Closer),
                 set_prop(height, 10),
                 set_prop(round, 20),
-                positive(fun close_solo_/2),
+                positive(fun close_solo_with_payload/2),
                 set_from(Slasher),
                 set_prop(height, 15),
                 set_prop(round, 42),
@@ -1683,7 +1710,7 @@ settle_not_participant(Cfg) ->
                [positive(fun create_channel_/2),
                 set_from(Closer),
                 set_prop(height, 10),
-                positive(fun close_solo_/2),
+                positive(fun close_solo_with_payload/2),
                 set_prop(height, 21),
                 fun(#{state := S0} = Props) ->
                     {NewAcc, S1} = aesc_test_utils:setup_new_account(S0),
@@ -1709,7 +1736,7 @@ settle_delegate_not_allowed(Cfg) ->
                 positive(fun create_channel_/2),
                 set_from(Closer),
                 set_prop(height, 10),
-                positive(fun close_solo_/2),
+                positive(fun close_solo_with_payload/2),
                 set_prop(height, 21),
                 fun(#{delegate_ids := [D1 |_], state := S} = Props) ->
                     D1Pubkey = aeser_id:specialize(D1, account),
@@ -2343,7 +2370,7 @@ fp_after_solo_close(Cfg) ->
                     PoI = calc_poi([IPubkey, RPubkey], [], Trees),
                     Props#{poi => PoI}
                 end,
-                positive(fun close_solo_/2),
+                positive(fun close_solo_with_payload/2),
                 delete_prop(state_hash),
                 create_fp_trees(),
                 set_prop(round, FPRound - 1), % for the payload
@@ -2418,7 +2445,7 @@ fp_after_slash(Cfg) ->
                     PoI = calc_poi([IPubkey, RPubkey], [], Trees),
                     Props#{poi => PoI}
                 end,
-                positive(fun close_solo_/2),
+                positive(fun close_solo_with_payload/2),
                 % slash
                 set_prop(height, SlashHeight),
                 set_prop(round, SlashRound),
@@ -2545,9 +2572,8 @@ fp_chain_is_replaced_by_slash(Cfg) ->
                 force_progress_sequence(_Round = FPRound, Forcer),
                 ForceProgressFromOnChain(FPRound + 1, Forcer),
                 set_prop(round, FPRound + 1),
-                set_prop(payload, <<>>),
                 poi_participants_only(),
-                positive(fun close_solo_/2),
+                positive(fun close_solo_without_payload/2),
                 ForceProgressFromOnChain(FPRound + 2, Forcer),
                 fun(#{state_hash := SH} = Props) ->
                     Props#{fp_state_hash => SH}
@@ -3022,7 +3048,7 @@ fp_closed_channel(Cfg) ->
                     Props
                 end,
                 create_contract_poi_and_payload(Round - 1, 5, Owner),
-                negative_force_progress_sequence(Round, Forcer, channel_does_not_exist)])
+                negative_force_progress_sequence(Cfg, Round, Forcer, channel_does_not_exist)])
         end,
     [Test(Owner, Forcer) || Owner <- ?ROLES,
                             Forcer<- ?ROLES],
@@ -3031,27 +3057,57 @@ fp_closed_channel(Cfg) ->
 fp_not_participant(Cfg) ->
     Round = 10,
     Test =
-        fun(Owner, Forcer) ->
+        fun(Owner) ->
             run(#{cfg => Cfg},
                [positive(fun create_channel_/2),
-                create_contract_poi_and_payload(Round - 1, 5, Owner),
-                get_onchain_balances(before_force),
-                set_prop(round, Round),
-                set_from(Forcer),
-                fun(#{contract_id := ContractId, contract_file := CName} = Props) ->
-                    (create_contract_call_payload(ContractId, CName, <<"main">>,
-                                                  [<<"42">>], 1))(Props)
-                end,
-                set_prop(fee, 100000 * aec_test_utils:min_gas_price()),
                 fun(#{state := S0} = Props) ->
                     {NewAcc, S1} = aesc_test_utils:setup_new_account(S0),
                      PrivKey = aesc_test_utils:priv_key(NewAcc, S1),
                     Props#{state => S1, from_pubkey => NewAcc, from_privkey => PrivKey}
                 end,
+                %% workaround for creating a new account in the off-chain
+                %% trees so it can be used for calling the contract later on
+                fun(#{ initiator_amount  := IAmt
+                     , responder_amount  := RAmt
+                     , initiator_pubkey  := IPubkey
+                     , responder_pubkey  := RPubkey
+                     , from_pubkey       := NotParticipant} = Props) ->
+                    Accounts = [aec_accounts:new(Pubkey, Balance) ||
+                            {Pubkey, Balance} <- [{IPubkey, IAmt - 10},
+                                                  {RPubkey, RAmt},
+                                                  {NotParticipant, 10}
+                                                ]],
+                    Trees = aec_test_utils:create_state_tree_with_accounts(Accounts, no_backend),
+                    Props#{trees => Trees}
+                end,
+                create_contract_poi_and_payload(Round - 1, 5, Owner),
+                get_onchain_balances(before_force),
+                set_prop(round, Round),
+                fun(#{contract_id := ContractId, contract_file := CName} = Props) ->
+                    (create_contract_call_payload(ContractId, CName, <<"main">>,
+                                                  [<<"42">>], 1))(Props)
+                end,
+                set_prop(fee, 100000 * aec_test_utils:min_gas_price()),
+                fun(Props) ->
+                    case proplists:get_value(force_progress_use_payload, Cfg, true) of
+                        true ->
+                            Props;
+                        false ->
+                            run(Props,
+                                [ rename_prop(from_pubkey, np_pubkey, keep_old),
+                                  rename_prop(from_privkey, np_privkey, keep_old),
+                                  set_from(initiator),
+                                  positive(fun snapshot_solo_/2),
+                                  set_prop(payload, <<>>),
+                                  set_prop(round, Round + 1),
+                                  rename_prop(np_pubkey, from_pubkey, keep_old),
+                                  rename_prop(np_privkey, from_privkey, keep_old)
+                                ])
+                    end
+                end,
                 negative(fun force_progress_/2, {error, account_not_peer})])
         end,
-    [Test(Owner, Forcer) || Owner <- ?ROLES,
-                            Forcer<- ?ROLES],
+    [Test(Owner) || Owner <- ?ROLES],
     ok.
 
 fp_missing_channel(Cfg) ->
@@ -3064,7 +3120,7 @@ fp_missing_channel(Cfg) ->
                [positive(fun create_channel_/2),
                 set_prop(channel_pubkey, FakeChannelId),
                 create_contract_poi_and_payload(Round - 1, 5, Owner),
-                negative_force_progress_sequence(Round, Forcer, channel_does_not_exist)])
+                negative_force_progress_sequence(Cfg, Round, Forcer, channel_does_not_exist)])
         end,
     [Test(Owner, Forcer) || Owner  <- ?ROLES,
                             Forcer <- ?ROLES],
@@ -3095,7 +3151,8 @@ fp_payload_from_another_channel(Cfg) ->
                 fun(#{different_payload := Payload} = Props) ->
                     Props#{payload => Payload}
                 end,
-                negative_force_progress_sequence(Round, Forcer,
+                set_from(initiator),
+                negative_force_progress_sequence(Cfg, Round, Forcer,
                                                  bad_state_channel_pubkey)])
         end,
     [Test(Owner, Forcer) || Owner   <- ?ROLES,
@@ -3118,7 +3175,7 @@ fp_payload_not_co_signed(Cfg) ->
                                   aetx_sign:new(Tx, [OneSig])),
                     Props#{payload => Payload1}
                 end,
-                negative_force_progress_sequence(Round, Forcer,
+                negative_force_progress_sequence(Cfg, Round, Forcer,
                                                  signature_check_failed)])
         end,
     [Test(Owner, Forcer) || Owner <- ?ROLES,
@@ -3138,7 +3195,7 @@ fp_payload_older_payload(Cfg) ->
                 set_prop(state_hash, BogusStateHash),
                 positive(fun snapshot_solo_/2),
                 create_contract_poi_and_payload(Round - 1, 5, Owner),
-                negative_force_progress_sequence(Round, Forcer,
+                negative_force_progress_sequence(Cfg, Round, Forcer,
                                                  old_round)])
         end,
     [Test(Snapshotter, Owner, Forcer) ||  Owner       <- ?ROLES,
@@ -3153,7 +3210,7 @@ fp_can_not_replace_create(Cfg) ->
             run(#{cfg => Cfg},
                [positive(fun create_channel_/2),
                 create_contract_poi_and_payload(_Round = 1, 5, Owner),
-                negative_force_progress_sequence(Round, Forcer,
+                negative_force_progress_sequence(Cfg, Round, Forcer,
                                                  same_round)])
         end,
     [Test(Owner, Forcer) ||  Owner       <- ?ROLES,
@@ -3170,7 +3227,7 @@ fp_payload_invalid_state_hash(Cfg) ->
                [positive(fun create_channel_/2),
                 create_contract_poi_and_payload(Round - 1, 5, Owner,
                                                 #{fake_hash => FakeStateHash}),
-                negative_force_progress_sequence(Round, Forcer,
+                negative_force_progress_sequence(Cfg, Round, Forcer,
                                                  invalid_poi_hash)])
         end,
     [Test(Owner, Forcer) || Owner <- ?ROLES,
@@ -3187,7 +3244,7 @@ fp_solo_payload_wrong_round(Cfg) ->
                [positive(fun create_channel_/2),
 
                 create_contract_poi_and_payload(PayloadRound, ContractRound, Owner),
-                negative_force_progress_sequence(SoloPayloadRound, Forcer,
+                negative_force_progress_sequence(Cfg, SoloPayloadRound, Forcer,
                                                  wrong_round)])
         end,
     Test =
@@ -3253,7 +3310,7 @@ fp_solo_payload_closing_overflowing_balances(Cfg) ->
                [positive(fun create_channel_/2),
                 set_from(initiator),
                 set_prop(round, CloseRound),
-                positive(fun close_solo_/2),
+                positive(fun close_solo_with_payload/2),
                 create_trees_if_not_present(),
                 set_prop(call_deposit, CallDeposit),
                 fun(#{channel_pubkey := ChannelPubKey,
@@ -3498,15 +3555,16 @@ fp_insufficent_tokens(Cfg) ->
                               responder_amount => 30,
                  channel_reserve => 1},
                [positive(fun create_channel_/2),
+                set_prop(gas_price, GasPrice),
+                set_prop(gas_limit, GasLimit),
+                create_contract_poi_and_payload(Round - 1, ContractRound, Owner),
                 set_from(Forcer),
+                maybe_snapshot(Cfg, Round - 1),
                 fun(#{state := S0, from_pubkey := From} = Props) ->
                     S = aesc_test_utils:set_account_balance(From, TotalBalance, S0),
                     Props#{state => S}
                 end,
-                set_prop(gas_price, GasPrice),
-                set_prop(gas_limit, GasLimit),
-                create_contract_poi_and_payload(Round - 1, ContractRound, Owner),
-                negative_force_progress_sequence(Round, Forcer,
+                negative_force_progress_sequence(Cfg, Round, Forcer,
                                                  insufficient_funds)])
         end,
     Test =
@@ -3533,7 +3591,7 @@ fp_insufficent_gas_price(Cfg) ->
                 set_prop(gas_limit, GasLimit),
                 set_prop(height, Height),
                 create_contract_poi_and_payload(Round - 1, ContractRound, Owner),
-                negative_force_progress_sequence(Round, Forcer,
+                negative_force_progress_sequence(Cfg, Round, Forcer,
                                                  too_low_gas_price)])
         end,
     Test =
@@ -3761,7 +3819,7 @@ fp_settle_too_soon(Cfg) ->
                                                 Owner),
                 poi_participants_only(),
                 set_prop(round, CloseRound),
-                positive(fun close_solo_/2),
+                positive(fun close_solo_with_payload/2),
                 % slash
                 set_prop(height, SlashHeight),
                 set_prop(round, SlashRound),
@@ -4299,7 +4357,19 @@ set_balances_in_trees(IBal, RBal) ->
         Props#{trees => Trees1}
     end.
 
-negative_force_progress_sequence(Round, Forcer, ErrMsg) ->
+maybe_snapshot(Cfg, Round) ->
+    fun(Props) ->
+        case proplists:get_value(force_progress_use_payload, Cfg, true) of
+            true ->
+                Props;
+            false ->
+                run(Props,
+                    [ set_prop(round, Round),
+                      positive(fun snapshot_solo_/2)])
+        end
+    end.
+
+negative_force_progress_sequence(Cfg, Round, Forcer, ErrMsg) ->
     Fee = 500000 * aec_test_utils:min_gas_price(),
     SetIfNotPresent =
         fun(Key, DefaultValue) ->
@@ -4316,9 +4386,18 @@ negative_force_progress_sequence(Round, Forcer, ErrMsg) ->
            [get_onchain_balances(before_force),
             set_from(Forcer),
             set_prop(round, Round),
-            fun(#{contract_id := ContractId, contract_file := CName} = Props) ->
+            fun(#{ contract_id := ContractId
+                  , contract_file := CName} = Props) ->
                 (create_contract_call_payload(ContractId, CName, <<"main">>,
                                               [<<"42">>], DepositAmt))(Props)
+            end,
+            fun(Props) ->
+                case proplists:get_value(force_progress_use_payload, Cfg, true) of
+                    true ->
+                        Props;
+                    false ->
+                        (set_prop(payload, <<>>))(Props)
+                end
             end,
             SetIfNotPresent(fee, Fee),
             SetIfNotPresent(height, 42),
@@ -4603,9 +4682,7 @@ create_trees_if_not_present() ->
     end.
 
 create_contract_in_trees(CreationRound, ContractName, InitArg, Deposit) ->
-    fun(#{trees := Trees0,
-          state := State,
-          owner := Owner} = Props) ->
+    fun(#{owner := Owner} = Props) ->
         {ok, BinCode}  =
             case maps:get(compiler_fun, Props, not_set) of
                 not_set -> compile_contract(ContractName);
@@ -4617,21 +4694,28 @@ create_contract_in_trees(CreationRound, ContractName, InitArg, Deposit) ->
         Update = aesc_offchain_update:op_new_contract(aeser_id:create(account, Owner),
                                                       VmVersion, ABIVersion, BinCode,
                                                       Deposit, CallData),
-        Reserve = maps:get(channel_reserve, Props, 0),
-        OnChainTrees = aesc_test_utils:trees(State),
-        Env = tx_env(Props),
-        Trees = aesc_offchain_update:apply_on_trees(Update, Trees0, OnChainTrees,
-                                                    Env, CreationRound, Reserve),
+        Props1 = apply_offchain_update(Props, CreationRound, Update),
         ContractId = aect_contracts:compute_contract_pubkey(Owner, CreationRound),
         ContractIds = maps:get(contract_ids, Props, []),
         case lists:member(ContractId, ContractIds) of
             true -> error(contract_already_present); % something is wrong with the test
             false -> pass
         end,
-        Props#{trees => Trees, contract_id => ContractId, contract_file => ContractName,
-               contract_ids => [ContractId | ContractIds]}
+        Props1#{contract_id => ContractId, contract_file => ContractName,
+                contract_ids => [ContractId | ContractIds]}
     end.
 
+apply_offchain_update(Props, Round, Update) ->
+    #{trees := Trees0,
+      state := State} = Props,
+    OnChainTrees = aesc_test_utils:trees(State),
+    Env = tx_env(Props),
+    Reserve = maps:get(channel_reserve, Props, 0),
+    Trees = aesc_offchain_update:apply_on_trees(Update, Trees0, OnChainTrees,
+                                                Env, Round, Reserve),
+    Props#{trees => Trees}.
+
+    
 run(Cfg, Funs) ->
     lists:foldl(
         fun(Fun, Props) -> Fun(Props) end,
@@ -4660,7 +4744,9 @@ apply_on_trees_(#{height := Height} = Props, SignedTx, S, {negative, ExpectedErr
     Trees = aesc_test_utils:trees(S),
     case aesc_test_utils:apply_on_trees_without_sigs_check([SignedTx], Trees,
                                                             Height) of
-        ExpectedError -> pass;
+        ExpectedError ->
+            ct:log("Transaction failed with: ~p", [ExpectedError]),
+            pass;
         {error, Unexpected} -> throw({unexpected_error, Unexpected});
         {ok, _, _} -> throw(negative_case_passed)
     end,
@@ -4772,6 +4858,31 @@ create_channel_(#{cfg := Cfg} = Props, _) ->
             state             => S0,
             initiator_privkey => PrivKey1,
             responder_privkey => PrivKey2}.
+
+close_solo_with_optional_payload(Cfg) ->
+    case proplists:get_value(close_solo_use_payload, Cfg, true) of
+        true  -> fun close_solo_with_payload/2;
+        false -> fun close_solo_without_payload/2
+    end.
+
+negative_close_solo_with_optional_payload(Cfg, ErrorWithPayload,
+                                          ErrorEmptyPayload) ->
+    
+    Negative =
+        fun(Fun, Error) -> fun(Props) -> (negative(Fun, Error))(Props) end end,
+    case proplists:get_value(close_solo_use_payload, Cfg, true) of
+        true  -> Negative(fun close_solo_with_payload/2, ErrorWithPayload);
+        false -> Negative(fun close_solo_without_payload/2, ErrorEmptyPayload)
+    end.
+
+close_solo_with_payload(Props, Expected) ->
+    close_solo_(Props, Expected).
+
+close_solo_without_payload(Props, Expected) ->
+    run(Props,
+        [ set_prop(payload, <<>>),
+          fun(Props1) -> close_solo_(Props1, Expected) end
+        ]).
 
 close_solo_(#{channel_pubkey    := ChannelPubKey,
               from_pubkey       := FromPubKey,
@@ -5136,7 +5247,7 @@ test_both_closing_channel(Cfg, Fun, InitProps) ->
             run(InitProps#{cfg => Cfg},
                [positive(fun create_channel_/2),
                 set_from(Closer),
-                positive(fun close_solo_/2),
+                positive(close_solo_with_optional_payload(Cfg)),
                 fun(#{channel_pubkey := ChannelPubKey, state := S} = Props) ->
                     % make sure the channel is not active any more
                     ClosedCh = aesc_test_utils:get_channel(ChannelPubKey, S),
