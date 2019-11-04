@@ -647,13 +647,20 @@ init_chain(PeerId, Header) ->
     init_chain(make_ref(), [PeerId], Header).
 
 init_chain(ChainId, Peers, Header) ->
-    {ok, Hash} = aec_headers:hash_header(Header),
-    Height     = aec_headers:height(Header),
-    PrevHash   = [ #chain_block{ height = Height - 1
-                               , hash = aec_headers:prev_hash(Header)
-                               } || Height > 1 ],
-    #chain{ id = ChainId, peers = Peers,
-            blocks = [#chain_block{ hash = Hash, height = Height }] ++ PrevHash }.
+    Height = aec_headers:height(Header),
+    case aec_headers:type(Header) of
+        key ->
+            {ok, Hash} = aec_headers:hash_header(Header),
+            Block      = #chain_block{ hash = Hash, height = Height},
+            PrevBlock  = #chain_block{ hash   = aec_headers:prev_key_hash(Header),
+                                       height = Height - 1 },
+            %% Unless we are at height 1 add previous key-block
+            #chain{ id = ChainId, peers = Peers, blocks = [Block | [PrevBlock || Height > 1]] };
+        micro ->
+            Block = #chain_block{ hash   = aec_headers:prev_key_hash(Header),
+                                  height = Height },
+            #chain{ id = ChainId, peers = Peers, blocks = [Block] }
+    end.
 
 known_chain(Chain) ->
     identify_chain(known_chain(Chain, none)).
