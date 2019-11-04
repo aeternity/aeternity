@@ -147,7 +147,7 @@ print_run_stats(Time, ES) ->
     GasUsed    = ?CALL_GAS - aefa_engine_state:gas(ES),
     Trace      = aefa_engine_state:trace(ES),
     Red        = fun({_, {reductions, R}}) -> R end,
-    Reductions = Red(hd(Trace)) - Red(lists:last(Trace)),
+    Reductions = Red(hd(Trace ++ [{bla, {reductions, 0}}])) - Red(lists:last([{bla, {reductions, 0}} | Trace])),
     Steps      = length(Trace),
     io:format("~p steps / ~p gas / ~p reductions / ~.2fms\n", [Steps, GasUsed, Reductions, Time / 1000]).
 
