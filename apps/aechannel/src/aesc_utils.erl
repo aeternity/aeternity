@@ -211,6 +211,7 @@ check_solo_close_payload(ChannelPubKey, FromPubKey, Nonce, Fee, Payload,
         {ok, [Channel, last_onchain]} ->
             Checks =
                 [fun() -> aetx_utils:check_account(FromPubKey, Trees, Nonce, Fee, Env) end,
+                 fun() -> check_is_peer(FromPubKey, aesc_channels:peers(Channel)) end,
                  fun() -> check_is_active(Channel) end,
                  fun() -> check_root_hash_in_channel(Channel, PoI) end,
                  fun() -> check_peers_and_amounts_in_poi(Channel, PoI) end
@@ -311,6 +312,7 @@ check_force_progress_(PayloadHash, PayloadRound,
                   false -> {error, not_caller}
               end
           end,
+          fun() -> check_is_peer(FromPubKey, aesc_channels:peers(Channel)) end,
           fun() ->
               case PayloadRound =:= NextRound - 1 of
                   true -> ok;
