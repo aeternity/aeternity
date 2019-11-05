@@ -309,7 +309,7 @@ finalize_entry(Pubkey, Cache = #cache_entry{store = Store}, {Writes, GasLeft}) -
     ?DEBUG_PRINT("Updates\n  ~p\n", [Updates]),
 
     %% Performing the updates writes the necessary changes to the MP trees.
-    {Store1, GasLeft1} = perform_store_updates(Updates, Metadata1, GasLeft, Store),
+    {Store1, GasLeft1} = perform_store_updates(Metadata, Updates, Metadata1, GasLeft, Store),
     {[{Pubkey, Store1} | Writes], GasLeft1}.
 
 %%%===================================================================
@@ -362,12 +362,12 @@ compute_store_updates(Metadata, #cache_entry{terms = TermCache, store = Store}) 
     Compare = fun(A, B) -> Order(element(1, A)) =< Order(element(1, B)) end,
     {Metadata2, lists:sort(Compare, Updates)}.
 
-perform_store_updates([Update|Left], Meta, GasLeft, Store) ->
+perform_store_updates(OldMeta, [Update|Left], Meta, GasLeft, Store) ->
     ?DEBUG_PRINT("Update: ~p\n", [Update]),
-    {Meta1, Bytes, Store1} =  perform_store_update(Update, {Meta, Store}),
+    {Meta1, Bytes, Store1} =  perform_store_update(OldMeta, Update, {Meta, Store}),
     GasLeft1 = spend_size_gas(GasLeft, Bytes),
-    perform_store_updates(Left, Meta1, GasLeft1, Store1);
-perform_store_updates([], Meta, GasLeft, Store) ->
+    perform_store_updates(OldMeta, Left, Meta1, GasLeft1, Store1);
+perform_store_updates(_OldMeta, [], Meta, GasLeft, Store) ->
     %% Save the updated metadata at the end
     {Store1, Bytes} = push_term(?META_STORE_POS, Meta, Store),
     GasLeft1 = spend_size_gas(GasLeft, Bytes),
@@ -382,16 +382,16 @@ spend_size_gas(GasLeft, Bytes) ->
             Enough
     end.
 
--spec perform_store_update(store_update(), {store_meta(), aect_contracts_store:store()}) ->
+-spec perform_store_update(store_meta(), store_update(), {store_meta(), aect_contracts_store:store()}) ->
         {store_meta(), non_neg_integer(), aect_contracts_store:store()}.
-perform_store_update({push_term, StorePos, FateVal}, {Meta, Store}) ->
+perform_store_update(_OldMeta, {push_term, StorePos, FateVal}, {Meta, Store}) ->
     {Store1, Bytes} = push_term(StorePos, FateVal, Store),
     {Meta, Bytes, Store1};
-perform_store_update({copy_map, MapId, Map}, S) ->
-    copy_map(MapId, Map, S);
-perform_store_update({update_map, MapId, Map}, S) ->
+perform_store_update(OldMeta, {copy_map, MapId, Map}, S) ->
+    copy_map(OldMeta, MapId, Map, S);
+perform_store_update(_OldMeta, {update_map, MapId, Map}, S) ->
     update_map(MapId, Map, S);
-perform_store_update({gc_map, MapId}, S) ->
+perform_store_update(_OldMeta, {gc_map, MapId}, S) ->
     gc_map(MapId, S).
 
 %% Write to a store register
@@ -402,7 +402,7 @@ push_term(Pos, FateVal, Store) ->
     {aect_contracts_store:put(Key, Val, Store), Bytes}.
 
 %% Allocate a new map.
-copy_map(MapId, Map, {Meta, Store}) when ?IS_FATE_MAP(Map) ->
+copy_map(_OldMeta, MapId, Map, {Meta, Store}) when ?IS_FATE_MAP(Map) ->
     %% The RefCount was set in compute_store_updates
     ?METADATA(_, RefCount, _) = get_map_meta(MapId, Meta),
     RawId    = MapId,           %% RawId == MapId for fresh maps
@@ -415,11 +415,15 @@ copy_map(MapId, Map, {Meta, Store}) when ?IS_FATE_MAP(Map) ->
     %% and the subtree node that allows us to call aect_contracts_store:subtree
     Store2   = aect_contracts_store:put(map_data_key(RawId), <<0>>, Store1),
     {Meta1, Bytes, Store2};
-copy_map(MapId, ?FATE_STORE_MAP(Cache, OldId), {Meta, Store}) ->
+copy_map(OldMeta, MapId, ?FATE_STORE_MAP(Cache, OldId), {Meta, Store}) ->
     %% In case of a modified store map we need to copy all the entries for the
     %% old map and then update with the new data (Cache).
     ?METADATA(_, RefCount, _) = get_map_meta(MapId, Meta),
-    ?METADATA(OldRawId, _RefCount, OldSize) = get_map_meta(OldId, Meta),
+    %% We shouldn't get here if the old map is being garbage collected (should
+    %% be update_map instead), but the garbage collection analysis is limited
+    %% for nested maps currently, so we keep the old metadata around and look
+    %% it up there.
+    ?METADATA(OldRawId, _RefCount, OldSize) = get_map_meta(OldId, OldMeta),
     RawId    = MapId,
     OldMap   = aect_contracts_store:subtree(map_data_key(OldRawId), Store),
     NewData  = cache_to_bin_data(Cache),
