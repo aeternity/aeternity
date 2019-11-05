@@ -80,7 +80,7 @@ handle_call({listen, Port, Responder, Opts}, {Pid,_Ref}, #st{ responders = Resps
                                         , port = Port
                                         , responder = Responder
                                         , lsock = LSock
-                                        , pid = Pid}),
+                                        , pid = Pid }),
             Resps1 = db_insert(Resps, #resp{key = {Port, Responder, Pid}}),
             {reply, {ok, LSock}, St#st{ responders = Resps1
                                       , ports = Ports1
