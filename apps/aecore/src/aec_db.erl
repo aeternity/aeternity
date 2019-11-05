@@ -877,6 +877,6 @@ try_activity(Type, Fun, Retries) ->
         mnesia:activity(Type, Fun)
     catch
         exit:Reason ->
-            lager:error("Mnesia activity Type=~p exit with Reason=~p", [Type, Reason]),
+            lager:warning("Mnesia activity Type=~p exit with Reason=~p, retrying", [Type, Reason]),
             try_activity(Type, Fun, Retries - 1)
     end.
