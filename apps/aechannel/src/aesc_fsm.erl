@@ -4166,22 +4166,22 @@ handle_call_(awaiting_signature, {abort_update, Code, Tag}, From,
          , lists:member(Tag, ?CANCEL_ACK_TAGS )} of
         {true, _} ->
             report(info, aborted_update, D),
-            lager:debug("update canceled", []),
+            lager:debug("update aborted", []),
             next_state(open, clear_ongoing(D#data{op = ?NO_OP}),
                       [{reply, From, ok}]);
         {_, true} ->
             report(info, aborted_update, D),
-            lager:debug("update canceled", []),
+            lager:debug("update aborted", []),
             handle_recoverable_error(#{ code => Code
                                       , respond => true
                                       , msg_type => Tag }, D, [{reply, From, ok}],
                                      _ReportConflictToClient = false);
         {false, false} ->
-            lager:debug("update can not be canceled for ~p", [Tag]),
+            lager:debug("update can not be aborted for ~p", [Tag]),
             keep_state(D, [{reply, From, {error, not_allowed_now}}])
     end;
 handle_call_(_NonSigningState, {abort_update, _, _Tag}, From, #data{} = D) ->
-    lager:debug("update can not be canceled while ~p with tag ~p",
+    lager:debug("update can not be aborted while ~p with tag ~p",
                 [_NonSigningState, _Tag]),
     keep_state(D, [{reply, From, {error, not_allowed_now}}]);
 handle_call_(_AnyState, {inband_msg, ToPub, Msg}, From, #data{} = D) ->
