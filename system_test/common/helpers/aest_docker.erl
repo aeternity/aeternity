@@ -294,6 +294,8 @@ setup_node(Spec, BackendState) ->
         case maps:get(genesis_accounts, Spec, false) of
             false ->
                 maps:get(genesis, Spec, undefined);
+            from_file ->
+                filename:join([TempDir, "accounts_test.json"]);
             GenesisAccounts ->
                 AccountsFile = filename:join([TempDir, "accounts_test.json"]),
                 ok = file:write_file(AccountsFile, jsx:encode(GenesisAccounts)),
