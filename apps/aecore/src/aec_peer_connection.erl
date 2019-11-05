@@ -29,6 +29,7 @@
         , send_block/2
         , send_tx/2
         , stop/1
+        , set_sync_height/2
         ]).
 
 %% API Mempool sync
@@ -115,6 +116,10 @@ send_tx(PeerId, SerTx) ->
 send_block(PeerId, SerBlock) ->
     cast(PeerId, {send_block, SerBlock}).
 
+%% Indicate that we are syncing, and that gossips should be dropped.
+set_sync_height(PeerId, Height) ->
+    cast(PeerId, {set_sync_height, Height}).
+
 stop(PeerCon) ->
     gen_server:cast(PeerCon, stop).
 
@@ -164,8 +169,7 @@ accept_init(Ref, TcpSock, ranch_tcp, Opts) ->
                       , host => list_to_binary(inet:ntoa(Addr))
                       , version => Version
                       , genesis => Genesis },
-            S = #{ version := Version, genesis := Genesis,
-                   pubkey := PubKey } = ensure_genesis(S0),
+            S = #{ genesis := Genesis, pubkey := PubKey } = ensure_genesis(S0),
 
             %% ======  Entering critical section with Private keys in memory. ======
             PrevSensitive = process_flag(sensitive, true),
@@ -231,6 +235,10 @@ handle_cast({send_tx, SerTx}, State) ->
 handle_cast({send_block, SerBlock}, State) ->
     send_send_block(State, SerBlock),
     {noreply, State};
+handle_cast({set_sync_height, none}, State) ->
+    {noreply, maps:remove(sync_height, State)};
+handle_cast({set_sync_height, Height}, State) when is_integer(Height) ->
+    {noreply, State#{ sync_height => Height }};
 handle_cast({expand_micro_block, MicroBlockFragment}, State) ->
     {noreply, expand_micro_block(State, MicroBlockFragment)};
 handle_cast(stop, State) ->
@@ -944,9 +952,13 @@ handle_new_key_block(S, Msg) ->
     try
         {ok, KeyBlock} = deserialize_key_block(maps:get(key_block, Msg)),
         Header = aec_blocks:to_header(KeyBlock),
-        {ok, HH} = aec_headers:hash_header(Header),
-        epoch_sync:debug("Got new block: ~s", [pp(HH)]),
-        aec_conductor:post_block(KeyBlock)
+        case check_gossiped_header_height(S, Header) of
+            drop -> ok;
+            ok ->
+                {ok, HH} = aec_headers:hash_header(Header),
+                epoch_sync:debug("Got new block: ~s", [pp(HH)]),
+                aec_conductor:post_block(KeyBlock)
+        end
     catch _:_ ->
         ok
     end,
@@ -958,50 +970,66 @@ handle_new_micro_block(S, Msg) ->
             false ->
                 {ok, MicroBlock} = deserialize_micro_block(maps:get(micro_block, Msg)),
                 Header = aec_blocks:to_header(MicroBlock),
-                {ok, HH} = aec_headers:hash_header(Header),
-                epoch_sync:debug("Got new block: ~s", [pp(HH)]),
-                %% in the full micro block case - conductor will do the necessary checks
-                aec_conductor:post_block(MicroBlock);
+                case check_gossiped_header_height(S, Header) of
+                    drop -> ok;
+                    ok ->
+                        {ok, HH} = aec_headers:hash_header(Header),
+                        epoch_sync:debug("Got new block: ~s", [pp(HH)]),
+                        %% in the full micro block case - conductor will do the necessary checks
+                        aec_conductor:post_block(MicroBlock)
+                end;
             true ->
                 {ok, #{ header := Header, tx_hashes := TxHashes, pof := PoF }} =
                     deserialize_light_micro_block(maps:get(micro_block, Msg)),
-                %% Before assembling the block, check if it is known, and valid
-                case pre_assembly_check(Header) of
-                    known ->
-                        ok;
-                    E = {error, _} ->
-                        {ok, HH} = aec_headers:hash_header(Header),
-                        epoch_sync:info("Got invalid light micro_block (~s): ~p", [pp(HH), E]),
-                        case aec_chain:get_header(aec_headers:prev_key_hash(Header)) of
-                            {ok, PrevHeader} ->
-                                epoch_sync:debug("miner beneficiary: ~p", [aec_headers:beneficiary(PrevHeader)]),
-                                ok;
-                            _ ->
-                                ok
-                        end;
-
-                    ok ->
-                        case get_micro_block_txs(TxHashes) of
-                            {all, Txs} ->
-                                MicroBlock = aec_blocks:new_micro_from_header(Header, Txs, PoF),
-                                {ok, HH} = aec_headers:hash_header(Header),
-                                epoch_sync:debug("Got new block: ~s", [pp(HH)]),
-                                aec_conductor:post_block(MicroBlock);
-                            {some, TxsAndTxHashes} ->
-                                epoch_sync:info("Missing txs: ~p",
-                                                [[ TH || TH <- TxsAndTxHashes, is_binary(TH) ]]),
-                                cast(self(), {expand_micro_block, #{ header => Header,
-                                                                     tx_data => TxsAndTxHashes,
-                                                                     pof => PoF
-                                                                   }}),
-                                ok
-                        end
+                case check_gossiped_header_height(S, Header) of
+                    drop -> ok;
+                    ok   -> handle_light_micro_block(S, Header, TxHashes, PoF)
                 end
         end
     catch _:_ ->
         ok
     end,
     S.
+
+check_gossiped_header_height(S, Header) ->
+    case aec_headers:height(Header) - 1 =< maps:get(sync_height, S, infinity) of
+        true  -> ok;
+        false -> drop
+    end.
+
+handle_light_micro_block(_S, Header, TxHashes, PoF) ->
+    %% Before assembling the block, check if it is known, and valid
+    case pre_assembly_check(Header) of
+        known ->
+            ok;
+        E = {error, _} ->
+            {ok, HH} = aec_headers:hash_header(Header),
+            epoch_sync:info("Dropping gossiped light micro_block (~s): ~p", [pp(HH), E]),
+            case aec_chain:get_header(aec_headers:prev_key_hash(Header)) of
+                {ok, PrevHeader} ->
+                    epoch_sync:debug("miner beneficiary: ~p", [aec_headers:beneficiary(PrevHeader)]),
+                    ok;
+                _ ->
+                    ok
+            end;
+
+        ok ->
+            case get_micro_block_txs(TxHashes) of
+                {all, Txs} ->
+                    MicroBlock = aec_blocks:new_micro_from_header(Header, Txs, PoF),
+                    {ok, HH} = aec_headers:hash_header(Header),
+                    epoch_sync:debug("Got new block: ~s", [pp(HH)]),
+                    aec_conductor:post_block(MicroBlock);
+                {some, TxsAndTxHashes} ->
+                    epoch_sync:info("Missing txs: ~p",
+                                    [[ TH || TH <- TxsAndTxHashes, is_binary(TH) ]]),
+                    cast(self(), {expand_micro_block, #{ header => Header,
+                                                         tx_data => TxsAndTxHashes,
+                                                         pof => PoF
+                                                       }}),
+                    ok
+            end
+    end.
 
 %% -- Get block txs ----------------------------------------------------------
 
