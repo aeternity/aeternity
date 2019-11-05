@@ -227,10 +227,10 @@ init_chain_state() ->
 
 reinit_chain_state() ->
     %% NOTE: ONLY FOR TEST
-    aec_db:transaction(fun() ->
-                               aec_db:clear_db(),
-                               init_chain_state()
-                       end),
+    aec_db:ensure_transaction(fun() ->
+                                      aec_db:clear_db(),
+                                      init_chain_state()
+                              end),
     exit(whereis(aec_tx_pool), kill),
     aec_tx_pool:await_tx_pool(),
     ok.
