@@ -76,9 +76,11 @@ handle_call({listen, Port, Responder, Opts}, {Pid,_Ref}, #st{ responders = Resps
         [#port{lsock = LSock}] ->
             MRef = erlang:monitor(process, Pid),
             Ports1 = db_insert(Ports, #port{key = {Port, Pid}, mref = MRef}),
-            Refs1 = db_insert(Refs, #ref{mref = MRef, port = Port,
-                                         responder = Responder,
-                                         lsock = LSock, pid = Pid}),
+            Refs1 = db_insert(Refs, #ref{ mref = MRef
+                                        , port = Port
+                                        , responder = Responder
+                                        , lsock = LSock
+                                        , pid = Pid }),
             Resps1 = db_insert(Resps, #resp{key = {Port, Responder, Pid}}),
             {reply, {ok, LSock}, St#st{ responders = Resps1
                                       , ports = Ports1
