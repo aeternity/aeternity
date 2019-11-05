@@ -387,11 +387,15 @@
                     "example" : "'rocksdb' OR 'unix:rocksdb' OR 'unix:rocksdb|*:mnesia' OR (EXPERIMENTAL) 'leveled'",
                     "default" : "unix:rocksdb|*:mnesia"
                 },
-                "db_path"   : {
-                    "description" :
-                    "The directory where the chain is persisted to disk.",
+                "db_path" : {
+                    "description" : "The directory where the chain is persisted to disk.",
                     "type" : "string",
                     "default" : "data"
+                },
+                "db_write_max_retries" : {
+                    "description" : "Maximum number of retries for failing database write operations.",
+                    "type" : "integer",
+                    "default" : 3
                 },
                 "hard_forks" : {
                     "description" : "The consensus protocol versions with respective effective heights. Ignored if 'fork_management > network_id' has value 'ae_mainnet' or 'ae_uat'.",

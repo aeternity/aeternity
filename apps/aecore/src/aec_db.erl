@@ -17,9 +17,7 @@
          persisted_valid_genesis_block/0
         ]).
 
--export([transaction/1,
-         dirty/1,
-         ensure_transaction/1,
+-export([ensure_transaction/1,
          ensure_activity/2,
          write/2,
          delete/2,
@@ -244,21 +242,16 @@ backend_mode(<<"leveled">>, #{persist := true } = M) -> M#{module => mnesia_leve
 backend_mode(<<"mnesia">> , #{persist := true } = M) -> M#{module => mnesia,
                                                            alias => disc_copies}.
 
-transaction(Fun) when is_function(Fun, 0) ->
-    mnesia:activity(transaction, Fun).
-
-dirty(Fun) when is_function(Fun, 0) ->
-    mnesia:activity(async_dirty, Fun).
-
 ensure_transaction(Fun) when is_function(Fun, 0) ->
     %% TODO: actually, some non-transactions also have an activity state
     case get(mnesia_activity_state) of
         undefined ->
-            transaction(Fun);
+            try_activity(transaction, Fun);
         {_, _, non_transaction} ->
             %% Transaction inside a dirty context; rely on mnesia to handle it
-            transaction(Fun);
-        _ -> Fun()
+            try_activity(transaction, Fun);
+        _ ->
+            Fun()
     end.
 
 ensure_activity(transaction, Fun) when is_function(Fun, 0) ->
@@ -288,12 +281,12 @@ write_block(Block) ->
 write_block(Block, Hash) ->
     Header = aec_blocks:to_header(Block),
     Height = aec_headers:height(Header),
+
     case aec_blocks:type(Block) of
         key ->
             ?t(mnesia:write(#aec_headers{key = Hash,
                                          value = Header,
-                                         height = Height})),
-            ok;
+                                         height = Height}));
         micro ->
             Txs = aec_blocks:txs(Block),
             ?t(begin
@@ -649,7 +642,8 @@ find_tx_with_location(STxHash) ->
 add_tx(STx) ->
     Hash = aetx_sign:hash(STx),
     ?t(case mnesia:read(aec_signed_tx, Hash) of
-           [_] -> {error, already_exists};
+           [_] ->
+               {error, already_exists};
            [] ->
                Obj = #aec_signed_tx{key = Hash, value = STx},
                write(aec_signed_tx, Obj),
@@ -864,4 +858,25 @@ default_dir() ->
             filename:absname(lists:concat(["Mnesia.", node()]));
         {ok, Dir} ->
             Dir
+    end.
+
+try_activity(Type, Fun) ->
+    %% If no configuration is found, we only retry once.
+    MaxRetries = aeu_env:user_config_or_env([<<"chain">>, <<"db_write_max_retries">>],
+                                            aecore, db_write_max_retries, 1),
+    try_activity(Type, Fun, MaxRetries).
+
+%% @doc Run function in an mnesia activity context. If retries is 0 or less, the
+%% operation will not be retried upon failure. If retries is greater than 0, the
+%% operation will be retried upon failure and the retry counter will be
+%% decremented.
+try_activity(Type, Fun, Retries) when Retries =< 0 ->
+    mnesia:activity(Type, Fun);
+try_activity(Type, Fun, Retries) ->
+    try
+        mnesia:activity(Type, Fun)
+    catch
+        exit:Reason ->
+            lager:error("Mnesia activity Type=~p exit with Reason=~p", [Type, Reason]),
+            try_activity(Type, Fun, Retries - 1)
     end.
