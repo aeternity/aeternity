@@ -1100,6 +1100,9 @@ handle_add_block(Block, Hash, Prev, State, Origin) ->
                 {error, Reason} when Origin == block_created; Origin == micro_block_created ->
                     lager:error("Couldn't insert created block (~p)", [Reason]),
                     {{error, Reason}, State};
+                {error, Reason = {illegal_orphan, H}} ->
+                    lager:info("Couldn't insert received block ({not_attached_to_chain, ~s})", [aeu_debug:pp(H)]),
+                    {{error, Reason}, State};
                 {error, Reason} ->
                     lager:info("Couldn't insert received block (~p)", [Reason]),
                     {{error, Reason}, State}

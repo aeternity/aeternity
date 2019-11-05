@@ -169,8 +169,7 @@ accept_init(Ref, TcpSock, ranch_tcp, Opts) ->
                       , host => list_to_binary(inet:ntoa(Addr))
                       , version => Version
                       , genesis => Genesis },
-            S = #{ version := Version, genesis := Genesis,
-                   pubkey := PubKey } = ensure_genesis(S0),
+            S = #{ genesis := Genesis, pubkey := PubKey } = ensure_genesis(S0),
 
             %% ======  Entering critical section with Private keys in memory. ======
             PrevSensitive = process_flag(sensitive, true),
