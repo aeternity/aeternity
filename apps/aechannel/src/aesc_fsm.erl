@@ -356,7 +356,7 @@ message(Fsm, {T, _} = Msg) when ?KNOWN_MSG_TYPE(T) ->
 -spec signing_response(pid(), sign_tag(), aetx_sign:signed_tx()
                                         | {error, integer()}) -> ok | {error, atom()}.
 signing_response(Fsm, Tag, {error, Code}) ->
-    gen_statem:call(Fsm, {cancel_update, Code, Tag});
+    gen_statem:call(Fsm, {abort_update, Code, Tag});
 signing_response(Fsm, Tag, SignedTx) ->
     gen_statem:cast(Fsm, {?SIGNED, Tag, SignedTx}).
 
@@ -4160,17 +4160,17 @@ handle_call(St, Req, From, #data{} = D) ->
 handle_call(_St, _Req, From, D) ->
     keep_state(D, [{reply, From, {error, unknown_request}}]).
 
-handle_call_(awaiting_signature, {cancel_update, Code, Tag}, From,
+handle_call_(awaiting_signature, {abort_update, Code, Tag}, From,
              #data{op = #op_sign{tag = Tag}} = D) ->
     case { lists:member(Tag, ?CANCEL_SIGN_TAGS)
          , lists:member(Tag, ?CANCEL_ACK_TAGS )} of
         {true, _} ->
-            report(info, canceled_update, D),
+            report(info, aborted_update, D),
             lager:debug("update canceled", []),
             next_state(open, clear_ongoing(D#data{op = ?NO_OP}),
                       [{reply, From, ok}]);
         {_, true} ->
-            report(info, canceled_update, D),
+            report(info, aborted_update, D),
             lager:debug("update canceled", []),
             handle_recoverable_error(#{ code => Code
                                       , respond => true
@@ -4180,7 +4180,7 @@ handle_call_(awaiting_signature, {cancel_update, Code, Tag}, From,
             lager:debug("update can not be canceled for ~p", [Tag]),
             keep_state(D, [{reply, From, {error, not_allowed_now}}])
     end;
-handle_call_(_NonSigningState, {cancel_update, _, _Tag}, From, #data{} = D) ->
+handle_call_(_NonSigningState, {abort_update, _, _Tag}, From, #data{} = D) ->
     lager:debug("update can not be canceled while ~p with tag ~p",
                 [_NonSigningState, _Tag]),
     keep_state(D, [{reply, From, {error, not_allowed_now}}]);
