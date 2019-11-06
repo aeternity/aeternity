@@ -143,10 +143,18 @@ new(Gas, Value, Spec, Stores, APIState, CodeCache) ->
        , trace             = []
        }.
 
+-define(GC_BUG_HARD_FORK_HEIGHT, 170000).
+aefa_stores(API) ->
+    case aefa_chain_api:generation(API) >= ?GC_BUG_HARD_FORK_HEIGHT of
+        true  -> aefa_stores;
+        false -> aefa_stores_gc_bug
+    end.
+
 -spec finalize(state()) -> {ok, state()} | {error, out_of_gas}.
 finalize(#es{chain_api = API, stores = Stores} = ES) ->
     Gas = gas(ES),
-    case aefa_stores:finalize(API, Gas, Stores) of
+    Aefa_stores = aefa_stores(API),
+    case Aefa_stores:finalize(API, Gas, Stores) of
         {ok, Stores1, GasLeft} ->
             {ok, ES#es{chain_api = Stores1, gas = GasLeft}};
         {error, out_of_gas} ->
