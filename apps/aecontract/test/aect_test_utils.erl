@@ -147,7 +147,7 @@ latest_sophia_contract_version() ->
     end.
 
 latest_protocol_version() ->
-    lists:last(aec_hard_forks:sorted_protocol_versions()).
+    lists:max(maps:keys(aec_hard_forks:protocols())).
 
 calls(State) ->
     aec_trees:calls(trees(State)).

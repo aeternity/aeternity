@@ -16,19 +16,23 @@ compile_and_run(Contracts, Contract, Function, Arguments) ->
     run(Chain, Contract, Function, Arguments).
 
 compile_contracts(Contracts) ->
-    maps:from_list([ {pad_contract_name(Name), compile_contract(Code)} || {Name, Code} <- Contracts ]).
+    compile_contracts(Contracts, default_options()).
+
+compile_contracts(Contracts, Options) ->
+    maps:from_list([ {pad_contract_name(Name), compile_contract(Code, Options)}
+                     || {Name, Code} <- Contracts ]).
 
 make_contract(Name) -> aeb_fate_data:make_contract(pad_contract_name(Name)).
 
-dummy_spec(Cache) ->
+dummy_spec(Cache, Stores) ->
     Caller = <<123:256>>,
-    #{ trees     => dummy_trees(Caller, Cache),
+    #{ trees     => dummy_trees(Caller, Cache, Stores),
        caller    => Caller,
        origin    => Caller,
        gas_price => 1,
        tx_env    => aetx_env:tx_env(1) }.
 
-dummy_trees(Caller, Cache) ->
+dummy_trees(Caller, Cache, Stores) ->
     %% All contracts and the caller must have accounts
     Trees = aec_trees:new_without_backend(),
     Pubkeys = [Caller| [X || X <- maps:keys(Cache)]],
@@ -36,15 +40,31 @@ dummy_trees(Caller, Cache) ->
                                  Account = aec_accounts:new(Pubkey, 10000),
                                  aec_accounts_trees:enter(Account, Acc)
                          end, aec_trees:accounts(Trees), Pubkeys),
-    aec_trees:set_accounts(Trees, ATrees).
+    CTrees = lists:foldl(fun(Pubkey, Acc) ->
+                                 Contract0 = aect_contracts:new(Pubkey, 1, #{vm => 5, abi => 3}, <<>>, 0),
+                                 Contract1 = aect_contracts:set_pubkey(Pubkey, Contract0),
+                                 Contract2 = case maps:get(Pubkey, Stores, none) of
+                                                none  -> Contract1;
+                                                Store -> aect_contracts:set_state(Store, Contract1)
+                                             end,
+                                 aect_state_tree:insert_contract(Contract2, Acc)
+                         end, aec_trees:contracts(Trees), Pubkeys),
+    aec_trees:set_contracts(aec_trees:set_accounts(Trees, ATrees), CTrees).
 
 run(Cache, Contract, Function, Arguments) ->
     {_, Res} = timed_run(Cache, Contract, Function, Arguments),
     Res.
 
+run(Cache, Contract, Function, Arguments, Store) ->
+    {_, Res} = timed_run(Cache, Contract, Function, Arguments, Store),
+    Res.
+
 timed_run(Cache, Contract, Function, Arguments) ->
-    Spec = make_call_spec(Contract, Function, Arguments),
-    Env = dummy_spec(Cache),
+    timed_run(Cache, Contract, Function, Arguments, #{}).
+
+timed_run(Cache, Contract, Function, Arguments, Store0) ->
+    Spec = #{ store := Store } = make_call_spec(Contract, Function, Arguments, Store0),
+    Env = dummy_spec(Cache, #{pad_contract_name(Contract) => Store}),
     try
         timer:tc(fun() -> aefa_fate:run_with_cache(Spec, Env, Cache) end)
     catch _:{error, Err} ->
@@ -63,8 +83,12 @@ expect(Chain, Contract, Function, Arguments, Expect) ->
     end.
 
 %% For now, implement pipeline here.
+
+default_options() ->
+    [{debug, [scode, opt, opt_rules, compile]}, pp_fcode].
+
 compile_contract(Code) ->
-    compile_contract(Code, [{debug, [scode, opt, opt_rules, compile]}, pp_fcode, {include, {file_system, ["."]}}]).
+    compile_contract(Code, default_options()).
 
 compile_contract(Code, Options) ->
     try
@@ -83,15 +107,29 @@ compile_contract(Code, Options) ->
 
 -define(CALL_GAS, 6000000).
 
-make_call_spec(Contract, Function0, Arguments) ->
+make_store(<<"init">>, _) -> aefa_stores:initial_contract_store();
+make_store(_, none) ->
+    case get(contract_store) of
+        undefined -> aefa_stores:initial_contract_store();
+        Store     -> Store
+    end;
+make_store(_, Store) ->
+    maps:fold(fun(Reg, Val, S) ->
+                Key = <<0, (binary:encode_unsigned(Reg))/binary>>,
+                ValBin = aeb_fate_encoding:serialize(Val),
+                aect_contracts_store:put(Key, ValBin, S)
+              end, aefa_stores:initial_contract_store(), Store).
+
+make_call_spec(Contract, Function0, Arguments, Store) ->
     Function = aeb_fate_code:symbol_identifier(Function0),
     EncArgs  = list_to_tuple([aefate_test_utils:encode(A) || A <- Arguments]),
     Calldata = {tuple, {Function, {tuple, EncArgs}}},
+    CtStore  = make_store(Function0, Store),
     #{ contract => pad_contract_name(Contract),
        gas      => ?CALL_GAS,
        value    => 0,
        call     => aeb_fate_encoding:serialize(Calldata),
-       store    => aect_contracts_store:new() }.
+       store    => CtStore }.
 
 pad_contract_name(Name) ->
     PadSize = 32 - byte_size(Name),
@@ -109,15 +147,82 @@ print_run_stats(Time, ES) ->
     GasUsed    = ?CALL_GAS - aefa_engine_state:gas(ES),
     Trace      = aefa_engine_state:trace(ES),
     Red        = fun({_, {reductions, R}}) -> R end,
-    Reductions = Red(hd(Trace)) - Red(lists:last(Trace)),
+    Reductions = Red(hd(Trace ++ [{bla, {reductions, 0}}])) - Red(lists:last([{bla, {reductions, 0}} | Trace])),
     Steps      = length(Trace),
     io:format("~p steps / ~p gas / ~p reductions / ~.2fms\n", [Steps, GasUsed, Reductions, Time / 1000]).
 
+print_logs(_, []) -> ok;
+print_logs(EventMap, Logs) ->
+    io:format("Events:\n"),
+    print_logs(EventMap, none, Logs).
+
+print_logs(_, _, []) -> ok;
+print_logs(EventMap, Ct, [{Ct, [Hash | Ixs], Payload} | Logs]) ->
+    PayloadStr =
+        case Payload of
+            <<>> -> "";
+            _    -> io_lib:format(", ~s", [Payload])
+        end,
+    io:format("    ~s(~s~s)\n",
+        [maps:get(Hash, EventMap, Hash),
+         string:join([integer_to_list(N) || <<N:256>> <- Ixs], ", "),
+         PayloadStr]),
+    print_logs(EventMap, Ct, Logs);
+print_logs(EventMap, _, Logs = [{Ct, _, _} | _]) ->
+    io:format("  ~p\n", [Ct]),
+    print_logs(EventMap, Ct, Logs).
+
+store_from_trees(Pubkey, Trees) ->
+    CtTrees      = aec_trees:contracts(Trees),
+    Contract     = aect_state_tree:get_contract(Pubkey, CtTrees, [full_store_cache]),
+    aect_contracts_store:contents(aect_contracts:state(Contract)).
+
+read_store(Pubkey, ES) ->
+    try
+        Trees        = aefa_fate:final_trees(ES),
+        CtTrees      = aec_trees:contracts(Trees),
+        Contract     = aect_state_tree:get_contract(Pubkey, CtTrees, [full_store_cache]),
+        CtStore      = aect_contracts:state(Contract),
+        Store        = aefa_stores:put_contract_store(Pubkey, CtStore, aefa_stores:new()),
+        ES1          = aefa_engine_state:set_stores(Store, ES),
+        Keys         = [ binary:decode_unsigned(Reg)
+                         || <<0, Reg/binary>> <- maps:keys(aect_contracts_store:contents(CtStore)) ],
+        Value = fun(Key) ->
+                    {ok, Val, _} = aefa_stores:find_value(Pubkey, Key, Store),
+                    {Val1, _}    = aefa_fate:unfold_store_maps(Val, ES1),
+                    Val1
+                end,
+        {maps:from_list([ {Key, Value(Key)} || Key <- Keys, Key > 0 ]), CtStore}
+    catch K:Err ->
+        io:format("~p:~p\n  ~p\n", [K, Err, erlang:get_stacktrace()]),
+        {error, none}
+    end.
+
+run_file(File, Fun, Args) ->
+    run_file(File, Fun, Args, []).
+
+run_file(File, Fun, Args, Options) ->
+    {ok, Code} = file:read_file(File),
+    run_call(binary_to_list(Code), Fun, Args, Options).
+
 run_call(Code, Fun, Args) ->
-    Cache = compile_contracts([{<<"test">>, Code}]),
-    case timed_run(Cache, <<"test">>, list_to_binary(Fun), Args) of
+    run_call(Code, Fun, Args, []).
+
+run_call(Code, Fun, Args, Options) ->
+    Contract = pad_contract_name(<<"test">>),
+    Store = proplists:get_value(store, Options, none),
+    Cache = compile_contracts([{Contract, Code}], Options),
+    EventMap = maps:from_list(
+                 [{element(2, eblake2:blake2b(32, list_to_binary(Con))), Con}
+                  || {con, _, Con} <- element(2, aeso_scan:scan(Code))]),
+    case timed_run(Cache, Contract, list_to_binary(Fun), Args, Store) of
         {Time, {ok, ES}} ->
             print_run_stats(Time, ES),
+            Logs = aefa_engine_state:logs(ES),
+            {Store1, CtStore} = read_store(Contract, ES),
+            put(contract_store, CtStore),
+            io:format("Store:\n  ~p\n", [Store1]),
+            print_logs(EventMap, Logs),
             aefa_engine_state:accumulator(ES);
         {Time, {error, <<"Out of gas">>, ES}} ->
             print_run_stats(Time, ES),
