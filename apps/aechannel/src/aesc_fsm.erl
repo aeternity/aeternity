@@ -1578,7 +1578,8 @@ new_onchain_tx(channel_deposit_tx, #{acct := FromId,
                                      amount := Amount} = Opts,
                #data{on_chain_id = ChanId, state=State},
                _BlockHash, OnChainEnv, OnChainTrees) ->
-    Updates = [aesc_offchain_update:op_deposit(aeser_id:create(account, FromId), Amount)],
+    Updates = [ aesc_offchain_update:op_deposit(aeser_id:create(account, FromId), Amount)
+              | meta_updates(Opts) ],
     ActiveProtocol = aetx_env:consensus_version(OnChainEnv),
     UpdatedStateTx = aesc_offchain_state:make_update_tx(Updates, State,
                                                         ChanId,
@@ -1602,7 +1603,8 @@ new_onchain_tx(channel_withdraw_tx, #{acct := ToId,
                                       amount := Amount} = Opts,
                #data{on_chain_id = ChanId, state=State},
                _BlockHash, OnChainEnv, OnChainTrees) ->
-    Updates = [aesc_offchain_update:op_withdraw(aeser_id:create(account, ToId), Amount)],
+    Updates = [ aesc_offchain_update:op_withdraw(aeser_id:create(account, ToId), Amount)
+              | meta_updates(Opts) ],
     ActiveProtocol = aetx_env:consensus_version(OnChainEnv),
     UpdatedStateTx = aesc_offchain_state:make_update_tx(Updates, State,
                                                         ChanId,
@@ -1985,7 +1987,8 @@ new_contract_tx_for_signing(Opts, From, #data{ state = State
      } = Opts,
     Id = aeser_id:create(account, Owner),
     Updates = [aesc_offchain_update:op_new_contract(Id, VmVersion, ABIVersion, Code,
-                                                    Deposit, CallData)],
+                                                    Deposit, CallData)
+              | meta_updates(Opts)],
     {BlockHash, OnChainEnv, OnChainTrees} = pick_onchain_env(Opts, D),
     ActiveProtocol = aetx_env:consensus_version(OnChainEnv),
     try
@@ -4267,7 +4270,7 @@ handle_call_(open, {upd_call_contract, Opts, ExecType}, From,
                                                    aeser_id:create(contract, ContractPubKey),
                                                    ABIVersion, Amount,
                                                    CallData, CallStack),
-    Updates = [Update],
+    Updates = [Update | meta_updates(Opts)],
     {BlockHash, OnChainEnv, OnChainTrees} = pick_onchain_env(Opts, D),
     ActiveProtocol = aetx_env:consensus_version(OnChainEnv),
     try  Tx1 = aesc_offchain_state:make_update_tx(Updates, State,

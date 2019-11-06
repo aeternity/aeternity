@@ -318,19 +318,14 @@ process_request(#{<<"method">> := <<"channels.update.new">> = M,
     case {aeser_api_encoder:safe_decode(account_pubkey, FromB),
           aeser_api_encoder:safe_decode(account_pubkey, ToB)} of
         {{ok, From}, {ok, To}} ->
-            case check_params(M, maps:without([ <<"from">>
-                                              , <<"to">>
-                                              , <<"amount">>], Params)) of
-                XParams when is_map(XParams) ->
-                    case aesc_fsm:upd_transfer(FsmPid, From, To, Amount, XParams) of
-                        ok -> no_reply;
-                        {error, _Reason} = Err -> Err
-                    end;
-                {error, _} = Err2 -> Err2
-            end;
+            apply_with_optional_params(
+              M, Params,
+              fun(XParams) ->
+                      aesc_fsm:upd_transfer(FsmPid, From, To, Amount, XParams)
+              end);
         _ -> {error, {broken_encoding, [account]}}
     end;
-process_request(#{<<"method">> := <<"channels.update.new_contract">>,
+process_request(#{<<"method">> := <<"channels.update.new_contract">> = M,
                   <<"params">> := #{<<"vm_version">>  := VmVersion,
                                     <<"abi_version">> := ABIVersion,
                                     <<"deposit">>     := Deposit,
@@ -347,16 +342,14 @@ process_request(#{<<"method">> := <<"channels.update.new_contract">>,
                  , deposit     => Deposit
                  , code        => Code
                  , call_data   => CallData },
-            XOpts = maps:merge(optional_params([bh_params()],
-                                               Params),
-                               MandatoryOpts),
-            case aesc_fsm:upd_create_contract(FsmPid, XOpts) of
-                ok -> no_reply;
-                {error, _Reason} = Err -> Err
-            end;
+            apply_with_optional_params(
+              M, MandatoryOpts, Params,
+              fun(XParams) ->
+                      aesc_fsm:upd_create_contract(FsmPid, XParams)
+              end);
         _ -> {error, {broken_encoding, [bytearray]}}
     end;
-process_request(#{<<"method">> := <<"channels.update.call_contract">>,
+process_request(#{<<"method">> := <<"channels.update.call_contract">> = M,
                   <<"params">> := #{<<"contract_id">> := ContractE,
                                     <<"abi_version">> := ABIVersion,
                                     <<"amount">>      := Amount,
@@ -371,13 +364,11 @@ process_request(#{<<"method">> := <<"channels.update.call_contract">>,
                  , abi_version => ABIVersion
                  , amount      => Amount
                  , call_data   => CallData },
-            XOpts = maps:merge(optional_params([bh_params()],
-                                               Params),
-                               MandatoryOpts),
-            case aesc_fsm:upd_call_contract(FsmPid, XOpts) of
-                ok -> no_reply;
-                {error, _Reason} = Err -> Err
-            end;
+            apply_with_optional_params(
+              M, MandatoryOpts, Params,
+              fun(XOpts) ->
+                      aesc_fsm:upd_call_contract(FsmPid, XOpts)
+              end);
         {{error, _}, {ok, _}} -> {error, {broken_encoding, [contract]}};
         {{ok, _}, {error, _}} -> {error, {broken_encoding, [bytearray]}};
         {{error, _}, {error, _}} -> {error, {broken_encoding, [contract, bytearray]}}
@@ -403,7 +394,7 @@ process_request(#{<<"method">> := <<"channels.get.contract_call">>,
         {{ok, _}, {error, _}} -> {error, {broken_encoding, [account]}};
         {{error, _}, {error, _}} -> {error, {broken_encoding, [contract, account]}}
     end;
-process_request(#{<<"method">> := <<"channels.dry_run.call_contract">>,
+process_request(#{<<"method">> := <<"channels.dry_run.call_contract">> = M,
                   <<"params">> := #{<<"contract_id">> := ContractE,
                                     <<"abi_version">> := ABIVersion,
                                     <<"amount">>      := Amount,
@@ -418,17 +409,18 @@ process_request(#{<<"method">> := <<"channels.dry_run.call_contract">>,
                  , abi_version => ABIVersion
                  , amount      => Amount
                  , call_data   => CallData },
-            XOpts = maps:merge(optional_params([bh_params()],
-                                               Params),
-                               MandatoryOpts),
-            case aesc_fsm:dry_run_contract(FsmPid, XOpts) of
-                {ok, Call} ->
-                  {reply, #{ action     => <<"dry_run">>
-                           , tag        => <<"call_contract">>
-                           , {int,type} => reply
-                           , payload    => aect_call:serialize_for_client(Call) }};
-                {error, _Reason} = Err -> Err
-            end;
+            apply_with_optional_params(
+              M, MandatoryOpts, Params,
+              fun(XOpts) ->
+                      case aesc_fsm:dry_run_contract(FsmPid, XOpts) of
+                          {ok, Call} ->
+                              {reply, #{ action     => <<"dry_run">>
+                                       , tag        => <<"call_contract">>
+                                       , {int,type} => reply
+                                       , payload    => aect_call:serialize_for_client(Call) }};
+                          {error, _Reason} = Err -> Err
+                      end
+              end);
         {{error, _}, {ok, _}} -> {error, {broken_encoding, [contract]}};
         {{ok, _}, {error, _}} -> {error, {broken_encoding, [bytearray]}};
         {{error, _}, {error, _}} -> {error, {broken_encoding, [contract, bytearray]}}
@@ -534,28 +526,22 @@ process_request(#{<<"method">> := <<"channels.message">>,
             end;
         _ -> {error, {broken_encoding, [account]}}
     end;
-process_request(#{<<"method">> := <<"channels.deposit">>,
+process_request(#{<<"method">> := <<"channels.deposit">> = M,
                   <<"params">> := #{<<"amount">> := Amount} = Params}, FsmPid) ->
     assert_integer(Amount),
-    XOpts = maps:merge(optional_params([ bh_params()
-                                       , fee_params()],
-                                       Params),
-                        #{amount => Amount}),
-    case aesc_fsm:upd_deposit(FsmPid, XOpts) of
-        ok -> no_reply;
-        {error, _Reason} = Err -> Err
-    end;
-process_request(#{<<"method">> := <<"channels.withdraw">>,
+    apply_with_optional_params(
+      M, #{amount => Amount}, Params,
+      fun(XOpts) ->
+              aesc_fsm:upd_deposit(FsmPid, XOpts)
+      end);
+process_request(#{<<"method">> := <<"channels.withdraw">> = M,
                   <<"params">> := #{<<"amount">> := Amount} = Params}, FsmPid) ->
     assert_integer(Amount),
-    XOpts = maps:merge(optional_params([ bh_params()
-                                       , fee_params()],
-                                       Params),
-                       #{amount => Amount}),
-    case aesc_fsm:upd_withdraw(FsmPid, XOpts) of
-        ok -> no_reply;
-        {error, _Reason} = Err -> Err
-    end;
+    apply_with_optional_params(
+      M, #{amount => Amount}, Params,
+      fun(XOpts) ->
+              aesc_fsm:upd_withdraw(FsmPid, XOpts)
+      end);
 process_request(#{<<"method">> := Method,
                   <<"params">> := #{<<"error">> := ErrorCode}}, FsmPid)
   when ?METHOD_SIGNED(Method) ->
@@ -586,42 +572,45 @@ process_request(#{<<"method">> := <<"channels.leave">>}, FsmPid) ->
     lager:debug("Channel WS: leave channel message received"),
     aesc_fsm:leave(FsmPid),
     no_reply;
-process_request(#{<<"method">> := <<"channels.shutdown">>} = Req, FsmPid) ->
+process_request(#{<<"method">> := <<"channels.shutdown">> = M} = Req, FsmPid) ->
     lager:warning("Channel WS: closing channel message received"),
     Params = maps:get(<<"params">>, Req, #{}),
-    XOpts = optional_params([fee_params()], Params),
-    aesc_fsm:shutdown(FsmPid, XOpts),
-    no_reply;
-process_request(#{<<"method">> := <<"channels.close_solo">>} = Req, FsmPid) ->
+    apply_with_optional_params(
+      M, Params,
+      fun(XOpts) ->
+              aesc_fsm:shutdown(FsmPid, XOpts)
+      end);
+process_request(#{<<"method">> := <<"channels.close_solo">> = M} = Req, FsmPid) ->
     Params = maps:get(<<"params">>, Req, #{}),
-    XOpts = optional_params([fee_params()], Params),
-    lager:debug("Channel WS: close_solo message received"),
-    aesc_fsm:close_solo(FsmPid, XOpts),
-    no_reply;
-process_request(#{<<"method">> := <<"channels.snapshot_solo">>} = Req, FsmPid) ->
+    apply_with_optional_params(
+      M, Params,
+      fun(XOpts) ->
+              aesc_fsm:close_solo(FsmPid, XOpts)
+      end);
+process_request(#{<<"method">> := <<"channels.snapshot_solo">> = M} = Req, FsmPid) ->
     lager:debug("Channel WS: snapshot_solo message received"),
     Params = maps:get(<<"params">>, Req, #{}),
-    XOpts = optional_params([fee_params()], Params),
-    case aesc_fsm:snapshot_solo(FsmPid, XOpts) of
-        ok -> no_reply;
-        {error, _Reason} = Err -> Err
-    end;
-process_request(#{<<"method">> := <<"channels.slash">>} = Req, FsmPid) ->
+    apply_with_optional_params(
+      M, Params,
+      fun(XOpts) ->
+              aesc_fsm:snapshot_solo(FsmPid, XOpts)
+      end);
+process_request(#{<<"method">> := <<"channels.slash">> = M} = Req, FsmPid) ->
     lager:debug("Channel WS: slash message received"),
     Params = maps:get(<<"params">>, Req, #{}),
-    XOpts = optional_params([fee_params()], Params),
-    case aesc_fsm:slash(FsmPid, XOpts) of
-        ok -> no_reply;
-        {error, _Reason} = Err -> Err
-    end;
-process_request(#{<<"method">> := <<"channels.settle">>} = Req, FsmPid) ->
+    apply_with_optional_params(
+      M, Params,
+      fun(XOpts) ->
+              aesc_fsm:slash(FsmPid, XOpts)
+      end);
+process_request(#{<<"method">> := <<"channels.settle">> = M} = Req, FsmPid) ->
     lager:debug("Channel WS: settle message received"),
     Params = maps:get(<<"params">>, Req, #{}),
-    XOpts = optional_params([fee_params()], Params),
-    case aesc_fsm:settle(FsmPid, XOpts) of
-        ok -> no_reply;
-        {error, _Reason} = Err -> Err
-    end;
+    apply_with_optional_params(
+      M, Params,
+      fun(XOpts) ->
+              aesc_fsm:settle(FsmPid, XOpts)
+      end);
 process_request(#{<<"method">> := <<"channels.change_state_password">>,
                   <<"params">> := #{<<"state_password">> := StatePassword}}, FsmPid) ->
     case aesc_fsm:change_state_password(FsmPid, StatePassword) of
@@ -673,16 +662,6 @@ bin(B) when is_binary(B) -> B.
 assert_integer(Value) when is_integer(Value) -> ok;
 assert_integer(_Value) -> error({validation_error, not_a_number}).
 
-check_params(<<"channels.update.new">>, Params) when is_map(Params) ->
-    Read = sc_ws_utils:read_f(Params),
-    sc_ws_utils:check_params(
-      [Read(<<"meta">>, meta, #{ type => {list, #{type => binary}}
-                               , mandatory => false }),
-       Read(<<"block_hash">>, block_hash, #{ type => {hash, block_hash}
-                                           , mandatory => false })]);
-check_params(Method, Params) ->
-    {error, {unknown, Method, Params}}.
-
 valid_error_code(ErrorCode) when is_integer(ErrorCode) ->
     ErrorCode >= 1 andalso ErrorCode =< 16#ffff;
 valid_error_code(ErrorCode) when is_binary(ErrorCode) ->
@@ -694,7 +673,46 @@ valid_error_code(ErrorCode) when is_binary(ErrorCode) ->
 valid_error_code(_) ->
     false.
 
-optional_params(OptionalKeys, Params) ->
+apply_with_optional_params(Req, Params, F) ->
+    apply_with_optional_params(Req, #{}, Params, F).
+
+apply_with_optional_params(Req, Mandatory, Params, F) ->
+    case merge_params(
+           check_optional_params(optional_params(Req), Params),
+           Mandatory) of
+        {error, _} = Error ->
+            Error;
+        XParams when is_map(XParams) ->
+            case F(XParams) of
+                ok ->
+                    no_reply;
+                no_reply ->
+                    no_reply;
+                {reply, _} = Reply ->
+                    Reply;
+                {error, _} = Error1 ->
+                    Error1
+            end
+    end.
+
+merge_params({error, _} = Error, _) ->
+    Error;
+merge_params(Map1, Map2) when is_map(Map1), is_map(Map2) ->
+    maps:merge(Map1, Map2).
+
+optional_params(<<"channels.update.new">>           ) -> offchain_update_params();
+optional_params(<<"channels.update.new_contract">>  ) -> offchain_update_params();
+optional_params(<<"channels.update.call_contract">> ) -> offchain_update_params();
+optional_params(<<"channels.dry_run.call_contract">>) -> offchain_update_params();
+optional_params(<<"channels.deposit">>      ) -> [meta_param() | onchain_params()];
+optional_params(<<"channels.withdraw">>     ) -> [meta_param() | onchain_params()];
+optional_params(<<"channels.shutdown">>     ) -> [ fee_param() ];
+optional_params(<<"channels.close_solo">>   ) -> [ fee_param() ];
+optional_params(<<"channels.snapshot_solo">>) -> [ fee_param() ];
+optional_params(<<"channels.slash">>        ) -> [ fee_param() ];
+optional_params(<<"channels.settle">>       ) -> [ fee_param() ].
+
+check_optional_params(OptionalKeys, Params) ->
     Read = sc_ws_utils:read_f(Params),
     sc_ws_utils:check_params(
         lists:map(
@@ -703,8 +721,17 @@ optional_params(OptionalKeys, Params) ->
             end,
             OptionalKeys)).
 
-bh_params() ->
+offchain_update_params() ->
+    [bh_param(), meta_param()].
+
+onchain_params() ->
+    [bh_param(), fee_param()].
+
+bh_param() ->
     {<<"block_hash">>, block_hash, #{ type => {hash, block_hash} }}.
 
-fee_params() ->
+meta_param() ->
+    {<<"meta">>, meta, #{ type => {list, #{type => binary}} }}.
+
+fee_param() ->
     {<<"fee">>, fee, #{ type => integer }}.
