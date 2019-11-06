@@ -63,14 +63,14 @@
     sc_ws_set_fee_close_solo/1,
     sc_ws_set_fee_slash/1,
     sc_ws_set_fee_settle/1,
-    sc_ws_cancel_offchain_update/1,
-    sc_ws_cancel_deposit/1,
-    sc_ws_cancel_withdraw/1,
-    sc_ws_cancel_snapshot_solo/1,
-    sc_ws_cancel_shutdown/1,
-    sc_ws_cancel_slash/1,
-    sc_ws_cancel_settle/1,
-    sc_ws_can_not_cancel_while_open/1
+    sc_ws_abort_offchain_update/1,
+    sc_ws_abort_deposit/1,
+    sc_ws_abort_withdraw/1,
+    sc_ws_abort_snapshot_solo/1,
+    sc_ws_abort_shutdown/1,
+    sc_ws_abort_slash/1,
+    sc_ws_abort_settle/1,
+    sc_ws_can_not_abort_while_open/1
    ]).
 
 -include_lib("stdlib/include/assert.hrl").
@@ -157,7 +157,7 @@ groups() ->
         {group, client_reconnect},
         {group, client_reconnect_no_password},
         {group, changeable_fee},
-        {group, cancel_updates}
+        {group, abort_updates}
       ]},
 
      {with_open_channel, [sequence],
@@ -247,15 +247,15 @@ groups() ->
        sc_ws_set_fee_settle
       ]},
 
-     {cancel_updates, [sequence],
-      [ sc_ws_cancel_offchain_update
-      , sc_ws_cancel_deposit
-      , sc_ws_cancel_withdraw
-      , sc_ws_cancel_snapshot_solo
-      , sc_ws_cancel_shutdown
-      , sc_ws_cancel_slash
-      , sc_ws_cancel_settle
-      , sc_ws_can_not_cancel_while_open
+     {abort_updates, [sequence],
+      [ sc_ws_abort_offchain_update
+      , sc_ws_abort_deposit
+      , sc_ws_abort_withdraw
+      , sc_ws_abort_snapshot_solo
+      , sc_ws_abort_shutdown
+      , sc_ws_abort_slash
+      , sc_ws_abort_settle
+      , sc_ws_can_not_abort_while_open
       ]}
     ].
 
@@ -3094,7 +3094,7 @@ sc_ws_update_abort(Config) ->
                   , amount => 1 },
     ws_send_tagged(IConnPid, <<"channels.update.new">>, UpdateOpts, Config),
     channel_abort_sign_tx(IConnPid, 147, <<"channels.update">>, Config),
-    {ok, _, #{<<"event">> := <<"canceled_update">>}} =
+    {ok, _, #{<<"event">> := <<"aborted_update">>}} =
         wait_for_channel_event(IConnPid, info, Config),
     %%
     {ok, {Bi0, Br0}} = sc_ws_get_both_balances(IConnPid, IPubkey, RPubkey, Config),
@@ -3539,8 +3539,8 @@ log_basename(Config) ->
                 filename:join([Protocol, "pinned_env"]);
             changeable_fee ->
                 filename:join([Protocol, "changeable_fee"]);
-            cancel_updates ->
-                filename:join([Protocol, "cancel_updates"]);
+            abort_updates ->
+                filename:join([Protocol, "abort_updates"]);
             plain -> Protocol
         end,
     filename:join("channel_docs", SubDir).
@@ -4415,7 +4415,7 @@ sc_ws_set_fee_settle(Cfg0) ->
     Test(responder),
     ok.
 
-sc_ws_cancel_offchain_update(Cfg0) ->
+sc_ws_abort_offchain_update(Cfg0) ->
     Cfg = sc_ws_open_(Cfg0),
     #{initiator := #{pub_key := IPubkey},
       responder := #{pub_key := RPubkey}} = proplists:get_value(participants, Cfg),
@@ -4433,11 +4433,11 @@ sc_ws_cancel_offchain_update(Cfg0) ->
                     {Tag, Tag, Tag, Data}
                 end)
         end,
-    cancel_update(InitUpdate, Cfg, can_cancel_ack),
+    abort_update(InitUpdate, Cfg, can_abort_ack),
     sc_ws_close_(Cfg),
     ok.
 
-sc_ws_cancel_deposit(Cfg0) ->
+sc_ws_abort_deposit(Cfg0) ->
     Cfg = sc_ws_open_(Cfg0),
     InitUpdate =
         fun(WhoPid) ->
@@ -4449,11 +4449,11 @@ sc_ws_cancel_deposit(Cfg0) ->
                     {Tag, Tag, <<"deposit_created">>, Data}
                 end)
         end,
-    cancel_update(InitUpdate, Cfg, can_cancel_ack),
+    abort_update(InitUpdate, Cfg, can_abort_ack),
     sc_ws_close_(Cfg),
     ok.
 
-sc_ws_cancel_withdraw(Cfg0) ->
+sc_ws_abort_withdraw(Cfg0) ->
     Cfg = sc_ws_open_(Cfg0),
     InitUpdate =
         fun(WhoPid) ->
@@ -4465,11 +4465,11 @@ sc_ws_cancel_withdraw(Cfg0) ->
                     {Tag, Tag, <<"withdraw_created">>, Data}
                 end)
         end,
-    cancel_update(InitUpdate, Cfg, can_cancel_ack),
+    abort_update(InitUpdate, Cfg, can_abort_ack),
     sc_ws_close_(Cfg),
     ok.
 
-sc_ws_cancel_snapshot_solo(Cfg0) ->
+sc_ws_abort_snapshot_solo(Cfg0) ->
     Cfg = sc_ws_open_(Cfg0),
     Round0 = 2,
     %% Since we have the channel_create_tx on-chain, the channel has a
@@ -4488,11 +4488,11 @@ sc_ws_cancel_snapshot_solo(Cfg0) ->
                 end)
         end,
     %% now test the snapshot
-    cancel_update(InitUpdate, Cfg, cancel_own),
+    abort_update(InitUpdate, Cfg, abort_own),
     sc_ws_close_(Cfg),
     ok.
 
-sc_ws_cancel_shutdown(Cfg0) ->
+sc_ws_abort_shutdown(Cfg0) ->
     Cfg = sc_ws_open_(Cfg0),
     InitUpdate =
         fun(WhoPid) ->
@@ -4504,18 +4504,18 @@ sc_ws_cancel_shutdown(Cfg0) ->
                     {Tag, Tag, <<"shutdown">>, Data}
                 end)
         end,
-    cancel_update(InitUpdate, Cfg, can_cancel_ack),
+    abort_update(InitUpdate, Cfg, can_abort_ack),
     sc_ws_close_(Cfg),
     ok.
 
-sc_ws_cancel_slash(Cfg) ->
+sc_ws_abort_slash(Cfg) ->
     Roles = [initiator, responder],
-    [sc_ws_cancel_slash_(WhoCloses, WhoRejects, Cfg)
+    [sc_ws_abort_slash_(WhoCloses, WhoRejects, Cfg)
         || WhoCloses  <- Roles,
            WhoRejects <- Roles],
     ok.
 
-sc_ws_cancel_slash_(WhoCloses, WhoRejects, Cfg0) ->
+sc_ws_abort_slash_(WhoCloses, WhoRejects, Cfg0) ->
     Cfg = sc_ws_open_(Cfg0),
     #{initiator := IConnPid, responder := RConnPid}
         = proplists:get_value(channel_clients, Cfg),
@@ -4567,11 +4567,11 @@ sc_ws_cancel_slash_(WhoCloses, WhoRejects, Cfg0) ->
                 wait_for_channel_event(WhoPid, sign, Cfg)
         end),
     %% now test the snapshot
-    sc_ws_cancel_update_(WhoPid, <<"slash_sign">>, Cfg),
+    sc_ws_abort_update_(WhoPid, <<"slash_sign">>, Cfg),
     sc_ws_close_(Cfg),
     ok.
 
-sc_ws_cancel_settle(Cfg0) ->
+sc_ws_abort_settle(Cfg0) ->
     Cfg = sc_ws_open_(Cfg0),
     sc_ws_close_solo_(Cfg, initiator, #{}),
     InitUpdate =
@@ -4586,26 +4586,26 @@ sc_ws_cancel_settle(Cfg0) ->
                     {Tag, Tag, <<"shutdown">>, Data}
                 end)
         end,
-    cancel_update(InitUpdate, Cfg, cancel_own),
+    abort_update(InitUpdate, Cfg, abort_own),
     sc_ws_close_(Cfg),
     ok.
 
-cancel_update(InitUpdate, Cfg, TestType) when TestType =:= cancel_own;
-                                              TestType =:= can_cancel_ack ->
+abort_update(InitUpdate, Cfg, TestType) when TestType =:= abort_own;
+                                             TestType =:= can_abort_ack ->
     #{initiator := IConnPid, responder := RConnPid} =
         proplists:get_value(channel_clients, Cfg),
     #{initiator := #{ pub_key  := IPubkey
                     , priv_key := IPrivkey}} = proplists:get_value(participants, Cfg),
     {_, AbortTag, _, _} = InitUpdate(IConnPid),
-    sc_ws_cancel_update_(IConnPid, AbortTag, Cfg),
+    sc_ws_abort_update_(IConnPid, AbortTag, Cfg),
 
     {_, AbortTag, _, _} = InitUpdate(RConnPid),
-    sc_ws_cancel_update_(RConnPid, AbortTag, Cfg),
+    sc_ws_abort_update_(RConnPid, AbortTag, Cfg),
 
     case TestType of
-        cancel_own ->
+        abort_own ->
             ok;
-        can_cancel_ack ->
+        can_abort_ack ->
             {Tag, _, Event,
             #{ <<"signed_tx">> := EncSignedTx
               , <<"updates">>   := Updates}} = InitUpdate(IConnPid),
@@ -4615,20 +4615,20 @@ cancel_update(InitUpdate, Cfg, TestType) when TestType =:= cancel_own;
             channel_sign_tx_(EncSignedTx, Updates, Tag, Method, IPubkey, IConnPid, IPrivkey,
                              Cfg),
 
-            %% once signed initiator can not cancel it anymore
+            %% once signed initiator can not abort it anymore
             ws_send_tagged(IConnPid, Method, #{<<"error">> => 42}, Cfg),
             {ok, _, #{<<"reason">> := <<"Not allowed at current channel state">>}} =
                 wait_for_channel_event(IConnPid, error, Cfg),
             ok = ?WS:unregister_test_for_channel_events(IConnPid, [error]),
 
-            %% on the other hand, responder can cancel it
+            %% on the other hand, responder can abort it
             {ok, _, #{<<"event">> := Event}} = wait_for_channel_event(RConnPid, info, Cfg),
             {ok, _, AckTag, _Data} = wait_for_channel_event(RConnPid, sign, Cfg),
             ok = ?WS:unregister_test_for_channel_events(RConnPid, [info, sign]),
 
             with_registered_events([conflict], [IConnPid],
                 fun() ->
-                    sc_ws_cancel_update_(RConnPid, AckTag, Cfg),
+                    sc_ws_abort_update_(RConnPid, AckTag, Cfg),
                     {ok, _, #{ <<"error_code">> := 42
                              , <<"error_msg">>  := <<"unknown">> }} =
                         wait_for_channel_event(IConnPid, conflict, Cfg)
@@ -4636,11 +4636,11 @@ cancel_update(InitUpdate, Cfg, TestType) when TestType =:= cancel_own;
     end,
     ok.
 
-sc_ws_cancel_update_(WhoPid, Tag, Cfg) ->
+sc_ws_abort_update_(WhoPid, Tag, Cfg) ->
     ok = ?WS:register_test_for_channel_events(WhoPid, [info]),
     ws_send_tagged(WhoPid, <<"channels.", Tag/binary>>,
                    #{<<"error">> => 42}, Cfg),
-    {ok, _, #{<<"event">> := <<"canceled_update">>}} =
+    {ok, _, #{<<"event">> := <<"aborted_update">>}} =
         wait_for_channel_event(WhoPid, info, Cfg),
     ok = ?WS:unregister_test_for_channel_events(WhoPid, [info]).
 
@@ -4663,7 +4663,7 @@ make_close_solo_args(SignedOffChainTx, OffchainTrees, Pubkeys) ->
      , poi        => PoI
      , fee        => 40000 * aec_test_utils:min_gas_price()}.
 
-sc_ws_can_not_cancel_while_open(Cfg0) ->
+sc_ws_can_not_abort_while_open(Cfg0) ->
     Cfg = sc_ws_open_(Cfg0),
     #{initiator := IConnPid, responder := RConnPid} =
         proplists:get_value(channel_clients, Cfg),
