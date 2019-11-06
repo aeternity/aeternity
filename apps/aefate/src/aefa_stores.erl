@@ -339,7 +339,9 @@ compute_store_updates(Metadata, #cache_entry{terms = TermCache, store = Store}) 
     Metadata1 = update_refcounts(RefCounts, Metadata),
     Unused    = unused_maps(Metadata1),
     Reuse     = compute_inplace_updates(Unused, Maps),
-    {Garbage, Metadata2} = compute_garbage(Unused, Reuse, Metadata1, Store),
+    RefCounts1 = compute_copy_refcounts(Metadata1, Reuse, Maps, Store),
+    Metadata1b = update_refcounts(RefCounts1, Metadata1),
+    {Garbage, Metadata2} = compute_garbage(Unused, Reuse, Metadata1b, Store),
 
     CopyOrInplace = fun(MapId, ?FATE_STORE_MAP(_, Id) = Map) ->
                             case maps:get(Id, Reuse, no_reuse) of
@@ -432,15 +434,7 @@ copy_map(OldMeta, MapId, ?FATE_STORE_MAP(Cache, OldId), {Meta, Store}) ->
     %% First copy the old data, then update with the new
     {Store1, Bytes} = write_bin_data(RawId, maps:to_list(OldMap) ++ NewData, Store),
     Store2   = aect_contracts_store:put(map_data_key(RawId), <<0>>, Store1),
-
-    %% We also need to update the refcounts for nested maps. We already added
-    %% refcounts for maps in the Cache, now we have to add refcounts for
-    %% entries copied from the old map (unless they are overwritten by the
-    %% cache).
-    CopiedBin = maps:without([K || {K, _} <- NewData], OldMap),
-    RefCounts = aeb_fate_maps:refcount([ aeb_fate_encoding:deserialize(Val) || Val <- maps:values(CopiedBin) ]),
-    Meta2     = update_refcounts(RefCounts, Meta1),
-    {Meta2, Bytes, Store2}.
+    {Meta1, Bytes, Store2}.
 
 %% In-place update of an existing store map. This happens, for instance, when
 %% you update a map in the state throwing away the old copy of the it.
@@ -554,6 +548,23 @@ map_refcounts(_Meta, ?FATE_STORE_MAP(Cache, _Id), _Store) ->
                 %% the delta into account.
                 aeb_fate_maps:refcount_union(aeb_fate_maps:refcount(Val), Count)
               end, #{}, Cache).
+
+%% We need to increase the refcounts of maps contained in maps that are being
+%% copied.
+compute_copy_refcounts(Meta, Reuse, Maps, Store) ->
+    maps:fold(fun(MapId, ?FATE_STORE_MAP(Cache, Id), Count) ->
+                      case maps:get(Id, Reuse, no_reuse) of
+                          MapId -> Count;   %% Inplace update
+                          _ ->
+                              %% Note that we already added refcounts for the Cache.
+                              ?METADATA(RawId, _RefCount, _Size) = get_map_meta(Id, Meta),
+                              NewKeys = [ aeb_fate_encoding:serialize(Key) || Key <- maps:keys(Cache) ],
+                              OldBin = maps:without(NewKeys, aect_contracts_store:subtree(map_data_key(RawId), Store)),
+                              Count1 = aeb_fate_maps:refcount([ aeb_fate_encoding:deserialize(Val) || Val <- maps:values(OldBin) ]),
+                              aeb_fate_maps:refcount_union(Count1, Count)
+                      end;
+                 (_, _, Count) -> Count
+                end, #{}, Maps).
 
 %% Compute the difference in reference counts caused by performing a store
 %% update: refcount(Val) - refcount(OldVal).
