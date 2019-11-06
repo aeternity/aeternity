@@ -2095,5 +2095,6 @@ insert_block(Block, Origin) ->
     insert_block_ret(aec_chain_state:insert_block(Block, Origin)).
 
 insert_block_ret({ok,_}     ) -> ok;
+insert_block_ret({error, already_in_db}) -> ok;
 insert_block_ret({pof,Pof,_}) -> {pof,Pof};
 insert_block_ret(Other      ) -> Other.
