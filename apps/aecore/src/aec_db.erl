@@ -251,6 +251,9 @@ ensure_transaction(Fun) when is_function(Fun, 0) ->
             %% Transaction inside a dirty context; rely on mnesia to handle it
             try_activity(transaction, Fun);
         _ ->
+            %% We are already in a transaction, thus no custom retry is
+            %% attempted via `try_activity/2` since this only works outside of a
+            %% transaction.
             Fun()
     end.
 
@@ -870,6 +873,8 @@ try_activity(Type, Fun) ->
 %% operation will not be retried upon failure. If retries is greater than 0, the
 %% operation will be retried upon failure and the retry counter will be
 %% decremented.
+%% This function must not be called from inside another transaction because this
+%% will mess with Mnesia's internal retry mechanism.
 try_activity(Type, Fun, Retries) when Retries =< 0 ->
     mnesia:activity(Type, Fun);
 try_activity(Type, Fun, Retries) ->
