@@ -143,7 +143,7 @@ new(Gas, Value, Spec, Stores, APIState, CodeCache) ->
        , trace             = []
        }.
 
--define(GC_BUG_HARD_FORK_HEIGHT, 170000).
+-define(GC_BUG_HARD_FORK_HEIGHT, 168300).
 aefa_stores(API) ->
     case aefa_chain_api:generation(API) >= ?GC_BUG_HARD_FORK_HEIGHT of
         true  -> aefa_stores;
