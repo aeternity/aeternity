@@ -1,24 +1,15 @@
 %%%-------------------------------------------------------------------
 %%% @copyright (C) 2019, Aeternity Anstalt
 %%% @doc
-%%%    ADT for contract stores in FATE.
 %%%
-%%%    The code assumes that if a get/put is issued, the contract is
-%%%    already in the store. Care must be taken to explicitly check if
-%%%    a contract is present, and put it (using put_contract/2) if it is not.
+%%%    NOTE: THIS MODULE IS MAINTAINED FOR BACKWARDS COMPATIBILITY.
 %%%
-%%%    Entries are cached in a read/write manner to avoid multiple
-%%%    reading/converting and to avoid pushing terms that have not been
-%%%    altered. Both things are expensive as it involves going out to the
-%%%    underlying merkle trees.
-%%%
-%%%    Use finalize/3 to push the stores back to the chain when the
-%%%    fate execution is done.
+%%%    !!! DO NOT CHANGE !!!
 %%%
 %%%  @end
 %%%    -------------------------------------------------------------------
 
--module(aefa_stores).
+-module(aefa_stores_gc_bug).
 
 -include_lib("aebytecode/include/aeb_fate_data.hrl").
 
@@ -309,7 +300,7 @@ finalize_entry(Pubkey, Cache = #cache_entry{store = Store}, {Writes, GasLeft}) -
     ?DEBUG_PRINT("Updates\n  ~p\n", [Updates]),
 
     %% Performing the updates writes the necessary changes to the MP trees.
-    {Store1, GasLeft1} = perform_store_updates(Metadata, Updates, Metadata1, GasLeft, Store),
+    {Store1, GasLeft1} = perform_store_updates(Updates, Metadata1, GasLeft, Store),
     {[{Pubkey, Store1} | Writes], GasLeft1}.
 
 %%%===================================================================
@@ -339,9 +330,7 @@ compute_store_updates(Metadata, #cache_entry{terms = TermCache, store = Store}) 
     Metadata1 = update_refcounts(RefCounts, Metadata),
     Unused    = unused_maps(Metadata1),
     Reuse     = compute_inplace_updates(Unused, Maps),
-    RefCounts1 = compute_copy_refcounts(Metadata1, Reuse, Maps, Store),
-    Metadata1b = update_refcounts(RefCounts1, Metadata1),
-    {Garbage, Metadata2} = compute_garbage(Unused, Reuse, Metadata1b, Store),
+    {Garbage, Metadata2} = compute_garbage(Unused, Reuse, Metadata1, Store),
 
     CopyOrInplace = fun(MapId, ?FATE_STORE_MAP(_, Id) = Map) ->
                             case maps:get(Id, Reuse, no_reuse) of
@@ -364,12 +353,12 @@ compute_store_updates(Metadata, #cache_entry{terms = TermCache, store = Store}) 
     Compare = fun(A, B) -> Order(element(1, A)) =< Order(element(1, B)) end,
     {Metadata2, lists:sort(Compare, Updates)}.
 
-perform_store_updates(OldMeta, [Update|Left], Meta, GasLeft, Store) ->
+perform_store_updates([Update|Left], Meta, GasLeft, Store) ->
     ?DEBUG_PRINT("Update: ~p\n", [Update]),
-    {Meta1, Bytes, Store1} =  perform_store_update(OldMeta, Update, {Meta, Store}),
+    {Meta1, Bytes, Store1} =  perform_store_update(Update, {Meta, Store}),
     GasLeft1 = spend_size_gas(GasLeft, Bytes),
-    perform_store_updates(OldMeta, Left, Meta1, GasLeft1, Store1);
-perform_store_updates(_OldMeta, [], Meta, GasLeft, Store) ->
+    perform_store_updates(Left, Meta1, GasLeft1, Store1);
+perform_store_updates([], Meta, GasLeft, Store) ->
     %% Save the updated metadata at the end
     {Store1, Bytes} = push_term(?META_STORE_POS, Meta, Store),
     GasLeft1 = spend_size_gas(GasLeft, Bytes),
@@ -384,16 +373,16 @@ spend_size_gas(GasLeft, Bytes) ->
             Enough
     end.
 
--spec perform_store_update(store_meta(), store_update(), {store_meta(), aect_contracts_store:store()}) ->
+-spec perform_store_update(store_update(), {store_meta(), aect_contracts_store:store()}) ->
         {store_meta(), non_neg_integer(), aect_contracts_store:store()}.
-perform_store_update(_OldMeta, {push_term, StorePos, FateVal}, {Meta, Store}) ->
+perform_store_update({push_term, StorePos, FateVal}, {Meta, Store}) ->
     {Store1, Bytes} = push_term(StorePos, FateVal, Store),
     {Meta, Bytes, Store1};
-perform_store_update(OldMeta, {copy_map, MapId, Map}, S) ->
-    copy_map(OldMeta, MapId, Map, S);
-perform_store_update(_OldMeta, {update_map, MapId, Map}, S) ->
+perform_store_update({copy_map, MapId, Map}, S) ->
+    copy_map(MapId, Map, S);
+perform_store_update({update_map, MapId, Map}, S) ->
     update_map(MapId, Map, S);
-perform_store_update(_OldMeta, {gc_map, MapId}, S) ->
+perform_store_update({gc_map, MapId}, S) ->
     gc_map(MapId, S).
 
 %% Write to a store register
@@ -404,7 +393,7 @@ push_term(Pos, FateVal, Store) ->
     {aect_contracts_store:put(Key, Val, Store), Bytes}.
 
 %% Allocate a new map.
-copy_map(_OldMeta, MapId, Map, {Meta, Store}) when ?IS_FATE_MAP(Map) ->
+copy_map(MapId, Map, {Meta, Store}) when ?IS_FATE_MAP(Map) ->
     %% The RefCount was set in compute_store_updates
     ?METADATA(_, RefCount, _) = get_map_meta(MapId, Meta),
     RawId    = MapId,           %% RawId == MapId for fresh maps
@@ -417,15 +406,11 @@ copy_map(_OldMeta, MapId, Map, {Meta, Store}) when ?IS_FATE_MAP(Map) ->
     %% and the subtree node that allows us to call aect_contracts_store:subtree
     Store2   = aect_contracts_store:put(map_data_key(RawId), <<0>>, Store1),
     {Meta1, Bytes, Store2};
-copy_map(OldMeta, MapId, ?FATE_STORE_MAP(Cache, OldId), {Meta, Store}) ->
+copy_map(MapId, ?FATE_STORE_MAP(Cache, OldId), {Meta, Store}) ->
     %% In case of a modified store map we need to copy all the entries for the
     %% old map and then update with the new data (Cache).
     ?METADATA(_, RefCount, _) = get_map_meta(MapId, Meta),
-    %% We shouldn't get here if the old map is being garbage collected (should
-    %% be update_map instead), but the garbage collection analysis is limited
-    %% for nested maps currently, so we keep the old metadata around and look
-    %% it up there.
-    ?METADATA(OldRawId, _RefCount, OldSize) = get_map_meta(OldId, OldMeta),
+    ?METADATA(OldRawId, _RefCount, OldSize) = get_map_meta(OldId, Meta),
     RawId    = MapId,
     OldMap   = aect_contracts_store:subtree(map_data_key(OldRawId), Store),
     NewData  = cache_to_bin_data(Cache),
@@ -434,7 +419,15 @@ copy_map(OldMeta, MapId, ?FATE_STORE_MAP(Cache, OldId), {Meta, Store}) ->
     %% First copy the old data, then update with the new
     {Store1, Bytes} = write_bin_data(RawId, maps:to_list(OldMap) ++ NewData, Store),
     Store2   = aect_contracts_store:put(map_data_key(RawId), <<0>>, Store1),
-    {Meta1, Bytes, Store2}.
+
+    %% We also need to update the refcounts for nested maps. We already added
+    %% refcounts for maps in the Cache, now we have to add refcounts for
+    %% entries copied from the old map (unless they are overwritten by the
+    %% cache).
+    CopiedBin = maps:without([K || {K, _} <- NewData], OldMap),
+    RefCounts = aeb_fate_maps:refcount([ aeb_fate_encoding:deserialize(Val) || Val <- maps:values(CopiedBin) ]),
+    Meta2     = update_refcounts(RefCounts, Meta1),
+    {Meta2, Bytes, Store2}.
 
 %% In-place update of an existing store map. This happens, for instance, when
 %% you update a map in the state throwing away the old copy of the it.
@@ -548,23 +541,6 @@ map_refcounts(_Meta, ?FATE_STORE_MAP(Cache, _Id), _Store) ->
                 %% the delta into account.
                 aeb_fate_maps:refcount_union(aeb_fate_maps:refcount(Val), Count)
               end, #{}, Cache).
-
-%% We need to increase the refcounts of maps contained in maps that are being
-%% copied.
-compute_copy_refcounts(Meta, Reuse, Maps, Store) ->
-    maps:fold(fun(MapId, ?FATE_STORE_MAP(Cache, Id), Count) ->
-                      case maps:get(Id, Reuse, no_reuse) of
-                          MapId -> Count;   %% Inplace update
-                          _ ->
-                              %% Note that we already added refcounts for the Cache.
-                              ?METADATA(RawId, _RefCount, _Size) = get_map_meta(Id, Meta),
-                              NewKeys = [ aeb_fate_encoding:serialize(Key) || Key <- maps:keys(Cache) ],
-                              OldBin = maps:without(NewKeys, aect_contracts_store:subtree(map_data_key(RawId), Store)),
-                              Count1 = aeb_fate_maps:refcount([ aeb_fate_encoding:deserialize(Val) || Val <- maps:values(OldBin) ]),
-                              aeb_fate_maps:refcount_union(Count1, Count)
-                      end;
-                 (_, _, Count) -> Count
-                end, #{}, Maps).
 
 %% Compute the difference in reference counts caused by performing a store
 %% update: refcount(Val) - refcount(OldVal).
