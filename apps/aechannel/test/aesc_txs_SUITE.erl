@@ -191,7 +191,8 @@
         ]).
 
 %% more complex scenarios
--export([fp_close_solo_slash_with_same_round/1
+-export([ fp_close_solo_slash_with_same_round/1
+        , fp_fp_close_solo_with_same_round/1
         ]).
 
 %% fork related tests
@@ -378,6 +379,7 @@ groups() ->
       ]},
      {complex_sequences, [sequence],
       [ fp_close_solo_slash_with_same_round
+      , fp_fp_close_solo_with_same_round
       ]}
     ].
 
@@ -5828,6 +5830,55 @@ fp_close_solo_slash_with_same_round(Cfg) ->
     [Test(Closer, Slasher, CloseHeight, IsPossitiveTest)
         || Closer  <- ?ROLES,
            Slasher <- ?ROLES,
+           {CloseHeight, IsPossitiveTest} <- [{SwitchHeight - 1, true},
+                                              {SwitchHeight    , false},
+                                              {SwitchHeight + 1, false}]],
+    ok.
+
+fp_fp_close_solo_with_same_round(Cfg) ->
+    FirstFPRound = 3,
+    SecondFPRound = 14,
+    CloseRound = 13,
+    ContractRound = 2,
+    CleanAfterFP =
+        fun(Props) ->
+            run(Props,
+                [delete_prop(payload), % old FP payload
+                 delete_prop(state_hash)])
+        end,
+    Test =
+        fun(Closer, CloseHeight, IsPositiveTest) ->
+            run(#{cfg => Cfg, initiator_amount => 10000000 * aec_test_utils:min_gas_price(),
+                              responder_amount => 10000000 * aec_test_utils:min_gas_price(),
+                 channel_reserve => 1},
+               [positive(fun create_channel_/2),
+                create_contract_poi_and_payload(FirstFPRound - 1, ContractRound,
+                                                initiator),
+                force_progress_sequence(FirstFPRound, initiator),
+                CleanAfterFP,
+                set_prop(round, SecondFPRound - 1), % for the payload
+                create_fp_trees(),
+                create_payload(),
+                set_prop(height, CloseHeight),
+                force_progress_sequence(SecondFPRound, initiator),
+                CleanAfterFP,
+                set_from(Closer),
+                set_prop(round, CloseRound),
+                fun(Props) ->
+                    Fun =
+                        case IsPositiveTest of
+                            true -> 
+                                positive(fun close_solo_with_payload/2);
+                            false ->
+                                negative(fun close_solo_with_payload/2, {error, same_round})
+                        end,
+                    Fun(Props)
+                end
+               ])
+        end,
+    SwitchHeight = 168300, 
+    [Test(Closer, CloseHeight, IsPossitiveTest)
+        || Closer  <- ?ROLES,
            {CloseHeight, IsPossitiveTest} <- [{SwitchHeight - 1, true},
                                               {SwitchHeight    , false},
                                               {SwitchHeight + 1, false}]],
