@@ -18,8 +18,8 @@
          peers/1,
          serialize/1,
          serialize_for_client/1,
-         close_solo/3,
-         close_solo/4,
+         close_solo_last_onchain/3,
+         close_solo_with_payload/4,
          force_progress/6,
          snapshot_solo/2,
          withdraw/4]).
@@ -121,16 +121,26 @@
 %%%===================================================================
 
 %% close solo with last known onchain state
--spec close_solo(channel(), aec_trees:poi(), aec_blocks:height()) -> channel().
-close_solo(Ch, PoI, Height) ->
+-spec close_solo_last_onchain(channel(), aec_trees:poi(), aec_blocks:height()) -> channel().
+close_solo_last_onchain(Ch, PoI, Height) ->
     close_solo_int(Ch, PoI, Height, round(Ch),        % keep the round
-                                    state_hash(Ch)).  % keep the state hash
+                   state_hash(Ch)).                   % keep the state hash
 
-%% close solo with a payload
--spec close_solo(channel(), payload(), aec_trees:poi(), aec_blocks:height()) -> channel().
-close_solo(Ch, PayloadTx, PoI, Height) ->
-    close_solo_int(Ch, PoI, Height, aesc_offchain_tx:round(PayloadTx),
-                                    aesc_offchain_tx:state_hash(PayloadTx)).
+%% close solo with a payload with a greater round than the last on-chain one
+-spec close_solo_with_payload(channel(), payload(), aec_trees:poi(), aec_blocks:height()) -> channel().
+close_solo_with_payload(Ch, PayloadTx, PoI, Height) ->
+    Ch1 = close_solo_int(Ch, PoI, Height, aesc_offchain_tx:round(PayloadTx),
+                         aesc_offchain_tx:state_hash(PayloadTx)),
+    SwitchHeight = 168300, 
+    case Height >= SwitchHeight of
+        true ->
+            %% since new co-authenticated payload had been added and it
+            %% replaces any old forced progressed states, we reset the
+            %% solo_round
+            Ch1#channel{solo_round = 0};
+        false ->
+            Ch1
+    end.
 
 close_solo_int(#channel{lock_period = LockPeriod} = Ch, PoI, Height, Round, StateHash) ->
     InitiatorPubKey = initiator_pubkey(Ch),
