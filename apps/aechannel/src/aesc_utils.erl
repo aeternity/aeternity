@@ -761,9 +761,9 @@ process_solo_close_slash(ChannelPubKey, FromPubKey, Nonce, Fee,
     Channel1 =
         case aesc_utils:deserialize_payload(Payload) of
             {ok, _SignedTx, PayloadTx} ->
-                aesc_channels:close_solo(Channel0, PayloadTx, PoI, Height);
+                aesc_channels:close_solo_with_payload(Channel0, PayloadTx, PoI, Height);
             {ok, last_onchain} ->
-                aesc_channels:close_solo(Channel0, PoI, Height)
+                aesc_channels:close_solo_last_onchain(Channel0, PoI, Height)
         end,
     _Trees2 = set_channel(Channel1, Trees1).
 

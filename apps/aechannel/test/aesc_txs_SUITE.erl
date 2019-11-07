@@ -31,7 +31,7 @@
          settle/1,
          snapshot_solo/1]).
 
-% negative create
+%% negative create
 -export([create_missing_account/1,
          create_same_account/1,
          create_insufficient_funds/1,
@@ -40,7 +40,7 @@
          create_exsisting/1
          ]).
 
-% negative close solo
+%% negative close solo
 -export([close_solo_unknown_from/1,
          close_solo_wrong_amounts/1,
          close_solo_not_participant/1,
@@ -55,17 +55,17 @@
          close_solo_delegate_not_allowed/1
          ]).
 
-% negative close mutual
-% close mutual does not have a `from` - it is always implicitly the initiator
-% thus we can not test the tx being posted from another account (not
-% participant or a delegate). If it is signed by non-participant - the
-% signature test will fail
+%% negative close mutual
+%% close mutual does not have a `from` - it is always implicitly the initiator
+%% thus we can not test the tx being posted from another account (not
+%% participant or a delegate). If it is signed by non-participant - the
+%% signature test will fail
 -export([close_mutual_wrong_amounts/1,
          close_mutual_wrong_nonce/1,
          close_mutual_missing_channel/1
         ]).
 
-% negative slash
+%% negative slash
 -export([slash_not_closing/1,
          slash_unknown_from/1,
          slash_wrong_amounts/1,
@@ -78,7 +78,7 @@
          slash_missing_channel/1
          ]).
 
-% negative settle
+%% negative settle
 -export([settle_wrong_amounts/1,
          settle_wrong_nonce/1,
          settle_missing_channel/1,
@@ -88,7 +88,7 @@
          settle_delegate_not_allowed/1
         ]).
 
-% negative deposit
+%% negative deposit
 -export([deposit_unknown_from/1,
          deposit_insufficent_funds/1,
          deposit_wrong_nonce/1,
@@ -101,7 +101,7 @@
          deposit_delegate_not_allowed/1
         ]).
 
-% negative withdraw
+%% negative withdraw
 -export([withdraw_unknown_from/1,
          withdraw_insufficent_funds/1,
          withdraw_wrong_nonce/1,
@@ -115,7 +115,7 @@
         ]).
 
 
-% negative snapshot solo
+%% negative snapshot solo
 -export([snapshot_closed_channel/1,
          snapshot_closing_channel/1,
          snapshot_missing_channel/1,
@@ -127,7 +127,7 @@
          snapshot_delegate_not_allowed/1
         ]).
 
-% positive force progress
+%% positive force progress
 -export([fp_after_create/1,
          fp_after_deposit/1,
          fp_after_withdrawal/1,
@@ -155,7 +155,7 @@
          fp_use_onchain_contract/1
         ]).
 
-% negative force progress
+%% negative force progress
 -export([fp_closed_channel/1,
          fp_not_participant/1,
          fp_missing_channel/1,
@@ -190,7 +190,11 @@
          fp_oracle_respond/1
         ]).
 
-% fork related tests
+%% more complex scenarios
+-export([fp_close_solo_slash_with_same_round/1
+        ]).
+
+%% fork related tests
 -export([ fp_sophia_versions/1,
           close_mutual_already_closing/1,
           reject_old_offchain_tx_vsn/1
@@ -255,7 +259,8 @@ groups() ->
        {group, snapshot_solo_negative},
        {group, aevm},
        {group, fate},
-       {group, fork_awareness}
+       {group, fork_awareness},
+       {group, complex_sequences}
       ]
      },
 
@@ -370,6 +375,9 @@ groups() ->
       [ fp_sophia_versions,
         close_mutual_already_closing,
         reject_old_offchain_tx_vsn
+      ]},
+     {complex_sequences, [sequence],
+      [ fp_close_solo_slash_with_same_round
       ]}
     ].
 
@@ -1810,7 +1818,7 @@ snapshot_solo(Cfg) ->
                                                     Action <- Actions],
     ok.
 
-% no one can post a snapshot_tx to a closed channel
+%% no one can post a snapshot_tx to a closed channel
 snapshot_closed_channel(Cfg) ->
     IAmt = 100000 * aec_test_utils:min_gas_price(),
     RAmt = 100000 * aec_test_utils:min_gas_price(),
@@ -1834,20 +1842,20 @@ snapshot_closed_channel(Cfg) ->
     [Test(Role) || Role <- ?ROLES],
     ok.
 
-% no one can post a snapshot_tx to a closing channel, not even the one that
-% initiated the close
+%% no one can post a snapshot_tx to a closing channel, not even the one that
+%% initiated the close
 snapshot_closing_channel(Cfg) ->
     test_both_closing_channel(Cfg, fun snapshot_solo_/2).
 
-% snapshot_tx calls to a missing channel are rejected
+%% snapshot_tx calls to a missing channel are rejected
 snapshot_missing_channel(Cfg) ->
     test_both_missing_channel(Cfg, fun snapshot_solo_/2).
 
-% snapshot_tx calls with a payload from another channel are rejected
+%% snapshot_tx calls with a payload from another channel are rejected
 snapshot_payload_from_another_channel(Cfg) ->
     test_both_payload_from_different_channel(Cfg, fun snapshot_solo_/2).
 
-% no one can overwrite a state, not even the one that posted it
+%% no one can overwrite a state, not even the one that posted it
 snapshot_payload_not_co_signed(Cfg) ->
     test_payload_not_both_signed(Cfg,
                                  fun(ChannelPubKey, FromPubKey, Payload, _PoI, S) ->
@@ -1858,7 +1866,7 @@ snapshot_payload_not_co_signed(Cfg) ->
                                   end,
                                   fun aesc_snapshot_solo_tx:new/1).
 
-% snapshot_tx calls with a payload from another channel are rejected
+%% snapshot_tx calls with a payload from another channel are rejected
 snapshot_old_payload(Cfg) ->
     test_both_old_round(Cfg, fun snapshot_solo_/2, #{}, old_round).
 
@@ -2528,14 +2536,14 @@ fp_after_slash(Cfg) ->
     Test(11, 20, 30),
     ok.
 
-% Test that slashing with co-signed off-chain state replaces
-% on-chain produced chain of unilaterally forced progress states
-%
-% unilaterally on-chain force progress state ROUND
-% unilaterally on-chain force progress state ROUND + 1
-% solo close using on-chain forced progress ROUND + 1
-% force progress on-chain state ROUND + 2
-% slash with co-signed off-chain state ROUND
+%% Test that slashing with co-signed off-chain state replaces
+%% on-chain produced chain of unilaterally forced progress states
+%%
+%% unilaterally on-chain force progress state ROUND
+%% unilaterally on-chain force progress state ROUND + 1
+%% solo close using on-chain forced progress ROUND + 1
+%% force progress on-chain state ROUND + 2
+%% slash with co-signed off-chain state ROUND
 fp_chain_is_replaced_by_slash(Cfg) ->
     ForceProgressFromOnChain =
         fun(Round, Forcer) ->
@@ -3029,7 +3037,7 @@ fp_use_onchain_contract(Cfg) ->
     ok.
 
 
-% no one can post a force progress to a closed channel
+%% no one can post a force progress to a closed channel
 fp_closed_channel(Cfg) ->
     Round = 10,
     IStartAmt = 200000 * aec_test_utils:min_gas_price(),
@@ -5498,7 +5506,7 @@ assert_last_channel_result(Result, Type) ->
         Props
     end.
 
-% Create poi just for participants; used by slash and close solo
+%% Create poi just for participants; used by slash and close solo
 poi_participants_only() ->
     fun(#{initiator_pubkey  := IPubkey,
           responder_pubkey  := RPubkey,
@@ -5782,3 +5790,46 @@ aevm_type(Type) -> Type.
 encode_sig(Sig) ->
     <<"0x", Hex/binary>> = aeu_hex:hexstring_encode(Sig),
     binary_to_list(<<"#", Hex/binary>>).
+
+fp_close_solo_slash_with_same_round(Cfg) ->
+    FPRound = 43,
+    CloseRound = 50,
+    ContractRound = 10,
+    Test =
+        fun(Closer, Slasher, CloseHeight, IsPositiveTest) ->
+            run(#{cfg => Cfg, initiator_amount => 10000000 * aec_test_utils:min_gas_price(),
+                              responder_amount => 10000000 * aec_test_utils:min_gas_price(),
+                 channel_reserve => 1},
+               [positive(fun create_channel_/2),
+                create_contract_poi_and_payload(FPRound - 1, ContractRound,
+                                                initiator),
+                force_progress_sequence(FPRound, initiator),
+                delete_prop(payload), % old FP payload
+                delete_prop(state_hash),
+                set_from(Closer),
+                set_prop(round, CloseRound),
+                set_prop(height, CloseHeight),
+                positive(fun close_solo_with_payload/2),
+                set_from(Slasher),
+                set_prop(round, CloseRound), %% same round
+                fun(Props) ->
+                    Fun =
+                        case IsPositiveTest of
+                            true -> 
+                                positive(fun slash_/2);
+                            false ->
+                                negative(fun slash_/2, {error, same_round})
+                        end,
+                    Fun(Props)
+                end
+               ])
+        end,
+    SwitchHeight = 168300, 
+    [Test(Closer, Slasher, CloseHeight, IsPossitiveTest)
+        || Closer  <- ?ROLES,
+           Slasher <- ?ROLES,
+           {CloseHeight, IsPossitiveTest} <- [{SwitchHeight - 1, true},
+                                              {SwitchHeight    , false},
+                                              {SwitchHeight + 1, false}]],
+    ok.
+
