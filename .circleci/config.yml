@@ -1172,9 +1172,6 @@ jobs:
       - store_artifacts:
           path: *windows_artifacts
           destination: packages-<< parameters.otp_version >>
-      - run:
-          name: Add experimental suffix to artifacts
-          command: 'FOR %_ IN (<< parameters.artifacts_path >>\*.*) DO REN %_ %~n_-experimental%~x_'
       - persist_to_workspace:
           root: *windows_artifacts
           paths:

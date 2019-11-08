@@ -32,7 +32,7 @@ time make prod-build
 
 echo -e "${bold}Create package environment${reset}"
 NODE_VERSION=`cat ${PROJECT_ROOT}/VERSION`
-sed "s/^version =.*$/version = ${NODE_VERSION}/g" .circleci/windows/package.cfg > ${WORK_ROOT}/package.cfg
+sed "s/VERSION_PLACEHOLDER/${NODE_VERSION}/g" .circleci/windows/package.cfg > ${WORK_ROOT}/package.cfg
 
 time styrene -o ${WORK_ROOT} ${WORK_ROOT}/package.cfg
 
@@ -56,9 +56,12 @@ time styrene -o ${WORK_ROOT} ${WORK_ROOT}/package.cfg
 
 echo -e "${bold}Copy artifacts to $PACKAGES_PATH${reset}"
 
-PACKAGE_VERSION=`cat ${WORK_PATH}/REVISION`
+VERSION=${CIRCLE_SHA1:-unknown}
+if [[ -n $CIRCLE_TAG && $CIRCLE_TAG =~ ^v([0-9]+\.[0-9]+\.[0-9]+(-[a-z0-9\.\+]+)*)$ ]]; then
+    VERSION=${BASH_REMATCH[1]}
+fi
 
 mkdir -p ${PACKAGES_PATH}
-cp ${WORK_ROOT}/aeternity-*.zip ${PACKAGES_PATH}/aeternity-${PACKAGE_VERSION}-windows-x86_64.zip
-cp ${WORK_ROOT}/aeternity-*.exe ${PACKAGES_PATH}/aeternity-${PACKAGE_VERSION}-windows-x86_64.exe
+cp ${WORK_ROOT}/aeternity-*.zip ${PACKAGES_PATH}/aeternity-${VERSION}-windows-x86_64-experimental.zip
+cp ${WORK_ROOT}/aeternity-*.exe ${PACKAGES_PATH}/aeternity-${VERSION}-windows-x86_64-experimental.exe
 echo -e "${bold}Done.${reset}"
