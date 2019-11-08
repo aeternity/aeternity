@@ -19,7 +19,8 @@
     wait_for_value/4,
     wait_for_startup/3,
     get_block/2,
-    get_top/1
+    get_top/1,
+    get_status/1
 ]).
 
 %=== INCLUDES ==================================================================
@@ -120,9 +121,9 @@ fork_chain(Cfg) ->
 
     wait_for_startup([node1, node2, node3], 1, Cfg),
     %% Check node picked user config
-    #{network_id := <<"ae_system_test">>} = aest_nodes:get_status(node1),
-    #{network_id := <<"ae_system_test">>} = aest_nodes:get_status(node2),
-    #{network_id := <<"ae_system_test">>} = aest_nodes:get_status(node3),
+    #{network_id := <<"ae_system_test">>} = get_status(node1),
+    #{network_id := <<"ae_system_test">>} = get_status(node2),
+    #{network_id := <<"ae_system_test">>} = get_status(node3),
 
     %% All the three node have the same chain until the last signalling
     %% block. One block after the signalling block the node3 stays with the
@@ -149,7 +150,7 @@ fork_chain(Cfg) ->
     start_node(node4, Cfg),
     wait_for_startup([node4], 1, Cfg),
     %% Check node picked user config
-    #{network_id := <<"ae_system_test">>} = aest_nodes:get_status(node4),
+    #{network_id := <<"ae_system_test">>} = get_status(node4),
 
     wait_for_value({height, LastSigBlockHeight}, [node4],
                    LastSigBlockHeight * ?MINING_TIMEOUT, Cfg),
@@ -177,9 +178,19 @@ fork_chain(Cfg) ->
 
     ?assert(ForkBlockVsn1 > ForkBlockVsn3),
 
+    ?assert(has_status_new_protocol(node1, {?VERSION, ?FORK_HEIGHT})),
+    ?assert(has_status_new_protocol(node2, {?VERSION, ?FORK_HEIGHT})),
+    ?assertNot(has_status_new_protocol(node3, {?VERSION, ?FORK_HEIGHT})),
+    ?assertNot(has_status_new_protocol(node4, {?VERSION, ?FORK_HEIGHT})),
+
     stop_node(node1, 10000, Cfg),
     stop_node(node2, 10000, Cfg),
     stop_node(node3, 10000, Cfg),
     stop_node(node4, 10000, Cfg),
 
     ok.
+
+
+has_status_new_protocol(Node, {Protocol, Height}) ->
+    #{protocols := Protocols} = get_status(Node),
+    lists:member(#{version => Protocol, <<"effective_at_height">> => Height}, Protocols).

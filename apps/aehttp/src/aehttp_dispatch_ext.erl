@@ -599,9 +599,22 @@ handle_request_('GetStatus', _Params, _Context) ->
     Syncing = aec_sync:is_syncing(),
     SyncProgress = aec_sync:sync_progress(),
     Listening = true, %% TODO
-    Protocols = maps:fold(fun(Vsn, Height, Acc) ->
+    Protocols =
+        maps:fold(fun(Vsn, Height, Acc) ->
                           [#{<<"version">> => Vsn, <<"effective_at_height">> => Height} | Acc]
-                 end, [], aec_hard_forks:protocols()),
+                  end, [], aec_hard_forks:protocols()),
+    Version = aec_blocks:version(TopKeyBlock),
+    Protocols2 =
+        case aeu_env:get_env(aecore, fork, undefined) of
+            #{version := Version, signalling_end_height := SigEndHeight} ->
+                %% The version is the same as in miner signalling config so the
+                %% new protocol was activated.
+                [#{<<"version">> => Version, <<"effective_at_height">> => SigEndHeight} | Protocols];
+            Fork when is_map(Fork) ->
+                Protocols;
+            undefined ->
+                Protocols
+        end,
     NodeVersion = aeu_info:get_version(),
     NodeRevision = aeu_info:get_revision(),
     PeerCount = aec_peers:count(peers),
@@ -617,7 +630,7 @@ handle_request_('GetStatus', _Params, _Context) ->
        <<"syncing">>                    => Syncing,
        <<"sync_progress">>              => SyncProgress,
        <<"listening">>                  => Listening,
-       <<"protocols">>                  => Protocols,
+       <<"protocols">>                  => Protocols2,
        <<"node_version">>               => NodeVersion,
        <<"node_revision">>              => NodeRevision,
        <<"peer_count">>                 => PeerCount,

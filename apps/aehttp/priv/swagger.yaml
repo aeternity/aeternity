@@ -2627,8 +2627,10 @@ definitions:
     type: object
     properties:
       version:
+        description: 'Protocol version (can include protocol activated by miner signalling)'
         $ref: '#/definitions/UInt32'
       effective_at_height:
+        description: 'Height at which protocol becomes active'
         $ref: '#/definitions/UInt64'
     required:
       - version
