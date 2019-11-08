@@ -100,11 +100,11 @@ In the instructions below, the node is deployed in directory `~/aeternity/node`:
 It is recommended that the partition where the node directory is has at least 40 GB free: this is needed for the chain and the log files.
 
 Open a Terminal window or get to the command line.
-Create a directory and unpack the downloaded package (you may need to amend the directory and/or file name of the package):
+Create a directory and unpack the downloaded package (you need to amend the directory and/or file name of the package):
 ```bash
 mkdir -p ~/aeternity/node
 cd ~/aeternity/node
-tar xf ~/Downloads/aeternity-5.0.2-macos-x86_64.tar.gz
+tar xf ~/Downloads/aeternity-<package_version>-macos-x86_64.tar.gz
 ```
 
 ## Windows - experimental
