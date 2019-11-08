@@ -607,8 +607,12 @@ handle_request_('GetStatus', _Params, _Context) ->
     Protocols2 =
         case aeu_env:get_env(aecore, fork, undefined) of
             #{version := Version, signalling_end_height := SigEndHeight} ->
+                %% The version is the same as in miner signalling config so the
+                %% new protocol was activated.
                 [#{<<"version">> => Version, <<"effective_at_height">> => SigEndHeight} | Protocols];
-            _Other ->
+            Fork when is_map(Fork) ->
+                Protocols;
+            undefined ->
                 Protocols
         end,
     NodeVersion = aeu_info:get_version(),
