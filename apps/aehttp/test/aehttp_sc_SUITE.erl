@@ -24,6 +24,7 @@
     sc_ws_failed_update/1,
     sc_ws_generic_messages/1,
     sc_ws_update_with_meta/1,
+    sc_ws_update_transfer/1,
     sc_ws_update_conflict/1,
     sc_ws_update_abort/1,
     sc_ws_snapshot_solo/1,
@@ -154,11 +155,18 @@ groups() ->
         sc_ws_leave_reconnect,
         sc_ws_password_changeable,
         {group, with_open_channel},
+        {group, with_meta},
         {group, client_reconnect},
         {group, client_reconnect_no_password},
         {group, changeable_fee},
         {group, abort_updates}
       ]},
+
+     {with_meta, [],
+      [ sc_ws_update_transfer,
+        sc_ws_deposit,
+        sc_ws_withdraw,
+        sc_ws_remote_call_contract ]},
 
      {with_open_channel, [sequence],
       [ sc_ws_ping_pong,
@@ -290,6 +298,8 @@ init_per_group(sc_ga, Config) ->
         ?MINERVA_PROTOCOL_VSN -> {skip, generalized_accounts_not_in_minerva};
         Vsn when Vsn >= ?FORTUNA_PROTOCOL_VSN -> Config
     end;
+init_per_group(with_meta, Config) ->
+    sc_ws_open_([{include_meta, true} | Config]);
 init_per_group(with_open_channel, Config) ->
     sc_ws_open_(Config);
 init_per_group(Grp, Config) when Grp == ga_both; Grp == ga_initiator; Grp == ga_responder ->
@@ -308,6 +318,8 @@ init_per_group(_Grp, Config) ->
     Config.
 
 end_per_group(sc_contracts, Config) ->
+    sc_ws_close_(Config);
+end_per_group(with_meta, Config) ->
     sc_ws_close_(Config);
 end_per_group(with_open_channel, Config) ->
     sc_ws_close_(Config);
@@ -832,7 +844,6 @@ channel_update(#{initiator := IConnPid, responder :=RConnPid},
                 {RConnPid, IConnPid, RPubkey, RPrivkey,
                                     IPubkey, IPrivkey}
         end,
-    IncludeMeta = proplists:get_bool(include_meta, Config),
     ok = ?WS:register_test_for_channel_events(IConnPid, [sign, info, update,
                                                          get, error]),
     ok = ?WS:register_test_for_channel_events(RConnPid, [sign, info, update,
@@ -849,12 +860,7 @@ channel_update(#{initiator := IConnPid, responder :=RConnPid},
         UpdateOpts0#{ from => aeser_api_encoder:encode(account_pubkey, StarterPubkey)
                     , to => aeser_api_encoder:encode(account_pubkey, AcknowledgerPubkey)
                     , amount => Amount },
-    MetaStr = <<"meta 1">>,
-    UpdateOpts = if IncludeMeta ->
-                         UpdateOpts1#{ meta => [MetaStr] };
-                    true ->
-                         UpdateOpts1
-                 end,
+    UpdateOpts = maybe_include_meta(UpdateOpts1, Config),
     if TestErrors ->
             ws_send_tagged(StarterPid, <<"channels.update.new">>,
                            UpdateOpts#{amount => <<"1">>}, Config),
@@ -883,7 +889,8 @@ channel_update(#{initiator := IConnPid, responder :=RConnPid},
     ct:log("Unsigned state tx ~p", [UnsignedStateTx]),
     %% verify contents
     {channel_offchain_tx, _OffchainTx} = aetx:specialize_type(UnsignedStateTx),
-    ok = verify_updates(UpdatesS, StarterPubkey, AcknowledgerPubkey, Amount, IncludeMeta, MetaStr),
+    IncludeMeta = include_meta(Config),
+    ok = verify_updates(UpdatesS, StarterPubkey, AcknowledgerPubkey, Amount, IncludeMeta),
 
     %% acknowledger signs the new state
     {ok, _, #{<<"event">> := <<"update">>}} = wait_for_channel_event(AcknowledgerPid, info, Config),
@@ -920,7 +927,7 @@ channel_update(#{initiator := IConnPid, responder :=RConnPid},
 
     ok.
 
-verify_updates(Updates, StarterPubkey, AcknowledgerPubkey, Amount, false, _) ->
+verify_updates(Updates, StarterPubkey, AcknowledgerPubkey, Amount, false) ->
     [Update] = Updates,
     Expected = aesc_offchain_update:op_transfer(
                  aeser_id:create(account, StarterPubkey),
@@ -928,16 +935,14 @@ verify_updates(Updates, StarterPubkey, AcknowledgerPubkey, Amount, false, _) ->
     ExpectedForClient = aesc_offchain_update:for_client(Expected),
     {ExpectedForClient, _} = {Update, ExpectedForClient},
     ok;
-verify_updates(Updates, StarterPubkey, AcknowledgerPubkey, Amount, true, MetaStr) ->
+verify_updates(Updates, StarterPubkey, AcknowledgerPubkey, Amount, true) ->
     [Update, Meta] = Updates,
+    ok = validate_meta(Meta),
     ExpUpd = aesc_offchain_update:op_transfer(
                aeser_id:create(account, StarterPubkey),
                aeser_id:create(account, AcknowledgerPubkey), Amount),
-    ExpMeta = aesc_offchain_update:op_meta(MetaStr),
     ExpUpdForClient = aesc_offchain_update:for_client(ExpUpd),
-    ExpMetaForClient = aesc_offchain_update:for_client(ExpMeta),
     {ExpUpdForClient, _} = {Update, ExpUpdForClient},
-    {ExpMetaForClient, _} = {Meta, ExpMetaForClient},
     ok.
 
 channel_update_fail(#{initiator := IConnPid, responder :=RConnPid},
@@ -1592,12 +1597,13 @@ sc_ws_contract_generic_(Origin, ContractSource, Fun, Config, Opts) ->
             offchain ->
                 fun(Owner, EncodedCode, EncodedInitData, Deposit) ->
                     {CreateVolley, OwnerConnPid, OwnerPubKey} = GetVolley(Owner),
-                    NewContractOpts =
+                    NewContractOpts0 =
                         #{vm_version  => aect_test_utils:vm_version(),
                           abi_version => aect_test_utils:abi_version(),
                           deposit     => Deposit,
                           code        => EncodedCode,
                           call_data   => EncodedInitData},
+                    NewContractOpts = maybe_include_meta(NewContractOpts0, Config),
                     % incorrect calls
                     ws_send_tagged(OwnerConnPid, <<"channels.update.new_contract">>,
                         NewContractOpts#{deposit => <<"1">>}, Config),
@@ -2455,11 +2461,12 @@ call_a_contract(Function, Argument, ContractPubKey, Contract, SenderConnPid,
 call_a_contract(Function, Argument, ContractPubKey, Contract, SenderConnPid,
                 UpdateVolley, Amount, Config, XOpts) ->
     {ok, EncodedMainData} = encode_call_data(Contract, Function, Argument),
-    CallOpts =
+    CallOpts0 =
         XOpts#{ contract_id => aeser_api_encoder:encode(contract_pubkey, ContractPubKey)
               , abi_version => aect_test_utils:abi_version()
               , amount      => Amount
               , call_data   => EncodedMainData },
+    CallOpts = maybe_include_meta(CallOpts0, Config),
     % invalid call
     ws_send_tagged(SenderConnPid, <<"channels.update.call_contract">>,
                    CallOpts#{amount => <<"1">>}, Config),
@@ -2493,11 +2500,12 @@ dry_call_a_contract(Function, Argument, ContractPubKey, Contract, SenderConnPid,
                     Amount, Config, XOpts) ->
     {ok, EncodedMainData} = encode_call_data(Contract, Function, Argument),
     ok = ?WS:register_test_for_channel_event(SenderConnPid, dry_run),
-    CallOpts =
+    CallOpts0 =
         XOpts#{ contract_id => aeser_api_encoder:encode(contract_pubkey, ContractPubKey)
               , abi_version => aect_test_utils:abi_version()
               , amount      => Amount
               , call_data   => EncodedMainData},
+    CallOpts = maybe_include_meta(CallOpts0, Config),
     % invalid call
     ws_send_tagged(SenderConnPid, <<"channels.dry_run.call_contract">>,
                    CallOpts#{amount => <<"1">>}, Config),
@@ -2855,8 +2863,11 @@ wait_for_info_msgs(Pids, Pat, F, Config) when is_list(Pids)
 
 sc_ws_update_with_meta(Config0) ->
     Config = sc_ws_open_(Config0),
-    ok = sc_ws_update_([include_meta|Config]),
+    ok = sc_ws_update_([{include_meta, true}|Config]),
     ok = sc_ws_close_(Config).
+
+sc_ws_update_transfer(Config) ->
+    ok = sc_ws_update_(Config).
 
 sc_ws_basic_client_reconnect_i(Config) ->
     sc_ws_basic_client_reconnect_(initiator, Config).
@@ -3375,7 +3386,7 @@ ping_pong(ConnPid, Config) ->
 sc_ws_deposit(Config) ->
     lists:foreach(
         fun(Depositor) ->
-            sc_ws_deposit_(Config, Depositor, #{}),
+            sc_ws_deposit_(Config, Depositor, maybe_include_meta(#{}, Config)),
             ok
         end,
         [initiator, responder]).
@@ -3383,7 +3394,7 @@ sc_ws_deposit(Config) ->
 sc_ws_withdraw(Config) ->
     lists:foreach(
         fun(Depositor) ->
-            sc_ws_withdraw_(Config, Depositor, #{}),
+            sc_ws_withdraw_(Config, Depositor, maybe_include_meta(#{}, Config)),
             ok
         end,
         [initiator, responder]).
@@ -3452,6 +3463,27 @@ reconnect_channel_options(SignedTx, Config) ->
        , reconnect_tx => SignedTx
        %% , state_password => StatePassword
        , protocol => sc_ws_protocol(Config) }, Config).
+
+maybe_include_meta(Opts, Config) ->
+    case proplists:get_bool(include_meta, Config) of
+        true ->
+            Opts#{ meta => [meta_str()] };
+        false ->
+            Opts
+    end.
+
+meta_str() ->
+    <<"meta 1">>.
+
+
+validate_meta(Meta) ->
+    ExpMeta = aesc_offchain_update:op_meta(meta_str()),
+    ExpMetaForClient = aesc_offchain_update:for_client(ExpMeta),
+    {ExpMetaForClient, _} = {Meta, ExpMetaForClient},
+    ok.
+
+include_meta(Config) ->
+    proplists:get_bool(include_meta, Config).
 
 current_height() ->
     case rpc(aec_chain, top_header, []) of
@@ -3523,6 +3555,8 @@ log_basename(Config) ->
         case GName of %% an assertive and explicit check. If a new group is added - this will crash
             with_open_channel ->
                 filename:join(Protocol, "continuous");
+            with_meta ->
+                filename:join(Protocol, "with_meta");
             client_reconnect ->
                 filename:join(Protocol, "reconnect");
             client_reconnect_no_password ->
@@ -3578,7 +3612,20 @@ tx_in_mempool(TxHash) ->
         {ok, 404, _} -> false
     end.
 
-ws_get_decoded_result(ConnPid1, ConnPid2, Contract, Function, [Update], UnsignedTx, Config) ->
+ws_get_decoded_result(ConnPid1, ConnPid2, Contract, Function, Updates, UnsignedTx, Config) ->
+    case proplists:get_bool(include_meta, Config) of
+        true ->
+            [Update, Meta] = Updates,
+            ok = validate_meta(Meta),
+            ws_get_decoded_result_(ConnPid1, ConnPid2, Contract, Function,
+                                   [Update], UnsignedTx, Config);
+        false ->
+            [_] = Updates,
+            ws_get_decoded_result_(ConnPid1, ConnPid2, Contract, Function,
+                                   Updates, UnsignedTx, Config)
+    end.
+
+ws_get_decoded_result_(ConnPid1, ConnPid2, Contract, Function, [Update], UnsignedTx, Config) ->
     %% helper lambda for decoded result
     GetCallResult =
         fun(ConnPid) ->
@@ -4224,12 +4271,13 @@ sc_ws_pinned_contract(Cfg) ->
             EncodedCode = contract_byte_code("channel_env"),
             {ok, EncodedInitData} = encode_call_data(channel_env, "init", []),
             {CreateVolley, OwnerConnPid, OwnerPubKey} = GetVolley(Owner),
-            NewContractOpts =
+            NewContractOpts0 =
                 #{vm_version  => aect_test_utils:vm_version(),
                   abi_version => aect_test_utils:abi_version(),
                   deposit     => 1,
                   code        => EncodedCode,
                   call_data   => EncodedInitData},
+            NewContractOpts = maybe_include_meta(NewContractOpts0, Cfg),
             % correct call
             ws_send_tagged(OwnerConnPid, <<"channels.update.new_contract">>,
                 NewContractOpts, Cfg),
