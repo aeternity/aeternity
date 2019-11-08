@@ -75,6 +75,7 @@
          slash_payload_not_co_signed/1,
          slash_invalid_state_hash/1,
          slash_older_payload/1,
+         slash_no_payload/1,
          slash_missing_channel/1
          ]).
 
@@ -295,6 +296,7 @@ groups() ->
        slash_payload_not_co_signed,
        slash_invalid_state_hash,
        slash_older_payload,
+       slash_no_payload,
        slash_missing_channel
       ]},
      {settle_negative, [sequence],
@@ -1288,11 +1290,11 @@ slash_invalid_state_hash(Cfg) ->
 
 slash_older_payload(Cfg) ->
     Test =
-        fun(Closer, Slasher) ->
+        fun(Closer, Slasher, CloseRound, SlashRound, Error) ->
             run(#{cfg => Cfg},
                [positive(fun create_channel_/2),
                 set_from(Closer),
-                set_prop(round, 5),
+                set_prop(round, CloseRound),
                 positive(fun close_solo_with_payload/2),
                 fun(#{channel_pubkey := ChannelPubKey, state := S} = Props) ->
                     % make sure the channel is not active any more
@@ -1301,12 +1303,40 @@ slash_older_payload(Cfg) ->
                     Props
                 end,
                 set_from(Slasher),
-                set_prop(round, 4),
-                negative(fun slash_/2, {error, old_round})])
+                set_prop(round, SlashRound),
+                negative(fun slash_/2, {error, Error})])
+        end,
+    [Test(Closer, Slasher, CloseRound, SlashRound, Error)
+        || Closer <- ?ROLES,
+           Slasher <- ?ROLES,
+           {CloseRound, SlashRound, Error} <- [{5, 4, old_round},
+                                               {5, 5, same_round}]],
+    ok.
+
+slash_no_payload(Cfg) ->
+    CloseRound = 5,
+    Test =
+        fun(Closer, Slasher) ->
+            run(#{cfg => Cfg},
+               [positive(fun create_channel_/2),
+                set_from(Closer),
+                set_prop(round, CloseRound),
+                positive(fun close_solo_with_payload/2),
+                fun(#{channel_pubkey := ChannelPubKey, state := S} = Props) ->
+                    % make sure the channel is not active any more
+                    ClosedCh = aesc_test_utils:get_channel(ChannelPubKey, S),
+                    false = aesc_channels:is_active(ClosedCh),
+                    Props
+                end,
+                set_from(Slasher),
+                set_prop(round, CloseRound),
+                set_prop(payload, <<>>),
+                negative(fun slash_/2, {error, slash_must_have_payload})])
         end,
     [Test(Closer, Slasher) || Closer <- ?ROLES,
                               Slasher <- ?ROLES],
     ok.
+
 slash_missing_channel(Cfg) ->
     test_both_missing_channel(Cfg, fun slash_/2).
 
