@@ -2,12 +2,20 @@
 
 -define(NOT_SET_BLOCK_HASH, <<0:32/unit:8>>).
 
-% Number of blocks until an opening tx should be considered final
--define(MINIMUM_DEPTH, 4).
+-define(DEFAULT_MINIMUM_DEPTH_STRATEGY, txfee).
+
+% Number of blocks until a fork will be considered active
+-define(FORK_MINIMUM_DEPTH, 4).
 
 -define(REESTABLISH_OPTS_KEYS,
     [ existing_channel_id
     , offchain_tx
+    ]).
+
+-define(CONNECT_OPTS_KEYS,
+    [ host
+    , port
+    , noise
     ]).
 
 -define(DEFAULT_TIMEOUTS,
@@ -120,24 +128,6 @@
                             ; S=:=awaiting_leave_ack
                             ; S=:=mutual_closing ).
 
--ifdef(TEST).
--define(CATCH_LOG(Err), ?_catch_(error, Err, ST)
-        lager:debug("CAUGHT ~p / ~p", [Err, pr_stacktrace(ST)]),
-       ).
--define(CATCH_LOG(Err, Prefix), ?_catch_(error, Err, ST)
-        lager:debug("~s: CAUGHT ~p / ~p", [Prefix, Err, pr_stacktrace(ST)]),
-       ).
--else.
-% When not testing we don't use the stracktrace, therefore we don't acquire it
-% in the first place.
--define(CATCH_LOG(Err), ?_catch_(error, Err)
-        lager:debug("CAUGHT ~p", [Err]),
-       ).
--define(CATCH_LOG(Err, Prefix), ?_catch_(error, Err)
-        lager:debug("~s: CAUGHT ~p", [Prefix, Err]),
-       ).
--endif.
-
 -record(bh_delta, { not_older_than  :: integer()
                   , not_newer_than  :: integer()
                   , pick            :: integer()
@@ -150,24 +140,25 @@
               , channel_status                  :: undefined | attached | open | closing
               , cur_statem_state                :: undefined | atom()
               , state                           :: aesc_offchain_state:state() | function()
-              , session                         :: pid()
-              , client                          :: pid() | undefined
-              , client_mref                     :: reference() | undefined
+              , session                         :: undefined | pid()
+              , client                          :: undefined | pid()
+              , client_mref                     :: undefined | reference()
               , client_connected = true         :: boolean()
               , client_may_disconnect = false   :: boolean()
               , client_reconnect_nonce = 0      :: non_neg_integer()
+              , peer_connected = false          :: boolean()
               , opts                            :: map()
               , state_password_wrapper          :: undefined | aesc_state_password_wrapper:wrapper()
               , channel_id                      :: undefined | binary()
               , on_chain_id                     :: undefined | binary()
               , create_tx                       :: undefined | any()
               , watcher                         :: undefined | pid()
-              , block_hash_delta = #bh_delta{}  :: #bh_delta{} 
+              , block_hash_delta = #bh_delta{}  :: #bh_delta{}
               %% we keep the latest operation so we can perform according
               %% checks
               , op = ?NO_OP                   :: latest_op()
               , ongoing_update = false        :: boolean()
-              , error_msg_type = undefined    :: undefined | error_msg_type()
+              , error_msg_type                :: undefined | error_msg_type()
               , last_reported_update          :: undefined | non_neg_integer()
               , log                           :: log()
               , strict_checks = true          :: boolean()
@@ -198,7 +189,6 @@
                       | channel_closing
                       | channel_closed.
 
--type role() :: initiator | responder.
 -type sign_tag() :: create_tx
                   | slash_tx
                   | deposit_tx
@@ -218,18 +208,22 @@
                         | ?DEP_ERR
                         | ?WDRAW_ERR.
 
--opaque opts() :: #{ minimum_depth => non_neg_integer() %% Defaulted for responder, not for initiator.
-                   , timeouts := #{state_name() := pos_integer()
-                   , report := map()
-                   , log_keep := non_neg_integer()
-                   , initiator := aec_keys:pubkey()
-                   , responder := aec_keys:pubkey()
-                   }}.
+-type minimum_depth_factor()   :: non_neg_integer().
+-type minimum_depth_strategy() :: txfee.
 
--record(op_data, {signed_tx  :: aetx_sign:signed_tx(),
-                  updates    :: [aesc_offchain_update:update()],
-                  block_hash :: aec_blocks:block_header_hash()
-                  }).
+-opaque opts() :: #{ minimum_depth          => minimum_depth_factor()
+                   , minimum_depth_strategy => minimum_depth_strategy()
+                   , timeouts               := #{state_name() := pos_integer()}
+                   , report                 := #{atom() := boolean()}
+                   , log_keep               := non_neg_integer()
+                   , initiator              := aec_keys:pubkey()
+                   , responder              := aec_keys:pubkey()
+                   }.
+
+-record(op_data, { signed_tx  :: aetx_sign:signed_tx()
+                 , updates    :: [aesc_offchain_update:update()]
+                 , block_hash :: aec_blocks:block_header_hash()
+                 }).
 
 -record(op_sign, { tag  :: sign_tag()
                  , data :: #op_data{}
@@ -256,7 +250,8 @@
                   , data    :: #op_data{}
                   }).
 
--record(op_reestablish, {offchain_tx :: aetx_sign:signed_tx()
+-record(op_reestablish, { offchain_tx :: aetx_sign:signed_tx() | undefined
+                        , mode = restart :: restart | remain
                         }).
 
 -record(op_close, { data :: #op_data{}
@@ -281,3 +276,22 @@
 %% No need for a stronger password policy
 %% This check is only here to ensure that someone doesn't enter a 1-2 character password
 -define(STATE_PASSWORD_MINIMUM_LENGTH, 6).
+
+%% cancelable tags for an action initiated by this FSM's client. This cancels
+%% sign requests
+-define(CANCEL_SIGN_TAGS, [ slash_tx
+                          , deposit_tx
+                          , withdraw_tx
+                          , snapshot_solo_tx
+                          , close_solo_tx
+                          , settle_tx
+                          , ?UPDATE
+                          , ?SHUTDOWN]).
+
+%% cancelable tags for an action initiated by the other party. This cancels
+%% acknowledge requests
+-define(CANCEL_ACK_TAGS,  [ ?DEP_CREATED
+                          , ?WDRAW_CREATED
+                          , ?UPDATE_ACK
+                          , ?SHUTDOWN_ACK]).
+

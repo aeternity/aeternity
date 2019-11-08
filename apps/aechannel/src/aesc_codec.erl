@@ -24,18 +24,19 @@
 -include("aesc_codec.hrl").
 
 -type bin32()   :: <<_:256>>.
+-type i1byte()  :: 0 .. 16#FF.
 -type i2bytes() :: 0 .. 16#FFFF.
 -type i4bytes() :: 0 .. 16#FFFFffff.
 -type i8bytes() :: 0 .. 16#FFFFffffFFFFffff.
 
--type hash()        :: bin32().
--type chan_id()     :: bin32().
--type lock_period() :: i2bytes().
--type depth()       :: i4bytes().
-%% -type length()      :: i2bytes().
--type amount()      :: i8bytes().
--type pubkey()      :: bin32().
--type error_code()  :: i2bytes().
+-type hash()             :: bin32().
+-type chan_id()          :: bin32().
+-type lock_period()      :: i2bytes().
+-type depth()            :: i4bytes().
+-type mindepthstrategy() :: i1byte().
+-type amount()           :: i8bytes().
+-type pubkey()           :: bin32().
+-type error_code()       :: i2bytes().
 
 -define(PUBKEY_SIZE, 32).
 
@@ -145,52 +146,97 @@ dec_ch_open(<< ChainHash      :32/binary
      , responder            => ResponderPubkey }.
 
 
--type ch_accept_msg() :: #{ chain_hash           := hash()
-                          , temporary_channel_id := chan_id()
-                          , minimum_depth        := depth()
-                          , initiator_amount     := amount()
-                          , responder_amount     := amount()
-                          , channel_reserve      := amount()
-                          , initiator            := pubkey()
-                          , responder            := pubkey()}.
+-type ch_accept_msg() :: #{ chain_hash             := hash()
+                          , temporary_channel_id   := chan_id()
+                          , minimum_depth          := depth()
+                          , minimum_depth_strategy => mindepthstrategy()
+                          , initiator_amount       := amount()
+                          , responder_amount       := amount()
+                          , channel_reserve        := amount()
+                          , initiator              := pubkey()
+                          , responder              := pubkey()
+                          }.
 
 -spec enc_ch_accept(ch_accept_msg()) -> binary().
-enc_ch_accept(#{ chain_hash           := ChainHash
-               , temporary_channel_id := ChanId
-               , minimum_depth        := MinDepth
-               , initiator_amount     := InitiatorAmt
-               , responder_amount     := ResponderAmt
-               , channel_reserve      := ChanReserve
-               , initiator            := Initiator
-               , responder            := Responder}) ->
-    << ?ID_CH_ACCEPT  :1 /unit:8
-     , ChainHash      :32/binary
-     , ChanId         :32/binary
-     , MinDepth       :4 /unit:8
-     , InitiatorAmt   :8 /unit:8
-     , ResponderAmt   :8 /unit:8
-     , ChanReserve    :8 /unit:8
-     , Initiator      :32/binary
-     , Responder      :32/binary >>.
+enc_ch_accept(#{ chain_hash             := ChainHash
+               , temporary_channel_id   := ChanId
+               , minimum_depth          := MinDepth
+               , minimum_depth_strategy := MinDepthStrategy0
+               , initiator_amount       := InitiatorAmt
+               , responder_amount       := ResponderAmt
+               , channel_reserve        := ChanReserve
+               , initiator              := Initiator
+               , responder              := Responder}) ->
+    MinDepthStrategy = enc_mindepth_strategy(MinDepthStrategy0),
+    << ?ID_CH_ACCEPT    :1 /unit:8
+     , ChainHash        :32/binary
+     , ChanId           :32/binary
+     , MinDepth         :4 /unit:8
+     , MinDepthStrategy :1 /unit:8
+     , InitiatorAmt     :8 /unit:8
+     , ResponderAmt     :8 /unit:8
+     , ChanReserve      :8 /unit:8
+     , Initiator        :32/binary
+     , Responder        :32/binary >>;
+%% This function clause is kept for backwards compatibility where
+%% minimum_depth_strategy is not given. So if an initiator with the strategy
+%% support connects to a responder without the support, it can gracefully handle
+%% it. The other way around is not supported.
+enc_ch_accept(#{ chain_hash             := ChainHash
+               , temporary_channel_id   := ChanId
+               , minimum_depth          := MinDepth
+               , initiator_amount       := InitiatorAmt
+               , responder_amount       := ResponderAmt
+               , channel_reserve        := ChanReserve
+               , initiator              := Initiator
+               , responder              := Responder}) ->
+    << ?ID_CH_ACCEPT    :1 /unit:8
+     , ChainHash        :32/binary
+     , ChanId           :32/binary
+     , MinDepth         :4 /unit:8
+     , InitiatorAmt     :8 /unit:8
+     , ResponderAmt     :8 /unit:8
+     , ChanReserve      :8 /unit:8
+     , Initiator        :32/binary
+     , Responder        :32/binary >>.
 
 -spec dec_ch_accept(binary()) -> ch_accept_msg().
-dec_ch_accept(<< ChainHash      :32/binary
-               , ChanId         :32/binary
-               , MinDepth       :4/unit:8
-               , InitiatorAmt   :8 /unit:8
-               , ResponderAmt   :8 /unit:8
-               , ChanReserve    :8 /unit:8
-               , Initiator      :32/binary
-               , Responder      :32/binary >>) ->
-    #{ chain_hash           => ChainHash
-     , temporary_channel_id => ChanId
-     , minimum_depth        => MinDepth
-     , initiator_amount     => InitiatorAmt
-     , responder_amount     => ResponderAmt
-     , channel_reserve      => ChanReserve
-     , initiator            => Initiator
-     , responder            => Responder}.
-
+dec_ch_accept(<< ChainHash        :32/binary
+               , ChanId           :32/binary
+               , MinDepth         :4 /unit:8
+               , MinDepthStrategy :1 /unit:8
+               , InitiatorAmt     :8 /unit:8
+               , ResponderAmt     :8 /unit:8
+               , ChanReserve      :8 /unit:8
+               , Initiator        :32/binary
+               , Responder        :32/binary >>) ->
+    #{ chain_hash             => ChainHash
+     , temporary_channel_id   => ChanId
+     , minimum_depth          => MinDepth
+     , minimum_depth_strategy => dec_mindepth_strategy(MinDepthStrategy)
+     , initiator_amount       => InitiatorAmt
+     , responder_amount       => ResponderAmt
+     , channel_reserve        => ChanReserve
+     , initiator              => Initiator
+     , responder              => Responder };
+%% This function clause is kept for backwards compatibility where
+%% minimum_depth_strategy is not given.
+dec_ch_accept(<< ChainHash        :32/binary
+               , ChanId           :32/binary
+               , MinDepth         :4 /unit:8
+               , InitiatorAmt     :8 /unit:8
+               , ResponderAmt     :8 /unit:8
+               , ChanReserve      :8 /unit:8
+               , Initiator        :32/binary
+               , Responder        :32/binary >>) ->
+    #{ chain_hash             => ChainHash
+     , temporary_channel_id   => ChanId
+     , minimum_depth          => MinDepth
+     , initiator_amount       => InitiatorAmt
+     , responder_amount       => ResponderAmt
+     , channel_reserve        => ChanReserve
+     , initiator              => Initiator
+     , responder              => Responder }.
 
 -type ch_reestabl_msg() :: #{ chain_hash := hash()
                             , channel_id := chan_id()
@@ -730,3 +776,9 @@ decode_data_list(<<>>, Result) -> lists:reverse(Result);
 decode_data_list(<<Length:2/unit:8, Rest/bytes>>, Result) ->
     <<Data:Length/binary, Rest1/binary>> = Rest,
     decode_data_list(Rest1, [Data | Result]).
+
+enc_mindepth_strategy(txfee) -> 1;
+enc_mindepth_strategy(_)     -> 0.
+
+dec_mindepth_strategy(1) -> txfee;
+dec_mindepth_strategy(_) -> undefined.

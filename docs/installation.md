@@ -16,7 +16,7 @@ In order to install an Aeternity node manually, you need to:
 Run below command to install latest version of aeternity node and follow the instructions:
 
 ```bash
-bash <(curl -s https://raw.githubusercontent.com/aeternity/installer/v2.0.0/install.sh)
+bash <(curl -s https://install.aeternity.io/install.sh)
 ```
 
 ## Retrieve release binary

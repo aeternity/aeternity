@@ -17,6 +17,7 @@
 -ifdef(TEST).
 -export([ contract_env/6
         , tx_env/1
+        , tx_env/2
         ]).
 
 -include("../../aecore/include/blocks.hrl").
@@ -45,6 +46,7 @@
         , del_ga_auth_id/2
         , del_ga_nonce/2
         , set_beneficiary/2
+        , set_consensus_version/2
         , set_context/2
         , set_dry_run/2
         , set_ga_tx_hash/2
@@ -153,8 +155,11 @@ contract_env(Height, ConsensusVersion, Time, Beneficiary, Difficulty,
      }.
 
 tx_env(Height) ->
-    Vsn = aec_hard_forks:protocol_effective_at_height(Height),
-    #env{ consensus_version = Vsn
+    Version = aec_hard_forks:protocol_effective_at_height(Height),
+    tx_env(Height, Version).
+
+tx_env(Height, Version) ->
+    #env{ consensus_version = Version
         , context = aetx_transaction
         , height  = Height
         , signed_tx = none
@@ -179,6 +184,9 @@ set_beneficiary(Env, X) -> Env#env{beneficiary = X}.
 
 -spec consensus_version(env()) -> non_neg_integer().
 consensus_version(#env{consensus_version = X}) -> X.
+
+-spec set_consensus_version(env(), aec_hard_forks:protocol_vsn()) -> env().
+set_consensus_version(Env, X) -> Env#env{consensus_version = X}.
 
 %%------
 

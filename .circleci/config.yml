@@ -42,7 +42,6 @@ references:
   container_otp21_plt: &container_otp21_plt _build/default/rebar3_21.3.8.9_plt
 
   infrastructure_config_environment: &infrastructure_config_environment
-    resource_class: large
     DOCKERHUB_REPO: aeternity/aeternity
     S3_BUILDS_BUCKET: aeternity-node-builds
     S3_RELEASES_BUCKET: aeternity-node-releases
@@ -87,16 +86,14 @@ references:
       name: Install OTP
       environment:
         # See minimum_otp_vsn in rebar.config
-        OTP_VERSION: "20.1"
+        OTP_VERSION: 20.3.8.23
       command: |
         # Install OTP package deps
         sudo apt-get update && sudo apt-get install libwxbase3.0-dev libwxgtk3.0-dev libsctp1
         # Install OTP binary package
         PACKAGE_NAME=esl-erlang_${OTP_VERSION}-1~ubuntu~xenial_amd64.deb
         OTP_DOWNLOAD_URL=https://packages.erlang-solutions.com/erlang/debian/pool/${PACKAGE_NAME}
-        # TODO temporary disable SSL checks on erlang-solutions.com until they fix their certificate
-        # FIXME ^^ (multi-editor support :))
-        curl -fsSL --insecure -o ${PACKAGE_NAME} "$OTP_DOWNLOAD_URL"
+        curl -fsSL -o ${PACKAGE_NAME} "$OTP_DOWNLOAD_URL"
         sudo dpkg -i ${PACKAGE_NAME}
 
   install_libsodium: &install_libsodium
@@ -131,13 +128,13 @@ references:
     restore_cache:
       key: *build_otp21_cache_key
 
-  machine_build_cache_key: &machine_build_cache_key machine-build-cache-v8-{{ .Branch }}-{{ .Revision }}
+  machine_build_cache_key: &machine_build_cache_key machine-build-cache-v9-{{ .Branch }}-{{ .Revision }}
   restore_machine_build_cache: &restore_machine_build_cache
     restore_cache:
       keys:
         - *machine_build_cache_key
-        - machine-build-cache-v8-{{ .Branch }}-
-        - machine-build-cache-v8-
+        - machine-build-cache-v9-{{ .Branch }}-
+        - machine-build-cache-v9-
 
   save_machine_build_cache: &save_machine_build_cache
     save_cache:
@@ -235,12 +232,6 @@ references:
     store_artifacts:
       path: rebar3.crashdump
 
-  upload_release_artifacts: &upload_release_artifacts
-    run:
-      name: Upload release artifacts to central repository (AWS)
-      command: |
-        envdir /secrets aws s3 cp --acl public-read ${PACKAGE_TARBALL:?} s3://${S3_RELEASES_BUCKET:?}/
-
   deploy_steps: &deploy_steps
     - checkout
     - *set_package_path
@@ -254,16 +245,6 @@ references:
           export PACKAGE=${PACKAGE_TARBALL:?}
           export DEPLOY_DB_VERSION=$(cat deployment/DB_VERSION)
           cd /infrastructure && make deploy
-
-  upload_github_release_asset: &upload_github_release_asset
-    run:
-      name: Upload GitHub Release Asset
-      environment:
-        PACKAGES_DIR: *packages_workspace
-      command: |
-        envdir /secrets /infrastructure/scripts/upload-github-release-assets.sh github_api_token=${GITHUB_API_TOKEN:?} \
-          owner=${CIRCLE_PROJECT_USERNAME} repo=${CIRCLE_PROJECT_REPONAME} \
-          tag=${CIRCLE_TAG} ASSETS=${PACKAGES_DIR:?}/*
 
   fail_notification: &fail_notification
     run:
@@ -382,28 +363,6 @@ references:
     - *store_rebar3_crashdump
     - *fail_notification
 
-  upload_package: &upload_package
-    steps:
-      - checkout
-      - *set_package_path
-      - attach_workspace:
-          at: *packages_workspace
-      - setup_secrets
-      - *upload_github_release_asset
-      - *upload_release_artifacts
-
-  upload_latest_artifacts: &upload_latest_artifacts
-    - checkout
-    - *set_package_path
-    - setup_secrets
-    - attach_workspace:
-        at: *packages_workspace
-    - run:
-        name: Upload build artifacts to central repository (AWS)
-        command: |
-          envdir /secrets aws s3 cp --acl public-read ${PACKAGE_TARBALL:?} s3://${S3_RELEASES_BUCKET:?}/aeternity-latest-${PKG_SUFFIX:?}.tar.gz
-    - *fail_notification
-
   # Windows
   windows_cache_version: &windows_cache_version "v1"
   windows_artifacts: &windows_artifacts C:\Users\circleci\project\packages
@@ -431,6 +390,9 @@ references:
         type: string
       otp_version:
         default: "21.3"
+        type: string
+      artifacts_path:
+        default: *windows_artifacts
         type: string
     working_directory: *windows_working_directory
     environment: *windows_env
@@ -568,6 +530,68 @@ commands:
       - install_win_msys2:
           install_path: << parameters.msys_install_path >>
 
+  upload_aws_build_artifacts:
+    steps:
+      - run:
+          name: Upload build artifacts to central repository (AWS)
+          command: |
+            envdir /secrets aws s3 cp --acl public-read ${PACKAGE_TARBALL:?} s3://${S3_BUILDS_BUCKET:?}/
+            if [ -n "$CIRCLE_BRANCH" -a "$CIRCLE_BRANCH" = "master" ]; then
+              envdir /secrets aws s3 cp --acl public-read ${PACKAGE_TARBALL:?} s3://${S3_BUILDS_BUCKET:?}/aeternity-latest-${PKG_SUFFIX:?}${PKG_EXT:-".tar.gz"}
+            fi
+
+  upload_aws_release_artifacts:
+    steps:
+      - run:
+          name: Upload release artifacts to central repository (AWS)
+          command: |
+            envdir /secrets aws s3 cp --acl public-read ${PACKAGE_TARBALL:?} s3://${S3_RELEASES_BUCKET:?}/
+
+  upload_aws_latest_artifacts:
+    steps:
+      - run:
+          name: Upload latest release artifacts to central repository (AWS)
+          command: |
+            envdir /secrets aws s3 cp --acl public-read ${PACKAGE_TARBALL:?} s3://${S3_RELEASES_BUCKET:?}/aeternity-latest-${PKG_SUFFIX:?}${PKG_EXT:-".tar.gz"}
+
+  upload_github_release_artifacts:
+    steps:
+      - run:
+          name: Upload GitHub Release Asset
+          command: |
+            envdir /secrets /infrastructure/scripts/upload-github-release-assets.sh github_api_token=${GITHUB_API_TOKEN:?} \
+              owner=${CIRCLE_PROJECT_USERNAME} repo=${CIRCLE_PROJECT_REPONAME} \
+              tag=${CIRCLE_TAG} ASSETS=${PACKAGES_DIR:?}/*
+
+  upload_build_artifacts:
+    steps:
+      - checkout
+      - *set_package_path
+      - setup_secrets
+      - attach_workspace:
+          at: *packages_workspace
+      - upload_aws_build_artifacts
+      - *fail_notification
+
+  upload_release_artifacts:
+    steps:
+      - checkout
+      - *set_package_path
+      - setup_secrets
+      - attach_workspace:
+          at: *packages_workspace
+      - upload_github_release_artifacts
+      - upload_aws_release_artifacts
+
+  upload_latest_artifacts:
+    steps:
+      - checkout
+      - *set_package_path
+      - setup_secrets
+      - attach_workspace:
+          at: *packages_workspace
+      - upload_aws_latest_artifacts
+      - *fail_notification
 
 jobs:
   build:
@@ -642,12 +666,20 @@ jobs:
       - MAKE_TARGET: ct-lima
     steps: *test_steps
 
-  test_lima_otp21:
+  test_latest:
+    executor: builder_container_stable
+    <<: *container_config
+    parallelism: 3
+    environment:
+      - MAKE_TARGET: ct-latest
+    steps: *test_steps
+
+  test_latest_otp21:
     executor: builder_container_stable
     <<: *container_otp21_config
     parallelism: 3
     environment:
-      - MAKE_TARGET: ct-lima
+      - MAKE_TARGET: ct-latest
     steps: *test_steps
 
   test_mnesia_leveled:
@@ -692,6 +724,13 @@ jobs:
     <<: *container_config
     environment:
       - MAKE_TARGET: eunit-lima
+    steps: *eunit_steps
+
+  eunit_latest:
+    executor: builder_container_stable
+    <<: *container_config
+    environment:
+      - MAKE_TARGET: eunit-latest
     steps: *eunit_steps
 
   aevm_tests:
@@ -805,24 +844,6 @@ jobs:
       - checkout
       - *build_ubuntu_package
       - *store_package_artifacts
-      - *fail_notification
-
-  upload_build_artifacts:
-    executor: infrastructure_container_stable
-    <<: *infrastructure_config
-    steps:
-      - checkout
-      - *set_package_path
-      - setup_secrets
-      - attach_workspace:
-          at: *packages_workspace
-      - run:
-          name: Upload build artifacts to central repository (AWS)
-          command: |
-            envdir /secrets aws s3 cp --acl public-read ${PACKAGE_TARBALL:?} s3://${S3_BUILDS_BUCKET:?}/
-            if [ -n "$CIRCLE_BRANCH" -a "$CIRCLE_BRANCH" = "master" ]; then
-              envdir /secrets aws s3 cp --acl public-read ${PACKAGE_TARBALL:?} s3://${S3_BUILDS_BUCKET:?}/aeternity-latest-${PKG_SUFFIX:?}.tar.gz
-            fi
       - *fail_notification
 
   osx_package:
@@ -1035,21 +1056,46 @@ jobs:
       - DEPLOY_DOWNTIME: 1800 #30M
     steps: *deploy_steps
 
+  # Upload artifacts
+  upload_build_artifacts:
+    executor: infrastructure_container_stable
+    <<: *infrastructure_config
+    environment:
+      <<: *infrastructure_config_environment
+      PACKAGES_DIR: *packages_workspace
+    steps:
+      - upload_build_artifacts
+
   upload_packages_osx:
     executor: infrastructure_container_stable
     <<: *infrastructure_config
-    <<: *upload_package
     environment:
       <<: *infrastructure_config_environment
       PKG_TARGET_OS: macos
+      PACKAGES_DIR: *packages_workspace
+    steps:
+      - upload_release_artifacts
 
   upload_packages_linux:
     executor: infrastructure_container_stable
     <<: *infrastructure_config
-    <<: *upload_package
     environment:
       <<: *infrastructure_config_environment
       PKG_TARGET_OS: ubuntu
+      PACKAGES_DIR: *packages_workspace
+    steps:
+      - upload_release_artifacts
+
+  upload_packages_windows:
+    executor: infrastructure_container_stable
+    <<: *infrastructure_config
+    environment:
+      <<: *infrastructure_config_environment
+      PKG_TARGET_OS: windows
+      PKG_EXT: -experimental.zip
+      PACKAGES_DIR: *packages_workspace
+    steps:
+      - upload_release_artifacts
 
   upload_latest_packages_osx:
     executor: infrastructure_container_stable
@@ -1057,7 +1103,9 @@ jobs:
     environment:
       <<: *infrastructure_config_environment
       PKG_TARGET_OS: macos
-    steps: *upload_latest_artifacts
+      PACKAGES_DIR: *packages_workspace
+    steps:
+      - upload_latest_artifacts
 
   upload_latest_packages_linux:
     executor: infrastructure_container_stable
@@ -1065,11 +1113,27 @@ jobs:
     environment:
       <<: *infrastructure_config_environment
       PKG_TARGET_OS: ubuntu
-    steps: *upload_latest_artifacts
+      PACKAGES_DIR: *packages_workspace
+    steps:
+      - upload_latest_artifacts
+
+  upload_latest_packages_windows:
+    executor: infrastructure_container_stable
+    <<: *infrastructure_config
+    environment:
+      <<: *infrastructure_config_environment
+      PKG_TARGET_OS: windows
+      PKG_EXT: -experimental.zip
+      PACKAGES_DIR: *packages_workspace
+    steps:
+      - upload_latest_artifacts
 
   verify_release_artifacts:
     executor: infrastructure_container_stable
     <<: *infrastructure_config
+    environment:
+      <<: *infrastructure_config_environment
+      PACKAGES_DIR: *packages_workspace
     steps:
       - run:
           name: Verify release artifacts
@@ -1107,7 +1171,14 @@ jobs:
           command: .circleci\windows\test
       - store_artifacts:
           path: *windows_artifacts
-          destination: /tmp/packages-<< parameters.otp_version >>
+          destination: packages-<< parameters.otp_version >>
+      - run:
+          name: Add experimental suffix to artifacts
+          command: 'FOR %_ IN (<< parameters.artifacts_path >>\*.*) DO REN %_ %~n_-experimental%~x_'
+      - persist_to_workspace:
+          root: *windows_artifacts
+          paths:
+            - "*.zip"
 
 # CircleCI skips a job for a tag by default.
 # A job must have a filters tags section to run as a part of a tag push
@@ -1122,9 +1193,9 @@ workflows:
           filters:
             branches:
               ignore:
-                - env/dev1
-                - env/dev2
                 - system-tests
+            tags:
+              only: *tag_regex
 
       - build:
           filters:
@@ -1204,7 +1275,17 @@ workflows:
                 - env/dev2
                 - system-tests
 
-      - test_lima_otp21:
+      - test_latest:
+          requires:
+            - build
+          filters:
+            branches:
+              ignore:
+                - env/dev1
+                - env/dev2
+                - system-tests
+
+      - test_latest_otp21:
           requires:
             - build_otp21
           filters:
@@ -1271,6 +1352,18 @@ workflows:
               only: *tag_regex
 
       - eunit_lima:
+          requires:
+            - build
+          filters:
+            branches:
+              ignore:
+                - env/dev1
+                - env/dev2
+                - system-tests
+            tags:
+              only: *tag_regex
+
+      - eunit_latest:
           requires:
             - build
           filters:
@@ -1391,12 +1484,14 @@ workflows:
             - test_minerva
             - test_fortuna
             - test_lima
+            - test_latest
             - test_mnesia_leveled
             - test_mnesia_rocksdb
             - eunit_roma
             - eunit_minerva
             - eunit_fortuna
             - eunit_lima
+            - eunit_latest
             - aevm_tests
             - uat_tests
             - static_analysis
@@ -1414,12 +1509,14 @@ workflows:
             - test_minerva
             - test_fortuna
             - test_lima
+            - test_latest
             - test_mnesia_leveled
             - test_mnesia_rocksdb
             - eunit_roma
             - eunit_minerva
             - eunit_fortuna
             - eunit_lima
+            - eunit_latest
             - aevm_tests
             - uat_tests
             - static_analysis
@@ -1436,17 +1533,18 @@ workflows:
             - test_minerva
             - test_fortuna
             - test_lima
+            - test_latest
             - test_mnesia_leveled
             - test_mnesia_rocksdb
             - eunit_roma
             - eunit_minerva
             - eunit_fortuna
             - eunit_lima
+            - eunit_latest
             - aevm_tests
             - uat_tests
             - static_analysis
             - rebar_lock_check
-            - linux_package
             - linux_package
           filters:
             branches:
@@ -1468,7 +1566,7 @@ workflows:
             branches:
               only: env/dev2
 
-      - hodl_artefact_upload:
+      - hodl_artifact_upload:
           type: approval
           filters:
             branches:
@@ -1499,6 +1597,7 @@ workflows:
             - eunit_minerva
             - eunit_fortuna
             - eunit_lima
+            - eunit_latest
             - static_analysis
             - rebar_lock_check
             - linux_package
@@ -1527,10 +1626,11 @@ workflows:
             - eunit_minerva
             - eunit_fortuna
             - eunit_lima
+            - eunit_latest
             - static_analysis
             - rebar_lock_check
             - linux_package
-            - hodl_artefact_upload
+            - hodl_artifact_upload
           filters:
             branches:
               ignore: /.*/
@@ -1544,10 +1644,29 @@ workflows:
             - eunit_minerva
             - eunit_fortuna
             - eunit_lima
+            - eunit_latest
             - static_analysis
             - rebar_lock_check
             - osx_package
-            - hodl_artefact_upload
+            - hodl_artifact_upload
+          filters:
+            branches:
+              ignore: /.*/
+            tags:
+              only: *tag_regex
+
+      - upload_packages_windows:
+          context: ae-node-builds
+          requires:
+            - eunit_roma
+            - eunit_minerva
+            - eunit_fortuna
+            - eunit_lima
+            - eunit_latest
+            - static_analysis
+            - rebar_lock_check
+            - windows_package
+            - hodl_artifact_upload
           filters:
             branches:
               ignore: /.*/
@@ -1561,9 +1680,10 @@ workflows:
             - eunit_minerva
             - eunit_fortuna
             - eunit_lima
+            - eunit_latest
             - static_analysis
             - rebar_lock_check
-            - hodl_artefact_upload
+            - hodl_artifact_upload
           filters:
             branches:
               ignore: /.*/
@@ -1600,6 +1720,17 @@ workflows:
             tags:
               only: *tag_regex
 
+      - upload_latest_packages_windows:
+          context: ae-node-builds
+          requires:
+            - windows_package
+            - hodl_latest
+          filters:
+            branches:
+              ignore: /.*/
+            tags:
+              only: *tag_regex
+
       - docker_push_latest:
           context: ae-node-builds
           requires:
@@ -1618,6 +1749,8 @@ workflows:
             - upload_latest_packages_linux
             - upload_packages_osx
             - upload_latest_packages_osx
+            - upload_packages_windows
+            - upload_latest_packages_windows
             - docker_push_tag
             - docker_push_latest
           filters:

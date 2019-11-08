@@ -69,7 +69,8 @@
     name    => node2,
     peers   => [node1],
     backend => aest_docker,
-    source  => {pull, "aeternity/aeternity:local"}
+    source  => {pull, "aeternity/aeternity:local"},
+    mining => #{autostart => false}
 }).
 
 %=== COMMON TEST FUNCTIONS =====================================================
@@ -136,7 +137,7 @@ test_mempool_ttl_cleanup(Cfg) ->
 
     %% Check the first one got on the chain
     aest_nodes:wait_for_value({txs_on_chain, [DepositHash1]},
-                              [node1, node2], {blocks_delta, 2}, []),
+                              [node1, node2], {blocks_delta, 5}, []),
 
     %% Check the others are dropped
     aest_nodes:wait_for_value({txs_all_dropped, [DepositHash2, DepositHash3, DepositHash4]},

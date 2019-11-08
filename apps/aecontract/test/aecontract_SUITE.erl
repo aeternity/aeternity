@@ -182,6 +182,8 @@
 -define(MINER_PUBKEY, <<12345:?MINER_PUB_BYTES/unit:8>>).
 -define(BENEFICIARY_PUBKEY, <<12345:?BENEFICIARY_PUB_BYTES/unit:8>>).
 
+-define(GENESIS_HEIGHT, 0).
+
 -define(CHAIN_RELATIVE_TTL_MEMORY_ENCODING_TYPE(X), tuple()).
 -define(CHAIN_ABSOLUTE_TTL_MEMORY_ENCODING_TYPE(X), tuple()).
 
@@ -225,7 +227,8 @@
         ?ROMA_PROTOCOL_VSN    -> ?assertMatch(ExpRoma, Res);
         ?MINERVA_PROTOCOL_VSN -> ?assertMatch(ExpMinerva, Res);
         ?FORTUNA_PROTOCOL_VSN -> ?assertMatch(ExpMinerva, Res);
-        ?LIMA_PROTOCOL_VSN    -> ?assertMatch(ExpMinerva, Res)
+        ?LIMA_PROTOCOL_VSN    -> ?assertMatch(ExpMinerva, Res);
+        ?IRIS_PROTOCOL_VSN    -> ?assertMatch(ExpMinerva, Res)
     end).
 
 -define(assertMatchAEVM(__Exp, __Res),
@@ -480,6 +483,10 @@ init_tests(Release, VMName) ->
                 {lima,    {?LIMA_PROTOCOL_VSN,
                            IfAEVM(?SOPHIA_LIMA_AEVM, ?SOPHIA_LIMA_FATE),
                            IfAEVM(?ABI_AEVM_SOPHIA_1, ?ABI_FATE_SOPHIA_1),
+                           IfAEVM(?VM_AEVM_SOPHIA_4, ?VM_FATE_SOPHIA_1)}},
+                {iris,    {?IRIS_PROTOCOL_VSN,
+                           IfAEVM(?SOPHIA_IRIS_AEVM, ?SOPHIA_IRIS_FATE),
+                           IfAEVM(?ABI_AEVM_SOPHIA_1, ?ABI_FATE_SOPHIA_1),
                            IfAEVM(?VM_AEVM_SOPHIA_4, ?VM_FATE_SOPHIA_1)}}],
     {Proto, Sophia, ABI, VM} = proplists:get_value(Release, Versions),
     meck:expect(aec_hard_forks, protocol_effective_at_height, fun(_) -> Proto end),
@@ -493,22 +500,25 @@ init_per_group(fate, Cfg) ->
     aect_test_utils:init_per_group(fate, Cfg, fun(X) -> X end);
 init_per_group(protocol_interaction, Cfg) ->
     case aect_test_utils:latest_protocol_version() of
-        ?LIMA_PROTOCOL_VSN ->
+        ?IRIS_PROTOCOL_VSN ->
             MHeight = 10,
             FHeight = 15,
             LHeight = 20,
+            IHeight = 25,
             Fun = fun(H) when H <  MHeight -> ?ROMA_PROTOCOL_VSN;
                      (H) when H <  FHeight -> ?MINERVA_PROTOCOL_VSN;
                      (H) when H <  LHeight -> ?FORTUNA_PROTOCOL_VSN;
-                     (H) when H >= LHeight -> ?LIMA_PROTOCOL_VSN
+                     (H) when H <  IHeight -> ?LIMA_PROTOCOL_VSN;
+                     (H) when H >= IHeight -> ?IRIS_PROTOCOL_VSN
                   end,
             meck:expect(aec_hard_forks, protocol_effective_at_height, Fun),
             [{sophia_version, ?SOPHIA_MINERVA}, {vm_version, ?VM_AEVM_SOPHIA_2},
              {fork_heights, #{ minerva => MHeight,
                                fortuna => FHeight,
-                               lima    => LHeight
+                               lima    => LHeight,
+                               iris    => IHeight
                              }},
-             {protocol, lima} | Cfg];
+             {protocol, iris} | Cfg];
         _ ->
             {skip, only_test_protocol_interaction_on_latest_protocol}
     end;
@@ -557,6 +567,7 @@ init_per_testcase_common(TC, Config) ->
                           roma    -> ?ROMA_PROTOCOL_VSN;
                           minerva -> ?MINERVA_PROTOCOL_VSN;
                           fortuna -> ?FORTUNA_PROTOCOL_VSN;
+                          iris    -> ?IRIS_PROTOCOL_VSN;
                           lima    -> ?LIMA_PROTOCOL_VSN
                       end,
     put('$vm_version', VmVersion),
@@ -617,6 +628,10 @@ create_contract_negative(_Cfg) ->
     {error, _, S1}    = sign_and_apply_transaction(RTx1, BadPrivKey, S1),
 
     {error, account_not_found} = aetx:process(RTx1, Trees, Env),
+
+    %% Bogus ABI
+    BTx1             = create_tx(PubKey, #{abi_version => 42}, S1),
+    {error, illegal_vm_version} = aetx:process(BTx1, Trees, Env),
 
     %% Insufficient funds
     S2     = aect_test_utils:set_account_balance(PubKey, 0, S1),
@@ -791,7 +806,7 @@ create_version_too_high(Cfg) ->
     Res = sign_and_apply_transaction(Tx, PrivKey, S1),
     %% Test that the create transaction is accepted/rejected accordingly
     case proplists:get_value(protocol, Cfg) of
-        P when P =:= roma; P =:= lima ->
+        P when P =:= roma; P =:= lima; P =:= iris ->
             {error, illegal_contract_compiler_version, _} = Res;
         P when P =:= minerva; P =:= fortuna ->
             {ok, _} = Res
@@ -1194,10 +1209,14 @@ call(Fun, Xs) when is_function(Fun, 1 + length(Xs)) ->
     state(S1),
     R.
 
-perform_pre_transformations(Height, S) ->
+perform_pre_transformations(Height, S) when Height > ?GENESIS_HEIGHT ->
     TxEnv = aetx_env:tx_env(Height),
-    Trees = aec_trees:perform_pre_transformations(aect_test_utils:trees(S), TxEnv),
-    {ok, aect_test_utils:set_trees(Trees, S)}.
+    PrevProtocol = aec_hard_forks:protocol_effective_at_height(Height - 1),
+    Trees = aect_test_utils:trees(S),
+    Trees1 = aec_trees:perform_pre_transformations(Trees, TxEnv, PrevProtocol),
+    {ok, aect_test_utils:set_trees(Trees1, S)};
+perform_pre_transformations(?GENESIS_HEIGHT, S) ->
+    {ok, S}.
 
 new_account(Balance, S) ->
     aect_test_utils:setup_new_account(Balance, S).
@@ -1671,7 +1690,9 @@ sophia_vm_interaction(Cfg) ->
     MinervaHeight = maps:get(fortuna, ForkHeights) - 1,
     FortunaHeight = maps:get(lima, ForkHeights) - 1,
     LimaHeight = maps:get(lima, ForkHeights),
-    MinervaGasPrice = aec_governance:minimum_gas_price(MinervaHeight),
+    IrisHeight = maps:get(iris, ForkHeights),
+    MinervaProtocol = aec_hard_forks:protocol_effective_at_height(MinervaHeight),
+    MinervaGasPrice = aec_governance:minimum_gas_price(MinervaProtocol),
     MinerMinGasPrice= aec_tx_pool:minimum_miner_gas_price(),
     MinGasPrice   = max(MinervaGasPrice, MinerMinGasPrice),
     Acc           = ?call(new_account, 10000000000 * MinGasPrice),
@@ -1689,6 +1710,10 @@ sophia_vm_interaction(Cfg) ->
                       amount => 100,
                       gas_price => MinGasPrice,
                       fee => 1000000 * MinGasPrice},
+    IrisSpec      = #{height => IrisHeight, vm_version => ?VM_AEVM_SOPHIA_4,
+                      amount => 100,
+                      gas_price => MinGasPrice,
+                      fee => 1000000 * MinGasPrice},
     {ok, IdCode}  = compile_contract_vsn(identity, ?CONTRACT_SERIALIZATION_VSN_ROMA),
     {ok, RemCode} = compile_contract_vsn(remote_call, ?CONTRACT_SERIALIZATION_VSN_ROMA),
     {ok, IdCode2}  = compile_contract_vsn(identity, ?CONTRACT_SERIALIZATION_VSN_LIMA),
@@ -1703,6 +1728,8 @@ sophia_vm_interaction(Cfg) ->
     RemCFortuna = ?call(create_contract_with_code, Acc, RemCode, {}, FortunaSpec),
     IdCLima     = ?call(create_contract_with_code, Acc, IdCode2, {}, LimaSpec),
     RemCLima    = ?call(create_contract_with_code, Acc, RemCode2, {}, LimaSpec),
+    IdCIris     = ?call(create_contract_with_code, Acc, IdCode2, {}, IrisSpec),
+    RemCIris    = ?call(create_contract_with_code, Acc, RemCode2, {}, IrisSpec),
 
     %% Check that we cannot create contracts with old vms after the forks
     BadSpec1   = RomaSpec#{height => MinervaHeight},
@@ -1711,8 +1738,10 @@ sophia_vm_interaction(Cfg) ->
     {error, illegal_vm_version} = ?call(tx_fail_create_contract_with_code, Acc, IdCode, {}, BadSpec2),
     BadSpec3   = MinervaSpec#{height => LimaHeight},
     {error, illegal_vm_version} = ?call(tx_fail_create_contract_with_code, Acc, IdCode, {}, BadSpec3),
+    %% BadSpec4   = LimaSpec#{height => IrisHeight},
+    %% {error, illegal_vm_version} = ?call(tx_fail_create_contract_with_code, Acc, IdCode, {}, BadSpec4),
 
-    LatestCallSpec = #{height => LimaHeight,
+    LatestCallSpec = #{height => IrisHeight,
                        gas_price => MinGasPrice,
                        fee => 1000000 * MinGasPrice},
 
@@ -1720,7 +1749,9 @@ sophia_vm_interaction(Cfg) ->
     [?assertEqual(42, ?call(call_contract, Acc, Id, main, word, 42, LatestCallSpec))
      || Id <- [ IdCRoma
               , IdCMinerva
-              , IdCFortuna]],
+              , IdCFortuna
+              , IdCLima
+              ]],
 
     %% Call oldVM -> oldVM and newVM -> oldVM
     [?assertEqual(98, ?call(call_contract, Acc, Rem, call, word, {Id, 98},
@@ -1729,12 +1760,18 @@ sophia_vm_interaction(Cfg) ->
                      , {RemCMinerva, IdCRoma}
                      , {RemCFortuna, IdCRoma}
                      , {RemCLima,    IdCRoma}
+                     , {RemCIris,    IdCRoma}
                      , {RemCMinerva, IdCMinerva}
                      , {RemCFortuna, IdCMinerva}
                      , {RemCLima,    IdCMinerva}
+                     , {RemCIris,    IdCMinerva}
                      , {RemCFortuna, IdCFortuna}
                      , {RemCLima,    IdCFortuna}
-                     , {RemCLima,    IdCLima}]],
+                     , {RemCIris,    IdCFortuna}
+                     , {RemCLima,    IdCLima}
+                     , {RemCIris,    IdCLima}
+                     , {RemCIris,    IdCIris}
+                     ]],
 
     %% Call newVM -> oldVM -> oldVM
     [?assertEqual(77, ?call(call_contract, Acc, Rem1, staged_call, word,
@@ -1742,9 +1779,14 @@ sophia_vm_interaction(Cfg) ->
      || {Rem1, Id, Rem2} <- [ {RemCMinerva, IdCRoma, RemCRoma}
                             , {RemCFortuna, IdCRoma, RemCRoma}
                             , {RemCLima,    IdCRoma, RemCRoma}
+                            , {RemCIris,    IdCRoma, RemCRoma}
                             , {RemCFortuna, IdCMinerva, RemCMinerva}
                             , {RemCLima,    IdCMinerva, RemCMinerva}
-                            , {RemCLima,    IdCFortuna, RemCFortuna}]],
+                            , {RemCIris,    IdCMinerva, RemCMinerva}
+                            , {RemCLima,    IdCFortuna, RemCFortuna}
+                            , {RemCIris,    IdCFortuna, RemCFortuna}
+                            , {RemCIris,    IdCLima, RemCLima}
+                            ]],
 
     %% Fail calling oldVM -> newVM
     [?assertMatch({error, _}, ?call(call_contract, Acc, Rem, call, word,
@@ -1752,9 +1794,13 @@ sophia_vm_interaction(Cfg) ->
      || {Rem, Id} <- [ {RemCRoma, IdCMinerva}
                      , {RemCRoma, IdCFortuna}
                      , {RemCRoma, IdCLima}
+                     , {RemCRoma, IdCIris}
                      , {RemCMinerva, IdCFortuna}
                      , {RemCMinerva, IdCLima}
+                     , {RemCMinerva, IdCIris}
                      , {RemCFortuna, IdCLima}
+                     , {RemCFortuna, IdCIris}
+                     %% , {RemCLima, IdCIris}
                     ]],
     ok.
 
@@ -2182,7 +2228,7 @@ get_plain_oracle_response(PubKey, QId, S) ->
 %% Tests are checked by a little state machine keeping track of a single oracle
 %% and query.
 interpret_ttl(St, Cmds) ->
-    interpret_ttl(St, 0, Cmds).
+    interpret_ttl(St, ?GENESIS_HEIGHT, Cmds).
 
 interpret_ttl(St, _, []) -> St;
 interpret_ttl(St, H, [{H, Cmd} | Rest]) ->
@@ -5070,6 +5116,10 @@ sophia_bytes_to_x(_Cfg) ->
 
     _ = [ ToInt(W) || W <- [12, 32, 42, 64, 65] ],
     _ = [ ToStr(W) || W <- [12, 32, 42, 64, 65] ],
+
+    <<"0X0CFA0000">> = ?call(call_contract, Acc, C, hex, string, {{bytes, <<12, 250, 0, 0>>}}),
+    Equal = ?call(call_contract, Acc, C, comp_hex, bool, {<<"0X0CFA0000">>, {bytes, <<12, 250, 0, 0>>}}),
+    Equal = (sophia_version() =/= ?SOPHIA_FORTUNA),  %% bug fixed in Lima
 
     ok.
 

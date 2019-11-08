@@ -332,7 +332,11 @@ handle_last_result(ST, {get_generation, Height, Hash, PeerId, {ok, Block}}) ->
     ST#sync_task{ pool = Pool1 };
 handle_last_result(ST, {post_blocks, ok}) ->
     ST#sync_task{ adding = [] };
+handle_last_result(ST, {post_blocks, {ok, NewTop}}) ->
+    inform_workers(ST, {new_top, NewTop}),
+    ST#sync_task{ adding = [] };
 handle_last_result(ST, {post_blocks, {error, BlockFromPeerId, Height}}) ->
+    inform_workers(ST, {new_top, Height}),
     #sync_task{ adding = Add, pending = Pends, pool = Pool
               , chain = Chain
               } = ST,
@@ -346,6 +350,8 @@ handle_last_result(ST, {post_blocks, {error, BlockFromPeerId, Height}}) ->
 
     ST1#sync_task{ chain = Chain#chain{ peers = Chain#chain.peers -- [BlockFromPeerId] }}.
 
+inform_workers(#sync_task{ workers = Ws }, {new_top, Height}) ->
+    [ aec_peer_connection:set_sync_height(P, Height) || #worker{ peer_id = P } <- Ws ].
 
 split_pool(Pool) ->
     lists:splitwith(fun(#pool_item{ got = X }) -> X =/= false end, Pool).
@@ -442,6 +448,7 @@ do_update_sync_task(State, STId, Update) ->
                     {done, PeerId} ->
                         Chain#chain{ peers = Chain#chain.peers -- [PeerId] };
                     {error, PeerId} ->
+                        aec_peer_connection:set_sync_height(PeerId, none),
                         Chain#chain{ peers = Chain#chain.peers -- [PeerId] }
                 end,
             maybe_end_sync_task(State, ST#sync_task{ chain = Chain1 });
@@ -647,13 +654,20 @@ init_chain(PeerId, Header) ->
     init_chain(make_ref(), [PeerId], Header).
 
 init_chain(ChainId, Peers, Header) ->
-    {ok, Hash} = aec_headers:hash_header(Header),
-    Height     = aec_headers:height(Header),
-    PrevHash   = [ #chain_block{ height = Height - 1
-                               , hash = aec_headers:prev_hash(Header)
-                               } || Height > 1 ],
-    #chain{ id = ChainId, peers = Peers,
-            blocks = [#chain_block{ hash = Hash, height = Height }] ++ PrevHash }.
+    Height = aec_headers:height(Header),
+    case aec_headers:type(Header) of
+        key ->
+            {ok, Hash} = aec_headers:hash_header(Header),
+            Block      = #chain_block{ hash = Hash, height = Height},
+            PrevBlock  = #chain_block{ hash   = aec_headers:prev_key_hash(Header),
+                                       height = Height - 1 },
+            %% Unless we are at height 1 add previous key-block
+            #chain{ id = ChainId, peers = Peers, blocks = [Block | [PrevBlock || Height > 1]] };
+        micro ->
+            Block = #chain_block{ hash   = aec_headers:prev_key_hash(Header),
+                                  height = Height },
+            #chain{ id = ChainId, peers = Peers, blocks = [Block] }
+    end.
 
 known_chain(Chain) ->
     identify_chain(known_chain(Chain, none)).
@@ -745,9 +759,12 @@ post_blocks([]) -> ok;
 post_blocks([#pool_item{ height = StartHeight } | _] = Blocks) ->
     post_blocks(StartHeight, StartHeight, Blocks).
 
+post_blocks(To, To, []) ->
+    epoch_sync:info("Synced block  ~p", [To]),
+    {ok, To};
 post_blocks(From, To, []) ->
     epoch_sync:info("Synced blocks ~p - ~p", [From, To]),
-    ok;
+    {ok, To};
 post_blocks(From, _To, [#pool_item{ height = Height, got = {_PeerId, local} } | Blocks]) ->
     post_blocks(From, Height, Blocks);
 post_blocks(From, To, [#pool_item{ height = Height, got = {PeerId, Block} } | Blocks]) ->
@@ -825,6 +842,7 @@ agree_on_height(PeerId, RHash0, RH, CheckHeight, Max, Min, AgreedHash) when RH =
 fill_pool(PeerId, StartHash, TargetHash, ST) ->
     case aec_peer_connection:get_n_successors(PeerId, StartHash, TargetHash, ?MAX_HEADERS_PER_CHUNK) of
         {ok, []} ->
+            aec_peer_connection:set_sync_height(PeerId, none),
             do_get_generation(PeerId, StartHash),
             update_sync_task({done, PeerId}, ST),
             epoch_sync:info("Sync done (according to ~p)", [ppp(PeerId)]),

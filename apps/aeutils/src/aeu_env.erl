@@ -16,12 +16,17 @@
 -export([schema/0, schema/1]).
 -export([user_config_or_env/3, user_config_or_env/4]).
 -export([user_map_or_env/4]).
+-export([config_value/4]).
 -export([find_config/2]).
 -export([nested_map_get/2]).
 -export([read_config/0]).
 -export([parse_key_value_string/1]).
 -export([data_dir/1]).
 -export([check_config/1, check_config/2]).
+
+-ifdef(TEST).
+-export([update_config/1]).
+-endif.
 
 -type basic_type() :: number() | binary() | boolean().
 -type basic_or_list()  :: basic_type() | [basic_type()].
@@ -429,6 +434,32 @@ to_tree_(E) ->
 
 lst(L) when is_list(L) -> L;
 lst(E) -> [E].
+
+-ifdef(TEST).
+update_config(Map) when is_map(Map) ->
+    Schema = application:get_env(aeutils, '$schema', #{}),
+    check_validation([jesse:validate_with_schema(Schema, Map, [])],
+                     [Map], update_config, report),
+    ConfigMap = application:get_env(aeutils, '$user_map', #{}),
+    ConfigMap1 = update_map(Map, ConfigMap),
+    ConfigTree1 = to_tree(ConfigMap1),
+    set_env(aeutils, '$user_map', ConfigMap1),
+    set_env(aeutils, '$user_config', ConfigTree1),
+    ok.
+
+update_map(With, Map) when is_map(With), is_map(Map) ->
+    maps:fold(
+      fun(K, V, Acc) ->
+              case maps:find(K, Acc) of
+                  {ok, Submap} when is_map(Submap) ->
+                      Acc#{K => update_map(V, Submap)};
+                  {ok, _} ->
+                      Acc#{K => V};
+                  error ->
+                      Acc#{K => V}
+              end
+      end, Map, With).
+-endif.
 
 set_env(App, K, V) ->
     error_logger:info_msg("Set config (~p): ~p = ~p~n", [App, K, V]),

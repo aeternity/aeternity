@@ -181,25 +181,11 @@ groups() ->
                      ]}
     ].
 
-init_per_group(aevm, Cfg) ->
+init_per_group(VM, Cfg) when VM == aevm; VM == fate ->
     case aect_test_utils:latest_protocol_version() of
         ?ROMA_PROTOCOL_VSN -> {skip, generalized_accounts_not_in_roma};
         ?MINERVA_PROTOCOL_VSN -> {skip, generalized_accounts_not_in_minerva};
-        ?FORTUNA_PROTOCOL_VSN ->
-            [{sophia_version, ?SOPHIA_FORTUNA}, {vm_version, ?VM_AEVM_SOPHIA_3},
-             {abi_version, ?ABI_AEVM_SOPHIA_1}, {protocol, fortuna} | Cfg];
-        ?LIMA_PROTOCOL_VSN ->
-            [{sophia_version, ?SOPHIA_LIMA_AEVM}, {vm_version, ?VM_AEVM_SOPHIA_4},
-             {abi_version, ?ABI_AEVM_SOPHIA_1}, {protocol, lima} | Cfg]
-    end;
-init_per_group(fate, Cfg) ->
-    case aect_test_utils:latest_protocol_version() of
-        ?ROMA_PROTOCOL_VSN -> {skip, generalized_accounts_not_in_roma};
-        ?MINERVA_PROTOCOL_VSN -> {skip, generalized_accounts_not_in_minerva};
-        ?FORTUNA_PROTOCOL_VSN -> {skip, fate_not_in_fortuna};
-        ?LIMA_PROTOCOL_VSN ->
-            [{sophia_version, ?SOPHIA_LIMA_FATE}, {vm_version, ?VM_FATE_SOPHIA_1},
-             {abi_version, ?ABI_FATE_SOPHIA_1}, {protocol, lima} | Cfg]
+        _P -> aect_test_utils:init_per_group(VM, Cfg)
     end;
 init_per_group(ethereum, Cfg) ->
     case aect_test_utils:latest_protocol_version() of
@@ -221,7 +207,8 @@ init_per_testcase(_TC, Config) ->
                           roma    -> ?ROMA_PROTOCOL_VSN;
                           minerva -> ?MINERVA_PROTOCOL_VSN;
                           fortuna -> ?FORTUNA_PROTOCOL_VSN;
-                          lima    -> ?LIMA_PROTOCOL_VSN
+                          lima    -> ?LIMA_PROTOCOL_VSN;
+                          iris    -> ?IRIS_PROTOCOL_VSN
                       end,
     put('$vm_version', VmVersion),
     put('$abi_version', AbiVersion),
@@ -419,7 +406,8 @@ basic_contract_call(_Cfg) ->
 basic_minimum_fee(_Cfg) ->
     state(aect_test_utils:new_state()),
     Height = 1,
-    MinGP = aec_governance:minimum_gas_price(Height),
+    Protocol = aec_hard_forks:protocol_effective_at_height(Height),
+    MinGP = aec_governance:minimum_gas_price(Protocol),
     Acc1 = ?call(new_account, 1000000000000000 * MinGP),
     {ok, _} = ?call(attach, Acc1, "basic_auth", "authorize", []),
 
@@ -431,7 +419,7 @@ basic_minimum_fee(_Cfg) ->
                                          amount       => 4711,
                                          height       => Height,
                                          nonce        => 0}),
-    MinimumSpendFee = aetx:min_fee(DummyTx, Height),
+    MinimumSpendFee = aetx:min_fee(DummyTx, Height, Protocol),
 
     %% When the transaction is wrapped in a meta transaction, the size of the
     %% inner transaction is paid for by the meta transaction.

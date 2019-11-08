@@ -44,7 +44,7 @@
 %=== COMMON TEST FUNCTIONS =====================================================
 
 all() -> [{group, minerva_compatibility},
-          {group, fortuna_compatibility},
+          {group, lima_compatibility},
           {group, local_compatibility}
          ].
 
@@ -52,7 +52,7 @@ groups() ->
     [{minerva_compatibility, [sequence], [
         force_progress_mempool
     ]},
-    {fortuna_compatibility, [sequence], [
+    {lima_compatibility, [sequence], [
         {group, leave_upgrade_reestablish}
     ]},
     {local_compatibility, [sequence], [
@@ -71,8 +71,9 @@ init_per_suite(Config) ->
 
 init_per_group(minerva_compatibility, Config) ->
     [{tx_mempool_vsn, "v2.3.0"} | Config];
-init_per_group(fortuna_compatibility, Config) ->
-    [{state_channels_vsn, "v4.2.0"} | Config];
+init_per_group(lima_compatibility, Config) ->
+    %%[{state_channels_vsn, "v5.1.0"} | Config];
+    {skip, no_backwards_compatibility_until_5_1};
 init_per_group(local_compatibility, Config) ->
     [{block_mining_vsn, "local"} | Config];
 init_per_group(_TG, Config) ->
@@ -112,7 +113,7 @@ sc_leave_upgrade_reestablish_different_nodes_partial_upgrade(Cfg) ->
     sc_leave_upgrade_reestablish({{alice1, old}, {bob1, old}}, {{alice2, old}, {bob2, new}}, Cfg).
 
 sc_leave_upgrade_reestablish_different_nodes_partial_to_full_upgrade(Cfg) ->
-    sc_leave_upgrade_reestablish({{alice1, old}, {bob1, new}}, {{alice2, new}, {bob2, new}}, Cfg).
+    sc_leave_upgrade_reestablish({{alice1, new}, {bob1, old}}, {{alice2, new}, {bob2, new}}, Cfg).
 
 %=== INTERNAL FUNCTIONS ========================================================
 
@@ -151,8 +152,14 @@ sc_leave_upgrade_reestablish( {{BeforeNodeNameI, BeforeNodeTypeI}, {BeforeNodeNa
     HostPathR = node_db_host_path(BeforeNodeNameR, Cfg),
 
     OldVersion = proplists:get_value(state_channels_vsn, Cfg),
-    OldNodeF = fun(NodeName, DbHostPath) -> node_spec(NodeName, OldVersion, DbHostPath, true) end,
-    NewNodeF = fun(NodeName, DbHostPath) -> node_spec(NodeName, "local", DbHostPath, true) end,
+    OldNodeF =
+        fun(NodeName, DbHostPath) ->
+            node_spec(NodeName, OldVersion, DbHostPath, is_mining_node(NodeName))
+        end,
+    NewNodeF =
+        fun(NodeName, DbHostPath) ->
+            node_spec(NodeName, "local", DbHostPath, is_mining_node(NodeName))
+        end,
     SpecF = fun(old) -> OldNodeF; (new) -> NewNodeF end,
 
     %% Create node specs
@@ -194,7 +201,6 @@ sc_leave_upgrade_reestablish( {{BeforeNodeNameI, BeforeNodeTypeI}, {BeforeNodeNa
     start_and_wait_nodes(AfterNames, ?STARTUP_TIMEOUT, Cfg),
     timer:sleep(1000),
     ok = aest_channels_SUITE:reestablish_state_channel_perform_operations_close({AfterNodeNameI, AfterNodeNameR}, ReestablishOpts, Cfg),
-    timer:sleep(1000),
     ok.
 
 populate_db(NodeName, Cfg) ->
@@ -268,3 +274,9 @@ populate_db_with_channels_force_progress_tx(NodeName, Cfg) ->
 assert_db_with_tx_reused(NodeName, TxHash = _DbFingerprint, _Cfg) ->
     aest_nodes:wait_for_value({txs_on_node, [TxHash]}, [NodeName], ?STARTUP_TIMEOUT, []), %% Uses GetTransactionByHash
     ok.
+
+is_mining_node(Bob) when Bob =:= bob1;
+                         Bob =:= bob2 ->
+    false;
+is_mining_node(_) ->
+    true.

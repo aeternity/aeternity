@@ -423,7 +423,7 @@ migrate_tx(Account, Nonce, #{receiver  := Receiver,
                        fee         => 1000000000000000,
                        amount      => 0,
                        gas         => aec_governance:block_gas_limit() div 2,
-                       gas_price   => aec_governance:minimum_gas_price(42),
+                       gas_price   => aec_governance:minimum_gas_price(?LIMA_PROTOCOL_VSN),
                        call_data   => CallData}).
 
 root_hash_tx(Account, Nonce) ->
@@ -436,7 +436,7 @@ root_hash_tx(Account, Nonce) ->
                        fee         => 1000000000000000,
                        amount      => 0,
                        gas         => 10000,
-                       gas_price   => aec_governance:minimum_gas_price(42),
+                       gas_price   => aec_governance:minimum_gas_price(?LIMA_PROTOCOL_VSN),
                        call_data   => CallData}).
 
 

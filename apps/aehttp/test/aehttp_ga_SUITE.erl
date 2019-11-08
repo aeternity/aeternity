@@ -116,17 +116,7 @@ init_per_group(VMGroup, Config) when VMGroup == aevm; VMGroup == fate ->
     case aect_test_utils:latest_protocol_version() of
         ?ROMA_PROTOCOL_VSN    -> {skip, generalized_accounts_not_in_roma};
         ?MINERVA_PROTOCOL_VSN -> {skip, generalized_accounts_not_in_minerva};
-        ?FORTUNA_PROTOCOL_VSN when VMGroup == aevm ->
-            [{sophia_version, ?SOPHIA_FORTUNA}, {vm_version, ?VM_AEVM_SOPHIA_3},
-             {abi_version, ?ABI_AEVM_SOPHIA_1} | Config];
-        ?LIMA_PROTOCOL_VSN when VMGroup == aevm ->
-            [{sophia_version, ?SOPHIA_LIMA_AEVM}, {vm_version, ?VM_AEVM_SOPHIA_4},
-             {abi_version, ?ABI_AEVM_SOPHIA_1} | Config];
-        ?FORTUNA_PROTOCOL_VSN when VMGroup == fate ->
-            {skip, generalized_accounts_with_fate_not_in_fortuna};
-        ?LIMA_PROTOCOL_VSN when VMGroup == fate ->
-            [{sophia_version, ?SOPHIA_LIMA_FATE}, {vm_version, ?VM_FATE_SOPHIA_1},
-             {abi_version, ?ABI_FATE_SOPHIA_1} | Config]
+        _ -> aect_test_utils:init_per_group(VMGroup, Config)
     end;
 init_per_group(_GAGroup, Config) ->
     NodeName = aecore_suite_utils:node_name(?NODE),

@@ -18,9 +18,10 @@
          peers/1,
          serialize/1,
          serialize_for_client/1,
-         close_solo/3,
-         close_solo/4,
-         force_progress/6,
+         close_solo_last_onchain/3,
+         close_solo_with_payload/4,
+         force_progress_last_onchain/6,
+         force_progress_with_payload/6,
          snapshot_solo/2,
          withdraw/4]).
 
@@ -115,22 +116,32 @@
 -define(PUB_SIZE, 32).
 -define(HASH_SIZE, 32).
 -define(NONCE_SIZE, 256).
+-define(SWITCH_HEIGHT, 168300).
 
 %%%===================================================================
 %%% API
 %%%===================================================================
 
 %% close solo with last known onchain state
--spec close_solo(channel(), aec_trees:poi(), aec_blocks:height()) -> channel().
-close_solo(Ch, PoI, Height) ->
+-spec close_solo_last_onchain(channel(), aec_trees:poi(), aec_blocks:height()) -> channel().
+close_solo_last_onchain(Ch, PoI, Height) ->
     close_solo_int(Ch, PoI, Height, round(Ch),        % keep the round
-                                    state_hash(Ch)).  % keep the state hash
+                   state_hash(Ch)).                   % keep the state hash
 
-%% close solo with a payload
--spec close_solo(channel(), payload(), aec_trees:poi(), aec_blocks:height()) -> channel().
-close_solo(Ch, PayloadTx, PoI, Height) ->
-    close_solo_int(Ch, PoI, Height, aesc_offchain_tx:round(PayloadTx),
-                                    aesc_offchain_tx:state_hash(PayloadTx)).
+%% close solo with a payload with a greater round than the last on-chain one
+-spec close_solo_with_payload(channel(), payload(), aec_trees:poi(), aec_blocks:height()) -> channel().
+close_solo_with_payload(Ch, PayloadTx, PoI, Height) ->
+    Ch1 = close_solo_int(Ch, PoI, Height, aesc_offchain_tx:round(PayloadTx),
+                         aesc_offchain_tx:state_hash(PayloadTx)),
+    case Height >= ?SWITCH_HEIGHT of
+        true ->
+            %% since new co-authenticated payload had been added and it
+            %% replaces any old forced progressed states, we reset the
+            %% solo_round
+            Ch1#channel{solo_round = 0};
+        false ->
+            Ch1
+    end.
 
 close_solo_int(#channel{lock_period = LockPeriod} = Ch, PoI, Height, Round, StateHash) ->
     InitiatorPubKey = initiator_pubkey(Ch),
@@ -224,6 +235,30 @@ snapshot_solo(Ch, PayloadTx) ->
                solo_round         = 0,
                state_hash         = StateHash}.
 
+-spec force_progress_last_onchain(channel(), binary(), seq_number(),
+                                  amount(), amount(),
+                                  aec_blocks:height()) -> channel().
+force_progress_last_onchain(Ch0, StateHash, Round,
+                              IAmt, RAmt, Height) ->
+    force_progress(Ch0, StateHash, Round, IAmt, RAmt, Height).
+
+-spec force_progress_with_payload(channel(), binary(), seq_number(),
+                                  amount(), amount(),
+                                  aec_blocks:height()) -> channel().
+force_progress_with_payload(Ch0, StateHash, Round,
+                            IAmt, RAmt, Height) ->
+    Ch1 = force_progress(Ch0, StateHash, Round, IAmt, RAmt, Height),
+    case Height >= ?SWITCH_HEIGHT of
+        true ->
+            %% since new co-authenticated payload had been added and it
+            %% replaces any old forced progressed states, we set the
+            %% solo_round to the latest round
+            Ch1#channel{solo_round = Round};
+        false ->
+            Ch1
+    end.
+
+
 -spec force_progress(channel(), binary(), seq_number(),
                      amount(), amount(),
                      aec_blocks:height()) -> channel().
@@ -285,12 +320,13 @@ is_last_state_forced(#channel{solo_round = SoloRound}) ->
           sc_nonce(), aec_blocks:height(), non_neg_integer()) -> channel().
 new(InitiatorPubKey, InitiatorAmount, ResponderPubKey, ResponderAmount, InitAccount,
     RespAccount, ReserveAmount, DelegatePubkeys, StateHash, LockPeriod, Nonce,
-    Height, Round) ->
+    Protocol, Round) ->
     PubKey = pubkey(InitiatorPubKey, Nonce, ResponderPubKey),
-    Version = case aec_hard_forks:protocol_effective_at_height(Height) of
-                  Vsn when Vsn >= ?FORTUNA_PROTOCOL_VSN -> ?CHANNEL_VSN_2;
-                  Vsn when Vsn <  ?FORTUNA_PROTOCOL_VSN -> ?CHANNEL_VSN_1
-              end,
+    Version =
+        case Protocol of
+            P when P >= ?FORTUNA_PROTOCOL_VSN -> ?CHANNEL_VSN_2;
+            P when P <  ?FORTUNA_PROTOCOL_VSN -> ?CHANNEL_VSN_1
+        end,
     #channel{id                   = aeser_id:create(channel, PubKey),
              initiator_id         = aeser_id:create(account, InitiatorPubKey),
              responder_id         = aeser_id:create(account, ResponderPubKey),

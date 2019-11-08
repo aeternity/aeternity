@@ -120,9 +120,13 @@ block_extension_test_() ->
         end},
        {"Updating a block does not exceed microblock gas limit",
         fun() ->
+            Height = 10,
+            Protocol = aec_hard_forks:protocol_effective_at_height(Height),
             SpendTx = fun(Data) -> aec_test_utils:sign_tx(spend_tx(Data), ?TEST_PRIV) end,
-            Gas = fun(Txs) -> lists:sum(lists:map(fun(T) -> aetx:gas_limit(aetx_sign:tx(T),
-                                                                           _Height = 10) end, Txs)) end,
+            Gas = fun(Txs) -> lists:sum(
+                                lists:map(
+                                  fun(T) -> aetx:gas_limit(aetx_sign:tx(T), Height, Protocol) end, Txs))
+                  end,
 
             %% Reduce number of spend txs necessary for filling up block
             %% (hence reduce time necessary for running test)
@@ -131,7 +135,9 @@ block_extension_test_() ->
             PayloadSize = 10 * trunc(Gas([SmallSpendTx]) / aec_governance:byte_gas()),
             Payload = << <<0>> || _ <- lists:seq(1, PayloadSize) >>,
 
-            Tx = fun(N) -> SpendTx(#{nonce => N, payload => Payload, fee => 20 * aetx:min_fee(aetx_sign:tx(SmallSpendTx), 10)}) end,
+            Tx = fun(N) -> SpendTx(#{nonce   => N,
+                                     payload => Payload,
+                                     fee     => 20 * aetx:min_fee(aetx_sign:tx(SmallSpendTx), Height, Protocol)}) end,
 
             %% Compute txs for filling up block.
             MaxGas = aec_governance:block_gas_limit(),

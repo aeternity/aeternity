@@ -41,7 +41,8 @@
     sc_deploy_contract/4,
     sc_call_contract/4,
     sc_leave/1,
-    sc_reestablish/5
+    sc_reestablish/5,
+    sc_wait_close/1
 ]).
 
 %=== INCLUDES ==================================================================
@@ -52,6 +53,7 @@
 
 -define(MINING_TIMEOUT,   3000).
 -define(SYNC_TIMEOUT,      100).
+-define(MIN_DEPTH, 4).
 
 -define(MIKE, #{
     pubkey => <<200,171,93,11,3,93,177,65,197,27,123,127,177,165,
@@ -93,7 +95,8 @@
     name    => node2,
     peers   => [node1],
     backend => aest_docker,
-    source  => {pull, "aeternity/aeternity:local"}
+    source  => {pull, "aeternity/aeternity:local"},
+    mining => #{autostart => false}
 }).
 
 %=== COMMON TEST FUNCTIONS =====================================================
@@ -130,19 +133,21 @@ end_per_suite(_Config) -> ok.
 
 %=== TEST CASES ================================================================
 
+channel_opts(INode, RNode) ->
+    #{ initiator_node => INode
+     , initiator_id   => ?BOB
+     , initiator_amount => 50000 * aest_nodes:gas_price()
+     , responder_node => RNode
+     , responder_id => ?ALICE
+     , responder_amount => 50000 * aest_nodes:gas_price()
+     , push_amount => 2
+     , bh_delta_not_newer_than => 0
+     , bh_delta_not_older_than => 100
+     , bh_delta_pick           => 10
+    }.
+
 test_simple_same_node_channel(Cfg) ->
-    ChannelOpts = #{
-        initiator_node => node1,
-        initiator_id => ?BOB,
-        initiator_amount => 50000 * aest_nodes:gas_price(),
-        responder_node => node1,
-        responder_id => ?ALICE,
-        responder_amount => 50000 * aest_nodes:gas_price(),
-        push_amount => 2 * aest_nodes:gas_price(),
-        bh_delta_not_newer_than => 0,
-        bh_delta_not_older_than => 100,
-        bh_delta_pick           => 10
-    },
+    ChannelOpts = channel_opts(node1, node1),
     simple_channel_test(ChannelOpts, #{}, #{}, Cfg).
 
 test_simple_different_nodes_channel(Cfg) ->
@@ -159,18 +164,7 @@ test_compat_with_responder_node_using_latest_stable_version(Cfg) ->
                                   Cfg).
 
 test_different_nodes_channel_(InitiatorNodeBaseSpec, ResponderNodeBaseSpec, Cfg) ->
-    ChannelOpts = #{
-        initiator_node => node1,
-        initiator_id   => ?BOB,
-        initiator_amount => 50000 * aest_nodes:gas_price(),
-        responder_node => node2,
-        responder_id => ?ALICE,
-        responder_amount => 50000 * aest_nodes:gas_price(),
-        push_amount => 2,
-        bh_delta_not_newer_than => 0,
-        bh_delta_not_older_than => 100,
-        bh_delta_pick           => 10
-    },
+    ChannelOpts = channel_opts(node1, node2),
     simple_channel_test(ChannelOpts, InitiatorNodeBaseSpec, ResponderNodeBaseSpec, Cfg).
 
 simple_channel_test(ChannelOpts, InitiatorNodeBaseSpec, ResponderNodeBaseSpec, Cfg) ->
@@ -181,7 +175,10 @@ simple_channel_test(ChannelOpts, InitiatorNodeBaseSpec, ResponderNodeBaseSpec, C
         responder_node   := RNodeName,
         responder_id     := RAccount,
         responder_amount := RAmt,
-        push_amount      := PushAmount
+        push_amount      := PushAmount,
+        bh_delta_not_newer_than := _,
+        bh_delta_not_older_than := _,
+        bh_delta_pick           := _
     } = ChannelOpts,
 
     MikePubkey = aeser_api_encoder:encode(account_pubkey, maps:get(pubkey, ?MIKE)),
@@ -288,8 +285,9 @@ reestablish_state_channel_perform_operations_close({INodeName, RNodeName},
     wait_for_value({txs_on_chain, [CloseTxHash]}, NodeNames, 5000, Config),
     %% wait for min depth to be reached so the channels die
     #{height := TopHeight} = aest_nodes:get_top(INodeName),
-    KeyBlocksToMine = 4 + 2, % min depth is 4
+    KeyBlocksToMine = ?MIN_DEPTH + 2, % min depth is 4
     wait_for_value({height, TopHeight + KeyBlocksToMine}, NodeNames, 10000, Config),
+    sc_wait_close(Chan1),
     ok.
 
 %=== INTERNAL FUNCTIONS ========================================================
@@ -353,7 +351,10 @@ test_open_and_onchain_operations(#{
         initiator_amount := IAmt,
         responder_node   := RNodeName,
         responder_id     := RAccount,
-        responder_amount := RAmt
+        responder_amount := RAmt,
+        bh_delta_not_newer_than := _,
+        bh_delta_not_older_than := _,
+        bh_delta_pick           := _
     } = ChannelOpts,  Cfg) ->
     NodeNames = [INodeName, RNodeName],
 

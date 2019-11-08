@@ -39,6 +39,7 @@
 -endif.
 
 -include_lib("aecontract/include/hard_forks.hrl").
+
 %%%===================================================================
 %%% Types
 %%%===================================================================
@@ -53,7 +54,7 @@
 
 -record(channel_offchain_tx, {
           channel_id         :: aeser_id:id(),
-          updates = none     :: [binary()] | none, 
+          updates = none     :: [binary()] | none,
           state_hash         :: binary(),
           round              :: non_neg_integer()
          }).
@@ -249,7 +250,7 @@ valid_at_protocol(Protocol, Tx) ->
     end.
 
 %%%===================================================================
-%%% Test setters 
+%%% Test setters
 %%%===================================================================
 
 -ifdef(TEST).

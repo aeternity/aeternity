@@ -18,7 +18,7 @@
          is_block/1,
          is_key_block/1,
          miner/1,
-         new_key/10,
+         new_key/11,
          new_key_from_header/1,
          new_micro/9,
          new_micro_from_header/3,
@@ -50,8 +50,8 @@
          txs_hash/1,
          type/1,
          update_micro_candidate/4,
-         validate_key_block/1,
-         validate_micro_block/1,
+         validate_key_block/2,
+         validate_micro_block/2,
          version/1
         ]).
 
@@ -76,12 +76,14 @@
 -type   block()       :: key_block() | micro_block().
 -type   height()      :: non_neg_integer().
 -type   tx_list()     :: list(aetx_sign:signed_tx()).
+-type   info()        :: 0..16#ffffffff | default.
 
 -export_type([block/0,
               block_header_hash/0,
               height/0,
               key_block/0,
-              micro_block/0
+              micro_block/0,
+              info/0
              ]).
 
 %%%===================================================================
@@ -152,14 +154,14 @@ type(#mic_block{}) -> 'micro'.
 
 -spec new_key(height(), block_header_hash(), block_header_hash(), state_hash(),
               aeminer_pow:sci_target(),
-              non_neg_integer(), non_neg_integer(), non_neg_integer(),
-              miner_pubkey(), beneficiary_pubkey()
+              non_neg_integer(), non_neg_integer(), info(),
+              aec_hard_forks:protocol_vsn(), miner_pubkey(), beneficiary_pubkey()
              ) -> key_block().
 new_key(Height, PrevHash, PrevKeyHash, RootHash, Target,
-        Nonce, Time, Version, Miner, Beneficiary) ->
+        Nonce, Time, Info, Version, Miner, Beneficiary) ->
     H = aec_headers:new_key_header(Height, PrevHash, PrevKeyHash, RootHash,
                                    Miner, Beneficiary, Target,
-                                   no_value, Nonce, Time, Version),
+                                   no_value, Nonce, Time, Info, Version),
     #key_block{header = H}.
 
 -spec new_key_from_header(aec_headers:key_header()) -> key_block().
@@ -235,8 +237,9 @@ difficulty(Block) ->
 
 -spec gas(micro_block()) -> non_neg_integer().
 gas(#mic_block{txs = Txs} = Block) ->
-    Height = aec_headers:height(to_header(Block)),
-    lists:foldl(fun(Tx, Acc) -> aetx:gas_limit(aetx_sign:tx(Tx), Height) + Acc end, 0, Txs).
+    Version = aec_blocks:version(Block),
+    Height = aec_blocks:height(Block),
+    lists:foldl(fun(Tx, Acc) -> aetx:gas_limit(aetx_sign:tx(Tx), Height, Version) + Acc end, 0, Txs).
 
 -spec time_in_msecs(block()) -> non_neg_integer().
 time_in_msecs(Block) ->
@@ -333,28 +336,21 @@ update_micro_candidate(#mic_block{} = Block, TxsRootHash, RootHash, Txs) ->
 %%% Serialization
 %%%===================================================================
 
+%% Serialization assumes the protocol version in the header to be valid for the
+%% provided height. This should have been validated before calling this
+%% function.
 -spec serialize_to_binary(block()) -> binary().
 serialize_to_binary(#key_block{} = Block) ->
     aec_headers:serialize_to_binary(to_key_header(Block));
 serialize_to_binary(#mic_block{} = Block) ->
-    Hdr    = to_micro_header(Block),
+    Hdr = to_micro_header(Block),
     HdrBin = aec_headers:serialize_to_binary(Hdr),
-    Height = aec_headers:height(Hdr),
-    Vsn    = version(Block),
-    case serialization_template(micro, Height, Vsn) of
-        {error, What} ->
-            error({serialization_error, What});
-        {ok, Template} ->
-            Txs = [ aetx_sign:serialize_to_binary(Tx) || Tx <- txs(Block)],
-            Rest = aeser_chain_objects:serialize(
-                     micro_block,
-                     Vsn,
-                     Template,
-                     [ {txs, Txs}
-                     , {pof, aec_pof:serialize(pof(Block))}
-                     ]),
-            <<HdrBin/binary, Rest/binary>>
-    end.
+    Version = aec_headers:version(Hdr),
+    Template = serialization_template(micro),
+    Txs = [aetx_sign:serialize_to_binary(Tx) || Tx <- txs(Block)],
+    Fields = [{txs, Txs}, {pof, aec_pof:serialize(pof(Block))}],
+    Rest = aeser_chain_objects:serialize(micro_block, Version, Template, Fields),
+    <<HdrBin/binary, Rest/binary>>.
 
 -spec deserialize_from_binary(binary()) -> {'error', term()} | {'ok', block()}.
 deserialize_from_binary(Bin) ->
@@ -368,47 +364,38 @@ deserialize_from_binary(Bin) ->
     end.
 
 deserialize_micro_block_from_binary(Bin, Header) ->
-    Vsn = aec_headers:version(Header),
-    case serialization_template(micro, aec_headers:height(Header), Vsn) of
-        {ok, Template} ->
-            [{txs, Txs0}, {pof, PoF0}] =
-                aeser_chain_objects:deserialize(micro_block, Vsn, Template, Bin),
-            Txs = [aetx_sign:deserialize_from_binary(Tx)
-                   || Tx <- Txs0],
-            PoF = aec_pof:deserialize(PoF0),
-            {ok, #mic_block{header = Header, txs = Txs, pof = PoF}};
-        Err = {error, _} ->
-            Err
-    end.
+    Version = aec_headers:version(Header),
+    Template =  serialization_template(micro),
+    [{txs, Txs0}, {pof, PoF0}] =
+        aeser_chain_objects:deserialize(micro_block, Version, Template, Bin),
+    Txs = [aetx_sign:deserialize_from_binary(Tx) || Tx <- Txs0],
+    PoF = aec_pof:deserialize(PoF0),
+    {ok, #mic_block{header = Header, txs = Txs, pof = PoF}}.
 
-serialization_template(micro, Height, Vsn) ->
-    case aec_hard_forks:protocol_effective_at_height(Height) of
-        Vsn ->
-            {ok, [ {txs, [binary]}
-                 , {pof, [binary]}]};
-        Other ->
-            {error, {bad_block_vsn, Other}}
-    end.
+serialization_template(micro) ->
+    [{txs, [binary]}, {pof, [binary]}].
 
 %%%===================================================================
 %%% Validation
 %%%===================================================================
 
--spec validate_key_block(key_block()) -> 'ok' | {'error', {'header', term()}}.
-validate_key_block(#key_block{} = Block) ->
-    case aec_headers:validate_key_block_header(to_key_header(Block)) of
+-spec validate_key_block(key_block(), aec_hard_forks:protocol_vsn()) ->
+                                'ok' | {'error', {'header', term()}}.
+validate_key_block(#key_block{} = Block, Protocol) ->
+    case aec_headers:validate_key_block_header(to_key_header(Block), Protocol) of
         ok -> ok;
         {error, Reason} -> {error, {header, Reason}}
     end.
 
--spec validate_micro_block(micro_block()) -> 'ok' | {'error', {'header' | 'block', term()}}.
-validate_micro_block(#mic_block{} = Block) ->
+-spec validate_micro_block(micro_block(), aec_hard_forks:protocol_vsn()) ->
+                                  'ok' | {'error', {'header' | 'block', term()}}.
+validate_micro_block(#mic_block{} = Block, Protocol) ->
     Validators = [fun validate_txs_hash/1,
                   fun validate_gas_limit/1,
                   fun validate_txs_fee/1,
                   fun validate_pof/1
                  ],
-    case aec_headers:validate_micro_block_header(to_micro_header(Block)) of
+    case aec_headers:validate_micro_block_header(to_micro_header(Block), Protocol) of
         ok ->
             case aeu_validation:run(Validators, [Block]) of
                 ok              -> ok;
@@ -437,10 +424,11 @@ validate_gas_limit(#mic_block{} = Block) ->
 
 -spec validate_txs_fee(block()) -> ok | {error, invalid_minimal_tx_fee}.
 validate_txs_fee(#mic_block{header = Header, txs = STxs}) ->
+    Protocol = aec_headers:version(Header),
     Height = aec_headers:height(Header),
     case lists:all(fun(STx) ->
                            Tx = aetx_sign:tx(STx),
-                           aetx:fee(Tx) >= aetx:min_fee(Tx, Height)
+                           aetx:fee(Tx) >= aetx:min_fee(Tx, Height, Protocol)
                    end, STxs) of
         true -> ok;
         false -> {error, invalid_minimal_tx_fee}
@@ -455,4 +443,3 @@ validate_pof(#mic_block{pof = PoF} = Block) ->
         true ->
             aec_pof:validate(PoF)
     end.
-

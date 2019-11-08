@@ -34,6 +34,7 @@
          write_genesis_hash/1,
          write_top_block_hash/1,
          write_top_block_height/1,
+         write_signal_count/2,
          find_block/1,
          find_block_tx_hashes/1,
          find_discovered_pof/1,
@@ -42,6 +43,7 @@
          find_headers_and_hash_at_height/1,
          find_key_block/1,
          find_signed_tx/1,
+         find_signal_count/1,
          get_block/1,
          get_header/1,
          get_genesis_hash/0,
@@ -145,6 +147,7 @@ tables(Mode) ->
    , ?TAB(aec_tx_location)
    , ?TAB(aec_tx_pool)
    , ?TAB(aec_discovered_pof)
+   , ?TAB(aec_signal_count)
     ].
 
 tab(Mode0, Record, Attributes, Extra) ->
@@ -454,6 +457,9 @@ write_top_block_hash(Hash) when is_binary(Hash) ->
 write_top_block_height(Height) when is_integer(Height) ->
     ?t(mnesia:write(#aec_chain_state{key = top_block_height, value = Height})).
 
+write_signal_count(Hash, Count) when is_binary(Hash), is_integer(Count) ->
+    ?t(mnesia:write(#aec_signal_count{key = Hash, value = Count})).
+
 get_genesis_hash() ->
     get_chain_state_value(genesis_hash).
 
@@ -590,6 +596,14 @@ find_signed_tx(Hash) ->
     case ?t(read(aec_signed_tx, Hash)) of
         []                            -> none;
         [#aec_signed_tx{value = DBSTx}] -> {value, aetx_sign:from_db_format(DBSTx)}
+    end.
+
+find_signal_count(Hash) ->
+    case ?t(read(aec_signal_count, Hash)) of
+        [#aec_signal_count{value = Count}] ->
+            {value, Count};
+        [] ->
+            none
     end.
 
 add_tx_location(STxHash, BlockHash) when is_binary(STxHash),
@@ -743,6 +757,10 @@ ensure_mnesia_tables(Mode, Storage) ->
         existing_schema ->
             case check_mnesia_tables(Tables, []) of
                 [] -> ok;
+                [{missing_table, aec_signal_count = Table}] ->
+                    %% The table is new in node version 5.1.0.
+                    {Table, Spec} = lists:keyfind(Table, 1, Tables),
+                    {atomic, ok} = mnesia:create_table(Table, Spec);
                 Errors ->
                     lager:error("Database check failed: ~p", [Errors]),
                     erlang:error({table_check, Errors})

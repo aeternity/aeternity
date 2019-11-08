@@ -86,7 +86,6 @@ groups() ->
     ].
 
 init_per_testcase(register_oracle_negative, Config) ->
-    meck:new(aec_hard_forks, [passthrough]),
     meck:new(aec_governance, [passthrough]),
     Config;
 init_per_testcase(Test, Config) when Test =:= query_response_negative_dynamic_fee
@@ -108,7 +107,6 @@ init_per_testcase(_, Config) ->
 
 end_per_testcase(register_oracle_negative, _Config) ->
     meck:unload(aec_governance),
-    meck:unload(aec_hard_forks),
     ok;
 end_per_testcase(Test, _Config) when Test =:= query_response_negative_dynamic_fee
                               orelse Test =:= query_oracle_negative_dynamic_fee
@@ -169,23 +167,23 @@ register_oracle_negative(_Cfg) ->
     RTx8 = aeo_test_utils:register_tx(PubKey, ABISophia#{query_format => <<"foo">>}, S1),
     RTx9 = aeo_test_utils:register_tx(PubKey, ABISophia#{response_format => <<"foo">>}, S1),
     RTx10 = aeo_test_utils:register_tx(PubKey, ABISophia, S1),
-    meck:expect(aec_hard_forks, protocol_effective_at_height, fun(_) -> ?ROMA_PROTOCOL_VSN end),
-    ?assertMatch({ok, _, _}, aetx:process(RTx8, Trees, Env)),
-    ?assertMatch({ok, _, _}, aetx:process(RTx9, Trees, Env)),
+    Env1 = aetx_env:set_consensus_version(Env, ?ROMA_PROTOCOL_VSN),
+    ?assertMatch({ok, _, _}, aetx:process(RTx8, Trees, Env1)),
+    ?assertMatch({ok, _, _}, aetx:process(RTx9, Trees, Env1)),
     % set same minimum gas price as in Roma
     meck:expect(aec_governance, minimum_gas_price, fun(_) -> 1 end),
 
     %% Test Minerva release
-    meck:expect(aec_hard_forks, protocol_effective_at_height, fun(_) -> ?MINERVA_PROTOCOL_VSN end),
-    ?assertEqual({error, bad_query_format}, aetx:process(RTx8, Trees, Env)),
-    ?assertEqual({error, bad_response_format}, aetx:process(RTx9, Trees, Env)),
-    ?assertMatch({ok, _, _}, aetx:process(RTx10, Trees, Env)),
+    Env2 = aetx_env:set_consensus_version(Env, ?MINERVA_PROTOCOL_VSN),
+    ?assertEqual({error, bad_query_format}, aetx:process(RTx8, Trees, Env2)),
+    ?assertEqual({error, bad_response_format}, aetx:process(RTx9, Trees, Env2)),
+    ?assertMatch({ok, _, _}, aetx:process(RTx10, Trees, Env2)),
 
     %% Test Fortuna release
-    meck:expect(aec_hard_forks, protocol_effective_at_height, fun(_) -> ?FORTUNA_PROTOCOL_VSN end),
-    ?assertEqual({error, bad_query_format}, aetx:process(RTx8, Trees, Env)),
-    ?assertEqual({error, bad_response_format}, aetx:process(RTx9, Trees, Env)),
-    ?assertMatch({ok, _, _}, aetx:process(RTx10, Trees, Env)),
+    Env3 = aetx_env:set_consensus_version(Env, ?FORTUNA_PROTOCOL_VSN),
+    ?assertEqual({error, bad_query_format}, aetx:process(RTx8, Trees, Env3)),
+    ?assertEqual({error, bad_response_format}, aetx:process(RTx9, Trees, Env3)),
+    ?assertMatch({ok, _, _}, aetx:process(RTx10, Trees, Env3)),
     ok.
 
 register_oracle_negative_dynamic_fee(_Cfg) ->
@@ -607,6 +605,7 @@ query_response_fee_depends_on_response_size(Cfg) ->
     {OracleKey, ID, S1} = query_oracle(Cfg, #{}, #{}),
     Trees               = aeo_test_utils:trees(S1),
     Env                 = aetx_env:tx_env(?ORACLE_RSP_HEIGHT),
+    Protocol            = aetx_env:consensus_version(Env),
 
     SmallResponse  = <<"small_response">>,
     BiggerResponse = <<"bigger_oracle_response">>,
@@ -614,7 +613,7 @@ query_response_fee_depends_on_response_size(Cfg) ->
 
     %% Deduce minimal fee for response tx with SmallResponse
     RTx0        = aeo_test_utils:response_tx(OracleKey, ID, SmallResponse, #{}, S1),
-    MinimalFee  = aetx:min_fee(RTx0, ?ORACLE_RSP_HEIGHT),
+    MinimalFee  = aetx:min_fee(RTx0, ?ORACLE_RSP_HEIGHT, Protocol),
 
     %% Test oracle response tx with SmallResponse is accepted with MinimalFee
     RTx1        = aeo_test_utils:response_tx(OracleKey, ID, SmallResponse, #{fee => MinimalFee}, S1),
@@ -623,13 +622,13 @@ query_response_fee_depends_on_response_size(Cfg) ->
 
     %% Test oracle response tx with BiggerResponse is not accepted with MinimalFee
     RTx2        = aeo_test_utils:response_tx(OracleKey, ID, BiggerResponse, #{fee => MinimalFee}, S1),
-    MinimalFee2 = aetx:min_fee(RTx2, ?ORACLE_RSP_HEIGHT),
+    MinimalFee2 = aetx:min_fee(RTx2, ?ORACLE_RSP_HEIGHT, Protocol),
     true        = MinimalFee2 > MinimalFee1,
     {error, too_low_fee} = aetx:process(RTx2, Trees, Env),
 
     %% Test oracle response tx with BiggerResponse is accepted with MinimalFee2
     RTx3        = aeo_test_utils:response_tx(OracleKey, ID, BiggerResponse, #{fee => MinimalFee2}, S1),
-    MinimalFee3 = aetx:min_fee(RTx3, ?ORACLE_RSP_HEIGHT),
+    MinimalFee3 = aetx:min_fee(RTx3, ?ORACLE_RSP_HEIGHT, Protocol),
     MinimalFee3 = MinimalFee2,
     {ok, _, _}  = aetx:process(RTx3, Trees, Env),
     ok.
@@ -802,4 +801,3 @@ do_prune_until(N1, N1, Trees) ->
     aeo_state_tree:prune(N1, Trees);
 do_prune_until(N1, N2, Trees) ->
     do_prune_until(N1 + 1, N2, aeo_state_tree:prune(N1, Trees)).
-

@@ -21,7 +21,7 @@
          check_force_progress/5,
          process_solo_close/9,
          process_slash/9,
-         process_force_progress/6,
+         process_force_progress/7,
          process_solo_snapshot/7,
          is_offchain_tx/1,
          verify_signatures_offchain/4,
@@ -51,6 +51,8 @@
 
 -include("../../aecontract/include/aecontract.hrl").
 -include("../../aecontract/include/hard_forks.hrl").
+
+-define(EMPTY_PAYLOAD, <<>>).
 
 %%%===================================================================
 %%% API
@@ -141,7 +143,7 @@ check_state_hash_size(Hash) ->
 -spec deserialize_payload(binary()) -> {ok, aetx_sign:signed_tx(), aesc_offchain_tx:tx()}
                                          | {ok, last_onchain}
                                          | {error, bad_offchain_state_type}.
-deserialize_payload(<<>>) ->
+deserialize_payload(?EMPTY_PAYLOAD) ->
     {ok, last_onchain};
 deserialize_payload(Payload) ->
     try
@@ -247,9 +249,10 @@ check_slash_payload(ChannelPubKey, FromPubKey, Nonce, Fee, Payload,
     end.
 
 check_force_progress(Tx, Payload, OffChainTrees, Trees, Env) ->
-    Height = aetx_env:height(Env),
+    Protocol = aetx_env:consensus_version(Env),
+    _Height = aetx_env:height(Env),
     ?TEST_LOG("Checking force progress:\nTx: ~p,\nPayload: ~p,\nOffChainTrees: ~p,\nHeight: ~p",
-              [Tx, Payload, OffChainTrees, Height]),
+              [Tx, Payload, OffChainTrees, _Height]),
     ChannelPubKey = aesc_force_progress_tx:channel_pubkey(Tx),
     FromPubKey = aesc_force_progress_tx:origin(Tx),
     Nonce = aesc_force_progress_tx:nonce(Tx),
@@ -267,7 +270,7 @@ check_force_progress(Tx, Payload, OffChainTrees, Trees, Env) ->
                   fun() ->
                       check_force_progress_(PayloadHash, Round,
                               Channel, FromPubKey, Nonce, Fee, Update,
-                              NextRound, OffChainTrees, Height, Trees, Env)
+                              NextRound, OffChainTrees, Protocol, Trees, Env)
                   end],
               aeu_validation:run(Checks);
 
@@ -285,14 +288,14 @@ check_force_progress(Tx, Payload, OffChainTrees, Trees, Env) ->
                   fun() ->
                       check_force_progress_(PayloadHash, Round,
                               Channel, FromPubKey, Nonce, Fee, Update,
-                              NextRound, OffChainTrees, Height, Trees, Env)
+                              NextRound, OffChainTrees, Protocol, Trees, Env)
                   end],
               aeu_validation:run(Checks)
     end.
 
 check_force_progress_(PayloadHash, PayloadRound,
                       Channel, FromPubKey, Nonce, Fee, Update,
-                      NextRound, OffChainTrees, Height, Trees, Env) ->
+                      NextRound, OffChainTrees, Protocol, Trees, Env) ->
     Checks =
         [ fun() ->
               case aesc_offchain_update:is_call(Update) of
@@ -331,9 +334,9 @@ check_force_progress_(PayloadHash, PayloadRound,
                             ABIVersion = aesc_offchain_update:extract_abi_version(Update),
                             CTVersion = aect_contracts:ct_version(Contract),
                             Code = aect_contracts:code(Contract),
-                            case check_abi_version(CTVersion, ABIVersion, Height) of
+                            case check_abi_version(CTVersion, ABIVersion, Protocol) of
                                 ok ->
-                                    check_code_serialization(Code, CTVersion, Height);
+                                    check_code_serialization(Code, CTVersion, Protocol);
                                 Error -> Error
                             end
                       end
@@ -348,10 +351,11 @@ check_force_progress_(PayloadHash, PayloadRound,
     ?TEST_LOG("check_force_progress result: ~p", [Res]),
     Res.
 
-check_code_serialization(Code, #{abi := ABI}, Height) ->
+check_code_serialization(Code, #{abi := ABI}, Protocol) ->
     case aect_sophia:deserialize(Code) of
         Deserialized ->
-            case aect_contracts:is_legal_serialization_at_height(ABI, maps:get(contract_vsn, Deserialized, 1), Height) of
+            case aect_contracts:is_legal_serialization_at_protocol(
+                   ABI, maps:get(contract_vsn, Deserialized, 1), Protocol) of
                 true ->
                     ok;
                 false ->
@@ -359,8 +363,8 @@ check_code_serialization(Code, #{abi := ABI}, Height) ->
             end
     end.
 
-check_abi_version(#{abi := ABI} = Version, ABI, Height) ->
-    case aect_contracts:is_legal_version_at_height(call, Version, Height) of
+check_abi_version(#{abi := ABI} = Version, ABI, Protocol) ->
+    case aect_contracts:is_legal_version_at_protocol(call, Version, Protocol) of
         true -> ok;
         false -> {error, unknown_vm_version}
     end;
@@ -511,6 +515,7 @@ verify_signature_onchain_(SignerId, AuthContractId, MetaTx, Trees, Env)
   {ok, binary(), aetx_sign:signed_tx()} | {error, atom()}.
 verify_meta_tx(SignerId, StoreKey, AuthContractId, MetaTx, Trees, Env, TxType)
     when StoreKey =/= undefined, AuthContractId =/= undefined ->
+    Protocol = aetx_env:consensus_version(Env),
     Height = aetx_env:height(Env),
     {_, SignerPK} = aeser_id:specialize(SignerId),
     {_, AuthContractPK} = aeser_id:specialize(AuthContractId),
@@ -522,7 +527,7 @@ verify_meta_tx(SignerId, StoreKey, AuthContractId, MetaTx, Trees, Env, TxType)
         {{value, Contract}, {ok, Store}} ->
             CallDef = #{ caller      => SignerPK
                        , contract    => AuthContractPK
-                       , gas         => aega_meta_tx:gas_limit(MetaTx, Height)
+                       , gas         => aega_meta_tx:gas_limit(MetaTx, Height, Protocol)
                        , gas_price   => aega_meta_tx:gas_price(MetaTx)
                        , call_data   => aega_meta_tx:auth_data(MetaTx)
                        , amount      => 0
@@ -644,20 +649,19 @@ verify_signatures(SignedTx, Trees, Env, CheckedSigners, VerifyAuthFun, CheckBasi
         {_, _} -> % most inner tx
             {ok, Signers} = aetx:signers(Tx, Trees),
             BasicSigners  = Signers -- CheckedSigners,
-            Height = aetx_env:height(Env),
-            case is_basic_signers(CheckBasicFun, BasicSigners, Trees, Height) of
+            Protocol      = aetx_env:consensus_version(Env),
+            case is_basic_signers(CheckBasicFun, BasicSigners, Trees, Protocol) of
                 ok ->
-                    aetx_sign:verify_half_signed(BasicSigners, SignedTx, Height);
+                    aetx_sign:verify_half_signed(BasicSigners, SignedTx, Protocol);
                 Err = {error, _} ->
                     Err
             end
     end.
 
-is_basic_signers(CheckFun, Signers, Trees, Height) ->
-    case aec_hard_forks:protocol_effective_at_height(Height) of
-        Vsn when Vsn < ?LIMA_PROTOCOL_VSN  -> ok;
-        Vsn when Vsn >= ?LIMA_PROTOCOL_VSN -> is_basic_signers(CheckFun, Signers, Trees)
-    end.
+is_basic_signers(_, _, _, Protocol) when Protocol < ?LIMA_PROTOCOL_VSN ->
+    ok;
+is_basic_signers(CheckFun, Signers, Trees, _Protocol) ->
+    is_basic_signers(CheckFun, Signers, Trees).
 
 is_basic_signers(_, [], _) -> ok;
 is_basic_signers(CheckFun, [Signer | Signers], Trees) ->
@@ -759,13 +763,13 @@ process_solo_close_slash(ChannelPubKey, FromPubKey, Nonce, Fee,
     Channel1 =
         case aesc_utils:deserialize_payload(Payload) of
             {ok, _SignedTx, PayloadTx} ->
-                aesc_channels:close_solo(Channel0, PayloadTx, PoI, Height);
+                aesc_channels:close_solo_with_payload(Channel0, PayloadTx, PoI, Height);
             {ok, last_onchain} ->
-                aesc_channels:close_solo(Channel0, PoI, Height)
+                aesc_channels:close_solo_last_onchain(Channel0, PoI, Height)
         end,
     _Trees2 = set_channel(Channel1, Trees1).
 
-process_force_progress(Tx, OffChainTrees, TxHash, Height, Trees, Env) ->
+process_force_progress(Tx, OffChainTrees, Payload, TxHash, Height, Trees, Env) ->
     ?TEST_LOG("process_force_progress begin", []),
     ChannelPubKey = aesc_force_progress_tx:channel_pubkey(Tx),
     FromPubKey = aesc_force_progress_tx:origin(Tx),
@@ -839,11 +843,18 @@ process_force_progress(Tx, OffChainTrees, TxHash, Height, Trees, Env) ->
                 % update channel obj
                 InitiatorBalance = GetBalance(aesc_channels:initiator_pubkey(Channel)),
                 ResponderBalance = GetBalance(aesc_channels:responder_pubkey(Channel)),
-                Channel1 = aesc_channels:force_progress(Channel, ExpectedHash,
-                                                        NextRound,
-                                                        InitiatorBalance,
-                                                        ResponderBalance,
-                                                        Height),
+                ChannelForceProgressFun =
+                    case Payload of
+                        ?EMPTY_PAYLOAD ->
+                            fun aesc_channels:force_progress_last_onchain/6;
+                        _ ->
+                            fun aesc_channels:force_progress_with_payload/6
+                    end,
+                Channel1 = ChannelForceProgressFun(Channel, ExpectedHash,
+                                                   NextRound,
+                                                   InitiatorBalance,
+                                                   ResponderBalance,
+                                                   Height),
                 _Trees = set_channel(Channel1, Trees2);
             false ->
                 ?TEST_LOG("Expected and computed values DO NOT MATCH. Channel object is NOT being updated", []),

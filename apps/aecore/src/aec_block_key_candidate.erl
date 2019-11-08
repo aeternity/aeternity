@@ -23,13 +23,15 @@
 create(BlockHash, Beneficiary) when is_binary(BlockHash) ->
     case aec_chain:get_block(BlockHash) of
         {ok, Block} ->
-            int_create(BlockHash, Block, Beneficiary);
+            create(Block, Beneficiary);
         error ->
             {error, block_not_found}
     end;
 create(Block, Beneficiary) ->
     {ok, BlockHash} = aec_blocks:hash_internal_representation(Block),
-    int_create(BlockHash, Block, Beneficiary).
+    Height = aec_blocks:height(Block) + 1,
+    Protocol = aec_hard_forks:protocol_effective_at_height(Height),
+    int_create(BlockHash, Block, Beneficiary, Protocol).
 
 -spec adjust_target(aec_blocks:block(), list(aec_headers:header())) ->
                            {ok, aec_blocks:block()} | {error, term()}.
@@ -51,54 +53,46 @@ adjust_target(Block, AdjHeaders) ->
 
 %% -- Internal functions -----------------------------------------------------
 
-int_create(BlockHash, Block, Beneficiary) ->
+int_create(BlockHash, Block, Beneficiary, Protocol) ->
     N = aec_governance:key_blocks_to_check_difficulty_count() + 1,
     case aec_blocks:height(Block) < N of
         true  ->
-            int_create(BlockHash, Block, Beneficiary, []);
+            int_create(BlockHash, Block, Beneficiary, [], Protocol);
         false ->
             case aec_chain:get_n_generation_headers_backwards_from_hash(BlockHash, N) of
                 {ok, Headers} ->
-                    int_create(BlockHash, Block, Beneficiary, Headers);
+                    int_create(BlockHash, Block, Beneficiary, Headers, Protocol);
                 error ->
                     {error, headers_for_target_adjustment_not_found}
             end
     end.
 
-int_create(BlockHash, Block, Beneficiary, AdjChain) ->
+int_create(BlockHash, Block, Beneficiary, AdjChain, Protocol) ->
     case aec_keys:candidate_pubkey() of
         {ok, Miner} ->
-            int_create(BlockHash, Block, Miner, Beneficiary, AdjChain);
+            int_create(BlockHash, Block, Miner, Beneficiary, AdjChain, Protocol);
         {error, _} = Error ->
             Error
     end.
 
-int_create(PrevBlockHash, PrevBlock, Miner, Beneficiary, AdjChain) ->
-    {ok, Trees} = aec_chain_state:calculate_state_for_new_keyblock(PrevBlockHash, Miner, Beneficiary),
-    Block = int_create_block(PrevBlockHash, PrevBlock, Miner, Beneficiary, Trees),
+int_create(PrevBlockHash, PrevBlock, Miner, Beneficiary, AdjChain, Protocol) ->
+    {ok, Trees} =
+        aec_chain_state:calculate_state_for_new_keyblock(PrevBlockHash, Miner, Beneficiary, Protocol),
+    Block = int_create_block(PrevBlockHash, PrevBlock, Miner, Beneficiary, Trees, Protocol),
     case adjust_target(Block, AdjChain) of
         {ok, AdjBlock} -> {ok, AdjBlock};
         {error, Reason} -> {error, {failed_to_adjust_target, Reason}}
     end.
 
-int_create_block(PrevBlockHash, PrevBlock, Miner, Beneficiary, Trees) ->
-    PrevBlockHeight = aec_blocks:height(PrevBlock),
-
-    %% Assert correctness of last block protocol version, as minimum
-    %% sanity check on previous block and state (mainly for potential
-    %% stale state persisted in DB and for development testing).
-    ExpectedPrevBlockVersion =
-        aec_hard_forks:protocol_effective_at_height(PrevBlockHeight),
-    {ExpectedPrevBlockVersion, _} = {aec_blocks:version(PrevBlock),
-                                     {expected, ExpectedPrevBlockVersion}},
-
+int_create_block(PrevBlockHash, PrevBlock, Miner, Beneficiary, Trees, Protocol) ->
+    Height = aec_blocks:height(PrevBlock) + 1,
     PrevKeyHash = case aec_blocks:type(PrevBlock) of
                       micro -> aec_blocks:prev_key_hash(PrevBlock);
                       key   -> PrevBlockHash
                   end,
-    Height = PrevBlockHeight + 1,
-    Version = aec_hard_forks:protocol_effective_at_height(Height),
-
+    Fork = aeu_env:get_env(aecore, fork, undefined),
+    InfoField = aec_chain_state:get_info_field(Height, Fork),
     aec_blocks:new_key(Height, PrevBlockHash, PrevKeyHash,
                        aec_trees:hash(Trees), ?HIGHEST_TARGET_SCI,
-                       0, aeu_time:now_in_msecs(), Version, Miner, Beneficiary).
+                       0, aeu_time:now_in_msecs(), InfoField, Protocol,
+                       Miner, Beneficiary).

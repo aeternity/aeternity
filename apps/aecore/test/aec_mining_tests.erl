@@ -42,7 +42,8 @@ mine_block_test_() ->
                              ?ROMA_PROTOCOL_VSN    -> 1566115190779737391;
                              ?MINERVA_PROTOCOL_VSN -> 18228272452473139412;
                              ?FORTUNA_PROTOCOL_VSN -> 14766926132006026242;
-                             ?LIMA_PROTOCOL_VSN    -> 17661709967959760166
+                             ?LIMA_PROTOCOL_VSN    -> 17661709967959760166;
+                             ?IRIS_PROTOCOL_VSN    -> 3277201517285301342
                          end,
                  {BlockCandidate,_} = aec_test_utils:create_keyblock_with_state(
                                         [{TopBlock, aec_trees:new()}], ?TEST_PUB),
@@ -57,18 +58,22 @@ mine_block_test_() ->
 
                  ?assertEqual(1, aec_blocks:height(Block)),
                  ?assertEqual(ok, aec_headers:validate_key_block_header(
-                                    aec_blocks:to_header(Block)))
+                                    aec_blocks:to_header(Block), aec_blocks:version(Block)))
          end}},
        {timeout, 60,
         {"Proof of work fails with no_solution",
          fun() ->
                  RawBlock = aec_blocks:raw_key_block(),
                  TopBlock = aec_blocks:set_height(RawBlock, aec_block_genesis:height()),
-                 meck:expect(aeminer_pow, pick_nonce, 0, 19),
+                 Nonce = case aec_hard_forks:protocol_effective_at_height(100) of
+                             ?IRIS_PROTOCOL_VSN -> 53;
+                             _                  -> 19
+                         end,
+
+                 meck:expect(aeminer_pow, pick_nonce, 0, Nonce),
                  {BlockCandidate,_} = aec_test_utils:create_keyblock_with_state(
                                         [{TopBlock, aec_trees:new()}], ?TEST_PUB),
 
-                 Nonce = 19,
                  HeaderBin = aec_headers:serialize_to_binary(aec_blocks:to_header(BlockCandidate)),
                  Target = aec_blocks:target(BlockCandidate),
                  [Config] = aec_mining:get_miner_configs(),
@@ -121,4 +126,3 @@ generate_valid_test_data(TopBlock, Tries) ->
         {error, no_solution} ->
             generate_valid_test_data(TopBlock, Tries -1)
     end.
-

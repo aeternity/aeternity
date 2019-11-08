@@ -1,8 +1,8 @@
--module(aesc_sessions_sup).
+-module(aesc_session_noise_sup).
+
 -behaviour(supervisor).
 
--export([
-          start_child/1
+-export([ start_child/1
         , start_link/0
         , init/1
         ]).

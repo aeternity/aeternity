@@ -43,7 +43,7 @@
          gas_price/1,
          call_data/1,
          call_id/1,
-         is_legal_version_at_height/2
+         is_legal_version_at_protocol/2
         ]).
 
 -define(GA_ATTACH_TX_VSN, 1).
@@ -128,10 +128,10 @@ call_data(#ga_attach_tx{call_data = X}) ->
 call_id(#ga_attach_tx{} = Tx) ->
     aect_call:id(owner_pubkey(Tx), nonce(Tx), contract_pubkey(Tx)).
 
--spec is_legal_version_at_height(aect_contracts:version(), non_neg_integer()) -> boolean().
-
-is_legal_version_at_height(#{vm := VMVersion, abi := ABIVersion}, Height) ->
-    case aec_hard_forks:protocol_effective_at_height(Height) of
+-spec is_legal_version_at_protocol(aect_contracts:version(), aec_hard_forks:protocol_vsn()) ->
+                                          boolean().
+is_legal_version_at_protocol(#{vm := VMVersion, abi := ABIVersion}, Protocol) ->
+    case Protocol of
         ?FORTUNA_PROTOCOL_VSN when ABIVersion == ?ABI_AEVM_SOPHIA_1 ->
             VMVersion == ?VM_AEVM_SOPHIA_3;
         P when P >= ?LIMA_PROTOCOL_VSN, ABIVersion == ?ABI_AEVM_SOPHIA_1 ->
@@ -307,4 +307,3 @@ valid_at_protocol(P, #ga_attach_tx{}) ->
 
 %%%===================================================================
 %%% Internal functions
-

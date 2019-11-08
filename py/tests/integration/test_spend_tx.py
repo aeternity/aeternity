@@ -108,8 +108,9 @@ def test_send_by_name():
 
     bob_name = test_settings["name_register"]["name"]
     fee = test_settings["name_register"]["fee"]
+    name_fee = test_settings["name_register"]["name_fee"]
     register_name(bob_name, bob_address, ext_api, int_api, bob_private_key,
-                  fee)
+                  fee, name_fee)
 
     print("Bob has registered " + bob_name)
     bob_balance1 = common.get_account_balance(ext_api, bob_address)
@@ -141,7 +142,7 @@ def setup_node_with_tokens(test_settings, beneficiary, node_name):
     node = test_settings["nodes"][node_name]
     return node, common.setup_node_with_tokens(node, beneficiary, test_settings["blocks_to_mine"])
 
-def register_name(name, address, external_api, internal_api, private_key, fee):
+def register_name(name, address, external_api, internal_api, private_key, fee, name_fee):
     salt = 42
     commitment_id = internal_api.GetCommitmentId(name=name, salt=salt).response().result.commitment_id
 
@@ -156,7 +157,7 @@ def register_name(name, address, external_api, internal_api, private_key, fee):
     # claim
     encoded_name = common.encode_name(name)
     NameClaimTx = internal_api.get_model('NameClaimTx')
-    claim_tx = NameClaimTx(name=encoded_name, name_salt=salt, fee=fee, ttl=100, account_id=address)
+    claim_tx = NameClaimTx(name=encoded_name, name_salt=salt, fee=fee, name_fee=name_fee, ttl=100, account_id=address)
     encoded_claim = internal_api.PostNameClaim(body=claim_tx).response().result.tx
     unsigned_claim = common.api_decode(encoded_claim)
     signed_claim = keys.sign_encode_tx(unsigned_claim, private_key)

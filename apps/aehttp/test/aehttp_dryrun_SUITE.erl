@@ -3,6 +3,7 @@
 -include_lib("common_test/include/ct.hrl").
 -include_lib("stdlib/include/assert.hrl").
 -include_lib("aecontract/include/hard_forks.hrl").
+-include_lib("aecontract/include/aecontract.hrl").
 
 %% common_test exports
 -export([
@@ -25,12 +26,21 @@
 
 -define(MAX_MINED_BLOCKS, 20).
 
+-define(assertMatchVM(AEVM, FATE, Res),
+    case ?IS_AEVM_SOPHIA(aect_test_utils:vm_version()) of
+        true  -> ?assertMatch(AEVM, Res);
+        false -> ?assertMatch(FATE, Res)
+    end).
+
 all() ->
-    [ {group, dry_run}
+    [ {group, aevm}
+    , {group, fate}
     ].
 
 groups() ->
-    [ {dry_run, [],
+    [ {aevm, [], [{group, dry_run}]}
+    , {fate, [], [{group, dry_run}]}
+    , {dry_run, [],
         [ spend_txs
         , identity_contract
         , authenticate_contract
@@ -50,7 +60,9 @@ init_per_suite(Config) ->
 end_per_suite(_Config) ->
     ok.
 
-init_per_group(_, Config) ->
+init_per_group(VM, Config) when VM == aevm; VM == fate ->
+    aect_test_utils:init_per_group(VM, Config);
+init_per_group(dry_run, Config) ->
     NodeName = aecore_suite_utils:node_name(?NODE),
     aecore_suite_utils:start_node(?NODE, Config),
     aecore_suite_utils:connect(NodeName),
@@ -88,14 +100,17 @@ init_per_group(_, Config) ->
     {ok, TopHash} = aec_blocks:hash_internal_representation(Top),
     [{top_hash, TopHash}, {accounts, Accounts}, {node_name, NodeName} | Config].
 
-end_per_group(_Group, Config) ->
+end_per_group(dry_run, Config) ->
     RpcFun = fun(M, F, A) -> rpc(?NODE, M, F, A) end,
     {ok, DbCfg} = aecore_suite_utils:get_node_db_config(RpcFun),
     aecore_suite_utils:stop_node(?NODE, Config),
     aecore_suite_utils:delete_node_db_if_persisted(DbCfg),
+    ok;
+end_per_group(_VM, _Config) ->
     ok.
 
 init_per_testcase(_Case, Config) ->
+    aect_test_utils:setup_testcase(Config),
     [{tc_start, os:timestamp()}|Config].
 
 end_per_testcase(_Case, Config) ->
@@ -179,7 +194,13 @@ authenticate_contract_(Config) ->
     DecodeOption =
         fun(SerRVal) ->
             {ok, RValBin} = aeser_api_encoder:safe_decode(contract_bytearray, SerRVal),
-            {ok, RVal} = aeb_heap:from_binary({option, word}, RValBin),
+            {ok, RVal} =
+                case aect_test_utils:abi_version() of
+                    ?ABI_AEVM_SOPHIA_1 ->
+                        aeb_heap:from_binary({option, word}, RValBin);
+                    ?ABI_FATE_SOPHIA_1 ->
+                        {ok, aefate_test_utils:decode(aeb_fate_encoding:deserialize(RValBin), {option, int})}
+                end,
             RVal
         end,
 
@@ -193,12 +214,13 @@ authenticate_contract_(Config) ->
     ?assertEqual(none, DecodeOption(maps:get(<<"return_value">>, CallObj))),
 
     CallReq  = #{<<"contract">> => aeser_api_encoder:encode(contract_pubkey, CPub),
-                 <<"calldata">> => aeser_api_encoder:encode(contract_bytearray, CallCallData)},
+                 <<"calldata">> => aeser_api_encoder:encode(contract_bytearray, CallCallData),
+                 <<"abi_version">> => aect_test_utils:abi_version()},
     CallReq1 = {call_req, CallReq#{<<"context">> => #{tx_hash => aeser_api_encoder:encode(tx_hash, <<12345:32/unit:8>>),
-                                           stateful => true}}},
+                                                      stateful => true}}},
     CallReq2 = {call_req, CallReq#{<<"context">> => #{tx_hash => aeser_api_encoder:encode(tx_hash, <<12345:32/unit:8>>),
-                                           stateful => false},
-                        <<"nonce">> => 2}},
+                                                      stateful => false},
+                                   <<"nonce">> => 2}},
     {ok, 200, #{ <<"results">> := [_CreateRes,
                                    #{ <<"result">> := <<"ok">>,
                                       <<"type">> := <<"contract_call">>,
@@ -212,8 +234,8 @@ authenticate_contract_(Config) ->
                                   ] }} =
         dry_run(TopHash, [CreateTx, CallReq1, CallReq2, CallReq2]),
 
-    ?assertEqual({some, 12345}, DecodeOption(maps:get(<<"return_value">>, CallObj2))),
-    ?assertEqual({some, 12345}, DecodeOption(maps:get(<<"return_value">>, CallObj3))),
+    ?assertMatchVM({some, 12345}, {some, {bytes, <<12345:256>>}}, DecodeOption(maps:get(<<"return_value">>, CallObj2))),
+    ?assertMatchVM({some, 12345}, {some, {bytes, <<12345:256>>}}, DecodeOption(maps:get(<<"return_value">>, CallObj3))),
 
     ok.
 
@@ -297,8 +319,8 @@ create_contract_tx(Owner, Nonce, Code, CallData) ->
     Params = #{ owner_id => OwnerId,
                 code => Code,
                 call_data => CallData,
-                vm_version => aect_test_utils:latest_sophia_vm_version(),
-                abi_version => aect_test_utils:latest_sophia_abi_version(),
+                vm_version => aect_test_utils:vm_version(),
+                abi_version => aect_test_utils:abi_version(),
                 deposit => 0,
                 amount => 0,      %Initial balance
                 gas => 100000,     %May need a lot of gas
@@ -314,7 +336,7 @@ call_contract_tx(Caller, Contract, Nonce, CallData) ->
     Params = #{ caller_id => CallerId,
                 contract_id => ContractId,
                 call_data => CallData,
-                abi_version => aect_test_utils:latest_sophia_abi_version(),
+                abi_version => aect_test_utils:abi_version(),
                 amount => 0,
                 gas => 100000,     %May need a lot of gas
                 gas_price => aec_test_utils:min_gas_price(),

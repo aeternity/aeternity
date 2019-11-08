@@ -69,27 +69,27 @@ balance() ->
 
 post_tx() ->
     Timestamp = os:system_time(seconds),
-    {Height, HashKey, HashTop} = top_info(),
+    {Height, Protocol, HashKey, HashTop} = top_info(),
     Payload = to_payload(Height, HashKey, HashTop, Timestamp),
 
     Nonce = nonce(),
-    Tx = create_tx(Height, Nonce, Payload),
-    post_tx(Height, Nonce, Payload, Tx).
+    Tx = create_tx(Height, Protocol, Nonce, Payload),
+    post_tx(Height, Protocol, Nonce, Payload, Tx).
 
-post_tx(Height, Nonce, Payload, Tx) ->
-    post_tx(Height, Nonce, Payload, Tx, 5).
+post_tx(Height, Protocol, Nonce, Payload, Tx) ->
+    post_tx(Height, Protocol, Nonce, Payload, Tx, 5).
 
-post_tx(_, _, _, _, 0) ->
+post_tx(_, _, _, _, _, 0) ->
     aemon_metrics:publisher_post_tx(max_adjustment);
-post_tx(Height, Nonce, Payload, Tx, Adjustment) ->
+post_tx(Height, Protocol,  Nonce, Payload, Tx, Adjustment) ->
     SignTx = sign_tx(Tx),
     case aec_tx_pool:push(SignTx) of
         {error, too_low_fee} ->
-            NewTx = adjust_tx(Height, Nonce, Payload, Tx),
-            post_tx(Height, Nonce, Payload, NewTx, Adjustment-1);
+            NewTx = adjust_tx(Height, Protocol, Nonce, Payload, Tx),
+            post_tx(Height, Protocol, Nonce, Payload, NewTx, Adjustment-1);
         {error, too_low_gas_price_for_miner} ->
-            NewTx = adjust_tx(Height, Nonce, Payload, Tx),
-            post_tx(Height, Nonce, Payload, NewTx, Adjustment-1);
+            NewTx = adjust_tx(Height, Protocol, Nonce, Payload, Tx),
+            post_tx(Height, Protocol, Nonce, Payload, NewTx, Adjustment-1);
         {error, Error} ->
             aemon_metrics:publisher_post_tx(Error);
         ok ->
@@ -110,8 +110,9 @@ top_info() ->
     {ok, TopKeyBlock} = aec_chain:top_key_block(),
 
     {aec_blocks:height(TopBlock),
-        to_hash(TopKeyBlock),
-        to_hash(TopBlock)}.
+     aec_blocks:version(TopBlock),
+     to_hash(TopKeyBlock),
+     to_hash(TopBlock)}.
 
 to_hash(Block) ->
     {ok, Hash} = aec_blocks:hash_internal_representation(Block),
@@ -125,14 +126,14 @@ to_payload(Height, Key, Top, Timestamp) ->
     Format = io_lib:format("~p:~s:~s:~p", [Height, Key, Top, Timestamp]),
     iolist_to_binary(Format).
 
-create_tx(Height, Nonce, Payload) ->
+create_tx(Height, Protocol, Nonce, Payload) ->
     Tx = raw_tx(Height, Nonce, Payload, 1),
-    adjust_tx(Height, Nonce, Payload, Tx).
+    adjust_tx(Height, Protocol, Nonce, Payload, Tx).
 
-adjust_tx(Height, Nonce, Payload, Tx0) ->
+adjust_tx(Height, Protocol, Nonce, Payload, Tx0) ->
     GasPrice = aec_tx_pool:minimum_miner_gas_price(),
-    GasLimit = aetx:gas_limit(Tx0, Height),
-    MinFee = aetx:min_fee(Tx0, Height),
+    GasLimit = aetx:gas_limit(Tx0, Height, Protocol),
+    MinFee = aetx:min_fee(Tx0, Height, Protocol),
     MinGasFee = GasPrice * GasLimit,
 
     Fee = lists:max([MinFee, MinGasFee]),

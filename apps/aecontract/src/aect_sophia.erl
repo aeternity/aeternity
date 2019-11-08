@@ -14,7 +14,7 @@
 
 -export([ serialize/2
         , deserialize/1
-        , is_legal_serialization_at_height/2
+        , is_legal_serialization_at_protocol/2
         , prepare_for_json/2
         ]).
 
@@ -28,13 +28,12 @@
 
 -export_type([ wrapped_code/0 ]).
 
-is_legal_serialization_at_height(?SOPHIA_CONTRACT_VSN_1, Height) ->
-    aec_hard_forks:protocol_effective_at_height(Height) =< ?FORTUNA_PROTOCOL_VSN;
-is_legal_serialization_at_height(?SOPHIA_CONTRACT_VSN_2, Height) ->
-    Protocol = aec_hard_forks:protocol_effective_at_height(Height),
+is_legal_serialization_at_protocol(?SOPHIA_CONTRACT_VSN_1, Protocol) ->
+    Protocol =< ?FORTUNA_PROTOCOL_VSN;
+is_legal_serialization_at_protocol(?SOPHIA_CONTRACT_VSN_2, Protocol) ->
     Protocol >= ?MINERVA_PROTOCOL_VSN andalso Protocol =< ?FORTUNA_PROTOCOL_VSN;
-is_legal_serialization_at_height(?SOPHIA_CONTRACT_VSN_3, Height) ->
-    aec_hard_forks:protocol_effective_at_height(Height) >= ?LIMA_PROTOCOL_VSN.
+is_legal_serialization_at_protocol(?SOPHIA_CONTRACT_VSN_3, Protocol) ->
+    Protocol >= ?LIMA_PROTOCOL_VSN.
 
 serialize(CodeMap, SophiaContractVsn) ->
     case CodeMap of

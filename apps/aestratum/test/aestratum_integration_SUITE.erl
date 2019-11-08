@@ -57,7 +57,8 @@ init_per_suite(Cfg) ->
         ?ROMA_PROTOCOL_VSN -> {skip, stratum_payout_account_unsupported_in_roma};
         ?MINERVA_PROTOCOL_VSN -> {skip, stratum_payout_account_unsupported_in_minerva};
         LatestProtocolVersion when LatestProtocolVersion =:= ?FORTUNA_PROTOCOL_VSN;
-                                   LatestProtocolVersion =:= ?LIMA_PROTOCOL_VSN ->
+                                   LatestProtocolVersion =:= ?LIMA_PROTOCOL_VSN;
+                                   LatestProtocolVersion =:= ?IRIS_PROTOCOL_VSN ->
             init_per_suite_(Cfg)
     end.
 

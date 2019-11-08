@@ -11,7 +11,7 @@
 -export([ deserialize/2
         , store_id/1
         , is_legal_call/2
-        , is_legal_version_at_height/3
+        , is_legal_version_at_protocol/3
         , new/1
         , new/5 %% For use without transaction
         , serialize/1
@@ -42,7 +42,7 @@
         , set_active/2
         , set_referrers/2
         , set_deposit/2
-        , is_legal_serialization_at_height/3
+        , is_legal_serialization_at_protocol/3
         ]).
 
 -export([pack_vm_abi/1, split_vm_abi/1]).
@@ -84,7 +84,7 @@
 -type abi_version() :: 0..16#FFFF.
 -type version() :: #{ vm := vm_version(), abi := abi_version() }.
 -type serial_version() :: 0..16#FFFFFFFF.
--type height() :: non_neg_integer().
+-type protocol() :: aec_hard_forks:protocol_vsn().
 -type vm_usage_type() ::  'call' | 'create' | 'oracle_register'.
 -type ct_nonce() :: non_neg_integer() | binary().
 
@@ -124,55 +124,54 @@ is_legal_call(#{vm := SophiaVM1, abi := X},
     true;
 is_legal_call(_, _) -> false.
 
--spec is_legal_version_at_height(vm_usage_type(), version(), height()) -> boolean().
-is_legal_version_at_height(Operation, Version, Height) ->
-    ProtocolVSN = aec_hard_forks:protocol_effective_at_height(Height),
-    is_legal_version_in_protocol(Operation, Version, ProtocolVSN).
+-spec is_legal_version_at_protocol(vm_usage_type(), version(), protocol()) -> boolean().
+is_legal_version_at_protocol(Operation, Version, Protocol) ->
+    is_legal_version_at_protocol_(Operation, Version, Protocol).
 
-is_legal_serialization_at_height(?ABI_SOLIDITY_1, _, _Height) ->
+is_legal_serialization_at_protocol(?ABI_SOLIDITY_1, _, _Protocol) ->
     true;
-is_legal_serialization_at_height(?ABI_AEVM_SOPHIA_1, Vsn, Height) ->
-    aect_sophia:is_legal_serialization_at_height(Vsn, Height);
-is_legal_serialization_at_height(?ABI_FATE_SOPHIA_1, Vsn, Height) ->
-    aect_sophia:is_legal_serialization_at_height(Vsn, Height).
+is_legal_serialization_at_protocol(?ABI_AEVM_SOPHIA_1, Vsn, Protocol) ->
+    aect_sophia:is_legal_serialization_at_protocol(Vsn, Protocol);
+is_legal_serialization_at_protocol(?ABI_FATE_SOPHIA_1, Vsn, Protocol) ->
+    aect_sophia:is_legal_serialization_at_protocol(Vsn, Protocol).
 
-is_legal_version_in_protocol(create, #{vm := ?VM_AEVM_SOPHIA_1, abi := ?ABI_AEVM_SOPHIA_1}, ProtocolVersion) ->
-    case ProtocolVersion of
-        ?ROMA_PROTOCOL_VSN -> true;
+is_legal_version_at_protocol_(create, #{vm := ?VM_AEVM_SOPHIA_1, abi := ?ABI_AEVM_SOPHIA_1}, Protocol) ->
+    case Protocol of
+        ?ROMA_PROTOCOL_VSN                -> true;
         P when P >= ?MINERVA_PROTOCOL_VSN -> false
     end;
-is_legal_version_in_protocol(create, #{vm := ?VM_AEVM_SOPHIA_2, abi := ?ABI_AEVM_SOPHIA_1}, ProtocolVersion) ->
-    case ProtocolVersion of
-        ?ROMA_PROTOCOL_VSN    -> false;
-        ?MINERVA_PROTOCOL_VSN -> true;
-        ?FORTUNA_PROTOCOL_VSN -> true;
+is_legal_version_at_protocol_(create, #{vm := ?VM_AEVM_SOPHIA_2, abi := ?ABI_AEVM_SOPHIA_1}, Protocol) ->
+    case Protocol of
+        ?ROMA_PROTOCOL_VSN             -> false;
+        ?MINERVA_PROTOCOL_VSN          -> true;
+        ?FORTUNA_PROTOCOL_VSN          -> true;
         P when P >= ?LIMA_PROTOCOL_VSN -> false
     end;
-is_legal_version_in_protocol(create, #{vm := ?VM_AEVM_SOPHIA_3, abi := ?ABI_AEVM_SOPHIA_1}, ProtocolVersion) ->
-    case ProtocolVersion of
-        ?ROMA_PROTOCOL_VSN    -> false;
-        ?MINERVA_PROTOCOL_VSN -> false;
-        ?FORTUNA_PROTOCOL_VSN -> true;
+is_legal_version_at_protocol_(create, #{vm := ?VM_AEVM_SOPHIA_3, abi := ?ABI_AEVM_SOPHIA_1}, Protocol) ->
+    case Protocol of
+        ?ROMA_PROTOCOL_VSN             -> false;
+        ?MINERVA_PROTOCOL_VSN          -> false;
+        ?FORTUNA_PROTOCOL_VSN          -> true;
         P when P >= ?LIMA_PROTOCOL_VSN -> false
     end;
-is_legal_version_in_protocol(create, #{vm := ?VM_AEVM_SOPHIA_4, abi := ?ABI_AEVM_SOPHIA_1}, ProtocolVersion) ->
-    case ProtocolVersion of
-        ?ROMA_PROTOCOL_VSN    -> false;
-        ?MINERVA_PROTOCOL_VSN -> false;
-        ?FORTUNA_PROTOCOL_VSN -> false;
-        ?LIMA_PROTOCOL_VSN    -> true;
+is_legal_version_at_protocol_(create, #{vm := ?VM_AEVM_SOPHIA_4, abi := ?ABI_AEVM_SOPHIA_1}, Protocol) ->
+    case Protocol of
+        ?ROMA_PROTOCOL_VSN            -> false;
+        ?MINERVA_PROTOCOL_VSN         -> false;
+        ?FORTUNA_PROTOCOL_VSN         -> false;
+        ?LIMA_PROTOCOL_VSN            -> true;
         P when P > ?LIMA_PROTOCOL_VSN -> true %% TODO: If you bump to VM_AEVM_SOPHIA_5 please turn VM_AEVM_SOPHIA_4 off for the new consensus protocol!
     end;
-is_legal_version_in_protocol(create, #{vm := ?VM_FATE_SOPHIA_1, abi := ?ABI_FATE_SOPHIA_1}, ProtocolVersion) ->
-    case ProtocolVersion of
-        ?ROMA_PROTOCOL_VSN    -> false;
-        ?MINERVA_PROTOCOL_VSN -> false;
-        ?FORTUNA_PROTOCOL_VSN -> false;
-        ?LIMA_PROTOCOL_VSN    -> true;
+is_legal_version_at_protocol_(create, #{vm := ?VM_FATE_SOPHIA_1, abi := ?ABI_FATE_SOPHIA_1}, Protocol) ->
+    case Protocol of
+        ?ROMA_PROTOCOL_VSN            -> false;
+        ?MINERVA_PROTOCOL_VSN         -> false;
+        ?FORTUNA_PROTOCOL_VSN         -> false;
+        ?LIMA_PROTOCOL_VSN            -> true;
         P when P > ?LIMA_PROTOCOL_VSN -> true
     end;
-is_legal_version_in_protocol(call, #{vm := VMVersion}, ProtocolVersion) ->
-    case ProtocolVersion of
+is_legal_version_at_protocol_(call, #{vm := VMVersion}, Protocol) ->
+    case Protocol of
         ?ROMA_PROTOCOL_VSN    when VMVersion =:= ?VM_AEVM_SOPHIA_1 ->
             true;
         ?MINERVA_PROTOCOL_VSN when (VMVersion =:= ?VM_AEVM_SOPHIA_1) or
@@ -202,13 +201,13 @@ is_legal_version_in_protocol(call, #{vm := VMVersion}, ProtocolVersion) ->
         _ ->
             false
     end;
-is_legal_version_in_protocol(oracle_register, #{abi := ?ABI_NO_VM}, _ProtocolVersion) ->
+is_legal_version_at_protocol_(oracle_register, #{abi := ?ABI_NO_VM}, _Protocol) ->
     true;
-is_legal_version_in_protocol(oracle_register, #{abi := ?ABI_AEVM_SOPHIA_1}, _ProtocolVersion) ->
+is_legal_version_at_protocol_(oracle_register, #{abi := ?ABI_AEVM_SOPHIA_1}, _Protocol) ->
     true;
-is_legal_version_in_protocol(oracle_register, #{abi := ?ABI_FATE_SOPHIA_1}, ProtocolVersion) ->
-    ProtocolVersion >= ?LIMA_PROTOCOL_VSN;
-is_legal_version_in_protocol(_, _, _) ->
+is_legal_version_at_protocol_(oracle_register, #{abi := ?ABI_FATE_SOPHIA_1}, Protocol) ->
+    Protocol >= ?LIMA_PROTOCOL_VSN;
+is_legal_version_at_protocol_(_, _, _) ->
     false.
 
 -spec store_id(contract()) -> store_id().
@@ -541,4 +540,3 @@ pack_vm_abi(#{vm := ABI, abi := ABI}) when ABI =< ?ABI_SOLIDITY_1 ->
 pack_vm_abi(#{vm := VM, abi := ABI}) ->
     <<VMABI:32>> = <<VM:16, ABI:16>>,
     VMABI.
-

@@ -75,7 +75,7 @@
 
 -module(aec_chain_state).
 
--export([ calculate_state_for_new_keyblock/3
+-export([ calculate_state_for_new_keyblock/4
         , find_common_ancestor/2
         , get_key_block_hash_at_height/1
         , get_n_key_headers_backward_from/2
@@ -86,6 +86,8 @@
         , insert_block/2
         , gossip_allowed_height_from_top/0
         , proof_of_fraud_report_delay/0
+        , get_fork_result/2
+        , get_info_field/2
         ]).
 
 %% For tests
@@ -175,15 +177,17 @@ hash_is_in_main_chain(Hash) ->
     end.
 
 
--spec calculate_state_for_new_keyblock(binary(), aec_keys:pubkey(), aec_keys:pubkey()) ->
-                                              {'ok', aec_trees:trees()}
-                                                  | 'error'.
-
-calculate_state_for_new_keyblock(PrevHash, Miner, Beneficiary) ->
+-spec calculate_state_for_new_keyblock(
+        binary(),
+        aec_keys:pubkey(),
+        aec_keys:pubkey(),
+        aec_hard_forks:protocol_vsn()) -> {'ok', aec_trees:trees()} | 'error'.
+calculate_state_for_new_keyblock(PrevHash, Miner, Beneficiary, Protocol) ->
     case db_find_node(PrevHash) of
         error -> error;
         {ok, PrevNode} ->
-            Node  = fake_key_node(PrevNode, node_height(PrevNode) + 1, Miner, Beneficiary),
+            Height = node_height(PrevNode) + 1,
+            Node  = fake_key_node(PrevNode, Height, Miner, Beneficiary, Protocol),
             State = new_state_from_persistence(),
             case get_state_trees_in(Node, State) of
                 error -> error;
@@ -205,6 +209,30 @@ gossip_allowed_height_from_top() ->
 
 proof_of_fraud_report_delay() ->
     ?POF_REPORT_DELAY.
+
+get_fork_result(Block, Fork) ->
+    case is_last_signalling_block(Block, Fork) of
+        true ->
+            {ok, BlockHash} = aec_blocks:hash_internal_representation(Block),
+            case db_find_signal_count(BlockHash) of
+                {ok, Count} ->
+                    {ok, fork_result(Count, Fork)};
+                error ->
+                    Count = count_blocks_with_signal(Block, Fork, 0),
+                    db_put_signal_count(BlockHash, Count),
+                    {ok, fork_result(Count, Fork)}
+            end;
+        false ->
+            {error, not_last_signalling_block}
+    end.
+
+get_info_field(Height, Fork) when Fork =/= undefined ->
+    case is_height_in_signalling_interval(Height, Fork) of
+        true  -> maps:get(info_field, Fork);
+        false -> default
+    end;
+get_info_field(_Height, undefined) ->
+    default.
 
 %%%===================================================================
 %%% Internal functions
@@ -273,11 +301,19 @@ node_type(#node{type = T}) -> T.
 
 node_time(#node{header = H}) -> aec_headers:time_in_msecs(H).
 
+version(#node{header = H}) -> aec_headers:version(H).
+
 is_key_block(N) -> node_type(N) =:= key.
 
 is_micro_block(N) -> node_type(N) =:= micro.
 
 node_header(#node{header = H}) -> H.
+
+prev_version(Node) ->
+    case node_height(Node) =:= aec_block_genesis:height() of
+        true  -> undefined;
+        false -> version(db_get_node(prev_hash(Node)))
+    end.
 
 maybe_add_genesis_hash(#{genesis_block_hash := undefined} = State, Node) ->
     case node_height(Node) =:= aec_block_genesis:height() of
@@ -315,19 +351,19 @@ wrap_block(Block) ->
     Header = aec_blocks:to_header(Block),
     wrap_header(Header).
 
-fake_key_node(PrevNode, Height, Miner, Beneficiary) ->
+fake_key_node(PrevNode, Height, Miner, Beneficiary, Protocol) ->
     PrevKeyHash = case node_type(PrevNode) of
                       key   -> hash(PrevNode);
                       micro -> prev_key_hash(PrevNode)
                   end,
-    Vsn = aec_hard_forks:protocol_effective_at_height(Height),
     Block = aec_blocks:new_key(Height,
                                hash(PrevNode),
                                PrevKeyHash,
                                <<123:?STATE_HASH_BYTES/unit:8>>,
                                ?HIGHEST_TARGET_SCI,
                                0, aeu_time:now_in_msecs(),
-                               Vsn,
+                               default,
+                               Protocol,
                                Miner,
                                Beneficiary),
     wrap_header(aec_blocks:to_header(Block)).
@@ -395,7 +431,7 @@ internal_insert(Node, Block, Origin) ->
             try aec_db:ensure_transaction(Fun)
             catch exit:{aborted, {throw, ?internal_error(What)}} -> internal_error(What)
             end;
-        {ok, Node} -> ok;
+        {ok, Node} -> {error, already_in_db};
         {ok, Old} -> internal_error({same_key_different_content, Node, Old})
     end.
 
@@ -414,7 +450,8 @@ internal_insert_transaction(Node, Block, Origin) ->
             case node_type(Node) of
                 key ->
                     KeyHeaders = assert_key_block_time_return_headers(Node),
-                    assert_key_block_target(Node, KeyHeaders);
+                    assert_key_block_target(Node, KeyHeaders),
+                    maybe_put_signal_count(Block, hash(Node), aeu_env:get_env(aecore, fork, undefined));
                 micro ->
                     assert_micro_block_time(PrevNode, Node),
                     assert_micro_signature(PrevNode, Node),
@@ -813,15 +850,17 @@ apply_node_transactions(Node, Trees, ForkInfo, State) ->
             apply_micro_block_transactions(Node, FeesIn, Trees);
         false ->
             #fork_info{fees = FeesIn, fraud = FraudStatus} = ForkInfo,
+            Height = node_height(Node),
+            PrevVersion = prev_version(Node),
             GasFees = calculate_gas_fee(aec_trees:calls(Trees)),
             TotalFees = GasFees + FeesIn,
             Header = node_header(Node),
             Env = aetx_env:tx_env_from_key_header(Header, hash(Node),
                                                   node_time(Node), prev_hash(Node)),
 
-            Trees1 = aec_trees:perform_pre_transformations(Trees, Env),
+            Trees1 = aec_trees:perform_pre_transformations(Trees, Env, PrevVersion),
             Delay  = aec_governance:beneficiary_reward_delay(),
-            case node_height(Node) > aec_block_genesis:height() + Delay of
+            case Height > aec_block_genesis:height() + Delay of
                 true  -> {grant_fees(Node, Trees1, Delay, FraudStatus, State), TotalFees, #{}};
                 false -> {Trees1, TotalFees, #{}}
             end
@@ -889,10 +928,10 @@ grant_fees(Node, Trees, Delay, FraudStatus, State) ->
         calc_rewards(FraudStatus1, FraudStatus2, KeyFees, MineReward2,
                      FraudReward1, node_is_genesis(KeyNode1, State)),
 
-    OldestBeneficiaryHeight = node_height(KeyNode1),
+    OldestBeneficiaryVersion = version(KeyNode1),
     {{AdjustedReward1, AdjustedReward2}, DevRewards} =
         aec_dev_reward:split(BeneficiaryReward1, BeneficiaryReward2,
-                             OldestBeneficiaryHeight),
+                             OldestBeneficiaryVersion),
 
     Trees1 = lists:foldl(
                fun({K, Amt}, TreesAccum) when Amt > 0 ->
@@ -1104,6 +1143,15 @@ db_sibling_blocks(Node) ->
              , micro_siblings => match_prev_at_height(Height    , PrevHash, Hash)}
     end.
 
+db_find_signal_count(Hash) ->
+    case aec_db:find_signal_count(Hash) of
+        {value, Count} -> {ok, Count};
+        none           -> error
+    end.
+
+db_put_signal_count(Hash, Count) ->
+    aec_db:write_signal_count(Hash, Count).
+
 match_prev_at_height(Height, PrevHash, Hash) ->
     [Header || {Header, H} <- aec_db:find_headers_and_hash_at_height(Height),
                H =/= Hash,
@@ -1167,3 +1215,69 @@ calc_rewards(FraudStatus1, FraudStatus2, GenerationFees,
         end,
     LockedAmount = TotalBlockAmount - B1Amt - B2Amt,
     {B1Amt, B2Amt, LockedAmount}.
+
+%%%-------------------------------------------------------------------
+%%% Fork signalling related functions
+%%%-------------------------------------------------------------------
+maybe_put_signal_count(Block, Hash, Fork) when Fork =/= undefined ->
+    case count_blocks_with_signal(Block, Fork) of
+        {ok, Count}   -> db_put_signal_count(Hash, Count);
+        {error, _Rsn} -> ok
+    end;
+maybe_put_signal_count(_Block, _Hash, undefined) ->
+    ok.
+
+count_blocks_with_signal(Block, Fork) ->
+    BlockHeight = aec_blocks:height(Block),
+    case is_height_in_signalling_interval(BlockHeight, Fork) of
+        true ->
+            PrevKeyBlockHash = aec_blocks:prev_key_hash(Block),
+            case db_find_signal_count(PrevKeyBlockHash) of
+                {ok, Count} ->
+                    %% There is count stored for the previous block.
+                    Count1 = Count + count_inc(is_matching_info_present(Block, Fork)),
+                    {ok, Count1};
+                error ->
+                    %% No count stored for the previus block, it must be
+                    %% computed by traversing to the first signalling block.
+                    {ok, count_blocks_with_signal(Block, Fork, 0)}
+            end;
+        false ->
+            {error, block_not_in_signalling_interval}
+    end.
+
+%% This function may take long time. It's called in the conductor's context, so
+%% it blocks the conductor process.
+count_blocks_with_signal(Block, Fork, Count) ->
+    Count1 = Count + count_inc(is_matching_info_present(Block, Fork)),
+    case is_first_signalling_block(Block, Fork) of
+        true ->
+            Count1;
+        false ->
+            {value, Block1} = aec_db:find_block(aec_blocks:prev_key_hash(Block)),
+            count_blocks_with_signal(Block1, Fork, Count1)
+    end.
+
+is_height_in_signalling_interval(Height, #{signalling_start_height := StartHeight,
+                                           signalling_end_height := EndHeight}) ->
+    %% Block at EndHeight doesn't belong to the signalling interval! EndHeight
+    %% is fork height and the signalling result must be known at this height.
+    (Height >= StartHeight) andalso (Height < EndHeight).
+
+is_first_signalling_block(Block, #{signalling_start_height := StartHeight}) ->
+    aec_blocks:height(Block) =:= StartHeight.
+
+is_last_signalling_block(Block, #{signalling_end_height := EndHeight}) ->
+    aec_blocks:height(Block) =:= (EndHeight - 1).
+
+count_inc(true)  -> 1;
+count_inc(false) -> 0.
+
+is_matching_info_present(Block, #{info_field := InfoField}) ->
+    Info = aec_headers:info(aec_blocks:to_header(Block)),
+    Info =:= InfoField.
+
+fork_result(Count, #{signalling_block_count := SigCount}) when Count >= SigCount ->
+    true;
+fork_result(_Count, _Fork) ->
+    false.

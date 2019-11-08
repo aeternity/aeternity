@@ -8,7 +8,8 @@
 
 %% TX creating the contract for mainnet: th_2raHdPQ8xtbE6oKh3z1pFmUpyFC5H7ZTBkNB8TuVydJjwedduL
 deploy_payout_contract(#{public := PubKey, secret := PrivKey}) ->
-    DefaultGasPrice  = max(aec_governance:minimum_gas_price(1), % latest prototocol on height 1
+    {_TopHeight, Protocol} = aestratum:get_onchain_env(),
+    DefaultGasPrice  = max(aec_governance:minimum_gas_price(Protocol),
                            aec_tx_pool:minimum_miner_gas_price()),
     {value, Account} = aec_chain:get_account(PubKey),
     {ok, CData}      = aeb_aevm_abi:create_calldata(

@@ -1,0 +1,30 @@
+%% -*- erlang -*-
+
+IsWindows = case os:type() of {win32, _} -> true; {_, _} -> false end,
+
+FilterRocksDbCheck = (IsWindows orelse os:getenv("AE_DISABLE_ROCKSDB") =/= false),
+
+FilterRocksDb = fun(Apps) ->
+                    case FilterRocksDbCheck of
+                        false ->
+                            Apps;
+                        true ->
+                            lists:foldl(
+                                fun(App, Acc) ->
+                                    lists:keydelete(App, 1, Acc)
+                                end,
+                                Apps,
+                                [<<"rocksdb">>, <<"mnesia_rocksdb">>]
+                            )
+                    end
+                end,
+
+case CONFIG of
+    [] ->
+        %% no lock file present, usually during unlock/upgrade
+        CONFIG;
+    [{Version, Deps}, [{pkg_hash, Pkgs}]] ->
+        Deps1 = FilterRocksDb(Deps),
+        Pkgs1 = FilterRocksDb(Pkgs),
+        [{Version, Deps1}, [{pkg_hash, Pkgs1}]]
+end.

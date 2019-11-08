@@ -29,6 +29,7 @@
          mine_blocks/4,
          mine_blocks/5,
          mine_all_txs/2,
+         mine_micro_block_emptying_mempool_or_fail/1,
          mine_blocks_until_txs_on_chain/3,
          mine_blocks_until_txs_on_chain/4,
          mine_blocks_until_txs_on_chain/5,
@@ -285,26 +286,10 @@ mine_blocks(Node, NumBlocksToMine, MiningRate, Opts) ->
     mine_blocks(Node, NumBlocksToMine, MiningRate, any, Opts).
 
 mine_blocks(Node, NumBlocksToMine, MiningRate, Type, Opts) ->
-    ok = rpc:call(
-           Node, application, set_env, [aecore, expected_mine_rate, MiningRate],
-           5000),
-    [] = flush_new_blocks(),
-    subscribe(Node, block_created),
-    subscribe(Node, micro_block_created),
-    StartRes = rpc:call(Node, aec_conductor, start_mining, [Opts], 5000),
-    ct:log("aec_conductor:start_mining(~p) (~p) -> ~p", [Opts, Node, StartRes]),
-    Res = mine_blocks_loop(NumBlocksToMine, Type),
-    StopRes = rpc:call(Node, aec_conductor, stop_mining, [], 5000),
-    ct:log("aec_conductor:stop_mining() (~p) -> ~p", [Node, StopRes]),
-    unsubscribe(Node, block_created),
-    unsubscribe(Node, micro_block_created),
-    case Res of
-        {ok, BlocksReverse} ->
-            {ok, lists:reverse(BlocksReverse)};
-        {error, Reason} ->
-            erlang:error(Reason)
-    end.
-
+    Fun = fun() ->
+              mine_blocks_loop(NumBlocksToMine, Type)
+          end,
+    mine_safe_setup(Node, MiningRate, Opts, Fun).
 
 mine_all_txs(Node, MaxBlocks) ->
     case rpc:call(Node, aec_tx_pool, peek, [infinity]) of
@@ -323,22 +308,27 @@ mine_blocks_until_txs_on_chain(Node, TxHashes, MiningRate, Max) ->
 mine_blocks_until_txs_on_chain(Node, TxHashes, MiningRate, Max, Opts) ->
     %% Fail early rather than having to wait until max_reached if txs already on-chain
     ok = assert_not_already_on_chain(Node, TxHashes),
-    ok = rpc:call(
-           Node, application, set_env, [aecore, expected_mine_rate, MiningRate],
-           5000),
-    [] = flush_new_blocks(),
-    subscribe(Node, block_created),
-    StartRes = rpc:call(Node, aec_conductor, start_mining, [Opts], 5000),
-    ct:log("aec_conductor:start_mining() (~p) -> ~p", [Node, StartRes]),
-    Res = mine_blocks_until_txs_on_chain_loop(Node, TxHashes, Max, []),
-    StopRes = rpc:call(Node, aec_conductor, stop_mining, [], 5000),
-    ct:log("aec_conductor:stop_mining() (~p) -> ~p", [Node, StopRes]),
-    unsubscribe(Node, block_created),
-    case Res of
-        {ok, BlocksReverse} ->
-            {ok, lists:reverse(BlocksReverse)};
-        {error, Reason} ->
-            erlang:error(Reason)
+    Fun = fun() ->
+              mine_blocks_until_txs_on_chain_loop(Node, TxHashes, Max, [])
+          end,
+    mine_safe_setup(Node, MiningRate, Opts, Fun).
+
+mine_micro_block_emptying_mempool_or_fail(Node) ->
+    Fun = fun() ->
+              mine_blocks_loop(2, any)
+          end,
+    {ok, Blocks} = mine_safe_setup(Node, expected_mine_rate(), #{}, Fun),
+    [key, micro] = [aec_blocks:type(B) || B <- Blocks],
+
+    case rpc:call(Node, aec_tx_pool, peek, [infinity]) of
+        {ok, []} ->
+            {ok, Blocks};
+        {ok, [_|_]} ->
+            %% So, Tx(s) is/are back in the mempool, this means (unless some Txs arrived
+            %% from thin air) that we had a micro-fork. Let's check what state we stopped in
+            {ok, NewBlocks} = mine_safe_setup(Node, expected_mine_rate(), #{}, Fun),
+            [key, micro] = [aec_blocks:type(B) || B <- NewBlocks],
+            {ok, NewBlocks}
     end.
 
 assert_not_already_on_chain(Node, TxHashes) ->
@@ -382,23 +372,20 @@ txs_not_in_microblock(MB, TxHashes) ->
 
 tx_in_microblock(MB, TxHash) ->
     lists:any(fun(STx) ->
-                aeser_api_encoder:encode(tx_hash, aetx_sign:hash(STx)) == TxHash
+                      aeser_api_encoder:encode(tx_hash, aetx_sign:hash(STx)) == TxHash
               end, aec_blocks:txs(MB)).
 
 mine_blocks_loop(Cnt, Type) ->
     mine_blocks_loop([], Cnt, Type).
 
-mine_blocks_loop(Blocks, 0,_Type) ->
+mine_blocks_loop(Blocks, 0, _Type) ->
     {ok, Blocks};
 mine_blocks_loop(Blocks, BlocksToMine, Type) when is_integer(BlocksToMine), BlocksToMine > 0 ->
     {ok, Block} = wait_for_new_block(),
     case aec_blocks:type(Block) of
-        micro when Type =:= key ->
+        Type1 when Type =/= any andalso Type =/= Type1 ->
             %% Don't decrement
-            mine_blocks_loop([Block | Blocks], BlocksToMine, Type);
-        key when Type =:= micro ->
-            %% Don't decrement
-            mine_blocks_loop([Block | Blocks], BlocksToMine, Type);
+            mine_blocks_loop(Blocks, BlocksToMine, Type);
         _ ->
             mine_blocks_loop([Block | Blocks], BlocksToMine - 1, Type)
     end.
@@ -415,9 +402,11 @@ wait_for_new_block(T) when is_integer(T), T >= 0 ->
             ct:log("micro block created, Info=~p", [Info]),
             #{info := Block} = Info,
             {ok, Block}
-    after T ->
+    after
+        T ->
             case T of
-                0 -> not_logging;
+                0 ->
+                    not_logging;
                 _ ->
                     ct:log("timeout waiting for block event~n"
                            "~p", [process_info(self(), messages)])
@@ -440,7 +429,7 @@ flush_new_blocks_(Acc) ->
 %% this has the expectation that the Node is mining
 %% there is a timeout of 30 seconds for a single block to be produced
 wait_for_height(Node, Height) ->
-    [] = flush_new_blocks(),
+    flush_new_blocks(),
     subscribe(Node, block_created),
     subscribe(Node, micro_block_created),
     wait_for_height_(Node, Height),
@@ -1203,3 +1192,37 @@ get_key_hash_by_delta(Node, Delta) ->
     {ok, Header} = rpc(Node, aec_chain, get_key_header_by_height, [TopHeight - Delta]),
     {ok, Hash} = aec_headers:hash_header(Header),
     Hash.
+
+mine_safe_setup(Node, MiningRate, Opts, LoopFun) ->
+    ok = rpc:call(Node, application, set_env,
+                  [aecore, expected_mine_rate, MiningRate], 5000),
+
+    %% Ensure we are not mining before starting
+    stopped = rpc:call(Node, aec_conductor, get_mining_state, [], 5000),
+    _ = flush_new_blocks(), %% flush potential hanging message queue messages
+
+    %% Start mining
+    subscribe(Node, block_created),
+    subscribe(Node, micro_block_created),
+    StartRes = rpc:call(Node, aec_conductor, start_mining, [Opts], 5000),
+    ct:log("aec_conductor:start_mining(~p) (~p) -> ~p", [Opts, Node, StartRes]),
+
+    %% Run custom loop which is expected to return when done
+    Res = LoopFun(),
+
+    %% Stop mining
+    StopRes = rpc:call(Node, aec_conductor, stop_mining, [], 5000),
+    ct:log("aec_conductor:stop_mining() (~p) -> ~p", [Node, StopRes]),
+    unsubscribe(Node, block_created),
+    unsubscribe(Node, micro_block_created),
+
+    %% Ensure we are not mining after we've stopped
+    stopped = rpc:call(Node, aec_conductor, get_mining_state, [], 5000),
+    _ = flush_new_blocks(), %% flush potential hanging message queue messages
+
+    case Res of
+        {ok, BlocksReverse} ->
+            {ok, lists:reverse(BlocksReverse)};
+        {error, Reason} ->
+            erlang:error(Reason)
+    end.

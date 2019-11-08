@@ -5,7 +5,7 @@
 -export([start_link/0,
          submit_share/3,
          submit_solution/3,
-         top_height/0,
+         get_onchain_env/0,
          status/0,
          status/1,
          db_keys/1,
@@ -46,6 +46,7 @@
 
 -record(aestratum_state,
         {height,
+         protocol,
          balance,
          tx_push_pid,
          pending_tx_id,
@@ -101,8 +102,10 @@ init([]) ->
     {ok, _} = timer:send_interval(?PAYOUT_CHECK_INTERVAL, payout_check),
     {ok, _} = timer:send_interval(?CHAIN_PAYMENT_TX_CHECK_INTERVAL, chain_payment_tx_check),
     {ok, _} = timer:send_interval(?CANDIDATE_CACHE_CLEANUP_INTERVAL, candidate_cache_cleanup),
-    State0  = #aestratum_state{height  = top_height(),
-                               balance = balance()},
+    {TopHeight, Protocol} = get_onchain_env(),
+    State0  = #aestratum_state{height   = TopHeight,
+                               protocol = Protocol,
+                               balance  = balance()},
     State1  = case ?TXN(aestratum_db:select_payments(true, 1)) of
                   [#aestratum_payment{id = TxId, tx_hash = TxHash}] ->
                       State0#aestratum_state{pending_tx_id   = TxId,
@@ -265,7 +268,7 @@ format_status(_Opt, Status) ->
 %%%===================================================================
 
 push_payment(#aestratum_payment{id = Id} = P, S) ->
-    try ?TXN(send_payment(P, S#aestratum_state.height)) of
+    try ?TXN(send_payment(P, S#aestratum_state.height, S#aestratum_state.protocol)) of
         {Pid, TxHash, PayoutTxArgs, AbsMap} ->
             Date = calendar:now_to_datetime(erlang:timestamp()),
             P1   = ok_val_err(?TXN(aestratum_db:update_payment(P, AbsMap, TxHash, Date))),
@@ -331,15 +334,15 @@ maybe_compute_reward(RewardHeight) ->
 send_payment(#aestratum_payment{tx_hash = undefined,
                                 total = GrossAmount,
                                 relmap = RelativeMap},
-             TopHeight) ->
+             TopHeight, Protocol) ->
     Balance       = balance(),
     GrossAmount   < Balance orelse error({caller_insufficient_funds, Balance, GrossAmount}),
     AbsoluteMap0  = aestratum_reward:absolute_amounts(RelativeMap, GrossAmount),
-    #{fee := Fee, run_fee := RunFee} = payout_call_tx_args(AbsoluteMap0, TopHeight),
+    #{fee := Fee, run_fee := RunFee} = payout_call_tx_args(AbsoluteMap0, TopHeight, Protocol),
     NetAmount     = GrossAmount - Fee - RunFee, % what is actually distributed
     NetAmount     > 0 orelse error({negative_net_amount, NetAmount, {GrossAmount, Fee, RunFee}}),
     AbsoluteMap   = aestratum_reward:absolute_amounts(RelativeMap, NetAmount),
-    NetTxArgs     = payout_call_tx_args(AbsoluteMap, TopHeight),
+    NetTxArgs     = payout_call_tx_args(AbsoluteMap, TopHeight, Protocol),
     CallTx        = ok_val_err(aect_call_tx:new(NetTxArgs)),
     BinaryTx      = aec_governance:add_network_id(aetx:serialize_to_binary(CallTx)),
     SignedTx      = aetx_sign:new(CallTx, [enacl:sign_detached(BinaryTx, ?CALLER_PRIVKEY)]),
@@ -351,8 +354,8 @@ tx_pool_push(SignedTx) ->
     ok_err(aec_tx_pool:push(SignedTx, tx_created, infinity), pushing_payout_call_tx).
 
 
-min_gas_price() ->
-    max(aec_governance:minimum_gas_price(1), % latest prototocol on height 1
+min_gas_price(Protocol) ->
+    max(aec_governance:minimum_gas_price(Protocol),
         aec_tx_pool:minimum_miner_gas_price()).
 
 estimate_consumed_gas(NumTransfers) ->
@@ -366,9 +369,9 @@ create_call_args(#{} = Transfers) ->
       end, [], Transfers).
 
 
-payout_call_tx_args(Transfers, TopHeight) when is_integer(TopHeight) ->
+payout_call_tx_args(Transfers, TopHeight, Protocol) when is_integer(TopHeight) ->
     {value, Account} = aec_chain:get_account(?CALLER_PUBKEY),
-    GasPrice = min_gas_price(),
+    GasPrice = min_gas_price(Protocol),
     CallArgs = create_call_args(Transfers),
     CallType = [{list, {tuple, [word, word]}}],
     {ok, CallData} = aeb_aevm_abi:create_calldata("payout", [CallArgs], CallType, word),
@@ -383,12 +386,12 @@ payout_call_tx_args(Transfers, TopHeight) when is_integer(TopHeight) ->
              gas         => Int256,
              gas_price   => Int256},
     Tx0    = ok_val_err(aect_call_tx:new(Args)),
-    MinGas = aetx:min_gas(Tx0, TopHeight),
-    MinFee = GasPrice * MinGas,
+    FeeGas = aetx:fee_gas(Tx0, TopHeight, Protocol),
+    MinFee = GasPrice * FeeGas,
     RunGas = estimate_consumed_gas(maps:size(Transfers)),
     RunFee = GasPrice * RunGas,
     Args#{gas_price => GasPrice,
-          gas => MinGas, fee => MinFee,          % minimal for tx to pass mempool validation
+          gas => FeeGas, fee => MinFee,          % minimal for tx to pass mempool validation
           run_gas => RunGas, run_fee => RunFee}. % estimation for contract code to finish
 
 
@@ -405,11 +408,9 @@ payout_tx_persisted(TxHash, TopHeight, KeyBlocksDelay) ->
 
 %%%%%%%%%%
 
-top_height() ->
-    case aec_chain:top_key_block() of
-        {ok, KB} -> aec_blocks:height(KB);
-        _ -> 0
-    end.
+get_onchain_env() ->
+    {ok, KB} = aec_chain:top_key_block(),
+    {aec_blocks:height(KB), aec_blocks:version(KB)}.
 
 
 balance() ->

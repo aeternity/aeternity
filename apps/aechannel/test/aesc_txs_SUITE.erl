@@ -31,7 +31,7 @@
          settle/1,
          snapshot_solo/1]).
 
-% negative create
+%% negative create
 -export([create_missing_account/1,
          create_same_account/1,
          create_insufficient_funds/1,
@@ -40,7 +40,7 @@
          create_exsisting/1
          ]).
 
-% negative close solo
+%% negative close solo
 -export([close_solo_unknown_from/1,
          close_solo_wrong_amounts/1,
          close_solo_not_participant/1,
@@ -55,17 +55,17 @@
          close_solo_delegate_not_allowed/1
          ]).
 
-% negative close mutual
-% close mutual does not have a `from` - it is always implicitly the initiator
-% thus we can not test the tx being posted from another account (not
-% participant or a delegate). If it is signed by non-participant - the
-% signature test will fail
+%% negative close mutual
+%% close mutual does not have a `from` - it is always implicitly the initiator
+%% thus we can not test the tx being posted from another account (not
+%% participant or a delegate). If it is signed by non-participant - the
+%% signature test will fail
 -export([close_mutual_wrong_amounts/1,
          close_mutual_wrong_nonce/1,
          close_mutual_missing_channel/1
         ]).
 
-% negative slash
+%% negative slash
 -export([slash_not_closing/1,
          slash_unknown_from/1,
          slash_wrong_amounts/1,
@@ -75,10 +75,11 @@
          slash_payload_not_co_signed/1,
          slash_invalid_state_hash/1,
          slash_older_payload/1,
+         slash_no_payload/1,
          slash_missing_channel/1
          ]).
 
-% negative settle
+%% negative settle
 -export([settle_wrong_amounts/1,
          settle_wrong_nonce/1,
          settle_missing_channel/1,
@@ -88,24 +89,26 @@
          settle_delegate_not_allowed/1
         ]).
 
-% negative deposit
+%% negative deposit
 -export([deposit_unknown_from/1,
          deposit_insufficent_funds/1,
          deposit_wrong_nonce/1,
          deposit_missing_channel/1,
          deposit_closing/1,
+         deposit_closed/1,
          deposit_older_round/1,
          deposit_can_not_replace_create/1,
          deposit_not_participant/1,
          deposit_delegate_not_allowed/1
         ]).
 
-% negative withdraw
+%% negative withdraw
 -export([withdraw_unknown_from/1,
          withdraw_insufficent_funds/1,
          withdraw_wrong_nonce/1,
          withdraw_missing_channel/1,
          withdraw_closing/1,
+         withdraw_closed/1,
          withdraw_older_round/1,
          withdraw_can_not_replace_create/1,
          withdraw_not_participant/1,
@@ -113,7 +116,7 @@
         ]).
 
 
-% negative snapshot solo
+%% negative snapshot solo
 -export([snapshot_closed_channel/1,
          snapshot_closing_channel/1,
          snapshot_missing_channel/1,
@@ -125,7 +128,7 @@
          snapshot_delegate_not_allowed/1
         ]).
 
-% positive force progress
+%% positive force progress
 -export([fp_after_create/1,
          fp_after_deposit/1,
          fp_after_withdrawal/1,
@@ -153,7 +156,7 @@
          fp_use_onchain_contract/1
         ]).
 
-% negative force progress
+%% negative force progress
 -export([fp_closed_channel/1,
          fp_not_participant/1,
          fp_missing_channel/1,
@@ -188,7 +191,12 @@
          fp_oracle_respond/1
         ]).
 
-% fork related tests
+%% more complex scenarios
+-export([ fp_close_solo_slash_with_same_round/1
+        , fp_fp_close_solo_with_same_round/1
+        ]).
+
+%% fork related tests
 -export([ fp_sophia_versions/1,
           close_mutual_already_closing/1,
           reject_old_offchain_tx_vsn/1
@@ -253,7 +261,8 @@ groups() ->
        {group, snapshot_solo_negative},
        {group, aevm},
        {group, fate},
-       {group, fork_awareness}
+       {group, fork_awareness},
+       {group, complex_sequences}
       ]
      },
 
@@ -287,6 +296,7 @@ groups() ->
        slash_payload_not_co_signed,
        slash_invalid_state_hash,
        slash_older_payload,
+       slash_no_payload,
        slash_missing_channel
       ]},
      {settle_negative, [sequence],
@@ -304,6 +314,7 @@ groups() ->
        deposit_wrong_nonce,
        deposit_missing_channel,
        deposit_closing,
+       deposit_closed,
        deposit_older_round,
        deposit_can_not_replace_create,
        deposit_not_participant,
@@ -315,6 +326,7 @@ groups() ->
        withdraw_wrong_nonce,
        withdraw_missing_channel,
        withdraw_closing,
+       withdraw_closed,
        withdraw_older_round,
        withdraw_can_not_replace_create,
        withdraw_not_participant,
@@ -366,6 +378,10 @@ groups() ->
       [ fp_sophia_versions,
         close_mutual_already_closing,
         reject_old_offchain_tx_vsn
+      ]},
+     {complex_sequences, [sequence],
+      [ fp_close_solo_slash_with_same_round
+      , fp_fp_close_solo_with_same_round
       ]}
     ].
 
@@ -1274,11 +1290,11 @@ slash_invalid_state_hash(Cfg) ->
 
 slash_older_payload(Cfg) ->
     Test =
-        fun(Closer, Slasher) ->
+        fun(Closer, Slasher, CloseRound, SlashRound, Error) ->
             run(#{cfg => Cfg},
                [positive(fun create_channel_/2),
                 set_from(Closer),
-                set_prop(round, 5),
+                set_prop(round, CloseRound),
                 positive(fun close_solo_with_payload/2),
                 fun(#{channel_pubkey := ChannelPubKey, state := S} = Props) ->
                     % make sure the channel is not active any more
@@ -1287,12 +1303,40 @@ slash_older_payload(Cfg) ->
                     Props
                 end,
                 set_from(Slasher),
-                set_prop(round, 4),
-                negative(fun slash_/2, {error, old_round})])
+                set_prop(round, SlashRound),
+                negative(fun slash_/2, {error, Error})])
+        end,
+    [Test(Closer, Slasher, CloseRound, SlashRound, Error)
+        || Closer <- ?ROLES,
+           Slasher <- ?ROLES,
+           {CloseRound, SlashRound, Error} <- [{5, 4, old_round},
+                                               {5, 5, same_round}]],
+    ok.
+
+slash_no_payload(Cfg) ->
+    CloseRound = 5,
+    Test =
+        fun(Closer, Slasher) ->
+            run(#{cfg => Cfg},
+               [positive(fun create_channel_/2),
+                set_from(Closer),
+                set_prop(round, CloseRound),
+                positive(fun close_solo_with_payload/2),
+                fun(#{channel_pubkey := ChannelPubKey, state := S} = Props) ->
+                    % make sure the channel is not active any more
+                    ClosedCh = aesc_test_utils:get_channel(ChannelPubKey, S),
+                    false = aesc_channels:is_active(ClosedCh),
+                    Props
+                end,
+                set_from(Slasher),
+                set_prop(round, CloseRound),
+                set_prop(payload, <<>>),
+                negative(fun slash_/2, {error, slash_must_have_payload})])
         end,
     [Test(Closer, Slasher) || Closer <- ?ROLES,
                               Slasher <- ?ROLES],
     ok.
+
 slash_missing_channel(Cfg) ->
     test_both_missing_channel(Cfg, fun slash_/2).
 
@@ -1371,7 +1415,10 @@ deposit_missing_channel(Cfg) ->
     test_both_missing_channel(Cfg, fun deposit_/2, #{amount => 1, fee => 50000 * aec_test_utils:min_gas_price()}).
 
 deposit_closing(Cfg) ->
-    test_both_missing_channel(Cfg, fun deposit_/2, #{amount => 1, fee => 50000 * aec_test_utils:min_gas_price()}).
+    test_both_closing_channel(Cfg, fun deposit_/2, #{amount => 1}).
+
+deposit_closed(Cfg) ->
+    test_both_already_closed(Cfg, fun deposit_/2, #{amount => 1}).
 
 deposit_older_round(Cfg) ->
     test_both_old_round(Cfg, fun deposit_/2, #{amount => 1, fee => 50000 * aec_test_utils:min_gas_price()}, old_round).
@@ -1457,7 +1504,10 @@ withdraw_missing_channel(Cfg) ->
     test_both_missing_channel(Cfg, fun withdraw_/2, #{amount => 1, fee => 50000 * aec_test_utils:min_gas_price()}).
 
 withdraw_closing(Cfg) ->
-    test_both_missing_channel(Cfg, fun withdraw_/2, #{amount => 1, fee => 50000 * aec_test_utils:min_gas_price()}).
+    test_both_closing_channel(Cfg, fun withdraw_/2, #{amount => 1}).
+
+withdraw_closed(Cfg) ->
+    test_both_already_closed(Cfg, fun withdraw_/2, #{amount => 1}).
 
 withdraw_older_round(Cfg) ->
     test_both_old_round(Cfg, fun withdraw_/2, #{amount => 1, fee => 50000 * aec_test_utils:min_gas_price()}, old_round).
@@ -1800,7 +1850,7 @@ snapshot_solo(Cfg) ->
                                                     Action <- Actions],
     ok.
 
-% no one can post a snapshot_tx to a closed channel
+%% no one can post a snapshot_tx to a closed channel
 snapshot_closed_channel(Cfg) ->
     IAmt = 100000 * aec_test_utils:min_gas_price(),
     RAmt = 100000 * aec_test_utils:min_gas_price(),
@@ -1824,20 +1874,20 @@ snapshot_closed_channel(Cfg) ->
     [Test(Role) || Role <- ?ROLES],
     ok.
 
-% no one can post a snapshot_tx to a closing channel, not even the one that
-% initiated the close
+%% no one can post a snapshot_tx to a closing channel, not even the one that
+%% initiated the close
 snapshot_closing_channel(Cfg) ->
     test_both_closing_channel(Cfg, fun snapshot_solo_/2).
 
-% snapshot_tx calls to a missing channel are rejected
+%% snapshot_tx calls to a missing channel are rejected
 snapshot_missing_channel(Cfg) ->
     test_both_missing_channel(Cfg, fun snapshot_solo_/2).
 
-% snapshot_tx calls with a payload from another channel are rejected
+%% snapshot_tx calls with a payload from another channel are rejected
 snapshot_payload_from_another_channel(Cfg) ->
     test_both_payload_from_different_channel(Cfg, fun snapshot_solo_/2).
 
-% no one can overwrite a state, not even the one that posted it
+%% no one can overwrite a state, not even the one that posted it
 snapshot_payload_not_co_signed(Cfg) ->
     test_payload_not_both_signed(Cfg,
                                  fun(ChannelPubKey, FromPubKey, Payload, _PoI, S) ->
@@ -1848,7 +1898,7 @@ snapshot_payload_not_co_signed(Cfg) ->
                                   end,
                                   fun aesc_snapshot_solo_tx:new/1).
 
-% snapshot_tx calls with a payload from another channel are rejected
+%% snapshot_tx calls with a payload from another channel are rejected
 snapshot_old_payload(Cfg) ->
     test_both_old_round(Cfg, fun snapshot_solo_/2, #{}, old_round).
 
@@ -2518,14 +2568,14 @@ fp_after_slash(Cfg) ->
     Test(11, 20, 30),
     ok.
 
-% Test that slashing with co-signed off-chain state replaces
-% on-chain produced chain of unilaterally forced progress states
-%
-% unilaterally on-chain force progress state ROUND
-% unilaterally on-chain force progress state ROUND + 1
-% solo close using on-chain forced progress ROUND + 1
-% force progress on-chain state ROUND + 2
-% slash with co-signed off-chain state ROUND
+%% Test that slashing with co-signed off-chain state replaces
+%% on-chain produced chain of unilaterally forced progress states
+%%
+%% unilaterally on-chain force progress state ROUND
+%% unilaterally on-chain force progress state ROUND + 1
+%% solo close using on-chain forced progress ROUND + 1
+%% force progress on-chain state ROUND + 2
+%% slash with co-signed off-chain state ROUND
 fp_chain_is_replaced_by_slash(Cfg) ->
     ForceProgressFromOnChain =
         fun(Round, Forcer) ->
@@ -3019,7 +3069,7 @@ fp_use_onchain_contract(Cfg) ->
     ok.
 
 
-% no one can post a force progress to a closed channel
+%% no one can post a force progress to a closed channel
 fp_closed_channel(Cfg) ->
     Round = 10,
     IStartAmt = 200000 * aec_test_utils:min_gas_price(),
@@ -3590,7 +3640,8 @@ fp_insufficent_gas_price(Cfg) ->
                 || Owner  <- ?ROLES,
                    Forcer <- ?ROLES]
         end,
-    TooLowGasPrice = aec_governance:minimum_gas_price(Height) - 1,
+    Protocol = aec_hard_forks:protocol_effective_at_height(Height),
+    TooLowGasPrice = aec_governance:minimum_gas_price(Protocol) - 1,
     Test(TooLowGasPrice, 1001),
     ok.
 
@@ -5134,6 +5185,26 @@ test_both_old_round(Cfg, Fun, Props, Reason) ->
                             Second <- ?ROLES],
     ok.
 
+test_both_already_closed(Cfg, Fun, InitProps0) ->
+    IAmt = 100000 * aec_test_utils:min_gas_price(),
+    RAmt = 100000 * aec_test_utils:min_gas_price(),
+
+    InitProps = InitProps0#{ initiator_amount => IAmt
+                           , responder_amount => RAmt
+                           , fee => 50000 * aec_test_utils:min_gas_price()},
+    Test =
+        fun(Poster) ->
+            run(InitProps#{cfg => Cfg},
+               [positive(fun create_channel_/2),
+                prepare_balances_for_mutual_close(),
+                positive(fun close_mutual_/2),
+                set_from(Poster),
+                negative(Fun, {error, channel_does_not_exist})
+               ])
+        end,
+    [Test(Role) || Role <- ?ROLES],
+    ok.
+
 test_both_can_not_replace_create(Cfg, Fun) ->
     test_both_can_not_replace_create(Cfg, Fun, #{}).
 
@@ -5208,9 +5279,12 @@ test_both_missing_channel(Cfg, Fun, InitProps) ->
     ok.
 
 test_both_closing_channel(Cfg, Fun) ->
+    test_both_closing_channel(Cfg, Fun, #{}).
+
+test_both_closing_channel(Cfg, Fun, InitProps) ->
     Test =
         fun(Closer, Poster) ->
-            run(#{cfg => Cfg},
+            run(InitProps#{cfg => Cfg},
                [positive(fun create_channel_/2),
                 set_from(Closer),
                 positive(close_solo_with_optional_payload(Cfg)),
@@ -5464,7 +5538,7 @@ assert_last_channel_result(Result, Type) ->
         Props
     end.
 
-% Create poi just for participants; used by slash and close solo
+%% Create poi just for participants; used by slash and close solo
 poi_participants_only() ->
     fun(#{initiator_pubkey  := IPubkey,
           responder_pubkey  := RPubkey,
@@ -5510,27 +5584,28 @@ fp_sophia_versions(Cfg) ->
     SophiaVsn3 = 3,
     % ensure assumptions regarding heights
     true = RomaHeight < ?MINERVA_FORK_HEIGHT,
-    true = aect_sophia:is_legal_serialization_at_height(SophiaVsn1, RomaHeight),
-    false = aect_sophia:is_legal_serialization_at_height(SophiaVsn2, RomaHeight),
-    false = aect_sophia:is_legal_serialization_at_height(SophiaVsn3, RomaHeight),
+    true = aect_sophia:is_legal_serialization_at_protocol(SophiaVsn1, ?ROMA_PROTOCOL_VSN),
+    false = aect_sophia:is_legal_serialization_at_protocol(SophiaVsn2, ?ROMA_PROTOCOL_VSN),
+    false = aect_sophia:is_legal_serialization_at_protocol(SophiaVsn3, ?ROMA_PROTOCOL_VSN),
     true = MinervaHeight >= ?MINERVA_FORK_HEIGHT,
     true = MinervaHeight < ?FORTUNA_FORK_HEIGHT,
-    true = aect_sophia:is_legal_serialization_at_height(SophiaVsn2, MinervaHeight),
-    false = aect_sophia:is_legal_serialization_at_height(SophiaVsn3, MinervaHeight),
+    true = aect_sophia:is_legal_serialization_at_protocol(SophiaVsn2, ?MINERVA_PROTOCOL_VSN),
+    false = aect_sophia:is_legal_serialization_at_protocol(SophiaVsn3, ?MINERVA_PROTOCOL_VSN),
     true = FortunaHeight >= ?FORTUNA_FORK_HEIGHT,
     true = FortunaHeight < ?LIMA_FORK_HEIGHT,
-    true = aect_sophia:is_legal_serialization_at_height(SophiaVsn2, FortunaHeight),
-    false = aect_sophia:is_legal_serialization_at_height(SophiaVsn3, FortunaHeight),
+    true = aect_sophia:is_legal_serialization_at_protocol(SophiaVsn2, ?FORTUNA_PROTOCOL_VSN),
+    false = aect_sophia:is_legal_serialization_at_protocol(SophiaVsn3, ?FORTUNA_PROTOCOL_VSN),
     true = LimaHeight >= ?LIMA_FORK_HEIGHT,
 
     TestAtHeight =
         fun(Height, Res) ->
             fun(Props0) ->
                 ct:log("Testing at height ~p, expecting ~p", [Height, Res]),
+                Protocol = aec_hard_forks:protocol_effective_at_height(Height),
                 run(Props0,
                     [ set_prop(height, Height),
-                      set_prop(fee, 500000 * aec_governance:minimum_gas_price(Height)),
-                      set_prop(gas_price, aec_governance:minimum_gas_price(Height)),
+                      set_prop(fee, 500000 * aec_governance:minimum_gas_price(Protocol)),
+                      set_prop(gas_price, aec_governance:minimum_gas_price(Protocol)),
                       %% recompute the update with the new gas price
                       fun(#{contract_id := ContractId, contract_file := CName} = Props) ->
                           (create_contract_call_payload(ContractId, CName, <<"main">>,
@@ -5747,3 +5822,95 @@ aevm_type(Type) -> Type.
 encode_sig(Sig) ->
     <<"0x", Hex/binary>> = aeu_hex:hexstring_encode(Sig),
     binary_to_list(<<"#", Hex/binary>>).
+
+fp_close_solo_slash_with_same_round(Cfg) ->
+    FPRound = 43,
+    CloseRound = 50,
+    ContractRound = 10,
+    Test =
+        fun(Closer, Slasher, CloseHeight, IsPositiveTest) ->
+            run(#{cfg => Cfg, initiator_amount => 10000000 * aec_test_utils:min_gas_price(),
+                              responder_amount => 10000000 * aec_test_utils:min_gas_price(),
+                 channel_reserve => 1},
+               [positive(fun create_channel_/2),
+                create_contract_poi_and_payload(FPRound - 1, ContractRound,
+                                                initiator),
+                force_progress_sequence(FPRound, initiator),
+                delete_prop(payload), % old FP payload
+                delete_prop(state_hash),
+                set_from(Closer),
+                set_prop(round, CloseRound),
+                set_prop(height, CloseHeight),
+                positive(fun close_solo_with_payload/2),
+                set_from(Slasher),
+                set_prop(round, CloseRound), %% same round
+                fun(Props) ->
+                    Fun =
+                        case IsPositiveTest of
+                            true -> 
+                                positive(fun slash_/2);
+                            false ->
+                                negative(fun slash_/2, {error, same_round})
+                        end,
+                    Fun(Props)
+                end
+               ])
+        end,
+    SwitchHeight = 168300, 
+    [Test(Closer, Slasher, CloseHeight, IsPossitiveTest)
+        || Closer  <- ?ROLES,
+           Slasher <- ?ROLES,
+           {CloseHeight, IsPossitiveTest} <- [{SwitchHeight - 1, true},
+                                              {SwitchHeight    , false},
+                                              {SwitchHeight + 1, false}]],
+    ok.
+
+fp_fp_close_solo_with_same_round(Cfg) ->
+    FirstFPRound = 3,
+    SecondFPRound = 14,
+    CloseRound = 13,
+    ContractRound = 2,
+    CleanAfterFP =
+        fun(Props) ->
+            run(Props,
+                [delete_prop(payload), % old FP payload
+                 delete_prop(state_hash)])
+        end,
+    Test =
+        fun(Closer, CloseHeight, IsPositiveTest) ->
+            run(#{cfg => Cfg, initiator_amount => 10000000 * aec_test_utils:min_gas_price(),
+                              responder_amount => 10000000 * aec_test_utils:min_gas_price(),
+                 channel_reserve => 1},
+               [positive(fun create_channel_/2),
+                create_contract_poi_and_payload(FirstFPRound - 1, ContractRound,
+                                                initiator),
+                force_progress_sequence(FirstFPRound, initiator),
+                CleanAfterFP,
+                set_prop(round, SecondFPRound - 1), % for the payload
+                create_fp_trees(),
+                create_payload(),
+                set_prop(height, CloseHeight),
+                force_progress_sequence(SecondFPRound, initiator),
+                CleanAfterFP,
+                set_from(Closer),
+                set_prop(round, CloseRound),
+                fun(Props) ->
+                    Fun =
+                        case IsPositiveTest of
+                            true -> 
+                                positive(fun close_solo_with_payload/2);
+                            false ->
+                                negative(fun close_solo_with_payload/2, {error, same_round})
+                        end,
+                    Fun(Props)
+                end
+               ])
+        end,
+    SwitchHeight = 168300, 
+    [Test(Closer, CloseHeight, IsPossitiveTest)
+        || Closer  <- ?ROLES,
+           {CloseHeight, IsPossitiveTest} <- [{SwitchHeight - 1, true},
+                                              {SwitchHeight    , false},
+                                              {SwitchHeight + 1, false}]],
+    ok.
+

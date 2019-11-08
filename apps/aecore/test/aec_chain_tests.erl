@@ -915,9 +915,12 @@ fork_gen_key_candidate() ->
 
     %% Assert that we can make a new key block candidate.
     {ok, Pubkey} = aec_keys:pubkey(),
+    %% The new key block candidate will have the same protocol version as the
+    %% last block of hard chain.
+    Protocol = aec_blocks:version(TopBlock),
     ?assertMatch({ok, _},
                  aec_chain_state:calculate_state_for_new_keyblock(
-                   TopBlockHash, Pubkey, Pubkey)),
+                   TopBlockHash, Pubkey, Pubkey, Protocol)),
     ok.
 
 %%%===================================================================
@@ -2071,13 +2074,6 @@ hard_fork_inserts_new_accounts() ->
     ok.
 
 meck_minerva_fork_height(Height) ->
-    meck:expect(aec_hard_forks, is_fork_height,
-                fun(H) ->
-                    case H =:= Height of
-                        true -> {true, ?MINERVA_PROTOCOL_VSN};
-                        false -> false
-                    end
-                end),
     meck:expect(aec_hard_forks, protocol_effective_at_height,
                 fun(H) ->
                     case H >= Height of
@@ -2099,5 +2095,6 @@ insert_block(Block, Origin) ->
     insert_block_ret(aec_chain_state:insert_block(Block, Origin)).
 
 insert_block_ret({ok,_}     ) -> ok;
+insert_block_ret({error, already_in_db}) -> ok;
 insert_block_ret({pof,Pof,_}) -> {pof,Pof};
 insert_block_ret(Other      ) -> Other.

@@ -74,6 +74,7 @@
         , trace_fun/1
         , value/1
         , abi_version/1
+        , protocol_version/1
         , vm_version/1
         ]).
 
@@ -145,6 +146,7 @@ init(#{ env  := Env
          , trace => []
          , trace_fun => init_trace_fun(Opts)
 
+         , protocol_version => maps:get(protocol_version, Env)
          , abi_version => maps:get(abi_version, Env)
          , vm_version => maps:get(vm_version, Env)
 
@@ -413,8 +415,7 @@ save_store(#{ chain_state := ChainState
     end.
 
 store_gas(HeapValue, State) ->
-    Height = number(State),
-    case aec_hard_forks:protocol_effective_at_height(Height) of
+    case protocol_version(State) of
         Vsn when Vsn < ?LIMA_PROTOCOL_VSN -> 0;
         _ ->
             ByteSize = aeb_heap:heap_value_byte_size(HeapValue),
@@ -638,6 +639,7 @@ maps(State)        -> maps:get(maps, State).
 chain_state(State) -> maps:get(chain_state, State).
 chain_api(State)   -> maps:get(chain_api, State).
 
+protocol_version(State) -> maps:get(protocol_version, State).
 abi_version(State) -> maps:get(abi_version, State).
 vm_version(State)  -> maps:get(vm_version, State).
 ct_version(State)  -> #{vm => vm_version(State), abi => abi_version(State)}.

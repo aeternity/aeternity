@@ -143,7 +143,9 @@ is_leader() ->
 
 -spec post_block(aec_blocks:block()) -> 'ok' | {'error', any()}.
 post_block(Block) ->
-    case aec_validation:validate_block(Block) of
+    Height = aec_blocks:height(Block),
+    Protocol = aec_hard_forks:protocol_effective_at_height(Height),
+    case aec_validation:validate_block(Block, Protocol) of
         ok ->
             gen_server:call(?SERVER, {post_block, Block}, 30000);
         {error, {header, Reason}} ->
@@ -156,7 +158,9 @@ post_block(Block) ->
 
 -spec add_synced_block(aec_blocks:block()) -> 'ok' | {'error', any()}.
 add_synced_block(Block) ->
-    case aec_validation:validate_block(Block) of
+    Height = aec_blocks:height(Block),
+    Protocol = aec_hard_forks:protocol_effective_at_height(Height),
+    case aec_validation:validate_block(Block, Protocol) of
         ok ->
             gen_server:call(?SERVER, {add_synced_block, Block}, 30000);
         {error, {header, Reason}} ->
@@ -1076,18 +1080,18 @@ handle_add_block(Header, Block, State, Origin) ->
             handle_add_block(Block, Hash, Prev, State, Origin)
     end.
 
-handle_add_block(Block, Hash, Prev, State, Origin) ->
+handle_add_block(Block, Hash, Prev, #state{top_block_hash = TopBlockHash} = State, Origin) ->
     epoch_mining:debug("trying to add block (hash=~w, prev=~w)", [Hash, Prev]),
     case aec_chain:has_block(Hash) of
         true ->
-            epoch_mining:debug("Block already in chain", []),
+            epoch_mining:debug("Block (~p) already in chain when top is (~p) [conductor]", [Hash, TopBlockHash]),
             {ok, State};
         false ->
             %% Block validation is performed in the caller's context for
             %% external (gossip/sync) blocks and we trust the ones we
             %% produce ourselves.
             case aec_chain_state:insert_block(Block, Origin) of
-                {ok, Events} ->
+                {ok, Events}  ->
                     handle_successfully_added_block(Block, Hash, Events, State, Origin);
                 {pof,_PoF,Events} ->
                     %% TODO: should we really publish tx_events in this case?
@@ -1095,6 +1099,9 @@ handle_add_block(Block, Hash, Prev, State, Origin) ->
                     handle_successfully_added_block(Block, Hash, Events, State, Origin);
                 {error, Reason} when Origin == block_created; Origin == micro_block_created ->
                     lager:error("Couldn't insert created block (~p)", [Reason]),
+                    {{error, Reason}, State};
+                {error, Reason = {illegal_orphan, H}} ->
+                    lager:info("Couldn't insert received block ({not_attached_to_chain, ~s})", [aeu_debug:pp(H)]),
                     {{error, Reason}, State};
                 {error, Reason} ->
                     lager:info("Couldn't insert received block (~p)", [Reason]),

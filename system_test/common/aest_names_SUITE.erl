@@ -111,15 +111,15 @@ test_name_registration(Cfg) ->
     start_node(node1, Cfg),
     wait_for_startup([node1], Height = 4, Cfg),
 
-    Name = aens_test_utils:fullname(<<"richard">>, Height),
+    Name = aens_test_utils:fullname(<<"richard-no-auction-for-long-name">>, Height),  %% richard-no-auction
     NameSalt = 36346245,
     EncNameId = aeser_api_encoder:encode(name, aens_hash:name_hash(Name)),
 
     %% Generate tokens for Mike
-    wait_for_value({balance, MPubKey, 1000000 * GasPrice}, [node1], 10000, Cfg),
+    wait_for_value({balance, MPubKey, 10000000 * GasPrice}, [node1], 10000, Cfg),
 
     %% Give some tokens to the registrar account
-    post_spend_tx(node1, ?MIKE, ?RICHARD, 1, #{ amount => 600000 * GasPrice }),
+    post_spend_tx(node1, ?MIKE, ?RICHARD, 1, #{ amount => 6000000 * GasPrice }),
     wait_for_value({balance, RPubKey, 200}, [node1], 10000, Cfg),
 
     {ok, 404, #{ reason := <<"Name not found">> }} =
@@ -141,7 +141,8 @@ test_name_registration(Cfg) ->
         nonce     => 2,
         name      => Name,
         name_salt => NameSalt,
-        fee       => 20000 * GasPrice
+        fee       => 20000 * GasPrice,
+        name_fee  => 500000 * GasPrice
     }),
     aest_nodes:wait_for_value({txs_on_chain, [ClaimTxHash]}, [node1], 10000, []),
 
@@ -200,7 +201,7 @@ test_name_transfer(Cfg) ->
     start_node(node1, Cfg),
     wait_for_startup([node1], Height = 4, Cfg),
 
-    Name = aens_test_utils:fullname(<<"richard">>, Height),
+    Name = aens_test_utils:fullname(<<"richard-no-auction-and-long-name">>, Height),
     NameSalt = 36346245,
 
     %% Generate tokens for Mike
@@ -226,7 +227,8 @@ test_name_transfer(Cfg) ->
         nonce     => 2,
         name      => Name,
         name_salt => NameSalt,
-        fee       => Fee
+        fee       => Fee,
+        name_fee  => 20*Fee
     }),
     aest_nodes:wait_for_value({txs_on_chain, [ClaimTxHash]}, [node1], 10000, []),
 
