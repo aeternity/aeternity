@@ -206,12 +206,14 @@ check(#channel_force_progress_tx{payload       = Payload,
     end.
 
 -spec process(tx(), aec_trees:trees(), aetx_env:env()) -> {ok, aec_trees:trees(), aetx_env:env()}.
-process(#channel_force_progress_tx{offchain_trees = OffChainTrees} = Tx, Trees, Env) ->
+process(#channel_force_progress_tx{ offchain_trees = OffChainTrees
+                                  , payload        = Payload} = Tx, Trees, Env) ->
     Height = aetx_env:height(Env),
     {value, STx} = aetx_env:signed_tx(Env),
 
     TxHash = aetx_sign:hash(STx),
-    aesc_utils:process_force_progress(Tx, OffChainTrees, TxHash, Height, Trees, Env).
+    aesc_utils:process_force_progress(Tx, OffChainTrees, Payload,
+                                      TxHash, Height, Trees, Env).
 
 -spec signers(tx(), aec_trees:trees()) -> {ok, list(aec_keys:pubkey())}.
 signers(#channel_force_progress_tx{} = Tx, _) ->

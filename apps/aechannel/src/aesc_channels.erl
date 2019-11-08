@@ -20,7 +20,8 @@
          serialize_for_client/1,
          close_solo_last_onchain/3,
          close_solo_with_payload/4,
-         force_progress/6,
+         force_progress_last_onchain/6,
+         force_progress_with_payload/6,
          snapshot_solo/2,
          withdraw/4]).
 
@@ -115,6 +116,7 @@
 -define(PUB_SIZE, 32).
 -define(HASH_SIZE, 32).
 -define(NONCE_SIZE, 256).
+-define(SWITCH_HEIGHT, 168300).
 
 %%%===================================================================
 %%% API
@@ -131,8 +133,7 @@ close_solo_last_onchain(Ch, PoI, Height) ->
 close_solo_with_payload(Ch, PayloadTx, PoI, Height) ->
     Ch1 = close_solo_int(Ch, PoI, Height, aesc_offchain_tx:round(PayloadTx),
                          aesc_offchain_tx:state_hash(PayloadTx)),
-    SwitchHeight = 168300, 
-    case Height >= SwitchHeight of
+    case Height >= ?SWITCH_HEIGHT of
         true ->
             %% since new co-authenticated payload had been added and it
             %% replaces any old forced progressed states, we reset the
@@ -233,6 +234,30 @@ snapshot_solo(Ch, PayloadTx) ->
     Ch#channel{round              = Round,
                solo_round         = 0,
                state_hash         = StateHash}.
+
+-spec force_progress_last_onchain(channel(), binary(), seq_number(),
+                                  amount(), amount(),
+                                  aec_blocks:height()) -> channel().
+force_progress_last_onchain(Ch0, StateHash, Round,
+                              IAmt, RAmt, Height) ->
+    force_progress(Ch0, StateHash, Round, IAmt, RAmt, Height).
+
+-spec force_progress_with_payload(channel(), binary(), seq_number(),
+                                  amount(), amount(),
+                                  aec_blocks:height()) -> channel().
+force_progress_with_payload(Ch0, StateHash, Round,
+                            IAmt, RAmt, Height) ->
+    Ch1 = force_progress(Ch0, StateHash, Round, IAmt, RAmt, Height),
+    case Height >= ?SWITCH_HEIGHT of
+        true ->
+            %% since new co-authenticated payload had been added and it
+            %% replaces any old forced progressed states, we set the
+            %% solo_round to the latest round
+            Ch1#channel{solo_round = Round};
+        false ->
+            Ch1
+    end.
+
 
 -spec force_progress(channel(), binary(), seq_number(),
                      amount(), amount(),

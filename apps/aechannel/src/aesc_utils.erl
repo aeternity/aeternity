@@ -21,7 +21,7 @@
          check_force_progress/5,
          process_solo_close/9,
          process_slash/9,
-         process_force_progress/6,
+         process_force_progress/7,
          process_solo_snapshot/7,
          is_offchain_tx/1,
          verify_signatures_offchain/4,
@@ -51,6 +51,8 @@
 
 -include("../../aecontract/include/aecontract.hrl").
 -include("../../aecontract/include/hard_forks.hrl").
+
+-define(EMPTY_PAYLOAD, <<>>).
 
 %%%===================================================================
 %%% API
@@ -141,7 +143,7 @@ check_state_hash_size(Hash) ->
 -spec deserialize_payload(binary()) -> {ok, aetx_sign:signed_tx(), aesc_offchain_tx:tx()}
                                          | {ok, last_onchain}
                                          | {error, bad_offchain_state_type}.
-deserialize_payload(<<>>) ->
+deserialize_payload(?EMPTY_PAYLOAD) ->
     {ok, last_onchain};
 deserialize_payload(Payload) ->
     try
@@ -767,7 +769,7 @@ process_solo_close_slash(ChannelPubKey, FromPubKey, Nonce, Fee,
         end,
     _Trees2 = set_channel(Channel1, Trees1).
 
-process_force_progress(Tx, OffChainTrees, TxHash, Height, Trees, Env) ->
+process_force_progress(Tx, OffChainTrees, Payload, TxHash, Height, Trees, Env) ->
     ?TEST_LOG("process_force_progress begin", []),
     ChannelPubKey = aesc_force_progress_tx:channel_pubkey(Tx),
     FromPubKey = aesc_force_progress_tx:origin(Tx),
@@ -841,11 +843,18 @@ process_force_progress(Tx, OffChainTrees, TxHash, Height, Trees, Env) ->
                 % update channel obj
                 InitiatorBalance = GetBalance(aesc_channels:initiator_pubkey(Channel)),
                 ResponderBalance = GetBalance(aesc_channels:responder_pubkey(Channel)),
-                Channel1 = aesc_channels:force_progress(Channel, ExpectedHash,
-                                                        NextRound,
-                                                        InitiatorBalance,
-                                                        ResponderBalance,
-                                                        Height),
+                ChannelForceProgressFun =
+                    case Payload of
+                        ?EMPTY_PAYLOAD ->
+                            fun aesc_channels:force_progress_last_onchain/6;
+                        _ ->
+                            fun aesc_channels:force_progress_with_payload/6
+                    end,
+                Channel1 = ChannelForceProgressFun(Channel, ExpectedHash,
+                                                   NextRound,
+                                                   InitiatorBalance,
+                                                   ResponderBalance,
+                                                   Height),
                 _Trees = set_channel(Channel1, Trees2);
             false ->
                 ?TEST_LOG("Expected and computed values DO NOT MATCH. Channel object is NOT being updated", []),
