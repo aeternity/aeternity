@@ -846,7 +846,7 @@ process_force_progress(Tx, OffChainTrees, Payload, TxHash, Height, Trees, Env) -
                 ChannelForceProgressFun =
                     case Payload of
                         ?EMPTY_PAYLOAD ->
-                            fun aesc_channels:force_progress_latest_onchain/6;
+                            fun aesc_channels:force_progress_last_onchain/6;
                         _ ->
                             fun aesc_channels:force_progress_with_payload/6
                     end,

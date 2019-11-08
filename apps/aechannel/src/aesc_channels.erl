@@ -20,7 +20,7 @@
          serialize_for_client/1,
          close_solo_last_onchain/3,
          close_solo_with_payload/4,
-         force_progress_latest_onchain/6,
+         force_progress_last_onchain/6,
          force_progress_with_payload/6,
          snapshot_solo/2,
          withdraw/4]).
@@ -235,10 +235,10 @@ snapshot_solo(Ch, PayloadTx) ->
                solo_round         = 0,
                state_hash         = StateHash}.
 
--spec force_progress_latest_onchain(channel(), binary(), seq_number(),
-                                    amount(), amount(),
-                                    aec_blocks:height()) -> channel().
-force_progress_latest_onchain(Ch0, StateHash, Round,
+-spec force_progress_last_onchain(channel(), binary(), seq_number(),
+                                  amount(), amount(),
+                                  aec_blocks:height()) -> channel().
+force_progress_last_onchain(Ch0, StateHash, Round,
                               IAmt, RAmt, Height) ->
     force_progress(Ch0, StateHash, Round, IAmt, RAmt, Height).
 
