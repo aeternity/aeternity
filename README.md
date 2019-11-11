@@ -15,7 +15,7 @@ Comes with a naming system, for developerability.
 Written in Erlang.
 
 To install and run the Aeternity node, see the instructions [below](#how-to-start)
-or just [follow the progress of the project in Pivotal Tracker][pivotal].
+or just follow the progress of the project via GitHub Issues ([Deprecated Project Management: Pivotal Tracker][pivotal]).
 
 If you are interested in participating in a security bounty, check our
 [HackerOne Aeternity Bounty Program][hackerone].
