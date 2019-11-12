@@ -5,6 +5,7 @@
 -export([start_link/2,
          start_link_channel/4,
          start_channel/4,
+         start_channel/5,
          set_log_file/2,
          set_role/2,
          log/3,
@@ -64,24 +65,27 @@ start_link(Host, Port) ->
     % TODO: Make it configurable whether to use `ws` or `wss`
     WsAddress = "wss://" ++ Host ++ ":" ++ integer_to_list(Port) ++ "/websocket",
     ct:log("connecting to ~p", [WsAddress]),
-    {ok, Pid} = websocket_client:start_link(WsAddress, ?MODULE, self()),
+    {ok, Pid} = websocket_client:start_link(WsAddress, ?MODULE, [self(), []]),
     wait_for_connect(Pid).
 
 start_link_channel(Host, Port, RoleA, Opts) when is_atom(RoleA) ->
     Role = to_binary(RoleA),
     WsAddress = make_channel_connect_address(Host, Port, Role, Opts),
     ct:log("connecting to Channel ~p as ~p", [WsAddress, Role]),
-    {ok, Pid} = websocket_client:start_link(WsAddress, ?MODULE, self(),
+    {ok, Pid} = websocket_client:start_link(WsAddress, ?MODULE, [self(), []],
                                             extra_headers()),
     wait_for_connect(Pid).
 
 start_channel(Host, Port, RoleA, Opts0) when is_atom(RoleA) ->
+    start_channel(Host, Port, RoleA, [], Opts0).
+
+start_channel(Host, Port, RoleA, DefaultChannelActions, Opts0) when is_atom(RoleA) ->
     Role = to_binary(RoleA),
     {LogFile, Opts} = get_logfile(Opts0),
     WsAddress = make_channel_connect_address(Host, Port, Role, Opts),
     ct:log("connecting to Channel ~s as ~p", [iolist_to_binary(WsAddress), Role]),
     %% There is no websocket_client:start/4 ...
-    {ok, Pid} = websocket_client:start_link(WsAddress, ?MODULE, self(),
+    {ok, Pid} = websocket_client:start_link(WsAddress, ?MODULE, [self(), DefaultChannelActions],
                                             extra_headers()),
     unlink(Pid),
     case wait_for_connect(Pid) of
@@ -420,9 +424,17 @@ inform_registered(RegisteredPid, Origin, Action, Tag, Payload) ->
             RegisteredPid ! {self(), websocket_event, Origin, Action, Tag, Payload}
     end.
 
-init(WaitingPid) ->
-    Register = put_registration(WaitingPid, waiting_connected, #register{}),
-    {once, #state{regs = Register}}.
+init([WaitingPid, DefaultChannelActions]) ->
+    Register0 = put_registration(WaitingPid, waiting_connected, #register{}),
+    Register1 =
+        lists:foldl(
+            fun(Action, AccumRegister) ->
+                Event = {?CHANNEL, Action},
+                put_registration(WaitingPid, Event, AccumRegister)
+            end,
+            Register0,
+            DefaultChannelActions),
+    {once, #state{regs = Register1}}.
 
 onconnect(_WSReq, #state{regs=Register}=State) ->
     ct:log("Ws connected"),

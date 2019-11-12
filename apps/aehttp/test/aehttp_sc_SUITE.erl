@@ -3500,9 +3500,8 @@ channel_ws_start(Role, Opts, Config, Events) ->
     Opts1 = Opts#{ {int,logfile} => LogFile },
     Opts2 = maybe_add_fsm_id(Role, Opts1),
     {Host, Port} = channel_ws_host_and_port(),
-    case ?WS:start_channel(Host, Port, Role, Opts2) of
+    case ?WS:start_channel(Host, Port, Role, RegisterEvents, Opts2) of
         {ok, Pid} ->
-                ok = ?WS:register_test_for_channel_events(Pid, RegisterEvents),
                 case wait_for_next_channel_event(Pid, Config) of
                     {ok, info, #{<<"event">> := <<"fsm_up">>, <<"fsm_id">> := FsmId}} ->
                         ok = ?WS:unregister_test_for_channel_events(Pid, UnregisterEvents),
