@@ -2992,11 +2992,11 @@ reconnect_client_(ReestablishOpts, Role, Config) ->
         reconnect ->
             ct:log("Checking for reconnect", []),
             %% The FsmId should not change
-            FsmId = OldFsmId;
+            {FsmId, OldFsmId} = {OldFsmId, FsmId};
         reestablish ->
             ct:log("Checking for reestablish", []),
             %% A new Fsm was spawned
-            true = FsmId /= OldFsmId
+            true = (FsmId =/= OldFsmId)
     end,
     Config1 = lists:keystore(channel_clients, 1, Config,
         {channel_clients, maps:merge(OldClients, NewClients)}),

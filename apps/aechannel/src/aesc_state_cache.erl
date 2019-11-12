@@ -85,7 +85,7 @@
 
 -define(SERVER, ?MODULE).
 -define(TAB, aesc_state_cache_ch).
-%% A new table name is needed in case the user want's to downgrade to a pre-lima release
+%% A new table name is needed in case the user wants to downgrade to a pre-lima release
 -define(PTAB, aesc_state_cache_v2).
 
 -spec new(aeser_id:val(), aeser_id:val(), aesc_offchain_state:state(), opts(), aesc_fsm_id:wrapper()) -> ok | {error, any()}.
