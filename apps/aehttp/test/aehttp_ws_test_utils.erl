@@ -65,14 +65,14 @@ start_link(Host, Port) ->
     % TODO: Make it configurable whether to use `ws` or `wss`
     WsAddress = "wss://" ++ Host ++ ":" ++ integer_to_list(Port) ++ "/websocket",
     ct:log("connecting to ~p", [WsAddress]),
-    {ok, Pid} = websocket_client:start_link(WsAddress, ?MODULE, [self(), []]),
+    {ok, Pid} = websocket_client:start_link(WsAddress, ?MODULE, {self(), []}),
     wait_for_connect(Pid).
 
 start_link_channel(Host, Port, RoleA, Opts) when is_atom(RoleA) ->
     Role = to_binary(RoleA),
     WsAddress = make_channel_connect_address(Host, Port, Role, Opts),
     ct:log("connecting to Channel ~p as ~p", [WsAddress, Role]),
-    {ok, Pid} = websocket_client:start_link(WsAddress, ?MODULE, [self(), []],
+    {ok, Pid} = websocket_client:start_link(WsAddress, ?MODULE, {self(), []},
                                             extra_headers()),
     wait_for_connect(Pid).
 
@@ -85,7 +85,7 @@ start_channel(Host, Port, RoleA, DefaultChannelActions, Opts0) when is_atom(Role
     WsAddress = make_channel_connect_address(Host, Port, Role, Opts),
     ct:log("connecting to Channel ~s as ~p", [iolist_to_binary(WsAddress), Role]),
     %% There is no websocket_client:start/4 ...
-    {ok, Pid} = websocket_client:start_link(WsAddress, ?MODULE, [self(), DefaultChannelActions],
+    {ok, Pid} = websocket_client:start_link(WsAddress, ?MODULE, {self(), DefaultChannelActions},
                                             extra_headers()),
     unlink(Pid),
     case wait_for_connect(Pid) of
@@ -424,7 +424,7 @@ inform_registered(RegisteredPid, Origin, Action, Tag, Payload) ->
             RegisteredPid ! {self(), websocket_event, Origin, Action, Tag, Payload}
     end.
 
-init([WaitingPid, DefaultChannelActions]) ->
+init({WaitingPid, DefaultChannelActions}) ->
     Register0 = put_registration(WaitingPid, waiting_connected, #register{}),
     Register1 =
         lists:foldl(
