@@ -3785,11 +3785,7 @@ channel_spec(Cfg, XOpts) ->
           end,
           Spec1,
           [nonce, block_hash_delta]),
-
-    I1 = prime_password(I, initiator_password, Cfg),
-    R1 = prime_password(R, responder_password, Cfg),
-
-    {I1, R1, Spec2}.
+    {I, R, Spec2}.
 
 log(Fmt, Args, L, #{debug := true}) ->
     log(Fmt, Args, L, true);
@@ -3865,22 +3861,6 @@ peek_message_queue(L, Debug) ->
 slogan(Cfg) ->
     ?config(slogan, Cfg).
 
-prime_password(#{} = P, Key, Cfg) when Key =:= initiator_password; Key =:= responder_password ->
-    case ?config(Key, Cfg) of
-        undefined ->
-            P#{state_password => generate_password()};
-        ignore ->
-            ?LOG("Ignoring password", []),
-            maps:remove(state_password, P);
-        Password ->
-            ?LOG("Using predefined password", []),
-            P#{state_password => Password}
-     end.
-
--spec generate_password() -> string().
-generate_password() ->
-    binary:bin_to_list(crypto:strong_rand_bytes(6)).
-
 %% @doc Find position of block including the given encoded tx hash in a list of key blocks.
 %% Starting at position 1.
 tx_position_in_blocks(TxHash, Blocks) ->
@@ -3921,29 +3901,6 @@ responder_stays(_) ->
 expected_fsm_logs(Name, Role) ->
     expected_fsm_logs(Name, Role, #{}).
 
-expected_fsm_logs(check_password_is_changeable, initiator = R, #{update_count := Count}) ->
-    UpdateLog = [ {rcv, update_ack}
-                , {snd, update}
-                , {rcv, signed}
-                , {req, sign}
-                ],
-    [ {evt, close}
-    , {rcv, leave_ack}
-    , {snd, leave}
-    ] ++
-    lists:flatten([UpdateLog || _ <- lists:seq(1, Count)]) ++
-    expected_fsm_logs(channel_open, R);
-expected_fsm_logs(check_password_is_changeable, responder = R, #{update_count := Count}) ->
-    UpdateLog = [ {snd, update_ack}
-                , {rcv, signed}
-                , {req, sign}
-                , {rcv, update}
-                ],
-    [ {evt, close}
-    , {rcv, leave}
-    ] ++
-    lists:flatten([UpdateLog || _ <- lists:seq(1, Count)]) ++
-    expected_fsm_logs(channel_open, R);
 expected_fsm_logs(leave_reestablish_loop_step_, initiator = R, #{initial_channel_open := true}) ->
     [ {evt, close}
     , {rcv, leave_ack}

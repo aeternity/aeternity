@@ -19,7 +19,6 @@
     sc_ws_min_depth_not_reached_timeout/1,
     sc_ws_min_depth_is_modifiable/1,
     sc_ws_basic_open_close/1,
-    sc_ws_basic_open_close_no_password/1,
     sc_ws_basic_open_close_server/1,
     sc_ws_failed_update/1,
     sc_ws_generic_messages/1,
@@ -137,7 +136,6 @@ groups() ->
         sc_ws_min_depth_not_reached_timeout,
         sc_ws_min_depth_is_modifiable,
         sc_ws_basic_open_close,
-        sc_ws_basic_open_close_no_password,
         sc_ws_basic_open_close_server,
         sc_ws_opening_ping_pong,
         sc_ws_snapshot_solo,
@@ -1291,17 +1289,15 @@ sc_ws_reestablish_(ReestablishOptions, Config) ->
     ct:log("ReestablishOptions = ~p~n"
            "Config = ~p", [ReestablishOptions, Config]),
     ResponderLeaves = proplists:get_value(responder_leaves, Config, true),
-    {RrConnPid, RFsmId}
-        = if 
-             ResponderLeaves ->
-                  {ok, RrCP, FsmId} = channel_ws_start(responder, ReestablishOptions, Config),
-                  {RrCP, FsmId};
-             true ->
-                 %% responder still running
-                 #{ responder := RCP
-                   , responder_fsm_id := FsmId} = proplists:get_value(channel_clients, Config),
-                 {RCP, FsmId}
-    end,
+    {RrConnPid, RFsmId} = if ResponderLeaves ->
+                                {ok, RrCP, FsmId} = channel_ws_start(responder, ReestablishOptions, Config),
+                                {RrCP, FsmId};
+                              true ->
+                                %% responder still running
+                                #{ responder := RCP
+                                 , responder_fsm_id := FsmId} = proplists:get_value(channel_clients, Config),
+                                {RCP, FsmId}
+                          end,
     ReestablishOptions1 = maps:put(host, <<"localhost">>, ReestablishOptions),
     {ok, IrConnPid, IFsmId} = channel_ws_start(initiator, ReestablishOptions1, Config),
     Config1 = lists:keystore(channel_clients, 1, Config,
@@ -1341,7 +1337,7 @@ await_reestablish_reports(Config) ->
 
 sc_ws_deposit_(Config, Origin, XOpts) when Origin =:= initiator
                                     orelse Origin =:= responder ->
-    Participants= proplists:get_value(participants, Config),
+    Participants = proplists:get_value(participants, Config),
     Clients = proplists:get_value(channel_clients, Config),
     {SenderRole, AckRole} =
         case Origin of
@@ -2694,11 +2690,6 @@ sc_ws_basic_open_close(Config0) ->
     ok = sc_ws_update_(Config),
     ok = sc_ws_close_(Config).
 
-sc_ws_basic_open_close_no_password(Config) ->
-    with_trace(fun(Cfg) ->
-                       sc_ws_basic_open_close([{no_password, true}|Cfg])
-               end, Config, "sc_ws_basic_open_close_no_password").
-
 sc_ws_basic_open_close_server(Config0) ->
     Config = sc_ws_open_([server_mode|Config0]),
     ok = sc_ws_update_(Config),
@@ -2978,13 +2969,13 @@ reconnect_client_(ReestablishOpts, Role, Config) ->
     ct:log("Check if reestablish resulted in a reconnect", []),
     OldClients = ?config(channel_clients, Config),
     {OldFsmId, NewClients} = case Role of
-                    initiator ->
-                        { maps:get(initiator_fsm_id, OldClients)
-                        , #{initiator => ConnPid, initiator_fsm_id => FsmId}};
-                    responder ->
-                        { maps:get(responder_fsm_id, OldClients)
-                        , #{responder => ConnPid, responder_fsm_id => FsmId}}
-                end,
+                                 initiator ->
+                                     { maps:get(initiator_fsm_id, OldClients)
+                                     , #{initiator => ConnPid, initiator_fsm_id => FsmId}};
+                                 responder ->
+                                     { maps:get(responder_fsm_id, OldClients)
+                                     , #{responder => ConnPid, responder_fsm_id => FsmId}}
+                             end,
     ct:log("Old fsm id: ~p", [OldFsmId]),
     ct:log("New fsm id: ~p", [FsmId]),
     Scenario = proplists:get_value(reconnect_scenario, Config, reconnect),
@@ -2999,7 +2990,7 @@ reconnect_client_(ReestablishOpts, Role, Config) ->
             true = (FsmId =/= OldFsmId)
     end,
     Config1 = lists:keystore(channel_clients, 1, Config,
-        {channel_clients, maps:merge(OldClients, NewClients)}),
+                            {channel_clients, maps:merge(OldClients, NewClients)}),
     case Scenario of
         reconnect ->
             ok;
@@ -3039,7 +3030,7 @@ sc_ws_failed_update(Config) ->
 sc_ws_generic_messages(Config) ->
     #{initiator := #{pub_key := IPubkey},
       responder := #{pub_key := RPubkey}} = proplists:get_value(participants, Config),
-    #{initiator := IConnPid, responder :=RConnPid}
+    #{initiator := IConnPid, responder := RConnPid}
         = proplists:get_value(channel_clients, Config),
     lists:foreach(
         fun({Sender, Msg}) ->
