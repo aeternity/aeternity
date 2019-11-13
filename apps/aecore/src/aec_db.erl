@@ -150,10 +150,12 @@ tables(Mode) ->
 
 tab(Mode0, Record, Attributes, Extra) ->
     Mode = expand_mode(Mode0),
+    UserProps = maps:get(user_properties, Mode, []),
+    UserProps1 = [{vsn, tab_vsn(Record)} | UserProps],
     [ tab_copies(Mode)
     , {type, tab_type(Record)}
     , {attributes, Attributes}
-    , {user_properties, [{vsn, tab_vsn(Record)}]}
+    , {user_properties, UserProps1}
       | Extra].
 
 tab_vsn(_) -> 1.
@@ -233,14 +235,21 @@ match_alts([[B]|_]        , _, _) -> B;
 match_alts([_|T]          , F, N) -> match_alts(T, F, N);
 match_alts([]             , _, _) -> erlang:error(no_matching_backend).
 
-backend_mode(_            , #{persist := false} = M) -> M#{module => mnesia,
-                                                           alias => ram_copies};
-backend_mode(<<"rocksdb">>, #{persist := true } = M) -> M#{module => mnesia_rocksdb,
-                                                           alias => rocksdb_copies};
-backend_mode(<<"leveled">>, #{persist := true } = M) -> M#{module => mnesia_leveled,
-                                                           alias => leveled_copies};
-backend_mode(<<"mnesia">> , #{persist := true } = M) -> M#{module => mnesia,
-                                                           alias => disc_copies}.
+backend_mode(_            , #{persist := false} = M) -> M#{ module => mnesia
+                                                          , alias => ram_copies
+                                                          };
+backend_mode(<<"rocksdb">>, #{persist := true } = M) -> M#{ module => mnesia_rocksdb
+                                                          , alias => rocksdb_copies
+                                                          , user_properties => [ {rocksdb_opts,
+                                                                                  [{on_write_error, error}]}
+                                                                               ]
+                                                          };
+backend_mode(<<"leveled">>, #{persist := true } = M) -> M#{ module => mnesia_leveled
+                                                          , alias => leveled_copies
+                                                          };
+backend_mode(<<"mnesia">> , #{persist := true } = M) -> M#{ module => mnesia
+                                                          , alias => disc_copies
+                                                          }.
 
 ensure_transaction(Fun) when is_function(Fun, 0) ->
     %% TODO: actually, some non-transactions also have an activity state
@@ -769,7 +778,7 @@ handle_table_errors(Tables, Mode, [{missing_table, aec_signal_count = Table} | T
 handle_table_errors(Tables, Mode, [{missing_table, aesc_state_cache_v2} | Tl]) ->
     aesc_db:create_tables(Mode),
     handle_table_errors(Tables, Mode, Tl);
-handle_table_errors(_Tables, Mode, Errors) ->
+handle_table_errors(_Tables, _Mode, Errors) ->
     lager:error("Database check failed: ~p", [Errors]),
     erlang:error({table_check, Errors}).
 
