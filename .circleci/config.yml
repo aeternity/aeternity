@@ -798,7 +798,10 @@ jobs:
           key: dialyzer-cache-v2-{{ .Branch }}-{{ .Revision }}
           paths:
             - *container_otp_plt
-      - run: make dialyzer
+      - run:
+          name: Run dialyzer
+          no_output_timeout: 20m
+          command: make dialyzer
       - run: make python-env
       - run: ./rebar3 xref || true
       - run:
@@ -826,7 +829,10 @@ jobs:
           key: dialyzer-otp21-cache-v2-{{ .Branch }}-{{ .Revision }}
           paths:
             - *container_otp21_plt
-      - run: make dialyzer
+      - run:
+          name: Run dialyzer
+          no_output_timeout: 20m
+          command: make dialyzer
       - run:
           name: Check OTP version (for effective CI caching)
           # How to retrieve OTP version in installed OTP development system: http://erlang.org/doc/system_principles/versions.html

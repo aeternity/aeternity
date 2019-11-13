@@ -82,7 +82,8 @@
                  | channel_settle_tx
                  | channel_snapshot_solo_tx
                  | channel_offchain_tx
-                 | channel_client_reconnect_tx.
+                 | channel_client_reconnect_tx
+                 | paying_for_tx.
 
 -type tx_instance() :: aec_spend_tx:tx()
                      | aeo_register_tx:tx()
