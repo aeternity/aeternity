@@ -8,6 +8,7 @@
 -module(aefate_engine_test).
 
 -include_lib("eunit/include/eunit.hrl").
+-include_lib("apps/aecontract/include/aecontract.hrl").
 
 control_flow_test_() ->
     make_calls(control_flow()).
@@ -277,6 +278,7 @@ make_call(Contract, Function0, Arguments) ->
                          }
                  }
                 )
+     , vm_version => ?VM_FATE_SOPHIA_1
      }.
 
 setup_contracts() ->
