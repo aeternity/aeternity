@@ -2005,6 +2005,12 @@ assert_channel_withdraw_amount(Channel, Amount) ->
 is_payable_contract(#{ payable := Payable }) -> Payable;
 is_payable_contract(_)                       -> runtime_error(bad_bytecode).
 
+assert_min_protocol(MinProtocolVsn, FeatureDescription, S) ->
+    S#state.protocol >= MinProtocolVsn orelse
+        runtime_error({requires_protocol,
+                       aec_hard_forks:protocol_vsn_name(MinProtocolVsn),
+                       FeatureDescription}).
+
 %%%===================================================================
 %%% Error handling
 
