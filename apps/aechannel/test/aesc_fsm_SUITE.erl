@@ -60,7 +60,6 @@
         , check_mutual_close_with_wrong_amounts/1
         , check_mutual_close_after_close_solo/1
         , check_fsm_crash_reestablish/1
-        , check_password_is_changeable/1
         , attach_initiator/1
         , attach_responder/1
         , initiator_spend/1
@@ -166,7 +165,6 @@ groups() ->
                              , {group, round_too_high}
                              , {group, pinned_env}
                              , {group, generalized_accounts}
-                             , {group, no_kdf_mock}
                              ]},
      {transactions, [sequence],
       [
@@ -193,7 +191,6 @@ groups() ->
       , channel_detects_close_solo
       , leave_reestablish_responder_stays
       , leave_reestablish_close
-      , check_password_is_changeable
       , change_config_get_history
       ]},
      {throughput, [sequence],
@@ -245,8 +242,7 @@ groups() ->
       , request_too_new_bh
       , request_too_old_bh
       , positive_bh
-      ]},
-     {no_kdf_mock, [sequence], [create_channel]}
+      ]}
     ].
 
 ga_sequence() ->
@@ -375,10 +371,6 @@ init_per_group(Group, Config) when Group =:= initiator_is_ga;
     end;
 init_per_group(generalized_accounts, Config) ->
     Config;
-init_per_group(no_kdf_mock, Config) ->
-    Cfg = init_per_group_(Config),
-    aecore_suite_utils:end_mock(aecore_suite_utils:node_name(dev1), sc_cache_kdf),
-    Cfg;
 init_per_group(_Group, Config) ->
     init_per_group_(Config).
 
@@ -388,7 +380,7 @@ init_per_group_(Config) ->
             Config;
         false ->
             aecore_suite_utils:start_node(dev1, Config),
-            aecore_suite_utils:connect(aecore_suite_utils:node_name(dev1), [block_pow, sc_cache_kdf]),
+            aecore_suite_utils:connect(aecore_suite_utils:node_name(dev1), [block_pow]),
             ?LOG("dev1 connected", []),
             try begin
                     Node = dev1,
@@ -670,7 +662,7 @@ channel_insufficent_tokens(Cfg) ->
                                    , {push_amount, PushAmount}
                                    , {initiator_amount, IAmt}
                                    , {responder_amount, RAmt} ], Cfg),
-                Params = channel_spec(Cfg1),
+                {_, _, Params} = channel_spec(Cfg1),
                 channel_create_invalid_spec(Params, Error, Debug)
         end,
     Test(10, 10, 5, 6, insufficient_initiator_amount),
@@ -678,14 +670,12 @@ channel_insufficent_tokens(Cfg) ->
     Test(1, 1, 5, 3, insufficient_amounts),
     ok.
 
-channel_create_invalid_spec({I, R, Spec}, Error, Debug) ->
+channel_create_invalid_spec(Spec, Error, Debug) ->
     Port = 9325,
-    SpecR = move_password_to_spec(R, Spec),
     {error, Error} =
-        rpc(dev1, aesc_client, respond, [Port, SpecR], Debug),
-    SpecI = move_password_to_spec(I, Spec),
+        rpc(dev1, aesc_client, respond, [Port, Spec], Debug),
     {error, Error} =
-        rpc(dev1, aesc_client, initiate, ["localhost", Port, SpecI], Debug).
+        rpc(dev1, aesc_client, initiate, ["localhost", Port, Spec], Debug).
 
 inband_msgs(Cfg) ->
     #{ i := #{fsm := FsmI} = I
@@ -1060,11 +1050,11 @@ msg_volley(#{fsm := FsmI, pub := PubI} = I, #{fsm := FsmR, pub := PubR} = R, _) 
     %% background processes in the OS, bump to 4 seconds to avoid random failures
     {ok,_} = receive_from_fsm(
                message, R,
-               fun(#{info := #{info := <<"ping">>}}) -> ok end, 1000),
+               fun(#{info := #{info := <<"ping">>}}) -> ok end, 4000),
     rpc(dev1, aesc_fsm, inband_msg, [FsmR, PubI, <<"pong">>]),
     {ok,_} = receive_from_fsm(
                message, I,
-               fun(#{info := #{info := <<"pong">>}}) -> ok end, 1000),
+               fun(#{info := #{info := <<"pong">>}}) -> ok end, 4000),
     {I, R}.
 
 deposit(Cfg) ->
@@ -1291,6 +1281,8 @@ check_log([_|_], []) ->
     ok;
 check_log([], _) ->
     ok.
+
+fsm_up(#{info := {fsm_up, FsmId}}) when is_function(FsmId) -> ok.
 
 died_normal(#{info := {died, normal}}) -> ok.
 
@@ -1718,7 +1710,8 @@ check_fsm_crash_reestablish(Cfg) ->
         {IA2, RA2}
     end, {I1, R1}, Actions).
 
-fsm_crash_reestablish(#{channel_id := ChId, fsm := FsmI} = I, #{fsm := FsmR} = R, Spec, Cfg, Action) ->
+fsm_crash_reestablish(#{channel_id := ChId, fsm := FsmI, fsm_id := IFsmId} = I,
+                      #{fsm := FsmR, fsm_id := RFsmId} = R, Spec, Cfg, Action) ->
     Debug = get_debug(Cfg),
     {ok, State} = rpc(dev1, aesc_fsm, get_offchain_state, [FsmI]),
     {_, SignedTx} = aesc_offchain_state:get_latest_signed_tx(State),
@@ -1733,9 +1726,17 @@ fsm_crash_reestablish(#{channel_id := ChId, fsm := FsmI} = I, #{fsm := FsmR} = R
     [] = in_ram(Cache),
     [_, _] = on_disk(Cache),
     check_info(20),
-    ?LOG(Debug, "reestablishing ...", []),
+
+    ?LOG(Debug, "reestablish with wrong fsm id...", []),
     Info = #{i => I, r => R, spec => Spec},
-    #{i := I1, r := R1} = reestablish_(Info, SignedTx, ?PORT, Debug),
+    reestablish_wrong_fsm_id(Info, SignedTx, ?PORT, Debug),
+
+    ?LOG(Debug, "reestablishing ...", []),
+    #{i := #{fsm_id := IFsmId1} = I1, r := #{fsm_id := RFsmId1} = R1} = reestablish_(Info, SignedTx, ?PORT, Debug),
+    %% Assert that the FSM ID's have changed
+    true = IFsmId /= IFsmId1,
+    true = RFsmId /= RFsmId1,
+    true = IFsmId1 /= RFsmId1,
     {I1, R1}.
 
 fsm_crash_action_during_transfer( #{fsm := FsmI, pub := PubI} = I
@@ -1773,61 +1774,6 @@ fsm_crash_action_during_shutdown( #{fsm := FsmI} = I
     {_, _} = await_signing_request(shutdown, I, Debug, Cfg),
     {ok, _} = receive_from_fsm(shutdown_ack, R, signing_req(), ?TIMEOUT, Debug),
     ok.
-
-check_password_is_changeable(Cfg) ->
-    Debug = get_debug(Cfg),
-    Cfg1 = [?SLOGAN | Cfg],
-    assert_empty_msgq(Debug),
-
-    % Start channel
-    #{ i := I, r := R} = Info0 = create_channel_(Cfg1, #{}, Debug),
-    ?LOG(Debug, "I = ~p", [I]),
-    ?LOG(Debug, "R = ~p", [R]),
-
-    % Perform updates
-    UpdateCount = 4,
-    {_, I1, R1} = do_n(UpdateCount, fun update_volley/3, I, R, Cfg),
-
-    % Change passwords
-    I2 = change_password(I1),
-    R2 = change_password(R1),
-
-    % Leave channel
-    {I3, R3, SignedTx} = leave_(I2, R2, Info0, Debug),
-
-    % Verify leave log
-    {ok, #{info := {log, ILog}}} = receive_log(I3, Debug),
-    {ok, #{info := {log, RLog}}} = receive_log(R3, Debug),
-
-    ok = check_log(expected_fsm_logs(?FUNCTION_NAME, initiator, #{update_count => UpdateCount}), ILog),
-    ok = check_log(expected_fsm_logs(?FUNCTION_NAME, responder, #{update_count => UpdateCount}), RLog),
-
-    assert_empty_msgq(Debug),
-
-    % Reestablish with old password should fail
-    InfoWrong = Info0#{i => I1, r => R1},
-    reestablish_wrong_password_(InfoWrong, SignedTx, ?PORT, Debug),
-    assert_empty_msgq(Debug),
-
-    % Reestablish with new password should succeed
-    Info = Info0#{i => I3, r => R3},
-    reestablish_(Info, SignedTx, ?PORT, Debug),
-
-    % Done
-    assert_empty_msgq(Debug),
-    ok.
-
-leave_(#{channel_id := ChId, fsm := FsmI} = I, #{fsm := FsmR} = R, CSpec, Debug) ->
-    assert_cache_is_in_ram(ChId),
-    ok = rpc(dev1, aesc_fsm, leave, [FsmI]),
-
-    % Verify leave and FSM timeout
-    {ok, #{info := SignedTx}} = await_leave(I, ?TIMEOUT, Debug),
-    {ok, #{info := SignedTx}} = await_leave(R, ?TIMEOUT, Debug),
-    ok = receive_dying_declarations(FsmI, FsmR, CSpec, Debug),
-
-    retry(3, 100, fun() -> assert_cache_is_on_disk(ChId) end),
-    {I, R, SignedTx}.
 
 fsm_state(Pid, Debug) ->
     {State, _Data} = rpc(dev1, sys, get_state, [Pid, 1000], _RpcDebug = false),
@@ -1912,13 +1858,16 @@ wrong_create_({I, R, #{initiator_amount := IAmt0, responder_amount := RAmt0,
         end,
     IAmt = IAmt0 - PushAmount,
     RAmt = RAmt0 + PushAmount,
-    {ok, FsmR} = rpc(dev1, aesc_client, respond, [Port, move_password_to_spec(R, Spec)], Debug),
-    {ok, FsmI} = rpc(dev1, aesc_client, initiate, ["localhost", Port, move_password_to_spec(I, Spec)], Debug),
+    {ok, FsmR} = rpc(dev1, aesc_client, respond, [Port, Spec], Debug),
+    {ok, FsmI} = rpc(dev1, aesc_client, initiate, ["localhost", Port, Spec], Debug),
 
     ?LOG(Debug, "FSMs, I = ~p, R = ~p", [FsmI, FsmR]),
 
     I1 = I#{fsm => FsmI, initiator_amount => IAmt, responder_amount => RAmt},
     R1 = R#{fsm => FsmR, initiator_amount => IAmt, responder_amount => RAmt},
+
+    _ = receive_fsm_id(dev1, I1, Debug),
+    _ = receive_fsm_id(dev1, R1, Debug),
 
     {ok, _} = receive_from_fsm(info, R1, channel_open, ?TIMEOUT, Debug),
     {ok, _} = receive_from_fsm(info, I1, channel_accept, ?TIMEOUT, Debug),
@@ -2151,15 +2100,15 @@ client_reconnect_(Role, Cfg) ->
                  initiator -> i;
                  responder -> r
              end,
-    #{ fsm := Fsm, proxy := Proxy } = RoleI = maps:get(MapKey, Ch),
+    #{ proxy := Proxy } = RoleI = maps:get(MapKey, Ch),
     ?LOG(Debug, "Ch = ~p", [Ch]),
-    {error, _} = Err = try_reconnect(Fsm, Role, RoleI, Debug),
+    {error, _} = Err = try_reconnect(RoleI, Debug),
     ?LOG(Debug, "Reconnecting before disconnecting failed: ~p", [Err]),
     unlink(Proxy),
     exit(Proxy, kill),
     timer:sleep(50),  % give the above exit time to propagate
     ok = things_that_should_fail_if_no_client(Role, I, R, Debug, Cfg),
-    Res = reconnect(Fsm, Role, RoleI, Debug),
+    Res = reconnect(RoleI, Debug),
     ?LOG(Debug, "Reconnect req -> ~p", [Res]),
     %% run tests here
     shutdown_(I, R, Cfg).
@@ -2190,11 +2139,13 @@ update_req_conflict(Role, I, R, Debug, Cfg) ->
 roles_for_update(initiator, I, R) -> {I, R};
 roles_for_update(responder, I, R) -> {R, I}.
 
-reconnect(Fsm, Role, #{} = R, Debug) ->
+reconnect(#{fsm := Fsm, fsm_id := FsmId} = R, Debug) ->
     Me = self(),
     NewProxy = spawn_link(fun() ->
                                   erlang:monitor(process, Me),
-                                  ok = try_reconnect(Fsm, Role, R, Debug),
+                                  ok = try_reconnect(R, Debug),
+                                  %% The same ID should be sent as before to indicate that this is the same FSM as before
+                                  FsmId = receive_fsm_id(dev1, R, Debug),
                                   ?LOG(Debug, "Reconnect successful; Fsm = ~p", [Fsm]),
                                   Me ! {self(), reconnected},
                                   fsm_relay(R, Me, Debug)
@@ -2208,23 +2159,10 @@ reconnect(Fsm, Role, #{} = R, Debug) ->
     end,
     R#{ proxy => NewProxy }.
 
-try_reconnect(Fsm, Role, R, Debug) ->
-    try_reconnect(Fsm, 1, Role, R, Debug).
-
-try_reconnect(Fsm, Round, Role, #{ channel_id := ChId
-                                 , fsm  := Fsm
-                                 , pub  := Pub
-                                 , priv := Priv }, Debug) ->
-    ChIdId = aeser_id:create(channel, ChId),
-    PubId = aeser_id:create(account, Pub),
-    {ok, Tx} = aesc_client_reconnect_tx:new(#{ channel_id => ChIdId
-                                             , round      => Round
-                                             , role       => Role
-                                             , pub_key    => PubId }),
-    ?LOG(Debug, "Reconnect Tx = ~p", [Tx]),
-    SignedTx = aec_test_utils:sign_tx(Tx, Priv),
-    rpc(dev1, aesc_fsm, reconnect_client, [Fsm, self(), SignedTx]).
-
+try_reconnect(#{ fsm  := Fsm
+               , fsm_id := FsmId
+               }, Debug) ->
+    rpc(dev1, aesc_fsm, reconnect_client, [Fsm, self(), aesc_fsm_id:from_binary(FsmId)], Debug).
 
 %% @doc Retry N times, T ms apart, if F() raises an exception.
 %% Used in places where there could be a race.
@@ -2320,8 +2258,10 @@ create_channel_from_spec(I, R, Spec, Port, UseAny, Debug, Cfg) ->
     ?LOG("RProxy = ~p, IProxy = ~p", [RProxy, IProxy]),
     Timeout = proplists:get_value(timeout, Cfg, ?TIMEOUT),
     Info = match_responder_and_initiator(RProxy, Debug, Timeout),
-    #{ i := #{ fsm := FsmI } = I1
-     , r := #{ fsm := FsmR } = R1 } = Info,
+    #{ i := #{ fsm := FsmI, fsm_id := IFsmId } = I1
+     , r := #{ fsm := FsmR, fsm_id := RFsmId } = R1 } = Info,
+    %% Assert that the ID's are different
+    true = IFsmId /= RFsmId,
     ?LOG(Debug, "channel paired: ~p", [Info]),
     ?LOG(Debug, "FSMs, I = ~p, R = ~p", [FsmI, FsmR]),
     {I2, R2} = try await_create_tx_i(I1, R1, Debug, Cfg)
@@ -2390,9 +2330,8 @@ spawn_responder(Port, Spec, R, UseAny, Debug) ->
     spawn_link(fun() ->
                        ?LOG("responder spawned: ~p", [Spec]),
                        Spec1 = maybe_use_any(UseAny, Spec#{ client => self() }),
-                       Spec2 = move_password_to_spec(R, Spec1),
-                       {ok, Fsm} = rpc(dev1, aesc_client, respond, [Port, Spec2], Debug),
-                       responder_instance_(Fsm, Spec2, R, Me, Debug)
+                       {ok, Fsm} = rpc(dev1, aesc_client, respond, [Port, Spec1], Debug),
+                       responder_instance_(Fsm, Spec1, R, Me, Debug)
                end).
 
 maybe_use_any(true, Spec) ->
@@ -2405,16 +2344,13 @@ spawn_initiator(Port, Spec, I, Debug) ->
     spawn_link(fun() ->
                        ?LOG(Debug, "initiator spawned: ~p", [Spec]),
                        Spec1 = Spec#{ client => self() },
-                       Spec2 = move_password_to_spec(I, Spec1),
                        {ok, Fsm} = rpc(dev1, aesc_client, initiate,
-                                       ["localhost", Port, Spec2], Debug),
-                       initiator_instance_(Fsm, Spec2, I, Me, Debug)
+                                       ["localhost", Port, Spec1], Debug),
+                       initiator_instance_(Fsm, Spec1, I, Me, Debug)
                end).
 
-move_password_to_spec(#{state_password := StatePassword}, Spec) ->
-    Spec#{state_password => StatePassword};
-move_password_to_spec(_, Spec) ->
-    Spec.
+move_fsm_id_to_spec(#{fsm_id := FsmId}, Spec) ->
+    Spec#{existing_fsm_id_wrapper => aesc_fsm_id:from_binary(FsmId)}.
 
 match_responder_and_initiator(RProxy, Debug, Timeout) ->
     receive
@@ -2428,11 +2364,12 @@ match_responder_and_initiator(RProxy, Debug, Timeout) ->
 
 responder_instance_(Fsm, Spec, R0, Parent, Debug) ->
     R = fsm_map(Fsm, Spec, R0),
+    FsmId = receive_fsm_id(dev1, R, Debug),
     {ok, ChOpen} = receive_from_fsm(info, R, channel_open, ?LONG_TIMEOUT, Debug),
     ?LOG(Debug, "Got ChOpen: ~p~nSpec = ~p", [ChOpen, Spec]),
     {ok, #{ channel_id := TmpChanId }} = rpc(dev1, aesc_fsm, get_state, [Fsm]),
     ?LOG(Debug, "TmpChanId = ~p", [TmpChanId]),
-    R1 = R#{ proxy => self(), parent => Parent },
+    R1 = R#{ proxy => self(), parent => Parent, fsm_id => FsmId },
     gproc:reg({n,l,{?MODULE,TmpChanId,responder}}, #{ r => R1 }),
     {_IPid, #{ i := I1 , channel_accept := ChAccept }}
         = gproc:await({n,l,{?MODULE,TmpChanId,initiator}}, ?TIMEOUT),
@@ -2444,11 +2381,12 @@ responder_instance_(Fsm, Spec, R0, Parent, Debug) ->
 
 initiator_instance_(Fsm, Spec, I0, Parent, Debug) ->
     I = fsm_map(Fsm, Spec, I0),
+    FsmId = receive_fsm_id(dev1, I, Debug),
     {ok, ChAccept} = receive_from_fsm(info, I, channel_accept, ?LONG_TIMEOUT, Debug),
     ?LOG(Debug, "Got ChAccept: ~p~nSpec = ~p", [ChAccept, Spec]),
     {ok, #{ channel_id := TmpChanId }} = rpc(dev1, aesc_fsm, get_state, [Fsm]),
     ?LOG(Debug, "TmpChanId = ~p", [TmpChanId]),
-    I1 = I#{ proxy => self() },
+    I1 = I#{ proxy => self(), fsm_id => FsmId },
     gproc:reg({n,l,{?MODULE,TmpChanId,initiator}}, #{ i => I1
                                                     , channel_accept => ChAccept }),
     {_RPid, #{ r := #{parent := NewParent}}}
@@ -2749,6 +2687,11 @@ receive_log(P, Debug) ->
     Fun = fun(#{info := {log, _}}) -> ok end,
     {ok, _} = receive_from_fsm(debug, P, Fun, ?LONG_TIMEOUT, Debug).
 
+receive_fsm_id(Node, Peer, Debug) ->
+    {ok, #{info := {fsm_up, FsmIdWrapper}}} = receive_info(Peer, fun fsm_up/1, Debug),
+    %% We need to perform an RPC call as the actual crypto key is stored on the node itself
+    rpc(Node, aesc_fsm_id, retrieve, [FsmIdWrapper], Debug).
+
 receive_info(R, Msg, Debug) ->
     {ok, _} = receive_from_fsm(info, R, Msg, ?LONG_TIMEOUT, Debug).
 
@@ -2874,18 +2817,6 @@ opt_add_to_debug(Map, #{mine_blocks := {ask, _}} = Debug) ->
     maps:merge(Debug, Map);
 opt_add_to_debug(_, Debug) ->
     Debug.
-
-prep_initiator(Node) ->
-    {PrivKey, PubKey} = aecore_suite_utils:sign_keys(Node),
-    ?LOG("initiator Pubkey = ~p", [PubKey]),
-    mine_key_blocks(Node, 30),
-    ?LOG("initiator: 30 blocks mined on ~p", [Node]),
-    {ok, Balance} = rpc(Node, aehttp_logic, get_account_balance, [PubKey]),
-    #{role => initiator,
-      priv => PrivKey,
-      pub  => PubKey,
-      balance => Balance,
-      auth_idx => 1}.
 
 prepare_patron(Node) ->
     prepare_patron(Node, 30).
@@ -3522,18 +3453,21 @@ reestablish_(Info, SignedTx, Port, Debug) ->
                  },
 
     % Start new FSMs
-    ISpec = move_password_to_spec(I0, Spec),
-    RSpec = move_password_to_spec(R0, Spec),
-    FsmR = if ResponderStays ->
-                   ?LOG(Debug, "Not trying to reestablish responder", []),
-                   maps:get(fsm, R0);
-              true ->
-                   {ok, NewFsmR} = rpc(dev1, aesc_client, respond, [Port, RSpec]),
-                   NewFsmR
+    ISpec = move_fsm_id_to_spec(I0, Spec),
+    RSpec = move_fsm_id_to_spec(R0, Spec),
+    {FsmR, RFsmId} = if ResponderStays ->
+                             ?LOG(Debug, "Not trying to reestablish responder", []),
+                             {maps:get(fsm, R0), maps:get(fsm_id, R0)};
+                         true ->
+                             {ok, NewFsmR} = rpc(dev1, aesc_client, respond, [Port, RSpec]),
+                             FsmId = receive_fsm_id(dev1, R0#{fsm => NewFsmR}, Debug),
+                             {NewFsmR, FsmId}
            end,
     {ok, FsmI} = rpc(dev1, aesc_client, initiate, ["localhost", Port, ISpec], Debug),
-    I1 = I0#{fsm => FsmI},
-    R1 = R0#{fsm => FsmR},
+
+    IFsmId = receive_fsm_id(dev1, I0#{fsm => FsmI}, Debug),
+    I1 = I0#{fsm => FsmI, fsm_id => IFsmId},
+    R1 = R0#{fsm => FsmR, fsm_id => RFsmId},
 
     % Verify FSM startup completed
     I2 = await_open_report(I1, ?TIMEOUT, Debug),
@@ -3553,7 +3487,7 @@ reestablish_(Info, SignedTx, Port, Debug) ->
     assert_empty_msgq(Debug),
     Info#{i => I4, r => R4, spec => Spec}.
 
-reestablish_wrong_password_(Info, SignedTx, Port, Debug) ->
+reestablish_wrong_fsm_id(Info, SignedTx, Port, Debug) ->
     assert_empty_msgq(Debug),
     #{ i := #{ channel_id := ChId
              , initiator_amount := IAmt
@@ -3570,10 +3504,12 @@ reestablish_wrong_password_(Info, SignedTx, Port, Debug) ->
                  },
 
     % Fail to start new FSMs
-    ISpec = move_password_to_spec(I0, Spec),
-    RSpec = move_password_to_spec(R0, Spec),
-    {error, invalid_password} = rpc(dev1, aesc_client, respond, [Port, RSpec]),
-    {error, invalid_password} = rpc(dev1, aesc_client, initiate, ["localhost", Port, ISpec], Debug),
+    BogusFsmId1 = aesc_fsm_id:retrieve(aesc_fsm_id:new()),
+    BogusFsmId2 = aesc_fsm_id:retrieve(aesc_fsm_id:new()),
+    ISpec = move_fsm_id_to_spec(I0#{fsm_id => BogusFsmId1}, Spec),
+    RSpec = move_fsm_id_to_spec(R0#{fsm_id => BogusFsmId2}, Spec),
+    {error, invalid_fsm_id} = rpc(dev1, aesc_client, respond, [Port, RSpec]),
+    {error, invalid_fsm_id} = rpc(dev1, aesc_client, initiate, ["localhost", Port, ISpec], Debug),
 
     % Done
     assert_empty_msgq(Debug),
@@ -3849,11 +3785,7 @@ channel_spec(Cfg, XOpts) ->
           end,
           Spec1,
           [nonce, block_hash_delta]),
-
-    I1 = prime_password(I, initiator_password, Cfg),
-    R1 = prime_password(R, responder_password, Cfg),
-
-    {I1, R1, Spec2}.
+    {I, R, Spec2}.
 
 log(Fmt, Args, L, #{debug := true}) ->
     log(Fmt, Args, L, true);
@@ -3929,22 +3861,6 @@ peek_message_queue(L, Debug) ->
 slogan(Cfg) ->
     ?config(slogan, Cfg).
 
-prime_password(#{} = P, Key, Cfg) when Key =:= initiator_password; Key =:= responder_password ->
-    case ?config(Key, Cfg) of
-        undefined ->
-            P#{state_password => generate_password()};
-        ignore ->
-            ?LOG("Ignoring password", []),
-            maps:remove(state_password, P);
-        Password ->
-            ?LOG("Using predefined password", []),
-            P#{state_password => Password}
-     end.
-
--spec generate_password() -> string().
-generate_password() ->
-    binary:bin_to_list(crypto:strong_rand_bytes(6)).
-
 %% @doc Find position of block including the given encoded tx hash in a list of key blocks.
 %% Starting at position 1.
 tx_position_in_blocks(TxHash, Blocks) ->
@@ -3974,11 +3890,6 @@ tx_position_in_blocks_(TxHash, [Block | Rest], Pos) ->
             end
     end.
 
-change_password(#{fsm := Fsm, state_password := StatePassword} = P) ->
-    StatePassword1 = StatePassword ++ "_changed",
-    ok = rpc(dev1, aesc_fsm, change_state_password, [Fsm, StatePassword1]),
-    P#{state_password => StatePassword1}.
-
 is_above_roma_protocol() ->
     aect_test_utils:latest_protocol_version() > ?ROMA_PROTOCOL_VSN.
 
@@ -3990,29 +3901,6 @@ responder_stays(_) ->
 expected_fsm_logs(Name, Role) ->
     expected_fsm_logs(Name, Role, #{}).
 
-expected_fsm_logs(check_password_is_changeable, initiator = R, #{update_count := Count}) ->
-    UpdateLog = [ {rcv, update_ack}
-                , {snd, update}
-                , {rcv, signed}
-                , {req, sign}
-                ],
-    [ {evt, close}
-    , {rcv, leave_ack}
-    , {snd, leave}
-    ] ++
-    lists:flatten([UpdateLog || _ <- lists:seq(1, Count)]) ++
-    expected_fsm_logs(channel_open, R);
-expected_fsm_logs(check_password_is_changeable, responder = R, #{update_count := Count}) ->
-    UpdateLog = [ {snd, update_ack}
-                , {rcv, signed}
-                , {req, sign}
-                , {rcv, update}
-                ],
-    [ {evt, close}
-    , {rcv, leave}
-    ] ++
-    lists:flatten([UpdateLog || _ <- lists:seq(1, Count)]) ++
-    expected_fsm_logs(channel_open, R);
 expected_fsm_logs(leave_reestablish_loop_step_, initiator = R, #{initial_channel_open := true}) ->
     [ {evt, close}
     , {rcv, leave_ack}

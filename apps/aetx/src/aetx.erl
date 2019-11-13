@@ -106,8 +106,7 @@
                      | aesc_slash_tx:tx()
                      | aesc_settle_tx:tx()
                      | aesc_snapshot_solo_tx:tx()
-                     | aesc_offchain_tx:tx()
-                     | aesc_client_reconnect_tx:tx().
+                     | aesc_offchain_tx:tx().
 
 -type tx_ttl() :: 0 | aec_blocks:height().
 %% A transaction TTL is either an absolute block height, or the transaction
@@ -537,8 +536,7 @@ type_to_cb(channel_close_mutual_tx)     -> aesc_close_mutual_tx;
 type_to_cb(channel_slash_tx)            -> aesc_slash_tx;
 type_to_cb(channel_settle_tx)           -> aesc_settle_tx;
 type_to_cb(channel_snapshot_solo_tx)    -> aesc_snapshot_solo_tx;
-type_to_cb(channel_offchain_tx)         -> aesc_offchain_tx;
-type_to_cb(channel_client_reconnect_tx) -> aesc_client_reconnect_tx.
+type_to_cb(channel_offchain_tx)         -> aesc_offchain_tx.
 
 type_to_swagger_name(spend_tx)                    -> <<"SpendTx">>;
 type_to_swagger_name(oracle_register_tx)          -> <<"OracleRegisterTx">>;
@@ -564,8 +562,7 @@ type_to_swagger_name(channel_slash_tx)            -> <<"ChannelSlashTx">>;
 type_to_swagger_name(channel_settle_tx)           -> <<"ChannelSettleTx">>;
 type_to_swagger_name(channel_snapshot_solo_tx)    -> <<"ChannelSnapshotSoloTx">>;
 %% not exposed in HTTP API:
-type_to_swagger_name(channel_offchain_tx)         -> <<"ChannelOffchainTx">>;
-type_to_swagger_name(channel_client_reconnect_tx) -> <<"ChannelClientReconnectTx">>.
+type_to_swagger_name(channel_offchain_tx)         -> <<"ChannelOffchainTx">>.
 
 -spec specialize_type(Tx :: tx()) -> {tx_type(), tx_instance()}.
 specialize_type(#aetx{ type = Type, tx = Tx }) -> {Type, Tx}.

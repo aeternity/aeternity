@@ -184,7 +184,7 @@ is_payload_valid_at_protocol(Protocol, Payload) ->
 -define(REDACTED, "REDACTED").
 -spec censor_init_opts(list() | map()) -> list() | map().
 censor_init_opts(Params) ->
-    ToCensor = [state_password, <<"state_password">>],
+    ToCensor = [<<"existing_fsm_id">>],
     lists:foldl(fun censor_init_opt/2, Params, ToCensor).
 
 censor_init_opt(ToCensor, #{} = Opts) ->

@@ -54,8 +54,9 @@ record_fields(Other) -> aec_trees:record_fields(Other).
 new(Opts) ->
     lager:debug("offchain_tx:new(~p)", [Opts]),
     case Opts of
-        #{existing_channel_id := _
-         , offchain_tx        := _ } ->
+        #{existing_channel_id      := _
+         , offchain_tx             := _
+         , existing_fsm_id_wrapper := _} ->
             recover_from_offchain_tx(Opts);
         #{initiator          := _,
           responder          := _,
@@ -82,18 +83,11 @@ new_(#{ initiator          := InitiatorPubKey
     Trees = aec_trees:set_accounts(Trees0, Accounts),
     {ok, #state{trees=Trees, calls = aect_call_state_tree:empty()}}.
 
-recover_from_offchain_tx(#{ existing_channel_id    := ChId
-                          , offchain_tx            := SignedTx
-                          , state_password_wrapper := StatePasswordWrapper} = Opts) ->
+recover_from_offchain_tx(#{ existing_channel_id     := ChId
+                          , offchain_tx             := SignedTx
+                          , existing_fsm_id_wrapper := FsmIdWrapper} = Opts) ->
     MyPubkey = my_pubkey(Opts),
-    ReestablishResult =
-        case aesc_state_password_wrapper:get(StatePasswordWrapper) of
-            {ok, StatePassword} ->
-                aesc_state_cache:reestablish(ChId, MyPubkey, StatePassword);
-            error ->
-                aesc_state_cache:reestablish(ChId, MyPubkey)
-        end,
-    case ReestablishResult of
+    case aesc_state_cache:reestablish(ChId, MyPubkey, FsmIdWrapper) of
         {ok, #state{} = State, _CachedOpts} ->
             case is_latest_signed_tx(SignedTx, State) of
                 true ->
@@ -160,7 +154,7 @@ check_reestablish_tx(SignedTx, State) ->
 -spec check_update_tx(aetx_sign:signed_tx(), [aesc_offchain_update:update()],
                       state(), binary(), aec_hard_forks:protocol_vsn(), aec_trees:trees(),
                       aetx_env:env(), map()) -> ok | {error, atom()}.
-check_update_tx(SignedTx, Updates, #state{signed_tx = OldSignedTx}=State,
+check_update_tx(SignedTx, Updates, #state{signed_tx = OldSignedTx} = State,
                 ChannelPubkey,
                 Protocol, OnChainTrees,
                 OnChainEnv, Opts) when OldSignedTx =/= ?NO_TX ->
@@ -445,7 +439,7 @@ deserialize_from_binary(Bin) ->
                   , half_signed_tx = deserialize_tx_or_notx_from_binary(BinHalfSignedTx)
                   };
         _ ->
-            erlang:error("Failed to deserialize offchain state")
+            erlang:error(deserialization_failed)
     end.
 
 -spec deserialize_tx_or_notx_from_binary(binary()) -> aetx_sign:signed_tx() | ?NO_TX.

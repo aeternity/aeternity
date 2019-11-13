@@ -51,7 +51,6 @@
         , upd_transfer/5          %% (fsm() , from(), to(), amount(), #{})
         , upd_withdraw/2          %% (fsm() , map())
         , where/2
-        , change_state_password/2
         ]).
 
 %% Inspection and configuration functions
@@ -160,13 +159,13 @@ snapshot_solo(Fsm, XOpts) ->
     lager:debug("snapshot_solo(~p, ~p)", [Fsm, XOpts]),
     gen_statem:call(Fsm, {snapshot_solo, XOpts}).
 
--spec reconnect_client(pid(), aetx_sign:signed_tx()) -> ok | {error, any()}.
-reconnect_client(Fsm, Tx) ->
-    reconnect_client(Fsm, self(), Tx).
+-spec reconnect_client(pid(), aesc_fsm_id:wrapper()) -> ok | {error, any()}.
+reconnect_client(Fsm, FsmIdWrapper) ->
+    reconnect_client(Fsm, self(), FsmIdWrapper).
 
--spec reconnect_client(pid(), pid(), aetx_sign:signed_tx()) -> ok | {error, any()}.
-reconnect_client(Fsm, Pid, Tx) when is_pid(Pid) ->
-    gen_statem:call(Fsm, {?RECONNECT_CLIENT, Pid, Tx}).
+-spec reconnect_client(pid(), pid(), aesc_fsm_id:wrapper()) -> ok | {error, any()}.
+reconnect_client(Fsm, Pid, FsmIdWrapper) when is_pid(Pid) ->
+    gen_statem:call(Fsm, {?RECONNECT_CLIENT, Pid, FsmIdWrapper}).
 
 connection_died(Fsm) ->
     %TODO: possibility for reconnect
@@ -274,9 +273,6 @@ where(ChanId, Role) when Role == initiator; Role == responder ->
         undefined ->
             undefined
     end.
-
-change_state_password(Fsm, StatePassword) ->
-    gen_statem:call(Fsm, {change_state_password, StatePassword}).
 
 %% ==================================================================
 %% Inspection and configuration functions
@@ -2732,43 +2728,12 @@ check_inband_msg(#{ channel_id := ChanId
 check_inband_msg(_, _) ->
     {error, chain_id_mismatch}.
 
-check_client_reconnect_tx(SignedTx, #data{ opts = #{ reconnect_security := none } } = D) ->
-    case aetx:specialize_callback(aetx_sign:innermost_tx(SignedTx)) of
-        {aesc_client_reconnect_tx = Mod, Tx} ->
-            MyPubKey = my_account(D),
-            #data{role = MyRole, on_chain_id = ChId} = D,
-            try {Mod:channel_pubkey(Tx), Mod:role(Tx), Mod:origin(Tx), Mod:round(Tx)} of
-                {ChId, MyRole, MyPubKey, Round} ->
-                    {ok, D#data{client_reconnect_nonce = Round}};
-                _ ->
-                    {error, invalid}
-            ?CATCH_LOG(_E)
-                    {error, invalid}
-            end;
-        _ ->
-            {error, invalid}
-    end;
-check_client_reconnect_tx(SignedTx, #data{ strict_checks = true } = D) ->
-    lager:debug("Check reconnect tx", []),
-    Checks =
-        [ fun() ->
-              check_tx(SignedTx, [], ?NOT_SET_BLOCK_HASH,
-                       aesc_client_reconnect_tx,
-                       D, not_reconnect_tx)
-          end,
-          fun() ->
-              verify_signatures(SignedTx, D, [my_account(D)])
-          end],
-    case aeu_validation:run(Checks) of
-        ok ->
-            Round = call_cb(aetx_sign:innermost_tx(SignedTx), round, []),
-            {ok, D#data{ client_reconnect_nonce = Round }};
-        {error, _} = Error ->
-            Error
-    end;
-check_client_reconnect_tx(Tx, D) ->
-    Round = call_cb(aetx_sign:innermost_tx(Tx), round, []),
-    {ok, D#data{ client_reconnect_nonce = Round }}.
+authenticate_reconnect(FsmIdWrapper, #data{on_chain_id = ChId, fsm_id_wrapper = undefined} = D) ->
+    %% If we don't store the fsm_id then we have a ChId and the cache was initialized
+    aesc_state_cache:authenticate_user(ChId, my_account(D), FsmIdWrapper);
+authenticate_reconnect(ProvidedFsmIdWrapper, #data{fsm_id_wrapper = ExpectedFsmIdWrapper}) ->
+    %% The channel opening sequence is still in progress
+    aesc_fsm_id:compare(ProvidedFsmIdWrapper, ExpectedFsmIdWrapper).
 
 fallback_to_stable_state(#data{state = State} = D) ->
     clear_ongoing(D#data{ state = aesc_offchain_state:fallback_to_stable_state(State)
@@ -3065,18 +3030,13 @@ on_chain_id(D, SignedTx) ->
     {ok, PubKey} = aesc_utils:channel_pubkey(SignedTx),
     {PubKey, D#data{on_chain_id = PubKey}}.
 
-initialize_cache(#data{ on_chain_id = ChId
-                      , state       = State
-                      , opts        = Opts0
-                      , state_password_wrapper = StatePasswordWrapper } = D) ->
+initialize_cache(#data{ on_chain_id    = ChId
+                      , state          = State
+                      , opts           = Opts0
+                      , fsm_id_wrapper = FsmIdWrapper} = D) ->
     Opts = maps:with(opts_to_cache(), Opts0),
-    case aesc_state_password_wrapper:get(StatePasswordWrapper) of
-        {ok, StatePassword} ->
-            aesc_state_cache:new(ChId, my_account(D), State, Opts, StatePassword);
-        error ->
-            aesc_state_cache:new(ChId, my_account(D), State, Opts)
-    end,
-    D#data{state_password_wrapper = undefined}.
+    aesc_state_cache:new(ChId, my_account(D), State, Opts, FsmIdWrapper),
+    D#data{fsm_id_wrapper = undefined}.
 
 opts_to_cache() ->
     [ role
@@ -3303,8 +3263,7 @@ authentication_env() ->
 verify_signatures(SignedTx, Data, Pubkeys) ->
     ChannelPubkey = cur_channel_id(Data),
     case aetx:specialize_callback(aetx_sign:innermost_tx(SignedTx)) of
-        {OffChainMod, _Tx} when OffChainMod =:= aesc_offchain_tx;
-                                OffChainMod =:= aesc_client_reconnect_tx ->
+        {OffChainMod, _Tx} when OffChainMod =:= aesc_offchain_tx ->
             verify_signatures_offchain(ChannelPubkey, Pubkeys, SignedTx);
         {_Mod, _Tx} ->
             verify_signatures_onchain_check(Pubkeys, SignedTx)
@@ -3312,24 +3271,12 @@ verify_signatures(SignedTx, Data, Pubkeys) ->
 
 check_tx(SignedTx, Updates, BlockHash, Mod, Data, ErrTypeMsg) ->
     ChannelPubkey = cur_channel_id(Data),
-    MyPubkey = my_account(Data),
-    MyRole = Data#data.role,
     ExpectedRound = next_round(Data),
     #data{state = State, opts = Opts, on_chain_id = ChannelPubkey} = Data,
     case aetx:specialize_callback(aetx_sign:innermost_tx(SignedTx)) of
         {aesc_settle_tx, _Tx} ->
             %% TODO: conduct more relevant checks
             ok;
-        {aesc_client_reconnect_tx = Mod, Tx} ->
-            try {Mod:channel_pubkey(Tx), Mod:role(Tx), Mod:origin(Tx), Mod:round(Tx)} of
-                {ChannelPubkey, MyRole, MyPubkey, Round}
-                  when Round > Data#data.client_reconnect_nonce ->
-                    ok;
-                _ ->
-                    {error, invalid}
-            ?CATCH_LOG(_E)
-                {error, invalid}
-            end;
         {Mod, Tx} -> %% same callback module
             Checks =
                 [ fun() -> check_channel_id(Mod, Tx, ChannelPubkey) end,
@@ -3546,51 +3493,42 @@ check_limits(Opts) ->
     end.
 
 init_(#{opts := Opts0} = Arg) ->
-    %% Protect the password from leakage
-    StatePasswordWrapper = aesc_state_password_wrapper:init(maps:find(state_password, Opts0)),
-    Opts1 = maps:remove(state_password, Opts0),
-    {ReestablishOpts, ConnectOpts, Opts2} =
-        { maps:with(?REESTABLISH_OPTS_KEYS, Opts1)
+    {ReestablishOpts, ConnectOpts, Opts1} =
+        { maps:with(?REESTABLISH_OPTS_KEYS, Opts0)
         , connection_opts(Arg)
-        , maps:without(?REESTABLISH_OPTS_KEYS ++ ?CONNECT_OPTS_KEYS, Opts1)
+        , maps:without(?REESTABLISH_OPTS_KEYS ++ ?CONNECT_OPTS_KEYS, Opts0)
         },
     %% Verify parameters
-    Opts3 = check_opts(
+    Opts2 = check_opts(
               [ fun check_minimum_depth_opt/1
               , fun check_timeout_opt/1
               , fun check_rpt_opt/1
               , fun check_log_opt/1
               , fun check_block_hash_deltas/1
               , fun check_keep_running_opt/1
-              ], Opts2),
-    Initiator = maps:get(initiator, Opts3),
-    Opts4 = Opts3#{connection => ConnectOpts},
-    SessionRes = start_noise_session(ReestablishOpts, Opts4),
-    InitRes = case {SessionRes, Initiator} of
-                  {{error, E}, _} ->
-                      lager:error("Failed to start noise session: Error = ~p", [E]),
-                      {stop, failed_noise_session_start};
-                  {{ok, SessionPid}, any} ->
-                      StateFun = fun(NewInitiator) ->
-                                         init_state(NewInitiator, Opts4, ReestablishOpts,
-                                                    StatePasswordWrapper)
-                                 end,
-                      prepare_initial_state(Opts4, StateFun, SessionPid,
-                                            ReestablishOpts, StatePasswordWrapper);
-                  {{ok, SessionPid}, _} ->
-                      InitStateRes = init_state(Initiator, Opts4, ReestablishOpts,
-                                                StatePasswordWrapper),
-                      case InitStateRes of
-                          {ok, State} ->
-                              prepare_initial_state(Opts4, State, SessionPid,
-                                                    ReestablishOpts, StatePasswordWrapper);
-                          {error, invalid_password = E} ->
-                              {stop, E}
-                      end
-              end,
-    %% Always force garbage collection here, when reestablishing the password will be removed here
-    garbage_collect(),
-    InitRes.
+              ], Opts1),
+    Initiator = maps:get(initiator, Opts2),
+    Opts3 = Opts2#{connection => ConnectOpts},
+    SessionRes = start_noise_session(ReestablishOpts, Opts3),
+    case {SessionRes, Initiator} of
+        {{error, E}, _} ->
+            lager:error("Failed to start noise session: Error = ~p", [E]),
+            {stop, failed_noise_session_start};
+        {{ok, SessionPid}, any} ->
+	        StateFun = fun(NewInitiator) ->
+                init_state(NewInitiator, Opts3, ReestablishOpts)
+            end,
+            prepare_initial_state(Opts3, StateFun, SessionPid, ReestablishOpts);
+        {{ok, SessionPid}, _} ->
+            case init_state(Initiator, Opts3, ReestablishOpts) of
+                {ok, State} ->
+                    prepare_initial_state(Opts3, State, SessionPid, ReestablishOpts);
+                %% TODO: Handle missing state trees - the client should be able to
+                %%       bootstrap the channel by providing a cosigned state
+		        {error, invalid_fsm_id = E} ->
+                    {stop, E}
+            end
+    end.
 
 maybe_save_session(initiator, Session) ->
     Session;
@@ -3640,41 +3578,40 @@ cur_st(St, D) ->
 %% ==================================================================
 %% Internal functions
 
-init_state(Initiator, Opts, ReestablishOpts, StatePasswordWrapper) ->
-    Opts1 = Opts#{state_password_wrapper => StatePasswordWrapper},
-    CheckedOpts = maps:merge(Opts1, ReestablishOpts),
+init_state(Initiator, Opts, ReestablishOpts) ->
+    CheckedOpts = maps:merge(Opts, ReestablishOpts),
     CheckedOpts1 = CheckedOpts#{initiator => Initiator},
     aesc_offchain_state:new(CheckedOpts1).
 
-prepare_initial_state(Opts, State, SessionPid, ReestablishOpts, StatePasswordWrapper) ->
+prepare_initial_state(Opts, State, SessionPid, ReestablishOpts) ->
+    FsmIdWrapper = aesc_fsm_id:new(),
     #{ client := Client
      , role := Role
      , block_hash_delta := BlockHashDelta
      , log_keep := LogKeep } = Opts,
-    %% In case of reestablish we can garbage collect the password when exiting from this function
     Reestablish = maps:is_key(existing_channel_id, ReestablishOpts),
-    MaybeStatePasswordWrapper = case Reestablish of
-                                    true ->
-                                        undefined;
-                                    false ->
-                                        StatePasswordWrapper
-                                    end,
-    Data = #data{ role                   = Role
-                , client                 = Client
-                , client_mref            = erlang:monitor(process, Client)
-                , client_connected       = true
-                , block_hash_delta       = BlockHashDelta
-                , state_password_wrapper = MaybeStatePasswordWrapper
-                , session                = maybe_save_session(Role, SessionPid)
-                , opts                   = Opts
-                , state                  = State
-                , log                    = aesc_window:new(LogKeep)
+    MaybeFsmIdWrapper = case Reestablish of
+                            true ->
+                                undefined;
+                            false ->
+                                FsmIdWrapper
+                        end,
+    Data = #data{ role             = Role
+                , client           = Client
+                , client_mref      = erlang:monitor(process, Client)
+                , client_connected = true
+                , block_hash_delta = BlockHashDelta
+                , fsm_id_wrapper   = MaybeFsmIdWrapper
+                , session          = maybe_save_session(Role, SessionPid)
+                , opts             = Opts
+                , state            = State
+                , log              = aesc_window:new(LogKeep)
                 },
     lager:debug("FSM started, Data = ~p", [pr_data(Data)]),
     %% TODO: Amend the fsm above to include this step. We have transport-level
     %% connectivity, but not yet agreement on the channel parameters. We will next send
     %% a channel_open() message and await a channel_accept().
-    case {Role, Reestablish} of
+    NextState = case {Role, Reestablish} of
         {initiator, true} ->
             ok_next(reestablish_init, send_reestablish_msg(ReestablishOpts, Data));
         {initiator, false} ->
@@ -3687,6 +3624,18 @@ prepare_initial_state(Opts, State, SessionPid, ReestablishOpts, StatePasswordWra
             ok_next(awaiting_reestablish, Data1);
         {responder, false} ->
             ok_next(awaiting_open, Data)
+    end,
+    %% The FSM is up - send the FSM ID to the user
+    report(info, {fsm_up, FsmIdWrapper}, Data),
+    %% In case we are reestablishing a channel we change the token to a new one
+    case Reestablish of
+        true ->
+            ChId = maps:get(existing_channel_id, ReestablishOpts),
+            %% Shouldn't fail
+            ok = aesc_state_cache:change_fsm_id(ChId, my_account(Data), FsmIdWrapper),
+            NextState;
+        false ->
+            NextState
     end.
 
 -spec check_change_config(atom(), any()) -> {ok, atom(), any()} | {error, invalid_config}.
@@ -4120,40 +4069,35 @@ close_(Reason, D) ->
     end,
     {stop, Reason, D}.
 
-handle_call(_, {?RECONNECT_CLIENT, Pid, Tx} = Msg, From,
+handle_call(_, {?RECONNECT_CLIENT, Pid, FsmIdWrapper} = Msg, From,
             #data{ client_connected = false
                  , client_mref      = undefined
                  , client           = undefined } = D0) ->
-    lager:debug("Client reconnect request", []),
+    lager:debug("Client reconnect request with no client", []),
     D = log(rcv, msg_type(Msg), Msg, D0),
-    try check_client_reconnect_tx(Tx, D) of
-        {ok, D1} ->
-            lager:debug("Client reconnect successful; Client = ~p", [Pid]),
+    case authenticate_reconnect(FsmIdWrapper, D) of
+        true ->
+            lager:debug("Client authentication successful; Client = ~p", [Pid]),
             MRef = erlang:monitor(process, Pid),
-            D2 = D1#data{ client           = Pid
-                        , client_mref      = MRef
-                        , client_connected = true },
-            keep_state(D2, [{reply, From, ok}]);
-        {error, _} = Err ->
-            lager:debug("Request failed: ~p", [Err]),
-            keep_state(D, [{reply, From, Err}])
-    ?CATCH_LOG(E)
-        keep_state(D, [{reply, From, E}])
+            D1 = D#data{ client           = Pid
+                       , client_mref      = MRef
+                       , client_connected = true },
+            report(info, {fsm_up, FsmIdWrapper}, D1),
+            keep_state(D1, [{reply, From, ok}]);
+        false ->
+            lager:debug("Client authentication failed", []),
+            keep_state(D, [{reply, From, {error, invalid_fsm_id}}])
     end;
-handle_call(_, {?RECONNECT_CLIENT, _, _}, From, #data{ client = Client } = D) when is_pid(Client) ->
-    keep_state(D, [{reply, From, {error, {existing_client, Client}}}]);
-handle_call(_, {change_state_password, StatePassword}, From, #data{channel_status = open, on_chain_id = ChId} = D) ->
-    case aesc_checks:state_password(StatePassword) of
-        ok ->
-            case aesc_state_cache:change_state_password(ChId, my_account(D), StatePassword) of
-                ok ->
-                    keep_state(D, [{reply, From, ok}]);
-                {error, _} = Err ->
-                    keep_state(D, [{reply, From, Err}])
-            end;
-        {error, _} = Err ->
-            keep_state(D, [{reply, From, Err}])
-       end;
+handle_call(_, {?RECONNECT_CLIENT, _, FsmIdWrapper}, From, #data{ client = Client } = D) when is_pid(Client) ->
+    lager:debug("Client reconnect request with existing client", []),
+    case authenticate_reconnect(FsmIdWrapper, D) of
+        true ->
+            lager:debug("Client authentication successful", []),
+            keep_state(D, [{reply, From, {error, {existing_client, Client}}}]);
+        false ->
+            lager:debug("Client authentication failed", []),
+            keep_state(D, [{reply, From, {error, invalid_fsm_id}}])
+    end;
 handle_call(St, Req, From, #data{} = D) ->
     lager:debug("handle_call(~p, ~p, ~p, ~p)", [St, Req, From, pr_data(D)]),
     try handle_call_(St, Req, From, D)

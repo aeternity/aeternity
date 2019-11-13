@@ -755,21 +755,26 @@ ensure_mnesia_tables(Mode, Storage) ->
     Tables = tables(Mode),
     case Storage of
         existing_schema ->
-            case check_mnesia_tables(Tables, []) of
-                [] -> ok;
-                [{missing_table, aec_signal_count = Table}] ->
-                    %% The table is new in node version 5.1.0.
-                    {Table, Spec} = lists:keyfind(Table, 1, Tables),
-                    {atomic, ok} = mnesia:create_table(Table, Spec);
-                Errors ->
-                    lager:error("Database check failed: ~p", [Errors]),
-                    erlang:error({table_check, Errors})
-            end;
+            handle_table_errors(Tables, Mode, check_mnesia_tables(Tables, []));
         ok ->
             [{atomic,ok} = mnesia:create_table(T, Spec) || {T, Spec} <- Tables],
             run_hooks('$aec_db_create_tables', Mode),
             ok
     end.
+
+handle_table_errors(_Tables, _Mode, []) ->
+    ok;
+handle_table_errors(Tables, Mode, [{missing_table, aec_signal_count = Table} | Tl]) ->
+    %% The table is new in node version 5.1.0.
+    {Table, Spec} = lists:keyfind(Table, 1, Tables),
+    {atomic, ok} = mnesia:create_table(Table, Spec),
+    handle_table_errors(Tables, Mode, Tl);
+handle_table_errors(Tables, Mode, [{missing_table, aesc_state_cache_v2} | Tl]) ->
+    aesc_db:create_tables(Mode),
+    handle_table_errors(Tables, Mode, Tl);
+handle_table_errors(_Tables, Mode, Errors) ->
+    lager:error("Database check failed: ~p", [Errors]),
+    erlang:error({table_check, Errors}).
 
 check_mnesia_tables([{Table, Spec}|Left], Acc) ->
     NewAcc = check_table(Table, Spec, Acc),

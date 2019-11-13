@@ -202,6 +202,9 @@ process_fsm_(#{type := report,
     Payload =
         case {Tag, Event} of
             {info, {died, _}} -> #{event => <<"died">>};
+            {info, {fsm_up, FsmIdWrapper}} ->
+                #{ event => <<"fsm_up">>
+                 , fsm_id => aesc_fsm_id:retrieve_for_client(FsmIdWrapper)};
             {info, _} when is_atom(Event) -> #{event => atom_to_binary(Event, utf8)};
             {info, #{event := _} = Info} ->
                 Info;

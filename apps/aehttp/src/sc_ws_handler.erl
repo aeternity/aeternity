@@ -67,13 +67,6 @@ init(Req, _Opts) ->
      maps:from_list(Parsed)}.
 
 -spec websocket_init(map()) -> {ok, handler()} | {stop, undefined}.
-websocket_init(#{ <<"reconnect_tx">> := _ } = Params) ->
-    case jobs_ask() of
-        {ok, JobId} ->
-            websocket_init_reconnect(Params#{ job_id => JobId });
-        {error, _} ->
-            {error, too_many_ws_sockets}
-    end;
 websocket_init(Params) ->
     case {prepare_handler(Params), read_channel_options(Params)} of
         {{error, Err}, _} ->
@@ -90,7 +83,7 @@ websocket_init(Params) ->
                         {ok, ReconnectOpts} ->
                             lager:debug("Will try to reconnect; ReconnectOpts = ~p",
                                         [ReconnectOpts]),
-                            websocket_init_reconnect_(ReconnectOpts, Handler);
+                            websocket_init_reconnect(ReconnectOpts, Handler);
                         {error, _} = Err1 ->
                             lager:debug("Error deriving reconnect opts: ~p", [Err1]),
                             %% TODO: This is probably an error case, with insufficient info also
@@ -103,7 +96,7 @@ websocket_init(Params) ->
     end.
 
 websocket_init_parsed(Handler, ChannelOpts) ->
-    lager:debug("ChannelOpts = ~p", [aesc_utils:censor_init_opts(ChannelOpts)]),
+    lager:debug("ChannelOpts = ~p", [ChannelOpts]),
     case start_link_fsm(Handler, ChannelOpts) of
         {ok, FsmPid} ->
             MRef = erlang:monitor(process, FsmPid),
@@ -112,55 +105,32 @@ websocket_init_parsed(Handler, ChannelOpts) ->
             handler_init_error(Err, Handler)
     end.
 
-websocket_init_reconnect(#{ job_id := JobId
-                          , <<"protocol">> := Protocol
-                          , <<"reconnect_tx">> := ReconnectTx } = Params0) ->
-    Read = sc_ws_utils:read_f(Params0),
-    Params = sc_ws_utils:check_params(read_state_password(Read)),
-    lager:debug("ReconnectTx = ~p", [ReconnectTx]),
-    case check_reconnect_tx(ReconnectTx) of
-        {ok, #{} = Opts} ->
-            lager:debug("Reconnect tx Opts = ~p", [aesc_utils:censor_init_opts(Opts)]),
-            ReconnectOpts =
-                maps:merge(Params#{ job_id => JobId
-                                  , protocol => sc_ws_api:protocol(Protocol) }, Opts),
-            lager:debug("ReconnectOpts = ~p",
-                        [aesc_utils:censor_init_opts(ReconnectOpts)]),
-            Handler = reconnect_opts_to_handler(ReconnectOpts),
-            lager:debug("Handler = ~p", [Handler]),
-            websocket_init_reconnect_(ReconnectOpts, Handler);
-        {error, CheckError} ->
-            lager:debug("CheckError = ~p", [CheckError]),
-            {stop, undefined}
-    end.
-
-websocket_init_reconnect_(ReconnectOpts, Handler) ->
-    case reconnect_to_fsm_(ReconnectOpts, Handler, fun(E) -> {error, E} end) of
+websocket_init_reconnect(ReconnectOpts, Handler) ->
+    case reconnect_to_fsm(ReconnectOpts, Handler, fun(E) -> {error, E} end) of
         {ok, _} = Ok ->
             Ok;
         {error, {existing_client, OldClient}} ->
+            %% The FSM checks that only an authorized user may kill the fsm
             check_existing_client(OldClient, ReconnectOpts, Handler);
         {error, Err} ->
             handler_init_error(Err, Handler)
     end.
 
-reconnect_to_fsm_(#{ channel_id := ChanId
+reconnect_to_fsm(#{ channel_id := ChanId
                    , role       := Role
                    , pub_key    := Pubkey
-                   , signed_tx  := SignedTx } = Opts, Handler, OnError) ->
+                   , existing_fsm_id_wrapper := FsmIdWrapper } = Opts, Handler, OnError) ->
     case aesc_fsm:where(ChanId, Role) of
         undefined ->
             lager:debug("where(~p, ~p) -> undefined", [ChanId, Role]),
             maybe_reestablish(Opts, Handler, OnError);
         #{ fsm_pid := Fsm, pub_key := Pubkey } ->
-            %% At this point, we haven't verified the signature.
-            %% This is done by the fsm.
             lager:debug("Found FSM = ~p", [Fsm]),
-            case aesc_fsm:reconnect_client(Fsm, self(), SignedTx) of
+            case aesc_fsm:reconnect_client(Fsm, self(), FsmIdWrapper) of
                 ok ->
                     MRef = erlang:monitor(process, Fsm),
-                    { ok, jobs_done(Handler#handler{ fsm_pid  = Fsm
-                                                   , fsm_mref = MRef }) };
+                    { ok, Handler#handler{ fsm_pid  = Fsm
+                                         , fsm_mref = MRef } };
                 {error, E} ->
                     OnError(E)
             end
@@ -169,35 +139,31 @@ reconnect_to_fsm_(#{ channel_id := ChanId
 %% The fsm is not running. Perhaps there is cached state, warranting a reestablish?
 %%
 maybe_reestablish(#{ channel_id := ChId
-                   , pub_key    := Pubkey } = ReconnectOpts, Handler0, OnError) ->
+                   , pub_key    := Pubkey
+                   , existing_fsm_id_wrapper := FsmIdWrapper } = ReconnectOpts, Handler0, OnError) ->
     lager:debug("ReconnectOpts = ~p",
-                [aesc_utils:censor_init_opts(ReconnectOpts)]),
-    case maps:find(state_password, ReconnectOpts) of
-        {ok, Password} ->
-            case aesc_state_cache:reestablish(ChId, Pubkey, Password) of
-                {ok, State, Opts} ->
-                    lager:debug("Fetched state. Opts = ~p", [Opts]),
-                    Handler = update_handler_for_reestablish(Handler0, Opts),
-                    try aesc_offchain_state:get_latest_signed_tx(State) of
-                        {_, SignedTx} ->
-                            lager:debug("Latest tx = ~p", [SignedTx]),
-                            ExpandedOpts = expand_cached_opts(Opts),
-                            websocket_init_parsed(
-                              Handler,
-                              ExpandedOpts#{ existing_channel_id => ChId
-                                           , offchain_tx => SignedTx })
-                    catch
-                        error:_E ->
-                            lager:debug("Failed getting latest signed tx: ~p", [_E]),
-                            OnError(not_found)
-                    end;
-                {error, CacheError} ->
-                    lager:debug("No cached state", []),
-                    OnError(CacheError)
+                [ReconnectOpts]),
+    case aesc_state_cache:reestablish(ChId, Pubkey, FsmIdWrapper) of
+        {ok, State, Opts} ->
+            lager:debug("Fetched state. Opts = ~p", [Opts]),
+            Handler = update_handler_for_reestablish(Handler0, Opts),
+            try aesc_offchain_state:get_latest_signed_tx(State) of
+                {_, SignedTx} ->
+                    lager:debug("Latest tx = ~p", [SignedTx]),
+                    ExpandedOpts = expand_cached_opts(Opts),
+                    websocket_init_parsed(
+                      Handler,
+                      ExpandedOpts#{ existing_channel_id => ChId
+                                   , existing_fsm_id_wrapper => FsmIdWrapper
+                                   , offchain_tx => SignedTx })
+            catch
+                error:_E ->
+                    lager:debug("Failed getting latest signed tx: ~p", [_E]),
+                    OnError(not_found)
             end;
-        error ->
-            lager:debug("No state_password specified", []),
-            OnError(not_found)
+        {error, CacheError} ->
+            lager:debug("No cached state", []),
+            OnError(CacheError)
     end.
 
 check_existing_client(Client, Opts, Handler) ->
@@ -211,16 +177,16 @@ check_existing_client(Client, Opts, Handler) ->
             MRef = erlang:monitor(process, Client),
             exit(Client, kill),
             receive {'DOWN', MRef, _, _, _} ->
-                    reconnect_to_fsm_(Opts, Handler, OnError)
+                    reconnect_to_fsm(Opts, Handler, OnError)
             end;
        true ->
-            reconnect_to_fsm_(Opts, Handler, OnError)
+            reconnect_to_fsm(Opts, Handler, OnError)
     end.
 
 handler_parsing_error(Err, Handler, Params) ->
     %%TODO: Inform the client of wrong init params
-    HandledErrors = [{invalid_password            , invalid_password},
-                     {password_required_since_lima, {state_password, missing}}],
+    HandledErrors = [{invalid_fsm_id                    , invalid_fsm_id},
+                     {{existing_fsm_id_wrapper, missing}, {existing_fsm_id, missing}}],
     case proplists:get_value(Err, HandledErrors, not_handled_error) of
         not_handled_error ->
             lager:info("Channel WS failed to start because of ~p; params ~p",
@@ -248,9 +214,8 @@ handler_init_error(Err, Handler) ->
                     , {push_amount_too_low           , value_too_low}
                     , {lock_period_too_low           , value_too_low}
                     , {channel_count_limit_exceeded  , channel_count_limit_exceeded}
-                    , {invalid_password              , invalid_password}
+                    , {invalid_fsm_id                , invalid_fsm_id}
                     , {bad_signature                 , bad_signature}
-                    , {password_required_since_lima  , {state_password, missing}}
                     , {failed_noise_session_start    , failed_noise_session_start}
                     ],
     case proplists:get_value(Err, HandledErrors, not_handled_error) of
@@ -358,15 +323,6 @@ start_link_fsm(#handler{role = initiator, host=Host, port=Port}, Opts) ->
 start_link_fsm(#handler{role = responder, port=Port}, Opts) ->
     aesc_client:respond(Port, Opts).
 
-derive_reconnect_opts(#{ <<"reconnect_tx">> := ReconnectTx } = Params) ->
-    lager:debug("Params = ~p", [Params]),
-    case check_reconnect_tx(ReconnectTx) of
-        {ok, #{} = Opts} ->
-            lager:debug("Reconnect tx Opts = ~p", [Opts]),
-            {ok, maps:merge(Params, Opts)};
-        {error, _} = Error ->
-            Error
-    end;
 derive_reconnect_opts(#{ existing_channel_id := ChId
                        , role                := Role
                        , initiator           := I
@@ -375,61 +331,16 @@ derive_reconnect_opts(#{ existing_channel_id := ChId
                  initiator -> I;
                  responder -> R
              end,
-    Round = 1,
-    {ok, Tx} = aesc_client_reconnect_tx:new(#{ channel_id => aeser_id:create(channel, ChId)
-                                             , role       => Role
-                                             , pub_key    => aeser_id:create(account, PubKey)
-                                             , round      => Round }),
-    SignedTx = aetx_sign:new(Tx, []),
     {ok, maps:merge(Opts, #{ channel_id => ChId
                            , role       => Role
-                           , pub_key    => PubKey
-                           , round      => Round
-                           , signed_tx  => SignedTx })};
+                           , pub_key    => PubKey })};
 derive_reconnect_opts(Params) ->
     lager:debug("Params = ~p", [Params]),
     {error, cannot_derive_reconnect_tx}.
 
-check_reconnect_tx(Tx0) ->
-    case aeser_api_encoder:safe_decode(transaction, Tx0) of
-        {ok, SignedTxBin} ->
-            lager:debug("Decoded (bin): ~p", [SignedTxBin]),
-            SignedTx = aetx_sign:deserialize_from_binary(SignedTxBin),
-            case aetx:specialize_callback(aetx_sign:tx(SignedTx)) of
-                {aesc_client_reconnect_tx = Mod, Tx} ->
-                    %% Successful deserialization implies proper tx structure
-                    lager:debug("Is reconnect tx", []),
-                    {ok, lists:foldl(
-                           fun({Key, Method}, Acc) ->
-                                   Acc#{Key => Mod:Method(Tx)}
-                           end, #{ signed_tx => SignedTx },
-                           [ {channel_id, channel_pubkey}
-                           , {role      , role}
-                           , {pub_key   , origin} ])};
-                _Other ->
-                    lager:debug("Wrong type tx: ~p", [_Other]),
-                    {error, invalid_tx}
-            end;
-        _DecErr ->
-            lager:debug("Decode error: ~p", [_DecErr]),
-            {error, invalid_tx}
-    end.
-
 set_field(H, host, Val)         -> H#handler{host = Val};
 set_field(H, role, Val)         -> H#handler{role = Val};
 set_field(H, port, Val)         -> H#handler{port = Val}.
-
-reconnect_opts_to_handler(#{ protocol       := Protocol
-                           , role           := Role
-                           , channel_id     := ChId
-                           , job_id         := JobId }) ->
-    %% We don't fill in values like host, port, etc. since we don't
-    %% have them, and they aren't needed afaict.
-    #handler{ protocol       = Protocol
-            , role           = Role
-            , channel_id     = ChId
-            , enc_channel_id = aeser_api_encoder:encode(channel, ChId)
-            , job_id         = JobId }.
 
 prepare_handler(#{<<"protocol">> := Protocol} = Params) ->
     Read =
@@ -530,6 +441,8 @@ read_channel_options(Params) ->
                         , Read(<<"offchain_tx">>, offchain_tx, #{ type => serialized_tx
                                                                 , mandatory => false })
                         , read_role(Read, false)
+                        , Read(<<"existing_fsm_id">>, existing_fsm_id_wrapper, #{ type => fsm_id
+                                                                                , mandatory => true })
                           % push_amount is only used in open and is not preserved.
                           % 0 guarantees passing checks (executed amount check is the
                           % same as onchain check)
@@ -551,8 +464,6 @@ read_channel_options(Params) ->
       [ Read(<<"minimum_depth">>, minimum_depth, #{type => integer, mandatory => false})
       , Read(<<"minimum_depth_strategy">>, minimum_depth_strategy,
              #{type => atom, enum => [txfee], mandatory => false})
-        %% The state_password is mandatory AFTER the lima fork - this is checked by CheckStatePasswordF
-      , Read(<<"state_password">>, state_password, #{type => string, mandatory => false})
       , Read(<<"ttl">>, ttl, #{type => integer, mandatory => false})
       , Read(<<"fee">>, fee, #{type => integer, mandatory => false})
       , Put(noise, [{noise, <<"Noise_NN_25519_ChaChaPoly_BLAKE2b">>}])
@@ -570,34 +481,12 @@ general_options(Read) ->
     , Read(<<"keep_running">>, keep_running, #{type => boolean,
                                                default => <<"true">>,
                                                mandatory => false})
-    , Read(<<"reconnect_security">>, reconnect_security, #{mandatory => false,
-                                                           type => atom,
-                                                           enum => [none, signature],
-                                                           default => <<"none">>})
     , Read(<<"slogan">>, slogan, #{type => string, mandatory => false})
-    ]
-    ++ read_state_password(Read).
+    ].
 
 read_role(Read, Mandatory) ->
     Read(<<"role">>, role, #{type => atom, enum => [responder, initiator],
                              mandatory => Mandatory}).
-
-read_state_password(Read) ->
-    %% The state_password is mandatory AFTER the lima fork - this is checked by CheckStatePasswordF
-    CheckStatePasswordF
-        = fun(M) ->
-                  case aesc_checks:state_password_in_opts(M) of
-                      ok ->
-                          M;
-                      Err ->
-                          Err
-                  end
-          end,
-    [read_password(Read), CheckStatePasswordF].
-
-read_password(Read) ->
-    Read(<<"state_password">>, state_password, #{type => string, mandatory => false,
-                                                 default => <<"correct horse battery staple">>}).
 
 jobs_ask() ->
     jobs:ask(sc_ws_handlers).

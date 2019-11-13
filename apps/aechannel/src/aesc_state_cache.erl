@@ -4,26 +4,27 @@
 %%%    Module monitoring the FSMs used for SC. After each state update in a given FSM/SC
 %%%    the offchain state is saved in ETS in order for the user to be able to leave and then
 %%%    reestablish the channel. In case of an unexpected FSM crash the state is encrypted with
-%%%    a user-provided password and saved in persistent storage.
+%%%    a token identifying the FSM and saved in persistent storage.
 %%%    Please note that it is impossible to reestablish a channel without the state.
 %%%    TODO: Protect the state in case of an unexpected power failure
 %%%    TODO: for instance allow the user or a delegate to provide the missing state
 %%%
 %%%    Security details:
 %%%    The randomness source is crypto:strong_rand_bytes/1
-%%%    The encryption key is derived using enacl:pwhash/2 which uses Argon2 under the hood
+%%%    The FSM ID is used directly as an encryption key - the user must make sure that the ID
+%%%    is transported to the client using a secure transport protocol.
 %%%    Encryption and decryption is done by enacl:secretbox/3 which encrypts the provided data
 %%%    with XSalsa20 and appends a Poly1305 MAC to the ciphertext.
 %%%
 %%%    Encryption can be summarized in pseudocode as:
-%%%    Salt       = rand_bytes(16)
+%%%    Key        = rand_bytes(32)
 %%%    Nonce      = rand_bytes(24)
-%%%    Key        = argon2_hash(utf8_encode(Password) + Salt)
 %%%    Ciphertext = XSalsa20_Poly1305(serialize(ChannelState), Nonce, Key)
 %%%
-%%%    In the DB we persist the tuple (Ciphertext, Nonce, Salt), Password is thrown away
-%%%    immediately after generating the encryption key. After a state is decrypted a
-%%%    new Salt/Nonce pair is generated.
+%%%    In the DB we persist the tuple (Ciphertext, Nonce). The FSM ID is thrown away
+%%%    immediately after using it to encrypt the state. After a state is decrypted a
+%%%    new FSM ID should be generated. In case of reconnecting to an already running FSM
+%%%    the ID can be reused.
 %%% @end
 %%%=============================================================================
 -module(aesc_state_cache).
@@ -31,11 +32,10 @@
 
 -export([
           start_link/0
-        , new/4
         , new/5
-        , reestablish/2
         , reestablish/3
-        , change_state_password/3
+        , change_fsm_id/3
+        , authenticate_user/3
         , update/3
         , fetch/2
         , delete/1
@@ -55,21 +55,12 @@
 -export([
           table_specs/1
         , check_tables/1
-        , migrate/2
         ]).
 
 %% for diagnostics
 -export([
          cache_status/1
         ]).
-
-%% for mocking
--ifdef(TEST).
--export([
-         mock_kdf_init/0,
-         mock_kdf_end/0
-        ]).
--endif.
 
 -define(MIN_DEPTH, 4).
 -record(st, {mons_chid = ets:new(mons_chid, [ordered_set]),
@@ -79,18 +70,14 @@
 -type ch_cache_id() :: { aeser_id:val()
                        , aeser_id:val() | atom()}.
 -type opts() :: map().
--record(ch_cache, { cache_id    :: ch_cache_id() | undefined
-                  , state       :: aesc_offchain_state:state() | atom() | undefined
-                  , opts = #{}  :: map() | '_'
-                  , salt        :: binary() | atom()
-                  , session_key :: binary() | atom()
+-record(ch_cache, { cache_id       :: ch_cache_id() | undefined
+                  , state          :: aesc_offchain_state:state() | atom() | undefined
+                  , opts = #{}     :: map() | '_'
+                  , fsm_id_wrapper :: aesc_fsm_id:wrapper() | atom()
                   }).
 
--define(VSN_pch, 1).
--record(pch, {id, pubkeys = [], state}).
--define(VSN_pch_encrypted_cache, 2).
+-define(VSN_pch_encrypted_cache, 1).
 -record(pch_encrypted_cache, { cache_id        :: ch_cache_id()
-                             , salt            :: binary() | atom()
                              , nonce           :: binary() | atom()
                              , encrypted_state :: binary() | atom()
                              , opts = #{}      :: opts() | '_'         % unencrypted
@@ -98,27 +85,35 @@
 
 -define(SERVER, ?MODULE).
 -define(TAB, aesc_state_cache_ch).
--define(PTAB, aesc_state_cache).
--define(CACHE_DEFAULT_PASSWORD, "correct horse battery staple").
+%% A new table name is needed in case the user wants to downgrade to a pre-lima release
+-define(PTAB, aesc_state_cache_v2).
 
--spec new(aeser_id:val(), aeser_id:val(), aesc_offchain_state:state(), opts()) -> ok | {error, any()}.
-new(ChId, Pubkey, State, Opts) ->
-    new(ChId, Pubkey, State, Opts, ?CACHE_DEFAULT_PASSWORD).
+-spec new(aeser_id:val(), aeser_id:val(), aesc_offchain_state:state(), opts(), aesc_fsm_id:wrapper()) -> ok | {error, any()}.
+new(ChId, PubKey, State, Opts, FsmIdWrapper) ->
+    gen_server:call(?SERVER, {new, ChId, PubKey, self(), State, Opts, FsmIdWrapper}).
 
--spec new(aeser_id:val(), aeser_id:val(), aesc_offchain_state:state(), opts(), string()) -> ok | {error, any()}.
-new(ChId, PubKey, State, Opts, Password) ->
-    gen_server:call(?SERVER, {new, ChId, PubKey, self(), State, Opts, unicode:characters_to_binary(Password)}).
+-spec reestablish(aeser_id:val(), aeser_id:val(), aesc_fsm_id:wrapper()) -> {ok, aesc_offchain_state:state(), opts()} | {error, atom()}.
+reestablish(ChId, PubKey, FsmIdWrapper) ->
+    gen_server:call(?SERVER, {reestablish, ChId, PubKey, self(), FsmIdWrapper}).
 
--spec reestablish(aeser_id:val(), aeser_id:val()) -> {ok, aesc_offchain_state:state(), opts()} | {error, atom()}.
-reestablish(ChId, Pubkey) ->
-    reestablish(ChId, Pubkey, ?CACHE_DEFAULT_PASSWORD).
+%% @doc We need to ensure that the fsm id is changed only when the fsm has sent the new ID to the
+%% user. Otherwise we get a nasty race condition:
+%% 1. The user reestablishes a channel
+%% 2. The cache decrypts the state with the old token, the fsm generates a new token a changes it
+%% 3. The fsm crashes before sending the token to the sc_ws_handler
+%% 4. The cache encrypts the state with the new token which results in a undecryptable state
+%% @end
+-spec change_fsm_id(aeser_id:val(), aeser_id:val(), aesc_fsm_id:wrapper()) -> ok.
+change_fsm_id(ChId, Pubkey, FsmIdWrapper) ->
+    gen_server:call(?SERVER, {change_fsm_id, ChId, Pubkey, FsmIdWrapper}).
 
--spec reestablish(aeser_id:val(), aeser_id:val(), string()) -> {ok, aesc_offchain_state:state(), opts()} | {error, atom()}.
-reestablish(ChId, PubKey, Password) ->
-    gen_server:call(?SERVER, {reestablish, ChId, PubKey, self(), unicode:characters_to_binary(Password)}).
-
-change_state_password(ChId, Pubkey, Password) ->
-    gen_server:call(?SERVER, {change_state_password, ChId, Pubkey, unicode:characters_to_binary(Password)}).
+%% @doc
+%% Authenticate the user using the provided token - this should be used for authentication
+%% of reconnection requests
+%% @end
+-spec authenticate_user(aeser_id:val(), aeser_id:val(), aesc_fsm_id:wrapper()) -> boolean().
+authenticate_user(ChId, Pubkey, FsmIdWrapper) ->
+    gen_server:call(?SERVER, {authenticate_user, ChId, Pubkey, FsmIdWrapper}).
 
 update(ChId, PubKey, State) ->
     gen_server:cast(?SERVER, {update, ChId, PubKey, State}).
@@ -152,55 +147,7 @@ check_tables(Acc) ->
               aec_db:check_table(Tab, Spec, Acc1)
       end, Acc, table_specs(disc)).
 
-table_vsn(pch) -> ?VSN_pch;
 table_vsn(pch_encrypted_cache) -> ?VSN_pch_encrypted_cache.
-
-migrate(?VSN_pch, ?VSN_pch_encrypted_cache) ->
-    %% TODO: PT-168377787 move the migration logic partially to aec_db
-    %% TODO: this is only here because this is the first migration in the entire codebase :)
-    ?VSN_pch = table_vsn(pch),
-    ?VSN_pch_encrypted_cache = table_vsn(pch_encrypted_cache),
-    lager:debug("Waiting for state cache table to be accesible", []),
-    case mnesia:wait_for_tables([?PTAB], 10000) of
-        ok ->
-            lager:debug("State cache table is loaded", []);
-        _ ->
-            lager:debug("Timeout while waiting for state cache table to be loaded", []),
-            erlang:exit(load_timeout)
-    end,
-    %% http://erlang.org/pipermail/erlang-questions/2009-May/044106.html
-    %% I need to use mnesia_schema because the typespec for mnesia:transform_table/4 is broken
-    {atomic, ok} = mnesia_schema:transform_table(?PTAB,
-                                          ignore,
-                                          record_info(fields, pch_encrypted_cache),
-                                          pch_encrypted_cache),
-    activity(fun do_migrate/0),
-    {atomic, ok} = mnesia:write_table_property(?PTAB, {vsn, table_vsn(pch_encrypted_cache)}),
-    ok.
-
-do_migrate() ->
-    FirstKey = mnesia:first(?PTAB),
-    do_migrate_(FirstKey).
-
-do_migrate_('$end_of_table') -> ok;
-do_migrate_(Key) ->
-    case mnesia:read(?PTAB, Key) of
-        [#pch{} = OldRecord] ->
-            ToWrite = transform_record_to_encrypted_form_with_default_password(OldRecord),
-            [ok = mnesia:write(?PTAB, NewRecord, write) || NewRecord <- ToWrite],
-            ok = mnesia:delete(?PTAB, Key, write);
-        _ ->
-            ok
-    end,
-    do_migrate_(mnesia:next(?PTAB, Key)).
-
-transform_record_to_encrypted_form_with_default_password(#pch{id = ChId, pubkeys = [PubKey], state = State}) ->
-    {ok, Cache0} = setup_keys_in_cache(?CACHE_DEFAULT_PASSWORD),
-    Cache1 = Cache0#ch_cache{cache_id = key(ChId, PubKey), state = State},
-    [encrypt_cache(Cache1)];
-transform_record_to_encrypted_form_with_default_password(#pch{pubkeys = [Pub1, Pub2]} = Record) ->
-    Records = [Record#pch{pubkeys = [Pub1]}, Record#pch{pubkeys = [Pub2]}],
-    lists:flatten([transform_record_to_encrypted_form_with_default_password(R) || R <- Records]).
 
 start_link() ->
     case ets:info(?TAB, name) of
@@ -215,45 +162,41 @@ start_link() ->
 init([]) ->
     {ok, #st{}}.
 
-generate_session_key(Password, Salt) ->
-    %% Argon2
-    enacl:pwhash(Password, Salt).
-
-setup_keys_in_cache(Password) ->
-    Salt = crypto:strong_rand_bytes(16),
-    case generate_session_key(Password, Salt) of
-        {ok, SessionKey} ->
-            {ok, #ch_cache{salt = Salt, session_key = SessionKey}};
-        {error, _} = Err ->
-            Err
-    end.
-
-handle_call({new, ChId, PubKey, Pid, State, Opts, Password}, _From, St) ->
-    Resp = case setup_keys_in_cache(Password) of
-        {ok, Result} ->
-            case ets:insert_new(?TAB, Result#ch_cache{cache_id = key(ChId, PubKey), state = State, opts = Opts}) of
-                true ->
-                    St1 = monitor_fsm(Pid, ChId, PubKey, St),
-                    {reply, ok, St1};
-                false ->
-                    {reply, {error, exists}, St}
-            end;
-        {error, _} = Err ->
-            {reply, Err, St}
-    end,
-    garbage_collect(),
-    Resp;
-handle_call({reestablish, ChId, PubKey, Pid, Password}, _From, St) ->
-    Resp = case try_reestablish_cached(ChId, PubKey, Password) of
-        {ok, State, Opts} ->
+handle_call({new, ChId, PubKey, Pid, State, Opts, FsmIdWrapper}, _From, St) ->
+    case ets:insert_new(?TAB, #ch_cache{ cache_id = key(ChId, PubKey)
+                                       , state = State
+                                       , opts = Opts
+                                       , fsm_id_wrapper = FsmIdWrapper}) of
+        true ->
+            St1 = monitor_fsm(Pid, ChId, PubKey, St),
+            {reply, ok, St1};
+        false ->
+            {reply, {error, exists}, St}
+    end;
+handle_call({reestablish, ChId, PubKey, Pid, FsmIdWrapper}, _From, St) ->
+    case try_reestablish_cached(ChId, PubKey, FsmIdWrapper) of
+        {ok, _State, _Opts} = Result ->
             St1 = monitor_fsm(Pid, ChId, PubKey,
                               remove_watcher(ChId, St)),
-            {reply, {ok, State, Opts}, St1};
+            {reply, Result, St1};
         {error, _} = Error ->
             {reply, Error, St}
-    end,
-    garbage_collect(),
-    Resp;
+    end;
+handle_call({change_fsm_id, ChId, PubKey, FsmIdWrapper}, _From, St) ->
+    %% This shouldn't fail in normal usage but for tests let inform about errors
+    case ets:update_element(?TAB, key(ChId, PubKey), {#ch_cache.fsm_id_wrapper, FsmIdWrapper}) of
+        true ->
+            {reply, ok, St};
+        false ->
+            {reply, {error, missing_state_trees}, St}
+    end;
+handle_call({authenticate_user, ChId, PubKey, FsmIdWrapper}, _From, St) ->
+    case ets:lookup(?TAB, key(ChId, PubKey)) of
+        [#ch_cache{fsm_id_wrapper = ExistingFsmIdWrapper}] ->
+            {reply, aesc_fsm_id:compare(ExistingFsmIdWrapper, FsmIdWrapper), St};
+        [] ->
+            {reply, false, St}
+    end;
 handle_call({fetch, ChId, PubKey}, _From, St) ->
     case ets:lookup(?TAB, key(ChId, PubKey)) of
         [#ch_cache{state = State, opts = Opts}] ->
@@ -261,23 +204,6 @@ handle_call({fetch, ChId, PubKey}, _From, St) ->
         [] ->
             {reply, error, St}
     end;
-handle_call({change_state_password, ChId, Pubkey, Password}, _From, St) ->
-    lager:debug("Changing state password"),
-    Resp = case setup_keys_in_cache(Password) of
-        {ok, #ch_cache{salt = Salt, session_key = SessionKey}} ->
-            case ets:update_element(?TAB, key(ChId, Pubkey),
-                [ {#ch_cache.salt, Salt}
-                , {#ch_cache.session_key, SessionKey}]) of
-                true ->
-                    {reply, ok, St};
-                false ->
-                    {reply, {error, missing_state_trees}, St}
-            end;
-        {error, _} = Err ->
-            {reply, Err, St}
-    end,
-    garbage_collect(),
-    Resp;
 handle_call({min_depth_achieved, ChId, _Watcher}, _From, St) ->
     lager:debug("min_depth_achieved - ~p gone", [ChId]),
     {reply, ok, delete_all_state_for_channel(ChId, St)};
@@ -332,7 +258,7 @@ cache_status_(ChId) ->
     [ {in_ram, InRam}
     , {on_disk, OnDisk}].
 
-try_reestablish_cached(ChId, PubKey, Password) ->
+try_reestablish_cached(ChId, PubKey, FsmIdWrapper) ->
     CacheId = key(ChId, PubKey),
     case ets:lookup(?TAB, CacheId) of
         [#ch_cache{state = State, opts = Opts}] ->
@@ -340,7 +266,7 @@ try_reestablish_cached(ChId, PubKey, Password) ->
         [] ->
             case read_persistent(CacheId) of
                 {ok, Encrypted} ->
-                    decrypt_state_and_move_to_ram(Encrypted, Password);
+                    decrypt_with_key_and_move_to_ram(Encrypted, FsmIdWrapper);
                 error ->
                     {error, missing_state_trees}
             end
@@ -350,29 +276,16 @@ decrypt_with_key_and_move_to_ram(#pch_encrypted_cache{ cache_id = CacheId
                                                      , nonce = Nonce
                                                      , encrypted_state = EncryptedState
                                                      , opts = Opts
-                                                     }, Cache, SessionKey) ->
-    case enacl:secretbox_open(EncryptedState, Nonce, SessionKey) of
+                                                     }, FsmIdWrapper) ->
+    case enacl:secretbox_open(EncryptedState, Nonce, aesc_fsm_id:retrieve(FsmIdWrapper)) of
         {ok, SerializedState} ->
             State = aesc_offchain_state:deserialize_from_binary(SerializedState),
             ets:insert(
-                    ?TAB, [Cache#ch_cache{cache_id = CacheId, state = State, opts = Opts}]),
+                    ?TAB, [#ch_cache{cache_id = CacheId, state = State, opts = Opts, fsm_id_wrapper = FsmIdWrapper}]),
                     delete_persistent(CacheId),
                     {ok, State, Opts};
         {error, _} ->
-            lager:debug("Invalid password (assumed) opening secretbox", []),
-            {error, invalid_password}
-    end.
-
-decrypt_state_and_move_to_ram(#pch_encrypted_cache{salt = Salt} = PersistedCache, Password) ->
-    %% For security reasons we use a new salt
-    case { generate_session_key(Password, Salt)
-         , setup_keys_in_cache(Password)} of
-        {{ok, SessionKey}, {ok, Cache}} ->
-            decrypt_with_key_and_move_to_ram(PersistedCache, Cache, SessionKey);
-        {{error, _} = Err, _} ->
-            Err;
-        {_, {error, _} = Err} ->
-            Err
+            {error, invalid_fsm_id}
     end.
 
 move_state_to_persistent(CacheId) ->
@@ -390,18 +303,19 @@ encrypt_and_persist(Cache) ->
     write_persistent(Encrypted).
 
 encrypt_cache(#ch_cache{ cache_id = CacheId
-                       , salt =  Salt
                        , state =  State
                        , opts = Opts
-                       , session_key = SessionKey}) ->
+                       , fsm_id_wrapper = FsmIdWrapper}) ->
     Nonce = crypto:strong_rand_bytes(enacl:secretbox_nonce_size()),
     SerializedState = aesc_offchain_state:serialize_to_binary(State),
     #pch_encrypted_cache{
         cache_id = CacheId,
-        salt = Salt,
         nonce = Nonce,
-        encrypted_state = enacl:secretbox(SerializedState, Nonce, SessionKey),
-        opts = Opts
+        opts = Opts,
+        encrypted_state = enacl:secretbox(
+            SerializedState,
+            Nonce,
+            aesc_fsm_id:retrieve(FsmIdWrapper))
     }.
 
 write_persistent(Pch) ->
@@ -503,21 +417,3 @@ delete_offchain_state_for_channel(ChId, St) ->
         [mnesia:delete(?PTAB, key(ChId, Pubkey), write) || Pubkey <- Records]
     end),
     St.
-
--ifdef(TEST).
-enacl_pwhash_mock(Password, Salt) ->
-    {ok, crypto:hash(sha256, erlang:iolist_to_binary([Password, Salt]))}.
-
-mock_kdf_init() ->
-    %% In production we are using Argon2 for KDF - evaluating Argon2 takes > 100ms and is expensive
-    %% Mock the KDF to use sha256 in order to speed up tests
-    lager:debug("Mocking KDF in state cache"),
-    ok = meck:new(enacl, [no_link, no_history, passthrough]),
-    ok = meck:expect(enacl, pwhash, fun enacl_pwhash_mock/2),
-    ok.
-
-mock_kdf_end() ->
-    lager:debug("Unloading KDF mock"),
-    ok = meck:unload(enacl),
-    ok.
--endif.

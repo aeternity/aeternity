@@ -19,7 +19,6 @@
     sc_ws_min_depth_not_reached_timeout/1,
     sc_ws_min_depth_is_modifiable/1,
     sc_ws_basic_open_close/1,
-    sc_ws_basic_open_close_no_password/1,
     sc_ws_basic_open_close_server/1,
     sc_ws_failed_update/1,
     sc_ws_generic_messages/1,
@@ -32,9 +31,9 @@
     sc_ws_close_solo/1,
     sc_ws_slash/1,
     sc_ws_leave_reestablish/1,
+    sc_ws_leave_reestablish_wrong_fsm_id/1,
     sc_ws_leave_reestablish_responder_stays/1,
     sc_ws_leave_reconnect/1,
-    sc_ws_password_changeable/1,
     sc_ws_ping_pong/1,
     sc_ws_opening_ping_pong/1,
     sc_ws_deposit/1,
@@ -87,6 +86,7 @@
 -define(DEFAULT_MIN_DEPTH, 3).
 -define(MAX_MINED_BLOCKS, 20).
 -define(BOGUS_STATE_HASH, <<42:32/unit:8>>).
+-define(BOGUS_FSM_ID, <<"Invalid">>).
 -define(SPEND_FEE, 20000 * aec_test_utils:min_gas_price()).
 
 -define(SLOGAN, slogan(?FUNCTION_NAME, ?LINE)).
@@ -122,8 +122,6 @@
       93,11,3,93,177,65,197,27,123,127,177,165,190,211,20,112,79,108,
       85,78,88,181,26,207,191,211,40,225,138,154>>}).
 
--define(CACHE_DEFAULT_PASSWORD, "correct horse battery staple").
-
 -define(CHECK_INFO(Timeout), check_info(?LINE, Timeout)).
 -define(PEEK_MSGQ, peek_msgq(?LINE)).
 
@@ -138,7 +136,6 @@ groups() ->
         sc_ws_min_depth_not_reached_timeout,
         sc_ws_min_depth_is_modifiable,
         sc_ws_basic_open_close,
-        sc_ws_basic_open_close_no_password,
         sc_ws_basic_open_close_server,
         sc_ws_opening_ping_pong,
         sc_ws_snapshot_solo,
@@ -151,13 +148,12 @@ groups() ->
         sc_ws_slash,
         %% possible to leave and reestablish channel
         sc_ws_leave_reestablish,
+        sc_ws_leave_reestablish_wrong_fsm_id,
         sc_ws_leave_reestablish_responder_stays,
         sc_ws_leave_reconnect,
-        sc_ws_password_changeable,
         {group, with_open_channel},
         {group, with_meta},
         {group, client_reconnect},
-        {group, client_reconnect_no_password},
         {group, changeable_fee},
         {group, abort_updates}
       ]},
@@ -221,12 +217,6 @@ groups() ->
       ]},
 
      {client_reconnect, [sequence],
-      [ sc_ws_basic_client_reconnect_i,
-        sc_ws_basic_client_reconnect_r,
-        sc_ws_basic_client_reconnect_i_w_reestablish
-      ]},
-
-     {client_reconnect_no_password, [sequence],
       [ sc_ws_basic_client_reconnect_i,
         sc_ws_basic_client_reconnect_r,
         sc_ws_basic_client_reconnect_i_w_reestablish
@@ -310,8 +300,6 @@ init_per_group(plain, Config) ->
     reset_participants(plain, Config);
 init_per_group(client_reconnect, Config) ->
     reset_participants(client_reconnect, Config);
-init_per_group(client_reconnect_no_password, Config) ->
-    reset_participants(client_reconnect, [{no_password, true}|Config]);
 init_per_group(pinned_env, Config) ->
     aect_test_utils:init_per_group(aevm, reset_participants(pinned_env, Config));
 init_per_group(_Grp, Config) ->
@@ -369,7 +357,7 @@ end_per_testcase(_Case, Config) ->
 start_node(Config) ->
     aecore_suite_utils:start_node(?NODE, Config),
     Node = aecore_suite_utils:node_name(?NODE),
-    aecore_suite_utils:connect(Node, [block_pow, sc_cache_kdf]),
+    aecore_suite_utils:connect(Node, [block_pow]),
 
     {ok, 404, _} = get_balance_at_top(),
     aecore_suite_utils:mine_key_blocks(Node, 10),
@@ -547,22 +535,21 @@ sc_ws_open_(Config, ChannelOpts0, MinBlocksToMine) ->
 
     {IStartAmt, RStartAmt} = channel_participants_balances(IPubkey, RPubkey),
 
+    TestEvents = [info, get, sign, on_chain_tx, update],
     ChannelOpts = channel_options(IPubkey, RPubkey, IAmt, RAmt, ChannelOpts0, Config),
     {IChanOpts, RChanOpts} = special_channel_opts(ChannelOpts),
     ct:log("IChanOpts = ~p~n"
            "RChanOpts = ~p~n", [IChanOpts, RChanOpts]),
-    {ok, IConnPid} = channel_ws_start(initiator,
-                                           maps:put(host, <<"localhost">>, IChanOpts), Config),
+    %% We need to register for some events as soon as possible - otherwise a race may occur where
+    %% some fsm messages are missed
+    {ok, IConnPid, IFsmId} = channel_ws_start(initiator,
+                                           maps:put(host, <<"localhost">>, IChanOpts), Config, TestEvents),
     ct:log("initiator spawned", []),
     OptionallyPingPong(IConnPid),
-    ok = ?WS:register_test_for_channel_events(IConnPid, [info, get, sign,
-                                                         on_chain_tx, update]),
 
-    {ok, RConnPid} = channel_ws_start(responder, RChanOpts, Config),
-    OptionallyPingPong(IConnPid),
+    {ok, RConnPid, RFsmId} = channel_ws_start(responder, RChanOpts, Config, TestEvents),
     ct:log("responder spawned", []),
-    ok = ?WS:register_test_for_channel_events(RConnPid, [info, get, sign,
-                                                         on_chain_tx, update]),
+    OptionallyPingPong(RConnPid),
 
     channel_send_conn_open_infos(RConnPid, IConnPid, Config),
 
@@ -599,9 +586,11 @@ sc_ws_open_(Config, ChannelOpts0, MinBlocksToMine) ->
     channel_send_chan_open_infos(RConnPid, IConnPid, Config),
 
     %% We stuff the channel id into the Clients map out of convenience
-    ChannelClients = #{channel_id => ChId,
-                       initiator  => IConnPid,
-                       responder  => RConnPid},
+    ChannelClients = #{ channel_id => ChId
+                      , initiator  => IConnPid
+                      , initiator_fsm_id => IFsmId
+                      , responder  => RConnPid
+                      , responder_fsm_id => RFsmId},
     ok = ?WS:unregister_test_for_channel_events(IConnPid, [info, get, sign,
                                                            on_chain_tx, update]),
     ok = ?WS:unregister_test_for_channel_events(RConnPid, [info, get, sign,
@@ -1251,8 +1240,10 @@ settle_(Config, Closer, Params) when Closer =:= initiator;
 
 sc_ws_leave_(Config) ->
     ResponderLeaves = proplists:get_value(responder_leaves, Config, true),
-    #{initiator := IConnPid,
-      responder := RConnPid} = proplists:get_value(channel_clients, Config),
+    #{ initiator := IConnPid
+     , initiator_fsm_id := IFsmId
+     , responder := RConnPid
+     , responder_fsm_id := RFsmId } = proplists:get_value(channel_clients, Config),
     ok = ?WS:register_test_for_channel_events(IConnPid, [leave, info]),
     ok = ?WS:register_test_for_channel_events(RConnPid, [leave, info]),
     ok = ?WS:register_test_for_events(IConnPid, websocket, [closed]),
@@ -1288,32 +1279,32 @@ sc_ws_leave_(Config) ->
                true ->
                     Port        % same port as before
             end,
-    ReestablishOptions = #{ existing_channel_id => IDi
-                          , offchain_tx => StI
-                          , port => RPort
-                          , protocol => maps:get(protocol, Options)
-                          , state_password => maps:get(state_password, Options)},
-    ReestablishOptions.
-
+    #{ existing_channel_id => IDi
+     , existing_fsm_id => [{initiator, IFsmId}, {responder, RFsmId}]
+     , offchain_tx => StI
+     , port => RPort
+     , protocol => maps:get(protocol, Options)}.
 
 sc_ws_reestablish_(ReestablishOptions, Config) ->
     ct:log("ReestablishOptions = ~p~n"
            "Config = ~p", [ReestablishOptions, Config]),
     ResponderLeaves = proplists:get_value(responder_leaves, Config, true),
-    RrConnPid = if
-                    ResponderLeaves ->
-                        {ok, RrCP} = channel_ws_start(responder, ReestablishOptions, Config),
-                        RrCP;
-                    true ->
-                        %% responder still running
-                        #{responder := RCP} = proplists:get_value(channel_clients, Config),
-                        RCP
-                end,
+    {RrConnPid, RFsmId} = if ResponderLeaves ->
+                                {ok, RrCP, FsmId} = channel_ws_start(responder, ReestablishOptions, Config),
+                                {RrCP, FsmId};
+                              true ->
+                                %% responder still running
+                                #{ responder := RCP
+                                 , responder_fsm_id := FsmId} = proplists:get_value(channel_clients, Config),
+                                {RCP, FsmId}
+                          end,
     ReestablishOptions1 = maps:put(host, <<"localhost">>, ReestablishOptions),
-    {ok, IrConnPid} = channel_ws_start(initiator, ReestablishOptions1, Config),
+    {ok, IrConnPid, IFsmId} = channel_ws_start(initiator, ReestablishOptions1, Config),
     Config1 = lists:keystore(channel_clients, 1, Config,
                             {channel_clients, #{ initiator => IrConnPid
-                                               , responder => RrConnPid }}),
+                                               , initiator_fsm_id => IFsmId
+                                               , responder => RrConnPid
+                                               , responder_fsm_id => RFsmId}}),
     ok = await_reestablish_reports(Config1),
     Config1.
 
@@ -1346,7 +1337,7 @@ await_reestablish_reports(Config) ->
 
 sc_ws_deposit_(Config, Origin, XOpts) when Origin =:= initiator
                                     orelse Origin =:= responder ->
-    Participants= proplists:get_value(participants, Config),
+    Participants = proplists:get_value(participants, Config),
     Clients = proplists:get_value(channel_clients, Config),
     {SenderRole, AckRole} =
         case Origin of
@@ -2621,8 +2612,7 @@ sc_ws_timeout_open_(Config) ->
 
     ChannelOpts = channel_options(IPubkey, RPubkey, IAmt, RAmt,
                                   #{timeout_accept => 500}, Config),
-    {ok, IConnPid} = channel_ws_start(initiator, maps:put(host, <<"localhost">>, ChannelOpts), Config),
-    ok = ?WS:register_test_for_channel_event(IConnPid, info),
+    {ok, IConnPid, _FsmId} = channel_ws_start(initiator, maps:put(host, <<"localhost">>, ChannelOpts), Config, [info]),
     ok = wait_for_channel_event(<<"timeout">>, IConnPid, info, Config),
     ok = wait_for_channel_event(<<"died">>, IConnPid, info, Config),
     ok = ?WS:unregister_test_for_channel_event(IConnPid, info),
@@ -2659,13 +2649,11 @@ sc_ws_min_depth_not_reached_timeout_(Config) ->
                                   #{ timeout_funding_lock => 3000
                                    , minimum_depth => 1
                                    , slogan => S }, Config),
-    {ok, IConnPid} = channel_ws_start(initiator,
-                                      maps:put(host, <<"localhost">>, ChannelOpts), Config),
-    ok = ?WS:register_test_for_channel_events(IConnPid, [info, get, sign, on_chain_tx]),
+    TestEvents = [info, get, sign, on_chain_tx],
+    {ok, IConnPid, _IFsmId} = channel_ws_start(initiator,
+                                      maps:put(host, <<"localhost">>, ChannelOpts), Config, TestEvents),
 
-    {ok, RConnPid} = channel_ws_start(responder, ChannelOpts, Config),
-
-    ok = ?WS:register_test_for_channel_events(RConnPid, [info, get, sign, on_chain_tx]),
+    {ok, RConnPid, _RFsmId} = channel_ws_start(responder, ChannelOpts, Config, TestEvents),
 
     channel_send_conn_open_infos(RConnPid, IConnPid, Config),
 
@@ -2701,11 +2689,6 @@ sc_ws_basic_open_close(Config0) ->
     Config = sc_ws_open_(Config0),
     ok = sc_ws_update_(Config),
     ok = sc_ws_close_(Config).
-
-sc_ws_basic_open_close_no_password(Config) ->
-    with_trace(fun(Cfg) ->
-                       sc_ws_basic_open_close([{no_password, true}|Cfg])
-               end, Config, "sc_ws_basic_open_close_no_password").
 
 sc_ws_basic_open_close_server(Config0) ->
     Config = sc_ws_open_([server_mode|Config0]),
@@ -2880,10 +2863,10 @@ sc_ws_basic_client_reconnect_i_w_reestablish(Config) ->
 
 sc_ws_basic_client_reconnect_(Role, Config0) ->
     Config = sc_ws_open_(Config0),
-    #{ Role := #{ pub_key  := Pubkey
-                , priv_key := Privkey } } = Participants
-        = proplists:get_value(participants, Config),
+    Participants = proplists:get_value(participants, Config),
     #{ channel_id := ChId
+     , initiator_fsm_id := IFsmId
+     , responder_fsm_id := RFsmId
      , Role := ConnPid } = Clients = ?config(channel_clients, Config),
     unlink(ConnPid),
     ?WS:stop(ConnPid),
@@ -2894,11 +2877,20 @@ sc_ws_basic_client_reconnect_(Role, Config0) ->
         = update_with_client_disconnected(
             OtherRole, OtherRole, Clients#{Role => undefined},
             Participants, Config),
-    ok = update_with_client_disconnected(
-           both, OtherRole, Clients#{Role => undefined},
-           Participants, Config),
+    {ok, SignedTx} = update_with_client_disconnected(
+        both, OtherRole, Clients#{Role => undefined},
+        Participants, Config),
     ct:log("Reconnecting client ..." , []),
-    Config1 = reconnect_client_(ChId, Role, Pubkey, Privkey, Config),
+    Options = proplists:get_value(channel_options, Config),
+    %% TODO: Port shouldn't matter when reconnecting
+    Port = maps:get(port, Options),
+    ReestablishOpts = #{ existing_channel_id => ChId
+                       , existing_fsm_id => [{initiator, IFsmId}, {responder, RFsmId}]
+                       , offchain_tx => SignedTx
+                       , port => Port
+                       , protocol => maps:get(protocol, Options)},
+    sc_ws_fsm_id_errors([Role], ReestablishOpts, Config),
+    Config1 = reconnect_client_(ReestablishOpts, Role, Config),
     sc_ws_close_mutual_(Config1, Role).
 
 update_with_client_disconnected(SignAs, Role, Clients, Participants, Config) ->
@@ -2946,9 +2938,9 @@ update_with_client_disconnected(SignAs, Role, Clients, Participants, Config) ->
 
     Res = case SignAs of
               both ->
-                  {ok, _, #{ <<"state">> := _NewState }}
+                  {ok, _, #{ <<"state">> := NewState }}
                       = wait_for_channel_event(ConnPid, update, Config),
-                  ok;
+                  {ok, NewState};
               Role ->
                   {ok, _, Conflict} = wait_for_channel_event(ConnPid, conflict, Config),
                   ct:log("Conflict: ~p", [Conflict]),
@@ -2962,51 +2954,44 @@ update_with_client_disconnected(SignAs, Role, Clients, Participants, Config) ->
 other_role(responder) -> initiator;
 other_role(initiator) -> responder.
 
-reconnect_client_(ChId, Role, Pub, Priv, Config) ->
-    case proplists:get_value(reconnect_method, Config, reconnect) of
+reconnect_client_(ReestablishOpts, Role, Config) ->
+    ct:log("Trying to reconnect via reestablish", []),
+    ?CHECK_INFO(20),
+    ct:log("ReestablishOpts = ~p", [ReestablishOpts]),
+    ReestablishOpts1 = case Role of
+                           initiator ->
+                               maps:put(host, <<"localhost">>, ReestablishOpts);
+                           responder ->
+                               ReestablishOpts
+                       end,
+    {ok, ConnPid, FsmId} = channel_ws_start(Role, ReestablishOpts1, Config),
+    ct:log("New ConnPid = ~p", [ConnPid]),
+    ct:log("Check if reestablish resulted in a reconnect", []),
+    OldClients = ?config(channel_clients, Config),
+    {OldFsmId, NewClients} = case Role of
+                                 initiator ->
+                                     { maps:get(initiator_fsm_id, OldClients)
+                                     , #{initiator => ConnPid, initiator_fsm_id => FsmId}};
+                                 responder ->
+                                     { maps:get(responder_fsm_id, OldClients)
+                                     , #{responder => ConnPid, responder_fsm_id => FsmId}}
+                             end,
+    ct:log("Old fsm id: ~p", [OldFsmId]),
+    ct:log("New fsm id: ~p", [FsmId]),
+    Scenario = proplists:get_value(reconnect_scenario, Config, reconnect),
+    case Scenario of
         reconnect ->
-            reconnect_client_(ChId, 1, Role, Pub, Priv, Config);
+            ct:log("Checking for reconnect", []),
+            %% The FsmId should not change
+            {FsmId, OldFsmId} = {OldFsmId, FsmId};
         reestablish ->
-            ct:log("Will reconnect via reestablish", []),
-            ?CHECK_INFO(20),
-            #{ initiator_id := I
-             , responder_id := R
-             , port         := Port } = proplists:get_value(channel_options, Config),
-            ReestablishOpts = maybe_add_password(
-                                #{ existing_channel_id => ChId
-                                 , role                => Role
-                                 , protocol            => sc_ws_protocol(Config)
-                                 , host                => <<"localhost">>
-                                 , port                => Port
-                                 , initiator_id        => I
-                                 , responder_id        => R }, Config),
-            ct:log("ReestablishOpts = ~p", [ReestablishOpts]),
-            {ok, ConnPid} = channel_ws_start(Role, ReestablishOpts, Config),
-            ct:log("New ConnPid = ~p", [ConnPid]),
-            Config1 = lists:keystore(channel_clients, 1, Config,
-                                     {channel_clients, maps:put(Role, ConnPid,
-                                                                ?config(channel_clients, Config))}),
-            Config1
-    end.
-
-reconnect_client_(ChId, Round, Role, Pub, Priv, Config) ->
-    ct:log("reconnecting ChId = ~p, Role = ~p, Pub = ~p", [ChId, Role, Pub]),
-    {channel, ChIdDec} = aeser_api_encoder:decode(ChId),
-    ChIdId = aeser_id:create(channel, ChIdDec),
-    PubId = aeser_id:create(account, Pub),
-    {ok, Tx} = aesc_client_reconnect_tx:new(#{ channel_id => ChIdId
-                                             , round      => Round
-                                             , role       => Role
-                                             , pub_key    => PubId }),
-    SignedTx = aec_test_utils:sign_tx(Tx, Priv),
-    SignedTxBin = aeser_api_encoder:encode(
-                    transaction, aetx_sign:serialize_to_binary(SignedTx)),
-    ChannelOpts = reconnect_channel_options(SignedTxBin, Config),
-    {ok, ConnPid} = channel_ws_start(Role, ChannelOpts, Config),
-    {_, ChannelClients} = lists:keyfind(channel_clients, 1, Config),
-    Config1 = lists:keyreplace(channel_clients, 1, Config,
-                               {channel_clients, ChannelClients#{ Role => ConnPid }}),
-    case proplists:get_value(reconnect_scenario, Config1, reconnect) of
+            ct:log("Checking for reestablish", []),
+            %% A new Fsm was spawned
+            true = (FsmId =/= OldFsmId)
+    end,
+    Config1 = lists:keystore(channel_clients, 1, Config,
+                            {channel_clients, maps:merge(OldClients, NewClients)}),
+    case Scenario of
         reconnect ->
             ok;
         reestablish ->
@@ -3045,7 +3030,7 @@ sc_ws_failed_update(Config) ->
 sc_ws_generic_messages(Config) ->
     #{initiator := #{pub_key := IPubkey},
       responder := #{pub_key := RPubkey}} = proplists:get_value(participants, Config),
-    #{initiator := IConnPid, responder :=RConnPid}
+    #{initiator := IConnPid, responder := RConnPid}
         = proplists:get_value(channel_clients, Config),
     lists:foreach(
         fun({Sender, Msg}) ->
@@ -3297,11 +3282,20 @@ sc_ws_leave_reestablish(Config0) ->
     ok = sc_ws_update_(Config1),
     ok = sc_ws_close_(Config1).
 
+sc_ws_leave_reestablish_wrong_fsm_id(Config0) ->
+    Config = sc_ws_open_([{slogan, ?SLOGAN}|Config0]),
+    ReestablishOptions = sc_ws_leave_(Config),
+
+    sc_ws_fsm_id_errors([initiator, responder], ReestablishOptions, Config),
+    Config1 = sc_ws_reestablish_(ReestablishOptions, Config),
+    ok = sc_ws_update_(Config1),
+    ok = sc_ws_close_(Config1).
+
 sc_ws_leave_reestablish_responder_stays(Config0) ->
     Config = sc_ws_open_([{slogan, ?SLOGAN}|Config0], #{responder_opts => #{keep_running => true}}),
     Config1 = [{responder_leaves, false}|Config],
-    ReestablOptions = sc_ws_leave_(Config1),
-    Config2 = sc_ws_reestablish_(ReestablOptions, Config1),
+    ReestablishOptions = sc_ws_leave_(Config1),
+    Config2 = sc_ws_reestablish_(ReestablishOptions, Config1),
     ok = sc_ws_update_(Config2),
     ok = sc_ws_close_(Config2).
 
@@ -3309,63 +3303,21 @@ sc_ws_leave_reconnect(Config0) ->
     ct:log("opening channel", []),
     Config = sc_ws_open_([{slogan, ?SLOGAN}|Config0], #{responder_opts => #{keep_running => true}}),
     ct:log("channel opened", []),
-    Participants = proplists:get_value(participants, Config),
-    #{ pub_key := Pub, priv_key := Priv } = maps:get(initiator, Participants),
     ct:log("*** Leaving channel ***", []),
     Config1 = [{responder_leaves, false}|Config],
     ct:log("Config1 = ~p", [Config1]),
-    #{ existing_channel_id := ChId
-     , offchain_tx         := _Tx }
-        = ReestablishOpts = sc_ws_leave_(Config1),
-    ct:log("ReestablishOpts = ~p", [ReestablishOpts]),
+    ReestablishOptions = sc_ws_leave_(Config1),
+    ct:log("ReestablishOpts = ~p", [ReestablishOptions]),
+    ct:log("*** Testing invalid reconneciton requests ***", []),
+    sc_ws_fsm_id_errors([initiator], ReestablishOptions, Config),
     ct:log("*** Reconnecting ... ***", []),
-    Config2 = reconnect_client_(ChId, initiator, Pub, Priv,
+    Config2 = reconnect_client_(ReestablishOptions, initiator,
                                 [{reconnect_scenario, reestablish} | Config1]),
     ct:log("*** Verifying that channel is operational ***", []),
     ok = sc_ws_update_(Config2),
     ct:log("*** Closing ... ***", []),
     ok = sc_ws_close_(Config2).
 
-sc_ws_password_changeable(Config0) ->
-    Config = sc_ws_open_([{slogan, ?SLOGAN}|Config0]),
-    Options = proplists:get_value(channel_options, Config),
-    StatePasswordOld = maps:get(state_password, Options),
-    Config1 = sc_ws_change_password_(Config),
-    ReestablishOptions = sc_ws_leave_(Config1),
-    ReestablishOptionsOld = ReestablishOptions#{state_password => StatePasswordOld},
-
-    %% Reestablish with old password should fail
-    Roles = [initiator, responder],
-    [sc_ws_test_broken_params(Role, Config, ReestablishOptionsOld, <<"Invalid password">>, Config) || Role <- Roles],
-
-    Config2 = sc_ws_reestablish_(ReestablishOptions, Config1),
-    ok = sc_ws_update_(Config2),
-    ok = sc_ws_close_(Config2).
-
-sc_ws_change_password_(Config) ->
-    ct:log("Changing password"),
-    #{ initiator := IConnPid
-     , responder := RConnPid } = proplists:get_value(channel_clients, Config),
-    Options = proplists:get_value(channel_options, Config),
-    StatePassword = maps:get(state_password, Options),
-    StatePassword1 = StatePassword ++ "_changed",
-    Fun = fun (Pid) ->
-        ok = ?WS:register_test_for_channel_events(Pid, [password_changed, error]),
-        %% Test weak password
-        ok = ws_send_tagged(Pid, <<"channels.change_state_password">>, #{ <<"state_password">> => "1234" }, Config),
-        {ok, _, #{<<"reason">> := <<"Invalid password">>}} = wait_for_channel_event(Pid, error, Config),
-
-        %% Test no password
-        ok = ws_send_tagged(Pid, <<"channels.change_state_password">>, #{}, Config),
-        {ok, _, #{<<"reason">> := <<"Missing field: state_password">>}} = wait_for_channel_event(Pid, error, Config),
-
-        %% Change password
-        ok = ws_send_tagged(Pid, <<"channels.change_state_password">>, #{ <<"state_password">> => StatePassword1 }, Config),
-        {ok, _, #{<<"action">> := <<"password_changed">>}} = wait_for_channel_event(Pid, password_changed, Config),
-        ok = ?WS:unregister_test_for_channel_events(Pid, [password_changed, error])
-    end,
-    [Fun(Pid) || Pid <- [IConnPid, RConnPid]],
-    [{channel_options, Options#{state_password => StatePassword1}} | Config].
 
 sc_ws_ping_pong(Config) ->
     #{initiator := IConnPid, responder := RConnPid} =
@@ -3382,6 +3334,25 @@ ping_pong(ConnPid, Config) ->
         wait_for_channel_event(ConnPid, system, Config),
     ok = ?WS:unregister_test_for_channel_events(ConnPid, [system]),
     ok.
+
+sc_ws_fsm_id_errors(Roles, ReestablishOptions, Config) ->
+    TestError =
+        fun(Opts, Error) ->
+            [sc_ws_test_broken_params(Role, Config, Opts, Error, Config) || Role <- Roles]
+        end,
+
+    %% Missing fsm id
+    TestError(maps:remove(existing_fsm_id, ReestablishOptions), <<"Missing field: existing_fsm_id">>),
+
+    %% Encoding
+    TestError(ReestablishOptions#{existing_fsm_id => ?BOGUS_FSM_ID}, <<"Invalid fsm id">>),
+    <<InvalidLenFsmId:8/bytes, _/binary>> = aesc_fsm_id:retrieve(aesc_fsm_id:new()),
+    InvalidLenFsmIdEnc = aeser_api_encoder:encode(bytearray, InvalidLenFsmId),
+    TestError(ReestablishOptions#{existing_fsm_id => InvalidLenFsmIdEnc}, <<"Invalid fsm id">>),
+
+    %% Invalid value but valid format
+    ValidFormatFsmId = aesc_fsm_id:retrieve_for_client(aesc_fsm_id:new()),
+    TestError(ReestablishOptions#{existing_fsm_id => ValidFormatFsmId}, <<"Invalid fsm id">>).
 
 sc_ws_deposit(Config) ->
     lists:foreach(
@@ -3407,31 +3378,21 @@ channel_options(IPubkey, RPubkey, IAmt, RAmt, Other, Config) ->
         fun(MaybeSet, Accum) ->
             MaybeSet(Accum, Config)
         end,
-        maps:merge(#{ port => ?config(ws_port, Config),
-                      initiator_id => aeser_api_encoder:encode(account_pubkey, IPubkey),
-                      responder_id => aeser_api_encoder:encode(account_pubkey, RPubkey),
-                      lock_period => 10,
-                      push_amount => 1,
-                      initiator_amount => IAmt,
-                      responder_amount => RAmt,
-                      channel_reserve => 2,
-                      keep_running => false,
-                      protocol => sc_ws_protocol(Config)
+        maps:merge(#{ port => ?config(ws_port, Config)
+                    , initiator_id => aeser_api_encoder:encode(account_pubkey, IPubkey)
+                    , responder_id => aeser_api_encoder:encode(account_pubkey, RPubkey)
+                    , lock_period => 10
+                    , push_amount => 1
+                    , initiator_amount => IAmt
+                    , responder_amount => RAmt
+                    , channel_reserve => 2
+                    , keep_running => false
+                    , protocol => sc_ws_protocol(Config)
                     }, Other),
         [fun maybe_add_fee/2,
-         fun maybe_add_slogan/2,
-         fun maybe_add_password/2
+         fun maybe_add_slogan/2
         ]).
 
-maybe_add_password(#{state_password := _} = Map, _) ->
-    Map;
-maybe_add_password(Map, Config) ->
-    case proplists:get_value(no_password, Config, false) of
-        true ->
-            Map;
-        _ ->
-            Map#{state_password => ?CACHE_DEFAULT_PASSWORD}
-    end.
 
 maybe_add_slogan(Map, Config) ->
     maybe_add_param(slogan, Map, Config).
@@ -3457,13 +3418,6 @@ special_channel_opts(Opts) ->
     {maps:merge(Opts1, maps:get(initiator_opts, Opts, #{})),
      maps:merge(Opts1, maps:get(responder_opts, Opts, #{}))}.
 
-reconnect_channel_options(SignedTx, Config) ->
-    maybe_add_password(
-      #{ port => ?config(ws_port, Config)
-       , reconnect_tx => SignedTx
-       %% , state_password => StatePassword
-       , protocol => sc_ws_protocol(Config) }, Config).
-
 maybe_include_meta(Opts, Config) ->
     case proplists:get_bool(include_meta, Config) of
         true ->
@@ -3474,7 +3428,6 @@ maybe_include_meta(Opts, Config) ->
 
 meta_str() ->
     <<"meta 1">>.
-
 
 validate_meta(Meta) ->
     ExpMeta = aesc_offchain_update:op_meta(meta_str()),
@@ -3532,11 +3485,41 @@ channel_ws_host_and_port() ->
                 aehttp, [channel, websocket, port], 8045]),
     {"localhost", Port}.
 
+-spec channel_ws_start(initiator | responder, map(), list()) -> {ok, pid(), binary()} | {error, term()}.
 channel_ws_start(Role, Opts, Config) ->
+    channel_ws_start(Role, Opts, Config, []).
+
+-spec channel_ws_start(initiator | responder, map(), list(), list(atom())) -> {ok, pid(), binary()} | {error, term()}.
+channel_ws_start(Role, Opts, Config, Events) ->
+    EventsSet = sets:from_list(Events),
+    ReqEventsSet = sets:from_list([info, closed, error]),
+    RegisterEvents = sets:to_list(sets:union(EventsSet, ReqEventsSet)),
+    UnregisterEvents = sets:to_list(sets:subtract(ReqEventsSet, EventsSet)),
+
     LogFile = docs_log_file(Config),
     Opts1 = Opts#{ {int,logfile} => LogFile },
+    Opts2 = maybe_add_fsm_id(Role, Opts1),
     {Host, Port} = channel_ws_host_and_port(),
-    ?WS:start_channel(Host, Port, Role, Opts1).
+    case ?WS:start_channel(Host, Port, Role, RegisterEvents, Opts2) of
+        {ok, Pid} ->
+                case wait_for_next_channel_event(Pid, Config) of
+                    {ok, info, #{<<"event">> := <<"fsm_up">>, <<"fsm_id">> := FsmId}} ->
+                        ok = ?WS:unregister_test_for_channel_events(Pid, UnregisterEvents),
+                        {ok, Pid, FsmId};
+                    {ok, error, #{<<"reason">> := Error}} ->
+                        try ok = ?WS:wait_for_event(Pid, websocket, closed)
+                        catch error:{connection_died, _Reason} -> ok
+                        end,
+                        {error, Error}
+                end;
+        Rest ->
+            Rest
+    end.
+
+maybe_add_fsm_id(Role, #{existing_fsm_id := Props} = Opts) when is_list(Props) ->
+    Opts#{existing_fsm_id => proplists:get_value(Role, Props)};
+maybe_add_fsm_id(_, Opts) ->
+    Opts.
 
 docs_log_file(Config) ->
     %% TCLogBase = atom_to_list(?config(tc_name, Config)),
@@ -3558,8 +3541,6 @@ log_basename(Config) ->
             with_meta ->
                 filename:join(Protocol, "with_meta");
             client_reconnect ->
-                filename:join(Protocol, "reconnect");
-            client_reconnect_no_password ->
                 filename:join(Protocol, "reconnect");
             sc_contracts ->
                 filename:join(Protocol, "contracts");
@@ -3681,6 +3662,16 @@ ws_get_call_params(Update, UnsignedTx) ->
 %% wait_for_channel_msg_(ConnPid, Action, <<"json-rpc">>) ->
 %%     wait_for_channel_event_(ConnPid, Action, <<"json-rpc">>).
 
+wait_for_next_channel_event(ConnPid, Config) ->
+    case wait_for_next_channel_event_(ConnPid, sc_ws_protocol(Config)) of
+        {ok, Action, #{error := Error}} ->
+            {ok, Action, Error};
+        {ok, Action, #{data := Data}} ->
+            {ok, Action, Data};
+        {ok, Action, Tag, #{data := Data}} ->
+            {ok, Action, Tag, Data}
+    end.
+
 wait_for_channel_event(ConnPid, Action, Config) ->
     wait_for_channel_event_match(ConnPid, Action, #{}, Config).
 
@@ -3709,18 +3700,34 @@ wait_for_channel_event_full(ConnPid, Action, Config) ->
     wait_for_channel_event_(ConnPid, Action, sc_ws_protocol(Config)).
 
 wait_for_channel_event_(ConnPid, error, <<"json-rpc">>) ->
-    case ?WS:wait_for_channel_msg(ConnPid, error) of   % whole msg
-        {ok, #{ <<"jsonrpc">> := <<"2.0">>
-              , <<"channel_id">> := ChId
-              , <<"id">>      := null
-              , <<"error">>   := E }} ->
-            {ok, #{ channel_id => ChId
-                  , error      => lift_reason(E)}}
-    end;
+    parse_channel_event(error, <<"json-rpc">>, ?WS:wait_for_channel_msg(ConnPid, error));
 wait_for_channel_event_(ConnPid, Action, <<"json-rpc">>) ->
+    parse_channel_event(Action, <<"json-rpc">>, ?WS:wait_for_channel_msg(ConnPid, Action)).
+
+wait_for_next_channel_event_(ConnPid, <<"json-rpc">>) ->
+    {Action, Res} =
+        case ?WS:wait_for_any_channel_msg(ConnPid) of   % whole msg
+            {ok, Action1, Data1} ->
+                {Action1, parse_channel_event(Action1, <<"json-rpc">>, {ok, Data1})};
+            {ok, Action1, Tag1, Data1} ->
+                {Action1, parse_channel_event(Action1, <<"json-rpc">>, {ok, Tag1, Data1})}
+        end,
+    case Res of
+        {ok, Data} ->
+            {ok, Action, Data};
+        {ok, Tag, Data} ->
+            {ok, Action, Tag, Data}
+    end.
+
+parse_channel_event(error, <<"json-rpc">>, {ok, #{ <<"jsonrpc">> := <<"2.0">>
+                                                 , <<"channel_id">> := ChId
+                                                 , <<"id">>      := null
+                                                 , <<"error">>   := E } }) ->
+    {ok, #{ channel_id => ChId, error => lift_reason(E)}};
+parse_channel_event(Action, <<"json-rpc">>, Msg) ->
     Method = method_pfx(Action),
     Sz = byte_size(Method),
-    case {?WS:wait_for_channel_msg(ConnPid, Action), Method} of   % whole msg
+    case {Msg, Method} of   % whole msg
         {{ok, #{ <<"jsonrpc">> := <<"2.0">>
                , <<"method">>  := <<Method:Sz/binary, _/binary>>
                , <<"params">>  := #{<<"channel_id">> := ChId} = Params }}, _} ->
@@ -4035,19 +4042,9 @@ account_type(Pubkey) ->
     aec_accounts:type(Account).
 
 sc_ws_test_broken_params(Role, Config, Opts, Error, Config) ->
-    Opts1 = case maps:is_key(host, Opts) of
-                true ->
-                    Opts;
-                false ->
-                    maps:put(host, <<"localhost">>, Opts)
-            end,
-    Config1 = [{slogan, ?SLOGAN}|Config],
-    {ok, Pid} = channel_ws_start(Role, Opts1, Config1),
-    ok = ?WS:register_test_for_channel_events(Pid, [closed, error]),
-    {ok, _, #{<<"reason">> := Error}} = wait_for_channel_event(Pid, error, Config),
-    try ok = ?WS:wait_for_event(Pid, websocket, closed)
-    catch error:{connection_died, _Reason} -> ok
-    end.
+    {error, Error} = channel_ws_start(Role,
+                                       maps:put(host, <<"localhost">>,
+                                                Opts), [{slogan, ?SLOGAN}|Config]).
 
 sc_ws_broken_open_params(Config) ->
     #{ initiator := #{pub_key := IPubkey}

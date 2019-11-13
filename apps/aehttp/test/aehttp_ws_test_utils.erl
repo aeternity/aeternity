@@ -5,6 +5,7 @@
 -export([start_link/2,
          start_link_channel/4,
          start_channel/4,
+         start_channel/5,
          set_log_file/2,
          set_role/2,
          log/3,
@@ -25,6 +26,7 @@
          wait_for_channel_event/2,
          wait_for_msg/4,
          wait_for_channel_msg/2,
+         wait_for_any_channel_msg/1,
          wait_for_channel_msg_event/3,
          wait_for_connect/1,
          wait_for_connect_any/0,
@@ -63,24 +65,27 @@ start_link(Host, Port) ->
     % TODO: Make it configurable whether to use `ws` or `wss`
     WsAddress = "wss://" ++ Host ++ ":" ++ integer_to_list(Port) ++ "/websocket",
     ct:log("connecting to ~p", [WsAddress]),
-    {ok, Pid} = websocket_client:start_link(WsAddress, ?MODULE, self()),
+    {ok, Pid} = websocket_client:start_link(WsAddress, ?MODULE, {self(), []}),
     wait_for_connect(Pid).
 
 start_link_channel(Host, Port, RoleA, Opts) when is_atom(RoleA) ->
     Role = to_binary(RoleA),
     WsAddress = make_channel_connect_address(Host, Port, Role, Opts),
     ct:log("connecting to Channel ~p as ~p", [WsAddress, Role]),
-    {ok, Pid} = websocket_client:start_link(WsAddress, ?MODULE, self(),
+    {ok, Pid} = websocket_client:start_link(WsAddress, ?MODULE, {self(), []},
                                             extra_headers()),
     wait_for_connect(Pid).
 
 start_channel(Host, Port, RoleA, Opts0) when is_atom(RoleA) ->
+    start_channel(Host, Port, RoleA, [], Opts0).
+
+start_channel(Host, Port, RoleA, DefaultChannelActions, Opts0) when is_atom(RoleA) ->
     Role = to_binary(RoleA),
     {LogFile, Opts} = get_logfile(Opts0),
     WsAddress = make_channel_connect_address(Host, Port, Role, Opts),
     ct:log("connecting to Channel ~s as ~p", [iolist_to_binary(WsAddress), Role]),
     %% There is no websocket_client:start/4 ...
-    {ok, Pid} = websocket_client:start_link(WsAddress, ?MODULE, self(),
+    {ok, Pid} = websocket_client:start_link(WsAddress, ?MODULE, {self(), DefaultChannelActions},
                                             extra_headers()),
     unlink(Pid),
     case wait_for_connect(Pid) of
@@ -293,6 +298,9 @@ wait_for_event(ConnPid, Origin, Action, Timeout) ->
 wait_for_msg(ConnPid, Origin, Action, Timeout) ->
     wait_for_msg(msg, ConnPid, Origin, Action, Timeout).
 
+wait_for_any_msg(ConnPid, Origin, Timeout) ->
+    wait_for_any_msg(msg, ConnPid, Origin, Timeout).
+
 %% consumes messages from the mailbox:
 %% {Sender::pid(), websocket_event, Origin::atom(), Action::atom()}
 %% {Sender::pid(), websocket_event, Origin::atom(), Action::atom(), Payload::map()}
@@ -308,6 +316,28 @@ wait_for_msg(Type, ConnPid, Origin, Action, Timeout) ->
             {ConnPid, websocket_event, Origin, Action, Msg} ->
                 {ok, msg_data(Type, Msg)};
             {ConnPid, websocket_event, Origin, Action} ->
+                ok;
+            {'DOWN', MRef, _, _, Reason} ->
+                error({connection_died, Reason})
+        after
+            Timeout ->
+                error({timeout, process_info(self(), messages)})
+        end
+    after
+        demonitor(MRef)
+    end.
+
+-spec wait_for_any_msg(msg | payload, pid(), atom(), integer()) ->
+    ok | {ok, map()} | {ok, atom(), Tag::term(), map()}.
+wait_for_any_msg(Type, ConnPid, Origin, Timeout) ->
+    MRef = monitor(process, ConnPid),
+    try
+        receive
+            {ConnPid, websocket_event, Origin, Action, Tag, Msg} ->
+                {ok, Action, Tag, msg_data(Type, Msg)};
+            {ConnPid, websocket_event, Origin, Action, Msg} ->
+                {ok, Action, msg_data(Type, Msg)};
+            {ConnPid, Action, websocket_event, Origin, Action} ->
                 ok;
             {'DOWN', MRef, _, _, Reason} ->
                 error({connection_died, Reason})
@@ -342,6 +372,9 @@ wait_for_msg_event(Type, ConnPid, Origin, Action, Event, Timeout) ->
 
 wait_for_channel_msg(ConnPid, Action) ->
     wait_for_msg(ConnPid, ?CHANNEL, Action, ?DEFAULT_EVENT_TIMEOUT).
+
+wait_for_any_channel_msg(ConnPid) ->
+    wait_for_any_msg(ConnPid, ?CHANNEL, ?DEFAULT_EVENT_TIMEOUT).
 
 wait_for_channel_msg_event(ConnPid, Action, Event) ->
     wait_for_msg_event(msg, ConnPid, ?CHANNEL, Action, Event, ?DEFAULT_EVENT_TIMEOUT).
@@ -391,9 +424,17 @@ inform_registered(RegisteredPid, Origin, Action, Tag, Payload) ->
             RegisteredPid ! {self(), websocket_event, Origin, Action, Tag, Payload}
     end.
 
-init(WaitingPid) ->
-    Register = put_registration(WaitingPid, waiting_connected, #register{}),
-    {once, #state{regs = Register}}.
+init({WaitingPid, DefaultChannelActions}) ->
+    Register0 = put_registration(WaitingPid, waiting_connected, #register{}),
+    Register1 =
+        lists:foldl(
+            fun(Action, AccumRegister) ->
+                Event = {?CHANNEL, Action},
+                put_registration(WaitingPid, Event, AccumRegister)
+            end,
+            Register0,
+            DefaultChannelActions),
+    {once, #state{regs = Register1}}.
 
 onconnect(_WSReq, #state{regs=Register}=State) ->
     ct:log("Ws connected"),
@@ -770,6 +811,8 @@ maybe_produce_info_from_msg(#{<<"params">> := #{<<"data">> := #{<<"event">> := E
 maybe_produce_info_from_msg(_Msg, _S) ->
     pass.
 
+maybe_produce_info_for_event(<<"fsm_up">>, S) ->
+    do_log(info, "The local fsm has been started", S);
 maybe_produce_info_for_event(<<"channel_open">>, S) ->
     do_log(info, "Received an WebSocket opening request", S);
 maybe_produce_info_for_event(<<"channel_accept">>, S) ->

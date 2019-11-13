@@ -76,6 +76,10 @@ sc_open(Params, Cfg) ->
              MaybeOpts),
 
     {IConn, RConn} = sc_start_ws_peers(INodeName, RNodeName, Opts, Cfg),
+    {ok, #{ <<"event">> := <<"fsm_up">>, <<"fsm_id">> := IFsmId }} = sc_wait_for_channel_event(IConn, info),
+    {ok, #{ <<"event">> := <<"fsm_up">>, <<"fsm_id">> := RFsmId }} = sc_wait_for_channel_event(RConn, info),
+    true = IFsmId /= RFsmId,
+
     ok = sc_wait_channel_open(IConn, RConn),
 
     %% initiator gets to sign a create_tx
@@ -108,7 +112,9 @@ sc_open(Params, Cfg) ->
 
     ok = sc_wait_open(IConn, RConn),
 
-    Channel = #{ channel_id => ChannelId, initiator => {IAccount, IConn}, responder => {RAccount, RConn} },
+    Channel = #{ channel_id => ChannelId
+               , initiator => {IAccount, IConn, IFsmId}
+               , responder => {RAccount, RConn, RFsmId} },
 
     TxHash = aeser_api_encoder:encode(tx_hash, aetx_sign:hash(SignedCrTx)),
 
@@ -116,31 +122,35 @@ sc_open(Params, Cfg) ->
 
 -spec sc_reestablish(channel(), atom(), atom(), binary(), aest_nodes:test_ctx()) -> {ok, channel()}.
 sc_reestablish(#{ channel_id := ChannelId
-                , initiator := {IAccount, _}
-                , responder := {RAccount, _}} = Chan
+                , initiator := {IAccount, _, IFsmId0}
+                , responder := {RAccount, _, RFsmId0}} = Chan
               , INodeName, RNodeName, LatestState, Cfg) ->
     {Host, _Port} = node_ws_int_addr(RNodeName, Cfg),
     Opts = maps:merge(
-             #{
-               existing_channel_id => aeser_api_encoder:encode(channel, ChannelId),
-               host => Host,
-               offchain_tx => LatestState,
-               port => 9000,
-               protocol => <<"json-rpc">>
+             #{ existing_channel_id => aeser_api_encoder:encode(channel, ChannelId)
+              , existing_fsm_id => [{initiator, IFsmId0}, {responder, RFsmId0}]
+              , host => Host
+              , offchain_tx => LatestState
+              , port => 9000
+              , protocol => <<"json-rpc">>
               }, maybe_version_opts(Cfg)),
 
     {IConn, RConn} = sc_start_ws_peers(INodeName, RNodeName, Opts, Cfg),
+    {ok, #{ <<"event">> := <<"fsm_up">>, <<"fsm_id">> := IFsmId1 }} = sc_wait_for_channel_event(IConn, info),
+    {ok, #{ <<"event">> := <<"fsm_up">>, <<"fsm_id">> := RFsmId1 }} = sc_wait_for_channel_event(RConn, info),
+    true = IFsmId0 /= IFsmId1,
+    true = RFsmId0 /= RFsmId1,
     {ok, #{ <<"event">> := <<"channel_reestablished">> }} = sc_wait_for_channel_event(IConn, info),
     {ok, #{ <<"event">> := <<"channel_reestablished">> }} = sc_wait_for_channel_event(RConn, info),
     ok = sc_wait_reestablish(IConn, RConn),
 
-    {ok, Chan#{initiator => {IAccount, IConn}, responder => {RAccount, RConn}}}.
+    {ok, Chan#{initiator => {IAccount, IConn, IFsmId1}, responder => {RAccount, RConn, RFsmId1}}}.
 
 -spec sc_withdraw(channel(), party(), non_neg_integer())
     -> {ok, binary(), non_neg_integer()}.
 sc_withdraw(Channel, Origin, Amount)
   when Origin =:= initiator orelse Origin =:= responder ->
-    #{ initiator := {IAccount, IConn}, responder := {RAccount, RConn} } = Channel,
+    #{ initiator := {IAccount, IConn, _}, responder := {RAccount, RConn, _} } = Channel,
     #{ privkey := IPrivKey } = IAccount,
     #{ privkey := RPrivKey } = RAccount,
 
@@ -153,7 +163,7 @@ sc_withdraw(Channel, Origin, Amount)
     -> {ok, binary(), non_neg_integer(), non_neg_integer()}.
 sc_close_mutual(Channel, Closer)
   when Closer =:= initiator orelse Closer =:= responder ->
-    #{ initiator := {IAccount, IConn}, responder := {RAccount, RConn} } = Channel,
+    #{ initiator := {IAccount, IConn, _}, responder := {RAccount, RConn, _} } = Channel,
     #{ privkey := IPrivKey } = IAccount,
     #{ privkey := RPrivKey } = RAccount,
 
@@ -182,7 +192,7 @@ sc_close_mutual(Channel, Closer)
 
 -spec sc_transfer(channel(), party(), non_neg_integer()) -> ok.
 sc_transfer(Channel, Sender, Amount) when Sender =:= initiator orelse Sender =:= responder ->
-    #{ initiator := {IAccount, IConn}, responder := {RAccount, RConn} } = Channel,
+    #{ initiator := {IAccount, IConn, _}, responder := {RAccount, RConn, _} } = Channel,
     #{ pubkey := IPubKey, privkey := IPrivKey } = IAccount,
     #{ pubkey := RPubKey, privkey := RPrivKey } = RAccount,
 
@@ -193,7 +203,7 @@ sc_transfer(Channel, Sender, Amount) when Sender =:= initiator orelse Sender =:=
 
 -spec sc_deploy_contract(channel(), party(), map(), binary()) -> {ok, map()}.
 sc_deploy_contract(Channel, Who, Contract, CallData) ->
-    #{ initiator := {IAccount, IConn}, responder := {RAccount, RConn} } = Channel,
+    #{ initiator := {IAccount, IConn, _}, responder := {RAccount, RConn, _} } = Channel,
     #{ pubkey := IPubKey, privkey := IPrivKey } = IAccount,
     #{ pubkey := RPubKey, privkey := RPrivKey } = RAccount,
 
@@ -204,7 +214,7 @@ sc_deploy_contract(Channel, Who, Contract, CallData) ->
 
 -spec sc_call_contract(channel(), party(), map(), binary()) -> {ok, term()}.
 sc_call_contract(Channel, Who, Contract, CallData) ->
-    #{ initiator := {IAccount, IConn}, responder := {RAccount, RConn} } = Channel,
+    #{ initiator := {IAccount, IConn, _}, responder := {RAccount, RConn, _} } = Channel,
     #{ pubkey := IPubKey, privkey := IPrivKey } = IAccount,
     #{ pubkey := RPubKey, privkey := RPrivKey } = RAccount,
 
@@ -215,7 +225,7 @@ sc_call_contract(Channel, Who, Contract, CallData) ->
 
 -spec sc_leave(channel()) -> {ok, binary()}.
 sc_leave(Channel) ->
-    #{ initiator := {_, IConn}, responder := {_, RConn} } = Channel,
+    #{ initiator := {_, IConn, _}, responder := {_, RConn, _} } = Channel,
     %% if the initiator drops or leaves, the responder waits for a while for it
     %% to reconnect, so we make the responder to leave instead
     ws_send(RConn, <<"leave">>, #{}),
@@ -254,7 +264,12 @@ sc_start_ws_peers(INodeName, RNodeName, Opts, Cfg) ->
 
 sc_start_ws(NodeName, Role, Opts, Cfg) ->
     {Host, Port} = node_ws_ext_addr(NodeName, Cfg),
-    ?WS:start_channel(Host, Port, Role, Opts).
+    ?WS:start_channel(Host, Port, Role, maybe_add_fsm_id(Role, Opts)).
+
+maybe_add_fsm_id(Role, #{existing_fsm_id := Props} = Opts) when is_list(Props) ->
+    Opts#{existing_fsm_id => proplists:get_value(Role, Props)};
+maybe_add_fsm_id(_, Opts) ->
+    Opts.
 
 sc_wait_for_channel_event(ConnPid, Action) ->
     case ?WS:wait_for_channel_event(ConnPid, Action) of

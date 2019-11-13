@@ -4,23 +4,18 @@
         ]).
 
 create_tables(Mode) ->
-    Specs = lists:flatten([M:table_specs(Mode) || {missing_table, M} <- check_tables([])]),
+    AllSpecs = all_specs(Mode),
+    Specs = lists:flatten([proplists:lookup(Table, AllSpecs) || {missing_table, Table} <- check_tables([])]),
     [{atomic, ok} = mnesia:create_table(Tab, Spec) || {Tab, Spec} <- Specs].
 
 check_tables(Acc) ->
-    Errors = lists:foldl(
+    lists:foldl(
       fun(M, Acc1) ->
               M:check_tables(Acc1)
-      end, Acc, modules()),
-
-    %% Run migrations for each migration error. This will be later moved to aec_db.
-    [  ok = M:migrate(From, To)
-    || {vsn_fail, M, [{expected, From}, {got, To}]} = Error <- Errors
-    ,  is_migration_error(Error)],
-    [Error || Error <- Errors, not is_migration_error(Error)].
+      end, Acc, modules()).
 
 modules() ->
     [aesc_state_cache].
 
-is_migration_error({vsn_fail, _, _}) -> true;
-is_migration_error(_) -> false.
+all_specs(Mode) ->
+    lists:flatten([M:table_specs(Mode) || M <- modules()]).
