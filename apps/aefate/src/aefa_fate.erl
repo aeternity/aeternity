@@ -287,13 +287,15 @@ setup_engine(#{ contract := <<_:256>> = ContractPubkey
               , gas := Gas
               , value := Value
               , store := Store
+              , vm_version := VMVersion
               }, Env, Cache) ->
     {tuple, {Function, {tuple, ArgTuple}}} =
         aeb_fate_encoding:deserialize(Call),
     Arguments = tuple_to_list(ArgTuple),
     Contract = aeb_fate_data:make_contract(ContractPubkey),
     Stores = aefa_stores:put_contract_store(ContractPubkey, Store, aefa_stores:new()),
-    ES1 = aefa_engine_state:new(Gas, Value, Env, Stores, aefa_chain_api:new(Env), Cache),
+    APIState = aefa_chain_api:new(Env),
+    ES1 = aefa_engine_state:new(Gas, Value, Env, Stores, APIState, Cache, VMVersion),
     Caller = aeb_fate_data:make_address(maps:get(caller, Env)),
     ES2 = set_remote_function(Caller, Contract, Function, Value > 0, true, ES1),
     Signature = get_function_signature(Function, ES2),

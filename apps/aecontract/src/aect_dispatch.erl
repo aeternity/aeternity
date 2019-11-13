@@ -102,12 +102,13 @@ run_common(#{vm := ?VM_FATE_SOPHIA_1 = VMVersion, abi := ABIVersion},
             error({illegal_abi, ?VM_FATE_SOPHIA_1, ABIVersion});
         true ->
             OldContext  = aetx_env:context(TxEnv0),
-            Spec = #{ contract => ContractAddress
-                    , call     => CallData
-                    , code     => Code
-                    , store    => Store
-                    , gas      => Gas
-                    , value    => Value
+            Spec = #{ contract   => ContractAddress
+                    , call       => CallData
+                    , code       => Code
+                    , store      => Store
+                    , gas        => Gas
+                    , value      => Value
+                    , vm_version => VMVersion
                     },
             Env0 = maps:with(?FATE_VM_SPEC_FIELDS, CallDef),
             Env1  = Env0#{ tx_env   => aetx_env:set_context(TxEnv0, aetx_contract)
@@ -282,4 +283,3 @@ get_origin(VMVersion, CallerAddr, OriginAddr) ->
 maybe_deserialize_code(#{ byte_code := _ } = Code) -> Code;
 maybe_deserialize_code(SerializedCode) ->
     aect_sophia:deserialize(SerializedCode).
-
