@@ -30,6 +30,7 @@
         , memory/1
         , stores/1
         , trace/1
+        , vm_version/1
         ]).
 
 %% Setters
@@ -594,3 +595,8 @@ trace(#es{trace = X}) ->
 -spec set_trace(list(), state()) -> state().
 set_trace(X, ES) ->
     ES#es{trace = X}.
+
+%%%------------------
+-spec vm_version(state()) -> non_neg_integer().
+vm_version(#es{vm_version = X}) ->
+    X.
