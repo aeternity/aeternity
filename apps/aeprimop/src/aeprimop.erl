@@ -869,17 +869,21 @@ name_update_op(OwnerPubkey, NameHash, DeltaTTL, ClientTTL, Pointers
                      ?IS_NON_NEG_INTEGER(ClientTTL),
                      is_list(Pointers) ->
     {name_update,
-     {OwnerPubkey, NameHash, {relative_ttl, DeltaTTL}, {relative_ttl, ClientTTL}, Pointers}};
+     {OwnerPubkey, NameHash,
+      {relative_ttl, DeltaTTL}, {relative_ttl, ClientTTL},
+      Pointers, false}};
 name_update_op(OwnerPubkey, NameHash, TTL, ClientTTL, Pointers
               ) when ?IS_HASH(OwnerPubkey),
                      ?IS_HASH(NameHash),
                      ?IS_CHAIN_TTL_OPTION(TTL),
                      ?IS_CHAIN_TTL_OPTION(ClientTTL),
                      (Pointers == undefined orelse is_list(Pointers)) ->
-    {name_update, {OwnerPubkey, NameHash, TTL, ClientTTL, Pointers}}.
+    {name_update, {OwnerPubkey, NameHash, TTL, ClientTTL, Pointers, true}}.
 
 
-name_update({OwnerPubkey, NameHash, TTL, ClientTTL, Pointers}, S) ->
+name_update({OwnerPubkey, NameHash, TTL, ClientTTL, Pointers, IsContractCall}, S) ->
+    [assert_min_protocol(?IRIS_PROTOCOL_VSN, {from_contract, ?FUNCTION_NAME}, S) ||
+        IsContractCall],
     TTL /= undefined andalso assert_ttl(TTL, S),
     {Rec, S1} = get_name(NameHash, S),
     TTL1       = ttl_or_from(TTL, {Rec, ttl}, S1),

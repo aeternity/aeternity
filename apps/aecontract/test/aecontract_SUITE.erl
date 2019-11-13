@@ -560,12 +560,17 @@ init_per_testcase(TC, Config) when TC == sophia_aens_resolve;
     init_per_testcase_common(TC, Config);
 
 init_per_testcase(sophia_aens_update_transaction, Config) ->
-    meck:expect(aec_governance, name_claim_bid_timeout, fun(_, _) -> 0 end),
-    init_per_testcase_common(sophia_aens_update_transaction,
-                             [{sophia_version, ?SOPHIA_LIMA_FATE},
-                              {vm_version, ?VM_FATE_SOPHIA_1},
-                              {abi_version, ?ABI_FATE_SOPHIA_1},
-                              {protocol, lima} | Config]);
+    ProtocolVsn = aec_hard_forks:protocol_vsn(?config(protocol, Config)),
+    case ProtocolVsn >= ?IRIS_PROTOCOL_VSN of
+        true ->
+            meck:expect(aec_governance, name_claim_bid_timeout, fun(_, _) -> 0 end),
+            init_per_testcase_common(sophia_aens_update_transaction,
+                                     [{sophia_version, ?SOPHIA_LIMA_FATE},
+                                      {vm_version, ?VM_FATE_SOPHIA_1},
+                                      {abi_version, ?ABI_FATE_SOPHIA_1} | Config]);
+        false ->
+            {skip, {requires_protocol, iris, sophia_aens_update_transaction}}
+    end;
 
 init_per_testcase(TC, Config) ->
     init_per_testcase_common(TC, Config).
