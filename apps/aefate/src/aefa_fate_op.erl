@@ -1368,6 +1368,8 @@ aens_claim(Arg0, Arg1, Arg2, Arg3, Arg4, EngineState) ->
     end.
 
 aens_update(Arg0, Arg1, Arg2, Arg3, Arg4, Arg5, EngineState) ->
+    aefa_engine_state:vm_version(EngineState) >= ?VM_FATE_SOPHIA_2
+        orelse aefa_fate:abort({primop_error, aens_update, not_supported}, EngineState),
     {[Signature, Owner, NameString, OptTTL, OptClientTTL, OptPointers], ES1} =
         get_op_args([Arg0, Arg1, Arg2, Arg3, Arg4, Arg5], EngineState),
     if
@@ -1412,7 +1414,7 @@ aens_update(Arg0, Arg1, Arg2, Arg3, Arg4, Arg5, EngineState) ->
         {ok, API1} ->
             aefa_engine_state:set_chain_api(API1, ES2);
         {error, What} ->
-            aefa_fate:abort({primop_error, aens_transfer, What}, ES2)
+            aefa_fate:abort({primop_error, aens_update, What}, ES2)
     end.
 
 aens_transfer(Arg0, Arg1, Arg2, Arg3, EngineState) ->

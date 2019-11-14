@@ -136,8 +136,10 @@ is_legal_version_at_protocol(#{vm := VMVersion, abi := ABIVersion}, Protocol) ->
             VMVersion == ?VM_AEVM_SOPHIA_3;
         P when P >= ?LIMA_PROTOCOL_VSN, ABIVersion == ?ABI_AEVM_SOPHIA_1 ->
             VMVersion == ?VM_AEVM_SOPHIA_4;
-        P when P >= ?LIMA_PROTOCOL_VSN, ABIVersion == ?ABI_FATE_SOPHIA_1 ->
+        P when P == ?LIMA_PROTOCOL_VSN, ABIVersion == ?ABI_FATE_SOPHIA_1 ->
             VMVersion == ?VM_FATE_SOPHIA_1;
+        P when P >= ?IRIS_PROTOCOL_VSN, ABIVersion == ?ABI_FATE_SOPHIA_1 ->
+            VMVersion == ?VM_FATE_SOPHIA_2;
         _ ->
             false
     end.

@@ -220,7 +220,8 @@
         ?VM_AEVM_SOPHIA_2 -> ?assertMatch(ExpVm2, Res);
         ?VM_AEVM_SOPHIA_3 -> ?assertMatch(ExpVm3, Res);
         ?VM_AEVM_SOPHIA_4 -> ?assertMatch(ExpVm4, Res);
-        ?VM_FATE_SOPHIA_1 -> ok
+        ?VM_FATE_SOPHIA_1 -> ok;
+        ?VM_FATE_SOPHIA_2 -> ok
     end).
 
 -define(assertMatchProtocol(Res, ExpRoma, ExpMinerva),
@@ -489,7 +490,7 @@ init_tests(Release, VMName) ->
                 {iris,    {?IRIS_PROTOCOL_VSN,
                            IfAEVM(?SOPHIA_IRIS_AEVM, ?SOPHIA_IRIS_FATE),
                            IfAEVM(?ABI_AEVM_SOPHIA_1, ?ABI_FATE_SOPHIA_1),
-                           IfAEVM(?VM_AEVM_SOPHIA_4, ?VM_FATE_SOPHIA_1)}}],
+                           IfAEVM(?VM_AEVM_SOPHIA_4, ?VM_FATE_SOPHIA_2)}}],
     {Proto, Sophia, ABI, VM} = proplists:get_value(Release, Versions),
     meck:expect(aec_hard_forks, protocol_effective_at_height, fun(_) -> Proto end),
     Cfg = [{sophia_version, Sophia}, {vm_version, VM},
@@ -564,10 +565,7 @@ init_per_testcase(sophia_aens_update_transaction, Config) ->
     case ProtocolVsn >= ?IRIS_PROTOCOL_VSN of
         true ->
             meck:expect(aec_governance, name_claim_bid_timeout, fun(_, _) -> 0 end),
-            init_per_testcase_common(sophia_aens_update_transaction,
-                                     [{sophia_version, ?SOPHIA_LIMA_FATE},
-                                      {vm_version, ?VM_FATE_SOPHIA_1},
-                                      {abi_version, ?ABI_FATE_SOPHIA_1} | Config]);
+            init_per_testcase_common(sophia_aens_update_transaction, Config);
         false ->
             {skip, {requires_protocol, iris, sophia_aens_update_transaction}}
     end;

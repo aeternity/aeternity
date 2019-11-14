@@ -869,21 +869,17 @@ name_update_op(OwnerPubkey, NameHash, DeltaTTL, ClientTTL, Pointers
                      ?IS_NON_NEG_INTEGER(ClientTTL),
                      is_list(Pointers) ->
     {name_update,
-     {OwnerPubkey, NameHash,
-      {relative_ttl, DeltaTTL}, {relative_ttl, ClientTTL},
-      Pointers, false}};
+     {OwnerPubkey, NameHash, {relative_ttl, DeltaTTL}, {relative_ttl, ClientTTL}, Pointers}};
 name_update_op(OwnerPubkey, NameHash, TTL, ClientTTL, Pointers
               ) when ?IS_HASH(OwnerPubkey),
                      ?IS_HASH(NameHash),
                      ?IS_CHAIN_TTL_OPTION(TTL),
                      ?IS_CHAIN_TTL_OPTION(ClientTTL),
                      (Pointers == undefined orelse is_list(Pointers)) ->
-    {name_update, {OwnerPubkey, NameHash, TTL, ClientTTL, Pointers, true}}.
+    {name_update, {OwnerPubkey, NameHash, TTL, ClientTTL, Pointers}}.
 
 
-name_update({OwnerPubkey, NameHash, TTL, ClientTTL, Pointers, IsContractCall}, S) ->
-    [assert_min_protocol(?IRIS_PROTOCOL_VSN, {from_contract, ?FUNCTION_NAME}, S) ||
-        IsContractCall],
+name_update({OwnerPubkey, NameHash, TTL, ClientTTL, Pointers}, S) ->
     TTL /= undefined andalso assert_ttl(TTL, S),
     {Rec, S1} = get_name(NameHash, S),
     TTL1       = ttl_or_from(TTL, {Rec, ttl}, S1),
@@ -2008,12 +2004,6 @@ assert_channel_withdraw_amount(Channel, Amount) ->
 
 is_payable_contract(#{ payable := Payable }) -> Payable;
 is_payable_contract(_)                       -> runtime_error(bad_bytecode).
-
-assert_min_protocol(MinProtocolVsn, FeatureDescription, S) ->
-    S#state.protocol >= MinProtocolVsn orelse
-        runtime_error({requires_protocol,
-                       aec_hard_forks:protocol_vsn_name(MinProtocolVsn),
-                       FeatureDescription}).
 
 %%%===================================================================
 %%% Error handling
