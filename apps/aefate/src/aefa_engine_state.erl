@@ -6,7 +6,7 @@
 %%%-------------------------------------------------------------------
 -module(aefa_engine_state).
 
--export([ new/6
+-export([ new/7
         , finalize/1
         ]).
 
@@ -30,6 +30,7 @@
         , memory/1
         , stores/1
         , trace/1
+        , vm_version/1
         ]).
 
 %% Setters
@@ -110,14 +111,15 @@
                                    %% Call stack of contracts (including tail calls)
             , stores            :: aefa_stores:store()
             , trace             :: list()
+            , vm_version        :: non_neg_integer()
             }).
 
 -opaque state() :: #es{}.
 -export_type([ state/0
              ]).
 
--spec new(non_neg_integer(), non_neg_integer(), map(), aefa_stores:store(), aefa_chain_api:state(), map()) -> state().
-new(Gas, Value, Spec, Stores, APIState, CodeCache) ->
+-spec new(non_neg_integer(), non_neg_integer(), map(), aefa_stores:store(), aefa_chain_api:state(), map(), non_neg_integer()) -> state().
+new(Gas, Value, Spec, Stores, APIState, CodeCache, VMVersion) ->
     [error({bad_init_arg, X, Y}) || {X, Y} <- [{gas, Gas}, {value, Value}],
                                     not (is_integer(Y) andalso Y >= 0)],
     #es{ accumulator       = ?FATE_VOID
@@ -141,6 +143,7 @@ new(Gas, Value, Spec, Stores, APIState, CodeCache) ->
        , seen_contracts    = []
        , stores            = Stores
        , trace             = []
+       , vm_version        = VMVersion
        }.
 
 -define(GC_BUG_HARD_FORK_HEIGHT, 168300).
@@ -593,4 +596,7 @@ trace(#es{trace = X}) ->
 set_trace(X, ES) ->
     ES#es{trace = X}.
 
-
+%%%------------------
+-spec vm_version(state()) -> non_neg_integer().
+vm_version(#es{vm_version = X}) ->
+    X.

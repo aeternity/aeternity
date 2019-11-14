@@ -8,6 +8,7 @@
 -compile([export_all, nowarn_export_all]).
 
 -include_lib("eunit/include/eunit.hrl").
+-include_lib("apps/aecontract/include/aecontract.hrl").
 
 %% -- Compiling and running --
 
@@ -125,11 +126,13 @@ make_call_spec(Contract, Function0, Arguments, Store) ->
     EncArgs  = list_to_tuple([aefate_test_utils:encode(A) || A <- Arguments]),
     Calldata = {tuple, {Function, {tuple, EncArgs}}},
     CtStore  = make_store(Function0, Store),
-    #{ contract => pad_contract_name(Contract),
-       gas      => ?CALL_GAS,
-       value    => 0,
-       call     => aeb_fate_encoding:serialize(Calldata),
-       store    => CtStore }.
+    #{ contract   => pad_contract_name(Contract),
+       gas        => ?CALL_GAS,
+       value      => 0,
+       call       => aeb_fate_encoding:serialize(Calldata),
+       store      => CtStore,
+       vm_version => ?VM_FATE_SOPHIA_1
+     }.
 
 pad_contract_name(Name) ->
     PadSize = 32 - byte_size(Name),
@@ -595,4 +598,3 @@ remote_tests() ->
        []]).
 
 remote_test_() -> mk_test(remote(), remote_tests()).
-
