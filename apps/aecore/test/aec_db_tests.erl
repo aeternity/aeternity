@@ -108,9 +108,9 @@ write_chain_test_() ->
 
                ok
        end},
-      {"Throughput test building chain with 100 blocks",
+      {"Throughput test building chain with 1000 blocks",
        fun() ->
-               TotalBlockCount = 100,
+               TotalBlockCount = 1000,
 
                %% Setup
                [GB | Blocks] = aec_test_utils:gen_blocks_only_chain(TotalBlockCount + 1),
@@ -150,7 +150,7 @@ write_chain_test_() ->
 
                io:format(user,
                          "~nThroughput testing results (in microseconds):~n~n"
-                         "# of block inserted\t= ~p~n"
+                         "# of blocks inserted\t= ~p~n"
                          "Total runtime\t\t= ~p~n~n"
                          "Min\t= ~p~n"
                          "Max\t= ~p~n"
