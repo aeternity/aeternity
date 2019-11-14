@@ -112,17 +112,17 @@ extend_tx_default_spec(PubKey, State) ->
 %%% Query tx
 %%%===================================================================
 
-query_tx(PubKey, OracleKey, State) ->
-    query_tx(PubKey, OracleKey, #{}, State).
+query_tx(PubKey, OracleId, State) ->
+    query_tx(PubKey, OracleId, #{}, State).
 
-query_tx(PubKey, OracleKey, Spec0, State) ->
-    Spec = maps:merge(query_tx_default_spec(PubKey, OracleKey, State), Spec0),
+query_tx(PubKey, OracleId, Spec0, State) ->
+    Spec = maps:merge(query_tx_default_spec(PubKey, OracleId, State), Spec0),
     {ok, Tx} = aeo_query_tx:new(Spec),
     Tx.
 
-query_tx_default_spec(PubKey, OracleKey, State) ->
+query_tx_default_spec(PubKey, OracleId, State) ->
     #{ sender_id    => aeser_id:create(account, PubKey)
-     , oracle_id    => OracleKey
+     , oracle_id    => OracleId
      , query        => <<"Hello world">>
      , query_fee    => 5
      , query_ttl    => {delta, maps:get(query, ttl_defaults())}
@@ -189,4 +189,3 @@ set_account(Account, State) ->
 new_key_pair() ->
     #{ public := PubKey, secret := PrivKey } = enacl:sign_keypair(),
     {PubKey, PrivKey}.
-

@@ -7,6 +7,7 @@
 -module(aeo_query_tx).
 
 -include("oracle_txs.hrl").
+-include_lib("aecontract/include/hard_forks.hrl").
 
 -behavior(aetx).
 
@@ -31,7 +32,6 @@
 
 %% Additional getters
 -export([oracle_id/1,
-         oracle_pubkey/1,
          query/1,
          query_fee/1,
          query_id/1,
@@ -42,6 +42,7 @@
 
 
 -define(ORACLE_QUERY_TX_VSN, 1).
+
 -define(ORACLE_QUERY_TX_TYPE, oracle_query_tx).
 
 -record(oracle_query_tx, {
@@ -72,10 +73,6 @@ sender_pubkey(#oracle_query_tx{sender_id = SenderId}) ->
 oracle_id(#oracle_query_tx{oracle_id = OracleId}) ->
     OracleId.
 
--spec oracle_pubkey(tx()) -> aec_keys:pubkey().
-oracle_pubkey(#oracle_query_tx{oracle_id = OracleId}) ->
-    aeser_id:specialize(OracleId, oracle).
-
 -spec query(tx()) -> aeo_oracles:query().
 query(#oracle_query_tx{query = Query}) ->
     Query.
@@ -86,7 +83,8 @@ query_fee(#oracle_query_tx{query_fee = QueryFee}) ->
 
 -spec query_id(tx()) -> aeo_query:id().
 query_id(#oracle_query_tx{} = Tx) ->
-    aeo_query:id(sender_pubkey(Tx), nonce(Tx), oracle_pubkey(Tx)).
+    {_, OracleId} = aeser_id:specialize(oracle_id(Tx)),
+    aeo_query:id(sender_pubkey(Tx), nonce(Tx), OracleId).
 
 -spec query_ttl(tx()) -> aeo_oracles:ttl().
 query_ttl(#oracle_query_tx{query_ttl = QueryTTL}) ->
@@ -106,7 +104,7 @@ new(#{sender_id    := SenderId,
       response_ttl := ResponseTTL,
       fee          := Fee} = Args) ->
     account = aeser_id:specialize_type(SenderId),
-    oracle  = aeser_id:specialize_type(OracleId), %% TODO: Should also be 'name'
+    true = lists:member(aeser_id:specialize_type(OracleId), [oracle, name]),
     Tx = #oracle_query_tx{sender_id     = SenderId,
                           nonce         = Nonce,
                           oracle_id     = OracleId,
@@ -160,7 +158,7 @@ process(#oracle_query_tx{} = QTx, Trees, Env) ->
             {delta, RTTL} = response_ttl(QTx),
             Instructions =
                 aeprimop:oracle_query_tx_instructions(
-                  oracle_pubkey(QTx),
+                  oracle_id(QTx),
                   sender_pubkey(QTx),
                   query(QTx),
                   query_fee(QTx),
@@ -215,7 +213,7 @@ deserialize(?ORACLE_QUERY_TX_VSN,
                        ?ttl_block_int -> ?ttl_block_atom
                    end,
     account = aeser_id:specialize_type(SenderId),
-    oracle = aeser_id:specialize_type(OracleId),
+    true = lists:member(aeser_id:specialize_type(OracleId), [name, oracle]),
     #oracle_query_tx{sender_id    = SenderId,
                      nonce        = Nonce,
                      oracle_id    = OracleId,
@@ -244,9 +242,14 @@ serialization_template(?ORACLE_QUERY_TX_VSN) ->
 version(_) ->
     ?ORACLE_QUERY_TX_VSN.
 
+
 -spec valid_at_protocol(aec_hard_forks:protocol_vsn(), tx()) -> boolean().
-valid_at_protocol(_, _) ->
-    true.
+valid_at_protocol(Proto, Tx) ->
+    case {Proto >= ?IRIS_PROTOCOL_VSN, aeser_id:specialize_type(oracle_id(Tx))} of
+        {true, name} -> true;
+        {_, oracle} -> true;
+        _ -> false
+    end.
 
 for_client(#oracle_query_tx{sender_id = SenderId,
                             nonce      = Nonce,

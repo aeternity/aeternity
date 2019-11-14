@@ -210,7 +210,7 @@ oracle_extend_tx_instructions(Pubkey, DeltaTTL, Fee, Nonce) ->
     , oracle_extend_op(Pubkey, DeltaTTL)
     ].
 
--spec oracle_query_tx_instructions(pubkey(), pubkey(), binary(), fee(),
+-spec oracle_query_tx_instructions(aeser_id:id() | pubkey(), pubkey(), binary(), fee(),
                                    ttl(), ttl(), fee(), nonce()) -> [op()].
 oracle_query_tx_instructions(OraclePubkey, SenderPubkey, Query,
                              QueryFee, QTTL, RTTL, TxFee, Nonce) ->
@@ -587,7 +587,7 @@ resolve_account({GivenType, Hash, Var}, S) ->
 resolve_name(account, account, Pubkey, Var, S) ->
     aeprimop_state:set_var(Var, account, Pubkey, S);
 resolve_name(account, name, NameHash, Var, S) ->
-    {Pubkey, S1} = int_resolve_name(NameHash, S),
+    {Pubkey, S1} = int_resolve_name(NameHash, <<"account_pubkey">>, S),
     aeprimop_state:set_var(Var, account, Pubkey, S1).
 
 %%%-------------------------------------------------------------------
@@ -643,28 +643,59 @@ oracle_query_op(OraclePubkey, SenderPubkey, SenderNonce, Query, QueryFee,
                                          ?IS_NON_NEG_INTEGER(QTTL),
                                          ?IS_NON_NEG_INTEGER(RTTL),
                                          is_boolean(Return) ->
-    {oracle_query, {OraclePubkey, SenderPubkey, SenderNonce,
+    {oracle_query, {aeser_id:create(oracle, OraclePubkey), SenderPubkey, SenderNonce,
+                    Query, QueryFee, QTTL, RTTL, Return}};
+oracle_query_op(OracleId, SenderPubkey, SenderNonce, Query, QueryFee,
+                QTTL, RTTL, Return) when ?IS_HASH(SenderPubkey),
+                                         ?IS_NON_NEG_INTEGER(SenderNonce),
+                                         is_binary(Query),
+                                         ?IS_NON_NEG_INTEGER(QueryFee),
+                                         ?IS_NON_NEG_INTEGER(QTTL),
+                                         ?IS_NON_NEG_INTEGER(RTTL),
+                                         is_boolean(Return) ->
+    {IdType, IdHash} = aeser_id:specialize(OracleId),
+    true = lists:member(IdType, [oracle, name]),
+    true = ?IS_HASH(IdHash),
+    {oracle_query, {OracleId, SenderPubkey, SenderNonce,
                     Query, QueryFee, QTTL, RTTL, Return}}.
 
-oracle_query({OraclePubkey, SenderPubkey, SenderNonce,
-             Query, QueryFee, QTTL, RTTL, Return}, S) ->
+
+oracle_query({OracleId, SenderPubkey, SenderNonce,
+              Query, QueryFee, QTTL, RTTL, Return}, S) ->
+    case aeser_id:specialize(OracleId) of
+        {oracle, OraclePubkey} ->
+            oracle_query({OraclePubkey, OracleId, SenderPubkey, SenderNonce,
+                          Query, QueryFee, QTTL, RTTL, Return}, S);
+        {name, NameHash} ->
+            S#state.protocol >= ?IRIS_PROTOCOL_VSN orelse
+                runtime_error(oracle_query_by_name_hash_not_available_at_protocol),
+            {OraclePubkey, S1} = int_resolve_name(NameHash, <<"oracle_pubkey">>, S),
+            oracle_query({OraclePubkey, OracleId, SenderPubkey, SenderNonce,
+                          Query, QueryFee, QTTL, RTTL, Return}, S1)
+    end;
+
+oracle_query({OraclePubkey, OriginalIdent, SenderPubkey, SenderNonce,
+             Query, QueryFee, QTTL, RTTL, Return}, S) when is_binary(OraclePubkey) ->
     {Oracle, S1} = get_oracle(OraclePubkey, oracle_does_not_exist, S),
     assert_query_fee(Oracle, QueryFee),
     assert_query_ttl(Oracle, QTTL, RTTL, S),
     assert_oracle_format_match(Oracle, aeo_oracles:query_format(Oracle), Query),
     AbsoluteQTTL = S#state.height + QTTL,
     ResponseTTL = {delta, RTTL},
-    try aeo_query:new(OraclePubkey, SenderPubkey, SenderNonce, Query, QueryFee,
+    try aeo_query:new(OriginalIdent, SenderPubkey, SenderNonce, Query, QueryFee,
                       AbsoluteQTTL, ResponseTTL) of
         QueryObject0 ->
-            QueryObject =
-                case aetx_env:ga_nonce(S#state.tx_env, SenderPubkey) of
-                    {value, GANonce} ->
-                        QId = aeo_query:ga_id(GANonce, OraclePubkey),
-                        aeo_query:set_id(QId, QueryObject0);
-                    none ->
-                        QueryObject0
-                end,
+            QueryObjectId = case aetx_env:ga_nonce(S#state.tx_env, SenderPubkey) of
+                                {value, GANonce} ->
+                                    aeo_query:ga_id(GANonce, OraclePubkey);
+                                none ->
+                                    {_, PK} = aeser_id:specialize(OriginalIdent),
+                                    aeo_query:id(SenderPubkey, SenderNonce, PK)
+                            end,
+            QueryObject = lists:foldl(fun ({F, V}, A) -> aeo_query:F(V, A) end,
+                                      QueryObject0,
+                                      [{set_oracle, OraclePubkey},
+                                       {set_id, QueryObjectId}]),
             assert_not_oracle_query(QueryObject, S),
             S2 = put_oracle_query(QueryObject, S1),
             case Return of
@@ -849,7 +880,7 @@ name_transfer({OwnerPubkey, RecipientType, RecipientHash, NameHash}, S) ->
     {RecipientPubkey, S2} =
         case RecipientType of
             account -> {RecipientHash, S1};
-            name    -> int_resolve_name(RecipientHash, S1)
+            name    -> int_resolve_name(RecipientHash, <<"account_pubkey">>, S1)
         end,
     Name1 = aens_names:transfer_to(RecipientPubkey, Name),
     put_name(Name1, S2).
@@ -1462,8 +1493,7 @@ int_lock_amount(Amount, S) when ?IS_NON_NEG_INTEGER(Amount) ->
     {Account, S1} = ensure_account(LockPubkey, S),
     account_earn(Account, Amount, S1).
 
-int_resolve_name(NameHash, S) ->
-    Key = <<"account_pubkey">>,
+int_resolve_name(NameHash, Key, S) ->
     {Name, S1} = get_name(NameHash, S),
     case aens:resolve_from_name_object(Key, Name) of
         {ok, Id} ->

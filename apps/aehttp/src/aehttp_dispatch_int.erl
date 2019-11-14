@@ -324,7 +324,7 @@ handle_request_('PostOracleQuery', #{'OracleQueryTx' := Req}, _Context) ->
                                        query_fee, fee, query_ttl, response_ttl]),
                  read_optional_params([{ttl, ttl, '$no_value'}]),
                  api_decode([{sender_id, sender_id, {id_hash, [account_pubkey]}},
-                                {oracle_id, oracle_id, {id_hash, [oracle_pubkey]}}]),
+                             {oracle_id, oracle_id, {id_hash, [oracle_pubkey, name]}}]),
                  get_nonce_from_account_id(sender_id),
                  api_optional_decode([{query, contract_bytearray}]),
                  ttl_decode(query_ttl),
@@ -407,4 +407,3 @@ handle_request_(OperationID, Req, Context) ->
       [{OperationID, Req, Context}]
      ),
     {501, [], #{}}.
-

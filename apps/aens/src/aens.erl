@@ -9,6 +9,7 @@
 
 %% API
 -export([resolve/3,
+         resolve_hash/3,
          resolve_from_name_object/2,
          get_commitment_hash/2,
          get_name_entry/2,
@@ -29,17 +30,22 @@ resolve(Key, Name, NSTree) when is_binary(Key), is_binary(Name) ->
         true ->
             case name_to_name_hash(Name) of
                 {ok, NameHash} ->
-                        case name_hash_to_name_entry(NameHash, NSTree) of
-                            {ok, #{pointers := Pointers}} -> find_pointer_id(Key, Pointers);
-                            {error, _Rsn} = Error -> Error
-                        end;
-                {error, _Rsn} = Error -> Error
+                    resolve_hash(Key, NameHash, NSTree);
+                {error, _Rsn} = Error ->
+                    Error
             end;
         false ->
             AllowedTypes = [account_pubkey, oracle_pubkey, contract_pubkey, channel],
             aeser_api_encoder:safe_decode({id_hash, AllowedTypes}, Name)
     end.
 
+-spec resolve_hash(binary(), binary(), aens_state_tree:tree()) ->
+    {ok, aeser_id:id()} | {error, atom()}.
+resolve_hash(Key, NameHash, NSTree) when is_binary(Key), is_binary(NameHash) ->
+    case name_hash_to_name_entry(NameHash, NSTree) of
+        {ok, #{pointers := Pointers}} -> find_pointer_id(Key, Pointers);
+        {error, _Rsn} = Error -> Error
+    end.
 
 -spec resolve_from_name_object(binary(), aens_names:name()) ->
     {ok, aeser_id:id()} | {error, atom()}.

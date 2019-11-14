@@ -110,11 +110,12 @@ signers(#oracle_extend_tx{} = Tx, _) ->
 -spec process(tx(), aec_trees:trees(), aetx_env:env()) -> {ok, aec_trees:trees()}  | {error, term()}.
 process(#oracle_extend_tx{} = Tx, Trees, Env) ->
     {delta, DeltaTTL} = oracle_ttl(Tx),
+    {oracle, OraclePubkey} = aeser_id:specialize(oracle_id(Tx)),
     Instructions =
-        aeprimop:oracle_extend_tx_instructions(oracle_pubkey(Tx),
-                                                       DeltaTTL,
-                                                       fee(Tx),
-                                                       nonce(Tx)),
+        aeprimop:oracle_extend_tx_instructions(OraclePubkey,
+                                               DeltaTTL,
+                                               fee(Tx),
+                                               nonce(Tx)),
     aeprimop:eval(Instructions, Trees, Env).
 
 serialize(#oracle_extend_tx{oracle_id  = OracleId,
@@ -173,4 +174,3 @@ for_client(#oracle_extend_tx{oracle_id = OracleId,
                              <<"value">> => TTLValue},
       <<"fee">>         => Fee,
       <<"ttl">>         => TTL}.
-

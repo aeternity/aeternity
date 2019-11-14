@@ -90,7 +90,7 @@
 -spec new(aeo_query_tx:tx(), aec_blocks:height()) -> query().
 new(QTx, BlockHeight) ->
     AbsoluteQTTL = aeo_utils:ttl_expiry(BlockHeight, aeo_query_tx:query_ttl(QTx)),
-    new(aeo_query_tx:oracle_pubkey(QTx),
+    new(aeo_query_tx:oracle_id(QTx),
         aeo_query_tx:sender_pubkey(QTx),
         aeo_query_tx:nonce(QTx),
         aeo_query_tx:query(QTx),
@@ -99,14 +99,20 @@ new(QTx, BlockHeight) ->
         aeo_query_tx:response_ttl(QTx)).
 -endif.
 
--spec new(aec_keys:pubkey(), aec_keys:pubkey(), non_neg_integer(), oracle_query(),
+-spec new(aec_keys:pubkey() | aeser_id:id(), aec_keys:pubkey(), non_neg_integer(), oracle_query(),
           non_neg_integer(), non_neg_integer(), aeo_oracles:relative_ttl()) ->
              query().
-new(OraclePubkey, SenderPubkey, SenderNonce, Query, Fee, AbsoluteQTTL, RTTL) ->
+new(OraclePubkey, SenderPubkey, SenderNonce, Query, Fee, AbsoluteQTTL, RTTL)
+  when is_binary(OraclePubkey) ->
+    OracleId = aeser_id:create(oracle, OraclePubkey),
+    new(OracleId, SenderPubkey, SenderNonce, Query, Fee, AbsoluteQTTL, RTTL);
+new(OracleId, SenderPubkey, SenderNonce, Query, Fee, AbsoluteQTTL, RTTL) ->
+    {OracleIdType, OraclePubkey} = aeser_id:specialize(OracleId),
+    true = lists:member(OracleIdType, [oracle, name]),
     I = #query{ id           = id(SenderPubkey, SenderNonce, OraclePubkey)
               , sender_id    = aeser_id:create(account, SenderPubkey)
               , sender_nonce = SenderNonce
-              , oracle_id    = aeser_id:create(oracle, OraclePubkey)
+              , oracle_id    = OracleId
               , query        = Query
               , response     = undefined
               , ttl          = AbsoluteQTTL
@@ -258,6 +264,8 @@ sender_nonce(#query{sender_nonce = Nonce}) ->
 oracle_id(#query{oracle_id = OracleId}) ->
     OracleId.
 
+%% Initially, oracle_id can contain also {id, name, NameHash}.
+%% Caller of this function is responsible to ensure #query{} has already the oracle_id resolved.
 -spec oracle_pubkey(query()) -> aec_keys:pubkey().
 oracle_pubkey(#query{oracle_id = OracleId}) ->
     aeser_id:specialize(OracleId, oracle).
@@ -328,7 +336,7 @@ set_fee(X, I) ->
 assert_fields(I) ->
     List = [ {sender       , sender_pubkey(I)}
            , {sender_nonce , I#query.sender_nonce}
-           , {oracle       , oracle_pubkey(I)}
+           , {oracle       , I#query.oracle_id}
            , {query        , I#query.query}
            , {response     , I#query.response}
            , {ttl          , I#query.ttl}
@@ -345,6 +353,7 @@ assert_fields(I) ->
 assert_field(sender       , <<_:?PUB_SIZE/binary>> = X) -> X;
 assert_field(sender_nonce , X) when is_integer(X), X >= 0 -> X;
 assert_field(oracle       , <<_:?PUB_SIZE/binary>> = X) -> X;
+assert_field(oracle       , X) -> assert_oracle_id(X);
 assert_field(query        , X) when is_binary(X) -> X;
 assert_field(response     , X) when X =:= 'undefined' -> X;
 assert_field(response     , X) when is_binary(X) -> X;
@@ -352,3 +361,13 @@ assert_field(ttl          , X) when is_integer(X), X >= 0 -> X;
 assert_field(response_ttl , {delta, I} = X) when is_integer(I), I > 0 -> X;
 assert_field(fee          , X) when is_integer(X), X >= 0 -> X;
 assert_field(Field,         X) -> error({illegal, Field, X}).
+
+assert_oracle_id(X) ->
+    try
+        {T, <<_:?PUB_SIZE/binary>>} = aeser_id:specialize(X),
+        true = lists:member(T, [name, oracle]),
+        X
+    catch
+        _:_ ->
+            error({illegal, oracle, X})
+    end.

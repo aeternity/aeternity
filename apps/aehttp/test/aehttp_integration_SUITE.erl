@@ -126,6 +126,7 @@
     contract_transactions/1,
     contract_create_transaction_init_error/1,
     oracle_transactions/1,
+    named_oracle_transactions/1,
     nameservice_transactions/1,
     spend_transaction/1,
     state_channels_onchain_transactions/1,
@@ -432,6 +433,7 @@ groups() ->
         contract_transactions,
         contract_create_transaction_init_error,
         oracle_transactions,
+        named_oracle_transactions,
         nameservice_transactions,
         spend_transaction,
         state_channels_onchain_transactions,
@@ -715,6 +717,12 @@ end_per_group(oracle_txs, _Config) ->
 end_per_group(Group, Config) ->
     ok = stop_node(Group, Config).
 
+
+init_per_testcase(named_oracle_transactions, Config) ->
+    case aect_test_utils:latest_protocol_version() >= ?IRIS_PROTOCOL_VSN of
+        true -> Config;
+        false -> {skip, requires_iris_or_newer}
+    end;
 init_per_testcase(post_oracle_register, Config) ->
     %% TODO: assert there is enought balance
     {_, Pubkey} = aecore_suite_utils:sign_keys(?NODE),
@@ -2239,6 +2247,68 @@ oracle_transactions(_Config) ->
         get_oracle_query(maps:put(response_ttl, #{type => <<"block">>,
                                                   value => 2}, ResponseEncoded)),
     ok.
+
+named_oracle_transactions(_Config) ->
+    {ok, 200, _} = get_balance_at_top(),
+    MinerAddress = get_pubkey(),
+    {ok, MinerPubkey} = aeser_api_encoder:safe_decode(account_pubkey, MinerAddress),
+    OracleAddress = aeser_api_encoder:encode(oracle_pubkey, MinerPubkey),
+
+    Name = <<"test-name-pointing-to-oracle">>,
+    {ok, _, NameHash} = setup_name_pointing_to_oracle(Name, OracleAddress),
+    NameId = aeser_api_encoder:encode(name, NameHash),
+
+    % oracle_query_tx positive test via {id, name, NameHash}
+    QueryEncoded = #{sender_id => MinerAddress,
+                     oracle_id => NameId,
+                     query => <<"Hejsan Svejsan">>,
+                     query_fee => 2,
+                     fee => 100000 * aec_test_utils:min_gas_price(),
+                     query_ttl => #{type => <<"block">>, value => 50},
+                     response_ttl => #{type => <<"delta">>, value => 20}},
+    QueryDecoded = maps:merge(QueryEncoded,
+                              #{sender_id => aeser_id:create(account, MinerPubkey),
+                                oracle_id => aeser_id:create(name, NameHash),
+                                query_ttl => {block, 50},
+                                response_ttl => {delta, 20}}),
+    unsigned_tx_positive_test(QueryDecoded, QueryEncoded,
+                              fun get_oracle_query/1,
+                              fun aeo_query_tx:new/1, MinerPubkey),
+
+    % in order to test a positive case for oracle_response_tx we first need an
+    % actual Oracle query on the chain
+
+    {ok, 200, _} = get_balance_at_top(),
+    {ok, QueryNonce} = rpc(aec_next_nonce, pick_for_account, [MinerPubkey]),
+    ct:log("Nonce is ~p", [QueryNonce]),
+    QueryId = aeo_query:id(MinerPubkey, QueryNonce, NameHash),
+    {ok, 200, #{<<"tx">> := QueryTx}} = get_oracle_query(QueryEncoded),
+    QueryTxHash = sign_and_post_tx(QueryTx),
+
+    % mine blocks to include it
+    ok = wait_for_tx_hash_on_chain(QueryTxHash),
+    {ok, []} = rpc(aec_tx_pool, peek, [infinity]), % empty
+
+    ResponseEncoded = #{oracle_id => OracleAddress,
+                        query_id => aeser_api_encoder:encode(oracle_query_id, QueryId),
+                        response => <<"Hejsan">>,
+                        response_ttl => #{type => <<"delta">>, value => 20},
+                        fee => 100000 * aec_test_utils:min_gas_price()},
+    ResponseDecoded = maps:merge(ResponseEncoded,
+                                 #{oracle_id => aeser_id:create(oracle, MinerPubkey),
+                                   response_ttl => {delta, 20},
+                                   query_id => QueryId}),
+    unsigned_tx_positive_test(ResponseDecoded, ResponseEncoded,
+                              fun get_oracle_response/1,
+                              fun aeo_response_tx:new/1, MinerPubkey),
+
+    {ok, 200, #{<<"tx">> := ResponseTx}} = get_oracle_response(ResponseEncoded),
+    ResponseTxHash = sign_and_post_tx(ResponseTx),
+    % mine a block to include it
+    ok = wait_for_tx_hash_on_chain(ResponseTxHash),
+
+    ok.
+
 
 %% tests the following
 %% GET preclaim_tx unsigned transaction
@@ -3912,3 +3982,86 @@ http_datetime_to_unixtime(S) ->
     BaseSecs = calendar:datetime_to_gregorian_seconds({{1970,1,1},{0,0,0}}),
     ExpiresDt = httpd_util:convert_request_date(S),
     calendar:datetime_to_gregorian_seconds(ExpiresDt) - BaseSecs.
+
+
+setup_name_pointing_to_oracle(NameNoPrefix, OraclePubKey) ->
+    {PubKey, PrivKey} = initialize_account(100000000 * aec_test_utils:min_gas_price()),
+    ok = give_tokens(PubKey, 8000000000000000000),
+    PubKeyEnc   = aeser_api_encoder:encode(account_pubkey, PubKey),
+
+    {ok, 200, #{<<"top_block_height">> := Height}} = get_status_sut(),
+
+    Name        = aens_test_utils:fullname(NameNoPrefix, Height),
+    NameSalt    = 12345,
+    NameTTL     = 20000,
+    TTL         = 10,
+    {ok, NHash} = aens:get_name_hash(Name),
+    Fee         = 100000 * aec_test_utils:min_gas_price(),
+
+    %% Check mempool empty
+    {ok, []} = rpc(aec_tx_pool, peek, [infinity]),
+    {ok, 200, #{<<"balance">> := Balance}} = get_accounts_by_pubkey_sut(PubKeyEnc),
+
+    %% Get commitment hash to preclaim a name
+    {ok, 200, #{<<"commitment_id">> := EncodedCHash}} = get_commitment_id(Name, NameSalt),
+    {ok, _CHash} = aeser_api_encoder:safe_decode(commitment, EncodedCHash),
+
+    %% Submit name preclaim tx and check it is in mempool
+    PreclaimData = #{commitment_id => EncodedCHash,
+                     fee           => Fee,
+                     account_id    => PubKeyEnc},
+    {ok, 200, #{<<"tx">> := PreclaimTxEnc}} = get_name_preclaim(PreclaimData),
+    PreclaimTxHash = sign_and_post_tx(PreclaimTxEnc, PrivKey),
+    {ok, 200, #{<<"tx">> := PreclaimTx}} = get_transactions_by_hash_sut(PreclaimTxHash),
+    ?assertEqual(EncodedCHash, maps:get(<<"commitment_id">>, PreclaimTx)),
+
+    %% Mine a block and check mempool empty again
+    ok = wait_for_tx_hash_on_chain(PreclaimTxHash),
+    {ok, []} = rpc(aec_tx_pool, peek, [infinity]),
+
+    %% Check fee taken from account
+    {ok, 200, #{<<"balance">> := Balance1}} = get_accounts_by_pubkey_sut(PubKeyEnc),
+    ?assertEqual(Balance1, Balance - Fee),
+
+    %% Submit name claim tx and check it is in mempool
+    Protocol = aec_hard_forks:protocol_effective_at_height(Height),
+    {ClaimData, NameFee} =
+        case Protocol >= ?LIMA_PROTOCOL_VSN of
+            true ->
+                {#{account_id => PubKeyEnc,
+                  name       => aeser_api_encoder:encode(name, Name),
+                  name_salt  => NameSalt,
+                  name_fee   => aec_governance:name_claim_fee(Name, Protocol),
+                  fee        => Fee}, aec_governance:name_claim_fee(Name, Protocol)};
+            false ->
+                {#{account_id => PubKeyEnc,
+                  name       => aeser_api_encoder:encode(name, Name),
+                  name_salt  => NameSalt,
+                  fee        => Fee},  rpc(aec_governance, name_claim_locked_fee, [])}
+        end,
+    {ok, 200, #{<<"tx">> := ClaimTxEnc}} = get_name_claim(ClaimData),
+    ClaimTxHash = sign_and_post_tx(ClaimTxEnc, PrivKey),
+
+    %% Mine a block and check mempool empty again
+    ok = wait_for_tx_hash_on_chain(ClaimTxHash),
+    {ok, []} = rpc(aec_tx_pool, peek, [infinity]),
+
+    %% Submit name updated tx and check it is in mempool
+    Pointers    = [#{<<"key">> => <<"oracle_pubkey">>, <<"id">> => OraclePubKey}],
+    NameUpdateData = #{account_id => PubKeyEnc,
+                       name_id    => aeser_api_encoder:encode(name, NHash),
+                       client_ttl => TTL,
+                       pointers   => Pointers,
+                       name_ttl   => NameTTL,
+                       fee        => Fee},
+    {ok, 200, #{<<"tx">> := UpdateEnc}} = get_name_update(NameUpdateData),
+    UpdateTxHash = sign_and_post_tx(UpdateEnc, PrivKey),
+
+    %% Mine a block and check mempool empty again
+    ok = wait_for_tx_hash_on_chain(UpdateTxHash),
+    {ok, []} = rpc(aec_tx_pool, peek, [infinity]),
+
+    {ok, 200, #{<<"pointers">> := [#{<<"key">> := <<"oracle_pubkey">>}]}} =
+        get_names_entry_by_name_sut(Name),
+
+    {ok, Name, NHash}.
