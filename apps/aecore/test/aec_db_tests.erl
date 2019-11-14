@@ -107,9 +107,63 @@ write_chain_test_() ->
                ?assertEqual(block_hash(B2), LastTopBlockHash),
 
                ok
+       end},
+      {"Throughput test building chain with 1000 blocks",
+       fun() ->
+               TotalBlockCount = 1000,
+
+               %% Setup
+               [GB | Blocks] = aec_test_utils:gen_blocks_only_chain(TotalBlockCount + 1),
+               GHash = block_hash(GB),
+               Block = aec_db:get_block(GHash),
+               ?compareBlockResults(GB, Block),
+               TopBlockHash = aec_db:get_top_block_hash(),
+               ?assertEqual(GHash, TopBlockHash),
+
+               InsertBlockFun = fun(B0, AccTime) ->
+                                        T0 = erlang:system_time(microsecond),
+                                        ok = aec_db:write_block(B0),
+                                        T1 = erlang:system_time(microsecond),
+                                        [T1 - T0 | AccTime]
+                                end,
+
+               %% Run timings
+               Timings = lists:foldl(InsertBlockFun, [], Blocks),
+
+               %% Prepare and print data
+               TotalRuntime = lists:sum(Timings),
+               [Min | _] = TimingsSorted = lists:sort(Timings),
+               Max = lists:last(TimingsSorted),
+               Range = Max - Min,
+               Mean = TotalRuntime div length(Timings),
+               Median = lists:nth(ceil(length(Timings) / 2), TimingsSorted),
+               Counts = lists:foldl(
+                          fun(N, Acc) ->
+                                  case lists:keyfind(N, 1, Acc) of
+                                      false ->
+                                          [{N, 1} | Acc];
+                                      {N, Count} ->
+                                          lists:keyreplace(N, 1, Acc, {N, Count + 1})
+                                  end
+                          end, [], Timings),
+               [{Mode, _} | _] = lists:keysort(2, Counts),
+
+               io:format(user,
+                         "~nThroughput testing results (in microseconds):~n~n"
+                         "# of blocks inserted\t= ~p~n"
+                         "Total runtime\t\t= ~p~n~n"
+                         "Min\t= ~p~n"
+                         "Max\t= ~p~n"
+                         "Mean\t= ~p~n"
+                         "Mode\t= ~p~n"
+                         "Range\t= ~p~n"
+                         "Median\t= ~p~n",
+                         [TotalBlockCount, TotalRuntime, Min, Max, Mean, Mode, Range, Median]
+                        ),
+
+               ok
        end}
      ]}.
-
 
 restart_test_() ->
     {foreach,
