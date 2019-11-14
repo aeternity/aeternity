@@ -789,17 +789,27 @@ check_mnesia_tables([], Acc) ->
     fold_hooks('$aec_db_check_tables', Acc).
 
 check_table(Table, Spec, Acc) ->
-    try mnesia:table_info(Table, user_properties) of
-        [{vsn, Vsn}] ->
-            case proplists:get_value(user_properties, Spec) of
-                [{vsn, Vsn}] -> Acc;
-                [{vsn, Old}] -> [{vsn_fail, Table,
-                                  [{expected, Vsn},
-                                   {got, Old}]}
-                                 |Acc]
-            end;
-        Other -> [{missing_version, Table, Other}|Acc]
-    catch _:_ -> [{missing_table, Table}|Acc]
+    try
+        UserProps = mnesia:table_info(Table, user_properties),
+        UserPropsSpec = proplists:get_value(user_properties, Spec, []),
+        Vsn = proplists:get_value(vsn, UserProps),
+        VsnSpec = proplists:get_value(vsn, UserPropsSpec),
+        if
+            Vsn =:= undefined ->
+                [{missing_version, Table, UserProps}|Acc];
+            VsnSpec =:= undefined ->
+                [{missing_version_in_spec, Table, UserProps}|Acc];
+            Vsn =:= VsnSpec ->
+                Acc;
+            true ->
+                %% old version and spec are not equal
+                {vsn, Old} = VsnSpec,
+                {vsn, New} = Vsn,
+                [{vsn_fail, Table, [{expected, New}, {got, Old}]}|Acc]
+        end
+    catch
+        _:_ ->
+            [{missing_table, Table}|Acc]
     end.
 
 assert_schema_node_name(#{persist := false}) ->
