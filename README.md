@@ -72,3 +72,5 @@ docker run -p 3013:3013 -p 3015:3015 aeternity/aeternity
 [license]: https://github.com/aeternity/aeternity/blob/master/LICENSE
 [build tool]: https://img.shields.io/badge/build%20tool-rebar3-orange.svg
 [rebar3]: https://www.rebar3.org
+
+CI Fork Test
