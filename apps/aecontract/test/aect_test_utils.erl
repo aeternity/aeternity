@@ -574,7 +574,7 @@ init_per_group(fate, Cfg, Cont) ->
             Cont([{sophia_version, ?SOPHIA_LIMA_FATE}, {vm_version, ?VM_FATE_SOPHIA_1},
                   {abi_version, ?ABI_FATE_SOPHIA_1}, {protocol, lima} | Cfg]);
         ?IRIS_PROTOCOL_VSN ->
-            Cont([{sophia_version, ?SOPHIA_IRIS_FATE}, {vm_version, ?VM_FATE_SOPHIA_1},
+            Cont([{sophia_version, ?SOPHIA_IRIS_FATE}, {vm_version, ?VM_FATE_SOPHIA_2},
                   {abi_version, ?ABI_FATE_SOPHIA_1}, {protocol, iris} | Cfg]);
         _ ->
             {skip, fate_not_available}

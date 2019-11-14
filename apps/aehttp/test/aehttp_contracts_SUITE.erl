@@ -1140,7 +1140,8 @@ events_contract(Config) ->
         ?VM_AEVM_SOPHIA_2 -> ?assertMatch(ExpVm2, Res);
         ?VM_AEVM_SOPHIA_3 -> ?assertMatch(ExpVm3, Res);
         ?VM_AEVM_SOPHIA_4 -> ?assertMatch(ExpVm4, Res);
-        ?VM_FATE_SOPHIA_1 -> ?assertMatch(ExpFate, Res)
+        ?VM_FATE_SOPHIA_1 -> ?assertMatch(ExpFate, Res);
+        ?VM_FATE_SOPHIA_2 -> ?assertMatch(ExpFate, Res)
     end).
 
 remote_gas_test_contract(Config) ->
@@ -1692,4 +1693,3 @@ wait_for_tx_hash_on_chain(Node, TxHash) ->
                 {error, _Reason} -> did_not_mine
             end
     end.
-
