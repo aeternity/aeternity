@@ -37,10 +37,10 @@
         , aec_keys_cleanup/1
         , aec_keys_bare_setup/0
         , aec_keys_bare_cleanup/1
-        , gen_block_chain_with_state/1
         , gen_blocks_only_chain/1
         , gen_blocks_only_chain/2
         , gen_blocks_only_chain/3
+        , gen_block_chain_with_state/1
         , gen_block_chain_with_state/2
         , blocks_only_chain/1
         , genesis_block/0
