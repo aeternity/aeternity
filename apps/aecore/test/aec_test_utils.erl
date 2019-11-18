@@ -83,18 +83,18 @@
 -define(GENESIS_ACCOUNTS, [{<<"_________my_public_key__________">>, 100}]).
 
 running_apps() ->
-    lists:map(fun({A,_,_}) -> A end, application:which_applications()).
+    [A || {A,_,_} <- application:which_applications()].
 
 loaded_apps() ->
-    lists:map(fun({A,_,_}) -> A end, application:loaded_applications()).
+    [A || {A,_,_} <- application:loaded_applications()].
 
 restore_stopped_and_unloaded_apps(OldRunningApps, OldLoadedApps) ->
     BadRunningApps = running_apps() -- OldRunningApps,
     lists:foreach(fun(A) -> ok = application:stop(A) end, BadRunningApps),
     BadLoadedApps = loaded_apps() -- OldLoadedApps,
     lists:foreach(fun(A) -> ok = application:unload(A) end, BadLoadedApps),
-    OldRunningApps = running_apps(),
-    OldLoadedApps = loaded_apps(),
+    {_, OldRunningApps} = {OldRunningApps, running_apps()},
+    {_, OldLoadedApps} = {OldLoadedApps, loaded_apps()},
     ok.
 
 genesis_accounts() ->
