@@ -110,8 +110,6 @@
 %% - name_service_cache
 %% - one per state tree
 
--define(DB_OPS_ERROR_STORE, aec_db_errors).
-
 -define(TAB(Record),
         {Record, tab(Mode, Record, record_info(fields, Record), [])}).
 -define(TAB(Record, Extra),
@@ -236,23 +234,28 @@ match_alts([[B]|_]        , _, _) -> B;
 match_alts([_|T]          , F, N) -> match_alts(T, F, N);
 match_alts([]             , _, _) -> erlang:error(no_matching_backend).
 
-backend_mode(_            , #{persist := false} = M) -> M#{ module => mnesia
-                                                          , alias => ram_copies
-                                                          };
-backend_mode(<<"rocksdb">>, #{persist := true } = M) -> M#{ module => mnesia_rocksdb
-                                                          , alias => rocksdb_copies
-                                                          , user_properties => [ {rocksdb_opts,
-                                                                                  [ {on_write_error, error}
-                                                                                  , {on_write_error_store, ?DB_OPS_ERROR_STORE}
-                                                                                  ]}
-                                                                               ]
-                                                          };
-backend_mode(<<"leveled">>, #{persist := true } = M) -> M#{ module => mnesia_leveled
-                                                          , alias => leveled_copies
-                                                          };
-backend_mode(<<"mnesia">> , #{persist := true } = M) -> M#{ module => mnesia
-                                                          , alias => disc_copies
-                                                          }.
+backend_mode(_ , #{persist := false} = M) ->
+        M#{ module => mnesia
+          , alias => ram_copies
+          };
+backend_mode(<<"rocksdb">>, #{persist := true } = M) ->
+        M#{ module => mnesia_rocksdb
+          , alias => rocksdb_copies
+          , user_properties => [ {rocksdb_opts,
+                                  [ {on_write_error, error}
+                                    %% This refers to the process managing the table as well.
+                                  , {on_write_error_store, aec_db_error_store}
+                                  ]}
+                               ]
+          };
+backend_mode(<<"leveled">>, #{persist := true } = M) ->
+        M#{ module => mnesia_leveled
+          , alias => leveled_copies
+          };
+backend_mode(<<"mnesia">>, #{persist := true } = M) ->
+        M#{ module => mnesia
+          , alias => disc_copies
+          }.
 
 ensure_transaction(Fun) when is_function(Fun, 0) ->
     ensure_transaction(Fun, []).
@@ -751,14 +754,12 @@ initialize_db(Mode, Storage) ->
     run_hooks('$aec_db_add_plugins', Mode),
     add_index_plugins(),
     run_hooks('$aec_db_add_index_plugins', Mode),
-    ensure_error_store(),
     ensure_mnesia_tables(Mode, Storage),
     ok.
 
 expand_mode(ram)  -> backend_mode(<<"mnesia">>, #{persist => false});
 expand_mode(disc) -> disc_backend_mode();
 expand_mode(M) when is_map(M) -> M.
-
 
 run_hooks(Hook, Mode) ->
     [M:F(Mode) || {_App, {M,F}} <- setup:find_env_vars(Hook)].
@@ -785,17 +786,6 @@ ensure_mnesia_tables(Mode, Storage) ->
         ok ->
             [{atomic,ok} = mnesia:create_table(T, Spec) || {T, Spec} <- Tables],
             run_hooks('$aec_db_create_tables', Mode),
-            ok
-    end.
-
-ensure_error_store() ->
-    case ets:info(?DB_OPS_ERROR_STORE) of
-        undefined ->
-            Opts = [ bag
-                   , named_table
-                   , public ],
-            ets:new(?DB_OPS_ERROR_STORE, Opts);
-        _ ->
             ok
     end.
 
@@ -937,7 +927,7 @@ try_activity(Type, Fun, ErrorKeys, Retries) ->
     end.
 
 handle_activity_result(Res, ErrorKeys) ->
-    case check_error_store(ErrorKeys) of
+    case aec_db_error_store:check(ErrorKeys) of
         [] ->
             Res;
         [{_, Err, _} | _] ->
@@ -946,12 +936,3 @@ handle_activity_result(Res, ErrorKeys) ->
             %% layer.
             exit(Err)
     end.
-
-check_error_store([]) ->
-    [];
-check_error_store([{Tab, K} | Rest]) ->
-    ets:take(?DB_OPS_ERROR_STORE, {Tab, K}) ++ check_error_store(Rest);
-check_error_store([Tab | Rest]) when is_atom(Tab) ->
-    Objects = ets:match_object(?DB_OPS_ERROR_STORE, {{Tab, '_'}, '_', '_'}),
-    ets:match_delete(?DB_OPS_ERROR_STORE, {{Tab, '_'}, '_', '_'}),
-    Objects ++ check_error_store(Rest).
