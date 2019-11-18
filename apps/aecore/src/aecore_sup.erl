@@ -48,7 +48,6 @@
 -define(CHILD(Mod,N,Type), {Mod,{Mod,start_link,[]},permanent,N,Type,[Mod]}).
 -define(CHILD(Mod,N,Type,Params), {Mod,{Mod,start_link,Params},permanent,N,Type,[Mod]}).
 
-
 %%====================================================================
 %% API functions
 %%====================================================================
@@ -68,6 +67,7 @@ init([]) ->
             ?CHILD(aec_keys, 5000, worker),
             ?CHILD(aec_tx_pool_gc, 5000, worker),
             ?CHILD(aec_tx_pool, 5000, worker),
+            ?CHILD(aec_db_error_store, 5000, worker),
             ?CHILD(aec_conductor_sup, 5000, supervisor),
             ?CHILD(aec_connection_sup, 5000, supervisor)
            ],
