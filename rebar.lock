@@ -121,7 +121,7 @@
  {<<"sext">>,{pkg,<<"sext">>,<<"1.5.0">>},0},
  {<<"sha3">>,
   {git,"https://github.com/aeternity/erlang-sha3",
-      {ref,"c818ddc20004ab26e09900e35608a58b5c8429a5"}},
+      {ref,"b5f27a29ba1179e5907c50d7ec7aa79b2857e981"}},
   0},
  {<<"trace_runner">>,
   {git,"git://github.com/uwiger/trace_runner.git",
