@@ -165,18 +165,12 @@ range_collect_reachable_hashes(LastHeight, ToHeight, Hashes) ->
 swap_nodes(Hashes) ->
     NodesCount = ets:info(Hashes, size),
     %% clearing tab can't run in transaction
-    {ClearTime, {atomic, ok}} = ?TIMED(mnesia:clear_table(aec_account_state)),
+    {ClearTime, ok} = ?TIMED(aec_db:clear_table(aec_account_state)),
     ?LOG("GC clearing accounts table took ~p seconds", [ClearTime / 1000000]),
     ?LOG("GC writing ~p reachable account state nodes...", [NodesCount]),
-    {WriteTime, {atomic, ok}} = ?TIMED(mnesia:sync_transaction(fun () -> write_nodes(Hashes) end)),
+    {WriteTime, ok} = ?TIMED(aec_db:write_accounts_nodes(Hashes)),
     ?LOG("GC writing reachable account state nodes took ~p seconds", [WriteTime / 1000000]),
     {ok, NodesCount}.
-
-write_nodes(Hashes) ->
-    ets:foldl(fun ({Hash, Node}, ok) ->
-                      Rec = #aec_account_state{key = Hash, value = Node},
-                      mnesia:write(Rec)
-              end, ok, Hashes).
 
 -spec get_mpt(non_neg_integer()) -> aeu_mp_trees:tree().
 get_mpt(Height) ->
