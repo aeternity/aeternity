@@ -12,6 +12,7 @@
          load_database/0,               % called in aecore app start phase
          tables/1,                      % for e.g. test database setup
          clear_db/0,                    % mostly for test purposes
+         clear_table/1,                 % for deleting all table entries
          tab_copies/1,                  % for create_tables hooks
          check_table/3,                 % for check_tables hooks
          persisted_valid_genesis_block/0
@@ -75,6 +76,7 @@
         , find_oracles_node/1
         , find_oracles_cache_node/1
         , write_accounts_node/2
+        , write_accounts_nodes/1
         , write_calls_node/2
         , write_channels_node/2
         , write_contracts_node/2
@@ -171,9 +173,18 @@ clear_db() ->
              fun({T, _}) ->
                      Keys = mnesia:all_keys(T),
                      [mnesia:delete({T, K}) || K <- Keys]
-             end, tables())
+             end, tables()),
+           ok
        end,
        [T || {T, _} <- tables()]).
+
+clear_table(Tab) ->
+    ?t(begin
+          Keys = mnesia:all_keys(Tab),
+          [mnesia:delete({Tab, K}) || K <- Keys],
+          ok
+       end,
+       [Tab]).
 
 persisted_valid_genesis_block() ->
     case application:get_env(aecore, persist, ?PERSIST) of
@@ -440,8 +451,17 @@ write_block_state(Hash, Trees, AccDifficulty, ForkId, Fees, Fraud) ->
        [{aec_block_state, Hash}]).
 
 write_accounts_node(Hash, Node) ->
-    ?t(mnesia:write(#aec_account_state{key = Hash, value = Node}),
-       [{aec_account_state, Hash}]).
+    write_accounts_nodes([{Hash, Node}]).
+
+write_accounts_nodes(Nodes) ->
+    ?t(begin
+          lists:map(
+           fun({Hash, Node}) ->
+                 mnesia:write(#aec_account_state{key = Hash, value = Node})
+           end, Nodes),
+          ok
+       end,
+       [{aec_account_state, Hash} || {Hash, _} <- Nodes]).
 
 write_calls_node(Hash, Node) ->
     ?t(mnesia:write(#aec_call_state{key = Hash, value = Node}),
