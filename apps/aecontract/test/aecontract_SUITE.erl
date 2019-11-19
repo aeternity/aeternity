@@ -5636,7 +5636,7 @@ sophia_aens_update_transaction(Cfg) ->
     ?assertEqual(12345, aens_names:ttl(Rec2)),
 
     {} = ?call(call_contract, Acc, Ct, update, {tuple, []},
-               {Ct, Name1, Some(FixTTL(23456)), Some(FixTTL(23456)), None},
+               {Ct, Name1, Some(FixTTL(23456)), Some(23456), None},
                #{ height => 15 }),
     Rec3 = GetNameRecord(),
     ?assertEqual(23456, aens_names:ttl(Rec3)),
@@ -5645,7 +5645,7 @@ sophia_aens_update_transaction(Cfg) ->
     {} = ?call(call_contract, Acc, Ct, update, {tuple, []},
                {Ct, Name1,
                 Some(RelTTL(13131)),
-                Some(FixTTL(34567)),
+                Some(34567),
                 Some(#{<<"account_pubkey">> => AccountPointee(<<APubkey:256>>),
                        <<"oracle_pubkey">> => OraclePointee(<<OPubkey:256>>),
                        <<"contract_pubkey">> => ContractPointee(<<CPubkey:256>>)})},

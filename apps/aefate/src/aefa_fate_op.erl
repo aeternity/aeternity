@@ -1391,12 +1391,21 @@ aens_update(Arg0, Arg1, Arg2, Arg3, Arg4, Arg5, EngineState) ->
     ?FATE_BYTES(SignBin) = Signature,
     ?FATE_ADDRESS(Pubkey) = Owner,
     ?FATE_STRING(NameBin) = NameString,
-    TTL = decode_ttl_option(OptTTL),
-    ClientTTL = decode_ttl_option(OptClientTTL),
+    TTL =
+        case OptTTL of
+            ?FATE_VARIANT([_,_], 0, {}) -> undefined;
+            ?FATE_VARIANT([_,_], 1, {?FATE_REL_TTL(H)}) -> {relative_ttl, H};
+            ?FATE_VARIANT([_,_], 1, {?FATE_ABS_TTL(H)}) -> {fixed_ttl, H}
+        end,
+    ClientTTL =
+        case OptClientTTL of
+            ?FATE_VARIANT([_,_], 0, {}) -> undefined;
+            ?FATE_VARIANT([_,_], 1, {ClientTTL_}) -> ClientTTL_
+        end,
     Pointers =
         case OptPointers of
-            ?FATE_VARIANT([_, _], 0, {}) -> undefined;
-            ?FATE_VARIANT([_, _], 1, {Pointers_}) ->
+            ?FATE_VARIANT([_,_], 0, {}) -> undefined;
+            ?FATE_VARIANT([_,_], 1, {Pointers_}) ->
                 maps:fold(
                   fun (PtrKey, ?FATE_VARIANT([_, _, _], AddrTag, {{address, Addr}}), Acc) ->
                           IdType = case AddrTag of    % type pointee =
@@ -1976,11 +1985,3 @@ words_used(I) when is_integer(I) ->
 shift_word(0, N) -> N;
 shift_word(A, N) ->
     shift_word(A bsr 64, N + 1).
-
-
-decode_ttl_option(?FATE_VARIANT([_, _], 0, {})) ->
-    undefined;
-decode_ttl_option(?FATE_VARIANT([_, _], 1, {?FATE_VARIANT([_, _], 0, {H})})) ->
-    {relative_ttl, H};
-decode_ttl_option(?FATE_VARIANT([_, _], 1, {?FATE_VARIANT([_, _], 1, {H})})) ->
-    {fixed_ttl, H}.

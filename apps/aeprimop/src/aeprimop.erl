@@ -869,12 +869,12 @@ name_update_op(OwnerPubkey, NameHash, DeltaTTL, ClientTTL, Pointers
                      ?IS_NON_NEG_INTEGER(ClientTTL),
                      is_list(Pointers) ->
     {name_update,
-     {OwnerPubkey, NameHash, {relative_ttl, DeltaTTL}, {relative_ttl, ClientTTL}, Pointers}};
+     {OwnerPubkey, NameHash, {relative_ttl, DeltaTTL}, ClientTTL, Pointers}};
 name_update_op(OwnerPubkey, NameHash, TTL, ClientTTL, Pointers
               ) when ?IS_HASH(OwnerPubkey),
                      ?IS_HASH(NameHash),
                      ?IS_CHAIN_TTL_OPTION(TTL),
-                     ?IS_CHAIN_TTL_OPTION(ClientTTL),
+                     (ClientTTL == undefined orelse ?IS_NON_NEG_INTEGER(ClientTTL)),
                      (Pointers == undefined orelse is_list(Pointers)) ->
     {name_update, {OwnerPubkey, NameHash, TTL, ClientTTL, Pointers}}.
 
@@ -883,7 +883,9 @@ name_update({OwnerPubkey, NameHash, TTL, ClientTTL, Pointers}, S) ->
     TTL /= undefined andalso assert_ttl(TTL, S),
     {Rec, S1} = get_name(NameHash, S),
     TTL1       = ttl_or_from(TTL, {Rec, ttl}, S1),
-    ClientTTL1 = ttl_or_from(ClientTTL, {Rec, client_ttl}, S1),
+    ClientTTL1 = if ClientTTL == undefined -> aens_names:client_ttl(Rec);
+                    true -> ClientTTL
+                 end,
     Pointers1  = if Pointers == undefined -> aens_names:pointers(Rec);
                     is_list(Pointers) -> Pointers
                  end,

@@ -46,14 +46,14 @@ contract AENSTest =
   stateful entrypoint update(owner      : address,
                              name       : string,
                              ttl        : option(Chain.ttl),
-                             client_ttl : option(Chain.ttl),
+                             client_ttl : option(int),
                              pointers   : option(map(string, AENS.pointee))) : unit =
     AENS.update(owner, name, ttl, client_ttl, pointers)
 
   stateful entrypoint signedUpdate(owner      : address,
                                    name       : string,
                                    ttl        : option(Chain.ttl),
-                                   client_ttl : option(Chain.ttl),
+                                   client_ttl : option(int),
                                    pointers   : option(map(string, AENS.pointee)),
                                    sign       : signature) : unit =
     AENS.update(owner, name, ttl, client_ttl, pointers, signature = sign)
