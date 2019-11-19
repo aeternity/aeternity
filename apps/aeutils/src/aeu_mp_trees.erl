@@ -42,6 +42,7 @@
 -export([record_fields/1]).
 
 -export_type([ tree/0
+             , db/0
              , iterator/0
              , iterator_opts/0
              , key/0
