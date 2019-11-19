@@ -168,7 +168,7 @@ is_legal_version_at_protocol_(create, #{vm := ?VM_FATE_SOPHIA_1, abi := ?ABI_FAT
         ?MINERVA_PROTOCOL_VSN         -> false;
         ?FORTUNA_PROTOCOL_VSN         -> false;
         ?LIMA_PROTOCOL_VSN            -> true;
-        P when P > ?LIMA_PROTOCOL_VSN -> true
+        P when P > ?LIMA_PROTOCOL_VSN -> false
     end;
 is_legal_version_at_protocol_(create, #{vm := ?VM_FATE_SOPHIA_2, abi := ?ABI_FATE_SOPHIA_1}, Protocol) ->
     case Protocol of
