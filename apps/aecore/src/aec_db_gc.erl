@@ -100,7 +100,7 @@ handle_event(info, {'ETS-TRANSFER', Hashes, _, Time}, idle, #data{enabled = true
          [ets:info(Hashes, size), Time / 1000000]),
     {next_state, ready, Data#data{hashes = Hashes}};
 
-handle_event(info, {_, top_changed, #{info := #{height := Height}}}, ready,
+handle_event(info, {_, top_changed, #{info := #{block_type := key, height := Height}}}, ready,
              #data{enabled = true, synced = true, height = LastHeight, hashes = Hashes} = Data)
   when is_reference(Hashes), Height > LastHeight ->
     {ok, _} = range_collect_reachable_hashes(Height, Data),
