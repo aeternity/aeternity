@@ -12,12 +12,13 @@ in {
       ## base
       stable.stdenv
       ## erlang
-      stable.erlangR21
+      stable.erlangR21 # OTP 21.3.5.2
       ## crypto
       stable.libsodium
       ## rocksdb build deps
       stable.automake
       stable.autoconf
+      stable.which
     ];
     ## required to start the node locally
     shellHooks = ''
