@@ -208,7 +208,7 @@ apply_lima_test_() ->
                  ok
          end}
       ]}
-     || aect_test_utils:latest_protocol_version() >= ?LIMA_PROTOCOL_VSN ].
+     || aect_test_utils:latest_protocol_version() == ?LIMA_PROTOCOL_VSN ].
 
 tx_env() ->
     aetx_env:tx_env(42).
@@ -313,7 +313,7 @@ load_files_smoke_test_() ->
             T0 = make_trees(aec_fork_block_settings:genesis_accounts()),
             T1 = aec_block_fork:apply_minerva(T0),
             T2 = aec_block_fork:apply_fortuna(T1),
-            case aect_test_utils:latest_protocol_version() >= ?LIMA_PROTOCOL_VSN of
+            case aect_test_utils:latest_protocol_version() == ?LIMA_PROTOCOL_VSN of
                 true -> _T3 = aec_block_fork:apply_lima(T2, tx_env());
                 false -> ok
             end,
