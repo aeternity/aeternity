@@ -82,7 +82,7 @@ run(_, #{ call := Call} = _CallDef) ->
                              , gas_price
                              ]).
 
-run_common(#{vm := ?VM_FATE_SOPHIA_1 = VMVersion, abi := ABIVersion},
+run_common(#{vm := VMVersion, abi := ABIVersion},
            #{ amount      := Value
             , call        := Call
             , call_data   := CallData
@@ -96,7 +96,8 @@ run_common(#{vm := ?VM_FATE_SOPHIA_1 = VMVersion, abi := ABIVersion},
             , trees       := Trees
             , tx_env      := TxEnv0
             , origin      := <<_:?PUB_SIZE/unit:8>>
-            } = CallDef) ->
+            } = CallDef)
+  when ?IS_FATE_SOPHIA(VMVersion) ->
     case ABIVersion =:= ?ABI_FATE_SOPHIA_1 of
         false ->
             error({illegal_abi, ?VM_FATE_SOPHIA_1, ABIVersion});

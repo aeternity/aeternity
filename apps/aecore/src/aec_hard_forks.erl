@@ -2,7 +2,9 @@
 
 -export([ensure_env/0]).
 -export([protocols/0,
-         protocol_effective_at_height/1
+         protocol_effective_at_height/1,
+         protocol_vsn_name/1,
+         protocol_vsn/1
         ]).
 
 -ifdef(TEST).
@@ -69,6 +71,21 @@ ensure_env() ->
 -spec protocol_effective_at_height(aec_blocks:height()) -> version().
 protocol_effective_at_height(Height) ->
     protocol_effective_at_height(Height, protocols()).
+
+-spec protocol_vsn_name(protocol_vsn()) -> atom().
+protocol_vsn_name(?ROMA_PROTOCOL_VSN)    -> roma;
+protocol_vsn_name(?MINERVA_PROTOCOL_VSN) -> minerva;
+protocol_vsn_name(?FORTUNA_PROTOCOL_VSN) -> fortuna;
+protocol_vsn_name(?LIMA_PROTOCOL_VSN)    -> lima;
+protocol_vsn_name(?IRIS_PROTOCOL_VSN)    -> iris.
+
+-spec protocol_vsn(atom()) -> protocol_vsn().
+protocol_vsn(roma)    -> ?ROMA_PROTOCOL_VSN;
+protocol_vsn(minerva) -> ?MINERVA_PROTOCOL_VSN;
+protocol_vsn(fortuna) -> ?FORTUNA_PROTOCOL_VSN;
+protocol_vsn(lima)    -> ?LIMA_PROTOCOL_VSN;
+protocol_vsn(iris)    -> ?IRIS_PROTOCOL_VSN.
+
 
 %%%===================================================================
 %%% Internal functions

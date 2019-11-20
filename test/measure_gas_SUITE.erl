@@ -233,7 +233,10 @@ contract_create(Trees, Sender, CompiledContract, Init, Args, Backend) ->
         #{owner_id => aeser_id:create(account, Sender),
           vm_version  => case Backend of
                            aevm -> aect_test_utils:latest_sophia_vm_version();
-                           fate -> ?VM_FATE_SOPHIA_1
+                           fate -> case aect_test_utils:latest_protocol_version() of
+                                       ?LIMA_PROTOCOL_VSN -> ?VM_FATE_SOPHIA_1;
+                                       P when P >= ?IRIS_PROTOCOL_VSN -> ?VM_FATE_SOPHIA_2
+                                   end
                          end,
           abi_version => case Backend of aevm -> 1; fate -> 3 end,
           fee => 100000 * 1500000 * 20,

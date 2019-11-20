@@ -47,6 +47,7 @@
         , aens_resolve/3
         , aens_revoke/3
         , aens_transfer/4
+        , aens_update/6
         ]).
 
 -export([ check_delegation_signature/4
@@ -647,6 +648,11 @@ aens_transfer(FromPubkey, HashBin, ToPubkey, #state{} = S) when ?IS_ONCHAIN(S) -
 aens_revoke(Pubkey, HashBin, #state{} = S) when ?IS_ONCHAIN(S) ->
     ProtectedDeltaTTL = aec_governance:name_protection_period(),
     Instructions = [aeprimop:name_revoke_op(Pubkey, HashBin, ProtectedDeltaTTL)
+                   ],
+    eval_primops(Instructions, S).
+
+aens_update(Pubkey, HashBin, TTL, ClientTTL, Pointers, #state{} = S) when ?IS_ONCHAIN(S) ->
+    Instructions = [aeprimop:name_update_op(Pubkey, HashBin, TTL, ClientTTL, Pointers)
                    ],
     eval_primops(Instructions, S).
 

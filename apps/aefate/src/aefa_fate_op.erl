@@ -115,7 +115,7 @@
         , aens_resolve/5
         , aens_preclaim/4
         , aens_claim/6
-        , aens_update/1
+        , aens_update/7
         , aens_transfer/5
         , aens_revoke/4
         , verify_sig/5
@@ -1367,8 +1367,64 @@ aens_claim(Arg0, Arg1, Arg2, Arg3, Arg4, EngineState) ->
             end
     end.
 
-aens_update(_EngineState) ->
-    exit({error, op_not_implemented_yet}).
+aens_update(Arg0, Arg1, Arg2, Arg3, Arg4, Arg5, EngineState) ->
+    aefa_engine_state:vm_version(EngineState) >= ?VM_FATE_SOPHIA_2
+        orelse aefa_fate:abort({primop_error, aens_update, not_supported}, EngineState),
+    {[Signature, Owner, NameString, OptTTL, OptClientTTL, OptPointers], ES1} =
+        get_op_args([Arg0, Arg1, Arg2, Arg3, Arg4, Arg5], EngineState),
+    if
+        not ?IS_FATE_BYTES(64, Signature) ->
+            aefa_fate:abort({value_does_not_match_type, Signature, bytes64}, ES1);
+        not ?IS_FATE_ADDRESS(Owner) ->
+            aefa_fate:abort({value_does_not_match_type, Owner, address}, ES1);
+        not ?IS_FATE_STRING(NameString) ->
+            aefa_fate:abort({value_does_not_match_type, NameString, string}, ES1);
+        not ?IS_FATE_VARIANT(OptTTL) ->
+            aefa_fate:abort({value_does_not_match_type, OptTTL, variant}, ES1);
+        not ?IS_FATE_VARIANT(OptClientTTL) ->
+            aefa_fate:abort({value_does_not_match_type, OptClientTTL, variant}, ES1);
+        not ?IS_FATE_VARIANT(OptPointers) ->
+            aefa_fate:abort({value_does_not_match_type, OptPointers, variant}, ES1);
+        true ->
+            ok
+    end,
+    ?FATE_BYTES(SignBin) = Signature,
+    ?FATE_ADDRESS(Pubkey) = Owner,
+    ?FATE_STRING(NameBin) = NameString,
+    TTL =
+        case OptTTL of
+            ?FATE_VARIANT([_,_], 0, {}) -> undefined;
+            ?FATE_VARIANT([_,_], 1, {?FATE_REL_TTL(H)}) -> {relative_ttl, H};
+            ?FATE_VARIANT([_,_], 1, {?FATE_ABS_TTL(H)}) -> {fixed_ttl, H}
+        end,
+    ClientTTL =
+        case OptClientTTL of
+            ?FATE_VARIANT([_,_], 0, {}) -> undefined;
+            ?FATE_VARIANT([_,_], 1, {ClientTTL_}) -> ClientTTL_
+        end,
+    Pointers =
+        case OptPointers of
+            ?FATE_VARIANT([_,_], 0, {}) -> undefined;
+            ?FATE_VARIANT([_,_], 1, {Pointers_}) ->
+                maps:fold(
+                  fun (PtrKey, ?FATE_VARIANT([_, _, _], AddrTag, {{address, Addr}}), Acc) ->
+                          IdType = case AddrTag of    % type pointee =
+                                      0 -> account;   %   | Account(address)
+                                      1 -> oracle;    %   | Oracle(address)
+                                      2 -> contract   %   | Contract(address)
+                                   end,
+                          [aens_pointer:new(PtrKey, aeser_id:create(IdType, Addr)) | Acc]
+                  end, [], Pointers_)
+        end,
+    HashBin = hash_name(aens_update, NameBin, ES1),
+    ES2 = check_delegation_signature(aens_update, Pubkey, SignBin, ES1),
+    API = aefa_engine_state:chain_api(ES2),
+    case aefa_chain_api:aens_update(Pubkey, HashBin, TTL, ClientTTL, Pointers, API) of
+        {ok, API1} ->
+            aefa_engine_state:set_chain_api(API1, ES2);
+        {error, What} ->
+            aefa_fate:abort({primop_error, aens_update, What}, ES2)
+    end.
 
 aens_transfer(Arg0, Arg1, Arg2, Arg3, EngineState) ->
     {[Signature, From, To, NameString], ES1} =
@@ -1454,6 +1510,7 @@ check_delegation_signature(Type, Data, SignBin, Current, ES0) ->
     end.
 
 delegation_signature_data(Type, Pubkey, Current) when Type =:= aens_preclaim;
+                                                      Type =:= aens_update;
                                                       Type =:= oracle_register;
                                                       Type =:= oracle_extend ->
     {<<Pubkey/binary, Current/binary>>, Pubkey};
@@ -1928,4 +1985,3 @@ words_used(I) when is_integer(I) ->
 shift_word(0, N) -> N;
 shift_word(A, N) ->
     shift_word(A bsr 64, N + 1).
-
