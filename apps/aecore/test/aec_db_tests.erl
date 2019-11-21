@@ -32,10 +32,54 @@ wait_for_conductor() ->
         wait_for_conductor()
     end.
 
+run_throughput_test(Blocks, Info) ->
+    InsertBlockFun = fun(B0, AccTime) ->
+                             T0 = erlang:system_time(microsecond),
+                             ok = aec_db:write_block(B0),
+                             T1 = erlang:system_time(microsecond),
+                             [T1 - T0 | AccTime]
+                     end,
+
+    %% Run timings
+    Timings = lists:foldl(InsertBlockFun, [], Blocks),
+
+    %% Prepare and print data
+    TotalRuntime = lists:sum(Timings),
+    [Min | _] = TimingsSorted = lists:sort(Timings),
+    Max = lists:last(TimingsSorted),
+    Range = Max - Min,
+    Mean = TotalRuntime div length(Timings),
+    Median = lists:nth(ceil(length(Timings) / 2), TimingsSorted),
+    Counts = lists:foldl(
+               fun(N, Acc) ->
+                       case lists:keyfind(N, 1, Acc) of
+                           false ->
+                               [{N, 1} | Acc];
+                           {N, Count} ->
+                               lists:keyreplace(N, 1, Acc, {N, Count + 1})
+                       end
+               end, [], Timings),
+    [{Mode, _} | _] = lists:keysort(2, Counts),
+
+    io:format(user,
+              "~nThroughput testing results (in microseconds) " ++ Info ++ "~n~n"
+              "# of blocks inserted\t= ~p~n"
+              "Total runtime\t\t= ~p~n~n"
+              "Min\t= ~p~n"
+              "Max\t= ~p~n"
+              "Mean\t= ~p~n"
+              "Mode\t= ~p~n"
+              "Range\t= ~p~n"
+              "Median\t= ~p~n",
+              [length(Blocks), TotalRuntime, Min, Max, Mean, Mode, Range, Median]
+             ),
+    ok.
+
 write_chain_test_() ->
     {foreach,
      fun() ->
              ok = application:ensure_started(gproc),
+             {ok, _} = aec_db_error_store:start_link(),
              aec_test_utils:start_chain_db(),
              meck:new(aec_mining, [passthrough]),
              meck:expect(aec_mining, verify, fun(_, _, _, _) -> true end),
@@ -58,6 +102,7 @@ write_chain_test_() ->
              meck:unload(aec_events),
              aec_test_utils:unmock_genesis_and_forks(),
              aec_test_utils:stop_chain_db(),
+             ok = aec_db_error_store:stop(),
              aec_test_utils:aec_keys_cleanup(TmpDir)
      end,
      [{"Write a block to chain and read it back.",
@@ -108,58 +153,13 @@ write_chain_test_() ->
 
                ok
        end},
-      {"Throughput test building chain with 1000 blocks",
+      {"Throughput test building chain with 1000 blocks in ram",
        fun() ->
-               TotalBlockCount = 1000,
-
                %% Setup
-               [GB | Blocks] = aec_test_utils:gen_blocks_only_chain(TotalBlockCount + 1),
-               GHash = block_hash(GB),
-               Block = aec_db:get_block(GHash),
-               ?compareBlockResults(GB, Block),
-               TopBlockHash = aec_db:get_top_block_hash(),
-               ?assertEqual(GHash, TopBlockHash),
+               TotalBlockCount = 1000,
+               [_GB | Blocks] = aec_test_utils:gen_blocks_only_chain(TotalBlockCount + 1),
 
-               InsertBlockFun = fun(B0, AccTime) ->
-                                        T0 = erlang:system_time(microsecond),
-                                        ok = aec_db:write_block(B0),
-                                        T1 = erlang:system_time(microsecond),
-                                        [T1 - T0 | AccTime]
-                                end,
-
-               %% Run timings
-               Timings = lists:foldl(InsertBlockFun, [], Blocks),
-
-               %% Prepare and print data
-               TotalRuntime = lists:sum(Timings),
-               [Min | _] = TimingsSorted = lists:sort(Timings),
-               Max = lists:last(TimingsSorted),
-               Range = Max - Min,
-               Mean = TotalRuntime div length(Timings),
-               Median = lists:nth(ceil(length(Timings) / 2), TimingsSorted),
-               Counts = lists:foldl(
-                          fun(N, Acc) ->
-                                  case lists:keyfind(N, 1, Acc) of
-                                      false ->
-                                          [{N, 1} | Acc];
-                                      {N, Count} ->
-                                          lists:keyreplace(N, 1, Acc, {N, Count + 1})
-                                  end
-                          end, [], Timings),
-               [{Mode, _} | _] = lists:keysort(2, Counts),
-
-               io:format(user,
-                         "~nThroughput testing results (in microseconds):~n~n"
-                         "# of blocks inserted\t= ~p~n"
-                         "Total runtime\t\t= ~p~n~n"
-                         "Min\t= ~p~n"
-                         "Max\t= ~p~n"
-                         "Mean\t= ~p~n"
-                         "Mode\t= ~p~n"
-                         "Range\t= ~p~n"
-                         "Median\t= ~p~n",
-                         [TotalBlockCount, TotalRuntime, Min, Max, Mean, Mode, Range, Median]
-                        ),
+               run_throughput_test(Blocks, "in ram"),
 
                ok
        end}
@@ -272,3 +272,49 @@ persisted_valid_gen_block_test_() ->
        end}
      ]}.
 
+persisted_database_write_error_test_() ->
+    {foreach,
+     fun() ->
+             Persist = application:get_env(aecore, persist),
+             application:set_env(aecore, persist, true),
+             {ok, _} = aec_db_error_store:start_link(),
+             aec_db:check_db(),
+             aec_db:clear_db(),
+             TmpDir = aec_test_utils:aec_keys_setup(),
+             ok = meck:new(mnesia_rocksdb_lib, [passthrough]),
+             aec_test_utils:mock_genesis_and_forks(),
+             {TmpDir, Persist}
+     end,
+     fun({TmpDir, Persist}) ->
+             application:stop(mnesia),
+             aec_test_utils:unmock_genesis_and_forks(),
+             aec_test_utils:aec_keys_cleanup(TmpDir),
+             application:set_env(aecore, persist, Persist),
+             ok = aec_db_error_store:stop(),
+             ok = meck:unload(mnesia_rocksdb_lib),
+             ok = mnesia:delete_schema([node()])
+     end,
+     [{"Failed database write will be reported to caller",
+       fun() ->
+               %% Setup
+               Res = {error, bad_thing_happened},
+               ok = meck:expect(mnesia_rocksdb_lib, put, fun(_, _, _, _) -> Res end),
+               [_GB, B1] = aec_test_utils:gen_blocks_only_chain(2),
+
+               %% Try writing a block
+               ?assertExit(Res, aec_db:write_block(B1)),
+
+               %% Cleanup
+               ok
+       end},
+      {"Throughput test building chain with 100 blocks on disc",
+       fun() ->
+               %% Setup
+               TotalBlockCount = 100,
+               [_GB | Blocks] = aec_test_utils:gen_blocks_only_chain(TotalBlockCount + 1),
+
+               run_throughput_test(Blocks, "on disc"),
+
+               ok
+       end}
+     ]}.

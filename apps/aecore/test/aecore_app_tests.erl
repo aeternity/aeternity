@@ -19,7 +19,6 @@ persisted_valid_gen_block_test_() ->
              InitialApps
      end,
      fun({OldRunningApps, OldLoadedApps}) ->
-             ok = application:stop(lager),
              meck:unload(aec_jobs_queues),
              meck:unload(aecore_sup),
              meck:unload(aec_db),

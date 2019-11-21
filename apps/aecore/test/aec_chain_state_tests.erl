@@ -179,6 +179,7 @@ chain_test_() ->
              meck:expect(aec_trees, perform_pre_transformations, fun(Trees, _, _) -> Trees end),
              aec_test_utils:mock_genesis_and_forks(),
              aec_test_utils:mock_governance(),
+             {ok, _} = aec_db_error_store:start_link(),
              aec_test_utils:start_chain_db(),
              aec_test_utils:aec_keys_setup()
      end,
@@ -186,6 +187,7 @@ chain_test_() ->
              meck:unload(aec_trees),
              aec_test_utils:aec_keys_cleanup(TmpDir),
              aec_test_utils:stop_chain_db(),
+             ok = aec_db_error_store:stop(),
              aec_test_utils:unmock_governance(),
              aec_test_utils:unmock_genesis_and_forks()
      end,

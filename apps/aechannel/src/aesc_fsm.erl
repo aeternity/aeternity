@@ -3163,12 +3163,14 @@ process_update_error(Reason, From, D) ->
     keep_state(D, [{reply, From, {error, Reason}}]).
 
 check_closing_event(Info, D) ->
-    aec_db:dirty(fun() ->
-                         try check_closing_event_(Info, D)
-                         ?CATCH_LOG(E)
-                             error(E)
-                         end
-                 end).
+    aec_db:ensure_activity(async_dirty,
+                           fun() ->
+                                   try
+                                       check_closing_event_(Info, D)
+                                   ?CATCH_LOG(E)
+                                       error(E)
+                                   end
+                           end).
 
 -spec check_closing_event_(map(), #data{}) ->
     {can_slash, LastRound :: non_neg_integer(), LatestCoSignedTx :: aetx_sign:signed_tx()} |
