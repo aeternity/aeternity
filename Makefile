@@ -230,7 +230,7 @@ $(CT_DB_TARGETS):
 	$(MAKE) internal-ct
 
 REVISION:
-	@git rev-parse HEAD > $@
+	@git rev-parse HEAD > $@ || echo "unknown" > $@
 
 eunit-%: KIND=test
 eunit-%: internal-build
