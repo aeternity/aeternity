@@ -173,7 +173,8 @@ serialize_for_client(#oracle{id              = Id,
                              ttl             = TTL,
                              abi_version     = ABIVersion
                             }) ->
-    EncFormat = fun(F) -> if ABIVersion == ?ABI_AEVM_SOPHIA_1 ->
+    EncFormat = fun(F) -> if ABIVersion == ?ABI_AEVM_SOPHIA_1 orelse
+                             ABIVersion == ?ABI_FATE_SOPHIA_1 ->
                                  aeser_api_encoder:encode(contract_bytearray, F);
                              true ->
                                  F
