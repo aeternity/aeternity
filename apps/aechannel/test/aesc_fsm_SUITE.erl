@@ -1615,7 +1615,7 @@ check_incorrect_mutual_close(Cfg) ->
 
             Fun(Data, Closer, Malicious,
                 {shutdown, [#{}], shutdown, shutdown_ack},
-                fun(#{fsm := FsmPid}, Debug1) ->
+                fun(#{fsm := FsmPid} = Who, Debug1) ->
                     ?LOG(Debug1, "checking state of ~p (Closer=~p, Malicious=~p, FsmI = ~p, FsmR = ~p)",
                         [FsmPid, Closer, Malicious, FsmI, FsmR]),
                     case Closer =:= Malicious of
@@ -1633,7 +1633,8 @@ check_incorrect_mutual_close(Cfg) ->
             set_configs([{port, Port + 1}], Cfg2)
           end,
     Roles = [initiator, responder],
-    Combinations = [{Closer, Malicious} || Closer <- Roles,
+    Combinations = [{Closer, Malicious} || 
+                    Closer <- Roles,
                                            Malicious <- Roles],
     lists:foldl(Test, Cfg, Combinations),
     ok.
