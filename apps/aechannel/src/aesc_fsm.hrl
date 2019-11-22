@@ -271,6 +271,7 @@
 -define(DEFAULT_FSM_TX_TTL_DELTA, 100).
 
 -type next_fsm_state() :: {next_state, atom(), #data{}, list()}.
+-type keep_fsm_state() :: {keep_state, #data{}, list()}.
 
 %% TODO: Make this configurable
 %% No need for a stronger password policy
@@ -294,4 +295,10 @@
                           , ?WDRAW_CREATED
                           , ?UPDATE_ACK
                           , ?SHUTDOWN_ACK]).
+
+-define(SOLO_TRANSACTIONS, [ aesc_close_solo_tx,
+                             aesc_slash_tx,
+                             aesc_settle_tx,
+                             aesc_snapshot_solo_tx,
+                             aesc_force_progress_tx]).
 
