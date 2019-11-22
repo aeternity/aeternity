@@ -1807,65 +1807,6 @@ fsm_crash_action_during_shutdown( #{fsm := FsmI} = I
     {ok, _} = receive_from_fsm(shutdown_ack, R, signing_req(), ?TIMEOUT, Debug),
     ok.
 
-check_password_is_changeable(Cfg) ->
-    Debug = get_debug(Cfg),
-    Cfg1 = [?SLOGAN | Cfg],
-    assert_empty_msgq(Debug),
-
-    % Start channel
-    #{ i := I, r := R} = Info0 = create_channel_(Cfg1, #{}, Debug),
-    ?LOG(Debug, "I = ~p", [I]),
-    ?LOG(Debug, "R = ~p", [R]),
-
-    % Perform updates
-    UpdateCount = 4,
-    {_, I1, R1} = do_n(UpdateCount, fun update_volley/3, I, R, Cfg),
-
-    % Change passwords
-    I2 = change_password(I1),
-    R2 = change_password(R1),
-
-    % Leave channel
-    {I3, R3, SignedTx} = leave_(I2, R2, Info0, Debug),
-
-    % Verify leave log
-    {ok, #{info := {log, ILog}}} = receive_log(I3, Debug),
-    {ok, #{info := {log, RLog}}} = receive_log(R3, Debug),
-
-    ok = check_log(expected_fsm_logs(?FUNCTION_NAME, initiator,
-                                     #{update_count => UpdateCount}),
-                   ILog, initiator),
-    ok = check_log(expected_fsm_logs(?FUNCTION_NAME, responder,
-                                     #{update_count => UpdateCount}),
-                   RLog, responder),
-
-    assert_empty_msgq(Debug),
-
-    % Reestablish with old password should fail
-    InfoWrong = Info0#{i => I1, r => R1},
-    reestablish_wrong_password_(InfoWrong, SignedTx, ?PORT, Debug),
-    assert_empty_msgq(Debug),
-
-    % Reestablish with new password should succeed
-    Info = Info0#{i => I3, r => R3},
-    reestablish_(Info, SignedTx, ?PORT, Debug),
-
-    % Done
-    assert_empty_msgq(Debug),
-    ok.
-
-leave_(#{channel_id := ChId, fsm := FsmI} = I, #{fsm := FsmR} = R, CSpec, Debug) ->
-    assert_cache_is_in_ram(ChId),
-    ok = rpc(dev1, aesc_fsm, leave, [FsmI]),
-
-    % Verify leave and FSM timeout
-    {ok, #{info := SignedTx}} = await_leave(I, ?TIMEOUT, Debug),
-    {ok, #{info := SignedTx}} = await_leave(R, ?TIMEOUT, Debug),
-    ok = receive_dying_declarations(FsmI, FsmR, CSpec, Debug),
-
-    retry(3, 100, fun() -> assert_cache_is_on_disk(ChId) end),
-    {I, R, SignedTx}.
-
 fsm_state(Pid, Debug) ->
     {State, _Data} = rpc(dev1, sys, get_state, [Pid, 1000], _RpcDebug = false),
     ?LOG(Debug, "fsm_state(~p) -> ~p", [Pid, State]),
