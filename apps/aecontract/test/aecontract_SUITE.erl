@@ -1149,19 +1149,22 @@ call_contract_error_value(_Cfg) ->
     ?assertEqual(Bal(RemC, S1) + (14 - 10), Bal(RemC, S2)),
     ?assertEqual(Bal(IdC, S1) + 10, Bal(IdC, S2)),
     %% Check no transfer of value in calls that err.
-    {{{error, _}, GasUsed3}, S3} = call_contract(Acc1, IdC, err, word, {}, DefaultOpts#{amount := 5, return_gas_used => true}, S2),
-    ?assertEqual(G, GasUsed3),
+    {{Err3, GasUsed3}, S3} = call_contract(Acc1, IdC, err, word, {}, DefaultOpts#{amount := 5, return_gas_used => true}, S2),
+    ?assertMatchVM({error, _}, {revert, _}, Err3),
+    ?assertMatchAEVM(G, GasUsed3),
     ?assertEqual(Bal(Acc1, S2) - (F + GasUsed3 * GasPrice), Bal(Acc1, S3)),
     ?assertEqual(Bal(RemC, S2), Bal(RemC, S3)),
     ?assertEqual(Bal(IdC, S2), Bal(IdC, S3)),
-    {{{error, _}, GasUsed4}, S4} = call_contract(Acc1, RemC, callErr, word, {?cid(IdC), 7}, DefaultOpts#{amount := 13, return_gas_used => true}, S3),
-    ?assertEqual(G, GasUsed4),
+    {{Err4, GasUsed4}, S4} = call_contract(Acc1, RemC, callErr, word, {?cid(IdC), 7}, DefaultOpts#{amount := 13, return_gas_used => true}, S3),
+    ?assertMatchVM({error, _}, {revert, _}, Err4),
+    ?assertMatchAEVM(G, GasUsed4),
     ?assertEqual(Bal(Acc1, S3) - (F + GasUsed4 * GasPrice), Bal(Acc1, S4)),
     ?assertEqual(Bal(RemC, S3), Bal(RemC, S4)),
     ?assertEqual(Bal(IdC, S3), Bal(IdC, S4)),
     %% Check that you can limit the amount of gas in an error call
     LimitedGas = 1234,
-    {{{error, _}, GasUsed5}, S5} = call_contract(Acc1, RemC, callErrLimitGas, word, {?cid(IdC), 7, LimitedGas}, DefaultOpts#{amount := 13, return_gas_used => true}, S4),
+    {{Err5, GasUsed5}, S5} = call_contract(Acc1, RemC, callErrLimitGas, word, {?cid(IdC), 7, LimitedGas}, DefaultOpts#{amount := 13, return_gas_used => true}, S4),
+    ?assertMatchVM({error, _}, {revert, _}, Err5),
     ?assert(GasUsed5 < G),
     ct:pal("Bal(Acc1, S4): ~p", [Bal(Acc1, S4)]),
     ct:pal("GasUsed: ~p", [GasUsed5]),
@@ -1178,10 +1181,11 @@ call_contract_error_sanitized(_Cfg) ->
     state(aect_test_utils:new_state()),
     Acc1 = call(fun new_account/2, [10000000 * aec_test_utils:min_gas_price()]),
     IdC = ?call(create_contract, Acc1, value_on_err, {}),
-    {error, Err} = ?call(call_contract, Acc1, IdC, err, word, {}, #{amount => 5, dry_run => false}),
+    {Kind, Err} = ?call(call_contract, Acc1, IdC, err, word, {}, #{amount => 5, dry_run => false}),
 
+    ?assertMatchVM(error, revert, Kind),
     ?assertMatchAEVM(Err, <<"out_of_gas">>, <<"out_of_gas">>, <<"out_of_gas">>, <<>>),
-    ?assertMatchFATE(<<>>, Err),
+    ?assertMatchFATE(<<"Incomplete patterns">>, Err),
 
     ok.
 
@@ -1882,7 +1886,7 @@ sophia_state(_Cfg) ->
     <<"bottom">> = ?call(call_contract, Acc1, Stack, pop, string, {}),
     PopFail      = ?call(call_contract, Acc1, Stack, pop, string, {}),
     ?assertMatchAEVM({error, <<"out_of_gas">>}, PopFail),
-    ?assertMatchFATE({error, <<"Incomplete patterns">>}, PopFail),
+    ?assertMatchFATE({revert, <<"Incomplete patterns">>}, PopFail),
     ok.
 
 sophia_remote_state(_Cfg) ->
