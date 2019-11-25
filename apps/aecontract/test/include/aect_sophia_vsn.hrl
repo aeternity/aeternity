@@ -3,5 +3,4 @@
 -define(SOPHIA_FORTUNA, 3).
 -define(SOPHIA_LIMA_AEVM, 4).
 -define(SOPHIA_LIMA_FATE, 5).
--define(SOPHIA_IRIS_AEVM, 6). % no AEVM in IRIS, should be disabled.
--define(SOPHIA_IRIS_FATE, 7).
+-define(SOPHIA_IRIS_FATE, 6).

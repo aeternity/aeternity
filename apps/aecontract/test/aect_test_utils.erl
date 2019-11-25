@@ -134,7 +134,7 @@ latest_sophia_version() ->
         ?MINERVA_PROTOCOL_VSN -> ?SOPHIA_MINERVA;
         ?FORTUNA_PROTOCOL_VSN -> ?SOPHIA_FORTUNA;
         ?LIMA_PROTOCOL_VSN    -> ?SOPHIA_LIMA_AEVM;
-        ?IRIS_PROTOCOL_VSN    -> ?SOPHIA_IRIS_AEVM
+        ?IRIS_PROTOCOL_VSN    -> ?SOPHIA_LIMA_AEVM
     end.
 
 latest_sophia_contract_version() ->
@@ -277,13 +277,12 @@ read_contract(Name) ->
 read_contract(Compiler, Name) ->
     file:read_file(contract_filename(Compiler, Name)).
 
-contract_dirs(?SOPHIA_ROMA)      -> ["sophia_1" | contract_dirs(?SOPHIA_MINERVA)];
-contract_dirs(?SOPHIA_MINERVA)   -> ["sophia_2" | contract_dirs(?SOPHIA_FORTUNA)];
-contract_dirs(?SOPHIA_FORTUNA)   -> ["sophia_3" | contract_dirs(?SOPHIA_LIMA_AEVM)];
-contract_dirs(?SOPHIA_LIMA_AEVM) -> ["sophia_4_aevm", "sophia_4" | contract_dirs(?SOPHIA_IRIS_AEVM)];
-contract_dirs(?SOPHIA_LIMA_FATE) -> ["sophia_4_fate", "sophia_4" | contract_dirs(?SOPHIA_IRIS_FATE)];
-contract_dirs(?SOPHIA_IRIS_AEVM) -> ["sophia_5_aevm", "sophia_5"];
-contract_dirs(?SOPHIA_IRIS_FATE) -> ["sophia_5_fate", "sophia_5"].
+contract_dirs(?SOPHIA_ROMA)      -> ["sophia_1"      | contract_dirs(?SOPHIA_MINERVA)];
+contract_dirs(?SOPHIA_MINERVA)   -> ["sophia_2"      | contract_dirs(?SOPHIA_FORTUNA)];
+contract_dirs(?SOPHIA_FORTUNA)   -> ["sophia_3"      | contract_dirs(?SOPHIA_LIMA_AEVM)];
+contract_dirs(?SOPHIA_LIMA_AEVM) -> ["sophia_4_aevm" | contract_dirs(?SOPHIA_LIMA_FATE)];
+contract_dirs(?SOPHIA_LIMA_FATE) -> ["sophia_4"      | contract_dirs(?SOPHIA_IRIS_FATE)];
+contract_dirs(?SOPHIA_IRIS_FATE) -> ["sophia_5"].
 
 contract_filenames(Compiler, Name) when is_atom(Name) ->
     contract_filenames(Compiler, atom_to_list(Name));
@@ -338,12 +337,6 @@ compile_(SophiaVsn, File) when SophiaVsn == ?SOPHIA_IRIS_FATE ->
     case aeso_compiler:from_string(Source, [{backend, fate}]) of
         {ok, Map} -> {ok, aect_sophia:serialize(Map, latest_sophia_contract_version())};
         {error, E} = Err -> io:format("~s\n", [E]), Err
-    end;
-compile_(SophiaVsn, File) when SophiaVsn == ?SOPHIA_IRIS_AEVM ->
-    {ok, ContractBin} = file:read_file(File),
-    case aeso_compiler:from_string(binary_to_list(ContractBin), []) of
-        {ok, Map}        -> {ok, aect_sophia:serialize(Map, latest_sophia_contract_version())};
-        {error, _} = Err -> Err
     end;
 compile_(LegacyVersion, File) ->
     case legacy_compile(LegacyVersion, File) of
@@ -422,7 +415,7 @@ encode_call_data(Vsn, Code, Fun, Args) ->
             Result
     end.
 
-encode_call_data_(Vsn, Code, Fun, Args, Backend) when Vsn == ?SOPHIA_IRIS_AEVM; Vsn == ?SOPHIA_IRIS_FATE ->
+encode_call_data_(Vsn, Code, Fun, Args, Backend) when Vsn == ?SOPHIA_IRIS_FATE ->
     try aeso_compiler:create_calldata(to_str(Code), to_str(Fun),
                                       lists:map(fun to_str/1, Args),
                                       [{backend, Backend}])
@@ -574,7 +567,7 @@ init_per_group(aevm, Cfg, Cont) ->
                   {abi_version, ?ABI_AEVM_SOPHIA_1}, {protocol, lima} | Cfg]);
         ?IRIS_PROTOCOL_VSN ->
             ct:pal("Running tests under Iris protocol"),
-            Cont([{sophia_version, ?SOPHIA_IRIS_AEVM}, {vm_version, ?VM_AEVM_SOPHIA_4},
+            Cont([{sophia_version, ?SOPHIA_LIMA_AEVM}, {vm_version, ?VM_AEVM_SOPHIA_4},
                   {abi_version, ?ABI_AEVM_SOPHIA_1}, {protocol, iris} | Cfg])
     end;
 init_per_group(fate, Cfg, Cont) ->

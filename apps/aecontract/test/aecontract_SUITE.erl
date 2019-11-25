@@ -488,7 +488,7 @@ init_tests(Release, VMName) ->
                            IfAEVM(?ABI_AEVM_SOPHIA_1, ?ABI_FATE_SOPHIA_1),
                            IfAEVM(?VM_AEVM_SOPHIA_4, ?VM_FATE_SOPHIA_1)}},
                 {iris,    {?IRIS_PROTOCOL_VSN,
-                           IfAEVM(?SOPHIA_IRIS_AEVM, ?SOPHIA_IRIS_FATE),
+                           IfAEVM(?SOPHIA_LIMA_AEVM, ?SOPHIA_IRIS_FATE),
                            IfAEVM(?ABI_AEVM_SOPHIA_1, ?ABI_FATE_SOPHIA_1),
                            IfAEVM(?VM_AEVM_SOPHIA_4, ?VM_FATE_SOPHIA_2)}}],
     {Proto, Sophia, ABI, VM} = proplists:get_value(Release, Versions),
