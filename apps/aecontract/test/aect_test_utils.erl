@@ -280,10 +280,10 @@ read_contract(Compiler, Name) ->
 contract_dirs(?SOPHIA_ROMA)      -> ["sophia_1" | contract_dirs(?SOPHIA_MINERVA)];
 contract_dirs(?SOPHIA_MINERVA)   -> ["sophia_2" | contract_dirs(?SOPHIA_FORTUNA)];
 contract_dirs(?SOPHIA_FORTUNA)   -> ["sophia_3" | contract_dirs(?SOPHIA_LIMA_AEVM)];
-contract_dirs(?SOPHIA_LIMA_AEVM) -> ["sophia_4_aevm", "sophia_4"];
-contract_dirs(?SOPHIA_LIMA_FATE) -> ["sophia_4_fate", "sophia_4"];
-contract_dirs(?SOPHIA_IRIS_AEVM) -> ["sophia_4_aevm", "sophia_4"];
-contract_dirs(?SOPHIA_IRIS_FATE) -> ["sophia_4_fate", "sophia_4"].
+contract_dirs(?SOPHIA_LIMA_AEVM) -> ["sophia_4_aevm", "sophia_4" | contract_dirs(?SOPHIA_IRIS_AEVM)];
+contract_dirs(?SOPHIA_LIMA_FATE) -> ["sophia_4_fate", "sophia_4" | contract_dirs(?SOPHIA_IRIS_FATE)];
+contract_dirs(?SOPHIA_IRIS_AEVM) -> ["sophia_5_aevm", "sophia_5"];
+contract_dirs(?SOPHIA_IRIS_FATE) -> ["sophia_5_fate", "sophia_5"].
 
 contract_filenames(Compiler, Name) when is_atom(Name) ->
     contract_filenames(Compiler, atom_to_list(Name));
