@@ -102,9 +102,13 @@ suite() ->
 
 init_per_suite(Config0) ->
     Forks = aecore_suite_utils:forks(),
+    %% We want to run some suites with and some suites without client side cache
+    %% Arbitrary run this suite with cache disabled.
     DefCfg = #{<<"chain">> =>
                    #{<<"persist">> => true,
-                     <<"hard_forks">> => Forks}},
+                     <<"hard_forks">> => Forks},
+              <<"http">> =>
+                   #{<<"cache">> => #{<<"enabled">> => false}}},
     Config1 = [{symlink_name, "latest.http_ga"}, {test_module, ?MODULE}] ++ Config0,
     Config2 = aecore_suite_utils:init_per_suite([?NODE], DefCfg, Config1),
     [{nodes, [aecore_suite_utils:node_tuple(?NODE)]}] ++ Config2.
