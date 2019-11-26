@@ -14,11 +14,9 @@ Comes with a naming system, for developerability.
 
 Written in Erlang.
 
-To install and run the Aeternity node, see the instructions [below](#how-to-start)
-or just [follow the progress of the project in Pivotal Tracker][pivotal].
+To install and run the Aeternity node, see the instructions [below](#how-to-start) or just follow the progress of the project via GitHub Issues.
 
-If you are interested in participating in a security bounty, check our
-[HackerOne Aeternity Bounty Program][hackerone].
+If you have discovered a bug or security vulnerability please get in touch. The aeternity Crypto Foundation pays bug-bounties up to 100.000 AE Tokens for critical vulnerabilities. Please get in touch via [security@aeternity-foundation.org](mailto:security@aeternity-foundation.org).
 
 [pivotal]: https://www.pivotaltracker.com/n/projects/2124891
 [hackerone]: https://hackerone.com/aeternity
