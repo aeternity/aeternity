@@ -444,6 +444,12 @@
                             "type": "integer",
                             "minimum": 50,
                             "default": 500
+                        },
+                        "chunk_size : {
+                            "description": "How many accounts should be deleted at most in a single database operation",
+                            "type": "integer",
+                            "minimum": 1,
+                            "default": 10000
                         }
                     }
                 }
