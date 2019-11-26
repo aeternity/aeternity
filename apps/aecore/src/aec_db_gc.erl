@@ -91,13 +91,14 @@ handle_event(info, {_, top_changed, #{info := #{height := Height}}}, idle,
             fun () ->
                     FromHeight = max(Height - History, 0),
                     {Time, {ok, Hashes}} = ?TIMED(collect_reachable_hashes(FromHeight, Height)),
-                    ets:give_away(Hashes, Top, Time)
+                    ets:give_away(Hashes, Top, {{FromHeight, Height}, Time})
             end),
     {keep_state, Data#data{height = Height, hashes = Pid}};
-handle_event(info, {'ETS-TRANSFER', Hashes, _, Time}, idle, #data{enabled = true, hashes = Pid} = Data)
+handle_event(info, {'ETS-TRANSFER', Hashes, _, {{FromHeight, ToHeight}, Time}}, idle,
+             #data{enabled = true, hashes = Pid} = Data)
   when is_pid(Pid) ->
-    ?LOG("GC scanning of ~p reachable hashes took ~p seconds",
-         [ets:info(Hashes, size), Time / 1000000]),
+    ?LOG("scanning of ~p reachable hashes in range <~p, ~p> took ~p seconds",
+         [ets:info(Hashes, size), FromHeight, ToHeight, Time / 1000000]),
     {next_state, ready, Data#data{hashes = Hashes}};
 
 handle_event(info, {_, top_changed, #{info := #{block_type := key, height := Height}}}, ready,
@@ -147,12 +148,16 @@ collect_reachable_hashes(FromHeight, ToHeight) when FromHeight < ToHeight ->
 collect_reachable_hashes_fullscan(Height) ->
     Tab = ets:new(gc_reachable_hashes, [public]), %% TODO: remove public
     MPT = get_mpt(Height),
+    ?LOG("scanning accounts full tree with root hash ~w at height = ~p~n",
+         [aeu_mp_trees:root_hash(MPT), Height]),
     {ok, aeu_mp_trees:visit_reachable_hashes(MPT, Tab, fun store_hash/3)}.
 
 %% assumes Height - 1, Height - 2, ... down to Height - History
 %% are in Hashes from previous runs
 collect_reachable_hashes_delta(Height, Hashes) ->
     MPT = get_mpt(Height),
+    ?LOG("scanning accounts changes with root hash ~w at height = ~p~n",
+         [aeu_mp_trees:root_hash(MPT), Height]),
     {ok, aeu_mp_trees:visit_reachable_hashes(MPT, Hashes, fun store_unseen_hash/3)}.
 
 range_collect_reachable_hashes(ToHeight, #data{height = LastHeight, hashes = Hashes}) ->
@@ -166,10 +171,10 @@ swap_nodes(Hashes) ->
     NodesCount = ets:info(Hashes, size),
     %% clearing tab can't run in transaction
     {ClearTime, {atomic, ok}} = ?TIMED(mnesia:clear_table(aec_account_state)),
-    ?LOG("GC clearing accounts table took ~p seconds", [ClearTime / 1000000]),
-    ?LOG("GC writing ~p reachable account state nodes...", [NodesCount]),
-    {WriteTime, {atomic, ok}} = ?TIMED(mnesia:sync_transaction(fun () -> write_nodes(Hashes) end)),
-    ?LOG("GC writing reachable account state nodes took ~p seconds", [WriteTime / 1000000]),
+    ?LOG("clearing accounts table took ~p seconds", [ClearTime / 1000000]),
+    ?LOG("writing ~p reachable account state nodes...", [NodesCount]),
+    {WriteTime, ok} = ?TIMED(aec_db:ensure_transaction(fun () -> write_nodes(Hashes) end)),
+    ?LOG("writing reachable account state nodes took ~p seconds", [WriteTime / 1000000]),
     {ok, NodesCount}.
 
 write_nodes(Hashes) ->
