@@ -136,7 +136,6 @@ references:
     restore_cache:
       key: *build_nix_cache_key
 
-
   machine_build_cache_key: &machine_build_cache_key machine-build-cache-v9-{{ .Branch }}-{{ .Revision }}
   restore_machine_build_cache: &restore_machine_build_cache
     restore_cache:
@@ -1246,10 +1245,8 @@ workflows:
       - build_nix:
           filters:
             branches:
-              ignore:
-                - env/dev1
-                - env/dev2
-                - system-tests
+              only:
+                - *master_branch
 
       - docker_smoke_tests:
           context: ae-node-builds
