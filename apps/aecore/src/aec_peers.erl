@@ -80,6 +80,7 @@
 -define(DEFAULT_RESOLVE_MAX_RETRY,             7).
 -define(DEFAULT_RESOLVE_BACKOFF_TIMES,
         [5000, 15000, 30000, 60000, 120000, 300000, 600000]).
+-define(LOG_PEER_COUNT_TIMEOUT,             5000).
 
 %=== TYPES =====================================================================
 
@@ -374,6 +375,7 @@ start_link() ->
 init(ok) ->
     {ok, PubKey} = aec_keys:peer_pubkey(),
     LocalPeer = #{ pubkey => PubKey },
+    erlang:send_after(?LOG_PEER_COUNT_TIMEOUT, self(), log_peer_count_timeout),
     epoch_sync:info("aec_peers started for ~p", [ppp(LocalPeer)]),
     {ok, #state{
         local_peer = LocalPeer,
@@ -485,6 +487,14 @@ handle_info({timeout, Ref, {resolve, Hostname}}, #state{ hostnames = HostMap } =
 handle_info({'DOWN', Ref, process, Pid, _}, State0) ->
     State = on_process_down(Pid, Ref, State0),
     {noreply, update_peer_metrics(schedule_connect(State))};
+handle_info(log_peer_count_timeout, State) ->
+    %% Outbound - node initiated connections to other nodes.
+    %% Inbound - other nodes initiated connections to this node.
+    lager:info("Peer connections outbound: ~p/~p, inbound: ~p/~p",
+               [conn_count(outbound, State), max_outbound(),
+                conn_count(inbound, State), max_inbound()]),
+    erlang:send_after(?LOG_PEER_COUNT_TIMEOUT, self(), log_peer_count_timeout),
+    {noreply, State};
 handle_info(_Info, State) ->
     {noreply, State}.
 
