@@ -617,7 +617,7 @@ handle_request_('GetStatus', _Params, _Context) ->
         end,
     NodeVersion = aeu_info:get_version(),
     NodeRevision = aeu_info:get_revision(),
-    PeerCount = aec_peers:count(peers),
+    PeerCount = aec_peers:count(connections),
     PendingTxsCount = aec_tx_pool:size(),
     {ok, PeerPubkey} = aec_keys:peer_pubkey(),
     TopBlock = aec_chain:top_block(),
