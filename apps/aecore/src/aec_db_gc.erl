@@ -1,5 +1,20 @@
 -module(aec_db_gc).
 
+%% Implementation of Garbage Collection of Account state.
+%% To run, the GC needs to be `enabled` (config param), and node synced.
+%% If key block `interval` (config parameter) is hit, GC starts collecting
+%% of the reachable nodes from most recent generations (`history` config parameter).
+%%
+%% If #data.enabled and #data.synced are true, #data.hashes indicates the GC status:
+%% - undefined    - not the right time to run GC
+%% - is pid       - we are scanning reachable nodes
+%% - is reference - waiting for signal to execute the `swap_nodes` phase
+%%
+%% GC scan is performed on the background. The only synchronous part of GC is `swap_nodes` phase.
+%% (initiated by aec_conductor on key block boundary)
+%%
+%% More details can be found here: https://github.com/aeternity/papers/blob/master/Garbage%20collector%20for%20account%20state%20data.pdf
+
 -behaviour(gen_statem).
 
 %% API
@@ -29,9 +44,9 @@
 -define(LOG(Fmt), lager:info(Fmt, [])).         % io:format(Fmt"~n")
 -define(LOG(Fmt, Args), lager:info(Fmt, Args)). % io:format(Fmt"~n", Args)
 
-%% %%%===================================================================
-%% %%% API
-%% %%%===================================================================
+%%%===================================================================
+%%% API
+%%%===================================================================
 
 start_link() ->
     #{enabled := Enabled, interval := Interval, history := History} = config(),
@@ -41,10 +56,12 @@ start_link(Enabled, Interval, History) ->
     gen_statem:start_link({local, ?MODULE}, ?MODULE, [Enabled, Interval, History], []).
 
 
+%% To avoid starting of the GC process just for EUNIT
 -ifdef(EUNIT).
 maybe_garbage_collect() -> nop.
 -else.
-%% this should be called when there are no processes modifying the block state
+
+%% This should be called when there are no processes modifying the block state
 %% (e.g. aec_conductor on specific places)
 maybe_garbage_collect() ->
     gen_statem:call(?MODULE, maybe_garbage_collect).
@@ -57,10 +74,9 @@ stop() ->
 %%% gen_statem callbacks
 %%%===================================================================
 
-init([true, Interval, History]) when Interval =< History ->
-    lager:error("GC interval ~p must be greater than history ~p", [Interval, History]),
-    {stop, interval_too_short};
-init([Enabled, Interval, History]) ->
+%% Change of configuration parameters requires restart of the node.
+init([Enabled, Interval, History])
+  when is_integer(Interval), Interval > 0, is_integer(History), History > 0 ->
     if Enabled ->
             aec_events:subscribe(top_changed),
             aec_events:subscribe(chain_sync);
