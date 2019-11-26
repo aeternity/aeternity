@@ -1,0 +1,64 @@
+// AENS tests
+
+contract Remote =
+  entrypoint foo : () => int
+
+contract AENSTest =
+
+  // Name resolution
+
+  entrypoint resolve_account(name : string, key : string) : option(address) =
+    AENS.resolve(name, key)
+
+  entrypoint resolve_string(name : string, key : string) : option(string) =
+    AENS.resolve(name, key)
+
+  entrypoint resolve_oracle(name : string, key : string) : option(oracle(string, string)) =
+    AENS.resolve(name, key)
+
+  entrypoint resolve_contract(name : string, key : string) : option(Remote) =
+    AENS.resolve(name, key)
+
+  // Transactions
+
+  stateful entrypoint preclaim(addr  : address,          // Claim on behalf of this account (can be Contract.address)
+                             chash : hash) : unit =      // Commitment hash
+    AENS.preclaim(addr, chash)
+
+  stateful payable entrypoint signedPreclaim(addr  : address,          // Claim on behalf of this account (can be Contract.address)
+                                             chash : hash,             // Commitment hash
+                                             sign  : signature) : unit = // Signed by addr (if not Contract.address)
+    AENS.preclaim(addr, chash, signature = sign)
+
+  stateful entrypoint claim(addr : address,
+                            name : string,
+                            salt : int,
+                            name_fee : int) : unit =
+    AENS.claim(addr, name, salt, name_fee)
+
+  stateful entrypoint signedClaim(addr : address,
+                                name : string,
+                                salt : int,
+                                sign : signature) : unit =
+    AENS.claim(addr, name, salt, 360000000000000000000, signature = sign)
+
+
+  stateful entrypoint transfer(owner     : address,
+                             new_owner : address,
+                             name      : string) : unit =
+    AENS.transfer(owner, new_owner, name)
+
+  stateful entrypoint signedTransfer(owner     : address,
+                                   new_owner : address,
+                                   name      : string,
+                                   sign      : signature) : unit =
+    AENS.transfer(owner, new_owner, name, signature = sign)
+
+  stateful entrypoint revoke(owner     : address,
+                           name      : string) : unit =
+    AENS.revoke(owner, name)
+
+  stateful entrypoint signedRevoke(owner     : address,
+                                   name      : string,
+                                   sign      : signature) : unit =
+    AENS.revoke(owner, name, signature = sign)

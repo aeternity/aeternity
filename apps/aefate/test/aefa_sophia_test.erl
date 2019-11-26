@@ -79,8 +79,8 @@ expect(Chain, Contract, Function, Arguments, Expect) ->
             Trace  = aefa_engine_state:trace(ES),
             [ io:format("~p\n", [I]) || Result /= Expect, {I, _} <- Trace ],
             ?assertMatch(Expect, Result);
-        {error, Err, _} ->
-            ?assertMatch(Expect, {error, Err})
+        {Kind, Err, _} when Kind == error; Kind == revert ->
+            ?assertMatch(Expect, {Kind, Err})
     end.
 
 %% For now, implement pipeline here.
@@ -471,7 +471,7 @@ variant_tests() ->
                   (_) -> ?Red(0, 1) end,
     ScrambleInput = [ ?Red(2, true), ?Red(1001, false), ?Blue(-99), ?Green ],
     Missing1 = fun({variant, [2], 0, {false, false}}) -> 1;
-                  (_) -> {error, <<"Incomplete patterns">>} end,
+                  (_) -> {revert, <<"Incomplete patterns">>} end,
     Missing1Input = [{variant, [2], 0, {A, B}} || A <- [false, true], B <- [false, true]],
     Missing2 = fun(?Red({variant, [2], 0, {false, false}}, X)) -> X;
                   (_) -> 0 end,

@@ -134,7 +134,7 @@ latest_sophia_version() ->
         ?MINERVA_PROTOCOL_VSN -> ?SOPHIA_MINERVA;
         ?FORTUNA_PROTOCOL_VSN -> ?SOPHIA_FORTUNA;
         ?LIMA_PROTOCOL_VSN    -> ?SOPHIA_LIMA_AEVM;
-        ?IRIS_PROTOCOL_VSN    -> ?SOPHIA_IRIS_AEVM
+        ?IRIS_PROTOCOL_VSN    -> ?SOPHIA_LIMA_AEVM
     end.
 
 latest_sophia_contract_version() ->
@@ -277,13 +277,12 @@ read_contract(Name) ->
 read_contract(Compiler, Name) ->
     file:read_file(contract_filename(Compiler, Name)).
 
-contract_dirs(?SOPHIA_ROMA)      -> ["sophia_1" | contract_dirs(?SOPHIA_MINERVA)];
-contract_dirs(?SOPHIA_MINERVA)   -> ["sophia_2" | contract_dirs(?SOPHIA_FORTUNA)];
-contract_dirs(?SOPHIA_FORTUNA)   -> ["sophia_3" | contract_dirs(?SOPHIA_LIMA_AEVM)];
-contract_dirs(?SOPHIA_LIMA_AEVM) -> ["sophia_4_aevm", "sophia_4"];
-contract_dirs(?SOPHIA_LIMA_FATE) -> ["sophia_4_fate", "sophia_4"];
-contract_dirs(?SOPHIA_IRIS_AEVM) -> ["sophia_4_aevm", "sophia_4"];
-contract_dirs(?SOPHIA_IRIS_FATE) -> ["sophia_4_fate", "sophia_4"].
+contract_dirs(?SOPHIA_ROMA)      -> ["sophia_1"      | contract_dirs(?SOPHIA_MINERVA)];
+contract_dirs(?SOPHIA_MINERVA)   -> ["sophia_2"      | contract_dirs(?SOPHIA_FORTUNA)];
+contract_dirs(?SOPHIA_FORTUNA)   -> ["sophia_3"      | contract_dirs(?SOPHIA_LIMA_AEVM)];
+contract_dirs(?SOPHIA_LIMA_AEVM) -> ["sophia_4_aevm" | contract_dirs(?SOPHIA_LIMA_FATE)];
+contract_dirs(?SOPHIA_LIMA_FATE) -> ["sophia_4"      | contract_dirs(?SOPHIA_IRIS_FATE)];
+contract_dirs(?SOPHIA_IRIS_FATE) -> ["sophia_5"].
 
 contract_filenames(Compiler, Name) when is_atom(Name) ->
     contract_filenames(Compiler, atom_to_list(Name));
@@ -332,18 +331,12 @@ compile(Vsn, File) ->
             Result
     end.
 
-compile_(SophiaVsn, File) when SophiaVsn == ?SOPHIA_LIMA_FATE; SophiaVsn == ?SOPHIA_IRIS_FATE ->
+compile_(SophiaVsn, File) when SophiaVsn == ?SOPHIA_IRIS_FATE ->
     {ok, AsmBin} = file:read_file(File),
     Source = binary_to_list(AsmBin),
     case aeso_compiler:from_string(Source, [{backend, fate}]) of
         {ok, Map} -> {ok, aect_sophia:serialize(Map, latest_sophia_contract_version())};
         {error, E} = Err -> io:format("~s\n", [E]), Err
-    end;
-compile_(SophiaVsn, File) when SophiaVsn == ?SOPHIA_LIMA_AEVM; SophiaVsn == ?SOPHIA_IRIS_AEVM ->
-    {ok, ContractBin} = file:read_file(File),
-    case aeso_compiler:from_string(binary_to_list(ContractBin), []) of
-        {ok, Map}        -> {ok, aect_sophia:serialize(Map, latest_sophia_contract_version())};
-        {error, _} = Err -> Err
     end;
 compile_(LegacyVersion, File) ->
     case legacy_compile(LegacyVersion, File) of
@@ -372,9 +365,11 @@ legacy_compile(Vsn, SrcFile) ->
 compiler_cmd(Vsn) ->
     BaseDir = filename:join([code:priv_dir(aesophia_cli), "bin"]),
     case Vsn of
-        ?SOPHIA_ROMA    -> filename:join([BaseDir, "v1.4.0", "aesophia_cli"]);
-        ?SOPHIA_MINERVA -> filename:join([BaseDir, "v2.1.0", "aesophia_cli"]);
-        ?SOPHIA_FORTUNA -> filename:join([BaseDir, "v3.2.0", "aesophia_cli"])
+        ?SOPHIA_ROMA      -> filename:join([BaseDir, "v1.4.0", "aesophia_cli"]);
+        ?SOPHIA_MINERVA   -> filename:join([BaseDir, "v2.1.0", "aesophia_cli"]);
+        ?SOPHIA_FORTUNA   -> filename:join([BaseDir, "v3.2.0", "aesophia_cli"]);
+        ?SOPHIA_LIMA_AEVM -> filename:join([BaseDir, "v4.1.0", "aesophia_cli"]) ++ " --backend=aevm";
+        ?SOPHIA_LIMA_FATE -> filename:join([BaseDir, "v4.1.0", "aesophia_cli"])
     end.
 
 tempfile_name(Prefix, Opts) ->
@@ -420,8 +415,7 @@ encode_call_data(Vsn, Code, Fun, Args) ->
             Result
     end.
 
-encode_call_data_(Vsn, Code, Fun, Args, Backend) when Vsn == ?SOPHIA_LIMA_AEVM; Vsn == ?SOPHIA_LIMA_FATE;
-                                                      Vsn == ?SOPHIA_IRIS_AEVM; Vsn == ?SOPHIA_IRIS_FATE ->
+encode_call_data_(Vsn, Code, Fun, Args, Backend) when Vsn == ?SOPHIA_IRIS_FATE ->
     try aeso_compiler:create_calldata(to_str(Code), to_str(Fun),
                                       lists:map(fun to_str/1, Args),
                                       [{backend, Backend}])
@@ -433,10 +427,7 @@ encode_call_data_(Vsn, Code, Fun, Args0, _Backend) ->
     Args    = legacy_args(Vsn, Args0),
     ok = file:write_file(SrcFile, Code),
     Compiler = compiler_cmd(max(Vsn, ?SOPHIA_MINERVA)),
-    Esc = fun(Str) -> lists:flatten(string:replace(string:replace(Str, "\\", "\\\\", all), "\"", "\\\"", all)) end,
-    Cmd = Compiler ++ " --create_calldata " ++ contract_filename(Vsn, SrcFile) ++
-          " --calldata_fun " ++ to_str(Fun) ++ " --calldata_args \"" ++
-          string:join(lists:map(Esc, lists:map(fun to_str/1, Args)), ", ") ++ "\"",
+    Cmd = Compiler ++ create_calldata_args(Vsn, SrcFile, Fun, Args),
     Output = os:cmd(Cmd),
     try
         [_, CalldataStr] = string:lexemes(Output, "\n"),
@@ -446,6 +437,17 @@ encode_call_data_(Vsn, Code, Fun, Args0, _Backend) ->
     after
         cleanup_tempfiles()
     end.
+
+create_calldata_args(Vsn, SrcFile, Fun, Args) ->
+    Esc = fun(Str) -> lists:flatten(string:replace(string:replace(Str, "\\", "\\\\", all), "\"", "\\\"", all)) end,
+    Args1 = string:join([ Esc(to_str(Arg)) || Arg <- Args ], ", "),
+    CallArgs =
+        if Vsn =< ?SOPHIA_FORTUNA ->
+                " --calldata_fun " ++ to_str(Fun) ++ " --calldata_args \"" ++ Args1 ++ "\"";
+           true ->
+                " --call \"" ++ to_str(Fun) ++ "(" ++ Args1 ++ ")\""
+        end,
+    " --create_calldata " ++ contract_filename(Vsn, SrcFile) ++ CallArgs.
 
 decode_call_result(Code, Fun, Res, Value) ->
     %% Lookup the res in the cache - if not present just calculate the result
@@ -565,7 +567,7 @@ init_per_group(aevm, Cfg, Cont) ->
                   {abi_version, ?ABI_AEVM_SOPHIA_1}, {protocol, lima} | Cfg]);
         ?IRIS_PROTOCOL_VSN ->
             ct:pal("Running tests under Iris protocol"),
-            Cont([{sophia_version, ?SOPHIA_IRIS_AEVM}, {vm_version, ?VM_AEVM_SOPHIA_4},
+            Cont([{sophia_version, ?SOPHIA_LIMA_AEVM}, {vm_version, ?VM_AEVM_SOPHIA_4},
                   {abi_version, ?ABI_AEVM_SOPHIA_1}, {protocol, iris} | Cfg])
     end;
 init_per_group(fate, Cfg, Cont) ->
