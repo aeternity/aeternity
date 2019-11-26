@@ -4,7 +4,7 @@
 
 %% API
 -export([start_link/0,
-         start_link/3,
+         start_link/4,
          maybe_garbage_collect/0,
          stop/0]).
 
@@ -24,6 +24,7 @@
 
 -define(DEFAULT_INTERVAL, 50000).
 -define(DEFAULT_HISTORY, 500).
+-define(DEFAULT_CHUNK_SIZE, 10000).
 
 -define(TIMED(Expr), timer:tc(fun () -> Expr end)).
 -define(LOG(Fmt), lager:info(Fmt, [])).         % io:format(Fmt"~n")
@@ -34,12 +35,15 @@
 %% %%%===================================================================
 
 start_link() ->
-    #{enabled := Enabled, interval := Interval, history := History} = config(),
-    start_link(Enabled, Interval, History).
+    #{ enabled := Enabled
+     , interval := Interval
+     , history := History
+     , chunk_size := ChunkSize } = config(),
+    start_link(Enabled, Interval, History, ChunkSize).
 
-start_link(Enabled, Interval, History) ->
-    gen_statem:start_link({local, ?MODULE}, ?MODULE, [Enabled, Interval, History], []).
-
+start_link(Enabled, Interval, History, ChunkSize) ->
+    Params = [Enabled, Interval, History, ChunkSize],
+    gen_statem:start_link({local, ?MODULE}, ?MODULE, Params, []).
 
 -ifdef(EUNIT).
 maybe_garbage_collect() -> nop.
@@ -57,24 +61,21 @@ stop() ->
 %%% gen_statem callbacks
 %%%===================================================================
 
-init([true, Interval, History]) when Interval =< History ->
-    lager:error("GC interval ~p must be greater than history ~p", [Interval, History]),
-    {stop, interval_too_short};
-init([Enabled, Interval, History]) ->
+init([Enabled, Interval, History, ChunkSize]) ->
     if Enabled ->
             aec_events:subscribe(top_changed),
             aec_events:subscribe(chain_sync);
        true ->
             ok
     end,
-    Data = #data{enabled  = Enabled,
-                 interval = Interval,
-                 history  = History,
-                 synced   = false,
-                 height   = undefined,
-                 hashes   = undefined},
+    Data = #data{ enabled    = Enabled
+                , interval   = Interval
+                , history    = History
+                , chunk_size = ChunkSize
+                , synced     = false
+                , height     = undefined
+                , hashes     = undefined },
     {ok, idle, Data}.
-
 
 %% once the chain is synced, there's no way to "unsync"
 handle_event(info, {_, chain_sync, #{info := {chain_sync_done, _}}}, idle,
@@ -104,21 +105,31 @@ handle_event(info, {'ETS-TRANSFER', Hashes, _, {{FromHeight, ToHeight}, Time}}, 
 handle_event(info, {_, top_changed, #{info := #{block_type := key, height := Height}}}, ready,
              #data{enabled = true, synced = true, height = LastHeight, hashes = Hashes} = Data)
   when is_reference(Hashes), Height > LastHeight ->
-    {ok, _} = range_collect_reachable_hashes(Height, Data),
+    {Time, {ok, _}} = ?TIMED(range_collect_reachable_hashes(Height, Data)),
+    lager:debug("Updating reachable hashes after top changed took ~p seconds", [Time / 1000000]),
     {keep_state, Data#data{height = Height}};
 
 handle_event({call, From}, maybe_garbage_collect, ready,
              #data{enabled = true, synced = true, hashes = Hashes} = Data)
   when Hashes /= undefined, not is_pid(Hashes) ->
+    #data{height = Height, chunk_size = ChunkSize} = Data,
     Header = aec_chain:top_header(),
-    case aec_headers:type(Header) of
+    HeaderHeight = aec_headers:height(Header),
+    HeaderType = aec_headers:type(Header),
+    lager:debug("Maybe running GC at height = ~p, with top header type = ~p and top height = ~p",
+                [Height, HeaderType, HeaderHeight]),
+    case HeaderType of
         key ->
-            Height  = aec_headers:height(Header),
-            {ok, _} = range_collect_reachable_hashes(Height, Data),
-            {ok, N} = swap_nodes(Hashes),
-            ets:delete(Hashes),
-            {next_state, idle, Data#data{height = undefined, hashes = undefined},
-             {reply, From, {ok, N}}};
+            {Time, {ok, _}} = ?TIMED(range_collect_reachable_hashes(HeaderHeight, Data)),
+            lager:debug("Updating reachable hashes before GC took ~p seconds", [Time / 1000000]),
+            case partially_delete_nodes(ChunkSize, Hashes) of
+              done ->
+                {keep_state, Data#data{height=undefined, hashes=undefined}, {reply, From, ok}};
+              ok ->
+                % we keep garbage collecting until we are done
+                spawn(fun() -> maybe_garbage_collect() end),
+                {keep_state, Data, {reply, From, ok}}
+            end;
         micro ->
             {keep_state, Data}
     end;
@@ -166,16 +177,11 @@ range_collect_reachable_hashes(LastHeight, ToHeight, Hashes) ->
     [collect_reachable_hashes_delta(H, Hashes) || H <- lists:seq(LastHeight + 1, ToHeight)],
     {ok, Hashes}.
 
-%% the actual GC: clear whole table + insert reachable nodes
-swap_nodes(Hashes) ->
-    NodesCount = ets:info(Hashes, size),
-    %% clearing tab can't run in transaction
-    {ClearTime, ok} = ?TIMED(aec_db:clear_table(aec_account_state)),
-    ?LOG("GC clearing accounts table took ~p seconds", [ClearTime / 1000000]),
-    ?LOG("GC writing ~p reachable account state nodes...", [NodesCount]),
-    {WriteTime, ok} = ?TIMED(aec_db:write_accounts_nodes(Hashes)),
-    ?LOG("GC writing reachable account state nodes took ~p seconds", [WriteTime / 1000000]),
-    {ok, NodesCount}.
+partially_delete_nodes(Count, Hashes) ->
+    Objects = ets:tab2list(Hashes),
+    {WriteTime, Res} = ?TIMED(aec_db:delete_partial_accounts_nodes(Count, Objects)),
+    ?LOG("GC partially deleting ~p unreachable account state nodes took ~p seconds", [Count, WriteTime / 1000000]),
+    Res.
 
 -spec get_mpt(non_neg_integer()) -> aeu_mp_trees:tree().
 get_mpt(Height) ->
@@ -185,7 +191,6 @@ get_mpt(Height) ->
     {ok, RootHash} = aec_accounts_trees:root_hash(AccountTree),
     {ok, DB}       = aec_accounts_trees:db(AccountTree),
     aeu_mp_trees:new(RootHash, DB).
-
 
 store_hash(Hash, Node, Tab) ->
     ets:insert_new(Tab, {Hash, Node}),
@@ -197,9 +202,15 @@ store_unseen_hash(Hash, Node, Tab) ->
     end.
 
 config() ->
-    maps:from_list(
-      [{binary_to_atom(Key, utf8),
-        aeu_env:user_config([<<"chain">>, <<"garbage_collection">>, Key], Default)} ||
-          {Key, Default} <- [{<<"enabled">>, false},
-                             {<<"interval">>, ?DEFAULT_INTERVAL},
-                             {<<"history">>, ?DEFAULT_HISTORY}]]).
+  Defaults = [ {<<"enabled">>, false}
+             , {<<"interval">>, ?DEFAULT_INTERVAL}
+             , {<<"history">>, ?DEFAULT_HISTORY}
+             , {<<"chunk_size">>, ?DEFAULT_CHUNK_SIZE}
+             ]],
+  Config = lists:map(
+             fun({Key, Default}) ->
+                 Key1 = binary_to_atom(Key, utf8),
+                 Value = aeu_env:user_config([<<"chain">>, <<"garbage_collection">>, Key], Default),
+                 {Key1, Value}
+             end, Defaults),
+  maps:from_list(Config).

@@ -76,7 +76,7 @@
         , find_oracles_node/1
         , find_oracles_cache_node/1
         , write_accounts_node/2
-        , write_accounts_nodes/1
+        , delete_partial_accounts_nodes/2
         , write_calls_node/2
         , write_channels_node/2
         , write_contracts_node/2
@@ -169,22 +169,17 @@ tab_copies(#{alias := Alias}) -> {Alias, [node()]}.
 
 clear_db() ->
     ?t(begin
-           lists:map(
-             fun({T, _}) ->
-                     Keys = mnesia:all_keys(T),
-                     [mnesia:delete({T, K}) || K <- Keys]
-             end, tables()),
-           ok
+          [clear_table(T) || {T, _} <- tables()]
        end,
        [T || {T, _} <- tables()]).
 
 clear_table(Tab) ->
     ?t(begin
           Keys = mnesia:all_keys(Tab),
-          [mnesia:delete({Tab, K}) || K <- Keys],
-          ok
+          [mnesia:delete({Tab, K}) || K <- Keys]
        end,
-       [Tab]).
+       [Tab]),
+    ok.
 
 persisted_valid_genesis_block() ->
     case application:get_env(aecore, persist, ?PERSIST) of
@@ -275,10 +270,10 @@ ensure_transaction(Fun, ErrorKeys) when is_function(Fun, 0) ->
     %% TODO: actually, some non-transactions also have an activity state
     case get(mnesia_activity_state) of
         undefined ->
-            try_activity(transaction, Fun, ErrorKeys);
+            try_activity(sync_transaction, Fun, ErrorKeys);
         {_, _, non_transaction} ->
             %% Transaction inside a dirty context; rely on mnesia to handle it
-            try_activity(transaction, Fun, ErrorKeys);
+            try_activity(sync_transaction, Fun, ErrorKeys);
         _ ->
             %% We are already in a transaction, thus no custom retry is
             %% attempted via `try_activity/3` since this only works outside of a
@@ -451,17 +446,21 @@ write_block_state(Hash, Trees, AccDifficulty, ForkId, Fees, Fraud) ->
        [{aec_block_state, Hash}]).
 
 write_accounts_node(Hash, Node) ->
-    write_accounts_nodes([{Hash, Node}]).
+    ?t(mnesia:write(#aec_account_state{key = Hash, value = Node}),
+       [{aec_account_state, Hash}]).
 
-write_accounts_nodes(Nodes) ->
-    ?t(begin
-          lists:map(
-           fun({Hash, Node}) ->
-                 mnesia:write(#aec_account_state{key = Hash, value = Node})
-           end, Nodes),
-          ok
+delete_partial_accounts_nodes(Count, Nodes) ->
+   ?t(begin
+         Spec = [{#aec_account_state{key = '$1'}, [{'=/=', '$1', K}], ['$1']} || {K, _} <- Nodes],
+          case mnesia:select(aec_account_state, Spec, Count) of
+             '$end_of_table' ->
+                done;
+             {Objects, _} ->
+                [mnesia:delete(aec_account_state, O) || O <- Objects],
+                ok
+          end
        end,
-       [{aec_account_state, Hash} || {Hash, _} <- Nodes]).
+       [aec_account_state]).
 
 write_calls_node(Hash, Node) ->
     ?t(mnesia:write(#aec_call_state{key = Hash, value = Node}),

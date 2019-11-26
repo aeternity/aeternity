@@ -436,7 +436,7 @@
                         "interval" : {
                             "description": "How often (every `interval` block) should garbage collection run",
                             "type": "integer",
-                            "minimum": 50,
+                            "minimum": 2,
                             "default": 50000
                         },
                         "history" : {
