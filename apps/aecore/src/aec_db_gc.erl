@@ -206,6 +206,6 @@ config() ->
     maps:from_list(
       [{binary_to_atom(Key, utf8),
         aeu_env:user_config([<<"chain">>, <<"garbage_collection">>, Key], Default)} ||
-          {Key, Default} <- [{<<"enabled">>, true},
+          {Key, Default} <- [{<<"enabled">>, false},
                              {<<"interval">>, ?DEFAULT_INTERVAL},
                              {<<"history">>, ?DEFAULT_HISTORY}]]).
