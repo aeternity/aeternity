@@ -151,6 +151,7 @@
         , sophia_int_to_str/1
         , sophia_events/1
         , sophia_crypto/1
+        , sophia_crypto_pairing/1
         , sophia_safe_math/1
         , sophia_heap_to_heap_bug/1
         , sophia_namespaces/1
@@ -298,6 +299,7 @@ all() ->
                        , sophia_polymorphic_entrypoint
                        , lima_migration
                        , sophia_aens_update_transaction
+                       , sophia_crypto_pairing
                        ]).
 
 -define(FATE_TODO, [
@@ -4907,6 +4909,135 @@ sophia_crypto(_Cfg) ->
              , {?hsh(GoodMsg1), {bytes, SECP_Pub_Hash}, {bytes, GoodSig1_v}, false}
              , {?hsh(MsgHash),  {bytes, SECP_Pub_Hash}, {bytes, SECP_Sig_v}, true} ] ],
 
+    ok.
+
+sophia_crypto_pairing(Cfg) ->
+    case vm_version() < ?VM_FATE_SOPHIA_2 of
+        true  -> sophia_crypto_pairing_neg(Cfg);
+        false -> sophia_crypto_pairing_(Cfg)
+    end.
+
+sophia_crypto_pairing_neg(_Cfg) ->
+    %% For the negative test, overload the compiler
+    set_compiler_version(?VM_FATE_SOPHIA_1, ?SOPHIA_IRIS_FATE),
+
+    state(aect_test_utils:new_state()),
+    Acc = ?call(new_account, 1000000000 * aec_test_utils:min_gas_price()),
+    C   = ?call(create_contract, Acc, crypto_pairing, {}),
+
+    {ok, G1} = emcl:bnG1_hash_and_map_to(<<"abcdef">>),
+    ToFateG1 = fun({g1, {fp, X}, {fp, Y}, {fp, Z}}) -> {{bytes, X}, {bytes, Y}, {bytes, Z}} end,
+    G1Type = {tuple, [{bytes, 48}, {bytes, 48}, {bytes, 48}]},
+    Res1 = ?call(call_contract, Acc, C, g1_neg, G1Type, {ToFateG1(G1)}),
+
+    ?assertEqual({error,<<"Error in bls12_381_g1_neg: not_supported">>}, Res1),
+
+    ok.
+
+sophia_crypto_pairing_(_Cfg) ->
+    ?skipRest(vm_version() < ?VM_FATE_SOPHIA_2, fancy_pairing_crypto_not_pre_iris),
+
+    state(aect_test_utils:new_state()),
+    Acc = ?call(new_account, 1000000000 * aec_test_utils:min_gas_price()),
+    C   = ?call(create_contract, Acc, crypto_pairing, {}),
+
+    {ok, G1a} = emcl:bnG1_hash_and_map_to(<<"abcdef">>),
+    {ok, G1b} = emcl:bnG1_hash_and_map_to(<<"ghijkl">>),
+    G1aX = 16#29c7ec11e1d4ca283d17420735c31841be0df198081674eb486996106edbfe24b6cf9b212e4133e7fff1d016079f42c,
+    G1aY = 16#c8b2933a774a3338b055f00630a265023647d0bd7425928d1dfc8911726431aba580c8cbbfb425d9c5d2bb638184840,
+    G1bX = 16#135cd49d28c75da078427bbe289b9cddde53ad75b070740adc9dfb3417053579dbaf58ae5f419819a09c4cd004f03d75,
+    G1bY = 16#11dd9a0ac8185a8fe3f92b1d3e677ab5720a50279de8e9d7891752c96ed9dc0fe31fb8d5f04167b3ae00f9bad7617a34,
+
+    A = emcl:mk_Fr(2),
+    B = emcl:mk_Fr(1234567),
+    ToFateFr = fun({fr, X}) -> {bytes, X} end,
+
+    ToFateG1 = fun({g1, {fp, X}, {fp, Y}, {fp, Z}}) -> {{bytes, X}, {bytes, Y}, {bytes, Z}} end,
+    FromFateG1 = fun({{bytes, X}, {bytes, Y}, {bytes, Z}}) -> {g1, {fp, X}, {fp, Y}, {fp, Z}} end,
+    G1Type = {tuple, [{bytes, 48}, {bytes, 48}, {bytes, 48}]},
+
+    Res1 = ?call(call_contract, Acc, C, g1_neg, G1Type, {ToFateG1(G1a)}),
+    ?assert(emcl:is_eq(emcl:bnG1_neg(G1a), FromFateG1(Res1))),
+
+    Res2 = ?call(call_contract, Acc, C, g1_norm, G1Type, {ToFateG1(G1a)}),
+    ?assert(emcl:is_eq(emcl:bnG1_normalize(G1a), FromFateG1(Res2))),
+
+    Res3 = ?call(call_contract, Acc, C, g1_valid, bool, {ToFateG1(G1a)}),
+    ?assertEqual(true, Res3),
+
+    Res4 = ?call(call_contract, Acc, C, g1_is_zero, bool, {ToFateG1(G1a)}),
+    ?assertEqual(true, Res4),
+
+    Res5A = ?call(call_contract, Acc, C, g1_add, G1Type, {ToFateG1(G1a), ToFateG1(G1b)}),
+    Res5B = ?call(call_contract, Acc, C, g1_add_i, G1Type, {G1aX, G1aY, 1, G1bX, G1bY, 1}),
+
+    %% ct:pal("Model: ~s\nFATE1: ~s\nFATE2: ~s\n", [emcl:pp(emcl:bnG1_add(G1a, G1b)), emcl:pp(FromFateG1(Res5A)), emcl:pp(FromFateG1(Res5B))]),
+    ?assertEqual(true, emcl:is_eq(emcl:bnG1_add(G1a, G1b), FromFateG1(Res5A))),
+    ?assertEqual(true, emcl:is_eq(FromFateG1(Res5A), FromFateG1(Res5B))),
+
+    Res6 = ?call(call_contract, Acc, C, g1_mul, G1Type, {ToFateFr(B), ToFateG1(G1b)}),
+    ?assertEqual(true, emcl:is_eq(emcl:bnG1_mul(G1b, B), FromFateG1(Res6))),
+
+    {ok, G2a} = emcl:bnG2_hash_and_map_to(<<"abcdef">>),
+    {ok, G2b} = emcl:bnG2_hash_and_map_to(<<"ghijkl">>),
+    ToFateG2 = fun({g2, {fp2, {fp, X1}, {fp, X2}}, {fp2, {fp, Y1}, {fp, Y2}}, {fp2, {fp, Z1}, {fp, Z2}}}) ->
+                       {{{bytes, X1}, {bytes, X2}}, {{bytes, Y1}, {bytes, Y2}}, {{bytes, Z1}, {bytes, Z2}}}
+               end,
+    FromFateG2 = fun({{{bytes, X1}, {bytes, X2}}, {{bytes, Y1}, {bytes, Y2}}, {{bytes, Z1}, {bytes, Z2}}}) ->
+                     {g2, {fp2, {fp, X1}, {fp, X2}}, {fp2, {fp, Y1}, {fp, Y2}}, {fp2, {fp, Z1}, {fp, Z2}}}
+                 end,
+    G2Type = {tuple, [{tuple, [{bytes, 48}, {bytes, 48}]},
+                      {tuple, [{bytes, 48}, {bytes, 48}]},
+                      {tuple, [{bytes, 48}, {bytes, 48}]}]},
+
+    Res7 = ?call(call_contract, Acc, C, g2_neg, G2Type, {ToFateG2(G2a)}),
+    ?assert(emcl:is_eq(emcl:bnG2_neg(G2a), FromFateG2(Res7))),
+
+    Res8 = ?call(call_contract, Acc, C, g2_norm, G2Type, {ToFateG2(G2a)}),
+    ?assert(emcl:is_eq(emcl:bnG2_normalize(G2a), FromFateG2(Res8))),
+
+    Res9 = ?call(call_contract, Acc, C, g2_valid, bool, {ToFateG2(G2a)}),
+    ?assertEqual(true, Res9),
+
+    Res10 = ?call(call_contract, Acc, C, g2_is_zero, bool, {ToFateG2(G2a)}),
+    ?assertEqual(true, Res10),
+
+    Res11 = ?call(call_contract, Acc, C, g2_add, G2Type, {ToFateG2(G2a), ToFateG2(G2b)}),
+    ?assertEqual(true, emcl:is_eq(emcl:bnG2_add(G2a, G2b), FromFateG2(Res11))),
+
+    Res12 = ?call(call_contract, Acc, C, g2_mul, G2Type, {ToFateFr(B), ToFateG2(G2b)}),
+    ?assertEqual(true, emcl:is_eq(emcl:bnG2_mul(G2b, B), FromFateG2(Res12))),
+
+    FromFateGT = fun({{bytes, X1}, {bytes, X2}, {bytes, X3}, {bytes, X4}, {bytes, X5}, {bytes, X6},
+                      {bytes, X7}, {bytes, X8}, {bytes, X9}, {bytes, X10}, {bytes, X11}, {bytes, X12}}) ->
+                     {gt, {fp, X1}, {fp, X2}, {fp, X3}, {fp, X4}, {fp, X5}, {fp, X6},
+                          {fp, X7}, {fp, X8}, {fp, X9}, {fp, X10}, {fp, X11}, {fp, X12}}
+                 end,
+
+    GTType = {tuple, [{bytes, 48}, {bytes, 48},{bytes, 48}, {bytes, 48},
+                      {bytes, 48}, {bytes, 48},{bytes, 48}, {bytes, 48},
+                      {bytes, 48}, {bytes, 48},{bytes, 48}, {bytes, 48}]},
+
+    Res13 = ?call(call_contract, Acc, C, pairing, GTType, {ToFateG1(G1a), ToFateG2(G2a)}),
+    ?assertEqual(true, emcl:is_eq(emcl:bn_pairing(G1a, G2a), FromFateGT(Res13))),
+
+    Res14 = ?call(call_contract, Acc, C, gt_mul_inv, bool, {Res13}),
+    ?assertEqual(true, Res14),
+
+    {Res15, _} = ?call(call_contract, Acc, C, pair_test, bool, {ToFateG1(G1b), ToFateG2(G2b), ToFateFr(A), ToFateFr(B)}, #{return_gas_used => true}),
+    ?assertEqual(true, Res15),
+
+    Res16 = ?call(call_contract, Acc, C, pairing_test1, bool, {ToFateG1(G1a), ToFateG2(G2a)}),
+    ?assertEqual(true, Res16),
+
+    Res17 = ?call(call_contract, Acc, C, pairing_test2, bool, {ToFateG1(G1b), ToFateG2(G2b)}),
+    ?assertEqual(true, Res17),
+
+    Res18 = ?call(call_contract, Acc, C, pairing_test3, bool, {ToFateG1(G1b), ToFateG2(G2b)}),
+    ?assertEqual(true, Res18),
+
+    Res19 = ?call(call_contract, Acc, C, gt_add, GTType, {Res13, Res13}),
+    ?assertEqual(true, emcl:is_eq(emcl:bnGt_add(FromFateGT(Res13), FromFateGT(Res13)), FromFateGT(Res19))),
     ok.
 
 sophia_safe_math(Cfg) ->

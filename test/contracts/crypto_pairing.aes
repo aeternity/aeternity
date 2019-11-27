@@ -1,0 +1,51 @@
+include "BLS12_381.aes"
+
+contract PairingTest =
+  type fr = BLS12_381.fr
+  type fp = BLS12_381.fp
+  type g1 = BLS12_381.g1
+  type g2 = BLS12_381.g2
+  type gt = BLS12_381.gt
+
+  entrypoint g1_neg(g1 : g1) = BLS12_381.g1_neg(g1)
+  entrypoint g1_norm(g1 : g1) = BLS12_381.g1_norm(g1)
+  entrypoint g1_valid(g1 : g1) = BLS12_381.g1_valid(g1)
+  entrypoint g1_is_zero(g1 : g1) = BLS12_381.g1_is_zero(BLS12_381.g1_add(g1, BLS12_381.g1_neg(g1)))
+
+  entrypoint g1_add(g1a : g1, g1b : g1) = BLS12_381.g1_add(g1a, g1b)
+  entrypoint g1_mul(k : fr, g1 : g1) = BLS12_381.g1_mul(k, g1)
+  entrypoint g1_add_i(x1 : int, y1 : int, z1 : int,
+                      x2 : int, y2 : int, z2 : int) =
+    BLS12_381.g1_add(BLS12_381.mk_g1(x1, y1, z1), BLS12_381.mk_g1(x2, y2, z2))
+
+
+  entrypoint g2_neg(g2 : g2) = BLS12_381.g2_neg(g2)
+  entrypoint g2_norm(g2 : g2) = BLS12_381.g2_norm(g2)
+  entrypoint g2_valid(g2 : g2) = BLS12_381.g2_valid(g2)
+  entrypoint g2_is_zero(g2 : g2) = BLS12_381.g2_is_zero(BLS12_381.g2_add(g2, BLS12_381.g2_neg(g2)))
+
+  entrypoint g2_add(g2a : g2, g2b : g2) = BLS12_381.g2_add(g2a, g2b)
+  entrypoint g2_mul(k : fr, g2 : g2) = BLS12_381.g2_mul(k, g2)
+
+  entrypoint pairing(g1 : g1, g2 : g2) = BLS12_381.pairing(g1, g2)
+  entrypoint gt_mul_inv(g : gt) = BLS12_381.gt_is_one(BLS12_381.gt_mul(g, BLS12_381.gt_inv(g)))
+  entrypoint pair_test(p : g1, q : g2, a : fr, b : fr) =
+    let ap = BLS12_381.g1_mul(a, p)
+    let bq = BLS12_381.g2_mul(b, q)
+    let e  = BLS12_381.pairing(p, q)
+    let e1 = BLS12_381.gt_pow(e, a)
+    let e2 = BLS12_381.pairing(ap, q)
+    let e3 = BLS12_381.gt_pow(e, b)
+    let e4 = BLS12_381.pairing(p, bq)
+    (e1 == e2) && (e3 == e4)
+
+  entrypoint gt_add(x : gt, y : gt) = BLS12_381.gt_add(x, y)
+
+  entrypoint pairing_test1(p : g1, q : g2) =
+    BLS12_381.pairing_check([p, BLS12_381.g1_neg(p)], [q, q])
+
+  entrypoint pairing_test2(p : g1, q : g2) =
+    BLS12_381.pairing_check([p, p], [q, BLS12_381.g2_neg(q)])
+
+  entrypoint pairing_test3(p : g1, q : g2) =
+    BLS12_381.pairing(p, q) == BLS12_381.final_exp(BLS12_381.miller_loop(p, q))

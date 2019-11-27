@@ -122,6 +122,30 @@
         , verify_sig_secp256k1/5
         , ecverify_secp256k1/5
         , ecrecover_secp256k1/4
+        , bls12_381_g1_neg/3
+        , bls12_381_g1_norm/3
+        , bls12_381_g1_valid/3
+        , bls12_381_g1_is_zero/3
+        , bls12_381_g1_add/4
+        , bls12_381_g1_mul/4
+        , bls12_381_g2_neg/3
+        , bls12_381_g2_norm/3
+        , bls12_381_g2_valid/3
+        , bls12_381_g2_is_zero/3
+        , bls12_381_g2_add/4
+        , bls12_381_g2_mul/4
+        , bls12_381_gt_inv/3
+        , bls12_381_gt_add/4
+        , bls12_381_gt_mul/4
+        , bls12_381_gt_pow/4
+        , bls12_381_gt_is_one/3
+        , bls12_381_pairing/4
+        , bls12_381_miller_loop/4
+        , bls12_381_final_exp/3
+        , bls12_381_int_to_fr/3
+        , bls12_381_int_to_fp/3
+        , bls12_381_fr_to_int/3
+        , bls12_381_fp_to_int/3
         , contract_to_address/3
         , address_to_contract/3
         , sha3/3
@@ -1539,6 +1563,88 @@ ecverify_secp256k1(Arg0, Arg1, Arg2, Arg3, ES) ->
 ecrecover_secp256k1(Arg0, Arg1, Arg2, ES) ->
     bin_op(ecrecover_secp256k1, {Arg0, Arg1, Arg2}, ES).
 
+bls12_381_g1_neg(Arg0, Arg1, ES) ->
+    bls12_381_op(un_op, bls12_381_g1_neg, {Arg0, Arg1}, ES).
+
+bls12_381_g1_norm(Arg0, Arg1, ES) ->
+    bls12_381_op(un_op, bls12_381_g1_norm, {Arg0, Arg1}, ES).
+
+bls12_381_g1_valid(Arg0, Arg1, ES) ->
+    bls12_381_op(un_op, bls12_381_g1_valid, {Arg0, Arg1}, ES).
+
+bls12_381_g1_is_zero(Arg0, Arg1, ES) ->
+    bls12_381_op(un_op, bls12_381_g1_is_zero, {Arg0, Arg1}, ES).
+
+bls12_381_g1_add(Arg0, Arg1, Arg2, ES) ->
+    bls12_381_op(bin_op, bls12_381_g1_add, {Arg0, Arg1, Arg2}, ES).
+
+bls12_381_g1_mul(Arg0, Arg1, Arg2, ES) ->
+    bls12_381_op(bin_op, bls12_381_g1_mul, {Arg0, Arg1, Arg2}, ES).
+
+bls12_381_g2_neg(Arg0, Arg1, ES) ->
+    bls12_381_op(un_op, bls12_381_g2_neg, {Arg0, Arg1}, ES).
+
+bls12_381_g2_norm(Arg0, Arg1, ES) ->
+    bls12_381_op(un_op, bls12_381_g2_norm, {Arg0, Arg1}, ES).
+
+bls12_381_g2_valid(Arg0, Arg1, ES) ->
+    bls12_381_op(un_op, bls12_381_g2_valid, {Arg0, Arg1}, ES).
+
+bls12_381_g2_is_zero(Arg0, Arg1, ES) ->
+    bls12_381_op(un_op, bls12_381_g2_is_zero, {Arg0, Arg1}, ES).
+
+bls12_381_g2_add(Arg0, Arg1, Arg2, ES) ->
+    bls12_381_op(bin_op, bls12_381_g2_add, {Arg0, Arg1, Arg2}, ES).
+
+bls12_381_g2_mul(Arg0, Arg1, Arg2, ES) ->
+    bls12_381_op(bin_op, bls12_381_g2_mul, {Arg0, Arg1, Arg2}, ES).
+
+bls12_381_gt_inv(Arg0, Arg1, ES) ->
+    bls12_381_op(un_op, bls12_381_gt_inv, {Arg0, Arg1}, ES).
+
+bls12_381_gt_mul(Arg0, Arg1, Arg2, ES) ->
+    bls12_381_op(bin_op, bls12_381_gt_mul, {Arg0, Arg1, Arg2}, ES).
+
+bls12_381_gt_pow(Arg0, Arg1, Arg2, ES) ->
+    bls12_381_op(bin_op, bls12_381_gt_pow, {Arg0, Arg1, Arg2}, ES).
+
+bls12_381_gt_is_one(Arg0, Arg1, ES) ->
+    bls12_381_op(un_op, bls12_381_gt_is_one, {Arg0, Arg1}, ES).
+
+bls12_381_pairing(Arg0, Arg1, Arg2, ES) ->
+    bls12_381_op(bin_op, bls12_381_pairing, {Arg0, Arg1, Arg2}, ES).
+
+bls12_381_miller_loop(Arg0, Arg1, Arg2, ES) ->
+    bls12_381_op(bin_op, bls12_381_miller_loop, {Arg0, Arg1, Arg2}, ES).
+
+bls12_381_final_exp(Arg0, Arg1, ES) ->
+    bls12_381_op(un_op, bls12_381_final_exp, {Arg0, Arg1}, ES).
+
+bls12_381_gt_add(Arg0, Arg1, Arg2, ES) ->
+    bls12_381_op(bin_op, bls12_381_gt_add, {Arg0, Arg1, Arg2}, ES).
+
+bls12_381_int_to_fr(Arg0, Arg1, ES) ->
+    bls12_381_op(un_op, bls12_381_int_to_fr, {Arg0, Arg1}, ES).
+
+bls12_381_int_to_fp(Arg0, Arg1, ES) ->
+    bls12_381_op(un_op, bls12_381_int_to_fp, {Arg0, Arg1}, ES).
+
+bls12_381_fr_to_int(Arg0, Arg1, ES) ->
+    bls12_381_op(un_op, bls12_381_fr_to_int, {Arg0, Arg1}, ES).
+
+bls12_381_fp_to_int(Arg0, Arg1, ES) ->
+    bls12_381_op(un_op, bls12_381_fp_to_int, {Arg0, Arg1}, ES).
+
+bls12_381_op(OpType, Op, Args, ES) ->
+    case aefa_engine_state:vm_version(ES) >= ?VM_FATE_SOPHIA_2 of
+        false ->
+            aefa_fate:abort({primop_error, Op, not_supported}, ES);
+        true when OpType == un_op ->
+            un_op(Op, Args, ES);
+        true when OpType == bin_op ->
+            bin_op(Op, Args, ES)
+    end.
+
 contract_to_address(Arg0, Arg1, ES) ->
     un_op(contract_to_address, {Arg0, Arg1}, ES).
 
@@ -1667,6 +1773,16 @@ make_variant(Arities, Tag, NoElements, ES)  when ?IS_FATE_LIST(Arities)
 make_variant(Arities, Tag, NoElements, ES) ->
     aefa_fate:abort({type_error, make_variant, [Arities, Tag, NoElements]}, ES).
 
+-define(FATE_FR(X), ?FATE_BYTES(X)).
+-define(FATE_FP(X), ?FATE_BYTES(X)).
+-define(FATE_FP2(X1, X2), ?FATE_TUPLE({?FATE_FP(X1), ?FATE_FP(X2)})).
+
+-define(FATE_G1(X, Y, Z), ?FATE_TUPLE({?FATE_FP(X), ?FATE_FP(Y), ?FATE_FP(Z)})).
+-define(FATE_G2(X1, X2, Y1, Y2, Z1, Z2),
+        ?FATE_TUPLE({?FATE_FP2(X1, X2), ?FATE_FP2(Y1, Y2), ?FATE_FP2(Z1, Z2)})).
+-define(FATE_GT(X1, X2, X3, X4, X5, X6, X7, X8, X9, X10, X11, X12),
+        ?FATE_TUPLE({?FATE_FP(X1), ?FATE_FP(X2), ?FATE_FP(X3), ?FATE_FP(X4), ?FATE_FP(X5), ?FATE_FP(X6),
+                     ?FATE_FP(X7), ?FATE_FP(X8), ?FATE_FP(X9), ?FATE_FP(X10), ?FATE_FP(X11), ?FATE_FP(X12)})).
 
 %% Unary operations
 op(get, A) ->
@@ -1736,6 +1852,47 @@ op(contract_to_address, A) when ?IS_FATE_CONTRACT(A) ->
     ?FATE_ADDRESS(?FATE_CONTRACT_VALUE(A));
 op(address_to_contract, A) when ?IS_FATE_ADDRESS(A) ->
     ?FATE_CONTRACT(?FATE_ADDRESS_VALUE(A));
+op(bls12_381_g1_neg, ?FATE_G1(X1, Y1, Z1)) ->
+    P = emcl:bnG1_neg(g1_to_emcl(X1, Y1, Z1)),
+    g1_to_fate(P);
+op(bls12_381_g1_norm, ?FATE_G1(X1, Y1, Z1)) ->
+    P = emcl:bnG1_normalize(g1_to_emcl(X1, Y1, Z1)),
+    g1_to_fate(P);
+op(bls12_381_g1_valid, ?FATE_G1(X1, Y1, Z1)) ->
+    aeb_fate_data:make_boolean(emcl:bnG1_is_valid(g1_to_emcl(X1, Y1, Z1)));
+op(bls12_381_g1_is_zero, ?FATE_G1(X1, Y1, Z1)) ->
+    aeb_fate_data:make_boolean(emcl:bnG1_is_zero(g1_to_emcl(X1, Y1, Z1)));
+op(bls12_381_g2_neg, ?FATE_G2(X11, X12, Y11, Y12, Z11, Z12)) ->
+    P = emcl:bnG2_neg(g2_to_emcl(X11, X12, Y11, Y12, Z11, Z12)),
+    g2_to_fate(P);
+op(bls12_381_g2_norm, ?FATE_G2(X11, X12, Y11, Y12, Z11, Z12)) ->
+    P = emcl:bnG2_normalize(g2_to_emcl(X11, X12, Y11, Y12, Z11, Z12)),
+    g2_to_fate(P);
+op(bls12_381_g2_valid, ?FATE_G2(X11, X12, Y11, Y12, Z11, Z12)) ->
+    aeb_fate_data:make_boolean(emcl:bnG2_is_valid(g2_to_emcl(X11, X12, Y11, Y12, Z11, Z12)));
+op(bls12_381_g2_is_zero, ?FATE_G2(X11, X12, Y11, Y12, Z11, Z12)) ->
+    aeb_fate_data:make_boolean(emcl:bnG2_is_zero(g2_to_emcl(X11, X12, Y11, Y12, Z11, Z12)));
+op(bls12_381_gt_inv, ?FATE_GT(X11, X12, X13, X14, X15, X16, X17, X18, X19, X110, X111, X112)) ->
+    P = emcl:bnGt_inv(gt_to_emcl(X11, X12, X13, X14, X15, X16, X17, X18, X19, X110, X111, X112)),
+    gt_to_fate(P);
+op(bls12_381_gt_is_one, ?FATE_GT(X11, X12, X13, X14, X15, X16, X17, X18, X19, X110, X111, X112)) ->
+    aeb_fate_data:make_boolean(
+      emcl:bnGt_is_one(gt_to_emcl(X11, X12, X13, X14, X15, X16, X17, X18, X19, X110, X111, X112)));
+op(bls12_381_final_exp, ?FATE_GT(X11, X12, X13, X14, X15, X16, X17, X18, X19, X110, X111, X112)) ->
+    P = emcl:bn_final_exp(gt_to_emcl(X11, X12, X13, X14, X15, X16, X17, X18, X19, X110, X111, X112)),
+    gt_to_fate(P);
+op(bls12_381_int_to_fr, I) when ?IS_FATE_INTEGER(I) ->
+    Fr = emcl:mk_Fr(?FATE_INTEGER_VALUE(I)),
+    ?FATE_FR(emcl:bnFr_to_bin(Fr));
+op(bls12_381_int_to_fp, I) when ?IS_FATE_INTEGER(I) ->
+    Fp = emcl:mk_Fp(?FATE_INTEGER_VALUE(I)),
+    ?FATE_FP(emcl:bnFp_to_bin(Fp));
+op(bls12_381_fr_to_int, ?FATE_FR(X)) ->
+    I = emcl:bnFr_to_int(emcl:mk_Fr(X)),
+    aeb_fate_data:make_integer(I);
+op(bls12_381_fp_to_int, ?FATE_FP(X)) ->
+    I = emcl:bnFp_to_int(emcl:mk_Fp(X)),
+    aeb_fate_data:make_integer(I);
 op(Op, Arg) ->
     aefa_fate:abort({type_error, Op, [Arg]}).
 
@@ -1848,6 +2005,39 @@ op(ecrecover_secp256k1, Msg, Sig) when ?IS_FATE_BYTES(32, Msg)
         false      -> aeb_fate_data:make_variant([0, 1], 0, {});
         {ok, Addr} -> aeb_fate_data:make_variant([0, 1], 1, {?FATE_BYTES(Addr)})
     end;
+op(bls12_381_g1_add, ?FATE_G1(X1, Y1, Z1), ?FATE_G1(X2, Y2, Z2)) ->
+    P = emcl:bnG1_add(g1_to_emcl(X1, Y1, Z1), g1_to_emcl(X2, Y2, Z2)),
+    g1_to_fate(P);
+op(bls12_381_g1_mul, ?FATE_FR(K), ?FATE_G1(X1, Y1, Z1)) ->
+    P = emcl:bnG1_mul(g1_to_emcl(X1, Y1, Z1), emcl:mk_Fr(K)),
+    g1_to_fate(P);
+op(bls12_381_g2_add, ?FATE_G2(X11, X12, Y11, Y12, Z11, Z12),
+                     ?FATE_G2(X21, X22, Y21, Y22, Z21, Z22)) ->
+    P = emcl:bnG2_add(g2_to_emcl(X11, X12, Y11, Y12, Z11, Z12),
+                      g2_to_emcl(X21, X22, Y21, Y22, Z21, Z22)),
+    g2_to_fate(P);
+op(bls12_381_g2_mul, ?FATE_FR(K), ?FATE_G2(X11, X12, Y11, Y12, Z11, Z12)) ->
+    P = emcl:bnG2_mul(g2_to_emcl(X11, X12, Y11, Y12, Z11, Z12), emcl:mk_Fr(K)),
+    g2_to_fate(P);
+op(bls12_381_gt_add, ?FATE_GT(X11, X12, X13, X14, X15, X16, X17, X18, X19, X110, X111, X112),
+                     ?FATE_GT(X21, X22, X23, X24, X25, X26, X27, X28, X29, X210, X211, X212)) ->
+    P = emcl:bnGt_add(gt_to_emcl(X11, X12, X13, X14, X15, X16, X17, X18, X19, X110, X111, X112),
+                      gt_to_emcl(X21, X22, X23, X24, X25, X26, X27, X28, X29, X210, X211, X212)),
+    gt_to_fate(P);
+op(bls12_381_gt_mul, ?FATE_GT(X11, X12, X13, X14, X15, X16, X17, X18, X19, X110, X111, X112),
+                     ?FATE_GT(X21, X22, X23, X24, X25, X26, X27, X28, X29, X210, X211, X212)) ->
+    P = emcl:bnGt_mul(gt_to_emcl(X11, X12, X13, X14, X15, X16, X17, X18, X19, X110, X111, X112),
+                      gt_to_emcl(X21, X22, X23, X24, X25, X26, X27, X28, X29, X210, X211, X212)),
+    gt_to_fate(P);
+op(bls12_381_gt_pow, ?FATE_GT(X11, X12, X13, X14, X15, X16, X17, X18, X19, X110, X111, X112), ?FATE_FR(K)) ->
+    P = emcl:bnGt_pow(gt_to_emcl(X11, X12, X13, X14, X15, X16, X17, X18, X19, X110, X111, X112), emcl:mk_Fr(K)),
+    gt_to_fate(P);
+op(bls12_381_pairing, ?FATE_G1(X1, Y1, Z1), ?FATE_G2(X11, X12, Y11, Y12, Z11, Z12)) ->
+    P = emcl:bn_pairing(g1_to_emcl(X1, Y1, Z1), g2_to_emcl(X11, X12, Y11, Y12, Z11, Z12)),
+    gt_to_fate(P);
+op(bls12_381_miller_loop, ?FATE_G1(X1, Y1, Z1), ?FATE_G2(X11, X12, Y11, Y12, Z11, Z12)) ->
+    P = emcl:bn_miller_loop(g1_to_emcl(X1, Y1, Z1), g2_to_emcl(X11, X12, Y11, Y12, Z11, Z12)),
+    gt_to_fate(P);
 op(Op, Arg1, Arg2) ->
     aefa_fate:abort({type_error, Op, [Arg1, Arg2]}).
 
@@ -1985,3 +2175,28 @@ words_used(I) when is_integer(I) ->
 shift_word(0, N) -> N;
 shift_word(A, N) ->
     shift_word(A bsr 64, N + 1).
+
+g1_to_fate(P) ->
+    {X, Y, Z} = emcl:bnG1_to_bin(P),
+    ?FATE_G1(X, Y, Z).
+
+g2_to_fate(P) ->
+    {{X1, X2}, {Y1, Y2}, {Z1, Z2}} = emcl:bnG2_to_bin(P),
+    ?FATE_G2(X1, X2, Y1, Y2, Z1, Z2).
+
+gt_to_fate(P) ->
+    {X1, X2, X3, X4, X5, X6, X7, X8, X9, X10, X11, X12} = emcl:bnGt_to_bin(P),
+    ?FATE_GT(X1, X2, X3, X4, X5, X6, X7, X8, X9, X10, X11, X12).
+
+g1_to_emcl(X, Y, Z) ->
+    emcl:mk_G1(emcl:mk_Fp(X), emcl:mk_Fp(Y), emcl:mk_Fp(Z)).
+
+g2_to_emcl(X1, X2, Y1, Y2, Z1, Z2) ->
+    emcl:mk_G2(emcl:mk_Fp2(emcl:mk_Fp(X1), emcl:mk_Fp(X2)),
+               emcl:mk_Fp2(emcl:mk_Fp(Y1), emcl:mk_Fp(Y2)),
+               emcl:mk_Fp2(emcl:mk_Fp(Z1), emcl:mk_Fp(Z2))).
+
+gt_to_emcl(X1, X2, X3, X4, X5, X6, X7, X8, X9, X10, X11, X12) ->
+    emcl:mk_Gt(emcl:mk_Fp(X1), emcl:mk_Fp(X2), emcl:mk_Fp(X3), emcl:mk_Fp(X4),
+               emcl:mk_Fp(X5), emcl:mk_Fp(X6), emcl:mk_Fp(X7), emcl:mk_Fp(X8),
+               emcl:mk_Fp(X9), emcl:mk_Fp(X10), emcl:mk_Fp(X11), emcl:mk_Fp(X12)).
