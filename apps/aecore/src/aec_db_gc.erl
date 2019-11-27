@@ -182,22 +182,26 @@ range_collect_reachable_hashes(LastHeight, ToHeight, Hashes) ->
     [collect_reachable_hashes_delta(H, Hashes) || H <- lists:seq(LastHeight + 1, ToHeight)],
     {ok, Hashes}.
 
+
 %% the actual GC: clear whole table + insert reachable nodes
 swap_nodes(Hashes) ->
     NodesCount = ets:info(Hashes, size),
-    %% clearing tab can't run in transaction
     {ClearTime, {atomic, ok}} = ?TIMED(mnesia:clear_table(aec_account_state)),
     ?LOG("clearing accounts table took ~p seconds", [ClearTime / 1000000]),
     ?LOG("writing ~p reachable account state nodes...", [NodesCount]),
-    {WriteTime, ok} = ?TIMED(aec_db:ensure_transaction(fun () -> write_nodes(Hashes) end)),
+    {WriteTime, ok} =
+        ?TIMED(aec_db:ensure_transaction(
+                 fun () ->
+                         ets:foldl(
+                           fun ({Hash, Node}, ok) ->
+                                   aec_db:write_accounts_node(Hash, Node)
+                           end, ok, Hashes)
+                 end, [], sync_transaction)),
     ?LOG("writing reachable account state nodes took ~p seconds", [WriteTime / 1000000]),
+    {atomic, DBCount} = mnesia:transaction(fun () -> length(mnesia:all_keys(aec_account_state)) end),
+    ?LOG("DB has ~p aec_account_state records", [DBCount]),
     {ok, NodesCount}.
 
-write_nodes(Hashes) ->
-    ets:foldl(fun ({Hash, Node}, ok) ->
-                      Rec = #aec_account_state{key = Hash, value = Node},
-                      mnesia:write(Rec)
-              end, ok, Hashes).
 
 -spec get_mpt(non_neg_integer()) -> aeu_mp_trees:tree().
 get_mpt(Height) ->
