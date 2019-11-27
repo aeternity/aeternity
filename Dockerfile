@@ -14,7 +14,7 @@ FROM ubuntu:18.04
 COPY --from=builder /app/_build/prod/rel/aeternity /home/aeternity/node
 
 # OpenSSL is shared lib dependency
-RUN apt-get -qq update && apt-get -qq -y install libssl1.0.0 curl libsodium23 \
+RUN apt-get -qq update && apt-get -qq -y install libssl1.0.0 curl libsodium23 libgmp10 \
     && ldconfig \
     && rm -rf /var/lib/apt/lists/*
 

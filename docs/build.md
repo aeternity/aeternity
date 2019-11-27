@@ -17,7 +17,7 @@ Update package database, packages and install the common tools and libraries:
 ```bash
 sudo apt-get -qq update \
 && sudo apt-get -y upgrade \
-&& sudo apt-get -qq -y install git autoconf build-essential erlang libsodium-dev
+&& sudo apt-get -qq -y install git autoconf build-essential erlang libsodium-dev libgmp-dev
 ```
 
 ### Ubuntu 16.04
@@ -27,7 +27,7 @@ Update package database, packages and install the common tools and libraries:
 ```bash
 sudo apt-get -qq update \
 && sudo apt-get -y upgrade \
-&& sudo apt-get -qq -y install git curl autoconf build-essential ncurses-dev libssl-dev
+&& sudo apt-get -qq -y install git curl autoconf build-essential ncurses-dev libssl-dev libgmp-dev
 ```
 
 As Ubuntu 16.04 ships with outdated erlang and libsodium versions, they have to be installed from source:
@@ -68,7 +68,7 @@ The easiest way to install package on MacOS is Homebrew, it can be installed by 
 Then install the build dependencies using the `brew` command:
 ```
 brew update
-brew install erlang@21 openssl libsodium autoconf
+brew install erlang@21 openssl libsodium autoconf gmp
 ```
 
 ## Building

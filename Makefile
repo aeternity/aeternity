@@ -241,6 +241,7 @@ eunit-latest: eunit-$(LATEST_PROTOCOL)
 all-tests: eunit-$(LATEST_PROTOCOL) ct-$(LATEST_PROTOCOL)
 
 docker: dockerignore-check
+	@docker pull aeternity/builder
 	@docker build -t aeternity/aeternity:local .
 
 dockerignore-check: | .gitignore .dockerignore
