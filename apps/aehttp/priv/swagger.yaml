@@ -2598,6 +2598,8 @@ definitions:
         type: string
       peer_count:
         $ref: '#/definitions/UInt32'
+      peer_connections:
+        $ref: '#/definitions/PeerConnections'
       pending_transactions_count:
         $ref: '#/definitions/UInt32'
       network_id:
@@ -2618,6 +2620,7 @@ definitions:
       - node_version
       - node_revision
       - peer_count
+      - peer_connections
       - pending_transactions_count
       - network_id
       - peer_pubkey
@@ -2635,6 +2638,18 @@ definitions:
     required:
       - version
       - effective_at_height
+  PeerConnections:
+    type: object
+    properties:
+      inbound:
+        description: 'Number of inbound peer connections'
+        $ref: '#/definitions/UInt32'
+      outbound:
+        description: 'Number of outbound peer connections'
+        $ref: '#/definitions/UInt32'
+    required:
+      - inbound
+      - outbound
   GenericSignedTx:
     type: object
     properties:
