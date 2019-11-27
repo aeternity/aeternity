@@ -4025,7 +4025,7 @@ setup_name_pointing_to_oracle(NameNoPrefix, OraclePubKey) ->
 
     %% Submit name claim tx and check it is in mempool
     Protocol = aec_hard_forks:protocol_effective_at_height(Height),
-    {ClaimData, NameFee} =
+    {ClaimData, _NameFee} =
         case Protocol >= ?LIMA_PROTOCOL_VSN of
             true ->
                 {#{account_id => PubKeyEnc,

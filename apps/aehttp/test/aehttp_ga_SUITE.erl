@@ -479,7 +479,6 @@ meta_sc_create_fail(Config) ->
     %% Get account information.
     #{acc_a := #{pub_key := APub, priv_key := APriv},
       acc_b := #{pub_key := BPub, priv_key := BPriv}} = proplists:get_value(accounts, Config),
-    ABal0 = get_balance(APub),
 
     #{tx_hash := MetaTx} = post_ga_sc_create_fail_tx(APub, APriv, "12", BPub, BPriv),
 
@@ -757,4 +756,3 @@ do_dry_run(STx, ExpRes) ->
             ct:pal("Dry-run call failed with reason: ~s", [Reason]),
             ?assertMatch(ExpRes, error)
     end.
-
