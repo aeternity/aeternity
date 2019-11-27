@@ -145,17 +145,8 @@ build_miner_config({Exec, ExtraArgs, HexEncHdr, Repeats, Instances, ExecGroup}) 
     aeminer_pow_cuckoo:config(Exec, ExecGroup, ExtraArgs, HexEncHdr, Repeats, EdgeBits, Instances).
 
 get_edge_bits() ->
-    case aeu_env:user_config([<<"mining">>, <<"cuckoo">>, <<"edge_bits">>]) of
-        {ok, EdgeBits} -> EdgeBits;
-        undefined ->
-            %% Deprecated property 'mining' > 'cuckoo' > 'miner' > 'edge_bits'
-            case aeu_env:user_config([<<"mining">>, <<"cuckoo">>, <<"miner">>, <<"edge_bits">>]) of
-                {ok, EdgeBits} -> EdgeBits;
-                undefined ->
-                    {EdgeBits, _} = get_options(),
-                    EdgeBits
-            end
-    end.
+    {EdgeBits, _} = get_options(),
+    aeu_env:user_config([<<"mining">>, <<"cuckoo">>, <<"edge_bits">>], EdgeBits).
 
 %% Mocks
 -ifdef(TEST).
