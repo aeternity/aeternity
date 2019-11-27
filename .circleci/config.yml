@@ -14,6 +14,9 @@ executors:
     docker:
       - image: aeternity/builder
         user: builder
+  builder_container_nix_alpine:
+    docker:
+      - image: nixorg/nix:circleci
   builder_container_1804:
     docker:
       - image: aeternity/builder:1804
@@ -127,6 +130,11 @@ references:
   restore_build_otp21_cache: &restore_build_otp21_cache
     restore_cache:
       key: *build_otp21_cache_key
+
+  build_nix_cache_key: &build_nix_cache_key build-nix-cache-v1-{{ .Revision }}
+  restore_build_nix_cache: &restore_build_nix_cache
+    restore_cache:
+      key: *build_nix_cache_key
 
   machine_build_cache_key: &machine_build_cache_key machine-build-cache-v9-{{ .Branch }}-{{ .Revision }}
   restore_machine_build_cache: &restore_machine_build_cache
@@ -627,6 +635,26 @@ jobs:
           command: make KIND=test
       - save_cache:
           key: *build_otp21_cache_key
+          paths:
+            - "_build"
+      - save_cache:
+          key: *rebar_cache_key
+          paths:
+            - .cache/rebar3
+      - *store_rebar3_crashdump
+      - *fail_notification
+
+  build_nix:
+    executor: builder_container_nix_alpine
+    <<: *container_config
+    steps:
+      - checkout
+      - *restore_rebar_cache
+      - run:
+          name: Build
+          command: nix-shell -j auto --run "make KIND=test"
+      - save_cache:
+          key: *build_nix_cache_key
           paths:
             - "_build"
       - save_cache:
@@ -1213,6 +1241,12 @@ workflows:
                 - env/dev1
                 - env/dev2
                 - system-tests
+
+      - build_nix:
+          filters:
+            branches:
+              only:
+                - *master_branch
 
       - docker_smoke_tests:
           context: ae-node-builds
