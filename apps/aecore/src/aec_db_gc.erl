@@ -97,6 +97,8 @@ handle_event(info, {_, chain_sync, #{info := {chain_sync_done, _}}}, idle,
              #data{enabled = true} = Data) ->
     aec_events:unsubscribe(chain_sync),
     {keep_state, Data#data{synced = true}};
+
+%% starting collection when the *interval* matches, and don't have a GC state (hashes = undefined)
 handle_event(info, {_, top_changed, #{info := #{height := Height}}}, idle,
              #data{interval = Interval, history = History,
                    enabled = true, synced = true,
@@ -110,6 +112,8 @@ handle_event(info, {_, top_changed, #{info := #{height := Height}}}, idle,
                     ets:give_away(Hashes, Top, {{FromHeight, Height}, Time})
             end),
     {keep_state, Data#data{height = Height, hashes = Pid}};
+
+%% received GC state from the phase above
 handle_event(info, {'ETS-TRANSFER', Hashes, _, {{FromHeight, ToHeight}, Time}}, idle,
              #data{enabled = true, hashes = Pid} = Data)
   when is_pid(Pid) ->
@@ -117,12 +121,16 @@ handle_event(info, {'ETS-TRANSFER', Hashes, _, {{FromHeight, ToHeight}, Time}}, 
          [ets:info(Hashes, size), FromHeight, ToHeight, Time / 1000000]),
     {next_state, ready, Data#data{hashes = Hashes}};
 
+%% with valid GC state (reachable hashes in ETS cache), follow up on keeping that cache
+%% synchronized with Merkle-Patricia Trie on disk keeping the latest changes in accounts
 handle_event(info, {_, top_changed, #{info := #{block_type := key, height := Height}}}, ready,
              #data{enabled = true, synced = true, height = LastHeight, hashes = Hashes} = Data)
   when is_reference(Hashes), Height > LastHeight ->
     {ok, _} = range_collect_reachable_hashes(Height, Data),
     {keep_state, Data#data{height = Height}};
 
+%% with valid GC state, if we are on key block boundary, we can
+%% clear the table and insert reachable hashes back
 handle_event({call, From}, maybe_garbage_collect, ready,
              #data{enabled = true, synced = true, hashes = Hashes} = Data)
   when Hashes /= undefined, not is_pid(Hashes) ->
@@ -132,6 +140,7 @@ handle_event({call, From}, maybe_garbage_collect, ready,
             Height  = aec_headers:height(Header),
             {ok, _} = range_collect_reachable_hashes(Height, Data),
             {ok, N} = swap_nodes(Hashes),
+            ets:tab2file(Hashes, "/tmp/gc-state-" ++ integer_to_list(Height) ++ ".bin"),
             ets:delete(Hashes),
             {next_state, idle, Data#data{height = undefined, hashes = undefined},
              {reply, From, {ok, N}}};
