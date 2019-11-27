@@ -18,6 +18,8 @@
         ]).
 
 -export([ensure_transaction/1,
+         ensure_transaction/2,
+         ensure_transaction/3,
          ensure_activity/2]).
 
 %% Mimicking the aec_persistence API used by aec_conductor_chain
@@ -261,13 +263,16 @@ ensure_transaction(Fun) when is_function(Fun, 0) ->
     ensure_transaction(Fun, []).
 
 ensure_transaction(Fun, ErrorKeys) when is_function(Fun, 0) ->
+    ensure_transaction(Fun, ErrorKeys, transaction).
+
+ensure_transaction(Fun, ErrorKeys, TxType) when is_function(Fun, 0) ->
     %% TODO: actually, some non-transactions also have an activity state
     case get(mnesia_activity_state) of
         undefined ->
-            try_activity(transaction, Fun, ErrorKeys);
+            try_activity(TxType, Fun, ErrorKeys);
         {_, _, non_transaction} ->
             %% Transaction inside a dirty context; rely on mnesia to handle it
-            try_activity(transaction, Fun, ErrorKeys);
+            try_activity(TxType, Fun, ErrorKeys);
         _ ->
             %% We are already in a transaction, thus no custom retry is
             %% attempted via `try_activity/3` since this only works outside of a
