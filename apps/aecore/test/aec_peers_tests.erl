@@ -145,7 +145,7 @@ aec_peers_test_() ->
 test_single_trusted_peer() ->
     test_mgr_set_recipient(self()),
 
-    PubKey = <<"ef42d46eace742cd">>,
+    PubKey = <<"ef42d46eace742cd0000000000000000">>,
     Id = aec_peers:peer_id(PubKey),
 
     ?assertMatch(false, aec_peers:is_blocked(Id)),
@@ -201,7 +201,7 @@ test_single_normal_peer() ->
     test_mgr_set_recipient(self()),
 
     Source = {192, 168, 0, 1},
-    PubKey = <<"ef42d46eace742cd">>,
+    PubKey = <<"ef42d46eace742cd0000000000000000">>,
     Id = aec_peers:peer_id(PubKey),
     Peer = peer(PubKey, <<"10.1.0.1">>, 4000),
 
@@ -237,11 +237,11 @@ test_single_normal_peer() ->
 test_multiple_trusted_peers() ->
     test_mgr_set_recipient(self()),
 
-    PubKey1 = <<"ef42d46eace742cd">>,
+    PubKey1 = <<"ef42d46eace742cd0000000000000000">>,
     Id1 = aec_peers:peer_id(PubKey1),
-    PubKey2 = <<"854a8e1f93f94b95">>,
+    PubKey2 = <<"854a8e1f93f94b950000000000000000">>,
     Id2 = aec_peers:peer_id(PubKey2),
-    PubKey3 = <<"eb56e9292dda481c">>,
+    PubKey3 = <<"eb56e9292dda481c0000000000000000">>,
     Id3 = aec_peers:peer_id(PubKey3),
 
     Peers = [
@@ -291,11 +291,11 @@ test_multiple_normal_peers() ->
     test_mgr_set_recipient(self()),
 
     Source = {192, 168, 0, 1},
-    PubKey1 = <<"ef42d46eace742cd">>,
+    PubKey1 = <<"ef42d46eace742cd0000000000000000">>,
     Id1 = aec_peers:peer_id(PubKey1),
-    PubKey2 = <<"854a8e1f93f94b95">>,
+    PubKey2 = <<"854a8e1f93f94b950000000000000000">>,
     Id2 = aec_peers:peer_id(PubKey2),
-    PubKey3 = <<"eb56e9292dda481c">>,
+    PubKey3 = <<"eb56e9292dda481c0000000000000000">>,
     Id3 = aec_peers:peer_id(PubKey3),
 
     Peers = [
@@ -344,11 +344,11 @@ test_invalid_hostname() ->
     ?assertMatch(0, aec_peers:count(hostnames)),
 
     Source = {192, 168, 0, 1},
-    PubKey1 = <<"ef42d46eace742cd">>,
+    PubKey1 = <<"ef42d46eace742cd0000000000000000">>,
     Peer1 = peer(PubKey1, <<"aeternity.com">>, 4000),
     Id1 = aec_peers:peer_id(Peer1),
 
-    PubKey2 = <<"ff92adcbcc684dda">>,
+    PubKey2 = <<"ff92adcbcc684dda0000000000000000">>,
     Peer2 = peer(PubKey2, <<"aeternity.com">>, 5000),
 
     aec_peers:add_peers(Source, Peer1),
@@ -441,11 +441,11 @@ test_multiple_peers_same_hostname() ->
     setup_mock_getaddr(),
 
     Source = {192, 168, 0, 1},
-    PubKey1 = <<"ef42d46eace742cd">>,
+    PubKey1 = <<"ef42d46eace742cd0000000000000000">>,
     Peer1 = peer(PubKey1, <<"aeternity.com">>, 4000),
-    PubKey2 = <<"52af7b3a5d2c460b">>,
+    PubKey2 = <<"52af7b3a5d2c460b0000000000000000">>,
     Peer2 = peer(PubKey2, <<"aeternity.com">>, 4001),
-    PubKey3 = <<"d59e8323509a49da">>,
+    PubKey3 = <<"d59e8323509a49da0000000000000000">>,
     Peer3 = peer(PubKey3, <<"aeternity.com">>, 4002),
 
     mock_getaddr({ok, {192, 168, 0, 10}}),
@@ -480,19 +480,19 @@ test_address_group_selection() ->
     test_mgr_set_recipient(self()),
 
     Source = {192, 168, 0, 1},
-    PubKey1 = <<"ef42d46eace742cd">>,
+    PubKey1 = <<"ef42d46eace742cd0000000000000000">>,
     Id1 = aec_peers:peer_id(PubKey1),
     Peer1 = peer(PubKey1, "10.1.0.1", 4000),
-    PubKey2 = <<"854a8e1f93f94b95">>,
+    PubKey2 = <<"854a8e1f93f94b950000000000000000">>,
     Id2 = aec_peers:peer_id(PubKey2),
     Peer2 = peer(PubKey2, "10.1.0.2", 4000),
-    PubKey3 = <<"eb56e9292dda481c">>,
+    PubKey3 = <<"eb56e9292dda481c0000000000000000">>,
     Id3 = aec_peers:peer_id(PubKey3),
     Peer3 = peer(PubKey3, "10.2.0.1", 4000),
-    PubKey4 = <<"9d9e1c43de304d81">>,
+    PubKey4 = <<"9d9e1c43de304d810000000000000000">>,
     Id4 = aec_peers:peer_id(PubKey4),
     Peer4 = peer(PubKey4, "10.2.0.1", 4000),
-    PubKey5 = <<"75640b5ffaac4048">>,
+    PubKey5 = <<"75640b5ffaac40480000000000000000">>,
     Id5 = aec_peers:peer_id(PubKey5),
     Peer5 = peer(PubKey5, "10.3.0.1", 4000),
 
@@ -561,13 +561,13 @@ test_selection_without_address_group() ->
     test_mgr_set_recipient(self()),
 
     Source = {192, 168, 0, 1},
-    PubKey1 = <<"ef42d46eace742cd">>,
+    PubKey1 = <<"ef42d46eace742cd0000000000000000">>,
     Id1 = aec_peers:peer_id(PubKey1),
     Peer1 = peer(PubKey1, "10.1.0.1", 4000),
-    PubKey2 = <<"854a8e1f93f94b95">>,
+    PubKey2 = <<"854a8e1f93f94b950000000000000000">>,
     Id2 = aec_peers:peer_id(PubKey2),
     Peer2 = peer(PubKey2, "10.1.0.2", 4000),
-    PubKey3 = <<"eb56e9292dda481c">>,
+    PubKey3 = <<"eb56e9292dda481c0000000000000000">>,
     Id3 = aec_peers:peer_id(PubKey3),
     Peer3 = peer(PubKey3, "10.1.0.3", 4000),
 
@@ -596,7 +596,7 @@ test_connection_closed() ->
     test_mgr_set_recipient(self()),
 
     Source = {192, 168, 0, 1},
-    PubKey = <<"ef42d46eace742cd">>,
+    PubKey = <<"ef42d46eace742cd0000000000000000">>,
     Id = aec_peers:peer_id(PubKey),
     Peer = peer(PubKey, "10.1.0.1", 4000),
 
@@ -640,7 +640,7 @@ test_connection_failure() ->
     test_mgr_set_recipient(self()),
 
     Source = {192, 168, 0, 1},
-    PubKey = <<"ef42d46eace742cd">>,
+    PubKey = <<"ef42d46eace742cd0000000000000000">>,
     Id = aec_peers:peer_id(PubKey),
     Peer = peer(PubKey, "10.1.0.1", 4000),
 
@@ -678,7 +678,7 @@ test_connection_down() ->
     test_mgr_set_recipient(self()),
 
     Source = {192, 168, 0, 1},
-    PubKey = <<"ef42d46eace742cd">>,
+    PubKey = <<"ef42d46eace742cd0000000000000000">>,
     Id = aec_peers:peer_id(PubKey),
     Peer = peer(PubKey, "10.1.0.1", 4000),
 
@@ -875,7 +875,7 @@ test_ping() ->
     test_mgr_set_recipient(self()),
 
     Source = {192, 168, 0, 1},
-    PubKey = <<"ef42d46eace742cd">>,
+    PubKey = <<"ef42d46eace742cd0000000000000000">>,
     Id = aec_peers:peer_id(PubKey),
     Peer = peer(PubKey, "10.1.0.1", 4000),
 
@@ -1118,6 +1118,16 @@ test_blocking() ->
 
     ok.
 
+roundtrip_test() ->
+    P1 = peer(<<"ef42d46eace742cd0000000000000000">>, "aeternity.com", 1990),
+    {ok, ParsedP1} = aec_peers:parse_peer_address(aec_peers:encode_peer_address(P1)),
+    ?assertEqual(P1#{host => <<"aeternity.com">>}, ParsedP1),
+    P2 =  peer(<<"ef42d46eace742cd0000000000000000">>, <<"192.168.1.2">>, 16200),
+    {ok, ParsedP2} = aec_peers:parse_peer_address(aec_peers:encode_peer_address(P2)),
+    ?assertEqual(P2, ParsedP2).
+
+
+
 %=== INTERNAL FUNCTIONS ========================================================
 
 global_setup() ->
@@ -1125,8 +1135,10 @@ global_setup() ->
     {ok, _} = application:ensure_all_started(gproc),
 
     meck:new(aec_keys, [passthrough]),
-    meck:expect(aec_keys, peer_privkey, fun() -> {ok, <<"7000000000000000">>} end),
-    meck:expect(aec_keys, peer_pubkey, fun() -> {ok, <<"7000000000000000">>} end),
+    meck:expect(aec_keys, peer_privkey,
+                fun() -> {ok, <<"7000000000000000000000000000000070000000000000000000000000000000">>} end),
+    meck:expect(aec_keys, peer_pubkey,
+                fun() -> {ok, <<"70000000000000000000000000000000">>} end),
 
     ok.
 
@@ -1176,7 +1188,7 @@ peer(PubKey, Host, Port) when is_binary(PubKey) ->
     #{ pubkey => PubKey, host => Host, port => Port };
 peer(Idx, Host, Port) when is_integer(Idx), Idx >= 0, Idx < 16 ->
     [Char] = io_lib:format("~.16b", [Idx]),
-    PubKey = list_to_binary(lists:duplicate(16, Char)),
+    PubKey = list_to_binary(lists:duplicate(32, Char)),
     #{ pubkey => PubKey, host => Host, port => Port }.
 
 dump_messages() -> dump_messages([]).
@@ -1201,22 +1213,6 @@ setup_mock_getaddr() ->
 
 cleanup_mock_getaddr() ->
     catch meck:unload(inet).
-
-%% mock_interactive_getaddr() ->
-%%     Self = self(),
-%%     ok = meck:expect(inet, getaddr, fun(Hostname, _) ->
-%%         Ref = erlang:make_ref(),
-%%         Self ! {self(), Ref, {getaddr, Hostname}},
-%%         receive
-%%             {Ref, error} ->
-%%                 throw(test_intervactive_call_error);
-%%             {Ref, {Delay, Result}} ->
-%%                 timer:sleep(Delay),
-%%                 Result
-%%         after 5000 ->
-%%             throw(test_intervactive_call_timeout)
-%%         end
-%%     end).
 
 mock_getaddr(Result) ->
     Self = self(),
