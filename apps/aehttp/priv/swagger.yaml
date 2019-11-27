@@ -2644,7 +2644,7 @@ definitions:
       inbound:
         description: 'Number of inbound peer connections'
         $ref: '#/definitions/UInt32'
-      outbount:
+      outbound:
         description: 'Number of outbound peer connections'
         $ref: '#/definitions/UInt32'
     required:
