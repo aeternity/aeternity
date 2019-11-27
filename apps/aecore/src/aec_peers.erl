@@ -80,6 +80,7 @@
 -define(DEFAULT_RESOLVE_MAX_RETRY,             7).
 -define(DEFAULT_RESOLVE_BACKOFF_TIMES,
         [5000, 15000, 30000, 60000, 120000, 300000, 600000]).
+-define(DEFAULT_LOG_PEER_CONNECTION_COUNT_INTERVAL, 5000).
 
 %=== TYPES =====================================================================
 
@@ -374,6 +375,8 @@ start_link() ->
 init(ok) ->
     {ok, PubKey} = aec_keys:peer_pubkey(),
     LocalPeer = #{ pubkey => PubKey },
+    LogTimeout = log_peer_connection_count_interval(),
+    erlang:send_after(LogTimeout, self(), log_peer_conn_count_timeout),
     epoch_sync:info("aec_peers started for ~p", [ppp(LocalPeer)]),
     {ok, #state{
         local_peer = LocalPeer,
@@ -485,6 +488,15 @@ handle_info({timeout, Ref, {resolve, Hostname}}, #state{ hostnames = HostMap } =
 handle_info({'DOWN', Ref, process, Pid, _}, State0) ->
     State = on_process_down(Pid, Ref, State0),
     {noreply, update_peer_metrics(schedule_connect(State))};
+handle_info(log_peer_conn_count_timeout, State) ->
+    %% Outbound - node initiated connections to other nodes.
+    %% Inbound - other nodes initiated connections to this node.
+    lager:info("Peer connections outbound: ~p/~p, inbound: ~p/~p",
+               [conn_count(outbound, State), max_outbound(),
+                conn_count(inbound, State), max_inbound()]),
+    LogTimeout = log_peer_connection_count_interval(),
+    erlang:send_after(LogTimeout, self(), log_peer_conn_count_timeout),
+    {noreply, State};
 handle_info(_Info, State) ->
     {noreply, State}.
 
@@ -1595,3 +1607,8 @@ resolve_backoff_times() ->
     aeu_env:user_config_or_env([<<"sync">>, <<"resolver_backoff_times">>],
                                aecore, sync_resolver_backoff_times,
                                ?DEFAULT_RESOLVE_BACKOFF_TIMES).
+
+log_peer_connection_count_interval() ->
+    aeu_env:user_config_or_env([<<"sync">>, <<"log_peer_connection_count_interval">>],
+                               aecore, log_peer_connection_count_interval,
+                               ?DEFAULT_LOG_PEER_CONNECTION_COUNT_INTERVAL).

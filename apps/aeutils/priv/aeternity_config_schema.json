@@ -150,6 +150,11 @@
                 "gossip_allowed_height_from_top" : {
                     "description": "Allowed height difference from current top for incoming blocks (via gossip)",
                     "type" : "integer"
+                },
+                "log_peer_connection_count_interval" : {
+                    "description": "Time (milliseconds) between logging info about connected peers",
+                    "type" : "integer",
+                    "default": 5000
                 }
             }
         },
