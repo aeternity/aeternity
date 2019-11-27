@@ -1623,7 +1623,9 @@ create_spend_tx(SenderId, RecipientId, Amount, Fee, Payload) ->
                    recipient_id => RecipientId,
                    amount => Amount,
                    fee => Fee,
-                   payload => Payload}).
+                   payload => Payload,
+                   %% Just to test serialize_for_client with some TTL other than 0
+                   ttl => 100000}).
 
 get_account_by_pubkey(Id) ->
     Host = external_address(),

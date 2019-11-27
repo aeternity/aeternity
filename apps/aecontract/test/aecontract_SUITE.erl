@@ -5589,7 +5589,7 @@ sophia_aens_transactions(Cfg) ->
 
     ok.
 
-sophia_aens_update_transaction(Cfg) ->
+sophia_aens_update_transaction(_Cfg) ->
     %% AENS transactions from contract
     state(aect_test_utils:new_state()),
     Acc      = ?call(new_account, 40000000000000 * aec_test_utils:min_gas_price()),
