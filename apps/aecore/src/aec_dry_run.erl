@@ -19,8 +19,11 @@
 dry_run(TopHash, Accounts, Txs) ->
     try setup_dry_run(TopHash, Accounts) of
         {Env, Trees} -> dry_run_(Txs, Trees, Env)
-    catch _E:_R ->
-        {error, <<"Failed to get block state and environment">>}
+    catch
+        error:invalid_hash ->
+            {error, <<"Invalid hash provided">>};
+        error:state_garbage_collected ->
+            {error, <<"Block state of given hash was garbage collected">>}
     end.
 
 setup_dry_run(TopHash, Accounts) ->
@@ -143,4 +146,3 @@ lookup_call_object(Key, CallId, Trees) ->
     CallTree = aec_trees:calls(Trees),
     {value, CallObj} = aect_call_state_tree:lookup_call(Key, CallId, CallTree),
     CallObj.
-

@@ -1998,7 +1998,7 @@ load_pinned_env(BlockHash) ->
     try aetx_env:tx_env_and_trees_from_hash(aetx_contract, BlockHash) of
         {_OnChainEnv, _OnChainTrees} = Pinned ->
             Pinned
-    ?CATCH_LOG({badmatch, error})
+    ?CATCH_LOG(Reason)
         error(unknown_block_hash)
     end.
 
@@ -3888,7 +3888,7 @@ noise_accept(SessionOpts, NoiseOpts, Attempts, COpts) ->
             noise_accept(SessionOpts, NoiseOpts, Attempts - 1, COpts)
     end.
 
-    
+
 maybe_initialize_offchain_state(any, NewI, #data{state = F} = D) when is_function(F, 1) ->
     {ok, State} = F(NewI), %% Should not fail
     D#data{state = State};
