@@ -14,6 +14,13 @@
 %% (initiated by aec_conductor on key block boundary)
 %%
 %% More details can be found here: https://github.com/aeternity/papers/blob/master/Garbage%20collector%20for%20account%20state%20data.pdf
+%%
+%% Note: if something goes wrong (for example, software bug in GC), a typical manifestation of
+%% such issue is hitting of `hash_not_present_in_db` crashes.
+%% In that case a full resync is needed.
+%% Please don't delete the GC-ed database dir yet - rename it and inform us at forum.aeternity.com
+%% or make a issue in https://github.com/aeternity/aeternity/issues so we can retrieve the DB and
+%% look at it.
 
 -behaviour(gen_statem).
 
@@ -48,6 +55,8 @@
 %%% API
 %%%===================================================================
 
+%% We don't support reconfiguration of config parameters when the GC is already up,
+%% doesn't seem to have practical utility.
 start_link() ->
     #{enabled := Enabled, interval := Interval, history := History} = config(),
     start_link(Enabled, Interval, History).
@@ -104,12 +113,12 @@ handle_event(info, {_, top_changed, #{info := #{height := Height}}}, idle,
                    enabled = true, synced = true,
                    height = undefined, hashes = undefined} = Data)
   when Height rem Interval == 0 ->
-    Top = self(),
+    Parent = self(),
     Pid = spawn_link(
             fun () ->
                     FromHeight = max(Height - History, 0),
                     {Time, {ok, Hashes}} = ?TIMED(collect_reachable_hashes(FromHeight, Height)),
-                    ets:give_away(Hashes, Top, {{FromHeight, Height}, Time})
+                    ets:give_away(Hashes, Parent, {{FromHeight, Height}, Time})
             end),
     {keep_state, Data#data{height = Height, hashes = Pid}};
 
@@ -166,12 +175,12 @@ callback_mode() -> handle_event_function.
 
 %% From - To (inclusive)
 collect_reachable_hashes(FromHeight, ToHeight) when FromHeight < ToHeight ->
-    {ok, Hashes} = collect_reachable_hashes_fullscan(FromHeight),
-    {ok, Hashes} = range_collect_reachable_hashes(FromHeight, ToHeight, Hashes),
+    {ok, Hashes} = collect_reachable_hashes_fullscan(FromHeight),     % table is created here
+    {ok, Hashes} = range_collect_reachable_hashes(FromHeight, ToHeight, Hashes), % and reused
     {ok, Hashes}.
 
 collect_reachable_hashes_fullscan(Height) ->
-    Tab = ets:new(gc_reachable_hashes, [public]), %% TODO: remove public
+    Tab = ets:new(gc_reachable_hashes, [public]),
     MPT = get_mpt(Height),
     ?LOG("scanning accounts full tree with root hash ~w at height = ~p~n",
          [aeu_mp_trees:root_hash(MPT), Height]),
