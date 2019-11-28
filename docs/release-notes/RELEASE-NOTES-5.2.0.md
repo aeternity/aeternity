@@ -1,6 +1,6 @@
 # About this release
 
-[This](https://github.com/aeternity/aeternity/releases/tag/v5.1.0) is a maintenance Lima release
+[This](https://github.com/aeternity/aeternity/releases/tag/v5.2.0) is a maintenance Lima release
 focused on stability:
 
 * SC clients will now receive a token which will be required for reestablishing a channel or
