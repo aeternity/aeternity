@@ -1,9 +1,0 @@
-##
-## This is a subset of the dependencies defined in py/requirements.txt. These dependencies can't be installed via the OS
-## package manager.
-##
-pystache==0.5.4
-waiting==1.4.1
-urllib3==1.24.1
-requests==2.21.0
-bravado==10.4.1

@@ -1,3 +1,0 @@
-
-payable contract Identity =
-  payable entrypoint main(x : int) = x
