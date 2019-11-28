@@ -803,7 +803,6 @@ jobs:
           name: Run dialyzer
           no_output_timeout: 20m
           command: make dialyzer
-      - run: make python-env
       - run: ./rebar3 xref || true
       - run:
           name: Check OTP version (for effective CI caching)
@@ -922,35 +921,6 @@ jobs:
           root: *packages_workspace
           paths:
             - "*.tar.gz"
-      - *fail_notification
-
-  uat_tests:
-    executor: builder_container_stable
-    <<: *container_config
-    steps:
-      - checkout
-      - *restore_rebar_cache
-      - *restore_build_cache
-      - run:
-          name: UAT Tests
-          command: |
-            epmd -daemon
-            make python-env && make multi-build
-            make python-uats
-      - run:
-          name: Prepare JUnit Report
-          command: mv py/tests/nosetests.xml py/tests/junit.xml
-      - store_test_results:
-          path: py/tests
-      - store_artifacts:
-          path: _build/dev1/rel/aeternity/log
-          destination: node1/
-      - store_artifacts:
-          path: _build/dev2/rel/aeternity/log
-          destination: node2/
-      - store_artifacts:
-          path: _build/dev3/rel/aeternity/log
-          destination: node3/
       - *fail_notification
 
   docker_smoke_tests:
@@ -1435,18 +1405,6 @@ workflows:
             tags:
               only: *tag_regex
 
-      - uat_tests:
-          requires:
-            - build
-          filters:
-            branches:
-              ignore:
-                - env/dev1
-                - env/dev2
-                - system-tests
-            tags:
-              only: *tag_regex
-
       - docker_system_tests:
           filters:
             branches:
@@ -1541,7 +1499,6 @@ workflows:
             - eunit_lima
             - eunit_latest
             - aevm_tests
-            - uat_tests
             - static_analysis
             - rebar_lock_check
             - linux_package
@@ -1566,7 +1523,6 @@ workflows:
             - eunit_lima
             - eunit_latest
             - aevm_tests
-            - uat_tests
             - static_analysis
             - rebar_lock_check
           filters:
@@ -1590,7 +1546,6 @@ workflows:
             - eunit_lima
             - eunit_latest
             - aevm_tests
-            - uat_tests
             - static_analysis
             - rebar_lock_check
             - linux_package
