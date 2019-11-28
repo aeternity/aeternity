@@ -1,1 +1,0 @@
-* Adds periodical log of number of connected peers
