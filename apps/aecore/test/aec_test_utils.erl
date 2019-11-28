@@ -68,6 +68,7 @@
         , wait_for_pubkey/0
         , min_gas_price/0
         , dev_reward_setup/3
+        , run_throughput_test/3
         ]).
 
 -include_lib("eunit/include/eunit.hrl").
@@ -771,3 +772,60 @@ dev_reward_setup(Enabled, Activated, BeneficiaryShare) ->
     application:set_env(aecore, dev_reward_activated, Activated),
     application:set_env(aecore, dev_reward_allocated_shares, BeneficiaryShare),
     application:set_env(aecore, dev_reward_beneficiaries, [{PubKeyProtocol, BeneficiaryShare}]).
+
+
+%%%=============================================================================
+%%% Throughput test
+%%%=============================================================================
+
+run_throughput_test(TestFun, Blocks, Opts) ->
+    InsertBlockFun = fun(B0, AccTime) ->
+                             T0 = erlang:system_time(microsecond),
+                             TestFun(B0),
+                             T1 = erlang:system_time(microsecond),
+                             [T1 - T0 | AccTime]
+                     end,
+
+    %% Run timings
+    Timings = lists:foldl(InsertBlockFun, [], Blocks),
+
+    %% Prepare and print data
+    TotalRuntime = lists:sum(Timings),
+    [Min | _] = TimingsSorted = lists:sort(Timings),
+    Max = lists:last(TimingsSorted),
+    Range = Max - Min,
+    Mean = TotalRuntime div length(Timings),
+    Median = lists:nth(ceil(length(Timings) / 2), TimingsSorted),
+    Counts = lists:foldl(
+               fun(N, Acc) ->
+                       case lists:keyfind(N, 1, Acc) of
+                           false ->
+                               [{N, 1} | Acc];
+                           {N, Count} ->
+                               lists:keyreplace(N, 1, Acc, {N, Count + 1})
+                       end
+               end, [], Timings),
+    [{Mode, _} | _] = lists:keysort(2, Counts),
+
+    DbInfo = case maps:get(db_mode, Opts, ram) of
+                 ram  -> "in ram";
+                 disc -> "on disc"
+             end,
+
+    {Mod, Fun} = maps:get(test_fun, Opts),
+    TestFunInfo = atom_to_list(Mod) ++ [$:] ++ atom_to_list(Fun),
+
+    io:format(user,
+              "~nThroughput testing results (in microseconds) " ++ DbInfo ++ "~n~n"
+              "Tested function\t\t= " ++ TestFunInfo ++ "~n"
+              "# of blocks inserted\t= ~p~n"
+              "Total runtime\t\t= ~p~n~n"
+              "Min\t= ~p~n"
+              "Max\t= ~p~n"
+              "Mean\t= ~p~n"
+              "Mode\t= ~p~n"
+              "Range\t= ~p~n"
+              "Median\t= ~p~n",
+              [length(Blocks), TotalRuntime, Min, Max, Mean, Mode, Range, Median]
+             ),
+    ok.
