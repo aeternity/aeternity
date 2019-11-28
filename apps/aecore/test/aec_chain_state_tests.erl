@@ -333,6 +333,78 @@ fork_chain(fork_at_signalling_start_block) ->
     application:unset_env(aecore, fork),
     ok.
 
+throughput_test_() ->
+    {setup,
+     fun() ->
+             aec_test_utils:start_chain_db(),
+             aec_test_utils:mock_genesis_and_forks(),
+             aec_test_utils:dev_reward_setup(true, true, 100),
+             TmpDir = aec_test_utils:aec_keys_setup(),
+             {ok, PubKey} = aec_keys:pubkey(),
+             ok = application:set_env(aecore, beneficiary, aeser_api_encoder:encode(account_pubkey, PubKey)),
+             TmpDir
+     end,
+     fun(TmpDir) ->
+             ok = application:unset_env(aecore, beneficiary),
+             aec_test_utils:unmock_genesis_and_forks(),
+             aec_test_utils:stop_chain_db(),
+             aec_test_utils:aec_keys_cleanup(TmpDir)
+     end,
+     [{"Throughput test building chain with 1000 blocks in ram",
+       fun() ->
+               %% Setup
+               TotalBlockCount = 1000,
+               TestFun = fun(B) -> {ok, _} = aec_chain_state:insert_block(B) end,
+               Blocks = aec_test_utils:gen_blocks_only_chain(TotalBlockCount),
+               run_throughput_test(TestFun, Blocks, "in ram"),
+
+               ok
+       end}
+     ]}.
+
+run_throughput_test(TestFun, Blocks, Info) ->
+    InsertBlockFun = fun(B0, AccTime) ->
+                             T0 = erlang:system_time(microsecond),
+                             TestFun(B0),
+                             T1 = erlang:system_time(microsecond),
+                             [T1 - T0 | AccTime]
+                     end,
+
+    %% Run timings
+    Timings = lists:foldl(InsertBlockFun, [], Blocks),
+
+    %% Prepare and print data
+    TotalRuntime = lists:sum(Timings),
+    [Min | _] = TimingsSorted = lists:sort(Timings),
+    Max = lists:last(TimingsSorted),
+    Range = Max - Min,
+    Mean = TotalRuntime div length(Timings),
+    Median = lists:nth(ceil(length(Timings) / 2), TimingsSorted),
+    Counts = lists:foldl(
+               fun(N, Acc) ->
+                       case lists:keyfind(N, 1, Acc) of
+                           false ->
+                               [{N, 1} | Acc];
+                           {N, Count} ->
+                               lists:keyreplace(N, 1, Acc, {N, Count + 1})
+                       end
+               end, [], Timings),
+    [{Mode, _} | _] = lists:keysort(2, Counts),
+
+    io:format(user,
+              "~nThroughput testing results (in microseconds) " ++ Info ++ "~n~n"
+              "# of blocks inserted\t= ~p~n"
+              "Total runtime\t\t= ~p~n~n"
+              "Min\t= ~p~n"
+              "Max\t= ~p~n"
+              "Mean\t= ~p~n"
+              "Mode\t= ~p~n"
+              "Range\t= ~p~n"
+              "Median\t= ~p~n",
+              [length(Blocks), TotalRuntime, Min, Max, Mean, Mode, Range, Median]
+             ),
+    ok.
+
 write_blocks_to_chain([H | T]) ->
     ok = insert_block(H),
     write_blocks_to_chain(T);

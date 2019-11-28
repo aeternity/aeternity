@@ -27,20 +27,23 @@ new_key_block_test_() ->
                %% Previous block is a key block, so it
                %% has miner and height.
                RawBlock  = raw_key_block(),
+               Target = 17,
                PrevBlock1 = aec_blocks:set_height(RawBlock, 11),
-               PrevBlock2 = aec_blocks:set_target(PrevBlock1, 17),
+               PrevBlock2 = aec_blocks:set_target(PrevBlock1, Target),
                PrevBlock = aec_blocks:set_miner(PrevBlock2, ?MINER_PUBKEY),
                BlockHeader = aec_blocks:to_header(PrevBlock),
 
+               BlockCfg = #{target => Target},
                {NewBlock, _} = aec_test_utils:create_keyblock_with_state(
-                                 [{PrevBlock, aec_trees:new()}], ?MINER_PUBKEY, ?BENEFICIARY_PUBKEY),
+                                 [{PrevBlock, aec_trees:new()}], ?MINER_PUBKEY,
+                                 ?BENEFICIARY_PUBKEY, BlockCfg),
 
                ?assertEqual(12, aec_blocks:height(NewBlock)),
                SerializedBlockHeader = aec_headers:serialize_to_binary(BlockHeader),
                ?assertEqual(aec_hash:hash(header, SerializedBlockHeader),
                             aec_blocks:prev_hash(NewBlock)),
                ?assertError(_, aec_blocks:txs(NewBlock)),
-               ?assertEqual(17, aec_blocks:target(NewBlock)),
+               ?assertEqual(Target, aec_blocks:target(NewBlock)),
                ?assertEqual(aec_hard_forks:protocol_effective_at_height(12),
                             aec_blocks:version(NewBlock)),
                ?assertEqual(?MINER_PUBKEY, aec_blocks:miner(NewBlock)),
