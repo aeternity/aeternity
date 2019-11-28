@@ -216,7 +216,7 @@ swap_nodes(Hashes) ->
                            end, ok, Hashes)
                  end, [], sync_transaction)),
     ?LOG("writing reachable account state nodes took ~p seconds", [WriteTime / 1000000]),
-    {atomic, DBCount} = mnesia:transaction(fun () -> length(mnesia:all_keys(aec_account_state)) end),
+    DBCount = length(mnesia:dirty_select(aec_account_state, [{'_', [], [1]}])),
     ?LOG("DB has ~p aec_account_state records", [DBCount]),
     {ok, NodesCount}.
 
