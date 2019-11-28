@@ -479,7 +479,7 @@
                         "enabled": {
                             "description": "If true, node will perform garbage collection of account state, removing unrechable merkle patricia nodes and free some disk space",
                             "type": "boolean",
-                            "default": true
+                            "default": false
                         },
                         "interval" : {
                             "description": "How often (every `interval` block) should garbage collection run",
