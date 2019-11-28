@@ -13,7 +13,3 @@
             interval: 50000
             history: 500
 ```
-
-  The cleanup and swap of nodes can not be done atomically.
-  If user stops the node during the GC `swap_nodes` phase and encounters a `hash_not_found` error,
-  a full resync is necessary to recover the node.
