@@ -375,3 +375,43 @@ throughput_ram_test_() ->
                ok
        end}
      ]}.
+
+%%%===================================================================
+%%% Test case - throughput test (disc)
+%%%===================================================================
+
+throughput_disc_test_() ->
+    {setup,
+     fun() ->
+             Persist = application:get_env(aecore, persist),
+             application:set_env(aecore, persist, true),
+             {ok, _} = aec_db_error_store:start_link(),
+             aec_db:check_db(),
+             aec_db:clear_db(),
+             TmpDir = aec_test_utils:aec_keys_setup(),
+             ok = meck:new(mnesia_rocksdb_lib, [passthrough]),
+             aec_test_utils:mock_genesis_and_forks(),
+             aec_test_utils:dev_reward_setup(true, true, 100),
+             {TmpDir, Persist}
+     end,
+     fun({TmpDir, Persist}) ->
+             application:stop(mnesia),
+             aec_test_utils:unmock_genesis_and_forks(),
+             aec_test_utils:aec_keys_cleanup(TmpDir),
+             application:set_env(aecore, persist, Persist),
+             ok = aec_db_error_store:stop(),
+             ok = meck:unload(mnesia_rocksdb_lib),
+             ok = mnesia:delete_schema([node()])
+     end,
+     [{"Throughput test building chain with 100 key blocks on disc",
+       fun() ->
+               %% Setup
+               TotalBlockCount = 100,
+               TestFun = fun(B) -> {ok, _} = aec_chain_state:insert_block(B) end,
+               Blocks = aec_test_utils:gen_blocks_only_chain(TotalBlockCount),
+               Opts = #{db_mode => disc, test_fun => {aec_chain_state, insert_block}},
+               aec_test_utils:run_throughput_test(TestFun, Blocks, Opts),
+
+               ok
+       end}
+     ]}.
