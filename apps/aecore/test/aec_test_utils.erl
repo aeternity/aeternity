@@ -475,7 +475,15 @@ get_n_key_headers(_Chain, N, Acc) when length(Acc) =:= N ->
 adjust_timestamp([{PrevBlock, _} | _Rest]) ->
     case aec_blocks:height(PrevBlock) + 1 of
         1 -> aeu_time:now_in_msecs();
-        _N -> aec_blocks:time_in_msecs(PrevBlock) + 3000
+        _N -> aec_blocks:time_in_msecs(PrevBlock) + expected_mine_rate()
+    end.
+
+expected_mine_rate() ->
+    case aeu_env:get_env(aecore, expected_mine_rate, undefined) of
+        ExpectedMineRate when ExpectedMineRate =/= undefined ->
+            ExpectedMineRate;
+        undefined ->
+            100
     end.
 
 extend_block_chain_with_state(Chain, Data) ->
