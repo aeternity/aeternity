@@ -586,8 +586,9 @@ spend_fee_op(From, Amount) when ?IS_HASH(From),
                                 ?IS_NON_NEG_INTEGER(Amount) ->
     {spend_fee, {From, Amount, 0}}.
 
-spend_fee_op(From, DelegatedAmount, Amount)
-        when ?IS_HASH(From), ?IS_NON_NEG_INTEGER(DelegatedAmount + Amount) ->
+spend_fee_op(From, DelegatedAmount, Amount) when ?IS_HASH(From)
+                                               , ?IS_NON_NEG_INTEGER(DelegatedAmount)
+                                               , ?IS_NON_NEG_INTEGER(Amount) ->
     {spend_fee, {From, DelegatedAmount, Amount}}.
 
 spend_fee({From, DelegatedAmount, Amount}, #state{} = S)
