@@ -50,7 +50,7 @@
   1},
  {<<"emcl">>,
   {git,"https://github.com/aeternity/emcl.git",
-      {ref,"d1b5e59eb9081d80eda818279c37ad09100ed977"}},
+      {ref,"007e40612422fa76505bd7098ada45a040cf703c"}},
   0},
  {<<"enacl">>,
   {git,"https://github.com/aeternity/enacl.git",
