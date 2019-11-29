@@ -8,7 +8,8 @@
     lager,
     aebytecode,
     getopt,
-    ecrecover
+    ecrecover,
+    emcl
    ]},
   {env,[]},
   {modules, []},

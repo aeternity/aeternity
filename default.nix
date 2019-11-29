@@ -19,6 +19,8 @@ in {
       stable.automake
       stable.autoconf
       stable.which
+      ## emcl's dependencies
+      stable.gmp
     ];
     ## required to start the node locally
     shellHooks = ''

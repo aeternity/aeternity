@@ -82,7 +82,7 @@ references:
       command: |
         sudo apt-get update
         sudo apt-get -qq -y install git curl \
-          autoconf build-essential ncurses-dev libssl-dev
+          autoconf build-essential ncurses-dev libssl-dev libgmp-dev
 
   install_otp: &install_otp
     run:
@@ -425,6 +425,7 @@ commands:
       - run:
           name: Build branch docker image
           command: |
+            docker pull aeternity/builder
             docker build -t ${DOCKERHUB_REPO:?}:${CIRCLE_BRANCH/\//_} .
       - run:
           name: Start branch docker image
@@ -888,7 +889,8 @@ jobs:
           # libsodium headers cannot be found without explicit brew link
           command: |
             brew update
-            brew install libsodium erlang@20
+            brew install gmp libsodium erlang@20
+            brew link gmp
             brew link libsodium
             brew link --force erlang@20
       - *save_macos_package_cache
