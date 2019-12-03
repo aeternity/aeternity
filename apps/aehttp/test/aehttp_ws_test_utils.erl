@@ -783,6 +783,10 @@ log_msg(info, Msg, Role) ->
     io_lib:format("~n"
                   "#### ~w info~n"
                   "> ~s~n", [Role, Msg]);
+log_msg(disc = Dir, _Msg, Role) ->
+    io_lib:format(
+      "~n"
+      "#### ~s~n", [log_header_str(Dir, Role)]);
 log_msg(Dir, Msg, Role) ->
     {Lang, MsgStr} = try {"javascript", jsx:prettify(Msg)}
                      catch error:_ -> {"", Msg}
