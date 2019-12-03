@@ -1089,16 +1089,27 @@ channel_close_mutual({FromPubkey, ChannelPubkey,
     assert_is_channel_peer(Channel, FromPubkey),
     assert_other_party_kind(Channel, FromPubkey, S1),
     assert_channel_active_before_fork(Channel, ConsensusVersion, ?LIMA_PROTOCOL_VSN),
-    TotalAmount = InitiatorAmount + ResponderAmount + Fee,
+
+    {TotalAmount, S2} =
+        case aetx_env:payer(S#state.tx_env) of
+            PayerPubKey when is_binary(PayerPubKey), Fee > 0 ->
+                {PayerAccount, Sx} = get_account(PayerPubKey, S1),
+                assert_account_balance(PayerAccount, Fee),
+                {InitiatorAmount + ResponderAmount,
+                 account_spend(PayerAccount, Fee, Sx)};
+            _ ->
+                {InitiatorAmount + ResponderAmount + Fee, S1}
+        end,
+
     ChannelAmount = aesc_channels:channel_amount(Channel),
     LockAmount = ChannelAmount - TotalAmount,
     assert(LockAmount >= 0, wrong_amounts),
-    {IAccount, S2} = get_account(aesc_channels:initiator_pubkey(Channel), S1),
-    {RAccount, S3} = get_account(aesc_channels:responder_pubkey(Channel), S2),
-    S4 = account_earn(IAccount, InitiatorAmount, S3),
-    S5 = account_earn(RAccount, ResponderAmount, S4),
-    S6 = int_lock_amount(LockAmount, S5),
-    delete_x(channel, ChannelPubkey, S6).
+    {IAccount, S3} = get_account(aesc_channels:initiator_pubkey(Channel), S2),
+    {RAccount, S4} = get_account(aesc_channels:responder_pubkey(Channel), S3),
+    S5 = account_earn(IAccount, InitiatorAmount, S4),
+    S6 = account_earn(RAccount, ResponderAmount, S5),
+    S7 = int_lock_amount(LockAmount, S6),
+    delete_x(channel, ChannelPubkey, S7).
 
 %%%-------------------------------------------------------------------
 
