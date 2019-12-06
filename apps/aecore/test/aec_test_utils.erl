@@ -68,6 +68,7 @@
         , wait_for_pubkey/0
         , min_gas_price/0
         , dev_reward_setup/3
+        , run_throughput_test/3
         ]).
 
 -include_lib("eunit/include/eunit.hrl").
@@ -421,11 +422,12 @@ create_keyblock_with_state([{PrevBlock, TreesIn} | _] = Chain, MinerAccount, Ben
                       micro -> aec_blocks:prev_key_hash(PrevBlock);
                       key   -> PrevBlockHash
                   end,
-    %% Dummy block to calculate the fees.
-    Target = get_config(target, BlockCfg, fun() -> pick_prev_target(Chain) end),
+    Target = get_config(target, BlockCfg, fun() -> adjust_target(Chain) end),
     Info = get_config(info, BlockCfg, fun() -> default end),
+    Timestamp = get_config(timestamp, BlockCfg, fun() -> adjust_timestamp(Chain) end),
+    %% Dummy block to calculate the fees.
     Block = aec_blocks:new_key(Height, PrevBlockHash, PrevKeyHash, aec_trees:hash(TreesIn),
-                               Target, 0, aeu_time:now_in_msecs(), Info, Protocol,
+                               Target, 0, Timestamp, Info, Protocol,
                                MinerAccount, BeneficiaryAccount),
     Trees2 = case Height > Delay of
                  true ->
@@ -435,17 +437,55 @@ create_keyblock_with_state([{PrevBlock, TreesIn} | _] = Chain, MinerAccount, Ben
                      Trees1
              end,
     Block1 = aec_blocks:new_key(Height, PrevBlockHash, PrevKeyHash, aec_trees:hash(Trees2),
-                                Target, 0, aeu_time:now_in_msecs(), Info, Protocol,
+                                Target, 0, Timestamp, Info, Protocol,
                                 MinerAccount, BeneficiaryAccount),
     {Block1, Trees2}.
 
-pick_prev_target([{Block, _}|Left]) ->
+adjust_target([{PrevBlock, _} | _Rest] = Chain) ->
+    Height = aec_blocks:height(PrevBlock) + 1,
+    N = aec_governance:key_blocks_to_check_difficulty_count() + 1,
+    case Height =< N of
+        true ->
+            aec_block_genesis:target();
+        false ->
+            Headers = get_n_key_headers(Chain, N, []),
+            aec_target:recalculate(Headers)
+    end;
+adjust_target([]) ->
+    aec_block_genesis:target().
+
+pick_prev_target([{Block, _} | Rest]) ->
     case aec_blocks:type(Block) of
         key   -> aec_blocks:target(Block);
-        micro -> pick_prev_target(Left)
+        micro -> pick_prev_target(Rest)
     end;
 pick_prev_target([]) ->
     aec_block_genesis:target().
+
+get_n_key_headers([{Block, _} | Rest], N, Acc) when length(Acc) < N ->
+    case aec_blocks:type(Block) of
+        key ->
+            Header = aec_blocks:to_header(Block),
+            get_n_key_headers(Rest, N, [Header | Acc]);
+        micro ->
+            get_n_key_headers(Rest, N,  Acc)
+    end;
+get_n_key_headers(_Chain, N, Acc) when length(Acc) =:= N ->
+    lists:reverse(Acc).
+
+adjust_timestamp([{PrevBlock, _} | _Rest]) ->
+    case aec_blocks:height(PrevBlock) + 1 of
+        1 -> aeu_time:now_in_msecs();
+        _N -> aec_blocks:time_in_msecs(PrevBlock) + expected_mine_rate()
+    end.
+
+expected_mine_rate() ->
+    case aeu_env:get_env(aecore, expected_mine_rate, undefined) of
+        ExpectedMineRate when ExpectedMineRate =/= undefined ->
+            ExpectedMineRate;
+        undefined ->
+            100
+    end.
 
 extend_block_chain_with_state(Chain, Data) ->
     {ok, Pubkey, PrivKey} = wait_for_pubkey(),
@@ -518,7 +558,9 @@ next_block_with_state([{PB,_PBS} | _] = Chain, Target, Time0, TxsFun, Nonce,
     Txs = TxsFun(Height),
     %% NG: if a block X used to have Txs, now put them in micro-blocks after
     %% the key-block at height X. Every transaction is put in a separate micro-block.
-    {B, S} = create_keyblock_with_state(Chain, PubKey, BeneficiaryPubKey),
+    BlockCfg = #{target => pick_prev_target(Chain),
+                 timestamp => aeu_time:now_in_msecs()},
+    {B, S} = create_keyblock_with_state(Chain, PubKey, BeneficiaryPubKey, BlockCfg),
     Chain1 = [begin
                   B1 = aec_blocks:set_target(B, Target),
                   B2 = aec_blocks:set_nonce(B1, Nonce),
@@ -730,3 +772,60 @@ dev_reward_setup(Enabled, Activated, BeneficiaryShare) ->
     application:set_env(aecore, dev_reward_activated, Activated),
     application:set_env(aecore, dev_reward_allocated_shares, BeneficiaryShare),
     application:set_env(aecore, dev_reward_beneficiaries, [{PubKeyProtocol, BeneficiaryShare}]).
+
+
+%%%=============================================================================
+%%% Throughput test
+%%%=============================================================================
+
+run_throughput_test(TestFun, Blocks, Opts) ->
+    InsertBlockFun = fun(B0, AccTime) ->
+                             T0 = erlang:system_time(microsecond),
+                             TestFun(B0),
+                             T1 = erlang:system_time(microsecond),
+                             [T1 - T0 | AccTime]
+                     end,
+
+    %% Run timings
+    Timings = lists:foldl(InsertBlockFun, [], Blocks),
+
+    %% Prepare and print data
+    TotalRuntime = lists:sum(Timings),
+    [Min | _] = TimingsSorted = lists:sort(Timings),
+    Max = lists:last(TimingsSorted),
+    Range = Max - Min,
+    Mean = TotalRuntime div length(Timings),
+    Median = lists:nth(ceil(length(Timings) / 2), TimingsSorted),
+    Counts = lists:foldl(
+               fun(N, Acc) ->
+                       case lists:keyfind(N, 1, Acc) of
+                           false ->
+                               [{N, 1} | Acc];
+                           {N, Count} ->
+                               lists:keyreplace(N, 1, Acc, {N, Count + 1})
+                       end
+               end, [], Timings),
+    [{Mode, _} | _] = lists:keysort(2, Counts),
+
+    DbInfo = case maps:get(db_mode, Opts, ram) of
+                 ram  -> "in ram";
+                 disc -> "on disc"
+             end,
+
+    {Mod, Fun} = maps:get(test_fun, Opts),
+    TestFunInfo = atom_to_list(Mod) ++ [$:] ++ atom_to_list(Fun),
+
+    io:format(user,
+              "~nThroughput testing results (in microseconds) " ++ DbInfo ++ "~n~n"
+              "Tested function\t\t= " ++ TestFunInfo ++ "~n"
+              "# of blocks inserted\t= ~p~n"
+              "Total runtime\t\t= ~p~n~n"
+              "Min\t= ~p~n"
+              "Max\t= ~p~n"
+              "Mean\t= ~p~n"
+              "Mode\t= ~p~n"
+              "Range\t= ~p~n"
+              "Median\t= ~p~n",
+              [length(Blocks), TotalRuntime, Min, Max, Mean, Mode, Range, Median]
+             ),
+    ok.
