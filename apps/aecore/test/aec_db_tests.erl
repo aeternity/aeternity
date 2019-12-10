@@ -116,7 +116,8 @@ write_chain_test_() ->
                TotalBlockCount = 1000,
                TestFun = fun(B) -> ok = aec_db:write_block(B) end,
                [_GB | Blocks] = aec_test_utils:gen_blocks_only_chain(TotalBlockCount + 1),
-               Opts = #{db_mode => ram, test_fun => {aec_db, write_block}},
+               Opts = #{db_mode => ram, test_fun => {aec_db, write_block},
+                        block_type => key},
                aec_test_utils:run_throughput_test(TestFun, Blocks, Opts),
 
                ok
@@ -271,7 +272,8 @@ persisted_database_write_error_test_() ->
                TotalBlockCount = 100,
                TestFun = fun(B) -> ok = aec_db:write_block(B) end,
                [_GB | Blocks] = aec_test_utils:gen_blocks_only_chain(TotalBlockCount + 1),
-               Opts = #{db_mode => disc, test_fun => {aec_db, write_block}},
+               Opts = #{db_mode => disc, test_fun => {aec_db, write_block},
+                        block_type => key},
                aec_test_utils:run_throughput_test(TestFun, Blocks, Opts),
 
                ok
