@@ -68,6 +68,10 @@
         , channel_slash/1
         , channel_force_progress/1
 
+        , paying_for_inner/1
+        , paying_for_outer/1
+        , paying_for_inner_outer/1
+
         , wrap_unrelated_tx/1
         , cripple_auth/1
         ]).
@@ -109,6 +113,7 @@ groups() ->
                  , {group, oracle}
                  , {group, channel}
                  , {group, multi_wrap}
+                 , {group, paying_for}
                  , {group, negative}
                  ]}
     , {fate, [], [ {group, simple}
@@ -118,6 +123,7 @@ groups() ->
                  , {group, oracle}
                  , {group, channel}
                  , {group, multi_wrap}
+                 , {group, paying_for}
                  , {group, negative}
                  ]}
 
@@ -164,6 +170,11 @@ groups() ->
                        , multi_wrap_sc_solo_snapshot
                        ]}
 
+    , {paying_for, [], [ paying_for_inner
+                       , paying_for_outer
+                       , paying_for_inner_outer
+                       ]}
+
     , {channel, [], [ channel_create
                     , channel_deposit
                     , channel_withdraw
@@ -190,6 +201,11 @@ init_per_group(VM, Cfg) when VM == aevm; VM == fate ->
 init_per_group(ethereum, Cfg) ->
     case aect_test_utils:latest_protocol_version() of
         Vsn when Vsn < ?LIMA_PROTOCOL_VSN -> {skip, ethereum_style_ecverify_not_pre_lima};
+        _Vsn -> Cfg
+    end;
+init_per_group(paying_for, Cfg) ->
+    case aect_test_utils:latest_protocol_version() of
+        Vsn when Vsn < ?IRIS_PROTOCOL_VSN -> {skip, paying_for_not_pre_iris};
         _Vsn -> Cfg
     end;
 init_per_group(_Grp, Cfg) ->
@@ -418,17 +434,23 @@ basic_minimum_fee(_Cfg) ->
                                          recipient_id => aeser_id:create(account, To),
                                          amount       => 4711,
                                          height       => Height,
+                                         fee          => 16700 * MinGP,
                                          nonce        => 0}),
     MinimumSpendFee = aetx:min_fee(DummyTx, Height, Protocol),
 
-    %% When the transaction is wrapped in a meta transaction, the size of the
-    %% inner transaction is paid for by the meta transaction.
+    %% Up until IRIS:
+    %%   When the transaction is wrapped in a meta transaction, the size of
+    %%   the inner transaction is paid for by the meta transaction.
+    %% From IRIS:
+    %%   The inner transaction should cover its own "size-cost"
     SizeFee = aetx:size(DummyTx) * aec_governance:byte_gas() * MinGP,
-    MinimumInnerFee = MinimumSpendFee - SizeFee,
+    MinimumInnerFee = case Protocol =< ?LIMA_PROTOCOL_VSN of
+                        true  -> MinimumSpendFee - SizeFee;
+                        false -> MinimumSpendFee end,
 
     %% Make sure that we actually are setting a fee that is lower than
     %% what should pass if the tx wasn't an inner tx.
-    ?assert(MinimumSpendFee > MinimumInnerFee),
+    ?assert(MinimumSpendFee > MinimumInnerFee orelse Protocol > ?LIMA_PROTOCOL_VSN),
 
     %% Make sure we are right at the limit of the minimum fee for the inner tx.
     SpendTx1 = aega_test_utils:spend_tx(#{sender_id    => aeser_id:create(account, From),
@@ -941,6 +963,88 @@ channel_force_progress(_Cfg) ->
     ok.
 
 %%%===================================================================
+%%% PayingForTx test cases
+%%%===================================================================
+paying_for_inner(_Cfg) ->
+    state(aect_test_utils:new_state()),
+    MinGP   = aec_test_utils:min_gas_price(),
+    Acc1 = ?call(new_account, 1000000000 * aec_test_utils:min_gas_price()),
+    Acc2 = ?call(new_account, 1000000000 * aec_test_utils:min_gas_price()),
+    {ok, _} = ?call(attach, Acc1, "basic_auth", "authorize", []),
+    Auth = fun(N) -> #{ prep_fun => fun(Tx) -> ?call(basic_auth, Acc1, N, Tx) end } end,
+
+    SpendTx = aega_test_utils:spend_tx(#{sender_id    => aeser_id:create(account, Acc1),
+                                         recipient_id => aeser_id:create(account, Acc2),
+                                         amount       => 2000,
+                                         fee          => 20000 * MinGP,
+                                         nonce        => 0}),
+
+    {_AuthData2, _InnerTx2, MetaTx} = prep_meta(Acc1, Auth("1"), SpendTx),
+
+    SMetaTx = aetx_sign:new(MetaTx, []),
+    PreBalance  = ?call(account_balance, Acc1),
+    ok = ?call(paying_for, Acc2, SMetaTx, 10000 * MinGP),
+    PostBalance = ?call(account_balance, Acc1),
+    ?assertEqual(2000, PreBalance - PostBalance),
+    ok.
+
+paying_for_outer(_Cfg) ->
+    state(aect_test_utils:new_state()),
+    MinGP   = aec_test_utils:min_gas_price(),
+    Acc1    = ?call(new_account, 1000000000 * aec_test_utils:min_gas_price()),
+    Acc2    = ?call(new_account, 1000000000 * aec_test_utils:min_gas_price()),
+    {ok, _} = ?call(attach, Acc1, "basic_auth", "authorize", []),
+    Auth    = fun(N) -> #{ prep_fun => fun(Tx) -> ?call(basic_auth, Acc1, N, Tx) end } end,
+
+    State   = state(),
+    SpendTx = aega_test_utils:spend_tx(
+                #{sender_id    => aeser_id:create(account, Acc2),
+                  recipient_id => aeser_id:create(account, Acc1),
+                  amount       => 2000,
+                  fee          => 20000 * MinGP,
+                  nonce        => aect_test_utils:next_nonce(Acc2, State)}),
+
+    PrivKey  = aect_test_utils:priv_key(Acc2, State),
+    SignedTx = aec_test_utils:sign_tx(SpendTx, PrivKey),
+
+    PreBalance  = ?call(account_balance, Acc2),
+    {ok, #{tx_res := ok}} =
+        ?call(ga_paying_for, Acc1, Auth("1"), 10000 * MinGP, SignedTx),
+    PostBalance = ?call(account_balance, Acc2),
+
+    ?assertEqual(2000, PreBalance - PostBalance),
+
+    ok.
+
+paying_for_inner_outer(_Cfg) ->
+    state(aect_test_utils:new_state()),
+    MinGP   = aec_test_utils:min_gas_price(),
+    Acc1 = ?call(new_account, 1000000000 * aec_test_utils:min_gas_price()),
+    Acc2 = ?call(new_account, 1000000000 * aec_test_utils:min_gas_price()),
+    {ok, _} = ?call(attach, Acc1, "basic_auth", "authorize", []),
+    {ok, _} = ?call(attach, Acc2, "basic_auth", "authorize", []),
+    Auth1 = fun(N) -> #{ prep_fun => fun(Tx) -> ?call(basic_auth, Acc1, N, Tx) end } end,
+    Auth2 = fun(N) -> #{ prep_fun => fun(Tx) -> ?call(basic_auth, Acc2, N, Tx) end } end,
+
+    SpendTx = aega_test_utils:spend_tx(#{sender_id    => aeser_id:create(account, Acc1),
+                                         recipient_id => aeser_id:create(account, Acc2),
+                                         amount       => 2000,
+                                         fee          => 20000 * MinGP,
+                                         nonce        => 0}),
+
+    {_AuthData2, _InnerTx2, MetaTx} = prep_meta(Acc1, Auth1("1"), SpendTx),
+    SMetaTx = aetx_sign:new(MetaTx, []),
+
+    PreBalance  = ?call(account_balance, Acc1),
+    {ok, #{tx_res := ok}} =
+        ?call(ga_paying_for, Acc2, Auth2("1"), 10000 * MinGP, SMetaTx),
+    PostBalance = ?call(account_balance, Acc1),
+
+    ?assertEqual(2000, PreBalance - PostBalance),
+    ok.
+
+
+%%%===================================================================
 %%% Negative tests
 %%%===================================================================
 wrap_unrelated_tx(_Cfg) ->
@@ -1049,6 +1153,11 @@ attach(Owner, Contract, AuthFun, Args, Opts, S) ->
             error(bad_contract)
     end.
 
+paying_for(Payer, Tx, Fee, S) ->
+    PayingTx = paying_for_tx(Payer, aect_test_utils:next_nonce(Payer, S), Fee, Tx),
+    S1 = sign_and_apply_tx(false, Payer, PayingTx, #{}, S),
+    {ok, S1}.
+
 ga_spend(From, AuthOpts, To, Amount, Fee, S) ->
     ga_spend(From, AuthOpts, To, Amount, Fee, #{}, S).
 
@@ -1059,6 +1168,13 @@ ga_spend(From, AuthOpts, To, Amount, Fee, Opts, S) ->
                                          fee          => Fee,
                                          nonce        => 0}),
     meta(From, AuthOpts, SpendTx, Opts, S).
+
+ga_paying_for(Payer, AuthOpts, Fee, Tx, S) ->
+    ga_paying_for(Payer, AuthOpts, Fee, Tx, #{}, S).
+
+ga_paying_for(Payer, AuthOpts, Fee, Tx, Opts, S) ->
+    PayingTx = paying_for_tx(Payer, 0, Fee, Tx),
+    meta(Payer, AuthOpts, PayingTx, Opts, S).
 
 ga_create(Owner, AuthOpts, ContractName, InitArgs, S) ->
     ga_create(Owner, AuthOpts, ContractName, InitArgs, #{}, S).
@@ -1350,7 +1466,8 @@ do_meta(Owner, AuthData, InnerTx, MetaTx, Opts, S) ->
                          Tx == channel_deposit_tx; Tx == channel_withdraw_tx;
                          Tx == channel_snapshot_solo_tx; Tx == channel_close_mutual_tx;
                          Tx == channel_close_solo_tx; Tx == channel_settle_tx;
-                         Tx == channel_slash_tx; Tx == ga_attach_tx; Tx == ga_meta_tx ->
+                         Tx == channel_slash_tx; Tx == ga_attach_tx;
+                         Tx == ga_meta_tx; Tx == paying_for_tx ->
                 {ok, Res0}
         end,
     {Res, S1}.
@@ -1425,6 +1542,14 @@ call_tx_default() ->
      , fee         => 500000 * aec_test_utils:min_gas_price()
      , amount      => 0
      , gas         => 10000 }.
+
+paying_for_tx(Payer, Nonce, Fee, Tx) ->
+    {ok, PayingTx} =
+        aec_paying_for_tx:new(#{ payer_id => aeser_id:create(account, Payer),
+                                 nonce    => Nonce,
+                                 fee      => Fee,
+                                 tx       => Tx }),
+    PayingTx.
 
 %%%===================================================================
 %%% Test framework/machinery

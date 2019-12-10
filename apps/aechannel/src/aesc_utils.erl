@@ -212,7 +212,7 @@ check_solo_close_payload(ChannelPubKey, FromPubKey, Nonce, Fee, Payload,
         {error, _} = E -> E;
         {ok, [Channel, last_onchain]} ->
             Checks =
-                [fun() -> aetx_utils:check_account(FromPubKey, Trees, Nonce, Fee, Env) end,
+                [fun() -> check_account(FromPubKey, Trees, Nonce, Fee, Env) end,
                  fun() -> check_is_peer(FromPubKey, aesc_channels:peers(Channel)) end,
                  fun() -> check_is_active(Channel) end,
                  fun() -> check_root_hash_in_channel(Channel, PoI) end,
@@ -221,7 +221,7 @@ check_solo_close_payload(ChannelPubKey, FromPubKey, Nonce, Fee, Payload,
             aeu_validation:run(Checks);
         {ok, [Channel, {SignedState, PayloadTx}]} ->
             Checks =
-                [ fun() -> aetx_utils:check_account(FromPubKey, Trees, Nonce, Fee, Env) end,
+                [ fun() -> check_account(FromPubKey, Trees, Nonce, Fee, Env) end,
                   fun() -> check_is_active(Channel) end,
                   fun() -> check_payload(Channel, PayloadTx, FromPubKey, SignedState,
                                           Trees, Env, solo_close) end,
@@ -239,7 +239,7 @@ check_slash_payload(ChannelPubKey, FromPubKey, Nonce, Fee, Payload,
             {error, slash_must_have_payload};
         {ok, [Channel, {SignedState, PayloadTx}]} ->
             Checks =
-                [ fun() -> aetx_utils:check_account(FromPubKey, Trees, Nonce, Fee, Env) end,
+                [ fun() -> check_account(FromPubKey, Trees, Nonce, Fee, Env) end,
                   fun() -> check_is_closing(Channel) end,
                   fun() -> check_payload(Channel, PayloadTx, FromPubKey, SignedState,
                                          Trees, Env, slash) end,
@@ -250,9 +250,8 @@ check_slash_payload(ChannelPubKey, FromPubKey, Nonce, Fee, Payload,
 
 check_force_progress(Tx, Payload, OffChainTrees, Trees, Env) ->
     Protocol = aetx_env:consensus_version(Env),
-    _Height = aetx_env:height(Env),
     ?TEST_LOG("Checking force progress:\nTx: ~p,\nPayload: ~p,\nOffChainTrees: ~p,\nHeight: ~p",
-              [Tx, Payload, OffChainTrees, _Height]),
+              [Tx, Payload, OffChainTrees, aetx_env:height(Env)]),
     ChannelPubKey = aesc_force_progress_tx:channel_pubkey(Tx),
     FromPubKey = aesc_force_progress_tx:origin(Tx),
     Nonce = aesc_force_progress_tx:nonce(Tx),
@@ -345,11 +344,24 @@ check_force_progress_(PayloadHash, PayloadRound,
           fun() ->
               {_Amount, GasPrice, GasLimit} = aesc_offchain_update:extract_amounts(Update),
               RequiredAmount = Fee + GasLimit * GasPrice,
-              aetx_utils:check_account(FromPubKey, Trees, Nonce, RequiredAmount, Env)
+              check_account(FromPubKey, Trees, Nonce, RequiredAmount, Env)
           end],
     Res = aeu_validation:run(Checks),
     ?TEST_LOG("check_force_progress result: ~p", [Res]),
     Res.
+
+check_account(FromPK, Trees, Nonce, Amount, Env) ->
+    Payer = establish_payer(FromPK, Env),
+    check_account(FromPK, Payer, Trees, Nonce, Amount, Env).
+
+check_account(FromPK, FromPK, Trees, Nonce, Amount, Env) ->
+    aetx_utils:check_account(FromPK, Trees, Nonce, Amount, Env);
+check_account(FromPK, Payer, Trees, Nonce, Amount, Env) ->
+    case aetx_utils:check_account(FromPK, Trees, Nonce, 0, Env) of
+        ok  -> aetx_utils:check_account(Payer, Trees, Amount);
+        Err -> Err
+    end.
+
 
 check_code_serialization(Code, #{abi := ABI}, Protocol) ->
     case aect_sophia:deserialize(Code) of
@@ -381,7 +393,7 @@ check_solo_snapshot_payload(ChannelId, FromPubKey, Nonce, Fee, Payload,
         {ok, [Channel, {SignedState, PayloadTx}]} ->
             ChannelId = aesc_channels:pubkey(Channel),
             Checks =
-                [ fun() -> aetx_utils:check_account(FromPubKey, Trees, Nonce, Fee, Env) end,
+                [ fun() -> check_account(FromPubKey, Trees, Nonce, Fee, Env) end,
                   fun() -> check_is_active(Channel) end,
                   fun() -> check_payload(Channel, PayloadTx, FromPubKey, SignedState,
                                          Trees, Env, solo_snapshot) end
@@ -726,6 +738,12 @@ check_root_hash_in_channel(Channel, PoI) ->
         false -> {error, invalid_poi_hash_in_channel}
     end.
 
+establish_payer(NormalPayer, TxEnv) ->
+    case aetx_env:payer(TxEnv) of
+        undefined -> NormalPayer;
+        X         -> X
+    end.
+
 %%%===================================================================
 %%% Process payload for slash and solo close
 %%%===================================================================
@@ -734,7 +752,7 @@ process_solo_close(ChannelPubKey, FromPubKey, Nonce, Fee,
                    Payload, PoI, Height, Trees, Env) ->
     add_event(
       process_solo_close_slash(ChannelPubKey, FromPubKey, Nonce, Fee,
-                               Payload, PoI, Height, Trees),
+                               Payload, PoI, Height, Trees, Env),
       ChannelPubKey, Env).
 
 
@@ -742,22 +760,22 @@ process_slash(ChannelPubKey, FromPubKey, Nonce, Fee,
               Payload, PoI, Height, Trees, Env) ->
     add_event(
       process_solo_close_slash(ChannelPubKey, FromPubKey, Nonce, Fee,
-                               Payload, PoI, Height, Trees),
+                               Payload, PoI, Height, Trees, Env),
       ChannelPubKey, Env).
 
 process_solo_snapshot(ChannelPubKey, FromPubKey, Nonce, Fee, Payload, Trees, Env) ->
-    ChannelsTree0      = aec_trees:channels(Trees),
+    ChannelsTree0 = aec_trees:channels(Trees),
     Channel0 = aesc_state_tree:get(ChannelPubKey, ChannelsTree0),
     {ok, _SignedOffchainTx, PayloadTx} = deserialize_payload(Payload),
     Channel = aesc_channels:snapshot_solo(Channel0, PayloadTx),
     Trees1 = set_channel(Channel, Trees),
-    Trees2 = spend(FromPubKey, Fee, Nonce, Trees1),
+    Trees2 = spend(FromPubKey, Fee, Nonce, Trees1, Env),
     add_event(Trees2, ChannelPubKey, Env).
 
 process_solo_close_slash(ChannelPubKey, FromPubKey, Nonce, Fee,
-                         Payload, PoI, Height, Trees) ->
-    Trees1 = spend(FromPubKey, Fee, Nonce, Trees),
-    ChannelsTree0      = aec_trees:channels(Trees1),
+                         Payload, PoI, Height, Trees, Env) ->
+    Trees1        = spend(FromPubKey, Fee, Nonce, Trees, Env),
+    ChannelsTree0 = aec_trees:channels(Trees1),
 
     Channel0 = aesc_state_tree:get(ChannelPubKey, ChannelsTree0),
     Channel1 =
@@ -818,7 +836,7 @@ process_force_progress(Tx, OffChainTrees, Payload, TxHash, Height, Trees, Env) -
 
 
     % consume gas from sender
-    Trees1 = consume_gas_and_fee(Call, Fee, FromPubKey, Nonce, Trees),
+    Trees1 = consume_gas_and_fee(Call, Fee, FromPubKey, Nonce, Trees, Env),
 
     % add a receipt call in the calls state tree
     Trees2 = add_call(Call, TxHash, Trees1, Env),
@@ -894,21 +912,35 @@ amounts_do_not_exceed_total_balance(OffChainTrees, Channel) ->
     ?TEST_LOG("AllBalances ~p, ChannelAmount ~p", [AllBalances, ChannelAmount]),
     AllBalances =< ChannelAmount.
 
-spend(From, Amount, Nonce, Trees) ->
-    AccountsTree0 = aec_trees:accounts(Trees),
-    CallerAcc0 = aec_accounts_trees:get(From, AccountsTree0),
-    {ok, CallerAcc} = aec_accounts:spend(CallerAcc0, Amount, Nonce),
-    AccountsTree1 = aec_accounts_trees:enter(CallerAcc, AccountsTree0),
-    aec_trees:set_accounts(Trees, AccountsTree1).
+spend(From, Amount, Nonce, Trees, Env) ->
+    Payer = establish_payer(From, Env),
+    spend_(From, Payer, Amount, Nonce, Trees).
+
+spend_(From, From, Amount, Nonce, Trees) ->
+    ATree0 = aec_trees:accounts(Trees),
+    Acc0 = aec_accounts_trees:get(From, ATree0),
+    {ok, Acc} = aec_accounts:spend(Acc0, Amount, Nonce),
+    ATree1 = aec_accounts_trees:enter(Acc, ATree0),
+    aec_trees:set_accounts(Trees, ATree1);
+spend_(From, Payer, Amount, Nonce, Trees) ->
+    ATree0 = aec_trees:accounts(Trees),
+    AccF0 = aec_accounts_trees:get(From, ATree0),
+    AccF1 = aec_accounts:set_nonce(AccF0, Nonce),
+    AccP0 = aec_accounts_trees:get(Payer, ATree0),
+    {ok, AccP1} = aec_accounts:spend_without_nonce_bump(AccP0, Amount),
+    ATree1 = aec_accounts_trees:enter(AccF1, ATree0),
+    ATree2 = aec_accounts_trees:enter(AccP1, ATree1),
+    aec_trees:set_accounts(Trees, ATree2).
 
 -spec consume_gas_and_fee(aect_call:call(),
                           integer(),
                           aec_keys:pubkey(),
                           non_neg_integer(),
-                          aec_trees:trees()) -> aec_trees:trees().
-consume_gas_and_fee(Call, Fee, From, Nonce, Trees) ->
+                          aec_trees:trees(),
+                          aetx_env:env()) -> aec_trees:trees().
+consume_gas_and_fee(Call, Fee, From, Nonce, Trees, Env) ->
     UsedAmount = aect_call:gas_used(Call) * aect_call:gas_price(Call),
-    spend(From, UsedAmount + Fee, Nonce, Trees).
+    spend(From, UsedAmount + Fee, Nonce, Trees, Env).
 
 set_channel(Channel, Trees) ->
     ChannelsTree0 = aec_trees:channels(Trees),
