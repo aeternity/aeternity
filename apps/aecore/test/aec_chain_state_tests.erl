@@ -363,10 +363,10 @@ throughput_ram_test_() ->
              aec_test_utils:stop_chain_db(),
              aec_test_utils:aec_keys_cleanup(TmpDir)
      end,
-     [{"Throughput test building chain with 1000 key blocks in ram",
+     [{"Throughput test building chain with 100 key blocks in ram",
        fun() ->
                %% Setup
-               TotalBlockCount = 1000,
+               TotalBlockCount = 100,
                TestFun = fun(B) -> {ok, _} = aec_chain_state:insert_block(B) end,
                Blocks = prep_key_blocks(TotalBlockCount),
                Opts = #{db_mode => ram, test_fun => {aec_chain_state, insert_block},
@@ -375,9 +375,9 @@ throughput_ram_test_() ->
 
                ok
        end},
-      {"Throughput test building chain with 1000 micro blocks in ram",
+      {"Throughput test building chain with 100 micro blocks in ram",
        fun() ->
-               TotalBlockCount = 1000,
+               TotalBlockCount = 100,
                TestFun = fun(B) -> {ok, _} = aec_chain_state:insert_block(B) end,
                Blocks = prep_micro_blocks(TotalBlockCount),
                Opts = #{db_mode => ram, test_fun => {aec_chain_state, insert_block},
@@ -415,10 +415,10 @@ throughput_disc_test_() ->
              ok = meck:unload(mnesia_rocksdb_lib),
              ok = mnesia:delete_schema([node()])
      end,
-     [{"Throughput test building chain with 100 key blocks on disc",
+     [{"Throughput test building chain with 10 key blocks on disc",
        fun() ->
                %% Setup
-               TotalBlockCount = 100,
+               TotalBlockCount = 10,
                TestFun = fun(B) -> {ok, _} = aec_chain_state:insert_block(B) end,
                Blocks = prep_key_blocks(TotalBlockCount),
                Opts = #{db_mode => disc, test_fun => {aec_chain_state, insert_block},
@@ -427,9 +427,9 @@ throughput_disc_test_() ->
 
                ok
        end},
-      {"Throughput test building chain with 100 micro blocks on disc",
+      {"Throughput test building chain with 10 micro blocks on disc",
        fun() ->
-               TotalBlockCount = 100,
+               TotalBlockCount = 10,
                TestFun = fun(B) -> {ok, _} = aec_chain_state:insert_block(B) end,
                Blocks = prep_micro_blocks(TotalBlockCount),
                Opts = #{db_mode => disc, test_fun => {aec_chain_state, insert_block},

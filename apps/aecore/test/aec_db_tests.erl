@@ -110,10 +110,10 @@ write_chain_test_() ->
 
                ok
        end},
-      {"Throughput test building chain with 1000 blocks in ram",
+      {"Throughput test building chain with 100 blocks in ram",
        fun() ->
                %% Setup
-               TotalBlockCount = 1000,
+               TotalBlockCount = 100,
                TestFun = fun(B) -> ok = aec_db:write_block(B) end,
                [_GB | Blocks] = aec_test_utils:gen_blocks_only_chain(TotalBlockCount + 1),
                Opts = #{db_mode => ram, test_fun => {aec_db, write_block},
@@ -266,10 +266,10 @@ persisted_database_write_error_test_() ->
                %% Cleanup
                ok
        end},
-      {"Throughput test building chain with 100 blocks on disc",
+      {"Throughput test building chain with 10 blocks on disc",
        fun() ->
                %% Setup
-               TotalBlockCount = 100,
+               TotalBlockCount = 10,
                TestFun = fun(B) -> ok = aec_db:write_block(B) end,
                [_GB | Blocks] = aec_test_utils:gen_blocks_only_chain(TotalBlockCount + 1),
                Opts = #{db_mode => disc, test_fun => {aec_db, write_block},
