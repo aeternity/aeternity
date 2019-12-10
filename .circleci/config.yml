@@ -365,6 +365,7 @@ references:
     - *restore_build_cache
     - run:
         name: Test
+        no_output_timeout: 20m
         command: |
           epmd -daemon
           make ${MAKE_TARGET:?}
