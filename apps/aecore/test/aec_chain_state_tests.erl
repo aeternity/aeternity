@@ -351,10 +351,10 @@ insert_block_ret(Other      ) -> Other.
 %%%===================================================================
 
 throughput_ram_test_() ->
-    {setup,
+    {foreach,
      fun() ->
              aec_test_utils:start_chain_db(),
-             aec_test_utils:mock_genesis_and_forks(),
+             aec_test_utils:mock_genesis_and_forks(genesis_accounts()),
              aec_test_utils:dev_reward_setup(true, true, 100),
              aec_test_utils:aec_keys_setup()
      end,
@@ -363,13 +363,25 @@ throughput_ram_test_() ->
              aec_test_utils:stop_chain_db(),
              aec_test_utils:aec_keys_cleanup(TmpDir)
      end,
-     [{"Throughput test building chain with 1000 key blocks in ram",
+     [{"Throughput test building chain with 100 key blocks in ram",
        fun() ->
                %% Setup
-               TotalBlockCount = 1000,
+               TotalBlockCount = 100,
                TestFun = fun(B) -> {ok, _} = aec_chain_state:insert_block(B) end,
-               Blocks = aec_test_utils:gen_blocks_only_chain(TotalBlockCount),
-               Opts = #{db_mode => ram, test_fun => {aec_chain_state, insert_block}},
+               Blocks = prep_key_blocks(TotalBlockCount),
+               Opts = #{db_mode => ram, test_fun => {aec_chain_state, insert_block},
+                        block_type => key},
+               aec_test_utils:run_throughput_test(TestFun, Blocks, Opts),
+
+               ok
+       end},
+      {"Throughput test building chain with 100 micro blocks in ram",
+       fun() ->
+               TotalBlockCount = 100,
+               TestFun = fun(B) -> {ok, _} = aec_chain_state:insert_block(B) end,
+               Blocks = prep_micro_blocks(TotalBlockCount),
+               Opts = #{db_mode => ram, test_fun => {aec_chain_state, insert_block},
+                        block_type => micro, txs_per_block => 1},
                aec_test_utils:run_throughput_test(TestFun, Blocks, Opts),
 
                ok
@@ -381,7 +393,7 @@ throughput_ram_test_() ->
 %%%===================================================================
 
 throughput_disc_test_() ->
-    {setup,
+    {foreach,
      fun() ->
              Persist = application:get_env(aecore, persist),
              application:set_env(aecore, persist, true),
@@ -390,7 +402,7 @@ throughput_disc_test_() ->
              aec_db:clear_db(),
              TmpDir = aec_test_utils:aec_keys_setup(),
              ok = meck:new(mnesia_rocksdb_lib, [passthrough]),
-             aec_test_utils:mock_genesis_and_forks(),
+             aec_test_utils:mock_genesis_and_forks(genesis_accounts()),
              aec_test_utils:dev_reward_setup(true, true, 100),
              {TmpDir, Persist}
      end,
@@ -403,15 +415,75 @@ throughput_disc_test_() ->
              ok = meck:unload(mnesia_rocksdb_lib),
              ok = mnesia:delete_schema([node()])
      end,
-     [{"Throughput test building chain with 100 key blocks on disc",
+     [{"Throughput test building chain with 10 key blocks on disc",
        fun() ->
                %% Setup
-               TotalBlockCount = 100,
+               TotalBlockCount = 10,
                TestFun = fun(B) -> {ok, _} = aec_chain_state:insert_block(B) end,
-               Blocks = aec_test_utils:gen_blocks_only_chain(TotalBlockCount),
-               Opts = #{db_mode => disc, test_fun => {aec_chain_state, insert_block}},
+               Blocks = prep_key_blocks(TotalBlockCount),
+               Opts = #{db_mode => disc, test_fun => {aec_chain_state, insert_block},
+                        block_type => key},
+               aec_test_utils:run_throughput_test(TestFun, Blocks, Opts),
+
+               ok
+       end},
+      {"Throughput test building chain with 10 micro blocks on disc",
+       fun() ->
+               TotalBlockCount = 10,
+               TestFun = fun(B) -> {ok, _} = aec_chain_state:insert_block(B) end,
+               Blocks = prep_micro_blocks(TotalBlockCount),
+               Opts = #{db_mode => disc, test_fun => {aec_chain_state, insert_block},
+                        block_type => micro, txs_per_block => 1},
                aec_test_utils:run_throughput_test(TestFun, Blocks, Opts),
 
                ok
        end}
      ]}.
+
+prep_key_blocks(Count) ->
+    aec_test_utils:gen_blocks_only_chain(Count, genesis_accounts()).
+
+prep_micro_blocks(Count) ->
+    #{pubkey := PubKey, privkey := PrivKey} = patron(),
+
+    Fee = 20000 * aec_test_utils:min_gas_price(),
+    Amount = 1,
+    SpendTxs = [sign_tx(make_spend_tx(PubKey, Nonce, PubKey, Fee, Amount), PrivKey)
+                || Nonce <- lists:seq(1, Count)],
+
+    Chain0 = [{B0, _}, {B1, _}] =
+        aec_test_utils:gen_block_chain_with_state(2, genesis_accounts()),
+    [{B0, _}, {B1, _} | Rest] =
+        aec_test_utils:extend_block_chain_with_micro_blocks(Chain0, SpendTxs),
+
+    {ok, _} = aec_chain_state:insert_block(B0),
+    {ok, _} = aec_chain_state:insert_block(B1),
+
+    aec_test_utils:blocks_only_chain(Rest).
+
+genesis_accounts() ->
+    #{pubkey := PubKey} = patron(),
+    [{PubKey, 10000000000000000000 * aec_test_utils:min_gas_price()}].
+
+patron() ->
+    #{pubkey  => <<206,167,173,228,112,201,249,157,157,78,64,8,128,168,111,29,
+                   73,187,68,75,98,241,26,158,187,100,187,207,235,115,254,243>>,
+      privkey => <<230,169,29,99,60,119,207,87,113,50,157,51,84,179,188,239,27,
+                   197,224,50,196,61,112,182,211,90,249,35,206,30,183,77,206,
+                   167,173,228,112,201,249,157,157,78,64,8,128,168,111,29,73,
+                   187,68,75,98,241,26,158,187,100,187,207,235,115,254,243>>}.
+
+make_spend_tx(Sender, SenderNonce, Recipient, Fee, Amount) ->
+    SenderId = aeser_id:create(account, Sender),
+    RecipientId = aeser_id:create(account, Recipient),
+    Args = #{sender_id => SenderId,
+             recipient_id => RecipientId,
+             amount => Amount,
+             fee => Fee,
+             nonce => SenderNonce,
+             payload => <<"spend">>},
+    {ok, SpendTx} = aec_spend_tx:new(Args),
+    SpendTx.
+
+sign_tx(Tx, PrivKey) ->
+    aec_test_utils:sign_tx(Tx, PrivKey).

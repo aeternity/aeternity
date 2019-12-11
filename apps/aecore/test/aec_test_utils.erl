@@ -814,10 +814,18 @@ run_throughput_test(TestFun, Blocks, Opts) ->
 
     {Mod, Fun} = maps:get(test_fun, Opts),
     TestFunInfo = atom_to_list(Mod) ++ [$:] ++ atom_to_list(Fun),
+    BlockInfo = case maps:get(block_type, Opts) of
+                    key ->
+                        "key";
+                    micro ->
+                        TxsPerBlock = maps:get(txs_per_block, Opts),
+                        "micro (txs per block: " ++ integer_to_list(TxsPerBlock) ++ ")"
+                end,
 
     io:format(user,
               "~nThroughput testing results (in microseconds) " ++ DbInfo ++ "~n~n"
               "Tested function\t\t= " ++ TestFunInfo ++ "~n"
+              "Block type inserted\t= " ++ BlockInfo ++ "~n"
               "# of blocks inserted\t= ~p~n"
               "Total runtime\t\t= ~p~n~n"
               "Min\t= ~p~n"
