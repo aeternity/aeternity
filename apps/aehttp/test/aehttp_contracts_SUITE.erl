@@ -130,9 +130,13 @@ init_per_vm(Config) ->
     {BPubkey, BPrivkey, STx2} = new_account(StartAmt),
     {CPubkey, CPrivkey, STx3} = new_account(StartAmt),
     {DPubkey, DPrivkey, STx4} = new_account(StartAmt),
+    TxsHashes = [(fun(EHash) ->
+                      {ok, TxHash} = aeser_api_encoder:safe_decode(tx_hash, EHash),
+                      TxHash
+                  end)(EncTxHash) || EncTxHash <-[STx1, STx2, STx3, STx4]], 
 
     {ok, _} = aecore_suite_utils:mine_blocks_until_txs_on_chain(
-                                    NodeName, [STx1, STx2, STx3, STx4], ?MAX_MINED_BLOCKS),
+                                    NodeName, TxsHashes, ?MAX_MINED_BLOCKS),
 
     %% Save account information.
     Accounts = #{acc_a => #{pub_key => APubkey,
@@ -1416,7 +1420,12 @@ force_fun_calls(Node, MaxMinedBlocks) ->
     dry_run_txs(Calls),
 
     %% Then really put them on the chain
-    TxHashes = [ TxHash || {#{tx_hash := TxHash}, _} <- Calls ],
+    DecodeHash =
+        fun(EncHash) ->
+            {ok, Hash} = aeser_api_encoder:safe_decode(tx_hash, EncHash),
+            Hash
+        end,
+    TxHashes = [ DecodeHash(TxHash) || {#{tx_hash := TxHash}, _} <- Calls ],
     aecore_suite_utils:mine_blocks_until_txs_on_chain(Node, TxHashes, MaxMinedBlocks),
     check_calls(Calls).
 
@@ -1766,10 +1775,11 @@ tx_in_chain(TxHash) ->
         {ok, 404, _} -> false
     end.
 
-wait_for_tx_hash_on_chain(Node, TxHash) ->
-    case tx_in_chain(TxHash) of
+wait_for_tx_hash_on_chain(Node, EncTxHash) ->
+    case tx_in_chain(EncTxHash) of
         true -> ok;
         false ->
+            {ok, TxHash} = aeser_api_encoder:safe_decode(tx_hash, EncTxHash),
             case aecore_suite_utils:mine_blocks_until_txs_on_chain(Node, [TxHash], ?MAX_MINED_BLOCKS) of
                 {ok, _Blocks} -> ok;
                 {error, _Reason} -> did_not_mine
