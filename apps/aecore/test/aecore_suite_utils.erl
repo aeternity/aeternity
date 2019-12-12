@@ -290,7 +290,7 @@ mine_all_txs(Node, MaxBlocks) ->
     case rpc:call(Node, aec_tx_pool, peek, [infinity]) of
         {ok, []} -> {ok, []};
         {ok, Txs} ->
-            TxsHs = [ aeser_api_encoder:encode(tx_hash, aetx_sign:hash(T)) || T <- Txs],
+            TxsHs = [ aetx_sign:hash(T) || T <- Txs],
             mine_blocks_until_txs_on_chain(Node, TxsHs, MaxBlocks)
     end.
 
@@ -309,29 +309,30 @@ mine_blocks_until_txs_on_chain(Node, TxHashes, MiningRate, Max, Opts) ->
     mine_safe_setup(Node, MiningRate, Opts, Fun).
 
 mine_micro_block_emptying_mempool_or_fail(Node) ->
-    Fun = fun() ->
-              mine_blocks_loop(2, any)
-          end,
-    {ok, Blocks} = mine_safe_setup(Node, expected_mine_rate(), #{}, Fun),
-    [key, micro] = [aec_blocks:type(B) || B <- Blocks],
-
     case rpc:call(Node, aec_tx_pool, peek, [infinity]) of
         {ok, []} ->
-            {ok, Blocks};
-        {ok, [_|_]} ->
-            %% So, Tx(s) is/are back in the mempool, this means (unless some Txs arrived
-            %% from thin air) that we had a micro-fork. Let's check what state we stopped in
-            {ok, NewBlocks} = mine_safe_setup(Node, expected_mine_rate(), #{}, Fun),
-            [key, micro] = [aec_blocks:type(B) || B <- NewBlocks],
-            {ok, NewBlocks}
+            {ok, []};
+        {ok, _} ->
+            Fun = fun() ->
+                      mine_blocks_loop(2, any)
+                  end,
+            {ok, Blocks} = mine_safe_setup(Node, expected_mine_rate(), #{}, Fun),
+            [key, micro] = [aec_blocks:type(B) || B <- Blocks],
+
+            case rpc:call(Node, aec_tx_pool, peek, [infinity]) of
+                {ok, []} ->
+                    {ok, Blocks};
+                {ok, [_|_]} ->
+                    %% So, Tx(s) is/are back in the mempool, this means (unless some Txs arrived
+                    %% from thin air) that we had a micro-fork. Let's check what state we stopped in
+                    {ok, NewBlocks} = mine_safe_setup(Node, expected_mine_rate(), #{}, Fun),
+                    [key, micro] = [aec_blocks:type(B) || B <- NewBlocks],
+                    {ok, NewBlocks}
+            end
     end.
 
 assert_not_already_on_chain(Node, TxHashes) ->
-    Lookup = lists:map(
-               fun(TxHash) ->
-                       {TxHash, rpc:call(Node, aec_chain, find_tx_location, [TxHash])}
-               end, TxHashes),
-    case [T || {T, W} <- Lookup, is_binary(W)] of
+    case txs_on_chain(Node, TxHashes) of
         [] ->
             ok;
         [_|_] = AlreadyOnChain ->
@@ -343,20 +344,22 @@ mine_blocks_until_txs_on_chain_loop(_Node, _TxHashes, 0, _Acc) ->
 mine_blocks_until_txs_on_chain_loop(Node, TxHashes, Max, Acc) ->
     case mine_blocks_loop(1, key) of
         {ok, [Block]} -> %% We are only observing key blocks
+            ct:log("mined a key block", []),
             NewAcc = [Block | Acc],
-            case txs_not_on_chain(Node, Block, TxHashes) of
+            TxsNotOnChain = TxHashes -- txs_on_chain(Node, TxHashes),
+            case TxsNotOnChain of
                 []        -> {ok, NewAcc};
                 TxHashes1 -> mine_blocks_until_txs_on_chain_loop(Node, TxHashes1, Max - 1, NewAcc)
             end;
         {error, _} = Error -> Error
     end.
 
-txs_not_on_chain(Node, Block, TxHashes) ->
-    {ok, BlockHash} = aec_blocks:hash_internal_representation(Block),
-    case rpc:call(Node, aec_chain, get_generation_by_hash, [BlockHash, backward]) of
-        error -> TxHashes;
-        {ok, #{micro_blocks := MBs }} -> txs_not_in_generation(MBs, TxHashes)
-    end.
+txs_on_chain(Node, TxHashes) ->
+    Lookup = lists:map(
+               fun(TxHash) ->
+                       {TxHash, rpc:call(Node, aec_chain, find_tx_location, [TxHash])}
+               end, TxHashes),
+    [T || {T, W} <- Lookup, is_binary(W)].
 
 txs_not_in_generation([], TxHashes) -> TxHashes;
 txs_not_in_generation([MB | MBs], TxHashes) ->

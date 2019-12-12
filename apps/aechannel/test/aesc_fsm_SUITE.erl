@@ -285,6 +285,7 @@ init_per_suite(Config) ->
     {ok, StartedApps} = application:ensure_all_started(gproc),
     {_PrivKey, PubKey} = aecore_suite_utils:sign_keys(dev1),
     TableOwner = new_config_table(),
+    ct:log("network_id ~p", [aec_governance:get_network_id()]),
     Miner = aeser_api_encoder:encode(account_pubkey, PubKey),
     DefCfg = #{<<"chain">> => #{<<"persist">> => false},
                <<"mining">> => #{<<"micro_block_cycle">> => 1,
@@ -502,7 +503,7 @@ multiple_responder_keys_per_port(Cfg) ->
             C = create_multi_channel(ChannelCfg, #{ mine_blocks => {ask, MinerHelper}
                                                   , debug => Debug }, false),
             %% [{C, Tx}] = collect_acks_w_payload([C], mine_blocks, 1),
-            %% TxHash = aeser_api_encoder:encode(tx_hash, aetx_sign:hash(Tx)),
+            %% TxHash = aetx_sign:hash(Tx),
             %% mine_blocks_until_txs_on_chain(dev1, [TxHash]),
             C
         end,
@@ -1170,7 +1171,7 @@ channel_detects_close_solo_and_settles(Cfg) ->
     {ok, Tx} = close_solo_tx(I, <<>>),
     {SignedCloseSoloTx, I1} = sign_tx(I, Tx, Cfg),
     ok = rpc(dev1, aec_tx_pool, push, [SignedCloseSoloTx]),
-    TxHash = aeser_api_encoder:encode(tx_hash, aetx_sign:hash(SignedCloseSoloTx)),
+    TxHash = aetx_sign:hash(SignedCloseSoloTx),
     mine_blocks_until_txs_on_chain(dev1, [TxHash]),
     LockPeriod = maps:get(lock_period, Spec),
     UnlockHeight = current_height(dev1) + LockPeriod,
@@ -1604,13 +1605,12 @@ check_incorrect_mutual_close(Cfg) ->
     Fun = proplists:get_value(wrong_action_detailed, Cfg),
     Test =
         fun({Closer, Malicious}, Cfg1) ->
-            ?LOG(Debug, "check incorrect mutual_close from ~p to ~p", [Closer, Malicious]),
+            ?LOG(Debug, "check incorrect mutual_close from ~p where malicious is the ~p", [Closer, Malicious]),
             Port = proplists:get_value(port, Cfg1, ?PORT),
             Cfg2 = set_configs([?SLOGAN], load_idx(Cfg1)),
-
             #{ i := #{fsm := FsmI} = I
              , r := #{fsm := FsmR} = R
-             , spec := Spec } = create_channel_(Cfg1),
+             , spec := Spec } = create_channel_(Cfg2),
             Data = {I, R, Spec, Port, Debug},
 
             Fun(Data, Closer, Malicious,
@@ -1618,9 +1618,11 @@ check_incorrect_mutual_close(Cfg) ->
                 fun(#{fsm := FsmPid} = Who, Debug1) ->
                     ?LOG(Debug1, "checking state of ~p (Closer=~p, Malicious=~p, FsmI = ~p, FsmR = ~p)",
                         [FsmPid, Closer, Malicious, FsmI, FsmR]),
+                    {ok, _} = receive_from_fsm(conflict, Who, any_msg(),
+                                               ?TIMEOUT, Debug1),
                     case Closer =:= Malicious of
                         true ->
-                            mutual_closing = fsm_state(FsmPid, Debug);
+                            _mutual_closing = fsm_state(FsmPid, Debug);
                         false ->
                             _open = fsm_state(FsmPid, Debug)
                     end,
@@ -1633,8 +1635,7 @@ check_incorrect_mutual_close(Cfg) ->
             set_configs([{port, Port + 1}], Cfg2)
           end,
     Roles = [initiator, responder],
-    Combinations = [{Closer, Malicious} || 
-                    Closer <- Roles,
+    Combinations = [{Closer, Malicious} || Closer <- Roles,
                                            Malicious <- Roles],
     lists:foldl(Test, Cfg, Combinations),
     ok.
@@ -1976,8 +1977,8 @@ wrong_action_modified_tx({I, R, _Spec, _Port, Debug}, Poster, Malicious,
                   ErrorMsg).
 
 wrong_action({I, R, _Spec, _Port, Debug}, Poster, Malicious,
-              {FsmFun, FsmFunArg, FsmNewAction, FsmCreatedAction},
-               DetectConflictFun, MaliciousSign, ErrMsg) ->
+             {FsmFun, FsmFunArg, FsmNewAction, FsmCreatedAction},
+             DetectConflictFun, MaliciousSign, ErrMsg) ->
     Cfg = config(),
     ?LOG(Debug, "Testing with Poster ~p, Malicious ~p", [Poster, Malicious]),
     #{fsm := FsmI} = I,
@@ -2100,7 +2101,7 @@ settle_(TTL, MinDepth, #{fsm := FsmI, channel_id := ChannelId} = I, R, Debug,
     ?LOG(Debug, "settle_tx signed", []),
     {ok, _MinedKeyBlocks} = mine_blocks_until_txs_on_chain(
                              dev1,
-                             [aeser_api_encoder:encode(tx_hash, aetx_sign:hash(SignedTx))]),
+                             [aetx_sign:hash(SignedTx)]),
     SignedTx = await_on_chain_report(I, #{info => channel_closed}, ?TIMEOUT), % same tx
     ?LOG(Debug, "I received On-chain report: ~p", [SignedTx]),
     SignedTx = await_on_chain_report(R, #{info => channel_closed}, ?TIMEOUT), % same tx
@@ -2496,12 +2497,14 @@ verify_settle_tx(SignedTx, ChannelId) ->
                         ]).
 
 await_create_tx_i(I, R, Debug, Cfg) ->
-    {I1, _} = await_signing_request(create_tx, I, Debug, Cfg),
-    await_funding_created_p(I1, R, Debug, Cfg).
+    {I1, SCreateTx} = await_signing_request(create_tx, I, Debug, Cfg),
+    CreateTx = aetx_sign:innermost_tx(SCreateTx),
+    await_funding_created_p(I1, R, CreateTx, Debug, Cfg).
 
-await_funding_created_p(I, R, Debug, Cfg) ->
+await_funding_created_p(I, R, CreateTx, Debug, Cfg) ->
     receive_from_fsm(info, R, funding_created, ?TIMEOUT, Debug),
-    {R1, _} = await_signing_request(funding_created, R, Debug, Cfg),
+    {R1, SCreateTx} = await_signing_request(funding_created, R, Debug, Cfg),
+    CreateTx = aetx_sign:innermost_tx(SCreateTx), %% assert same tx
     await_funding_signed_i(I, R1, Debug).
 
 await_funding_signed_i(I, R, Debug) ->
@@ -2985,8 +2988,7 @@ wait_for_signed_transaction_in_block(Node, SignedTx, Debug) ->
             ok;
         NotConfirmed when NotConfirmed =:= mempool;
                           NotConfirmed =:= not_found ->
-            EncTxHash = aeser_api_encoder:encode(tx_hash, TxHash),
-            case mine_blocks_until_txs_on_chain(Node, [EncTxHash]) of
+            case mine_blocks_until_txs_on_chain(Node, [TxHash]) of
                 {ok, Blocks} ->
                     ?LOG(Debug, "Tx on-chain after mining ~p blocks", [length(Blocks)]),
                     {ok, Blocks};
@@ -3149,7 +3151,7 @@ ga_spend(From, To, Amt, Cfg) ->
     {ok, SpendAetx} = aec_spend_tx:new(SpendProps),
     SignedTx = meta(SendPub, Auth, 1, aetx_sign:new(SpendAetx, [])),
     ok = rpc(dev1, aec_tx_pool, push, [SignedTx]),
-    TxHash = aeser_api_encoder:encode(tx_hash, aetx_sign:hash(SignedTx)),
+    TxHash = aetx_sign:hash(SignedTx),
     aecore_suite_utils:mine_blocks_until_txs_on_chain(
         aecore_suite_utils:node_name(dev1), [TxHash], ?MAX_MINED_BLOCKS),
     ok.
@@ -3168,7 +3170,7 @@ basic_spend(From, To, Amt, Cfg) ->
     {ok, SpendAetx} = aec_spend_tx:new(SpendProps),
     {SignedTx, FromAcc1} = sign_tx(FromAcc, SpendAetx, Cfg),
     ok = rpc(dev1, aec_tx_pool, push, [SignedTx]),
-    TxHash = aeser_api_encoder:encode(tx_hash, aetx_sign:hash(SignedTx)),
+    TxHash = aetx_sign:hash(SignedTx),
     aecore_suite_utils:mine_blocks_until_txs_on_chain(
         aecore_suite_utils:node_name(dev1), [TxHash], ?MAX_MINED_BLOCKS),
     FromAcc1.
@@ -4267,8 +4269,8 @@ slash(Cfg) ->
     LockPeriod = maps:get(lock_period, Spec),
     ok = rpc(dev1, aesc_fsm, slash, [FsmI, #{}]),
     {_, SignedSlashTx} = await_signing_request(slash_tx, I3, Cfg),
-    SlashTxHash = aeser_api_encoder:encode(tx_hash,
-                                           aetx_sign:hash(SignedSlashTx)),
+    SlashTxHash = 
+                                           aetx_sign:hash(SignedSlashTx),
     mine_blocks_until_txs_on_chain(dev1, [SlashTxHash]),
     mine_blocks(dev1, LockPeriod),
     check_info(20),
@@ -4303,8 +4305,7 @@ slash_with_failed_onchain(Cfg) ->
     % channel
     ok = rpc(dev1, aesc_fsm, slash, [FsmI, #{}]),
     {_, SignedSlashTx} = await_signing_request(slash_tx, I3, Cfg),
-    SlashTxHash = aeser_api_encoder:encode(tx_hash,
-                                           aetx_sign:hash(SignedSlashTx)),
+    SlashTxHash =  aetx_sign:hash(SignedSlashTx),
     mine_blocks_until_txs_on_chain(dev1, [SlashTxHash]),
     LockPeriod = maps:get(lock_period, Spec),
     mine_blocks(dev1, LockPeriod),
@@ -4334,7 +4335,7 @@ prepare_for_slashing(#{fsm := FsmI} = I, R, Spec, Cfg) ->
 
     %% make the close solo on-chain
     ok = rpc(dev1, aec_tx_pool, push, [SignedCloseSoloTx]),
-    TxHash = aeser_api_encoder:encode(tx_hash, aetx_sign:hash(SignedCloseSoloTx)),
+    TxHash = aetx_sign:hash(SignedCloseSoloTx),
     mine_blocks_until_txs_on_chain(dev1, [TxHash]),
     LockPeriod = maps:get(lock_period, Spec),
     UnlockHeight = current_height(dev1) + LockPeriod,

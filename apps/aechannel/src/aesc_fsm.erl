@@ -931,11 +931,18 @@ mutual_closed(cast, {?SHUTDOWN_ERR, Msg}, D) ->
             next_state(open, D1);
         {error, tx_not_found} -> %% tx had not been posted on-chain
             #data{op = #op_close{data = #op_data{ signed_tx = SignedTx
-                                                , block_hash = _BlockHash}} } = D,
-            case push_to_mempool(SignedTx) of
-                ok -> %% tx is ok, wait for it on-chain
-                    keep_state(log(rcv, ?SHUTDOWN_ERR, Msg, D));
-                {error, _Err} ->
+                                                , block_hash = BlockHash}} } = D,
+            case aeu_validation:run(shutdown_tx_checks(SignedTx, BlockHash,
+                                                       both, D)) of
+                ok ->
+                    case push_to_mempool(SignedTx) of
+                        ok -> %% tx is ok, wait for it on-chain
+                            keep_state(log(rcv, ?SHUTDOWN_ERR, Msg, D));
+                        {error, _Err} ->
+                            report(conflict, Msg, D),
+                            next_state(open, D)
+                    end;
+                {error, _} ->
                     report(conflict, Msg, D),
                     next_state(open, D)
             end;
@@ -1072,17 +1079,29 @@ half_signed(Type, Msg, D) ->
     handle_common_event(Type, Msg, postpone_or_error(Type), D).
 
 mutual_closing(enter, _OldSt, _D) -> keep_state_and_data;
+mutual_closing(cast, {?SHUTDOWN_ERR, #{error_code := ?ERR_ONCHAIN_REJECTED} = _Msg},
+                #data{op = #op_ack{ tag = ?SHUTDOWN} } = D) ->
+    %% TODO: try posting the co-signed tx
+    {ok, D1} = fall_back_to_stable_state(D),
+    lager:debug("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA", []),
+    handle_recoverable_error(#{ code => ?ERR_ONCHAIN_REJECTED
+                              , msg_type => ?DEP_SIGNED
+                              , respond => false}, D1);
 mutual_closing(cast, {?SHUTDOWN_ERR, Msg}, D) ->
     lager:debug("received ?SHUTDOWN_ERR in mutual_closing: ~p", [Msg]),
     case check_shutdown_err_msg(Msg, D) of
         {ok, ?ERR_CONFLICT, D1} ->
+            lager:debug("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA2", []),
+            lager:debug("conflict signaled", []),
             report(conflict, Msg, D1),
             next_state(open, D1);
-        {ok, _ErrorCode, D1} ->
+        {ok, ErrorCode, D1} ->
             %% TODO: send a different kind of report (e.g. validation error)
+            lager:debug("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA3 ~p", [ErrorCode]),
             report(conflict, Msg, D1),
             next_state(open, D1);
         {error, _} = Error ->
+            lager:debug("unknown error ~p", [Error]),
             close(Error, D)
     end;
 mutual_closing(cast, {?SHUTDOWN_ACK, Msg}, D) ->
@@ -2724,6 +2743,9 @@ check_shutdown_msg(#{ channel_id := ChanId
         {error, invalid_shutdown}
     end.
 
+-spec shutdown_tx_checks(aetx_sign:signed_tx(), binary(),
+                         other_participant | both, #data{}) -> 
+      [fun(() -> 'ok' | {error, atom()})].
 shutdown_tx_checks(SignedTx, BlockHash, WhoSignedIt, D) ->
     Updates = [],
     [ fun() -> check_block_hash(BlockHash, D) end,
@@ -3337,6 +3359,8 @@ later_round_than_onchain(ChannelPubkey, Round) ->
 authentication_env() ->
     tx_env_and_trees_from_top(aetx_contract).
 
+-spec verify_signatures(aetx_sign:signed_tx(), #data{}, [aec_keys:pubkey()]) ->
+    ok | {error, atom()}.
 verify_signatures(SignedTx, Data, Pubkeys) ->
     ChannelPubkey = cur_channel_id(Data),
     case aetx:specialize_callback(aetx_sign:innermost_tx(SignedTx)) of
