@@ -1083,7 +1083,6 @@ mutual_closing(cast, {?SHUTDOWN_ERR, #{error_code := ?ERR_ONCHAIN_REJECTED} = _M
                 #data{op = #op_ack{ tag = ?SHUTDOWN} } = D) ->
     %% TODO: try posting the co-signed tx
     {ok, D1} = fall_back_to_stable_state(D),
-    lager:debug("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA", []),
     handle_recoverable_error(#{ code => ?ERR_ONCHAIN_REJECTED
                               , msg_type => ?DEP_SIGNED
                               , respond => false}, D1);
@@ -1091,13 +1090,11 @@ mutual_closing(cast, {?SHUTDOWN_ERR, Msg}, D) ->
     lager:debug("received ?SHUTDOWN_ERR in mutual_closing: ~p", [Msg]),
     case check_shutdown_err_msg(Msg, D) of
         {ok, ?ERR_CONFLICT, D1} ->
-            lager:debug("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA2", []),
             lager:debug("conflict signaled", []),
             report(conflict, Msg, D1),
             next_state(open, D1);
         {ok, ErrorCode, D1} ->
             %% TODO: send a different kind of report (e.g. validation error)
-            lager:debug("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA3 ~p", [ErrorCode]),
             report(conflict, Msg, D1),
             next_state(open, D1);
         {error, _} = Error ->
