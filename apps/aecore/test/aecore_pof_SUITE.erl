@@ -88,7 +88,10 @@ siblings_on_key_block(Config) ->
     {ok, Tx0a} = add_spend_tx(N1, 1000000, Fee0a, 1, 10, patron(), PK1),
     {ok, Tx0b} = add_spend_tx(N1, 1000000, Fee0b, 2, 10, patron(), PK2),
 
-    {ok, _} = aecore_suite_utils:mine_blocks_until_txs_on_chain(N1, [Tx0a, Tx0b], ?MAX_MINED_BLOCKS),
+    DecodeHash =
+    {ok, _} =
+        aecore_suite_utils:mine_blocks_until_txs_on_chain(N1,
+            [decode_tx_hash(H) || H <- [Tx0a, Tx0b]], ?MAX_MINED_BLOCKS),
 
     {ok, N1Blocks2} = aecore_suite_utils:mine_key_blocks(N1, 1),
 
@@ -126,7 +129,7 @@ siblings_on_micro_block(Config) ->
     {ok, Tx0b} = add_spend_tx(N1, 100000 * aec_test_utils:min_gas_price(), Fee0b, 2, 10, patron(), PK2),
     {ok, Tx0c} = add_spend_tx(N1, 100000 * aec_test_utils:min_gas_price(), Fee0c, 3, 10, patron(), PK3),
 
-    Txs = [Tx0a, Tx0b, Tx0c],
+    Txs = [decode_tx_hash(EncHash) || EncHash <- [Tx0a, Tx0b, Tx0c]],
     {ok, _} = aecore_suite_utils:mine_blocks_until_txs_on_chain(N1, Txs, ?MAX_MINED_BLOCKS),
 
     Top = ensure_top_is_a_micro(N1, Account3, 1),
@@ -350,3 +353,8 @@ get_lock_holder_balance(N) ->
             _Bal = aec_accounts:balance(Acc);
         none -> 0
     end.
+
+decode_tx_hash(EncTxHash) ->
+    {ok, Hash} = aeser_api_encoder:safe_decode(tx_hash, EncTxHash),
+    Hash.
+
