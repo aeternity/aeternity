@@ -80,19 +80,34 @@ validate_api(Config) ->
     Spec = json_from_yaml(Config),
 
     Url = "http://validator.swagger.io/validator/",
-    {ok, {_, _Headers, Body}} = httpc:request(post, {Url, [],  "application/json", Spec}, [], []),
-    %% For manual verification visit https://github.com/swagger-api/validator-badge
-    %% A picture is returned in the body
-    case aec_hash:blake2b_256_hash(list_to_binary(Body)) of
-        <<85,250,111,235,97,122,213,232,25,130,236,210,99,16,245,146,67,
-          186,213,194,192,223,209,154,83,237,158,255,97,67,22,185>> ->
-            %% Valid picture returned
-            ok;
-        _ ->
-            ct:pal("Wrong hash on swagger validation picture"),
-            {ok,  {_, _, Body2}} = httpc:request(post, {Url++"debug", [],  "application/json", Spec}, [], []),
-            ct:log("Returned error ~s", [Body2]),
-            {fail, Body2}
+    case httpc:request(post, {Url, [],  "application/json", Spec}, [], []) of
+        {ok, {{_, 200, _}, _Headers, Body}} ->
+            %% For manual verification visit https://github.com/swagger-api/validator-badge
+            %% A picture is returned in the body
+            case aec_hash:blake2b_256_hash(list_to_binary(Body)) of
+                <<85,250,111,235,97,122,213,232,25,130,236,210,99,16,245,146,67,
+                  186,213,194,192,223,209,154,83,237,158,255,97,67,22,185>> ->
+                    %% Valid picture returned
+                    ok;
+                _ ->
+                    ct:pal("Wrong hash on swagger validation picture"),
+                    case httpc:request(post, {Url++"debug", [],  "application/json", Spec}, [], []) of
+                        {ok, {{_, 200, "OK"}, _, Msg}} ->
+                            case yamerl:decode(Msg) of
+                                [[{"messages",null},{"schemaValidationMessages",null}]] ->
+                                    ct:pal("Yaml correct. Update picture hash to speed up this test"),
+                                    {fail, update_hash};
+                                Yml ->
+                                    {fail, Yml}
+                            end;
+                        Response ->
+                            ct:log("Returned error ~s", [Response]),
+                            {fail, Response}
+                    end
+            end;
+        Other ->
+            ct:pal("Connection problem: ~p", [Other]),
+            {fail, "cannot connect to swagger validation server"}
     end.
 
 %%% --- utility
@@ -100,6 +115,6 @@ validate_api(Config) ->
 json_from_yaml(Config) ->
     SpecFile = filename:join([proplists:get_value(top_dir, Config),
                               "apps/aehttp/priv/swagger.yaml"]),
-    Yamls = yamerl_constr:file(SpecFile, [str_node_as_binary]),
+    Yamls = yamerl:decode_file(SpecFile, [str_node_as_binary]),
     Yaml = lists:last(Yamls),
     jsx:prettify(jsx:encode(Yaml)).
