@@ -79,8 +79,13 @@ init_per_group(dry_run, Config) ->
     {CPubkey, CPrivkey, STx3} = new_account(StartAmt),
     {DPubkey, DPrivkey, STx4} = new_account(StartAmt),
 
-    {ok, KBs} = aecore_suite_utils:mine_blocks_until_txs_on_chain(
-                                    NodeName, [STx1, STx2, STx3, STx4], ?MAX_MINED_BLOCKS),
+    {ok, KBs} =
+        aecore_suite_utils:mine_blocks_until_txs_on_chain(
+        NodeName,
+        [(fun(EH) ->
+              {ok, Hash} = aeser_api_encoder:safe_decode(tx_hash, EH),
+              Hash
+          end)(EncHash) || EncHash <- [STx1, STx2, STx3, STx4]], ?MAX_MINED_BLOCKS),
 
     Top = lists:last(KBs),
 
