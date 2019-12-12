@@ -1,6 +1,6 @@
 :: Pass -v as an argument to enable echo
 @echo off
-@rem Script to open a msys2 shell ready for building.
+@rem Script to open a msys2 shell (new window) ready for building.
 @rem Required vars:
 @rem    PLATFORM
 @rem    WIN_MSYS2_ROOT

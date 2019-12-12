@@ -763,11 +763,11 @@ symlink(From, To) ->
     symlink(From, To, false).
 symlink(From, To, CanFail) ->
     case {symlink_or_copy(From, To), CanFail} of
-	{ok, _} ->
+        {ok, _} ->
             ct:log("symlinked ~s to ~s", [From, To]);
-	{Err, false} ->
+        {Err, false} ->
             ct:fail("Error symlinking ~s to ~s: ~p", [From, To, Err]);
-	{Err, true} ->
+        {Err, true} ->
             ct:log("Error symlinking ~s to ~s: ~p", [From, To, Err])
     end,
     ok.
@@ -794,18 +794,18 @@ cmd(C, Dir, BinDir, Args, Env, FindLocalBin) ->
 cmd_run(Cmd, Dir, BinDir, Args, Env, FindLocalBin) ->
     %% On Windows we need to ensure that Erlang is available in the path.
     Env1 = case os:type() of
-		   {win32, _} ->
-			   Path = filename:dirname(os:find_executable("erl")),
-			   [{"PATH", Path ++ ";%PATH%"} | Env];
-		   _ ->
-			   Env
-	  end,
+               {win32, _} ->
+                   Path = filename:dirname(os:find_executable("erl")),
+                   [{"PATH", Path ++ ";%PATH%"} | Env];
+               _ ->
+                   Env
+           end,
     Opts = [
             {env, Env1},
             exit_status,
             overlapped_io,
             stderr_to_stdout,
-	    hide,
+            hide, %% will note spawn an extra window on win32 for the executed command
             {args, Args},
             {cd, Dir}
            ],
@@ -818,12 +818,12 @@ cmd_run(Cmd, Dir, BinDir, Args, Env, FindLocalBin) ->
           end,
     %% A bug in OTP requires us to copy the start script such that it has the extension .bat
     Bin1 = case {os:type(), filename:extension(Bin)} of
-	    {{win32, _}, ".cmd"} ->
-		    NewBin = filename:rootname(Bin) ++ ".bat",
-		    ok = symlink(Bin, NewBin),
-		    NewBin;
-	    _ ->
-		    Bin
+               {{win32, _}, ".cmd"} ->
+                   NewBin = filename:rootname(Bin) ++ ".bat",
+                   ok = symlink(Bin, NewBin),
+                   NewBin;
+               _ ->
+                   Bin
     end,
     Port = erlang:open_port({spawn_executable, Bin1}, Opts),
     WaitFun = fun(Fun, P, Res) ->
@@ -1331,5 +1331,5 @@ win32_delete_junction(Target) ->
             ok;
         Output ->
             ct:log("Output from deleting junction ~s: ~p~n", [Target, Output]),
-	    ok
+            ok
     end.
