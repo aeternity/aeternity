@@ -23,11 +23,11 @@ IF NOT "%ARTIFACTS_PATH%"=="" FOR /f %%i IN ('cygpath -a %ARTIFACTS_PATH%') DO S
 IF "%PACKAGES_PATH%"=="" SET "PACKAGES_PATH=%PROJECT_ROOT%/packages"
 
 call "%~dp0vcvarsall"
-IF ERRORLEVEL 1 exit /b %ERRORLEVEL%
+IF %ERRORLEVEL% NEQ 0 exit /b %ERRORLEVEL%
 
 @call:log Build production release
 "%WIN_MSYS2_ROOT%\usr\bin\bash.exe" -lc "${PROJECT_ROOT}/.circleci/windows/build.sh"
-IF ERRORLEVEL 1 exit /b %ERRORLEVEL%
+IF %ERRORLEVEL% NEQ 0 exit /b %ERRORLEVEL%
 @call:log Build done.
 
 exit /b 0

@@ -39,7 +39,7 @@ IF "%TEST_STEPS%"=="" SET "TEST_STEPS=release"
 @for /f "tokens=1* delims=, " %%i in ("%TEST_STEPS%") do @(
     @call:log Run test %%i
         call :TEST_%%i
-        IF ERRORLEVEL 1 exit /b %ERRORLEVEL%
+        IF %ERRORLEVEL% NEQ 0 exit /b %ERRORLEVEL%
 )
 
 @call:log Finished test phase

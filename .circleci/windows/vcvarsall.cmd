@@ -22,7 +22,7 @@
 :VCVARSALLFOUND
 
 call "%VCVARSALL%" %PLATFORM%
-IF ERRORLEVEL 1 exit /b %ERRORLEVEL%
+IF %ERRORLEVEL% NEQ 0 exit /b %ERRORLEVEL%
 
 :DONE
 @call:log Persist these env vars to speed up
