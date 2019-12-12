@@ -5,6 +5,7 @@
 %%
 
 -include_lib("common_test/include/ct.hrl").
+-include_lib("aecontract/include/hard_forks.hrl").
 -define(NODE, dev1).
 
 %% common_test exports
@@ -17,13 +18,13 @@
 
 %% test case exports
 -export(
-   [ get_api/1 ]).
+   [ get_api/1, validate_api/1 ]).
 
 
 
 all() ->
     [
-     get_api
+     get_api, validate_api
     ].
 
 init_per_suite(Config) ->
@@ -33,10 +34,17 @@ init_per_suite(Config) ->
 end_per_suite(_Config) ->
     ok.
 
+init_per_testcase(validate_api, Config) ->
+    case aect_test_utils:latest_protocol_version() of
+        ?IRIS_PROTOCOL_VSN    -> Config;
+        _ -> {skip, only_test_swagger_in_latest_protocol}
+    end;
 init_per_testcase(_Case, Config) ->
     aecore_suite_utils:start_node(?NODE, Config),
     [{tc_start, os:timestamp()}|Config].
 
+end_per_testcase(validate_api, _Config) ->
+    ok;
 end_per_testcase(_Case, Config) ->
     aecore_suite_utils:stop_node(?NODE, Config),
     Ts0 = ?config(tc_start, Config),
@@ -50,9 +58,7 @@ end_per_testcase(_Case, Config) ->
 get_api(Config) ->
     %% ensure http interface is up and running
     aecore_suite_utils:connect(aecore_suite_utils:node_name(?NODE)),
-
-    SpecFile = filename:join([proplists:get_value(top_dir, Config),
-                              "apps/aehttp/priv/swagger.yaml"]),
+    Spec = json_from_yaml(Config),
 
     Host = aecore_suite_utils:external_address(),
     URL = binary_to_list(iolist_to_binary([Host, "/api"])),
@@ -60,10 +66,6 @@ get_api(Config) ->
 
     {ok, {{"HTTP/1.1", 200, "OK"}, _, Json}} = Repl1,
     ct:log("~p returned spec: ~p", [?NODE, Json]),
-    Yamls = yamerl_constr:file(SpecFile, [str_node_as_binary]),
-    Yaml = lists:last(Yamls),
-    Spec = jsx:prettify(jsx:encode(Yaml)),
-    ct:log("read spec file ~s", [SpecFile]),
 
     JsonObj = jsx:decode(Spec),
     JsonObj = jsx:decode(list_to_binary(Json)),
@@ -73,3 +75,46 @@ get_api(Config) ->
     {ok,{{"HTTP/1.1",405,"Method Not Allowed"},_,_}} =
          httpc:request(post, {URL, [], Type, Body}, [], []),
     ok.
+
+validate_api(Config) ->
+    Spec = json_from_yaml(Config),
+
+    Url = "http://validator.swagger.io/validator/",
+    case httpc:request(post, {Url, [],  "application/json", Spec}, [], []) of
+        {ok, {{_, 200, _}, _Headers, Body}} ->
+            %% For manual verification visit https://github.com/swagger-api/validator-badge
+            %% A picture is returned in the body
+            case aec_hash:blake2b_256_hash(list_to_binary(Body)) of
+                <<85,250,111,235,97,122,213,232,25,130,236,210,99,16,245,146,67,
+                  186,213,194,192,223,209,154,83,237,158,255,97,67,22,185>> ->
+                    %% Valid picture returned
+                    ok;
+                _ ->
+                    ct:pal("Wrong hash on swagger validation picture"),
+                    case httpc:request(post, {Url++"debug", [],  "application/json", Spec}, [], []) of
+                        {ok, {{_, 200, "OK"}, _, Msg}} ->
+                            case yamerl:decode(Msg) of
+                                [[{"messages",null},{"schemaValidationMessages",null}]] ->
+                                    ct:pal("Yaml correct. Update picture hash to speed up this test"),
+                                    {fail, update_hash};
+                                Yml ->
+                                    {fail, Yml}
+                            end;
+                        Response ->
+                            ct:log("Returned error ~s", [Response]),
+                            {fail, Response}
+                    end
+            end;
+        Other ->
+            ct:pal("Connection problem: ~p", [Other]),
+            {fail, "cannot connect to swagger validation server"}
+    end.
+
+%%% --- utility
+
+json_from_yaml(Config) ->
+    SpecFile = filename:join([proplists:get_value(top_dir, Config),
+                              "apps/aehttp/priv/swagger.yaml"]),
+    Yamls = yamerl:decode_file(SpecFile, [str_node_as_binary]),
+    Yaml = lists:last(Yamls),
+    jsx:prettify(jsx:encode(Yaml)).
