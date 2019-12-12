@@ -522,7 +522,7 @@ mine_and_compare(N1, Config, EmptyPoolExpected) ->
     {ok, [KeyBlock | _OtherBlocks]} =
         case rpc:call(N1, aec_tx_pool, peek, [infinity], 5000) of
             {ok, STxs = [_ | _]} when EmptyPoolExpected ->
-                TxHashes = [aeser_api_encoder:encode(tx_hash, aetx_sign:hash(STx)) || STx <- STxs],
+                TxHashes = [aetx_sign:hash(STx) || STx <- STxs],
                 aecore_suite_utils:mine_blocks_until_txs_on_chain(N1, TxHashes, ?MAX_MINED_BLOCKS);
             {ok, _} ->
                 aecore_suite_utils:mine_key_blocks(N1, 1)
@@ -760,7 +760,7 @@ add_spend_tx(Node, Amount, Fee, Nonce, TTL, Payload, Sender, Recipient) ->
     {ok, Tx} = aec_spend_tx:new(Params),
     STx = aec_test_utils:sign_tx(Tx, maps:get(privkey, Sender)),
     Res = rpc:call(Node, aec_tx_pool, push, [STx]),
-    {Res, aeser_api_encoder:encode(tx_hash, aetx_sign:hash(STx))}.
+    {Res, aetx_sign:hash(STx)}.
 
 new_pubkey() ->
     #{ public := PubKey } = enacl:sign_keypair(),

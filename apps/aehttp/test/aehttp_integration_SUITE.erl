@@ -3344,15 +3344,17 @@ encode_call_data(Name, Fun, Args) when is_atom(Name) ->
 encode_call_data(Src, Fun, Args) ->
     {ok, CallData} = aect_test_utils:encode_call_data(Src, Fun, Args),
     {ok, aeser_api_encoder:encode(contract_bytearray, CallData)}.
-wait_for_tx_hash_on_chain(TxHash) ->
+
+wait_for_tx_hash_on_chain(EncTxHash) ->
     Node = aecore_suite_utils:node_name(?NODE),
-    case rpc:call(Node, aec_chain, find_tx_location, [TxHash]) of
+    case rpc:call(Node, aec_chain, find_tx_location, [EncTxHash]) of
         BlockHash when is_binary(BlockHash) ->
-            ct:log("TxHash is already on chain (~p)", [TxHash]),
+            ct:log("TxHash is already on chain (~p)", [EncTxHash]),
             ok;
         _ ->
             Rate = aecore_suite_utils:expected_mine_rate(),
             Opts = #{strictly_follow_top => true},
+            {ok, TxHash} = aeser_api_encoder:safe_decode(tx_hash, EncTxHash),
             case aecore_suite_utils:mine_blocks_until_txs_on_chain(
                    aecore_suite_utils:node_name(?NODE), [TxHash], Rate, ?MAX_MINED_BLOCKS, Opts) of
                 {ok, _Blocks} -> ok;
