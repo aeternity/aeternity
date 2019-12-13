@@ -153,11 +153,10 @@
 %% The default time without a peer being updated after which it get removed.
 -define(DEFAULT_MAX_UPDATE_LAPSE,         1 * 24 * 50 * 60 * 1000). % 1 day
 %% The default backoff lookup table for standby duration in milliseconds.
--define(DEFAULT_STANDBY_TIMES,
-        [5000, 15000, 30000, 60000, 120000, 300000, 600000]).
+-define(DEFAULT_STANDBY_TIMES, [5000, 15000]).
 %% The default maximum number of times a peer can get rejected;
 %% when reached, the peer is downgraded/removed (if not trusted).
--define(DEFAULT_MAX_REJECTIONS, 7).
+-define(DEFAULT_MAX_REJECTIONS, 2).
 
 
 %=== TYPES =====================================================================
@@ -343,7 +342,7 @@ address_group({A, B, _, _}) -> <<A:8, B:8>>.
 %%    a peer should be put on standby when rejected; if rejected more than
 %%    the size of the given list due to `max_rejections' being larger than
 %%    the list, the last value of the list is used multiple times.
-%%    Default: `[5, 15, 30, 60, 120, 300, 600]'.</li>
+%%    Default: `[5, 15]'.</li>
 %%  <li>`max_rejections': The maximum number of time a peer can be rejected
 %%    before it is downgraded from the verified pool or removed from
 %%    the unverified pool. Default: `7'.</li>

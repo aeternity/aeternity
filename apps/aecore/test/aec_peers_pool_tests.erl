@@ -603,7 +603,7 @@ peer_release_test() ->
 %% Tests peer rejection behavior.
 peer_rejection_test() ->
     seed_process_random(),
-    % Assumes backoff delays are [5, 15, 30, 60, 120, 300, 600]
+    % Assumes backoff delays are [5, 15]
     Now1 = erlang:system_time(millisecond),
     Pool1 = new(?POOL_OPTS),
     Peers = make_peers(3, 1),
@@ -725,7 +725,7 @@ peer_rejection_test() ->
 %% Tests peer downgrading behavior.
 rejection_downgrade_test() ->
     seed_process_random(),
-    % Assumes backoff delays are [5, 15, 30, 60, 120, 300, 600]
+    % Assumes backoff delays are [5, 15]
     Now1 = erlang:system_time(millisecond),
     Pool1 = new(?POOL_OPTS),
 
@@ -749,7 +749,7 @@ rejection_downgrade_test() ->
         P3 = reject(P2, N, Id),
         ?assertEqual({verified, false}, peer_state(P3, Id)),
         {P3, N + T * 1000}
-    end, {Pool3, Now1}, [5, 15, 30, 60, 120, 300, 600]),
+    end, {Pool3, Now1}, [5, 15]),
 
     {selected, {Id, _}, Pool5} = random_select(Pool4, Now2, both, undefined),
     ?assertEqual({verified, false}, peer_state(Pool5, Id)),
@@ -772,7 +772,7 @@ rejection_downgrade_test() ->
         P3 = reject(P2, N, Id),
         ?assertEqual({unverified, false}, peer_state(P3, Id)),
         {P3, N + T * 1000}
-    end, {Pool6, Now2}, [5, 15, 30, 60, 120, 300, 600]),
+    end, {Pool6, Now2}, [5, 15]),
 
     {selected, {Id, _}, Pool8} = random_select(Pool7, Now3, both, undefined),
     ?assertEqual({unverified, false}, peer_state(Pool8, Id)),
@@ -1387,7 +1387,7 @@ validate_counters() ->
 
     Now1 = erlang:system_time(millisecond),
 
-    {Pool2, Now2, All2, Selected2} = 
+    {Pool2, Now2, All2, Selected2} =
         lists:foldl(fun(_K, {P, N, A, S}) ->
             case {rand_int(1, 8), A, S} of
                 {1, _, _} ->
