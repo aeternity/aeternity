@@ -2950,8 +2950,7 @@ pending_transactions(_Config) ->
                   get_accounts_by_pubkey_sut(aeser_api_encoder:encode(account_pubkey, ReceiverPubKey)),
 
     PendingTxHashes2 =
-        [aeser_api_encoder:encode(tx_hash, aetx_sign:hash(SignedTx))
-            || SignedTx <- NodeTxs],
+        [aetx_sign:hash(SignedTx) || SignedTx <- NodeTxs],
     {ok, MinedBlocks2a} = aecore_suite_utils:mine_blocks_until_txs_on_chain(Node, PendingTxHashes2, ?MAX_MINED_BLOCKS),
     {ok, []} = rpc(aec_tx_pool, peek, [infinity]), % empty again
     {ok, 200, #{<<"transactions">> := []}} = get_pending_transactions(),
