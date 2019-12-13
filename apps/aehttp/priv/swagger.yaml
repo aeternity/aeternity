@@ -1657,7 +1657,7 @@ paths:
         - internal
         - debug
       operationId: 'DryRunTxs'
-      description: 'Dry-run transactions on top of a given block. Supports SpendTx, ContractCreateTx and ContractCallTx'
+      description: 'Dry-run transactions on top of a given block. Supports all TXs except GAMetaTx, PayingForTx and OffchainTx'
       consumes:
         - application/json
       produces:
