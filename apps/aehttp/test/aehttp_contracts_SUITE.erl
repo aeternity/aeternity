@@ -1292,12 +1292,14 @@ paying_for_contract(Config) ->
                                                  tx       => SignSpendTx}),
     SignPayingForTx1 = aec_test_utils:sign_tx(PayingForTx1, APriv),
     SerSignPayingForTx1 = aeser_api_encoder:encode(transaction, aetx_sign:serialize_to_binary(SignPayingForTx1)),
-    {ok, 200, #{<<"tx_hash">> := SignPayingForTx1Hash}} = post_tx(SerSignPayingForTx1),
+    {ok, 200, #{<<"tx_hash">> := EncSignPayingForTx1Hash}} = post_tx(SerSignPayingForTx1),
 
 
     APre = get_balance(APub),
     BPre = get_balance(BPub),
 
+    {ok, SignPayingForTx1Hash} = aeser_api_encoder:safe_decode(tx_hash,
+                                                               EncSignPayingForTx1Hash),
     aecore_suite_utils:mine_blocks_until_txs_on_chain(Node, [SignPayingForTx1Hash], ?MAX_MINED_BLOCKS),
 
     APost = get_balance(APub),
@@ -1326,11 +1328,13 @@ paying_for_contract(Config) ->
                                                  tx       => SignCall1Tx}),
     SignPayingForTx2 = aec_test_utils:sign_tx(PayingForTx2, APriv),
     SerSignPayingForTx2 = aeser_api_encoder:encode(transaction, aetx_sign:serialize_to_binary(SignPayingForTx2)),
-    {ok, 200, #{<<"tx_hash">> := SignPayingForTx2Hash}} = post_tx(SerSignPayingForTx2),
+    {ok, 200, #{<<"tx_hash">> := EncSignPayingForTx2Hash}} = post_tx(SerSignPayingForTx2),
 
     APre2 = get_balance(APub),
     Broke1Pre2 = get_balance(BrokePub1),
 
+    {ok, SignPayingForTx2Hash} = aeser_api_encoder:safe_decode(tx_hash,
+                                                               EncSignPayingForTx2Hash),
     aecore_suite_utils:mine_blocks_until_txs_on_chain(Node, [SignPayingForTx2Hash], ?MAX_MINED_BLOCKS),
 
     APost2 = get_balance(APub),
