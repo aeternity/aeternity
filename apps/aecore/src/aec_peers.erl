@@ -77,9 +77,8 @@
 -define(DEFAULT_MAX_OUTBOUND,                 10).
 -define(DEFAULT_SINGLE_OUTBOUND_PER_GROUP,  true).
 -define(DEFAULT_RESOLVE_MAX_SIZE,            100).
--define(DEFAULT_RESOLVE_MAX_RETRY,             7).
--define(DEFAULT_RESOLVE_BACKOFF_TIMES,
-        [5000, 15000, 30000, 60000, 120000, 300000, 600000]).
+-define(DEFAULT_RESOLVE_MAX_RETRY,             2).
+-define(DEFAULT_RESOLVE_BACKOFF_TIMES, [5000, 15000]).
 -define(DEFAULT_LOG_PEER_CONNECTION_COUNT_INTERVAL, 5000).
 
 %=== TYPES =====================================================================
