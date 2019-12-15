@@ -74,7 +74,7 @@
 -define(DEFAULT_PING_INTERVAL,        120 * 1000). %  2 minutes
 -define(DEFAULT_UNBLOCK_INTERVAL, 15 * 60 * 1000). % 15 minutes
 -define(DEFAULT_MAX_INBOUND,                 100).
--define(DEFAULT_MAX_OUTBOUND,                 10).
+-define(DEFAULT_MAX_OUTBOUND,                 20).
 -define(DEFAULT_SINGLE_OUTBOUND_PER_GROUP,  true).
 -define(DEFAULT_RESOLVE_MAX_SIZE,            100).
 -define(DEFAULT_RESOLVE_MAX_RETRY,             2).

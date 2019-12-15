@@ -39,7 +39,7 @@ sync:
     # The maximum number of incoming connections
     max_inbound_hard: 1000
     # Maximum number of outbound connections
-    max_outbound: 10
+    max_outbound: 20
     # If the extra outbound connections should be to nodes from different address groups (IP netmask /16)
     single_outbound_per_group: true
     # Maximum number of retries at resolving the host name of untrusted peers.
