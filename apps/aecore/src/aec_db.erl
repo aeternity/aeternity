@@ -14,6 +14,7 @@
          clear_db/0,                    % mostly for test purposes
          tab_copies/1,                  % for create_tables hooks
          check_table/3,                 % for check_tables hooks
+         tab/4,
          persisted_valid_genesis_block/0
         ]).
 
@@ -77,6 +78,7 @@
         , find_oracles_node/1
         , find_oracles_cache_node/1
         , write_accounts_node/2
+        , write_accounts_node/3
         , write_calls_node/2
         , write_channels_node/2
         , write_contracts_node/2
@@ -448,6 +450,10 @@ write_accounts_node(Hash, Node) ->
     ?t(mnesia:write(#aec_account_state{key = Hash, value = Node}),
        [{aec_account_state, Hash}]).
 
+write_accounts_node(Table, Hash, Node) ->
+    ?t(mnesia:write(Table, #aec_account_state{key = Hash, value = Node}, write),
+       [{aec_account_state, Hash}]).
+
 write_calls_node(Hash, Node) ->
     ?t(mnesia:write(#aec_call_state{key = Hash, value = Node}),
        [{aec_call_state, Hash}]).
@@ -710,7 +716,8 @@ fold_mempool(FunIn, InitAcc) ->
 
 load_database() ->
     lager:debug("load_database()", []),
-    wait_for_tables().
+    wait_for_tables(),
+    aec_db_gc:maybe_swap_nodes().
 
 wait_for_tables() ->
     Tabs = mnesia:system_info(tables) -- [schema],

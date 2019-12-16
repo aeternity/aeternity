@@ -28,6 +28,7 @@
 -export([start_link/0,
          start_link/3,
          maybe_garbage_collect/0,
+         maybe_swap_nodes/0,
          stop/0]).
 
 %% gen_statem callbacks
@@ -46,6 +47,8 @@
 
 -define(DEFAULT_INTERVAL, 50000).
 -define(DEFAULT_HISTORY, 500).
+-define(GCED_TABLE_NAME, aec_account_state_gced).
+-define(TABLE_NAME, aec_account_state).
 
 -define(TIMED(Expr), timer:tc(fun () -> Expr end)).
 -define(LOG(Fmt), lager:info(Fmt, [])).         % io:format(Fmt"~n")
@@ -75,6 +78,9 @@ maybe_garbage_collect() -> nop.
 maybe_garbage_collect() ->
     gen_statem:call(?MODULE, maybe_garbage_collect).
 -endif.
+
+maybe_swap_nodes() ->
+    maybe_swap_nodes(?GCED_TABLE_NAME, ?TABLE_NAME).
 
 stop() ->
     gen_statem:stop(?MODULE).
@@ -126,7 +132,7 @@ handle_event(info, {_, top_changed, #{info := #{height := Height}}}, idle,
 handle_event(info, {'ETS-TRANSFER', Hashes, _, {{FromHeight, ToHeight}, Time}}, idle,
              #data{enabled = true, hashes = Pid} = Data)
   when is_pid(Pid) ->
-    ?LOG("scanning of ~p reachable hashes in range <~p, ~p> took ~p seconds",
+    ?LOG("Scanning of ~p reachable hashes in range <~p, ~p> took ~p seconds",
          [ets:info(Hashes, size), FromHeight, ToHeight, Time / 1000000]),
     {next_state, ready, Data#data{hashes = Hashes}};
 
@@ -140,7 +146,7 @@ handle_event(info, {_, top_changed, #{info := #{block_type := key, height := Hei
 
 %% with valid GC state, if we are on key block boundary, we can
 %% clear the table and insert reachable hashes back
-handle_event({call, From}, maybe_garbage_collect, ready,
+handle_event({call, _From}, maybe_garbage_collect, ready,
              #data{enabled = true, synced = true, hashes = Hashes} = Data)
   when Hashes /= undefined, not is_pid(Hashes) ->
     Header = aec_chain:top_header(),
@@ -148,11 +154,8 @@ handle_event({call, From}, maybe_garbage_collect, ready,
         key ->
             Height  = aec_headers:height(Header),
             {ok, _} = range_collect_reachable_hashes(Height, Data),
-            {ok, N} = swap_nodes(Hashes),
-            ets:tab2file(Hashes, "/tmp/gc-state-" ++ integer_to_list(Height) ++ ".bin"),
-            ets:delete(Hashes),
-            {next_state, idle, Data#data{height = undefined, hashes = undefined},
-             {reply, From, {ok, N}}};
+            %% we exit here si GCEd table is swapped at startup
+            store_cache_and_restart(Hashes, ?GCED_TABLE_NAME);
         micro ->
             {keep_state, Data}
     end;
@@ -182,16 +185,16 @@ collect_reachable_hashes(FromHeight, ToHeight) when FromHeight < ToHeight ->
 collect_reachable_hashes_fullscan(Height) ->
     Tab = ets:new(gc_reachable_hashes, [public]),
     MPT = get_mpt(Height),
-    ?LOG("scanning accounts full tree with root hash ~w at height = ~p~n",
-         [aeu_mp_trees:root_hash(MPT), Height]),
+    ?LOG("GC fullscan at height ~p of accounts with hash ~w",
+         [Height, aeu_mp_trees:root_hash(MPT)]),
     {ok, aeu_mp_trees:visit_reachable_hashes(MPT, Tab, fun store_hash/3)}.
 
 %% assumes Height - 1, Height - 2, ... down to Height - History
 %% are in Hashes from previous runs
 collect_reachable_hashes_delta(Height, Hashes) ->
     MPT = get_mpt(Height),
-    ?LOG("scanning accounts changes with root hash ~w at height = ~p~n",
-         [aeu_mp_trees:root_hash(MPT), Height]),
+    ?LOG("GC diffscan at height ~p of accounts with hash ~w",
+         [Height, aeu_mp_trees:root_hash(MPT)]),
     {ok, aeu_mp_trees:visit_reachable_hashes(MPT, Hashes, fun store_unseen_hash/3)}.
 
 range_collect_reachable_hashes(ToHeight, #data{height = LastHeight, hashes = Hashes}) ->
@@ -200,26 +203,61 @@ range_collect_reachable_hashes(LastHeight, ToHeight, Hashes) ->
     [collect_reachable_hashes_delta(H, Hashes) || H <- lists:seq(LastHeight + 1, ToHeight)],
     {ok, Hashes}.
 
+store_cache_and_restart(Hashes, GCedTab) ->
+    {atomic, ok} = create_accounts_table(GCedTab),
+    {ok, _Count} = store_cache(Hashes, GCedTab),
+    supervisor:terminate_child(aec_conductor_sup, aec_conductor),
+    init:restart(),
+    sys:suspend(self(), infinity).
 
-%% the actual GC: clear whole table + insert reachable nodes
-swap_nodes(Hashes) ->
-    NodesCount = ets:info(Hashes, size),
-    {ClearTime, {atomic, ok}} = ?TIMED(mnesia:clear_table(aec_account_state)),
-    ?LOG("clearing accounts table took ~p seconds", [ClearTime / 1000000]),
-    ?LOG("writing ~p reachable account state nodes...", [NodesCount]),
-    {WriteTime, ok} =
-        ?TIMED(aec_db:ensure_transaction(
-                 fun () ->
-                         ets:foldl(
-                           fun ({Hash, Node}, ok) ->
-                                   aec_db:write_accounts_node(Hash, Node)
-                           end, ok, Hashes)
-                 end, [], sync_transaction)),
-    ?LOG("writing reachable account state nodes took ~p seconds", [WriteTime / 1000000]),
-    DBCount = length(mnesia:dirty_select(aec_account_state, [{'_', [], [1]}])),
-    ?LOG("DB has ~p aec_account_state records", [DBCount]),
+create_accounts_table(Name) ->
+    Rec = ?TABLE_NAME,
+    Fields = record_info(fields, ?TABLE_NAME),
+    mnesia:create_table(Name, aec_db:tab(aec_db:backend_mode(), Rec, Fields, [{record_name, Rec}])).
+
+
+iter(Fun, ets, Tab) ->
+    ets:foldl(fun ({Hash, Node}, ok) -> Fun(Hash, Node), ok end, ok, Tab);
+iter(Fun, mnesia, Tab) ->
+    mnesia:foldl(fun (X, ok) -> Fun(element(2, X), element(3, X)), ok end, ok, Tab).
+
+
+do_write_nodes(SrcMod, SrcTab, TgtTab) ->
+    ?TIMED(aec_db:ensure_transaction(
+             fun () ->
+                     iter(fun (Hash, Node) ->
+                                  aec_db:write_accounts_node(TgtTab, Hash, Node)
+                          end, SrcMod, SrcTab)
+             end, [], sync_transaction)).
+
+store_cache(SrcHashes, TgtTab) ->
+    NodesCount = ets:info(SrcHashes, size),
+    ?LOG("Writing ~p reachable account nodes to table ~p ...", [NodesCount, TgtTab]),
+    {WriteTime, ok} = do_write_nodes(ets, SrcHashes, TgtTab),
+    ?LOG("Writing reachable account nodes took ~p seconds", [WriteTime / 1000000]),
+    DBCount = length(mnesia:dirty_select(TgtTab, [{'_', [], [1]}])),
+    ?LOG("GC cache has ~p aec_account_state records", [DBCount]),
     {ok, NodesCount}.
 
+maybe_swap_nodes(SrcTab, TgtTab) ->
+    try mnesia:dirty_first(SrcTab) of % table exists
+        H when is_binary(H) ->        % and is non empty
+            ?LOG("Clearing table ~p ...", [TgtTab]),
+            {atomic, ok} = mnesia:clear_table(TgtTab),
+            ?LOG("Writing garbage collected accounts ..."),
+            {WriteTime, ok} = do_write_nodes(mnesia, SrcTab, TgtTab),
+            ?LOG("Writing garbage collected accounts took ~p seconds", [WriteTime / 1000000]),
+            DBCount = length(mnesia:dirty_select(TgtTab, [{'_', [], [1]}])),
+            ?LOG("DB has ~p aec_account_state records", [DBCount]),
+            ?LOG("Removing garbage collected table ~p ...", [?GCED_TABLE_NAME]),
+            mnesia:delete_table(?GCED_TABLE_NAME),
+            ok;
+        '$end_of_table' ->
+            ok
+    catch
+        exit:{aborted,{no_exists,[_]}} ->
+            ok
+    end.
 
 -spec get_mpt(non_neg_integer()) -> aeu_mp_trees:tree().
 get_mpt(Height) ->
@@ -247,3 +285,8 @@ config() ->
           {Key, Default} <- [{<<"enabled">>, false},
                              {<<"interval">>, ?DEFAULT_INTERVAL},
                              {<<"history">>, ?DEFAULT_HISTORY}]]).
+
+
+%% %%%% !!!!!!!!!!
+%% log(Fmt, Args) ->
+%%     file:write_file("/tmp/test.log", io_lib:format(Fmt, Args), [append]).
