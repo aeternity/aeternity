@@ -342,7 +342,7 @@ address_group({A, B, _, _}) -> <<A:8, B:8>>.
 %%    a peer should be put on standby when rejected; if rejected more than
 %%    the size of the given list due to `max_rejections' being larger than
 %%    the list, the last value of the list is used multiple times.
-%%    Default: `[5, 15]'.</li>
+%%    Default: `[5000, 15000]'.</li>
 %%  <li>`max_rejections': The maximum number of time a peer can be rejected
 %%    before it is downgraded from the verified pool or removed from
 %%    the unverified pool. Default: `7'.</li>
