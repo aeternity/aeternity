@@ -42,6 +42,8 @@ sync:
     max_outbound: 20
     # If the extra outbound connections should be to nodes from different address groups (IP netmask /16)
     single_outbound_per_group: true
+    # The number of peers sent in ping message
+    gossiped_peers: 8
     # Maximum number of retries at resolving the host name of untrusted peers.
     resolver_max_retries: 2
     # Waiting time intervals (milliseconds) before each retry at resolving the host name of peers (both trusted and untrusted).
