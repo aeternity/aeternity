@@ -155,6 +155,10 @@ SET BASH="%WIN_MSYS2_ROOT%\usr\bin\bash.exe"
 
 %BASH% -lc "rm -f /bin/link.exe /usr/bin/link.exe"
 
+@call:log Fix home path resolution in msys2
+
+%BASH% -lc "sed -i -e 's/^db_home:.*/db_home: windows/g' /etc/nsswitch.conf"
+
 @call:log Ensure Styrene is installed in %WIN_STYRENE_PATH%
 IF EXIST "%WIN_STYRENE_PATH%" IF NOT "%FORCE_STYRENE_REINSTALL%"=="true" @call:log Ok. && exit /b
 @call:log Install Styrene

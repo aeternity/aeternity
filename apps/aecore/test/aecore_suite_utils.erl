@@ -216,9 +216,7 @@ make_shortcut(Config) ->
     ok = filelib:ensure_dir(filename:join(PrivDir, "foo")),
     Shortcut = shortcut_dir(Config),
     delete_file(Shortcut),
-    ok = file:make_symlink(PrivDir, Shortcut),
-    ct:log("Made symlink ~s to ~s", [PrivDir, Shortcut]),
-    ok.
+    ok = symlink(PrivDir, Shortcut).
 
 start_node(N, Config) ->
     %TestModule = ?config(test_module, Config),
@@ -614,8 +612,13 @@ delete_file(F) ->
     case file:delete(F) of
         ok -> ok;
         {error, enoent} -> ok;
-        Other ->
-            erlang:error(Other, [F])
+	 {error, Err} ->
+            case {os:type(), Err} of
+                {{win32, _}, eperm} ->
+                    win32_delete_junction(F);
+		 _ ->
+            		ct:fail("Could not delete file ~s: ~p~n", [F, Err])
+	    end
     end.
 
 %%%=============================================================================
@@ -683,7 +686,7 @@ setup_node(N, Top, Epoch, Config) ->
     cp_dir(filename:join(Epoch, "releases"), DDir ++ "/"),
     cp_dir(filename:join(Epoch, "bin"), DDir ++ "/"),
     symlink(filename:join(Epoch, "lib"), filename:join(DDir, "lib")),
-    symlink(filename:join(Epoch, "patches"), filename:join(DDir, "patches")),
+    symlink(filename:join(Epoch, "patches"), filename:join(DDir, "patches"), true),
     {ok, VerContents} = file:read_file(filename:join(Epoch, "VERSION")),
     [VerB |_ ] = binary:split(VerContents, [<<"\n">>, <<"\r">>], [global]),
     Version = binary_to_list(VerB),
@@ -757,8 +760,16 @@ cp_file(From, To) ->
     ok.
 
 symlink(From, To) ->
-    ok = file:make_symlink(From, To),
-    ct:log("symlinked ~s to ~s", [From, To]),
+    symlink(From, To, false).
+symlink(From, To, CanFail) ->
+    case {symlink_or_copy(From, To), CanFail} of
+        {ok, _} ->
+            ct:log("symlinked ~s to ~s", [From, To]);
+        {Err, false} ->
+            ct:fail("Error symlinking ~s to ~s: ~p", [From, To, Err]);
+        {Err, true} ->
+            ct:log("Error symlinking ~s to ~s: ~p", [From, To, Err])
+    end,
     ok.
 
 cmd(Cmd, Dir, Args) ->
@@ -781,11 +792,20 @@ cmd(C, Dir, BinDir, Args, Env, FindLocalBin) ->
     CmdRes.
 
 cmd_run(Cmd, Dir, BinDir, Args, Env, FindLocalBin) ->
+    %% On Windows we need to ensure that Erlang is available in the path.
+    Env1 = case os:type() of
+               {win32, _} ->
+                   Path = filename:dirname(os:find_executable("erl")),
+                   [{"PATH", Path ++ ";%PATH%"} | Env];
+               _ ->
+                   Env
+           end,
     Opts = [
-            {env, Env},
+            {env, Env1},
             exit_status,
             overlapped_io,
             stderr_to_stdout,
+            hide, %% will note spawn an extra window on win32 for the executed command
             {args, Args},
             {cd, Dir}
            ],
@@ -796,7 +816,16 @@ cmd_run(Cmd, Dir, BinDir, Args, Env, FindLocalBin) ->
               false ->
                   os:find_executable(Cmd)
           end,
-    Port = erlang:open_port({spawn_executable, Bin}, Opts),
+    %% A bug in OTP requires us to copy the start script such that it has the extension .bat
+    Bin1 = case {os:type(), filename:extension(Bin)} of
+               {{win32, _}, ".cmd"} ->
+                   NewBin = filename:rootname(Bin) ++ ".bat",
+                   ok = symlink(Bin, NewBin),
+                   NewBin;
+               _ ->
+                   Bin
+    end,
+    Port = erlang:open_port({spawn_executable, Bin1}, Opts),
     WaitFun = fun(Fun, P, Res) ->
                      receive
                          {P, {exit_status, 0}} ->
@@ -1222,4 +1251,85 @@ mine_safe_setup(Node, MiningRate, Opts, LoopFun) ->
             {ok, lists:reverse(BlocksReverse)};
         {error, Reason} ->
             erlang:error(Reason)
+    end.
+
+%%%=============================================================================
+%%% Partially imported from https://github.com/erlware/relx/blob/master/src/rlx_util.erl#L232
+%%%=============================================================================
+
+symlink_or_copy(Source, Target) ->
+    case file:make_symlink(Source, Target) of
+        ok ->
+            ok;
+        {error, eexist} ->
+            {error, eexist};
+        {error, Err} ->
+            case {os:type(), Err} of
+                {{win32, _}, eperm} ->
+                    % We get eperm on Windows if we do not have
+                    %   SeCreateSymbolicLinkPrivilege
+                    % Try the next alternative
+                    win32_make_junction_or_copy(Source, Target);
+                _ ->
+                    % On other systems we try to copy next
+                    cp_r(Source, Target)
+            end
+    end.
+
+cp_r(Source, Target) ->
+    ec_file:copy(Source, Target, [{recursive, true}, {fileinfo, [mode, time, owner, group]}]).
+
+win32_make_junction_or_copy(Source, Target) ->
+    case filelib:is_dir(Source) of
+        true ->
+            win32_make_junction(Source, Target);
+        _ ->
+            cp_r(Source, Target)
+    end.
+
+win32_make_junction(Source, Target) ->
+    % The mklink will fail if the target already exists, check for that first
+    case file:read_link_info(Target) of
+        {error, enoent} ->
+            win32_make_junction_cmd(Source, Target);
+        {ok, #file_info{type = symlink}} ->
+            case file:read_link(Target) of
+                {ok, Source} ->
+                    ok;
+                {ok, _} ->
+                    ok = file:del_dir(Target),
+                    win32_make_junction_cmd(Source, Target);
+                {error, Reason} ->
+                    {error, {readlink, Reason}}
+            end;
+        {ok, #file_info{type = _Type}} ->
+            % Directory already exists, so we overwrite the copy
+            cp_r(Source, Target);
+        Error ->
+            Error
+    end.
+
+win32_make_junction_cmd(Source, Target) ->
+    S = unicode:characters_to_list(Source),
+    T = unicode:characters_to_list(Target),
+    Cmd = "cmd /c mklink /j " ++ filename:nativename(T) ++ " " ++ filename:nativename(S),
+    case os:cmd(Cmd) of
+        "Junction created " ++ _ ->
+            ok;
+        [] ->
+            % When mklink fails it prints the error message to stderr which
+            % is not picked up by os:cmd() hence this case switch is for
+            % an empty message
+            cp_r(Source, Target)
+    end.
+
+win32_delete_junction(Target) ->
+    T = unicode:characters_to_list(Target),
+    Cmd = "cmd /c rd /s /q " ++ filename:nativename(T),
+    case os:cmd(Cmd) of
+        [] ->
+            ok;
+        Output ->
+            ct:log("Output from deleting junction ~s: ~p~n", [Target, Output]),
+            ok
     end.

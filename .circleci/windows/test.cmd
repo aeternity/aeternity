@@ -14,7 +14,7 @@ SETLOCAL
 call "%~dp0..\..\scripts\windows\msys2_prepare" -v
 
 :: Construct unix paths
-FOR /f %%i IN ('cygpath -a %~dp0..\..') DO SET "PROJECT_ROOT=%%i"
+FOR /f %%i IN ('%WIN_MSYS2_ROOT%\usr\bin\cygpath -a %~dp0..\..') DO SET "PROJECT_ROOT=%%i"
 :: remove trailing /
 SET "PROJECT_ROOT=%PROJECT_ROOT:~0,-1%"
 
@@ -38,7 +38,8 @@ IF "%TEST_STEPS%"=="" SET "TEST_STEPS=release"
 
 @for /f "tokens=1* delims=, " %%i in ("%TEST_STEPS%") do @(
     @call:log Run test %%i
-	call :TEST_%%i || exit /b %ERRORLEVEL%
+        call :TEST_%%i
+        IF %ERRORLEVEL% NEQ 0 exit /b %ERRORLEVEL%
 )
 
 @call:log Finished test phase

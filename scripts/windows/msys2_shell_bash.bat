@@ -1,6 +1,6 @@
 :: Pass -v as an argument to enable echo
 @echo off
-@rem Script to open a msys2 shell (new window) ready for building.
+@rem Script to open a msys2 bash shell (same window) ready for building.
 @rem Required vars:
 @rem    PLATFORM
 @rem    WIN_MSYS2_ROOT
@@ -50,4 +50,4 @@ echo SET WIN_OTP_PATH=%WIN_OTP_PATH%
 
 :: Open shell
 
-"%WIN_MSYS2_ROOT%\mingw64.exe"
+"%WIN_MSYS2_ROOT%\usr\bin\bash.exe" -l

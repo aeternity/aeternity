@@ -359,11 +359,6 @@ python-release-test:
 python-package-win32-test:
 	( cd $(PYTHON_DIR) && WORKDIR="$(WORKDIR)" PACKAGESPECFILE=$(PACKAGE_SPEC_WIN32) $(MAKE) package-win32-test; )
 
-rebar-lock-check:
-	./scripts/rebar_lock_check \
-		"$(CURDIR)/rebar3" \
-		"$(CURDIR)"
-
 kill:
 	@echo "Kill all beam processes only from this directory tree"
 	$(shell pkill -9 -f ".*/beam.*-boot `pwd`" || true)
@@ -486,7 +481,6 @@ test-arch-os-dependencies:
 	kill killall \
 	clean distclean \
 	build-uml \
-	rebar-lock-check \
 	python-env python-ws-test python-uats python-single-uat python-release-test python-package-win32-test \
 	REVISION \
 	prod-deb-package \

@@ -12,7 +12,7 @@ SETLOCAL
 call "%~dp0..\..\scripts\windows\msys2_prepare" -v
 
 :: Construct unix paths
-FOR /f %%i IN ('cygpath -a %~dp0..\..') DO SET "PROJECT_ROOT=%%i"
+FOR /f %%i IN ('%WIN_MSYS2_ROOT%\usr\bin\cygpath -a %~dp0..\..') DO SET "PROJECT_ROOT=%%i"
 :: remove trailing /
 SET "PROJECT_ROOT=%PROJECT_ROOT:~0,-1%"
 
@@ -22,10 +22,12 @@ IF NOT "%ARTIFACTS_PATH%"=="" FOR /f %%i IN ('cygpath -a %ARTIFACTS_PATH%') DO S
 
 IF "%PACKAGES_PATH%"=="" SET "PACKAGES_PATH=%PROJECT_ROOT%/packages"
 
-call "%~dp0vcvarsall" || exit /b %ERRORLEVEL%
+call "%~dp0vcvarsall"
+IF %ERRORLEVEL% NEQ 0 exit /b %ERRORLEVEL%
 
 @call:log Build production release
-"%WIN_MSYS2_ROOT%\usr\bin\bash.exe" -lc "${PROJECT_ROOT}/.circleci/windows/build.sh" || exit /b %ERRORLEVEL%
+"%WIN_MSYS2_ROOT%\usr\bin\bash.exe" -lc "${PROJECT_ROOT}/.circleci/windows/build.sh"
+IF %ERRORLEVEL% NEQ 0 exit /b %ERRORLEVEL%
 @call:log Build done.
 
 exit /b 0
