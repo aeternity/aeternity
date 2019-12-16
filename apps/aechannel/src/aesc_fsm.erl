@@ -1729,6 +1729,10 @@ new_onchain_tx(channel_slash_tx, Opts,
     {ok, Tx} = new_onchain_tx_(aesc_slash_tx, Opts2, PinnedHeight),
     {ok, Tx, []}.
 
+-spec new_onchain_tx_(aesc_create_tx | aesc_withdraw_tx | aesc_deposit_tx |
+                      aesc_close_solo_tx | aesc_snapshot_solo_tx |
+                      aesc_slash_tx | aesc_settle_tx,
+                      maps:map(), non_neg_integer()) -> {ok, aetx:tx()}.
 new_onchain_tx_(Mod, Opts, CurrHeight) when Mod =:= aesc_create_tx;
                                             Mod =:= aesc_withdraw_tx;
                                             Mod =:= aesc_deposit_tx;
@@ -1736,9 +1740,20 @@ new_onchain_tx_(Mod, Opts, CurrHeight) when Mod =:= aesc_create_tx;
                                             Mod =:= aesc_snapshot_solo_tx;
                                             Mod =:= aesc_slash_tx;
                                             Mod =:= aesc_settle_tx ->
-    case maps:is_key(fee, Opts) of
-        true -> %% use preset fee
+    FeeSpecified = maps:is_key(fee, Opts),
+    GasPriceSpecified = maps:is_key(gas_price, Opts),
+    case FeeSpecified of
+        true when not GasPriceSpecified -> %% use preset fee
             apply(Mod, new, [Opts]);
+        true when GasPriceSpecified -> %% both fee and gas_price are specified
+            {ok, Tx1} = apply(Mod, new, [Opts]),
+            {ok, Tx2} = create_with_minimum_fee(Mod, Opts#{fee => 0},
+                                                CurrHeight),
+            %% use the tx with the bigger fee
+            case aetx:fee(Tx1) > aetx:fee(Tx2) of
+                true -> {ok, Tx1};
+                false -> {ok, Tx2}
+            end;
         false ->
             create_with_minimum_fee(Mod, Opts#{fee => 0}, CurrHeight)
     end.
@@ -1786,7 +1801,7 @@ create_tx_for_signing(#data{opts = #{ initiator        := Initiator
          , lock_period      => LockPeriod },
     %% nonce is not exposed to the client via WebSocket but is used in tests
     %% shall we expose it to the client as well?
-    Optional = maps:with([nonce, fee], Opts),
+    Optional = maps:with([nonce, fee, gas_price], Opts),
     new_onchain_tx_for_signing(channel_create_tx,
                                maps:merge(Obligatory, Optional), D).
 

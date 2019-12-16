@@ -466,6 +466,7 @@ read_channel_options(Params) ->
              #{type => atom, enum => [txfee], mandatory => false})
       , Read(<<"ttl">>, ttl, #{type => integer, mandatory => false})
       , Read(<<"fee">>, fee, #{type => integer, mandatory => false})
+      , Read(<<"gas_price">>, gas_price, #{type => integer, mandatory => false})
       , Put(noise, [{noise, <<"Noise_NN_25519_ChaChaPoly_BLAKE2b">>}])
       ]
       ++ OnChainOpts
