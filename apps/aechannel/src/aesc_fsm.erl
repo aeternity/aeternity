@@ -1560,6 +1560,7 @@ new_onchain_tx(channel_close_mutual_tx, #{ acct := From } = Opts,
     Fee = maps:get(fee, Opts),
     Nonce = maps:get(nonce, Opts),
     TTL = maps:get(ttl, Opts, 0), %% 0 means no TTL limit
+    %% TODO: make it work with gas price
     {IAmt1, RAmt1} = pay_close_mutual_fee(Fee, IAmt, RAmt),
     {ok, CloseMutualTx} =
         aesc_close_mutual_tx:new(#{ channel_id             => ChanId
@@ -1778,7 +1779,7 @@ create_with_minimum_fee(_, _, _, Attempts) when Attempts < 1 ->
     error(could_not_compute_fee);
 create_with_minimum_fee(Mod, Opts, CurrHeight, Attempts) ->
     {ok, Tx} = apply(Mod, new, [Opts]),
-    MinFee = min_tx_fee(Tx),
+    MinFee = min_tx_fee(Tx, Opts),
     TxFee = aetx:fee(Tx),
     case MinFee =< TxFee of
         true ->
@@ -4745,12 +4746,13 @@ default_minimum_depth(Strategy) ->
             error(unknown_minimum_depth_strategy)
     end.
 
-min_tx_fee(Tx) ->
+min_tx_fee(Tx, Opts) ->
     {CurrHeight, CurrProtocol} = curr_height_and_protocol(),
-    MaxMinGasPrice = max(aec_tx_pool:minimum_miner_gas_price(),
-                         aec_governance:minimum_gas_price(CurrProtocol)),
+    DefaultMinGasPrice = max(aec_tx_pool:minimum_miner_gas_price(),
+                             aec_governance:minimum_gas_price(CurrProtocol)),
+    GasPrice = maps:get(gas_price, Opts, DefaultMinGasPrice),
     FeeGas = aetx:fee_gas(Tx, CurrHeight, CurrProtocol),
-    FeeGas * MaxMinGasPrice.
+    FeeGas * GasPrice.
 
 postpone_or_error(call) -> error_all;
 postpone_or_error(_) -> postpone.
