@@ -52,6 +52,10 @@ sync:
     gossip_allowed_height_from_top: 5
     # Time (milliseconds) between logging info about connected peers
     log_peer_connection_count_interval: 5000
+    # Peer pool
+    peer_pool:
+      # Time (milliseconds) without a peer being updated after which it gets removed
+      max_update_lapse: 2592000000
 
 mempool:
     # Number of blocks before inactive TXs are garbage collected

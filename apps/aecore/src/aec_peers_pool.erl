@@ -89,7 +89,7 @@
 %=== EXPORTS ===================================================================
 
 -export([address_group/1]).
--export([new/1]).
+-export([new/0]).
 -export([count/3]).
 -export([find/2]).
 -export([peer_state/2]).
@@ -295,7 +295,7 @@
                 | {standby_times, [non_neg_integer()]}
                 | {max_rejections, pos_integer()}.
 
--export_type([filter_fun/0, state/0]).
+-export_type([options/0, filter_fun/0, state/0]).
 
 %=== API FUNCTIONS =============================================================
 
@@ -306,7 +306,7 @@ address_group({A, B, _, _}) -> <<A:8, B:8>>.
 
 %% @doc Creates a new stochastic pool.
 %%
-%% Options:
+%% Environment options:
 %% <ul>
 %%  <li>`verif_bcount': Number of buckets in the verified pool.
 %%    Default: `256'.</li>
@@ -348,24 +348,24 @@ address_group({A, B, _, _}) -> <<A:8, B:8>>.
 %%    before it is downgraded from the verified pool or removed from
 %%    the unverified pool. Default: `7'.</li>
 %% </ul>
--spec new(options()) -> state().
-new(Opts) ->
-    Secret = get_opt(secret, Opts, gen_secret()),
-    Seed = get_opt(seed, Opts, gen_seed()),
-    VBCount = get_opt(verif_bcount, Opts, ?DEFAULT_VERIF_BUCKET_COUNT),
-    VBSize = get_opt(verif_bsize, Opts, ?DEFAULT_VERIF_BUCKET_SIZE),
-    VGroupShard = get_opt(verif_group_shard, Opts, ?DEFAULT_VERIF_GROUP_SHARD),
-    UBCount = get_opt(unver_bcount, Opts, ?DEFAULT_UNVER_BUCKET_COUNT),
-    UBSize = get_opt(unver_bsize, Opts, ?DEFAULT_UNVER_BUCKET_SIZE),
-    USourceShard = get_opt(unver_source_shard, Opts, ?DEFAULT_UNVER_SOURCE_SHARD),
-    UGroupShard = get_opt(unver_group_shard, Opts, ?DEFAULT_UNVER_GROUP_SHARD),
-    UMaxRef = get_opt(unver_max_refs, Opts, ?DEFAULT_UNVER_MAX_REFS),
-    EvictSkew = get_opt(eviction_skew, Opts, ?DEFAULT_EVICTION_SKEW),
-    SelectProb = get_opt(select_verif_prob, Opts, ?DEFAULT_SELECT_VERIFIED_PROB),
-    MaxLapse = get_opt(max_update_lapse, Opts, ?DEFAULT_MAX_UPDATE_LAPSE),
-    DisableStrongRandom = get_opt(disable_strong_random, Opts, false),
-    StandbyTimes = get_opt(standby_times, Opts, ?DEFAULT_STANDBY_TIMES),
-    MaxRejections = get_opt(max_rejections, Opts, ?DEFAULT_MAX_REJECTIONS),
+-spec new() -> state().
+new() ->
+    Secret = get_env(secret, gen_secret()),
+    Seed = get_env(seed, gen_seed()),
+    VBCount = get_env(verif_bcount, ?DEFAULT_VERIF_BUCKET_COUNT),
+    VBSize = get_env(verif_bsize, ?DEFAULT_VERIF_BUCKET_SIZE),
+    VGroupShard = get_env(verif_group_shard, ?DEFAULT_VERIF_GROUP_SHARD),
+    UBCount = get_env(unver_bcount, ?DEFAULT_UNVER_BUCKET_COUNT),
+    UBSize = get_env(unver_bsize, ?DEFAULT_UNVER_BUCKET_SIZE),
+    USourceShard = get_env(unver_source_shard, ?DEFAULT_UNVER_SOURCE_SHARD),
+    UGroupShard = get_env(unver_group_shard, ?DEFAULT_UNVER_GROUP_SHARD),
+    UMaxRef = get_env(unver_max_refs, ?DEFAULT_UNVER_MAX_REFS),
+    EvictSkew = get_env(eviction_skew, ?DEFAULT_EVICTION_SKEW),
+    SelectProb = get_env(select_verif_prob, ?DEFAULT_SELECT_VERIFIED_PROB),
+    MaxLapse = max_update_lapse(),
+    DisableStrongRandom = get_env(disable_strong_random, false),
+    StandbyTimes = get_env(standby_times, ?DEFAULT_STANDBY_TIMES),
+    MaxRejections = get_env(max_rejections, ?DEFAULT_MAX_REJECTIONS),
 
     ?assert(VBCount > 0),
     ?assert(VBSize > 0),
@@ -681,9 +681,9 @@ available(St, both) ->
 
 %=== INTERNAL FUNCTIONS ========================================================
 
--spec get_opt(atom(), options(), term()) -> term().
-get_opt(Key, Opts, Default) when is_list(Opts) ->
-    proplists:get_value(Key, Opts, Default).
+-spec get_env(atom(), term()) -> term().
+get_env(Key, Default) ->
+    aeu_env:get_env(aecore, [peer_pool, Key], Default).
 
 %% Generate a new secret from a strong random source.
 -spec gen_secret() -> binary().
@@ -1880,3 +1880,10 @@ lookup_filter(Value, FilterFun, Rem, Acc) ->
         true -> {Rem - 1, [Value | Acc]};
         false -> {Rem, Acc}
     end.
+
+%% -- Configuration ----------------------------------------------------------
+
+max_update_lapse() ->
+    aeu_env:user_config_or_env([<<"sync">>, <<"peer_pool">>, <<"max_update_lapse">>],
+                               aecore, [peer_pool, max_update_lapse],
+                               ?DEFAULT_MAX_UPDATE_LAPSE).

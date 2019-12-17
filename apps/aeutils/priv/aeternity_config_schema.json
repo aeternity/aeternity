@@ -162,6 +162,17 @@
                     "description": "Time (milliseconds) between logging info about connected peers",
                     "type" : "integer",
                     "default": 5000
+                },
+                "peer_pool" : {
+                    "type" : "object",
+                    "additionalproperties" : false,
+                    "properties" : {
+                        "max_update_lapse" : {
+                            "description" : "Time (milliseconds) without a peer being updated after which it gets removed.",
+                            "type" : "integer",
+                            "default" : 2592000000
+                        }
+                    }
                 }
             }
         },
