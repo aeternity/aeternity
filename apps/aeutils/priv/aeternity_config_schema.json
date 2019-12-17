@@ -171,6 +171,23 @@
                             "description" : "Time (milliseconds) without a peer being updated after which it gets removed.",
                             "type" : "integer",
                             "default" : 2592000000
+                        },
+                        "standby_times" : {
+                            "description" : "Waiting time intervals (milliseconds) before each retry to connect to a peer. If there are more 'max_rejections' than elements in this list, the last retry time is used more than once.",
+                            "type" : "array",
+                            "minItems" : 1,
+                            "items" : {
+                                "type" : "integer",
+                                "minimum" : 1,
+                                "example" : 5000
+                            },
+                            "default" : [5000, 15000, 30000, 60000, 120000, 300000, 600000]
+                        },
+                        "max_rejections" : {
+                            "description" : "The default maximum number of times a peer can get rejected. When reached, the peer is downgraded or removed (if not trusted).",
+                            "type" : "integer",
+                            "minimum" : 1,
+                            "default" : 7
                         }
                     }
                 }

@@ -156,7 +156,7 @@
 -define(DEFAULT_STANDBY_TIMES,
         [5000, 15000, 30000, 60000, 120000, 300000, 600000]).
 %% The default maximum number of times a peer can get rejected;
-%% when reached, the peer is downgraded/removed (if not trusted).
+%% when reached, the peer is downgraded or removed (if not trusted).
 -define(DEFAULT_MAX_REJECTIONS, 7).
 
 
@@ -362,10 +362,10 @@ new() ->
     UMaxRef = get_env(unver_max_refs, ?DEFAULT_UNVER_MAX_REFS),
     EvictSkew = get_env(eviction_skew, ?DEFAULT_EVICTION_SKEW),
     SelectProb = get_env(select_verif_prob, ?DEFAULT_SELECT_VERIFIED_PROB),
-    MaxLapse = max_update_lapse(),
     DisableStrongRandom = get_env(disable_strong_random, false),
-    StandbyTimes = get_env(standby_times, ?DEFAULT_STANDBY_TIMES),
-    MaxRejections = get_env(max_rejections, ?DEFAULT_MAX_REJECTIONS),
+    MaxLapse = max_update_lapse(),
+    StandbyTimes = standby_times(),
+    MaxRejections = max_rejections(),
 
     ?assert(VBCount > 0),
     ?assert(VBSize > 0),
@@ -1887,3 +1887,13 @@ max_update_lapse() ->
     aeu_env:user_config_or_env([<<"sync">>, <<"peer_pool">>, <<"max_update_lapse">>],
                                aecore, [peer_pool, max_update_lapse],
                                ?DEFAULT_MAX_UPDATE_LAPSE).
+
+standby_times() ->
+    aeu_env:user_config_or_env([<<"sync">>, <<"peer_pool">>, <<"standby_times">>],
+                               aecore, [peer_pool, standby_times],
+                               ?DEFAULT_STANDBY_TIMES).
+
+max_rejections() ->
+    aeu_env:user_config_or_env([<<"sync">>, <<"peer_pool">>, <<"max_rejections">>],
+                               aecore, [peer_pool, max_rejections],
+                               ?DEFAULT_MAX_REJECTIONS).
