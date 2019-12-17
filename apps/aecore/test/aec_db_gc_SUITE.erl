@@ -117,7 +117,8 @@ main_test(_Config) ->
     true = has_key(N1, ?DUMMY_HASH, aec_account_state),
 
     %% we mine just enough to start first GC phase - collection of reachable hashes
-    aecore_suite_utils:mine_key_blocks(N2, ?GC_INTERVAL - H1),
+    mine_until_height(N1, N2, ?GC_INTERVAL), % aecore_suite_utils:mine_key_blocks(N2, ?GC_INTERVAL - H1),
+
     node_log_details(N1, after_mining_0),
 
     block_while(fun () ->
@@ -140,7 +141,7 @@ main_test(_Config) ->
 
     monitor_node(N1, true),
     %% Mining of another keyblock starts second GC phase - storing cache to mnesia table and restart
-    aecore_suite_utils:mine_key_blocks(N2, 1),
+    mine_until_height(N1, N2, ?GC_INTERVAL + 1),
     receive {nodedown, N1} -> ct:log("////////// ~p restarted~n", [N1]) end,
 
     block_while(fun () -> not net_kernel:hidden_connect_node(N1) end, 30, 3000),
@@ -211,6 +212,17 @@ block_while_(X, Test, Repeats, MilliSecs) ->
             timer:sleep(MilliSecs),
             block_while_(X + 1, Test, Repeats, MilliSecs)
     end.
+
+mine_until_height(ControlNode, MinerNode, TargetHeight) ->
+    timer:sleep(500),
+    H = aec_headers:height(rpc:call(ControlNode, aec_chain, top_header, [])),
+    if H < TargetHeight ->
+            aecore_suite_utils:mine_key_blocks(MinerNode, 1),
+            mine_until_height(ControlNode, MinerNode, TargetHeight);
+       true ->
+            ok
+    end.
+
 
 check_accounts(Config) ->
     N1 = aecore_suite_utils:node_name(dev1),
