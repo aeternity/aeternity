@@ -1549,7 +1549,8 @@ new_onchain_tx_for_signing_(Type, Opts, OnErr, D) ->
                     aetx_env:env(), aec_trees:trees()) ->
     {ok, aetx:tx(), [aesc_offchain_update:update()]} | {error, atom()}.
 new_onchain_tx(channel_close_mutual_tx, #{ acct := From } = Opts,
-               #data{opts = DOpts, on_chain_id = Chan, state = State}, _, _, _) ->
+               #data{opts = DOpts, on_chain_id = Chan, state = State}, _,
+               OnChainEnv, _) ->
     #{initiator := Initiator,
       responder := Responder} = DOpts,
     ChanId = aeser_id:create(channel, Chan),
@@ -1557,19 +1558,23 @@ new_onchain_tx(channel_close_mutual_tx, #{ acct := From } = Opts,
     {ok, IAmt} = aesc_offchain_state:balance(Initiator, State),
     {ok, RAmt} = aesc_offchain_state:balance(Responder, State),
     %% fee is preset. This is important for participant's amounts calculation
-    Fee = maps:get(fee, Opts),
-    Nonce = maps:get(nonce, Opts),
     TTL = maps:get(ttl, Opts, 0), %% 0 means no TTL limit
-    %% TODO: make it work with gas price
+    Nonce = maps:get(nonce, Opts),
+    InitialOpts0 = #{ channel_id             => ChanId
+                    , from_id                => FromId
+                    % both amounts are only going to get lower due to the tx fee
+                    , initiator_amount_final => IAmt
+                    , responder_amount_final => RAmt
+                    , ttl                    => TTL
+                    , nonce                  => Nonce },
+    Height = aetx_env:height(OnChainEnv),
+    {ok, InitCloseTx} = new_onchain_tx_(aesc_close_mutual_tx, InitialOpts0, Height),
+    Fee = aetx:fee(InitCloseTx),
     {IAmt1, RAmt1} = pay_close_mutual_fee(Fee, IAmt, RAmt),
     {ok, CloseMutualTx} =
-        aesc_close_mutual_tx:new(#{ channel_id             => ChanId
-                                  , from_id                => FromId
-                                  , initiator_amount_final => IAmt1
-                                  , responder_amount_final => RAmt1
-                                  , ttl                    => TTL
-                                  , fee                    => Fee
-                                  , nonce                  => Nonce }),
+        aesc_close_mutual_tx:new(InitialOpts0#{ initiator_amount_final => IAmt1
+                                              , responder_amount_final => RAmt1
+                                              , fee => Fee}),
     {ok, CloseMutualTx, []};
 new_onchain_tx(channel_deposit_tx, #{acct := FromId,
                                      amount := Amount} = Opts,
@@ -1732,7 +1737,7 @@ new_onchain_tx(channel_slash_tx, Opts,
 
 -spec new_onchain_tx_(aesc_create_tx | aesc_withdraw_tx | aesc_deposit_tx |
                       aesc_close_solo_tx | aesc_snapshot_solo_tx |
-                      aesc_slash_tx | aesc_settle_tx,
+                      aesc_slash_tx | aesc_settle_tx | aesc_close_mutual_tx,
                       maps:map(), non_neg_integer()) -> {ok, aetx:tx()}.
 new_onchain_tx_(Mod, Opts, CurrHeight) when Mod =:= aesc_create_tx;
                                             Mod =:= aesc_withdraw_tx;
@@ -1740,7 +1745,8 @@ new_onchain_tx_(Mod, Opts, CurrHeight) when Mod =:= aesc_create_tx;
                                             Mod =:= aesc_close_solo_tx;
                                             Mod =:= aesc_snapshot_solo_tx;
                                             Mod =:= aesc_slash_tx;
-                                            Mod =:= aesc_settle_tx ->
+                                            Mod =:= aesc_settle_tx;
+                                            Mod =:= aesc_close_mutual_tx ->
     FeeSpecified = maps:is_key(fee, Opts),
     GasPriceSpecified = maps:is_key(gas_price, Opts),
     case FeeSpecified of
@@ -1877,8 +1883,8 @@ tx_defaults_(channel_close_solo_tx = Tx, Opts, D) ->
     default_ttl(Tx, Opts, D);
 tx_defaults_(channel_settle_tx = Tx, Opts, D) ->
     default_ttl(Tx, Opts, D);
-tx_defaults_(channel_close_mutual_tx, _Opts, _D) ->
-    #{fee => default_fee(channel_close_mutual_tx)}.
+tx_defaults_(channel_close_mutual_tx = Tx, Opts, D) ->
+    default_ttl(Tx, Opts, D).
 
 default_nonce(Opts) ->
     case maps:find(nonce, Opts) of
@@ -1898,16 +1904,6 @@ get_nonce(Pubkey) ->
         generalized ->
             0
     end.
-
-%% @doc the default fee will be used as a base for adjustment, once
-%% we have an actual transaction record (required by aetx:min_fee/3).
-%% The default should err on the side of being too low.
-default_fee(_Tx) ->
-    CurrProtocol = curr_protocol(),
-    %% this could be fragile on hard fork height if one participant's node had
-    %% already forked and the other had not yet
-    ?DEFAULT_FSM_TX_GAS * max(aec_governance:minimum_gas_price(CurrProtocol),
-                              aec_tx_pool:minimum_miner_gas_price()).
 
 default_ttl(_Type, Opts, #data{opts = DOpts}) ->
     TTL = maps:get(ttl, Opts, maps:get(ttl, DOpts, 0)),
@@ -4752,6 +4748,7 @@ min_tx_fee(Tx, Opts) ->
                              aec_governance:minimum_gas_price(CurrProtocol)),
     GasPrice = maps:get(gas_price, Opts, DefaultMinGasPrice),
     FeeGas = aetx:fee_gas(Tx, CurrHeight, CurrProtocol),
+    lager:info("DOMAT GasPrice ~p, FeeGas ~p", [GasPrice, FeeGas]),
     FeeGas * GasPrice.
 
 postpone_or_error(call) -> error_all;

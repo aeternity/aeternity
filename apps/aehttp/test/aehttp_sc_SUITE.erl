@@ -255,7 +255,7 @@ fee_computation_sequence() ->
       sc_ws_fee_computation_deposit,
       sc_ws_fee_computation_withdrawal,
       sc_ws_fee_computation_snapshot,
-      sc_ws_fee_computation_close_mutual,
+      %sc_ws_fee_computation_close_mutual,
       sc_ws_fee_computation_close_solo,
       sc_ws_fee_computation_slash,
       sc_ws_fee_computation_settle
@@ -320,7 +320,7 @@ init_per_group(optional_fee, Config) ->
         end,
     [{fee_computation, {Opts, CheckFun}} |Config];
 init_per_group(optional_gas_price, Config) ->
-    GasPrice = aec_test_utils:min_gas_price() + 1,
+    GasPrice = aec_test_utils:min_gas_price() + 1234,
     Opts = #{gas_price => GasPrice},
     CheckFun =
         fun(SignedTx) ->
@@ -1127,7 +1127,9 @@ query_contract_(ConnPid, Pubkey, <<"json-rpc">>) ->
 sc_ws_close_mutual_(Config0) ->
     lists:foreach(
         fun(WhoCloses) ->
-            Config = sc_ws_open_(Config0),
+            Config = sc_ws_open_(Config0,
+                                 #{initiator_amount => ?ARBITRARY_BIG_FEE * 2,
+                                   responder_amount => ?ARBITRARY_BIG_FEE * 2}),
             sc_ws_close_mutual_(Config, WhoCloses)
         end,
         [initiator, responder]).
@@ -3424,6 +3426,7 @@ channel_options(IPubkey, RPubkey, IAmt, RAmt, Other, Config) ->
                     , protocol => sc_ws_protocol(Config)
                     }, Other),
         [fun maybe_add_fee/2,
+         fun maybe_add_gas_price/2,
          fun maybe_add_slogan/2
         ]).
 
@@ -3433,6 +3436,9 @@ maybe_add_slogan(Map, Config) ->
 
 maybe_add_fee(Map, Config) ->
     maybe_add_param(fee, Map, Config).
+
+maybe_add_gas_price(Map, Config) ->
+    maybe_add_param(gas_price, Map, Config).
 
 maybe_add_param(ParamName, Map, Config) ->
     case maps:find(ParamName, Map) of
