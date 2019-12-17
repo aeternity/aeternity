@@ -6,6 +6,10 @@
 
 -export([dry_run/3]).
 
+-ifdef(TEST).
+-export([dry_run/4]).
+-endif.
+
 -include("blocks.hrl").
 -include("../../aecontract/include/aecontract.hrl").
 
@@ -59,7 +63,7 @@ dry_run_res(STx, Trees, ok) ->
             CallId    = CB:call_id(CTx),
             CallObj   = lookup_call_object(Contract, CallId, Trees),
             {Type, {ok, CallObj}};
-        spend_tx ->
+        Other when Other /= paying_for_tx, Other /= ga_meta_tx, Other /= offchain_tx ->
             {Type, ok}
     end;
 dry_run_res(STx, _Trees, Err) ->

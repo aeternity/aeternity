@@ -582,8 +582,7 @@ dry_run_txs_([#{ <<"tx">> := ETx } | Txs], Acc) ->
         {ok, DTx} ->
             Tx = aetx:deserialize_from_binary(DTx),
             {Type, _} = aetx:specialize_type(Tx),
-            case lists:member(Type, [spend_tx, contract_create_tx, contract_call_tx,
-                                     ga_attach_tx]) of
+            case not lists:member(Type, [paying_for_tx, offchain_tx, ga_meta_tx]) of
                 true  -> dry_run_txs_(Txs, [{tx, Tx} | Acc]);
                 false -> {error, lists:concat(["Unsupported transaction type ", Type])}
             end;
@@ -614,10 +613,28 @@ dry_run_result(_Type, ok, Res) ->
 ok_err({error, _}) -> <<"error">>;
 ok_err(_)          -> <<"ok">>.
 
-type(spend_tx)           -> <<"spend">>;
-type(contract_create_tx) -> <<"contract_create">>;
-type(contract_call_tx)   -> <<"contract_call">>;
-type(ga_attach_tx)       -> <<"ga_attach">>.
+type(spend_tx)                  -> <<"spend">>;
+type(oracle_register_tx)        -> <<"oracle_register">>;
+type(oracle_extend_tx)          -> <<"oracle_extend">>;
+type(oracle_query_tx)           -> <<"oracle_query">>;
+type(oracle_response_tx)        -> <<"oracle_response">>;
+type(name_preclaim_tx)          -> <<"name_preclaim">>;
+type(name_claim_tx)             -> <<"name_claim">>;
+type(name_transfer_tx)          -> <<"name_transfer">>;
+type(name_update_tx)            -> <<"name_update">>;
+type(name_revoke_tx)            -> <<"name_revoke">>;
+type(contract_call_tx)          -> <<"contract_call">>;
+type(contract_create_tx)        -> <<"contract_create">>;
+type(ga_attach_tx)              -> <<"ga_attach">>;
+type(channel_create_tx)         -> <<"channel_create">>;
+type(channel_deposit_tx)        -> <<"channel_deposit">>;
+type(channel_withdraw_tx)       -> <<"channel_withdraw">>;
+type(channel_force_progress_tx) -> <<"channel_force_progress">>;
+type(channel_close_solo_tx)     -> <<"channel_close_solo">>;
+type(channel_close_mutual_tx)   -> <<"channel_close_mutual">>;
+type(channel_slash_tx)          -> <<"channel_slash">>;
+type(channel_settle_tx)         -> <<"channel_settle">>;
+type(channel_snapshot_solo_tx)  -> <<"channel_snapshot_solo">>.
 
 get_transaction(TxKey, TxStateKey) ->
     fun(_Req, State) ->
