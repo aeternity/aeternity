@@ -1754,7 +1754,7 @@ new_onchain_tx_(Mod, Opts, CurrHeight) when Mod =:= aesc_create_tx;
             apply(Mod, new, [Opts]);
         true when GasPriceSpecified -> %% both fee and gas_price are specified
             {ok, Tx1} = apply(Mod, new, [Opts]),
-            {ok, Tx2} = create_with_minimum_fee(Mod, Opts#{fee => 0},
+            {ok, Tx2} = create_with_minimum_fee(Mod, Opts#{fee => 0}, % gas_price is already in Opts
                                                 CurrHeight),
             %% use the tx with the bigger fee
             case aetx:fee(Tx1) > aetx:fee(Tx2) of
@@ -1762,7 +1762,8 @@ new_onchain_tx_(Mod, Opts, CurrHeight) when Mod =:= aesc_create_tx;
                 false -> {ok, Tx2}
             end;
         false ->
-            create_with_minimum_fee(Mod, Opts#{fee => 0}, CurrHeight)
+            create_with_minimum_fee(Mod, Opts#{fee => 0}, % if gas_price is provided in Opts, it will be used
+                                    CurrHeight)
     end.
 
 %% @doc A valid transaction fee is a function on gas required and gas price used

@@ -156,6 +156,8 @@ groups() ->
         {group, client_reconnect},
         {group, optional_fee},
         {group, optional_gas_price},
+        {group, optional_fee_higher_than_gas_price},
+        {group, optional_fee_lower_than_gas_price},
         {group, abort_updates}
       ]},
 
@@ -236,6 +238,8 @@ groups() ->
 
      {optional_fee, [sequence], fee_computation_sequence()},
      {optional_gas_price, [sequence], fee_computation_sequence()},
+     {optional_fee_higher_than_gas_price, [sequence], fee_computation_sequence()},
+     {optional_fee_lower_than_gas_price, [sequence], fee_computation_sequence()},
 
      {abort_updates, [sequence],
       [ sc_ws_abort_offchain_update
@@ -322,6 +326,37 @@ init_per_group(optional_fee, Config) ->
 init_per_group(optional_gas_price, Config) ->
     GasPrice = aec_test_utils:min_gas_price() + 1234,
     Opts = #{gas_price => GasPrice},
+    CheckFun =
+        fun(SignedTx) ->
+            Tx = aetx_sign:innermost_tx(SignedTx),
+            Version = aect_test_utils:latest_protocol_version(),
+            Height = current_height(),
+            ActualGasPrice = aetx:min_gas_price(Tx, Height, Version),
+            case ActualGasPrice =:= GasPrice of
+                true -> ok;
+                false -> error({wrong_gas_price, ActualGasPrice, GasPrice})
+            end
+        end,
+    [{fee_computation, {Opts, CheckFun}} |Config];
+init_per_group(optional_fee_higher_than_gas_price, Config) ->
+    GasPrice = aec_test_utils:min_gas_price(),
+    Fee = ?ARBITRARY_BIG_FEE * 2,
+    Opts = #{ gas_price => GasPrice
+            , fee => Fee},
+    CheckFun =
+        fun(SignedTx) ->
+            Tx = aetx_sign:innermost_tx(SignedTx),
+            ActualFee = aetx:fee(Tx),
+            case ActualFee =:= Fee of
+                true -> ok;
+                false -> error({wrong_fee, ActualFee, Fee})
+            end
+        end,
+    [{fee_computation, {Opts, CheckFun}} |Config];
+init_per_group(optional_fee_lower_than_gas_price, Config) ->
+    GasPrice = aec_test_utils:min_gas_price() + 1234,
+    Opts = #{ gas_price => GasPrice
+            , fee => 1}, % some small fee so it is being ignored in favour of gas price based computed fee
     CheckFun =
         fun(SignedTx) ->
             Tx = aetx_sign:innermost_tx(SignedTx),
@@ -3596,6 +3631,10 @@ log_basename(Config) ->
                 filename:join([Protocol, "changeable_fee"]);
             optional_gas_price ->
                 filename:join([Protocol, "changeable_fee"]);
+            optional_fee_higher_than_gas_price ->
+                filename:join([Protocol, "changeable_fee_higher_than_gas_price"]);
+            optional_fee_lower_than_gas_price ->
+                filename:join([Protocol, "changeable_fee_higher_than_gas_price"]);
             abort_updates ->
                 filename:join([Protocol, "abort_updates"]);
             plain -> Protocol
