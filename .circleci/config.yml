@@ -1516,9 +1516,8 @@ workflows:
       - osx_package:
           filters:
             branches:
-              only:
-                - /releases\/.*/
-                - *master_branch
+              ignore:
+                - system-tests
             tags:
               only: *tag_regex
 
