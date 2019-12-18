@@ -4749,7 +4749,6 @@ min_tx_fee(Tx, Opts) ->
                              aec_governance:minimum_gas_price(CurrProtocol)),
     GasPrice = maps:get(gas_price, Opts, DefaultMinGasPrice),
     FeeGas = aetx:fee_gas(Tx, CurrHeight, CurrProtocol),
-    lager:info("DOMAT GasPrice ~p, FeeGas ~p", [GasPrice, FeeGas]),
     FeeGas * GasPrice.
 
 postpone_or_error(call) -> error_all;
