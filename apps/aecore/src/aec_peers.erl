@@ -380,7 +380,7 @@ init(ok) ->
     epoch_sync:info("aec_peers started for ~p", [ppp(LocalPeer)]),
     {ok, #state{
         local_peer = LocalPeer,
-        pool = aec_peers_pool:new(),
+        pool = aec_peers_pool:new(pool_config()),
         groups = #{},
         conns = #{},
         last_connect_time = timestamp(),
@@ -1578,6 +1578,9 @@ ping_interval() ->
 unblock_interval() ->
     application:get_env(aecore, peer_unblock_interval,
                         ?DEFAULT_UNBLOCK_INTERVAL).
+
+pool_config() ->
+    application:get_env(aecore, peer_pool, []).
 
 max_inbound() ->
     aeu_env:user_config_or_env([<<"sync">>, <<"max_inbound">>],
