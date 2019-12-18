@@ -130,7 +130,7 @@
                     "type" : "boolean",
                     "default": true
                 },
-                "gossiped_peers" : {
+                "gossiped_peers_count" : {
                     "description" : "The number of peers sent in ping message",
                     "type" : "integer",
                     "minimum" : 1,
