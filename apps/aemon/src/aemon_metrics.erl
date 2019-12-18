@@ -20,7 +20,8 @@
         , chain_top_difficulty/1
         ]).
 
--define(HISTOGRAM_TIMESPAN, 60 * 60 * 1000). %% 1 hour
+-define(HISTOGRAM_TIMESPAN_LONG, 60 * 60 * 1000). %% 1 hour, 60 values for updates every 1 minute
+-define(HISTOGRAM_TIMESPAN_SHORT, 10 * 60 * 1000). %% 10 minutes, 200 values for updates every 3 seconds
 
 %% ==================================================================
 %% generic API
@@ -28,12 +29,12 @@
 %% @doc Creates a set of metrics based on the given group identifier.
 create(on_chain) ->
     create([forks, micro, count], counter),
-    create([forks, micro, height], histogram, [{time_span, ?HISTOGRAM_TIMESPAN}]),
+    create([forks, micro, height], histogram, [{time_span, ?HISTOGRAM_TIMESPAN_LONG}]),
     create([confirmation, delay], histogram),
-    create([block, propagation_time, key], histogram, [{time_span, ?HISTOGRAM_TIMESPAN}]),
-    create([block, propagation_time, micro], histogram, [{time_span, ?HISTOGRAM_TIMESPAN}]),
-    create([block, time_since_prev, key], histogram, [{time_span, ?HISTOGRAM_TIMESPAN}]),
-    create([block, time_since_prev, micro], histogram, [{time_span, ?HISTOGRAM_TIMESPAN}]),
+    create([block, propagation_time, key], histogram, [{time_span, ?HISTOGRAM_TIMESPAN_LONG}]),
+    create([block, propagation_time, micro], histogram, [{time_span, ?HISTOGRAM_TIMESPAN_SHORT}]),
+    create([block, time_since_prev, key], histogram, [{time_span, ?HISTOGRAM_TIMESPAN_LONG}]),
+    create([block, time_since_prev, micro], histogram, [{time_span, ?HISTOGRAM_TIMESPAN_SHORT}]),
     create([chain, top, difficulty], gauge),
     ok;
 create(gen_stats) ->
