@@ -1738,7 +1738,7 @@ new_onchain_tx(channel_slash_tx, Opts,
 -spec new_onchain_tx_(aesc_create_tx | aesc_withdraw_tx | aesc_deposit_tx |
                       aesc_close_solo_tx | aesc_snapshot_solo_tx |
                       aesc_slash_tx | aesc_settle_tx | aesc_close_mutual_tx,
-                      maps:map(), non_neg_integer()) -> {ok, aetx:tx()}.
+                      map(), non_neg_integer()) -> {ok, aetx:tx()}.
 new_onchain_tx_(Mod, Opts, CurrHeight) when Mod =:= aesc_create_tx;
                                             Mod =:= aesc_withdraw_tx;
                                             Mod =:= aesc_deposit_tx;
