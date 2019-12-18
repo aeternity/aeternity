@@ -361,8 +361,8 @@ new() ->
     UGroupShard = get_env(unver_group_shard, ?DEFAULT_UNVER_GROUP_SHARD),
     UMaxRef = get_env(unver_max_refs, ?DEFAULT_UNVER_MAX_REFS),
     EvictSkew = get_env(eviction_skew, ?DEFAULT_EVICTION_SKEW),
-    SelectProb = get_env(select_verif_prob, ?DEFAULT_SELECT_VERIFIED_PROB),
     DisableStrongRandom = get_env(disable_strong_random, false),
+    SelectProb = select_verified_peer_probability(),
     MaxLapse = max_update_lapse(),
     StandbyTimes = standby_times(),
     MaxRejections = max_rejections(),
@@ -1882,6 +1882,11 @@ lookup_filter(Value, FilterFun, Rem, Acc) ->
     end.
 
 %% -- Configuration ----------------------------------------------------------
+
+select_verified_peer_probability() ->
+    aeu_env:user_config_or_env([<<"sync">>, <<"peer_pool">>, <<"select_verified_peer_probability">>],
+                               aecore, [peer_pool, select_verified_peer_probability],
+                               ?DEFAULT_SELECT_VERIFIED_PROB).
 
 max_update_lapse() ->
     aeu_env:user_config_or_env([<<"sync">>, <<"peer_pool">>, <<"max_update_lapse">>],

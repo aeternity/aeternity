@@ -167,6 +167,13 @@
                     "type" : "object",
                     "additionalproperties" : false,
                     "properties" : {
+                        "select_verified_peer_probability" : {
+                            "description" : "Probability of selecting a peer from the verified pool.",
+                            "type" : "number",
+                            "minimum" : 0.0,
+                            "maximim" : 1.0,
+                            "default" : 0.5
+                        },
                         "max_update_lapse" : {
                             "description" : "Time (milliseconds) without a peer being updated after which it gets removed.",
                             "type" : "integer",

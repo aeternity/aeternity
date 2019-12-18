@@ -54,6 +54,8 @@ sync:
     log_peer_connection_count_interval: 5000
     # Peer pool
     peer_pool:
+      # Probability of selecting a peer from the verified pool
+      select_verified_peer_probability: 0.5
       # Time (milliseconds) without a peer being updated after which it gets removed
       max_update_lapse: 2592000000
       # Waiting time intervals (milliseconds) before each retry to connect to a peer. If there are more 'max_rejections' than elements in this list, the last retry time is used more than once
