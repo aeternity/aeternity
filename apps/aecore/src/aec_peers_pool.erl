@@ -149,7 +149,7 @@
 %% it is used to skew the randomly evicted peer.
 -define(DEFAULT_EVICTION_SKEW,           1.2).
 %% The default probability of selecting a peer from the verified pool.
--define(DEFAULT_SELECT_VERIFIED_PROB,    0.5).
+-define(DEFAULT_SELECT_VERIFIED_PROB,    1.0).
 %% The default time without a peer being updated after which it get removed.
 -define(DEFAULT_MAX_UPDATE_LAPSE,         30 * 24 * 50 * 60 * 1000). % 30 days
 %% The default backoff lookup table for standby duration in milliseconds.

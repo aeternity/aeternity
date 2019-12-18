@@ -172,7 +172,7 @@
                             "type" : "number",
                             "minimum" : 0.0,
                             "maximum" : 1.0,
-                            "default" : 0.5
+                            "default" : 1.0
                         },
                         "max_update_lapse" : {
                             "description" : "Time (milliseconds) without a peer being updated after which it gets removed.",
