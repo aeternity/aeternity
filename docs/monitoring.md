@@ -17,9 +17,10 @@ Monitoring uses statsd backend provided by `apps/aecore/src/aec_metrics.erl`. Se
 Each metric uses `ae.epoch.aemon.` prefix.
 
 Name                               | Type      | Description
----------------------------------- | --------- | ---
+---------------------------------- | --------- | -----------
 `confirmation.delay`               | histogram | Number of keyblock created before signing transaction
-`forks.micro`                      | counter   | Count of list microblocks i.e. microforks
+`forks.micro.count`                | counter   | Count of observed micro-forks
+`forks.micro.height`               | histogram | Height difference of observed micro-forks
 `gen_stats.microblocks.total`      | histogram | Number of microblock in generation
 `gen_stats.tx.monitoring`          | histogram | Number of monitoring transaction in generation
 `gen_stats.tx.total`               | histogram | Number of all transaction in generation
@@ -28,8 +29,13 @@ Name                               | Type      | Description
 `publisher.post_tx.nonce_too_high` | counter   | Transaction posting error:
 `publisher.post_tx.nonce_too_low`  | counter   | Transaction posting error:
 `publisher.post_tx.success`        | counter   | Successful transaction posts
-`publisher.queue.size`             | histogram | Number of transaction posted but not signed on chain
-`publisher.queue.ttl_expired`      | histogram | Number of transaction with expired ttl
+`publisher.queue.size`             | histogram | Number of transactions posted but not signed on chain
+`publisher.queue.ttl_expired`      | histogram | Number of transactions with expired ttl
+`block.propagation_time.key`       | histogram | Time until key-blocks reached this node in milliseconds
+`block.propagation_time.micro`     | histogram | Time until micro-blocks reached this node in milliseconds
+`block.time_since_prev.key`        | histogram | Time between key-blocks in milliseconds
+`block.time_since_prev.micro`      | histogram | Time between micro-blocks in milliseconds
+`chain.top.difficulty`             | gauge     | Difficulty of the top block
 
 ## How to read metrics
 
