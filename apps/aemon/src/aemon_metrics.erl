@@ -6,7 +6,7 @@
 -export([create/1]).
 
 %% specific metrics
--export([ fork_micro/0
+-export([ fork_micro/1
         , confirmation_delay/1
         , gen_stats_tx/1
         , gen_stats_tx_monitoring/1
@@ -25,7 +25,8 @@
 
 %% @doc Creates a set of metrics based on the given group identifier.
 create(on_chain) ->
-    create([forks, micro], counter),
+    create([forks, micro, count], counter),
+    create([forks, micro, height], histogram, [{time_span, 60 * 60 * 1000}]), %% keep 1 hour of data
     create([confirmation, delay], histogram),
     create([block, propagation_time, key], histogram),
     create([block, propagation_time, micro], histogram),
@@ -53,8 +54,9 @@ create(ttl) ->
 %% ==================================================================
 %% specific metrics
 
-fork_micro() ->
-    update([fork, micro], 1).
+fork_micro(Height) ->
+    ok = update([forks, micro, count], 1),
+    ok = update([forks, micro, height], Height).
 
 confirmation_delay(Count) ->
     update([confirmation, delay], Count).
@@ -101,7 +103,10 @@ chain_top_difficulty(Difficulty) ->
 %% internal functions
 
 create(Name, Type) ->
-    ok = exometer:ensure(metric(Name), Type, []).
+    create(Name, Type, []).
+
+create(Name, Type, Opts) ->
+    ok = exometer:ensure(metric(Name), Type, Opts).
 
 update(Name, Value) ->
     aec_metrics:try_update(metric(Name), Value).

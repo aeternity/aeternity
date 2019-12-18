@@ -6,7 +6,8 @@
 
 %% API
 -export([ start_link/0
-        , notify/1
+        , notify/3
+        , notify_new_block/3
         ]).
 
 %% gen_server callbacks
@@ -18,14 +19,21 @@
         , code_change/3
         ]).
 
+-record(st, { pubkey = <<>> :: binary()
+            , micro_blocks = [] :: list()
+            }).
+
 %% ==================================================================
 %% API
 
 start_link() ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
 
-notify(Height) ->
-    gen_server:cast(?MODULE, {gen, Height}).
+notify(Height, Type, Hash) ->
+    gen_server:cast(?MODULE, {gen, Height, Type, Hash}).
+
+notify_new_block(Height, Type, Hash) ->
+    gen_server:cast(?MODULE, {block, Height, Type, Hash}).
 
 %% ==================================================================
 %% gen_server callbacks
@@ -33,7 +41,7 @@ notify(Height) ->
 init(_) ->
     aemon_metrics:create(on_chain),
     PubKey = aemon_config:pubkey(),
-    {ok, PubKey}.
+    {ok, #st{pubkey = PubKey}}.
 
 terminate(_Reason, _St) ->
     ok.
@@ -44,9 +52,12 @@ code_change(_FromVsn, St, _Extra) ->
 handle_call(_Req, _From, St) ->
     {reply, {error, unknown_request}, St}.
 
-handle_cast({gen, Height}, St) ->
-    handle_gen(Height, St),
+handle_cast({gen, Height, Type, Hash}, St) ->
+    handle_complete_generation(Height, Type, Hash, St#st.pubkey),
     {noreply, St};
+handle_cast({block, Height, Type, Hash}, St) ->
+    St1 = handle_micro_fork(Height, Type, Hash, St),
+    {noreply, St1};
 handle_cast(_Msg, St) ->
     {noreply, St}.
 
@@ -56,7 +67,7 @@ handle_info(_Msg, St) ->
 %% ==================================================================
 %% internal functions
 
-handle_gen(Height, PubKey) ->
+handle_complete_generation(Height, key, _, PubKey) ->
     try
         {ok, #{micro_blocks := Blocks}} = aec_chain:get_generation_by_height(Height, forward),
         %% Calculate metrics which require the transaction as input
@@ -72,8 +83,29 @@ handle_gen(Height, PubKey) ->
         error:badarith ->
             ok; %% error on payload decode
         _:Reason ->
-            lager:error("~p handle_gen error: ~p", [?MODULE, Reason])
+            lager:error("~p handle_complete_generation error: ~p", [?MODULE, Reason])
     end.
+
+handle_micro_fork(_Height, micro, Hash, #st{micro_blocks = Blocks} = St) ->
+    St#st{micro_blocks = [Hash | Blocks]};
+handle_micro_fork(Height, key, _Hash, #st{micro_blocks = Blocks} = St) ->
+    {ok, #{micro_blocks := BlocksOnChain}} = aec_chain:get_generation_by_height(Height, forward),
+    BlocksOnChain1 = lists:map(
+                       fun(B) ->
+                               {ok, H} = aec_blocks:hash_internal_representation(B),
+                               H
+                       end, BlocksOnChain),
+    %% Check whether we have seen micro-blocks which are not part of the new generation.
+    case [B || B <- Blocks, not lists:member(B, BlocksOnChain1)] of
+        [] ->
+            %% All blocks are in the generation.
+            ok;
+        BlocksNotOnChain ->
+            lager:debug("Monitoring observed micro-fork, missing blocks in generation ~p = ~p",
+                        [Height, BlocksNotOnChain]),
+            ok = aemon_metrics:fork_micro(length(BlocksNotOnChain))
+    end,
+    St#st{micro_blocks = []}.
 
 handle_tx(Height, Tx, TxHash) ->
     %% Forward transaction hash to ttl metric worker
@@ -81,8 +113,6 @@ handle_tx(Height, Tx, TxHash) ->
     %% Update metric: transaction confirmation delay
     PayloadData = decode_payload(Tx),
     update_confirmation_delay(Height, PayloadData),
-    %% Update metric: micro fork counter
-    ok = update_forks(Height, PayloadData),
     ok.
 
 forward_ttl_gen(Height) ->
@@ -103,22 +133,3 @@ decode_payload(Tx) ->
 
 update_confirmation_delay(GenHeight, {TxHeight, _, _, _}) ->
     ok = aemon_metrics:confirmation_delay(GenHeight - TxHeight).
-
-update_forks(_, {Height, {_, KeyHash}, TopBlock, _}) ->
-    {ok, #{key_block := KeyBlock, micro_blocks := MicroBlocks}} = aec_chain:get_generation_by_height(Height, forward),
-    {ok, KeyHash} = aec_blocks:hash_internal_representation(KeyBlock),
-    case is_micro_fork(TopBlock, MicroBlocks) of
-        true ->
-            aemon_metrics:fork_micro();
-        false ->
-            ok
-    end.
-
-is_micro_fork({micro_block_hash, MicroHash}, MicroBlocks) ->
-    Hashes = lists:map(fun(Block) ->
-                               {ok, Hash} = aec_blocks:hash_internal_representation(Block),
-                               Hash
-                       end, MicroBlocks),
-    not lists:member(MicroHash, Hashes);
-is_micro_fork({key_block_hash, _}, _) ->
-    false.

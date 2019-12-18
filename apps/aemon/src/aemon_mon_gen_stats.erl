@@ -1,7 +1,8 @@
 -module(aemon_mon_gen_stats).
+
 -behaviour(gen_server).
 
--export([notify/1]).
+-export([notify/3]).
 -export([start_link/0]).
 -export([ init/1
         , handle_call/3
@@ -11,8 +12,8 @@
         , code_change/3
         ]).
 
-notify(Height) ->
-    gen_server:cast(?MODULE, {gen, Height}).
+notify(Height, Type, Hash) ->
+    gen_server:cast(?MODULE, {gen, Height, Type, Hash}).
 
 start_link() ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
@@ -33,7 +34,7 @@ code_change(_FromVsn, St, _Extra) ->
 handle_call(_Req, _From, St) ->
     {reply, {error, unknown_request}, St}.
 
-handle_cast({gen, Height}, PubKey) ->
+handle_cast({gen, Height, _Type, _Hash}, PubKey) ->
     {ok, #{micro_blocks := Blocks}} = aec_chain:get_generation_by_height(Height, forward),
     aemon_metrics:gen_stats_microblocks(erlang:length(Blocks)),
 

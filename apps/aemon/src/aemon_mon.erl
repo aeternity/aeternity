@@ -48,45 +48,46 @@ handle_cast(_Msg, St) ->
     {noreply, St}.
 
 handle_info({gproc_ps_event, top_changed,
-             #{info := #{block_type := key, block_hash := Hash, height := NewHeight}}},
+             #{info := #{block_type := Type, block_hash := Hash, height := NewHeight}}},
             St = #st{height = Height}) ->
+    %% Notify worker about new micro-block
+    ok = aemon_mon_on_chain:notify_new_block(Height, Type, Hash),
+
+    %% Notify workers about new generation
     Gens = lists:seq(Height, NewHeight-1),
-    [notify(Gen) || Gen <- Gens],
+    [ok = Worker:notify(Gen, Type, Hash) || Gen <- Gens, Worker <- ?METRIC_WORKERS],
+
+    %% Update metrics
     {ok, Block} = aec_chain:get_block(Hash),
-    update_block_propagation_time(Block),
-    update_chain_top_difficulty(Block),
-    {ok, PrevBlock} = aec_chain:get_key_block_by_height(NewHeight-1),
-    update_block_time_since_prev(key, Block, PrevBlock),
+    update_block_propagation_time(Type, Block),
+    update_chain_top_difficulty(Type, Block),
+    update_block_time_since_prev(Type, Block, NewHeight),
     {noreply, St#st{height = NewHeight}};
-handle_info({gproc_ps_event, top_changed,
-             #{info := #{block_type := micro, block_hash := Hash}}},
-            St) ->
-    {ok, Block} = aec_chain:get_block(Hash),
-    update_block_propagation_time(Block),
-    {ok, PrevBlock} = aec_chain:get_block(aec_blocks:prev_hash(Block)),
-    update_block_time_since_prev(micro, Block, PrevBlock),
-    {noreply, St};
 handle_info(_Msg, St) ->
     {noreply, St}.
 
 %% ==================================================================
 %% internal functions
 
-notify(Height) ->
-    [ok = Worker:notify(Height) || Worker <- ?METRIC_WORKERS],
-    ok.
-
-update_block_propagation_time(Block) ->
-    Type = aec_blocks:type(Block),
+update_block_propagation_time(Type, Block) ->
     Time = aec_blocks:time_in_msecs(Block),
     Now = aeu_time:now_in_msecs(),
     ok = aemon_metrics:block_propagation_time(Type, Now - Time).
 
-update_chain_top_difficulty(Block) ->
+update_chain_top_difficulty(micro, _Block) ->
+    ok;
+update_chain_top_difficulty(key, Block) ->
     N = aec_blocks:difficulty(Block),
     ok = aemon_metrics:chain_top_difficulty(N).
 
-update_block_time_since_prev(Type, Block, PrevBlock) ->
+update_block_time_since_prev(micro = Type, Block, _) ->
+    {ok, PrevBlock} = aec_chain:get_block(aec_blocks:prev_hash(Block)),
+    update_block_time_since_prev_(Type, Block, PrevBlock);
+update_block_time_since_prev(key = Type, Block, Height) ->
+    {ok, PrevBlock} = aec_chain:get_key_block_by_height(Height-1),
+    update_block_time_since_prev_(Type, Block, PrevBlock).
+
+update_block_time_since_prev_(Type, Block, PrevBlock) ->
     Time = aec_blocks:time_in_msecs(Block),
     PrevTime = aec_blocks:time_in_msecs(PrevBlock),
     ok = aemon_metrics:block_time_since_prev(Type, Time - PrevTime).

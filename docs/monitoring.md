@@ -19,7 +19,8 @@ Each metric uses `ae.epoch.aemon.` prefix.
 Name                               | Type      | Description
 ---------------------------------- | --------- | -----------
 `confirmation.delay`               | histogram | Number of keyblock created before signing transaction
-`forks.micro`                      | counter   | Count of list microblocks i.e. microforks
+`forks.micro.count`                | counter   | Count of observed micro-forks
+`forks.micro.height`               | histogram | Height difference of observed micro-forks
 `gen_stats.microblocks.total`      | histogram | Number of microblock in generation
 `gen_stats.tx.monitoring`          | histogram | Number of monitoring transaction in generation
 `gen_stats.tx.total`               | histogram | Number of all transaction in generation
