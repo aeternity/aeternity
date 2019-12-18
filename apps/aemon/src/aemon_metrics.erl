@@ -20,18 +20,20 @@
         , chain_top_difficulty/1
         ]).
 
+-define(HISTOGRAM_TIMESPAN, 60 * 60 * 1000). %% 1 hour
+
 %% ==================================================================
 %% generic API
 
 %% @doc Creates a set of metrics based on the given group identifier.
 create(on_chain) ->
     create([forks, micro, count], counter),
-    create([forks, micro, height], histogram, [{time_span, 60 * 60 * 1000}]), %% keep 1 hour of data
+    create([forks, micro, height], histogram, [{time_span, ?HISTOGRAM_TIMESPAN}]),
     create([confirmation, delay], histogram),
-    create([block, propagation_time, key], histogram),
-    create([block, propagation_time, micro], histogram),
-    create([block, time_since_prev, key], histogram),
-    create([block, time_since_prev, micro], histogram),
+    create([block, propagation_time, key], histogram, [{time_span, ?HISTOGRAM_TIMESPAN}]),
+    create([block, propagation_time, micro], histogram, [{time_span, ?HISTOGRAM_TIMESPAN}]),
+    create([block, time_since_prev, key], histogram, [{time_span, ?HISTOGRAM_TIMESPAN}]),
+    create([block, time_since_prev, micro], histogram, [{time_span, ?HISTOGRAM_TIMESPAN}]),
     create([chain, top, difficulty], gauge),
     ok;
 create(gen_stats) ->
