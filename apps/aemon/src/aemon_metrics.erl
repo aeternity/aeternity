@@ -57,8 +57,8 @@ create(ttl) ->
 %% specific metrics
 
 fork_micro(Height) ->
-    ok = update([forks, micro, count], 1),
-    ok = update([forks, micro, height], Height).
+    log_error(update([forks, micro, count], 1), "Could not update micro fork count"),
+    log_error(update([forks, micro, height], Height), "Could not update micro fork height").
 
 confirmation_delay(Count) ->
     update([confirmation, delay], Count).
@@ -108,10 +108,16 @@ create(Name, Type) ->
     create(Name, Type, []).
 
 create(Name, Type, Opts) ->
-    ok = exometer:ensure(metric(Name), Type, Opts).
+    log_error(exometer:ensure(metric(Name), Type, Opts), "Could not create metric").
 
 update(Name, Value) ->
     aec_metrics:try_update(metric(Name), Value).
 
 metric(Name) ->
     [ae, epoch, aemon | Name ].
+
+log_error(ok, _) ->
+    ok;
+log_error(Err, Msg) ->
+    lager:error(Msg ++ " with error = ~p", [Err]),
+    ok.
