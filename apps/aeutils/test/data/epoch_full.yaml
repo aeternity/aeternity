@@ -55,9 +55,9 @@ sync:
     # Peer pool
     peer_pool:
       # Probability of selecting a peer from the verified pool
-      select_verified_peer_probability: 0.5
+      select_verified_peer_probability: 1.0
       # Time (milliseconds) without a peer being updated after which it gets removed
-      max_update_lapse: 2160000000
+      max_update_lapse: 2592000000
       # Waiting time intervals (milliseconds) before each retry to connect to a peer. If there are more 'max_rejections' than elements in this list, the last retry time is used more than once
       standby_times: [5000, 15000, 30000, 60000, 120000, 300000, 600000]
       # The default maximum number of times a peer can get rejected. When reached, the peer is downgraded or removed (if not trusted)

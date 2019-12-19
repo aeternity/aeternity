@@ -172,13 +172,13 @@
                             "type" : "number",
                             "minimum" : 0.0,
                             "maximum" : 1.0,
-                            "default" : 0.5
+                            "default" : 1.0
                         },
                         "max_update_lapse" : {
                             "description" : "Time (milliseconds) without a peer being updated after which it gets removed.",
                             "type" : "integer",
                             "minimum" : 60000,
-                            "default" : 2160000000
+                            "default" : 2592000000
                         },
                         "standby_times" : {
                             "description" : "Waiting time intervals (milliseconds) before each retry to connect to a peer. If there are more 'max_rejections' than elements in this list, the last retry time is used more than once.",
