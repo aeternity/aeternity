@@ -834,7 +834,7 @@ select_order(St, both) ->
     IntProb = floor(Prob * 1000),
     {RandInt, RSt2} = randint(RSt, 1001),
     St2 = St#?ST{rand = RSt2},
-    case RandInt < IntProb of
+    case RandInt =< IntProb of
         true -> {[fun verified_select/3, fun unverified_select/3], St2};
         false -> {[fun unverified_select/3, fun verified_select/3], St2}
     end.
