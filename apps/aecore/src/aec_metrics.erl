@@ -404,7 +404,6 @@ reconnect_interval() ->
       [<<"metrics">>, <<"reconnect_interval">>],
       aecore, metrics_reconnect_interval, ?DEFAULT_RECONNECT_INTERVAL).
 
-
 %%=====================================================================
 %% Filter
 %%=====================================================================
