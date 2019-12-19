@@ -156,7 +156,7 @@
 -define(DEFAULT_STANDBY_TIMES,
         [5000, 15000, 30000, 60000, 120000, 300000, 600000]).
 %% The default maximum number of times a peer can get rejected;
-%% when reached, the peer is downgraded/removed (if not trusted).
+%% when reached, the peer is downgraded or removed (if not trusted).
 -define(DEFAULT_MAX_REJECTIONS, 7).
 
 
@@ -295,7 +295,7 @@
                 | {standby_times, [non_neg_integer()]}
                 | {max_rejections, pos_integer()}.
 
--export_type([filter_fun/0, state/0]).
+-export_type([options/0, filter_fun/0, state/0]).
 
 %=== API FUNCTIONS =============================================================
 
@@ -361,11 +361,11 @@ new(Opts) ->
     UGroupShard = get_opt(unver_group_shard, Opts, ?DEFAULT_UNVER_GROUP_SHARD),
     UMaxRef = get_opt(unver_max_refs, Opts, ?DEFAULT_UNVER_MAX_REFS),
     EvictSkew = get_opt(eviction_skew, Opts, ?DEFAULT_EVICTION_SKEW),
-    SelectProb = get_opt(select_verif_prob, Opts, ?DEFAULT_SELECT_VERIFIED_PROB),
-    MaxLapse = get_opt(max_update_lapse, Opts, ?DEFAULT_MAX_UPDATE_LAPSE),
     DisableStrongRandom = get_opt(disable_strong_random, Opts, false),
-    StandbyTimes = get_opt(standby_times, Opts, ?DEFAULT_STANDBY_TIMES),
-    MaxRejections = get_opt(max_rejections, Opts, ?DEFAULT_MAX_REJECTIONS),
+    SelectProb = get_opt(select_verif_prob, Opts, select_verified_peer_probability()),
+    MaxLapse = get_opt(max_update_lapse, Opts, max_update_lapse()),
+    StandbyTimes = get_opt(standby_times, Opts, standby_times()),
+    MaxRejections = get_opt(max_rejections, Opts, max_rejections()),
 
     ?assert(VBCount > 0),
     ?assert(VBSize > 0),
@@ -834,7 +834,7 @@ select_order(St, both) ->
     IntProb = floor(Prob * 1000),
     {RandInt, RSt2} = randint(RSt, 1001),
     St2 = St#?ST{rand = RSt2},
-    case RandInt < IntProb of
+    case RandInt =< IntProb of
         true -> {[fun verified_select/3, fun unverified_select/3], St2};
         false -> {[fun unverified_select/3, fun verified_select/3], St2}
     end.
@@ -1880,3 +1880,25 @@ lookup_filter(Value, FilterFun, Rem, Acc) ->
         true -> {Rem - 1, [Value | Acc]};
         false -> {Rem, Acc}
     end.
+
+%% -- Configuration ----------------------------------------------------------
+
+select_verified_peer_probability() ->
+    aeu_env:user_config_or_env([<<"sync">>, <<"peer_pool">>, <<"select_verified_peer_probability">>],
+                               aecore, [peer_pool, select_verified_peer_probability],
+                               ?DEFAULT_SELECT_VERIFIED_PROB).
+
+max_update_lapse() ->
+    aeu_env:user_config_or_env([<<"sync">>, <<"peer_pool">>, <<"max_update_lapse">>],
+                               aecore, [peer_pool, max_update_lapse],
+                               ?DEFAULT_MAX_UPDATE_LAPSE).
+
+standby_times() ->
+    aeu_env:user_config_or_env([<<"sync">>, <<"peer_pool">>, <<"standby_times">>],
+                               aecore, [peer_pool, standby_times],
+                               ?DEFAULT_STANDBY_TIMES).
+
+max_rejections() ->
+    aeu_env:user_config_or_env([<<"sync">>, <<"peer_pool">>, <<"max_rejections">>],
+                               aecore, [peer_pool, max_rejections],
+                               ?DEFAULT_MAX_REJECTIONS).

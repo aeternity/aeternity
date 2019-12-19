@@ -55,6 +55,8 @@
 -define(DEFAULT_FIRST_PING_TIMEOUT, 30000).
 -define(DEFAULT_NOISE_HS_TIMEOUT, 5000).
 -define(DEFAULT_CLOSE_TIMEOUT, 3000).
+%% The number of peers sent in ping message.
+-define(DEFAULT_GOSSIPED_PEERS_COUNT, 32).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -738,7 +740,7 @@ local_ping_obj(#{ kind := ConnKind, ext_sync_port := Port }) ->
        best_hash    => TopHash,
        difficulty   => Difficulty,
        sync_allowed => ConnKind =/= temporary,
-       share        => 32,  % TODO: make this configurable
+       share        => gossiped_peers_count(),
        peers        => [],
        port         => Port }.
 
@@ -1217,6 +1219,12 @@ close_timeout() ->
     aeu_env:user_config_or_env([<<"sync">>, <<"close_timeout">>],
                                aecore, sync_close_timeout,
                                ?DEFAULT_CLOSE_TIMEOUT).
+
+gossiped_peers_count() ->
+    aeu_env:user_config_or_env([<<"sync">>, <<"gossiped_peers_count">>],
+                               aecore, gossiped_peers_count,
+                               ?DEFAULT_GOSSIPED_PEERS_COUNT).
+
 %% -- Helper functions -------------------------------------------------------
 
 gossip_serialize_block(Block) ->

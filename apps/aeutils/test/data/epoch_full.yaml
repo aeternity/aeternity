@@ -42,6 +42,8 @@ sync:
     max_outbound: 10
     # If the extra outbound connections should be to nodes from different address groups (IP netmask /16)
     single_outbound_per_group: true
+    # The number of peers sent in ping message
+    gossiped_peers_count: 32
     # Maximum number of retries at resolving the host name of untrusted peers.
     resolver_max_retries: 7
     # Waiting time intervals (milliseconds) before each retry at resolving the host name of peers (both trusted and untrusted).
@@ -50,6 +52,16 @@ sync:
     gossip_allowed_height_from_top: 5
     # Time (milliseconds) between logging info about connected peers
     log_peer_connection_count_interval: 5000
+    # Peer pool
+    peer_pool:
+      # Probability of selecting a peer from the verified pool
+      select_verified_peer_probability: 0.5
+      # Time (milliseconds) without a peer being updated after which it gets removed
+      max_update_lapse: 2160000000
+      # Waiting time intervals (milliseconds) before each retry to connect to a peer. If there are more 'max_rejections' than elements in this list, the last retry time is used more than once
+      standby_times: [5000, 15000, 30000, 60000, 120000, 300000, 600000]
+      # The default maximum number of times a peer can get rejected. When reached, the peer is downgraded or removed (if not trusted)
+      max_rejections: 7
 
 mempool:
     # Number of blocks before inactive TXs are garbage collected

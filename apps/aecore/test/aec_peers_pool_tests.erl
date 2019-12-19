@@ -1387,7 +1387,7 @@ validate_counters() ->
 
     Now1 = erlang:system_time(millisecond),
 
-    {Pool2, Now2, All2, Selected2} = 
+    {Pool2, Now2, All2, Selected2} =
         lists:foldl(fun(_K, {P, N, A, S}) ->
             case {rand_int(1, 8), A, S} of
                 {1, _, _} ->

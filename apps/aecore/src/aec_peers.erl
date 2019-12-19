@@ -1579,7 +1579,6 @@ unblock_interval() ->
     application:get_env(aecore, peer_unblock_interval,
                         ?DEFAULT_UNBLOCK_INTERVAL).
 
-
 pool_config() ->
     application:get_env(aecore, peer_pool, []).
 
