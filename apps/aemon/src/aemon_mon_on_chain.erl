@@ -56,6 +56,7 @@ handle_cast({gen, Height, Type, Hash}, St) ->
     handle_complete_generation(Height, Type, Hash, St#st.pubkey),
     {noreply, St};
 handle_cast({block, Height, Type, Hash}, St) ->
+    handle_micro_block(Type, Hash),
     St1 = handle_micro_fork(Height, Type, Hash, St),
     {noreply, St1};
 handle_cast(_Msg, St) ->
@@ -103,9 +104,36 @@ handle_micro_fork(Height, key, _Hash, #st{micro_blocks = Blocks} = St) ->
         BlocksNotOnChain ->
             lager:debug("Monitoring observed micro-fork, missing blocks in generation ~p = ~p",
                         [Height, BlocksNotOnChain]),
-            ok = aemon_metrics:fork_micro(length(BlocksNotOnChain))
+            aemon_metrics:fork_micro(length(BlocksNotOnChain))
     end,
     St#st{micro_blocks = []}.
+
+handle_micro_block(key, _Hash) ->
+    ok;
+handle_micro_block(micro, Hash) ->
+    {ok, Block} = aec_chain:get_block(Hash),
+    Version = aec_blocks:version(Block),
+    Height = aec_blocks:height(Block),
+    Txs = aec_blocks:txs(Block),
+
+    %% Update metric: tx per block
+    Count = length(Txs),
+    aemon_metrics:block_tx_total(Count),
+
+    Gas = lists:foldl(
+      fun(Tx, Acc) ->
+              GasTx = aetx:gas_limit(aetx_sign:tx(Tx), Height, Version),
+
+              %% Update metric: gas per tx
+              aemon_metrics:block_gas_per_tx(GasTx),
+
+              Acc + GasTx
+      end, 0, Txs),
+
+    %% Update metric: gas per block
+    aemon_metrics:block_gas_total(Gas),
+
+    ok.
 
 handle_tx(Height, Tx, TxHash) ->
     %% Forward transaction hash to ttl metric worker
@@ -132,4 +160,4 @@ decode_payload(Tx) ->
     }.
 
 update_confirmation_delay(GenHeight, {TxHeight, _, _, _}) ->
-    ok = aemon_metrics:confirmation_delay(GenHeight - TxHeight).
+    aemon_metrics:confirmation_delay(GenHeight - TxHeight).
