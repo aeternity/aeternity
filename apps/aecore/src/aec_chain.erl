@@ -601,9 +601,10 @@ get_generation_by_hash(KeyBlockHash, Dir) ->
                 {ok, G = #{}} -> {ok, G#{ key_block => KeyBlock, dir => Dir }}
             end;
         {value, KeyBlock} when Dir == forward ->
-            case aec_chain_state:hash_is_in_main_chain(KeyBlockHash) of
-                false -> error;
-                true  -> get_generation_by_height(aec_blocks:height(KeyBlock), forward)
+            case get_generation_by_height(aec_blocks:height(KeyBlock), forward) of
+                {ok, G = #{ key_block := KeyBlock }} -> {ok, G};
+                {ok, _G}                             -> error; %% KeyBlockHash not on chain!!
+                error                                -> error
             end
     end.
 

@@ -308,9 +308,9 @@ handle_request_('GetGenerationByHash', Params, _Context) ->
     case aeser_api_encoder:safe_decode(key_block_hash, maps:get('hash', Params)) of
         {error, _} -> {400, [], #{reason => <<"Invalid hash">>}};
         {ok, Hash} ->
-            case aec_chain_state:hash_is_in_main_chain(Hash) of
-                true  -> generation_rsp(aec_chain:get_generation_by_hash(Hash, forward));
-                false -> {400, [], #{reason => <<"Hash not on main chain">>}}
+            case aec_chain:get_generation_by_hash(Hash, forward) of
+                Ok = {ok, _G} -> generation_rsp(Ok);
+                error         -> {400, [], #{reason => <<"Hash not on main chain">>}}
             end
     end;
 handle_request_('GetGenerationByHeight', Params, _Context) ->
