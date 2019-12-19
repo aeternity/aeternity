@@ -56,6 +56,7 @@
 -define(DEFAULT_NOISE_HS_TIMEOUT, 5000).
 -define(DEFAULT_CLOSE_TIMEOUT, 3000).
 %% The number of peers sent in ping message.
+-define(MAX_GOSSIPED_PEERS_COUNT, 32).
 -define(DEFAULT_GOSSIPED_PEERS_COUNT, 32).
 
 %% gen_server callbacks
@@ -715,7 +716,12 @@ decode_remote_ping(#{ genesis_hash := GHash,
                       peers        := Peers,
                       difficulty   := Difficulty,
                       sync_allowed := SyncAllowed}) ->
-    {ok, SyncAllowed, GHash, THash, Difficulty, Peers};
+    case length(Peers) of
+        N when N =< ?MAX_GOSSIPED_PEERS_COUNT ->
+            {ok, SyncAllowed, GHash, THash, Difficulty, Peers};
+        _ ->
+            {error, too_many_peers_in_ping_message}
+    end;
 decode_remote_ping(_) ->
     {error, bad_ping_message}.
 
