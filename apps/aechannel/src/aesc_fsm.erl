@@ -1636,12 +1636,16 @@ new_onchain_tx(channel_close_mutual_tx, #{ acct := From } = Opts,
     Height = aetx_env:height(OnChainEnv),
     {ok, InitCloseTx} = new_onchain_tx_(aesc_close_mutual_tx, InitialOpts0, Height),
     Fee = aetx:fee(InitCloseTx),
-    {IAmt1, RAmt1} = pay_close_mutual_fee(Fee, IAmt, RAmt),
-    {ok, CloseMutualTx} =
-        aesc_close_mutual_tx:new(InitialOpts0#{ initiator_amount_final => IAmt1
-                                              , responder_amount_final => RAmt1
-                                              , fee => Fee}),
-    {ok, CloseMutualTx, []};
+    case pay_close_mutual_fee(Fee, IAmt, RAmt) of
+        {ok, IAmt1, RAmt1} ->
+            {ok, CloseMutualTx} =
+                aesc_close_mutual_tx:new(InitialOpts0#{ initiator_amount_final => IAmt1
+                                                      , responder_amount_final => RAmt1
+                                                      , fee => Fee}),
+            {ok, CloseMutualTx, []};
+        {error, _} = Err ->
+            Err
+    end;
 new_onchain_tx(channel_deposit_tx, #{acct := FromId,
                                      amount := Amount} = Opts,
                #data{on_chain_id = ChanId, state=State},
@@ -1904,7 +1908,7 @@ fake_close_mutual_tx(Mod, Tx, D) ->
                          , acct => From }, D).
 
 new_close_mutual_tx(Opts, D) ->
-    new_onchain_tx_for_signing(channel_close_mutual_tx, Opts, D).
+    new_onchain_tx_for_signing(channel_close_mutual_tx, Opts, return, D).
 
 slash_tx_for_signing(Opts, #data{state = St} = D) ->
     {Round, SignedTx} = aesc_offchain_state:get_latest_signed_tx(St),
@@ -2086,11 +2090,11 @@ new_contract_tx_for_signing(Opts, From, #data{ state = State
 pay_close_mutual_fee(Fee, IAmt, RAmt) ->
     Ceil  = trunc(math:ceil(Fee/2)),
     Floor = trunc(math:floor(Fee/2)),
-    if (IAmt + RAmt) < Fee                    -> error(insufficient_funds);
-       (IAmt >= Ceil) andalso (RAmt >= Floor) -> {IAmt - Ceil, RAmt - Floor};
-       (RAmt >= Ceil) andalso (IAmt >= Floor) -> {IAmt - Floor, RAmt - Ceil};
-       (IAmt > RAmt)                          -> {IAmt - Fee + RAmt, 0};
-       true                                   -> {0, RAmt - Fee + IAmt}
+    if (IAmt + RAmt) < Fee                    -> {error, insufficient_funds};
+       (IAmt >= Ceil) andalso (RAmt >= Floor) -> {ok, IAmt - Ceil, RAmt - Floor};
+       (RAmt >= Ceil) andalso (IAmt >= Floor) -> {ok, IAmt - Floor, RAmt - Ceil};
+       (IAmt > RAmt)                          -> {ok, IAmt - Fee + RAmt, 0};
+       true                                   -> {ok, 0, RAmt - Fee + IAmt}
     end.
 
 my_account(#data{role = initiator, opts = #{initiator := I}}) -> I;
@@ -4363,13 +4367,18 @@ handle_call_(open, {get_contract_call, Contract, Caller, Round}, From,
         end,
     keep_state(D, [{reply, From, Response}]);
 handle_call_(open, {shutdown, XOpts}, From, D) ->
-    {ok, CloseTx, Updates, BlockHash} = close_mutual_tx_for_signing(XOpts, D),
-    case request_signing(?SHUTDOWN, CloseTx, Updates, BlockHash, D, defer) of
-        {ok, Send, D1, Actions} ->
-            %% reply before sending sig request
-            gen_statem:reply(From, ok),
-            Send(),
-            next_state(awaiting_signature, set_ongoing(D1), Actions);
+    case close_mutual_tx_for_signing(XOpts, D) of
+        {ok, CloseTx, Updates, BlockHash} ->
+            case request_signing(?SHUTDOWN, CloseTx, Updates, BlockHash, D, defer) of
+                {ok, Send, D1, Actions} ->
+                    %% reply before sending sig request
+                    gen_statem:reply(From, ok),
+                    Send(),
+                    next_state(awaiting_signature, set_ongoing(D1), Actions);
+                {error, _} = Error ->
+                    gen_statem:reply(From, Error),
+                    keep_state(D)
+            end;
         {error, _} = Error ->
             gen_statem:reply(From, Error),
             keep_state(D)
@@ -4890,7 +4899,6 @@ maybe_push_to_mempool(SignedTx, D, NextState, UpdateStateFun,
         ok ->
             next_state(NextState, UpdateStateFun(D));
         {error, _Err} ->
-            lager:error("ASDF PUSH TO CHAIN FAILED ~p", [_Err]),
             #data{op = Op} = D,
             {TxType, _Tx} = aetx:specialize_type(aetx_sign:innermost_tx(SignedTx)),
             Tag =

@@ -1622,9 +1622,9 @@ check_incorrect_mutual_close(Cfg) ->
                                                ?TIMEOUT, Debug1),
                     case Closer =:= Malicious of
                         true ->
-                            _mutual_closing = fsm_state(FsmPid, Debug);
+                            mutual_closing = fsm_state(FsmPid, Debug);
                         false ->
-                            _open = fsm_state(FsmPid, Debug)
+                            open = fsm_state(FsmPid, Debug)
                     end,
                     ok
                 end),
@@ -1668,7 +1668,10 @@ check_mutual_close_after_close_solo(Cfg) ->
     Debug = get_debug(Cfg),
     Cfg1 = set_configs([ ?SLOGAN
                        , {channel_reserver, 5000}
-                       , {push_amount, 0} ], Cfg),
+                       , {push_amount, 0}
+                       , {initiator_amount, 100000 * aec_test_utils:min_gas_price()}
+                       , {responder_amount, 100000 * aec_test_utils:min_gas_price()}
+                       ], Cfg),
     {Si, Sr, Spec} = channel_spec(Cfg1),
     SignTimeout = 2000,
     Spec1 = Spec#{
