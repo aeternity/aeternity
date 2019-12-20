@@ -713,14 +713,20 @@ handle_ping_msg(S, RemotePingObj) ->
 
 decode_remote_ping(#{ genesis_hash := GHash,
                       best_hash    := THash,
+                      share        := Share,
                       peers        := Peers,
                       difficulty   := Difficulty,
                       sync_allowed := SyncAllowed}) ->
-    case length(Peers) of
-        N when N =< ?MAX_GOSSIPED_PEERS_COUNT ->
-            {ok, SyncAllowed, GHash, THash, Difficulty, Peers};
-        _ ->
-            {error, too_many_peers_in_ping_message}
+    case length(Peers) =< Share of
+        true ->
+            case Share =< ?MAX_GOSSIPED_PEERS_COUNT of
+                true ->
+                    {ok, SyncAllowed, GHash, THash, Difficulty, Peers};
+                false ->
+                    {error, too_many_peers_in_ping_message}
+            end;
+        false ->
+            {error, bad_ping_message}
     end;
 decode_remote_ping(_) ->
     {error, bad_ping_message}.
