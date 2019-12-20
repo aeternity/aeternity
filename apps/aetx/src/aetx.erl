@@ -34,7 +34,8 @@
         , specialize_callback/1
         , update_tx/2
         , valid_at_protocol/2
-        , check_protocol/2]).
+        , check_protocol/2
+        ]).
 
 -ifdef(TEST).
 -export([tx/1]).

@@ -167,9 +167,12 @@ evaluate(_Instructions) ->
 do_eval(Instructions, Trees, TxEnv) ->
     S = aeprimop_state:new(Trees, TxEnv),
     case int_eval(Instructions, S) of
-        {ok, S1} -> {ok, S1#state.trees, S1#state.tx_env};
-        {ok, _, _} -> error(illegal_return);
-        {error, _} = Err -> Err
+        {ok, S1} ->
+            {ok, S1#state.trees, S1#state.tx_env};
+        {ok, _, _} ->
+            error(illegal_return);
+        {error, _} = Err ->
+            Err
     end.
 
 -type return_val() :: term().
@@ -1179,7 +1182,7 @@ contract_call({CallerPubKey, ContractPubkey, CallData, GasLimit, GasPrice,
     {CallerAmount, S0}  = split_payment(TotalAmount, Amount, S),
     {CallerAccount, S1} = get_account(CallerPubKey, S0),
     assert_account_balance(CallerAccount, CallerAmount),
-    assert_contract_call_version(ContractPubkey, ABIVersion, S),
+    CTVersion = assert_contract_call_version(ContractPubkey, ABIVersion, S),
     assert_contract_call_stack(CallStack, S),
     Context = aetx_env:context(S#state.tx_env),
     S2 = case Context of
@@ -1196,8 +1199,11 @@ contract_call({CallerPubKey, ContractPubkey, CallData, GasLimit, GasPrice,
     S4 = account_earn(ContractAccount, Amount, S3),
     %% Avoid writing the store back by skipping this state.
     Contract = get_contract_no_cache(ContractPubkey, S4),
-    {Call, S5} = run_contract(CallerId, Contract, GasLimit, GasPrice,
-                              CallData, Origin, Amount, CallStack, Nonce, S4),
+    ContractCall = fun() ->
+                           run_contract(CallerId, Contract, GasLimit, GasPrice,
+                                        CallData, Origin, Amount, CallStack, Nonce, S4)
+                   end,
+    {Call, S5} = timed_contract_call(contract_call, ContractCall, CallData, CTVersion),
     case aect_call:return_type(Call) of
         ok ->
             case Context of
@@ -1265,7 +1271,8 @@ ga_attach({OwnerPubkey, GasLimit, GasPrice, ABIVersion,
     {_CAccount, S3} = ensure_account(ContractPubkey, [non_payable || not Payable], S2),
     OwnerId         = aect_contracts:owner_id(Contract),
     init_contract({attach, AuthFun}, OwnerId, Code, Contract, GasLimit, GasPrice,
-                  CallData, OwnerPubkey, Fee, Nonce, RollbackS, S3).
+                  CallData, OwnerPubkey, Fee, Nonce, RollbackS, S3,
+                  ga_attach, CTVersion).
 
 ga_set_meta_res_op(OwnerPubkey, AuthData, Res) ->
     {ga_set_meta_res, {OwnerPubkey, AuthData, Res}}.
@@ -1319,14 +1326,17 @@ ga_meta({OwnerPK, AuthData, ABIVersion, GasLimit, GasPrice, Fee, InnerTx}, S) ->
     {contract, AuthContractPK} = aeser_id:specialize(AuthContract),
     AuthFunHash = aec_accounts:ga_auth_fun(Account),
 
-    assert_contract_call_version(AuthContractPK, ABIVersion, S),
+    CTVersion = assert_contract_call_version(AuthContractPK, ABIVersion, S),
     assert_auth_data_function(ABIVersion, AuthData, AuthFunHash),
     S2 = if OwnerAmount > 0 -> account_spend(Account, OwnerAmount, S1);
             true            -> S1 end,
     Contract = get_contract_no_cache(AuthContractPK, S2),
     CallerId   = aeser_id:create(account, OwnerPK),
-    {Call, S3} = run_contract(CallerId, Contract, GasLimit, GasPrice,
-                              AuthData, OwnerPK, _Amount = 0, _CallStack = [], _Nonce = 0, S2),
+    ContractCall = fun() ->
+                           run_contract(CallerId, Contract, GasLimit, GasPrice,
+                                        AuthData, OwnerPK, _Amount = 0, _CallStack = [], _Nonce = 0, S2)
+                   end,
+    {Call, S3} = timed_contract_call(ga_meta, ContractCall, AuthData, CTVersion),
     case aect_call:return_type(Call) of
         ok ->
             case decode_auth_call_result(ABIVersion, aect_call:return_value(Call)) of
@@ -1409,7 +1419,8 @@ contract_create({OwnerPubkey, Amount, Deposit, GasLimit, GasPrice,
     S4             = account_earn(CAccount, Amount, S3),
     OwnerId        = aect_contracts:owner_id(Contract),
     init_contract(contract, OwnerId, Code, Contract, GasLimit, GasPrice,
-                  CallData, OwnerPubkey, Fee, Nonce0, RollbackS, S4).
+                  CallData, OwnerPubkey, Fee, Nonce0, RollbackS, S4,
+                  contract_create, CTVersion).
 
 %%%-------------------------------------------------------------------
 
@@ -1422,11 +1433,14 @@ tx_event(Name, #state{tx_env = Env} = S) ->
 %%%-------------------------------------------------------------------
 
 init_contract(Context, OwnerId, Code, Contract, GasLimit, GasPrice, CallData,
-              OwnerPubkey, Fee, Nonce, RollbackS, S) ->
+              OwnerPubkey, Fee, Nonce, RollbackS, S, MetricType, CTVersion) ->
     {InitContract, ChainContract, S1} = prepare_init_call(Code, Contract, S),
-    {InitCall, S2} = run_contract(OwnerId, Code, InitContract, GasLimit, GasPrice,
-                                  CallData, OwnerPubkey, _InitAmount = 0,
-                                  _CallStack = [], Nonce, S1),
+    ContractCall = fun() ->
+                           run_contract(OwnerId, Code, InitContract, GasLimit, GasPrice,
+                                        CallData, OwnerPubkey, _InitAmount = 0,
+                                        _CallStack = [], Nonce, S1)
+                   end,
+    {InitCall, S2} = timed_contract_call(MetricType, ContractCall, CallData, CTVersion),
     case aect_call:return_type(InitCall) of
         error ->
             contract_call_fail(InitCall, Fee, RollbackS);
@@ -2030,7 +2044,7 @@ assert_contract_call_version(Pubkey, ABIVersion, #state{protocol = Protocol} = S
     Contract  = get_contract_without_store(Pubkey, S),
     CTVersion = #{abi := CABIVersion} = aect_contracts:ct_version(Contract),
     case aect_contracts:is_legal_version_at_protocol(call, CTVersion, Protocol) of
-        true when ABIVersion =:= CABIVersion -> ok;
+        true when ABIVersion =:= CABIVersion -> CTVersion;
         true                                 -> runtime_error(wrong_abi_version);
         false                                -> runtime_error(wrong_vm_version)
     end.
@@ -2127,3 +2141,44 @@ sanitize_error(_P, Env, Call) ->
                     aect_call:set_return_value(<<>>, Call)
             end
     end.
+
+%%%===================================================================
+%%% Metrics helper functions
+
+timed_contract_call(Type, Fun, CallData, CTVersion) ->
+    %% Execute call
+    {Time, {Call, State}} = timer:tc(Fun),
+
+    %% Spawn process to calculate and update metrics, as we don't want to block
+    %% the call logic any further.
+    spawn(fun() ->
+                  process_timed_contract_call(Time, Type, Call, CallData, State, CTVersion)
+          end),
+
+    {Call, State}.
+
+process_timed_contract_call(Time, Type, Call, CallData, State,
+                            #{vm := CtVMVsn, abi := CtABIVsn}) ->
+    ReturnType = aect_call:return_type(Call),
+    GasUsed = aect_call:gas_used(Call),
+    CallDataSize = byte_size(CallData),
+    CtPK = aect_call:contract_pubkey(Call),
+    Metrics = [ {gas_used, GasUsed}
+              , {execution_time, Time}
+              , {call_data_size, CallDataSize}
+              ],
+    Metrics1 = try
+                   Ct = aeprimop_state:get_contract_no_cache(CtPK, State),
+                   CtState = aect_contracts:state(Ct),
+                   CtStateSize = aect_contracts_store:size(CtState),
+                   [{state_size, CtStateSize} | Metrics]
+               catch
+                   error:{aeprimop_state, contract_does_not_exist} ->
+                       Metrics
+               end,
+    lists:foreach(
+     fun({M, V}) ->
+             Metric = [ae, epoch, aecore, contracts, CtABIVsn, CtVMVsn, Type, ReturnType, M],
+             aec_metrics:try_update_or_create(Metric, V)
+     end, Metrics1),
+    ok.

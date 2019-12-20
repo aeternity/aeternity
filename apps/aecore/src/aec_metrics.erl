@@ -2,8 +2,10 @@
 -behaviour(exometer_report).
 -behavior(exometer_report_logger).
 
--export([update/2,
-         try_update/2]).
+-export([ update/2
+        , try_update/2
+        , try_update_or_create/2
+        ]).
 
 %% exometer_report_logger callbacks
 -export([logger_init_input/1,
@@ -55,11 +57,23 @@ default_dests() ->
 update(Metric, Value) ->
     exometer:update(Metric, Value).
 
+update_or_create(Metric, Value) ->
+    exometer:update_or_create(Metric, Value).
+
 -spec try_update(exometer:name(), number()) -> ok | {error, not_found}.
 try_update(Metric, Value) ->
     try update(Metric, Value)
     catch
         error:_ ->
+            ok
+    end.
+
+-spec try_update_or_create(exometer:name(), number()) -> ok | {error, any()}.
+try_update_or_create(Metric, Value) ->
+    try update_or_create(Metric, Value)
+    catch
+        error:Err ->
+            lager:debug("exometer failed : ~p -> ~p", [Metric, Err]),
             ok
     end.
 

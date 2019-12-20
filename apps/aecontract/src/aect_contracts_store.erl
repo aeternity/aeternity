@@ -15,6 +15,7 @@
 -type val() :: binary().
 
 -export([ contents/1,
+          size/1,
           get/2,
           mtree/1,
           new/0,
@@ -65,6 +66,11 @@ put_map(Map, Store = #store{ cache = Cache }) ->
 -spec contents(store()) -> #{key() := val()}.
 contents(Store) ->
     subtree(<<>>, Store).
+
+-spec size(store()) -> non_neg_integer().
+size(Store) ->
+    Contents = contents(Store),
+    lists:foldl(fun(V, Acc) -> byte_size(V) + Acc end, 0, maps:values(Contents)).
 
 %% Returns a map of all the key/value pairs with the given key as a strict
 %% prefix.

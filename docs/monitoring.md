@@ -38,6 +38,7 @@ Name                               | Type      | Description
 `block.tx.total.micro`             | histogram | Number of transactions in a microblock
 `block.gas.total.micro`            | histogram | Gas used per microblock
 `block.gas.per_tx.micro`           | histogram | Gas used per transaction in a microblock
+`block.size.per_tx.micro`          | histogram | Size of transactions in a microblock in bytes
 `chain.top.difficulty`             | gauge     | Difficulty of the top block
 
 ## How to read metrics
