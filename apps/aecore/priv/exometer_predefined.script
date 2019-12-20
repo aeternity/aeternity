@@ -1,29 +1,40 @@
 %% -*- erlang-indent-level: 4; indent-tabs-mode: nil -*-
 %%
-%% Predefined metrics for the aecore app
+%% Predefined metrics for the aecore app.
 %% Note that exometer entries can be added dynamically as well.
 %% See the docs at https://github.com/Feuerlabs/exometer_core
-%% for information about how to create, update and read metrics
-[
- {[ae,epoch,aecore,mining,blocks_mined]      , counter     , []},
- {[ae,epoch,aecore,mining,retries]           , counter     , []},
- {[ae,epoch,aecore,mining,interval]          , histogram   , []},
- {[ae,epoch,aecore,chain,height]             , gauge       , []},
- {[ae,epoch,aecore,chain,top_change,interval], histogram   , []},
- {[ae,epoch,aecore,peers,count]              , gauge       , []},
- {[ae,epoch,aecore,peers,inbound]            , gauge       , []},
- {[ae,epoch,aecore,peers,outbound]           , gauge       , []},
- {[ae,epoch,aecore,peers,verified]           , gauge       , []},
- {[ae,epoch,aecore,peers,unverified]         , gauge       , []},
- {[ae,epoch,aecore,peers,blocked]            , gauge       , []},
- {[ae,epoch,aecore,peers,errored]            , gauge       , []},
- {[ae,epoch,aecore,peers,ping,success]       , counter     , []},
- {[ae,epoch,aecore,peers,ping,failure]       , counter     , []},
- {[ae,epoch,aecore,tx_pool,push]             , counter     , []},
- {[ae,epoch,aecore,tx_pool,push,illegal]     , counter     , []},
- {[ae,epoch,aecore,tx_pool,push,error]       , counter     , []},
- {[ae,epoch,aecore,tx_pool,push,ignore]      , counter     , []},
- {[ae,epoch,aecore,tx_pool,gced]             , counter     , []},
- {[ae,epoch,aecore,tx_pool,origin_gced]      , counter     , []},
- {[ae,epoch,aecore,sync,progress]            , gauge       , []}
+%% for information about how to create, update and read metrics.
+[ {[ae,epoch,aecore,chain,height]                      , gauge       , []}
+, {[ae,epoch,aecore,chain,top_change,interval]         , histogram   , []}
+, {[ae,epoch,aecore,mining,blocks_mined]               , counter     , []}
+, {[ae,epoch,aecore,mining,interval]                   , histogram   , []}
+, {[ae,epoch,aecore,mining,retries]                    , counter     , []}
+, {[ae,epoch,aecore,peers,blocked]                     , gauge       , []}
+, {[ae,epoch,aecore,peers,count]                       , gauge       , []}
+, {[ae,epoch,aecore,peers,errored]                     , gauge       , []}
+, {[ae,epoch,aecore,peers,inbound]                     , gauge       , []}
+, {[ae,epoch,aecore,peers,outbound]                    , gauge       , []}
+, {[ae,epoch,aecore,peers,ping,failure]                , counter     , []}
+, {[ae,epoch,aecore,peers,ping,success]                , counter     , []}
+, {[ae,epoch,aecore,peers,unverified]                  , gauge       , []}
+, {[ae,epoch,aecore,peers,verified]                    , gauge       , []}
+, {[ae,epoch,aecore,sync,progress]                     , gauge       , []}
+, {[ae,epoch,aecore,tx_pool,gced]                      , counter     , []}
+, {[ae,epoch,aecore,tx_pool,origin_gced]               , counter     , []}
+, {[ae,epoch,aecore,tx_pool,push,error]                , counter     , []}
+, {[ae,epoch,aecore,tx_pool,push,ignore]               , counter     , []}
+, {[ae,epoch,aecore,tx_pool,push,illegal]              , counter     , []}
+, {[ae,epoch,aecore,tx_pool,push]                      , counter     , []}
+
+%% The execution time metrics are captured in micro-seconds.
+
+%% Keep 10 minutes of data, ~= 200 values, with a new micro-block every 3 seconds.
+, {[ae,epoch,aecore,blocks,micro,txs_execution_time,success]    , histogram , [{time_span, 10 * 60 * 1000}]}
+, {[ae,epoch,aecore,blocks,micro,txs_execution_time,error]      , histogram , [{time_span, 10 * 60 * 1000}]}
+, {[ae,epoch,aecore,blocks,micro,insert_execution_time,success] , histogram , [{time_span, 10 * 60 * 1000}]}
+, {[ae,epoch,aecore,blocks,micro,insert_execution_time,error]   , histogram , [{time_span, 10 * 60 * 1000}]}
+
+%% Keep 4 hours of data, ~= 120 values, with a new key-block every 2 minutes.
+, {[ae,epoch,aecore,blocks,key,insert_execution_time,success]   , histogram , [{time_span, 4 * 60 * 60 * 1000}]}
+, {[ae,epoch,aecore,blocks,key,insert_execution_time,error]     , histogram , [{time_span, 4 * 60 * 60 * 1000}]}
 ].

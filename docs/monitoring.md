@@ -21,9 +21,9 @@ Name                               | Type      | Description
 `confirmation.delay`               | histogram | Number of keyblock created before signing transaction
 `forks.micro.count`                | counter   | Count of observed micro-forks
 `forks.micro.height`               | histogram | Height difference of observed micro-forks
-`gen_stats.microblocks.total`      | histogram | Number of microblock in generation
-`gen_stats.tx.monitoring`          | histogram | Number of monitoring transaction in generation
-`gen_stats.tx.total`               | histogram | Number of all transaction in generation
+`gen_stats.microblocks.total`      | histogram | Number of microblocks in a generation
+`gen_stats.tx.monitoring`          | histogram | Number of monitoring transactions in a generation
+`gen_stats.tx.total`               | histogram | Number of transactions in a generation
 `publisher.balance`                | gauge     | Publisher balance
 `publisher.post_tx.max_adjustment` | counter   | Transaction posting error:
 `publisher.post_tx.nonce_too_high` | counter   | Transaction posting error:
@@ -35,6 +35,9 @@ Name                               | Type      | Description
 `block.propagation_time.micro`     | histogram | Time until micro-blocks reached this node in milliseconds
 `block.time_since_prev.key`        | histogram | Time between key-blocks in milliseconds
 `block.time_since_prev.micro`      | histogram | Time between micro-blocks in milliseconds
+`block.tx.total.micro`             | histogram | Number of transactions in a microblock
+`block.gas.total.micro`            | histogram | Gas used per microblock
+`block.gas.per_tx.micro`           | histogram | Gas used per transaction in a microblock
 `chain.top.difficulty`             | gauge     | Difficulty of the top block
 
 ## How to read metrics

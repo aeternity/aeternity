@@ -141,9 +141,15 @@ insert_block(Block, _Origin) ->
 do_insert_block(Block, Origin) ->
     aec_blocks:assert_block(Block),
     Node = wrap_block(Block),
-    try internal_insert(Node, Block, Origin)
-    catch throw:?internal_error(What) -> {error, What}
-    end.
+    {Time, Res} = timer:tc(fun() -> internal_insert(Node, Block, Origin) end),
+    Type = node_type(Node),
+    case Res of
+        {error, _} ->
+            aec_metrics:try_update([ae, epoch, aecore, blocks, Type, insert_execution_time, error], Time);
+        _Ok ->
+            aec_metrics:try_update([ae, epoch, aecore, blocks, Type, insert_execution_time, success], Time)
+    end,
+    Res.
 
 -spec hash_is_connected_to_genesis(binary()) -> boolean().
 hash_is_connected_to_genesis(Hash) ->
@@ -426,18 +432,19 @@ internal_insert(Node, Block, Origin) ->
             %% Only add the block if we can do the whole
             %% transitive operation (i.e., calculate all the state
             %% trees, and update the pointers)
-            Fun = fun() -> internal_insert_transaction(Node, Block, Origin)
+            Fun = fun() ->
+                          internal_insert_transaction(Node, Block, Origin)
                   end,
             try
                 aec_db:ensure_transaction(Fun)
             catch
                 exit:{aborted, {throw, ?internal_error(What)}} ->
-                    internal_error(What)
+                    {error, What}
             end;
         {ok, Node} ->
             {error, already_in_db};
         {ok, Old} ->
-            internal_error({same_key_different_content, Node, Old})
+            {error, {same_key_different_content, Node, Old}}
     end.
 
 internal_insert_transaction(Node, Block, Origin) ->
@@ -965,8 +972,9 @@ apply_micro_block_transactions(Node, FeesIn, Trees) ->
     KeyHeader = db_get_header(prev_key_hash(Node)),
     Env = aetx_env:tx_env_from_key_header(KeyHeader, prev_key_hash(Node),
                                           node_time(Node), prev_hash(Node)),
-    case aec_block_micro_candidate:apply_block_txs_strict(Txs, Trees, Env) of
-        {ok, _, NewTrees, Events} ->
+    case timer:tc(aec_block_micro_candidate, apply_block_txs_strict, [Txs, Trees, Env]) of
+        {Time, {ok, _, NewTrees, Events}} ->
+            aec_metrics:try_update([ae, epoch, aecore, blocks, micro, txs_execution_time, success], Time),
             if map_size(Events) > 0 -> lager:debug("tx_events = ~p", [Events]);
                true -> ok
             end,
@@ -976,7 +984,9 @@ apply_micro_block_transactions(Node, FeesIn, Trees) ->
                                   AccFee + Fee
                           end, FeesIn, Txs),
             {NewTrees, TotalFees, Events};
-        {error,_What} -> internal_error(invalid_transactions_in_block)
+        {Time, {error,_What}} ->
+            aec_metrics:try_update([ae, epoch, aecore, blocks, micro, txs_execution_time, error], Time),
+            internal_error(invalid_transactions_in_block)
     end.
 
 find_fork_point(Hash1, Hash2) ->

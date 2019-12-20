@@ -16,7 +16,7 @@
         , code_change/3
         ]).
 
--record(st, {height = 0 :: non_neg_integer() }).
+-record(st, {height = 0 :: non_neg_integer()}).
 
 -define(METRIC_WORKERS, [aemon_mon_on_chain, aemon_mon_gen_stats]).
 
