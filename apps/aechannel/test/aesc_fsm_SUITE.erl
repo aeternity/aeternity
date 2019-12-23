@@ -1666,19 +1666,20 @@ check_mutual_close_with_wrong_amounts(Cfg) ->
 
 check_mutual_close_after_close_solo(Cfg) ->
     Debug = get_debug(Cfg),
+    StartAmt = 100000 * 3 * aec_test_utils:min_gas_price(),
     Cfg1 = set_configs([ ?SLOGAN
                        , {channel_reserver, 5000}
                        , {push_amount, 0}
-                       , {initiator_amount, 100000 * aec_test_utils:min_gas_price()}
-                       , {responder_amount, 100000 * aec_test_utils:min_gas_price()}
+                       , {initiator_amount, StartAmt}
+                       , {responder_amount, StartAmt}
                        ], Cfg),
     {Si, Sr, Spec} = channel_spec(Cfg1),
-    SignTimeout = 2000,
+    MutualCloseTimeout = 2000,
+    SignTimeout = 2 * MutualCloseTimeout,
     Spec1 = Spec#{
         timeouts => #{
-            idle => 20000,
             sign => SignTimeout,
-            accept => 1000
+            accept => MutualCloseTimeout
         }
     },
     Port = proplists:get_value(port, Cfg, 9325),
