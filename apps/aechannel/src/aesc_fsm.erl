@@ -3634,10 +3634,8 @@ next_state(St, D) -> next_state(St, D, []).
 next_state(St, D, Opts) ->
     {next_state, St, cur_st(St, D), [timer_for_state(St, D)|Opts]}.
 
--spec keep_state(#data{}) -> keep_fsm_state().
 keep_state(D) -> keep_state(D, []).
 
--spec keep_state(#data{}, list()) -> keep_fsm_state().
 keep_state(D, Opts) ->
     {keep_state, D, [timer_for_state(D)|Opts]}.
 
@@ -4849,14 +4847,9 @@ push_to_mempool(SignedTx) ->
             {error, Reason}
     end.
 
--spec maybe_push_to_mempool(aetx_sign:signed_tx(), #data{}, atom()) ->
-    keep_fsm_state() | next_fsm_state().
 maybe_push_to_mempool(SignedTx, D, NextState) ->
     maybe_push_to_mempool(SignedTx, D, NextState, fun(D0) -> D0 end).
 
--spec maybe_push_to_mempool(aetx_sign:signed_tx(), #data{}, atom(),
-                            fun((#data{}) -> #data{})) ->
-    keep_fsm_state() | next_fsm_state().
 maybe_push_to_mempool(SignedTx, D, NextState, UpdateStateFun) ->
     maybe_push_to_mempool(SignedTx, D, NextState, UpdateStateFun, open).
 
