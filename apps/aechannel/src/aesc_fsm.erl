@@ -2714,9 +2714,6 @@ check_shutdown_msg(#{ channel_id := ChanId
         {error, invalid_shutdown}
     end.
 
--spec shutdown_tx_checks(aetx_sign:signed_tx(), binary(),
-                         other_participant | both, #data{}) -> 
-      [fun(() -> 'ok' | {error, atom()})].
 shutdown_tx_checks(SignedTx, BlockHash, WhoSignedIt, D) ->
     Updates = [],
     [ fun() -> check_block_hash(BlockHash, D) end,
