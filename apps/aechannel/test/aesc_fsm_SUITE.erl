@@ -1622,10 +1622,12 @@ check_incorrect_mutual_close(Cfg) ->
                                                ?TIMEOUT, Debug1),
                     case Closer =:= Malicious of
                         true ->
-                            mutual_closing = fsm_state(FsmPid, Debug);
+                            {ok, _} = receive_from_fsm(conflict, Who, any_msg(),
+                                                      ?TIMEOUT, Debug1);
                         false ->
-                            open = fsm_state(FsmPid, Debug)
+                            pass
                     end,
+                    open = fsm_state(FsmPid, Debug),
                     ok
                 end),
             bump_idx(),

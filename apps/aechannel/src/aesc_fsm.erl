@@ -925,31 +925,7 @@ channel_closed(Type, Msg, D) ->
 mutual_closed(enter, _, D) ->
     keep_state(enter_closing(D));
 mutual_closed(cast, {?SHUTDOWN_ERR, Msg}, D) ->
-    case check_shutdown_err_msg(Msg, D) of
-        {ok, _ErrorCode, D1} ->
-            report(conflict, Msg, D1),
-            next_state(open, D1);
-        {error, tx_not_found} -> %% tx had not been posted on-chain
-            #data{op = #op_close{data = #op_data{ signed_tx = SignedTx
-                                                , block_hash = BlockHash}} } = D,
-            case aeu_validation:run(shutdown_tx_checks(SignedTx, BlockHash,
-                                                       both, D)) of
-                ok ->
-                    case push_to_mempool(SignedTx) of
-                        ok -> %% tx is ok, wait for it on-chain
-                            keep_state(log(rcv, ?SHUTDOWN_ERR, Msg, D));
-                        {error, _Err} ->
-                            report(conflict, Msg, D),
-                            next_state(open, D)
-                    end;
-                {error, _} ->
-                    report(conflict, Msg, D),
-                    next_state(open, D)
-            end;
-        {error, Error} ->
-            report_with_notice(conflict, Msg, Error, D),
-            keep_state(log(rcv, ?SHUTDOWN_ERR, Msg, D))
-    end;
+    mutual_close_error(Msg, D);
 mutual_closed(timeout, _Msg, D) ->
     close(timeout, D);
 mutual_closed(Type, Msg, D) ->
@@ -1088,19 +1064,7 @@ mutual_closing(cast, {?SHUTDOWN_ERR, #{error_code := ?ERR_ONCHAIN_REJECTED} = _M
                               , respond => false}, D1);
 mutual_closing(cast, {?SHUTDOWN_ERR, Msg}, D) ->
     lager:debug("received ?SHUTDOWN_ERR in mutual_closing: ~p", [Msg]),
-    case check_shutdown_err_msg(Msg, D) of
-        {ok, ?ERR_CONFLICT, D1} ->
-            lager:debug("conflict signaled", []),
-            report(conflict, Msg, D1),
-            next_state(open, D1);
-        {ok, ErrorCode, D1} ->
-            %% TODO: send a different kind of report (e.g. validation error)
-            report(conflict, Msg, D1),
-            next_state(open, D1);
-        {error, _} = Error ->
-            lager:debug("unknown error ~p", [Error]),
-            close(Error, D)
-    end;
+    mutual_close_error(Msg, D);
 mutual_closing(cast, {?SHUTDOWN_ACK, Msg}, D) ->
     case check_shutdown_ack_msg(Msg, D) of
         {ok, SignedTx, Updates, BlockHash, D1} ->
@@ -2317,8 +2281,8 @@ check_update_err_msg(Msg, D) ->
 check_shutdown_err_msg(#{ channel_id := ChanId } = Msg,
                        #data{ on_chain_id = ChanId
                             , op = Op } = D) ->
-    case Op of
-        #op_close{data = #op_data{signed_tx = SignedTx}} ->
+    Process =
+        fun(SignedTx) ->
             TxHash = aetx_sign:hash(SignedTx),
             case aec_chain:find_tx_location(TxHash) of
                 Block when is_binary(Block) ->
@@ -2333,7 +2297,13 @@ check_shutdown_err_msg(#{ channel_id := ChanId } = Msg,
                 none ->
                     lager:debug("Tx location: 'none', i.e. it has been rejected. Accept error msg", []),
                     check_op_error_msg(?SHUTDOWN_ERR, Msg, D)
-            end;
+            end
+        end,
+    case Op of
+        #op_close{data = #op_data{signed_tx = SignedTx}} ->
+            Process(SignedTx);
+        #op_ack{tag  = shutdown, data = #op_data{signed_tx = SignedTx}} ->
+            Process(SignedTx);
         _ ->
             check_op_error_msg(?SHUTDOWN_ERR, Msg, D)
     end;
@@ -4938,4 +4908,42 @@ onchain_error_msg_by_next_state(SignedTx, NextState) ->
 is_mutual_tx(SignedTx) ->
     {Mod, _Tx} = aetx:specialize_callback(aetx_sign:innermost_tx(SignedTx)),
     not lists:member(Mod, ?SOLO_TRANSACTIONS).
+
+mutual_close_error(Msg, D) ->
+    case check_shutdown_err_msg(Msg, D) of
+        {ok, _ErrorCode, D1} ->
+            report(conflict, Msg, D1),
+            next_state(open, D1);
+        {error, tx_not_found} -> %% tx had not been posted on-chain
+            #data{op = Op} = D,
+            {SignedTx, BlockHash} =
+                case Op of
+                    #op_close{data = #op_data{ signed_tx = STx
+                                             , block_hash = BH}} ->
+                        {STx, BH};
+                    #op_ack{ data = #op_data{ signed_tx = STx
+                                            , block_hash = BH}
+                           , tag = shutdown} ->
+                        {STx, BH}
+                end,
+            case aeu_validation:run(shutdown_tx_checks(SignedTx, BlockHash,
+                                                       both, D)) of
+                ok ->
+                    case push_to_mempool(SignedTx) of
+                        ok -> %% tx is ok, wait for it on-chain
+                            keep_state(log(rcv, ?SHUTDOWN_ERR, Msg, D));
+                        {error, _Err} ->
+                            lager:info("ASDF ERR ~p", [_Err]),
+                            report(conflict, Msg, D),
+                            next_state(open, D)
+                    end;
+                {error, _Err} ->
+                    lager:info("ASDF ERR2 ~p", [_Err]),
+                    report(conflict, Msg, D),
+                    next_state(open, D)
+            end;
+        {error, Error} ->
+            report_with_notice(conflict, Msg, Error, D),
+            keep_state(log(rcv, ?SHUTDOWN_ERR, Msg, D))
+    end.
 
