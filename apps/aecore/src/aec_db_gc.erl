@@ -45,8 +45,14 @@
 
 -include_lib("aecore/include/aec_db.hrl").
 
--define(DEFAULT_INTERVAL, 50000).
 -define(DEFAULT_HISTORY, 500).
+-define(DEFAULT_INTERVAL, 50000).
+
+%% interval from config +- random offset to avoid situation where large
+%% majority of nodes become unresponsive due to node restart invoked by GC
+-define(INTERVAL_VARIANCE_PERCENT, 10).
+%-define(INTERVAL_VARIANCE, true). % comment this out for development only!
+
 -define(GCED_TABLE_NAME, aec_account_state_gced).
 -define(TABLE_NAME, aec_account_state).
 
@@ -92,14 +98,16 @@ stop() ->
 %% Change of configuration parameters requires restart of the node.
 init([Enabled, Interval, History])
   when is_integer(Interval), Interval > 0, is_integer(History), History > 0 ->
-    if Enabled ->
-            aec_events:subscribe(top_changed),
-            aec_events:subscribe(chain_sync);
-       true ->
-            ok
-    end,
+    Interval1 =
+        if Enabled ->
+                aec_events:subscribe(top_changed),
+                aec_events:subscribe(chain_sync),
+                interval(Interval);
+           true ->
+                Interval
+        end,
     Data = #data{enabled  = Enabled,
-                 interval = Interval,
+                 interval = Interval1,
                  history  = History,
                  synced   = false,
                  height   = undefined,
@@ -284,6 +292,22 @@ store_unseen_hash(Hash, Node, Tab) ->
         [_] -> stop;
         []  -> store_hash(Hash, Node, Tab)
     end.
+
+
+-ifdef(EUNIT).
+interval(ConfigInterval) -> ConfigInterval.
+-else.
+
+-ifdef(INTERVAL_VARIANCE).
+interval(ConfigInterval) ->
+    Variance = trunc(ConfigInterval * ?INTERVAL_VARIANCE_PERCENT / 100.0),
+    Delta    = rand:uniform(Variance) - (Variance div 2),
+    max(3, ConfigInterval + Delta).
+-else.
+interval(ConfigInterval) -> ConfigInterval.
+-endif.
+
+-endif. %% ifdef EUNIT
 
 config() ->
     maps:from_list(
