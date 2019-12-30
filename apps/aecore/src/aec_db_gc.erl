@@ -118,7 +118,7 @@ init([Enabled, Interval, History])
 %% once the chain is synced, there's no way to "unsync"
 handle_event(info, {_, chain_sync, #{info := {chain_sync_done, _}}}, idle,
              #data{enabled = true} = Data) ->
-    aec_events:unsubscribe(chain_sync),
+    catch aec_events:unsubscribe(chain_sync),
     {keep_state, Data#data{synced = true}};
 
 %% starting collection when the *interval* matches, and don't have a GC state (hashes = undefined)
@@ -169,7 +169,7 @@ handle_event({call, _From}, maybe_garbage_collect, ready,
         key ->
             Height  = aec_headers:height(Header),
             {ok, _} = range_collect_reachable_hashes(Height, Data),
-            %% we exit here si GCEd table is swapped at startup
+            %% we exit here as GCEd table is swapped at startup
             store_cache_and_restart(Hashes, ?GCED_TABLE_NAME);
         micro ->
             {keep_state, Data}
@@ -237,7 +237,7 @@ iter(Fun, mnesia, Tab) ->
     mnesia:foldl(fun (X, ok) -> Fun(element(2, X), element(3, X)), ok end, ok, Tab).
 
 
-do_write_nodes(SrcMod, SrcTab, TgtTab) ->
+write_nodes(SrcMod, SrcTab, TgtTab) ->
     ?TIMED(aec_db:ensure_transaction(
              fun () ->
                      iter(fun (Hash, Node) ->
@@ -248,7 +248,7 @@ do_write_nodes(SrcMod, SrcTab, TgtTab) ->
 store_cache(SrcHashes, TgtTab) ->
     NodesCount = ets:info(SrcHashes, size),
     ?LOG("Writing ~p reachable account nodes to table ~p ...", [NodesCount, TgtTab]),
-    {WriteTime, ok} = do_write_nodes(ets, SrcHashes, TgtTab),
+    {WriteTime, ok} = write_nodes(ets, SrcHashes, TgtTab),
     ?LOG("Writing reachable account nodes took ~p seconds", [WriteTime / 1000000]),
     DBCount = length(mnesia:dirty_select(TgtTab, [{'_', [], [1]}])),
     ?LOG("GC cache has ~p aec_account_state records", [DBCount]),
@@ -257,27 +257,33 @@ store_cache(SrcHashes, TgtTab) ->
 maybe_swap_nodes(SrcTab, TgtTab) ->
     try mnesia:dirty_first(SrcTab) of % table exists
         H when is_binary(H) ->        % and is non empty
-            ?LOG("Clearing table ~p ...", [TgtTab]),
-            {atomic, ok} = mnesia:clear_table(TgtTab),
-            ?LOG("Writing garbage collected accounts ..."),
-            {WriteTime, ok} = do_write_nodes(mnesia, SrcTab, TgtTab),
-            ?LOG("Writing garbage collected accounts took ~p seconds", [WriteTime / 1000000]),
-            DBCount = length(mnesia:dirty_select(TgtTab, [{'_', [], [1]}])),
-            ?LOG("DB has ~p aec_account_state records", [DBCount]),
-            ?LOG("Removing garbage collected table ~p ...", [?GCED_TABLE_NAME]),
-            mnesia:delete_table(?GCED_TABLE_NAME),
-            ok;
+            swap_nodes(SrcTab, TgtTab);
         '$end_of_table' ->
-            ok
+            mnesia:delete_table(SrcTab)
     catch
         exit:{aborted,{no_exists,[_]}} ->
             ok
     end.
 
+swap_nodes(SrcTab, TgtTab) ->
+    ?LOG("Clearing table ~p ...", [TgtTab]),
+    {atomic, ok} = mnesia:clear_table(TgtTab),
+    ?LOG("Writing garbage collected accounts ..."),
+    {WriteTime, ok} = write_nodes(mnesia, SrcTab, TgtTab),
+    ?LOG("Writing garbage collected accounts took ~p seconds", [WriteTime / 1000000]),
+    DBCount = length(mnesia:dirty_select(TgtTab, [{'_', [], [1]}])),
+    ?LOG("DB has ~p aec_account_state records", [DBCount]),
+    ?LOG("Removing garbage collected table ~p ...", [SrcTab]),
+    mnesia:delete_table(SrcTab),
+    ok.
+
 -spec get_mpt(non_neg_integer()) -> aeu_mp_trees:tree().
 get_mpt(Height) ->
-    {ok, Hash0} = aec_chain_state:get_key_block_hash_at_height(Height),
-    {ok, Trees} = aec_chain:get_block_state(Hash0),
+    {ok, Hash} = aec_chain_state:get_key_block_hash_at_height(Height),
+    get_mpt_from_hash(Hash).
+
+get_mpt_from_hash(Hash) ->
+    {ok, Trees} = aec_chain:get_block_state(Hash),
     AccountTree = aec_trees:accounts(Trees),
     {ok, RootHash} = aec_accounts_trees:root_hash(AccountTree),
     {ok, DB}       = aec_accounts_trees:db(AccountTree),
