@@ -140,9 +140,16 @@ handle_event(info, {'ETS-TRANSFER', Hashes, _, {{FromHeight, ToHeight}, Time}}, 
 %% synchronized with Merkle-Patricia Trie on disk keeping the latest changes in accounts
 handle_event(info, {_, top_changed, #{info := #{block_type := key, height := Height}}}, ready,
              #data{enabled = true, synced = true, height = LastHeight, hashes = Hashes} = Data)
-  when is_reference(Hashes), Height > LastHeight ->
-    {ok, _} = range_collect_reachable_hashes(Height, Data),
-    {keep_state, Data#data{height = Height}};
+  when is_reference(Hashes) ->
+    if Height > LastHeight ->
+            {ok, _} = range_collect_reachable_hashes(Height, Data),
+            {keep_state, Data#data{height = Height}};
+       true ->
+            %% in case previous key block was a fork, we can receive top_changed event
+            %% with the same or lower height as seen last time
+            {ok, _} = collect_reachable_hashes_delta(Height, Hashes),
+            {keep_state, Data}
+    end;
 
 %% with valid GC state, if we are on key block boundary, we can
 %% clear the table and insert reachable hashes back
