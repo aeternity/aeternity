@@ -1236,7 +1236,7 @@ gossiped_peers_count() ->
                                aecore, gossiped_peers_count,
                                ?DEFAULT_GOSSIPED_PEERS_COUNT).
 
-max_gossipep_peers_count() ->
+max_gossiped_peers_count() ->
     {ok, Max} = aeu_env:schema([<<"sync">>, <<"properties">>,
                                 <<"gossiped_peers_count">>, <<"maximum">>]),
     Max.
