@@ -718,7 +718,7 @@ decode_remote_ping(#{ genesis_hash := GHash,
                       sync_allowed := SyncAllowed}) ->
     case length(Peers) =< Share of
         true ->
-            case Share =< max_gossipep_peers_count() of
+            case Share =< max_gossiped_peers_count() of
                 true ->
                     {ok, SyncAllowed, GHash, THash, Difficulty, Peers};
                 false ->
