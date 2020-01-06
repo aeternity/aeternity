@@ -56,7 +56,6 @@
 -define(DEFAULT_NOISE_HS_TIMEOUT, 5000).
 -define(DEFAULT_CLOSE_TIMEOUT, 3000).
 %% The number of peers sent in ping message.
--define(MAX_GOSSIPED_PEERS_COUNT, 32).
 -define(DEFAULT_GOSSIPED_PEERS_COUNT, 32).
 
 %% gen_server callbacks
@@ -719,7 +718,7 @@ decode_remote_ping(#{ genesis_hash := GHash,
                       sync_allowed := SyncAllowed}) ->
     case length(Peers) =< Share of
         true ->
-            case Share =< ?MAX_GOSSIPED_PEERS_COUNT of
+            case Share =< max_gossipep_peers_count() of
                 true ->
                     {ok, SyncAllowed, GHash, THash, Difficulty, Peers};
                 false ->
@@ -1236,6 +1235,11 @@ gossiped_peers_count() ->
     aeu_env:user_config_or_env([<<"sync">>, <<"gossiped_peers_count">>],
                                aecore, gossiped_peers_count,
                                ?DEFAULT_GOSSIPED_PEERS_COUNT).
+
+max_gossipep_peers_count() ->
+    {ok, Max} = aeu_env:schema([<<"sync">>, <<"properties">>,
+                                <<"gossiped_peers_count">>, <<"maximum">>]),
+    Max.
 
 %% -- Helper functions -------------------------------------------------------
 
