@@ -356,10 +356,11 @@ signing_response(Fsm, Tag, {error, Code}) ->
 signing_response(Fsm, Tag, SignedTx) ->
     gen_statem:cast(Fsm, {?SIGNED, Tag, SignedTx}).
 
-error_code_to_msg(?ERR_VALIDATION) -> <<"validation error">>;
-error_code_to_msg(?ERR_CONFLICT  ) -> <<"conflict">>;
-error_code_to_msg(?ERR_TIMEOUT   ) -> <<"timeout">>;
-error_code_to_msg(?ERR_ABORT     ) -> <<"abort">>;
+error_code_to_msg(?ERR_VALIDATION       ) -> <<"validation error">>;
+error_code_to_msg(?ERR_CONFLICT         ) -> <<"conflict">>;
+error_code_to_msg(?ERR_TIMEOUT          ) -> <<"timeout">>;
+error_code_to_msg(?ERR_ABORT            ) -> <<"abort">>;
+error_code_to_msg(?ERR_ONCHAIN_REJECTED ) -> <<"rejected on-chain">>;
 error_code_to_msg(Code) when Code >= ?ERR_USER ->
     <<"user-defined">>;
 error_code_to_msg(_) ->
@@ -662,12 +663,12 @@ awaiting_signature(cast, {?SIGNED, slash_tx, SignedTx} = Msg,
                    #data{op = #op_sign{tag = slash_tx}} = D) ->
     lager:debug("slash_tx signed", []),
     %% TODO: Would be prudent to check the SignedTx before pushing
-    maybe_push_to_mempool(SignedTx, D,
-                          _NextStateIfSuccess = channel_closing,
-                          fun(D0) ->
+    try_to_push_to_mempool(SignedTx, D,
+                           _NextStateIfSuccess = channel_closing,
+                           fun(D0) ->
                              log(rcv, ?SIGNED, Msg, D0#data{op = ?NO_OP})
-                          end,
-                          _NextStateIfFailure = channel_closing);
+                           end,
+                           _NextStateIfFailure = channel_closing);
 awaiting_signature(cast, {?SIGNED, create_tx, SignedTx} = Msg,
                    #data{ role = initiator
                         , op = #op_sign{ tag = create_tx
@@ -987,7 +988,7 @@ dep_half_signed(cast, {?DEP_SIGNED = OpTag, Msg},
                 #data{op = #op_ack{tag = deposit_tx, data = OpData}} = D) ->
     case check_deposit_signed_msg(Msg, D) of
         {ok, SignedTx, D1} ->
-            maybe_push_to_mempool(SignedTx, D1, awaiting_locked,
+            try_to_push_to_mempool(SignedTx, D1, awaiting_locked,
                 fun(D0) ->
                     #op_data{updates = Updates} = OpData,
                     _D = safe_watched_action_report(SignedTx, Msg, D0, Updates,
@@ -1035,7 +1036,7 @@ half_signed(cast, {?FND_SIGNED = OpTag, Msg},
                  , op = #op_ack{tag = create_tx} = Op } = D) ->
     case check_funding_signed_msg(Msg, D) of
         {ok, SignedTx, _BlockHash, D1} ->
-            maybe_push_to_mempool(SignedTx, D1, awaiting_locked,
+            try_to_push_to_mempool(SignedTx, D1, awaiting_locked,
                 fun(D0) ->
                     lager:debug("funding_signed ok", []),
                     report(info, funding_signed, D0),
@@ -1069,7 +1070,7 @@ mutual_closing(cast, {?SHUTDOWN_ACK, Msg}, D) ->
     case check_shutdown_ack_msg(Msg, D) of
         {ok, SignedTx, Updates, BlockHash, D1} ->
             lager:debug("shutdown_ack ok", []),
-            maybe_push_to_mempool(SignedTx, D1, mutual_closed,
+            try_to_push_to_mempool(SignedTx, D1, mutual_closed,
                 fun(D0) ->
                     report_on_chain_tx(close_mutual, SignedTx, D0),
                     OpData = #op_data{ signed_tx  = SignedTx
@@ -1240,7 +1241,7 @@ wdraw_half_signed(cast, {?WDRAW_SIGNED = OpTag, Msg},
                   #data{op = #op_ack{tag = withdraw_tx, data = OpData}} = D) ->
     case check_withdraw_signed_msg(Msg, D) of
         {ok, SignedTx, D1} ->
-            maybe_push_to_mempool(SignedTx, D1, awaiting_locked,
+            try_to_push_to_mempool(SignedTx, D1, awaiting_locked,
                 fun(D0) ->
                     #op_data{updates = Updates} = OpData,
                     _D = safe_watched_action_report(SignedTx, Msg, D0, Updates,
@@ -4039,16 +4040,16 @@ settle_signed(SignedTx, Updates, #data{ on_chain_id = ChId} = D) ->
                     next_state(channel_closing, D1);
                 false ->
                     lager:debug("channel not locked, pushing settle", []),
-                    maybe_push_to_mempool(SignedTx, D, channel_closing,
-                                          fun(D0) ->
-                                              {ok, D1} =
-                                                  start_chain_watcher(close,
-                                                                      SignedTx,
-                                                                      Updates,
-                                                                      D0),
-                                              D1
-                                         end,
-                                         channel_closing)
+                    try_to_push_to_mempool(SignedTx, D, channel_closing,
+                                           fun(D0) ->
+                                               {ok, D1} =
+                                                   start_chain_watcher(close,
+                                                                       SignedTx,
+                                                                       Updates,
+                                                                       D0),
+                                               D1
+                                          end,
+                                          channel_closing)
             end;
         {error,_} = Error ->
             close(Error, D)
@@ -4060,7 +4061,7 @@ snapshot_solo_signed(SignedTx, _Updates, #data{ on_chain_id = ChId } = D) ->
         {ok, Ch} ->
             case aesc_channels:is_active(Ch) of
                 true ->
-                    maybe_push_to_mempool(SignedTx, D, open);
+                    try_to_push_to_mempool(SignedTx, D, open);
                 false ->
                     %% TODO: do we want to fail siilently?
                     lager:debug("Snapshot_solo tx failed: channel not active", []),
@@ -4080,8 +4081,8 @@ close_solo_signed(SignedTx, _Updates, #data{ on_chain_id = ChId } = D) ->
                     lager:debug("channel not locked: solo-closing", []),
                     %% Let the watcher pick up the tx once it makes it onto the
                     %% chain
-                    maybe_push_to_mempool(SignedTx, D, open,
-                                          fun(D0) -> D0#data{op = ?NO_OP} end);
+                    try_to_push_to_mempool(SignedTx, D, open,
+                                           fun(D0) -> D0#data{op = ?NO_OP} end);
                 true ->
                     lager:debug("channel is locked: cannot solo-close", []),
                     next_state(open, D)
@@ -4847,14 +4848,14 @@ push_to_mempool(SignedTx) ->
             {error, Reason}
     end.
 
-maybe_push_to_mempool(SignedTx, D, NextState) ->
-    maybe_push_to_mempool(SignedTx, D, NextState, fun(D0) -> D0 end).
+try_to_push_to_mempool(SignedTx, D, NextState) ->
+    try_to_push_to_mempool(SignedTx, D, NextState, fun(D0) -> D0 end).
 
-maybe_push_to_mempool(SignedTx, D, NextState, UpdateStateFun) ->
-    maybe_push_to_mempool(SignedTx, D, NextState, UpdateStateFun, open).
+try_to_push_to_mempool(SignedTx, D, NextState, UpdateStateFun) ->
+    try_to_push_to_mempool(SignedTx, D, NextState, UpdateStateFun, open).
 
-maybe_push_to_mempool(SignedTx, D, NextState, UpdateStateFun,
-                      NextStateIfFailed) ->
+try_to_push_to_mempool(SignedTx, D, NextState, UpdateStateFun,
+                       NextStateIfFailed) ->
     case push_to_mempool(SignedTx) of
         ok ->
             next_state(NextState, UpdateStateFun(D));
@@ -4923,12 +4924,10 @@ mutual_close_error(Msg, D) ->
                         ok -> %% tx is ok, wait for it on-chain
                             keep_state(log(rcv, ?SHUTDOWN_ERR, Msg, D));
                         {error, _Err} ->
-                            lager:info("ASDF ERR ~p", [_Err]),
                             report(conflict, Msg, D),
                             next_state(open, D)
                     end;
                 {error, _Err} ->
-                    lager:info("ASDF ERR2 ~p", [_Err]),
                     report(conflict, Msg, D),
                     next_state(open, D)
             end;

@@ -88,7 +88,6 @@ siblings_on_key_block(Config) ->
     {ok, Tx0a} = add_spend_tx(N1, 1000000, Fee0a, 1, 10, patron(), PK1),
     {ok, Tx0b} = add_spend_tx(N1, 1000000, Fee0b, 2, 10, patron(), PK2),
 
-    DecodeHash =
     {ok, _} =
         aecore_suite_utils:mine_blocks_until_txs_on_chain(N1,
             [decode_tx_hash(H) || H <- [Tx0a, Tx0b]], ?MAX_MINED_BLOCKS),
