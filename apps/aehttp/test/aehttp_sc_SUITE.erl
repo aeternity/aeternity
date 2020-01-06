@@ -3630,11 +3630,11 @@ log_basename(Config) ->
             optional_fee ->
                 filename:join([Protocol, "changeable_fee"]);
             optional_gas_price ->
-                filename:join([Protocol, "changeable_fee"]);
+                filename:join([Protocol, "changeable_gas_price"]);
             optional_fee_higher_than_gas_price ->
                 filename:join([Protocol, "changeable_fee_higher_than_gas_price"]);
             optional_fee_lower_than_gas_price ->
-                filename:join([Protocol, "changeable_fee_higher_than_gas_price"]);
+                filename:join([Protocol, "changeable_fee_lower_than_gas_price"]);
             abort_updates ->
                 filename:join([Protocol, "abort_updates"]);
             plain -> Protocol
