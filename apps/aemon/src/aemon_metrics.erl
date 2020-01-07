@@ -6,11 +6,12 @@
 -export([create/1]).
 
 %% specific metrics
--export([ block_propagation_time/2
+-export([ block_gas_per_tx/1
+        , block_gas_total/1
+        , block_propagation_time/2
+        , block_size_per_tx/1
         , block_time_since_prev/2
         , block_tx_total/1
-        , block_gas_total/1
-        , block_gas_per_tx/1
         , chain_top_difficulty/1
         , confirmation_delay/1
         , fork_micro/1
@@ -42,6 +43,7 @@ create(on_chain) ->
     create([block, tx, total, micro], histogram, [{time_span, ?HISTOGRAM_TIMESPAN_SHORT}]),
     create([block, gas, total, micro], histogram, [{time_span, ?HISTOGRAM_TIMESPAN_SHORT}]),
     create([block, gas, per_tx, micro], histogram, [{time_span, ?HISTOGRAM_TIMESPAN_2MIN}]),
+    create([block, size, per_tx, micro], histogram, [{time_span, ?HISTOGRAM_TIMESPAN_2MIN}]),
     create([chain, top, difficulty], gauge),
     ok;
 create(gen_stats) ->
@@ -130,6 +132,10 @@ block_gas_total(N) ->
 block_gas_per_tx(N) ->
     log_error(update([block, gas, per_tx, micro], N),
               "Could not update gas per transaction in a microblock").
+
+block_size_per_tx(N) ->
+    log_error(update([block, size, per_tx, micro], N),
+              "Could not update size per transaction in a microblock").
 
 chain_top_difficulty(Difficulty) ->
     log_error(update([chain, top, difficulty], Difficulty),

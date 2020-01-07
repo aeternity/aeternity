@@ -1,0 +1,17 @@
+%% -*- erlang-indent-level: 4; indent-tabs-mode: nil -*-
+%%
+%% Metrics templates for the aecore app.
+%% We use these primarily for metrics which have data-driven parts in their
+%% names.
+
+%% Keep 1 minute of data to not overload each metric in case of higher load.
+%% The placeholders are (in order) for ABI version, VM version, return type and
+%% actual info type.
+%% The return type may be `ok`, `return` or `revert`.
+%% The info type may be `gas_used`, `execution_time` in microseconds,
+%% `state_size` or `call_data_size`, both in bytes.
+[ {[ae,epoch,aecore,contracts,'_','_',ga_meta,'_','_']         , histogram, []}
+, {[ae,epoch,aecore,contracts,'_','_',ga_attach,'_','_']       , histogram, []}
+, {[ae,epoch,aecore,contracts,'_','_',contract_call,'_','_']   , histogram, []}
+, {[ae,epoch,aecore,contracts,'_','_',contract_create,'_','_'] , histogram, []}
+].

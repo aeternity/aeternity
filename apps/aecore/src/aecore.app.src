@@ -50,6 +50,8 @@
   {env, [
          {exometer_predefined,
           {script, "$PRIV_DIR/exometer_predefined.script"}},
+         {exometer_defaults,
+          {script, "$PRIV_DIR/exometer_defaults.script"}},
          {exometer_subscribers,
           [
            {select,

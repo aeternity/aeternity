@@ -336,7 +336,7 @@ compile_(SophiaVsn, File) when SophiaVsn == ?SOPHIA_IRIS_FATE ->
     Source = binary_to_list(AsmBin),
     case aeso_compiler:from_string(Source, [{backend, fate}]) of
         {ok, Map} -> {ok, aect_sophia:serialize(Map, latest_sophia_contract_version())};
-        {error, E} = Err -> io:format("~s\n", [E]), Err
+        {error, E} = Err -> io:format("~p\n", [E]), Err
     end;
 compile_(LegacyVersion, File) ->
     case legacy_compile(LegacyVersion, File) of

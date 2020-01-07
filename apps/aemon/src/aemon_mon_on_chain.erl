@@ -122,10 +122,15 @@ handle_micro_block(micro, Hash) ->
 
     Gas = lists:foldl(
       fun(Tx, Acc) ->
-              GasTx = aetx:gas_limit(aetx_sign:tx(Tx), Height, Version),
+              Tx1 = aetx_sign:tx(Tx),
 
               %% Update metric: gas per tx
+              GasTx = aetx:gas_limit(Tx1, Height, Version),
               aemon_metrics:block_gas_per_tx(GasTx),
+
+              %% Update metric: size per tx
+              SizeTx = aetx:size(Tx1),
+              aemon_metrics:block_size_per_tx(SizeTx),
 
               Acc + GasTx
       end, 0, Txs),
