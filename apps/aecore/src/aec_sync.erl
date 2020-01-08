@@ -724,14 +724,7 @@ do_work_on_sync_task(PeerId, Task, LastResult) ->
             delayed_run_job(PeerId, Task, sync_tasks,
                             fun() -> do_work_on_sync_task(PeerId, Task) end, 5000);
         {agree_on_height, Chain} ->
-            #chain{ blocks = [#chain_block{ hash = TopHash, height = TopHeight } | _] } = Chain,
-            LocalHeader = aec_chain:top_header(),
-            LocalHeight = aec_headers:height(LocalHeader),
-            MinAgreedHash = aec_chain:genesis_hash(),
-            MaxAgree = min(LocalHeight, TopHeight),
-            GenesisHeight = aec_block_genesis:height(),
-            case  agree_on_height(PeerId, TopHash, TopHeight,
-                                  MaxAgree, MaxAgree, GenesisHeight, MinAgreedHash) of
+            case agree_on_height(PeerId, Chain) of
                 {ok, AHeight, AHash} ->
                     epoch_sync:debug("Agreed upon height (~p): ~p", [ppp(PeerId), AHeight]),
                     Agreement = {agreed_height, #chain_block{ height = AHeight, hash = AHash }},
@@ -754,6 +747,65 @@ do_work_on_sync_task(PeerId, Task, LastResult) ->
             do_work_on_sync_task(PeerId, Task, Res);
         abort_work ->
             epoch_sync:info("~p aborting sync work against ~p", [self(), PeerId])
+    end.
+
+agree_on_height(PeerId, #chain{ blocks = [#chain_block{ hash = TopHash, height = TopHeight } | _] }) ->
+    try
+        LocalHeader = aec_chain:top_header(),
+        LocalHeight = aec_headers:height(LocalHeader),
+        MinHeight   = min(TopHeight, LocalHeight),
+        RemoteHash =
+            case TopHeight == MinHeight of
+                true  -> TopHash;
+                false -> get_header_by_height(PeerId, LocalHeight, TopHash)
+            end,
+        case aec_chain:hash_is_connected_to_genesis(RemoteHash) of
+            true ->
+                {ok, MinHeight, RemoteHash};
+            false ->
+                agree_on_height(PeerId, TopHash, MinHeight, 1)
+        end
+    catch throw:{get_header_by_height, {error, Reason}} ->
+        {error, Reason}
+    end.
+
+%% Height is a height where we disagree, so ask for Height - Step
+agree_on_height(PeerId, RemoteTop, Height, Step) ->
+    NewHeight = max(aec_block_genesis:height(), Height - Step),
+    RHash = get_header_by_height(PeerId, NewHeight, RemoteTop),
+    case aec_chain:hash_is_connected_to_genesis(RHash) of
+        true ->
+            agree_on_height(PeerId, RemoteTop, NewHeight, Height, RHash);
+        false ->
+            agree_on_height(PeerId, RemoteTop, NewHeight, Step * 2)
+    end.
+
+%% We agree on Hash at MinH and disagree at MaxH
+agree_on_height(PeerId, RemoteTop, MinH, MaxH, Hash) when MaxH == MinH + 1 ->
+    {ok, MinH, Hash};
+agree_on_height(PeerId, RemoteTop, MinH, MaxH, Hash) ->
+    H = (MinH + MaxH) div 2,
+    RHash = get_header_by_height(PeerId, H, RemoteTop),
+    case aec_chain:hash_is_connected_to_genesis(RHash) of
+        true ->
+            agree_on_height(PeerId, RemoteTop, H, MaxH, RHash);
+        false ->
+            agree_on_height(PeerId, RemoteTop, MinH, H, Hash)
+    end.
+
+get_header_by_height(PeerId, Height, RemoteTop) ->
+    case Height == aec_block_genesis:height() of
+        true  -> aec_chain:genesis_hash(); %% Handshake ensure we agree on genesis
+        false ->
+            case aec_peer_connection:get_header_by_height(PeerId, Height, RemoteTop) of
+                {ok, RemoteAtHeight} ->
+                    {ok, RHash} = aec_headers:hash_header(RemoteAtHeight),
+                    RHash;
+                 {error, Reason} ->
+                     epoch_sync:debug("Fetching header ~p from ~p failed: ~p",
+                                      [Height, ppp(PeerId), Reason]),
+                     throw({get_header_by_height, {error, Reason}})
+            end
     end.
 
 post_blocks([]) -> ok;
@@ -798,46 +850,6 @@ add_blocks([B | Bs]) ->
     catch _:_ ->
         lager:warning("Timeout adding_synced block: ~p", [B]),
         {error, timeout}
-    end.
-
-%% Ping logic makes sure they always agree on genesis header (height 0)
-%% We look for the block that is both on remote highest chain and in our local
-%% chain connected to genesis (may be on a fork, but that fork has now more
-%% difficulty than our highest chain (otherwise we would not sync).
-%%
-%% Invariant: AgreedHash is hash at height Min.
-agree_on_height(_PeerId, _RHash, _RH, _LH, Min, Min, AgreedHash) ->
-    {ok, Min, AgreedHash};
-agree_on_height(PeerId, RHash, RH, CheckHeight, Max, Min, AgreedHash) when RH == CheckHeight ->
-    case aec_chain:hash_is_connected_to_genesis(RHash) of
-        true ->
-             %% We agree on a block
-             Middle = (Max + RH) div 2,
-             case Min < Middle andalso Middle < Max of
-               true ->
-                   agree_on_height(PeerId, RHash, RH, Middle, Max, RH, RHash);
-               false ->
-                   {ok, RH, RHash}
-             end;
-        false ->
-             %% We disagree. Local on a fork compared to remote. Check half-way
-             Middle = (Min + RH) div 2,
-             case Min < Middle andalso Middle < Max of
-                 true ->
-                     agree_on_height(PeerId, RHash, RH, Middle, RH, Min, AgreedHash);
-                 false ->
-                     {ok, Min, AgreedHash}
-             end
-    end;
-agree_on_height(PeerId, RHash0, RH, CheckHeight, Max, Min, AgreedHash) when RH =/= CheckHeight ->
-    case aec_peer_connection:get_header_by_height(PeerId, CheckHeight, RHash0) of
-         {ok, RemoteAtHeight} ->
-             {ok, RHash} = aec_headers:hash_header(RemoteAtHeight),
-             epoch_sync:debug("New header received (~p): ~p", [ppp(PeerId), pp(RemoteAtHeight)]),
-             agree_on_height(PeerId, RHash, CheckHeight, CheckHeight, Max, Min, AgreedHash);
-         {error, Reason} ->
-             epoch_sync:debug("Fetching header ~p from ~p failed: ~p", [CheckHeight, ppp(PeerId), Reason]),
-             {error, Reason}
     end.
 
 fill_pool(PeerId, StartHash, TargetHash, ST) ->
