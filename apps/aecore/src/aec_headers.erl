@@ -237,7 +237,7 @@ new_key_header(Height, PrevHash, PrevKeyHash, RootHash, Miner, Beneficiary,
 make_info(Version, Info) when (Version >= ?MINERVA_PROTOCOL_VSN), ?IS_INT_INFO(Info) ->
     <<Info:?OPTIONAL_INFO_BYTES/unit:8>>;
 make_info(Version, default) when Version >= ?MINERVA_PROTOCOL_VSN ->
-    <<?KEY_HEADER_INFO_FORTUNA_POINT_RELEASE:?OPTIONAL_INFO_BYTES/unit:8>>;
+    <<?KEY_HEADER_INFO_LIMA_POINT_RELEASE:?OPTIONAL_INFO_BYTES/unit:8>>;
 make_info(_Version, default) ->
     <<>>.
 
