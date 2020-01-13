@@ -2167,18 +2167,21 @@ process_timed_contract_call(Time, Type, Call, CallData, State,
               , {execution_time, Time}
               , {call_data_size, CallDataSize}
               ],
-    Metrics1 = try
-                   Ct = aeprimop_state:get_contract_no_cache(CtPK, State),
-                   CtState = aect_contracts:state(Ct),
-                   CtStateSize = aect_contracts_store:size(CtState),
-                   [{state_size, CtStateSize} | Metrics]
-               catch
-                   error:{aeprimop_state, contract_does_not_exist} ->
-                       Metrics
-               end,
+    % FIXME: This metric is disabled due to overload issues when the size is
+    % calculated either for a large contract or many in parallel.
+    %
+    % Metrics1 = try
+    %                Ct = aeprimop_state:get_contract_no_cache(CtPK, State),
+    %                CtState = aect_contracts:state(Ct),
+    %                CtStateSize = aect_contracts_store:size(CtState),
+    %                [{state_size, CtStateSize} | Metrics]
+    %            catch
+    %                error:{aeprimop_state, contract_does_not_exist} ->
+    %                    Metrics
+    %            end,
     lists:foreach(
      fun({M, V}) ->
              Metric = [ae, epoch, aecore, contracts, CtABIVsn, CtVMVsn, Type, ReturnType, M],
              aec_metrics:try_update_or_create(Metric, V)
-     end, Metrics1),
+     end, Metrics),
     ok.
