@@ -1540,21 +1540,13 @@ get_contract(_Config) ->
                              <<"abi_version">> := ABI,
                              <<"referrer_ids">> := []}},
                  get_contract_sut(EncodedContractPubKey)),
-    ?assertMatch({ok, 200, #{<<"store">> := [
-        #{<<"key">> := <<"0x00">>, <<"value">> := _InitState},
-        #{<<"key">> := <<"0x01">>, <<"value">> := _StateType}    %% We store the state type in the Store
-        ]}}, get_contract_store_sut(EncodedContractPubKey)),
     ok.
 
 get_contract_sut(PubKey) ->
     Host = external_address(),
     http_request(Host, get, "contracts/" ++ binary_to_list(PubKey), []).
 
-get_contract_store_sut(PubKey) ->
-    Host = external_address(),
-    http_request(Host, get, "contracts/" ++ binary_to_list(PubKey) ++ "/store", []).
-
-%% /oracles/*
+% /oracles/*
 
 get_oracle_by_pubkey(_Config) ->
     RandomOraclePubkey = aeser_api_encoder:encode(oracle_pubkey, random_hash()),
