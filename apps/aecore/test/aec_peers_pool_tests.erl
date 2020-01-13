@@ -1092,7 +1092,7 @@ unverified_selected_are_not_evicted_test() ->
 
 %% Tests that peers not updates since a configured time are removed from
 %% the pool when trying to free space in a bucket.
-unverified_old_peers_are_removed_test() ->
+unverified_old_peers_are_removed_from_full_bucket_test() ->
     seed_process_random(),
     % Use a single bucket of 10 peers to simplify testing.
     PoolOpts = [
@@ -1139,6 +1139,65 @@ unverified_old_peers_are_removed_test() ->
     ?assertEqual(true, is_unverified(Pool6, SelId2)),
     ?assertEqual(true, is_unverified(Pool6, SelId3)),
 
+    ?assertEqual(4, count(Pool6, all, both)),
+    ?assertEqual(0, count(Pool6, all, verified)),
+    ?assertEqual(4, count(Pool6, all, unverified)),
+    ?assertEqual(1, count(Pool6, available, both)),
+    ?assertEqual(0, count(Pool6, available, verified)),
+    ?assertEqual(1, count(Pool6, available, unverified)),
+    ok.
+
+%% Tests that peers are removed from a partially full pool/bucket when a new
+%% peer is added.
+unverified_old_peers_are_removed_from_partially_full_bucket_test() ->
+    seed_process_random(),
+    % Use a single bucket of 10 peers to simplify testing.
+    PoolOpts = [
+        {unver_bcount, 1}, {unver_bsize, 10},
+        {max_update_lapse, 30000}
+        | ?POOL_OPTS
+    ],
+    Pool1 = new(PoolOpts),
+
+    Now1 = erlang:system_time(millisecond),
+    Peers = make_peers(6, 0),
+
+    {Pool2, Now2} = lists:foldl(fun(K, {P, N}) ->
+        #{K := Peer} = Peers,
+        #{id := Id, addr := Addr, source := Source} = Peer,
+        {unverified, P2} = update(P, N, Id, Addr, Source, false, undefined),
+        {P2, N + 1000}
+    end, {Pool1, Now1}, lists:seq(1, 5)),
+
+    % Select some of the peer to ensure they never get evicted.
+    {selected, {SelId1, _}, Pool3} =
+        random_select(Pool2, Now2, unverified, undefined),
+    {selected, {SelId2, _}, Pool4} =
+        random_select(Pool3, Now2, unverified, undefined),
+    {selected, {SelId3, _}, Pool5} =
+        random_select(Pool4, Now2, unverified, undefined),
+
+    ?assertEqual(5, count(Pool5, all, both)),
+    ?assertEqual(0, count(Pool5, all, verified)),
+    ?assertEqual(5, count(Pool5, all, unverified)),
+    ?assertEqual(2, count(Pool5, available, both)),
+    ?assertEqual(0, count(Pool5, available, verified)),
+    ?assertEqual(2, count(Pool5, available, unverified)),
+
+    Now3 = Now2 + 30000,
+
+    #{6 := Peer6} = Peers,
+    #{id := Id, addr := Addr, source := Source} = Peer6,
+    {unverified, Pool6} =
+        update(Pool5, Now3, Id, Addr, Source, false, undefined),
+
+    % Selected peers should NOT be removed
+    ?assertEqual(true, is_unverified(Pool6, SelId1)),
+    ?assertEqual(true, is_unverified(Pool6, SelId2)),
+    ?assertEqual(true, is_unverified(Pool6, SelId3)),
+
+    % Even though a bucket is not full, the peers are removed as they haven't
+    % been updated for longer than 'max_update_lapse'.
     ?assertEqual(4, count(Pool6, all, both)),
     ?assertEqual(0, count(Pool6, all, verified)),
     ?assertEqual(4, count(Pool6, all, unverified)),
@@ -1296,7 +1355,7 @@ verified_selected_and_trusted_peers_are_not_evicted_test() ->
 
 %% Tests that peers not updated for a configurable time are removed from the
 %% verified pool buckets when trying to free space.
-verified_old_peers_are_removed_test() ->
+verified_old_peers_are_removed_from_full_bucket_test() ->
     seed_process_random(),
     % Use a single bucket of 10 peers to simplify testing.
     PoolOpts = [
@@ -1362,6 +1421,83 @@ verified_old_peers_are_removed_test() ->
     ?assertEqual( 3, count(Pool7, available, both)),
     ?assertEqual( 3, count(Pool7, available, verified)),
     ?assertEqual( 0, count(Pool7, available, unverified)),
+    ok.
+
+%% Tests that peers are remove from a partially full pool/bucket when a new peer
+%% is added.
+verified_old_peers_are_removed_from_partially_full_bucket_test() ->
+    seed_process_random(),
+    % Use a single bucket of 10 peers to simplify testing.
+    PoolOpts = [
+        {verif_bcount, 1}, {verif_bsize, 10},
+        {max_update_lapse, 30000}
+        | ?POOL_OPTS
+    ],
+    Pool1 = new(PoolOpts),
+
+    Now1 = erlang:system_time(millisecond),
+    Peers = make_peers(7, 2),
+    TrustedId1 = maps:get(id, maps:get(1, Peers)),
+    TrustedId2 = maps:get(id, maps:get(2, Peers)),
+    Id3 = maps:get(id, maps:get(3, Peers)),
+    Id4 = maps:get(id, maps:get(4, Peers)),
+    Id5 = maps:get(id, maps:get(5, Peers)),
+    Id6 = maps:get(id, maps:get(6, Peers)),
+    Id7 = maps:get(id, maps:get(7, Peers)),
+
+    {Pool2, Now2} = lists:foldl(fun(K, {P, N}) ->
+        #{K := Peer} = Peers,
+        #{id := Id, addr := Addr, source := Source, trusted := Trusted} = Peer,
+        {_, P2} = update(P, N, Id, Addr, Source, Trusted, undefined),
+        {P2, N + 1000}
+    end, {Pool1, Now1}, lists:seq(1, 5)),
+
+    % Select some of the peer to ensure they never get removed.
+    Pool3 = select(Pool2, Now2, TrustedId1),
+    Pool4 = select(Pool3, Now2, Id3),
+    Pool5 = select(Pool4, Now2, Id4),
+
+    % Verify all the peers so they are added to the single verified bucket.
+    Pool6 = lists:foldl(fun(K, P) ->
+        #{K := Peer} = Peers,
+        #{id := Id} = Peer,
+        {verified, P2} = verify(P, Now2, Id),
+        P2
+    end, Pool5, lists:seq(1, 5)),
+
+    ?assertEqual(5, count(Pool6, all, both)),
+    ?assertEqual(5, count(Pool6, all, verified)),
+    ?assertEqual(0, count(Pool6, all, unverified)),
+    ?assertEqual(2, count(Pool6, available, both)),
+    ?assertEqual(2, count(Pool6, available, verified)),
+    ?assertEqual(0, count(Pool6, available, unverified)),
+
+    Now3 = Now2 + 30000,
+
+    #{6 := Peer6} = Peers,
+    #{id := Id6, addr := Addr6, source := Source6} = Peer6,
+    {verified, Pool7} = update(Pool6, Now3, Id6, Addr6, Source6, true, undefined),
+    #{7 := Peer7} = Peers,
+    #{id := Id7, addr := Addr7, source := Source7} = Peer7,
+    {verified, Pool8} = update(Pool7, Now3, Id7, Addr7, Source7, true, undefined),
+
+    % Selected peers should NOT be removed
+    ?assertEqual(true, is_verified(Pool8, TrustedId1)),
+    ?assertEqual(true, is_verified(Pool8, Id3)),
+    ?assertEqual(true, is_verified(Pool8, Id4)),
+    % Neither trusted peers
+    ?assertEqual(true, is_verified(Pool8, TrustedId1)),
+    ?assertEqual(true, is_verified(Pool8, TrustedId2)),
+    % Only peer with Id5 is removed.
+    ?assertEqual({undefined, undefined}, peer_state(Pool8, Id5)),
+
+    % But 2 other peers are added (Peer6 and Peer7).
+    ?assertEqual(6, count(Pool8, all, both)),
+    ?assertEqual(6, count(Pool8, all, verified)),
+    ?assertEqual(0, count(Pool8, all, unverified)),
+    ?assertEqual(3, count(Pool8, available, both)),
+    ?assertEqual(3, count(Pool8, available, verified)),
+    ?assertEqual(0, count(Pool8, available, unverified)),
     ok.
 
 %% Tests that the counters and internal structures stay synchronized when
@@ -1520,19 +1656,21 @@ pool_make_space_test() ->
     ?assertMatch({free_space, [], undefined, _, _},
                  aec_peers_pool:pool_make_space(Pool2, RandState, 0,
                                                 KFilterFun, SortKeyFun)),
-    ?assertMatch({free_space, [], undefined, _, _},
-                 aec_peers_pool:pool_make_space(Pool2, RandState, 0,
-                                                RFilterFun, SortKeyFun)),
+    {free_space, RemovedPool2, undefined, _, Pool2b} =
+        aec_peers_pool:pool_make_space(Pool2, RandState, 0,
+                                       RFilterFun, SortKeyFun),
+    ?assertEqual([9, 10], lists:sort(RemovedPool2)),
+    ?assertEqual(9, aec_peers_pool:pool_bucket_size(Pool2b, 0)),
 
     Pool3 = lists:foldl(fun(V, P) ->
         aec_peers_pool:pool_add(P, 0, V)
     end, Pool2, lists:seq(11, 15)),
 
     % Check that there is space and the entries are removed.
-    {free_space, Removed, undefined, _, Pool3b} =
+    {free_space, RemovedPool3, undefined, _, Pool3b} =
         aec_peers_pool:pool_make_space(Pool3, RandState, 0,
                                        RFilterFun, SortKeyFun),
-    ?assertEqual([9, 10, 11, 12, 13, 14, 15], lists:sort(Removed)),
+    ?assertEqual([9, 10, 11, 12, 13, 14, 15], lists:sort(RemovedPool3)),
     ?assertEqual(9, aec_peers_pool:pool_bucket_size(Pool3b, 0)),
 
     % Check that only the entries marked for eviction are elected.

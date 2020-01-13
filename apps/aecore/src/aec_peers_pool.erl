@@ -1621,23 +1621,24 @@ pool_make_space(Pool, RSt, BucketIdx, FilterFun, SortKeyFun) ->
     #pool{buckets = Buckets, bucket_size = MaxBucketSize, skew = Skew} = Pool,
     Bucket = array:get(BucketIdx, Buckets),
     BucketSize = length(Bucket),
-    case BucketSize < MaxBucketSize of
-        true ->
-            {free_space, [], undefined, RSt, Pool};
-        false ->
-            {Bucket2, Removed, KeyedEvictable, EvictableSize}
-                = bucket_prepare(Bucket, FilterFun, SortKeyFun),
-            case {Removed, EvictableSize} of
-                {[_|_], _} ->
-                    % If some entry are removed, there is no need for eviction.
-                    Buckets2 = array:set(BucketIdx, Bucket2, Buckets),
-                    Pool2 = Pool#pool{buckets = Buckets2},
-                    {free_space, Removed, undefined, RSt, Pool2};
-                {[], 0} ->
-                    % Nothing removed and nothing to evict.
-                    no_space;
-                _ ->
-                    % We need to evict an entry.
+    IsBucketFull = BucketSize >= MaxBucketSize,
+    {Bucket2, Removed, KeyedEvictable, EvictableSize}
+        = bucket_prepare(Bucket, FilterFun, SortKeyFun),
+    case {Removed, EvictableSize} of
+        {[_|_], _} ->
+            %% If some entry are removed, there is no need for eviction.
+            Buckets2 = array:set(BucketIdx, Bucket2, Buckets),
+            Pool2 = Pool#pool{buckets = Buckets2},
+            {free_space, Removed, undefined, RSt, Pool2};
+        {[], 0} ->
+            case IsBucketFull of
+                true -> no_space;
+                false -> {free_space, [], undefined, RSt, Pool}
+            end;
+        _ ->
+            case IsBucketFull of
+                true ->
+                    %% We need to evict an entry.
                     SortedEvictable = lists:keysort(1, KeyedEvictable),
                     {EvictedIdx, RSt2} =
                         skewed_randint(RSt, EvictableSize, Skew),
@@ -1646,7 +1647,9 @@ pool_make_space(Pool, RSt, BucketIdx, FilterFun, SortKeyFun) ->
                     Bucket3 = lists:delete(EvictedValue, Bucket2),
                     Buckets2 = array:set(BucketIdx, Bucket3, Buckets),
                     Pool2 = Pool#pool{buckets = Buckets2},
-                    {free_space, [], EvictedValue, RSt2, Pool2}
+                    {free_space, [], EvictedValue, RSt2, Pool2};
+                false ->
+                    {free_space, [], undefined, RSt, Pool}
             end
     end.
 
