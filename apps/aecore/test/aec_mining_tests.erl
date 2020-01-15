@@ -41,7 +41,7 @@ mine_block_test_() ->
                  Nonce = case aec_hard_forks:protocol_effective_at_height(Height + 1) of
                              ?ROMA_PROTOCOL_VSN    -> 1566115190779737391;
                              ?MINERVA_PROTOCOL_VSN -> 15836920403692179639;
-                             ?FORTUNA_PROTOCOL_VSN -> 17610692498953653789;
+                             ?FORTUNA_PROTOCOL_VSN -> 5292874560123497905;
                              ?LIMA_PROTOCOL_VSN    -> 7581966166914665576;
                              ?IRIS_PROTOCOL_VSN    -> 7150225445313991888
                          end,
