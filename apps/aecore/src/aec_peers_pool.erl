@@ -62,8 +62,8 @@
 %%%   </li>
 %%%   <li>When building a gossip message
 %%%     <ul>
-%%%       <li>Call {@link random_subset/3} to get a random subset of the pooled
-%%%           peer</li>
+%%%       <li>Call {@link random_subset/3} to get a random subset of the
+%%%           verified pooled peers</li>
 %%%     </ul>
 %%%   </li>
 %%% </ul>
@@ -187,8 +187,8 @@
     select_time            :: pos_integer() | undefined,
     % The time the peer was last rejected.
     reject_time            :: pos_integer() | undefined,
-    % The index in the randomized lookup table for all peers.
-    lookup_all_idx         :: non_neg_integer() | undefined,
+    % The index in the randomized lookup table for all verified peers.
+    lookup_verif_all_idx   :: non_neg_integer() | undefined,
     % The index in the randomized lookup table for available verified peers.
     lookup_verif_idx       :: non_neg_integer() | undefined,
     % The index in the randomized lookup table for available unverified peers.
@@ -230,8 +230,8 @@
     verif_pool             :: pool(),
     % The unverified pool.
     unver_pool             :: pool(),
-    % The randomized list of all peers.
-    lookup_all             :: lookup(),
+    % The randomized list of all verified peers.
+    lookup_verif_all       :: lookup(),
     % The randomized list of verified peers that are neither selected
     % nor rejected.
     lookup_verif           :: lookup(),
@@ -390,7 +390,7 @@ new(Opts) ->
         standby = #{},
         verif_pool = pool_new(VBCount, VBSize, 1, EvictSkew),
         unver_pool = pool_new(UBCount, UBSize, UMaxRef, EvictSkew),
-        lookup_all = lookup_new(),
+        lookup_verif_all = lookup_new(),
         lookup_verif = lookup_new(),
         lookup_unver = lookup_new(),
         select_verif_prob = SelectProb,
@@ -567,7 +567,7 @@ update(St, Now, PeerId, PeerAddr, SourceAddr, IsTrusted, Extra) ->
 verify(St, Now, PeerId) ->
     verified_maybe_add(St, Now, PeerId).
 
-%% @doc Returns a random subset of all the pooled peers.
+%% @doc Returns a random subset of all the verified pooled peers.
 %%
 %% Return a list of peer identifiers and there corresponding extra data given
 %% the <b>first</b> time it was added by {@link update/7}.
@@ -576,7 +576,7 @@ verify(St, Now, PeerId) ->
 -spec random_subset(state(), all | pos_integer(), filter_fun() | undefined)
     -> {[ext_peer()], state()}.
 random_subset(St, Size, ExtFilterFun) ->
-    #?ST{rand = RState, use_rand_offset = ROffset, lookup_all = Lookup} = St,
+    #?ST{rand = RState, use_rand_offset = ROffset, lookup_verif_all = Lookup} = St,
     IntFilterFun = wrap_filter_fun(St, ExtFilterFun),
     {PeerIds, RState2} = lookup_sample(Lookup, RState, ROffset,
                                        Size, IntFilterFun),
@@ -791,8 +791,7 @@ update_peer(St, Now, PeerId, PeerAddr, SourceAddr, IsTrusted, Extra) ->
             Peer = peer_new(PeerId, PeerAddr, SourceAddr, IsTrusted, Extra),
             Peer2 = Peer#peer{update_time = Now},
             Peers2 = Peers#{PeerId => Peer2},
-            St2 = St#?ST{peers = Peers2},
-            {updated, add_lookup_all(St2, PeerId)};
+            {updated, St#?ST{peers = Peers2}};
         #peer{addr = PeerAddr, trusted = IsTrusted} = CurrPeer ->
             Peer2 = CurrPeer#peer{update_time = Now, source = SourceAddr},
             {updated, set_peer(St, PeerId, Peer2)};
@@ -814,7 +813,7 @@ del_peer(St, PeerId) ->
         S2 = setelement(LookupRecField, S, Lookup2),
         S2#?ST{peers = Peers2}
     end, St4, [
-        {#?ST.lookup_all, #peer.lookup_all_idx},
+        {#?ST.lookup_verif_all, #peer.lookup_verif_all_idx},
         {#?ST.lookup_verif, #peer.lookup_verif_idx},
         {#?ST.lookup_unver, #peer.lookup_unver_idx}
     ]),
@@ -994,12 +993,12 @@ make_unavailable(St, PeerId) ->
         _ -> St
     end.
 
--spec add_lookup_all(state(), peer_id()) -> state().
-add_lookup_all(St, PeerId) ->
-    #?ST{peers = Peers, rand = Rand, lookup_all = Lookup} = St,
+-spec add_lookup_verif_all(state(), peer_id()) -> state().
+add_lookup_verif_all(St, PeerId) ->
+    #?ST{peers = Peers, rand = Rand, lookup_verif_all = Lookup} = St,
     {Lookup2, Rand2, Peers2} =
-        peers_lookup_add(Peers, Rand, PeerId, Lookup, #peer.lookup_all_idx),
-    St#?ST{peers = Peers2, rand = Rand2, lookup_all = Lookup2}.
+        peers_lookup_add(Peers, Rand, PeerId, Lookup, #peer.lookup_verif_all_idx),
+    St#?ST{peers = Peers2, rand = Rand2, lookup_verif_all = Lookup2}.
 
 -spec add_lookup_verif(state(), peer_id()) -> state().
 add_lookup_verif(St, PeerId) ->
@@ -1014,6 +1013,13 @@ add_lookup_unver(St, PeerId) ->
     {Lookup2, Rand2, Peers2} =
         peers_lookup_add(Peers, Rand, PeerId, Lookup, #peer.lookup_unver_idx),
     St#?ST{peers = Peers2, rand = Rand2, lookup_unver = Lookup2}.
+
+-spec del_lookup_verif_all(state(), peer_id()) -> state().
+del_lookup_verif_all(St, PeerId) ->
+    #?ST{peers = Peers, lookup_verif_all = Lookup} = St,
+    {Lookup2, Peers2} =
+        peers_lookup_del(Peers, PeerId, Lookup, #peer.lookup_verif_all_idx),
+    St#?ST{peers = Peers2, lookup_verif_all = Lookup2}.
 
 -spec del_lookup_verif(state(), peer_id()) -> state().
 del_lookup_verif(St, PeerId) ->
@@ -1141,11 +1147,12 @@ verified_add(St, Now, Peer) ->
             Peer2 = get_peer(St3, PeerId),
             Peer3 = Peer2#peer{vidx = BucketIdx},
             St4 = set_peer(St3, PeerId, Peer3),
-            case is_available(St4, PeerId) of
+            St5 = add_lookup_verif_all(St4, PeerId),
+            case is_available(St5, PeerId) of
                 false ->
-                    {verified, St4};
+                    {verified, St5};
                 true ->
-                    {verified, add_lookup_verif(St4, PeerId)}
+                    {verified, add_lookup_verif(St5, PeerId)}
             end
     end.
 
@@ -1163,7 +1170,8 @@ verified_del(St, PeerId) ->
             St2 = St#?ST{verif_pool = Pool3},
             Peer2 = Peer#peer{vidx = undefined},
             St3 = set_peer(St2, PeerId, Peer2),
-            del_lookup_verif(St3, PeerId)
+            St4 = del_lookup_verif(St3, PeerId),
+            del_lookup_verif_all(St4, PeerId)
     end.
 
 %% Downgrade a verified peer to unverified.
@@ -1226,11 +1234,12 @@ verified_make_space_for(St, Now, BucketIdx, PeerId) ->
             Peer2 = Peer#peer{vidx = undefined},
             St3 = set_peer(St2, EvictedId, Peer2),
             St4 = del_lookup_verif(St3, EvictedId),
-            case unverified_maybe_add(St4, Now, EvictedId, PeerId) of
-                {unverified, St5} ->
-                    {free_space, St5};
-                {ignored, St5} ->
-                    {free_space, del_peer(St5, EvictedId)}
+            St5 = del_lookup_verif_all(St4, EvictedId),
+            case unverified_maybe_add(St5, Now, EvictedId, PeerId) of
+                {unverified, St6} ->
+                    {free_space, St6};
+                {ignored, St6} ->
+                    {free_space, del_peer(St6, EvictedId)}
             end
     end.
 
