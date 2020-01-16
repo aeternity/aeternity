@@ -637,13 +637,10 @@ bytearray_decode(Bytearray) ->
     aeser_api_encoder:safe_decode(contract_bytearray, Bytearray).
 
 method_out(#{action := Action, tag := none} = Msg) ->
-    lager:info("ASDF NO TAG", []),
     opt_type(Msg, <<"channels.", (bin(Action))/binary>>);
 method_out(#{action := Action, tag := Tag} = Msg) ->
-    lager:info("ASDF TAG ~p", [Tag]),
     opt_type(Msg, <<"channels.", (bin(Action))/binary, ".", (bin(Tag))/binary>>);
 method_out(#{action := Action} = Msg) ->
-    lager:info("ASDF ACTION ~p", [Action]),
     opt_type(Msg, <<"channels.", (bin(Action))/binary>>).
 
 opt_type(#{ {int,type} := T }, Bin) ->

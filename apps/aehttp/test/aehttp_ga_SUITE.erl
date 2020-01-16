@@ -51,9 +51,7 @@
 -define(DEFAULT_GAS_PRICE, aec_test_utils:min_gas_price()).
 -define(MAX_MINED_BLOCKS, 20).
 -define(MINE_BLOCKS(N), aecore_suite_utils:mine_key_blocks(?NODENAME, N)).
--define(MINE_TXS(Txs),
-        aecore_suite_utils:mine_blocks_until_txs_on_chain(?NODENAME,
-            [decode_hash(TxHash) || TxHash <- Txs], ?MAX_MINED_BLOCKS)).
+-define(MINE_TXS(Txs), aecore_suite_utils:mine_blocks_until_txs_on_chain(?NODENAME, Txs, ?MAX_MINED_BLOCKS)).
 
 -define(assertMatchABI(AEVM, FATE, Res),
     case abi_version() of
@@ -764,8 +762,3 @@ do_dry_run(STx, ExpRes) ->
             ct:pal("Dry-run call failed with reason: ~s", [Reason]),
             ?assertMatch(ExpRes, error)
     end.
-
-decode_hash(EncodedTxHash) ->
-    {ok, Hash} = aeser_api_encoder:safe_decode(tx_hash, EncodedTxHash),
-    Hash.
-

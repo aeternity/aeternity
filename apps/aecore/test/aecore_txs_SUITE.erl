@@ -90,7 +90,7 @@ txs_gc(Config) ->
     pool_check(N1, 7),
 
     %% Mine to get TxH1-3 onto chain
-    {ok, Blocks1} = mine_txs(N1, [TxH1, TxH2, TxH3]),
+    {ok, Blocks1} = aecore_suite_utils:mine_blocks_until_txs_on_chain(N1, [TxH1, TxH2, TxH3], ?MAX_MINED_BLOCKS),
     Height1 = Height0 + length(Blocks1), %% Very unlikely to be > 6...
 
     %% At Height1 there should be 4 transactions in mempool
@@ -107,7 +107,7 @@ txs_gc(Config) ->
     {ok, TxH4} = add_spend_tx(N1, 1000, 20000 * aec_test_utils:min_gas_price(),  4,  10), %% consecutive nonce
 
     %% Mine to get TxH4-5 onto chain
-    {ok, Blocks2} = mine_txs(N1, [TxH4, TxH5]),
+    {ok, Blocks2} = aecore_suite_utils:mine_blocks_until_txs_on_chain(N1, [TxH4, TxH5], ?MAX_MINED_BLOCKS),
     Height3 = Height2 + length(Blocks2),
 
     %% Now if at height 5 or 6 there should be 2 transactions in mempool
@@ -192,12 +192,12 @@ missing_tx_gossip(Config) ->
     %% Set the same mining_rate to validate target
     %% Only needed when chain more than 18 blocks
     ok = rpc:call(N2, application, set_env, [aecore, expected_mine_rate, aecore_suite_utils:expected_mine_rate()], 5000),
-    {ok, MinedKeyBlocks1} = mine_txs(N1, [TxH1, TxH2, TxH3, TxH4]),
+    {ok, MinedKeyBlocks1} = aecore_suite_utils:mine_blocks_until_txs_on_chain(N1, [TxH1, TxH2, TxH3, TxH4], ?MAX_MINED_BLOCKS),
     aecore_suite_utils:wait_for_height(N2, aec_blocks:height(lists:last(MinedKeyBlocks1))),
     ?assertMatch({X,_} when is_binary(X), rpc:call(N2, aec_chain, find_tx_with_location, [Tx1Hash])),
     ?assertMatch({X,_} when is_binary(X), rpc:call(N2, aec_chain, find_tx_with_location, [Tx4Hash])),
 
-    {ok, _} = mine_txs(N2, [TxH5]),
+    {ok, _} = aecore_suite_utils:mine_blocks_until_txs_on_chain(N2, [TxH5], ?MAX_MINED_BLOCKS),
 
     ok.
 
@@ -210,7 +210,8 @@ check_coinbase_validation(Config) ->
         create_contract_tx(N1, chain, [],  300000 * aec_test_utils:min_gas_price(),  1,  100),
     {ok, TxH2} =
         call_contract_tx(N1, Ct1, Code, <<"save_coinbase">>, [], 600000 * aec_test_utils:min_gas_price(),  2,  100),
-    {ok, _} = mine_txs(N1, [TxH1, TxH2]),
+    {ok, _} =
+        aecore_suite_utils:mine_blocks_until_txs_on_chain(N1, [TxH1, TxH2], ?MAX_MINED_BLOCKS),
 
     %% Start a second node with distinct beneficiary.
     aecore_suite_utils:start_node(dev2, Config),
@@ -356,17 +357,4 @@ timediff(Ms, [_ | Rest]) ->
 new_pubkey() ->
     #{ public := PubKey } = enacl:sign_keypair(),
     PubKey.
-
-mine_txs(Node, EncTxsHashes) ->
-    TxHashes =
-        lists:map(
-            fun(EncTxHash) ->
-                {ok, TxHash} = aeser_api_encoder:safe_decode(tx_hash,
-                                                             EncTxHash),
-                TxHash
-            end,
-            EncTxsHashes),
-    {ok, _Blocks} =
-        aecore_suite_utils:mine_blocks_until_txs_on_chain(Node, TxHashes, 
-                                                          ?MAX_MINED_BLOCKS).
 

@@ -102,12 +102,7 @@ init_per_group(single_client, Cfg) ->
     Fee = 20000 * aec_test_utils:min_gas_price(),
     {ok, Tx} = add_spend_tx(?MINING_NODE, 1000000000000 * aec_test_utils:min_gas_price(), Fee, 1, 10, aecore_suite_utils:patron(), StratumPubKey),
     {ok, ContractTx, ContractPK} = deploy_payout_contract(StratumKeyPair, 1),
-    {ok, _} = aecore_suite_utils:mine_blocks_until_txs_on_chain(MNode,
-        [(fun(T) ->
-            {ok, Hash} = aeser_api_encoder:safe_decode(tx_hash, T),
-            Hash
-         end)(TxHash)|| TxHash <- [Tx, ContractTx]],
-        aec_governance:key_blocks_to_check_difficulty_count() - 2),
+    {ok, _} = aecore_suite_utils:mine_blocks_until_txs_on_chain(MNode, [Tx, ContractTx], aec_governance:key_blocks_to_check_difficulty_count() - 2),
 
     %% The stratum app requires the account to exist otherwise it won't start.
     %% So the node is started with stratum disabled, chain is synced, node

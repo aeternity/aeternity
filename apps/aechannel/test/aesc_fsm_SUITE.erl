@@ -503,7 +503,7 @@ multiple_responder_keys_per_port(Cfg) ->
             C = create_multi_channel(ChannelCfg, #{ mine_blocks => {ask, MinerHelper}
                                                   , debug => Debug }, false),
             %% [{C, Tx}] = collect_acks_w_payload([C], mine_blocks, 1),
-            %% TxHash = aetx_sign:hash(Tx),
+            %% TxHash = aeser_api_encoder:encode(tx_hash, aetx_sign:hash(Tx)),
             %% mine_blocks_until_txs_on_chain(dev1, [TxHash]),
             C
         end,
@@ -1171,7 +1171,7 @@ channel_detects_close_solo_and_settles(Cfg) ->
     {ok, Tx} = close_solo_tx(I, <<>>),
     {SignedCloseSoloTx, I1} = sign_tx(I, Tx, Cfg),
     ok = rpc(dev1, aec_tx_pool, push, [SignedCloseSoloTx]),
-    TxHash = aetx_sign:hash(SignedCloseSoloTx),
+    TxHash = aeser_api_encoder:encode(tx_hash, aetx_sign:hash(SignedCloseSoloTx)),
     mine_blocks_until_txs_on_chain(dev1, [TxHash]),
     LockPeriod = maps:get(lock_period, Spec),
     UnlockHeight = current_height(dev1) + LockPeriod,
@@ -2107,7 +2107,8 @@ settle_(TTL, MinDepth, #{fsm := FsmI, channel_id := ChannelId} = I, R, Debug,
     ?LOG(Debug, "settle_tx signed", []),
     {ok, _MinedKeyBlocks} = mine_blocks_until_txs_on_chain(
                              dev1,
-                             [aetx_sign:hash(SignedTx)]),
+                             [aeser_api_encoder:encode(tx_hash,
+                                                       aetx_sign:hash(SignedTx))]),
     SignedTx = await_on_chain_report(I, #{info => channel_closed}, ?TIMEOUT), % same tx
     ?LOG(Debug, "I received On-chain report: ~p", [SignedTx]),
     SignedTx = await_on_chain_report(R, #{info => channel_closed}, ?TIMEOUT), % same tx
@@ -2994,7 +2995,8 @@ wait_for_signed_transaction_in_block(Node, SignedTx, Debug) ->
             ok;
         NotConfirmed when NotConfirmed =:= mempool;
                           NotConfirmed =:= not_found ->
-            case mine_blocks_until_txs_on_chain(Node, [TxHash]) of
+            EncTxHash = aeser_api_encoder:encode(tx_hash, TxHash),
+            case mine_blocks_until_txs_on_chain(Node, [EncTxHash]) of
                 {ok, Blocks} ->
                     ?LOG(Debug, "Tx on-chain after mining ~p blocks", [length(Blocks)]),
                     {ok, Blocks};
@@ -3157,7 +3159,7 @@ ga_spend(From, To, Amt, Cfg) ->
     {ok, SpendAetx} = aec_spend_tx:new(SpendProps),
     SignedTx = meta(SendPub, Auth, 1, aetx_sign:new(SpendAetx, [])),
     ok = rpc(dev1, aec_tx_pool, push, [SignedTx]),
-    TxHash = aetx_sign:hash(SignedTx),
+    TxHash = aeser_api_encoder:encode(tx_hash, aetx_sign:hash(SignedTx)),
     aecore_suite_utils:mine_blocks_until_txs_on_chain(
         aecore_suite_utils:node_name(dev1), [TxHash], ?MAX_MINED_BLOCKS),
     ok.
@@ -4275,8 +4277,7 @@ slash(Cfg) ->
     LockPeriod = maps:get(lock_period, Spec),
     ok = rpc(dev1, aesc_fsm, slash, [FsmI, #{}]),
     {_, SignedSlashTx} = await_signing_request(slash_tx, I3, Cfg),
-    SlashTxHash = 
-                                           aetx_sign:hash(SignedSlashTx),
+    SlashTxHash = aeser_api_encoder:encode(tx_hash, aetx_sign:hash(SignedSlashTx)),
     mine_blocks_until_txs_on_chain(dev1, [SlashTxHash]),
     mine_blocks(dev1, LockPeriod),
     check_info(20),
@@ -4311,7 +4312,7 @@ slash_with_failed_onchain(Cfg) ->
     % channel
     ok = rpc(dev1, aesc_fsm, slash, [FsmI, #{}]),
     {_, SignedSlashTx} = await_signing_request(slash_tx, I3, Cfg),
-    SlashTxHash =  aetx_sign:hash(SignedSlashTx),
+    SlashTxHash = aeser_api_encoder:encode(tx_hash, aetx_sign:hash(SignedSlashTx)),
     mine_blocks_until_txs_on_chain(dev1, [SlashTxHash]),
     LockPeriod = maps:get(lock_period, Spec),
     mine_blocks(dev1, LockPeriod),
@@ -4341,7 +4342,7 @@ prepare_for_slashing(#{fsm := FsmI} = I, R, Spec, Cfg) ->
 
     %% make the close solo on-chain
     ok = rpc(dev1, aec_tx_pool, push, [SignedCloseSoloTx]),
-    TxHash = aetx_sign:hash(SignedCloseSoloTx),
+    TxHash = aeser_api_encoder:encode(tx_hash, aetx_sign:hash(SignedCloseSoloTx)),
     mine_blocks_until_txs_on_chain(dev1, [TxHash]),
     LockPeriod = maps:get(lock_period, Spec),
     UnlockHeight = current_height(dev1) + LockPeriod,

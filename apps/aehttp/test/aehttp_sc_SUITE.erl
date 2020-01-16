@@ -448,11 +448,7 @@ reset_participants(Grp, Config) ->
 
     ITx = initialize_account(StartAmt, Initiator, false),
     RTx = initialize_account(StartAmt, Responder, false),
-    aecore_suite_utils:mine_blocks_until_txs_on_chain(Node,
-        [(fun(EH) ->
-              {ok, Hash} = aeser_api_encoder:safe_decode(tx_hash, EH),
-              Hash
-          end)(EncHash) || EncHash <- [ITx, RTx]], ?MAX_MINED_BLOCKS),
+    aecore_suite_utils:mine_blocks_until_txs_on_chain(Node, [ITx, RTx], ?MAX_MINED_BLOCKS),
 
     Participants = #{initiator => #{pub_key => IPub,
                                     priv_key => IPriv,
@@ -2248,14 +2244,13 @@ initialize_account(Amount, {Pubkey, _Privkey}, Check) ->
 
     {ok, 200, #{<<"tx">> := SpendTx}} =
         post_spend_tx(aeser_api_encoder:encode(account_pubkey, Pubkey), Amount, Fee),
-    EncTxHash = sign_and_post_tx(SpendTx),
-    {ok, TxHash} = aeser_api_encoder:safe_decode(tx_hash, EncTxHash),
+    TxHash = sign_and_post_tx(SpendTx),
     if Check ->
         aecore_suite_utils:mine_blocks_until_txs_on_chain(Node, [TxHash], MaxMined),
         assert_balance_at_least(Pubkey, Amount),
         ok;
        true ->
-        EncTxHash
+        TxHash
     end.
 
 update_volley_(FirstPubkey, FirstConnPid, FirstPrivkey, SecondPubkey, SecondConnPid, SecondPrivkey, Config) ->
@@ -2660,14 +2655,13 @@ wait_for_signed_transaction_in_block(SignedTx) ->
             wait_for_tx_hash_on_chain(TxHash)
     end.
 
-wait_for_tx_hash_on_chain(EncTxHash) ->
+wait_for_tx_hash_on_chain(TxHash) ->
     Node = aecore_suite_utils:node_name(?NODE),
-    case rpc:call(Node, aec_chain, find_tx_location, [EncTxHash]) of
+    case rpc:call(Node, aec_chain, find_tx_location, [TxHash]) of
         BlockHash when is_binary(BlockHash) ->
-            ct:log("TxHash is already on chain (~p)", [EncTxHash]),
+            ct:log("TxHash is already on chain (~p)", [TxHash]),
             ok;
         _ ->
-            {ok, TxHash} = aeser_api_encoder:safe_decode(tx_hash, EncTxHash),
             Rate = aecore_suite_utils:expected_mine_rate(),
             Opts = #{strictly_follow_top => true},
             case aecore_suite_utils:mine_blocks_until_txs_on_chain(
