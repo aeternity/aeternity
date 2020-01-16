@@ -55,14 +55,14 @@
     sc_ws_pinned_error_deposit/1,
     sc_ws_pinned_error_withdraw/1,
     sc_ws_pinned_contract/1,
-    sc_ws_set_fee_create/1,
-    sc_ws_set_fee_deposit/1,
-    sc_ws_set_fee_withdrawal/1,
-    sc_ws_set_fee_snapshot/1,
-    sc_ws_set_fee_close_mutual/1,
-    sc_ws_set_fee_close_solo/1,
-    sc_ws_set_fee_slash/1,
-    sc_ws_set_fee_settle/1,
+    sc_ws_fee_computation_create/1,
+    sc_ws_fee_computation_deposit/1,
+    sc_ws_fee_computation_withdrawal/1,
+    sc_ws_fee_computation_snapshot/1,
+    sc_ws_fee_computation_close_mutual/1,
+    sc_ws_fee_computation_close_solo/1,
+    sc_ws_fee_computation_slash/1,
+    sc_ws_fee_computation_settle/1,
     sc_ws_abort_offchain_update/1,
     sc_ws_abort_deposit/1,
     sc_ws_abort_withdraw/1,
@@ -154,7 +154,10 @@ groups() ->
         {group, with_open_channel},
         {group, with_meta},
         {group, client_reconnect},
-        {group, changeable_fee},
+        {group, optional_fee},
+        {group, optional_gas_price},
+        {group, optional_fee_higher_than_gas_price},
+        {group, optional_fee_lower_than_gas_price},
         {group, abort_updates}
       ]},
 
@@ -233,17 +236,10 @@ groups() ->
         sc_ws_pinned_contract
       ]},
 
-     {changeable_fee, [sequence],
-      [
-       sc_ws_set_fee_create,
-       sc_ws_set_fee_deposit,
-       sc_ws_set_fee_withdrawal,
-       sc_ws_set_fee_snapshot,
-       sc_ws_set_fee_close_mutual,
-       sc_ws_set_fee_close_solo,
-       sc_ws_set_fee_slash,
-       sc_ws_set_fee_settle
-      ]},
+     {optional_fee, [sequence], fee_computation_sequence()},
+     {optional_gas_price, [sequence], fee_computation_sequence()},
+     {optional_fee_higher_than_gas_price, [sequence], fee_computation_sequence()},
+     {optional_fee_lower_than_gas_price, [sequence], fee_computation_sequence()},
 
      {abort_updates, [sequence],
       [ sc_ws_abort_offchain_update
@@ -255,6 +251,18 @@ groups() ->
       , sc_ws_abort_settle
       , sc_ws_can_not_abort_while_open
       ]}
+    ].
+
+fee_computation_sequence() ->
+    [
+      sc_ws_fee_computation_create,
+      sc_ws_fee_computation_deposit,
+      sc_ws_fee_computation_withdrawal,
+      sc_ws_fee_computation_snapshot,
+      %sc_ws_fee_computation_close_mutual,
+      sc_ws_fee_computation_close_solo,
+      sc_ws_fee_computation_slash,
+      sc_ws_fee_computation_settle
     ].
 
 suite() -> [].
@@ -302,6 +310,65 @@ init_per_group(client_reconnect, Config) ->
     reset_participants(client_reconnect, Config);
 init_per_group(pinned_env, Config) ->
     aect_test_utils:init_per_group(aevm, reset_participants(pinned_env, Config));
+init_per_group(optional_fee, Config) ->
+    Fee = ?ARBITRARY_BIG_FEE,
+    Opts = #{fee => Fee},
+    CheckFun =
+        fun(SignedTx) ->
+            Tx = aetx_sign:innermost_tx(SignedTx),
+            ActualFee = aetx:fee(Tx),
+            case ActualFee =:= Fee of
+                true -> ok;
+                false -> error({wrong_fee, ActualFee, Fee})
+            end
+        end,
+    [{fee_computation, {Opts, CheckFun}} |Config];
+init_per_group(optional_gas_price, Config) ->
+    GasPrice = aec_test_utils:min_gas_price() + 1234,
+    Opts = #{gas_price => GasPrice},
+    CheckFun =
+        fun(SignedTx) ->
+            Tx = aetx_sign:innermost_tx(SignedTx),
+            Version = aect_test_utils:latest_protocol_version(),
+            Height = current_height(),
+            ActualGasPrice = aetx:min_gas_price(Tx, Height, Version),
+            case ActualGasPrice =:= GasPrice of
+                true -> ok;
+                false -> error({wrong_gas_price, ActualGasPrice, GasPrice})
+            end
+        end,
+    [{fee_computation, {Opts, CheckFun}} |Config];
+init_per_group(optional_fee_higher_than_gas_price, Config) ->
+    GasPrice = aec_test_utils:min_gas_price(),
+    Fee = ?ARBITRARY_BIG_FEE * 2,
+    Opts = #{ gas_price => GasPrice
+            , fee => Fee},
+    CheckFun =
+        fun(SignedTx) ->
+            Tx = aetx_sign:innermost_tx(SignedTx),
+            ActualFee = aetx:fee(Tx),
+            case ActualFee =:= Fee of
+                true -> ok;
+                false -> error({wrong_fee, ActualFee, Fee})
+            end
+        end,
+    [{fee_computation, {Opts, CheckFun}} |Config];
+init_per_group(optional_fee_lower_than_gas_price, Config) ->
+    GasPrice = aec_test_utils:min_gas_price() + 1234,
+    Opts = #{ gas_price => GasPrice
+            , fee => 1}, % some small fee so it is being ignored in favour of gas price based computed fee
+    CheckFun =
+        fun(SignedTx) ->
+            Tx = aetx_sign:innermost_tx(SignedTx),
+            Version = aect_test_utils:latest_protocol_version(),
+            Height = current_height(),
+            ActualGasPrice = aetx:min_gas_price(Tx, Height, Version),
+            case ActualGasPrice =:= GasPrice of
+                true -> ok;
+                false -> error({wrong_gas_price, ActualGasPrice, GasPrice})
+            end
+        end,
+    [{fee_computation, {Opts, CheckFun}} |Config];
 init_per_group(_Grp, Config) ->
     Config.
 
@@ -369,7 +436,7 @@ start_node(Config) ->
 reset_participants(Grp, Config) ->
     Node = ?config(node, Config),
 
-    StartAmt = 50000000000 * aec_test_utils:min_gas_price(),
+    StartAmt = 70000000000 * aec_test_utils:min_gas_price(),
         %% case aect_test_utils:latest_protocol_version() >= ?LIMA_PROTOCOL_VSN of
         %%     false -> 50000000000 * aec_test_utils:min_gas_price();
         %%     true  ->
@@ -530,8 +597,10 @@ sc_ws_open_(Config, ChannelOpts0, MinBlocksToMine) ->
                  get_accounts_by_pubkey_sut(aeser_api_encoder:encode(account_pubkey, IPubkey)),
     {ok, 200, #{<<"balance">> := RStartAmt}} =
                  get_accounts_by_pubkey_sut(aeser_api_encoder:encode(account_pubkey, RPubkey)),
-    IAmt = 70000 * aec_test_utils:min_gas_price(),
-    RAmt = 40000 * aec_test_utils:min_gas_price(),
+    IAmt = maps:get(initiator_amount, ChannelOpts0,
+                    70000 * aec_test_utils:min_gas_price()),
+    RAmt = maps:get(responder_amount, ChannelOpts0,
+                    40000 * aec_test_utils:min_gas_price()),
 
     {IStartAmt, RStartAmt} = channel_participants_balances(IPubkey, RPubkey),
 
@@ -1093,7 +1162,9 @@ query_contract_(ConnPid, Pubkey, <<"json-rpc">>) ->
 sc_ws_close_mutual_(Config0) ->
     lists:foreach(
         fun(WhoCloses) ->
-            Config = sc_ws_open_(Config0),
+            Config = sc_ws_open_(Config0,
+                                 #{initiator_amount => ?ARBITRARY_BIG_FEE * 2,
+                                   responder_amount => ?ARBITRARY_BIG_FEE * 2}),
             sc_ws_close_mutual_(Config, WhoCloses)
         end,
         [initiator, responder]).
@@ -3390,6 +3461,7 @@ channel_options(IPubkey, RPubkey, IAmt, RAmt, Other, Config) ->
                     , protocol => sc_ws_protocol(Config)
                     }, Other),
         [fun maybe_add_fee/2,
+         fun maybe_add_gas_price/2,
          fun maybe_add_slogan/2
         ]).
 
@@ -3399,6 +3471,9 @@ maybe_add_slogan(Map, Config) ->
 
 maybe_add_fee(Map, Config) ->
     maybe_add_param(fee, Map, Config).
+
+maybe_add_gas_price(Map, Config) ->
+    maybe_add_param(gas_price, Map, Config).
 
 maybe_add_param(ParamName, Map, Config) ->
     case maps:find(ParamName, Map) of
@@ -3552,8 +3627,14 @@ log_basename(Config) ->
                 filename:join([Protocol, "generalized_accounts", "both"]);
             pinned_env ->
                 filename:join([Protocol, "pinned_env"]);
-            changeable_fee ->
+            optional_fee ->
                 filename:join([Protocol, "changeable_fee"]);
+            optional_gas_price ->
+                filename:join([Protocol, "changeable_gas_price"]);
+            optional_fee_higher_than_gas_price ->
+                filename:join([Protocol, "changeable_fee_higher_than_gas_price"]);
+            optional_fee_lower_than_gas_price ->
+                filename:join([Protocol, "changeable_fee_lower_than_gas_price"]);
             abort_updates ->
                 filename:join([Protocol, "abort_updates"]);
             plain -> Protocol
@@ -4339,39 +4420,44 @@ wait_for_expected_events(Pid, Config, ExpectedEvents) ->
             wait_for_expected_events(Pid, Config, ExpectedEvents1)
     end.
 
-signed_tx_fee(SignedTx) ->
-    Tx = aetx_sign:innermost_tx(SignedTx),
-    aetx:fee(Tx).
 
 signed_channel_tx_round(SignedTx) ->
     AeTx = aetx_sign:innermost_tx(SignedTx),
     {Mod, Tx} = aetx:specialize_callback(AeTx),
     Mod:round(Tx).
 
-sc_ws_set_fee_create(Cfg0) ->
-    Fee = ?ARBITRARY_BIG_FEE,
-    Cfg = sc_ws_open_([{fee, Fee}
-                       |Cfg0]),
+sc_ws_fee_computation_create(Cfg0) ->
+    {Opts, CheckFun} = ?config(fee_computation, Cfg0),
+    Cfg1 =
+        case Opts of
+            #{fee := Fee, gas_price := GasPrice} ->
+                [{fee, Fee}, {gas_price, GasPrice} | Cfg0];
+            #{fee := Fee} ->
+                [{fee, Fee} | Cfg0];
+            #{gas_price := GasPrice} ->
+                [{gas_price, GasPrice} | Cfg0]
+        end,
+
+    Cfg = sc_ws_open_(Cfg1),
 
     SignedCrTx = ?config(create_tx, Cfg),
 
-    ActualFee = signed_tx_fee(SignedCrTx),
-    Fee = ActualFee,
+    CheckFun(SignedCrTx),
     sc_ws_close_mutual_(Cfg, initiator),
     ok.
 
-sc_ws_set_fee_deposit(Cfg0) ->
+sc_ws_fee_computation_deposit(Cfg0) ->
     MakeDeposit = fun sc_ws_deposit_/3,
-    sc_ws_set_fee_(Cfg0, MakeDeposit).
+    sc_ws_fee_computation_(Cfg0, MakeDeposit).
 
-sc_ws_set_fee_withdrawal(Cfg0) ->
+sc_ws_fee_computation_withdrawal(Cfg0) ->
     MakeDeposit =
         fun(Cfg, Who, Opts) ->
             sc_ws_withdraw_(Cfg, Who, Opts)
         end,
-    sc_ws_set_fee_(Cfg0, MakeDeposit).
+    sc_ws_fee_computation_(Cfg0, MakeDeposit).
 
-sc_ws_set_fee_snapshot(Cfg0) ->
+sc_ws_fee_computation_snapshot(Cfg0) ->
     MakeDeposit =
         fun(Cfg, Who, Opts) ->
             #{ initiator := IConnPid } = Cs =
@@ -4387,27 +4473,27 @@ sc_ws_set_fee_snapshot(Cfg0) ->
                                       Ps, Cs, Cfg, Opts),
             {ok, SignedSnapshotTx}
         end,
-    sc_ws_set_fee_(Cfg0, MakeDeposit).
+    sc_ws_fee_computation_(Cfg0, MakeDeposit).
 
-sc_ws_set_fee_close_mutual(Cfg0) ->
-    Cfg = sc_ws_open_(Cfg0),
+sc_ws_fee_computation_close_mutual(Cfg0) ->
+    {Opts, CheckFun} = ?config(fee_computation, Cfg0),
+    %% start the channel with enough funds to be able to pay the big close
+    %% mutual fee
+    Cfg = sc_ws_open_(Cfg0, #{initiator_amount => ?ARBITRARY_BIG_FEE * 2,
+                              responder_amount => ?ARBITRARY_BIG_FEE * 2}),
 
-    DefaultMutualFee = 20000000000000,
-    ModifiedMutualFee = DefaultMutualFee + 1,
-    {ok, SignedMutualTx} = sc_ws_close_mutual_(Cfg, initiator, #{fee => ModifiedMutualFee}),
-    ActualMutualFee = signed_tx_fee(SignedMutualTx),
-    ModifiedMutualFee = ActualMutualFee,
+    {ok, SignedMutualTx} = sc_ws_close_mutual_(Cfg, initiator, Opts),
+    CheckFun(SignedMutualTx),
     ok.
 
-sc_ws_set_fee_(Cfg0, MakeOnChainTxFun) ->
-    Fee = ?ARBITRARY_BIG_FEE,
+sc_ws_fee_computation_(Cfg0, MakeOnChainTxFun) ->
+    {Opts, CheckFun} = ?config(fee_computation, Cfg0),
     Cfg = sc_ws_open_(Cfg0),
 
     Test =
         fun(Who) ->
-            {ok, SignedTx} = MakeOnChainTxFun(Cfg, Who, #{fee => Fee}),
-            ActualFee = signed_tx_fee(SignedTx),
-            Fee = ActualFee
+            {ok, SignedTx} = MakeOnChainTxFun(Cfg, Who, Opts),
+            CheckFun(SignedTx)
         end,
 
     Test(initiator),
@@ -4416,44 +4502,41 @@ sc_ws_set_fee_(Cfg0, MakeOnChainTxFun) ->
     sc_ws_close_mutual_(Cfg, initiator),
     ok.
 
-sc_ws_set_fee_close_solo(Cfg0) ->
-    Fee = ?ARBITRARY_BIG_FEE,
+sc_ws_fee_computation_close_solo(Cfg0) ->
+    {Opts, CheckFun} = ?config(fee_computation, Cfg0),
     Test =
         fun(Who) ->
             Cfg = sc_ws_open_(Cfg0),
-            {ok, SignedTx} = sc_ws_close_solo_(Cfg, Who, #{fee => Fee}),
-            ActualFee = signed_tx_fee(SignedTx),
-            Fee = ActualFee,
+            {ok, SignedTx} = sc_ws_close_solo_(Cfg, Who, Opts),
+            CheckFun(SignedTx),
             settle_(Cfg, initiator)
         end,
     Test(initiator),
     Test(responder),
     ok.
 
-sc_ws_set_fee_slash(Cfg0) ->
-    Fee = ?ARBITRARY_BIG_FEE,
+sc_ws_fee_computation_slash(Cfg0) ->
+    {Opts, CheckFun} = ?config(fee_computation, Cfg0),
     Test =
         fun(Who) ->
             Cfg = sc_ws_open_(Cfg0),
             {ok, SignedTx} = sc_ws_slash_(Cfg, _WhoCloses = initiator,
-                                          Who, #{fee => Fee}),
-            ActualFee = signed_tx_fee(SignedTx),
-            Fee = ActualFee,
+                                          Who, Opts),
+            CheckFun(SignedTx),
             settle_(Cfg, initiator)
         end,
     Test(initiator),
     Test(responder),
     ok.
 
-sc_ws_set_fee_settle(Cfg0) ->
-    Fee = ?ARBITRARY_BIG_FEE,
+sc_ws_fee_computation_settle(Cfg0) ->
+    {Opts, CheckFun} = ?config(fee_computation, Cfg0),
     Test =
         fun(Who) ->
             Cfg = sc_ws_open_(Cfg0),
             sc_ws_close_solo_(Cfg, initiator, #{}),
-            {ok, SignedTx} = settle_(Cfg, Who, #{fee => Fee}),
-            ActualFee = signed_tx_fee(SignedTx),
-            Fee = ActualFee,
+            {ok, SignedTx} = settle_(Cfg, Who, Opts),
+            CheckFun(SignedTx),
             ok
         end,
     Test(initiator),
