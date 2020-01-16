@@ -119,11 +119,12 @@ protocols_from_network_id(<<"local_minerva_testnet">>) ->
      %%, ?LIMA_PROTOCOL_VSN     => Excluded for testing old protocol
      %%, ?IRIS_PROTOCOL_VSN     => Excluded for testing old protocol
      };
-protocols_from_network_id(<<"local_lima_testnet">>) ->
+protocols_from_network_id(<<"local_fortuna_testnet">>) ->
     #{ ?ROMA_PROTOCOL_VSN     => 0
      %%, ?MINERVA_PROTOCOL_VSN  => Excluded for testing old protocol
-     %%, ?FORTUNA_PROTOCOL_VSN  => Excluded for testing old protocol
-     , ?LIMA_PROTOCOL_VSN     => 1
+     , ?FORTUNA_PROTOCOL_VSN  => 1
+     %%, ?LIMA_PROTOCOL_VSN     => Excluded for testing old protocol
+     %%, ?IRIS_PROTOCOL_VSN     => Excluded for testing old protocol
      };
 protocols_from_network_id(<<"local_iris_testnet">>) ->
     #{ ?ROMA_PROTOCOL_VSN     => 0
