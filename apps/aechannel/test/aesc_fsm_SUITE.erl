@@ -3178,7 +3178,7 @@ basic_spend(From, To, Amt, Cfg) ->
     {ok, SpendAetx} = aec_spend_tx:new(SpendProps),
     {SignedTx, FromAcc1} = sign_tx(FromAcc, SpendAetx, Cfg),
     ok = rpc(dev1, aec_tx_pool, push, [SignedTx]),
-    TxHash = aetx_sign:hash(SignedTx),
+    TxHash = aeser_api_encoder:encode(tx_hash, aetx_sign:hash(SignedTx)),
     aecore_suite_utils:mine_blocks_until_txs_on_chain(
         aecore_suite_utils:node_name(dev1), [TxHash], ?MAX_MINED_BLOCKS),
     FromAcc1.
