@@ -50,9 +50,17 @@ state "Awaiting Locked" as aw_lo {
 
   state "WatchDeposit" as aw_lo_watchdeposit
   aw_lo_watchdeposit --> de_si                            : minimum_depth_achieved
+  aw_lo_watchdeposit --> aw_lo_watchdeposit               : deposit_err [if tx is valid]
+  aw_lo_watchdeposit --> aw_lo_rejected                   : deposit_err [if tx is invalid]
 
   state "WatchWithdraw" as aw_lo_watchwithdraw
   aw_lo_watchwithdraw --> wi_si                           : minimum_depth_achieved
+  aw_lo_watchwithdraw --> aw_lo_watchwithdraw             : withdraw_err [if tx is valid]
+  aw_lo_watchwithdraw --> aw_lo_rejected                  : withdraw_err [if tx is invalid]
+
+  state "TxRejectedOnChain" as aw_lo_rejected
+  aw_lo_rejected --> channel_open                         : [if tx invalid]
+
 }
 
 state "Half Signed" as ha_si
@@ -139,6 +147,8 @@ state "Mutual Closing" as mu_cl
 mu_cl --> mu_cld                                          : shutdown_ack
 mu_cl --> ch_cl                                           : (timeout) [if channel_status=closing]
 mu_cl --> mu_cl                                           : disconnect [if channel_status=closing]
+mu_cl --> mu_cl                                           : shutdown_err [if tx valid]
+mu_cl --> channel_open                                    : shutdown_err [if tx invalid]
 
 state "Mutual Closed" as mu_cld
 mu_cld --> te                                             : minimum_depth_achieved | timeout
