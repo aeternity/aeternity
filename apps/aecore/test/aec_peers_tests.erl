@@ -210,8 +210,11 @@ test_single_normal_peer() ->
     {ok, Conn} = ?assertCalled(connect, [#{ r_pubkey := PubKey }], {ok, _}, 200),
 
     ?assertMatch([], aec_peers:connected_peers()),
-    ?assertMatch([#{ pubkey := PubKey }], aec_peers:get_random(all)),
+    ?assertMatch([], aec_peers:get_random(all)),
     ?assertMatch({error, _}, aec_peers:get_connection(Id)),
+
+    ?assertEqual(0, aec_peers:count(verified)),
+    ?assertEqual(1, aec_peers:count(unverified)),
 
     ok = conn_peer_connected(Conn),
 
@@ -503,10 +506,8 @@ test_address_group_selection() ->
     aec_peers:add_peers(Source, Peer2),
     ?assertNotCalled(connect, _, 1100),
 
-    ?assertEqual(lists:sort([Peer1]),
-                 lists:sort(aec_peers:connected_peers())),
-    ?assertEqual(lists:sort([Peer1, Peer2]),
-                 lists:sort(aec_peers:get_random(all))),
+    ?assertEqual([Peer1], aec_peers:connected_peers()),
+    ?assertEqual([Peer1], aec_peers:get_random(all)),
     ?assertMatch({ok, Conn1}, aec_peers:get_connection(Id1)),
     ?assertMatch({error, _}, aec_peers:get_connection(Id2)),
 
@@ -516,7 +517,7 @@ test_address_group_selection() ->
 
     ?assertEqual(lists:sort([Peer1, Peer3]),
                  lists:sort(aec_peers:connected_peers())),
-    ?assertEqual(lists:sort([Peer1, Peer2, Peer3]),
+    ?assertEqual(lists:sort([Peer1, Peer3]),
                  lists:sort(aec_peers:get_random(all))),
     ?assertMatch({ok, Conn1}, aec_peers:get_connection(Id1)),
     ?assertMatch({error, _}, aec_peers:get_connection(Id2)),
@@ -527,7 +528,7 @@ test_address_group_selection() ->
 
     ?assertEqual(lists:sort([Peer1, Peer3]),
                  lists:sort(aec_peers:connected_peers())),
-    ?assertEqual(lists:sort([Peer1, Peer2, Peer3, Peer4]),
+    ?assertEqual(lists:sort([Peer1, Peer3]),
                  lists:sort(aec_peers:get_random(all))),
     ?assertMatch({ok, Conn1}, aec_peers:get_connection(Id1)),
     ?assertMatch({error, _}, aec_peers:get_connection(Id2)),
@@ -540,7 +541,7 @@ test_address_group_selection() ->
 
     ?assertEqual(lists:sort([Peer1, Peer3, Peer5]),
                  lists:sort(aec_peers:connected_peers())),
-    ?assertEqual(lists:sort([Peer1, Peer2, Peer3, Peer4, Peer5]),
+    ?assertEqual(lists:sort([Peer1, Peer3, Peer5]),
                  lists:sort(aec_peers:get_random(all))),
     ?assertMatch({ok, Conn1}, aec_peers:get_connection(Id1)),
     ?assertMatch({error, _}, aec_peers:get_connection(Id2)),
@@ -649,7 +650,7 @@ test_connection_failure() ->
     ok = conn_connection_failed(Conn1),
 
     ?assertMatch([], aec_peers:connected_peers()),
-    ?assertMatch([Peer], aec_peers:get_random(all)),
+    ?assertMatch([], aec_peers:get_random(all)),
     ?assertMatch({error, _}, aec_peers:get_connection(Id)),
 
     ?assertEqual(0, aec_peers:count(connections)),
@@ -687,7 +688,7 @@ test_connection_down() ->
     conn_kill(Conn1),
 
     ?assertMatch([], aec_peers:connected_peers()),
-    ?assertMatch([Peer], aec_peers:get_random(all)),
+    ?assertMatch([], aec_peers:get_random(all)),
     ?assertMatch({error, _}, aec_peers:get_connection(Id)),
 
     ?assertEqual(0, aec_peers:count(connections)),
@@ -732,7 +733,7 @@ test_connection_down() ->
     {ok, Conn5} = ?assertCalled(connect, [#{ r_pubkey := PubKey }], {ok, _}, 200),
 
     ?assertMatch([], aec_peers:connected_peers()),
-    ?assertMatch([Peer], aec_peers:get_random(all)),
+    ?assertMatch([], aec_peers:get_random(all)),
     ?assertMatch({error, _}, aec_peers:get_connection(Id)),
 
     ?assertEqual(1, aec_peers:count(connections)),
@@ -752,7 +753,7 @@ test_connection_down() ->
     conn_kill(Conn7),
 
     ?assertMatch([], aec_peers:connected_peers()),
-    ?assertMatch([Peer], aec_peers:get_random(all)),
+    ?assertMatch([], aec_peers:get_random(all)),
     ?assertMatch({error, _}, aec_peers:get_connection(Id)),
 
     ?assertEqual(0, aec_peers:count(connections)),
@@ -860,7 +861,7 @@ test_outbound_connections() ->
     ?assertNotCalled(connect, _, 1000),
 
     ?assertEqual(lists:sort(Peers), lists:sort(aec_peers:connected_peers())),
-    ?assertEqual(lists:sort([Peer4, Peer5 | Peers]), lists:sort(aec_peers:get_random(all))),
+    ?assertEqual(lists:sort([Peer4 | Peers]), lists:sort(aec_peers:get_random(all))),
 
     ?assertEqual(3, aec_peers:count(connections)),
     ?assertEqual(0, aec_peers:count(inbound)),
