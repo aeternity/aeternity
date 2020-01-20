@@ -712,10 +712,21 @@ handle_ping_msg(S, RemotePingObj) ->
 
 decode_remote_ping(#{ genesis_hash := GHash,
                       best_hash    := THash,
+                      share        := Share,
                       peers        := Peers,
                       difficulty   := Difficulty,
                       sync_allowed := SyncAllowed}) ->
-    {ok, SyncAllowed, GHash, THash, Difficulty, Peers};
+    case length(Peers) =< Share of
+        true ->
+            case Share =< max_gossiped_peers_count() of
+                true ->
+                    {ok, SyncAllowed, GHash, THash, Difficulty, Peers};
+                false ->
+                    {error, too_many_peers_in_ping_message}
+            end;
+        false ->
+            {error, bad_ping_message}
+    end;
 decode_remote_ping(_) ->
     {error, bad_ping_message}.
 
@@ -1224,6 +1235,11 @@ gossiped_peers_count() ->
     aeu_env:user_config_or_env([<<"sync">>, <<"gossiped_peers_count">>],
                                aecore, gossiped_peers_count,
                                ?DEFAULT_GOSSIPED_PEERS_COUNT).
+
+max_gossiped_peers_count() ->
+    {ok, Max} = aeu_env:schema([<<"sync">>, <<"properties">>,
+                                <<"gossiped_peers_count">>, <<"maximum">>]),
+    Max.
 
 %% -- Helper functions -------------------------------------------------------
 
