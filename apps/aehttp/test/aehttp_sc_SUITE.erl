@@ -70,6 +70,7 @@
     sc_ws_optional_params_slash/1,
     sc_ws_optional_params_fail_slash/1,
     sc_ws_optional_params_settle/1,
+    sc_ws_optional_params_fail_settle/1,
     sc_ws_abort_offchain_update/1,
     sc_ws_abort_deposit/1,
     sc_ws_abort_withdraw/1,
@@ -282,7 +283,8 @@ optional_onchain_fail_params_sequence() ->
       sc_ws_optional_params_fail_snapshot,
       sc_ws_optional_params_fail_close_mutual,
       sc_ws_optional_params_fail_close_solo,
-      sc_ws_optional_params_fail_slash
+      sc_ws_optional_params_fail_slash,
+      sc_ws_optional_params_fail_settle
     ].
 
 suite() -> [].
@@ -4607,6 +4609,26 @@ sc_ws_optional_params_fail_slash(Cfg0) ->
             settle_(CleanCfg, initiator)
         end,
     sc_ws_optional_params_fail(Cfg0, <<"channels.slash">>, #{},
+                               compute, PreAction, PostAction).
+
+sc_ws_optional_params_fail_settle(Cfg0) ->
+    PreAction =
+        %% prepare the channel for slashing
+        fun(_ConnPid, Cfg) ->
+            Round0 = 2,
+            %% make an update so we are not at channel_create_tx
+            _Round1 = sc_ws_update_basic_round_(Round0, Cfg),
+            {ok, _SignedTx} = sc_ws_close_solo_(Cfg, initiator, #{}),
+            aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE),
+                                           ?DEFAULT_MIN_DEPTH),
+
+            ok
+        end,
+    PostAction =
+        fun(_Cfg) ->
+            ok
+        end,
+    sc_ws_optional_params_fail(Cfg0, <<"channels.settle">>, #{},
                                compute, PreAction, PostAction).
 
 sc_ws_optional_params_fail(Cfg0, Action, ActionParams) ->
