@@ -55,14 +55,22 @@
     sc_ws_pinned_error_deposit/1,
     sc_ws_pinned_error_withdraw/1,
     sc_ws_pinned_contract/1,
-    sc_ws_fee_computation_create/1,
-    sc_ws_fee_computation_deposit/1,
-    sc_ws_fee_computation_withdrawal/1,
-    sc_ws_fee_computation_snapshot/1,
-    sc_ws_fee_computation_close_mutual/1,
-    sc_ws_fee_computation_close_solo/1,
-    sc_ws_fee_computation_slash/1,
-    sc_ws_fee_computation_settle/1,
+    sc_ws_optional_params_create/1,
+    sc_ws_optional_params_fail_create/1,
+    sc_ws_optional_params_deposit/1,
+    sc_ws_optional_params_fail_deposit/1,
+    sc_ws_optional_params_fail_withdrawal/1,
+    sc_ws_optional_params_withdrawal/1,
+    sc_ws_optional_params_snapshot/1,
+    sc_ws_optional_params_fail_snapshot/1,
+    sc_ws_optional_params_close_mutual/1,
+    sc_ws_optional_params_fail_close_mutual/1,
+    sc_ws_optional_params_close_solo/1,
+    sc_ws_optional_params_fail_close_solo/1,
+    sc_ws_optional_params_slash/1,
+    sc_ws_optional_params_fail_slash/1,
+    sc_ws_optional_params_settle/1,
+    sc_ws_optional_params_fail_settle/1,
     sc_ws_abort_offchain_update/1,
     sc_ws_abort_deposit/1,
     sc_ws_abort_withdraw/1,
@@ -158,6 +166,7 @@ groups() ->
         {group, optional_gas_price},
         {group, optional_fee_higher_than_gas_price},
         {group, optional_fee_lower_than_gas_price},
+        {group, optional_nonce},
         {group, abort_updates}
       ]},
 
@@ -236,10 +245,11 @@ groups() ->
         sc_ws_pinned_contract
       ]},
 
-     {optional_fee, [sequence], fee_computation_sequence()},
-     {optional_gas_price, [sequence], fee_computation_sequence()},
-     {optional_fee_higher_than_gas_price, [sequence], fee_computation_sequence()},
-     {optional_fee_lower_than_gas_price, [sequence], fee_computation_sequence()},
+     {optional_fee, [sequence], optional_onchain_params_sequence()},
+     {optional_gas_price, [sequence], optional_onchain_params_sequence()},
+     {optional_fee_higher_than_gas_price, [sequence], optional_onchain_params_sequence()},
+     {optional_fee_lower_than_gas_price, [sequence], optional_onchain_params_sequence()},
+     {optional_nonce, [sequence], optional_onchain_fail_params_sequence()},
 
      {abort_updates, [sequence],
       [ sc_ws_abort_offchain_update
@@ -253,16 +263,28 @@ groups() ->
       ]}
     ].
 
-fee_computation_sequence() ->
+optional_onchain_params_sequence() ->
     [
-      sc_ws_fee_computation_create,
-      sc_ws_fee_computation_deposit,
-      sc_ws_fee_computation_withdrawal,
-      sc_ws_fee_computation_snapshot,
-      %sc_ws_fee_computation_close_mutual,
-      sc_ws_fee_computation_close_solo,
-      sc_ws_fee_computation_slash,
-      sc_ws_fee_computation_settle
+      sc_ws_optional_params_create,
+      sc_ws_optional_params_deposit,
+      sc_ws_optional_params_withdrawal,
+      sc_ws_optional_params_snapshot,
+      %sc_ws_optional_params_close_mutual,
+      sc_ws_optional_params_close_solo,
+      sc_ws_optional_params_slash,
+      sc_ws_optional_params_settle
+    ].
+
+optional_onchain_fail_params_sequence() ->
+    [
+      sc_ws_optional_params_fail_create,
+      sc_ws_optional_params_fail_deposit,
+      sc_ws_optional_params_fail_withdrawal,
+      sc_ws_optional_params_fail_snapshot,
+      sc_ws_optional_params_fail_close_mutual,
+      sc_ws_optional_params_fail_close_solo,
+      sc_ws_optional_params_fail_slash,
+      sc_ws_optional_params_fail_settle
     ].
 
 suite() -> [].
@@ -366,6 +388,19 @@ init_per_group(optional_fee_lower_than_gas_price, Config) ->
             case ActualGasPrice =:= GasPrice of
                 true -> ok;
                 false -> error({wrong_gas_price, ActualGasPrice, GasPrice})
+            end
+        end,
+    [{fee_computation, {Opts, CheckFun}} |Config];
+init_per_group(optional_nonce, Config) ->
+    Nonce = 1234567,
+    Opts = #{nonce => Nonce},
+    CheckFun =
+        fun(SignedTx) ->
+            Tx = aetx_sign:innermost_tx(SignedTx),
+            ActualNonce = aetx:nonce(Tx),
+            case ActualNonce =:= Nonce of
+                true -> ok;
+                false -> error({wrong_nonce, ActualNonce, Nonce})
             end
         end,
     [{fee_computation, {Opts, CheckFun}} |Config];
@@ -3462,6 +3497,7 @@ channel_options(IPubkey, RPubkey, IAmt, RAmt, Other, Config) ->
                     }, Other),
         [fun maybe_add_fee/2,
          fun maybe_add_gas_price/2,
+         fun maybe_add_nonce/2,
          fun maybe_add_slogan/2
         ]).
 
@@ -3474,6 +3510,9 @@ maybe_add_fee(Map, Config) ->
 
 maybe_add_gas_price(Map, Config) ->
     maybe_add_param(gas_price, Map, Config).
+
+maybe_add_nonce(Map, Config) ->
+    maybe_add_param(nonce, Map, Config).
 
 maybe_add_param(ParamName, Map, Config) ->
     case maps:find(ParamName, Map) of
@@ -3637,6 +3676,8 @@ log_basename(Config) ->
                 filename:join([Protocol, "changeable_fee_lower_than_gas_price"]);
             abort_updates ->
                 filename:join([Protocol, "abort_updates"]);
+            optional_nonce ->
+                filename:join([Protocol, "changeable_nonce"]);
             plain -> Protocol
         end,
     filename:join("channel_docs", SubDir).
@@ -4426,18 +4467,9 @@ signed_channel_tx_round(SignedTx) ->
     {Mod, Tx} = aetx:specialize_callback(AeTx),
     Mod:round(Tx).
 
-sc_ws_fee_computation_create(Cfg0) ->
+sc_ws_optional_params_create(Cfg0) ->
     {Opts, CheckFun} = ?config(fee_computation, Cfg0),
-    Cfg1 =
-        case Opts of
-            #{fee := Fee, gas_price := GasPrice} ->
-                [{fee, Fee}, {gas_price, GasPrice} | Cfg0];
-            #{fee := Fee} ->
-                [{fee, Fee} | Cfg0];
-            #{gas_price := GasPrice} ->
-                [{gas_price, GasPrice} | Cfg0]
-        end,
-
+    Cfg1 = maps:to_list(maps:with([nonce, fee, gas_price], Opts)) ++ Cfg0,
     Cfg = sc_ws_open_(Cfg1),
 
     SignedCrTx = ?config(create_tx, Cfg),
@@ -4446,18 +4478,223 @@ sc_ws_fee_computation_create(Cfg0) ->
     sc_ws_close_mutual_(Cfg, initiator),
     ok.
 
-sc_ws_fee_computation_deposit(Cfg0) ->
-    MakeDeposit = fun sc_ws_deposit_/3,
-    sc_ws_fee_computation_(Cfg0, MakeDeposit).
 
-sc_ws_fee_computation_withdrawal(Cfg0) ->
+sc_ws_optional_params_fail_create(Cfg0) ->
+    {ChannelOpts0, CheckFun} = ?config(fee_computation, Cfg0),
+    Config = maps:to_list(maps:with([nonce, fee, gas_price], ChannelOpts0)) ++ Cfg0,
+    #{initiator := #{pub_key := IPubkey},
+      responder := #{pub_key := RPubkey}} = proplists:get_value(participants, Config),
+    IAmt = maps:get(initiator_amount, ChannelOpts0,
+                    70000 * aec_test_utils:min_gas_price()),
+    RAmt = maps:get(responder_amount, ChannelOpts0,
+                    40000 * aec_test_utils:min_gas_price()),
+
+    TestEvents = [info, get, sign, on_chain_tx, update],
+    ChannelOpts = channel_options(IPubkey, RPubkey, IAmt, RAmt, ChannelOpts0, Config),
+    {IChanOpts, RChanOpts} = special_channel_opts(ChannelOpts),
+    ct:log("IChanOpts = ~p~n"
+           "RChanOpts = ~p~n", [IChanOpts, RChanOpts]),
+    %% We need to register for some events as soon as possible - otherwise a race may occur where
+    %% some fsm messages are missed
+    {ok, IConnPid, IFsmId} = channel_ws_start(initiator,
+                                           maps:put(host, <<"localhost">>, IChanOpts), Config, TestEvents),
+    ct:log("initiator spawned", []),
+
+    {ok, RConnPid, RFsmId} = channel_ws_start(responder, RChanOpts, Config, TestEvents),
+    ct:log("responder spawned", []),
+
+    channel_send_conn_open_infos(RConnPid, IConnPid, Config),
+
+    {ok, _, Tag, #{<<"signed_tx">> := EncSignedTx,
+                   <<"updates">>   := Updates}} = wait_for_channel_event(IConnPid, sign, Config),
+    SignedCrTx = aetx_sign:deserialize_from_binary(
+                   ok(aeser_api_encoder:safe_decode(transaction, EncSignedTx))),
+    CheckFun(SignedCrTx),
+    ok.
+
+sc_ws_optional_params_fail_deposit(Cfg) ->
+    sc_ws_optional_params_fail(Cfg, <<"channels.deposit">>, #{amount => 2}).
+
+sc_ws_optional_params_fail_withdrawal(Cfg) ->
+    sc_ws_optional_params_fail(Cfg, <<"channels.withdraw">>, #{amount => 2}).
+
+sc_ws_optional_params_fail_snapshot(Cfg) ->
+    PreAction =
+        fun(ConnPid, Cfg1) ->
+            {ok, #{ signed_tx := StateSignedStateTx }} =
+                sc_ws_get_state(ConnPid, Cfg1),
+            LatestRound = signed_channel_tx_round(StateSignedStateTx),
+            _NextRound = sc_ws_update_basic_round_(LatestRound + 1, Cfg1),
+            ok
+        end,
+    PostAction =
+        fun(Cfg1) ->
+            sc_ws_close_mutual_(Cfg1, initiator)
+        end,
+    sc_ws_optional_params_fail(Cfg, <<"channels.snapshot_solo">>, #{},
+                               <<"channels.snapshot_solo_sign">>,
+                               PreAction, PostAction).
+
+sc_ws_optional_params_fail_close_mutual(Cfg) ->
+    sc_ws_optional_params_fail(Cfg, <<"channels.shutdown">>, #{}).
+
+sc_ws_optional_params_fail_close_solo(Cfg) ->
+    sc_ws_optional_params_fail(Cfg, <<"channels.close_solo">>, #{}).
+
+sc_ws_optional_params_fail_slash(Cfg0) ->
+    PreAction =
+        %% prepare the channel for slashing
+        fun(ConnPid, Cfg) ->
+            #{initiator := #{pub_key := IPubkey, priv_key := IPrivkey},
+              responder := #{pub_key := RPubkey, priv_key := _RPrivkey}}
+                = proplists:get_value(participants, Cfg),
+            {CloserPubkey, CloserPrivkey} = {IPubkey, IPrivkey},
+
+            Round0 = 2,
+            %% make an update so we are not at channel_create_tx
+            Round1 = sc_ws_update_basic_round_(Round0, Cfg),
+            %% make a close solo based on this update but don't post it yet
+            {ok, #{ trees := Round2StateTrees
+                  , signed_tx := SignedRound2StateTx }} = sc_ws_get_state(ConnPid, Cfg),
+            {ok, Nonce} = rpc(aec_next_nonce, pick_for_account, [CloserPubkey]),
+            CloseSoloRound2Args =
+                maps:merge(
+                    make_close_solo_args(SignedRound2StateTx, Round2StateTrees,
+                                        [IPubkey, RPubkey]),
+                    #{ from_id => aeser_id:create(account, CloserPubkey)
+                    , nonce   => Nonce}),
+            {ok, Round2CloseTx} = aesc_close_solo_tx:new(CloseSoloRound2Args),
+            %% sign this tx
+            SignedTx = aec_test_utils:sign_tx(Round2CloseTx, CloserPrivkey),
+            SerializedTx = aetx_sign:serialize_to_binary(SignedTx),
+            EncRound2CloseTx = aeser_api_encoder:encode(transaction, SerializedTx),
+            Round2CloseTxHash = aeser_api_encoder:encode(tx_hash, aetx_sign:hash(SignedTx)),
+
+            %% make a new off-chain update
+            _Round2 = sc_ws_update_basic_round_(Round1, Cfg),
+
+            %% at this point the Round2CloseTx is not based on the latest state so it
+            %% is malicious to post it on-chain
+
+            %% post the malicious tx and wait it to be included
+            post_transactions_sut(EncRound2CloseTx),
+            ok = wait_for_tx_hash_on_chain(Round2CloseTxHash),
+            aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE),
+                                           ?DEFAULT_MIN_DEPTH),
+
+            ok
+        end,
+    PostAction =
+        fun(Cfg1) ->
+            CleanCfg = proplists:delete(fee_computation, Cfg1),
+            #{initiator := IConnPid} = Conns
+                = proplists:get_value(channel_clients, CleanCfg),
+            {ok, SignedSlashTx} = request_and_sign_slash_tx(
+                                    IConnPid, initiator, CleanCfg,
+                                  fun() ->
+                                          {ok, <<"ok">>} = request_slash(IConnPid, #{}),
+                                          ok
+                                  end),
+            ct:log("SignedSlashTx = ~p", [SignedSlashTx]),
+            SlashTxHash = aeser_api_encoder:encode(tx_hash, aetx_sign:hash(SignedSlashTx)),
+            ct:log("SlashTxHash = ~p", [SlashTxHash]),
+            wait_for_onchain_tx_events(
+              Conns, #{ <<"info">> => <<"solo_closing">>
+                      , <<"type">> => <<"channel_slash_tx">> },
+              fun() ->
+                      ok = wait_for_tx_hash_on_chain(SlashTxHash)
+              end, CleanCfg),
+            aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE),
+                                           ?DEFAULT_MIN_DEPTH),
+            settle_(CleanCfg, initiator)
+        end,
+    sc_ws_optional_params_fail(Cfg0, <<"channels.slash">>, #{},
+                               compute, PreAction, PostAction).
+
+sc_ws_optional_params_fail_settle(Cfg0) ->
+    PreAction =
+        %% prepare the channel for slashing
+        fun(_ConnPid, Cfg) ->
+            Round0 = 2,
+            %% make an update so we are not at channel_create_tx
+            _Round1 = sc_ws_update_basic_round_(Round0, Cfg),
+            {ok, _SignedTx} = sc_ws_close_solo_(Cfg, initiator, #{}),
+            aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE),
+                                           ?DEFAULT_MIN_DEPTH),
+
+            ok
+        end,
+    PostAction =
+        fun(_Cfg) ->
+            ok
+        end,
+    sc_ws_optional_params_fail(Cfg0, <<"channels.settle">>, #{},
+                               compute, PreAction, PostAction).
+
+sc_ws_optional_params_fail(Cfg0, Action, ActionParams) ->
+    sc_ws_optional_params_fail(Cfg0, Action, ActionParams, compute).
+
+sc_ws_optional_params_fail(Cfg0, Action, ActionParams, AbortMethod) ->
+    PreAction =
+        fun(_, _) ->
+            ok
+        end,
+    PostAction =
+        fun(Cfg1) ->
+            sc_ws_close_mutual_(Cfg1, initiator)
+        end,
+    sc_ws_optional_params_fail(Cfg0, Action, ActionParams, AbortMethod,
+                               PreAction, PostAction).
+
+sc_ws_optional_params_fail(Cfg0, Action, ActionParams, AbortMethod,
+                           PreAction, PostAction) ->
+    {Opts, CheckFun} = ?config(fee_computation, Cfg0),
+    Test =
+        fun(Who) ->
+            Cfg1 = sc_ws_open_(Cfg0),
+            Cfg = maps:to_list(maps:with([nonce, fee, gas_price], Opts)) ++ Cfg1,
+            Clients = proplists:get_value(channel_clients, Cfg),
+            SenderConnPid = maps:get(Who, Clients),
+            PreAction(SenderConnPid, Cfg1),
+            with_registered_events([sign], [SenderConnPid],
+                fun() ->
+                    ws_send_tagged(SenderConnPid, Action,
+                                   maps:merge(Opts, ActionParams), Cfg),
+                    {ok, _, Tag, #{<<"signed_tx">> := EncSignedTx,
+                                   <<"updates">>   := _Updates}} = wait_for_channel_event(SenderConnPid, sign, Cfg),
+                    SignedTx = aetx_sign:deserialize_from_binary(
+                                  ok(aeser_api_encoder:safe_decode(transaction, EncSignedTx))),
+                    %% check the expected transaction
+                    CheckFun(SignedTx),
+
+                    %% cancel the action
+                    Method =
+                        case AbortMethod of
+                            compute -> <<"channels.", (bin(Tag))/binary>>;
+                            M -> M
+                        end,
+                    ws_send_tagged(SenderConnPid, Method, #{<<"error">> => 42}, Cfg)
+                end),
+                PostAction(Cfg)
+            end,
+
+    Test(initiator),
+    Test(responder),
+
+    ok.
+
+sc_ws_optional_params_deposit(Cfg0) ->
+    MakeDeposit = fun sc_ws_deposit_/3,
+    sc_ws_optional_params_(Cfg0, MakeDeposit).
+
+sc_ws_optional_params_withdrawal(Cfg0) ->
     MakeDeposit =
         fun(Cfg, Who, Opts) ->
             sc_ws_withdraw_(Cfg, Who, Opts)
         end,
-    sc_ws_fee_computation_(Cfg0, MakeDeposit).
+    sc_ws_optional_params_(Cfg0, MakeDeposit).
 
-sc_ws_fee_computation_snapshot(Cfg0) ->
+sc_ws_optional_params_snapshot(Cfg0) ->
     MakeDeposit =
         fun(Cfg, Who, Opts) ->
             #{ initiator := IConnPid } = Cs =
@@ -4473,9 +4710,9 @@ sc_ws_fee_computation_snapshot(Cfg0) ->
                                       Ps, Cs, Cfg, Opts),
             {ok, SignedSnapshotTx}
         end,
-    sc_ws_fee_computation_(Cfg0, MakeDeposit).
+    sc_ws_optional_params_(Cfg0, MakeDeposit).
 
-sc_ws_fee_computation_close_mutual(Cfg0) ->
+sc_ws_optional_params_close_mutual(Cfg0) ->
     {Opts, CheckFun} = ?config(fee_computation, Cfg0),
     %% start the channel with enough funds to be able to pay the big close
     %% mutual fee
@@ -4486,7 +4723,7 @@ sc_ws_fee_computation_close_mutual(Cfg0) ->
     CheckFun(SignedMutualTx),
     ok.
 
-sc_ws_fee_computation_(Cfg0, MakeOnChainTxFun) ->
+sc_ws_optional_params_(Cfg0, MakeOnChainTxFun) ->
     {Opts, CheckFun} = ?config(fee_computation, Cfg0),
     Cfg = sc_ws_open_(Cfg0),
 
@@ -4502,7 +4739,7 @@ sc_ws_fee_computation_(Cfg0, MakeOnChainTxFun) ->
     sc_ws_close_mutual_(Cfg, initiator),
     ok.
 
-sc_ws_fee_computation_close_solo(Cfg0) ->
+sc_ws_optional_params_close_solo(Cfg0) ->
     {Opts, CheckFun} = ?config(fee_computation, Cfg0),
     Test =
         fun(Who) ->
@@ -4515,7 +4752,7 @@ sc_ws_fee_computation_close_solo(Cfg0) ->
     Test(responder),
     ok.
 
-sc_ws_fee_computation_slash(Cfg0) ->
+sc_ws_optional_params_slash(Cfg0) ->
     {Opts, CheckFun} = ?config(fee_computation, Cfg0),
     Test =
         fun(Who) ->
@@ -4529,7 +4766,7 @@ sc_ws_fee_computation_slash(Cfg0) ->
     Test(responder),
     ok.
 
-sc_ws_fee_computation_settle(Cfg0) ->
+sc_ws_optional_params_settle(Cfg0) ->
     {Opts, CheckFun} = ?config(fee_computation, Cfg0),
     Test =
         fun(Who) ->
@@ -4807,4 +5044,6 @@ sc_ws_can_not_abort_while_open(Cfg0) ->
         [IConnPid, RConnPid]),
     sc_ws_close_(Cfg),
     ok.
+
+ok({ok, Term}) -> Term.
 

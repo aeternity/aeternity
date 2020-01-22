@@ -696,13 +696,13 @@ optional_params(<<"channels.update.new">>           ) -> offchain_update_params(
 optional_params(<<"channels.update.new_contract">>  ) -> offchain_update_params();
 optional_params(<<"channels.update.call_contract">> ) -> offchain_update_params();
 optional_params(<<"channels.dry_run.call_contract">>) -> offchain_update_params();
-optional_params(<<"channels.deposit">>      ) -> [meta_param() | onchain_params()];
-optional_params(<<"channels.withdraw">>     ) -> [meta_param() | onchain_params()];
-optional_params(<<"channels.shutdown">>     ) -> fee_and_gas_price_params(); 
-optional_params(<<"channels.close_solo">>   ) -> fee_and_gas_price_params();
-optional_params(<<"channels.snapshot_solo">>) -> fee_and_gas_price_params();
-optional_params(<<"channels.slash">>        ) -> fee_and_gas_price_params();
-optional_params(<<"channels.settle">>       ) -> fee_and_gas_price_params().
+optional_params(<<"channels.deposit">>      ) -> [meta_param() , bh_param() | onchain_params()];
+optional_params(<<"channels.withdraw">>     ) -> [meta_param() , bh_param() | onchain_params()];
+optional_params(<<"channels.shutdown">>     ) -> onchain_params(); 
+optional_params(<<"channels.close_solo">>   ) -> onchain_params();
+optional_params(<<"channels.snapshot_solo">>) -> onchain_params();
+optional_params(<<"channels.slash">>        ) -> onchain_params();
+optional_params(<<"channels.settle">>       ) -> onchain_params().
 
 check_optional_params(OptionalKeys, Params) ->
     Read = sc_ws_utils:read_f(Params),
@@ -717,7 +717,7 @@ offchain_update_params() ->
     [bh_param(), meta_param()].
 
 onchain_params() ->
-    [bh_param()] ++ fee_and_gas_price_params().
+    [nonce_param()] ++ fee_and_gas_price_params().
 
 bh_param() ->
     {<<"block_hash">>, block_hash, #{ type => {hash, block_hash} }}.
@@ -726,10 +726,14 @@ meta_param() ->
     {<<"meta">>, meta, #{ type => {list, #{type => binary}} }}.
 
 fee_and_gas_price_params() ->
-    [fee_param(), gas_price_param()].
+    [nonce_param(), fee_param(), gas_price_param()].
 
 fee_param() ->
     {<<"fee">>, fee, #{ type => integer }}.
 
 gas_price_param() ->
     {<<"gas_price">>, gas_price, #{ type => integer }}.
+
+nonce_param() ->
+    {<<"nonce">>, nonce, #{ type => integer }}.
+

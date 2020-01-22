@@ -4175,21 +4175,30 @@ handle_call(_St, _Req, From, D) ->
     keep_state(D, [{reply, From, {error, unknown_request}}]).
 
 handle_call_(awaiting_signature, {abort_update, Code, Tag}, From,
-             #data{op = #op_sign{tag = Tag}} = D) ->
+             #data{ op = #op_sign{tag = Tag}
+                  , on_chain_id = ChannelId} = D) ->
     case { lists:member(Tag, ?CANCEL_SIGN_TAGS)
          , lists:member(Tag, ?CANCEL_ACK_TAGS )} of
-        {true, _} ->
+        {SoloAction, AckAction} when SoloAction orelse AckAction ->
             report(info, aborted_update, D),
             lager:debug("update aborted", []),
-            next_state(open, clear_ongoing(D#data{op = ?NO_OP}),
-                      [{reply, From, ok}]);
-        {_, true} ->
-            report(info, aborted_update, D),
-            lager:debug("update aborted", []),
-            handle_recoverable_error(#{ code => Code
-                                      , respond => true
-                                      , msg_type => Tag }, D, [{reply, From, ok}],
-                                     _ReportConflictToClient = false);
+            {ok, Channel} = aec_chain:get_channel(ChannelId),
+            NextState =
+                case aesc_channels:is_solo_closing(Channel) of
+                    false -> open;
+                    true -> channel_closing %% solo closing sequence
+                end,
+            case SoloAction of
+                true ->
+                    next_state(NextState, clear_ongoing(D#data{op = ?NO_OP}),
+                              [{reply, From, ok}]);
+                false ->
+                    handle_recoverable_error(NextState,
+                                            #{ code => Code
+                                              , respond => true
+                                              , msg_type => Tag }, D, [{reply, From, ok}],
+                                            _ReportConflictToClient = false)
+            end;
         {false, false} ->
             lager:debug("update can not be aborted for ~p", [Tag]),
             keep_state(D, [{reply, From, {error, not_allowed_now}}])
