@@ -68,7 +68,8 @@ cors_headers(Req, Origin) ->
     AllowMethods = proplists:get_value(<<"allow_methods">> , CorsConfig, ?ACCESS_CONTROL_ALLOW_METHODS),
     MaxAge       = proplists:get_value(<<"max_age">>       , CorsConfig, ?ACCESS_CONTROL_MAX_AGE),
     CorsHeaders =
-        [{<<"access-control-allow-origin">>      , Origin},
+        [{<<"vary">>                             , <<"origin">>},
+         {<<"access-control-allow-origin">>      , Origin},
          {<<"access-control-allow-methods">>     , AllowMethods},
          {<<"access-control-allow-credentials">> , ?ACCESS_CONTROL_ALLOW_CREDENTIALS},
          {<<"access-control-max-age">>           , integer_to_list(MaxAge)}],
