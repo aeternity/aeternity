@@ -223,7 +223,7 @@ make_update_tx(Updates, #state{signed_tx = LastSignedTx, trees=Trees},
     {Mod, TxI} =
         aetx:specialize_callback(aetx_sign:innermost_tx(LastSignedTx)),
 
-    NextRound     = Mod:round(TxI) + 1,
+    NextRound = Mod:round(TxI) + 1,
 
     Reserve = maps:get(channel_reserve, Opts, 0),
     Trees1 = apply_updates(Updates, NextRound, Trees, OnChainTrees,

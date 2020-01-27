@@ -44,8 +44,9 @@
         , settle/2                %% (fsm(), map())
         , shutdown/2              %% (fsm(), map())
         , slash/2                 %% (fsm(), map())
-        , upd_call_contract/2     %%
-        , upd_create_contract/2   %%
+        , force_progress/2        %% (fsm(), map())
+        , upd_call_contract/2     %% (fsm(), map())
+        , upd_create_contract/2   %% (fsm(), map())
         , upd_deposit/2           %% (fsm() , map())
         , upd_transfer/4          %% (fsm() , from(), to(), amount())
         , upd_transfer/5          %% (fsm() , from(), to(), amount(), #{})
@@ -229,11 +230,19 @@ slash(Fsm, XOpts) ->
 upd_call_contract(Fsm, #{contract    := _,
                          abi_version := _,
                          amount      := Amt,
-                         call_data  := _} = Opts) when is_integer(Amt), Amt >= 0 ->
+                         call_data   := _} = Opts) when is_integer(Amt), Amt >= 0 ->
     lager:debug("upd_call_contract(~p)", [Opts]),
     CallStack = maps:get(call_stack, Opts, []),
     gen_statem:call(Fsm, {upd_call_contract, Opts#{call_stack => CallStack},
                           execute}).
+
+force_progress(Fsm, #{contract    := _,
+                      abi_version := _,
+                      amount      := Amt,
+                      call_data   := _} = Opts) when is_integer(Amt), Amt >= 0 ->
+    lager:debug("force_progress(~p)", [Opts]),
+    CallStack = maps:get(call_stack, Opts, []),
+    gen_statem:call(Fsm, {force_progress, Opts#{call_stack => CallStack}}).
 
 upd_create_contract(Fsm, #{vm_version  := _,
                            abi_version := _,
@@ -813,6 +822,18 @@ awaiting_signature(cast, {?SIGNED, ?SHUTDOWN_ACK = OpTag, SignedTx} = Msg,
             D4 = D3#data{op = #op_close{data = OpData0#op_data{signed_tx = SignedTx}}},
             next_state(mutual_closed, D4)
         end, D);
+awaiting_signature(cast, {?SIGNED, force_progress_tx = OpTag, SignedTx} = Msg,
+                   #data{op = #op_sign{ tag = OpTag }} = D) ->
+    lager:debug("force_progress_tx signed", []),
+    D1 = log(rcv, ?SIGNED, Msg, D),
+    D2 = D1#data{op = ?NO_OP},
+    case verify_signatures_onchain_check(pubkeys(me, D, SignedTx), SignedTx) of
+        ok ->
+            force_progress_signed(SignedTx, D2);
+        {error,_} = Error ->
+            lager:debug("Failed signature check: ~p", [Error]),
+            next_state(open, D2)
+    end;
 awaiting_signature(cast, {?SIGNED, snapshot_solo_tx = OpTag, SignedTx} = Msg,
                    #data{op = #op_sign{ tag = OpTag
                                       , data = OpData }} = D) ->
@@ -1572,6 +1593,7 @@ new_onchain_tx_for_signing_(Type, Opts, OnErr, D) ->
                     | channel_close_mutual_tx
                     | channel_deposit_tx
                     | channel_withdraw_tx
+                    | channel_force_progress_tx
                     | channel_snapshot_solo_tx
                     | channel_close_solo_tx
                     | channel_slash_tx
@@ -1661,6 +1683,13 @@ new_onchain_tx(channel_withdraw_tx, #{acct := ToId,
     PinnedHeight = aetx_env:height(OnChainEnv),
     {ok, WithdrawTx} = new_onchain_tx_(aesc_withdraw_tx, Opts1, PinnedHeight),
     {ok, WithdrawTx, Updates};
+new_onchain_tx(channel_force_progress_tx, #{acct := _Acct} = Opts,
+               _Data, _BlockHash, OnChainEnv, _OnChainTrees) ->
+    Updates = [],
+    lager:debug("force_progress_tx Opts = ~p", [Opts]),
+    PinnedHeight = aetx_env:height(OnChainEnv),
+    {ok, FPTx} = new_onchain_tx_(aesc_force_progress_tx, Opts, PinnedHeight),
+    {ok, FPTx, Updates};
 new_onchain_tx(channel_create_tx, Opts,
                #data{opts = #{initiator := Initiator,
                               responder := Responder},
@@ -1771,12 +1800,14 @@ new_onchain_tx(channel_slash_tx, Opts,
     {ok, Tx, []}.
 
 -spec new_onchain_tx_(aesc_create_tx | aesc_withdraw_tx | aesc_deposit_tx |
+                      aesc_force_progress_tx |
                       aesc_close_solo_tx | aesc_snapshot_solo_tx |
                       aesc_slash_tx | aesc_settle_tx | aesc_close_mutual_tx,
                       map(), non_neg_integer()) -> {ok, aetx:tx()}.
 new_onchain_tx_(Mod, Opts, CurrHeight) when Mod =:= aesc_create_tx;
                                             Mod =:= aesc_withdraw_tx;
                                             Mod =:= aesc_deposit_tx;
+                                            Mod =:= aesc_force_progress_tx;
                                             Mod =:= aesc_close_solo_tx;
                                             Mod =:= aesc_snapshot_solo_tx;
                                             Mod =:= aesc_slash_tx;
@@ -1899,6 +1930,10 @@ snapshot_solo_tx_for_signing(Opts, D) ->
     new_onchain_tx_for_signing(channel_snapshot_solo_tx, Opts#{acct => Account},
                                _OnErr = return, D).
 
+force_progress_tx_for_signing(Opts, D) ->
+    Account = my_account(D),
+    new_onchain_tx_for_signing(channel_force_progress_tx, Opts#{acct => Account}, D).
+
 tx_defaults(Type, Opts, #data{ on_chain_id = ChanId } = D) ->
     Default = tx_defaults_(Type, Opts, D),
     Default#{ channel_id => ChanId
@@ -1911,6 +1946,8 @@ tx_defaults_(channel_deposit_tx = Tx, Opts, D) ->
     default_ttl(Tx, Opts1, D);
 tx_defaults_(channel_withdraw_tx, Opts, D) ->
     tx_defaults_(channel_deposit_tx, Opts, D); %% same as deposit defaults
+tx_defaults_(channel_force_progress_tx = Tx, Opts, D) ->
+    default_ttl(Tx, Opts, D);
 tx_defaults_(channel_slash_tx = Tx, Opts, D) ->
     default_ttl(Tx, Opts, D);
 tx_defaults_(channel_snapshot_solo_tx = Tx, Opts, D) ->
@@ -4055,6 +4092,15 @@ settle_signed(SignedTx, Updates, #data{ on_chain_id = ChId} = D) ->
             close(Error, D)
     end.
 
+force_progress_signed(SignedTx, #data{ on_chain_id = ChId } = D) ->
+    lager:debug("SignedTx = ~p", [SignedTx]),
+    case aec_chain:get_channel(ChId) of
+        {ok, Ch} ->
+            try_to_push_to_mempool(SignedTx, D, open);
+        {error,_} = Error ->
+            close(Error, D)
+    end.
+
 snapshot_solo_signed(SignedTx, _Updates, #data{ on_chain_id = ChId } = D) ->
     lager:debug("SignedTx = ~p", [SignedTx]),
     case aec_chain:get_channel(ChId) of
@@ -4272,6 +4318,64 @@ handle_call_(open, {upd_create_contract, Opts}, From, #data{} = D) ->
         error         -> ok
     end,
     new_contract_tx_for_signing(Opts#{owner => FromPub}, From, D);
+handle_call_(open, {force_progress, Opts}, From,
+             #data{state=State, opts = ChannelOpts,
+                   on_chain_id = ChannelId} = D) when ChannelId =/= undefined ->
+    FromPub = my_account(D),
+    case maps:find(from, Opts) of
+        {ok, FromPub} -> ok;
+        {ok, _Other}  -> error(conflicting_accounts);
+        error         -> ok
+    end,
+    CallStack = maps:get(call_stack, Opts, []),
+    #{contract    := ContractPubKey,
+      abi_version := ABIVersion,
+      amount      := Amount,
+      call_data   := CallData} = Opts,
+    Update = aesc_offchain_update:op_call_contract(aeser_id:create(account, FromPub),
+                                                   aeser_id:create(contract, ContractPubKey),
+                                                   ABIVersion, Amount,
+                                                   CallData, CallStack),
+    Updates = [Update],
+    {OnChainEnv, OnChainTrees} = aetx_env:tx_env_and_trees_from_top(aetx_contract),
+    ActiveProtocol = aetx_env:consensus_version(OnChainEnv),
+    try OffchainTx = aesc_offchain_state:make_update_tx(Updates, State,
+                                                        ChannelId,
+                                                        ActiveProtocol,
+                                                        OnChainTrees, OnChainEnv, ChannelOpts),
+        {_OldRound, SignedTx} = aesc_offchain_state:get_latest_signed_tx(State),
+        Payload =
+            case aetx:specialize_type(aetx_sign:innermost_tx(SignedTx)) of
+                {channel_offchain_tx, _} -> %% base it on an off-chain tx
+                    aetx_sign:serialize_to_binary(SignedTx);
+                _ -> % latest on-chain tx
+                    <<>>
+            end,
+        {Mod, TxI} = aetx:specialize_callback(aetx_sign:innermost_tx(SignedTx)),
+        FPOpts =
+            maps:merge(#{ channel_id => aeser_id:create(channel, ChannelId)
+                        , from_id    => aeser_id:create(account, FromPub)
+                        , payload    => Payload
+                        , update     => Update
+                        , state_hash => Mod:state_hash(OffchainTx)
+                        , round      => Mod:round(OffchainTx)
+                        , offchain_trees =>
+                            aesc_offchain_state:get_latest_trees(State)},
+                       maps:with([nonce, fee, gas_price], Opts)),
+        {ok, FPTx, _Updates, BlockHash} = force_progress_tx_for_signing(FPOpts, D),
+        case request_signing(force_progress_tx, FPTx, Updates, BlockHash, D, defer) of
+            {ok, Send, D1, Actions} ->
+                %% reply before sending sig request
+                gen_statem:reply(From, ok),
+                Send(),
+                next_state(awaiting_signature, set_ongoing(D1), Actions);
+            {error, _} = Error ->
+                gen_statem:reply(From, Error),
+                keep_state(D)
+        end
+    ?CATCH_LOG(E)
+        process_update_error(E, From, D)
+    end;
 handle_call_(open, {upd_call_contract, Opts, ExecType}, From,
              #data{state=State, opts = ChannelOpts,
                    on_chain_id = ChannelId} = D) when ChannelId =/= undefined ->
@@ -4877,6 +4981,8 @@ try_to_push_to_mempool(SignedTx, D, NextState, UpdateStateFun,
                     #op_sign{tag = T} -> T;
                     ?NO_OP when TxType =:= channel_snapshot_solo_tx ->
                         snapshot_solo_tx;
+                    ?NO_OP when TxType =:= channel_force_progress_tx ->
+                        force_progress_tx;
                     ?NO_OP when TxType =:= channel_settle_tx ->
                         settle_tx
                 end,
@@ -4902,6 +5008,8 @@ onchain_error_msg_by_next_state(SignedTx, NextState) ->
         {channel_settle_tx, channel_closing} -> ?ERROR; %% TODO
         {channel_close_mutual_tx, mutual_closed} -> ?SHUTDOWN_ERR;
         {channel_snapshot_solo_tx, open} -> snapshot_error;
+        {channel_force_progress_tx, channel_closing} -> force_progress_error;
+        {channel_force_progress_tx, open} -> force_progress_error;
         _ -> undefined
     end.
 
