@@ -173,15 +173,18 @@ find_common_ancestor(Hash1, Hash2) ->
 -spec hash_is_in_main_chain(binary()) -> boolean().
 hash_is_in_main_chain(Hash) ->
     case db_find_node(Hash) of
-        {ok,_Node} ->
+        {ok, Node} ->
             State = new_state_from_persistence(),
             case get_top_block_hash(State) of
                 undefined -> false;
-                TopHash -> hash_is_in_main_chain(Hash, TopHash)
+                TopHash ->
+                    Height        = node_height(Node),
+                    TopHeight     = node_height(db_get_node(TopHash)),
+                    {ok, ChokePt} = choke_point(Height, TopHeight, TopHash),
+                    hash_is_in_main_chain(Hash, ChokePt)
             end;
         error -> false
     end.
-
 
 -spec calculate_state_for_new_keyblock(
         binary(),
@@ -395,15 +398,26 @@ get_key_block_hash_at_height(Height, State) when is_integer(Height), Height >= 0
             TopNode = db_get_node(Hash),
             TopHeight = node_height(TopNode),
             case Height > TopHeight of
-                true  -> error;
+                true -> error;
                 false ->
                     case db_find_key_nodes_at_height(Height) of
-                        error -> error({broken_chain, Height});
+                        error        -> error({broken_chain, Height});
                         {ok, [Node]} -> {ok, hash(Node)};
                         {ok, [_|_] = Nodes} ->
-                            keyblock_hash_in_main_chain(Nodes, Hash)
+                            {ok, ChokePt} = choke_point(Height, TopHeight, Hash),
+                            keyblock_hash_in_main_chain(Nodes, ChokePt)
                     end
             end
+    end.
+
+%% The assumption is that forks are short (normally a handful of blocks) and
+%% not too frequent. Or else this isn't much of an optimization.
+choke_point(Height, TopHeight, TopHash) when Height >= TopHeight -> {ok, TopHash};
+choke_point(Height, TopHeight, TopHash) ->
+    case db_find_key_nodes_at_height(Height + 1) of
+        error        -> {ok, TopHash};
+        {ok, [Node]} -> {ok, hash(Node)};
+        {ok, _}      -> choke_point(Height + 1, TopHeight, TopHash)
     end.
 
 keyblock_hash_in_main_chain([Node|Left], TopHash) ->
