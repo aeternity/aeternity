@@ -742,7 +742,7 @@ tcp_probe(State0) ->
     case pool_random_select(unverified, State) of
         {unavailable, State2} ->
             epoch_sync:debug("No peers available for TCP probe", []),
-            schedule_tcp_probe(undefined, State2);
+            schedule_tcp_probe(?MAX_TCP_PROBE_INTERVAL, State2);
         {wait, Delay, State2} ->
             epoch_sync:debug("No peers available for TCP probe, "
                              "waiting ~b ms", [Delay]),
