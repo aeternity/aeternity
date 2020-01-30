@@ -967,8 +967,8 @@ on_peer_dead(PeerId, Pid, State) ->
     case conn_take(PeerId, State) of
         {#conn{ state = connecting, type = outbound, tcp_probe = true,
                 pid = Pid } = Conn, State2 } ->
-            epoch_sync:info("Peer ~p - TCP probe failed through process ~p",
-                            [ppp(PeerId), Pid]),
+            epoch_sync:debug("Peer ~p - TCP probe failed through process ~p",
+                             [ppp(PeerId), Pid]),
             pool_reject(PeerId, conn_cleanup(Conn, State2));
         {#conn{ pid = OtherPid }, _State2} ->
             epoch_sync:info("Peer ~p - got peer_dead from unexpected "
