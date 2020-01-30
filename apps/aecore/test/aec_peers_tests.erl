@@ -362,14 +362,11 @@ test_tcp_probe() ->
     Peer2 = peer(PubKey2, <<"10.2.0.1">>, 4000),
     Peer3 = peer(PubKey3, <<"10.3.0.1">>, 4000),
 
-    %% The peers are added asynchronously, the sleep(100) is there to make sure
-    %% they are added in the desired order.
     aec_peers:add_peers(Source, Peer1),
-    timer:sleep(100),
-    aec_peers:add_peers(Source, [Peer2, Peer3]),
-    timer:sleep(100),
     {ok, Conn1} = ?assertCalled(connect, [#{ conn_type := noise, r_pubkey := PubKey1 }], {ok, _}, 200),
     ok = conn_peer_connected(Conn1),
+
+    aec_peers:add_peers(Source, [Peer2, Peer3]),
 
     ?assertCalled(schedule_ping, [Id1], ok, 100),
     ok = conn_log_ping(Conn1, ok),
