@@ -295,7 +295,7 @@
                 | {standby_times, [non_neg_integer()]}
                 | {max_rejections, pos_integer()}.
 
--export_type([options/0, filter_fun/0, state/0]).
+-export_type([options/0, filter_fun/0, select_target/0, state/0]).
 
 %=== API FUNCTIONS =============================================================
 
