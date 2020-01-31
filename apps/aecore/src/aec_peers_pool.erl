@@ -151,7 +151,7 @@
 %% The default probability of selecting a peer from the verified pool.
 -define(DEFAULT_SELECT_VERIFIED_PROB,    1.0).
 %% The default time without a peer being updated after which it get removed.
--define(DEFAULT_MAX_UPDATE_LAPSE,         30 * 24 * 60 * 60 * 1000). % 30 days
+-define(DEFAULT_MAX_UPDATE_LAPSE,         3 * 60 * 60 * 1000). % 3 hours
 %% The default backoff lookup table for standby duration in milliseconds.
 -define(DEFAULT_STANDBY_TIMES,
         [5000, 15000, 30000, 60000, 120000, 300000, 600000]).
