@@ -36,12 +36,13 @@
 -export([handle_event/4]).
 
 -record(data,
-        {enabled  :: boolean(),                         % do we garbage collect?
-         interval :: non_neg_integer(),                 % how often (every `interval` blocks) GC runs
-         history  :: non_neg_integer(),                 % how many block state back from top to keep
-         synced   :: boolean(),                         % we only run GC if chain is synced
-         height   :: undefined | non_neg_integer(),     % latest height of MPT hashes stored in tab
-         hashes   :: undefined | pid() | reference()}). % hashes tab (or process filling the tab 1st time)
+        {enabled    :: boolean(),                         % do we garbage collect?
+         interval   :: non_neg_integer(),                 % how often (every `interval` blocks) GC runs
+         history    :: non_neg_integer(),                 % how many block state back from top to keep
+         min_height :: undefined | non_neg_integer(),     % if hash_not_found error, try GC from this height
+         synced     :: boolean(),                         % we only run GC if chain is synced
+         height     :: undefined | non_neg_integer(),     % latest height of MPT hashes stored in tab
+         hashes     :: undefined | pid() | reference()}). % hashes tab (or process filling the tab 1st time)
 
 -include_lib("aecore/include/aec_db.hrl").
 
@@ -59,6 +60,18 @@
 -define(TIMED(Expr), timer:tc(fun () -> Expr end)).
 -define(LOG(Fmt), lager:info(Fmt, [])).         % io:format(Fmt"~n")
 -define(LOG(Fmt, Args), lager:info(Fmt, Args)). % io:format(Fmt"~n", Args)
+-define(LOGERR(Fmt, Args), lager:error(Fmt, Args)). % io:format("ERROR:"Fmt"~n", Args)
+
+-define(PROTECT(Expr, OkFun), ?PROTECT(Expr, OkFun, fun signal_scanning_failed/1)).
+-define(PROTECT(Expr, OkFun, ErrHeightFun),
+        (try Expr of
+             Res -> (OkFun)(Res)
+         catch
+             error:{hash_not_present_in_db_at_height, ErrHeight, MissingHash, Stack} ->
+                 ?LOGERR("Scanning at height ~p failed due to a missing hash ~p at: ~p",
+                         [ErrHeight, MissingHash, Stack]),
+                 (ErrHeightFun)(ErrHeight)
+         end)).
 
 %%%===================================================================
 %%% API
@@ -106,12 +119,13 @@ init([Enabled, Interval, History])
            true ->
                 Interval
         end,
-    Data = #data{enabled  = Enabled,
-                 interval = Interval1,
-                 history  = History,
-                 synced   = false,
-                 height   = undefined,
-                 hashes   = undefined},
+    Data = #data{enabled    = Enabled,
+                 interval   = Interval1,
+                 history    = History,
+                 min_height = undefined,
+                 synced     = false,
+                 height     = undefined,
+                 hashes     = undefined},
     {ok, idle, Data}.
 
 
@@ -122,19 +136,37 @@ handle_event(info, {_, chain_sync, #{info := {chain_sync_done, _}}}, idle,
     {keep_state, Data#data{synced = true}};
 
 %% starting collection when the *interval* matches, and don't have a GC state (hashes = undefined)
+%% OR some MPT was missing previosly so we try again later
 handle_event(info, {_, top_changed, #{info := #{height := Height}}}, idle,
              #data{interval = Interval, history = History,
-                   enabled = true, synced = true,
+                   enabled = true, synced = true, min_height = MinHeight,
                    height = undefined, hashes = undefined} = Data)
-  when Height rem Interval == 0 ->
+  when ((Height rem Interval) == 0 andalso MinHeight == undefined) orelse
+       (is_integer(MinHeight) andalso Height - History > MinHeight) ->
     Parent = self(),
     Pid = spawn_link(
             fun () ->
                     FromHeight = max(Height - History, 0),
-                    {Time, {ok, Hashes}} = ?TIMED(collect_reachable_hashes(FromHeight, Height)),
-                    ets:give_away(Hashes, Parent, {{FromHeight, Height}, Time})
+                    ?PROTECT(?TIMED(collect_reachable_hashes(FromHeight, Height)),
+                             fun ({Time, {ok, Hashes}}) ->
+                                     ets:give_away(Hashes, Parent, {{FromHeight, Height}, Time})
+
+                             end)
             end),
     {keep_state, Data#data{height = Height, hashes = Pid}};
+
+%% the initial scan failed due to hash_not_present_in_db, reschedule it for later
+handle_event(info, {scanning_failed, ErrHeight}, idle,
+             #data{enabled = true, hashes = Pid} = Data)
+  when is_pid(Pid) ->
+    {keep_state, Data#data{height = undefined,
+                           hashes = undefined,
+                           min_height = ErrHeight}};
+%% later incremental scan failed due to hash_not_present_in_db, reschedule it for later
+handle_event(info, {scanning_failed, ErrHeight}, ready, #data{enabled = true} = Data) ->
+    {next_state, idle, Data#data{height = undefined,
+                                 hashes = undefined,
+                                 min_height = ErrHeight}};
 
 %% received GC state from the phase above
 handle_event(info, {'ETS-TRANSFER', Hashes, _, {{FromHeight, ToHeight}, Time}}, idle,
@@ -150,13 +182,15 @@ handle_event(info, {_, top_changed, #{info := #{block_type := key, height := Hei
              #data{enabled = true, synced = true, height = LastHeight, hashes = Hashes} = Data)
   when is_reference(Hashes) ->
     if Height > LastHeight ->
-            {ok, _} = range_collect_reachable_hashes(Height, Data),
-            {keep_state, Data#data{height = Height}};
+            ?PROTECT(range_collect_reachable_hashes(Height, Data),
+                     fun ({ok, _}) -> {keep_state, Data#data{height = Height}} end,
+                     signal_scanning_failed_keep_state(Data));
        true ->
             %% in case previous key block was a fork, we can receive top_changed event
             %% with the same or lower height as seen last time
-            {ok, _} = collect_reachable_hashes_delta(Height, Hashes),
-            {keep_state, Data}
+            ?PROTECT(collect_reachable_hashes_delta(Height, Hashes),
+                     fun ({ok, _}) -> {keep_state, Data} end,
+                     (signal_scanning_failed_keep_state(Data)))
     end;
 
 %% with valid GC state, if we are on key block boundary, we can
@@ -168,9 +202,10 @@ handle_event({call, _From}, maybe_garbage_collect, ready,
     case aec_headers:type(Header) of
         key ->
             Height  = aec_headers:height(Header),
-            {ok, _} = range_collect_reachable_hashes(Height, Data),
-            %% we exit here as GCEd table is swapped at startup
-            store_cache_and_restart(Hashes, ?GCED_TABLE_NAME);
+            ?PROTECT(range_collect_reachable_hashes(Height, Data),
+                     %% we exit here as GCEd table is swapped at startup
+                     fun ({ok, _}) -> store_cache_and_restart(Hashes, ?GCED_TABLE_NAME) end,
+                     signal_scanning_failed_keep_state(Data));
         micro ->
             {keep_state, Data}
     end;
@@ -280,7 +315,12 @@ swap_nodes(SrcTab, TgtTab) ->
 -spec get_mpt(non_neg_integer()) -> aeu_mp_trees:tree().
 get_mpt(Height) ->
     {ok, Hash} = aec_chain_state:get_key_block_hash_at_height(Height),
-    get_mpt_from_hash(Hash).
+    try get_mpt_from_hash(Hash) of
+        MPT -> MPT
+    catch
+        error:{hash_not_present_in_db, MissingHash}:Stacktrace ->
+            error({hash_not_present_in_db_at_height, Height, MissingHash, Stacktrace})
+    end.
 
 get_mpt_from_hash(Hash) ->
     {ok, Trees} = aec_chain:get_block_state(Hash),
@@ -299,6 +339,14 @@ store_unseen_hash(Hash, Node, Tab) ->
         []  -> store_hash(Hash, Node, Tab)
     end.
 
+signal_scanning_failed(ErrHeight) ->
+    ?MODULE ! {scanning_failed, ErrHeight}.
+
+signal_scanning_failed_keep_state(Data) ->
+    fun (ErrHeight) ->
+            signal_scanning_failed(ErrHeight),
+            {keep_state, Data}
+    end.
 
 -ifdef(EUNIT).
 interval(ConfigInterval) -> ConfigInterval.
