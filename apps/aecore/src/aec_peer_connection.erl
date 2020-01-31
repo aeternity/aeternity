@@ -70,8 +70,11 @@ start_link(Ref, Socket, Transport, Opts) ->
 
 %% -- API --------------------------------------------------------------------
 
-connect(#{} = Options) ->
+connect(#{conn_type := noise} = Options) ->
     epoch_sync:debug("New peer connection to ~p", [Options]),
+    aec_peer_connection_sup:start_peer_connection(Options);
+connect(#{conn_type := tcp} = Options) ->
+    epoch_sync:debug("New TCP probe to ~p", [Options]),
     aec_peer_connection_sup:start_peer_connection(Options).
 
 connect_start_link(Port, Opts) ->
@@ -219,13 +222,19 @@ accept_init(Ref, TcpSock, ranch_tcp, Opts) ->
     end.
 
 %% Called when connecting to a peer
-init([Opts]) ->
+init([#{conn_type := noise} = Opts]) ->
     Version = <<?P2P_PROTOCOL_VSN:64>>,
     Genesis = aec_chain:genesis_hash(),
-    Opts1 = Opts#{ role => initiator
+    Opts1 = Opts#{ conn_type => noise
+                 , role => initiator
                  , kind => permanent
                  , version => Version
                  , genesis => Genesis},
+    {ok, Opts1, 0};
+init([#{conn_type := tcp} = Opts]) ->
+    Opts1 = Opts#{ conn_type => tcp
+                 , role => initiator
+                 , kind => temporary},
     {ok, Opts1, 0}.
 
 handle_call(Request, From, State) ->
@@ -282,10 +291,16 @@ handle_info({timeout, _Ref, close_timeout}, #{ status := {disconnecting, ESock} 
     epoch_sync:debug("Force close connection to ~p", [maps:get(host, S)]),
     enoise:close(ESock),
     {stop, normal, S};
-handle_info({connected, Pid, Err = {error, _}}, S = #{ status := {connecting, Pid} }) ->
-    epoch_sync:debug("Failed to connected to ~p: ~p", [{maps:get(host, S), maps:get(port, S)}, Err]),
+handle_info({connected, Pid, Err = {error, _}},
+            S = #{ conn_type := noise, status := {connecting, Pid} }) ->
+    epoch_sync:debug("Failed to connect to ~p: ~p", [{maps:get(host, S), maps:get(port, S)}, Err]),
     connect_fail(S);
-handle_info({connected, Pid, {ok, TcpSock}}, S0 = #{ status := {connecting, Pid} }) ->
+handle_info({connected, Pid, Err = {error, _}},
+            S = #{ conn_type := tcp, status := {connecting, Pid} }) ->
+    epoch_sync:debug("Failed TCP probe to ~p: ~p", [{maps:get(host, S), maps:get(port, S)}, Err]),
+    tcp_probe_fail(S);
+handle_info({connected, Pid, {ok, TcpSock}},
+            S0 = #{ conn_type := noise, status := {connecting, Pid} }) ->
     case inet:peername(TcpSock) of
         {error, Reason} ->
             epoch_sync:info("Connection failed: ~p", [Reason]),
@@ -342,7 +357,10 @@ handle_info({connected, Pid, {ok, TcpSock}}, S0 = #{ status := {connecting, Pid}
                     connect_fail(S)
             end
     end;
-
+handle_info({connected, Pid, {ok, _TcpSock}},
+            S = #{ conn_type := tcp, status := {connecting, Pid} }) ->
+    aec_peers:peer_alive(peer_id(S), self()),
+    {stop, normal, S};
 handle_info({noise, _, <<?MSG_FRAGMENT:16, N:16, M:16, Fragment/binary>>}, S) ->
     handle_fragment(S, N, M, Fragment);
 handle_info({noise, _, <<Type:16, Payload/binary>>}, S) ->
@@ -509,6 +527,10 @@ cleanup_requests(State) ->
 connect_fail(S0) ->
     S = cleanup_requests(S0),
     aec_peers:connection_failed(peer_id(S), self()),
+    {stop, normal, S}.
+
+tcp_probe_fail(S) ->
+    aec_peers:peer_dead(peer_id(S), self()),
     {stop, normal, S}.
 
 handle_fragment(S, 1, _M, Fragment) ->

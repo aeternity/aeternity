@@ -16,6 +16,8 @@
 
 %% This should be in sync with aec_peers so the proper value is restoraed when
 %% overriding the application environment.
+-define(DEFAULT_MAX_OUTBOUND,                 10).
+-define(DEFAULT_PING_INTERVAL,        120 * 1000).
 -define(DEFAULT_RESOLVE_MAX_RETRY,             7).
 -define(DEFAULT_RESOLVE_BACKOFF_TIMES,
         [5000, 15000, 30000, 60000, 120000, 300000, 600000]).
@@ -88,6 +90,13 @@ aec_peers_test_() ->
         {setup, fun setup/0, fun teardown/1, fun test_multiple_normal_peers/0},
         {setup, fun() -> setup([
                     {sync_single_outbound_per_group, false, true},
+                    {sync_max_outbound, 1, ?DEFAULT_MAX_OUTBOUND},
+                    {ping_interval, 1000, ?DEFAULT_PING_INTERVAL}
+                ]) end,
+                fun teardown/1,
+                fun test_tcp_probe/0},
+        {setup, fun() -> setup([
+                    {sync_single_outbound_per_group, false, true},
                     {sync_resolver_max_retries, 3, ?DEFAULT_RESOLVE_MAX_RETRY},
                     {sync_resolver_backoff_times, [100, 200, 300], ?DEFAULT_RESOLVE_BACKOFF_TIMES},
                     {peer_pool, [{standby_times, [100]}], []}
@@ -129,7 +138,7 @@ aec_peers_test_() ->
                 fun teardown/1,
                 fun test_outbound_connections/0},
         {setup, fun() -> setup([
-                    {ping_interval, 500, 120000}
+                    {ping_interval, 500, ?DEFAULT_PING_INTERVAL}
                 ]) end,
                 fun teardown/1,
                 fun test_ping/0},
@@ -169,7 +178,7 @@ test_single_trusted_peer() ->
 
     Peer = peer(PubKey, "10.1.0.1", 4000),
     aec_peers:add_trusted(Peer),
-    {ok, Conn} = ?assertCalled(connect, [#{ r_pubkey := PubKey }], {ok, _}, 200),
+    {ok, Conn} = ?assertCalled(connect, [#{ conn_type := noise, r_pubkey := PubKey }], {ok, _}, 200),
 
     ?assertMatch([], aec_peers:connected_peers()),
     ?assertMatch([#{ pubkey := PubKey }], aec_peers:get_random(all)),
@@ -207,7 +216,7 @@ test_single_normal_peer() ->
 
     aec_peers:add_peers(Source, Peer),
 
-    {ok, Conn} = ?assertCalled(connect, [#{ r_pubkey := PubKey }], {ok, _}, 200),
+    {ok, Conn} = ?assertCalled(connect, [#{ conn_type := noise, r_pubkey := PubKey }], {ok, _}, 200),
 
     ?assertMatch([], aec_peers:connected_peers()),
     ?assertMatch([], aec_peers:get_random(all)),
@@ -254,9 +263,9 @@ test_multiple_trusted_peers() ->
     ],
 
     aec_peers:add_trusted(Peers),
-    {ok, Conn1} = ?assertCalled(connect, [#{ r_pubkey := PubKey1 }], {ok, _}, 500),
-    {ok, Conn2} = ?assertCalled(connect, [#{ r_pubkey := PubKey2 }], {ok, _}, 200),
-    {ok, Conn3} = ?assertCalled(connect, [#{ r_pubkey := PubKey3 }], {ok, _}, 200),
+    {ok, Conn1} = ?assertCalled(connect, [#{ conn_type := noise, r_pubkey := PubKey1 }], {ok, _}, 500),
+    {ok, Conn2} = ?assertCalled(connect, [#{ conn_type := noise, r_pubkey := PubKey2 }], {ok, _}, 200),
+    {ok, Conn3} = ?assertCalled(connect, [#{ conn_type := noise, r_pubkey := PubKey3 }], {ok, _}, 200),
 
     ?assertMatch([], aec_peers:connected_peers()),
     ?assertEqual(lists:sort(Peers), lists:sort(aec_peers:get_random(all))),
@@ -312,9 +321,9 @@ test_multiple_normal_peers() ->
     %% and the third one after 2 seconds; but there is no way of knowing the
     %% order they will get connect to.
     A = erlang:system_time(millisecond),
-    {ok, Conn1} = ?assertCalled(connect, [#{ r_pubkey := PubKey1 }], {ok, _}, 3500),
-    {ok, Conn2} = ?assertCalled(connect, [#{ r_pubkey := PubKey2 }], {ok, _}, 3500),
-    {ok, Conn3} = ?assertCalled(connect, [#{ r_pubkey := PubKey3 }], {ok, _}, 3500),
+    {ok, Conn1} = ?assertCalled(connect, [#{ conn_type := noise, r_pubkey := PubKey1 }], {ok, _}, 3500),
+    {ok, Conn2} = ?assertCalled(connect, [#{ conn_type := noise, r_pubkey := PubKey2 }], {ok, _}, 3500),
+    {ok, Conn3} = ?assertCalled(connect, [#{ conn_type := noise, r_pubkey := PubKey3 }], {ok, _}, 3500),
     B = erlang:system_time(millisecond),
     Delta = B - A,
     ?assertEqual({Delta, true}, {Delta, (Delta =< 3500)}),
@@ -336,6 +345,67 @@ test_multiple_normal_peers() ->
     ?assertEqual(3, aec_peers:count(verified)),
     ?assertEqual(0, aec_peers:count(unverified)),
     ?assertEqual(0, aec_peers:count(standby)),
+    ok.
+
+test_tcp_probe() ->
+    test_mgr_set_recipient(self()),
+
+    Source = {192, 168, 0, 1},
+    PubKey1 = <<"ef42d46eace742cd0000000000000000">>,
+    Id1 = aec_peers:peer_id(PubKey1),
+    PubKey2 = <<"854a8e1f93f94b950000000000000000">>,
+    _Id2 = aec_peers:peer_id(PubKey2),
+    PubKey3 = <<"eb56e9292dda481c0000000000000000">>,
+    _Id3 = aec_peers:peer_id(PubKey3),
+
+    Peer1 = peer(PubKey1, <<"10.1.0.1">>, 4000),
+    Peer2 = peer(PubKey2, <<"10.2.0.1">>, 4000),
+    Peer3 = peer(PubKey3, <<"10.3.0.1">>, 4000),
+
+    aec_peers:add_peers(Source, Peer1),
+    {ok, Conn1} = ?assertCalled(connect, [#{ conn_type := noise, r_pubkey := PubKey1 }], {ok, _}, 200),
+    ok = conn_peer_connected(Conn1),
+
+    aec_peers:add_peers(Source, [Peer2, Peer3]),
+
+    ?assertCalled(schedule_ping, [Id1], ok, 100),
+    ok = conn_log_ping(Conn1, ok),
+
+    ?assertCalled(schedule_ping, [Id1], ok, 1100),
+    ok = conn_log_ping(Conn1, ok),
+
+    %% After 1.5 * ping_interval there is the first TCP probe. The selected peer
+    %% can be either Peer2 or Peer3 as it's random.
+    {ok, Conn2} = ?assertCalled(connect, [#{ conn_type := tcp}], {ok, _}, 600),
+    ok = conn_peer_dead(Conn2),
+
+    ?assertCalled(schedule_ping, [Id1], ok, 800),
+    ok = conn_log_ping(Conn1, ok),
+
+
+    {ok, Conn3} = ?assertCalled(connect, [#{ conn_type := tcp }], {ok, _}, 600),
+    ok = conn_peer_alive(Conn3),
+
+    ?assertEqual(1, aec_peers:count(connections)),
+    ?assertEqual(0, aec_peers:count(inbound)),
+    ?assertEqual(1, aec_peers:count(outbound)),
+    ?assertEqual(3, aec_peers:count(peers)),
+    ?assertEqual(2, aec_peers:count(verified)),
+    ?assertEqual(1, aec_peers:count(unverified)),
+    ?assertEqual(1, aec_peers:count(standby)),
+
+    ?assertMatch({ok, Conn1}, aec_peers:get_connection(Id1)),
+
+    AvailPeers = aec_peers:available_peers(),
+    ?assertEqual(length(AvailPeers), 1),
+    [AvailPeer] = AvailPeers,
+
+    ?assertEqual([Peer1], aec_peers:connected_peers()),
+    ?assertEqual(lists:sort([Peer1, AvailPeer]),
+                 lists:sort(aec_peers:get_random(all))),
+    ?assertMatch([AvailPeer], aec_peers:available_peers(verified)),
+    ?assertMatch([], aec_peers:available_peers(unverified)),
+    ?assertEqual(1, aec_peers:count(available)),
     ok.
 
 test_invalid_hostname() ->
@@ -396,7 +466,7 @@ test_invalid_hostname() ->
 
     % Only the trusted peer is added, the other one was removed.
     ?assertMessage({getaddr, "aeternity.com"}, 500),
-    {ok, Conn1} = ?assertCalled(connect, [#{ r_pubkey := PubKey2 }], {ok, _}, 200),
+    {ok, Conn1} = ?assertCalled(connect, [#{ conn_type := noise, r_pubkey := PubKey2 }], {ok, _}, 200),
 
     ?assertMatch(0, aec_peers:count(hostnames)),
     ?assertEqual(1, aec_peers:count(connections)),
@@ -500,7 +570,7 @@ test_address_group_selection() ->
     Peer5 = peer(PubKey5, "10.3.0.1", 4000),
 
     aec_peers:add_peers(Source, Peer1),
-    {ok, Conn1} = ?assertCalled(connect, [#{ r_pubkey := PubKey1 }], {ok, _}, 200),
+    {ok, Conn1} = ?assertCalled(connect, [#{ conn_type := noise, r_pubkey := PubKey1 }], {ok, _}, 200),
     ok = conn_peer_connected(Conn1),
 
     aec_peers:add_peers(Source, Peer2),
@@ -512,7 +582,7 @@ test_address_group_selection() ->
     ?assertMatch({error, _}, aec_peers:get_connection(Id2)),
 
     aec_peers:add_peers(Source, Peer3),
-    {ok, Conn3} = ?assertCalled(connect, [#{ r_pubkey := PubKey3 }], {ok, _}, 1200),
+    {ok, Conn3} = ?assertCalled(connect, [#{ conn_type := noise, r_pubkey := PubKey3 }], {ok, _}, 1200),
     ok = conn_peer_connected(Conn3),
 
     ?assertEqual(lists:sort([Peer1, Peer3]),
@@ -536,7 +606,7 @@ test_address_group_selection() ->
     ?assertMatch({error, _}, aec_peers:get_connection(Id4)),
 
     aec_peers:add_peers(Source, Peer5),
-    {ok, Conn5} = ?assertCalled(connect, [#{ r_pubkey := PubKey5 }], {ok, _}, 2200),
+    {ok, Conn5} = ?assertCalled(connect, [#{ conn_type := noise, r_pubkey := PubKey5 }], {ok, _}, 2200),
     ok = conn_peer_connected(Conn5),
 
     ?assertEqual(lists:sort([Peer1, Peer3, Peer5]),
@@ -573,15 +643,15 @@ test_selection_without_address_group() ->
     Peer3 = peer(PubKey3, "10.1.0.3", 4000),
 
     aec_peers:add_peers(Source, Peer1),
-    {ok, Conn1} = ?assertCalled(connect, [#{ r_pubkey := PubKey1 }], {ok, _}, 200),
+    {ok, Conn1} = ?assertCalled(connect, [#{ conn_type := noise, r_pubkey := PubKey1 }], {ok, _}, 200),
     ok = conn_peer_connected(Conn1),
 
     aec_peers:add_peers(Source, Peer2),
-    {ok, Conn2} = ?assertCalled(connect, [#{ r_pubkey := PubKey2 }], {ok, _}, 1200),
+    {ok, Conn2} = ?assertCalled(connect, [#{ conn_type := noise, r_pubkey := PubKey2 }], {ok, _}, 1200),
     ok = conn_peer_connected(Conn2),
 
     aec_peers:add_peers(Source, Peer3),
-    {ok, Conn3} = ?assertCalled(connect, [#{ r_pubkey := PubKey3 }], {ok, _}, 2200),
+    {ok, Conn3} = ?assertCalled(connect, [#{ conn_type := noise, r_pubkey := PubKey3 }], {ok, _}, 2200),
     ok = conn_peer_connected(Conn3),
 
     ?assertEqual(lists:sort([Peer1, Peer2, Peer3]),
@@ -602,7 +672,7 @@ test_connection_closed() ->
     Peer = peer(PubKey, "10.1.0.1", 4000),
 
     aec_peers:add_peers(Source, Peer),
-    {ok, Conn1} = ?assertCalled(connect, [#{ r_pubkey := PubKey }], {ok, _}, 200),
+    {ok, Conn1} = ?assertCalled(connect, [#{ conn_type := noise, r_pubkey := PubKey }], {ok, _}, 200),
     ok = conn_peer_connected(Conn1),
 
     ?assertMatch([Peer], aec_peers:connected_peers()),
@@ -621,7 +691,7 @@ test_connection_closed() ->
     ?assertEqual(0, aec_peers:count(standby)),
 
     % Check it is reconnects
-    {ok, Conn2} = ?assertCalled(connect, [#{ r_pubkey := PubKey }], {ok, _}, 1200),
+    {ok, Conn2} = ?assertCalled(connect, [#{ conn_type := noise, r_pubkey := PubKey }], {ok, _}, 1200),
     ok = conn_peer_connected(Conn2),
 
     ?assertMatch([Peer], aec_peers:connected_peers()),
@@ -646,7 +716,7 @@ test_connection_failure() ->
     Peer = peer(PubKey, "10.1.0.1", 4000),
 
     aec_peers:add_peers(Source, Peer),
-    {ok, Conn1} = ?assertCalled(connect, [#{ r_pubkey := PubKey }], {ok, _}, 200),
+    {ok, Conn1} = ?assertCalled(connect, [#{ conn_type := noise, r_pubkey := PubKey }], {ok, _}, 200),
     ok = conn_connection_failed(Conn1),
 
     ?assertMatch([], aec_peers:connected_peers()),
@@ -659,7 +729,7 @@ test_connection_failure() ->
     ?assertEqual(1, aec_peers:count(standby)),
 
     % Check it is retried after 200 milliseconds
-    {ok, Conn2} = ?assertCalled(connect, [#{ r_pubkey := PubKey }], {ok, _}, 300),
+    {ok, Conn2} = ?assertCalled(connect, [#{ conn_type := noise, r_pubkey := PubKey }], {ok, _}, 300),
     ok = conn_peer_connected(Conn2),
 
     ?assertMatch([Peer], aec_peers:connected_peers()),
@@ -684,7 +754,7 @@ test_connection_down() ->
     Peer = peer(PubKey, "10.1.0.1", 4000),
 
     aec_peers:add_peers(Source, Peer),
-    {ok, Conn1} = ?assertCalled(connect, [#{ r_pubkey := PubKey }], {ok, _}, 200),
+    {ok, Conn1} = ?assertCalled(connect, [#{ conn_type := noise, r_pubkey := PubKey }], {ok, _}, 200),
     conn_kill(Conn1),
 
     ?assertMatch([], aec_peers:connected_peers()),
@@ -697,7 +767,7 @@ test_connection_down() ->
     ?assertEqual(1, aec_peers:count(standby)),
 
     % Check first retry.
-    {ok, Conn2} = ?assertCalled(connect, [#{ r_pubkey := PubKey }], {ok, _}, 400),
+    {ok, Conn2} = ?assertCalled(connect, [#{ conn_type := noise, r_pubkey := PubKey }], {ok, _}, 400),
     ok = conn_peer_connected(Conn2),
     conn_kill(Conn2),
 
@@ -711,7 +781,7 @@ test_connection_down() ->
     ?assertEqual(1, aec_peers:count(standby)),
 
     % Check second retry.
-    {ok, Conn3} = ?assertCalled(connect, [#{ r_pubkey := PubKey }], {ok, _}, 500),
+    {ok, Conn3} = ?assertCalled(connect, [#{ conn_type := noise, r_pubkey := PubKey }], {ok, _}, 500),
     ok = conn_peer_connected(Conn3),
     conn_kill(Conn3),
 
@@ -725,12 +795,12 @@ test_connection_down() ->
     ?assertEqual(1, aec_peers:count(standby)),
 
     % Check last retry.
-    {ok, Conn4} = ?assertCalled(connect, [#{ r_pubkey := PubKey }], {ok, _}, 500),
+    {ok, Conn4} = ?assertCalled(connect, [#{ conn_type := noise, r_pubkey := PubKey }], {ok, _}, 500),
     ok = conn_peer_connected(Conn4),
     conn_kill(Conn4),
 
     % Peer is downgraded to the unverified pool, and retried.
-    {ok, Conn5} = ?assertCalled(connect, [#{ r_pubkey := PubKey }], {ok, _}, 200),
+    {ok, Conn5} = ?assertCalled(connect, [#{ conn_type := noise, r_pubkey := PubKey }], {ok, _}, 200),
 
     ?assertMatch([], aec_peers:connected_peers()),
     ?assertMatch([], aec_peers:get_random(all)),
@@ -746,10 +816,10 @@ test_connection_down() ->
 
     conn_kill(Conn5),
 
-    {ok, Conn6} = ?assertCalled(connect, [#{ r_pubkey := PubKey }], {ok, _}, 400),
+    {ok, Conn6} = ?assertCalled(connect, [#{ conn_type := noise, r_pubkey := PubKey }], {ok, _}, 400),
     conn_kill(Conn6),
 
-    {ok, Conn7} = ?assertCalled(connect, [#{ r_pubkey := PubKey }], {ok, _}, 500),
+    {ok, Conn7} = ?assertCalled(connect, [#{ conn_type := noise, r_pubkey := PubKey }], {ok, _}, 500),
     conn_kill(Conn7),
 
     ?assertMatch([], aec_peers:connected_peers()),
@@ -763,7 +833,7 @@ test_connection_down() ->
 
     % Last retry of unverified peer, should be removed.
 
-    {ok, Conn8} = ?assertCalled(connect, [#{ r_pubkey := PubKey }], {ok, _}, 500),
+    {ok, Conn8} = ?assertCalled(connect, [#{ conn_type := noise, r_pubkey := PubKey }], {ok, _}, 500),
     conn_kill(Conn8),
 
     ?assertMatch([], aec_peers:connected_peers()),
@@ -814,7 +884,7 @@ test_inbound_connections() ->
 
     % The extra inbound that was closed is used for outbound.
     #{ pubkey := PubKey11} = Peer11,
-    {ok, Conn11b} = ?assertCalled(connect, [#{ r_pubkey := PubKey11 }], {ok, _}, 1100),
+    {ok, Conn11b} = ?assertCalled(connect, [#{ conn_type := noise, r_pubkey := PubKey11 }], {ok, _}, 1100),
     conn_peer_connected(Conn11b),
 
     ?assertEqual(11, aec_peers:count(connections)),
@@ -844,11 +914,11 @@ test_outbound_connections() ->
     Peers = [Peer1, Peer2, Peer3],
 
     ok = aec_peers:add_trusted(Peers),
-    {ok, Conn1} = ?assertCalled(connect, [#{ r_pubkey := PubKey1 }], {ok, _}, 1100),
+    {ok, Conn1} = ?assertCalled(connect, [#{ conn_type := noise, r_pubkey := PubKey1 }], {ok, _}, 1100),
     ok = conn_peer_connected(Conn1),
-    {ok, Conn2} = ?assertCalled(connect, [#{ r_pubkey := PubKey2 }], {ok, _}, 1100),
+    {ok, Conn2} = ?assertCalled(connect, [#{ conn_type := noise, r_pubkey := PubKey2 }], {ok, _}, 1100),
     ok = conn_peer_connected(Conn2),
-    {ok, Conn3} = ?assertCalled(connect, [#{ r_pubkey := PubKey3 }], {ok, _}, 1100),
+    {ok, Conn3} = ?assertCalled(connect, [#{ conn_type := noise, r_pubkey := PubKey3 }], {ok, _}, 1100),
     ok = conn_peer_connected(Conn3),
 
     ok = aec_peers:add_trusted(Peers),
@@ -881,7 +951,7 @@ test_ping() ->
     Peer = peer(PubKey, "10.1.0.1", 4000),
 
     ok = aec_peers:add_peers(Source, Peer),
-    {ok, Conn} = ?assertCalled(connect, [#{ r_pubkey := PubKey }], {ok, _}, 200),
+    {ok, Conn} = ?assertCalled(connect, [#{ conn_type := noise, r_pubkey := PubKey }], {ok, _}, 200),
     ok = conn_peer_connected(Conn),
 
     % Check we are sheduling a ping right away.
@@ -910,7 +980,7 @@ test_connection_conflict() ->
     Id2 = aec_peers:peer_id(PubKey2),
 
     ok = aec_peers:add_peers(Source, Peer1),
-    {ok, Conn1} = ?assertCalled(connect, [#{ r_pubkey := PubKey1 }], {ok, _}, 200),
+    {ok, Conn1} = ?assertCalled(connect, [#{ conn_type := noise, r_pubkey := PubKey1 }], {ok, _}, 200),
     ok = conn_peer_connected(Conn1),
 
     ?assertEqual(1, aec_peers:count(connections)),
@@ -935,7 +1005,7 @@ test_connection_conflict() ->
     ?assertEqual(0, aec_peers:count(peers)),
 
     ok = aec_peers:add_peers(Source, Peer2),
-    {ok, Conn3} = ?assertCalled(connect, [#{ r_pubkey := PubKey2 }], {ok, _}, 1200),
+    {ok, Conn3} = ?assertCalled(connect, [#{ conn_type := noise, r_pubkey := PubKey2 }], {ok, _}, 1200),
     ok = conn_peer_connected(Conn3),
 
     ?assertEqual(1, aec_peers:count(connections)),
@@ -958,7 +1028,7 @@ test_connection_conflict() ->
     % Check that an outbound connection not yet connected is canceled.
 
     ok = aec_peers:add_peers(Source, Peer1),
-    {ok, Conn5} = ?assertCalled(connect, [#{ r_pubkey := PubKey1 }], {ok, _}, 1200),
+    {ok, Conn5} = ?assertCalled(connect, [#{ conn_type := noise, r_pubkey := PubKey1 }], {ok, _}, 1200),
 
     {ok, Conn6} = test_mgr_start_inbound(Peer1),
     ?assertEqual(permanent, conn_peer_accepted(Conn6, maps:get(host, Peer1))),
@@ -1004,7 +1074,7 @@ test_blocking() ->
     ?assertEqual(0, aec_peers:count(connections)),
 
     ok = aec_peers:add_peers(Source, Peer2),
-    {ok, Conn2} = ?assertCalled(connect, [#{ r_pubkey := PubKey2 }], {ok, _}, 1200),
+    {ok, Conn2} = ?assertCalled(connect, [#{ conn_type := noise, r_pubkey := PubKey2 }], {ok, _}, 1200),
     ?assertEqual(1, aec_peers:count(peers)),
     ?assertEqual(1, aec_peers:count(connections)),
 
@@ -1018,7 +1088,7 @@ test_blocking() ->
     ?assertEqual(0, aec_peers:count(connections)),
 
     ok = aec_peers:add_peers(Source, Peer3),
-    {ok, Conn3} = ?assertCalled(connect, [#{ r_pubkey := PubKey3 }], {ok, _}, 1200),
+    {ok, Conn3} = ?assertCalled(connect, [#{ conn_type := noise, r_pubkey := PubKey3 }], {ok, _}, 1200),
     ok = conn_peer_connected(Conn3),
     ?assertEqual(1, aec_peers:count(peers)),
     ?assertEqual(1, aec_peers:count(connections)),
@@ -1052,7 +1122,7 @@ test_blocking() ->
                  lists:sort(aec_peers:blocked_peers())),
 
     ok = aec_peers:add_peers(Source, Peer2),
-    {ok, Conn5} = ?assertCalled(connect, [#{ r_pubkey := PubKey2 }], {ok, _}, 1200),
+    {ok, Conn5} = ?assertCalled(connect, [#{ conn_type := noise, r_pubkey := PubKey2 }], {ok, _}, 1200),
     ok = conn_peer_connected(Conn5),
     ?assertEqual(1, aec_peers:count(peers)),
     ?assertEqual(1, aec_peers:count(connections)),
@@ -1101,7 +1171,7 @@ test_blocking() ->
     ?assertEqual(0, aec_peers:count(peers)),
     timer:sleep(1100),
     aec_peers:add_peers(Source, Peer1),
-    {ok, Conn9} = ?assertCalled(connect, [#{ r_pubkey := PubKey1 }], {ok, _}, 1200),
+    {ok, Conn9} = ?assertCalled(connect, [#{ conn_type := noise, r_pubkey := PubKey1 }], {ok, _}, 1200),
     ok = conn_peer_connected(Conn9),
     ?assertEqual(1, aec_peers:count(peers)),
     ?assertEqual(1, aec_peers:count(connections)),
@@ -1109,7 +1179,7 @@ test_blocking() ->
     % Check trusted peers cannot be blocked.
 
     aec_peers:add_trusted(Peer2),
-    {ok, Conn10} = ?assertCalled(connect, [#{ r_pubkey := PubKey2 }], {ok, _}, 1200),
+    {ok, Conn10} = ?assertCalled(connect, [#{ conn_type := noise, r_pubkey := PubKey2 }], {ok, _}, 1200),
     ok = conn_peer_connected(Conn10),
     ?assertEqual(2, aec_peers:count(peers)),
     ?assertEqual(2, aec_peers:count(connections)),
@@ -1314,11 +1384,17 @@ conn_peer_connected(Pid) ->
 conn_peer_accepted(Pid, Host) ->
     call(Pid, peer_accepted, [Host]).
 
+conn_peer_alive(Pid) ->
+    call(Pid, peer_alive, []).
+
 conn_connection_failed(Pid) ->
     call(Pid, connection_failed, []).
 
 conn_connection_closed(Pid) ->
     call(Pid, connection_closed, []).
+
+conn_peer_dead(Pid) ->
+    call(Pid, peer_dead, []).
 
 conn_log_ping(Pid, Outcome) ->
     call(Pid, log_ping, [Outcome]).
@@ -1366,6 +1442,16 @@ proc_conn_loop(S) ->
                     cast(Parent, stopped, self()),
                     reply(From, Result)
             end;
+        {From, peer_alive, []} ->
+            #{ parent := Parent, id := PeerId } = S,
+            case aec_peers:peer_alive(PeerId, self()) of
+                ok ->
+                    reply(From, ok),
+                    proc_conn_loop(S);
+                {error, _} = Result ->
+                    cast(Parent, stopped, self()),
+                    reply(From, Result)
+            end;
         {From, connection_failed, []} ->
             #{ parent := Parent, id := PeerId } = S,
             Result = aec_peers:connection_failed(PeerId, self()),
@@ -1376,6 +1462,11 @@ proc_conn_loop(S) ->
             Result = aec_peers:connection_closed(PeerId, self()),
             cast(Parent, stopped, self()),
             reply(From, Result);
+        {From, peer_dead, []} ->
+            #{ id := PeerId } = S,
+            ok = aec_peers:peer_dead(PeerId, self()),
+            reply(From, ok),
+            proc_conn_loop(S);
         {From, log_ping, [Outcome]} ->
             #{ id := PeerId } = S,
             Result = aec_peers:log_ping(PeerId, Outcome),

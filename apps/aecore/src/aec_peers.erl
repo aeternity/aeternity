@@ -48,8 +48,10 @@
 %% API only to be used by aec_peer_connection.
 -export([peer_connected/2]).
 -export([peer_accepted/3]).
+-export([peer_alive/2]).
 -export([connection_failed/2]).
 -export([connection_closed/2]).
+-export([peer_dead/2]).
 
 %% API only used in aec_sync.
 -export([log_ping/2]).
@@ -70,6 +72,9 @@
 
 -define(MIN_CONNECTION_INTERVAL,             100).
 -define(MAX_CONNECTION_INTERVAL,       30 * 1000). % 30 seconds
+
+-define(MIN_TCP_PROBE_INTERVAL,              100).
+-define(MAX_TCP_PROBE_INTERVAL,       120 * 1000). % 2 minutes
 
 -define(DEFAULT_PING_INTERVAL,        120 * 1000). %  2 minutes
 -define(DEFAULT_UNBLOCK_INTERVAL, 15 * 60 * 1000). % 15 minutes
@@ -97,6 +102,7 @@
     peer              :: peer(),
     state             :: connecting | connected,
     type              :: inbound | outbound,
+    tcp_probe = false :: boolean(),
     kind = undefined  :: undefined | temporary | permanent,
     ping = undefined  :: undefined | reference(),
     pid               :: pid()
@@ -114,8 +120,12 @@
     outbound = 0      :: non_neg_integer(),
     %% The connect timer reference.
     connect_ref       :: undefined | reference(),
+    %% The TCP probe timer reference.
+    tcp_probe_ref     :: undefined | reference(),
     %% The last time we try connecting to a peer.
     last_connect_time :: non_neg_integer(),
+    %% The last time there was a TCP probe to a peer.
+    last_tcp_probe_time :: undefined | non_neg_integer(),
     %% The blocked peers.
     blocked           :: gb_trees:tree(peer_id(), peer_info()),
     %% For universal handling of URIs.
@@ -315,6 +325,10 @@ peer_connected(PeerId, PeerCon) ->
 peer_accepted(PeerInfo, Addr, PeerCon) ->
     gen_server:call(?MODULE, {peer_accepted, Addr, PeerInfo, PeerCon}).
 
+-spec peer_alive(peer_id(), pid()) -> ok | {error, term()}.
+peer_alive(PeerId, PeerCon) ->
+    gen_server:call(?MODULE, {peer_alive, PeerId, PeerCon}).
+
 %% @doc Informs that a connection failed unexpectedly; either when connecting
 %% or while already being connected.
 -spec connection_failed(peer_id(), pid()) -> ok.
@@ -325,6 +339,10 @@ connection_failed(PeerId, PeerCon) ->
 -spec connection_closed(peer_id(), pid()) -> ok.
 connection_closed(PeerId, PeerCon) ->
     gen_server:call(?MODULE, {connection_closed, PeerId, PeerCon}).
+
+-spec peer_dead(peer_id(), pid()) -> ok | {error, term()}.
+peer_dead(PeerId, PeerCon) ->
+    gen_server:call(?MODULE, {peer_dead, PeerId, PeerCon}).
 
 %--- UTILITY FUNCTIONS FOR aec_sync ONLY ---------------------------------------
 
@@ -424,12 +442,18 @@ handle_call({connection_failed, PeerId, PeerCon}, _From, State0) ->
 handle_call({connection_closed, PeerId, PeerCon}, _From, State0) ->
     State = on_connection_closed(PeerId, PeerCon, State0),
     {reply, ok, update_peer_metrics(schedule_connect(State))};
+handle_call({peer_dead, PeerId, PeerCon}, _From, State0) ->
+    State = on_peer_dead(PeerId, PeerCon, State0),
+    {reply, ok, update_peer_metrics(schedule_tcp_probe(State))};
 handle_call({peer_connected, PeerId, PeerCon}, _From, State0) ->
     {Result, State} = on_peer_connected(PeerId, PeerCon, State0),
     {reply, Result, update_peer_metrics(schedule_connect(State))};
 handle_call({peer_accepted, PeerAddr, PeerInfo, PeerCon}, _From, State0) ->
     {Result, State} = on_peer_accepted(PeerAddr, PeerInfo, PeerCon, State0),
-    {reply, Result, update_peer_metrics(State)}.
+    {reply, Result, update_peer_metrics(State)};
+handle_call({peer_alive, PeerId, PeerCon}, _From, State0) ->
+    {Result, State} = on_peer_alive(PeerId, PeerCon, State0),
+    {reply, Result, update_peer_metrics(schedule_tcp_probe(State))}.
 
 handle_cast({log_ping, Outcome, PeerId, _Time}, State) ->
     update_ping_metrics(Outcome),
@@ -476,6 +500,8 @@ handle_info({timeout, Ref, {ping, PeerId}}, State) ->
     {noreply, on_ping_timeout(PeerId, Ref, State)};
 handle_info({timeout, Ref, connect}, State) ->
     {noreply, update_peer_metrics(on_connect_timeout(Ref, State))};
+handle_info({timeout, Ref, tcp_probe}, State) ->
+    {noreply, update_peer_metrics(on_tcp_probe_timeout(Ref, State))};
 handle_info({timeout, Ref, {resolve, Hostname}}, #state{ hostnames = HostMap } = State) ->
     %% Handles timeout of hostname resolution event.
     case maps:find(Hostname, HostMap) of
@@ -697,15 +723,32 @@ connect(State0) ->
         true ->
             case pool_random_select(State) of
                 {unavailable, State2} ->
-                    epoch_sync:debug("No more peers available for outbound "
-                                     "connections", []),
+                    epoch_sync:debug("No peers available for outbound connection", []),
                     State2;
                 {wait, Delay, State2} ->
-                    epoch_sync:debug("No peers available befor ~b ms", [Delay]),
+                    epoch_sync:debug("No peers available for outbound connection, "
+                                     "waiting ~b ms", [Delay]),
                     schedule_connect(Delay, State2);
                 {selected, Peer, State2} ->
-                    schedule_connect(undefined, start_connection(Peer, State2))
+                    schedule_connect(undefined, start_connection(noise, Peer, State2))
             end
+    end.
+
+%% Connects to a random peer from unverified pool to check if the selected peer
+%% is alive; schedule the next TCP probe timeout if required.
+-spec tcp_probe(state()) -> state().
+tcp_probe(State0) ->
+    State = cancel_tcp_probe_timer(State0),
+    case pool_random_select(unverified, State) of
+        {unavailable, State2} ->
+            epoch_sync:debug("No peers available for TCP probe", []),
+            schedule_tcp_probe(?MAX_TCP_PROBE_INTERVAL, State2);
+        {wait, Delay, State2} ->
+            epoch_sync:debug("No peers available for TCP probe, "
+                             "waiting ~b ms", [Delay]),
+            schedule_tcp_probe(Delay, State2);
+        {selected, Peer, State2} ->
+            schedule_tcp_probe(undefined, start_connection(tcp, Peer, State2))
     end.
 
 %% Connects to given peer if the maximum number of outbound connections has not
@@ -722,7 +765,7 @@ connect(PeerId, State0) ->
                     State;
                 {ok, Peer} ->
                     State2 = pool_select(PeerId, State),
-                    schedule_connect(undefined, start_connection(Peer, State2))
+                    schedule_connect(undefined, start_connection(noise, Peer, State2))
             end
     end.
 
@@ -744,6 +787,19 @@ schedule_connect(MinDelay, State0) ->
             State#state{ connect_ref = Ref }
     end.
 
+-spec schedule_tcp_probe(state()) -> state().
+schedule_tcp_probe(State) ->
+    schedule_tcp_probe(undefined, State).
+
+-spec schedule_tcp_probe(undefined | non_neg_integer(), state()) -> state().
+schedule_tcp_probe(MinDelay, State0) ->
+    State = cancel_tcp_probe_timer(State0),
+    NextDelay = next_tcp_probe_delay(State),
+    Delay = safe_max(MinDelay, NextDelay),
+    epoch_sync:debug("Waiting ~b ms for the next TCP probe", [Delay]),
+    Ref = start_timer(tcp_probe, Delay),
+    State#state{ tcp_probe_ref = Ref }.
+
 %% Gives the time to wait for the next connect or `infinity' if no more
 %% connection should be established for now.
 -spec next_connect_delay(state()) -> infinity | non_neg_integer().
@@ -757,6 +813,24 @@ next_connect_delay(State) ->
             max(?MIN_CONNECTION_INTERVAL, BoundDelay - (timestamp() - LastTime))
     end.
 
+%% Gives the node some time to receive peers and establish outbound connections
+%% before it starts TCP probes of unverified peers.
+-spec initial_tcp_probe_delay() -> non_neg_integer().
+initial_tcp_probe_delay() ->
+    floor(ping_interval() * 1.5).
+
+-spec next_tcp_probe_delay(state()) -> non_neg_integer().
+next_tcp_probe_delay(State) ->
+    %% TODO: this probably needs some tweaks, it should be also dependent on the
+    %% number of available unverified peers, number of verified peers vs
+    %% max_outbound, and maybe it could start to be more frequent when there are
+    %% more timeouts while connecting and the number of outbound connections is
+    %% low, etc.
+    #state{ last_tcp_probe_time = LastTime, outbound = Outbound } = State,
+    ExpDelay = floor(math:pow(2, Outbound - 1)) * 1000,
+    BoundDelay = min(ExpDelay, ?MAX_TCP_PROBE_INTERVAL),
+    max(?MIN_TCP_PROBE_INTERVAL, BoundDelay - (timestamp() - LastTime)).
+
 %% Cancel the connect timer if defined.
 -spec cancel_connect_timer(state()) -> state().
 cancel_connect_timer(State) ->
@@ -764,28 +838,53 @@ cancel_connect_timer(State) ->
     cancel_timer(Ref),
     State#state{ connect_ref = undefined }.
 
+%% Starts TCP probe timer if it hasn't been started yet.
+-spec maybe_start_tcp_probe_timer(state()) -> state().
+maybe_start_tcp_probe_timer(#state{ last_tcp_probe_time = undefined } = State) ->
+    Delay = initial_tcp_probe_delay(),
+    Ref = start_timer(tcp_probe, Delay),
+    State#state{ last_tcp_probe_time = timestamp(), tcp_probe_ref = Ref };
+maybe_start_tcp_probe_timer(State) ->
+    State.
+
+%% Cancel TCP probe timer if defined.
+-spec cancel_tcp_probe_timer(state()) -> state().
+cancel_tcp_probe_timer(State) ->
+    #state{ tcp_probe_ref = Ref } = State,
+    cancel_timer(Ref),
+    State#state{ tcp_probe_ref = undefined }.
+
 %% Starts a connection process for the given peer.
--spec start_connection(peer(), state()) -> state().
-start_connection(Peer, State) ->
+-spec start_connection(noise | tcp, peer(), state()) -> state().
+start_connection(ConnType, Peer, State) ->
     #{ pubkey := NodePKey } = State#state.local_peer,
     #peer{ pubkey = RemPKey, host = Host, port = Port } = Peer,
-    epoch_sync:debug("Peer ~p - starting connection to ~s",
+    epoch_sync:debug("Peer ~p - starting Noise connection to ~s",
                      [ppp(Peer), format_address(Peer)]),
     ConnOpts = #{
+        conn_type => ConnType,
         pubkey => NodePKey,
         r_pubkey => RemPKey,
         host => Host,
         port => Port
     },
+    IsTcpProbe = ConnType =:= tcp,
     case aec_peer_connection:connect(ConnOpts) of
         {ok, Pid} ->
             Conn = #conn{
                 peer = Peer,
                 type = outbound,
+                tcp_probe = IsTcpProbe,
                 state = connecting,
                 pid = Pid
             },
-            State2 = State#state{ last_connect_time = timestamp() },
+            State2 =
+                case IsTcpProbe of
+                    true ->
+                        State#state{ last_tcp_probe_time = timestamp() };
+                    false ->
+                        State#state{ last_connect_time = timestamp() }
+                end,
             conn_add(Conn, conn_monitor(Conn, State2));
         {error, Reason} ->
             epoch_sync:info("Peer ~p - failed to start connection process: ~p",
@@ -848,7 +947,7 @@ on_connection_failed(PeerId, Pid, State) ->
 -spec on_connection_closed(peer_id(), pid(), state()) -> state().
 on_connection_closed(PeerId, Pid, State) ->
     case conn_take(PeerId, State) of
-        {#conn{ pid = Pid } = Conn, State2} ->
+        {#conn{ pid = Pid, tcp_probe = false } = Conn, State2} ->
             epoch_sync:debug("Peer ~p - Connection ~s closed by ~p",
                              [ppp(PeerId), format_address(Conn), Pid]),
             pool_release(PeerId, conn_cleanup(Conn, State2));
@@ -863,6 +962,25 @@ on_connection_closed(PeerId, Pid, State) ->
             State
     end.
 
+-spec on_peer_dead(peer_id(), pid(), state()) -> state().
+on_peer_dead(PeerId, Pid, State) ->
+    case conn_take(PeerId, State) of
+        {#conn{ state = connecting, type = outbound, tcp_probe = true,
+                pid = Pid } = Conn, State2 } ->
+            epoch_sync:debug("Peer ~p - TCP probe failed through process ~p",
+                             [ppp(PeerId), Pid]),
+            pool_reject(PeerId, conn_cleanup(Conn, State2));
+        {#conn{ pid = OtherPid }, _State2} ->
+            epoch_sync:info("Peer ~p - got peer_dead from unexpected "
+                            "process ~p; supposed to come from ~p",
+                            [ppp(PeerId), Pid, OtherPid]),
+            State;
+        error ->
+            epoch_sync:info("Peer ~p - got peer_dead for unknown "
+                            "connection from process ~p", [ppp(PeerId), Pid]),
+            State
+    end.
+
 %% Handles outbound connection being successfully estabished.
 -spec on_peer_connected(peer_id(), pid(), state())
     -> {ok, state()} | {{error, term()}, state()}.
@@ -872,7 +990,8 @@ on_peer_connected(PeerId, Pid, State) ->
             epoch_sync:info("Peer ~p - got peer_connected for unknown peer "
                             "from process ~p", [ppp(PeerId), Pid]),
             {{error, invalid}, State};
-        {ok, #conn{ state = connecting, type = outbound, pid = Pid } = Conn} ->
+        {ok, #conn{ state = connecting, type = outbound, tcp_probe = false,
+                    pid = Pid } = Conn} ->
             epoch_sync:debug("Peer ~p - connected to ~s through process ~p",
                              [ppp(PeerId), format_address(Conn), Pid]),
             epoch_sync:debug("Peer ~p - schedule ping", [ppp(PeerId)]),
@@ -938,6 +1057,27 @@ on_peer_accepted(PeerAddr, PeerInfo, Pid, State0) ->
             end
     end.
 
+-spec on_peer_alive(peer_id(), pid(), state())
+    -> {ok, state()} | {{error, term()}, state()}.
+on_peer_alive(PeerId, Pid, State) ->
+    case conn_take(PeerId, State) of
+        {#conn{ state = connecting, type = outbound, tcp_probe = true,
+                pid = Pid } = Conn, State2} ->
+            epoch_sync:info("Peer ~p - TCP probe successful through process ~p",
+                            [ppp(PeerId), Pid]),
+            State3 = conn_cleanup(Conn, State2),
+            {ok, pool_verify(PeerId, pool_release(PeerId, State3))};
+        {#conn{ state = ConnState, type = Type, pid = Pid2 } = Conn, State2} ->
+            epoch_sync:info("Peer ~p - got unexpected peer_alive for ~p ~p "
+                            "peer from process ~p; rejecting the connection",
+                            [ppp(PeerId), ConnState, Type, Pid2]),
+            {{error, invalid}, pool_reject(PeerId, conn_cleanup(Conn, State2))};
+        error ->
+            epoch_sync:info("Peer ~p - got peer_alive for unknown peer "
+                            "from process ~p", [ppp(PeerId), Pid]),
+            {{error, invalid}, State}
+    end.
+
 %% Adds a new inbound connection if not conflicting with an existing one.
 -spec new_inbound_resolve_conflicts(peer(), pid(), state())
     -> {ok, state()} | {temporary, state()} | {{error, term()}, state()}.
@@ -987,7 +1127,7 @@ new_inbound_accepted(Conn, State) ->
             epoch_sync:debug("Peer ~p - ~p inbound connection ~s accepted from "
                              "process ~p", [ppp(Peer), InboundKind,
                              format_address(Conn), Pid]),
-            Conn2 = Conn#conn{ kind = InboundKind },
+            Conn2 = Conn#conn{ kind = InboundKind, tcp_probe = false },
             State3 = conn_add(Conn2, State2),
             {InboundKind, conn_monitor(Conn2, State3)};
         Error -> Error
@@ -1048,7 +1188,7 @@ on_resolve_peer(SourceAddr, PeerInfo, IsTrusted, State) ->
 -spec on_add_peer(inet:ip_address(), peer(), state()) -> state().
 on_add_peer(SourceAddr, Peer, State0) ->
     State = maybe_unblock(State0),
-    PeerId  = peer_id(Peer),
+    PeerId = peer_id(Peer),
     #peer{ pubkey = PPK, address = PA, port = PP } = Peer,
     case is_local(PeerId, State) orelse is_blocked(PeerId, State) of
         true ->
@@ -1058,7 +1198,9 @@ on_add_peer(SourceAddr, Peer, State0) ->
         false ->
             case pool_find(PeerId, State) of
                 error ->
-                    add_peer(SourceAddr, Peer, State);
+                    %% The TCP probe timer is started with addition of the firts peer.
+                    State2 = maybe_start_tcp_probe_timer(State),
+                    add_peer(SourceAddr, Peer, State2);
                 {ok, #peer{ pubkey = PPK, address = PA, port = PP} = Peer2} ->
                     % Only update gossip time and source.
                     {_, State2} = pool_update(SourceAddr, Peer2, State),
@@ -1093,7 +1235,6 @@ add_peer(SourceAddr, Peer, State) ->
                     State2
             end
     end.
-
 
 %% Handles event removing a peer.
 -spec on_del_peer(peer_id(), state()) -> state().
@@ -1131,6 +1272,13 @@ on_connect_timeout(_Ref, State) ->
     epoch_sync:info("Connect timeout with invalid reference", []),
     State.
 
+-spec on_tcp_probe_timeout(reference(), state()) -> state().
+on_tcp_probe_timeout(Ref, #state{ tcp_probe_ref = Ref } = State) ->
+    tcp_probe(State#state{ tcp_probe_ref = undefined });
+on_tcp_probe_timeout(_Ref, State) ->
+    epoch_sync:info("TCP probe timeout with invalid reference", []),
+    State.
+
 %% Handles ping timeout event.
 -spec on_process_down(pid(), reference(), state()) -> state().
 on_process_down(Pid, MonitorRef, State) ->
@@ -1158,7 +1306,7 @@ on_process_down(Pid, MonitorRef, State) ->
 
 %% Adds given connection to the address group lookup table.
 %% Only tracks outbound connection.
-group_add(#conn{ peer = Peer, type = outbound }, State) ->
+group_add(#conn{ peer = Peer, type = outbound, tcp_probe = false }, State) ->
     #state{ groups = Groups } = State,
     #peer{ address = Addr } = Peer,
     PeerId = peer_id(Peer),
@@ -1170,7 +1318,7 @@ group_add(_Conn, State) ->
 
 %% Deletes given connection from the address group lookup table.
 %% Only tracks outbound connection.
-group_del(#conn{ peer = Peer, type = outbound }, State) ->
+group_del(#conn{ peer = Peer, type = outbound, tcp_probe = false }, State) ->
     #state{ groups = Groups } = State,
     #peer{ address = Addr } = Peer,
     PeerId = peer_id(Peer),
@@ -1215,17 +1363,24 @@ pool_update(SourceAddr, Peer, State) ->
     pool_log_changes(PeerId, OldPoolName, NewPoolName),
     {NewPoolName, State#state{ pool = Pool2 }}.
 
-%% Select a random peer optionally excluding the ones the node already have
-%% an outbound connection from the same address group.
 -spec pool_random_select(state())
     -> {selected, peer(), state()}
      | {wait, non_neg_integer(), state()}
      | {unavailable, state()}.
 pool_random_select(State) ->
+    pool_random_select(both, State).
+
+%% Select a random peer optionally excluding the ones the node already have
+%% an outbound connection from the same address group.
+-spec pool_random_select(aec_peers_pool:select_target(), state())
+    -> {selected, peer(), state()}
+     | {wait, non_neg_integer(), state()}
+     | {unavailable, state()}.
+pool_random_select(Target, State) ->
     #state{ pool = Pool } = State,
     Now = timestamp(),
     FilterFun = pool_select_filter_fun(State),
-    case aec_peers_pool:random_select(Pool, Now, both, FilterFun) of
+    case aec_peers_pool:random_select(Pool, Now, Target, FilterFun) of
         {selected, {_, #peer{} = Peer}, Pool2} ->
             {selected, Peer, State#state{ pool = Pool2 }};
         {wait, Delay, Pool2} ->
@@ -1453,12 +1608,14 @@ conn_take(PeerId, State) ->
     #state{ conns = Conns, inbound = Inbound, outbound = Outbound } = State,
     case maps:take(PeerId, Conns) of
         error -> error;
-        {#conn{ type = inbound } = Conn, Conns2} ->
+        {#conn{ type = inbound, tcp_probe = false } = Conn, Conns2} ->
             ?assert(Inbound > 0),
             {Conn, State#state{ conns = Conns2, inbound = Inbound - 1 }};
-        {#conn{ type = outbound } = Conn, Conns2} ->
+        {#conn{ type = outbound, tcp_probe = false } = Conn, Conns2} ->
             ?assert(Outbound > 0),
-            {Conn, State#state{ conns = Conns2, outbound = Outbound - 1 }}
+            {Conn, State#state{ conns = Conns2, outbound = Outbound - 1 }};
+        {#conn{} = Conn, Conns2} ->
+            {Conn, State#state{ conns = Conns2 }}
     end.
 
 %% Add a new connection.
@@ -1466,15 +1623,17 @@ conn_take(PeerId, State) ->
 conn_add(Conn, State0) ->
     State = group_add(Conn, State0),
     #state{ conns = Conns, inbound = Inbound, outbound = Outbound } = State0,
-    #conn{ type = Type, peer = Peer } = Conn,
+    #conn{ peer = Peer } = Conn,
     PeerId = peer_id(Peer),
     ?assertNot(maps:is_key(PeerId, Conns)),
     Conns2 = Conns#{ PeerId => Conn },
-    case Type of
-        inbound ->
+    case Conn of
+        #conn{ type = inbound, tcp_probe = false } ->
             State#state{ conns = Conns2, inbound = Inbound + 1 };
-        outbound ->
-            State#state{ conns = Conns2, outbound = Outbound + 1 }
+        #conn{ type = outbound, tcp_probe = false } ->
+            State#state{ conns = Conns2, outbound = Outbound + 1 };
+        #conn{ tcp_probe = true } ->
+            State#state{ conns = Conns2 }
     end.
 
 %% Set connections state.
