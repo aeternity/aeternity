@@ -318,7 +318,8 @@ get_mpt(Height) ->
     try get_mpt_from_hash(Hash) of
         MPT -> MPT
     catch
-        error:{hash_not_present_in_db, MissingHash}:Stacktrace ->
+        error:{hash_not_present_in_db, MissingHash} ->
+            Stacktrace = erlang:get_stacktrace(),
             error({hash_not_present_in_db_at_height, Height, MissingHash, Stacktrace})
     end.
 
