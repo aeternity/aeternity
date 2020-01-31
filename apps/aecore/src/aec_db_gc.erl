@@ -355,9 +355,13 @@ interval(ConfigInterval) -> ConfigInterval.
 
 -ifdef(INTERVAL_VARIANCE).
 interval(ConfigInterval) ->
-    Variance = trunc(ConfigInterval * ?INTERVAL_VARIANCE_PERCENT / 100.0),
-    Delta    = rand:uniform(Variance) - (Variance div 2),
-    max(3, ConfigInterval + Delta).
+    case trunc(ConfigInterval * ?INTERVAL_VARIANCE_PERCENT / 100.0) of
+        0 ->
+            ConfigInterval;
+        Variance when Variance > 0 ->
+            Delta = rand:uniform(Variance) - (Variance div 2),
+            max(3, ConfigInterval + Delta)
+    end.
 -else.
 interval(ConfigInterval) -> ConfigInterval.
 -endif.
