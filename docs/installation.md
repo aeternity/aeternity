@@ -36,7 +36,7 @@ The release binaries are published on [GitHub][releases] and are tested on the f
 Package dependencies are:
 
 * [Libsodium](https://download.libsodium.org/doc/) v1.0.16
-* [Openssl](https://www.openssl.org) 1.1
+* [Openssl](https://www.openssl.org)
 
 ### Ubuntu package
 
