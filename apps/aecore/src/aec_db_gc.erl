@@ -52,7 +52,7 @@
 %% interval from config +- random offset to avoid situation where large
 %% majority of nodes become unresponsive due to node restart invoked by GC
 -define(INTERVAL_VARIANCE_PERCENT, 10).
-%-define(INTERVAL_VARIANCE, true). % comment this out for development only!
+-define(INTERVAL_VARIANCE, true). % comment this out for development only!
 
 -define(GCED_TABLE_NAME, aec_account_state_gced).
 -define(TABLE_NAME, aec_account_state).
