@@ -363,7 +363,8 @@ compute_store_updates(Metadata, #cache_entry{terms = TermCache, store = Store}) 
     Reuse     = compute_inplace_updates(Unused, Maps),
     RefCounts1 = compute_copy_refcounts(Metadata1, Reuse, Maps, Store),
     Metadata1b = update_refcounts(RefCounts1, Metadata1),
-    {Garbage, Metadata2} = compute_garbage(Unused, Reuse, Metadata1b, Store),
+    Unused1    = unused_maps(Metadata1b),
+    {Garbage, Metadata2} = compute_garbage(Unused1, Reuse, Metadata1b, Store),
 
     CopyOrInplace = fun(MapId, ?FATE_STORE_MAP(_, Id) = Map) ->
                             case maps:get(Id, Reuse, no_reuse) of
@@ -576,7 +577,13 @@ map_refcounts(_Meta, ?FATE_STORE_MAP(Cache, _Id), _Store) ->
 compute_copy_refcounts(Meta, Reuse, Maps, Store) ->
     maps:fold(fun(MapId, ?FATE_STORE_MAP(Cache, Id), Count) ->
                       case maps:get(Id, Reuse, no_reuse) of
-                          MapId -> Count;   %% Inplace update
+                          MapId ->
+                              %% Subtract refcounts for entries overwritten by the Cache.
+                              ?METADATA(RawId, _RefCount, _Size) = get_map_meta(Id, Meta),
+                              NewKeys = [ aeb_fate_encoding:serialize(Key) || Key <- maps:keys(Cache) ],
+                              OldBin  = maps:with(NewKeys, aect_contracts_store:subtree(map_data_key(RawId), Store)),
+                              Removed = aeb_fate_maps:refcount([ aeb_fate_encoding:deserialize(Val) || Val <- maps:values(OldBin) ]),
+                              aeb_fate_maps:refcount_diff(Count, Removed);
                           _ ->
                               %% Note that we already added refcounts for the Cache.
                               ?METADATA(RawId, _RefCount, _Size) = get_map_meta(Id, Meta),
