@@ -4517,8 +4517,6 @@ force_progress_closing_state(Cfg) ->
     {_, _, _, _, closing} = check_fsm_state(FsmI),
 
     check_info(20),
-    {_, _} = produce_close_mutual_tx(ChannelId, PubI, I4, R2, Cfg, #{}),
-    %shutdown_(I2, R2, Cfg),
     ok.
 
 
