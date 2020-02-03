@@ -119,6 +119,7 @@
         , aens_update/7
         , aens_transfer/5
         , aens_revoke/4
+        , aens_lookup/3
         , verify_sig/5
         , verify_sig_secp256k1/5
         , ecverify_secp256k1/5
@@ -1400,6 +1401,45 @@ aens_claim(Arg0, Arg1, Arg2, Arg3, Arg4, EngineState) ->
             end
     end.
 
+aens_lookup(Arg0, Arg1, EngineState) ->
+    aefa_engine_state:vm_version(EngineState) >= ?VM_FATE_SOPHIA_2
+        orelse aefa_fate:abort({primop_error, aens_lookup, not_supported}, EngineState),
+
+    {[NameString], ES1} = get_op_args([Arg1], EngineState),
+
+    if not ?IS_FATE_STRING(NameString) ->
+        aefa_fate:abort({value_does_not_match_type, NameString, string}, ES1);
+       true ->
+        ok
+    end,
+
+    ?FATE_STRING(Name) = NameString,
+    API = aefa_engine_state:chain_api(ES1),
+    case aefa_chain_api:aens_lookup(Name, API) of
+        {ok, NameObj, API1} ->
+            ES2 = aefa_engine_state:set_chain_api(API1, ES1),
+            Owner = ?FATE_ADDRESS(maps:get(owner, NameObj)),
+            TTL   = ?FATE_ABS_TTL(aeb_fate_data:make_integer(maps:get(ttl, NameObj))),
+            MkKey    = fun(Pt) -> ?FATE_STRING(aens_pointer:key(Pt)) end,
+            Pointers = lists:foldl(fun(Pt, M) -> M#{ MkKey(Pt) => mk_fate_pointee(Pt) } end,
+                                   #{}, maps:get(pointers, NameObj)),
+            Res = make_some(aeb_fate_data:make_variant([3], 0, {Owner, TTL, Pointers})),
+            write(Arg0, Res, ES2);
+        none ->
+            write(Arg0, make_none(), ES1);
+        {error, _What} ->
+            write(Arg0, make_none(), ES1)
+    end.
+
+mk_fate_pointee(Pt) ->
+    Id = aens_pointer:id(Pt),
+    case aeser_id:specialize(Id) of
+        {account, PK}  -> aeb_fate_data:make_variant([1, 1, 1, 1], 0, {?FATE_ADDRESS(PK)});
+        {oracle, PK}   -> aeb_fate_data:make_variant([1, 1, 1, 1], 1, {?FATE_ADDRESS(PK)});
+        {contract, PK} -> aeb_fate_data:make_variant([1, 1, 1, 1], 2, {?FATE_ADDRESS(PK)});
+        {channel, PK}  -> aeb_fate_data:make_variant([1, 1, 1, 1], 3, {?FATE_ADDRESS(PK)})
+    end.
+
 aens_update(Arg0, Arg1, Arg2, Arg3, Arg4, Arg5, EngineState) ->
     aefa_engine_state:vm_version(EngineState) >= ?VM_FATE_SOPHIA_2
         orelse aefa_fate:abort({primop_error, aens_update, not_supported}, EngineState),
@@ -1440,11 +1480,12 @@ aens_update(Arg0, Arg1, Arg2, Arg3, Arg4, Arg5, EngineState) ->
             ?FATE_VARIANT([_,_], 0, {}) -> undefined;
             ?FATE_VARIANT([_,_], 1, {Pointers_}) ->
                 maps:fold(
-                  fun (PtrKey, ?FATE_VARIANT([_, _, _], AddrTag, {{address, Addr}}), Acc) ->
+                  fun (PtrKey, ?FATE_VARIANT([1, 1, 1, 1], AddrTag, {{address, Addr}}), Acc) ->
                           IdType = case AddrTag of    % type pointee =
-                                      0 -> account;   %   | Account(address)
-                                      1 -> oracle;    %   | Oracle(address)
-                                      2 -> contract   %   | Contract(address)
+                                      0 -> account;   %   | AccountPt(address)
+                                      1 -> oracle;    %   | OraclePt(address)
+                                      2 -> contract;  %   | ContractPt(address)
+                                      3 -> channel    %   | ChannelPt(address)
                                    end,
                           [aens_pointer:new(PtrKey, aeser_id:create(IdType, Addr)) | Acc]
                   end, [], Pointers_)

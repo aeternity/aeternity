@@ -49,6 +49,7 @@
         , aens_revoke/3
         , aens_transfer/4
         , aens_update/6
+        , aens_lookup/2
         ]).
 
 -export([ check_delegation_signature/4
@@ -672,6 +673,47 @@ aens_update(Pubkey, HashBin, TTL, ClientTTL, Pointers, #state{} = S) when ?IS_ON
     Instructions = [aeprimop:name_update_op(Pubkey, HashBin, TTL, ClientTTL, Pointers)
                    ],
     eval_primops(Instructions, S).
+
+aens_lookup(NameString, #state{primop_state = PState} = S) when ?IS_ONCHAIN(S) ->
+    case aens_lookup_from_pstate(NameString, PState) of
+        {ok, NameObj, PState1} ->
+            {ok, NameObj, S#state{primop_state = PState1}};
+        none ->
+            none;
+        {error, _} = Err ->
+            Err
+    end;
+aens_lookup(NameString, #state{onchain_primop_state = {onchain, PState}} = S) ->
+    case aens_lookup_from_pstate(NameString, PState) of
+        {ok, NameObj, PState1} ->
+            {ok, NameObj, S#state{onchain_primop_state = {onchain, PState1}}};
+        none ->
+            none;
+        {error, _} = Err ->
+            Err
+    end.
+
+aens_lookup_from_pstate(NameString, PState) ->
+    case aens_utils:to_ascii(NameString) of
+        {ok, NameAscii} ->
+            NameHash = aens_hash:name_hash(NameAscii),
+            case aeprimop_state:find_name(NameHash, PState) of
+                {Name, PState1} ->
+                    case aens_names:status(Name) of
+                        revoked -> none;
+                        claimed ->
+                            NameObj =
+                                #{ owner    => aens_names:owner_pubkey(Name),
+                                   ttl      => aens_names:ttl(Name),
+                                   pointers => aens_names:pointers(Name) },
+                            {ok, NameObj, PState1}
+                    end;
+                none ->
+                    none
+            end;
+        {error, _} = Err ->
+            Err
+    end.
 
 %%%-------------------------------------------------------------------
 %%% Interface to primop evaluation
