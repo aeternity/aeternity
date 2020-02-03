@@ -44,7 +44,7 @@
         , is_contract/2
         , is_payable/2
         , aens_claim/5
-        , aens_preclaim/3
+        , aens_preclaim/4
         , aens_resolve/3
         , aens_revoke/3
         , aens_transfer/4
@@ -650,8 +650,14 @@ aens_resolve_from_pstate(NameString, Key, PState) ->
             Err
     end.
 
-aens_preclaim(Pubkey, Hash, #state{} = S) when ?IS_ONCHAIN(S) ->
-    eval_primops([aeprimop:name_preclaim_op(Pubkey, Hash, 0)], S).
+aens_preclaim(Pubkey, Hash, #state{} = S, VmVersion) when ?IS_ONCHAIN(S) ->
+    case VmVersion >= ?VM_FATE_SOPHIA_2 of
+        true ->
+            PreclaimTTL = aec_governance:name_preclaim_expiration(),
+            eval_primops([aeprimop:name_preclaim_op(Pubkey, Hash, PreclaimTTL)], S);
+        false ->
+            eval_primops([aeprimop:name_preclaim_op(Pubkey, Hash, 0)], S)
+    end.
 
 aens_claim(Pubkey, NameBin, SaltInt, NameFee, #state{} = S) when ?IS_ONCHAIN(S) ->
     PreclaimDelta = aec_governance:name_claim_preclaim_delta(),

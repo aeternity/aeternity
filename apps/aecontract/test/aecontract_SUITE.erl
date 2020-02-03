@@ -3783,6 +3783,8 @@ sophia_signatures_aens(Cfg) ->
                    {error,<<"Error in aens_preclaim: bad_signature">>},
                    BadPreclaim),
     {} = ?call(call_contract, Acc, Ct, signedPreclaim, {tuple, []}, {NameAcc, CHash, NameAccSig},        #{ height => 10 }),
+    %% FATE_SOPHIA_1 had a bug that set TTL for preclaims to 0 - check it is fixed in FATE_SOPHIA_2
+    [ ?call(perform_pre_transformations, 11) || vm_version() >= ?VM_FATE_SOPHIA_2 ],
     NonceAfterPreclaim = aec_accounts:nonce(aect_test_utils:get_account(NameAcc, state())),
     BadClaim = ?call(call_contract, Acc, Ct, signedClaim,    {tuple, []}, {NameAcc, Name1, Salt1, AccSig}, #{ height => 11 }),
     ?assertMatchVM({error, <<"out_of_gas">>},
@@ -5675,6 +5677,8 @@ sophia_aens_lookup(Cfg) ->
                       end,
 
     {} = ?call(call_contract, Acc, Ct, preclaim, {tuple, []}, {Ct, ?hsh(CHash)}, #{ height => 10 }),
+    %% FATE_SOPHIA_1 had a bug that set TTL for preclaims to 0 - check it is fixed in FATE_SOPHIA_2
+    ?call(perform_pre_transformations, 11),
     {} = ?call(call_contract, Acc, Ct, claim,    {tuple, []}, {Ct, Name1, Salt1, 360000000000000000000}, #{ height => 11 }),
     true = ?call(call_contract, Acc, Ct, test,     bool,  {Ct, Name1}, #{ height => 11 }),
     ok.
