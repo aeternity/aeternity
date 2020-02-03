@@ -64,6 +64,16 @@
 -define(STORE_KEY_PREFIX, 0).
 -define(STORE_MAP_PREFIX, 1).
 
+-ifdef(TEST).
+-define(ASSERT(Check, Err),
+        case Check of
+            true  -> ok;
+            false -> error({assertion_failed, ?FILE, ?LINE, Err})
+        end).
+-else.
+-define(ASSERT(Check, Err), ok).
+-endif.
+
 -ifdef(DEBUG).
 -define(DEBUG_STORE(S), debug_stores(S)).
 -define(DEBUG_PRINT(Fmt, Args), io:format(Fmt, Args)).
@@ -308,6 +318,8 @@ finalize_entry(Pubkey, Cache = #cache_entry{store = Store}, {Writes, GasLeft}) -
     {Metadata1, Updates} = compute_store_updates(Metadata, Cache),
     ?DEBUG_PRINT("Updates\n  ~p\n", [Updates]),
 
+    ?ASSERT(check_store_updates(Updates), {bad_store_updates, Updates}),
+
     %% Performing the updates writes the necessary changes to the MP trees.
     {Store1, GasLeft1} = perform_store_updates(Metadata, Updates, Metadata1, GasLeft, Store),
     {[{Pubkey, Store1} | Writes], GasLeft1}.
@@ -319,6 +331,16 @@ finalize_entry(Pubkey, Cache = #cache_entry{store = Store}, {Writes, GasLeft}) -
                       | {copy_map,   map_id(), fate_map()}                     %% Create a new map (no inplace update)
                       | {update_map, map_id(), aeb_fate_data:fate_store_map()} %% Update an existing map inplace
                       | {gc_map,     map_id()}.                                %% Garbage collect a map removing all entries
+
+-ifdef(TEST).
+%% Check that if a map is gc'd it's not also updated or copied.
+-spec check_store_updates([store_update()]) -> boolean().
+check_store_updates(Updates) ->
+    GCd     = [ Id || {gc_map, Id} <- Updates ],
+    Copied  = [ Id || {copy_map,   _, ?FATE_STORE_MAP(_, Id)} <- Updates ],
+    Updated = [ Id || {update_map, _, ?FATE_STORE_MAP(_, Id)} <- Updates ],
+    GCd -- (Copied ++ Updated) == GCd.
+-endif.
 
 -spec compute_store_updates(store_meta(), #cache_entry{}) -> {store_meta(), [store_update()]}.
 compute_store_updates(Metadata, #cache_entry{terms = TermCache, store = Store}) ->
