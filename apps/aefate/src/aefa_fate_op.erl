@@ -1298,15 +1298,15 @@ aens_resolve(Arg0, Arg1, Arg2, Arg3, EngineState) ->
 aens_resolve_(Arg0, ?FATE_STRING(NameString), ?FATE_STRING(Key), ?FATE_TYPEREP(Type),
               ES) ->
     API = aefa_engine_state:chain_api(ES),
-    None = aeb_fate_data:make_variant([0,1], 0, {}),
+    DontCrashOnBadName = aefa_engine_state:vm_version(ES) >= ?VM_FATE_SOPHIA_2,
     case aefa_chain_api:aens_resolve(NameString, Key, API) of
         none ->
-            write(Arg0, None, ES);
+            write(Arg0, make_none(), ES);
         {ok, Tag, Pubkey, API1} ->
             ES1 = aefa_engine_state:set_chain_api(API1, ES),
             case aens_tag_to_val(Type, Tag, Pubkey) of
                 none ->
-                    write(Arg0, None, ES1);
+                    write(Arg0, make_none(), ES1);
                 {error, What} ->
                     aefa_fate:abort({primop_error, aens_resolve, What}, ES1);
                 {ok, InnerVal} ->
@@ -1315,9 +1315,12 @@ aens_resolve_(Arg0, ?FATE_STRING(NameString), ?FATE_STRING(Key), ?FATE_TYPEREP(T
                         #{} ->
                             write(Arg0, Val, ES1);
                         false ->
-                            write(Arg0, None, ES1)
+                            write(Arg0, make_none(), ES1)
                     end
-            end
+            end;
+        %% Nicer to just return None in case name is invalid
+        {error, _What} when DontCrashOnBadName ->
+            write(Arg0, make_none(), ES)
     end.
 
 aens_tag_to_val({variant, [{tuple, []}, {tuple, [Type]}]}, Tag, Pubkey) ->
