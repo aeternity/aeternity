@@ -146,7 +146,11 @@ new(Gas, Value, Spec, Stores, APIState, CodeCache, VMVersion) ->
        , vm_version        = VMVersion
        }.
 
-aefa_stores(_ES) -> aefa_stores.
+aefa_stores(#es{ vm_version = Version }) ->
+    case Version >= ?VM_FATE_SOPHIA_2 of
+        true  -> aefa_stores;
+        false -> aefa_stores_lima
+    end.
 
 -spec finalize(state()) -> {ok, state()} | {error, out_of_gas}.
 finalize(#es{chain_api = API, stores = Stores} = ES) ->
