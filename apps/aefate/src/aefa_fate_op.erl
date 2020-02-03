@@ -106,6 +106,7 @@
         , oracle_extend/4
         , oracle_get_answer/6
         , oracle_get_question/6
+        , oracle_expiry/3
         , oracle_query_fee/3
         , oracle_check/5
         , oracle_check_query/6
@@ -1196,21 +1197,29 @@ oracle_get_answer(Arg0, Arg1, Arg2, Arg3, Arg4, EngineState) ->
             aefa_fate:abort({primop_error, oracle_get_answer, What}, ES1)
     end.
 
-
-oracle_query_fee(Arg0, Arg1, EngineState) ->
+oracle_get_int_value(IntValueFun, Arg0, Arg1, EngineState) ->
     case get_op_arg(Arg1, EngineState) of
         {?FATE_ORACLE(OraclePubkey), ES1} ->
             API = aefa_engine_state:chain_api(ES1),
-            case aefa_chain_api:oracle_query_fee(OraclePubkey, API) of
+            case aefa_chain_api:IntValueFun(OraclePubkey, API) of
                 {ok, FeeVal, API1} ->
                     ES2 = aefa_engine_state:set_chain_api(API1, ES1),
                     write(Arg0, aeb_fate_data:make_integer(FeeVal), ES2);
                 {error, What} ->
-                    aefa_fate:abort({primop_error, oracle_query_fee, What}, ES1)
+                    aefa_fate:abort({primop_error, IntValueFun, What}, ES1)
             end;
         {Other, ES1} ->
             aefa_fate:abort({value_does_not_match_type, Other, oracle}, ES1)
     end.
+
+oracle_query_fee(Arg0, Arg1, EngineState) ->
+    oracle_get_int_value(oracle_query_fee, Arg0, Arg1, EngineState).
+
+oracle_expiry(Arg0, Arg1, EngineState) ->
+    aefa_engine_state:vm_version(EngineState) >= ?VM_FATE_SOPHIA_2
+        orelse aefa_fate:abort({primop_error, oracle_expiry, not_supported}, EngineState),
+
+    oracle_get_int_value(oracle_expiry, Arg0, Arg1, EngineState).
 
 oracle_check(Arg0, Arg1, Arg2, Arg3, EngineState) ->
     {[Oracle, QType, RType], ES1} = get_op_args([Arg1, Arg2, Arg3], EngineState),
@@ -1757,7 +1766,11 @@ write({arg, _} = Arg, Val, ES) ->
 %% ------------------------------------------------------
 %% Variant instructions
 %% ------------------------------------------------------
+make_none() ->
+    aeb_fate_data:make_variant([0,1], 0, {}).
 
+make_some(Val) ->
+    aeb_fate_data:make_variant([0,1], 1, {Val}).
 
 make_variant(Arities, Tag, NoElements, ES)  when ?IS_FATE_LIST(Arities)
                                               , ?IS_FATE_INTEGER(Tag)

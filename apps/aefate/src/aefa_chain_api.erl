@@ -36,6 +36,7 @@
         , oracle_register/8
         , oracle_query/11
         , oracle_respond/7
+        , oracle_expiry/2
         , oracle_query_fee/2
         , oracle_check/4
         , oracle_check_query/5
@@ -349,17 +350,33 @@ oracle_respond(OraclePubkey, QueryId, Response, ABIVersion, QType, RType,
             Err
     end.
 
-oracle_query_fee(OraclePubkey, #state{primop_state = PState} = State) when ?IS_ONCHAIN(State) ->
+oracle_query_fee(OraclePubkey, State) ->
+    case oracle_get_oracle(OraclePubkey, State) of
+        {ok, Oracle, State1} ->
+            {ok, aeo_oracles:query_fee(Oracle), State1};
+        Err = {error, _} ->
+            Err
+    end.
+
+oracle_expiry(OraclePubkey, State) ->
+    case oracle_get_oracle(OraclePubkey, State) of
+        {ok, Oracle, State1} ->
+            {ok, aeo_oracles:ttl(Oracle), State1};
+        Err = {error, _} ->
+            Err
+    end.
+
+oracle_get_oracle(OraclePubkey, #state{primop_state = PState} = State) when ?IS_ONCHAIN(State) ->
     case aeprimop_state:find_oracle(OraclePubkey, PState) of
         {Oracle, PState1} ->
-            {ok, aeo_oracles:query_fee(Oracle), State#state{primop_state = PState1}};
+            {ok, Oracle, State#state{primop_state = PState1}};
         none ->
             {error, oracle_does_not_exist}
     end;
-oracle_query_fee(OraclePubkey, #state{onchain_primop_state = {onchain, PState}} = State) ->
+oracle_get_oracle(OraclePubkey, #state{onchain_primop_state = {onchain, PState}} = State) ->
     case aeprimop_state:find_oracle(OraclePubkey, PState) of
         {Oracle, PState1} ->
-            {ok, aeo_oracles:query_fee(Oracle), State#state{onchain_primop_state = {onchain, PState1}}};
+            {ok, Oracle, State#state{onchain_primop_state = {onchain, PState1}}};
         none ->
             {error, oracle_does_not_exist}
     end.

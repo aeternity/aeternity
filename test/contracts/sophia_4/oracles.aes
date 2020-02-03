@@ -58,9 +58,6 @@ contract Oracles =
   entrypoint queryFee(o : oracle_id) : fee =
     Oracle.query_fee(o)
 
-  entrypoint expiry(o : oracle_id) : fee =
-    Oracle.expiry(o)
-
   stateful payable entrypoint createQuery(o    : oracle_id,
                                           q    : query_t,
                                           qfee : fee,

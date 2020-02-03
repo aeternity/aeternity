@@ -2028,6 +2028,10 @@ sophia_oracles(_Cfg) ->
         ?call(call_contract, Acc, Ct, queryFee, word, BogusOracle),
         32,          %% On ROMA this is broken, returns 32.
         {error, _}, {error, _}, {error, _}), %% Fixed in MINERVA
+    Expiry            = case vm_version() >= ?VM_FATE_SOPHIA_2 of
+                            true   -> ?assertEqual(15, ?call(call_contract, Acc, Ct, expiry, word, {Oracle}));
+                            false  -> ok
+                        end,
     none              = ?call(call_contract, Acc, Ct, getAnswer, {option, word}, {Oracle, QId}),
     {}                = ?call(call_contract, Acc, Ct, respond, {tuple, []}, {Oracle, QId, 4001}),
     NonceAfterRespond = aec_accounts:nonce(aect_test_utils:get_account(Ct, state())),
