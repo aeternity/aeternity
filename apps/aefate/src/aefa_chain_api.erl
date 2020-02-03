@@ -36,6 +36,7 @@
         , oracle_register/8
         , oracle_query/11
         , oracle_respond/7
+        , oracle_expiry/2
         , oracle_query_fee/2
         , oracle_check/4
         , oracle_check_query/5
@@ -48,6 +49,7 @@
         , aens_revoke/3
         , aens_transfer/4
         , aens_update/6
+        , aens_lookup/2
         ]).
 
 -export([ check_delegation_signature/4
@@ -349,17 +351,33 @@ oracle_respond(OraclePubkey, QueryId, Response, ABIVersion, QType, RType,
             Err
     end.
 
-oracle_query_fee(OraclePubkey, #state{primop_state = PState} = State) when ?IS_ONCHAIN(State) ->
+oracle_query_fee(OraclePubkey, State) ->
+    case oracle_get_oracle(OraclePubkey, State) of
+        {ok, Oracle, State1} ->
+            {ok, aeo_oracles:query_fee(Oracle), State1};
+        Err = {error, _} ->
+            Err
+    end.
+
+oracle_expiry(OraclePubkey, State) ->
+    case oracle_get_oracle(OraclePubkey, State) of
+        {ok, Oracle, State1} ->
+            {ok, aeo_oracles:ttl(Oracle), State1};
+        Err = {error, _} ->
+            Err
+    end.
+
+oracle_get_oracle(OraclePubkey, #state{primop_state = PState} = State) when ?IS_ONCHAIN(State) ->
     case aeprimop_state:find_oracle(OraclePubkey, PState) of
         {Oracle, PState1} ->
-            {ok, aeo_oracles:query_fee(Oracle), State#state{primop_state = PState1}};
+            {ok, Oracle, State#state{primop_state = PState1}};
         none ->
             {error, oracle_does_not_exist}
     end;
-oracle_query_fee(OraclePubkey, #state{onchain_primop_state = {onchain, PState}} = State) ->
+oracle_get_oracle(OraclePubkey, #state{onchain_primop_state = {onchain, PState}} = State) ->
     case aeprimop_state:find_oracle(OraclePubkey, PState) of
         {Oracle, PState1} ->
-            {ok, aeo_oracles:query_fee(Oracle), State#state{onchain_primop_state = {onchain, PState1}}};
+            {ok, Oracle, State#state{onchain_primop_state = {onchain, PState1}}};
         none ->
             {error, oracle_does_not_exist}
     end.
@@ -655,6 +673,47 @@ aens_update(Pubkey, HashBin, TTL, ClientTTL, Pointers, #state{} = S) when ?IS_ON
     Instructions = [aeprimop:name_update_op(Pubkey, HashBin, TTL, ClientTTL, Pointers)
                    ],
     eval_primops(Instructions, S).
+
+aens_lookup(NameString, #state{primop_state = PState} = S) when ?IS_ONCHAIN(S) ->
+    case aens_lookup_from_pstate(NameString, PState) of
+        {ok, NameObj, PState1} ->
+            {ok, NameObj, S#state{primop_state = PState1}};
+        none ->
+            none;
+        {error, _} = Err ->
+            Err
+    end;
+aens_lookup(NameString, #state{onchain_primop_state = {onchain, PState}} = S) ->
+    case aens_lookup_from_pstate(NameString, PState) of
+        {ok, NameObj, PState1} ->
+            {ok, NameObj, S#state{onchain_primop_state = {onchain, PState1}}};
+        none ->
+            none;
+        {error, _} = Err ->
+            Err
+    end.
+
+aens_lookup_from_pstate(NameString, PState) ->
+    case aens_utils:to_ascii(NameString) of
+        {ok, NameAscii} ->
+            NameHash = aens_hash:name_hash(NameAscii),
+            case aeprimop_state:find_name(NameHash, PState) of
+                {Name, PState1} ->
+                    case aens_names:status(Name) of
+                        revoked -> none;
+                        claimed ->
+                            NameObj =
+                                #{ owner    => aens_names:owner_pubkey(Name),
+                                   ttl      => aens_names:ttl(Name),
+                                   pointers => aens_names:pointers(Name) },
+                            {ok, NameObj, PState1}
+                    end;
+                none ->
+                    none
+            end;
+        {error, _} = Err ->
+            Err
+    end.
 
 %%%-------------------------------------------------------------------
 %%% Interface to primop evaluation

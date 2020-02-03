@@ -106,6 +106,7 @@
         , oracle_extend/4
         , oracle_get_answer/6
         , oracle_get_question/6
+        , oracle_expiry/3
         , oracle_query_fee/3
         , oracle_check/5
         , oracle_check_query/6
@@ -118,6 +119,7 @@
         , aens_update/7
         , aens_transfer/5
         , aens_revoke/4
+        , aens_lookup/3
         , verify_sig/5
         , verify_sig_secp256k1/5
         , ecverify_secp256k1/5
@@ -1196,21 +1198,29 @@ oracle_get_answer(Arg0, Arg1, Arg2, Arg3, Arg4, EngineState) ->
             aefa_fate:abort({primop_error, oracle_get_answer, What}, ES1)
     end.
 
-
-oracle_query_fee(Arg0, Arg1, EngineState) ->
+oracle_get_int_value(IntValueFun, Arg0, Arg1, EngineState) ->
     case get_op_arg(Arg1, EngineState) of
         {?FATE_ORACLE(OraclePubkey), ES1} ->
             API = aefa_engine_state:chain_api(ES1),
-            case aefa_chain_api:oracle_query_fee(OraclePubkey, API) of
+            case aefa_chain_api:IntValueFun(OraclePubkey, API) of
                 {ok, FeeVal, API1} ->
                     ES2 = aefa_engine_state:set_chain_api(API1, ES1),
                     write(Arg0, aeb_fate_data:make_integer(FeeVal), ES2);
                 {error, What} ->
-                    aefa_fate:abort({primop_error, oracle_query_fee, What}, ES1)
+                    aefa_fate:abort({primop_error, IntValueFun, What}, ES1)
             end;
         {Other, ES1} ->
             aefa_fate:abort({value_does_not_match_type, Other, oracle}, ES1)
     end.
+
+oracle_query_fee(Arg0, Arg1, EngineState) ->
+    oracle_get_int_value(oracle_query_fee, Arg0, Arg1, EngineState).
+
+oracle_expiry(Arg0, Arg1, EngineState) ->
+    aefa_engine_state:vm_version(EngineState) >= ?VM_FATE_SOPHIA_2
+        orelse aefa_fate:abort({primop_error, oracle_expiry, not_supported}, EngineState),
+
+    oracle_get_int_value(oracle_expiry, Arg0, Arg1, EngineState).
 
 oracle_check(Arg0, Arg1, Arg2, Arg3, EngineState) ->
     {[Oracle, QType, RType], ES1} = get_op_args([Arg1, Arg2, Arg3], EngineState),
@@ -1288,15 +1298,15 @@ aens_resolve(Arg0, Arg1, Arg2, Arg3, EngineState) ->
 aens_resolve_(Arg0, ?FATE_STRING(NameString), ?FATE_STRING(Key), ?FATE_TYPEREP(Type),
               ES) ->
     API = aefa_engine_state:chain_api(ES),
-    None = aeb_fate_data:make_variant([0,1], 0, {}),
+    DontCrashOnBadName = aefa_engine_state:vm_version(ES) >= ?VM_FATE_SOPHIA_2,
     case aefa_chain_api:aens_resolve(NameString, Key, API) of
         none ->
-            write(Arg0, None, ES);
+            write(Arg0, make_none(), ES);
         {ok, Tag, Pubkey, API1} ->
             ES1 = aefa_engine_state:set_chain_api(API1, ES),
             case aens_tag_to_val(Type, Tag, Pubkey) of
                 none ->
-                    write(Arg0, None, ES1);
+                    write(Arg0, make_none(), ES1);
                 {error, What} ->
                     aefa_fate:abort({primop_error, aens_resolve, What}, ES1);
                 {ok, InnerVal} ->
@@ -1305,9 +1315,12 @@ aens_resolve_(Arg0, ?FATE_STRING(NameString), ?FATE_STRING(Key), ?FATE_TYPEREP(T
                         #{} ->
                             write(Arg0, Val, ES1);
                         false ->
-                            write(Arg0, None, ES1)
+                            write(Arg0, make_none(), ES1)
                     end
-            end
+            end;
+        %% Nicer to just return None in case name is invalid
+        {error, _What} when DontCrashOnBadName ->
+            write(Arg0, make_none(), ES)
     end.
 
 aens_tag_to_val({variant, [{tuple, []}, {tuple, [Type]}]}, Tag, Pubkey) ->
@@ -1391,6 +1404,45 @@ aens_claim(Arg0, Arg1, Arg2, Arg3, Arg4, EngineState) ->
             end
     end.
 
+aens_lookup(Arg0, Arg1, EngineState) ->
+    aefa_engine_state:vm_version(EngineState) >= ?VM_FATE_SOPHIA_2
+        orelse aefa_fate:abort({primop_error, aens_lookup, not_supported}, EngineState),
+
+    {[NameString], ES1} = get_op_args([Arg1], EngineState),
+
+    if not ?IS_FATE_STRING(NameString) ->
+        aefa_fate:abort({value_does_not_match_type, NameString, string}, ES1);
+       true ->
+        ok
+    end,
+
+    ?FATE_STRING(Name) = NameString,
+    API = aefa_engine_state:chain_api(ES1),
+    case aefa_chain_api:aens_lookup(Name, API) of
+        {ok, NameObj, API1} ->
+            ES2 = aefa_engine_state:set_chain_api(API1, ES1),
+            Owner = ?FATE_ADDRESS(maps:get(owner, NameObj)),
+            TTL   = ?FATE_ABS_TTL(aeb_fate_data:make_integer(maps:get(ttl, NameObj))),
+            MkKey    = fun(Pt) -> ?FATE_STRING(aens_pointer:key(Pt)) end,
+            Pointers = lists:foldl(fun(Pt, M) -> M#{ MkKey(Pt) => mk_fate_pointee(Pt) } end,
+                                   #{}, maps:get(pointers, NameObj)),
+            Res = make_some(aeb_fate_data:make_variant([3], 0, {Owner, TTL, Pointers})),
+            write(Arg0, Res, ES2);
+        none ->
+            write(Arg0, make_none(), ES1);
+        {error, _What} ->
+            write(Arg0, make_none(), ES1)
+    end.
+
+mk_fate_pointee(Pt) ->
+    Id = aens_pointer:id(Pt),
+    case aeser_id:specialize(Id) of
+        {account, PK}  -> aeb_fate_data:make_variant([1, 1, 1, 1], 0, {?FATE_ADDRESS(PK)});
+        {oracle, PK}   -> aeb_fate_data:make_variant([1, 1, 1, 1], 1, {?FATE_ADDRESS(PK)});
+        {contract, PK} -> aeb_fate_data:make_variant([1, 1, 1, 1], 2, {?FATE_ADDRESS(PK)});
+        {channel, PK}  -> aeb_fate_data:make_variant([1, 1, 1, 1], 3, {?FATE_ADDRESS(PK)})
+    end.
+
 aens_update(Arg0, Arg1, Arg2, Arg3, Arg4, Arg5, EngineState) ->
     aefa_engine_state:vm_version(EngineState) >= ?VM_FATE_SOPHIA_2
         orelse aefa_fate:abort({primop_error, aens_update, not_supported}, EngineState),
@@ -1431,11 +1483,12 @@ aens_update(Arg0, Arg1, Arg2, Arg3, Arg4, Arg5, EngineState) ->
             ?FATE_VARIANT([_,_], 0, {}) -> undefined;
             ?FATE_VARIANT([_,_], 1, {Pointers_}) ->
                 maps:fold(
-                  fun (PtrKey, ?FATE_VARIANT([_, _, _], AddrTag, {{address, Addr}}), Acc) ->
+                  fun (PtrKey, ?FATE_VARIANT([1, 1, 1, 1], AddrTag, {{address, Addr}}), Acc) ->
                           IdType = case AddrTag of    % type pointee =
-                                      0 -> account;   %   | Account(address)
-                                      1 -> oracle;    %   | Oracle(address)
-                                      2 -> contract   %   | Contract(address)
+                                      0 -> account;   %   | AccountPt(address)
+                                      1 -> oracle;    %   | OraclePt(address)
+                                      2 -> contract;  %   | ContractPt(address)
+                                      3 -> channel    %   | ChannelPt(address)
                                    end,
                           [aens_pointer:new(PtrKey, aeser_id:create(IdType, Addr)) | Acc]
                   end, [], Pointers_)
@@ -1757,7 +1810,11 @@ write({arg, _} = Arg, Val, ES) ->
 %% ------------------------------------------------------
 %% Variant instructions
 %% ------------------------------------------------------
+make_none() ->
+    aeb_fate_data:make_variant([0,1], 0, {}).
 
+make_some(Val) ->
+    aeb_fate_data:make_variant([0,1], 1, {Val}).
 
 make_variant(Arities, Tag, NoElements, ES)  when ?IS_FATE_LIST(Arities)
                                               , ?IS_FATE_INTEGER(Tag)

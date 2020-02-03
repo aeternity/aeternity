@@ -136,6 +136,7 @@
         , sophia_savecoinbase/1
         , sophia_fundme/1
         , sophia_aens_resolve/1
+        , sophia_aens_lookup/1
         , sophia_aens_transactions/1
         , sophia_aens_update_transaction/1
         , sophia_state_handling/1
@@ -299,6 +300,7 @@ all() ->
                        , sophia_polymorphic_entrypoint
                        , lima_migration
                        , sophia_aens_update_transaction
+                       , sophia_aens_lookup
                        , sophia_crypto_pairing
                        ]).
 
@@ -562,14 +564,15 @@ init_per_testcase(TC, Config) when TC == sophia_aens_resolve;
     meck:expect(aec_governance, name_claim_bid_timeout, fun(_, _) -> 0 end),
     init_per_testcase_common(TC, Config);
 
-init_per_testcase(sophia_aens_update_transaction, Config) ->
+init_per_testcase(TC, Config) when TC == sophia_aens_update_transaction;
+                                   TC == sophia_aens_lookup ->
     ProtocolVsn = aec_hard_forks:protocol_vsn(?config(protocol, Config)),
     case ProtocolVsn >= ?IRIS_PROTOCOL_VSN of
         true ->
             meck:expect(aec_governance, name_claim_bid_timeout, fun(_, _) -> 0 end),
-            init_per_testcase_common(sophia_aens_update_transaction, Config);
+            init_per_testcase_common(TC, Config);
         false ->
-            {skip, {requires_protocol, iris, sophia_aens_update_transaction}}
+            {skip, {requires_protocol, iris, TC}}
     end;
 
 init_per_testcase(TC, Config) ->
@@ -606,6 +609,7 @@ end_per_testcase(fate_environment, _Config) ->
     meck:unload(aefa_chain_api),
     ok;
 end_per_testcase(TC, _Config) when TC == sophia_aens_resolve;
+                                   TC == sophia_aens_lookup;
                                    TC == sophia_signatures_aens;
                                    TC == sophia_aens_transactions;
                                    TC == sophia_aens_update_transaction ->
@@ -2028,6 +2032,10 @@ sophia_oracles(_Cfg) ->
         ?call(call_contract, Acc, Ct, queryFee, word, BogusOracle),
         32,          %% On ROMA this is broken, returns 32.
         {error, _}, {error, _}, {error, _}), %% Fixed in MINERVA
+    Expiry            = case vm_version() >= ?VM_FATE_SOPHIA_2 of
+                            true   -> ?assertEqual(15, ?call(call_contract, Acc, Ct, expiry, word, {Oracle}));
+                            false  -> ok
+                        end,
     none              = ?call(call_contract, Acc, Ct, getAnswer, {option, word}, {Oracle, QId}),
     {}                = ?call(call_contract, Acc, Ct, respond, {tuple, []}, {Oracle, QId, 4001}),
     NonceAfterRespond = aec_accounts:nonce(aect_test_utils:get_account(Ct, state())),
@@ -5651,6 +5659,26 @@ sophia_aens_resolve(Cfg) ->
 
     ok.
 
+sophia_aens_lookup(Cfg) ->
+    state(aect_test_utils:new_state()),
+    Acc      = ?call(new_account, 40000000000000 * aec_test_utils:min_gas_price()),
+    Ct       = ?call(create_contract, Acc, aens_lookup, {}, #{ amount => 20000000000000 * aec_test_utils:min_gas_price() }),
+    Name1           = aens_test_utils:fullname(<<"bla">>),
+    Salt1           = rand:uniform(10000),
+    {ok, NameAscii} = aens_utils:to_ascii(Name1),
+    CHash           = aens_hash:commitment_hash(NameAscii, Salt1),
+    NHash           = aens_hash:name_hash(NameAscii),
+    GetNameRecord   = fun () ->
+                              NSTree = aec_trees:ns(aect_test_utils:trees(state())),
+                              {value, Rec} = aens_state_tree:lookup_name(NHash, NSTree),
+                              Rec
+                      end,
+
+    {} = ?call(call_contract, Acc, Ct, preclaim, {tuple, []}, {Ct, ?hsh(CHash)}, #{ height => 10 }),
+    {} = ?call(call_contract, Acc, Ct, claim,    {tuple, []}, {Ct, Name1, Salt1, 360000000000000000000}, #{ height => 11 }),
+    true = ?call(call_contract, Acc, Ct, test,     bool,  {Ct, Name1}, #{ height => 11 }),
+    ok.
+
 sophia_aens_transactions(Cfg) ->
     %% AENS transactions from contract
     state(aect_test_utils:new_state()),
@@ -5747,9 +5775,9 @@ sophia_aens_update_transaction(_Cfg) ->
     Some = fun (X) -> {some, X} end,
     RelTTL = fun (I) -> {variant, [1, 1], 0, {I}} end,
     FixTTL = fun (I) -> {variant, [1, 1], 1, {I}} end,
-    AccountPointee  = fun (A) -> {variant, [1, 1, 1], 0, {A}} end,
-    OraclePointee   = fun (A) -> {variant, [1, 1, 1], 1, {A}} end,
-    ContractPointee = fun (A) -> {variant, [1, 1, 1], 2, {A}} end,
+    AccountPointee  = fun (A) -> {variant, [1, 1, 1, 1], 0, {A}} end,
+    OraclePointee   = fun (A) -> {variant, [1, 1, 1, 1], 1, {A}} end,
+    ContractPointee = fun (A) -> {variant, [1, 1, 1, 1], 2, {A}} end,
 
     Rec0 = GetNameRecord(),
     {} = ?call(call_contract, Acc, Ct, update, {tuple, []},
