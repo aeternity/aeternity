@@ -242,7 +242,8 @@ make_update_tx(Updates, #state{signed_tx = LastSignedTx, trees=Trees},
     {ok, OffchainTx} = aesc_offchain_tx:new(Props),
     OffchainTx.
 
-apply_updates(Updates, Round, Trees, OnChainTrees, OnChainEnv, Reserve) ->
+apply_updates(Updates, Round, Trees0, OnChainTrees, OnChainEnv, Reserve) ->
+    Trees = aect_call_state_tree:prune_without_backend(Trees0),
     lists:foldl(
         fun(U, AccumTrees) ->
             aesc_offchain_update:apply_on_trees(U, AccumTrees, OnChainTrees,

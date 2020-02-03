@@ -909,9 +909,13 @@ check_minimum_gas_price(Tx, _TxHash, Block, _BlockHash, _Trees, _Event) ->
         undefined ->
             ok;
         GasPrice when is_integer(GasPrice) ->
-            case GasPrice >= aec_governance:minimum_gas_price(Protocol) of
+            ProtocolGasPrice = aec_governance:minimum_gas_price(Protocol),
+            case GasPrice >= ProtocolGasPrice of
                 true  -> ok;
-                false -> {error, too_low_gas_price}
+                false ->
+                    lager:debug("Provided gas_price is ~p, minimum required is ~p",
+                                [GasPrice, ProtocolGasPrice]),
+                    {error, too_low_gas_price}
             end
     end.
 
