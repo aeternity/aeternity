@@ -357,7 +357,7 @@ legacy_compile(Vsn, SrcFile) ->
         {ok, Bin} = file:read_file(OutFile),
         aeser_api_encoder:safe_decode(contract_bytearray, Bin)
     catch _:_ ->
-        {error, <<"Compiler error">>}
+        {error, <<"Compiler error:\n", (list_to_binary(_Output))/binary>>}
     after
         cleanup_tempfiles()
     end.

@@ -1,0 +1,23 @@
+@compiler >= 4
+contract MapsGCBug =
+
+  record state =
+    { my_map : map(string, map(int, custom)) }
+
+  record custom =
+    { sender      : address
+    , received_at : int }
+
+  entrypoint init() : state = { my_map = {} }
+
+  entrypoint my_map() : map(string, map(int, custom)) = state.my_map
+
+  entrypoint size(key: string) : int = Map.size(state.my_map[key = {}])
+
+  stateful entrypoint set(key : string) : unit =
+    put(state{ my_map[key = {}][size(key)] = new_custom() })
+
+  stateful function new_custom() : custom =
+    { sender      = Call.caller,
+      received_at = Chain.timestamp }
+

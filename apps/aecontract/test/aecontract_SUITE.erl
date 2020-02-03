@@ -128,6 +128,7 @@
         , sophia_pmaps/1
         , sophia_map_of_maps/1
         , sophia_maps_gc/1
+        , sophia_maps_gc_bug/1
         , sophia_polymorphic_entrypoint/1
         , sophia_arity_check/1
         , sophia_chess/1
@@ -381,6 +382,7 @@ groups() ->
                                  sophia_registry,
                                  sophia_map_of_maps,
                                  sophia_maps_gc,
+                                 sophia_maps_gc_bug,
                                  sophia_variant_types,
                                  sophia_arity_check,
                                  sophia_chain,
@@ -4359,6 +4361,21 @@ sophia_maps_gc(_Cfg) ->
     {ResA2, ResB2} = ?call(call_contract, Acc, Ct, get_state, StateT, {}),
     ?assertEqual({Prune(A2), Prune(B2)}, {Prune(ResA2), Prune(ResB2)}),
     ok.
+
+%% aesophia/GH-204
+sophia_maps_gc_bug(_Cfg) ->
+    ?skipRest(?IF_AEVM(true, false), only_fate),
+    state(aect_test_utils:new_state()),
+    Acc       = ?call(new_account, 1000000000 * aec_test_utils:min_gas_price()),
+    Ct        = ?call(create_contract, Acc, maps_gc_bug, {}),
+    {}        = ?call(call_contract, Acc, Ct, set, {tuple, []}, {<<"bar">>}),
+    _         = [ ?call(call_contract, Acc, Ct, set, {tuple, []}, {<<"foo">>}, #{ return_gas_used => true })
+                  || _ <- lists:seq(1, 20) ],
+    {{}, Gas} = ?call(call_contract, Acc, Ct, set, {tuple, []}, {<<"foo">>}, #{ return_gas_used => true }),
+    case protocol_version() >= ?IRIS_PROTOCOL_VSN of
+        true  -> ?assertMatch({_, '<', _, true}, {Gas, '<', 1000, Gas < 1000});
+        false -> ?assertMatch({_, '>', _, true}, {Gas, '>', 4000, Gas > 4000})
+    end.
 
 sophia_polymorphic_entrypoint(_Cfg) ->
     state(aect_test_utils:new_state()),
