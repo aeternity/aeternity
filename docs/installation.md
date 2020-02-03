@@ -36,7 +36,7 @@ The release binaries are published on [GitHub][releases] and are tested on the f
 Package dependencies are:
 
 * [Libsodium](https://download.libsodium.org/doc/) v1.0.16
-* [Openssl](https://www.openssl.org) 1.0.0
+* [Openssl](https://www.openssl.org)
 
 ### Ubuntu package
 
@@ -83,13 +83,13 @@ brew install openssl libsodium
 
 The macOS package has:
 
-* A hard dependency on OpenSSL v1.0.0 installed with [Homebrew](https://brew.sh/) in its default path `/usr/local/opt/openssl/lib/libcrypto.1.0.0.dylib`;
+* A hard dependency on OpenSSL v1.1 installed with [Homebrew](https://brew.sh/) in its default path `/usr/local/opt/openssl/lib/libcrypto.1.1.dylib`;
 * A hard dependency on libsodium v1.0.16 installed with [Homebrew](https://brew.sh/) in its default path `/usr/local/opt/libsodium/lib/libsodium.23.dylib`.
 
 In case you have installed either of them in a non-default path, you could use symlink(s) to work around the issue.
 You can create those symlinks by running the following commands:
 ```bash
-ln -s "$(brew --prefix openssl)"/lib/libcrypto.1.0.0.dylib /usr/local/opt/openssl/lib/libcrypto.1.0.0.dylib
+ln -s "$(brew --prefix openssl)"/lib/libcrypto.1.1.dylib /usr/local/opt/openssl/lib/libcrypto.1.1.dylib
 ln -s "$(brew --prefix libsodium)"/lib/libsodium.23.dylib /usr/local/opt/libsodium/lib/libsodium.23.dylib
 ```
 
