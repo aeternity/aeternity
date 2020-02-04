@@ -1195,7 +1195,7 @@ channel_detects_close_solo_and_settles(Cfg) ->
     check_info(20),
     LockPeriod = maps:get(lock_period, Spec),
     mine_blocks(dev1, LockPeriod),
-    settle_(LockPeriod, maps:get(minimum_depth, Spec), I1, R, Debug, Cfg),
+    settle_(maps:get(minimum_depth, Spec), I1, R, Debug, Cfg),
     check_info(20),
     ok.
 
@@ -2111,7 +2111,7 @@ shutdown_(#{fsm := FsmI, channel_id := ChannelId} = I, R, Cfg) ->
     % caller.
     ok.
 
-settle_(TTL, MinDepth, #{fsm := FsmI, channel_id := ChannelId} = I, R, Debug,
+settle_(MinDepth, #{fsm := FsmI, channel_id := ChannelId} = I, R, Debug,
        Cfg) ->
     ok = rpc(dev1, aesc_fsm, settle, [FsmI, #{}]),
     {_, SignedTx} = await_signing_request(settle_tx, I, Cfg),
@@ -2126,7 +2126,7 @@ settle_(TTL, MinDepth, #{fsm := FsmI, channel_id := ChannelId} = I, R, Debug,
     ?LOG(Debug, "R received On-chain report: ~p", [SignedTx]),
     verify_settle_tx(SignedTx, ChannelId),
     ?LOG(Debug, "settle_tx verified", []),
-    mine_blocks(dev1, ?MINIMUM_DEPTH),
+    mine_blocks(dev1, MinDepth),
     {ok, _} = receive_from_fsm(info, I, closed_confirmed, ?TIMEOUT, Debug),
     {ok, _} = receive_from_fsm(info, R, closed_confirmed, ?TIMEOUT, Debug),
     ?LOG(Debug, "closed_confirmed received from both", []),
@@ -3028,8 +3028,8 @@ wait_for_signed_transaction_in_block(Node, SignedTx, Debug) ->
     end.
 
 check_fsm_state(Fsm) ->
-    {ok, #{ initiator       := Initiator
-          , responder       := Responder
+    {ok, #{ initiator       := _Initiator
+          , responder       := _Responder
           , init_amt        := IAmt
           , resp_amt        := RAmt
           , state_hash      := StateHash
@@ -4304,7 +4304,7 @@ slash(Cfg) ->
     mine_blocks_until_txs_on_chain(dev1, [SlashTxHash]),
     mine_blocks(dev1, LockPeriod),
     check_info(20),
-    settle_(LockPeriod, maps:get(minimum_depth, Spec), I3, R2, Debug, Cfg),
+    settle_(maps:get(minimum_depth, Spec), I3, R2, Debug, Cfg),
     check_info(20),
     assert_empty_msgq(true),
     ok.
@@ -4340,7 +4340,7 @@ slash_with_failed_onchain(Cfg) ->
     LockPeriod = maps:get(lock_period, Spec),
     mine_blocks(dev1, LockPeriod),
     check_info(20),
-    settle_(LockPeriod, maps:get(minimum_depth, Spec), I3, R2, Debug, Cfg),
+    settle_(maps:get(minimum_depth, Spec), I3, R2, Debug, Cfg),
     check_info(20),
     assert_empty_msgq(true),
     ok.
@@ -4412,18 +4412,18 @@ settle_with_failed_onchain(Cfg) ->
                                                         , round => 1}},
                                ?TIMEOUT, Debug),
     % Done
-    settle_(LockPeriod, maps:get(minimum_depth, Spec), I2, R, Debug, Cfg),
+    settle_(maps:get(minimum_depth, Spec), I2, R, Debug, Cfg),
     check_info(20),
     assert_empty_msgq(true),
     ok.
 
 force_progress_based_on_offchain_state(Cfg) ->
     Debug = get_debug(Cfg),
-    #{ i := #{ fsm := FsmI
+    #{ i := #{ fsm := _FsmI
              , channel_id := ChannelId } = I
      , r := #{} = R
      , spec := #{ initiator := PubI
-                , responder := _PubR } = Spec} = create_channel_([?SLOGAN|Cfg]),
+                , responder := _PubR } = _Spec} = create_channel_([?SLOGAN|Cfg]),
     ?LOG(Debug, "I = ~p", [I]),
     ?LOG(Debug, "R = ~p", [R]),
     {I1, R1, ContractPubkey} = create_contract(counter, ["42"], 10, I, R, Cfg),
@@ -4437,11 +4437,11 @@ force_progress_based_on_offchain_state(Cfg) ->
 
 force_progress_based_on_onchain_state(Cfg) ->
     Debug = get_debug(Cfg),
-    #{ i := #{ fsm := FsmI
+    #{ i := #{ fsm := _FsmI
              , channel_id := ChannelId } = I
      , r := #{} = R
      , spec := #{ initiator := PubI
-                , responder := _PubR } = Spec} = create_channel_([?SLOGAN|Cfg]),
+                , responder := _PubR } = _Spec} = create_channel_([?SLOGAN|Cfg]),
     ?LOG(Debug, "I = ~p", [I]),
     ?LOG(Debug, "R = ~p", [R]),
     {I1, R1, ContractPubkey} = create_contract(counter, ["42"], 10, I, R, Cfg),
@@ -4460,7 +4460,7 @@ force_progress_with_failed_onchain(Cfg) ->
              , channel_id := ChannelId } = I
      , r := #{} = R
      , spec := #{ initiator := PubI
-                , responder := _PubR } = Spec} = create_channel_([?SLOGAN|Cfg]),
+                , responder := _PubR } = _Spec} = create_channel_([?SLOGAN|Cfg]),
     ?LOG(Debug, "I = ~p", [I]),
     ?LOG(Debug, "R = ~p", [R]),
     {I1, R1, ContractPubkey} = create_contract(counter, ["42"], 10, I, R, Cfg),
@@ -4495,14 +4495,14 @@ force_progress_with_failed_onchain(Cfg) ->
 force_progress_closing_state(Cfg) ->
     Debug = get_debug(Cfg),
     #{ i := #{ fsm := FsmI
-             , channel_id := ChannelId } = I
+             , channel_id := _ChannelId } = I
      , r := #{} = R
-     , spec := #{ initiator := PubI
+     , spec := #{ initiator := _PubI
                 , responder := _PubR } = Spec} = create_channel_([?SLOGAN|Cfg]),
     ?LOG(Debug, "I = ~p", [I]),
     ?LOG(Debug, "R = ~p", [R]),
     {I1, R1, ContractPubkey} = create_contract(counter, ["42"], 10, I, R, Cfg),
-    {I2, R2} = call_contract(ContractPubkey, counter, "tick", [], 10, I1, R1, Cfg),
+    {I2, _R2} = call_contract(ContractPubkey, counter, "tick", [], 10, I1, R1, Cfg),
     ok = rpc(dev1, aesc_fsm, close_solo, [FsmI, #{}]),
     {I3, SignedCloseSoloTx} = await_signing_request(close_solo_tx, I2, Cfg),
     wait_for_signed_transaction_in_block(dev1, SignedCloseSoloTx),
@@ -4513,7 +4513,7 @@ force_progress_closing_state(Cfg) ->
     SignedTx = await_on_chain_report(R, #{info => solo_closing}, ?TIMEOUT),
     {ok,_} = receive_from_fsm(info, I1, fun closing/1, ?TIMEOUT, Debug),
     {ok,_} = receive_from_fsm(info, R, fun closing/1, ?TIMEOUT, Debug),
-    I4 = force_progress_(ContractPubkey, counter, "tick", [], 10, I3, Cfg),
+    _I4 = force_progress_(ContractPubkey, counter, "tick", [], 10, I3, Cfg),
     {_, _, _, _, closing} = check_fsm_state(FsmI),
 
     check_info(20),
