@@ -137,6 +137,7 @@
 -define(DEFAULT_NONCE_OFFSET, 5).
 -define(DEFAULT_MIN_MINER_GAS_PRICE, 1000000000).
 -define(DEFAULT_MAX_AUTH_FUN_GAS, 50000).
+-define(LONG_CALL_TIMEOUT, 10000).
 
 %%%===================================================================
 %%% API
@@ -256,7 +257,8 @@ get_candidate(MaxGas, BlockHash) when is_integer(MaxGas), MaxGas > 0,
 %% It assumes that the persisted mempool has been updated.
 -spec top_change(key | micro, binary(), binary()) -> ok.
 top_change(Type, OldHash, NewHash) when Type==key; Type==micro ->
-    gen_server:call(?SERVER, {top_change, Type, OldHash, NewHash}).
+    gen_server:call(?SERVER, {top_change, Type, OldHash, NewHash},
+                    ?LONG_CALL_TIMEOUT).
 
 -spec new_sync_top_target(aec_blocks:height()) -> ok.
 new_sync_top_target(NewSyncTop) ->
