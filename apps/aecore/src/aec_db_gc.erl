@@ -94,7 +94,8 @@ start_link(Enabled, Interval, History) ->
     gen_statem:start_link({local, ?MODULE}, ?MODULE, [Enabled, Interval, History], []).
 
 run() ->
-    run(map_get(history, config())).
+    #{history := History} = config(),
+    run(History).
 
 run(History) when is_integer(History), History > 0 ->
     gen_statem:call(?MODULE, {run, History}).
