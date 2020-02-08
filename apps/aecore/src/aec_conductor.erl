@@ -1122,7 +1122,7 @@ handle_successfully_added_block(Block, Hash, Events, State, Origin) ->
                     ok; %% Don't spend time when we are the leader.
                 false ->
                     aec_tx_pool:garbage_collect(),
-                    [ aec_db_gc:maybe_garbage_collect() || BlockType == key ]
+                    [ maybe_garbage_collect_accounts() || BlockType == key ]
             end,
             {ok, setup_loop(State2, true, IsLeader, Origin)}
     end.
@@ -1187,3 +1187,18 @@ get_pending_key_block(TopHash, #state{beneficiary = Beneficiary} = State) ->
         {ok, Block} -> {{ok, Block}, State#state{ pending_key_block = Block }};
         {error, _}  -> {{error, not_found}, State}
     end.
+
+
+%% Called only from the conductor.
+%% Putting it here avoids us to clutter aec_db_gc's public API
+%%
+%% To avoid starting of the GC process just for EUNIT
+-ifdef(EUNIT).
+maybe_garbage_collect_accounts() -> nop.
+-else.
+
+%% This should be called when there are no processes modifying the block state
+%% (e.g. aec_conductor on specific places)
+maybe_garbage_collect_accounts() ->
+    gen_statem:call(aec_db_gc, maybe_garbage_collect).
+-endif.

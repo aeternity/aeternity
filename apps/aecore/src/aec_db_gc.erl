@@ -27,8 +27,7 @@
 %% API
 -export([start_link/0,
          start_link/3,
-         maybe_garbage_collect/0,
-         maybe_swap_nodes/0,
+         run/0,
          stop/0]).
 
 %% gen_statem callbacks
@@ -87,16 +86,9 @@ start_link(Enabled, Interval, History) ->
     gen_statem:start_link({local, ?MODULE}, ?MODULE, [Enabled, Interval, History], []).
 
 
-%% To avoid starting of the GC process just for EUNIT
--ifdef(EUNIT).
-maybe_garbage_collect() -> nop.
--else.
+run(History) when is_integer(History), History > 0 ->
 
-%% This should be called when there are no processes modifying the block state
-%% (e.g. aec_conductor on specific places)
-maybe_garbage_collect() ->
-    gen_statem:call(?MODULE, maybe_garbage_collect).
--endif.
+stop() ->
 
 maybe_swap_nodes() ->
     maybe_swap_nodes(?GCED_TABLE_NAME, ?TABLE_NAME).
