@@ -32,7 +32,11 @@
 -export([start_link/0,
          start_link/3,
          run/0,
+         run/1,
          stop/0]).
+
+%% for internal use only
+-export([maybe_swap_nodes/0]).
 
 %% gen_statem callbacks
 -export([callback_mode/0, init/1, terminate/3, code_change/4]).
@@ -89,16 +93,18 @@ start_link() ->
 start_link(Enabled, Interval, History) ->
     gen_statem:start_link({local, ?MODULE}, ?MODULE, [Enabled, Interval, History], []).
 
+run() ->
+    run(map_get(history, config())).
 
 run(History) when is_integer(History), History > 0 ->
-
-stop() ->
-
-maybe_swap_nodes() ->
-    maybe_swap_nodes(?GCED_TABLE_NAME, ?TABLE_NAME).
+    gen_statem:call(?MODULE, {run, History}).
 
 stop() ->
     gen_statem:stop(?MODULE).
+
+%% called from aec_db on startup
+maybe_swap_nodes() ->
+    maybe_swap_nodes(?GCED_TABLE_NAME, ?TABLE_NAME).
 
 %%%===================================================================
 %%% gen_statem callbacks
@@ -124,6 +130,27 @@ init([Enabled, Interval, History])
                  hashes     = undefined},
     {ok, idle, Data}.
 
+
+handle_event({call, From}, {run, History}, idle, #data{enabled = false} = Data) ->
+    aec_events:subscribe(top_changed),
+    Data1 = Data#data{synced = true, enabled = true, interval = 1, history = History},
+    {keep_state, Data1, {reply, From, {ok, run_next_scan_height(Data1)}}};
+
+handle_event({call, From}, {run, History}, idle, #data{history = History, hashes = Hashes} = Data)
+  when is_pid(Hashes) -> % initial scanner pid already runs with the same history length, keep it
+    {keep_state, Data, {reply, From, {ok, run_next_scan_height(Data)}}};
+handle_event({call, From}, {run, History}, idle, #data{hashes = Hashes} = Data) ->
+    is_pid(Hashes) andalso exit(Hashes, kill),
+    Data1 = Data#data{synced = true, interval = 1, history = History,
+                      height = undefined, hashes = undefined},
+    {keep_state, Data1, {reply, From, {ok, run_next_scan_height(Data1)}}};
+
+handle_event({call, From}, {run, History}, ready, #data{history = History} = Data) -> % same history length, keep it
+    {keep_state, Data, {reply, From, {ok, run_next_scan_height(Data)}}};
+handle_event({call, From}, {run, History}, ready, #data{} = Data) ->
+    Data1 = Data#data{interval = 1, history = History,
+                      height = undefined, hashes = undefined},
+    {next_state, idle, Data1, {reply, From, {ok, run_next_scan_height(Data1)}}};
 
 %% once the chain is synced, there's no way to "unsync"
 handle_event(info, {_, chain_sync, #{info := {chain_sync_done, _}}}, idle,
@@ -163,6 +190,12 @@ handle_event(info, {scanning_failed, ErrHeight}, ready, #data{enabled = true} = 
     {next_state, idle, Data#data{height = undefined,
                                  hashes = undefined,
                                  min_height = ErrHeight}};
+
+%% happens when scanning process is killed after it transfers hashes table, we ignore it
+%% (when we manually invoke GC via 'run')
+handle_event(info, {'ETS-TRANSFER', _, _, _}, idle,
+             #data{enabled = true, hashes = undefined} = Data) ->
+    {keep_state, Data};
 
 %% received GC state from the phase above
 handle_event(info, {'ETS-TRANSFER', Hashes, _, {{FromHeight, ToHeight}, Time}}, idle,
@@ -345,8 +378,11 @@ signal_scanning_failed_keep_state(Data) ->
             {keep_state, Data}
     end.
 
--ifdef(EUNIT).
-interval(ConfigInterval) -> ConfigInterval.
+run_next_scan_height(#data{min_height = undefined}) ->
+    aec_headers:height(aec_chain:top_header()) + 1;
+run_next_scan_height(#data{min_height = MinHeight, history = History})
+  when is_integer(MinHeight) ->
+    MinHeight + History + 1.
 
 -ifdef(TEST).
 interval(ConfigInterval) -> ConfigInterval. % for common test
@@ -374,8 +410,3 @@ config() ->
           {Key, Default} <- [{<<"enabled">>, false},
                              {<<"interval">>, ?DEFAULT_INTERVAL},
                              {<<"history">>, ?DEFAULT_HISTORY}]]).
-
-
-%% %%%% !!!!!!!!!!
-%% log(Fmt, Args) ->
-%%     file:write_file("/tmp/test.log", io_lib:format(Fmt, Args), [append]).
