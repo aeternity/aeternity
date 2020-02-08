@@ -1,26 +1,30 @@
 -module(aec_db_gc).
 
 %% Implementation of Garbage Collection of Account state.
-%% To run, the GC needs to be `enabled` (config param), and node synced.
+%% To run periodically, the GC needs to be `enabled` (config param),
+%% and node should be synced (although it's not strict requirement - if not synced,
+%% GC will run a lot more during syncing without much benefit (and slow down syncing).
+%% It makes sense to wait until the DB is not updated so rapidly).
+%%
 %% If key block `interval` (config parameter) is hit, GC starts collecting
 %% of the reachable nodes from most recent generations (`history` config parameter).
-%%
+%% Note that for production use, the `interval` from config is slightly deviated to
+%% avoid the situation where most of the nodes run GC at the same time.
+%% (Since we assume users will probably keep the `interval` parameter the same.)
+
 %% If #data.enabled and #data.synced are true, #data.hashes indicates the GC status:
 %% - undefined    - not the right time to run GC
 %% - is pid       - we are scanning reachable nodes
 %% - is reference - waiting for signal to execute the `swap_nodes` phase
 %%
-%% GC scan is performed on the background. The only synchronous part of GC is `swap_nodes` phase.
-%% (initiated by aec_conductor on key block boundary)
+%% GC scan is performed on the background.
+%% The synchronous part of GC is:
+%% - writing of the reachable nodes from cache to disk
+%% - subsequent restart of the node
+%% - removing all old nodes and copying only reachable ones
 %%
-%% More details can be found here: https://github.com/aeternity/papers/blob/master/Garbage%20collector%20for%20account%20state%20data.pdf
-%%
-%% Note: if something goes wrong (for example, software bug in GC), a typical manifestation of
-%% such issue is hitting of `hash_not_present_in_db` crashes.
-%% In that case a full resync is needed.
-%% Please don't delete the GC-ed database dir yet - rename it and inform us at forum.aeternity.com
-%% or make a issue in https://github.com/aeternity/aeternity/issues so we can retrieve the DB and
-%% look at it.
+%% If uses wishes to keep GC off by default (as is in default config) but invoke it manually,
+%% that is possible with calling of aec_db_gc:run() or aec_db_gc:run(HistoryLength).
 
 -behaviour(gen_statem).
 
@@ -39,7 +43,7 @@
          interval   :: non_neg_integer(),                 % how often (every `interval` blocks) GC runs
          history    :: non_neg_integer(),                 % how many block state back from top to keep
          min_height :: undefined | non_neg_integer(),     % if hash_not_found error, try GC from this height
-         synced     :: boolean(),                         % we only run GC if chain is synced
+         synced     :: boolean(),                         % we only run GC (repeatedly) if chain is synced
          height     :: undefined | non_neg_integer(),     % latest height of MPT hashes stored in tab
          hashes     :: undefined | pid() | reference()}). % hashes tab (or process filling the tab 1st time)
 
