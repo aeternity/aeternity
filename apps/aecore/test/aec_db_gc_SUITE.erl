@@ -39,10 +39,16 @@ init_per_suite(Config0) ->
                                                    <<"history">> => ?GC_INTERVAL + 10}},
                <<"sync">> => #{<<"single_outbound_per_group">> => false},
                <<"mempool">> => #{<<"tx_ttl">> => 100},
-               <<"mining">> => #{<<"micro_block_cycle">> => 100}},
+               <<"mining">> => #{<<"micro_block_cycle">> => 100,
+                                 <<"expected_mine_rate">> => 100}},
     Accounts = [new_pubkey() || _ <- lists:seq(1, ?NUM_ACCOUNTS)],
-    Config2 = aecore_suite_utils:init_per_suite([dev1, dev2], DefCfg,
-                                                [{add_peers, true}],
+    Config2 = aecore_suite_utils:init_per_suite([dev1, dev2],
+                                                DefCfg,
+                                                [{add_peers, true},
+                                                 #{dev2 => #{<<"chain">> =>
+                                                                 #{<<"db_backend">> => <<"mnesia">>,
+                                                                   <<"garbage_collection">> =>
+                                                                       #{<<"enabled">> => false}}}}],
                                                 [{symlink_name, "latest.sync"},
                                                  {test_module, ?MODULE},
                                                  {accounts, Accounts} | Config1]),
@@ -161,28 +167,11 @@ main_test(_Config) ->
 %% Private functions
 %% ==================================================
 
-%% log(Fmt, Args) ->
-%%     file:write_file("/tmp/test.log", io_lib:format(Fmt, Args), [append]).
-
-
 gc_state(N) ->
     rpc:call(N, sys, get_state, [aec_db_gc]).
 
-%% process_exists(N, ProcName) ->
-%%     is_pid(catch rpc:call(N, erlang, whereis, [ProcName])).
-
-%% mnesia_dir(N) ->
-%%     mnesia_system_info(N, directory).
-
 mnesia_system_info(N, X) ->
     rpc:call(N, mnesia, system_info, [X]).
-
-%% uniq_key(N, NoCollideTab) ->
-%%     H = crypto:hash(sha256, integer_to_binary(erlang:system_time())),
-%%     case has_key(N, H, NoCollideTab) of
-%%         true  -> uniq_key(N, NoCollideTab);
-%%         false -> H
-%%     end.
 
 has_key(N, Key, Tab) ->
     case rpc:call(N, mnesia, dirty_read, [Tab, Key]) of

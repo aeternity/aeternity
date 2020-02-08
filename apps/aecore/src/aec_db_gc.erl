@@ -343,6 +343,9 @@ signal_scanning_failed_keep_state(Data) ->
 
 -ifdef(EUNIT).
 interval(ConfigInterval) -> ConfigInterval.
+
+-ifdef(TEST).
+interval(ConfigInterval) -> ConfigInterval. % for common test
 -else.
 
 -ifdef(INTERVAL_VARIANCE).
@@ -358,7 +361,7 @@ interval(ConfigInterval) ->
 interval(ConfigInterval) -> ConfigInterval.
 -endif.
 
--endif. %% ifdef EUNIT
+-endif. %% ifdef TEST
 
 config() ->
     maps:from_list(
