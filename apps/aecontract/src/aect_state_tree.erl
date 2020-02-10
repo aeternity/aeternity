@@ -30,6 +30,9 @@
         , lookup_poi/2
         ]).
 
+-export([ to_list/1
+        ]).
+
 -export([ from_binary_without_backend/1
         , to_binary_without_backend/1
         ]).
@@ -292,6 +295,10 @@ lookup_poi(Pubkey, Poi) ->
             end;
         Err -> Err
     end.
+
+-spec to_list(tree()) -> [{term(), term()}].
+to_list(#contract_tree{contracts = CtTree}) ->
+    aeu_mtrees:to_list(CtTree).
 
 lookup_store_poi(Id, Poi) ->
     case aec_poi:read_only_subtree(Id, Poi) of

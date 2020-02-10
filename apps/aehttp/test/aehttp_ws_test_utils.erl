@@ -634,22 +634,18 @@ delete_registered_ref(_NotPid, R) -> R.
 put_registered_ref(Pid, Ref, #register{mon_refs=Refs}=R) ->
     R#register{mon_refs=maps:put(Pid, Ref, Refs)}.
 
-put_registration(RegPid, Event, Register0) ->
-    Pids0 = get_registered_pids(Event, Register0),
-    no_double_registration(Event, RegPid, Pids0),
-    Register =
-        case is_pid(RegPid) of
-            false -> Register0;
-            true ->
-                Ref = monitor(process, RegPid),
-                put_registered_ref(RegPid, Ref, Register0)
-        end,
-    set_registered_event(Event, [RegPid | Pids0], Register).
-
-no_double_registration(Event, RegPid, Pids) ->
-    case lists:member(RegPid, Pids) of
-        false -> ok;
-        true  -> error({already_registered, Event})
+put_registration(RegPid, Event, Register) ->
+    Pids0 = get_registered_pids(Event, Register),
+    case is_pid(RegPid) of
+        false -> Register;
+        true ->
+            case lists:member(RegPid, Pids0) of
+                true -> Register;
+                false ->
+                    Ref = monitor(process, RegPid),
+                    Register1 = put_registered_ref(RegPid, Ref, Register),
+                    set_registered_event(Event, [RegPid | Pids0], Register1)
+            end
     end.
 
 delete_registered(RegPid, Event, Register) ->

@@ -411,7 +411,7 @@ record_to_update_type(#meta{})            -> meta.
 
 check_min_amt(Amt, Reserve) ->
     if Amt < Reserve ->
-            update_error(insufficient_balance);
+            update_error({insufficient_balance, Amt, Reserve});
        true ->
             Amt
     end.

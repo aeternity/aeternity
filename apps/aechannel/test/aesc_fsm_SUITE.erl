@@ -116,7 +116,7 @@
 -define(RESPONDER_AMOUNT, (10000000 * aec_test_utils:min_gas_price())).
 -define(ACCOUNT_BALANCE, max(?INITIATOR_AMOUNT, ?RESPONDER_AMOUNT) * 1000).
 -define(PUSH_AMOUNT, 200000).
--define(CHANNEL_RESERVE, 300000).
+-define(CHANNEL_RESERVE, 20000).
 
 -define(SLOGAN, {slogan, {?FUNCTION_NAME, ?LINE}}).
 -define(SLOGAN(I), {slogan, {?FUNCTION_NAME, ?LINE, I}}).
@@ -269,9 +269,10 @@ groups() ->
       , positive_bh
       ]},
      {force_progress, [sequence],
-      [ force_progress_based_on_offchain_state
-      , force_progress_based_on_onchain_state
-      , force_progress_closing_state
+      [% force_progress_based_on_offchain_state
+      %, force_progress_based_on_onchain_state
+       force_progress_based_on_onchain_state
+      %, force_progress_closing_state
       ]}
     ].
 
@@ -3664,7 +3665,7 @@ deposit_(#{fsm := FsmI} = I, R, Amount, Opts, Round0, Debug, Cfg) ->
     ?LOG(Debug, "Round0 = ~p, IAmt0 = ~p, RAmt0 = ~p", [Round0, IAmt0, RAmt0]),
 
     % Perform update and verify flow and reports
-    ok = rpc(dev1, aesc_fsm, upd_deposit, [FsmI, Opts#{amount => Amount}]),
+    ok = rpc(dev1, aesc_fsm, upd_deposit, [FsmI, Opts#{ amount => Amount}]),
     {I1, _} = await_signing_request(deposit_tx, I, Cfg),
     {R1, _} = await_signing_request(deposit_created, R, Cfg),
     SignedTx = await_on_chain_report(I1, #{info => deposit_signed}, ?TIMEOUT),
@@ -3752,6 +3753,7 @@ assert_fsm_states(SignedTx, FsmSpec, MinDepth, Amount, {IAmt0, RAmt0, _, Round0,
     % Verify state hash
     {TxType, Tx} =
         aetx:specialize_type(aetx_sign:innermost_tx(SignedTx)),
+    ct:log("Channel round ~p, Tx round ~p", [Round2, TxCb:round(Tx)]),
     {Round2, _} = {TxCb:round(Tx), Round2}, %% assert correct round
     {StateHash, _} = {TxCb:state_hash(Tx), StateHash}, %% assert correct state hash
 
@@ -4591,8 +4593,8 @@ force_progress_(ContractId,
     Round = aesc_force_progress_tx:round(Tx),
     {ok, Channel} = rpc(dev1, aec_chain, get_channel, [ChannelId]),
     %% assert channel had been changed on-chain
-    {Round, _} = {Round, aesc_channels:round(Channel)},
-    {StateHash, _} = {StateHash, aesc_channels:state_hash(Channel)},
+    {Round, Round} = {Round, aesc_channels:round(Channel)},
+    {StateHash, StateHash} = {StateHash, aesc_channels:state_hash(Channel)},
 
     Caller1.
 
