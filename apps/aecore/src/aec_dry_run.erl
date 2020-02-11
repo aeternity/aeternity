@@ -120,23 +120,35 @@ prepare_call_req(ReqMap) ->
 
         %% Other options
         ContextMap = maps:get(<<"context">>, ReqMap, #{}),
+        TxCtxt = case maps:get(<<"tx">>, ContextMap, none) of
+                     none -> [];
+                     TxEnc ->
+                        {ok, AetxSer} = aeser_api_encoder:safe_decode(transaction, TxEnc),
+                        Aetx = aetx:deserialize_from_binary(AetxSer),
+                        [{auth_tx, Aetx}]
+                 end,
+
         TxHashCtxt = case maps:get(<<"tx_hash">>, ContextMap, none) of
                          none -> [];
                          TxHashEnc ->
-                            {ok, TxHash} = aeser_api_encoder:safe_decode(tx_hash, TxHashEnc),
-                            [{auth_tx, TxHash}]
+                             {ok, TxHash} = aeser_api_encoder:safe_decode(tx_hash, TxHashEnc),
+                             [{auth_tx_hash, TxHash}]
                      end,
         StateCtxt  = [ stateless || maps:get(<<"stateful">>, ContextMap, false) /= true ],
-        Context    = TxHashCtxt ++ StateCtxt,
+        Context    = TxCtxt ++ TxHashCtxt ++ StateCtxt,
         {tx, Context, dummy_sign(CallTx)}
     catch _:_R ->
         error({bad_dry_run_call_request, ReqMap})
     end.
 
-prepare_env(Env, Opts) ->
+prepare_env(Env0, Opts) ->
+    Env1 = case proplists:get_value(auth_tx_hash, Opts, undefined) of
+               undefined -> Env0;
+               TxHash    -> aetx_env:set_ga_tx_hash(Env0, TxHash)
+           end,
     case proplists:get_value(auth_tx, Opts, undefined) of
-        undefined -> Env;
-        TxHash    -> aetx_env:set_ga_tx_hash(Env, TxHash)
+        undefined -> Env1;
+        Tx        -> aetx_env:set_ga_tx(Env1, Tx)
     end.
 
 lookup_call_object(Key, CallId, Trees) ->

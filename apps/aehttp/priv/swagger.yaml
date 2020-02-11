@@ -2965,6 +2965,8 @@ definitions:
   DryRunCallContext:
     type: object
     properties:
+      tx:
+        $ref: '#/definitions/EncodedByteArray'
       tx_hash:
         $ref: '#/definitions/EncodedHash'
       stateful:
