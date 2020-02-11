@@ -5092,11 +5092,15 @@ sc_ws_force_progress_(Origin, ContractPubkey,
     when Origin =:= initiator orelse Origin =:= responder ->
     ct:log("*** Forcing progress ***", []),
     Participants = proplists:get_value(participants, Config),
-    #{channel_id := ChannelId} = Clients
+    #{ channel_id := ChannelId
+     , initiator  := IConnPid
+     , responder  := RConnPid } = Clients
         = proplists:get_value(channel_clients, Config),
     #{pub_key := SenderPubkey,
       priv_key:= SenderPrivkey} = maps:get(Origin, Participants),
     ConnPid = maps:get(Origin, Clients),
+    ok = ?WS:register_test_for_channel_events(IConnPid, [on_chain_tx]),
+    ok = ?WS:register_test_for_channel_events(RConnPid, [on_chain_tx]),
 
     {ok, Channel0} = get_channel(ChannelId),
     Round0 = aesc_channels:round(Channel0),
@@ -5133,10 +5137,22 @@ sc_ws_force_progress_(Origin, ContractPubkey,
     ct:log("Force progress asserts:~nOld round ~p, New round ~p",
            [Round0, Round1]),
     ?assertNotEqual(StateHash0, StateHash1),
-    ?assertNotEqual(true, Round0 < Round1),
-    
+    ?assertEqual(true, Round0 < Round1),
 
-    %% TODO: wait for appropriate `channel_force_progress_tx` event
+    %% both clients are informed for the Forced progress on-chain
+    {ok, _, #{ <<"tx">> := _EncodedSignedWTx
+             , <<"info">> := <<"channel_changed">>
+             , <<"type">> := <<"channel_force_progress_tx">>}}
+        = wait_for_channel_event(IConnPid, on_chain_tx, Config),
+
+    {ok, _, #{ <<"tx">> := _EncodedSignedWTx
+             , <<"info">> := <<"channel_changed">>
+             , <<"type">> := <<"channel_force_progress_tx">>}}
+        = wait_for_channel_event(RConnPid, on_chain_tx, Config),
+
+    ok = ?WS:unregister_test_for_channel_events(IConnPid, [on_chain_tx]),
+    ok = ?WS:unregister_test_for_channel_events(RConnPid, [on_chain_tx]),
+
     {ok, SignedTx}.
 
 get_channel(ChannelId) ->
