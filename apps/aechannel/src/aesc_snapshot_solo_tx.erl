@@ -97,6 +97,7 @@ nonce(#channel_snapshot_solo_tx{nonce = Nonce}) ->
 origin(#channel_snapshot_solo_tx{} = Tx) ->
     from_pubkey(Tx).
 
+-spec channel_pubkey(tx()) -> aesc_channels:pubkey().
 channel_pubkey(#channel_snapshot_solo_tx{channel_id = ChannelId}) ->
     aeser_id:specialize(ChannelId, channel).
 

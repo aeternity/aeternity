@@ -33,6 +33,7 @@
         , ga_auth_ids/1
         , ga_nonce/2
         , ga_tx_hash/1
+        , ga_tx/1
         , height/1
         , key_hash/1
         , payer/1
@@ -50,6 +51,7 @@
         , set_consensus_version/2
         , set_context/2
         , set_dry_run/2
+        , set_ga_tx/2
         , set_ga_tx_hash/2
         , set_height/2
         , set_payer/2
@@ -77,6 +79,7 @@
              , context           :: context()
              , ga_auth_ids = []  :: [aec_keys:pubkey()]
              , ga_nonces = []    :: [{aec_keys:pubkey(), binary()}]
+             , ga_tx             :: undefined | aetx:tx()
              , ga_tx_hash        :: undefined | binary()
              , payer             :: undefined | aec_keys:pubkey()
              , difficulty        :: aeminer_pow:difficulty()
@@ -257,6 +260,14 @@ add_ga_nonce(Env = #env{ga_nonces = Xs}, Pk, Nonce) ->
 -spec del_ga_nonce(env(), aec_keys:pubkey()) -> env().
 del_ga_nonce(Env = #env{ga_nonces = Xs}, Pk) ->
     Env#env{ga_nonces = lists:keydelete(Pk, 1, Xs)}.
+
+%%------
+
+-spec ga_tx(env()) -> undefined | aetx:tx().
+ga_tx(#env{ga_tx = X}) -> X.
+
+-spec set_ga_tx(env(), undefined | aetx:tx()) -> env().
+set_ga_tx(Env, X) -> Env#env{ga_tx = X}.
 
 %%------
 

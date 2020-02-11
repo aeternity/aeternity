@@ -106,6 +106,7 @@ nonce(#channel_close_mutual_tx{nonce = Nonce}) ->
 origin(#channel_close_mutual_tx{from_id = FromId}) ->
     aeser_id:specialize(FromId, account).
 
+-spec channel_pubkey(tx()) -> aesc_channels:pubkey().
 channel_pubkey(#channel_close_mutual_tx{channel_id = ChannelId}) ->
     aeser_id:specialize(ChannelId, channel).
 
@@ -221,7 +222,7 @@ valid_at_protocol(_, _) ->
     true.
 
 %%%===================================================================
-%%% Test setters 
+%%% Test setters
 %%%===================================================================
 
 -ifdef(TEST).

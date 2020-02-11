@@ -1,0 +1,141 @@
+contract TxAuth =
+  record state = { nonce : int }
+
+  entrypoint init() = { nonce = 1 }
+
+  stateful entrypoint authorize(n : int) : bool =
+    require(n >= state.nonce, "Nonce too low")
+    require(n =< state.nonce, "Nonce too high")
+    put(state{ nonce = n + 1 })
+    switch(Auth.tx)
+      None      => abort("Not in Auth context")
+      Some(tx0) =>
+        switch(tx0.tx)
+          Chain.SpendTx(_, amount, _)  => amount > 400
+          Chain.ContractCreateTx(_)    => true
+          Chain.ContractCallTx(_, _)   => true
+          _                            => false
+
+  entrypoint test_no_auth_tx() =
+    None == Auth.tx
+
+  entrypoint test_auth_tx_fee(limit : int) =
+    let Some({fee = fee}) = Auth.tx
+    fee > limit
+
+  entrypoint test_auth_tx_actor(addr : address) =
+    let Some({actor = actor}) = Auth.tx
+    actor == addr
+
+  entrypoint test_auth_tx_ttl(limit : int) =
+    let Some({ttl = ttl}) = Auth.tx
+    ttl > limit
+
+  entrypoint test_auth_tx_no_paying_for() =
+    let Some({paying_for = pf }) = Auth.tx
+    None == pf
+
+  entrypoint test_auth_tx_paying_for(p : address, f : int) =
+    let Some({paying_for = Some(Chain.PayingForTx(px, fx)) }) = Auth.tx
+    p == px && f == fx
+
+  entrypoint test_auth_tx_no_ga_metas() =
+    let Some({ga_metas = gms }) = Auth.tx
+    [] == gms
+
+  entrypoint test_auth_tx_one_ga_metas(gm : address, f : int) =
+    let Some({ga_metas = [Chain.GAMetaTx(gmx, fx)] }) = Auth.tx
+    gm == gmx && f == fx
+
+  entrypoint test_auth_tx_two_ga_metas(gm1 : address, f1 : int, gm2 : address, f2 : int) =
+    let Some({ga_metas = [Chain.GAMetaTx(gmx1, fx1), Chain.GAMetaTx(gmx2, fx2)] }) = Auth.tx
+    gm1 == gmx1 && f1 == fx1 && gm2 == gmx2 && f2 == fx2
+
+  entrypoint test_auth_tx_spend(recv : address, amt : int, payload : string) =
+    let Some({tx = Chain.SpendTx(recvx, amtx, payloadx)}) = Auth.tx
+    recv == recvx && amt == amtx && payload == payloadx
+
+  entrypoint test_auth_tx_oracle_register() =
+    let Some({tx = Chain.OracleRegisterTx}) = Auth.tx
+    true
+
+  entrypoint test_auth_tx_oracle_query() =
+    let Some({tx = Chain.OracleQueryTx}) = Auth.tx
+    true
+
+  entrypoint test_auth_tx_oracle_response() =
+    let Some({tx = Chain.OracleResponseTx}) = Auth.tx
+    true
+
+  entrypoint test_auth_tx_oracle_extend() =
+    let Some({tx = Chain.OracleExtendTx}) = Auth.tx
+    true
+
+  entrypoint test_auth_tx_name_preclaim() =
+    let Some({tx = Chain.NamePreclaimTx}) = Auth.tx
+    true
+
+  entrypoint test_auth_tx_name_claim(n : string) =
+    let Some({tx = Chain.NameClaimTx(nx)}) = Auth.tx
+    n == nx
+
+  entrypoint test_auth_tx_name_update(nh : hash) =
+    let Some({tx = Chain.NameUpdateTx(nhx)}) = Auth.tx
+    nh == nhx
+
+  entrypoint test_auth_tx_name_revoke(nh : hash) =
+    let Some({tx = Chain.NameRevokeTx(nhx)}) = Auth.tx
+    nh == nhx
+
+  entrypoint test_auth_tx_name_transfer(to : address, nh : hash) =
+    let Some({tx = Chain.NameTransferTx(tox, nhx)}) = Auth.tx
+    to == tox && nh == nhx
+
+  entrypoint test_auth_tx_channel_create(o : address) =
+    let Some({tx = Chain.ChannelCreateTx(ox)}) = Auth.tx
+    o == ox
+
+  entrypoint test_auth_tx_channel_deposit(ch : address, amt : int) =
+    let Some({tx = Chain.ChannelDepositTx(chx, amtx)}) = Auth.tx
+    ch == chx && amt == amtx
+
+  entrypoint test_auth_tx_channel_withdraw(ch : address, amt : int) =
+    let Some({tx = Chain.ChannelWithdrawTx(chx, amtx)}) = Auth.tx
+    ch == chx && amt == amtx
+
+  entrypoint test_auth_tx_channel_force_progress(ch : address) =
+    let Some({tx = Chain.ChannelForceProgressTx(chx)}) = Auth.tx
+    ch == chx
+
+  entrypoint test_auth_tx_channel_close_mutual(ch : address) =
+    let Some({tx = Chain.ChannelCloseMutualTx(chx)}) = Auth.tx
+    ch == chx
+
+  entrypoint test_auth_tx_channel_close_solo(ch : address) =
+    let Some({tx = Chain.ChannelCloseSoloTx(chx)}) = Auth.tx
+    ch == chx
+
+  entrypoint test_auth_tx_channel_slash(ch : address) =
+    let Some({tx = Chain.ChannelSlashTx(chx)}) = Auth.tx
+    ch == chx
+
+  entrypoint test_auth_tx_channel_settle(ch : address) =
+    let Some({tx = Chain.ChannelSettleTx(chx)}) = Auth.tx
+    ch == chx
+
+  entrypoint test_auth_tx_channel_snapshot_solo(ch : address) =
+    let Some({tx = Chain.ChannelSnapshotSoloTx(chx)}) = Auth.tx
+    ch == chx
+
+  entrypoint test_auth_tx_contract_create(amt : int) =
+    let Some({tx = Chain.ContractCreateTx(amtx)}) = Auth.tx
+    amt == amtx
+
+  entrypoint test_auth_tx_contract_call(ct : address, amt : int) =
+    let Some({tx = Chain.ContractCallTx(ctx, amtx)}) = Auth.tx
+    ct == ctx && amt == amtx
+
+  entrypoint test_auth_tx_ga_attach() =
+    let Some({tx = Chain.GAAttachTx}) = Auth.tx
+    true
+

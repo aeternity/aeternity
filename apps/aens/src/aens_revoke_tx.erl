@@ -28,7 +28,8 @@
         ]).
 
 -export([account_id/1,
-         name_id/1
+         name_id/1,
+         name_hash/1
         ]).
 
 %%%===================================================================
@@ -172,6 +173,7 @@ for_client(#ns_revoke_tx{account_id = AccountId,
 account_pubkey(#ns_revoke_tx{account_id = AccountId}) ->
     aeser_id:specialize(AccountId, account).
 
+-spec name_hash(tx()) -> binary().
 name_hash(#ns_revoke_tx{name_id = NameId}) ->
     aeser_id:specialize(NameId, name).
 

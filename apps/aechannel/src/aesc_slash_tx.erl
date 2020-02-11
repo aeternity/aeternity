@@ -103,6 +103,7 @@ origin(#channel_slash_tx{} = Tx) ->
 from_pubkey(#channel_slash_tx{from_id = FromId}) ->
     aeser_id:specialize(FromId, account).
 
+-spec channel_pubkey(tx()) -> aesc_channels:pubkey().
 channel_pubkey(#channel_slash_tx{channel_id = ChannelId}) ->
     aeser_id:specialize(ChannelId, channel).
 

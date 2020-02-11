@@ -29,13 +29,10 @@
         ]).
 
 -export([account_id/1,
-         name_id/1
+         name_id/1,
+         name_hash/1,
+         recipient_pubkey/1
         ]).
-
-%% Getters
--ifdef(TEST).
--export([recipient_pubkey/1]).
--endif.
 
 %%%===================================================================
 %%% Types
@@ -107,9 +104,6 @@ origin(#ns_transfer_tx{} = Tx) ->
 
 account_pubkey(#ns_transfer_tx{account_id = AccountId}) ->
     aeser_id:specialize(AccountId, account).
-
-name_hash(#ns_transfer_tx{name_id = NameId}) ->
-    aeser_id:specialize(NameId, name).
 
 -spec check(tx(), aec_trees:trees(), aetx_env:env()) -> {ok, aec_trees:trees()} | {error, term()}.
 check(#ns_transfer_tx{}, Trees,_Env) ->
@@ -195,10 +189,9 @@ for_client(#ns_transfer_tx{account_id   = AccountId,
 %%% Getters
 %%%===================================================================
 
--ifdef(TEST).
+-spec recipient_pubkey(tx()) -> aec_keys:pubkey().
 recipient_pubkey(#ns_transfer_tx{recipient_id = RecipientId}) ->
     aeser_id:specialize(RecipientId, account).
--endif.
 
 -spec account_id(tx()) -> aeser_id:id().
 account_id(#ns_transfer_tx{account_id = AccountId}) ->
@@ -207,6 +200,10 @@ account_id(#ns_transfer_tx{account_id = AccountId}) ->
 -spec name_id(tx()) -> aeser_id:id().
 name_id(#ns_transfer_tx{name_id = NameId}) ->
     NameId.
+
+-spec name_hash(tx()) -> binary().
+name_hash(#ns_transfer_tx{name_id = NameId}) ->
+    aeser_id:specialize(NameId, name).
 
 recipient_id(#ns_transfer_tx{recipient_id = RecipientId}) ->
     RecipientId.
