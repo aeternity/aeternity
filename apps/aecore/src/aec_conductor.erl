@@ -726,7 +726,7 @@ preempt_if_new_top(#state{ top_block_hash = OldHash,
 
                     [ aec_keys:promote_candidate(aec_blocks:miner(NewBlock)) || KeyOrNewForkMicro == key ],
 
-                    {changed, NewBlock, create_key_block_candidate(State5)}
+                    {changed, KeyOrNewForkMicro, NewBlock, create_key_block_candidate(State5)}
             end
     end.
 
@@ -1115,10 +1115,15 @@ handle_successfully_added_block(Block, Hash, Events, State, Origin) ->
             {ok, State};
         {micro_changed, State2 = #state{ consensus = Cons }} ->
             {ok, setup_loop(State2, false, Cons#consensus.leader, Origin)};
-        {changed, NewTopBlock, State2} ->
+        {changed, BlockType, NewTopBlock, State2} ->
             IsLeader = is_leader(NewTopBlock),
-            %% Don't spend time when we are the leader.
-            [ aec_tx_pool:garbage_collect() || not IsLeader ],
+            case IsLeader of
+                true ->
+                    ok; %% Don't spend time when we are the leader.
+                false ->
+                    aec_tx_pool:garbage_collect(),
+                    [ maybe_garbage_collect_accounts() || BlockType == key ]
+            end,
             {ok, setup_loop(State2, true, IsLeader, Origin)}
     end.
 
@@ -1182,3 +1187,18 @@ get_pending_key_block(TopHash, #state{beneficiary = Beneficiary} = State) ->
         {ok, Block} -> {{ok, Block}, State#state{ pending_key_block = Block }};
         {error, _}  -> {{error, not_found}, State}
     end.
+
+
+%% Called only from the conductor.
+%% Putting it here avoids us to clutter aec_db_gc's public API
+%%
+%% To avoid starting of the GC process just for EUNIT
+-ifdef(EUNIT).
+maybe_garbage_collect_accounts() -> nop.
+-else.
+
+%% This should be called when there are no processes modifying the block state
+%% (e.g. aec_conductor on specific places)
+maybe_garbage_collect_accounts() ->
+    gen_statem:call(aec_db_gc, maybe_garbage_collect).
+-endif.

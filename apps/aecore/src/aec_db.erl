@@ -14,10 +14,13 @@
          clear_db/0,                    % mostly for test purposes
          tab_copies/1,                  % for create_tables hooks
          check_table/3,                 % for check_tables hooks
+         tab/4,
          persisted_valid_genesis_block/0
         ]).
 
 -export([ensure_transaction/1,
+         ensure_transaction/2,
+         ensure_transaction/3,
          ensure_activity/2]).
 
 %% Mimicking the aec_persistence API used by aec_conductor_chain
@@ -75,6 +78,7 @@
         , find_oracles_node/1
         , find_oracles_cache_node/1
         , write_accounts_node/2
+        , write_accounts_node/3
         , write_calls_node/2
         , write_channels_node/2
         , write_contracts_node/2
@@ -261,13 +265,16 @@ ensure_transaction(Fun) when is_function(Fun, 0) ->
     ensure_transaction(Fun, []).
 
 ensure_transaction(Fun, ErrorKeys) when is_function(Fun, 0) ->
+    ensure_transaction(Fun, ErrorKeys, transaction).
+
+ensure_transaction(Fun, ErrorKeys, TxType) when is_function(Fun, 0) ->
     %% TODO: actually, some non-transactions also have an activity state
     case get(mnesia_activity_state) of
         undefined ->
-            try_activity(transaction, Fun, ErrorKeys);
+            try_activity(TxType, Fun, ErrorKeys);
         {_, _, non_transaction} ->
             %% Transaction inside a dirty context; rely on mnesia to handle it
-            try_activity(transaction, Fun, ErrorKeys);
+            try_activity(TxType, Fun, ErrorKeys);
         _ ->
             %% We are already in a transaction, thus no custom retry is
             %% attempted via `try_activity/3` since this only works outside of a
@@ -441,6 +448,10 @@ write_block_state(Hash, Trees, AccDifficulty, ForkId, Fees, Fraud) ->
 
 write_accounts_node(Hash, Node) ->
     ?t(mnesia:write(#aec_account_state{key = Hash, value = Node}),
+       [{aec_account_state, Hash}]).
+
+write_accounts_node(Table, Hash, Node) ->
+    ?t(mnesia:write(Table, #aec_account_state{key = Hash, value = Node}, write),
        [{aec_account_state, Hash}]).
 
 write_calls_node(Hash, Node) ->
@@ -705,7 +716,8 @@ fold_mempool(FunIn, InitAcc) ->
 
 load_database() ->
     lager:debug("load_database()", []),
-    wait_for_tables().
+    wait_for_tables(),
+    aec_db_gc:maybe_swap_nodes().
 
 wait_for_tables() ->
     Tabs = mnesia:system_info(tables) -- [schema],

@@ -471,6 +471,29 @@
                     },
                     "minItems": 1,
                     "default" : ["ak_2KAcA2Pp1nrR8Wkt3FtCkReGzAi8vJ9Snxa4PcmrthVx8AhPe8:109"]
+                },
+                "garbage_collection" : {
+                    "type" : "object",
+                    "additionalProperties" : false,
+                    "properties" : {
+                        "enabled": {
+                            "description": "If true, node will perform garbage collection of account state, removing unrechable merkle patricia nodes and free some disk space",
+                            "type": "boolean",
+                            "default": false
+                        },
+                        "interval" : {
+                            "description": "How often (every `interval` block) should garbage collection run",
+                            "type": "integer",
+                            "minimum": 3,
+                            "default": 50000
+                        },
+                        "history" : {
+                            "description": "How many blocks (back from the top) should be scanned for reachable hashes",
+                            "type": "integer",
+                            "minimum": 50,
+                            "default": 500
+                        }
+                    }
                 }
             }
         },

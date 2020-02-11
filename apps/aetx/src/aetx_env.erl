@@ -122,21 +122,30 @@ tx_env_and_trees_from_top(Type) when Type == aetx_contract;
 
 tx_env_and_trees_from_hash(Type, Hash) when Type == aetx_contract;
                                             Type == aetx_transaction ->
-    {ok, Header} = aec_chain:get_header(Hash),
-    {ok, Trees}  = aec_chain:get_block_state(Hash),
-    {KeyHeader, KeyHash, Time} =
-        case aec_headers:type(Header) of
-            micro ->
-                KHash = aec_headers:prev_key_hash(Header),
-                {ok, KH} = aec_chain:get_header(KHash),
-                {KH, KHash, aec_headers:time_in_msecs(Header)};
-            key ->
-                {Header, Hash,
-                 aec_headers:time_in_msecs(Header) +
-                    aec_block_micro_candidate:min_t_after_keyblock()}
-        end,
-    Env = tx_env_from_key_header(KeyHeader, KeyHash, Time, Hash),
-    {set_context(Env, Type), Trees}.
+    case aec_chain:get_header(Hash) of
+        {ok, Header} ->
+            try aec_chain:get_block_state(Hash) of
+                {ok, Trees} ->
+                    {KeyHeader, KeyHash, Time} =
+                        case aec_headers:type(Header) of
+                            micro ->
+                                KHash = aec_headers:prev_key_hash(Header),
+                                {ok, KH} = aec_chain:get_header(KHash),
+                                {KH, KHash, aec_headers:time_in_msecs(Header)};
+                            key ->
+                                {Header, Hash,
+                                 aec_headers:time_in_msecs(Header) +
+                                     aec_block_micro_candidate:min_t_after_keyblock()}
+                        end,
+                    Env = tx_env_from_key_header(KeyHeader, KeyHash, Time, Hash),
+                    {set_context(Env, Type), Trees}
+            catch
+                error:{hash_not_present_in_db, _} ->
+                    error(state_garbage_collected)
+            end;
+        error ->
+            error(invalid_hash)
+    end.
 
 
 %%%===================================================================

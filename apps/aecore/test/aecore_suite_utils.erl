@@ -859,7 +859,14 @@ config_apply_options(Node, Cfg, [{block_peers, BlockedPeers}| T]) ->
 config_apply_options(Node, Cfg, [{add_peers, true}| T]) ->
     Cfg1 = Cfg#{<<"peers">> =>
               [peer_info(N1) || N1 <- [dev1, dev2, dev3] -- [Node]]},
-    config_apply_options(Node, Cfg1, T).
+    config_apply_options(Node, Cfg1, T);
+config_apply_options(Node, Cfg, [OptNodesCfg | T]) when is_map(OptNodesCfg) ->
+    Cfg1 = case OptNodesCfg of
+               #{Node := OptNodeCfg} -> maps_merge(Cfg, OptNodeCfg);
+               #{} -> Cfg
+           end,
+    config_apply_options(Node, Cfg, T).
+
 
 write_keys(Node, Config) ->
     #{ <<"keys">> := #{ <<"dir">> := Path, <<"peer_password">> := Pwd } } = Config,
