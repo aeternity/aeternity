@@ -21,8 +21,10 @@ initiate(Host, Port, #{} = Opts0) ->
                                        , port => Port
                                        , opts => Opts }]);
         {error, _Reason} = Err ->
+            lager:info("ASDF initiator ~p", [erlang:get_stacktrace()]),
             Err
     ?CATCH_LOG(_E)
+        lager:info("ASDF initiator ~p", [erlang:get_stacktrace()]),
         {error, _E}
     end.
 
@@ -35,8 +37,10 @@ respond(Port, #{} = Opts0) ->
             aesc_fsm_sup:start_child([#{ port => Port
                                        , opts => Opts }]);
         {error, _Reason} = Err ->
+            lager:info("ASDF responder ~p", [erlang:get_stacktrace()]),
             Err
     ?CATCH_LOG(_E)
+        lager:info("ASDF responder ~p", [erlang:get_stacktrace()]),
         {error, _E}
     end.
 

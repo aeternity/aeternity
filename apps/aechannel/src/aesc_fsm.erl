@@ -3730,7 +3730,6 @@ prepare_initial_state(Opts, State, SessionPid, ReestablishOpts) ->
     #{ client := Client
      , role := Role
      , block_hash_delta := BlockHashDelta
-     , channel_reserve := _
      , log_keep := LogKeep } = Opts,
     Reestablish = maps:is_key(existing_channel_id, ReestablishOpts),
     MaybeFsmIdWrapper = case Reestablish of
@@ -3754,15 +3753,25 @@ prepare_initial_state(Opts, State, SessionPid, ReestablishOpts) ->
     %% TODO: Amend the fsm above to include this step. We have transport-level
     %% connectivity, but not yet agreement on the channel parameters. We will next send
     %% a channel_open() message and await a channel_accept().
+    ChannelReserve =
+        case Reestablish of
+            true ->
+                onchain_persisted_channel_reserve(maps:get(existing_channel_id,
+                                                           ReestablishOpts));
+            false -> not_used
+        end,
     NextState = case {Role, Reestablish} of
         {initiator, true} ->
-            ok_next(reestablish_init, send_reestablish_msg(ReestablishOpts, Data));
+            Data1 = Data#data{opts = Opts#{channel_reserve => ChannelReserve}},
+            ok_next(reestablish_init, send_reestablish_msg(ReestablishOpts,
+                                                           Data1));
         {initiator, false} ->
             ok_next(initialized, send_open_msg(Data));
         {responder, true} ->
             ChanId = maps:get(existing_channel_id, ReestablishOpts),
             Data1 = Data#data{ channel_id  = ChanId
                              , on_chain_id = ChanId
+                             , opts = Opts#{channel_reserve => ChannelReserve}
                              , op = #op_reestablish{mode = restart} },
             ok_next(awaiting_reestablish, Data1);
         {responder, false} ->
@@ -5121,3 +5130,7 @@ mutual_close_error(Msg, D) ->
 
 channel_reserve(#{channel_reserve := Reserve}) ->
     Reserve.
+
+onchain_persisted_channel_reserve(ChannelPubkey) ->
+    {ok, Channel} = aec_chain:get_channel(ChannelPubkey),
+    aesc_channels:channel_reserve(Channel).

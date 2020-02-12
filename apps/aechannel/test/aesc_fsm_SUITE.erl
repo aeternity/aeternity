@@ -277,6 +277,9 @@ groups() ->
     ].
 
 ga_sequence() ->
+    [ {group, signatures} ].
+
+gsa_sequence() ->
     [ {group, transactions}
     , {group, errors}
     , {group, signatures}
