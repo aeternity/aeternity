@@ -57,7 +57,9 @@
         , leave_reestablish_responder_stays/1
         , leave_reestablish_close/1
         , force_progress_based_on_offchain_state/1
-        , force_progress_based_on_onchain_state/1
+        , force_progress_based_on_snapshot/1
+        , force_progress_based_on_deposit/1
+        , force_progress_based_on_withdrawal/1
         , force_progress_closing_state/1
         , force_progress_with_failed_onchain/1
         , change_config_get_history/1
@@ -269,10 +271,10 @@ groups() ->
       , positive_bh
       ]},
      {force_progress, [sequence],
-      [% force_progress_based_on_offchain_state
-      %, force_progress_based_on_onchain_state
-       force_progress_based_on_onchain_state
-      %, force_progress_closing_state
+      [ force_progress_based_on_offchain_state
+      , force_progress_based_on_snapshot
+      , force_progress_based_on_deposit
+      , force_progress_based_on_withdrawal
       ]}
     ].
 
@@ -3614,6 +3616,10 @@ withdraw_full_cycle_(Amount, Opts, Round, Cfg) ->
     shutdown_(I, R, Cfg),
     ok.
 
+withdraw_(#{fsm := FsmI} = I, R, Amount, Debug, Cfg) ->
+    {_IAmt0, _RAmt0, _, Round0, _} = check_fsm_state(FsmI),
+    withdraw_(#{fsm := FsmI} = I, R, Amount, #{}, Round0, Debug, Cfg).
+
 withdraw_(#{fsm := FsmI} = I, R, Amount, Opts, Round0, Debug, Cfg) ->
     assert_empty_msgq(Debug),
     % Check initial fsm state
@@ -4440,7 +4446,26 @@ force_progress_based_on_offchain_state(Cfg) ->
     %shutdown_(I2, R2, Cfg),
     ok.
 
-force_progress_based_on_onchain_state(Cfg) ->
+force_progress_based_on_snapshot(Cfg) ->
+    Debug = get_debug(Cfg),
+    #{ i := #{ fsm := _FsmI
+             , channel_id := ChannelId } = I
+     , r := #{} = R
+     , spec := #{ initiator := PubI
+                , responder := _PubR } = _Spec} = create_channel_([?SLOGAN|Cfg]),
+    ?LOG(Debug, "I = ~p", [I]),
+    ?LOG(Debug, "R = ~p", [R]),
+    {I1, R1, ContractPubkey} = create_contract(counter, ["42"], 10, I, R, Cfg),
+    {I2, R2} = call_contract(ContractPubkey, counter, "tick", [], 10, I1, R1, Cfg),
+    {ok, I3, R3} = snapshot_solo_(I2, R2, #{}, Cfg),
+    I5 = force_progress_(ContractPubkey, counter, "tick", [], 10, I3, Cfg),
+
+    check_info(20),
+    {_, _} = produce_close_mutual_tx(ChannelId, PubI, I5, R3, Cfg, #{}),
+    %shutdown_(I2, R2, Cfg),
+    ok.
+
+force_progress_based_on_deposit(Cfg) ->
     Debug = get_debug(Cfg),
     #{ i := #{ fsm := _FsmI
              , channel_id := ChannelId } = I
@@ -4452,10 +4477,29 @@ force_progress_based_on_onchain_state(Cfg) ->
     {I1, R1, ContractPubkey} = create_contract(counter, ["42"], 10, I, R, Cfg),
     {I2, R2} = call_contract(ContractPubkey, counter, "tick", [], 10, I1, R1, Cfg),
     {ok, I3, R3} = deposit_(I2, R2, _Amount = 123, Debug, Cfg),
-    I5 = force_progress_(ContractPubkey, counter, "tick", [], 10, I3, Cfg),
+    I4 = force_progress_(ContractPubkey, counter, "tick", [], 10, I3, Cfg),
 
     check_info(20),
-    {_, _} = produce_close_mutual_tx(ChannelId, PubI, I5, R3, Cfg, #{}),
+    {_, _} = produce_close_mutual_tx(ChannelId, PubI, I4, R3, Cfg, #{}),
+    %shutdown_(I2, R2, Cfg),
+    ok.
+
+force_progress_based_on_withdrawal(Cfg) ->
+    Debug = get_debug(Cfg),
+    #{ i := #{ fsm := _FsmI
+             , channel_id := ChannelId } = I
+     , r := #{} = R
+     , spec := #{ initiator := PubI
+                , responder := _PubR } = _Spec} = create_channel_([?SLOGAN|Cfg]),
+    ?LOG(Debug, "I = ~p", [I]),
+    ?LOG(Debug, "R = ~p", [R]),
+    {I1, R1, ContractPubkey} = create_contract(counter, ["42"], 10, I, R, Cfg),
+    {I2, R2} = call_contract(ContractPubkey, counter, "tick", [], 10, I1, R1, Cfg),
+    {ok, I3, R3} = withdraw_(I2, R2, _Amount = 123, Debug, Cfg),
+    I4 = force_progress_(ContractPubkey, counter, "tick", [], 10, I3, Cfg),
+
+    check_info(20),
+    {_, _} = produce_close_mutual_tx(ChannelId, PubI, I4, R3, Cfg, #{}),
     %shutdown_(I2, R2, Cfg),
     ok.
 
@@ -4625,4 +4669,27 @@ produce_close_mutual_tx(ChannelId, FromId, I, R, Cfg, Opts) ->
     ok = rpc(dev1, aec_tx_pool, push, [SignedTx]),
     wait_for_signed_transaction_in_block(dev1, SignedTx, Debug),
     {I1, R1}.
+
+snapshot_solo_(#{fsm := FsmI} = I, R, Opts, Cfg) ->
+    Debug = get_debug(Cfg),
+    assert_empty_msgq(Debug),
+    % Check initial fsm state
+    {IAmt0, RAmt0, _, Round0, _} = FsmState0 = check_fsm_state(FsmI),
+    ?LOG(Debug, "Round0 = ~p, IAmt0 = ~p, RAmt0 = ~p", [Round0, IAmt0, RAmt0]),
+
+    % Perform update and verify flow and reports
+    ok = rpc(dev1, aesc_fsm, snapshot_solo, [FsmI, Opts]),
+    {I1, SignedTx} = await_signing_request(snapshot_solo_tx, I, Cfg),
+    wait_for_signed_transaction_in_block(dev1, SignedTx, Debug),
+    SignedTx = await_channel_changed_report(I1, ?TIMEOUT), % same tx
+    SignedTx = await_channel_changed_report(R, ?TIMEOUT), % same tx
+    ?LOG(Debug, "=== SignedTx = ~p", [SignedTx]),
+    assert_empty_msgq(Debug),
+
+    %% Channel off-chain didn't change
+    {IAmt0, RAmt0, _, Round0, _} = FsmState0 = check_fsm_state(FsmI),
+    ?LOG(Debug, "Round0 = ~p, IAmt0 = ~p, RAmt0 = ~p", [Round0, IAmt0, RAmt0]),
+    % Done
+    assert_empty_msgq(Debug),
+    {ok, I1, R}.
 

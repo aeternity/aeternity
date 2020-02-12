@@ -30,7 +30,8 @@
     sc_ws_close_mutual/1,
     sc_ws_close_solo/1,
     sc_ws_slash/1,
-    sc_ws_force_progress/1,
+    sc_ws_force_progress_based_on_offchain_state/1,
+    sc_ws_force_progress_based_on_onchain_state/1,
     sc_ws_leave_reestablish/1,
     sc_ws_leave_reestablish_wrong_fsm_id/1,
     sc_ws_leave_reestablish_responder_stays/1,
@@ -265,7 +266,8 @@ groups() ->
       , sc_ws_can_not_abort_while_open
       ]},
      {force_progress, [sequence],
-      [ sc_ws_force_progress
+      [ sc_ws_force_progress_based_on_offchain_state
+      , sc_ws_force_progress_based_on_onchain_state
       ]}
     ].
 
@@ -2884,6 +2886,11 @@ assert_no_registered_events(L, Config) ->
 perform_snapshot_solo(Role, Round, Participants, Conns, Config) ->
     perform_snapshot_solo(Role, Round, Participants, Conns, Config, #{}).
 
+perform_snapshot_solo(Role, Config, Params) ->
+    Participants = proplists:get_value(participants, Config),
+    Conns = proplists:get_value(channel_clients, Config),
+    perform_snapshot_solo(Role, no_update, Participants, Conns, Config, Params).
+
 perform_snapshot_solo(Role, Round, Participants, Conns, Config, Params) ->
     #{ priv_key := Privkey } = maps:get(Role, Participants),
     ConnPid = maps:get(Role, Conns),
@@ -5070,16 +5077,41 @@ sc_ws_can_not_abort_while_open(Cfg0) ->
 
 ok({ok, Term}) -> Term.
 
-sc_ws_force_progress(Config0) ->
-    Config = sc_ws_open_(Config0),
-    ContractName = counter,
-    %% create and call some contracts
-    sc_ws_contract_(Config, ContractName, initiator),
-    [ContractPubkey] = contract_ids(Config),
-    {ok, SignedTx} = sc_ws_force_progress_(initiator, ContractPubkey,
-                      ContractName, "tick", [], _Amount = 10, #{}, Config),
-    ct:log("*** Closing ***", []),
-    ok = sc_ws_close_(Config).
+sc_ws_force_progress_based_on_offchain_state(Config0) ->
+    Test =
+        fun(ContractOwner, Forcer) ->
+            Config = sc_ws_open_(Config0),
+            ContractName = counter,
+            %% create and call some contracts
+            sc_ws_contract_(Config, ContractName, ContractOwner),
+            [ContractPubkey] = contract_ids(Config),
+            {ok, _SignedTx} = sc_ws_force_progress_(Forcer, ContractPubkey,
+                              ContractName, "tick", [], _Amount = 10, #{}, Config),
+            ct:log("*** Closing ***", []),
+            ok = sc_ws_close_(Config)
+        end,
+    [Test(ContractOwner, Forcer) || ContractOwner <- ?ROLES
+                                  , Forcer <- ?ROLES],
+    ok.
+
+sc_ws_force_progress_based_on_onchain_state(Config0) ->
+    Test =
+        fun(ContractOwner, Snapshotter, Forcer) ->
+            Config = sc_ws_open_(Config0),
+            ContractName = counter,
+            %% create and call some contracts
+            sc_ws_contract_(Config, ContractName, ContractOwner),
+            perform_snapshot_solo(Snapshotter, Config, #{}),
+            [ContractPubkey] = contract_ids(Config),
+            {ok, _SignedTx} = sc_ws_force_progress_(Forcer, ContractPubkey,
+                              ContractName, "tick", [], _Amount = 10, #{}, Config),
+            ct:log("*** Closing ***", []),
+            ok = sc_ws_close_(Config)
+        end,
+    [Test(ContractOwner, Snapshotter, Forcer) || ContractOwner <- ?ROLES
+                                               , Snapshotter <- ?ROLES
+                                               , Forcer <- ?ROLES],
+    ok.
 
 contract_ids(Config) ->
     #{initiator := IConnPid} = proplists:get_value(channel_clients, Config),
