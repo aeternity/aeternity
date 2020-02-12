@@ -86,31 +86,34 @@
                  | channel_client_reconnect_tx
                  | paying_for_tx.
 
--type tx_instance() :: aec_spend_tx:tx()
-                     | aeo_register_tx:tx()
-                     | aeo_extend_tx:tx()
-                     | aeo_query_tx:tx()
-                     | aeo_response_tx:tx()
-                     | aens_preclaim_tx:tx()
-                     | aens_claim_tx:tx()
-                     | aens_transfer_tx:tx()
-                     | aens_update_tx:tx()
-                     | aens_revoke_tx:tx()
-                     | aect_create_tx:tx()
-                     | aect_call_tx:tx()
-                     | aega_attach_tx:tx()
-                     | aega_meta_tx:tx()
-                     | aesc_create_tx:tx()
-                     | aesc_deposit_tx:tx()
-                     | aesc_withdraw_tx:tx()
-                     | aesc_force_progress_tx:tx()
-                     | aesc_close_mutual_tx:tx()
-                     | aesc_close_solo_tx:tx()
-                     | aesc_slash_tx:tx()
-                     | aesc_settle_tx:tx()
-                     | aesc_snapshot_solo_tx:tx()
-                     | aesc_offchain_tx:tx()
-                     | aec_paying_for_tx:tx().
+%% dialyzer chokes on the following type - 20+ opaque types in a
+%% union is too much apparently :-(
+-type tx_instance() :: term().
+%% -type tx_instance() :: aec_spend_tx:tx()
+%%                      | aeo_register_tx:tx()
+%%                      | aeo_extend_tx:tx()
+%%                      | aeo_query_tx:tx()
+%%                      | aeo_response_tx:tx()
+%%                      | aens_preclaim_tx:tx()
+%%                      | aens_claim_tx:tx()
+%%                      | aens_transfer_tx:tx()
+%%                      | aens_update_tx:tx()
+%%                      | aens_revoke_tx:tx()
+%%                      | aect_create_tx:tx()
+%%                      | aect_call_tx:tx()
+%%                      | aega_attach_tx:tx()
+%%                      | aega_meta_tx:tx()
+%%                      | aesc_create_tx:tx()
+%%                      | aesc_deposit_tx:tx()
+%%                      | aesc_withdraw_tx:tx()
+%%                      | aesc_force_progress_tx:tx()
+%%                      | aesc_close_mutual_tx:tx()
+%%                      | aesc_close_solo_tx:tx()
+%%                      | aesc_slash_tx:tx()
+%%                      | aesc_settle_tx:tx()
+%%                      | aesc_snapshot_solo_tx:tx()
+%%                      | aesc_offchain_tx:tx()
+%%                      | aec_paying_for_tx:tx().
 
 -type tx_ttl() :: 0 | aec_blocks:height().
 %% A transaction TTL is either an absolute block height, or the transaction
