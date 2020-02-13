@@ -1,4 +1,5 @@
 -module(aect_channel_contract).
+-include("../../aecontract/include/hard_forks.hrl").
 -include("../../aecore/include/blocks.hrl").
 -include("aecontract.hrl").
 
@@ -36,7 +37,8 @@ run_new(ContractPubKey, Call, CallData, Trees0, OnChainTrees,
     [error({illegal_vm_version, VmVersion}) || not ?IS_AEVM_SOPHIA(VmVersion) andalso
                                                not ?IS_FATE_SOPHIA(VmVersion)],
     assert_init_function(CallData, VmVersion, Code),
-    {Contract, Trees1} = prepare_init_call(VmVersion, Contract0, Trees0),
+    Protocol = aetx_env:consensus_version(OnChainEnv),
+    {Contract, Trees1} = prepare_init_call(VmVersion, Protocol, Contract0, Trees0),
     Store = aect_contracts:state(Contract),
     CallDef = make_call_def(OwnerPubKey, OwnerPubKey, ContractPubKey,
                             _Gas = 1000000, _GasPrice = 1,
@@ -71,13 +73,19 @@ run_new(ContractPubKey, Call, CallData, Trees0, OnChainTrees,
             erlang:error(contract_init_failed)
     end.
 
-prepare_init_call(VmVersion, Contract, Trees0) when ?IS_FATE_SOPHIA(VmVersion) ->
-    Code = #{ byte_code := ByteCode } = aect_sophia:deserialize(aect_contracts:code(Contract)),
+prepare_init_call(VmVersion, Protocol, Contract, Trees0) when ?IS_FATE_SOPHIA(VmVersion) ->
+    Code = #{ byte_code := ByteCode } = aeser_contract_code:deserialize(aect_contracts:code(Contract)),
     FateCode  = aeb_fate_code:deserialize(ByteCode),
     FateCode1 = aeb_fate_code:strip_init_function(FateCode),
     ByteCode1 = aeb_fate_code:serialize(FateCode1),
     Code1     = Code#{ byte_code := ByteCode1 },
-    SerCode   = aect_sophia:serialize(Code1, 3),
+    %% The serialization was broken in the Lima release - setting the
+    %% compiler version to "unknown" regardless of the actual value.
+    Code2     = case Protocol =< ?LIMA_PROTOCOL_VSN of
+                    true  -> Code1#{ compiler_version => <<"unknown">> };
+                    false -> Code1
+                end,
+    SerCode   = aeser_contract_code:serialize(Code2),
 
     %% Initialize the store before calling INIT
     Store = aefa_stores:initial_contract_store(),
@@ -86,14 +94,21 @@ prepare_init_call(VmVersion, Contract, Trees0) when ?IS_FATE_SOPHIA(VmVersion) -
     ContractsTree0 = aec_trees:contracts(Trees0),
     ContractsTree1 = aect_state_tree:enter_contract(Contract2, ContractsTree0),
     {Contract1, aec_trees:set_contracts(Trees0, ContractsTree1)};
-prepare_init_call(VmVersion, Contract, Trees0) when ?IS_AEVM_SOPHIA(VmVersion), VmVersion >= ?VM_AEVM_SOPHIA_4 ->
-    #{ type_info := TypeInfo } = Code = aect_sophia:deserialize(aect_contracts:code(Contract)),
+prepare_init_call(VmVersion, Protocol, Contract, Trees0)
+  when ?IS_AEVM_SOPHIA(VmVersion), VmVersion >= ?VM_AEVM_SOPHIA_4 ->
+    #{ type_info := TypeInfo } = Code = aeser_contract_code:deserialize(aect_contracts:code(Contract)),
     TypeInfo1 = lists:keydelete(<<"init">>, 2, TypeInfo),
     Code1     = Code#{ type_info := TypeInfo1 },
-    SerCode   = aect_sophia:serialize(Code1, maps:get(contract_vsn, Code)),
+    %% The serialization was broken in the Lima release - setting the
+    %% compiler version to "unknown" regardless of the actual value.
+    Code2     = case Protocol =< ?LIMA_PROTOCOL_VSN of
+                    true  -> Code1#{ compiler_version => <<"unknown">> };
+                    false -> Code1
+                end,
+    SerCode   = aeser_contract_code:serialize(Code2, maps:get(contract_vsn, Code2, 3)),
     Contract1 = aect_contracts:set_code(SerCode, Contract),
     {Contract1, Trees0};
-prepare_init_call(_, Contract, Trees0) ->
+prepare_init_call(_, _, Contract, Trees0) ->
     {Contract, Trees0}.
 
 assert_init_function(CallData, VMVersion,_SerializedCode) when ?IS_FATE_SOPHIA(VMVersion) ->
@@ -104,7 +119,7 @@ assert_init_function(CallData, VMVersion,_SerializedCode) when ?IS_FATE_SOPHIA(V
             error(contract_init_failed)
     end;
 assert_init_function(CallData, VMVersion, SerializedCode) when ?IS_AEVM_SOPHIA(VMVersion) ->
-    try aect_sophia:deserialize(SerializedCode) of
+    try aeser_contract_code:deserialize(SerializedCode) of
         #{type_info := TypeInfo} ->
             case aeb_aevm_abi:get_function_hash_from_calldata(CallData) of
                 {ok, Hash} ->

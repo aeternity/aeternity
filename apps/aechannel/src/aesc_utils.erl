@@ -364,7 +364,7 @@ check_account(FromPK, Payer, Trees, Nonce, Amount, Env) ->
 
 
 check_code_serialization(Code, #{abi := ABI}, Protocol) ->
-    case aect_sophia:deserialize(Code) of
+    case aeser_contract_code:deserialize(Code) of
         Deserialized ->
             case aect_contracts:is_legal_serialization_at_protocol(
                    ABI, maps:get(contract_vsn, Deserialized, 1), Protocol) of
