@@ -168,6 +168,7 @@
         , sophia_bignum/1
         , sophia_call_caller/1
         , sophia_auth_tx/1
+        , sophia_compiler_version/1
         , create_store/1
         , read_store/1
         , store_zero_value/1
@@ -235,6 +236,15 @@
         ?FORTUNA_PROTOCOL_VSN -> ?assertMatch(ExpMinerva, Res);
         ?LIMA_PROTOCOL_VSN    -> ?assertMatch(ExpMinerva, Res);
         ?IRIS_PROTOCOL_VSN    -> ?assertMatch(ExpMinerva, Res)
+    end).
+
+-define(assertMatchProtocol(Res, ExpR, ExpM, ExpF, ExpL, ExpI),
+    case protocol_version() of
+        ?ROMA_PROTOCOL_VSN    -> ?assertMatch(ExpR, Res);
+        ?MINERVA_PROTOCOL_VSN -> ?assertMatch(ExpM, Res);
+        ?FORTUNA_PROTOCOL_VSN -> ?assertMatch(ExpF, Res);
+        ?LIMA_PROTOCOL_VSN    -> ?assertMatch(ExpL, Res);
+        ?IRIS_PROTOCOL_VSN    -> ?assertMatch(ExpI, Res)
     end).
 
 -define(assertMatchAEVM(__Exp, __Res),
@@ -418,6 +428,7 @@ groups() ->
                                  sophia_call_caller,
                                  sophia_higher_order_state,
                                  sophia_use_memory_gas,
+                                 sophia_compiler_version,
                                  lima_migration
                                ]}
     , {sophia_oracles_ttl, [],
@@ -5359,6 +5370,16 @@ sophia_safe_math_old() ->
         ?assertMatch({_, _, _, {A, A}}, {Fun, X, Y, {Exp, Res}})
       end || {Fun, Op} <- Ops, X <- Values, Y <- Values ],
 
+    ok.
+
+sophia_compiler_version(_Cfg) ->
+    state(aect_test_utils:new_state()),
+    Acc = ?call(new_account, 10000000 * aec_test_utils:min_gas_price()),
+    IdC = ?call(create_contract, Acc, identity, {}, #{}),
+    {value, C} = ?call(lookup_contract_by_id, IdC),
+    CMap = aeser_contract_code:deserialize(aect_contracts:code(C)),
+    ?assertMatchProtocol(maps:get(compiler_version, CMap, undefined),
+                         undefined, <<"2.1.0">>, <<"3.2.0">>, <<"unknown">>, <<"4.2.0">>),
     ok.
 
 sophia_aevm_bad_code(_Cfg) ->
