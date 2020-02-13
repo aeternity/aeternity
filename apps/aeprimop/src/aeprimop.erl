@@ -2157,12 +2157,12 @@ timed_contract_call(Type, Fun, CallData, CTVersion) ->
 
     {Call, State}.
 
-process_timed_contract_call(Time, Type, Call, CallData, State,
+process_timed_contract_call(Time, Type, Call, CallData, _State,
                             #{vm := CtVMVsn, abi := CtABIVsn}) ->
     ReturnType = aect_call:return_type(Call),
     GasUsed = aect_call:gas_used(Call),
     CallDataSize = byte_size(CallData),
-    CtPK = aect_call:contract_pubkey(Call),
+    % CtPK = aect_call:contract_pubkey(Call),
     Metrics = [ {gas_used, GasUsed}
               , {execution_time, Time}
               , {call_data_size, CallDataSize}

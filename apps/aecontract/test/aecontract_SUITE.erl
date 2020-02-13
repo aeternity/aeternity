@@ -5887,7 +5887,7 @@ sophia_aens_resolve(Cfg) ->
 
     ok.
 
-sophia_aens_lookup(Cfg) ->
+sophia_aens_lookup(_Cfg) ->
     state(aect_test_utils:new_state()),
     Acc      = ?call(new_account, 40000000000000 * aec_test_utils:min_gas_price()),
     Ct       = ?call(create_contract, Acc, aens_lookup, {}, #{ amount => 20000000000000 * aec_test_utils:min_gas_price() }),
@@ -5895,12 +5895,6 @@ sophia_aens_lookup(Cfg) ->
     Salt1           = rand:uniform(10000),
     {ok, NameAscii} = aens_utils:to_ascii(Name1),
     CHash           = aens_hash:commitment_hash(NameAscii, Salt1),
-    NHash           = aens_hash:name_hash(NameAscii),
-    GetNameRecord   = fun () ->
-                              NSTree = aec_trees:ns(aect_test_utils:trees(state())),
-                              {value, Rec} = aens_state_tree:lookup_name(NHash, NSTree),
-                              Rec
-                      end,
 
     {} = ?call(call_contract, Acc, Ct, preclaim, {tuple, []}, {Ct, ?hsh(CHash)}, #{ height => 10 }),
     %% FATE_SOPHIA_1 had a bug that set TTL for preclaims to 0 - check it is fixed in FATE_SOPHIA_2
