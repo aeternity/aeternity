@@ -1603,7 +1603,7 @@ new_onchain_tx_for_signing_(Type, Opts, OnErr, D, ChannelOpts) ->
                     aetx_env:env(), aec_trees:trees(), map()) ->
     {ok, aetx:tx(), [aesc_offchain_update:update()]} | {error, atom()}.
 new_onchain_tx(channel_close_mutual_tx, #{ acct := From } = Opts,
-               #data{opts = DOpts, on_chain_id = Chan, state = State}, _,
+               #data{opts = DOpts, on_chain_id = Chan, state = State} = D, _,
                OnChainEnv, _, _ChannelOpts) ->
     #{initiator := Initiator,
       responder := Responder} = DOpts,
@@ -1623,7 +1623,7 @@ new_onchain_tx(channel_close_mutual_tx, #{ acct := From } = Opts,
                     , nonce                  => Nonce },
     Height = aetx_env:height(OnChainEnv),
     {ok, InitCloseTx} = new_onchain_tx_(aesc_close_mutual_tx, InitialOpts0,
-                                        Height),
+                                        Height, D),
     Fee = aetx:fee(InitCloseTx),
     case pay_close_mutual_fee(Fee, IAmt, RAmt) of
         {ok, IAmt1, RAmt1} ->
@@ -1637,7 +1637,7 @@ new_onchain_tx(channel_close_mutual_tx, #{ acct := From } = Opts,
     end;
 new_onchain_tx(channel_deposit_tx, #{acct := FromId,
                                      amount := Amount} = Opts,
-               #data{on_chain_id = ChanId, state=State},
+               #data{on_chain_id = ChanId, state=State} = D,
                _BlockHash, OnChainEnv, OnChainTrees, ChannelOpts) ->
     Updates = [ aesc_offchain_update:op_deposit(aeser_id:create(account, FromId), Amount)
               | meta_updates(Opts) ],
@@ -1659,11 +1659,11 @@ new_onchain_tx(channel_deposit_tx, #{acct := FromId,
                               }),
     lager:debug("deposit_tx Opts = ~p", [Opts1]),
     PinnedHeight = aetx_env:height(OnChainEnv),
-    {ok, DepositTx} = new_onchain_tx_(aesc_deposit_tx, Opts1, PinnedHeight),
+    {ok, DepositTx} = new_onchain_tx_(aesc_deposit_tx, Opts1, PinnedHeight, D),
     {ok, DepositTx, Updates};
 new_onchain_tx(channel_withdraw_tx, #{acct := ToId,
                                       amount := Amount} = Opts,
-               #data{on_chain_id = ChanId, state=State},
+               #data{on_chain_id = ChanId, state=State} = D,
                _BlockHash, OnChainEnv, OnChainTrees, ChannelOpts) ->
     Updates = [ aesc_offchain_update:op_withdraw(aeser_id:create(account, ToId), Amount)
               | meta_updates(Opts) ],
@@ -1685,20 +1685,21 @@ new_onchain_tx(channel_withdraw_tx, #{acct := ToId,
                               }),
     lager:debug("withdraw_tx Opts = ~p", [Opts1]),
     PinnedHeight = aetx_env:height(OnChainEnv),
-    {ok, WithdrawTx} = new_onchain_tx_(aesc_withdraw_tx, Opts1, PinnedHeight),
+    {ok, WithdrawTx} = new_onchain_tx_(aesc_withdraw_tx, Opts1, PinnedHeight, D),
     {ok, WithdrawTx, Updates};
 new_onchain_tx(channel_force_progress_tx, #{acct := _Acct} = Opts,
-               _Data, _BlockHash, OnChainEnv, _OnChainTrees, _ChannelOpts) ->
-    Updates = [],
+               D, _BlockHash, OnChainEnv, _OnChainTrees, _ChannelOpts) ->
     lager:debug("force_progress_tx Opts = ~p", [maps:without([offchain_trees],
                                                              Opts)]),
     PinnedHeight = aetx_env:height(OnChainEnv),
-    {ok, FPTx} = new_onchain_tx_(aesc_force_progress_tx, Opts, PinnedHeight),
+    {ok, FPTx} = new_onchain_tx_(aesc_force_progress_tx, Opts, PinnedHeight, D),
+    {channel_force_progress_tx, FP} = aetx:specialize_type(FPTx),
+    Updates = aesc_force_progress_tx:updates(FP),
     {ok, FPTx, Updates};
 new_onchain_tx(channel_create_tx, Opts,
                #data{opts = #{initiator := Initiator,
                               responder := Responder},
-                     state=State},
+                     state=State} = D,
                _BlockHash, OnChainEnv, _OnChainTrees, _ChannelOpts) ->
     StateHash = aesc_offchain_state:hash(State),
     Opts1 = Opts#{ state_hash    => StateHash
@@ -1707,7 +1708,7 @@ new_onchain_tx(channel_create_tx, Opts,
                  },
     lager:debug("create_tx Opts = ~p", [Opts1]),
     PinnedHeight = aetx_env:height(OnChainEnv),
-    {ok, CreateTx} = new_onchain_tx_(aesc_create_tx, Opts1, PinnedHeight),
+    {ok, CreateTx} = new_onchain_tx_(aesc_create_tx, Opts1, PinnedHeight, D),
     {ok, CreateTx, []}; %% no updates
 new_onchain_tx(channel_settle_tx, Opts,
                #data{ opts  = #{initiator := I,
@@ -1727,7 +1728,7 @@ new_onchain_tx(channel_settle_tx, Opts,
                       , responder_amount_final => RAmt
                       , ttl        => TTL},
     PinnedHeight = aetx_env:height(OnChainEnv),
-    {ok, Tx} = new_onchain_tx_(aesc_settle_tx, SlashOpts, PinnedHeight),
+    {ok, Tx} = new_onchain_tx_(aesc_settle_tx, SlashOpts, PinnedHeight, D),
     {ok, Tx, []};
 new_onchain_tx(channel_close_solo_tx, Opts,
                #data{ on_chain_id = ChanId
@@ -1754,7 +1755,7 @@ new_onchain_tx(channel_close_solo_tx, Opts,
                , poi        => Poi
                , ttl        => TTL},
     PinnedHeight = aetx_env:height(OnChainEnv),
-    {ok, Tx} = new_onchain_tx_(aesc_close_solo_tx, Opts1, PinnedHeight),
+    {ok, Tx} = new_onchain_tx_(aesc_close_solo_tx, Opts1, PinnedHeight, D),
     {ok, Tx, []};
 new_onchain_tx(channel_snapshot_solo_tx, Opts,
                #data{ on_chain_id = ChanId
@@ -1775,7 +1776,7 @@ new_onchain_tx(channel_snapshot_solo_tx, Opts,
                              , payload    => Payload
                              , ttl        => TTL },
                     {ok, Tx} = new_onchain_tx_(aesc_snapshot_solo_tx, Opts1,
-                                               PinnedHeight),
+                                               PinnedHeight, D),
                     {ok, Tx, []};
                 false ->
                     {error, already_onchain}
@@ -1801,32 +1802,33 @@ new_onchain_tx(channel_slash_tx, Opts,
               , poi        => Poi
               , ttl        => TTL },
     PinnedHeight = aetx_env:height(OnChainEnv),
-    {ok, Tx} = new_onchain_tx_(aesc_slash_tx, Opts2, PinnedHeight),
+    {ok, Tx} = new_onchain_tx_(aesc_slash_tx, Opts2, PinnedHeight, D),
     {ok, Tx, []}.
 
 -spec new_onchain_tx_(aesc_create_tx | aesc_withdraw_tx | aesc_deposit_tx |
                       aesc_force_progress_tx |
                       aesc_close_solo_tx | aesc_snapshot_solo_tx |
                       aesc_slash_tx | aesc_settle_tx | aesc_close_mutual_tx,
-                      map(), non_neg_integer()) -> {ok, aetx:tx()}.
-new_onchain_tx_(Mod, Opts, CurrHeight) when Mod =:= aesc_create_tx;
-                                            Mod =:= aesc_withdraw_tx;
-                                            Mod =:= aesc_deposit_tx;
-                                            Mod =:= aesc_force_progress_tx;
-                                            Mod =:= aesc_close_solo_tx;
-                                            Mod =:= aesc_snapshot_solo_tx;
-                                            Mod =:= aesc_slash_tx;
-                                            Mod =:= aesc_settle_tx;
-                                            Mod =:= aesc_close_mutual_tx ->
+                      map(), non_neg_integer(),
+                      #data{}) -> {ok, aetx:tx()}.
+new_onchain_tx_(Mod, Opts, CurrHeight, D) when Mod =:= aesc_create_tx;
+                                               Mod =:= aesc_withdraw_tx;
+                                               Mod =:= aesc_deposit_tx;
+                                               Mod =:= aesc_force_progress_tx;
+                                               Mod =:= aesc_close_solo_tx;
+                                               Mod =:= aesc_snapshot_solo_tx;
+                                               Mod =:= aesc_slash_tx;
+                                               Mod =:= aesc_settle_tx;
+                                               Mod =:= aesc_close_mutual_tx ->
     FeeSpecified = maps:is_key(fee, Opts),
     GasPriceSpecified = maps:is_key(gas_price, Opts),
     case FeeSpecified of
         true when not GasPriceSpecified -> %% use preset fee
-            apply(Mod, new, [Opts]);
+            call_callback_new(Mod, Opts, D);
         true when GasPriceSpecified -> %% both fee and gas_price are specified
-            {ok, Tx1} = apply(Mod, new, [Opts]),
+            {ok, Tx1} = call_callback_new(Mod, Opts, D),
             {ok, Tx2} = create_with_minimum_fee(Mod, Opts#{fee => 0}, % gas_price is already in Opts
-                                                CurrHeight),
+                                                CurrHeight, D),
             %% use the tx with the bigger fee
             case aetx:fee(Tx1) > aetx:fee(Tx2) of
                 true -> {ok, Tx1};
@@ -1834,7 +1836,7 @@ new_onchain_tx_(Mod, Opts, CurrHeight) when Mod =:= aesc_create_tx;
             end;
         false ->
             create_with_minimum_fee(Mod, Opts#{fee => 0}, % if gas_price is provided in Opts, it will be used
-                                    CurrHeight)
+                                    CurrHeight, D)
     end.
 
 %% @doc A valid transaction fee is a function on gas required and gas price used
@@ -1850,13 +1852,13 @@ new_onchain_tx_(Mod, Opts, CurrHeight) when Mod =:= aesc_create_tx;
 %% changing the size_gas required for the transaction. Increasing the number
 %% for the fee might result in the transaction requiring even more fee.
 %% That's why we make 5 attempts for computing the minimal fee
-create_with_minimum_fee(Mod, Opts, CurrHeight) ->
-    create_with_minimum_fee(Mod, Opts, CurrHeight, 5).
+create_with_minimum_fee(Mod, Opts, CurrHeight, D) ->
+    create_with_minimum_fee(Mod, Opts, CurrHeight, D, 5).
 
-create_with_minimum_fee(_, _, _, Attempts) when Attempts < 1 ->
+create_with_minimum_fee(_, _, _, _, Attempts) when Attempts < 1 ->
     error(could_not_compute_fee);
-create_with_minimum_fee(Mod, Opts, CurrHeight, Attempts) ->
-    {ok, Tx} = apply(Mod, new, [Opts]),
+create_with_minimum_fee(Mod, Opts, CurrHeight, D, Attempts) ->
+    {ok, Tx} = call_callback_new(Mod, Opts, D),
     MinFee = min_tx_fee(Tx, Opts),
     TxFee = aetx:fee(Tx),
     {_CurrHeight, CurrProtocol} = curr_height_and_protocol(),
@@ -1869,6 +1871,7 @@ create_with_minimum_fee(Mod, Opts, CurrHeight, Attempts) ->
                     {aesc_force_progress_tx, FPTx} =
                         aetx:specialize_callback(Tx),
                     [Update] = aesc_force_progress_tx:updates(FPTx),                    
+                    %DOMAT
                     case aesc_offchain_update:get_gas_price(Update) of
                         {ok, UpdateGasPrice} when UpdateGasPrice >= GasPrice -> %% same gas_price
                             {ok, Tx};
@@ -1877,7 +1880,7 @@ create_with_minimum_fee(Mod, Opts, CurrHeight, Attempts) ->
                             Opts1 =
                                 Opts#{update => aesc_offchain_update:set_gas_price(GasPrice,
                                                                   Update)},
-                            create_with_minimum_fee(Mod, Opts1, CurrHeight, Attempts - 1)
+                            create_with_minimum_fee(Mod, Opts1, CurrHeight, D, Attempts - 1)
                     end;
                 _ ->
                     {ok, Tx}
@@ -1894,7 +1897,7 @@ create_with_minimum_fee(Mod, Opts, CurrHeight, Attempts) ->
                                                                   Update)},
                         Opts1
                 end,
-            create_with_minimum_fee(Mod, Opts2, CurrHeight, Attempts - 1)
+            create_with_minimum_fee(Mod, Opts2, CurrHeight, D, Attempts - 1)
     end.
 
 create_tx_for_signing(#data{opts = #{ initiator        := Initiator
@@ -4378,51 +4381,7 @@ handle_call_(FSMState, {force_progress, Opts}, From,
         {ok, _Other}  -> error(conflicting_accounts);
         error         -> ok
     end,
-    CallStack = maps:get(call_stack, Opts, []),
-    #{contract    := ContractPubKey,
-      abi_version := ABIVersion,
-      amount      := Amount,
-      call_data   := CallData} = Opts,
-    {CurrHeight, CurrProtocol} = curr_height_and_protocol(),
-    DefaultMinGasPrice = max(aec_tx_pool:minimum_miner_gas_price(),
-                             aec_governance:minimum_gas_price(CurrProtocol)),
-    GasPrice = DefaultMinGasPrice * 10, % this will be adjusted
-    Gas = maps:get(gas, Opts, 1000000),
-    Update = aesc_offchain_update:op_call_contract(aeser_id:create(account, FromPub),
-                                                   aeser_id:create(contract, ContractPubKey),
-                                                   ABIVersion, Amount,
-                                                   CallData, CallStack,
-                                                   GasPrice, Gas),
-    Updates = [Update],
-    {OnChainEnv, OnChainTrees} = aetx_env:tx_env_and_trees_from_top(aetx_contract),
-    ActiveProtocol = aetx_env:consensus_version(OnChainEnv),
-    try OffchainTx = aesc_offchain_state:make_update_tx(Updates, State,
-                                                        ChannelId,
-                                                        ActiveProtocol,
-                                                        OnChainTrees, OnChainEnv,
-                                                        channel_reserve(ChannelOpts)),
-        {OffChainRound, SignedTx} = aesc_offchain_state:get_latest_signed_tx(State),
-        {ok, Channel} = aec_chain:get_channel(ChannelId),
-        OnChainRound = aesc_channels:round(Channel),
-        Payload =
-            case OnChainRound =:= OffChainRound of
-                false -> %% base it on an off-chain tx
-                    aetx_sign:serialize_to_binary(SignedTx);
-                true -> % latest on-chain tx
-                    <<>>
-            end,
-        {aesc_offchain_tx, OffTx} = aetx:specialize_callback(OffchainTx),
-        FPOpts =
-            maps:merge(#{ channel_id => aeser_id:create(channel, ChannelId)
-                        , from_id    => aeser_id:create(account, FromPub)
-                        , payload    => Payload
-                        , update     => Update
-                        , state_hash => aesc_offchain_tx:state_hash(OffTx)
-                        , round      => aesc_offchain_tx:round(OffTx)
-                        , offchain_trees =>
-                            aesc_offchain_state:get_latest_trees(State)},
-                       maps:with([nonce, fee, gas_price], Opts)),
-        {ok, FPTx, _Updates, BlockHash} = force_progress_tx_for_signing(FPOpts, D),
+    try {ok, FPTx, Updates, BlockHash} = force_progress_tx_for_signing(Opts, D),
         case request_signing(force_progress_tx, FPTx, Updates, BlockHash, D, defer) of
             {ok, Send, D1, Actions} ->
                 %% reply before sending sig request
@@ -5134,3 +5093,54 @@ channel_reserve(#{channel_reserve := Reserve}) ->
 onchain_persisted_channel_reserve(ChannelPubkey) ->
     {ok, Channel} = aec_chain:get_channel(ChannelPubkey),
     aesc_channels:channel_reserve(Channel).
+
+mk_force_progress_tx(Opts, #data{state = State, opts = ChannelOpts,
+                                 on_chain_id = ChannelPubkey}) ->
+    CallStack = maps:get(call_stack, Opts, []),
+    #{ contract    := ContractPubKey
+     , abi_version := ABIVersion
+     , amount      := Amount
+     , call_data   := CallData
+     , acct        := FromPub } = Opts,
+    GasPrice = maps:get(gas_price, Opts, 1000000000),
+    Gas = maps:get(gas, Opts, 1000000),
+    Update = aesc_offchain_update:op_call_contract(aeser_id:create(account, FromPub),
+                                                   aeser_id:create(contract, ContractPubKey),
+                                                   ABIVersion, Amount,
+                                                   CallData, CallStack,
+                                                   GasPrice, Gas),
+    Updates = [Update],
+    {OnChainEnv, OnChainTrees} = aetx_env:tx_env_and_trees_from_top(aetx_contract),
+    ActiveProtocol = aetx_env:consensus_version(OnChainEnv),
+    OffchainTx = aesc_offchain_state:make_update_tx(Updates, State,
+                                                    ChannelPubkey,
+                                                    ActiveProtocol,
+                                                    OnChainTrees, OnChainEnv,
+                                                    channel_reserve(ChannelOpts)),
+    {OffChainRound, SignedTx} = aesc_offchain_state:get_latest_signed_tx(State),
+    {ok, Channel} = aec_chain:get_channel(ChannelPubkey),
+    OnChainRound = aesc_channels:round(Channel),
+    Payload =
+        case OnChainRound =:= OffChainRound of
+            false -> %% base it on an off-chain tx
+                aetx_sign:serialize_to_binary(SignedTx);
+            true -> % latest on-chain tx
+                <<>>
+        end,
+    {aesc_offchain_tx, OffTx} = aetx:specialize_callback(OffchainTx),
+    FPOpts =
+        maps:merge(#{ channel_id => aeser_id:create(channel, ChannelPubkey)
+                    , from_id    => aeser_id:create(account, FromPub)
+                    , payload    => Payload
+                    , update     => Update
+                    , state_hash => aesc_offchain_tx:state_hash(OffTx)
+                    , round      => aesc_offchain_tx:round(OffTx)
+                    , offchain_trees =>
+                        aesc_offchain_state:get_latest_trees(State)},
+                    maps:with([nonce, fee, gas_price], Opts)),
+    aesc_force_progress_tx:new(FPOpts).
+
+call_callback_new(aesc_force_progress_tx, Opts, D) ->
+    mk_force_progress_tx(Opts, D);
+call_callback_new(Mod, Opts, _) ->
+    apply(Mod, new, [Opts]).
