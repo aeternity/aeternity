@@ -1355,7 +1355,8 @@ aens_preclaim(Arg0, Arg1, Arg2, EngineState) ->
     ?FATE_BYTES(HashBin) = Hash,
     ES2 = check_delegation_signature(aens_preclaim, Pubkey, SignBin, ES1),
     API = aefa_engine_state:chain_api(ES2),
-    case aefa_chain_api:aens_preclaim(Pubkey, HashBin, API) of
+    VmVersion = aefa_engine_state:vm_version(ES2),
+    case aefa_chain_api:aens_preclaim(Pubkey, HashBin, API, VmVersion) of
         {ok, API1} ->
             aefa_engine_state:set_chain_api(API1, ES2);
         {error, What} ->
