@@ -73,6 +73,7 @@
     sc_ws_optional_params_fail_slash/1,
     sc_ws_optional_params_settle/1,
     sc_ws_optional_params_fail_settle/1,
+    sc_ws_optional_params_fail_force_progress/1,
     sc_ws_abort_offchain_update/1,
     sc_ws_abort_deposit/1,
     sc_ws_abort_withdraw/1,
@@ -253,7 +254,8 @@ groups() ->
      {optional_gas_price, [sequence], optional_onchain_params_sequence()},
      {optional_fee_higher_than_gas_price, [sequence], optional_onchain_params_sequence()},
      {optional_fee_lower_than_gas_price, [sequence], optional_onchain_params_sequence()},
-     {optional_nonce, [sequence], optional_onchain_fail_params_sequence()},
+     {optional_nonce, [sequence], [sc_ws_optional_params_fail_force_progress
+                                   | optional_onchain_fail_params_sequence()]},
 
      {abort_updates, [sequence],
       [ sc_ws_abort_offchain_update
@@ -4661,6 +4663,39 @@ sc_ws_optional_params_fail_settle(Cfg0) ->
     sc_ws_optional_params_fail(Cfg0, <<"channels.settle">>, #{},
                                compute, PreAction, PostAction).
 
+sc_ws_optional_params_fail_force_progress(Cfg0) ->
+    ContractName = counter,
+    Function = "tick",
+    Arguments = [],
+    PreAction =
+        %% prepare the channel for slashing
+        fun(_ConnPid, Cfg) ->
+            %% create and call some contracts
+            sc_ws_contract_(Cfg, ContractName, initiator),
+            aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE),
+                                           ?DEFAULT_MIN_DEPTH),
+
+            ok
+        end,
+    PostAction =
+        fun(_Cfg) ->
+            ok
+        end,
+    MakeFPParams =
+        fun(Config) ->
+            [ContractPubkey] = contract_ids(Config),
+            {ok, EncodedData} = encode_call_data(ContractName, Function, Arguments),
+            GasPrice = aec_test_utils:min_gas_price() + rand:uniform(10000),
+            #{ contract_id => aeser_api_encoder:encode(contract_pubkey, ContractPubkey)
+            , abi_version => aect_test_utils:abi_version()
+            , amount      => 10
+            , call_data   => EncodedData
+            , gas_price   => GasPrice}
+        end,
+    sc_ws_optional_params_fail(Cfg0, <<"channels.force_progress">>,
+                               MakeFPParams,
+                               compute, PreAction, PostAction).
+
 sc_ws_optional_params_fail(Cfg0, Action, ActionParams) ->
     sc_ws_optional_params_fail(Cfg0, Action, ActionParams, compute).
 
@@ -4676,7 +4711,7 @@ sc_ws_optional_params_fail(Cfg0, Action, ActionParams, AbortMethod) ->
     sc_ws_optional_params_fail(Cfg0, Action, ActionParams, AbortMethod,
                                PreAction, PostAction).
 
-sc_ws_optional_params_fail(Cfg0, Action, ActionParams, AbortMethod,
+sc_ws_optional_params_fail(Cfg0, Action, ActionParams0, AbortMethod,
                            PreAction, PostAction) ->
     {Opts, CheckFun} = ?config(fee_computation, Cfg0),
     Test =
@@ -4686,6 +4721,11 @@ sc_ws_optional_params_fail(Cfg0, Action, ActionParams, AbortMethod,
             Clients = proplists:get_value(channel_clients, Cfg),
             SenderConnPid = maps:get(Who, Clients),
             PreAction(SenderConnPid, Cfg1),
+            ActionParams =
+                case is_function(ActionParams0) of
+                    true -> ActionParams0(Cfg1);
+                    false -> ActionParams0
+                end,
             with_registered_events([sign], [SenderConnPid],
                 fun() ->
                     ws_send_tagged(SenderConnPid, Action,
@@ -5140,11 +5180,14 @@ sc_ws_force_progress_(Origin, ContractPubkey,
 
     %% force progress
     {ok, EncodedData} = encode_call_data(ContractName, Function, Arguments),
+    %% using random gas_price to check no hardcoded one
+    GasPrice = aec_test_utils:min_gas_price() + rand:uniform(10000),
     FPOpts =
         XOpts#{ contract_id => aeser_api_encoder:encode(contract_pubkey, ContractPubkey)
               , abi_version => aect_test_utils:abi_version()
               , amount      => Amount
-              , call_data   => EncodedData },
+              , call_data   => EncodedData
+              , gas_price   => GasPrice},
 
     {ok, SignedTx}
         = request_and_sign(ConnPid,

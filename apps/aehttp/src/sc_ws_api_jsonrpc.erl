@@ -620,7 +620,8 @@ process_request(#{<<"method">> := <<"channels.force_progress">> = M,
                   <<"params">> := #{<<"contract_id">> := ContractE,
                                     <<"abi_version">> := ABIVersion,
                                     <<"amount">>      := Amount,
-                                    <<"call_data">>   := CallDataE} = Params},
+                                    <<"call_data">>   := CallDataE,
+                                    <<"gas_price">>   := GasPrice} = Params},
                 FsmPid) ->
     lager:debug("Channel WS: force_progress message received", []),
     assert_integer(Amount),
@@ -733,7 +734,7 @@ optional_params(<<"channels.close_solo">>   ) -> onchain_params();
 optional_params(<<"channels.snapshot_solo">>) -> onchain_params();
 optional_params(<<"channels.slash">>        ) -> onchain_params();
 optional_params(<<"channels.settle">>       ) -> onchain_params();
-optional_params(<<"channels.force_progress">>       ) -> onchain_params().
+optional_params(<<"channels.force_progress">>) -> [nonce_param()].
 
 check_optional_params(OptionalKeys, Params) ->
     Read = sc_ws_utils:read_f(Params),
