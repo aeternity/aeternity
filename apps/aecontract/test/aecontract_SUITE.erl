@@ -166,6 +166,7 @@
         , sophia_higher_order_state/1
         , sophia_bignum/1
         , sophia_call_caller/1
+        , sophia_auth_tx/1
         , create_store/1
         , read_store/1
         , store_zero_value/1
@@ -302,6 +303,7 @@ all() ->
                        , sophia_aens_update_transaction
                        , sophia_aens_lookup
                        , sophia_crypto_pairing
+                       , sophia_auth_tx
                        ]).
 
 -define(FATE_TODO, [
@@ -563,9 +565,9 @@ init_per_testcase(TC, Config) when TC == sophia_aens_resolve;
     %% Disable name auction
     meck:expect(aec_governance, name_claim_bid_timeout, fun(_, _) -> 0 end),
     init_per_testcase_common(TC, Config);
-
 init_per_testcase(TC, Config) when TC == sophia_aens_update_transaction;
-                                   TC == sophia_aens_lookup ->
+                                   TC == sophia_aens_lookup;
+                                   TC == sophia_auth_tx ->
     ProtocolVsn = aec_hard_forks:protocol_vsn(?config(protocol, Config)),
     case ProtocolVsn >= ?IRIS_PROTOCOL_VSN of
         true ->
@@ -573,6 +575,12 @@ init_per_testcase(TC, Config) when TC == sophia_aens_update_transaction;
             init_per_testcase_common(TC, Config);
         false ->
             {skip, {requires_protocol, iris, TC}}
+    end;
+init_per_testcase(TC, Config) when TC == sophia_auth_tx ->
+    ProtocolVsn = aec_hard_forks:protocol_vsn(?config(protocol, Config)),
+    case ProtocolVsn >= ?IRIS_PROTOCOL_VSN of
+        true  -> init_per_testcase_common(TC, Config);
+        false -> {skip, {requires_protocol, iris, TC}}
     end;
 
 init_per_testcase(TC, Config) ->
@@ -985,7 +993,15 @@ default_tx_env(Options) ->
     Height = maps:get(height, Options, 1),
     DryRun = maps:get(dry_run, Options, true),
     Env0 = aetx_env:set_beneficiary(aetx_env:tx_env(Height), ?BENEFICIARY_PUBKEY),
-    aetx_env:set_dry_run(Env0, DryRun).
+    Env1 = aetx_env:set_dry_run(Env0, DryRun),
+    case maps:get(ga_tx, Options, undefined) of
+        undefined -> Env1;
+        Tx        ->
+            BinForNetwork = aec_governance:add_network_id(aetx:serialize_to_binary(Tx)),
+            aetx_env:set_ga_tx(
+                aetx_env:set_ga_tx_hash(Env1, aec_hash:hash(tx, BinForNetwork)), Tx)
+    end.
+
 
 %%%===================================================================
 %%% Call contract
@@ -1179,8 +1195,8 @@ call_contract_error_value(_Cfg) ->
     ?assertEqual(Bal(IdC, S4), Bal(IdC, S5)),
     ok.
 
-%% Tests in this test suite are run with `dry-run` set to `true` - i.e.
-%% they will not sanitize the error messages. This means we can test the
+%% By default, tests in this test suite are run with `dry-run` set to `true` -
+%% i.e. they will not sanitize the error messages. This means we can test the
 %% error messages! However, we need to also test that the messages are
 %% sanitized under normal conditions.
 call_contract_error_sanitized(_Cfg) ->
@@ -1705,6 +1721,199 @@ sophia_call_caller(_Cfg) ->
     ?assertEqual(Res3, Res2),
     ?assertEqual(Res4, true),
 
+    ok.
+
+%% Test that the Auth.tx function works properly, in order to do
+%% this we need to pass a ga_tx in Options.
+sophia_auth_tx(_Cfg) ->
+    state(aect_test_utils:new_state()),
+    Acc = ?call(new_account, 10000000000 * aec_test_utils:min_gas_price()),
+    Ct  = ?call(create_contract, Acc, tx_auth, {}),
+
+    true = ?call(call_contract, Acc, Ct, test_no_auth_tx, bool, {}),
+
+    DAcc    = <<1234:256>>,
+    DAccId  = aeser_id:create(account, DAcc),
+    DAcc2   = <<123456:256>>,
+    DAcc2Id = aeser_id:create(account, DAcc2),
+    DOId    = aeser_id:create(oracle, DAcc),
+    DCoId   = aeser_id:create(commitment, DAcc),
+    DNId    = aeser_id:create(name, DAcc),
+    DSId    = aeser_id:create(channel, DAcc),
+    DCId    = aeser_id:create(contract, DAcc),
+
+    {ok, SpendTx} = aec_spend_tx:new(#{ sender_id => DAccId, recipient_id => DAccId, amount => 5,
+                                        fee => 5, nonce => 1, payload => <<"foobarbaz">>, ttl => 5 }),
+    true  = ?call(call_contract, Acc, Ct, test_auth_tx_spend, bool, {DAcc, 5, <<"foobarbaz">>}, #{ga_tx => SpendTx}),
+    false = ?call(call_contract, Acc, Ct, test_auth_tx_spend, bool, {DAcc, 5, <<"">>}, #{ga_tx => SpendTx}),
+
+    {ok, ORegTx} = aeo_register_tx:new(#{account_id => DAccId, nonce => 0, query_format => <<>>,
+                                         abi_version => 1, response_format => <<>>, query_fee => 1,
+                                         oracle_ttl => {block, 1}, fee => 5, ttl => 5 }),
+    true  = ?call(call_contract, Acc, Ct, test_auth_tx_oracle_register, bool, {}, #{ga_tx => ORegTx}),
+    {revert, <<"Incomplete patterns">>} =
+        ?call(call_contract, Acc, Ct, test_auth_tx_oracle_register, bool, {}, #{ga_tx => SpendTx}),
+
+    {ok, OQueryTx} = aeo_query_tx:new(#{sender_id => DAccId, nonce => 0, oracle_id => DOId,
+                                        query => <<>>, query_fee => 5, query_ttl => {delta, 5},
+                                        response_ttl => {delta, 5}, fee => 5, ttl => 5}),
+    true  = ?call(call_contract, Acc, Ct, test_auth_tx_oracle_query, bool, {}, #{ga_tx => OQueryTx}),
+    {revert, <<"Incomplete patterns">>} =
+        ?call(call_contract, Acc, Ct, test_auth_tx_oracle_query, bool, {}, #{ga_tx => SpendTx}),
+
+    {ok, ORespTx} = aeo_response_tx:new(#{oracle_id => DOId, nonce => 0, query_id => DAcc,
+                                          response => <<>>, response_ttl => {delta, 5}, fee => 5, ttl => 5}),
+    true  = ?call(call_contract, Acc, Ct, test_auth_tx_oracle_response, bool, {}, #{ga_tx => ORespTx}),
+    {revert, <<"Incomplete patterns">>} =
+        ?call(call_contract, Acc, Ct, test_auth_tx_oracle_response, bool, {}, #{ga_tx => SpendTx}),
+
+    {ok, OExtTx} = aeo_extend_tx:new(#{oracle_id => DOId, nonce => 0, oracle_ttl => {delta, 5},
+                                       fee => 5, ttl => 5}),
+    true  = ?call(call_contract, Acc, Ct, test_auth_tx_oracle_extend, bool, {}, #{ga_tx => OExtTx}),
+    {revert, <<"Incomplete patterns">>} =
+        ?call(call_contract, Acc, Ct, test_auth_tx_oracle_extend, bool, {}, #{ga_tx => SpendTx}),
+
+    {ok, NPreTx} = aens_preclaim_tx:new(#{account_id => DAccId, nonce => 0, commitment_id => DCoId, fee => 5, ttl => 5}),
+    true  = ?call(call_contract, Acc, Ct, test_auth_tx_name_preclaim, bool, {}, #{ga_tx => NPreTx}),
+    {revert, <<"Incomplete patterns">>} =
+        ?call(call_contract, Acc, Ct, test_auth_tx_name_preclaim, bool, {}, #{ga_tx => SpendTx}),
+
+    {ok, NClaimTx} = aens_claim_tx:new(#{account_id => DAccId, nonce => 0, name => <<"abcdef.chain">>,
+                                         name_salt => 12345, name_fee => 1, fee => 5, ttl => 5}),
+    true  = ?call(call_contract, Acc, Ct, test_auth_tx_name_claim, bool, {<<"abcdef.chain">>}, #{ga_tx => NClaimTx}),
+    false = ?call(call_contract, Acc, Ct, test_auth_tx_name_claim, bool, {<<"foo.chain">>}, #{ga_tx => NClaimTx}),
+
+    {ok, NUpdateTx} = aens_update_tx:new(#{account_id => DAccId, nonce => 0, name_id => DNId, name_ttl => 5,
+                                           pointers => [], client_ttl => 0, fee => 5, ttl => 5}),
+    true  = ?call(call_contract, Acc, Ct, test_auth_tx_name_update, bool, {{bytes, DAcc}}, #{ga_tx => NUpdateTx}),
+    false = ?call(call_contract, Acc, Ct, test_auth_tx_name_update, bool, {{bytes, Acc}}, #{ga_tx => NUpdateTx}),
+
+    {ok, NRevokeTx} = aens_revoke_tx:new(#{account_id => DAccId, nonce => 0, name_id => DNId, fee => 5, ttl => 5}),
+    true  = ?call(call_contract, Acc, Ct, test_auth_tx_name_revoke, bool, {{bytes, DAcc}}, #{ga_tx => NRevokeTx}),
+    false = ?call(call_contract, Acc, Ct, test_auth_tx_name_revoke, bool, {{bytes, Acc}}, #{ga_tx => NRevokeTx}),
+
+    {ok, NTransferTx} = aens_transfer_tx:new(#{account_id => DAccId, nonce => 0, name_id => DNId,
+                                               recipient_id => DAccId, fee => 5, ttl => 5}),
+    true  = ?call(call_contract, Acc, Ct, test_auth_tx_name_transfer, bool, {DAcc, {bytes, DAcc}}, #{ga_tx => NTransferTx}),
+    false = ?call(call_contract, Acc, Ct, test_auth_tx_name_transfer, bool, {Acc, {bytes, Acc}}, #{ga_tx => NTransferTx}),
+
+    {ok, SCreateTx} = aesc_create_tx:new(#{initiator_id => DAccId, initiator_amount => 10, responder_id => DAccId, responder_amount => 10,
+                                           channel_reserve => 5, lock_period => 5, fee => 5, state_hash => <<0:256>>, nonce => 0, ttl => 5}),
+    true  = ?call(call_contract, Acc, Ct, test_auth_tx_channel_create, bool, {DAcc}, #{ga_tx => SCreateTx}),
+    false = ?call(call_contract, Acc, Ct, test_auth_tx_channel_create, bool, {Acc}, #{ga_tx => SCreateTx}),
+
+    {ok, SDepositTx} = aesc_deposit_tx:new(#{channel_id => DSId, from_id => DAccId, amount => 10, fee => 5,
+                                             state_hash => <<0:256>>, round => 1, nonce => 0, ttl => 5}),
+    true  = ?call(call_contract, Acc, Ct, test_auth_tx_channel_deposit, bool, {DAcc, 10}, #{ga_tx => SDepositTx}),
+    false = ?call(call_contract, Acc, Ct, test_auth_tx_channel_deposit, bool, {Acc, 10}, #{ga_tx => SDepositTx}),
+
+    {ok, SWithdrawTx} = aesc_withdraw_tx:new(#{channel_id => DSId, to_id => DAccId, amount => 10, fee => 5,
+                                               state_hash => <<0:256>>, round => 1, nonce => 0, ttl => 5}),
+    true  = ?call(call_contract, Acc, Ct, test_auth_tx_channel_withdraw, bool, {DAcc, 10}, #{ga_tx => SWithdrawTx}),
+    false = ?call(call_contract, Acc, Ct, test_auth_tx_channel_withdraw, bool, {Acc, 10}, #{ga_tx => SWithdrawTx}),
+
+    {ok, SForceProgressTx} = aesc_force_progress_tx:new(#{channel_id => DSId, from_id => DAccId, payload => <<>>,
+                                                          update => {meta, <<>>}, state_hash => <<0:256>>, round => 1,
+                                                          offchain_trees => aec_trees:new(), fee => 5, nonce => 0, ttl => 5}),
+    true  = ?call(call_contract, Acc, Ct, test_auth_tx_channel_force_progress, bool, {DAcc}, #{ga_tx => SForceProgressTx}),
+    false = ?call(call_contract, Acc, Ct, test_auth_tx_channel_force_progress, bool, {Acc}, #{ga_tx => SForceProgressTx}),
+
+    {ok, SCloseMutualTx} = aesc_close_mutual_tx:new(#{channel_id => DSId, from_id => DAccId,
+                                                      initiator_amount_final => 10, responder_amount_final => 10,
+                                                      fee => 5, nonce => 0, ttl => 5}),
+    true  = ?call(call_contract, Acc, Ct, test_auth_tx_channel_close_mutual, bool, {DAcc}, #{ga_tx => SCloseMutualTx}),
+    false = ?call(call_contract, Acc, Ct, test_auth_tx_channel_close_mutual, bool, {Acc}, #{ga_tx => SCloseMutualTx}),
+
+    {ok, SCloseSoloTx} = aesc_close_solo_tx:new(#{channel_id => DSId, from_id => DAccId, payload => <<>>,
+                                                  poi => aec_trees:new_poi(aec_trees:new()), fee => 5, nonce => 0, ttl => 5}),
+    true  = ?call(call_contract, Acc, Ct, test_auth_tx_channel_close_solo, bool, {DAcc}, #{ga_tx => SCloseSoloTx}),
+    false = ?call(call_contract, Acc, Ct, test_auth_tx_channel_close_solo, bool, {Acc}, #{ga_tx => SCloseSoloTx}),
+
+    {ok, SSlashTx} = aesc_slash_tx:new(#{channel_id => DSId, from_id => DAccId, payload => <<>>,
+                                         poi => aec_trees:new_poi(aec_trees:new()), fee => 5, nonce => 0, ttl => 5}),
+    true  = ?call(call_contract, Acc, Ct, test_auth_tx_channel_slash, bool, {DAcc}, #{ga_tx => SSlashTx}),
+    false = ?call(call_contract, Acc, Ct, test_auth_tx_channel_slash, bool, {Acc}, #{ga_tx => SSlashTx}),
+
+    {ok, SSettleTx} = aesc_settle_tx:new(#{channel_id => DSId, from_id => DAccId,
+                                           initiator_amount_final => 10, responder_amount_final => 10,
+                                           fee => 5, nonce => 0, ttl => 5}),
+    true  = ?call(call_contract, Acc, Ct, test_auth_tx_channel_settle, bool, {DAcc}, #{ga_tx => SSettleTx}),
+    false = ?call(call_contract, Acc, Ct, test_auth_tx_channel_settle, bool, {Acc}, #{ga_tx => SSettleTx}),
+
+    {ok, SSnapSoloTx} = aesc_snapshot_solo_tx:new(#{channel_id => DSId, from_id => DAccId, payload => <<>>,
+                                                    fee => 5, nonce => 0, ttl => 5}),
+    true  = ?call(call_contract, Acc, Ct, test_auth_tx_channel_snapshot_solo, bool, {DAcc}, #{ga_tx => SSnapSoloTx}),
+    false = ?call(call_contract, Acc, Ct, test_auth_tx_channel_snapshot_solo, bool, {Acc}, #{ga_tx => SSnapSoloTx}),
+
+    {ok, CCreateTx} = aect_create_tx:new(#{owner_id => DAccId, nonce => 0, code => <<>>, vm_version => 1,
+                                           abi_version => 1, deposit => 0, amount => 1, gas => 1,
+                                           gas_price => 1, call_data => <<>>, fee => 5, ttl => 5}),
+    true  = ?call(call_contract, Acc, Ct, test_auth_tx_contract_create, bool, {1}, #{ga_tx => CCreateTx}),
+    false = ?call(call_contract, Acc, Ct, test_auth_tx_contract_create, bool, {2}, #{ga_tx => CCreateTx}),
+
+    {ok, CCallTx} = aect_call_tx:new(#{caller_id => DAccId, nonce => 0, contract_id => DCId, abi_version => 1,
+                                       fee => 5, amount => 1, gas => 1, gas_price => 1, call_data => <<>>, ttl => 5}),
+    true  = ?call(call_contract, Acc, Ct, test_auth_tx_contract_call, bool, {DAcc, 1}, #{ga_tx => CCallTx}),
+    false = ?call(call_contract, Acc, Ct, test_auth_tx_contract_call, bool, {Acc, 2}, #{ga_tx => CCallTx}),
+
+    {ok, GAAttachTx} = aega_attach_tx:new(#{owner_id => DAccId, nonce => 0, code => <<>>, vm_version => 1,
+                                            abi_version => 1, deposit => 0, gas => 1, auth_fun => <<"auth">>,
+                                            gas_price => 1, call_data => <<>>, fee => 5, ttl => 5}),
+    true  = ?call(call_contract, Acc, Ct, test_auth_tx_ga_attach, bool, {}, #{ga_tx => GAAttachTx}),
+    {revert, <<"Incomplete patterns">>} =
+        ?call(call_contract, Acc, Ct, test_auth_tx_ga_attach, bool, {}, #{ga_tx => SpendTx}),
+
+    Txs = [SpendTx,
+           ORegTx, OQueryTx, ORespTx, OExtTx,
+           NPreTx, NClaimTx, NUpdateTx, NRevokeTx, NTransferTx,
+           SCreateTx, SDepositTx, SWithdrawTx, SForceProgressTx, SCloseMutualTx,
+           SCloseSoloTx, SSlashTx, SSettleTx, SSnapSoloTx,
+           CCreateTx, CCallTx,
+           GAAttachTx
+          ],
+
+    TestTx =
+        fun(F, T, Tx) ->
+            true  = ?call(call_contract, Acc, Ct, test_auth_tx_fee, bool, {F - 1}, #{ga_tx => Tx}),
+            false = ?call(call_contract, Acc, Ct, test_auth_tx_fee, bool, {F}, #{ga_tx => Tx}),
+            true  = ?call(call_contract, Acc, Ct, test_auth_tx_ttl, bool, {T - 1}, #{ga_tx => Tx}),
+            false = ?call(call_contract, Acc, Ct, test_auth_tx_ttl, bool, {T}, #{ga_tx => Tx}),
+            true  = ?call(call_contract, Acc, Ct, test_auth_tx_actor, bool, {DAcc}, #{ga_tx => Tx}),
+            false = ?call(call_contract, Acc, Ct, test_auth_tx_actor, bool, {Acc}, #{ga_tx => Tx})
+        end,
+
+    TestNoWrap =
+        fun(Tx) ->
+            true  = ?call(call_contract, Acc, Ct, test_auth_tx_no_paying_for, bool, {}, #{ga_tx => Tx}),
+            true  = ?call(call_contract, Acc, Ct, test_auth_tx_no_ga_metas, bool, {}, #{ga_tx => Tx})
+        end,
+
+    [ begin TestTx(5, 5, Tx), TestNoWrap(Tx) end || Tx <- Txs ],
+
+    {ok, PayForTx} = aec_paying_for_tx:new(#{payer_id => DAccId, nonce => 0, fee => 7, tx => aetx_sign:new(SpendTx, [])}),
+    true = ?call(call_contract, Acc, Ct, test_auth_tx_paying_for, bool, {DAcc, 7}, #{ga_tx => PayForTx}),
+    true = ?call(call_contract, Acc, Ct, test_auth_tx_spend, bool, {DAcc, 5, <<"foobarbaz">>}, #{ga_tx => PayForTx}),
+    TestTx(5, 5, PayForTx),
+
+    {ok, GAMetaTx} = aega_meta_tx:new(#{ga_id => DAccId, auth_data => <<>>, abi_version => 1, gas => 1,
+                                        gas_price => 1, fee => 7, tx => aetx_sign:new(SpendTx, []), ttl => 9 }),
+    true = ?call(call_contract, Acc, Ct, test_auth_tx_one_ga_metas, bool, {DAcc, 7}, #{ga_tx => GAMetaTx}),
+    true = ?call(call_contract, Acc, Ct, test_auth_tx_spend, bool, {DAcc, 5, <<"foobarbaz">>}, #{ga_tx => GAMetaTx}),
+    TestTx(5, 5, GAMetaTx),
+
+
+    {ok, GAMetaMetaTx} = aega_meta_tx:new(#{ga_id => DAcc2Id, auth_data => <<>>, abi_version => 1, gas => 1,
+                                            gas_price => 1, fee => 8, tx => aetx_sign:new(GAMetaTx, []), ttl => 9 }),
+    true = ?call(call_contract, Acc, Ct, test_auth_tx_two_ga_metas, bool, {DAcc2, 8, DAcc, 7}, #{ga_tx => GAMetaMetaTx}),
+    true = ?call(call_contract, Acc, Ct, test_auth_tx_spend, bool, {DAcc, 5, <<"foobarbaz">>}, #{ga_tx => GAMetaMetaTx}),
+    TestTx(5, 5, GAMetaMetaTx),
+
+    {ok, GAMetaPayForTx} = aega_meta_tx:new(#{ga_id => DAcc2Id, auth_data => <<>>, abi_version => 1, gas => 1,
+                                              gas_price => 1, fee => 8, tx => aetx_sign:new(PayForTx, []), ttl => 9 }),
+    true = ?call(call_contract, Acc, Ct, test_auth_tx_paying_for, bool, {DAcc, 7}, #{ga_tx => GAMetaPayForTx}),
+    true = ?call(call_contract, Acc, Ct, test_auth_tx_one_ga_metas, bool, {DAcc2, 8}, #{ga_tx => GAMetaPayForTx}),
+    true = ?call(call_contract, Acc, Ct, test_auth_tx_spend, bool, {DAcc, 5, <<"foobarbaz">>}, #{ga_tx => GAMetaPayForTx}),
+    TestTx(5, 5, PayForTx),
     ok.
 
 

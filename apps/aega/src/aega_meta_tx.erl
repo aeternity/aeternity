@@ -180,7 +180,7 @@ process(#ga_meta_tx{} = Tx, Trees, Env0) ->
           gas_price(Tx),
           fee(Tx),
           tx(Tx)),
-    Env = add_tx_hash(Env0, aetx_sign:tx(tx(Tx))),
+    Env = add_tx(Env0, aetx_sign:tx(tx(Tx))),
     case aeprimop:eval(AuthInstructions, Trees, Env) of
         {ok, Trees1, Env1} ->
             %% Successful authentication - we have a call object in Trees1
@@ -323,9 +323,10 @@ valid_at_protocol(P, #ga_meta_tx{ tx = SignedTx }) ->
 %%%===================================================================
 %%% Internal functions
 
-add_tx_hash(Env0, Tx) ->
+add_tx(Env0, Tx) ->
     BinForNetwork = aec_governance:add_network_id(aetx:serialize_to_binary(Tx)),
-    aetx_env:set_ga_tx_hash(Env0, aec_hash:hash(tx, BinForNetwork)).
+    aetx_env:set_ga_tx(
+      aetx_env:set_ga_tx_hash(Env0, aec_hash:hash(tx, BinForNetwork)), Tx).
 
 set_ga_context(Env0, Tx) ->
     Env1 = aetx_env:set_context(Env0, aetx_ga),

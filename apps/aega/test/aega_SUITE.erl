@@ -36,6 +36,8 @@
         , basic_contract_call/1
         , basic_minimum_fee/1
 
+        , tx_check/1
+
         , bitcoin_attach/1
         , bitcoin_spend_from/1
         , bitcoin_contract_create/1
@@ -118,6 +120,7 @@ groups() ->
                  ]}
     , {fate, [], [ {group, simple}
                  , {group, basic}
+                 , {group, tx}
                  , {group, bitcoin}
                  , {group, ethereum}
                  , {group, oracle}
@@ -144,6 +147,9 @@ groups() ->
                   , basic_contract_call
                   , basic_minimum_fee
                   ]}
+
+    , {tx, [], [tx_check
+               ]}
 
     , {bitcoin, [], [ bitcoin_attach
                     , bitcoin_spend_from
@@ -206,6 +212,11 @@ init_per_group(ethereum, Cfg) ->
 init_per_group(paying_for, Cfg) ->
     case aect_test_utils:latest_protocol_version() of
         Vsn when Vsn < ?IRIS_PROTOCOL_VSN -> {skip, paying_for_not_pre_iris};
+        _Vsn -> Cfg
+    end;
+init_per_group(tx, Cfg) ->
+    case aect_test_utils:latest_protocol_version() of
+        Vsn when Vsn < ?IRIS_PROTOCOL_VSN -> {skip, tx_introspection_not_pre_iris};
         _Vsn -> Cfg
     end;
 init_per_group(_Grp, Cfg) ->
@@ -478,6 +489,36 @@ basic_minimum_fee(_Cfg) ->
                  ?call(meta, From, AuthOpts2, SpendTx2, #{})),
 
     ok.
+
+%%%===================================================================
+%%% Transaction introspection in authorization function
+%%%===================================================================
+tx_check(_Cfg) ->
+    state(aect_test_utils:new_state()),
+    MinGP = aec_test_utils:min_gas_price(),
+    Acc1 = ?call(new_account, 1000000000 * MinGP),
+    Acc2 = ?call(new_account, 1000000000 * MinGP),
+    {ok, _} = ?call(attach, Acc1, "tx_auth", "authorize", []),
+
+    Auth = fun(N) -> #{ prep_fun => fun(_Tx) -> ?call(tx_auth, Acc1, N) end } end,
+    {ok, #{init_res := ok, ct_pubkey := Ct}} =
+        ?call(ga_create, Acc1, Auth("1"), "identity", []),
+
+    {ok, #{call_res := ok, call_val := Val}} =
+        ?call(ga_call, Acc1, Auth("2"), Ct, "identity", "main", ["42"]),
+    ?assertMatchABI("42", 42, decode_call_result("identity", "main", ok, Val)),
+
+    PreBalance  = ?call(account_balance, Acc2),
+    {ok, #{tx_res := ok}} =
+        ?call(ga_spend, Acc1, Auth("3"), Acc2, 500, 20000 * MinGP),
+    PostBalance = ?call(account_balance, Acc2),
+    ?assertMatch({X, Y} when X + 500 == Y, {PreBalance, PostBalance}),
+
+    %% The auth function require amount > 400
+    {failed, authentication_failed} =
+        ?call(ga_spend, Acc1, Auth("4"), Acc2, 200, 20000 * MinGP, #{fail => true}),
+    ok.
+
 
 %%%===================================================================
 %%% Bitcoin GA tests
@@ -1664,6 +1705,10 @@ decode_call_result(Name0, Fun, Type, Val) ->
 
 simple_auth(Args) ->
     aega_test_utils:make_calldata("simple_auth", "authorize", Args).
+
+tx_auth(_GA, Nonce, S) ->
+    {aega_test_utils:make_calldata("tx_auth", "authorize", [Nonce]), S}.
+
 
 basic_auth(GA, Nonce, TxHash, S) ->
 %%     {GACt, _}  = account_contract(GA, S),

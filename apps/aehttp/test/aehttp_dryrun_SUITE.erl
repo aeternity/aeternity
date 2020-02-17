@@ -16,6 +16,7 @@
 -export([ spend_txs/1
         , identity_contract/1
         , authenticate_contract/1
+        , authenticate_contract_tx/1
         , accounts/1
         ]).
 
@@ -45,6 +46,7 @@ groups() ->
         , identity_contract
         , authenticate_contract
         , accounts
+        , authenticate_contract_tx
         ]}
     ].
 
@@ -167,6 +169,77 @@ identity_contract(Config) ->
 
     {ok, 200, #{ <<"results">> := [#{ <<"result">> := <<"error">> }, #{ <<"result">> := <<"ok">> }] }} =
         dry_run(TopHash, [BadCallTx, CreateTx]),
+
+    ok.
+
+authenticate_contract_tx(Config) ->
+    case aect_test_utils:latest_protocol_version() of
+        ?ROMA_PROTOCOL_VSN    -> {skip, generalized_accounts_not_in_roma};
+        ?MINERVA_PROTOCOL_VSN -> {skip, generalized_accounts_not_in_minerva};
+        ?FORTUNA_PROTOCOL_VSN -> {skip, generalized_accounts_in_dry_run_not_in_fortuna};
+        ?LIMA_PROTOCOL_VSN    -> {skip, generalized_accounts_auth_tx_in_dry_run_not_in_lima};
+        _ -> case aect_test_utils:backend() of
+                 aevm -> {skip, generalized_accounts_auth_tx_not_in_aevm};
+                 fate -> authenticate_contract_tx_(Config)
+             end
+    end.
+
+authenticate_contract_tx_(Config) ->
+    #{acc_a := #{pub_key := APub}} = proplists:get_value(accounts, Config),
+    TopHash = proplists:get_value(top_hash, Config),
+
+    {ok, Code}   = aect_test_utils:compile_contract(tx_auth),
+
+    InitCallData = make_call_data(tx_auth, "init", []),
+    CallCallData1 = make_call_data(tx_auth, "test_no_auth_tx", []),
+    CallCallData2 = make_call_data(tx_auth, "test_auth_tx_spend", [aeser_api_encoder:encode(account_pubkey, APub), "100", "\"hello\""]),
+    {ok, SpendTx} = aec_spend_tx:new(#{ sender_id => aeser_id:create(account, APub),
+                                        recipient_id => aeser_id:create(account, APub),
+                                        amount => 100, fee => 5, nonce => 1, payload => <<"hello">> }),
+
+    CreateTx  = {tx, create_contract_tx(APub, 1, Code, InitCallData)},
+    CPub      = contract_id(element(2, CreateTx)),
+    CallTx    = {tx, call_contract_tx(APub, CPub, 2, CallCallData1)},
+
+    DecodeRes =
+        fun(SerRVal, Type) ->
+            {ok, RValBin} = aeser_api_encoder:safe_decode(contract_bytearray, SerRVal),
+            aefate_test_utils:decode(aeb_fate_encoding:deserialize(RValBin), Type)
+        end,
+
+    {ok, 200, #{ <<"results">> := [_CreateRes,
+                                   #{ <<"result">> := <<"ok">>,
+                                      <<"type">> := <<"contract_call">>,
+                                      <<"call_obj">> := CallObj }
+                                  ] }} =
+        dry_run(TopHash, [CreateTx, CallTx]),
+
+    ?assertEqual(true, DecodeRes(maps:get(<<"return_value">>, CallObj), bool)),
+
+    CallReq  = #{<<"contract">> => aeser_api_encoder:encode(contract_pubkey, CPub),
+                 <<"calldata">> => aeser_api_encoder:encode(contract_bytearray, CallCallData2),
+                 <<"abi_version">> => aect_test_utils:abi_version()},
+    EncSpend = aeser_api_encoder:encode(transaction, aetx:serialize_to_binary(SpendTx)),
+    CallReq1 = {call_req, CallReq#{<<"context">> => #{tx => EncSpend,
+                                                      stateful => true}}},
+    CallReq2 = {call_req, CallReq#{<<"context">> => #{tx => EncSpend,
+                                                      stateful => false},
+                                   <<"nonce">> => 2}},
+    {ok, 200, #{ <<"results">> := [_CreateRes,
+                                   #{ <<"result">> := <<"ok">>,
+                                      <<"type">> := <<"contract_call">>,
+                                      <<"call_obj">> := CallObj2 },
+                                   #{ <<"result">> := <<"ok">>,
+                                      <<"type">> := <<"contract_call">>,
+                                      <<"call_obj">> := CallObj3 },
+                                   #{ <<"result">> := <<"ok">>,
+                                      <<"type">> := <<"contract_call">>,
+                                      <<"call_obj">> := CallObj3 }
+                                  ] }} =
+        dry_run(TopHash, [CreateTx, CallReq1, CallReq2, CallReq2]),
+
+    ?assertEqual(true, DecodeRes(maps:get(<<"return_value">>, CallObj2), bool)),
+    ?assertEqual(true, DecodeRes(maps:get(<<"return_value">>, CallObj3), bool)),
 
     ok.
 

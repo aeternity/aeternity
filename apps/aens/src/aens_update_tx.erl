@@ -29,7 +29,8 @@
         ]).
 
 %% Getters
--export([name_ttl/1,
+-export([name_hash/1,
+         name_ttl/1,
          pointers/1,
          client_ttl/1]).
 
@@ -219,6 +220,7 @@ client_ttl(#ns_update_tx{client_ttl = ClientTTL}) ->
 account_pubkey(#ns_update_tx{account_id = AccountId}) ->
     aeser_id:specialize(AccountId, account).
 
+-spec name_hash(tx()) -> binary().
 name_hash(#ns_update_tx{name_id = NameId}) ->
     aeser_id:specialize(NameId, name).
 

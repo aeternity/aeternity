@@ -159,6 +159,7 @@
         , nop/1
         , unused_1/1
         , unused_2/1
+        , auth_tx/2
         , auth_tx_hash/2
         , bytes_to_int/3
         , bytes_to_str/3
@@ -169,6 +170,10 @@
 -include_lib("aebytecode/include/aeb_fate_data.hrl").
 -include("../../aecontract/include/aecontract.hrl").
 -include("../../aecore/include/blocks.hrl").
+
+-define(AVAILABLE_FROM(When, ES),
+    aefa_engine_state:vm_version(ES) >= When
+        orelse aefa_fate:abort({primop_error, ?FUNCTION_NAME, not_supported}, ES)).
 
 %% ------------------------------------------------------------------------
 %% Operations
@@ -814,6 +819,126 @@ balance(Arg0, EngineState) ->
     {ok, Balance, API1} = aefa_chain_api:account_balance(Pubkey, API),
     write(Arg0, Balance, aefa_engine_state:set_chain_api(API1, EngineState)).
 
+auth_tx(Arg0, EngineState) ->
+    ?AVAILABLE_FROM(?VM_FATE_SOPHIA_2, EngineState),
+    API   = aefa_engine_state:chain_api(EngineState),
+    TxEnv = aefa_chain_api:tx_env(API),
+    {Cells, Val} =
+        case aetx_env:ga_tx(TxEnv) of
+            undefined -> {8, make_none()};
+            Tx        -> make_fate_tx(Tx, EngineState)
+        end,
+    ES1 = aefa_engine_state:spend_gas_for_new_cells(Cells, EngineState),
+    write(Arg0, Val, ES1).
+
+make_fate_tx(Aetx, ES) ->
+    make_fate_tx(Aetx, [], undefined, ES).
+
+make_fate_tx(Aetx, GAMetas, PayFor, ES) ->
+    case aetx:specialize_type(Aetx) of
+        {ga_meta_tx, GAMetaTx} ->
+            GAMeta = #{ actor => aetx:origin(Aetx), fee => aetx:fee(Aetx) },
+            make_fate_tx(aetx_sign:tx(aega_meta_tx:tx(GAMetaTx)), GAMetas ++ [GAMeta], PayFor, ES);
+        {paying_for_tx, PayForTx} ->
+            PayFor1 = #{ actor => aetx:origin(Aetx), fee => aetx:fee(Aetx) },
+            make_fate_tx(aetx_sign:tx(aec_paying_for_tx:tx(PayForTx)), GAMetas, PayFor1, ES);
+        {BaseTxType, BaseTx} ->
+            MkWrapper = fun(PK, F) ->
+                            aeb_fate_data:make_variant([2], 0, {?FATE_ADDRESS(PK), F})
+                        end,
+            {Cells0, FateBaseTx} = make_fate_base_tx(BaseTxType, BaseTx),
+            {Cells1, FatePayFor} =
+                case PayFor of
+                    undefined -> {8, make_none()};
+                    #{ actor := PK, fee := F } ->
+                        {9 + 8 + 4 + 2, %% Some('a) + variant + address + fee
+                         make_some(MkWrapper(PK, F))}
+                end,
+            {Cells2, FateGAMetas} =
+                {length(GAMetas) * (8 + 4 + 2), %% variant + address + fee
+                 [ MkWrapper(PK, F) || #{ actor := PK, fee := F } <- GAMetas ]},
+            Res = ?FATE_TUPLE({FatePayFor, FateGAMetas, ?FATE_ADDRESS(aetx:origin(Aetx)),
+                               aetx:fee(Aetx), aetx:ttl(Aetx), FateBaseTx}),
+            {Cells0 + Cells1 + Cells2 + 6 + 2 + 4 + 2 + 1 + 9, %% 6-tuple + 2, + address + 2 * int + Some('a)
+             make_some(Res)}
+    end.
+
+make_fate_base_tx(BaseTxType, BaseTx) ->
+    Arities = [3, 0, 0, 0, 0, 0, 1, 1, 1, 2, 1, 2, 2, 1, 1, 1, 1, 1, 1, 1, 2, 0],
+    MkVar   = fun(Tag, Args) -> aeb_fate_data:make_variant(Arities, Tag, Args) end,
+    VarGas  = fun(NArgs) -> 2 * length(Arities) + NArgs + 4 end,
+    AddrGas = 4,
+    AmtGas  = 2,
+    case BaseTxType of
+        spend_tx ->
+            {_, Recv} = aeser_id:specialize(aec_spend_tx:recipient_id(BaseTx)),
+            Amount    = aec_spend_tx:amount(BaseTx),
+            Payload   = aec_spend_tx:payload(BaseTx),
+            {VarGas(3) + AddrGas + AmtGas + string_cells(Payload),
+             MkVar(0, {?FATE_ADDRESS(Recv), Amount, ?FATE_STRING(Payload)})};
+
+        oracle_register_tx -> {VarGas(0), MkVar(1, {})};
+        oracle_query_tx    -> {VarGas(0), MkVar(2, {})};
+        oracle_response_tx -> {VarGas(0), MkVar(3, {})};
+        oracle_extend_tx   -> {VarGas(0), MkVar(4, {})};
+
+        name_preclaim_tx   -> {VarGas(0), MkVar(5, {})};
+        name_claim_tx ->
+            Name = aens_claim_tx:name(BaseTx),
+            {VarGas(1) + string_cells(Name), MkVar(6, {?FATE_STRING(Name)})};
+        name_update_tx ->
+            NHash = aens_update_tx:name_hash(BaseTx),
+            {VarGas(1) + AddrGas, MkVar(7, {?FATE_BYTES(NHash)})};
+        name_revoke_tx ->
+            NHash = aens_revoke_tx:name_hash(BaseTx),
+            {VarGas(1) + AddrGas, MkVar(8, {?FATE_BYTES(NHash)})};
+        name_transfer_tx ->
+            To    = aens_transfer_tx:recipient_pubkey(BaseTx),
+            NHash = aens_transfer_tx:name_hash(BaseTx),
+            {VarGas(2) + 2 * AddrGas, MkVar(9, {?FATE_ADDRESS(To), ?FATE_BYTES(NHash)})};
+
+        channel_create_tx ->
+            Other = aesc_create_tx:responder_pubkey(BaseTx),
+            {VarGas(1) + AddrGas, MkVar(10, {?FATE_ADDRESS(Other)})};
+        channel_deposit_tx ->
+            Channel = aesc_deposit_tx:channel_pubkey(BaseTx),
+            Amount  = aesc_deposit_tx:amount(BaseTx),
+            {VarGas(2) + AddrGas + AmtGas, MkVar(11, {?FATE_ADDRESS(Channel), Amount})};
+        channel_withdraw_tx ->
+            Channel = aesc_withdraw_tx:channel_pubkey(BaseTx),
+            Amount  = aesc_withdraw_tx:amount(BaseTx),
+            {VarGas(2) + AddrGas + AmtGas, MkVar(12, {?FATE_ADDRESS(Channel), Amount})};
+        channel_force_progress_tx ->
+            Channel = aesc_force_progress_tx:channel_pubkey(BaseTx),
+            {VarGas(1) + AddrGas, MkVar(13, {?FATE_ADDRESS(Channel)})};
+        channel_close_mutual_tx ->
+            Channel = aesc_close_mutual_tx:channel_pubkey(BaseTx),
+            {VarGas(1) + AddrGas, MkVar(14, {?FATE_ADDRESS(Channel)})};
+        channel_close_solo_tx ->
+            Channel = aesc_close_solo_tx:channel_pubkey(BaseTx),
+            {VarGas(1) + AddrGas, MkVar(15, {?FATE_ADDRESS(Channel)})};
+        channel_slash_tx ->
+            Channel = aesc_slash_tx:channel_pubkey(BaseTx),
+            {VarGas(1) + AddrGas, MkVar(16, {?FATE_ADDRESS(Channel)})};
+        channel_settle_tx ->
+            Channel = aesc_settle_tx:channel_pubkey(BaseTx),
+            {VarGas(1) + AddrGas, MkVar(17, {?FATE_ADDRESS(Channel)})};
+        channel_snapshot_solo_tx ->
+            Channel = aesc_snapshot_solo_tx:channel_pubkey(BaseTx),
+            {VarGas(1) + AddrGas, MkVar(18, {?FATE_ADDRESS(Channel)})};
+
+        contract_create_tx ->
+            Amount = aect_create_tx:amount(BaseTx),
+            {VarGas(1) + AmtGas, MkVar(19, {Amount})};
+        contract_call_tx ->
+            Ct     = aect_call_tx:contract_pubkey(BaseTx),
+            Amount = aect_call_tx:amount(BaseTx),
+            {VarGas(2) + AddrGas + AmtGas, MkVar(20, {?FATE_ADDRESS(Ct), Amount})};
+
+        ga_attach_tx ->
+            {VarGas(0), MkVar(21, {})}
+    end.
+
 auth_tx_hash(Arg0, EngineState) ->
     API   = aefa_engine_state:chain_api(EngineState),
     TxEnv = aefa_chain_api:tx_env(API),
@@ -1217,9 +1342,7 @@ oracle_query_fee(Arg0, Arg1, EngineState) ->
     oracle_get_int_value(oracle_query_fee, Arg0, Arg1, EngineState).
 
 oracle_expiry(Arg0, Arg1, EngineState) ->
-    aefa_engine_state:vm_version(EngineState) >= ?VM_FATE_SOPHIA_2
-        orelse aefa_fate:abort({primop_error, oracle_expiry, not_supported}, EngineState),
-
+    ?AVAILABLE_FROM(?VM_FATE_SOPHIA_2, EngineState),
     oracle_get_int_value(oracle_expiry, Arg0, Arg1, EngineState).
 
 oracle_check(Arg0, Arg1, Arg2, Arg3, EngineState) ->
@@ -1406,8 +1529,7 @@ aens_claim(Arg0, Arg1, Arg2, Arg3, Arg4, EngineState) ->
     end.
 
 aens_lookup(Arg0, Arg1, EngineState) ->
-    aefa_engine_state:vm_version(EngineState) >= ?VM_FATE_SOPHIA_2
-        orelse aefa_fate:abort({primop_error, aens_lookup, not_supported}, EngineState),
+    ?AVAILABLE_FROM(?VM_FATE_SOPHIA_2, EngineState),
 
     {[NameString], ES1} = get_op_args([Arg1], EngineState),
 
@@ -1445,8 +1567,7 @@ mk_fate_pointee(Pt) ->
     end.
 
 aens_update(Arg0, Arg1, Arg2, Arg3, Arg4, Arg5, EngineState) ->
-    aefa_engine_state:vm_version(EngineState) >= ?VM_FATE_SOPHIA_2
-        orelse aefa_fate:abort({primop_error, aens_update, not_supported}, EngineState),
+    ?AVAILABLE_FROM(?VM_FATE_SOPHIA_2, EngineState),
     {[Signature, Owner, NameString, OptTTL, OptClientTTL, OptPointers], ES1} =
         get_op_args([Arg0, Arg1, Arg2, Arg3, Arg4, Arg5], EngineState),
     if
