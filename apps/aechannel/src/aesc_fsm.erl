@@ -236,10 +236,14 @@ upd_call_contract(Fsm, #{contract    := _,
     gen_statem:call(Fsm, {upd_call_contract, Opts#{call_stack => CallStack},
                           execute}).
 
-force_progress(Fsm, #{contract    := _,
-                      abi_version := _,
-                      amount      := Amt,
-                      call_data   := _} = Opts) when is_integer(Amt), Amt >= 0 ->
+force_progress(Fsm, #{ contract    := _
+                     , abi_version := _
+                     , amount      := Amt
+                     , call_data   := _
+                     , gas         := Gas
+                     , gas_price   := GasPrice } = Opts)
+    when is_integer(Amt), Amt >= 0, is_integer(Gas), Gas >= 0,
+         is_integer(GasPrice), GasPrice >= 0 ->
     lager:debug("force_progress(~p)", [Opts]),
     CallStack = maps:get(call_stack, Opts, []),
     gen_statem:call(Fsm, {force_progress, Opts#{call_stack => CallStack}}).
@@ -1871,12 +1875,10 @@ create_with_minimum_fee(Mod, Opts, CurrHeight, D, Attempts) ->
                     {aesc_force_progress_tx, FPTx} =
                         aetx:specialize_callback(Tx),
                     [Update] = aesc_force_progress_tx:updates(FPTx),                    
-                    %DOMAT
                     case aesc_offchain_update:get_gas_price(Update) of
-                        {ok, UpdateGasPrice} when UpdateGasPrice >= GasPrice -> %% same gas_price
+                        {ok, UpdateGasPrice} when UpdateGasPrice >= GasPrice -> %% ok with this gas price
                             {ok, Tx};
                         {ok, _OtherGasPrice} ->
-                            error(deletemeplease),
                             Opts1 =
                                 Opts#{update => aesc_offchain_update:set_gas_price(GasPrice,
                                                                   Update)},
@@ -5101,9 +5103,9 @@ mk_force_progress_tx(Opts, #data{state = State, opts = ChannelOpts,
      , abi_version := ABIVersion
      , amount      := Amount
      , call_data   := CallData
-     , acct        := FromPub } = Opts,
-    GasPrice = maps:get(gas_price, Opts, 1000000000),
-    Gas = maps:get(gas, Opts, 1000000),
+     , acct        := FromPub
+     , gas         := Gas
+     , gas_price   := GasPrice } = Opts,
     Update = aesc_offchain_update:op_call_contract(aeser_id:create(account, FromPub),
                                                    aeser_id:create(contract, ContractPubKey),
                                                    ABIVersion, Amount,
@@ -5136,8 +5138,11 @@ mk_force_progress_tx(Opts, #data{state = State, opts = ChannelOpts,
                     , state_hash => aesc_offchain_tx:state_hash(OffTx)
                     , round      => aesc_offchain_tx:round(OffTx)
                     , offchain_trees =>
-                        aesc_offchain_state:get_latest_trees(State)},
-                    maps:with([nonce, fee, gas_price], Opts)),
+                        aesc_offchain_state:get_latest_trees(State)
+                    , fee        => 0 %% if there is a fee in Opts, it would replace this dummy value
+                    , gas_price  => GasPrice
+                    , gas        => Gas },
+                    maps:with([nonce, fee], Opts)),
     aesc_force_progress_tx:new(FPOpts).
 
 call_callback_new(aesc_force_progress_tx, Opts, D) ->

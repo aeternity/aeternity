@@ -623,9 +623,11 @@ process_request(#{<<"method">> := <<"channels.force_progress">> = M,
                                     <<"call_data">>   := CallDataE,
                                     <<"gas_price">>   := GasPrice} = Params},
                 FsmPid) ->
+    Gas = maps:get(<<"gas">>, Params, 1000000),
     lager:debug("Channel WS: force_progress message received", []),
     assert_integer(Amount),
     assert_integer(ABIVersion),
+    assert_integer(GasPrice),
     case {aeser_api_encoder:safe_decode(contract_pubkey, ContractE),
           bytearray_decode(CallDataE)} of
         {{ok, Contract}, {ok, CallData}} ->
@@ -633,7 +635,9 @@ process_request(#{<<"method">> := <<"channels.force_progress">> = M,
                 #{ contract    => Contract
                  , abi_version => ABIVersion
                  , amount      => Amount
-                 , call_data   => CallData },
+                 , call_data   => CallData
+                 , gas_price   => GasPrice
+                 , gas         => Gas },
             apply_with_optional_params(
               M, MandatoryOpts, Params,
               fun(XOpts) ->

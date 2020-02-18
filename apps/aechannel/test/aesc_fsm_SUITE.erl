@@ -4630,7 +4630,9 @@ force_progress_(ContractId,
     FPArgs = #{ contract    => ContractId
               , abi_version => aect_test_utils:abi_version() 
               , amount      => Amount
-              , call_data   => CallData},
+              , call_data   => CallData
+              , gas         => 1000000
+              , gas_price   => aec_test_utils:min_gas_price() },
     aesc_fsm:force_progress(FsmC, FPArgs),
     {Caller1, SignedTx} = await_signing_request(force_progress_tx, Caller, Cfg),
     wait_for_signed_transaction_in_block(dev1, SignedTx, Debug),
