@@ -4524,7 +4524,9 @@ force_progress_with_failed_onchain(Cfg) ->
     FPArgs = #{ contract    => ContractPubkey
               , abi_version => aect_test_utils:abi_version() 
               , amount      => 10
-              , call_data   => CallData},
+              , call_data   => CallData
+              , gas         => 1000000
+              , gas_price    => aec_test_utils:min_gas_price() },
     ok = rpc(dev1, aesc_fsm, force_progress, [FsmI, FPArgs]),
     basic_spend(initiator, % from
                 initiator, % to
