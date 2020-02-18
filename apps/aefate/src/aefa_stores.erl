@@ -64,6 +64,16 @@
 -define(STORE_KEY_PREFIX, 0).
 -define(STORE_MAP_PREFIX, 1).
 
+-ifdef(TEST).
+-define(ASSERT(Check, Err),
+        case Check of
+            true  -> ok;
+            false -> error({assertion_failed, ?FILE, ?LINE, Err})
+        end).
+-else.
+-define(ASSERT(Check, Err), ok).
+-endif.
+
 -ifdef(DEBUG).
 -define(DEBUG_STORE(S), debug_stores(S)).
 -define(DEBUG_PRINT(Fmt, Args), io:format(Fmt, Args)).
@@ -308,6 +318,8 @@ finalize_entry(Pubkey, Cache = #cache_entry{store = Store}, {Writes, GasLeft}) -
     {Metadata1, Updates} = compute_store_updates(Metadata, Cache),
     ?DEBUG_PRINT("Updates\n  ~p\n", [Updates]),
 
+    ?ASSERT(check_store_updates(Updates), {bad_store_updates, Updates}),
+
     %% Performing the updates writes the necessary changes to the MP trees.
     {Store1, GasLeft1} = perform_store_updates(Metadata, Updates, Metadata1, GasLeft, Store),
     {[{Pubkey, Store1} | Writes], GasLeft1}.
@@ -319,6 +331,16 @@ finalize_entry(Pubkey, Cache = #cache_entry{store = Store}, {Writes, GasLeft}) -
                       | {copy_map,   map_id(), fate_map()}                     %% Create a new map (no inplace update)
                       | {update_map, map_id(), aeb_fate_data:fate_store_map()} %% Update an existing map inplace
                       | {gc_map,     map_id()}.                                %% Garbage collect a map removing all entries
+
+-ifdef(TEST).
+%% Check that if a map is gc'd it's not also updated or copied.
+-spec check_store_updates([store_update()]) -> boolean().
+check_store_updates(Updates) ->
+    GCd     = [ Id || {gc_map, Id} <- Updates ],
+    Copied  = [ Id || {copy_map,   _, ?FATE_STORE_MAP(_, Id)} <- Updates ],
+    Updated = [ Id || {update_map, _, ?FATE_STORE_MAP(_, Id)} <- Updates ],
+    GCd -- (Copied ++ Updated) == GCd.
+-endif.
 
 -spec compute_store_updates(store_meta(), #cache_entry{}) -> {store_meta(), [store_update()]}.
 compute_store_updates(Metadata, #cache_entry{terms = TermCache, store = Store}) ->
@@ -337,10 +359,7 @@ compute_store_updates(Metadata, #cache_entry{terms = TermCache, store = Store}) 
     %% updated inplace (Reuse) and which maps can be garbage collected (Garbage).
     RefCounts = compute_refcounts(NewRegs, Maps, Metadata, Store),
     Metadata1 = update_refcounts(RefCounts, Metadata),
-    Unused    = unused_maps(Metadata1),
-    Reuse     = compute_inplace_updates(Unused, Maps),
-    RefCounts1 = compute_copy_refcounts(Metadata1, Reuse, Maps, Store),
-    Metadata1b = update_refcounts(RefCounts1, Metadata1),
+    {Unused, Reuse, Metadata1b} = compute_reuse_fixpoint(Maps, Metadata1, Store),
     {Garbage, Metadata2} = compute_garbage(Unused, Reuse, Metadata1b, Store),
 
     CopyOrInplace = fun(MapId, ?FATE_STORE_MAP(_, Id) = Map) ->
@@ -363,6 +382,27 @@ compute_store_updates(Metadata, #cache_entry{terms = TermCache, store = Store}) 
                (gc_map)     -> 3 end,
     Compare = fun(A, B) -> Order(element(1, A)) =< Order(element(1, B)) end,
     {Metadata2, lists:sort(Compare, Updates)}.
+
+compute_reuse_fixpoint(Maps, Metadata, Store) ->
+    compute_reuse_fixpoint(unused_maps(Metadata), Maps, Metadata, Store, 100).
+
+compute_reuse_fixpoint(Unused, Maps, Metadata, Store, Fuel) ->
+    Reuse      = compute_inplace_updates(Unused, Maps),
+    RefCounts1 = compute_copy_refcounts(Metadata, Reuse, Maps, Store),
+    Metadata1  = update_refcounts(RefCounts1, Metadata),
+    Unused1    = unused_maps(Metadata1),
+    case Unused1 == Unused of
+        _ when Fuel =< 0 ->
+            ?ASSERT(false, {reuse_fixpoint_out_of_fuel, Metadata, Unused, Maps}),
+            {Unused, Reuse, Metadata1};
+        true  -> {Unused, Reuse, Metadata1};
+        false ->
+            %% NOTE: Metadata and not Metadata1. Reason: compute_copy_refcounts
+            %% will update refcounts assuming no inplace updates have been
+            %% taken into account. So, each iteration of the loop updates the
+            %% original metadata.
+            compute_reuse_fixpoint(Unused1, Maps, Metadata, Store, Fuel - 1)
+    end.
 
 perform_store_updates(OldMeta, [Update|Left], Meta, GasLeft, Store) ->
     ?DEBUG_PRINT("Update: ~p\n", [Update]),
@@ -554,7 +594,13 @@ map_refcounts(_Meta, ?FATE_STORE_MAP(Cache, _Id), _Store) ->
 compute_copy_refcounts(Meta, Reuse, Maps, Store) ->
     maps:fold(fun(MapId, ?FATE_STORE_MAP(Cache, Id), Count) ->
                       case maps:get(Id, Reuse, no_reuse) of
-                          MapId -> Count;   %% Inplace update
+                          MapId ->
+                              %% Subtract refcounts for entries overwritten by the Cache.
+                              ?METADATA(RawId, _RefCount, _Size) = get_map_meta(Id, Meta),
+                              NewKeys = [ aeb_fate_encoding:serialize(Key) || Key <- maps:keys(Cache) ],
+                              OldBin  = maps:with(NewKeys, aect_contracts_store:subtree(map_data_key(RawId), Store)),
+                              Removed = aeb_fate_maps:refcount([ aeb_fate_encoding:deserialize(Val) || Val <- maps:values(OldBin) ]),
+                              aeb_fate_maps:refcount_diff(Count, Removed);
                           _ ->
                               %% Note that we already added refcounts for the Cache.
                               ?METADATA(RawId, _RefCount, _Size) = get_map_meta(Id, Meta),
