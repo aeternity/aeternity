@@ -43,7 +43,7 @@ respond(Port, #{} = Opts0) ->
 %% ==================================================================
 %% Internal functions
 
-init_checks(#{existing_channel_id := ChId, offchain_tx := Tx, role := Role} = Opts)
+init_checks(#{existing_channel_id := ChId, offchain_tx := Tx, role := Role})
   when is_binary(ChId) andalso Tx =/= undefined ->
     Checks = [ fun() -> aesc_checks:known_role(Role) end
              ],

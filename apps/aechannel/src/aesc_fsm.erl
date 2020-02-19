@@ -568,15 +568,13 @@ awaiting_locked(cast, {?WDRAW_ERR, #{error_code := ?ERR_ONCHAIN_REJECTED} = _Msg
                               , respond => false}, D1);
 %% Our FSM is in cheating  mode but the other party rightfully refused the
 %% update. Rollback to correct state
-awaiting_locked(cast, {?DEP_ERR, _} = Msg, #data{ state = State
-                                                , strict_checks = false} = D) ->
+awaiting_locked(cast, {?DEP_ERR, _}, #data{strict_checks = false} = D) ->
     handle_recoverable_error(#{ code => ?ERR_CONFLICT
                               , respond => false
                               , msg_type => ?DEP_SIGNED }, D, []);
 %% Our FSM is in cheating  mode but the other party rightfully refused the
 %% update. Rollback to correct state
-awaiting_locked(cast, {?WDRAW_ERR, _} = Msg, #data{ state = State
-                                                  , strict_checks = false} = D) ->
+awaiting_locked(cast, {?WDRAW_ERR, _}, #data{strict_checks = false} = D) ->
     handle_recoverable_error(#{ code => ?ERR_CONFLICT
                               , respond => false
                               , msg_type => ?WDRAW_SIGNED }, D, []);
@@ -1896,8 +1894,7 @@ create_with_minimum_fee(Mod, Opts, CurrHeight, D, Attempts) ->
                                      %% the update as well
                         Opts1#{update =>
                                aesc_offchain_update:set_gas_price(GasPrice,
-                                                                  Update)},
-                        Opts1
+                                                                  Update)}
                 end,
             create_with_minimum_fee(Mod, Opts2, CurrHeight, D, Attempts - 1)
     end.
@@ -2168,14 +2165,13 @@ check_funding_created_msg(#{ temporary_channel_id := ChanId
                            , data                 := #{ tx      := TxBin
                                                       , updates := UpdatesBin }} = Msg
                            , #data{ state = State
-                                  , opts = Opts
                                   , channel_id = ChanId } = Data) ->
     Updates = [aesc_offchain_update:deserialize(U) || U <- UpdatesBin],
     try SignedTx = aetx_sign:deserialize_from_binary(TxBin),
         Checks =
             [ fun() -> verify_signatures_channel_create(SignedTx, initiator) end,
               fun() -> check_block_hash(BlockHash, Data) end,
-              fun() -> check_update_tx_initial(SignedTx, Updates, State, Opts) end
+              fun() -> check_update_tx_initial(SignedTx, Updates, State) end
             ],
         case aeu_validation:run(Checks) of
             ok ->
@@ -2583,7 +2579,7 @@ check_signed_update_tx(SignedTx, Updates, BlockHash, #data{} = D) ->
         {error, invalid_update_ack}
     end.
 
-check_update_tx_initial(SignedTx, Updates, State, Opts) ->
+check_update_tx_initial(SignedTx, Updates, State) ->
     aesc_offchain_state:check_initial_update_tx(SignedTx, Updates, State).
 
 check_update_tx(SignedTx, Updates, BlockHash, State, Opts, ChannelPubkey) ->
@@ -3498,11 +3494,11 @@ check_state_hash(Mod, Tx, StateHash) ->
 maybe_check_sigs_create(_, _, _, NextState, #data{strict_checks = false}) ->
     lager:debug("strict_checks = false", []),
     NextState();
-maybe_check_sigs_create(Tx, Updates, Who, NextState, #data{state = State, opts = Opts} = D) ->
+maybe_check_sigs_create(Tx, Updates, Who, NextState, #data{state = State} = D) ->
     CheckSigs =
         case verify_signatures_channel_create(Tx, Who) of
             ok ->
-                case check_update_tx_initial(Tx, Updates, State, Opts) of
+                case check_update_tx_initial(Tx, Updates, State) of
                     ok -> true;
                     {error, E} -> {false, E}
                 end;
@@ -4373,8 +4369,7 @@ handle_call_(open, {upd_create_contract, Opts}, From, #data{} = D) ->
     end,
     new_contract_tx_for_signing(Opts#{owner => FromPub}, From, D);
 handle_call_(FSMState, {force_progress, Opts}, From,
-             #data{state=State, opts = ChannelOpts,
-                   on_chain_id = ChannelId} = D)
+             #data{on_chain_id = ChannelId} = D)
     when ChannelId =/= undefined andalso (FSMState =:= open orelse
                                           FSMState =:= channel_closing) ->
     FromPub = my_account(D),

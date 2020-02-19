@@ -4528,17 +4528,19 @@ sc_ws_optional_params_fail_create(Cfg0) ->
            "RChanOpts = ~p~n", [IChanOpts, RChanOpts]),
     %% We need to register for some events as soon as possible - otherwise a race may occur where
     %% some fsm messages are missed
-    {ok, IConnPid, IFsmId} = channel_ws_start(initiator,
-                                           maps:put(host, <<"localhost">>, IChanOpts), Config, TestEvents),
+    {ok, IConnPid, _IFsmId} =
+        channel_ws_start(initiator, maps:put(host, <<"localhost">>, IChanOpts),
+                         Config, TestEvents),
     ct:log("initiator spawned", []),
 
-    {ok, RConnPid, RFsmId} = channel_ws_start(responder, RChanOpts, Config, TestEvents),
+    {ok, RConnPid, _RFsmId} = channel_ws_start(responder, RChanOpts, Config, TestEvents),
     ct:log("responder spawned", []),
 
     channel_send_conn_open_infos(RConnPid, IConnPid, Config),
 
-    {ok, _, Tag, #{<<"signed_tx">> := EncSignedTx,
-                   <<"updates">>   := Updates}} = wait_for_channel_event(IConnPid, sign, Config),
+    {ok, _, _Tag, #{<<"signed_tx">> := EncSignedTx,
+                    <<"updates">>   := _Updates}} =
+        wait_for_channel_event(IConnPid, sign, Config),
     SignedCrTx = aetx_sign:deserialize_from_binary(
                    ok(aeser_api_encoder:safe_decode(transaction, EncSignedTx))),
     CheckFun(SignedCrTx),
@@ -5168,7 +5170,7 @@ sc_ws_force_progress_(Origin, ContractPubkey,
      , initiator  := IConnPid
      , responder  := RConnPid } = Clients
         = proplists:get_value(channel_clients, Config),
-    #{pub_key := SenderPubkey,
+    #{pub_key := _SenderPubkey,
       priv_key:= SenderPrivkey} = maps:get(Origin, Participants),
     ConnPid = maps:get(Origin, Clients),
     ok = ?WS:register_test_for_channel_events(IConnPid, [on_chain_tx]),
