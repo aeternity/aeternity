@@ -35,97 +35,13 @@ is_legal_serialization_at_protocol(?SOPHIA_CONTRACT_VSN_2, Protocol) ->
 is_legal_serialization_at_protocol(?SOPHIA_CONTRACT_VSN_3, Protocol) ->
     Protocol >= ?LIMA_PROTOCOL_VSN.
 
+-spec serialize(map(), non_neg_integer()) -> binary().
 serialize(CodeMap, SophiaContractVsn) ->
-    case CodeMap of
-        #{ source_hash := _ } ->
-            serialize_(CodeMap, SophiaContractVsn);
-        #{ contract_source := ContractString } ->
-            SourceHash = aec_hash:hash(sophia_source_code, list_to_binary(ContractString)),
-            serialize_(CodeMap#{ source_hash => SourceHash }, SophiaContractVsn)
-    end.
-
-serialize_(CompiledCode = #{ byte_code := ByteCode
-                           , type_info := TypeInfo
-                           , source_hash := SourceHash }, SophiaContractVersion) ->
-    Version    = maps:get(version, CompiledCode, <<"unknown">>),
-    BinVersion = if is_integer(Version) -> integer_to_binary(Version);
-                    is_binary(Version) -> Version
-                 end,
-    Fields = [ {source_hash, SourceHash}
-             , {type_info, TypeInfo}
-             , {byte_code, ByteCode} ] ++
-             [ {compiler_version, BinVersion}
-               || SophiaContractVersion > ?SOPHIA_CONTRACT_VSN_1 ] ++
-             [ {payable, maps:get(payable, CompiledCode)}
-               || SophiaContractVersion > ?SOPHIA_CONTRACT_VSN_2 ],
-    aeser_chain_objects:serialize(compiler_sophia,
-                                       SophiaContractVersion,
-                                       serialization_template(SophiaContractVersion),
-                                       Fields
-                                      ).
-
+    aeser_contract_code:serialize(CodeMap, SophiaContractVsn).
 
 -spec deserialize(binary()) -> wrapped_code().
 deserialize(Binary) ->
-    case aeser_chain_objects:deserialize_type_and_vsn(Binary) of
-        {compiler_sophia = Type, ?SOPHIA_CONTRACT_VSN_1 = Vsn, _Rest} ->
-            Template = serialization_template(Vsn),
-            [ {source_hash, Hash}
-            , {type_info, TypeInfo}
-            , {byte_code, ByteCode}
-            ] = aeser_chain_objects:deserialize(Type, Vsn, Template, Binary),
-            #{ source_hash => Hash
-             , type_info => TypeInfo
-             , byte_code => ByteCode
-             , contract_vsn => Vsn
-             , payable => true
-             };
-        {compiler_sophia = Type, ?SOPHIA_CONTRACT_VSN_2 = Vsn, _Rest} ->
-            Template = serialization_template(Vsn),
-            [ {source_hash, Hash}
-            , {type_info, TypeInfo}
-            , {byte_code, ByteCode}
-            , {compiler_version, CompilerVersion}
-            ] = aeser_chain_objects:deserialize(Type, Vsn, Template, Binary),
-            #{ source_hash => Hash
-             , type_info => TypeInfo
-             , byte_code => ByteCode
-             , compiler_version => CompilerVersion
-             , contract_vsn => Vsn
-             , payable => true
-             };
-        {compiler_sophia = Type, ?SOPHIA_CONTRACT_VSN_3 = Vsn, _Rest} ->
-            Template = serialization_template(Vsn),
-            [ {source_hash, Hash}
-            , {type_info, TypeInfo}
-            , {byte_code, ByteCode}
-            , {compiler_version, CompilerVersion}
-            , {payable, Payable}
-            ] = aeser_chain_objects:deserialize(Type, Vsn, Template, Binary),
-            #{ source_hash => Hash
-             , type_info => TypeInfo
-             , byte_code => ByteCode
-             , compiler_version => CompilerVersion
-             , contract_vsn => Vsn
-             , payable => Payable
-             };
-        Other ->
-            error({illegal_code_object, Other})
-    end.
-
-serialization_template(?SOPHIA_CONTRACT_VSN_1) ->
-    [ {source_hash, binary}
-    , {type_info, [{binary, binary, binary, binary}]} %% {type hash, name, arg type, out type}
-    , {byte_code, binary} ];
-serialization_template(?SOPHIA_CONTRACT_VSN_2) ->
-    serialization_template(?SOPHIA_CONTRACT_VSN_1) ++
-        [ {compiler_version, binary} ];
-serialization_template(?SOPHIA_CONTRACT_VSN_3) ->
-    [ {source_hash, binary}
-    , {type_info, [{binary, binary, bool, binary, binary}]} %% {type hash, name, payable, arg type, out type}
-    , {byte_code, binary}
-    , {compiler_version, binary}
-    , {payable, bool} ].
+    aeser_contract_code:deserialize(Binary).
 
 prepare_for_json(word, Integer) when is_integer(Integer) ->
     #{ <<"type">> => <<"word">>,

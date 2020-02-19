@@ -1453,7 +1453,7 @@ init_contract(Context, OwnerId, Code, Contract, GasLimit, GasPrice, CallData,
 
 %% Prepare 2 contracts, one for the InitCall and one (without the init
 %% function) to store on chain.
-prepare_init_call(Code, Contract, S) ->
+prepare_init_call(Code, Contract, S = #state{protocol = Protocol}) ->
     case aect_contracts:ct_version(Contract) of
         #{vm := V} when ?IS_FATE_SOPHIA(V) ->
             #{ byte_code := ByteCode } = Code,
@@ -1461,7 +1461,13 @@ prepare_init_call(Code, Contract, S) ->
             FateCode1 = aeb_fate_code:strip_init_function(FateCode),
             ByteCode1 = aeb_fate_code:serialize(FateCode1),
             Code1     = Code#{ byte_code := ByteCode1 },
-            SerCode   = aect_sophia:serialize(Code1, 3),
+            %% The serialization was broken in the Lima release - setting the
+            %% compiler version to "unknown" regardless of the actual value.
+            Code2     = case Protocol =< ?LIMA_PROTOCOL_VSN of
+                            true  -> Code1#{ compiler_version := <<"unknown">> };
+                            false -> Code1
+                        end,
+            SerCode   = aeser_contract_code:serialize(Code2),
 
             %% In FATE we need to set up the store before the init call. This
             %% is because the FATE init function writes to the store explicitly
@@ -1476,7 +1482,13 @@ prepare_init_call(Code, Contract, S) ->
             #{ type_info := TypeInfo } = Code,
             TypeInfo1 = lists:keydelete(<<"init">>, 2, TypeInfo),
             Code1     = Code#{ type_info := TypeInfo1 },
-            SerCode   = aect_sophia:serialize(Code1, 3),
+            %% The serialization was broken in the Lima release - setting the
+            %% compiler version to "unknown" regardless of the actual value.
+            Code2     = case Protocol =< ?LIMA_PROTOCOL_VSN of
+                            true  -> Code1#{ compiler_version := <<"unknown">> };
+                            false -> Code1
+                        end,
+            SerCode   = aeser_contract_code:serialize(Code2),
             Contract1 = aect_contracts:set_code(SerCode, Contract),
             {Contract, Contract1, S};
         _ ->
@@ -1945,7 +1957,7 @@ assert_name_claimed(Name) ->
 assert_ga_attach_byte_code(ABIVersion, SerializedCode, CallData, FunHash, #state{protocol = Protocol})
   when ABIVersion =:= ?ABI_AEVM_SOPHIA_1;
        ABIVersion =:= ?ABI_FATE_SOPHIA_1 ->
-    try aect_sophia:deserialize(SerializedCode) of
+    try aeser_contract_code:deserialize(SerializedCode) of
         #{type_info := TypeInfo, contract_vsn := Vsn, byte_code := ByteCode} = Code ->
             case aect_sophia:is_legal_serialization_at_protocol(Vsn, Protocol) of
                 true ->
@@ -1961,7 +1973,7 @@ assert_ga_attach_byte_code(ABIVersion, SerializedCode, CallData, FunHash, #state
 assert_contract_byte_code(ABIVersion, SerializedCode, CallData, #state{protocol = Protocol})
   when ABIVersion =:= ?ABI_AEVM_SOPHIA_1;
        ABIVersion =:= ?ABI_FATE_SOPHIA_1 ->
-    try aect_sophia:deserialize(SerializedCode) of
+    try aeser_contract_code:deserialize(SerializedCode) of
         #{contract_vsn := Vsn} = Code ->
             case aect_sophia:is_legal_serialization_at_protocol(Vsn, Protocol) of
                 true ->
@@ -2157,12 +2169,12 @@ timed_contract_call(Type, Fun, CallData, CTVersion) ->
 
     {Call, State}.
 
-process_timed_contract_call(Time, Type, Call, CallData, State,
+process_timed_contract_call(Time, Type, Call, CallData, _State,
                             #{vm := CtVMVsn, abi := CtABIVsn}) ->
     ReturnType = aect_call:return_type(Call),
     GasUsed = aect_call:gas_used(Call),
     CallDataSize = byte_size(CallData),
-    CtPK = aect_call:contract_pubkey(Call),
+    % CtPK = aect_call:contract_pubkey(Call),
     Metrics = [ {gas_used, GasUsed}
               , {execution_time, Time}
               , {call_data_size, CallDataSize}
