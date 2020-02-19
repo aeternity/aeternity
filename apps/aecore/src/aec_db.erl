@@ -811,6 +811,9 @@ handle_table_errors(Tables, Mode, [{missing_table, aec_signal_count = Table} | T
 handle_table_errors(Tables, Mode, [{missing_table, aesc_state_cache_v2} | Tl]) ->
     aesc_db:create_tables(Mode),
     handle_table_errors(Tables, Mode, Tl);
+handle_table_errors(Tables, Mode, [{callback, {Mod, Fun, Args}} | Tl]) ->
+    apply(Mod, Fun, Args),
+    handle_table_errors(Tables, Mode, Tl);
 handle_table_errors(_Tables, _Mode, Errors) ->
     lager:error("Database check failed: ~p", [Errors]),
     erlang:error({table_check, Errors}).
