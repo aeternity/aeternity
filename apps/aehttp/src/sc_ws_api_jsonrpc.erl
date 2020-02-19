@@ -38,7 +38,10 @@
                                Method =:= <<"channels.slash_tx">>;
                                Method =:= <<"channels.slash_sign">>;
                                Method =:= <<"channels.settle_tx">>;
-                               Method =:= <<"channels.settle_sign">>).
+                               Method =:= <<"channels.settle_sign">>;
+                               Method =:= <<"channels.force_progress_tx">>;
+                               Method =:= <<"channels.force_progress_sign">>
+                               ).
 -define(METHOD_TAG(Method), case Method of
                                 <<"channels.initiator_sign">>     -> create_tx;
                                 <<"channels.deposit_tx">>         -> deposit_tx;
@@ -58,7 +61,9 @@
                                 <<"channels.slash_tx">>           -> slash_tx;
                                 <<"channels.slash_sign">>         -> slash_tx;
                                 <<"channels.settle_tx">>          -> settle_tx;
-                                <<"channels.settle_sign">>        -> settle_tx
+                                <<"channels.settle_sign">>        -> settle_tx;
+                                <<"channels.force_progress_tx">>  -> force_progress_tx;
+                                <<"channels.force_progress_sign">>-> force_progress_tx
                             end).
 
 -include_lib("aeutils/include/aeu_stacktrace.hrl").
@@ -611,6 +616,36 @@ process_request(#{<<"method">> := <<"channels.settle">> = M} = Req, FsmPid) ->
       fun(XOpts) ->
               aesc_fsm:settle(FsmPid, XOpts)
       end);
+process_request(#{<<"method">> := <<"channels.force_progress">> = M,
+                  <<"params">> := #{<<"contract_id">> := ContractE,
+                                    <<"abi_version">> := ABIVersion,
+                                    <<"amount">>      := Amount,
+                                    <<"call_data">>   := CallDataE,
+                                    <<"gas_price">>   := GasPrice} = Params},
+                FsmPid) ->
+    Gas = maps:get(<<"gas">>, Params, 1000000),
+    lager:debug("Channel WS: force_progress message received", []),
+    assert_integer(Amount),
+    assert_integer(ABIVersion),
+    assert_integer(GasPrice),
+    case {aeser_api_encoder:safe_decode(contract_pubkey, ContractE),
+          bytearray_decode(CallDataE)} of
+        {{ok, Contract}, {ok, CallData}} ->
+            MandatoryOpts =
+                #{ contract    => Contract
+                 , abi_version => ABIVersion
+                 , amount      => Amount
+                 , call_data   => CallData
+                 , gas_price   => GasPrice
+                 , gas         => Gas },
+            apply_with_optional_params(
+              M, MandatoryOpts, Params,
+              fun(XOpts) ->
+                      lager:debug("force_progress params (~p)", [XOpts]),
+                      aesc_fsm:force_progress(FsmPid, XOpts)
+              end);
+        _ -> {error, {broken_encoding, [account]}}
+    end;
 process_request(#{<<"method">> := _} = Unhandled, _FsmPid) ->
     lager:warning("Channel WS: unhandled action received ~p", [Unhandled]),
     {error, unhandled};
@@ -702,7 +737,8 @@ optional_params(<<"channels.shutdown">>     ) -> onchain_params();
 optional_params(<<"channels.close_solo">>   ) -> onchain_params();
 optional_params(<<"channels.snapshot_solo">>) -> onchain_params();
 optional_params(<<"channels.slash">>        ) -> onchain_params();
-optional_params(<<"channels.settle">>       ) -> onchain_params().
+optional_params(<<"channels.settle">>       ) -> onchain_params();
+optional_params(<<"channels.force_progress">>) -> [nonce_param()].
 
 check_optional_params(OptionalKeys, Params) ->
     Read = sc_ws_utils:read_f(Params),

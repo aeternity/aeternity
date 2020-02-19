@@ -75,6 +75,7 @@
 -define(WATCH_WDRAW, withdraw).
 -define(WATCH_CLOSED, closed).
 -define(WATCH_SNAPSHOT_SOLO, snapshot_solo).
+-define(WATCH_FORCE_PROGRESS, force_progress_tx).
 -define(MIN_DEPTH, min_depth).
 
 -define(NO_OP, no_op).
@@ -193,6 +194,7 @@
                   | slash_tx
                   | deposit_tx
                   | withdraw_tx
+                  | force_progress_tx
                   | snapshot_solo_tx
                   | close_solo_tx
                   | settle_tx
@@ -283,6 +285,7 @@
 -define(CANCEL_SIGN_TAGS, [ slash_tx
                           , deposit_tx
                           , withdraw_tx
+                          , force_progress_tx
                           , snapshot_solo_tx
                           , close_solo_tx
                           , settle_tx

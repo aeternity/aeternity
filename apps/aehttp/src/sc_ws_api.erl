@@ -166,7 +166,8 @@ process_fsm_(#{type := sign,
                                    orelse Tag =:= update_ack
                                    orelse Tag =:= slash_tx
                                    orelse Tag =:= close_solo_tx
-                                   orelse Tag =:= settle_tx ->
+                                   orelse Tag =:= settle_tx
+                                   orelse Tag =:= force_progress_tx ->
     EncTx = aeser_api_encoder:encode(transaction,
                                      aetx_sign:serialize_to_binary(STx)),
     SerializedUpdates = [aesc_offchain_update:for_client(U) || U <- Updates],

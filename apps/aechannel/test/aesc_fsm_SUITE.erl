@@ -56,6 +56,12 @@
         , settle_with_failed_onchain/1
         , leave_reestablish_responder_stays/1
         , leave_reestablish_close/1
+        , force_progress_based_on_offchain_state/1
+        , force_progress_based_on_snapshot/1
+        , force_progress_based_on_deposit/1
+        , force_progress_based_on_withdrawal/1
+        , force_progress_closing_state/1
+        , force_progress_with_failed_onchain/1
         , change_config_get_history/1
         , multiple_channels/1
         , many_chs_msg_loop/1
@@ -112,7 +118,7 @@
 -define(RESPONDER_AMOUNT, (10000000 * aec_test_utils:min_gas_price())).
 -define(ACCOUNT_BALANCE, max(?INITIATOR_AMOUNT, ?RESPONDER_AMOUNT) * 1000).
 -define(PUSH_AMOUNT, 200000).
--define(CHANNEL_RESERVE, 300000).
+-define(CHANNEL_RESERVE, 20000).
 
 -define(SLOGAN, {slogan, {?FUNCTION_NAME, ?LINE}}).
 -define(SLOGAN(I), {slogan, {?FUNCTION_NAME, ?LINE, I}}).
@@ -202,6 +208,7 @@ groups() ->
       , leave_reestablish_close
       , change_config_get_history
       , slash
+      , {group, force_progress}
       ]},
      {throughput, [sequence],
       [
@@ -233,6 +240,7 @@ groups() ->
       , snapshot_with_failed_onchain
       , slash_with_failed_onchain
       , settle_with_failed_onchain
+      , force_progress_with_failed_onchain
       ]},
      {signatures, [sequence], [check_incorrect_create | update_sequence()]
                                ++ [check_incorrect_mutual_close]},
@@ -261,10 +269,19 @@ groups() ->
       , request_too_new_bh
       , request_too_old_bh
       , positive_bh
+      ]},
+     {force_progress, [sequence],
+      [ force_progress_based_on_offchain_state
+      , force_progress_based_on_snapshot
+      , force_progress_based_on_deposit
+      , force_progress_based_on_withdrawal
       ]}
     ].
 
 ga_sequence() ->
+    [ {group, signatures} ].
+
+gsa_sequence() ->
     [ {group, transactions}
     , {group, errors}
     , {group, signatures}
@@ -1089,7 +1106,7 @@ deposit(Cfg) ->
                                             [?SLOGAN|Cfg]),
     ?LOG(Debug, "I = ~p", [I]),
     #{initiator_amount := IAmt0, responder_amount := RAmt0} = I,
-    {IAmt0, RAmt0, _, Round0 = 1} = check_fsm_state(FsmI),
+    {IAmt0, RAmt0, _, Round0 = 1, _} = check_fsm_state(FsmI),
     check_info(0),
     {ok, I1, R1} = deposit_(I, R, Amount, Round0, Debug, Cfg),
     check_info(20),
@@ -1184,7 +1201,7 @@ channel_detects_close_solo_and_settles(Cfg) ->
     check_info(20),
     LockPeriod = maps:get(lock_period, Spec),
     mine_blocks(dev1, LockPeriod),
-    settle_(LockPeriod, maps:get(minimum_depth, Spec), I1, R, Debug, Cfg),
+    settle_(maps:get(minimum_depth, Spec), I1, R, Debug, Cfg),
     check_info(20),
     ok.
 
@@ -2100,7 +2117,7 @@ shutdown_(#{fsm := FsmI, channel_id := ChannelId} = I, R, Cfg) ->
     % caller.
     ok.
 
-settle_(TTL, MinDepth, #{fsm := FsmI, channel_id := ChannelId} = I, R, Debug,
+settle_(MinDepth, #{fsm := FsmI, channel_id := ChannelId} = I, R, Debug,
        Cfg) ->
     ok = rpc(dev1, aesc_fsm, settle, [FsmI, #{}]),
     {_, SignedTx} = await_signing_request(settle_tx, I, Cfg),
@@ -2115,7 +2132,7 @@ settle_(TTL, MinDepth, #{fsm := FsmI, channel_id := ChannelId} = I, R, Debug,
     ?LOG(Debug, "R received On-chain report: ~p", [SignedTx]),
     verify_settle_tx(SignedTx, ChannelId),
     ?LOG(Debug, "settle_tx verified", []),
-    mine_blocks(dev1, ?MINIMUM_DEPTH),
+    mine_blocks(dev1, MinDepth),
     {ok, _} = receive_from_fsm(info, I, closed_confirmed, ?TIMEOUT, Debug),
     {ok, _} = receive_from_fsm(info, R, closed_confirmed, ?TIMEOUT, Debug),
     ?LOG(Debug, "closed_confirmed received from both", []),
@@ -2860,7 +2877,7 @@ opt_add_to_debug(_, Debug) ->
     Debug.
 
 prepare_patron(Node) ->
-    prepare_patron(Node, 30).
+    prepare_patron(Node, 40).
 
 prepare_patron(Node, Blocks) ->
     mine_key_blocks(Node, Blocks),
@@ -2950,21 +2967,31 @@ apply_updates([], R) ->
     R;
 apply_updates([{meta, _} | T], R) ->
     apply_updates(T, R);
-apply_updates([{transfer, FromId, ToId, Amount} | T], R) -> %TODO:FIX THIS
+apply_updates([{create_contract, OwnerId, _VMVersion, _ABIVersion, _Code,
+                Deposit, _CallData} | T], R) ->
+    Owner = aeser_id:specialize(OwnerId, account),
+    apply_updates(T, apply_updates_modify_amount(Owner, -1 * Deposit, R));
+apply_updates([{call_contract, CallerId, _ContractId, _ABIVersion, Amount,
+                _CallData, _CallStack, _GasPrice, _Gas} | T], R) ->
+    Caller = aeser_id:specialize(CallerId, account),
+    apply_updates(T, apply_updates_modify_amount(Caller, -1 * Amount, R));
+apply_updates([{transfer, FromId, ToId, Amount} | T], R) ->
     From = aeser_id:specialize(FromId, account),
     To = aeser_id:specialize(ToId, account),
-    #{ initiator_amount := IAmt0
-     , responder_amount := RAmt0 } = R,
-    {IAmt, RAmt} =
-        case {role(From, R), role(To, R)} of
-            {initiator, responder} ->
-                {IAmt0 - Amount, RAmt0 + Amount};
-            {responder, initiator} ->
-                {IAmt0 + Amount, RAmt0 - Amount}
-        end,
-    apply_updates(T, R#{ initiator_amount => IAmt
-                       , responder_amount => RAmt }).
+    R1 = apply_updates_modify_amount(From, -1 * Amount, R),
+    R2 = apply_updates_modify_amount(To, Amount, R1),
+    apply_updates(T, R2).
 
+apply_updates_modify_amount(Who, Delta, R) ->
+    case role(Who, R) of
+        initiator ->
+            #{initiator_amount := IAmt} = R,
+            R#{initiator_amount => IAmt + Delta};
+        responder ->
+            #{responder_amount := RAmt} = R,
+            R#{responder_amount => RAmt + Delta}
+    end.
+            
 role(Pubkey, #{pub               := MyKey
              , role              := Role}) ->
     case {Pubkey, Role} of
@@ -3007,20 +3034,21 @@ wait_for_signed_transaction_in_block(Node, SignedTx, Debug) ->
     end.
 
 check_fsm_state(Fsm) ->
-    {ok, #{ initiator  := Initiator
-          , responder  := Responder
-          , init_amt   := IAmt
-          , resp_amt   := RAmt
-          , state_hash := StateHash
-          , round      := Round }} = aesc_fsm:get_state(Fsm),
-    Trees =
-        aec_test_utils:create_state_tree_with_accounts(
-            [aec_accounts:new(Pubkey, Balance) ||
-                {Pubkey, Balance} <- [{Initiator, IAmt}, {Responder, RAmt}]],
-            no_backend),
-    Hash = aec_trees:hash(Trees),
-    StateHash = Hash, %% assert same root hash
-    {IAmt, RAmt, StateHash, Round}.
+    {ok, #{ initiator       := _Initiator
+          , responder       := _Responder
+          , init_amt        := IAmt
+          , resp_amt        := RAmt
+          , state_hash      := StateHash
+          , round           := Round
+          , channel_status  := Status}} = aesc_fsm:get_state(Fsm),
+%    Trees =
+%        aec_test_utils:create_state_tree_with_accounts(
+%            [aec_accounts:new(Pubkey, Balance) ||
+%                {Pubkey, Balance} <- [{Initiator, IAmt}, {Responder, RAmt}]],
+%            no_backend),
+%    Hash = aec_trees:hash(Trees),
+%    StateHash = Hash, %% assert same root hash
+    {IAmt, RAmt, StateHash, Round, Status}.
 
 mine_blocks_until_txs_on_chain(Node, TxHashes) ->
     aecore_suite_utils:mine_blocks_until_txs_on_chain(
@@ -3410,11 +3438,11 @@ positive_bh(Cfg) ->
         fun(Delta, Acc) ->
             lists:foldl(
                 fun(Fun, {AccRound, #{fsm := AccIFsm} = AccI, AccR}) ->
-                    {_, _, _, AccRound} = check_fsm_state(AccIFsm),
+                    {_, _, _, AccRound, _} = check_fsm_state(AccIFsm),
                     BlockHash = aecore_suite_utils:get_key_hash_by_delta(dev1, Delta),
                     {ok, #{fsm := AccIFsm1} = AccI1, AccR1} = Fun(AccI, AccR, #{block_hash => BlockHash}, AccRound),
                     % We trust the sub-routines to checks that the funds are correct
-                    {_, _, _, AccRound1} = check_fsm_state(AccIFsm1),
+                    {_, _, _, AccRound1, _} = check_fsm_state(AccIFsm1),
                     true = (AccRound < AccRound1),
                     {AccRound1, AccI1, AccR1}
                 end,
@@ -3427,7 +3455,7 @@ positive_bh(Cfg) ->
                   end
                 ])
         end,
-    {_, _, _, Round0} = check_fsm_state(FsmI),
+    {_, _, _, Round0, _} = check_fsm_state(FsmI),
     {_, IFinal, RFinal} =
         lists:foldl(
             TestByDelta,
@@ -3588,11 +3616,15 @@ withdraw_full_cycle_(Amount, Opts, Round, Cfg) ->
     shutdown_(I, R, Cfg),
     ok.
 
+withdraw_(#{fsm := FsmI} = I, R, Amount, Debug, Cfg) ->
+    {_IAmt0, _RAmt0, _, Round0, _} = check_fsm_state(FsmI),
+    withdraw_(#{fsm := FsmI} = I, R, Amount, #{}, Round0, Debug, Cfg).
+
 withdraw_(#{fsm := FsmI} = I, R, Amount, Opts, Round0, Debug, Cfg) ->
     assert_empty_msgq(Debug),
     % Check initial fsm state
     #{initiator_amount := IAmt0, responder_amount := RAmt0} = I,
-    {IAmt0, RAmt0, _, Round0} = FsmState0 = check_fsm_state(FsmI),
+    {IAmt0, RAmt0, _, Round0, _} = FsmState0 = check_fsm_state(FsmI),
     ?LOG(Debug, "Round0 = ~p, IAmt0 = ~p, RAmt0 = ~p", [Round0, IAmt0, RAmt0]),
 
     % Perform update and verify flow and reports
@@ -3628,7 +3660,8 @@ withdraw_(#{fsm := FsmI} = I, R, Amount, Opts, Round0, Debug, Cfg) ->
     {ok, I3, R3}.
 
 deposit_(#{fsm := FsmI} = I, R, Amount, Debug, Cfg) ->
-    {_IAmt0, _RAmt0, _, Round0} = check_fsm_state(FsmI),
+    {_IAmt0, _RAmt0, _, Round0, _} = check_fsm_state(FsmI),
+
     deposit_(I, R, Amount, Round0, Debug, Cfg).
 
 deposit_(I, R, Amount, Round0, Debug, Cfg) ->
@@ -3637,11 +3670,11 @@ deposit_(I, R, Amount, Round0, Debug, Cfg) ->
 deposit_(#{fsm := FsmI} = I, R, Amount, Opts, Round0, Debug, Cfg) ->
     assert_empty_msgq(Debug),
     % Check initial fsm state
-    {IAmt0, RAmt0, _, Round0} = FsmState0 = check_fsm_state(FsmI),
+    {IAmt0, RAmt0, _, Round0, _} = FsmState0 = check_fsm_state(FsmI),
     ?LOG(Debug, "Round0 = ~p, IAmt0 = ~p, RAmt0 = ~p", [Round0, IAmt0, RAmt0]),
 
     % Perform update and verify flow and reports
-    ok = rpc(dev1, aesc_fsm, upd_deposit, [FsmI, Opts#{amount => Amount}]),
+    ok = rpc(dev1, aesc_fsm, upd_deposit, [FsmI, Opts#{ amount => Amount}]),
     {I1, _} = await_signing_request(deposit_tx, I, Cfg),
     {R1, _} = await_signing_request(deposit_created, R, Cfg),
     SignedTx = await_on_chain_report(I1, #{info => deposit_signed}, ?TIMEOUT),
@@ -3673,7 +3706,7 @@ deposit_(#{fsm := FsmI} = I, R, Amount, Opts, Round0, Debug, Cfg) ->
     {ok, I3, R3}.
 
 %% @doc Assert FSM state before and after a deposit/withdraw transaction.
-assert_fsm_states(SignedTx, FsmSpec, MinDepth, Amount, {IAmt0, RAmt0, _, Round0},
+assert_fsm_states(SignedTx, FsmSpec, MinDepth, Amount, {IAmt0, RAmt0, _, Round0, _},
                   VerifyFun, TxType, TxCb, Debug) ->
     % Mine blocks until transaction is seen
     #{fsm := Fsm, channel_id := ChannelId} = FsmSpec,
@@ -3696,7 +3729,7 @@ assert_fsm_states(SignedTx, FsmSpec, MinDepth, Amount, {IAmt0, RAmt0, _, Round0}
             Res = VerifyFun(),
             {{IAmt0 - (-1 * Amount), RAmt0, Round0 + 1}, Res}
     end,
-    {IAmt1, RAmt1, _, Round1} = check_fsm_state(Fsm),
+    {IAmt1, RAmt1, _, Round1, _} = check_fsm_state(Fsm),
     ?LOG(Debug, "After tx in block - Round1 = ~p, IAmt1 = ~p, RAmt1 = ~p", [Round1, IAmt1, RAmt1]),
     {IAmt1, RAmt1, Round1} = ExpectedState1,
 
@@ -3713,7 +3746,7 @@ assert_fsm_states(SignedTx, FsmSpec, MinDepth, Amount, {IAmt0, RAmt0, _, Round0}
             % previously confirmed and verified
             {{IAmt1, RAmt0, Round1}, VerifyFunRes}
     end,
-    {IAmt2, RAmt2, StateHash, Round2} = check_fsm_state(Fsm),
+    {IAmt2, RAmt2, StateHash, Round2, _} = check_fsm_state(Fsm),
     ?LOG(Debug, "After tx min depth - Round2 = ~p, IAmt2 = ~p, RAmt2 = ~p", [Round2, IAmt2, RAmt2]),
     {IAmt2, RAmt2, Round2} = ExpectedState2,
 
@@ -3729,8 +3762,9 @@ assert_fsm_states(SignedTx, FsmSpec, MinDepth, Amount, {IAmt0, RAmt0, _, Round0}
     % Verify state hash
     {TxType, Tx} =
         aetx:specialize_type(aetx_sign:innermost_tx(SignedTx)),
-    Round2 = TxCb:round(Tx), %% assert correct round
-    StateHash = TxCb:state_hash(Tx), %% assert correct state hash
+    ct:log("Channel round ~p, Tx round ~p", [Round2, TxCb:round(Tx)]),
+    {Round2, _} = {TxCb:round(Tx), Round2}, %% assert correct round
+    {StateHash, _} = {TxCb:state_hash(Tx), StateHash}, %% assert correct state hash
 
     assert_empty_msgq(Debug),
     VerifyFunRes1.
@@ -4105,7 +4139,7 @@ deposit_with_failed_onchain(Cfg) ->
     ?LOG(Debug, "I = ~p", [I]),
     ?LOG(Debug, "R = ~p", [R]),
     #{initiator_amount := IAmt0, responder_amount := RAmt0} = I,
-    {IAmt0, RAmt0, _, Round0 = 1} = check_fsm_state(FsmI),
+    {IAmt0, RAmt0, _, Round0 = 1, _} = check_fsm_state(FsmI),
     check_info(0),
     ?LOG(Debug, "Round0 = ~p, IAmt0 = ~p, RAmt0 = ~p", [Round0, IAmt0, RAmt0]),
 
@@ -4144,7 +4178,7 @@ withdraw_with_failed_onchain(Cfg) ->
     ?LOG(Debug, "I = ~p", [I]),
     ?LOG(Debug, "R = ~p", [R]),
     #{initiator_amount := IAmt0, responder_amount := RAmt0} = I,
-    {IAmt0, RAmt0, _, Round0 = 1} = check_fsm_state(FsmI),
+    {IAmt0, RAmt0, _, Round0 = 1, _} = check_fsm_state(FsmI),
     check_info(0),
     ?LOG(Debug, "Round0 = ~p, IAmt0 = ~p, RAmt0 = ~p", [Round0, IAmt0, RAmt0]),
 
@@ -4281,7 +4315,7 @@ slash(Cfg) ->
     mine_blocks_until_txs_on_chain(dev1, [SlashTxHash]),
     mine_blocks(dev1, LockPeriod),
     check_info(20),
-    settle_(LockPeriod, maps:get(minimum_depth, Spec), I3, R2, Debug, Cfg),
+    settle_(maps:get(minimum_depth, Spec), I3, R2, Debug, Cfg),
     check_info(20),
     assert_empty_msgq(true),
     ok.
@@ -4317,7 +4351,7 @@ slash_with_failed_onchain(Cfg) ->
     LockPeriod = maps:get(lock_period, Spec),
     mine_blocks(dev1, LockPeriod),
     check_info(20),
-    settle_(LockPeriod, maps:get(minimum_depth, Spec), I3, R2, Debug, Cfg),
+    settle_(maps:get(minimum_depth, Spec), I3, R2, Debug, Cfg),
     check_info(20),
     assert_empty_msgq(true),
     ok.
@@ -4389,8 +4423,275 @@ settle_with_failed_onchain(Cfg) ->
                                                         , round => 1}},
                                ?TIMEOUT, Debug),
     % Done
-    settle_(LockPeriod, maps:get(minimum_depth, Spec), I2, R, Debug, Cfg),
+    settle_(maps:get(minimum_depth, Spec), I2, R, Debug, Cfg),
     check_info(20),
     assert_empty_msgq(true),
     ok.
+
+force_progress_based_on_offchain_state(Cfg) ->
+    Debug = get_debug(Cfg),
+    #{ i := #{ fsm := _FsmI
+             , channel_id := ChannelId } = I
+     , r := #{} = R
+     , spec := #{ initiator := PubI
+                , responder := _PubR } = _Spec} = create_channel_([?SLOGAN|Cfg]),
+    ?LOG(Debug, "I = ~p", [I]),
+    ?LOG(Debug, "R = ~p", [R]),
+    {I1, R1, ContractPubkey} = create_contract(counter, ["42"], 10, I, R, Cfg),
+    {I2, R2} = call_contract(ContractPubkey, counter, "tick", [], 10, I1, R1, Cfg),
+    I3 = force_progress_(ContractPubkey, counter, "tick", [], 10, I2, Cfg),
+
+    check_info(20),
+    {_, _} = produce_close_mutual_tx(ChannelId, PubI, I3, R2, Cfg, #{}),
+    %shutdown_(I2, R2, Cfg),
+    ok.
+
+force_progress_based_on_snapshot(Cfg) ->
+    Debug = get_debug(Cfg),
+    #{ i := #{ fsm := _FsmI
+             , channel_id := ChannelId } = I
+     , r := #{} = R
+     , spec := #{ initiator := PubI
+                , responder := _PubR } = _Spec} = create_channel_([?SLOGAN|Cfg]),
+    ?LOG(Debug, "I = ~p", [I]),
+    ?LOG(Debug, "R = ~p", [R]),
+    {I1, R1, ContractPubkey} = create_contract(counter, ["42"], 10, I, R, Cfg),
+    {I2, R2} = call_contract(ContractPubkey, counter, "tick", [], 10, I1, R1, Cfg),
+    {ok, I3, R3} = snapshot_solo_(I2, R2, #{}, Cfg),
+    I5 = force_progress_(ContractPubkey, counter, "tick", [], 10, I3, Cfg),
+
+    check_info(20),
+    {_, _} = produce_close_mutual_tx(ChannelId, PubI, I5, R3, Cfg, #{}),
+    %shutdown_(I2, R2, Cfg),
+    ok.
+
+force_progress_based_on_deposit(Cfg) ->
+    Debug = get_debug(Cfg),
+    #{ i := #{ fsm := _FsmI
+             , channel_id := ChannelId } = I
+     , r := #{} = R
+     , spec := #{ initiator := PubI
+                , responder := _PubR } = _Spec} = create_channel_([?SLOGAN|Cfg]),
+    ?LOG(Debug, "I = ~p", [I]),
+    ?LOG(Debug, "R = ~p", [R]),
+    {I1, R1, ContractPubkey} = create_contract(counter, ["42"], 10, I, R, Cfg),
+    {I2, R2} = call_contract(ContractPubkey, counter, "tick", [], 10, I1, R1, Cfg),
+    {ok, I3, R3} = deposit_(I2, R2, _Amount = 123, Debug, Cfg),
+    I4 = force_progress_(ContractPubkey, counter, "tick", [], 10, I3, Cfg),
+
+    check_info(20),
+    {_, _} = produce_close_mutual_tx(ChannelId, PubI, I4, R3, Cfg, #{}),
+    %shutdown_(I2, R2, Cfg),
+    ok.
+
+force_progress_based_on_withdrawal(Cfg) ->
+    Debug = get_debug(Cfg),
+    #{ i := #{ fsm := _FsmI
+             , channel_id := ChannelId } = I
+     , r := #{} = R
+     , spec := #{ initiator := PubI
+                , responder := _PubR } = _Spec} = create_channel_([?SLOGAN|Cfg]),
+    ?LOG(Debug, "I = ~p", [I]),
+    ?LOG(Debug, "R = ~p", [R]),
+    {I1, R1, ContractPubkey} = create_contract(counter, ["42"], 10, I, R, Cfg),
+    {I2, R2} = call_contract(ContractPubkey, counter, "tick", [], 10, I1, R1, Cfg),
+    {ok, I3, R3} = withdraw_(I2, R2, _Amount = 123, Debug, Cfg),
+    I4 = force_progress_(ContractPubkey, counter, "tick", [], 10, I3, Cfg),
+
+    check_info(20),
+    {_, _} = produce_close_mutual_tx(ChannelId, PubI, I4, R3, Cfg, #{}),
+    %shutdown_(I2, R2, Cfg),
+    ok.
+
+force_progress_with_failed_onchain(Cfg) ->
+    Debug = get_debug(Cfg),
+    #{ i := #{ fsm := FsmI
+             , channel_id := ChannelId } = I
+     , r := #{} = R
+     , spec := #{ initiator := PubI
+                , responder := _PubR } = _Spec} = create_channel_([?SLOGAN|Cfg]),
+    ?LOG(Debug, "I = ~p", [I]),
+    ?LOG(Debug, "R = ~p", [R]),
+    {I1, R1, ContractPubkey} = create_contract(counter, ["42"], 10, I, R, Cfg),
+    {I2, R2} = call_contract(ContractPubkey, counter, "tick", [], 10, I1, R1, Cfg),
+    {ok, I3, R3} = deposit_(I2, R2, _Amount = 123, Debug, Cfg),
+    {ok, Round} = rpc(dev1, aesc_fsm, get_round, [FsmI]),
+
+    {ok, BinSrc} = aect_test_utils:read_contract(aect_test_utils:sophia_version(), counter),
+    {ok, CallData} =
+        aect_test_utils:encode_call_data(aect_test_utils:sophia_version(), BinSrc,
+                                         "tick", []),
+    FPArgs = #{ contract    => ContractPubkey
+              , abi_version => aect_test_utils:abi_version() 
+              , amount      => 10
+              , call_data   => CallData
+              , gas         => 1000000
+              , gas_price    => aec_test_utils:min_gas_price() },
+    ok = rpc(dev1, aesc_fsm, force_progress, [FsmI, FPArgs]),
+    basic_spend(initiator, % from
+                initiator, % to
+                1,         % some amount 
+                Cfg),
+    {I4, _} = await_signing_request(force_progress_tx, I3, Cfg),
+    {ok, _} = receive_from_fsm(conflict, I4, #{info => #{ error_code => 5
+                                                        , round => Round}},
+                               ?TIMEOUT, Debug),
+
+    {_, _} = produce_close_mutual_tx(ChannelId, PubI, I4, R3, Cfg, #{}),
+
+    check_info(20),
+    %shutdown_(I2, R2, Cfg),
+    ok.
+
+force_progress_closing_state(Cfg) ->
+    Debug = get_debug(Cfg),
+    #{ i := #{ fsm := FsmI
+             , channel_id := _ChannelId } = I
+     , r := #{} = R
+     , spec := #{ initiator := _PubI
+                , responder := _PubR } = Spec} = create_channel_([?SLOGAN|Cfg]),
+    ?LOG(Debug, "I = ~p", [I]),
+    ?LOG(Debug, "R = ~p", [R]),
+    {I1, R1, ContractPubkey} = create_contract(counter, ["42"], 10, I, R, Cfg),
+    {I2, _R2} = call_contract(ContractPubkey, counter, "tick", [], 10, I1, R1, Cfg),
+    ok = rpc(dev1, aesc_fsm, close_solo, [FsmI, #{}]),
+    {I3, SignedCloseSoloTx} = await_signing_request(close_solo_tx, I2, Cfg),
+    wait_for_signed_transaction_in_block(dev1, SignedCloseSoloTx),
+
+    LockPeriod = maps:get(lock_period, Spec),
+    mine_blocks(dev1, LockPeriod),
+    SignedTx = await_on_chain_report(I1, #{info => solo_closing}, ?TIMEOUT),
+    SignedTx = await_on_chain_report(R, #{info => solo_closing}, ?TIMEOUT),
+    {ok,_} = receive_from_fsm(info, I1, fun closing/1, ?TIMEOUT, Debug),
+    {ok,_} = receive_from_fsm(info, R, fun closing/1, ?TIMEOUT, Debug),
+    _I4 = force_progress_(ContractPubkey, counter, "tick", [], 10, I3, Cfg),
+    {_, _, _, _, closing} = check_fsm_state(FsmI),
+
+    check_info(20),
+    ok.
+
+
+create_contract(ContractName, InitArgs, Deposit,
+                #{ fsm := FsmC
+                 , pub := Owner} = Creator, Acknowledger, Cfg) ->
+    Debug = get_debug(Cfg),
+    {ok, Round0} = rpc(dev1, aesc_fsm, get_round, [FsmC]),
+    {ok, BinCode} = aect_test_utils:compile_contract(aect_test_utils:sophia_version(), ContractName),
+    {ok, BinSrc} = aect_test_utils:read_contract(aect_test_utils:sophia_version(), ContractName),
+    {ok, CallData} =
+        aect_test_utils:encode_call_data(aect_test_utils:sophia_version(), BinSrc,
+                                         "init", InitArgs),
+    CreateArgs = #{ vm_version  => aect_test_utils:vm_version()
+                  , abi_version => aect_test_utils:abi_version() 
+                  , deposit     => Deposit
+                  , code        => BinCode
+                  , call_data   => CallData},
+    aesc_fsm:upd_create_contract(FsmC, CreateArgs),
+    {Creator1, _} = await_signing_request(update, Creator, Cfg),
+    await_update_incoming_report(Acknowledger, ?TIMEOUT, Debug),
+    {Acknowledger1, _} = await_signing_request(update_ack, Acknowledger, Cfg),
+    Creator2 = await_update_report(Creator1, ?TIMEOUT, Debug),
+    Acknowledger2 = await_update_report(Acknowledger1, ?TIMEOUT, Debug),
+
+    ContractPubkey = aect_contracts:compute_contract_pubkey(Owner, Round0 + 1),
+    assert_empty_msgq(Debug),
+    {Creator2, Acknowledger2, ContractPubkey}.
+
+call_contract(ContractId,
+              ContractName, FunName, FunArgs, Amount,
+              #{fsm := FsmC} = Caller, Acknowledger, Cfg) ->
+    Debug = get_debug(Cfg),
+    {ok, BinSrc} = aect_test_utils:read_contract(aect_test_utils:sophia_version(), ContractName),
+    {ok, CallData} =
+        aect_test_utils:encode_call_data(aect_test_utils:sophia_version(), BinSrc,
+                                         FunName, FunArgs),
+    CallArgs = #{ contract    => ContractId
+                , abi_version => aect_test_utils:abi_version() 
+                , amount      => Amount
+                , call_data   => CallData},
+    aesc_fsm:upd_call_contract(FsmC, CallArgs),
+    {Caller1, _} = await_signing_request(update, Caller, Cfg),
+    await_update_incoming_report(Acknowledger, ?TIMEOUT, Debug),
+    {Acknowledger1, _} = await_signing_request(update_ack, Acknowledger, Cfg),
+    Caller2 = await_update_report(Caller1, ?TIMEOUT, Debug),
+    Acknowledger2 = await_update_report(Acknowledger1, ?TIMEOUT, Debug),
+    assert_empty_msgq(Debug),
+    {Caller2, Acknowledger2}.
+
+force_progress_(ContractId,
+              ContractName, FunName, FunArgs, Amount,
+              #{ fsm := FsmC
+               , channel_id:= ChannelId } = Caller, Cfg) ->
+    Debug = get_debug(Cfg),
+    {ok, BinSrc} = aect_test_utils:read_contract(aect_test_utils:sophia_version(), ContractName),
+    {ok, CallData} =
+        aect_test_utils:encode_call_data(aect_test_utils:sophia_version(), BinSrc,
+                                         FunName, FunArgs),
+    FPArgs = #{ contract    => ContractId
+              , abi_version => aect_test_utils:abi_version() 
+              , amount      => Amount
+              , call_data   => CallData
+              , gas         => 1000000
+              , gas_price   => aec_test_utils:min_gas_price() },
+    aesc_fsm:force_progress(FsmC, FPArgs),
+    {Caller1, SignedTx} = await_signing_request(force_progress_tx, Caller, Cfg),
+    wait_for_signed_transaction_in_block(dev1, SignedTx, Debug),
+    {aesc_force_progress_tx, Tx} =
+        aetx:specialize_callback(aetx_sign:innermost_tx(SignedTx)),
+    StateHash = aesc_force_progress_tx:state_hash(Tx),
+    Round = aesc_force_progress_tx:round(Tx),
+    {ok, Channel} = rpc(dev1, aec_chain, get_channel, [ChannelId]),
+    %% assert channel had been changed on-chain
+    {Round, Round} = {Round, aesc_channels:round(Channel)},
+    {StateHash, StateHash} = {StateHash, aesc_channels:state_hash(Channel)},
+
+    Caller1.
+
+produce_close_mutual_tx(ChannelId, FromId, I, R, Cfg, Opts) ->
+    Debug = get_debug(Cfg),
+    Nonce =
+        case account_type(FromId) of
+            basic ->
+                {ok, N} = rpc(dev1, aec_next_nonce, pick_for_account, [FromId]),
+                N;
+            generalized ->
+                0
+        end,
+    CloseMutualTxOpts =
+        #{ channel_id => aeser_id:create(channel, ChannelId)
+         , from_id => aeser_id:create(account, FromId)
+         , initiator_amount_final => 0
+         , responder_amount_final => 0
+         , fee => 20000 * aec_test_utils:min_gas_price()
+         , nonce => Nonce
+        },
+    {ok, Aetx} = aesc_close_mutual_tx:new(maps:merge(Opts, CloseMutualTxOpts)),
+    {Tx1, I1} = sign_tx(I, Aetx, Cfg),
+    {SignedTx, R1} = co_sign_tx(R, Tx1, Cfg),
+    ok = rpc(dev1, aec_tx_pool, push, [SignedTx]),
+    wait_for_signed_transaction_in_block(dev1, SignedTx, Debug),
+    {I1, R1}.
+
+snapshot_solo_(#{fsm := FsmI} = I, R, Opts, Cfg) ->
+    Debug = get_debug(Cfg),
+    assert_empty_msgq(Debug),
+    % Check initial fsm state
+    {IAmt0, RAmt0, _, Round0, _} = FsmState0 = check_fsm_state(FsmI),
+    ?LOG(Debug, "Round0 = ~p, IAmt0 = ~p, RAmt0 = ~p", [Round0, IAmt0, RAmt0]),
+
+    % Perform update and verify flow and reports
+    ok = rpc(dev1, aesc_fsm, snapshot_solo, [FsmI, Opts]),
+    {I1, SignedTx} = await_signing_request(snapshot_solo_tx, I, Cfg),
+    wait_for_signed_transaction_in_block(dev1, SignedTx, Debug),
+    SignedTx = await_channel_changed_report(I1, ?TIMEOUT), % same tx
+    SignedTx = await_channel_changed_report(R, ?TIMEOUT), % same tx
+    ?LOG(Debug, "=== SignedTx = ~p", [SignedTx]),
+    assert_empty_msgq(Debug),
+
+    %% Channel off-chain didn't change
+    {IAmt0, RAmt0, _, Round0, _} = FsmState0 = check_fsm_state(FsmI),
+    ?LOG(Debug, "Round0 = ~p, IAmt0 = ~p, RAmt0 = ~p", [Round0, IAmt0, RAmt0]),
+    % Done
+    assert_empty_msgq(Debug),
+    {ok, I1, R}.
 

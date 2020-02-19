@@ -30,6 +30,8 @@
     sc_ws_close_mutual/1,
     sc_ws_close_solo/1,
     sc_ws_slash/1,
+    sc_ws_force_progress_based_on_offchain_state/1,
+    sc_ws_force_progress_based_on_onchain_state/1,
     sc_ws_leave_reestablish/1,
     sc_ws_leave_reestablish_wrong_fsm_id/1,
     sc_ws_leave_reestablish_responder_stays/1,
@@ -38,7 +40,7 @@
     sc_ws_opening_ping_pong/1,
     sc_ws_deposit/1,
     sc_ws_withdraw/1,
-    sc_ws_contracts/1,
+    sc_ws_basic_contracts/1,
     sc_ws_oracle_contract/1,
     sc_ws_nameservice_contract/1,
     sc_ws_environment_contract/1,
@@ -71,6 +73,7 @@
     sc_ws_optional_params_fail_slash/1,
     sc_ws_optional_params_settle/1,
     sc_ws_optional_params_fail_settle/1,
+    sc_ws_optional_params_fail_force_progress/1,
     sc_ws_abort_offchain_update/1,
     sc_ws_abort_deposit/1,
     sc_ws_abort_withdraw/1,
@@ -159,6 +162,7 @@ groups() ->
         sc_ws_leave_reestablish_wrong_fsm_id,
         sc_ws_leave_reestablish_responder_stays,
         sc_ws_leave_reconnect,
+        {group, force_progress},
         {group, with_open_channel},
         {group, with_meta},
         {group, client_reconnect},
@@ -194,6 +198,7 @@ groups() ->
 
      {sc_contracts, [sequence],
       [ %% both can refer on-chain objects - oracle
+        sc_ws_basic_contracts,
         sc_ws_oracle_contract,
         %% both can refer on-chain objects - name service
         sc_ws_nameservice_contract,
@@ -249,7 +254,8 @@ groups() ->
      {optional_gas_price, [sequence], optional_onchain_params_sequence()},
      {optional_fee_higher_than_gas_price, [sequence], optional_onchain_params_sequence()},
      {optional_fee_lower_than_gas_price, [sequence], optional_onchain_params_sequence()},
-     {optional_nonce, [sequence], optional_onchain_fail_params_sequence()},
+     {optional_nonce, [sequence], [sc_ws_optional_params_fail_force_progress
+                                   | optional_onchain_fail_params_sequence()]},
 
      {abort_updates, [sequence],
       [ sc_ws_abort_offchain_update
@@ -260,6 +266,10 @@ groups() ->
       , sc_ws_abort_slash
       , sc_ws_abort_settle
       , sc_ws_can_not_abort_while_open
+      ]},
+     {force_progress, [sequence],
+      [ sc_ws_force_progress_based_on_offchain_state
+      , sc_ws_force_progress_based_on_onchain_state
       ]}
     ].
 
@@ -418,7 +428,7 @@ end_per_group(_Grp, _Config) ->
 
 -define(DOC_LOG, [ sc_ws_ping_pong, sc_ws_deposit, sc_ws_withdraw,
                    sc_ws_failed_update, sc_ws_generic_messages, sc_ws_update_conflict,
-                   sc_ws_contracts, sc_ws_oracle_contract, sc_ws_nameservice_contract,
+                   sc_ws_basic_contracts, sc_ws_oracle_contract, sc_ws_nameservice_contract,
                    sc_ws_environment_contract, sc_ws_remote_call_contract,
                    sc_ws_remote_call_contract_refering_onchain_data, sc_ws_wrong_call_data ]).
 
@@ -1595,7 +1605,7 @@ sc_ws_withdraw_(Config, Origin, XOpts) when Origin =:= initiator
     ct:log("sequence successful", []),
     {ok, SignedWTx}.
 
-sc_ws_contracts(Config) ->
+sc_ws_basic_contracts(Config) ->
     lists:foreach(
         fun({Owner, TestName}) ->
             sc_ws_contract_(Config, TestName, Owner)
@@ -2304,11 +2314,11 @@ update_volley_(FirstPubkey, FirstConnPid, FirstPrivkey, SecondPubkey, SecondConn
     {ok, _,  #{<<"state">> := _State}} = wait_for_channel_event(SecondConnPid, update, Config),
     Res.
 
-sc_ws_contract_(Config, TestName, Owner) ->
+produce_update_volley_funs(Sender, Config) ->
     Participants = proplists:get_value(participants, Config),
     Clients = proplists:get_value(channel_clients, Config),
     {SenderRole, AckRole} =
-        case Owner of
+        case Sender of
             initiator -> {initiator, responder};
             responder -> {responder, initiator}
         end,
@@ -2318,9 +2328,6 @@ sc_ws_contract_(Config, TestName, Owner) ->
       priv_key:= AckPrivkey} = maps:get(AckRole, Participants),
     SenderConnPid = maps:get(SenderRole, Clients),
     AckConnPid = maps:get(AckRole, Clients),
-
-    ok = ?WS:register_test_for_channel_events(SenderConnPid, [sign, info, get, error]),
-    ok = ?WS:register_test_for_channel_events(AckConnPid, [sign, info, get, error]),
 
     %% helper lambda for update
     UpdateVolley =
@@ -2333,93 +2340,111 @@ sc_ws_contract_(Config, TestName, Owner) ->
             update_volley_(AckPubkey, AckConnPid, AckPrivkey,
                            SenderPubkey, SenderConnPid, SenderPrivkey, Config)
         end,
+    {UpdateVolley, UpdateVolleyReverse}.
 
-    % trigger new contract
-    {UnsignedStateTx, _Updates, _Code} = create_contract_(TestName, SenderConnPid, UpdateVolley, Config),
-
-    ContractPubKey = contract_id_from_create_update(SenderPubkey,
-                                                    UnsignedStateTx),
-
-    %% helper lambdas for pruning and call not found
-    PruneCalls =
-        fun(ConnPid) ->
-            ok = ?WS:register_test_for_channel_events(ConnPid, [calls_pruned]),
-            ws_send_tagged(ConnPid, <<"channels.clean_contract_calls">>, #{}, Config),
-            {ok, _, _} = wait_for_channel_event(ConnPid, calls_pruned, Config),
-            ok = ?WS:unregister_test_for_channel_events(ConnPid, [calls_pruned])
+sc_ws_contract_(Config, TestName, Owner) ->
+    Participants = proplists:get_value(participants, Config),
+    Clients = proplists:get_value(channel_clients, Config),
+    {SenderRole, AckRole} =
+        case Owner of
+            initiator -> {initiator, responder};
+            responder -> {responder, initiator}
         end,
-    CallMissingCall =
-        fun(Tx, [U], ConnPid) ->
-            ws_send_tagged(ConnPid, <<"channels.get.contract_call">>,
-                           ws_get_call_params(U, Tx), Config),
-            {ok, _, #{<<"reason">> := <<"call_not_found">>}} = wait_for_channel_event(ConnPid, error, Config),
-            ok
-        end,
+    #{pub_key := SenderPubkey} = maps:get(SenderRole, Participants),
+    #{pub_key := AckPubkey} = maps:get(AckRole, Participants),
+    SenderConnPid = maps:get(SenderRole, Clients),
+    AckConnPid = maps:get(AckRole, Clients),
 
-    % trigger call contract
-    % owner can call a contract
-    {Fun, SomeUnsignedStateTx, Updates} =
-        contract_calls_(TestName, ContractPubKey, SenderConnPid, UpdateVolley,
-                        AckConnPid, SenderPubkey, AckPubkey, Config),
-    _ = ws_get_decoded_result(SenderConnPid, AckConnPid, TestName, Fun,
-                              Updates, SomeUnsignedStateTx, Config),
-    ok = PruneCalls(SenderConnPid),
-    ok = CallMissingCall(SomeUnsignedStateTx, Updates, SenderConnPid),
-    % state is still usable
+    %% helper lambda for update
+    {UpdateVolley, UpdateVolleyReverse} = produce_update_volley_funs(Owner,
+                                                                     Config),
+    with_registered_events(
+      [sign, info, get, error, update], [SenderConnPid, AckConnPid],
+      fun() ->
+          % trigger new contract
+          {UnsignedStateTx, _Updates, _Code} = create_contract_(TestName, SenderConnPid, UpdateVolley, Config),
 
-    % acknowledger can call a contract
-    contract_calls_(TestName, ContractPubKey, AckConnPid, UpdateVolleyReverse,
-                    SenderConnPid, AckPubkey, SenderPubkey, Config),
+          ContractPubKey = contract_id_from_create_update(SenderPubkey,
+                                                          UnsignedStateTx),
 
-    GetPoI =
-        fun(ConnPid) ->
-                Scope = #{contracts   => [aeser_api_encoder:encode(contract_pubkey, ContractPubKey)],
-                          accounts    => [aeser_api_encoder:encode(account_pubkey, SenderPubkey),
-                                          aeser_api_encoder:encode(account_pubkey, AckPubkey)]
-                         },
-                {ok, #{poi := P}} = sc_ws_get_poi_(ConnPid, Scope, Config),
-                P
-        end,
+          %% helper lambdas for pruning and call not found
+          PruneCalls =
+              fun(ConnPid) ->
+                  ok = ?WS:register_test_for_channel_events(ConnPid, [calls_pruned]),
+                  ws_send_tagged(ConnPid, <<"channels.clean_contract_calls">>, #{}, Config),
+                  {ok, _, _} = wait_for_channel_event(ConnPid, calls_pruned, Config),
+                  ok = ?WS:unregister_test_for_channel_events(ConnPid, [calls_pruned])
+              end,
+          CallMissingCall =
+              fun(Tx, [U], ConnPid) ->
+                  ws_send_tagged(ConnPid, <<"channels.get.contract_call">>,
+                                ws_get_call_params(U, Tx), Config),
+                  {ok, _, #{<<"reason">> := <<"call_not_found">>}} = wait_for_channel_event(ConnPid, error, Config),
+                  ok
+              end,
 
-    GetMissingPoI =
-        fun(ConnPid, Accs, Cts) ->
-            ws_send_tagged(ConnPid, <<"channels.get.poi">>,
-                            #{contracts   => [aeser_api_encoder:encode(contract_pubkey, C) || C <- Cts],
-                              accounts    => [aeser_api_encoder:encode(account_pubkey, Acc) || Acc <- Accs]
-                            }, Config),
+          % trigger call contract
+          % owner can call a contract
+          {Fun, SomeUnsignedStateTx, Updates} =
+              contract_calls_(TestName, ContractPubKey, SenderConnPid, UpdateVolley,
+                              AckConnPid, SenderPubkey, AckPubkey, Config),
+          _ = ws_get_decoded_result(SenderConnPid, AckConnPid, TestName, Fun,
+                                    Updates, SomeUnsignedStateTx, Config),
+          ok = PruneCalls(SenderConnPid),
+          ok = CallMissingCall(SomeUnsignedStateTx, Updates, SenderConnPid),
+          % state is still usable
 
-                    {ok, _, #{<<"reason">> := R}} = wait_for_channel_event(ConnPid, error, Config),
-                    R
-                end,
+          % acknowledger can call a contract
+          contract_calls_(TestName, ContractPubKey, AckConnPid, UpdateVolleyReverse,
+                          SenderConnPid, AckPubkey, SenderPubkey, Config),
 
-    EncodedPoI = GetPoI(SenderConnPid),
-    EncodedPoI = GetPoI(AckConnPid),
+          GetPoI =
+              fun(ConnPid) ->
+                      Scope = #{contracts   => [aeser_api_encoder:encode(contract_pubkey, ContractPubKey)],
+                                accounts    => [aeser_api_encoder:encode(account_pubkey, SenderPubkey),
+                                                aeser_api_encoder:encode(account_pubkey, AckPubkey)]
+                              },
+                      {ok, #{poi := P}} = sc_ws_get_poi_(ConnPid, Scope, Config),
+                      P
+              end,
 
-    NegativePoiTests =
-        fun(ConnPid) ->
-            <<"broken_encoding: accounts">> = GetMissingPoI(ConnPid, [<<123456789>>], []),
-            <<"broken_encoding: contracts">> = GetMissingPoI(ConnPid, [], [<<123456789>>]),
-            <<"broken_encoding: accounts, contracts">> = GetMissingPoI(ConnPid, [<<123456789>>], [<<123456789>>]),
-            AccountByteSize = aeser_api_encoder:byte_size_for_type(account_pubkey),
-            FakeAccountId = <<42:AccountByteSize/unit:8>>,
-            <<"not_found">> = GetMissingPoI(ConnPid, [FakeAccountId], []),
-            ContractByteSize = aeser_api_encoder:byte_size_for_type(contract_pubkey),
-            FakeContractId = <<42:ContractByteSize/unit:8>>,
-            <<"not_found">> = GetMissingPoI(ConnPid, [], [FakeContractId])
-        end,
+          GetMissingPoI =
+              fun(ConnPid, Accs, Cts) ->
+                  ws_send_tagged(ConnPid, <<"channels.get.poi">>,
+                                  #{contracts   => [aeser_api_encoder:encode(contract_pubkey, C) || C <- Cts],
+                                    accounts    => [aeser_api_encoder:encode(account_pubkey, Acc) || Acc <- Accs]
+                                  }, Config),
 
-    NegativePoiTests(SenderConnPid),
-    NegativePoiTests(AckConnPid),
+                          {ok, _, #{<<"reason">> := R}} = wait_for_channel_event(ConnPid, error, Config),
+                          R
+                      end,
 
-    {ok, PoIBin} = aeser_api_encoder:safe_decode(poi, EncodedPoI),
-    PoI = aec_trees:deserialize_poi(PoIBin),
-    {ok, _SenderAcc} = aec_trees:lookup_poi(accounts, SenderPubkey, PoI),
-    {ok, _AckAcc} = aec_trees:lookup_poi(accounts, AckPubkey, PoI),
-    {ok, _ContractAcc} = aec_trees:lookup_poi(accounts, ContractPubKey, PoI),
-    {ok, _ContractObj} = aec_trees:lookup_poi(contracts, ContractPubKey, PoI),
+          EncodedPoI = GetPoI(SenderConnPid),
+          EncodedPoI = GetPoI(AckConnPid),
 
-    ok = ?WS:unregister_test_for_channel_events(SenderConnPid, [sign, info, get, error]),
-    ok = ?WS:unregister_test_for_channel_events(AckConnPid, [sign, info, get, error]),
+          NegativePoiTests =
+              fun(ConnPid) ->
+                  <<"broken_encoding: accounts">> = GetMissingPoI(ConnPid, [<<123456789>>], []),
+                  <<"broken_encoding: contracts">> = GetMissingPoI(ConnPid, [], [<<123456789>>]),
+                  <<"broken_encoding: accounts, contracts">> = GetMissingPoI(ConnPid, [<<123456789>>], [<<123456789>>]),
+                  AccountByteSize = aeser_api_encoder:byte_size_for_type(account_pubkey),
+                  FakeAccountId = <<42:AccountByteSize/unit:8>>,
+                  <<"not_found">> = GetMissingPoI(ConnPid, [FakeAccountId], []),
+                  ContractByteSize = aeser_api_encoder:byte_size_for_type(contract_pubkey),
+                  FakeContractId = <<42:ContractByteSize/unit:8>>,
+                  <<"not_found">> = GetMissingPoI(ConnPid, [], [FakeContractId])
+              end,
+
+          NegativePoiTests(SenderConnPid),
+          NegativePoiTests(AckConnPid),
+
+          {ok, PoIBin} = aeser_api_encoder:safe_decode(poi, EncodedPoI),
+          PoI = aec_trees:deserialize_poi(PoIBin),
+          {ok, _SenderAcc} = aec_trees:lookup_poi(accounts, SenderPubkey, PoI),
+          {ok, _AckAcc} = aec_trees:lookup_poi(accounts, AckPubkey, PoI),
+          {ok, _ContractAcc} = aec_trees:lookup_poi(accounts, ContractPubKey, PoI),
+          {ok, _ContractObj} = aec_trees:lookup_poi(contracts, ContractPubKey, PoI)
+      end),
     ok.
 
 sc_ws_get_poi_(ConnPid, Scope, Config) ->
@@ -2862,6 +2887,11 @@ assert_no_registered_events(L, Config) ->
 
 perform_snapshot_solo(Role, Round, Participants, Conns, Config) ->
     perform_snapshot_solo(Role, Round, Participants, Conns, Config, #{}).
+
+perform_snapshot_solo(Role, Config, Params) ->
+    Participants = proplists:get_value(participants, Config),
+    Conns = proplists:get_value(channel_clients, Config),
+    perform_snapshot_solo(Role, no_update, Participants, Conns, Config, Params).
 
 perform_snapshot_solo(Role, Round, Participants, Conns, Config, Params) ->
     #{ priv_key := Privkey } = maps:get(Role, Participants),
@@ -3678,6 +3708,8 @@ log_basename(Config) ->
                 filename:join([Protocol, "abort_updates"]);
             optional_nonce ->
                 filename:join([Protocol, "changeable_nonce"]);
+            force_progress ->
+                filename:join([Protocol, "force_progress"]);
             plain -> Protocol
         end,
     filename:join("channel_docs", SubDir).
@@ -4631,6 +4663,39 @@ sc_ws_optional_params_fail_settle(Cfg0) ->
     sc_ws_optional_params_fail(Cfg0, <<"channels.settle">>, #{},
                                compute, PreAction, PostAction).
 
+sc_ws_optional_params_fail_force_progress(Cfg0) ->
+    ContractName = counter,
+    Function = "tick",
+    Arguments = [],
+    PreAction =
+        %% prepare the channel for slashing
+        fun(_ConnPid, Cfg) ->
+            %% create and call some contracts
+            sc_ws_contract_(Cfg, ContractName, initiator),
+            aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE),
+                                           ?DEFAULT_MIN_DEPTH),
+
+            ok
+        end,
+    PostAction =
+        fun(_Cfg) ->
+            ok
+        end,
+    MakeFPParams =
+        fun(Config) ->
+            [ContractPubkey] = contract_ids(Config),
+            {ok, EncodedData} = encode_call_data(ContractName, Function, Arguments),
+            GasPrice = aec_test_utils:min_gas_price() + rand:uniform(10000),
+            #{ contract_id => aeser_api_encoder:encode(contract_pubkey, ContractPubkey)
+            , abi_version => aect_test_utils:abi_version()
+            , amount      => 10
+            , call_data   => EncodedData
+            , gas_price   => GasPrice}
+        end,
+    sc_ws_optional_params_fail(Cfg0, <<"channels.force_progress">>,
+                               MakeFPParams,
+                               compute, PreAction, PostAction).
+
 sc_ws_optional_params_fail(Cfg0, Action, ActionParams) ->
     sc_ws_optional_params_fail(Cfg0, Action, ActionParams, compute).
 
@@ -4646,7 +4711,7 @@ sc_ws_optional_params_fail(Cfg0, Action, ActionParams, AbortMethod) ->
     sc_ws_optional_params_fail(Cfg0, Action, ActionParams, AbortMethod,
                                PreAction, PostAction).
 
-sc_ws_optional_params_fail(Cfg0, Action, ActionParams, AbortMethod,
+sc_ws_optional_params_fail(Cfg0, Action, ActionParams0, AbortMethod,
                            PreAction, PostAction) ->
     {Opts, CheckFun} = ?config(fee_computation, Cfg0),
     Test =
@@ -4656,6 +4721,11 @@ sc_ws_optional_params_fail(Cfg0, Action, ActionParams, AbortMethod,
             Clients = proplists:get_value(channel_clients, Cfg),
             SenderConnPid = maps:get(Who, Clients),
             PreAction(SenderConnPid, Cfg1),
+            ActionParams =
+                case is_function(ActionParams0) of
+                    true -> ActionParams0(Cfg1);
+                    false -> ActionParams0
+                end,
             with_registered_events([sign], [SenderConnPid],
                 fun() ->
                     ws_send_tagged(SenderConnPid, Action,
@@ -5047,3 +5117,123 @@ sc_ws_can_not_abort_while_open(Cfg0) ->
 
 ok({ok, Term}) -> Term.
 
+sc_ws_force_progress_based_on_offchain_state(Config0) ->
+    Test =
+        fun(ContractOwner, Forcer) ->
+            Config = sc_ws_open_(Config0),
+            ContractName = counter,
+            %% create and call some contracts
+            sc_ws_contract_(Config, ContractName, ContractOwner),
+            [ContractPubkey] = contract_ids(Config),
+            {ok, _SignedTx} = sc_ws_force_progress_(Forcer, ContractPubkey,
+                              ContractName, "tick", [], _Amount = 10, #{}, Config),
+            ct:log("*** Closing ***", []),
+            ok = sc_ws_close_(Config)
+        end,
+    [Test(ContractOwner, Forcer) || ContractOwner <- ?ROLES
+                                  , Forcer <- ?ROLES],
+    ok.
+
+sc_ws_force_progress_based_on_onchain_state(Config0) ->
+    Test =
+        fun(ContractOwner, Snapshotter, Forcer) ->
+            Config = sc_ws_open_(Config0),
+            ContractName = counter,
+            %% create and call some contracts
+            sc_ws_contract_(Config, ContractName, ContractOwner),
+            perform_snapshot_solo(Snapshotter, Config, #{}),
+            [ContractPubkey] = contract_ids(Config),
+            {ok, _SignedTx} = sc_ws_force_progress_(Forcer, ContractPubkey,
+                              ContractName, "tick", [], _Amount = 10, #{}, Config),
+            ct:log("*** Closing ***", []),
+            ok = sc_ws_close_(Config)
+        end,
+    [Test(ContractOwner, Snapshotter, Forcer) || ContractOwner <- ?ROLES
+                                               , Snapshotter <- ?ROLES
+                                               , Forcer <- ?ROLES],
+    ok.
+
+contract_ids(Config) ->
+    #{initiator := IConnPid} = proplists:get_value(channel_clients, Config),
+    {ok, #{ trees := StateTrees }} = sc_ws_get_state(IConnPid, Config),
+    ContractsTree = aec_trees:contracts(StateTrees),
+    [ Key || {Key = <<_:256>>, _} <- aect_state_tree:to_list(ContractsTree)].
+
+sc_ws_force_progress_(Origin, ContractPubkey,
+                      ContractName, Function, Arguments, Amount, XOpts, Config)
+    when Origin =:= initiator orelse Origin =:= responder ->
+    ct:log("*** Forcing progress ***", []),
+    Participants = proplists:get_value(participants, Config),
+    #{ channel_id := ChannelId
+     , initiator  := IConnPid
+     , responder  := RConnPid } = Clients
+        = proplists:get_value(channel_clients, Config),
+    #{pub_key := SenderPubkey,
+      priv_key:= SenderPrivkey} = maps:get(Origin, Participants),
+    ConnPid = maps:get(Origin, Clients),
+    ok = ?WS:register_test_for_channel_events(IConnPid, [on_chain_tx]),
+    ok = ?WS:register_test_for_channel_events(RConnPid, [on_chain_tx]),
+
+    {ok, Channel0} = get_channel(ChannelId),
+    Round0 = aesc_channels:round(Channel0),
+    StateHash0 = aesc_channels:state_hash(Channel0),
+
+    %% force progress
+    {ok, EncodedData} = encode_call_data(ContractName, Function, Arguments),
+    %% using random gas_price to check no hardcoded one
+    GasPrice = aec_test_utils:min_gas_price() + rand:uniform(10000),
+    FPOpts =
+        XOpts#{ contract_id => aeser_api_encoder:encode(contract_pubkey, ContractPubkey)
+              , abi_version => aect_test_utils:abi_version()
+              , amount      => Amount
+              , call_data   => EncodedData
+              , gas_price   => GasPrice},
+
+    {ok, SignedTx}
+        = request_and_sign(ConnPid,
+            <<"force_progress_tx">>, <<"channels.force_progress_sign">>,
+            SenderPrivkey, Config,
+            fun() ->
+                    case ?WS:json_rpc_call(
+                            ConnPid, #{ <<"method">> => <<"channels.force_progress">>
+                                      , <<"params">> => FPOpts }) of
+                        <<"ok">> -> ok;
+                        Other    -> {error, Other}
+                    end
+            end),
+    TxHash = aeser_api_encoder:encode(tx_hash, aetx_sign:hash(SignedTx)),
+    wait_for_tx_hash_on_chain(TxHash),
+
+    %% ensure channel object changed
+    {ok, Channel1} = get_channel(ChannelId),
+    Round1 = aesc_channels:round(Channel1),
+    StateHash1 = aesc_channels:state_hash(Channel1),
+  
+    ct:log("Force progress asserts:~nOld round ~p, New round ~p",
+           [Round0, Round1]),
+    ?assertNotEqual(StateHash0, StateHash1),
+    ?assertEqual(true, Round0 < Round1),
+
+    %% both clients are informed for the Forced progress on-chain
+    {ok, _, #{ <<"tx">> := _EncodedSignedWTx
+             , <<"info">> := <<"channel_changed">>
+             , <<"type">> := <<"channel_force_progress_tx">>}}
+        = wait_for_channel_event(IConnPid, on_chain_tx, Config),
+
+    {ok, _, #{ <<"tx">> := _EncodedSignedWTx
+             , <<"info">> := <<"channel_changed">>
+             , <<"type">> := <<"channel_force_progress_tx">>}}
+        = wait_for_channel_event(RConnPid, on_chain_tx, Config),
+
+    ok = ?WS:unregister_test_for_channel_events(IConnPid, [on_chain_tx]),
+    ok = ?WS:unregister_test_for_channel_events(RConnPid, [on_chain_tx]),
+
+    {ok, SignedTx}.
+
+get_channel(ChannelId) ->
+    {ok, ChannelPubkey} =
+        aeser_api_encoder:safe_decode(channel, ChannelId),
+    case rpc(aec_chain, get_channel, [ChannelPubkey]) of
+        {ok, _Channel} = OK -> OK;
+        {error, _} = Err -> Err
+    end.

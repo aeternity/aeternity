@@ -75,6 +75,9 @@
          extract_amounts/1,
          extract_abi_version/1]).
 
+-export([get_gas_price/1,
+         set_gas_price/2]).
+
 -export([from_db_format/1
         ]).
 
@@ -492,3 +495,16 @@ extract_abi_version(#call_contract{abi_version = ABIVersion}) ->
 update_error(Err) ->
     error({off_chain_update_error, Err}).
 
+-spec get_gas_price(update()) -> {ok, non_neg_integer()} | {error, not_a_call}.
+get_gas_price(#call_contract{gas_price = GasPrice}) ->
+    {ok, GasPrice};
+get_gas_price(_) ->
+    {error, not_a_call}.
+
+-spec set_gas_price(non_neg_integer(), update()) -> update().
+set_gas_price(NewGasPrice, #call_contract{} = Update) ->
+    Update#call_contract{gas_price = NewGasPrice};
+set_gas_price(_NewGasPrice, Update) ->
+    Update.
+
+    

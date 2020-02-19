@@ -202,7 +202,8 @@ check(#channel_force_progress_tx{payload       = Payload,
                                  offchain_trees= OffChainTrees} = Tx, Trees, Env) ->
     case aesc_utils:check_force_progress( Tx, Payload, OffChainTrees, Trees, Env) of
         ok -> {ok, Trees};
-        Err -> Err
+        Err ->
+            Err
     end.
 
 -spec process(tx(), aec_trees:trees(), aetx_env:env()) -> {ok, aec_trees:trees(), aetx_env:env()}.
