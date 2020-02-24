@@ -227,20 +227,7 @@ end_per_group(_Grp, Cfg) ->
 
 %% Process dict magic in the right process ;-)
 init_per_testcase(_TC, Config) ->
-    VmVersion = ?config(vm_version, Config),
-    AbiVersion = ?config(abi_version, Config),
-    SophiaVersion = ?config(sophia_version, Config),
-    ProtocolVersion = case ?config(protocol, Config) of
-                          roma    -> ?ROMA_PROTOCOL_VSN;
-                          minerva -> ?MINERVA_PROTOCOL_VSN;
-                          fortuna -> ?FORTUNA_PROTOCOL_VSN;
-                          lima    -> ?LIMA_PROTOCOL_VSN;
-                          iris    -> ?IRIS_PROTOCOL_VSN
-                      end,
-    put('$vm_version', VmVersion),
-    put('$abi_version', AbiVersion),
-    put('$sophia_version', SophiaVersion),
-    put('$protocol_version', ProtocolVersion),
+    aect_test_utils:setup_testcase(Config),
     Config.
 
 -define(skipRest(Res, Reason),

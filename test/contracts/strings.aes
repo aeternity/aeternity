@@ -1,4 +1,19 @@
+include "String.aes"
 contract Strings =
-    entrypoint str_len(s) = String.length(s)
-    entrypoint str_concat(s1, s2) = String.concat(s1, s2)
+  entrypoint str_len(s)         = String.length(s)
+  entrypoint str_concat(s1, s2) = String.concat(s1, s2)
+  entrypoint str_split(n, s)    = String.split(n, s)
+  entrypoint str_at(n, s)       = String.at(n, s)
+  entrypoint str_tokens(s, t)   = String.tokens(s, t)
+  entrypoint str_to_upper(s)    = String.to_upper(s)
+  entrypoint str_to_lower(s)    = String.to_lower(s)
+  entrypoint str_to_int(s)      = String.to_int(s)
+  entrypoint str_contains(s, t) = String.contains(s, t)
+
+  entrypoint test() =
+    let s1 = "a string"
+    let s2 = "another string"
+    let s  = String.concat(s1, s2)
+    let s' = String.from_list(String.to_list(s))
+    s' == s
 

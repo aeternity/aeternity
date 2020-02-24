@@ -166,6 +166,7 @@
         , sophia_remote_gas/1
         , sophia_higher_order_state/1
         , sophia_bignum/1
+        , sophia_strings/1
         , sophia_call_caller/1
         , sophia_auth_tx/1
         , sophia_compiler_version/1
@@ -315,6 +316,7 @@ all() ->
                        , sophia_aens_lookup
                        , sophia_crypto_pairing
                        , sophia_auth_tx
+                       , sophia_strings
                        ]).
 
 -define(FATE_TODO, [
@@ -579,8 +581,7 @@ init_per_testcase(TC, Config) when TC == sophia_aens_resolve;
     meck:expect(aec_governance, name_claim_bid_timeout, fun(_, _) -> 0 end),
     init_per_testcase_common(TC, Config);
 init_per_testcase(TC, Config) when TC == sophia_aens_update_transaction;
-                                   TC == sophia_aens_lookup;
-                                   TC == sophia_auth_tx ->
+                                   TC == sophia_aens_lookup ->
     ProtocolVsn = aec_hard_forks:protocol_vsn(?config(protocol, Config)),
     case ProtocolVsn >= ?IRIS_PROTOCOL_VSN of
         true ->
@@ -589,7 +590,8 @@ init_per_testcase(TC, Config) when TC == sophia_aens_update_transaction;
         false ->
             {skip, {requires_protocol, iris, TC}}
     end;
-init_per_testcase(TC, Config) when TC == sophia_auth_tx ->
+init_per_testcase(TC, Config) when TC == sophia_auth_tx;
+                                   TC == sophia_strings ->
     ProtocolVsn = aec_hard_forks:protocol_vsn(?config(protocol, Config)),
     case ProtocolVsn >= ?IRIS_PROTOCOL_VSN of
         true  -> init_per_testcase_common(TC, Config);
@@ -2049,6 +2051,63 @@ sophia_vm_interaction(Cfg) ->
                      , {RemCFortuna, IdCIris}
                      %% , {RemCLima, IdCIris}
                     ]],
+    ok.
+
+sophia_strings(_Cfg) ->
+    state(aect_test_utils:new_state()),
+    Acc = ?call(new_account, 1000000000 * aec_test_utils:min_gas_price()),
+    Ct  = ?call(create_contract, Acc, strings, {}),
+
+    ?assertEqual(5, ?call(call_contract, Acc, Ct, str_len, word, {<<"hello">>})),
+
+    ?assertEqual(7, byte_size(<<"helle̊"/utf8>>)),
+    ?assertEqual(6, ?call(call_contract, Acc, Ct, str_len, word, {<<"helle̊"/utf8>>})),
+
+    ?assertEqual(<<"foobar">>,
+                 ?call(call_contract, Acc, Ct, str_concat, string, {<<"foo">>, <<"bar">>})),
+
+    ?assertEqual(true,
+                 ?call(call_contract, Acc, Ct, test, bool, {})),
+
+    ?assertEqual({<<"foo">>, <<"bar">>},
+                 ?call(call_contract, Acc, Ct, str_split, {tuple, [string, string]}, {3, <<"foobar">>})),
+
+    ?assertEqual({some, $a},
+                 ?call(call_contract, Acc, Ct, str_at, {option, word}, {4, <<"foobar">>})),
+
+    ?assertEqual([<<"foo">>, <<"bar">>],
+                 ?call(call_contract, Acc, Ct, str_tokens, {list, string}, {<<"fooxbar">>, <<"x">>})),
+
+    ?assertEqual([<<"aaa">>, <<"bbb">>],
+                 ?call(call_contract, Acc, Ct, str_tokens, {list, string}, {<<"aaae̊bbb"/utf8>>, <<"e̊"/utf8>>})),
+
+    ?assertEqual(<<"FOOBAR">>,
+                 ?call(call_contract, Acc, Ct, str_to_upper, string, {<<"fOoBaR">>})),
+
+    ?assertEqual(<<"foobar">>,
+                 ?call(call_contract, Acc, Ct, str_to_lower, string, {<<"fOoBaR">>})),
+
+    ?assertEqual({some, 123450},
+                 ?call(call_contract, Acc, Ct, str_to_int, {option, word}, {<<"123450">>})),
+
+    ?assertEqual({some, -123450},
+                 ?call(call_contract, Acc, Ct, str_to_int, {option, word}, {<<"-123450">>})),
+
+    ?assertEqual({some, 32650330},
+                 ?call(call_contract, Acc, Ct, str_to_int, {option, word}, {<<"0x1f2345A"/utf8>>})),
+
+    ?assertEqual({some, -32650330},
+                 ?call(call_contract, Acc, Ct, str_to_int, {option, word}, {<<"-0x1f2345A"/utf8>>})),
+
+    ?assertEqual(none,
+                 ?call(call_contract, Acc, Ct, str_to_int, {option, word}, {<<"0X1f2345A"/utf8>>})),
+
+    ?assertEqual(none,
+                 ?call(call_contract, Acc, Ct, str_contains, {option, word}, {<<"0X1f2345A"/utf8>>, <<"F234">>})),
+
+    ?assertEqual({some, 3},
+                 ?call(call_contract, Acc, Ct, str_contains, {option, word}, {<<"0X1f2345A"/utf8>>, <<"f234">>})),
+
     ok.
 
 sophia_aevm_exploits(_Cfg) ->

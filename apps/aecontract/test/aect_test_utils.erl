@@ -566,9 +566,7 @@ init_per_group(aevm, Cfg, Cont) ->
             Cont([{sophia_version, ?SOPHIA_LIMA_AEVM}, {vm_version, ?VM_AEVM_SOPHIA_4},
                   {abi_version, ?ABI_AEVM_SOPHIA_1}, {protocol, lima} | Cfg]);
         ?IRIS_PROTOCOL_VSN ->
-            ct:pal("Running tests under Iris protocol"),
-            Cont([{sophia_version, ?SOPHIA_LIMA_AEVM}, {vm_version, ?VM_AEVM_SOPHIA_4},
-                  {abi_version, ?ABI_AEVM_SOPHIA_1}, {protocol, iris} | Cfg])
+            {skip, aevm_deprecated}
     end;
 init_per_group(fate, Cfg, Cont) ->
     case aect_test_utils:latest_protocol_version() of

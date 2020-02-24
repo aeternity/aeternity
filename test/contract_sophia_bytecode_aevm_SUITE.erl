@@ -458,7 +458,7 @@ stack(_Cfg) ->
     ok.
 
 strings(_Cfg) ->
-    Code      = compile_contract(strings),
+    Code      = compile_contract(strings_aevm),
     Env       = initial_state(#{}),
     Env1      = create_contract(101, Code, [], Env),
     Strings = ["",
