@@ -1,0 +1,51 @@
+
+contract Remote =
+  entrypoint id          : int => int
+  entrypoint wrong_ret   : int => bool
+  entrypoint wrong_arg   : bool => int
+  entrypoint wrong_arity : () => int
+  entrypoint hacked      : int => int
+  entrypoint missing     : int => int
+  entrypoint revert      : () => 'a
+  entrypoint crash       : () => 'a
+  entrypoint out_of_gas  : () => 'a
+
+contract ProtectedCall =
+
+  entrypoint
+    id(n : int) = n
+    wrong_ret(n : int) = n
+    wrong_arg(n : int) = n
+    wrong_arity(n : int) = n
+
+    hacked(n : int) =    // We'll hack the byte code to change the stated type to int => int
+      spend_gas()
+      false
+
+    // missing(n : int) = n
+
+    revert() =
+      spend_gas()
+      abort("oops")
+
+    crash() =
+      spend_gas()
+      1 / 0
+
+    out_of_gas() = out_of_gas()
+
+  function spend_gas() = [1..5] // about 250 gas
+
+  entrypoint test_ok(r : Remote) =
+    let Some(n) = r.id(protected = true, 10)
+    n + r.id(protected = false, 100)
+
+  entrypoint
+    test_wrong_ret  (r : Remote) : option(bool) = r.wrong_ret(protected = true, 0)
+    test_wrong_arg  (r : Remote) : option(int)  = r.wrong_arg(protected = true, false)
+    test_wrong_arity(r : Remote) : option(int)  = r.wrong_arity(protected = true)
+    test_hacked     (r : Remote) : option(int)  = r.hacked(protected = true, 0)
+    test_missing    (r : Remote) : option(int)  = r.missing(protected = true, 0)
+    test_revert     (r : Remote) : option('a)   = r.revert(protected = true)
+    test_crash      (r : Remote) : option('a)   = r.crash(protected = true)
+    test_out_of_gas (r : Remote) : option('a)   = r.out_of_gas(protected = true, gas = 500)

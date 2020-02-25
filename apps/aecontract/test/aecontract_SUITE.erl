@@ -170,6 +170,7 @@
         , sophia_call_caller/1
         , sophia_auth_tx/1
         , sophia_compiler_version/1
+        , sophia_protected_call/1
         , create_store/1
         , read_store/1
         , store_zero_value/1
@@ -431,6 +432,7 @@ groups() ->
                                  sophia_higher_order_state,
                                  sophia_use_memory_gas,
                                  sophia_compiler_version,
+                                 sophia_protected_call,
                                  lima_migration
                                ]}
     , {sophia_oracles_ttl, [],
@@ -861,6 +863,12 @@ hack_bytecode(SerCode, OP) when is_integer(OP), 0 =< OP, OP =< 255 ->
     HackedByteCode = <<OP:1/integer-unsigned-unit:8, ByteCode/binary>>,
     aect_sophia:serialize(Code#{ byte_code := HackedByteCode, compiler_version => <<"Hacked">> },
                           maps:get(contract_vsn, Code)).
+
+hack_fate_code(Serialized, Hack) ->
+    Deserialized = #{ byte_code := ByteCode, contract_vsn := Vsn } = aect_sophia:deserialize(Serialized),
+    FateCode     = aeb_fate_code:deserialize(ByteCode),
+    HackedCode   = aeb_fate_code:serialize(Hack(FateCode)),
+    aect_sophia:serialize(Deserialized#{ byte_code := HackedCode }, Vsn).
 
 create_contract(_Cfg) -> create_contract_(aec_test_utils:min_gas_price()).
 
@@ -5439,6 +5447,34 @@ sophia_compiler_version(_Cfg) ->
     CMap = aeser_contract_code:deserialize(aect_contracts:code(C)),
     ?assertMatchProtocol(maps:get(compiler_version, CMap, undefined),
                          undefined, <<"2.1.0">>, <<"3.2.0">>, <<"unknown">>, <<"4.2.0">>),
+    ok.
+
+sophia_protected_call(_Cfg) ->
+    state(aect_test_utils:new_state()),
+    Acc = ?call(new_account, 10000000000 * aec_test_utils:min_gas_price()),
+    {ok, Code} = compile_contract(protected_call),
+    HackedCode = hack_fate_code(Code,
+                    fun(FCode) ->
+                        Name = <<"hacked">>,
+                        Id = aeb_fate_code:symbol_identifier(Name),
+                        #{ Id := {Attrs, {[integer], boolean}, BBs} } = aeb_fate_code:functions(FCode),
+                        aeb_fate_code:insert_fun(Name, Attrs, {[integer], integer}, BBs, FCode)
+                    end),
+    Server = ?call(create_contract_with_code, Acc, HackedCode, {}, #{}),
+    Client = ?call(create_contract, Acc, protected_call, {}, #{}),
+    Test = fun(Fun, Type, MinGas, MaxGas) ->
+                {Fun, MinGas, MaxGas, ?call(call_contract, Acc, Client, Fun, Type, {?cid(Server)}, #{return_gas_used => true, gas => 10000})}
+           end,
+    {test_ok, _, _, {110, _}} = Test(test_ok, word, 0, 0),
+    Results = [ Test(test_wrong_ret,   {option, bool}, 150, 700)
+              , Test(test_hacked,      {option, word}, 300, 700)
+              , Test(test_wrong_arg,   {option, word}, 130, 200)
+              , Test(test_wrong_arity, {option, word}, 130, 200)
+              , Test(test_missing,     {option, word}, 130, 200)
+              , Test(test_revert,      {option, word}, 300, 700)
+              , Test(test_crash,       {option, word}, 300, 700)
+              , Test(test_out_of_gas,  {option, word}, 300, 700) ],
+    [] = [ Res || Res = {_, MinGas, MaxGas, {R, Gas}} <- Results, R /= none orelse Gas < MinGas orelse Gas > MaxGas ],
     ok.
 
 sophia_aevm_bad_code(_Cfg) ->
