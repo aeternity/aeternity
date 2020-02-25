@@ -5450,6 +5450,7 @@ sophia_compiler_version(_Cfg) ->
     ok.
 
 sophia_protected_call(_Cfg) ->
+    ?skipRest(vm_version() < ?VM_FATE_SOPHIA_2, protected_call_only_since_iris),
     state(aect_test_utils:new_state()),
     Acc = ?call(new_account, 10000000000 * aec_test_utils:min_gas_price()),
     {ok, Code} = compile_contract(protected_call),
@@ -5461,20 +5462,36 @@ sophia_protected_call(_Cfg) ->
                         aeb_fate_code:insert_fun(Name, Attrs, {[integer], integer}, BBs, FCode)
                     end),
     Server = ?call(create_contract_with_code, Acc, HackedCode, {}, #{}),
+    Proxy  = ?call(create_contract, Acc, protected_call, {}, #{}),
     Client = ?call(create_contract, Acc, protected_call, {}, #{}),
     Test = fun(Fun, Type, MinGas, MaxGas) ->
-                {Fun, MinGas, MaxGas, ?call(call_contract, Acc, Client, Fun, Type, {?cid(Server)}, #{return_gas_used => true, gas => 10000})}
+                Args = case lists:reverse(atom_to_list(Fun)) of
+                         "r_" ++ _ -> {?cid(Server), ?cid(Proxy)};
+                         _         -> {?cid(Server)}
+                       end,
+                {Fun, MinGas, MaxGas, ?call(call_contract, Acc, Client, Fun, Type, Args, #{return_gas_used => true, gas => 10000})}
            end,
     {test_ok, _, _, {110, _}} = Test(test_ok, word, 0, 0),
-    Results = [ Test(test_wrong_ret,   {option, bool}, 150, 700)
-              , Test(test_hacked,      {option, word}, 300, 700)
-              , Test(test_wrong_arg,   {option, word}, 130, 200)
-              , Test(test_wrong_arity, {option, word}, 130, 200)
-              , Test(test_missing,     {option, word}, 130, 200)
-              , Test(test_revert,      {option, word}, 300, 700)
-              , Test(test_crash,       {option, word}, 300, 700)
-              , Test(test_out_of_gas,  {option, word}, 300, 700) ],
+    Results = [ Test(test_wrong_ret,     {option, bool}, 150, 700)
+              , Test(test_hacked,        {option, word}, 300, 700)
+              , Test(test_wrong_arg,     {option, word}, 130, 200)
+              , Test(test_wrong_arity,   {option, word}, 130, 200)
+              , Test(test_missing,       {option, word}, 130, 200)
+              , Test(test_revert,        {option, word}, 300, 700)
+              , Test(test_crash,         {option, word}, 300, 700)
+              , Test(test_out_of_gas,    {option, word}, 300, 700)
+              , Test(test_wrong_ret_r,   {option, bool}, 150, 700)
+              , Test(test_hacked_r,      {option, word}, 300, 700)
+              , Test(test_wrong_arg_r,   {option, word}, 130, 200)
+              , Test(test_wrong_arity_r, {option, word}, 130, 200)
+              , Test(test_missing_r,     {option, word}, 130, 200)
+              , Test(test_revert_r,      {option, word}, 300, 700)
+              , Test(test_crash_r,       {option, word}, 300, 700)
+              , Test(test_out_of_gas_r,  {option, word}, 300, 800) ],
     [] = [ Res || Res = {_, MinGas, MaxGas, {R, Gas}} <- Results, R /= none orelse Gas < MinGas orelse Gas > MaxGas ],
+    %% More tests:
+    %% - check that side effects are rolled back for failed calls (store
+    %%   updates, value transfer, spends)
     ok.
 
 sophia_aevm_bad_code(_Cfg) ->

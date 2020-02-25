@@ -10,6 +10,16 @@ contract Remote =
   entrypoint crash       : () => 'a
   entrypoint out_of_gas  : () => 'a
 
+contract ProxyRemote =
+  entrypoint call_wrong_ret   : Remote => bool
+  entrypoint call_wrong_arg   : Remote => int
+  entrypoint call_wrong_arity : Remote => int
+  entrypoint call_hacked      : Remote => int
+  entrypoint call_missing     : Remote => int
+  entrypoint call_revert      : Remote => 'a
+  entrypoint call_crash       : Remote => 'a
+  entrypoint call_out_of_gas  : Remote => 'a
+
 contract ProtectedCall =
 
   entrypoint
@@ -41,6 +51,16 @@ contract ProtectedCall =
     n + r.id(protected = false, 100)
 
   entrypoint
+    call_wrong_ret  (r : Remote) : bool = r.wrong_ret(0)
+    call_wrong_arg  (r : Remote) : int  = r.wrong_arg(false)
+    call_wrong_arity(r : Remote) : int  = r.wrong_arity()
+    call_hacked     (r : Remote) : int  = r.hacked(0)
+    call_missing    (r : Remote) : int  = r.missing(0)
+    call_revert     (r : Remote) : 'a   = r.revert()
+    call_crash      (r : Remote) : 'a   = r.crash()
+    call_out_of_gas (r : Remote) : 'a   = r.out_of_gas(gas = 500)
+
+  entrypoint
     test_wrong_ret  (r : Remote) : option(bool) = r.wrong_ret(protected = true, 0)
     test_wrong_arg  (r : Remote) : option(int)  = r.wrong_arg(protected = true, false)
     test_wrong_arity(r : Remote) : option(int)  = r.wrong_arity(protected = true)
@@ -49,3 +69,13 @@ contract ProtectedCall =
     test_revert     (r : Remote) : option('a)   = r.revert(protected = true)
     test_crash      (r : Remote) : option('a)   = r.crash(protected = true)
     test_out_of_gas (r : Remote) : option('a)   = r.out_of_gas(protected = true, gas = 500)
+
+  entrypoint
+    test_wrong_ret_r  (r : Remote, p : ProxyRemote) : option(bool) = p.call_wrong_ret(protected = true, r)
+    test_wrong_arg_r  (r : Remote, p : ProxyRemote) : option(int)  = p.call_wrong_arg(protected = true, r)
+    test_wrong_arity_r(r : Remote, p : ProxyRemote) : option(int)  = p.call_wrong_arity(protected = true, r)
+    test_hacked_r     (r : Remote, p : ProxyRemote) : option(int)  = p.call_hacked(protected = true, r)
+    test_missing_r    (r : Remote, p : ProxyRemote) : option(int)  = p.call_missing(protected = true, r)
+    test_revert_r     (r : Remote, p : ProxyRemote) : option('a)   = p.call_revert(protected = true, r)
+    test_crash_r      (r : Remote, p : ProxyRemote) : option('a)   = p.call_crash(protected = true, r)
+    test_out_of_gas_r (r : Remote, p : ProxyRemote) : option('a)   = p.call_out_of_gas(protected = true, r)
