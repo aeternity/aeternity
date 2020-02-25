@@ -659,7 +659,8 @@ awaiting_reestablish({call, From},
 awaiting_reestablish(Type, Msg, D) ->
     handle_common_event(Type, Msg, postpone_or_error(Type), D).
 
-awaiting_signature(enter, _OldSt, _D) -> keep_state_and_data;
+awaiting_signature(enter, _OldSt, _D) ->
+    keep_state_and_data;
 awaiting_signature(cast, {?SIGNED, Tag, {error, Code}} = Msg,
                    #data{op = #op_sign{ tag = Tag }} = D) ->
     lager:debug("Error code as signing reply (Tag = ~p): ~p", [Tag, Code]),
@@ -886,7 +887,8 @@ awaiting_signature(timeout, _Msg,
 awaiting_signature(Type, Msg, D) ->
     handle_common_event(Type, Msg, postpone, D).
 
-awaiting_update_ack(enter, _OldSt, _D) -> keep_state_and_data;
+awaiting_update_ack(enter, _OldSt, _D) ->
+    keep_state_and_data;
 awaiting_update_ack(cast, {Req, _} = Msg, #data{} = D) when ?UPDATE_CAST(Req) ->
     %% This might happen if a request is sent before our signed ?UPDATE msg
     %% arrived.
@@ -1001,7 +1003,8 @@ enter_closing(D) ->
     end.
 
 
-dep_half_signed(enter, _OldSt, _D) -> keep_state_and_data;
+dep_half_signed(enter, _OldSt, _D) ->
+    keep_state_and_data;
 dep_half_signed(cast, {Req, _} = Msg, D) when ?UPDATE_CAST(Req) ->
     %% This might happen if a request is sent before our ?DEP_CREATED msg
     %% arrived.
@@ -3029,7 +3032,7 @@ request_signing_(Tag, SignedTx, BlockHash, Updates, D) ->
                        #data{}, send | defer) ->
                               {ok, #data{}, [gen_statem:action()]}
                             | {ok, fun(() -> ok), #data{}, [gen_statem:action()]}
-                            | {error, any()}.
+                            | {error, client_disconnected}.
 request_signing_(Tag, SignedTx, Updates, BlockHash, #data{client = Client} = D, SendAction) ->
     Info = #{ signed_tx => SignedTx
             , updates => Updates },
