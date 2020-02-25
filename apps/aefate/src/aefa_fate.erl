@@ -277,10 +277,12 @@ step([I|Is], EngineState0) ->
 catch_protected(Err, ES) ->
     case aefa_engine_state:pop_call_stack(ES) of
         {empty, _} -> throw(Err);
-        {return_check, _, protected, _, ES1} ->
-            ES2 = aefa_engine_state:set_accumulator(make_none(), ES1),
+        {return_check, _, protected, _, Stores, API, ES1} ->
+            ES2 = aefa_engine_state:set_accumulator(make_none(),
+                  aefa_engine_state:set_stores(Stores,
+                  aefa_engine_state:set_chain_api(API, ES1))),
             pop_call_stack(ES2);
-        {return_check, _, _, _, ES1} -> catch_protected(Err, ES1);
+        {return_check, _, _, _, _, _, ES1} -> catch_protected(Err, ES1);
         {local, _, _, _, ES1}        -> catch_protected(Err, ES1);
         {remote, _, _, _, _, _, ES1} -> catch_protected(Err, ES1)
     end.
@@ -607,8 +609,8 @@ pop_call_stack(ES) ->
         {empty, ES1} ->
             ES2 = unfold_store_maps(ES1),
             {stop, ES2};
-        {return_check, TVars, Protected, RetType, ES1} ->
-            ES2 = check_return_type_protected(Protected, RetType, TVars, ES1),
+        {return_check, TVars, Protected, RetType, Stores, API, ES1} ->
+            ES2 = check_return_type_protected(Protected, RetType, TVars, Stores, API, ES1),
             pop_call_stack(ES2);
         {local, Function, TVars, BB, ES1} ->
             ES2 = set_local_function(Function, ES1),
@@ -621,15 +623,18 @@ pop_call_stack(ES) ->
             {jump, BB, ES4}
     end.
 
-check_return_type_protected(unprotected, RetType, TVars, ES) ->
+check_return_type_protected(unprotected, RetType, TVars, _Stores, _API, ES) ->
     check_return_type(RetType, TVars, ES);
-check_return_type_protected(protected, RetType, TVars, ES) ->
+check_return_type_protected(protected, RetType, TVars, Stores, API, ES) ->
     try check_return_type(RetType, TVars, ES) of
         ES1 ->
             Val = aefa_engine_state:accumulator(ES1),
             aefa_engine_state:set_accumulator(make_some(Val), ES1)
     catch _:_ ->
-        aefa_engine_state:set_accumulator(make_none(), ES)
+        %% Rollback side effects from failed call
+        ES1 = aefa_engine_state:set_stores(Stores,
+              aefa_engine_state:set_chain_api(API, ES)),
+        aefa_engine_state:set_accumulator(make_none(), ES1)
     end.
 
 unfold_store_maps(ES) ->

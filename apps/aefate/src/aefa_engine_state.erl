@@ -232,7 +232,8 @@ push_call_stack(#es{ current_bb = BB
 %% TODO: Make better types for all these things
 -spec pop_call_stack(state()) ->
                             {'empty', state()} |
-                            {'return_check', map(), aeb_fate_data:fate_type_type(), state()} |
+                            {'return_check', map(), protected | unprotected, aeb_fate_data:fate_type_type(),
+                                             aefa_stores:stores(), aefa_chain_api:state(), state()} |
                             {'local', _, map(), non_neg_integer(), state()} |
                             {'remote', aeb_fate_data:fate_address(), aeb_fate_data:fate_contract(),
                                        _, map(), non_neg_integer(), state()}.
@@ -241,8 +242,8 @@ pop_call_stack(#es{accumulator = ReturnValue,
                    current_contract = Current} = ES) ->
     case Stack of
         [] -> {empty, ES};
-        [{return_check, TVars, Protected, ReturnType}| Rest] ->
-            {return_check, TVars, Protected, ReturnType, ES#es{ call_stack = Rest}};
+        [{return_check, TVars, Protected, Stores, API, ReturnType}| Rest] ->
+            {return_check, TVars, Protected, ReturnType, Stores, API, ES#es{ call_stack = Rest}};
         [{gas_store, StoredGas}| Rest] ->
             ES1 = ES#es{ gas = StoredGas + gas(ES)
                        , call_stack = Rest
@@ -282,7 +283,7 @@ collect_gas_stores_on_revert(#es{call_stack = Stack, gas = Gas}) ->
 
 collect_gas_stores([{gas_store, Gas}|Left], AccGas) ->
     collect_gas_stores(Left, AccGas + Gas);
-collect_gas_stores([{return_check, _, _, _}|Left], AccGas) ->
+collect_gas_stores([{return_check, _, _, _, _, _}|Left], AccGas) ->
     collect_gas_stores(Left, AccGas);
 collect_gas_stores([{_, _, _, _, _, _, _, _}|Left], AccGas) ->
     collect_gas_stores(Left, AccGas);
@@ -307,11 +308,11 @@ push_gas_cap(GasCap, #es{ gas = AvailableGas
          }.
 
 -spec push_return_type_check(aeb_fate_data:fate_type_type(), #{}, unprotected | protected, state()) -> state().
-push_return_type_check(RetType, TVars, Protected, #es{ call_stack = Stack} = ES) ->
+push_return_type_check(RetType, TVars, Protected, #es{ call_stack = Stack, stores = Stores, chain_api = API } = ES) ->
     %% Note that the TVars must correspond to the bindings for the
     %% return type.  Typically, the current_tvars corresponds to the
     %% next function in the call stack.
-    ES#es{ call_stack = [{return_check, TVars, Protected, RetType}|Stack]}.
+    ES#es{ call_stack = [{return_check, TVars, Protected, Stores, API, RetType}|Stack]}.
 
 -spec push_accumulator(aeb_fate_data:fate_type(), state()) -> state().
 push_accumulator(V, #es{ accumulator = ?FATE_VOID
