@@ -3883,6 +3883,8 @@ log_basename(Config) ->
                 filename:join(Protocol, "continuous");
             only_one_signs ->
                 filename:join(Protocol, "only_one_signs");
+            both_sign ->
+                filename:join(Protocol, "both_sign");
             conflicts ->
                 ParentGroup = ?config(who_signs_update, Config),
                 ParentDir =
