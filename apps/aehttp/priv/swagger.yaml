@@ -712,34 +712,6 @@ paths:
           description: 'Contract not found'
           schema:
             $ref: '#/definitions/Error'
-  /contracts/{pubkey}/store:
-    get:
-      tags:
-        - external
-        - contract
-      operationId: GetContractStore
-      description: 'Get contract store by pubkey'
-      produces:
-        - application/json
-      parameters:
-        - in: path
-          name: pubkey
-          description: 'The pubkey of the contract'
-          required: true
-          # Encoded contract pubkey 'ct_...'
-          # pattern: "^ct_[1-9A-HJ-NP-Za-km-z]*$"
-          type: string
-      responses:
-        '200':
-          description: 'Contract Store'
-          schema:
-            $ref: '#/definitions/ContractStore'
-        '400':
-          description: 'Invalid pubkey'
-          schema:
-            $ref: '#/definitions/Error'
-        '404':
-          description: 'Contract not found'
   /contracts/{pubkey}/poi:
     get:
       tags:
@@ -2895,20 +2867,6 @@ definitions:
       - active
       - referrer_ids
       - deposit
-  ContractStore:
-    type: object
-    properties:
-      store:
-        type: array
-        items:
-          type: object
-          properties:
-            key:
-              type: string
-            value:
-              $ref: '#/definitions/EncodedByteArray'
-    required:
-      - store
   ByteCode:
     type: object
     properties:

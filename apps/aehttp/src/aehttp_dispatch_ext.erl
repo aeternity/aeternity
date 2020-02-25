@@ -82,7 +82,6 @@ queue('GetTransactionByHash')                   -> ?READ_Q;
 queue('GetTransactionInfoByHash')               -> ?READ_Q;
 queue('GetContract')                            -> ?READ_Q;
 queue('GetContractCode')                        -> ?READ_Q;
-queue('GetContractStore')                       -> ?READ_Q;
 queue('GetContractPoI')                         -> ?READ_Q;
 queue('GetOracleByPubkey')                      -> ?READ_Q;
 queue('GetOracleQueriesByPubkey')               -> ?READ_Q;
@@ -468,20 +467,6 @@ handle_request_('GetContractCode', Req, _Context) ->
                 {ok, Contract} ->
                     Code = aect_contracts:code(Contract),
                     {200, [], #{ <<"bytecode">> => aeser_api_encoder:encode(contract_bytearray, Code) }}
-            end
-    end;
-
-handle_request_('GetContractStore', Req, _Context) ->
-    case aeser_api_encoder:safe_decode(contract_pubkey, maps:get(pubkey, Req)) of
-        {error, _} -> {400, [], #{reason => <<"Invalid public key">>}};
-        {ok, PubKey} ->
-            case aec_chain:get_contract(PubKey) of
-                {error, _} -> {404, [], #{reason => <<"Contract not found">>}};
-                {ok, Contract} ->
-                    Response = [ #{<<"key">> => aeu_hex:hexstring_encode(K),
-                                   <<"value">> => aeser_api_encoder:encode(contract_bytearray, V)}
-                               || {K, V} <- maps:to_list(aect_contracts_store:contents(aect_contracts:state(Contract))) ],
-                    {200, [], #{ <<"store">> => Response }}
             end
     end;
 
