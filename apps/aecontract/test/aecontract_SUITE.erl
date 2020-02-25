@@ -5461,37 +5461,48 @@ sophia_protected_call(_Cfg) ->
                         #{ Id := {Attrs, {[integer], boolean}, BBs} } = aeb_fate_code:functions(FCode),
                         aeb_fate_code:insert_fun(Name, Attrs, {[integer], integer}, BBs, FCode)
                     end),
-    Server = ?call(create_contract_with_code, Acc, HackedCode, {}, #{}),
-    Proxy  = ?call(create_contract, Acc, protected_call, {}, #{}),
-    Client = ?call(create_contract, Acc, protected_call, {}, #{}),
+    Server = ?call(create_contract_with_code, Acc, HackedCode, {}, #{amount => 777777777}),
+    Proxy  = ?call(create_contract, Acc, protected_call, {}, #{amount => 555555555}),
+    Client = ?call(create_contract, Acc, protected_call, {}, #{amount => 666666666}),
     Test = fun(Fun, Type, MinGas, MaxGas) ->
                 Args = case lists:reverse(atom_to_list(Fun)) of
                          "r_" ++ _ -> {?cid(Server), ?cid(Proxy)};
                          _         -> {?cid(Server)}
                        end,
-                {Fun, MinGas, MaxGas, ?call(call_contract, Acc, Client, Fun, Type, Args, #{return_gas_used => true, gas => 10000})}
+                ServerBal0 = ?call(call_contract, Acc, Server, get_balance, word, {}),
+                ClientBal0 = ?call(call_contract, Acc, Client, get_balance, word, {}),
+                ProxyBal0  = ?call(call_contract, Acc, Proxy,  get_balance, word, {}),
+                OldState   = ?call(call_contract, Acc, Server, get_state, word, {}),
+                Res        = ?call(call_contract, Acc, Client, Fun, Type, Args, #{return_gas_used => true, gas => 10000}),
+                NewState   = ?call(call_contract, Acc, Server, get_state, word, {}),
+                ServerBal1 = ?call(call_contract, Acc, Server, get_balance, word, {}),
+                ClientBal1 = ?call(call_contract, Acc, Client, get_balance, word, {}),
+                ProxyBal1  = ?call(call_contract, Acc, Proxy,  get_balance, word, {}),
+                {Fun, MinGas, MaxGas, Res, NewState - OldState, [ClientBal1 - ClientBal0, ProxyBal1 - ProxyBal0, ServerBal1 - ServerBal0]}
            end,
-    {test_ok, _, _, {110, _}} = Test(test_ok, word, 0, 0),
-    Results = [ Test(test_wrong_ret,     {option, bool}, 150, 700)
-              , Test(test_hacked,        {option, word}, 300, 700)
+    {test_ok, _, _, {110, _}, _, _} = Test(test_ok, word, 0, 0),
+    Results = [ Test(test_wrong_ret,     {option, bool}, 150, 200)
               , Test(test_wrong_arg,     {option, word}, 130, 200)
               , Test(test_wrong_arity,   {option, word}, 130, 200)
               , Test(test_missing,       {option, word}, 130, 200)
-              , Test(test_revert,        {option, word}, 300, 700)
-              , Test(test_crash,         {option, word}, 300, 700)
-              , Test(test_out_of_gas,    {option, word}, 300, 700)
-              , Test(test_wrong_ret_r,   {option, bool}, 150, 700)
-              , Test(test_hacked_r,      {option, word}, 300, 700)
+              , Test(test_nonpayable,    {option, word}, 130, 200)
+              , Test(test_out_of_funds,  {option, word}, 130, 200)
+              , Test(test_hacked,        {option, word}, 500, 800)
+              , Test(test_revert,        {option, word}, 500, 800)
+              , Test(test_crash,         {option, word}, 500, 800)
+              , Test(test_out_of_gas,    {option, word}, 500, 800)
+              , Test(test_wrong_ret_r,   {option, bool}, 150, 200)
               , Test(test_wrong_arg_r,   {option, word}, 130, 200)
               , Test(test_wrong_arity_r, {option, word}, 130, 200)
               , Test(test_missing_r,     {option, word}, 130, 200)
-              , Test(test_revert_r,      {option, word}, 300, 700)
-              , Test(test_crash_r,       {option, word}, 300, 700)
-              , Test(test_out_of_gas_r,  {option, word}, 300, 800) ],
-    [] = [ Res || Res = {_, MinGas, MaxGas, {R, Gas}} <- Results, R /= none orelse Gas < MinGas orelse Gas > MaxGas ],
-    %% More tests:
-    %% - check that side effects are rolled back for failed calls (store
-    %%   updates, value transfer, spends)
+              , Test(test_nonpayable_r,  {option, word}, 130, 200)
+              , Test(test_hacked_r,      {option, word}, 600, 900)
+              , Test(test_revert_r,      {option, word}, 600, 900)
+              , Test(test_crash_r,       {option, word}, 600, 900)
+              , Test(test_out_of_gas_r,  {option, word}, 300, 500) ],
+    [] = [ Res || Res = {_, MinGas, MaxGas, {R, Gas}, State, Bal} <- Results,
+                  R /= none orelse Gas < MinGas orelse Gas > MaxGas orelse State /= 0 orelse
+                  lists:any(fun(N) -> N /= 0 end, Bal) ],
     ok.
 
 sophia_aevm_bad_code(_Cfg) ->
