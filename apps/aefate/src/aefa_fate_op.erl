@@ -8,6 +8,7 @@
         , call_r/6
         , call_t/2
         , call_gr/7
+        , call_pgr/8
         , call_value/2
         , jump/2
         , jumpif/3
@@ -220,15 +221,27 @@ call_t(Arg0, EngineState) ->
 
 call_r(Arg0, Arg1, Arg2, Arg3, Arg4, EngineState) ->
     {[Contract, ArgType, RetType, Value], ES1} = get_op_args([Arg0, Arg2, Arg3, Arg4], EngineState),
-    ES2 = remote_call_common(Contract, Arg1, ArgType, RetType, Value, no_gas_cap, ES1),
+    ES2 = remote_call_common(Contract, Arg1, ArgType, RetType, Value, no_gas_cap, unprotected, ES1),
     {jump, 0, ES2}.
 
 call_gr(Arg0, Arg1, Arg2, Arg3, Arg4, Arg5, EngineState) ->
     {[Contract, ArgType, RetType, Value, GasCap], ES1} = get_op_args([Arg0, Arg2, Arg3, Arg4, Arg5], EngineState),
-    ES2 = remote_call_common(Contract, Arg1, ArgType, RetType, Value, {gas_cap, GasCap}, ES1),
+    ES2 = remote_call_common(Contract, Arg1, ArgType, RetType, Value, {gas_cap, GasCap}, unprotected, ES1),
     {jump, 0, ES2}.
 
-remote_call_common(Contract, Function, ?FATE_TYPEREP({tuple, ArgTypes}), ?FATE_TYPEREP(RetType), Value, GasCap, EngineState) ->
+call_pgr(Arg0, Arg1, Arg2, Arg3, Arg4, Arg5, Arg6, EngineState) ->
+    ?AVAILABLE_FROM(?VM_FATE_SOPHIA_2, EngineState),
+    {[Contract, ArgType, RetType, Value, GasCap, Prot], ES1} = get_op_args([Arg0, Arg2, Arg3, Arg4, Arg5, Arg6], EngineState),
+    Protected =
+        case Prot of
+            false -> unprotected;
+            true  -> protected;
+            _     -> aefa_fate:abort({value_does_not_match_type, Prot, bool}, EngineState)
+        end,
+    ES2 = remote_call_common(Contract, Arg1, ArgType, RetType, Value, {gas_cap, GasCap}, Protected, ES1),
+    {jump, 0, ES2}.
+
+remote_call_common(Contract, Function, ?FATE_TYPEREP({tuple, ArgTypes}), ?FATE_TYPEREP(RetType), Value, GasCap, Protected, EngineState) ->
     Current   = aefa_engine_state:current_contract(EngineState),
     Caller    = aeb_fate_data:make_address(Current),
     Arity     = length(ArgTypes),
@@ -244,7 +257,7 @@ remote_call_common(Contract, Function, ?FATE_TYPEREP({tuple, ArgTypes}), ?FATE_T
     Signature = aefa_fate:get_function_signature(Function, ES6),
     ES7       = aefa_fate:check_signature(Args, Signature, ES6),
     TVars     = aefa_engine_state:current_tvars(ES7),
-    ES8       = aefa_fate:push_return_type_check(Signature, {ArgTypes, RetType}, TVars, ES7),
+    ES8       = aefa_fate:push_return_type_check(Signature, {ArgTypes, RetType}, TVars, Protected, ES7),
     ES9       = aefa_fate:bind_args(Args, ES8),
     transfer_value(Current, Contract, Value, ES9).
 

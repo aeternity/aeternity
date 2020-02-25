@@ -32,7 +32,7 @@
         , get_function_signature/2
         , push_gas_cap/2
         , push_return_address/1
-        , push_return_type_check/4
+        , push_return_type_check/5
         , runtime_exit/2
         , runtime_revert/2
         , set_local_function/2
@@ -561,7 +561,7 @@ push(V, ES) ->
 push_return_address(ES) ->
     aefa_engine_state:push_call_stack(ES).
 
-push_return_type_check({CalleeArgs, CalleeRet}, {CallerArgs, CallerRet}, CalleeTVars, ES) ->
+push_return_type_check({CalleeArgs, CalleeRet}, {CallerArgs, CallerRet}, CalleeTVars, Protected, ES) ->
     CalleeSig = {tuple, [CalleeRet | CalleeArgs]},
     CallerSig = {tuple, [CallerRet | CallerArgs]},
 
@@ -571,7 +571,7 @@ push_return_type_check({CalleeArgs, CalleeRet}, {CallerArgs, CallerRet}, CalleeT
     InstCalleeSig = instantiate_type(CalleeTVars, CalleeSig),
     case match_type(CallerSig, InstCalleeSig) of
         false       -> abort(remote_type_mismatch, ES);
-        CallerTVars -> aefa_engine_state:push_return_type_check(CallerRet, CallerTVars, ES)
+        CallerTVars -> aefa_engine_state:push_return_type_check(CallerRet, CallerTVars, Protected, ES)
     end.
 
 %% Push a gas cap on the call stack to limit the available gas, but keep the
@@ -592,9 +592,10 @@ pop_call_stack(ES) ->
         {empty, ES1} ->
             ES2 = unfold_store_maps(ES1),
             {stop, ES2};
-        {return_check, TVars, RetType, ES1} ->
+        {return_check, TVars, Protected, RetType, ES1} ->
             ES2 = check_return_type(RetType, TVars, ES1),
-            pop_call_stack(ES2);
+            ES3 = wrap_return_value(Protected, ES2),
+            pop_call_stack(ES3);
         {local, Function, TVars, BB, ES1} ->
             ES2 = set_local_function(Function, ES1),
             ES3 = aefa_engine_state:set_current_tvars(TVars, ES2),
@@ -605,6 +606,11 @@ pop_call_stack(ES) ->
             ES4 = aefa_engine_state:set_current_tvars(TVars, ES3),
             {jump, BB, ES4}
     end.
+
+wrap_return_value(unprotected, ES) -> ES;
+wrap_return_value(protected, ES) ->
+    Val = aefa_engine_state:accumulator(ES),
+    aefa_engine_state:set_accumulator(aeb_fate_data:make_variant([0, 1], 1, {Val}), ES).
 
 unfold_store_maps(ES) ->
     {Acc, ES1} = unfold_store_maps(aefa_engine_state:accumulator(ES), ES),
