@@ -263,11 +263,26 @@ step([], EngineState) ->
     {jump, BB, EngineState};
 step([I|Is], EngineState0) ->
     ES = ?trace(I, EngineState0),
-    case aefa_fate_eval:eval(I, ES) of
+    try aefa_fate_eval:eval(I, ES) of
         {next, NewState} -> step(Is, NewState);
         {jump,_BB,_NewState} = Res -> Res;
         {stop, _NewState} = Res -> Res
+    catch
+        throw:{?MODULE, _, _} = Err ->
+            catch_protected(Err, EngineState0);
+        throw:{?MODULE, revert, _, _} = Err ->
+            catch_protected(Err, EngineState0)
+    end.
 
+catch_protected(Err, ES) ->
+    case aefa_engine_state:pop_call_stack(ES) of
+        {empty, _} -> throw(Err);
+        {return_check, _, protected, _, ES1} ->
+            ES2 = aefa_engine_state:set_accumulator(make_none(), ES1),
+            pop_call_stack(ES2);
+        {return_check, _, _, _, ES1} -> catch_protected(Err, ES1);
+        {local, _, _, _, ES1}        -> catch_protected(Err, ES1);
+        {remote, _, _, _, _, _, ES1} -> catch_protected(Err, ES1)
     end.
 
 %% -----------------------------------------------------------
@@ -593,9 +608,8 @@ pop_call_stack(ES) ->
             ES2 = unfold_store_maps(ES1),
             {stop, ES2};
         {return_check, TVars, Protected, RetType, ES1} ->
-            ES2 = check_return_type(RetType, TVars, ES1),
-            ES3 = wrap_return_value(Protected, ES2),
-            pop_call_stack(ES3);
+            ES2 = check_return_type_protected(Protected, RetType, TVars, ES1),
+            pop_call_stack(ES2);
         {local, Function, TVars, BB, ES1} ->
             ES2 = set_local_function(Function, ES1),
             ES3 = aefa_engine_state:set_current_tvars(TVars, ES2),
@@ -607,10 +621,16 @@ pop_call_stack(ES) ->
             {jump, BB, ES4}
     end.
 
-wrap_return_value(unprotected, ES) -> ES;
-wrap_return_value(protected, ES) ->
-    Val = aefa_engine_state:accumulator(ES),
-    aefa_engine_state:set_accumulator(aeb_fate_data:make_variant([0, 1], 1, {Val}), ES).
+check_return_type_protected(unprotected, RetType, TVars, ES) ->
+    check_return_type(RetType, TVars, ES);
+check_return_type_protected(protected, RetType, TVars, ES) ->
+    try check_return_type(RetType, TVars, ES) of
+        ES1 ->
+            Val = aefa_engine_state:accumulator(ES1),
+            aefa_engine_state:set_accumulator(make_some(Val), ES1)
+    catch _:_ ->
+        aefa_engine_state:set_accumulator(make_none(), ES)
+    end.
 
 unfold_store_maps(ES) ->
     {Acc, ES1} = unfold_store_maps(aefa_engine_state:accumulator(ES), ES),
@@ -698,3 +718,10 @@ ensure_contract_store(Pubkey, ES) ->
 
 
 %% ----------------------------
+
+make_none() ->
+    aeb_fate_data:make_variant([0, 1], 0, {}).
+
+make_some(Val) ->
+    aeb_fate_data:make_variant([0, 1], 1, {Val}).
+
