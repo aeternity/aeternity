@@ -1,4 +1,3 @@
-include "String.aes"
 contract Remote =
   record rstate = { i : int, s : string, m : map(int, int) }
 

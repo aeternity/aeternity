@@ -58,6 +58,10 @@
         , append/4
         , str_join/4
         , str_length/3
+        , str_to_list/3
+        , str_from_list/3
+        , str_to_lower/3
+        , str_to_upper/3
         , int_to_str/3
         , addr_to_str/3
         , str_reverse/3
@@ -77,6 +81,8 @@
         , bits_or/4
         , bits_and/4
         , bits_diff/4
+        , char_to_int/3
+        , char_from_int/3
         , address/2
         , contract_creator/2
         , balance/2
@@ -630,7 +636,97 @@ str_join(Arg0, Arg1, Arg2, EngineState) ->
     write(Arg0, Result, ES3).
 
 str_length(Arg0, Arg1, EngineState) ->
-    un_op(str_length, {Arg0, Arg1}, EngineState).
+    {StrValue, ES1} = get_op_arg(Arg1, EngineState),
+    if not ?IS_FATE_STRING(StrValue) ->
+        aefa_fate:abort({value_does_not_match_type, StrValue, string}, ES1);
+       true -> ok
+    end,
+    case aefa_engine_state:vm_version(ES1) of
+        ?VM_FATE_SOPHIA_1 ->
+            Res = aeb_fate_data:make_integer(
+                    byte_size(?FATE_STRING_VALUE(StrValue))),
+            write(Arg0, Res, ES1);
+        Vm when Vm > ?VM_FATE_SOPHIA_1 ->
+            case unicode:characters_to_nfc_list(?FATE_STRING_VALUE(StrValue)) of
+                {error, _, _} ->
+                    aefa_fate:abort({value_does_not_match_type, StrValue, string_utf8}, ES1);
+                Chars ->
+                    Res = aeb_fate_data:make_integer(length(Chars)),
+                    ES2 = aefa_engine_state:spend_gas_for_new_cells(length(Chars), ES1),
+                    write(Arg0, Res, ES2)
+            end
+    end.
+
+str_to_list(Arg0, Arg1, EngineState) ->
+    {Value, ES1} = get_op_arg(Arg1, EngineState),
+    if not ?IS_FATE_STRING(Value) ->
+        aefa_fate:abort({value_does_not_match_type, Value, string}, ES1);
+       true -> ok
+    end,
+    case unicode:characters_to_nfc_list(?FATE_STRING_VALUE(Value)) of
+        {error, _, _} ->
+            aefa_fate:abort({value_does_not_match_type, Value, string_utf8}, ES1);
+        Chars ->
+            ES2 = aefa_engine_state:spend_gas_for_new_cells(length(Chars) * 2 + 1, ES1),
+            write(Arg0, Chars, ES2)
+    end.
+
+str_from_list(Arg0, Arg1, EngineState) ->
+    {Value, ES1} = get_op_arg(Arg1, EngineState),
+    if not ?IS_FATE_LIST(Value) ->
+        aefa_fate:abort({value_does_not_match_type, Value, {list, char}}, ES1);
+       true -> ok
+    end,
+    case unicode:characters_to_nfc_binary(Value) of
+        {error, _, _} -> aefa_fate:abort({value_does_not_match_type, Value, {list, char}}, ES1);
+        Str ->
+            Cells = string_cells(?FATE_STRING_VALUE(Str)),
+            ES2 = aefa_engine_state:spend_gas_for_new_cells(Cells + 1, ES1),
+            write(Arg0, aeb_fate_data:make_string(Str), ES2)
+    end.
+
+str_to_upper(Arg0, Arg1, EngineState) ->
+    {Value, ES1} = get_op_arg(Arg1, EngineState),
+    if not ?IS_FATE_STRING(Value) ->
+        aefa_fate:abort({value_does_not_match_type, Value, string}, ES1);
+       true -> ok
+    end,
+    UpperStr = string:uppercase(?FATE_STRING_VALUE(Value)),
+    ES2 = aefa_engine_state:spend_gas_for_new_cells(byte_size(UpperStr), ES1),
+    write(Arg0, aeb_fate_data:make_string(UpperStr), ES2).
+
+str_to_lower(Arg0, Arg1, EngineState) ->
+    {Value, ES1} = get_op_arg(Arg1, EngineState),
+    if not ?IS_FATE_STRING(Value) ->
+        aefa_fate:abort({value_does_not_match_type, Value, string}, ES1);
+       true -> ok
+    end,
+    LowerStr = string:lowercase(?FATE_STRING_VALUE(Value)),
+    ES2 = aefa_engine_state:spend_gas_for_new_cells(byte_size(LowerStr), ES1),
+    write(Arg0, aeb_fate_data:make_string(LowerStr), ES2).
+
+char_to_int(Arg0, Arg1, EngineState) ->
+    {Char, ES1} = get_op_arg(Arg1, EngineState),
+    if not ?IS_FATE_INTEGER(Char) ->
+        aefa_fate:abort({value_does_not_match_type, Char, char}, ES1);
+       true -> ok
+    end,
+    write(Arg0, Char, ES1).
+
+char_from_int(Arg0, Arg1, EngineState) ->
+    {Int, ES1} = get_op_arg(Arg1, EngineState),
+    if not ?IS_FATE_INTEGER(Int) ->
+        aefa_fate:abort({value_does_not_match_type, Int, int}, ES1);
+       true -> ok
+    end,
+    case unicode:characters_to_nfc_list([Int]) of
+        [Char] ->
+            ES2 = aefa_engine_state:spend_gas_for_new_cells(9, ES1),
+            write(Arg0, make_some(Char), ES2);
+        _ ->
+            ES2 = aefa_engine_state:spend_gas_for_new_cells(8, ES1),
+            write(Arg0, make_none(), ES2)
+    end.
 
 int_to_str(Arg0, Arg1, EngineState) ->
     {LeftValue, ES1} = get_op_arg(Arg1, EngineState),
@@ -1999,8 +2095,6 @@ op(addr_to_str, A) when ?IS_FATE_ADDRESS(A) ->
     aeser_api_encoder:encode(account_pubkey, Val);
 op(str_reverse, A) when ?IS_FATE_STRING(A) ->
     aeb_fate_data:make_string(binary_reverse(?FATE_STRING_VALUE(A)));
-op(str_length, A) when ?IS_FATE_STRING(A) ->
-    aeb_fate_data:make_integer(byte_size(?FATE_STRING_VALUE(A)));
 op(bits_all, N)  when ?IS_FATE_INTEGER(N) ->
     ?FATE_BITS((1 bsl (N)) - 1);
 op(bits_sum, A)  when ?IS_FATE_BITS(A) ->

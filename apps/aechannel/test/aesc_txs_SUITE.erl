@@ -261,13 +261,12 @@ groups() ->
        {group, snapshot_solo_negative},
        {group, aevm},
        {group, fate},
-       {group, fork_awareness},
-       {group, complex_sequences}
+       {group, fork_awareness}
       ]
      },
 
-     {aevm, [], [{group, force_progress}, {group, force_progress_negative}]},
-     {fate, [], [{group, force_progress}, {group, force_progress_negative}]},
+     {aevm, [], [{group, force_progress}, {group, force_progress_negative}, {group, complex_sequences}]},
+     {fate, [], [{group, force_progress}, {group, force_progress_negative}, {group, complex_sequences}]},
 
      {create_negative, [sequence],
       [create_missing_account,
@@ -445,14 +444,17 @@ end_per_suite(_Config) ->
     ok.
 
 init_per_group(fork_awareness, Config) ->
-    meck:expect(aec_hard_forks, protocol_effective_at_height,
+    case aect_test_utils:latest_protocol_version() of
+        P when P >= ?IRIS_PROTOCOL_VSN -> {skip, not_updated_for_iris_yet};
+        _P ->
+            meck:expect(aec_hard_forks, protocol_effective_at_height,
                 fun(V) when V < ?MINERVA_FORK_HEIGHT -> ?ROMA_PROTOCOL_VSN;
                    (V) when V < ?FORTUNA_FORK_HEIGHT -> ?MINERVA_PROTOCOL_VSN;
                    (V) when V < ?LIMA_FORK_HEIGHT    -> ?FORTUNA_PROTOCOL_VSN;
                    (_)                               -> ?LIMA_PROTOCOL_VSN
                 end),
-    %% This is orthogonal to vm version, but we need to set one up.
-    aect_test_utils:init_per_group(aevm, Config);
+            aect_test_utils:init_per_group(aevm, Config)
+    end;
 init_per_group(VM, Config) when VM == aevm; VM == fate ->
     aect_test_utils:init_per_group(VM, Config);
 init_per_group(close_solo_with_payload_negative, Config) ->
@@ -4755,7 +4757,7 @@ apply_offchain_update(Props, Round, Update) ->
                                                 Env, Round, Reserve),
     Props#{trees => Trees}.
 
-    
+
 run(Cfg, Funs) ->
     lists:foldl(
         fun(Fun, Props) -> Fun(Props) end,
@@ -4907,7 +4909,7 @@ close_solo_with_optional_payload(Cfg) ->
 
 negative_close_solo_with_optional_payload(Cfg, ErrorWithPayload,
                                           ErrorEmptyPayload) ->
-    
+
     Negative =
         fun(Fun, Error) -> fun(Props) -> (negative(Fun, Error))(Props) end end,
     case proplists:get_value(close_solo_use_payload, Cfg, true) of
@@ -5847,7 +5849,7 @@ fp_close_solo_slash_with_same_round(Cfg) ->
                 fun(Props) ->
                     Fun =
                         case IsPositiveTest of
-                            true -> 
+                            true ->
                                 positive(fun slash_/2);
                             false ->
                                 negative(fun slash_/2, {error, same_round})
@@ -5856,7 +5858,7 @@ fp_close_solo_slash_with_same_round(Cfg) ->
                 end
                ])
         end,
-    SwitchHeight = 168300, 
+    SwitchHeight = 168300,
     [Test(Closer, Slasher, CloseHeight, IsPossitiveTest)
         || Closer  <- ?ROLES,
            Slasher <- ?ROLES,
@@ -5897,7 +5899,7 @@ fp_fp_close_solo_with_same_round(Cfg) ->
                 fun(Props) ->
                     Fun =
                         case IsPositiveTest of
-                            true -> 
+                            true ->
                                 positive(fun close_solo_with_payload/2);
                             false ->
                                 negative(fun close_solo_with_payload/2, {error, same_round})
@@ -5906,7 +5908,7 @@ fp_fp_close_solo_with_same_round(Cfg) ->
                 end
                ])
         end,
-    SwitchHeight = 168300, 
+    SwitchHeight = 168300,
     [Test(Closer, CloseHeight, IsPossitiveTest)
         || Closer  <- ?ROLES,
            {CloseHeight, IsPossitiveTest} <- [{SwitchHeight - 1, true},
