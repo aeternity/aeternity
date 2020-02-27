@@ -642,16 +642,22 @@ check_status_on_fork_switch(I, #st{} = St) ->
 %% that changed at a height greater than that of the CA.
 chids_to_audit(#{ block_hash := BHash }, #st{ last_top  = LastTop
                                            , cache     = C } = St) ->
-    case aec_chain_state:find_common_ancestor(BHash, LastTop) of
-        {ok, ForkHash} ->
-            {Height, C1} = height(ForkHash, C),
-            lager:debug("Height = ~p", [Height]),
-            ChIds = chids_changed_since_height(Height),
-            C2 = adjust_tx_histories_after_fork(ChIds, Height, C1),
-            {chids_changed_since_height(Height), St#st{cache = C2}};
-        {error, _} = Err ->
-            lager:debug("Err = ~p", [Err]),
-            {all_channel_ids(), St}
+    case ets:info(?T_STATES_AT_HEIGHT, size) of
+        0 ->
+            %% There are no channel states to audit
+            {[], St};
+        _ ->
+            case aec_chain_state:find_common_ancestor(BHash, LastTop) of
+                {ok, ForkHash} ->
+                    {Height, C1} = height(ForkHash, C),
+                    lager:debug("Height = ~p", [Height]),
+                    ChIds = chids_changed_since_height(Height),
+                    C2 = adjust_tx_histories_after_fork(ChIds, Height, C1),
+                    {chids_changed_since_height(Height), St#st{cache = C2}};
+                {error, _} = Err ->
+                    lager:debug("Err = ~p", [Err]),
+                    {all_channel_ids(), St}
+            end
     end.
 
 %% May involve chain access
@@ -1218,10 +1224,9 @@ chids_changed_since_height({H,ChId} = K, Height) when H > Height ->
     [ChId | chids_changed_since_height(ets:next(?T_STATES_AT_HEIGHT, K), Height)];
 chids_changed_since_height(K, _) when is_binary(K) ->
     %% Binaries sort higher than tuples - we're done
+    [];
+chids_changed_since_height('$end_of_table', _) ->
     [].
-%% chids_changed_since_height('$end_of_table', _) ->
-%%     %% This should never happen
-%%     [].
 
 delete_states_at_height(ChIds) ->
     lists:foreach(
