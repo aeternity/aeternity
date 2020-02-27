@@ -924,20 +924,15 @@ channel_conflict(#{initiator := IConnPid, responder :=RConnPid},
     ok = ?WS:register_test_for_channel_events(RConnPid, [sign, error, conflict]),
 
     SignUpdate =
-        fun TrySignUpdate(ConnPid, Privkey, UpdateType, Method) ->
-            case wait_for_channel_event(ConnPid, sign, Config) of
-                {ok, _, UpdateType, #{<<"signed_tx">> := EncSignedCreateTx0}} ->
-                    {ok, SignedCreateBinTx} =
-                        aeser_api_encoder:safe_decode(transaction, EncSignedCreateTx0),
-                    STx = aetx_sign:deserialize_from_binary(SignedCreateBinTx),
-                    SignedCreateTx = aec_test_utils:co_sign_tx(STx, Privkey),
-                    EncSignedCreateTx = aeser_api_encoder:encode(transaction,
-                                                  aetx_sign:serialize_to_binary(SignedCreateTx)),
-                    ws_send_tagged(ConnPid, Method,
-                                   #{signed_tx => EncSignedCreateTx}, Config);
-                {ok, _, _, _} -> %% this is not the message we are looking for
-                    TrySignUpdate(ConnPid, Privkey, UpdateType, Method)
-            end
+        fun TrySignUpdate(ConnPid, Privkey, EncSignedTx0, Method) ->
+                {ok, SignedBinTx} =
+                    aeser_api_encoder:safe_decode(transaction, EncSignedTx0),
+                STx = aetx_sign:deserialize_from_binary(SignedBinTx),
+                SignedTx = aec_test_utils:co_sign_tx(STx, Privkey),
+                EncSignedTx = aeser_api_encoder:encode(transaction,
+                                              aetx_sign:serialize_to_binary(SignedTx)),
+                ws_send_tagged(ConnPid, Method,
+                                #{signed_tx => EncSignedTx}, Config)
         end,
     TriggerFun(StarterPid, StarterPubkey, StarterPrivkey,
                AcknowledgerPid, AcknowledgerPubkey, AcknowledgerPrivkey,
@@ -3302,7 +3297,9 @@ sc_ws_conflict_new_tx_(StarterAction, AckAction, Config) ->
                 {StarterMethod, StarterParams, StarterEvent} =
                     StarterAction(StarterPubkey, AcknowledgerPubkey),
                 ws_send_tagged(StarterPid, StarterMethod, StarterParams, Config),
-                SignUpdate(StarterPid, StarterPrivkey, StarterEvent,
+                {ok, _, StarterEvent, #{<<"signed_tx">> := StarterTx}} =
+                    wait_for_channel_event(StarterPid, sign, Config),
+                SignUpdate(StarterPid, StarterPrivkey, StarterTx,
                            tag_to_method(StarterEvent)),
 
                 wait_for_channel_event(AcknowledgerPid, sign, Config),
@@ -3356,16 +3353,12 @@ sc_ws_conflict_(StarterAction, AckAction, Config) ->
         fun(StarterPid, StarterPubkey, StarterPrivkey,
             AcknowledgerPid, AcknowledgerPubkey, AcknowledgerPrivkey,
             SignUpdate) ->
-                %% starter initiates an update
                 {StarterMethod, StarterParams, StarterEvent} =
                     StarterAction(StarterPubkey, AcknowledgerPubkey),
-                ws_send_tagged(StarterPid, StarterMethod, StarterParams, Config),
 
-                %% starter signs the new state
-
-                %% acknowledger initiates an update too
                 {AckMethod, AckParams, AckEvent} =
                     AckAction(StarterPubkey, AcknowledgerPubkey),
+                ws_send_tagged(StarterPid, StarterMethod, StarterParams, Config),
                 ws_send_tagged(AcknowledgerPid, AckMethod, AckParams, Config),
                 sign_or_wait(StarterPid, AcknowledgerPid,
                              StarterPrivkey, AcknowledgerPrivkey,
@@ -3395,19 +3388,30 @@ tag_to_method(<<"snapshot_solo_tx">>) -> <<"channels.snapshot_solo_sign">>.
 sign_or_wait(ConnPidA, ConnPidB, PrivkeyA, PrivkeyB,
              EventA, EventB, SignUpdate, Config) ->
     WhoSigns = ?config(who_signs_update, Config),
+    WaitForCorrectEvent =
+        fun Fun(ConnPid, Event) ->
+            {ok, _, ReceivedEvent, #{<<"signed_tx">> := Tx}} =
+                wait_for_channel_event(ConnPid, sign, Config),
+            case ReceivedEvent =:= Event of
+                true -> Tx;
+                false ->
+                    ct:log("While waiting for a ~p, discarding received sign event ~p",
+                           [Event, ReceivedEvent]),
+                    Fun(ConnPid, Event)
+            end
+        end,
+    TxA = WaitForCorrectEvent(ConnPidA, EventA),
+
+    TxB = WaitForCorrectEvent(ConnPidB, EventB),
+
     case WhoSigns of
         noone ->
-            {ok, _, EventA, #{<<"signed_tx">> := _}} =
-                wait_for_channel_event(ConnPidA, sign, Config),
-            {ok, _, EventB, #{<<"signed_tx">> := _}} =
-                wait_for_channel_event(ConnPidB, sign, Config);
+            pass;
         one ->
-            {ok, _, EventB, #{<<"signed_tx">> := _}} =
-                wait_for_channel_event(ConnPidB, sign, Config),
-            SignUpdate(ConnPidA, PrivkeyA, EventA, tag_to_method(EventA));
+            SignUpdate(ConnPidA, PrivkeyA, TxA, tag_to_method(EventA));
         both ->
-            SignUpdate(ConnPidA, PrivkeyA, EventA, tag_to_method(EventA)),
-            SignUpdate(ConnPidB, PrivkeyB, EventB, tag_to_method(EventB))
+            SignUpdate(ConnPidA, PrivkeyA, TxA, tag_to_method(EventA)),
+            SignUpdate(ConnPidB, PrivkeyB, TxB, tag_to_method(EventB))
     end,
     ok.
 

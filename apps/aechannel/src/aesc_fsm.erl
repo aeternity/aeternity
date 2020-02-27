@@ -1143,10 +1143,9 @@ open(cast, {?UPDATE, Msg}, D) ->
             lager:debug("Rejected incoming off-chain update because of ~p", [_Error]),
             handle_update_conflict(?UPDATE, D)
     end;
-open(cast, {?UPDATE_ERR, Msg}, D) ->
-    %% this will happen only if we are malicious, this does cause invalid
-    %% state
-    report(conflict, Msg, D),
+open(cast, {Err, Msg}, D) when Err =:= ?UPDATE_ERR;
+                               Err =:= ?DEP_ERR;
+                               Err =:= ?WDRAW_ERR ->
     keep_state(D);
 open(cast, {?DEP_CREATED, Msg}, D) ->
     case check_deposit_created_msg(Msg, D) of
@@ -4454,7 +4453,6 @@ handle_call_(awaiting_signature, Msg, From,
     %% Race detection!
     lager:debug("race detected: ~p", [Msg]),
     #op_sign{tag = OngoingOp} = D#data.op,
-    gen_statem:reply(From, {error, conflict}),
     lager:debug("calling handle_update_conflict", []),
     handle_update_conflict(OngoingOp, D#data{op = ?NO_OP});
 handle_call_(open, {get_contract_call, Contract, Caller, Round}, From,
