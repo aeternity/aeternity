@@ -674,7 +674,7 @@ str_to_list(Arg0, Arg1, EngineState) ->
 str_from_list(Arg0, Arg1, EngineState) ->
     {Value, ES1} = get_op_arg(Arg1, EngineState),
     if not ?IS_FATE_LIST(Value) ->
-        aefa_fate:abort({value_does_not_match_type, Value, string}, ES1);
+        aefa_fate:abort({value_does_not_match_type, Value, {list, char}}, ES1);
        true -> ok
     end,
     case unicode:characters_to_nfc_binary(Value) of
@@ -682,7 +682,7 @@ str_from_list(Arg0, Arg1, EngineState) ->
         Str ->
             Cells = string_cells(?FATE_STRING_VALUE(Str)),
             ES2 = aefa_engine_state:spend_gas_for_new_cells(Cells + 1, ES1),
-            write(Arg0, ?FATE_STRING_VALUE(Str), ES2)
+            write(Arg0, aeb_fate_data:make_string(Str), ES2)
     end.
 
 str_to_upper(Arg0, Arg1, EngineState) ->
@@ -693,7 +693,7 @@ str_to_upper(Arg0, Arg1, EngineState) ->
     end,
     UpperStr = string:uppercase(?FATE_STRING_VALUE(Value)),
     ES2 = aefa_engine_state:spend_gas_for_new_cells(byte_size(UpperStr), ES1),
-    write(Arg0, ?FATE_STRING_VALUE(UpperStr), ES2).
+    write(Arg0, aeb_fate_data:make_string(UpperStr), ES2).
 
 str_to_lower(Arg0, Arg1, EngineState) ->
     {Value, ES1} = get_op_arg(Arg1, EngineState),
@@ -703,7 +703,7 @@ str_to_lower(Arg0, Arg1, EngineState) ->
     end,
     LowerStr = string:lowercase(?FATE_STRING_VALUE(Value)),
     ES2 = aefa_engine_state:spend_gas_for_new_cells(byte_size(LowerStr), ES1),
-    write(Arg0, ?FATE_STRING_VALUE(LowerStr), ES2).
+    write(Arg0, aeb_fate_data:make_string(LowerStr), ES2).
 
 char_to_int(Arg0, Arg1, EngineState) ->
     {Char, ES1} = get_op_arg(Arg1, EngineState),

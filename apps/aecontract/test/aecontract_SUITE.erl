@@ -2093,10 +2093,10 @@ sophia_strings(_Cfg) ->
     ?assertEqual({some, -123450},
                  ?call(call_contract, Acc, Ct, str_to_int, {option, word}, {<<"-123450">>})),
 
-    ?assertEqual({some, 32650330},
+    ?assertEqual({some, 16#1f2345A},
                  ?call(call_contract, Acc, Ct, str_to_int, {option, word}, {<<"0x1f2345A"/utf8>>})),
 
-    ?assertEqual({some, -32650330},
+    ?assertEqual({some, -16#1f2345A},
                  ?call(call_contract, Acc, Ct, str_to_int, {option, word}, {<<"-0x1f2345A"/utf8>>})),
 
     ?assertEqual(none,
