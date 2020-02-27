@@ -24,6 +24,9 @@
         , set_up_channel/1
         , deposit/1
         , flush_cache/1
+        , innocent_fork/1
+        , fork_touches/1
+        , fork_evicts/1
         , cleanup/1
         ]).
 
@@ -53,6 +56,7 @@
 
 -define(TIMEOUT, 3000).
 -define(TYPE, {type, ?LINE}).   % unique type info for min-depth callback
+-define(FORK, {fork, ?LINE}).   % fork id
 
 all() ->
     [{group, all_tests}].
@@ -63,7 +67,10 @@ groups() ->
       {all_tests, [sequence], [ {group, admin}
                               , {group, channel_lifecycle}
                               , {group, multiple_channels}
-                              , {group, cache_flushing} ]}
+                              , {group, cache_flushing}
+                              , {group, innocent_fork}
+                              , {group, fork_touches_but_no_change}
+                              , {group, fork_evicts_tx} ]}
     , {admin, [sequence], [ reg_unreg ]}
     , {channel_lifecycle, [sequence], [ set_up_channel
                                       , deposit
@@ -77,6 +84,18 @@ groups() ->
                                    , deposit
                                    , flush_cache
                                    , deposit
+                                   , cleanup ]}
+    , {innocent_fork, [sequence], [ set_up_channel
+                                  , deposit
+                                  , innocent_fork
+                                  , cleanup ]}
+    , {fork_touches_but_no_change, [sequence], [ set_up_channel
+                                               , deposit
+                                               , fork_touches
+                                               , cleanup ]}
+    , {fork_evicts_tx, [sequence], [ set_up_channel
+                                   , deposit
+                                   , fork_evicts
                                    , cleanup ]}
     ].
 
@@ -96,12 +115,26 @@ reg_unreg(_Config) ->
     ok.
 
 cleanup(_Config) ->
-    AllClients = get_all_clients(),
+    ChSetup = get_channel_setup(),
+    AllClients = get_all_clients(ChSetup),
+    ChIds = maps:keys(ChSetup),
     ?LOG("AllClients = ~p", [AllClients]),
-    [kill_client(C) || C <- AllClients].
+    [kill_client(C) || C <- AllClients],
+    lists:foreach(
+      fun(ChId) ->
+              case value_exists(ChId) of
+                  false ->
+                      ok;
+                  true ->
+                      ?LOG("ChId ~p still exists: ~p",
+                           [ChId, [{T, ets:tab2list(T)} ||
+                                      T <- aesc_chain_watcher:table_names()]]),
+                      error({still_exists, ChId})
+              end
+      end, ChIds).
 
 kill_client(Client) ->
-    true = pid_exists(Client),
+    true = value_exists(Client),
     unlink(Client),
     MRef = erlang:monitor(process, Client),
     exit(Client, kill),
@@ -109,7 +142,7 @@ kill_client(Client) ->
         {'DOWN', MRef, _, _, _} ->
             _ = sys:get_status(aesc_chain_watcher),
             _ = sys:get_status(aesc_chain_watcher),
-            case pid_exists(Client) of
+            case value_exists(Client) of
                 false ->
                     ok;
                 true ->
@@ -125,7 +158,7 @@ set_up_channel(Config) ->
      , tx_hash    := TxHash
      , signed_tx  := SignedTx } = CreateTx = create_tx(Config),
     ok = push(CreateTx),
-    mempool = chain_req({find_tx_with_location, TxHash}),
+    {mempool, SignedTx} = chain_req({find_tx_with_location, TxHash}),
     ClientIxs = [1,2,3],
     [C1,C2,C3] = Cs = [spawn_client(N, ChId) || N <- ClientIxs],
     Watchers = [C1, C2],
@@ -151,12 +184,10 @@ set_up_channel(Config) ->
     ok.
 
 deposit(Config) ->
-    ChSetup = get_channel_setup(),
-    maps:fold(
-      fun(ChId, Setup, ok) ->
+    foreach_channel(
+      fun(ChId, Setup) ->
               deposit_(ChId, Setup, Config)
-      end, ok, ChSetup),
-    ok.
+      end).
 
 deposit_(ChId, Setup, Config) ->
     Cs = maps:get(clients, Setup),
@@ -182,6 +213,82 @@ flush_cache(_Config) ->
     AllClients = get_all_clients(),
     assert_no_events(AllClients),
     ok.
+
+innocent_fork(_Config) ->
+    ChSetup = get_channel_setup(),
+    #{clients := Cs} = maps:get(hd(maps:keys(ChSetup)), ChSetup),
+    {ok, #{hash := ForkHash}} = add_keyblock(),
+    {ok, _} = fork_from_hash(ForkId = ?FORK, ForkHash),
+    add_microblock(ForkId),
+    add_microblock(ForkId),
+    assert_no_events(fun() -> fork_switch(ForkId) end, Cs),
+    ok.
+
+fork_touches(Config) ->
+    ChSetup = get_channel_setup(),
+    ChId = hd(maps:keys(ChSetup)),
+    #{ clients    := Cs
+     , watchers   := Watchers } = maps:get(ChId, ChSetup),
+    #{ tx_hash := TxHash } = DepositTx = deposit_tx(ChId, Config),
+    {ok, #{ hash := ForkPoint }} = add_keyblock(),
+    push(DepositTx),
+    C1 = hd(Cs),
+    ok = set_min_depth_watch(C1, ChId, TxHash, _MinDepth = 3, _MType = ?TYPE),
+    assert_no_events(Cs),
+    {ok, #{ hash := MicroHash }} = add_microblock(),
+    ok = watchers_notified(
+           fun({channel_changed_on_chain, I}, _C) ->
+                   #{tx := _SignedTx} = I,
+                   ok
+           end, Watchers),
+    {ok, _} = fork_from_hash(ForkId = ?FORK, ForkPoint),
+    add_microblock(ForkId),
+    clone_microblock_on_fork(MicroHash, ForkId),
+    assert_no_events(fun() -> fork_switch(ForkId) end, Cs),
+    ?LOG("No events detected after fork switch", []),
+    ok.
+
+fork_evicts(Config) ->
+    ChSetup = get_channel_setup(),
+    ChId = hd(maps:keys(ChSetup)),
+    #{ clients    := Cs
+     , watchers   := Watchers } = maps:get(ChId, ChSetup),
+    StateHash1 = channel_state_hash(ChId), % fallback state hash
+    #{ tx_hash := TxHash } = DepositTx = deposit_tx(ChId, Config),
+    {ok, #{ hash := ForkPoint }} = add_keyblock(),
+    push(DepositTx),
+    C1 = hd(Cs),
+    ok = set_min_depth_watch(C1, ChId, TxHash, _MinDepth = 3, _MType = ?TYPE),
+    assert_no_events(Cs),
+    {ok, #{ hash := _MicroHash }} = add_microblock(),
+    ok = watchers_notified(
+           fun({channel_changed_on_chain, I}, _C) ->
+                   #{tx := _SignedTx} = I,
+                   ok
+           end, Watchers),
+    StateHash2 = channel_state_hash(ChId), % will be evicted
+    {true, _, _} = {StateHash1 =/= StateHash2, StateHash1, StateHash2},
+    {ok, _} = fork_from_hash(ForkId = ?FORK, ForkPoint),
+    add_microblock(ForkId),
+    add_microblock(ForkId),
+    fork_switch(ForkId),
+    ok = watchers_notified(
+           fun({channel_changed_on_chain, I}, _C) ->
+                   #{channel := Chx} = I,
+                   NewStateHash = aesc_channels:state_hash(Chx),
+                   %% We should now see the fallback state hash
+                   {StateHash1, NewStateHash} = {NewStateHash, StateHash1},
+                   ok
+           end, Watchers),
+    %% assert_no_events(fun() -> fork_switch(ForkId) end, Cs),
+    ok.
+
+foreach_channel(F) ->
+    ChSetup = get_channel_setup(),
+    maps:fold(
+      fun(ChId, Setup, ok) ->
+              F(ChId, Setup)
+      end, ok, ChSetup).
 
 verify_min_depth(MDWs, ChId, TxHash, MinDepth, Cs) ->
     MDWPids = [ client_pid(W) || W <- MDWs],
@@ -236,7 +343,7 @@ assert_no_events(F, Cs) when is_function(F, 0) ->
     assert_no_events(Cs).
 
 assert_no_events(Cs) ->
-    Timeouts = [client_req(C, {await_event, 0}) || C <- Cs],
+    Timeouts = [client_req(C, {await_event, 50}) || C <- Cs],
     case all_are_timeouts(Timeouts) of
         true ->
             true;
@@ -317,13 +424,13 @@ min_depth_watch(ChId, TxHash, Depth, ReqType) ->
     aesc_chain_watcher:request(
       ChId, aesc_chain_watcher:min_depth_req(TxHash, Depth, ReqType)).
 
-pid_exists(Pid) ->
+value_exists(X) ->
     Tabs = aesc_chain_watcher:table_names(),
     try lists:foldl(
           fun(Tab, Acc) ->
                   ets:foldl(
                     fun(Obj, Acc1) ->
-                            case pid_in_obj(Obj, Pid) of
+                            case x_in_obj(Obj, X) of
                                 true ->
                                     throw(true);
                                 false ->
@@ -336,15 +443,15 @@ pid_exists(Pid) ->
             true
     end.
 
-pid_in_obj(Pid, Pid) ->
+x_in_obj(X, X) ->
     true;
-pid_in_obj([_|_] = L, Pid) ->
-    lists:any(fun(X) -> pid_in_obj(X, Pid) end, L);
-pid_in_obj(Tuple, Pid) when is_tuple(Tuple) ->
-    pid_in_obj(tuple_to_list(Tuple), Pid);
-pid_in_obj(Map, Pid) when is_map(Map) ->
-    pid_in_obj(maps:to_list(Map), Pid);
-pid_in_obj(_, _) ->
+x_in_obj([_|_] = L, X) ->
+    lists:any(fun(Obj) -> x_in_obj(Obj, X) end, L);
+x_in_obj(Tuple, X) when is_tuple(Tuple) ->
+    x_in_obj(tuple_to_list(Tuple), X);
+x_in_obj(Map, X) when is_map(Map) ->
+    x_in_obj(maps:to_list(Map), X);
+x_in_obj(_, _) ->
     false.
 
 chid(1) ->
@@ -406,8 +513,11 @@ handle_client_req_({apply, M, F, A}) ->
 
 log(Fmt, Args, L, #{debug := true}) ->
     log(Fmt, Args, L, true);
-log(Fmt, Args, L, true) ->
-    ct:log("~p at ~p: " ++ Fmt, [self(), L | Args]);
+log(Fmt0, Args0, L, true) ->
+    Fmt = "~p at ~p: " ++ Fmt0,
+    Args = [self(), L | Args0],
+    lager:debug(Fmt, Args),
+    ct:log(Fmt, Args);
 log(_, _, _, _) ->
     ok.
 
@@ -419,14 +529,18 @@ new_chain() ->
     Miner = new_keypair(),
     Hdr = genesis_header(),
     {ok, Hash} = aec_headers:hash_header(Hdr),
+    Blocks = [#{hash => Hash, header => genesis_header(), txs => []}],
     #{ miner   => Miner
      , mempool => []
+     , orphans => []
      , nonces  => #{}
-     , blocks  => [#{hash => Hash, header => genesis_header(), txs => []}] }.
+     , forks   => #{ main => #{ fork_point => Hash
+                              , blocks     => Blocks } }}.
 
 %% Called from the chain process
-add_keyblock_(#{blocks := Blocks, miner := #{pubkey := Miner}} = Chain) ->
-    ?LOG("add_keyblock()", []),
+add_keyblock_(ForkId, #{forks := Forks, miner := #{pubkey := Miner}} = Chain) ->
+    ?LOG("add_keyblock(~p)", [ForkId]),
+    #{ ForkId := #{blocks := Blocks} = F } = Forks,
     #{hash := PrevHash, header := TopHdr} = hd(Blocks),
     PrevKeyHash = aec_headers:prev_key_hash(TopHdr),
     Height = aec_headers:height(TopHdr),
@@ -434,34 +548,89 @@ add_keyblock_(#{blocks := Blocks, miner := #{pubkey := Miner}} = Chain) ->
                Height+1, PrevHash, PrevKeyHash, root_hash(),
                Miner, Miner, 0, 0, 0, 0, default, 0),
     {ok, BlockHash} = aec_headers:hash_header(NewHdr),
-    announce(Chain#{ blocks => [#{ hash   => BlockHash
-                                 , prev   => PrevHash
-                                 , header => NewHdr
-                                 , txs    => [] } | Blocks] }).
+    Block = #{ hash   => BlockHash
+             , prev   => PrevHash
+             , header => NewHdr
+             , txs    => [] },
+    NewChain = Chain#{ forks => Forks#{ ForkId => F#{blocks => [Block | Blocks]} } },
+    announce(ForkId, [], NewChain),
+    {{ok, Block},  NewChain}.
 
 %% Called from the chain process
-add_microblock_(#{mempool := Pool, blocks := Blocks} = Chain) ->
+add_microblock_(ForkId, #{mempool := Pool} = Chain) ->
     Txs = lists:reverse(Pool),
+    add_microblock_(ForkId, Txs, Chain#{mempool => []}).
+
+add_microblock_(ForkId, Txs, #{forks := Forks} = Chain) ->
     ?LOG("add_microblock(Txs = ~p", [Txs]),
+    #{blocks := Blocks} = F = maps:get(ForkId, Forks),
     #{hash := PrevHash, header := TopHdr} = hd(Blocks),
+    ?LOG("PrevHash = ~p", [PrevHash]),
     PrevKeyHash = aec_headers:prev_key_hash(TopHdr),
     Height = aec_headers:height(TopHdr),
     NewHdr = aec_headers:new_micro_header(
                Height + 1, PrevHash, PrevKeyHash,
                root_hash(), 0, txs_hash(), pof_hash(), 0),
     {ok, BlockHash} = aec_headers:hash_header(NewHdr),
-    Block = maybe_update_trees(#{ hash   => BlockHash
-                                , prev   => PrevHash
-                                , header => NewHdr
-                                , txs    => Txs }, Chain),
+    Block = maybe_update_trees(ForkId, #{ hash   => BlockHash
+                                        , prev   => PrevHash
+                                        , header => NewHdr
+                                        , txs    => Txs }, Chain),
     ?LOG("Microblock = ~p", [Block]),
-    announce(Chain#{ blocks => [Block | Blocks], mempool => [] }).
+    NewFork = F#{blocks => [Block | Blocks]},
+    ?LOG("NewFork(~p): ~p", [ForkId, NewFork]),
+    NewForks = Forks#{ForkId => NewFork},
+    NewChain = announce(ForkId, Txs, Chain#{ forks => NewForks}),
+    {{ok, Block}, NewChain}.
+
+clone_micro_on_fork_(Hash, ForkId, #{forks := Forks} = Chain) ->
+    #{blocks := Blocks} = maps:get(main, Forks),
+    case lists_mapfind(Hash, hash, Blocks) of
+        false ->
+            error({no_such_hash, Hash});
+        #{txs := Txs} ->
+            add_microblock_(ForkId, Txs, Chain)
+    end.
+
+fork_from_hash_(ForkId, Hash, #{ forks   := Forks } = Chain) ->
+    case maps:is_key(ForkId, Forks) of
+        true ->
+            error({fork_id_exists, ForkId});
+        false ->
+            #{blocks := Blocks} = maps:get(main, Forks),
+            case blocks_until_hash(Hash, Blocks) of
+                [] ->
+                    error({no_such_hash, Hash});
+                BlocksUntilHash ->
+                    NewFork = #{ fork_point => Hash
+                               , blocks     => BlocksUntilHash },
+                    NewForks = Forks#{ForkId => NewFork},
+                    %% Automatically add a keyblock as instigator of the fork.
+                    add_keyblock_(ForkId, Chain#{forks => NewForks})
+            end
+    end.
+
+fork_switch_(ForkId, #{forks := Forks, mempool := Pool, orphans := Orphans} = Chain) ->
+    #{ main   := #{blocks := Blocks} = M
+     , ForkId := #{fork_point := ForkPoint, blocks := FBlocks}} = Forks,
+    Evict = lists:takewhile(
+              fun(#{hash := H}) ->
+                      H =/= ForkPoint
+              end, Blocks),
+    ReturnTxs = lists:flatten([ Txs || #{txs := Txs} <- lists:reverse(Evict)]),
+    ?LOG("Evicting txs: ~p", [ReturnTxs]),
+    NewPool = lists:reverse(ReturnTxs) ++ Pool,
+    NewForks = maps:remove(ForkId, Forks#{main => M#{blocks => FBlocks}}),
+    NewChain = Chain#{ forks => NewForks
+                     , mempool => NewPool
+                     , orphans => Evict ++ Orphans },
+    {ok, announce(main, [], NewChain)}.
 
 %% Announce top_changed and tx events
-announce(#{ blocks := [#{ hash   := TopHash
-                        , prev   := PrevHash
-                        , header := Hdr
-                        , txs    := Txs } | _] = Blocks} = Chain) ->
+announce(ForkId, Txs, #{ forks := Forks } = Chain) ->
+    #{ ForkId := #{ blocks := [#{ hash := TopHash
+                                , prev := PrevHash
+                                , header := Hdr } | _] = Blocks} } = Forks,
     Height = length(Blocks) + 1,
     Type = aec_headers:type(Hdr),
     Origin = origin(Type),
@@ -471,8 +640,13 @@ announce(#{ blocks := [#{ hash   := TopHash
             , prev_hash    => PrevHash
             , height       => Height },
     send_tx_events(Txs, Info),
-    ?LOG("Publishing top_changed, I = ~p", [Info]),
-    aec_events:publish(top_changed, Info),
+    case ForkId of
+        main ->
+            ?LOG("Publishing top_changed, I = ~p", [Info]),
+            aec_events:publish(top_changed, Info);
+        _ ->
+            ignore
+    end,
     Chain.
 
 origin(key) ->
@@ -534,9 +708,10 @@ is_channel_tx_type(T) when T == channel_create_tx
 is_channel_tx_type(_) ->
     false.
 
-maybe_update_trees(#{txs := []} = Block, _Chain) ->
+maybe_update_trees(_, #{txs := []} = Block, _Chain) ->
     Block;
-maybe_update_trees(#{txs := Txs} = Block, #{blocks := Blocks}) ->
+maybe_update_trees(ForkId, #{txs := Txs} = Block, Chain) ->
+    Blocks = blocks(ForkId, Chain),
     Trees = case trees(Blocks) of
                 {ok, Ts} ->
                     Ts;
@@ -583,14 +758,15 @@ blocks_until_hash(Hash, Blocks) ->
               H =/= Hash
       end, Blocks).
 
-top_block_hash(#{blocks := [#{hash := Hash}|_]}) ->
+top_block_hash_(Chain) ->
+    [#{hash := Hash}|_] = blocks(main, Chain),
     Hash.
 
-get_block_state(Hash, #{blocks := Blocks}) ->
-    trees(blocks_until_hash(Hash, Blocks)).
+get_block_state_(Hash, Chain) ->
+    trees(blocks_until_hash(Hash, blocks(Chain))).
 
-hash_is_in_main_chain(Hash, TopHash, #{blocks := Blocks}) ->
-    case blocks_until_hash(TopHash, Blocks) of
+hash_is_in_main_chain_(Hash, TopHash, Chain) ->
+    case blocks_until_hash(TopHash, blocks(Chain)) of
         [] ->
             false;
         Blocks1 ->
@@ -602,23 +778,74 @@ hash_is_in_main_chain(Hash, TopHash, #{blocks := Blocks}) ->
             end
     end.
 
-get_header(Hash, #{blocks := Blocks}) ->
-    case blocks_until_hash(Hash, Blocks) of
+find_common_ancestor_(Hash1, Hash2, #{forks := Forks, orphans := Orphans}) ->
+    case {search_forks_for_hash(Hash1, Forks, Orphans),
+          search_forks_for_hash(Hash2, Forks, Orphans)} of
+        {[_|_] = Blocks1, [_|_] = Blocks2} ->
+            find_common_(Blocks1, Blocks2);
+        _ ->
+            {error, not_found}
+    end.
+
+search_forks_for_hash(H, Forks, Orphans) ->
+    case search_forks_for_hash_(H, Forks) of
+        none ->
+            ?LOG("~p not in forks", [H]),
+            case blocks_until_hash(H, Orphans) of
+                [#{prev := Prev}|_] ->
+                    ?LOG("~p found in orphans; trying its Prev (~p)", [H, Prev]),
+                    search_forks_for_hash(Prev, Forks, Orphans);
+                [] ->
+                    ?LOG("~p also not an orphan", [H]),
+                    none
+            end;
+        [_|_] = Result ->
+            ?LOG("Found ~p in forks", [H]),
+            Result
+    end.
+
+search_forks_for_hash_(H, Forks) ->
+    try maps:fold(
+          fun(ForkId, #{blocks := Blocks}, none) ->
+                  case blocks_until_hash(H, Blocks) of
+                      [] ->
+                          none;
+                      Found ->
+                          throw({ForkId, Found})
+                  end
+          end, none, Forks)
+    catch
+        throw:{_FId, Result} ->
+            Result
+    end.
+
+find_common_([#{hash := H1}|T1], Blocks2) ->
+    case lists_mapfind(H1, hash, Blocks2) of
+        false ->
+            find_common_(T1, Blocks2);
+        _Found ->
+            {ok, H1}
+    end;
+find_common_([], _) ->
+    {error, not_found}.
+
+get_header_(Hash, Chain) ->
+    case blocks_until_hash(Hash, blocks(Chain)) of
         [#{header := Header}|_] ->
             {ok, Header};
         [] ->
             error
     end.
 
-get_channel(ChId, #{blocks := Blocks}) ->
-    case trees(Blocks) of
+get_channel_(ChId, Chain) ->
+    case trees(blocks(Chain)) of
         {ok, Trees} ->
-            get_channel_(ChId, Trees);
+            get_channel_from_trees_(ChId, Trees);
         error ->
             undefined
     end.
 
-get_channel_(Id, Trees) ->
+get_channel_from_trees_(Id, Trees) ->
     case maps:find({channel,Id}, Trees) of
         {ok, _} = Ok ->
             Ok;
@@ -626,8 +853,8 @@ get_channel_(Id, Trees) ->
             undefined
     end.
 
-find_block_tx_hashes(Hash, #{blocks := Blocks}) ->
-    case blocks_until_hash(Hash, Blocks) of
+find_block_tx_hashes_(Hash, Chain) ->
+    case blocks_until_hash(Hash, blocks(Chain)) of
         [#{txs := Txs}|_] ->
             TxHashes = [ H || #{tx_hash := H} <- Txs ],
             {value, TxHashes};
@@ -635,36 +862,47 @@ find_block_tx_hashes(Hash, #{blocks := Blocks}) ->
             not_found
     end.
 
-find_signed_tx(Hash, #{blocks := Blocks}) ->
-    case find_signed_tx_(Blocks, Hash) of
+find_signed_tx_(Hash, Chain) ->
+    case find_signed_tx_in_blocks_(blocks(Chain), Hash) of
         {value, STx, _Block} ->
             {value, STx};
         none ->
             none
     end.
 
-find_signed_tx_([#{txs := Txs} = Block|T], Hash) ->
+find_signed_tx_in_blocks_([#{txs := Txs} = Block|T], Hash) ->
     case lists_mapfind(Hash, tx_hash, Txs) of
         #{signed_tx := STx} ->
             {value, STx, Block};
         false ->
-            find_signed_tx_(T, Hash)
+            find_signed_tx_in_blocks_(T, Hash)
     end;
-find_signed_tx_([], _) ->
+find_signed_tx_in_blocks_([], _) ->
     none.
 
-find_tx_with_location(Hash, #{blocks := Blocks, mempool := Pool}) ->
-    case find_signed_tx_(Blocks, Hash) of
+find_tx_with_location_(Hash, #{forks := Forks, mempool := Pool}) ->
+    %% When aec_chain_state processes a fork switch, it changes tx_location from
+    %% the evicted blocks to the mempool. So this function should only return a
+    %% block has if the tx is found on the main chain.
+    #{blocks := Blocks} = maps:get(main, Forks),
+    case find_signed_tx_in_blocks_(Blocks, Hash) of
         {value, STx, #{hash := BlockHash}} ->
             {BlockHash, STx};
         none ->
             case lists_mapfind(Hash, tx_hash, Pool) of
                 false ->
                     none;
-                _ ->
-                    mempool
+                #{signed_tx := STx} ->
+                    {mempool, STx}
             end
     end.
+
+blocks(Chain) ->
+    blocks(main, Chain).
+
+blocks(ForkId, #{forks := Forks}) ->
+    #{blocks := Blocks} = maps:get(ForkId, Forks),
+    Blocks.
 
 genesis_header() ->
     aec_block_genesis:genesis_header().
@@ -678,8 +916,11 @@ txs_hash() ->
 pof_hash() ->
     <<"pof-hash........................">>.
 
-state_hash() ->
-    <<"state-hash......................">>.
+%% We fake a state hash, but want one that's unique for each
+%% channel update, so that we can match on it to ensure that the
+%% right state is reported.
+state_hash(BlockHash, Bin) when is_binary(BlockHash), is_binary(Bin) ->
+    aec_hash:hash(state_trees, <<BlockHash/binary, Bin/binary>>).
 
 new_keypair() ->
     #{public := PK, secret := SK} = enacl:sign_keypair(),
@@ -691,8 +932,9 @@ new_keypair() ->
 create_tx(Config) ->
     I = ?config(initiator, Config),
     R = ?config(responder, Config),
+    TopHash = chain_req(top_block_hash),
     Nonce = next_nonce(I),
-    TxI = #{ mod              => aesc_create_tx
+    Tx0 = #{ mod              => aesc_create_tx
            , initiator_id     => I
            , initiator_amount => 10
            , responder_id     => R
@@ -700,23 +942,26 @@ create_tx(Config) ->
            , channel_reserve  => 10
            , lock_period      => 3
            , fee              => 1
-           , state_hash       => state_hash()
+           , state_hash       => <<>>
            , nonce            => Nonce },
-    create_and_sign_tx(TxI).
+    StateHash = state_hash(TopHash, term_to_binary(Tx0)),
+    create_and_sign_tx(Tx0#{state_hash => StateHash}).
 
 deposit_tx(ChId, Config) ->
     Round = channel_round(ChId),
     I = ?config(initiator, Config),
+    TopHash = chain_req(top_block_hash),
     Nonce = next_nonce(I),
-    TxI = #{ mod            => aesc_deposit_tx
+    Tx0 = #{ mod            => aesc_deposit_tx
            , channel_id     => aeser_id:create(channel, ChId)
            , from_id        => I
            , amount         => 10
            , fee            => 1
-           , state_hash     => state_hash()
+           , state_hash     => <<>>
            , round          => Round
            , nonce          => Nonce },
-    create_and_sign_tx(TxI).
+    StateHash = state_hash(TopHash, term_to_binary(Tx0)),
+    create_and_sign_tx(Tx0#{state_hash => StateHash}).
 
 new_channel(#{ channel_id       := _ChId
              , initiator_id     := InitiatorId
@@ -738,6 +983,14 @@ new_channel(#{ channel_id       := _ChId
                       ChanReserve, _Delegates = [], StateHash,
                       LockPeriod, Nonce, Protocol, _Round = 1).
 
+channel_state_hash(ChId) ->
+    case chain_req({get_channel, ChId}) of
+        undefined ->
+            error({unknown_channel, ChId});
+        {ok, Ch} ->
+            aesc_channels:state_hash(Ch)
+    end.
+
 channel_round(ChId) ->
     case chain_req({get_channel, ChId}) of
         undefined ->
@@ -755,10 +1008,25 @@ push(Tx) ->
     chain_req({push, Tx}).
 
 add_keyblock() ->
-    chain_req(add_key).
+    add_keyblock(main).
+
+add_keyblock(ForkId) ->
+    chain_req({add_key, ForkId}).
 
 add_microblock() ->
-    chain_req(add_micro).
+    add_microblock(main).
+
+add_microblock(ForkId) ->
+    chain_req({add_micro, ForkId}).
+
+clone_microblock_on_fork(Hash, ForkId) ->
+    chain_req({clone_micro_on_fork, Hash, ForkId}).
+
+fork_from_hash(ForkId, FromHash) when is_binary(FromHash) ->
+    chain_req({fork_from_hash, ForkId, FromHash}).
+
+fork_switch(ForkId) ->
+    chain_req({fork_switch, ForkId}).
 
 start_chain_process() ->
     P = proc_lib:spawn(
@@ -784,25 +1052,36 @@ stop_chain_process() ->
             end
     end.
 
-chain_process_loop(Chain) ->
+chain_process_loop(Chain) when is_map(Chain) ->
     receive
-        {From, Req} ->
-            {Reply, Chain1} = handle_chain_req(Req, Chain),
-            From ! {self(), Reply},
-            chain_process_loop(Chain1)
+        {From, Req} when is_pid(From) ->
+            case handle_chain_req(Req, Chain) of
+                {Reply, Chain1} when is_map(Chain1) ->
+                    From ! {self(), Reply},
+                    chain_process_loop(Chain1);
+                Other ->
+                    error({bad_return, Other})
+            end
     end.
 
 handle_chain_req(R, Chain) ->
     try handle_chain_req_(R, Chain)
     catch error:Err ->
-            ?LOG("CAUGHT error:~p / ~p", [Err, erlang:get_stacktrace()]),
+            ?LOG("CAUGHT (R = ~p)~n"
+                 "   error:~p / ~p", [R, Err, erlang:get_stacktrace()]),
             error(Err)
     end.
 
-handle_chain_req_(add_micro, Chain) ->
-    {ok, add_microblock_(Chain)};
-handle_chain_req_(add_key, Chain) ->
-    {ok, add_keyblock_(Chain)};
+handle_chain_req_({add_micro, ForkId}, Chain) ->
+    add_microblock_(ForkId, Chain);
+handle_chain_req_({clone_micro_on_fork, Hash, ForkId}, Chain) ->
+    clone_micro_on_fork_(Hash, ForkId, Chain);
+handle_chain_req_({add_key, ForkId}, Chain) ->
+    add_keyblock_(ForkId, Chain);
+handle_chain_req_({fork_from_hash, ForkId, FromHash}, Chain) ->
+    fork_from_hash_(ForkId, FromHash, Chain);
+handle_chain_req_({fork_switch, ForkId}, Chain) ->
+    fork_switch_(ForkId, Chain);
 handle_chain_req_({push, Tx}, #{mempool := Pool} = Chain) ->
     %% TODO: not yet asserting increasing nonces
     {ok, Chain#{mempool => [Tx|Pool]}};
@@ -811,21 +1090,23 @@ handle_chain_req_({next_nonce, Acct}, #{nonces := Nonces} = Chain) ->
     NewN = N + 1,
     {NewN, Chain#{nonces => Nonces#{ Acct => NewN }}};
 handle_chain_req_(top_block_hash, Chain) ->
-    {top_block_hash(Chain), Chain};
+    {top_block_hash_(Chain), Chain};
 handle_chain_req_({get_block_state, Hash}, Chain) ->
-    {get_block_state(Hash, Chain), Chain};
+    {get_block_state_(Hash, Chain), Chain};
 handle_chain_req_({get_header, Hash}, Chain) ->
-    {get_header(Hash, Chain), Chain};
+    {get_header_(Hash, Chain), Chain};
 handle_chain_req_({get_channel, ChId}, Chain) ->
-    {get_channel(ChId, Chain), Chain};
+    {get_channel_(ChId, Chain), Chain};
 handle_chain_req_({find_block_tx_hashes, Hash}, Chain) ->
-    {find_block_tx_hashes(Hash, Chain), Chain};
+    {find_block_tx_hashes_(Hash, Chain), Chain};
 handle_chain_req_({find_signed_tx, Hash}, Chain) ->
-    {find_signed_tx(Hash, Chain), Chain};
+    {find_signed_tx_(Hash, Chain), Chain};
 handle_chain_req_({find_tx_with_location, Hash}, Chain) ->
-    {find_tx_with_location(Hash, Chain), Chain};
+    {find_tx_with_location_(Hash, Chain), Chain};
 handle_chain_req_({hash_is_in_main_chain, Hash, TopHash}, Chain) ->
-    {hash_is_in_main_chain(Hash, TopHash, Chain), Chain};
+    {hash_is_in_main_chain_(Hash, TopHash, Chain), Chain};
+handle_chain_req_({find_common_ancestor, Hash1, Hash2}, Chain) ->
+    {find_common_ancestor_(Hash1, Hash2, Chain), Chain};
 %%
 handle_chain_req_(channel_setup, Chain) ->
     {maps:get(channel_setup, Chain, #{}), Chain};
@@ -945,13 +1226,17 @@ setup_lager(Grp, Config) ->
     application:start(lager).
 
 setup_meck() ->
-    meck:expect(aec_chain, find_tx_with_location, 1,
-                fun(Hash) ->
-                        chain_req({find_tx_with_location, Hash})
-                end),
     meck:expect(aec_chain_state, hash_is_in_main_chain, 2,
                 fun(Hash, TopHash) ->
                         chain_req({hash_is_in_main_chain, Hash, TopHash})
+                end),
+    meck:expect(aec_chain_state, find_common_ancestor, 2,
+                fun(Hash1, Hash2) ->
+                        chain_req({find_common_ancestor, Hash1, Hash2})
+                end),
+    meck:expect(aec_chain, find_tx_with_location, 1,
+                fun(Hash) ->
+                        chain_req({find_tx_with_location, Hash})
                 end),
     meck:expect(aec_chain, get_block_state, 1,
                 fun(Hash) ->
@@ -959,7 +1244,11 @@ setup_meck() ->
                 end),
     meck:expect(aec_chain, get_channel, 2,
                 fun(Id, Trees) ->
-                        get_channel_(Id, Trees)
+                        get_channel_from_trees_(Id, Trees)
+                end),
+    meck:expect(aec_chain, top_block_hash, 0,
+                fun() ->
+                        chain_req(top_block_hash)
                 end),
     meck:expect(aec_chain, get_header, 1,
                 fun(BHash) ->

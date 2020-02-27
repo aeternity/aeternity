@@ -3816,8 +3816,9 @@ assert_empty_msgq(Debug) ->
         [] ->
             ok;
         _ ->
-            ?LOG(Debug, "Message queue length: ~p", [length(Msgs)]),
-            ?LOG(Debug, "Message queue entries: ~p", [Msgs]),
+            %% Always output these log messages
+            ?LOG("Message queue length: ~p", [length(Msgs)]),
+            ?LOG("Message queue entries: ~p", [Msgs]),
             ct:fail("Message queue is not empty")
     end.
 

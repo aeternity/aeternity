@@ -1,3 +1,27 @@
+%%% @doc Implements chain watcher functionality:
+%%% Channel 'clients' (FSMs, state cache, etc.) can subscribe to relevant
+%%% changes on the chain, and get notified via a callback API.
+%%% Events that are reported are:
+%%% * channel_changed_on_chain
+%%% * minimum_depth_achieved
+%%% * channel_closing_on_chain
+%%% * channel_closed_on_chain
+%%% * channel_unlocked
+%%%
+%%% The implementation tries hard to avoid having to access the database
+%%% unnecessarily, so keeps a cache. This cache is periodically flushed
+%%% and also flushed whenever a fork switch is detected. Channel-related
+%%% state data and registered requests are kept in ETS tables, which
+%%% survive process restart.
+%%%
+%%% Possible significant optimizations:
+%%% * Typically, there will be 2-4 subscribers for each channel, and currently,
+%%%   each request is checked individually. If requests were grouped, it should
+%%%   suffice to perform a check once, then update states and inform all clients
+%%%   at the same time.
+%%% * Cache flushing is currently a bit brutal, and the cache reset interval is
+%%%   not really empirically tested.
+%%%
 -module(aesc_chain_watcher).
 -behaviour(gen_server).
 
@@ -33,7 +57,11 @@
 
 -define(SERVER, ?MODULE).
 
--define(CACHE_REINIT_INTERVAL, 5).    %% TODO: presumably raise this number
+-ifdef(TEST).
+-define(CACHE_REINIT_INTERVAL, 5).
+-else.
+-define(CACHE_REINIT_INTERVAL, 30).   % TODO: run scale tests to tune this number.
+-endif.
 
 %% ======================================================================
 %% ETS tables
@@ -50,6 +78,12 @@
 %% Current channel state (one entry per ch+client)
 %% Held in ETS to survive cache reset
 -define(T_CH_STATES   , aesc_chain_watcher_ch_state).
+
+%% Tx history per channel
+-define(T_TX_HISTORY  , aesc_chain_watcher_tx_history).
+
+%% Mapping of channel state to block height (for fork switch audits)
+-define(T_STATES_AT_HEIGHT, aesc_chain_watcher_states_at_height).
 
 %% Ordered table of {Height, ReqKey} to keep track of requests to be checked
 %% at a certain height. New requests get check_at_height=0 to ensure that they
@@ -69,6 +103,7 @@
         ( (S =:= top)
           orelse (S =:= next_block)
           orelse (S =:= fork_switch)
+          orelse (S =:= audit)
           orelse ( is_tuple(S)
                    andalso (tuple_size(S) =:= 2)
                    andalso (element(1, S) =:= has_tx)
@@ -80,10 +115,15 @@
 -record(st, { parent
             , last_block                  %% last time we updated channel vsn
             , last_top                    %% the block hash of the last check
-            , tx_log = aesc_window:new() :: tx_log()
-            , rpt_log = aesc_window:new() :: rpt_log()
+            , tx_log = aesc_window:new(30) :: tx_log()
+            , rpt_log = aesc_window:new()  :: rpt_log()
             , cache
             , cache_init_height}).
+
+-record(tx_history,
+        { key   :: tx_history_key()
+        , value :: [tx_hash()] | '_'
+        }).
 
 -record(tx_log_entry,
         { key   :: tx_log_entry_key()
@@ -91,9 +131,12 @@
         }).
 
 -record(rpt_log_entry,
-        { key   :: {changed_on_chain | closing_on_chain | closed_on_chain, tx_hash(), pid()}
-        , value :: #{ atom() := term() }
+        { key   :: {tx_hash(), pid()}
+        , value :: #{ event := rpt_event()
+                    , info  := map() }
         }).
+
+-type rpt_event() :: changed_on_chain | closing_on_chain | closed_on_chain.
 
 -type ch_id() :: binary().
 
@@ -115,10 +158,11 @@
              , module    :: atom()    | '_'
              , info      :: map()     | '_' }).
 
--record(ch_state, { key   :: {ch_id(), pid()}
-                  , vsn   :: chan_vsn()
-                  , block :: block_hash()
-                  , info  :: map() }).
+-record(ch_state, { key    :: {ch_id(), pid()}
+                  , vsn    :: chan_vsn()
+                  , block  :: block_hash()
+                  , height :: aec_blocks:height()
+                  , info   :: map() }).
 
 -type mode()       :: close
                     | unlock
@@ -154,6 +198,7 @@
 -type scenario()   :: top
                     | next_block
                     | fork_switch
+                    | audit
                     | {has_tx, info_of_scenario_has_tx()}.
 
 -type chan_vsn()   :: undefined
@@ -178,6 +223,8 @@
                        , prev_hash  := block_hash()
                        , block_type := key | micro
                        , height     := aec_blocks:height() }.
+
+-type tx_history_key() :: {ch_id(), aec_blocks:height() | '$1' | '_', block_hash() | '_'}.
 
 -type tx_log_entry_key() :: block_hash().
 
@@ -279,13 +326,15 @@ tabs() ->
     %% dies.
     Opts = [public, named_table, {heir, self(), ?MODULE}],
     [
-      {?T_REQUESTS    , [ordered_set, {keypos, #req.key} | Opts]}
-    , {?T_CLIENT2REQ  , [ordered_set, {keypos, 1} | Opts]}
-    , {?T_CLIENT2CH   , [ordered_set, {keypos, 1} | Opts]}
-    , {?T_MREFS       , [set, {keypos, 1} | Opts]}
-    , {?T_CH_STATES   , [ordered_set, {keypos, #ch_state.key} | Opts]}
-    , {?T_AT_HEIGHT   , [ordered_set | Opts]}
-    , {?T_AUDIT       , [set | Opts]}
+      {?T_REQUESTS        , [ordered_set, {keypos, #req.key} | Opts]}
+    , {?T_CLIENT2REQ      , [ordered_set, {keypos, 1} | Opts]}
+    , {?T_CLIENT2CH       , [ordered_set, {keypos, 1} | Opts]}
+    , {?T_MREFS           , [set, {keypos, 1} | Opts]}
+    , {?T_CH_STATES       , [ordered_set, {keypos, #ch_state.key} | Opts]}
+    , {?T_TX_HISTORY      , [ordered_set, {keypos, #tx_history.key} | Opts]}
+    , {?T_STATES_AT_HEIGHT, [ordered_set, {keypos, 1} | Opts]}
+    , {?T_AT_HEIGHT       , [ordered_set | Opts]}
+    , {?T_AUDIT           , [set | Opts]}
     ].
 
 register(ChId, Mod, Reqs) when is_binary(ChId)
@@ -320,6 +369,7 @@ init(#{parent := Parent}) ->
     %% gen_server loop.
     proc_lib:init_ack(Parent, {ok, self()}),
     inherit_ets_tables(Parent),
+    re_monitor(),
     gen_server:enter_loop(?MODULE, ?GEN_SERVER_OPTS, #st{}, {local, ?SERVER}).
 
 %% ============================================================
@@ -362,14 +412,21 @@ delete_req(#req{key = Key, client = C} = R) ->
     ok.
 
 delete_pid(Pid) ->
+    lager:debug("Pid = ~p", [Pid]),
     ReqKeys = ets:select( ?T_CLIENT2REQ, [{ {{Pid,'$1'}}, [], ['$1'] }]),
     _ = ets:select_delete(?T_CLIENT2REQ, [{ {{Pid,'_' }}, [], [true] }]),
     %%
     ChIds = ets:select(?T_CLIENT2CH, [{ {{Pid,'$1'},'_'}, [], ['$1'] }]),
     ets:select_delete( ?T_CLIENT2CH, [{ {{Pid,'_' },'_'}, [], [true] }]),
+    delete_states_at_height(ChIds),
     %%
     [ delete_req_by_key_(Key) || Key <- ReqKeys ],
-    [ ets:delete(?T_CH_STATES, {Pid, ChId}) || ChId <- ChIds ],
+    lists:foreach(
+      fun(ChId) ->
+              ets:delete(?T_CH_STATES, {ChId, Pid}),
+              ets:select_delete(?T_TX_HISTORY,
+                                [{#tx_history{key = {ChId,'_','_'}, _ = '_'}, [], [true]}])
+      end, ChIds),
     delete_monitor(Pid),
     ok.
 
@@ -386,6 +443,12 @@ delete_req_by_key_(Key) ->
 
 %% ============================================================
 
+%% TODO: Currently, we seem to be overly conservative about setting
+%% check_at_height => 0 for all requests. This should only be neeeded for
+%% requests that come in *after* the channel has been created.
+%% (e.g. a min_depth request registered before the tx is on-chain doesn't
+%% need to be checked each time, since we will detect when the tx appears.)
+%%
 ensure_check_at_height(#{check_at_height := _} = R) ->
     R;
 ensure_check_at_height(R) when is_map(R) ->
@@ -500,15 +563,27 @@ audit_one_chid(St) ->
         ChId ->
             lager:debug("Will audit channel ~p", [ChId]),
             Reqs = requests(ChId),
-            check_requests(Reqs, St)
+            check_requests(Reqs, set_scenario(audit, St))
     end.
 
-check_status(#{ prev_hash  := PHash
-              , block_hash := BHash
-              , height     := Height} = I, #st{ last_top = PHash
-                                              , tx_log   = TxLog } = St) ->
+check_status(I, #st{ last_top = undefined } = St) ->
+    %% First time we check.
+    check_status_(I, St);
+check_status(#{ prev_hash  := PHash } = I, #st{ last_top = PHash } = St) ->
     %% Next successive block.
     %% With a little luck, we don't need to touch the chain
+    %% We log the blockhash to know that we've seen it (and it affected no.
+    check_status_(I, St);
+check_status(#{} = I, #st{} = St) ->
+    try check_status_on_fork_switch(I, St)
+    ?_catch_(error, E, StackTrace)
+         lager:error("CAUGHT ~p / ~p", [E, StackTrace]),
+         lager:error("Smaller trace ~p", [compact_trace(StackTrace)]),
+         error(E)
+    end.
+
+check_status_(#{ block_hash := BHash
+               , height     := Height } = I, #st{ tx_log = TxLog } = St) ->
     case aesc_window:keyfind(BHash, #tx_log_entry.key, TxLog) of
         false ->
             lager:debug("No tx in top", []),
@@ -534,16 +609,16 @@ check_status(#{ prev_hash  := PHash
                     St3 = log_entry_txs_to_history(ChIds, Txs, BHash, Height, St2),
                     check_requests(Reqs, St3)
             end
-    end;
-check_status(I, St) ->
-    try check_status_on_fork_switch(I, St)
-    ?_catch_(error, E, StackTrace)
-         lager:error("CAUGHT ~p / ~p", [E, StackTrace]),
-         lager:error("Smaller trace ~p", [compact_trace(StackTrace)]),
-         error(E)
     end.
 
-check_status_on_fork_switch(I, St) ->
+note_chid_change_at_hash(ChId, BHash, C) ->
+    {ChIds, C1} = chids_changed_at_hash(BHash, C),
+    maps:put({ch_ids_at_hash, BHash}, ordsets:add_element(ChId, ChIds), C1).
+
+chids_changed_at_hash(BHash, C) ->
+    cached_get({ch_ids_at_hash, BHash}, C, fun() -> [] end).
+
+check_status_on_fork_switch(I, #st{} = St) ->
     lager:debug("Assuming fork switch: I = ~p, St = ~p", [I, St]),
     St1 = init_cache(I, fork_switch, St),
     %% We need to go through all requests, but don't want to do it in a blocking
@@ -553,15 +628,31 @@ check_status_on_fork_switch(I, St) ->
     %% TODO: A better strategy for handling fork switches might be to check
     %% which blocks were evicted (that we've seen) and which channel ids
     %% have been touched in those blocks.
-    case all_channel_ids() of
-        [] ->
+    case chids_to_audit(I, St1) of
+        {[], St2} ->
             lager:debug("No channels - done", []),
             check_done(St1);
-        [_|_] = ChIds ->
+        {[_|_] = ChIds, St2} ->
             [ ets:insert(?T_AUDIT, {ChId}) || ChId <- ChIds ],
             gen_server:cast(self(), audit_one_chid)
     end,
-    check_done(St1).
+    check_done(St2).
+
+%% We find the common ancestor (CA), then find the channels that have a state
+%% that changed at a height greater than that of the CA.
+chids_to_audit(#{ block_hash := BHash }, #st{ last_top  = LastTop
+                                           , cache     = C } = St) ->
+    case aec_chain_state:find_common_ancestor(BHash, LastTop) of
+        {ok, ForkHash} ->
+            {Height, C1} = height(ForkHash, C),
+            lager:debug("Height = ~p", [Height]),
+            ChIds = chids_changed_since_height(Height),
+            C2 = adjust_tx_histories_after_fork(ChIds, Height, C1),
+            {chids_changed_since_height(Height), St#st{cache = C2}};
+        {error, _} = Err ->
+            lager:debug("Err = ~p", [Err]),
+            {all_channel_ids(), St}
+    end.
 
 %% May involve chain access
 check_requests(Reqs, #st{ cache = C} = St) ->
@@ -605,11 +696,14 @@ reset_after_fork_switch(Reqs) when is_list(Reqs) ->
 reset_req_after_fork_switch(R) ->
     clear_check_at_height( clear_locked_until(R) ).
 
+set_scenario(S, #st{cache = C} = St) when ?IS_SCENARIO(S) ->
+    St#st{cache = C#{scenario => S}}.
+
 init_cache(#{ block_hash := BHash
             , prev_hash  := PHash
             , block_type := BlockType
             , height     := Height }, Scenario, St) ->
-    {C0, InitHeight} = init_cache_(Height, St),
+    {C0, InitHeight} = init_cache_(Scenario, Height, St),
     %% Here, we already have all the top_info, so cache it
     C1 = C0#{ scenario        => Scenario
             , top_hash        => BHash
@@ -622,22 +716,41 @@ init_cache(#{ block_hash := BHash
     St#st{ cache = C1
          , cache_init_height = InitHeight }.
 
-init_cache_(Height, #st{ cache_init_height = Hi
-                       , cache      = SavedCache
-                       , last_block = LastBlock
-                       , last_top   = LastTop
-                       , tx_log     = TxLog
-                       , rpt_log    = RptLog }) ->
-    {C0, CIH} = if is_integer(Hi), Hi < (Height - ?CACHE_REINIT_INTERVAL) ->
+init_cache_(Scenario, Height, #st{ cache_init_height = Hi
+                                 , cache      = SavedCache
+                                 , last_block = LastBlock
+                                 , last_top   = LastTop
+                                 , tx_log     = TxLog
+                                 , rpt_log    = RptLog }) ->
+    {C0, CIH} = case should_i_flush_cache(Scenario, Hi, Height) of
+                    false ->
                         {SavedCache, Hi};
-                   true ->
-                        {#{ init_height => Height }, Height}
+                    true ->
+                        {flush_cache_at_height(Height), Height}
                 end,
-    C = C0#{ tx_log     => TxLog
-           , rpt_log    => RptLog
-           , last_block => LastBlock  %% Last block actually checked
-           , last_top   => LastTop }, %% Last top event hash (possibly skipped)
+    C = case Scenario of
+            fork_switch ->
+                C0#{ tx_log     => TxLog
+                   , rpt_log    => RptLog };
+            _ ->
+                C0#{ tx_log     => TxLog
+                   , rpt_log    => RptLog
+                   , last_block => LastBlock  %% Last block actually checked
+                   , last_top   => LastTop }  %% Last top event hash (possibly skipped)
+        end,
     {C, CIH}.
+
+should_i_flush_cache(fork_switch, _, _) ->
+    true;
+should_i_flush_cache(_, undefined, _) ->  % cache not yet initialized
+    true;
+should_i_flush_cache(_, InitHeight, CurHeight) when is_integer(InitHeight) ->
+    InitHeight < (CurHeight - ?CACHE_REINIT_INTERVAL).
+
+flush_cache_at_height(Height) ->
+    lager:debug("flushing cache at height ~p", [Height]),
+    #{ init_height => Height }.
+
 
 %% We do an async_dirty activity for minimal overhead. Note that the analysis
 %% is already fixed by the top_hash, so it should be deterministic even in
@@ -674,9 +787,10 @@ check_done(#st{cache = C} = St) ->
 
 check_done(C, St) ->
     C1 = update_chan_vsns(C),
-    St#st{last_top = maps:get(top_hash, C1),
-          tx_log = maps:get(tx_log, C1),
-          rpt_log = maps:get(rpt_log, C1)}.
+    St#st{ last_top = maps:get(top_hash, C1)
+         , cache    = C1
+         , tx_log = maps:get(tx_log, C1)
+         , rpt_log = maps:get(rpt_log, C1)}.
 
 check_at_height(R, Reqs, St, C) ->
     lager:debug("will check at height", []),
@@ -840,13 +954,13 @@ check_req(#req{mode = watch, ch_id = ChId, client = Client} = R, St,
                                   _ ->
                                       {Status, C3} = channel_status(ChId, Client, C2),
                                       lager:debug("Status = ~p", [Status]),
-                                      watch_for_change_in_ch_status(Status, H, Rx, St, C3)
+                                      watch_for_change_in_ch_status(Status, Rx, St, C3)
                               end
                       end, {R, C}, ChTxs);
                 error ->
                     {R, C}
             end;
-        fork_switch ->
+        _ when Scenario =:= fork_switch; Scenario =:= audit ->
             watch_for_channel_change(R, St, C);
         _ ->
             lager:debug("Other scenario - ignore (~p)", [Scenario]),
@@ -857,19 +971,24 @@ check_req(#req{ mode = tx_hash, client = Client
               , ch_id = ChanId } = R, _St, C) ->
     lager:debug("check_req(tx_hash = ~p, client = ~p)", [TxHash, Client]),
     case current_depth(TxHash, ChanId, C) of
-        {undefined, C1} ->
-            {no_change, C1};
-        {Depth, C1} when Depth >= MinDepth ->
+        {Depth, C1} when is_integer(Depth), Depth >= MinDepth ->
             lager:debug("min_depth achieved", []),
             #req{ module = Mod } = R,
             Mod:minimum_depth_achieved(Client, ChanId, req_type(R), TxHash),
             {done, C1};
         {Depth, C1} ->
             {TopHeight, C2} = top_height(C1),
-            lager:debug("min_depth not yet achieved (Top = ~p, Depth = ~p, Min = ~p)",
-                        [TopHeight, Depth, MinDepth]),
-            {R#req{info = I#{check_at_height => TopHeight + (MinDepth - Depth)}}, C2}
+            NextHeight = next_height_for_min_depth(Depth, TopHeight, MinDepth),
+            lager:debug("min_depth not yet achieved (Top = ~p, Depth = ~p, Min = ~p, next = ~p)",
+                        [TopHeight, Depth, MinDepth, NextHeight]),
+            {R#req{info = I#{check_at_height => NextHeight}}, C2}
     end.
+
+next_height_for_min_depth(undefined, TopHeight, MinDepth) ->
+    %% TopHeight + MinDepth;
+    TopHeight + 1;
+next_height_for_min_depth(Depth, TopHeight, MinDepth) when is_integer(Depth) ->
+    TopHeight + (MinDepth - Depth).
 
 watch_for_channel_change(R, St, #{ scenario := Scenario } = C)
   when ?IS_SCENARIO(Scenario) ->
@@ -879,12 +998,11 @@ watch_for_channel_change(R, St, #{ scenario := Scenario } = C)
             lager:debug("Will not check channel", []),
             {R, C};
         _ ->
-            {CurrHeight, C1} = top_height(C),
             lager:debug("Will check channel on chain (~p)", [Scenario]),
-            watch_for_channel_change(CurrHeight, R, St, C1)
+            watch_for_channel_change_(R, St, C)
     end.
 
-watch_for_channel_change(CurrHeight, #req{ch_id = ChanId, client = Client} = R, St, C) ->
+watch_for_channel_change_(#req{ch_id = ChanId, client = Client} = R, St, C) ->
     V = case read_ch_state(ChanId, Client) of
             #{vsn := Vsn} when Vsn =/= undefined ->
                 Vsn;
@@ -894,16 +1012,15 @@ watch_for_channel_change(CurrHeight, #req{ch_id = ChanId, client = Client} = R, 
     lager:debug("Will check channel status (V=~p)", [V]),
     {Status, C1} = channel_status(ChanId, Client, C),
     lager:debug("Status = ~p", [Status]),
-    watch_for_change_in_ch_status(Status, CurrHeight, R, St, C1).
+    watch_for_change_in_ch_status(Status, R, St, C1).
 
-watch_for_change_in_ch_status(undefined, _CurrHeight, R, _St, C) ->
+watch_for_change_in_ch_status(undefined, R, _St, C) ->
     lager:debug("No channel object yet", []),
     {R, C};
-watch_for_change_in_ch_status(Status, _CurrHeight, R, St, C) ->
+watch_for_change_in_ch_status(Status, R, St, C) ->
     case Status of
         #{changed := true} ->
             lager:debug("Channel has changed: ~p", [Status]),
-            %% NextHeight = calc_next_height(Status, CurrHeight, St),
             #req{module = Mod, client = Client, ch_id = ChId} = R,
             C1 = report_status_change(Status, ChId, Mod, Client, St, C),
             {no_change, C1};
@@ -913,20 +1030,20 @@ watch_for_change_in_ch_status(Status, _CurrHeight, R, St, C) ->
     end.
 
 report_status_change(#{channel := Ch, is_active := IsActive,
-                       tx := SignedTx}, ChId, Mod, Client, _St, C) ->
+                       tx := SignedTx, block_hash := BlockHash}, ChId, Mod, Client, _St, C) ->
     Event = if IsActive -> changed_on_chain;
                true     -> closing_on_chain
             end,
-    BlockHash = maps:get(top_hash, C),
+    %% BlockHash = maps:get(top_hash, C),
     TxHash = aetx_sign:hash(SignedTx),
-    RptKey = {Event, TxHash, Client},
+    RptKey = {ChId, Client},
     Info = #{ chan_id => ChId
             , tx      => SignedTx
             , tx_hash => TxHash
             , channel => Ch
             , block_hash => BlockHash },
     maybe_report(
-      RptKey, Info,
+      RptKey, Event, Info,
       fun() ->
               case Event of
                   changed_on_chain ->
@@ -941,10 +1058,10 @@ report_closed_on_chain(#{ tx_type    := _TxType
                         , block_hash := BHash
                         , height     := Height } = I, R, C) ->
     #req{ module = Mod, client = Client, ch_id = ChId, info = ReqInfo} = R,
-    RptKey = {closed_on_chain, TxHash, Client},
+    RptKey = {ChId, Client},
     I1 = maps:merge(ReqInfo, I),
     C1 = maybe_report(
-           RptKey, I1,
+           RptKey, closed_on_chain, I1,
            fun(Cx) ->
                    {SignedTx, Cx1} = get_signed_tx(TxHash, Cx),
                    Mod:channel_closed_on_chain(Client, I1#{tx => SignedTx}),
@@ -960,19 +1077,30 @@ report_closed_on_chain(#{ tx_type    := _TxType
             , {channel, ChId, BHash} => ClosedAt },
     { R#req{ info = I#{closed_at => ClosedAt} }, C2}.
 
-maybe_report(RptKey, Info, Rpt, C) when is_function(Rpt) ->
+maybe_report(RptKey, Event, Info, Rpt, C) when is_function(Rpt) ->
     lager:debug("RptKey = ~p", [RptKey]),
     RptLog = maps:get(rpt_log, C),
     case aesc_window:keyfind(RptKey, #rpt_log_entry.key, RptLog) of
         false ->
-            lager:debug("not found in log, reporting", []),
-            C1 = call_rpt(Rpt, C),
-            LogEntry = #rpt_log_entry{key = RptKey, value = Info},
-            C1#{rpt_log => aesc_window:add(LogEntry, RptLog)};
-        Other ->
-            lager:debug("Not reporting (Other=~p)", [Other]),
-            C
+            do_report(RptKey, Event, Info, Rpt, RptLog, C);
+        #rpt_log_entry{value = #{ event := _LatestEvent
+                                , info  := #{ tx_hash := LatestTx }}} = Found ->
+            case Info of
+                #{tx_hash := LatestTx} ->
+                    lager:debug("Not reporting again", []),
+                    C;
+                _ ->
+                    lager:debug("Latest rpt entry: ~p", [Found]),
+                    do_report(RptKey, Event, Info, Rpt, RptLog, C)
+            end
     end.
+
+do_report(RptKey, Event, Info, Rpt, RptLog, C) ->
+    lager:debug("not found in log, reporting", []),
+    C1 = call_rpt(Rpt, C),
+    LogEntry = #rpt_log_entry{key = RptKey, value = #{ event => Event
+                                                     , info => Info}},
+    C1#{rpt_log => aesc_window:add(LogEntry, RptLog)}.
 
 call_rpt(R, C) when is_function(R, 0) ->
     R(),
@@ -1009,42 +1137,113 @@ prev_chan_vsn(ChId, Client, C) ->
 
 update_chan_vsns(Cache) ->
     {Vsns, Cache1} = chan_vsns(Cache),
-    maps:fold(fun({Client, ChId}, V, C) when is_pid(Client) ->
-                      remove_audit_marker(ChId),
-                      update_chan_vsn(Client, ChId, V, C)
-              end, Cache1, Vsns).
+    lager:debug("Vsns = ~p", [Vsns]),
+    {_, Cache2} =
+        maps:fold(
+          fun({Client, ChId}, V, {Visited, C} = Acc) when is_pid(Client) ->
+                  case lists:member(ChId, Visited) of
+                      true ->
+                          Acc;
+                      false ->
+                          remove_audit_marker(ChId),
+                          C1 = update_chan_vsn(Client, ChId, V, C),
+                          {[ChId|Visited], C1}
+                  end
+          end, {[], Cache1}, Vsns),
+    Cache2.
 
 update_chan_vsn(Client, ChId, V, #{ top_hash  := Hash
-                                  , scenario  := S } = Cache) when ?IS_SCENARIO(S),
-                                                                   is_pid(Client),
-                                                                   is_binary(ChId) ->
+                                  , scenario  := S } = C) when ?IS_SCENARIO(S),
+                                                               is_pid(Client),
+                                                               is_binary(ChId) ->
+    lager:debug("ChId = ~p, V = ~p", [ChId, V]),
     Key = {ChId, Client},
     case V of
         #{ closed_at := _ } = Vsn ->
             lager:debug("Update Vsn = ~p", [Vsn]),
-            write_ch_state(Key, Hash, #{vsn => Vsn}),
-            Cache;
-        #{vsn := Vsn, changed := true} ->
+            {Height, C1} = height(Hash, C),
+            write_ch_state(Key, Hash, Height, #{vsn => Vsn}),
+            C1;
+        #{vsn := Vsn} ->
             lager:debug("Update Vsn = ~p", [Vsn]),
-            write_ch_state(Key, Hash, #{vsn => Vsn, last_block => Hash}),
-            Cache;
+            {Height, C1} = height(Hash, C),
+            write_ch_state(Key, Hash, Height, #{vsn => Vsn, last_block => Hash}),
+            C1;
         _ ->
-            Cache
+            lager:debug("will not update; V = ~p", [V]),
+            C
     end.
 
-write_ch_state(Key, BlockHash, #{vsn := Vsn} = I) ->
-    ets:insert(?T_CH_STATES, #ch_state{ key   = Key
-                                      , block = BlockHash
-                                      , vsn   = Vsn
-                                      , info = maps:remove(vsn, I)}),
+write_ch_state({ChId, _} = Key, BlockHash, Height, #{vsn := Vsn} = I) ->
+    lager:debug("ChId = ~p, Height = ~p", [ChId, Height]),
+    set_ch_state_at_height(ChId, Height),
+    ets:insert(?T_CH_STATES, #ch_state{ key    = Key
+                                      , block  = BlockHash
+                                      , height = Height
+                                      , vsn    = Vsn
+                                      , info   = maps:remove(vsn, I)}),
     ok.
+
+%% ======================================================================
+%% Mapping ch states to block height
+%%
+%% The idea is that when we have a fork switch, we find the common ancestor,
+%% then fetch all channels for which the state has changed since the
+%% common_ancestor height. For convenience, we use an ordered_set table where
+%% we store both `{ChId, Height}` and `{{Height,ChId},0}` objects. The latter
+%% is used to find all channels since a certain height.
+
+set_ch_state_at_height(ChId, Height) ->
+    lager:debug("ChId = ~p, Height = ~p", [ChId, Height]),
+    case ets:lookup(?T_STATES_AT_HEIGHT, ChId) of
+        [{_, Height}] ->
+            true;
+        Other ->
+            case Other of
+                [{_, PrevHeight}] ->
+                    ets:delete(?T_STATES_AT_HEIGHT, {PrevHeight, ChId});
+                _ ->
+                    skip
+            end,
+            ets:insert(?T_STATES_AT_HEIGHT, [{ChId, Height},
+                                            {{Height,ChId},0}])
+    end.
+
+chids_changed_since_height(Height) ->
+    Res = chids_changed_since_height(ets:next(?T_STATES_AT_HEIGHT, {Height,{}}), Height),
+    lager:debug("Res = ~p / Tab = ~p", [Res, ets:tab2list(?T_STATES_AT_HEIGHT)]),
+    Res.
+
+chids_changed_since_height({H,ChId} = K, Height) when H > Height ->
+    [ChId | chids_changed_since_height(ets:next(?T_STATES_AT_HEIGHT, K), Height)];
+chids_changed_since_height(K, _) when is_binary(K) ->
+    %% Binaries sort higher than tuples - we're done
+    [].
+%% chids_changed_since_height('$end_of_table', _) ->
+%%     %% This should never happen
+%%     [].
+
+delete_states_at_height(ChIds) ->
+    lists:foreach(
+      fun(ChId) ->
+              case ets:lookup(?T_STATES_AT_HEIGHT, ChId) of
+                  [{_, Height}] ->
+                      ets:delete(?T_STATES_AT_HEIGHT, ChId),
+                      ets:delete(?T_STATES_AT_HEIGHT, {Height, ChId});
+                  [] ->
+                      true
+              end
+      end, ChIds).
+
+%%
+%% ======================================================================
 
 read_ch_state(ChId, Client) when is_binary(ChId), is_pid(Client) ->
     case ets:lookup(?T_CH_STATES, {ChId, Client}) of
         [#ch_state{vsn = Vsn, info = I}] ->
             I#{vsn => Vsn};
         [] ->
-            lager:debug("Ch States in ets: ~p", [ets:tab2list(?T_CH_STATES)]),
+            lager:debug("No state in ets for ChId: ~p, Client: ~p", [ChId, Client]),
             try_copy_ch_state(ChId, Client)
     end.
 
@@ -1052,7 +1251,8 @@ try_copy_ch_state(ChId, ToPid) ->
     %% See if there is an existing state record for another pid
     %% If so, copy it, but set `changed = true`
     case ets:next(?T_CH_STATES, {ChId, 0}) of
-        {ChId, _} = Key ->
+        {ChId, FromPid} = Key ->
+            lager:debug("Copying state (ChId: ~p) from ~p", [ChId, FromPid]),
             [#ch_state{info = I0} = S0] = ets:lookup(?T_CH_STATES, Key),
             S = S0#ch_state{ key  = {ChId, ToPid}
                            , info = I0#{ changed => true} },
@@ -1068,7 +1268,7 @@ get_ch_status(ChId, Client, Hash, C) ->
             case Changed of
                 true ->
                     lager:debug("status has changed", []),
-                    handle_ch_status_changed(ChId, Client, C1);
+                    handle_ch_status_changed(ChId, Status, Client, C1);
                 false ->
                     lager:debug("status hasn't changed", []),
                     {Status, C1}
@@ -1078,20 +1278,20 @@ get_ch_status(ChId, Client, Hash, C) ->
             Other
     end.
 
-handle_ch_status_changed(ChId, Client, #{ last_block := Last
-                                        , top_hash := Hash } = C) ->
-    lager:debug("channel status changed, Hash=~p, Last=~p", [Hash,Last]),
-    C1 = get_txs_since({any_after_block, Last}, Hash, ChId, C),
+handle_ch_status_changed(ChId, Status, Client, #{ top_hash := Hash } = C) ->
+    LastBlock = maps:get(last_block, C, undefined),   % won't be present after fork switch
+    lager:debug("channel status changed, Hash=~p, Last=~p", [Hash,LastBlock]),
+    %% TODO: When LastBlock == undefined (after fork switch), we should make an educated guess,
+    %% though 'undefined' will work.
+    C1 = get_txs_since({any_after_block, LastBlock}, Hash, ChId, C),
     {TxHash, #{tx := Tx, block_hash := BlockHash}, C2} =
         get_latest_tx(ChId, C1),
     lager:debug("Latest TxHash = ~p, Hash = ~p", [TxHash, BlockHash]),
-    {Status, C3} = get_basic_ch_status_(ChId, Client, BlockHash, C2),
-    lager:debug("ChStatus(~p) = ~p", [BlockHash, Status]),
     %% Assert that this is really a changed channel object
-    {true, C4} = channel_status_changed(maps:get(vsn, Status), ChId, Client, C3),
+    {true, C4} = channel_status_changed(maps:get(vsn, Status), ChId, Client, C2),
     lager:debug("asserted status changed", []),
-    Status1 = Status#{tx => Tx},
-    {Status1, C4#{{channel, ChId, BlockHash} => Status1}}.
+    Status1 = Status#{tx => Tx, block_hash => BlockHash},
+    {Status1, note_chid_change_at_hash(ChId, Hash, C4#{{channel, ChId, BlockHash} => Status1})}.
 
 get_basic_ch_status_(ChId, Client, BlockHash, C) ->
     {Ch, C1} = get_channel(ChId, Client, BlockHash, C),
@@ -1107,7 +1307,8 @@ get_basic_ch_status_(ChId, Client, BlockHash, C) ->
                  , changed      => Changed
                  , channel      => Ch
                  , lock_period  => aesc_channels:lock_period(Ch) },
-            {maybe_add_locked_until(I, Ch), C2}
+            I1 = maybe_add_locked_until(I, Ch),
+            {I1, set_chan_vsn(ChId, Client, I1, C2)}
     end.
 
 maybe_add_locked_until(#{is_active := false} = I, Ch) ->
@@ -1119,6 +1320,10 @@ maybe_add_locked_until(I, _) ->
 
 chan_vsns(C) ->
     cached_get(chan_vsns, C, fun() -> #{} end).
+
+set_chan_vsn(ChId, Client, V, C) ->
+    {Vsns, C1} = chan_vsns(C),
+    C1#{chan_vsns => Vsns#{ {Client, ChId} => V}}.
 
 get_channel(ChId, Client, Hash, C) when is_pid(Client) ->
     {Vsns, C1} = chan_vsns(C),
@@ -1132,8 +1337,7 @@ get_channel(ChId, Client, Hash, C) when is_pid(Client) ->
                 undefined ->
                     {undefined, C1#{chan_vsns => maps:remove({Client, ChId}, Vsns)}};
                 Ch ->
-                    {Ch, C1#{chan_vsns => Vsns#{{Client,ChId} => #{ hash => Hash
-                                                                  , channel =>  Ch }}}}
+                    {Ch, C1}
             end
     end.
 
@@ -1196,79 +1400,36 @@ log_entry_txs_to_history(ChIds, Txs, BlockHash, Height, #st{cache = C} = St) ->
 log_tx_history_(ChIds, Txs, BlockHash, Height, C) when is_map(C) ->
     lists:foldl(
       fun(ChId, Cx) ->
-              log_tx_history_for_chid(ChId, Txs, BlockHash, Height, Cx)
+              log_tx_history_for_chid(ChId, maps:get({ch,ChId}, Txs), BlockHash, Height, Cx)
       end, C, ChIds).
 
 log_tx_history_for_chid(ChId, Txs, BlockHash, Height, C) ->
-    {TxHistories, C1} = tx_histories(C),
-    lager:debug("TxHistories = ~p", [TxHistories]),
-    TxHashes = maps:get({ch, ChId}, Txs),
-    ChHist = maps:get(ChId, TxHistories, []),
-    lager:debug("ChHist (ChId=~p): ~p", [ChId, ChHist]),
-    {ChHist1, C2} =
-        lists:foldl(
-          fun(TxHash, {ChHx, Cx}) ->
-                  TxInfo = maps:get({tx,TxHash}, Txs),
-                  lager:debug("Txs: TxInfo = ~p", [TxInfo]),
-                  Cx1 = set_tx_info(TxHash, Cx,
-                                    fun(I0) ->
-                                            Merged = maps:merge(I0, TxInfo),
-                                            lager:debug("Updated TxInfo = ~p",
-                                                        [Merged]),
-                                            Merged
-                                    end),
-                  lager:debug("From cache: ~p", [maps:get({tx_info,TxHash}, Cx1)]),
-                  lager:debug("tx_info(~p) -> ~p", [TxHash, tx_info(TxHash, Cx1)]),
-                  {add_tx_to_history(
-                     ChHx, Height, TxHash, BlockHash), Cx1}
-          end, {ChHist, C1}, TxHashes),
-    TxHistories1 = TxHistories#{ ChId => ChHist1 },
-    lager:debug("TxHistories1 = ~p", [TxHistories1]),
-    C2#{ tx_histories => TxHistories1 }.
+    Key = {ChId, Height, BlockHash},
+    %% We don't really care if we overwrite it, since the value should be immutable.
+    %% The Txs list is in the order in which they appear in the block (which should
+    %% be the order in which the tx_events arrive). For this purpose, we want the
+    %% latest tx first.
+    ets:insert(?T_TX_HISTORY, #tx_history{key = Key, value = lists:reverse(Txs)}),
+    C.
 
 log_tx_histories(Found, ChId, C) when is_list(Found), is_map(C) ->
-    {TxHistories, C1} = tx_histories(C),
-    lager:debug("TxHistories = ~p", [TxHistories]),
-    ChHist = maps:get(ChId, TxHistories, []),
-    {ChHist1, C2} =
-        lists:foldl(
-          fun(TxHash, {ChHx, Cx}) ->
-                  lager:debug("TxHash = ~p", [TxHash]),
-                  {#{block_hash := BHash}, Cx1} =
-                      tx_info(TxHash, Cx),
-                  {Height, Cx2} = height(BHash, Cx1),
-                  {add_tx_to_history(
-                     ChHx, Height, TxHash, BHash), Cx2}
-          end, {ChHist, C1}, Found),
-    C2#{ tx_histories => TxHistories#{ ChId => ChHist1 } }.
+    lists:foldl(
+      fun(TxHash, Cx) when is_binary(TxHash) ->
+              {#{block_hash := BHash}, Cx1} =
+                  tx_info(TxHash, Cx),
+              {Height, Cx2} = height(BHash, Cx1),
+              log_tx_history_for_chid(
+                ChId, [TxHash], BHash, Height, Cx2)
+      end, C, Found).
 
-tx_histories(C) ->
-    cached_get(tx_histories, C, fun() -> #{} end).
-
-%% Sort on height, but also match on BlockHash (forks might cause different
-%% cached blocks to have the same apparent height?)
-add_tx_to_history([#{ height     := Height
-                    , block_hash := BlockHash
-                    , txs := Txs} = H|T] = L, Height, TxHash, BlockHash) ->
-    case lists:member(TxHash, Txs) of
-        true ->
-            L;
-        false ->
-            %% Assumption: Txs are added first-to-last, and we usually want to pop
-            %% the latest tx, so keep the list of txs LIFO
-            [H#{txs => [TxHash | Txs]} | T]
-    end;
-add_tx_to_history([#{ height := HHeight } |_] = L, Height, TxHash, BlockHash)
-  when HHeight < Height ->
-    [#{ height     => Height
-      , block_hash => BlockHash
-      , txs        => [TxHash] } | L];
-add_tx_to_history([H|T], Height, TxHash, BlockHash) ->
-    [H|add_tx_to_history(T, Height, TxHash, BlockHash)];
-add_tx_to_history([], Height, TxHash, BlockHash) ->
-    [#{ height     => Height
-      , block_hash => BlockHash
-      , txs        => [TxHash] }].
+adjust_tx_histories_after_fork(ChIds, ForkHeight, C) ->
+    lists:foreach(
+      fun(ChId) ->
+              ets:select_delete(
+                ?T_TX_HISTORY, [ {#tx_history{ key = {ChId, '$1', '_'}, _ = '_'},
+                                  [{'>', '$1', ForkHeight}], [true]} ])
+      end, ChIds),
+    C.
 
 update_tx_log(_, undefined, undefined, undefined, _, C) ->
     %% don't add a non-existing tx
@@ -1285,14 +1446,17 @@ update_tx_log(_, _, _, _, _, C) ->
     C.
 
 get_latest_tx(ChId, C) ->
-    lager:debug("ChId = ~p", [ChId]),
-    {TxHistories, C1} = tx_histories(C),
-    lager:debug("TxHistories = ~p", [TxHistories]),
-    [#{ block_hash := BlockHash
-      , txs := [TxHash|_] } | _] = maps:get(ChId, TxHistories),
-    {SignedTx, C2} = get_signed_tx(TxHash, C1),
-    {TxHash, #{ tx => SignedTx
-              , block_hash => BlockHash }, C2}.
+    case ets:prev(?T_TX_HISTORY, {ChId, [], []}) of
+        {ChId, _, BHash} = Key ->
+            [#tx_history{value = [TxHash|_]}] =
+                ets:lookup(?T_TX_HISTORY, Key),
+            {SignedTx, C1} = get_signed_tx(TxHash, C),
+            {TxHash, #{ tx => SignedTx
+                      , block_hash => BHash }, C1};
+        Other ->
+            lager:debug("Unexpected: ~p", [Other]),
+            error({unexpected, Other})
+    end.
 
 %% Find recent txs. Two different stop conditions:
 %% - {any_after_block, BlockHash}: Stop as soon as a block is found with
@@ -1446,7 +1610,12 @@ save_tx_info(ChIds, Txs, BHash, _Height, #st{ cache = C} = St) ->
                                      lager:debug("Info = ~p", [Info]),
                                      I1 = Info#{ block_hash => BHash
                                                , chan_id    => ChId },
-                                     set_tx_info(TxHash, C1x,
+                                     %% Un-cache location
+                                     %% ('undefined' may previously have been cached)
+                                     %% We could set the cache value if we had
+                                     %% the signed tx, but at this point, we don't.
+                                     C1x1 = maps:remove({location, TxHash}, C1x),
+                                     set_tx_info(TxHash, C1x1,
                                                  fun(I0) ->
                                                          maps:merge(I0, I1)
                                                  end)
@@ -1494,19 +1663,15 @@ channel_vsn(Ch) ->
 
 current_depth(TxHash, ChId, C) ->
     {L, C1} = tx_location(TxHash, ChId, C),
+    lager:debug("L(TxHash=~p) = ~p", [TxHash, L]),
     case L of
         undefined ->
             {undefined, C1};
         _ when is_binary(L) ->
-            {InChain, C2} = in_main_chain(L, C1),
-            case InChain of
-                true ->
-                    {TxHeight, C3} = height(L, C2),
-                    {TopHeight, C4} = top_height(C3),
-                    {TopHeight - TxHeight, C4};
-                false ->
-                    {undefined, C2}
-            end
+            %% This also means that it's on the main chain
+            {TxHeight, C2} = height(L, C1),
+            {TopHeight, C3} = top_height(C2),
+            {TopHeight - TxHeight, C3}
     end.
 
 tx_location(TxHash, ChId, C) ->
@@ -1532,16 +1697,6 @@ tx_location_(TxHash, ChId, C) ->
 tx_type(SignedTx) ->
     {TxType, _} = aetx:specialize_type(aetx_sign:innermost_tx(SignedTx)),
     TxType.
-
-in_main_chain(BHash, C) ->
-    %% We don't want to use aec_chain_state:hash_is_in_main_chain/1, since we want to
-    %% stick to the top hash of the triggering event.
-    cached_get({in_main_chain, BHash}, C, fun(C1) -> in_main_chain_(BHash, C1) end).
-
-in_main_chain_(Hash, C) ->
-    {TopHash, C1} = top_hash(C),
-    Res = aec_chain_state:hash_is_in_main_chain(Hash, TopHash),
-    {Res, C1}.
 
 top_height(C) ->
     cached_get(top_height, C, fun(C1) -> top_height_(C1) end).
@@ -1590,10 +1745,23 @@ ensure_monitor(Pid) ->
         true ->
             ignore;
         false ->
-            MRef = monitor(process, Pid),
-            ets:insert(?T_MREFS, {Pid, MRef})
+            set_monitor(Pid)
     end,
     ok.
 
+set_monitor(Pid) ->
+    MRef = monitor(process, Pid),
+    ets:insert(?T_MREFS, {Pid, MRef}).
+
 delete_monitor(Pid) ->
     ets:delete(?T_MREFS, Pid).
+
+%% Done at process start. If there are any entries in the ?T_MREFS table,
+%% set new monitors and update the entries.
+re_monitor() ->
+    %% While updating objects inside an ets:foldl() should be done with care,
+    %% in this case it's ok, since we don't change the key.
+    ets:foldl(
+      fun({Pid, _OldMRef}, _) ->
+              set_monitor(Pid)
+      end, true, ?T_MREFS).
