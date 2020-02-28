@@ -57,10 +57,12 @@ suite() ->
     [].
 
 init_per_suite(Config) ->
+    aec_test_utils:ensure_no_mocks(),
     eunit:start(),
     Config.
 
 end_per_suite(_Config) ->
+    aec_test_utils:ensure_no_mocks(),
     ok.
 
 init_per_group(_Grp, Config) ->

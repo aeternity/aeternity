@@ -22,6 +22,8 @@
         , mock_genesis_and_forks/0
         , mock_genesis_and_forks/1
         , unmock_genesis_and_forks/0
+        , ensure_not_mocked/1
+        , ensure_no_mocks/0
         , wait_for_it/2
         , wait_for_it_or_timeout/3
         , wait_for_pred_or_timeout/3
@@ -162,6 +164,40 @@ mock_genesis_and_forks(PresetAccounts) ->
 unmock_genesis_and_forks() ->
     meck:unload(aec_fork_block_settings),
     ok.
+
+ensure_not_mocked(Mods) when is_list(Mods) ->
+    case intersection(Mods, registered_mocks()) of
+        [] ->
+            ok;
+        AlreadyMocked ->
+            ct:pal("Need to mock these modules, but already mocked: ~p",
+                   [AlreadyMocked]),
+            ct:fail({already_mocked, AlreadyMocked})
+    end.
+
+ensure_no_mocks() ->
+    case registered_mocks() of
+        [] ->
+            ok;
+        Regs ->
+            ct:pal("UNEXPECTED MOCKS: ~p", [Regs]),
+            ct:fail({unexpected_mocks, Regs})
+    end.
+
+registered_mocks() ->
+    lists:foldr(fun meck_name/2, [], registered()).
+
+meck_name(N, Acc) ->
+    case re:split(atom_to_binary(N, latin1), <<"_meck$">>) of
+        [_] ->
+            Acc;
+        [Mod, _] ->
+            [binary_to_existing_atom(Mod, latin1) | Acc]
+    end.
+
+intersection(A, B) when is_list(A), is_list(B) ->
+    ordsets:intersection(ordsets:from_list(A),
+                         ordsets:from_list(B)).
 
 wait_for_pubkey() ->
     wait_for_pubkey(1).
