@@ -1143,9 +1143,10 @@ open(cast, {?UPDATE, Msg}, D) ->
             lager:debug("Rejected incoming off-chain update because of ~p", [_Error]),
             handle_update_conflict(?UPDATE, D)
     end;
-open(cast, {Err, Msg}, D) when Err =:= ?UPDATE_ERR;
+open(cast, {Err, Msg}, #data{strict_checks = false} = D) when Err =:= ?UPDATE_ERR;
                                Err =:= ?DEP_ERR;
                                Err =:= ?WDRAW_ERR ->
+    report(conflict, Msg, D),
     keep_state(D);
 open(cast, {?DEP_CREATED, Msg}, D) ->
     case check_deposit_created_msg(Msg, D) of
@@ -2645,9 +2646,15 @@ check_update_ack_(SignedTx, HalfSignedTx) ->
     lager:debug("Sigs = ~p", [Sigs]),
     Remainder = Sigs -- HalfSigs,
     lager:debug("Remainder = ~p", [Remainder]),
-    true = (aetx:specialize_callback(aetx_sign:innermost_tx(SignedTx))
-         == aetx:specialize_callback(aetx_sign:innermost_tx(HalfSignedTx))),
-    lager:debug("Txes are the same", []),
+    true = 
+    ExpectedTx =
+        aetx_sign:innermost_tx(SignedTx) == aetx_sign:innermost_tx(HalfSignedTx),
+    case ExpectedTx of
+        true ->
+            lager:debug("Txes are the same", []);
+        false ->
+            error(different_tx)
+    end,
     ok.
 
 handle_upd_transfer(FromPub, ToPub, Amount, From, UOpts, #data{ state = State
@@ -4447,13 +4454,15 @@ handle_call_(open, {upd_call_contract, Opts, ExecType}, From,
     ?CATCH_LOG(E)
         process_update_error(E, From, D)
     end;
-handle_call_(awaiting_signature, Msg, From,
+handle_call_(awaiting_signature, Req, From,
              #data{ongoing_update = true} = D)
-  when ?UPDATE_REQ(element(1,Msg)) ->
+  when ?UPDATE_REQ(element(1, Req)) ->
     %% Race detection!
-    lager:debug("race detected: ~p", [Msg]),
+    lager:debug("race detected: ~p", [Req]),
     #op_sign{tag = OngoingOp} = D#data.op,
     lager:debug("calling handle_update_conflict", []),
+    report(conflict, #{}, D),
+    gen_statem:reply(From, ok),
     handle_update_conflict(OngoingOp, D#data{op = ?NO_OP});
 handle_call_(open, {get_contract_call, Contract, Caller, Round}, From,
              #data{state = State} = D) ->

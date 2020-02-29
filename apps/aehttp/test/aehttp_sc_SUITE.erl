@@ -3307,7 +3307,6 @@ sc_ws_conflict_new_tx_(StarterAction, AckAction, Config) ->
                 {AckMethod, AckParams, _AckEvent} =
                     AckAction(StarterPubkey, AcknowledgerPubkey),
                 ws_send_tagged(AcknowledgerPid, AckMethod, AckParams, Config),
-                wait_for_channel_event(AcknowledgerPid, error, Config),
                 {ok, _, #{ <<"error_code">> := 2
                         , <<"error_msg">> := <<"conflict">> }} = wait_for_channel_event(StarterPid, conflict, Config),
                 {ok, _, #{ <<"error_code">> := 2
