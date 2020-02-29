@@ -287,6 +287,9 @@ ga_sequence() ->
     ].
 
 update_sequence() ->
+    [ check_incorrect_update
+    ].
+update_sequence_() ->
     [ check_incorrect_deposit
     , check_incorrect_withdrawal
     , check_incorrect_update
@@ -2045,12 +2048,12 @@ wrong_action({I, R, _Spec, _Port, Debug}, Poster, Malicious,
             {_, _} = await_signing_request(FsmNewAction, D, Debug, Cfg),
             ok = rpc(dev1, aesc_fsm, strict_checks, [FsmA, false], Debug),
             {_, _} = MaliciousSign(FsmCreatedAction, A, Debug),
-            DetectConflictFun(D, Debug),
             %% one is malicious and receives
             DetectConflictFun(A, Debug),
+            DetectConflictFun(D, Debug),
             rpc(dev1, aesc_fsm, strict_checks, [FsmA, true], Debug)
     end,
-    check_info(20),
+    check_info(50),
     ok.
 
 wait_for_open(FsmPid, Debug) ->
