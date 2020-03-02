@@ -22,6 +22,7 @@ contract ProxyRemote =
   entrypoint call_crash       : Remote => 'a
   entrypoint call_out_of_gas  : Remote => 'a
   entrypoint call_nonpayable  : Remote => int
+  entrypoint call_missing_con : () => int
 
 contract ProtectedCall =
 
@@ -90,6 +91,7 @@ contract ProtectedCall =
     call_crash      (r : Remote) : 'a   = r.crash()
     call_out_of_gas (r : Remote) : 'a   = r.out_of_gas(gas = 200)
     call_nonpayable (r : Remote) : int  = r.nonpayable(value = 70)
+    call_missing_con() : int = ct_1111111111111111111111111111112JF6Dz72.id(value = 70, 0)
 
   stateful entrypoint
     test_wrong_ret   (r : Remote) : option(bool) = r.wrong_ret  (protected = true, value = 100, 0)
@@ -102,6 +104,7 @@ contract ProtectedCall =
     test_out_of_gas  (r : Remote) : option('a)   = r.out_of_gas (protected = true, value = 100, gas = 500)
     test_nonpayable  (r : Remote) : option(int)  = r.nonpayable (protected = true, value = 100)
     test_out_of_funds(r : Remote) : option(int)  = r.id         (protected = true, value = 1_000_000_000_000_000_000_000_000_000, 0)
+    test_missing_con (r : Remote) : option(int)  = ct_1111111111111111111111111111112JF6Dz72.id(protected = true, value = 100, 0)
 
   stateful entrypoint
     test_wrong_ret_r  (r : Remote, p : ProxyRemote) : option(bool) = p.call_wrong_ret  (protected = true, value = 100, r)
@@ -113,3 +116,4 @@ contract ProtectedCall =
     test_crash_r      (r : Remote, p : ProxyRemote) : option('a)   = p.call_crash      (protected = true, value = 100, r)
     test_out_of_gas_r (r : Remote, p : ProxyRemote) : option('a)   = p.call_out_of_gas (protected = true, value = 100, gas = 500, r)
     test_nonpayable_r (r : Remote, p : ProxyRemote) : option(int)  = p.call_nonpayable (protected = true, value = 100, r)
+    test_missing_con_r(r : Remote, p : ProxyRemote) : option(int)  = p.call_missing_con(protected = true, value = 100)
