@@ -3258,10 +3258,6 @@ report_with_notice(Tag, Info, Notice, D) ->
                                  , info   => Info }, D).
 
 report(Tag, Info, D) ->
-    case Tag of
-        conflict -> lager:info("ASDF", []);
-        _ -> pass
-    end,
     report_info(do_rpt(Tag, D), #{ type => report
                                  , tag  => Tag
                                  , info => Info }, D).
