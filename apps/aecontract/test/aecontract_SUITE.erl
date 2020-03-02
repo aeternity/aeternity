@@ -5480,7 +5480,7 @@ sophia_protected_call(_Cfg) ->
                 ProxyBal1  = ?call(call_contract, Acc, Proxy,  get_balance, word, {}),
                 {Fun, MinGas, MaxGas, Res, NewState - OldState, [ClientBal1 - ClientBal0, ProxyBal1 - ProxyBal0, ServerBal1 - ServerBal0]}
            end,
-    {test_ok, _, _, {110, _}, _, _} = Test(test_ok, word, 0, 0),
+    {test_ok, _, _, {116, _}, _, _} = Test(test_ok, word, 0, 0),
     Results = [ Test(test_wrong_ret,     {option, bool}, 150, 200)
               , Test(test_wrong_arg,     {option, word}, 130, 200)
               , Test(test_wrong_arity,   {option, word}, 130, 200)

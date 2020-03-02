@@ -77,9 +77,14 @@ contract ProtectedCall =
 
   stateful function inc() = put(state + 1)
 
+  function higher_order(r : Remote) =
+    r.id
+
   entrypoint test_ok(r : Remote) =
+    let f = higher_order(r)
     let Some(n) = r.id(protected = true, 10)
-    n + r.id(protected = false, 100)
+    let Some(m) = f(protected = true, 5)
+    n + m + r.id(protected = false, 100) + f(1)
 
   payable stateful entrypoint
     call_wrong_ret  (r : Remote) : bool = r.wrong_ret(0)
