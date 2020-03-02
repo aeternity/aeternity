@@ -2048,9 +2048,13 @@ wrong_action({I, R, _Spec, _Port, Debug}, Poster, Malicious,
             {_, _} = await_signing_request(FsmNewAction, D, Debug, Cfg),
             ok = rpc(dev1, aesc_fsm, strict_checks, [FsmA, false], Debug),
             {_, _} = MaliciousSign(FsmCreatedAction, A, Debug),
-            %% one is malicious and receives
-            DetectConflictFun(A, Debug),
             DetectConflictFun(D, Debug),
+            %% at this point the acknowledger is malicious and is convinced
+            %% that the transaction was valid so it is rightfully in an `open`
+            %% state when one receives the conflict message by the other party
+            %% since this test is checking if the starting party (D) is
+            %% reporting the conflict, we don't exepect the malicious
+            %% acknowledger to report anything
             rpc(dev1, aesc_fsm, strict_checks, [FsmA, true], Debug)
     end,
     check_info(50),

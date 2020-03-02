@@ -1143,11 +1143,6 @@ open(cast, {?UPDATE, Msg}, D) ->
             lager:debug("Rejected incoming off-chain update because of ~p", [_Error]),
             handle_update_conflict(?UPDATE, D)
     end;
-open(cast, {Err, Msg}, #data{strict_checks = false} = D) when Err =:= ?UPDATE_ERR;
-                               Err =:= ?DEP_ERR;
-                               Err =:= ?WDRAW_ERR ->
-    report(conflict, Msg, D),
-    keep_state(D);
 open(cast, {?DEP_CREATED, Msg}, D) ->
     case check_deposit_created_msg(Msg, D) of
         {ok, SignedTx, Updates, BlockHash, D1} ->
