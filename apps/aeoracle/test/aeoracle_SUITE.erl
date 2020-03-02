@@ -8,6 +8,8 @@
 %% common_test exports
 -export([ all/0
         , groups/0
+        , init_per_suite/1
+        , end_per_suite/1
         , init_per_testcase/2
         , end_per_testcase/2
         ]).
@@ -87,6 +89,12 @@ groups() ->
                    ]}
     ].
 
+init_per_suite(Config) ->
+    aec_test_utils:ensure_no_mocks(),
+    Config.
+
+end_per_suite(_Config) ->
+    aec_test_utils:ensure_no_mocks().
 
 init_per_testcase(query_oracle_via_name, Config) ->
     case aect_test_utils:latest_protocol_version() >= ?IRIS_PROTOCOL_VSN of
@@ -94,14 +102,12 @@ init_per_testcase(query_oracle_via_name, Config) ->
         _ -> {skip, requires_lima}
     end;
 init_per_testcase(register_oracle_negative, Config) ->
-    meck:new(aec_governance, [passthrough]),
-    Config;
+    meck_new([aec_governance], Config);
 init_per_testcase(Test, Config) when Test =:= query_response_negative_dynamic_fee
                               orelse Test =:= query_oracle_negative_dynamic_fee
                               orelse Test =:= extend_oracle_negative_dynamic_fee
                               orelse Test =:= register_oracle_negative_dynamic_fee ->
-    meck:new(aec_governance, [passthrough]),
-    meck:new(aec_tx_pool, [passthrough]),
+    Config1 = meck_new([aec_governance, aec_tx_pool], Config),
     % those tests are sensitive to the minimum fee required for including a tx.
     % The correct fee is a function of various components, one of which is the
     % gas price. Modifying the minimum gas price can change the size of the
@@ -109,23 +115,21 @@ init_per_testcase(Test, Config) when Test =:= query_response_negative_dynamic_fe
     % thus the mecks
     meck:expect(aec_governance, minimum_gas_price, fun(_) -> 1000000 end),
     meck:expect(aec_tx_pool, minimum_miner_gas_price, fun() -> 1 end),
-    Config;
+    Config1;
 init_per_testcase(_, Config) ->
     Config.
 
-end_per_testcase(register_oracle_negative, _Config) ->
-    meck:unload(aec_governance),
-    ok;
-end_per_testcase(Test, _Config) when Test =:= query_response_negative_dynamic_fee
-                              orelse Test =:= query_oracle_negative_dynamic_fee
-                              orelse Test =:= extend_oracle_negative_dynamic_fee
-                              orelse Test =:= register_oracle_negative_dynamic_fee ->
-
-    meck:unload(aec_governance),
-    meck:unload(aec_tx_pool),
-    ok;
-end_per_testcase(_,_Config) ->
+end_per_testcase(_, Config) ->
+    [meck:unload(M) || M <- meck_modules(Config)],
     ok.
+
+meck_new(Ms, Config) ->
+    Prev = meck_modules(Config),
+    [meck:new(M, [passthrough]) || M <- Ms],
+    lists:keystore(meck_modules, 1, Config, {meck_modules, Prev ++ Ms}).
+
+meck_modules(Config) ->
+    proplists:get_value(meck_modules, Config, []).
 
 %%%===================================================================
 %%% Register oracle

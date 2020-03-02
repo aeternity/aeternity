@@ -10,6 +10,8 @@
 %% common_test exports
 -export([all/0,
          groups/0,
+         init_per_suite/1,
+         end_per_suite/1,
          init_per_group/2,
          end_per_group/2
         ]).
@@ -88,6 +90,13 @@ groups() ->
 
 -define(NAME, <<"詹姆斯詹姆斯"/utf8>>).
 -define(PRE_CLAIM_HEIGHT, 1).
+
+init_per_suite(Config) ->
+    aec_test_utils:ensure_no_mocks(),
+    Config.
+
+end_per_suite(_Config) ->
+    aec_test_utils:ensure_no_mocks().
 
 init_per_group(transactions, Cfg) ->
     %% Disable name auction

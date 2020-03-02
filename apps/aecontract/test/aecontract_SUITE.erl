@@ -8,6 +8,8 @@
 %% common_test exports
 -export([ all/0
         , groups/0
+        , init_per_suite/1
+        , end_per_suite/1
         , init_per_group/2
         , end_per_group/2
         , init_per_testcase/2
@@ -517,6 +519,13 @@ init_tests(Release, VMName) ->
     Cfg = [{sophia_version, Sophia}, {vm_version, VM},
            {abi_version, ABI}, {protocol, Release}],
     init_per_testcase_common(interactive, Cfg).
+
+init_per_suite(Config) ->
+    aec_test_utils:ensure_no_mocks(),
+    Config.
+
+end_per_suite(_Config) ->
+    aec_test_utils:ensure_no_mocks().
 
 init_per_group(aevm, Cfg) ->
     aect_test_utils:init_per_group(aevm, Cfg, fun(X) -> X end);
