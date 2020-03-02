@@ -233,7 +233,7 @@ push_call_stack(#es{ current_bb = BB
 -spec pop_call_stack(state()) ->
                             {'empty', state()} |
                             {'return_check', map(), protected | unprotected, aeb_fate_data:fate_type_type(),
-                                             aefa_stores:stores(), aefa_chain_api:state(), state()} |
+                                             aefa_stores:store(), aefa_chain_api:state(), state()} |
                             {'local', _, map(), non_neg_integer(), state()} |
                             {'remote', aeb_fate_data:fate_address(), aeb_fate_data:fate_contract(),
                                        _, map(), non_neg_integer(), state()}.
