@@ -24,7 +24,14 @@
     sc_ws_generic_messages/1,
     sc_ws_update_with_meta/1,
     sc_ws_update_transfer/1,
-    sc_ws_update_conflict/1,
+    sc_ws_conflict_two_offchain_updates/1,
+    sc_ws_conflict_deposit_and_offchain_update/1,
+    sc_ws_conflict_two_deposits/1,
+    sc_ws_conflict_withdrawal_and_offchain_update/1,
+    sc_ws_conflict_withdrawal_and_deposit/1,
+    sc_ws_conflict_two_withdrawals/1,
+    sc_ws_conflict_snapshot_and_offchain_update/1,
+    sc_ws_conflict_on_new_offchain/1,
     sc_ws_update_abort/1,
     sc_ws_snapshot_solo/1,
     sc_ws_close_mutual/1,
@@ -171,7 +178,9 @@ groups() ->
         {group, optional_fee_higher_than_gas_price},
         {group, optional_fee_lower_than_gas_price},
         {group, optional_nonce},
-        {group, abort_updates}
+        {group, abort_updates},
+        {group, only_one_signs},
+        {group, both_sign}
       ]},
 
      {with_meta, [],
@@ -189,7 +198,6 @@ groups() ->
         %% ensure port is reusable
         sc_ws_failed_update,
         sc_ws_generic_messages,
-        sc_ws_update_conflict,
         sc_ws_update_abort
       ]},
 
@@ -210,7 +218,18 @@ groups() ->
         sc_ws_remote_call_contract_refering_onchain_data,
         sc_ws_wrong_call_data
       ]},
+     {only_one_signs, [sequence],
+      [ sc_ws_conflict_on_new_offchain,
+        {group, conflicts},
+        sc_ws_conflict_snapshot_and_offchain_update
+      ]
+     },
+     {both_sign, [sequence],
+      [ {group, conflicts}
+      ]
+     },
 
+     {conflicts, [sequence], conflicts_sequence()},
      {sc_ga, [sequence],
       [ {group, ga_initiator},
         {group, ga_responder},
@@ -273,6 +292,16 @@ groups() ->
       ]}
     ].
 
+conflicts_sequence() ->
+    [ 
+      sc_ws_conflict_two_offchain_updates,
+      sc_ws_conflict_deposit_and_offchain_update,
+      sc_ws_conflict_two_deposits,
+      sc_ws_conflict_withdrawal_and_offchain_update,
+      sc_ws_conflict_withdrawal_and_deposit,
+      sc_ws_conflict_two_withdrawals
+    ].
+
 optional_onchain_params_sequence() ->
     [
       sc_ws_optional_params_create,
@@ -330,6 +359,12 @@ init_per_group(sc_ga, Config) ->
     end;
 init_per_group(with_meta, Config) ->
     sc_ws_open_([{include_meta, true} | Config]);
+init_per_group(only_one_signs, Config) ->
+    Config1 = [{who_signs_update, one} | Config], % this is being ran in the with_open_channel context
+    sc_ws_open_(Config1);
+init_per_group(both_sign, Config) ->
+    Config1 = [{who_signs_update, both} | Config], % this is being ran in the with_open_channel context
+    sc_ws_open_(Config1);
 init_per_group(with_open_channel, Config) ->
     sc_ws_open_(Config);
 init_per_group(Grp, Config) when Grp == ga_both; Grp == ga_initiator; Grp == ga_responder ->
@@ -421,13 +456,24 @@ end_per_group(sc_contracts, Config) ->
     sc_ws_close_(Config);
 end_per_group(with_meta, Config) ->
     sc_ws_close_(Config);
+end_per_group(Group, Config) when Group =:= only_one_signs;
+                                  Group =:= both_sign ->
+    sc_ws_close_(Config);
 end_per_group(with_open_channel, Config) ->
     sc_ws_close_(Config);
 end_per_group(_Grp, _Config) ->
     ok.
 
 -define(DOC_LOG, [ sc_ws_ping_pong, sc_ws_deposit, sc_ws_withdraw,
-                   sc_ws_failed_update, sc_ws_generic_messages, sc_ws_update_conflict,
+                   sc_ws_failed_update, sc_ws_generic_messages,
+                   sc_ws_conflict_two_offchain_updates,
+                   sc_ws_conflict_deposit_and_offchain_update,
+                   sc_ws_conflict_two_deposits,
+                   sc_ws_conflict_withdrawal_and_offchain_update,
+                   sc_ws_conflict_withdrawal_and_deposit,
+                   sc_ws_conflict_two_withdrawals,
+                   sc_ws_conflict_snapshot_and_offchain_update,
+                   sc_ws_conflict_on_new_offchain,
                    sc_ws_basic_contracts, sc_ws_oracle_contract, sc_ws_nameservice_contract,
                    sc_ws_environment_contract, sc_ws_remote_call_contract,
                    sc_ws_remote_call_contract_refering_onchain_data, sc_ws_wrong_call_data ]).
@@ -859,12 +905,13 @@ sc_ws_update_basic_round_(Round0, Config) ->
       end, Round0, [initiator, responder]).
 
 channel_conflict(#{initiator := IConnPid, responder :=RConnPid},
-               StarterRole,
-               #{initiator := #{pub_key := IPubkey,
-                                priv_key := IPrivkey},
-                 responder := #{pub_key := RPubkey,
-                                priv_key := RPrivkey}},
-               Amount1, Amount2, Config) ->
+                 StarterRole,
+                 #{initiator := #{pub_key := IPubkey,
+                                  priv_key := IPrivkey},
+                   responder := #{pub_key := RPubkey,
+                                  priv_key := RPrivkey}},
+                Config,
+                TriggerFun) ->
     {StarterPid, AcknowledgerPid, StarterPubkey, StarterPrivkey,
      AcknowledgerPubkey, AcknowledgerPrivkey} =
         case StarterRole of
@@ -873,49 +920,25 @@ channel_conflict(#{initiator := IConnPid, responder :=RConnPid},
             responder ->
                 {RConnPid, IConnPid, RPubkey, RPrivkey, IPubkey, IPrivkey}
         end,
-    ok = ?WS:register_test_for_channel_events(IConnPid, [sign, conflict]),
-    ok = ?WS:register_test_for_channel_events(RConnPid, [sign, conflict]),
+    ok = ?WS:register_test_for_channel_events(IConnPid, [sign, error, conflict]),
+    ok = ?WS:register_test_for_channel_events(RConnPid, [sign, error, conflict]),
 
     SignUpdate =
-        fun TrySignUpdate(ConnPid, Privkey) ->
-            case wait_for_channel_event(ConnPid, sign, Config) of
-                {ok, _, <<"update_ack">>, _} -> %% this is not the message we are looking for
-                    TrySignUpdate(ConnPid, Privkey);
-                {ok, _, <<"update">>, #{<<"signed_tx">> := EncSignedCreateTx0}} ->
-                    {ok, SignedCreateBinTx} =
-                        aeser_api_encoder:safe_decode(transaction, EncSignedCreateTx0),
-                    STx = aetx_sign:deserialize_from_binary(SignedCreateBinTx),
-                    SignedCreateTx = aec_test_utils:co_sign_tx(STx, Privkey),
-                    EncSignedCreateTx = aeser_api_encoder:encode(transaction,
-                                                  aetx_sign:serialize_to_binary(SignedCreateTx)),
-                    ws_send_tagged(ConnPid, <<"channels.update">>,
-                                   #{signed_tx => EncSignedCreateTx}, Config)
-            end
+        fun TrySignUpdate(ConnPid, Privkey, EncSignedTx0, Method) ->
+                {ok, SignedBinTx} =
+                    aeser_api_encoder:safe_decode(transaction, EncSignedTx0),
+                STx = aetx_sign:deserialize_from_binary(SignedBinTx),
+                SignedTx = aec_test_utils:co_sign_tx(STx, Privkey),
+                EncSignedTx = aeser_api_encoder:encode(transaction,
+                                              aetx_sign:serialize_to_binary(SignedTx)),
+                ws_send_tagged(ConnPid, Method,
+                                #{signed_tx => EncSignedTx}, Config)
         end,
-    %% sender initiates an update
-    ws_send_tagged(StarterPid, <<"channels.update.new">>,
-                   #{from => aeser_api_encoder:encode(account_pubkey, StarterPubkey),
-                     to => aeser_api_encoder:encode(account_pubkey, AcknowledgerPubkey),
-                     amount => Amount1}, Config),
-
-    %% starter signs the new state
-
-    %% acknowledger initiates an update too
-    ws_send_tagged(AcknowledgerPid, <<"channels.update.new">>,
-                   #{from => aeser_api_encoder:encode(account_pubkey, StarterPubkey),
-                     to => aeser_api_encoder:encode(account_pubkey, AcknowledgerPubkey),
-                     amount => Amount2}, Config),
-
-    SignUpdate(StarterPid, StarterPrivkey),
-    SignUpdate(AcknowledgerPid, AcknowledgerPrivkey),
-
-    {ok, _, #{ <<"error_code">> := 2
-             , <<"error_msg">> := <<"conflict">> }} = wait_for_channel_event(StarterPid, conflict, Config),
-    {ok, _, #{ <<"error_code">> := 2
-             , <<"error_msg">> := <<"conflict">> }} = wait_for_channel_event(AcknowledgerPid, conflict, Config),
-
-    ok = ?WS:unregister_test_for_channel_events(IConnPid, [sign, conflict]),
-    ok = ?WS:unregister_test_for_channel_events(RConnPid, [sign, conflict]),
+    TriggerFun(StarterPid, StarterPubkey, StarterPrivkey,
+               AcknowledgerPid, AcknowledgerPubkey, AcknowledgerPrivkey,
+               SignUpdate),
+    ok = ?WS:unregister_test_for_channel_events(IConnPid, [sign, error, conflict]),
+    ok = ?WS:unregister_test_for_channel_events(RConnPid, [sign, error, conflict]),
 
     ok.
 
@@ -3200,16 +3223,195 @@ sc_ws_generic_messages(Config) ->
       ]),
     ok.
 
-sc_ws_update_conflict(Config) ->
+sc_ws_conflict_two_offchain_updates(Config) ->
+    sc_ws_conflict_(
+        fun(Alice, Bob) -> update_params(Alice, Bob, _Amt1 = 1) end,
+        fun(Alice, Bob) -> update_params(Alice, Bob, _Amt2 = 2) end,
+        Config).
+
+sc_ws_conflict_deposit_and_offchain_update(Config) ->
+    sc_ws_conflict_(
+        fun(_Alice, _Bob) -> deposit_params(_Amt1 = 1) end,
+        fun(Alice, Bob) -> update_params(Alice, Bob, _Amt2 = 2) end,
+        Config),
+    sc_ws_conflict_(
+        fun(Alice, Bob) -> update_params(Alice, Bob, _Amt2 = 2) end,
+        fun(_Alice, _Bob) -> deposit_params(_Amt1 = 1) end,
+        Config).
+
+sc_ws_conflict_two_deposits(Config) ->
+    sc_ws_conflict_(
+        fun(_Alice, _Bob) -> deposit_params(_Amt1 = 1) end,
+        fun(_Alice, _Bob) -> deposit_params(_Amt2 = 2) end,
+        Config).
+
+sc_ws_conflict_withdrawal_and_offchain_update(Config) ->
+    sc_ws_conflict_(
+        fun(_Alice, _Bob) -> withdraw_params(_Amt1 = 1) end,
+        fun(Alice, Bob) -> update_params(Alice, Bob, _Amt2 = 2) end,
+        Config),
+    sc_ws_conflict_(
+        fun(Alice, Bob) -> update_params(Alice, Bob, _Amt2 = 2) end,
+        fun(_Alice, _Bob) -> withdraw_params(_Amt1 = 1) end,
+        Config).
+
+sc_ws_conflict_withdrawal_and_deposit(Config) ->
+    sc_ws_conflict_(
+        fun(_Alice, _Bob) -> withdraw_params(_Amt1 = 1) end,
+        fun(_Alice, _Bob) -> deposit_params(_Amt2 = 2) end,
+        Config),
+    sc_ws_conflict_(
+        fun(_Alice, _Bob) -> deposit_params(_Amt2 = 2) end,
+        fun(_Alice, _Bob) -> withdraw_params(_Amt1 = 1) end,
+        Config).
+
+sc_ws_conflict_two_withdrawals(Config) ->
+    sc_ws_conflict_(
+        fun(_Alice, _Bob) -> withdraw_params(_Amt1 = 1) end,
+        fun(_Alice, _Bob) -> withdraw_params(_Amt2 = 1) end,
+        Config).
+
+sc_ws_conflict_snapshot_and_offchain_update(Config) ->
+    _Round1 = sc_ws_update_basic_round_(_Round0 = 2, Config),
+    %% TODO: there shouldn't be a conflict in unilateral txs, GH-3155
+    sc_ws_conflict_(
+        fun(Alice, Bob) -> update_params(Alice, Bob, _Amt1 = 1) end,
+        fun(_Alice, _Bob) -> snapshot_params() end,
+        Config).
+
+sc_ws_conflict_on_new_offchain(Config) ->
+    sc_ws_conflict_new_tx_(
+        fun(_Alice, _Bob) -> withdraw_params(_Amt1 = 1) end,
+        fun(Alice, Bob) -> update_params(Alice, Bob, _Amt2 = 2) end,
+        Config).
+
+sc_ws_conflict_new_tx_(StarterAction, AckAction, Config) ->
     Participants = proplists:get_value(participants, Config),
     ChannelClients = proplists:get_value(channel_clients, Config),
+
+    Trigger =
+        fun(StarterPid, StarterPubkey, StarterPrivkey,
+            AcknowledgerPid, AcknowledgerPubkey, _AcknowledgerPrivkey,
+            SignUpdate) ->
+                %% starter initiates an update
+                {StarterMethod, StarterParams, StarterEvent} =
+                    StarterAction(StarterPubkey, AcknowledgerPubkey),
+                ws_send_tagged(StarterPid, StarterMethod, StarterParams, Config),
+                {ok, _, StarterEvent, #{<<"signed_tx">> := StarterTx}} =
+                    wait_for_channel_event(StarterPid, sign, Config),
+                SignUpdate(StarterPid, StarterPrivkey, StarterTx,
+                           tag_to_method(StarterEvent)),
+
+                wait_for_channel_event(AcknowledgerPid, sign, Config),
+                %% acknowledger initiates an update too
+                {AckMethod, AckParams, _AckEvent} =
+                    AckAction(StarterPubkey, AcknowledgerPubkey),
+                ws_send_tagged(AcknowledgerPid, AckMethod, AckParams, Config),
+                {ok, _, #{ <<"error_code">> := 2
+                        , <<"error_msg">> := <<"conflict">> }} = wait_for_channel_event(StarterPid, conflict, Config),
+                {ok, _, #{ <<"error_code">> := 2
+                        , <<"error_msg">> := <<"conflict">> }} = wait_for_channel_event(AcknowledgerPid, conflict, Config),
+                ok
+        end,
     lists:foreach(
         fun(FirstSender) ->
-                channel_conflict(ChannelClients, FirstSender, Participants, 1, 2,
-                                 Config)
+                channel_conflict(ChannelClients, FirstSender, Participants,
+                                 Config, Trigger)
         end,
         [initiator,
          responder]),
+    ok.
+    
+
+update_params(ParticipantA, ParticipantB, Amount) ->
+    {<<"channels.update.new">>,
+     #{ from => aeser_api_encoder:encode(account_pubkey, ParticipantA),
+        to => aeser_api_encoder:encode(account_pubkey, ParticipantB),
+        amount => Amount},
+     <<"update">>}.
+
+deposit_params(Amount) ->
+    {<<"channels.deposit">>,
+     #{amount => Amount},
+     <<"deposit_tx">>}.
+
+withdraw_params(Amount) ->
+    {<<"channels.withdraw">>,
+     #{amount => Amount},
+     <<"withdraw_tx">>}.
+
+snapshot_params() ->
+    {<<"channels.snapshot_solo">>,
+     #{},
+     <<"snapshot_solo_tx">>}.
+
+sc_ws_conflict_(StarterAction, AckAction, Config) ->
+    Participants = proplists:get_value(participants, Config),
+    ChannelClients = proplists:get_value(channel_clients, Config),
+    Trigger =
+        fun(StarterPid, StarterPubkey, StarterPrivkey,
+            AcknowledgerPid, AcknowledgerPubkey, AcknowledgerPrivkey,
+            SignUpdate) ->
+                {StarterMethod, StarterParams, StarterEvent} =
+                    StarterAction(StarterPubkey, AcknowledgerPubkey),
+
+                {AckMethod, AckParams, AckEvent} =
+                    AckAction(StarterPubkey, AcknowledgerPubkey),
+                ws_send_tagged(StarterPid, StarterMethod, StarterParams, Config),
+                ws_send_tagged(AcknowledgerPid, AckMethod, AckParams, Config),
+                sign_or_wait(StarterPid, AcknowledgerPid,
+                             StarterPrivkey, AcknowledgerPrivkey,
+                             StarterEvent, AckEvent,
+                             SignUpdate,
+                             Config),
+                {ok, _, #{ <<"error_code">> := 2
+                        , <<"error_msg">> := <<"conflict">> }} = wait_for_channel_event(StarterPid, conflict, Config),
+                {ok, _, #{ <<"error_code">> := 2
+                        , <<"error_msg">> := <<"conflict">> }} = wait_for_channel_event(AcknowledgerPid, conflict, Config),
+                ok
+        end,
+    lists:foreach(
+        fun(FirstSender) ->
+                channel_conflict(ChannelClients, FirstSender, Participants,
+                                 Config, Trigger)
+        end,
+        [initiator,
+         responder]),
+    ok.
+
+tag_to_method(<<"update">>) -> <<"channels.update">>;
+tag_to_method(<<"deposit_tx">>) -> <<"channels.deposit_tx">>;
+tag_to_method(<<"withdraw_tx">>) -> <<"channels.withdraw_tx">>;
+tag_to_method(<<"snapshot_solo_tx">>) -> <<"channels.snapshot_solo_sign">>.
+
+sign_or_wait(ConnPidA, ConnPidB, PrivkeyA, PrivkeyB,
+             EventA, EventB, SignUpdate, Config) ->
+    WhoSigns = ?config(who_signs_update, Config),
+    WaitForCorrectEvent =
+        fun Fun(ConnPid, Event) ->
+            {ok, _, ReceivedEvent, #{<<"signed_tx">> := Tx}} =
+                wait_for_channel_event(ConnPid, sign, Config),
+            case ReceivedEvent =:= Event of
+                true -> Tx;
+                false ->
+                    ct:log("While waiting for a ~p, discarding received sign event ~p",
+                           [Event, ReceivedEvent]),
+                    Fun(ConnPid, Event)
+            end
+        end,
+    TxA = WaitForCorrectEvent(ConnPidA, EventA),
+
+    TxB = WaitForCorrectEvent(ConnPidB, EventB),
+
+    case WhoSigns of
+        noone ->
+            pass;
+        one ->
+            SignUpdate(ConnPidA, PrivkeyA, TxA, tag_to_method(EventA));
+        both ->
+            SignUpdate(ConnPidA, PrivkeyA, TxA, tag_to_method(EventA)),
+            SignUpdate(ConnPidB, PrivkeyB, TxB, tag_to_method(EventB))
+    end,
     ok.
 
 sc_ws_update_abort(Config) ->
@@ -3682,6 +3884,18 @@ log_basename(Config) ->
         case GName of %% an assertive and explicit check. If a new group is added - this will crash
             with_open_channel ->
                 filename:join(Protocol, "continuous");
+            only_one_signs ->
+                filename:join(Protocol, "only_one_signs");
+            both_sign ->
+                filename:join(Protocol, "both_sign");
+            conflicts ->
+                ParentGroup = ?config(who_signs_update, Config),
+                ParentDir =
+                    case ParentGroup of
+                        one   -> "only_one_signs";
+                        both  -> "both_sign"
+                    end,
+                filename:join([Protocol, ParentDir, "conflicts"]);
             with_meta ->
                 filename:join(Protocol, "with_meta");
             client_reconnect ->

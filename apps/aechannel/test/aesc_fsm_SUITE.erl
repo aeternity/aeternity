@@ -287,6 +287,9 @@ ga_sequence() ->
     ].
 
 update_sequence() ->
+    [ check_incorrect_update
+    ].
+update_sequence_() ->
     [ check_incorrect_deposit
     , check_incorrect_withdrawal
     , check_incorrect_update
@@ -785,8 +788,8 @@ update_with_soft_reject(Cfg) ->
     rpc(dev1, aesc_fsm, upd_transfer, [FsmI, PubI, PubR, 1]),
     {I1, _} = await_signing_request(update, I, Debug, Cfg),
     Reject = fun(_Tag, #{fsm := Fsm1} = Rx, SignedTx, _Updates) ->
-                     {error, conflict} = rpc(dev1, aesc_fsm, upd_transfer,
-                                             [Fsm1, PubR, PubI, 1]),
+                     ok = rpc(dev1, aesc_fsm, upd_transfer,
+                              [Fsm1, PubR, PubI, 1]),
                      {Rx, SignedTx}
              end,
     {R1, _} = await_signing_request(update_ack, R, Reject, ?TIMEOUT, Debug, Cfg),
@@ -832,8 +835,8 @@ deposit_with_soft_reject(Cfg) ->
     rpc(dev1, aesc_fsm, upd_deposit, [FsmI, #{amount => 1}]),
     {I1, _} = await_signing_request(deposit_tx, I, Debug, Cfg),
     Reject = fun(_Tag, #{fsm := Fsm1} = Rx, SignedTx, _Updates) ->
-                     {error, conflict} = rpc(dev1, aesc_fsm, upd_transfer,
-                                             [Fsm1, PubR, PubI, 1]),
+                     ok = rpc(dev1, aesc_fsm, upd_transfer,
+                              [Fsm1, PubR, PubI, 1]),
                      {Rx, SignedTx}
              end,
     {R1, _} = await_signing_request(deposit_created, R, Reject, ?TIMEOUT, Debug, Cfg),
@@ -879,8 +882,8 @@ withdraw_with_soft_reject(Cfg) ->
     rpc(dev1, aesc_fsm, upd_withdraw, [FsmI, #{amount => 1}]),
     {I1, _} = await_signing_request(withdraw_tx, I, Debug, Cfg),
     Reject = fun(_Tag, #{fsm := Fsm1} = Rx, SignedTx, _Updates) ->
-                     {error, conflict} = rpc(dev1, aesc_fsm, upd_transfer,
-                                             [Fsm1, PubR, PubI, 1]),
+                     ok = rpc(dev1, aesc_fsm, upd_transfer,
+                              [Fsm1, PubR, PubI, 1]),
                      {Rx, SignedTx}
              end,
     {R1, _} = await_signing_request(withdraw_created, R, Reject, ?TIMEOUT, Debug, Cfg),
@@ -2045,11 +2048,16 @@ wrong_action({I, R, _Spec, _Port, Debug}, Poster, Malicious,
             {_, _} = await_signing_request(FsmNewAction, D, Debug, Cfg),
             ok = rpc(dev1, aesc_fsm, strict_checks, [FsmA, false], Debug),
             {_, _} = MaliciousSign(FsmCreatedAction, A, Debug),
-            DetectConflictFun(A, Debug),
             DetectConflictFun(D, Debug),
+            %% at this point the acknowledger is malicious and is convinced
+            %% that the transaction was valid so it is rightfully in an `open`
+            %% state when one receives the conflict message by the other party
+            %% since this test is checking if the starting party (D) is
+            %% reporting the conflict, we don't exepect the malicious
+            %% acknowledger to report anything
             rpc(dev1, aesc_fsm, strict_checks, [FsmA, true], Debug)
     end,
-    check_info(20),
+    check_info(50),
     ok.
 
 wait_for_open(FsmPid, Debug) ->

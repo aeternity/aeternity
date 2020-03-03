@@ -659,7 +659,8 @@ awaiting_reestablish({call, From},
 awaiting_reestablish(Type, Msg, D) ->
     handle_common_event(Type, Msg, postpone_or_error(Type), D).
 
-awaiting_signature(enter, _OldSt, _D) -> keep_state_and_data;
+awaiting_signature(enter, _OldSt, _D) ->
+    keep_state_and_data;
 awaiting_signature(cast, {?SIGNED, Tag, {error, Code}} = Msg,
                    #data{op = #op_sign{ tag = Tag }} = D) ->
     lager:debug("Error code as signing reply (Tag = ~p): ~p", [Tag, Code]),
@@ -696,9 +697,9 @@ awaiting_signature(cast, {?SIGNED, create_tx, SignedTx} = Msg,
         end, D);
 awaiting_signature(cast, {?SIGNED, deposit_tx, SignedTx} = Msg,
                    #data{op = #op_sign{ tag = deposit_tx
-                                      , data = OpData0}} = D) ->
+                                      , data = OpData0} = OpSign} = D) ->
     #op_data{updates = Updates} = OpData0,
-    maybe_check_auth(SignedTx, OpData0, not_deposit_tx, me,
+    maybe_check_auth(SignedTx, OpSign, not_deposit_tx, me,
         fun() ->
             OpData = OpData0#op_data{signed_tx = SignedTx},
             next_state(dep_half_signed,
@@ -709,9 +710,9 @@ awaiting_signature(cast, {?SIGNED, deposit_tx, SignedTx} = Msg,
         end, D);
 awaiting_signature(cast, {?SIGNED, withdraw_tx, SignedTx} = Msg,
                    #data{op = #op_sign{ tag = withdraw_tx
-                                      , data = OpData0 }} = D) ->
+                                      , data = OpData0} = OpSign} = D) ->
     #op_data{updates = Updates} = OpData0,
-    maybe_check_auth(SignedTx, OpData0, not_withdraw_tx, me,
+    maybe_check_auth(SignedTx, OpSign, not_withdraw_tx, me,
         fun() ->
             OpData = OpData0#op_data{signed_tx = SignedTx},
             next_state(wdraw_half_signed,
@@ -739,9 +740,9 @@ awaiting_signature(cast, {?SIGNED, ?FND_CREATED = OpTag, SignedTx} = Msg,
         end, D);
 awaiting_signature(cast, {?SIGNED, ?DEP_CREATED = OpTag, SignedTx} = Msg,
                    #data{op = #op_sign{ tag = OpTag
-                                      , data = OpData0 }} = D) ->
+                                      , data = OpData0 } = OpSign} = D) ->
     #op_data{updates = Updates} = OpData0,
-    maybe_check_auth(SignedTx, OpData0, not_deposit_tx, both,
+    maybe_check_auth(SignedTx, OpSign, not_deposit_tx, both,
         fun() ->
             OpData = OpData0#op_data{signed_tx = SignedTx},
             D1 = D#data{op = #op_ack{ tag = OpTag
@@ -752,9 +753,9 @@ awaiting_signature(cast, {?SIGNED, ?DEP_CREATED = OpTag, SignedTx} = Msg,
         end, D);
 awaiting_signature(cast, {?SIGNED, ?WDRAW_CREATED = OpTag, SignedTx} = Msg,
                    #data{op = #op_sign{ tag = OpTag
-                                      , data = OpData0 }} = D) ->
+                                      , data = OpData0 } = OpSign} = D) ->
     #op_data{updates = Updates} = OpData0,
-    maybe_check_auth(SignedTx, OpData0, not_withdraw_tx, both,
+    maybe_check_auth(SignedTx, OpSign, not_withdraw_tx, both,
         fun() ->
             OpData = OpData0#op_data{signed_tx = SignedTx},
             D1 = D#data{op = #op_ack{ tag = OpTag
@@ -766,10 +767,10 @@ awaiting_signature(cast, {?SIGNED, ?WDRAW_CREATED = OpTag, SignedTx} = Msg,
 awaiting_signature(cast, {?SIGNED, ?UPDATE = OpTag, SignedTx} = Msg,
                    #data{ state = State
                         , op = #op_sign{ tag = OpTag
-                                       , data = OpData0 }} = D) ->
+                                       , data = OpData0 } = OpSign} = D) ->
     #op_data{updates = Updates} = OpData0,
     lager:debug("?UPDATE signed: ~p", [Updates]),
-    maybe_check_auth(SignedTx, OpData0, not_offchain_tx, me,
+    maybe_check_auth(SignedTx, OpSign, not_offchain_tx, me,
         fun() ->
             OpData = OpData0#op_data{signed_tx = SignedTx},
             State1 = aesc_offchain_state:set_half_signed_tx(SignedTx, State),
@@ -782,13 +783,13 @@ awaiting_signature(cast, {?SIGNED, ?UPDATE = OpTag, SignedTx} = Msg,
         end, D);
 awaiting_signature(cast, {?SIGNED, ?UPDATE_ACK = OpTag, SignedTx} = Msg,
                    #data{ op = #op_sign{ tag = OpTag
-                                       , data = OpData0 }
+                                       , data = OpData0 } = OpSign
                         , opts = Opts
                         , state = State } = D) ->
     #op_data{ updates = Updates
             , block_hash = BlockHash } = OpData0,
     lager:debug("?UPDATE_ACK signed: ~p", [Updates]),
-    maybe_check_auth(SignedTx, OpData0, not_offchain_tx, both,
+    maybe_check_auth(SignedTx, OpSign, not_offchain_tx, both,
         fun() ->
             D1 = log(rcv, ?SIGNED, Msg, D),
             D2 = send_update_ack_msg(SignedTx, D1),
@@ -801,9 +802,9 @@ awaiting_signature(cast, {?SIGNED, ?UPDATE_ACK = OpTag, SignedTx} = Msg,
         end, D);
 awaiting_signature(cast, {?SIGNED, ?SHUTDOWN = OpTag, SignedTx} = Msg,
                    #data{op = #op_sign{ tag = OpTag
-                                      , data = OpData0 }} = D) ->
+                                      , data = OpData0 } = OpSign} = D) ->
     lager:debug("SHUTDOWN signed", []),
-    maybe_check_auth(SignedTx, OpData0, not_close_mutual_tx, me,
+    maybe_check_auth(SignedTx, OpSign, not_close_mutual_tx, me,
         fun() ->
             D1 = log(rcv, ?SIGNED, Msg, D),
             D2 = send_shutdown_msg(SignedTx, D1),
@@ -814,8 +815,8 @@ awaiting_signature(cast, {?SIGNED, ?SHUTDOWN = OpTag, SignedTx} = Msg,
         end, D);
 awaiting_signature(cast, {?SIGNED, ?SHUTDOWN_ACK = OpTag, SignedTx} = Msg,
                    #data{op = #op_sign{ tag = OpTag
-                                      , data = OpData0 }} = D) ->
-    maybe_check_auth(SignedTx, OpData0, not_close_mutual_tx, both,
+                                      , data = OpData0 } = OpSign} = D) ->
+    maybe_check_auth(SignedTx, OpSign, not_close_mutual_tx, both,
         fun() ->
             D1 = log(rcv, ?SIGNED, Msg, D),
             D2 = send_shutdown_ack_msg(SignedTx, D1),
@@ -864,9 +865,9 @@ awaiting_signature(cast, {?SIGNED, close_solo_tx = OpTag, SignedTx} = Msg,
     end;
 awaiting_signature(cast, {?SIGNED, settle_tx = OpTag, SignedTx} = Msg,
                    #data{op = #op_sign{ tag = OpTag
-                                      , data = OpData }} = D) ->
+                                      , data = OpData } = OpSign} = D) ->
     #op_data{updates = Updates} = OpData,
-    maybe_check_auth(SignedTx, OpData, not_settle_tx, me,
+    maybe_check_auth(SignedTx, OpSign, not_settle_tx, me,
         fun() ->
                 D1 = log(rcv, ?SIGNED, Msg, D),
                 D2 = D1#data{op = ?NO_OP},
@@ -886,7 +887,8 @@ awaiting_signature(timeout, _Msg,
 awaiting_signature(Type, Msg, D) ->
     handle_common_event(Type, Msg, postpone, D).
 
-awaiting_update_ack(enter, _OldSt, _D) -> keep_state_and_data;
+awaiting_update_ack(enter, _OldSt, _D) ->
+    keep_state_and_data;
 awaiting_update_ack(cast, {Req, _} = Msg, #data{} = D) when ?UPDATE_CAST(Req) ->
     %% This might happen if a request is sent before our signed ?UPDATE msg
     %% arrived.
@@ -1001,7 +1003,8 @@ enter_closing(D) ->
     end.
 
 
-dep_half_signed(enter, _OldSt, _D) -> keep_state_and_data;
+dep_half_signed(enter, _OldSt, _D) ->
+    keep_state_and_data;
 dep_half_signed(cast, {Req, _} = Msg, D) when ?UPDATE_CAST(Req) ->
     %% This might happen if a request is sent before our ?DEP_CREATED msg
     %% arrived.
@@ -1140,11 +1143,6 @@ open(cast, {?UPDATE, Msg}, D) ->
             lager:debug("Rejected incoming off-chain update because of ~p", [_Error]),
             handle_update_conflict(?UPDATE, D)
     end;
-open(cast, {?UPDATE_ERR, Msg}, D) ->
-    %% this will happen only if we are malicious, this does cause invalid
-    %% state
-    report(conflict, Msg, D),
-    keep_state(D);
 open(cast, {?DEP_CREATED, Msg}, D) ->
     case check_deposit_created_msg(Msg, D) of
         {ok, SignedTx, Updates, BlockHash, D1} ->
@@ -2643,9 +2641,14 @@ check_update_ack_(SignedTx, HalfSignedTx) ->
     lager:debug("Sigs = ~p", [Sigs]),
     Remainder = Sigs -- HalfSigs,
     lager:debug("Remainder = ~p", [Remainder]),
-    true = (aetx:specialize_callback(aetx_sign:innermost_tx(SignedTx))
-         == aetx:specialize_callback(aetx_sign:innermost_tx(HalfSignedTx))),
-    lager:debug("Txes are the same", []),
+    ExpectedTx =
+        aetx_sign:innermost_tx(SignedTx) == aetx_sign:innermost_tx(HalfSignedTx),
+    case ExpectedTx of
+        true ->
+            lager:debug("Txes are the same", []);
+        false ->
+            error(different_tx)
+    end,
     ok.
 
 handle_upd_transfer(FromPub, ToPub, Amount, From, UOpts, #data{ state = State
@@ -3029,7 +3032,7 @@ request_signing_(Tag, SignedTx, BlockHash, Updates, D) ->
                        #data{}, send | defer) ->
                               {ok, #data{}, [gen_statem:action()]}
                             | {ok, fun(() -> ok), #data{}, [gen_statem:action()]}
-                            | {error, any()}.
+                            | {error, client_disconnected}.
 request_signing_(Tag, SignedTx, Updates, BlockHash, #data{client = Client} = D, SendAction) ->
     Info = #{ signed_tx => SignedTx
             , updates => Updates },
@@ -3520,11 +3523,12 @@ maybe_check_sigs_create(Tx, Updates, Who, NextState, #data{state = State} = D) -
 maybe_check_auth(_, _, _, _, NextState, #data{strict_checks = false}) ->
     lager:debug("strict_checks = false", []),
     NextState();
-maybe_check_auth(SignedTx, OpData, WrongTxModMsg, Who, NextState, D)
+maybe_check_auth(SignedTx, OpSign, WrongTxModMsg, Who, NextState, D)
         when Who =:= me
       orelse Who =:= other_participant
       orelse Who =:= both ->
-    #op_data{signed_tx  = OldTx} = OpData,
+    #op_sign{data = #op_data{signed_tx = OldTx},
+             tag = OpTag} = OpSign,
     Pubkeys = pubkeys(Who, D, SignedTx),
     Checks =
         [ fun() ->
@@ -3538,7 +3542,8 @@ maybe_check_auth(SignedTx, OpData, WrongTxModMsg, Who, NextState, D)
             NextState();
         {error, E} ->
             report(error, E, D),
-            handle_recoverable_error(#{code => ?ERR_VALIDATION}, D)
+            handle_recoverable_error(#{ code => ?ERR_VALIDATION
+                                      , msg_type => OpTag}, D)
     end.
 
 pubkeys(both, D, _) ->
@@ -4445,14 +4450,14 @@ handle_call_(open, {upd_call_contract, Opts, ExecType}, From,
     ?CATCH_LOG(E)
         process_update_error(E, From, D)
     end;
-handle_call_(awaiting_signature, Msg, From,
+handle_call_(awaiting_signature, Req, From,
              #data{ongoing_update = true} = D)
-  when ?UPDATE_REQ(element(1,Msg)) ->
+  when ?UPDATE_REQ(element(1, Req)) ->
     %% Race detection!
-    lager:debug("race detected: ~p", [Msg]),
+    lager:debug("race detected: ~p", [Req]),
     #op_sign{tag = OngoingOp} = D#data.op,
-    gen_statem:reply(From, {error, conflict}),
     lager:debug("calling handle_update_conflict", []),
+    gen_statem:reply(From, ok),
     handle_update_conflict(OngoingOp, D#data{op = ?NO_OP});
 handle_call_(open, {get_contract_call, Contract, Caller, Round}, From,
              #data{state = State} = D) ->

@@ -46,7 +46,7 @@
         ]).
 
 -define(DEFAULT_EVENT_TIMEOUT, 12000).
--define(DEFAULT_SUB_TIMEOUT, 8000).
+-define(DEFAULT_SUB_TIMEOUT, 10000).
 
 -define(CHANNEL, channel).
 
