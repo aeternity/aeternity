@@ -1265,7 +1265,9 @@ setup_meck() ->
     ok.
 
 remove_meck() ->
-    meck:unload(aec_chain),
+    meck:unload([ aec_chain
+                , aec_chain_state
+                , aec_db ]),
     ok.
 
 start_chain_watcher() ->
