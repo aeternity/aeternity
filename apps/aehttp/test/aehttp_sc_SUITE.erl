@@ -47,6 +47,7 @@
     sc_ws_opening_ping_pong/1,
     sc_ws_deposit/1,
     sc_ws_withdraw/1,
+    sc_ws_get_history/1,
     sc_ws_basic_contracts/1,
     sc_ws_oracle_contract/1,
     sc_ws_nameservice_contract/1,
@@ -208,6 +209,7 @@ groups() ->
 
      {with_open_channel, [sequence],
       [ sc_ws_ping_pong,
+        sc_ws_get_history,
         %% both can deposit
         sc_ws_deposit,
         %% both can withdraw
@@ -3833,6 +3835,40 @@ ping_pong(ConnPid, Config) ->
         wait_for_channel_event(ConnPid, system, Config),
     ok = ?WS:unregister_test_for_channel_events(ConnPid, [system]),
     ok.
+
+sc_ws_get_history(Config) ->
+    #{initiator := Pid} =
+        proplists:get_value(channel_clients, Config),
+    Res0 = call_fetch_rpc(Pid, #{}),
+    ct:log("Res0 = ~p", [Res0]),
+    [_,_,_,_|_] = Res0,
+    %%
+    Res = call_fetch_rpc(Pid, #{n => 1000}),     %% more than what's in the log
+    ct:log("Res = ~p", [Res]),
+    [_,_,_,_|_] = Res,
+    %%
+    Res1 = call_fetch_rpc(Pid, #{n => 3}),
+    ct:log("Res1 = ~p", [Res1]),
+    [_,_,_] = Res1,
+    %%
+    Res2 = call_fetch_rpc(Pid, #{n => 1, type => [rpt], tag => [update]}),
+    ct:log("Res2 = ~p", [Res2]),
+    [#{<<"type">> := <<"report">>}] = Res2,
+    %%
+    Res3 = call_fetch_rpc(Pid, #{n => 1, type => [rcv]}),
+    ct:log("Res3 = ~p", [Res3]),
+    [#{<<"type">> := <<"receive">>}] = Res3,
+    %%
+    Res4 = call_fetch_rpc(Pid, #{n => 1, type => [snd]}),
+    ct:log("Res4 = ~p", [Res4]),
+    [#{<<"type">> := <<"send">>}] = Res4,
+    ok.
+
+call_fetch_rpc(ConnPid, Params) ->
+    ?WS:json_rpc_call(
+       ConnPid, #{ <<"method">> => <<"channels.history.fetch">>
+                 , <<"params">> => Params }).
+    
 
 sc_ws_fsm_id_errors(Roles, ReestablishOptions, Config) ->
     TestError =

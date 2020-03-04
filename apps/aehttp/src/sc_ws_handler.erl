@@ -251,7 +251,14 @@ websocket_handle_({text, MsgBin}, #handler{protocol = Protocol,
                                           fsm_pid  = FsmPid} = H) ->
     case sc_ws_api:process_from_client(Protocol, MsgBin, FsmPid, ChannelId) of
         no_reply          -> {ok, H};
-        {reply, Resp}     -> {reply, {text, jsx:encode(Resp)}, H};
+        {reply, Resp}     ->
+            Reply = try {text, jsx:encode(Resp)}
+                    catch
+                        error:E ->
+                            lager:debug("CAUGHT error:~p / ~p", [E, erlang:get_stacktrace()]),
+                            error(E)
+                    end,
+            {reply, Reply, H};
         stop              -> {stop, H}
     end;
 websocket_handle_(_Data, H) ->

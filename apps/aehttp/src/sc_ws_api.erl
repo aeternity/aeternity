@@ -18,6 +18,8 @@
 
 -export([patterns/0]).
 
+-export([event_to_payload/4]).
+
 -include_lib("trace_runner/include/trace_runner.hrl").
 -include_lib("aeutils/include/aeu_stacktrace.hrl").
 
@@ -142,7 +144,6 @@ process_incoming(#{api := Mod, unpacked_msg := Msg, fsm := FsmPid,
     Response = Mod:process_incoming(Msg, FsmPid),
     Mod:reply(Response, Msg, ChannelId).
 
-
 process_fsm(#{msg := Msg,
               channel_id := ChannelId,
               protocol := Protocol}) ->
@@ -200,43 +201,7 @@ process_fsm_(#{type := report,
                                                         orelse Tag =:= debug
                                                         orelse Tag =:= on_chain_tx ->
     Mod = protocol_to_impl(Protocol),
-    Payload =
-        case {Tag, Event} of
-            {info, {died, _}} -> #{event => <<"died">>};
-            {info, {fsm_up, FsmIdWrapper}} ->
-                #{ event => <<"fsm_up">>
-                 , fsm_id => aesc_fsm_id:retrieve_for_client(FsmIdWrapper)};
-            {info, _} when is_atom(Event) ->
-                maybe_add_fsm_id(Msg, #{event => atom_to_binary(Event, utf8)});
-            {info, #{event := _} = Info} ->
-                Info;
-            {on_chain_tx, #{tx := Tx} = Info} ->
-                EncodedTx = aeser_api_encoder:encode(
-                              transaction,
-                              aetx_sign:serialize_to_binary(Tx)),
-                Info#{tx => EncodedTx};
-            {_, NewState} when Tag == update; Tag == leave ->
-                Bin = aeser_api_encoder:encode(transaction,
-                                         aetx_sign:serialize_to_binary(NewState)),
-                #{state => Bin};
-            {conflict, #{channel_id := ChId,
-                         error_code := Code,
-                         round      := Round}} ->
-                         #{channel_id => aeser_api_encoder:encode(channel, ChId),
-                           error_code => Code,
-                           error_msg  => Mod:error_code_to_msg(Code),
-                           round => Round};
-            {message, #{channel_id  := ChId,
-                        from        := From,
-                        to          := To,
-                        info        := Info}} ->
-                #{message => #{channel_id => aeser_api_encoder:encode(channel, ChId),
-                               from => aeser_api_encoder:encode(account_pubkey, From),
-                               to => aeser_api_encoder:encode(account_pubkey, To),
-                               info => Info}};
-            {error, Msg} -> #{message => Msg};
-            {debug, Msg} -> #{message => Msg}
-        end,
+    Payload = event_to_payload(Tag, Event, Msg, Mod),
     Action = atom_to_binary(Tag, utf8),
     notify(Protocol,
            #{action => Action,
@@ -248,8 +213,47 @@ process_fsm_(#{type := Type, tag := Tag, info := Event}, _, _) ->
 non_undefined_channel_id(undefined) -> null;
 non_undefined_channel_id(Val)       -> Val.
 
+
 maybe_add_fsm_id(#{fsm_id := FsmIdWrapper}, Msg) ->
     FsmId = aesc_fsm_id:retrieve_for_client(FsmIdWrapper),
     Msg#{fsm_id => FsmId};
 maybe_add_fsm_id(_, Msg) ->
     Msg.
+
+event_to_payload(Tag, Event, Msg, Mod) ->
+    case {Tag, Event} of
+        {info, {died, _}} -> #{event => <<"died">>};
+        {info, {fsm_up, FsmIdWrapper}} ->
+            #{ event => <<"fsm_up">>
+             , fsm_id => aesc_fsm_id:retrieve_for_client(FsmIdWrapper)};
+        {info, _} when is_atom(Event) ->
+            maybe_add_fsm_id(Msg, #{event => atom_to_binary(Event, utf8)});
+        {info, #{event := _} = Info} ->
+            Info;
+        {on_chain_tx, #{tx := Tx} = Info} ->
+            EncodedTx = aeser_api_encoder:encode(
+                          transaction,
+                          aetx_sign:serialize_to_binary(Tx)),
+            Info#{tx => EncodedTx};
+        {_, NewState} when Tag == update; Tag == leave ->
+            Bin = aeser_api_encoder:encode(transaction,
+                                           aetx_sign:serialize_to_binary(NewState)),
+            #{state => Bin};
+        {conflict, #{channel_id := ChId,
+                     error_code := Code,
+                     round      := Round}} ->
+            #{channel_id => aeser_api_encoder:encode(channel, ChId),
+              error_code => Code,
+              error_msg  => Mod:error_code_to_msg(Code),
+              round => Round};
+        {message, #{channel_id  := ChId,
+                    from        := From,
+                    to          := To,
+                    info        := Info}} ->
+            #{message => #{channel_id => aeser_api_encoder:encode(channel, ChId),
+                           from => aeser_api_encoder:encode(account_pubkey, From),
+                           to => aeser_api_encoder:encode(account_pubkey, To),
+                           info => Info}};
+        {error, Msg} -> #{message => Msg};
+        {debug, Msg} -> #{message => Msg}
+    end.
