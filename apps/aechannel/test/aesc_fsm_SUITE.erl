@@ -1340,7 +1340,9 @@ closing(#{info := closing} = Msg) ->
     ok.
 
 multiple_channels(Cfg) ->
-    multiple_channels_t(10, 9360, {transfer, 30}, ?SLOGAN, Cfg).
+    N = os_env_value("CT_CSNUM", 10),
+    Loops = os_env_value("CT_CSLOOPS", 30),
+    multiple_channels_t(N, 9360, {transfer, Loops}, ?SLOGAN, Cfg).
 
 many_chs_msg_loop(Cfg) ->
     multiple_channels_t(10, 9400, {msgs, 100}, ?SLOGAN, Cfg).
@@ -1362,6 +1364,14 @@ multiple_channels_t(NumCs, FromPort, Msg, {slogan, Slogan}, Cfg) ->
         end,
     spawn_multiple_channels(F, NumCs, FromPort, Slogan, Cfg).
 
+os_env_value(Key, Default) ->
+    case os:getenv(Key) of
+        false ->
+            Default;
+        Val ->
+            list_to_integer(Val)
+    end.
+
 loop_n({transfer, N}) ->
     N;
 loop_n({msgs, N}) ->
@@ -1378,26 +1388,32 @@ spawn_multiple_channels(F, NumCs, FromPort, Slogan, Cfg) when is_function(F, 2) 
     prepare_patron(Node, 1),
     Participants =
         lists:map(
-            fun(N) ->
-                Initiator = prep_initiator(?ACCOUNT_BALANCE, Node),
-                Responder = prep_responder(?ACCOUNT_BALANCE, Node),
-                {N, Initiator, Responder}
-            end,
-            lists:seq(1, NumCs)),
-    Cs = lists:map(
-          fun({N, Initiator, Responder}) ->
-                  CustomCfg = set_configs([ {slogan, {Slogan, N}}
-                                          , {port, FromPort}
-                                          , {ack_to, Me}
-                                          , {initiator, Initiator}
-                                          , {responder, Responder}
-                                          ], Cfg),
-                  CustomOpts = #{ mine_blocks => {ask, MinerHelper}
-                                , debug => Debug},
-                  create_multi_channel(CustomCfg, CustomOpts)
-          end, Participants),
+          fun(N) ->
+                  Initiator = prep_initiator(?ACCOUNT_BALANCE, Node),
+                  Responder = prep_responder(?ACCOUNT_BALANCE, Node),
+                  {N, Initiator, Responder}
+          end,
+          lists:seq(1, NumCs)),
+    CreateF =
+        fun({N, Initiator, Responder}) ->
+                CustomCfg = set_configs([ {slogan, {Slogan, N}}
+                                        , {port, FromPort}
+                                        , {ack_to, Me}
+                                        , {initiator, Initiator}
+                                        , {responder, Responder}
+                                        ], Cfg),
+                CustomOpts = #{ mine_blocks => {ask, MinerHelper}
+                              , signing     => {ask, self()}
+                              , debug => Debug},
+                create_multi_channel(CustomCfg, CustomOpts)
+        end,
+    BatchN = case os:getenv("CT_CSBATCH") of
+                 false -> 10;
+                 BStr  -> list_to_integer(BStr)
+             end,
+    Cs = batch_multiple_channels(Participants, BatchN, CreateF, Debug),
     ?LOG(Debug, "channels spawned", []),
-    Cs = collect_acks(Cs, channel_ack, NumCs),
+    %% Cs = collect_acks(Cs, channel_ack, NumCs),
     ?LOG(Debug, "channel pids collected: ~p", [Cs]),
     F(Cs, MinerHelper),
 
@@ -1410,6 +1426,68 @@ spawn_multiple_channels(F, NumCs, FromPort, Slogan, Cfg) when is_function(F, 2) 
     % All processes have been taken down, final cleanup
     ok = stop_miner_helper(MinerHelper),
     ok.
+
+check_irt([], Orig) ->
+    Orig;
+check_irt(L, _) ->
+    L.
+
+batch_multiple_channels(Participants, BatchN, CreateF, Debug) ->
+    Batches = make_batches(Participants, BatchN),
+    ct:pal("Batches = ~p", [Batches]),
+    Cs = lists:flatmap(
+           fun(Batch) ->
+                   [{Start,_,_}|_] = Batch,
+                   [{Stop, _, _}|_] = lists:reverse(Batch),
+                   T0 = erlang:system_time(millisecond),
+                   Cs = [CreateF(C) || C <- Batch],
+                   ct:pal("channels spawned: ~p", [{Start, Stop}]),
+                   Cs = collect_acks(Cs, channel_ack, length(Cs)),
+                   synchronize_signing(Cs, Debug),
+                   T1 = erlang:system_time(millisecond),
+                   ct:pal("channel pids collected (Range = ~p; Time = ~p ms):~n   ~p",
+                          [{Start,Stop}, T1-T0, Cs]),
+                   Cs
+           end, Batches),
+    Cs.
+
+make_batches([], _) ->
+    [];
+make_batches(L, N) when is_list(L), is_integer(N), N > 0 ->
+    try begin
+            {L1, L2} = lists:split(N, L),
+            [L1 | make_batches(L2, N)]
+        end
+    catch
+        error:_ ->
+            [L]
+    end.
+
+synchronize_signing(Pids, #{signing := {ask, Pid}}) when Pid == self() ->
+    synchronize_signing_(Pids);
+synchronize_signing(_, _) ->
+    ok.
+
+synchronize_signing_([Pid|Pids]) ->
+    receive
+        {Pid, may_I_sign} ->
+            Pid ! {self(), go_ahead_sign},
+            synchronize_signing_(Pids)
+    after 10000 ->
+            error(timeout)
+    end;
+synchronize_signing_([]) ->
+    ok.
+
+ask_to_sign(Pid) ->
+    Pid ! {self(), may_I_sign},
+    receive
+        {Pid, go_ahead_sign} ->
+            ok
+    after 15000 ->
+            error(timeout)
+    end.
+
 
 receive_downs([{P, MRef}|T], Reason, Debug) ->
     receive
@@ -2626,6 +2704,12 @@ await_signing_request(Tag, #{fsm := Fsm, pub := Pub} = Signer, OtherSigs,
                           {S1, STx1}
                   end, SignedTx0, [Signer|OtherSigs]),
             ?LOG(Debug,"SIGNED TX ~p", [SignedTx]),
+            case {Tag, Debug} of
+                {funding_signed, #{signing := {ask, Pid}}} ->
+                    ask_to_sign(Pid);
+                _ ->
+                    ok
+            end,
             Action(Tag, Signer1, SignedTx, Updates)
     after Timeout ->
             error(timeout)
