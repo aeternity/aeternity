@@ -8,6 +8,7 @@
         , call_r/6
         , call_t/2
         , call_gr/7
+        , call_pgr/8
         , call_value/2
         , jump/2
         , jumpif/3
@@ -220,33 +221,55 @@ call_t(Arg0, EngineState) ->
 
 call_r(Arg0, Arg1, Arg2, Arg3, Arg4, EngineState) ->
     {[Contract, ArgType, RetType, Value], ES1} = get_op_args([Arg0, Arg2, Arg3, Arg4], EngineState),
-    ES2 = remote_call_common(Contract, Arg1, ArgType, RetType, Value, no_gas_cap, ES1),
+    {ok, ES2} = remote_call_common(Contract, Arg1, ArgType, RetType, Value, no_gas_cap, unprotected, ES1),
     {jump, 0, ES2}.
 
 call_gr(Arg0, Arg1, Arg2, Arg3, Arg4, Arg5, EngineState) ->
     {[Contract, ArgType, RetType, Value, GasCap], ES1} = get_op_args([Arg0, Arg2, Arg3, Arg4, Arg5], EngineState),
-    ES2 = remote_call_common(Contract, Arg1, ArgType, RetType, Value, {gas_cap, GasCap}, ES1),
+    {ok, ES2} = remote_call_common(Contract, Arg1, ArgType, RetType, Value, {gas_cap, GasCap}, unprotected, ES1),
     {jump, 0, ES2}.
 
-remote_call_common(Contract, Function, ?FATE_TYPEREP({tuple, ArgTypes}), ?FATE_TYPEREP(RetType), Value, GasCap, EngineState) ->
+call_pgr(Arg0, Arg1, Arg2, Arg3, Arg4, Arg5, Arg6, EngineState) ->
+    ?AVAILABLE_FROM(?VM_FATE_SOPHIA_2, EngineState),
+    {[Contract, ArgType, RetType, Value, GasCap, Prot], ES1} = get_op_args([Arg0, Arg2, Arg3, Arg4, Arg5, Arg6], EngineState),
+    Protected =
+        case Prot of
+            false -> unprotected;
+            true  -> protected;
+            _     -> aefa_fate:abort({value_does_not_match_type, Prot, bool}, EngineState)
+        end,
+    case remote_call_common(Contract, Arg1, ArgType, RetType, Value, {gas_cap, GasCap}, Protected, ES1) of
+        {ok, ES2} ->
+            {jump, 0, ES2};
+        {failed_protected_call, ES2} ->
+            {next, push({immediate, make_none()}, ES2)}
+    end.
+
+remote_call_common(Contract, Function, ?FATE_TYPEREP({tuple, ArgTypes}), ?FATE_TYPEREP(RetType), Value, GasCap, Protected, EngineState) ->
     Current   = aefa_engine_state:current_contract(EngineState),
     Caller    = aeb_fate_data:make_address(Current),
     Arity     = length(ArgTypes),
     {Args0, ES1} = aefa_fate:pop_args(Arity, EngineState),
     {Args, ES2}  = aefa_fate:unfold_store_maps(Args0, ES1),
-    ES3       = aefa_fate:push_return_address(ES2),
-    ES4       = case GasCap of
-                    no_gas_cap        -> ES3;
-                    {gas_cap, Cap} -> aefa_fate:push_gas_cap(Cap, ES3)
-                end,
-    ES5       = aefa_fate:check_remote(Contract, ES4),
-    ES6       = aefa_fate:set_remote_function(Caller, Contract, Function, Value > 0, true, ES5),
-    Signature = aefa_fate:get_function_signature(Function, ES6),
-    ES7       = aefa_fate:check_signature(Args, Signature, ES6),
-    TVars     = aefa_engine_state:current_tvars(ES7),
-    ES8       = aefa_fate:push_return_type_check(Signature, {ArgTypes, RetType}, TVars, ES7),
-    ES9       = aefa_fate:bind_args(Args, ES8),
-    transfer_value(Current, Contract, Value, ES9).
+    protect(Protected, fun() ->
+            ES3       = aefa_fate:push_return_address(ES2),
+            ES4       = case GasCap of
+                            no_gas_cap        -> ES3;
+                            {gas_cap, Cap} -> aefa_fate:push_gas_cap(Cap, ES3)
+                        end,
+            ES5       = aefa_fate:check_remote(Contract, ES4),
+            ES6       = aefa_fate:set_remote_function(Caller, Contract, Function, Value > 0, true, ES5),
+            Signature = aefa_fate:get_function_signature(Function, ES6),
+            ES7       = aefa_fate:check_signature(Args, Signature, ES6),
+            TVars     = aefa_engine_state:current_tvars(ES7),
+            ES8       = aefa_fate:push_return_type_check(Signature, {ArgTypes, RetType}, TVars, Protected, ES7),
+            ES9       = aefa_fate:bind_args(Args, ES8),
+            {ok, transfer_value(Current, Contract, Value, ES9)}
+        end, fun() -> {failed_protected_call, ES2} end).
+
+protect(unprotected, Action, _) -> Action();
+protect(protected, Action, Recover) ->
+    try Action() catch _:_ -> Recover() end.
 
 transfer_value(_From, ?FATE_CONTRACT(_To), Value, ES) when not ?IS_FATE_INTEGER(Value) ->
     aefa_fate:abort({value_does_not_match_type, Value, integer}, ES);

@@ -32,7 +32,7 @@
         , get_function_signature/2
         , push_gas_cap/2
         , push_return_address/1
-        , push_return_type_check/4
+        , push_return_type_check/5
         , runtime_exit/2
         , runtime_revert/2
         , set_local_function/2
@@ -263,11 +263,28 @@ step([], EngineState) ->
     {jump, BB, EngineState};
 step([I|Is], EngineState0) ->
     ES = ?trace(I, EngineState0),
-    case aefa_fate_eval:eval(I, ES) of
+    try aefa_fate_eval:eval(I, ES) of
         {next, NewState} -> step(Is, NewState);
         {jump,_BB,_NewState} = Res -> Res;
         {stop, _NewState} = Res -> Res
+    catch
+        throw:{?MODULE, _, _} = Err ->
+            catch_protected(Err, EngineState0);
+        throw:{?MODULE, revert, _, _} = Err ->
+            catch_protected(Err, EngineState0)
+    end.
 
+catch_protected(Err, ES) ->
+    case aefa_engine_state:pop_call_stack(ES) of
+        {empty, _} -> throw(Err);
+        {return_check, _, protected, _, Stores, API, ES1} ->
+            ES2 = aefa_engine_state:set_accumulator(make_none(),
+                  aefa_engine_state:set_stores(Stores,
+                  aefa_engine_state:set_chain_api(API, ES1))),
+            pop_call_stack(ES2);
+        {return_check, _, _, _, _, _, ES1} -> catch_protected(Err, ES1);
+        {local, _, _, _, ES1}        -> catch_protected(Err, ES1);
+        {remote, _, _, _, _, _, ES1} -> catch_protected(Err, ES1)
     end.
 
 %% -----------------------------------------------------------
@@ -561,7 +578,7 @@ push(V, ES) ->
 push_return_address(ES) ->
     aefa_engine_state:push_call_stack(ES).
 
-push_return_type_check({CalleeArgs, CalleeRet}, {CallerArgs, CallerRet}, CalleeTVars, ES) ->
+push_return_type_check({CalleeArgs, CalleeRet}, {CallerArgs, CallerRet}, CalleeTVars, Protected, ES) ->
     CalleeSig = {tuple, [CalleeRet | CalleeArgs]},
     CallerSig = {tuple, [CallerRet | CallerArgs]},
 
@@ -571,7 +588,7 @@ push_return_type_check({CalleeArgs, CalleeRet}, {CallerArgs, CallerRet}, CalleeT
     InstCalleeSig = instantiate_type(CalleeTVars, CalleeSig),
     case match_type(CallerSig, InstCalleeSig) of
         false       -> abort(remote_type_mismatch, ES);
-        CallerTVars -> aefa_engine_state:push_return_type_check(CallerRet, CallerTVars, ES)
+        CallerTVars -> aefa_engine_state:push_return_type_check(CallerRet, CallerTVars, Protected, ES)
     end.
 
 %% Push a gas cap on the call stack to limit the available gas, but keep the
@@ -592,8 +609,8 @@ pop_call_stack(ES) ->
         {empty, ES1} ->
             ES2 = unfold_store_maps(ES1),
             {stop, ES2};
-        {return_check, TVars, RetType, ES1} ->
-            ES2 = check_return_type(RetType, TVars, ES1),
+        {return_check, TVars, Protected, RetType, Stores, API, ES1} ->
+            ES2 = check_return_type_protected(Protected, RetType, TVars, Stores, API, ES1),
             pop_call_stack(ES2);
         {local, Function, TVars, BB, ES1} ->
             ES2 = set_local_function(Function, ES1),
@@ -604,6 +621,20 @@ pop_call_stack(ES) ->
             ES3 = set_remote_function(Caller, Contract, Function, false, false, ES2),
             ES4 = aefa_engine_state:set_current_tvars(TVars, ES3),
             {jump, BB, ES4}
+    end.
+
+check_return_type_protected(unprotected, RetType, TVars, _Stores, _API, ES) ->
+    check_return_type(RetType, TVars, ES);
+check_return_type_protected(protected, RetType, TVars, Stores, API, ES) ->
+    try check_return_type(RetType, TVars, ES) of
+        ES1 ->
+            Val = aefa_engine_state:accumulator(ES1),
+            aefa_engine_state:set_accumulator(make_some(Val), ES1)
+    catch _:_ ->
+        %% Rollback side effects from failed call
+        ES1 = aefa_engine_state:set_stores(Stores,
+              aefa_engine_state:set_chain_api(API, ES)),
+        aefa_engine_state:set_accumulator(make_none(), ES1)
     end.
 
 unfold_store_maps(ES) ->
@@ -692,3 +723,10 @@ ensure_contract_store(Pubkey, ES) ->
 
 
 %% ----------------------------
+
+make_none() ->
+    aeb_fate_data:make_variant([0, 1], 0, {}).
+
+make_some(Val) ->
+    aeb_fate_data:make_variant([0, 1], 1, {Val}).
+

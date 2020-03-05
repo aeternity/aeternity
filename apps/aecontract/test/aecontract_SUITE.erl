@@ -172,6 +172,7 @@
         , sophia_call_caller/1
         , sophia_auth_tx/1
         , sophia_compiler_version/1
+        , sophia_protected_call/1
         , create_store/1
         , read_store/1
         , store_zero_value/1
@@ -433,6 +434,7 @@ groups() ->
                                  sophia_higher_order_state,
                                  sophia_use_memory_gas,
                                  sophia_compiler_version,
+                                 sophia_protected_call,
                                  lima_migration
                                ]}
     , {sophia_oracles_ttl, [],
@@ -870,6 +872,12 @@ hack_bytecode(SerCode, OP) when is_integer(OP), 0 =< OP, OP =< 255 ->
     HackedByteCode = <<OP:1/integer-unsigned-unit:8, ByteCode/binary>>,
     aect_sophia:serialize(Code#{ byte_code := HackedByteCode, compiler_version => <<"Hacked">> },
                           maps:get(contract_vsn, Code)).
+
+hack_fate_code(Serialized, Hack) ->
+    Deserialized = #{ byte_code := ByteCode, contract_vsn := Vsn } = aect_sophia:deserialize(Serialized),
+    FateCode     = aeb_fate_code:deserialize(ByteCode),
+    HackedCode   = aeb_fate_code:serialize(Hack(FateCode)),
+    aect_sophia:serialize(Deserialized#{ byte_code := HackedCode }, Vsn).
 
 create_contract(_Cfg) -> create_contract_(aec_test_utils:min_gas_price()).
 
@@ -5448,6 +5456,64 @@ sophia_compiler_version(_Cfg) ->
     CMap = aeser_contract_code:deserialize(aect_contracts:code(C)),
     ?assertMatchProtocol(maps:get(compiler_version, CMap, undefined),
                          undefined, <<"2.1.0">>, <<"3.2.0">>, <<"unknown">>, <<"4.2.0">>),
+    ok.
+
+sophia_protected_call(_Cfg) ->
+    ?skipRest(vm_version() < ?VM_FATE_SOPHIA_2, protected_call_only_since_iris),
+    state(aect_test_utils:new_state()),
+    Acc = ?call(new_account, 10000000000 * aec_test_utils:min_gas_price()),
+    {ok, Code} = compile_contract(protected_call),
+    HackedCode = hack_fate_code(Code,
+                    fun(FCode) ->
+                        Name = <<"hacked">>,
+                        Id = aeb_fate_code:symbol_identifier(Name),
+                        #{ Id := {Attrs, {[integer], boolean}, BBs} } = aeb_fate_code:functions(FCode),
+                        aeb_fate_code:insert_fun(Name, Attrs, {[integer], integer}, BBs, FCode)
+                    end),
+    Server = ?call(create_contract_with_code, Acc, HackedCode, {}, #{amount => 777777777}),
+    Proxy  = ?call(create_contract, Acc, protected_call, {}, #{amount => 555555555}),
+    Client = ?call(create_contract, Acc, protected_call, {}, #{amount => 666666666}),
+    Test = fun(Fun, Type, MinGas, MaxGas) ->
+                Args = case lists:reverse(atom_to_list(Fun)) of
+                         "r_" ++ _ -> {?cid(Server), ?cid(Proxy)};
+                         _         -> {?cid(Server)}
+                       end,
+                ServerBal0 = ?call(call_contract, Acc, Server, get_balance, word, {}),
+                ClientBal0 = ?call(call_contract, Acc, Client, get_balance, word, {}),
+                ProxyBal0  = ?call(call_contract, Acc, Proxy,  get_balance, word, {}),
+                OldState   = ?call(call_contract, Acc, Server, get_state, word, {}),
+                Res        = ?call(call_contract, Acc, Client, Fun, Type, Args, #{return_gas_used => true, gas => 10000}),
+                NewState   = ?call(call_contract, Acc, Server, get_state, word, {}),
+                ServerBal1 = ?call(call_contract, Acc, Server, get_balance, word, {}),
+                ClientBal1 = ?call(call_contract, Acc, Client, get_balance, word, {}),
+                ProxyBal1  = ?call(call_contract, Acc, Proxy,  get_balance, word, {}),
+                {Fun, MinGas, MaxGas, Res, NewState - OldState, [ClientBal1 - ClientBal0, ProxyBal1 - ProxyBal0, ServerBal1 - ServerBal0]}
+           end,
+    {test_ok, _, _, {116, _}, _, _} = Test(test_ok, word, 0, 0),
+    Results = [ Test(test_wrong_ret,     {option, bool}, 150, 200)
+              , Test(test_wrong_arg,     {option, word}, 130, 200)
+              , Test(test_wrong_arity,   {option, word}, 130, 200)
+              , Test(test_missing,       {option, word}, 130, 200)
+              , Test(test_missing_con,   {option, word}, 130, 200)
+              , Test(test_nonpayable,    {option, word}, 130, 200)
+              , Test(test_out_of_funds,  {option, word}, 130, 200)
+              , Test(test_hacked,        {option, word}, 500, 800)
+              , Test(test_revert,        {option, word}, 500, 800)
+              , Test(test_crash,         {option, word}, 500, 800)
+              , Test(test_out_of_gas,    {option, word}, 500, 800)
+              , Test(test_wrong_ret_r,   {option, bool}, 150, 200)
+              , Test(test_wrong_arg_r,   {option, word}, 130, 200)
+              , Test(test_wrong_arity_r, {option, word}, 130, 200)
+              , Test(test_missing_r,     {option, word}, 130, 200)
+              , Test(test_missing_con_r, {option, word}, 130, 200)
+              , Test(test_nonpayable_r,  {option, word}, 130, 200)
+              , Test(test_hacked_r,      {option, word}, 600, 900)
+              , Test(test_revert_r,      {option, word}, 600, 900)
+              , Test(test_crash_r,       {option, word}, 600, 900)
+              , Test(test_out_of_gas_r,  {option, word}, 300, 500) ],
+    [] = [ Res || Res = {_, MinGas, MaxGas, {R, Gas}, State, Bal} <- Results,
+                  R /= none orelse Gas < MinGas orelse Gas > MaxGas orelse State /= 0 orelse
+                  lists:any(fun(N) -> N /= 0 end, Bal) ],
     ok.
 
 sophia_aevm_bad_code(_Cfg) ->
