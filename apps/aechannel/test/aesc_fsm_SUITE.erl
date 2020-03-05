@@ -181,35 +181,8 @@ groups() ->
                              , {group, generalized_accounts}
                              , {group, failed_onchain}
                              ]},
-     {transactions, [sequence],
-      [
-        create_channel
-      , multiple_responder_keys_per_port
-      , channel_insufficent_tokens
-      , inband_msgs
-      , upd_transfer
-      , update_with_conflict
-      , update_with_soft_reject
-      , deposit_with_conflict
-      , deposit_with_soft_reject
-      , withdraw_with_conflict
-      , withdraw_with_soft_reject
-      , upd_dep_with_conflict
-      , upd_wdraw_with_conflict
-      , dep_wdraw_with_conflict
-      , deposit
-      , withdraw
-      , withdraw_high_amount_static_confirmation_time
-      , withdraw_high_amount_short_confirmation_time
-      , withdraw_low_amount_long_confirmation_time
-      , withdraw_low_amount_long_confirmation_time_negative_test
-      , channel_detects_close_solo_and_settles
-      , leave_reestablish_responder_stays
-      , leave_reestablish_close
-      , change_config_get_history
-      , slash
-      , {group, force_progress}
-      ]},
+     {transactions_only, [sequence], transactions_sequence()},  %% if you don't also want to run GA tests
+     {transactions, [sequence], transactions_sequence()},
      {throughput, [sequence],
       [
         multiple_channels
@@ -277,6 +250,36 @@ groups() ->
       , force_progress_based_on_withdrawal
       ]}
     ].
+
+transactions_sequence() ->
+      [
+        create_channel
+      , multiple_responder_keys_per_port
+      , channel_insufficent_tokens
+      , inband_msgs
+      , upd_transfer
+      , update_with_conflict
+      , update_with_soft_reject
+      , deposit_with_conflict
+      , deposit_with_soft_reject
+      , withdraw_with_conflict
+      , withdraw_with_soft_reject
+      , upd_dep_with_conflict
+      , upd_wdraw_with_conflict
+      , dep_wdraw_with_conflict
+      , deposit
+      , withdraw
+      , withdraw_high_amount_static_confirmation_time
+      , withdraw_high_amount_short_confirmation_time
+      , withdraw_low_amount_long_confirmation_time
+      , withdraw_low_amount_long_confirmation_time_negative_test
+      , channel_detects_close_solo_and_settles
+      , leave_reestablish_responder_stays
+      , leave_reestablish_close
+      , change_config_get_history
+      , slash
+      , {group, force_progress}
+      ].
 
 ga_sequence() ->
     [ {group, transactions}
@@ -1337,7 +1340,7 @@ closing(#{info := closing} = Msg) ->
     ok.
 
 multiple_channels(Cfg) ->
-    multiple_channels_t(10, 9360, {transfer, 100}, ?SLOGAN, Cfg).
+    multiple_channels_t(10, 9360, {transfer, 30}, ?SLOGAN, Cfg).
 
 many_chs_msg_loop(Cfg) ->
     multiple_channels_t(10, 9400, {msgs, 100}, ?SLOGAN, Cfg).
@@ -1350,13 +1353,19 @@ multiple_channels_t(NumCs, FromPort, Msg, {slogan, Slogan}, Cfg) ->
                 Cs = collect_acks(Cs, loop_ack, NumCs),
                 T1 = erlang:system_time(millisecond),
                 Time = T1 - T0,
-                Transfers = NumCs*2*100,
-                Fmt = "Time (~w*2*100) ~.1f s: ~.1f mspt; ~.1f tps",
-                Args = [NumCs, Time/1000, Time/Transfers, (Transfers*1000)/Time],
+                N = loop_n(Msg),
+                Transfers = NumCs*2*N,
+                Fmt = "Time (~w*2*~w) ~.1f s: ~.1f mspt; ~.1f tps",
+                Args = [NumCs, N, Time/1000, Time/Transfers, (Transfers*1000)/Time],
                 ?LOG(Debug, Fmt, Args),
                 ct:comment(Fmt, Args)
         end,
     spawn_multiple_channels(F, NumCs, FromPort, Slogan, Cfg).
+
+loop_n({transfer, N}) ->
+    N;
+loop_n({msgs, N}) ->
+    N.
 
 spawn_multiple_channels(F, NumCs, FromPort, Slogan, Cfg) when is_function(F, 2) ->
     Debug = get_debug(Cfg),
@@ -2245,17 +2254,21 @@ cache_status(ChId) ->
 in_ram(St)  -> proplists:get_value(in_ram, St).
 on_disk(St) -> proplists:get_value(on_disk, St).
 
-collect_acks([Pid | Pids], Tag, N) ->
-    ?LOG("collect_acks, Tag = ~p, N = ~p", [Tag, N]),
-    Timeout = 60000 + (N div 10)*5000,  % wild guess
+collect_acks(Pids, Tag, N) ->
+    ?LOG("collect_acks, Tag = ~p, N = ~p, Pids = ~p", [Tag, N, Pids]),
+    collect_acks_(Pids, Tag, N).
+
+collect_acks_([Pid | Pids], Tag, N) ->
+    Timeout = 90000 + (N div 10)*5000,  % wild guess
     receive
         {Pid, Tag} ->
             ?LOG("Ack from ~p (~p)", [Pid, Tag]),
-            [Pid | collect_acks(Pids, Tag, N)]
+            [Pid | collect_acks_(Pids, Tag, N)]
     after Timeout ->
+            ?LOG("Missing ack (Tag = ~p) from ~p", [Tag, Pid]),
             error(timeout)
     end;
-collect_acks([], _Tag, _) ->
+collect_acks_([], _Tag, _) ->
     [].
 
 create_multi_channel(Cfg, Debug) ->
@@ -2282,6 +2295,7 @@ create_multi_channel_(Cfg0, Debug, UseAny) when is_boolean(UseAny) ->
 ch_loop(I, R, Parent, Cfg) ->
     receive
         {transfer, N} ->
+            ?LOG("Got {transfer, ~p}", [N]),
             {_, I1, R1} = do_n(N, fun update_volley/3, I, R, Cfg),
             Parent ! {self(), loop_ack},
             ch_loop(I1, R1, Parent, Cfg);
@@ -3810,8 +3824,9 @@ assert_empty_msgq(Debug) ->
         [] ->
             ok;
         _ ->
-            ?LOG(Debug, "Message queue length: ~p", [length(Msgs)]),
-            ?LOG(Debug, "Message queue entries: ~p", [Msgs]),
+            %% Always output these log messages
+            ?LOG("Message queue length: ~p", [length(Msgs)]),
+            ?LOG("Message queue entries: ~p", [Msgs]),
             ct:fail("Message queue is not empty")
     end.
 

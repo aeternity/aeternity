@@ -8,6 +8,7 @@
 
 -export([publish/2,
          subscribe/1,
+         ensure_subscription/1,
          unsubscribe/1]).
 
 -import(aeu_debug, [pp/1]).
@@ -44,6 +45,19 @@ publish(Event, Info) ->
 -spec subscribe(event()) -> true.
 subscribe(Event) ->
     gproc_ps:subscribe(l, Event).
+
+-spec ensure_subscription(event()) -> true.
+%% @doc Subscribes to Event. Will not crash if called more than once.
+ensure_subscription(Event) ->
+    try subscribe(Event)
+    catch
+        error:badarg ->
+            %% This assertion should not be needed, since there is
+            %% no other scenario that would cause subscribe/1 to fail,
+            %% other than gproc not running (would also cause a badarg)
+            _ = gproc:get_value({p,l,{gproc_ps_event, Event}}, self()),
+            true
+    end.
 
 -spec unsubscribe(event()) -> true.
 unsubscribe(Event) ->

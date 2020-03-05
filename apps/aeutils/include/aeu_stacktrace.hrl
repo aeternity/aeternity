@@ -8,10 +8,15 @@
         catch ErrorType:Error ->).
 -define(_catch_(ErrorType, Error, ErrorStackTrace),
         catch ErrorType:Error:ErrorStackTrace ->).
+-define(_catch_(ErrorType, Error, When, ErrorStackTrace),
+        catch ErrorType:Error:ErrorStackTrace when When ->).
 -else.
 -define(_catch_(ErrorType, Error),
         catch ErrorType:Error ->).
 -define(_catch_(ErrorType, Error, ErrorStackTrace),
         catch ErrorType:Error ->
+            ErrorStackTrace = erlang:get_stacktrace(),).
+-define(_catch_(ErrorType, Error, When, ErrorStackTrace),
+        catch ErrorType:Error when When ->
             ErrorStackTrace = erlang:get_stacktrace(),).
 -endif.

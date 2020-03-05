@@ -633,7 +633,8 @@ awaiting_reestablish(cast, {?CH_REESTABL, Msg}, #data{ role = responder
                      restart ->
                          lager:debug("re-register and restart watcher", []),
                          gproc_register(D1),
-                         restart_chain_watcher(D1);
+                         watcher_reg(D1#data.on_chain_id),
+                         D1;
                      remain ->
                          lager:debug("Already running - don't re-register", []),
                          D1
@@ -1230,8 +1231,9 @@ reestablish_init(cast, {?CH_REEST_ACK, Msg}, D) ->
     case check_reestablish_ack_msg(Msg, D) of
         {ok, D1} ->
             report(info, channel_reestablished, D1),
-            {ok, Pid} = aesc_chain_watcher:start_link(D1#data.on_chain_id, ?MODULE),
-            next_state(open, D1#data{watcher = Pid});
+            ChId = D1#data.on_chain_id,
+            ok = watcher_reg(ChId),
+            next_state(open, D1);
         {error, _} = Err ->
             close(Err, D)
     end;
@@ -3096,20 +3098,9 @@ has_my_signature(Me, SignedTx) ->
             ok =:= aetx_sign:verify_one_pubkey(Me, SignedTx, Protocol)
     end.
 
-restart_chain_watcher(#data{ watcher = undefined
-                           , on_chain_id = ChId } = D) ->
-    {ok, Pid} = aesc_chain_watcher:start_link(ChId, ?MODULE),
-    D#data{ watcher = Pid }.
-
-start_chain_watcher(Type, SignedTx, Updates, D) ->
-    try start_chain_watcher_(Type, SignedTx, Updates, D)
-    ?CATCH_LOG(E)
-        error(E)
-    end.
-
-start_chain_watcher_(Type, SignedTx, Updates, #data{ watcher = Watcher0
-                                                   , op = Op
-                                                   , opts = Opts } = D) ->
+watcher_request(Type, SignedTx, Updates, #data{ op = Op
+                                              , opts = Opts } = D) ->
+    lager:debug("Type = ~p, SignedTx = ~p, Updates = ~p, Op = ~p", [Type, SignedTx, Updates, Op]),
     #{ minimum_depth := MinDepthFactor
      , minimum_depth_strategy := MinDepthStrategy } = Opts,
     MinDepth = min_depth(MinDepthStrategy, MinDepthFactor, SignedTx),
@@ -3123,46 +3114,72 @@ start_chain_watcher_(Type, SignedTx, Updates, #data{ watcher = Watcher0
     OpData = #op_data{ signed_tx = SignedTx
                      , block_hash = BlockHash
                      , updates = Updates },
-    case {Type, Watcher0} of
-        {{?MIN_DEPTH, ?WATCH_FND = Sub}, undefined} ->
-            {ok, Watcher1} = aesc_chain_watcher:start_link(Sub, TxHash, OnChainId,
-                                                           MinDepth, ?MODULE),
-            evt({watcher, Watcher1}),
-            Op1 = #op_min_depth{ tag = Sub
-                               , tx_hash = TxHash
-                               , data = OpData },
-            D2 = D1#data{watcher = Watcher1, op = Op1},
-            {ok, D2};
-        {{?MIN_DEPTH, Sub}, Pid} when is_pid(Pid) ->
-            ok = aesc_chain_watcher:watch_for_min_depth(Pid, TxHash, MinDepth, ?MODULE, Sub),
+    case Type of
+        {?MIN_DEPTH, ?WATCH_FND = Sub} ->
+            Reqs = [ min_depth_req(TxHash, MinDepth, Sub)
+                   , watch_req() ],
+            ok = watcher_reg(OnChainId, Reqs),
             Op1 = #op_min_depth{ tag = Sub
                                , tx_hash = TxHash
                                , data = OpData },
             D2 = D1#data{op = Op1},
             {ok, D2};
-        {unlock, Pid} when Pid =/= undefined ->
-            ok = aesc_chain_watcher:watch_for_unlock(Pid, ?MODULE),
+        {?MIN_DEPTH, Sub} ->
+            ok = ask_watcher(OnChainId, min_depth_req(TxHash, MinDepth, Sub)),
+            Op1 = #op_min_depth{ tag = Sub
+                               , tx_hash = TxHash
+                               , data = OpData },
+            lager:debug("New Op = ~p", [Op1]),
+            D2 = D1#data{op = Op1},
+            {ok, D2};
+        unlock ->
+            ok = ask_watcher(OnChainId, unlock_req()),
             Op1 = #op_watch{ type = unlock
                            , tx_hash = TxHash
                            , data = OpData },
             D2 = D1#data{op = Op1},
             {ok, D2};
-        {close, Pid} when Pid =/= undefined ->
-            ok = aesc_chain_watcher:watch_for_channel_close(Pid, MinDepth, ?MODULE),
+        close ->
+            ok = ask_watcher(OnChainId, close_req(MinDepth)),
             Op1 = #op_watch{ type = close
                            , tx_hash = TxHash
                            , data = OpData },
             D2 = D1#data{op = Op1},
-            {ok, D2};
-        {_, Pid} when Pid =/= undefined ->  %% assertion
-            lager:debug("Unknown Type = ~p, Pid = ~p", [Type, Pid]),
-            ok = aesc_chain_watcher:watch(Pid, Type, TxHash, MinDepth, ?MODULE),
-            Op1 = #op_watch{ type = Type
-                           , tx_hash = TxHash
-                           , data = OpData },
-            D2 = D1#data{op = Op1},
             {ok, D2}
+        %% _ ->
+        %%     lager:debug("Unknown Type = ~p", [Type]),
+        %%     ok = ask_watcher(OnChainId, min_depth_req(TxHash, MinDepth, Type)),
+        %%     Op1 = #op_watch{ type = Type
+        %%                    , tx_hash = TxHash
+        %%                    , data = OpData },
+        %%     D2 = D1#data{op = Op1},
+        %%     {ok, D2}
     end.
+
+%% Chain watcher wrappers =====================================
+%%
+watcher_reg(ChId) ->
+    watcher_reg(ChId, [watch_req()]).
+
+watcher_reg(ChId, Reqs) ->
+    ok = aesc_chain_watcher:register(ChId, ?MODULE, Reqs).
+
+ask_watcher(ChId, Req) ->
+    aesc_chain_watcher:request(ChId, Req).
+
+min_depth_req(TxHash, MinDepth, Type) ->
+    aesc_chain_watcher:min_depth_req(TxHash, MinDepth, Type).
+
+close_req(MinDepth) ->
+    aesc_chain_watcher:close_req(MinDepth).
+
+unlock_req() ->
+    aesc_chain_watcher:unlock_req().
+
+watch_req() ->
+    aesc_chain_watcher:watch_req().
+%%
+%% ============================================================
 
 on_chain_id(#data{on_chain_id = ID} = D, _) when ID =/= undefined ->
     {ID, D};
@@ -3238,7 +3255,7 @@ maybe_act_on_tx(channel_snapshot_solo_tx, SignedTx, D) ->
             lager:debug("snapshot_solo_tx from my client", []),
             #data{op = OrigOp} = D,
             %% We want to order a local min_depth watch, but not log it as a wait state op.
-            {ok, D1} = start_chain_watcher({?MIN_DEPTH, ?WATCH_SNAPSHOT_SOLO}, SignedTx, [], D),
+            {ok, D1} = watcher_request({?MIN_DEPTH, ?WATCH_SNAPSHOT_SOLO}, SignedTx, [], D),
             D1#data{op = OrigOp};
         OtherPubkey ->
             lager:debug("snapshot_solo_tx from other client (~p)", [OtherPubkey]),
@@ -4122,19 +4139,19 @@ settle_signed(SignedTx, Updates, #data{ on_chain_id = ChId} = D) ->
             case is_channel_locked(LockedUntil) of
                 true ->
                     lager:debug("channel is locked", []),
-                    {ok, D1} =
-                        start_chain_watcher(unlock, SignedTx, Updates, D),
+                    {ok, D1} = watcher_request(unlock, SignedTx, Updates, D),
                     next_state(channel_closing, D1);
                 false ->
                     lager:debug("channel not locked, pushing settle", []),
+                    %% {ok, D1} = watcher_request(close, SignedTx, Updates, D),
                     try_to_push_to_mempool(SignedTx, D, channel_closing,
-                                           fun(D0) ->
-                                               {ok, D1} =
-                                                   start_chain_watcher(close,
-                                                                       SignedTx,
-                                                                       Updates,
-                                                                       D0),
-                                               D1
+                                           fun(Dx) ->
+                                               {ok, Dx1} =
+                                                   watcher_request(close,
+                                                                   SignedTx,
+                                                                   Updates,
+                                                                   Dx),
+                                               Dx1
                                           end,
                                           channel_closing)
             end;
@@ -4766,6 +4783,7 @@ handle_common_event_(cast, {?CHANNEL_CLOSING, Info} = Msg, _St, _, D) ->
     end;
 handle_common_event_(cast, {?CHANNEL_CHANGED, #{tx_hash := TxHash} = Info} = Msg,
                      _St, _, D) ->
+    lager:debug("Got ?CHANNEL_CHANGED; tx_hash := ~p", [TxHash]),
     D1 = log(rcv, msg_type(Msg), Msg, D),
     case D1#data.op of
         #op_min_depth{tx_hash = LatestTxHash} when TxHash =/= LatestTxHash ->
@@ -4970,8 +4988,7 @@ safe_watched_action_report(SignedTx, Msg, Data, Updates, ActionFun, WatchTag,
 
 safe_watched_action_report(SignedTx, Msg, Data, Updates, ActionFun, WatchTag,
                            ReportTag, LogType) ->
-    {ok, Data1} = start_chain_watcher({?MIN_DEPTH, WatchTag}, SignedTx,
-                                      Updates, Data),
+    {ok, Data1} = watcher_request({?MIN_DEPTH, WatchTag}, SignedTx, Updates, Data),
     Data2 = case LogType of
                 undefined ->
                     Data1;
