@@ -2688,10 +2688,23 @@ await_on_chain_report(#{fsm := Fsm}, Match, Timeout) ->
 await_channel_changed_report(#{fsm := Fsm}, Timeout) ->
     receive
         {aesc_fsm, Fsm, #{ type := report
-                         , tag := on_chain_tx
+                         , tag  := on_chain_tx
                          , info := #{ info := channel_changed
-                                    , tx := SignedTx } }} ->
+                                    , tx   := SignedTx } }} ->
             SignedTx
+    after Timeout ->
+            ?PEEK_MSGQ(true),
+            error(timeout)
+    end.
+
+await_min_depth_reached(#{fsm := Fsm}, TxHash, TxType, Timeout) ->
+    receive
+        {aesc_fsm, Fsm, #{ type := report
+                         , tag  := info
+                         , info := #{ event   := min_depth_achieved 
+                                    , tx_hash := TxHash
+                                    , type    := TxType} }} ->
+            ok
     after Timeout ->
             ?PEEK_MSGQ(true),
             error(timeout)
@@ -4459,7 +4472,7 @@ force_progress_based_on_offchain_state(Cfg) ->
     ?LOG(Debug, "R = ~p", [R]),
     {I1, R1, ContractPubkey} = create_contract(counter, ["42"], 10, I, R, Cfg),
     {I2, R2} = call_contract(ContractPubkey, counter, "tick", [], 10, I1, R1, Cfg),
-    I3 = force_progress_(ContractPubkey, counter, "tick", [], 10, I2, Cfg),
+    {I3, R3} = force_progress_(ContractPubkey, counter, "tick", [], 10, I2, R2, Cfg),
 
     check_info(20),
     {_, _} = produce_close_mutual_tx(ChannelId, PubI, I3, R2, Cfg, #{}),
@@ -4478,15 +4491,17 @@ force_progress_based_on_snapshot(Cfg) ->
     {I1, R1, ContractPubkey} = create_contract(counter, ["42"], 10, I, R, Cfg),
     {I2, R2} = call_contract(ContractPubkey, counter, "tick", [], 10, I1, R1, Cfg),
     {ok, I3, R3} = snapshot_solo_(I2, R2, #{}, Cfg),
-    I5 = force_progress_(ContractPubkey, counter, "tick", [], 10, I3, Cfg),
+    {I4, R4} = force_progress_(ContractPubkey, counter, "tick", [], 10, I3,
+                               R3, Cfg),
 
     check_info(20),
-    {_, _} = produce_close_mutual_tx(ChannelId, PubI, I5, R3, Cfg, #{}),
+    {_, _} = produce_close_mutual_tx(ChannelId, PubI, I4, R4, Cfg, #{}),
     %shutdown_(I2, R2, Cfg),
     ok.
 
 force_progress_based_on_deposit(Cfg) ->
     Debug = get_debug(Cfg),
+    check_info(20),
     #{ i := #{ fsm := _FsmI
              , channel_id := ChannelId } = I
      , r := #{} = R
@@ -4497,7 +4512,8 @@ force_progress_based_on_deposit(Cfg) ->
     {I1, R1, ContractPubkey} = create_contract(counter, ["42"], 10, I, R, Cfg),
     {I2, R2} = call_contract(ContractPubkey, counter, "tick", [], 10, I1, R1, Cfg),
     {ok, I3, R3} = deposit_(I2, R2, _Amount = 123, Debug, Cfg),
-    I4 = force_progress_(ContractPubkey, counter, "tick", [], 10, I3, Cfg),
+    {I4, R4} = force_progress_(ContractPubkey, counter, "tick", [], 10, I3,
+                               R3, Cfg),
 
     check_info(20),
     {_, _} = produce_close_mutual_tx(ChannelId, PubI, I4, R3, Cfg, #{}),
@@ -4516,7 +4532,8 @@ force_progress_based_on_withdrawal(Cfg) ->
     {I1, R1, ContractPubkey} = create_contract(counter, ["42"], 10, I, R, Cfg),
     {I2, R2} = call_contract(ContractPubkey, counter, "tick", [], 10, I1, R1, Cfg),
     {ok, I3, R3} = withdraw_(I2, R2, _Amount = 123, Debug, Cfg),
-    I4 = force_progress_(ContractPubkey, counter, "tick", [], 10, I3, Cfg),
+    {I4, R4} = force_progress_(ContractPubkey, counter, "tick", [], 10, I3,
+                               R3, Cfg),
 
     check_info(20),
     {_, _} = produce_close_mutual_tx(ChannelId, PubI, I4, R3, Cfg, #{}),
@@ -4573,7 +4590,7 @@ force_progress_closing_state(Cfg) ->
     ?LOG(Debug, "I = ~p", [I]),
     ?LOG(Debug, "R = ~p", [R]),
     {I1, R1, ContractPubkey} = create_contract(counter, ["42"], 10, I, R, Cfg),
-    {I2, _R2} = call_contract(ContractPubkey, counter, "tick", [], 10, I1, R1, Cfg),
+    {I2, R2} = call_contract(ContractPubkey, counter, "tick", [], 10, I1, R1, Cfg),
     ok = rpc(dev1, aesc_fsm, close_solo, [FsmI, #{}]),
     {I3, SignedCloseSoloTx} = await_signing_request(close_solo_tx, I2, Cfg),
     wait_for_signed_transaction_in_block(dev1, SignedCloseSoloTx),
@@ -4584,7 +4601,8 @@ force_progress_closing_state(Cfg) ->
     SignedTx = await_on_chain_report(R, #{info => solo_closing}, ?TIMEOUT),
     {ok,_} = receive_from_fsm(info, I1, fun closing/1, ?TIMEOUT, Debug),
     {ok,_} = receive_from_fsm(info, R, fun closing/1, ?TIMEOUT, Debug),
-    _I4 = force_progress_(ContractPubkey, counter, "tick", [], 10, I3, Cfg),
+    {_I4, _R3} = force_progress_(ContractPubkey, counter, "tick", [], 10, I3,
+                                 R2, Cfg),
     {_, _, _, _, closing} = check_fsm_state(FsmI),
 
     check_info(20),
@@ -4641,7 +4659,8 @@ call_contract(ContractId,
 force_progress_(ContractId,
               ContractName, FunName, FunArgs, Amount,
               #{ fsm := FsmC
-               , channel_id:= ChannelId } = Caller, Cfg) ->
+               , channel_id:= ChannelId } = Caller,
+              Other, Cfg) ->
     Debug = get_debug(Cfg),
     {ok, BinSrc} = aect_test_utils:read_contract(aect_test_utils:sophia_version(), ContractName),
     {ok, CallData} =
@@ -4664,8 +4683,11 @@ force_progress_(ContractId,
     %% assert channel had been changed on-chain
     {Round, Round} = {Round, aesc_channels:round(Channel)},
     {StateHash, StateHash} = {StateHash, aesc_channels:state_hash(Channel)},
+    SignedTx = await_on_chain_report(Caller, #{info => consumed_forced_progress}, ?TIMEOUT),
+    SignedTx = await_on_chain_report(Other, #{info => consumed_forced_progress}, ?TIMEOUT),
+    assert_empty_msgq(Debug),
 
-    Caller1.
+    {Caller1, Other}.
 
 produce_close_mutual_tx(ChannelId, FromId, I, R, Cfg, Opts) ->
     Debug = get_debug(Cfg),
@@ -4712,6 +4734,8 @@ snapshot_solo_(#{fsm := FsmI} = I, R, Opts, Cfg) ->
     {IAmt0, RAmt0, _, Round0, _} = FsmState0 = check_fsm_state(FsmI),
     ?LOG(Debug, "Round0 = ~p, IAmt0 = ~p, RAmt0 = ~p", [Round0, IAmt0, RAmt0]),
     % Done
+    mine_blocks(dev1),
+    await_min_depth_reached(I, aetx_sign:hash(SignedTx), channel_snapshot_solo_tx, ?TIMEOUT),
     assert_empty_msgq(Debug),
     {ok, I1, R}.
 

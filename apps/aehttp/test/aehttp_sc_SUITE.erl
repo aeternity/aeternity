@@ -5476,12 +5476,12 @@ sc_ws_force_progress_(Origin, ContractPubkey,
 
     %% both clients are informed for the Forced progress on-chain
     {ok, _, #{ <<"tx">> := _EncodedSignedWTx
-             , <<"info">> := <<"channel_changed">>
+             , <<"info">> := <<"consumed_forced_progress">>
              , <<"type">> := <<"channel_force_progress_tx">>}}
         = wait_for_channel_event(IConnPid, on_chain_tx, Config),
 
     {ok, _, #{ <<"tx">> := _EncodedSignedWTx
-             , <<"info">> := <<"channel_changed">>
+             , <<"info">> := <<"consumed_forced_progress">>
              , <<"type">> := <<"channel_force_progress_tx">>}}
         = wait_for_channel_event(RConnPid, on_chain_tx, Config),
 
