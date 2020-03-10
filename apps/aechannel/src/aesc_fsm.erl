@@ -5189,11 +5189,33 @@ process_incoming_forced_progress(FSMState, #{ tx := SignedTx
             %% the FP handling
             postpone(D);
         true ->
-            try {LatestFSMRound, _} = aesc_offchain_state:get_latest_signed_tx(State),
+            try {LatestFSMRound, LatestTx} = aesc_offchain_state:get_latest_signed_tx(State),
                 FPRound = get_round(Mod, Tx),
                 {ok, Channel} = aec_chain:get_channel(ChannelPubkey),
                 FirstSoloRound = aesc_channels:solo_round(Channel),
-                CorrectFPPayload = FirstSoloRound =:= LatestFSMRound + 1,
+                CorrectFPPayload =
+                    case FirstSoloRound =:= LatestFSMRound + 1 of
+                        true ->
+                            %% FP had been based on the lastest state known to the
+                            %% FSM. This is the expected scenario
+                            true;
+                        false ->
+                            {Type, _Tx} =
+                                aetx:specialize_type(aetx_sign:innermost_tx(LatestTx)),
+                            case Type of
+                                channel_force_progress_tx ->
+                                    %% the latest transaction known to the FSM
+                                    %% is a FP one. Assumption is that it is
+                                    %% on-chain and the new incoming FP had
+                                    %% been based on it
+                                    true;
+                                _ ->
+                                    %% the FP had been based on a state that
+                                    %% had been older than the one the FSM
+                                    %% has. This is slashable
+                                    false
+                            end
+                    end,
                 case CorrectFPPayload of
                     %% the FP was based on a channel round that is the same as
                     %% the last one the FSM has as a co-authenticated state
@@ -5205,7 +5227,7 @@ process_incoming_forced_progress(FSMState, #{ tx := SignedTx
                     true ->
                         case FPRound - LatestFSMRound of
                             1 = _OkDiff ->
-                                lager:info("Accomodate FP", []),
+                                lager:debug("Accomodate incoming forced progress", []),
                                 {OnChainEnv, OnChainTrees} = load_pinned_env(BlockHash),
                                 Update = aesc_force_progress_tx:update(Tx),
                                 State1 =
@@ -5216,7 +5238,8 @@ process_incoming_forced_progress(FSMState, #{ tx := SignedTx
                                                                       OnChainEnv,
                                                                       Opts),
                                 D1 = D#data{ state = State1
-                                           , op    = ?NO_OP },
+                                           , op    = ?NO_OP
+                                           , last_reported_update = FPRound},
                                 report_on_chain_tx(consumed_forced_progress, SignedTx, D1),
                                 next_state(open, D1);
                             WrongFPDiff when WrongFPDiff =< 0 ->
@@ -5225,7 +5248,7 @@ process_incoming_forced_progress(FSMState, #{ tx := SignedTx
                                 %% have in the FSM and this should have been
                                 %% caught in the outer case
                                 %% This clause is left for completeness
-                                lager:info("Malicious FP", []),
+                                lager:debug("Detected a malicious forced progress", []),
                                 keep_state(maybe_act_on_tx(channel_force_progress_tx,
                                                           SignedTx, D));
                             MissingStateDiff when MissingStateDiff > 1 ->
@@ -5238,7 +5261,8 @@ process_incoming_forced_progress(FSMState, #{ tx := SignedTx
                                                           SignedTx, D))
                         end;
                     false ->
-                        lager:info("Malicious FP", []),
+                        lager:info("Detected cheating attempt with a force progress based on round ~p while latest FSM round is ~p",
+                                   [FPRound - 1, LatestFSMRound]),
                         keep_state(maybe_act_on_tx(channel_force_progress_tx, SignedTx, D))
                 end
             ?CATCH_LOG(_E)
