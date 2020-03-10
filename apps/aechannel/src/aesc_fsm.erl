@@ -590,7 +590,8 @@ awaiting_locked(Type, Msg, D) ->
 awaiting_open(enter, _OldSt, _D) -> keep_state_and_data;
 awaiting_open(cast, {?CH_OPEN, Msg}, #data{role = responder} = D) ->
     case check_open_msg(Msg, D) of
-        {ok, D1} ->
+        {ok, #data{fsm_id_wrapper = FsmIdWrapper} = D1} ->
+            report(info, {fsm_up, FsmIdWrapper}, D1),
             report(info, channel_open, D1),
             gproc_register(D1),
             next_state(accepted, send_channel_accept(D1));
@@ -626,10 +627,17 @@ awaiting_reestablish(enter, _OldSt, _D) -> keep_state_and_data;
 awaiting_reestablish(cast, {?CH_REESTABL, Msg}, #data{ role = responder
                                                      , op = Op} = D) ->
     case check_reestablish_msg(Msg, D) of
-        {ok, D1} ->
+        {ok, #data{fsm_id_wrapper = FsmIdWrapper} = D1} ->
+            Mode = Op#op_reestablish.mode,
+            case Mode of
+                restart ->
+                    report(info, {fsm_up, FsmIdWrapper}, D1);
+                remain ->
+                    skip
+            end,
             report(info, channel_reestablished, D1),
             lager:debug("Op = ~p", [Op]),
-            D2 = case Op#op_reestablish.mode of
+            D2 = case Mode of
                      restart ->
                          lager:debug("re-register and restart watcher", []),
                          gproc_register(D1),
@@ -3801,7 +3809,12 @@ prepare_initial_state(Opts, State, SessionPid, ReestablishOpts) ->
             ok_next(awaiting_open, Data)
     end,
     %% The FSM is up - send the FSM ID to the user
-    report(info, {fsm_up, FsmIdWrapper}, Data),
+    case Role of
+        initiator ->
+            report(info, {fsm_up, FsmIdWrapper}, Data);
+        responder ->
+            ignore  % reported in awaiting_reestablish or awaiting_open
+    end,
     %% In case we are reestablishing a channel we change the token to a new one
     case Reestablish of
         true ->
