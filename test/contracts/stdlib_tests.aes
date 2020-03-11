@@ -3,6 +3,7 @@
 include "Func.aes"
 include "Option.aes"
 include "List.aes"
+include "ListInternal.aes"
 include "Pair.aes"
 include "Triple.aes"
 
@@ -42,9 +43,9 @@ contract StdTest =
     , (option_int_cmp(List.first([1..4]), Some(1)), "list first")
     , (option_int_cmp(List.find((x) => x > 0, [-1, -2, 3, -1]), Some(3)), "find")
     , (list_int_cmp(List.replace_at(2, 0, [1,1,1,1,1]), [1,1,0,1,1]), "replace at")
-    // following test seems to break the FATE runtime. It definitely SHOULD work.
-    // , (list_int_cmp(List.foldr((e, cont) => (x) => cont(e::x), (x) => x, [1,2,3])([]), [3,2,1]), "foldr")
-    , (List.foldl((a, x) => a - x, 0, [1,2,3]) == -6, "foldl")
+    , (list_int_cmp(List.from_to(1, 5), [1..5]), "fromto")
+    , (list_int_cmp(List.foldr((e, cont) => (x) => cont(e::x), (x) => x, [1,2,3])([]), [3,2,1]), "foldr")
+    , (List.foldl((a, x) => a - x, 0, [1..3]) == -6, "foldl")
     , (list_int_cmp(List.reverse([1,2,3]), [3,2,1]), "reverse")
     , (list_int_cmp(List.filter((x) => x > 0, [-1,1,0,-2,2]), [1,2]), "filter")
     , (list_int_cmp(List.take(2, List.drop(2, [1..6])), [3,4]), "drop&take")
@@ -54,10 +55,10 @@ contract StdTest =
            (x) => x < 0,
            [-1,2,-3,4,-5,6]
        )), [2]), "drop&take while")
-    , (list_int_string_cmp(List.zip([1,2,3,4], ["a", "b"]), [(1, "a"), (2, "b")]), "zip")
+    , (list_int_string_cmp(List.zip([1..4], ["a", "b"]), [(1, "a"), (2, "b")]), "zip")
     , (Func.tuplify2(list_int_cmp)(List.unzip([(1,1), (2,2)])), "unzip&tuplify")
     , (list_int_cmp(List.sort((a, b) => a < b, [3,2,4,1,5]), [1,2,3,4,5]), "sort")
-    // , (list_int_cmp(List.intersperse(0, [1,2,3,4]), [0,1,0,2,0,3,4]), "intersperse")
+    , (list_int_cmp(List.intersperse(0, [1,2,3,4]), [1,0,2,0,3,0,4]), "intersperse")
     , (list_int_string_cmp(List.enumerate(["a", "b"]), [(0, "a"), (1, "b")]), "enumerate")
 
     , (Option.is_some(Some("hand")), "is_(hand)some")
