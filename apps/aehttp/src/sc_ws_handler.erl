@@ -81,9 +81,10 @@ websocket_init(Params) ->
             lager:debug("NotGood = ~p", [NotGood]),
             handler_parsing_error(Err, Handler, Params);
         {Handler, ChannelOpts} ->
-            case maps:is_key(existing_channel_id, ChannelOpts) of
+            case (maps:is_key(existing_channel_id, ChannelOpts) orelse
+                  maps:is_key(temporary_channel_id, ChannelOpts)) of
                 true ->
-                    lager:debug("existing_channel_id key exists", []),
+                    lager:debug("existing or temp channel_id key exists", []),
                     case derive_reconnect_opts(ChannelOpts) of
                         {ok, ReconnectOpts} ->
                             lager:debug("Will try to reconnect; ReconnectOpts = ~p",
@@ -342,7 +343,6 @@ derive_reconnect_opts(#{ existing_channel_id := ChId
                            , pub_key    => PubKey })};
 derive_reconnect_opts(#{ temporary_channel_id := ChId
                        , role                 := Role
-                       , fsm_id               := FsmId
                        , existing_fsm_id_wrapper := _
                        } = Opts) ->
     {ok, Opts#{ channel_id => ChId }};
