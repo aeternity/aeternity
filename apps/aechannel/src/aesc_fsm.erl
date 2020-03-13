@@ -591,7 +591,7 @@ awaiting_open(enter, _OldSt, _D) -> keep_state_and_data;
 awaiting_open(cast, {?CH_OPEN, Msg}, #data{role = responder} = D) ->
     case check_open_msg(Msg, D) of
         {ok, #data{fsm_id_wrapper = FsmIdWrapper} = D1} ->
-            report(info, {fsm_up, FsmIdWrapper}, D1),
+            report_fsm_up(FsmIdWrapper, D1),
             report(info, channel_open, D1),
             gproc_register(D1),
             next_state(accepted, send_channel_accept(D1));
@@ -627,17 +627,10 @@ awaiting_reestablish(enter, _OldSt, _D) -> keep_state_and_data;
 awaiting_reestablish(cast, {?CH_REESTABL, Msg}, #data{ role = responder
                                                      , op = Op} = D) ->
     case check_reestablish_msg(Msg, D) of
-        {ok, #data{fsm_id_wrapper = FsmIdWrapper} = D1} ->
-            Mode = Op#op_reestablish.mode,
-            case Mode of
-                restart ->
-                    report(info, {fsm_up, FsmIdWrapper}, D1);
-                remain ->
-                    skip
-            end,
+        {ok, D1} ->
             report(info, channel_reestablished, D1),
             lager:debug("Op = ~p", [Op]),
-            D2 = case Mode of
+            D2 = case Op#op_reestablish.mode of
                      restart ->
                          lager:debug("re-register and restart watcher", []),
                          gproc_register(D1),
@@ -3256,6 +3249,18 @@ report_on_chain_tx(Info, Type, SignedTx, D) ->
                          , type => Type
                          , info => Info}, D).
 
+report_fsm_up(FsmIdWrapper, #data{ on_chain_id = OnChainId
+                                 , channel_id  = ChanId } = D) ->
+    Info = case OnChainId of
+               undefined ->
+                   #{ fsm_id_wrapper => FsmIdWrapper
+                    , temporary_channel_id => ChanId };
+               _ ->
+                   #{ fsm_id_wrapper => FsmIdWrapper }
+           end,
+    report(info, {fsm_up, Info}, D).
+
+
 maybe_act_on_tx(channel_snapshot_solo_tx, SignedTx, D) ->
     MyPubkey = my_account(D),
     case call_cb(aetx_sign:innermost_tx(SignedTx), origin, []) of
@@ -3302,7 +3307,7 @@ report_info(DoRpt, Msg0, #data{role = Role, client = Client} = D) ->
     end,
     ok.
 
-rpt_message(Msg, #data{on_chain_id = undefined}) ->
+rpt_message(Msg, #data{ on_chain_id = undefined }) ->
     Msg;
 rpt_message(Msg, #data{on_chain_id = OnChainId}) ->
     Msg#{channel_id => OnChainId}.
@@ -3794,26 +3799,23 @@ prepare_initial_state(Opts, State, SessionPid, ReestablishOpts) ->
     NextState = case {Role, Reestablish} of
         {initiator, true} ->
             Data1 = Data#data{opts = Opts#{channel_reserve => ChannelReserve}},
-            ok_next(reestablish_init, send_reestablish_msg(ReestablishOpts,
-                                                           Data1));
+            Data2 = send_reestablish_msg(ReestablishOpts, Data1),
+            report_fsm_up(FsmIdWrapper, Data2),
+            ok_next(reestablish_init, Data2);
         {initiator, false} ->
-            ok_next(initialized, send_open_msg(Data));
+            Data1 = send_open_msg(Data),
+            report_fsm_up(FsmIdWrapper, Data1),
+            ok_next(initialized, Data1);
         {responder, true} ->
             ChanId = maps:get(existing_channel_id, ReestablishOpts),
             Data1 = Data#data{ channel_id  = ChanId
                              , on_chain_id = ChanId
                              , opts = Opts#{channel_reserve => ChannelReserve}
                              , op = #op_reestablish{mode = restart} },
+            report_fsm_up(FsmIdWrapper, Data1),
             ok_next(awaiting_reestablish, Data1);
         {responder, false} ->
             ok_next(awaiting_open, Data)
-    end,
-    %% The FSM is up - send the FSM ID to the user
-    case Role of
-        initiator ->
-            report(info, {fsm_up, FsmIdWrapper}, Data);
-        responder ->
-            ignore  % reported in awaiting_reestablish or awaiting_open
     end,
     %% In case we are reestablishing a channel we change the token to a new one
     case Reestablish of
@@ -4280,7 +4282,7 @@ handle_call(_, {?RECONNECT_CLIENT, Pid, FsmIdWrapper} = Msg, From,
             D1 = D#data{ client           = Pid
                        , client_mref      = MRef
                        , client_connected = true },
-            report(info, {fsm_up, FsmIdWrapper}, D1),
+            report_fsm_up(FsmIdWrapper, D1),
             keep_state(D1, [{reply, From, ok}]);
         false ->
             lager:debug("Client authentication failed", []),

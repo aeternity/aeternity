@@ -678,6 +678,8 @@ t_create_channel_(Cfg) ->
 
     #{ i := #{channel_id := ChannelId} = I
      , r := #{} = R} = create_channel_(Cfg1, #{}, Debug),
+    FsmI = maps:get(fsm, I),
+    ?LOG("Gproc Regs (initiator) = ~p", [rpc(dev1, gproc,info,[FsmI, gproc])]),
     assert_empty_msgq(Debug),
 
     {ok, _} = rpc(dev1, aec_chain, get_channel, [ChannelId]),

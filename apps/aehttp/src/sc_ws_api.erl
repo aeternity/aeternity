@@ -203,9 +203,11 @@ process_fsm_(#{type := report,
     Payload =
         case {Tag, Event} of
             {info, {died, _}} -> #{event => <<"died">>};
-            {info, {fsm_up, FsmIdWrapper}} ->
-                #{ event => <<"fsm_up">>
-                 , fsm_id => aesc_fsm_id:retrieve_for_client(FsmIdWrapper)};
+            {info, {fsm_up, #{fsm_id_wrapper := FsmIdWrapper} = Info}} ->
+                Msg = maps:remove(fsm_id_wrapper, Info),
+                encode_temporary_chan_id(
+                  Msg#{ event => <<"fsm_up">>
+                      , fsm_id => aesc_fsm_id:retrieve_for_client(FsmIdWrapper)});
             {info, _} when is_atom(Event) -> #{event => atom_to_binary(Event, utf8)};
             {info, #{event := _} = Info} ->
                 Info;
@@ -243,6 +245,11 @@ process_fsm_(#{type := report,
            ChannelId);
 process_fsm_(#{type := Type, tag := Tag, info := Event}, _, _) ->
     error({unparsed_fsm_event, Type, Tag, Event}).
+
+encode_temporary_chan_id(#{temporary_channel_id := ChId} = I) ->
+    I#{temporary_channel_id => aeser_api_encoder:encode(channel, ChId)};
+encode_temporary_chan_id(I) ->
+    I.
 
 non_undefined_channel_id(undefined) -> null;
 non_undefined_channel_id(Val)       -> Val.

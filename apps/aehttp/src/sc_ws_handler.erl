@@ -25,6 +25,7 @@
 
 -define(ERROR_TO_CLIENT(Err), {?MODULE, send_to_client, {error, Err}}).
 -include_lib("aeutils/include/aeu_stacktrace.hrl").
+-include_lib("aechannel/src/aechannel.hrl").
 
 %% ===========================================================================
 %% @doc API to check if session is potentially hanging, waiting for socket close
@@ -67,13 +68,17 @@ init(Req, _Opts) ->
      maps:from_list(Parsed)}.
 
 -spec websocket_init(map()) -> {ok, handler()} | {stop, undefined}.
+
 websocket_init(Params) ->
+    lager:debug("Params = ~p", [Params]),
     case {prepare_handler(Params), read_channel_options(Params)} of
-        {{error, Err}, _} ->
+        {{error, Err}, _} = NotGood ->
+            lager:debug("NotGood = ~p", [NotGood]),
             %% Make dialyzer happy by providing a protocol - the protocol is not
             %% relevant here as we will kill this process after sending a error code to the client
             handler_parsing_error(Err, #handler{protocol = sc_ws_api:protocol(<<"json-rpc">>)}, Params);
-        {Handler, {error, Err}} ->
+        {Handler, {error, Err}} = NotGood ->
+            lager:debug("NotGood = ~p", [NotGood]),
             handler_parsing_error(Err, Handler, Params);
         {Handler, ChannelOpts} ->
             case maps:is_key(existing_channel_id, ChannelOpts) of
@@ -117,14 +122,13 @@ websocket_init_reconnect(ReconnectOpts, Handler) ->
     end.
 
 reconnect_to_fsm(#{ channel_id := ChanId
-                   , role       := Role
-                   , pub_key    := Pubkey
-                   , existing_fsm_id_wrapper := FsmIdWrapper } = Opts, Handler, OnError) ->
+                  , role       := Role
+                  , existing_fsm_id_wrapper := FsmIdWrapper } = Opts, Handler, OnError) ->
     case aesc_fsm:where(ChanId, Role) of
         undefined ->
             lager:debug("where(~p, ~p) -> undefined", [ChanId, Role]),
             maybe_reestablish(Opts, Handler, OnError);
-        #{ fsm_pid := Fsm, pub_key := Pubkey } ->
+        #{ fsm_pid := Fsm } ->
             lager:debug("Found FSM = ~p", [Fsm]),
             case aesc_fsm:reconnect_client(Fsm, self(), FsmIdWrapper) of
                 ok ->
@@ -326,7 +330,9 @@ start_link_fsm(#handler{role = responder, port=Port}, Opts) ->
 derive_reconnect_opts(#{ existing_channel_id := ChId
                        , role                := Role
                        , initiator           := I
-                       , responder           := R } = Opts) ->
+                       , responder           := R
+                       , existing_fsm_id_wrapper := _
+                       } = Opts) ->
     PubKey = case Role of
                  initiator -> I;
                  responder -> R
@@ -334,9 +340,15 @@ derive_reconnect_opts(#{ existing_channel_id := ChId
     {ok, maps:merge(Opts, #{ channel_id => ChId
                            , role       => Role
                            , pub_key    => PubKey })};
+derive_reconnect_opts(#{ temporary_channel_id := ChId
+                       , role                 := Role
+                       , fsm_id               := FsmId
+                       , existing_fsm_id_wrapper := _
+                       } = Opts) ->
+    {ok, Opts#{ channel_id => ChId }};
 derive_reconnect_opts(Params) ->
     lager:debug("Params = ~p", [Params]),
-    {error, cannot_derive_reconnect_tx}.
+    {error, cannot_derive_reconnect_options}.
 
 set_field(H, host, Val)         -> H#handler{host = Val};
 set_field(H, role, Val)         -> H#handler{role = Val};
@@ -435,14 +447,18 @@ read_channel_options(Params) ->
                 , Read(<<"responder_amount">>, responder_amount, #{type => integer})
                 ];
             {ok, ExistingID} ->  %Channel reestablish (already opened) scenario
+                ReadFsmId = fun(M) ->
+                                    (Read(<<"existing_fsm_id">>,
+                                          existing_fsm_id_wrapper, #{ type => fsm_id
+                                                                    , mandatory => true }))(M)
+                            end,
                 case aec_chain:get_channel(ExistingID) of
                     {ok, Channel} ->
                         [ Put(existing_channel_id, ExistingID)
                         , Read(<<"offchain_tx">>, offchain_tx, #{ type => serialized_tx
                                                                 , mandatory => false })
+                        , ReadFsmId
                         , read_role(Read, false)
-                        , Read(<<"existing_fsm_id">>, existing_fsm_id_wrapper, #{ type => fsm_id
-                                                                                , mandatory => true })
                           % push_amount is only used in open and is not preserved.
                           % 0 guarantees passing checks (executed amount check is the
                           % same as onchain check)
@@ -454,8 +470,13 @@ read_channel_options(Params) ->
                         , Put(initiator_amount, aesc_channels:initiator_amount(Channel))
                         , Put(responder_amount, aesc_channels:responder_amount(Channel))
                         ];
-                    {error, _} = Err ->
-                        [Error(Err)]
+                    {error, _} = _ ->
+                        %% Assume temporary channel ID
+                        [ Put(temporary_channel_id, ExistingID)
+                        , read_role(Read, true)
+                        , ReadFsmId
+                        ]
+                        %% [Error(Err)]
                 end;
             {error, _} = Err ->
                 [Error(Err)]
