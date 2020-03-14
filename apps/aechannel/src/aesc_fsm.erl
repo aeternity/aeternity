@@ -4313,8 +4313,8 @@ handle_call_(awaiting_signature, {abort_update, Code, Tag}, From,
                 false ->
                     handle_recoverable_error(NextState,
                                             #{ code => Code
-                                              , respond => true
-                                              , msg_type => Tag }, D, [{reply, From, ok}],
+                                             , respond => true
+                                             , msg_type => Tag }, D, [{reply, From, ok}],
                                             _ReportConflictToClient = false)
             end;
         {false, false} ->
@@ -5249,8 +5249,8 @@ process_incoming_forced_progress(FSMState, #{ tx := SignedTx
                                 %% caught in the outer case
                                 %% This clause is left for completeness
                                 lager:debug("Detected a malicious forced progress", []),
-                                keep_state(maybe_act_on_tx(channel_force_progress_tx,
-                                                          SignedTx, D));
+                                report_on_chain_tx(can_slash, SignedTx, D),
+                                keep_state(D);
                             MissingStateDiff when MissingStateDiff > 1 ->
                                 %% channel_force_progress_tx is based on what
                                 %% the FSM percieves a future state that is
@@ -5263,7 +5263,8 @@ process_incoming_forced_progress(FSMState, #{ tx := SignedTx
                     false ->
                         lager:info("Detected cheating attempt with a force progress based on round ~p while latest FSM round is ~p",
                                    [FPRound - 1, LatestFSMRound]),
-                        keep_state(maybe_act_on_tx(channel_force_progress_tx, SignedTx, D))
+                        report_on_chain_tx(can_slash, SignedTx, D),
+                        keep_state(D)
                 end
             ?CATCH_LOG(_E)
                 keep_state(D)

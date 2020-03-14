@@ -64,6 +64,7 @@
         , force_progress_with_failed_onchain/1
         , force_progress_on_force_progress/1
         , force_progress_followed_by_update/1
+        , force_progress_triggers_slash/1
         , change_config_get_history/1
         , multiple_channels/1
         , many_chs_msg_loop/1
@@ -252,6 +253,7 @@ groups() ->
       , force_progress_based_on_withdrawal
       , force_progress_on_force_progress
       , force_progress_followed_by_update
+      , force_progress_triggers_slash
       ]}
     ].
 
@@ -1351,6 +1353,10 @@ died_normal(#{info := {died, normal}}) -> ok.
 
 closing(#{info := closing} = Msg) ->
     ?LOG("matches #{info := closing} - ~p", [Msg]),
+    ok.
+
+aborted_update(#{info := aborted_update} = Msg) ->
+    ?LOG("matches #{info := aborted_update} - ~p", [Msg]),
     ok.
 
 multiple_channels(Cfg) ->
@@ -4475,7 +4481,32 @@ settle_with_failed_onchain(Cfg) ->
     assert_empty_msgq(true),
     ok.
 
-force_progress_based_on_offchain_state(Cfg) ->
+force_progress_triggers_slash(Cfg) ->
+    Debug = get_debug(Cfg),
+    #{ i := #{ fsm := _FsmI
+             , channel_id := ChannelId } = I
+     , r := #{} = R
+     , spec := #{ initiator := PubI
+                , responder := _PubR } = _Spec} = create_channel_([?SLOGAN|Cfg]),
+    ?LOG(Debug, "I = ~p", [I]),
+    ?LOG(Debug, "R = ~p", [R]),
+    {I1, R1, ContractPubkey} = create_contract(counter, ["42"], 10, I, R, Cfg),
+    {I2, R2} = call_contract(ContractPubkey, counter, "tick", [], 10, I1, R1, Cfg),
+
+    %% create a force progress but abort it; still keep the not yet signed
+    %% transaction
+    trigger_force_progress(ContractPubkey, counter, "tick", [], 10, I2),
+    ErrorCode = 123,
+    {ok, UnSignedFP} = abort_signing_request(force_progress_tx, I2, ErrorCode, ?TIMEOUT, Debug),
+    {ok, _} = receive_from_fsm(info, I1, fun aborted_update/1, ?TIMEOUT, Debug),
+
+    {I3, R3} = update_volley(I2, R2, Cfg),
+
+    check_info(20),
+    shutdown_(I3, R3, Cfg),
+    ok.
+
+force_progress_followed_by_update(Cfg) ->
     Debug = get_debug(Cfg),
     #{ i := #{ fsm := _FsmI
              , channel_id := ChannelId } = I
@@ -4487,12 +4518,13 @@ force_progress_based_on_offchain_state(Cfg) ->
     {I1, R1, ContractPubkey} = create_contract(counter, ["42"], 10, I, R, Cfg),
     {I2, R2} = call_contract(ContractPubkey, counter, "tick", [], 10, I1, R1, Cfg),
     {I3, R3} = force_progress_(ContractPubkey, counter, "tick", [], 10, I2, R2, Cfg),
+    {I4, R4} = update_volley(I3, R3, Cfg),
 
     check_info(20),
-    shutdown_(I3, R3, Cfg),
+    shutdown_(I4, R4, Cfg),
     ok.
 
-force_progress_followed_by_update(Cfg) ->
+force_progress_based_on_offchain_state(Cfg) ->
     Debug = get_debug(Cfg),
     #{ i := #{ fsm := _FsmI
              , channel_id := ChannelId } = I
@@ -4705,21 +4737,9 @@ call_contract(ContractId,
     assert_empty_msgq(Debug),
     {Caller2, Acknowledger2}.
 
-force_progress_(ContractPubkey,
-              ContractName, FunName, FunArgs, Amount,
-              #{ fsm := FsmC
-               , channel_id:= ChannelId
-               , pub := CallerPubkey} = Caller,
-              #{ pub := OtherPubkey
-               , fsm := FsmO } = Other, Cfg) ->
-    Debug = get_debug(Cfg),
-    %% check both FSMs share same view of balances
-    Pubkeys = [CallerPubkey, OtherPubkey, ContractPubkey],
-    [CallerBal0, OtherBal0, ContractBal0] = get_balances(FsmC, Pubkeys),
-    [CallerBal0, OtherBal0, ContractBal0] = get_balances(FsmO, Pubkeys),
-        get_balances(FsmC, [CallerPubkey, OtherPubkey, ContractPubkey]),
-    {ok, Round0} = aesc_fsm:get_round(FsmC),
-    {ok, Round0} = aesc_fsm:get_round(FsmO),
+trigger_force_progress(ContractPubkey,
+                       ContractName, FunName, FunArgs, Amount,
+                       #{ fsm := FsmC}) ->
     {ok, BinSrc} = aect_test_utils:read_contract(aect_test_utils:sophia_version(), ContractName),
     {ok, CallData} =
         aect_test_utils:encode_call_data(aect_test_utils:sophia_version(), BinSrc,
@@ -4730,7 +4750,26 @@ force_progress_(ContractPubkey,
               , call_data   => CallData
               , gas         => 1000000
               , gas_price   => aec_test_utils:min_gas_price() },
-    aesc_fsm:force_progress(FsmC, FPArgs),
+    aesc_fsm:force_progress(FsmC, FPArgs).
+
+
+force_progress_(ContractPubkey,
+                ContractName, FunName, FunArgs, Amount,
+                #{ fsm := FsmC
+                , channel_id:= ChannelId
+                , pub := CallerPubkey} = Caller,
+                #{ pub := OtherPubkey
+                , fsm := FsmO } = Other, Cfg) ->
+    Debug = get_debug(Cfg),
+    %% check both FSMs share same view of balances
+    Pubkeys = [CallerPubkey, OtherPubkey, ContractPubkey],
+    [CallerBal0, OtherBal0, ContractBal0] = get_balances(FsmC, Pubkeys),
+    [CallerBal0, OtherBal0, ContractBal0] = get_balances(FsmO, Pubkeys),
+        get_balances(FsmC, [CallerPubkey, OtherPubkey, ContractPubkey]),
+    {ok, Round0} = aesc_fsm:get_round(FsmC),
+    {ok, Round0} = aesc_fsm:get_round(FsmO),
+    trigger_force_progress(ContractPubkey,
+                ContractName, FunName, FunArgs, Amount, Caller),
     {Caller1, SignedTx} = await_signing_request(force_progress_tx, Caller, Cfg),
     wait_for_signed_transaction_in_block(dev1, SignedTx, Debug),
     {aesc_force_progress_tx, Tx} =
