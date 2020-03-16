@@ -485,16 +485,6 @@ locate_matching_fsm(ExistingID, Read, Put, Params) ->
             end
     end.
 
-read_role_id(Role, Read) ->
-    Key = case Role of
-              initiator ->
-                  <<"initiator_id">>;
-              responder ->
-                  <<"responder_id">>
-          end,
-    %% Field name is the same as the Role value
-    Read(Key, Role, #{type => {hash, account_pubkey}}).
-
 locate_on_chain(ExistingID, Read, Put, Error) ->
     case aec_chain:get_channel(ExistingID) of
         {ok, Channel} ->
