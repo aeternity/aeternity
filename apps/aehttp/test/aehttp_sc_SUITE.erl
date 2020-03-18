@@ -927,6 +927,8 @@ channel_create(Config, IConnPid, RConnPid) ->
     {channel_create_tx, Tx} = aetx:specialize_type(CrTx),
     IPubkey = aesc_create_tx:initiator_pubkey(Tx),
     RPubkey = aesc_create_tx:responder_pubkey(Tx),
+    ct:log("ChID (channel_create()) = ~p", [aeser_api_encoder:encode(
+                                              channel, aesc_create_tx:channel_pubkey(Tx))]),
 
     %% ensure the tx is in the mempool
     ok = wait_for_signed_transaction_in_pool(SignedCrTx),
@@ -2963,7 +2965,6 @@ sc_ws_reconnect_early(Config) ->
     Port = maps:get(port, Options),
     ReestablishOpts = #{ existing_channel_id => ChId
                        , existing_fsm_id => [{initiator, IFsmId}, {responder, RFsmId}]
-                       , offchain_tx => SignedTx
                        , port => Port
                        , protocol => maps:get(protocol, Options)},
     Config2 = reconnect_client_(ReestablishOpts, Role, [{scenario, reconnect} | Config1]),
