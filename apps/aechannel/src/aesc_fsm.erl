@@ -3036,8 +3036,8 @@ request_signing_(Tag, SignedTx, BlockHash, Updates, D) ->
                             | {ok, fun(() -> ok), #data{}, [gen_statem:action()]}
                             | {error, client_disconnected}.
 request_signing_(Tag, SignedTx, Updates, BlockHash, #data{client = Client} = D, SendAction) ->
-    Info = #{ signed_tx => SignedTx
-            , updates => Updates },
+    Info = maybe_add_channel_info(Tag, #{ signed_tx => SignedTx
+                                        , updates => Updates }, D),
     Msg = rpt_message(#{ type => sign
                        , tag  => Tag
                        , info => Info }, D),
@@ -3064,6 +3064,14 @@ request_signing_(Tag, SignedTx, Updates, BlockHash, #data{client = Client} = D, 
         false ->
             {error, client_disconnected}
     end.
+
+maybe_add_channel_info(Tag, #{signed_tx := SignedTx} = Info, D) when Tag =:= create_tx;
+                                                                     Tag =:= ?FND_CREATED ->
+    {M, Tx} = aetx:specialize_callback(aetx_sign:tx(SignedTx)),
+    ChId = M:channel_pubkey(Tx),
+    Info#{channel_id => ChId, fsm_id => D#data.fsm_id_wrapper};
+maybe_add_channel_info(_, Info, _) ->
+    Info.
 
 %% @doc When in a handle_call(), we want to reply to the caller before sending
 %% it some other message. In Erlang, using selective message reception, this

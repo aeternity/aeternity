@@ -326,7 +326,7 @@ start_link_fsm(#handler{role = responder, port=Port}, Opts) ->
     aesc_client:respond(Port, Opts).
 
 derive_reconnect_opts(#{ existing_channel_id := ChId
-                       , role                := Role
+                       , role                := _Role
                        , reconnect_to_fsm    := true } = Opts) ->
     {ok, Opts#{channel_id => ChId}};
 derive_reconnect_opts(#{ existing_channel_id := ChId
@@ -489,8 +489,6 @@ locate_on_chain(ExistingID, Read, Put, Error) ->
     case aec_chain:get_channel(ExistingID) of
         {ok, Channel} ->
             [ Put(existing_channel_id, ExistingID)
-            , Read(<<"offchain_tx">>, offchain_tx, #{ type => serialized_tx
-                                                    , mandatory => false })
             , read_role(Read, false)
             , Read(<<"existing_fsm_id">>, existing_fsm_id_wrapper, #{ type => fsm_id
                                                                     , mandatory => true })
