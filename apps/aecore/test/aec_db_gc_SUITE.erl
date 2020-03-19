@@ -152,6 +152,8 @@ main_test(_Config) ->
 
     block_while(fun () -> not net_kernel:hidden_connect_node(N1) end, 30, 3000),
 
+    block_while(fun () -> not started(N1) end, 30, 3000),
+
     block_while(fun () -> has_table(N1, aec_account_state_gced) end, 50, 1000),
 
     false = has_table(N1, aec_account_state_gced),
@@ -169,6 +171,15 @@ main_test(_Config) ->
 
 gc_state(N) ->
     rpc:call(N, sys, get_state, [aec_db_gc]).
+
+started(N) ->
+    case rpc:call(N, init, get_status, []) of
+        {started, _} ->
+            ct:log("////////// Node started ~p", [N]),
+            true;
+        _ ->
+            false
+    end.
 
 mnesia_system_info(N, X) ->
     rpc:call(N, mnesia, system_info, [X]).
