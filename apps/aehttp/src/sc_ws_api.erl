@@ -152,7 +152,7 @@ process_fsm(#{msg := Msg,
 process_fsm_(#{type := sign,
                tag  := Tag,
                info := #{signed_tx := STx,
-                         updates := Updates}},
+                         updates := Updates} = Info},
                 ChannelId, Protocol) when Tag =:= create_tx
                                    orelse Tag =:= deposit_tx
                                    orelse Tag =:= deposit_created
@@ -186,8 +186,8 @@ process_fsm_(#{type := sign,
     notify(Protocol,
            #{action  => <<"sign">>,
              tag => Tag1,
-             payload => #{signed_tx => EncTx,
-                          updates => SerializedUpdates}},
+             payload => maybe_add_fsm_id(Info, #{signed_tx => EncTx,
+                                                 updates => SerializedUpdates})},
            ChannelId);
 process_fsm_(#{type := report,
                tag  := Tag,
@@ -247,3 +247,8 @@ process_fsm_(#{type := Type, tag := Tag, info := Event}, _, _) ->
 non_undefined_channel_id(undefined) -> null;
 non_undefined_channel_id(Val)       -> Val.
 
+maybe_add_fsm_id(#{fsm_id := FsmIdWrapper}, Msg) ->
+    FsmId = aesc_fsm_id:retrieve_for_client(FsmIdWrapper),
+    Msg#{fsm_id => FsmId};
+maybe_add_fsm_id(_, Msg) ->
+    Msg.
