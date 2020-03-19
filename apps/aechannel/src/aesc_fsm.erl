@@ -2175,8 +2175,9 @@ check_funding_created_msg(#{ temporary_channel_id := ChanId
             ],
         case aeu_validation:run(Checks) of
             ok ->
-                Data1 = log(rcv, ?FND_CREATED, Msg, Data),
-                {ok, SignedTx, Updates, BlockHash, Data1};
+                {_, Data1} = on_chain_id(Data, SignedTx),
+                Data2 = log(rcv, ?FND_CREATED, Msg, Data1),
+                {ok, SignedTx, Updates, BlockHash, Data2};
             {error, _} = Error ->
                 Error
         end
@@ -3035,9 +3036,9 @@ request_signing_(Tag, SignedTx, BlockHash, Updates, D) ->
                               {ok, #data{}, [gen_statem:action()]}
                             | {ok, fun(() -> ok), #data{}, [gen_statem:action()]}
                             | {error, client_disconnected}.
-request_signing_(Tag, SignedTx, Updates, BlockHash, #data{client = Client} = D, SendAction) ->
-    Info = maybe_add_channel_info(Tag, #{ signed_tx => SignedTx
-                                        , updates => Updates }, D),
+request_signing_(Tag, SignedTx, Updates, BlockHash, #data{client = Client} = D0, SendAction) ->
+    {Info, D} = maybe_add_channel_info(Tag, #{ signed_tx => SignedTx
+                                             , updates => Updates }, D0),
     Msg = rpt_message(#{ type => sign
                        , tag  => Tag
                        , info => Info }, D),
@@ -3069,9 +3070,9 @@ maybe_add_channel_info(Tag, #{signed_tx := SignedTx} = Info, D) when Tag =:= cre
                                                                      Tag =:= ?FND_CREATED ->
     {M, Tx} = aetx:specialize_callback(aetx_sign:tx(SignedTx)),
     ChId = M:channel_pubkey(Tx),
-    Info#{channel_id => ChId, fsm_id => D#data.fsm_id_wrapper};
-maybe_add_channel_info(_, Info, _) ->
-    Info.
+    {Info#{fsm_id => D#data.fsm_id_wrapper}, D#data{on_chain_id = ChId}};
+maybe_add_channel_info(_, Info, D) ->
+    {Info, D}.
 
 %% @doc When in a handle_call(), we want to reply to the caller before sending
 %% it some other message. In Erlang, using selective message reception, this

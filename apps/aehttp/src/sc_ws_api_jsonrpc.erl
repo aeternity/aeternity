@@ -104,15 +104,7 @@ error_response(Reason, Req, ChannelId) ->
              , <<"error">>      => json_rpc_error_object(Reason, Req) }
     }.
 
-notify(Msg0, ChannelId0) ->
-    lager:debug("notify Msg0 = ~p, ChannelId0 = ~p", [Msg0, ChannelId0]),
-    {Msg, ChannelId} =
-        case {Msg0, ChannelId0} of
-            {#{payload := #{channel_id := Id} = P}, null} ->
-                {Msg0#{payload => maps:remove(channel_id, P)}, Id};
-            {_, Id} ->
-                {Msg0, Id}
-        end,
+notify(Msg, ChannelId) ->
     {reply, #{ <<"jsonrpc">> => ?JSONRPC_VERSION
              , <<"version">>    => ?VERSION
              , <<"method">>  => method_out(Msg)

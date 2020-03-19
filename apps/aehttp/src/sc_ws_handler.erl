@@ -269,7 +269,8 @@ websocket_info({aesc_fsm, FsmPid, Msg}, #handler{ fsm_pid = FsmPid
     #handler{enc_channel_id = ChannelId} = H1 = set_channel_id(Msg, H),
     case sc_ws_api:process_from_fsm(Protocol, Msg, ChannelId) of
         no_reply          -> {ok, H1};
-        {reply, Resp}     -> {reply, {text, jsx:encode(Resp)}, H1};
+        {reply, Resp}     ->
+            {reply, {text, jsx:encode(Resp)}, H1};
         stop              -> {stop, H1}
     end;
 websocket_info({'DOWN', MRef, _, _, _}, #handler{fsm_mref = MRef} = H) ->
