@@ -152,7 +152,7 @@ process_fsm(#{msg := Msg,
 process_fsm_(#{type := sign,
                tag  := Tag,
                info := #{signed_tx := STx,
-                         updates := Updates} = Info},
+                         updates := Updates}},
                 ChannelId, Protocol) when Tag =:= create_tx
                                    orelse Tag =:= deposit_tx
                                    orelse Tag =:= deposit_created
@@ -183,12 +183,11 @@ process_fsm_(#{type := sign,
             withdraw_created -> <<"withdraw_ack">>;
             T -> atom_to_binary(T, utf8)
         end,
-    Msg = #{signed_tx => EncTx,
-            updates => SerializedUpdates},
     notify(Protocol,
            #{action  => <<"sign">>,
              tag => Tag1,
-             payload => maybe_add_fsm_id(Info, maybe_add_channel_id(Info, Msg))},
+             payload => #{signed_tx => EncTx,
+                          updates => SerializedUpdates}},
            ChannelId);
 process_fsm_(#{type := report,
                tag  := Tag,
@@ -248,14 +247,3 @@ process_fsm_(#{type := Type, tag := Tag, info := Event}, _, _) ->
 non_undefined_channel_id(undefined) -> null;
 non_undefined_channel_id(Val)       -> Val.
 
-maybe_add_channel_id(#{channel_id := ChId}, Msg) ->
-    Msg#{channel_id => aeser_api_encoder:encode(channel, ChId)};
-maybe_add_channel_id(Info, Msg) ->
-    lager:debug("Info = ~p", [Info]),
-    Msg.
-
-maybe_add_fsm_id(#{fsm_id := FsmIdWrapper}, Msg) ->
-    FsmId = aesc_fsm_id:retrieve_for_client(FsmIdWrapper),
-    Msg#{fsm_id => FsmId};
-maybe_add_fsm_id(_, Msg) ->
-    Msg.
