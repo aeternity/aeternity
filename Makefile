@@ -98,9 +98,6 @@ CT_TEST_FLAGS += --repeat=$(REPEAT)
 unexport REPEAT
 endif
 
-PYTHON_DIR = py
-PYTHON_TESTS = $(PYTHON_DIR)/tests
-
 export AEVM_EXTERNAL_TEST_DIR=aevm_external
 export AEVM_EXTERNAL_TEST_VERSION=348b0633f4a6ee3c100368bf0f4fca71394b4d01
 
@@ -344,21 +341,6 @@ eqc-lib/eqc.zip: | eqc-lib/eqc.zip.unchecked
 eqc-lib/eqc.zip.unchecked:
 	curl -fsSL --create-dirs -o $@ $(EQC_LIB_DOWNLOAD_URL)
 
-python-env:
-	( cd $(PYTHON_DIR) && $(MAKE) env; )
-
-python-uats:
-	( cd $(PYTHON_DIR) && $(MAKE) uats; )
-
-python-single-uat:
-	( cd $(PYTHON_DIR) && TEST_NAME=$(TEST_NAME) $(MAKE) single-uat; )
-
-python-release-test:
-	( cd $(PYTHON_DIR) && WORKDIR="$(WORKDIR)" PACKAGE=$(PACKAGE) VER=$(VER) $(MAKE) release-test; )
-
-python-package-win32-test:
-	( cd $(PYTHON_DIR) && WORKDIR="$(WORKDIR)" PACKAGESPECFILE=$(PACKAGE_SPEC_WIN32) $(MAKE) package-win32-test; )
-
 kill:
 	@echo "Kill all beam processes only from this directory tree"
 	$(shell pkill -9 -f ".*/beam.*-boot `pwd`" || true)
@@ -481,7 +463,6 @@ test-arch-os-dependencies:
 	kill killall \
 	clean distclean \
 	build-uml \
-	python-env python-ws-test python-uats python-single-uat python-release-test python-package-win32-test \
 	REVISION \
 	prod-deb-package \
 	regen-fate

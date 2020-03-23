@@ -2,8 +2,6 @@
 @rem Required vars:
 @rem    WIN_OTP_PATH
 @rem    WIN_MSYS2_ROOT
-@rem    PACKAGE_TESTS_DIR
-@rem    PACKAGE_ZIPARCHIVE
 @rem    TEST_STEPS
 @rem    PROJECT_ROOT
 
@@ -32,9 +30,7 @@ SET /p PACKAGE_VERSION= 0<"%~dp0..\..\REVISION"
 
 :: Set required vars defaults
 
-IF "%PACKAGE_TESTS_DIR%"=="" SET "PACKAGE_TESTS_DIR=/tmp/package_tests"
-IF "%PACKAGE_ZIPARCHIVE%"=="" SET "PACKAGE_ZIPARCHIVE=aeternity-%PACKAGE_VERSION%-windows-x86_64.zip"
-IF "%TEST_STEPS%"=="" SET "TEST_STEPS=release"
+IF "%TEST_STEPS%"=="" SET "TEST_STEPS=noop"
 
 @for /f "tokens=1* delims=, " %%i in ("%TEST_STEPS%") do @(
     @call:log Run test %%i
@@ -54,14 +50,8 @@ exit /b %ERRORLEVEL%
 %BASH% -lc "cd ${PROJECT_ROOT} && epmd -daemon && make eunit"
 exit /b %ERRORLEVEL%
 
-:TEST_release
-%BASH% -lc ^"cd ${PROJECT_ROOT} ^&^& ^
-           make python-env PIP=/mingw64/bin/pip3 ^&^& ^
-           rm -rf ${PACKAGE_TESTS_DIR} ^&^& ^
-           mkdir -p ${PACKAGE_TESTS_DIR} ^&^& ^
-           make python-release-test WORKDIR=${PACKAGE_TESTS_DIR} PACKAGE=${PACKAGES_PATH}/${PACKAGE_ZIPARCHIVE} PYTHON=/mingw64/bin/python3 ^&^& ^
-           echo done. ^
-           ^"
+:TEST_noop
+@call:log Not running any tests
 exit /b %ERRORLEVEL%
 
 :log :: Display a log message

@@ -212,19 +212,6 @@ references:
         mkdir ${PACKAGES_DIR:?}
         mv _build/../../*aeternity-node_$(cat VERSION)*.deb ${PACKAGES_DIR:?}
 
-  package_tests_workspace: &package_tests_workspace /tmp/package_tests
-  test_package: &test_package
-    run:
-      name: Test Package Tarball
-      environment:
-        PACKAGES_DIR: *packages_workspace
-        PACKAGE_TESTS_DIR: *package_tests_workspace
-      command: |
-        epmd -daemon
-        make python-env
-        mkdir ${PACKAGE_TESTS_DIR:?}
-        make python-package-win32-test python-release-test WORKDIR=${PACKAGE_TESTS_DIR:?} PACKAGE=${PACKAGE_TARBALL:?}
-
   test_arch_os_dependencies: &test_arch_os_dependencies
     run:
       name: Test architecture or OS specific functions
@@ -803,7 +790,6 @@ jobs:
           name: Run dialyzer
           no_output_timeout: 20m
           command: make dialyzer
-      - run: make python-env
       - run: ./rebar3 xref || true
       - run:
           name: Check OTP version (for effective CI caching)
@@ -862,7 +848,6 @@ jobs:
       - *set_package_path
       - *test_arch_os_dependencies
       - *build_package
-      - *test_package
       - store_artifacts:
           path: /tmp/package_tests/node1/log
       - store_artifacts:
@@ -897,20 +882,16 @@ jobs:
       - run:
           name: Install required tools
           # libsodium headers cannot be found without explicit brew link
-          # erlang@20 implicitly install openssl@1.1 and break the python2 keg for some reason !?
-          # upgrade the keg after erlang@ install/link
           command: |
             brew update
             brew install gmp libsodium erlang@20
             brew link gmp
             brew link libsodium
             brew link --force erlang@20
-            brew uninstall --force python@2 && brew install python@2
       - *save_macos_package_cache
       - *set_package_path
       - *test_arch_os_dependencies
       - *build_package
-      - *test_package
       - store_artifacts:
           path: /tmp/package_tests/node1/log
       - store_artifacts:
@@ -922,35 +903,6 @@ jobs:
           root: *packages_workspace
           paths:
             - "*.tar.gz"
-      - *fail_notification
-
-  uat_tests:
-    executor: builder_container_stable
-    <<: *container_config
-    steps:
-      - checkout
-      - *restore_rebar_cache
-      - *restore_build_cache
-      - run:
-          name: UAT Tests
-          command: |
-            epmd -daemon
-            make python-env && make multi-build
-            make python-uats
-      - run:
-          name: Prepare JUnit Report
-          command: mv py/tests/nosetests.xml py/tests/junit.xml
-      - store_test_results:
-          path: py/tests
-      - store_artifacts:
-          path: _build/dev1/rel/aeternity/log
-          destination: node1/
-      - store_artifacts:
-          path: _build/dev2/rel/aeternity/log
-          destination: node2/
-      - store_artifacts:
-          path: _build/dev3/rel/aeternity/log
-          destination: node3/
       - *fail_notification
 
   docker_smoke_tests:
@@ -1435,18 +1387,6 @@ workflows:
             tags:
               only: *tag_regex
 
-      - uat_tests:
-          requires:
-            - build
-          filters:
-            branches:
-              ignore:
-                - env/dev1
-                - env/dev2
-                - system-tests
-            tags:
-              only: *tag_regex
-
       - docker_system_tests:
           filters:
             branches:
@@ -1541,7 +1481,6 @@ workflows:
             - eunit_lima
             - eunit_latest
             - aevm_tests
-            - uat_tests
             - static_analysis
             - rebar_lock_check
             - linux_package
@@ -1566,7 +1505,6 @@ workflows:
             - eunit_lima
             - eunit_latest
             - aevm_tests
-            - uat_tests
             - static_analysis
             - rebar_lock_check
           filters:
@@ -1590,7 +1528,6 @@ workflows:
             - eunit_lima
             - eunit_latest
             - aevm_tests
-            - uat_tests
             - static_analysis
             - rebar_lock_check
             - linux_package
