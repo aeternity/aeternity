@@ -14,8 +14,11 @@ You must have [docker installed](https://docs.docker.com/engine/installation/) o
 The default node configuration is sufficient to join the mainnet:
 
 ```bash
+mkdir -p ~/.aeternity/maindb
 docker pull aeternity/aeternity
-docker run -p 3013:3013 -p 3015:3015 aeternity/aeternity
+docker run -p 3013:3013 -p 3015:3015 \
+    -v ~/.aeternity/maindb:/home/aeternity/node/data/mnesia \
+    aeternity/aeternity
 ```
 
 You should see the console output of the running node and a lot of information related to syncing with the network.
@@ -28,7 +31,10 @@ To join the testnet a network_id with value `ae_uat` argument must be passed:
 
 
 ```bash
-docker run -p 3013:3013 -p 3015:3015 aeternity/aeternity bin/aeternity console -noinput -network_id ae_uat
+mkdir -p ~/.aeternity/testdb
+docker run -p 3013:3013 -p 3015:3015 \
+    -v ~/.aeternity/testdb:/home/aeternity/node/data/mnesia \
+    aeternity/aeternity bin/aeternity console -noinput -network_id ae_uat
 ```
 
 You should see the console output of the running node and a lot of information related to syncing with the network.
@@ -67,13 +73,19 @@ to mount the configuration file to a special path on the container (`/home/aeter
 For example, assuming your configuration file is located at `~/.aeternity/myaeternity.yaml` on the host machine:
 
 ```bash
-docker run -p 3013:3013 -p 3015:3015 -v ~/.aeternity/myaeternity.yaml:/home/aeternity/.aeternity/aeternity/aeternity.yaml aeternity/aeternity
+docker run -p 3013:3013 -p 3015:3015 \
+    -v ~/.aeternity/maindb:/home/aeternity/node/data/mnesia \
+    -v ~/.aeternity/myaeternity.yaml:/home/aeternity/.aeternity/aeternity/aeternity.yaml \
+    aeternity/aeternity
 ```
 
 Arguments can also be passed to the node by changing the docker command, for example to change expected mine rate:
 
 ```bash
-docker run -p 3013:3013 -p 3015:3015 aeternity/aeternity bin/aeternity console -noinput -aecore expected_mine_rate 100000
+mkdir -p ~/.aeternity/mydb
+docker run -p 3013:3013 -p 3015:3015 \
+    -v ~/.aeternity/mydb:/home/aeternity/node/data/mnesia \
+    aeternity/aeternity bin/aeternity console -noinput -aecore expected_mine_rate 100000
 ```
 
 More details about node configuration can be found in [configuration documentation](configuration.md).
