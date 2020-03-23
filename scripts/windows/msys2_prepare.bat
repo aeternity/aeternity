@@ -126,14 +126,6 @@ mingw-w64-x86_64-gcc-fortran ^
 mingw-w64-x86_64-gcc-libgfortran ^
 mingw-w64-x86_64-gcc-objc
 
-:: WINDOWS_PYTHON
-:: These package are dependencies for the release tests as originally defined in py/requirements.txt
-:: On Windows/msys2 we need to install these via the OS package manager though.
-SET PACMAN_PYTHON_PACKAGES=mingw-w64-x86_64-python3-nose ^
-mingw-w64-x86_64-python3-pip ^
-mingw-w64-x86_64-python3-pynacl ^
-mingw-w64-x86_64-python3-yaml
-
 @call:log Set up msys2 env variables
 :: 1>nul to hide the Copied 1 file message
 COPY %~dp0msys2_env_build.sh %WIN_MSYS2_ROOT%\etc\profile.d\env_build.sh 1>nul
@@ -149,7 +141,7 @@ SET BASH="%WIN_MSYS2_ROOT%\usr\bin\bash.exe"
 %BASH% -lc "pacman --noconfirm -Rsc %PACMAN_PACKAGES_REMOVE% > /dev/null || true"
 
 @call:log Install required tools
-%BASH% -lc "pacman --noconfirm --needed -S %PACMAN_PACKAGES% %PACMAN_PYTHON_PACKAGES%"
+%BASH% -lc "pacman --noconfirm --needed -S %PACMAN_PACKAGES%"
 
 @call:log Remove link.exe from msys2, so it does not interfere with MSVC's link.exe
 

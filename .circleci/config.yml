@@ -212,19 +212,6 @@ references:
         mkdir ${PACKAGES_DIR:?}
         mv _build/../../*aeternity-node_$(cat VERSION)*.deb ${PACKAGES_DIR:?}
 
-  package_tests_workspace: &package_tests_workspace /tmp/package_tests
-  test_package: &test_package
-    run:
-      name: Test Package Tarball
-      environment:
-        PACKAGES_DIR: *packages_workspace
-        PACKAGE_TESTS_DIR: *package_tests_workspace
-      command: |
-        epmd -daemon
-        make python-env
-        mkdir ${PACKAGE_TESTS_DIR:?}
-        make python-package-win32-test python-release-test WORKDIR=${PACKAGE_TESTS_DIR:?} PACKAGE=${PACKAGE_TARBALL:?}
-
   test_arch_os_dependencies: &test_arch_os_dependencies
     run:
       name: Test architecture or OS specific functions
@@ -861,7 +848,6 @@ jobs:
       - *set_package_path
       - *test_arch_os_dependencies
       - *build_package
-      - *test_package
       - store_artifacts:
           path: /tmp/package_tests/node1/log
       - store_artifacts:
@@ -909,7 +895,6 @@ jobs:
       - *set_package_path
       - *test_arch_os_dependencies
       - *build_package
-      - *test_package
       - store_artifacts:
           path: /tmp/package_tests/node1/log
       - store_artifacts:
