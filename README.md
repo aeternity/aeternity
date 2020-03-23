@@ -55,8 +55,11 @@ bash <(curl -s https://install.aeternity.io/install.sh)
 
 Or running a docker container (latest tag):
 ```bash
+mkdir -p ~/.aeternity/maindb
 docker pull aeternity/aeternity
-docker run -p 3013:3013 -p 3015:3015 aeternity/aeternity
+docker run -p 3013:3013 -p 3015:3015 \
+    -v ~/.aeternity/maindb:/home/aeternity/node/data/mnesia \
+    aeternity/aeternity
 ```
 
 ## Additional resources
