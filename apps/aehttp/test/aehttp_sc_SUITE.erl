@@ -354,9 +354,17 @@ init_per_suite(Config) ->
                      <<"name_claim_bid_timeout">> => 0}},
     {ok, StartedApps} = application:ensure_all_started(gproc),
     Config1 = aecore_suite_utils:init_per_suite([?NODE], DefCfg, [{symlink_name, "latest.http_sc"}, {test_module, ?MODULE}] ++ Config),
+    ct:log("Config1 = ~p", [Config1]),
+    make_channel_docs_symlink(Config1),
     start_node([ {nodes, [aecore_suite_utils:node_tuple(?NODE)]}
                , {started_apps, StartedApps}
                , {ws_port, 12340}] ++ Config1).
+
+make_channel_docs_symlink(Config) ->
+    DocsDir = filename:join(?config(priv_dir, Config), "channel_docs"),
+    BaseSymlink = ?config(symlink_name, Config),
+    LinkName = filename:join([?config(top_dir, Config), "_build/test/logs", BaseSymlink, "channel_docs"]),
+    ok = aecore_suite_utils:symlink(DocsDir, LinkName).
 
 end_per_suite(Config) ->
     [application:stop(A) ||
@@ -733,8 +741,9 @@ sc_ws_open_(Config, ChannelOpts0, MinBlocksToMine, LogDir) ->
 
     SignedCrTx = channel_create(Config, IConnPid, RConnPid),
     CrTx = aetx_sign:innermost_tx(SignedCrTx),
+    {ok, ChPubkey} = aesc_utils:channel_pubkey(SignedCrTx),
     {channel_create_tx, Tx} = aetx:specialize_type(CrTx),
-    ChId = aeser_api_encoder:encode(channel, aesc_create_tx:channel_pubkey(Tx)),
+    ChId = aeser_api_encoder:encode(channel, ChPubkey),
     IPubkey = aesc_create_tx:initiator_pubkey(Tx),
     RPubkey = aesc_create_tx:responder_pubkey(Tx),
 
