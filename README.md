@@ -45,6 +45,7 @@ The `master` branch tracks the ongoing efforts towards the next stable release t
 [release-notes]: /docs/release-notes
 [latest-release]: https://github.com/aeternity/aeternity/releases/latest
 [master]: https://github.com/aeternity/aeternity/tree/master
+[backups]: https://aeternity-database-backups.s3.eu-central-1.amazonaws.com
 
 ## Quick Install
 
@@ -61,6 +62,28 @@ docker run -p 3013:3013 -p 3015:3015 \
     -v ~/.aeternity/maindb:/home/aeternity/node/data/mnesia \
     aeternity/aeternity
 ```
+
+#### Restore from snapshot
+
+To speedup the initial blockchain syncronization the node database can be restored from a snapshot following the below steps:
+
+* delete the contents of the database if the node has been started already
+* download the database snapshot
+* verify if the snapshot checksum match the downloaded file
+* unarchive the database snapshot
+
+**Note that the docker container must be stopped before replacing the database**
+
+The following snipped can be used to delete current database and replace it the latest mainnet database snapshot and restore it assuming the database path is ` ~/.aeternity/maindb`:
+
+```bash
+rm -rf ~/.aeternity/maindb/
+curl -o ~/.aeternity/mnesia_main_v-1_latest.tgz https://aeternity-database-backups.s3.eu-central-1.amazonaws.com/mnesia_main_v-1_latest.tgz
+CHECKSUM=$(curl https://aeternity-database-backups.s3.eu-central-1.amazonaws.com/mnesia_main_v-1_latest.tgz.md5)
+diff -qs <(echo $CHECKSUM) <(openssl md5 -r ~/.aeternity/mnesia_main_v-1_latest.tgz | awk '{ print $1; }')
+test $? -eq 0 && tar -xzf ~/.aeternity/mnesia_main_v-1_latest.tgz -C ~/.aeternity/maindb/
+```
+
 
 ## Additional resources
 
