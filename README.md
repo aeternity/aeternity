@@ -45,7 +45,6 @@ The `master` branch tracks the ongoing efforts towards the next stable release t
 [release-notes]: /docs/release-notes
 [latest-release]: https://github.com/aeternity/aeternity/releases/latest
 [master]: https://github.com/aeternity/aeternity/tree/master
-[backups]: https://aeternity-database-backups.s3.eu-central-1.amazonaws.com
 
 ## Quick Install
 
