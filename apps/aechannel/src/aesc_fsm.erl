@@ -69,7 +69,8 @@
         ]).
 
 %% Used by noise session
--export([message/2]).
+-export([ message/2
+        , noise_connected/1]).
 
 %% Used by client
 -export([ signing_response/3          %% (Fsm, Tag, Obj)
@@ -96,6 +97,7 @@
         , accepted/3
         , awaiting_leave_ack/3
         , awaiting_locked/3
+        , awaiting_connect/3
         , awaiting_open/3
         , awaiting_reestablish/3
         , awaiting_signature/3
@@ -348,6 +350,9 @@ message(Fsm, {T, _} = Msg) when ?KNOWN_MSG_TYPE(T) ->
     lager:debug("message(~p, ~p)", [Fsm, Msg]),
     gen_statem:cast(Fsm, Msg).
 
+noise_connected(Fsm) ->
+    gen_statem:cast(Fsm, {noise_connected, self()}).
+
 %% ==================================================================
 %% Used by client
 
@@ -482,6 +487,7 @@ accepted(enter, _OldSt, _D) -> keep_state_and_data;
 accepted(cast, {?FND_CREATED, Msg}, #data{role = responder} = D) ->
     case check_funding_created_msg(Msg, D) of
         {ok, SignedTx, Updates, BlockHash, D1} ->
+            try
             report(info, funding_created, D1),
             lager:debug("funding_created: ~p", [SignedTx]),
             case request_signing_(?FND_CREATED, SignedTx, Updates, BlockHash, D1) of
@@ -489,6 +495,9 @@ accepted(cast, {?FND_CREATED, Msg}, #data{role = responder} = D) ->
                     next_state(awaiting_signature, D2, Actions);
                 {error, _} = Error ->
                     close(Error, D)
+            end
+            ?CATCH_LOG(_E)
+              error(_E)
             end;
         {error, Error} ->
              close(Error, D)
@@ -586,6 +595,23 @@ awaiting_locked(cast, {Error, _} = Msg, #data{ state = State} = D)
 awaiting_locked(Type, Msg, D) ->
     lager:debug("Unexpected ~p: Msg = ~p, Op = ~p", [Type, Msg, D#data.op]),
     handle_common_event(Type, Msg, error, D).
+
+awaiting_connect(enter, _OldSt, _D) -> keep_state_and_data;
+awaiting_connect(cast, {noise_connected, Pid}, #data{ peer_connected = false
+                                                    , role    = initiator
+                                                    , session = Pid
+                                                    , op      = Op } = D) ->
+    lager:debug("Op = ~p", [Op]),
+    D1 = D#data{op = ?NO_OP, peer_connected = true},
+    case Op of
+        #op_reestablish{mode = {connect, ReestablishOpts}} ->
+            next_state(reestablish_init, send_reestablish_msg(
+                                           ReestablishOpts, D1));
+        ?NO_OP ->
+            next_state(initialized, send_open_msg(D1))
+    end;
+awaiting_connect(Type, Msg, D) ->
+    handle_common_event(Type, Msg, postpone, D).
 
 awaiting_open(enter, _OldSt, _D) -> keep_state_and_data;
 awaiting_open(cast, {?CH_OPEN, Msg}, #data{role = responder} = D) ->
@@ -689,12 +715,14 @@ awaiting_signature(cast, {?SIGNED, create_tx, SignedTx} = Msg,
     #op_data{updates = Updates} = OpData0,
     maybe_check_sigs_create(SignedTx, Updates, initiator,
         fun() ->
+            %% At this point, the initiator can glean the on_chain_id
+            {_, D1} = on_chain_id(D, SignedTx),
             OpData = OpData0#op_data{signed_tx = SignedTx},
             next_state(half_signed, send_funding_created_msg(
                 SignedTx, log(rcv, ?SIGNED, Msg,
-                              D#data{ op = #op_ack{ tag = create_tx
-                                                  , data = OpData}
-                                    , client_may_disconnect = true })))
+                              D1#data{ op = #op_ack{ tag = create_tx
+                                                   , data = OpData}
+                                     , client_may_disconnect = true })))
         end, D);
 awaiting_signature(cast, {?SIGNED, deposit_tx, SignedTx} = Msg,
                    #data{op = #op_sign{ tag = deposit_tx
@@ -1336,7 +1364,8 @@ send_open_msg(#data{ opts    = Opts
            , responder            => Responder
            },
     aesc_session_noise:channel_open(Sn, Msg),
-    Data#data{ channel_id = ChannelPubKey
+    Data#data{ channel_id   = ChannelPubKey
+             , temp_chan_id = ChannelPubKey
              , log = log_msg(snd, ?CH_OPEN, Msg, Log) }.
 
 check_open_msg(#{ chain_hash           := ChainHash
@@ -1361,6 +1390,7 @@ check_open_msg(#{ chain_hash           := ChainHash
                      , responder_amount   => ResponderAmt
                      , channel_reserve    => ChanReserve},
             {ok, Data#data{ channel_id     = ChanId
+                          , temp_chan_id   = ChanId
                           , opts           = Opts1
                           , peer_connected = true
                           , log            = log_msg(rcv, ?CH_OPEN, Msg, Log) }};
@@ -2147,7 +2177,7 @@ both_accounts(Data) ->
     [other_account(Data),
      my_account(Data)].
 
-send_funding_created_msg(SignedTx, #data{ channel_id = Ch
+send_funding_created_msg(SignedTx, #data{ temp_chan_id = Ch
                                         , session    = Sn
                                         , op = #op_ack{ tag  = create_tx
                                                       , data = OpData}} = Data) ->
@@ -2165,7 +2195,7 @@ check_funding_created_msg(#{ temporary_channel_id := ChanId
                            , data                 := #{ tx      := TxBin
                                                       , updates := UpdatesBin }} = Msg
                            , #data{ state = State
-                                  , channel_id = ChanId } = Data) ->
+                                  , temp_chan_id = ChanId } = Data) ->
     Updates = [aesc_offchain_update:deserialize(U) || U <- UpdatesBin],
     try SignedTx = aetx_sign:deserialize_from_binary(TxBin),
         Checks =
@@ -3066,10 +3096,13 @@ request_signing_(Tag, SignedTx, Updates, BlockHash, #data{client = Client} = D0,
             {error, client_disconnected}
     end.
 
-maybe_add_channel_info(Tag, #{signed_tx := SignedTx} = Info, D) when Tag =:= create_tx;
-                                                                     Tag =:= ?FND_CREATED ->
-    {M, Tx} = aetx:specialize_callback(aetx_sign:tx(SignedTx)),
-    ChId = M:channel_pubkey(Tx),
+%% We add channel_id and fsm_id to the 'funding_created' (responder's) signing request.
+%% For the initiator's signing request, the channel id may not yet be available
+%% (if initiator is GA, in which case it first needs to sign the tx, as the channel id
+%% in that case depends on the initiator's (but not the responder's) auth.)
+%%
+maybe_add_channel_info(Tag, #{signed_tx := SignedTx} = Info, D) when Tag =:= ?FND_CREATED ->
+    {ok, ChId} = aesc_utils:channel_pubkey(SignedTx),
     {Info#{fsm_id => D#data.fsm_id_wrapper}, D#data{on_chain_id = ChId}};
 maybe_add_channel_info(_, Info, D) ->
     {Info, D}.
@@ -3193,8 +3226,19 @@ watch_req() ->
 on_chain_id(#data{on_chain_id = ID} = D, _) when ID =/= undefined ->
     {ID, D};
 on_chain_id(D, SignedTx) ->
-    {ok, PubKey} = aesc_utils:channel_pubkey(SignedTx),
-    {PubKey, D#data{on_chain_id = PubKey}}.
+    try aesc_utils:channel_pubkey(SignedTx) of
+        {ok, PubKey} ->
+            {PubKey, D#data{on_chain_id = PubKey}}
+    ?CATCH_LOG(_E)
+        if D#data.strict_checks == false ->
+                %% We can't derive a channel ID, but this is presumably a testing
+                %% scenario. The intention of non-strict checks is that we shouldn't
+                %% crash on validation errors, so leave things alone.
+                {D#data.on_chain_id, D};
+           true ->
+                error(_E)
+        end
+    end.
 
 initialize_cache(#data{ on_chain_id    = ChId
                       , state          = State
@@ -3794,11 +3838,11 @@ prepare_initial_state(Opts, State, SessionPid, ReestablishOpts) ->
         end,
     NextState = case {Role, Reestablish} of
         {initiator, true} ->
-            Data1 = Data#data{opts = Opts#{channel_reserve => ChannelReserve}},
-            ok_next(reestablish_init, send_reestablish_msg(ReestablishOpts,
-                                                           Data1));
+            Data1 = Data#data{ opts = Opts#{channel_reserve => ChannelReserve}
+                             , op = #op_reestablish{mode = {connect, ReestablishOpts}}},
+            ok_next(awaiting_connect, Data1);
         {initiator, false} ->
-            ok_next(initialized, send_open_msg(Data));
+            ok_next(awaiting_connect, Data);
         {responder, true} ->
             ChanId = maps:get(existing_channel_id, ReestablishOpts),
             Data1 = Data#data{ channel_id  = ChanId
@@ -4668,6 +4712,7 @@ handle_call_(_St, _Req, From, D) ->
 
 -ifdef(TEST).
 get_state_implementation(From, #data{ opts  = Opts
+                                    , temp_chan_id   = TmpChanId
                                     , channel_status = Status
                                     , state = State } = D) ->
     #{initiator := Initiator, responder := Responder} = Opts,
@@ -4693,7 +4738,8 @@ get_state_implementation(From, #data{ opts  = Opts
         _ -> error({inconsistency, state_hash})
     end,
     Result =
-        #{ channel_id     => ChanId
+        #{ temporary_channel_id => TmpChanId
+         , channel_id     => ChanId
          , initiator      => Initiator
          , responder      => Responder
          , init_amt       => IAmt

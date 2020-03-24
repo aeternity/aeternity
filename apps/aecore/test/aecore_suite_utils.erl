@@ -11,7 +11,8 @@
          create_config/4,
          make_multi/2,
          node_shortcut/2,
-         shortcut_dir/1]).
+         shortcut_dir/1,
+         symlink/2]).
 
 -export([cmd/3, cmd/4, cmd/5, cmd/6,
          cmd_res/1,
