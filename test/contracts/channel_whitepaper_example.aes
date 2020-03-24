@@ -1,0 +1,75 @@
+contract ChannelWhitepaperExample =
+
+  type city_t       = string
+  type gen_height_t = int
+  type query_t      = city_t * gen_height_t
+  type answer_t     = bool
+  type oracle_id    = oracle(query_t, answer_t)
+  type query_id     = oracle_query(query_t, answer_t)
+
+  record state = { oracle          : oracle_id,
+                   city            : city_t,
+                   active_from     : gen_height_t,
+                   active_to       : gen_height_t,
+                   price_per_gen   : int,
+                   compensation    : int
+                   }
+
+  entrypoint init(oracle : oracle_id, city: city_t, price_per_gen: int, compensation: int) : state =
+    { oracle          = oracle,
+      city            = city,
+      price_per_gen   = price_per_gen,
+      compensation    = compensation,
+      active_from     = 0,
+      active_to       = 0
+      }
+
+  stateful payable entrypoint insure(generations: int) =
+    if (Call.caller == Contract.creator)
+      abort("service_provider")
+    if (Contract.balance + Call.value < state.compensation)
+      abort("not_enough_compensation")
+    let period : int = Call.value / state.price_per_gen
+    if (Chain.block_height >= state.active_to) // expired, renew
+      put(state{ active_from = Chain.block_height,
+                 active_to = Chain.block_height + period})
+    else // not expired, extend
+      put(state{ active_to = state.active_to + period })
+    "ok"
+
+  stateful entrypoint withdraw(amount: int) =
+    if (Call.caller != Contract.creator)
+      abort("not_service_provider")
+    if (Chain.block_height =< state.active_to) // insured
+      if (Contract.balance - amount < state.compensation)
+        abort("not_enough_compensation")
+    Chain.spend(Contract.creator, amount)
+    "ok"
+
+  stateful payable entrypoint deposit() =
+    if (Call.caller != Contract.creator)
+      abort("not_service_provider")
+    "ok"
+
+  entrypoint get_insurance_range() =
+    (state.active_from, state.active_to)
+
+  stateful payable entrypoint claim_insurance(q: query_id) =
+    switch(Oracle.get_answer(state.oracle, q))
+      None         =>
+        abort("no_response")
+      Some(was_there_hailstorm) =>
+        let (city, generation) = Oracle.get_question(state.oracle, q)
+        let is_in_range = generation >= state.active_from && generation =< state.active_to
+        if (city == state.city)
+          if (is_in_range)
+            if (was_there_hailstorm)
+              Chain.spend(Call.caller, state.compensation)
+              "ok"
+            else
+              abort("different_response")
+          else
+            abort("not_in_insurance_range")
+        else
+          abort("different_city")
+

@@ -1,0 +1,33 @@
+contract HailstormReportOracle =
+  record state = {fee : int,
+                  oracle : option(oracle(string * int, bool))
+                 }
+
+  entrypoint init() : state =
+    {fee = 0,
+     oracle = None}
+
+  stateful entrypoint register(ttl: int) =
+    let o = Oracle.register(Contract.address, state.fee, RelativeTTL(ttl)) : oracle(string * int, bool)
+    put(state{ oracle = Some(o) })
+
+  stateful entrypoint report_hailstorm(city : string, timestamp : int, had_storm : bool, response_ttl : int) =
+    assert_owner()
+    switch(state.oracle)
+      None => abort("no_oracle_yet")
+      Some(oracle) =>
+        let query = Oracle.query(oracle, (city, timestamp), state.fee, RelativeTTL(10), RelativeTTL(response_ttl))
+        Oracle.respond(oracle, query, had_storm)
+        query
+
+  stateful entrypoint withdraw(amount: int) =
+    assert_owner()
+    Chain.spend(Contract.creator, amount)
+
+  stateful payable entrypoint donate() =
+    "ok"
+
+  function assert_owner() =
+    if(Call.caller != Contract.creator)
+      abort("not_service_provider")
+

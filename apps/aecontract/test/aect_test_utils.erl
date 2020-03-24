@@ -571,9 +571,11 @@ init_per_group(aevm, Cfg, Cont) ->
 init_per_group(fate, Cfg, Cont) ->
     case aect_test_utils:latest_protocol_version() of
         ?LIMA_PROTOCOL_VSN ->
+            ct:pal("Running tests under Lima protocol in FATE"),
             Cont([{sophia_version, ?SOPHIA_LIMA_FATE}, {vm_version, ?VM_FATE_SOPHIA_1},
                   {abi_version, ?ABI_FATE_SOPHIA_1}, {protocol, lima} | Cfg]);
         ?IRIS_PROTOCOL_VSN ->
+            ct:pal("Running tests under Iris protocol in FATE"),
             Cont([{sophia_version, ?SOPHIA_IRIS_FATE}, {vm_version, ?VM_FATE_SOPHIA_2},
                   {abi_version, ?ABI_FATE_SOPHIA_1}, {protocol, iris} | Cfg]);
         _ ->
