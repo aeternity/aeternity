@@ -47,6 +47,7 @@
         awaiting_initial_state  -> accept;
         awaiting_leave_ack      -> accept;
         awaiting_locked         -> funding_lock;
+        awaiting_connect        -> accept;
         awaiting_open           -> idle;
         awaiting_reestablish    -> idle;
         awaiting_signature      -> sign;
@@ -151,6 +152,7 @@
               , opts                            :: map()
               , fsm_id_wrapper                  :: undefined | aesc_fsm_id:wrapper()
               , channel_id                      :: undefined | binary()
+              , temp_chan_id                    :: undefined | binary()
               , on_chain_id                     :: undefined | binary()
               , create_tx                       :: undefined | any()
               , watcher_registered = false      :: boolean()
@@ -254,7 +256,7 @@
                   }).
 
 -record(op_reestablish, { offchain_tx :: aetx_sign:signed_tx() | undefined
-                        , mode = restart :: restart | remain
+                        , mode = restart :: restart | remain | {connect, map()}
                         }).
 
 -record(op_close, { data :: #op_data{}
