@@ -3066,9 +3066,9 @@ request_signing_(Tag, SignedTx, BlockHash, Updates, D) ->
                               {ok, #data{}, [gen_statem:action()]}
                             | {ok, fun(() -> ok), #data{}, [gen_statem:action()]}
                             | {error, client_disconnected}.
-request_signing_(Tag, SignedTx, Updates, BlockHash, #data{client = Client} = D0, SendAction) ->
-    {Info, D} = maybe_add_channel_info(Tag, #{ signed_tx => SignedTx
-                                             , updates => Updates }, D0),
+request_signing_(Tag, SignedTx, Updates, BlockHash, #data{client = Client} = D, SendAction) ->
+    Info = #{ signed_tx => SignedTx
+            , updates => Updates },
     Msg = rpt_message(#{ type => sign
                        , tag  => Tag
                        , info => Info }, D),
@@ -3095,17 +3095,6 @@ request_signing_(Tag, SignedTx, Updates, BlockHash, #data{client = Client} = D0,
         false ->
             {error, client_disconnected}
     end.
-
-%% We add channel_id and fsm_id to the 'funding_created' (responder's) signing request.
-%% For the initiator's signing request, the channel id may not yet be available
-%% (if initiator is GA, in which case it first needs to sign the tx, as the channel id
-%% in that case depends on the initiator's (but not the responder's) auth.)
-%%
-maybe_add_channel_info(Tag, #{signed_tx := SignedTx} = Info, D) when Tag =:= ?FND_CREATED ->
-    {ok, ChId} = aesc_utils:channel_pubkey(SignedTx),
-    {Info#{fsm_id => D#data.fsm_id_wrapper}, D#data{on_chain_id = ChId}};
-maybe_add_channel_info(_, Info, D) ->
-    {Info, D}.
 
 %% @doc When in a handle_call(), we want to reply to the caller before sending
 %% it some other message. In Erlang, using selective message reception, this
@@ -3349,8 +3338,15 @@ report_info(DoRpt, Msg0, #data{role = Role, client = Client} = D) ->
 
 rpt_message(Msg, #data{on_chain_id = undefined}) ->
     Msg;
-rpt_message(Msg, #data{on_chain_id = OnChainId}) ->
-    Msg#{channel_id => OnChainId}.
+rpt_message(Msg, #data{on_chain_id = OnChainId} = D) ->
+    maybe_add_fsm_id(Msg#{channel_id => OnChainId}, D).
+
+maybe_add_fsm_id(#{info := funding_signed} = Msg, #data{fsm_id_wrapper = FsmIdW}) ->
+    Msg#{fsm_id => FsmIdW};
+maybe_add_fsm_id(#{info := funding_created} = Msg, #data{fsm_id_wrapper = FsmIdW}) ->
+    Msg#{fsm_id => FsmIdW};
+maybe_add_fsm_id(Msg, _) ->
+    Msg.
 
 do_rpt(Tag, #data{opts = #{report := Rpt}}) ->
     try maps:get(Tag, Rpt, false)
