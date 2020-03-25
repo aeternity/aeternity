@@ -84,20 +84,26 @@ groups() ->
 suite() -> [].
 
 init_per_suite(Config) ->
-    Forks = aecore_suite_utils:forks(),
-    DefCfg = #{<<"chain">> =>
-                   #{<<"persist">> => true,
-                     <<"hard_forks">> => Forks},
-               <<"mining">> =>
-                   #{<<"micro_block_cycle">> => 1,
-                     %% disable name claim auction
-                     <<"name_claim_bid_timeout">> => 0}},
-    {ok, StartedApps} = application:ensure_all_started(gproc),
-    Config1 = aecore_suite_utils:init_per_suite([?NODE], DefCfg,
-                                                [{symlink_name, "latest.whitepaper"}, {test_module, ?MODULE}] ++ Config),
-    aehttp_sc_SUITE:start_node([ {nodes, [aecore_suite_utils:node_tuple(?NODE)]}
-                               , {started_apps, StartedApps}
-                               , {ws_port, 12340}] ++ Config1).
+    case aect_test_utils:latest_protocol_version() of
+        ?ROMA_PROTOCOL_VSN    -> {skip, fate_not_in_roma};
+        ?MINERVA_PROTOCOL_VSN -> {skip, fate_not_in_minerva};
+        ?FORTUNA_PROTOCOL_VSN -> {skip, fate_not_in_fortuna};
+        Vsn when Vsn >= ?LIMA_PROTOCOL_VSN ->
+            Forks = aecore_suite_utils:forks(),
+            DefCfg = #{<<"chain">> =>
+                          #{<<"persist">> => true,
+                            <<"hard_forks">> => Forks},
+                      <<"mining">> =>
+                          #{<<"micro_block_cycle">> => 1,
+                            %% disable name claim auction
+                            <<"name_claim_bid_timeout">> => 0}},
+            {ok, StartedApps} = application:ensure_all_started(gproc),
+            Config1 = aecore_suite_utils:init_per_suite([?NODE], DefCfg,
+                                                        [{symlink_name, "latest.whitepaper"}, {test_module, ?MODULE}] ++ Config),
+            aehttp_sc_SUITE:start_node([ {nodes, [aecore_suite_utils:node_tuple(?NODE)]}
+                                       , {started_apps, StartedApps}
+                                       , {ws_port, 12340}] ++ Config1)
+    end.
 
 end_per_suite(Config) ->
     [application:stop(A) ||
@@ -181,10 +187,10 @@ working_insurance(Cfg0) ->
                                           UpdateVolley, Cfg),
     ContractPubkey = contract_id_from_create_update(IPubkey, UnsignedStateTx),
     ContractName = channel_whitepaper_example,
-    {ok, <<"ok">>} =
+    {ok, []} =
         call_offchain_contract(initiator, ContractPubkey,
                               ContractName, "deposit", [], Reward, Cfg),
-    {ok, <<"ok">>} =
+    {ok, []} =
         call_offchain_contract(responder, ContractPubkey,
                               ContractName, "insure",
                               [],
@@ -200,7 +206,7 @@ working_insurance(Cfg0) ->
             [InsuredFrom, HailstormHeight, InsuredTo]),
     true = HailstormHeight >= InsuredFrom andalso HailstormHeight =< InsuredTo,
     EncQueryId = aeser_api_encoder:encode(oracle_query_id, QueryId),
-    {ok, <<"ok">>} =
+    {ok, []} =
         call_offchain_contract(responder, ContractPubkey,
                               ContractName, "claim_insurance", [EncQueryId], 0, Cfg),
     aehttp_sc_SUITE:sc_ws_close_(Cfg),
@@ -239,10 +245,10 @@ can_insure_after_expiration(Cfg0) ->
                                           UpdateVolley, Cfg),
     ContractPubkey = contract_id_from_create_update(IPubkey, UnsignedStateTx),
     ContractName = channel_whitepaper_example,
-    {ok, <<"ok">>} =
+    {ok, []} =
         call_offchain_contract(initiator, ContractPubkey,
                               ContractName, "deposit", [], Reward, Cfg),
-    {ok, <<"ok">>} =
+    {ok, []} =
         call_offchain_contract(responder, ContractPubkey,
                               ContractName, "insure",
                               [],
@@ -255,7 +261,7 @@ can_insure_after_expiration(Cfg0) ->
     %% ensure not insured
     true = InsuredTo1 < Height,
 
-    {ok, <<"ok">>} =
+    {ok, []} =
         call_offchain_contract(responder, ContractPubkey,
                               ContractName, "insure",
                               [],
@@ -306,10 +312,10 @@ can_insure_twice_in_a_row(Cfg0) ->
                                           UpdateVolley, Cfg),
     ContractPubkey = contract_id_from_create_update(IPubkey, UnsignedStateTx),
     ContractName = channel_whitepaper_example,
-    {ok, <<"ok">>} =
+    {ok, []} =
         call_offchain_contract(initiator, ContractPubkey,
                               ContractName, "deposit", [], Reward, Cfg),
-    {ok, <<"ok">>} =
+    {ok, []} =
         call_offchain_contract(responder, ContractPubkey,
                               ContractName, "insure",
                               [],
@@ -317,7 +323,7 @@ can_insure_twice_in_a_row(Cfg0) ->
     {ok, [InsuredFrom1, InsuredTo1]} =
         call_offchain_contract(responder, ContractPubkey,
                               ContractName, "get_insurance_range", [], 0, Cfg),
-    {ok, <<"ok">>} =
+    {ok, []} =
         call_offchain_contract(responder, ContractPubkey,
                               ContractName, "insure",
                               [],
@@ -364,10 +370,10 @@ insurer_can_withdraw_after_insurance_expires(Cfg0) ->
                                                UpdateVolley, Cfg),
           ContractPubkey = contract_id_from_create_update(IPubkey, UnsignedStateTx),
           ContractName = channel_whitepaper_example,
-          {ok, <<"ok">>} =
+          {ok, []} =
               call_offchain_contract(initiator, ContractPubkey,
                                     ContractName, "deposit", [], Reward, Cfg),
-          {ok, <<"ok">>} =
+          {ok, []} =
               call_offchain_contract(responder, ContractPubkey,
                                     ContractName, "insure",
                                     [],
@@ -379,7 +385,7 @@ insurer_can_withdraw_after_insurance_expires(Cfg0) ->
           Height = current_height(),
           %% test assumes that this is expired
           true = Height > InsuredTo,
-          {ok, <<"ok">>} =
+          {ok, []} =
               call_offchain_contract(initiator, ContractPubkey,
                                     ContractName, "withdraw",
                                     [integer_to_list(Reward + Generations * PricePerGeneration)],
@@ -420,13 +426,13 @@ insurer_can_deposit_multiple_times(Cfg0) ->
                                           UpdateVolley, Cfg),
     ContractPubkey = contract_id_from_create_update(IPubkey, UnsignedStateTx),
     ContractName = channel_whitepaper_example,
-    {ok, <<"ok">>} =
+    {ok, []} =
         call_offchain_contract(initiator, ContractPubkey,
                               ContractName, "deposit", [], Deposit1, Cfg),
-    {ok, <<"ok">>} =
+    {ok, []} =
         call_offchain_contract(initiator, ContractPubkey,
                               ContractName, "deposit", [], Deposit2, Cfg),
-    {ok, <<"ok">>} =
+    {ok, []} =
         call_offchain_contract(responder, ContractPubkey,
                               ContractName, "insure",
                               [],
@@ -442,7 +448,7 @@ insurer_can_deposit_multiple_times(Cfg0) ->
             [InsuredFrom, HailstormHeight, InsuredTo]),
     true = HailstormHeight >= InsuredFrom andalso HailstormHeight =< InsuredTo,
     EncQueryId = aeser_api_encoder:encode(oracle_query_id, QueryId),
-    {ok, <<"ok">>} =
+    {ok, []} =
         call_offchain_contract(responder, ContractPubkey,
                               ContractName, "claim_insurance", [EncQueryId], 0, Cfg),
     aehttp_sc_SUITE:sc_ws_close_(Cfg),
@@ -478,10 +484,10 @@ insurer_can_withdraw_exess_tokens(Cfg0) ->
                                                UpdateVolley, Cfg),
           ContractPubkey = contract_id_from_create_update(IPubkey, UnsignedStateTx),
           ContractName = channel_whitepaper_example,
-          {ok, <<"ok">>} =
+          {ok, []} =
               call_offchain_contract(initiator, ContractPubkey,
                                     ContractName, "deposit", [], Reward + Bonus, Cfg),
-          {ok, <<"ok">>} =
+          {ok, []} =
               call_offchain_contract(responder, ContractPubkey,
                                     ContractName, "insure",
                                     [],
@@ -493,7 +499,7 @@ insurer_can_withdraw_exess_tokens(Cfg0) ->
           Height = current_height(),
           %% test assumes that this is not expired
           true = Height >= InsuredFrom andalso Height =< InsuredTo,
-          {ok, <<"ok">>} =
+          {ok, []} =
               call_offchain_contract(initiator, ContractPubkey,
                                     ContractName, "withdraw",
                                     [integer_to_list(Bonus + Generations * PricePerGeneration)],
@@ -527,7 +533,7 @@ insurer_can_withdraw_if_no_insurance(Cfg0) ->
                                                UpdateVolley, Cfg),
           ContractPubkey = contract_id_from_create_update(IPubkey, UnsignedStateTx),
           ContractName = channel_whitepaper_example,
-          {ok, <<"ok">>} =
+          {ok, []} =
               call_offchain_contract(initiator, ContractPubkey,
                                     ContractName, "deposit", [], Compensation, Cfg),
           {ok, [_InsuredFrom, InsuredTo]} =
@@ -537,7 +543,7 @@ insurer_can_withdraw_if_no_insurance(Cfg0) ->
           Height = current_height(),
           %% test assumes that this is expired
           true = Height > InsuredTo,
-          {ok, <<"ok">>} =
+          {ok, []} =
               call_offchain_contract(initiator, ContractPubkey,
                                     ContractName, "withdraw",
                                     [integer_to_list(Compensation)], 0, Cfg),
@@ -609,7 +615,7 @@ insurer_can_not_insure(Cfg0) ->
                                           UpdateVolley, Cfg),
     ContractPubkey = contract_id_from_create_update(IPubkey, UnsignedStateTx),
     ContractName = channel_whitepaper_example,
-    {ok, <<"ok">>} =
+    {ok, []} =
         call_offchain_contract(initiator, ContractPubkey,
                               ContractName, "deposit", [], Reward, Cfg),
     {revert, <<"service_provider">>} =
@@ -652,10 +658,10 @@ insured_can_not_withdraw(Cfg0) ->
                                           UpdateVolley, Cfg),
     ContractPubkey = contract_id_from_create_update(IPubkey, UnsignedStateTx),
     ContractName = channel_whitepaper_example,
-    {ok, <<"ok">>} =
+    {ok, []} =
         call_offchain_contract(initiator, ContractPubkey,
                               ContractName, "deposit", [], Reward, Cfg),
-    {ok, <<"ok">>} =
+    {ok, []} =
         call_offchain_contract(responder, ContractPubkey,
                               ContractName, "insure",
                               [],
@@ -700,10 +706,10 @@ insurer_can_not_withdraw_compensation(Cfg0) ->
                                           UpdateVolley, Cfg),
     ContractPubkey = contract_id_from_create_update(IPubkey, UnsignedStateTx),
     ContractName = channel_whitepaper_example,
-    {ok, <<"ok">>} =
+    {ok, []} =
         call_offchain_contract(initiator, ContractPubkey,
                               ContractName, "deposit", [], Reward, Cfg),
-    {ok, <<"ok">>} =
+    {ok, []} =
         call_offchain_contract(responder, ContractPubkey,
                               ContractName, "insure",
                               [],
@@ -787,10 +793,10 @@ claim_insurance_missing_response(Cfg0) ->
                                           UpdateVolley, Cfg),
     ContractPubkey = contract_id_from_create_update(IPubkey, UnsignedStateTx),
     ContractName = channel_whitepaper_example,
-    {ok, <<"ok">>} =
+    {ok, []} =
         call_offchain_contract(initiator, ContractPubkey,
                               ContractName, "deposit", [], Reward, Cfg),
-    {ok, <<"ok">>} =
+    {ok, []} =
         call_offchain_contract(responder, ContractPubkey,
                               ContractName, "insure",
                               [],
@@ -845,10 +851,10 @@ claim_insurance_for_different_city(Cfg0) ->
                                           UpdateVolley, Cfg),
     ContractPubkey = contract_id_from_create_update(IPubkey, UnsignedStateTx),
     ContractName = channel_whitepaper_example,
-    {ok, <<"ok">>} =
+    {ok, []} =
         call_offchain_contract(initiator, ContractPubkey,
                               ContractName, "deposit", [], Reward, Cfg),
-    {ok, <<"ok">>} =
+    {ok, []} =
         call_offchain_contract(responder, ContractPubkey,
                               ContractName, "insure",
                               [],
@@ -905,10 +911,10 @@ claim_insurance_outside_of_range(Cfg0) ->
                                           UpdateVolley, Cfg),
     ContractPubkey = contract_id_from_create_update(IPubkey, UnsignedStateTx),
     ContractName = channel_whitepaper_example,
-    {ok, <<"ok">>} =
+    {ok, []} =
         call_offchain_contract(initiator, ContractPubkey,
                               ContractName, "deposit", [], Reward, Cfg),
-    {ok, <<"ok">>} =
+    {ok, []} =
         call_offchain_contract(responder, ContractPubkey,
                               ContractName, "insure",
                               [],
@@ -968,10 +974,10 @@ claim_insurance_different_response(Cfg0) ->
                                           UpdateVolley, Cfg),
     ContractPubkey = contract_id_from_create_update(IPubkey, UnsignedStateTx),
     ContractName = channel_whitepaper_example,
-    {ok, <<"ok">>} =
+    {ok, []} =
         call_offchain_contract(initiator, ContractPubkey,
                               ContractName, "deposit", [], Reward, Cfg),
-    {ok, <<"ok">>} =
+    {ok, []} =
         call_offchain_contract(responder, ContractPubkey,
                               ContractName, "insure",
                               [],
@@ -1025,10 +1031,10 @@ claim_insurance_insurer(Cfg0) ->
                                           UpdateVolley, Cfg),
     ContractPubkey = contract_id_from_create_update(IPubkey, UnsignedStateTx),
     ContractName = channel_whitepaper_example,
-    {ok, <<"ok">>} =
+    {ok, []} =
         call_offchain_contract(initiator, ContractPubkey,
                               ContractName, "deposit", [], Reward, Cfg),
-    {ok, <<"ok">>} =
+    {ok, []} =
         call_offchain_contract(responder, ContractPubkey,
                               ContractName, "insure",
                               [],
@@ -1231,15 +1237,17 @@ get_decoded_result(ConnPid, Contract, Function, [Update], UnsignedTx, Config) ->
       <<"return_type">>       := ReturnType0,
       <<"return_value">>      := ReturnValue} = CallRes,
     {ok, BinCode} = aect_test_utils:read_contract(?SOPHIA_LIMA_AEVM, Contract),
-    R = aect_test_utils:decode_call_result(binary_to_list(BinCode), Function, ok,
-                                       ReturnValue),
-    ReturnType =
+    {_ReturnType, _ReturnVal} =
         case ReturnType0 of
-            <<"ok">> -> ok;
-            <<"revert">> -> revert;
-            <<"error">> -> error
-        end,
-    {ReturnType, R}.
+            <<"ok">> ->
+                Res = aect_test_utils:decode_call_result(binary_to_list(BinCode), Function, ok,
+                                           ReturnValue),
+                {ok, Res};
+            <<"revert">> ->
+                {ok, Reason} = aect_test_utils:decode_data(string, ReturnValue),
+                {revert, Reason};
+            <<"error">> -> {error, <<>>}
+        end.
 
 ws_send_tagged(ConnPid, Method, Payload) ->
     ?WS:json_rpc_notify(

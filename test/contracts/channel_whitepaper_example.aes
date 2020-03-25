@@ -38,7 +38,6 @@ contract ChannelWhitepaperExample =
                  active_to = Chain.block_height + period})
     else // not expired, extend
       put(state{ active_to = state.active_to + period })
-    "ok"
 
   stateful entrypoint withdraw(amount: int) =
     if (Call.caller != Contract.creator)
@@ -47,12 +46,12 @@ contract ChannelWhitepaperExample =
       if (Contract.balance - amount < state.compensation)
         abort("not_enough_compensation")
     Chain.spend(Contract.creator, amount)
-    "ok"
+    ()
 
   stateful payable entrypoint deposit() =
     if (Call.caller != Contract.creator)
       abort("not_service_provider")
-    "ok"
+    ()
 
   entrypoint get_insurance_range() =
     (state.active_from, state.active_to)
@@ -73,5 +72,5 @@ contract ChannelWhitepaperExample =
         if (was_there_hailstorm == false)
           abort("different_response")
         Chain.spend(Call.caller, state.compensation)
-        "ok"
+        ()
 
