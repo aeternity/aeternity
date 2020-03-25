@@ -191,14 +191,14 @@ process_fsm_(#{type := sign,
            ChannelId);
 process_fsm_(#{type := report,
                tag  := Tag,
-               info := Event}, ChannelId, Protocol) when Tag =:= info
-                                                  orelse Tag =:= update
-                                                  orelse Tag =:= conflict
-                                                  orelse Tag =:= message
-                                                  orelse Tag =:= leave
-                                                  orelse Tag =:= error
-                                                  orelse Tag =:= debug
-                                                  orelse Tag =:= on_chain_tx ->
+               info := Event} = Msg, ChannelId, Protocol) when Tag =:= info
+                                                        orelse Tag =:= update
+                                                        orelse Tag =:= conflict
+                                                        orelse Tag =:= message
+                                                        orelse Tag =:= leave
+                                                        orelse Tag =:= error
+                                                        orelse Tag =:= debug
+                                                        orelse Tag =:= on_chain_tx ->
     Mod = protocol_to_impl(Protocol),
     Payload =
         case {Tag, Event} of
@@ -206,7 +206,8 @@ process_fsm_(#{type := report,
             {info, {fsm_up, FsmIdWrapper}} ->
                 #{ event => <<"fsm_up">>
                  , fsm_id => aesc_fsm_id:retrieve_for_client(FsmIdWrapper)};
-            {info, _} when is_atom(Event) -> #{event => atom_to_binary(Event, utf8)};
+            {info, _} when is_atom(Event) ->
+                maybe_add_fsm_id(Msg, #{event => atom_to_binary(Event, utf8)});
             {info, #{event := _} = Info} ->
                 Info;
             {on_chain_tx, #{tx := Tx} = Info} ->
