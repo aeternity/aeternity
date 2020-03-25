@@ -121,12 +121,11 @@ assert_init_function(CallData, VMVersion,_SerializedCode) when ?IS_FATE_SOPHIA(V
 assert_init_function(CallData, VMVersion, SerializedCode) when ?IS_AEVM_SOPHIA(VMVersion) ->
     try aeser_contract_code:deserialize(SerializedCode) of
         #{type_info := TypeInfo} ->
-            ct:pal("TypeInfo ~p", [TypeInfo]),
             case aeb_aevm_abi:get_function_hash_from_calldata(CallData) of
                 {ok, Hash} ->
                     case aeb_aevm_abi:function_name_from_type_hash(Hash, TypeInfo) of
                         {ok, <<"init">>} -> ok;
-                        Res ->ct:pal("AAA ~p", [Res]), error(contract_init_failed)
+                        _ -> error(contract_init_failed)
                     end;
                 _Other -> error(contract_init_failed)
             end

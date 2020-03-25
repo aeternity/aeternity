@@ -88,10 +88,8 @@
     sc_ws_abort_shutdown/1,
     sc_ws_abort_slash/1,
     sc_ws_abort_settle/1,
-    sc_ws_can_not_abort_while_open/1,
-    working_insurance/1
+    sc_ws_can_not_abort_while_open/1
    ]).
-
 -export([sc_ws_open_/4,
          sc_ws_close_/1,
          start_node/1,
@@ -129,12 +127,6 @@
 
 -define(SIMPLE_AUTH_GA_SECRET, "42").
 
--define(CHECK_INFO(Timeout), check_info(?LINE, Timeout)).
--define(PEEK_MSGQ, peek_msgq(?LINE)).
-
--define(ARBITRARY_BIG_FEE, 123456789876543).
-
-
 -define(ALICE, {
     <<177,181,119,188,211,39,203,57,229,94,108,2,107,214, 167,74,27,
       53,222,108,6,80,196,174,81,239,171,117,158,65,91,102>>,
@@ -161,10 +153,10 @@
       93,11,3,93,177,65,197,27,123,127,177,165,190,211,20,112,79,108,
       85,78,88,181,26,207,191,211,40,225,138,154>>}).
 
--define(ORACLE_TTL, 2000).
--define(QUERY_TTL, 100).
--define(RESPONSE_TTL, 100).
+-define(CHECK_INFO(Timeout), check_info(?LINE, Timeout)).
+-define(PEEK_MSGQ, peek_msgq(?LINE)).
 
+-define(ARBITRARY_BIG_FEE, 123456789876543).
 
 all() -> [{group, plain}, {group, aevm}, {group, fate}].
 
@@ -310,13 +302,6 @@ groups() ->
      {force_progress, [sequence],
       [ sc_ws_force_progress_based_on_offchain_state
       , sc_ws_force_progress_based_on_onchain_state
-      ]},
-     {whitepaper, [sequence],
-      [ {group, happy_path}
-      ]},
-     {happy_path, [sequence],
-      [ working_insurance
-      , working_insurance
       ]}
     ].
 
@@ -403,14 +388,6 @@ init_per_group(plain, Config) ->
     reset_participants(plain, Config);
 init_per_group(client_reconnect, Config) ->
     reset_participants(client_reconnect, Config);
-init_per_group(whitepaper = Group, Config0) ->
-    VM = fate, 
-    Config1 = aect_test_utils:init_per_group(VM, Config0),
-    Config2 = reset_participants(Group, Config1),
-    OracleOwnerPair = {OraclePubkey, OraclePrivkey} = aecore_suite_utils:generate_key_pair(),
-    ok = initialize_account(2000000000 * aec_test_utils:min_gas_price(),
-                            OracleOwnerPair),
-    [{oracle_owner, OracleOwnerPair} | Config2];
 init_per_group(pinned_env, Config) ->
     aect_test_utils:init_per_group(aevm, reset_participants(pinned_env, Config));
 init_per_group(optional_fee, Config) ->
@@ -712,7 +689,7 @@ sc_ws_open_(Config, Opts) ->
     sc_ws_open_(Config, Opts, ?DEFAULT_MIN_DEPTH).
 
 sc_ws_open_(Config, ChannelOpts0, MinBlocksToMine) ->
-    sc_ws_open_(Config, ChannelOpts0, MinBlocksToMine, default_dir).
+     sc_ws_open_(Config, ChannelOpts0, MinBlocksToMine, default_dir).
 
 sc_ws_open_(Config, ChannelOpts0, MinBlocksToMine, LogDir) ->
     #{initiator := #{pub_key := IPubkey},
@@ -753,6 +730,7 @@ sc_ws_open_(Config, ChannelOpts0, MinBlocksToMine, LogDir) ->
         end,
     {ok, IConnPid, IFsmId} = Spawn(initiator,
                                    maps:put(host, <<"localhost">>, IChanOpts)),
+
     ct:log("initiator spawned", []),
     OptionallyPingPong(IConnPid),
 
@@ -2764,8 +2742,6 @@ contract_byte_code(ContractName) ->
 get_contract_bytecode(ContractName) ->
     {ok, contract_byte_code(ContractName)}.
 
-contract_create_init_arg(channel_whitepaper_example) ->
-    ["10"];
 contract_create_init_arg(identity) ->
     [];
 contract_create_init_arg(counter) ->
@@ -3898,13 +3874,12 @@ channel_ws_host_and_port() ->
                 aehttp, [channel, websocket, port], 8045]),
     {"localhost", Port}.
 
--spec channel_ws_start(initiator | responder, map(), list()) -> {ok, pid(), binary()} | {error, term()}.
 channel_ws_start(Role, Opts, Config) ->
     channel_ws_start(Role, Opts, Config, []).
 
 -spec channel_ws_start(initiator | responder, map(), list(), list(atom())) ->
     {ok, pid(), binary()} | {error, term()}.
-channel_ws_start(Role, Opts, Config, Events) ->
+ channel_ws_start(Role, Opts, Config, Events) ->
     LogFile = docs_log_file(Config),
     channel_ws_start(Role, Opts, Config, Events, LogFile).
 
@@ -3944,7 +3919,7 @@ maybe_add_fsm_id(_, Opts) ->
 docs_log_file(Config) ->
     %% TCLogBase = atom_to_list(?config(tc_name, Config)),
     TCLogBase = log_basename(Config),
-    {_, TestName} = proplists:get_value(current, ct:get_status()),
+    {aehttp_sc_SUITE, TestName} = proplists:get_value(current, ct:get_status()),
     MsgLogFile = filename:join([?config(priv_dir, Config), TCLogBase,
                                atom_to_list(TestName)++ ".md"]),
     ct:log("MsgLogFile = ~p", [MsgLogFile]),
@@ -5527,157 +5502,3 @@ get_channel(ChannelId) ->
         {ok, _Channel} = OK -> OK;
         {error, _} = Err -> Err
     end.
-
-working_insurance(Cfg0) ->
-    register_oracle_service(Cfg0),
-    City = "Sofia, Bulgaria",
-    HailstormHeight = current_height() + 50,
-    QueryId = ask_oracle_service(City, HailstormHeight, Cfg0),
-    answer_oracle_query(QueryId, true, Cfg0),
-    Cfg = sc_ws_open_(Cfg0),
-    #{initiator := #{pub_key := IPubkey},
-      responder := #{pub_key := _RPubkey}} = proplists:get_value(participants, Cfg),
-    #{initiator := IConnPid,
-      responder := RConnPid} = proplists:get_value(channel_clients, Cfg),
-    AI = process_info(IConnPid),
-    RI = process_info(RConnPid),
-    true = AI =/= undefined,
-    true = RI =/= undefined,
-
-
-    with_registered_events(
-      [sign, info, get, error, update], [IConnPid, RConnPid],
-      fun() ->
-          {OraclePubkey, _OraclePrivkey} = ?config(oracle_owner, Cfg),
-          OracleAddress = aeser_api_encoder:encode(oracle_pubkey, OraclePubkey),
-          {UpdateVolley, ReverseUpdateVolley} =
-              produce_update_volley_funs(initiator, Cfg),
-          Args =
-              [OracleAddress,
-              add_quotes(City),
-              _PricePerGen = "3",
-              _Compensation = "10000"],
-          {UnsignedStateTx, _Updates, _Code} =
-              create_contract_(channel_whitepaper_example,
-                               Args, IConnPid,
-                                               UpdateVolley, Cfg),
-          ContractPubkey = contract_id_from_create_update(IPubkey, UnsignedStateTx),
-          ContractName = channel_whitepaper_example,
-          {ok, <<"ok">>} =
-              call_offchain_contract(initiator, ContractPubkey,
-                                    ContractName, "deposit", [], 10000, Cfg),
-          {ok, <<"ok">>} =
-              call_offchain_contract(responder, ContractPubkey,
-                                    ContractName, "insure", ["1000"], 3000, Cfg),
-          {ok, [InsuredFrom, InsuredTo]} =
-              call_offchain_contract(responder, ContractPubkey,
-                                    ContractName, "get_insurance_range", [], 0, Cfg),
-          aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE),
-                                         10),
-          %% test assumes that this is in the valid range
-          ct:log("InsuredFrom: ~p, HailstormHeight: ~p, InsuredTo: ~p",
-                 [InsuredFrom, HailstormHeight, InsuredTo]),
-          true = HailstormHeight >= InsuredFrom andalso HailstormHeight =< InsuredTo,
-          EncQueryId = aeser_api_encoder:encode(oracle_query_id, QueryId),
-          {ok, <<"ok">>} =
-              call_offchain_contract(responder, ContractPubkey,
-                                    ContractName, "claim_insurance", [EncQueryId], 300, Cfg),
-          ok
-    end),
-    sc_ws_close_(Cfg),
-    ok.
-
-register_oracle_service(Cfg) ->
-    %% Register an oracle. It will be used in an off-chain contract
-    %% Oracle ask itself a question and answers it
-    {OraclePubkey, OraclePrivkey} = ?config(oracle_owner, Cfg),
-    QuestionFormat =
-        case aect_test_utils:backend() of
-            fate -> iolist_to_binary(aeb_fate_encoding:serialize_type({tuple,
-                                                                       [string,
-                                                                        integer]}))
-        end,
-    ResponseFormat =
-        case aect_test_utils:backend() of
-            fate -> iolist_to_binary(aeb_fate_encoding:serialize_type(boolean))
-        end,
-    QueryFee = 3,
-    register_oracle(OraclePubkey, OraclePrivkey,
-                    #{query_format    => QuestionFormat,
-                      response_format => ResponseFormat,
-                      query_fee       => QueryFee,
-                      query_ttl       => ?QUERY_TTL,
-                      abi_version     => aect_test_utils:abi_version(),
-                      oracle_ttl      => {delta, ?ORACLE_TTL}
-                     }),
-    OraclePubkey.
-
-ask_oracle_service(City, Timestamp, Cfg) ->
-    {OraclePubkey, OraclePrivkey} = ?config(oracle_owner, Cfg),
-    SophiaString =
-        fun(S0) ->
-            S = list_to_binary(S0),
-            case aect_test_utils:backend() of
-                fate -> S 
-            end
-        end,
-    Question = {tuple, {SophiaString(City), Timestamp}},
-    Q = aeb_fate_encoding:serialize(Question),
-    QueryId = query_oracle(OraclePubkey, OraclePrivkey, %oracle asks oracle
-                           OraclePubkey,
-                           #{query        => Q,
-                             query_ttl    => {delta, ?QUERY_TTL - 1},
-                             response_ttl => {delta, ?RESPONSE_TTL}}),
-    QueryId.
-
-answer_oracle_query(QueryId, Answer, Cfg) ->
-    {OraclePubkey, OraclePrivkey} = ?config(oracle_owner, Cfg),
-    R = aeb_fate_encoding:serialize(Answer),
-    respond_oracle(OraclePubkey, OraclePrivkey, QueryId,
-                   R, #{response_ttl => {delta, ?RESPONSE_TTL}}).
-
-add_quotes(B) when is_binary(B) -> <<"\"", B/binary, "\"">>;
-add_quotes(Str) when is_list(Str) -> "\"" ++ Str ++  "\"".
-
-call_offchain_contract(Who, ContractPubkey, ContractName, Function, Arguments,
-                       Amount, Cfg) ->
-    #{initiator := IConnPid,
-      responder := RConnPid} = proplists:get_value(channel_clients, Cfg),
-    {UpdateVolley, _ReverseUpdateVolley} = produce_update_volley_funs(Who, Cfg),
-    ConnPid =
-        case Who of
-            initiator -> IConnPid;
-            responder -> RConnPid
-        end,
-    #{tx := Tx, updates := Updates} =
-        call_a_contract_(Function, Arguments, ContractPubkey,
-                         ContractName,
-                         ConnPid, UpdateVolley,
-                         Amount, Cfg, #{}),
-    R = get_decoded_result(ConnPid, ContractName,
-                           Function, Updates, Tx, Cfg),
-    R.
-
-get_decoded_result(ConnPid, Contract, Function, [Update], UnsignedTx, Config) ->
-    GetParams = ws_get_call_params(Update, UnsignedTx),
-    ws_send_tagged(ConnPid, <<"channels.get.contract_call">>,
-                    GetParams, Config),
-    {ok, _, <<"contract_call">>, CallRes} = wait_for_channel_event(ConnPid, get, Config),
-    #{<<"caller_id">>         := _CallerId,
-      <<"caller_nonce">>      := CallRound,
-      <<"contract_id">>       := _ContractId,
-      <<"gas_price">>         := _,
-      <<"gas_used">>          := _,
-      <<"height">>            := CallRound,
-      <<"return_type">>       := ReturnType0,
-      <<"return_value">>      := ReturnValue} = CallRes,
-    {ok, BinCode} = aect_test_utils:read_contract(?SOPHIA_LIMA_AEVM, Contract),
-    R = aect_test_utils:decode_call_result(binary_to_list(BinCode), Function, ok,
-                                       ReturnValue),
-    ReturnType =
-        case ReturnType0 of
-            <<"ok">> -> ok;
-            <<"error">> -> error
-        end,
-    {ReturnType, R}.
-

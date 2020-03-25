@@ -1,3 +1,6 @@
+// This smart contract is a showcase for off-chain smart contract that uses
+// on-chain oracle. It is part of the whitepaper. If any changes are required
+// please update the whitepaper accordingly
 contract ChannelWhitepaperExample =
 
   type city_t       = string

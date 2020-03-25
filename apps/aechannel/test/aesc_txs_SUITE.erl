@@ -188,9 +188,7 @@
          fp_register_oracle/1,
          fp_oracle_query/1,
          fp_oracle_extend/1,
-         fp_oracle_respond/1,
-
-         whitepaper_example/1
+         fp_oracle_respond/1
         ]).
 
 %% more complex scenarios
@@ -268,11 +266,7 @@ groups() ->
      },
 
      {aevm, [], [{group, force_progress}, {group, force_progress_negative}, {group, complex_sequences}]},
-     {fate, [],
-      [{group, force_progress},
-       {group, force_progress_negative},
-       {group, complex_sequences},
-       {group, demos}]},
+     {fate, [], [{group, force_progress}, {group, force_progress_negative}, {group, complex_sequences}]},
 
      {create_negative, [sequence],
       [create_missing_account,
@@ -387,9 +381,6 @@ groups() ->
      {complex_sequences, [sequence],
       [ fp_close_solo_slash_with_same_round
       , fp_fp_close_solo_with_same_round
-      ]},
-     {demos, [sequence],
-      [ whitepaper_example
       ]}
     ].
 
@@ -2760,132 +2751,6 @@ fp_use_onchain_oracle(Cfg) ->
                                    Forcer <- ?ROLES],
     ok.
 
-whitepaper_setup(ServiceProvider, City, PricePerGen, Compensation) ->
-    fun(Props0) ->
-        QueryFee = 50000,
-        ContractCreateRound = 10,
-        run(Props0,
-            [ positive(fun create_channel_/2),
-              fun(#{state := S0} = Props) ->
-                  {NewAcc, S1} = aesc_test_utils:setup_new_account(S0),
-                  PrivKey = aesc_test_utils:priv_key(NewAcc, S1),
-                  Props#{state => S1, oracle_pubkey => NewAcc, oracle_privkey => PrivKey}
-              end,
-              % create oracle
-              set_from(oracle, owner, owner_privkey),
-              create_contract_in_onchain_trees(_Key = oracle_contract_id,
-                                              _OnchainContract = oracle_register_response,
-                                              _OnchainCInitArgs = [],
-                                              _OnchainDeposit  = 2),
-              call_contract_in_onchain_trees(_Key = oracle_contract_id,
-                                            _OnchainContract = oracle_register_response,
-                                            _RegOracleFun = <<"register">>,
-                                            _RegArgs = [<<"42">>],
-                                            _NoAmount  = 0),
-              fun(#{last_call := Call} = Props) ->
-                  ok = aect_call:return_type(Call),
-                  Props
-              end,
-              call_contract_in_onchain_trees(_Key = oracle_contract_id,
-                                            _OnchainContract = oracle_register_response,
-                                            _DepositFun = <<"donate">>,
-                                            _DepositArgs = [],
-                                            _Amount  = 2),
-              fun(#{last_call := Call} = Props) ->
-                  ok = aect_call:return_type(Call),
-                  Props
-              end,
-              % create off-chain contract
-              create_trees_if_not_present(),
-              set_from(ServiceProvider, owner, owner_privkey),
-              set_prop(round, ContractCreateRound),
-              fun(#{oracle_pubkey := Oracle} = Props) ->
-                  EncodedOracleId = address_encode(oracle_pubkey, Oracle),
-                  InitArgs = [EncodedOracleId,
-                              quote(City),
-                              integer_to_binary(PricePerGen),
-                              integer_to_binary(Compensation)
-                              ],
-                  (create_contract_in_trees(_Round    = ContractCreateRound,
-                                            _Contract = "channel_whitepaper_example",
-                                            InitArgs,
-                                            _Deposit  = 1))(Props)
-              end])
-    end.
-
-whitepaper_example(Cfg) ->
-    City = <<"Sofia, Bulgaria">>,
-    OCity = sophia_value(City),
-    Answer = <<"1">>,
-    OResponse = sophia_value(Answer),
-    PricePerGen = 3,
-    Compensation = 10000,
-    LockPeriod = 10,
-    StormTime = 100,
-    Question = sophia_value({tuple, {quote(City),
-                                     StormTime}}),
-    StormTimeB = integer_to_binary(StormTime),
-    CallOnChain =
-        fun(ServiceProvider, Insured) ->
-            IAmt0 = 10000000 * aec_test_utils:min_gas_price(),
-            RAmt0 = 10000000 * aec_test_utils:min_gas_price(),
-            run(#{cfg => Cfg, initiator_amount => IAmt0,
-                              responder_amount => RAmt0,
-                  lock_period => LockPeriod,
-                  channel_reserve => 1},
-               [whitepaper_setup(ServiceProvider, City, PricePerGen,
-                                 Compensation),
-                %% the owner is still the from
-                set_from(ServiceProvider),
-                bump_round(), 
-                call_contract_offchain("deposit", [], Compensation),
-                assert_last_call_result(<<"ok">>, string),
-                set_from(Insured),
-                call_contract_offchain("insure", [integer_to_binary(11)],
-                                       11 * PricePerGen),
-                assert_last_call_result(<<"ok">>, string),
-                set_from(oracle, owner, owner_privkey),
-                call_contract_in_onchain_trees(_Key = oracle_contract_id,
-                                              _OnchainContract = oracle_register_response,
-                                              _Fun = <<"donate">>,
-                                              _Args = [],
-                                              _Amount  = 2),
-                fun(#{last_call := Call} = Props) ->
-                    ok = aect_call:return_type(Call),
-                    Props
-                end,
-                call_contract_in_onchain_trees(_Key = oracle_contract_id,
-                                              _OnchainContract = oracle_register_response,
-                                              _ReportFun = <<"report_hailstorm">>,
-                                              _ReportArgs = [quote(City),
-                                                             StormTimeB,
-                                                             <<"true">>,
-                                                             <<"20">>],
-                                              _NoAmount  = 0),
-                set_from(Insured),
-                fun(#{ last_call     := Call
-                     , oracle_pubkey := Oracle
-                     , state         := S } = Props) ->
-                    ok = aect_call:return_type(Call),
-                    {ok, QueryIdInteger} = get_last_call_result(word, Call),
-%                    1 = QueryIdInteger,
-%                    QueryPubkey = <<QueryIdInteger:256>>,
-                    {oracle_query, QueryPubkey} = QueryIdInteger,
-                    QueryId = address_encode(oracle_query_id, QueryPubkey),
-%                    OTrees = aec_trees:oracles(aesc_test_utils:trees(S)),
-%                    Q = aeo_state_tree:get_query(Oracle, QueryPubkey, OTrees),
-%                    OResponse = aeo_query:response(Q),
-                    (call_contract_offchain("claim_insurance", [QueryId],
-                                            0))(Props)
-                end,
-                assert_last_call_result(<<"ok">>, string)
-               ])
-        end,
-    CallOnChain(initiator, responder),
-    CallOnChain(responder, initiator),
-    ok.
-
-
 fp_use_onchain_name_resolution(Cfg) ->
     FPRound = 20,
     LockPeriod = 10,
@@ -4672,8 +4537,7 @@ set_from(Role, PubkeyKey, PrivkeyKey) ->
         {KeyPub, KeyPriv} =
             case Role of
                 initiator -> {initiator_pubkey, initiator_privkey};
-                responder -> {responder_pubkey, responder_privkey};
-                oracle    -> {oracle_pubkey, oracle_privkey}
+                responder -> {responder_pubkey, responder_privkey}
             end,
         PubKey = maps:get(KeyPub, Props),
         PrivKey = maps:get(KeyPriv, Props),
@@ -4683,11 +4547,6 @@ set_from(Role, PubkeyKey, PrivkeyKey) ->
 set_prop(Key, Value) ->
     fun(Props) ->
         maps:put(Key, Value, Props)
-    end.
-
-bump_round() ->
-    fun(#{round := Round} = Props) ->
-        maps:put(round, Round + 1, Props)
     end.
 
 delete_prop(Key) ->
@@ -5532,7 +5391,6 @@ oracle_query(Question, ResponseTTL) ->
                 QueryId = aeo_query_tx:query_id(Tx),
                 PrivKey = aesc_test_utils:priv_key(Oracle, S),
                 SignedTx = aec_test_utils:sign_tx(QueryTx, [PrivKey]),
-                ct:log("HEREEE ~p", [Question]),
                 Props1 = apply_on_trees_(Props, SignedTx, S, positive),
                 Props1#{query_id => QueryId}
             end
@@ -5625,37 +5483,6 @@ force_call_contract_first(Forcer, Fun, Args, Round) ->
             ])
     end.
 
-call_contract_offchain(Fun, Args, Amount) ->
-    fun(#{from_pubkey       := From,
-          round             := Round,
-          state             := State,
-          contract_file     := ContractName,
-          contract_id       := ContractId,
-          trees             := Trees0} = Props) ->
-        {ok, CallData} = encode_call_data(ContractName, Fun, Args),
-        ct:pal("Calldata: ~p", [CallData]),
-        Reserve = maps:get(channel_reserve, Props, 0),
-        OnChainTrees = aesc_test_utils:trees(State),
-        Env = tx_env(Props),
-        Update =
-            maps:get(contract_call_payload_update, Props,
-                aesc_offchain_update:op_call_contract(
-                    aeser_id:create(account, From),
-                    aeser_id:create(contract, ContractId),
-                    aect_test_utils:abi_version(), Amount, CallData,
-                    [],
-                    _GasPrice = maps:get(gas_price, Props, aec_test_utils:min_gas_price()),
-                    _GasLimit = maps:get(gas_limit, Props, 10000000))),
-        Trees = aesc_offchain_update:apply_on_trees(Update,
-                                                    aect_call_state_tree:prune_without_backend(Trees0),
-                                                    OnChainTrees, Env, Round, Reserve),
-        StateHash = aec_trees:hash(Trees),
-        Props#{contract_call => #{state_hash => StateHash,
-                                  round      => Round,
-                                  update     => Update},
-               trees => Trees}
-    end.
-
 force_call_contract_first_with_calldata(Forcer, CallData, Round) ->
     fun(Props0) ->
         run(Props0,
@@ -5694,13 +5521,6 @@ force_call_contract(Forcer, Fun, Args, Round) ->
     end.
 
 
-get_last_call_result(Type, Call) ->
-    EncRValue = aect_call:return_value(Call),
-    case aect_test_utils:backend() of
-        aevm -> aeb_heap:from_binary(Type, EncRValue);
-        fate -> {ok, aeb_fate_encoding:deserialize(EncRValue)}
-    end.
-
 assert_last_channel_result(Result, Type) ->
     fun(#{state := S,
           signed_force_progress := SignedForceProgressTx,
@@ -5714,22 +5534,6 @@ assert_last_channel_result(Result, Type) ->
                               TxHashContractPubkey),
         Call = aect_test_utils:get_call(TxHashContractPubkey, CallId,
                                         S),
-        EncRValue = aect_call:return_value(Call),
-        ?assertMatch({ok, Result}, ?IF_AEVM(aeb_heap:from_binary(Type, EncRValue),
-                                            {ok, aeb_fate_encoding:deserialize(EncRValue)})),
-        Props
-    end.
-
-assert_last_call_result(Result, Type) ->
-    fun(#{state := S,
-          trees := OffchainTrees,
-          contract_call := #{update := Update,
-                             round  := Round}} = Props) ->
-        {ContractPubkey, CallerPubkey} = aesc_offchain_update:extract_call(Update),
-        CallsTree = aec_trees:calls(OffchainTrees),
-        {ok, Call} = aect_channel_contract:get_call(ContractPubkey,
-                                                    CallerPubkey, Round,
-                                                    CallsTree),
         EncRValue = aect_call:return_value(Call),
         ?assertMatch({ok, Result}, ?IF_AEVM(aeb_heap:from_binary(Type, EncRValue),
                                             {ok, aeb_fate_encoding:deserialize(EncRValue)})),
@@ -5972,12 +5776,9 @@ address_encode(Type, Binary) ->
             aeser_api_encoder:encode(Type, Binary)
     end.
 
-quote(Bin) when is_binary(Bin) -> <<$", Bin/binary, $">>.
+quote(Bin) -> <<$", Bin/binary, $">>.
 
 create_contract_in_onchain_trees(ContractName, InitArg, Deposit) ->
-    create_contract_in_onchain_trees(contract_id, ContractName, InitArg, Deposit).
-
-create_contract_in_onchain_trees(Key, ContractName, InitArg, Deposit) ->
     fun(#{state := State0,
           owner := Owner} = Props) ->
         Trees0 = aesc_test_utils:trees(State0),
@@ -5992,7 +5793,7 @@ create_contract_in_onchain_trees(Key, ContractName, InitArg, Deposit) ->
                                  abi_version => aect_test_utils:abi_version(),
                                  deposit     => Deposit,
                                  amount      => 0,
-                                 gas         => 1234567,
+                                 gas         => 123467,
                                  gas_price   => aec_test_utils:min_gas_price(),
                                  call_data   => CallData,
                                  fee         => 10 * aec_test_utils:min_gas_price()}),
@@ -6002,50 +5803,7 @@ create_contract_in_onchain_trees(Key, ContractName, InitArg, Deposit) ->
         {ok, Trees, _} = aect_create_tx:process(CreateTx, Trees0, Env),
         ContractId = aect_contracts:compute_contract_pubkey(Owner, Nonce),
         State = aesc_test_utils:set_trees(Trees, State0),
-        Props#{state => State, contract_file => ContractName, Key => ContractId}
-    end.
-
-call_contract_in_onchain_trees(ContractName, Fun, Args, Amount) ->
-    call_contract_in_onchain_trees(contract_id, ContractName, Fun, Args, Amount).
-
-call_contract_in_onchain_trees(ContractIDKey, ContractName, Fun, Args, Amount) ->
-    call_contract_in_onchain_trees(ContractIDKey, ContractName, Fun, Args,
-                                   Amount, false).
-
-call_contract_in_onchain_trees(ContractIDKey, ContractName, Fun, Args, Amount,
-                              DryRun) ->
-    fun(#{ state := State0
-         , owner := Owner} = Props) ->
-        ContractId = maps:get(ContractIDKey, Props),
-        Trees0 = aesc_test_utils:trees(State0),
-        {ok, CallData} = encode_call_data(ContractName, Fun, Args),
-        Nonce = aesc_test_utils:next_nonce(Owner, State0),
-        {ok, AetxCallTx} =
-            aect_call_tx:new(#{caller_id    => aeser_id:create(account, Owner),
-                               nonce        => Nonce,
-                               contract_id  => aeser_id:create(contract, ContractId),
-                               abi_version  => aect_test_utils:abi_version(),
-                               fee          => 60000 * aec_test_utils:min_gas_price(),
-                               amount       => Amount,
-                               gas          => 123467,
-                               gas_price   => aec_test_utils:min_gas_price(),
-                               call_data   => CallData}),
-        {contract_call_tx, CallTx} = aetx:specialize_type(AetxCallTx),
-        Env0 = tx_env(Props),
-        Env =
-            case DryRun of
-                false -> Env0;
-                true  -> aetx_env:set_dry_run(Env0, true)
-            end,
-        {ok, _} = aect_call_tx:check(CallTx, Trees0, Env),
-        {ok, Trees, _} = aect_call_tx:process(CallTx, Trees0, Env),
-        State = aesc_test_utils:set_trees(Trees, State0),
-        CallId = aect_call:id(Owner,
-                              Nonce,
-                              ContractId),
-        Call = aect_test_utils:get_call(ContractId, CallId,
-                                        State),
-        Props#{state => State, last_call => Call}
+        Props#{state => State, contract_file => ContractName, contract_id => ContractId}
     end.
 
 sophia_typerep(Type) ->
