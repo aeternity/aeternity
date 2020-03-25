@@ -26,7 +26,9 @@
          insured_can_not_deposit/1,
          claim_insurance_missing_response/1,
          claim_insurance_for_different_city/1,
-         claim_insurance_outside_of_range/1
+         claim_insurance_outside_of_range/1,
+         claim_insurance_different_response/1,
+         claim_insurance_insurer/1
         ]).
 
 -include_lib("stdlib/include/assert.hrl").
@@ -73,7 +75,9 @@ groups() ->
         insured_can_not_deposit,
         claim_insurance_missing_response,
         claim_insurance_for_different_city,
-        claim_insurance_outside_of_range
+        claim_insurance_outside_of_range,
+        claim_insurance_different_response,
+        claim_insurance_insurer
       ]}
     ].
 
@@ -183,7 +187,7 @@ working_insurance(Cfg0) ->
     {ok, <<"ok">>} =
         call_offchain_contract(responder, ContractPubkey,
                               ContractName, "insure",
-                              [integer_to_list(Generations)],
+                              [],
                               PricePerGeneration * Generations, Cfg),
     {ok, [InsuredFrom, InsuredTo]} =
         call_offchain_contract(responder, ContractPubkey,
@@ -241,7 +245,7 @@ can_insure_after_expiration(Cfg0) ->
     {ok, <<"ok">>} =
         call_offchain_contract(responder, ContractPubkey,
                               ContractName, "insure",
-                              [integer_to_list(Generations1)],
+                              [],
                               PricePerGeneration * Generations1, Cfg),
     {ok, [InsuredFrom1, InsuredTo1]} =
         call_offchain_contract(responder, ContractPubkey,
@@ -254,7 +258,7 @@ can_insure_after_expiration(Cfg0) ->
     {ok, <<"ok">>} =
         call_offchain_contract(responder, ContractPubkey,
                               ContractName, "insure",
-                              [integer_to_list(Generations2)],
+                              [],
                               PricePerGeneration * Generations2, Cfg),
     {ok, [InsuredFrom2, InsuredTo2]} =
         call_offchain_contract(responder, ContractPubkey,
@@ -308,7 +312,7 @@ can_insure_twice_in_a_row(Cfg0) ->
     {ok, <<"ok">>} =
         call_offchain_contract(responder, ContractPubkey,
                               ContractName, "insure",
-                              [integer_to_list(Generations1)],
+                              [],
                               PricePerGeneration * Generations1, Cfg),
     {ok, [InsuredFrom1, InsuredTo1]} =
         call_offchain_contract(responder, ContractPubkey,
@@ -316,7 +320,7 @@ can_insure_twice_in_a_row(Cfg0) ->
     {ok, <<"ok">>} =
         call_offchain_contract(responder, ContractPubkey,
                               ContractName, "insure",
-                              [integer_to_list(Generations2)],
+                              [],
                               PricePerGeneration * Generations2, Cfg),
     {ok, [InsuredFrom2, InsuredTo2]} =
         call_offchain_contract(responder, ContractPubkey,
@@ -366,7 +370,7 @@ insurer_can_withdraw_after_insurance_expires(Cfg0) ->
           {ok, <<"ok">>} =
               call_offchain_contract(responder, ContractPubkey,
                                     ContractName, "insure",
-                                    [integer_to_list(Generations)],
+                                    [],
                                     Generations * PricePerGeneration, Cfg),
           {ok, [_InsuredFrom, InsuredTo]} =
               call_offchain_contract(responder, ContractPubkey,
@@ -425,7 +429,7 @@ insurer_can_deposit_multiple_times(Cfg0) ->
     {ok, <<"ok">>} =
         call_offchain_contract(responder, ContractPubkey,
                               ContractName, "insure",
-                              [integer_to_list(Generations)],
+                              [],
                               PricePerGeneration * Generations, Cfg),
     {ok, [InsuredFrom, InsuredTo]} =
         call_offchain_contract(responder, ContractPubkey,
@@ -480,7 +484,7 @@ insurer_can_withdraw_exess_tokens(Cfg0) ->
           {ok, <<"ok">>} =
               call_offchain_contract(responder, ContractPubkey,
                                     ContractName, "insure",
-                                    [integer_to_list(Generations)],
+                                    [],
                                     Generations * PricePerGeneration, Cfg),
           {ok, [InsuredFrom, InsuredTo]} =
               call_offchain_contract(responder, ContractPubkey,
@@ -571,7 +575,7 @@ can_not_insure_if_not_enough_compensation(Cfg0) ->
     {revert, <<"not_enough_compensation">>} =
         call_offchain_contract(responder, ContractPubkey,
                               ContractName, "insure",
-                              [integer_to_list(Generations)],
+                              [],
                               PricePerGeneration * Generations, Cfg),
     aehttp_sc_SUITE:sc_ws_close_(Cfg),
     ok = unregister_channel_events(AllEvents, Pids),
@@ -611,7 +615,7 @@ insurer_can_not_insure(Cfg0) ->
     {revert, <<"service_provider">>} =
         call_offchain_contract(initiator, ContractPubkey,
                               ContractName, "insure",
-                              [integer_to_list(Generations)],
+                              [],
                               PricePerGeneration * Generations, Cfg),
     aehttp_sc_SUITE:sc_ws_close_(Cfg),
     ok = unregister_channel_events(AllEvents, Pids),
@@ -654,7 +658,7 @@ insured_can_not_withdraw(Cfg0) ->
     {ok, <<"ok">>} =
         call_offchain_contract(responder, ContractPubkey,
                               ContractName, "insure",
-                              [integer_to_list(Generations)],
+                              [],
                               PricePerGeneration * Generations, Cfg),
     {revert, <<"not_service_provider">>} =
         call_offchain_contract(responder, ContractPubkey,
@@ -702,7 +706,7 @@ insurer_can_not_withdraw_compensation(Cfg0) ->
     {ok, <<"ok">>} =
         call_offchain_contract(responder, ContractPubkey,
                               ContractName, "insure",
-                              [integer_to_list(Generations)],
+                              [],
                               PricePerGeneration * Generations, Cfg),
     {revert, <<"not_enough_compensation">>} =
         call_offchain_contract(initiator, ContractPubkey,
@@ -789,7 +793,7 @@ claim_insurance_missing_response(Cfg0) ->
     {ok, <<"ok">>} =
         call_offchain_contract(responder, ContractPubkey,
                               ContractName, "insure",
-                              [integer_to_list(Generations)],
+                              [],
                               PricePerGeneration * Generations, Cfg),
     {ok, [InsuredFrom, InsuredTo]} =
         call_offchain_contract(responder, ContractPubkey,
@@ -847,7 +851,7 @@ claim_insurance_for_different_city(Cfg0) ->
     {ok, <<"ok">>} =
         call_offchain_contract(responder, ContractPubkey,
                               ContractName, "insure",
-                              [integer_to_list(Generations)],
+                              [],
                               PricePerGeneration * Generations, Cfg),
     {ok, [InsuredFrom, InsuredTo]} =
         call_offchain_contract(responder, ContractPubkey,
@@ -907,7 +911,7 @@ claim_insurance_outside_of_range(Cfg0) ->
     {ok, <<"ok">>} =
         call_offchain_contract(responder, ContractPubkey,
                               ContractName, "insure",
-                              [integer_to_list(Generations)],
+                              [],
                               PricePerGeneration * Generations, Cfg),
     {ok, [InsuredFrom, InsuredTo]} =
         call_offchain_contract(responder, ContractPubkey,
@@ -932,6 +936,121 @@ claim_insurance_outside_of_range(Cfg0) ->
     aehttp_sc_SUITE:sc_ws_close_(Cfg),
     ok = unregister_channel_events(AllEvents, Pids),
     ok.
+
+claim_insurance_different_response(Cfg0) ->
+    City = "Sofia, Bulgaria",
+    Reward = 10000,
+    PricePerGeneration = 2,
+    Generations = 1000,
+    HailstormHeight = current_height() + 50,
+    QueryId = ask_oracle_service(City, HailstormHeight, Cfg0),
+    answer_oracle_query(QueryId, false, Cfg0), %% no hailstorm
+    Cfg = channel_open(Cfg0),
+    #{initiator := #{pub_key := IPubkey},
+      responder := #{pub_key := _RPubkey}} = proplists:get_value(participants, Cfg),
+    #{initiator := IConnPid,
+      responder := RConnPid} = proplists:get_value(channel_clients, Cfg),
+    Pids = [IConnPid, RConnPid],
+    AllEvents = [sign, info, get, error, update],
+    ok = register_channel_events(AllEvents, Pids),
+    {OraclePubkey, _OraclePrivkey} = ?config(oracle_owner, Cfg),
+    OracleAddress = aeser_api_encoder:encode(oracle_pubkey, OraclePubkey),
+    {UpdateVolley, _ReverseUpdateVolley} =
+        aehttp_sc_SUITE:produce_update_volley_funs(initiator, Cfg),
+    Args =
+        [OracleAddress,
+        add_quotes(City),
+        _PricePerGen = integer_to_list(PricePerGeneration),
+        _Compensation = integer_to_list(Reward)],
+    {UnsignedStateTx, _Updates, _Code} =
+        aehttp_sc_SUITE:create_contract_(channel_whitepaper_example,
+                                          Args, IConnPid,
+                                          UpdateVolley, Cfg),
+    ContractPubkey = contract_id_from_create_update(IPubkey, UnsignedStateTx),
+    ContractName = channel_whitepaper_example,
+    {ok, <<"ok">>} =
+        call_offchain_contract(initiator, ContractPubkey,
+                              ContractName, "deposit", [], Reward, Cfg),
+    {ok, <<"ok">>} =
+        call_offchain_contract(responder, ContractPubkey,
+                              ContractName, "insure",
+                              [],
+                              PricePerGeneration * Generations, Cfg),
+    {ok, [InsuredFrom, InsuredTo]} =
+        call_offchain_contract(responder, ContractPubkey,
+                              ContractName, "get_insurance_range", [], 0, Cfg),
+    {InsuredFrom, InsuredTo, Generations} =
+        {InsuredFrom, InsuredFrom + Generations, Generations},
+    mine_blocks(10),
+    %% test assumes that this is in the valid range
+    ct:log("InsuredFrom: ~p, HailstormHeight: ~p, InsuredTo: ~p",
+            [InsuredFrom, HailstormHeight, InsuredTo]),
+    true = HailstormHeight >= InsuredFrom andalso HailstormHeight =< InsuredTo,
+    EncQueryId = aeser_api_encoder:encode(oracle_query_id, QueryId),
+    {revert, <<"different_response">>} =
+        call_offchain_contract(responder, ContractPubkey,
+                              ContractName, "claim_insurance", [EncQueryId], 0, Cfg),
+    aehttp_sc_SUITE:sc_ws_close_(Cfg),
+    ok = unregister_channel_events(AllEvents, Pids),
+    ok.
+
+claim_insurance_insurer(Cfg0) ->
+    City = "Sofia, Bulgaria",
+    Reward = 10000,
+    PricePerGeneration = 2,
+    Generations = 1000,
+    HailstormHeight = current_height() + 50,
+    QueryId = ask_oracle_service(City, HailstormHeight, Cfg0),
+    answer_oracle_query(QueryId, true, Cfg0),
+    Cfg = channel_open(Cfg0),
+    #{initiator := #{pub_key := IPubkey},
+      responder := #{pub_key := _RPubkey}} = proplists:get_value(participants, Cfg),
+    #{initiator := IConnPid,
+      responder := RConnPid} = proplists:get_value(channel_clients, Cfg),
+    Pids = [IConnPid, RConnPid],
+    AllEvents = [sign, info, get, error, update],
+    ok = register_channel_events(AllEvents, Pids),
+    {OraclePubkey, _OraclePrivkey} = ?config(oracle_owner, Cfg),
+    OracleAddress = aeser_api_encoder:encode(oracle_pubkey, OraclePubkey),
+    {UpdateVolley, _ReverseUpdateVolley} =
+        aehttp_sc_SUITE:produce_update_volley_funs(initiator, Cfg),
+    Args =
+        [OracleAddress,
+        add_quotes(City),
+        _PricePerGen = integer_to_list(PricePerGeneration),
+        _Compensation = integer_to_list(Reward)],
+    {UnsignedStateTx, _Updates, _Code} =
+        aehttp_sc_SUITE:create_contract_(channel_whitepaper_example,
+                                          Args, IConnPid,
+                                          UpdateVolley, Cfg),
+    ContractPubkey = contract_id_from_create_update(IPubkey, UnsignedStateTx),
+    ContractName = channel_whitepaper_example,
+    {ok, <<"ok">>} =
+        call_offchain_contract(initiator, ContractPubkey,
+                              ContractName, "deposit", [], Reward, Cfg),
+    {ok, <<"ok">>} =
+        call_offchain_contract(responder, ContractPubkey,
+                              ContractName, "insure",
+                              [],
+                              PricePerGeneration * Generations, Cfg),
+    {ok, [InsuredFrom, InsuredTo]} =
+        call_offchain_contract(responder, ContractPubkey,
+                              ContractName, "get_insurance_range", [], 0, Cfg),
+    {InsuredFrom, InsuredTo, Generations} =
+        {InsuredFrom, InsuredFrom + Generations, Generations},
+    mine_blocks(10),
+    %% test assumes that this is in the valid range
+    ct:log("InsuredFrom: ~p, HailstormHeight: ~p, InsuredTo: ~p",
+            [InsuredFrom, HailstormHeight, InsuredTo]),
+    true = HailstormHeight >= InsuredFrom andalso HailstormHeight =< InsuredTo,
+    EncQueryId = aeser_api_encoder:encode(oracle_query_id, QueryId),
+    {revert, <<"service_provider">>} =
+        call_offchain_contract(initiator, ContractPubkey,
+                              ContractName, "claim_insurance", [EncQueryId], 0, Cfg),
+    aehttp_sc_SUITE:sc_ws_close_(Cfg),
+    ok = unregister_channel_events(AllEvents, Pids),
+    ok.
+
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %% internal helper funs

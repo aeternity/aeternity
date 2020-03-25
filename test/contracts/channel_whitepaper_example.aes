@@ -24,7 +24,7 @@ contract ChannelWhitepaperExample =
       active_to       = 0
       }
 
-  stateful payable entrypoint insure(generations: int) =
+  stateful payable entrypoint insure() =
     if (Call.caller == Contract.creator)
       abort("service_provider")
     if (Contract.balance + Call.value < state.compensation)
@@ -55,21 +55,20 @@ contract ChannelWhitepaperExample =
     (state.active_from, state.active_to)
 
   stateful payable entrypoint claim_insurance(q: query_id) =
+    if (Call.caller == Contract.creator)
+      abort("service_provider")
     switch(Oracle.get_answer(state.oracle, q))
       None         =>
         abort("no_response")
       Some(was_there_hailstorm) =>
         let (city, generation) = Oracle.get_question(state.oracle, q)
-        let is_in_range = generation >= state.active_from && generation =< state.active_to
-        if (city == state.city)
-          if (is_in_range)
-            if (was_there_hailstorm)
-              Chain.spend(Call.caller, state.compensation)
-              "ok"
-            else
-              abort("different_response")
-          else
-            abort("not_in_insurance_range")
-        else
+        if (city != state.city)
           abort("different_city")
+        let is_in_range = generation >= state.active_from && generation =< state.active_to
+        if (is_in_range == false)
+          abort("not_in_insurance_range")
+        if (was_there_hailstorm == false)
+          abort("different_response")
+        Chain.spend(Call.caller, state.compensation)
+        "ok"
 
