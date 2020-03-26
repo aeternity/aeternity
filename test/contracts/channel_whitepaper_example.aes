@@ -47,14 +47,14 @@ contract ChannelWhitepaperExample =
         abort("not_enough_compensation")
     Chain.spend(Contract.creator, amount)
 
-  stateful payable entrypoint deposit() =
+  payable entrypoint deposit() =
     if (Call.caller != Contract.creator)
       abort("not_service_provider")
 
   entrypoint get_insurance_range() =
     (state.active_from, state.active_to)
 
-  stateful payable entrypoint claim_insurance(q: query_id) =
+  stateful entrypoint claim_insurance(q: query_id) =
     if (Call.caller == Contract.creator)
       abort("service_provider")
     switch(Oracle.get_answer(state.oracle, q))
