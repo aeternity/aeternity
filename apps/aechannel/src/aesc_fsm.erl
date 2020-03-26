@@ -1365,7 +1365,6 @@ send_open_msg(#data{ opts    = Opts
            },
     aesc_session_noise:channel_open(Sn, Msg),
     Data#data{ channel_id   = ChannelPubKey
-             , temp_chan_id = ChannelPubKey
              , log = log_msg(snd, ?CH_OPEN, Msg, Log) }.
 
 check_open_msg(#{ chain_hash           := ChainHash
@@ -1390,7 +1389,6 @@ check_open_msg(#{ chain_hash           := ChainHash
                      , responder_amount   => ResponderAmt
                      , channel_reserve    => ChanReserve},
             {ok, Data#data{ channel_id     = ChanId
-                          , temp_chan_id   = ChanId
                           , opts           = Opts1
                           , peer_connected = true
                           , log            = log_msg(rcv, ?CH_OPEN, Msg, Log) }};
@@ -2177,7 +2175,7 @@ both_accounts(Data) ->
     [other_account(Data),
      my_account(Data)].
 
-send_funding_created_msg(SignedTx, #data{ temp_chan_id = Ch
+send_funding_created_msg(SignedTx, #data{ channel_id = Ch
                                         , session    = Sn
                                         , op = #op_ack{ tag  = create_tx
                                                       , data = OpData}} = Data) ->
@@ -2195,7 +2193,7 @@ check_funding_created_msg(#{ temporary_channel_id := ChanId
                            , data                 := #{ tx      := TxBin
                                                       , updates := UpdatesBin }} = Msg
                            , #data{ state = State
-                                  , temp_chan_id = ChanId } = Data) ->
+                                  , channel_id = ChanId } = Data) ->
     Updates = [aesc_offchain_update:deserialize(U) || U <- UpdatesBin],
     try SignedTx = aetx_sign:deserialize_from_binary(TxBin),
         Checks =
@@ -4708,7 +4706,6 @@ handle_call_(_St, _Req, From, D) ->
 
 -ifdef(TEST).
 get_state_implementation(From, #data{ opts  = Opts
-                                    , temp_chan_id   = TmpChanId
                                     , channel_status = Status
                                     , state = State } = D) ->
     #{initiator := Initiator, responder := Responder} = Opts,
@@ -4734,8 +4731,7 @@ get_state_implementation(From, #data{ opts  = Opts
         _ -> error({inconsistency, state_hash})
     end,
     Result =
-        #{ temporary_channel_id => TmpChanId
-         , channel_id     => ChanId
+        #{ channel_id     => ChanId
          , initiator      => Initiator
          , responder      => Responder
          , init_amt       => IAmt
