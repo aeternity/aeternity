@@ -2445,7 +2445,7 @@ responder_instance_(Fsm, Spec, R0, Parent, Debug) ->
     FsmId = receive_fsm_id(dev1, R, Debug),
     {ok, ChOpen} = receive_from_fsm(info, R, channel_open, ?LONG_TIMEOUT, Debug),
     ?LOG(Debug, "Got ChOpen: ~p~nSpec = ~p", [ChOpen, Spec]),
-    {ok, #{ temporary_channel_id := TmpChanId }} = rpc(dev1, aesc_fsm, get_state, [Fsm]),
+    {ok, #{ channel_id := TmpChanId }} = rpc(dev1, aesc_fsm, get_state, [Fsm]),
     ?LOG(Debug, "TmpChanId = ~p", [TmpChanId]),
     R1 = R#{ proxy => self(), parent => Parent, fsm_id => FsmId },
     gproc:reg(GprocR = {n,l,{?MODULE,TmpChanId,responder}}, #{ r => R1 }),
@@ -2464,7 +2464,7 @@ initiator_instance_(Fsm, Spec, I0, Parent, Debug) ->
     FsmId = receive_fsm_id(dev1, I, Debug),
     {ok, ChAccept} = receive_from_fsm(info, I, channel_accept, ?LONG_TIMEOUT, Debug),
     ?LOG(Debug, "Got ChAccept: ~p~nSpec = ~p", [ChAccept, Spec]),
-    {ok, #{ temporary_channel_id := TmpChanId }} = rpc(dev1, aesc_fsm, get_state, [Fsm]),
+    {ok, #{ channel_id := TmpChanId }} = rpc(dev1, aesc_fsm, get_state, [Fsm]),
     ?LOG(Debug, "TmpChanId = ~p", [TmpChanId]),
     I1 = I#{ proxy => self(), fsm_id => FsmId },
     gproc:reg(GprocI = {n,l,{?MODULE,TmpChanId,initiator}}, #{ i => I1

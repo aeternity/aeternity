@@ -152,7 +152,6 @@
               , opts                            :: map()
               , fsm_id_wrapper                  :: undefined | aesc_fsm_id:wrapper()
               , channel_id                      :: undefined | binary()
-              , temp_chan_id                    :: undefined | binary()
               , on_chain_id                     :: undefined | binary()
               , create_tx                       :: undefined | any()
               , watcher_registered = false      :: boolean()
