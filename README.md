@@ -62,6 +62,28 @@ docker run -p 3013:3013 -p 3015:3015 \
     aeternity/aeternity
 ```
 
+#### Restore from snapshot
+
+To speedup the initial blockchain synchronization the node database can be restored from a snapshot following the below steps:
+
+* delete the contents of the database if the node has been started already
+* download the database snapshot
+* verify if the snapshot checksum match the downloaded file
+* unarchive the database snapshot
+
+**Note that the docker container must be stopped before replacing the database**
+
+The following snippet can be used to replace the current database with the latest mainnet snapshot assuming the database path is ` ~/.aeternity/maindb`:
+
+```bash
+rm -rf ~/.aeternity/maindb/
+curl -o ~/.aeternity/mnesia_main_v-1_latest.tgz https://aeternity-database-backups.s3.eu-central-1.amazonaws.com/mnesia_main_v-1_latest.tgz
+CHECKSUM=$(curl https://aeternity-database-backups.s3.eu-central-1.amazonaws.com/mnesia_main_v-1_latest.tgz.md5)
+diff -qs <(echo $CHECKSUM) <(openssl md5 -r ~/.aeternity/mnesia_main_v-1_latest.tgz | awk '{ print $1; }')
+test $? -eq 0 && tar -xzf ~/.aeternity/mnesia_main_v-1_latest.tgz -C ~/.aeternity/maindb/
+```
+
+
 ## Additional resources
 
 * [Threat Model](https://github.com/aeternity/aetmodel/blob/master/ThreatModel.md)
