@@ -46,12 +46,10 @@ contract ChannelWhitepaperExample =
       if (Contract.balance - amount < state.compensation)
         abort("not_enough_compensation")
     Chain.spend(Contract.creator, amount)
-    ()
 
   stateful payable entrypoint deposit() =
     if (Call.caller != Contract.creator)
       abort("not_service_provider")
-    ()
 
   entrypoint get_insurance_range() =
     (state.active_from, state.active_to)
@@ -72,5 +70,4 @@ contract ChannelWhitepaperExample =
         if (was_there_hailstorm == false)
           abort("different_response")
         Chain.spend(Call.caller, state.compensation)
-        ()
 
