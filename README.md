@@ -64,7 +64,7 @@ docker run -p 3013:3013 -p 3015:3015 \
 
 #### Restore from snapshot
 
-To speedup the initial blockchain syncronization the node database can be restored from a snapshot following the below steps:
+To speedup the initial blockchain synchronization the node database can be restored from a snapshot following the below steps:
 
 * delete the contents of the database if the node has been started already
 * download the database snapshot
@@ -73,7 +73,7 @@ To speedup the initial blockchain syncronization the node database can be restor
 
 **Note that the docker container must be stopped before replacing the database**
 
-The following snipped can be used to delete current database and replace it the latest mainnet database snapshot and restore it assuming the database path is ` ~/.aeternity/maindb`:
+The following snippet can be used to replace the current database with the latest mainnet snapshot assuming the database path is ` ~/.aeternity/maindb`:
 
 ```bash
 rm -rf ~/.aeternity/maindb/
