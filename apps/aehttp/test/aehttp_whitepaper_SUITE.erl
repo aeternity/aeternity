@@ -28,7 +28,8 @@
          claim_insurance_for_different_city/1,
          claim_insurance_outside_of_range/1,
          claim_insurance_different_response/1,
-         claim_insurance_insurer/1
+         claim_insurance_insurer/1,
+         can_not_claim_twice/1
         ]).
 
 -include_lib("stdlib/include/assert.hrl").
@@ -77,7 +78,8 @@ groups() ->
         claim_insurance_for_different_city,
         claim_insurance_outside_of_range,
         claim_insurance_different_response,
-        claim_insurance_insurer
+        claim_insurance_insurer,
+        can_not_claim_twice
       ]}
     ].
 
@@ -1052,6 +1054,68 @@ claim_insurance_insurer(Cfg0) ->
     EncQueryId = aeser_api_encoder:encode(oracle_query_id, QueryId),
     {revert, <<"service_provider">>} =
         call_offchain_contract(initiator, ContractPubkey,
+                              ContractName, "claim_insurance", [EncQueryId], 0, Cfg),
+    aehttp_sc_SUITE:sc_ws_close_(Cfg),
+    ok = unregister_channel_events(AllEvents, Pids),
+    ok.
+
+can_not_claim_twice(Cfg0) ->
+    City = "Sofia, Bulgaria",
+    Reward = 10000,
+    PricePerGeneration = 2,
+    Generations = 1000,
+    HailstormHeight = current_height() + 50,
+    QueryId = ask_oracle_service(City, HailstormHeight, Cfg0),
+    answer_oracle_query(QueryId, true, Cfg0),
+    Cfg = channel_open(Cfg0),
+    #{initiator := #{pub_key := IPubkey},
+      responder := #{pub_key := _RPubkey}} = proplists:get_value(participants, Cfg),
+    #{initiator := IConnPid,
+      responder := RConnPid} = proplists:get_value(channel_clients, Cfg),
+    Pids = [IConnPid, RConnPid],
+    AllEvents = [sign, info, get, error, update],
+    ok = register_channel_events(AllEvents, Pids),
+    {OraclePubkey, _OraclePrivkey} = ?config(oracle_owner, Cfg),
+    OracleAddress = aeser_api_encoder:encode(oracle_pubkey, OraclePubkey),
+    {UpdateVolley, _ReverseUpdateVolley} =
+        aehttp_sc_SUITE:produce_update_volley_funs(initiator, Cfg),
+    Args =
+        [OracleAddress,
+        add_quotes(City),
+        _PricePerGen = integer_to_list(PricePerGeneration),
+        _Compensation = integer_to_list(Reward)],
+    {UnsignedStateTx, _Updates, _Code} =
+        aehttp_sc_SUITE:create_contract_(channel_whitepaper_example,
+                                          Args, IConnPid,
+                                          UpdateVolley, Cfg),
+    ContractPubkey = contract_id_from_create_update(IPubkey, UnsignedStateTx),
+    ContractName = channel_whitepaper_example,
+    {ok, []} =
+        call_offchain_contract(initiator, ContractPubkey,
+                              ContractName, "deposit", [], Reward, Cfg),
+    {ok, []} =
+        call_offchain_contract(responder, ContractPubkey,
+                              ContractName, "insure",
+                              [],
+                              PricePerGeneration * Generations, Cfg),
+    {ok, [InsuredFrom, InsuredTo]} =
+        call_offchain_contract(responder, ContractPubkey,
+                              ContractName, "get_insurance_range", [], 0, Cfg),
+    {InsuredFrom, InsuredTo, Generations} =
+        {InsuredFrom, InsuredFrom + Generations, Generations},
+    mine_blocks(10),
+    %% test assumes that this is in the valid range
+    ct:log("InsuredFrom: ~p, HailstormHeight: ~p, InsuredTo: ~p",
+            [InsuredFrom, HailstormHeight, InsuredTo]),
+    true = HailstormHeight >= InsuredFrom andalso HailstormHeight =< InsuredTo,
+    EncQueryId = aeser_api_encoder:encode(oracle_query_id, QueryId),
+    {ok, []} =
+        call_offchain_contract(responder, ContractPubkey,
+                              ContractName, "claim_insurance", [EncQueryId], 0, Cfg),
+    %% at this point the insure must be closed so calling it a second time is
+    %% bound to fail
+    {revert, <<"not_in_insurance_range">>} =
+        call_offchain_contract(responder, ContractPubkey,
                               ContractName, "claim_insurance", [EncQueryId], 0, Cfg),
     aehttp_sc_SUITE:sc_ws_close_(Cfg),
     ok = unregister_channel_events(AllEvents, Pids),

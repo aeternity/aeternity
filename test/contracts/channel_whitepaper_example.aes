@@ -70,4 +70,6 @@ contract ChannelWhitepaperExample =
         if (was_there_hailstorm == false)
           abort("different_response")
         Chain.spend(Call.caller, state.compensation)
+        put(state{ active_from = 0,
+                   active_to = 0})
 
