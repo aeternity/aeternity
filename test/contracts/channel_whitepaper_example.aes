@@ -1,0 +1,66 @@
+// This smart contract is a showcase for off-chain smart contract that uses
+// on-chain oracle. It is part of the whitepaper. If any changes are required
+// please update the whitepaper accordingly
+contract ChannelWhitepaperExample =
+
+  type city_t       = string
+  type gen_height_t = int
+  type query_t      = city_t * gen_height_t
+  type answer_t     = bool
+  type oracle_id    = oracle(query_t, answer_t)
+  type query_id     = oracle_query(query_t, answer_t)
+
+  record state = { oracle          : oracle_id,
+                   city            : city_t,
+                   active_from     : gen_height_t,
+                   active_to       : gen_height_t,
+                   price_per_gen   : int,
+                   compensation    : int
+                   }
+
+  entrypoint init(oracle : oracle_id, city: city_t, price_per_gen: int, compensation: int) : state =
+    { oracle          = oracle,
+      city            = city,
+      price_per_gen   = price_per_gen,
+      compensation    = compensation,
+      active_from     = 0,
+      active_to       = 0
+      }
+
+  stateful payable entrypoint insure() =
+    require(Call.caller != Contract.creator, "service_provider")
+    require(Contract.balance + Call.value >= state.compensation, "not_enough_compensation")
+    let period : int = Call.value / state.price_per_gen
+    if (Chain.block_height >= state.active_to) // expired, renew
+      put(state{ active_from = Chain.block_height,
+                 active_to = Chain.block_height + period})
+    else // not expired, extend
+      put(state{ active_to = state.active_to + period })
+
+  stateful entrypoint withdraw(amount: int) =
+    require(Call.caller == Contract.creator, "not_service_provider")
+    if (Chain.block_height =< state.active_to) // insured
+      require(Contract.balance - amount >= state.compensation, "not_enough_compensation")
+    Chain.spend(Contract.creator, amount)
+
+  payable entrypoint deposit() =
+    require(Call.caller == Contract.creator, "not_service_provider")
+
+  entrypoint get_insurance_range() =
+    (state.active_from, state.active_to)
+
+  stateful entrypoint claim_insurance(q: query_id) =
+    require(Call.caller != Contract.creator, "service_provider")
+    switch(Oracle.get_answer(state.oracle, q))
+      None         =>
+        abort("no_response")
+      Some(was_there_hailstorm) =>
+        let (city, generation) = Oracle.get_question(state.oracle, q)
+        require(city == state.city, "different_city")
+        let is_in_range = generation >= state.active_from && generation =< state.active_to
+        require(is_in_range, "not_in_insurance_range")
+        require(was_there_hailstorm, "different_response")
+        Chain.spend(Call.caller, state.compensation)
+        put(state{ active_from = 0,
+                   active_to = 0})
+

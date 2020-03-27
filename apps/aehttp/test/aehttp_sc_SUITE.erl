@@ -90,6 +90,19 @@
     sc_ws_abort_settle/1,
     sc_ws_can_not_abort_while_open/1
    ]).
+-export([sc_ws_open_/4,
+         sc_ws_close_/1,
+         start_node/1,
+         stop_node/1,
+         sign_post_mine/2,
+         sign_and_post_tx/1,
+         produce_update_volley_funs/2,
+         with_registered_events/3,
+         create_contract_/5,
+         call_a_contract_/9,
+         wait_for_channel_event/3,
+         wait_for_channel_event/4,
+         reset_participants/2]).
 
 -include_lib("stdlib/include/assert.hrl").
 -include_lib("common_test/include/ct.hrl").
@@ -676,6 +689,9 @@ sc_ws_open_(Config, Opts) ->
     sc_ws_open_(Config, Opts, ?DEFAULT_MIN_DEPTH).
 
 sc_ws_open_(Config, ChannelOpts0, MinBlocksToMine) ->
+     sc_ws_open_(Config, ChannelOpts0, MinBlocksToMine, default_dir).
+
+sc_ws_open_(Config, ChannelOpts0, MinBlocksToMine, LogDir) ->
     #{initiator := #{pub_key := IPubkey},
       responder := #{pub_key := RPubkey}} = proplists:get_value(participants, Config),
     TestPings = proplists:get_value(ping_pong, Config, false),
@@ -703,11 +719,14 @@ sc_ws_open_(Config, ChannelOpts0, MinBlocksToMine) ->
     %% We need to register for some events as soon as possible - otherwise a race may occur where
     %% some fsm messages are missed
     {ok, IConnPid, IFsmId} = channel_ws_start(initiator,
-                                           maps:put(host, <<"localhost">>, IChanOpts), Config, TestEvents),
+                                              maps:put(host, <<"localhost">>, IChanOpts),
+                                              Config, TestEvents, LogDir),
+
     ct:log("initiator spawned", []),
     OptionallyPingPong(IConnPid),
 
-    {ok, RConnPid, RFsmId} = channel_ws_start(responder, RChanOpts, Config, TestEvents),
+    {ok, RConnPid, RFsmId} = channel_ws_start(responder, RChanOpts, Config,
+                                              TestEvents, LogDir),
     ct:log("responder spawned", []),
     OptionallyPingPong(RConnPid),
 
@@ -2489,8 +2508,11 @@ contract_id_from_create_update(Owner, OffchainTx) ->
 
 
 create_contract_(TestName, SenderConnPid, UpdateVolley, Config) ->
-    EncodedCode = contract_byte_code(TestName),
     InitArgument = contract_create_init_arg(TestName),
+    create_contract_(TestName, InitArgument, SenderConnPid, UpdateVolley, Config).
+
+create_contract_(TestName, InitArgument, SenderConnPid, UpdateVolley, Config) ->
+    EncodedCode = contract_byte_code(TestName),
     {ok, EncodedInitData} = encode_call_data(TestName, "init", InitArgument),
 
     ws_send_tagged(SenderConnPid, <<"channels.update.new_contract">>,
@@ -2630,6 +2652,19 @@ call_a_contract(Function, Argument, ContractPubKey, Contract, SenderConnPid,
     {ok, _, #{<<"reason">> := <<"broken_encoding: contracts">>}} =
         wait_for_channel_event(SenderConnPid, error, Config),
     % correct call
+    ws_send_tagged(SenderConnPid, <<"channels.update.call_contract">>,
+                   CallOpts, Config),
+    #{tx := _UnsignedStateTx, updates := _Updates} = UpdateVolley().
+
+call_a_contract_(Function, Argument, ContractPubKey, Contract, SenderConnPid,
+                UpdateVolley, Amount, Config, XOpts) ->
+    {ok, EncodedMainData} = encode_call_data(Contract, Function, Argument),
+    CallOpts0 =
+        XOpts#{ contract_id => aeser_api_encoder:encode(contract_pubkey, ContractPubKey)
+              , abi_version => aect_test_utils:abi_version()
+              , amount      => Amount
+              , call_data   => EncodedMainData },
+    CallOpts = maybe_include_meta(CallOpts0, Config),
     ws_send_tagged(SenderConnPid, <<"channels.update.call_contract">>,
                    CallOpts, Config),
     #{tx := _UnsignedStateTx, updates := _Updates} = UpdateVolley().
@@ -3831,18 +3866,27 @@ channel_ws_host_and_port() ->
                 aehttp, [channel, websocket, port], 8045]),
     {"localhost", Port}.
 
--spec channel_ws_start(initiator | responder, map(), list()) -> {ok, pid(), binary()} | {error, term()}.
 channel_ws_start(Role, Opts, Config) ->
     channel_ws_start(Role, Opts, Config, []).
 
--spec channel_ws_start(initiator | responder, map(), list(), list(atom())) -> {ok, pid(), binary()} | {error, term()}.
-channel_ws_start(Role, Opts, Config, Events) ->
+-spec channel_ws_start(initiator | responder, map(), list(), list(atom())) ->
+    {ok, pid(), binary()} | {error, term()}.
+ channel_ws_start(Role, Opts, Config, Events) ->
+    LogFile = docs_log_file(Config),
+    channel_ws_start(Role, Opts, Config, Events, LogFile).
+
+-spec channel_ws_start(initiator | responder, map(), default_dir | list(), list(atom()),
+                       string()) ->
+    {ok, pid(), binary()} | {error, term()}.
+channel_ws_start(Role, Opts, Config, Events, default_dir) ->
+    LogFile = docs_log_file(Config),
+    channel_ws_start(Role, Opts, Config, Events, LogFile);
+channel_ws_start(Role, Opts, Config, Events, LogFile) when is_list(LogFile) ->
     EventsSet = sets:from_list(Events),
     ReqEventsSet = sets:from_list([info, closed, error]),
     RegisterEvents = sets:to_list(sets:union(EventsSet, ReqEventsSet)),
     UnregisterEvents = sets:to_list(sets:subtract(ReqEventsSet, EventsSet)),
 
-    LogFile = docs_log_file(Config),
     Opts1 = Opts#{ {int,logfile} => LogFile },
     Opts2 = maybe_add_fsm_id(Role, Opts1),
     {Host, Port} = channel_ws_host_and_port(),
