@@ -28,10 +28,8 @@ contract ChannelWhitepaperExample =
       }
 
   stateful payable entrypoint insure() =
-    if (Call.caller == Contract.creator)
-      abort("service_provider")
-    if (Contract.balance + Call.value < state.compensation)
-      abort("not_enough_compensation")
+    require(Call.caller != Contract.creator, "service_provider")
+    require(Contract.balance + Call.value >= state.compensation, "not_enough_compensation")
     let period : int = Call.value / state.price_per_gen
     if (Chain.block_height >= state.active_to) // expired, renew
       put(state{ active_from = Chain.block_height,
@@ -40,35 +38,28 @@ contract ChannelWhitepaperExample =
       put(state{ active_to = state.active_to + period })
 
   stateful entrypoint withdraw(amount: int) =
-    if (Call.caller != Contract.creator)
-      abort("not_service_provider")
+    require(Call.caller == Contract.creator, "not_service_provider")
     if (Chain.block_height =< state.active_to) // insured
-      if (Contract.balance - amount < state.compensation)
-        abort("not_enough_compensation")
+      require(Contract.balance - amount >= state.compensation, "not_enough_compensation")
     Chain.spend(Contract.creator, amount)
 
   payable entrypoint deposit() =
-    if (Call.caller != Contract.creator)
-      abort("not_service_provider")
+    require(Call.caller == Contract.creator, "not_service_provider")
 
   entrypoint get_insurance_range() =
     (state.active_from, state.active_to)
 
   stateful entrypoint claim_insurance(q: query_id) =
-    if (Call.caller == Contract.creator)
-      abort("service_provider")
+    require(Call.caller != Contract.creator, "service_provider")
     switch(Oracle.get_answer(state.oracle, q))
       None         =>
         abort("no_response")
       Some(was_there_hailstorm) =>
         let (city, generation) = Oracle.get_question(state.oracle, q)
-        if (city != state.city)
-          abort("different_city")
+        require(city == state.city, "different_city")
         let is_in_range = generation >= state.active_from && generation =< state.active_to
-        if (is_in_range == false)
-          abort("not_in_insurance_range")
-        if (was_there_hailstorm == false)
-          abort("different_response")
+        require(is_in_range, "not_in_insurance_range")
+        require(was_there_hailstorm, "different_response")
         Chain.spend(Call.caller, state.compensation)
         put(state{ active_from = 0,
                    active_to = 0})

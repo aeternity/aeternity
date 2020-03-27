@@ -718,23 +718,15 @@ sc_ws_open_(Config, ChannelOpts0, MinBlocksToMine, LogDir) ->
            "RChanOpts = ~p~n", [IChanOpts, RChanOpts]),
     %% We need to register for some events as soon as possible - otherwise a race may occur where
     %% some fsm messages are missed
-    Spawn =
-        fun(Who, SpawnOpts) ->
-            case LogDir of
-                default_dir ->
-                    channel_ws_start(Who, SpawnOpts, Config, TestEvents);
-                LogDir when is_list(LogDir) ->
-                    channel_ws_start(Who, SpawnOpts, Config, TestEvents,
-                                    LogDir)
-            end
-        end,
-    {ok, IConnPid, IFsmId} = Spawn(initiator,
-                                   maps:put(host, <<"localhost">>, IChanOpts)),
+    {ok, IConnPid, IFsmId} = channel_ws_start(initiator,
+                                              maps:put(host, <<"localhost">>, IChanOpts),
+                                              Config, TestEvents, LogDir),
 
     ct:log("initiator spawned", []),
     OptionallyPingPong(IConnPid),
 
-    {ok, RConnPid, RFsmId} = Spawn(responder, RChanOpts),
+    {ok, RConnPid, RFsmId} = channel_ws_start(responder, RChanOpts, Config,
+                                              TestEvents, LogDir),
     ct:log("responder spawned", []),
     OptionallyPingPong(RConnPid),
 
@@ -3883,10 +3875,13 @@ channel_ws_start(Role, Opts, Config) ->
     LogFile = docs_log_file(Config),
     channel_ws_start(Role, Opts, Config, Events, LogFile).
 
--spec channel_ws_start(initiator | responder, map(), list(), list(atom()),
+-spec channel_ws_start(initiator | responder, map(), default_dir | list(), list(atom()),
                        string()) ->
     {ok, pid(), binary()} | {error, term()}.
-channel_ws_start(Role, Opts, Config, Events, LogFile) ->
+channel_ws_start(Role, Opts, Config, Events, default_dir) ->
+    LogFile = docs_log_file(Config),
+    channel_ws_start(Role, Opts, Config, Events, LogFile);
+channel_ws_start(Role, Opts, Config, Events, LogFile) when is_list(LogFile) ->
     EventsSet = sets:from_list(Events),
     ReqEventsSet = sets:from_list([info, closed, error]),
     RegisterEvents = sets:to_list(sets:union(EventsSet, ReqEventsSet)),
