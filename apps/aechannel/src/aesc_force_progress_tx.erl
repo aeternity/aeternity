@@ -46,6 +46,12 @@
          offchain_trees/1
         ]).
 
+-ifdef(TEST).
+-export([ set_payload/2
+        , set_nonce/2
+        ]).
+-endif.
+
 -include_lib("aecontract/include/hard_forks.hrl").
 %%%===================================================================
 %%% Types
@@ -366,3 +372,10 @@ update(ForceProgress) ->
 offchain_trees(#channel_force_progress_tx{offchain_trees = Trees}) ->
     Trees.
 
+-ifdef(TEST).
+set_payload(#channel_force_progress_tx{} = FP, Payload) when is_binary(Payload) ->
+    FP#channel_force_progress_tx{payload = Payload}.
+
+set_nonce(#channel_force_progress_tx{} = FP, Nonce) when is_integer(Nonce) ->
+    FP#channel_force_progress_tx{nonce = Nonce}.
+-endif.

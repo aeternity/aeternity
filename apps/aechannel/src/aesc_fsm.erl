@@ -5249,7 +5249,12 @@ process_incoming_forced_progress(FSMState, #{ tx := SignedTx
                                 %% caught in the outer case
                                 %% This clause is left for completeness
                                 lager:debug("Detected a malicious forced progress", []),
-                                report_on_chain_tx(can_slash, SignedTx, D),
+                                Report =
+                                    case aesc_channels:is_active(Channel) of
+                                        true -> can_snapshot;
+                                        false -> can_slash
+                                    end,
+                                report_on_chain_tx(Report, SignedTx, D),
                                 keep_state(D);
                             MissingStateDiff when MissingStateDiff > 1 ->
                                 %% channel_force_progress_tx is based on what
@@ -5263,7 +5268,12 @@ process_incoming_forced_progress(FSMState, #{ tx := SignedTx
                     false ->
                         lager:info("Detected cheating attempt with a force progress based on round ~p while latest FSM round is ~p",
                                    [FPRound - 1, LatestFSMRound]),
-                        report_on_chain_tx(can_slash, SignedTx, D),
+                        Report =
+                            case aesc_channels:is_active(Channel) of
+                                true -> can_snapshot;
+                                false -> can_slash
+                            end,
+                        report_on_chain_tx(Report, SignedTx, D),
                         keep_state(D)
                 end
             ?CATCH_LOG(_E)

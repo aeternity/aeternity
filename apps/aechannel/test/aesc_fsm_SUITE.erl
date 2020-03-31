@@ -64,6 +64,7 @@
         , force_progress_with_failed_onchain/1
         , force_progress_on_force_progress/1
         , force_progress_followed_by_update/1
+        , force_progress_triggers_snapshot/1
         , force_progress_triggers_slash/1
         , change_config_get_history/1
         , multiple_channels/1
@@ -253,6 +254,7 @@ groups() ->
       , force_progress_based_on_withdrawal
       , force_progress_on_force_progress
       , force_progress_followed_by_update
+      , force_progress_triggers_snapshot
       , force_progress_triggers_slash
       ]}
     ].
@@ -4483,6 +4485,76 @@ settle_with_failed_onchain(Cfg) ->
 
 force_progress_triggers_slash(Cfg) ->
     Debug = get_debug(Cfg),
+    #{ i := #{ fsm := FsmI
+             , channel_id := ChannelId } = I
+     , r := #{} = R
+     , spec := #{ initiator := PubI
+                , responder := _PubR } = Spec} = create_channel_([?SLOGAN|Cfg]),
+    ?LOG(Debug, "I = ~p", [I]),
+    ?LOG(Debug, "R = ~p", [R]),
+    {I1, R1, ContractPubkey} = create_contract(counter, ["42"], 10, I, R, Cfg),
+    {I2, R2} = call_contract(ContractPubkey, counter, "tick", [], 10, I1, R1, Cfg),
+
+    {ok, State} = rpc(dev1, aesc_fsm, get_offchain_state, [FsmI]),
+    {_, SignedTx} = aesc_offchain_state:get_latest_signed_tx(State),
+    {ok, Tx} = close_solo_tx(I1, aetx_sign:serialize_to_binary(SignedTx)),
+    {SignedCloseSoloTx, I3} = sign_tx(I2, Tx, Cfg),
+
+    %% create a force progress but abort it; still keep the not yet signed
+    %% transaction
+    trigger_force_progress(ContractPubkey, counter, "tick", [], 10, R2),
+    ErrorCode = 123,
+    {ok, UnSignedFP0} = abort_signing_request(force_progress_tx, R2, ErrorCode, ?TIMEOUT, Debug),
+    %% this force progress is later on to be based on the close tx we've
+    %% prepared. Since the FP is to rely on on-chain data, it must have an
+    %% empty payload
+    AetxFP0 = aetx_sign:tx(UnSignedFP0),
+    {aesc_force_progress_tx, FP0} = aetx:specialize_callback(AetxFP0),
+    FP = aesc_force_progress_tx:set_payload(FP0, <<>>),
+    AetxFP = aetx:new(aesc_force_progress_tx, FP),
+    
+
+    {ok, _} = receive_from_fsm(info, R2, fun aborted_update/1, ?TIMEOUT, Debug),
+
+    %% make an off-chain update
+    {I4, R3} = update_volley(I3, R2, Cfg),
+    %% at this point, the FP has a lower round than the last on-chain
+
+    %% make the close solo on-chain
+    ok = rpc(dev1, aec_tx_pool, push, [SignedCloseSoloTx]),
+    TxHash = aeser_api_encoder:encode(tx_hash, aetx_sign:hash(SignedCloseSoloTx)),
+    mine_blocks_until_txs_on_chain(dev1, [TxHash]),
+    LockPeriod = maps:get(lock_period, Spec),
+    UnlockHeight = current_height(dev1) + LockPeriod,
+    ?LOG(Debug, "Expected height at which settle is allowed = ~p",
+         [UnlockHeight]),
+
+    %% both participants detect the close solo
+    SlashTx = await_on_chain_report(I4, #{info => can_slash}, ?TIMEOUT),
+    SlashTx = await_on_chain_report(R3, #{info => can_slash}, ?TIMEOUT),
+    {ok,_} = receive_from_fsm(info, I4, fun closing/1, ?TIMEOUT, Debug),
+    {ok,_} = receive_from_fsm(info, R3, fun closing/1, ?TIMEOUT, Debug),
+
+    {SignedFP, R4} = sign_tx(R3, AetxFP, Cfg),
+    ok = rpc(dev1, aec_tx_pool, push, [SignedFP]),
+    wait_for_signed_transaction_in_block(dev1, SignedFP, Debug),
+
+    SlashTx = await_on_chain_report(I4, #{info => can_slash}, ?TIMEOUT),
+    SlashTx = await_on_chain_report(R4, #{info => can_slash}, ?TIMEOUT),
+    check_info(20),
+    ok = rpc(dev1, aesc_fsm, slash, [FsmI, #{}]),
+    {_, SignedSlashTx} = await_signing_request(slash_tx, I4, Cfg),
+    SlashTxHash = aeser_api_encoder:encode(tx_hash, aetx_sign:hash(SignedSlashTx)),
+    mine_blocks_until_txs_on_chain(dev1, [SlashTxHash]),
+    mine_blocks(dev1, LockPeriod),
+    check_info(20),
+    settle_(maps:get(minimum_depth, Spec), I4, R3, Debug, Cfg),
+    check_info(20),
+    assert_empty_msgq(true),
+    ok.
+
+force_progress_triggers_snapshot(Cfg) ->
+    Debug = get_debug(Cfg),
     #{ i := #{ fsm := _FsmI
              , channel_id := ChannelId } = I
      , r := #{} = R
@@ -4500,10 +4572,18 @@ force_progress_triggers_slash(Cfg) ->
     {ok, UnSignedFP} = abort_signing_request(force_progress_tx, I2, ErrorCode, ?TIMEOUT, Debug),
     {ok, _} = receive_from_fsm(info, I1, fun aborted_update/1, ?TIMEOUT, Debug),
 
+    %% make an off-chain update
     {I3, R3} = update_volley(I2, R2, Cfg),
+    %% at this point, the FP has a lower round than the last on-chain
+    {SignedFP, I4} = co_sign_tx(I3, UnSignedFP, Cfg),
+    ok = rpc(dev1, aec_tx_pool, push, [SignedFP]),
+    wait_for_signed_transaction_in_block(dev1, SignedFP, Debug),
 
+    SlashTx = await_on_chain_report(I4, #{info => can_snapshot}, ?TIMEOUT),
+    SlashTx = await_on_chain_report(R3, #{info => can_snapshot}, ?TIMEOUT),
+    {ok, I5, R4} = snapshot_solo_(I4, R3, #{}, Cfg),
     check_info(20),
-    shutdown_(I3, R3, Cfg),
+    shutdown_(I5, R4, Cfg),
     ok.
 
 force_progress_followed_by_update(Cfg) ->
