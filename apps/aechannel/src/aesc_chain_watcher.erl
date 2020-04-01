@@ -990,8 +990,7 @@ check_req(#req{ mode = tx_hash, client = Client
             {R#req{info = I#{check_at_height => NextHeight}}, C2}
     end.
 
-next_height_for_min_depth(undefined, TopHeight, MinDepth) ->
-    %% TopHeight + MinDepth;
+next_height_for_min_depth(undefined, TopHeight, _MinDepth) ->
     TopHeight + 1;
 next_height_for_min_depth(Depth, TopHeight, MinDepth) when is_integer(Depth) ->
     TopHeight + (MinDepth - Depth).
@@ -1216,11 +1215,13 @@ set_ch_state_at_height(ChId, Height) ->
     end.
 
 chids_changed_since_height(Height) ->
+    %% {} is strictly smaller than any ChId (binary), so the `next()` operation finds
+    %% the first entry AT or above the height of the fork point.
     Res = chids_changed_since_height(ets:next(?T_STATES_AT_HEIGHT, {Height,{}}), Height),
     lager:debug("Res = ~p / Tab = ~p", [Res, ets:tab2list(?T_STATES_AT_HEIGHT)]),
     Res.
 
-chids_changed_since_height({H,ChId} = K, Height) when H > Height ->
+chids_changed_since_height({H,ChId} = K, Height) when H >= Height ->
     [ChId | chids_changed_since_height(ets:next(?T_STATES_AT_HEIGHT, K), Height)];
 chids_changed_since_height(K, _) when is_binary(K) ->
     %% Binaries sort higher than tuples - we're done
