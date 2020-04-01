@@ -160,6 +160,7 @@
               %% we keep the latest operation so we can perform according
               %% checks
               , op = ?NO_OP                   :: latest_op()
+              , chain_op = ?NO_OP             :: latest_chain_op()
               , ongoing_update = false        :: boolean()
               , error_msg_type                :: undefined | error_msg_type()
               , last_reported_update          :: undefined | non_neg_integer()
@@ -268,10 +269,12 @@
                    | #op_sign{}
                    | #op_ack{}
                    | #op_lock{}
-                   | #op_min_depth{}
                    | #op_watch{}
                    | #op_reestablish{}
                    | #op_close{}.
+
+-type latest_chain_op() :: ?NO_OP % no pending op
+                         | #op_min_depth{}.
 
 -define(DEFAULT_FSM_TX_GAS, 20000).
 
