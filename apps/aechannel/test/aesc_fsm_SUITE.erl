@@ -4866,7 +4866,7 @@ force_progress_(ContractPubkey,
     [CallerBal1, OtherBal1, ContractBal1] = get_balances(FsmC, Pubkeys),
     [CallerBal1, OtherBal1, ContractBal1] = get_balances(FsmO, Pubkeys),
 
-    %% check balances are expexted
+    %% check that balances are as expected
     %% NB: this relies on the contract called not spending tokens to any of
     %% the participant's balance and only consuming the Amount
 
@@ -4932,4 +4932,3 @@ snapshot_solo_(#{fsm := FsmI} = I, R, Opts, Cfg) ->
     await_min_depth_reached(I, aetx_sign:hash(SignedTx), channel_snapshot_solo_tx, ?TIMEOUT),
     assert_empty_msgq(Debug),
     {ok, I1, R}.
-

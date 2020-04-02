@@ -5244,7 +5244,7 @@ process_incoming_forced_progress(FSMState, #{ tx := SignedTx
                                 next_state(open, D1);
                             WrongFPDiff when WrongFPDiff =< 0 ->
                                 %% we shouldn't get here as it would mean that
-                                %% the payload had been olde channel state we
+                                %% the payload had been older than the channel state we
                                 %% have in the FSM and this should have been
                                 %% caught in the outer case
                                 %% This clause is left for completeness
@@ -5315,4 +5315,3 @@ does_force_progress_interrupt(FSMState) ->
                           [FSMState]),
             false
     end.
-
