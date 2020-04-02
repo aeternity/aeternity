@@ -83,7 +83,8 @@
     % Mind that using custom_command cancels usage of mine_rate (default mine_rate is used).
     % Technically mine_rate is passed as a command to Docker, which is overwritten by custom_command (if used).
     custom_command => [string(), ...],
-    mining => #{autostart => boolean()}
+    mining => #{autostart => boolean(),
+                strictly_follow_top => boolean()}
 }.
 
 %% State of a node
@@ -206,6 +207,7 @@ setup_node(Spec, BackendState) ->
 
     ConfigFileName = format("aeternity_~s.yaml", [Name]),
     ConfigFileHostPath = filename:join([TempDir, "config", ConfigFileName]),
+    ct:log("~p will be using config ~p", [Name, ConfigFileHostPath]),
     TemplateFile = filename:join(DataDir, ?CONFIG_FILE_TEMPLATE),
     PeerVars = lists:map(fun (Addr) -> #{peer => Addr} end, Peers),
     CuckooMinerVars =
@@ -234,7 +236,8 @@ setup_node(Spec, BackendState) ->
                       #{present => false,
                         hard_fork_info => []}}
         end,
-    Mining = maps:merge(#{autostart => true}, maps:get(mining, Spec, #{})),
+    Mining = maps:merge(#{autostart => true,
+                          strictly_follow_top => false}, maps:get(mining, Spec, #{})),
     ct:log("~p has set mining ~p", [Name, Mining]),
     ForkManagementVars =
         case maps:find(fork_management, Spec) of

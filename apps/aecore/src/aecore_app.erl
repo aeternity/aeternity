@@ -52,6 +52,7 @@ check_env() ->
     check_env([{[<<"logging">>, <<"hwm">>]     , fun set_hwm/1},
                {[<<"logging">>, <<"level">>]   , fun set_level/1},
                {[<<"mining">>, <<"autostart">>], {set_env, autostart}},
+               {[<<"mining">>, <<"strictly_follow_top">>], {set_env, strictly_follow_top}},
                {[<<"mining">>, <<"attempt_timeout">>], {set_env, mining_attempt_timeout}},
                {[<<"chain">>, <<"persist">>]   , {set_env, persist}},
                {[<<"chain">>, <<"db_path">>]   , fun set_mnesia_dir/1}]).
