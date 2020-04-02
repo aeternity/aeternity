@@ -40,6 +40,17 @@
 -export([from_db_format/1
         ]).
 
+%% getters
+-export([payload/1,
+         update/1,
+         offchain_trees/1
+        ]).
+
+-ifdef(TEST).
+-export([ set_payload/2
+        ]).
+-endif.
+
 -include_lib("aecontract/include/hard_forks.hrl").
 %%%===================================================================
 %%% Types
@@ -347,3 +358,20 @@ valid_at_protocol(Protocol, #channel_force_progress_tx{payload = Payload} = Tx) 
                                                                 Payload),
     CorrectTxVsn andalso CorrectPayloadVsn.
 
+-spec payload(tx()) -> binary().
+payload(#channel_force_progress_tx{payload = Payload}) ->
+    Payload.
+
+-spec update(tx()) -> aesc_offchain_update:update().
+update(ForceProgress) ->
+    [Update] = updates(ForceProgress),
+    Update.
+
+-spec offchain_trees(tx()) -> aec_trees:trees().
+offchain_trees(#channel_force_progress_tx{offchain_trees = Trees}) ->
+    Trees.
+
+-ifdef(TEST).
+set_payload(#channel_force_progress_tx{} = FP, Payload) when is_binary(Payload) ->
+    FP#channel_force_progress_tx{payload = Payload}.
+-endif.

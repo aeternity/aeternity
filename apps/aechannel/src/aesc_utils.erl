@@ -52,7 +52,7 @@
 -include("../../aecontract/include/aecontract.hrl").
 -include("../../aecontract/include/hard_forks.hrl").
 
--define(EMPTY_PAYLOAD, <<>>).
+-include("aesc_values.hrl").
 
 %%%===================================================================
 %%% API

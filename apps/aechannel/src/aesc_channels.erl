@@ -53,6 +53,7 @@
 -compile({no_auto_import, [round/1]}).
 
 -include("../../aecontract/include/hard_forks.hrl").
+-include("aesc_values.hrl").
 
 %%%===================================================================
 %%% Types
@@ -138,7 +139,7 @@ close_solo_with_payload(Ch, PayloadTx, PoI, Height) ->
             %% since new co-authenticated payload had been added and it
             %% replaces any old forced progressed states, we reset the
             %% solo_round
-            Ch1#channel{solo_round = 0};
+            Ch1#channel{solo_round = ?LAST_ROUND_MUTUAL};
         false ->
             Ch1
     end.
@@ -160,7 +161,7 @@ close_solo_int(#channel{lock_period = LockPeriod} = Ch, PoI, Height, Round, Stat
 deposit(#channel{channel_amount = ChannelAmount} = Ch, Amount, Round, StateHash) ->
     Ch#channel{channel_amount     = ChannelAmount + Amount,
                state_hash         = StateHash,
-               solo_round         = 0,
+               solo_round         = ?LAST_ROUND_MUTUAL,
                round              = Round}.
 
 -spec deserialize(pubkey(), serialized()) -> channel().
@@ -232,7 +233,7 @@ snapshot_solo(Ch, PayloadTx) ->
     Round = aesc_offchain_tx:round(PayloadTx),
     StateHash = aesc_offchain_tx:state_hash(PayloadTx),
     Ch#channel{round              = Round,
-               solo_round         = 0,
+               solo_round         = ?LAST_ROUND_MUTUAL,
                state_hash         = StateHash}.
 
 -spec force_progress_last_onchain(channel(), binary(), seq_number(),
@@ -265,7 +266,7 @@ force_progress_with_payload(Ch0, StateHash, Round,
 force_progress(Ch0, StateHash, Round, IAmt, RAmt, Height) ->
     SoloRound =
         case solo_round(Ch0) of
-            0 ->
+            ?LAST_ROUND_MUTUAL ->
                 % force progress that is based on co-signed state
                 Round;
             OldSoloRound ->
@@ -310,7 +311,7 @@ pubkey(<<_:?PUB_SIZE/binary>> = InitiatorPubKey,
 
 -spec is_last_state_forced(channel()) -> boolean().
 is_last_state_forced(#channel{solo_round = SoloRound}) ->
-    SoloRound =/= 0.
+    SoloRound =/= ?LAST_ROUND_MUTUAL.
 
 -spec new(aec_keys:pubkey(), non_neg_integer(),
           aec_keys:pubkey(), non_neg_integer(),
@@ -339,7 +340,7 @@ new(InitiatorPubKey, InitiatorAmount, ResponderPubKey, ResponderAmount, InitAcco
              delegate_ids         = [aeser_id:create(account, D) || D <- DelegatePubkeys],
              state_hash           = StateHash,
              round                = Round,
-             solo_round           = 0,
+             solo_round           = ?LAST_ROUND_MUTUAL,
              locked_until         = 0, % zero means "active" as well
              lock_period          = LockPeriod,
              version              = Version}.
@@ -454,7 +455,7 @@ serialize_for_client(#channel{id                  = Id,
 withdraw(#channel{channel_amount = ChannelAmount} = Ch, Amount, Round, StateHash) ->
     Ch#channel{channel_amount = ChannelAmount - Amount,
                state_hash = StateHash,
-               solo_round = 0,
+               solo_round = ?LAST_ROUND_MUTUAL,
                round = Round}.
 
 %%%===================================================================

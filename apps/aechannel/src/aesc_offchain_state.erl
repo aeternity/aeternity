@@ -301,7 +301,7 @@ set_signed_tx(SignedTx, Updates, #state{}=State, OnChainTrees,
                      State#state.calls},
                     Updates),
             State#state{signed_tx = SignedTx, half_signed_tx = ?NO_TX,
-                        trees=Trees, calls=Calls}
+                        trees = Trees, calls = Calls}
     end.
 
 -spec set_half_signed_tx(aetx_sign:signed_tx(), state()) -> state().
