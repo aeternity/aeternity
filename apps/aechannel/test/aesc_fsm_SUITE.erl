@@ -23,6 +23,7 @@
 -export([
           create_channel/1
         , multiple_responder_keys_per_port/1
+        , responder_accept_timeout/1
         , channel_insufficent_tokens/1
         , inband_msgs/1
         , upd_transfer/1
@@ -263,6 +264,7 @@ transactions_sequence() ->
       [
         create_channel
       , multiple_responder_keys_per_port
+      , responder_accept_timeout
       , channel_insufficent_tokens
       , inband_msgs
       , upd_transfer
@@ -563,6 +565,19 @@ multiple_responder_keys_per_port(Cfg) ->
      end || P <- Cs],
     ok = stop_miner_helper(MinerHelper),
     ok.
+
+responder_accept_timeout(Cfg) ->
+    Slogan = ?SLOGAN,
+    Debug = get_debug(Cfg),
+    ROptsF = fun(Spec1) ->
+                     ?LOG(Debug, "Modifying ~p", [Spec1]),
+                     NOpts0 = maps:get(noise, Spec1, []),
+                     NOpts1 = lists:keystore(accept_timeout, 1, NOpts0, {accept_timeout, 100}),
+                     #{noise => NOpts1}
+             end,
+    create_channel_([ ?SLOGAN
+                    , {spawn_interval, 500}
+                    , {responder_opts, ROptsF} | Cfg]).
 
 -record(miner, { parent
                , mining = false
@@ -2349,9 +2364,27 @@ create_channel_from_spec(I, R, Spec, Port, UseAny, Debug, Cfg) ->
     ?LOG("Spec = ~p", [Spec]),
     RSpec = customize_spec(responder, Spec, Cfg),
     ISpec = customize_spec(initiator, Spec, Cfg),
-    RProxy = spawn_responder(Port, RSpec, R, UseAny, Debug),
-    timer:sleep(100),
-    IProxy = spawn_initiator(Port, ISpec, I, Debug),
+    ?LOG(Debug, "RSpec = ~p~nISpec = ~p", [RSpec, ISpec]),
+    SpawnInterval = proplists:get_value(spawn_interval, Cfg, 100),
+    SpawnR = fun() ->
+                        spawn_responder(Port, RSpec, R, UseAny, Debug)
+                end,
+    SpawnI = fun() ->
+                     spawn_initiator(Port, ISpec, I, Debug)
+             end,
+    {RProxy, IProxy} =
+        case proplists:get_value(spawn_first, Cfg, responder) of
+            responder ->
+                RPx = SpawnR(),
+                timer:sleep(SpawnInterval),
+                IPx = SpawnI(),
+                {RPx, IPx};
+            initiator ->
+                IPx = SpawnI(),
+                timer:sleep(SpawnInterval),
+                RPx = SpawnR(),
+                {RPx, IPx}
+        end,
     ?LOG("RProxy = ~p, IProxy = ~p", [RProxy, IProxy]),
     Timeout = proplists:get_value(timeout, Cfg, ?TIMEOUT),
     Info = match_responder_and_initiator(RProxy, Debug, Timeout),
@@ -2415,12 +2448,17 @@ create_channel_from_spec(I, R, Spec, Port, UseAny, Debug, Cfg) ->
                                                          responder_opts])])).
 
 customize_spec(Role, Spec, Cfg) ->
-    maps:merge(Spec, custom_spec_opts(Role, Cfg)).
+    maps:merge(Spec, custom_spec_opts(Role, Cfg, Spec)).
 
-custom_spec_opts(responder, Cfg) ->
-    proplists:get_value(responder_opts, Cfg, #{});
-custom_spec_opts(initiator, Cfg) ->
-    proplists:get_value(initiator_opts, Cfg, #{}).
+custom_spec_opts(responder, Cfg, Spec) ->
+    maybe_apply_f(proplists:get_value(responder_opts, Cfg, #{}), Spec);
+custom_spec_opts(initiator, Cfg, Spec) ->
+    maybe_apply_f(proplists:get_value(initiator_opts, Cfg, #{}), Spec).
+
+maybe_apply_f(F, Spec) when is_function(F, 1) ->
+    F(Spec);
+maybe_apply_f(Map, _) when is_map(Map) ->
+    Map.
 
 spawn_responder(Port, Spec, R, UseAny, Debug) ->
     Me = self(),

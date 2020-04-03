@@ -417,6 +417,7 @@ accept_tcp(LSock, Port, R, AcceptTimeout) ->
         {ok, _} = Ok ->
             Ok;
         {error, timeout} ->
+            lager:debug("Timeout on accept call; see if we should retry", []),
             case aesc_listeners:lsock_info(LSock, [port, responders]) of
                 #{ port := Port, responders := Rs } ->
                     case lists:member(R, Rs) of
@@ -427,7 +428,8 @@ accept_tcp(LSock, Port, R, AcceptTimeout) ->
                             lager:debug("No listeners for ~p on this port", [R]),
                             {error, accept_timeout}
                     end;
-                _ ->
+                _Other ->
+                    lager:debug("_Other = ~p", [_Other]),
                     {error, accept_timeout}
             end;
         Error ->

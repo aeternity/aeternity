@@ -136,9 +136,11 @@ handle_call({close, LSock}, {Pid,_Ref}, #st{ responders = Resps
     end;
 handle_call({lsock_info, LSock, Item}, _, #st{socks = Socks} = St) ->
     I = case db_lookup(Socks, LSock) of
-            [#sock{port = Port}] ->
+            [#sock{port = Port} = Found] ->
+                lager:debug("Found = ~p", [Found]),
                 get_lsock_info(Item, #{lsock => LSock, port => Port}, St);
             [] ->
+                lager:debug("~p not found", [LSock]),
                 undefined
         end,
     {reply, I, St};
@@ -224,9 +226,11 @@ list_pids(#{db := PortsTab}, P) ->
 
 get_lsock_info(pids, #{port := Port} = I, #st{ ports = Ports }) ->
     I#{pids => list_pids(Ports, Port)};
-get_lsock_info(responders, #{port := Port}, #st{ responders = Resps }) ->
-    lists:usort(
-      db_select(Resps, [{ #resp{ key = { Port, '$1', '_'}, _ = '_' }, [], ['$1'] }]));
+get_lsock_info(Item, I, _) when Item == port; Item == lsock ->
+    I;
+get_lsock_info(responders, #{port := Port} = I, #st{ responders = Resps }) ->
+    Rs = db_select(Resps, [{ #resp{ key = { Port, '$1', '_'}, _ = '_' }, [], ['$1'] }]),
+    I#{responders => lists:usort(Rs)};
 get_lsock_info(Items, I, St) when is_list(Items) ->
     lists:foldl(
       fun(Item, Acc) ->
