@@ -569,7 +569,7 @@ add_microblock_(ForkId, Txs, #{forks := Forks} = Chain) ->
     PrevKeyHash = aec_headers:prev_key_hash(TopHdr),
     Height = aec_headers:height(TopHdr),
     NewHdr = aec_headers:new_micro_header(
-               Height + 1, PrevHash, PrevKeyHash,
+               Height, PrevHash, PrevKeyHash,
                root_hash(), 0, txs_hash(), pof_hash(), 0),
     {ok, BlockHash} = aec_headers:hash_header(NewHdr),
     Block = maybe_update_trees(ForkId, #{ hash   => BlockHash
