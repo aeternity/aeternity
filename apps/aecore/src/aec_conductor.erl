@@ -203,17 +203,18 @@ init(Options) ->
                      top_key_block_hash = TopKeyBlockHash,
                      consensus          = Consensus},
     State2 = set_option(autostart, Options, State1),
-    {ok, State3} = set_beneficiary(State2),
-    State4 = init_miner_instances(State3),
-    State5 = set_stratum_mode(State4), %% May overwrite beneficiary.
+    State3 = set_option(strictly_follow_top, Options, State2),
+    {ok, State4} = set_beneficiary(State3),
+    State5 = init_miner_instances(State4),
+    State6 = set_stratum_mode(State5), %% May overwrite beneficiary.
 
     aec_metrics:try_update([ae,epoch,aecore,chain,height],
                            aec_blocks:height(aec_chain:top_block())),
-    epoch_mining:info("Miner process initilized ~p", [State5]),
+    epoch_mining:info("Miner process initilized ~p", [State6]),
     aec_events:subscribe(candidate_block),
     %% NOTE: The init continues at handle_info(init_continue, State).
     self() ! init_continue,
-    {ok, State5}.
+    {ok, State6}.
 
 init_chain_state() ->
     case aec_chain:genesis_hash() of
@@ -389,6 +390,11 @@ set_option(autostart, Options, State) ->
         undefined   -> State;
         {ok, true}  -> State#state{mining_state = running};
         {ok, false} -> State#state{mining_state = stopped}
+    end;
+set_option(strictly_follow_top, Options, State) ->
+    case get_option(strictly_follow_top, Options) of
+        undefined   -> State;
+        {ok, V} when is_boolean(V) -> State#state{mining_opts = #{strictly_follow_top => V}}
     end.
 
 get_option(Opt, Options) ->
@@ -815,7 +821,7 @@ start_mining_(#state{keys_ready = false} = State) ->
     %% We need to get the keys first
     wait_for_keys(State);
 start_mining_(#state{key_block_candidates = undefined,
-                    beneficiary         = Beneficiary} = State) when Beneficiary =/= undefined ->
+                     beneficiary         = Beneficiary} = State) when Beneficiary =/= undefined ->
     %% If the mining is turned off and beneficiary is configured,
     %% the key block candidate is still created, but not mined.
     %% The candidate can be retrieved via the API and other nodes can mine it.
@@ -824,7 +830,7 @@ start_mining_(#state{key_block_candidates = undefined,
 start_mining_(#state{stratum_mode = false, mining_state = stopped} = State) ->
     State;
 start_mining_(#state{key_block_candidates = [{_, #candidate{top_hash = OldHash}} | _],
-                    top_block_hash = TopHash } = State) when OldHash =/= TopHash ->
+                     top_block_hash = TopHash } = State) when OldHash =/= TopHash ->
     %% Candidate generated with stale top hash.
     %% Regenerate the candidate.
     epoch_mining:info("Key block candidate for old top hash; regenerating"),

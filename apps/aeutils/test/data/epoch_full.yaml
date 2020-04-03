@@ -149,6 +149,7 @@ mining:
     max_auth_fun_gas: 50000
     # Public key of beneficiary account that will receive fees from mining on a node.
     beneficiary: "ak_DummyPubKeyDoNotEverUse999999999999999999999999999"
+    strictly_follow_top: false
     cuckoo:
         # Number of bits used for representing an edge in the Cuckoo Cycle problem.
         edge_bits: 29

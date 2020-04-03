@@ -183,8 +183,9 @@ simple_channel_test(ChannelOpts, InitiatorNodeBaseSpec, ResponderNodeBaseSpec, C
 
     MikePubkey = aeser_api_encoder:encode(account_pubkey, maps:get(pubkey, ?MIKE)),
     NodeConfig = #{ beneficiary => MikePubkey },
-    setup([spec(node1, [], InitiatorNodeBaseSpec),
-           spec(node2, [node1], ResponderNodeBaseSpec#{mining => #{autostart => false}})],
+    StrictMining = #{strictly_follow_top => true},
+    setup([spec(node1, [], InitiatorNodeBaseSpec#{mining => StrictMining}),
+           spec(node2, [node1], ResponderNodeBaseSpec#{mining => StrictMining#{autostart => false}})],
           NodeConfig, Cfg),
     NodeNames = [INodeName, RNodeName],
     start_node(node1, Cfg),
