@@ -337,7 +337,12 @@ get_transactions_between(Hash, Hash, Acc) ->
 get_transactions_between(Hash, Root, Acc) ->
     case get_block(Hash) of
         {ok, Block} ->
-            NewAcc = [{T,Hash} || T <- aec_blocks:txs(Block)] ++ Acc,
+            NewAcc =
+                case aec_blocks:type(Block) of
+                    key -> Acc;
+                    micro ->
+                     [{T,Hash} || T <- aec_blocks:txs(Block)] ++ Acc
+                end,
             get_transactions_between(aec_blocks:prev_hash(Block), Root, NewAcc);
         error -> error
     end.
