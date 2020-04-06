@@ -1255,7 +1255,7 @@ close_solo_tx(#{ fsm        := Fsm
               , payload    => Payload
               , poi        => PoI
               , ttl        => TTL
-              , fee        => 40000 * aec_test_utils:min_gas_price()
+              , fee        => 60000 * aec_test_utils:min_gas_price()
               , nonce      => Nonce },
     {ok, _Tx} = aesc_close_solo_tx:new(TxSpec).
 
