@@ -67,7 +67,7 @@ mine_block_test_() ->
                  TopBlock = aec_blocks:set_height(RawBlock, aec_block_genesis:height()),
                  Nonce = case aec_hard_forks:protocol_effective_at_height(100) of
                              ?IRIS_PROTOCOL_VSN -> 72;
-                             _                  -> 19
+                             _                  -> 31
                          end,
 
                  meck:expect(aeminer_pow, pick_nonce, 0, Nonce),
