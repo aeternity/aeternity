@@ -489,8 +489,13 @@ clear_locked_until(#req{info = I} = R) when is_map(I) ->
 %% 4. No fork switch, no channel tx in the top block, and no depth watch:
 %%    Do nothing.
 handle_info({gproc_ps_event, top_changed, #{info := Info}}, #st{} = St) ->
-    lager:debug("top_changed: ~p", [Info]),
-    {noreply, check_status(Info, St)};
+    case ets:info(?T_REQUESTS, size) of
+        0 ->
+            {noreply, St};
+        _ ->
+            lager:debug("top_changed: ~p", [Info]),
+            {noreply, check_status(Info, St)}
+    end;
 handle_info({gproc_ps_event, {tx_event, {channel, ChId}},
              #{info := #{ block_hash := _BlockHash
                         , tx_hash    := _TxHash
