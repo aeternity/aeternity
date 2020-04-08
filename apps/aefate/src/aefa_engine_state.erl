@@ -83,6 +83,9 @@
         ]).
 -endif.
 
+-define(FIX_CONTRACT_CHECK_WINDOW_LOWER_LIMIT, 237000).
+-define(FIX_CONTRACT_CHECK_WINDOW_UPPER_LIMIT, 245000).
+
 -include_lib("aebytecode/include/aeb_fate_data.hrl").
 -include("../../aecontract/include/aecontract.hrl").
 
@@ -259,6 +262,14 @@ pop_call_stack(#es{accumulator = ReturnValue,
                   }};
         [{Caller, Pubkey, Function, TVars, BB, AccS, Mem, Value}| Rest] ->
             Seen = pop_seen_contracts(Pubkey, ES),
+            NewCurrent =
+                case aefa_chain_api:generation(ES#es.chain_api) of
+                    Height when Height >= ?FIX_CONTRACT_CHECK_WINDOW_LOWER_LIMIT,
+                                Height =< ?FIX_CONTRACT_CHECK_WINDOW_UPPER_LIMIT ->
+                        ES#es.current_contract;
+                    _Height ->
+                        Pubkey
+                end,
             {remote, Caller, aeb_fate_data:make_contract(Pubkey), Function, TVars, BB,
              ES#es{ call_value = Value
                   , accumulator = ReturnValue
@@ -266,6 +277,7 @@ pop_call_stack(#es{accumulator = ReturnValue,
                   , memory = Mem
                   , call_stack = Rest
                   , seen_contracts = Seen
+                  , current_contract = NewCurrent
                   }}
     end.
 

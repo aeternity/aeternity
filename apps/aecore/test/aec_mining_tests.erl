@@ -32,18 +32,18 @@ mine_block_test_() ->
                  RawBlock = aec_blocks:raw_key_block(),
                  Height = aec_block_genesis:height(),
                  TopBlock = aec_blocks:set_height(RawBlock, Height),
-                 % if there is a change in the structure of the block
-                 % this will result in a change in the hash of the header
-                 % and will invalidate the nonce value below
-                 % in order to find a proper nonce for your
-                 % block uncomment the line below
+                 %% NOTE: if there is a change in the structure of the block
+                 %% this will result in a change in the hash of the header
+                 %% and will invalidate the nonce value below
+                 %% in order to find a proper nonce for your
+                 %% block uncomment the line below:
                  % let_it_crash = generate_valid_test_data(TopBlock, 100000000000000),
                  Nonce = case aec_hard_forks:protocol_effective_at_height(Height + 1) of
-                             ?ROMA_PROTOCOL_VSN    -> 1566115190779737391;
-                             ?MINERVA_PROTOCOL_VSN -> 15836920403692179639;
-                             ?FORTUNA_PROTOCOL_VSN -> 5292874560123497905;
-                             ?LIMA_PROTOCOL_VSN    -> 7581966166914665576;
-                             ?IRIS_PROTOCOL_VSN    -> 7150225445313991888
+                             ?ROMA_PROTOCOL_VSN    -> 10224503852404776651;
+                             ?MINERVA_PROTOCOL_VSN -> 5620820624947056288;
+                             ?FORTUNA_PROTOCOL_VSN -> 1641754208197654728;
+                             ?LIMA_PROTOCOL_VSN    -> 10477777390608539233;
+                             ?IRIS_PROTOCOL_VSN    -> 17348548031546946943
                          end,
                  {BlockCandidate,_} = aec_test_utils:create_keyblock_with_state(
                                         [{TopBlock, aec_trees:new()}], ?TEST_PUB),
@@ -67,7 +67,7 @@ mine_block_test_() ->
                  TopBlock = aec_blocks:set_height(RawBlock, aec_block_genesis:height()),
                  Nonce = case aec_hard_forks:protocol_effective_at_height(100) of
                              ?IRIS_PROTOCOL_VSN -> 72;
-                             _                  -> 19
+                             _                  -> 41
                          end,
 
                  meck:expect(aeminer_pow, pick_nonce, 0, Nonce),
