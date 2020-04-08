@@ -395,7 +395,6 @@ new_req_key_(Mode, ChanId, Pid) ->
     {ChanId, Mode, Pid}.
 
 write_req(#req{key = Key, client = C, info = #{check_at_height := H}} = R) ->
-    lager:debug("Inserting check_at_height H=~p", [H]),
     ets:insert(?T_AT_HEIGHT, {{H, Key}}),
     ets:insert(?T_REQUESTS, R),
     ets:insert(?T_CLIENT2REQ, {{C, Key}}),
@@ -489,8 +488,12 @@ clear_locked_until(#req{info = I} = R) when is_map(I) ->
 %% 4. No fork switch, no channel tx in the top block, and no depth watch:
 %%    Do nothing.
 handle_info({gproc_ps_event, top_changed, #{info := Info}}, #st{} = St) ->
-    lager:debug("top_changed: ~p", [Info]),
-    {noreply, check_status(Info, St)};
+    case ets:info(?T_REQUESTS, size) of
+        0 ->
+            {noreply, St};
+        _ ->
+            {noreply, check_status(Info, St)}
+    end;
 handle_info({gproc_ps_event, {tx_event, {channel, ChId}},
              #{info := #{ block_hash := _BlockHash
                         , tx_hash    := _TxHash
@@ -586,24 +589,23 @@ check_status_(#{ block_hash := BHash
                , height     := Height } = I, #st{ tx_log = TxLog } = St) ->
     case aesc_window:keyfind(BHash, #tx_log_entry.key, TxLog) of
         false ->
-            lager:debug("No tx in top", []),
             case reqs_at_height(Height) of
                 [] ->
-                    lager:debug("No reqs at height ~p", [Height]),
+                    lager:debug("No tx in top, no reqs at height ~p", [Height]),
                     St#st{ last_top = BHash };
                 [_|_] = Reqs ->
-                    lager:debug("Reqs at height ~p: ~p", [Height, Reqs]),
+                    lager:debug("No tx in top, Reqs found at height ~p",
+                                [Height]),
                     St1 = init_cache(I, next_block, St),
                     check_requests(Reqs, St1)
             end;
         #tx_log_entry{value = #{txs := Txs}} = LogEntry ->
-            lager:debug("found ~p txs in top: ~p", [maps:size(Txs), LogEntry]),
+            lager:debug("found ~p txs in top", [maps:size(Txs)]),
             case reqs_for_txs(Txs) of
                 {[], []} ->
                     St;
                 {ChIds, Reqs} ->
-                    lager:debug("Reqs for txs found, ChIds = ~p, Reqs = ~p",
-                                [ChIds, [R#req.key || R <- Reqs]]),
+                    lager:debug("Reqs for txs found", []),
                     St1 = init_cache(I, {has_tx, Txs}, St),
                     St2 = save_tx_info(ChIds, Txs, BHash, Height, St1),
                     St3 = log_entry_txs_to_history(ChIds, Txs, BHash, Height, St2),
@@ -650,7 +652,6 @@ chids_to_audit(#{ block_hash := BHash }, #st{ last_top  = LastTop
             case aec_chain_state:find_common_ancestor(BHash, LastTop) of
                 {ok, ForkHash} ->
                     {Height, C1} = height(ForkHash, C),
-                    lager:debug("Height = ~p", [Height]),
                     ChIds = chids_changed_since_height(Height),
                     C2 = adjust_tx_histories_after_fork(ChIds, Height, C1),
                     {chids_changed_since_height(Height), St#st{cache = C2}};
@@ -776,16 +777,13 @@ do_dirty(F) ->
 check_requests_([], St, C) ->
     check_done(C, St);
 check_requests_([#req{info = #{check_at_height := CheckAt}} = R | Reqs1], St, C) ->
-    lager:debug("CheckAt: R = ~p", [R]),
     {TopHeight, C1} = top_height(C),
     if TopHeight >= CheckAt ->
             check_at_height(R, Reqs1, St, C1);
        true ->
-            lager:debug("Not yet (TopHeight = ~p), skip", [TopHeight]),
             check_requests_(Reqs1, St, C1)
     end;
 check_requests_([R | Reqs1], St, C) ->
-    lager:debug("Req = ~p", [lager:pr(R, ?MODULE)]),
     check_cont(check_req(R, St, C), R, Reqs1, St).
 
 check_done(#st{cache = C} = St) ->
@@ -799,7 +797,6 @@ check_done(C, St) ->
          , rpt_log = maps:get(rpt_log, C1)}.
 
 check_at_height(R, Reqs, St, C) ->
-    lager:debug("will check at height", []),
     R1 = clear_check_at_height(R),
     check_cont(check_req(R1, St, C), R1, Reqs, St).
 
@@ -812,22 +809,17 @@ requests(ChanId) ->
     Found.
 
 reqs_at_height(Height) ->
-    lager:debug("Height=~p, All: ~p", [Height, ets:tab2list(?T_AT_HEIGHT)]),
     reqs_at_height_(ets:first(?T_AT_HEIGHT), Height, []).
 
 reqs_at_height_({H, Key} = K, Height, Acc) when H =< Height ->
-    lager:debug("K = ~p, Height = ~p", [K, Height]),
     Acc1 = case ets:lookup(?T_REQUESTS, Key) of
                [] ->
-                   lager:debug("Key not found (~p)", [Key]),
                    Acc;
                [R] ->
-                   lager:debug("Key exists (~p)", [Key]),
                    [R|Acc]
            end,
     reqs_at_height_(ets:next(?T_AT_HEIGHT, K), Height, Acc1);
 reqs_at_height_(_K, _H, Acc) ->
-    lager:debug("K = ~p, H = ~p", [_K, _H]),
     %% Arguably, reversing doesn't do much, but if there are requests
     %% that were supposed to be checked at a lower height than the current,
     %% these will at least come first.
@@ -959,7 +951,6 @@ check_req(#req{mode = watch, ch_id = ChId, client = Client} = R, St,
                                                               , height  => H }, Rx, C2);
                                   _ ->
                                       {Status, C3} = channel_status(ChId, Client, C2),
-                                      lager:debug("Status = ~p", [Status]),
                                       watch_for_change_in_ch_status(Status, Rx, St, C3)
                               end
                       end, {R, C}, ChTxs);
@@ -969,7 +960,6 @@ check_req(#req{mode = watch, ch_id = ChId, client = Client} = R, St,
         _ when Scenario =:= fork_switch; Scenario =:= audit ->
             watch_for_channel_change(R, St, C);
         _ ->
-            lager:debug("Other scenario - ignore (~p)", [Scenario]),
             {no_change, C}
     end;
 check_req(#req{ mode = tx_hash, client = Client
@@ -1020,17 +1010,14 @@ watch_for_channel_change_(#req{ch_id = ChanId, client = Client} = R, St, C) ->
     watch_for_change_in_ch_status(Status, R, St, C1).
 
 watch_for_change_in_ch_status(undefined, R, _St, C) ->
-    lager:debug("No channel object yet", []),
     {R, C};
 watch_for_change_in_ch_status(Status, R, St, C) ->
     case Status of
         #{changed := true} ->
-            lager:debug("Channel has changed: ~p", [Status]),
             #req{module = Mod, client = Client, ch_id = ChId} = R,
             C1 = report_status_change(Status, ChId, Mod, Client, St, C),
             {no_change, C1};
         _ ->
-            lager:debug("No change in channel: ~p", [Status]),
             {no_change, C}
     end.
 
@@ -1083,7 +1070,6 @@ report_closed_on_chain(#{ tx_type    := _TxType
     { R#req{ info = I#{closed_at => ClosedAt} }, C2}.
 
 maybe_report(RptKey, Event, Info, Rpt, C) when is_function(Rpt) ->
-    lager:debug("RptKey = ~p", [RptKey]),
     RptLog = maps:get(rpt_log, C),
     case aesc_window:keyfind(RptKey, #rpt_log_entry.key, RptLog) of
         false ->
@@ -1092,16 +1078,14 @@ maybe_report(RptKey, Event, Info, Rpt, C) when is_function(Rpt) ->
                                 , info  := #{ tx_hash := LatestTx }}} = Found ->
             case Info of
                 #{tx_hash := LatestTx} ->
-                    lager:debug("Not reporting again", []),
                     C;
                 _ ->
-                    lager:debug("Latest rpt entry: ~p", [Found]),
                     do_report(RptKey, Event, Info, Rpt, RptLog, C)
             end
     end.
 
 do_report(RptKey, Event, Info, Rpt, RptLog, C) ->
-    lager:debug("not found in log, reporting", []),
+    lager:debug("~p not found in log, reporting", [RptKey]),
     C1 = call_rpt(Rpt, C),
     LogEntry = #rpt_log_entry{key = RptKey, value = #{ event => Event
                                                      , info => Info}},
@@ -1127,7 +1111,6 @@ channel_status(ChId, Client, #{top_hash := Hash} = C) ->
 
 channel_status_changed(V, ChId, Client, Cache) ->
     {V0, C1} = prev_chan_vsn(ChId, Client, Cache),
-    lager:debug("(~p) V = ~p; V0 = ~p", [V =/= V0, V, V0]),
     {V =/= V0, C1}.
 
 prev_chan_vsn(ChId, Client, C) ->
@@ -1142,7 +1125,6 @@ prev_chan_vsn(ChId, Client, C) ->
 
 update_chan_vsns(Cache) ->
     {Vsns, Cache1} = chan_vsns(Cache),
-    lager:debug("Vsns = ~p", [Vsns]),
     {_, Cache2} =
         maps:fold(
           fun({Client, ChId}, V, {Visited, C} = Acc) when is_pid(Client) ->
@@ -1249,7 +1231,6 @@ read_ch_state(ChId, Client) when is_binary(ChId), is_pid(Client) ->
         [#ch_state{vsn = Vsn, info = I}] ->
             I#{vsn => Vsn};
         [] ->
-            lager:debug("No state in ets for ChId: ~p, Client: ~p", [ChId, Client]),
             try_copy_ch_state(ChId, Client)
     end.
 
@@ -1295,7 +1276,6 @@ handle_ch_status_changed(ChId, Status, Client, #{ top_hash := Hash } = C) ->
     lager:debug("Latest TxHash = ~p, Hash = ~p", [TxHash, BlockHash]),
     %% Assert that this is really a changed channel object
     {true, C4} = channel_status_changed(maps:get(vsn, Status), ChId, Client, C2),
-    lager:debug("asserted status changed", []),
     Status1 = Status#{tx => Tx, block_hash => BlockHash},
     {Status1, note_chid_change_at_hash(ChId, Hash, C4#{{channel, ChId, BlockHash} => Status1})}.
 
@@ -1475,10 +1455,8 @@ get_latest_tx(ChId, C) ->
 %% txs other than channel txs related to ChId, groups by block, etc.
 %%
 get_txs_since(StopCond, Hash, ChId, C) ->
-    lager:debug("StopCond = ~p, Hash = ~p, ChId = ~p", [StopCond, Hash, ChId]),
     case verify_stop_cond(StopCond, ChId, C) of
         {ok, C1} ->
-            lager:debug("StopCond = ~p", [StopCond]),
             {Found, C2} = get_txs_since(StopCond, Hash, ChId, C1, []),
             %% TODO: It's likely usually (not always?) redundant to log to history here
             log_tx_histories(Found, ChId, C2);
@@ -1613,7 +1591,6 @@ save_tx_info(ChIds, Txs, BHash, _Height, #st{ cache = C} = St) ->
                            lists:foldl(
                              fun(TxHash, C1x) ->
                                      Info = maps:get({tx,TxHash}, Txs),
-                                     lager:debug("Info = ~p", [Info]),
                                      I1 = Info#{ block_hash => BHash
                                                , chan_id    => ChId },
                                      %% Un-cache location
@@ -1669,7 +1646,6 @@ channel_vsn(Ch) ->
 
 current_depth(TxHash, ChId, C) ->
     {L, C1} = tx_location(TxHash, ChId, C),
-    lager:debug("L(TxHash=~p) = ~p", [TxHash, L]),
     case L of
         undefined ->
             {undefined, C1};
