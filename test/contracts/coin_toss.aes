@@ -1,0 +1,80 @@
+include "String.aes"
+
+contract CoinToss =
+  record state = { casino          : address,
+                   player          : address,
+                   hash            : option(hash),
+                   height          : int,
+                   player_pick     : option(string),
+                   player_stake    : int,
+                   reaction_time   : int
+                   }
+
+  entrypoint init(casino: address, player: address) : state =
+    { casino          = casino,
+      player          = player,
+      hash            = None,
+      height          = 0,
+      player_pick     = None,
+      player_stake    = 0,
+      reaction_time   = 30
+      }
+
+  stateful entrypoint provide_hash(hash: hash) =
+    require(state.hash == None, "already_has_hash")
+    require_casino()
+    put(state{ hash = Some(hash),
+               height = Chain.block_height})
+
+  stateful entrypoint withdraw(amount: int) =
+    require_casino()
+    require(state.hash == None, "already_playing")
+    Chain.spend(state.casino, amount)
+
+  payable entrypoint deposit() =
+    require_casino()
+
+  stateful payable entrypoint bet(coin_side: string) =
+    require_player()
+    ensure_coin_side(coin_side)
+    require(Call.value * 2 < Contract.balance, "bet_too_big")
+    put(state{ player_pick = Some(coin_side),
+               player_stake = Call.value})
+
+  stateful entrypoint resolve(key: string, coin_side: string) =
+    require_casino()
+    require(state.hash != None, "no_bet")
+    ensure_coin_side(coin_side)
+    ensure_if_key_is_valid(key, coin_side)
+    let Some(player_pick) = state.player_pick
+    if (coin_side == player_pick)
+      Chain.spend(state.player, state.player_stake * 2)
+    reset_state()
+
+  // a friendly helper function
+  entrypoint compute_hash(key: string, coin_side: string) : hash =
+    ensure_coin_side(coin_side)
+    String.sha256(String.concat(key, coin_side))
+    
+  // internal functions
+
+  function ensure_coin_side(coin_side: string) =
+    require(coin_side == "heads" || coin_side == "tails", "wrong_coin_side")
+  
+  function require_player() =
+    require(Call.caller == state.player, "not_player")
+    
+  function require_casino() =
+    require(Call.caller == state.casino, "not_casino")
+
+  function ensure_if_key_is_valid(key: string, coin_side: string) =
+    let computed_hash = compute_hash(key, coin_side)
+    let Some(stored_hash) = state.hash
+    require(stored_hash == computed_hash, "invalid_key_and_answer")
+
+  stateful function reset_state() =
+    put(state{hash            = None,
+              height          = 0,
+              player_pick     = None,
+              player_stake    = 0
+              })

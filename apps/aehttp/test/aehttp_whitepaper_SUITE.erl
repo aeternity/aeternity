@@ -183,12 +183,12 @@ working_insurance(Cfg0) ->
         add_quotes(City),
         _PricePerGen = integer_to_list(PricePerGeneration),
         _Compensation = integer_to_list(Reward)],
+    ContractName = channel_whitepaper_example,
     {UnsignedStateTx, _Updates, _Code} =
-        aehttp_sc_SUITE:create_contract_(channel_whitepaper_example,
+        aehttp_sc_SUITE:create_contract_(ContractName,
                                           Args, IConnPid,
                                           UpdateVolley, Cfg),
     ContractPubkey = contract_id_from_create_update(IPubkey, UnsignedStateTx),
-    ContractName = channel_whitepaper_example,
     {ok, []} =
         call_offchain_contract(initiator, ContractPubkey,
                               ContractName, "deposit", [], Reward, Cfg),

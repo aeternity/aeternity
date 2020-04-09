@@ -93,6 +93,8 @@
    ]).
 -export([sc_ws_open_/4,
          sc_ws_close_/1,
+         sc_ws_close_mutual_/2,
+         sc_ws_get_both_balances/4,
          start_node/1,
          stop_node/1,
          sign_post_mine/2,
