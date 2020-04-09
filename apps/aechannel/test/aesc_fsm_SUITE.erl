@@ -303,11 +303,11 @@ update_sequence() ->
     [ check_incorrect_update
     ].
 
-update_sequence_() ->
-    [ check_incorrect_deposit
-    , check_incorrect_withdrawal
-    , check_incorrect_update
-    ].
+%% update_sequence_() ->
+%%     [ check_incorrect_deposit
+%%     , check_incorrect_withdrawal
+%%     , check_incorrect_update
+%%     ].
 
 suite() ->
     [].
@@ -610,6 +610,9 @@ spawn_miner_helper() ->
 miner_loop(#miner{parent = Parent} = St) ->
     ct:pal("miner_loop(~p)", [St]),
     receive
+        {'$call', From, Req} ->
+            St1 = miner_handle_call(From, Req, St),
+            miner_loop(St1);
         {Parent, done} ->
             ct:pal("miner helper done", []),
             if St#miner.mining ->
@@ -618,32 +621,58 @@ miner_loop(#miner{parent = Parent} = St) ->
                     ok
             end,
             exit(normal);
-        {From, mine_until_txs_on_chain, Txs} ->
-            case txs_not_already_on_chain(Txs) of
-                [] ->
-                    ct:pal("Txs already on-chain: ~p", [Txs]),
-                    From ! {self(), txs_on_chain};
-                [_|_] = TxsLeft ->
-                    St1 = add_mining_req({From, {txs, TxsLeft}}, St),
-                    miner_loop(St1)
-            end;
         {gproc_ps_event, top_changed, #{ info := #{ height := NewH } }} ->
             ct:pal("top_changed; new height = ~p", [NewH]),
             St1 = check_if_reqs_fulfilled(NewH, St),
-            miner_loop(St1);
-        {From, mine_blocks, N, #{current_height := CurH}} ->
-            WantedHeight = CurH + N,
-            St1 = if St#miner.height >= WantedHeight ->
-                          From ! {self(), blocks_mined},
-                          St;
-                     true ->
-                          add_mining_req({From, {height, WantedHeight}}, St)
-                    end,
             miner_loop(St1);
         Other ->
             ct:pal("miner loop got Other = ~p", [Other]),
             miner_loop(St)
     end.
+
+miner_handle_call(From, report_status, St) ->
+    ?LOG("Miner loop state: ~p", [St]),
+    miner_reply(From, ok),
+    St;
+miner_handle_call(From, {mine_until_txs_on_chain, Txs}, St) ->
+    case txs_not_already_on_chain(Txs) of
+        [] ->
+            ct:pal("Txs already on-chain: ~p", [Txs]),
+            miner_reply(From, txs_on_chain),
+            St;
+        [_|_] = TxsLeft ->
+            add_mining_req({From, {txs, TxsLeft}}, St)
+    end;
+miner_handle_call(From, {mine_blocks, N, #{current_height := CurH}}, St) ->
+    WantedHeight = CurH + N,
+    if St#miner.height >= WantedHeight ->
+            miner_reply(From, blocks_mined),
+            St;
+       true ->
+            add_mining_req({From, {height, WantedHeight}}, St)
+    end.
+
+call_miner(Pid, Req, Timeout) ->
+    MRef = monitor(process, Pid),
+    Pid ! {'$call', {self(), MRef}, Req},
+    receive
+        {MRef, Res} ->
+            demonitor(MRef),
+            Res;
+        {'DOWN', MRef, _, _, Reason} ->
+            error(Reason)
+    after Timeout ->
+            ?LOG("Timeout in call to miner_loop: ~p", [Req]),
+            report_miner_loop_status(Pid),
+            demonitor(MRef),
+            error(timeout)
+    end.
+
+miner_reply({From, Ref}, Reply) ->
+    From ! {Ref, Reply}.
+
+report_miner_loop_status(Pid) ->
+    call_miner(Pid, report_status, ?TIMEOUT).
 
 start_mining() ->
     ct:pal("start mining", []),
@@ -667,7 +696,7 @@ check_if_reqs_fulfilled(NewH, #miner{requests = Reqs, mining = Mining} = St) ->
     Reqs1 = lists:flatmap(
               fun({From, {height, H}} = Req) ->
                       if H =< NewH ->
-                              From ! {self(), blocks_mined},
+                              miner_reply(From, blocks_mined),
                               [];
                          true ->
                               [Req]
@@ -675,7 +704,7 @@ check_if_reqs_fulfilled(NewH, #miner{requests = Reqs, mining = Mining} = St) ->
                  ({From, {txs, Txs}}) ->
                       case txs_not_already_on_chain(Txs) of
                           [] ->
-                              From ! {self(), txs_on_chain},
+                              miner_reply(From, txs_on_chain),
                               [];
                           TxsLeft ->
                               [{From, {txs, TxsLeft}}]
@@ -2952,12 +2981,8 @@ mine_blocks(Node, N) ->
     mine_blocks(Node, N, true).
 
 mine_blocks(_Node, N, #{mine_blocks := {ask, Pid}} = Opt) when is_pid(Pid) ->
-    Pid ! {self(), mine_blocks, N, maps:without([mine_blocks], Opt)},
-    receive
-        {Pid, blocks_mined} -> ok
-    after ?TIMEOUT ->
-            error(timeout)
-    end;
+    blocks_mined = call_miner(Pid, {mine_blocks, N, maps:without([mine_blocks], Opt)}, ?TIMEOUT),
+    ok;
 mine_blocks(_, _, #{mine_blocks := false}) ->
     ok;
 mine_blocks(Node, N, _) ->
@@ -3098,13 +3123,8 @@ wait_for_signed_transaction_in_block(Node, SignedTx) ->
 
 wait_for_signed_transaction_in_block(_, SignedTx, #{mine_blocks := {ask,Pid}}) ->
     TxHash = aetx_sign:hash(SignedTx),
-    Pid ! {self(), mine_until_txs_on_chain, [TxHash]},
-    receive
-        {Pid, txs_on_chain} ->
-            {ok, []}
-    after ?TIMEOUT ->
-            error(timeout)
-    end;
+    txs_on_chain = call_miner(Pid, {mine_until_txs_on_chain, [TxHash]}, ?LONG_TIMEOUT),
+    {ok, []};
 wait_for_signed_transaction_in_block(Node, SignedTx, Debug) ->
     ?LOG(Debug, "waiting for tx ~p", [SignedTx]),
     TxHash = aetx_sign:hash(SignedTx),
