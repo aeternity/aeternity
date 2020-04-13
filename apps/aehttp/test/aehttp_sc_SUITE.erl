@@ -1387,6 +1387,12 @@ sc_ws_close_mutual_(Config, Closer, Params) when Closer =:= initiator orelse
     assert_balance(RPubkey, RStartB),
 
     ok = wait_for_signed_transaction_in_block(SignedMutualTx),
+    {ok, _, #{ <<"tx">> := EncodedSignedMutualTx
+             , <<"info">> := <<"channel_closed">> }} =
+        wait_for_channel_event(IConnPid, on_chain_tx, Config),
+    {ok, _, #{ <<"tx">> := EncodedSignedMutualTx
+             , <<"info">> := <<"channel_closed">> }} =
+        wait_for_channel_event(RConnPid, on_chain_tx, Config),
 
     IChange = aesc_close_mutual_tx:initiator_amount_final(MutualTx),
     RChange = aesc_close_mutual_tx:responder_amount_final(MutualTx),

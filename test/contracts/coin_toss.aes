@@ -38,17 +38,31 @@ contract CoinToss =
     require_player()
     ensure_coin_side(coin_side)
     require(Call.value * 2 < Contract.balance, "bet_too_big")
-    put(state{ player_pick = Some(coin_side),
+    put(state{ player_pick  = Some(coin_side),
+               height       = Chain.block_height,
                player_stake = Call.value})
 
   stateful entrypoint resolve(key: string, coin_side: string) =
     require_casino()
-    require(state.hash != None, "no_bet")
+    require(state.player_pick != None, "no_hash")
     ensure_coin_side(coin_side)
     ensure_if_key_is_valid(key, coin_side)
     let Some(player_pick) = state.player_pick
     if (coin_side == player_pick)
       Chain.spend(state.player, state.player_stake * 2)
+    reset_state()
+
+  stateful entrypoint player_dispute_no_reveal() =
+    require(state.player_pick != None, "there_is_no_bet")
+    require(state.height < Chain.block_height, "not_yet_allowed")
+    Chain.spend(state.player, state.player_stake * 2)
+    reset_state()
+
+  stateful entrypoint casino_dispute_no_bet() =
+    require_casino()
+    require(state.hash != None, "no_hash")
+    require(state.player_pick == None, "there_is_bet_already")
+    require(state.height < Chain.block_height, "not_yet_allowed")
     reset_state()
 
   // a friendly helper function
