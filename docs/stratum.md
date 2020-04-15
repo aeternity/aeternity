@@ -61,7 +61,7 @@ stratum:
         beneficiaries: ["ak_2hJJGh3eJA2v9yLz73To7P8LvoHdz3arku3WXvgbCfwQyaL4nK:3.3",
                         "ak_241xf1kQiexbSvWKfn5uve7ugGASjME93zDbr6SGQzYSCMTeQS:2.2"]
         keys:
-                dir: stratum_keys
+            dir: stratum_keys
 ```
 
 The `mining > autostart` must be set to `true`.
