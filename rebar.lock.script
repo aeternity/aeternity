@@ -23,8 +23,8 @@ case CONFIG of
     [] ->
         %% no lock file present, usually during unlock/upgrade
         CONFIG;
-    [{Version, Deps}, [{pkg_hash, Pkgs}]] ->
+    [{Version, Deps}, [{pkg_hash, Pkgs} | Rest] | Rest1] ->
         Deps1 = FilterRocksDb(Deps),
         Pkgs1 = FilterRocksDb(Pkgs),
-        [{Version, Deps1}, [{pkg_hash, Pkgs1}]]
+        [{Version, Deps1}, [{pkg_hash, Pkgs1} | Rest] | Rest1]
 end.
