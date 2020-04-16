@@ -1284,7 +1284,7 @@ close_solo_tx(#{ fsm        := Fsm
               , payload    => Payload
               , poi        => PoI
               , ttl        => TTL
-              , fee        => 40000 * aec_test_utils:min_gas_price()
+              , fee        => 60000 * aec_test_utils:min_gas_price()
               , nonce      => Nonce },
     {ok, _Tx} = aesc_close_solo_tx:new(TxSpec).
 
@@ -4556,7 +4556,6 @@ force_progress_triggers_slash(Cfg) ->
     {ok, State} = rpc(dev1, aesc_fsm, get_offchain_state, [FsmI]),
     {_, SignedTx} = aesc_offchain_state:get_latest_signed_tx(State),
     {ok, Tx} = close_solo_tx(I1, aetx_sign:serialize_to_binary(SignedTx)),
-    {SignedCloseSoloTx, I3} = sign_tx(I2, Tx, Cfg),
 
     %% create a force progress but abort it; still keep the not yet signed
     %% transaction
@@ -4575,10 +4574,11 @@ force_progress_triggers_slash(Cfg) ->
     {ok, _} = receive_from_fsm(info, R2, fun aborted_update/1, ?TIMEOUT, Debug),
 
     %% make an off-chain update
-    {I4, R3} = update_volley(I3, R2, Cfg),
+    {I3, R3} = update_volley(I2, R2, Cfg),
     %% at this point, the FP has a lower round than the last on-chain
 
     %% make the close solo on-chain
+    {SignedCloseSoloTx, I4} = sign_tx(I3, Tx, Cfg),
     ok = rpc(dev1, aec_tx_pool, push, [SignedCloseSoloTx]),
     TxHash = aeser_api_encoder:encode(tx_hash, aetx_sign:hash(SignedCloseSoloTx)),
     mine_blocks_until_txs_on_chain(dev1, [TxHash]),
