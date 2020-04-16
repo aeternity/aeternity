@@ -466,7 +466,7 @@
                 "protocol_beneficiaries" : {
                     "type" : "array",
                     "items" : {
-                        "description" : "Public keys belonging to protocol maintainers with reward shares (100 is 10%). If not set testnet or mainnet beneficiaries and shares will be used based on network_id configuration value.",
+                        "description" : "Public keys belonging to protocol maintainers with reward shares (100 is 10%). If not set testnet or mainnet beneficiaries and shares will be used based on network_id configuration value. IMPORTANT: The value of this setting is under governance, thus it should not be changed without previous agreement within the configured network on doing so.",
                         "pattern": "^ak_[1-9A-HJ-NP-Za-km-z]*:[0-9]+$"
                     },
                     "minItems": 1,

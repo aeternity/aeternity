@@ -133,7 +133,7 @@ chain:
       "1": 0
       "2": 1
     # section describing reward split
-    protocol_beneficiaries: ["ak_DummyPubKeyDoNotEverUse999999999999999999999999999:100"]
+    protocol_beneficiaries: ["ak_2KAcA2Pp1nrR8Wkt3FtCkReGzAi8vJ9Snxa4PcmrthVx8AhPe8:109"]
     protocol_beneficiaries_enabled: true
 
 mining:
