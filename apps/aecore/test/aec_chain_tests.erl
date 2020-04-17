@@ -139,15 +139,15 @@ out_of_order_test_block_chain() ->
     %% Create a chain with both key and micro blocks
     #{ public := PubKey, secret := PrivKey } = enacl:sign_keypair(),
     TxsFun = fun(1) ->
-                     Tx1 = make_spend_tx(PubKey, 1, PubKey, 1),
-                     Tx2 = make_spend_tx(PubKey, 2, PubKey, 1),
+                     Tx1 = make_spend_tx(PubKey, 1, PubKey),
+                     Tx2 = make_spend_tx(PubKey, 2, PubKey),
                      [aec_test_utils:sign_tx(Tx1, PrivKey),
                       aec_test_utils:sign_tx(Tx2, PrivKey)
                      ];
                 (_) ->
                      []
              end,
-    PresetAccounts = [{PubKey, 1000000 * aec_test_utils:min_gas_price()}],
+    PresetAccounts = [{PubKey, 1000000 * min_gas_price()}],
     meck:expect(aec_fork_block_settings, genesis_accounts, 0, PresetAccounts),
     Chain0 = gen_block_chain_with_state_by_target(
                PresetAccounts,
@@ -288,7 +288,7 @@ broken_chain_wrong_state_hash() ->
 broken_chain_wrong_prev_key_hash() ->
     #{ public := SenderPubKey, secret := SenderPrivKey } = enacl:sign_keypair(),
     RecipientPubKey = <<42:32/unit:8>>,
-    PresetAccounts = [{SenderPubKey, 1000000 * aec_test_utils:min_gas_price()}],
+    PresetAccounts = [{SenderPubKey, 1000000 * min_gas_price()}],
     meck:expect(aec_fork_block_settings, genesis_accounts, 0, PresetAccounts),
     Spend1 = aec_test_utils:sign_tx(make_spend_tx(SenderPubKey, 1, RecipientPubKey), SenderPrivKey),
     Spend2 = aec_test_utils:sign_tx(make_spend_tx(SenderPubKey, 2, RecipientPubKey), SenderPrivKey),
@@ -320,7 +320,7 @@ broken_chain_wrong_prev_key_hash() ->
 broken_chain_invalid_transaction() ->
     #{ public := SenderPubKey, secret := SenderPrivKey } = enacl:sign_keypair(),
     RecipientPubKey = <<42:32/unit:8>>,
-    PresetAccounts = [{SenderPubKey, 1000000 * aec_test_utils:min_gas_price()}],
+    PresetAccounts = [{SenderPubKey, 1000000 * min_gas_price()}],
     meck:expect(aec_fork_block_settings, genesis_accounts, 0, PresetAccounts),
     Spend = aec_test_utils:sign_tx(make_spend_tx(SenderPubKey, 1, RecipientPubKey), SenderPrivKey),
 
@@ -337,7 +337,7 @@ broken_chain_invalid_transaction() ->
     BogusSpendTx = aec_test_utils:signed_spend_tx(
                      #{recipient_id => aeser_id:create(account, <<1:32/unit:8>>),
                        amount => 0,
-                       fee => 18000 * aec_test_utils:min_gas_price(),
+                       fee => 18000 * min_gas_price(),
                        nonce => 10,
                        payload => <<"">>}),
     BogusTxs = [BogusSpendTx | Txs],
@@ -355,7 +355,7 @@ broken_chain_invalid_micro_block_signature() ->
     #{ secret := BogusPrivKey } = enacl:sign_keypair(),
 
     RecipientPubKey = <<42:32/unit:8>>,
-    PresetAccounts = [{SenderPubKey, 1000000 * aec_test_utils:min_gas_price()}],
+    PresetAccounts = [{SenderPubKey, 1000000 * min_gas_price()}],
     meck:expect(aec_fork_block_settings, genesis_accounts, 0, PresetAccounts),
     Spend = aec_test_utils:sign_tx(make_spend_tx(SenderPubKey, 1, RecipientPubKey), SenderPrivKey),
 
@@ -742,7 +742,7 @@ fork_is_in_main_chain() ->
 fork_get_transaction() ->
     #{ public := SenderPubKey, secret := SenderPrivKey } = enacl:sign_keypair(),
     RecipientPubKey = <<42:32/unit:8>>,
-    PresetAccounts = [{SenderPubKey, 100000 * aec_test_utils:min_gas_price()}],
+    PresetAccounts = [{SenderPubKey, 100000 * min_gas_price()}],
     meck:expect(aec_fork_block_settings, genesis_accounts, 0, PresetAccounts),
     Spend1 = aec_test_utils:sign_tx(make_spend_tx(SenderPubKey, 1, RecipientPubKey), SenderPrivKey),
     Spend2 = aec_test_utils:sign_tx(make_spend_tx(SenderPubKey, 2, RecipientPubKey), SenderPrivKey),
@@ -793,13 +793,13 @@ fork_get_transaction() ->
 
 fork_on_micro_block() ->
     #{ public := PubKey, secret := PrivKey } = enacl:sign_keypair(),
-    PresetAccounts = [{PubKey, 1000000}],
+    PresetAccounts = [{PubKey, 1000000 * min_gas_price()}],
     meck:expect(aec_fork_block_settings, genesis_accounts, 0, PresetAccounts),
 
     %% Create main chain with both key and micro blocks
     TxsFun = fun(1) ->
-                     Tx1 = aec_test_utils:sign_tx(make_spend_tx(PubKey, 1, PubKey, 1), PrivKey),
-                     Tx2 = aec_test_utils:sign_tx(make_spend_tx(PubKey, 2, PubKey, 1), PrivKey),
+                     Tx1 = aec_test_utils:sign_tx(make_spend_tx(PubKey, 1, PubKey), PrivKey),
+                     Tx2 = aec_test_utils:sign_tx(make_spend_tx(PubKey, 2, PubKey), PrivKey),
                      [Tx1, Tx2];
                 (_) ->
                      []
@@ -837,7 +837,7 @@ fork_on_micro_block() ->
 
 fork_on_old_fork_point() ->
     #{ public := PubKey, secret := PrivKey } = enacl:sign_keypair(),
-    PresetAccounts = [{PubKey, 1000000}],
+    PresetAccounts = [{PubKey, 1000000 * min_gas_price()}],
     meck:expect(aec_fork_block_settings, genesis_accounts, 0, PresetAccounts),
 
     CommonChain = gen_block_chain_with_state_by_target(
@@ -847,7 +847,7 @@ fork_on_old_fork_point() ->
 
     %% Create a fork chain with both micro blocks and key blocks
     TxsFun = fun(N) when N =:= ForkHeight ->
-                     [aec_test_utils:sign_tx(make_spend_tx(PubKey, 1, PubKey, 1), PrivKey)]
+                     [aec_test_utils:sign_tx(make_spend_tx(PubKey, 1, PubKey), PrivKey)]
              end,
     ForkChain0 = extend_chain_with_state(CommonChain, [1], 222, TxsFun),
     ForkChain1 = lists:nthtail(ForkHeight, ForkChain0),
@@ -1021,7 +1021,7 @@ fees_three_beneficiaries() ->
     #{ public := PubKey1, secret := PrivKey1 } = enacl:sign_keypair(),
     #{ public := PubKey2, secret :=_PrivKey2 } = enacl:sign_keypair(),
 
-    PresetAccounts = [{PubKey1, 1000000 * aec_test_utils:min_gas_price()}],
+    PresetAccounts = [{PubKey1, 1000000 * min_gas_price()}],
     meck:expect(aec_fork_block_settings, genesis_accounts, 0, PresetAccounts),
 
     %% Three accounts to act as miners
@@ -1035,9 +1035,9 @@ fees_three_beneficiaries() ->
     #{ public := PubKey8, secret := _PrivKey8 } = enacl:sign_keypair(),
 
     %% Add transactions in different micro blocks to collect fees from
-    Fee1 = 20000 * aec_test_utils:min_gas_price(),
-    Fee2 = 25000 * aec_test_utils:min_gas_price(),
-    Fee3 = 30000 * aec_test_utils:min_gas_price(),
+    Fee1 = 20000 * min_gas_price(),
+    Fee2 = 25000 * min_gas_price(),
+    Fee3 = 30000 * min_gas_price(),
     TxsFun = fun(1) ->
                      Tx1 = aec_test_utils:sign_tx(make_spend_tx(PubKey1, 1, PubKey2, Fee1) ,PrivKey1),
                      Tx2 = aec_test_utils:sign_tx(make_spend_tx(PubKey1, 2, PubKey2, Fee2), PrivKey1),
@@ -1131,16 +1131,16 @@ fees_delayed_reward() ->
     #{ public := PubKey1, secret := PrivKey1 } = enacl:sign_keypair(),
     #{ public := PubKey2, secret :=_PrivKey2 } = enacl:sign_keypair(),
 
-    PresetAccounts = [{PubKey1, 1000000 * aec_test_utils:min_gas_price()}],
+    PresetAccounts = [{PubKey1, 1000000 * min_gas_price()}],
     meck:expect(aec_fork_block_settings, genesis_accounts, 0, PresetAccounts),
 
     %% An account to act as a beneficiary
     #{ public := PubKey3, secret := _PrivKey3 } = enacl:sign_keypair(),
 
     %% Add transactions in different micro blocks to collect fees from
-    Fee1 = 20000 * aec_test_utils:min_gas_price(),
-    Fee2 = 30000 * aec_test_utils:min_gas_price(),
-    Fee3 = 40000 * aec_test_utils:min_gas_price(),
+    Fee1 = 20000 * min_gas_price(),
+    Fee2 = 30000 * min_gas_price(),
+    Fee3 = 40000 * min_gas_price(),
     TxsFun = fun(1) -> [aec_test_utils:sign_tx(make_spend_tx(PubKey1, 1, PubKey2, Fee1) ,PrivKey1)];
                 (2) -> [aec_test_utils:sign_tx(make_spend_tx(PubKey1, 2, PubKey2, Fee2), PrivKey1)];
                 (3) -> [aec_test_utils:sign_tx(make_spend_tx(PubKey1, 3, PubKey2, Fee3), PrivKey1)];
@@ -1212,11 +1212,11 @@ pof_test_() ->
 
 pof_fork_on_key_block() ->
     #{ public := PubKey, secret := PrivKey } = enacl:sign_keypair(),
-    PresetAccounts = [{PubKey, 1000000 * aec_test_utils:min_gas_price()}],
+    PresetAccounts = [{PubKey, 1000000 * min_gas_price()}],
     meck:expect(aec_fork_block_settings, genesis_accounts, 0, PresetAccounts),
 
     %% Create main chain
-    TxsFun = fun(1) -> [aec_test_utils:sign_tx(make_spend_tx(PubKey, 1, PubKey, 20000 * aec_test_utils:min_gas_price(), 2), PrivKey)];
+    TxsFun = fun(1) -> [aec_test_utils:sign_tx(make_spend_tx(PubKey, 1, PubKey, 20000 * min_gas_price(), 2), PrivKey)];
                 (_) -> []
              end,
     [B0, B1, _B2] = Chain0 = gen_block_chain_with_state_by_target(
@@ -1225,7 +1225,7 @@ pof_fork_on_key_block() ->
 
     %% Create fork, which starts on a key-block
     CommonChain = [B0, B1],
-    Txs = [aec_test_utils:sign_tx(make_spend_tx(PubKey, 1, PubKey, 20000 * aec_test_utils:min_gas_price(), 3), PrivKey)],
+    Txs = [aec_test_utils:sign_tx(make_spend_tx(PubKey, 1, PubKey, 20000 * min_gas_price(), 3), PrivKey)],
     Fork = aec_test_utils:extend_block_chain_with_micro_blocks(CommonChain, Txs),
     [_, _, MB2] = blocks_only_chain(Fork),
 
@@ -1244,11 +1244,11 @@ pof_fork_on_key_block() ->
 
 pof_fork_on_micro_block() ->
     #{ public := PubKey, secret := PrivKey } = enacl:sign_keypair(),
-    PresetAccounts = [{PubKey, 1000000 * aec_test_utils:min_gas_price()}],
+    PresetAccounts = [{PubKey, 1000000 * min_gas_price()}],
     meck:expect(aec_fork_block_settings, genesis_accounts, 0, PresetAccounts),
 
     %% Create main chain
-    Fee = 20000 * aec_test_utils:min_gas_price(),
+    Fee = 20000 * min_gas_price(),
     TxsFun = fun(1) ->
                      Tx1 = aec_test_utils:sign_tx(make_spend_tx(PubKey, 1, PubKey, Fee, 2),
                                                   PrivKey),
@@ -1283,9 +1283,9 @@ pof_fork_on_micro_block() ->
 
 pof_reported_late() ->
     #{ public := PubKey, secret := PrivKey } = enacl:sign_keypair(),
-    PresetAccounts = [{PubKey, 1000000 * aec_test_utils:min_gas_price()}],
+    PresetAccounts = [{PubKey, 1000000 * min_gas_price()}],
     meck:expect(aec_fork_block_settings, genesis_accounts, 0, PresetAccounts),
-    Fee = 20000 * aec_test_utils:min_gas_price(),
+    Fee = 20000 * min_gas_price(),
 
     %% Create main chain
     TxsFun = fun(1) ->
@@ -1397,9 +1397,9 @@ token_supply_spend() ->
     TestHeight = 20,
     Delay = 10,
     #{ public := PubKey, secret := PrivKey } = enacl:sign_keypair(),
-    PresetAmount = 1000000 * aec_test_utils:min_gas_price(),
+    PresetAmount = 1000000 * min_gas_price(),
     PresetAccounts = [{PubKey, PresetAmount}],
-    SpendFee = 100000 * aec_test_utils:min_gas_price(),
+    SpendFee = 100000 * min_gas_price(),
     SpendAmount = 3000,
     TxFun1 =
         fun(N, Receiver) ->
@@ -1452,9 +1452,9 @@ token_supply_oracles() ->
     Delay = 1000,
     #{ public := PubKey1, secret := PrivKey1 } = enacl:sign_keypair(),
     #{ public := PubKey2, secret := PrivKey2 } = enacl:sign_keypair(),
-    PresetAmount = 10000000 * aec_test_utils:min_gas_price(),
+    PresetAmount = 10000000 * min_gas_price(),
     PresetAccounts = [{PubKey1, PresetAmount}, {PubKey2, PresetAmount}],
-    Fee  = 100000 * aec_test_utils:min_gas_price(),
+    Fee  = 100000 * min_gas_price(),
     QFee = 100000,
     RegisterFun =
         fun(Address, Nonce) ->
@@ -1522,11 +1522,11 @@ token_supply_channels() ->
     Delay = 1000,
     #{ public := PubKey1, secret := PrivKey1 } = enacl:sign_keypair(),
     #{ public := PubKey2, secret := PrivKey2 } = enacl:sign_keypair(),
-    PresetAmount = 10000000 * aec_test_utils:min_gas_price(),
+    PresetAmount = 10000000 * min_gas_price(),
     PresetAccounts = [{PubKey1, PresetAmount}, {PubKey2, PresetAmount}],
-    Fee  = 100000 * aec_test_utils:min_gas_price(),
-    StartAmount = 100000 * aec_test_utils:min_gas_price(),
-    CloseAmount = 50000 * aec_test_utils:min_gas_price(),
+    Fee  = 100000 * min_gas_price(),
+    StartAmount = 100000 * min_gas_price(),
+    CloseAmount = 50000 * min_gas_price(),
     CreateNonce = 1,
     CloseNonce = 2,
     StartChannelFun =
@@ -1578,13 +1578,13 @@ token_supply_contracts() ->
     %% We don't want to care about coinbase this time.
     Delay = 5,
     #{ public := PubKey, secret := PrivKey } = enacl:sign_keypair(),
-    PresetAmount = 10000000 * aec_test_utils:min_gas_price(),
+    PresetAmount = 10000000 * min_gas_price(),
     PresetAccounts = [{PubKey, PresetAmount}],
     Deposit = 1000,
     Amount  = 3000,
-    Fee     = 100000 * aec_test_utils:min_gas_price(),
+    Fee     = 100000 * min_gas_price(),
     Gas     = 10000,
-    GasPrice = aec_test_utils:min_gas_price(),
+    GasPrice = min_gas_price(),
     {ok, Contract} = aect_test_utils:read_contract(identity),
     {ok, Code}     = aect_test_utils:compile_contract(identity),
     {ok, InitCallData} = aect_test_utils:encode_call_data(Contract, <<"init">>, []),
@@ -1617,11 +1617,11 @@ token_supply_ga() ->
     TestHeight = 10,
     Delay = 5,
     #{ public := PubKey, secret := PrivKey } = enacl:sign_keypair(),
-    PresetAmount = 10000000 * aec_test_utils:min_gas_price(),
+    PresetAmount = 10000000 * min_gas_price(),
     PresetAccounts = [{PubKey, PresetAmount}],
-    Fee     = 100000 * aec_test_utils:min_gas_price(),
+    Fee     = 100000 * min_gas_price(),
     Gas     = 1000,
-    GasPrice = aec_test_utils:min_gas_price(),
+    GasPrice = min_gas_price(),
     {ok, CodeMap} = aega_test_utils:get_contract("simple_auth.aes"),
     #{ bytecode := ByteCode
      , map      := #{type_info := TypeInfo}
@@ -1703,9 +1703,9 @@ token_supply_auctions() ->
     Delay = 1000,
     #{ public := PubKey1, secret := PrivKey1 } = enacl:sign_keypair(),
     #{ public := PubKey2, secret := PrivKey2 } = enacl:sign_keypair(),
-    PresetAmount = 400000000000000000 * aec_test_utils:min_gas_price(),
+    PresetAmount = 400000000000000000 * min_gas_price(),
     PresetAccounts = [{PubKey1, PresetAmount}, {PubKey2, PresetAmount}],
-    Fee  = 100000 * aec_test_utils:min_gas_price(),
+    Fee  = 100000 * min_gas_price(),
     NameFee = 40000000000000000000,
     Salt = 123,
     Name1 = <<"expensive.chain">>,
@@ -1847,7 +1847,7 @@ block_hash(Block) ->
     H.
 
 make_spend_tx(Sender, SenderNonce, Recipient) ->
-    make_spend_tx(Sender, SenderNonce, Recipient, 20000 * aec_test_utils:min_gas_price()).
+    make_spend_tx(Sender, SenderNonce, Recipient, 20000 * min_gas_price()).
 
 make_spend_tx(Sender, SenderNonce, Recipient, Fee) ->
     make_spend_tx(Sender, SenderNonce, Recipient, Fee, 1).
@@ -2098,3 +2098,101 @@ insert_block_ret({ok,_}     ) -> ok;
 insert_block_ret({error, already_in_db}) -> ok;
 insert_block_ret({pof,Pof,_}) -> {pof,Pof};
 insert_block_ret(Other      ) -> Other.
+
+
+%%%===================================================================
+%%% Get transactions in between tests
+
+get_transactions_in_between_test_() ->
+    {foreach,
+     fun() ->
+             aec_test_utils:start_chain_db(),
+             meck:new(aec_hard_forks, [passthrough]),
+             setup_meck_and_keys()
+     end,
+     fun(TmpDir) ->
+             teardown_meck_and_keys(TmpDir),
+             meck:unload(aec_hard_forks),
+             aec_test_utils:stop_chain_db()
+     end,
+     [ {"Get transactions in between hashes", fun get_transactions_between_two_microblocks/0}
+     ]}.
+
+get_transactions_between_two_microblocks() ->
+    %% Create a chain with both key and micro blocks
+    #{ public := PubKey, secret := PrivKey } = enacl:sign_keypair(),
+    MakeAndSignTx =
+        fun(Pub, Priv, Nonce) ->
+            Tx = make_spend_tx(Pub, Nonce, Pub),
+            aec_test_utils:sign_tx(Tx, Priv)
+        end,
+    SignedTx1 = MakeAndSignTx(PubKey, PrivKey, 1),
+    SignedTx2 = MakeAndSignTx(PubKey, PrivKey, 2),
+    SignedTx3 = MakeAndSignTx(PubKey, PrivKey, 3),
+    SignedTx4 = MakeAndSignTx(PubKey, PrivKey, 4),
+    SignedTx5 = MakeAndSignTx(PubKey, PrivKey, 5),
+
+    TxsFun = fun(1 = _Height) ->
+                 [SignedTx1
+                 ];
+                (2) ->
+                 [
+                  SignedTx2,
+                  SignedTx3,
+                  SignedTx4,
+                  SignedTx5
+                 ];
+                (_) ->
+                     []
+             end,
+    PresetAccounts = [{PubKey, 1000000000000000000000000000 * min_gas_price()}],
+    meck:expect(aec_fork_block_settings, genesis_accounts, 0, PresetAccounts),
+
+    Chain0 = gen_block_chain_with_state_by_target(
+               PresetAccounts,
+               lists:duplicate(4, ?GENESIS_TARGET), 1, TxsFun),
+    [KB0, KB1, MB1, KB2, MB2, MB3, MB4, MB5, KB3, KB4] =
+        Blocks =blocks_only_chain(Chain0),
+    1 = aec_blocks:height(MB1),
+    2 = aec_blocks:height(MB2),
+    2 = aec_blocks:height(MB3),
+    2 = aec_blocks:height(MB4),
+    2 = aec_blocks:height(MB5),
+    [SignedTx1] = aec_blocks:txs(MB1),
+    [SignedTx2] = aec_blocks:txs(MB2),
+    [SignedTx3] = aec_blocks:txs(MB3),
+    [SignedTx4] = aec_blocks:txs(MB4),
+    [SignedTx5] = aec_blocks:txs(MB5),
+    HashMB1 = block_hash(MB1),
+    HashMB2 = block_hash(MB2),
+    HashMB3 = block_hash(MB3),
+    HashMB4 = block_hash(MB4),
+    HashMB5 = block_hash(MB5),
+    lists:foreach(
+        fun(Block) ->
+            ok = insert_block(Block)
+        end,
+        Blocks),
+    {ok, [{SignedTx3, HashMB3}]}
+        = aec_chain:get_transactions_between(HashMB3, HashMB2),
+    {ok, [{SignedTx3, HashMB3},
+          {SignedTx4, HashMB4}]} =
+        aec_chain:get_transactions_between(HashMB4, HashMB2),
+    {ok, [{SignedTx1, HashMB1}]} =
+        aec_chain:get_transactions_between(block_hash(KB2),
+                                           block_hash(KB1)),
+    {ok, []} =
+        aec_chain:get_transactions_between(block_hash(KB1),
+                                           block_hash(KB0)),
+    {ok, [{SignedTx1, HashMB1},
+          {SignedTx2, HashMB2},
+          {SignedTx3, HashMB3},
+          {SignedTx4, HashMB4},
+          {SignedTx5, HashMB5}]} =
+        aec_chain:get_transactions_between(block_hash(KB3),
+                                           block_hash(KB1)),
+    ok.
+
+min_gas_price() ->
+    aec_test_utils:min_gas_price() * 1000000000.
+
