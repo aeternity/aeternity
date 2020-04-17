@@ -19,11 +19,13 @@
          big_amount/1,
          really_short_key/1,
          long_key/1,
-         couple_of_depoits/1,
+         couple_of_deposits/1,
          can_withdraw_before_bet/1,
          can_withdraw_after_winning_bet/1,
          can_have_a_couple_of_sequential_games/1,
-         can_deposit_and_withdrawal/1
+         can_deposit_and_withdrawal/1,
+         casino_disputes_player_inactivity/1,
+         player_disputes_casino_inactivity/1
         ]).
 
 -include_lib("stdlib/include/assert.hrl").
@@ -72,12 +74,18 @@ groups() ->
       ]},
      {sequential_events, [sequence],
       [ 
-       couple_of_depoits,
+       couple_of_deposits,
        can_withdraw_before_bet,
        can_withdraw_after_winning_bet,
        can_have_a_couple_of_sequential_games,
        can_deposit_and_withdrawal
-      ]}
+      ]},
+     {dispute, [sequence],
+      [
+       casino_disputes_player_inactivity,
+       player_disputes_casino_inactivity
+      ]
+     }
     ].
 
 suite() -> [].
@@ -242,14 +250,15 @@ long_key(Cfg) ->
                   _ActualSide = ?TAILS,
                   _Outcome = win).
 
-couple_of_depoits(Cfg0) ->
+couple_of_deposits(Cfg0) ->
     {Casino, Player} = proplists:get_value(roles, Cfg0, {initiator, responder}),
     Key = "qwerty",
     ActualSide = ?TAILS,
     Deposit = 100,
+    ReactionTime = 30,
     Cfg = channel_open(Cfg0),
     {CasinoAddress, PlayerAddress} = prepare_for_test(Casino, Player, Cfg),
-    Args = [CasinoAddress, PlayerAddress],
+    Args = [CasinoAddress, PlayerAddress, integer_to_list(ReactionTime)],
     ContractName = coin_toss,
     ContractPubkey = create_offchain_contract(Casino, ContractName, Args, Cfg),
     {ok, Hash} =
@@ -287,9 +296,10 @@ can_withdraw_before_bet(Cfg0) ->
     WithdrawAmt = 10,
     FirstDeposit = 2 * WithdrawAmt,
     Deposit = 100,
+    ReactionTime = 30,
     Cfg = channel_open(Cfg0),
     {CasinoAddress, PlayerAddress} = prepare_for_test(Casino, Player, Cfg),
-    Args = [CasinoAddress, PlayerAddress],
+    Args = [CasinoAddress, PlayerAddress, integer_to_list(ReactionTime)],
     ContractName = coin_toss,
     ContractPubkey = create_offchain_contract(Casino, ContractName, Args, Cfg),
     {ok, Hash} =
@@ -342,9 +352,10 @@ can_withdraw_after_winning_bet(Cfg0) ->
     Stake = 10,
     Deposit = 100,
     WithdrawAmt = 2,
+    ReactionTime = 30,
     Cfg = channel_open(Cfg0),
     {CasinoAddress, PlayerAddress} = prepare_for_test(Casino, Player, Cfg),
-    Args = [CasinoAddress, PlayerAddress],
+    Args = [CasinoAddress, PlayerAddress, integer_to_list(ReactionTime)],
     ContractName = coin_toss,
     ContractPubkey = create_offchain_contract(Casino, ContractName, Args, Cfg),
     {ok, Hash} =
@@ -396,9 +407,10 @@ can_have_a_couple_of_sequential_games(Cfg0) ->
     Key = "qwerty",
     Stake = 10,
     Deposit = 100,
+    ReactionTime = 30,
     Cfg = channel_open(Cfg0),
     {CasinoAddress, PlayerAddress} = prepare_for_test(Casino, Player, Cfg),
-    Args = [CasinoAddress, PlayerAddress],
+    Args = [CasinoAddress, PlayerAddress, integer_to_list(ReactionTime)],
     ContractName = coin_toss,
     ContractPubkey = create_offchain_contract(Casino, ContractName, Args, Cfg),
     {ok, []} =
@@ -436,9 +448,10 @@ can_deposit_and_withdrawal(Cfg0) ->
     {Casino, Player} = proplists:get_value(roles, Cfg0, {initiator, responder}),
     Key = "qwerty",
     Stake = 10,
+    ReactionTime = 30,
     Cfg = channel_open(Cfg0),
     {CasinoAddress, PlayerAddress} = prepare_for_test(Casino, Player, Cfg),
-    Args = [CasinoAddress, PlayerAddress],
+    Args = [CasinoAddress, PlayerAddress, integer_to_list(ReactionTime)],
     ContractName = coin_toss,
     ContractPubkey = create_offchain_contract(Casino, ContractName, Args, Cfg),
 
@@ -506,12 +519,102 @@ can_deposit_and_withdrawal(Cfg0) ->
     aehttp_sc_SUITE:sc_ws_close_mutual_(Cfg, Player),
     ok.
 
+casino_disputes_player_inactivity(Cfg0) ->
+    {Casino, Player} = proplists:get_value(roles, Cfg0, {initiator, responder}),
+    Key = "qwerty",
+    ActualSide = ?TAILS,
+    Deposit = 100,
+    ReactionTime = 5,
+    Cfg = channel_open(Cfg0),
+    {CasinoAddress, PlayerAddress} = prepare_for_test(Casino, Player, Cfg),
+    Args = [CasinoAddress, PlayerAddress, integer_to_list(ReactionTime)],
+    ContractName = coin_toss,
+    ContractPubkey = create_offchain_contract(Casino, ContractName, Args, Cfg),
+    mine_blocks(1),
+    {ok, Hash} =
+        call_offchain_contract(Casino, ContractPubkey,
+                               ContractName, "compute_hash",
+                               [add_quotes(Key), add_quotes(ActualSide)], 0, Cfg),
+    mine_blocks(1),
+    {ok, []} =
+        call_offchain_contract(Casino, ContractPubkey,
+                               ContractName, "deposit",
+                               [], Deposit, Cfg),
+    %% no issue providing a hash
+    mine_blocks(1),
+    {ok, []} =
+        call_offchain_contract(Casino, ContractPubkey,
+                               ContractName, "provide_hash",
+                               [Hash], 0, Cfg),
+    mine_blocks(ReactionTime),
+    %% not allowed yet
+    {revert,<<"not_yet_allowed">>} =
+        call_offchain_contract(Casino, ContractPubkey,
+                               ContractName, "casino_dispute_no_bet",
+                               [], 0, Cfg),
+    %% go beyond the limit of ReactionTime + 1
+    mine_blocks(1),
+    {ok, []} =
+        call_offchain_contract(Casino, ContractPubkey,
+                               ContractName, "casino_dispute_no_bet",
+                               [], 0, Cfg),
+    aehttp_sc_SUITE:sc_ws_close_mutual_(Cfg, Player),
+    ok.
+
+player_disputes_casino_inactivity(Cfg0) ->
+    {Casino, Player} = proplists:get_value(roles, Cfg0, {initiator, responder}),
+    Key = "qwerty",
+    PlayerGuess = ?TAILS,
+    ActualSide = ?TAILS,
+    Stake = 1,
+    Deposit = 100,
+    ReactionTime = 5,
+    Cfg = channel_open(Cfg0),
+    {CasinoAddress, PlayerAddress} = prepare_for_test(Casino, Player, Cfg),
+    Args = [CasinoAddress, PlayerAddress, integer_to_list(ReactionTime)],
+    ContractName = coin_toss,
+    ContractPubkey = create_offchain_contract(Casino, ContractName, Args, Cfg),
+    {ok, Hash} =
+        call_offchain_contract(Casino, ContractPubkey,
+                               ContractName, "compute_hash",
+                               [add_quotes(Key), add_quotes(ActualSide)], 0, Cfg),
+    mine_blocks(1),
+    {ok, []} =
+        call_offchain_contract(Casino, ContractPubkey,
+                               ContractName, "deposit",
+                               [], Deposit, Cfg),
+    %% no issue providing a hash
+    mine_blocks(1),
+    {ok, []} =
+        call_offchain_contract(Casino, ContractPubkey,
+                               ContractName, "provide_hash",
+                               [Hash], 0, Cfg),
+    mine_blocks(1),
+    {ok, []} =
+        call_offchain_contract(Player, ContractPubkey,
+                              ContractName, "bet",
+                              [add_quotes(PlayerGuess)], Stake, Cfg),
+    mine_blocks(ReactionTime),
+    %% not allowed yet
+    {revert,<<"not_yet_allowed">>} =
+        call_offchain_contract(Player, ContractPubkey,
+                               ContractName, "player_dispute_no_reveal",
+                               [], 0, Cfg),
+    %% go beyond the limit of ReactionTime + 1
+    mine_blocks(1),
+    {ok, []} =
+        call_offchain_contract(Player, ContractPubkey,
+                               ContractName, "player_dispute_no_reveal",
+                               [], 0, Cfg),
+    aehttp_sc_SUITE:sc_ws_close_mutual_(Cfg, Player),
+    ok.
 
 success_story(Cfg0, Casino, Player, Stake, Deposit, Key, PlayerGuess,
               ActualSide, Outcome) ->
+    ReactionTime = 30,
     Cfg = channel_open(Cfg0),
     {CasinoAddress, PlayerAddress} = prepare_for_test(Casino, Player, Cfg),
-    Args = [CasinoAddress, PlayerAddress],
+    Args = [CasinoAddress, PlayerAddress, integer_to_list(ReactionTime)],
     ContractName = coin_toss,
     ContractPubkey = create_offchain_contract(Casino, ContractName, Args, Cfg),
     {ok, Hash} =

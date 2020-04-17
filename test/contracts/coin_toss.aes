@@ -10,14 +10,14 @@ contract CoinToss =
                    reaction_time   : int
                    }
 
-  entrypoint init(casino: address, player: address) : state =
+  entrypoint init(casino: address, player: address, reaction_time: int) : state =
     { casino          = casino,
       player          = player,
       hash            = None,
       height          = 0,
       player_pick     = None,
       player_stake    = 0,
-      reaction_time   = 30
+      reaction_time   = reaction_time
       }
 
   stateful entrypoint provide_hash(hash: hash) =
@@ -54,7 +54,7 @@ contract CoinToss =
 
   stateful entrypoint player_dispute_no_reveal() =
     require(state.player_pick != None, "there_is_no_bet")
-    require(state.height < Chain.block_height, "not_yet_allowed")
+    require(state.height  + state.reaction_time < Chain.block_height, "not_yet_allowed")
     Chain.spend(state.player, state.player_stake * 2)
     reset_state()
 
@@ -62,7 +62,7 @@ contract CoinToss =
     require_casino()
     require(state.hash != None, "no_hash")
     require(state.player_pick == None, "there_is_bet_already")
-    require(state.height < Chain.block_height, "not_yet_allowed")
+    require(state.height + state.reaction_time < Chain.block_height, "not_yet_allowed")
     reset_state()
 
   // a friendly helper function
