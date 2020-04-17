@@ -3275,9 +3275,15 @@ ga_spend(From, To, Amt, Cfg) ->
     ok.
 
 basic_spend(From, To, Amt, Cfg) ->
-    #{ pub  := SendPub} = FromAcc = ?config(From, Cfg),
-    #{pub := ReceivePub} = ?config(To, Cfg),
-    {ok, Nonce} = rpc(dev1, aec_next_nonce, pick_for_account, [SendPub]),
+    #{ pub  := SendPub } = FromAcc = ?config(From, Cfg),
+    #{ pub := ReceivePub } = ?config(To, Cfg),
+    Nonce =
+        case account_type(SendPub) of
+            basic ->
+                {ok, N} = rpc(dev1, aec_next_nonce, pick_for_account, [SendPub]),
+                N;
+            generalized -> 0
+        end,
     SpendProps = #{ sender_id    => aeser_id:create(account, SendPub)
                   , recipient_id => aeser_id:create(account, ReceivePub)
                   , amount       => Amt
