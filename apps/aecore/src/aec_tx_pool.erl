@@ -830,8 +830,7 @@ int_check_account(Tx, Source, Event) ->
                         AccType == generalized andalso TxNonce =:= 0 ->
                             ok;
                         AccType == generalized ->
-                            {error, generalized_account_cant_sign_non_meta_tx,
-                            TxNonce};
+                            {error, generalized_account_cant_sign_non_meta_tx};
                         TxNonce =< AccNonce -> {error, nonce_too_low};
                         TxNonce =< (AccNonce + Offset) -> ok;
                         TxNonce >  (AccNonce + Offset) andalso not CheckNonce -> ok;
