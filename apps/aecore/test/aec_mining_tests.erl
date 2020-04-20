@@ -37,13 +37,13 @@ mine_block_test_() ->
                  %% and will invalidate the nonce value below
                  %% in order to find a proper nonce for your
                  %% block uncomment the line below:
-                 % let_it_crash = generate_valid_test_data(TopBlock, 100000000000000),
+                 %% let_it_crash = generate_valid_test_data(TopBlock, 100000000000000),
                  Nonce = case aec_hard_forks:protocol_effective_at_height(Height + 1) of
-                             ?ROMA_PROTOCOL_VSN    -> 10224503852404776651;
-                             ?MINERVA_PROTOCOL_VSN -> 5620820624947056288;
-                             ?FORTUNA_PROTOCOL_VSN -> 1641754208197654728;
-                             ?LIMA_PROTOCOL_VSN    -> 10477777390608539233;
-                             ?IRIS_PROTOCOL_VSN    -> 17348548031546946943
+                             ?ROMA_PROTOCOL_VSN    -> 14754354632762274554;
+                             ?MINERVA_PROTOCOL_VSN -> 13330452911247650827;
+                             ?FORTUNA_PROTOCOL_VSN -> 16495906965958303708;
+                             ?LIMA_PROTOCOL_VSN    -> 18191476565285521421;
+                             ?IRIS_PROTOCOL_VSN    -> 12339424460292944669
                          end,
                  {BlockCandidate,_} = aec_test_utils:create_keyblock_with_state(
                                         [{TopBlock, aec_trees:new()}], ?TEST_PUB),
@@ -67,6 +67,7 @@ mine_block_test_() ->
                  TopBlock = aec_blocks:set_height(RawBlock, aec_block_genesis:height()),
                  Nonce = case aec_hard_forks:protocol_effective_at_height(100) of
                              ?IRIS_PROTOCOL_VSN -> 72;
+                             ?FORTUNA_PROTOCOL_VSN -> 72;
                              _                  -> 41
                          end,
 
