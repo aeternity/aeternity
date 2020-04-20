@@ -810,8 +810,28 @@ check_account(Tx, _TxHash, _Block, BlockHash, _Trees, Event) ->
     int_check_account(Tx, {block_hash, BlockHash}, Event).
 
 int_check_account(Tx, Source, Event) ->
-    CheckNonce = nonce_check_by_event(Event),
+    case int_check_account_nonce(Tx, Source, Event) of
+        ok ->
+            int_check_meta_gas(Tx);
+        {error, _} = Err -> Err
+    end.
 
+int_check_meta_gas(SignedTx) ->
+    Aetx = aetx_sign:tx(SignedTx),
+    {Mod, Tx} = aetx:specialize_callback(Aetx),
+    case Mod of
+        aega_meta_tx ->
+            Gas = aega_meta_tx:gas(Tx),
+            case Gas =< aec_tx_pool:maximum_auth_fun_gas() of
+                true ->
+                    int_check_meta_gas(aega_meta_tx:tx(Tx));
+                false -> {error, too_much_gas_for_auth_function}
+            end;
+        _ -> ok
+    end.
+
+int_check_account_nonce(Tx, Source, Event) ->
+    CheckNonce = nonce_check_by_event(Event),
     %% Check is conservative and only rejects certain cases
     Unsigned = aetx_sign:innermost_tx(Tx),
     TxNonce = aetx:nonce(Unsigned),
