@@ -1181,15 +1181,16 @@ workflows:
   version: 2
   build_test_deploy:
     jobs:
-      - windows_package:
-          otp_version: "21.3"
-          context: ae-node-builds
-          filters:
-            branches:
-              ignore:
-                - system-tests
-            tags:
-              only: *tag_regex
+      # FIXME: Disabled until Windows build is fixed
+      # - windows_package:
+      #     otp_version: "21.3"
+      #     context: ae-node-builds
+      #     filters:
+      #       branches:
+      #         ignore:
+      #           - system-tests
+      #       tags:
+      #         only: *tag_regex
 
       - build:
           filters:
@@ -1650,7 +1651,8 @@ workflows:
             - eunit_latest
             - static_analysis
             - rebar_lock_check
-            - windows_package
+            # FIXME: Disabled until Windows build is fixed
+            # - windows_package
             - hodl_artifact_upload
           filters:
             branches:
@@ -1708,7 +1710,8 @@ workflows:
       - upload_latest_packages_windows:
           context: ae-node-builds
           requires:
-            - windows_package
+            # FIXME: Disabled until Windows build is fixed
+            # - windows_package
             - hodl_latest
           filters:
             branches:
@@ -1734,8 +1737,9 @@ workflows:
             - upload_latest_packages_linux
             - upload_packages_osx
             - upload_latest_packages_osx
-            - upload_packages_windows
-            - upload_latest_packages_windows
+            # FIXME: Disabled until Windows build is fixed
+            # - upload_packages_windows
+            # - upload_latest_packages_windows
             - docker_push_tag
             - docker_push_latest
           filters:
