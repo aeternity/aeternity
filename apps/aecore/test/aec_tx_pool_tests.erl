@@ -33,6 +33,7 @@ tx_pool_test_() ->
              %% signed txs - as a node would do.
              ets:new(?TAB, [public, ordered_set, named_table]),
              meck:new(aeu_time, [passthrough]),
+             meck:new(aec_accounts, [passthrough]),
              meck:new(aec_jobs_queues),
              meck:expect(aec_jobs_queues, run, fun(_, F) -> F() end),
              meck:expect(aec_governance, minimum_gas_price, 1, 1),
@@ -53,6 +54,7 @@ tx_pool_test_() ->
              aec_test_utils:unmock_governance(), %% Unloads aec_governance mock.
              ok = aec_tx_pool:stop(),
              ok = aec_tx_pool_gc:stop(),
+             meck:unload(aec_accounts),
              meck:unload(aeu_time),
              meck:unload(aec_jobs_queues),
              meck:unload(aec_tx_pool),
@@ -420,6 +422,16 @@ tx_pool_test_() ->
                  meck:expect(aec_fork_block_settings, genesis_accounts, 0,
                              [{PK1, 100000}, {PK2, 100000}, {PK3, 100000}, {PK4, 100000},
                               {PK5, 10000000000000000000000}]),
+                 GeneralizedAccounts = [PK5],
+                 meck:expect(aec_accounts, type,
+                             fun(Account) ->
+                                 Pubkey = aec_accounts:pubkey(Account),
+                                 case lists:member(Pubkey,
+                                                   GeneralizedAccounts) of
+                                    true -> generalized;
+                                    false -> basic
+                                 end
+                             end),
                  {GenesisBlock, _} = aec_block_genesis:genesis_block_with_state(),
                  aec_test_utils:start_chain_db(),
                  {ok,_} = aec_chain_state:insert_block(GenesisBlock),
@@ -487,8 +499,9 @@ tx_pool_test_() ->
        fun() ->
                aec_test_utils:stop_chain_db(),
                PK = new_pubkey(),
+               PK2 = new_pubkey(),
                meck:expect(aec_fork_block_settings, genesis_accounts, 0,
-                           [{PK, 100000000}]),
+                           [{PK, 100000000}, {PK2, 10000000000}]),
                {GenesisBlock, _} = aec_block_genesis:genesis_block_with_state(),
                aec_test_utils:start_chain_db(),
                {ok,_} = aec_chain_state:insert_block(GenesisBlock),
@@ -539,7 +552,15 @@ tx_pool_test_() ->
                case aec_hard_forks:protocol_effective_at_height(1) >= ?FORTUNA_PROTOCOL_VSN of
                    true ->
                        aec_tx_pool:restore_mempool(),
-                       STx7 = a_meta_tx(PK, 200000, 1, 1),
+                       meck:expect(aec_accounts, type,
+                                   fun(Account) ->
+                                       Pubkey = aec_accounts:pubkey(Account),
+                                       case Pubkey =:= PK2 of
+                                           true -> generalized;
+                                           false -> basic
+                                       end
+                                   end),
+                       STx7 = a_meta_tx(PK2, 200000, 1, 1),
                        ?assertEqual(ok, aec_tx_pool:push(STx7)),
                        ?assertEqual({ok, [STx3, STx5, STx6, STx7]},
                                     aec_tx_pool:get_candidate(MaxGas, aec_chain:top_block_hash()));
