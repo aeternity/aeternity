@@ -1651,7 +1651,8 @@ workflows:
             - eunit_latest
             - static_analysis
             - rebar_lock_check
-            - windows_package
+            # FIXME: Disabled until Windows build is fixed
+            # - windows_package
             - hodl_artifact_upload
           filters:
             branches:
@@ -1709,7 +1710,8 @@ workflows:
       - upload_latest_packages_windows:
           context: ae-node-builds
           requires:
-            - windows_package
+            # FIXME: Disabled until Windows build is fixed
+            # - windows_package
             - hodl_latest
           filters:
             branches:
