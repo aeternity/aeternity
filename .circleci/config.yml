@@ -1083,16 +1083,16 @@ jobs:
     steps:
       - upload_release_artifacts
 
-  upload_packages_windows:
-    executor: infrastructure_container_stable
-    <<: *infrastructure_config
-    environment:
-      <<: *infrastructure_config_environment
-      PKG_TARGET_OS: windows
-      PKG_EXT: -experimental.zip
-      PACKAGES_DIR: *packages_workspace
-    steps:
-      - upload_release_artifacts
+  # upload_packages_windows:
+  #   executor: infrastructure_container_stable
+  #   <<: *infrastructure_config
+  #   environment:
+  #     <<: *infrastructure_config_environment
+  #     PKG_TARGET_OS: windows
+  #     PKG_EXT: -experimental.zip
+  #     PACKAGES_DIR: *packages_workspace
+  #   steps:
+  #     - upload_release_artifacts
 
   upload_latest_packages_osx:
     executor: infrastructure_container_stable
@@ -1641,24 +1641,24 @@ workflows:
             tags:
               only: *tag_regex
 
-      - upload_packages_windows:
-          context: ae-node-builds
-          requires:
-            - eunit_roma
-            - eunit_minerva
-            - eunit_fortuna
-            - eunit_lima
-            - eunit_latest
-            - static_analysis
-            - rebar_lock_check
-            # FIXME: Disabled until Windows build is fixed
-            # - windows_package
-            - hodl_artifact_upload
-          filters:
-            branches:
-              ignore: /.*/
-            tags:
-              only: *tag_regex
+      # - upload_packages_windows:
+      #     context: ae-node-builds
+      #     requires:
+      #       - eunit_roma
+      #       - eunit_minerva
+      #       - eunit_fortuna
+      #       - eunit_lima
+      #       - eunit_latest
+      #       - static_analysis
+      #       - rebar_lock_check
+      #       # FIXME: Disabled until Windows build is fixed
+      #       # - windows_package
+      #       - hodl_artifact_upload
+      #     filters:
+      #       branches:
+      #         ignore: /.*/
+      #       tags:
+      #         only: *tag_regex
 
       - docker_push_tag:
           context: ae-node-builds
