@@ -5455,7 +5455,7 @@ sophia_compiler_version(_Cfg) ->
     {value, C} = ?call(lookup_contract_by_id, IdC),
     CMap = aeser_contract_code:deserialize(aect_contracts:code(C)),
     ?assertMatchProtocol(maps:get(compiler_version, CMap, undefined),
-                         undefined, <<"2.1.0">>, <<"3.2.0">>, <<"unknown">>, <<"4.3.0">>),
+                         undefined, <<"2.1.0">>, <<"3.2.0">>, <<"unknown">>, <<"4.2.0">>),
     ok.
 
 sophia_protected_call(_Cfg) ->
