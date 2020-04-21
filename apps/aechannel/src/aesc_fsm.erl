@@ -684,7 +684,7 @@ awaiting_reestablish(cast, {?CH_REESTABL, Msg}, #data{ role = responder
                          lager:debug("Already running - don't re-register", []),
                          D2
                  end,
-            next_state(open, send_reestablish_ack_msg(D3));
+            next_state(open, force_update_report(send_reestablish_ack_msg(D3)));
         {error, _} = Error ->
             close(Error, D)
     end;
@@ -3319,6 +3319,9 @@ handle_change_config(log_keep, Keep, #data{log = L} = D)
     {ok, D#data{log = aesc_window:change_keep(Keep, L)}};
 handle_change_config(_, _, _) ->
     {error, invalid_config}.
+
+force_update_report(D) ->
+    D#data{last_reported_update = undefined}.
 
 report_update(#data{state = State, last_reported_update = Last} = D) ->
     case aesc_offchain_state:get_latest_signed_tx(State) of
