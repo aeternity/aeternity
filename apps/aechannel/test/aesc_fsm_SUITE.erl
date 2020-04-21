@@ -2416,7 +2416,7 @@ create_channel_from_spec(I, R, Spec, Port, UseAny, Debug, Cfg) ->
         end,
     ?LOG("RProxy = ~p, IProxy = ~p", [RProxy, IProxy]),
     Timeout = proplists:get_value(timeout, Cfg, ?TIMEOUT),
-    Info = match_responder_and_initiator(RProxy, Debug, Timeout),
+    Info = match_responder_and_initiator(RProxy, IProxy, Debug, Timeout),
     #{ i := #{ fsm := FsmI, fsm_id := IFsmId } = I1
      , r := #{ fsm := FsmR, fsm_id := RFsmId } = R1 } = Info,
     %% Assert that the ID's are different
@@ -2516,13 +2516,16 @@ spawn_initiator(Port, Spec, I, Debug) ->
 move_fsm_id_to_spec(#{fsm_id := FsmId}, Spec) ->
     Spec#{existing_fsm_id_wrapper => aesc_fsm_id:from_binary(FsmId)}.
 
-match_responder_and_initiator(RProxy, Debug, Timeout) ->
+match_responder_and_initiator(RProxy, IProxy, Debug, Timeout) ->
     receive
         {channel_up, RProxy, Info} ->
             ?LOG(Debug, "Matched initiator/responder pair: ~p", [Info]),
             Info
     after Timeout ->
+            ?PEEK_MSGQ(true),
             ?LOG(Debug, "Timed out waiting for matched pair", []),
+            ?LOG(Debug, "RProxy: ~p", [process_info(RProxy, messages)]),
+            ?LOG(Debug, "IProxy: ~p", [process_info(IProxy, messages)]),
             error(timeout)
     end.
 
@@ -2534,9 +2537,11 @@ responder_instance_(Fsm, Spec, R0, Parent, Debug) ->
     {ok, #{ channel_id := TmpChanId }} = rpc(dev1, aesc_fsm, get_state, [Fsm]),
     ?LOG(Debug, "TmpChanId = ~p", [TmpChanId]),
     R1 = R#{ proxy => self(), parent => Parent, fsm_id => FsmId },
-    gproc:reg({n,l,{?MODULE,TmpChanId,responder}}, #{ r => R1 }),
+    gproc:reg(GprocR = {n,l,{?MODULE,TmpChanId,responder}}, #{ r => R1 }),
+    GprocI = {n,l,{?MODULE,TmpChanId,initiator}},
+    ?LOG(Debug, "Registered as ~p, waiting for ~p", [GprocR, GprocI]),
     {_IPid, #{ i := I1 , channel_accept := ChAccept }}
-        = gproc:await({n,l,{?MODULE,TmpChanId,initiator}}, ?TIMEOUT),
+        = gproc:await(GprocI, ?TIMEOUT),
     Parent ! {channel_up, self(), #{ i => I1#{parent => Parent}
                                      , r => R1
                                      , channel_accept => ChAccept
@@ -2551,12 +2556,15 @@ initiator_instance_(Fsm, Spec, I0, Parent, Debug) ->
     {ok, #{ channel_id := TmpChanId }} = rpc(dev1, aesc_fsm, get_state, [Fsm]),
     ?LOG(Debug, "TmpChanId = ~p", [TmpChanId]),
     I1 = I#{ proxy => self(), fsm_id => FsmId },
-    gproc:reg({n,l,{?MODULE,TmpChanId,initiator}}, #{ i => I1
-                                                    , channel_accept => ChAccept }),
+    gproc:reg(GprocI = {n,l,{?MODULE,TmpChanId,initiator}}, #{ i => I1
+                                                             , channel_accept => ChAccept }),
+    GprocR = {n,l,{?MODULE,TmpChanId,responder}},
+    ?LOG(Debug, "Registered as ~p, waiting for ~p", [GprocI, GprocR]),
     {_RPid, #{ r := #{parent := NewParent}}}
-        = gproc:await({n,l,{?MODULE,TmpChanId,responder}}, ?TIMEOUT),
+        = gproc:await(GprocR, ?TIMEOUT),
     unlink(Parent),
     link(NewParent),
+    ?LOG(Debug, "IProxy entering relay loop", []),
     fsm_relay(I1#{parent => NewParent}, NewParent, Debug).
 
 set_proxy_debug(Bool, #{proxy := P}) when is_boolean(Bool) ->

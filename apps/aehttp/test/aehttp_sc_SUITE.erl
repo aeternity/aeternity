@@ -54,6 +54,7 @@
     sc_ws_remote_call_contract/1,
     sc_ws_remote_call_contract_refering_onchain_data/1,
     sc_ws_wrong_call_data/1,
+    sc_ws_reconnect_early/1,
     sc_ws_basic_client_reconnect_i/1,
     sc_ws_basic_client_reconnect_r/1,
     sc_ws_basic_client_reconnect_i_w_reestablish/1,
@@ -182,6 +183,7 @@ groups() ->
         sc_ws_leave_reestablish_wrong_fsm_id,
         sc_ws_leave_reestablish_responder_stays,
         sc_ws_leave_reconnect,
+        sc_ws_reconnect_early,
         {group, force_progress},
         {group, with_open_channel},
         {group, with_meta},
@@ -352,9 +354,17 @@ init_per_suite(Config) ->
                      <<"name_claim_bid_timeout">> => 0}},
     {ok, StartedApps} = application:ensure_all_started(gproc),
     Config1 = aecore_suite_utils:init_per_suite([?NODE], DefCfg, [{symlink_name, "latest.http_sc"}, {test_module, ?MODULE}] ++ Config),
+    ct:log("Config1 = ~p", [Config1]),
+    make_channel_docs_symlink(Config1),
     start_node([ {nodes, [aecore_suite_utils:node_tuple(?NODE)]}
                , {started_apps, StartedApps}
                , {ws_port, 12340}] ++ Config1).
+
+make_channel_docs_symlink(Config) ->
+    DocsDir = filename:join(?config(priv_dir, Config), "channel_docs"),
+    BaseSymlink = ?config(symlink_name, Config),
+    LinkName = filename:join([?config(top_dir, Config), "_build/test/logs", BaseSymlink, "channel_docs"]),
+    ok = aecore_suite_utils:symlink(DocsDir, LinkName).
 
 end_per_suite(Config) ->
     [application:stop(A) ||
@@ -688,17 +698,14 @@ sc_ws_open_(Config) ->
 sc_ws_open_(Config, Opts) ->
     sc_ws_open_(Config, Opts, ?DEFAULT_MIN_DEPTH).
 
+
 sc_ws_open_(Config, ChannelOpts0, MinBlocksToMine) ->
      sc_ws_open_(Config, ChannelOpts0, MinBlocksToMine, default_dir).
 
 sc_ws_open_(Config, ChannelOpts0, MinBlocksToMine, LogDir) ->
     #{initiator := #{pub_key := IPubkey},
       responder := #{pub_key := RPubkey}} = proplists:get_value(participants, Config),
-    TestPings = proplists:get_value(ping_pong, Config, false),
-    OptionallyPingPong =
-        fun(ConnPid) when TestPings =:= true -> ping_pong(ConnPid, Config);
-           (_) -> pass
-        end,
+    OptionallyPingPong = optionally_ping_pong(Config),
 
     {ok, 200, #{<<"balance">> := IStartAmt}} =
                  get_accounts_by_pubkey_sut(aeser_api_encoder:encode(account_pubkey, IPubkey)),
@@ -711,7 +718,7 @@ sc_ws_open_(Config, ChannelOpts0, MinBlocksToMine, LogDir) ->
 
     {IStartAmt, RStartAmt} = channel_participants_balances(IPubkey, RPubkey),
 
-    TestEvents = [info, get, sign, on_chain_tx, update],
+    TestEvents = sc_ws_open_events(),
     ChannelOpts = channel_options(IPubkey, RPubkey, IAmt, RAmt, ChannelOpts0, Config),
     {IChanOpts, RChanOpts} = special_channel_opts(ChannelOpts),
     ct:log("IChanOpts = ~p~n"
@@ -733,13 +740,74 @@ sc_ws_open_(Config, ChannelOpts0, MinBlocksToMine, LogDir) ->
     channel_send_conn_open_infos(RConnPid, IConnPid, Config),
 
     SignedCrTx = channel_create(Config, IConnPid, RConnPid),
-
     CrTx = aetx_sign:innermost_tx(SignedCrTx),
+    {ok, ChPubkey} = aesc_utils:channel_pubkey(SignedCrTx),
     {channel_create_tx, Tx} = aetx:specialize_type(CrTx),
+    ChId = aeser_api_encoder:encode(channel, ChPubkey),
     IPubkey = aesc_create_tx:initiator_pubkey(Tx),
     RPubkey = aesc_create_tx:responder_pubkey(Tx),
-    ChannelCreateFee = aesc_create_tx:fee(Tx),
 
+    ok = ?WS:unregister_test_for_channel_events(IConnPid, TestEvents),
+    ok = ?WS:unregister_test_for_channel_events(RConnPid, TestEvents),
+    %% We stuff the channel id into the Clients map out of convenience
+    ChannelClients = #{ channel_id => ChId
+                      , initiator  => IConnPid
+                      , initiator_fsm_id => IFsmId
+                      , responder  => RConnPid
+                      , responder_fsm_id => RFsmId},
+    Config1 = [{channel_clients, ChannelClients},
+               {channel_start_amounts, #{ initiator => IStartAmt
+                                        , responder => RStartAmt }},
+               {create_tx, SignedCrTx},
+               {channel_options, ChannelOpts} | Config],
+    %%
+    case proplists:get_value(mine_create_tx, Config, true) of
+        true ->
+            finish_sc_ws_open(Config1, MinBlocksToMine);
+        false ->
+            ok
+    end,
+    Config1.
+
+optionally_ping_pong(Config) ->
+    TestPings = proplists:get_value(ping_pong, Config, false),
+    fun(ConnPid) when TestPings =:= true -> ping_pong(ConnPid, Config);
+       (_) -> pass
+    end.
+
+optionally_ping_pong(IConnPid, RConnPid, Config) ->
+    TestPings = proplists:get_value(ping_pong, Config, false),
+    fun() when TestPings =:= true ->
+            ping_pong(IConnPid, Config),
+            ping_pong(RConnPid, Config);
+       () -> pass
+    end.
+
+sc_ws_open_events() ->
+    [info, get, sign, on_chain_tx, update].
+
+finish_sc_ws_open(Config, MinBlocksToMine) ->
+    ct:log("finish_sc_ws_open", []),
+    #{ channel_id := ChId
+     , initiator  := IConnPid
+     , responder  := RConnPid } = proplists:get_value(channel_clients, Config),
+    #{ initiator_amount := IAmt
+     , responder_amount := RAmt } = ChannelOpts = proplists:get_value(channel_options, Config),
+    SignedCrTx = proplists:get_value(create_tx, Config),
+    %%
+    TestEvents = sc_ws_open_events(),
+    ok = ?WS:register_test_for_channel_events(IConnPid, TestEvents),
+    ok = ?WS:register_test_for_channel_events(RConnPid, TestEvents),
+    %%
+    ok = maybe_mine_create_tx(SignedCrTx, Config, IConnPid, RConnPid),
+    CrTx = aetx_sign:innermost_tx(SignedCrTx),
+    {channel_create_tx, Tx} = aetx:specialize_type(CrTx),
+    ChannelCreateFee = aesc_create_tx:fee(Tx),
+    IPubkey = aesc_create_tx:initiator_pubkey(Tx),
+    RPubkey = aesc_create_tx:responder_pubkey(Tx),
+    #{ initiator := IStartAmt
+     , responder := RStartAmt } = proplists:get_value(channel_start_amounts, Config),
+    %%
     make_two_gen_messages_volleys(IConnPid, IPubkey, RConnPid,
                                   RPubkey, Config),
 
@@ -756,27 +824,20 @@ sc_ws_open_(Config, ChannelOpts0, MinBlocksToMine, LogDir) ->
     assert_balance_at_most(IPubkey, IStartAmt - IAmt - ChannelCreateFee),
     assert_balance_at_most(RPubkey, RStartAmt - RAmt),
 
-    % mine min depth
+    %% mine min depth
     aecore_suite_utils:mine_key_blocks(aecore_suite_utils:node_name(?NODE),
                                        MinBlocksToMine),
 
     {ok, ChId} = channel_send_locking_infos(IConnPid, RConnPid, Config),
 
     channel_send_chan_open_infos(RConnPid, IConnPid, Config),
+    %%
+    ok = ?WS:unregister_test_for_channel_events(IConnPid, TestEvents),
+    ok = ?WS:unregister_test_for_channel_events(RConnPid, TestEvents),
+    %%
+    ok.
 
-    %% We stuff the channel id into the Clients map out of convenience
-    ChannelClients = #{ channel_id => ChId
-                      , initiator  => IConnPid
-                      , initiator_fsm_id => IFsmId
-                      , responder  => RConnPid
-                      , responder_fsm_id => RFsmId},
-    ok = ?WS:unregister_test_for_channel_events(IConnPid, [info, get, sign,
-                                                           on_chain_tx, update]),
-    ok = ?WS:unregister_test_for_channel_events(RConnPid, [info, get, sign,
-                                                           on_chain_tx, update]),
-    [{channel_clients, ChannelClients},
-     {create_tx, SignedCrTx},
-     {channel_options, ChannelOpts} | Config].
+
 
 make_two_gen_messages_volleys(IConnPid, IPubkey, RConnPid,
                                   RPubkey, Config) ->
@@ -847,12 +908,7 @@ channel_create(Config, IConnPid, RConnPid) ->
       responder := #{pub_key := RPubkey,
                     priv_key := RPrivkey}} = proplists:get_value(participants, Config),
     TestPings = proplists:get_value(ping_pong, Config, false),
-    OptionallyPingPong =
-        fun() when TestPings =:= true ->
-            ping_pong(IConnPid, Config),
-            ping_pong(RConnPid, Config);
-           () -> pass
-        end,
+    OptionallyPingPong = optionally_ping_pong(IConnPid, RConnPid, Config),
     %% initiator gets to sign a create_tx
     {IStartAmt, RStartAmt} = channel_participants_balances(IPubkey, RPubkey),
     OptionallyPingPong(),
@@ -880,6 +936,8 @@ channel_create(Config, IConnPid, RConnPid) ->
     {channel_create_tx, Tx} = aetx:specialize_type(CrTx),
     IPubkey = aesc_create_tx:initiator_pubkey(Tx),
     RPubkey = aesc_create_tx:responder_pubkey(Tx),
+    ct:log("ChID (channel_create()) = ~p", [aeser_api_encoder:encode(
+                                              channel, aesc_create_tx:channel_pubkey(Tx))]),
 
     %% ensure the tx is in the mempool
     ok = wait_for_signed_transaction_in_pool(SignedCrTx),
@@ -888,14 +946,33 @@ channel_create(Config, IConnPid, RConnPid) ->
     assert_balance(IPubkey, IStartAmt),
     assert_balance(RPubkey, RStartAmt),
 
+    case proplists:get_value(mine_create_tx, Config, true) of
+        true ->
+            ct:log("Will mine create_tx", []),
+            ok = channel_create_mined(SignedCrTx, Config, IConnPid, RConnPid);
+        false ->
+            ct:log("Will not mine create_tx at this time", []),
+            ok
+    end,
+    SignedCrTx.
+
+maybe_mine_create_tx(SignedCrTx, Config, IConnPid, RConnPid) ->
+    case proplists:get_value(mine_create_tx, Config, true) of
+        false ->
+            %% This means we didn't mine it before - do it now!
+            channel_create_mined(SignedCrTx, Config, IConnPid, RConnPid);
+        true ->
+            ok
+    end.
+
+channel_create_mined(SignedCrTx, Config, IConnPid, RConnPid) ->
     % mine the create_tx
     ok = wait_for_signed_transaction_in_block(SignedCrTx),
 
     {ok, _, #{<<"tx">> := EncodedSignedCrTx}} = wait_for_channel_event(IConnPid, on_chain_tx, Config),
     {ok, _, #{<<"tx">> := EncodedSignedCrTx}} = wait_for_channel_event(RConnPid, on_chain_tx, Config),
-    OptionallyPingPong(),
-
-    SignedCrTx.
+    (optionally_ping_pong(IConnPid, RConnPid, Config))(),
+    ok.
 
 sc_ws_update_(Config) ->
     Participants = proplists:get_value(participants, Config),
@@ -2869,6 +2946,43 @@ sc_ws_min_depth_not_reached_timeout_(Config) ->
     ConnDied(RConnPid),
     ok.
 
+sc_ws_reconnect_early(Config) ->
+    S = ?SLOGAN,
+    Role = initiator,
+    MinBlocksToMine = 2,
+    #{initiator := #{pub_key := IPubkey},
+      responder := #{pub_key := RPubkey}} = proplists:get_value(participants, Config),
+
+    Config1 = sc_ws_open_([{mine_create_tx, false}|Config], #{ slogan => S
+                                                             , minimum_depth => 0},
+                          MinBlocksToMine),
+
+    ct:log("Channel set up, but tx not mined", []),
+
+    #{ channel_id       := ChId
+     , initiator_fsm_id := IFsmId
+     , responder_fsm_id := RFsmId
+     , initiator        := IConnPid } = proplists:get_value(channel_clients, Config1),
+    SignedTx = proplists:get_value(signed_tx, Config1),
+
+    ?WS:stop(IConnPid),
+    ct:log("IConnPid killed", []),
+    timer:sleep(100),
+    ct:log("Reconnecting client ..." , []),
+    Options = proplists:get_value(channel_options, Config1),
+    %% TODO: Port shouldn't matter when reconnecting
+    Port = maps:get(port, Options),
+    ReestablishOpts = #{ existing_channel_id => ChId
+                       , existing_fsm_id => [{initiator, IFsmId}, {responder, RFsmId}]
+                       , port => Port
+                       , protocol => maps:get(protocol, Options)},
+    Config2 = reconnect_client_(ReestablishOpts, Role, [{scenario, reconnect} | Config1]),
+    %%
+    ok = finish_sc_ws_open(Config2, MinBlocksToMine),
+    sc_ws_close_mutual_(Config2, Role),
+    ok.
+
+
 sc_ws_min_depth_is_modifiable(Config0) ->
     Config = sc_ws_open_(Config0, #{minimum_depth => 0}, 2),
     ok = sc_ws_update_(Config),
@@ -3150,6 +3264,7 @@ other_role(initiator) -> responder.
 
 reconnect_client_(ReestablishOpts, Role, Config) ->
     ct:log("Trying to reconnect via reestablish", []),
+    ct:log("Config = ~p", [Config]),
     ?CHECK_INFO(20),
     ct:log("ReestablishOpts = ~p", [ReestablishOpts]),
     ReestablishOpts1 = case Role of
@@ -3162,6 +3277,7 @@ reconnect_client_(ReestablishOpts, Role, Config) ->
     ct:log("New ConnPid = ~p", [ConnPid]),
     ct:log("Check if reestablish resulted in a reconnect", []),
     OldClients = ?config(channel_clients, Config),
+    ct:log("OldClients = ~p", [OldClients]),
     {OldFsmId, NewClients} = case Role of
                                  initiator ->
                                      { maps:get(initiator_fsm_id, OldClients)
@@ -3674,8 +3790,10 @@ sc_ws_leave_reestablish_responder_stays(Config0) ->
 
 sc_ws_leave_reconnect(Config0) ->
     ct:log("opening channel", []),
+    ct:log("Config0 = ~p", [Config0]),
     Config = sc_ws_open_([{slogan, ?SLOGAN}|Config0], #{responder_opts => #{keep_running => true}}),
     ct:log("channel opened", []),
+    ct:log("Config = ~p", [Config]),
     ct:log("*** Leaving channel ***", []),
     Config1 = [{responder_leaves, false}|Config],
     ct:log("Config1 = ~p", [Config1]),

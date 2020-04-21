@@ -403,6 +403,7 @@ establish({connect, Host, Port, Opts}, St) ->
             lager:debug("EnoiseOpts (connect) = ~p", [EnoiseOpts]),
             case enoise:connect(TcpSock, EnoiseOpts) of
                 {ok, EConn, _FinalSt} ->
+                    aesc_fsm:noise_connected(St#st.fsm),
                     St1 = St#st{econn = EConn},
                     {ok, St1};
                 Err1 ->

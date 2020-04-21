@@ -47,6 +47,7 @@
         awaiting_initial_state  -> accept;
         awaiting_leave_ack      -> accept;
         awaiting_locked         -> funding_lock;
+        awaiting_connect        -> accept;
         awaiting_open           -> idle;
         awaiting_reestablish    -> idle;
         awaiting_signature      -> sign;
@@ -254,7 +255,7 @@
                   }).
 
 -record(op_reestablish, { offchain_tx :: aetx_sign:signed_tx() | undefined
-                        , mode = restart :: restart | remain
+                        , mode = restart :: restart | remain | {connect, map()}
                         }).
 
 -record(op_close, { data :: #op_data{}

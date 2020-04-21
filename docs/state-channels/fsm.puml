@@ -26,12 +26,15 @@ note as info
 end note
 
 state "Re-establish Init" as re_in
-[*] --> re_in                                             : [if role == initiator and re-established]
-[*] --> in                                                : [if role == initiator and  not re-established]
+[*] --> aw_co                                             : [if role == initiator]
 [*] --> aw_re                                             : [if role == responder and re-established]
 [*] --> aw_op                                             : [if role == responder and  not re-established]
 re_in --> op                                              : channel_reest_ack [if checks_ok]
 re_in --> te                                              : channel_reest_ack [if not checks_ok]
+
+state "Awaiting connect" as aw_co
+aw_co --> re_in                                           : [if re-established]
+aw_co --> in                                              : [if not re-established]
 
 state "Awaiting Open" as aw_op
 aw_op --> ac                                              : channel_open [if checks_ok]

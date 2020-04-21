@@ -25,6 +25,7 @@
 
 -define(ERROR_TO_CLIENT(Err), {?MODULE, send_to_client, {error, Err}}).
 -include_lib("aeutils/include/aeu_stacktrace.hrl").
+-include_lib("aechannel/src/aechannel.hrl").     % ?CATCH_LOG/1 macro
 
 %% ===========================================================================
 %% @doc API to check if session is potentially hanging, waiting for socket close
@@ -68,7 +69,7 @@ init(Req, _Opts) ->
 
 -spec websocket_init(map()) -> {ok, handler()} | {stop, undefined}.
 websocket_init(Params) ->
-    case {prepare_handler(Params), read_channel_options(Params)} of
+    try {prepare_handler(Params), read_channel_options(Params)} of
         {{error, Err}, _} ->
             %% Make dialyzer happy by providing a protocol - the protocol is not
             %% relevant here as we will kill this process after sending a error code to the client
@@ -93,6 +94,8 @@ websocket_init(Params) ->
                 false ->
                     websocket_init_parsed(Handler, ChannelOpts)
             end
+    ?CATCH_LOG(_E)
+        error(_E)
     end.
 
 websocket_init_parsed(Handler, ChannelOpts) ->
@@ -118,13 +121,12 @@ websocket_init_reconnect(ReconnectOpts, Handler) ->
 
 reconnect_to_fsm(#{ channel_id := ChanId
                    , role       := Role
-                   , pub_key    := Pubkey
                    , existing_fsm_id_wrapper := FsmIdWrapper } = Opts, Handler, OnError) ->
     case aesc_fsm:where(ChanId, Role) of
         undefined ->
             lager:debug("where(~p, ~p) -> undefined", [ChanId, Role]),
             maybe_reestablish(Opts, Handler, OnError);
-        #{ fsm_pid := Fsm, pub_key := Pubkey } ->
+        #{ fsm_pid := Fsm } ->
             lager:debug("Found FSM = ~p", [Fsm]),
             case aesc_fsm:reconnect_client(Fsm, self(), FsmIdWrapper) of
                 ok ->
@@ -267,7 +269,8 @@ websocket_info({aesc_fsm, FsmPid, Msg}, #handler{ fsm_pid = FsmPid
     #handler{enc_channel_id = ChannelId} = H1 = set_channel_id(Msg, H),
     case sc_ws_api:process_from_fsm(Protocol, Msg, ChannelId) of
         no_reply          -> {ok, H1};
-        {reply, Resp}     -> {reply, {text, jsx:encode(Resp)}, H1};
+        {reply, Resp}     ->
+            {reply, {text, jsx:encode(Resp)}, H1};
         stop              -> {stop, H1}
     end;
 websocket_info({'DOWN', MRef, _, _, _}, #handler{fsm_mref = MRef} = H) ->
@@ -323,6 +326,10 @@ start_link_fsm(#handler{role = initiator, host=Host, port=Port}, Opts) ->
 start_link_fsm(#handler{role = responder, port=Port}, Opts) ->
     aesc_client:respond(Port, Opts).
 
+derive_reconnect_opts(#{ existing_channel_id := ChId
+                       , role                := _Role
+                       , reconnect_to_fsm    := true } = Opts) ->
+    {ok, Opts#{channel_id => ChId}};
 derive_reconnect_opts(#{ existing_channel_id := ChId
                        , role                := Role
                        , initiator           := I
@@ -435,27 +442,11 @@ read_channel_options(Params) ->
                 , Read(<<"responder_amount">>, responder_amount, #{type => integer})
                 ];
             {ok, ExistingID} ->  %Channel reestablish (already opened) scenario
-                case aec_chain:get_channel(ExistingID) of
-                    {ok, Channel} ->
-                        [ Put(existing_channel_id, ExistingID)
-                        , Read(<<"offchain_tx">>, offchain_tx, #{ type => serialized_tx
-                                                                , mandatory => false })
-                        , read_role(Read, false)
-                        , Read(<<"existing_fsm_id">>, existing_fsm_id_wrapper, #{ type => fsm_id
-                                                                                , mandatory => true })
-                          % push_amount is only used in open and is not preserved.
-                          % 0 guarantees passing checks (executed amount check is the
-                          % same as onchain check)
-                        , Put(push_amount, 0)
-                        , Put(initiator, aesc_channels:initiator_pubkey(Channel))
-                        , Put(responder, aesc_channels:responder_pubkey(Channel))
-                        , Put(lock_period, aesc_channels:lock_period(Channel))
-                        , Put(channel_reserve, aesc_channels:channel_reserve(Channel))
-                        , Put(initiator_amount, aesc_channels:initiator_amount(Channel))
-                        , Put(responder_amount, aesc_channels:responder_amount(Channel))
-                        ];
-                    {error, _} = Err ->
-                        [Error(Err)]
+                case locate_matching_fsm(ExistingID, Read, Put, Params) of
+                    {true, Result} ->
+                        Result;
+                    false ->
+                        locate_on_chain(ExistingID, Read, Put, Error)
                 end;
             {error, _} = Err ->
                 [Error(Err)]
@@ -477,6 +468,47 @@ read_channel_options(Params) ->
       ++ general_options(Read)
      ).
 
+locate_matching_fsm(ExistingID, Read, Put, Params) ->
+    case (sc_ws_utils:read_param(<<"role">>, role, role_params(false)))(Params) of
+        not_set ->
+            false;
+        {ok, Role} ->
+            case aesc_fsm:where(ExistingID, Role) of
+                undefined ->
+                    false;
+                #{fsm_pid := _} ->
+                    {true, [ Put(existing_channel_id, ExistingID)
+                           , Put(reconnect_to_fsm, true)
+                           , Put(role, Role)
+                           , Read(<<"existing_fsm_id">>, existing_fsm_id_wrapper,
+                                  #{ type => fsm_id, mandatory => true})
+                           ]}
+            end
+    end.
+
+locate_on_chain(ExistingID, Read, Put, Error) ->
+    case aec_chain:get_channel(ExistingID) of
+        {ok, Channel} ->
+            [ Put(existing_channel_id, ExistingID)
+            , read_role(Read, false)
+            , Read(<<"existing_fsm_id">>, existing_fsm_id_wrapper, #{ type => fsm_id
+                                                                    , mandatory => true })
+              %% push_amount is only used in open and is not preserved.
+              %% 0 guarantees passing checks (executed amount check is the
+              %% same as onchain check)
+            , Put(push_amount, 0)
+            , Put(initiator, aesc_channels:initiator_pubkey(Channel))
+            , Put(responder, aesc_channels:responder_pubkey(Channel))
+            , Put(lock_period, aesc_channels:lock_period(Channel))
+            , Put(channel_reserve, aesc_channels:channel_reserve(Channel))
+            , Put(initiator_amount, aesc_channels:initiator_amount(Channel))
+            , Put(responder_amount, aesc_channels:responder_amount(Channel))
+            ];
+        {error, _} = Err ->
+            [Error(Err)]
+    end.
+
+
 general_options(Read) ->
     [ Read(<<"minimum_depth">>, minimum_depth, #{type => integer, mandatory => false})
     , Read(<<"ttl">>, ttl, #{type => integer, mandatory => false})
@@ -487,8 +519,10 @@ general_options(Read) ->
     ].
 
 read_role(Read, Mandatory) ->
-    Read(<<"role">>, role, #{type => atom, enum => [responder, initiator],
-                             mandatory => Mandatory}).
+    Read(<<"role">>, role, role_params(Mandatory)).
+
+role_params(Mandatory) ->
+    #{type => atom, enum => [responder, initiator], mandatory => Mandatory}.
 
 jobs_ask() ->
     jobs:ask(sc_ws_handlers).

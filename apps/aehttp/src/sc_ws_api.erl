@@ -152,7 +152,7 @@ process_fsm(#{msg := Msg,
 process_fsm_(#{type := sign,
                tag  := Tag,
                info := #{signed_tx := STx,
-                         updates := Updates}},
+                         updates := Updates} = Info},
                 ChannelId, Protocol) when Tag =:= create_tx
                                    orelse Tag =:= deposit_tx
                                    orelse Tag =:= deposit_created
@@ -186,19 +186,19 @@ process_fsm_(#{type := sign,
     notify(Protocol,
            #{action  => <<"sign">>,
              tag => Tag1,
-             payload => #{signed_tx => EncTx,
-                          updates => SerializedUpdates}},
+             payload => maybe_add_fsm_id(Info, #{signed_tx => EncTx,
+                                                 updates => SerializedUpdates})},
            ChannelId);
 process_fsm_(#{type := report,
                tag  := Tag,
-               info := Event}, ChannelId, Protocol) when Tag =:= info
-                                                  orelse Tag =:= update
-                                                  orelse Tag =:= conflict
-                                                  orelse Tag =:= message
-                                                  orelse Tag =:= leave
-                                                  orelse Tag =:= error
-                                                  orelse Tag =:= debug
-                                                  orelse Tag =:= on_chain_tx ->
+               info := Event} = Msg, ChannelId, Protocol) when Tag =:= info
+                                                        orelse Tag =:= update
+                                                        orelse Tag =:= conflict
+                                                        orelse Tag =:= message
+                                                        orelse Tag =:= leave
+                                                        orelse Tag =:= error
+                                                        orelse Tag =:= debug
+                                                        orelse Tag =:= on_chain_tx ->
     Mod = protocol_to_impl(Protocol),
     Payload =
         case {Tag, Event} of
@@ -206,7 +206,8 @@ process_fsm_(#{type := report,
             {info, {fsm_up, FsmIdWrapper}} ->
                 #{ event => <<"fsm_up">>
                  , fsm_id => aesc_fsm_id:retrieve_for_client(FsmIdWrapper)};
-            {info, _} when is_atom(Event) -> #{event => atom_to_binary(Event, utf8)};
+            {info, _} when is_atom(Event) ->
+                maybe_add_fsm_id(Msg, #{event => atom_to_binary(Event, utf8)});
             {info, #{event := _} = Info} ->
                 Info;
             {on_chain_tx, #{tx := Tx} = Info} ->
@@ -247,3 +248,8 @@ process_fsm_(#{type := Type, tag := Tag, info := Event}, _, _) ->
 non_undefined_channel_id(undefined) -> null;
 non_undefined_channel_id(Val)       -> Val.
 
+maybe_add_fsm_id(#{fsm_id := FsmIdWrapper}, Msg) ->
+    FsmId = aesc_fsm_id:retrieve_for_client(FsmIdWrapper),
+    Msg#{fsm_id => FsmId};
+maybe_add_fsm_id(_, Msg) ->
+    Msg.
