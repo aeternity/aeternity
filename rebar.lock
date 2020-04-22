@@ -78,7 +78,7 @@
  {<<"intercept">>,{pkg,<<"intercept">>,<<"1.0.0">>},1},
  {<<"jesse">>,
   {git,"https://github.com/for-GET/jesse.git",
-      {ref,"9f9d050627093d6a43e02a102d78122f0c4989c8"}},
+      {ref,"1b5a16cc40c9b299ec825abcaf54a4bf140c4ba9"}},
   0},
  {<<"jobs">>,{pkg,<<"jobs">>,<<"0.9.0">>},0},
  {<<"jsx">>,
