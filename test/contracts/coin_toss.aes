@@ -21,8 +21,8 @@ contract CoinToss =
       }
 
   stateful entrypoint provide_hash(hash: hash) =
-    require(state.hash == None, "already_has_hash")
     require_casino()
+    require(state.hash == None, "already_has_hash")
     put(state{ hash = Some(hash),
                height = Chain.block_height})
 
@@ -36,15 +36,16 @@ contract CoinToss =
 
   stateful payable entrypoint bet(coin_side: string) =
     require_player()
+    ensure_player_turn_to_bet()
     ensure_coin_side(coin_side)
     require(Call.value * 2 < Contract.balance, "bet_too_big")
     put(state{ player_pick  = Some(coin_side),
                height       = Chain.block_height,
                player_stake = Call.value})
 
-  stateful entrypoint resolve(key: string, coin_side: string) =
+  stateful entrypoint reveal(key: string, coin_side: string) =
     require_casino()
-    require(state.player_pick != None, "no_hash")
+    ensure_casino_turn_to_reveal()
     ensure_coin_side(coin_side)
     ensure_if_key_is_valid(key, coin_side)
     let Some(player_pick) = state.player_pick
@@ -54,14 +55,14 @@ contract CoinToss =
 
   stateful entrypoint player_dispute_no_reveal() =
     require(state.player_pick != None, "there_is_no_bet")
+    ensure_casino_turn_to_reveal()
     require(state.height  + state.reaction_time < Chain.block_height, "not_yet_allowed")
     Chain.spend(state.player, state.player_stake * 2)
     reset_state()
 
   stateful entrypoint casino_dispute_no_bet() =
     require_casino()
-    require(state.hash != None, "no_hash")
-    require(state.player_pick == None, "there_is_bet_already")
+    ensure_player_turn_to_bet()
     require(state.height + state.reaction_time < Chain.block_height, "not_yet_allowed")
     reset_state()
 
@@ -74,7 +75,14 @@ contract CoinToss =
 
   function ensure_coin_side(coin_side: string) =
     require(coin_side == "heads" || coin_side == "tails", "wrong_coin_side")
+
+  function ensure_player_turn_to_bet() =
+    require(state.hash != None, "no_hash")
+    require(state.player_pick == None, "there_is_bet_already")
   
+  function ensure_casino_turn_to_reveal() =
+    require(state.player_pick != None, "there_is_no_bet")
+
   function require_player() =
     require(Call.caller == state.player, "not_player")
     
@@ -92,3 +100,4 @@ contract CoinToss =
               player_pick     = None,
               player_stake    = 0
               })
+
