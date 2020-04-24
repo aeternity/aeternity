@@ -101,7 +101,7 @@
          sign_and_post_tx/1,
          produce_update_volley_funs/2,
          with_registered_events/3,
-         create_contract_/5,
+         create_contract_/6,
          call_a_contract_/9,
          wait_for_channel_event/3,
          wait_for_channel_event/4,
@@ -2596,13 +2596,18 @@ create_contract_(TestName, SenderConnPid, UpdateVolley, Config) ->
     create_contract_(TestName, InitArgument, SenderConnPid, UpdateVolley, Config).
 
 create_contract_(TestName, InitArgument, SenderConnPid, UpdateVolley, Config) ->
+    create_contract_(TestName, InitArgument, SenderConnPid, UpdateVolley, Config,
+                0).
+
+create_contract_(TestName, InitArgument, SenderConnPid, UpdateVolley, Config,
+                Deposit) ->
     EncodedCode = contract_byte_code(TestName),
     {ok, EncodedInitData} = encode_call_data(TestName, "init", InitArgument),
 
     ws_send_tagged(SenderConnPid, <<"channels.update.new_contract">>,
                    #{vm_version  => aect_test_utils:vm_version(),
                      abi_version => aect_test_utils:abi_version(),
-                     deposit     => 10,
+                     deposit     => Deposit,
                      code        => EncodedCode,
                      call_data   => EncodedInitData}, Config),
     #{tx := UnsignedStateTx, updates := Updates} = UpdateVolley(),
