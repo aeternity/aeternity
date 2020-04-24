@@ -1009,7 +1009,7 @@ player_pick_fails(Cfg0) ->
                                ContractName, "player_pick",
                                [add_quotes(Bet)], Stake, Cfg),
     %% player can not use random string as a pick
-    {revert, <<"wrong_coin_side">>} =
+    {revert, <<"invalid_coin_side">>} =
         call_offchain_contract(Player, ContractPubkey,
                                ContractName, "player_pick",
                                [add_quotes(<<"random string">>)], Stake, Cfg),
@@ -1029,7 +1029,7 @@ player_pick_fails(Cfg0) ->
                                ContractName, "player_pick",
                                [add_quotes(Bet)], Stake, Cfg),
     %% player can not overwrite 
-    {revert, <<"there_is_pick_already">>} =
+    {revert, <<"there_is_a_pick_already">>} =
         call_offchain_contract(Player, ContractPubkey,
                                ContractName, "player_pick",
                                [add_quotes(Bet)], Stake, Cfg),
@@ -1105,7 +1105,7 @@ reveal_fails(Cfg0) ->
                               ContractName, "reveal",
                               [add_quotes(OtherKey), add_quotes(ActualSide)], 0, Cfg),
     %% casino can not post wrong coin side
-    {revert, <<"wrong_coin_side">>} =
+    {revert, <<"invalid_coin_side">>} =
         call_offchain_contract(Casino, ContractPubkey,
                               ContractName, "reveal",
                               [add_quotes(Key), add_quotes(<<"random wrong side">>)], 0, Cfg),
@@ -1236,7 +1236,7 @@ casino_dispute_fails(Cfg0) ->
     %% player can not dispute
     {revert, <<"not_casino">>} = CorrectDisputeFun(Player),
     %% player can not dispute while no game
-    {revert, <<"there_is_pick_already">>} = CorrectDisputeFun(Casino),
+    {revert, <<"there_is_a_pick_already">>} = CorrectDisputeFun(Casino),
     aehttp_sc_SUITE:sc_ws_close_mutual_(Cfg, Player),
     ok.
 
