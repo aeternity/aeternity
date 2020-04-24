@@ -1322,76 +1322,6 @@ intended_usage(Cfg0) ->
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %% internal helper funs
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-
-current_height() ->
-    case rpc(aec_chain, top_header, []) of
-        undefined -> 1;
-        Header -> aec_headers:height(Header) + 1
-    end.
-
-get_oracles_by_pubkey_sut(Pubkey) ->
-    Host = external_address(),
-    http_request(Host, get, "oracles/" ++ http_uri:encode(Pubkey), []).
-
-initialize_account(Amount, KeyPair) ->
-    initialize_account(Amount, KeyPair, true).
-
-initialize_account(Amount, {Pubkey, _Privkey}, Check) ->
-    Fee = ?SPEND_FEE,
-    Node = aecore_suite_utils:node_name(?NODE),
-    MaxMined = ?MAX_MINED_BLOCKS + (Amount div aec_governance:block_mine_reward(1)),
-    ct:pal("Mining ~p blocks at most for ~p tokens", [MaxMined, Amount]),
-
-    {ok, 200, #{<<"tx">> := SpendTx}} =
-        post_spend_tx(aeser_api_encoder:encode(account_pubkey, Pubkey), Amount, Fee),
-    TxHash = aehttp_sc_SUITE:sign_and_post_tx(SpendTx),
-    if Check ->
-        aecore_suite_utils:mine_blocks_until_txs_on_chain(Node, [TxHash], MaxMined),
-        assert_balance_at_least(Pubkey, Amount),
-        ok;
-       true ->
-        TxHash
-    end.
-
-post_spend_tx(RecipientId, Amount, Fee) ->
-    {_, Sender} = aecore_suite_utils:sign_keys(?NODE),
-    SenderId = aeser_api_encoder:encode(account_pubkey, Sender),
-    post_spend_tx(SenderId, RecipientId, Amount, Fee, <<"foo">>).
-
-post_spend_tx(SenderId, RecipientId, Amount, Fee, Payload) ->
-    Host = internal_address(),
-    http_request(Host, post, "debug/transactions/spend",
-                 #{sender_id => SenderId,
-                   recipient_id => RecipientId,
-                   amount => Amount,
-                   fee => Fee,
-                   payload => Payload}).
-
-assert_balance(Pubkey, ExpectedBalance) ->
-    assert_balance(Pubkey, ExpectedBalance, equal).
-
-assert_balance_at_most(Pubkey, ExpectedBalance) ->
-    assert_balance(Pubkey, ExpectedBalance, equal_or_less).
-
-assert_balance_at_least(Pubkey, MaxExpectedBalance) ->
-    assert_balance(Pubkey, MaxExpectedBalance, equal_or_greater).
-
-assert_balance(Pubkey, ExpectedBalance, Action) ->
-    Address = aeser_api_encoder:encode(account_pubkey, Pubkey),
-    {ok, 200, #{<<"balance">> := ActualBalance}} =
-        get_accounts_by_pubkey_sut(Address),
-    Res =
-        case Action of
-            equal -> ExpectedBalance =:= ActualBalance;
-            equal_or_greater -> ActualBalance >= ExpectedBalance;
-            equal_or_less -> ActualBalance =< ExpectedBalance
-        end,
-    {true, _, _, _} = {Res, ActualBalance, Action, ExpectedBalance}.
-
-get_accounts_by_pubkey_sut(Id) ->
-    Host = external_address(),
-    http_request(Host, get, "accounts/" ++ http_uri:encode(Id), []).
-
 add_quotes(B) when is_binary(B) -> <<"\"", B/binary, "\"">>;
 add_quotes(Str) when is_list(Str) -> "\"" ++ Str ++  "\"".
 
@@ -1506,11 +1436,6 @@ mine_blocks(Cnt) ->
 
 register_channel_events(Events, Pids) ->
     [ok = ?WS:register_test_for_channel_events(Pid, Events)
-     || Pid <- Pids],
-    ok.
-
-unregister_channel_events(Events, Pids) ->
-    [ok = ?WS:unregister_test_for_channel_events(Pid, Events)
      || Pid <- Pids],
     ok.
 
