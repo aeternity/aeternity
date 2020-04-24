@@ -39,11 +39,11 @@ mine_block_test_() ->
                  %% block uncomment the line below:
                  %% let_it_crash = generate_valid_test_data(TopBlock, 100000000000000),
                  Nonce = case aec_hard_forks:protocol_effective_at_height(Height + 1) of
-                             ?ROMA_PROTOCOL_VSN    -> 14754354632762274554;
-                             ?MINERVA_PROTOCOL_VSN -> 13330452911247650827;
-                             ?FORTUNA_PROTOCOL_VSN -> 16495906965958303708;
-                             ?LIMA_PROTOCOL_VSN    -> 18191476565285521421;
-                             ?IRIS_PROTOCOL_VSN    -> 12339424460292944669
+                             ?ROMA_PROTOCOL_VSN    -> 1157794539819639234;
+                             ?MINERVA_PROTOCOL_VSN -> 7879864847488411286;
+                             ?FORTUNA_PROTOCOL_VSN -> 4251941228566490463;
+                             ?LIMA_PROTOCOL_VSN    -> 2054065398816847708;
+                             ?IRIS_PROTOCOL_VSN    -> 8323004292073363330
                          end,
                  {BlockCandidate,_} = aec_test_utils:create_keyblock_with_state(
                                         [{TopBlock, aec_trees:new()}], ?TEST_PUB),
@@ -67,7 +67,7 @@ mine_block_test_() ->
                  TopBlock = aec_blocks:set_height(RawBlock, aec_block_genesis:height()),
                  Nonce = case aec_hard_forks:protocol_effective_at_height(100) of
                              ?IRIS_PROTOCOL_VSN -> 72;
-                             ?FORTUNA_PROTOCOL_VSN -> 72;
+                             ?LIMA_PROTOCOL_VSN -> 123;
                              _                  -> 41
                          end,
 
