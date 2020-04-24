@@ -37,4 +37,5 @@
 %% Keep 4 hours of data, ~= 120 values, with a new key-block every 2 minutes.
 , {[ae,epoch,aecore,blocks,key,insert_execution_time,success]   , histogram , [{time_span, 4 * 60 * 60 * 1000}]}
 , {[ae,epoch,aecore,blocks,key,insert_execution_time,error]     , histogram , [{time_span, 4 * 60 * 60 * 1000}]}
+, {[ae,epoch,aecore,blocks,key,info]                            , gauge     , []}
 ].
