@@ -2597,7 +2597,7 @@ create_contract_(TestName, SenderConnPid, UpdateVolley, Config) ->
 
 create_contract_(TestName, InitArgument, SenderConnPid, UpdateVolley, Config) ->
     create_contract_(TestName, InitArgument, SenderConnPid, UpdateVolley, Config,
-                0).
+                10).
 
 create_contract_(TestName, InitArgument, SenderConnPid, UpdateVolley, Config,
                 Deposit) ->
