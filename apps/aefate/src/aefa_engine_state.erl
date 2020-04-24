@@ -84,7 +84,7 @@
 -endif.
 
 -define(FIX_CONTRACT_CHECK_WINDOW_LOWER_LIMIT, 237000).
--define(FIX_CONTRACT_CHECK_WINDOW_UPPER_LIMIT, 330033).
+-define(FIX_CONTRACT_CHECK_WINDOW_UPPER_LIMIT, 245000).
 
 -include_lib("aebytecode/include/aeb_fate_data.hrl").
 -include("../../aecontract/include/aecontract.hrl").
