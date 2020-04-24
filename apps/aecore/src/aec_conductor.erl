@@ -1122,6 +1122,10 @@ handle_successfully_added_block(Block, Hash, Events, State, Origin) ->
         {micro_changed, State2 = #state{ consensus = Cons }} ->
             {ok, setup_loop(State2, false, Cons#consensus.leader, Origin)};
         {changed, BlockType, NewTopBlock, State2} ->
+            BlockType == key andalso
+                aec_metrics:try_update(
+                  [ae,epoch,aecore,mining,info],
+                  aec_headers:info(aec_blocks:to_key_header(NewTopBlock))),
             IsLeader = is_leader(NewTopBlock),
             case IsLeader of
                 true ->
