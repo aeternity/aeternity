@@ -1,7 +1,5 @@
 # The Æternity Code of Conduct
 
-A version of this document [can be found online](https://aeternity.com/conduct).
-
 ## Conduct
 
 **Contact**: [community@aeternity.com](mailto:community@aeternity.com) or any member you trust.
