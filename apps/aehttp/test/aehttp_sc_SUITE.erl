@@ -907,7 +907,6 @@ channel_create(Config, IConnPid, RConnPid) ->
                     priv_key := IPrivkey},
       responder := #{pub_key := RPubkey,
                     priv_key := RPrivkey}} = proplists:get_value(participants, Config),
-    TestPings = proplists:get_value(ping_pong, Config, false),
     OptionallyPingPong = optionally_ping_pong(IConnPid, RConnPid, Config),
     %% initiator gets to sign a create_tx
     {IStartAmt, RStartAmt} = channel_participants_balances(IPubkey, RPubkey),
@@ -2950,8 +2949,8 @@ sc_ws_reconnect_early(Config) ->
     S = ?SLOGAN,
     Role = initiator,
     MinBlocksToMine = 2,
-    #{initiator := #{pub_key := IPubkey},
-      responder := #{pub_key := RPubkey}} = proplists:get_value(participants, Config),
+    #{initiator := #{pub_key := _IPubkey},
+      responder := #{pub_key := _RPubkey}} = proplists:get_value(participants, Config),
 
     Config1 = sc_ws_open_([{mine_create_tx, false}|Config], #{ slogan => S
                                                              , minimum_depth => 0},
@@ -2963,7 +2962,6 @@ sc_ws_reconnect_early(Config) ->
      , initiator_fsm_id := IFsmId
      , responder_fsm_id := RFsmId
      , initiator        := IConnPid } = proplists:get_value(channel_clients, Config1),
-    SignedTx = proplists:get_value(signed_tx, Config1),
 
     ?WS:stop(IConnPid),
     ct:log("IConnPid killed", []),

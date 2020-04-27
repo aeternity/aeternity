@@ -2151,7 +2151,7 @@ get_transactions_between_two_microblocks() ->
     Chain0 = gen_block_chain_with_state_by_target(
                PresetAccounts,
                lists:duplicate(4, ?GENESIS_TARGET), 1, TxsFun),
-    [KB0, KB1, MB1, KB2, MB2, MB3, MB4, MB5, KB3, KB4] =
+    [KB0, KB1, MB1, KB2, MB2, MB3, MB4, MB5, KB3, _KB4] =
         Blocks =blocks_only_chain(Chain0),
     1 = aec_blocks:height(MB1),
     2 = aec_blocks:height(MB2),
