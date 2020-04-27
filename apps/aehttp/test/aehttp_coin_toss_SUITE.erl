@@ -1344,7 +1344,7 @@ get_decoded_result(ConnPid, Contract, Function, [Update], UnsignedTx, Config) ->
       <<"height">>            := CallRound,
       <<"return_type">>       := ReturnType0,
       <<"return_value">>      := ReturnValue} = CallRes,
-    {ok, BinCode} = aect_test_utils:read_contract(?SOPHIA_LIMA_AEVM, Contract),
+    {ok, BinCode} = aect_test_utils:read_contract(?SOPHIA_IRIS_FATE, Contract),
     {_ReturnType, _ReturnVal} =
         case ReturnType0 of
             <<"ok">> ->
