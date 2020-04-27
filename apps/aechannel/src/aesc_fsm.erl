@@ -2824,11 +2824,7 @@ check_shutdown_ack_msg(#{ data       := #{tx := TxBin}
                                        not_close_mutual_tx)
               end,
               fun() ->
-                  case StrictChecks of
-                      false -> ok;
-                      true ->
-                          verify_signatures(SignedTx, D, pubkeys(both, D, SignedTx))
-                  end
+                  maybe_verify_signatures(SignedTx, D)
               end],
         case aeu_validation:run(Checks) of
             ok ->
