@@ -885,13 +885,7 @@ awaiting_signature(cast, {?SIGNED, close_solo_tx = OpTag, SignedTx} = Msg,
                                       , data = OpData }} = D) ->
     #op_data{updates = Updates} = OpData,
     D1 = log(rcv, ?SIGNED, Msg, D),
-    case verify_signatures_onchain_check(pubkeys(me, D1, SignedTx), SignedTx) of
-        ok ->
-            close_solo_signed(SignedTx, Updates, D1);
-        {error,_} = Error ->
-            lager:debug("Failed signature check: ~p", [Error]),
-            next_state(open, D1#data{op = ?NO_OP})
-    end;
+    close_solo_signed(SignedTx, Updates, D1);
 awaiting_signature(cast, {?SIGNED, settle_tx = OpTag, SignedTx} = Msg,
                    #data{op = #op_sign{ tag = OpTag
                                       , data = OpData } = OpSign} = D) ->
@@ -2339,7 +2333,7 @@ check_deposit_signed_msg(#{ channel_id := ChanId
                   check_tx_if_expected(SignedTx, ExpectedTx, not_deposit_tx)
               end,
               fun() ->
-                  verify_signatures(SignedTx, Data, both_accounts(Data))
+                  maybe_verify_signatures(SignedTx, Data)
               end
             ],
         case aeu_validation:run(Checks) of
@@ -2511,8 +2505,7 @@ check_withdraw_signed_msg(#{ channel_id := ChanId
                   check_tx_if_expected(SignedTx, ExpectedTx, not_withdraw_tx)
               end,
               fun() ->
-                  verify_signatures(SignedTx, Data,
-                                    pubkeys(both, Data, SignedTx))
+                  maybe_verify_signatures(SignedTx, Data)
               end
             ],
         case aeu_validation:run(Checks) of
@@ -2820,7 +2813,11 @@ check_shutdown_msg(#{ channel_id := ChanId
         {error, invalid_shutdown}
     end.
 
-shutdown_tx_checks(SignedTx, BlockHash, WhoSignedIt, D) ->
+shutdown_tx_checks(SignedTx, BlockHash, WhoSignedIt,
+                   #data{strict_checks = StrictChecks} = D) ->
+    shutdown_tx_checks(SignedTx, BlockHash, WhoSignedIt, D, StrictChecks).
+
+shutdown_tx_checks(SignedTx, BlockHash, WhoSignedIt, D, StrictChecks) ->
     Updates = [],
     [ fun() -> check_block_hash(BlockHash, D) end,
       fun() ->
@@ -2828,8 +2825,12 @@ shutdown_tx_checks(SignedTx, BlockHash, WhoSignedIt, D) ->
                   D, not_close_mutual_tx)
       end,
       fun() ->
-          verify_signatures(SignedTx, D,
-                            pubkeys(WhoSignedIt, D, SignedTx))
+          case StrictChecks of
+              false -> ok;
+              true ->
+                  verify_signatures(SignedTx, D,
+                                    pubkeys(WhoSignedIt, D, SignedTx))
+          end
       end].
 
 serialize_close_mutual_tx(Tx) ->
@@ -2840,7 +2841,8 @@ check_shutdown_ack_msg(#{ data       := #{tx := TxBin}
                         %% since it is co-authenticated already, we ignore
                         %% the block hash being reported
                         , block_hash := _BlockHash} = Msg,
-                       #data{op = #op_ack{tag = shutdown} = Op} = D) ->
+                       #data{ op = #op_ack{tag = shutdown} = Op
+                            , strict_checks = StrictChecks } = D) ->
     #op_ack{data = #op_data{ signed_tx  = MySignedTx
                            , block_hash = BlockHash
                            , updates    = Updates } } = Op,
@@ -2851,7 +2853,7 @@ check_shutdown_ack_msg(#{ data       := #{tx := TxBin}
                                        not_close_mutual_tx)
               end,
               fun() ->
-                  verify_signatures(SignedTx, D, pubkeys(both, D, SignedTx))
+                  maybe_verify_signatures(SignedTx, D)
               end],
         case aeu_validation:run(Checks) of
             ok ->
@@ -3465,6 +3467,13 @@ later_round_than_onchain(ChannelPubkey, Round) ->
 %% authentication must be performed according the latest top
 authentication_env() ->
     tx_env_and_trees_from_top(aetx_contract).
+
+maybe_verify_signatures(SignedTx, #data{strict_checks = StrictChecks} = Data) ->
+    case StrictChecks of
+        false -> ok;
+        true ->
+            verify_signatures(SignedTx, Data, both_accounts(Data))
+    end.
 
 -spec verify_signatures(aetx_sign:signed_tx(), #data{}, [aec_keys:pubkey()]) ->
     ok | {error, atom()}.
@@ -5074,7 +5083,17 @@ try_to_push_to_mempool(SignedTx, D, NextState, UpdateStateFun) ->
 
 try_to_push_to_mempool(SignedTx, D, NextState, UpdateStateFun,
                        NextStateIfFailed) ->
-    case push_to_mempool(SignedTx) of
+    Pubkeys =
+        case is_mutual_tx(SignedTx) of
+            true -> both_accounts(D);
+            false -> [my_account(D)]
+        end,
+    Result =
+        case verify_signatures(SignedTx, D, Pubkeys) of
+            ok -> push_to_mempool(SignedTx);
+            {error, _} = Err -> Err
+        end,
+    case Result of
         ok ->
             next_state(NextState, UpdateStateFun(D));
         {error, _Err} ->
@@ -5128,7 +5147,7 @@ mutual_close_error(Msg, D) ->
             report(conflict, Msg, D1),
             next_state(open, D1);
         {error, tx_not_found} -> %% tx had not been posted on-chain
-            #data{op = Op} = D,
+            #data{ op = Op } = D,
             {SignedTx, BlockHash} =
                 case Op of
                     #op_close{data = #op_data{ signed_tx = STx
@@ -5140,7 +5159,7 @@ mutual_close_error(Msg, D) ->
                         {STx, BH}
                 end,
             case aeu_validation:run(shutdown_tx_checks(SignedTx, BlockHash,
-                                                       both, D)) of
+                                                       both, D, true)) of
                 ok ->
                     case push_to_mempool(SignedTx) of
                         ok -> %% tx is ok, wait for it on-chain

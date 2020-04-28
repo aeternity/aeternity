@@ -297,6 +297,7 @@ ga_sequence() ->
     , {group, signatures}
     , {group, channel_ids}
     , {group, pinned_env}
+    , {group, failed_onchain}
     ].
 
 update_sequence() ->
@@ -384,41 +385,10 @@ init_per_group(Group, Config) when Group =:= initiator_is_ga;
         ?ROMA_PROTOCOL_VSN    -> {skip, generalized_accounts_not_in_roma};
         ?MINERVA_PROTOCOL_VSN -> {skip, generalized_accounts_not_in_minerva};
         _ ->
-            Config1 = init_per_group_(Config),
-            Params =
-                fun(Owner, PrivKey) ->
-                    #{init_params => [Owner],
-                      prep_fun =>
-                          fun(TxHash, N) ->
-                              btc_auth(TxHash, integer_to_list(N), PrivKey)
-                          end}
-                end,
-            Config2 =
-                [{ga, #{contract    => "bitcoin_auth",
-                        auth_fun    => "authorize",
-                        auth_params => #{initiator =>
-                                            Params(?I_OWNER,
-                                                   ?I_SECP256K1_PRIV),
-                                        responder =>
-                                            Params(?R_OWNER,
-                                                   ?R_SECP256K1_PRIV)}}},
-                 {ga_group, true},
-                 {bench_rounds, 1} %% a lower amount than the default 10
-                    | Config1],
-            case Group of
-                initiator_is_ga ->
-                    attach_initiator(Config2),
-                    initiator_spend(Config2);
-                responder_is_ga ->
-                    attach_responder(Config2),
-                    responder_spend(Config2);
-                both_are_ga ->
-                    attach_initiator(Config2),
-                    initiator_spend(Config2),
-                    attach_responder(Config2),
-                    responder_spend(Config2)
-            end,
-            Config2
+            prepare_ga_by_contract([{who_is_ga, Group},
+                                    {ga_group, true},
+                                    {bench_rounds, 1} %% a lower amount than the default 10
+                                    | Config], btc_auth)
     end;
 init_per_group(generalized_accounts, Config) ->
     Config;
@@ -3313,9 +3283,15 @@ ga_spend(From, To, Amt, Cfg) ->
     ok.
 
 basic_spend(From, To, Amt, Cfg) ->
-    #{ pub  := SendPub} = FromAcc = ?config(From, Cfg),
-    #{pub := ReceivePub} = ?config(To, Cfg),
-    {ok, Nonce} = rpc(dev1, aec_next_nonce, pick_for_account, [SendPub]),
+    #{ pub  := SendPub } = FromAcc = ?config(From, Cfg),
+    #{ pub := ReceivePub } = ?config(To, Cfg),
+    Nonce =
+        case account_type(SendPub) of
+            basic ->
+                {ok, N} = rpc(dev1, aec_next_nonce, pick_for_account, [SendPub]),
+                N;
+            generalized -> 0
+        end,
     SpendProps = #{ sender_id    => aeser_id:create(account, SendPub)
                   , recipient_id => aeser_id:create(account, ReceivePub)
                   , amount       => Amt
@@ -3361,10 +3337,13 @@ meta(Owner, AuthOpts, _N, SignedTx) ->
         case aetx:specialize_callback(aetx_sign:innermost_tx(SignedTx)) of
             {aesc_offchain_tx, OffChainTx} ->
                 ChannelPubKey = aesc_offchain_tx:channel_pubkey(OffChainTx),
-                {get_btc_offchain_nonce(ChannelPubKey, Owner),
+                GetOffchainNonceFun = maps:get(channel_nonce, AuthOpts),
+                {GetOffchainNonceFun(ChannelPubKey, Owner),
                  %% off-chain tx are authenticating the innermost tx
                  aetx_sign:innermost_tx(SignedTx)};
-            _ -> {get_btc_auth_nonce(Owner),
+            _ ->
+                GetNonceFun = maps:get(on_chain_nonce, AuthOpts),
+                {GetNonceFun(Owner),
                   %% on-chain txs are authenticating the inner tx
                   aetx_sign:tx(SignedTx)}
         end,
@@ -4253,7 +4232,7 @@ deposit_with_failed_onchain(Cfg) ->
     Debug = get_debug(Cfg),
     Amount = 10,
     #{ i := #{fsm := FsmI} = I
-     , r := #{} = R
+     , r := #{fsm := FsmR} = R
      , spec := #{ initiator := _PubI
                 , responder := _PubR }} = create_channel_(
                                             [?SLOGAN|Cfg]),
@@ -4271,6 +4250,8 @@ deposit_with_failed_onchain(Cfg) ->
                 initiator, % to
                 1,         % some amount 
                 Cfg),
+    ok = rpc(dev1, aesc_fsm, strict_checks, [FsmI, false]),
+    ok = rpc(dev1, aesc_fsm, strict_checks, [FsmR, false]),
     {R1, _} = await_signing_request(deposit_created, R, Cfg),
     _SignedTx = await_on_chain_report(R1, #{info => deposit_created},  ?TIMEOUT),
     receive_info(R1, deposit_created, Debug), % probably an obsolete message?
@@ -4280,6 +4261,8 @@ deposit_with_failed_onchain(Cfg) ->
     {ok, _} = receive_from_fsm(conflict, R1, #{info => #{ error_code => 5
                                                         , round => 1}},
                                ?TIMEOUT, Debug),
+    ok = rpc(dev1, aesc_fsm, strict_checks, [FsmI, true]),
+    ok = rpc(dev1, aesc_fsm, strict_checks, [FsmR, true]),
     % Verify changes of fsm state
     
     % Done
@@ -4292,7 +4275,7 @@ withdraw_with_failed_onchain(Cfg) ->
     Debug = get_debug(Cfg),
     Amount = 10,
     #{ i := #{fsm := FsmI} = I
-     , r := #{} = R
+     , r := #{fsm := FsmR} = R
      , spec := #{ initiator := _PubI
                 , responder := _PubR }} = create_channel_(
                                             [?SLOGAN|Cfg]),
@@ -4305,6 +4288,8 @@ withdraw_with_failed_onchain(Cfg) ->
 
     % Perform update and verify flow and reports
     ok = rpc(dev1, aesc_fsm, upd_withdraw, [FsmI, #{amount => Amount}]),
+    ok = rpc(dev1, aesc_fsm, strict_checks, [FsmI, false]),
+    ok = rpc(dev1, aesc_fsm, strict_checks, [FsmR, false]),
     {I1, _} = await_signing_request(withdraw_tx, I, Cfg),
     basic_spend(initiator, % from
                 initiator, % to
@@ -4319,6 +4304,8 @@ withdraw_with_failed_onchain(Cfg) ->
     {ok, _} = receive_from_fsm(conflict, R1, #{info => #{ error_code => 5
                                                         , round => 1}},
                                ?TIMEOUT, Debug),
+    ok = rpc(dev1, aesc_fsm, strict_checks, [FsmI, true]),
+    ok = rpc(dev1, aesc_fsm, strict_checks, [FsmR, true]),
     % Verify changes of fsm state
     
     % Done
@@ -4330,19 +4317,21 @@ withdraw_with_failed_onchain(Cfg) ->
 close_mutual_with_failed_onchain(Cfg) ->
     Debug = get_debug(Cfg),
     #{ i := #{fsm := FsmI} = I
-     , r := #{} = R
+     , r := #{fsm := FsmR} = R
      , spec := #{ initiator := _PubI
                 , responder := _PubR }} = create_channel_(
                                             [?SLOGAN|Cfg]),
     ?LOG(Debug, "I = ~p", [I]),
     ?LOG(Debug, "R = ~p", [R]),
 
+    ok = rpc(dev1, aesc_fsm, strict_checks, [FsmI, false]),
+    ok = rpc(dev1, aesc_fsm, strict_checks, [FsmR, false]),
     ok = rpc(dev1, aesc_fsm, shutdown, [FsmI, #{}]),
+    {I1, _SignedShutdownTx} = await_signing_request(shutdown, I, Cfg),
     basic_spend(initiator, % from
                 initiator, % to
                 1,         % some amount 
                 Cfg),
-    {I1, _SignedShutdownTx} = await_signing_request(shutdown, I, Cfg),
     {R1, _CoSignedShutdownTx} = await_signing_request(shutdown_ack, R, Cfg),
     _CoSignedShutdownTx = await_on_chain_report(R1, ?TIMEOUT), % same tx
     {ok,_} = receive_from_fsm(info, R1, #{info => shutdown}, ?TIMEOUT, Debug),
@@ -4354,6 +4343,8 @@ close_mutual_with_failed_onchain(Cfg) ->
                                                         , round => 1}},
                                ?TIMEOUT, Debug),
     R2 = await_open_report(R1, ?TIMEOUT, Debug),
+    ok = rpc(dev1, aesc_fsm, strict_checks, [FsmI, true]),
+    ok = rpc(dev1, aesc_fsm, strict_checks, [FsmR, true]),
 
     % Done
     assert_empty_msgq(true),
@@ -4362,62 +4353,71 @@ close_mutual_with_failed_onchain(Cfg) ->
     ok.
 
 close_solo_with_failed_onchain(Cfg) ->
-    Debug = get_debug(Cfg),
-    #{ i := #{fsm := FsmI} = I
-     , r := #{} = R
-     , spec := #{ initiator := _PubI
-                , responder := _PubR }} = create_channel_(
-                                            [?SLOGAN|Cfg]),
-    ?LOG(Debug, "I = ~p", [I]),
-    ?LOG(Debug, "R = ~p", [R]),
+    case proplists:get_value(ga_group, Cfg, false) of
+        true -> {skip, no_nonce_and_not_applicable};
+        false ->
+            Debug = get_debug(Cfg),
+            #{ i := #{fsm := FsmI} = I
+            , r := #{} = R
+            , spec := #{ initiator := _PubI
+                        , responder := _PubR }} = create_channel_(
+                                                    [?SLOGAN|Cfg]),
+            ?LOG(Debug, "I = ~p", [I]),
+            ?LOG(Debug, "R = ~p", [R]),
 
-    ok = rpc(dev1, aesc_fsm, close_solo, [FsmI, #{}]),
-    basic_spend(initiator, % from
-                initiator, % to
-                1,         % some amount 
-                Cfg),
-    {I1, _SignedCloseSoloTx} = await_signing_request(close_solo_tx, I, Cfg),
-    {ok, _} = receive_from_fsm(conflict, I1, #{info => #{ error_code => 5
-                                                        , round => 1}},
-                               ?TIMEOUT, Debug),
-
-    % Done
-    assert_empty_msgq(true),
-    check_info(20),
-    shutdown_(I1, R, Cfg),
-    ok.
+            ok = rpc(dev1, aesc_fsm, close_solo, [FsmI, #{}]),
+            ok = rpc(dev1, aesc_fsm, strict_checks, [FsmI, false]),
+            basic_spend(initiator, % from
+                        initiator, % to
+                        1,         % some amount 
+                        Cfg),
+            {I1, _SignedCloseSoloTx} = await_signing_request(close_solo_tx, I, Cfg),
+            {ok, _} = receive_from_fsm(conflict, I1, #{info => #{ error_code => 5
+                                                                , round => 1}},
+                                      ?TIMEOUT, Debug),
+            ok = rpc(dev1, aesc_fsm, strict_checks, [FsmI, true]),
+            % Done
+            assert_empty_msgq(true),
+            check_info(20),
+            shutdown_(I1, R, Cfg),
+            ok
+    end.
 
 snapshot_with_failed_onchain(Cfg) ->
-    Debug = get_debug(Cfg),
-    #{ i := #{fsm := FsmI} = I
-     , r := #{} = R
-     , spec := #{ initiator := PubI
-                , responder := PubR }} = create_channel_(
-                                            [?SLOGAN|Cfg]),
-    ?LOG(Debug, "I = ~p", [I]),
-    ?LOG(Debug, "R = ~p", [R]),
+    case proplists:get_value(ga_group, Cfg, false) of
+        true -> {skip, no_nonce_and_not_applicable};
+        false ->
+            Debug = get_debug(Cfg),
+            #{ i := #{fsm := FsmI} = I
+            , r := #{} = R
+            , spec := #{ initiator := PubI
+                        , responder := PubR }} = create_channel_(
+                                                    [?SLOGAN|Cfg]),
+            ?LOG(Debug, "I = ~p", [I]),
+            ?LOG(Debug, "R = ~p", [R]),
 
-    %% snapshot solo provides off-chain state on-chain. Since it makes no sense
-    %% if the latest off-chain state is already on-chain, we make an off-chain
-    %% update to progress the channel round one step further.
-    {I1, R1} = do_update(PubI, PubR, 2, I, R, Debug, Cfg),
-    ok = rpc(dev1, aesc_fsm, snapshot_solo, [FsmI, #{}]),
-    basic_spend(initiator, % from
-                initiator, % to
-                1,         % some amount 
-                Cfg),
-    {I2, _SignedCloseSoloTx} = await_signing_request(snapshot_solo_tx, I1, Cfg),
-    %% because we made an off-chain update, the latest stable state is the one
-    %% produced by the off-chain transfer, hence the round is 2
-    {ok, _} = receive_from_fsm(conflict, I2, #{info => #{ error_code => 5
-                                                        , round => 2}},
-                               ?TIMEOUT, Debug),
+            %% snapshot solo provides off-chain state on-chain. Since it makes no sense
+            %% if the latest off-chain state is already on-chain, we make an off-chain
+            %% update to progress the channel round one step further.
+            {I1, R1} = do_update(PubI, PubR, 2, I, R, Debug, Cfg),
+            ok = rpc(dev1, aesc_fsm, snapshot_solo, [FsmI, #{}]),
+            basic_spend(initiator, % from
+                        initiator, % to
+                        1,         % some amount 
+                        Cfg),
+            {I2, _SignedCloseSoloTx} = await_signing_request(snapshot_solo_tx, I1, Cfg),
+            %% because we made an off-chain update, the latest stable state is the one
+            %% produced by the off-chain transfer, hence the round is 2
+            {ok, _} = receive_from_fsm(conflict, I2, #{info => #{ error_code => 5
+                                                                , round => 2}},
+                                      ?TIMEOUT, Debug),
 
-    % Done
-    assert_empty_msgq(true),
-    check_info(20),
-    shutdown_(I2, R1, Cfg),
-    ok.
+            % Done
+            assert_empty_msgq(true),
+            check_info(20),
+            shutdown_(I2, R1, Cfg),
+            ok
+    end.
 
 slash(Cfg) ->
     Debug = get_debug(Cfg),
@@ -4442,40 +4442,44 @@ slash(Cfg) ->
     ok.
 
 slash_with_failed_onchain(Cfg) ->
-    Debug = get_debug(Cfg),
-    #{ i := #{fsm := FsmI} = I
-     , r := #{} = R
-     , spec := Spec } = create_channel_([?SLOGAN|Cfg]),
-    ?LOG(Debug, "I = ~p", [I]),
-    ?LOG(Debug, "R = ~p", [R]),
+    case proplists:get_value(ga_group, Cfg, false) of
+        true -> {skip, no_nonce_and_not_applicable};
+        false ->
+            Debug = get_debug(Cfg),
+            #{ i := #{fsm := FsmI} = I
+            , r := #{} = R
+            , spec := Spec } = create_channel_([?SLOGAN|Cfg]),
+            ?LOG(Debug, "I = ~p", [I]),
+            ?LOG(Debug, "R = ~p", [R]),
 
-    {I2, R2, _SlashTx} = prepare_for_slashing(I, R, Spec, Cfg),
+            {I2, R2, _SlashTx} = prepare_for_slashing(I, R, Spec, Cfg),
 
-    ok = rpc(dev1, aesc_fsm, slash, [FsmI, #{}]),
-    basic_spend(initiator, % from
-                initiator, % to
-                1,         % some amount 
-                Cfg),
-    {I3, _SignedCloseSoloTx} = await_signing_request(slash_tx, I2, Cfg),
-    %% because we made an off-chain update, the latest stable state is the one
-    %% produced by the off-chain transfer, hence the round is 3
-    {ok, _} = receive_from_fsm(conflict, I3, #{info => #{ error_code => 5
-                                                        , round => 3}},
-                               ?TIMEOUT, Debug),
-    
-    % Done. Check if we can still make a valid slash and then settle the
-    % channel
-    ok = rpc(dev1, aesc_fsm, slash, [FsmI, #{}]),
-    {_, SignedSlashTx} = await_signing_request(slash_tx, I3, Cfg),
-    SlashTxHash = aeser_api_encoder:encode(tx_hash, aetx_sign:hash(SignedSlashTx)),
-    mine_blocks_until_txs_on_chain(dev1, [SlashTxHash]),
-    LockPeriod = maps:get(lock_period, Spec),
-    mine_blocks(dev1, LockPeriod),
-    check_info(20),
-    settle_(maps:get(minimum_depth, Spec), I3, R2, Debug, Cfg),
-    check_info(20),
-    assert_empty_msgq(true),
-    ok.
+            ok = rpc(dev1, aesc_fsm, slash, [FsmI, #{}]),
+            basic_spend(initiator, % from
+                        initiator, % to
+                        1,         % some amount 
+                        Cfg),
+            {I3, _SignedCloseSoloTx} = await_signing_request(slash_tx, I2, Cfg),
+            %% because we made an off-chain update, the latest stable state is the one
+            %% produced by the off-chain transfer, hence the round is 3
+            {ok, _} = receive_from_fsm(conflict, I3, #{info => #{ error_code => 5
+                                                                , round => 3}},
+                                      ?TIMEOUT, Debug),
+            
+            % Done. Check if we can still make a valid slash and then settle the
+            % channel
+            ok = rpc(dev1, aesc_fsm, slash, [FsmI, #{}]),
+            {_, SignedSlashTx} = await_signing_request(slash_tx, I3, Cfg),
+            SlashTxHash = aeser_api_encoder:encode(tx_hash, aetx_sign:hash(SignedSlashTx)),
+            mine_blocks_until_txs_on_chain(dev1, [SlashTxHash]),
+            LockPeriod = maps:get(lock_period, Spec),
+            mine_blocks(dev1, LockPeriod),
+            check_info(20),
+            settle_(maps:get(minimum_depth, Spec), I3, R2, Debug, Cfg),
+            check_info(20),
+            assert_empty_msgq(true),
+            ok
+    end.
 
 prepare_for_slashing(#{fsm := FsmI} = I, R, Spec, Cfg) ->
     Debug = get_debug(Cfg),
@@ -4512,42 +4516,46 @@ prepare_for_slashing(#{fsm := FsmI} = I, R, Spec, Cfg) ->
     {I3, R2, SlashTx}.
 
 settle_with_failed_onchain(Cfg) ->
-    Debug = get_debug(Cfg),
-    #{ i := #{fsm := FsmI} = I
-     , r := #{} = R
-     , spec := #{ initiator := _PubI
-                , responder := _PubR } = Spec} = create_channel_([?SLOGAN|Cfg]),
-    ?LOG(Debug, "I = ~p", [I]),
-    ?LOG(Debug, "R = ~p", [R]),
+    case proplists:get_value(ga_group, Cfg, false) of
+        true -> {skip, no_nonce_and_not_applicable};
+        false ->
+            Debug = get_debug(Cfg),
+            #{ i := #{fsm := FsmI} = I
+            , r := #{} = R
+            , spec := #{ initiator := _PubI
+                        , responder := _PubR } = Spec} = create_channel_([?SLOGAN|Cfg]),
+            ?LOG(Debug, "I = ~p", [I]),
+            ?LOG(Debug, "R = ~p", [R]),
 
-    ok = rpc(dev1, aesc_fsm, close_solo, [FsmI, #{}]),
-    {I1, SignedCloseSoloTx} = await_signing_request(close_solo_tx, I, Cfg),
-    wait_for_signed_transaction_in_block(dev1, SignedCloseSoloTx),
+            ok = rpc(dev1, aesc_fsm, close_solo, [FsmI, #{}]),
+            {I1, SignedCloseSoloTx} = await_signing_request(close_solo_tx, I, Cfg),
+            wait_for_signed_transaction_in_block(dev1, SignedCloseSoloTx),
 
-    LockPeriod = maps:get(lock_period, Spec),
-    mine_blocks(dev1, LockPeriod),
-    SignedTx = await_on_chain_report(I, #{info => solo_closing}, ?TIMEOUT),
-    SignedTx = await_on_chain_report(R, #{info => solo_closing}, ?TIMEOUT),
-    {ok,_} = receive_from_fsm(info, I, fun closing/1, ?TIMEOUT, Debug),
-    {ok,_} = receive_from_fsm(info, R, fun closing/1, ?TIMEOUT, Debug),
+            LockPeriod = maps:get(lock_period, Spec),
+            mine_blocks(dev1, LockPeriod),
+            SignedTx = await_on_chain_report(I, #{info => solo_closing}, ?TIMEOUT),
+            SignedTx = await_on_chain_report(R, #{info => solo_closing}, ?TIMEOUT),
+            {ok,_} = receive_from_fsm(info, I, fun closing/1, ?TIMEOUT, Debug),
+            {ok,_} = receive_from_fsm(info, R, fun closing/1, ?TIMEOUT, Debug),
 
-    check_info(20),
-    ok = rpc(dev1, aesc_fsm, settle, [FsmI, #{}]),
-    basic_spend(initiator, % from
-                initiator, % to
-                1,         % some amount 
-                Cfg),
-    {I2, _SignedCloseSoloTx} = await_signing_request(settle_tx, I1, Cfg),
-    %% because we made an off-chain update, the latest stable state is the one
-    %% produced by the off-chain transfer, hence the round is 2
-    {ok, _} = receive_from_fsm(conflict, I2, #{info => #{ error_code => 5
-                                                        , round => 1}},
-                               ?TIMEOUT, Debug),
-    % Done
-    settle_(maps:get(minimum_depth, Spec), I2, R, Debug, Cfg),
-    check_info(20),
-    assert_empty_msgq(true),
-    ok.
+            check_info(20),
+            ok = rpc(dev1, aesc_fsm, settle, [FsmI, #{}]),
+            basic_spend(initiator, % from
+                        initiator, % to
+                        1,         % some amount 
+                        Cfg),
+            {I2, _SignedCloseSoloTx} = await_signing_request(settle_tx, I1, Cfg),
+            %% because we made an off-chain update, the latest stable state is the one
+            %% produced by the off-chain transfer, hence the round is 2
+            {ok, _} = receive_from_fsm(conflict, I2, #{info => #{ error_code => 5
+                                                                , round => 1}},
+                                      ?TIMEOUT, Debug),
+            % Done
+            settle_(maps:get(minimum_depth, Spec), I2, R, Debug, Cfg),
+            check_info(20),
+            assert_empty_msgq(true),
+            ok
+    end.
 
 force_progress_triggers_slash(Cfg) ->
     Debug = get_debug(Cfg),
@@ -4770,42 +4778,46 @@ force_progress_on_force_progress(Cfg) ->
     ok.
 
 force_progress_with_failed_onchain(Cfg) ->
-    Debug = get_debug(Cfg),
-    #{ i := #{ fsm := FsmI
-             , channel_id := ChannelId } = I
-     , r := #{} = R
-     , spec := #{ initiator := PubI
-                , responder := _PubR } = _Spec} = create_channel_([?SLOGAN|Cfg]),
-    ?LOG(Debug, "I = ~p", [I]),
-    ?LOG(Debug, "R = ~p", [R]),
-    {I1, R1, ContractPubkey} = create_contract(counter, ["42"], 10, I, R, Cfg),
-    {I2, R2} = call_contract(ContractPubkey, counter, "tick", [], 10, I1, R1, Cfg),
-    {ok, I3, R3} = deposit_(I2, R2, _Amount = 123, Debug, Cfg),
-    {ok, Round} = rpc(dev1, aesc_fsm, get_round, [FsmI]),
+    case proplists:get_value(ga_group, Cfg, false) of
+        true -> {skip, no_nonce_and_not_applicable};
+        false ->
+            Debug = get_debug(Cfg),
+            #{ i := #{ fsm := FsmI
+                    , channel_id := ChannelId } = I
+            , r := #{} = R
+            , spec := #{ initiator := PubI
+                        , responder := _PubR } = _Spec} = create_channel_([?SLOGAN|Cfg]),
+            ?LOG(Debug, "I = ~p", [I]),
+            ?LOG(Debug, "R = ~p", [R]),
+            {I1, R1, ContractPubkey} = create_contract(counter, ["42"], 10, I, R, Cfg),
+            {I2, R2} = call_contract(ContractPubkey, counter, "tick", [], 10, I1, R1, Cfg),
+            {ok, I3, R3} = deposit_(I2, R2, _Amount = 123, Debug, Cfg),
+            {ok, Round} = rpc(dev1, aesc_fsm, get_round, [FsmI]),
 
-    {ok, BinSrc} = aect_test_utils:read_contract(aect_test_utils:sophia_version(), counter),
-    {ok, CallData} =
-        aect_test_utils:encode_call_data(aect_test_utils:sophia_version(), BinSrc,
-                                         "tick", []),
-    FPArgs = #{ contract    => ContractPubkey
-              , abi_version => aect_test_utils:abi_version() 
-              , amount      => 10
-              , call_data   => CallData
-              , gas         => 1000000
-              , gas_price    => aec_test_utils:min_gas_price() },
-    ok = rpc(dev1, aesc_fsm, force_progress, [FsmI, FPArgs]),
-    basic_spend(initiator, % from
-                initiator, % to
-                1,         % some amount 
-                Cfg),
-    {I4, _} = await_signing_request(force_progress_tx, I3, Cfg),
-    {ok, _} = receive_from_fsm(conflict, I4, #{info => #{ error_code => 5
-                                                        , round => Round}},
-                               ?TIMEOUT, Debug),
+            {ok, BinSrc} = aect_test_utils:read_contract(aect_test_utils:sophia_version(), counter),
+            {ok, CallData} =
+                aect_test_utils:encode_call_data(aect_test_utils:sophia_version(), BinSrc,
+                                                "tick", []),
+            FPArgs = #{ contract    => ContractPubkey
+                      , abi_version => aect_test_utils:abi_version() 
+                      , amount      => 10
+                      , call_data   => CallData
+                      , gas         => 1000000
+                      , gas_price    => aec_test_utils:min_gas_price() },
+            ok = rpc(dev1, aesc_fsm, force_progress, [FsmI, FPArgs]),
+            basic_spend(initiator, % from
+                        initiator, % to
+                        1,         % some amount 
+                        Cfg),
+            {I4, _} = await_signing_request(force_progress_tx, I3, Cfg),
+            {ok, _} = receive_from_fsm(conflict, I4, #{info => #{ error_code => 5
+                                                                , round => Round}},
+                                      ?TIMEOUT, Debug),
 
-    check_info(20),
-    shutdown_(I4, R3, Cfg),
-    ok.
+            check_info(20),
+            shutdown_(I4, R3, Cfg),
+            ok
+    end.
 
 force_progress_closing_state(Cfg) ->
     Debug = get_debug(Cfg),
@@ -4998,3 +5010,60 @@ snapshot_solo_(#{fsm := FsmI} = I, R, Opts, Cfg) ->
     await_min_depth_reached(I, aetx_sign:hash(SignedTx), channel_snapshot_solo_tx, ?TIMEOUT),
     assert_empty_msgq(Debug),
     {ok, I1, R}.
+
+prepare_ga_by_contract(Config0, Contract) ->
+    Config =
+        lists:foldl(
+            fun(Key, Cfg) -> proplists:delete(Key, Cfg) end,
+            Config0,
+            [ga_group]),
+    Config1 = [{ga_group, true} |init_per_group_(Config)],
+    Params =
+        fun(Owner, PrivKey) ->
+            #{init_params => [Owner],
+              on_chain_nonce => fun get_btc_auth_nonce/1,
+              channel_nonce  => fun get_btc_offchain_nonce/2,
+              prep_fun =>
+                  fun(TxHash, N) ->
+                      btc_auth(TxHash, integer_to_list(N), PrivKey)
+                  end}
+        end,
+    {ContractName, AuthFunctionName, AuthParamsFun} = auth_contract_props(Contract),
+    Config2 =
+        [{ga, #{contract    => "bitcoin_auth",
+                auth_fun    => "authorize",
+                auth_params => #{initiator =>
+                                    Params(?I_OWNER,
+                                            ?I_SECP256K1_PRIV),
+                                responder =>
+                                    Params(?R_OWNER,
+                                            ?R_SECP256K1_PRIV)}}}
+            | Config1],
+    case ?config(who_is_ga, Config1) of
+        initiator_is_ga ->
+            attach_initiator(Config2),
+            initiator_spend(Config2);
+        responder_is_ga ->
+            attach_responder(Config2),
+            responder_spend(Config2);
+        both_are_ga ->
+            attach_initiator(Config2),
+            initiator_spend(Config2),
+            attach_responder(Config2),
+            responder_spend(Config2)
+    end,
+    Config2.
+
+auth_contract_props(btc_auth) ->
+    Params =
+        fun(Owner, PrivKey) ->
+            #{init_params => [Owner],
+              on_chain_nonce => fun get_btc_auth_nonce/1,
+              channel_nonce  => fun get_btc_offchain_nonce/2,
+              prep_fun =>
+                  fun(TxHash, N) ->
+                      btc_auth(TxHash, integer_to_list(N), PrivKey)
+                  end}
+        end,
+    {"bitcoin_auth", "authorize", Params}.
+

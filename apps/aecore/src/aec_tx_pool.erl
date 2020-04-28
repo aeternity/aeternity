@@ -810,62 +810,54 @@ check_account(Tx, _TxHash, _Block, BlockHash, _Trees, Event) ->
     int_check_account(Tx, {block_hash, BlockHash}, Event).
 
 int_check_account(Tx, Source, Event) ->
-    CheckNonce = nonce_check_by_event(Event),
+    case int_check_account_nonce(Tx, Source, Event) of
+        ok ->
+            int_check_meta_gas(Tx);
+        {error, _} = Err -> Err
+    end.
 
-    %% Check is conservative and only rejects certain cases
-    Unsigned = aetx_sign:tx(Tx),
-    TxNonce = aetx:nonce(Unsigned),
-    {TxType, MetaTx} = aetx:specialize_type(Unsigned),
-    case {aetx:origin(Unsigned), TxType} of
-        {undefined, _} ->
-            {error, no_origin};
-        {Pubkey, ga_meta_tx} when is_binary(Pubkey) ->
-            int_check_meta_tx(TxNonce, MetaTx, Pubkey, Source);
-        {Pubkey, _} when is_binary(Pubkey) ->
-            case TxNonce > 0 of
-                false ->
-                    {error, illegal_nonce};
+int_check_meta_gas(SignedTx) ->
+    Aetx = aetx_sign:tx(SignedTx),
+    {Mod, Tx} = aetx:specialize_callback(Aetx),
+    case Mod of
+        aega_meta_tx ->
+            Gas = aega_meta_tx:gas(Tx),
+            case Gas =< aec_tx_pool:maximum_auth_fun_gas() of
                 true ->
-                    case get_account(Pubkey, Source) of
-                        {error, no_state_trees} -> nonce_baseline_check(TxNonce, CheckNonce);
-                        none -> nonce_baseline_check(TxNonce, CheckNonce);
-                        {value, Account} ->
-                            Offset   = nonce_offset(),
-                            AccNonce = aec_accounts:nonce(Account),
-                            AccType  = aec_accounts:type(Account),
-                            if
-                                AccType == generalized ->
-                                    {error, generalized_account_cant_sign_non_meta_tx};
-                                TxNonce =< AccNonce -> {error, nonce_too_low};
-                                TxNonce =< (AccNonce + Offset) -> ok;
-                                TxNonce >  (AccNonce + Offset) andalso not CheckNonce -> ok;
-                                TxNonce >  (AccNonce + Offset) -> {error, nonce_too_high}
-                            end
+                    int_check_meta_gas(aega_meta_tx:tx(Tx));
+                false -> {error, too_much_gas_for_auth_function}
+            end;
+        _ -> ok
+    end.
+
+int_check_account_nonce(Tx, Source, Event) ->
+    CheckNonce = nonce_check_by_event(Event),
+    %% Check is conservative and only rejects certain cases
+    Unsigned = aetx_sign:innermost_tx(Tx),
+    TxNonce = aetx:nonce(Unsigned),
+    case aetx:origin(Unsigned) of
+        undefined ->
+            {error, no_origin};
+        Pubkey when is_binary(Pubkey) ->
+            case get_account(Pubkey, Source) of
+                {error, no_state_trees} -> nonce_baseline_check(TxNonce, CheckNonce);
+                none -> nonce_baseline_check(TxNonce, CheckNonce);
+                {value, Account} ->
+                    Offset   = nonce_offset(),
+                    AccNonce = aec_accounts:nonce(Account),
+                    AccType  = aec_accounts:type(Account),
+                    if
+                        AccType == generalized andalso TxNonce =:= 0 ->
+                            ok;
+                        AccType == generalized ->
+                            {error, generalized_account_cant_sign_non_meta_tx};
+                        TxNonce =< AccNonce -> {error, nonce_too_low};
+                        TxNonce =< (AccNonce + Offset) -> ok;
+                        TxNonce >  (AccNonce + Offset) andalso not CheckNonce -> ok;
+                        TxNonce >  (AccNonce + Offset) -> {error, nonce_too_high}
                     end
             end
     end.
-
-int_check_meta_tx(0, MetaTx, Pubkey, Source) ->
-    Gas    = aega_meta_tx:gas(MetaTx),
-    case Gas =< aec_tx_pool:maximum_auth_fun_gas() of
-        true ->
-            case get_account(Pubkey, Source) of
-                {value, Account} ->
-                    TotalAmount = Gas * aega_meta_tx:gas_price(MetaTx) +
-                                    aega_meta_tx:fee(MetaTx),
-                    case TotalAmount =< aec_accounts:balance(Account) of
-                        true  -> ok;
-                        false -> {error, insufficient_funds}
-                    end;
-                _ ->
-                    {error, authenticating_account_does_not_exist}
-            end;
-        false ->
-            {error, too_much_gas_for_auth_function}
-    end;
-int_check_meta_tx(_, _, _, _) ->
-    {error, illegal_nonce}.
-
 
 nonce_check_by_event(tx_created) -> true;
 nonce_check_by_event(tx_received) -> false;
