@@ -303,7 +303,7 @@ get_info_object_signed_tx(BlockHash, STx, GAIds, OrigTx) ->
                 aesc_force_progress_tx:contract_pubkey_and_caller(FPTx),
             Round = aesc_force_progress_tx:round(FPTx),
             TxHash = aetx_sign:hash(OrigTx),
-            TxHashUsedInsteadOfContract =aesc_utils:tx_hash_to_contract_pubkey(TxHash),
+            TxHashUsedInsteadOfContract = aesc_utils:tx_hash_to_contract_pubkey(TxHash),
             CallId =
                 case maps:get(Caller, GAIds, not_found) of
                     not_found -> %% not GA

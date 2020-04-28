@@ -189,7 +189,7 @@ gas_price(#channel_force_progress_tx{update = Update}) ->
     end.
 
 -spec contract_pubkey_and_caller(tx()) ->
-    {aect_contracts:pubkey(), aec_accounts:pubkey()} | undefined.
+    {aect_contracts:pubkey(), aec_keys:pubkey()} | undefined.
 contract_pubkey_and_caller(#channel_force_progress_tx{update = Update}) ->
     case aesc_offchain_update:extract_call(Update) of
         {ContractPubkey, Caller} ->

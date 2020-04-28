@@ -943,6 +943,7 @@ set_channel(Channel, Trees) ->
     ChannelsTree1 = aesc_state_tree:enter(Channel, ChannelsTree0),
     aec_trees:set_channels(Trees, ChannelsTree1).
 
+-spec tx_hash_to_contract_pubkey(binary()) -> binary().
 tx_hash_to_contract_pubkey(TxHash) ->
     ByteSize = aeser_api_encoder:byte_size_for_type(contract_pubkey),
     case TxHash of

@@ -252,7 +252,7 @@ get_contract(PubKey) ->
         error -> {error, no_state_trees}
     end.
 
--spec get_contract_call(aect_contracts:id(), aect_call:id(), binary()) ->
+-spec get_contract_call(aect_contracts:id() | binary(), aect_call:id(), binary()) ->
                                {'ok', aect_call:call()} |
                                {'error', atom()}.
 get_contract_call(ContractId, CallId, BlockHash) ->
