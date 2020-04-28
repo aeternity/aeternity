@@ -78,6 +78,7 @@
    [
     get_transaction_by_hash/1,
     get_transaction_info_by_hash/1,
+    get_transaction_info_by_hash_sut/1,
     post_spend_tx/1,
     post_spend_tx_w_hash_sig/1,
     post_contract_and_call_tx/1,
@@ -1472,6 +1473,10 @@ post_contract_and_call_tx(_Config) ->
 get_transactions_by_hash_sut(Hash) ->
     Host = external_address(),
     http_request(Host, get, "transactions/" ++ http_uri:encode(Hash), []).
+
+get_transaction_info_by_hash_sut(Hash) ->
+    Host = external_address(),
+    http_request(Host, get, "transactions/" ++ http_uri:encode(Hash) ++ "/info", []).
 
 post_transactions_sut(Tx) ->
     Host = external_address(),

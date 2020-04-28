@@ -31,12 +31,8 @@
          count_authentications/1,
          channel_pubkey/1,
          censor_init_opts/1,
-         censor_ws_req/1
-        ]).
-
--ifdef(TEST).
--export([tx_hash_to_contract_pubkey/1]).
--endif.
+         censor_ws_req/1,
+         tx_hash_to_contract_pubkey/1]).
 
 -ifdef(COMMON_TEST).
 -define(TEST_LOG(Format, Data),
