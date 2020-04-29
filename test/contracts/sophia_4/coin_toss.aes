@@ -4,17 +4,18 @@ contract CoinToss =
                    hash            : option(hash),
                    height          : int,
                    player_pick     : option(string),
-                   player_stake    : int,
+                   stake    : int,
                    reaction_time   : int
                    }
 
   entrypoint init(casino: address, player: address, reaction_time: int) : state =
+    require(Call.value == 0, "no_deposit")
     { casino          = casino,
       player          = player,
       hash            = None,
       height          = 0,
       player_pick     = None,
-      player_stake    = 0,
+      stake    = 0,
       reaction_time   = reaction_time
       }
 
@@ -22,24 +23,16 @@ contract CoinToss =
     require_casino()
     require(state.hash == None, "already_has_hash")
     put(state{ hash = Some(hash),
+               stake = Call.value,
                height = Chain.block_height})
-
-  stateful entrypoint withdraw(amount: int) =
-    require_casino()
-    require(state.hash == None, "already_playing")
-    Chain.spend(state.casino, amount)
-
-  payable entrypoint deposit() =
-    require_casino()
 
   stateful payable entrypoint player_pick(coin_side: string) =
     require_player()
     ensure_player_turn_to_pick()
     ensure_coin_side(coin_side)
-    require(Call.value * 2 =< Contract.balance, "stake_too_big")
+    require(Call.value == state.stake, "wrong_stake")
     put(state{ player_pick  = Some(coin_side),
-               height       = Chain.block_height,
-               player_stake = Call.value})
+               height       = Chain.block_height})
 
   stateful entrypoint reveal(key: string, coin_side: string) =
     require_casino()
@@ -48,20 +41,23 @@ contract CoinToss =
     ensure_if_key_is_valid(key, coin_side)
     let Some(player_pick) = state.player_pick
     if (coin_side == player_pick)
-      Chain.spend(state.player, state.player_stake * 2)
+      Chain.spend(state.player, Contract.balance)
+    else
+      Chain.spend(state.casino, Contract.balance)
     reset_state()
 
   stateful entrypoint player_dispute_no_reveal() =
     require_player()
     ensure_casino_turn_to_reveal()
     require(state.height  + state.reaction_time < Chain.block_height, "not_yet_allowed")
-    Chain.spend(state.player, state.player_stake * 2)
+    Chain.spend(state.player, Contract.balance)
     reset_state()
 
   stateful entrypoint casino_dispute_no_pick() =
     require_casino()
     ensure_player_turn_to_pick()
     require(state.height + state.reaction_time < Chain.block_height, "not_yet_allowed")
+    Chain.spend(state.casino, Contract.balance)
     reset_state()
 
   // a friendly helper function
@@ -96,6 +92,6 @@ contract CoinToss =
     put(state{hash            = None,
               height          = 0,
               player_pick     = None,
-              player_stake    = 0
+              stake    = 0
               })
 

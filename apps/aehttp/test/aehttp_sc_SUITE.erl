@@ -2722,6 +2722,7 @@ call_a_contract(Function, Argument, ContractPubKey, Contract, SenderConnPid,
               , abi_version => aect_test_utils:abi_version()
               , amount      => Amount
               , call_data   => EncodedMainData },
+
     CallOpts = maybe_include_meta(CallOpts0, Config),
     % invalid call
     ws_send_tagged(SenderConnPid, <<"channels.update.call_contract">>,
