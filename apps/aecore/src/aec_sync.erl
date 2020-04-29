@@ -781,7 +781,7 @@ agree_on_height(PeerId, RemoteTop, Height, Step) ->
     end.
 
 %% We agree on Hash at MinH and disagree at MaxH
-agree_on_height(PeerId, RemoteTop, MinH, MaxH, Hash) when MaxH == MinH + 1 ->
+agree_on_height(_PeerId, _RemoteTop, MinH, MaxH, Hash) when MaxH == MinH + 1 ->
     {ok, MinH, Hash};
 agree_on_height(PeerId, RemoteTop, MinH, MaxH, Hash) ->
     H = (MinH + MaxH) div 2,

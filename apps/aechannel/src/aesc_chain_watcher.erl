@@ -599,7 +599,7 @@ check_status_(#{ block_hash := BHash
                     St1 = init_cache(I, next_block, St),
                     check_requests(Reqs, St1)
             end;
-        #tx_log_entry{value = #{txs := Txs}} = LogEntry ->
+        #tx_log_entry{value = #{txs := Txs}} ->
             lager:debug("found ~p txs in top", [maps:size(Txs)]),
             case reqs_for_txs(Txs) of
                 {[], []} ->
@@ -1075,7 +1075,7 @@ maybe_report(RptKey, Event, Info, Rpt, C) when is_function(Rpt) ->
         false ->
             do_report(RptKey, Event, Info, Rpt, RptLog, C);
         #rpt_log_entry{value = #{ event := _LatestEvent
-                                , info  := #{ tx_hash := LatestTx }}} = Found ->
+                                , info  := #{ tx_hash := LatestTx }}} ->
             case Info of
                 #{tx_hash := LatestTx} ->
                     C;

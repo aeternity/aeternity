@@ -729,8 +729,6 @@ insured_can_not_deposit(Cfg0) ->
     City = "Sofia, Bulgaria",
     Reward = 10000,
     PricePerGeneration = 2,
-    Generations1 = 100,
-    Generations2 = 10,
     HailstormHeight = current_height() + 50,
     QueryId = ask_oracle_service(City, HailstormHeight, Cfg0),
     answer_oracle_query(QueryId, true, Cfg0),

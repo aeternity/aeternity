@@ -103,7 +103,6 @@ int_create(BlockHash, Block, KeyBlock, Trees) ->
 int_create_block(PrevBlockHash, PrevBlock, KeyBlock, Trees, Txs) ->
     %% Micro block always has the same protocol version as the last key block.
     Protocol = aec_blocks:version(KeyBlock),
-    PrevBlockHeight = aec_blocks:height(PrevBlock),
 
     PrevKeyHash = case aec_blocks:type(PrevBlock) of
                       micro -> aec_blocks:prev_key_hash(PrevBlock);

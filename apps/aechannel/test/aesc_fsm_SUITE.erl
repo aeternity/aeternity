@@ -537,7 +537,6 @@ multiple_responder_keys_per_port(Cfg) ->
     ok.
 
 responder_accept_timeout(Cfg) ->
-    Slogan = ?SLOGAN,
     Debug = get_debug(Cfg),
     ROptsF = fun(Spec1) ->
                      ?LOG(Debug, "Modifying ~p", [Spec1]),
@@ -4560,9 +4559,9 @@ settle_with_failed_onchain(Cfg) ->
 force_progress_triggers_slash(Cfg) ->
     Debug = get_debug(Cfg),
     #{ i := #{ fsm := FsmI
-             , channel_id := ChannelId } = I
+             , channel_id := _ChannelId } = I
      , r := #{} = R
-     , spec := #{ initiator := PubI
+     , spec := #{ initiator := _PubI
                 , responder := _PubR } = Spec} = create_channel_([?SLOGAN|Cfg]),
     ?LOG(Debug, "I = ~p", [I]),
     ?LOG(Debug, "R = ~p", [R]),
@@ -4630,9 +4629,9 @@ force_progress_triggers_slash(Cfg) ->
 force_progress_triggers_snapshot(Cfg) ->
     Debug = get_debug(Cfg),
     #{ i := #{ fsm := _FsmI
-             , channel_id := ChannelId } = I
+             , channel_id := _ChannelId } = I
      , r := #{} = R
-     , spec := #{ initiator := PubI
+     , spec := #{ initiator := _PubI
                 , responder := _PubR } = _Spec} = create_channel_([?SLOGAN|Cfg]),
     ?LOG(Debug, "I = ~p", [I]),
     ?LOG(Debug, "R = ~p", [R]),
@@ -4663,9 +4662,9 @@ force_progress_triggers_snapshot(Cfg) ->
 force_progress_followed_by_update(Cfg) ->
     Debug = get_debug(Cfg),
     #{ i := #{ fsm := _FsmI
-             , channel_id := ChannelId } = I
+             , channel_id := _ChannelId } = I
      , r := #{} = R
-     , spec := #{ initiator := PubI
+     , spec := #{ initiator := _PubI
                 , responder := _PubR } = _Spec} = create_channel_([?SLOGAN|Cfg]),
     ?LOG(Debug, "I = ~p", [I]),
     ?LOG(Debug, "R = ~p", [R]),
@@ -4681,9 +4680,9 @@ force_progress_followed_by_update(Cfg) ->
 force_progress_based_on_offchain_state(Cfg) ->
     Debug = get_debug(Cfg),
     #{ i := #{ fsm := _FsmI
-             , channel_id := ChannelId } = I
+             , channel_id := _ChannelId } = I
      , r := #{} = R
-     , spec := #{ initiator := PubI
+     , spec := #{ initiator := _PubI
                 , responder := _PubR } = _Spec} = create_channel_([?SLOGAN|Cfg]),
     ?LOG(Debug, "I = ~p", [I]),
     ?LOG(Debug, "R = ~p", [R]),
@@ -4700,9 +4699,9 @@ force_progress_based_on_offchain_state(Cfg) ->
 force_progress_based_on_snapshot(Cfg) ->
     Debug = get_debug(Cfg),
     #{ i := #{ fsm := _FsmI
-             , channel_id := ChannelId } = I
+             , channel_id := _ChannelId } = I
      , r := #{} = R
-     , spec := #{ initiator := PubI
+     , spec := #{ initiator := _PubI
                 , responder := _PubR } = _Spec} = create_channel_([?SLOGAN|Cfg]),
     ?LOG(Debug, "I = ~p", [I]),
     ?LOG(Debug, "R = ~p", [R]),
@@ -4720,9 +4719,9 @@ force_progress_based_on_deposit(Cfg) ->
     Debug = get_debug(Cfg),
     check_info(20),
     #{ i := #{ fsm := _FsmI
-             , channel_id := ChannelId } = I
+             , channel_id := _ChannelId } = I
      , r := #{} = R
-     , spec := #{ initiator := PubI
+     , spec := #{ initiator := _PubI
                 , responder := _PubR } = _Spec} = create_channel_([?SLOGAN|Cfg]),
     ?LOG(Debug, "I = ~p", [I]),
     ?LOG(Debug, "R = ~p", [R]),
@@ -4739,9 +4738,9 @@ force_progress_based_on_deposit(Cfg) ->
 force_progress_based_on_withdrawal(Cfg) ->
     Debug = get_debug(Cfg),
     #{ i := #{ fsm := _FsmI
-             , channel_id := ChannelId } = I
+             , channel_id := _ChannelId } = I
      , r := #{} = R
-     , spec := #{ initiator := PubI
+     , spec := #{ initiator := _PubI
                 , responder := _PubR } = _Spec} = create_channel_([?SLOGAN|Cfg]),
     ?LOG(Debug, "I = ~p", [I]),
     ?LOG(Debug, "R = ~p", [R]),
@@ -4758,9 +4757,9 @@ force_progress_based_on_withdrawal(Cfg) ->
 force_progress_on_force_progress(Cfg) ->
     Debug = get_debug(Cfg),
     #{ i := #{ fsm := _FsmI
-             , channel_id := ChannelId } = I
+             , channel_id := _ChannelId } = I
      , r := #{} = R
-     , spec := #{ initiator := PubI
+     , spec := #{ initiator := _PubI
                 , responder := _PubR } = _Spec} = create_channel_([?SLOGAN|Cfg]),
     ?LOG(Debug, "I = ~p", [I]),
     ?LOG(Debug, "R = ~p", [R]),
@@ -4783,9 +4782,9 @@ force_progress_with_failed_onchain(Cfg) ->
         false ->
             Debug = get_debug(Cfg),
             #{ i := #{ fsm := FsmI
-                    , channel_id := ChannelId } = I
+                    , channel_id := _ChannelId } = I
             , r := #{} = R
-            , spec := #{ initiator := PubI
+            , spec := #{ initiator := _PubI
                         , responder := _PubR } = _Spec} = create_channel_([?SLOGAN|Cfg]),
             ?LOG(Debug, "I = ~p", [I]),
             ?LOG(Debug, "R = ~p", [R]),
@@ -4813,7 +4812,6 @@ force_progress_with_failed_onchain(Cfg) ->
             {ok, _} = receive_from_fsm(conflict, I4, #{info => #{ error_code => 5
                                                                 , round => Round}},
                                       ?TIMEOUT, Debug),
-
             check_info(20),
             shutdown_(I4, R3, Cfg),
             ok
@@ -5028,7 +5026,7 @@ prepare_ga_by_contract(Config0, Contract) ->
                       btc_auth(TxHash, integer_to_list(N), PrivKey)
                   end}
         end,
-    {ContractName, AuthFunctionName, AuthParamsFun} = auth_contract_props(Contract),
+    {_ContractName, _AuthFunctionName, _AuthParamsFun} = auth_contract_props(Contract),
     Config2 =
         [{ga, #{contract    => "bitcoin_auth",
                 auth_fun    => "authorize",

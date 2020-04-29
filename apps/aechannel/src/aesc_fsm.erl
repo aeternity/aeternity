@@ -5239,7 +5239,7 @@ call_callback_new(Mod, Opts, _) ->
     apply(Mod, new, [Opts]).
 
 process_incoming_forced_progress(FSMState, #{ tx := SignedTx
-                                            , block_hash := BlockHash } = Info,
+                                            , block_hash := BlockHash },
                                  #data{ state = State
                                       , opts = Opts
                                       , on_chain_id = ChannelPubkey } = D) ->
