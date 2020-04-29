@@ -1213,7 +1213,7 @@ do_send(ESock, Msg) ->
     send_chunks(ESock, 1, NChunks, Msg).
 
 send_chunks(ESock, M, M, Msg) ->
-    enoise:send(ESock, <<?MSG_FRAGMENT:16, M:16, M:16, Msg/binary>>);
+    enoise_send(ESock, <<?MSG_FRAGMENT:16, M:16, M:16, Msg/binary>>);
 send_chunks(ESock, N, M, <<Chunk:?MAX_FRAGMENT_PAYLOAD_SIZE/binary, Rest/binary>>) ->
     enoise_send(ESock, <<?MSG_FRAGMENT:16, N:16, M:16, Chunk/binary>>),
     send_chunks(ESock, N + 1, M, Rest).
