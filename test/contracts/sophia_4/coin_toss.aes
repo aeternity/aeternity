@@ -26,7 +26,7 @@ contract CoinToss =
                stake = Call.value,
                height = Chain.block_height})
 
-  stateful payable entrypoint player_pick(coin_side: string) =
+  payable stateful entrypoint player_pick(coin_side: string) =
     require_player()
     ensure_player_turn_to_pick()
     ensure_coin_side(coin_side)
@@ -94,4 +94,3 @@ contract CoinToss =
               player_pick     = None,
               stake    = 0
               })
-
