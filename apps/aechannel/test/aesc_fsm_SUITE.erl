@@ -1716,7 +1716,7 @@ check_mutual_close_with_wrong_amounts(Cfg) ->
      , r := #{fsm := FsmR} = R } =
         create_channel_from_spec(Si, Sr, Spec, Port, Debug, Cfg),
     %% We don't have enough funds to cover the closing fee
-    {error, insufficient_funds} = rpc(dev1, aesc_fsm, shutdown, [FsmI, #{}]),
+    {error, insufficient_balance} = rpc(dev1, aesc_fsm, shutdown, [FsmI, #{}]),
     timer:sleep(50),
     %% Fsms should be unaffected
     true = (rpc(dev1, erlang, process_info, [FsmI]) =/= undefined),
