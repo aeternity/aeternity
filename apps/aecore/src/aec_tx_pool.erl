@@ -431,7 +431,7 @@ int_get_candidate(Db, Gas, MinTxGas, MinMinerGasPrice, Trees, Header, DBs, Acc)
                            ets:select(Db, Pat, 20),
                            {account_trees, aec_trees:accounts(Trees)},
                            aec_headers:height(Header), aec_headers:version(Header), Acc);
-int_get_candidate(Gas, _, _, _, _, _, _, Acc) ->
+int_get_candidate(_, Gas, _, _, _, _, _, Acc) ->
     {ok, Gas, Acc}.
 
 int_get_candidate_fold(Gas, MinTxGas, _MinMinerGasPrice, _Db, _Dbs, _Txs,
