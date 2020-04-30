@@ -32,7 +32,8 @@ contract CoinToss =
     require_player()
     ensure_player_turn_to_pick()
     ensure_coin_side(coin_side)
-    require(Call.value == state.stake, "wrong_stake")
+    require(Call.value == state.stake,
+      String.concat("wrong_stake, expected ", Int.to_str(state.stake)))
     put(state{ player_pick  = Some(coin_side),
                height       = Chain.block_height})
 

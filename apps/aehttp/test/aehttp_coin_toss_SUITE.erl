@@ -614,12 +614,14 @@ player_pick_fails(Cfg0) ->
                                ContractName, "player_pick",
                                [add_quotes(<<"random string">>)], Stake, Cfg),
     %% player cannot stake too much
-    {revert, <<"wrong_stake">>} =
+    StakeBin = integer_to_binary(Stake),
+    WrongStakeMsg = <<"wrong_stake, expected ", StakeBin/binary>>,
+    {revert, WrongStakeMsg} =
         call_offchain_contract(Player, ContractPubkey,
                               ContractName, "player_pick",
                               [add_quotes(Bet)], Stake + 1, Cfg),
     %% player cannot stake too little
-    {revert, <<"wrong_stake">>} =
+    {revert, WrongStakeMsg} =
         call_offchain_contract(Player, ContractPubkey,
                               ContractName, "player_pick",
                               [add_quotes(Bet)], Stake - 1, Cfg),
