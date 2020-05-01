@@ -4541,7 +4541,7 @@ handle_call_(awaiting_signature, {abort_update, Code, Tag}, From,
         {SoloAction, AckAction} when SoloAction orelse AckAction ->
             D1 = report(info, aborted_update, D),
             lager:debug("update aborted", []),
-            NextState = next_state_after_abort(ChannelId),
+            NextState = next_state_after_abort(D),
             case SoloAction of
                 true ->
                     next_state(NextState, clear_ongoing(D1#data{op = ?NO_OP}),
