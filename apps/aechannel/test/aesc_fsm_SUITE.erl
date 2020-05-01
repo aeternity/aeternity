@@ -42,6 +42,9 @@
         , deposit_with_signing_abort/1
         , withdraw_with_signing_abort/1
         , shutdown_with_signing_abort/1
+        , update_with_signer_disconnect/1
+        , deposit_with_signer_disconnect/1
+        , withdraw_with_signer_disconnect/1
         , deposit/1
         , slash/1
         , withdraw/1
@@ -135,6 +138,7 @@
 -include_lib("aecontract/include/aecontract.hrl").
 -include_lib("aecontract/include/hard_forks.hrl").
 -include("../../aecore/test/aec_test_utils.hrl").
+-include("../src/aesc_codec.hrl").
 
 -import(aec_test_utils, [ get_debug/1
                         , set_debug/2 ]).
@@ -213,6 +217,7 @@ groups() ->
                              , {group, assume_min_depth}
                              , {group, errors}
                              , {group, client_reconnect}
+                             , {group, signer_disconnect}
                              , {group, signatures}
                              , {group, channel_ids}
                              , {group, round_too_low}
@@ -241,6 +246,12 @@ groups() ->
       , deposit_with_signing_abort
       , withdraw_with_signing_abort
       , shutdown_with_signing_abort
+      ]},
+     {signer_disconnect, [sequence],
+      [
+        update_with_signer_disconnect
+      , deposit_with_signer_disconnect
+      , withdraw_with_signer_disconnect
       ]},
      {failed_onchain, [sequence],
       [ deposit_with_failed_onchain
@@ -1093,6 +1104,54 @@ op_with_signing_abort(Op, Args, SignTag1, RptTag2, SignTag2, Cfg) ->
     {ok, Round0} = rpc(dev1, aesc_fsm, get_round, [FsmI]),
     ?PEEK_MSGQ(Debug),
     shutdown_(I, R, Cfg),
+    ok.
+
+update_with_signer_disconnect(Cfg) ->
+    op_with_signer_disconnect(
+      upd_transfer,
+      fun(Fsm, Amt, #{spec := #{initiator := PubI, responder := PubR}}) ->
+              [Fsm, PubI, PubR, Amt]
+      end, update, update, update_ack, Cfg).
+
+deposit_with_signer_disconnect(Cfg) ->
+    op_with_signer_disconnect(
+      upd_deposit,
+      fun(Fsm, Amt, _) ->
+              [Fsm, #{amount => Amt}]
+      end, deposit_tx, deposit_created, deposit_created, Cfg).
+
+withdraw_with_signer_disconnect(Cfg) ->
+    op_with_signer_disconnect(
+      upd_withdraw,
+      fun(Fsm, Amt, _) ->
+              [Fsm, #{amount => Amt}]
+      end, withdraw_tx, withdraw_created, withdraw_created, Cfg).
+
+op_with_signer_disconnect(Op, Args, SignTag1, RptTag2, SignTag2, Cfg) ->
+    Debug = get_debug(Cfg),
+    #{ i := #{fsm := FsmI} = I
+     , r := #{fsm := FsmR} = R
+     , spec := #{ initiator := PubI
+                , responder := PubR }} = Spec = create_channel_(
+                                                  [?SLOGAN|Cfg]),
+    {BalI, BalR} = get_both_balances(FsmI, PubI, PubR),
+    {ok, Round0} = rpc(dev1, aesc_fsm, get_round, [FsmR]),
+    %%
+    %% Initiator client aborts
+    %%
+    rpc(dev1, aesc_fsm, Op, Args(FsmR, 1, Spec)),
+    {_, _} = await_signing_request(SignTag1, R, Debug, Cfg),
+    {ok, _} = receive_from_fsm(info, I, RptTag2, ?TIMEOUT, Debug),
+    SignedTx = signer_disconnects(SignTag2, I, ?TIMEOUT, Debug),
+    Pat = #{info => #{error_code => ?ERR_CLIENT_DISCONNECTED,
+                      round => Round0}},
+    {ok, _} = receive_from_fsm(conflict, R, Pat, ?TIMEOUT, Debug),
+    #{fsm := FsmI1} = I1 = reconnect(I, Debug),
+    wait_for_open(FsmR, Debug),
+    wait_for_open(FsmI1, Debug),
+    {BalI, BalR} = get_both_balances(FsmI1, PubI, PubR),
+    {ok, Round0} = rpc(dev1, aesc_fsm, get_round, [FsmI1]),
+    shutdown_(I1, R, Cfg),
     ok.
 
 signing_req() ->
@@ -2966,6 +3025,25 @@ abort_signing_request(Tag, #{fsm := Fsm}, Code, Timeout, Debug) ->
             error(timeout)
     end.
 
+signer_disconnects(Tag, #{fsm := Fsm, proxy := Proxy}, Timeout, Debug) ->
+    ?LOG(Debug, "waiting to disconnect during signing req, Fsm = ~p", [Fsm]),
+    receive
+        {aesc_fsm, Fsm, #{ type := sign, tag := Tag
+                         , info := #{ signed_tx := SignedTx
+                                    , updates   := _ } } = Msg} ->
+            ?LOG(Debug, "disconnect after getting from ~p: ~p", [Fsm, Msg]),
+            unlink(Proxy),
+            exit(Proxy, kill),
+            timer:sleep(50),
+            SignedTx
+    after Timeout ->
+            ?LOG(Debug, "Timeout. Q = ~p", [element(2,process_info(self(), messages))]),
+            error(timeout)
+    end.
+
+map_key(initiator) -> i;
+map_key(responder) -> r.
+
 sign_tx(Signer, Tx, Cfg) ->
     co_sign_tx(Signer, aetx_sign:new(Tx, []), Cfg).
 
@@ -3135,6 +3213,7 @@ receive_from_fsm_(Tag, #{role := Role, fsm := Fsm} = R, Msg, TRef, Debug, Cont) 
     receive
         {aesc_fsm, Fsm, #{type := Type, tag := Tag} = Msg1} ->
             ?LOG(Debug, "~p: received ~p:~p/~p", [Role, Type, Tag, Msg1]),
+            ?LOG(Debug, "Pattern to match: ~p", [Msg]),
             try match_msgs(Msg, Msg1, Cont)
             catch
                 throw:continue ->
@@ -3182,7 +3261,8 @@ match_msgs(Pat, M, Cont) when is_map(M), is_map(Pat) ->
     try match_info(M, Pat),
         {ok, M}
     catch
-        error:_ when Cont ->
+        error:_E when Cont ->
+            ?LOG("CAUGHT ~p (M = ~p)", [_E, M]),
             throw(continue)
     end;
 match_msgs(_, _, true) ->

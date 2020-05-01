@@ -922,6 +922,18 @@ awaiting_signature(cast, {?SIGNED, settle_tx = OpTag, SignedTx} = Msg,
                 settle_signed(SignedTx, Updates, D2)
         end, D);
 
+%% Client disconnected
+awaiting_signature(cast, ?CLIENT_DISCONNECTED,
+                   #data{op = #op_sign{ tag  = Tag }} = D)
+  when D#data.client_may_disconnect->
+    lager:debug("update aborted (client_disconnected)", []),
+    NextState = next_state_after_abort(D),
+    Respond = lists:member(Tag, ?CANCEL_ACK_TAGS),
+    handle_recoverable_error(NextState,
+                             #{ code => ?ERR_CLIENT_DISCONNECTED
+                              , respond => Respond
+                              , msg_type => Tag }, D, [],
+                             _ReportConflictToClient = true);
 %% Timeouts
 awaiting_signature(timeout, _Msg,
                    #data{ channel_status = closing
@@ -3886,6 +3898,19 @@ code_change(_OldVsn, OldState, OldData, _Extra) ->
 %% ======================================================================
 %% FSM transitions
 
+next_state_after_abort(#data{on_chain_id = ChannelId}) ->
+    case aec_chain:get_channel(ChannelId) of
+        {ok, Channel} ->
+            case aesc_channels:is_solo_closing(Channel) of
+                false ->
+                    open;
+                true ->
+                    channel_closing
+            end;
+        _ ->
+            open
+    end.
+
 %% We set timers here to ensure that they are always set.
 %% gen_statem cancels event timers each time an event arrives
 %%
@@ -4470,11 +4495,11 @@ close_(Reason, D) ->
          end,
     {stop, Reason, D1}.
 
-handle_call(_, {?RECONNECT_CLIENT, Pid, FsmIdWrapper} = Msg, From,
+handle_call(_St, {?RECONNECT_CLIENT, Pid, FsmIdWrapper} = Msg, From,
             #data{ client_connected = false
                  , client_mref      = undefined
                  , client           = undefined } = D0) ->
-    lager:debug("Client reconnect request with no client", []),
+    lager:debug("Client reconnect request with no client (cur state: ~p)", [_St]),
     D = log(rcv, msg_type(Msg), Msg, D0),
     case authenticate_reconnect(FsmIdWrapper, D) of
         true ->
@@ -4516,12 +4541,7 @@ handle_call_(awaiting_signature, {abort_update, Code, Tag}, From,
         {SoloAction, AckAction} when SoloAction orelse AckAction ->
             D1 = report(info, aborted_update, D),
             lager:debug("update aborted", []),
-            {ok, Channel} = aec_chain:get_channel(ChannelId),
-            NextState =
-                case aesc_channels:is_solo_closing(Channel) of
-                    false -> open;
-                    true -> channel_closing %% solo closing sequence
-                end,
+            NextState = next_state_after_abort(ChannelId),
             case SoloAction of
                 true ->
                     next_state(NextState, clear_ongoing(D1#data{op = ?NO_OP}),
@@ -4953,18 +4973,14 @@ get_state_implementation(From, D) ->
     keep_state(D, [{reply, From, {error, unknown_request}}]).
 -endif.
 
-handle_info({'DOWN', MRef, process, Client, _} = M,
-            #data{ client = Client
-                 , client_mref = MRef } = D) when D#data.client_may_disconnect ->
+handle_info({'DOWN', MRef, process, Client, _} = M, #data{ client = Client
+                                                         , client_mref = MRef } = D) ->
     lager:debug("Client disconnected ~p", [Client]),
     keep_state(log(disconnect, error, M,
-                   D#data{ client_mref      = undefined
-                         , client           = undefined
-                         , client_connected = false }));
-handle_info({'DOWN', MRef, process, Client, _} = M,
-            #data{ client = Client
-                 , client_mref = MRef } = D) ->
-    close(client_disconnected, log(disconnect, error, M, D));
+                   D#data{ client_mref       = undefined
+                         , client            = undefined
+                         , client_connected  = false }),
+                   [{next_event, cast, ?CLIENT_DISCONNECTED}]);
 handle_info(Msg, #data{cur_statem_state = St} = D) ->
     lager:debug("Discarding info in ~p state: ~p", [St, Msg]),
     keep_state(log(drop, msg_type(Msg), Msg, D)).
@@ -4993,6 +5009,15 @@ handle_common_event_(timeout, St = T, St, _, #data{ role = Role
             keep_state(D);
         false ->
             close({timeout, T}, D)
+    end;
+handle_common_event_(cast, ?CLIENT_DISCONNECTED, _St, _, D) ->
+    case D#data.client_may_disconnect of
+        true ->
+            %% Actually, client_connected is already set to false, but let's
+            %% do it here too.
+            keep_state(D#data{client_connected = false});
+        false ->
+            close(client_disconnected, D)
     end;
 handle_common_event_(cast, ?DISCONNECT = Msg, _St, _, #data{ channel_status = Status
                                                            , client_may_disconnect = MayDisconnect
