@@ -213,6 +213,7 @@ groups() ->
                              , {group, assume_min_depth}
                              , {group, errors}
                              , {group, client_reconnect}
+                             , {group, signing_abort}
                              , {group, signatures}
                              , {group, channel_ids}
                              , {group, round_too_low}
@@ -1068,9 +1069,7 @@ op_with_signing_abort(Op, Args, SignTag1, RptTag2, SignTag2, Cfg) ->
     %%
     rpc(dev1, aesc_fsm, Op, Args(FsmI, 1, Spec)),
     abort_signing_request(SignTag1, I, ErrorCode, ?TIMEOUT, Debug),
-    {ok, _} = receive_from_fsm(conflict, I, #{info => #{error_code => ErrorCode,
-                                                        round => Round0}},
-                               ?TIMEOUT, Debug),
+    {ok, _} = receive_from_fsm(info, I, fun aborted_update/1, ?TIMEOUT, Debug),
     wait_for_open(FsmI, Debug),
     {BalI, BalR} = get_both_balances(FsmI, PubI, PubR),
     [] = check_info(0, Debug),
@@ -1082,10 +1081,10 @@ op_with_signing_abort(Op, Args, SignTag1, RptTag2, SignTag2, Cfg) ->
     {_, _} = await_signing_request(SignTag1, I, Debug, Cfg),
     {ok, _} = receive_from_fsm(info, R, RptTag2, ?TIMEOUT, Debug),
     abort_signing_request(SignTag2, R, ErrorCode2, ?TIMEOUT, Debug),
+    {ok, _} = receive_from_fsm(info, R, fun aborted_update/1, ?TIMEOUT, Debug),
     Pat = #{info => #{error_code => ErrorCode2,
                       round => Round0}},
     {ok, _} = receive_from_fsm(conflict, I, Pat, ?TIMEOUT, Debug),
-    {ok, _} = receive_from_fsm(conflict, R, Pat, ?TIMEOUT, Debug),
     wait_for_open(FsmI, Debug),
     wait_for_open(FsmR, Debug),
     ?PEEK_MSGQ(Debug),
