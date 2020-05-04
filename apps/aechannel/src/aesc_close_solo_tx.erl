@@ -31,6 +31,11 @@
 -export([channel_id/1,
          channel_pubkey/1]).
 
+-ifdef(TEST).
+-export([ set_payload/2
+        , set_nonce/2
+        ]).
+-endif.
 %%%===================================================================
 %%% Types
 %%%===================================================================
@@ -210,3 +215,10 @@ version(_) ->
 valid_at_protocol(Protocol, #channel_close_solo_tx{payload = Payload}) ->
     aesc_utils:is_payload_valid_at_protocol(Protocol, Payload).
 
+-ifdef(TEST).
+set_payload(#channel_close_solo_tx{} = Tx, Payload) when is_binary(Payload) ->
+    Tx#channel_close_solo_tx{payload = Payload}.
+
+set_nonce(#channel_close_solo_tx{} = Tx, Nonce) when is_integer(Nonce) ->
+    Tx#channel_close_solo_tx{nonce = Nonce}.
+-endif.

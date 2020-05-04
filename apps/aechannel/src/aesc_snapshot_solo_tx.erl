@@ -25,7 +25,8 @@
          serialize/1,
          deserialize/2,
          for_client/1,
-         valid_at_protocol/2
+         valid_at_protocol/2,
+         payload/1
         ]).
 
 % aesc_signable_transaction callbacks
@@ -103,6 +104,10 @@ channel_pubkey(#channel_snapshot_solo_tx{channel_id = ChannelId}) ->
 
 channel_id(#channel_snapshot_solo_tx{channel_id = ChannelId}) ->
     ChannelId.
+
+-spec payload(tx()) -> binary().
+payload(#channel_snapshot_solo_tx{payload = Payload}) ->
+    Payload.
 
 from_pubkey(#channel_snapshot_solo_tx{from_id = FromId}) ->
     aeser_id:specialize(FromId, account).

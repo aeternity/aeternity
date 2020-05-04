@@ -68,6 +68,7 @@
 %%% Channels API
 -export([ get_channel/1
         , get_channel/2
+        , get_channel_at_hash/2
         ]).
 
 %%% Generalized Accounts API
@@ -205,6 +206,14 @@ get_channel(ChannelPubkey, Trees) ->
         none -> {error, not_found}
     end.
 
+-spec get_channel_at_hash(aesc_channels:pubkey(), binary()) ->
+    {ok, aesc_channels:channel()} | {error, no_state_trees | not_found}.
+get_channel_at_hash(ChannelPubkey, Hash) ->
+    case get_block_state(Hash) of
+        {ok, Trees} ->
+            get_channel(ChannelPubkey, Trees);
+        error -> {error, no_state_trees}
+    end.
 %%%===================================================================
 %%% Name service
 %%%===================================================================

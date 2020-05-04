@@ -162,6 +162,7 @@
               , ongoing_update = false        :: boolean()
               , error_msg_type                :: undefined | error_msg_type()
               , last_reported_update          :: undefined | non_neg_integer()
+              , last_channel_change           :: undefined | binary()          %% on-chain tx hash
               , log                           :: log()
               , strict_checks = true          :: boolean()
               }).

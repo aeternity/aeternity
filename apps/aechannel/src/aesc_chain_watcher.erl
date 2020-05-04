@@ -30,6 +30,7 @@
 %% New client API
 -export([ register/3     %% (ChId, Mod, Reqs) -> ok
         , request/2      %% (ChId, Req)       -> ok | error()    (register first)
+        , get_txs/2      %% (ChId, StopCond) -> {ok, [Tx]} | error().
         ]).
 
 %% Request objects
@@ -51,7 +52,8 @@
 -endif.
 
 %% Fetching tx history
--export([get_txs_since/2]).
+-export([get_txs_since_tx/2,
+         get_txs_since_block/2]).
 
 -include_lib("aeutils/include/aeu_stacktrace.hrl").
 
@@ -251,6 +253,9 @@
                   , {channel      , block_hash()} => aesc_channels:channel()
                   , {tx_hashes    , block_hash()} => [tx_hash()] }.
 
+-type stop_condition() :: {any_after_block, aec_blocks:block_header_hash()}
+                        | {all_after_tx, SignedTxHash :: binary()}.
+
 watch_req() ->
     watch_req(#{}).
 
@@ -275,13 +280,31 @@ unlock_req() ->
 req_type(#req{ info = #{ type := Type }}) ->
     Type.
 
+-spec get_txs_since_tx(aesc_channels:pubkey(), binary()) ->
+    {ok, list(TxHash :: binary())} | {error, atom()}.
+get_txs_since_tx(ChannelId, TxHash) ->
+    get_txs_since({all_after_tx, TxHash}, ChannelId).
+
+-spec get_txs_since_block(aesc_channels:pubkey(), aec_blocks:block_header_hash()) ->
+    {ok, list(TxHash :: binary())} | {error, atom()}.
+get_txs_since_block(ChannelId, BlockHash) ->
+    get_txs_since({any_after_block, BlockHash}, ChannelId).
+
+-spec get_txs_since(stop_condition(), aec_blocks:block_header_hash()) ->
+    {ok, list(TxHash :: binary())} | {error, atom()}.
 get_txs_since({all_after_tx, _Hash} = StopCond, ChId) ->
     get_txs_since_(StopCond, ChId);
 get_txs_since({any_after_block, _Hash} = StopCond, ChId) ->
     get_txs_since_(StopCond, ChId).
 
 get_txs_since_(StopCond, ChId) ->
-    get_txs_since(StopCond, aec_chain:top_block_hash(), ChId, #{}).
+    try {Txs, _} =
+            get_txs_since(StopCond, aec_chain:top_block_hash(), ChId, #{}),
+        {ok, Txs}
+    catch
+        error:Reason ->
+            {error, Reason}
+    end.
 
 ensure_ets_tables() ->
     [{T0,_}|_] = Tabs = tabs(),
@@ -345,6 +368,16 @@ register(ChId, Mod, Reqs) when is_binary(ChId)
 request(ChId, Req) ->
     lager:debug("Req = ~p", [Req]),
     gen_server:call(?SERVER, {request, ChId, Req}).
+
+-spec get_txs(aesc_channels:pubkey(), stop_condition()) -> {ok, [aetx_sign:signed_tx()]}
+                                                         | {error, atom()}.
+get_txs(ChId, StopCond) ->
+    case valid_stop_cond(StopCond) of
+        true ->
+            gen_server:call(?SERVER, {get_txs, ChId, StopCond});
+        false ->
+            {error, bad_stop_condition}
+    end.
 
 start_link() ->
     %% Create the ets tables in the parent process (the supervisor).
@@ -533,6 +566,14 @@ handle_call({request, ChId, Req}, {Pid, _}, St) ->
         error ->
             lager:debug("None registered for Pid=~p, ChId=~p", [Pid, ChId]),
             {reply, {error, unknown_channel}, St}
+    end;
+handle_call({get_txs, ChId, StopCond}, _From, #st{cache = C} = St) ->
+    {TopHash, C1} = top_hash(C),
+    try {Ret, C2} = get_txs_since_req(StopCond, TopHash, ChId, C1),
+        {reply, {ok, Ret}, St#st{cache = C2}}
+    catch
+        error:Reason ->
+            {reply, {error, Reason}, St#st{cache = C1}}
     end;
 handle_call(Req, _From, St) ->
     lager:debug("Unknown request, From=~p: ~p", [_From, Req]),
@@ -1270,7 +1311,7 @@ handle_ch_status_changed(ChId, Status, Client, #{ top_hash := Hash } = C) ->
     lager:debug("channel status changed, Hash=~p, Last=~p", [Hash,LastBlock]),
     %% TODO: When LastBlock == undefined (after fork switch), we should make an educated guess,
     %% though 'undefined' will work.
-    C1 = get_txs_since({any_after_block, LastBlock}, Hash, ChId, C),
+    {_Found, C1} = get_txs_since({any_after_block, LastBlock}, Hash, ChId, C),
     {TxHash, #{tx := Tx, block_hash := BlockHash}, C2} =
         get_latest_tx(ChId, C1),
     lager:debug("Latest TxHash = ~p, Hash = ~p", [TxHash, BlockHash]),
@@ -1459,11 +1500,24 @@ get_txs_since(StopCond, Hash, ChId, C) ->
         {ok, C1} ->
             {Found, C2} = get_txs_since(StopCond, Hash, ChId, C1, []),
             %% TODO: It's likely usually (not always?) redundant to log to history here
-            log_tx_histories(Found, ChId, C2);
+            C3 = log_tx_histories(Found, ChId, C2),
+            {Found, C3};
         {{error, Error}, _} ->
-            lager:error("Bad StopCond (~p): ~p", [StopCond, Error]),
+            lager:warning("Bad StopCond (~p): ~p", [StopCond, Error]),
             error(bad_stop_condition)
     end.
+
+%% Called from the handle_call/3 clause for API function `get_txs/2`
+-spec get_txs_since_req(stop_condition(), binary(), aesc_channels:pubkey(),
+                        cache()) -> {list({binary(), aetx_sign:signed_tx()}), cache()}.
+get_txs_since_req(StopCond, Hash, ChId, C) ->
+    {Found, C1} = get_txs_since(StopCond, Hash, ChId, C),
+    lists:foldl(
+      fun(TxHash, {Accum, Cx}) ->
+              {SignedTx, Cx1} = get_signed_tx(TxHash, Cx),
+              {[{TxHash, SignedTx} | Accum], Cx1}
+      end, {[], C1}, Found).
+
 
 verify_stop_cond({any_after_block, _}, _ChId, C) ->
     %% assume this is ok (it will be as long as the watcher uses it correctly)
@@ -1476,11 +1530,18 @@ verify_stop_cond({all_after_tx, TxHash}, ChId, C) ->
             {{error, tx_not_on_chain}, C1}
     end.
 
+valid_stop_cond({any_after_block, B}) ->
+    is_binary(B);
+valid_stop_cond({all_after_tx, T}) ->
+    is_binary(T);
+valid_stop_cond(any) ->
+    true;
+valid_stop_cond(_) ->
+    false.
 
 %% The iteration checks most recent block first, but the accumulator is
 %% not reversed, so the result will be grouped by block in chronological order,
 %% with txs sorted by nonce (so in the order in which they were processed).
-%%
 get_txs_since({any_after_block, Hash}, Hash, _, C, Acc) ->
     {Acc, C};
 get_txs_since(StopCond, Hash, ChId, C, Acc) ->
@@ -1515,6 +1576,13 @@ stop_cond({any_after_block, Hash}, PrevHash, Found, C) ->
             has_create_tx(Found, C)
     end.
 
+tail_after_tx(_, [], C) ->
+    {false, C};
+tail_after_tx(H, [H|T], C) ->
+    {true, T, C};
+tail_after_tx(Hash, [_|T], C) ->
+    tail_after_tx(Hash, T, C).
+
 %% Safety. If a create_tx exists in Found, it must be the first one.
 has_create_tx([], C) ->
     {false, C};
@@ -1526,13 +1594,6 @@ has_create_tx([TxHash|_] = Found, C) ->
         _ ->
             {false, C1}
     end.
-
-tail_after_tx(_, [], C) ->
-    {false, C};
-tail_after_tx(H, [H|T], C) ->
-    {true, T, C};
-tail_after_tx(Hash, [_|T], C) ->
-    tail_after_tx(Hash, T, C).
 
 tx_hashes(BlockHash, BlockHdr, C) ->
     cached_get({tx_hashes, BlockHash}, C,
