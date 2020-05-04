@@ -1124,7 +1124,7 @@ handle_successfully_added_block(Block, Hash, Events, State, Origin) ->
         {changed, BlockType, NewTopBlock, State2} ->
             BlockType == key andalso
                 aec_metrics:try_update(
-                  [ae,epoch,aecore,mining,info],
+                  [ae,epoch,aecore,blocks,key,info],
                   aec_headers:info(aec_blocks:to_key_header(NewTopBlock))),
             IsLeader = is_leader(NewTopBlock),
             case IsLeader of
