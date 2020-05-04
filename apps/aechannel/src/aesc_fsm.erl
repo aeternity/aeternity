@@ -967,13 +967,14 @@ channel_closed(cast, {?CHANNEL_CHANGED, #{ tx_hash := TxHash
                                         } } = D) ->
     %% The close mutual transaction ended up in a micro fork but was included
     %% again. This is an expected scenario
-    keep_state(D);
-channel_closed(cast, {?CHANNEL_CHANGED, _Info} = Msg, D) ->
+    keep_state(D#data{last_channel_change = TxHash});
+channel_closed(cast, {?CHANNEL_CHANGED, #{tx_hash := TxHash} = _Info} = Msg, D) ->
     %% This is a weird case. The channel was closed, but now isn't.
     %% This would indicate a fork switch. TODO: detect channel status
     %% and respond accordingly. For now. Panic and terminate
-    report(info, zombie_channel, D),
-    close(zombie_channel, log(rcv, msg_type(Msg), Msg, D));
+    D1 = D#data{last_channel_change = TxHash},
+    report(info, zombie_channel, D1),
+    close(zombie_channel, log(rcv, msg_type(Msg), Msg, D1));
 channel_closed(Type, Msg, D) ->
     handle_common_event(Type, Msg, discard, D).
 
@@ -3248,8 +3249,9 @@ opts_to_cache() ->
     , keep_running ].
 
 cache_state(#data{ on_chain_id = ChId
+                 , last_channel_change = LastTx
                  , state       = State } = D) ->
-    aesc_state_cache:update(ChId, my_account(D), State).
+    aesc_state_cache:update(ChId, my_account(D), State, #{last_channel_change => LastTx}).
 
 -spec handle_change_config(atom(), any(), #data{}) ->
     {ok, #data{}}
@@ -3729,14 +3731,15 @@ init_(#{opts := Opts0} = Arg) ->
 	        StateFun = fun(NewInitiator) ->
                 init_state(NewInitiator, Opts3, ReestablishOpts)
             end,
-            prepare_initial_state(Opts3, StateFun, SessionPid, ReestablishOpts);
+            prepare_initial_state(Opts3, #{state => StateFun}, SessionPid, ReestablishOpts);
         {{ok, SessionPid}, _} ->
             case init_state(Initiator, Opts3, ReestablishOpts) of
-                {ok, State} ->
-                    prepare_initial_state(Opts3, State, SessionPid, ReestablishOpts);
+                %% {ok, State, CachedOpts} ->
+                {ok, StateRecovery} ->
+                    prepare_initial_state(Opts3, StateRecovery, SessionPid, ReestablishOpts);
                 %% TODO: Handle missing state trees - the client should be able to
                 %%       bootstrap the channel by providing a cosigned state
-		        {error, invalid_fsm_id = E} ->
+		{error, invalid_fsm_id = E} ->
                     {stop, E}
             end
     end.
@@ -3795,7 +3798,8 @@ init_state(Initiator, Opts, ReestablishOpts) ->
     CheckedOpts1 = CheckedOpts#{initiator => Initiator},
     aesc_offchain_state:new(CheckedOpts1).
 
-prepare_initial_state(Opts, State, SessionPid, ReestablishOpts) ->
+prepare_initial_state(Opts, StateRecovery, SessionPid, ReestablishOpts) ->
+    #{state := State} = StateRecovery,
     FsmIdWrapper = aesc_fsm_id:new(),
     #{ client := Client
      , role := Role
@@ -3831,32 +3835,46 @@ prepare_initial_state(Opts, State, SessionPid, ReestablishOpts) ->
             false -> not_used
         end,
     NextState = case {Role, Reestablish} of
-        {initiator, true} ->
-            Data1 = Data#data{ opts = Opts#{channel_reserve => ChannelReserve}
-                             , op = #op_reestablish{mode = {connect, ReestablishOpts}}},
-            ok_next(awaiting_connect, Data1);
+       {initiator, true} ->
+            Data1 = maybe_pick_up_last_change(
+                      maps:get(cached_opts, ReestablishOpts, #{}),
+                      Data#data{ opts = Opts#{channel_reserve => ChannelReserve}
+                               , op = #op_reestablish{mode = {connect, ReestablishOpts}}}),
+            case check_chain_before_reestablish(initiator, StateRecovery, Data1) of
+                {ok, Next, Data2} ->
+                    ok_next(Next, Data1);
+                {error, _} = Error ->
+                    {stop, Error}
+            end;
         {initiator, false} ->
             ok_next(awaiting_connect, Data);
         {responder, true} ->
             ChanId = maps:get(existing_channel_id, ReestablishOpts),
-            Data1 = Data#data{ channel_id  = ChanId
-                             , on_chain_id = ChanId
-                             , opts = Opts#{channel_reserve => ChannelReserve}
-                             , op = #op_reestablish{mode = restart} },
-            ok_next(awaiting_reestablish, Data1);
+            Data1 = maybe_pick_up_last_change(
+                      maps:get(cached_opts, ReestablishOpts, #{}),
+                      Data#data{ channel_id  = ChanId
+                               , on_chain_id = ChanId
+                               , opts = Opts#{channel_reserve => ChannelReserve}
+                               , op = #op_reestablish{mode = restart} }),
+            case check_chain_before_reestablish(responder, StateRecovery, Data1) of
+                {ok, Next, Data2} ->
+                    ok_next(Next, Data2);
+                {error, _} = Error ->
+                    Error
+            end;
         {responder, false} ->
             ok_next(awaiting_open, Data)
     end,
     %% The FSM is up - send the FSM ID to the user
     report(info, {fsm_up, FsmIdWrapper}, Data),
     %% In case we are reestablishing a channel we change the token to a new one
-    case Reestablish of
-        true ->
+    case {NextState, Reestablish} of
+        {{ok,_}, true} ->
             ChId = maps:get(existing_channel_id, ReestablishOpts),
             %% Shouldn't fail
             ok = aesc_state_cache:change_fsm_id(ChId, my_account(Data), FsmIdWrapper),
             NextState;
-        false ->
+        _ ->
             NextState
     end.
 
@@ -4041,9 +4059,14 @@ noise_accept(SessionOpts, NoiseOpts, Attempts, COpts) ->
 
 
 maybe_initialize_offchain_state(any, NewI, #data{state = F} = D) when is_function(F, 1) ->
-    {ok, State} = F(NewI), %% Should not fail
-    D#data{state = State};
+    {ok, #{state := State} = Recovered} = F(NewI), %% Should not fail
+    maybe_pick_up_last_change(Recovered, D#data{state = State});
 maybe_initialize_offchain_state(_, _, D) ->
+    D.
+
+maybe_pick_up_last_change(#{last_channel_change := Last}, D) ->
+    D#data{last_channel_change = Last};
+maybe_pick_up_last_change(_, D) ->
     D.
 
 ok_next(Next, Data) ->
@@ -4810,9 +4833,9 @@ handle_common_event_(cast, {?INBAND_MSG, Msg}, _St, _, D) ->
                    D
            end,
     keep_state(NewD);
-handle_common_event_(cast, {?CHANNEL_CLOSING, Info} = Msg, _St, _, D) ->
+handle_common_event_(cast, {?CHANNEL_CLOSING, #{tx_hash := TxHash} = Info} = Msg, _St, _, D) ->
     lager:debug("got ~p", [Msg]),
-    D1 = log(rcv, ?CHANNEL_CLOSING, Msg, D),
+    D1 = log(rcv, ?CHANNEL_CLOSING, Msg, D#data{last_channel_change = TxHash}),
     case check_closing_event(Info, D1) of
         {can_slash, _Round, SignedTx} ->
             report_on_chain_tx(can_slash, SignedTx, D1),
@@ -4832,7 +4855,7 @@ handle_common_event_(cast, {?CHANNEL_CHANGED, #{ tx_hash := TxHash
                                                , tx := SignedTx } = Info} = Msg,
                      St, _, D) ->
     lager:debug("Got ?CHANNEL_CHANGED; tx_hash := ~p", [TxHash]),
-    D1 = log(rcv, msg_type(Msg), Msg, D),
+    D1 = log(rcv, msg_type(Msg), Msg, D#data{last_channel_change = TxHash}),
     {Type, _Tx} = aetx:specialize_type(aetx_sign:innermost_tx(SignedTx)),
     case Type =:= channel_force_progress_tx of
         true ->
@@ -4859,9 +4882,11 @@ handle_common_event_(cast, {?MIN_DEPTH_ACHIEVED, _ChainId,
                   , type => aesc_snapshot_solo_tx:type()
                   , tx_hash => TxHash }, D),
     keep_state(D);
-handle_common_event_(cast, {?CHANNEL_CLOSED = OpTag, #{tx := SignedTx} = _Info} = Msg, _St, _, D) ->
+handle_common_event_(cast, {?CHANNEL_CLOSED = OpTag, #{ tx_hash := TxHash
+                                                      , tx := SignedTx} = _Info} = Msg, _St, _, D) ->
     %% Start a minimum-depth watch, then (if confirmed) terminate
-    D2 = safe_watched_action_report(SignedTx, Msg, D, [], undefined, ?WATCH_CLOSED, OpTag, msg_type(Msg)),
+    D1 = D#data{last_channel_change = TxHash},
+    D2 = safe_watched_action_report(SignedTx, Msg, D1, [], undefined, ?WATCH_CLOSED, OpTag, msg_type(Msg)),
     next_state(channel_closed, D2);
 handle_common_event_({call, From}, Req, St, Mode, D) ->
     case Mode of
@@ -5219,113 +5244,124 @@ call_callback_new(aesc_force_progress_tx, Opts, D) ->
 call_callback_new(Mod, Opts, _) ->
     apply(Mod, new, [Opts]).
 
-process_incoming_forced_progress(FSMState, #{ tx := SignedTx
-                                            , block_hash := BlockHash } = Info,
-                                 #data{ state = State
-                                      , opts = Opts
-                                      , on_chain_id = ChannelPubkey } = D) ->
-    %% we don't check the authentication of the incoming transaction as at
-    %% this point it had already been included in a microblock and this block
-    %% had been accepted as valid by our own node. Relying on those checks, we
-    %% can skip validating authentication once more
-    {aesc_force_progress_tx = Mod, Tx} =
-        aetx:specialize_callback(aetx_sign:innermost_tx(SignedTx)),
+process_incoming_forced_progress(FSMState, Info, #data{on_chain_id = ChannelPubKey} = D) ->
     case does_force_progress_interrupt(FSMState) of
         false ->
             %% we wait to finish the current set of events before moving to
             %% the FP handling
             postpone(D);
         true ->
-            try {LatestFSMRound, LatestTx} = aesc_offchain_state:get_latest_signed_tx(State),
-                FPRound = get_round(Mod, Tx),
-                {ok, Channel} = aec_chain:get_channel(ChannelPubkey),
-                FirstSoloRound = aesc_channels:solo_round(Channel),
-                CorrectFPPayload =
-                    case FirstSoloRound =:= LatestFSMRound + 1 of
-                        true ->
-                            %% FP had been based on the lastest state known to the
-                            %% FSM. This is the expected scenario
-                            true;
-                        false ->
-                            {Type, _Tx} =
-                                aetx:specialize_type(aetx_sign:innermost_tx(LatestTx)),
-                            case Type of
-                                channel_force_progress_tx ->
-                                    %% the latest transaction known to the FSM
-                                    %% is a FP one. Assumption is that it is
-                                    %% on-chain and the new incoming FP had
-                                    %% been based on it
-                                    true;
-                                _ ->
-                                    %% the FP had been based on a state that
-                                    %% had been older than the one the FSM
-                                    %% has. This is slashable
-                                    false
-                            end
-                    end,
-                case CorrectFPPayload of
-                    %% the FP was based on a channel round that is the same as
-                    %% the last one the FSM has as a co-authenticated state
-                    %% it could be the same one or a different transaction
-                    %% with the same round. The latter would be a mistake on
-                    %% the client's side - they've signed two different
-                    %% transactions with the same round. There is not much we
-                    %% can do except accepting the FP as a valid one
-                    true ->
-                        case FPRound - LatestFSMRound of
-                            1 = _OkDiff ->
-                                lager:debug("Accomodate incoming forced progress", []),
-                                {OnChainEnv, OnChainTrees} = load_pinned_env(BlockHash),
-                                Update = aesc_force_progress_tx:update(Tx),
-                                State1 =
-                                    aesc_offchain_state:set_signed_tx(SignedTx,
-                                                                      [Update],
-                                                                      State,
-                                                                      OnChainTrees,
-                                                                      OnChainEnv,
-                                                                      Opts),
-                                D1 = D#data{ state = State1
-                                           , op    = ?NO_OP
-                                           , last_reported_update = FPRound},
-                                report_on_chain_tx(consumed_forced_progress, SignedTx, D1),
-                                next_state(open, D1);
-                            WrongFPDiff when WrongFPDiff =< 0 ->
-                                %% we shouldn't get here as it would mean that
-                                %% the payload had been older than the channel state we
-                                %% have in the FSM and this should have been
-                                %% caught in the outer case
-                                %% This clause is left for completeness
-                                lager:debug("Detected a malicious forced progress", []),
-                                Report =
-                                    case aesc_channels:is_active(Channel) of
-                                        true -> can_snapshot;
-                                        false -> can_slash
-                                    end,
-                                report_on_chain_tx(Report, SignedTx, D),
-                                keep_state(D);
-                            MissingStateDiff when MissingStateDiff > 1 ->
-                                %% channel_force_progress_tx is based on what
-                                %% the FSM percieves a future state that is
-                                %% authenticated by our client. We accept
-                                %% it...
-                                lager:info("FP is based on state that is not present", []),
-                                keep_state(maybe_act_on_tx(channel_force_progress_tx,
-                                                          SignedTx, D))
-                        end;
-                    false ->
-                        lager:info("Detected cheating attempt with a force progress based on round ~p while latest FSM round is ~p",
-                                   [FPRound - 1, LatestFSMRound]),
-                        Report =
-                            case aesc_channels:is_active(Channel) of
-                                true -> can_snapshot;
-                                false -> can_slash
-                            end,
-                        report_on_chain_tx(Report, SignedTx, D),
-                        keep_state(D)
-                end
-            ?CATCH_LOG(_E)
-                keep_state(D)
-        end
+            {ok, Channel} = aec_chain:get_channel(ChannelPubKey),
+            process_incoming_forced_progress_(Info, Channel, D)
+    end.
+
+process_incoming_forced_progress_(#{ tx := SignedTx
+                                   , block_hash := BlockHash },
+                                  Channel,
+                                  #data{ state = State
+                                       , opts = Opts
+                                       , on_chain_id = ChannelPubkey } = D) ->
+    %% we don't check the authentication of the incoming transaction as at
+    %% this point it had already been included in a microblock and this block
+    %% had been accepted as valid by our own node. Relying on those checks, we
+    %% can skip validating authentication once more
+    {aesc_force_progress_tx = Mod, Tx} =
+        aetx:specialize_callback(aetx_sign:innermost_tx(SignedTx)),
+    try {LatestFSMRound, LatestTx} = aesc_offchain_state:get_latest_signed_tx(State),
+         FPRound = get_round(Mod, Tx),
+         {ok, Channel} = aec_chain:get_channel(ChannelPubkey),
+         FirstSoloRound = aesc_channels:solo_round(Channel),
+         CorrectFPPayload =
+             case FirstSoloRound =:= LatestFSMRound + 1 of
+                 true ->
+                     %% FP had been based on the lastest state known to the
+                     %% FSM. This is the expected scenario
+                     true;
+                 false ->
+                     {Type, _Tx} =
+                         aetx:specialize_type(aetx_sign:innermost_tx(LatestTx)),
+                     case Type of
+                         channel_force_progress_tx ->
+                             %% the latest transaction known to the FSM
+                             %% is a FP one. Assumption is that it is
+                             %% on-chain and the new incoming FP had
+                             %% been based on it
+                             true;
+                         _ ->
+                             %% the FP had been based on a state that
+                             %% had been older than the one the FSM
+                             %% has. This is slashable
+                             false
+                     end
+             end,
+         case CorrectFPPayload of
+             %% the FP was based on a channel round that is the same as
+             %% the last one the FSM has as a co-authenticated state
+             %% it could be the same one or a different transaction
+             %% with the same round. The latter would be a mistake on
+             %% the client's side - they've signed two different
+             %% transactions with the same round. There is not much we
+             %% can do except accepting the FP as a valid one
+             true ->
+                 case FPRound - LatestFSMRound of
+                     1 = _OkDiff ->
+                         lager:debug("Accomodate incoming forced progress", []),
+                         {OnChainEnv, OnChainTrees} = load_pinned_env(BlockHash),
+                         Update = aesc_force_progress_tx:update(Tx),
+                         State1 =
+                             aesc_offchain_state:set_signed_tx(SignedTx,
+                                                               [Update],
+                                                               State,
+                                                               OnChainTrees,
+                                                               OnChainEnv,
+                                                               Opts),
+                         D1 = D#data{ state = State1
+                                    , op    = ?NO_OP
+                                    , last_reported_update = FPRound},
+                         report_on_chain_tx(consumed_forced_progress, SignedTx, D1),
+                         %% next_state(open, D1);
+                         {true, next_state(open, D1), D1};
+                     WrongFPDiff when WrongFPDiff =< 0 ->
+                         %% we shouldn't get here as it would mean that
+                         %% the payload had been older than the channel state we
+                         %% have in the FSM and this should have been
+                         %% caught in the outer case
+                         %% This clause is left for completeness
+                         lager:debug("Detected a malicious forced progress", []),
+                         Report =
+                             case aesc_channels:is_active(Channel) of
+                                 true -> can_snapshot;
+                                 false -> can_slash
+                             end,
+                         report_on_chain_tx(Report, SignedTx, D),
+                         %% keep_state(D);
+                         {false, keep_state(D), D};
+                     MissingStateDiff when MissingStateDiff > 1 ->
+                         %% channel_force_progress_tx is based on what
+                         %% the FSM percieves a future state that is
+                         %% authenticated by our client. We accept
+                         %% it...
+                         lager:info("FP is based on state that is not present", []),
+                         %% keep_state(maybe_act_on_tx(channel_force_progress_tx,
+                         %%                           SignedTx, D))
+                         D1 = maybe_act_on_tx(channel_force_progress_tx, SignedTx, D),
+                         {false, keep_state(D1), D1}
+                 end;
+             false ->
+                 lager:info("Detected cheating attempt with a force progress"
+                            " based on round ~p while latest FSM round is ~p",
+                            [FPRound - 1, LatestFSMRound]),
+                 Report =
+                     case aesc_channels:is_active(Channel) of
+                         true -> can_snapshot;
+                         false -> can_slash
+                     end,
+                 report_on_chain_tx(Report, SignedTx, D),
+                 %% keep_state(D)
+                 {false, keep_state(D), D}
+         end
+             ?CATCH_LOG(_E)
+             {false, keep_state(D), D}
     end.
 
 does_force_progress_interrupt(FSMState) ->

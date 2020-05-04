@@ -81,20 +81,25 @@ new_(#{ initiator          := InitiatorPubKey
         [{InitiatorPubKey, InitiatorAmount - PushAmount},
          {ResponderPubKey, ResponderAmount + PushAmount}]),
     Trees = aec_trees:set_accounts(Trees0, Accounts),
-    {ok, #state{trees=Trees, calls = aect_call_state_tree:empty()}}.
+    {ok, #{ mode => new
+          , state => #state{trees=Trees, calls = aect_call_state_tree:empty() }}.
 
 recover_from_offchain_tx(#{ existing_channel_id     := ChId
                           , offchain_tx             := SignedTx
                           , existing_fsm_id_wrapper := FsmIdWrapper} = Opts) ->
     MyPubkey = my_pubkey(Opts),
     case aesc_state_cache:reestablish(ChId, MyPubkey, FsmIdWrapper) of
-        {ok, #state{} = State, _CachedOpts} ->
-            case is_latest_signed_tx(SignedTx, State) of
-                true ->
-                    {ok, State};
-                false ->
-                    {error, latest_state_mismatch}
-            end;
+        {ok, #state{} = State, CachedOpts} ->
+            {ok, #{ mode => reestablish
+                  , is_latest_signed_tx => is_latest_signed_tx(SignedTx, State)
+                  , state => State
+                  , cached_opts => CachedOpts }};
+            %% case is_latest_signed_tx(SignedTx, State) of
+            %%     true ->
+            %%         {ok, State, CachedOpts};
+            %%     false ->
+            %%         {error, latest_state_mismatch}
+            %% end;
         {error, _} = Error ->
             Error
     end.

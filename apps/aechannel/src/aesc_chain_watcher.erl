@@ -30,6 +30,7 @@
 %% New client API
 -export([ register/3     %% (ChId, Mod, Reqs) -> ok
         , request/2      %% (ChId, Req)       -> ok | error()    (register first)
+        , get_txs/2      %% (ChId, StopCond) -> {ok, [Tx]} | error().
         ]).
 
 %% Request objects
@@ -346,6 +347,14 @@ request(ChId, Req) ->
     lager:debug("Req = ~p", [Req]),
     gen_server:call(?SERVER, {request, ChId, Req}).
 
+get_txs(ChId, StopCond) ->
+    case valid_stop_cond(StopCond) of
+        true ->
+            gen_server:call(?SERVER, {get_txs, ChId, StopCond});
+        false ->
+            {error, bad_stop_condition}
+    end.
+
 start_link() ->
     %% Create the ets tables in the parent process (the supervisor).
     %% Using the `heir` option (see `tabs()`), the parent gets the tables back
@@ -533,6 +542,15 @@ handle_call({request, ChId, Req}, {Pid, _}, St) ->
         error ->
             lager:debug("None registered for Pid=~p, ChId=~p", [Pid, ChId]),
             {reply, {error, unknown_channel}, St}
+    end;
+handle_call({get_txs, ChId, StopCond}, _From, #st{cache = C} = St) ->
+    {TopHash, C1} = top_hash(C),
+    try {Ret, C2} = get_txs_since_req(StopCond, TopHash, ChId, C1),
+         {reply, {ok, Ret}, St#st{cache = C3}}
+        end
+    catch
+        error:Reason ->
+            {reply, {error, Reason}, St#st{cache = C1}}
     end;
 handle_call(Req, _From, St) ->
     lager:debug("Unknown request, From=~p: ~p", [_From, Req]),
@@ -1459,11 +1477,22 @@ get_txs_since(StopCond, Hash, ChId, C) ->
         {ok, C1} ->
             {Found, C2} = get_txs_since(StopCond, Hash, ChId, C1, []),
             %% TODO: It's likely usually (not always?) redundant to log to history here
-            log_tx_histories(Found, ChId, C2);
+            C3 = log_tx_histories(Found, ChId, C2),
+            {Found, C3};
         {{error, Error}, _} ->
             lager:error("Bad StopCond (~p): ~p", [StopCond, Error]),
             error(bad_stop_condition)
     end.
+
+%% Called from the handle_call/3 clause for API function `get_txs/2`
+get_txs_since_req(StopCond, Hash, ChId, C) ->
+    {Found, C1} = get_txs_since(StopCond, Hash, ChId, C),
+    lists:foldl(
+      fun(TxHash, Cx) ->
+              {SignedTx, Cx1} = get_signed_tx(TxHash, Cx),
+              {{TxHash, SignedTx}, Cx1}
+      end, C1, Found).
+
 
 verify_stop_cond({any_after_block, _}, _ChId, C) ->
     %% assume this is ok (it will be as long as the watcher uses it correctly)
@@ -1476,6 +1505,14 @@ verify_stop_cond({all_after_tx, TxHash}, ChId, C) ->
             {{error, tx_not_on_chain}, C1}
     end.
 
+valid_stop_cond({any_after_block, B}) ->
+    is_binary(B);
+valid_stop_cond({all_after_tx, T}) ->
+    is_binary(T);
+valid_stop_cond(any) ->
+    true;
+valid_stop_cond(_) ->
+    false.
 
 %% The iteration checks most recent block first, but the accumulator is
 %% not reversed, so the result will be grouped by block in chronological order,
@@ -1502,6 +1539,10 @@ get_txs_since(StopCond, Hash, ChId, C, Acc) ->
             end
     end.
 
+stop_cond(any, _PrevHash, Found, C) ->
+    %% This would be if a reestablishing FSM has no record of the
+    %% last channel change
+    has_create_tx(Found, C);
 stop_cond({all_after_tx, TxHash}, _PrevHash, Found, C) ->
     case Found of
         [] -> {false, C};
