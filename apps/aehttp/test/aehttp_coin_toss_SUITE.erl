@@ -476,6 +476,7 @@ success_story(Cfg0, Player, Casino, Stake, Key, CasinoGuess,
     {PlayerAddress, CasinoAddress} = prepare_for_test(Player, Casino, Cfg),
     Args = [PlayerAddress, CasinoAddress, integer_to_list(ReactionTime)],
     ContractName = coin_toss,
+    {PlayerBalance0, CasinoBalance0} = get_offchain_balances(Player, Casino, Cfg),
     ContractPubkey = create_offchain_contract(Player, ContractName, Args, Cfg),
     {ok, Hash} =
         call_offchain_contract(Player, ContractPubkey,
@@ -487,25 +488,22 @@ success_story(Cfg0, Player, Casino, Stake, Key, CasinoGuess,
                                [Hash], Stake, Cfg),
     {ok, []} =
         call_offchain_contract(Casino, ContractPubkey,
-                              ContractName, "casino_pick",
-                              [add_quotes(CasinoGuess)], Stake, Cfg),
-    {PlayerBalance0, CasinoBalance0} = get_offchain_balances(Player, Casino, Cfg),
+                               ContractName, "casino_pick",
+                               [add_quotes(CasinoGuess)], Stake, Cfg),
     {ok, []} =
         call_offchain_contract(Player, ContractPubkey,
-                              ContractName, "reveal",
-                              [add_quotes(Key), add_quotes(ActualSide)], 0, Cfg),
+                               ContractName, "reveal",
+                               [add_quotes(Key), add_quotes(ActualSide)], 0, Cfg),
     {PlayerBalance1, CasinoBalance1} = get_offchain_balances(Player, Casino, Cfg),
-    %% player account did not gain anything; if the casino lost, the tokens
-    %% are in the contract itself
     case Outcome of
         win ->
-            %% casino won twice the stake
-            assert_equal(PlayerBalance0, PlayerBalance1),
-            assert_equal(CasinoBalance0, CasinoBalance1 - 2 * Stake);
+            %% player lost the stake, casino won it
+            assert_equal(PlayerBalance0, PlayerBalance1 + Stake),
+            assert_equal(CasinoBalance0, CasinoBalance1 - Stake);
         lose ->
-            %% casino didn't win anything
-            assert_equal(PlayerBalance0, PlayerBalance1 - 2 * Stake),
-            assert_equal(CasinoBalance0, CasinoBalance1)
+            %% player won the stake, casino lost it
+            assert_equal(PlayerBalance0, PlayerBalance1 - Stake),
+            assert_equal(CasinoBalance0, CasinoBalance1 + Stake)
     end,
     aehttp_sc_SUITE:sc_ws_close_mutual_(Cfg, Casino),
     ok.
@@ -1077,7 +1075,7 @@ get_offchain_balances(Player, Casino, Cfg) ->
                                                 PlayerPubkey,
                                                 CasinoPubkey,
                                                 Cfg),
-    {CBal, CBal}.
+    {PBal, CBal}.
 
 assert_equal(Val1, Val2) ->
     {Val1, Val1} = {Val1, Val2}.

@@ -95,5 +95,5 @@ contract CoinToss =
     put(state{hash            = None,
               height          = 0,
               casino_pick     = None,
-              stake    = 0
+              stake           = 0
               })
