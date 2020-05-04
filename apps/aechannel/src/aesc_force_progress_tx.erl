@@ -28,7 +28,8 @@
          valid_at_protocol/2
         ]).
 
--export([gas_price/1]).
+-export([gas_price/1,
+         contract_pubkey_and_caller/1]).
 
 % aesc_signable_transaction callbacks
 -export([channel_id/1,
@@ -183,6 +184,16 @@ gas_price(#channel_force_progress_tx{update = Update}) ->
     case aesc_offchain_update:extract_amounts(Update) of
         {_Amount, GasPrice, _Gas} ->
             GasPrice;
+        not_call ->
+            undefined
+    end.
+
+-spec contract_pubkey_and_caller(tx()) ->
+    {aect_contracts:pubkey(), aec_keys:pubkey()} | undefined.
+contract_pubkey_and_caller(#channel_force_progress_tx{update = Update}) ->
+    case aesc_offchain_update:extract_call(Update) of
+        {ContractPubkey, Caller} ->
+            {ContractPubkey, Caller};
         not_call ->
             undefined
     end.

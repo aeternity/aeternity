@@ -5579,6 +5579,17 @@ sc_ws_force_progress_(Origin, ContractPubkey,
             end),
     TxHash = aeser_api_encoder:encode(tx_hash, aetx_sign:hash(SignedTx)),
     wait_for_tx_hash_on_chain(TxHash),
+    {ok, 200, #{ <<"call_info">> :=
+                     #{<<"caller_id">> := _,
+                       <<"caller_nonce">> := _,
+                       <<"contract_id">> := _,
+                       <<"gas_price">> := _,
+                       <<"gas_used">> := _,
+                       <<"height">> := _,
+                       <<"log">> := _,
+                       <<"return_type">> := <<"ok">>,
+                       <<"return_value">> := _}}} =
+        aehttp_integration_SUITE:get_transaction_info_by_hash_sut(binary_to_list(TxHash)),
 
     %% ensure channel object changed
     {ok, Channel1} = get_channel(ChannelId),

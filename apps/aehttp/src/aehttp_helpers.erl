@@ -283,6 +283,9 @@ get_info_object_from_tx(TxKey, TypeKey, CallKey) ->
     end.
 
 get_info_object_signed_tx(BlockHash, STx) ->
+    get_info_object_signed_tx(BlockHash, STx, #{}, STx).
+
+get_info_object_signed_tx(BlockHash, STx, GAIds, OrigTx) ->
     Tx = aetx_sign:tx(STx),
     case aetx:specialize_type(Tx) of
         {TxType, _} when TxType =:= contract_create_tx;
@@ -294,13 +297,28 @@ get_info_object_signed_tx(BlockHash, STx) ->
             aec_chain:get_contract_call(Contract, CallId, BlockHash);
         {ga_meta_tx, _} ->
             {CB, CTx} = aetx:specialize_callback(Tx),
-            get_ga_meta_tx_info(BlockHash, CB, CTx);
+            get_ga_meta_tx_info(BlockHash, CB, CTx, GAIds, OrigTx);
+        {channel_force_progress_tx, FPTx} ->
+            {Contract, Caller} =
+                aesc_force_progress_tx:contract_pubkey_and_caller(FPTx),
+            Round = aesc_force_progress_tx:round(FPTx),
+            TxHash = aetx_sign:hash(OrigTx),
+            TxHashUsedInsteadOfContract = aesc_utils:tx_hash_to_contract_pubkey(TxHash),
+            CallId =
+                case maps:get(Caller, GAIds, not_found) of
+                    not_found -> %% not GA
+                        aect_call:id(Caller, Round,
+                                     TxHashUsedInsteadOfContract);
+                    GAId -> %% had been wrapped in a GA
+                        aect_call:ga_id(GAId, TxHashUsedInsteadOfContract)
+                end,
+            aec_chain:get_contract_call(TxHashUsedInsteadOfContract, CallId, BlockHash);
         {_TxType, _} ->
             {error, transaction_without_info}
     end.
 
 
-get_ga_meta_tx_info(BlockHash, CB, CTx) ->
+get_ga_meta_tx_info(BlockHash, CB, CTx, GAIds, OrigTx) ->
     Owner     = CB:origin(CTx),
     AuthId    = CB:auth_id(CTx),
     case aec_chain:get_ga_call(Owner, AuthId, BlockHash) of
@@ -309,7 +327,9 @@ get_ga_meta_tx_info(BlockHash, CB, CTx) ->
             {InnerTxType, _} = aetx:specialize_type(aetx_sign:tx(SInnerTx)),
             case aega_call:return_type(GAObject) of
                 ok ->
-                    case get_info_object_signed_tx(BlockHash, SInnerTx) of
+                    case get_info_object_signed_tx(BlockHash, SInnerTx,
+                                                   GAIds#{Owner => AuthId},
+                                                   OrigTx) of
                         {error, _} ->
                             %% Type is all we know from inner transaction
                             {ok, aega_call:set_inner(InnerTxType, GAObject)};
