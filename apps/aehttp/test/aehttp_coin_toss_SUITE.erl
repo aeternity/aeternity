@@ -11,25 +11,25 @@
     init_per_testcase/2, end_per_testcase/2
    ]).
 
--export([player_wins_heads/1,
-         player_wins_tails/1,
-         player_loses_heads/1,
-         player_loses_tails/1,
+-export([casino_wins_heads/1,
+         casino_wins_tails/1,
+         casino_loses_heads/1,
+         casino_loses_tails/1,
          small_amount/1,
          big_amount/1,
          really_short_key/1,
          long_key/1,
          can_have_a_couple_of_sequential_games/1,
-         casino_disputes_player_inactivity/1,
          player_disputes_casino_inactivity/1,
-         can_play_after_player_dispute/1,
+         casino_disputes_player_inactivity/1,
          can_play_after_casino_dispute/1,
+         can_play_after_player_dispute/1,
 
          provide_hash_fails/1,
-         player_pick_fails/1,
+         casino_pick_fails/1,
          reveal_fails/1,
-         player_dispute_fails/1,
          casino_dispute_fails/1,
+         player_dispute_fails/1,
 
          intended_usage/1
         ]).
@@ -56,21 +56,21 @@
 -define(HEADS, "heads").
 -define(TAILS, "tails").
 
-all() -> [{group, casino_is_initiator},
-          {group, casino_is_responder},
+all() -> [{group, player_is_initiator},
+          {group, player_is_responder},
           {group, different_params},
           {group, sequential_events}
          ].
 
 groups() ->
     [
-     {casino_is_initiator, [sequence], [{group, happy_path}, {group, negative_path}]},
-     {casino_is_responder, [sequence], [{group, happy_path}, {group, negative_path}]},
+     {player_is_initiator, [sequence], [{group, happy_path}, {group, negative_path}]},
+     {player_is_responder, [sequence], [{group, happy_path}, {group, negative_path}]},
      {happy_path, [sequence],
-      [ player_wins_heads,
-        player_wins_tails,
-        player_loses_heads,
-        player_loses_tails,
+      [ casino_wins_heads,
+        casino_wins_tails,
+        casino_loses_heads,
+        casino_loses_tails,
         intended_usage
       ]},
      {different_params, [sequence],
@@ -82,21 +82,21 @@ groups() ->
      {sequential_events, [sequence],
       [ 
        can_have_a_couple_of_sequential_games,
-       can_play_after_player_dispute,
-       can_play_after_casino_dispute
+       can_play_after_casino_dispute,
+       can_play_after_player_dispute
       ]},
      {dispute, [sequence],
       [
-       casino_disputes_player_inactivity,
-       player_disputes_casino_inactivity
+       player_disputes_casino_inactivity,
+       casino_disputes_player_inactivity
       ]},
      {negative_path, [sequence],
       [
        provide_hash_fails,
-       player_pick_fails,
+       casino_pick_fails,
        reveal_fails,
-       player_dispute_fails,
-       casino_dispute_fails
+       casino_dispute_fails,
+       player_dispute_fails
       ]}
     ].
 
@@ -130,9 +130,9 @@ end_per_suite(Config) ->
                proplists:get_value(started_apps, Config, []))],
     aehttp_sc_SUITE:stop_node(Config).
 
-init_per_group(casino_is_initiator, Config) ->
+init_per_group(player_is_initiator, Config) ->
     [{roles, {initiator, responder}} | Config];
-init_per_group(casino_is_responder, Config) ->
+init_per_group(player_is_responder, Config) ->
     [{roles, {responder, initiator}} | Config];
 init_per_group(Group, Config0) ->
     VM = fate, 
@@ -174,104 +174,104 @@ check_info(L, Timeout) ->
             []
     end.
 
-player_wins_tails(Cfg) ->
-    {Casino, Player} = ?config(roles, Cfg),
+casino_wins_tails(Cfg) ->
+    {Player, Casino} = ?config(roles, Cfg),
     Stake = 10,
-    success_story(Cfg, Casino, Player, Stake,
+    success_story(Cfg, Player, Casino, Stake,
                   _Key = "abc",
-                  _PlayerGuess = ?TAILS,
+                  _CasinoGuess = ?TAILS,
                   _ActualSide = ?TAILS,
                   _Outcome = win).
 
-player_loses_tails(Cfg) ->
-    {Casino, Player} = ?config(roles, Cfg),
+casino_loses_tails(Cfg) ->
+    {Player, Casino} = ?config(roles, Cfg),
     Stake = 10,
-    success_story(Cfg, Casino, Player, Stake,
+    success_story(Cfg, Player, Casino, Stake,
                   _Key = "abc",
-                  _PlayerGuess = ?TAILS,
+                  _CasinoGuess = ?TAILS,
                   _ActualSide = ?HEADS,
                   _Outcome = lose).
 
-player_wins_heads(Cfg) ->
-    {Casino, Player} = ?config(roles, Cfg),
+casino_wins_heads(Cfg) ->
+    {Player, Casino} = ?config(roles, Cfg),
     Stake = 10,
-    success_story(Cfg, Casino, Player, Stake,
+    success_story(Cfg, Player, Casino, Stake,
                   _Key = "abc",
-                  _PlayerGuess = ?HEADS,
+                  _CasinoGuess = ?HEADS,
                   _ActualSide = ?HEADS,
                   _Outcome = win).
     
-player_loses_heads(Cfg) ->
-    {Casino, Player} = ?config(roles, Cfg),
+casino_loses_heads(Cfg) ->
+    {Player, Casino} = ?config(roles, Cfg),
     Stake = 10,
-    success_story(Cfg, Casino, Player, Stake,
+    success_story(Cfg, Player, Casino, Stake,
                   _Key = "abc",
-                  _PlayerGuess = ?HEADS,
+                  _CasinoGuess = ?HEADS,
                   _ActualSide = ?TAILS,
                   _Outcome = lose).
 
 small_amount(Cfg) ->
-    {Casino, Player} = proplists:get_value(roles, Cfg, {initiator, responder}),
+    {Player, Casino} = proplists:get_value(roles, Cfg, {initiator, responder}),
     Stake = 1,
-    success_story(Cfg, Casino, Player, Stake,
+    success_story(Cfg, Player, Casino, Stake,
                   _Key = "abc",
-                  _PlayerGuess = ?TAILS,
+                  _CasinoGuess = ?TAILS,
                   _ActualSide = ?TAILS,
                   _Outcome = win).
 
 big_amount(Cfg) ->
-    {Casino, Player} = proplists:get_value(roles, Cfg, {initiator, responder}),
+    {Player, Casino} = proplists:get_value(roles, Cfg, {initiator, responder}),
     Stake = 100,
-    success_story(Cfg, Casino, Player, Stake,
+    success_story(Cfg, Player, Casino, Stake,
                   _Key = "abc",
-                  _PlayerGuess = ?TAILS,
+                  _CasinoGuess = ?TAILS,
                   _ActualSide = ?TAILS,
                   _Outcome = win).
 
 really_short_key(Cfg) ->
-    {Casino, Player} = proplists:get_value(roles, Cfg, {initiator, responder}),
+    {Player, Casino} = proplists:get_value(roles, Cfg, {initiator, responder}),
     Stake = 1,
-    success_story(Cfg, Casino, Player, Stake,
+    success_story(Cfg, Player, Casino, Stake,
                   _Key = "",
-                  _PlayerGuess = ?TAILS,
+                  _CasinoGuess = ?TAILS,
                   _ActualSide = ?TAILS,
                   _Outcome = win).
 
 long_key(Cfg) ->
-    {Casino, Player} = proplists:get_value(roles, Cfg, {initiator, responder}),
+    {Player, Casino} = proplists:get_value(roles, Cfg, {initiator, responder}),
     Stake = 1,
-    success_story(Cfg, Casino, Player, Stake,
+    success_story(Cfg, Player, Casino, Stake,
                   _Key = string:join(lists:duplicate(100, "a"), ""),
-                  _PlayerGuess = ?TAILS,
+                  _CasinoGuess = ?TAILS,
                   _ActualSide = ?TAILS,
                   _Outcome = win).
 
 can_have_a_couple_of_sequential_games(Cfg0) ->
-    {Casino, Player} = proplists:get_value(roles, Cfg0, {initiator, responder}),
+    {Player, Casino} = proplists:get_value(roles, Cfg0, {initiator, responder}),
     Key = "qwerty",
     Stake = 10,
     ReactionTime = 30,
     Cfg = channel_open(Cfg0),
-    {CasinoAddress, PlayerAddress} = prepare_for_test(Casino, Player, Cfg),
-    Args = [CasinoAddress, PlayerAddress, integer_to_list(ReactionTime)],
+    {PlayerAddress, CasinoAddress} = prepare_for_test(Player, Casino, Cfg),
+    Args = [PlayerAddress, CasinoAddress, integer_to_list(ReactionTime)],
     ContractName = coin_toss,
-    ContractPubkey = create_offchain_contract(Casino, ContractName, Args, Cfg),
+    ContractPubkey = create_offchain_contract(Player, ContractName, Args, Cfg),
     BetRound =
-        fun(ActualSide, PlayerGuess) ->
+        fun(ActualSide, CasinoGuess) ->
             {ok, Hash} =
-                call_offchain_contract(Casino, ContractPubkey,
+                call_offchain_contract(Player, ContractPubkey,
                                       ContractName, "compute_hash",
                                       [add_quotes(Key), add_quotes(ActualSide)], 0, Cfg),
             {ok, []} =
-                call_offchain_contract(Casino, ContractPubkey,
+                call_offchain_contract(Player, ContractPubkey,
                                       ContractName, "provide_hash",
                                       [Hash], Stake, Cfg),
             {ok, []} =
-                call_offchain_contract(Player, ContractPubkey,
-                                      ContractName, "player_pick",
-                                      [add_quotes(PlayerGuess)], Stake, Cfg),
-            {ok, []} =
                 call_offchain_contract(Casino, ContractPubkey,
+                                      ContractName, "casino_pick",
+                                      [add_quotes(CasinoGuess)], Stake, Cfg),
+            {ok, []} =
+                call_offchain_contract(Player, ContractPubkey,
                                       ContractName, "reveal",
                                       [add_quotes(Key), add_quotes(ActualSide)], 0, Cfg)
         end,
@@ -280,632 +280,632 @@ can_have_a_couple_of_sequential_games(Cfg0) ->
     BetRound(?TAILS, ?TAILS), % win
     BetRound(?HEADS, ?HEADS), % win
     BetRound(?HEADS, ?TAILS), % lose
-    aehttp_sc_SUITE:sc_ws_close_mutual_(Cfg, Player),
-    ok.
-
-casino_disputes_player_inactivity(Cfg0) ->
-    {Casino, Player} = proplists:get_value(roles, Cfg0, {initiator, responder}),
-    Key = "qwerty",
-    ActualSide = ?TAILS,
-    Stake = 1,
-    ReactionTime = 5,
-    Cfg = channel_open(Cfg0),
-    {CasinoAddress, PlayerAddress} = prepare_for_test(Casino, Player, Cfg),
-    Args = [CasinoAddress, PlayerAddress, integer_to_list(ReactionTime)],
-    ContractName = coin_toss,
-    ContractPubkey = create_offchain_contract(Casino, ContractName, Args, Cfg),
-    mine_blocks(1),
-    {ok, Hash} =
-        call_offchain_contract(Casino, ContractPubkey,
-                               ContractName, "compute_hash",
-                               [add_quotes(Key), add_quotes(ActualSide)], 0, Cfg),
-    mine_blocks(1),
-    %% no issue providing a hash
-    mine_blocks(1),
-    {ok, []} =
-        call_offchain_contract(Casino, ContractPubkey,
-                               ContractName, "provide_hash",
-                               [Hash], Stake, Cfg),
-    {CasinoBalance0, _PlayerBalance0} = get_offchain_balances(Casino, Player, Cfg),
-    mine_blocks(ReactionTime),
-    %% not allowed yet
-    {revert,<<"not_yet_allowed">>} =
-        call_offchain_contract(Casino, ContractPubkey,
-                               ContractName, "casino_dispute_no_pick",
-                               [], 0, Cfg),
-    %% go beyond the limit of ReactionTime + 1
-    mine_blocks(1),
-    {ok, []} =
-        call_offchain_contract(Casino, ContractPubkey,
-                               ContractName, "casino_dispute_no_pick",
-                               [], 0, Cfg),
-    {CasinoBalance1, _PlayerBalance0} = get_offchain_balances(Casino, Player, Cfg),
-    %% ensure casino got their cash back
-    assert_equal(CasinoBalance0, CasinoBalance1 - Stake),
-    aehttp_sc_SUITE:sc_ws_close_mutual_(Cfg, Player),
+    aehttp_sc_SUITE:sc_ws_close_mutual_(Cfg, Casino),
     ok.
 
 player_disputes_casino_inactivity(Cfg0) ->
-    {Casino, Player} = proplists:get_value(roles, Cfg0, {initiator, responder}),
+    {Player, Casino} = proplists:get_value(roles, Cfg0, {initiator, responder}),
     Key = "qwerty",
-    PlayerGuess = ?TAILS,
     ActualSide = ?TAILS,
     Stake = 1,
     ReactionTime = 5,
     Cfg = channel_open(Cfg0),
-    {CasinoAddress, PlayerAddress} = prepare_for_test(Casino, Player, Cfg),
-    Args = [CasinoAddress, PlayerAddress, integer_to_list(ReactionTime)],
+    {PlayerAddress, CasinoAddress} = prepare_for_test(Player, Casino, Cfg),
+    Args = [PlayerAddress, CasinoAddress, integer_to_list(ReactionTime)],
     ContractName = coin_toss,
-    ContractPubkey = create_offchain_contract(Casino, ContractName, Args, Cfg),
+    ContractPubkey = create_offchain_contract(Player, ContractName, Args, Cfg),
+    mine_blocks(1),
     {ok, Hash} =
-        call_offchain_contract(Casino, ContractPubkey,
+        call_offchain_contract(Player, ContractPubkey,
                                ContractName, "compute_hash",
                                [add_quotes(Key), add_quotes(ActualSide)], 0, Cfg),
     mine_blocks(1),
     %% no issue providing a hash
     mine_blocks(1),
     {ok, []} =
-        call_offchain_contract(Casino, ContractPubkey,
+        call_offchain_contract(Player, ContractPubkey,
                                ContractName, "provide_hash",
                                [Hash], Stake, Cfg),
-    mine_blocks(1),
-    {ok, []} =
-        call_offchain_contract(Player, ContractPubkey,
-                              ContractName, "player_pick",
-                              [add_quotes(PlayerGuess)], Stake, Cfg),
+    {PlayerBalance0, _CasinoBalance0} = get_offchain_balances(Player, Casino, Cfg),
     mine_blocks(ReactionTime),
     %% not allowed yet
     {revert,<<"not_yet_allowed">>} =
         call_offchain_contract(Player, ContractPubkey,
-                               ContractName, "player_dispute_no_reveal",
+                               ContractName, "player_dispute_no_pick",
                                [], 0, Cfg),
     %% go beyond the limit of ReactionTime + 1
     mine_blocks(1),
     {ok, []} =
         call_offchain_contract(Player, ContractPubkey,
-                               ContractName, "player_dispute_no_reveal",
+                               ContractName, "player_dispute_no_pick",
                                [], 0, Cfg),
-    aehttp_sc_SUITE:sc_ws_close_mutual_(Cfg, Player),
+    {PlayerBalance1, _CasinoBalance0} = get_offchain_balances(Player, Casino, Cfg),
+    %% ensure player got their cash back
+    assert_equal(PlayerBalance0, PlayerBalance1 - Stake),
+    aehttp_sc_SUITE:sc_ws_close_mutual_(Cfg, Casino),
     ok.
 
-can_play_after_player_dispute(Cfg0) ->
-    {Casino, Player} = proplists:get_value(roles, Cfg0, {initiator, responder}),
+casino_disputes_player_inactivity(Cfg0) ->
+    {Player, Casino} = proplists:get_value(roles, Cfg0, {initiator, responder}),
     Key = "qwerty",
-    PlayerGuess1 = ?TAILS,
+    CasinoGuess = ?TAILS,
+    ActualSide = ?TAILS,
+    Stake = 1,
+    ReactionTime = 5,
+    Cfg = channel_open(Cfg0),
+    {PlayerAddress, CasinoAddress} = prepare_for_test(Player, Casino, Cfg),
+    Args = [PlayerAddress, CasinoAddress, integer_to_list(ReactionTime)],
+    ContractName = coin_toss,
+    ContractPubkey = create_offchain_contract(Player, ContractName, Args, Cfg),
+    {ok, Hash} =
+        call_offchain_contract(Player, ContractPubkey,
+                               ContractName, "compute_hash",
+                               [add_quotes(Key), add_quotes(ActualSide)], 0, Cfg),
+    mine_blocks(1),
+    %% no issue providing a hash
+    mine_blocks(1),
+    {ok, []} =
+        call_offchain_contract(Player, ContractPubkey,
+                               ContractName, "provide_hash",
+                               [Hash], Stake, Cfg),
+    mine_blocks(1),
+    {ok, []} =
+        call_offchain_contract(Casino, ContractPubkey,
+                              ContractName, "casino_pick",
+                              [add_quotes(CasinoGuess)], Stake, Cfg),
+    mine_blocks(ReactionTime),
+    %% not allowed yet
+    {revert,<<"not_yet_allowed">>} =
+        call_offchain_contract(Casino, ContractPubkey,
+                               ContractName, "casino_dispute_no_reveal",
+                               [], 0, Cfg),
+    %% go beyond the limit of ReactionTime + 1
+    mine_blocks(1),
+    {ok, []} =
+        call_offchain_contract(Casino, ContractPubkey,
+                               ContractName, "casino_dispute_no_reveal",
+                               [], 0, Cfg),
+    aehttp_sc_SUITE:sc_ws_close_mutual_(Cfg, Casino),
+    ok.
+
+can_play_after_casino_dispute(Cfg0) ->
+    {Player, Casino} = proplists:get_value(roles, Cfg0, {initiator, responder}),
+    Key = "qwerty",
+    CasinoGuess1 = ?TAILS,
     ActualSide1 = ?TAILS,
-    PlayerGuess2 = ?TAILS,
+    CasinoGuess2 = ?TAILS,
     ActualSide2 = ?HEADS,
     Stake = 1,
     ReactionTime = 5,
     Cfg = channel_open(Cfg0),
-    {CasinoAddress, PlayerAddress} = prepare_for_test(Casino, Player, Cfg),
-    Args = [CasinoAddress, PlayerAddress, integer_to_list(ReactionTime)],
+    {PlayerAddress, CasinoAddress} = prepare_for_test(Player, Casino, Cfg),
+    Args = [PlayerAddress, CasinoAddress, integer_to_list(ReactionTime)],
     ContractName = coin_toss,
-    ContractPubkey = create_offchain_contract(Casino, ContractName, Args, Cfg),
+    ContractPubkey = create_offchain_contract(Player, ContractName, Args, Cfg),
     {ok, Hash} =
-        call_offchain_contract(Casino, ContractPubkey,
+        call_offchain_contract(Player, ContractPubkey,
                                ContractName, "compute_hash",
                                [add_quotes(Key), add_quotes(ActualSide1)], 0, Cfg),
     mine_blocks(1),
     %% no issue providing a hash
     {ok, []} =
-        call_offchain_contract(Casino, ContractPubkey,
+        call_offchain_contract(Player, ContractPubkey,
                                ContractName, "provide_hash",
                                [Hash], Stake, Cfg),
     {ok, []} =
-        call_offchain_contract(Player, ContractPubkey,
-                              ContractName, "player_pick",
-                              [add_quotes(PlayerGuess1)], Stake, Cfg),
+        call_offchain_contract(Casino, ContractPubkey,
+                              ContractName, "casino_pick",
+                              [add_quotes(CasinoGuess1)], Stake, Cfg),
     mine_blocks(ReactionTime + 1),
     {ok, []} =
-        call_offchain_contract(Player, ContractPubkey,
-                               ContractName, "player_dispute_no_reveal",
+        call_offchain_contract(Casino, ContractPubkey,
+                               ContractName, "casino_dispute_no_reveal",
                                [], 0, Cfg),
     %% ensure can play again
     {ok, Hash2} =
-        call_offchain_contract(Casino, ContractPubkey,
+        call_offchain_contract(Player, ContractPubkey,
                                ContractName, "compute_hash",
                                [add_quotes(Key), add_quotes(ActualSide2)], 0, Cfg),
     {ok, []} =
-        call_offchain_contract(Casino, ContractPubkey,
+        call_offchain_contract(Player, ContractPubkey,
                                ContractName, "provide_hash",
                                [Hash2], Stake, Cfg),
     {ok, []} =
-        call_offchain_contract(Player, ContractPubkey,
-                              ContractName, "player_pick",
-                              [add_quotes(PlayerGuess2)], Stake, Cfg),
-    {ok, []} =
         call_offchain_contract(Casino, ContractPubkey,
+                              ContractName, "casino_pick",
+                              [add_quotes(CasinoGuess2)], Stake, Cfg),
+    {ok, []} =
+        call_offchain_contract(Player, ContractPubkey,
                               ContractName, "reveal",
                               [add_quotes(Key), add_quotes(ActualSide2)], 0, Cfg),
-    aehttp_sc_SUITE:sc_ws_close_mutual_(Cfg, Player),
+    aehttp_sc_SUITE:sc_ws_close_mutual_(Cfg, Casino),
     ok.
 
-can_play_after_casino_dispute(Cfg0) ->
-    {Casino, Player} = proplists:get_value(roles, Cfg0, {initiator, responder}),
+can_play_after_player_dispute(Cfg0) ->
+    {Player, Casino} = proplists:get_value(roles, Cfg0, {initiator, responder}),
     Key = "qwerty",
     ActualSide1 = ?TAILS,
-    PlayerGuess2 = ?TAILS,
+    CasinoGuess2 = ?TAILS,
     ActualSide2 = ?HEADS,
     Stake = 1,
     ReactionTime = 5,
     Cfg = channel_open(Cfg0),
-    {CasinoAddress, PlayerAddress} = prepare_for_test(Casino, Player, Cfg),
-    Args = [CasinoAddress, PlayerAddress, integer_to_list(ReactionTime)],
+    {PlayerAddress, CasinoAddress} = prepare_for_test(Player, Casino, Cfg),
+    Args = [PlayerAddress, CasinoAddress, integer_to_list(ReactionTime)],
     ContractName = coin_toss,
-    ContractPubkey = create_offchain_contract(Casino, ContractName, Args, Cfg),
+    ContractPubkey = create_offchain_contract(Player, ContractName, Args, Cfg),
     {ok, Hash} =
-        call_offchain_contract(Casino, ContractPubkey,
+        call_offchain_contract(Player, ContractPubkey,
                                ContractName, "compute_hash",
                                [add_quotes(Key), add_quotes(ActualSide1)], 0, Cfg),
     %% no issue providing a hash
     {ok, []} =
-        call_offchain_contract(Casino, ContractPubkey,
+        call_offchain_contract(Player, ContractPubkey,
                                ContractName, "provide_hash",
                                [Hash], Stake, Cfg),
     mine_blocks(ReactionTime + 1),
     {ok, []} =
-        call_offchain_contract(Casino, ContractPubkey,
-                               ContractName, "casino_dispute_no_pick",
+        call_offchain_contract(Player, ContractPubkey,
+                               ContractName, "player_dispute_no_pick",
                                [], 0, Cfg),
     %% ensure can play again
     {ok, Hash2} =
-        call_offchain_contract(Casino, ContractPubkey,
+        call_offchain_contract(Player, ContractPubkey,
                                ContractName, "compute_hash",
                                [add_quotes(Key), add_quotes(ActualSide2)], 0, Cfg),
     {ok, []} =
-        call_offchain_contract(Casino, ContractPubkey,
+        call_offchain_contract(Player, ContractPubkey,
                                ContractName, "provide_hash",
                                [Hash2], Stake, Cfg),
     {ok, []} =
-        call_offchain_contract(Player, ContractPubkey,
-                              ContractName, "player_pick",
-                              [add_quotes(PlayerGuess2)], Stake, Cfg),
-    {ok, []} =
         call_offchain_contract(Casino, ContractPubkey,
+                              ContractName, "casino_pick",
+                              [add_quotes(CasinoGuess2)], Stake, Cfg),
+    {ok, []} =
+        call_offchain_contract(Player, ContractPubkey,
                               ContractName, "reveal",
                               [add_quotes(Key), add_quotes(ActualSide2)], 0, Cfg),
-    aehttp_sc_SUITE:sc_ws_close_mutual_(Cfg, Player),
+    aehttp_sc_SUITE:sc_ws_close_mutual_(Cfg, Casino),
     ok.
 
 
-success_story(Cfg0, Casino, Player, Stake, Key, PlayerGuess,
+success_story(Cfg0, Player, Casino, Stake, Key, CasinoGuess,
               ActualSide, Outcome) ->
     ReactionTime = 30,
     Cfg = channel_open(Cfg0),
-    {CasinoAddress, PlayerAddress} = prepare_for_test(Casino, Player, Cfg),
-    Args = [CasinoAddress, PlayerAddress, integer_to_list(ReactionTime)],
+    {PlayerAddress, CasinoAddress} = prepare_for_test(Player, Casino, Cfg),
+    Args = [PlayerAddress, CasinoAddress, integer_to_list(ReactionTime)],
     ContractName = coin_toss,
-    ContractPubkey = create_offchain_contract(Casino, ContractName, Args, Cfg),
+    ContractPubkey = create_offchain_contract(Player, ContractName, Args, Cfg),
     {ok, Hash} =
-        call_offchain_contract(Casino, ContractPubkey,
+        call_offchain_contract(Player, ContractPubkey,
                                ContractName, "compute_hash",
                                [add_quotes(Key), add_quotes(ActualSide)], 0, Cfg),
     {ok, []} =
-        call_offchain_contract(Casino, ContractPubkey,
+        call_offchain_contract(Player, ContractPubkey,
                                ContractName, "provide_hash",
                                [Hash], Stake, Cfg),
     {ok, []} =
-        call_offchain_contract(Player, ContractPubkey,
-                              ContractName, "player_pick",
-                              [add_quotes(PlayerGuess)], Stake, Cfg),
-    {CasinoBalance0, PlayerBalance0} = get_offchain_balances(Casino, Player, Cfg),
-    {ok, []} =
         call_offchain_contract(Casino, ContractPubkey,
+                              ContractName, "casino_pick",
+                              [add_quotes(CasinoGuess)], Stake, Cfg),
+    {PlayerBalance0, CasinoBalance0} = get_offchain_balances(Player, Casino, Cfg),
+    {ok, []} =
+        call_offchain_contract(Player, ContractPubkey,
                               ContractName, "reveal",
                               [add_quotes(Key), add_quotes(ActualSide)], 0, Cfg),
-    {CasinoBalance1, PlayerBalance1} = get_offchain_balances(Casino, Player, Cfg),
-    %% casino account did not gain anything; if the player lost, the tokens
+    {PlayerBalance1, CasinoBalance1} = get_offchain_balances(Player, Casino, Cfg),
+    %% player account did not gain anything; if the casino lost, the tokens
     %% are in the contract itself
     case Outcome of
         win ->
-            %% player won twice the stake
-            assert_equal(CasinoBalance0, CasinoBalance1),
-            assert_equal(PlayerBalance0, PlayerBalance1 - 2 * Stake);
+            %% casino won twice the stake
+            assert_equal(PlayerBalance0, PlayerBalance1),
+            assert_equal(CasinoBalance0, CasinoBalance1 - 2 * Stake);
         lose ->
-            %% player didn't win anything
-            assert_equal(CasinoBalance0, CasinoBalance1 - 2 * Stake),
-            assert_equal(PlayerBalance0, PlayerBalance1)
+            %% casino didn't win anything
+            assert_equal(PlayerBalance0, PlayerBalance1 - 2 * Stake),
+            assert_equal(CasinoBalance0, CasinoBalance1)
     end,
-    aehttp_sc_SUITE:sc_ws_close_mutual_(Cfg, Player),
+    aehttp_sc_SUITE:sc_ws_close_mutual_(Cfg, Casino),
     ok.
 
 provide_hash_fails(Cfg0) ->
-    {Casino, Player} = proplists:get_value(roles, Cfg0, {initiator, responder}),
+    {Player, Casino} = proplists:get_value(roles, Cfg0, {initiator, responder}),
     Key = "qwerty",
     ActualSide = ?TAILS,
     Stake = 1,
     ReactionTime = 5,
     Cfg = channel_open(Cfg0),
-    {CasinoAddress, PlayerAddress} = prepare_for_test(Casino, Player, Cfg),
-    Args = [CasinoAddress, PlayerAddress, integer_to_list(ReactionTime)],
+    {PlayerAddress, CasinoAddress} = prepare_for_test(Player, Casino, Cfg),
+    Args = [PlayerAddress, CasinoAddress, integer_to_list(ReactionTime)],
     ContractName = coin_toss,
-    ContractPubkey = create_offchain_contract(Casino, ContractName, Args, Cfg),
+    ContractPubkey = create_offchain_contract(Player, ContractName, Args, Cfg),
     {ok, Hash} =
-        call_offchain_contract(Casino, ContractPubkey,
+        call_offchain_contract(Player, ContractPubkey,
                                ContractName, "compute_hash",
                                [add_quotes(Key), add_quotes(ActualSide)], 0, Cfg),
     {ok, OtherHash} =
-        call_offchain_contract(Casino, ContractPubkey,
+        call_offchain_contract(Player, ContractPubkey,
                                ContractName, "compute_hash",
                                [add_quotes("this is irrelevant but yet different"), add_quotes(ActualSide)], 0, Cfg),
     true = OtherHash =/= Hash,
-    %% player can not provide hash 
-    {revert, <<"not_casino">>} =
-        call_offchain_contract(Player, ContractPubkey,
-                               ContractName, "provide_hash",
-                               [Hash], Stake, Cfg),
-    %% no issue casino providing a hash
-    {ok, []} =
+    %% casino can not provide hash 
+    {revert, <<"not_player">>} =
         call_offchain_contract(Casino, ContractPubkey,
                                ContractName, "provide_hash",
                                [Hash], Stake, Cfg),
-    %% player still can not replace hash 
-    {revert, <<"not_casino">>} =
+    %% no issue player providing a hash
+    {ok, []} =
         call_offchain_contract(Player, ContractPubkey,
+                               ContractName, "provide_hash",
+                               [Hash], Stake, Cfg),
+    %% casino still can not replace hash 
+    {revert, <<"not_player">>} =
+        call_offchain_contract(Casino, ContractPubkey,
                                ContractName, "provide_hash",
                                [OtherHash], Stake, Cfg),
-    %% casino can not replace hash 
+    %% player can not replace hash 
     {revert, <<"already_has_hash">>} =
-        call_offchain_contract(Casino, ContractPubkey,
+        call_offchain_contract(Player, ContractPubkey,
                                ContractName, "provide_hash",
                                [OtherHash], Stake, Cfg),
     %% yet game is still playable
     {ok, []} =
-        call_offchain_contract(Player, ContractPubkey,
-                              ContractName, "player_pick",
+        call_offchain_contract(Casino, ContractPubkey,
+                              ContractName, "casino_pick",
                               [add_quotes(ActualSide)], Stake, Cfg),
-    %% player still can not replace hash 
-    {revert, <<"not_casino">>} =
-        call_offchain_contract(Player, ContractPubkey,
+    %% casino still can not replace hash 
+    {revert, <<"not_player">>} =
+        call_offchain_contract(Casino, ContractPubkey,
                                ContractName, "provide_hash",
                                [OtherHash], Stake, Cfg),
-    %% casino can not replace hash 
+    %% player can not replace hash 
     {revert, <<"already_has_hash">>} =
-        call_offchain_contract(Casino, ContractPubkey,
+        call_offchain_contract(Player, ContractPubkey,
                                ContractName, "provide_hash",
                                [OtherHash], Stake, Cfg),
     {ok, []} =
-        call_offchain_contract(Casino, ContractPubkey,
+        call_offchain_contract(Player, ContractPubkey,
                               ContractName, "reveal",
                               [add_quotes(Key), add_quotes(ActualSide)], 0, Cfg),
-    aehttp_sc_SUITE:sc_ws_close_mutual_(Cfg, Player),
+    aehttp_sc_SUITE:sc_ws_close_mutual_(Cfg, Casino),
     ok.
 
-player_pick_fails(Cfg0) ->
-    {Casino, Player} = proplists:get_value(roles, Cfg0, {initiator, responder}),
+casino_pick_fails(Cfg0) ->
+    {Player, Casino} = proplists:get_value(roles, Cfg0, {initiator, responder}),
     Key = "qwerty",
     ActualSide = ?TAILS,
     Bet = ?HEADS,
     Stake = 1,
     ReactionTime = 5,
     Cfg = channel_open(Cfg0),
-    {CasinoAddress, PlayerAddress} = prepare_for_test(Casino, Player, Cfg),
-    Args = [CasinoAddress, PlayerAddress, integer_to_list(ReactionTime)],
+    {PlayerAddress, CasinoAddress} = prepare_for_test(Player, Casino, Cfg),
+    Args = [PlayerAddress, CasinoAddress, integer_to_list(ReactionTime)],
     ContractName = coin_toss,
-    ContractPubkey = create_offchain_contract(Casino, ContractName, Args, Cfg),
-    %% casino can not call player_pick 
-    {revert, <<"not_player">>} =
-        call_offchain_contract(Casino, ContractPubkey,
-                               ContractName, "player_pick",
-                               [add_quotes(Bet)], Stake, Cfg),
-    %% player can not pick while no game
-    {revert, <<"no_hash">>} =
+    ContractPubkey = create_offchain_contract(Player, ContractName, Args, Cfg),
+    %% player can not call casino_pick 
+    {revert, <<"not_casino">>} =
         call_offchain_contract(Player, ContractPubkey,
-                               ContractName, "player_pick",
+                               ContractName, "casino_pick",
+                               [add_quotes(Bet)], Stake, Cfg),
+    %% casino can not pick while no game
+    {revert, <<"no_hash">>} =
+        call_offchain_contract(Casino, ContractPubkey,
+                               ContractName, "casino_pick",
                                [add_quotes(Bet)], Stake, Cfg),
     {ok, Hash} =
-        call_offchain_contract(Casino, ContractPubkey,
+        call_offchain_contract(Player, ContractPubkey,
                                ContractName, "compute_hash",
                                [add_quotes(Key), add_quotes(ActualSide)], 0, Cfg),
     %% let the game start
     {ok, []} =
-        call_offchain_contract(Casino, ContractPubkey,
+        call_offchain_contract(Player, ContractPubkey,
                                ContractName, "provide_hash",
                                [Hash], Stake, Cfg),
-    %% casino still can not call player_pick
-    {revert, <<"not_player">>} =
-        call_offchain_contract(Casino, ContractPubkey,
-                               ContractName, "player_pick",
-                               [add_quotes(Bet)], Stake, Cfg),
-    %% player can not use random string as a pick
-    {revert, <<"invalid_coin_side">>} =
+    %% player still can not call casino_pick
+    {revert, <<"not_casino">>} =
         call_offchain_contract(Player, ContractPubkey,
-                               ContractName, "player_pick",
+                               ContractName, "casino_pick",
+                               [add_quotes(Bet)], Stake, Cfg),
+    %% casino can not use random string as a pick
+    {revert, <<"invalid_coin_side">>} =
+        call_offchain_contract(Casino, ContractPubkey,
+                               ContractName, "casino_pick",
                                [add_quotes(<<"random string">>)], Stake, Cfg),
-    %% player cannot stake too much
+    %% casino cannot stake too much
     StakeBin = integer_to_binary(Stake),
     WrongStakeMsg = <<"wrong_stake, expected ", StakeBin/binary>>,
     {revert, WrongStakeMsg} =
-        call_offchain_contract(Player, ContractPubkey,
-                              ContractName, "player_pick",
+        call_offchain_contract(Casino, ContractPubkey,
+                              ContractName, "casino_pick",
                               [add_quotes(Bet)], Stake + 1, Cfg),
-    %% player cannot stake too little
+    %% casino cannot stake too little
     {revert, WrongStakeMsg} =
-        call_offchain_contract(Player, ContractPubkey,
-                              ContractName, "player_pick",
+        call_offchain_contract(Casino, ContractPubkey,
+                              ContractName, "casino_pick",
                               [add_quotes(Bet)], Stake - 1, Cfg),
-    %% player can pick
+    %% casino can pick
     {ok, []} =
-        call_offchain_contract(Player, ContractPubkey,
-                              ContractName, "player_pick",
+        call_offchain_contract(Casino, ContractPubkey,
+                              ContractName, "casino_pick",
                               [add_quotes(Bet)], Stake, Cfg),
-    %% casino still can not call player_pick
-    {revert, <<"not_player">>} =
-        call_offchain_contract(Casino, ContractPubkey,
-                               ContractName, "player_pick",
-                               [add_quotes(Bet)], Stake, Cfg),
-    %% player can not overwrite 
-    {revert, <<"there_is_a_pick_already">>} =
+    %% player still can not call casino_pick
+    {revert, <<"not_casino">>} =
         call_offchain_contract(Player, ContractPubkey,
-                               ContractName, "player_pick",
+                               ContractName, "casino_pick",
+                               [add_quotes(Bet)], Stake, Cfg),
+    %% casino can not overwrite 
+    {revert, <<"there_is_a_pick_already">>} =
+        call_offchain_contract(Casino, ContractPubkey,
+                               ContractName, "casino_pick",
                                [add_quotes(Bet)], Stake, Cfg),
     {ok, []} =
-        call_offchain_contract(Casino, ContractPubkey,
+        call_offchain_contract(Player, ContractPubkey,
                               ContractName, "reveal",
                               [add_quotes(Key), add_quotes(ActualSide)], 0, Cfg),
-    %% casino can not call player_pick
-    {revert, <<"not_player">>} =
-        call_offchain_contract(Casino, ContractPubkey,
-                               ContractName, "player_pick",
-                               [add_quotes(Bet)], Stake, Cfg),
-    %% player can not pick while no game
-    {revert, <<"no_hash">>} =
+    %% player can not call casino_pick
+    {revert, <<"not_casino">>} =
         call_offchain_contract(Player, ContractPubkey,
-                               ContractName, "player_pick",
+                               ContractName, "casino_pick",
                                [add_quotes(Bet)], Stake, Cfg),
-    aehttp_sc_SUITE:sc_ws_close_mutual_(Cfg, Player),
+    %% casino can not pick while no game
+    {revert, <<"no_hash">>} =
+        call_offchain_contract(Casino, ContractPubkey,
+                               ContractName, "casino_pick",
+                               [add_quotes(Bet)], Stake, Cfg),
+    aehttp_sc_SUITE:sc_ws_close_mutual_(Cfg, Casino),
     ok.
 
 reveal_fails(Cfg0) ->
-    {Casino, Player} = proplists:get_value(roles, Cfg0, {initiator, responder}),
+    {Player, Casino} = proplists:get_value(roles, Cfg0, {initiator, responder}),
     Key = "qwerty",
     ActualSide = ?TAILS,
     Bet = ?HEADS,
     Stake = 1,
     ReactionTime = 5,
     Cfg = channel_open(Cfg0),
-    {CasinoAddress, PlayerAddress} = prepare_for_test(Casino, Player, Cfg),
-    Args = [CasinoAddress, PlayerAddress, integer_to_list(ReactionTime)],
+    {PlayerAddress, CasinoAddress} = prepare_for_test(Player, Casino, Cfg),
+    Args = [PlayerAddress, CasinoAddress, integer_to_list(ReactionTime)],
     ContractName = coin_toss,
-    ContractPubkey = create_offchain_contract(Casino, ContractName, Args, Cfg),
+    ContractPubkey = create_offchain_contract(Player, ContractName, Args, Cfg),
     CorrectRevealFun =
         fun(Who) ->
             call_offchain_contract(Who, ContractPubkey,
                                    ContractName, "reveal",
                                    [add_quotes(Key), add_quotes(ActualSide)], 0, Cfg)
         end,
-    %% player can not reveal
-    {revert, <<"not_casino">>} = CorrectRevealFun(Player),
-    %% casino can not reveal while no game
-    {revert, <<"there_is_no_pick">>} = CorrectRevealFun(Casino),
+    %% casino can not reveal
+    {revert, <<"not_player">>} = CorrectRevealFun(Casino),
+    %% player can not reveal while no game
+    {revert, <<"there_is_no_pick">>} = CorrectRevealFun(Player),
     {ok, Hash} =
-        call_offchain_contract(Casino, ContractPubkey,
+        call_offchain_contract(Player, ContractPubkey,
                                ContractName, "compute_hash",
                                [add_quotes(Key), add_quotes(ActualSide)], 0, Cfg),
     %% let the game start
     {ok, []} =
-        call_offchain_contract(Casino, ContractPubkey,
+        call_offchain_contract(Player, ContractPubkey,
                                ContractName, "provide_hash",
                                [Hash], Stake, Cfg),
-    %% player still can not reveal
-    {revert, <<"not_casino">>} = CorrectRevealFun(Player),
-    %% casino can not reveal while no pick
-    {revert, <<"there_is_no_pick">>} = CorrectRevealFun(Casino),
-    %% player can pick
+    %% casino still can not reveal
+    {revert, <<"not_player">>} = CorrectRevealFun(Casino),
+    %% player can not reveal while no pick
+    {revert, <<"there_is_no_pick">>} = CorrectRevealFun(Player),
+    %% casino can pick
     {ok, []} =
-        call_offchain_contract(Player, ContractPubkey,
-                              ContractName, "player_pick",
+        call_offchain_contract(Casino, ContractPubkey,
+                              ContractName, "casino_pick",
                               [add_quotes(Bet)], Stake, Cfg),
-    %% player still can not reveal
-    {revert, <<"not_casino">>} = CorrectRevealFun(Player),
-    %% casino can not post wrong key
+    %% casino still can not reveal
+    {revert, <<"not_player">>} = CorrectRevealFun(Casino),
+    %% player can not post wrong key
     OtherKey = <<"asdf">>,
     true = Key =/= OtherKey,
     {revert, <<"invalid_key_and_answer">>} =
-        call_offchain_contract(Casino, ContractPubkey,
+        call_offchain_contract(Player, ContractPubkey,
                               ContractName, "reveal",
                               [add_quotes(OtherKey), add_quotes(ActualSide)], 0, Cfg),
-    %% casino can not post wrong coin side
+    %% player can not post wrong coin side
     {revert, <<"invalid_coin_side">>} =
-        call_offchain_contract(Casino, ContractPubkey,
+        call_offchain_contract(Player, ContractPubkey,
                               ContractName, "reveal",
                               [add_quotes(Key), add_quotes(<<"random wrong side">>)], 0, Cfg),
-    %% casino can actually reveal
-    {ok, []} = CorrectRevealFun(Casino),
-    %% player can not reveal as no game
-    {revert, <<"not_casino">>} = CorrectRevealFun(Player),
-    %% casino can not reveal while no player pick
-    {revert, <<"there_is_no_pick">>} = CorrectRevealFun(Casino),
-    aehttp_sc_SUITE:sc_ws_close_mutual_(Cfg, Player),
+    %% player can actually reveal
+    {ok, []} = CorrectRevealFun(Player),
+    %% casino can not reveal as no game
+    {revert, <<"not_player">>} = CorrectRevealFun(Casino),
+    %% player can not reveal while no casino pick
+    {revert, <<"there_is_no_pick">>} = CorrectRevealFun(Player),
+    aehttp_sc_SUITE:sc_ws_close_mutual_(Cfg, Casino),
     ok.
 
 
-player_dispute_fails(Cfg0) ->
-    {Casino, Player} = proplists:get_value(roles, Cfg0, {initiator, responder}),
+casino_dispute_fails(Cfg0) ->
+    {Player, Casino} = proplists:get_value(roles, Cfg0, {initiator, responder}),
     Key = "qwerty",
     ActualSide = ?TAILS,
     Bet = ?HEADS,
     Stake = 1,
     ReactionTime = 5,
     Cfg = channel_open(Cfg0),
-    {CasinoAddress, PlayerAddress} = prepare_for_test(Casino, Player, Cfg),
-    Args = [CasinoAddress, PlayerAddress, integer_to_list(ReactionTime)],
+    {PlayerAddress, CasinoAddress} = prepare_for_test(Player, Casino, Cfg),
+    Args = [PlayerAddress, CasinoAddress, integer_to_list(ReactionTime)],
     ContractName = coin_toss,
-    ContractPubkey = create_offchain_contract(Casino, ContractName, Args, Cfg),
+    ContractPubkey = create_offchain_contract(Player, ContractName, Args, Cfg),
     CorrectDisputeFun =
         fun(Who) ->
             call_offchain_contract(Who, ContractPubkey,
-                                   ContractName, "player_dispute_no_reveal",
+                                   ContractName, "casino_dispute_no_reveal",
                                    [], 0, Cfg)
         end,
-    %% casino can not dispute
-    {revert, <<"not_player">>} = CorrectDisputeFun(Casino),
-    %% player can not dispute while no game
-    {revert, <<"there_is_no_pick">>} = CorrectDisputeFun(Player),
+    %% player can not dispute
+    {revert, <<"not_casino">>} = CorrectDisputeFun(Player),
+    %% casino can not dispute while no game
+    {revert, <<"there_is_no_pick">>} = CorrectDisputeFun(Casino),
     {ok, Hash} =
-        call_offchain_contract(Casino, ContractPubkey,
+        call_offchain_contract(Player, ContractPubkey,
                                ContractName, "compute_hash",
                                [add_quotes(Key), add_quotes(ActualSide)], 0, Cfg),
     %% let the game start
     {ok, []} =
-        call_offchain_contract(Casino, ContractPubkey,
+        call_offchain_contract(Player, ContractPubkey,
                                ContractName, "provide_hash",
                                [Hash], Stake, Cfg),
-    %% casino can not dispute
-    {revert, <<"not_player">>} = CorrectDisputeFun(Casino),
-    %% player can not dispute while no player pick
-    {revert, <<"there_is_no_pick">>} = CorrectDisputeFun(Player),
-    %% player can pick
+    %% player can not dispute
+    {revert, <<"not_casino">>} = CorrectDisputeFun(Player),
+    %% casino can not dispute while no casino pick
+    {revert, <<"there_is_no_pick">>} = CorrectDisputeFun(Casino),
+    %% casino can pick
     {ok, []} =
-        call_offchain_contract(Player, ContractPubkey,
-                              ContractName, "player_pick",
+        call_offchain_contract(Casino, ContractPubkey,
+                              ContractName, "casino_pick",
                               [add_quotes(Bet)], Stake, Cfg),
-    %% casino can not dispute
-    {revert, <<"not_player">>} = CorrectDisputeFun(Casino),
-    %% player can not dispute while not matured
-    {revert, <<"not_yet_allowed">>} = CorrectDisputeFun(Player),
-    %% after the reaction time expires, player can dispute
+    %% player can not dispute
+    {revert, <<"not_casino">>} = CorrectDisputeFun(Player),
+    %% casino can not dispute while not matured
+    {revert, <<"not_yet_allowed">>} = CorrectDisputeFun(Casino),
+    %% after the reaction time expires, casino can dispute
     mine_blocks(ReactionTime + 1),
-    {ok, []} = CorrectDisputeFun(Player),
-    %% casino can not dispute
-    {revert, <<"not_player">>} = CorrectDisputeFun(Casino),
-    %% player can not dispute while no game
-    {revert, <<"there_is_no_pick">>} = CorrectDisputeFun(Player),
-    aehttp_sc_SUITE:sc_ws_close_mutual_(Cfg, Player),
+    {ok, []} = CorrectDisputeFun(Casino),
+    %% player can not dispute
+    {revert, <<"not_casino">>} = CorrectDisputeFun(Player),
+    %% casino can not dispute while no game
+    {revert, <<"there_is_no_pick">>} = CorrectDisputeFun(Casino),
+    aehttp_sc_SUITE:sc_ws_close_mutual_(Cfg, Casino),
     ok.
 
-casino_dispute_fails(Cfg0) ->
-    {Casino, Player} = proplists:get_value(roles, Cfg0, {initiator, responder}),
+player_dispute_fails(Cfg0) ->
+    {Player, Casino} = proplists:get_value(roles, Cfg0, {initiator, responder}),
     Key = "qwerty",
     ActualSide = ?TAILS,
     Stake = 1,
     ReactionTime = 5,
     Cfg = channel_open(Cfg0),
-    {CasinoAddress, PlayerAddress} = prepare_for_test(Casino, Player, Cfg),
-    Args = [CasinoAddress, PlayerAddress, integer_to_list(ReactionTime)],
+    {PlayerAddress, CasinoAddress} = prepare_for_test(Player, Casino, Cfg),
+    Args = [PlayerAddress, CasinoAddress, integer_to_list(ReactionTime)],
     ContractName = coin_toss,
-    ContractPubkey = create_offchain_contract(Casino, ContractName, Args, Cfg),
+    ContractPubkey = create_offchain_contract(Player, ContractName, Args, Cfg),
     CorrectDisputeFun =
         fun(Who) ->
             call_offchain_contract(Who, ContractPubkey,
-                                   ContractName, "casino_dispute_no_pick",
+                                   ContractName, "player_dispute_no_pick",
                                    [], 0, Cfg)
         end,
-    %% player can not dispute
-    {revert, <<"not_casino">>} = CorrectDisputeFun(Player),
-    %% casino can not dispute while no game
-    {revert, <<"no_hash">>} = CorrectDisputeFun(Casino),
+    %% casino can not dispute
+    {revert, <<"not_player">>} = CorrectDisputeFun(Casino),
+    %% player can not dispute while no game
+    {revert, <<"no_hash">>} = CorrectDisputeFun(Player),
     {ok, Hash} =
-        call_offchain_contract(Casino, ContractPubkey,
+        call_offchain_contract(Player, ContractPubkey,
                                ContractName, "compute_hash",
                                [add_quotes(Key), add_quotes(ActualSide)], 0, Cfg),
     %% let the game start
     {ok, []} =
-        call_offchain_contract(Casino, ContractPubkey,
+        call_offchain_contract(Player, ContractPubkey,
                                ContractName, "provide_hash",
                                [Hash], Stake, Cfg),
-    %% player can not dispute
-    {revert, <<"not_casino">>} = CorrectDisputeFun(Player),
-    %% casino can not dispute while no game
-    {revert, <<"not_yet_allowed">>} = CorrectDisputeFun(Casino),
-    mine_blocks(ReactionTime + 1),
-    {ok, []} = CorrectDisputeFun(Casino),
-    %% player can not dispute
-    {revert, <<"not_casino">>} = CorrectDisputeFun(Player),
+    %% casino can not dispute
+    {revert, <<"not_player">>} = CorrectDisputeFun(Casino),
     %% player can not dispute while no game
-    {revert, <<"no_hash">>} = CorrectDisputeFun(Casino),
-    %% play another game to prove casino can not dispute while there is an
+    {revert, <<"not_yet_allowed">>} = CorrectDisputeFun(Player),
+    mine_blocks(ReactionTime + 1),
+    {ok, []} = CorrectDisputeFun(Player),
+    %% casino can not dispute
+    {revert, <<"not_player">>} = CorrectDisputeFun(Casino),
+    %% casino can not dispute while no game
+    {revert, <<"no_hash">>} = CorrectDisputeFun(Player),
+    %% play another game to prove player can not dispute while there is an
     %% actual game going on
     {ok, []} =
-        call_offchain_contract(Casino, ContractPubkey,
+        call_offchain_contract(Player, ContractPubkey,
                                ContractName, "provide_hash",
                                [Hash], Stake, Cfg),
     {ok, []} =
-        call_offchain_contract(Player, ContractPubkey,
-                              ContractName, "player_pick",
+        call_offchain_contract(Casino, ContractPubkey,
+                              ContractName, "casino_pick",
                               [add_quotes(ActualSide)], Stake, Cfg),
-    %% player can not dispute
-    {revert, <<"not_casino">>} = CorrectDisputeFun(Player),
-    %% player can not dispute while no game
-    {revert, <<"there_is_a_pick_already">>} = CorrectDisputeFun(Casino),
-    aehttp_sc_SUITE:sc_ws_close_mutual_(Cfg, Player),
+    %% casino can not dispute
+    {revert, <<"not_player">>} = CorrectDisputeFun(Casino),
+    %% casino can not dispute while no game
+    {revert, <<"there_is_a_pick_already">>} = CorrectDisputeFun(Player),
+    aehttp_sc_SUITE:sc_ws_close_mutual_(Cfg, Casino),
     ok.
 
 intended_usage(Cfg0) ->
-    {Casino, Player} = proplists:get_value(roles, Cfg0, {initiator, responder}),
+    {Player, Casino} = proplists:get_value(roles, Cfg0, {initiator, responder}),
     Key = "qwerty",
     ActualSide = ?TAILS,
     Stake = 100,
     ReactionTime = 5,
     Cfg = channel_open(Cfg0),
-    {CasinoAddress, PlayerAddress} = prepare_for_test(Casino, Player, Cfg),
-    Args = [CasinoAddress, PlayerAddress, integer_to_list(ReactionTime)],
+    {PlayerAddress, CasinoAddress} = prepare_for_test(Player, Casino, Cfg),
+    Args = [PlayerAddress, CasinoAddress, integer_to_list(ReactionTime)],
     ContractName = coin_toss,
     %% At first create the contract in the off-chain state tree. We will later
     %% on call it by its pubkey;
-    %% At contract creation time we don't provide initial deposit. The casino
+    %% At contract creation time we don't provide initial deposit. The player
     %% participant will provide stake with providing a hash
-    ContractPubkey = create_offchain_contract(Casino, ContractName, Args, Cfg,
+    ContractPubkey = create_offchain_contract(Player, ContractName, Args, Cfg,
                                               0),
-    %% The casino picks heads or tails and a random string used for source for
+    %% The player picks heads or tails and a random string used for source for
     %% entropy. This must be done aside (ex. via a dry run) as both the pick
     %% and the key string must be kept secret
     {ok, Hash} =
-        call_offchain_contract(Casino, ContractPubkey,
+        call_offchain_contract(Player, ContractPubkey,
                                ContractName, "compute_hash",
                                [add_quotes(Key), add_quotes(ActualSide)], 0, Cfg),
-    %% The game starts as the casino provides the hash; Note that it
+    %% The game starts as the player provides the hash; Note that it
     %% includes an amount to be dedicated to the contract as well
     {ok, []} =
-        call_offchain_contract(Casino, ContractPubkey,
+        call_offchain_contract(Player, ContractPubkey,
                                ContractName, "provide_hash",
                                [Hash], Stake, Cfg),
-    %% The player picks heads or tails and provides this to the contract The
-    %% player spends as many tokens as they like. The amount staked by the
-    %% player must be at most the amount dedicated to the contract as this
-    %% is as much as one might win Here the player will win all tokens
+    %% The casino picks heads or tails and provides this to the contract The
+    %% casino spends as many tokens as they like. The amount staked by the
+    %% casino must be at most the amount dedicated to the contract as this
+    %% is as much as one might win Here the casino will win all tokens
     %% staked
     {ok, []} =
-        call_offchain_contract(Player, ContractPubkey,
-                              ContractName, "player_pick",
-                              [add_quotes(ActualSide)],
-                              Stake, %% note the same amount staked by the casino
-                              Cfg),
-    %% The casino reveals both the key string and the actual coin side
-    {ok, []} =
         call_offchain_contract(Casino, ContractPubkey,
+                              ContractName, "casino_pick",
+                              [add_quotes(ActualSide)],
+                              Stake, %% note the same amount staked by the player
+                              Cfg),
+    %% The player reveals both the key string and the actual coin side
+    {ok, []} =
+        call_offchain_contract(Player, ContractPubkey,
                               ContractName, "reveal",
                               [add_quotes(Key), add_quotes(ActualSide)], 0, Cfg),
-    %% Since the player had won all tokens, now casino must provide more
-    %% tokens to contract
+    %% Since the previous game ended, now player must provide more tokens to
+    %% contract with the hash
     {ok, Hash2} =
-        call_offchain_contract(Casino, ContractPubkey,
+        call_offchain_contract(Player, ContractPubkey,
                                ContractName, "compute_hash",
                                [add_quotes(<<"some other key">>), %% note that the key should be different
                                 add_quotes(?TAILS)],
                                 0,
                                 Cfg),
     {ok, []} =
-        call_offchain_contract(Casino, ContractPubkey,
+        call_offchain_contract(Player, ContractPubkey,
                                ContractName, "provide_hash",
                                [Hash2],
-                               Stake, %% casino provides stake with the hash itself
+                               Stake, %% player provides stake with the hash itself
                                Cfg),
-    %% This time the player loses
-    {ok, []} =
-        call_offchain_contract(Player, ContractPubkey,
-                              ContractName, "player_pick",
-                              [add_quotes(?HEADS)],
-                              Stake, %% note the amount staked by the player
-                              Cfg),
-    %% casino reveals and player loses the game
+    %% This time the casino loses
     {ok, []} =
         call_offchain_contract(Casino, ContractPubkey,
-                              ContractName, "reveal",
-                              [add_quotes(<<"some other key">>),
-                               add_quotes(?TAILS)], 0, Cfg),
-    aehttp_sc_SUITE:sc_ws_close_mutual_(Cfg, Player),
+                               ContractName, "casino_pick",
+                               [add_quotes(?HEADS)],
+                               Stake, %% note the amount staked by the casino
+                               Cfg),
+    %% player reveals and casino loses the game
+    {ok, []} =
+        call_offchain_contract(Player, ContractPubkey,
+                               ContractName, "reveal",
+                               [add_quotes(<<"some other key">>),
+                                add_quotes(?TAILS)], 0, Cfg),
+    aehttp_sc_SUITE:sc_ws_close_mutual_(Cfg, Casino),
     ok.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -1040,7 +1040,7 @@ channel_open(Cfg0) ->
     Cfg = aehttp_sc_SUITE:sc_ws_open_(Cfg0, #{}, ?DEFAULT_MIN_DEPTH, MsgLogFile),
     Cfg.
 
-prepare_for_test(Casino, Player, Cfg) ->
+prepare_for_test(Player, Casino, Cfg) ->
     #{initiator := #{pub_key := IPubkey},
       responder := #{pub_key := RPubkey}} = proplists:get_value(participants, Cfg),
     #{initiator := IConnPid,
@@ -1048,36 +1048,36 @@ prepare_for_test(Casino, Player, Cfg) ->
     Pids = [IConnPid, RConnPid],
     AllEvents = [sign, info, get, error, update],
     ok = register_channel_events(AllEvents, Pids),
-    {CasinoPubkey, PlayerPubkey} =
-        case {Casino, Player} of
+    {PlayerPubkey, CasinoPubkey} =
+        case {Player, Casino} of
             {initiator, responder} -> {IPubkey, RPubkey};
             {responder, initiator} -> {RPubkey, IPubkey}
         end,
-    CasinoAddress = aeser_api_encoder:encode(account_pubkey, CasinoPubkey),
     PlayerAddress = aeser_api_encoder:encode(account_pubkey, PlayerPubkey),
-    {CasinoAddress, PlayerAddress}.
+    CasinoAddress = aeser_api_encoder:encode(account_pubkey, CasinoPubkey),
+    {PlayerAddress, CasinoAddress}.
 
-get_offchain_balances(Casino, Player, Cfg) ->
+get_offchain_balances(Player, Casino, Cfg) ->
     #{initiator := #{pub_key := IPubkey},
       responder := #{pub_key := RPubkey}} = proplists:get_value(participants, Cfg),
     #{initiator := IConnPid,
       responder := RConnPid} = proplists:get_value(channel_clients, Cfg),
-    {CasinoPubkey, PlayerPubkey} =
-        case {Casino, Player} of
+    {PlayerPubkey, CasinoPubkey} =
+        case {Player, Casino} of
             {initiator, responder} -> {IPubkey, RPubkey};
             {responder, initiator} -> {RPubkey, IPubkey}
         end,
-    {ok, {CBal, PBal}} =
+    {ok, {PBal, CBal}} =
         aehttp_sc_SUITE:sc_ws_get_both_balances(IConnPid,
-                                                CasinoPubkey,
                                                 PlayerPubkey,
+                                                CasinoPubkey,
                                                 Cfg),
-    {ok, {CBal, PBal}} =
+    {ok, {PBal, CBal}} =
         aehttp_sc_SUITE:sc_ws_get_both_balances(RConnPid,
-                                                CasinoPubkey,
                                                 PlayerPubkey,
+                                                CasinoPubkey,
                                                 Cfg),
-    {CBal, PBal}.
+    {CBal, CBal}.
 
 assert_equal(Val1, Val2) ->
     {Val1, Val1} = {Val1, Val2}.
