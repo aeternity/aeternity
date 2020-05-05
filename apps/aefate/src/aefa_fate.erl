@@ -617,10 +617,28 @@ pop_call_stack(ES) ->
             ES3 = aefa_engine_state:set_current_tvars(TVars, ES2),
             {jump, BB, ES3};
         {remote, Caller, Contract, Function, TVars, BB, ES1} ->
-            ES2 = unfold_store_maps(ES1),
+            %% Popping the callstack resets the current contract to the caller,
+            %% but we need to unfold the store maps as the callee.
+            Callee = aefa_engine_state:current_contract(ES),
+            ES2    = with_current_contract(Callee, ES1, fun unfold_store_maps/1),
             ES3 = set_remote_function(Caller, Contract, Function, false, false, ES2),
             ES4 = aefa_engine_state:set_current_tvars(TVars, ES3),
             {jump, BB, ES4}
+    end.
+
+-define(NO_FIX_UNFOLD_STORE_MAPS_WINDOW_LOWER_LIMIT, 237000).
+-define(NO_FIX_UNFOLD_STORE_MAPS_WINDOW_UPPER_LIMIT, 999999).  %% !!FIXME!!
+
+with_current_contract(Pubkey, ES, Fun) ->
+    case aefa_chain_api:generation(aefa_engine_state:chain_api(ES)) of
+        Height when Height >= ?NO_FIX_UNFOLD_STORE_MAPS_WINDOW_LOWER_LIMIT,
+                    Height =< ?NO_FIX_UNFOLD_STORE_MAPS_WINDOW_UPPER_LIMIT ->
+            Fun(ES);
+        _ ->
+            Old = aefa_engine_state:current_contract(ES),
+            ES1 = aefa_engine_state:set_current_contract(Pubkey, ES),
+            ES2 = Fun(ES1),
+            aefa_engine_state:set_current_contract(Old, ES2)
     end.
 
 check_return_type_protected(unprotected, RetType, TVars, _Stores, _API, ES) ->
