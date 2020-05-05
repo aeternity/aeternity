@@ -626,20 +626,11 @@ pop_call_stack(ES) ->
             {jump, BB, ES4}
     end.
 
--define(NO_FIX_UNFOLD_STORE_MAPS_WINDOW_LOWER_LIMIT, 237000).
--define(NO_FIX_UNFOLD_STORE_MAPS_WINDOW_UPPER_LIMIT, 999999).  %% !!FIXME!!
-
 with_current_contract(Pubkey, ES, Fun) ->
-    case aefa_chain_api:generation(aefa_engine_state:chain_api(ES)) of
-        Height when Height >= ?NO_FIX_UNFOLD_STORE_MAPS_WINDOW_LOWER_LIMIT,
-                    Height =< ?NO_FIX_UNFOLD_STORE_MAPS_WINDOW_UPPER_LIMIT ->
-            Fun(ES);
-        _ ->
-            Old = aefa_engine_state:current_contract(ES),
-            ES1 = aefa_engine_state:set_current_contract(Pubkey, ES),
-            ES2 = Fun(ES1),
-            aefa_engine_state:set_current_contract(Old, ES2)
-    end.
+    Old = aefa_engine_state:current_contract(ES),
+    ES1 = aefa_engine_state:set_current_contract(Pubkey, ES),
+    ES2 = Fun(ES1),
+    aefa_engine_state:set_current_contract(Old, ES2).
 
 check_return_type_protected(unprotected, RetType, TVars, _Stores, _API, ES) ->
     check_return_type(RetType, TVars, ES);
