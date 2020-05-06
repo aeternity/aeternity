@@ -41,11 +41,14 @@ contract CoinToss =
     ensure_coin_side(coin_side)
     ensure_if_key_is_valid(key, coin_side)
     let Some(casino_pick) = state.casino_pick
-    if (coin_side == casino_pick)
-      Chain.spend(state.casino, Contract.balance)
-    else
-      Chain.spend(state.player, Contract.balance)
+    let winner : address =  
+      if (coin_side == casino_pick)
+        state.casino
+      else
+        state.player
+    Chain.spend(winner, Contract.balance)
     reset_state()
+    winner
 
   stateful entrypoint casino_dispute_no_reveal() =
     require_casino()
