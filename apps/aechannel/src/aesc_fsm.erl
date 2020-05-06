@@ -1635,16 +1635,15 @@ new_onchain_tx(channel_close_mutual_tx, #{ acct := From } = Opts,
     FromId = aeser_id:create(account, From),
     {ok, IAmt} = aesc_offchain_state:balance(Initiator, State),
     {ok, RAmt} = aesc_offchain_state:balance(Responder, State),
-    %% fee is preset. This is important for participant's amounts calculation
     TTL = maps:get(ttl, Opts, 0), %% 0 means no TTL limit
-    Nonce = maps:get(nonce, Opts),
-    InitialOpts0 = #{ channel_id             => ChanId
-                    , from_id                => FromId
-                    % both amounts are only going to get lower due to the tx fee
-                    , initiator_amount_final => IAmt
-                    , responder_amount_final => RAmt
-                    , ttl                    => TTL
-                    , nonce                  => Nonce },
+    Presets = maps:with([nonce, gas_price, fee], Opts),
+    InitialOpts0 = maps:merge(Presets,
+                              #{ channel_id             => ChanId
+                               , from_id                => FromId
+                               % both amounts are only going to get lower due to the tx fee
+                               , initiator_amount_final => IAmt
+                               , responder_amount_final => RAmt
+                               , ttl                    => TTL}),
     Height = aetx_env:height(OnChainEnv),
     {ok, InitCloseTx} = new_onchain_tx_(aesc_close_mutual_tx, InitialOpts0,
                                         Height, D),
@@ -2152,7 +2151,7 @@ new_contract_tx_for_signing(Opts, From, #data{ state = State
 pay_close_mutual_fee(Fee, IAmt, RAmt) ->
     Ceil  = trunc(math:ceil(Fee/2)),
     Floor = trunc(math:floor(Fee/2)),
-    if (IAmt + RAmt) < Fee                    -> {error, insufficient_funds};
+    if (IAmt + RAmt) < Fee                    -> {error, insufficient_balance};
        (IAmt >= Ceil) andalso (RAmt >= Floor) -> {ok, IAmt - Ceil, RAmt - Floor};
        (RAmt >= Ceil) andalso (IAmt >= Floor) -> {ok, IAmt - Floor, RAmt - Ceil};
        (IAmt > RAmt)                          -> {ok, IAmt - Fee + RAmt, 0};

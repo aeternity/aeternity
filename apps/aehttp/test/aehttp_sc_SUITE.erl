@@ -1346,8 +1346,14 @@ sc_ws_close_mutual_(Config, Closer, Params) when Closer =:= initiator orelse
     {IStartB, RStartB} = channel_participants_balances(IPubkey, RPubkey),
     #{initiator := IConnPid,
       responder := RConnPid} = proplists:get_value(channel_clients, Config),
-    ok = ?WS:register_test_for_channel_events(IConnPid, [sign, info, on_chain_tx]),
-    ok = ?WS:register_test_for_channel_events(RConnPid, [sign, info, on_chain_tx]),
+    ok = ?WS:register_test_for_channel_events(IConnPid, [sign, error, info, on_chain_tx]),
+    ok = ?WS:register_test_for_channel_events(RConnPid, [sign, error, info, on_chain_tx]),
+    MoreTokens = IStartB + RStartB + 100,
+    ws_send_tagged( IConnPid, <<"channels.shutdown">>, Params#{fee => MoreTokens}
+                  , Config),
+    {ok, _, #{<<"reason">> := <<"insufficient_balance">>}} =
+        wait_for_channel_event(IConnPid, error, Config),
+
 
     CloseMutual =
         fun(CloserPubkey, CloserConn, CloserPrivkey, OtherPubkey, OtherConn, OtherPrivkey) ->
