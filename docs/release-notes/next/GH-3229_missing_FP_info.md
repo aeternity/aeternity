@@ -1,1 +1,1 @@
-* Exposes the channel force progress transaction call result to HTTP API
+* Bugfix: Exposes the State Channel force progress transaction call result to HTTP API
