@@ -185,6 +185,8 @@ json_rpc_error_object({meta, invalid}      , R) -> error_obj(3, [1014], R);
 json_rpc_error_object(invalid_fsm_id       , R) -> error_obj(3, [1016], R);
 json_rpc_error_object(bad_signature        , R) -> error_obj(3, [1017], R);
 json_rpc_error_object(not_allowed_now      , R) -> error_obj(3, [1018], R);
+json_rpc_error_object(wrong_abi_version    , R) -> error_obj(3, [1019], R);
+json_rpc_error_object(wrong_vm_version     , R) -> error_obj(3, [1020], R);
 json_rpc_error_object({broken_encoding,What}, R) ->
     error_obj(3, [broken_encoding_code(W) || W <- What], R);
 json_rpc_error_object({What, missing}      , R) ->
@@ -265,6 +267,8 @@ error_data_msgs() ->
      , 1016 => <<"Invalid fsm id">>
      , 1017 => <<"Bad signature">>
      , 1018 => <<"Not allowed at current channel state">>
+     , 1019 => <<"ABI version mismatch">>
+     , 1020 => <<"VM version mismatch">>
      , 2000 => <<"Missing field: existing_fsm_id">>
      }.
 

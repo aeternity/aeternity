@@ -54,6 +54,7 @@
     sc_ws_remote_call_contract/1,
     sc_ws_remote_call_contract_refering_onchain_data/1,
     sc_ws_wrong_call_data/1,
+    sc_ws_wrong_abi/1,
     sc_ws_reconnect_early/1,
     sc_ws_basic_client_reconnect_i/1,
     sc_ws_basic_client_reconnect_r/1,
@@ -108,6 +109,7 @@
 -include_lib("stdlib/include/assert.hrl").
 -include_lib("common_test/include/ct.hrl").
 -include_lib("aecontract/include/hard_forks.hrl").
+-include_lib("aecontract/include/aecontract.hrl").
 -include_lib("aeutils/include/aeu_stacktrace.hrl").
 -include("../../aecontract/test/include/aect_sophia_vsn.hrl").
 
@@ -231,7 +233,8 @@ groups() ->
         sc_ws_remote_call_contract,
         %% both can call a remote contract refering on-chain data
         sc_ws_remote_call_contract_refering_onchain_data,
-        sc_ws_wrong_call_data
+        sc_ws_wrong_call_data,
+        sc_ws_wrong_abi
       ]},
      {only_one_signs, [sequence],
       [ sc_ws_conflict_on_new_offchain,
@@ -499,7 +502,8 @@ end_per_group(_Grp, _Config) ->
                    sc_ws_conflict_on_new_offchain,
                    sc_ws_basic_contracts, sc_ws_oracle_contract, sc_ws_nameservice_contract,
                    sc_ws_environment_contract, sc_ws_remote_call_contract,
-                   sc_ws_remote_call_contract_refering_onchain_data, sc_ws_wrong_call_data ]).
+                   sc_ws_remote_call_contract_refering_onchain_data,
+                   sc_ws_wrong_call_data, sc_ws_wrong_abi ]).
 
 init_per_testcase(Case, Config) ->
     case proplists:is_defined(sophia_version, Config) of
@@ -4390,6 +4394,11 @@ sc_ws_wrong_call_data(Config) ->
         || Role <- [initiator, responder]],
     ok.
 
+sc_ws_wrong_abi(Config) ->
+    [sc_ws_contract_generic_(Role, offchain, fun sc_ws_wrong_abi_/9, Config, [])
+        || Role <- [initiator, responder]],
+    ok.
+
 sc_ws_broken_init_code_(Owner, GetVolley, _CreateContract, _ConnPid1, _ConnPid2,
                    _OwnerPubkey, _OtherPubkey, _Opts, Config) ->
     %% Example broken init code will be calling not the init function
@@ -4443,6 +4452,33 @@ sc_ws_broken_call_code_(Owner, GetVolley, _CreateContract, _ConnPid1, _ConnPid2,
     {ok, _, <<"contract_call">>, Res} = wait_for_channel_event(OwnerConnPid, get, Config),
     % call result is still an error
     #{<<"return_type">> := <<"error">>} = Res,
+    ok.
+
+sc_ws_wrong_abi_(Owner, GetVolley, _CreateContract, _ConnPid1, _ConnPid2,
+                   _OwnerPubkey, _OtherPubkey, _Opts, Config) ->
+    {ok, EncodedCode} = get_contract_bytecode(safe_math),
+    {ok, EncodedInitData} = encode_call_data(safe_math, "init", []),
+
+    {SignVolley, OwnerConnPid, OwnerPubKey} = GetVolley(Owner),
+    ws_send_tagged(OwnerConnPid, <<"channels.update.new_contract">>,
+                   #{vm_version  => aect_test_utils:vm_version(),
+                     abi_version => aect_test_utils:abi_version(),
+                     deposit     => 10,
+                     code        => EncodedCode,
+                     call_data   => EncodedInitData}, Config),
+    #{tx := UnsignedCreateTx, updates := _Updates} = SignVolley(),
+    % contract is succesfully created
+    ContractPubKey = contract_id_from_create_update(OwnerPubKey,
+                                                    UnsignedCreateTx),
+    {ok, EncodedCalcCallData} = encode_call_data(safe_math, "add", ["1", "2"]),
+    % call the existing contract with wrong ABI
+    ws_send_tagged(OwnerConnPid, <<"channels.update.call_contract">>,
+                   #{contract_id => aeser_api_encoder:encode(contract_pubkey, ContractPubKey),
+                     abi_version => aect_test_utils:abi_version() + 1, %% wrong ABI
+                     amount      => 1,
+                     call_data   => EncodedCalcCallData}, Config),
+    {ok, _, #{<<"reason">> := <<"ABI version mismatch">>}} =
+        wait_for_channel_event(OwnerConnPid, error, Config),
     ok.
 
 extract_caller(#{<<"op">> := <<"OffChainNewContract">>,
