@@ -270,7 +270,7 @@ can_have_a_couple_of_sequential_games(Cfg0) ->
                 call_offchain_contract(Casino, ContractPubkey,
                                       ContractName, "casino_pick",
                                       [add_quotes(CasinoGuess)], Stake, Cfg),
-            {ok, []} =
+            {ok, _Winner} =
                 call_offchain_contract(Player, ContractPubkey,
                                       ContractName, "reveal",
                                       [add_quotes(Key), add_quotes(ActualSide)], 0, Cfg)
@@ -414,7 +414,7 @@ can_play_after_casino_dispute(Cfg0) ->
         call_offchain_contract(Casino, ContractPubkey,
                               ContractName, "casino_pick",
                               [add_quotes(CasinoGuess2)], Stake, Cfg),
-    {ok, []} =
+    {ok, _Winner} =
         call_offchain_contract(Player, ContractPubkey,
                               ContractName, "reveal",
                               [add_quotes(Key), add_quotes(ActualSide2)], 0, Cfg),
@@ -461,7 +461,7 @@ can_play_after_player_dispute(Cfg0) ->
         call_offchain_contract(Casino, ContractPubkey,
                               ContractName, "casino_pick",
                               [add_quotes(CasinoGuess2)], Stake, Cfg),
-    {ok, []} =
+    {ok, _Winner} =
         call_offchain_contract(Player, ContractPubkey,
                               ContractName, "reveal",
                               [add_quotes(Key), add_quotes(ActualSide2)], 0, Cfg),
@@ -490,7 +490,7 @@ success_story(Cfg0, Player, Casino, Stake, Key, CasinoGuess,
         call_offchain_contract(Casino, ContractPubkey,
                                ContractName, "casino_pick",
                                [add_quotes(CasinoGuess)], Stake, Cfg),
-    {ok, []} =
+    {ok, Winner} =
         call_offchain_contract(Player, ContractPubkey,
                                ContractName, "reveal",
                                [add_quotes(Key), add_quotes(ActualSide)], 0, Cfg),
@@ -498,10 +498,12 @@ success_story(Cfg0, Player, Casino, Stake, Key, CasinoGuess,
     case Outcome of
         win ->
             %% player lost the stake, casino won it
+            assert_equal(Winner, participant_address(Casino, Cfg)),
             assert_equal(PlayerBalance0, PlayerBalance1 + Stake),
             assert_equal(CasinoBalance0, CasinoBalance1 - Stake);
         lose ->
             %% player won the stake, casino lost it
+            assert_equal(Winner, participant_address(Player, Cfg)),
             assert_equal(PlayerBalance0, PlayerBalance1 - Stake),
             assert_equal(CasinoBalance0, CasinoBalance1 + Stake)
     end,
@@ -563,7 +565,7 @@ provide_hash_fails(Cfg0) ->
         call_offchain_contract(Player, ContractPubkey,
                                ContractName, "provide_hash",
                                [OtherHash], Stake, Cfg),
-    {ok, []} =
+    {ok, _Winner} =
         call_offchain_contract(Player, ContractPubkey,
                               ContractName, "reveal",
                               [add_quotes(Key), add_quotes(ActualSide)], 0, Cfg),
@@ -638,7 +640,7 @@ casino_pick_fails(Cfg0) ->
         call_offchain_contract(Casino, ContractPubkey,
                                ContractName, "casino_pick",
                                [add_quotes(Bet)], Stake, Cfg),
-    {ok, []} =
+    {ok, _Winner} =
         call_offchain_contract(Player, ContractPubkey,
                               ContractName, "reveal",
                               [add_quotes(Key), add_quotes(ActualSide)], 0, Cfg),
@@ -709,8 +711,7 @@ reveal_fails(Cfg0) ->
         call_offchain_contract(Player, ContractPubkey,
                               ContractName, "reveal",
                               [add_quotes(Key), add_quotes(<<"random wrong side">>)], 0, Cfg),
-    %% player can actually reveal
-    {ok, []} = CorrectRevealFun(Player),
+    {ok, _Winner} = CorrectRevealFun(Player),
     %% casino can not reveal as no game
     {revert, <<"not_player">>} = CorrectRevealFun(Casino),
     %% player can not reveal while no casino pick
@@ -871,10 +872,12 @@ intended_usage(Cfg0) ->
                               Stake, %% note the same amount staked by the player
                               Cfg),
     %% The player reveals both the key string and the actual coin side
-    {ok, []} =
+    {ok, Winner} =
         call_offchain_contract(Player, ContractPubkey,
                               ContractName, "reveal",
                               [add_quotes(Key), add_quotes(ActualSide)], 0, Cfg),
+    %% casino won
+    assert_equal(Winner, participant_address(Casino, Cfg)),
     %% Since the previous game ended, now player must provide more tokens to
     %% contract with the hash
     {ok, Hash2} =
@@ -898,11 +901,12 @@ intended_usage(Cfg0) ->
                                Stake, %% note the amount staked by the casino
                                Cfg),
     %% player reveals and casino loses the game
-    {ok, []} =
+    {ok, Winner2} =
         call_offchain_contract(Player, ContractPubkey,
                                ContractName, "reveal",
                                [add_quotes(<<"some other key">>),
                                 add_quotes(?TAILS)], 0, Cfg),
+    assert_equal(Winner2, participant_address(Player, Cfg)),
     aehttp_sc_SUITE:sc_ws_close_mutual_(Cfg, Casino),
     ok.
 
@@ -1079,3 +1083,10 @@ get_offchain_balances(Player, Casino, Cfg) ->
 
 assert_equal(Val1, Val2) ->
     {Val1, Val1} = {Val1, Val2}.
+
+participant_address(Who, Cfg) ->
+    Participants = proplists:get_value(participants, Cfg),
+    #{pub_key := Pubkey} = maps:get(Who, Participants),
+    aeser_api_encoder:encode(account_pubkey, Pubkey).
+
+
