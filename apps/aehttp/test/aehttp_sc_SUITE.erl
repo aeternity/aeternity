@@ -394,7 +394,7 @@ init_per_group(both_sign, Config) ->
     Config1 = [{who_signs_update, both} | Config], % this is being ran in the with_open_channel context
     sc_ws_open_(Config1);
 init_per_group(with_open_channel, Config) ->
-    sc_ws_open_(Config);
+    sc_ws_open_(Config, #{log_keep => 25});
 init_per_group(Grp, Config) when Grp == ga_both; Grp == ga_initiator; Grp == ga_responder ->
     reset_participants(Grp, Config);
 init_per_group(sc_contracts, Config) ->
@@ -493,6 +493,7 @@ end_per_group(_Grp, _Config) ->
     ok.
 
 -define(DOC_LOG, [ sc_ws_ping_pong, sc_ws_deposit, sc_ws_withdraw,
+                   sc_ws_get_history,
                    sc_ws_failed_update, sc_ws_generic_messages,
                    sc_ws_conflict_two_offchain_updates,
                    sc_ws_conflict_deposit_and_offchain_update,

@@ -522,6 +522,7 @@ general_options(Read) ->
     , Read(<<"keep_running">>, keep_running, #{type => boolean,
                                                default => <<"true">>,
                                                mandatory => false})
+    , Read(<<"log_keep">>, log_keep, #{type => integer, mandatory => false})
     , Read(<<"slogan">>, slogan, #{type => string, mandatory => false})
     ].
 
