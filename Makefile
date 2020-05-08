@@ -59,7 +59,7 @@ comma := ,
 comma-separate = $(subst ${space},${comma},$(strip $1))
 space-separate = $(subst ${comma},${space},$(strip $1))
 
-PLANTUML_V = 1.2019.8
+PLANTUML_V = 1.2020.8
 PLANTUML_JAR = docs/.tools/plantuml-$(PLANTUML_V).jar
 PLANTUML = java -jar $(PLANTUML_JAR)
 
