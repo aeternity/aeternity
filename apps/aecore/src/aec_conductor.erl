@@ -1122,10 +1122,9 @@ handle_successfully_added_block(Block, Hash, Events, State, Origin) ->
         {micro_changed, State2 = #state{ consensus = Cons }} ->
             {ok, setup_loop(State2, false, Cons#consensus.leader, Origin)};
         {changed, BlockType, NewTopBlock, State2} ->
-            Origin == block_created andalso
+            (BlockType == key) andalso
                 aec_metrics:try_update(
-                  [ae,epoch,aecore,blocks,key,info],
-                  aec_headers:info(aec_blocks:to_key_header(NewTopBlock))),
+                  [ae,epoch,aecore,blocks,key,info], info_value(NewTopBlock)),
             IsLeader = is_leader(NewTopBlock),
             case IsLeader of
                 true ->
@@ -1137,6 +1136,13 @@ handle_successfully_added_block(Block, Hash, Events, State, Origin) ->
             {ok, setup_loop(State2, true, IsLeader, Origin)}
     end.
 
+info_value(Block) ->
+    case aec_headers:info(aec_blocks:to_key_header(Block)) of
+        I when is_integer(I) ->
+            I;
+        undefined ->
+            0
+    end.
 
 %% NG-TODO: This is pretty inefficient and can be helped with some info
 %%          in the state.
