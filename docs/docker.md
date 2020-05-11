@@ -53,6 +53,7 @@ Please note that all the **examples** below:
 
 - use the Docker `-P` which [publish all exposed ports to the host interfaces](https://docs.docker.com/engine/reference/run/#expose-incoming-ports), for good network connectivity refer to [networking documentation](configuration.md#peer-to-peer-network) how to setup firewall and/or port mapping to the host machine
 - run the container in [foreground mode](https://docs.docker.com/engine/reference/run/#detached-vs-foreground) for easier debugging (console output).
+- may require MacOS users to increase their Docker memory allocation on the first build to have around 2.5GB free memory available next to other running containers ([How-To](https://docs.docker.com/docker-for-mac/#resources)).
 
 ### Version
 
