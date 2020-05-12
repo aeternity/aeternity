@@ -67,6 +67,7 @@
                             end).
 
 -include_lib("aeutils/include/aeu_stacktrace.hrl").
+-include_lib("aechannel/src/aesc_codec.hrl").
 
 %%%==================================================================
 %%% Trace settings
@@ -319,6 +320,13 @@ process_request(#{<<"method">> := <<"channels.system">>,
                   <<"params">> := #{<<"action">> := <<"stop">>}}, FsmPid) ->
     ok = aesc_fsm:stop(FsmPid),
     no_reply;
+process_request(#{<<"method">> := <<"channels.history.fetch">> = M,
+                  <<"params">> := Params}, FsmPid) ->
+    apply_with_optional_params(
+      M, Params,
+      fun(XParams) ->
+              get_history(FsmPid, XParams)
+      end);
 process_request(#{<<"method">> := <<"channels.update.new">> = M,
                    <<"params">> := #{<<"from">>    := FromB,
                                      <<"to">>      := ToB,
@@ -673,6 +681,120 @@ safe_decode_account_keys(Keys) ->
             {error, {broken_encoding, [account]}}
     end.
 
+get_history(FsmPid, Params) ->
+    History = aesc_fsm:get_history(FsmPid, Params),
+    Result = lists:foldr(fun fold_history/2, [], History),
+    {reply, #{ action      => <<"history">>
+             , tag         => <<"fetch">>
+             , {int, type} => reply
+             , payload     => Result }}.
+
+fold_history(Entry, Acc) ->
+    case Entry of
+        {rpt, Tag, TS, #{info := Info} = Msg} ->
+            Payload = sc_ws_api:event_to_payload(Tag, Info, Msg, ?MODULE),
+            acc_history(<<"report">>, Tag, TS, Payload, Acc);
+        {Op, Tag, TS, Msg} when Op == snd; Op == rcv ->
+            Info = case Msg of
+                       {Tag, I} when is_map(I) ->
+                           I;
+                       {signed, TxType, I} ->
+                           #{ tx_type => TxType
+                            , tx => I };
+                       I when is_map(I) ->
+                           I
+                   end,
+            acc_history(snd_rcv_type(Op), Tag, TS, encode_info(Info), Acc);
+        {req, Tag, TS, Msg} ->
+            acc_history(<<"request">>, Tag, TS, encode_info(Msg), Acc);
+        Other ->
+            lager:debug("Other - ignoring: ~p", [Other]),
+            Acc
+    end.
+
+-dialyzer({no_return, acc_history/5}).
+acc_history(Type, Tag, TS, Info, Acc) ->
+     [#{ type => Type
+       , tag  => atom_to_binary(Tag, utf8)
+       , time => format_date_time(TS)
+       , info => encode_info(Info) } | Acc].
+
+encode_info(Info) when is_map(Info) ->
+    Enc = maps:map(fun encode_info_/2, Info),
+    try_encode(Enc);
+encode_info(Info) ->
+    try_encode(Info).
+
+try_encode(Enc) ->
+    %% Ensure that JSX encode doesn't crash
+    try  _ = jsx:encode(Enc),
+         Enc
+    catch
+        error:E ->
+            lager:debug("CANNOT encode (~p): ~p", [E, Enc]),
+            <<"encode_error">>
+    end.
+
+encode_info_(K, V) ->
+    try case {K, V} of
+            {chain_hash, H} ->
+                %% No predefined type for chain_hash - use bytearray
+                aeser_api_encoder:encode(bytearray, H);
+            {tx, Tx} when is_binary(Tx) ->
+                aeser_api_encoder:encode(transaction, Tx);
+            {tx, Tx} ->
+                aeser_api_encoder:encode(transaction, aetx_sign:serialize_to_binary(Tx));
+            {channel_id, Id} ->
+                aeser_api_encoder:encode(channel, Id);
+            {chan_id, Id} ->
+                aeser_api_encoder:encode(channel, Id);
+            {temporary_channel_id, Id} ->
+                aeser_api_encoder:encode(channel, Id);
+            {block_hash, H} ->
+                aeser_api_encoder:encode(micro_block_hash, H);
+            {tx_hash, H} ->
+                aeser_api_encoder:encode(tx_hash, H);
+            {_, Id} when K == initiator;
+                         K == responder;
+                         K == from;
+                         K == to ->
+                aeser_api_encoder:encode(account_pubkey, Id);
+            {to, Id} ->
+                aeser_api_encoder:encode(account_pubkey, Id);
+            {signed_tx, Tx} ->
+                aeser_api_encoder:encode(transaction, aetx_sign:serialize_to_binary(Tx));
+            {channel, Ch} when is_map(Ch) ->
+                Ch;
+            {channel, Ch} ->
+                aesc_channels:serialize_for_client(Ch);
+            {info, I} ->
+                encode_info(I);
+            {data, D} when is_map(D) ->
+                encode_info(D);
+            {_, Bin} when is_binary(Bin) ->
+                aeser_api_encoder:encode(bytearray, Bin);
+            _ ->
+                lager:debug("UNKNOWN K=~p, V=~p", [K, V]),
+                V
+        end
+    catch
+        error:E ->
+            lager:debug("CAUGHT ~p, ~p := ~p", [E, K, V]),
+            <<"encoding_error">>
+    end.
+
+snd_rcv_type(snd) -> <<"send">>;
+snd_rcv_type(rcv) -> <<"receive">>.
+
+%% In later OTP versions, there is a function in calendar for converting
+%% timestamps to RFC3339. For now, use the rfc3339 lib (which we have already),
+%% and stick to UTZ.
+-dialyzer({nowarn_function, format_date_time/1}).
+format_date_time({_,_,Us} = OSTime) ->
+    {Date, Time} = calendar:now_to_universal_time(OSTime),
+    {ok, Str} = rfc3339:format({Date, Time, Us, 0}),
+    Str.
+
 bytearray_decode(Bytearray) ->
     aeser_api_encoder:safe_decode(contract_bytearray, Bytearray).
 
@@ -732,6 +854,7 @@ merge_params({error, _} = Error, _) ->
 merge_params(Map1, Map2) when is_map(Map1), is_map(Map2) ->
     maps:merge(Map1, Map2).
 
+optional_params(<<"channels.history.fetch">>        ) -> [n_param() | filter_params()];
 optional_params(<<"channels.update.new">>           ) -> offchain_update_params();
 optional_params(<<"channels.update.new_contract">>  ) -> offchain_update_params();
 optional_params(<<"channels.update.call_contract">> ) -> offchain_update_params();
@@ -778,3 +901,16 @@ gas_price_param() ->
 nonce_param() ->
     {<<"nonce">>, nonce, #{ type => integer }}.
 
+n_param() ->
+    {<<"n">>, n, #{ type => integer }}.
+
+filter_params() ->
+    [ {<<"type">>, type, #{ type      => {list, #{type => atom, enum => [rpt, rcv, snd, req]} }
+                          , mandatory => false }}
+    , {<<"tag">>, tag, #{ type      => {list, #{type => atom, enum => tag_enums() }}
+                        , mandatory => false }}
+    ].
+
+tag_enums() ->
+    %% TODO: possibly add filter tags for other types than 'rpt'.
+    [ info, on_chain_tx, conflict, update, leave, error, debug ].

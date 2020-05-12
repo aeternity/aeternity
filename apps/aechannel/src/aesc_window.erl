@@ -13,6 +13,7 @@
         , keytake_before/3
         , info_find/3
         , info_select/3
+        , match/3         % (fun(X, Acc) -> {done | cont, Acc1} end, InitAcc, Log) -> list()
         , to_list/1
         ]).
 
@@ -167,8 +168,8 @@ info_find(KVL, Pos, #w{a = A, b = B}) when is_list(KVL) ->
             Other
     end.
 
-info_find_(KVL, Pos, [H|T]) ->
-    case match_info_t(KVL, Pos, H) of
+info_find_(KVL, Pos, [H|T]) when is_map(element(Pos, H)) ->
+    case match_info(KVL, element(Pos, H)) of
         true ->
             H;
         false ->
@@ -176,6 +177,31 @@ info_find_(KVL, Pos, [H|T]) ->
     end;
 info_find_(_, _, []) ->
     false.
+
+match(F, InitAcc, #w{a = A, b = B}) ->
+    case match_(F, A, InitAcc) of
+        {done, Acc} ->
+            Acc;
+        {cont, Acc} ->
+            match_cont_(F, B, Acc)
+    end.
+
+match_(F, [H|T], Acc) ->
+    case F(H, Acc) of
+        {done, Acc1} ->
+            {done, Acc1};
+        {cont, Acc1} ->
+            match_(F, T, Acc1)
+    end;
+match_(_, [], Acc) ->
+    {cont, Acc}.
+
+match_cont_(F, L, Acc) ->
+    case match_(F, L, Acc) of
+        {Done, Acc1} when Done==done;
+                          Done==cont ->
+            Acc1
+    end.
 
 info_select(KVL, Pos, #w{a = A, b = B}) when is_list(KVL) ->
     info_select_(KVL, Pos, A) ++ info_select_(KVL, Pos, B).

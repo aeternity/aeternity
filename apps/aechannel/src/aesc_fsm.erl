@@ -59,6 +59,7 @@
         , dry_run_contract/2   %% (fsm(), map()) -> {ok, call()} | {error, _}
         , get_balances/2       %% (fsm(), {ok, [key()]) -> [{key(), amount()}]} | {error, _}
         , get_history/1        %% (fsm()) -> [Event]
+        , get_history/2        %% (fsm(), Opts) -> [Event]
         , get_round/1          %% (fsm()) -> {ok, round()} | {error, _}
         , patterns/0
         , prune_local_calls/1  %% (fsm()) -> {ok, round()} | {error, _}
@@ -313,8 +314,11 @@ timeouts() ->
 
 %% @doc Fetch the list of recent fsm events (sliding window)
 get_history(Fsm) ->
+    get_history(Fsm, #{}).
+
+get_history(Fsm, Opts) when is_map(Opts) ->
     lager:debug("get_history(~p)", [Fsm]),
-    gen_statem:call(Fsm, get_history).
+    gen_statem:call(Fsm, {get_history, Opts}).
 
 change_config(Fsm, Key, Value) ->
     case check_change_config(Key, Value) of
@@ -469,13 +473,13 @@ initialized(cast, {?CH_ACCEPT, Msg}, #data{role = initiator} = D) ->
         {ok, D1} ->
             lager:debug("Valid channel_accept: ~p", [Msg]),
             gproc_register(D1),
-            report(info, channel_accept, D1),
-            {ok, CTx, Updates, BlockHash} = create_tx_for_signing(D1),
-            case request_signing(create_tx, CTx, Updates, BlockHash, D1) of
-                {ok, D2, Actions} ->
-                    next_state(awaiting_signature, D2, Actions);
+            D2 = report(info, channel_accept, D1),
+            {ok, CTx, Updates, BlockHash} = create_tx_for_signing(D2),
+            case request_signing(create_tx, CTx, Updates, BlockHash, D2) of
+                {ok, D3, Actions} ->
+                    next_state(awaiting_signature, D3, Actions);
                 {error, _} = Error ->
-                    close(Error, D)
+                    close(Error, D2)
             end;
         {error, _} = Error ->
             close(Error, D)
@@ -488,13 +492,13 @@ accepted(cast, {?FND_CREATED, Msg}, #data{role = responder} = D) ->
     case check_funding_created_msg(Msg, D) of
         {ok, SignedTx, Updates, BlockHash, D1} ->
             try
-            report(info, funding_created, D1),
+            D2 = report(info, funding_created, D1),
             lager:debug("funding_created: ~p", [SignedTx]),
-            case request_signing_(?FND_CREATED, SignedTx, Updates, BlockHash, D1) of
-                {ok, D2, Actions} ->
-                    next_state(awaiting_signature, D2, Actions);
+            case request_signing_(?FND_CREATED, SignedTx, Updates, BlockHash, D2) of
+                {ok, D3, Actions} ->
+                    next_state(awaiting_signature, D3, Actions);
                 {error, _} = Error ->
-                    close(Error, D)
+                    close(Error, D2)
             end
             ?CATCH_LOG(_E)
               error(_E)
@@ -510,8 +514,8 @@ awaiting_leave_ack(cast, {?LEAVE_ACK, Msg}, D) ->
     lager:debug("received leave_ack", []),
     case check_leave_ack_msg(Msg, D) of
         {ok, D1} ->
-            report_leave(D1),
-            close(leave, D1);
+            D2 = report_leave(D1),
+            close(leave, D2);
         {error, _} = Err ->
             close(Err, D)
     end;
@@ -519,8 +523,8 @@ awaiting_leave_ack(cast, {?LEAVE, Msg}, D) ->
     case check_leave_msg(Msg, D) of
         {ok, D1} ->
             D2 = send_leave_ack_msg(D1),
-            report_leave(D2),
-            close(leave, D2);
+            D3 = report_leave(D2),
+            close(leave, D3);
         {error, _} = Err ->
             close(Err, D)
     end;
@@ -532,29 +536,29 @@ awaiting_locked(cast, {?MIN_DEPTH_ACHIEVED, ChainId, ?WATCH_FND, TxHash},
                 #data{op = #op_min_depth{ tag = ?WATCH_FND
                                         , tx_hash = TxHash % same tx hash
                                         , data = OpData}} = D) ->
-    report(info, own_funding_locked, D),
+    D1 = report(info, own_funding_locked, D),
     next_state(
-      signed, send_funding_locked_msg(D#data{ on_chain_id = ChainId
-                                            , op = #op_lock{ tag = create
-                                                           , data = OpData}}));
+      signed, send_funding_locked_msg(D1#data{ on_chain_id = ChainId
+                                             , op = #op_lock{ tag = create
+                                                            , data = OpData}}));
 awaiting_locked(cast, {?MIN_DEPTH_ACHIEVED, ChainId, ?WATCH_DEP, TxHash},
                 #data{ on_chain_id = ChainId
                      , op = #op_min_depth{ tag = ?WATCH_DEP
                                          , tx_hash = TxHash % same tx hash
                                          , data = OpData}} = D) ->
-    report(info, own_deposit_locked, D),
+    D1 = report(info, own_deposit_locked, D),
     next_state(dep_signed,
-        send_deposit_locked_msg(TxHash, D#data{op = #op_lock{ tag = deposit
-                                                            , data = OpData}}));
+        send_deposit_locked_msg(TxHash, D1#data{op = #op_lock{ tag = deposit
+                                                             , data = OpData}}));
 awaiting_locked(cast, {?MIN_DEPTH_ACHIEVED, ChainId, ?WATCH_WDRAW, TxHash},
                 #data{ on_chain_id = ChainId
                      , op = #op_min_depth{ tag = ?WATCH_WDRAW
                                          , tx_hash = TxHash % same tx hash
                                          , data = OpData}} = D) ->
-    report(info, own_withdraw_locked, D),
+    D1 = report(info, own_withdraw_locked, D),
     next_state(wdraw_signed,
-        send_withdraw_locked_msg(TxHash, D#data{ op = #op_lock{ tag = withdraw
-                                                              , data = OpData}}));
+        send_withdraw_locked_msg(TxHash, D1#data{ op = #op_lock{ tag = withdraw
+                                                               , data = OpData}}));
 awaiting_locked(cast, {?FND_LOCKED, _Msg}, D) ->
     postpone(D);
 awaiting_locked(cast, {?DEP_LOCKED, _Msg}, D) ->
@@ -617,9 +621,9 @@ awaiting_open(enter, _OldSt, _D) -> keep_state_and_data;
 awaiting_open(cast, {?CH_OPEN, Msg}, #data{role = responder} = D) ->
     case check_open_msg(Msg, D) of
         {ok, D1} ->
-            report(info, channel_open, D1),
-            gproc_register(D1),
-            next_state(accepted, send_channel_accept(D1));
+            D2 = report(info, channel_open, D1),
+            gproc_register(D2),
+            next_state(accepted, send_channel_accept(D2));
         {error, _} = Error ->
             close(Error, D)
     end;
@@ -653,19 +657,19 @@ awaiting_reestablish(cast, {?CH_REESTABL, Msg}, #data{ role = responder
                                                      , op = Op} = D) ->
     case check_reestablish_msg(Msg, D) of
         {ok, D1} ->
-            report(info, channel_reestablished, D1),
+            D2 = report(info, channel_reestablished, D1),
             lager:debug("Op = ~p", [Op]),
-            D2 = case Op#op_reestablish.mode of
+            D3 = case Op#op_reestablish.mode of
                      restart ->
                          lager:debug("re-register and restart watcher", []),
-                         gproc_register(D1),
-                         watcher_reg(D1#data.on_chain_id),
-                         D1;
+                         gproc_register(D2),
+                         watcher_reg(D2#data.on_chain_id),
+                         D2;
                      remain ->
                          lager:debug("Already running - don't re-register", []),
-                         D1
+                         D2
                  end,
-            next_state(open, send_reestablish_ack_msg(D2));
+            next_state(open, send_reestablish_ack_msg(D3));
         {error, _} = Error ->
             close(Error, D)
     end;
@@ -850,9 +854,9 @@ awaiting_signature(cast, {?SIGNED, ?SHUTDOWN_ACK = OpTag, SignedTx} = Msg,
             D1 = log(rcv, ?SIGNED, Msg, D),
             D2 = send_shutdown_ack_msg(SignedTx, D1),
             D3 = D2#data{op = ?NO_OP},
-            report_on_chain_tx(close_mutual, SignedTx, D3),
-            D4 = D3#data{op = #op_close{data = OpData0#op_data{signed_tx = SignedTx}}},
-            next_state(mutual_closed, D4)
+            D4 = report_on_chain_tx(close_mutual, SignedTx, D3),
+            D5 = D4#data{op = #op_close{data = OpData0#op_data{signed_tx = SignedTx}}},
+            next_state(mutual_closed, D5)
         end, D);
 awaiting_signature(cast, {?SIGNED, force_progress_tx = OpTag, SignedTx} = Msg,
                    #data{op = #op_sign{ tag = OpTag }} = D) ->
@@ -928,17 +932,17 @@ awaiting_update_ack(cast, {?UPDATE_ERR, Msg}, D) ->
     lager:debug("received update_err: ~p", [Msg]),
     case check_update_err_msg(Msg, D) of
         {ok, ?ERR_CONFLICT, D1} ->
-            report(conflict, Msg, D1),
-            next_state(open, D1);
+            D2 = report(conflict, Msg, D1),
+            next_state(open, D2);
         {ok, _ErrorCode, D1} ->
             %% TODO: send a different kind of report (e.g. validation error)
-            report(conflict, Msg, D1),
-            next_state(open, D1);
+            D2 = report(conflict, Msg, D1),
+            next_state(open, D2);
         {error, fallback_state_mismatch} = Error ->
             %% falling back to an inconsistent state
             %% this is possible if we are a malicious actor only
-            report(conflict, Msg, D),
-            close(Error, D);
+            D1 = report(conflict, Msg, D),
+            close(Error, D1);
         {error, _} = Error ->
             close(Error, D)
     end;
@@ -966,8 +970,8 @@ channel_closed(cast, {?CHANNEL_CHANGED, _Info} = Msg, D) ->
     %% This is a weird case. The channel was closed, but now isn't.
     %% This would indicate a fork switch. TODO: detect channel status
     %% and respond accordingly. For now. Panic and terminate
-    report(info, zombie_channel, D),
-    close(zombie_channel, log(rcv, msg_type(Msg), Msg, D));
+    D1 = report(info, zombie_channel, D),
+    close(zombie_channel, log(rcv, msg_type(Msg), Msg, D1));
 channel_closed(Type, Msg, D) ->
     handle_common_event(Type, Msg, discard, D).
 
@@ -1019,8 +1023,8 @@ channel_closing(Type, Msg, D) ->
 
 enter_closing(D) ->
     if D#data.channel_status =/= closing ->
-            report(info, closing, D),
-            report_update(D#data{channel_status = closing});
+            D1 = report(info, closing, D),
+            report_update(D1#data{channel_status = closing});
        true ->
             report_update(D)
     end.
@@ -1050,12 +1054,12 @@ dep_half_signed(cast, {?DEP_ERR, Msg}, D) ->
     lager:debug("received deposit_error: ~p", [Msg]),
     case check_deposit_error_msg(Msg, D) of
         {ok, ?ERR_CONFLICT, D1} ->
-            report(conflict, Msg, D1),
-            next_state(open, D1);
+            D2 = report(conflict, Msg, D1),
+            next_state(open, D2);
         {ok, _ErrorCode, D1} ->
             %% TODO: send a different kind of report (e.g. validation error)
-            report(conflict, Msg, D1),
-            next_state(open, D1);
+            D2 = report(conflict, Msg, D1),
+            next_state(open, D2);
         {error, _} = Error ->
             close(Error, D)
     end;
@@ -1069,8 +1073,8 @@ dep_signed(cast, {?DEP_LOCKED, Msg},
     #op_data{signed_tx  = SignedTx} = OpData,
     case check_deposit_locked_msg(Msg, SignedTx, D) of
         {ok, D1} ->
-            report(info, deposit_locked, D1),
-            deposit_locked_complete(OpData, D1#data{op = ?NO_OP});
+            D2 = report(info, deposit_locked, D1),
+            deposit_locked_complete(OpData, D2#data{op = ?NO_OP});
         {error, _} = Error ->
             close(Error, D)
     end;
@@ -1088,15 +1092,15 @@ half_signed(cast, {?FND_SIGNED = OpTag, Msg},
             try_to_push_to_mempool(SignedTx, D1, awaiting_locked,
                 fun(D0) ->
                     lager:debug("funding_signed ok", []),
-                    report(info, funding_signed, D0),
-                    D01 = D0#data{create_tx = SignedTx},
+                    D01 = report(info, funding_signed, D0),
+                    D02 = D01#data{create_tx = SignedTx},
                     #op_ack{ tag = create_tx
                            , data = #op_data{updates = Updates}} = Op,
-                    D02 = safe_watched_action_report(SignedTx, Msg, D01,
+                    D03 = safe_watched_action_report(SignedTx, Msg, D02,
                                                      Updates, undefined,
                                                      ?WATCH_FND, OpTag),
-                    gproc_register_on_chain_id(D02),
-                    D02
+                    gproc_register_on_chain_id(D03),
+                    D03
                 end);
         {error, Error} ->
             close(Error, D)
@@ -1121,11 +1125,11 @@ mutual_closing(cast, {?SHUTDOWN_ACK, Msg}, D) ->
             lager:debug("shutdown_ack ok", []),
             try_to_push_to_mempool(SignedTx, D1, mutual_closed,
                 fun(D0) ->
-                    report_on_chain_tx(close_mutual, SignedTx, D0),
+                    D01 = report_on_chain_tx(close_mutual, SignedTx, D0),
                     OpData = #op_data{ signed_tx  = SignedTx
                                      , updates    = Updates
                                      , block_hash = BlockHash },
-                    D0#data{op = #op_close{data = OpData}}
+                    D01#data{op = #op_close{data = OpData}}
                 end);
         {error, _} = Error ->
             lager:debug("Validation of SHUTDOWN_ACK failed: ~p", [Error]),
@@ -1142,25 +1146,25 @@ mutual_closing(Type, Msg, D) ->
     handle_common_event(Type, Msg, error, D).
 
 open(enter, _OldSt, D) ->
-    D1 = if D#data.channel_status =/= open ->
-                 report(info, open, D),
-                 report_update(D#data{channel_status = open});
+    D2 = if D#data.channel_status =/= open ->
+                 D1 = report(info, open, D),
+                 report_update(D1#data{channel_status = open});
             true ->
                  report_update(D)
          end,
-    keep_state(clear_ongoing(D1));
+    keep_state(clear_ongoing(D2));
 open(cast, {?UPDATE, Msg}, D) ->
     case check_update_msg(Msg, D) of
         {ok, SignedTx, Updates, BlockHash, D1} ->
-            report(info, update, D1),
-            case request_signing_(?UPDATE_ACK, SignedTx, Updates, BlockHash, D1) of
-                {ok, D2, Actions} ->
-                    next_state(awaiting_signature, set_ongoing(?UPDATE, D2), Actions);
+            D2 = report(info, update, D1),
+            case request_signing_(?UPDATE_ACK, SignedTx, Updates, BlockHash, D2) of
+                {ok, D3, Actions} ->
+                    next_state(awaiting_signature, set_ongoing(?UPDATE, D3), Actions);
                 {error, _Error} ->
                     lager:debug("Rejected incoming off-chain update because of ~p", [_Error]),
                     %% TODO: This is not strictly a conflict
                     %% Should be a different response
-                    handle_update_conflict(?UPDATE, D1)
+                    handle_update_conflict(?UPDATE, D2)
             end;
         {error, _Error} ->
             lager:debug("Rejected incoming off-chain update because of ~p", [_Error]),
@@ -1169,15 +1173,15 @@ open(cast, {?UPDATE, Msg}, D) ->
 open(cast, {?DEP_CREATED, Msg}, D) ->
     case check_deposit_created_msg(Msg, D) of
         {ok, SignedTx, Updates, BlockHash, D1} ->
-            report(info, deposit_created, D1),
+            D2 = report(info, deposit_created, D1),
             lager:debug("deposit_created: ~p", [SignedTx]),
-            case request_signing_(?DEP_CREATED, SignedTx, Updates, BlockHash, D1) of
-                {ok, D2, Actions} ->
-                    next_state(awaiting_signature, set_ongoing(?DEP_CREATED, D2), Actions);
+            case request_signing_(?DEP_CREATED, SignedTx, Updates, BlockHash, D2) of
+                {ok, D3, Actions} ->
+                    next_state(awaiting_signature, set_ongoing(?DEP_CREATED, D3), Actions);
                 {error, _Error} ->
                     lager:debug("Rejected incoming deposit because of ~p", [_Error]),
                     %% TODO: should be a different error response
-                    handle_update_conflict(?DEP_CREATED, D1)
+                    handle_update_conflict(?DEP_CREATED, D2)
             end;
         {error, _Error} ->
             lager:debug("Rejected incoming deposit because of ~p", [_Error]),
@@ -1186,16 +1190,16 @@ open(cast, {?DEP_CREATED, Msg}, D) ->
 open(cast, {?WDRAW_CREATED, Msg}, D) ->
     case check_withdraw_created_msg(Msg, D) of
         {ok, SignedTx, Updates, BlockHash, D1} ->
-            report(info, withdraw_created, D1),
+            D2 = report(info, withdraw_created, D1),
             lager:debug("withdraw_created: ~p", [SignedTx]),
             case request_signing_(?WDRAW_CREATED, SignedTx, Updates,
-                                  BlockHash, D1) of
-                {ok, D2, Actions} ->
-                    next_state(awaiting_signature, set_ongoing(?WDRAW_CREATED, D2), Actions);
+                                  BlockHash, D2) of
+                {ok, D3, Actions} ->
+                    next_state(awaiting_signature, set_ongoing(?WDRAW_CREATED, D3), Actions);
                 {error, _Error} ->
                     lager:debug("Rejected incoming withdrawal because of ~p", [_Error]),
                     %% TODO: Should be a different error response
-                    handle_update_conflict(?WDRAW_CREATED, D1)
+                    handle_update_conflict(?WDRAW_CREATED, D2)
             end;
         {error, _Error} ->
             lager:debug("Rejected incoming withdrawal because of ~p", [_Error]),
@@ -1203,7 +1207,7 @@ open(cast, {?WDRAW_CREATED, Msg}, D) ->
     end;
 open(cast, {?SIGNED, _, _} = Msg, D) ->
     lager:debug("Received signing reply in 'open' - ignore: ~p", [Msg]),
-    keep_state(log(ignore, ?SIGNED, Msg, D));
+    keep_state(log(drop, ?SIGNED, Msg, D));
 open({call, From}, {attach_responder, #{reestablish := true} = Info} = _Req,
      #data{ peer_connected = false, opts = Opts } = D) ->
     lager:debug("call: ~p; D = ~p", [_Req, pr_data(D)]),
@@ -1230,14 +1234,14 @@ open(cast, {?LEAVE, Msg}, #data{ role = Role
         {ok, D1} ->
             lager:debug("received leave msg", []),
             send_leave_ack_msg(D1),
-            report_leave(D1),
+            D2 = report_leave(D1),
             case {Role, maps:get(keep_running, Opts, false)} of
                 {responder, true} ->
                     lager:debug("Keep running after peer leave", []),
-                    keep_state(D1);
+                    keep_state(D2);
                 _ ->
                     lager:debug("Closing due to peer leave", []),
-                    close(leave, D1)
+                    close(leave, D2)
             end;
         {error, E} ->
             lager:debug("leave msg error: ~p", [E]),
@@ -1252,10 +1256,10 @@ reestablish_init(enter, _OldSt, _D) -> keep_state_and_data;
 reestablish_init(cast, {?CH_REEST_ACK, Msg}, D) ->
     case check_reestablish_ack_msg(Msg, D) of
         {ok, D1} ->
-            report(info, channel_reestablished, D1),
-            ChId = D1#data.on_chain_id,
+            D2 = report(info, channel_reestablished, D1),
+            ChId = D2#data.on_chain_id,
             ok = watcher_reg(ChId),
-            next_state(open, D1);
+            next_state(open, D2);
         {error, _} = Err ->
             close(Err, D)
     end;
@@ -1266,8 +1270,8 @@ signed(enter, _OldSt, _D) -> keep_state_and_data;
 signed(cast, {?FND_LOCKED, Msg}, D) ->
     case check_funding_locked_msg(Msg, D) of
         {ok, D1} ->
-            report(info, funding_locked, D1),
-            funding_locked_complete(D1);
+            D2 = report(info, funding_locked, D1),
+            funding_locked_complete(D2);
         {error, _} = Error ->
             close(Error, D)
     end;
@@ -1299,12 +1303,12 @@ wdraw_half_signed(cast, {?WDRAW_ERR, Msg}, D) ->
     lager:debug("received withdraw_error: ~p", [Msg]),
     case check_withdraw_error_msg(Msg, D) of
         {ok, ?ERR_CONFLICT, D1} ->
-            report(conflict, Msg, D1),
-            next_state(open, D1);
+            D2 = report(conflict, Msg, D1),
+            next_state(open, D2);
         {ok, _ErrorCode, D1} ->
             %% TODO: send a different kind of report (e.g. validation error)
-            report(conflict, Msg, D1),
-            next_state(open, D1);
+            D2 = report(conflict, Msg, D1),
+            next_state(open, D2);
         {error, _} = Error ->
             close(Error, D)
     end;
@@ -1321,8 +1325,8 @@ wdraw_signed(cast, {?WDRAW_LOCKED, Msg},
     #op_data{signed_tx  = SignedTx} = OpData,
     case check_withdraw_locked_msg(Msg, SignedTx, D) of
         {ok, D1} ->
-            report(info, withdraw_locked, D1),
-            withdraw_locked_complete(OpData, D1#data{op = ?NO_OP});
+            D2 = report(info, withdraw_locked, D1),
+            withdraw_locked_complete(OpData, D2#data{op = ?NO_OP});
         {error, _} = Error ->
             close(Error, D)
     end;
@@ -2749,13 +2753,13 @@ shutdown_msg_received(Msg, D) ->
     end.
 
 shutdown_msg_received(SignedTx, Updates, BlockHash, D) ->
-    report(info, shutdown, D),
-    case request_signing_(?SHUTDOWN_ACK, SignedTx, Updates, BlockHash, D) of
-        {ok, D1, Actions} ->
-            next_state(awaiting_signature, D1, Actions);
+    D1 = report(info, shutdown, D),
+    case request_signing_(?SHUTDOWN_ACK, SignedTx, Updates, BlockHash, D1) of
+        {ok, D2, Actions} ->
+            next_state(awaiting_signature, D2, Actions);
         {error, E} ->
             lager:debug("Couldn't co-sign shutdown req: ~p", [E]),
-            keep_state(D)
+            keep_state(D1)
     end.
 
 send_shutdown_msg(SignedTx, #data{session = Session} = Data) ->
@@ -2972,13 +2976,13 @@ make_recoverable_error_msg(#{code := ErrorCode}, #data{ state = State
 send_recoverable_error_msg_(Info, #data{session = Sn } = Data, ReportConflict) ->
     Msg = make_recoverable_error_msg(Info, Data),
     maybe_send_error_msg(Info, Sn, Msg, Data),
-    case ReportConflict of
-        true ->
-            report(conflict, Msg, Data);
-        false ->
-            pass
-    end,
-    log(snd, error_msg_type(Info, Data), Msg, Data).
+    Data1 = case ReportConflict of
+                true ->
+                    report(conflict, Msg, Data);
+                false ->
+                    Data
+            end,
+    log(snd, error_msg_type(Info, Data1), Msg, Data1).
 
 maybe_send_error_msg(#{ respond := true } = Info, Sn, Msg, D) ->
     send_recoverable_error_msg(error_msg_type(Info, D), Sn, Msg);
@@ -3266,20 +3270,21 @@ report_update(#data{state = State, last_reported_update = Last} = D) ->
         {Last, _} ->
             D;
         {New, SignedTx} ->
-            report(update, SignedTx, D),
-            cache_state(D),
-            D#data{last_reported_update = New}
+            D1 = report(update, SignedTx, D),
+            cache_state(D1),
+            D1#data{last_reported_update = New}
     end.
 
 report_leave(#data{role = Role, opts = Opts, state = State} = D) ->
     {_, SignedTx} = aesc_offchain_state:get_latest_signed_tx(State),
-    case {Role, maps:get(keep_running, Opts, false)} of
-        {responder, true} ->
-            report_with_notice(leave, SignedTx, keep_running, D);
-        _ ->
-            report(leave, SignedTx, D)
-    end,
-    cache_state(D).
+    D1 = case {Role, maps:get(keep_running, Opts, false)} of
+             {responder, true} ->
+                 report_with_notice(leave, SignedTx, keep_running, D);
+             _ ->
+                 report(leave, SignedTx, D)
+         end,
+    cache_state(D1),
+    D1.
 
 report_on_chain_tx(Info, SignedTx, D) ->
     report_on_chain_tx(Info, signed_tx_type(SignedTx), SignedTx, D).
@@ -3320,19 +3325,25 @@ report(Tag, Info, D) ->
                                  , tag  => Tag
                                  , info => Info }, D).
 
-report_info(DoRpt, Msg, #data{client_connected = false}) ->
-    lager:debug("No client. DoRpt = ~p, Msg = ~p", [DoRpt, Msg]),
-    ok;
-report_info(DoRpt, Msg0, #data{role = Role, client = Client} = D) ->
+report_info(DoRpt, Msg0, #data{ role = Role
+                              , client_connected = Connected
+                              , client = Client} = D) ->
     if DoRpt ->
             Msg = rpt_message(Msg0, D),
             lager:debug("~p report_info(true, Client = ~p, Msg = ~p)",
                         [Role, Client, Msg]),
-            Client ! {?MODULE, self(), Msg};
+            maybe_send_rpt(Connected, Client, Msg),
+            log(rpt, maps:get(tag, Msg), Msg, D);
        true  ->
             lager:debug("~p report_info(~p, ~p)", [Role, DoRpt, Msg0]),
-            ok
-    end,
+            D
+    end.
+
+maybe_send_rpt(true, Client, Msg) ->
+    Client ! {?MODULE, self(), Msg},
+    ok;
+maybe_send_rpt(false, _, Msg) ->
+    lager:debug("No client. Msg = ~p", [Msg]),
     ok.
 
 rpt_message(Msg, #data{on_chain_id = undefined}) ->
@@ -3361,6 +3372,39 @@ log_msg(Op, Type, M, Log) ->
 
 win_to_list(Log) ->
     aesc_window:to_list(Log).
+
+filter_log(Log, Opts) ->
+    N = maps:get(n, Opts, 10),
+    {_, Res} = aesc_window:match(
+                 fun(Msg, Acc) ->
+                         match_f(Msg, Acc, Opts)
+                 end, {N, []}, Log),
+    lists:reverse(Res).
+
+match_f({Type, Tag, _TS, _M} = Entry, {N, Found} = Acc, Opts) ->
+    case match_filter(type, Type, Opts)
+        andalso match_filter(tag, Tag, Opts) of
+        true ->
+            Found1 = [Entry|Found],
+            case N - 1 of
+                N1 when N1 =< 0 ->
+                    {done, {N1, Found1}};
+                N1 ->
+                    {cont, {N1, Found1}}
+            end;
+        false ->
+            {cont, Acc}
+    end.
+
+match_filter(Key, Val, Opts) ->
+    case Opts of
+        #{Key := L} ->
+            lists:member(Val, L);
+        _ ->
+            %% allow if no filter on Key
+            true
+    end.
+
 
 process_update_error({off_chain_update_error, Reason}, From, D) ->
     keep_state(D, [{reply, From, {error, Reason}}]);
@@ -3584,8 +3628,8 @@ maybe_check_sigs_create(Tx, Updates, Who, NextState, #data{state = State} = D) -
         true ->
             NextState();
         {false, E2} ->
-            report(error, E2, D),
-            keep_state(D)
+            D1 = report(error, E2, D),
+            keep_state(D1)
     end.
 
 %% @doc this is a function to be called after this FSM's client had
@@ -3613,9 +3657,9 @@ maybe_check_auth(SignedTx, OpSign, WrongTxModMsg, Who, NextState, D)
         ok ->
             NextState();
         {error, E} ->
-            report(error, E, D),
+            D1 = report(error, E, D),
             handle_recoverable_error(#{ code => ?ERR_VALIDATION
-                                      , msg_type => OpTag}, D)
+                                      , msg_type => OpTag}, D1)
     end.
 
 pubkeys(both, D, _) ->
@@ -3760,8 +3804,8 @@ connection_opts(#{opts := Opts} = Arg) ->
 
 terminate(Reason, _State, #data{session = Sn} = Data) ->
     lager:debug("terminate(~p, ~p, _)", [Reason, _State]),
-    report(info, {died, Reason}, Data),
-    report(debug, {log, win_to_list(Data#data.log)}, Data),
+    Data1 = report(info, {died, Reason}, Data),
+    _Data2 = report(debug, {log, win_to_list(Data#data.log)}, Data1),
     try aesc_session_noise:close(Sn)
     ?CATCH_LOG(_E)
         ok
@@ -3856,16 +3900,18 @@ prepare_initial_state(Opts, State, SessionPid, ReestablishOpts) ->
             ok_next(awaiting_open, Data)
     end,
     %% The FSM is up - send the FSM ID to the user
-    report(info, {fsm_up, FsmIdWrapper}, Data),
+    {ok, Next, D, StOpts} = NextState,
+    D1 = report(info, {fsm_up, FsmIdWrapper}, D),
+    NextState1 = {ok, Next, D1, StOpts},
     %% In case we are reestablishing a channel we change the token to a new one
     case Reestablish of
         true ->
             ChId = maps:get(existing_channel_id, ReestablishOpts),
             %% Shouldn't fail
             ok = aesc_state_cache:change_fsm_id(ChId, my_account(Data), FsmIdWrapper),
-            NextState;
+            NextState1;
         false ->
-            NextState
+            NextState1
     end.
 
 -spec check_change_config(atom(), any()) -> {ok, atom(), any()} | {error, invalid_config}.
@@ -4090,17 +4136,21 @@ error_binary(E) when is_atom(E) ->
 
 send_error_msg(Reason, #data{session = Sn} = D) ->
     case cur_channel_id(D) of
-        undefined -> no_msg;
+        undefined ->
+            %% no msg
+            D;
         ChId ->
             case Reason of
                 {error, E} ->
                     Eb = error_binary(E),
                     Msg = #{ channel_id => ChId
                            , data       => Eb },
-                    report(error, Eb, D),
-                    aesc_session_noise:generic_error(Sn, Msg);
+                    D1 = report(error, Eb, D),
+                    aesc_session_noise:generic_error(Sn, Msg),
+                    D1;
                 _ ->
-                    no_msg
+                    %% no msg
+                    D
             end
     end.
 
@@ -4283,31 +4333,31 @@ close(Reason, D) ->
     close_(Reason, log(evt, close, Reason, D)).
 
 close_(close_mutual, D) ->
-    report(info, close_mutual, D),
-    {stop, normal, D};
+    D1 = report(info, close_mutual, D),
+    {stop, normal, D1};
 close_(closed_confirmed, D) ->
-    report(info, closed_confirmed, D),
-    {stop, normal, D};
+    D1 = report(info, closed_confirmed, D),
+    {stop, normal, D1};
 close_(leave, D) ->
     {stop, normal, D};
 close_(bad_signature, D) ->
-    report(info, bad_signature, D),
-    {stop, normal, D};
+    D1 = report(info, bad_signature, D),
+    {stop, normal, D1};
 close_(bad_state_hash, D) ->
-    report(info, bad_state_hash, D),
-    {stop, normal, D};
+    D1 = report(info, bad_state_hash, D),
+    {stop, normal, D1};
 close_(not_create_tx, D) ->
-    report(info, not_create_tx, D),
-    {stop, normal, D};
+    D1 = report(info, not_create_tx, D),
+    {stop, normal, D1};
 close_({timeout, _}, D) ->
-    report(info, timeout, D),
-    {stop, normal, D};
+    D1 = report(info, timeout, D),
+    {stop, normal, D1};
 close_(Reason, D) ->
-    try send_error_msg(Reason, D)
-    ?CATCH_LOG(_E)
-        ignore
-    end,
-    {stop, Reason, D}.
+    D1 = try send_error_msg(Reason, D)
+                  ?CATCH_LOG(_E)
+                  D
+         end,
+    {stop, Reason, D1}.
 
 handle_call(_, {?RECONNECT_CLIENT, Pid, FsmIdWrapper} = Msg, From,
             #data{ client_connected = false
@@ -4322,8 +4372,8 @@ handle_call(_, {?RECONNECT_CLIENT, Pid, FsmIdWrapper} = Msg, From,
             D1 = D#data{ client           = Pid
                        , client_mref      = MRef
                        , client_connected = true },
-            report(info, {fsm_up, FsmIdWrapper}, D1),
-            keep_state(D1, [{reply, From, ok}]);
+            D2 = report(info, {fsm_up, FsmIdWrapper}, D1),
+            keep_state(D2, [{reply, From, ok}]);
         false ->
             lager:debug("Client authentication failed", []),
             keep_state(D, [{reply, From, {error, invalid_fsm_id}}])
@@ -4353,7 +4403,7 @@ handle_call_(awaiting_signature, {abort_update, Code, Tag}, From,
     case { lists:member(Tag, ?CANCEL_SIGN_TAGS)
          , lists:member(Tag, ?CANCEL_ACK_TAGS )} of
         {SoloAction, AckAction} when SoloAction orelse AckAction ->
-            report(info, aborted_update, D),
+            D1 = report(info, aborted_update, D),
             lager:debug("update aborted", []),
             {ok, Channel} = aec_chain:get_channel(ChannelId),
             NextState =
@@ -4363,14 +4413,14 @@ handle_call_(awaiting_signature, {abort_update, Code, Tag}, From,
                 end,
             case SoloAction of
                 true ->
-                    next_state(NextState, clear_ongoing(D#data{op = ?NO_OP}),
-                              [{reply, From, ok}]);
+                    next_state(NextState, clear_ongoing(D1#data{op = ?NO_OP}),
+                               [{reply, From, ok}]);
                 false ->
                     handle_recoverable_error(NextState,
-                                            #{ code => Code
-                                             , respond => true
-                                             , msg_type => Tag }, D, [{reply, From, ok}],
-                                            _ReportConflictToClient = false)
+                                             #{ code => Code
+                                              , respond => true
+                                              , msg_type => Tag }, D1, [{reply, From, ok}],
+                                             _ReportConflictToClient = false)
             end;
         {false, false} ->
             lager:debug("update can not be aborted for ~p", [Tag]),
@@ -4594,8 +4644,8 @@ handle_call_(_, {get_poi, Filter}, From, #data{state = State} = D) ->
             {error, _} -> {error, not_found}
         end,
     keep_state(D, [{reply, From, Response}]);
-handle_call_(_St, get_history, From, #data{log = Log} = D) ->
-    keep_state(D, [{reply, From, win_to_list(Log)}]);
+handle_call_(_St, {get_history, Opts}, From, #data{log = Log} = D) ->
+    keep_state(D, [{reply, From, filter_log(Log, Opts)}]);
 handle_call_(_St, {change_config, Key, Value}, From, D) ->
     case handle_change_config(Key, Value, D) of
         {ok, D1} ->
@@ -4798,11 +4848,11 @@ handle_common_event_(cast, ?DISCONNECT = Msg, _St, _, #data{ channel_status = St
         _ ->
             case {Role, maps:get(keep_running, Opts, false), MayDisconnect} of
                 {responder, true, true} ->
-                    report(info, peer_disconnected, D1),
+                    D2 = report(info, peer_disconnected, D1),
                     next_state(
                       open,
                       prepare_for_reestablish(
-                        fallback_to_stable_state(D1#data{ session = undefined
+                        fallback_to_stable_state(D2#data{ session = undefined
                                                         , peer_connected = false })));
                 _ ->
                     close(disconnect, D1)
@@ -4811,8 +4861,8 @@ handle_common_event_(cast, ?DISCONNECT = Msg, _St, _, #data{ channel_status = St
 handle_common_event_(cast, {?INBAND_MSG, Msg}, _St, _, D) ->
     NewD = case check_inband_msg(Msg, D) of
                {ok, D1} ->
-                   report(message, Msg, D1),
-                   D1;
+                   D2 = report(message, Msg, D1),
+                   D2;
                {error, _} = Err ->
                    lager:warning("Error in inband_msg: ~p", [Err]),
                    D
@@ -4823,12 +4873,12 @@ handle_common_event_(cast, {?CHANNEL_CLOSING, Info} = Msg, _St, _, D) ->
     D1 = log(rcv, ?CHANNEL_CLOSING, Msg, D),
     case check_closing_event(Info, D1) of
         {can_slash, _Round, SignedTx} ->
-            report_on_chain_tx(can_slash, SignedTx, D1),
-            next_state(channel_closing, D1);
+            D2 = report_on_chain_tx(can_slash, SignedTx, D1),
+            next_state(channel_closing, D2);
         {ok, proper_solo_closing, SignedTx} ->
             lager:debug("Channel solo-closing", []),
-            report_on_chain_tx(solo_closing, SignedTx, D1),
-            next_state(channel_closing, D1);
+            D2 = report_on_chain_tx(solo_closing, SignedTx, D1),
+            next_state(channel_closing, D2);
         {error, not_solo_closing} ->
             %% the min depth watcher reported a channel object that is not
             %% closing, this could be due to a (micro) fork that rejected the
@@ -4853,8 +4903,8 @@ handle_common_event_(cast, {?CHANNEL_CHANGED, #{ tx_hash := TxHash
                     close({error, unexpected_tx_on_chain}, D);
                 _ ->
                     lager:debug("Fsm notes channel change ~p", [Info]),
-                    report_on_chain_tx(channel_changed, Type, SignedTx, D1),
-                    keep_state(maybe_act_on_tx(Type, SignedTx, D1))
+                    D2 = report_on_chain_tx(channel_changed, Type, SignedTx, D1),
+                    keep_state(maybe_act_on_tx(Type, SignedTx, D2))
             end
     end;
 handle_common_event_(cast, {?MIN_DEPTH_ACHIEVED, _ChainId,
@@ -4863,10 +4913,10 @@ handle_common_event_(cast, {?MIN_DEPTH_ACHIEVED, _ChainId,
     %% requesting client is to get a min_depth notification, and the fsm is not
     %% locked while waiting for it.
     lager:debug("Received min_depth confirmation of snapshot_solo_tx ~p", [TxHash]),
-    report(info, #{ event => min_depth_achieved
-                  , type => aesc_snapshot_solo_tx:type()
-                  , tx_hash => TxHash }, D),
-    keep_state(D);
+    D1 = report(info, #{ event => min_depth_achieved
+                       , type => aesc_snapshot_solo_tx:type()
+                       , tx_hash => TxHash }, D),
+    keep_state(D1);
 handle_common_event_(cast, {?CHANNEL_CLOSED = OpTag, #{tx := SignedTx} = _Info} = Msg, _St, _, D) ->
     %% Start a minimum-depth watch, then (if confirmed) terminate
     D2 = safe_watched_action_report(SignedTx, Msg, D, [], undefined, ?WATCH_CLOSED, OpTag, msg_type(Msg)),
@@ -5046,23 +5096,22 @@ safe_watched_action_report(SignedTx, Msg, Data, Updates, ActionFun, WatchTag,
     safe_watched_action_report(SignedTx, Msg, Data, Updates, ActionFun,
                                WatchTag, ReportTag, undefined).
 
-safe_watched_action_report(SignedTx, Msg, Data, Updates, ActionFun, WatchTag,
+safe_watched_action_report(SignedTx, Msg, D, Updates, ActionFun, WatchTag,
                            ReportTag, LogType) ->
-    {ok, Data1} = watcher_request({?MIN_DEPTH, WatchTag}, SignedTx, Updates, Data),
-    Data2 = case LogType of
-                undefined ->
-                    Data1;
-                _ ->
-                    log(rcv, LogType, Msg, Data1)
-            end,
-    Data3 = case ActionFun of
-                undefined ->
-                    Data2;
-                _ ->
-                    ActionFun(SignedTx, Data2)
-            end,
-    report_on_chain_tx(ReportTag, SignedTx, Data3),
-    Data3.
+    {ok, D1} = watcher_request({?MIN_DEPTH, WatchTag}, SignedTx, Updates, D),
+    D2 = case LogType of
+             undefined ->
+                 D1;
+             _ ->
+                 log(rcv, LogType, Msg, D1)
+         end,
+    D3 = case ActionFun of
+             undefined ->
+                 D2;
+             _ ->
+                 ActionFun(SignedTx, D2)
+         end,
+    report_on_chain_tx(ReportTag, SignedTx, D3).
 
 push_to_mempool(SignedTx) ->
     case aec_tx_pool:push(SignedTx) of
@@ -5143,8 +5192,8 @@ is_mutual_tx(SignedTx) ->
 mutual_close_error(Msg, D) ->
     case check_shutdown_err_msg(Msg, D) of
         {ok, _ErrorCode, D1} ->
-            report(conflict, Msg, D1),
-            next_state(open, D1);
+            D2 = report(conflict, Msg, D1),
+            next_state(open, D2);
         {error, tx_not_found} -> %% tx had not been posted on-chain
             #data{ op = Op } = D,
             {SignedTx, BlockHash} =
@@ -5164,16 +5213,16 @@ mutual_close_error(Msg, D) ->
                         ok -> %% tx is ok, wait for it on-chain
                             keep_state(log(rcv, ?SHUTDOWN_ERR, Msg, D));
                         {error, _Err} ->
-                            report(conflict, Msg, D),
-                            next_state(open, D)
+                            D1 = report(conflict, Msg, D),
+                            next_state(open, D1)
                     end;
                 {error, _Err} ->
-                    report(conflict, Msg, D),
-                    next_state(open, D)
+                    D1 = report(conflict, Msg, D),
+                    next_state(open, D1)
             end;
         {error, Error} ->
-            report_with_notice(conflict, Msg, Error, D),
-            keep_state(log(rcv, ?SHUTDOWN_ERR, Msg, D))
+            D1 = report_with_notice(conflict, Msg, Error, D),
+            keep_state(log(rcv, ?SHUTDOWN_ERR, Msg, D1))
     end.
 
 channel_reserve(#{channel_reserve := Reserve}) ->
@@ -5305,8 +5354,8 @@ process_incoming_forced_progress(FSMState, #{ tx := SignedTx
                                 D1 = D#data{ state = State1
                                            , op    = ?NO_OP
                                            , last_reported_update = FPRound},
-                                report_on_chain_tx(consumed_forced_progress, SignedTx, D1),
-                                next_state(open, D1);
+                                D2 = report_on_chain_tx(consumed_forced_progress, SignedTx, D1),
+                                next_state(open, D2);
                             WrongFPDiff when WrongFPDiff =< 0 ->
                                 %% we shouldn't get here as it would mean that
                                 %% the payload had been older than the channel state we
@@ -5319,8 +5368,8 @@ process_incoming_forced_progress(FSMState, #{ tx := SignedTx
                                         true -> can_snapshot;
                                         false -> can_slash
                                     end,
-                                report_on_chain_tx(Report, SignedTx, D),
-                                keep_state(D);
+                                D1 = report_on_chain_tx(Report, SignedTx, D),
+                                keep_state(D1);
                             MissingStateDiff when MissingStateDiff > 1 ->
                                 %% channel_force_progress_tx is based on what
                                 %% the FSM percieves a future state that is
@@ -5338,8 +5387,8 @@ process_incoming_forced_progress(FSMState, #{ tx := SignedTx
                                 true -> can_snapshot;
                                 false -> can_slash
                             end,
-                        report_on_chain_tx(Report, SignedTx, D),
-                        keep_state(D)
+                        D1 = report_on_chain_tx(Report, SignedTx, D),
+                        keep_state(D1)
                 end
             ?CATCH_LOG(_E)
                 keep_state(D)
