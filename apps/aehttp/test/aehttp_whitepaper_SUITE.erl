@@ -183,12 +183,12 @@ working_insurance(Cfg0) ->
         add_quotes(City),
         _PricePerGen = integer_to_list(PricePerGeneration),
         _Compensation = integer_to_list(Reward)],
-    {UnsignedStateTx, _Updates, _Code} =
-        aehttp_sc_SUITE:create_contract_(channel_whitepaper_example,
-                                          Args, IConnPid,
-                                          UpdateVolley, Cfg),
-    ContractPubkey = contract_id_from_create_update(IPubkey, UnsignedStateTx),
     ContractName = channel_whitepaper_example,
+    {UnsignedStateTx, _Updates, _Code} =
+        aehttp_sc_SUITE:create_contract_(ContractName,
+                                          Args, IConnPid,
+                                          UpdateVolley, Cfg, 0),
+    ContractPubkey = contract_id_from_create_update(IPubkey, UnsignedStateTx),
     {ok, []} =
         call_offchain_contract(initiator, ContractPubkey,
                               ContractName, "deposit", [], Reward, Cfg),
@@ -244,7 +244,7 @@ can_insure_after_expiration(Cfg0) ->
     {UnsignedStateTx, _Updates, _Code} =
         aehttp_sc_SUITE:create_contract_(channel_whitepaper_example,
                                           Args, IConnPid,
-                                          UpdateVolley, Cfg),
+                                          UpdateVolley, Cfg, 0),
     ContractPubkey = contract_id_from_create_update(IPubkey, UnsignedStateTx),
     ContractName = channel_whitepaper_example,
     {ok, []} =
@@ -311,7 +311,7 @@ can_insure_twice_in_a_row(Cfg0) ->
     {UnsignedStateTx, _Updates, _Code} =
         aehttp_sc_SUITE:create_contract_(channel_whitepaper_example,
                                           Args, IConnPid,
-                                          UpdateVolley, Cfg),
+                                          UpdateVolley, Cfg, 0),
     ContractPubkey = contract_id_from_create_update(IPubkey, UnsignedStateTx),
     ContractName = channel_whitepaper_example,
     {ok, []} =
@@ -369,7 +369,7 @@ insurer_can_withdraw_after_insurance_expires(Cfg0) ->
           {UnsignedStateTx, _Updates, _Code} =
               aehttp_sc_SUITE:create_contract_(channel_whitepaper_example,
                                                Args, IConnPid,
-                                               UpdateVolley, Cfg),
+                                               UpdateVolley, Cfg, 0),
           ContractPubkey = contract_id_from_create_update(IPubkey, UnsignedStateTx),
           ContractName = channel_whitepaper_example,
           {ok, []} =
@@ -425,7 +425,7 @@ insurer_can_deposit_multiple_times(Cfg0) ->
     {UnsignedStateTx, _Updates, _Code} =
         aehttp_sc_SUITE:create_contract_(channel_whitepaper_example,
                                           Args, IConnPid,
-                                          UpdateVolley, Cfg),
+                                          UpdateVolley, Cfg, 0),
     ContractPubkey = contract_id_from_create_update(IPubkey, UnsignedStateTx),
     ContractName = channel_whitepaper_example,
     {ok, []} =
@@ -483,7 +483,7 @@ insurer_can_withdraw_exess_tokens(Cfg0) ->
           {UnsignedStateTx, _Updates, _Code} =
               aehttp_sc_SUITE:create_contract_(channel_whitepaper_example,
                                                Args, IConnPid,
-                                               UpdateVolley, Cfg),
+                                               UpdateVolley, Cfg, 0),
           ContractPubkey = contract_id_from_create_update(IPubkey, UnsignedStateTx),
           ContractName = channel_whitepaper_example,
           {ok, []} =
@@ -532,7 +532,7 @@ insurer_can_withdraw_if_no_insurance(Cfg0) ->
           {UnsignedStateTx, _Updates, _Code} =
               aehttp_sc_SUITE:create_contract_(channel_whitepaper_example,
                                                Args, IConnPid,
-                                               UpdateVolley, Cfg),
+                                               UpdateVolley, Cfg, 0),
           ContractPubkey = contract_id_from_create_update(IPubkey, UnsignedStateTx),
           ContractName = channel_whitepaper_example,
           {ok, []} =
@@ -577,7 +577,7 @@ can_not_insure_if_not_enough_compensation(Cfg0) ->
     {UnsignedStateTx, _Updates, _Code} =
         aehttp_sc_SUITE:create_contract_(channel_whitepaper_example,
                                           Args, IConnPid,
-                                          UpdateVolley, Cfg),
+                                          UpdateVolley, Cfg, 0),
     ContractPubkey = contract_id_from_create_update(IPubkey, UnsignedStateTx),
     ContractName = channel_whitepaper_example,
     {revert, <<"not_enough_compensation">>} =
@@ -614,7 +614,7 @@ insurer_can_not_insure(Cfg0) ->
     {UnsignedStateTx, _Updates, _Code} =
         aehttp_sc_SUITE:create_contract_(channel_whitepaper_example,
                                           Args, IConnPid,
-                                          UpdateVolley, Cfg),
+                                          UpdateVolley, Cfg, 0),
     ContractPubkey = contract_id_from_create_update(IPubkey, UnsignedStateTx),
     ContractName = channel_whitepaper_example,
     {ok, []} =
@@ -657,7 +657,7 @@ insured_can_not_withdraw(Cfg0) ->
     {UnsignedStateTx, _Updates, _Code} =
         aehttp_sc_SUITE:create_contract_(channel_whitepaper_example,
                                           Args, IConnPid,
-                                          UpdateVolley, Cfg),
+                                          UpdateVolley, Cfg, 0),
     ContractPubkey = contract_id_from_create_update(IPubkey, UnsignedStateTx),
     ContractName = channel_whitepaper_example,
     {ok, []} =
@@ -705,7 +705,7 @@ insurer_can_not_withdraw_compensation(Cfg0) ->
     {UnsignedStateTx, _Updates, _Code} =
         aehttp_sc_SUITE:create_contract_(channel_whitepaper_example,
                                           Args, IConnPid,
-                                          UpdateVolley, Cfg),
+                                          UpdateVolley, Cfg, 0),
     ContractPubkey = contract_id_from_create_update(IPubkey, UnsignedStateTx),
     ContractName = channel_whitepaper_example,
     {ok, []} =
@@ -752,7 +752,7 @@ insured_can_not_deposit(Cfg0) ->
     {UnsignedStateTx, _Updates, _Code} =
         aehttp_sc_SUITE:create_contract_(channel_whitepaper_example,
                                           Args, IConnPid,
-                                          UpdateVolley, Cfg),
+                                          UpdateVolley, Cfg, 0),
     ContractPubkey = contract_id_from_create_update(IPubkey, UnsignedStateTx),
     ContractName = channel_whitepaper_example,
     {revert, <<"not_service_provider">>} =
@@ -790,7 +790,7 @@ claim_insurance_missing_response(Cfg0) ->
     {UnsignedStateTx, _Updates, _Code} =
         aehttp_sc_SUITE:create_contract_(channel_whitepaper_example,
                                           Args, IConnPid,
-                                          UpdateVolley, Cfg),
+                                          UpdateVolley, Cfg, 0),
     ContractPubkey = contract_id_from_create_update(IPubkey, UnsignedStateTx),
     ContractName = channel_whitepaper_example,
     {ok, []} =
@@ -848,7 +848,7 @@ claim_insurance_for_different_city(Cfg0) ->
     {UnsignedStateTx, _Updates, _Code} =
         aehttp_sc_SUITE:create_contract_(channel_whitepaper_example,
                                           Args, IConnPid,
-                                          UpdateVolley, Cfg),
+                                          UpdateVolley, Cfg, 0),
     ContractPubkey = contract_id_from_create_update(IPubkey, UnsignedStateTx),
     ContractName = channel_whitepaper_example,
     {ok, []} =
@@ -908,7 +908,7 @@ claim_insurance_outside_of_range(Cfg0) ->
     {UnsignedStateTx, _Updates, _Code} =
         aehttp_sc_SUITE:create_contract_(channel_whitepaper_example,
                                           Args, IConnPid,
-                                          UpdateVolley, Cfg),
+                                          UpdateVolley, Cfg, 0),
     ContractPubkey = contract_id_from_create_update(IPubkey, UnsignedStateTx),
     ContractName = channel_whitepaper_example,
     {ok, []} =
@@ -971,7 +971,7 @@ claim_insurance_different_response(Cfg0) ->
     {UnsignedStateTx, _Updates, _Code} =
         aehttp_sc_SUITE:create_contract_(channel_whitepaper_example,
                                           Args, IConnPid,
-                                          UpdateVolley, Cfg),
+                                          UpdateVolley, Cfg, 0),
     ContractPubkey = contract_id_from_create_update(IPubkey, UnsignedStateTx),
     ContractName = channel_whitepaper_example,
     {ok, []} =
@@ -1028,7 +1028,7 @@ claim_insurance_insurer(Cfg0) ->
     {UnsignedStateTx, _Updates, _Code} =
         aehttp_sc_SUITE:create_contract_(channel_whitepaper_example,
                                           Args, IConnPid,
-                                          UpdateVolley, Cfg),
+                                          UpdateVolley, Cfg, 0),
     ContractPubkey = contract_id_from_create_update(IPubkey, UnsignedStateTx),
     ContractName = channel_whitepaper_example,
     {ok, []} =
@@ -1085,7 +1085,7 @@ can_not_claim_twice(Cfg0) ->
     {UnsignedStateTx, _Updates, _Code} =
         aehttp_sc_SUITE:create_contract_(channel_whitepaper_example,
                                           Args, IConnPid,
-                                          UpdateVolley, Cfg),
+                                          UpdateVolley, Cfg, 0),
     ContractPubkey = contract_id_from_create_update(IPubkey, UnsignedStateTx),
     ContractName = channel_whitepaper_example,
     {ok, []} =

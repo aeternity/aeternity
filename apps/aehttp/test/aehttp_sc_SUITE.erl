@@ -95,13 +95,15 @@
    ]).
 -export([sc_ws_open_/4,
          sc_ws_close_/1,
+         sc_ws_close_mutual_/2,
+         sc_ws_get_both_balances/4,
          start_node/1,
          stop_node/1,
          sign_post_mine/2,
          sign_and_post_tx/1,
          produce_update_volley_funs/2,
          with_registered_events/3,
-         create_contract_/5,
+         create_contract_/6,
          call_a_contract_/9,
          wait_for_channel_event/3,
          wait_for_channel_event/4,
@@ -1398,6 +1400,12 @@ sc_ws_close_mutual_(Config, Closer, Params) when Closer =:= initiator orelse
     assert_balance(RPubkey, RStartB),
 
     ok = wait_for_signed_transaction_in_block(SignedMutualTx),
+    {ok, _, #{ <<"tx">> := EncodedSignedMutualTx
+             , <<"info">> := <<"channel_closed">> }} =
+        wait_for_channel_event(IConnPid, on_chain_tx, Config),
+    {ok, _, #{ <<"tx">> := EncodedSignedMutualTx
+             , <<"info">> := <<"channel_closed">> }} =
+        wait_for_channel_event(RConnPid, on_chain_tx, Config),
 
     IChange = aesc_close_mutual_tx:initiator_amount_final(MutualTx),
     RChange = aesc_close_mutual_tx:responder_amount_final(MutualTx),
@@ -2601,13 +2609,18 @@ create_contract_(TestName, SenderConnPid, UpdateVolley, Config) ->
     create_contract_(TestName, InitArgument, SenderConnPid, UpdateVolley, Config).
 
 create_contract_(TestName, InitArgument, SenderConnPid, UpdateVolley, Config) ->
+    create_contract_(TestName, InitArgument, SenderConnPid, UpdateVolley, Config,
+                10).
+
+create_contract_(TestName, InitArgument, SenderConnPid, UpdateVolley, Config,
+                Deposit) ->
     EncodedCode = contract_byte_code(TestName),
     {ok, EncodedInitData} = encode_call_data(TestName, "init", InitArgument),
 
     ws_send_tagged(SenderConnPid, <<"channels.update.new_contract">>,
                    #{vm_version  => aect_test_utils:vm_version(),
                      abi_version => aect_test_utils:abi_version(),
-                     deposit     => 10,
+                     deposit     => Deposit,
                      code        => EncodedCode,
                      call_data   => EncodedInitData}, Config),
     #{tx := UnsignedStateTx, updates := Updates} = UpdateVolley(),
@@ -2722,6 +2735,7 @@ call_a_contract(Function, Argument, ContractPubKey, Contract, SenderConnPid,
               , abi_version => aect_test_utils:abi_version()
               , amount      => Amount
               , call_data   => EncodedMainData },
+
     CallOpts = maybe_include_meta(CallOpts0, Config),
     % invalid call
     ws_send_tagged(SenderConnPid, <<"channels.update.call_contract">>,
