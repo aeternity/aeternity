@@ -15,9 +15,16 @@
 
 -export([ad_hoc_spec/0]).
 
--include_lib("exometer_core/include/exometer.hrl").
+-ifdef(TEST).
+-export([sample/0]).
+-endif.
 
--define(DATAPOINTS, [total_difficulty]).
+-include_lib("exometer_core/include/exometer.hrl").
+-include("blocks.hrl").
+
+-define(DATAPOINTS, [ total_difficulty
+                    , rel_fork_heights
+                    , tot_fork_heights ]).
 
 -record(st, {
           last_time_block_created,
@@ -52,7 +59,7 @@ probe_terminate(Reason) ->
 probe_get_value(DPs, #st{data = Data0,
                          datapoints = DPs0} = S) ->
     Data1 = if Data0 =:= undefined ->
-                    sample(DPs0);
+                    sample();
                true -> Data0
             end,
     DPs1 = if DPs =:= default -> DPs0;
@@ -73,10 +80,10 @@ probe_update(_, _) ->
 probe_reset(S) ->
     {ok, S#st{data = []}}.
 
-probe_sample(#st{datapoints = DPs} = S) ->
+probe_sample(#st{} = S) ->
     {_Pid, Ref} = spawn_monitor(
                     fun() ->
-                            exit({sample, sample(DPs)})
+                            exit({sample, sample()})
                     end),
     {ok, S#st{ref = Ref}}.
 
@@ -118,13 +125,13 @@ probe_handle_msg(_Msg, S) ->
 probe_code_change(_, S, _) ->
     {ok, S}.
 
-sample(DPs) ->
-    lists:foldr(fun sample_/2, [], DPs).
-
-sample_(total_difficulty = K, Acc) ->
-    [{K, total_difficulty()}|Acc];
-sample_(_, Acc) ->
-    Acc.
+sample() ->
+    aec_db:ensure_activity(
+      async_dirty,
+      fun() ->
+              [ {total_difficulty, total_difficulty()}
+              | forks_at_height() ]
+      end).
 
 total_difficulty() ->
     try aec_chain:difficulty_at_top_block() of
@@ -132,3 +139,79 @@ total_difficulty() ->
     catch
         error:_ -> 0
     end.
+
+forks_at_height() ->
+    NHeights = 2,
+    aec_db:ensure_activity(
+      async_dirty,
+      fun() ->
+              Top = aec_chain:top_block_hash(),
+              Height = height(Top),
+              Found =
+                  lists:foldl(
+                    fun forks_at_height/2, #{},
+                    lists:seq(Height, Height - NHeights + 1, -1)),
+              group_forks(Found, Top)
+      end).
+
+forks_at_height(Height, Acc) ->
+    Found = aec_db:find_headers_and_hash_at_height(Height),
+    KeyBlocks = [Hash || {Hdr, Hash} <- Found,
+                         aec_headers:type(Hdr) == key ],
+    lists:foldl(
+      fun(BHash, Acc1) ->
+              case aec_db:find_block_fork_id(BHash) of
+                  none ->
+                      Acc1;
+                  {value, Id} ->
+                      %% Since we (may) include >1 heights, and inspect heights
+                      %% in descending order, Acc takes priority
+                      case maps:is_key(Id, Acc1) of
+                          true -> Acc1;
+                          false ->
+                              case aec_db:find_header(Id) of
+                                  {value, FH} ->
+                                      FI = #{ height => aec_headers:height(FH)
+                                            , prev   => aec_headers:prev_key_hash(FH) },
+                                      Acc1#{ Id => #{ height     => Height
+                                                    , block_hash => BHash
+                                                    , fork_info  => FI } };
+                                  none ->
+                                      %% ??
+                                      Acc1
+                              end
+                      end
+              end
+      end, Acc, KeyBlocks).
+
+group_forks(Forks, Top) ->
+    {value, MainForkId} = aec_db:find_block_fork_id(Top),
+    {#{ height := TopHeight
+      , fork_info := #{height := MFHeight}} = MF, Rest} = maps:take(MainForkId, Forks),
+    Acc0 = [#{ value => TopHeight
+             , tags  => [{id, fmt_tag(MainForkId)}] }],
+    {RelHeights, TotHeights} =
+        maps:fold(
+          fun(FId, #{ height := Height
+                    , block_hash := BHash } = Info, {RHs, THs} = Acc) ->
+                  case aec_chain_state:find_common_ancestor(Top, BHash) of
+                      {ok, ForkHash} ->
+                          I = #{ tags => [{id, fmt_tag(FId)}] },
+                          ForkHeight = height(ForkHash),
+                          { [I#{ value => Height - ForkHeight } | RHs]
+                          , [I#{ value => Height } | THs] };
+                      {error, _} ->
+                          lager:debug("No common ancestor: ~p, ~p",
+                                      [FId, MainForkId]),
+                          Acc
+                  end
+          end, {Acc0, Acc0}, Rest),
+    [ {rel_fork_heights, RelHeights}
+    , {tot_fork_heights, TotHeights} ].
+
+height(Hash) ->
+    {value, Hdr} = aec_db:find_header(Hash),
+    aec_headers:height(Hdr).
+
+fmt_tag(Hash) ->
+    aeser_api_encoder:encode(key_block_hash, Hash).

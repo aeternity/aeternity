@@ -501,6 +501,63 @@ n_headers_forwards_fork() ->
                  aec_chain:get_at_most_n_generation_headers_forward_from_hash(Hash3, 1)),
     ok.
 
+fork_metrics_test_() ->
+    {foreach,
+     fun() ->
+             aec_test_utils:start_chain_db(),
+             setup_meck_and_keys()
+     end,
+     fun(TmpDir) ->
+             aec_test_utils:stop_chain_db(),
+             teardown_meck_and_keys(TmpDir)
+
+     end,
+     [{"Main fork", fun fork_metrics/0}]
+    }.
+
+fork_metrics() ->
+    CommonChain = gen_block_chain_with_state_by_target(
+                  [?GENESIS_TARGET, ?GENESIS_TARGET, 1, 1], 111),
+    ok = write_blocks_to_chain(blocks_only_chain(CommonChain)),
+    F1 = check_sample([4], [4]),
+    %% just extending the main chain
+    Fork1 = extend_chain_with_state(CommonChain, [2], 111),
+    ok = write_blocks_to_chain(blocks_only_chain(Fork1)),
+    F1 = check_sample([5], [5]),
+    %% creating a fork with higher difficulty
+    Fork2 = extend_chain_with_state(CommonChain, [1], 222),
+    ok = write_blocks_to_chain(blocks_only_chain(Fork2)),
+    F2 = check_sample([1,5], [5,5]),
+    {true, _} = {F2 =/= F1, {F2, F1}},
+    %% extending the first fork; it will now take over
+    Fork3 = extend_chain_with_state(Fork1, [1], 222),
+    ok = write_blocks_to_chain(blocks_only_chain(Fork3)),
+    F1 = check_sample([1,6], [5,6]),
+    ok.
+
+check_sample(Rel0, Tot0) ->
+    Sample = aec_chain_metrics_probe:sample(),
+    Rel1 = rel_fork_heights(Sample),
+    Tot1 = tot_fork_heights(Sample),
+    {rel, Rel1, Rel0} = {rel, Rel0, Rel1},
+    {tot, Tot1, Tot0} = {tot, Tot0, Tot1},
+    %% The main fork tag (fork ID) has the same relative as total height
+    [MainForkTag] =
+        [Tag || #{value := V, tag := Tag}
+                    <- proplists:get_value(tot_fork_heights, Sample),
+                #{value := V1, tag := Tag1}
+                    <- proplists:get_value(rel_fork_heights, Sample),
+                (V =:= V1) andalso (Tag =:= Tag1)],
+    MainForkTag.
+
+tot_fork_heights(Sample) -> sort_fork_heights(tot_fork_heights, Sample).
+rel_fork_heights(Sample) -> sort_fork_heights(rel_fork_heights, Sample).
+
+sort_fork_heights(Key, Sample) ->
+    lists:sort(
+      [V || #{value := V} <- proplists:get_value(Key, Sample)]).
+
+
 %%%===================================================================
 %%% Target validation tests
 

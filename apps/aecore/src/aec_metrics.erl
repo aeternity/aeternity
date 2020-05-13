@@ -207,7 +207,7 @@ logger_handle_data(Data, disabled) ->
 logger_handle_data(#{} = Data, filter = St) ->
     apply_filter(Data, St);  % sets do_log and do_send flags
 logger_handle_data(#{do_log := true} = Data, log = St) ->
-    epoch_metrics:info("~s", [line(Data)]),
+    metrics_handle_data(Data),
     {Data, St};
 logger_handle_data(#{do_send := true} = Data, #statsd{} = St) ->
     statsd_handle_data(Data, St);
@@ -233,10 +233,17 @@ exometer_unsubscribe(_Metric, _DataPoint, _Extra, St) ->
     {ok, St}.
 
 exometer_report(Metric, DataPoint, Extra, Value, St) ->
+    lager:debug("Metric = ~p, DP = ~p, Value = ~p", [Metric, DataPoint, Value]),
     Key = metric_key(Metric, DataPoint),
     Type = case exometer_util:report_type(Key, Extra, St#st.type_map) of
                {ok, T} -> T;
-               error   -> gauge % default type for statsd
+               error   ->
+                   case Value of
+                       [#{value := _}|_] ->
+                           distribution;
+                       _ ->
+                           gauge % default type for statsd
+                   end
            end,
     Name = name(St#st.prefix, Metric, DataPoint),
     M = #{metric => Metric,
@@ -271,31 +278,45 @@ exometer_terminate(_, _) ->
 %% Internal functions
 %%===================================================================
 
+line(#{name := Name, value := #{value := V} = Map, type := Type, extra := Extra}) ->
+    [Name, ":", value(V), "|", type(Type) | add_tags(Extra, Map)];
 line(#{name := Name, value := Value, type := Type, extra := Extra}) ->
     [Name, ":", value(Value), "|", type(Type) | add_tags(Extra)].
 
+add_tags(Extra, Map) ->
+    AllTags = tags_from_extra(Extra) ++ maps:get(tags, Map, []),
+    Fmt = fmt_tags(AllTags),
+    lager:debug("Fmt = ~p", [Fmt]),
+    Fmt.
 
 add_tags(undefined) -> [];
 add_tags(Extra) when is_list(Extra) ->
-    case lists:keyfind(tags, 1, Extra) of
-        {_, [H|T]} ->
-            Str = [fmt_tag(H) | [[",", fmt_tag(Tag)] || Tag <- T]],
-            ["|#" | Str];
-        _ ->
-            []
-    end.
+    fmt_tags(tags_from_extra(Extra)).
+
+tags_from_extra(undefined) -> [];
+tags_from_extra(Extra) ->
+    proplists:get_value(tags, Extra, []).
+
+fmt_tags([H|T]) ->
+    Str = [fmt_tag(H) | [[",", fmt_tag(Tag)] || Tag <- T]],
+    ["|#" | Str];
+fmt_tags([]) ->
+    [].
 
 fmt_tag({K, V}) ->
-    [value(K), ":", value(V)];
+    [tag(K), ":", tag(V)];
 fmt_tag(K) when is_atom(K); is_binary(K); is_list(K) ->
-    value(K).
+    tag(K).
 
+tag(D) ->
+    thing_to_list(D).
 
 type(gauge) -> "g";
 type(counter) -> "c";
 type(timer) -> "ms";
 type(histogram) -> "h";
 type(meter) -> "m";
+type(distribution) -> "d";
 type(set) -> "s". %% datadog specific type, see http://docs.datadoghq.com/guides/dogstatsd/#tags
 
 metric_key(Metric,DataPoint) -> metric_key([],Metric,DataPoint).
@@ -360,9 +381,26 @@ statsd_handle_msg({statsd, Msg} = Data, S) ->
     end.
 
 statsd_handle_data(#{} = Data, S) ->
-    try_send(line(Data), S),
+    lager:debug("Data = ~p", [Data]),
+    case Data of
+        #{type := distribution, value := [#{}|_] = Vs} ->
+            [try_send(line(Data#{value => V}), S)
+             || V <- Vs];
+        _ ->
+            try_send(line(Data), S)
+    end,
     {Data, S}.
 
+metrics_handle_data(Data) ->
+    case Data of
+        #{type := distribution, value := [#{}|_] = Vs} ->
+            [metrics_handle_data_(Data#{value => V}) || V <- Vs];
+        _ ->
+            metrics_handle_data_(Data)
+    end.
+
+metrics_handle_data_(Data) ->
+    epoch_metrics:info("~s", [line(Data)]).
 
 try_send(_Data, #statsd{socket = undefined}) ->
     ok;
