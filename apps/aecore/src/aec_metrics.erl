@@ -233,7 +233,6 @@ exometer_unsubscribe(_Metric, _DataPoint, _Extra, St) ->
     {ok, St}.
 
 exometer_report(Metric, DataPoint, Extra, Value, St) ->
-    lager:debug("Metric = ~p, DP = ~p, Value = ~p", [Metric, DataPoint, Value]),
     Key = metric_key(Metric, DataPoint),
     Type = case exometer_util:report_type(Key, Extra, St#st.type_map) of
                {ok, T} -> T;
@@ -285,9 +284,7 @@ line(#{name := Name, value := Value, type := Type, extra := Extra}) ->
 
 add_tags(Extra, Map) ->
     AllTags = tags_from_extra(Extra) ++ maps:get(tags, Map, []),
-    Fmt = fmt_tags(AllTags),
-    lager:debug("Fmt = ~p", [Fmt]),
-    Fmt.
+    fmt_tags(AllTags).
 
 add_tags(undefined) -> [];
 add_tags(Extra) when is_list(Extra) ->
@@ -381,7 +378,6 @@ statsd_handle_msg({statsd, Msg} = Data, S) ->
     end.
 
 statsd_handle_data(#{} = Data, S) ->
-    lager:debug("Data = ~p", [Data]),
     case Data of
         #{type := distribution, value := [#{}|_] = Vs} ->
             [try_send(line(Data#{value => V}), S)

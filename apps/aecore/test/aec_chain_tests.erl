@@ -541,11 +541,14 @@ check_sample(Rel0, Tot0) ->
     Tot1 = tot_fork_heights(Sample),
     {rel, Rel1, Rel0} = {rel, Rel0, Rel1},
     {tot, Tot1, Tot0} = {tot, Tot0, Tot1},
+    [_] = lists:ukeysort(2, [ {rel0, length(Rel0)}
+                            , {tot0, length(Tot0)}
+                            , {n_forks, proplists:get_value(n_forks, Sample)}]),
     %% The main fork tag (fork ID) has the same relative as total height
     [MainForkTag] =
-        [Tag || #{value := V, tag := Tag}
+        [Tag || #{value := V, tags := [Tag]}
                     <- proplists:get_value(tot_fork_heights, Sample),
-                #{value := V1, tag := Tag1}
+                #{value := V1, tags := [Tag1]}
                     <- proplists:get_value(rel_fork_heights, Sample),
                 (V =:= V1) andalso (Tag =:= Tag1)],
     MainForkTag.

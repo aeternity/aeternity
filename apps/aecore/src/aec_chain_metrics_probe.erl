@@ -23,6 +23,7 @@
 -include("blocks.hrl").
 
 -define(DATAPOINTS, [ total_difficulty
+                    , n_forks
                     , rel_fork_heights
                     , tot_fork_heights ]).
 
@@ -207,7 +208,8 @@ group_forks(Forks, Top) ->
                   end
           end, {Acc0, Acc0}, Rest),
     [ {rel_fork_heights, RelHeights}
-    , {tot_fork_heights, TotHeights} ].
+    , {tot_fork_heights, TotHeights}
+    , {n_forks, length(TotHeights)} ].
 
 height(Hash) ->
     {value, Hdr} = aec_db:find_header(Hash),
