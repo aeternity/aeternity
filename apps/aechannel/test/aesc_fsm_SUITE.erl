@@ -70,6 +70,7 @@
         , change_config_get_history/1
         , multiple_channels/1
         , many_chs_msg_loop/1
+        , many_chs_contract_calls/1
         , too_many_fsms/1
         , check_incorrect_create/1
         , check_incorrect_deposit/1
@@ -192,6 +193,7 @@ groups() ->
       [
         multiple_channels
       , many_chs_msg_loop
+      , many_chs_contract_calls
       ]},
      {limits, [sequence],
       [
@@ -455,7 +457,8 @@ init_per_testcase(_, Config) ->
     set_configs([{debug, Debug}], Config2).
 
 end_per_testcase(T, _Config) when T == multiple_channels;
-                                  T == many_chs_msg_loop ->
+                                  T == many_chs_msg_loop;
+                                  T == many_chs_contract_calls ->
     Node = aecore_suite_utils:node_name(dev1),
     aecore_suite_utils:unmock_mempool_nonce_offset(Node),
     bump_idx(),
@@ -1121,6 +1124,11 @@ msg_volley(#{fsm := FsmI, pub := PubI} = I, #{fsm := FsmR, pub := PubR} = R, _) 
                fun(#{info := #{info := <<"pong">>}}) -> ok end, 4000),
     {I, R}.
 
+call_volley(I, R, Contract, Cfg) ->
+    {I1 ,  R1} = call_contract(Contract, counter, "tick", [], 10, I, R, Cfg),
+    {_I2, _R2} = call_contract(Contract, counter, "tick", [], 10, I1, R1, Cfg).
+
+
 deposit(Cfg) ->
     Debug = get_debug(Cfg),
     Amount = 10,
@@ -1406,29 +1414,49 @@ aborted_update(#{info := aborted_update} = Msg) ->
     ok.
 
 multiple_channels(Cfg) ->
-    multiple_channels_t(10, 9360, {transfer, 30}, ?SLOGAN, Cfg).
+    multiple_channels_t(10, 9360, {transfer, 20}, ?SLOGAN, Cfg).
 
 many_chs_msg_loop(Cfg) ->
     multiple_channels_t(10, 9400, {msgs, 100}, ?SLOGAN, Cfg).
 
+many_chs_contract_calls(Cfg) ->
+    multiple_channels_t(10, 9440, [ add_contract
+                                  , {calls, 10}], ?SLOGAN, Cfg).
+
 multiple_channels_t(NumCs, FromPort, Msg, {slogan, Slogan}, Cfg) ->
     Debug = get_debug(Cfg),
     F = fun(Cs, _MinerHelper) ->
-                [P ! Msg || P <- Cs],
-                T0 = erlang:system_time(millisecond),
-                Cs = collect_acks(Cs, loop_ack, NumCs),
-                T1 = erlang:system_time(millisecond),
-                Time = T1 - T0,
-                N = loop_n(Msg),
-                Transfers = NumCs*2*N,
-                Fmt = "Time (~w*2*~w) ~.1f s: ~.1f mspt; ~.1f tps",
-                Args = [NumCs, N, Time/1000, Time/Transfers, (Transfers*1000)/Time],
+                {Fmt, Args} = run_scenario(Msg, Cs),
                 ?LOG(Debug, Fmt, Args),
                 ct:comment(Fmt, Args)
         end,
     spawn_multiple_channels(F, NumCs, FromPort, Slogan, Cfg).
 
+run_scenario(Msgs, Cs) when is_list(Msgs) ->
+    lists:foldl(fun(M, _Acc) ->
+                        run_scenario_(M, Cs)
+                end, {"no action", []}, Msgs);
+run_scenario(Msg, Cs) ->
+    run_scenario_(Msg, Cs).
+
+run_scenario_(Msg, Cs) ->
+    NumCs = length(Cs),
+    [P ! Msg || P <- Cs],
+    T0 = erlang:system_time(millisecond),
+    Cs = collect_acks(Cs, loop_ack, NumCs),
+    T1 = erlang:system_time(millisecond),
+    Time = T1 - T0,
+    N = loop_n(Msg),
+    Transfers = NumCs*2*N,
+    Fmt = "Time (~w*2*~w) ~.1f s: ~.1f mspt; ~.1f tps",
+    Args = [NumCs, N, Time/1000, Time/Transfers, (Transfers*1000)/Time],
+    {Fmt, Args}.
+
 loop_n({transfer, N}) ->
+    N;
+loop_n(add_contract) ->
+    1;
+loop_n({calls, N}) ->
     N;
 loop_n({msgs, N}) ->
     N.
@@ -2370,19 +2398,39 @@ create_multi_channel_(Cfg0, Debug, UseAny) when is_boolean(UseAny) ->
     I1 = cache_account_type(I),
     R1 = cache_account_type(R),
     Parent ! {self(), channel_ack},
-    ch_loop(I1, R1, Parent, set_debug(false, Cfg)).
+    ch_loop(I1, R1, Parent, set_debug(false, Cfg), #{}).
 
-ch_loop(I, R, Parent, Cfg) ->
+ch_loop(I, R, Parent, Cfg, St) ->
     receive
         {transfer, N} ->
             ?LOG("Got {transfer, ~p}", [N]),
             {_, I1, R1} = do_n(N, fun update_volley/3, I, R, Cfg),
             Parent ! {self(), loop_ack},
-            ch_loop(I1, R1, Parent, Cfg);
+            ch_loop(I1, R1, Parent, Cfg, St);
         {msgs, N} = _M ->
             {_, I1, R1} = do_n(N, fun msg_volley/3, I, R, Cfg),
             Parent ! {self(), loop_ack},
-            ch_loop(I1, R1, Parent, Cfg);
+            ch_loop(I1, R1, Parent, Cfg, St);
+        add_contract ->
+            {I1, R1, ContractPubkey} =
+                create_contract(counter, ["42"], 10, I, R, Cfg),
+            Parent ! {self(), loop_ack},
+            ch_loop(I1, R1, Parent, Cfg, St#{contract => ContractPubkey});
+        {calls, N} ->
+            #{contract := Contract} = St,
+            {I1, R1} =
+            try
+            {_, I1_, R1_} = do_n(N, fun(Ix, Rx, Cx) ->
+                                          call_volley(Ix, Rx, Contract, Cx)
+                                  end, I, R, Cfg),
+            {I1_, R1_}
+            catch
+                error:R ->
+                    ?LOG("CAUGHT ~p / ~p", [R, erlang:get_stacktrace()]),
+                    {I, R}
+            end,
+            Parent ! {self(), loop_ack},
+            ch_loop(I1, R1, Parent, Cfg, St);
         die ->
             ?LOG("~p got die request", [self()]),
             #{ proxy := ProxyI } = I,
@@ -2392,7 +2440,7 @@ ch_loop(I, R, Parent, Cfg) ->
             exit(normal);
         Other ->
             ?LOG(get_debug(Cfg), "Got Other = ~p, I = ~p~nR = ~p", [Other, I, R]),
-            ch_loop(I, R, Parent, Cfg)
+            ch_loop(I, R, Parent, Cfg, St)
     end.
 
 create_channel_from_spec(I, R, Spec, Port, Debug, Cfg) ->
