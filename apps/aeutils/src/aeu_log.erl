@@ -9,7 +9,7 @@
         ]).
 
 %% @doc Set log level for configured console log backends. Returns previously
-%% configured level. The log level must be supported by `lager`, otherwise this
+%% configured level. The log level must be supported by lager, otherwise this
 %% function will fail.
 set_console_log_level(Level) ->
     PrevLevel = lager:get_loglevel(lager_console_backend),
