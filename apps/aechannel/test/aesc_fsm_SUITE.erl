@@ -301,14 +301,10 @@ ga_sequence() ->
     ].
 
 update_sequence() ->
-    [ check_incorrect_update
-    ].
-
-%% update_sequence_() ->
-%%     [ check_incorrect_deposit
-%%     , check_incorrect_withdrawal
-%%     , check_incorrect_update
-%%     ].
+     [ check_incorrect_deposit
+     , check_incorrect_withdrawal
+     , check_incorrect_update
+     ].
 
 suite() ->
     [].
