@@ -2127,7 +2127,7 @@ wrong_action({I, R, _Spec, _Port, Debug}, Poster, Malicious,
 
             DetectConflictFun(D, Debug),
             % make sure setting back defaults if process is still there
-            rpc(dev1, aesc_fsm, strict_checks, [FsmD, true], Debug);
+            ok = rpc(dev1, aesc_fsm, strict_checks, [FsmD, true], Debug);
         false ->
             Post(),
             {_, _} = await_signing_request(FsmNewAction, D, Debug, Cfg),
@@ -2140,7 +2140,7 @@ wrong_action({I, R, _Spec, _Port, Debug}, Poster, Malicious,
             %% since this test is checking if the starting party (D) is
             %% reporting the conflict, we don't exepect the malicious
             %% acknowledger to report anything
-            rpc(dev1, aesc_fsm, strict_checks, [FsmA, true], Debug)
+            ok = rpc(dev1, aesc_fsm, strict_checks, [FsmA, true], Debug)
     end,
     check_info(50),
     ok.

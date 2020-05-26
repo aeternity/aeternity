@@ -596,6 +596,8 @@ awaiting_locked(cast, {Error, _} = Msg, #data{ state = State} = D)
          Error =:= ?WDRAW_ERR ->
     lager:warning("Discarding ~p in state: ~p", [Msg, State]),
     keep_state(log(drop, msg_type(Msg), Msg, D));
+awaiting_locked(cast, {?CHANNEL_CHANGED, _Info} = Msg, D) ->
+    handle_common_event(cast, Msg, error, D);
 awaiting_locked(Type, Msg, D) ->
     lager:debug("Unexpected ~p: Msg = ~p, Op = ~p", [Type, Msg, D#data.op]),
     handle_common_event(Type, Msg, error, D).
