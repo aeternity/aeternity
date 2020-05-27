@@ -2127,6 +2127,7 @@ wrong_action({I, R, _Spec, _Port, Debug}, Poster, Malicious,
 
             DetectConflictFun(D, Debug),
             % make sure setting back defaults if process is still there
+            timer:sleep(50),
             ok = rpc(dev1, aesc_fsm, strict_checks, [FsmD, true], Debug);
         false ->
             Post(),
