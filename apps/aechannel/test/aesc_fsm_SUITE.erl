@@ -1568,7 +1568,7 @@ check_incorrect_deposit(Cfg) ->
             Data = {I, R, Spec, Port, Debug},
             Fun(Data, Depositor, Malicious,
                 {upd_deposit, [#{amount => 1}], deposit_tx, deposit_created}),
-            shutdown_(I, R, Cfg)
+            flush()
         end,
     Roles = [initiator, responder],
     [Test(D, M) || D <- Roles,
@@ -1588,7 +1588,7 @@ check_incorrect_withdrawal(Cfg) ->
             Data = {I, R, Spec, Port, Debug},
             Fun(Data, Withdrawer, Malicious,
                 {upd_withdraw, [#{amount => 1}], withdraw_tx, withdraw_created}),
-            shutdown_(I, R, Cfg)
+            flush()
           end,
     Roles = [initiator, responder],
     [Test(W, M) || W <- Roles,
@@ -2200,8 +2200,6 @@ shutdown_(#{fsm := FsmI, channel_id := ChannelId} = I, R, Cfg) ->
     {ok, _} = receive_info(I1, closed_confirmed, Debug),
     {ok, _} = receive_info(R1, closed_confirmed, Debug),
     {ok, _} = receive_info(R1, shutdown, Debug),
-    {ok, #{info := {log, _ILog}}} = receive_log(I, Debug),
-    {ok, #{info := {log, _RLog}}} = receive_log(R, Debug),
     {ok, _} = receive_info(I1, fun died_normal/1, Debug),
     {ok, _} = receive_info(R1, fun died_normal/1, Debug),
 
