@@ -50,7 +50,7 @@ record_fields(Other) -> aec_trees:record_fields(Other).
 %% ==================================================================
 
 
--spec new(map()) -> {ok, state()} | {error, any()}.
+-spec new(map()) -> {ok, state()} | {error, atom()}.
 new(Opts) ->
     lager:debug("offchain_tx:new(~p)", [Opts]),
     case Opts of
