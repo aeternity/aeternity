@@ -2846,8 +2846,7 @@ check_shutdown_ack_msg(#{ data       := #{tx := TxBin}
                         %% since it is co-authenticated already, we ignore
                         %% the block hash being reported
                         , block_hash := _BlockHash} = Msg,
-                       #data{ op = #op_ack{tag = shutdown} = Op
-                            , strict_checks = StrictChecks } = D) ->
+                       #data{ op = #op_ack{tag = shutdown} = Op } = D) ->
     #op_ack{data = #op_data{ signed_tx  = MySignedTx
                            , block_hash = BlockHash
                            , updates    = Updates } } = Op,
@@ -3222,16 +3221,14 @@ on_chain_id(#data{on_chain_id = ID} = D, _) when ID =/= undefined ->
 on_chain_id(D, SignedTx) ->
     try aesc_utils:channel_pubkey(SignedTx) of
         {ok, PubKey} ->
-            {PubKey, D#data{on_chain_id = PubKey}}
+            {PubKey, D#data{on_chain_id = PubKey}};
+        {error, _} when D#data.strict_checks =:= false ->
+            %% We can't derive a channel ID, but this is presumably a testing
+            %% scenario. The intention of non-strict checks is that we shouldn't
+            %% crash on validation errors, so leave things alone.
+            {D#data.on_chain_id, D}
     ?CATCH_LOG(_E)
-        if D#data.strict_checks == false ->
-                %% We can't derive a channel ID, but this is presumably a testing
-                %% scenario. The intention of non-strict checks is that we shouldn't
-                %% crash on validation errors, so leave things alone.
-                {D#data.on_chain_id, D};
-           true ->
-                error(_E)
-        end
+        error(_E)
     end.
 
 initialize_cache(#data{ on_chain_id    = ChId

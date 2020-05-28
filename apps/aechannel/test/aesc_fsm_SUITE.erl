@@ -1559,40 +1559,40 @@ check_incorrect_deposit(Cfg) ->
     config(Cfg),
     Debug = get_debug(Cfg),
     Fun = proplists:get_value(wrong_action, Cfg),
-    #{ i := I
-     , r := R
-     , spec := Spec} = create_channel_([?SLOGAN|Cfg]),
-    Port = proplists:get_value(port, Cfg, ?PORT),
-    Data = {I, R, Spec, Port, Debug},
-    Roles = [initiator, responder],
-    Deposit =
+    Test =
         fun(Depositor, Malicious) ->
+            #{ i := I
+            , r := R
+            , spec := Spec} = create_channel_([?SLOGAN | Cfg]),
+            Port = proplists:get_value(port, Cfg, ?PORT),
+            Data = {I, R, Spec, Port, Debug},
             Fun(Data, Depositor, Malicious,
-                {upd_deposit, [#{amount => 1}], deposit_tx, deposit_created})
+                {upd_deposit, [#{amount => 1}], deposit_tx, deposit_created}),
+            shutdown_(I, R, Cfg)
         end,
-    [Deposit(Depositor, Malicious) || Depositor <- Roles,
-                                      Malicious <- Roles],
-    shutdown_(I, R, Cfg),
+    Roles = [initiator, responder],
+    [Test(D, M) || D <- Roles,
+                   M <- Roles],
     ok.
 
 check_incorrect_withdrawal(Cfg) ->
     config(Cfg),
     Debug = get_debug(Cfg),
     Fun = proplists:get_value(wrong_action, Cfg),
-    #{ i := I
-     , r := R
-     , spec := Spec} = create_channel_([?SLOGAN|Cfg]),
-    Port = proplists:get_value(port, Cfg, ?PORT),
-    Data = {I, R, Spec, Port, Debug},
+    Test =
+        fun(Withdrawer, Malicious) ->
+            #{ i := I
+            , r := R
+            , spec := Spec} = create_channel_([?SLOGAN|Cfg]),
+            Port = proplists:get_value(port, Cfg, ?PORT),
+            Data = {I, R, Spec, Port, Debug},
+            Fun(Data, Withdrawer, Malicious,
+                {upd_withdraw, [#{amount => 1}], withdraw_tx, withdraw_created}),
+            shutdown_(I, R, Cfg)
+          end,
     Roles = [initiator, responder],
-    Deposit =
-        fun(Depositor, Malicious) ->
-            Fun(Data, Depositor, Malicious,
-                {upd_withdraw, [#{amount => 1}], withdraw_tx, withdraw_created})
-        end,
-    [Deposit(Depositor, Malicious) || Depositor <- Roles,
-                                      Malicious <- Roles],
-    shutdown_(I, R, Cfg),
+    [Test(W, M) || W <- Roles,
+                   M <- Roles],
     ok.
 
 check_incorrect_update(Cfg) ->
@@ -2200,6 +2200,8 @@ shutdown_(#{fsm := FsmI, channel_id := ChannelId} = I, R, Cfg) ->
     {ok, _} = receive_info(I1, closed_confirmed, Debug),
     {ok, _} = receive_info(R1, closed_confirmed, Debug),
     {ok, _} = receive_info(R1, shutdown, Debug),
+    {ok, #{info := {log, _ILog}}} = receive_log(I, Debug),
+    {ok, #{info := {log, _RLog}}} = receive_log(R, Debug),
     {ok, _} = receive_info(I1, fun died_normal/1, Debug),
     {ok, _} = receive_info(R1, fun died_normal/1, Debug),
 

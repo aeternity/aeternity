@@ -1004,11 +1004,15 @@ channel_pubkey(SignedTx) ->
         {aesc_create_tx, Txi} ->
             Initiator = aesc_create_tx:initiator_pubkey(Txi),
             Responder = aesc_create_tx:responder_pubkey(Txi),
-            {ok, InitiatorAuthId} = channel_create_nonce_or_auth_id(SignedTx),
-            PK = aesc_channels:pubkey(Initiator,
-                                      InitiatorAuthId,
-                                      Responder),
-            {ok, PK};
+            case channel_create_nonce_or_auth_id(SignedTx) of
+                {ok, InitiatorAuthId} ->
+                    PK = aesc_channels:pubkey(Initiator,
+                                              InitiatorAuthId,
+                                              Responder),
+                    {ok, PK};
+                {error, _} = Err ->
+                    Err
+            end;
         %% Likely only channel txs have a channel_id/1 callback, so prepare for
         %% 'undef' exceptions.
         {Mod, Txi} ->
