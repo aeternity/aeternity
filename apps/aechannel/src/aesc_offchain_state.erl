@@ -54,14 +54,14 @@ record_fields(Other) -> aec_trees:record_fields(Other).
 new(Opts) ->
     lager:debug("offchain_tx:new(~p)", [Opts]),
     case Opts of
-        #{existing_channel_id      := _
+        #{ existing_channel_id      := _
          , offchain_tx             := _
          , existing_fsm_id_wrapper := _} ->
             recover_from_offchain_tx(Opts);
-        #{initiator          := _,
-          responder          := _,
-          initiator_amount   := _,
-          responder_amount   := _} ->
+        #{ initiator          := _
+         , responder          := _
+         , initiator_amount   := _
+         , responder_amount   := _ } ->
             new_(Opts)
     end.
 
@@ -84,6 +84,7 @@ new_(#{ initiator          := InitiatorPubKey
     {ok, #{ mode => new
           , state => #state{trees=Trees, calls = aect_call_state_tree:empty() }}}.
 
+-spec recover_from_offchain_tx(map()) -> {ok, map()} | {error, atom()}.
 recover_from_offchain_tx(#{ existing_channel_id     := ChId
                           , offchain_tx             := SignedTx
                           , existing_fsm_id_wrapper := FsmIdWrapper} = Opts) ->

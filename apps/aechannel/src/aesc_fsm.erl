@@ -5547,13 +5547,13 @@ check_chain_before_reestablish(#{state := State0} = _StateRecovery,
     {ok, NextState, UpdatedData}.
 
 -spec apply_non_malicious_txs(list(binary()), #data{}) ->
-    {ok, #data{}} | {{malicious, aetx_sign:signed_tx(), #data{}}}.
+    {ok, #data{}} | {{malicious, aetx_sign:signed_tx()}, #data{}}.
 apply_non_malicious_txs(TxHashes, Data) ->
     TxsAndLocations = [aec_chain:find_tx_with_location(TH) || TH <- TxHashes],
     apply_non_malicious_txs_(TxsAndLocations, Data).
 
 -spec apply_non_malicious_txs_(list(), #data{}) ->
-    {ok, #data{}} | {{malicious, aetx_sign:signed_tx(), #data{}}}.
+    {ok, #data{}} | {{malicious, aetx_sign:signed_tx()}, #data{}}.
 apply_non_malicious_txs_([], #data{} = Data) -> %% applied all
     {ok, Data};
 apply_non_malicious_txs_([{BlockHash, SignedTx} | Rest],
