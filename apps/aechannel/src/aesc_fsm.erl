@@ -3821,12 +3821,12 @@ init_(#{opts := Opts0} = Arg) ->
             prepare_initial_state(Opts3, #{state => StateFun}, SessionPid, ReestablishOpts);
         {{ok, SessionPid}, _} ->
             case init_state(Initiator, Opts3, ReestablishOpts) of
-                {ok, StateRecovery} ->
-                    prepare_initial_state(Opts3, StateRecovery, SessionPid, ReestablishOpts);
                 %% TODO: Handle missing state trees - the client should be able to
                 %%       bootstrap the channel by providing a cosigned state
-                {error, invalid_fsm_id = E} ->
-                    {stop, E}
+                {error, E} ->
+                    {stop, E};
+                {ok, StateRecovery} ->
+                    prepare_initial_state(Opts3, StateRecovery, SessionPid, ReestablishOpts)
             end
     end.
 
@@ -3883,7 +3883,7 @@ cur_st(St, D) ->
 %% Internal functions
 
 -spec init_state(aec_keys:pubkey(), map(), map()) ->
-    {ok, aesc_offchain_state:state()} | {error, atom()}.
+    {ok, map()} | {error, atom()}.
 init_state(Initiator, Opts, ReestablishOpts) ->
     CheckedOpts = maps:merge(Opts, ReestablishOpts),
     CheckedOpts1 = CheckedOpts#{initiator => Initiator},

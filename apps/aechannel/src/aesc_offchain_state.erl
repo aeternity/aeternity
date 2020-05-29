@@ -50,11 +50,11 @@ record_fields(Other) -> aec_trees:record_fields(Other).
 %% ==================================================================
 
 
--spec new(map()) -> {ok, state()} | {error, atom()}.
+-spec new(map()) -> {ok, map()} | {error, atom()}.
 new(Opts) ->
     lager:debug("offchain_tx:new(~p)", [Opts]),
     case Opts of
-        #{ existing_channel_id      := _
+        #{ existing_channel_id     := _
          , offchain_tx             := _
          , existing_fsm_id_wrapper := _} ->
             recover_from_offchain_tx(Opts);
@@ -65,6 +65,7 @@ new(Opts) ->
             new_(Opts)
     end.
 
+-spec new_(map()) -> {ok, map()}.
 new_(#{ initiator          := InitiatorPubKey
       , responder          := ResponderPubKey
       , initiator_amount   := InitiatorAmount
