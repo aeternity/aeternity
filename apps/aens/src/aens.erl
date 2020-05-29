@@ -105,6 +105,7 @@ name_entry(NameRecord) ->
         claimed ->
             {ok, #{id       => aens_names:id(NameRecord),
                    ttl      => aens_names:ttl(NameRecord),
+                   owner    => aens_names:owner_pubkey(NameRecord),
                    pointers => aens_names:pointers(NameRecord)}};
         revoked ->
             {error, name_revoked}
