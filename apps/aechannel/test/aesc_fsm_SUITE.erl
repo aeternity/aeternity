@@ -301,14 +301,10 @@ ga_sequence() ->
     ].
 
 update_sequence() ->
-    [ check_incorrect_update
-    ].
-
-%% update_sequence_() ->
-%%     [ check_incorrect_deposit
-%%     , check_incorrect_withdrawal
-%%     , check_incorrect_update
-%%     ].
+     [ check_incorrect_deposit
+     , check_incorrect_withdrawal
+     , check_incorrect_update
+     ].
 
 suite() ->
     [].
@@ -1563,40 +1559,40 @@ check_incorrect_deposit(Cfg) ->
     config(Cfg),
     Debug = get_debug(Cfg),
     Fun = proplists:get_value(wrong_action, Cfg),
-    #{ i := I
-     , r := R
-     , spec := Spec} = create_channel_([?SLOGAN|Cfg]),
-    Port = proplists:get_value(port, Cfg, ?PORT),
-    Data = {I, R, Spec, Port, Debug},
-    Roles = [initiator, responder],
-    Deposit =
+    Test =
         fun(Depositor, Malicious) ->
+            #{ i := I
+            , r := R
+            , spec := Spec} = create_channel_([?SLOGAN | Cfg]),
+            Port = proplists:get_value(port, Cfg, ?PORT),
+            Data = {I, R, Spec, Port, Debug},
             Fun(Data, Depositor, Malicious,
-                {upd_deposit, [#{amount => 1}], deposit_tx, deposit_created})
+                {upd_deposit, [#{amount => 1}], deposit_tx, deposit_created}),
+            flush()
         end,
-    [Deposit(Depositor, Malicious) || Depositor <- Roles,
-                                      Malicious <- Roles],
-    shutdown_(I, R, Cfg),
+    Roles = [initiator, responder],
+    [Test(D, M) || D <- Roles,
+                   M <- Roles],
     ok.
 
 check_incorrect_withdrawal(Cfg) ->
     config(Cfg),
     Debug = get_debug(Cfg),
     Fun = proplists:get_value(wrong_action, Cfg),
-    #{ i := I
-     , r := R
-     , spec := Spec} = create_channel_([?SLOGAN|Cfg]),
-    Port = proplists:get_value(port, Cfg, ?PORT),
-    Data = {I, R, Spec, Port, Debug},
+    Test =
+        fun(Withdrawer, Malicious) ->
+            #{ i := I
+            , r := R
+            , spec := Spec} = create_channel_([?SLOGAN|Cfg]),
+            Port = proplists:get_value(port, Cfg, ?PORT),
+            Data = {I, R, Spec, Port, Debug},
+            Fun(Data, Withdrawer, Malicious,
+                {upd_withdraw, [#{amount => 1}], withdraw_tx, withdraw_created}),
+            flush()
+          end,
     Roles = [initiator, responder],
-    Deposit =
-        fun(Depositor, Malicious) ->
-            Fun(Data, Depositor, Malicious,
-                {upd_withdraw, [#{amount => 1}], withdraw_tx, withdraw_created})
-        end,
-    [Deposit(Depositor, Malicious) || Depositor <- Roles,
-                                      Malicious <- Roles],
-    shutdown_(I, R, Cfg),
+    [Test(W, M) || W <- Roles,
+                   M <- Roles],
     ok.
 
 check_incorrect_update(Cfg) ->
@@ -2131,7 +2127,8 @@ wrong_action({I, R, _Spec, _Port, Debug}, Poster, Malicious,
 
             DetectConflictFun(D, Debug),
             % make sure setting back defaults if process is still there
-            rpc(dev1, aesc_fsm, strict_checks, [FsmD, true], Debug);
+            timer:sleep(50),
+            ok = rpc(dev1, aesc_fsm, strict_checks, [FsmD, true], Debug);
         false ->
             Post(),
             {_, _} = await_signing_request(FsmNewAction, D, Debug, Cfg),
@@ -2144,7 +2141,7 @@ wrong_action({I, R, _Spec, _Port, Debug}, Poster, Malicious,
             %% since this test is checking if the starting party (D) is
             %% reporting the conflict, we don't exepect the malicious
             %% acknowledger to report anything
-            rpc(dev1, aesc_fsm, strict_checks, [FsmA, true], Debug)
+            ok = rpc(dev1, aesc_fsm, strict_checks, [FsmA, true], Debug)
     end,
     check_info(50),
     ok.
