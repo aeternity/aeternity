@@ -421,7 +421,7 @@ init_per_group(accomodate_missed_onchain_tx, Config) ->
         ?ROMA_PROTOCOL_VSN    -> {skip, no_shutdown_while_closing_in_roma};
         ?MINERVA_PROTOCOL_VSN -> {skip, no_shutdown_while_closing_in_minerva};
         ?FORTUNA_PROTOCOL_VSN -> {skip, no_shutdown_while_closing_in_fortuna};
-        _ -> Config
+        _ -> init_per_group_(Config)
     end;
 init_per_group(_Group, Config) ->
     init_per_group_(Config).
