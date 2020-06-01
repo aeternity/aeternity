@@ -416,6 +416,13 @@ init_per_group(Group, Config) when Group =:= initiator_is_ga;
     end;
 init_per_group(generalized_accounts, Config) ->
     Config;
+init_per_group(accomodate_missed_onchain_tx, Config) ->
+    case aect_test_utils:latest_protocol_version() of
+        ?ROMA_PROTOCOL_VSN    -> {skip, no_shutdown_while_closing_in_roma};
+        ?MINERVA_PROTOCOL_VSN -> {skip, no_shutdown_while_closing_in_minerva};
+        ?FORTUNA_PROTOCOL_VSN -> {skip, no_shutdown_while_closing_in_fortuna};
+        _ -> Config
+    end;
 init_per_group(_Group, Config) ->
     init_per_group_(Config).
 
