@@ -89,6 +89,18 @@
         , request_too_new_bh/1
         , request_too_old_bh/1
         , positive_bh/1
+        , no_missing_tx/1
+        , missing_close_tx/1
+        , missing_snapshot_tx/1
+        , missing_snapshot_and_close_tx/1
+        , missing_force_progress_tx/1
+        , missing_couple_force_progress_tx/1
+        , missing_close_tx_and_force_progress/1
+        , missing_malicious_close/1
+        , missing_malicious_forced_progress/1
+        , missing_malicious_snapshot/1
+        , missing_malicious_snapshot_and_close_solo_based_on_it/1
+        , missing_malicious_snapshot_and_fp_based_on_it/1
         ]).
 
 %% exports for aehttp_integration_SUITE
@@ -185,6 +197,7 @@ groups() ->
                              , {group, pinned_env}
                              , {group, generalized_accounts}
                              , {group, failed_onchain}
+                             , {group, accomodate_missed_onchain_tx}
                              ]},
      {transactions_only, [sequence], transactions_sequence()},  %% if you don't also want to run GA tests
      {transactions, [sequence], transactions_sequence()},
@@ -199,9 +212,9 @@ groups() ->
       ]},
      {errors, [sequence],
       [
-        check_mutual_close_with_wrong_amounts
+        check_fsm_crash_reestablish
+      , check_mutual_close_with_wrong_amounts
       , check_mutual_close_after_close_solo
-      , check_fsm_crash_reestablish
       ]},
      {signing_abort, [sequence],
       [
@@ -257,6 +270,21 @@ groups() ->
       , force_progress_followed_by_update
       , force_progress_triggers_snapshot
       , force_progress_triggers_slash
+      ]},
+     {accomodate_missed_onchain_tx, [sequence],
+      [
+       no_missing_tx,
+       missing_close_tx,
+       missing_snapshot_tx,
+       missing_snapshot_and_close_tx,
+       missing_force_progress_tx,
+       missing_couple_force_progress_tx,
+       missing_close_tx_and_force_progress,
+       missing_malicious_close,
+       missing_malicious_forced_progress,
+       missing_malicious_snapshot,
+       missing_malicious_snapshot_and_close_solo_based_on_it,
+       missing_malicious_snapshot_and_fp_based_on_it
       ]}
     ].
 
@@ -388,6 +416,13 @@ init_per_group(Group, Config) when Group =:= initiator_is_ga;
     end;
 init_per_group(generalized_accounts, Config) ->
     Config;
+init_per_group(accomodate_missed_onchain_tx, Config) ->
+    case aect_test_utils:latest_protocol_version() of
+        ?ROMA_PROTOCOL_VSN    -> {skip, no_shutdown_while_closing_in_roma};
+        ?MINERVA_PROTOCOL_VSN -> {skip, no_shutdown_while_closing_in_minerva};
+        ?FORTUNA_PROTOCOL_VSN -> {skip, no_shutdown_while_closing_in_fortuna};
+        _ -> init_per_group_(Config)
+    end;
 init_per_group(_Group, Config) ->
     init_per_group_(Config).
 
@@ -1255,28 +1290,31 @@ close_solo_tx(#{ fsm        := Fsm
 
 % Test leave-reestablish flow with unclean leave, where the FSM is closed upon timeout
 leave_reestablish_close(Cfg) ->
-    Debug = get_debug(Cfg),
     Cfg1 = [?SLOGAN | set_expected_fsm_logs(?FUNCTION_NAME, Cfg)],
+    leave_reestablish_close_(Cfg1).
+
+leave_reestablish_close_(Cfg) ->
+    Debug = get_debug(Cfg),
     assert_empty_msgq(Debug),
 
     % Do common leave-reestablish routine
-    #{i := I, r := R, spec := Spec} = leave_reestablish_loop_(Cfg1),
+    #{i := I, r := R, spec := Spec} = leave_reestablish_loop_(Cfg),
 
     % Verify that we can still perform updates
     #{initiator := PubI, responder := PubR} = Spec,
-    {I1, R1} = do_update(PubI, PubR, 1, I, R, Debug, Cfg1),
+    {I1, R1} = do_update(PubI, PubR, 1, I, R, Debug, Cfg),
 
     % Ensure state is still in ram pre shutdown
     ChId = maps:get(channel_id, I1),
     assert_cache_is_in_ram(ChId),
 
     % Do the shutdown
-    shutdown_(I1, R1, Cfg1),
+    shutdown_(I1, R1, Cfg),
 
     {ok, #{info := {log, ILog}}} = receive_log(I1, Debug),
     {ok, #{info := {log, RLog}}} = receive_log(R1, Debug),
-    ok = check_fsm_log(ILog, initiator, Cfg1),
-    ok = check_fsm_log(RLog, responder, Cfg1),
+    ok = check_fsm_log(ILog, initiator, Cfg),
+    ok = check_fsm_log(RLog, responder, Cfg),
 
     % Ensure state is flushed gone post shutdown
     assert_cache_is_gone_after_on_disk(ChId),
@@ -1286,8 +1324,9 @@ leave_reestablish_close(Cfg) ->
     ok.
 
 leave_reestablish_responder_stays(Cfg) ->
-    Cfg1 = set_configs([?SLOGAN , {keep_running, true}], Cfg),
-    leave_reestablish_close(Cfg1).
+    Cfg1 = [?SLOGAN 
+          , {responder_opts, #{keep_running => true } } | Cfg],
+    leave_reestablish_close_(Cfg1).
 
 change_config_get_history(Cfg) ->
     Cfg1 = set_expected_fsm_logs(?FUNCTION_NAME, Cfg),
@@ -1855,10 +1894,10 @@ fsm_crash_reestablish(#{channel_id := ChId, fsm := FsmI, fsm_id := IFsmId} = I,
 
     ?LOG(Debug, "reestablish with wrong fsm id...", []),
     Info = #{i => I, r => R, spec => Spec},
-    reestablish_wrong_fsm_id(Info, SignedTx, ?PORT, Debug),
 
     ?LOG(Debug, "reestablishing ...", []),
     #{i := #{fsm_id := IFsmId1} = I1, r := #{fsm_id := RFsmId1} = R1} = reestablish_(Info, SignedTx, ?PORT, Debug),
+    assert_empty_msgq(Debug),
     %% Assert that the FSM ID's have changed
     true = IFsmId /= IFsmId1,
     true = RFsmId /= RFsmId1,
@@ -2395,11 +2434,24 @@ ch_loop(I, R, Parent, Cfg) ->
 create_channel_from_spec(I, R, Spec, Port, Debug, Cfg) ->
     create_channel_from_spec(I, R, Spec, Port, false, Debug, Cfg).
 
-create_channel_from_spec(I, R, Spec, Port, UseAny, Debug, Cfg) ->
+create_channel_from_spec(I, R, Spec0, Port, UseAny, Debug, Cfg) ->
     assert_empty_msgq(Debug),
     %% TODO: Somehow there is a CI only race condition which rarely occurs in
     %% round_too_high.check_incorrect_* and round_too_low.check_incorrect_* tests
     %% For now just wrap this operation in a retry loop and come back to it later
+    ResponderOpts0 = proplists:get_value(responder_opts, Cfg, #{}),
+    ResponderOpts =
+        case is_function(ResponderOpts0) of
+            true -> ResponderOpts0(Spec0);
+            false -> ResponderOpts0
+        end,
+    ResponderStays = maps:get(keep_running, ResponderOpts, false),
+    Spec =
+        case ResponderStays of
+            false -> Spec0;
+            true ->
+                Spec0#{responder_opts => #{keep_running => true}}
+        end,
     ?LOG("=== Create channel~n", []),
     ?LOG("Spec = ~p", [Spec]),
     RSpec = customize_spec(responder, Spec, Cfg),
@@ -2446,8 +2498,8 @@ create_channel_from_spec(I, R, Spec, Port, UseAny, Debug, Cfg) ->
     {ok, _} = wait_for_signed_transaction_in_block(dev1, SignedTx, Debug),
     ?LOG(Debug, "=== Signed tx in block: ~p", [SignedTx]),
 
-    SignedTx = await_channel_changed_report(I2, ?TIMEOUT),
-    SignedTx = await_channel_changed_report(R2, ?TIMEOUT),
+    {channel_create_tx, SignedTx} = await_channel_changed_report(I2, ?TIMEOUT),
+    {channel_create_tx, SignedTx} = await_channel_changed_report(R2, ?TIMEOUT),
     CurrentHeight = current_height(dev1),
     MinDepth = config(minimum_depth_channel, Cfg, ?MINIMUM_DEPTH),
     ?LOG(Debug, "mining blocks on dev1 for minimum depth = ~p", [MinDepth]),
@@ -2813,8 +2865,9 @@ await_channel_changed_report(#{fsm := Fsm}, Timeout) ->
         {aesc_fsm, Fsm, #{ type := report
                          , tag  := on_chain_tx
                          , info := #{ info := channel_changed
+                                    , type := Type
                                     , tx   := SignedTx } }} ->
-            SignedTx
+            {Type, SignedTx}
     after Timeout ->
             ?PEEK_MSGQ(true),
             error(timeout)
@@ -3636,12 +3689,14 @@ leave_reestablish_loop_(Cfg) ->
     % Mark that we opened the channel for the first time
     Info1 = Info0#{initial_channel_open => true},
 
+    ResponderOpts = proplists:get_value(responder_opts, Cfg, #{}),
+    ResponderStays = maps:get(keep_running, ResponderOpts, false),
     % Run steps 10 times
-    leave_reestablish_loop_step_(10, Info1, Debug).
+    leave_reestablish_loop_step_(10, Info1, Debug, ResponderStays).
 
-leave_reestablish_loop_step_(0, Info, _Debug) ->
+leave_reestablish_loop_step_(0, Info, _Debug, _ResponderStays) ->
     Info;
-leave_reestablish_loop_step_(Idx, Info, Debug) ->
+leave_reestablish_loop_step_(Idx, Info, Debug, ResponderStays) ->
     assert_empty_msgq(Debug),
     #{ i := #{ channel_id := ChId
              , fsm := Fsm } = I
@@ -3654,17 +3709,28 @@ leave_reestablish_loop_step_(Idx, Info, Debug) ->
 
     % Verify leave and FSM timeout
     {ok, #{info := SignedTx}} = await_leave(I, ?TIMEOUT, Debug),
-    {ok, #{info := SignedTx}} = await_leave(R, ?TIMEOUT, Debug),
     {ok, _} = receive_info(I, fun died_normal/1, Debug),
-    {ok, _} = receive_info(R, fun died_normal/1, Debug),
+    case ResponderStays of
+        true ->
+            {ok, #{info := SignedTx, notice := keep_running}} = await_leave(R, ?TIMEOUT, Debug),
+            {ok, _} = receive_from_fsm(info, R, fun(#{info := peer_disconnected}) -> ok end,
+                                       ?TIMEOUT, Debug);
+
+        false ->
+            {ok, #{info := SignedTx}} = await_leave(R, ?TIMEOUT, Debug),
+            {ok, _} = receive_info(R, fun died_normal/1, Debug),
+            {ok, #{info := {log, RLog}}} = receive_log(R, Debug),
+            ok = check_log(expected_fsm_logs(?FUNCTION_NAME, responder, Info), RLog,
+                   responder)
+    end,
     {ok, #{info := {log, ILog}}} = receive_log(I, Debug),
-    {ok, #{info := {log, RLog}}} = receive_log(R, Debug),
     ok = check_log(expected_fsm_logs(?FUNCTION_NAME, initiator, Info), ILog,
                    initiator),
-    ok = check_log(expected_fsm_logs(?FUNCTION_NAME, responder, Info), RLog,
-                   responder),
-
-    retry(3, 100, fun() -> assert_cache_is_on_disk(ChId) end),
+    case ResponderStays of
+        false ->
+            retry(3, 100, fun() -> assert_cache_is_on_disk(ChId) end);
+        true -> pass
+    end,
     assert_empty_msgq(Debug),
 
     % Mine to ensure all transaction are on chain and confirmed
@@ -3678,7 +3744,7 @@ leave_reestablish_loop_step_(Idx, Info, Debug) ->
     % Done, repeat
     ?LOG(Debug, "Ending leave_reestablish attempt ~p", [Idx]),
     assert_empty_msgq(Debug),
-    leave_reestablish_loop_step_(Idx - 1, Info3, Debug).
+    leave_reestablish_loop_step_(Idx - 1, Info3, Debug, ResponderStays).
 
 reestablish_(Info, SignedTx, Port, Debug) ->
     assert_empty_msgq(Debug),
@@ -3715,21 +3781,49 @@ reestablish_(Info, SignedTx, Port, Debug) ->
     R1 = R0#{fsm => FsmR, fsm_id => RFsmId},
 
     % Verify FSM startup completed
-    I2 = await_open_report(I1, ?TIMEOUT, Debug),
-    R2 = await_open_report(R1, ?TIMEOUT, Debug),
+    {ok, Channel} = rpc(dev1, aec_chain, get_channel, [ChId]),
+    IsSoloClosing = aesc_channels:is_solo_closing(Channel),
+    I2 =
+        case IsSoloClosing of
+            true -> I1;
+            false -> await_open_report(I1, ?TIMEOUT, Debug)
+        end,
+    R2 =
+        case ResponderStays of
+            true -> R1;
+            false ->
+                _R = await_open_report(R1, ?TIMEOUT, Debug)
+        end,
     {ok, _} = receive_info(I2, channel_reestablished, Debug),
-    {ok, _} = receive_info(R2, channel_reestablished, Debug),
+    case IsSoloClosing of
+        true ->
+            {ok, _} = receive_from_fsm(info, I2, fun closing/1, ?TIMEOUT, Debug);
+        false -> pass
+    end,
+    case ResponderStays of
+        true -> pass;
+        false ->
+            {ok, _} = receive_info(R2, channel_reestablished, Debug)
+    end,
     {I4, R4} = if ResponderStays ->
-                      #{signed_tx := SignedTx} = I3 = await_update_report(I2, ?TIMEOUT, Debug),
-                      {I3, R2};
+                      #{signed_tx := _SignedTx} = I3 =
+                          await_update_report(I2, ?TIMEOUT, Debug),
+                      {ok, _} = receive_info(R2,
+                                              channel_reestablished,
+                                              Debug),
+                      R3 =
+                          case IsSoloClosing of
+                              true -> R2;
+                              false ->
+                                  _R3 = await_open_report(R2, ?TIMEOUT, Debug)
+                          end,
+                      {I3, R3};
                   true ->
-                      #{signed_tx := SignedTx} = I3 = await_update_report(I2, ?TIMEOUT, Debug),
-                      #{signed_tx := SignedTx} = R3 = await_update_report(R2, ?TIMEOUT, Debug),
+                      #{signed_tx := SignedTx1} = I3 = await_update_report(I2, ?TIMEOUT, Debug),
+                      #{signed_tx := SignedTx1} = R3 = await_update_report(R2, ?TIMEOUT, Debug),
                       {I3, R3}
                end,
-
     % Done
-    assert_empty_msgq(Debug),
     Info#{i => I4, r => R4, spec => Spec}.
 
 reestablish_wrong_fsm_id(Info, SignedTx, Port, Debug) ->
@@ -3798,8 +3892,8 @@ withdraw_(#{fsm := FsmI} = I, R, Amount, Opts, Round0, Debug, Cfg) ->
         await_own_withdraw_locked(R1, ?TIMEOUT, Debug),
         await_withdraw_locked(I1, ?TIMEOUT, Debug),
         await_withdraw_locked(R1, ?TIMEOUT, Debug),
-        SignedTx = await_channel_changed_report(I1, ?TIMEOUT), % same tx
-        SignedTx = await_channel_changed_report(R1, ?TIMEOUT), % same tx
+        {channel_withdraw_tx, SignedTx} = await_channel_changed_report(I1, ?TIMEOUT), % same tx
+        {channel_withdraw_tx, SignedTx} = await_channel_changed_report(R1, ?TIMEOUT), % same tx
         #{signed_tx := SignedTx} = I2 = await_update_report(I1, ?TIMEOUT, Debug),
         #{signed_tx := SignedTx} = R2 = await_update_report(R1, ?TIMEOUT, Debug),
         {I2, R2}
@@ -3844,8 +3938,8 @@ deposit_(#{fsm := FsmI} = I, R, Amount, Opts, Round0, Debug, Cfg) ->
         await_own_deposit_locked(R1, ?TIMEOUT, Debug),
         await_deposit_locked(I1, ?TIMEOUT, Debug),
         await_deposit_locked(R1, ?TIMEOUT, Debug),
-        SignedTx = await_channel_changed_report(I1, ?TIMEOUT), % same tx
-        SignedTx = await_channel_changed_report(R1, ?TIMEOUT), % same tx
+        {channel_deposit_tx, SignedTx} = await_channel_changed_report(I1, ?TIMEOUT), % same tx
+        {channel_deposit_tx, SignedTx} = await_channel_changed_report(R1, ?TIMEOUT), % same tx
         #{signed_tx := SignedTx} = I2 = await_update_report(I1, ?TIMEOUT, Debug),
         #{signed_tx := SignedTx} = R2 = await_update_report(R1, ?TIMEOUT, Debug),
         {I2, R2}
@@ -4520,7 +4614,7 @@ snapshot_with_failed_onchain(Cfg) ->
                         initiator, % to
                         1,         % some amount 
                         Cfg),
-            {I2, _SignedCloseSoloTx} = await_signing_request(snapshot_solo_tx, I1, Cfg),
+            {I2, _SignedSnapshotTx} = await_signing_request(snapshot_solo_tx, I1, Cfg),
             %% because we made an off-chain update, the latest stable state is the one
             %% produced by the off-chain transfer, hence the round is 2
             {ok, _} = receive_from_fsm(conflict, I2, #{info => #{ error_code => 5
@@ -4728,8 +4822,8 @@ force_progress_triggers_slash(Cfg) ->
     ok = rpc(dev1, aec_tx_pool, push, [SignedFP]),
     wait_for_signed_transaction_in_block(dev1, SignedFP, Debug),
 
-    SlashTx = await_on_chain_report(I4, #{info => can_slash}, ?TIMEOUT),
-    SlashTx = await_on_chain_report(R4, #{info => can_slash}, ?TIMEOUT),
+    _Tx = await_on_chain_report(I4, #{info => can_slash}, ?TIMEOUT),
+    _Tx = await_on_chain_report(R4, #{info => can_slash}, ?TIMEOUT),
     check_info(20),
     ok = rpc(dev1, aesc_fsm, slash, [FsmI, #{}]),
     {_, SignedSlashTx} = await_signing_request(slash_tx, I4, Cfg),
@@ -5075,31 +5169,6 @@ force_progress_(ContractPubkey,
 
     {Caller1, Other}.
 
-produce_close_mutual_tx(ChannelId, FromId, I, R, Cfg, Opts) ->
-    Debug = get_debug(Cfg),
-    Nonce =
-        case account_type(FromId) of
-            basic ->
-                {ok, N} = rpc(dev1, aec_next_nonce, pick_for_account, [FromId]),
-                N;
-            generalized ->
-                0
-        end,
-    CloseMutualTxOpts =
-        #{ channel_id => aeser_id:create(channel, ChannelId)
-         , from_id => aeser_id:create(account, FromId)
-         , initiator_amount_final => 0
-         , responder_amount_final => 0
-         , fee => 20000 * aec_test_utils:min_gas_price()
-         , nonce => Nonce
-        },
-    {ok, Aetx} = aesc_close_mutual_tx:new(maps:merge(Opts, CloseMutualTxOpts)),
-    {Tx1, I1} = sign_tx(I, Aetx, Cfg),
-    {SignedTx, R1} = co_sign_tx(R, Tx1, Cfg),
-    ok = rpc(dev1, aec_tx_pool, push, [SignedTx]),
-    wait_for_signed_transaction_in_block(dev1, SignedTx, Debug),
-    {I1, R1}.
-
 snapshot_solo_(#{fsm := FsmI} = I, R, Opts, Cfg) ->
     Debug = get_debug(Cfg),
     assert_empty_msgq(Debug),
@@ -5111,8 +5180,8 @@ snapshot_solo_(#{fsm := FsmI} = I, R, Opts, Cfg) ->
     ok = rpc(dev1, aesc_fsm, snapshot_solo, [FsmI, Opts]),
     {I1, SignedTx} = await_signing_request(snapshot_solo_tx, I, Cfg),
     wait_for_signed_transaction_in_block(dev1, SignedTx, Debug),
-    SignedTx = await_channel_changed_report(I1, ?TIMEOUT), % same tx
-    SignedTx = await_channel_changed_report(R, ?TIMEOUT), % same tx
+    {channel_snapshot_solo_tx, SignedTx} = await_channel_changed_report(I1, ?TIMEOUT), % same tx
+    {channel_snapshot_solo_tx, SignedTx} = await_channel_changed_report(R, ?TIMEOUT), % same tx
     ?LOG(Debug, "=== SignedTx = ~p", [SignedTx]),
     assert_empty_msgq(Debug),
 
@@ -5180,4 +5249,571 @@ auth_contract_props(btc_auth) ->
                   end}
         end,
     {"bitcoin_auth", "authorize", Params}.
+
+no_missing_tx(Cfg0) ->
+    Debug = get_debug(Cfg0),
+    Cfg = [?SLOGAN 
+          , {responder_opts, #{keep_running => true } } | Cfg0],
+    assert_empty_msgq(Debug),
+    {I0, R0, Spec0} = channel_spec(Cfg),
+    Spec = Spec0#{responder_opts => #{keep_running => true}},
+    #{ i := #{ channel_id := _ChannelId
+             , fsm := FsmI } = I
+     , r := #{ fsm := _FsmR } = R} = create_channel_from_spec(I0, R0, Spec, ?PORT, Debug, Cfg),
+    ok = rpc(dev1, aesc_fsm, leave, [FsmI]),
+    % Verify leave and FSM timeout
+    {ok, #{info := SignedTx}} = await_leave(I, ?TIMEOUT, Debug),
+    {ok, #{info := SignedTx}} = await_leave(R, ?TIMEOUT, Debug),
+    {ok, _} = receive_info(I, fun died_normal/1, Debug),
+    {ok, _} = receive_from_fsm(info, R, fun(#{info := peer_disconnected}) -> ok end,
+                               ?TIMEOUT, Debug),
+    {ok, #{info := {log, _ILog}}} = receive_log(I, Debug),
+    assert_empty_msgq(Debug),
+    ?LOG(Debug, "queue is empty", []),
+    Info = #{i => I, r => R, spec => Spec},
+    #{i := #{fsm_id := _IFsmId1} = I1, r := #{fsm_id := _RFsmId1} = R1} =
+        reestablish_(Info, SignedTx, ?PORT, Debug),
+    assert_empty_msgq(Debug),
+    shutdown_(I1, R1, Cfg),
+    ok.
+
+missing_close_tx(Cfg0) ->
+    Debug = get_debug(Cfg0),
+    Cfg = [?SLOGAN 
+          , {responder_opts, #{keep_running => true } } | Cfg0],
+    assert_empty_msgq(Debug),
+    {I0, R0, Spec0} = channel_spec(Cfg),
+    Spec = Spec0#{responder_opts => #{keep_running => true}},
+    #{ i := #{ channel_id := _ChannelId
+             , fsm := FsmI } = I
+     , r := #{ fsm := FsmR } = R} = create_channel_from_spec(I0, R0, Spec, ?PORT, Debug, Cfg),
+    ok = rpc(dev1, aesc_fsm, leave, [FsmI]),
+    % Verify leave and FSM timeout
+    {ok, #{info := SignedTx}} = await_leave(I, ?TIMEOUT, Debug),
+    {ok, #{info := SignedTx}} = await_leave(R, ?TIMEOUT, Debug),
+    {ok, _} = receive_info(I, fun died_normal/1, Debug),
+    {ok, _} = receive_from_fsm(info, R, fun(#{info := peer_disconnected}) -> ok end,
+                               ?TIMEOUT, Debug),
+    {ok, #{info := {log, _ILog}}} = receive_log(I, Debug),
+    assert_empty_msgq(Debug),
+    ?LOG(Debug, "queue is empty", []),
+    %% post a close solo while the other party is off
+    ok = rpc(dev1, aesc_fsm, close_solo, [FsmR, #{}]),
+    {_, SignedCloseSoloTx} = await_signing_request(close_solo_tx, R, Cfg),
+    wait_for_signed_transaction_in_block(dev1, SignedCloseSoloTx),
+    SignedCloseSoloTx = await_on_chain_report(R, #{info => solo_closing}, ?TIMEOUT),
+    LockPeriod = maps:get(lock_period, Spec),
+    mine_blocks(dev1, LockPeriod),
+    {ok, _} = receive_info(R, closing, Debug),
+    %% reestablish initiator
+    Info = #{i => I, r => R, spec => Spec},
+    #{i := #{fsm_id := _IFsmId1} = I1, r := #{fsm_id := _RFsmId1} = R1} =
+        reestablish_(Info, SignedTx, ?PORT, Debug),
+    %% initiator catches up with missing tx
+    {channel_close_solo_tx, SignedCloseSoloTx} = await_channel_changed_report(I1,
+                                                                              ?TIMEOUT),
+    assert_empty_msgq(Debug),
+    shutdown_(I1, R1, [{already_closing, true} | Cfg]),
+    ok.
+
+missing_snapshot_tx(Cfg0) ->
+    Debug = get_debug(Cfg0),
+    Cfg = [?SLOGAN 
+          , {responder_opts, #{keep_running => true } } | Cfg0],
+    assert_empty_msgq(Debug),
+    {I0, R0, Spec0} = channel_spec(Cfg),
+    Spec = Spec0#{responder_opts => #{keep_running => true}},
+    #{ i := #{ channel_id := _ChannelId
+             , pub := PubI
+             , fsm := FsmI } = I
+     , r := #{ fsm := FsmR
+             , pub := PubR} = R} = create_channel_from_spec(I0, R0, Spec, ?PORT, Debug, Cfg),
+    {I1, R1} = do_update(PubI, PubR, 2, I, R, Debug, Cfg),
+    ok = rpc(dev1, aesc_fsm, leave, [FsmI]),
+    % Verify leave and FSM timeout
+    {ok, #{info := SignedTx}} = await_leave(I1, ?TIMEOUT, Debug),
+    {ok, #{info := SignedTx}} = await_leave(R1, ?TIMEOUT, Debug),
+    {ok, _} = receive_info(I, fun died_normal/1, Debug),
+    {ok, _} = receive_from_fsm(info, R, fun(#{info := peer_disconnected}) -> ok end,
+                               ?TIMEOUT, Debug),
+    {ok, #{info := {log, _ILog}}} = receive_log(I, Debug),
+    assert_empty_msgq(Debug),
+    ?LOG(Debug, "queue is empty", []),
+    %% post a snapshot while the other party is off
+    ok = rpc(dev1, aesc_fsm, snapshot_solo, [FsmR, #{}]),
+    {R2, SignedSnapshotTx} = await_signing_request(snapshot_solo_tx, R1, Cfg),
+    wait_for_signed_transaction_in_block(dev1, SignedSnapshotTx),
+    {channel_snapshot_solo_tx, SignedSnapshotTx} =
+        await_channel_changed_report(R2, ?TIMEOUT), %% same tx
+    mine_blocks(dev1),
+    await_min_depth_reached(R2, aetx_sign:hash(SignedSnapshotTx), channel_snapshot_solo_tx, ?TIMEOUT),
+    %% reestablish initiator
+    Info = #{i => I, r => R, spec => Spec},
+    #{i := #{fsm_id := _IFsmId1} = I2, r := #{fsm_id := _RFsmId1} = R3} =
+        reestablish_(Info, SignedTx, ?PORT, Debug),
+    %% initiator catches up with missing tx
+    {channel_snapshot_solo_tx, SignedSnapshotTx} =
+        await_channel_changed_report(I2, ?TIMEOUT), %% same tx
+    assert_empty_msgq(Debug),
+    shutdown_(I2, R3, Cfg),
+    ok.
+
+missing_snapshot_and_close_tx(Cfg0) ->
+    Debug = get_debug(Cfg0),
+    Cfg = [?SLOGAN 
+          , {responder_opts, #{keep_running => true } } | Cfg0],
+    assert_empty_msgq(Debug),
+    {I0, R0, Spec0} = channel_spec(Cfg),
+    Spec = Spec0#{responder_opts => #{keep_running => true}},
+    #{ i := #{ channel_id := _ChannelId
+             , pub := PubI
+             , fsm := FsmI } = I
+     , r := #{ fsm := FsmR
+             , pub := PubR} = R} = create_channel_from_spec(I0, R0, Spec, ?PORT, Debug, Cfg),
+    {I1, R1} = do_update(PubI, PubR, 2, I, R, Debug, Cfg),
+    ok = rpc(dev1, aesc_fsm, leave, [FsmI]),
+    % Verify leave and FSM timeout
+    {ok, #{info := SignedTx}} = await_leave(I1, ?TIMEOUT, Debug),
+    {ok, #{info := SignedTx}} = await_leave(R1, ?TIMEOUT, Debug),
+    {ok, _} = receive_info(I, fun died_normal/1, Debug),
+    {ok, _} = receive_from_fsm(info, R, fun(#{info := peer_disconnected}) -> ok end,
+                               ?TIMEOUT, Debug),
+    {ok, #{info := {log, _ILog}}} = receive_log(I1, Debug),
+    assert_empty_msgq(Debug),
+    ?LOG(Debug, "queue is empty", []),
+    %% post a snapshot while the other party is off
+    ok = rpc(dev1, aesc_fsm, snapshot_solo, [FsmR, #{}]),
+    {R2, SignedSnapshotTx} = await_signing_request(snapshot_solo_tx, R1, Cfg),
+    wait_for_signed_transaction_in_block(dev1, SignedSnapshotTx),
+    {channel_snapshot_solo_tx, SignedSnapshotTx} =
+        await_channel_changed_report(R2, ?TIMEOUT), %% same tx
+    mine_blocks(dev1),
+    await_min_depth_reached(R2, aetx_sign:hash(SignedSnapshotTx), channel_snapshot_solo_tx, ?TIMEOUT),
+    ok = rpc(dev1, aesc_fsm, close_solo, [FsmR, #{}]),
+    {_, SignedCloseSoloTx} = await_signing_request(close_solo_tx, R2, Cfg),
+    wait_for_signed_transaction_in_block(dev1, SignedCloseSoloTx),
+    SignedCloseSoloTx = await_on_chain_report(R2, #{info => solo_closing}, ?TIMEOUT),
+    LockPeriod = maps:get(lock_period, Spec),
+    mine_blocks(dev1, LockPeriod),
+    {ok, _} = receive_info(R, closing, Debug),
+    %% reestablish initiator
+    Info = #{i => I, r => R, spec => Spec},
+    #{i := #{fsm_id := _IFsmId1} = I2, r := #{fsm_id := _RFsmId1} = R3} =
+        reestablish_(Info, SignedTx, ?PORT, Debug),
+    %% initiator catches up with missing tx
+    {channel_snapshot_solo_tx, SignedSnapshotTx} =
+        await_channel_changed_report(I2, ?TIMEOUT), %% same tx
+    {channel_close_solo_tx, SignedCloseSoloTx} = await_channel_changed_report(I2,
+                                                                          ?TIMEOUT),
+    assert_empty_msgq(Debug),
+    shutdown_(I2, R3, [{already_closing, true} | Cfg]),
+    ok.
+
+missing_force_progress_tx(Cfg0) ->
+    Debug = get_debug(Cfg0),
+    Cfg = [?SLOGAN 
+          , {responder_opts, #{keep_running => true } } | Cfg0],
+    assert_empty_msgq(Debug),
+    {I0, R0, Spec0} = channel_spec(Cfg),
+    Spec = Spec0#{responder_opts => #{keep_running => true}},
+    #{ i := #{ channel_id := _ChannelId
+             , fsm := FsmI } = I
+     , r := #{ fsm := _FsmR} = R} = create_channel_from_spec(I0, R0, Spec, ?PORT, Debug, Cfg),
+    {I1, R1, ContractPubkey} = create_contract(counter, ["42"], 10, I, R, Cfg),
+    {I2, R2} = call_contract(ContractPubkey, counter, "tick", [], 10, I1, R1, Cfg),
+    ok = rpc(dev1, aesc_fsm, leave, [FsmI]),
+    % Verify leave and FSM timeout
+    {ok, #{info := SignedTx}} = await_leave(I2, ?TIMEOUT, Debug),
+    {ok, #{info := SignedTx}} = await_leave(R2, ?TIMEOUT, Debug),
+    {ok, _} = receive_info(I, fun died_normal/1, Debug),
+    {ok, _} = receive_from_fsm(info, R2, fun(#{info := peer_disconnected}) -> ok end,
+                               ?TIMEOUT, Debug),
+    {ok, #{info := {log, _ILog}}} = receive_log(I2, Debug),
+    assert_empty_msgq(Debug),
+    ?LOG(Debug, "queue is empty", []),
+    %% post a contract force call while the other party is off
+    trigger_force_progress(ContractPubkey,
+                counter, "tick", [], 10, R2),
+    {R3, SignedFPTx} = await_signing_request(force_progress_tx, R2, Cfg),
+    wait_for_signed_transaction_in_block(dev1, SignedFPTx, Debug),
+    SignedFPTx = await_on_chain_report(R3, #{info => consumed_forced_progress}, ?TIMEOUT),
+    %% reestablish initiator
+    Info = #{i => I2, r => R3, spec => Spec},
+    #{i := #{fsm_id := _IFsmId1} = I3, r := #{fsm_id := _RFsmId1} = R4} =
+        reestablish_(Info, SignedTx, ?PORT, Debug),
+    %% initiator catches up with missing tx
+    {channel_force_progress_tx, SignedFPTx} =
+        await_channel_changed_report(I3, ?TIMEOUT), %% same tx
+    assert_empty_msgq(Debug),
+    shutdown_(I3, R4, Cfg),
+    ok.
+
+missing_couple_force_progress_tx(Cfg0) ->
+    Debug = get_debug(Cfg0),
+    Cfg = [?SLOGAN 
+          , {responder_opts, #{keep_running => true } } | Cfg0],
+    assert_empty_msgq(Debug),
+    {I0, R0, Spec0} = channel_spec(Cfg),
+    Spec = Spec0#{responder_opts => #{keep_running => true}},
+    #{ i := #{ channel_id := _ChannelId
+             , pub := PubI
+             , fsm := FsmI } = I
+     , r := #{ fsm := _FsmR 
+             , pub := PubR } = R} = create_channel_from_spec(I0, R0, Spec, ?PORT, Debug, Cfg),
+    {I1, R1, ContractPubkey} = create_contract(counter, ["42"], 10, I, R, Cfg),
+    {I2, R2} = call_contract(ContractPubkey, counter, "tick", [], 10, I1, R1, Cfg),
+    ok = rpc(dev1, aesc_fsm, leave, [FsmI]),
+    % Verify leave and FSM timeout
+    {ok, #{info := SignedTx}} = await_leave(I2, ?TIMEOUT, Debug),
+    {ok, #{info := SignedTx}} = await_leave(R2, ?TIMEOUT, Debug),
+    {ok, _} = receive_info(I, fun died_normal/1, Debug),
+    {ok, _} = receive_from_fsm(info, R2, fun(#{info := peer_disconnected}) -> ok end,
+                               ?TIMEOUT, Debug),
+    {ok, #{info := {log, _ILog}}} = receive_log(I2, Debug),
+    assert_empty_msgq(Debug),
+    ?LOG(Debug, "queue is empty", []),
+    %% post a contract force call while the other party is off
+    trigger_force_progress(ContractPubkey,
+                counter, "tick", [], 10, R2),
+    {_, SignedFPTx1} = await_signing_request(force_progress_tx, R2, Cfg),
+    wait_for_signed_transaction_in_block(dev1, SignedFPTx1, Debug),
+    SignedFPTx1 = await_on_chain_report(R2, #{info => consumed_forced_progress}, ?TIMEOUT),
+    %% make a second FP
+    trigger_force_progress(ContractPubkey,
+                counter, "tick", [], 10, R2),
+    {R3, SignedFPTx2} = await_signing_request(force_progress_tx, R2, Cfg),
+    wait_for_signed_transaction_in_block(dev1, SignedFPTx2, Debug),
+    SignedFPTx2 = await_on_chain_report(R3, #{info => consumed_forced_progress}, ?TIMEOUT),
+    %% reestablish initiator
+    Info = #{i => I2, r => R3, spec => Spec},
+    #{i := #{fsm := FsmI1} = I3, r := #{} = R4} =
+        reestablish_(Info, SignedTx, ?PORT, Debug),
+    %% initiator catches up with missing tx
+    {channel_force_progress_tx, SignedFPTx1} =
+        await_channel_changed_report(I3, ?TIMEOUT), %% same tx
+    {channel_force_progress_tx, SignedFPTx2} =
+        await_channel_changed_report(I3, ?TIMEOUT), %% same tx
+    {_, _, _, FSMIRound, _} = check_fsm_state(FsmI1),
+    {aesc_force_progress_tx, LastTx} =
+        aetx:specialize_callback(aetx_sign:innermost_tx(SignedFPTx2)),
+    LastTxRound = aesc_force_progress_tx:round(LastTx),
+    {FSMIRound, FSMIRound} = {FSMIRound, LastTxRound},
+    %% can continue based on top of both FPs
+    {I4, R5} = do_update(PubI, PubR, 2, I3, R4, Debug, Cfg),
+    assert_empty_msgq(Debug),
+    shutdown_(I4, R5, Cfg),
+    ok.
+
+missing_close_tx_and_force_progress(Cfg0) ->
+    Debug = get_debug(Cfg0),
+    Cfg = [?SLOGAN 
+          , {responder_opts, #{keep_running => true } } | Cfg0],
+    assert_empty_msgq(Debug),
+    {I0, R0, Spec0} = channel_spec(Cfg),
+    Spec = Spec0#{responder_opts => #{keep_running => true}},
+    #{ i := #{ channel_id := _ChannelId
+             , fsm := FsmI } = I
+     , r := #{ fsm := FsmR} = R} = create_channel_from_spec(I0, R0, Spec, ?PORT, Debug, Cfg),
+    {I1, R1, ContractPubkey} = create_contract(counter, ["42"], 10, I, R, Cfg),
+    {I2, R2} = call_contract(ContractPubkey, counter, "tick", [], 10, I1, R1, Cfg),
+    ok = rpc(dev1, aesc_fsm, leave, [FsmI]),
+    % Verify leave and FSM timeout
+    {ok, #{info := SignedTx}} = await_leave(I2, ?TIMEOUT, Debug),
+    {ok, #{info := SignedTx}} = await_leave(R2, ?TIMEOUT, Debug),
+    {ok, _} = receive_info(I, fun died_normal/1, Debug),
+    {ok, _} = receive_from_fsm(info, R2, fun(#{info := peer_disconnected}) -> ok end,
+                               ?TIMEOUT, Debug),
+    {ok, #{info := {log, _ILog}}} = receive_log(I2, Debug),
+    assert_empty_msgq(Debug),
+    ?LOG(Debug, "queue is empty", []),
+    ok = rpc(dev1, aesc_fsm, close_solo, [FsmR, #{}]),
+    {_, SignedCloseSoloTx} = await_signing_request(close_solo_tx, R2, Cfg),
+    wait_for_signed_transaction_in_block(dev1, SignedCloseSoloTx),
+    SignedCloseSoloTx = await_on_chain_report(R2, #{info => solo_closing}, ?TIMEOUT),
+    LockPeriod = maps:get(lock_period, Spec),
+    mine_blocks(dev1, LockPeriod),
+    {ok, _} = receive_info(R, closing, Debug),
+    %% post a contract force call while the other party is off
+    trigger_force_progress(ContractPubkey,
+                counter, "tick", [], 10, R2),
+    {R3, SignedFPTx} = await_signing_request(force_progress_tx, R2, Cfg),
+    wait_for_signed_transaction_in_block(dev1, SignedFPTx, Debug),
+    SignedFPTx = await_on_chain_report(R3, #{info => consumed_forced_progress}, ?TIMEOUT),
+    assert_empty_msgq(Debug),
+    %% reestablish initiator
+    Info = #{i => I2, r => R3, spec => Spec},
+    #{i := #{fsm_id := _IFsmId1} = I3, r := #{fsm_id := _RFsmId1} = R4} =
+        reestablish_(Info, SignedTx, ?PORT, Debug),
+    %% initiator catches up with missing tx
+    {channel_close_solo_tx, SignedCloseSoloTx} =
+        await_channel_changed_report(I3, ?TIMEOUT),
+    {channel_force_progress_tx, SignedFPTx} =
+        await_channel_changed_report(I3, ?TIMEOUT), %% same tx
+    assert_empty_msgq(Debug),
+    shutdown_(I3, R4, [{already_closing, true} | Cfg]),
+    ok.
+
+
+missing_malicious_close(Cfg0) ->
+    Debug = get_debug(Cfg0),
+    Cfg = [?SLOGAN 
+          , {responder_opts, #{keep_running => true } } | Cfg0],
+    assert_empty_msgq(Debug),
+    #{ i := #{ fsm := FsmI
+             , channel_id := _ChannelId } = I
+     , r := #{} = R
+     , spec := #{ initiator := PubI
+                , responder := PubR } = Spec} = create_channel_([?SLOGAN|Cfg]),
+    ?LOG(Debug, "I = ~p", [I]),
+    ?LOG(Debug, "R = ~p", [R]),
+    {I1, R1} = do_update(PubI, PubR, 2, I, R, Debug, Cfg),
+    %% make a close solo but don't post it yet
+    {ok, State} = rpc(dev1, aesc_fsm, get_offchain_state, [FsmI]),
+    {_, SignedTx} = aesc_offchain_state:get_latest_signed_tx(State),
+    {ok, Tx} = close_solo_tx(I1, aetx_sign:serialize_to_binary(SignedTx)),
+    {SignedCloseSoloTx, I2} = sign_tx(I1, Tx, Cfg),
+    %% make another update so the close solo we have will not be based on the
+    %% latest state
+    {I3, R2} = do_update(PubI, PubR, 2, I2, R1, Debug, Cfg),
+    ok = rpc(dev1, aesc_fsm, leave, [FsmI]),
+    % Verify leave and FSM timeout
+    {ok, #{info := OffChainSignedTx}} = await_leave(I3, ?TIMEOUT, Debug),
+    {ok, #{info := OffChainSignedTx}} = await_leave(R2, ?TIMEOUT, Debug),
+    {ok, _} = receive_info(I3, fun died_normal/1, Debug),
+    {ok, _} = receive_from_fsm(info, R2, fun(#{info := peer_disconnected}) -> ok end,
+                               ?TIMEOUT, Debug),
+    {ok, #{info := {log, _ILog}}} = receive_log(I3, Debug),
+    assert_empty_msgq(Debug),
+    ?LOG(Debug, "queue is empty", []),
+    %% make the close solo on-chain
+    ok = rpc(dev1, aec_tx_pool, push, [SignedCloseSoloTx]),
+    TxHash = aeser_api_encoder:encode(tx_hash, aetx_sign:hash(SignedCloseSoloTx)),
+    mine_blocks_until_txs_on_chain(dev1, [TxHash]),
+    SlashTx = await_on_chain_report(R2, #{info => can_slash}, ?TIMEOUT),
+    {ok,_} = receive_from_fsm(info, R2, fun closing/1, ?TIMEOUT, Debug),
+    %% reestablish initiator
+    Info = #{i => I3, r => R2, spec => Spec},
+    #{i := #{fsm_id := _IFsmId1} = I4, r := #{fsm_id := _RFsmId1} = R3} =
+        reestablish_(Info, SignedTx, ?PORT, Debug),
+    SignedCloseSoloTx = await_on_chain_report(I4, #{info => can_slash}, ?TIMEOUT),
+    assert_empty_msgq(Debug),
+    ok.
+
+missing_malicious_forced_progress(Cfg0) ->
+    Debug = get_debug(Cfg0),
+    Cfg = [?SLOGAN 
+          , {responder_opts, #{keep_running => true } } | Cfg0],
+    assert_empty_msgq(Debug),
+    #{ i := #{ channel_id := _ChannelId
+             , fsm := FsmI } = I
+     , r := #{} = R
+     , spec := #{ initiator := PubI
+                , responder := PubR } = Spec} = create_channel_([?SLOGAN|Cfg]),
+    {I1, R1, ContractPubkey} = create_contract(counter, ["42"], 10, I, R, Cfg),
+    {I2, R2} = call_contract(ContractPubkey, counter, "tick", [], 10, I1, R1, Cfg),
+    trigger_force_progress(ContractPubkey, counter, "tick", [], 10, R2),
+    ErrorCode = 123,
+    {ok, UnSignedFP} = abort_signing_request(force_progress_tx, R2, ErrorCode, ?TIMEOUT, Debug),
+    {ok, _} = receive_from_fsm(info, R2, fun aborted_update/1, ?TIMEOUT, Debug),
+    {_I, _R} = do_update(PubI, PubR, 2, I2, R2, Debug, Cfg),
+    ok = rpc(dev1, aesc_fsm, leave, [FsmI]),
+    % Verify leave and FSM timeout
+    {ok, #{info := SignedTx}} = await_leave(I2, ?TIMEOUT, Debug),
+    {ok, #{info := SignedTx}} = await_leave(R2, ?TIMEOUT, Debug),
+    {ok, _} = receive_info(I, fun died_normal/1, Debug),
+    {ok, _} = receive_from_fsm(info, R2, fun(#{info := peer_disconnected}) -> ok end,
+                               ?TIMEOUT, Debug),
+    {ok, #{info := {log, _ILog}}} = receive_log(I2, Debug),
+    assert_empty_msgq(Debug),
+    ?LOG(Debug, "queue is empty", []),
+    %% post a contract force call while the other party is off
+    {SignedFP, R3} = co_sign_tx(R2, UnSignedFP, Cfg),
+    ok = rpc(dev1, aec_tx_pool, push, [SignedFP]),
+    wait_for_signed_transaction_in_block(dev1, SignedFP, Debug),
+    SignedFPTx = await_on_chain_report(R3, #{info => can_snapshot}, ?TIMEOUT),
+    %% reestablish initiator
+    Info = #{i => I2, r => R3, spec => Spec},
+    #{i := #{fsm_id := _IFsmId1} = I3, r := #{fsm_id := _RFsmId1} = R4} =
+        reestablish_(Info, SignedTx, ?PORT, Debug),
+    %% initiator catches up with missing tx
+    SignedFPTx = await_on_chain_report(I3, #{info => can_snapshot}, ?TIMEOUT),
+    shutdown_(I3, R4, Cfg),
+    ok.
+
+missing_malicious_snapshot(Cfg0) ->
+    Debug = get_debug(Cfg0),
+    Cfg = [?SLOGAN 
+          , {responder_opts, #{keep_running => true } } | Cfg0],
+    assert_empty_msgq(Debug),
+    {I0, R0, Spec0} = channel_spec(Cfg),
+    Spec = Spec0#{responder_opts => #{keep_running => true}},
+    #{ i := #{ channel_id := _ChannelId
+             , pub := PubI
+             , fsm := FsmI } = I
+     , r := #{ fsm := FsmR
+             , pub := PubR} = R} = create_channel_from_spec(I0, R0, Spec, ?PORT, Debug, Cfg),
+    {I1, R1} = do_update(PubI, PubR, 2, I, R, Debug, Cfg),
+    ok = rpc(dev1, aesc_fsm, snapshot_solo, [FsmR, #{}]),
+    ErrorCode = 123,
+    {ok, UnSignedSnapshot} = abort_signing_request(snapshot_solo_tx, R1, ErrorCode, ?TIMEOUT, Debug),
+    {ok, _} = receive_from_fsm(info, R1, fun aborted_update/1, ?TIMEOUT, Debug),
+    {I2, R2} = do_update(PubI, PubR, 2, I1, R1, Debug, Cfg),
+    ok = rpc(dev1, aesc_fsm, leave, [FsmI]),
+    % Verify leave and FSM timeout
+    {ok, #{info := SignedTx}} = await_leave(I2, ?TIMEOUT, Debug),
+    {ok, #{info := SignedTx}} = await_leave(R2, ?TIMEOUT, Debug),
+    {ok, _} = receive_info(I1, fun died_normal/1, Debug),
+    {ok, _} = receive_from_fsm(info, R2, fun(#{info := peer_disconnected}) -> ok end,
+                               ?TIMEOUT, Debug),
+    {ok, #{info := {log, _ILog}}} = receive_log(I2, Debug),
+    assert_empty_msgq(Debug),
+    ?LOG(Debug, "queue is empty", []),
+    %% post a snapshot while the other party is off
+    {SignedSnapshotTx, _} = co_sign_tx(R2, UnSignedSnapshot, Cfg),
+    ok = rpc(dev1, aec_tx_pool, push, [SignedSnapshotTx]),
+    wait_for_signed_transaction_in_block(dev1, SignedSnapshotTx),
+    {channel_snapshot_solo_tx, SignedSnapshotTx} =
+        await_channel_changed_report(R2, ?TIMEOUT), %% same tx
+    mine_blocks(dev1),
+    await_min_depth_reached(R2, aetx_sign:hash(SignedSnapshotTx), channel_snapshot_solo_tx, ?TIMEOUT),
+    %% reestablish initiator
+    Info = #{i => I, r => R, spec => Spec},
+    #{i := #{fsm_id := _IFsmId1} = I3, r := #{fsm_id := _RFsmId1} = R3} =
+        reestablish_(Info, SignedTx, ?PORT, Debug),
+    %% initiator catches up with missing tx
+    %% note that this is just a snapshot and it does not have any effect on
+    %% the channel's state; it is not considered harmful, even if it has an
+    %% older round
+    {channel_snapshot_solo_tx, SignedSnapshotTx} =
+        await_channel_changed_report(I3, ?TIMEOUT), %% same tx
+    assert_empty_msgq(Debug),
+    shutdown_(I3, R3, Cfg),
+    ok.
+
+missing_malicious_snapshot_and_close_solo_based_on_it(Cfg0) ->
+    Debug = get_debug(Cfg0),
+    Cfg = [?SLOGAN 
+          , {responder_opts, #{keep_running => true } } | Cfg0],
+    assert_empty_msgq(Debug),
+    {I0, R0, Spec0} = channel_spec(Cfg),
+    Spec = Spec0#{responder_opts => #{keep_running => true}},
+    #{ i := #{ channel_id := _ChannelId
+             , pub := PubI
+             , fsm := FsmI } = I
+     , r := #{ fsm := FsmR
+             , pub := PubR} = R} = create_channel_from_spec(I0, R0, Spec, ?PORT, Debug, Cfg),
+    {I1, R1} = do_update(PubI, PubR, 2, I, R, Debug, Cfg),
+    ok = rpc(dev1, aesc_fsm, snapshot_solo, [FsmR, #{}]),
+    ErrorCode = 123,
+    {ok, UnSignedSnapshot} = abort_signing_request(snapshot_solo_tx, R1, ErrorCode, ?TIMEOUT, Debug),
+    {ok, _} = receive_from_fsm(info, R1, fun aborted_update/1, ?TIMEOUT, Debug),
+    ok = rpc(dev1, aesc_fsm, close_solo, [FsmR, #{}]),
+    {ok, UnSignedCloseSolo0} = abort_signing_request(close_solo_tx, R1, ErrorCode, ?TIMEOUT, Debug),
+    {ok, _} = receive_from_fsm(info, R1, fun aborted_update/1, ?TIMEOUT, Debug),
+    {I2, R2} = do_update(PubI, PubR, 2, I1, R1, Debug, Cfg),
+    ok = rpc(dev1, aesc_fsm, leave, [FsmI]),
+    % Verify leave and FSM timeout
+    {ok, #{info := SignedTx}} = await_leave(I2, ?TIMEOUT, Debug),
+    {ok, #{info := SignedTx}} = await_leave(R2, ?TIMEOUT, Debug),
+    {ok, _} = receive_info(I1, fun died_normal/1, Debug),
+    {ok, _} = receive_from_fsm(info, R2, fun(#{info := peer_disconnected}) -> ok end,
+                               ?TIMEOUT, Debug),
+    {ok, #{info := {log, _ILog}}} = receive_log(I2, Debug),
+    assert_empty_msgq(Debug),
+    ?LOG(Debug, "queue is empty", []),
+    %% post a snapshot while the other party is off
+    {SignedSnapshotTx, _} = co_sign_tx(R2, UnSignedSnapshot, Cfg),
+    ok = rpc(dev1, aec_tx_pool, push, [SignedSnapshotTx]),
+    wait_for_signed_transaction_in_block(dev1, SignedSnapshotTx),
+    {channel_snapshot_solo_tx, SignedSnapshotTx} =
+        await_channel_changed_report(R2, ?TIMEOUT), %% same tx
+    mine_blocks(dev1),
+    await_min_depth_reached(R2, aetx_sign:hash(SignedSnapshotTx), channel_snapshot_solo_tx, ?TIMEOUT),
+    AetxCS0 = aetx_sign:tx(UnSignedCloseSolo0),
+    {aesc_close_solo_tx, CS0} = aetx:specialize_callback(AetxCS0),
+    CS1 = aesc_close_solo_tx:set_payload(CS0, <<>>),
+    CS = aesc_close_solo_tx:set_nonce(CS1, aesc_close_solo_tx:nonce(CS0) + 1),
+    AetxCS = aetx:new(aesc_close_solo_tx, CS),
+    {SignedCS, R3} = sign_tx(R2, AetxCS, Cfg),
+    ok = rpc(dev1, aec_tx_pool, push, [SignedCS]),
+    wait_for_signed_transaction_in_block(dev1, SignedCS),
+    {ok,_} = receive_from_fsm(info, R2, fun closing/1, ?TIMEOUT, Debug),
+    _SlashTx = await_on_chain_report(R2, #{info => can_slash}, ?TIMEOUT),
+    %% reestablish initiator
+    Info = #{i => I2, r => R3, spec => Spec},
+    #{i := #{fsm_id := _IFsmId1} = I3, r := #{fsm_id := _RFsmId1} = R4} =
+        reestablish_(Info, SignedTx, ?PORT, Debug),
+    %% initiator catches up with missing tx
+    %% note that this is just a snapshot and it does not have any effect on
+    %% the channel's state; it is not considered harmful, even if it has an
+    %% older round
+    {channel_snapshot_solo_tx, SignedSnapshotTx} =
+        await_channel_changed_report(I3, ?TIMEOUT), %% same tx
+    SignedCS = await_on_chain_report(I3, #{info => can_slash}, ?TIMEOUT),
+    assert_empty_msgq(Debug),
+    shutdown_(I3, R4, [{already_closing, true} | Cfg]),
+    ok.
+
+missing_malicious_snapshot_and_fp_based_on_it(Cfg0) ->
+    Debug = get_debug(Cfg0),
+    Cfg = [?SLOGAN 
+          , {responder_opts, #{keep_running => true } } | Cfg0],
+    assert_empty_msgq(Debug),
+    {I0, R0, Spec0} = channel_spec(Cfg),
+    Spec = Spec0#{responder_opts => #{keep_running => true}},
+    #{ i := #{ channel_id := _ChannelId
+             , fsm := FsmI
+             , pub := PubI} = I
+     , r := #{ fsm := FsmR
+             , pub := PubR} = R} = create_channel_from_spec(I0, R0, Spec, ?PORT, Debug, Cfg),
+    {I1, R1, ContractPubkey} = create_contract(counter, ["42"], 10, I, R, Cfg),
+    {I2, R2} = call_contract(ContractPubkey, counter, "tick", [], 10, I1, R1, Cfg),
+    trigger_force_progress(ContractPubkey,
+                counter, "tick", [], 10, R2),
+    ErrorCode = 123,
+    {ok, UnSignedFP0} = abort_signing_request(force_progress_tx, R2, ErrorCode, ?TIMEOUT, Debug),
+    {ok, _} = receive_from_fsm(info, R1, fun aborted_update/1, ?TIMEOUT, Debug),
+    AetxFP0 = aetx_sign:tx(UnSignedFP0),
+    {aesc_force_progress_tx, FP0} = aetx:specialize_callback(AetxFP0),
+    FP1 = aesc_force_progress_tx:set_payload(FP0, <<>>),
+    FP = aesc_force_progress_tx:set_nonce(FP1, aesc_force_progress_tx:nonce(FP1) + 1),
+    AetxFP = aetx:new(aesc_force_progress_tx, FP),
+    ok = rpc(dev1, aesc_fsm, snapshot_solo, [FsmR, #{}]),
+    {ok, UnSignedSnapshot} = abort_signing_request(snapshot_solo_tx, R2, ErrorCode, ?TIMEOUT, Debug),
+    {ok, _} = receive_from_fsm(info, R2, fun aborted_update/1, ?TIMEOUT, Debug),
+    {I3, R3} = do_update(PubI, PubR, 2, I2, R2, Debug, Cfg),
+    ok = rpc(dev1, aesc_fsm, leave, [FsmI]),
+    % Verify leave and FSM timeout
+    {ok, #{info := SignedTx}} = await_leave(I3, ?TIMEOUT, Debug),
+    {ok, #{info := SignedTx}} = await_leave(R3, ?TIMEOUT, Debug),
+    {ok, _} = receive_info(I, fun died_normal/1, Debug),
+    {ok, _} = receive_from_fsm(info, R3, fun(#{info := peer_disconnected}) -> ok end,
+                               ?TIMEOUT, Debug),
+    {ok, #{info := {log, _ILog}}} = receive_log(I3, Debug),
+    assert_empty_msgq(Debug),
+    ?LOG(Debug, "queue is empty", []),
+    %% post a snapshot the FP will be based upon
+    {SignedSnapshotTx, _} = co_sign_tx(R2, UnSignedSnapshot, Cfg),
+    ok = rpc(dev1, aec_tx_pool, push, [SignedSnapshotTx]),
+    wait_for_signed_transaction_in_block(dev1, SignedSnapshotTx),
+    {channel_snapshot_solo_tx, SignedSnapshotTx} =
+        await_channel_changed_report(R2, ?TIMEOUT), %% same tx
+    mine_blocks(dev1),
+    await_min_depth_reached(R2, aetx_sign:hash(SignedSnapshotTx), channel_snapshot_solo_tx, ?TIMEOUT),
+    %% post a contract force call while the other party is off
+    {SignedFP, R4} = sign_tx(R3, AetxFP, Cfg),
+    ok = rpc(dev1, aec_tx_pool, push, [SignedFP]),
+    wait_for_signed_transaction_in_block(dev1, SignedFP),
+    _SlashTx = await_on_chain_report(R4, #{info => can_snapshot}, ?TIMEOUT),
+    %% reestablish initiator
+    Info = #{i => I3, r => R4, spec => Spec},
+    #{i := #{fsm_id := _IFsmId1} = I4, r := #{fsm_id := _RFsmId1} = R5} =
+        reestablish_(Info, SignedTx, ?PORT, Debug),
+    %% initiator catches up with missing tx
+    {channel_snapshot_solo_tx, SignedSnapshotTx} =
+        await_channel_changed_report(I4, ?TIMEOUT), %% same tx
+    SignedFP = await_on_chain_report(I4, #{info => can_snapshot}, ?TIMEOUT),
+    assert_empty_msgq(Debug),
+    shutdown_(I4, R5, Cfg),
+    ok.
 

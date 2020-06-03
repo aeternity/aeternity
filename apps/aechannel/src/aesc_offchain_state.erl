@@ -50,21 +50,22 @@ record_fields(Other) -> aec_trees:record_fields(Other).
 %% ==================================================================
 
 
--spec new(map()) -> {ok, state()} | {error, any()}.
+-spec new(map()) -> {ok, map()} | {error, atom()}.
 new(Opts) ->
     lager:debug("offchain_tx:new(~p)", [Opts]),
     case Opts of
-        #{existing_channel_id      := _
+        #{ existing_channel_id     := _
          , offchain_tx             := _
          , existing_fsm_id_wrapper := _} ->
             recover_from_offchain_tx(Opts);
-        #{initiator          := _,
-          responder          := _,
-          initiator_amount   := _,
-          responder_amount   := _} ->
+        #{ initiator          := _
+         , responder          := _
+         , initiator_amount   := _
+         , responder_amount   := _ } ->
             new_(Opts)
     end.
 
+-spec new_(map()) -> {ok, map()}.
 new_(#{ initiator          := InitiatorPubKey
       , responder          := ResponderPubKey
       , initiator_amount   := InitiatorAmount
@@ -81,20 +82,20 @@ new_(#{ initiator          := InitiatorPubKey
         [{InitiatorPubKey, InitiatorAmount - PushAmount},
          {ResponderPubKey, ResponderAmount + PushAmount}]),
     Trees = aec_trees:set_accounts(Trees0, Accounts),
-    {ok, #state{trees=Trees, calls = aect_call_state_tree:empty()}}.
+    {ok, #{ mode => new
+          , state => #state{trees=Trees, calls = aect_call_state_tree:empty() }}}.
 
+-spec recover_from_offchain_tx(map()) -> {ok, map()} | {error, atom()}.
 recover_from_offchain_tx(#{ existing_channel_id     := ChId
                           , offchain_tx             := SignedTx
                           , existing_fsm_id_wrapper := FsmIdWrapper} = Opts) ->
     MyPubkey = my_pubkey(Opts),
     case aesc_state_cache:reestablish(ChId, MyPubkey, FsmIdWrapper) of
-        {ok, #state{} = State, _CachedOpts} ->
-            case is_latest_signed_tx(SignedTx, State) of
-                true ->
-                    {ok, State};
-                false ->
-                    {error, latest_state_mismatch}
-            end;
+        {ok, #state{} = State, CachedOpts} ->
+            {ok, #{ mode => reestablish
+                  , is_latest_signed_tx => is_latest_signed_tx(SignedTx, State)
+                  , state => State
+                  , cached_opts => CachedOpts }};
         {error, _} = Error ->
             Error
     end.
@@ -341,12 +342,25 @@ fallback_to_stable_state(#state{signed_tx = LastSignedTx}=State)
 
 -spec mutually_signed(aetx_sign:signed_tx()) -> boolean().
 mutually_signed(SignedTx) ->
-    aesc_utils:count_authentications(SignedTx) =:= 2.
+    {Mod, _Tx} = aetx:specialize_callback(aetx_sign:innermost_tx(SignedTx)),
+    %% here we expect only state changing transactions.
+    %% Examples for state changing transactions would be off-chain
+    %% transactions, channel create, deposit, withdrawal and force progress
+    %% Examples for non-state changing transactions: close solo, slash and
+    %% snapshot
+    %% Close mutual and settle do change the state but we don't expect them
+    %% here
+    RequiredAuths =
+        case Mod of
+            aesc_force_progress_tx -> 1;
+            _ -> 2
+        end,
+    aesc_utils:count_authentications(SignedTx) =:= RequiredAuths.
 
 
 -spec balance(aec_keys:pubkey(), state()) -> {ok, non_neg_integer()}
                                            | {error, not_found}.
-balance(Pubkey, #state{trees=Trees}) ->
+balance(Pubkey, #state{trees = Trees}) ->
     AccTrees = aec_trees:accounts(Trees),
     case aec_accounts_trees:lookup(Pubkey, AccTrees) of
         none -> {error, not_found};
@@ -355,7 +369,7 @@ balance(Pubkey, #state{trees=Trees}) ->
 
 -spec poi(list(), state()) -> {ok, aec_trees:poi()}
                             | {error, not_found}.
-poi(Filter, #state{trees=Trees}) ->
+poi(Filter, #state{trees = Trees}) ->
     lists:foldl(
         fun(_, {error, _} = Err) -> Err;
            ({account, Pubkey}, {ok, PoI}) -> aec_trees:add_poi(accounts,

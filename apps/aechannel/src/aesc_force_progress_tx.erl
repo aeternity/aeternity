@@ -49,6 +49,7 @@
 
 -ifdef(TEST).
 -export([ set_payload/2
+        , set_nonce/2
         ]).
 -endif.
 
@@ -385,4 +386,7 @@ offchain_trees(#channel_force_progress_tx{offchain_trees = Trees}) ->
 -ifdef(TEST).
 set_payload(#channel_force_progress_tx{} = FP, Payload) when is_binary(Payload) ->
     FP#channel_force_progress_tx{payload = Payload}.
+
+set_nonce(#channel_force_progress_tx{} = FP, Nonce) when is_integer(Nonce) ->
+    FP#channel_force_progress_tx{nonce = Nonce}.
 -endif.

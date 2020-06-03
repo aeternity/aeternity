@@ -37,6 +37,7 @@
         , change_fsm_id/3
         , authenticate_user/3
         , update/3
+        , update/4
         , fetch/2
         , delete/1
         ]).
@@ -70,9 +71,14 @@
 -type ch_cache_id() :: { aeser_id:val()
                        , aeser_id:val() | atom()}.
 -type opts() :: map().
+
+%% The split between `opts` and `dyn_opts` is so that we can write updates more
+%% efficiently. The two are merged at read time, and when moved to persistent store.
+%%
 -record(ch_cache, { cache_id       :: ch_cache_id() | undefined
                   , state          :: aesc_offchain_state:state() | atom() | undefined
                   , opts = #{}     :: map() | '_'
+                  , dyn_opts = #{} :: map() | '_'
                   , fsm_id_wrapper :: aesc_fsm_id:wrapper() | atom()
                   }).
 
@@ -116,7 +122,10 @@ authenticate_user(ChId, Pubkey, FsmIdWrapper) ->
     gen_server:call(?SERVER, {authenticate_user, ChId, Pubkey, FsmIdWrapper}).
 
 update(ChId, PubKey, State) ->
-    gen_server:cast(?SERVER, {update, ChId, PubKey, State}).
+    update(ChId, PubKey, State, #{}).
+
+update(ChId, PubKey, State, Opts) ->
+    gen_server:cast(?SERVER, {update, ChId, PubKey, State, Opts}).
 
 fetch(ChId, PubKey) ->
     gen_server:call(?SERVER, {fetch, ChId, PubKey}).
@@ -199,8 +208,8 @@ handle_call({authenticate_user, ChId, PubKey, FsmIdWrapper}, _From, St) ->
     end;
 handle_call({fetch, ChId, PubKey}, _From, St) ->
     case ets:lookup(?TAB, key(ChId, PubKey)) of
-        [#ch_cache{state = State, opts = Opts}] ->
-            {reply, {ok, State, Opts}, St};
+        [#ch_cache{state = State, opts = Opts, dyn_opts = DOpts}] ->
+            {reply, {ok, State, maps:merge(Opts, DOpts)}, St};
         [] ->
             {reply, error, St}
     end;
@@ -212,8 +221,11 @@ handle_call({cache_status, ChId}, _From, St) ->
 handle_call(_Req, _From, St) ->
     {reply, {error, unknown_request}, St}.
 
-handle_cast({update, ChId, PubKey, State}, St) ->
-    ets:update_element(?TAB, key(ChId, PubKey), {#ch_cache.state, State}),
+handle_cast({update, ChId, PubKey, State, Opts}, St) ->
+    %% dyn_opts are always overwritten
+    Key = key(ChId, PubKey),
+    ets:update_element(?TAB, Key, [ {#ch_cache.state, State}
+                                  , {#ch_cache.dyn_opts, Opts} ]),
     {noreply, St};
 handle_cast({delete, ChId}, St) ->
     {noreply, delete_all_state_for_channel(ChId, St)};
@@ -264,8 +276,8 @@ cache_status_(ChId) ->
 try_reestablish_cached(ChId, PubKey, FsmIdWrapper) ->
     CacheId = key(ChId, PubKey),
     case ets:lookup(?TAB, CacheId) of
-        [#ch_cache{state = State, opts = Opts}] ->
-            {ok, State, Opts};
+        [#ch_cache{state = State, opts = Opts, dyn_opts = DOpts}] ->
+            {ok, State, maps:merge(Opts, DOpts)};
         [] ->
             case read_persistent(CacheId) of
                 {ok, Encrypted} ->
@@ -308,13 +320,14 @@ encrypt_and_persist(Cache) ->
 encrypt_cache(#ch_cache{ cache_id = CacheId
                        , state =  State
                        , opts = Opts
+                       , dyn_opts = DOpts
                        , fsm_id_wrapper = FsmIdWrapper}) ->
     Nonce = crypto:strong_rand_bytes(enacl:secretbox_nonce_size()),
     SerializedState = aesc_offchain_state:serialize_to_binary(State),
     #pch_encrypted_cache{
         cache_id = CacheId,
         nonce = Nonce,
-        opts = Opts,
+        opts = maps:merge(Opts, DOpts),
         encrypted_state = enacl:secretbox(
             SerializedState,
             Nonce,
