@@ -1894,7 +1894,6 @@ fsm_crash_reestablish(#{channel_id := ChId, fsm := FsmI, fsm_id := IFsmId} = I,
 
     ?LOG(Debug, "reestablish with wrong fsm id...", []),
     Info = #{i => I, r => R, spec => Spec},
-    %reestablish_wrong_fsm_id(Info, SignedTx, ?PORT, Debug),
 
     ?LOG(Debug, "reestablishing ...", []),
     #{i := #{fsm_id := IFsmId1} = I1, r := #{fsm_id := RFsmId1} = R1} = reestablish_(Info, SignedTx, ?PORT, Debug),
@@ -2927,7 +2926,6 @@ match_info(Info, Match) ->
 
 await_open_report(#{fsm := Fsm} = R, Timeout, Debug) ->
     receive {aesc_fsm, Fsm, #{type := report, tag := info, info := open} = Msg} ->
-                ct:log("AAA ~p", [Msg]),
                 {ok, ChannelId} = maps:find(channel_id, Msg),
                 R#{channel_id => ChannelId}
     after Timeout ->

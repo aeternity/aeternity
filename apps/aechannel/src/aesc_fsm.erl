@@ -5405,7 +5405,6 @@ process_incoming_forced_progress_(#{ tx := SignedTx
         aetx:specialize_callback(aetx_sign:innermost_tx(SignedTx)),
     try {LatestFSMRound, LatestTx} = aesc_offchain_state:get_latest_signed_tx(State),
          FPRound = get_round(Mod, Tx),
-         {ok, Channel} = aec_chain:get_channel(ChannelPubkey),
          FirstSoloRound = aesc_channels:solo_round(Channel),
          CorrectFPPayload =
              case FirstSoloRound =:= LatestFSMRound + 1 of
@@ -5572,7 +5571,7 @@ is_binary(BlockHash) ->
         true ->
             lager:debug("Detected malicious transaction ~p", [SignedTx]),
             {{malicious, SignedTx}, Data}; %% abort
-        {false, _TxRound} ->
+        false ->
             State1 =
                 case Mod of
                     aesc_close_solo_tx ->
@@ -5601,7 +5600,7 @@ is_binary(BlockHash) ->
 
 -spec is_onchain_tx_malicious(atom(), aetx:tx_instance(),
                               aesc_offchain_state:state(), binary()) ->
-    true | {false, non_neg_integer()}.
+    boolean().
 is_onchain_tx_malicious(Mod, Tx, State, BlockHash) when is_binary(BlockHash) ->
     {LastValidRound, _} = aesc_offchain_state:get_latest_signed_tx(State),
     TxRound =
@@ -5620,13 +5619,13 @@ is_onchain_tx_malicious(Mod, Tx, State, BlockHash) when is_binary(BlockHash) ->
                 Mod:round(Tx)
         end,
     case {Mod, TxRound} of
-        {aesc_close_solo_tx, LastValidRound} -> {false, TxRound};
+        {aesc_close_solo_tx, LastValidRound} -> false;
         {aesc_close_solo_tx, UnexpectedRound}
             when UnexpectedRound < LastValidRound -> true;
         {aesc_force_progress_tx, FPRound} when FPRound =:= LastValidRound + 1 ->
-            {false, TxRound};
+            false;
         {aesc_force_progress_tx, UnexpectedRound}
             when UnexpectedRound < LastValidRound + 1 -> true;
-        _ -> {false, TxRound}
+        _ -> false
     end.
 

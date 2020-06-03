@@ -96,12 +96,6 @@ recover_from_offchain_tx(#{ existing_channel_id     := ChId
                   , is_latest_signed_tx => is_latest_signed_tx(SignedTx, State)
                   , state => State
                   , cached_opts => CachedOpts }};
-            %% case is_latest_signed_tx(SignedTx, State) of
-            %%     true ->
-            %%         {ok, State, CachedOpts};
-            %%     false ->
-            %%         {error, latest_state_mismatch}
-            %% end;
         {error, _} = Error ->
             Error
     end.
