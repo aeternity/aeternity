@@ -142,9 +142,9 @@ init_per_group_(Config) ->
                         , {port, ?PORT}
                         ], Config)
         end
-             ?_catch_(error, Reason, Trace)
-    catch stop_node(dev1, Config),
-         error(Reason, Trace)
+    ?_catch_(error, Reason, Trace)
+        catch stop_node(dev1, Config),
+        error(Reason, Trace)
     end.
 
 end_per_group(_Group, Config) ->
