@@ -68,9 +68,6 @@
         , force_progress_triggers_snapshot/1
         , force_progress_triggers_slash/1
         , change_config_get_history/1
-        , multiple_channels/1
-        , many_chs_msg_loop/1
-        , many_chs_contract_calls/1
         , too_many_fsms/1
         , check_incorrect_create/1
         , check_incorrect_deposit/1
@@ -178,7 +175,6 @@ groups() ->
      {all_tests, [sequence], [ {group, transactions}
                              , {group, errors}
                              , {group, client_reconnect}
-                             , {group, throughput}
                              , {group, signatures}
                              , {group, channel_ids}
                              , {group, round_too_low}
@@ -189,12 +185,6 @@ groups() ->
                              ]},
      {transactions_only, [sequence], transactions_sequence()},  %% if you don't also want to run GA tests
      {transactions, [sequence], transactions_sequence()},
-     {throughput, [sequence],
-      [
-        multiple_channels
-      , many_chs_msg_loop
-      , many_chs_contract_calls
-      ]},
      {limits, [sequence],
       [
        too_many_fsms
@@ -374,12 +364,6 @@ init_per_group(state_hash, Config0) ->
      {wrong_action, fun wrong_hash_action/4},
      {wrong_action_detailed, fun wrong_hash_action/5}
      | Config];
-init_per_group(throughput, Config0) ->
-    Config = init_per_group_(Config0),
-    set_configs([ {minimum_depth, 2}
-                , {minimum_depth_factor, 0}
-                , {minimum_depth_channel, 2}
-                ], Config);
 init_per_group(Group, Config) when Group =:= initiator_is_ga;
                                    Group =:= responder_is_ga;
                                    Group =:= both_are_ga ->
@@ -456,13 +440,6 @@ init_per_testcase(_, Config) ->
               end,
     set_configs([{debug, Debug}], Config2).
 
-end_per_testcase(T, _Config) when T == multiple_channels;
-                                  T == many_chs_msg_loop;
-                                  T == many_chs_contract_calls ->
-    Node = aecore_suite_utils:node_name(dev1),
-    aecore_suite_utils:unmock_mempool_nonce_offset(Node),
-    bump_idx(),
-    ok;
 end_per_testcase(_Case, _Config) ->
     bump_idx(),
     ok.
@@ -767,11 +744,10 @@ upd_transfer(Cfg) ->
                 , responder := PubR }} = create_channel_(
                                            [?SLOGAN|Cfg]),
     {BalI, BalR} = get_both_balances(FsmI, PubI, PubR),
-    {I0, R0} = do_update(PubI, PubR, 2, I, R, Debug, Cfg),
+    {I1, R1} = do_update(PubI, PubR, 2, I, R, Debug, Cfg),
     {BalI1, BalR1} = get_both_balances(FsmI, PubI, PubR),
     BalI1 = BalI - 2,
     BalR1 = BalR + 2,
-    {I1, R1} = update_bench(I0, R0, Cfg),
     ok = rpc(dev1, aesc_fsm, shutdown, [FsmI, #{}]),
     {_I2, _} = await_signing_request(shutdown, I1, Cfg),
     {_R2, _} = await_signing_request(shutdown_ack, R1, Cfg),
@@ -1060,21 +1036,6 @@ signing_req() ->
 
 any_msg() ->
     fun(_) -> true end.
-
-update_bench(I, R, C0) ->
-    set_proxy_debug(false, I),
-    set_proxy_debug(false, R),
-    C = set_debug(false, C0),
-    Rounds = proplists:get_value(bench_rounds, C, 1000),
-    ?LOG("=== Starting benchmark ===", []),
-    {Time, I1, R1} = do_n(Rounds, fun update_volley/3,
-                          cache_account_type(I),
-                          cache_account_type(R), C),
-    Fmt = "Time (1*2*" ++ integer_to_list(Rounds) ++ "): ~.1f s; ~.1f mspt; ~.1f tps",
-    Args = [Time/1000, Time/(2*Rounds), 2000*Rounds/Time],
-    ?LOG(Fmt, Args),
-    ct:comment(Fmt, Args),
-    {I1, R1}.
 
 do_n(N, F, I, R, C) ->
     TS = erlang:system_time(millisecond),
@@ -1412,54 +1373,6 @@ closing(#{info := closing} = Msg) ->
 aborted_update(#{info := aborted_update} = Msg) ->
     ?LOG("matches #{info := aborted_update} - ~p", [Msg]),
     ok.
-
-multiple_channels(Cfg) ->
-    multiple_channels_t(10, 9360, {transfer, 20}, ?SLOGAN, Cfg).
-
-many_chs_msg_loop(Cfg) ->
-    multiple_channels_t(10, 9400, {msgs, 100}, ?SLOGAN, Cfg).
-
-many_chs_contract_calls(Cfg) ->
-    multiple_channels_t(10, 9440, [ add_contract
-                                  , {calls, 10}], ?SLOGAN, Cfg).
-
-multiple_channels_t(NumCs, FromPort, Msg, {slogan, Slogan}, Cfg) ->
-    Debug = get_debug(Cfg),
-    F = fun(Cs, _MinerHelper) ->
-                {Fmt, Args} = run_scenario(Msg, Cs),
-                ?LOG(Debug, Fmt, Args),
-                ct:comment(Fmt, Args)
-        end,
-    spawn_multiple_channels(F, NumCs, FromPort, Slogan, Cfg).
-
-run_scenario(Msgs, Cs) when is_list(Msgs) ->
-    lists:foldl(fun(M, _Acc) ->
-                        run_scenario_(M, Cs)
-                end, {"no action", []}, Msgs);
-run_scenario(Msg, Cs) ->
-    run_scenario_(Msg, Cs).
-
-run_scenario_(Msg, Cs) ->
-    NumCs = length(Cs),
-    [P ! Msg || P <- Cs],
-    T0 = erlang:system_time(millisecond),
-    Cs = collect_acks(Cs, loop_ack, NumCs),
-    T1 = erlang:system_time(millisecond),
-    Time = T1 - T0,
-    N = loop_n(Msg),
-    Transfers = NumCs*2*N,
-    Fmt = "Time (~w*2*~w) ~.1f s: ~.1f mspt; ~.1f tps",
-    Args = [NumCs, N, Time/1000, Time/Transfers, (Transfers*1000)/Time],
-    {Fmt, Args}.
-
-loop_n({transfer, N}) ->
-    N;
-loop_n(add_contract) ->
-    1;
-loop_n({calls, N}) ->
-    N;
-loop_n({msgs, N}) ->
-    N.
 
 spawn_multiple_channels(F, NumCs, FromPort, Slogan, Cfg) when is_function(F, 2) ->
     Debug = get_debug(Cfg),
@@ -4202,10 +4115,8 @@ responder_stays(_) ->
     false.
 
 set_expected_fsm_logs(FName, Config) ->
-    ExpectedLogs = #{ initiator => ExpLI = expected_fsm_logs(
-                                             FName, initiator)
-                    , responder => ExpLR = expected_fsm_logs(
-                                             FName, responder) },
+    ExpectedLogs = #{ initiator => expected_fsm_logs(FName, initiator)
+                    , responder => expected_fsm_logs(FName, responder) },
     lists:keystore(expected_fsm_logs, 1, Config,
                    {expected_fsm_logs, ExpectedLogs}).
 
@@ -5125,31 +5036,6 @@ force_progress_(ContractPubkey,
     assert_empty_msgq(Debug),
 
     {Caller1, Other}.
-
-produce_close_mutual_tx(ChannelId, FromId, I, R, Cfg, Opts) ->
-    Debug = get_debug(Cfg),
-    Nonce =
-        case account_type(FromId) of
-            basic ->
-                {ok, N} = rpc(dev1, aec_next_nonce, pick_for_account, [FromId]),
-                N;
-            generalized ->
-                0
-        end,
-    CloseMutualTxOpts =
-        #{ channel_id => aeser_id:create(channel, ChannelId)
-         , from_id => aeser_id:create(account, FromId)
-         , initiator_amount_final => 0
-         , responder_amount_final => 0
-         , fee => 20000 * aec_test_utils:min_gas_price()
-         , nonce => Nonce
-        },
-    {ok, Aetx} = aesc_close_mutual_tx:new(maps:merge(Opts, CloseMutualTxOpts)),
-    {Tx1, I1} = sign_tx(I, Aetx, Cfg),
-    {SignedTx, R1} = co_sign_tx(R, Tx1, Cfg),
-    ok = rpc(dev1, aec_tx_pool, push, [SignedTx]),
-    wait_for_signed_transaction_in_block(dev1, SignedTx, Debug),
-    {I1, R1}.
 
 snapshot_solo_(#{fsm := FsmI} = I, R, Opts, Cfg) ->
     Debug = get_debug(Cfg),
