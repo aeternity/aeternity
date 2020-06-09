@@ -1155,6 +1155,7 @@ jobs:
     executor: infrastructure_container_unstable
     steps:
       - checkout
+      - setup_secrets
       - run:
           name: Integration sync
           command: |
