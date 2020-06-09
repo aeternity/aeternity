@@ -1151,6 +1151,15 @@ jobs:
           path: docs/state-channels
       - *fail_notification
 
+  integration_sync:
+    executor: infrastructure_container_unstable
+    steps:
+      - checkout
+      - run:
+          name: Integration sync
+          command: |
+            cd /infrastructure && DEPLOY_ENV=integration_sync make mnesia-reset-once
+
   # Windows jobs
   windows_package:
     <<: *windows_container
@@ -1760,6 +1769,8 @@ workflows:
             tags:
               only: *tag_regex
 
+      - integration_sync
+
   system_tests:
     triggers:
       - schedule:
@@ -1771,3 +1782,15 @@ workflows:
                 - *master_branch
     jobs:
       - docker_system_tests
+
+  # integration_sync:
+  #   triggers:
+  #     - schedule:
+  #       # run at midnight and noon UTC
+  #       cron: "0 0,12 * * *"
+  #       filters:
+  #         branches:
+  #           only:
+  #             - *master_branch
+  #   jobs:
+  #     - integration_sync
