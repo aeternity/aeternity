@@ -1155,7 +1155,6 @@ jobs:
     executor: infrastructure_container_unstable
     steps:
       - checkout
-      - setup_secrets
       - run:
           name: Integration sync
           command: |
@@ -1770,7 +1769,8 @@ workflows:
             tags:
               only: *tag_regex
 
-      - integration_sync
+      - integration_sync:
+          context: ae-node-builds
 
   system_tests:
     triggers:
