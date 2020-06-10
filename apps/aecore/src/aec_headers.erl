@@ -60,6 +60,7 @@
 -include_lib("aeminer/include/aeminer.hrl").
 -include_lib("aecontract/include/hard_forks.hrl").
 -include("blocks.hrl").
+-include("aec_plugin.hrl").
 
 %%%===================================================================
 %%% Records and types
@@ -80,7 +81,8 @@
           signature    = <<0:?BLOCK_SIGNATURE_BYTES/unit:8>>   :: block_signature(),
           txs_hash     = <<0:?TXS_HASH_BYTES/unit:8>>          :: txs_hash(),
           time         = 0                                     :: non_neg_integer(),
-          version                                              :: non_neg_integer()
+          version                                              :: non_neg_integer(),
+          extra        = #{}                                   :: map()
          }).
 
 -record(key_header, {
@@ -95,22 +97,23 @@
           pow_evidence = no_value                              :: aeminer_pow_cuckoo:solution() | no_value,
           miner        = <<0:?MINER_PUB_BYTES/unit:8>>         :: miner_pubkey(),
           beneficiary  = <<0:?BENEFICIARY_PUB_BYTES/unit:8>>   :: beneficiary_pubkey(),
-          info         = <<>>                                  :: bin_info()
+          info         = <<>>                                  :: bin_info(),
+          extra        = #{}                                   :: map()
          }).
 
--record(db_key_header, {
-          height       = 0                                     :: height(),
-          prev_hash    = <<0:?BLOCK_HEADER_HASH_BYTES/unit:8>> :: block_header_hash(),
-          prev_key     = <<0:?BLOCK_HEADER_HASH_BYTES/unit:8>> :: block_header_hash(),
-          root_hash    = <<0:?STATE_HASH_BYTES/unit:8>>        :: state_hash(),
-          target       = ?HIGHEST_TARGET_SCI                   :: aeminer_pow:sci_target(),
-          nonce        = 0                                     :: non_neg_integer(),
-          time         = 0                                     :: non_neg_integer(),
-          version                                              :: non_neg_integer(),
-          pow_evidence = no_value                              :: aeminer_pow_cuckoo:solution() | no_value,
-          miner        = <<0:?MINER_PUB_BYTES/unit:8>>         :: miner_pubkey(),
-          beneficiary  = <<0:?BENEFICIARY_PUB_BYTES/unit:8>>   :: beneficiary_pubkey()
-         }).
+%% -record(db_key_header, {
+%%           height       = 0                                     :: height(),
+%%           prev_hash    = <<0:?BLOCK_HEADER_HASH_BYTES/unit:8>> :: block_header_hash(),
+%%           prev_key     = <<0:?BLOCK_HEADER_HASH_BYTES/unit:8>> :: block_header_hash(),
+%%           root_hash    = <<0:?STATE_HASH_BYTES/unit:8>>        :: state_hash(),
+%%           target       = ?HIGHEST_TARGET_SCI                   :: aeminer_pow:sci_target(),
+%%           nonce        = 0                                     :: non_neg_integer(),
+%%           time         = 0                                     :: non_neg_integer(),
+%%           version                                              :: non_neg_integer(),
+%%           pow_evidence = no_value                              :: aeminer_pow_cuckoo:solution() | no_value,
+%%           miner        = <<0:?MINER_PUB_BYTES/unit:8>>         :: miner_pubkey(),
+%%           beneficiary  = <<0:?BENEFICIARY_PUB_BYTES/unit:8>>   :: beneficiary_pubkey()
+%%          }).
 
 -opaque key_header()   :: #key_header{}.
 -opaque micro_header() :: #mic_header{}.
@@ -174,21 +177,47 @@ type(#mic_header{}) -> micro.
 %% We might have a legacy tuple in the db
 from_db_header(#key_header{} = K) -> K;
 from_db_header(#mic_header{} = M) -> M;
-from_db_header(Tuple) when is_tuple(Tuple) ->
-    case setelement(1, Tuple, db_key_header) of
-        #db_key_header{
-           height       = Height,
-           prev_hash    = PrevHash,
-           prev_key     = PrevKey,
-           root_hash    = RootHash,
-           target       = Target,
-           nonce        = Nonce,
-           time         = Time,
-           version      = Version,
-           pow_evidence = Pow,
-           miner        = Miner,
-           beneficiary  = Beneficiary
-          } ->
+from_db_header({key_header,
+                Height,
+                PrevHash,
+                PrevKey,
+                RootHash,
+                Target,
+                Nonce,
+                Time,
+                Version,
+                Pow,
+                Miner,
+                Beneficiary,
+                Info
+               }) ->
+            #key_header{
+               height       = Height,
+               prev_hash    = PrevHash,
+               prev_key     = PrevKey,
+               root_hash    = RootHash,
+               target       = Target,
+               nonce        = Nonce,
+               time         = Time,
+               version      = Version,
+               pow_evidence = Pow,
+               miner        = Miner,
+               beneficiary  = Beneficiary,
+               info         = Info
+              };
+from_db_header({key_header,
+                Height,
+                PrevHash,
+                PrevKey,
+                RootHash,
+                Target,
+                Nonce,
+                Time,
+                Version,
+                Pow,
+                Miner,
+                Beneficiary
+               }) ->
             #key_header{
                height       = Height,
                prev_hash    = PrevHash,
@@ -203,9 +232,8 @@ from_db_header(Tuple) when is_tuple(Tuple) ->
                beneficiary  = Beneficiary,
                info         = <<>>
               };
-        _ ->
-            error(bad_db_header)
-    end.
+from_db_header(_) ->
+    error(bad_db_header).
 
 %%%===================================================================
 %%% Constructors
@@ -525,6 +553,9 @@ construct_micro_flags(#mic_header{pof_hash = Bin}) ->
 -spec deserialize_from_binary(deterministic_header_binary()) -> header().
 
 deserialize_from_binary(Bin) ->
+    ?PLUGGABLE((Bin), deserialize_from_binary_(Bin)).
+
+deserialize_from_binary_(Bin) ->
     case deserialize_from_binary_partial(Bin) of
         {key, Header} -> Header;
         {micro, Header, <<>>} -> Header;
@@ -535,10 +566,13 @@ deserialize_from_binary(Bin) ->
                                              {'key', key_header()}
                                            | {'micro', micro_header(), binary()}
                                            | {'error', term()}.
-deserialize_from_binary_partial(<<Version:32,
-                                  ?KEY_HEADER_TAG:1,
-                                  InfoFlag:1,
-                                  _/bits>> = Bin) ->
+deserialize_from_binary_partial(Bin) ->
+    ?PLUGGABLE((Bin), deserialize_from_binary_partial_(Bin)).
+
+deserialize_from_binary_partial_(<<Version:32,
+                                   ?KEY_HEADER_TAG:1,
+                                   InfoFlag:1,
+                                   _/bits>> = Bin) ->
     HeaderSize = InfoFlag * ?OPTIONAL_INFO_BYTES + ?KEY_HEADER_MIN_BYTES,
     case Bin of
         <<_:HeaderSize/unit:8>> when Version =:= ?ROMA_PROTOCOL_VSN,
@@ -555,10 +589,10 @@ deserialize_from_binary_partial(<<Version:32,
         _ ->
             {error, malformed_header}
     end;
-deserialize_from_binary_partial(<<_Version:32,
-                                  ?MICRO_HEADER_TAG:1,
-                                  PoFFlag:1,
-                                  _/bits>> = Bin) ->
+deserialize_from_binary_partial_(<<_Version:32,
+                                   ?MICRO_HEADER_TAG:1,
+                                   PoFFlag:1,
+                                   _/bits>> = Bin) ->
     HeaderSize = PoFFlag * 32 + ?MIC_HEADER_MIN_BYTES,
     case Bin of
         <<HeaderBin:HeaderSize/binary, Rest/binary>> ->
@@ -577,22 +611,25 @@ deserialize_from_binary_partial(<<_Version:32,
 -spec deserialize_key_from_binary(deterministic_header_binary()) ->
                                          {'ok', key_header()}
                                        | {'error', term()}.
-deserialize_key_from_binary(<<Version:32,
-                              ?KEY_HEADER_TAG:1,
-                              _ContainsInfoFlag:1,
-                              0:30, %% Remaining flags.
-                              Height:64,
-                              PrevHash:?BLOCK_HEADER_HASH_BYTES/binary,
-                              PrevKeyHash:?BLOCK_HEADER_HASH_BYTES/binary,
-                              RootHash:?STATE_HASH_BYTES/binary,
-                              Miner:32/binary,
-                              Beneficiary:32/binary,
-                              Target:32,
-                              PowEvidenceBin:168/binary,
-                              Nonce:64,
-                              Time:64,
-                              Info/binary
-                            >>) ->
+deserialize_key_from_binary(Bin) ->
+    ?PLUGGABLE((Bin), deserialize_key_from_binary_(Bin)).
+
+deserialize_key_from_binary_(<<Version:32,
+                               ?KEY_HEADER_TAG:1,
+                               _ContainsInfoFlag:1,
+                               0:30, %% Remaining flags.
+                               Height:64,
+                               PrevHash:?BLOCK_HEADER_HASH_BYTES/binary,
+                               PrevKeyHash:?BLOCK_HEADER_HASH_BYTES/binary,
+                               RootHash:?STATE_HASH_BYTES/binary,
+                               Miner:32/binary,
+                               Beneficiary:32/binary,
+                               Target:32,
+                               PowEvidenceBin:168/binary,
+                               Nonce:64,
+                               Time:64,
+                               Info/binary
+                             >>) ->
     PowEvidence = deserialize_pow_evidence_from_binary(PowEvidenceBin),
     H = #key_header{height = Height,
                     prev_hash = PrevHash,
@@ -608,7 +645,7 @@ deserialize_key_from_binary(<<Version:32,
                     info = Info
                    },
     {ok, H};
-deserialize_key_from_binary(_Other) ->
+deserialize_key_from_binary_(_Other) ->
     {error, malformed_header}.
 
 
@@ -619,18 +656,21 @@ deserialize_key_from_binary(_Other) ->
 -spec deserialize_micro_from_binary(deterministic_header_binary()) ->
                                            {'ok', micro_header()}
                                          | {'error', term()}.
-deserialize_micro_from_binary(<<Version:32,
-                                ?MICRO_HEADER_TAG:1,
-                                PoFTag:1,
-                                0:30, %% Remaining flags
-                                Height:64,
-                                PrevHash:?BLOCK_HEADER_HASH_BYTES/binary,
-                                PrevKeyHash:?BLOCK_HEADER_HASH_BYTES/binary,
-                                RootHash:?STATE_HASH_BYTES/binary,
-                                TxsHash:?TXS_HASH_BYTES/binary,
-                                Time:64,
-                                Rest/binary
-                              >>) ->
+deserialize_micro_from_binary(Bin) ->
+    ?PLUGGABLE((Bin), deserialize_micro_from_binary_(Bin)).
+
+deserialize_micro_from_binary_(<<Version:32,
+                                 ?MICRO_HEADER_TAG:1,
+                                 PoFTag:1,
+                                 0:30, %% Remaining flags
+                                 Height:64,
+                                 PrevHash:?BLOCK_HEADER_HASH_BYTES/binary,
+                                 PrevKeyHash:?BLOCK_HEADER_HASH_BYTES/binary,
+                                 RootHash:?STATE_HASH_BYTES/binary,
+                                 TxsHash:?TXS_HASH_BYTES/binary,
+                                 Time:64,
+                                 Rest/binary
+                               >>) ->
     PoFHashSize = PoFTag * 32,
     case Rest of
         <<PoFHash:PoFHashSize/binary,
@@ -648,7 +688,7 @@ deserialize_micro_from_binary(<<Version:32,
         _ ->
             {error, malformed_header}
     end;
-deserialize_micro_from_binary(_Other) ->
+deserialize_micro_from_binary_(_Other) ->
     {error, malformed_header}.
 
 serialize_pow_evidence_to_binary(Ev) ->
@@ -666,7 +706,7 @@ deserialize_pow_evidence_from_binary(Bin) ->
     deserialize_pow_evidence([ X || <<X:32>> <= Bin ]).
 
 deserialize_pow_evidence(L) when is_list(L) ->
-    % not trusting the network, filterting out any non-integers or negative
+    % not trusting the network, filtering out any non-integers or negative
     % numbers
     PowEvidence =
       lists:filter(fun(N) -> is_integer(N) andalso N >=0 end, L),
@@ -685,12 +725,20 @@ deserialize_pow_evidence(_) ->
 %%%===================================================================
 
 validate_key_block_header(Header, Protocol) ->
+    ?PLUGGABLE((Header, Protocol),
+               validate_key_block_header_(Header, Protocol)).
+
+validate_key_block_header_(Header, Protocol) ->
     Validators = [fun validate_protocol/2,
                   fun validate_pow/2,
                   fun validate_max_time/2],
     aeu_validation:run(Validators, [Header, Protocol]).
 
 validate_micro_block_header(Header, Protocol) ->
+    ?PLUGGABLE((Header, Protocol),
+               validate_micro_block_header_(Header, Protocol)).
+
+validate_micro_block_header_(Header, Protocol) ->
     %% NOTE: The signature is not validated since we don't know the leader key
     %%       This check is performed when adding the header to the chain.
     Validators = [fun validate_protocol/2,
@@ -701,6 +749,9 @@ validate_micro_block_header(Header, Protocol) ->
 -spec validate_protocol(header(), aec_hard_forks:protocol_vsn()) ->
                                ok | {error, protocol_version_mismatch}.
 validate_protocol(Header, Protocol) ->
+    ?PLUGGABLE((Header, Protocol), validate_protocol_(Header, Protocol)).
+
+validate_protocol_(Header, Protocol) ->
     case version(Header) =:= Protocol of
         true  -> ok;
         false -> {error, protocol_version_mismatch}
@@ -708,10 +759,13 @@ validate_protocol(Header, Protocol) ->
 
 -spec validate_pow(header(), aec_hard_forks:protocol_vsn()) ->
                           ok | {error, incorrect_pow}.
-validate_pow(#key_header{nonce        = Nonce,
-                         pow_evidence = Evd,
-                         target       = Target} = Header, _Protocol)
- when Nonce >= 0, Nonce =< ?MAX_NONCE ->
+validate_pow(Header, Protocol) ->
+    ?PLUGGABLE((Header, Protocol), validate_pow_(Header, Protocol)).
+
+validate_pow_(#key_header{nonce        = Nonce,
+                          pow_evidence = Evd,
+                          target       = Target} = Header, _Protocol)
+  when Nonce >= 0, Nonce =< ?MAX_NONCE ->
     %% Zero nonce and pow_evidence before hashing, as this is how the mined block
     %% got hashed.
     Header1 = Header#key_header{nonce = 0, pow_evidence = no_value},
