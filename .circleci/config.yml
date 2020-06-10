@@ -1769,9 +1769,6 @@ workflows:
             tags:
               only: *tag_regex
 
-      - integration_sync:
-          context: ae-node-builds
-
   system_tests:
     triggers:
       - schedule:
@@ -1784,14 +1781,15 @@ workflows:
     jobs:
       - docker_system_tests
 
-  # integration_sync:
-  #   triggers:
-  #     - schedule:
-  #       # run at midnight and noon UTC
-  #       cron: "0 0,12 * * *"
-  #       filters:
-  #         branches:
-  #           only:
-  #             - *master_branch
-  #   jobs:
-  #     - integration_sync
+  integration_sync:
+    triggers:
+      - schedule:
+          # run at midnight and noon UTC
+          cron: "0 0,12 * * *"
+          filters:
+            branches:
+              only:
+                - *master_branch
+    jobs:
+      - integration_sync:
+          context: ae-node-builds
