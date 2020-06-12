@@ -1159,6 +1159,7 @@ jobs:
           name: Integration sync
           command: |
             cd /infrastructure && DEPLOY_ENV=integration_sync make mnesia-reset-once
+      - *fail_notification
 
   # Windows jobs
   windows_package:
