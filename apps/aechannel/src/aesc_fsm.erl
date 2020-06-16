@@ -1591,12 +1591,7 @@ send_channel_accept(#data{ opts = Opts
     Data#data{log = log_msg(snd, ?CH_ACCEPT, Msg, Data#data.log)}.
 
 check_accept_msg(#{ chain_hash             := ChainHash
-                  , temporary_channel_id   := ChanId
-                  , initiator_amount       := _InitiatorAmt
-                  , responder_amount       := _ResponderAmt
-                  , channel_reserve        := _ChanReserve
-                  , initiator              := Initiator
-                  , responder              := Responder } = Msg,
+                  , temporary_channel_id   := ChanId } = Msg,
                  #data{ channel_id = ChanId
                       , opts = Opts
                       , log = Log } = Data) ->
@@ -1604,8 +1599,7 @@ check_accept_msg(#{ chain_hash             := ChainHash
     case aec_chain:genesis_hash() of
         ChainHash ->
             Log1 = log_msg(rcv, ?CH_ACCEPT, Msg, Log),
-            Opts1 = Opts#{initiator => Initiator , responder => Responder},
-            Data1 = Data#data{ opts = Opts1
+            Data1 = Data#data{ opts = Opts
                              , log = Log1
                              , peer_connected = true },
             {data, Data2} = chk_mindepth_opts(Msg, undefined, Data1),
