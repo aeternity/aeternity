@@ -265,10 +265,18 @@ check_delegation_signature(Pubkey, Binary, Signature,
 %%%-------------------------------------------------------------------
 %%% Operations modifying state
 
+%% GH3283: For FATE we don't build the actual transaction, so some more work
+%% is needed - but it should be straightforward.
+%%
+%% SpendTx = aec_spend_tx:new(#{sender_id => aeser_id:create(account, FromPubkey), ...})
 spend(FromPubkey, ToPubkey, Amount, State) ->
     eval_primops([ aeprimop:spend_op(FromPubkey, ToPubkey, Amount)
                  ], State).
 
+%% GH3283: If the idea is to be able to follow tokens throughout the system, we
+%% should probably make this one into a "spend" as well, this is where value is
+%% attached to a (remote) contract call. Some care to not include the top level
+%% transfer_value might be needed.
 transfer_value(FromPubkey, ToPubkey, Amount, State) ->
     eval_primops([ aeprimop:transfer_value_op(FromPubkey, ToPubkey, Amount)
                  ], State).

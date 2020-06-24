@@ -288,6 +288,13 @@ set_ga_tx_hash(Env, X) -> Env#env{ga_tx_hash = X}.
 
 %%------
 
+%% GH3283: This is where we add `tx_events` - currently it is only used by channels
+%% and thus the `Name` is always {channel, PubKey}. Let's give this a bit more
+%% structure. Maybe simply using {Kind, Data} is good enough!?
+%%
+%% If so, then we can just add {internal_call_tx, {CallTxHash, Tx}} or something
+%% like that. Note that tx_events are accumulated over several transactions in
+%% some use cases (like micro block validation/syncing).
 -spec tx_event(any(), env()) -> env().
 tx_event(Name, #env{events = Events} = Env) ->
     case signed_tx(Env) of
