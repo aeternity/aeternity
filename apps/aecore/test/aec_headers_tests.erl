@@ -324,14 +324,14 @@ validate_test_() ->
               Header0 = ?TEST_MODULE:set_version_and_height(
                            raw_key_header(), ?GENESIS_VERSION, ?GENESIS_HEIGHT),
               Header = ?TEST_MODULE:set_nonce(Header0, -1),
-              ?assertError(function_clause, ?TEST_MODULE:validate_key_block_header(Header, ?GENESIS_VERSION))
+              ?assertError(case_clause, ?TEST_MODULE:validate_key_block_header(Header, ?GENESIS_VERSION))
       end,
       fun() ->
               meck:expect(aec_mining, verify, 4, true),
               Header0 = ?TEST_MODULE:set_version_and_height(
                            raw_key_header(), ?GENESIS_VERSION, ?GENESIS_HEIGHT),
               Header = ?TEST_MODULE:set_nonce(Header0, 16#1ffffffffffffffff),
-              ?assertError(function_clause, ?TEST_MODULE:validate_key_block_header(Header, ?GENESIS_VERSION))
+              ?assertError(case_clause, ?TEST_MODULE:validate_key_block_header(Header, ?GENESIS_VERSION))
       end,
       fun() ->
               Header = ?TEST_MODULE:set_version_and_height(
