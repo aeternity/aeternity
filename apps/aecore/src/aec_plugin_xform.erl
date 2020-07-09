@@ -37,7 +37,7 @@ parse_transform(Forms, _) ->
 
 -endif.
 
--ifdef(OTP_RELEASE). Support functions
+-ifdef(OTP_RELEASE). %% Support functions
 
 find_pluggable(Forms) ->
     {Blocks, Forms1} = pluggable_blocks(Forms),  % may insert error forms
