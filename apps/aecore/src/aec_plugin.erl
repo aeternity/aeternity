@@ -6,6 +6,21 @@
         , get_module/2
         ]).
 
+%% Pre-OTP 21 ==================================================
+-ifndef(OTP_RELEASE).
+
+register(_Map) ->
+    error(requires_OTP21).
+
+get_module(_Tag) ->
+    undefined.
+
+get_module(_Tag, _Default) ->
+    undefined.
+
+%% OTP 21 and later ============================================
+-else.
+
 tags() ->
     [aec_headers].
 
@@ -54,27 +69,12 @@ module_is_loaded(M) ->
 %% The functionality was introduced in OTP 21.2. Also in OTP 21, the
 %% predefined macro ?OTP_RELEASE was introduced. Let's assume that anyone
 %% using OTP 21 is using at least 21.2.
--ifdef(OTP_RELEASE).
 
 set_registry(R) ->
     persistent_term:put({?MODULE, registry}, R).
 
 get_registry() ->
     persistent_term:get({?MODULE, registry}, undefined).
-
--else.
-
-%% set_registry(R) ->
-%%     application:set_env(aecore, plugin_registry, R).
-
-%% get_registry() ->
-%%     application:get_env(aecore, plugin_registry, undefined).
-
-set_registry(_) ->
-    error(requires_OTP21).
-
-get_registry() ->
-    undefined.
 
 -endif.
 

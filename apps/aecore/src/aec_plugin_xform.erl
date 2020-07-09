@@ -1,6 +1,9 @@
 -module(aec_plugin_xform).
 
 -export([parse_transform/2]).
+
+-ifdef(OTP_RELEASE).
+
 -export([format_error/1]).
 
 parse_transform(Forms, Opts) ->
@@ -26,6 +29,15 @@ parse_transform(Forms, Opts) ->
         Errors ->
             {error, Errors, []}
     end.
+
+-else.
+
+parse_transform(Forms, _) ->
+    Forms.
+
+-endif.
+
+-ifdef(OTP_RELEASE). Support functions
 
 find_pluggable(Forms) ->
     {Blocks, Forms1} = pluggable_blocks(Forms),  % may insert error forms
@@ -218,3 +230,5 @@ format_error({unterminated_pluggable_block, Tag}) ->
     io_lib:format("Unterminated 'pluggable' block: ~p", [Tag]);
 format_error(Err) ->
     io_lib:fwrite("~w", [Err]).
+
+-endif.
