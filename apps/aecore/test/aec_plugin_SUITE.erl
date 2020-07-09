@@ -36,19 +36,18 @@ all() ->
 
 groups() ->
     [
-     {all_tests, [sequence], [{group, plugin}]},
-     {plugin,
-      [ registration
-      , compile_unpluggable
-      , compile_pluggable_export_all
-      , compile_pluggable_begin_end
-      , compile_pluggable_begin_no_end
-      , compile_pluggable_overlap
-      %% , pluggable_all
-      %% , pluggable_all_export_all
-      %% , pluggable_singles
-      %% , pluggable_blocks
-      ]}
+      {all_tests, [sequence], [ {group, plugin}
+                              , {group, compile}]}
+    , {plugin,
+       [ registration
+       ]}
+    , {compile,
+       [ compile_unpluggable
+       , compile_pluggable_export_all
+       , compile_pluggable_begin_end
+       , compile_pluggable_begin_no_end
+       , compile_pluggable_overlap
+       ]}
     ].
 
 suite() ->
@@ -60,6 +59,13 @@ init_per_suite(Config) ->
 end_per_suite(_Config) ->
     ok.
 
+init_per_group(compile, Config) ->
+    case system_major_vsn() >= 21 of
+        true ->
+            Config;
+        false ->
+            {skip, not_supported_before_OTP21}
+    end;
 init_per_group(_Grp, Config) ->
     Config.
 
@@ -92,9 +98,15 @@ real_registration() ->
 
 legacy_registration() ->
     undefined = aec_plugin:get_module(aec_headers),
-    ok = aec_plugin:register(#{aec_headers => ?MODULE}),
-    ?MODULE = aec_plugin:get_module(aec_headers),
-    ok.
+    try begin
+            aec_plugin:register(#{aec_headers => ?MODULE}),
+            error(should_fail)
+        end
+    catch
+        error:requires_OTP21 ->
+            undefined = aec_plugin:get_module(aec_headers),
+            ok
+    end.
 
 compile_unpluggable(_Cfg) ->
     compile_tmod(plain).
