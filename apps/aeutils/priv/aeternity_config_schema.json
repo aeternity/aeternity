@@ -31,23 +31,28 @@
             "properties" : {
                 "tx_ttl" : {
                     "description" : "Number of blocks before inactive TXs are garbage collected",
-                    "type" : "integer"
+                    "type" : "integer",
+                    "default": 8
                 },
                 "invalid_tx_ttl" : {
                     "description" : "Number of blocks before invalid (TTL or low nonce) TXs are garbage collected",
-                    "type" : "integer"
+                    "type" : "integer",
+                    "default": 5
                 },
                 "sync_interval" : {
                     "description" : "Interval between mempool (re-)synchronization (in ms)",
-                    "type" : "integer"
+                    "type" : "integer",
+                    "default": 1800000
                 },
                 "nonce_offset" : {
                     "description" : "Maximum nonce offset accepted",
-                    "type" : "integer"
+                    "type" : "integer",
+                    "default": 5
                 },
                 "nonce_baseline" : {
                     "description" : "Maximum nonce accepted when pubkey is not present in state",
-                    "type" : "integer"
+                    "type" : "integer",
+                    "default": 1
                 }
             }
         },
@@ -1180,7 +1185,6 @@
                 }
             }
         }
-
     },
     "definitions" : {
         "key_value_pattern": {
