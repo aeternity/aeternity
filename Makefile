@@ -444,6 +444,9 @@ test-arch-os-dependencies: KIND=test
 test-arch-os-dependencies:
 	make ct-latest SUITE=apps/aecontract/test/aecontract GROUP=sophia TEST=sophia_crypto
 
+validate-reference-config:
+	./_build/prod/bin/check_config docs/reference-config.yaml
+
 .PHONY: \
 	all console \
 	local-build local-start local-stop local-attach \
@@ -465,4 +468,5 @@ test-arch-os-dependencies:
 	build-uml \
 	REVISION \
 	prod-deb-package \
-	regen-fate
+	regen-fate \
+	validate-reference-config

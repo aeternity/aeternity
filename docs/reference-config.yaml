@@ -1,0 +1,193 @@
+blocked_peers: # Aeternity Node address
+        - "aenode://pp_ySU7cHqsymnuBP9iSe4rMnH1Rz2FStx5rnoewYMJcuPhdaqPk@192.168.1.1:3015" # (string) Aeternity Node address
+chain:
+        db_backend: "unix:rocksdb|*:mnesia" # (string) Choice of database backend.
+        db_path: "data" # (string) The directory where the chain is persisted to disk.
+        db_write_max_retries: 3 # (integer) Maximum number of retries for failing database write operations.
+        garbage_collection:
+                enabled: false # (boolean) If true, node will perform garbage collection of account state, removing unrechable merkle patricia nodes and free some disk space
+                history: 500 # (integer) How many blocks (back from the top) should be scanned for reachable hashes
+                interval: 50000 # (integer) How often (every `interval` block) should garbage collection run
+        # hard_forks:  # (object) The consensus protocol versions with respective effective heights. Ignored if 'fork_management > network_id' has value 'ae_mainnet' or 'ae_uat'.
+        persist: true # (boolean) If true, all changes to the chain are written to disk.
+        protocol_beneficiaries: # Public keys belonging to protocol maintainers with reward shares (100 is 10%). If not set testnet or mainnet beneficiaries and shares will be used based on network_id configuration value. IMPORTANT: The value of this setting is under governance, thus it should not be changed without previous agreement within the configured network on doing so.
+                -  # (pattern) Public keys belonging to protocol maintainers with reward shares (100 is 10%). If not set testnet or mainnet beneficiaries and shares will be used based on network_id configuration value. IMPORTANT: The value of this setting is under governance, thus it should not be changed without previous agreement within the configured network on doing so.
+        protocol_beneficiaries_enabled: true # (boolean) If true, the node will split rewards and send part to protocol_beneficiaries
+channels:
+        max_count: 1000 # (integer) Max number of active state channel clients allowed on node
+fork_management:
+        fork:
+                enabled: true # (boolean) Indicates whether the node should follow the signalling result or stay with the current protocol.
+                # info_field:  # (integer) Pseudorandom number (part of key block) used by the miners indicating which fork they support.
+                # signalling_block_count:  # (integer) Count of the key blocks in signalling period necessary for the fork to take effect.
+                # signalling_end_height:  # (integer) Height at which signalling period ends.
+                # signalling_start_height:  # (integer) Height at which signalling period starts.
+                # version:  # (integer) Version of the chain in case of a successful fork.
+        network_id: "ae_mainnet" # (string) Identification of the network in case of hard forks.
+http:
+        cache:
+                aged_blocks_cache_time: 86400 # (integer) Time (in seconds) to cache aged blocks, the Expire header time relative to block creation time.
+                aged_blocks_time: 86400 # (integer) Time (in seconds) after a block is considered aged. That is an Expire header is generated for such blocks API endpoints.
+                enabled: false # (boolean) Enable HTTP cache headers (ETag and Expire)
+        cors:
+                allow_domains:
+                        - "https://example.com" # (string)
+                allow_headers:
+                        - "Content-Type" # (string)
+                allow_methods:
+                        - "GET" # (string)
+                max_age: 1800 # (integer) Indicates for how many seconds the results of a preflight request can be cached (to be set in access-control-max-age header in the response).
+        # debug:  # (boolean) Deprecated. See also 'http > internal > debug_endpoints'
+        endpoints:
+                # chain:  # (boolean) Chain state inspection endpoints
+                # debug:  # (boolean) Deprecated. See also 'http > internal > debug_endpoints'
+                # dev:  # (boolean) Development only API - for validation of client implementations. Should not be used in real life scenarios
+                # gossip:  # (boolean) Gossip protocol API
+                # name_service:  # (boolean) Name resolution API
+                # node_operator:  # (boolean) Node operator endpoints
+                # obsolete:  # (boolean) Old endpoints that will be removed
+                # transactions:  # (boolean) Transactions insection endpoints
+        external:
+                acceptors: 10 # (integer) Number of acceptors in external pool
+                # connect_timeout:  # (integer) HTTP Request connect timeout.
+                listen_address: "0.0.0.0" # (string) Listen address for external interface. This should be publicly accessible
+                # port:  # (integer) Listen port for external HTTP interface.
+                # request_timeout:  # (integer) HTTP Request timeout.
+        internal:
+                acceptors: 10 # (integer) Number of acceptors in internal pool
+                debug_endpoints: false # (boolean) Enable (true) debug api. Disabled (false) by default. Debug endpoints are defined by a tag in the Swagger API schema
+                listen_address: "127.0.0.1" # (string) Listen address for internal interface. This should not be publicly accessible
+                # port:  # (integer) Listen port for internal HTTP interface.
+keys:
+        dir: "~/.aeternity/keys/" # (string) Location (directory) of the public/private key pair(s)
+        # peer_password:  # (string) Password used to encrypt the peer key-pair files
+logging:
+        # hwm:  # (integer) Controls the overload protection in the logs. Default=50.
+        level: "debug" # (string) Sets the level of logging in the default, mining, cuckoo and sync logs.
+mining:
+        # attempt_timeout:  # (integer) Maximum time (milliseconds) for each attempt to mine a block with a specific nonce.
+        # autostart:  # (boolean) If true, the node will start mining automatically.
+        beneficiary: "ak_DummyPubKeyDoNotEverUse999999999999999999999999999" # (string) Public key of beneficiary account that will receive fees from mining on a node. Required when 'mining.autostart' is set to 'true'.
+        beneficiary_reward_delay: 180 # (integer) Delay (in key blocks / generations) for getting mining rewards. Used in governance.
+        cuckoo:
+                edge_bits: 29 # (integer) Number of bits used for representing an edge in the Cuckoo Cycle problem. It affects both PoW generation (mining) and verification. WARNING: Changing this makes the node incompatible with the chain of other nodes in the network, do not change from the default unless you know what you are doing.
+                miners:
+                        - executable: "mean29-generic" # (string) Executable binary of the miner. Options are: "mean29-generic" (memory-intensive), "mean29-avx2" (memory-intensive, benefits from faster CPU supporting AVX2 instructions), "lean29-generic" (CPU-intensive, useful if memory-constrained), "lean29-avx2" (CPU-intensive, useful if memory-constrained, benefits from faster CPU supporting AVX2 instructions).
+                          executable_group: "aecuckoo" # (string) Group of executable binaries of the miner.
+                          # extra_args:  # (string) Extra arguments to pass to the miner executable binary. The safest choice is specifying no arguments i.e. empty string.
+                          hex_encoded_header: false # (boolean) Hexadecimal encode the header argument that is send to the miner executable. CUDA executables expect hex encoded header.
+                          repeats: 1 # (integer) Number of tries to do in each miner context - WARNING: it should be set so the miner process runs for 3-5s or else the node risk missing out on new micro blocks.
+        expected_mine_rate: 180000 # (integer) Expected mine rate (milliseconds) between blocks. Used in governance.
+        max_auth_fun_gas: 50000 # (integer) Maximum gas allowed for GAMetaTx authentication function
+        micro_block_cycle: 3000 # (integer) Expected rate (milliseconds) between micro-blocks. Used in governance.
+        min_miner_gas_price: 1000000000 # (integer) Minimum gas price accepted by the miner
+        name_claim_bid_timeout: 480 # (integer) Blocks to wait until auction closes. Used in governance.
+        strictly_follow_top: false # (boolean) If true, removes the risk of a race condition with eventual forking in fast mining context
+monitoring:
+        active: false # (boolean) If true, the monitoring will start.
+        publisher:
+                # amount:  # (integer) Amount to set up in monitoring spend transaction.
+                autostart: false # (boolean) If true, the monitoring will start posting transactions.
+                # interval:  # (integer) How often (in ms) to try post monitoring transaction.
+                privkey: "sg_3Y...EF" # (string) Private key of transaction publisher serialized as signature.
+                pubkey: "ak_DummyPubKeyDoNotEverUse999999999999999999999999999" # (string) Public key of transaction publisher.
+                # ttl:  # (integer) Number of blocks before tx is garbage collected.
+peers: # Aeternity Node address
+        - "aenode://pp_ySU7cHqsymnuBP9iSe4rMnH1Rz2FStx5rnoewYMJcuPhdaqPk@192.168.1.1:3015" # (string) Aeternity Node address
+regulators:
+        http_read:
+                counter: 5 # (integer)
+                max_size: 100 # (integer)
+                max_time: 0 # (integer)
+                rate: 0 # (integer)
+        http_update:
+                counter: 5 # (integer)
+                max_size: 50 # (integer)
+                max_time: 0 # (integer)
+                rate: 0 # (integer)
+        sc_ws_handlers:
+                counter: 10 # (integer)
+                max_size: 5 # (integer)
+                max_time: 0 # (integer)
+                rate: 0 # (integer)
+        sync_gossip:
+                counter: 5 # (integer)
+                max_size: 0 # (integer)
+                max_time: 0 # (integer)
+                rate: 0 # (integer)
+        sync_ping:
+                counter: 3 # (integer)
+                max_size: 0 # (integer)
+                max_time: 0 # (integer)
+                rate: 0 # (integer)
+        sync_tasks:
+                counter: 10 # (integer)
+                max_size: 0 # (integer)
+                max_time: 0 # (integer)
+                rate: 0 # (integer)
+        tx_pool_push:
+                counter: 5 # (integer)
+                # counter_modifiers: "mempool.size: 15" # (string)
+                max_size: 5000 # (integer)
+                max_time: 0 # (integer)
+                rate: 0 # (integer)
+                # rate_modifiers: "mempool.size: 10" # (string)
+stratum:
+        connection:
+                host: "localhost" # (string)
+                max_connections: 1024 # (integer)
+                num_acceptors: 100 # (integer)
+                port: 9999 # (integer) Port number of Stratum server.
+                transport: "tcp" # (string)
+        enabled: false # (boolean)
+        reward:
+                beneficiaries: # Public key receiving pool reward to percent share map.
+                        - "ak_DummyPubKeyDoNotEverUse999999999999999999999999999:100" # (pattern) Public key receiving pool reward to percent share map.
+                # keys:
+                        # dir:  # (string) Directory of the public/private key pair used for signing of the payout contract call (either relative to aestratum priv directory or absolute). This account holds mining rewards which are scheduled for redistribution to miners. It is unexpected that this account should hold any substantial amount of tokens (in fiat value) - it would mean redistributions aren't working. The pool operator should ensure the node operates in trusted environment.
+                reward_last_rounds: 2 # (integer)
+        session:
+                desired_solve_time: 30 # (integer)
+                edge_bits: 29 # (number)
+                extra_nonce_bytes: 4 # (integer)
+                # initial_share_target:  # (integer)
+                max_jobs: 20 # (integer)
+                # max_share_target:  # (integer)
+                max_solve_time: 60 # (integer)
+                max_workers: 20 # (integer)
+                msg_timeout: 15 # (integer)
+                share_target_diff_threshold: 5.00000000000000000000e+00 # (number)
+                skip_num_blocks: 10 # (integer)
+sync:
+        acceptors: 10 # (integer) Number of acceptors in listening pool
+        close_timeout: 3000 # (integer) Maximum time for the peer to close a connection cleanly
+        connect_timeout: 1000 # (integer) Connection timeout in miliseconds
+        # external_port:  # (integer) Listen port for external sync connections.
+        first_ping_timeout: 30000 # (integer) Maximum time for receiving a ping in miliseconds
+        # gossip_allowed_height_from_top:  # (integer) Allowed height difference from current top for incoming blocks (via gossip)
+        gossiped_peers_count: 32 # (integer) The number of peers sent in ping message
+        listen_address: "0.0.0.0" # (string) Listen address for external interface. This should be publicly accessible
+        log_peer_connection_count_interval: 5000 # (integer) Time (milliseconds) between logging info about connected peers
+        max_gossip: 10 # (integer) Maximum number of peers to gossip blocks and transactions to
+        max_inbound: 100 # (integer) Maximum number of inbound connections after which inbound connections are temporary (only used for a single ping)
+        max_inbound_hard: 1000 # (integer) Maximum number of inbound connections
+        max_outbound: 10 # (integer) Maximum number of outbound connections
+        noise_hs_timeout: 5000 # (integer) Maximum time for noise handshake in miliseconds
+        peer_pool:
+                max_rejections: 7 # (integer) The default maximum number of times a peer can get rejected. When reached, the peer is downgraded or removed (if not trusted).
+                max_update_lapse: 10800000 # (integer) Time (milliseconds) without a peer being updated after which it gets removed.
+                select_verified_peer_probability: 1.00000000000000000000e+00 # (number) Probability of selecting a peer from the verified pool.
+                standby_times:
+                        - 5000 # (integer)
+        # ping_interval:  # (integer) Interval between pings (in ms)
+        # port:  # (integer) Port used for (incoming) sync connections, must be reachable from the public facing IP
+        resolver_backoff_times:
+                - 5000 # (integer)
+        resolver_max_retries: 7 # (integer) Maximum number of retries at resolving the host name of untrusted peers.
+        single_outbound_per_group: true # (boolean) If the extra outbound connections should be to nodes from different address groups (IP netmask /16)
+        upnp_enabled: false # (boolean) If true, UPnP & NAT-PMP discovery will be enabled and port mapping will be established.
+websocket:
+        channel:
+                acceptors: 10 # (integer) Number of acceptors in pool
+                listen_address: "127.0.0.1" # (string) Listen address for channels websocket interface.
+                # port:  # (integer) Listen port for channels websocket interface.===> Booted ae_ref_config
