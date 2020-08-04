@@ -79,7 +79,7 @@ get_api(Config) ->
 validate_api(Config) ->
     Spec = json_from_yaml(Config),
 
-    Url = "http://validator.swagger.io/validator/",
+    Url = "https://validator.swagger.io/validator/",
     case httpc:request(post, {Url, [],  "application/json", Spec}, [], []) of
         {ok, {{_, 200, _}, _Headers, Body}} ->
             %% For manual verification visit https://github.com/swagger-api/validator-badge
