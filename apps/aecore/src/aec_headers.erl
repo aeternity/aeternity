@@ -57,9 +57,19 @@
          version/1
         ]).
 
+-pluggable([ deserialize_from_binary/1
+           , deserialize_from_binary_partial/1
+           , deserialize_key_from_binary/1
+           , deserialize_micro_from_binary/1
+           , validate_key_block_header/2
+           , validate_micro_block_header/2
+           , validate_pow/2
+           ]).
+
 -include_lib("aeminer/include/aeminer.hrl").
 -include_lib("aecontract/include/hard_forks.hrl").
 -include("blocks.hrl").
+-include("aec_plugin.hrl").
 
 %%%===================================================================
 %%% Records and types
@@ -80,7 +90,8 @@
           signature    = <<0:?BLOCK_SIGNATURE_BYTES/unit:8>>   :: block_signature(),
           txs_hash     = <<0:?TXS_HASH_BYTES/unit:8>>          :: txs_hash(),
           time         = 0                                     :: non_neg_integer(),
-          version                                              :: non_neg_integer()
+          version                                              :: non_neg_integer(),
+          extra        = #{}                                   :: map()
          }).
 
 -record(key_header, {
@@ -95,22 +106,23 @@
           pow_evidence = no_value                              :: aeminer_pow_cuckoo:solution() | no_value,
           miner        = <<0:?MINER_PUB_BYTES/unit:8>>         :: miner_pubkey(),
           beneficiary  = <<0:?BENEFICIARY_PUB_BYTES/unit:8>>   :: beneficiary_pubkey(),
-          info         = <<>>                                  :: bin_info()
+          info         = <<>>                                  :: bin_info(),
+          extra        = #{}                                   :: map()
          }).
 
--record(db_key_header, {
-          height       = 0                                     :: height(),
-          prev_hash    = <<0:?BLOCK_HEADER_HASH_BYTES/unit:8>> :: block_header_hash(),
-          prev_key     = <<0:?BLOCK_HEADER_HASH_BYTES/unit:8>> :: block_header_hash(),
-          root_hash    = <<0:?STATE_HASH_BYTES/unit:8>>        :: state_hash(),
-          target       = ?HIGHEST_TARGET_SCI                   :: aeminer_pow:sci_target(),
-          nonce        = 0                                     :: non_neg_integer(),
-          time         = 0                                     :: non_neg_integer(),
-          version                                              :: non_neg_integer(),
-          pow_evidence = no_value                              :: aeminer_pow_cuckoo:solution() | no_value,
-          miner        = <<0:?MINER_PUB_BYTES/unit:8>>         :: miner_pubkey(),
-          beneficiary  = <<0:?BENEFICIARY_PUB_BYTES/unit:8>>   :: beneficiary_pubkey()
-         }).
+%% -record(db_key_header, {
+%%           height       = 0                                     :: height(),
+%%           prev_hash    = <<0:?BLOCK_HEADER_HASH_BYTES/unit:8>> :: block_header_hash(),
+%%           prev_key     = <<0:?BLOCK_HEADER_HASH_BYTES/unit:8>> :: block_header_hash(),
+%%           root_hash    = <<0:?STATE_HASH_BYTES/unit:8>>        :: state_hash(),
+%%           target       = ?HIGHEST_TARGET_SCI                   :: aeminer_pow:sci_target(),
+%%           nonce        = 0                                     :: non_neg_integer(),
+%%           time         = 0                                     :: non_neg_integer(),
+%%           version                                              :: non_neg_integer(),
+%%           pow_evidence = no_value                              :: aeminer_pow_cuckoo:solution() | no_value,
+%%           miner        = <<0:?MINER_PUB_BYTES/unit:8>>         :: miner_pubkey(),
+%%           beneficiary  = <<0:?BENEFICIARY_PUB_BYTES/unit:8>>   :: beneficiary_pubkey()
+%%          }).
 
 -opaque key_header()   :: #key_header{}.
 -opaque micro_header() :: #mic_header{}.
@@ -174,21 +186,47 @@ type(#mic_header{}) -> micro.
 %% We might have a legacy tuple in the db
 from_db_header(#key_header{} = K) -> K;
 from_db_header(#mic_header{} = M) -> M;
-from_db_header(Tuple) when is_tuple(Tuple) ->
-    case setelement(1, Tuple, db_key_header) of
-        #db_key_header{
-           height       = Height,
-           prev_hash    = PrevHash,
-           prev_key     = PrevKey,
-           root_hash    = RootHash,
-           target       = Target,
-           nonce        = Nonce,
-           time         = Time,
-           version      = Version,
-           pow_evidence = Pow,
-           miner        = Miner,
-           beneficiary  = Beneficiary
-          } ->
+from_db_header({key_header,
+                Height,
+                PrevHash,
+                PrevKey,
+                RootHash,
+                Target,
+                Nonce,
+                Time,
+                Version,
+                Pow,
+                Miner,
+                Beneficiary,
+                Info
+               }) ->
+            #key_header{
+               height       = Height,
+               prev_hash    = PrevHash,
+               prev_key     = PrevKey,
+               root_hash    = RootHash,
+               target       = Target,
+               nonce        = Nonce,
+               time         = Time,
+               version      = Version,
+               pow_evidence = Pow,
+               miner        = Miner,
+               beneficiary  = Beneficiary,
+               info         = Info
+              };
+from_db_header({key_header,
+                Height,
+                PrevHash,
+                PrevKey,
+                RootHash,
+                Target,
+                Nonce,
+                Time,
+                Version,
+                Pow,
+                Miner,
+                Beneficiary
+               }) ->
             #key_header{
                height       = Height,
                prev_hash    = PrevHash,
@@ -203,9 +241,8 @@ from_db_header(Tuple) when is_tuple(Tuple) ->
                beneficiary  = Beneficiary,
                info         = <<>>
               };
-        _ ->
-            error(bad_db_header)
-    end.
+from_db_header(_) ->
+    error(bad_db_header).
 
 %%%===================================================================
 %%% Constructors
@@ -666,7 +703,7 @@ deserialize_pow_evidence_from_binary(Bin) ->
     deserialize_pow_evidence([ X || <<X:32>> <= Bin ]).
 
 deserialize_pow_evidence(L) when is_list(L) ->
-    % not trusting the network, filterting out any non-integers or negative
+    % not trusting the network, filtering out any non-integers or negative
     % numbers
     PowEvidence =
       lists:filter(fun(N) -> is_integer(N) andalso N >=0 end, L),
@@ -711,7 +748,7 @@ validate_protocol(Header, Protocol) ->
 validate_pow(#key_header{nonce        = Nonce,
                          pow_evidence = Evd,
                          target       = Target} = Header, _Protocol)
- when Nonce >= 0, Nonce =< ?MAX_NONCE ->
+  when Nonce >= 0, Nonce =< ?MAX_NONCE ->
     %% Zero nonce and pow_evidence before hashing, as this is how the mined block
     %% got hashed.
     Header1 = Header#key_header{nonce = 0, pow_evidence = no_value},

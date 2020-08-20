@@ -14,6 +14,18 @@
 -define(GENESIS_VERSION, aec_block_genesis:version()).
 -define(GENESIS_TIME, aec_block_genesis:time_in_msecs()).
 
+%% If OTP 21 or later, a parse transform (aec_plugin_xform) will modify
+%% the code so that what would previously result in a function_clause exception,
+%% will instead become a case_clause. While this should not be seen as API-breaking
+%% it does break some tests in this EUnit suite.
+%%
+-ifdef(OTP_RELEASE).
+-define(EXCEPTION, {case_clause, _}).
+-else.
+-define(EXCEPTION, function_clause).
+-endif.
+
+
 network_key_serialization_test() ->
     Header = raw_key_header(),
     SerializedHeader = ?TEST_MODULE:serialize_to_binary(Header),
@@ -324,14 +336,14 @@ validate_test_() ->
               Header0 = ?TEST_MODULE:set_version_and_height(
                            raw_key_header(), ?GENESIS_VERSION, ?GENESIS_HEIGHT),
               Header = ?TEST_MODULE:set_nonce(Header0, -1),
-              ?assertError(function_clause, ?TEST_MODULE:validate_key_block_header(Header, ?GENESIS_VERSION))
+              ?assertError(?EXCEPTION, ?TEST_MODULE:validate_key_block_header(Header, ?GENESIS_VERSION))
       end,
       fun() ->
               meck:expect(aec_mining, verify, 4, true),
               Header0 = ?TEST_MODULE:set_version_and_height(
                            raw_key_header(), ?GENESIS_VERSION, ?GENESIS_HEIGHT),
               Header = ?TEST_MODULE:set_nonce(Header0, 16#1ffffffffffffffff),
-              ?assertError(function_clause, ?TEST_MODULE:validate_key_block_header(Header, ?GENESIS_VERSION))
+              ?assertError(?EXCEPTION, ?TEST_MODULE:validate_key_block_header(Header, ?GENESIS_VERSION))
       end,
       fun() ->
               Header = ?TEST_MODULE:set_version_and_height(
