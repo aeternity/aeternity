@@ -547,6 +547,45 @@
                             "default": 500
                         }
                     }
+                },
+                "hyperchains": {
+                    "type" : "object",
+                    "additionalProperties" : false,
+                    "properties" : {
+                        "enabled": {
+                            "description": "",
+                            "type": "boolean",
+                            "default": false
+                        },
+                        "parent_chain": {
+                            "keys" : {
+                                "type"    : "object",
+                                "additionalProperties": false,
+                                "properties" : {
+                                    "dir": {
+                                        "description" : "Directory of the public/private key pair used for signing of the commitment contract call.",
+                                        "type" : "string"
+                                    }
+                                }
+                            },
+                            "host" : {
+                                "type" : "string",
+                                "default" : "localhost"
+                            },
+                            "port" : {
+                                "description" : "Port number of the parent chain.",
+                                "type" : "integer",
+                                "minimum" : 0,
+                                "maximum" : 65535,
+                                "default" : 8332
+                            },
+                            "connector": {
+                                "description": "",
+                                "type": "string",
+                                "default": "hyperchains_aeconnector"
+                            }
+                        }
+                    }
                 }
             }
         },
@@ -1052,6 +1091,52 @@
                         "max_size" : {
                             "type" : "integer",
                             "default" : 100
+                        },
+                        "max_time" : {
+                            "type" : "integer",
+                            "default" : 0
+                        }
+                    }
+                },
+                "parent_chain_polling": {
+                    "description" : "Access requests capacity on the parent chain.",
+                    "type" : "object",
+                    "additionalProperties" : false,
+                    "properties" : {
+                        "counter" : {
+                            "type" : "integer",
+                            "default" : 5
+                        },
+                        "rate" : {
+                            "type" : "integer",
+                            "default" : 0
+                        },
+                        "max_size" : {
+                            "type" : "integer",
+                            "default" : 100
+                        },
+                        "max_time" : {
+                            "type" : "integer",
+                            "default" : 0
+                        }
+                    }
+                },
+                "commitments": {
+                    "description" : "Commitments capacity on the parent chain.",
+                    "type" : "object",
+                    "additionalProperties" : false,
+                    "properties" : {
+                        "counter" : {
+                            "type" : "integer",
+                            "default" : 5
+                        },
+                        "rate" : {
+                            "type" : "integer",
+                            "default" : 0
+                        },
+                        "max_size" : {
+                            "type" : "integer",
+                            "default" : 50
                         },
                         "max_time" : {
                             "type" : "integer",
