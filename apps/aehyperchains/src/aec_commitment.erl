@@ -1,2 +1,0 @@
--module(aec_commitment).
-
