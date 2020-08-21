@@ -495,7 +495,7 @@
                         }
                     }
                 },
-                "hyperchain": {
+                "hyperchains": {
                     "type" : "object",
                     "additionalProperties" : false,
                     "properties" : {
