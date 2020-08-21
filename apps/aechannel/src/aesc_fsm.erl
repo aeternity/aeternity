@@ -4901,8 +4901,15 @@ handle_common_event(E, Msg, M, #data{cur_statem_state = St} = D) ->
 handle_common_event_(timeout, Info, _St, _M, D) when D#data.ongoing_update == true ->
     lager:debug("timeout (~p) - recovering (~p)", [Info, D#data.error_msg_type]),
     handle_recoverable_error(#{code => ?ERR_TIMEOUT}, D);
-handle_common_event_(timeout, St = T, St, _, D) ->
-    close({timeout, T}, D);
+handle_common_event_(timeout, St = T, St, _, #data{ role = Role
+                                                  , opts = Opts } = D) ->
+    KeepRunning = maps:get(keep_running, Opts, false),
+    case KeepRunning andalso D#data.role =:= responder of
+        true ->
+            keep_state(D);
+        false ->
+            close({timeout, T}, D)
+    end;
 handle_common_event_(cast, ?DISCONNECT = Msg, _St, _, #data{ channel_status = Status
                                                            , client_may_disconnect = MayDisconnect
                                                            , role = Role

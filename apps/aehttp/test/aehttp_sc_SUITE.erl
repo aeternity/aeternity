@@ -43,6 +43,7 @@
     sc_ws_leave_reestablish_wrong_fsm_id/1,
     sc_ws_leave_reestablish_responder_stays/1,
     sc_ws_leave_reconnect/1,
+    sc_ws_leave_responder_does_not_timeout/1,
     sc_ws_ping_pong/1,
     sc_ws_opening_ping_pong/1,
     sc_ws_deposit/1,
@@ -183,12 +184,7 @@ groups() ->
         sc_ws_close_solo,
         %% fsm informs of slash potential
         sc_ws_slash,
-        %% possible to leave and reestablish channel
-        sc_ws_leave_reestablish,
-        sc_ws_leave_reestablish_wrong_fsm_id,
-        sc_ws_leave_reestablish_responder_stays,
-        sc_ws_leave_reconnect,
-        sc_ws_reconnect_early,
+        {group, reconnects},
         {group, force_progress},
         {group, with_open_channel},
         {group, with_meta},
@@ -311,6 +307,16 @@ groups() ->
      {force_progress, [sequence],
       [ sc_ws_force_progress_based_on_offchain_state
       , sc_ws_force_progress_based_on_onchain_state
+      ]},
+
+      %% possible to leave and reestablish channel
+     {reconnects, [sequence],
+      [ sc_ws_leave_reestablish
+      , sc_ws_leave_reestablish_wrong_fsm_id
+      , sc_ws_leave_reestablish_responder_stays
+      , sc_ws_leave_reconnect
+      , sc_ws_reconnect_early
+      , sc_ws_leave_responder_does_not_timeout
       ]}
     ].
 
@@ -4145,6 +4151,8 @@ log_basename(Config) ->
                 filename:join([Protocol, "changeable_nonce"]);
             force_progress ->
                 filename:join([Protocol, "force_progress"]);
+            reconnects ->
+                filename:join([Protocol, "reconnects"]);
             plain -> Protocol
         end,
     filename:join("channel_docs", SubDir).
@@ -5717,3 +5725,30 @@ get_channel(ChannelId) ->
         {ok, _Channel} = OK -> OK;
         {error, _} = Err -> Err
     end.
+
+sc_ws_leave_responder_does_not_timeout(Config0) ->
+    ct:log("opening channel", []),
+    ct:log("Config0 = ~p", [Config0]),
+    IdleTimeout = 1000,
+    Config = sc_ws_open_([{slogan, ?SLOGAN}|Config0],
+                         #{ responder_opts => #{keep_running => true}
+                          , timeout_idle => IdleTimeout}),
+    #{ responder_fsm_id := RFsmId
+     , responder        := RConnPid } = proplists:get_value(channel_clients, Config),
+    ct:log("channel opened", []),
+    ct:log("Config = ~p", [Config]),
+    ct:log("*** Leaving channel ***", []),
+
+    Config1 = [{responder_leaves, false}|Config],
+    ct:log("Config1 = ~p", [Config1]),
+    ReestablishOptions = sc_ws_leave_(Config1),
+
+    timer:sleep(IdleTimeout + 100),
+    ping_pong(RConnPid, Config),
+    Config2 = reconnect_client_(ReestablishOptions, initiator,
+                                [{reconnect_scenario, reestablish} | Config1]),
+    ct:log("*** Verifying that channel is operational ***", []),
+    ok = sc_ws_update_(Config2),
+    ct:log("*** Closing ... ***", []),
+    ok = sc_ws_close_(Config2).
+
