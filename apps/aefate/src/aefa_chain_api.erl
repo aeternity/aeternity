@@ -265,14 +265,139 @@ check_delegation_signature(Pubkey, Binary, Signature,
 %%%-------------------------------------------------------------------
 %%% Operations modifying state
 
+%% GH3283: For FATE we don't build the actual transaction, so some more work
+%% is needed - but it should be straightforward.
+%%
+%% SpendTx = aec_spend_tx:new(#{sender_id => aeser_id:create(account, FromPubkey), ...})
 spend(FromPubkey, ToPubkey, Amount, State) ->
     eval_primops([ aeprimop:spend_op(FromPubkey, ToPubkey, Amount)
+                 , tx_event_op(spend, {FromPubkey, ToPubkey, Amount}, <<"Chain.spend">>)
                  ], State).
 
+%% GH3283: If the idea is to be able to follow tokens throughout the system, we
+%% should probably make this one into a "spend" as well, this is where value is
+%% attached to a (remote) contract call. Some care to not include the top level
+%% transfer_value might be needed.
 transfer_value(FromPubkey, ToPubkey, Amount, State) ->
     eval_primops([ aeprimop:transfer_value_op(FromPubkey, ToPubkey, Amount)
+                 , tx_event_op(spend, {FromPubkey, ToPubkey, Amount}, <<"Call.amount">>)
                  ], State).
 
+tx_event_op(Op, Data, Type) ->
+    Event = tx_event_data(Op, Data, Type),
+    aeprimop:tx_event_op(internal_call_tx, Type, Event).
+
+tx_event_data(spend, {FromPubKey, ToPubKey, Amount}, Payload) when is_binary(Payload) ->
+    ok(aec_spend_tx:new(#{ sender_id    => acct_id(FromPubKey)
+                         , recipient_id => acct_id(ToPubKey)
+                         , amount       => Amount
+                         , fee          => 0
+                         , nonce        => 0
+                         , payload      => Payload }));
+tx_event_data(oracle_register, {Pubkey, QFormat, RFormat, QFee, RelTTL, ABIVsn}, _Type) ->
+    ok(aeo_register_tx:new(#{ account_id      => acct_id(Pubkey)
+                            , nonce           => 0
+                            , query_format    => QFormat
+                            , abi_version     => ABIVsn
+                            , response_format => RFormat
+                            , query_fee       => QFee
+                            , oracle_ttl      => RelTTL
+                            , fee             => 0 }));
+tx_event_data(oracle_extend, {Pubkey, RelTTL}, _Type) ->
+    ok(aeo_extend_tx:new(#{ oracle_id  => ora_id(Pubkey)
+                          , nonce      => 0
+                          , oracle_ttl => {delta, RelTTL}
+                          , fee        => 0 }));
+tx_event_data(oracle_query, {OraclePubkey, SenderPubkey, Query, QFee, QTTL, RTTL}, _Type) ->
+    ok(aeo_query_tx:new(#{ sender_id    => acct_id(SenderPubkey)
+                         , oracle_id    => ora_id(OraclePubkey)
+                         , query        => Query
+                         , query_fee    => QFee
+                         , query_ttl    => ora_ttl(QTTL)
+                         , response_ttl => {delta, RTTL}
+                         , nonce        => 0
+                         , fee          => 0
+                         , ttl          => 0 }));
+tx_event_data(oracle_response, {OraclePubkey, QueryId, Response, RTTL}, _Type) ->
+    %% The ResponseTTL is not available at this time?
+    ok(aeo_response_tx:new(#{ oracle_id => ora_id(OraclePubkey)
+                            , nonce     => 0
+                            , query_id  => QueryId
+                            , response  => Response
+                            , response_ttl => RTTL
+                            , fee          => 0 }));
+tx_event_data(aens_preclaim, {Pubkey, Hash, PreclaimTTL}, _Type) ->
+    ok(aens_preclaim_tx:new(#{ account_id    => acct_id(Pubkey)
+                             , nonce         => 0
+                             , commitment_id => aeser_id:create(commitment, Hash)
+                             , fee           => 0
+                             , ttl           => val(PreclaimTTL, 0) }));
+tx_event_data(aens_claim, {Pubkey, Name, Salt, NameFee, DeltaTTL}, _Type) ->
+    ok(aens_claim_tx:new(#{ account_id => acct_id(Pubkey)
+                          , name       => Name
+                          , name_salt  => Salt
+                          , name_fee   => NameFee
+                          , ttl        => val(DeltaTTL, 0)
+                          , nonce      => 0
+                          , fee        => 0 }));
+tx_event_data(aens_transfer, {FromPubkey, ToPubkey, NameId}, _Type) ->
+    ok(aens_transfer_tx:new(#{ account_id   => acct_id(FromPubkey)
+                             , recipient_id => acct_id(ToPubkey)
+                             , name_id      => name_id(NameId)
+                             , nonce        => 0
+                             , fee          => 0 }));
+tx_event_data(aens_revoke, {Pubkey, NameId}, _Type) ->
+    ok(aens_revoke_tx:new(#{ account_id => acct_id(Pubkey)
+                           , name_id    => name_id(NameId)
+                           , nonce      => 0
+                           , fee        => 0 }));
+tx_event_data(aens_update, {Pubkey, NameHash, TTL, ClientTTL, Pointers}, _Type) ->
+    ok(aens_update_tx:new(#{ account_id => acct_id(Pubkey)
+                           , name_id    => name_id(NameHash)
+                           , name_ttl   => val(TTL, 0)
+                           , pointers   => val(Pointers, [])
+                           , client_ttl => val(ClientTTL, 0)
+                           , nonce => 0
+                           , fee   => 0 }));
+tx_event_data(_, _, _) ->
+    error.
+
+acct_id(Pubkey) ->
+    aeser_id:create(account, Pubkey).
+
+name_id(Name) ->
+    aeser_id:create(name, Name).
+
+ora_id(Pubkey) ->
+    aeser_id:create(oracle, Pubkey).
+
+val(undefined, Default) ->
+    Default;
+val(V, _) ->
+    V.
+
+ttl(undefined, _) -> 0;
+ttl({fixed_ttl,TTL}, _) ->
+    TTL;
+ttl({delta, _} = TTL, _) -> TTL;
+ttl({block, _} = TTL, _) -> TTL;
+ttl({relative_ttl, RelTTL}, S) ->
+    Height = aetx_env:height(tx_env(S)),
+    Height + RelTTL;
+ttl(TTL, _) when is_integer(TTL) ->
+    TTL.
+
+ora_ttl({block, T} = TTL) when is_integer(T), T >= 0 -> TTL;
+ora_ttl({delta, T} = TTL) when is_integer(T), T >= 0 -> TTL.
+
+ora_ttl(absolute, TTL) ->
+    {block, TTL};
+ora_ttl(relative, TTL) ->
+    {delta, TTL}.
+
+
+ok({ok, Value}) ->
+    Value.
 
 %%%-------------------------------------------------------------------
 %%% Oracles
@@ -286,6 +411,9 @@ oracle_register(Pubkey, QFee, TTLType, TTLVal,
                 size_gas([QFormat, RFormat]),
             eval_primops([ aeprimop:oracle_register_op(Pubkey, QFormat, RFormat,
                                                        QFee, RelTTL, ABIVersion)
+                         , tx_event_op(oracle_register, {Pubkey, QFormat, RFormat,
+                                                         QFee, ora_ttl(TTLType, TTLVal),
+                                                         ABIVersion}, <<"Oracle.register">>)
                          ], State, Gas);
         {error, _} = Err ->
             Err
@@ -297,6 +425,7 @@ oracle_extend(Pubkey, TTLType, TTLVal, State) when ?IS_ONCHAIN(State) ->
         {ok, RelTTL} ->
             Gas = ttl_gas(oracle_extend_tx, RelTTL),
             eval_primops([ aeprimop:oracle_extend_op(Pubkey, RelTTL)
+                         , tx_event_op(oracle_extend, {Pubkey, TTLVal}, <<"Oracle.extend">>)
                          ], State, Gas);
         {error, _} = Err ->
             Err
@@ -316,6 +445,11 @@ oracle_query(OraclePubkey, SenderPubkey, Question, QFee, QTTLType, QTTL, RTTL,
                     Gas = ttl_gas(oracle_query_tx, QTTL1) + size_gas([Question1]),
                     Ins   = [ aeprimop:force_inc_account_nonce_op(SenderPubkey, Nonce)
                             , aeprimop:spend_fee_op(SenderPubkey, QFee)
+                              %% TODO: Should we add a tx event for spend_fee?
+                            , tx_event_op(oracle_query, {OraclePubkey, SenderPubkey,
+                                                         Question1, QFee,
+                                                         ora_ttl(QTTLType, QTTL),
+                                                         RTTL}, <<"Oracle.query">>)
                             , aeprimop:oracle_query_op_with_return(
                                 OraclePubkey, SenderPubkey, Nonce,
                                 Question1, QFee, QTTL1, RTTL)
@@ -341,9 +475,15 @@ oracle_respond(OraclePubkey, QueryId, Response, ABIVersion, QType, RType,
             case eval_primops(Ins, State#state{ primop_state = PState1}) of
                 {ok, #state{ primop_state = PState2} = State1} ->
                     {Query, _} = aeprimop_state:find_oracle_query(OraclePubkey, QueryId, PState2),
-                    {delta, RTTL} = aeo_query:response_ttl(Query),
+                    {delta, RTTL} = Delta = aeo_query:response_ttl(Query),
                     Gas = size_gas([Response1]) + ttl_gas(oracle_response_tx, RTTL),
-                    {ok, Gas, State1};
+                    %% Add the tx_event_op now that we have the response TTL
+                    {ok, State2} = eval_primops(
+                                     [tx_event_op(oracle_response,
+                                                  {OraclePubkey, QueryId, Response1,
+                                                   Delta}, <<"Oracle.respond">>)
+                                     ], State1),
+                    {ok, Gas, State2};
                 {error, _} = Err ->
                     Err
             end;
@@ -584,32 +724,47 @@ aens_resolve_from_pstate(NameString, Key, PState) ->
     end.
 
 aens_preclaim(Pubkey, Hash, #state{} = S, VmVersion) when ?IS_ONCHAIN(S) ->
-    case VmVersion >= ?VM_FATE_SOPHIA_2 of
-        true ->
-            PreclaimTTL = aec_governance:name_preclaim_expiration(),
-            eval_primops([aeprimop:name_preclaim_op(Pubkey, Hash, PreclaimTTL)], S);
-        false ->
-            eval_primops([aeprimop:name_preclaim_op(Pubkey, Hash, 0)], S)
-    end.
+    PreclaimTTL =
+        case VmVersion >= ?VM_FATE_SOPHIA_2 of
+            true ->
+                aec_governance:name_preclaim_expiration();
+            false ->
+                0
+        end,
+    eval_primops([ aeprimop:name_preclaim_op(Pubkey, Hash, PreclaimTTL)
+                 , tx_event_op(aens_preclaim, {Pubkey, Hash, ttl(PreclaimTTL, S)},
+                               <<"AENS.preclaim">>)
+                 ], S).
 
 aens_claim(Pubkey, NameBin, SaltInt, NameFee, #state{} = S) when ?IS_ONCHAIN(S) ->
     PreclaimDelta = aec_governance:name_claim_preclaim_delta(),
-    Instructions = [ aeprimop:name_claim_op(Pubkey, NameBin, SaltInt, NameFee, PreclaimDelta) ],
+    Instructions = [ aeprimop:name_claim_op(Pubkey, NameBin, SaltInt, NameFee, PreclaimDelta)
+                   , tx_event_op(aens_claim, {Pubkey, NameBin, SaltInt, NameFee,
+                                              ttl(PreclaimDelta, S)}, <<"AENS.claim">>)
+                   ],
     eval_primops(Instructions, S, size_gas([NameBin])).
 
 aens_transfer(FromPubkey, HashBin, ToPubkey, #state{} = S) when ?IS_ONCHAIN(S) ->
-    Instructions = [aeprimop:name_transfer_op(FromPubkey, account, ToPubkey, HashBin)
+    Instructions = [ aeprimop:name_transfer_op(FromPubkey, account, ToPubkey, HashBin)
+                   , tx_event_op(aens_transfer, {FromPubkey, ToPubkey, HashBin},
+                                 <<"AENS.transfer">>)
                    ],
     eval_primops(Instructions, S).
 
 aens_revoke(Pubkey, HashBin, #state{} = S) when ?IS_ONCHAIN(S) ->
     ProtectedDeltaTTL = aec_governance:name_protection_period(),
-    Instructions = [aeprimop:name_revoke_op(Pubkey, HashBin, ProtectedDeltaTTL)
+    Instructions = [ aeprimop:name_revoke_op(Pubkey, HashBin, ProtectedDeltaTTL)
+                   , tx_event_op(aens_revoke, {Pubkey, HashBin, ttl(ProtectedDeltaTTL, S)},
+                                 <<"AENS.revoke">>)
                    ],
     eval_primops(Instructions, S).
 
-aens_update(Pubkey, HashBin, TTL, ClientTTL, Pointers, #state{} = S) when ?IS_ONCHAIN(S) ->
-    Instructions = [aeprimop:name_update_op(Pubkey, HashBin, TTL, ClientTTL, Pointers)
+aens_update(Pubkey, HashBin, TTL, ClientTTL, Pointers, #state{} = S)
+  when ?IS_ONCHAIN(S) ->
+    Instructions = [ aeprimop:name_update_op(Pubkey, HashBin, TTL, ClientTTL, Pointers)
+                   , tx_event_op(aens_update, {Pubkey, HashBin, ttl(TTL, S),
+                                               ttl(ClientTTL, S), Pointers},
+                                 <<"AENS.update">>)
                    ],
     eval_primops(Instructions, S).
 

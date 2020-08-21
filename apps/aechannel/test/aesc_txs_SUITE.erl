@@ -5769,7 +5769,7 @@ encode_call_data(ContractName, Function, Arguments) ->
 
 address_encode(Type, Binary) ->
     case protocol_version() of
-        Vsn when Vsn < ?FORTUNA_PROTOCOL_VSN; Type == hash ->
+        Vsn when Vsn < ?MINERVA_PROTOCOL_VSN; Type == hash ->
             <<_:16, HexStr/binary>> = aeu_hex:hexstring_encode(Binary),
             <<"#", HexStr/binary>>;
         _ ->

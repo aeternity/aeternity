@@ -16,6 +16,7 @@
          lookup/2,
          mtree_iterator/1,
          new_with_backend/1,
+         new_with_dirty_backend/1,
          root_hash/1]).
 
 -export([ from_binary_without_backend/1
@@ -59,6 +60,10 @@ empty_with_backend() ->
 -spec new_with_backend(aeu_mtrees:root_hash() | 'empty') -> tree().
 new_with_backend(Hash) ->
     aeu_mtrees:new_with_backend(Hash, aec_db_backends:channels_backend()).
+
+-spec new_with_dirty_backend(aeu_mtrees:root_hash() | 'empty') -> tree().
+new_with_dirty_backend(Hash) ->
+    aeu_mtrees:new_with_backend(Hash, aec_db_backends:dirty_channels_backend()).
 
 -spec enter(channel(), tree()) -> tree().
 enter(Channel, Tree) ->

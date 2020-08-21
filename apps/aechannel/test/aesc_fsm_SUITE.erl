@@ -1498,8 +1498,7 @@ too_many_fsms(Cfg) ->
 set_fsm_limit(N) ->
     rpc(dev1, aeu_env, update_config, [#{<<"channels">> => #{<<"max_count">> => N}}]).
 
-check_incorrect_create(Cfg0) ->
-    Cfg = set_configs([{keep_running, true}], Cfg0),
+check_incorrect_create(Cfg) ->
     {I, R, Spec} = channel_spec(Cfg),
     config(Cfg),
     Port = proplists:get_value(port, Cfg, ?PORT),

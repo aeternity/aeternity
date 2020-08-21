@@ -104,6 +104,9 @@ export AEVM_EXTERNAL_TEST_VERSION=348b0633f4a6ee3c100368bf0f4fca71394b4d01
 console: $(SWAGGER_ENDPOINTS_SPEC)
 	@$(REBAR) as local shell --config config/dev.config --sname aeternity@localhost
 
+hyperchains-console: $(SWAGGER_ENDPOINTS_SPEC)
+	@$(REBAR) as local shell --config config/hyperchains-dev.config --sname aeternity@localhost
+
 local-build: KIND=local
 local-build: internal-build
 
@@ -219,6 +222,8 @@ $(CT_TARGETS):
 	$(MAKE) internal-ct
 
 ct-latest: ct-$(LATEST_PROTOCOL)
+ct-latest-no-aci:
+	$(MAKE) SOPHIA_NO_ACI=true CT_TEST_FLAGS=--suite=apps/aehttp/test/aehttp_contracts_SUITE,apps/aehttp/test/aehttp_coin_toss_SUITE ct-latest
 
 $(CT_DB_TARGETS):
 	KIND=test \
@@ -445,7 +450,7 @@ test-arch-os-dependencies:
 	make ct-latest SUITE=apps/aecontract/test/aecontract GROUP=sophia TEST=sophia_crypto
 
 .PHONY: \
-	all console \
+	all console hyperchains-console \
 	local-build local-start local-stop local-attach \
 	prod-build prod-start prod-stop prod-attach prod-package prod-compile-deps \
 	multi-build multi-start multi-stop multi-clean multi-distclean \

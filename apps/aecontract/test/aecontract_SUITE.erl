@@ -263,6 +263,12 @@
         false -> ?assertMatch(__Exp, __Res)
     end).
 
+-define(assertMatchFATE(__ExpVm1, __ExpVm2, __Res),
+    case vm_version() of
+        ?VM_FATE_SOPHIA_1 -> ?assertMatch(__ExpVm1, __Res);
+        ?VM_FATE_SOPHIA_2 -> ?assertMatch(__ExpVm2, __Res)
+    end).
+
 -define(assertMatchVM(AEVM, FATE, Res),
     case ?IS_AEVM_SOPHIA(vm_version()) of
         true  -> ?assertMatch(AEVM, Res);
@@ -623,10 +629,17 @@ init_per_testcase_common(TC, Config) ->
                           iris    -> ?IRIS_PROTOCOL_VSN;
                           lima    -> ?LIMA_PROTOCOL_VSN
                       end,
+    AciDisabled = case os:getenv("SOPHIA_NO_ACI") of
+                  false ->
+                      ?config(aci_disabled, Config);
+                  _ ->
+                      true
+              end,
     put('$vm_version', VmVersion),
     put('$abi_version', ABIVersion),
     put('$sophia_version', SophiaVersion),
     put('$protocol_version', ProtocolVersion),
+    put('$aci_disabled', AciDisabled),
     case ?IS_AEVM_SOPHIA(VmVersion) of
         true ->
             Config;
@@ -5455,7 +5468,7 @@ sophia_compiler_version(_Cfg) ->
     {value, C} = ?call(lookup_contract_by_id, IdC),
     CMap = aeser_contract_code:deserialize(aect_contracts:code(C)),
     ?assertMatchProtocol(maps:get(compiler_version, CMap, undefined),
-                         undefined, <<"2.1.0">>, <<"3.2.0">>, <<"unknown">>, <<"4.2.0">>),
+                         undefined, <<"2.1.0">>, <<"3.2.0">>, <<"unknown">>, <<"4.3.0">>),
     ok.
 
 sophia_protected_call(_Cfg) ->
@@ -6725,8 +6738,9 @@ fate_environment(_Cfg) ->
     %% Block hash is mocked to return the height if it gets a valid height
     %% since we don't have a chain.
     BHHeight = 1000,
-    ?assertEqual(none, ?call(call_contract, Acc, Contract, block_hash, {option, word}, {BHHeight},
-                          #{height => BHHeight})),
+    %% Behavior at current height changed in FATE_VM2.
+    ?assertMatchFATE(none, {some, {bytes, <<BBHeight:256>>}},
+        ?call(call_contract, Acc, Contract, block_hash, {option, word}, {BHHeight}, #{height => BHHeight})),
     ?assertEqual(none, ?call(call_contract, Acc, Contract, block_hash, {option, word}, {BHHeight + 1},
                           #{height => BHHeight})),
     ?assertEqual(none, ?call(call_contract, Acc, Contract, block_hash, {option, word}, {BHHeight - 256},

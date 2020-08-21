@@ -37,6 +37,7 @@
          find_block_tx_hashes/1,
          find_discovered_pof/1,
          find_header/1,
+         dirty_find_header/1,
          find_headers_at_height/1,
          find_headers_and_hash_at_height/1,
          find_key_block/1,
@@ -48,7 +49,8 @@
          get_signed_tx/1,
          get_top_block_hash/0,
          get_top_block_height/0,
-         get_block_state/1
+         get_block_state/1,
+         get_block_state/2
         ]).
 
 %% Location of chain transactions
@@ -77,6 +79,14 @@
         , find_ns_cache_node/1
         , find_oracles_node/1
         , find_oracles_cache_node/1
+        , dirty_find_accounts_node/1
+        , dirty_find_calls_node/1
+        , dirty_find_channels_node/1
+        , dirty_find_contracts_node/1
+        , dirty_find_ns_node/1
+        , dirty_find_ns_cache_node/1
+        , dirty_find_oracles_node/1
+        , dirty_find_oracles_cache_node/1
         , write_accounts_node/2
         , write_accounts_node/3
         , write_calls_node/2
@@ -89,11 +99,13 @@
         ]).
 
 -export([ find_block_state/1
+        , find_block_state/2
         , find_block_difficulty/1
         , find_block_fees/1
         , find_block_fork_id/1
         , find_block_fraud_status/1
         , find_block_state_and_data/1
+        , find_block_state_and_data/2
         ]).
 
 %% for testing
@@ -412,6 +424,13 @@ find_header(Hash) ->
         [] -> none
     end.
 
+-spec dirty_find_header(binary()) -> 'none' | {'value', aec_headers:header()}.
+dirty_find_header(Hash) ->
+    case mnesia:dirty_read(aec_headers, Hash) of
+        [#aec_headers{value = DBHeader}] -> {value, aec_headers:from_db_header(DBHeader)};
+        [] -> none
+    end.
+
 -spec find_headers_at_height(pos_integer()) -> [aec_headers:header()].
 find_headers_at_height(Height) when is_integer(Height), Height >= 0 ->
     ?t([aec_headers:from_db_header(H) || #aec_headers{value = H}
@@ -508,16 +527,22 @@ get_top_block_height() ->
     get_chain_state_value(top_block_height).
 
 get_block_state(Hash) ->
+    get_block_state(Hash, false).
+
+get_block_state(Hash, DirtyBackend) ->
     ?t(begin
            [#aec_block_state{value = Trees}] =
                mnesia:read(aec_block_state, Hash),
-           aec_trees:deserialize_from_db(Trees)
+           aec_trees:deserialize_from_db(Trees, DirtyBackend)
        end).
 
 find_block_state(Hash) ->
+    find_block_state(Hash, false).
+
+find_block_state(Hash, DirtyBackend) ->
     case ?t(mnesia:read(aec_block_state, Hash)) of
         [#aec_block_state{value = Trees}] ->
-            {value, aec_trees:deserialize_from_db(Trees)};
+            {value, aec_trees:deserialize_from_db(Trees, DirtyBackend)};
         [] -> none
     end.
 
@@ -546,16 +571,25 @@ find_block_fraud_status(Hash) ->
     end.
 
 find_block_state_and_data(Hash) ->
+    find_block_state_and_data(Hash, false).
+
+find_block_state_and_data(Hash, DirtyBackend) ->
     case ?t(mnesia:read(aec_block_state, Hash)) of
         [#aec_block_state{value = Trees, difficulty = D,
                           fork_id = FId, fees = Fees,
                           fraud = Fraud}] ->
-            {value, aec_trees:deserialize_from_db(Trees), D, FId, Fees, Fraud};
+            {value, aec_trees:deserialize_from_db(Trees, DirtyBackend), D, FId, Fees, Fraud};
         [] -> none
     end.
 
 find_oracles_node(Hash) ->
     case ?t(mnesia:read(aec_oracle_state, Hash)) of
+        [#aec_oracle_state{value = Node}] -> {value, Node};
+        [] -> none
+    end.
+
+dirty_find_oracles_node(Hash) ->
+    case mnesia:dirty_read(aec_oracle_state, Hash) of
         [#aec_oracle_state{value = Node}] -> {value, Node};
         [] -> none
     end.
@@ -566,8 +600,20 @@ find_oracles_cache_node(Hash) ->
         [] -> none
     end.
 
+dirty_find_oracles_cache_node(Hash) ->
+    case mnesia:dirty_read(aec_oracle_cache, Hash) of
+        [#aec_oracle_cache{value = Node}] -> {value, Node};
+        [] -> none
+    end.
+
 find_calls_node(Hash) ->
     case ?t(mnesia:read(aec_call_state, Hash)) of
+        [#aec_call_state{value = Node}] -> {value, Node};
+        [] -> none
+    end.
+
+dirty_find_calls_node(Hash) ->
+    case mnesia:dirty_read(aec_call_state, Hash) of
         [#aec_call_state{value = Node}] -> {value, Node};
         [] -> none
     end.
@@ -578,8 +624,20 @@ find_channels_node(Hash) ->
         [] -> none
     end.
 
+dirty_find_channels_node(Hash) ->
+    case mnesia:dirty_read(aec_channel_state, Hash) of
+        [#aec_channel_state{value = Node}] -> {value, Node};
+        [] -> none
+    end.
+
 find_contracts_node(Hash) ->
     case ?t(mnesia:read(aec_contract_state, Hash)) of
+        [#aec_contract_state{value = Node}] -> {value, Node};
+        [] -> none
+    end.
+
+dirty_find_contracts_node(Hash) ->
+    case mnesia:dirty_read(aec_contract_state, Hash) of
         [#aec_contract_state{value = Node}] -> {value, Node};
         [] -> none
     end.
@@ -590,14 +648,32 @@ find_ns_node(Hash) ->
         [] -> none
     end.
 
+dirty_find_ns_node(Hash) ->
+    case mnesia:dirty_read(aec_name_service_state, Hash) of
+        [#aec_name_service_state{value = Node}] -> {value, Node};
+        [] -> none
+    end.
+
 find_ns_cache_node(Hash) ->
     case ?t(mnesia:read(aec_name_service_cache, Hash)) of
         [#aec_name_service_cache{value = Node}] -> {value, Node};
         [] -> none
     end.
 
+dirty_find_ns_cache_node(Hash) ->
+    case mnesia:dirty_read(aec_name_service_cache, Hash) of
+        [#aec_name_service_cache{value = Node}] -> {value, Node};
+        [] -> none
+    end.
+
 find_accounts_node(Hash) ->
     case ?t(mnesia:read(aec_account_state, Hash)) of
+        [#aec_account_state{value = Node}] -> {value, Node};
+        [] -> none
+    end.
+
+dirty_find_accounts_node(Hash) ->
+    case mnesia:dirty_read(aec_account_state, Hash) of
         [#aec_account_state{value = Node}] -> {value, Node};
         [] -> none
     end.

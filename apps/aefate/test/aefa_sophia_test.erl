@@ -94,7 +94,7 @@ compile_contract(Code) ->
 compile_contract(Code, Options) ->
     try
         Ast       = aeso_parser:string(Code, Options),
-        TypedAst  = aeso_ast_infer_types:infer(Ast, Options),
+        {_, TypedAst}  = aeso_ast_infer_types:infer(Ast, Options),
         FCode     = aeso_ast_to_fcode:ast_to_fcode(TypedAst, Options),
         Fate      = aeso_fcode_to_fate:compile(FCode, Options),
         case aeb_fate_code:deserialize(aeb_fate_code:serialize(Fate)) of

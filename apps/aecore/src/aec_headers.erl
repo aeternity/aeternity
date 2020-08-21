@@ -186,6 +186,26 @@ type(#mic_header{}) -> micro.
 %% We might have a legacy tuple in the db
 from_db_header(#key_header{} = K) -> K;
 from_db_header(#mic_header{} = M) -> M;
+from_db_header({mic_header,
+                Height,
+                Pof_hash,
+                Prev_hash,
+                Prev_key,
+                Root_hash,
+                Signature,
+                Txs_hash,
+                Time,
+                Version}) ->
+    #mic_header{
+       height    = Height,
+       pof_hash  = Pof_hash,
+       prev_hash = Prev_hash,
+       prev_key  = Prev_key,
+       root_hash = Root_hash,
+       signature = Signature,
+       txs_hash  = Txs_hash,
+       time      = Time,
+       version   = Version};
 from_db_header({key_header,
                 Height,
                 PrevHash,

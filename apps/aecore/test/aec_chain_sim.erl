@@ -38,6 +38,9 @@
 
 -export([ next_nonce/1                 %% (Acct) -> integer()
         , push/1                       %% (Tx) -> ok
+        , find_signed_tx/1             %% (TxHash) -> {value, STx)} | none
+        , top_block_hash/0             %% () -> Hash
+        , block_by_hash/1              %% (BlockHash) -> {ok, Block}
         , add_keyblock/0               %% () -> {ok, Block}
         , add_keyblock/1               %% (ForkId) -> {ok, Block}
         , add_microblock/0             %% () -> {ok, Block}
@@ -66,6 +69,8 @@
             , dict = #{}
             , chain }).
 
+-type simulator() :: default | parent_chain.
+
 -type fork_id()    :: main | term().
 -type block_hash() :: aec_blocks:block_header_hash().
 
@@ -93,6 +98,7 @@ start() ->
 %% Starts the simulator
 %% Supported options:
 %% - monitor => pid(): The simulator will terminate if the monitored process dies
+%% - simulator => simulator(): The simulator mode (parent chain for Hyperchains or default)
 %%
 start(Opts) when is_map(Opts) ->
     gen_server:start(?MODULE, Opts, []).
@@ -116,6 +122,17 @@ stop() ->
     end.
 
 
+-spec simulator(map()) -> simulator().
+%%
+%% Simulator type. default is used mostly in test suites.
+%% parent_chain is used to run the process as attached "parent chain"
+%% to reproduce various parent chain scenarios for Hyperchains;
+%%
+simulator(Opts) ->
+    Type = maps:get(simulator, Opts, default),
+    true = (Type == default orelse Type == parent_chain),
+    Type.
+
 %% Chain simulator requests
 
 -spec next_nonce(Acct :: aec_keys:pubkey()) -> integer().
@@ -138,6 +155,14 @@ push(Tx) ->
 %%
 add_keyblock() ->
     add_keyblock(main).
+
+-spec block_by_hash(block_hash()) -> {ok, sim_keyblock() |sim_microblock()}.
+block_by_hash(BlockHash) ->
+    chain_req({block_by_hash, BlockHash}).
+
+-spec top_block_hash() -> binary().
+top_block_hash() ->
+    chain_req(top_block_hash).
 
 -spec add_keyblock( ForkId :: fork_id() ) -> {ok, sim_keyblock()}.
 %%
@@ -206,6 +231,13 @@ dict_set(Key, Value) ->
 dict_get(Key, Default) ->
     chain_req({dict_get, Key, Default}).
 
+-spec find_signed_tx(binary()) -> {value, binary()} | none.
+%%
+%% Returns the transaction hash associated with Key
+%%
+find_signed_tx(TxHash) ->
+    chain_req({find_signed_tx, TxHash}).
+
 -spec setup_meck() -> ok.
 %%
 %% Installs the mocks needed for the simulator. The assumption is that the mocks
@@ -269,7 +301,7 @@ remove_meck() ->
 init(Opts) when is_map(Opts) ->
     gproc:reg({n,l,{?MODULE, chain_process}}),
     Chain = new_chain(),
-    ?LOG("Initial chain: ~p", [Chain]),
+    ?LOG("Initial chain (~p simulator): ~p", [simulator(Opts), Chain]),
     {ok, maybe_monitor(#st{opts = Opts, chain = Chain})}.
 
 maybe_monitor(#st{opts = #{monitor := Pid}} = St) when is_pid(Pid) ->
@@ -278,20 +310,20 @@ maybe_monitor(#st{opts = #{monitor := Pid}} = St) when is_pid(Pid) ->
 maybe_monitor(St) ->
     St.
 
-handle_call({add_micro, ForkId}, _From, #st{chain = Chain} = St) ->
-    {Res, Chain1} = add_microblock_(ForkId, Chain),
+handle_call({add_micro, ForkId}, _From, #st{opts = Opts, chain = Chain} = St) ->
+    {Res, Chain1} = add_microblock_(ForkId, Chain, Opts),
     {reply, Res, St#st{chain = Chain1}};
-handle_call({clone_micro_on_fork, Hash, ForkId}, _From, #st{chain = Chain} = St) ->
-    {Res, Chain1} = clone_micro_on_fork_(Hash, ForkId, Chain),
+handle_call({clone_micro_on_fork, Hash, ForkId}, _From, #st{opts = Opts, chain = Chain} = St) ->
+    {Res, Chain1} = clone_micro_on_fork_(Hash, ForkId, Chain, Opts),
     {reply, Res, St#st{chain = Chain1}};
-handle_call({add_key, ForkId}, _From, #st{chain = Chain} = St) ->
-    {Res, Chain1} = add_keyblock_(ForkId, Chain),
+handle_call({add_key, ForkId}, _From, #st{opts = Opts, chain = Chain} = St) ->
+    {Res, Chain1} = add_keyblock_(ForkId, Chain, Opts),
     {reply, Res, St#st{chain = Chain1}};
-handle_call({fork_from_hash, ForkId, FromHash}, _From, #st{chain = Chain} = St) ->
-    {Res, Chain1} = fork_from_hash_(ForkId, FromHash, Chain),
+handle_call({fork_from_hash, ForkId, FromHash}, _From, #st{opts = Opts, chain = Chain} = St) ->
+    {Res, Chain1} = fork_from_hash_(ForkId, FromHash, Chain, Opts),
     {reply, Res, St#st{chain = Chain1}};
-handle_call({fork_switch, ForkId}, _From, #st{chain = Chain} = St) ->
-    {Res, Chain1} = fork_switch_(ForkId, Chain),
+handle_call({fork_switch, ForkId}, _From, #st{opts = Opts, chain = Chain} = St) ->
+    {Res, Chain1} = fork_switch_(ForkId, Chain, Opts),
     {reply, Res, St#st{chain = Chain1}};
 handle_call({push, Tx}, _From, #st{chain = #{mempool := Pool} = Chain} = St) ->
     %% TODO: not yet asserting increasing nonces
@@ -302,6 +334,8 @@ handle_call({next_nonce, Acct}, _From, #st{chain = #{nonces := Nonces} = Chain} 
     {reply, NewN, St#st{chain = Chain#{nonces => Nonces#{ Acct => NewN }}}};
 handle_call(top_block_hash, _From, #st{chain = Chain} = St) ->
     {reply, top_block_hash_(Chain), St};
+handle_call({block_by_hash, Hash},_From, #st{chain = Chain} = St) ->
+    {reply, get_block_(Hash, Chain), St};
 handle_call({get_block_state, Hash}, _From, #st{chain = Chain} = St) ->
     {reply, get_block_state_(Hash, Chain), St};
 handle_call({get_header, Hash}, _From, #st{chain = Chain} = St) ->
@@ -340,11 +374,11 @@ code_change(_FromVsn, C, _Extra) ->
     {ok, C}.
 
 %% Called from the chain process
-add_microblock_(ForkId, #{mempool := Pool} = Chain) ->
+add_microblock_(ForkId, #{mempool := Pool} = Chain, Opts) ->
     Txs = lists:reverse(Pool),
-    add_microblock_(ForkId, Txs, Chain#{mempool => []}).
+    add_microblock_(ForkId, Txs, Chain#{mempool => []}, Opts).
 
-add_microblock_(ForkId, Txs, #{forks := Forks} = Chain) ->
+add_microblock_(ForkId, Txs, #{forks := Forks} = Chain, Opts) ->
     ?LOG("add_microblock(Txs = ~p", [Txs]),
     #{blocks := Blocks} = F = maps:get(ForkId, Forks),
     #{hash := PrevHash, header := TopHdr} = hd(Blocks),
@@ -363,19 +397,19 @@ add_microblock_(ForkId, Txs, #{forks := Forks} = Chain) ->
     NewFork = F#{blocks => [Block | Blocks]},
     ?LOG("NewFork(~p): ~p", [ForkId, NewFork]),
     NewForks = Forks#{ForkId => NewFork},
-    NewChain = announce(ForkId, Txs, Chain#{ forks => NewForks}),
+    NewChain = announce(ForkId, Txs, Chain#{ forks => NewForks}, Opts),
     {{ok, Block}, NewChain}.
 
-clone_micro_on_fork_(Hash, ForkId, #{forks := Forks} = Chain) ->
+clone_micro_on_fork_(Hash, ForkId, #{forks := Forks} = Chain, Opts) ->
     #{blocks := Blocks} = maps:get(main, Forks),
     case lists_mapfind(Hash, hash, Blocks) of
         false ->
             error({no_such_hash, Hash});
         #{txs := Txs} ->
-            add_microblock_(ForkId, Txs, Chain)
+            add_microblock_(ForkId, Txs, Chain, Opts)
     end.
 
-fork_from_hash_(ForkId, Hash, #{ forks   := Forks } = Chain) ->
+fork_from_hash_(ForkId, Hash, #{ forks   := Forks } = Chain, Opts) ->
     case maps:is_key(ForkId, Forks) of
         true ->
             error({fork_id_exists, ForkId});
@@ -389,11 +423,11 @@ fork_from_hash_(ForkId, Hash, #{ forks   := Forks } = Chain) ->
                                , blocks     => BlocksUntilHash },
                     NewForks = Forks#{ForkId => NewFork},
                     %% Automatically add a keyblock as instigator of the fork.
-                    add_keyblock_(ForkId, Chain#{forks => NewForks})
+                    add_keyblock_(ForkId, Chain#{forks => NewForks}, Opts)
             end
     end.
 
-fork_switch_(ForkId, #{forks := Forks, mempool := Pool, orphans := Orphans} = Chain) ->
+fork_switch_(ForkId, #{forks := Forks, mempool := Pool, orphans := Orphans} = Chain, Opts) ->
     #{ main   := #{blocks := Blocks} = M
      , ForkId := #{fork_point := ForkPoint, blocks := FBlocks}} = Forks,
     Evict = lists:takewhile(
@@ -407,28 +441,31 @@ fork_switch_(ForkId, #{forks := Forks, mempool := Pool, orphans := Orphans} = Ch
     NewChain = Chain#{ forks => NewForks
                      , mempool => NewPool
                      , orphans => Evict ++ Orphans },
-    {ok, announce(main, [], NewChain)}.
+    {ok, announce(main, [], NewChain, Opts)}.
 
 %% Announce top_changed and tx events
-announce(ForkId, Txs, #{ forks := Forks } = Chain) ->
+announce(ForkId, Txs, #{ forks := Forks } = Chain, Opts) ->
     #{ ForkId := #{ blocks := [#{ hash := TopHash
                                 , prev := PrevHash
                                 , header := Hdr } | _] = Blocks} } = Forks,
+    SimulatorT = simulator(Opts),
     Height = length(Blocks) + 1,
     Type = aec_headers:type(Hdr),
     Origin = origin(Type),
-    Info = #{ block_hash   => TopHash
+    Info = #{ pid => self(),
+              block_hash   => TopHash
             , block_type   => Type
             , block_origin => Origin
             , prev_hash    => PrevHash
             , height       => Height },
-    send_tx_events(Txs, Info),
-    case ForkId of
-        main ->
-            ?LOG("Publishing top_changed, I = ~p", [Info]),
-            aec_events:publish(top_changed, Info);
-        _ ->
-            ignore
+    if SimulatorT == parent_chain ->
+        aec_events:publish({parent_chain, top_changed}, Info#{txs => Txs});
+        true ->
+            send_tx_events(Txs, Info),
+            (ForkId == main) andalso
+                begin ?LOG("Publishing top_changed, I = ~p", [Info]),
+                aec_events:publish(top_changed, Info)
+                end
     end,
     Chain.
 
@@ -454,7 +491,7 @@ new_chain() ->
                               , blocks     => Blocks } }}.
 
 %% Called from the chain process
-add_keyblock_(ForkId, #{forks := Forks, miner := #{pubkey := Miner}} = Chain) ->
+add_keyblock_(ForkId, #{forks := Forks, miner := #{pubkey := Miner}} = Chain, Opts) ->
     ?LOG("add_keyblock(~p)", [ForkId]),
     #{ ForkId := #{blocks := Blocks} = F } = Forks,
     #{hash := PrevHash, header := TopHdr} = hd(Blocks),
@@ -469,7 +506,7 @@ add_keyblock_(ForkId, #{forks := Forks, miner := #{pubkey := Miner}} = Chain) ->
              , header => NewHdr
              , txs    => [] },
     NewChain = Chain#{ forks => Forks#{ ForkId => F#{blocks => [Block | Blocks]} } },
-    announce(ForkId, [], NewChain),
+    announce(ForkId, [], NewChain, Opts),
     {{ok, Block},  NewChain}.
 
 send_tx_events(Txs, #{ block_hash   := BlockHash
@@ -633,6 +670,14 @@ get_header_(Hash, Chain) ->
     case blocks_until_hash(Hash, blocks(Chain)) of
         [#{header := Header}|_] ->
             {ok, Header};
+        [] ->
+            error
+    end.
+
+get_block_(Hash, Chain) ->
+    case blocks_until_hash(Hash, blocks(Chain)) of
+        [Block|_] ->
+            {ok, Block};
         [] ->
             error
     end.
