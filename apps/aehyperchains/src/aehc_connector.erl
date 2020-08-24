@@ -1,6 +1,9 @@
 -module(aehc_connector).
 
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> b201c483... Initial connector behaviour; Sim chain connector draft;
 -export([broadcast/4, verify/2, subscribe/2]).
 
 -type tx_hash() :: binary().
@@ -35,6 +38,9 @@ verify(Con, TxHash) ->
 -spec subscribe(Con::connector(), Module::atom()) -> ok.
 subscribe(Con, Module) ->
     ok = Con:subscribe(Module).
+<<<<<<< HEAD
 =======
 -export([]).
 >>>>>>> 32512daa... Initial parent layer skeleton; Bitcoin and simulator mmodules are listed;
+=======
+>>>>>>> b201c483... Initial connector behaviour; Sim chain connector draft;
