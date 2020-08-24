@@ -1,3 +1,4 @@
+%%% -*- mode: erlang; erlang-indent-level: 4; erlang-tabs-mode: nil -*-
 -module(aehc_sup).
 -behaviour(supervisor).
 
@@ -15,8 +16,9 @@ start_link() ->
 init([]) ->
     Spec = case aehc_utils:hc_enabled() of
         true ->
-            lager:info("Starting Hyperchains"),
-            [];
+            Connector = aehc_connector:connector(),
+            lager:info("Starting Hyperchains connected by ~p", [Connector]),
+            [?CHILD(Connector, 5000, worker)];
         false ->
             []
     end,
