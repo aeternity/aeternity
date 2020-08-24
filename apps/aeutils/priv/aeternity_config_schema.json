@@ -557,32 +557,34 @@
                             "type": "boolean",
                             "default": false
                         },
-                        "parent_chain": {
-                            "keys" : {
-                                "type"    : "object",
-                                "additionalProperties": false,
-                                "properties" : {
-                                    "dir": {
-                                        "description" : "Directory of the public/private key pair used for signing of the commitment contract call.",
-                                        "type" : "string"
-                                    }
+                        "keys" : {
+                            "type"    : "object",
+                            "additionalProperties": false,
+                            "properties" : {
+                                "dir": {
+                                    "description" : "Directory of the public/private key pair used for signing of the commitment contract call.",
+                                    "type" : "string"
                                 }
-                            },
-                            "host" : {
-                                "type" : "string",
-                                "default" : "localhost"
-                            },
-                            "port" : {
-                                "description" : "Port number of the parent chain.",
-                                "type" : "integer",
-                                "minimum" : 0,
-                                "maximum" : 65535,
-                                "default" : 8332
-                            },
-                            "connector": {
-                                "description": "",
-                                "type": "string",
-                                "default": "hyperchains_aeconnector"
+                            }
+                        },
+                        "connector": {
+                            "properties": {
+                                "host": {
+                                    "type": "string",
+                                    "default": "localhost"
+                                },
+                                "port": {
+                                    "description": "Port number of the parent chain.",
+                                    "type": "integer",
+                                    "minimum": 0,
+                                    "maximum": 65535,
+                                    "default": 8332
+                                },
+                                "id": {
+                                    "description": "Parent chain interface provider",
+                                    "type": "string",
+                                    "default": "aehc_aeternity_connector"
+                                }
                             }
                         }
                     }
