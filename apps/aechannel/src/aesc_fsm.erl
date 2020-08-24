@@ -5053,12 +5053,8 @@ is_solo_tx_from_op(?NO_OP) ->
     false;
 is_solo_tx_from_op(Op) ->
     #op_data{signed_tx = SignedTx} = op_data_from_op(Op),
-    case SignedTx of
-        undefined -> false;
-        _ ->
-            {Mod, _Tx} = aetx:specialize_callback(aetx_sign:innermost_tx(SignedTx)),
-            lists:member(Mod, ?SOLO_TRANSACTIONS)
-    end.
+    {Mod, _Tx} = aetx:specialize_callback(aetx_sign:innermost_tx(SignedTx)),
+    lists:member(Mod, ?SOLO_TRANSACTIONS).
 
 
 
@@ -5068,12 +5064,6 @@ op_data_from_op(#op_lock{data = OpData}) -> OpData;
 op_data_from_op(#op_min_depth{data = OpData}) -> OpData;
 op_data_from_op(#op_watch{data = OpData}) -> OpData;
 op_data_from_op(#op_close{data = OpData}) -> OpData.
-
-tag_from_op(#op_sign{tag = Tag}) -> Tag;
-tag_from_op(#op_ack{tag = Tag}) -> Tag;
-tag_from_op(#op_lock{tag = Tag}) -> Tag;
-tag_from_op(#op_min_depth{tag = Tag}) -> Tag;
-tag_from_op(_) -> no_tag.
 
 tx_env_and_trees_from_top(Type) ->
     aesc_tx_env_cache:tx_env_and_trees_from_top(Type).
