@@ -38,6 +38,7 @@
 
 -export([ next_nonce/1                 %% (Acct) -> integer()
         , push/1                       %% (Tx) -> ok
+        , find_signed_tx/1             %% (TxHash) -> {value, STx)} | none.
         , add_keyblock/0               %% () -> {ok, Block}
         , add_keyblock/1               %% (ForkId) -> {ok, Block}
         , add_microblock/0             %% () -> {ok, Block}
@@ -205,6 +206,13 @@ dict_set(Key, Value) ->
 %%
 dict_get(Key, Default) ->
     chain_req({dict_get, Key, Default}).
+
+-spec find_signed_tx(TxHash::binary()) -> {value, binary()} | none.
+%%
+%% Returns the transaction hash associated with Key
+%%
+find_signed_tx(TxHash) ->
+    chain_req({find_signed_tx, TxHash}).
 
 -spec setup_meck() -> ok.
 %%
