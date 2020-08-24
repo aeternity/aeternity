@@ -1,5 +1,6 @@
 -module(aehc_connector).
 
+<<<<<<< HEAD
 -export([broadcast/4, verify/2, subscribe/2]).
 
 -type tx_hash() :: binary().
@@ -34,3 +35,6 @@ verify(Con, TxHash) ->
 -spec subscribe(Con::connector(), Module::atom()) -> ok.
 subscribe(Con, Module) ->
     ok = Con:subscribe(Module).
+=======
+-export([]).
+>>>>>>> 32512daa... Initial parent layer skeleton; Bitcoin and simulator mmodules are listed;

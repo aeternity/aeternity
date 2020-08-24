@@ -1,5 +1,6 @@
 -module(aehc_chain_sim_connector).
 
+<<<<<<< HEAD
 -behaviour(aehc_connector).
 
 -export([broadcast/3, verify/1, subscribe/1]).
@@ -22,3 +23,6 @@ verify(TxHash) ->
 subscribe(Module) ->
     %% aec_chain_sim:subscribe(Module),
     ok.
+=======
+-export([]).
+>>>>>>> 32512daa... Initial parent layer skeleton; Bitcoin and simulator mmodules are listed;
