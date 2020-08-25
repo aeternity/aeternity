@@ -4,22 +4,28 @@
         ]).
 
 create_tables(Mode) ->
-    [].
-    %%AllSpecs = all_specs(Mode),
-    %%Specs = lists:flatten([proplists:lookup(Table, AllSpecs) || {missing_table, Table} <- check_tables([])]),
-    %%[{atomic, ok} = mnesia:create_table(Tab, Spec) || {Tab, Spec} <- Specs].
+    case aehc_utils:hc_enabled() of
+        true ->
+            AllSpecs = all_specs(Mode),
+            Specs = lists:flatten([proplists:lookup(Table, AllSpecs) || {missing_table, Table} <- check_tables([])]),
+            [{atomic, ok} = mnesia:create_table(Tab, Spec) || {Tab, Spec} <- Specs];
+        false ->
+            []
+    end.
 
 check_tables(Acc) ->
-    %lists:foldl(
-    %  fun(M, Acc1) ->
-    %          M:check_tables(Acc1)
-    %  end, Acc, modules()).
-    Acc.
+    case aehc_utils:hc_enabled() of
+        true ->
+            lists:foldl(
+              fun(M, Acc1) ->
+                      M:check_tables(Acc1)
+              end, Acc, modules());
+        false ->
+            Acc
+    end.
 
 modules() ->
-    %%[aesc_state_cache].
     [].
 
 all_specs(Mode) ->
-    %%lists:flatten([M:table_specs(Mode) || M <- modules()]).
-    [].
+    lists:flatten([M:table_specs(Mode) || M <- modules()]).

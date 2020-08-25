@@ -1,6 +1,6 @@
 %% -*- mode: erlang; erlang-indent-level: 4; indent-tabs-mode: nil -*-
 {application, aehyperchains,
- [{description, "AE Hyperchains"},
+ [{description, "Hybrid chain between PoW and PoS based on BitcoinNG"},
   {vsn, {cmd, "cat ../../VERSION"}},
   {registered, []},
   {applications,

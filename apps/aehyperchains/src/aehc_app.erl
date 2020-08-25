@@ -22,7 +22,15 @@ stop(_State) ->
     ok.
 
 check_env() ->
-    check_env([{[<<"chain">>, <<"hyperchains">>, <<"enabled">>], {set_env, enabled}}]).
+    check_env([{[<<"chain">>, <<"hyperchains">>, <<"enabled">>], {set_env, enabled}}]),
+    case aehc_utils:hc_enabled() of
+        true ->
+            lager:info("Hyperchains are enabled"),
+            aehc_utils:hc_install();
+        false ->
+            lager:info("Hyperchains are disabled"),
+            ok
+    end.
 
 check_env(Spec) ->
     lists:foreach(
@@ -34,7 +42,6 @@ check_env(Spec) ->
       end, Spec).
 
 set_env({set_env, K}, V) when is_atom(K) ->
-    lager:info("AAAA"),
     io:fwrite("setenv K=~p, V=~p~n", [K, V]),
     application:set_env(aehyperchains, K, V);
 set_env(F, V) when is_function(F, 1) ->
