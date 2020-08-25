@@ -5804,7 +5804,7 @@ close_solo_and_conflict(Cfg) ->
      , spec := #{ initiator := PubI
                 , responder := PubR } = Spec} = create_channel_([?SLOGAN|Cfg]),
     ok = rpc(dev1, aesc_fsm, close_solo, [FsmI, #{}]),
-    rpc(dev1, aesc_fsm, upd_transfer, [FsmR, PubR, PubI, 2]),
+    ok = rpc(dev1, aesc_fsm, upd_transfer, [FsmR, PubR, PubI, 2]),
     {ok, #{info := #{ signed_tx := NotSignedCloseSoloTx
                     , updates   := Updates }}} =
         receive_from_fsm(close_solo_tx, I, signing_req(), ?TIMEOUT, Debug),
@@ -5837,7 +5837,7 @@ slash_and_conflict(Cfg) ->
                 , responder := PubR } = Spec} = create_channel_([?SLOGAN|Cfg]),
     {_I1, _R1, _SlashTx} = prepare_for_slashing(I, R, Spec, Cfg),
     ok = rpc(dev1, aesc_fsm, slash, [FsmI, #{}]),
-    rpc(dev1, aesc_fsm, upd_transfer, [FsmR, PubR, PubI, 2]),
+    ok = rpc(dev1, aesc_fsm, upd_transfer, [FsmR, PubR, PubI, 2]),
     {ok, #{info := #{ signed_tx := NotSignedSlashTx
                     , updates   := Updates }}} =
         receive_from_fsm(slash_tx, I, signing_req(), ?TIMEOUT, Debug),
@@ -5860,7 +5860,7 @@ snapshot_and_conflict(Cfg) ->
     {_I1, _R1} = do_update(PubI, PubR, 2, I, R, Debug, Cfg),
     ok = rpc(dev1, aesc_fsm, snapshot_solo, [FsmI, #{}]),
     {ok, Round} = rpc(dev1, aesc_fsm, get_round, [FsmI]),
-    rpc(dev1, aesc_fsm, upd_transfer, [FsmR, PubR, PubI, 2]),
+    ok = rpc(dev1, aesc_fsm, upd_transfer, [FsmR, PubR, PubI, 2]),
     {ok, #{info := #{ signed_tx := NotSignedSnapshotTx
                     , updates   := Updates }}} =
         receive_from_fsm(snapshot_solo_tx, I, signing_req(), ?TIMEOUT, Debug),
