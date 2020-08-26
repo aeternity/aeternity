@@ -1,0 +1,22 @@
+%% -*- mode: erlang; erlang-indent-level: 4; indent-tabs-mode: nil -*-
+{application, aehyperchains,
+ [{description, "Hybrid chain between PoW and PoS based on BitcoinNG"},
+  {vsn, {cmd, "cat ../../VERSION"}},
+  {registered, []},
+  {applications,
+   [kernel,
+    stdlib,
+    lager,
+    gproc,
+    sext
+   ]},
+  {mod,{aehc_app,[]}},
+  {env,[
+         {'$aec_db_create_tables', {aehc_db, create_tables}}
+       , {'$aec_db_check_tables' , {aehc_db, check_tables}}
+       ]},
+  {modules, []},
+  {maintainers, []},
+  {licenses, []},
+  {links, []}
+ ]}.

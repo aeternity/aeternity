@@ -22,7 +22,7 @@ get_module(_Tag, _Default) ->
 -else.
 
 tags() ->
-    [aec_tx_pool].
+    [aec_tx_pool, aec_fork_block_settings].
 
 register(Map) when is_map(Map) ->
     case valid_registry(Map) of
@@ -77,3 +77,4 @@ get_registry() ->
     persistent_term:get({?MODULE, registry}, undefined).
 
 -endif.
+
