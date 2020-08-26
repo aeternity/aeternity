@@ -17,6 +17,10 @@
         , contracts_file_name/1
         ]).
 
+-pluggable([genesis_accounts/0]).
+
+-include("aec_plugin.hrl").
+
 -define(GENESIS_DIR, ".genesis").
 -define(MINERVA_DIR, ".minerva").
 -define(FORTUNA_DIR, ".fortuna").

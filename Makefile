@@ -99,6 +99,9 @@ export AEVM_EXTERNAL_TEST_VERSION=348b0633f4a6ee3c100368bf0f4fca71394b4d01
 console: VERSION REVISION $(SWAGGER_ENDPOINTS_SPEC)
 	@$(REBAR) as local shell --config config/dev.config --sname aeternity@localhost
 
+hyperchains-console: $(SWAGGER_ENDPOINTS_SPEC)
+	@$(REBAR) as local shell --config config/hyperchains-dev.config --sname aeternity@localhost
+
 test-build: KIND=test
 test-build: internal-build aestratum_client_build
 
@@ -465,7 +468,7 @@ test-arch-os-dependencies:
 	make ct-latest SUITE=apps/aecontract/test/aecontract GROUP=sophia TEST=sophia_crypto
 
 .PHONY: \
-	all console \
+	all console hyperchains-console \
 	test-build \
 	local-build local-start local-stop local-attach \
 	prod-build prod-start prod-stop prod-attach prod-package prod-compile-deps \

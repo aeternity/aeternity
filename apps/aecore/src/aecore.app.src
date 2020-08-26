@@ -45,6 +45,7 @@
     aega,
     aefate,
     aeserialization,
+    aehyperchains,
     ranch
   ]},
   {env, [
@@ -80,6 +81,7 @@
                      {110, {aec_consensus, check_env, []}},
                      {110, {aec_hard_forks, ensure_env, []}},
                      {110, {aec_mining, check_env, []}},
+                     {110, {aehc_app, check_env, []}},
                      {200, {aec_db, check_db, []}}
                     ]}
           ]}
