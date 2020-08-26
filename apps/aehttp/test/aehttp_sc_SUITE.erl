@@ -4048,7 +4048,7 @@ channel_ws_start(Role, Opts, Config) ->
 
 -spec channel_ws_start(initiator | responder, map(), list(), list(atom())) ->
     {ok, pid(), binary()} | {error, term()}.
- channel_ws_start(Role, Opts, Config, Events) ->
+channel_ws_start(Role, Opts, Config, Events) ->
     LogFile = docs_log_file(Config),
     channel_ws_start(Role, Opts, Config, Events, LogFile).
 
@@ -4664,8 +4664,8 @@ account_type(Pubkey) ->
 
 sc_ws_test_broken_params(Role, Config, Opts, Error, Config) ->
     {error, Error} = channel_ws_start(Role,
-                                       maps:put(host, <<"localhost">>,
-                                                Opts), [{slogan, ?SLOGAN}|Config]).
+                                      maps:put(host, <<"localhost">>,
+                                               Opts), [{slogan, ?SLOGAN}|Config]).
 
 sc_ws_broken_open_params(Config) ->
     #{ initiator := #{pub_key := IPubkey}
