@@ -30,7 +30,6 @@
     sc_ws_conflict_withdrawal_and_offchain_update/1,
     sc_ws_conflict_withdrawal_and_deposit/1,
     sc_ws_conflict_two_withdrawals/1,
-    sc_ws_conflict_snapshot_and_offchain_update/1,
     sc_ws_conflict_on_new_offchain/1,
     sc_ws_update_abort/1,
     sc_ws_snapshot_solo/1,
@@ -238,8 +237,7 @@ groups() ->
       ]},
      {only_one_signs, [sequence],
       [ sc_ws_conflict_on_new_offchain,
-        {group, conflicts},
-        sc_ws_conflict_snapshot_and_offchain_update
+        {group, conflicts}
       ]
      },
      {both_sign, [sequence],
@@ -509,7 +507,6 @@ end_per_group(_Grp, _Config) ->
                    sc_ws_conflict_withdrawal_and_offchain_update,
                    sc_ws_conflict_withdrawal_and_deposit,
                    sc_ws_conflict_two_withdrawals,
-                   sc_ws_conflict_snapshot_and_offchain_update,
                    sc_ws_conflict_on_new_offchain,
                    sc_ws_basic_contracts, sc_ws_oracle_contract, sc_ws_nameservice_contract,
                    sc_ws_environment_contract, sc_ws_remote_call_contract,
@@ -3451,14 +3448,6 @@ sc_ws_conflict_two_withdrawals(Config) ->
     sc_ws_conflict_(
         fun(_Alice, _Bob) -> withdraw_params(_Amt1 = 1) end,
         fun(_Alice, _Bob) -> withdraw_params(_Amt2 = 1) end,
-        Config).
-
-sc_ws_conflict_snapshot_and_offchain_update(Config) ->
-    _Round1 = sc_ws_update_basic_round_(_Round0 = 2, Config),
-    %% TODO: there shouldn't be a conflict in unilateral txs, GH-3155
-    sc_ws_conflict_(
-        fun(Alice, Bob) -> update_params(Alice, Bob, _Amt1 = 1) end,
-        fun(_Alice, _Bob) -> snapshot_params() end,
         Config).
 
 sc_ws_conflict_on_new_offchain(Config) ->

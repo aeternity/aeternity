@@ -99,6 +99,10 @@
         , missing_malicious_snapshot/1
         , missing_malicious_snapshot_and_close_solo_based_on_it/1
         , missing_malicious_snapshot_and_fp_based_on_it/1
+        , close_solo_and_conflict/1
+        , slash_and_conflict/1
+        , snapshot_and_conflict/1
+        , force_progress_and_conflict/1
         ]).
 
 %% exports for aehttp_integration_SUITE
@@ -277,6 +281,13 @@ groups() ->
        missing_malicious_snapshot,
        missing_malicious_snapshot_and_close_solo_based_on_it,
        missing_malicious_snapshot_and_fp_based_on_it
+      ]},
+     {unilateral_tx_are_not_subject_to_conflict, [sequence],
+      [
+       close_solo_and_conflict,
+       slash_and_conflict,
+       snapshot_and_conflict,
+       force_progress_and_conflict
       ]}
     ].
 
@@ -2749,23 +2760,33 @@ await_signing_request(Tag, #{fsm := Fsm, pub := Pub} = Signer, OtherSigs,
                                     , updates   := Updates } } = Msg} ->
             ?LOG(Debug, "await_signing(~p, ~p, ~p, ~p) <- ~p",
                  [Tag, Pub, [P || #{pub := P} <- OtherSigs], Fsm, Msg]),
-            {[Signer1|_], SignedTx} =
-                lists:mapfoldl(
-                  fun(S, STx) ->
-                          {STx1, S1} =
-                          case SignatureType of
-                              according_account -> co_sign_tx(S, STx, Cfg);
-                              basic ->
-                                  #{priv := Priv} = S,
-                                  {aec_test_utils:co_sign_tx(STx, Priv), S}
-                          end,
-                          {S1, STx1}
-                  end, SignedTx0, [Signer|OtherSigs]),
-            ?LOG(Debug,"SIGNED TX ~p", [SignedTx]),
-            Action(Tag, Signer1, SignedTx, Updates)
+            sign(Signer, Tag, SignedTx0, Updates, OtherSigs,
+                 SignatureType, Action, Debug, Cfg)
+
     after Timeout ->
             error(timeout)
     end.
+
+sign(Signer, Tag, SignedTx0, Updates, Debug, Cfg) ->
+    sign(Signer, Tag, SignedTx0, Updates, [], according_account,
+         fun sign_signing_request/4, Debug, Cfg).
+
+sign(Signer, Tag, SignedTx0, Updates, OtherSigs, SignatureType, Action,
+     Debug, Cfg) ->
+    {[Signer1|_], SignedTx} =
+        lists:mapfoldl(
+          fun(S, STx) ->
+                  {STx1, S1} =
+                  case SignatureType of
+                      according_account -> co_sign_tx(S, STx, Cfg);
+                      basic ->
+                          #{priv := Priv} = S,
+                          {aec_test_utils:co_sign_tx(STx, Priv), S}
+                  end,
+                  {S1, STx1}
+          end, SignedTx0, [Signer|OtherSigs]),
+    ?LOG(Debug,"SIGNED TX ~p", [SignedTx]),
+    Action(Tag, Signer1, SignedTx, Updates).
 
 abort_signing_request(Tag, #{fsm := Fsm}, Code, Timeout, Debug) ->
     ?LOG(Debug, "waiting to abort signing req, Fsm = ~p, (Code = ~p)",
@@ -5774,5 +5795,126 @@ missing_malicious_snapshot_and_fp_based_on_it(Cfg0) ->
     SignedFP = await_on_chain_report(I4, #{info => can_snapshot}, ?TIMEOUT),
     assert_empty_msgq(Debug),
     shutdown_(I4, R5, Cfg),
+    ok.
+
+close_solo_and_conflict(Cfg) ->
+    Debug = get_debug(Cfg),
+    #{ i := #{fsm := FsmI} = I
+     , r := #{fsm := FsmR} = R
+     , spec := #{ initiator := PubI
+                , responder := PubR } = Spec} = create_channel_([?SLOGAN|Cfg]),
+    ok = rpc(dev1, aesc_fsm, close_solo, [FsmI, #{}]),
+    ok = rpc(dev1, aesc_fsm, upd_transfer, [FsmR, PubR, PubI, 2]),
+    {ok, #{info := #{ signed_tx := NotSignedCloseSoloTx
+                    , updates   := Updates }}} =
+        receive_from_fsm(close_solo_tx, I, signing_req(), ?TIMEOUT, Debug),
+    {_R1, _} = await_signing_request(update, R, Debug, Cfg),
+    {_, SignedCloseSoloTx} = sign(I, close_solo_tx, NotSignedCloseSoloTx, Updates, Debug, Cfg),
+    wait_for_signed_transaction_in_block(dev1, SignedCloseSoloTx, Debug),
+
+    %% no conflict
+    SignedCloseSoloTx = await_on_chain_report(I, #{info => solo_closing}, ?TIMEOUT),
+    SignedCloseSoloTx = await_on_chain_report(R, #{info => solo_closing}, ?TIMEOUT),
+    %% some messages for the update, but those are discarded once the channel
+    %% close solo is being consumed
+    {ok,_} = receive_from_fsm(info, I, fun(#{info := update}) -> ok end, ?TIMEOUT, Debug),
+    {ok, _} = receive_from_fsm(update_ack, I, signing_req(), ?TIMEOUT, Debug),
+
+    LockPeriod = maps:get(lock_period, Spec),
+    mine_blocks(dev1, LockPeriod),
+    {ok,_} = receive_from_fsm(info, I, fun closing/1, ?TIMEOUT, Debug),
+    {ok,_} = receive_from_fsm(info, R, fun closing/1, ?TIMEOUT, Debug),
+
+    check_info(20),
+    settle_(maps:get(minimum_depth, Spec), I, R, Debug, Cfg),
+    ok.
+
+slash_and_conflict(Cfg) ->
+    Debug = get_debug(Cfg),
+    #{ i := #{fsm := FsmI} = I
+     , r := #{fsm := FsmR} = R
+     , spec := #{ initiator := PubI
+                , responder := PubR } = Spec} = create_channel_([?SLOGAN|Cfg]),
+    {_I1, _R1, _SlashTx} = prepare_for_slashing(I, R, Spec, Cfg),
+    ok = rpc(dev1, aesc_fsm, slash, [FsmI, #{}]),
+    ok = rpc(dev1, aesc_fsm, upd_transfer, [FsmR, PubR, PubI, 2]),
+    {ok, #{info := #{ signed_tx := NotSignedSlashTx
+                    , updates   := Updates }}} =
+        receive_from_fsm(slash_tx, I, signing_req(), ?TIMEOUT, Debug),
+    {_, SignedSlashTx} = sign(I, slash_tx, NotSignedSlashTx, Updates, Debug, Cfg),
+    wait_for_signed_transaction_in_block(dev1, SignedSlashTx, Debug),
+
+    %% no conflict, no update
+    LockPeriod = maps:get(lock_period, Spec),
+    mine_blocks(dev1, LockPeriod),
+    check_info(20),
+    settle_(maps:get(minimum_depth, Spec), I, R, Debug, Cfg),
+    ok.
+
+snapshot_and_conflict(Cfg) ->
+    Debug = get_debug(Cfg),
+    #{ i := #{fsm := FsmI} = I
+     , r := #{fsm := FsmR} = R
+     , spec := #{ initiator := PubI
+                , responder := PubR }} = create_channel_([?SLOGAN|Cfg]),
+    {_I1, _R1} = do_update(PubI, PubR, 2, I, R, Debug, Cfg),
+    ok = rpc(dev1, aesc_fsm, snapshot_solo, [FsmI, #{}]),
+    {ok, Round} = rpc(dev1, aesc_fsm, get_round, [FsmI]),
+    ok = rpc(dev1, aesc_fsm, upd_transfer, [FsmR, PubR, PubI, 2]),
+    {ok, #{info := #{ signed_tx := NotSignedSnapshotTx
+                    , updates   := Updates }}} =
+        receive_from_fsm(snapshot_solo_tx, I, signing_req(), ?TIMEOUT, Debug),
+    {_, _} = await_signing_request(update, R, Debug, Cfg),
+    {_, SignedSnapshotTx} = sign(I, snapshot_solo_tx, NotSignedSnapshotTx, Updates, Debug, Cfg),
+    wait_for_signed_transaction_in_block(dev1, SignedSnapshotTx, Debug),
+
+    %% no conflict
+    {channel_snapshot_solo_tx, SignedSnapshotTx} =
+        await_channel_changed_report(I, ?TIMEOUT), % same tx
+    {channel_snapshot_solo_tx, SignedSnapshotTx} =
+        await_channel_changed_report(R, ?TIMEOUT), % same tx
+    mine_blocks(dev1),
+    await_min_depth_reached(I, aetx_sign:hash(SignedSnapshotTx), channel_snapshot_solo_tx, ?TIMEOUT),
+    %% some messages for the update, but those are NOT discarded once the channel
+    %% snapshot is being consumed; we have to abort or accept the changes
+    {ok,_} = receive_from_fsm(info, I, fun(#{info := update}) -> ok end, ?TIMEOUT, Debug),
+    {ok, _} = receive_from_fsm(update_ack, I, signing_req(), ?TIMEOUT, Debug),
+    aesc_fsm:signing_response(FsmI, update_ack, {error, 42}),
+    {ok, _} = receive_from_fsm(info, I, fun aborted_update/1, ?TIMEOUT, Debug),
+    {ok, _} = receive_from_fsm(conflict, R, #{info => #{ error_code => 42
+                                                       , round => Round}},
+                               ?TIMEOUT, Debug),
+
+    shutdown_(I, R, Cfg),
+    check_info(20).
+
+force_progress_and_conflict(Cfg) ->
+    Debug = get_debug(Cfg),
+    #{ i := #{fsm := FsmI} = I
+     , r := #{fsm := FsmR} = R
+     , spec := #{ initiator := PubI
+                , responder := PubR }} = create_channel_([?SLOGAN|Cfg]),
+    {I1, R1, ContractPubkey} = create_contract(counter, ["42"], 10, I, R, Cfg),
+    {I2, R2} = call_contract(ContractPubkey, counter, "tick", [], 10, I1, R1, Cfg),
+    trigger_force_progress(ContractPubkey, counter, "tick", [], 10, I2),
+    rpc(dev1, aesc_fsm, upd_transfer, [FsmR, PubR, PubI, 2]),
+    {ok, #{info := #{ signed_tx := NotSignedFPTx
+                    , updates   := Updates }}} =
+        receive_from_fsm(force_progress_tx, I2, signing_req(), ?TIMEOUT, Debug),
+    {_R1, _} = await_signing_request(update, R2, Debug, Cfg),
+    {_, SignedFPTx} = sign(I2, force_progress_tx, NotSignedFPTx, Updates, Debug, Cfg),
+    wait_for_signed_transaction_in_block(dev1, SignedFPTx, Debug),
+
+    %% no conflict
+    SignedFPTx = await_on_chain_report(I2, #{info => consumed_forced_progress}, ?TIMEOUT),
+    SignedFPTx = await_on_chain_report(R2, #{info => consumed_forced_progress}, ?TIMEOUT),
+    %% some messages for the update, but those are discarded once the channel
+    %% force progress is being consumed
+    {ok,_} = receive_from_fsm(info, I2, fun(#{info := update}) -> ok end, ?TIMEOUT, Debug),
+    {ok, _} = receive_from_fsm(update_ack, I2, signing_req(), ?TIMEOUT, Debug),
+
+
+    check_info(20),
+    shutdown_(I, R, Cfg),
     ok.
 
