@@ -1209,8 +1209,6 @@ workflows:
                 - env/dev1
                 - env/dev2
                 - system-tests
-            tags:
-              only: *tag_regex
 
       - build_otp21:
           filters:
@@ -1412,8 +1410,6 @@ workflows:
                 - env/dev1
                 - env/dev2
                 - system-tests
-            tags:
-              only: *tag_regex
 
       - static_analysis_otp21:
           requires:
@@ -1434,16 +1430,12 @@ workflows:
                 - env/dev1
                 - env/dev2
                 - system-tests
-            tags:
-              only: *tag_regex
 
       - linux_package:
           filters:
             branches:
               ignore:
                 - system-tests
-            tags:
-              only: *tag_regex
 
       - ubuntu_package:
           filters:
@@ -1451,8 +1443,6 @@ workflows:
               only:
                 - /releases\/.*/
                 - *master_branch
-            tags:
-              only: *tag_regex
 
       - upload_build_artifacts:
           context: ae-node-builds
@@ -1464,8 +1454,6 @@ workflows:
                 - env/dev1
                 - env/dev2
                 - system-tests
-            tags:
-              only: *tag_regex
 
       - osx_package:
           filters:
@@ -1473,8 +1461,6 @@ workflows:
               only:
                 - /releases\/.*/
                 - *master_branch
-            tags:
-              only: *tag_regex
 
       - deploy_integration:
           context: ae-node-builds
@@ -1562,8 +1548,73 @@ workflows:
             branches:
               only: env/dev2
 
+      - build_uml_diagrams:
+          requires:
+            - build
+          filters:
+            branches:
+              ignore:
+                - env/dev1
+                - env/dev2
+                - system-tests
+
+  release:
+    jobs:
+      - linux_package:
+          filters:
+            branches:
+              ignore: /.*/
+            tags:
+              only: *tag_regex
+
+      - ubuntu_package:
+          filters:
+            branches:
+              ignore: /.*/
+            tags:
+              only: *tag_regex
+
+      - osx_package:
+          filters:
+            branches:
+              ignore: /.*/
+            tags:
+              only: *tag_regex
+
       - hodl_artifact_upload:
           type: approval
+          filters:
+            branches:
+              ignore: /.*/
+            tags:
+              only: *tag_regex
+
+      - upload_packages_linux:
+          context: ae-node-builds
+          requires:
+            - linux_package
+            - hodl_artifact_upload
+          filters:
+            branches:
+              ignore: /.*/
+            tags:
+              only: *tag_regex
+
+      - upload_packages_osx:
+          context: ae-node-builds
+          requires:
+            - osx_package
+            - hodl_artifact_upload
+          filters:
+            branches:
+              ignore: /.*/
+            tags:
+              only: *tag_regex
+
+      - docker_push_tag:
+          context: ae-node-builds
+          requires:
+            - hodl_artifact_upload
           filters:
             branches:
               ignore: /.*/
@@ -1578,26 +1629,19 @@ workflows:
             tags:
               only: *tag_regex
 
-      - hodl_green:
-          type: approval
+      - deploy_uat_blue:
+          context: ae-node-builds
+          requires:
+            - linux_package
+            - hodl_blue
           filters:
             branches:
               ignore: /.*/
             tags:
               only: *tag_regex
 
-      - deploy_uat_blue:
-          context: ae-node-builds
-          requires:
-            - eunit_roma
-            - eunit_minerva
-            - eunit_fortuna
-            - eunit_lima
-            - eunit_latest
-            - static_analysis
-            - rebar_lock_check
-            - linux_package
-            - hodl_blue
+      - hodl_green:
+          type: approval
           filters:
             branches:
               ignore: /.*/
@@ -1607,80 +1651,9 @@ workflows:
       - deploy_uat_green:
           context: ae-node-builds
           requires:
+            - linux_package
             - deploy_uat_blue
             - hodl_green
-          filters:
-            branches:
-              ignore: /.*/
-            tags:
-              only: *tag_regex
-
-      - upload_packages_linux:
-          context: ae-node-builds
-          requires:
-            - eunit_roma
-            - eunit_minerva
-            - eunit_fortuna
-            - eunit_lima
-            - eunit_latest
-            - static_analysis
-            - rebar_lock_check
-            - linux_package
-            - hodl_artifact_upload
-          filters:
-            branches:
-              ignore: /.*/
-            tags:
-              only: *tag_regex
-
-      - upload_packages_osx:
-          context: ae-node-builds
-          requires:
-            - eunit_roma
-            - eunit_minerva
-            - eunit_fortuna
-            - eunit_lima
-            - eunit_latest
-            - static_analysis
-            - rebar_lock_check
-            - osx_package
-            - hodl_artifact_upload
-          filters:
-            branches:
-              ignore: /.*/
-            tags:
-              only: *tag_regex
-
-      # - upload_packages_windows:
-      #     context: ae-node-builds
-      #     requires:
-      #       - eunit_roma
-      #       - eunit_minerva
-      #       - eunit_fortuna
-      #       - eunit_lima
-      #       - eunit_latest
-      #       - static_analysis
-      #       - rebar_lock_check
-      #       # FIXME: Disabled until Windows build is fixed
-      #       # - windows_package
-      #       - hodl_artifact_upload
-      #     filters:
-      #       branches:
-      #         ignore: /.*/
-      #       tags:
-      #         only: *tag_regex
-
-      - docker_push_tag:
-          context: ae-node-builds
-          requires:
-            - eunit_roma
-            - eunit_minerva
-            - eunit_fortuna
-            - eunit_lima
-            - eunit_latest
-            - static_analysis
-            - rebar_lock_check
-            - hodl_artifact_upload
           filters:
             branches:
               ignore: /.*/
@@ -1717,21 +1690,10 @@ workflows:
             tags:
               only: *tag_regex
 
-      - upload_latest_packages_windows:
-          context: ae-node-builds
-          requires:
-            # FIXME: Disabled until Windows build is fixed
-            # - windows_package
-            - hodl_latest
-          filters:
-            branches:
-              ignore: /.*/
-            tags:
-              only: *tag_regex
-
       - docker_push_latest:
           context: ae-node-builds
           requires:
+            - docker_push_tag
             - hodl_latest
           filters:
             branches:
@@ -1742,31 +1704,15 @@ workflows:
       - verify_release_artifacts:
           context: ae-node-builds
           requires:
-            - upload_build_artifacts
             - upload_packages_linux
             - upload_latest_packages_linux
             - upload_packages_osx
             - upload_latest_packages_osx
-            # FIXME: Disabled until Windows build is fixed
-            # - upload_packages_windows
-            # - upload_latest_packages_windows
             - docker_push_tag
             - docker_push_latest
           filters:
             branches:
               ignore: /.*/
-            tags:
-              only: *tag_regex
-
-      - build_uml_diagrams:
-          requires:
-            - build
-          filters:
-            branches:
-              ignore:
-                - env/dev1
-                - env/dev2
-                - system-tests
             tags:
               only: *tag_regex
 
