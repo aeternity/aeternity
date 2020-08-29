@@ -91,7 +91,9 @@
     sc_ws_abort_shutdown/1,
     sc_ws_abort_slash/1,
     sc_ws_abort_settle/1,
-    sc_ws_can_not_abort_while_open/1
+    sc_ws_can_not_abort_while_open/1,
+    sc_ws_responder_can_use_any_initiator/1,
+    sc_ws_responder_can_use_any_initiator_and_initiator_can_reattach/1
    ]).
 -export([sc_ws_open_/4,
          sc_ws_close_/1,
@@ -315,6 +317,12 @@ groups() ->
       , sc_ws_leave_reconnect
       , sc_ws_reconnect_early
       , sc_ws_leave_responder_does_not_timeout
+      ]},
+
+      %% possible to leave and reestablish channel
+     {any_initiator, [sequence],
+      [ sc_ws_responder_can_use_any_initiator
+      , sc_ws_responder_can_use_any_initiator_and_initiator_can_reattach
       ]}
     ].
 
@@ -483,6 +491,8 @@ init_per_group(optional_nonce, Config) ->
             end
         end,
     [{fee_computation, {Opts, CheckFun}} |Config];
+init_per_group(any_initiator, Config) ->
+    reset_participants(any_initiator, Config);
 init_per_group(_Grp, Config) ->
     Config.
 
@@ -3801,7 +3811,8 @@ sc_ws_leave_reestablish_wrong_fsm_id(Config0) ->
     ok = sc_ws_close_(Config1).
 
 sc_ws_leave_reestablish_responder_stays(Config0) ->
-    Config = sc_ws_open_([{slogan, ?SLOGAN}|Config0], #{responder_opts => #{keep_running => true}}),
+    Config = sc_ws_open_([{slogan, ?SLOGAN}|Config0],
+                          custom_responder_opts([{keep_running, true}])),
     Config1 = [{responder_leaves, false}|Config],
     ReestablishOptions = sc_ws_leave_(Config1),
     Config2 = sc_ws_reestablish_(ReestablishOptions, Config1),
@@ -3811,7 +3822,8 @@ sc_ws_leave_reestablish_responder_stays(Config0) ->
 sc_ws_leave_reconnect(Config0) ->
     ct:log("opening channel", []),
     ct:log("Config0 = ~p", [Config0]),
-    Config = sc_ws_open_([{slogan, ?SLOGAN}|Config0], #{responder_opts => #{keep_running => true}}),
+    Config = sc_ws_open_([{slogan, ?SLOGAN}|Config0],
+                          custom_responder_opts([{keep_running, true}])),
     ct:log("channel opened", []),
     ct:log("Config = ~p", [Config]),
     ct:log("*** Leaving channel ***", []),
@@ -4142,6 +4154,8 @@ log_basename(Config) ->
                 filename:join([Protocol, "force_progress"]);
             reconnects ->
                 filename:join([Protocol, "reconnects"]);
+            any_initiator ->
+                filename:join([Protocol, "any_initiator"]);
             plain -> Protocol
         end,
     filename:join("channel_docs", SubDir).
@@ -5720,9 +5734,10 @@ sc_ws_leave_responder_does_not_timeout(Config0) ->
     ct:log("Config0 = ~p", [Config0]),
     IdleTimeout = 1000,
     Config = sc_ws_open_([{slogan, ?SLOGAN}|Config0],
-                         #{ responder_opts => #{keep_running => true}
-                          , timeout_idle => IdleTimeout}),
-    #{ responder_fsm_id := RFsmId
+                          custom_responder_opts([ {keep_running, true}
+                                                , {timeout_idle, IdleTimeout}
+                                                ])),
+    #{ responder_fsm_id := _RFsmId
      , responder        := RConnPid } = proplists:get_value(channel_clients, Config),
     ct:log("channel opened", []),
     ct:log("Config = ~p", [Config]),
@@ -5741,3 +5756,47 @@ sc_ws_leave_responder_does_not_timeout(Config0) ->
     ct:log("*** Closing ... ***", []),
     ok = sc_ws_close_(Config2).
 
+sc_ws_responder_can_use_any_initiator(Config0) ->
+    Config = sc_ws_open_([{slogan, ?SLOGAN}|Config0],
+                         custom_responder_opts([{initiator_id, any}
+                                               ])),
+    ok = sc_ws_update_(Config),
+    ok = sc_ws_close_(Config).
+
+%% this is an integration test that the enoise session handler is allowing
+%% reconnects later on
+sc_ws_responder_can_use_any_initiator_and_initiator_can_reattach(Config0) ->
+    ct:log("opening channel", []),
+    ct:log("Config0 = ~p", [Config0]),
+    Config = sc_ws_open_([{slogan, ?SLOGAN}|Config0],
+                          custom_responder_opts([ {initiator_id, any}
+                                                , {keep_running, true}
+                                                ])),
+    ct:log("channel opened", []),
+    ct:log("Config = ~p", [Config]),
+    ct:log("*** Leaving channel ***", []),
+
+    Config1 = [{responder_leaves, false}|Config],
+    ct:log("Config1 = ~p", [Config1]),
+    ReestablishOptions = sc_ws_leave_(Config1),
+    Config2 = reconnect_client_(ReestablishOptions, initiator,
+                                [{reconnect_scenario, reestablish} | Config1]),
+    ct:log("*** Verifying that channel is operational ***", []),
+    ok = sc_ws_update_(Config2),
+    ct:log("*** Closing ... ***", []),
+    ok = sc_ws_close_(Config2).
+
+
+custom_responder_opts(L) ->
+    Opts =
+        lists:foldl(
+            fun({keep_running, Bool}, Accum) when is_boolean(Bool) ->
+                Accum#{keep_running => true};
+               ({timeout_idle, IdleTimeout}, Accum) ->
+                Accum#{timeout_idle => IdleTimeout};
+               ({initiator_id, any}, Accum) ->
+                Accum#{initator_id => <<"any">>}
+            end,
+            #{},
+            L),
+    #{responder_opts => Opts}.
