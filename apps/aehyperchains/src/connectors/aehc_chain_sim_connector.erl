@@ -32,9 +32,9 @@ start_link() ->
 %%%  aehc_connector behaviour
 %%%===================================================================
 
--spec send_tx(Tx::aetx:tx()) -> binary().
-send_tx(Tx) ->
-    gen_server:call(id(), {send_tx, Tx}).
+-spec send_tx(binary()) -> binary().
+send_tx(Payload) ->
+    gen_server:call(?MODULE, {send_tx, Payload}).
 
 -spec get_block(Num::integer()) -> aehc_connector:block().
 get_block(Num) ->
@@ -47,17 +47,28 @@ get_block(Num) ->
 -record(state, { pid::pid() }).
 
 init([]) ->
-    %% TODO TO ask opt from config;
+    %% TODO: TO ask opt from config;
+    %% TODO: To make block event configured;
     Opts = #{},
     {ok, Pid} = aec_chain_sim:start(Opts),
     io:fwrite("Parent chain's connector ~p is attached: ~p", [?MODULE, Pid]),
     {ok, #state{ pid=Pid }}.
 
-handle_call({send_tx, Tx}, _From, State) ->
-    Tx = #{},
-    Res = aec_chain_sim:push(Tx),
-    %% TODO Could we optimize aec_chain_sim:push/1 to return hash instead of ok?
-    %% TODO To fill the Tx by actual data;
+handle_call({send_tx, Payload}, _From, State) ->
+    %% The current validator credentials;
+    %% Requested transaction by hash from a simulator's block should satisfy the origin of validator;
+    {ok, Pub} = aec_keys:pubkey(),
+    {ok, PrivKey} = aec_keys:sign_privkey(),
+    SenderId = aeser_id:create(account, Pub),
+    %% The main intention of this call is to emulate post action with signed payload from delegate;
+    %% Fee, nonce, ttl and amount fields have decorated nature;
+    {ok, Tx} = aec_spend_tx:new(#{ sender_id => SenderId, recipient_id => SenderId, amount => 1,
+                                        fee => 5, nonce => 1, payload => Payload, ttl => 0 }),
+    BinaryTx = aec_governance:add_network_id(aetx:serialize_to_binary(Tx)),
+    SignedTx = aetx_sign:new(Tx, [enacl:sign_detached(BinaryTx, PrivKey)]),
+    TxHash = aetx_sign:hash(SignedTx),
+    %% The next format is prepared accordingly to simualtor internal representation;
+    Res = aec_chain_sim:push(#{ tx_hash => TxHash, signed_tx  => SignedTx }),
     {reply, Res, State};
 
 handle_call({get_block, _Num}, _From, State) ->
