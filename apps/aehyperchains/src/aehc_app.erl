@@ -9,6 +9,10 @@
         , check_env/0
         ]).
 
+-export([get_connector_id/0]).
+
+-define(DEFAULT_CONNECTOR_ID, <<"aehc_aeternity_connector">>).
+
 start(_StartType, _StartArgs) ->
     aehc_sup:start_link().
 
@@ -46,3 +50,7 @@ set_env({set_env, K}, V) when is_atom(K) ->
     application:set_env(aehyperchains, K, V);
 set_env(F, V) when is_function(F, 1) ->
     F(V).
+
+get_connector_id() ->
+    aeu_env:config_value([<<"chain">>, <<"hyperchains">>, <<"connector">>, <<"id">>],
+                         aehyperchains, [hyperchains, connector, id], ?DEFAULT_CONNECTOR_ID).
