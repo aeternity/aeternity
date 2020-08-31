@@ -13,12 +13,6 @@
 -include("../../aecore/include/blocks.hrl").
 -include("aehc_utils.hrl").
 
-%% Two different keyheaders with the same prev_key pointer signed by the same leader
--record(hc_pogf, {
-        hc_header1 :: aec_headers:key_header(),
-        hc_header2 :: aec_headers:key_header()
-    }).
-
 -record(hc_commitment_header, {
         %% Delegate who submitted the commitment
         hc_delegate = <<0:?COMMITER_PUB_BYTES/unit:8>> :: commiter_pubkey(),
@@ -35,7 +29,7 @@
 
 -record(hc_commitment, {
         header :: #hc_commitment_header{},
-        hc_pogf :: no_pogf | #hc_pogf{}
+        hc_pogf :: aehc_pogf:pogf()
     }).
 
 -record(hc_parent_block, {
