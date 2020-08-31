@@ -1,79 +1,49 @@
 -module(aehc_connector).
 
+-export([connector/0]).
+
 -export([send_tx/1, get_block/1]).
-
--export([tx/3, header/2, block/2]).
-
--export([publish/2, subscribe/1]).
+-export([tx/2, block/4]).
+-export([publish_block/1, subscribe/0]).
 
 -type connector() :: atom().
 
--callback send_tx(Tx::aetx:tx()) -> binary().
+-callback send_tx(binary()) -> binary().
 
 -callback get_block(Num::integer()) -> block().
-
--export_type([tx/0, header/0, block/0]).
-
--spec connector() -> connector().
-connector() ->
-    ok.
 
 %%%===================================================================
 %%%  Parent chain simplified proto
 %%%===================================================================
 
--spec subscribe(Con::connector(), Module::atom()) -> ok.
-subscribe(Con, Module) ->
-    ok = Con:subscribe(Module).
-
--record(tx, {
-             sender :: binary(),
-             recipient :: binary(),
-             payload :: binary()
-            }).
+-record(tx, { sender :: binary(), payload :: binary() }).
 
 -type tx() :: #tx{}.
 
--record(header, {
-                 hash :: binary(),
-                 number = 0 :: integer()
-                }).
-
--type header() :: #header{}.
-
--record(block, {
-                header :: header(),
-                txs :: [tx()]
-               }).
+-record(block, { number = 0 :: integer(), hash :: binary(), prev_hash :: binary(), txs :: [tx()] }).
 
 -type block() :: #block{}.
 
--spec tx(Sender::binary(), Recipient::binary(), Payload::binary()) -> tx().
-tx(Sender, Recipient, Payload) when 
-      is_binary(Sender), is_binary(Recipient), is_binary(Payload) ->
-    #tx{ sender=Sender, recipient=Recipient, payload=Payload }.
+-spec tx(Sender::binary(), Payload::binary()) -> tx().
+tx(Sender, Payload) when
+      is_binary(Sender), is_binary(Payload) ->
+    #tx{ sender = Sender, payload = Payload }.
 
--spec header(Hash::binary(), Num::integer()) -> header().
-header(Hash, Num) when 
-      is_binary(Hash), is_integer(Num) ->
-    #header{ hash=Hash, number=Num }.
-
--spec block(Header::header(), Txs::[tx()]) -> block().
-block(Header, Txs) when
-      is_record(Header, header), is_list(Txs) ->
-    #block{ header=Header, txs=Txs }.
+-spec block(Num::integer(), Hash::binary(), PrevHash::binary(), Txs::[tx()]) -> block().
+block(Num, Hash, PrevHash, Txs) when
+      is_integer(Num), is_binary(Hash), is_binary(PrevHash), is_list(Txs) ->
+    #block{ number = Num, hash = Hash, prev_hash = PrevHash, txs = Txs }.
 
 %%%===================================================================
 %%%  Parent chain interface
 %%%===================================================================
 
--spec send_tx(Tx::aetx:tx()) ->
-                    {ok, TxHash::binary()} | {error, {term(), term()}}.
-send_tx(Tx) ->
-    Con = aehc_chain_sim_connector, %% TODO To ask via config;
+-spec send_tx(Payload::binary()) ->
+                    ok | {error, {term(), term()}}.
+send_tx(Payload) ->
+    Con = connector(), %% TODO To ask via config;
     try
-        Res = Con:send_tx(Tx), true = is_binary(Res),
-        {ok, Res}
+        ok = Con:send_tx(Payload)
     catch E:R ->
             {error, {E, R}}
     end.
@@ -81,8 +51,8 @@ send_tx(Tx) ->
 -spec get_block(Num::integer()) ->
                        {ok, block()} | {error, {term(), term()}}.
 get_block(Num) ->
-    Con = aehc_chain_sim_connector, %% TODO To ask via config;
-    try 
+    Con = connector(), %% TODO To ask via config;
+    try
         Res = Con:get_block(Num), true = is_record(Res, block),
         {ok, Res}
     catch E:R ->
@@ -93,10 +63,22 @@ get_block(Num) ->
 %%%  Parent chain events
 %%%===================================================================
 
--spec subscribe(aec_events:event()) -> true.
-subscribe(Event) ->
-    aec_events:subscribe(Event).
+-spec subscribe() -> true.
+subscribe() ->
+    aec_events:subscribe(parent_chain).
 
--spec publish(aec_events:event(), any()) -> ok.
-publish(Event, Info) ->
-    aec_events:publish(Event, Info).
+-spec publish_block(block()) -> ok.
+publish_block(Block) ->
+    aec_events:publish(parent_chain, {block_created, Block}).
+
+%%%===================================================================
+%%%  Proto accessors
+%%%===================================================================
+
+%% TODO: BlockHash, etc..
+
+
+connector() ->
+    Con = aehc_app:get_connector_id(),
+    Module = binary_to_existing_atom(Con, utf8), true = (false /= code:is_loaded(Module)),
+    Module.
