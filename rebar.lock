@@ -100,7 +100,7 @@
   0},
  {<<"mnesia_leveled">>,
   {git,"https://github.com/aeternity/mnesia_leveled.git",
-      {ref,"02a699d5683ee09f9e7b7a545459b56b8af1deb5"}},
+      {ref,"11c480b5546ed6087ae688e8596bd596a1f7bdd1"}},
   0},
  {<<"mnesia_rocksdb">>,
   {git,"https://github.com/aeternity/mnesia_rocksdb.git",
