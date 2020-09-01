@@ -32,8 +32,8 @@ references:
     resource_class: large
     working_directory: ~/aeternity
     environment:
-      OTP_VERSION: 20.3.8.24
-  container_otp_plt: &container_otp_plt _build/default/rebar3_20.3.8.24_plt
+      OTP_VERSION: 22.3.4.10
+  container_otp_plt: &container_otp_plt _build/default/rebar3_22.3.4.10_plt
 
   container_otp21_config: &container_otp21_config
     docker:
@@ -41,8 +41,8 @@ references:
         user: builder
     working_directory: ~/aeternity
     environment:
-      OTP_VERSION: 21.3.8.11
-  container_otp21_plt: &container_otp21_plt _build/default/rebar3_21.3.8.11_plt
+      OTP_VERSION: 21.3.8.17
+  container_otp21_plt: &container_otp21_plt _build/default/rebar3_21.3.8.17_plt
 
   infrastructure_config_environment: &infrastructure_config_environment
     DOCKERHUB_REPO: aeternity/aeternity
@@ -89,7 +89,7 @@ references:
       name: Install OTP
       environment:
         # See minimum_otp_vsn in rebar.config
-        OTP_VERSION: 20.3.8.24
+        OTP_VERSION: 22.3.4.10
       command: |
         # Install OTP package deps
         sudo apt-get update && sudo apt-get install libwxbase3.0-dev libwxgtk3.0-dev libsctp1
@@ -106,7 +106,7 @@ references:
         LIBSODIUM_VERSION: "1.0.16"
       # source: https://github.com/aeternity/docker-builder/blob/master/Dockerfile#L23
       command: |
-        LIBSODIUM_DOWNLOAD_URL="https://github.com/jedisct1/libsodium/releases/download/${LIBSODIUM_VERSION}/libsodium-${LIBSODIUM_VERSION}.tar.gz" \
+        LIBSODIUM_DOWNLOAD_URL="https://github.com/jedisct1/libsodium/releases/downloadw/${LIBSODIUM_VERSION}/libsodium-${LIBSODIUM_VERSION}.tar.gz" \
           && curl -fsSL -o libsodium-src.tar.gz "$LIBSODIUM_DOWNLOAD_URL" \
           && mkdir libsodium-src \
           && tar -zxf libsodium-src.tar.gz -C libsodium-src --strip-components=1 \
