@@ -32,8 +32,8 @@ references:
     resource_class: large
     working_directory: ~/aeternity
     environment:
-      OTP_VERSION: 22.3.4.10
-  container_otp_plt: &container_otp_plt _build/default/rebar3_22.3.4.10_plt
+      OTP_VERSION: 22.3.4.9
+  container_otp_plt: &container_otp_plt _build/default/rebar3_22.3.4.9_plt
 
   container_otp21_config: &container_otp21_config
     docker:
@@ -89,7 +89,7 @@ references:
       name: Install OTP
       environment:
         # See minimum_otp_vsn in rebar.config
-        OTP_VERSION: 22.3.4.10
+        OTP_VERSION: 22.3.4.9
       command: |
         # Install OTP package deps
         sudo apt-get update && sudo apt-get install libwxbase3.0-dev libwxgtk3.0-dev libsctp1
