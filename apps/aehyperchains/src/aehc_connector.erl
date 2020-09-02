@@ -41,7 +41,7 @@ block(Num, Hash, PrevHash, Txs) when
 -spec send_tx(Payload::binary()) ->
                     ok | {error, {term(), term()}}.
 send_tx(Payload) ->
-    Con = connector(), %% TODO To ask via config;
+    Con = connector(),
     try
         ok = Con:send_tx(Payload)
     catch E:R ->
