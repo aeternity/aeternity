@@ -126,7 +126,7 @@ references:
     restore_cache:
       key: *build_cache_key
 
-  build_otp21_cache_key: &build_otp21_cache_key build-otp21-cache-v1-{{ .Revision }}
+  build_otp21_cache_key: &build_otp21_cache_key build-otp21-cache-v2-{{ .Revision }}
   restore_build_otp21_cache: &restore_build_otp21_cache
     restore_cache:
       key: *build_otp21_cache_key
