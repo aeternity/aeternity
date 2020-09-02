@@ -120,7 +120,7 @@ stop() ->
     end.
 
 
--spec simulator(Opts) -> simulator().
+-spec simulator(map()) -> simulator().
 %%
 %% Simulator type. default is used mostly in test suites.
 %% parent_chain is used to run the process as attached "parent chain"
@@ -440,7 +440,7 @@ announce(ForkId, Txs, #{ forks := Forks } = Chain, Opts) ->
     Height = length(Blocks) + 1,
     Type = aec_headers:type(Hdr),
     Origin = origin(Type),
-    Info = #{ pid = self(),
+    Info = #{ pid => self(),
               block_hash   => TopHash
             , block_type   => Type
             , block_origin => Origin
