@@ -4,7 +4,7 @@
 
 -export([send_tx/1, get_block/1]).
 -export([tx/2, block/4]).
--export([publish_block/1, subscribe/0]).
+-export([publish_block/1, subscribe_block/0]).
 
 -type connector() :: atom().
 
@@ -16,7 +16,7 @@
 %%%  Parent chain simplified proto
 %%%===================================================================
 
--record(tx, { sender :: binary(), payload :: binary() }).
+-record(tx, { sender_id :: binary(), payload :: binary() }).
 
 -type tx() :: #tx{}.
 
@@ -25,9 +25,9 @@
 -type block() :: #block{}.
 
 -spec tx(Sender::binary(), Payload::binary()) -> tx().
-tx(Sender, Payload) when
-      is_binary(Sender), is_binary(Payload) ->
-    #tx{ sender = Sender, payload = Payload }.
+tx(SenderId, Payload) when
+      is_binary(SenderId), is_binary(Payload) ->
+    #tx{ sender_id = SenderId, payload = Payload }.
 
 -spec block(Num::integer(), Hash::binary(), PrevHash::binary(), Txs::[tx()]) -> block().
 block(Num, Hash, PrevHash, Txs) when
@@ -63,13 +63,13 @@ get_block(Num) ->
 %%%  Parent chain events
 %%%===================================================================
 
--spec subscribe() -> true.
-subscribe() ->
-    aec_events:subscribe(parent_chain).
+-spec subscribe_block() -> true.
+subscribe_block() ->
+    aec_events:subscribe({parent_chain, block}).
 
 -spec publish_block(block()) -> ok.
 publish_block(Block) ->
-    aec_events:publish(parent_chain, {block_created, Block}).
+    aec_events:publish({parent_chain, block}, {block_created, Block}).
 
 %%%===================================================================
 %%%  Proto accessors
@@ -77,8 +77,7 @@ publish_block(Block) ->
 
 %% TODO: BlockHash, etc..
 
-
+-spec connector() -> connector().
 connector() ->
     Con = aehc_app:get_connector_id(),
-    Module = binary_to_existing_atom(Con, utf8), true = (false /= code:is_loaded(Module)),
-    Module.
+    binary_to_existing_atom(Con, utf8).
