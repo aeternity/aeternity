@@ -44,15 +44,14 @@ get_block(Num) ->
 %%%  gen_server behaviour
 %%%===================================================================
 
--record(state, { pid::pid() }).
+-record(state, { pid::pid(), height = 0::non_neg_integer() }).
 
 init([]) ->
-    %% TODO: TO ask opt from config;
-    %% TODO: To make block event configured;
-    Opts = #{},
-    {ok, Pid} = aec_chain_sim:start(Opts),
-    io:fwrite("Parent chain's connector ~p is attached: ~p", [?MODULE, Pid]),
-    {ok, #state{ pid=Pid }}.
+    process_flag(trap_exit, true),
+    true = aec_events:subscribe(top_changed),
+    {ok, Pid} = aec_chain_sim:start(#{}),
+    lager:info("Parent chain's connector ~p is attached: ~p", [?MODULE, Pid]),
+    {ok, #state{ pid = Pid }}.
 
 handle_call({send_tx, Payload}, _From, State) ->
     %% The current validator credentials;
@@ -82,11 +81,38 @@ handle_call(_Request, _From, State) ->
 handle_cast(_Msg, State) ->
     {noreply, State}.
 
-handle_info(_Info, State) ->
-	{noreply, State}.
+handle_info({gproc_ps_event, {parent_chain, top_changed}, #{info := Info}}, State) ->
+    Pid = maps:get(pid, Info, undefined),
+    Height = maps:get(height, Info, 0),
+    (State#state.pid == Pid) andalso (Height > State#state.height) andalso
+        begin
+            %% TODO: To query block with data;
+            Txs = [aehc_connector:tx(sender_id(Tx), payload(Tx)) || Tx <- maps:get(txs, Info)],
+            Hash = maps:get(block_hash, Info),
+            PrevHash = maps:get(prev_hash, Info),
+            Block = aehc_connector:block(Height, Hash, PrevHash, Txs),
+            aehc_connector:publish_block(Block)
+        end,
+    {noreply, State};
+
+handle_info(Info, State) ->
+    lager:info("Unexpected message: ~p", [Info]),
+    {noreply, State}.
 
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
 
 terminate(_Reason, _State) ->
     ok.
+
+-spec payload(aetx_sign:signed_tx()) -> binary().
+payload(SignedTx) ->
+    Tx = aetx_sign:tx(SignedTx), SpendTx = aetx:tx(Tx),
+    Payload = aec_spend_tx:payload(SpendTx), true = is_binary(Payload),
+    Payload.
+
+-spec sender_id(aetx_sign:signed_tx()) -> binary().
+sender_id(SignedTx) ->
+    Tx = aetx_sign:tx(SignedTx), SpendTx = aetx:tx(Tx),
+    SenderId = aec_spend_tx:sender_id(SpendTx), true = is_binary(SenderId),
+    SenderId.
