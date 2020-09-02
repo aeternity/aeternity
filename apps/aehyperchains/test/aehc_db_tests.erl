@@ -78,7 +78,7 @@ end,
             ?assertEqual({ok, pid}, aecore_app:start(normal, [])),
 
             % Disable hyperchains
-            aehc_utils:hc_install(),
+            aehc_utils:hc_uninstall(),
             ok
        end}
      ]}.

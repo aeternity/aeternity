@@ -9,6 +9,7 @@
 -module(aehc_pogf).
 
 -export([ new/2
+        , from_db/1
         , hash/1
         ]).
 
@@ -22,20 +23,21 @@
 -include("../../aecore/include/blocks.hrl").
 -include("aehc_utils.hrl").
 
--define(POGF_VSN, 1).
-
--type pogf() :: no_pogf | #hc_pogf{}.
--export_type([pogf/0]).
-
 %% Two different keyheaders with the same prev_key pointer signed by the same leader
 -record(hc_pogf, {
         hc_header1 :: aec_headers:key_header(),
         hc_header2 :: aec_headers:key_header()
     }).
 
+-type pogf() :: no_pogf | #hc_pogf{}.
+-export_type([pogf/0]).
+
 -spec new(aec_headers:key_header(), aec_headers:key_header()) -> pogf().
 new(Header1, Header2) ->
     #hc_pogf{hc_header1 = Header1, hc_header2 = Header2}.
+
+-spec from_db(tuple()) -> pogf().
+from_db(#hc_pogf{} = PoGF) -> PoGF.
 
 -spec hash(pogf()) -> pogf_hash().
 hash(no_pogf) ->
@@ -43,7 +45,7 @@ hash(no_pogf) ->
 hash(#hc_pogf{hc_header1 = Header1, hc_header2 = Header2}) ->
     {ok, H1} = aec_headers:hash_header(Header1),
     {ok, H2} = aec_headers:hash_header(Header2),
-    aec_hash:hash(pogf, <<H1/binary, H2/binary>>).
+    aec_hash:hash(hc_pogf, <<H1/binary, H2/binary>>).
 
 -spec hc_header1(pogf()) -> aec_headers:key_header().
 hc_header1(#hc_pogf{hc_header1 = Header1}) -> Header1.

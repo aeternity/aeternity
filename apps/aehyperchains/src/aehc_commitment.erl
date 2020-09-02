@@ -8,36 +8,38 @@
 
 -module(aehc_commitment).
 
--export([]).
+-export([ new/2
+        , has_pogf/1
+        , pogf/1
+        , pogf_hash/1
+        , header/1
+        ]).
 
 -include("../../aecore/include/blocks.hrl").
 -include("aehc_utils.hrl").
 
--record(hc_commitment_header, {
-        %% Delegate who submitted the commitment
-        hc_delegate = <<0:?COMMITER_PUB_BYTES/unit:8>> :: commiter_pubkey(),
-        %% Hyperchain keyblock to which the delegate commited
-        hc_keyblock = <<0:?BLOCK_HEADER_HASH_BYTES/unit:8>> :: block_header_hash(),
-        %% Hash of PoGF object
-        hc_pogf_hash = <<0:?POGF_HASH_BYTES>> :: pogf_hash(),
-
-        %% Connector specific authorization data proving that the given delegate submitted the commitment
-        %% In the friendly case of an AE parent chain this could include the parent chain tx which includes the above data
-        %% TODO: Should this be included in the DB? This would be required if we tried to distribute the commitments in a p2p manner
-        auth_data = <<>> :: binary()
-    }).
-
 -record(hc_commitment, {
-        header :: #hc_commitment_header{},
-        hc_pogf :: aehc_pogf:pogf()
+        header :: aehc_commitment_header:commitment_header(),
+        pogf :: aehc_pogf:pogf()
     }).
+-type commitment() :: #hc_commitment{}.
+-export_type([commitment/0]).
 
--record(hc_parent_block, {
-        hash = <<>> :: binary(),
-        prev_hash = <<>> :: binary(),
-        height = 0 :: non_neg_integer(),
+new(Header, PoGF) ->
+    #hc_commitment{header = Header, pogf = PoGF}.
 
-        %% For the case of BitcoinNG parent chains those commitments were actually included in the previous generation
-        %% In other cases those are commitments which were present in the block
-        commitment_header_list = [] :: [#hc_commitment_header{}]
-    }).
+-spec has_pogf(commitment()) -> boolean().
+has_pogf(#hc_commitment{pogf = no_pogf}) -> false;
+has_pogf(#hc_commitment{pogf = _}) -> true.
+
+-spec pogf(commitment()) -> aehc_pogf:pogf().
+pogf(#hc_commitment{pogf = PoGF}) ->
+    PoGF.
+
+-spec pogf(commitment()) -> pogf_hash().
+pogf_hash(#hc_commitment{header = Header}) ->
+    aehc_commitment_header:hc_pogf_hash(Header).
+
+-spec header(commitment()) -> aehc_commitment_header:commitment_header().
+header(#hc_commitment{header = Header}) ->
+    Header.
