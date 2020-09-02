@@ -530,7 +530,7 @@
                                 "id": {
                                     "description": "Parent chain interface provider",
                                     "type": "string",
-                                    "default": "hyperchains_aeconnector"
+                                    "default": "aehc_aeternity_connector"
                                 }
                             }
                         }
