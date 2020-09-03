@@ -153,7 +153,7 @@ references:
         - "_build"
         - ".contracts_test_cache"
 
-  macos_package_cache_key: &macos_package_cache_key macos-package-cache-v3
+  macos_package_cache_key: &macos_package_cache_key macos-package-cache-v4
   restore_macos_package_cache: &restore_macos_package_cache
     restore_cache:
       key: *macos_package_cache_key
@@ -328,7 +328,7 @@ references:
   test_steps: &test_steps
     - checkout
     - *restore_rebar_cache
-    - *restore_build_cache
+    - *restore_build_otp21_cache
     - run:
         name: Test
         command: |
@@ -351,7 +351,7 @@ references:
   eunit_steps: &eunit_steps
     - checkout
     - *restore_rebar_cache
-    - *restore_build_cache
+    - *restore_build_otp21_cache
     - run:
         name: Test
         command: |
@@ -759,7 +759,7 @@ jobs:
     steps:
       - checkout
       - *restore_rebar_cache
-      - *restore_build_cache
+      - *restore_build_otp21_cache
       - run:
           name: AEVM Tests
           command: |
@@ -774,7 +774,7 @@ jobs:
       - checkout
       - run: make dockerignore-check
       - *restore_rebar_cache
-      - *restore_build_cache
+      - *restore_build_otp21_cache
       - run: ./rebar3 edoc
       - restore_cache:
           keys:
