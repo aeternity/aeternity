@@ -124,12 +124,12 @@
 
 -define(KEEP, 10).
 
--define(TRANSITION_STATE(S),  S=:=awaiting_signature
-                            ; S=:=awaiting_open
-                            ; S=:=awaiting_locked
-                            ; S=:=awaiting_update_ack
-                            ; S=:=awaiting_leave_ack
-                            ; S=:=mutual_closing ).
+-define(TRANSITION_STATE(S), S =:= awaiting_signature
+                           ; S =:= awaiting_open
+                           ; S =:= awaiting_locked
+                           ; S =:= awaiting_update_ack
+                           ; S =:= awaiting_leave_ack
+                           ; S =:= mutual_closing ).
 
 -record(bh_delta, { not_older_than  :: integer()
                   , not_newer_than  :: integer()

@@ -702,11 +702,17 @@ awaiting_signature(cast, {?SIGNED, Tag, {error, Code}} = Msg,
     lager:debug("Error code as signing reply (Tag = ~p): ~p", [Tag, Code]),
     D1 = log(rcv, msg_type(Msg), Msg, D),
     handle_recoverable_error(#{code => Code, msg_type => Tag}, D1);
-awaiting_signature(cast, {Req, _} = Msg, #data{ongoing_update = true} = D)
+awaiting_signature(cast, {Req, _} = Msg, #data{ ongoing_update = true
+                                              , op = Op} = D)
   when ?UPDATE_CAST(Req) ->
-    %% Race detection!
-    lager:debug("race detected: ~p", [Msg]),
-    handle_update_conflict(Req, D);
+    case is_solo_tx_from_op(Op) of
+        false ->
+            %% Race detection!
+            lager:debug("race detected: ~p", [Msg]),
+            handle_update_conflict(Req, D);
+        true ->
+            postpone(D)
+    end;
 awaiting_signature(cast, {?SIGNED, slash_tx, SignedTx} = Msg,
                    #data{op = #op_sign{tag = slash_tx}} = D) ->
     lager:debug("slash_tx signed", []),
@@ -921,11 +927,17 @@ awaiting_signature(Type, Msg, D) ->
 
 awaiting_update_ack(enter, _OldSt, _D) ->
     keep_state_and_data;
-awaiting_update_ack(cast, {Req, _} = Msg, #data{} = D) when ?UPDATE_CAST(Req) ->
+awaiting_update_ack(cast, {Req, _} = Msg, #data{op = Op} = D) when ?UPDATE_CAST(Req) ->
     %% This might happen if a request is sent before our signed ?UPDATE msg
     %% arrived.
-    lager:debug("race detected: ~p", [Msg]),
-    handle_update_conflict(Req, D);
+    case is_solo_tx_from_op(Op) of
+        false ->
+            %% Race detection!
+            lager:debug("race detected: ~p", [Msg]),
+            handle_update_conflict(Req, D);
+        true ->
+            postpone(D)
+    end;
 awaiting_update_ack(cast, {?UPDATE_ACK, Msg}, #data{} = D) ->
     case check_update_ack_msg(Msg, D) of
         {ok, D1} ->
@@ -1591,12 +1603,7 @@ send_channel_accept(#data{ opts = Opts
     Data#data{log = log_msg(snd, ?CH_ACCEPT, Msg, Data#data.log)}.
 
 check_accept_msg(#{ chain_hash             := ChainHash
-                  , temporary_channel_id   := ChanId
-                  , initiator_amount       := _InitiatorAmt
-                  , responder_amount       := _ResponderAmt
-                  , channel_reserve        := _ChanReserve
-                  , initiator              := Initiator
-                  , responder              := Responder } = Msg,
+                  , temporary_channel_id   := ChanId } = Msg,
                  #data{ channel_id = ChanId
                       , opts = Opts
                       , log = Log } = Data) ->
@@ -1604,8 +1611,7 @@ check_accept_msg(#{ chain_hash             := ChainHash
     case aec_chain:genesis_hash() of
         ChainHash ->
             Log1 = log_msg(rcv, ?CH_ACCEPT, Msg, Log),
-            Opts1 = Opts#{initiator => Initiator , responder => Responder},
-            Data1 = Data#data{ opts = Opts1
+            Data1 = Data#data{ opts = Opts
                              , log = Log1
                              , peer_connected = true },
             {data, Data2} = chk_mindepth_opts(Msg, undefined, Data1),
@@ -4626,14 +4632,19 @@ handle_call_(open, {upd_call_contract, Opts, ExecType}, From,
         process_update_error(E, From, D)
     end;
 handle_call_(awaiting_signature, Req, From,
-             #data{ongoing_update = true} = D)
+             #data{ongoing_update = true, op = Op} = D)
   when ?UPDATE_REQ(element(1, Req)) ->
     %% Race detection!
     lager:debug("race detected: ~p", [Req]),
-    #op_sign{tag = OngoingOp} = D#data.op,
-    lager:debug("calling handle_update_conflict", []),
-    gen_statem:reply(From, ok),
-    handle_update_conflict(OngoingOp, D#data{op = ?NO_OP});
+    #op_sign{tag = OngoingOp} = Op,
+    case is_solo_tx_from_op(Op) of
+        false ->
+            lager:debug("calling handle_update_conflict", []),
+            gen_statem:reply(From, ok),
+            handle_update_conflict(OngoingOp, D#data{op = ?NO_OP});
+        true ->
+            postpone(D)
+    end;
 handle_call_(open, {get_contract_call, Contract, Caller, Round}, From,
              #data{state = State} = D) ->
     Response =
@@ -4901,8 +4912,15 @@ handle_common_event(E, Msg, M, #data{cur_statem_state = St} = D) ->
 handle_common_event_(timeout, Info, _St, _M, D) when D#data.ongoing_update == true ->
     lager:debug("timeout (~p) - recovering (~p)", [Info, D#data.error_msg_type]),
     handle_recoverable_error(#{code => ?ERR_TIMEOUT}, D);
-handle_common_event_(timeout, St = T, St, _, D) ->
-    close({timeout, T}, D);
+handle_common_event_(timeout, St = T, St, _, #data{ role = Role
+                                                  , opts = Opts } = D) ->
+    KeepRunning = maps:get(keep_running, Opts, false),
+    case KeepRunning andalso D#data.role =:= responder of
+        true ->
+            keep_state(D);
+        false ->
+            close({timeout, T}, D)
+    end;
 handle_common_event_(cast, ?DISCONNECT = Msg, _St, _, #data{ channel_status = Status
                                                            , client_may_disconnect = MayDisconnect
                                                            , role = Role
@@ -5026,20 +5044,27 @@ was_fork_activated(ProtocolVSN) ->
     Height = max(curr_height() - ?FORK_MINIMUM_DEPTH, aec_block_genesis:height()),
     ProtocolVSN =< protocol_at_height(Height).
 
-block_hash_from_op(#op_sign{data = #op_data{block_hash = BlockHash}}) ->
-    BlockHash;
-block_hash_from_op(#op_ack{data = #op_data{block_hash = BlockHash}}) ->
-    BlockHash;
-block_hash_from_op(#op_lock{data = #op_data{block_hash = BlockHash}}) ->
-    BlockHash;
-block_hash_from_op(#op_min_depth{data = #op_data{block_hash = BlockHash}}) ->
-    BlockHash;
-block_hash_from_op(#op_watch{data = #op_data{block_hash = BlockHash}}) ->
-    BlockHash;
-block_hash_from_op(#op_close{data = #op_data{block_hash = BlockHash}}) ->
-    BlockHash;
 block_hash_from_op(?NO_OP) -> %% in case of unexpected close
-    ?NOT_SET_BLOCK_HASH.
+    ?NOT_SET_BLOCK_HASH;
+block_hash_from_op(Op) ->
+    #op_data{block_hash = BlockHash} = op_data_from_op(Op),
+    BlockHash.
+
+is_solo_tx_from_op(?NO_OP) ->
+    false;
+is_solo_tx_from_op(Op) ->
+    #op_data{signed_tx = SignedTx} = op_data_from_op(Op),
+    {Mod, _Tx} = aetx:specialize_callback(aetx_sign:innermost_tx(SignedTx)),
+    lists:member(Mod, ?SOLO_TRANSACTIONS).
+
+
+
+op_data_from_op(#op_sign{data = OpData}) -> OpData;
+op_data_from_op(#op_ack{data = OpData}) -> OpData;
+op_data_from_op(#op_lock{data = OpData}) -> OpData;
+op_data_from_op(#op_min_depth{data = OpData}) -> OpData;
+op_data_from_op(#op_watch{data = OpData}) -> OpData;
+op_data_from_op(#op_close{data = OpData}) -> OpData.
 
 tx_env_and_trees_from_top(Type) ->
     aesc_tx_env_cache:tx_env_and_trees_from_top(Type).

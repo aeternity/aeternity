@@ -30,7 +30,6 @@
     sc_ws_conflict_withdrawal_and_offchain_update/1,
     sc_ws_conflict_withdrawal_and_deposit/1,
     sc_ws_conflict_two_withdrawals/1,
-    sc_ws_conflict_snapshot_and_offchain_update/1,
     sc_ws_conflict_on_new_offchain/1,
     sc_ws_update_abort/1,
     sc_ws_snapshot_solo/1,
@@ -43,6 +42,7 @@
     sc_ws_leave_reestablish_wrong_fsm_id/1,
     sc_ws_leave_reestablish_responder_stays/1,
     sc_ws_leave_reconnect/1,
+    sc_ws_leave_responder_does_not_timeout/1,
     sc_ws_ping_pong/1,
     sc_ws_opening_ping_pong/1,
     sc_ws_deposit/1,
@@ -183,12 +183,7 @@ groups() ->
         sc_ws_close_solo,
         %% fsm informs of slash potential
         sc_ws_slash,
-        %% possible to leave and reestablish channel
-        sc_ws_leave_reestablish,
-        sc_ws_leave_reestablish_wrong_fsm_id,
-        sc_ws_leave_reestablish_responder_stays,
-        sc_ws_leave_reconnect,
-        sc_ws_reconnect_early,
+        {group, reconnects},
         {group, force_progress},
         {group, with_open_channel},
         {group, with_meta},
@@ -242,8 +237,7 @@ groups() ->
       ]},
      {only_one_signs, [sequence],
       [ sc_ws_conflict_on_new_offchain,
-        {group, conflicts},
-        sc_ws_conflict_snapshot_and_offchain_update
+        {group, conflicts}
       ]
      },
      {both_sign, [sequence],
@@ -311,6 +305,16 @@ groups() ->
      {force_progress, [sequence],
       [ sc_ws_force_progress_based_on_offchain_state
       , sc_ws_force_progress_based_on_onchain_state
+      ]},
+
+      %% possible to leave and reestablish channel
+     {reconnects, [sequence],
+      [ sc_ws_leave_reestablish
+      , sc_ws_leave_reestablish_wrong_fsm_id
+      , sc_ws_leave_reestablish_responder_stays
+      , sc_ws_leave_reconnect
+      , sc_ws_reconnect_early
+      , sc_ws_leave_responder_does_not_timeout
       ]}
     ].
 
@@ -503,7 +507,6 @@ end_per_group(_Grp, _Config) ->
                    sc_ws_conflict_withdrawal_and_offchain_update,
                    sc_ws_conflict_withdrawal_and_deposit,
                    sc_ws_conflict_two_withdrawals,
-                   sc_ws_conflict_snapshot_and_offchain_update,
                    sc_ws_conflict_on_new_offchain,
                    sc_ws_basic_contracts, sc_ws_oracle_contract, sc_ws_nameservice_contract,
                    sc_ws_environment_contract, sc_ws_remote_call_contract,
@@ -3447,14 +3450,6 @@ sc_ws_conflict_two_withdrawals(Config) ->
         fun(_Alice, _Bob) -> withdraw_params(_Amt2 = 1) end,
         Config).
 
-sc_ws_conflict_snapshot_and_offchain_update(Config) ->
-    _Round1 = sc_ws_update_basic_round_(_Round0 = 2, Config),
-    %% TODO: there shouldn't be a conflict in unilateral txs, GH-3155
-    sc_ws_conflict_(
-        fun(Alice, Bob) -> update_params(Alice, Bob, _Amt1 = 1) end,
-        fun(_Alice, _Bob) -> snapshot_params() end,
-        Config).
-
 sc_ws_conflict_on_new_offchain(Config) ->
     sc_ws_conflict_new_tx_(
         fun(_Alice, _Bob) -> withdraw_params(_Amt1 = 1) end,
@@ -4048,7 +4043,7 @@ channel_ws_start(Role, Opts, Config) ->
 
 -spec channel_ws_start(initiator | responder, map(), list(), list(atom())) ->
     {ok, pid(), binary()} | {error, term()}.
- channel_ws_start(Role, Opts, Config, Events) ->
+channel_ws_start(Role, Opts, Config, Events) ->
     LogFile = docs_log_file(Config),
     channel_ws_start(Role, Opts, Config, Events, LogFile).
 
@@ -4145,6 +4140,8 @@ log_basename(Config) ->
                 filename:join([Protocol, "changeable_nonce"]);
             force_progress ->
                 filename:join([Protocol, "force_progress"]);
+            reconnects ->
+                filename:join([Protocol, "reconnects"]);
             plain -> Protocol
         end,
     filename:join("channel_docs", SubDir).
@@ -4664,8 +4661,8 @@ account_type(Pubkey) ->
 
 sc_ws_test_broken_params(Role, Config, Opts, Error, Config) ->
     {error, Error} = channel_ws_start(Role,
-                                       maps:put(host, <<"localhost">>,
-                                                Opts), [{slogan, ?SLOGAN}|Config]).
+                                      maps:put(host, <<"localhost">>,
+                                               Opts), [{slogan, ?SLOGAN}|Config]).
 
 sc_ws_broken_open_params(Config) ->
     #{ initiator := #{pub_key := IPubkey}
@@ -5717,3 +5714,30 @@ get_channel(ChannelId) ->
         {ok, _Channel} = OK -> OK;
         {error, _} = Err -> Err
     end.
+
+sc_ws_leave_responder_does_not_timeout(Config0) ->
+    ct:log("opening channel", []),
+    ct:log("Config0 = ~p", [Config0]),
+    IdleTimeout = 1000,
+    Config = sc_ws_open_([{slogan, ?SLOGAN}|Config0],
+                         #{ responder_opts => #{keep_running => true}
+                          , timeout_idle => IdleTimeout}),
+    #{ responder_fsm_id := RFsmId
+     , responder        := RConnPid } = proplists:get_value(channel_clients, Config),
+    ct:log("channel opened", []),
+    ct:log("Config = ~p", [Config]),
+    ct:log("*** Leaving channel ***", []),
+
+    Config1 = [{responder_leaves, false}|Config],
+    ct:log("Config1 = ~p", [Config1]),
+    ReestablishOptions = sc_ws_leave_(Config1),
+
+    timer:sleep(IdleTimeout + 100),
+    ping_pong(RConnPid, Config),
+    Config2 = reconnect_client_(ReestablishOptions, initiator,
+                                [{reconnect_scenario, reestablish} | Config1]),
+    ct:log("*** Verifying that channel is operational ***", []),
+    ok = sc_ws_update_(Config2),
+    ct:log("*** Closing ... ***", []),
+    ok = sc_ws_close_(Config2).
+

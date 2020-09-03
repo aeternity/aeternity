@@ -101,7 +101,7 @@ endif
 export AEVM_EXTERNAL_TEST_DIR=aevm_external
 export AEVM_EXTERNAL_TEST_VERSION=348b0633f4a6ee3c100368bf0f4fca71394b4d01
 
-console:
+console: $(SWAGGER_ENDPOINTS_SPEC)
 	@$(REBAR) as local shell --config config/dev.config --sname aeternity@localhost
 
 local-build: KIND=local
