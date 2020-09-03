@@ -44,6 +44,15 @@ references:
       OTP_VERSION: 21.3.8.11
   container_otp21_plt: &container_otp21_plt _build/default/rebar3_21.3.8.11_plt
 
+  container_otp22_config: &container_otp22_config
+    docker:
+      - image: aeternity/builder:otp22
+        user: builder
+    working_directory: ~/aeternity
+    environment:
+      OTP_VERSION: 22.3.4.9
+  container_otp22_plt: &container_otp22_plt _build/default/rebar3_22.3.4.9_plt
+
   infrastructure_config_environment: &infrastructure_config_environment
     DOCKERHUB_REPO: aeternity/aeternity
     S3_BUILDS_BUCKET: aeternity-node-builds
@@ -130,6 +139,11 @@ references:
   restore_build_otp21_cache: &restore_build_otp21_cache
     restore_cache:
       key: *build_otp21_cache_key
+
+  build_otp22_cache_key: &build_otp22_cache_key build-otp22-cache-v1-{{ .Revision }}
+  restore_build_otp22_cache: &restore_build_otp22_cache
+    restore_cache:
+      key: *build_otp22_cache_key
 
   build_nix_cache_key: &build_nix_cache_key build-nix-cache-v1-{{ .Revision }}
   restore_build_nix_cache: &restore_build_nix_cache
@@ -632,6 +646,26 @@ jobs:
       - *store_rebar3_crashdump
       - *fail_notification
 
+  build_otp22:
+    executor: builder_container_stable
+    <<: *container_otp22_config
+    steps:
+      - checkout
+      - *restore_rebar_cache
+      - run:
+          name: Build
+          command: make KIND=test
+      - save_cache:
+          key: *build_otp22_cache_key
+          paths:
+            - "_build"
+      - save_cache:
+          key: *rebar_cache_key
+          paths:
+            - .cache/rebar3
+      - *store_rebar3_crashdump
+      - *fail_notification
+
   build_nix:
     executor: builder_container_nix_alpine
     <<: *container_config
@@ -695,6 +729,14 @@ jobs:
   test_latest_otp21:
     executor: builder_container_stable
     <<: *container_otp21_config
+    parallelism: 3
+    environment:
+      - MAKE_TARGET: ct-latest
+    steps: *test_steps
+
+  test_latest_otp22:
+    executor: builder_container_stable
+    <<: *container_otp22_config
     parallelism: 3
     environment:
       - MAKE_TARGET: ct-latest
@@ -816,6 +858,35 @@ jobs:
           key: dialyzer-otp21-cache-v2-{{ .Branch }}-{{ .Revision }}
           paths:
             - *container_otp21_plt
+      - run:
+          name: Run dialyzer
+          no_output_timeout: 20m
+          command: make dialyzer
+      - run:
+          name: Check OTP version (for effective CI caching)
+          # How to retrieve OTP version in installed OTP development system: http://erlang.org/doc/system_principles/versions.html
+          command: test "${OTP_VERSION:?}" = $(cat $(erl -noinput -eval 'io:format("~s", [filename:join([code:root_dir(), "releases", erlang:system_info(otp_release), "OTP_VERSION"])]), init:stop().'))
+      - *store_rebar3_crashdump
+      - *fail_notification
+
+  static_analysis_otp22:
+    <<: *container_otp22_config
+    steps:
+      - checkout
+      - *restore_rebar_cache
+      - *restore_build_otp22_cache
+      - restore_cache:
+          keys:
+            - dialyzer-otp22-cache-v1-{{ .Branch }}-{{ .Revision }}
+            - dialyzer-otp22-cache-v1-{{ .Branch }}-
+            - dialyzer-otp22-cache-v1-
+      - run:
+          name: Update dialyzer PLT
+          command: make dialyzer-install
+      - save_cache:
+          key: dialyzer-otp22-cache-v1-{{ .Branch }}-{{ .Revision }}
+          paths:
+            - *container_otp22_plt
       - run:
           name: Run dialyzer
           no_output_timeout: 20m
