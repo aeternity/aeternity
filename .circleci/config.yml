@@ -1289,6 +1289,14 @@ workflows:
                 - env/dev2
                 - system-tests
 
+      - build_otp22:
+          filters:
+            branches:
+              ignore:
+                - env/dev1
+                - env/dev2
+                - system-tests
+
       - build_nix:
           filters:
             branches:
@@ -1368,6 +1376,16 @@ workflows:
       - test_latest_otp21:
           requires:
             - build_otp21
+          filters:
+            branches:
+              ignore:
+                - env/dev1
+                - env/dev2
+                - system-tests
+
+      - test_latest_otp22:
+          requires:
+            - build_otp22
           filters:
             branches:
               ignore:
@@ -1485,6 +1503,16 @@ workflows:
       - static_analysis_otp21:
           requires:
             - build_otp21
+          filters:
+            branches:
+              ignore:
+                - env/dev1
+                - env/dev2
+                - system-tests
+
+      - static_analysis_otp22:
+          requires:
+            - build_otp22
           filters:
             branches:
               ignore:
