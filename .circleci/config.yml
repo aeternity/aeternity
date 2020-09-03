@@ -414,7 +414,7 @@ commands:
       - run:
           name: Build branch docker image
           command: |
-            docker pull aeternity/builder
+            docker pull aeternity/builder:otp21
             docker build -t ${DOCKERHUB_REPO:?}:${CIRCLE_BRANCH/\//_} .
       - run:
           name: Start branch docker image
