@@ -32,8 +32,8 @@ references:
     resource_class: large
     working_directory: ~/aeternity
     environment:
-      OTP_VERSION: 22.3.4.9
-  container_otp_plt: &container_otp_plt _build/default/rebar3_22.3.4.9_plt
+      OTP_VERSION: 20.3.8.24
+  container_otp_plt: &container_otp_plt _build/default/rebar3_20.3.8.24_plt
 
   container_otp21_config: &container_otp21_config
     docker:
