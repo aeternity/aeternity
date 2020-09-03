@@ -123,12 +123,7 @@ references:
     restore_cache:
       key: *rebar_cache_key
 
-  build_cache_key: &build_cache_key build-cache-v2-{{ .Revision }}
-  restore_build_cache: &restore_build_cache
-    restore_cache:
-      key: *build_cache_key
-
-  build_otp21_cache_key: &build_otp21_cache_key build-otp21-cache-v2-{{ .Revision }}
+  build_otp21_cache_key: &build_otp21_cache_key build-otp21-cache-v3-{{ .Revision }}
   restore_build_otp21_cache: &restore_build_otp21_cache
     restore_cache:
       key: *build_otp21_cache_key
@@ -143,13 +138,13 @@ references:
     restore_cache:
       key: *build_nix_cache_key
 
-  machine_build_cache_key: &machine_build_cache_key machine-build-cache-v9-{{ .Branch }}-{{ .Revision }}
+  machine_build_cache_key: &machine_build_cache_key machine-build-cache-v10-{{ .Branch }}-{{ .Revision }}
   restore_machine_build_cache: &restore_machine_build_cache
     restore_cache:
       keys:
         - *machine_build_cache_key
-        - machine-build-cache-v9-{{ .Branch }}-
-        - machine-build-cache-v9-
+        - machine-build-cache-v10-{{ .Branch }}-
+        - machine-build-cache-v10-
 
   save_machine_build_cache: &save_machine_build_cache
     save_cache:
@@ -609,7 +604,7 @@ jobs:
           name: Build
           command: make KIND=test
       - save_cache:
-          key: *build_cache_key
+          key: *build_otp21_cache_key
           paths:
             - "_build"
       - save_cache:
