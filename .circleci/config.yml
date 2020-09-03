@@ -28,21 +28,23 @@ executors:
       DOCKERHUB_REPO: aeternity/aeternity
 
 references:
-  container_config: &container_config
-    resource_class: large
-    working_directory: ~/aeternity
-    environment:
-      OTP_VERSION: 20.3.8.24
-  container_otp_plt: &container_otp_plt _build/default/rebar3_20.3.8.24_plt
-
   container_otp21_config: &container_otp21_config
     docker:
       - image: aeternity/builder:otp21
         user: builder
     working_directory: ~/aeternity
     environment:
-      OTP_VERSION: 21.3.8.11
-  container_otp21_plt: &container_otp21_plt _build/default/rebar3_21.3.8.11_plt
+      OTP_VERSION: 21.3.8.17
+  container_otp21_plt: &container_otp21_plt _build/default/rebar3_21.3.8.17_plt
+
+  container_otp22_config: &container_otp22_config
+    docker:
+      - image: aeternity/builder:otp22
+        user: builder
+    working_directory: ~/aeternity
+    environment:
+      OTP_VERSION: 22.3.4.9
+  container_otp22_plt: &container_otp22_plt _build/default/rebar3_22.3.4.9_plt
 
   infrastructure_config_environment: &infrastructure_config_environment
     DOCKERHUB_REPO: aeternity/aeternity
@@ -89,7 +91,7 @@ references:
       name: Install OTP
       environment:
         # See minimum_otp_vsn in rebar.config
-        OTP_VERSION: 20.3.8.24
+        OTP_VERSION: 21.3.8.17
       command: |
         # Install OTP package deps
         sudo apt-get update && sudo apt-get install libwxbase3.0-dev libwxgtk3.0-dev libsctp1
@@ -121,28 +123,28 @@ references:
     restore_cache:
       key: *rebar_cache_key
 
-  build_cache_key: &build_cache_key build-cache-v1-{{ .Revision }}
-  restore_build_cache: &restore_build_cache
-    restore_cache:
-      key: *build_cache_key
-
-  build_otp21_cache_key: &build_otp21_cache_key build-otp21-cache-v1-{{ .Revision }}
+  build_otp21_cache_key: &build_otp21_cache_key build-otp21-cache-v3-{{ .Revision }}
   restore_build_otp21_cache: &restore_build_otp21_cache
     restore_cache:
       key: *build_otp21_cache_key
+
+  build_otp22_cache_key: &build_otp22_cache_key build-otp22-cache-v1-{{ .Revision }}
+  restore_build_otp22_cache: &restore_build_otp22_cache
+    restore_cache:
+      key: *build_otp22_cache_key
 
   build_nix_cache_key: &build_nix_cache_key build-nix-cache-v1-{{ .Revision }}
   restore_build_nix_cache: &restore_build_nix_cache
     restore_cache:
       key: *build_nix_cache_key
 
-  machine_build_cache_key: &machine_build_cache_key machine-build-cache-v9-{{ .Branch }}-{{ .Revision }}
+  machine_build_cache_key: &machine_build_cache_key machine-build-cache-v10-{{ .Branch }}-{{ .Revision }}
   restore_machine_build_cache: &restore_machine_build_cache
     restore_cache:
       keys:
         - *machine_build_cache_key
-        - machine-build-cache-v9-{{ .Branch }}-
-        - machine-build-cache-v9-
+        - machine-build-cache-v10-{{ .Branch }}-
+        - machine-build-cache-v10-
 
   save_machine_build_cache: &save_machine_build_cache
     save_cache:
@@ -151,7 +153,7 @@ references:
         - "_build"
         - ".contracts_test_cache"
 
-  macos_package_cache_key: &macos_package_cache_key macos-package-cache-v3
+  macos_package_cache_key: &macos_package_cache_key macos-package-cache-v4
   restore_macos_package_cache: &restore_macos_package_cache
     restore_cache:
       key: *macos_package_cache_key
@@ -326,7 +328,7 @@ references:
   test_steps: &test_steps
     - checkout
     - *restore_rebar_cache
-    - *restore_build_cache
+    - *restore_build_otp21_cache
     - run:
         name: Test
         command: |
@@ -349,7 +351,7 @@ references:
   eunit_steps: &eunit_steps
     - checkout
     - *restore_rebar_cache
-    - *restore_build_cache
+    - *restore_build_otp21_cache
     - run:
         name: Test
         command: |
@@ -412,7 +414,7 @@ commands:
       - run:
           name: Build branch docker image
           command: |
-            docker pull aeternity/builder
+            docker pull aeternity/builder:otp21
             docker build -t ${DOCKERHUB_REPO:?}:${CIRCLE_BRANCH/\//_} .
       - run:
           name: Start branch docker image
@@ -594,26 +596,6 @@ commands:
 jobs:
   build:
     executor: builder_container_stable
-    <<: *container_config
-    steps:
-      - checkout
-      - *restore_rebar_cache
-      - run:
-          name: Build
-          command: make KIND=test
-      - save_cache:
-          key: *build_cache_key
-          paths:
-            - "_build"
-      - save_cache:
-          key: *rebar_cache_key
-          paths:
-            - .cache/rebar3
-      - *store_rebar3_crashdump
-      - *fail_notification
-
-  build_otp21:
-    executor: builder_container_stable
     <<: *container_otp21_config
     steps:
       - checkout
@@ -632,9 +614,29 @@ jobs:
       - *store_rebar3_crashdump
       - *fail_notification
 
+  build_otp22:
+    executor: builder_container_stable
+    <<: *container_otp22_config
+    steps:
+      - checkout
+      - *restore_rebar_cache
+      - run:
+          name: Build
+          command: make KIND=test
+      - save_cache:
+          key: *build_otp22_cache_key
+          paths:
+            - "_build"
+      - save_cache:
+          key: *rebar_cache_key
+          paths:
+            - .cache/rebar3
+      - *store_rebar3_crashdump
+      - *fail_notification
+
   build_nix:
     executor: builder_container_nix_alpine
-    <<: *container_config
+    <<: *container_otp21_config
     steps:
       - checkout
       - *restore_rebar_cache
@@ -654,7 +656,7 @@ jobs:
 
   test_roma:
     executor: builder_container_stable
-    <<: *container_config
+    <<: *container_otp21_config
     parallelism: 3
     environment:
       - MAKE_TARGET: ct-roma
@@ -662,7 +664,7 @@ jobs:
 
   test_minerva:
     executor: builder_container_stable
-    <<: *container_config
+    <<: *container_otp21_config
     parallelism: 3
     environment:
       - MAKE_TARGET: ct-minerva
@@ -670,7 +672,7 @@ jobs:
 
   test_fortuna:
     executor: builder_container_stable
-    <<: *container_config
+    <<: *container_otp21_config
     parallelism: 3
     environment:
       - MAKE_TARGET: ct-fortuna
@@ -678,7 +680,7 @@ jobs:
 
   test_lima:
     executor: builder_container_stable
-    <<: *container_config
+    <<: *container_otp21_config
     parallelism: 3
     environment:
       - MAKE_TARGET: ct-lima
@@ -686,15 +688,15 @@ jobs:
 
   test_latest:
     executor: builder_container_stable
-    <<: *container_config
+    <<: *container_otp21_config
     parallelism: 3
     environment:
       - MAKE_TARGET: ct-latest
     steps: *test_steps
 
-  test_latest_otp21:
+  test_latest_otp22:
     executor: builder_container_stable
-    <<: *container_otp21_config
+    <<: *container_otp22_config
     parallelism: 3
     environment:
       - MAKE_TARGET: ct-latest
@@ -702,7 +704,7 @@ jobs:
 
   test_mnesia_leveled:
     executor: builder_container_stable
-    <<: *container_config
+    <<: *container_otp21_config
     parallelism: 3
     environment:
       - MAKE_TARGET: ct-mnesia-leveled
@@ -710,7 +712,7 @@ jobs:
 
   test_mnesia_rocksdb:
     executor: builder_container_stable
-    <<: *container_config
+    <<: *container_otp21_config
     parallelism: 3
     environment:
       - MAKE_TARGET: ct-mnesia-rocksdb
@@ -718,46 +720,46 @@ jobs:
 
   eunit_roma:
     executor: builder_container_stable
-    <<: *container_config
+    <<: *container_otp21_config
     environment:
       - MAKE_TARGET: eunit-roma
     steps: *eunit_steps
 
   eunit_minerva:
     executor: builder_container_stable
-    <<: *container_config
+    <<: *container_otp21_config
     environment:
       - MAKE_TARGET: eunit-minerva
     steps: *eunit_steps
 
   eunit_fortuna:
     executor: builder_container_stable
-    <<: *container_config
+    <<: *container_otp21_config
     environment:
       - MAKE_TARGET: eunit-fortuna
     steps: *eunit_steps
 
   eunit_lima:
     executor: builder_container_stable
-    <<: *container_config
+    <<: *container_otp21_config
     environment:
       - MAKE_TARGET: eunit-lima
     steps: *eunit_steps
 
   eunit_latest:
     executor: builder_container_stable
-    <<: *container_config
+    <<: *container_otp21_config
     environment:
       - MAKE_TARGET: eunit-latest
     steps: *eunit_steps
 
   aevm_tests:
     executor: builder_container_stable
-    <<: *container_config
+    <<: *container_otp21_config
     steps:
       - checkout
       - *restore_rebar_cache
-      - *restore_build_cache
+      - *restore_build_otp21_cache
       - run:
           name: AEVM Tests
           command: |
@@ -767,25 +769,25 @@ jobs:
 
   static_analysis:
     executor: builder_container_stable
-    <<: *container_config
+    <<: *container_otp21_config
     steps:
       - checkout
       - run: make dockerignore-check
       - *restore_rebar_cache
-      - *restore_build_cache
+      - *restore_build_otp21_cache
       - run: ./rebar3 edoc
       - restore_cache:
           keys:
-            - dialyzer-cache-v2-{{ .Branch }}-{{ .Revision }}
-            - dialyzer-cache-v2-{{ .Branch }}-
-            - dialyzer-cache-v2-
+            - dialyzer-cache-v3-{{ .Branch }}-{{ .Revision }}
+            - dialyzer-cache-v3-{{ .Branch }}-
+            - dialyzer-cache-v3-
       - run:
           name: Update dialyzer PLT
           command: make dialyzer-install
       - save_cache:
-          key: dialyzer-cache-v2-{{ .Branch }}-{{ .Revision }}
+          key: dialyzer-cache-v3-{{ .Branch }}-{{ .Revision }}
           paths:
-            - *container_otp_plt
+            - *container_otp21_plt
       - run:
           name: Run dialyzer
           no_output_timeout: 20m
@@ -798,24 +800,24 @@ jobs:
       - *store_rebar3_crashdump
       - *fail_notification
 
-  static_analysis_otp21:
-    <<: *container_otp21_config
+  static_analysis_otp22:
+    <<: *container_otp22_config
     steps:
       - checkout
       - *restore_rebar_cache
-      - *restore_build_otp21_cache
+      - *restore_build_otp22_cache
       - restore_cache:
           keys:
-            - dialyzer-otp21-cache-v2-{{ .Branch }}-{{ .Revision }}
-            - dialyzer-otp21-cache-v2-{{ .Branch }}-
-            - dialyzer-otp21-cache-v2-
+            - dialyzer-otp22-cache-v1-{{ .Branch }}-{{ .Revision }}
+            - dialyzer-otp22-cache-v1-{{ .Branch }}-
+            - dialyzer-otp22-cache-v1-
       - run:
           name: Update dialyzer PLT
           command: make dialyzer-install
       - save_cache:
-          key: dialyzer-otp21-cache-v2-{{ .Branch }}-{{ .Revision }}
+          key: dialyzer-otp22-cache-v1-{{ .Branch }}-{{ .Revision }}
           paths:
-            - *container_otp21_plt
+            - *container_otp22_plt
       - run:
           name: Run dialyzer
           no_output_timeout: 20m
@@ -829,7 +831,7 @@ jobs:
 
   rebar_lock_check:
     executor: builder_container_stable
-    <<: *container_config
+    <<: *container_otp21_config
     steps:
       - checkout
       - run:
@@ -842,7 +844,7 @@ jobs:
 
   linux_package:
     executor: builder_container_stable
-    <<: *container_config
+    <<: *container_otp21_config
     steps:
       - checkout
       - *set_package_path
@@ -864,7 +866,7 @@ jobs:
 
   ubuntu_package:
     executor: builder_container_1804
-    <<: *container_config
+    <<: *container_otp21_config
     working_directory: ~/aeternity_deb
     steps:
       - checkout
@@ -884,10 +886,10 @@ jobs:
           # libsodium headers cannot be found without explicit brew link
           command: |
             brew update
-            brew install gmp libsodium erlang@20
+            brew install gmp libsodium erlang@21
             brew link gmp
             brew link libsodium
-            brew link --force erlang@20
+            brew link --force erlang@21
       - *save_macos_package_cache
       - *set_package_path
       - *test_arch_os_dependencies
@@ -1210,7 +1212,7 @@ workflows:
                 - env/dev2
                 - system-tests
 
-      - build_otp21:
+      - build_otp22:
           filters:
             branches:
               ignore:
@@ -1294,9 +1296,9 @@ workflows:
                 - env/dev2
                 - system-tests
 
-      - test_latest_otp21:
+      - test_latest_otp22:
           requires:
-            - build_otp21
+            - build_otp22
           filters:
             branches:
               ignore:
@@ -1411,9 +1413,9 @@ workflows:
                 - env/dev2
                 - system-tests
 
-      - static_analysis_otp21:
+      - static_analysis_otp22:
           requires:
-            - build_otp21
+            - build_otp22
           filters:
             branches:
               ignore:
