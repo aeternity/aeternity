@@ -34,8 +34,8 @@ references:
         user: builder
     working_directory: ~/aeternity
     environment:
-      OTP_VERSION: 21.3.8.11
-  container_otp21_plt: &container_otp21_plt _build/default/rebar3_21.3.8.11_plt
+      OTP_VERSION: 21.3.8.17
+  container_otp21_plt: &container_otp21_plt _build/default/rebar3_21.3.8.17_plt
 
   container_otp22_config: &container_otp22_config
     docker:
