@@ -57,6 +57,15 @@
          version/1
         ]).
 
+-pluggable([ deserialize_from_binary/1
+           , deserialize_from_binary_partial/1
+           , deserialize_key_from_binary/1
+           , deserialize_micro_from_binary/1
+           , validate_key_block_header/2
+           , validate_micro_block_header/2
+           , validate_pow/2
+           ]).
+
 -include_lib("aeminer/include/aeminer.hrl").
 -include_lib("aecontract/include/hard_forks.hrl").
 -include("blocks.hrl").
@@ -553,9 +562,6 @@ construct_micro_flags(#mic_header{pof_hash = Bin}) ->
 -spec deserialize_from_binary(deterministic_header_binary()) -> header().
 
 deserialize_from_binary(Bin) ->
-    ?PLUGGABLE((Bin), deserialize_from_binary_(Bin)).
-
-deserialize_from_binary_(Bin) ->
     case deserialize_from_binary_partial(Bin) of
         {key, Header} -> Header;
         {micro, Header, <<>>} -> Header;
@@ -566,13 +572,10 @@ deserialize_from_binary_(Bin) ->
                                              {'key', key_header()}
                                            | {'micro', micro_header(), binary()}
                                            | {'error', term()}.
-deserialize_from_binary_partial(Bin) ->
-    ?PLUGGABLE((Bin), deserialize_from_binary_partial_(Bin)).
-
-deserialize_from_binary_partial_(<<Version:32,
-                                   ?KEY_HEADER_TAG:1,
-                                   InfoFlag:1,
-                                   _/bits>> = Bin) ->
+deserialize_from_binary_partial(<<Version:32,
+                                  ?KEY_HEADER_TAG:1,
+                                  InfoFlag:1,
+                                  _/bits>> = Bin) ->
     HeaderSize = InfoFlag * ?OPTIONAL_INFO_BYTES + ?KEY_HEADER_MIN_BYTES,
     case Bin of
         <<_:HeaderSize/unit:8>> when Version =:= ?ROMA_PROTOCOL_VSN,
@@ -589,10 +592,10 @@ deserialize_from_binary_partial_(<<Version:32,
         _ ->
             {error, malformed_header}
     end;
-deserialize_from_binary_partial_(<<_Version:32,
-                                   ?MICRO_HEADER_TAG:1,
-                                   PoFFlag:1,
-                                   _/bits>> = Bin) ->
+deserialize_from_binary_partial(<<_Version:32,
+                                  ?MICRO_HEADER_TAG:1,
+                                  PoFFlag:1,
+                                  _/bits>> = Bin) ->
     HeaderSize = PoFFlag * 32 + ?MIC_HEADER_MIN_BYTES,
     case Bin of
         <<HeaderBin:HeaderSize/binary, Rest/binary>> ->
@@ -611,25 +614,22 @@ deserialize_from_binary_partial_(<<_Version:32,
 -spec deserialize_key_from_binary(deterministic_header_binary()) ->
                                          {'ok', key_header()}
                                        | {'error', term()}.
-deserialize_key_from_binary(Bin) ->
-    ?PLUGGABLE((Bin), deserialize_key_from_binary_(Bin)).
-
-deserialize_key_from_binary_(<<Version:32,
-                               ?KEY_HEADER_TAG:1,
-                               _ContainsInfoFlag:1,
-                               0:30, %% Remaining flags.
-                               Height:64,
-                               PrevHash:?BLOCK_HEADER_HASH_BYTES/binary,
-                               PrevKeyHash:?BLOCK_HEADER_HASH_BYTES/binary,
-                               RootHash:?STATE_HASH_BYTES/binary,
-                               Miner:32/binary,
-                               Beneficiary:32/binary,
-                               Target:32,
-                               PowEvidenceBin:168/binary,
-                               Nonce:64,
-                               Time:64,
-                               Info/binary
-                             >>) ->
+deserialize_key_from_binary(<<Version:32,
+                              ?KEY_HEADER_TAG:1,
+                              _ContainsInfoFlag:1,
+                              0:30, %% Remaining flags.
+                              Height:64,
+                              PrevHash:?BLOCK_HEADER_HASH_BYTES/binary,
+                              PrevKeyHash:?BLOCK_HEADER_HASH_BYTES/binary,
+                              RootHash:?STATE_HASH_BYTES/binary,
+                              Miner:32/binary,
+                              Beneficiary:32/binary,
+                              Target:32,
+                              PowEvidenceBin:168/binary,
+                              Nonce:64,
+                              Time:64,
+                              Info/binary
+                            >>) ->
     PowEvidence = deserialize_pow_evidence_from_binary(PowEvidenceBin),
     H = #key_header{height = Height,
                     prev_hash = PrevHash,
@@ -645,7 +645,7 @@ deserialize_key_from_binary_(<<Version:32,
                     info = Info
                    },
     {ok, H};
-deserialize_key_from_binary_(_Other) ->
+deserialize_key_from_binary(_Other) ->
     {error, malformed_header}.
 
 
@@ -656,21 +656,18 @@ deserialize_key_from_binary_(_Other) ->
 -spec deserialize_micro_from_binary(deterministic_header_binary()) ->
                                            {'ok', micro_header()}
                                          | {'error', term()}.
-deserialize_micro_from_binary(Bin) ->
-    ?PLUGGABLE((Bin), deserialize_micro_from_binary_(Bin)).
-
-deserialize_micro_from_binary_(<<Version:32,
-                                 ?MICRO_HEADER_TAG:1,
-                                 PoFTag:1,
-                                 0:30, %% Remaining flags
-                                 Height:64,
-                                 PrevHash:?BLOCK_HEADER_HASH_BYTES/binary,
-                                 PrevKeyHash:?BLOCK_HEADER_HASH_BYTES/binary,
-                                 RootHash:?STATE_HASH_BYTES/binary,
-                                 TxsHash:?TXS_HASH_BYTES/binary,
-                                 Time:64,
-                                 Rest/binary
-                               >>) ->
+deserialize_micro_from_binary(<<Version:32,
+                                ?MICRO_HEADER_TAG:1,
+                                PoFTag:1,
+                                0:30, %% Remaining flags
+                                Height:64,
+                                PrevHash:?BLOCK_HEADER_HASH_BYTES/binary,
+                                PrevKeyHash:?BLOCK_HEADER_HASH_BYTES/binary,
+                                RootHash:?STATE_HASH_BYTES/binary,
+                                TxsHash:?TXS_HASH_BYTES/binary,
+                                Time:64,
+                                Rest/binary
+                              >>) ->
     PoFHashSize = PoFTag * 32,
     case Rest of
         <<PoFHash:PoFHashSize/binary,
@@ -688,7 +685,7 @@ deserialize_micro_from_binary_(<<Version:32,
         _ ->
             {error, malformed_header}
     end;
-deserialize_micro_from_binary_(_Other) ->
+deserialize_micro_from_binary(_Other) ->
     {error, malformed_header}.
 
 serialize_pow_evidence_to_binary(Ev) ->
@@ -725,20 +722,12 @@ deserialize_pow_evidence(_) ->
 %%%===================================================================
 
 validate_key_block_header(Header, Protocol) ->
-    ?PLUGGABLE((Header, Protocol),
-               validate_key_block_header_(Header, Protocol)).
-
-validate_key_block_header_(Header, Protocol) ->
     Validators = [fun validate_protocol/2,
                   fun validate_pow/2,
                   fun validate_max_time/2],
     aeu_validation:run(Validators, [Header, Protocol]).
 
 validate_micro_block_header(Header, Protocol) ->
-    ?PLUGGABLE((Header, Protocol),
-               validate_micro_block_header_(Header, Protocol)).
-
-validate_micro_block_header_(Header, Protocol) ->
     %% NOTE: The signature is not validated since we don't know the leader key
     %%       This check is performed when adding the header to the chain.
     Validators = [fun validate_protocol/2,
@@ -749,9 +738,6 @@ validate_micro_block_header_(Header, Protocol) ->
 -spec validate_protocol(header(), aec_hard_forks:protocol_vsn()) ->
                                ok | {error, protocol_version_mismatch}.
 validate_protocol(Header, Protocol) ->
-    ?PLUGGABLE((Header, Protocol), validate_protocol_(Header, Protocol)).
-
-validate_protocol_(Header, Protocol) ->
     case version(Header) =:= Protocol of
         true  -> ok;
         false -> {error, protocol_version_mismatch}
@@ -759,12 +745,9 @@ validate_protocol_(Header, Protocol) ->
 
 -spec validate_pow(header(), aec_hard_forks:protocol_vsn()) ->
                           ok | {error, incorrect_pow}.
-validate_pow(Header, Protocol) ->
-    ?PLUGGABLE((Header, Protocol), validate_pow_(Header, Protocol)).
-
-validate_pow_(#key_header{nonce        = Nonce,
-                          pow_evidence = Evd,
-                          target       = Target} = Header, _Protocol)
+validate_pow(#key_header{nonce        = Nonce,
+                         pow_evidence = Evd,
+                         target       = Target} = Header, _Protocol)
   when Nonce >= 0, Nonce =< ?MAX_NONCE ->
     %% Zero nonce and pow_evidence before hashing, as this is how the mined block
     %% got hashed.
