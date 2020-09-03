@@ -28,13 +28,6 @@ executors:
       DOCKERHUB_REPO: aeternity/aeternity
 
 references:
-  container_config: &container_config
-    resource_class: large
-    working_directory: ~/aeternity
-    environment:
-      OTP_VERSION: 20.3.8.24
-  container_otp_plt: &container_otp_plt _build/default/rebar3_20.3.8.24_plt
-
   container_otp21_config: &container_otp21_config
     docker:
       - image: aeternity/builder:otp21
@@ -608,26 +601,6 @@ commands:
 jobs:
   build:
     executor: builder_container_stable
-    <<: *container_config
-    steps:
-      - checkout
-      - *restore_rebar_cache
-      - run:
-          name: Build
-          command: make KIND=test
-      - save_cache:
-          key: *build_cache_key
-          paths:
-            - "_build"
-      - save_cache:
-          key: *rebar_cache_key
-          paths:
-            - .cache/rebar3
-      - *store_rebar3_crashdump
-      - *fail_notification
-
-  build_otp21:
-    executor: builder_container_stable
     <<: *container_otp21_config
     steps:
       - checkout
@@ -636,7 +609,7 @@ jobs:
           name: Build
           command: make KIND=test
       - save_cache:
-          key: *build_otp21_cache_key
+          key: *build_cache_key
           paths:
             - "_build"
       - save_cache:
@@ -668,7 +641,7 @@ jobs:
 
   build_nix:
     executor: builder_container_nix_alpine
-    <<: *container_config
+    <<: *container_otp21_config
     steps:
       - checkout
       - *restore_rebar_cache
@@ -688,7 +661,7 @@ jobs:
 
   test_roma:
     executor: builder_container_stable
-    <<: *container_config
+    <<: *container_otp21_config
     parallelism: 3
     environment:
       - MAKE_TARGET: ct-roma
@@ -696,7 +669,7 @@ jobs:
 
   test_minerva:
     executor: builder_container_stable
-    <<: *container_config
+    <<: *container_otp21_config
     parallelism: 3
     environment:
       - MAKE_TARGET: ct-minerva
@@ -704,7 +677,7 @@ jobs:
 
   test_fortuna:
     executor: builder_container_stable
-    <<: *container_config
+    <<: *container_otp21_config
     parallelism: 3
     environment:
       - MAKE_TARGET: ct-fortuna
@@ -712,21 +685,13 @@ jobs:
 
   test_lima:
     executor: builder_container_stable
-    <<: *container_config
+    <<: *container_otp21_config
     parallelism: 3
     environment:
       - MAKE_TARGET: ct-lima
     steps: *test_steps
 
   test_latest:
-    executor: builder_container_stable
-    <<: *container_config
-    parallelism: 3
-    environment:
-      - MAKE_TARGET: ct-latest
-    steps: *test_steps
-
-  test_latest_otp21:
     executor: builder_container_stable
     <<: *container_otp21_config
     parallelism: 3
@@ -744,7 +709,7 @@ jobs:
 
   test_mnesia_leveled:
     executor: builder_container_stable
-    <<: *container_config
+    <<: *container_otp21_config
     parallelism: 3
     environment:
       - MAKE_TARGET: ct-mnesia-leveled
@@ -752,7 +717,7 @@ jobs:
 
   test_mnesia_rocksdb:
     executor: builder_container_stable
-    <<: *container_config
+    <<: *container_otp21_config
     parallelism: 3
     environment:
       - MAKE_TARGET: ct-mnesia-rocksdb
@@ -760,42 +725,42 @@ jobs:
 
   eunit_roma:
     executor: builder_container_stable
-    <<: *container_config
+    <<: *container_otp21_config
     environment:
       - MAKE_TARGET: eunit-roma
     steps: *eunit_steps
 
   eunit_minerva:
     executor: builder_container_stable
-    <<: *container_config
+    <<: *container_otp21_config
     environment:
       - MAKE_TARGET: eunit-minerva
     steps: *eunit_steps
 
   eunit_fortuna:
     executor: builder_container_stable
-    <<: *container_config
+    <<: *container_otp21_config
     environment:
       - MAKE_TARGET: eunit-fortuna
     steps: *eunit_steps
 
   eunit_lima:
     executor: builder_container_stable
-    <<: *container_config
+    <<: *container_otp21_config
     environment:
       - MAKE_TARGET: eunit-lima
     steps: *eunit_steps
 
   eunit_latest:
     executor: builder_container_stable
-    <<: *container_config
+    <<: *container_otp21_config
     environment:
       - MAKE_TARGET: eunit-latest
     steps: *eunit_steps
 
   aevm_tests:
     executor: builder_container_stable
-    <<: *container_config
+    <<: *container_otp21_config
     steps:
       - checkout
       - *restore_rebar_cache
@@ -809,7 +774,7 @@ jobs:
 
   static_analysis:
     executor: builder_container_stable
-    <<: *container_config
+    <<: *container_otp21_config
     steps:
       - checkout
       - run: make dockerignore-check
@@ -827,41 +792,12 @@ jobs:
       - save_cache:
           key: dialyzer-cache-v2-{{ .Branch }}-{{ .Revision }}
           paths:
-            - *container_otp_plt
-      - run:
-          name: Run dialyzer
-          no_output_timeout: 20m
-          command: make dialyzer
-      - run: ./rebar3 xref || true
-      - run:
-          name: Check OTP version (for effective CI caching)
-          # How to retrieve OTP version in installed OTP development system: http://erlang.org/doc/system_principles/versions.html
-          command: test "${OTP_VERSION:?}" = $(cat $(erl -noinput -eval 'io:format("~s", [filename:join([code:root_dir(), "releases", erlang:system_info(otp_release), "OTP_VERSION"])]), init:stop().'))
-      - *store_rebar3_crashdump
-      - *fail_notification
-
-  static_analysis_otp21:
-    <<: *container_otp21_config
-    steps:
-      - checkout
-      - *restore_rebar_cache
-      - *restore_build_otp21_cache
-      - restore_cache:
-          keys:
-            - dialyzer-otp21-cache-v2-{{ .Branch }}-{{ .Revision }}
-            - dialyzer-otp21-cache-v2-{{ .Branch }}-
-            - dialyzer-otp21-cache-v2-
-      - run:
-          name: Update dialyzer PLT
-          command: make dialyzer-install
-      - save_cache:
-          key: dialyzer-otp21-cache-v2-{{ .Branch }}-{{ .Revision }}
-          paths:
             - *container_otp21_plt
       - run:
           name: Run dialyzer
           no_output_timeout: 20m
           command: make dialyzer
+      - run: ./rebar3 xref || true
       - run:
           name: Check OTP version (for effective CI caching)
           # How to retrieve OTP version in installed OTP development system: http://erlang.org/doc/system_principles/versions.html
@@ -900,7 +836,7 @@ jobs:
 
   rebar_lock_check:
     executor: builder_container_stable
-    <<: *container_config
+    <<: *container_otp21_config
     steps:
       - checkout
       - run:
@@ -913,7 +849,7 @@ jobs:
 
   linux_package:
     executor: builder_container_stable
-    <<: *container_config
+    <<: *container_otp21_config
     steps:
       - checkout
       - *set_package_path
@@ -935,7 +871,7 @@ jobs:
 
   ubuntu_package:
     executor: builder_container_1804
-    <<: *container_config
+    <<: *container_otp21_config
     working_directory: ~/aeternity_deb
     steps:
       - checkout
@@ -955,10 +891,10 @@ jobs:
           # libsodium headers cannot be found without explicit brew link
           command: |
             brew update
-            brew install gmp libsodium erlang@20
+            brew install gmp libsodium erlang@21
             brew link gmp
             brew link libsodium
-            brew link --force erlang@20
+            brew link --force erlang@21
       - *save_macos_package_cache
       - *set_package_path
       - *test_arch_os_dependencies
@@ -1281,14 +1217,6 @@ workflows:
                 - env/dev2
                 - system-tests
 
-      - build_otp21:
-          filters:
-            branches:
-              ignore:
-                - env/dev1
-                - env/dev2
-                - system-tests
-
       - build_otp22:
           filters:
             branches:
@@ -1366,16 +1294,6 @@ workflows:
       - test_latest:
           requires:
             - build
-          filters:
-            branches:
-              ignore:
-                - env/dev1
-                - env/dev2
-                - system-tests
-
-      - test_latest_otp21:
-          requires:
-            - build_otp21
           filters:
             branches:
               ignore:
@@ -1493,16 +1411,6 @@ workflows:
       - static_analysis:
           requires:
             - build
-          filters:
-            branches:
-              ignore:
-                - env/dev1
-                - env/dev2
-                - system-tests
-
-      - static_analysis_otp21:
-          requires:
-            - build_otp21
           filters:
             branches:
               ignore:
