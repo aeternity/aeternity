@@ -1260,12 +1260,11 @@ workflows:
                 - env/dev2
                 - system-tests
 
-      - build_nix: {}
-          # !!! CI TEST ONLY !!!
-          # filters:
-          #   branches:
-          #     only:
-          #       - *master_branch
+      - build_nix:
+          filters:
+            branches:
+              only:
+                - *master_branch
 
       - docker_smoke_tests:
           context: ae-node-builds
@@ -1480,13 +1479,12 @@ workflows:
               ignore:
                 - system-tests
 
-      - ubuntu_package: {}
-          # !!! CI TEST ONLY !!!
-          # filters:
-          #   branches:
-          #     only:
-          #       - /releases\/.*/
-          #       - *master_branch
+      - ubuntu_package:
+          filters:
+            branches:
+              only:
+                - /releases\/.*/
+                - *master_branch
 
       - upload_build_artifacts:
           context: ae-node-builds
