@@ -1260,14 +1260,6 @@ workflows:
                 - env/dev2
                 - system-tests
 
-      - build_otp23:
-          filters:
-            branches:
-              ignore:
-                - env/dev1
-                - env/dev2
-                - system-tests
-
       - build_nix: {}
           # !!! CI TEST ONLY !!!
           # filters:
@@ -1348,16 +1340,6 @@ workflows:
       - test_latest_otp21:
           requires:
             - build_otp21
-          filters:
-            branches:
-              ignore:
-                - env/dev1
-                - env/dev2
-                - system-tests
-
-      - test_latest_otp23:
-          requires:
-            - build_otp23
           filters:
             branches:
               ignore:
@@ -1475,16 +1457,6 @@ workflows:
       - static_analysis_otp21:
           requires:
             - build_otp21
-          filters:
-            branches:
-              ignore:
-                - env/dev1
-                - env/dev2
-                - system-tests
-
-      - static_analysis_otp23:
-          requires:
-            - build_otp23
           filters:
             branches:
               ignore:
