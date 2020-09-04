@@ -9,7 +9,9 @@
 
 -module(aehc_parent_block).
 
--export([ header_from_db/1
+-export([ new_header/3
+        , new_header/4
+        , header_from_db/1
         , commitment_hashes/1
         , new_block/2
         , prev_hash_block/1
@@ -41,6 +43,18 @@
 -type parent_block() :: #hc_parent_block{}.
 -export_type([ parent_block_header/0
              , parent_block/0 ]).
+
+-spec new_header(binary(), binary(), non_neg_integer()) -> parent_block_header().
+new_header(Hash, PrevHeader, Height) ->
+    new_header(Hash, PrevHeader, Height, []).
+
+-spec new_header(binary(), binary(), non_neg_integer(), [commitment_hash()]) -> parent_block_header().
+new_header(Hash, PrevHash, Height, CommitmentHashes) ->
+    #hc_parent_block_header{ hash = Hash
+                           , prev_hash = PrevHash
+                           , height = Height
+                           , commitment_hashes = CommitmentHashes
+                           }.
 
 -spec new_block(parent_block_header(), [aehc_commitment:commitment()]) -> parent_block().
 new_block(Header, Commitments) ->

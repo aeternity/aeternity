@@ -111,12 +111,12 @@ get_candidates_in_election_cycle_(_ParentBlockHash, Acc, 0) ->
     lists:flatten(Acc);
 get_candidates_in_election_cycle_(ParentBlockHash, Acc, N) ->
     Block = get_parent_block(ParentBlockHash),
+    Candidates = aehc_parent_block:commitments_in_block(Block),
     case aehc_parent_block:prev_hash_block(Block) of
         ParentBlockHash ->
             %% Pinpointed block "Genesis"
-            lists:flatten(Acc);
+            lists:flatten([Candidates | Acc]);
         PrevHash ->
-            Candidates = aehc_parent_block:commitments_in_block(Block),
             get_candidates_in_election_cycle_(PrevHash, [Candidates | Acc], N-1)
     end.
 
@@ -129,7 +129,7 @@ write_parent_block(ParentBlock) ->
     CommitmentHashes = aehc_parent_block:commitment_hashes(ParentBlockHeader),
     DBCommitments = lists:map(
         fun({K,V}) ->
-            #hc_db_commitment_header{key = K, value = V}
+            #hc_db_commitment_header{key = K, value = aehc_commitment:header(V)}
         end, lists:zip(CommitmentHashes, Commitments)),
     DBPoGFs = lists:filtermap(
         fun(El) ->
@@ -140,6 +140,6 @@ write_parent_block(ParentBlock) ->
         end, Commitments),
     ?t(begin
            mnesia:write(DBHeader),
-           [mnesia:write(DBComitment) || DBCommitment <- DBCommitments],
+           [mnesia:write(DBCommitment) || DBCommitment <- DBCommitments],
            [mnesia:write(DBPoGF) || DBPoGF <- DBPoGFs]
        end).

@@ -13,6 +13,7 @@
         , pogf/1
         , pogf_hash/1
         , header/1
+        , hash/1
         ]).
 
 -include("../../aecore/include/blocks.hrl").
@@ -25,6 +26,7 @@
 -type commitment() :: #hc_commitment{}.
 -export_type([commitment/0]).
 
+-spec new(aehc_commitment_header:commitment_header(), aehc_pogf:pogf()) -> commitment().
 new(Header, PoGF) ->
     #hc_commitment{header = Header, pogf = PoGF}.
 
@@ -36,10 +38,14 @@ has_pogf(#hc_commitment{pogf = _}) -> true.
 pogf(#hc_commitment{pogf = PoGF}) ->
     PoGF.
 
--spec pogf(commitment()) -> pogf_hash().
+-spec pogf_hash(commitment()) -> pogf_hash().
 pogf_hash(#hc_commitment{header = Header}) ->
     aehc_commitment_header:hc_pogf_hash(Header).
 
 -spec header(commitment()) -> aehc_commitment_header:commitment_header().
 header(#hc_commitment{header = Header}) ->
     Header.
+
+-spec hash(commitment()) -> commitment_hash().
+hash(#hc_commitment{header = Header}) ->
+    aehc_commitment_header:hash(Header).
