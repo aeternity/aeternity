@@ -124,7 +124,7 @@ references:
     restore_cache:
       key: *rebar_cache_key
 
-  build_otp21_cache_key: &build_otp21_cache_key build-otp21-cache-v3-{{ .Revision }}
+  build_otp21_cache_key: &build_otp21_cache_key build-otp21-cache-v4-{{ .Revision }}
   restore_build_otp21_cache: &restore_build_otp21_cache
     restore_cache:
       key: *build_otp21_cache_key
@@ -792,14 +792,14 @@ jobs:
       - run: ./rebar3 edoc
       - restore_cache:
           keys:
-            - dialyzer-cache-v3-{{ .Branch }}-{{ .Revision }}
-            - dialyzer-cache-v3-{{ .Branch }}-
-            - dialyzer-cache-v3-
+            - dialyzer-cache-v4-{{ .Branch }}-{{ .Revision }}
+            - dialyzer-cache-v4-{{ .Branch }}-
+            - dialyzer-cache-v4-
       - run:
           name: Update dialyzer PLT
           command: make dialyzer-install
       - save_cache:
-          key: dialyzer-cache-v3-{{ .Branch }}-{{ .Revision }}
+          key: dialyzer-cache-v4-{{ .Branch }}-{{ .Revision }}
           paths:
             - *container_otp21_plt
       - run:
@@ -822,14 +822,14 @@ jobs:
       - *restore_build_otp21_cache
       - restore_cache:
           keys:
-            - dialyzer-otp21-cache-v1-{{ .Branch }}-{{ .Revision }}
-            - dialyzer-otp21-cache-v1-{{ .Branch }}-
-            - dialyzer-otp21-cache-v1-
+            - dialyzer-otp21-cache-v2-{{ .Branch }}-{{ .Revision }}
+            - dialyzer-otp21-cache-v2-{{ .Branch }}-
+            - dialyzer-otp21-cache-v2-
       - run:
           name: Update dialyzer PLT
           command: make dialyzer-install
       - save_cache:
-          key: dialyzer-otp21-cache-v1-{{ .Branch }}-{{ .Revision }}
+          key: dialyzer-otp21-cache-v2-{{ .Branch }}-{{ .Revision }}
           paths:
             - *container_otp22_plt
       - run:
