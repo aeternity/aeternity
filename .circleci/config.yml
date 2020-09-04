@@ -10,40 +10,47 @@ executors:
   infrastructure_container_stable:
     docker:
       - image: aeternity/infrastructure:stable
-  builder_container_stable:
-    docker:
-      - image: aeternity/builder
-        user: builder
-  builder_container_nix_alpine:
-    docker:
-      - image: nixorg/nix:circleci
-  builder_container_1804:
-    docker:
-      - image: aeternity/builder:1804
-        user: builder
-  buildpack:
-    docker:
-      - image: circleci/buildpack-deps:xenial
-    environment:
-      DOCKERHUB_REPO: aeternity/aeternity
-
-references:
-  container_otp21_config: &container_otp21_config
+  builder_container_otp21:
     docker:
       - image: aeternity/builder:otp21
         user: builder
     working_directory: ~/aeternity
     environment:
       OTP_VERSION: 21.3.8.17
-  container_otp21_plt: &container_otp21_plt _build/default/rebar3_21.3.8.17_plt
-
-  container_otp22_config: &container_otp22_config
+  builder_container_otp22:
     docker:
       - image: aeternity/builder:otp22
         user: builder
     working_directory: ~/aeternity
     environment:
       OTP_VERSION: 22.3.4.9
+  builder_container_nix_alpine:
+    docker:
+      - image: nixorg/nix:circleci
+    working_directory: ~/aeternity
+  builder_container_1804:
+    docker:
+      - image: aeternity/builder:1804
+        user: builder
+    working_directory: ~/aeternity
+  buildpack:
+    docker:
+      - image: circleci/buildpack-deps:xenial
+    environment:
+      DOCKERHUB_REPO: aeternity/aeternity
+  machine_1604:
+    resource_class: large
+    machine:
+      image: ubuntu-1604:201903-01
+      docker_layer_caching: true
+    working_directory: ~/aeternity
+    environment:
+      DOCKERHUB_REPO: aeternity/aeternity
+      OTP_VERSION: 21.3.8.17
+      LIBSODIUM_VERSION: "1.0.16"
+
+references:
+  container_otp21_plt: &container_otp21_plt _build/default/rebar3_21.3.8.17_plt
   container_otp22_plt: &container_otp22_plt _build/default/rebar3_22.3.4.9_plt
 
   infrastructure_config_environment: &infrastructure_config_environment
@@ -56,15 +63,6 @@ references:
     working_directory: ~/aeternity
     environment:
       <<: *infrastructure_config_environment
-
-  machine_config: &machine_config
-    resource_class: large
-    machine:
-      image: ubuntu-1604:201903-01
-      docker_layer_caching: true
-    working_directory: ~/aeternity
-    environment:
-      DOCKERHUB_REPO: aeternity/aeternity
 
   setup_remote_docker: &setup_remote_docker
     setup_remote_docker:
@@ -89,9 +87,6 @@ references:
   install_otp: &install_otp
     run:
       name: Install OTP
-      environment:
-        # See minimum_otp_vsn in rebar.config
-        OTP_VERSION: 21.3.8.17
       command: |
         # Install OTP package deps
         sudo apt-get update && sudo apt-get install libwxbase3.0-dev libwxgtk3.0-dev libsctp1
@@ -104,8 +99,6 @@ references:
   install_libsodium: &install_libsodium
     run:
       name: Install libsodium
-      environment:
-        LIBSODIUM_VERSION: "1.0.16"
       # source: https://github.com/aeternity/docker-builder/blob/master/Dockerfile#L23
       command: |
         LIBSODIUM_DOWNLOAD_URL="https://github.com/jedisct1/libsodium/releases/download/${LIBSODIUM_VERSION}/libsodium-${LIBSODIUM_VERSION}.tar.gz" \
@@ -595,8 +588,7 @@ commands:
 
 jobs:
   build:
-    executor: builder_container_stable
-    <<: *container_otp21_config
+    executor: builder_container_otp21
     steps:
       - checkout
       - *restore_rebar_cache
@@ -615,8 +607,7 @@ jobs:
       - *fail_notification
 
   build_otp22:
-    executor: builder_container_stable
-    <<: *container_otp22_config
+    executor: builder_container_otp22
     steps:
       - checkout
       - *restore_rebar_cache
@@ -636,7 +627,6 @@ jobs:
 
   build_nix:
     executor: builder_container_nix_alpine
-    <<: *container_otp21_config
     steps:
       - checkout
       - *restore_rebar_cache
@@ -655,107 +645,93 @@ jobs:
       - *fail_notification
 
   test_roma:
-    executor: builder_container_stable
-    <<: *container_otp21_config
+    executor: builder_container_otp21
     parallelism: 3
     environment:
       - MAKE_TARGET: ct-roma
     steps: *test_steps
 
   test_minerva:
-    executor: builder_container_stable
-    <<: *container_otp21_config
+    executor: builder_container_otp21
     parallelism: 3
     environment:
       - MAKE_TARGET: ct-minerva
     steps: *test_steps
 
   test_fortuna:
-    executor: builder_container_stable
-    <<: *container_otp21_config
+    executor: builder_container_otp21
     parallelism: 3
     environment:
       - MAKE_TARGET: ct-fortuna
     steps: *test_steps
 
   test_lima:
-    executor: builder_container_stable
-    <<: *container_otp21_config
+    executor: builder_container_otp21
     parallelism: 3
     environment:
       - MAKE_TARGET: ct-lima
     steps: *test_steps
 
   test_latest:
-    executor: builder_container_stable
-    <<: *container_otp21_config
+    executor: builder_container_otp21
     parallelism: 3
     environment:
       - MAKE_TARGET: ct-latest
     steps: *test_steps
 
   test_latest_otp22:
-    executor: builder_container_stable
-    <<: *container_otp22_config
+    executor: builder_container_otp22
     parallelism: 3
     environment:
       - MAKE_TARGET: ct-latest
     steps: *test_steps
 
   test_mnesia_leveled:
-    executor: builder_container_stable
-    <<: *container_otp21_config
+    executor: builder_container_otp21
     parallelism: 3
     environment:
       - MAKE_TARGET: ct-mnesia-leveled
     steps: *test_steps
 
   test_mnesia_rocksdb:
-    executor: builder_container_stable
-    <<: *container_otp21_config
+    executor: builder_container_otp21
     parallelism: 3
     environment:
       - MAKE_TARGET: ct-mnesia-rocksdb
     steps: *test_steps
 
   eunit_roma:
-    executor: builder_container_stable
-    <<: *container_otp21_config
+    executor: builder_container_otp21
     environment:
       - MAKE_TARGET: eunit-roma
     steps: *eunit_steps
 
   eunit_minerva:
-    executor: builder_container_stable
-    <<: *container_otp21_config
+    executor: builder_container_otp21
     environment:
       - MAKE_TARGET: eunit-minerva
     steps: *eunit_steps
 
   eunit_fortuna:
-    executor: builder_container_stable
-    <<: *container_otp21_config
+    executor: builder_container_otp21
     environment:
       - MAKE_TARGET: eunit-fortuna
     steps: *eunit_steps
 
   eunit_lima:
-    executor: builder_container_stable
-    <<: *container_otp21_config
+    executor: builder_container_otp21
     environment:
       - MAKE_TARGET: eunit-lima
     steps: *eunit_steps
 
   eunit_latest:
-    executor: builder_container_stable
-    <<: *container_otp21_config
+    executor: builder_container_otp21
     environment:
       - MAKE_TARGET: eunit-latest
     steps: *eunit_steps
 
   aevm_tests:
-    executor: builder_container_stable
-    <<: *container_otp21_config
+    executor: builder_container_otp21
     steps:
       - checkout
       - *restore_rebar_cache
@@ -768,8 +744,7 @@ jobs:
       - *fail_notification
 
   static_analysis:
-    executor: builder_container_stable
-    <<: *container_otp21_config
+    executor: builder_container_otp21
     steps:
       - checkout
       - run: make dockerignore-check
@@ -801,7 +776,7 @@ jobs:
       - *fail_notification
 
   static_analysis_otp22:
-    <<: *container_otp22_config
+    executor: builder_container_otp22
     steps:
       - checkout
       - *restore_rebar_cache
@@ -830,8 +805,7 @@ jobs:
       - *fail_notification
 
   rebar_lock_check:
-    executor: builder_container_stable
-    <<: *container_otp21_config
+    executor: builder_container_otp21
     steps:
       - checkout
       - run:
@@ -843,8 +817,7 @@ jobs:
       - *fail_notification
 
   linux_package:
-    executor: builder_container_stable
-    <<: *container_otp21_config
+    executor: builder_container_otp21
     steps:
       - checkout
       - *set_package_path
@@ -866,7 +839,6 @@ jobs:
 
   ubuntu_package:
     executor: builder_container_1804
-    <<: *container_otp21_config
     working_directory: ~/aeternity_deb
     steps:
       - checkout
@@ -955,7 +927,7 @@ jobs:
             docker push ${DOCKERHUB_REPO:?}:${CIRCLE_TAG:?}
 
   docker_system_tests:
-    <<: *machine_config
+    executor: machine_1604
     steps:
       - *print_system_test_host_info
       - checkout
@@ -981,7 +953,7 @@ jobs:
           path: *system_test_host_logs
 
   docker_system_smoke_tests:
-    <<: *machine_config
+    executor: machine_1604
     steps:
       - *print_system_test_host_info
       - checkout
@@ -1220,11 +1192,12 @@ workflows:
                 - env/dev2
                 - system-tests
 
-      - build_nix:
-          filters:
-            branches:
-              only:
-                - *master_branch
+      - build_nix: {}
+          # !!! CI TEST ONLY !!!
+          # filters:
+          #   branches:
+          #     only:
+          #       - *master_branch
 
       - docker_smoke_tests:
           context: ae-node-builds
@@ -1439,12 +1412,13 @@ workflows:
               ignore:
                 - system-tests
 
-      - ubuntu_package:
-          filters:
-            branches:
-              only:
-                - /releases\/.*/
-                - *master_branch
+      - ubuntu_package: {}
+          # !!! CI TEST ONLY !!!
+          # filters:
+          #   branches:
+          #     only:
+          #       - /releases\/.*/
+          #       - *master_branch
 
       - upload_build_artifacts:
           context: ae-node-builds
