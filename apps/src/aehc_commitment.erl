@@ -1,2 +1,0 @@
--module(aehc_commitment).
-
