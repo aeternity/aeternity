@@ -1,3 +1,5 @@
+%%% -*- erlang-indent-level: 4 -*-
+%%%-------------------------------------------------------------------
 -module(aehc_connector).
 
 -export([connector/0]).
@@ -10,7 +12,7 @@
 
 -callback send_tx(binary()) -> binary().
 
--callback get_block(Num::integer()) -> block().
+-callback get_block(non_neg_integer()) -> block().
 
 %%%===================================================================
 %%%  Parent chain simplified proto
@@ -48,7 +50,7 @@ send_tx(Payload) ->
             {error, {E, R}}
     end.
 
--spec get_block(Num::integer()) ->
+-spec get_block(Num::non_neg_integer()) ->
                        {ok, block()} | {error, {term(), term()}}.
 get_block(Num) ->
     Con = connector(), %% TODO To ask via config;
