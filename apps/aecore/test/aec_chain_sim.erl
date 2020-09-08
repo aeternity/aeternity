@@ -221,7 +221,7 @@ dict_set(Key, Value) ->
 dict_get(Key, Default) ->
     chain_req({dict_get, Key, Default}).
 
--spec find_signed_tx(TxHash::binary()) -> {value, binary()} | none.
+-spec find_signed_tx(binary()) -> {value, binary()} | none.
 %%
 %% Returns the transaction hash associated with Key
 %%
@@ -436,7 +436,7 @@ announce(ForkId, Txs, #{ forks := Forks } = Chain, Opts) ->
     #{ ForkId := #{ blocks := [#{ hash := TopHash
                                 , prev := PrevHash
                                 , header := Hdr } | _] = Blocks} } = Forks,
-    Simulator = simulator(Opts),
+    SimulatorT = simulator(Opts),
     Height = length(Blocks) + 1,
     Type = aec_headers:type(Hdr),
     Origin = origin(Type),
@@ -446,7 +446,7 @@ announce(ForkId, Txs, #{ forks := Forks } = Chain, Opts) ->
             , block_origin => Origin
             , prev_hash    => PrevHash
             , height       => Height },
-    if Simulator == parent_chain ->
+    if SimulatorT == parent_chain ->
         aec_events:publish({parent_chain, top_changed}, Info#{txs => Txs});
         true ->
             send_tx_events(Txs, Info),
