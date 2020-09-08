@@ -1,11 +1,11 @@
+%%% -*- erlang-indent-level: 4 -*-
+%%%-------------------------------------------------------------------
 -module(aehc_chain_sim_connector).
 
 -behaviour(aehc_connector).
-
 -behaviour(gen_server).
 
 %% API.
-
 -export([start_link/0]).
 
 %% gen_server.
@@ -19,14 +19,10 @@
 
 %% API.
 
-id() -> 
-    ?MODULE.
-
 -spec start_link() ->
-                        {ok, pid()} | ingnore | {error, term()}.
+    {ok, pid()} | ingnore | {error, term()}.
 start_link() ->
-    Id = id(),
-    gen_server:start_link({local, Id}, ?MODULE, [], []).
+    gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
 
 %%%===================================================================
 %%%  aehc_connector behaviour
@@ -36,9 +32,9 @@ start_link() ->
 send_tx(Payload) ->
     gen_server:call(?MODULE, {send_tx, Payload}).
 
--spec get_block(Num::integer()) -> aehc_connector:block().
+-spec get_block(non_neg_integer()) -> aehc_connector:block().
 get_block(Num) ->
-    gen_server:call(id(), {get_block, Num}).
+    gen_server:call(?MODULE, {get_block, Num}).
 
 %%%===================================================================
 %%%  gen_server behaviour
@@ -75,7 +71,8 @@ handle_call({get_block, _Num}, _From, State) ->
     Res = aehc_connector:block(Header, []),
     {reply, Res, State};
 
-handle_call(_Request, _From, State) ->
+handle_call(Request, _From, State) ->
+    lager:info("Unexpected call: ~p", [Request]),
     {reply, ignored, State}.
 
 handle_cast(_Msg, State) ->
