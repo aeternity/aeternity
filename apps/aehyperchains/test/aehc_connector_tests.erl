@@ -31,6 +31,7 @@ end,
      [{"Sent payload == Requested payload",
        fun() ->
             %
+            aec_chain_sim:start(),
             Payload = <<"test">>,
             aehc_connector:send_tx(Payload),
             %
