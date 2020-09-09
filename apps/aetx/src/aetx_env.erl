@@ -56,7 +56,7 @@
         , set_height/2
         , set_payer/2
         , set_signed_tx/2
-        , tx_event/2
+        , tx_event/3
         , set_events/2
         , update_env/2
         ]).
@@ -295,14 +295,30 @@ set_ga_tx_hash(Env, X) -> Env#env{ga_tx_hash = X}.
 %% If so, then we can just add {internal_call_tx, {CallTxHash, Tx}} or something
 %% like that. Note that tx_events are accumulated over several transactions in
 %% some use cases (like micro block validation/syncing).
--spec tx_event(any(), env()) -> env().
-tx_event(Name, #env{events = Events} = Env) ->
+-spec tx_event(atom(), any(), env()) -> env().
+tx_event(channel = Kind, Data, #env{events = Events} = Env) ->
     case signed_tx(Env) of
         none -> Env;
         {value, SignedTx} ->
+            Name = {Kind, Data},
             TxHash = aetx_sign:hash(SignedTx),
             {Type, _} = aetx:specialize_type(aetx_sign:innermost_tx(SignedTx)),
             Env#env{events = Events#{Name => #{ type => Type
+                                              , tx_hash => TxHash }}}
+    end;
+tx_event(Kind, Data, Env) ->
+    lager:debug("tx_event(~p, ~p, ~p)", [Kind, Data, Env]),
+    Env.
+
+tx_event(Kind, Data, Info, #env{events = Events} = Env) ->
+    case signed_tx(Env) of
+        none -> Env;
+        {value, SignedTx} ->
+            Name = {Kind, Data},
+            TxHash = aetx_sign:hash(SignedTx),
+            {Type, _} = aetx:specialize_type(aetx_sign:innermost_tx(SignedTx)),
+            Env#env{events = Events#{Name => #{ type => Type
+                                              , info => Info
                                               , tx_hash => TxHash }}}
     end.
 

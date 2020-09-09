@@ -271,6 +271,7 @@ check_delegation_signature(Pubkey, Binary, Signature,
 %% SpendTx = aec_spend_tx:new(#{sender_id => aeser_id:create(account, FromPubkey), ...})
 spend(FromPubkey, ToPubkey, Amount, State) ->
     eval_primops([ aeprimop:spend_op(FromPubkey, ToPubkey, Amount)
+                 , tx_event_op(FromPubKey, ToPubKey, Amount, spend, State)
                  ], State).
 
 %% GH3283: If the idea is to be able to follow tokens throughout the system, we
@@ -279,9 +280,21 @@ spend(FromPubkey, ToPubkey, Amount, State) ->
 %% transfer_value might be needed.
 transfer_value(FromPubkey, ToPubkey, Amount, State) ->
     eval_primops([ aeprimop:transfer_value_op(FromPubkey, ToPubkey, Amount)
+                 , tx_event_op(FromPubKey, ToPubKey, Amount, transfer_value, State)
                  ], State).
 
+tx_event_op(FromPubKey, ToPubKey, Amount, Type, #state{primop_state = PState}) ->
+    FromAcct = aeprimop_state:get_account(FromPubKey, PState),
+    ToAcct = aeprimop_state:get_account(ToPubKey, PState),
+    aeprimop:tx_event_op(internal_call_tx, Type, spend_tx_for_event(FromAcct, ToAcct, Amount, <<>>))
 
+spend_tx_for_event(FromPubKey, ToPubKey, Amount, Payload) ->
+    aec_spend_tx:new(#{ sender_id => aeser_id:create(account, FromPubKey)
+                      , recipient_id => aeser_id:create(account, ToPubKey)  % TODO always account?
+                      , amount => Amount
+                      , fee => 0            % TODO is there some informative value that could go here?
+                      , nonce => 0
+                      , payload => Payload }).
 %%%-------------------------------------------------------------------
 %%% Oracles
 

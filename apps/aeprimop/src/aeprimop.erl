@@ -52,6 +52,8 @@
         , spend_fee_op/2
         , spend_op/3
         , transfer_value_op/3
+        , tx_event_op/2
+        , tx_event_op/3
         ]).
 
 %% Export some functions to avoid duplicating the logic in state channels, etc.
@@ -374,7 +376,7 @@ channel_create_tx_instructions(InitiatorPubkey, InitiatorAmount,
                         ResponderPubkey, ResponderAmount,
                         ReserveAmount, DelegatePubkeys,
                         StateHash, LockPeriod, Nonce, Round)
-    , tx_event_op({channel, ChannelPubkey})
+    , tx_event_op(channel, ChannelPubkey)
     ].
 
 -spec channel_deposit_tx_instructions(pubkey(), pubkey(), amount(), hash(),
@@ -385,7 +387,7 @@ channel_deposit_tx_instructions(FromPubkey, ChannelPubkey, Amount, StateHash,
     [ inc_account_nonce_op(FromPubkey, Nonce)
     , spend_fee_op(FromPubkey, Fee, Amount)
     , channel_deposit_op(FromPubkey, ChannelPubkey, Amount, StateHash, Round)
-    , tx_event_op({channel, ChannelPubkey})
+    , tx_event_op(channel, ChannelPubkey)
     ].
 
 -spec channel_close_mutual_tx_instructions(pubkey(), pubkey(), amount(),
@@ -396,7 +398,7 @@ channel_close_mutual_tx_instructions(FromPubkey, ChannelPubkey,
     [ inc_account_nonce_op(FromPubkey, Nonce)
     , channel_close_mutual_op(FromPubkey, ChannelPubkey,
                               InitiatorAmount, ResponderAmount, Fee, ConsensusVersion)
-    , tx_event_op({channel, ChannelPubkey})
+    , tx_event_op(channel, ChannelPubkey)
     ].
 
 -spec channel_withdraw_tx_instructions(pubkey(), pubkey(), amount(), hash(),
@@ -407,7 +409,7 @@ channel_withdraw_tx_instructions(ToPubkey, ChannelPubkey, Amount, StateHash,
     [ inc_account_nonce_op(ToPubkey, Nonce)
     , spend_fee_op(ToPubkey, Fee)
     , channel_withdraw_op(ToPubkey, ChannelPubkey, Amount, StateHash, Round)
-    , tx_event_op({channel, ChannelPubkey})
+    , tx_event_op(channel, ChannelPubkey)
     ].
 
 -spec channel_settle_tx_instructions(pubkey(), pubkey(), amount(), amount(),
@@ -417,7 +419,7 @@ channel_settle_tx_instructions(FromPubkey, ChannelPubkey,
     [ inc_account_nonce_op(FromPubkey, Nonce)
     , spend_fee_op(FromPubkey, Fee)
     , channel_settle_op(FromPubkey, ChannelPubkey, InitiatorAmount, ResponderAmount)
-    , tx_event_op({channel, ChannelPubkey})
+    , tx_event_op(channel, ChannelPubkey)
     ].
 
 %%%===================================================================
@@ -1424,11 +1426,16 @@ contract_create({OwnerPubkey, Amount, Deposit, GasLimit, GasPrice,
 
 %%%-------------------------------------------------------------------
 
-tx_event_op(Name) ->
-    {tx_event, Name}.
+tx_event_op(Kind, Name) ->
+    {tx_event, {Kind, Name}}.
 
-tx_event(Name, #state{tx_env = Env} = S) ->
-    S#state{tx_env = aetx_env:tx_event(Name, Env)}.
+tx_event_op(Kind, Name, Info) ->
+    {tx_event, {Kind, Name, Info}}.
+
+tx_event({Kind, Name}, #state{tx_env = Env} = S) ->
+    S#state{tx_env = aetx_env:tx_event(Kind, Name, Env)};
+tx_event({Kind, Name, Info}, #state{tx_env = Env} = S) ->
+    S#state{tx_env = aetx_env:tx_event(Kind, Name, Info, Env)}.
 
 %%%-------------------------------------------------------------------
 
