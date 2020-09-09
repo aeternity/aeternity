@@ -15,7 +15,7 @@
 -export([handle_info/2]).
 -export([terminate/2]).
 
--export([send_tx/1, get_block/1]).
+-export([send_tx/1, get_block_by_hash/1, get_top_block/0]).
 
 %% API.
 
@@ -30,10 +30,14 @@ start_link() ->
 
 -spec send_tx(binary()) -> binary().
 send_tx(_Payload) ->
-   throw('not implemented').
+    throw('not implemented').
 
--spec get_block(non_neg_integer()) -> aehc_connector:block().
-get_block(_Num) ->
+-spec get_top_block() -> aehc_connector:block().
+get_top_block() ->
+    throw('not implemented').
+
+-spec get_block_by_hash(binary()) -> aehc_connector:block().
+get_block_by_hash(Hash) ->
     throw('not implemented').
 
 %%%===================================================================
@@ -46,13 +50,13 @@ init([]) ->
     process_flag(trap_exit, true),
     {ok, #state{ }}.
 
-handle_call(Request, _From, State) ->
+handle_call(_Request, _From, State) ->
     {reply, ignored, State}.
 
 handle_cast(_Msg, State) ->
     {noreply, State}.
 
-handle_info(Info, State) ->
+handle_info(_Info, State) ->
     {noreply, State}.
 
 terminate(_Reason, _State) ->
