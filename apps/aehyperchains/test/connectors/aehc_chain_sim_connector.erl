@@ -15,7 +15,7 @@
 -export([handle_info/2]).
 -export([terminate/2]).
 
--export([send_tx/1, get_block/1]).
+-export([send_tx/1, get_block_by_hash/1, get_top_block/0]).
 
 %% API.
 
@@ -32,9 +32,13 @@ start_link() ->
 send_tx(Payload) ->
     gen_server:call(?MODULE, {send_tx, Payload}).
 
--spec get_block(non_neg_integer()) -> aehc_connector:block().
-get_block(Num) ->
-    gen_server:call(?MODULE, {get_block, Num}).
+-spec get_top_block() -> aehc_connector:block().
+get_top_block() ->
+    gen_server:call(?MODULE, {get_top_block}).
+
+-spec get_block_by_hash(binary()) -> aehc_connector:block().
+get_block_by_hash(Hash) ->
+    gen_server:call(?MODULE, {get_block_by_hash, Hash}).
 
 %%%===================================================================
 %%%  gen_server behaviour
@@ -66,10 +70,16 @@ handle_call({send_tx, Payload}, _From, State) ->
     Res = aec_chain_sim:push(#{ tx_hash => TxHash, signed_tx  => SignedTx }),
     {reply, Res, State};
 
-handle_call({get_block, _Num}, _From, State) ->
-    Header = aehc_connector:header(<<>>, 0),
-    Res = aehc_connector:block(Header, []),
-    {reply, Res, State};
+handle_call({get_top_block}, _From, State) ->
+    Hash = aec_chain_sim:top_block_hash(),
+    {ok, Info} = aec_chain_sim:block_by_hash(Hash),
+    Block = format_block(Info),
+    {reply, {ok, Block}, State};
+
+handle_call({get_block_by_hash, Hash}, _From, State) ->
+    {ok, Info} = aec_chain_sim:block_by_hash(Hash),
+    Block = format_block(Info),
+    {reply, {ok, Block}, State};
 
 handle_call(Request, _From, State) ->
     lager:info("Unexpected call: ~p", [Request]),
@@ -80,14 +90,9 @@ handle_cast(_Msg, State) ->
 
 handle_info({gproc_ps_event, {parent_chain, top_changed}, #{info := Info}}, State) ->
     Pid = maps:get(pid, Info, undefined),
-    Height = maps:get(height, Info, 0),
-    (State#state.pid == Pid) andalso (Height > State#state.height) andalso
+    (State#state.pid == Pid) andalso
         begin
-            %% TODO: To query block with data;
-            Txs = [aehc_connector:tx(sender_id(Tx), payload(Tx)) || Tx <- maps:get(txs, Info)],
-            Hash = maps:get(block_hash, Info),
-            PrevHash = maps:get(prev_hash, Info),
-            Block = aehc_connector:block(Height, Hash, PrevHash, Txs),
+            Block = format_block(Info),
             aehc_connector:publish_block(Block)
         end,
     {noreply, State};
@@ -95,9 +100,6 @@ handle_info({gproc_ps_event, {parent_chain, top_changed}, #{info := Info}}, Stat
 handle_info(Info, State) ->
     lager:info("Unexpected message: ~p", [Info]),
     {noreply, State}.
-
-code_change(_OldVsn, State, _Extra) ->
-    {ok, State}.
 
 terminate(_Reason, _State) ->
     ok.
@@ -113,3 +115,9 @@ sender_id(SignedTx) ->
     Tx = aetx_sign:tx(SignedTx), SpendTx = aetx:tx(Tx),
     SenderId = aec_spend_tx:sender_id(SpendTx), true = is_binary(SenderId),
     SenderId.
+
+format_block(SimBlock) ->
+    Txs = [aehc_connector:tx(sender_id(Tx), payload(Tx)) || Tx <- maps:get(txs, SimBlock)],
+    Hash = maps:get(block_hash, SimBlock),
+    PrevHash = maps:get(prev_hash, SimBlock),
+    aehc_connector:block(Hash, PrevHash, Txs).
