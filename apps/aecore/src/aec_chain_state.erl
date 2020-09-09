@@ -25,7 +25,7 @@
 %%% If a micro block is added to the top of the chain, this is
 %%% considered the top block, even if it doesn't increase the
 %%% difficulty. If a micro block is added to a fork with the same
-%%% difficulty as the main chain, the top block will not chain.
+%%% difficulty as the main chain, the top block will not change.
 %%%
 %%% Forks in the structure are labeled by fork id. The fork id is
 %%% local to each Aeternity node instance and cannot be used to reason about
@@ -817,7 +817,7 @@ handle_top_block_change(OldTopHash, NewTopDifficulty, Events, State) ->
                     {ok, OldTopDifficulty} = db_find_difficulty(OldTopHash),
                     case OldTopDifficulty >= NewTopDifficulty of
                         true ->
-                            State1 =set_top_block_hash(OldTopHash, State), %% Reset
+                            State1 = set_top_block_hash(OldTopHash, State), %% Reset
                             {State1, Events};
                         false ->
                             State1 = update_main_chain(OldTopHash, NewTopHash,
