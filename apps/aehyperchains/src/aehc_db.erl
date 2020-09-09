@@ -25,7 +25,7 @@ check_tables(Acc) ->
     end.
 
 modules() ->
-    [].
+    [aehc_parent_db].
 
 all_specs(Mode) ->
     lists:flatten([M:table_specs(Mode) || M <- modules()]).

@@ -11,6 +11,12 @@
 
 -include_lib("eunit/include/eunit.hrl").
 
+-define(PARENT_GENESIS_HASH, <<"GENESIS">>).
+-define(PARENT_HASH1, <<"Parent block 1">>).
+-define(PARENT_HASH2, <<"Parent block 2">>).
+-define(PARENT_GENESIS_HEADER,
+    aehc_parent_block:new_header(?PARENT_GENESIS_HASH, ?PARENT_GENESIS_HASH, 1)).
+
 hyperchains_unable_to_use_normal_db_test_() ->
     {foreach,
      fun() ->
@@ -78,7 +84,69 @@ end,
             ?assertEqual({ok, pid}, aecore_app:start(normal, [])),
 
             % Disable hyperchains
-            aehc_utils:hc_install(),
+            aehc_utils:hc_uninstall(),
             ok
+       end}
+     ]}.
+
+write_parent_chain_test_() ->
+    {foreach,
+     fun() ->
+             application:set_env(aehyperchains, enabled, true),
+             aehc_utils:hc_install(),
+             ok = application:ensure_started(gproc),
+             {ok, _} = aec_db_error_store:start_link(),
+             aec_test_utils:start_chain_db(),
+             %% somehow setup:find_env_vars can't find this hook in eunit tests
+             aehc_db:create_tables(ram),
+             Tabs = [Tab || {Tab, _} <- aehc_parent_db:table_specs(ram)],
+             ok = mnesia:wait_for_tables(Tabs, 10000),
+
+             meck:new(aec_mining, [passthrough]),
+             meck:expect(aec_mining, verify, fun(_, _, _, _) -> true end),
+             meck:new(aec_events, [passthrough]),
+             meck:expect(aec_events, publish, fun(_, _) -> ok end),
+             aec_test_utils:mock_genesis_and_forks(),
+             TmpDir = aec_test_utils:aec_keys_setup(),
+             {ok, PubKey} = aec_keys:pubkey(),
+             ok = application:set_env(aecore, beneficiary, aeser_api_encoder:encode(account_pubkey, PubKey)),
+             {ok, _} = aec_tx_pool:start_link(),
+             {ok, _} = aec_conductor:start_link([{autostart, false}]),
+             TmpDir
+     end,
+     fun(TmpDir) ->
+             ok = application:unset_env(aecore, beneficiary),
+             ok = aec_conductor:stop(),
+             ok = aec_tx_pool:stop(),
+             ok = application:stop(gproc),
+             meck:unload(aec_mining),
+             meck:unload(aec_events),
+             aec_test_utils:unmock_genesis_and_forks(),
+             aec_test_utils:stop_chain_db(),
+             ok = aec_db_error_store:stop(),
+             aec_test_utils:aec_keys_cleanup(TmpDir),
+             aehc_utils:hc_uninstall(),
+             application:set_env(aehyperchains, enabled, false)
+     end,
+     [{"Write and read back pinpointed genesis block",
+       fun() ->
+             ParentBlock = aehc_parent_block:new_block(?PARENT_GENESIS_HEADER, []),
+             aehc_parent_db:write_parent_block(ParentBlock),
+             ?assertEqual(ParentBlock, aehc_parent_db:get_parent_block(?PARENT_GENESIS_HASH)),
+             ?assertEqual([], aehc_parent_db:get_candidates_in_election_cycle(1337, ?PARENT_GENESIS_HASH))
+       end},
+      {"Write a chain with commitments",
+       fun() ->
+            C1 = aehc_commitment:new(aehc_commitment_header:new(<<"D1">>, <<"BLOCK 1">>), no_pogf),
+            C2 = aehc_commitment:new(aehc_commitment_header:new(<<"D2">>, <<"BLOCK 2">>), no_pogf),
+            C3 = aehc_commitment:new(aehc_commitment_header:new(<<"D3">>, <<"BLOCK 3">>), no_pogf),
+            C4 = aehc_commitment:new(aehc_commitment_header:new(<<"D4">>, <<"BLOCK 4">>), no_pogf),
+            CList = [C1, C2, C3, C4],
+            CHList = [aehc_commitment:hash(C) || C <- CList],
+            ParentBlockHeader = aehc_parent_block:new_header(?PARENT_GENESIS_HASH, ?PARENT_GENESIS_HASH, 1, CHList),
+            ParentBlock = aehc_parent_block:new_block(ParentBlockHeader, CList),
+            aehc_parent_db:write_parent_block(ParentBlock),
+            ?assertEqual(ParentBlock, aehc_parent_db:get_parent_block(?PARENT_GENESIS_HASH)),
+            ?assertEqual(CList, aehc_parent_db:get_candidates_in_election_cycle(1337, ?PARENT_GENESIS_HASH))
        end}
      ]}.
