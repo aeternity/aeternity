@@ -38,7 +38,9 @@
 
 -export([ next_nonce/1                 %% (Acct) -> integer()
         , push/1                       %% (Tx) -> ok
-        , find_signed_tx/1             %% (TxHash) -> {value, STx)} | none.
+        , find_signed_tx/1             %% (TxHash) -> {value, STx)} | none
+        , top_block_hash/0             %% () -> Hash
+        , block_by_hash/1              %% (BlockHash) -> {ok, Block}
         , add_keyblock/0               %% () -> {ok, Block}
         , add_keyblock/1               %% (ForkId) -> {ok, Block}
         , add_microblock/0             %% () -> {ok, Block}
@@ -153,6 +155,14 @@ push(Tx) ->
 %%
 add_keyblock() ->
     add_keyblock(main).
+
+-spec block_by_hash(block_hash()) -> {ok, sim_keyblock() |sim_microblock()}.
+block_by_hash(BlockHash) ->
+    chain_req({block_by_hash, BlockHash}).
+
+-spec top_block_hash() -> binary().
+top_block_hash() ->
+    chain_req(top_block_hash).
 
 -spec add_keyblock( ForkId :: fork_id() ) -> {ok, sim_keyblock()}.
 %%
@@ -324,6 +334,8 @@ handle_call({next_nonce, Acct}, _From, #st{chain = #{nonces := Nonces} = Chain} 
     {reply, NewN, St#st{chain = Chain#{nonces => Nonces#{ Acct => NewN }}}};
 handle_call(top_block_hash, _From, #st{chain = Chain} = St) ->
     {reply, top_block_hash_(Chain), St};
+handle_call({block_by_hash, Hash},_From, #st{chain = Chain} = St) ->
+    {reply, get_block_(Hash, Chain), St};
 handle_call({get_block_state, Hash}, _From, #st{chain = Chain} = St) ->
     {reply, get_block_state_(Hash, Chain), St};
 handle_call({get_header, Hash}, _From, #st{chain = Chain} = St) ->
@@ -658,6 +670,14 @@ get_header_(Hash, Chain) ->
     case blocks_until_hash(Hash, blocks(Chain)) of
         [#{header := Header}|_] ->
             {ok, Header};
+        [] ->
+            error
+    end.
+
+get_block_(Hash, Chain) ->
+    case blocks_until_hash(Hash, blocks(Chain)) of
+        [Block|_] ->
+            {ok, Block};
         [] ->
             error
     end.
