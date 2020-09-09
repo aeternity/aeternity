@@ -15,6 +15,12 @@
 
 -export([ min_t_after_keyblock/0]).
 
+-ifdef(TEST).
+-export([ create_with_txs/2
+        , create_with_txs_and_state/3
+        ]).
+-endif.
+
 -export_type([block_info/0]).
 
 -include("blocks.hrl").
@@ -42,6 +48,38 @@ create(Block) ->
                 _ -> {error, block_not_found}
             end
     end.
+
+-ifdef(TEST).
+create_with_txs(Block, Txs) ->
+    case aec_blocks:is_key_block(Block) of
+        true -> int_create_with_txs(Block, Block, Txs);
+        false ->
+            case aec_chain:get_block(aec_blocks:prev_key_hash(Block)) of
+                {ok, KeyBlock} -> int_create_with_txs(Block, KeyBlock, Txs);
+                _ -> {error, block_not_found}
+            end
+    end.
+
+create_with_txs_and_state(Block, Txs, Trees) ->
+    {ok, BlockHash} = aec_blocks:hash_internal_representation(Block),
+    case aec_blocks:is_key_block(Block) of
+        true ->  int_create_block(BlockHash, Block, Block, Trees, Txs);
+        false ->
+            case aec_chain:get_block(aec_blocks:prev_key_hash(Block)) of
+                {ok, KeyBlock} ->  int_create_block(BlockHash, Block, KeyBlock, Trees, Txs);
+                _ -> {error, block_not_found}
+            end
+    end.
+
+int_create_with_txs(Block, KeyBlock, Txs) ->
+    {ok, BlockHash} = aec_blocks:hash_internal_representation(Block),
+    case aec_chain:get_block_state(BlockHash) of
+        {ok, Trees} ->
+            int_create_block(BlockHash, Block, KeyBlock, Trees, Txs);
+        error ->
+            {error, block_state_not_found}
+    end.
+-endif.
 
 -spec create_with_state(aec_blocks:block(), aec_blocks:block(),
     list(aetx_sign:signed_tx()), aec_trees:trees()) ->
