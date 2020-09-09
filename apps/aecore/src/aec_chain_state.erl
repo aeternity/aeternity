@@ -25,7 +25,7 @@
 %%% If a micro block is added to the top of the chain, this is
 %%% considered the top block, even if it doesn't increase the
 %%% difficulty. If a micro block is added to a fork with the same
-%%% difficulty as the main chain, the top block will not chain.
+%%% difficulty as the main chain, the top block will not change.
 %%%
 %%% Forks in the structure are labeled by fork id. The fork id is
 %%% local to each Aeternity node instance and cannot be used to reason about
