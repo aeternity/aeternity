@@ -28,6 +28,8 @@
 
 -type block() :: #block{}.
 
+-export_type([tx/0, block/0]).
+
 -spec tx(Sender::binary(), Payload::binary()) -> tx().
 tx(SenderId, Payload) when
       is_binary(SenderId), is_binary(Payload) ->
