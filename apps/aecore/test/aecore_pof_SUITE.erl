@@ -89,8 +89,8 @@ siblings_on_key_block(Config) ->
     ct:pal("Setting up accounts"),
     Fee0a = 20000 * aec_test_utils:min_gas_price(),
     Fee0b = 20000 * aec_test_utils:min_gas_price(),
-    {ok, Tx0a} = add_spend_tx(N1, 1000000, Fee0a, 1, 10, patron(), PK1),
-    {ok, Tx0b} = add_spend_tx(N1, 1000000, Fee0b, 2, 10, patron(), PK2),
+    {ok, Tx0a, _} = add_spend_tx(N1, 1000000 * aec_test_utils:min_gas_price(), Fee0a, 1, 10, patron(), PK1),
+    {ok, Tx0b, _} = add_spend_tx(N1, 1000000 * aec_test_utils:min_gas_price(), Fee0b, 2, 10, patron(), PK2),
 
     {ok, _} = aecore_suite_utils:mine_blocks_until_txs_on_chain(N1, [Tx0a, Tx0b], ?MAX_MINED_BLOCKS),
 
@@ -126,9 +126,9 @@ siblings_on_micro_block(Config) ->
     Fee0a = 20000 * aec_test_utils:min_gas_price(),
     Fee0b = 20000 * aec_test_utils:min_gas_price(),
     Fee0c = 20000 * aec_test_utils:min_gas_price(),
-    {ok, Tx0a} = add_spend_tx(N1, 100000 * aec_test_utils:min_gas_price(), Fee0a, 1, 10, patron(), PK1),
-    {ok, Tx0b} = add_spend_tx(N1, 100000 * aec_test_utils:min_gas_price(), Fee0b, 2, 10, patron(), PK2),
-    {ok, Tx0c} = add_spend_tx(N1, 100000 * aec_test_utils:min_gas_price(), Fee0c, 3, 10, patron(), PK3),
+    {ok, Tx0a, _} = add_spend_tx(N1, 100000 * aec_test_utils:min_gas_price(), Fee0a, 1, 10, patron(), PK1),
+    {ok, Tx0b, _} = add_spend_tx(N1, 100000 * aec_test_utils:min_gas_price(), Fee0b, 2, 10, patron(), PK2),
+    {ok, Tx0c, _} = add_spend_tx(N1, 100000 * aec_test_utils:min_gas_price(), Fee0c, 3, 10, patron(), PK3),
 
     Txs = [Tx0a, Tx0b, Tx0c],
     {ok, _} = aecore_suite_utils:mine_blocks_until_txs_on_chain(N1, Txs, ?MAX_MINED_BLOCKS),
@@ -144,7 +144,7 @@ ensure_top_is_a_micro(_Node,_Account, Nonce) when Nonce > 5 ->
     error(could_not_ensure_micro_top);
 ensure_top_is_a_micro(Node, Account, Nonce) ->
     %% We want to make a top that is a micro block
-    {ok, _Tx1} = add_spend_tx(Node, 1000, 20000 * aec_test_utils:min_gas_price(), 1, 10, Account, new_pubkey()),
+    {ok, _Tx1, _} = add_spend_tx(Node, 1000, 20000 * aec_test_utils:min_gas_price(), 1, 10, Account, new_pubkey()),
     {ok, _} = aecore_suite_utils:mine_micro_blocks(Node, 1),
     Top = rpc:call(Node, aec_chain, top_block, []),
     case aec_blocks:type(Top) of
@@ -168,26 +168,52 @@ siblings_common(TopBlock, N1, N2, Account1, Account2) ->
 
     ct:pal("Starting to test fraud"),
     %% Add a transaction and create the first micro block
-    {ok, _Tx1} = add_spend_tx(N1, 1000, SpendFee,  1,  10, Account1, new_pubkey()),
-    {ok, Micro1, _} =  rpc:call(N1, aec_block_micro_candidate, create, [TopBlock]),
+    {ok, Tx1, STx1} = add_spend_tx(N1, 1000, SpendFee,  1,  10, Account1, new_pubkey()),
+    {ok, TxH1} = aeser_api_encoder:safe_decode(tx_hash, Tx1),
+    {ok, Micro1, _} =  rpc:call(N1, aec_block_micro_candidate, create_with_txs, [TopBlock, [STx1]]),
     {ok, Micro1S} = rpc:call(N1, aec_keys, sign_micro_block, [Micro1]),
+    {ok, Micro1SH} = aec_blocks:hash_internal_representation(Micro1S),
 
     %% Add another transaction and create the second micro block
-    {ok, _Tx2} = add_spend_tx(N1, 1000, SpendFee,  2,  10, Account1, new_pubkey()),
-    {ok, Micro2, _} =  rpc:call(N1, aec_block_micro_candidate, create, [TopBlock]),
+    {ok, Tx2, STx2} = add_spend_tx(N1, 1000, SpendFee,  1,  10, Account2, new_pubkey()),
+    {ok, TxH2} = aeser_api_encoder:safe_decode(tx_hash, Tx2),
+    {ok, Micro2, #{trees := Micro2State}} =  rpc:call(N1, aec_block_micro_candidate, create_with_txs, [TopBlock, [STx2]]),
     {ok, Micro2S} = rpc:call(N1, aec_keys, sign_micro_block, [Micro2]),
+    {ok, Micro2SH} = aec_blocks:hash_internal_representation(Micro2S),
+
+    ct:log("Micro1: ~p", [Micro1]),
+    ct:log("Micro2: ~p", [Micro2]),
+
+    %% Extend one branch of the microfork
+    {ok, Micro3, _} =  rpc:call(N1, aec_block_micro_candidate, create_with_txs_and_state, [Micro2S, [], Micro2State]),
+    {ok, Micro3S} = rpc:call(N1, aec_keys, sign_micro_block, [Micro3]),
+    {ok, Micro3SH} = aec_blocks:hash_internal_representation(Micro3S),
+
+    %% Before posting the microblocks the tx are in mempool
+    mempool = rpc:call(N2, aec_chain, find_tx_location, [TxH1]),
+    mempool = rpc:call(N2, aec_chain, find_tx_location, [TxH2]),
 
     %% Post both blocks to mock that N1 is fraudulent
     ok = rpc:call(N2, aec_conductor, post_block, [Micro1S]),
+    Micro1SH = rpc:call(N2, aec_chain, find_tx_location, [TxH1]),
+    Micro1SH = rpc:call(N2, aec_chain, top_block_hash, []),
     ok = rpc:call(N2, aec_conductor, post_block, [Micro2S]),
+    mempool = rpc:call(N2, aec_chain, find_tx_location, [TxH2]), % This didn't change the top so the tx is still in mempool
+    Micro1SH = rpc:call(N2, aec_chain, top_block_hash, []),
     FraudHeight = aec_blocks:height(Micro1),
+
+    %% Post the extension
+    ok = rpc:call(N2, aec_conductor, post_block, [Micro3S]),
+    mempool = rpc:call(N2, aec_chain, find_tx_location, [TxH2]), % This didn't change the top so the tx is still in mempool
+    Micro1SH = rpc:call(N2, aec_chain, top_block_hash, []),
 
     %% Make N2 mine a key block to start the next generation.
     {ok, [Key2]} = aecore_suite_utils:mine_key_blocks(N2, 1),
     put(bnf2, aec_headers:beneficiary(aec_blocks:to_header(Key2))),
+    mempool = rpc:call(N2, aec_chain, find_tx_location, [TxH2]),
 
     %% Now we need a micro block to report the fraud in.
-    {ok, _} = add_spend_tx(N2, 1000, SpendFee,  1,  10, Account2, new_pubkey()),
+    {ok, _, _} = add_spend_tx(N2, 1000, SpendFee,  2,  10, Account2, new_pubkey()),
     {ok, MicroFraud, _} = rpc:call(N2, aec_block_micro_candidate, create, [Key2]),
     {ok, MicroFraudS} = rpc:call(N2, aec_keys, sign_micro_block, [MicroFraud]),
 
@@ -204,7 +230,7 @@ siblings_common(TopBlock, N1, N2, Account1, Account2) ->
     end,
 
     %% Manually add the report and check that the fraud would not be reported again.
-    {ok, _} = add_spend_tx(N2, 1000, SpendFee,  2,  10, Account2, new_pubkey()),
+    {ok, _, _} = add_spend_tx(N2, 1000, SpendFee,  3,  10, Account2, new_pubkey()),
     ok = rpc:call(N2, aec_conductor, post_block, [MicroFraudS]),
     {ok, MicroNoFraud, _} = rpc:call(N2, aec_block_micro_candidate, create, [MicroFraudS]),
     ?assertEqual(no_fraud, aec_blocks:pof(MicroNoFraud)),
@@ -337,7 +363,7 @@ add_spend_tx(Node, Amount, Fee, Nonce, TTL, Sender, Recipient) ->
     {ok, Tx} = aec_spend_tx:new(Params),
     STx = aec_test_utils:sign_tx(Tx, maps:get(privkey, Sender)),
     Res = rpc:call(Node, aec_tx_pool, push, [STx]),
-    {Res, aeser_api_encoder:encode(tx_hash, aetx_sign:hash(STx))}.
+    {Res, aeser_api_encoder:encode(tx_hash, aetx_sign:hash(STx)), STx}.
 
 new_keypair() ->
     #{ public := PK, secret := SK } = enacl:sign_keypair(),
