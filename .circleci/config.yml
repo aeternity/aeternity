@@ -124,12 +124,12 @@ references:
     restore_cache:
       key: *rebar_cache_key
 
-  build_otp21_cache_key: &build_otp21_cache_key build-otp21-cache-v4-{{ .Revision }}
+  build_otp21_cache_key: &build_otp21_cache_key build-otp21-cache-v5-{{ .Revision }}
   restore_build_otp21_cache: &restore_build_otp21_cache
     restore_cache:
       key: *build_otp21_cache_key
 
-  build_otp22_cache_key: &build_otp22_cache_key build-otp22-cache-v1-{{ .Revision }}
+  build_otp22_cache_key: &build_otp22_cache_key build-otp22-cache-v2-{{ .Revision }}
   restore_build_otp22_cache: &restore_build_otp22_cache
     restore_cache:
       key: *build_otp22_cache_key
@@ -609,7 +609,7 @@ jobs:
           name: Build
           command: make KIND=test
       - save_cache:
-          key: *build_otp21_cache_key
+          key: *build_otp22_cache_key
           paths:
             - "_build"
       - save_cache:
@@ -774,7 +774,7 @@ jobs:
     steps:
       - checkout
       - *restore_rebar_cache
-      - *restore_build_otp21_cache
+      - *restore_build_otp22_cache
       - run:
           name: AEVM Tests
           command: |
@@ -788,20 +788,20 @@ jobs:
       - checkout
       - run: make dockerignore-check
       - *restore_rebar_cache
-      - *restore_build_otp21_cache
+      - *restore_build_otp22_cache
       - run: ./rebar3 edoc
       - restore_cache:
           keys:
-            - dialyzer-cache-v5-{{ .Branch }}-{{ .Revision }}
-            - dialyzer-cache-v5-{{ .Branch }}-
-            - dialyzer-cache-v5-
+            - dialyzer-otp22-cache-v5-{{ .Branch }}-{{ .Revision }}
+            - dialyzer-otp22-cache-v5-{{ .Branch }}-
+            - dialyzer-otp22-cache-v5-
       - run:
           name: Update dialyzer PLT
           command: make dialyzer-install
       - save_cache:
-          key: dialyzer-cache-v5-{{ .Branch }}-{{ .Revision }}
+          key: dialyzer-otp22-cache-v5-{{ .Branch }}-{{ .Revision }}
           paths:
-            - *container_otp21_plt
+            - *container_otp22_plt
       - run:
           name: Run dialyzer
           no_output_timeout: 20m
