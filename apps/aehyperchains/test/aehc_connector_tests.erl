@@ -13,30 +13,28 @@
 
 hyperchains_simulator_test_() ->
     {foreach,
-     fun() ->
-             InitialApps = {running_apps(), loaded_apps()},
-             meck:new(aehc_app, [passthrough]),
-             meck:expect(aehc_app, get_connector_id, 0, <<"aehc_chain_sim_connector">>),
+        fun() ->
+            meck:new(aehc_app, [passthrough]),
+            meck:expect(aehc_app, get_connector_id, 0, <<"aehc_chain_sim_connector">>),
 
-             meck:new(aecore_sup, [passthrough]),
-             meck:expect(aecore_sup, start_link, 0, {ok, pid}),
-             meck:new(aec_jobs_queues, [passthrough]),
-             meck:expect(aec_jobs_queues, start, 0, ok),
-             ok = lager:start(),
-             InitialApps
-     end,
-     fun({OldRunningApps, OldLoadedApps}) ->
-             ok = restore_stopped_and_unloaded_apps(OldRunningApps, OldLoadedApps)
-end,
-     [{"Sent payload == Requested payload",
-       fun() ->
-            %
-            aec_chain_sim:start(),
-            Payload = <<"test">>,
-            aehc_connector:send_tx(Payload),
-            %
-               io:format("~nTest is run ~p~n",[?MODULE]),
-            ?assertEqual(ok, aehc_connector:send_tx(Payload)),
-            ok
-       end}
-     ]}.
+            application:ensure_started(gproc),
+            ok = application:ensure_started(crypto),
+
+            aec_test_utils:mock_genesis_and_forks(),
+            Dir = aec_test_utils:aec_keys_setup(),
+            aehc_chain_sim_connector:start_link(),
+            Dir
+        end,
+        fun(TmpDir) ->
+            aec_test_utils:aec_keys_cleanup(TmpDir),
+            aec_test_utils:unmock_genesis_and_forks()
+        end,
+        [{"Sent payload == Requested payload",
+            fun() ->
+                %
+                Payload = <<"test">>,
+                %
+                ?assertEqual(ok, aehc_connector:send_tx(Payload)),
+                ok
+            end}
+        ]}.
