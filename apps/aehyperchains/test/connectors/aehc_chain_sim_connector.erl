@@ -49,7 +49,7 @@ get_block_by_hash(Hash) ->
 init([]) ->
     process_flag(trap_exit, true),
     true = aec_events:subscribe(top_changed),
-    {ok, Pid} = aec_chain_sim:start(#{}),
+    {ok, Pid} = aec_chain_sim:start(#{ simulator => parent_chain }),
     lager:info("Parent chain's connector ~p is attached: ~p", [?MODULE, Pid]),
     {ok, #state{ pid = Pid }}.
 
