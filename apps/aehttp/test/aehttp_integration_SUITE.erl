@@ -191,7 +191,12 @@
 
 %% test case exports for HTTP cache headers
 -export([
-    expires_cache_header/1,
+    expires_cache_header_top/1,
+    expires_cache_header_current_key/1,
+    expires_cache_header_keyblock_hash/1,
+    expires_cache_header_keyblock_height/1,
+    expires_cache_header_microblock_transactions/1,
+    expires_cache_header_generation_hash/1,
     etag_cache_header/1]).
 
 %% test case exports
@@ -479,7 +484,12 @@ groups() ->
        cors_returned_on_get_request]},
 
      {http_cache, [],
-      [expires_cache_header,
+      [expires_cache_header_top,
+       expires_cache_header_current_key,
+       expires_cache_header_keyblock_hash,
+       expires_cache_header_keyblock_height,
+       expires_cache_header_microblock_transactions,
+       expires_cache_header_generation_hash,
        etag_cache_header]},
 
      {cowboy_handler, [],
@@ -697,6 +707,17 @@ init_per_group(nonexistent_name = Group, Config) ->
     start_node(Group, Config);
 init_per_group(name_txs, _Config) ->
     {skip, not_implemented};
+init_per_group(http_cache = Group, Config) ->
+    Config1 = start_node(Group, Config),
+    [ {NodeId, Node} | _ ] = ?config(nodes, Config1),
+    {_, Pubkey} = aecore_suite_utils:sign_keys(NodeId),
+    ToMine = max(2, aecore_suite_utils:latest_fork_height()),
+    aecore_suite_utils:mine_key_blocks(Node, ToMine),
+    {ok, [KeyBlock1, KeyBlock2]} = aecore_suite_utils:mine_key_blocks(Node, 2),
+    true = aec_blocks:is_key_block(KeyBlock1),
+    true = aec_blocks:is_key_block(KeyBlock2),
+    [{account_id, aeser_api_encoder:encode(account_pubkey, Pubkey)},
+     {account_exists, true} | Config1];
 
 init_per_group(Group, Config) ->
     Config1 = start_node(Group, Config),
@@ -3726,8 +3747,14 @@ cors_returned_on_get_request(_Config) ->
 %% ============================================================
 %% Test HTTP cache headers
 %% ============================================================
+wait_for_spend_tx() ->
+      MinerAddress = get_pubkey(),
+      {ok, 200, #{<<"tx">> := SpendTx}} = post_spend_tx(MinerAddress, 1, ?SPEND_FEE),
+      SpendTxHash = sign_and_post_tx(SpendTx),
+      ok = wait_for_tx_hash_on_chain(SpendTxHash),
+      SpendTxHash.
 
-expires_cache_header(_Config) ->
+expires_cache_header_top(_Config) ->
     Host = external_address(),
     {ok, {{_, 200, _}, Headers, _Body}} =
         httpc_request(get, {Host ++ "/v2/blocks/top", []}, [], []),
@@ -3737,6 +3764,77 @@ expires_cache_header(_Config) ->
         {ok, 200, #{<<"key_block">> := Block}} -> maps:get(<<"time">>, Block);
         {ok, 200, #{<<"micro_block">> := MicroBlock}} -> maps:get(<<"time">>, MicroBlock)
     end,
+    ExpiresStr = proplists:get_value("expires", Headers),
+    Expires = http_datetime_to_unixtime(ExpiresStr) * 1000, % to msecs
+    true = Expires - Blocktime =< aec_governance:micro_block_cycle(),
+    ok.
+
+expires_cache_header_current_key(_Config) ->
+    Host = external_address(),
+    {ok, {{_, 200, _}, Headers, _Body}} =
+        httpc_request(get, {Host ++ "/v2/key-blocks/current", []}, [], []),
+
+    true = proplists:is_defined("expires", Headers),
+    Blocktime = case get_top_sut() of
+        {ok, 200, #{<<"key_block">> := Block}} -> maps:get(<<"time">>, Block)
+    end,
+    ExpiresStr = proplists:get_value("expires", Headers),
+    Expires = http_datetime_to_unixtime(ExpiresStr) * 1000, % to msecs
+    true = Expires - Blocktime =< aec_governance:expected_block_mine_rate(),
+    ok.
+
+expires_cache_header_keyblock_hash(_Config) ->
+    Host = external_address(),
+    {ok, 200, #{<<"hash">> := Hash}} = get_key_blocks_current_hash_sut(),
+    {ok, {{_, 200, _}, Headers, _Body}} =
+        httpc_request(get, {Host ++ "/v2/key-blocks/hash/" ++ Hash, []}, [], []),
+
+    true = proplists:is_defined("expires", Headers),
+    Blocktime = case get_top_sut() of
+        {ok, 200, #{<<"key_block">> := Block}} -> maps:get(<<"time">>, Block)
+    end,
+    ExpiresStr = proplists:get_value("expires", Headers),
+    Expires = http_datetime_to_unixtime(ExpiresStr) * 1000, % to msecs
+    true = Expires - Blocktime =< aec_governance:expected_block_mine_rate(),
+    ok.
+
+expires_cache_header_keyblock_height(_Config) ->
+    Host = external_address(),
+    {ok, {{_, 200, _}, Headers, _Body}} =
+        httpc_request(get, {Host ++ "/v2/key-blocks/height/1", []}, [], []),
+
+    true = proplists:is_defined("expires", Headers),
+    Blocktime = case get_top_sut() of
+        {ok, 200, #{<<"key_block">> := Block}} -> maps:get(<<"time">>, Block)
+    end,
+    ExpiresStr = proplists:get_value("expires", Headers),
+    Expires = http_datetime_to_unixtime(ExpiresStr) * 1000, % to msecs
+    true = Expires - Blocktime =< aec_governance:expected_block_mine_rate(),
+    ok.
+
+expires_cache_header_microblock_transactions(_Config) ->
+    Host = external_address(),
+    SpendTxHash = wait_for_spend_tx(),
+    {ok, 200, #{<<"block_hash">> := MicroHash}} = get_transactions_by_hash_sut(SpendTxHash),
+    {ok, 200, #{<<"time">> := Blocktime}} = get_micro_blocks_header_by_hash_sut(MicroHash),
+    Url = Host ++ "/v2/micro-blocks/hash/" ++ binary_to_list(MicroHash) ++ "/transactions",
+    {ok, {{_, 200, _}, Headers, _Body}} = httpc_request(get, {Url, []}, [], []),
+
+    true = proplists:is_defined("expires", Headers),
+    ExpiresStr = proplists:get_value("expires", Headers),
+    Expires = http_datetime_to_unixtime(ExpiresStr) * 1000, % to msecs
+    true = Expires - Blocktime =< aec_governance:micro_block_cycle(),
+    ok.
+
+expires_cache_header_generation_hash(_Config) ->
+    Host = external_address(),
+    SpendTxHash = wait_for_spend_tx(),
+    {ok, 200, #{<<"block_hash">> := MicroHash}} = get_transactions_by_hash_sut(SpendTxHash),
+    {ok, 200, #{<<"prev_key_hash">> := Hash, <<"time">> := Blocktime}} = get_micro_blocks_header_by_hash_sut(MicroHash),
+    Url = Host ++ "/v2/generations/hash/" ++ binary_to_list(Hash),
+    {ok, {{_, 200, _}, Headers, _Body}} = httpc_request(get, {Url, []}, [], []),
+
+    true = proplists:is_defined("expires", Headers),
     ExpiresStr = proplists:get_value("expires", Headers),
     Expires = http_datetime_to_unixtime(ExpiresStr) * 1000, % to msecs
     true = Expires - Blocktime =< aec_governance:micro_block_cycle(),
