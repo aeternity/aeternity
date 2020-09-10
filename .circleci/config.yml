@@ -792,14 +792,14 @@ jobs:
       - run: ./rebar3 edoc
       - restore_cache:
           keys:
-            - dialyzer-otp22-cache-v1-{{ .Branch }}-{{ .Revision }}
-            - dialyzer-otp22-cache-v1-{{ .Branch }}-
-            - dialyzer-otp22-cache-v1-
+            - dialyzer-otp22-cache-v5-{{ .Branch }}-{{ .Revision }}
+            - dialyzer-otp22-cache-v5-{{ .Branch }}-
+            - dialyzer-otp22-cache-v5-
       - run:
           name: Update dialyzer PLT
           command: make dialyzer-install
       - save_cache:
-          key: dialyzer-otp22-cache-v1-{{ .Branch }}-{{ .Revision }}
+          key: dialyzer-otp22-cache-v5-{{ .Branch }}-{{ .Revision }}
           paths:
             - *container_otp22_plt
       - run:
