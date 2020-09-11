@@ -57,9 +57,12 @@
         , set_payer/2
         , set_signed_tx/2
         , tx_event/3
+	, tx_event/4
         , set_events/2
         , update_env/2
         ]).
+
+-export([no_events/0]).
 
 
 %%%===================================================================
@@ -72,23 +75,23 @@
 %% ga_meta_tx, and a third set of rules apply.
 -type context() :: 'aetx_transaction' | 'aetx_contract' | 'aetx_ga'.
 -type wrapped_tx() :: {'value', aetx_sign:signed_tx()} | 'none'.
--type events() :: map().
+-type events() :: list().
 
--record(env, { consensus_version :: non_neg_integer()
-             , beneficiary       :: aec_keys:pubkey()
-             , context           :: context()
-             , ga_auth_ids = []  :: [aec_keys:pubkey()]
-             , ga_nonces = []    :: [{aec_keys:pubkey(), binary()}]
-             , ga_tx             :: undefined | aetx:tx()
-             , ga_tx_hash        :: undefined | binary()
-             , payer             :: undefined | aec_keys:pubkey()
-             , difficulty        :: aeminer_pow:difficulty()
-             , dry_run = false   :: boolean()
-             , height            :: aec_blocks:height()
-             , key_hash          :: aec_blocks:block_header_hash()
-             , signed_tx         :: wrapped_tx()
-             , time              :: non_neg_integer()
-             , events = #{}      :: map()
+-record(env, { consensus_version     :: non_neg_integer()
+             , beneficiary           :: aec_keys:pubkey()
+             , context               :: context()
+             , ga_auth_ids = []      :: [aec_keys:pubkey()]
+             , ga_nonces = []        :: [{aec_keys:pubkey(), binary()}]
+             , ga_tx                 :: undefined | aetx:tx()
+             , ga_tx_hash            :: undefined | binary()
+             , payer                 :: undefined | aec_keys:pubkey()
+             , difficulty            :: aeminer_pow:difficulty()
+             , dry_run = false       :: boolean()
+             , height                :: aec_blocks:height()
+             , key_hash              :: aec_blocks:block_header_hash()
+             , signed_tx             :: wrapped_tx()
+             , time                  :: non_neg_integer()
+             , events = no_events()  :: events()
              }).
 
 -opaque env() :: #env{}.
@@ -303,28 +306,29 @@ tx_event(channel = Kind, Data, #env{events = Events} = Env) ->
             Name = {Kind, Data},
             TxHash = aetx_sign:hash(SignedTx),
             {Type, _} = aetx:specialize_type(aetx_sign:innermost_tx(SignedTx)),
-            Env#env{events = Events#{Name => #{ type => Type
-                                              , tx_hash => TxHash }}}
+            Env#env{events = [{Name, #{ type => Type
+                                      , tx_hash => TxHash }} | Events]}
     end;
 tx_event(Kind, Data, Env) ->
     lager:debug("tx_event(~p, ~p, ~p)", [Kind, Data, Env]),
     Env.
 
-tx_event(Kind, Data, Info, #env{events = Events} = Env) ->
+-spec tx_event(atom(), any(), any(), env()) -> env().
+tx_event(Kind, Key, Info, #env{events = Events} = Env) ->
     case signed_tx(Env) of
         none -> Env;
         {value, SignedTx} ->
-            Name = {Kind, Data},
+            Name = {Kind, Key},
             TxHash = aetx_sign:hash(SignedTx),
             {Type, _} = aetx:specialize_type(aetx_sign:innermost_tx(SignedTx)),
-            Env#env{events = Events#{Name => #{ type => Type
-                                              , info => Info
-                                              , tx_hash => TxHash }}}
+            Env#env{events = [{Name, #{ type => Type
+                                      , info => Info
+                                      , tx_hash => TxHash }} | Events]}
     end.
 
 %%------
 
--spec set_events(env(), map()) -> env().
+-spec set_events(env(), events()) -> env().
 set_events(Env, Events) ->
     Env#env{events = Events}.
 
@@ -355,5 +359,10 @@ time_in_msecs(#env{time = X}) -> X.
 
 %%------
 
--spec events(env()) -> map().
+%% Note that the `events` list is LIFO
+-spec events(env()) -> events().
 events(#env{events = X}) -> X.
+
+-spec no_events() -> events().
+no_events() ->
+    [].

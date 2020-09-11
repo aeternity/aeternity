@@ -1423,6 +1423,9 @@ force_fun_calls(Node, MaxMinedBlocks) ->
 dry_run_txs(Calls) ->
     Txs = [ #{tx => Tx} || {#{tx_encoded := Tx}, _} <- Calls ],
     {ok, 200, #{ <<"results">> := Results }} = dry_run(Txs),
+    {ok, 200, #{ <<"results">> := Results
+               , <<"tx_events">> := TxEvents }} = dry_run_w_events(Txs),
+    ct:log("TxEvents = ~p", [TxEvents]),
     check_dry_calls(Calls, Results).
 
 check_dry_calls(Calls, Results) ->
@@ -1660,6 +1663,11 @@ get_micro_block_header(Hash) ->
 dry_run(Txs) ->
     Host = internal_address(),
     http_request(Host, post, "debug/transactions/dry-run", #{txs => Txs}).
+
+dry_run_w_events(Txs) ->
+    Host = internal_address(),
+    http_request(Host, post, "debug/transactions/dry-run", #{ txs => Txs
+                                                            , tx_events => true }).
 
 get_key_block(Hash) ->
     Host = external_address(),

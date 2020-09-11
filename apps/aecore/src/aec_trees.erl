@@ -582,13 +582,15 @@ apply_txs_on_state_trees(SignedTxs, Trees, Env, Opts) ->
     apply_txs_on_state_trees(SignedTxs, [], [], Trees, Env, Opts).
 
 apply_txs_on_state_trees([], ValidTxs, InvalidTxs, Trees,Env,Opts) ->
+    lager:debug("Opts = ~p", [Opts]),
     Events = case proplists:get_bool(tx_events, Opts) of
                  true -> aetx_env:events(Env);
-                 false -> #{}
+                 false -> []
              end,
-    if map_size(Events) > 0 -> lager:debug("tx_events: ~p", [Events]);
-       true -> ok
-    end,
+    lager:debug("tx_events: ~p", [Events]),
+    %% if Events =/= [] -> lager:debug("tx_events: ~p", [Events]);
+    %%    true -> ok
+    %% end,
     {ok, lists:reverse(ValidTxs), lists:reverse(InvalidTxs), Trees, Events};
 apply_txs_on_state_trees([SignedTx | Rest], ValidTxs, InvalidTxs, Trees, Env, Opts) ->
     Strict     = proplists:get_value(strict, Opts, false),

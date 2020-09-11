@@ -93,6 +93,8 @@
         , get_info_field/2
         ]).
 
+-import(aetx_env, [no_events/0]).
+
 %% For tests
 -export([ get_top_block_hash/1
         , get_key_block_hash_at_height/2
@@ -994,8 +996,8 @@ apply_node_transactions(Node, Trees, ForkInfo, State) ->
             Trees1 = aec_trees:perform_pre_transformations(Trees, Env, PrevVersion),
             Delay  = aec_governance:beneficiary_reward_delay(),
             case Height > aec_block_genesis:height() + Delay of
-                true  -> {grant_fees(Node, Trees1, Delay, FraudStatus, State), TotalFees, #{}};
-                false -> {Trees1, TotalFees, #{}}
+                true  -> {grant_fees(Node, Trees1, Delay, FraudStatus, State), TotalFees, no_events()};
+                false -> {Trees1, TotalFees, no_events()}
             end
     end.
 
