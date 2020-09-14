@@ -2,9 +2,8 @@
 %%%-------------------------------------------------------------------
 -module(aehc_connector).
 
--export([connector/0]).
+-export([send_tx/2, get_block_by_hash/2, get_top_block/1]).
 
--export([send_tx/1, get_block_by_hash/1, get_top_block/0]).
 -export([tx/2, block/3]).
 -export([publish_block/1, subscribe_block/0]).
 
@@ -16,6 +15,7 @@
 
 -callback get_block_by_hash(binary()) -> block().
 
+-export_type([connector/0]).
 %%%===================================================================
 %%%  Parent chain simplified proto
 %%%===================================================================
@@ -44,18 +44,16 @@ block(Hash, PrevHash, Txs) when
 %%%  Parent chain interface
 %%%===================================================================
 
--spec send_tx(Payload::binary()) -> ok | {error, {term(), term()}}.
-send_tx(Payload) ->
-    Con = connector(),
+-spec send_tx(connector(), binary()) -> ok | {error, {term(), term()}}.
+send_tx(Con, Payload) ->
     try
         ok = Con:send_tx(Payload)
     catch E:R ->
             {error, {E, R}}
     end.
 
--spec get_top_block() -> {ok, block()} | {error, {term(), term()}}.
-get_top_block() ->
-    Con = connector(),
+-spec get_top_block(connector()) -> {ok, block()} | {error, {term(), term()}}.
+get_top_block(Con) ->
     try
         Res = Con:get_top_block(), true = is_record(Res, block),
         {ok, Res}
@@ -63,9 +61,8 @@ get_top_block() ->
         {error, {E, R}}
     end.
 
--spec get_block_by_hash(binary()) -> {ok, block()} | {error, {term(), term()}}.
-get_block_by_hash(Hash) ->
-    Con = connector(),
+-spec get_block_by_hash(connector(), binary()) -> {ok, block()} | {error, {term(), term()}}.
+get_block_by_hash(Con, Hash) ->
     try
         Res = Con:get_block_by_hash(Hash), true = is_record(Res, block),
         {ok, Res}
@@ -85,13 +82,3 @@ subscribe_block() ->
 publish_block(Block) ->
     aec_events:publish({parent_chain, block}, {block_created, Block}).
 
-%%%===================================================================
-%%%  Proto accessors
-%%%===================================================================
-
-%% TODO: BlockHash, etc..
-
--spec connector() -> connector().
-connector() ->
-    Con = aehc_app:get_connector_id(),
-    binary_to_existing_atom(Con, utf8).
