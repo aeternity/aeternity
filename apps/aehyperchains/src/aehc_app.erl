@@ -9,12 +9,12 @@
         , check_env/0
         ]).
 
--export([get_connector_id/0]).
-
--define(DEFAULT_CONNECTOR_ID, <<"aehc_aeternity_connector">>).
+-export([trackers_config/0, tracker_name/1, tracker_note/1]).
 
 start(_StartType, _StartArgs) ->
-    aehc_sup:start_link().
+    Res = aehc_sup:start_link(),
+    [aehc_parent_mng:start_view(tracker_name(Conf), Conf) || Conf <- trackers_config()],
+    Res.
 
 start_phase(_Phase, _StartType, _PhaseArgs) ->
     ok.
@@ -26,7 +26,7 @@ stop(_State) ->
     ok.
 
 check_env() ->
-    check_env([{[<<"chain">>, <<"hyperchains">>, <<"enabled">>], {set_env, enabled}}]),
+    check_env([{[<<"hyperchains">>, <<"enabled">>], {set_env, enabled}}]),
     case aehc_utils:hc_enabled() of
         true ->
             lager:info("Hyperchains are enabled"),
@@ -51,6 +51,14 @@ set_env({set_env, K}, V) when is_atom(K) ->
 set_env(F, V) when is_function(F, 1) ->
     F(V).
 
-get_connector_id() ->
-    aeu_env:config_value([<<"chain">>, <<"hyperchains">>, <<"connector">>, <<"id">>],
-                         aehyperchains, [hyperchains, connector, id], ?DEFAULT_CONNECTOR_ID).
+-spec trackers_config() -> nonempty_list(map()).
+trackers_config() ->
+    aeu_env:config_value([<<"hyperchains">>, <<"trackers">>], aehyperchains, [hyperchains, trackers], []).
+
+-spec tracker_name(map()) -> term().
+tracker_name(Conf) ->
+    maps:get(<<"name">>, Conf).
+
+-spec tracker_note(map()) -> term().
+tracker_note(Conf) ->
+    maps:get(<<"note">>, Conf).

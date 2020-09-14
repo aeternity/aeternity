@@ -6,7 +6,7 @@
 -behaviour(gen_server).
 
 %% API.
--export([start_link/0]).
+-export([start_link/1]).
 
 %% gen_server.
 -export([init/1]).
@@ -15,30 +15,34 @@
 -export([handle_info/2]).
 -export([terminate/2]).
 
--export([send_tx/1, get_block_by_hash/1, get_top_block/0]).
+-export([send_tx/3, get_block_by_hash/1, get_top_block/0, dry_send_tx/3]).
 
 %% API.
 
--spec start_link() ->
+-spec start_link(Args::map()) ->
     {ok, pid()} | ingnore | {error, term()}.
-start_link() ->
-    gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
+start_link(Args) ->
+    gen_server:start_link({local, ?MODULE}, ?MODULE, Args, []).
 
 %%%===================================================================
 %%%  aehc_connector behaviour
 %%%===================================================================
 
--spec send_tx(binary()) -> binary().
-send_tx(Payload) ->
-    gen_server:call(?MODULE, {send_tx, Payload}).
+-spec send_tx(binary(), binary(), binary()) -> binary().
+send_tx(Delegate, Commitment, PoGF) ->
+    gen_server:call(?MODULE, {send_tx, Delegate, Commitment, PoGF}).
 
--spec get_top_block() -> aehc_connector:block().
+-spec get_top_block() -> aehc_parent_block:parent_block().
 get_top_block() ->
     gen_server:call(?MODULE, {get_top_block}).
 
--spec get_block_by_hash(binary()) -> aehc_connector:block().
+-spec get_block_by_hash(binary()) -> aehc_parent_block:parent_block().
 get_block_by_hash(Hash) ->
     gen_server:call(?MODULE, {get_block_by_hash, Hash}).
+
+-spec dry_send_tx(binary(), binary(), binary()) -> binary().
+dry_send_tx(Delegate, Commitment, PoGF) ->
+    gen_server:call(?MODULE, {dry_send_tx, Delegate, Commitment, PoGF}).
 
 %%%===================================================================
 %%%  gen_server behaviour
@@ -46,22 +50,23 @@ get_block_by_hash(Hash) ->
 
 -record(state, { pid::pid(), height = 0::non_neg_integer() }).
 
-init([]) ->
+init(Args) ->
     process_flag(trap_exit, true),
-    true = aec_events:subscribe(top_changed),
-    {ok, Pid} = aec_chain_sim:start(#{ simulator => parent_chain }),
+    true = aec_events:subscribe({parent_chain, top_changed}),
+    State = maps:get(<<"genesis_state">>, Args),
+    {ok, Pid} = aec_chain_sim:start(#{ sim_type => parent_chain, genesis_state => State }),
     lager:info("Parent chain's connector ~p is attached: ~p", [?MODULE, Pid]),
     {ok, #state{ pid = Pid }}.
 
-handle_call({send_tx, Payload}, _From, State) ->
+handle_call({send_tx, Delegate, Commitment, PoGF}, _From, State) ->
     %% The current validator credentials;
     %% Requested transaction by hash from a simulator's block should satisfy the origin of validator;
-    {ok, Pub} = aec_keys:pubkey(),
     {ok, PrivKey} = aec_keys:sign_privkey(),
-    SenderId = aeser_id:create(account, Pub),
     %% The main intention of this call is to emulate post action with signed payload from delegate;
     %% Fee, nonce, ttl and amount fields have decorated nature;
-    {ok, Tx} = aec_spend_tx:new(#{ sender_id => SenderId, recipient_id => SenderId, amount => 1,
+    Header = aehc_commitment_header:new(Delegate, Commitment, PoGF),
+    Payload = term_to_binary(aehc_commitment:new(Header), [compressed]),
+    {ok, Tx} = aec_spend_tx:new(#{ sender_id => Delegate, recipient_id => Delegate, amount => 1,
                                         fee => 5, nonce => 1, payload => Payload, ttl => 0 }),
     BinaryTx = aec_governance:add_network_id(aetx:serialize_to_binary(Tx)),
     SignedTx = aetx_sign:new(Tx, [enacl:sign_detached(BinaryTx, PrivKey)]),
@@ -72,14 +77,15 @@ handle_call({send_tx, Payload}, _From, State) ->
 
 handle_call({get_top_block}, _From, State) ->
     Hash = aec_chain_sim:top_block_hash(),
-    {ok, Info} = aec_chain_sim:block_by_hash(Hash),
-    Block = format_block(Info),
-    {reply, {ok, Block}, State};
+    {ok, Block} = aec_chain_sim:block_by_hash(Hash),
+    {reply, format_block(Block), State};
 
 handle_call({get_block_by_hash, Hash}, _From, State) ->
-    {ok, Info} = aec_chain_sim:block_by_hash(Hash),
-    Block = format_block(Info),
-    {reply, {ok, Block}, State};
+    {ok, Block} = aec_chain_sim:block_by_hash(Hash),
+    {reply, format_block(Block), State};
+
+handle_call({dry_send_tx, _Delegate, _Commitment, _PoGF}, _From, State) ->
+    {reply, ok, State};
 
 handle_call(Request, _From, State) ->
     lager:info("Unexpected call: ~p", [Request]),
@@ -92,8 +98,12 @@ handle_info({gproc_ps_event, {parent_chain, top_changed}, #{info := Info}}, Stat
     Pid = maps:get(pid, Info, undefined),
     (State#state.pid == Pid) andalso
         begin
-            Block = format_block(Info),
-            aehc_connector:publish_block(Block)
+            Hash = maps:get(block_hash, Info),
+            PrevHash = maps:get(prev_hash, Info),
+            Height = maps:get(height, Info),
+            Txs = maps:get(txs, Info),
+            ParentBlock = aehc_connector:parent_block(Height, Hash, PrevHash, commitments(Txs)),
+            aehc_connector:publish_block(<<"chain_sim">>, ParentBlock)
         end,
     {noreply, State};
 
@@ -102,8 +112,34 @@ handle_info(Info, State) ->
     {noreply, State}.
 
 terminate(_Reason, _State) ->
+    aec_chain_sim:stop(),
     ok.
 
+format_block(Block) ->
+    Header = aec_blocks:to_header(Block),
+    Height = aec_headers:height(Header),
+    Type = aec_headers:type(Header),
+    Txs = case Type of
+              micro ->
+                  aec_blocks:txs(Block);
+              key ->
+                  []
+          end,
+    {ok, Hash} = aec_headers:hash_header(Header),
+    PrevHash = aec_headers:prev_hash(Header),
+    aehc_connector:parent_block(Height, Hash, PrevHash, commitments(Txs)).
+
+-spec commitments(aec_blocks:tx_list()) -> [aehc_commitment:commitment()].
+commitments(Txs) ->
+     %% TODO: This function has to provide the actual verification of included tx;
+    %% This is extremely simplified procedure to pass proto test SUITE;
+    Match = <<"Test commitment">>,
+    Txs = lists:filter(fun (Tx) -> payload(Tx) == Match end, Txs),
+    [aehc_connector:commitment(sender_id(Tx), payload(Tx)) || Tx <- Txs].
+
+%%%===================================================================
+%%%  Txs accessors
+%%%===================================================================
 -spec payload(aetx_sign:signed_tx()) -> binary().
 payload(SignedTx) ->
     Tx = aetx_sign:tx(SignedTx), SpendTx = aetx:tx(Tx),
@@ -115,9 +151,3 @@ sender_id(SignedTx) ->
     Tx = aetx_sign:tx(SignedTx), SpendTx = aetx:tx(Tx),
     SenderId = aec_spend_tx:sender_id(SpendTx), true = is_binary(SenderId),
     SenderId.
-
-format_block(SimBlock) ->
-    Txs = [aehc_connector:tx(sender_id(Tx), payload(Tx)) || Tx <- maps:get(txs, SimBlock)],
-    Hash = maps:get(block_hash, SimBlock),
-    PrevHash = maps:get(prev_hash, SimBlock),
-    aehc_connector:block(Hash, PrevHash, Txs).
