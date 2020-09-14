@@ -98,12 +98,12 @@ check_same_leader(Header1, Header2) ->
         false -> ok
     end.
 
-check_key_signatures(Header1, Header2) ->
+check_key_signatures(_Header1, _Header2) ->
     %% TODO: Check whether Headers were signed by the same leader
     ok.
 
 check_correct_leader(Header) ->
-    PrevHCKeyHash = aec_headers:prev_key_hash(Header),
+    _PrevHCKeyHash = aec_headers:prev_key_hash(Header),
     %% TODO: abstract out this snippet and perform the election at PrevHCKeyHash
     %% ParentHash = aehc_headers_plugin:parent_hash(Header),
     %% Candidates = aehc_parent_db:candidates_in_election_cycle(ParentHash),

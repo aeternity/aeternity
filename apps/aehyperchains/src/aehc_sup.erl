@@ -15,11 +15,10 @@ start_link() ->
 
 init([]) ->
     Spec = case aehc_utils:hc_enabled() of
-        true ->
-            Connector = aehc_connector:connector(),
-            lager:info("Starting Hyperchains connected by ~p", [Connector]),
-            [?CHILD(Connector, 5000, worker)];
+        true -> [ ?CHILD(aehc_parent_mng, 5000, worker)
+                , ?CHILD(aehc_connector_sup, 5000, supervisor)];
         false ->
             []
     end,
     {ok, {{one_for_one, 5, 10}, Spec}}.
+

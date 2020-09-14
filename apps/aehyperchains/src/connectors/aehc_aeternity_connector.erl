@@ -37,7 +37,7 @@ get_top_block() ->
     throw('not implemented').
 
 -spec get_block_by_hash(binary()) -> aehc_connector:block().
-get_block_by_hash(Hash) ->
+get_block_by_hash(_Hash) ->
     throw('not implemented').
 
 %%%===================================================================
