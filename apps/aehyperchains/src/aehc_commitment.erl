@@ -8,7 +8,8 @@
 
 -module(aehc_commitment).
 
--export([ new/2
+-export([ new/1
+        , new/2
         , has_pogf/1
         , pogf/1
         , pogf_hash/1
@@ -25,6 +26,10 @@
     }).
 -type commitment() :: #hc_commitment{}.
 -export_type([commitment/0]).
+
+-spec new(aehc_commitment_header:commitment_header()) -> commitment().
+new(Header) ->
+    new(Header, no_pogf).
 
 -spec new(aehc_commitment_header:commitment_header(), aehc_pogf:pogf()) -> commitment().
 new(Header, PoGF) ->

@@ -547,16 +547,22 @@
                             "default": 500
                         }
                     }
+                }
+            }
+        },
+        "hyperchains": {
+            "type" : "object",
+            "additionalProperties" : false,
+            "properties" : {
+                "enabled": {
+                    "description": "",
+                    "type": "boolean",
+                    "default": false
                 },
-                "hyperchains": {
+                "delegate":{
                     "type" : "object",
                     "additionalProperties" : false,
                     "properties" : {
-                        "enabled": {
-                            "description": "",
-                            "type": "boolean",
-                            "default": false
-                        },
                         "keys" : {
                             "type"    : "object",
                             "additionalProperties": false,
@@ -566,27 +572,54 @@
                                     "type" : "string"
                                 }
                             }
-                        },
-                        "connector": {
-                            "properties": {
-                                "host": {
-                                    "type": "string",
-                                    "default": "localhost"
-                                },
-                                "port": {
-                                    "description": "Port number of the parent chain.",
-                                    "type": "integer",
-                                    "minimum": 0,
-                                    "maximum": 65535,
-                                    "default": 8332
-                                },
-                                "id": {
-                                    "description": "Parent chain interface provider",
-                                    "type": "string",
-                                    "default": "aehc_aeternity_connector"
-                                }
-                            }
                         }
+                    }
+                },
+                "trackers":{
+                    "type": "array",
+                    "items":{
+                        "type":"object",
+                        "description": "Tracks are configuration entries for attached blockchains (parent chains)",
+                        "properties": {
+                            "name":{
+                                "description": "The name of synchronized parent chain view within system",
+                                "type" : "string"
+                            },
+                            "connector": {
+                                "properties": {
+                                    "module": {
+                                        "description": "Parent chain driver",
+                                        "type": "string"
+                                    },
+                                    "args":{
+                                        "type":"object",
+                                        "description": "User defined arguments list (passed as is to the connector)"
+                                    }
+                                }
+                            },
+                            "genesis_hash":{
+                                "description" : "The block address on the parent chain (the genesis pointer on the parent chain view)",
+                                "type" : "string"
+                            },
+                            "note":{
+                                "type" : "string"
+                            }
+                        },
+                        "minItems": 1,
+                        "default" : [
+                            {
+                                "name":"aeternity",
+                                "connector": {
+                                    "module":"aehc_aeternity_connector",
+                                    "args": {
+                                        "host":"localhost",
+                                        "port":8332,
+                                        "stub": true
+                                    }
+                                },
+                                "genesis_hash":"kh_2pDTjhABi43q1LrpXrBRj8GaBhJbZQSpYks9EYqfvW5fk31eWy",
+                                "note": "Initial Hyperhains test track (release version 5.5.4)"
+                            }]
                     }
                 }
             }

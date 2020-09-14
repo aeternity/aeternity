@@ -17,7 +17,9 @@
         , prev_hash_block/1
         , commitments_in_block/1
         , hash_block/1
+        , height_block/1
         , block_header/1
+        , is_hc_parent_block/1
         ]).
 
 -include("../../aecore/include/blocks.hrl").
@@ -78,6 +80,16 @@ commitments_in_block(#hc_parent_block{commitments = Commitments}) ->
 hash_block(#hc_parent_block{header = #hc_parent_block_header{hash = Hash}}) ->
     Hash.
 
+-spec height_block(parent_block()) -> non_neg_integer().
+height_block(#hc_parent_block{header = #hc_parent_block_header{height = Height}}) ->
+    Height.
+
 -spec block_header(parent_block()) -> parent_block_header().
 block_header(#hc_parent_block{header = Header}) ->
     Header.
+
+-spec is_hc_parent_block(any()) -> boolean().
+is_hc_parent_block(#hc_parent_block{}) ->
+    true;
+is_hc_parent_block(_) ->
+    false.

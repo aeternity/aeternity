@@ -75,12 +75,18 @@
         , terminate/2
         , code_change/3 ]).
 
+%% Parametrization
+-export([ sim_type_param/1
+        , genesis_state_param/1
+        ]).
+
+
 -record(st, { opts = #{}
             , mref
             , dict = #{}
             , chain }).
 
--type simulator() :: default | parent_chain.
+-type sim_type() :: default | parent_chain.
 
 -type fork_id()    :: main | term().
 -type block_hash() :: aec_blocks:block_header_hash().
@@ -99,7 +105,7 @@ start() ->
 %% Starts the simulator
 %% Supported options:
 %% - monitor => pid(): The simulator will terminate if the monitored process dies
-%% - simulator => simulator(): The simulator mode (parent chain for Hyperchains or default)
+%% - sim_type => sim_type(): The simulator mode (parent chain for Hyperchains or default)
 %%
 start(Opts) when is_map(Opts) ->
     gen_server:start(?MODULE, Opts, []).
@@ -122,21 +128,23 @@ stop() ->
             end
     end.
 
+%%%===================================================================
+%%%  Simulator parametrization
+%%%===================================================================
+%% Simulator type. Ability to isntantiate sim process as a parent chain based model;
+-spec sim_type_param(map()) -> sim_type().
+sim_type_param(Opts) ->
+    maps:get(sim_type, Opts, default).
 
--spec simulator(map()) -> simulator().
-%%
-%% Simulator type. default is used mostly in test suites.
-%% parent_chain is used to run the process as attached "parent chain"
-%% to reproduce various parent chain scenarios for Hyperchains;
-%%
-simulator(Opts) ->
-    Type = maps:get(simulator, Opts, default),
-    true = (Type == default orelse Type == parent_chain),
-    Type.
+%% Genesis header. Ability to instantiate parent chain by predefined genesis;
+-spec genesis_state_param(map()) -> {aec_blocks:key_block(), aec_trees:trees()}.
+genesis_state_param(Opts) ->
+    {_Block, _Trees} = maps:get(genesis_state, Opts, aec_block_genesis:genesis_block_with_state()).
 
 %%%===================================================================
-%%% Chain simulator requests
+%%%  Simulator access
 %%%===================================================================
+%% Chain simulator requests
 
 -spec next_nonce(Acct :: aec_keys:pubkey()) -> integer().
 %%
@@ -145,14 +153,14 @@ simulator(Opts) ->
 next_nonce(Acct) ->
     chain_req({next_nonce, Acct}).
 
--spec new_account(Balance :: non_neg_integer()) -> aec_keys:pubkey().
+-spec new_account(Balance :: non_neg_integer()) -> {ok, map()}.
 %%
 %% Equivalent to new_account(main, Balance)
 %%
 new_account(Balance) ->
     new_account(main, Balance).
 
--spec new_account(fork_id(), Balance :: non_neg_integer()) -> aec_keys:pubkey().
+-spec new_account(fork_id(), Balance :: non_neg_integer()) -> {ok, map()}.
 %%
 %% Creates new account with given balance
 %%
@@ -195,7 +203,7 @@ get_height(ForkId) ->
 push(Tx) ->
     chain_req({push, Tx}).
 
--spec sign_and_push(aec_keys:pubkey(), aetx_sign:signed_tx()) -> ok | {error, unknown_privkey}.
+-spec sign_and_push(aec_keys:pubkey(), aetx:tx()) -> ok | {error, unknown_privkey}.
 %%
 %% Signs and pushes tx to the simulated mempool
 %%
@@ -384,8 +392,8 @@ remove_meck() ->
 
 init(Opts) when is_map(Opts) ->
     gproc:reg({n,l,{?MODULE, chain_process}}),
-    Chain = new_chain(),
-    ?LOG("Initial chain (~p simulator): ~p", [simulator(Opts), Chain]),
+    Chain = new_chain(Opts),
+    ?LOG("Initial chain (~p sim_type_param): ~p", [sim_type_param(Opts), Chain]),
     {ok, maybe_monitor(#st{opts = Opts, chain = Chain})}.
 
 maybe_monitor(#st{opts = #{monitor := Pid}} = St) when is_pid(Pid) ->
@@ -601,7 +609,7 @@ fork_switch_(ForkId, #{forks := Forks, mempool := Pool, orphans := Orphans} = Ch
 %% Announce top_changed and tx events
 announce(ForkId, Txs, Events, #{ forks := Forks } = Chain, Opts) ->
     #{ ForkId := #{ blocks := [#{ block := TopBlock } | _] = Blocks} } = Forks,
-    SimulatorT = simulator(Opts),
+    SimulatorT = sim_type_param(Opts),
     Height = length(Blocks) + 1,
     Hdr = aec_blocks:to_header(TopBlock),
     {ok, TopHash} = aec_headers:hash_header(Hdr),
@@ -615,8 +623,10 @@ announce(ForkId, Txs, Events, #{ forks := Forks } = Chain, Opts) ->
             , prev_hash    => PrevHash
             , height       => Height },
     if SimulatorT == parent_chain ->
-            aec_events:publish({parent_chain, top_changed}, Info#{txs => Txs});
-       true ->
+        %% TODO: To supply parameterized formatter;
+        ParentBlock = Info#{txs => Txs, header => Hdr, hash => TopHash},
+        aec_events:publish({parent_chain, top_changed}, ParentBlock);
+        true ->
             send_tx_events(Events, TopHash, Info),
             (ForkId == main) andalso
                 begin
@@ -635,9 +645,9 @@ origin(micro) ->
 %% Block generation
 %% Chain represented as a LIFO list of #{hash, header, txs} entries
 %% wrapped inside a #{blocks, miner => #{privkey,pubkey}} map
-new_chain() ->
+new_chain(Opt) ->
+    {Gen, Tre} = genesis_state_param(Opt),
     Miner = new_keypair(),
-    {Gen, Tre} = aec_block_genesis:genesis_block_with_state(),
     {ok, Hash} = aec_headers:hash_header(aec_blocks:to_header(Gen)),
     Chain0 =
         #{ miner     => Miner
@@ -661,10 +671,10 @@ add_keyblock_(ForkId, #{forks := Forks, miner := #{pubkey := Miner}} = Chain, Op
     NewHdr = aec_headers:new_key_header(
                Height+1, PrevHash, PrevKeyHash, root_hash(),
                Miner, Miner, 0, 0, 0, 0, default, 0),
-    NewBlock = #{block => aec_blocks:new_key_from_header(NewHdr)},
-    NewChain = Chain#{ forks => Forks#{ ForkId => F#{blocks => [NewBlock | Blocks]} } },
+    NewBlock = aec_blocks:new_key_from_header(NewHdr),
+    NewChain = Chain#{ forks => Forks#{ ForkId => F#{blocks => [#{block => NewBlock} | Blocks]} } },
     announce(ForkId, [], [], NewChain, Opts),
-    {{ok, Block},  NewChain}.
+    {{ok, NewBlock},  NewChain}.
 
 send_tx_events(Events, Hash, Origin) ->
     ?LOG("send_tx_events(~p, ~p)", [Events, Hash]),
@@ -808,8 +818,8 @@ get_header_(Hash, Chain) ->
 
 get_block_(Hash, Chain) ->
     case blocks_until_hash(Hash, blocks(Chain)) of
-        [Block|_] ->
-            {ok, Block};
+        [BlockEntry|_] ->
+            {ok, maps:get(block, BlockEntry)};
         [] ->
             error
     end.

@@ -11,18 +11,18 @@
 
 -include_lib("eunit/include/eunit.hrl").
 
+-define(CONNECTOR, aehc_chain_sim_connector).
+
 hyperchains_simulator_test_() ->
     {foreach,
         fun() ->
-            meck:new(aehc_app, [passthrough]),
-            meck:expect(aehc_app, get_connector_id, 0, <<"aehc_chain_sim_connector">>),
-
             application:ensure_started(gproc),
             ok = application:ensure_started(crypto),
 
             aec_test_utils:mock_genesis_and_forks(),
             Dir = aec_test_utils:aec_keys_setup(),
-            aehc_chain_sim_connector:start_link(),
+            GenesisState = aec_block_genesis:genesis_block_with_state(),
+            aehc_chain_sim_connector:start_link(#{ <<"genesis_state">> => GenesisState }),
             Dir
         end,
         fun(TmpDir) ->
@@ -31,10 +31,9 @@ hyperchains_simulator_test_() ->
         end,
         [{"Sent payload == Requested payload",
             fun() ->
-                %
-                Payload = <<"test">>,
-                %
-                ?assertEqual(ok, aehc_connector:send_tx(Payload)),
+                {ok, Pub} = aec_keys:pubkey(),
+                SenderId = aeser_id:create(account, Pub),
+                ?assertEqual(ok, aehc_connector:send_tx(?CONNECTOR, SenderId, <<"Commitment">>, <<"PoGF">>)),
                 ok
             end}
         ]}.
