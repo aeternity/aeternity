@@ -37,10 +37,13 @@
         , stop/0 ]).                   %% () -> ok
 
 -export([ next_nonce/1                 %% (Acct) -> integer()
+        , new_account/1                %% (Balance) -> Acct
+        , new_account/2                %% (ForkId, Balance) -> Acct
         , push/1                       %% (Tx) -> ok
         , find_signed_tx/1             %% (TxHash) -> {value, STx)} | none
         , top_block_hash/0             %% () -> Hash
         , block_by_hash/1              %% (BlockHash) -> {ok, Block}
+        , sign_and_push/2              %% (Acct, Tx) -> ok
         , add_keyblock/0               %% () -> {ok, Block}
         , add_keyblock/1               %% (ForkId) -> {ok, Block}
         , add_microblock/0             %% () -> {ok, Block}
@@ -74,19 +77,10 @@
 -type fork_id()    :: main | term().
 -type block_hash() :: aec_blocks:block_header_hash().
 
--type sim_microblock() :: #{ hash   => block_hash()
-                           , prev   => block_hash()
-                           , header => aec_headers:micro_header()
-                           , txs    => [ aetx_sign:signed_tx() ]
-                           }.
-
--type sim_keyblock() :: #{ hash   => block_hash()
-                         , prev   => block_hash()
-                         , header => aec_headers:micro_header()
-                         }.
 
 %% TODO: Use CT logging or system logging - possibly configurable
--define(LOG(Fmt, Args), io:fwrite("~w:~w/~w - " ++ Fmt, [?MODULE, ?FUNCTION_NAME, ?LINE | Args])).
+%% -define(LOG(Fmt, Args), io:fwrite("~w:~w/~w - " ++ Fmt, [?MODULE, ?FUNCTION_NAME, ?LINE | Args])).
+-define(LOG(Fmt, Args), ok).
 
 %%% @equiv start(#{}).
 %%
@@ -133,7 +127,9 @@ simulator(Opts) ->
     true = (Type == default orelse Type == parent_chain),
     Type.
 
-%% Chain simulator requests
+%%%===================================================================
+%%% Chain simulator requests
+%%%===================================================================
 
 -spec next_nonce(Acct :: aec_keys:pubkey()) -> integer().
 %%
@@ -142,6 +138,20 @@ simulator(Opts) ->
 next_nonce(Acct) ->
     chain_req({next_nonce, Acct}).
 
+-spec new_account(Balance :: non_neg_integer()) -> aec_keys:pubkey().
+%%
+%% Equivalent to new_account(main, Balance)
+%%
+new_account(Balance) ->
+    new_account(main, Balance).
+
+-spec new_account(fork_id(), Balance :: non_neg_integer()) -> aec_keys:pubkey().
+%%
+%% Creates new account with given balance
+%%
+new_account(ForkId, Balance) ->
+    chain_req({new_account, ForkId, Balance}).
+
 -spec push(aetx_sign:signed_tx()) -> ok.
 %%
 %% Pushes the signed tx to the simulated mempool
@@ -149,14 +159,21 @@ next_nonce(Acct) ->
 push(Tx) ->
     chain_req({push, Tx}).
 
--spec add_keyblock() -> sim_keyblock().
+-spec sign_and_push(aec_keys:pubkey(), aetx_sign:signed_tx()) -> ok | {error, unknown_privkey}.
+%%
+%% Signs and pushes tx to the simulated mempool
+%%
+sign_and_push(Account, Tx) ->
+    chain_req({sign_and_push, Account, Tx}).
+
+-spec add_keyblock() -> aec_blocks:key_block().
 %%
 %% Equivalent to add_keyblock(main)
 %%
 add_keyblock() ->
     add_keyblock(main).
 
--spec block_by_hash(block_hash()) -> {ok, sim_keyblock() |sim_microblock()}.
+-spec block_by_hash(block_hash()) -> {ok, aec_blocks:key_block() |aec_blocks:micro_block()}.
 block_by_hash(BlockHash) ->
     chain_req({block_by_hash, BlockHash}).
 
@@ -164,7 +181,7 @@ block_by_hash(BlockHash) ->
 top_block_hash() ->
     chain_req(top_block_hash).
 
--spec add_keyblock( ForkId :: fork_id() ) -> {ok, sim_keyblock()}.
+-spec add_keyblock( ForkId :: fork_id() ) -> {ok, aec_blocks:key_block()}.
 %%
 %% Adds a keyblock. If ForkId == main, the keyblock is added to the main fork.
 %% If ForkId is the id of an existing fork, created previously with
@@ -174,14 +191,14 @@ top_block_hash() ->
 add_keyblock(ForkId) ->
     chain_req({add_key, ForkId}).
 
--spec add_microblock() -> {ok, sim_microblock()}.
+-spec add_microblock() -> {ok, aec_blocks:micro_block()}.
 %%
 %% Equivalent to add_microblock(main)
 %%
 add_microblock() ->
     add_microblock(main).
 
--spec add_microblock(ForkId :: fork_id()) -> {ok, sim_microblock()}.
+-spec add_microblock(ForkId :: fork_id()) -> {ok, aec_blocks:micro_block()}.
 %%
 %% Adds a microblock to the given ForkId (the main fork if ForkId == main).
 %% All transactions in the mempool are added to the block.
@@ -189,7 +206,7 @@ add_microblock() ->
 add_microblock(ForkId) ->
     chain_req({add_micro, ForkId}).
 
--spec clone_microblock_on_fork(block_hash(), fork_id()) -> {ok, sim_microblock()}.
+-spec clone_microblock_on_fork(block_hash(), fork_id()) -> {ok, aec_blocks:micro_block()}.
 %%
 %% This is a cheating way of simulating transactions being evicted from the main chain and
 %% picked up in a new microblock. The cheat is that the original block remains on the chain.
@@ -198,7 +215,7 @@ add_microblock(ForkId) ->
 clone_microblock_on_fork(Hash, ForkId) ->
     chain_req({clone_micro_on_fork, Hash, ForkId}).
 
--spec fork_from_hash(ForkId :: fork_id(), FromHash :: block_hash()) -> {ok, sim_keyblock()}.
+-spec fork_from_hash(ForkId :: fork_id(), FromHash :: block_hash()) -> {ok, aec_blocks:key_block()}.
 %%
 %% Creates a new ForkId and adds a keyblock to FromHash
 %% Fails (simulator terminates) if ForkId exists, or if FromHash is not a block
@@ -296,7 +313,10 @@ remove_meck() ->
                 , aec_db ]),
     ok.
 
-%% gen_server implementation
+
+%%%===================================================================
+%$% gen_server implementation
+%%%===================================================================
 
 init(Opts) when is_map(Opts) ->
     gproc:reg({n,l,{?MODULE, chain_process}}),
@@ -316,6 +336,9 @@ handle_call({add_micro, ForkId}, _From, #st{opts = Opts, chain = Chain} = St) ->
 handle_call({clone_micro_on_fork, Hash, ForkId}, _From, #st{opts = Opts, chain = Chain} = St) ->
     {Res, Chain1} = clone_micro_on_fork_(Hash, ForkId, Chain, Opts),
     {reply, Res, St#st{chain = Chain1}};
+handle_call({new_account, ForkId, Balance}, _From, #st{chain = Chain} = St) ->
+    {Res, Chain1} = new_account_(ForkId, Balance, Chain),
+    {reply, Res, St#st{chain = Chain1}};
 handle_call({add_key, ForkId}, _From, #st{opts = Opts, chain = Chain} = St) ->
     {Res, Chain1} = add_keyblock_(ForkId, Chain, Opts),
     {reply, Res, St#st{chain = Chain1}};
@@ -328,6 +351,15 @@ handle_call({fork_switch, ForkId}, _From, #st{opts = Opts, chain = Chain} = St) 
 handle_call({push, Tx}, _From, #st{chain = #{mempool := Pool} = Chain} = St) ->
     %% TODO: not yet asserting increasing nonces
     {reply, ok, St#st{chain = Chain#{mempool => [Tx|Pool]}}};
+handle_call( {sign_and_push, PK, Tx}, _From
+           , #st{chain = #{ mempool := Pool, key_pairs := KP} = Chain
+                } = St) ->
+    %% TODO: not yet asserting increasing nonces
+    case KP of
+        #{PK := SK} ->
+            {reply, ok, St#st{chain = Chain#{mempool => [aec_test_utils:sign_tx(Tx, SK)|Pool]}}};
+        _ -> {reply, {error, unknown_privkey}, Chain}
+    end;
 handle_call({next_nonce, Acct}, _From, #st{chain = #{nonces := Nonces} = Chain} = St) ->
     N = maps:get(Acct, Nonces, 0),
     NewN = N + 1,
@@ -373,7 +405,26 @@ terminate(_Reason, _Chain) ->
 code_change(_FromVsn, C, _Extra) ->
     {ok, C}.
 
-%% Called from the chain process
+
+%%%===================================================================
+%%% gen_server requests implementations
+%%%===================================================================
+
+new_account_(ForkId, Balance, Chain) ->
+    #{pubkey := PK} = KP = new_keypair(),
+    Acct = aec_accounts:new(PK, Balance),
+    [TopBlock|RestBlocks] = Blocks = blocks(ForkId, Chain),
+    Trees = case trees(Blocks) of
+                {ok, Ts} ->
+                    Ts;
+                error ->
+                    aec_trees:new_without_backend()
+            end,
+    NewChain = insert_key_pair(ForkId, KP, Chain),
+    NewTrees = aec_accounts_trees:enter(Acct, aec_trees:accounts(Trees)),
+    NewBlocks = [TopBlock#{trees => NewTrees}|RestBlocks],
+    {{ok, PK}, NewChain#{blocks => NewBlocks}}.
+
 add_microblock_(ForkId, #{mempool := Pool} = Chain, Opts) ->
     Txs = lists:reverse(Pool),
     add_microblock_(ForkId, Txs, Chain#{mempool => []}, Opts).
@@ -381,20 +432,19 @@ add_microblock_(ForkId, #{mempool := Pool} = Chain, Opts) ->
 add_microblock_(ForkId, Txs, #{forks := Forks} = Chain, Opts) ->
     ?LOG("add_microblock(Txs = ~p", [Txs]),
     #{blocks := Blocks} = F = maps:get(ForkId, Forks),
-    #{hash := PrevHash, header := TopHdr} = hd(Blocks),
+    #{block := B} = hd(Blocks),
+    TopHdr = aec_blocks:to_header(B),
+    PrevHash = aec_headers:prev_hash(TopHdr),
     ?LOG("PrevHash = ~p", [PrevHash]),
     PrevKeyHash = aec_headers:prev_key_hash(TopHdr),
     Height = aec_headers:height(TopHdr),
     NewHdr = aec_headers:new_micro_header(
                Height, PrevHash, PrevKeyHash,
                root_hash(), 0, txs_hash(), pof_hash(), 0),
-    {ok, BlockHash} = aec_headers:hash_header(NewHdr),
-    Block = maybe_update_trees(ForkId, #{ hash   => BlockHash
-                                        , prev   => PrevHash
-                                        , header => NewHdr
-                                        , txs    => Txs }, Chain),
+    Block = aec_blocks:new_micro_from_header(NewHdr, Txs, no_fraud),
+    BlockEntry = with_trees(ForkId, Txs, Block, Chain),
     ?LOG("Microblock = ~p", [Block]),
-    NewFork = F#{blocks => [Block | Blocks]},
+    NewFork = F#{blocks => [BlockEntry | Blocks]},
     ?LOG("NewFork(~p): ~p", [ForkId, NewFork]),
     NewForks = Forks#{ForkId => NewFork},
     NewChain = announce(ForkId, Txs, Chain#{ forks => NewForks}, Opts),
@@ -445,11 +495,12 @@ fork_switch_(ForkId, #{forks := Forks, mempool := Pool, orphans := Orphans} = Ch
 
 %% Announce top_changed and tx events
 announce(ForkId, Txs, #{ forks := Forks } = Chain, Opts) ->
-    #{ ForkId := #{ blocks := [#{ hash := TopHash
-                                , prev := PrevHash
-                                , header := Hdr } | _] = Blocks} } = Forks,
+    #{ ForkId := #{ blocks := [#{ block := TopBlock} | _] = Blocks} } = Forks,
     SimulatorT = simulator(Opts),
     Height = length(Blocks) + 1,
+    Hdr = aec_blocks:to_header(TopBlock),
+    TopHash = aec_headers:hash_header(Hdr),
+    PrevHash = aec_headers:prev_hash(Hdr),
     Type = aec_headers:type(Hdr),
     Origin = origin(Type),
     Info = #{ pid => self(),
@@ -480,56 +531,57 @@ origin(micro) ->
 %% wrapped inside a #{blocks, miner => #{privkey,pubkey}} map
 new_chain() ->
     Miner = new_keypair(),
-    Hdr = genesis_header(),
-    {ok, Hash} = aec_headers:hash_header(Hdr),
-    Blocks = [#{hash => Hash, header => genesis_header(), txs => []}],
-    #{ miner   => Miner
-     , mempool => []
-     , orphans => []
-     , nonces  => #{}
-     , forks   => #{ main => #{ fork_point => Hash
-                              , blocks     => Blocks } }}.
+    {Gen, Tre} = aec_block_genesis:genesis_block_with_state(),
+    Hash = aec_headers:hash_header(aec_blocks:to_header(Gen)),
+    #{ miner     => Miner
+     , mempool   => []
+     , orphans   => []
+     , nonces    => #{}
+     , key_pairs => #{}
+     , forks     => #{ main => #{ fork_point => Hash
+                                , blocks     => [#{block => Gen, trees => Tre}] } }}.
 
 %% Called from the chain process
 add_keyblock_(ForkId, #{forks := Forks, miner := #{pubkey := Miner}} = Chain, Opts) ->
     ?LOG("add_keyblock(~p)", [ForkId]),
     #{ ForkId := #{blocks := Blocks} = F } = Forks,
-    #{hash := PrevHash, header := TopHdr} = hd(Blocks),
+    #{block := Block} = hd(Blocks),
+    TopHdr = aec_blocks:to_header(Block),
+    PrevHash = aec_headers:prev_hash(TopHdr),
+    PrevKeyHash = aec_headers:prev_key_hash(TopHdr),
     PrevKeyHash = aec_headers:prev_key_hash(TopHdr),
     Height = aec_headers:height(TopHdr),
     NewHdr = aec_headers:new_key_header(
                Height+1, PrevHash, PrevKeyHash, root_hash(),
                Miner, Miner, 0, 0, 0, 0, default, 0),
-    {ok, BlockHash} = aec_headers:hash_header(NewHdr),
-    Block = #{ hash   => BlockHash
-             , prev   => PrevHash
-             , header => NewHdr
-             , txs    => [] },
-    NewChain = Chain#{ forks => Forks#{ ForkId => F#{blocks => [Block | Blocks]} } },
+    NewBlock = #{block => aec_blocks:new_key_from_header(NewHdr)},
+    NewChain = Chain#{ forks => Forks#{ ForkId => F#{blocks => [NewBlock | Blocks]} } },
     announce(ForkId, [], NewChain, Opts),
     {{ok, Block},  NewChain}.
 
-send_tx_events(Txs, #{ block_hash   := BlockHash
-                     , block_origin := Origin }) ->
-    lists:foreach(
-      fun(#{ signed_tx  := SignedTx
-           , tx_hash    := TxHash
-           , channel_id := ChId }) ->
-              {TxType, _} = aetx:specialize_type(
-                              aetx_sign:innermost_tx(SignedTx)),
-              case is_channel_tx_type(TxType) of
-                  true ->
-                      Evt = {channel, ChId},
-                      Info = #{ type         => TxType
-                              , tx_hash      => TxHash
-                              , block_hash   => BlockHash
-                              , block_origin => Origin },
-                      ?LOG("Publish tx_event ~p, I = ~p", [Evt, Info]),
-                      aec_events:publish({tx_event, Evt}, Info);
-                  false ->
-                      skip
-              end
-      end, Txs).
+send_tx_events(_, _) ->
+    ok.
+%% send_tx_events(Txs, #{ block_hash   := BlockHash
+%%                      , block_origin := Origin }) ->
+%%     lists:foreach(
+%%       fun(#{ signed_tx  := SignedTx
+%%            , tx_hash    := TxHash
+%%            , channel_id := ChId }) ->
+%%               {TxType, _} = aetx:specialize_type(
+%%                               aetx_sign:innermost_tx(SignedTx)),
+%%               case is_channel_tx_type(TxType) of
+%%                   true ->
+%%                       Evt = {channel, ChId},
+%%                       Info = #{ type         => TxType
+%%                               , tx_hash      => TxHash
+%%                               , block_hash   => BlockHash
+%%                               , block_origin => Origin },
+%%                       ?LOG("Publish tx_event ~p, I = ~p", [Evt, Info]),
+%%                       aec_events:publish({tx_event, Evt}, Info);
+%%                   false ->
+%%                       skip
+%%               end
+%%       end, Txs).
 
 is_channel_tx_type(T) when T == channel_create_tx
                          ; T == channel_deposit_tx
@@ -545,26 +597,22 @@ is_channel_tx_type(T) when T == channel_create_tx
 is_channel_tx_type(_) ->
     false.
 
-maybe_update_trees(_, #{txs := []} = Block, _Chain) ->
-    Block;
-maybe_update_trees(ForkId, #{txs := Txs} = Block, Chain) ->
+
+with_trees(ForkId, Txs, Block, Chain) ->
     Blocks = blocks(ForkId, Chain),
     Trees = case trees(Blocks) of
                 {ok, Ts} ->
                     Ts;
                 error ->
-                    #{}
+                    aec_trees:new_without_backend()
             end,
-    NewTrees = lists:foldl(
-                 fun(Tx, Ts) ->
-                         update_trees(Tx, Ts)
-                 end, Trees, Txs),
-    Block#{ trees => NewTrees }.
+    NewTrees = update_trees(Txs, Trees),
+    #{ block => Block, trees => NewTrees }.
 
 trees(Blocks) ->
     case lists:dropwhile(
-           fun(Block) ->
-                   not maps:is_key(trees, Block)
+           fun(BlockEntry) ->
+                   not maps:is_key(trees, BlockEntry)
            end, Blocks) of
         [#{ trees := Trees }|_] ->
             {ok, Trees};
@@ -572,32 +620,37 @@ trees(Blocks) ->
             error
     end.
 
-update_trees(#{ mod := aesc_create_tx
-              , channel_id := ChId } = Tx, Trees) ->
-    case maps:is_key({channel, ChId}, Trees) of
-        true ->
-            error({channel_exists, ChId});
-        false ->
-            Trees#{ {channel, ChId} => new_channel(Tx) }
-    end;
-update_trees(#{ mod        := aesc_deposit_tx
-              , channel_id := ChId
-              , amount     := Amount
-              , round      := Round
-              , state_hash := StateHash }, Trees) ->
-    Ch = maps:get({channel, ChId}, Trees),
-    Ch1 = aesc_channels:deposit(Ch, Amount, Round, StateHash),
-    Trees#{ {channel, ChId} => Ch1 }.
+
+update_trees(Txs, Trees) ->
+    Height = 2137, %% FIXME
+    Env = aetx_env:tx_env(Height),
+    aec_trees:apply_txs_on_state_trees(Txs, Trees, Env).
+%% update_trees(#{ mod := aesc_create_tx
+%%               , channel_id := ChId } = Tx, Trees) ->
+%%     case maps:is_key({channel, ChId}, Trees) of
+%%         true ->
+%%             error({channel_exists, ChId});
+%%         false ->
+%%             Trees#{ {channel, ChId} => new_channel(Tx) }
+%%     end;
+%% update_trees(#{ mod        := aesc_deposit_tx
+%%               , channel_id := ChId
+%%               , amount     := Amount
+%%               , round      := Round
+%%               , state_hash := StateHash }, Trees) ->
+%%     Ch = maps:get({channel, ChId}, Trees),
+%%     Ch1 = aesc_channels:deposit(Ch, Amount, Round, StateHash),
+%%     Trees#{ {channel, ChId} => Ch1 }.
 
 blocks_until_hash(Hash, Blocks) ->
     lists:dropwhile(
-      fun(#{hash := H}) ->
-              H =/= Hash
+      fun(#{block := B}) ->
+              aec_headers:hash(aec_blocks:to_header(B)) =/= Hash
       end, Blocks).
 
 top_block_hash_(Chain) ->
-    [#{hash := Hash}|_] = blocks(main, Chain),
-    Hash.
+    [#{block := B}|_] = blocks(main, Chain),
+    aec_headers:hash(aec_blocks:to_header(B)).
 
 get_block_state_(Hash, Chain) ->
     trees(blocks_until_hash(Hash, blocks(Chain))).
@@ -629,7 +682,8 @@ search_forks_for_hash(H, Forks, Orphans) ->
         none ->
             ?LOG("~p not in forks", [H]),
             case blocks_until_hash(H, Orphans) of
-                [#{prev := Prev}|_] ->
+                [#{block := B}|_] ->
+                    Prev = aec_header:prev_hash(aec_blocks:to_header(B)),
                     ?LOG("~p found in orphans; trying its Prev (~p)", [H, Prev]),
                     search_forks_for_hash(Prev, Forks, Orphans);
                 [] ->
@@ -668,8 +722,8 @@ find_common_([], _) ->
 
 get_header_(Hash, Chain) ->
     case blocks_until_hash(Hash, blocks(Chain)) of
-        [#{header := Header}|_] ->
-            {ok, Header};
+        [#{block := B}|_] ->
+            {ok, aec_blocks:to_header(B)};
         [] ->
             error
     end.
@@ -698,29 +752,13 @@ get_channel_from_trees_(Id, Trees) ->
             undefined
     end.
 
-new_channel(#{ channel_id       := _ChId
-             , initiator_id     := InitiatorId
-             , initiator_amount := InitiatorAmt
-             , responder_id     := ResponderId
-             , responder_amount := ResponderAmt
-             , channel_reserve  := ChanReserve
-             , lock_period      := LockPeriod
-             , state_hash       := StateHash
-             , nonce            := Nonce } = _CreateTx) ->
-    Protocol = 5,    %% LIMA protocol, not that it's likely to matter here
-    Initiator = aeser_id:specialize(InitiatorId, account),
-    Responder = aeser_id:specialize(ResponderId, account),
-    %% TODO: assert that the above ChId is the same as for the channel object
-    aesc_channels:new(Initiator, InitiatorAmt,
-                      Responder, ResponderAmt,
-                      aec_accounts:new(Initiator, InitiatorAmt),
-                      aec_accounts:new(Responder, ResponderAmt),
-                      ChanReserve, _Delegates = [], StateHash,
-                      LockPeriod, Nonce, Protocol, _Round = 1).
-
 find_block_tx_hashes_(Hash, Chain) ->
     case blocks_until_hash(Hash, blocks(Chain)) of
-        [#{txs := Txs}|_] ->
+        [#{block := Block}|_] ->
+            Txs = case aec_blocks:is_key_block(Block) of
+                      true -> [];
+                      false -> aec_blocks:txs(Block)
+                  end,
             TxHashes = [ H || #{tx_hash := H} <- Txs ],
             {value, TxHashes};
         [] ->
@@ -735,12 +773,17 @@ find_signed_tx_(Hash, Chain) ->
             none
     end.
 
-find_signed_tx_in_blocks_([#{txs := Txs} = Block|T], Hash) ->
-    case lists_mapfind(Hash, tx_hash, Txs) of
-        #{signed_tx := STx} ->
-            {value, STx, Block};
-        false ->
-            find_signed_tx_in_blocks_(T, Hash)
+find_signed_tx_in_blocks_(
+  [#{block := Block}|T], Hash) ->
+    case aec_blocks:is_key_block(Block) of
+        true ->
+            find_signed_tx_in_blocks_(T, Hash);
+        false -> case lists_mapfind(Hash, tx_hash, aec_blocks:txs(Block)) of
+                     #{signed_tx := STx} ->
+                         {value, STx, Block};
+                     false ->
+                         find_signed_tx_in_blocks_(T, Hash)
+                 end
     end;
 find_signed_tx_in_blocks_([], _) ->
     none.
@@ -761,6 +804,16 @@ find_tx_with_location_(Hash, #{forks := Forks, mempool := Pool}) ->
                     {mempool, STx}
             end
     end.
+
+
+insert_key_pair(KP, Chain) ->
+    insert_key_pair(main, KP, Chain).
+
+insert_key_pair( ForkId
+               , #{pubkey := PK, privkey := SK}
+               , #{key_pairs := KPs} = Chain) ->
+    Chain#{key_pairs => KPs#{PK => SK}}.
+
 
 blocks(Chain) ->
     blocks(main, Chain).
