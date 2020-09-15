@@ -96,28 +96,40 @@ format_fate_args(X) ->
 
 
 init_staking_contract(D, R, W) ->
-    {ok, PK} = aec_chain_sim:new_account(10),
-    {ok, Code} = aeso_compiler:file("apps/aehyperchains/test/contracts/SimpleElection.aes", [{backend, fate}]),
-    Serialized = aect_sophia:serialize(Code, ?SOPHIA_CONTRACT_VSN_3),
-    CallData = make_calldata_from_code(init, [{D, R, W}]),
-    Nonce = aec_chain_sim:next_nonce(PK),
-    {ok, Tx} = aect_create_tx:new(
-                 #{ fee        => 1000000 * aec_test_utils:min_gas_price()
-                 , owner_id    => aeser_id:create(account, PK)
-                 , nonce       => Nonce
-                 , vm_version  => ?VM_FATE_SOPHIA_1
-                 , abi_version => ?ABI_FATE_SOPHIA_1
-                 , deposit     => 2137
-                 , amount      => 0
-                 , gas         => 1000000000
-                 , gas_price   => 1 * aec_test_utils:min_gas_price()
-                 , ttl         => 0
-                 , code        => Serialized
-                 , call_data   => CallData
-                 }),
+    {ok, Acct} = aec_chain_sim:new_account(100000000000000000000000000),
+    {ok, Acct2} = aec_chain_sim:new_account(0),
+    {ok, Tx} = aec_spend_tx:new(#{sender_id    => aeser_id:create(account, Acct),
+                            recipient_id => aeser_id:create(account, Acct2),
+                            amount       => 500,
+                            fee          => 1000000000000000,
+                            nonce        => 1,
+                            payload      => <<"XD">>}),
+    %% {ok, Code} = aeso_compiler:file("apps/aehyperchains/test/contracts/SimpleElection.aes", [{backend, fate}]),
+    %% Serialized = aect_sophia:serialize(Code, ?SOPHIA_CONTRACT_VSN_3),
+    %% CallData = make_calldata_from_code(init, [{D, R, W, {some, PK}}]),
+    %% Nonce = aec_chain_sim:next_nonce(PK),
+    %% {ok, Tx} = aect_create_tx:new(
+    %%              #{ fee        => 1000000 * aec_test_utils:min_gas_price()
+    %%              , owner_id    => aeser_id:create(account, PK)
+    %%              , nonce       => Nonce
+    %%              , vm_version  => ?VM_FATE_SOPHIA_1
+    %%              , abi_version => ?ABI_FATE_SOPHIA_1
+    %%              , deposit     => 2137
+    %%              , amount      => 0
+    %%              , gas         => 1000000000
+    %%              , gas_price   => 1 * aec_test_utils:min_gas_price()
+    %%              , ttl         => 0
+    %%              , code        => Serialized
+    %%              , call_data   => CallData
+    %%              }),
     aec_chain_sim:add_keyblock(),
-    aec_chain_sim:sign_and_push(PK, Tx),
-    aec_chain_sim:add_microblock().
+    ?assertEqual(100000000000000000000000000, aec_chain_sim:get_balance(Acct)),
+    ?assertEqual(0,     aec_chain_sim:get_balance(Acct2)),
+    aec_chain_sim:sign_and_push(Acct, Tx),
+    aec_chain_sim:add_microblock(),
+    ?assertEqual(10000, aec_chain_sim:get_balance(Acct)),
+    ?assertEqual(10000, aec_chain_sim:get_balance(Acct2)),
+    aec_chain_sim:add_keyblock().
 
 scheme_test_() ->
     fun scheme/0.

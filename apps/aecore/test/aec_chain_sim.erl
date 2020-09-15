@@ -39,6 +39,8 @@
 -export([ next_nonce/1                 %% (Acct) -> integer()
         , new_account/1                %% (Balance) -> Acct
         , new_account/2                %% (ForkId, Balance) -> Acct
+        , get_balance/1                %% (Acct) -> Balance
+        , get_balance/2                %% (ForkId, Acct) -> Balance
         , push/1                       %% (Tx) -> ok
         , find_signed_tx/1             %% (TxHash) -> {value, STx)} | none
         , top_block_hash/0             %% () -> Hash
@@ -151,6 +153,21 @@ new_account(Balance) ->
 %%
 new_account(ForkId, Balance) ->
     chain_req({new_account, ForkId, Balance}).
+
+-spec get_balance(Acct :: non_neg_integer()) -> integer().
+%%
+%% Equivalent to get_balance(main, Acct)
+%%
+get_balance(Acct) ->
+    get_balance(main, Acct).
+
+-spec get_balance(fork_id(), Acct :: non_neg_integer()) -> integer().
+%%
+%% Queries the chain for account's balance
+%%
+get_balance(ForkId, Acct) ->
+    chain_req({get_balance, ForkId, Acct}).
+
 
 -spec push(aetx_sign:signed_tx()) -> ok.
 %%
@@ -342,6 +359,9 @@ handle_call({new_account, ForkId, Balance}, _From, #st{chain = Chain} = St) ->
 handle_call({add_key, ForkId}, _From, #st{opts = Opts, chain = Chain} = St) ->
     {Res, Chain1} = add_keyblock_(ForkId, Chain, Opts),
     {reply, Res, St#st{chain = Chain1}};
+handle_call({get_balance, ForkId, Acct}, _From, #st{chain = Chain} = St) ->
+    Res = get_balance_(ForkId, Acct, Chain),
+    {reply, Res, St};
 handle_call({fork_from_hash, ForkId, FromHash}, _From, #st{opts = Opts, chain = Chain} = St) ->
     {Res, Chain1} = fork_from_hash_(ForkId, FromHash, Chain, Opts),
     {reply, Res, St#st{chain = Chain1}};
@@ -410,10 +430,10 @@ code_change(_FromVsn, C, _Extra) ->
 %%% gen_server requests implementations
 %%%===================================================================
 
-new_account_(ForkId, Balance, Chain) ->
+new_account_(ForkId, Balance, #{forks := Forks} = Chain) ->
     #{pubkey := PK} = KP = new_keypair(),
     Acct = aec_accounts:new(PK, Balance),
-    [TopBlock|RestBlocks] = Blocks = blocks(ForkId, Chain),
+    #{ ForkId := #{blocks := [TopBlock|RestBlocks] = Blocks} = F } = Forks,
     Trees = case trees(Blocks) of
                 {ok, Ts} ->
                     Ts;
@@ -421,9 +441,22 @@ new_account_(ForkId, Balance, Chain) ->
                     aec_trees:new_without_backend()
             end,
     NewChain = insert_key_pair(ForkId, KP, Chain),
-    NewTrees = aec_accounts_trees:enter(Acct, aec_trees:accounts(Trees)),
+    NewTrees = aec_trees:set_accounts(Trees, aec_accounts_trees:enter(Acct, aec_trees:accounts(Trees))),
     NewBlocks = [TopBlock#{trees => NewTrees}|RestBlocks],
-    {{ok, PK}, NewChain#{blocks => NewBlocks}}.
+    {{ok, PK}, NewChain#{forks => Forks#{ForkId => F#{blocks => NewBlocks}}}}.
+
+get_balance_(ForkId, PK, Chain) ->
+    Trees = case trees(blocks(ForkId, Chain)) of
+                {ok, Ts} ->
+                    Ts;
+                error ->
+                    aec_trees:new_without_backend()
+            end,
+    case aec_accounts_trees:lookup(PK, aec_trees:accounts(Trees)) of
+        none -> 0;
+        {value, Acct} ->
+            aec_accounts:balance(Acct)
+    end.
 
 add_microblock_(ForkId, #{mempool := Pool} = Chain, Opts) ->
     Txs = lists:reverse(Pool),
@@ -624,7 +657,8 @@ trees(Blocks) ->
 update_trees(Txs, Trees) ->
     Height = 2137, %% FIXME
     Env = aetx_env:tx_env(Height),
-    aec_trees:apply_txs_on_state_trees(Txs, Trees, Env).
+    {ok, _, [], NewTrees, _} = aec_trees:apply_txs_on_state_trees_strict(Txs, Trees, Env),
+    NewTrees.
 %% update_trees(#{ mod := aesc_create_tx
 %%               , channel_id := ChId } = Tx, Trees) ->
 %%     case maps:is_key({channel, ChId}, Trees) of
@@ -805,7 +839,6 @@ find_tx_with_location_(Hash, #{forks := Forks, mempool := Pool}) ->
             end
     end.
 
-
 insert_key_pair(KP, Chain) ->
     insert_key_pair(main, KP, Chain).
 
@@ -814,16 +847,12 @@ insert_key_pair( ForkId
                , #{key_pairs := KPs} = Chain) ->
     Chain#{key_pairs => KPs#{PK => SK}}.
 
-
 blocks(Chain) ->
     blocks(main, Chain).
 
 blocks(ForkId, #{forks := Forks}) ->
     #{blocks := Blocks} = maps:get(ForkId, Forks),
     Blocks.
-
-genesis_header() ->
-    aec_block_genesis:genesis_header().
 
 root_hash() ->
     <<"root-hash.......................">>.
