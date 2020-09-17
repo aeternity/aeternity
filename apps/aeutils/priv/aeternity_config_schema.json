@@ -533,7 +533,7 @@
                                         }
                                     },
                                     "hash":{
-                                        "description" : "The block address of the parent chain (the genesis pointer at the parent chain view)",
+                                        "description" : "The block address on the parent chain (the genesis pointer on the parent chain view)",
                                         "type" : "string"
                                     },
                                     "note":{
