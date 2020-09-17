@@ -16,6 +16,7 @@
 -callback get_block_by_hash(binary()) -> block().
 
 -export_type([connector/0]).
+
 %%%===================================================================
 %%%  Parent chain simplified proto
 %%%===================================================================
