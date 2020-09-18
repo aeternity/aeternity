@@ -91,13 +91,12 @@ terminate(_Reason, _State) ->
 
 -spec accept_connector(pointer()) -> boolean().
 accept_connector(Pointer) ->
-    accept_connector(Pointer, []).
-
--spec accept_connector(aehc_connector:connector(), list()) -> boolean().
-accept_connector(_Connector, []) ->
-    throw('not implemented');
-accept_connector(_Connector, _Criteria) ->
-    throw('not implemented').
+    try
+        [Criteria(Pointer) || Criteria <- fun accept_top_block/1, fun accept_block_by_hash/1, fun accept_send_tx/1],
+        ok
+    catch E:R ->
+        {error, {E, R}}
+    end.
 
 -spec start_connector(aehc_connector:connector(), map(), binary()) -> {ok, pid()}.
 start_connector(_Connector, _Args, _Desc) ->
@@ -110,7 +109,7 @@ terminate_connector(_Connector) ->
 accept_top_block(Pointer) ->
     %% Ability to request the current top block;
     Con = connector(Pointer),
-    {ok, _}  = aehc_connector:get_top_block(Con).
+    {ok, _} = aehc_connector:get_top_block(Con).
 
 accept_block_by_hash(Pointer) ->
     %% Ability to request genesis hash pointer;
@@ -119,18 +118,24 @@ accept_block_by_hash(Pointer) ->
 
 accept_send_tx(Pointer) ->
     %% Ability to execute commitment call;
-    Con = connector(Pointer),
-    Delegate = aec_keys:pubkey(),
-    KeyblockHash = aec_chain:top_key_block_hash(),
-    Payload = aehc_commitment_header:hash(aehc_commitment_header:new(Delegate, KeyblockHash)),
-    ok = aehc_connector:send_tx(Con, Payload).
+    delegate_config() == undefined orelse
+        begin
+            Con = connector(Pointer),
+            Delegate = aec_keys:pubkey(),
+            KeyblockHash = aec_chain:top_key_block_hash(),
+            Payload = aehc_commitment_header:hash(aehc_commitment_header:new(Delegate, KeyblockHash)),
+            ok = aehc_connector:send_tx(Con, Payload)
+        end.
 
 %%%===================================================================
 %%%  Configuration access layer
 %%%===================================================================
 
 pointers_config() ->
-    aeu_env:user_config([<<"chain">>, <<"hyperchains">>, <<"pointers">>]).
+    aeu_env:user_config([<<"hyperchains">>, <<"pointers">>]).
+
+delegate_config() ->
+    aeu_env:user_config([<<"hyperchains">>, <<"delegate">>]).
 
 %%%===================================================================
 %%%  Fields accessors
