@@ -494,16 +494,22 @@
                             "default": 500
                         }
                     }
+                }
+            }
+        },
+        "hyperchains": {
+            "type" : "object",
+            "additionalProperties" : false,
+            "properties" : {
+                "enabled": {
+                    "description": "",
+                    "type": "boolean",
+                    "default": false
                 },
-                "hyperchains": {
+                "delegate":{
                     "type" : "object",
                     "additionalProperties" : false,
                     "properties" : {
-                        "enabled": {
-                            "description": "",
-                            "type": "boolean",
-                            "default": false
-                        },
                         "keys" : {
                             "type"    : "object",
                             "additionalProperties": false,
@@ -513,48 +519,48 @@
                                     "type" : "string"
                                 }
                             }
-                        },
-                        "pointers":{
-                            "type": "array",
-                            "items":{
-                                "type":"object",
-                                "description": "",
-                                "properties": {
-                                    "connector": {
-                                        "properties": {
-                                            "id": {
-                                                "description": "Parent chain driver",
-                                                "type": "string"
-                                            },
-                                            "args":{
-                                                "type":"object",
-                                                "description": "User defined arguments list (passed as is to the connector)"
-                                            }
-                                        }
-                                    },
-                                    "hash":{
-                                        "description" : "The block address on the parent chain (the genesis pointer on the parent chain view)",
-                                        "type" : "string"
-                                    },
-                                    "note":{
-                                        "type" : "string"
-                                    }
-                            },
-                            "minItems": 1,
-                            "default" : [
-                                {
-                                    "connector": {
-                                        "id":"aehc_aeternity_connector",
-                                        "args": {
-                                            "host":"localhost",
-                                            "port":8332
-                                        }
-                                    },
-                                    "hash":"kh_2pDTjhABi43q1LrpXrBRj8GaBhJbZQSpYks9EYqfvW5fk31eWy",
-                                    "note": "Initial Hyperhains test pointer (release version 5.5.4)"
-                                }]
-                            }
                         }
+                    }
+                },
+                "pointers":{
+                    "type": "array",
+                    "items":{
+                        "type":"object",
+                        "description": "",
+                        "properties": {
+                            "connector": {
+                                "properties": {
+                                    "id": {
+                                        "description": "Parent chain driver",
+                                        "type": "string"
+                                    },
+                                    "args":{
+                                        "type":"object",
+                                        "description": "User defined arguments list (passed as is to the connector)"
+                                    }
+                                }
+                            },
+                            "hash":{
+                                "description" : "The block address on the parent chain (the genesis pointer on the parent chain view)",
+                                "type" : "string"
+                            },
+                            "note":{
+                                "type" : "string"
+                            }
+                        },
+                        "minItems": 1,
+                        "default" : [
+                            {
+                                "connector": {
+                                    "id":"aehc_aeternity_connector",
+                                    "args": {
+                                        "host":"localhost",
+                                        "port":8332
+                                    }
+                                },
+                                "hash":"kh_2pDTjhABi43q1LrpXrBRj8GaBhJbZQSpYks9EYqfvW5fk31eWy",
+                                "note": "Initial Hyperhains test pointer (release version 5.5.4)"
+                            }]
                     }
                 }
             }
