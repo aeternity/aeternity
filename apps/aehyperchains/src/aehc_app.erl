@@ -22,7 +22,7 @@ stop(_State) ->
     ok.
 
 check_env() ->
-    check_env([{[<<"chain">>, <<"hyperchains">>, <<"enabled">>], {set_env, enabled}}]),
+    check_env([{[<<"hyperchains">>, <<"enabled">>], {set_env, enabled}}]),
     case aehc_utils:hc_enabled() of
         true ->
             lager:info("Hyperchains are enabled"),
