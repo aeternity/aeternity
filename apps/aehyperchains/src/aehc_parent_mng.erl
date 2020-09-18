@@ -60,7 +60,7 @@ publish_block(Connector, Block) ->
 
 init([]) ->
     process_flag(trap_exit, true),
-    [H|_] = Pointers = [pointer(P) || P <- get_pointers()],
+    [H|_] = Pointers = [pointer(P) || P <- pointers_config()],
     [aehc_connector_sup:start_child(connector(P), args(P), note(P)) || P <- Pointers],
     %% TODO: To request the current top block hash;
     {ok, #state{ master = connector(H), pointers = Pointers }}.
@@ -89,11 +89,13 @@ terminate(_Reason, _State) ->
 %%%  Connector's management
 %%%===================================================================
 
--spec accept_connector(aehc_connector:connector()) -> boolean().
-accept_connector(Connector) ->
-    accept_connector(Connector, []).
+-spec accept_connector(pointer()) -> boolean().
+accept_connector(Pointer) ->
+    accept_connector(Pointer, []).
 
 -spec accept_connector(aehc_connector:connector(), list()) -> boolean().
+accept_connector(_Connector, []) ->
+    throw('not implemented');
 accept_connector(_Connector, _Criteria) ->
     throw('not implemented').
 
@@ -105,11 +107,29 @@ start_connector(_Connector, _Args, _Desc) ->
 terminate_connector(_Connector) ->
     throw('not implemented').
 
+accept_top_block(Pointer) ->
+    %% Ability to request the current top block;
+    Con = connector(Pointer),
+    {ok, _}  = aehc_connector:get_top_block(Con).
+
+accept_block_by_hash(Pointer) ->
+    %% Ability to request genesis hash pointer;
+    Con = connector(Pointer), Hash = hash(Pointer),
+    {ok, _} = aehc_connector:get_block_by_hash(Con, Hash).
+
+accept_send_tx(Pointer) ->
+    %% Ability to execute commitment call;
+    Con = connector(Pointer),
+    Delegate = aec_keys:pubkey(),
+    KeyblockHash = aec_chain:top_key_block_hash(),
+    Payload = aehc_commitment_header:hash(aehc_commitment_header:new(Delegate, KeyblockHash)),
+    ok = aehc_connector:send_tx(Con, Payload).
+
 %%%===================================================================
 %%%  Configuration access layer
 %%%===================================================================
 
-get_pointers() ->
+pointers_config() ->
     aeu_env:user_config([<<"chain">>, <<"hyperchains">>, <<"pointers">>]).
 
 %%%===================================================================
