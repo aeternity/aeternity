@@ -16,6 +16,10 @@
         , hash/1
         ]).
 
+-export([ delegate/1
+        , keyblock/1
+        ]).
+
 -include("../../aecore/include/blocks.hrl").
 -include("aehc_utils.hrl").
 
@@ -49,3 +53,16 @@ header(#hc_commitment{header = Header}) ->
 -spec hash(commitment()) -> commitment_hash().
 hash(#hc_commitment{header = Header}) ->
     aehc_commitment_header:hash(Header).
+
+%%%===================================================================
+%%%  Payload access
+%%%===================================================================
+
+-spec delegate(commitment_hash()) -> commiter_pubkey().
+delegate(<<Delegate:?COMMITER_PUB_BYTES, _:?COMMITMENT_HASH_BYTES, _:?POGF_HASH_BYTES>>) ->
+    Delegate.
+
+
+-spec keyblock(commitment_hash()) -> block_header_hash().
+keyblock(<<_:?COMMITER_PUB_BYTES, Keyblock:?COMMITMENT_HASH_BYTES, _:?POGF_HASH_BYTES>>) ->
+    Keyblock.
