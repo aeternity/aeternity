@@ -38,7 +38,8 @@ dry_run_(Txs, Trees, Env, Opts) ->
         STxs = prepare_txs(Txs),
         lager:debug("STxs = ~p", [STxs]),
         {ok, dry_run_int(STxs, Trees, Env, Opts, [])}
-    catch _E:R ->
+    catch _E:R:ST ->
+        lager:debug("CAUGHT: ~p:~p:~p", [_E, R, ST]),
         {error, iolist_to_binary(io_lib:format("Internal error ~120p", [R]))}
     end.
 
@@ -52,12 +53,12 @@ dry_run_int([{tx, TxOpts, Tx} | Txs], Trees, Env, Opts, Acc) ->
     case aec_trees:apply_txs_on_state_trees([Tx], Trees, Env1, [strict, dont_verify_signature|Opts]) of
         {ok, [Tx], [], Trees1, Events} when Stateless ->
             lager:debug("Events = ~p", [Events]),
-            Env1 = aetx_env:set_events(Env, Events),
-            dry_run_int(Txs, Trees, Env1, Opts, [dry_run_res(Tx, Trees1, ok) | Acc]);
+            Env2 = aetx_env:set_events(Env, Events),
+            dry_run_int(Txs, Trees, Env2, Opts, [dry_run_res(Tx, Trees1, ok) | Acc]);
         {ok, [Tx], [], Trees1, Events} ->
             lager:debug("Events = ~p", [Events]),
-            Env1 = aetx_env:set_events(Env, Events),
-            dry_run_int(Txs, Trees1, Env1, Opts, [dry_run_res(Tx, Trees1, ok) | Acc]);
+            Env2 = aetx_env:set_events(Env, Events),
+            dry_run_int(Txs, Trees1, Env2, Opts, [dry_run_res(Tx, Trees1, ok) | Acc]);
         Err = {error, _Reason} ->
             dry_run_int(Txs, Trees, Env, Opts, [dry_run_res(Tx, Trees, Err) | Acc])
     end.

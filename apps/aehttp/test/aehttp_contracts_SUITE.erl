@@ -617,6 +617,9 @@ call_get_state(Node, Pub, Priv, EncMapsPub, Contract) ->
 %%  the nested calls don't seem to work yet.
 
 environment_contract(Config) ->
+    with_trace(fun environment_contract_/1, Config, "environment_contract").
+
+environment_contract_(Config) ->
     Node = proplists:get_value(node_name, Config),
     %% Get account information.
     #{acc_a := #{pub_key := APub,
@@ -1783,3 +1786,50 @@ wait_for_tx_hash_on_chain(Node, TxHash) ->
                 {error, _Reason} -> did_not_mine
             end
     end.
+
+with_trace(F, Config, File) ->
+    with_trace(F, Config, File, on_error).
+
+with_trace(F, Config, File, When) ->
+    ct:log("with_trace ...", []),
+    TTBRes = aesc_ttb:on_nodes([node()|get_nodes()], File),
+    ct:log("Trace set up: ~p", [TTBRes]),
+    try F(Config)
+    catch E:R:Stack ->
+        case E of
+            error ->
+                ct:pal("Error ~p~nStack = ~p", [R, Stack]),
+                ttb_stop(),
+                erlang:error(R);
+            exit ->
+                ct:pal("Exit ~p~nStack = ~p", [R, Stack]),
+                ttb_stop(),
+                exit(R);
+            throw ->
+                ct:pal("Caught throw:~p", [R]),
+                throw(R)
+        end
+    end,
+    case When of
+        on_error ->
+            ct:log("Discarding trace", []),
+            aesc_ttb:stop_nofetch();
+        always ->
+            ttb_stop()
+    end,
+    ok.
+
+ttb_stop() ->
+    Dir = aesc_ttb:stop(),
+    Out = filename:join(filename:dirname(Dir),
+                        filename:basename(Dir) ++ ".txt"),
+    case aesc_ttb:format(Dir, Out, #{limit => 30000}) of
+        {error, Reason} ->
+            ct:pal("TTB formatting error: ~p", [Reason]);
+        _ ->
+            ok
+    end,
+    ct:pal("Formatted trace log in ~s~n", [Out]).
+
+get_nodes() ->
+    [aecore_suite_utils:node_name(?NODE)].

@@ -27,7 +27,16 @@
                         , dry_run_results/1
                         ]).
 
+-export([patterns/0]).
+
 -include("../../aecontract/include/aecontract.hrl").
+
+patterns() ->
+    [{?MODULE, F, A, []} || {F, A} <- [ {handle_request, 3}
+				      , {forbidden, 1}
+				      , {ok_response, 1}
+				      , {process_request, 2}
+				      , {dry_run_results, 1}]].
 
 -spec forbidden( OperationID :: atom() ) -> boolean().
 forbidden(OpId) ->
