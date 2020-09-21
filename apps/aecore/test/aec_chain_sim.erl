@@ -666,10 +666,8 @@ new_channel(#{ channel_id       := _ChId
     Initiator = aeser_id:specialize(InitiatorId, account),
     Responder = aeser_id:specialize(ResponderId, account),
     %% TODO: assert that the above ChId is the same as for the channel object
-    aesc_channels:new(Initiator, InitiatorAmt,
-                      Responder, ResponderAmt,
-                      aec_accounts:new(Initiator, InitiatorAmt),
-                      aec_accounts:new(Responder, ResponderAmt),
+    aesc_channels:new(aec_accounts:new(Initiator, InitiatorAmt), InitiatorAmt,
+                      aec_accounts:new(Responder, ResponderAmt), ResponderAmt,
                       ChanReserve, _Delegates = [], StateHash,
                       LockPeriod, Nonce, Protocol, _Round = 1).
 
