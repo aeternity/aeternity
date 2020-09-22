@@ -550,7 +550,14 @@ generate_json_aci_(Vsn, Backend, Code) ->
     Cmd = Compiler ++ " --create_json_aci " ++ SrcFile,
     Output = os:cmd(Cmd),
     try
-        aeaci_aci:from_string(list_to_binary(Output), #{backend => Backend})
+        Output1 =
+            if  Vsn < ?SOPHIA_LIMA_AEVM ->
+                    <<"ACI generated successfully!\n\n", JText/binary>> = list_to_binary(Output),
+                    JText;
+                true ->
+                    list_to_binary(Output)
+            end,
+        aeaci_aci:from_string(Output1, #{backend => Backend})
     ?_catch_(_, _, _)
         {error, <<"bad argument">>}
     after
