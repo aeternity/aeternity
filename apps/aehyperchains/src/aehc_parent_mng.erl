@@ -16,7 +16,8 @@
 %%% - To be able to run the Hyperchains the system must satisfy the connector's acceptance criteria;
 %%%     a) For default mode: get_top_block/0, get_block_by_hash/1l
 %%%     b) For validator mode: default mode + send_tx/1;
-%%% - Each interested developer can supply his own connector's implementation for the particular parent chain; (TODO: To supply link to the official development guide);
+%%% - Each interested developer can supply his own connector's implementation for the particular parent chain;
+%%% (TODO: To supply link to the official connector's development guide);
 %%% @end
 %%%-------------------------------------------------------------------
 -module(aehc_parent_mng).
@@ -36,6 +37,8 @@
 -export([handle_cast/2]).
 -export([handle_info/2]).
 -export([terminate/2]).
+
+-include_lib("aeutils/include/aeu_stacktrace.hrl").
 
 -record(pointer, { hash :: binary(), connector :: aehc_connector:connector(), args :: map(), note :: binary() }).
 
@@ -59,6 +62,7 @@ publish_block(Connector, Block) ->
 -record(state, { master :: aehc_connector:connector(), hash :: binary(), pointers :: list() }).
 
 init([]) ->
+    %% TODO: To extract the current block from Db;
     process_flag(trap_exit, true),
     [H|_] = Pointers = [pointer(P) || P <- pointers_config()],
     [aehc_connector_sup:start_child(connector(P), args(P), note(P)) || P <- Pointers],
@@ -72,11 +76,30 @@ handle_cast(_Msg, State) ->
     {noreply, State}.
 
 handle_info({publish_block, Connector, Block}, State) ->
-    Connector == State#state.master andalso
-        aec_events:publish({parent_chain, block}, {block_created, Block}),
-    %% TODO: To sync block into the database
-    %% TODO: To provide fork awareness trough block value comparison;
-    [H|_] = State#state.pointers, _Sync = hash(H),
+    %% TODO: Create parent block;
+    %% To send parent parent block;
+    %% TO Persists parent block;
+    %% To be able to persists the block we have to be sure that it connects to the previous existed one in the DB;
+    %% That guaranties sequential order and consistency of the current chain view;
+    %% Check that condition each time when block arrived allows to skip the whole chain traversing procedure;
+    try
+        true = aehc_parent_block:is_hc_parent_block(Block),
+        Hash = aehc_parent_block:hash_block(Block),
+        Height = aehc_parent_block:height_block(Block),
+        Length = length(aehc_parent_block:commitments_in_block(Block)),
+
+        Connector == State#state.master andalso
+            aec_events:publish({parent_chain, block}, {block_created, Block}),
+        %% TODO: To sync block into the database
+        %% TODO: To provide fork awareness trough block value comparison;
+        %% TODO: To provide sync checks;
+        ok = aehc_parent_db:write_parent_block(Block),
+        [H|_] = State#state.pointers, _Sync = hash(H),
+        Info = "Block has persisted (connector: ~p, hash: ~p, height: ~p, capacity: ~p)",
+        lager:info(Info, [Connector, Hash, Height, Length])
+        ?_catch_(error, E, StackTrace)
+            lager:error("CRASH: ~p; ~p", [E, StackTrace])
+    end,
     {noreply, State};
 
 handle_info(_Info, State) ->
@@ -126,6 +149,13 @@ accept_send_tx(Pointer) ->
             Payload = aehc_commitment_header:hash(aehc_commitment_header:new(Delegate, KeyblockHash)),
             ok = aehc_connector:send_tx(Con, Payload)
         end.
+
+%%%===================================================================
+%%%  Block's management
+%%%===================================================================
+
+%% TODO: sync procedure, fork switch procedure
+
 
 %%%===================================================================
 %%%  Configuration access layer
