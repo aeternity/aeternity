@@ -4,42 +4,36 @@
 
 -export([send_tx/2, get_block_by_hash/2, get_top_block/1]).
 
--export([tx/2, block/3]).
--export([publish_block/1, subscribe_block/0]).
+-export([commitment/3, parent_block/4]).
+-export([publish_block/2]).
 
 -type connector() :: atom().
 
--callback send_tx(binary()) -> binary().
+-type commitment() :: aehc_commitment:commitment().
+-type parent_block() :: aehc_parent_block:parent_block().
 
--callback get_top_block() -> block().
-
--callback get_block_by_hash(binary()) -> block().
+-callback send_tx(binary()) -> ok.
+-callback get_top_block() -> parent_block().
+-callback get_block_by_hash(binary()) -> parent_block().
 
 -export_type([connector/0]).
 
 %%%===================================================================
 %%%  Parent chain simplified proto
 %%%===================================================================
+%% This API should be used by connector's developer as a wrapper around internal abstract commitments data type;
+-spec commitment(Delegate::binary(), KeyblockHash::binary(), PoGFHash::binary()) ->
+    commitment().
+commitment(Delegate, KeyblockHash, PoGFHash) when
+    is_binary(Delegate), is_binary(KeyblockHash), is_binary(PoGFHash) ->
+    aehc_commitment:new(aehc_commitment_header:new(Delegate, KeyblockHash, PoGFHash)).
 
--record(tx, { sender_id :: binary(), payload :: binary() }).
-
--type tx() :: #tx{}.
-
--record(block, { hash :: binary(), prev_hash :: binary(), txs :: [tx()] }).
-
--type block() :: #block{}.
-
--export_type([tx/0, block/0]).
-
--spec tx(Sender::binary(), Payload::binary()) -> tx().
-tx(SenderId, Payload) when
-      is_binary(SenderId), is_binary(Payload) ->
-    #tx{ sender_id = SenderId, payload = Payload }.
-
--spec block(Hash::binary(), PrevHash::binary(), Txs::[tx()]) -> block().
-block(Hash, PrevHash, Txs) when
-      is_binary(Hash), is_binary(PrevHash), is_list(Txs) ->
-    #block{ hash = Hash, prev_hash = PrevHash, txs = Txs }.
+-spec parent_block(Height::non_neg_integer(), Hash::binary(), PrevHash::binary(), Commitments::[commitment()]) ->
+    parent_block().
+parent_block(Height, Hash, PrevHash, Commitments) when
+    is_integer(Height), is_binary(Hash), is_binary(PrevHash), is_list(Commitments) ->
+    Header = aehc_parent_block:new_header(Hash, PrevHash, Height),
+    aehc_parent_block:new_block(Header, Commitments).
 
 %%%===================================================================
 %%%  Parent chain interface
@@ -53,19 +47,19 @@ send_tx(Con, Payload) ->
             {error, {E, R}}
     end.
 
--spec get_top_block(connector()) -> {ok, block()} | {error, {term(), term()}}.
+-spec get_top_block(connector()) -> {ok, parent_block()} | {error, {term(), term()}}.
 get_top_block(Con) ->
     try
-        Res = Con:get_top_block(), true = is_record(Res, block),
+        Res = Con:get_top_block(), true = aehc_parent_block:is_hc_parent_block(Res),
         {ok, Res}
     catch E:R ->
         {error, {E, R}}
     end.
 
--spec get_block_by_hash(connector(), binary()) -> {ok, block()} | {error, {term(), term()}}.
+-spec get_block_by_hash(connector(), binary()) -> {ok, parent_block()} | {error, {term(), term()}}.
 get_block_by_hash(Con, Hash) ->
     try
-        Res = Con:get_block_by_hash(Hash), true = is_record(Res, block),
+        Res = Con:get_block_by_hash(Hash), true = aehc_parent_block:is_hc_parent_block(Res),
         {ok, Res}
     catch E:R ->
             {error, {E, R}}
@@ -75,11 +69,7 @@ get_block_by_hash(Con, Hash) ->
 %%%  Parent chain events
 %%%===================================================================
 
--spec subscribe_block() -> true.
-subscribe_block() ->
-    aec_events:subscribe({parent_chain, block}).
-
--spec publish_block(block()) -> ok.
-publish_block(Block) ->
-    aec_events:publish({parent_chain, block}, {block_created, Block}).
+-spec publish_block(connector(), parent_block()) -> ok.
+publish_block(Connector, Block) ->
+    aehc_parent_mng:publish_block(Connector, Block).
 
