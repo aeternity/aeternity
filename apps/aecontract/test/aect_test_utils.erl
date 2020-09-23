@@ -540,7 +540,8 @@ generate_json_aci_(Vsn, Backend, Code) when Vsn == ?SOPHIA_IRIS_FATE ->
     try
         {ok, JAci} = aeso_aci:contract_interface(json, to_str(Code), [{backend, Backend}]),
         aeaci_aci:from_string(jsx:encode(JAci), #{backend => Backend})
-    catch _T:_E ->
+    ?_catch_(Err, Reason, Stack)
+        ct:log("Aci generation failed ~p ~p ~p\n", [Err, Reason, Stack]),
         {error, <<"bad argument">>}
     end;
 generate_json_aci_(Vsn, Backend, Code) ->
@@ -558,7 +559,8 @@ generate_json_aci_(Vsn, Backend, Code) ->
                     list_to_binary(Output)
             end,
         aeaci_aci:from_string(Output1, #{backend => Backend})
-    ?_catch_(_, _, _)
+    ?_catch_(Err, Reason, Stack)
+        ct:log("Aci generation failed ~p ~p ~p\n", [Err, Reason, Stack]),
         {error, <<"bad argument">>}
     after
         cleanup_tempfiles()
