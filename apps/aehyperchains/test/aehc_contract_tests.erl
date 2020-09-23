@@ -12,17 +12,8 @@
 -define(sig(__x__), {'$sg', __x__}).
 -define(oid(__x__), {'@ok', __x__}).
 -define(qid(__x__), {'@oq', __x__}).
+-define(ALOT, 1000000000000000000000000000000000000000000000000000000000000000).
 
-
-%% -export([groups/0]).
-
--export([ sample_test_/0
-        , scheme_test_/0
-        ]).
-
-%% groups() ->
-%%     [ {staking, [], sample_test}
-%%     ].
 
 sample_test_() ->
     fun sample/0.
@@ -56,17 +47,16 @@ sample() ->
 
     ok.
 
-new_account() ->
-    enacl:sign_keypair().
-
 make_calldata_from_code(Fun, Args) when is_atom(Fun) ->
     make_calldata_from_code(atom_to_binary(Fun, latin1), Args);
 make_calldata_from_code(Fun, Args) when is_binary(Fun) ->
     Args1 = format_fate_args(if is_tuple(Args) -> Args;
+                                is_list(Args) -> list_to_tuple(Args);
                                 true -> {Args}
                              end),
     FunctionId = make_fate_function_id(Fun),
     aeb_fate_encoding:serialize(aefate_test_utils:encode({FunctionId, Args1})).
+
 
 make_fate_function_id(FunctionName) when is_binary(FunctionName) ->
     aeb_fate_code:symbol_identifier(FunctionName).
@@ -94,54 +84,127 @@ format_fate_args(M) when is_map(M) ->
 format_fate_args(X) ->
     X.
 
+new_account(Balance) ->
+    {ok, Acct} = aec_chain_sim:new_account(Balance),
+    Acct.
 
-init_staking_contract(D, R, W) ->
-    {ok, Acct} = aec_chain_sim:new_account(100000000000000000000000000),
-    {ok, Acct2} = aec_chain_sim:new_account(0),
-    {ok, Tx} = aec_spend_tx:new(#{sender_id    => aeser_id:create(account, Acct),
-                            recipient_id => aeser_id:create(account, Acct2),
-                            amount       => 500,
-                            fee          => 1000000000000000,
-                            nonce        => 1,
-                            payload      => <<"XD">>}),
-    %% {ok, Code} = aeso_compiler:file("apps/aehyperchains/test/contracts/SimpleElection.aes", [{backend, fate}]),
-    %% Serialized = aect_sophia:serialize(Code, ?SOPHIA_CONTRACT_VSN_3),
-    %% CallData = make_calldata_from_code(init, [{D, R, W, {some, PK}}]),
-    %% Nonce = aec_chain_sim:next_nonce(PK),
-    %% {ok, Tx} = aect_create_tx:new(
-    %%              #{ fee        => 1000000 * aec_test_utils:min_gas_price()
-    %%              , owner_id    => aeser_id:create(account, PK)
-    %%              , nonce       => Nonce
-    %%              , vm_version  => ?VM_FATE_SOPHIA_1
-    %%              , abi_version => ?ABI_FATE_SOPHIA_1
-    %%              , deposit     => 2137
-    %%              , amount      => 0
-    %%              , gas         => 1000000000
-    %%              , gas_price   => 1 * aec_test_utils:min_gas_price()
-    %%              , ttl         => 0
-    %%              , code        => Serialized
-    %%              , call_data   => CallData
-    %%              }),
+restricted_account() ->
+    case aec_chain_sim:dict_get(restricted_account, undefined) of
+        undefined ->
+            Restricted = new_account(?ALOT),
+            aec_chain_sim:dict_set(restricted_account, Restricted),
+            Restricted;
+        Restricted -> Restricted
+    end.
+
+staking_contract() ->
+    case aec_chain_sim:dict_get(staking_contract, undefined) of
+        undefined ->
+            error("Staking contract is undefined");
+        Con -> Con
+    end.
+
+create_staking_contract(#{ deposit_delay := D
+                        ,  stake_retraction_delay := R
+                        ,  withdraw_delay := W
+                        }) ->
+    Restricted = restricted_account(),
+    {ok, Code} = aeso_compiler:file("apps/aehyperchains/test/contracts/SimpleElection.aes", [{backend, fate}]),
+    Serialized = aect_sophia:serialize(Code, ?SOPHIA_CONTRACT_VSN_3),
+    CallData = make_calldata_from_code(init, [{D, R, W}]),
+    Nonce = aec_chain_sim:next_nonce(Restricted),
+    {ok, Tx} = aect_create_tx:new(
+                 #{ fee         => 1000000 * aec_test_utils:min_gas_price()
+                 ,  owner_id    => aeser_id:create(account, Restricted)
+                 ,  nonce       => Nonce
+                 ,  vm_version  => ?VM_FATE_SOPHIA_1
+                 ,  abi_version => ?ABI_FATE_SOPHIA_1
+                 ,  deposit     => 2137
+                 ,  amount      => 0
+                 ,  gas         => 1000000000
+                 ,  gas_price   => 1 * aec_test_utils:min_gas_price()
+                 ,  ttl         => 0
+                 ,  code        => Serialized
+                 ,  call_data   => CallData
+                 }),
+    aec_chain_sim:sign_and_push(Restricted, Tx),
+    Contract = aect_contracts:compute_contract_pubkey(Restricted, Nonce),
+    aec_chain_sim:dict_set(staking_contract, Contract).
+
+
+call_staking_contract(Fun, Args) ->
+    call_staking_contract(restricted_account(), Fun, Args).
+call_staking_contract(Acct, Fun, Args) ->
+    call_staking_contract(Acct, 0, Fun, Args).
+call_staking_contract(Acct, Value, Fun, Args) ->
+    CallData = make_calldata_from_code(Fun, Args),
+    Nonce = aec_chain_sim:next_nonce(Acct),
+    {ok, Tx} = aect_call_tx:new(
+               #{ caller_id   => aeser_id:create(account, Acct)
+               ,  nonce       => Nonce
+               ,  contract_id => aeser_id:create(contract, staking_contract())
+               ,  abi_version => ?ABI_FATE_SOPHIA_1
+               ,  fee         => 1000000 * aec_test_utils:min_gas_price()
+               ,  amount      => Value
+               ,  gas         => 1000000000
+               ,  gas_price   => 1 * aec_test_utils:min_gas_price()
+               ,  call_data   => CallData
+               }),
+    aec_chain_sim:sign_and_push(Acct, Tx).
+
+random() ->
+    4. %% FIXME chosen by a dice toss, perfectly random
+
+
+deposit_stake(Acct, Amount) ->
+    call_staking_contract(Acct, Amount, deposit_stake, []).
+
+request_withdraw(Acct, Amount) ->
+    call_staking_contract(Acct, request_withdraw, [Amount]).
+
+withdraw(Acct) ->
+    call_staking_contract(Acct, withdraw, []).
+
+get_computed_leader() ->
+    call_staking_contract(get_computed_leader, []).
+
+get_leader(Delegates, Rand) ->
+    call_staking_contract(get_leader, [Delegates, Rand]). %% FIXME
+
+punish(BadGuy) ->
+    call_staking_contract(punish, [BadGuy]).
+
+
+add_microblock() ->
+    aec_chain_sim:add_microblock().
+
+add_keyblock(Delegates) ->
     aec_chain_sim:add_keyblock(),
-    ?assertEqual(100000000000000000000000000, aec_chain_sim:get_balance(Acct)),
-    ?assertEqual(0,     aec_chain_sim:get_balance(Acct2)),
-    aec_chain_sim:sign_and_push(Acct, Tx),
+    Leader = get_leader(Delegates, random()),
     aec_chain_sim:add_microblock(),
-    ?assertEqual(10000, aec_chain_sim:get_balance(Acct)),
-    ?assertEqual(10000, aec_chain_sim:get_balance(Acct2)),
-    aec_chain_sim:add_keyblock().
+    Leader.
 
 scheme_test_() ->
     fun scheme/0.
 
 scheme() ->
-    init_staking_contract(1, 1, 2),
-    %% Acc = new_account(100000),
-    %% deposit_stake(Acc, 100),
-    %% generation_pass(),
-    %% request_withdraw(Acc, 50),
-    %% generation_pass(),
-    %% W = withdraw_stake(Acc),
-    %% ?assert_equal(W, 10).
+    create_staking_contract(#{ deposit_delay => 1
+                            ,  stake_retraction_delay => 1
+                            ,  withdraw_delay => 2
+                            }),
+    aec_chain_sim:add_microblock(),
+    aec_chain_sim:add_keyblock(),
+    add_microblock(),
+    add_keyblock([]),
+    Acct = new_account(?ALOT),
+    deposit_stake(Acct, 100000),
+    add_microblock(),
+    request_withdraw(Acct, 100000),
+    add_microblock(),
+    X1 = aec_chain_sim:get_balance(Acct),
+    withdraw(Acct),
+    add_microblock(),
+    X2 = aec_chain_sim:get_balance(Acct),
+    %% ?assertEqual(X1, X2 + 100000),
     ok.
 

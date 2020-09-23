@@ -592,29 +592,28 @@ add_keyblock_(ForkId, #{forks := Forks, miner := #{pubkey := Miner}} = Chain, Op
     announce(ForkId, [], NewChain, Opts),
     {{ok, Block},  NewChain}.
 
-send_tx_events(_, _) ->
-    ok.
-%% send_tx_events(Txs, #{ block_hash   := BlockHash
-%%                      , block_origin := Origin }) ->
-%%     lists:foreach(
-%%       fun(#{ signed_tx  := SignedTx
-%%            , tx_hash    := TxHash
-%%            , channel_id := ChId }) ->
-%%               {TxType, _} = aetx:specialize_type(
-%%                               aetx_sign:innermost_tx(SignedTx)),
-%%               case is_channel_tx_type(TxType) of
-%%                   true ->
-%%                       Evt = {channel, ChId},
-%%                       Info = #{ type         => TxType
-%%                               , tx_hash      => TxHash
-%%                               , block_hash   => BlockHash
-%%                               , block_origin => Origin },
-%%                       ?LOG("Publish tx_event ~p, I = ~p", [Evt, Info]),
-%%                       aec_events:publish({tx_event, Evt}, Info);
-%%                   false ->
-%%                       skip
-%%               end
-%%       end, Txs).
+send_tx_events(Txs, #{ block_hash   := BlockHash
+                     , block_origin := Origin }) ->
+    lists:foreach(
+      fun(SignedTx) ->
+              TxHash = aetx_sign:hash(SignedTx),
+              {TxType, _} = aetx:specialize_type(
+                              aetx_sign:innermost_tx(SignedTx)),
+              case is_channel_tx_type(TxType) of
+                  true ->
+                      {Mod, TxI} = aetx:specialize_callback(aetx_sign:innermost_tx(SignedTx)),
+                      ChId = Mod:channel_id(TxI),
+                      Evt = {channel, ChId},
+                      Info = #{ type         => TxType
+                              , tx_hash      => TxHash
+                              , block_hash   => BlockHash
+                              , block_origin => Origin },
+                      ?LOG("Publish tx_event ~p, I = ~p", [Evt, Info]),
+                      aec_events:publish({tx_event, Evt}, Info);
+                  false ->
+                      skip
+              end
+      end, Txs).
 
 is_channel_tx_type(T) when T == channel_create_tx
                          ; T == channel_deposit_tx
@@ -655,36 +654,20 @@ trees(Blocks) ->
 
 
 update_trees(Txs, Trees) ->
-    Height = 2137, %% FIXME
+    Height = 2137, %% FIXME or ensure that it is not important
     Env = aetx_env:tx_env(Height),
     {ok, _, [], NewTrees, _} = aec_trees:apply_txs_on_state_trees_strict(Txs, Trees, Env),
     NewTrees.
-%% update_trees(#{ mod := aesc_create_tx
-%%               , channel_id := ChId } = Tx, Trees) ->
-%%     case maps:is_key({channel, ChId}, Trees) of
-%%         true ->
-%%             error({channel_exists, ChId});
-%%         false ->
-%%             Trees#{ {channel, ChId} => new_channel(Tx) }
-%%     end;
-%% update_trees(#{ mod        := aesc_deposit_tx
-%%               , channel_id := ChId
-%%               , amount     := Amount
-%%               , round      := Round
-%%               , state_hash := StateHash }, Trees) ->
-%%     Ch = maps:get({channel, ChId}, Trees),
-%%     Ch1 = aesc_channels:deposit(Ch, Amount, Round, StateHash),
-%%     Trees#{ {channel, ChId} => Ch1 }.
 
 blocks_until_hash(Hash, Blocks) ->
     lists:dropwhile(
       fun(#{block := B}) ->
-              aec_headers:hash(aec_blocks:to_header(B)) =/= Hash
+              aec_headers:hash_header(aec_blocks:to_header(B)) =/= Hash
       end, Blocks).
 
 top_block_hash_(Chain) ->
     [#{block := B}|_] = blocks(main, Chain),
-    aec_headers:hash(aec_blocks:to_header(B)).
+    aec_headers:hash_header(aec_blocks:to_header(B)).
 
 get_block_state_(Hash, Chain) ->
     trees(blocks_until_hash(Hash, blocks(Chain))).

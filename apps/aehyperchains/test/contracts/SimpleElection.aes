@@ -48,8 +48,7 @@ payable contract SimpleElection =
   record config = {
     deposit_delay          : block_height,
     stake_retraction_delay : block_height,
-    withdraw_delay         : block_height,
-    restricted_address     : option(address) }
+    withdraw_delay         : block_height }
 
 
   /**
@@ -102,7 +101,7 @@ payable contract SimpleElection =
       { stakes = {},
         withdraw_requests = {},
         last_election = None,
-        config = config}
+        config = config }
 
 
   /**
@@ -113,8 +112,7 @@ payable contract SimpleElection =
     default_config() =
       { deposit_delay          = 5,
         stake_retraction_delay = 5,
-        withdraw_delay         = 10,
-        restricted_address     = None}
+        withdraw_delay         = 10 }
       
   
 
@@ -133,9 +131,7 @@ payable contract SimpleElection =
   function
     protocol_restrict : () => unit
     protocol_restrict() =
-      require(Call.origin != 
-        Option.default(ak_11111111111111111111111111111111273Yts,  // 0 address
-          state.config.restricted_address), "PROTOCOL_RESTRICTED")
+      require(Call.origin == Contract.creator, "PROTOCOL_RESTRICTED")
 
 
   /**
@@ -400,7 +396,3 @@ payable contract SimpleElection =
       protocol_restrict()
       let stake = staked_tokens(address)
       put(state{stakes[address] = [], withdraw_requests[address] = []})
-
-  /*** DEBUG ***/
-
-  entrypoint bh() = Chain.block_height

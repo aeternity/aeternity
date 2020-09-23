@@ -154,9 +154,9 @@ kill_client(Client) ->
     end.
 
 set_up_channel(Config) ->
-    #{ channel_id := ChId
-     , tx_hash    := TxHash
-     , signed_tx  := SignedTx } = CreateTx = create_tx(Config),
+    CreateTx = create_tx(Config),
+    TxHash = aetx_sign:hash(CreateTx),
+    {ok, ChId} = aesc_utils:channel_pubkey(CreateTx),
     ok = push(CreateTx),
     {mempool, SignedTx} = aec_chain:find_tx_with_location(TxHash),
     ClientIxs = [1,2,3],
@@ -192,8 +192,8 @@ deposit(Config) ->
 deposit_(ChId, Setup, Config) ->
     Cs = maps:get(clients, Setup),
     Watchers = maps:get(watchers, Setup),
-    #{ tx_hash   := TxHash
-     , signed_tx := SignedTx } = DepositTx = deposit_tx(ChId, Config),
+    DepositTx = deposit_tx(ChId, Config),
+    TxHash = aetx_sign:hash(DepositTx),
     push(DepositTx),
     C1 = hd(Cs),
     ok = set_min_depth_watch(C1, ChId, TxHash, MinDepth = 3, MType1 = ?TYPE),
@@ -229,7 +229,8 @@ fork_touches(Config) ->
     ChId = hd(maps:keys(ChSetup)),
     #{ clients    := Cs
      , watchers   := Watchers } = maps:get(ChId, ChSetup),
-    #{ tx_hash := TxHash } = DepositTx = deposit_tx(ChId, Config),
+    DepositTx = deposit_tx(ChId, Config),
+    TxHash = aetx_sign:hash(DepositTx),
     {ok, #{ hash := ForkPoint }} = add_keyblock(),
     push(DepositTx),
     C1 = hd(Cs),
@@ -530,12 +531,13 @@ create_and_sign_tx(#{mod := Mod} = TxInfo) ->
         {ok, Tx} = Mod:new(maps:merge(#{fee => 1, nonce => 1},
                                       maps:remove(mod, TxInfo))),
         ?LOG("Tx = ~p", [Tx]),
-        SignedTx = aetx_sign:new(Tx, []),
-        TxHash = aetx_sign:hash(SignedTx),
-        {ok, ChId} = aesc_utils:channel_pubkey(SignedTx),
-        TxInfo#{ tx_hash    => TxHash
-               , signed_tx  => SignedTx
-               , channel_id => ChId }
+        %% SignedTx = aetx_sign:new(Tx, []),
+        %% TxHash = aetx_sign:hash(SignedTx),
+        %% {ok, ChId} = aesc_utils:channel_pubkey(SignedTx),
+        %% TxInfo#{ tx_hash    => TxHash
+        %%        , signed_tx  => SignedTx
+        %%        , channel_id => ChId }
+        aetx_sign:new(Tx, [])
     catch
         error:Err ->
             ?LOG("CAUGHT error:~p / ~p", [Err, erlang:get_stacktrace()]),
@@ -558,7 +560,7 @@ new_keypair() ->
 create_tx(Config) ->
     I = ?config(initiator, Config),
     R = ?config(responder, Config),
-    TopHash = aec_chain:top_block_hash(),
+    {ok, TopHash} = aec_chain:top_block_hash(), %% FIXME TU JEST ZJEBANE
     Nonce = next_nonce(I),
     Tx0 = #{ mod              => aesc_create_tx
            , initiator_id     => I
