@@ -15,9 +15,8 @@
         , write_parent_block/1
         ]).
 
--export([ write_genesis_hash/1
-        , write_top_block_hash/1
-        , write_top_block_height/1
+-export([ write_parent_chain_track/2
+        , get_parent_chain_track/1
         ]).
 
 -export([
@@ -40,13 +39,13 @@
 -record(hc_db_pogf, {key, value}).
 -record(hc_db_commitment_header, {key, value}).
 -record(hc_db_parent_block_header, {key, value}).
--record(hc_db_parent_chain_state, {key, value}).
+-record(hc_db_parent_chain_track, {key, value}).
 
 table_specs(Mode) ->
     [ ?TAB(hc_db_pogf)
     , ?TAB(hc_db_commitment_header)
     , ?TAB(hc_db_parent_block_header)
-    , ?TAB(hc_db_parent_chain_state)
+    , ?TAB(hc_db_parent_chain_track)
     ].
 
 check_tables(Acc) ->
@@ -155,15 +154,18 @@ write_parent_block(ParentBlock) ->
 %%%  Parent chain state management
 %%%===================================================================
 
-%% TODO: TO provide tags over chain id's;
-write_genesis_hash(Hash) when is_binary(Hash) ->
-    ?t(mnesia:write(#hc_db_parent_chain_state{key = genesis_hash, value = Hash}),
-        [{hc_db_parent_chain_state, genesis_hash}]).
+%% Track determinates traversing path within particular parent chain (genesis -> top);
+-spec write_parent_chain_track(binary(), binary()) -> ok.
+write_parent_chain_track(GenesisHash, TopHash) when is_binary(GenesisHash),
+                                                    is_binary(TopHash) ->
+    ?t(mnesia:write(#hc_db_parent_chain_track{key = GenesisHash, value = TopHash}),
+        [{hc_db_parent_chain_track, GenesisHash}]).
 
-write_top_block_hash(Hash) when is_binary(Hash) ->
-    ?t(mnesia:write(#hc_db_parent_chain_state{key = top_block_hash, value = Hash}),
-        [{hc_db_parent_chain_state, top_block_hash}]).
-
-write_top_block_height(Height) when is_integer(Height) ->
-    ?t(mnesia:write(#hc_db_parent_chain_state{key = top_block_height, value = Height}),
-        [{hc_db_parent_chain_state, top_block_height}]).
+-spec get_parent_chain_track(binary()) -> binary() | undefined.
+get_parent_chain_track(GenesisHash) ->
+    ?t(case mnesia:read(hc_db_parent_chain_track, GenesisHash) of
+           [#hc_db_parent_chain_track{value = Value}] ->
+               Value;
+           _ ->
+               undefined
+       end).

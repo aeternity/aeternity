@@ -3,16 +3,16 @@
 %%% @copyright (C) 2020, Aeternity Anstalt
 %%% @doc
 %%% Hyperchains parent's layer manager
-%%% This component is responsible to manage the abstract parent's chain layer through so called "pointers".
-%%% Each pointer consists of a synchronized address at the particular parent chain and is supplied with a responsible interface provider.
+%%% This component is responsible to manage the abstract parent's chain layer through so called "tracks".
+%%% Each track consists of a synchronized address at the particular parent chain and is supplied with a responsible interface provider.
 %%% Please note that:
-%%% - The first pointer is representing the current parent chain view and supplies the "master" connector;
+%%% - The first track is representing the current parent chain view and supplies the "master" connector;
 %%% - Only the master connector is eligible to dictate the election period through event's announcement;
-%%% - The synchronization occurs from the current highest block until pointer's hash value has achived;
-%%% - Here is and at the next we mention hash pointer as "parent's chain view genesis address" (please don't confuse with the common "genesis block" terminology);
+%%% - The synchronization occurs from the current highest block until track's hash value has achived;
+%%% - Here is and at the next we mention hash track as "parent's chain view genesis address" (please don't confuse with the common "genesis block" terminology);
 %%% - The component is responsible to manage fork switching by traversing hash-pointers of the parent blocks. Each time when fork occurs:
 %%%     a) The database is updated by the new parent chain representation;
-%%%     b) The child chain is reverted and the new election process is started from the last synced pointer height;
+%%%     b) The child chain is reverted and the new election process is started from the last synced track height;
 %%% - To be able to run the Hyperchains the system must satisfy the connector's acceptance criteria;
 %%%     a) For default mode: get_top_block/0, get_block_by_hash/1l
 %%%     b) For validator mode: default mode + send_tx/1;
@@ -40,9 +40,16 @@
 
 -include_lib("aeutils/include/aeu_stacktrace.hrl").
 
--record(pointer, { hash :: binary(), connector :: aehc_connector:connector(), args :: map(), note :: binary() }).
+-record(track, {
+        current_hash::binary(),
+        current_height::non_neg_integer(),
+        genesis_hash :: binary(),
+        connector :: aehc_connector:connector(),
+        args :: map(),
+        note :: binary()
+    }).
 
--type pointer() :: #pointer{}.
+-type track() :: #track{}.
 %% API.
 
 -spec start_link() ->
@@ -59,15 +66,15 @@ publish_block(Connector, Block) ->
 %%%===================================================================
 
 %% TODO: Connector check API;
--record(state, { master :: aehc_connector:connector(), hash :: binary(), pointers :: list() }).
+-record(state, { master :: aehc_connector:connector(), hash :: binary(), tracks :: list() }).
 
 init([]) ->
     %% TODO: To extract the current block from Db;
     process_flag(trap_exit, true),
-    [H|_] = Pointers = [pointer(P) || P <- pointers_config()],
-    [aehc_connector_sup:start_child(connector(P), args(P), note(P)) || P <- Pointers],
+    [H|_] = Tracks = [track(C) || C <- tracks_config()],
+    [aehc_connector_sup:start_child(connector(T), args(T), note(T)) || T <- Tracks],
     %% TODO: To request the current top block hash;
-    {ok, #state{ master = connector(H), pointers = Pointers }}.
+    {ok, #state{ master = connector(H), tracks = Tracks }}.
 
 handle_call(_Request, _From, State) ->
     {reply, ignored, State}.
@@ -83,6 +90,7 @@ handle_info({publish_block, Connector, Block}, State) ->
     %% That guaranties sequential order and consistency of the current chain view;
     %% Check that condition each time when block arrived allows to skip the whole chain traversing procedure;
     try
+        %% Here is place where sync can be called;
         true = aehc_parent_block:is_hc_parent_block(Block),
         Hash = aehc_parent_block:hash_block(Block),
         Height = aehc_parent_block:height_block(Block),
@@ -94,7 +102,7 @@ handle_info({publish_block, Connector, Block}, State) ->
         %% TODO: To provide fork awareness trough block value comparison;
         %% TODO: To provide sync checks;
         ok = aehc_parent_db:write_parent_block(Block),
-        [H|_] = State#state.pointers, _Sync = hash(H),
+        [H|_] = State#state.tracks, _Sync = genesis_hash(H),
         Info = "Block has persisted (connector: ~p, hash: ~p, height: ~p, capacity: ~p)",
         lager:info(Info, [Connector, Hash, Height, Length])
         ?_catch_(error, E, StackTrace)
@@ -112,10 +120,10 @@ terminate(_Reason, _State) ->
 %%%  Connector's management
 %%%===================================================================
 
--spec accept_connector(pointer()) -> boolean().
-accept_connector(Pointer) ->
+-spec accept_connector(track()) -> boolean().
+accept_connector(Track) ->
     try
-        [Criteria(Pointer) || Criteria <- fun accept_top_block/1, fun accept_block_by_hash/1, fun accept_send_tx/1],
+        [Criteria(Track) || Criteria <- fun accept_top_block/1, fun accept_block_by_hash/1, fun accept_send_tx/1],
         ok
     catch E:R ->
         {error, {E, R}}
@@ -129,21 +137,21 @@ start_connector(_Connector, _Args, _Desc) ->
 terminate_connector(_Connector) ->
     throw('not implemented').
 
-accept_top_block(Pointer) ->
+accept_top_block(Track) ->
     %% Ability to request the current top block;
-    Con = connector(Pointer),
+    Con = connector(Track),
     {ok, _} = aehc_connector:get_top_block(Con).
 
-accept_block_by_hash(Pointer) ->
-    %% Ability to request genesis hash pointer;
-    Con = connector(Pointer), Hash = hash(Pointer),
-    {ok, _} = aehc_connector:get_block_by_hash(Con, Hash).
+accept_block_by_hash(Track) ->
+    %% Ability to request genesis hash track;
+    Con = connector(Track), Genesis = genesis_hash(Track),
+    {ok, _} = aehc_connector:get_block_by_hash(Con, Genesis).
 
-accept_send_tx(Pointer) ->
+accept_send_tx(Track) ->
     %% Ability to execute commitment call;
     delegate_config() == undefined orelse
         begin
-            Con = connector(Pointer),
+            Con = connector(Track),
             Delegate = aec_keys:pubkey(),
             KeyblockHash = aec_chain:top_key_block_hash(),
             Payload = aehc_commitment_header:hash(aehc_commitment_header:new(Delegate, KeyblockHash)),
@@ -151,8 +159,54 @@ accept_send_tx(Pointer) ->
         end.
 
 %%%===================================================================
-%%%  Block's management
+%%%  Track's traversing
 %%%===================================================================
+
+-spec sync_track(track()) -> track().
+sync_track(Track) ->
+    Connector = connector(Track),
+    GenesisHash = genesis_hash(Track),
+    TopHash = aehc_connector:get_top_block(Connector), true = is_binary(TopHash),
+    Current = aehc_parent_db:get_parent_chain_track(GenesisHash),
+    (TopHash == Current) orelse
+        begin
+        ok
+        end.
+
+%% This function is responsible to ...
+sync_fork(Hash, Track, Fetched, Reverted) ->
+    Connector = connector(Track),
+    Block = aehc_connector:get_block_by_hash(Connector, Hash),
+    Height = aehc_parent_block:height_block(Block),
+
+    GenesisHash = genesis_hash(Track),
+    CurrentHash = current_hash(Track),
+    CurrentHeight = current_height(Track),
+
+
+
+    case Hash of
+        CurrentHash when Reverted == [] ->
+            %% Sync is done. When Reverted == [] means that fork switch isn't happened;
+            %% This case is also applicable for the initial DB state; For the initial state Current == Genesis;
+            %% Synched blocks are stored in Fetched variable;
+            ok;
+        CurrentHash ->
+            %% Fork is happend at the CurrentHash point;
+            %% Place where Reverted blocks could be published;
+            ok;
+        GenesisHash ->
+            %% Sync is done (the whole parent chain view switch). Let boys count loss;
+            ok;
+        _ when Height > CurrentHeight ->
+            %% To describe;
+            sync_fork(Hash, Track, [Block|Fetched], Reverted);
+        _ ->
+            %% To describe;
+            CurrentBlock = aehc_parent_db:get_parent_block(CurrentHash),
+            PrevHash = aehc_parent_block:prev_hash_block(CurrentBlock),
+            sync_fork(Hash, current_hash(Track, PrevHash), [Block|Fetched], [CurrentBlock|Reverted])
+    end.
 
 %% TODO: sync procedure, fork switch procedure
 
@@ -161,8 +215,8 @@ accept_send_tx(Pointer) ->
 %%%  Configuration access layer
 %%%===================================================================
 
-pointers_config() ->
-    aeu_env:user_config([<<"hyperchains">>, <<"pointers">>]).
+tracks_config() ->
+    aeu_env:user_config([<<"hyperchains">>, <<"tracks">>]).
 
 delegate_config() ->
     aeu_env:user_config([<<"hyperchains">>, <<"delegate">>]).
@@ -170,31 +224,44 @@ delegate_config() ->
 %%%===================================================================
 %%%  Fields accessors
 %%%===================================================================
+-spec current_height(track()) -> non_neg_integer().
+current_height(T) ->
+    T#track.current_height.
 
--spec hash(pointer()) -> binary().
-hash(P) ->
-    P#pointer.hash.
+-spec current_hash(track()) -> binary().
+current_hash(T) ->
+    T#track.current_hash.
 
--spec connector(pointer()) -> aehc_connector:connector().
-connector(P) ->
-    P#pointer.connector.
+-spec current_hash(track(), binary()) -> track().
+current_hash(T, Hash) ->
+    T#track{current_hash = Hash}.
 
--spec args(pointer()) -> map().
-args(P) ->
-    P#pointer.args.
+-spec genesis_hash(track()) -> binary().
+genesis_hash(T) ->
+    T#track.genesis_hash.
 
--spec note(pointer()) -> binary().
-note(P) ->
-    P#pointer.note.
+-spec connector(track()) -> aehc_connector:connector().
+connector(T) ->
+    T#track.connector.
 
--spec pointer(map()) -> pointer().
-pointer(Conf) ->
-    #pointer{
-        hash = maps:get(<<"hash">>, Conf),
-        connector = binary_to_existing_atom(maps:get(<<"connector">>, Conf), utf8),
+-spec args(track()) -> map().
+args(T) ->
+    T#track.args.
+
+-spec note(track()) -> binary().
+note(T) ->
+    T#track.note.
+
+-spec track(map()) -> track().
+track(Conf) ->
+    GenesisHash = maps:get(<<"genesis_hash">>, Conf),
+    Connector = binary_to_existing_atom(maps:get(<<"connector">>, Conf), utf8),
+    #track{
+        current_height = 0,
+        current_hash = GenesisHash,
+        genesis_hash = GenesisHash,
+        connector = Connector,
         args = maps:get(<<"args">>, Conf),
         note = maps:get(<<"note">>, Conf)
     }.
 
-
-%% NOTE: Manager is responsible to start/stop connectors;
