@@ -522,11 +522,11 @@
                         }
                     }
                 },
-                "pointers":{
+                "tracks":{
                     "type": "array",
                     "items":{
                         "type":"object",
-                        "description": "",
+                        "description": "Tracks are configuration entries for attached blockchains (parent chains)",
                         "properties": {
                             "connector": {
                                 "properties": {
@@ -540,7 +540,7 @@
                                     }
                                 }
                             },
-                            "hash":{
+                            "genesis_hash":{
                                 "description" : "The block address on the parent chain (the genesis pointer on the parent chain view)",
                                 "type" : "string"
                             },
@@ -558,8 +558,8 @@
                                         "port":8332
                                     }
                                 },
-                                "hash":"kh_2pDTjhABi43q1LrpXrBRj8GaBhJbZQSpYks9EYqfvW5fk31eWy",
-                                "note": "Initial Hyperhains test pointer (release version 5.5.4)"
+                                "genesis_hash":"kh_2pDTjhABi43q1LrpXrBRj8GaBhJbZQSpYks9EYqfvW5fk31eWy",
+                                "note": "Initial Hyperhains test track (release version 5.5.4)"
                             }]
                     }
                 }
