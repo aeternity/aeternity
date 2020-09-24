@@ -34,7 +34,7 @@ hyperchains_simulator_test_() ->
                 %
                 Payload = <<"test">>,
                 %
-                ?assertEqual(ok, aehc_connector:send_tx(Payload)),
+                ?assertEqual(ok, aehc_connector:send_tx(<<"Delegate">>, <<"Commitment">>, <<"PoGF">>)),
                 ok
             end}
         ]}.

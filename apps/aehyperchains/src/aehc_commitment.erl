@@ -18,7 +18,7 @@
         ]).
 
 -export([ payload_delegate/1
-        , payload_keyblock/1
+        , payload_commitment/1
         , payload_pogf/1
         ]).
 
@@ -69,9 +69,9 @@ payload_delegate(<<Delegate:?COMMITER_PUB_BYTES, _:?COMMITMENT_HASH_BYTES, _:?PO
     Delegate.
 
 
--spec payload_keyblock(commitment_hash()) -> block_header_hash().
-payload_keyblock(<<_:?COMMITER_PUB_BYTES, Keyblock:?COMMITMENT_HASH_BYTES, _:?POGF_HASH_BYTES>>) ->
-    Keyblock.
+-spec payload_commitment(commitment_hash()) -> block_header_hash().
+payload_commitment(<<_:?COMMITER_PUB_BYTES, Commitment:?COMMITMENT_HASH_BYTES, _:?POGF_HASH_BYTES>>) ->
+    Commitment.
 
 -spec payload_pogf(commitment_hash()) -> pogf_hash().
 payload_pogf(<<_:?COMMITER_PUB_BYTES, _:?COMMITMENT_HASH_BYTES, PoGFHash:?POGF_HASH_BYTES>>) ->
