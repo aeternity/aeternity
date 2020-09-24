@@ -26,7 +26,7 @@
   1},
  {<<"aesophia_aci_encoder">>,
   {git,"https://github.com/aeternity/aesophia_aci_encoder",
-      {ref,"ea5b49aee254c6365f0c007ba4c72702a8916abf"}},
+      {ref,"79ba867f68a6f94763273adc0f5ae1fd91471e77"}},
   0},
  {<<"aesophia_cli">>,
   {git,"git://github.com/aeternity/aesophia_cli",
