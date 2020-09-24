@@ -91,6 +91,7 @@ queue('GetChannelByPubkey')                     -> ?READ_Q;
 queue('GetPeerPubkey')                          -> ?READ_Q;
 queue('GetStatus')                              -> ?READ_Q;
 queue('GetPeerKey')                             -> ?READ_Q;
+queue('GetConnectedPeers')                      -> ?READ_Q;
 %% update transactions (default to update in catch-all)
 queue('PostTransaction')                        -> ?WRITE_Q;
 queue(_)                                        -> ?WRITE_Q.
@@ -576,6 +577,20 @@ handle_request_('GetChannelByPubkey', Params, _Context) ->
 handle_request_('GetPeerPubkey', _Params, _Context) ->
     {ok, Pubkey} = aec_keys:peer_pubkey(),
     {200, [], #{pubkey => aeser_api_encoder:encode(peer_pubkey, Pubkey)}};
+
+handle_request_('GetConnectedPeers', Params, _Context) ->
+    Tag = case maps:get(type, Params) of
+              undefined -> all;
+              Other     -> Other
+          end,
+    Peers = aec_peers:connected_peers(Tag),
+    EncodedPeers = [#{ pub_key => aeser_api_encoder:encode(peer_pubkey, Pubkey)
+                     , host => Host
+                     , port => Port }
+                    || #{ pubkey := Pubkey
+                        , host   := Host
+                        , port   := Port } <- Peers],
+    {200, [], #{connected_peers => EncodedPeers}};
 
 handle_request_('GetStatus', _Params, _Context) ->
     {ok, TopKeyBlock} = aec_chain:top_key_block(),

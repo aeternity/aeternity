@@ -8,7 +8,8 @@
 
 -include_lib("stdlib/include/assert.hrl").
 -import(aecore_suite_utils, [http_request/4, httpc_request/4, process_http_return/1]).
--import(aecore_suite_utils, [internal_address/0, external_address/0, rpc/3, rpc/4]).
+-import(aecore_suite_utils, [internal_address/0, external_address/0, external_address/1,
+                             rpc/3, rpc/4]).
 
 %% exports for another suites
 -export([
@@ -111,7 +112,8 @@
 
 -export(
    [
-    get_peer_pubkey/1
+    get_peer_pubkey/1,
+    get_connected_peers/1
    ]).
 
 -export(
@@ -419,7 +421,8 @@ groups() ->
      %% /peers/*
      {peer_endpoints, [],
       [
-       get_peer_pubkey
+       get_peer_pubkey,
+       get_connected_peers
       ]},
 
      %% /status/*
@@ -524,8 +527,16 @@ init_per_suite(Config) ->
                      <<"name_claim_bid_timeout">> => 0 %% NO name auctions
                     }},
     {ok, StartedApps} = application:ensure_all_started(gproc),
-    Config1 = aecore_suite_utils:init_per_suite([?NODE], DefCfg, [{symlink_name, "latest.http_endpoints"}, {test_module, ?MODULE}] ++ Config),
-    [ {nodes, [aecore_suite_utils:node_tuple(?NODE)]}
+    Config1 = aecore_suite_utils:init_per_suite(
+                [dev1, dev2, dev3],
+                DefCfg,
+                [#{ dev1 => external_port_cfg(8143)
+                  , dev2 => external_port_cfg(8144)
+                  , dev3 => external_port_cfg(8145) }],
+                [{add_peers, true},
+                 {symlink_name, "latest.http_endpoints"},
+                 {test_module, ?MODULE}] ++ Config),
+    [ {nodes, [aecore_suite_utils:node_tuple(N) || N <- [dev1, dev2, dev3]]}
     , {started_apps, StartedApps} ]  ++ Config1.
 
 end_per_suite(Config) ->
@@ -536,6 +547,9 @@ end_per_suite(Config) ->
 
 init_per_group(all, Config) ->
     Config;
+init_per_group(peer_endpoints = Group, Config) ->
+    ct:log("dev1 running? ~p", [rpc(init, get_status, [])]),
+    start_nodes(Group, Config);
 init_per_group(Group, Config) when
       Group =:= debug_endpoints;
       Group =:= block_endpoints;
@@ -545,7 +559,6 @@ init_per_group(Group, Config) when
       Group =:= oracle_endpoints;
       Group =:= name_endpoints;
       %%Group =:= channel_endpoints;
-      Group =:= peer_endpoints;
       Group =:= status_endpoints ->
     start_node(Group, Config);
 %% block_endpoints
@@ -715,6 +728,8 @@ end_per_group(account_with_pending_tx, _Config) ->
     ok;
 end_per_group(oracle_txs, _Config) ->
     ok;
+end_per_group(peer_endpoints = Group, Config) ->
+    ok = stop_nodes(Group, Config);
 end_per_group(Group, Config) ->
     ok = stop_node(Group, Config).
 
@@ -797,15 +812,30 @@ end_per_testcase_all(Config) ->
 start_node(Group, Config) ->
     start_node(proplists:is_defined(node, Config), Group, Config).
 
+start_nodes(Group, Config) ->
+    DevNodes = ?config(nodes, Config),
+    lists:foreach(
+      fun({DevN, Node}) ->
+              Res = do_start_node(DevN, Config),
+              ct:log("do_start_node(~p) -> ~p", [DevN, Res]),
+              aecore_suite_utils:connect(Node, [block_pow])
+      end, DevNodes),
+    %% Define 'node' as usual, to reduce the risk of breaking old code
+    [{node, ?NODE}, {node_start_group, Group} | Config].
+
 start_node(true, _Group, Config) ->
     aecore_suite_utils:start_mock(aecore_suite_utils:node_name(?NODE), block_pow),
     Config;
 start_node(false, Group, Config) ->
     %% TODO: consider reinint_chain to speed up tests
-    aecore_suite_utils:start_node(?NODE, Config),
+    do_start_node(?NODE, Config),
     Node = aecore_suite_utils:node_name(?NODE),
-    aecore_suite_utils:connect(Node, [block_pow]),
     [{node, Node}, {node_start_group, Group} | Config].
+
+do_start_node(N, Config) ->
+    aecore_suite_utils:start_node(N, Config),
+    Node = aecore_suite_utils:node_name(N),
+    aecore_suite_utils:connect(Node, [block_pow]).
 
 start_node_no_mock(Group, Config) ->
     start_node_no_mock(proplists:is_defined(node, Config), Group, Config).
@@ -821,18 +851,26 @@ start_node_no_mock(false, Group, Config) ->
     [{node, Node}, {node_start_group, Group} | Config].
 
 stop_node(Group, Config) ->
-    stop_node(proplists:is_defined(node, Config), Group, Config).
+    stop_node(proplists:is_defined(node, Config), ?NODE, Group, Config).
 
-stop_node(true, Group, Config) ->
+stop_nodes(Group, Config) ->
+    IsDefined = proplists:is_defined(node, Config),
+    DevNodes = ?config(nodes, Config),
+    lists:foreach(
+      fun({DevN, _}) ->
+              stop_node(IsDefined, DevN, Group, Config)
+      end, DevNodes).
+
+stop_node(true, Node, Group, Config) ->
     NodeStartGroup = ?config(node_start_group, Config),
     case Group =:= NodeStartGroup of
         true ->
-            stop_node_(?NODE, Config),
+            stop_node_(Node, Config),
             ok;
         false ->
             ok
     end;
-stop_node(false, _Group, _Config) ->
+stop_node(false, _Node, _Group, _Config) ->
     ok.
 
 stop_node_(Node, Config) ->
@@ -871,6 +909,11 @@ get_top_block(micro_block, CurrentBlockHash, _Config) ->
 get_top_sut() ->
     Host = external_address(),
     http_request(Host, get, "blocks/top", []).
+
+external_port_cfg(P) ->
+    #{<<"http">> =>
+          #{ <<"external">> =>
+                 #{ <<"port">> => P }}}.
 
 %% /key-blocks/*
 
@@ -1704,13 +1747,40 @@ get_channel_by_pubkey_sut(PubKey) ->
 
 %% /peers/*
 
-get_peer_pubkey(_Config) ->
-    {ok, 200, _PeerPubkey} = get_peers_pubkey_sut(),
+get_peer_pubkey(Config) ->
+    DevNs = [Dn || {Dn,_} <- ?config(nodes, Config)],
+    lists:foreach(
+      fun(N) ->
+              {ok, 200, PeerPubkey} = get_peers_pubkey_sut(N),
+              ct:log("PeerPubkey (~p) = ~p", [N, PeerPubkey])
+      end, DevNs),
     ok.
 
-get_peers_pubkey_sut() ->
-    Host = external_address(),
+get_peers_pubkey_sut(N) ->
+    Host = external_address(N),
     http_request(Host, get, "peers/pubkey", []).
+
+get_connected_peers(Config) ->
+    DevNs = [Dn || {Dn,_} <- ?config(nodes, Config)],
+    lists:foreach(
+      fun(N) ->
+              Res = get_connected_peers_sut(N),
+              ct:log("connected_peers (~p) = ~p", [N, Res]),
+              true = lists:all(fun({_, {ok,200,_}}) ->
+                                       true;
+                                  (_) ->
+                                       false
+                               end, Res)
+      end, DevNs),
+    ok.
+
+get_connected_peers_sut(N) ->
+    Host = external_address(N),
+    R = "peers/connected",
+    [ {default , http_request(Host, get, R, [])}
+    , {all     , http_request(Host, get, R, #{type => <<"all">>})}
+    , {inbound , http_request(Host, get, R, #{type => <<"inbound">>})}
+    , {outbound, http_request(Host, get, R, #{type => <<"outbound">>})} ].
 
 %% /status/*
 

@@ -932,6 +932,31 @@ paths:
           description: 'Successful operation'
           schema:
             $ref: '#/definitions/PeerPubKey'
+  /peers/connected:
+    get:
+      tags:
+        - external
+        - node_info
+      operationId: GetConnectedPeers
+      description: 'Get a list of connected peers'
+      produces:
+        - application/json
+      parameters:
+        - in: path
+          name: type
+          description: 'Connection type: inbound, outbound or all'
+          required: false
+          type: string
+          enum: [inbound, outbound, all]
+      responses:
+        '200':
+          description: 'Successful operation'
+          schema:
+            $ref: '#/definitions/ConnectedPeers'
+        '400':
+          description: 'Invalid connection type'
+          schema:
+            $ref: '#/definitions/Error'
   /status:
     get:
       tags:
@@ -2542,6 +2567,28 @@ definitions:
         $ref: '#/definitions/EncodedPubkey'
     required:
       - pub_key
+  ConnectedPeers:
+    type: object
+    properties:
+      connected_peers:
+        type: array
+        items:
+          $ref: '#/definitions/ConnectedPeer'
+    required:
+      - connected_peers
+  ConnectedPeer:
+    type: object
+    properties:
+      pubkey:
+        $ref: '#/definitions/EncodedPubkey'
+      host:
+        type: string
+      port:
+        $ref: '#/definitions/UInt32'
+      required:
+        - pub_key
+        - host
+        - port
   Status:
     type: object
     properties:

@@ -74,7 +74,8 @@
          httpc_request/4,
          process_http_return/1,
          internal_address/0,
-         external_address/0
+         external_address/0,
+         external_address/1
         ]).
 
 -export([generate_key_pair/0]).
@@ -866,7 +867,7 @@ config_apply_options(Node, Cfg, [OptNodesCfg | T]) when is_map(OptNodesCfg) ->
                #{Node := OptNodeCfg} -> maps_merge(Cfg, OptNodeCfg);
                #{} -> Cfg
            end,
-    config_apply_options(Node, Cfg, T).
+    config_apply_options(Node, Cfg1, T).
 
 
 write_keys(Node, Config) ->
@@ -1194,9 +1195,12 @@ internal_address() ->
     "http://127.0.0.1:" ++ integer_to_list(Port).
 
 external_address() ->
-    Port = rpc(aeu_env, user_config_or_env,
-              [ [<<"http">>, <<"external">>, <<"port">>],
-                aehttp, [external, port], 8043]),
+    external_address(?DEFAULT_NODE).
+
+external_address(Node) ->
+    Port = rpc(Node, aeu_env, user_config_or_env,
+               [ [<<"http">>, <<"external">>, <<"port">>],
+                 aehttp, [external, port], 8043]),
     "http://127.0.0.1:" ++ integer_to_list(Port).     % good enough for requests
 
 rpc(Mod, Fun, Args) ->
