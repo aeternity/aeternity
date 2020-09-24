@@ -10,6 +10,7 @@
 
 %% API
 -export([ get_commitment/1
+        , get_parent_top_block/1
         , get_parent_block/1
         , get_candidates_in_election_cycle/2
         , write_parent_block/1
@@ -155,6 +156,7 @@ write_parent_block(ParentBlock) ->
 %%%===================================================================
 
 %% Track determinates traversing path within particular parent chain (genesis -> top);
+%% The genesis key accesses particular parent state which is ended by top of the view;
 -spec write_parent_chain_track(binary(), binary()) -> ok.
 write_parent_chain_track(GenesisHash, TopHash) when is_binary(GenesisHash),
                                                     is_binary(TopHash) ->
@@ -169,3 +171,8 @@ get_parent_chain_track(GenesisHash) ->
            _ ->
                undefined
        end).
+
+%% Get parent tob block within particular view;
+-spec get_parent_top_block(binary()) -> aehc_parent_block:parent_block() | undefined.
+get_parent_top_block(GenesisHash) ->
+    ?t(get_parent_block(get_parent_chain_track(GenesisHash))).

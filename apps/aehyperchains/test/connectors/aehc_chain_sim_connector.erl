@@ -28,15 +28,15 @@ start_link() ->
 %%%  aehc_connector behaviour
 %%%===================================================================
 
--spec send_tx(binary()) -> binary().
-send_tx(Payload) ->
-    gen_server:call(?MODULE, {send_tx, Payload}).
+-spec send_tx(binary(), binary(), binary()) -> binary().
+send_tx(Delegate, Commitment, PoGF) ->
+    gen_server:call(?MODULE, {send_tx, Delegate, Commitment, PoGF}).
 
--spec get_top_block() -> aehc_connector:block().
+-spec get_top_block() -> aehc_parent_block:parent_block().
 get_top_block() ->
     gen_server:call(?MODULE, {get_top_block}).
 
--spec get_block_by_hash(binary()) -> aehc_connector:block().
+-spec get_block_by_hash(binary()) -> aehc_parent_block:parent_block().
 get_block_by_hash(Hash) ->
     gen_server:call(?MODULE, {get_block_by_hash, Hash}).
 
@@ -53,7 +53,7 @@ init([]) ->
     lager:info("Parent chain's connector ~p is attached: ~p", [?MODULE, Pid]),
     {ok, #state{ pid = Pid }}.
 
-handle_call({send_tx, Payload}, _From, State) ->
+handle_call({send_tx, Delegate, Commitment, PoGF}, _From, State) ->
     %% The current validator credentials;
     %% Requested transaction by hash from a simulator's block should satisfy the origin of validator;
     {ok, Pub} = aec_keys:pubkey(),
@@ -61,7 +61,9 @@ handle_call({send_tx, Payload}, _From, State) ->
     SenderId = aeser_id:create(account, Pub),
     %% The main intention of this call is to emulate post action with signed payload from delegate;
     %% Fee, nonce, ttl and amount fields have decorated nature;
-    {ok, Tx} = aec_spend_tx:new(#{ sender_id => SenderId, recipient_id => SenderId, amount => 1,
+    Header = aehc_commitment:new(aehc_commitment_header:new(<<"D1">>, <<"BLOCK 1">>)),
+    Payload = aehc_commitment_header:hash(Header),
+    {ok, Tx} = aec_spend_tx:new(#{ sender_id => Delegate, recipient_id => Delegate, amount => 1,
                                         fee => 5, nonce => 1, payload => Payload, ttl => 0 }),
     BinaryTx = aec_governance:add_network_id(aetx:serialize_to_binary(Tx)),
     SignedTx = aetx_sign:new(Tx, [enacl:sign_detached(BinaryTx, PrivKey)]),
@@ -93,7 +95,7 @@ handle_info({gproc_ps_event, {parent_chain, top_changed}, #{info := Info}}, Stat
     (State#state.pid == Pid) andalso
         begin
             Block = format_block(Info),
-            aehc_connector:publish_block(Block)
+            aehc_connector:publish_block(?MODULE, Block)
         end,
     {noreply, State};
 
@@ -117,7 +119,8 @@ sender_id(SignedTx) ->
     SenderId.
 
 format_block(SimBlock) ->
-    Txs = [aehc_connector:tx(sender_id(Tx), payload(Tx)) || Tx <- maps:get(txs, SimBlock)],
+    _Txs = [aehc_connector:tx(sender_id(Tx), payload(Tx)) || Tx <- maps:get(txs, SimBlock)],
     Hash = maps:get(block_hash, SimBlock),
     PrevHash = maps:get(prev_hash, SimBlock),
-    aehc_connector:block(Hash, PrevHash, Txs).
+    %% TODO To update simulator with ability to pass height;
+    aehc_connector:parent_block(0, Hash, PrevHash, []).
