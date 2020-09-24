@@ -2,7 +2,7 @@
 %%%-------------------------------------------------------------------
 -module(aehc_connector).
 
--export([send_tx/2, get_block_by_hash/2, get_top_block/1]).
+-export([send_tx/4, get_block_by_hash/2, get_top_block/1]).
 
 -export([commitment/3, parent_block/4]).
 -export([publish_block/2]).
@@ -12,7 +12,7 @@
 -type commitment() :: aehc_commitment:commitment().
 -type parent_block() :: aehc_parent_block:parent_block().
 
--callback send_tx(binary()) -> ok.
+-callback send_tx(binary(), binary(), binary()) -> ok.
 -callback get_top_block() -> parent_block().
 -callback get_block_by_hash(binary()) -> parent_block().
 
@@ -39,10 +39,10 @@ parent_block(Height, Hash, PrevHash, Commitments) when
 %%%  Parent chain interface
 %%%===================================================================
 
--spec send_tx(connector(), binary()) -> ok | {error, {term(), term()}}.
-send_tx(Con, Payload) ->
+-spec send_tx(connector(), binary(), binary(), binary()) -> ok | {error, {term(), term()}}.
+send_tx(Con, Delegate, Commitment, PoGF) ->
     try
-        ok = Con:send_tx(Payload)
+        ok = Con:send_tx(Delegate, Commitment, PoGF)
     catch E:R ->
             {error, {E, R}}
     end.
