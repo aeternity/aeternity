@@ -219,6 +219,8 @@ $(CT_TARGETS):
 	$(MAKE) internal-ct
 
 ct-latest: ct-$(LATEST_PROTOCOL)
+ct-latest-no-aci:
+	$(MAKE) SOPHIA_NO_ACI=true CT_TEST_FLAGS=--suite=apps/aehttp/test/aehttp_contracts_SUITE,apps/aehttp/test/aehttp_coin_toss_SUITE ct-latest
 
 $(CT_DB_TARGETS):
 	KIND=test \
