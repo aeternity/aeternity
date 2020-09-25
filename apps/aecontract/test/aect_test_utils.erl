@@ -321,7 +321,7 @@ compile(Vsn, File) ->
     %% The newest compiler can return the ACI together with the bytecode
     %% For now just generate the aci in parallel as this functionality would need
     %% to be backported and it's not a priority to do so
-    case compiler_supports_aci_json(Vsn) of
+    case aci_json_enabled(Vsn) of
         true ->
             Self = self(),
             spawn(fun() ->
@@ -347,7 +347,7 @@ compile(Vsn, File) ->
             ets:insert_new(?COMPILE_TAB, #compilation_cache_entry{compilation_id = CompilationId, result = Result}),
             Result
     end,
-    case compiler_supports_aci_json(Vsn) of
+    case aci_json_enabled(Vsn) of
         true ->
             receive
                 {aci_done, ok} ->
@@ -404,7 +404,7 @@ compiler_cmd(Vsn) ->
         ?SOPHIA_LIMA_FATE -> filename:join([BaseDir, "v4.3.1", "aesophia_cli"])
     end.
 
-compiler_supports_aci_json(Vsn) -> Vsn > ?SOPHIA_ROMA.
+aci_json_enabled(Vsn) -> Vsn > ?SOPHIA_ROMA andalso not aci_disabled().
 
 tempfile_name(Prefix, Opts) ->
     File = tempfile:name(Prefix, Opts),
@@ -437,7 +437,7 @@ encode_call_data(Vsn, Code, Fun, Args) ->
     maybe_fast_encode_call_data(Vsn, Code, Fun, Args).
 
 maybe_fast_encode_call_data(Vsn, Code, Fun, Args) ->
-    case compiler_supports_aci_json(Vsn) of
+    case aci_json_enabled(Vsn) of
         true ->
             Aci = generate_json_aci(Vsn, Code),
             Args1 = string:join([ to_str(Arg) || Arg <- Args ], ", "),
@@ -533,7 +533,10 @@ decode_call_result(Backend, Code, Fun, Res, Value) ->
 generate_json_aci(Vsn, Code) ->
     Backend = backend(),
     AciId = #aci_cache_id{code_hash = crypto:hash(md5, Code), backend = Backend},
+    NoCache = os:getenv("SOPHIA_ACI_NO_CACHE"),
     case ets:lookup(?ACI_TAB, AciId) of
+        _ when NoCache /= false ->
+            generate_json_aci_(Vsn, Backend, Code);
         [#aci_cache_entry{result = Result}] ->
             ct:log("ACI cache HIT :)"),
             Result;
@@ -691,10 +694,12 @@ setup_testcase(Config) ->
                           lima    -> ?LIMA_PROTOCOL_VSN;
                           iris    -> ?IRIS_PROTOCOL_VSN
                       end,
+    AciDisabled = ?config(aci_disabled, Config),
     put('$vm_version', VmVersion),
     put('$abi_version', ABIVersion),
     put('$sophia_version', SophiaVersion),
-    put('$protocol_version', ProtocolVersion).
+    put('$protocol_version', ProtocolVersion),
+    put('$aci_disabled', AciDisabled).
 
 vm_version() ->
     case get('$vm_version') of
@@ -723,6 +728,12 @@ backend() ->
 backend(?SOPHIA_LIMA_FATE) -> fate;
 backend(?SOPHIA_IRIS_FATE) -> fate;
 backend(_                ) -> aevm.
+
+aci_disabled() ->
+    case get('$aci_disabled') of
+        undefined            -> false;
+        X when is_boolean(X) -> X
+    end.
 
 %% setup a global memoization cache for contracts
 setup_contract_cache() ->
