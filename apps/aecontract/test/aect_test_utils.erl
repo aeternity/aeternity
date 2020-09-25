@@ -323,9 +323,9 @@ compile(Vsn, File) ->
     %% to be backported and it's not a priority to do so
     case compiler_supports_aci_json(Vsn) of
         true ->
-            {ok, AsmBin} = file:read_file(File),
             Self = self(),
-            spawn_link(fun() ->
+            spawn(fun() ->
+                {ok, AsmBin} = file:read_file(File),
                 case generate_json_aci(Vsn, AsmBin) of
                     {error, _} = Err ->
                         Self ! {aci_done, Err};
@@ -442,7 +442,13 @@ maybe_fast_encode_call_data(Vsn, Code, Fun, Args) ->
             Aci = generate_json_aci(Vsn, Code),
             Args1 = string:join([ to_str(Arg) || Arg <- Args ], ", "),
             Args2 = to_str(Fun) ++ "(" ++ Args1 ++ ")",
-            aeaci_aci:encode_call_data(Aci, Args2);
+            case aeaci_aci:encode_call_data(Aci, Args2) of
+                {ok, _} = Res ->
+                    Res;
+                {error, Reason} = Err ->
+                    ct:log("Encoding call data using JSON ACI failed: ~p\n", [Reason]),
+                    Err
+            end;
         false ->
             slow_encode_call_data(Vsn, Code, Fun, Args)
     end.
@@ -529,8 +535,10 @@ generate_json_aci(Vsn, Code) ->
     AciId = #aci_cache_id{code_hash = crypto:hash(md5, Code), backend = Backend},
     case ets:lookup(?ACI_TAB, AciId) of
         [#aci_cache_entry{result = Result}] ->
+            ct:log("ACI cache HIT :)"),
             Result;
         [] ->
+            ct:log("ACI cache MISS :)"),
             Result = generate_json_aci_(Vsn, Backend, Code),
             ets:insert_new(?ACI_TAB, #aci_cache_entry{aci_id = AciId, result = Result}),
             Result
