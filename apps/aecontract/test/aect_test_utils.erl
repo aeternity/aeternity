@@ -694,7 +694,12 @@ setup_testcase(Config) ->
                           lima    -> ?LIMA_PROTOCOL_VSN;
                           iris    -> ?IRIS_PROTOCOL_VSN
                       end,
-    AciDisabled = ?config(aci_disabled, Config),
+    AciDisabled = case os:getenv("SOPHIA_NO_ACI") of
+                      false ->
+                          ?config(aci_disabled, Config);
+                      _ ->
+                          true
+                  end,
     put('$vm_version', VmVersion),
     put('$abi_version', ABIVersion),
     put('$sophia_version', SophiaVersion),
