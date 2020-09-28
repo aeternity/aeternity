@@ -46,7 +46,7 @@ dry_run_(Txs, Trees, Env, Opts) ->
 dry_run_int([], _Trees, Env, _Opts, Acc) ->
     {lists:reverse(Acc), aetx_env:events(Env)};
 dry_run_int([{tx, TxOpts, Tx} | Txs], Trees, Env, Opts, Acc) ->
-    Stateless = proplists:get_value(stateless, Opts, false),
+    Stateless = proplists:get_value(stateless, TxOpts, false),
     Env1 = prepare_env(Env, TxOpts),
     %% GH3283: Here we should collect and present the `internal_call_tx` events.
     %% This means expanding the return type, and breaking the api :scream_cat:.

@@ -271,7 +271,7 @@ check_delegation_signature(Pubkey, Binary, Signature,
 %% SpendTx = aec_spend_tx:new(#{sender_id => aeser_id:create(account, FromPubkey), ...})
 spend(FromPubkey, ToPubkey, Amount, State) ->
     eval_primops([ aeprimop:spend_op(FromPubkey, ToPubkey, Amount)
-                 , tx_event_op(FromPubkey, ToPubkey, Amount, spend, State)
+                 , tx_event_op(FromPubkey, ToPubkey, Amount, spend)
                  ], State).
 
 %% GH3283: If the idea is to be able to follow tokens throughout the system, we
@@ -280,10 +280,10 @@ spend(FromPubkey, ToPubkey, Amount, State) ->
 %% transfer_value might be needed.
 transfer_value(FromPubkey, ToPubkey, Amount, State) ->
     eval_primops([ aeprimop:transfer_value_op(FromPubkey, ToPubkey, Amount)
-                 , tx_event_op(FromPubkey, ToPubkey, Amount, transfer_value, State)
+                 , tx_event_op(FromPubkey, ToPubkey, Amount, transfer_value)
                  ], State).
 
-tx_event_op(FromPubKey, ToPubKey, Amount, Type, _State) ->
+tx_event_op(FromPubKey, ToPubKey, Amount, Type) ->
     aeprimop:tx_event_op(internal_call_tx, Type,
                          spend_tx_for_event(FromPubKey, ToPubKey, Amount,
                                            atom_to_binary(Type, latin1))).
