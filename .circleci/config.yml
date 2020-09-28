@@ -916,7 +916,7 @@ jobs:
 
   osx_package:
     macos:
-      xcode: "10.1.0" # 10.0.0 is macOS 10.13.6
+      xcode: "10.1.0" # 10.1.0 is macOS 10.13.6
     working_directory: ~/aeternity
     steps:
       - checkout
@@ -1488,7 +1488,12 @@ workflows:
                 - env/dev2
                 - system-tests
 
-      - osx_package: {}
+      - osx_package:
+          filters:
+            branches:
+              only:
+                - /releases\/.*/
+                - *master_branch
 
       - deploy_integration:
           context: ae-node-builds
