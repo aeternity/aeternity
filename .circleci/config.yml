@@ -1487,12 +1487,7 @@ workflows:
                 - env/dev2
                 - system-tests
 
-      - osx_package:
-          filters:
-            branches:
-              only:
-                - /releases\/.*/
-                - *master_branch
+      - osx_package: {}
 
       - deploy_integration:
           context: ae-node-builds
