@@ -924,7 +924,7 @@ jobs:
 
   osx_package:
     macos:
-      xcode: "10.0.0" # 10.0.0 is macOS 10.13.6
+      xcode: "10.1.0" # 10.1.0 is macOS 10.13.6
     working_directory: ~/aeternity
     steps:
       - checkout
@@ -934,6 +934,7 @@ jobs:
           # libsodium headers cannot be found without explicit brew link
           command: |
             brew update
+            brew rm python@2
             brew install gmp libsodium erlang@21
             brew link gmp
             brew link libsodium
