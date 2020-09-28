@@ -711,6 +711,14 @@ jobs:
       - MAKE_TARGET: ct-latest
     steps: *test_steps
 
+  # Sanity check whether the latest aesophia compiler works
+  test_latest_with_aesophia_compiler:
+    executor: builder_container_otp22
+    parallelism: 1
+    environment:
+      - MAKE_TARGET: ct-latest-no-aci
+    steps: *test_steps
+
   test_latest_otp21:
     executor: builder_container_otp21
     parallelism: 3
@@ -1326,6 +1334,16 @@ workflows:
                 - env/dev2
                 - system-tests
 
+      - test_latest_with_aesophia_compiler:
+          requires:
+            - build
+          filters:
+            branches:
+              ignore:
+                - env/dev1
+                - env/dev2
+                - system-tests
+
       - test_latest_otp21:
           requires:
             - build_otp21
@@ -1502,6 +1520,7 @@ workflows:
             - test_fortuna
             - test_lima
             - test_latest
+            - test_latest_with_aesophia_compiler
             - test_mnesia_leveled
             - test_mnesia_rocksdb
             - eunit_roma
@@ -1526,6 +1545,7 @@ workflows:
             - test_fortuna
             - test_lima
             - test_latest
+            - test_latest_with_aesophia_compiler
             - test_mnesia_leveled
             - test_mnesia_rocksdb
             - eunit_roma
@@ -1549,6 +1569,7 @@ workflows:
             - test_fortuna
             - test_lima
             - test_latest
+            - test_latest_with_aesophia_compiler
             - test_mnesia_leveled
             - test_mnesia_rocksdb
             - eunit_roma

@@ -808,7 +808,7 @@ blockhash(N,_State) ->
 
 encode_address(Type, Int) ->
     case protocol_version() of
-        Vsn when Vsn < ?FORTUNA_PROTOCOL_VSN; Type == hash ->
+        Vsn when Vsn < ?MINERVA_PROTOCOL_VSN; Type == hash ->
             "#" ++ integer_to_list(Int, 16);
         _ ->
             binary_to_list(aeser_api_encoder:encode(Type, <<Int:32/unit:8>>))
