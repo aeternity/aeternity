@@ -926,6 +926,7 @@ jobs:
           # libsodium headers cannot be found without explicit brew link
           command: |
             brew update
+            brew rm python@2
             brew install gmp libsodium erlang@21
             brew link gmp
             brew link libsodium
