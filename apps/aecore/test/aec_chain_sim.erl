@@ -81,8 +81,8 @@
 
 
 %% TODO: Use CT logging or system logging - possibly configurable
-%% -define(LOG(Fmt, Args), io:fwrite("~w:~w/~w - " ++ Fmt, [?MODULE, ?FUNCTION_NAME, ?LINE | Args])).
--define(LOG(Fmt, Args), ok).
+-define(LOG(Fmt, Args), io:fwrite("~w:~w/~w - " ++ Fmt, [?MODULE, ?FUNCTION_NAME, ?LINE | Args])).
+%%-define(LOG(Fmt, Args), ok).
 
 %%% @equiv start(#{}).
 %%
@@ -286,6 +286,10 @@ setup_meck() ->
                 fun(Hash1, Hash2) ->
                         chain_req({find_common_ancestor, Hash1, Hash2})
                 end),
+    meck:expect(aec_chain, get_top_state, 0,
+                fun() ->
+                        chain_req(get_top_state)
+                end),
     meck:expect(aec_chain, find_tx_with_location, 1,
                 fun(Hash) ->
                         chain_req({find_tx_with_location, Hash})
@@ -386,6 +390,8 @@ handle_call({block_by_hash, Hash},_From, #st{chain = Chain} = St) ->
     {reply, get_block_(Hash, Chain), St};
 handle_call({get_block_state, Hash}, _From, #st{chain = Chain} = St) ->
     {reply, get_block_state_(Hash, Chain), St};
+handle_call(get_top_state, _From, #st{chain = Chain} = St) ->
+    {reply, get_top_state_(Chain), St};
 handle_call({get_header, Hash}, _From, #st{chain = Chain} = St) ->
     {reply, get_header_(Hash, Chain), St};
 handle_call({get_channel, ChId}, _From, #st{chain = Chain} = St) ->
@@ -603,7 +609,7 @@ send_tx_events(Txs, #{ block_hash   := BlockHash
               case is_channel_tx_type(TxType) of
                   true ->
                       {Mod, TxI} = aetx:specialize_callback(aetx_sign:innermost_tx(SignedTx)),
-                      ChId = Mod:channel_id(TxI),
+                      {id, channel, ChId} = Mod:channel_id(TxI),
                       Evt = {channel, ChId},
                       Info = #{ type         => TxType
                               , tx_hash      => TxHash
@@ -672,6 +678,9 @@ top_block_hash_(Chain) ->
 
 get_block_state_(Hash, Chain) ->
     trees(blocks_until_hash(Hash, blocks(Chain))).
+
+get_top_state_(Chain) ->
+    trees(blocks(main, Chain)).
 
 hash_is_in_main_chain_(Hash, TopHash, Chain) ->
     BlockHash = fun(B) ->

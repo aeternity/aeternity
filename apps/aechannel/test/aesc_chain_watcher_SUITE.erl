@@ -164,7 +164,9 @@ set_up_channel(Config) ->
     [ok,ok] = [set_reg_watch(C, ChId) || C <- Watchers],
     ok = set_reg_close(C3, ChId, 3),
     %%
+    ct:log("State ~p", [aec_chain:get_top_state()]),
     add_microblock(),
+    ct:log("State ~p", [aec_chain:get_top_state()]),
     ok = watchers_notified(
            fun({channel_changed_on_chain, I}, _C) ->
                    #{tx := CreateTx} = I,
