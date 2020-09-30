@@ -495,13 +495,11 @@ client_req(Pid, Req) when is_pid(Pid) ->
 client_loop() ->
     receive
         {From, {await_event, Timeout}} when is_pid(From) ->
-            ct:log("KURWAAAAA"),
             ?LOG("await_event (~p)", [Timeout]),
             Result = await_event(Timeout),
             From ! {self(), Result},
             client_loop();
         {From, Req} when is_pid(From) ->
-            ct:log("CHUUUUUUJ"),
             Reply = handle_client_req(Req),
             From ! {self(), Reply},
             client_loop()
