@@ -37,8 +37,8 @@
         , stop/0 ]).                   %% () -> ok
 
 -export([ next_nonce/1                 %% (Acct) -> integer()
-        , new_account/1                %% (Balance) -> Acct
-        , new_account/2                %% (ForkId, Balance) -> Acct
+        , new_account/1                %% (Balance) -> KeyPair
+        , new_account/2                %% (ForkId, Balance) -> KeyPair
         , get_balance/1                %% (Acct) -> Balance
         , get_balance/2                %% (ForkId, Acct) -> Balance
         , push/1                       %% (Tx) -> ok
@@ -298,10 +298,6 @@ setup_meck() ->
                 fun(Id) ->
                         chain_req({get_channel, Id})
                 end),
-    meck:expect(aec_chain, get_channel, 2,
-                fun(Id, Trees) ->
-                        get_channel_from_trees_(Id, Trees)
-                end),
     meck:expect(aec_chain, top_block_hash, 0,
                 fun() ->
                         chain_req(top_block_hash)
@@ -443,7 +439,7 @@ new_account_(ForkId, Balance, #{forks := Forks} = Chain) ->
     NewChain = insert_key_pair(ForkId, KP, Chain),
     NewTrees = aec_trees:set_accounts(Trees, aec_accounts_trees:enter(Acct, aec_trees:accounts(Trees))),
     NewBlocks = [TopBlock#{trees => NewTrees}|RestBlocks],
-    {{ok, PK}, NewChain#{forks => Forks#{ForkId => F#{blocks => NewBlocks}}}}.
+    {{ok, KP}, NewChain#{forks => Forks#{ForkId => F#{blocks => NewBlocks}}}}.
 
 get_balance_(ForkId, PK, Chain) ->
     Trees = case trees(blocks(ForkId, Chain)) of
@@ -485,11 +481,15 @@ add_microblock_(ForkId, Txs, #{forks := Forks} = Chain, Opts) ->
 
 clone_micro_on_fork_(Hash, ForkId, #{forks := Forks} = Chain, Opts) ->
     #{blocks := Blocks} = maps:get(main, Forks),
-    case lists_mapfind(Hash, hash, Blocks) of
+    BlockHash = fun(B) ->
+                        aec_headers:hash_header(aec_blocks:to_header(B))
+                end,
+    case lists_funfind(Hash, BlockHash, Blocks) of
         false ->
             error({no_such_hash, Hash});
-        #{txs := Txs} ->
-            add_microblock_(ForkId, Txs, Chain, Opts)
+        B ->
+            Txs = aec_blocks:txs(B),
+            add_microblock_(ForkId, Txs, Chain)
     end.
 
 fork_from_hash_(ForkId, Hash, #{ forks   := Forks } = Chain, Opts) ->
@@ -514,10 +514,11 @@ fork_switch_(ForkId, #{forks := Forks, mempool := Pool, orphans := Orphans} = Ch
     #{ main   := #{blocks := Blocks} = M
      , ForkId := #{fork_point := ForkPoint, blocks := FBlocks}} = Forks,
     Evict = lists:takewhile(
-              fun(#{hash := H}) ->
+              fun(B) ->
+                      H = aec_headers:hash_header(aec_blocks:to_header(B)),
                       H =/= ForkPoint
               end, Blocks),
-    ReturnTxs = lists:flatten([ Txs || #{txs := Txs} <- lists:reverse(Evict)]),
+    ReturnTxs = lists:flatten([ aec_blocks:txs(B) || B <- lists:reverse(Evict)]),
     ?LOG("Evicting txs: ~p", [ReturnTxs]),
     NewPool = lists:reverse(ReturnTxs) ++ Pool,
     NewForks = maps:remove(ForkId, Forks#{main => M#{blocks => FBlocks}}),
@@ -673,14 +674,17 @@ get_block_state_(Hash, Chain) ->
     trees(blocks_until_hash(Hash, blocks(Chain))).
 
 hash_is_in_main_chain_(Hash, TopHash, Chain) ->
+    BlockHash = fun(B) ->
+                        aec_headers:hash_header(aec_blocks:to_header(B))
+                end,
     case blocks_until_hash(TopHash, blocks(Chain)) of
         [] ->
             false;
         Blocks1 ->
-            case lists_mapfind(Hash, hash, Blocks1) of
+            case lists_funfind(Hash, BlockHash, Blocks1) of
                 false ->
                     false;
-                B when is_map(B) ->
+                _B ->
                     true
             end
     end.
@@ -727,8 +731,9 @@ search_forks_for_hash_(H, Forks) ->
             Result
     end.
 
-find_common_([#{hash := H1}|T1], Blocks2) ->
-    case lists_mapfind(H1, hash, Blocks2) of
+find_common_([Tx|T1], Blocks2) ->
+    H1 = aetx_sign:hash(Tx),
+    case lists_funfind(H1, fun aetx_sign:hash/1, Blocks2) of
         false ->
             find_common_(T1, Blocks2);
         _Found ->
@@ -756,15 +761,7 @@ get_block_(Hash, Chain) ->
 get_channel_(ChId, Chain) ->
     case trees(blocks(Chain)) of
         {ok, Trees} ->
-            get_channel_from_trees_(ChId, Trees);
-        error ->
-            undefined
-    end.
-
-get_channel_from_trees_(Id, Trees) ->
-    case maps:find({channel,Id}, Trees) of
-        {ok, _} = Ok ->
-            Ok;
+            aec_chain:get_channel(ChId, Trees);
         error ->
             undefined
     end.
@@ -776,7 +773,7 @@ find_block_tx_hashes_(Hash, Chain) ->
                       true -> [];
                       false -> aec_blocks:txs(Block)
                   end,
-            TxHashes = [ H || #{tx_hash := H} <- Txs ],
+            TxHashes = [ aetx_sign:hash(Tx) || Tx <- Txs ],
             {value, TxHashes};
         [] ->
             not_found
@@ -795,11 +792,11 @@ find_signed_tx_in_blocks_(
     case aec_blocks:is_key_block(Block) of
         true ->
             find_signed_tx_in_blocks_(T, Hash);
-        false -> case lists_mapfind(Hash, tx_hash, aec_blocks:txs(Block)) of
-                     #{signed_tx := STx} ->
-                         {value, STx, Block};
+        false -> case lists_funfind(Hash, fun aetx_sign:hash/1, aec_blocks:txs(Block)) of
                      false ->
-                         find_signed_tx_in_blocks_(T, Hash)
+                         find_signed_tx_in_blocks_(T, Hash);
+                     STx ->
+                         {value, STx, Block}
                  end
     end;
 find_signed_tx_in_blocks_([], _) ->
@@ -811,13 +808,14 @@ find_tx_with_location_(Hash, #{forks := Forks, mempool := Pool}) ->
     %% block has if the tx is found on the main chain.
     #{blocks := Blocks} = maps:get(main, Forks),
     case find_signed_tx_in_blocks_(Blocks, Hash) of
-        {value, STx, #{hash := BlockHash}} ->
+        {value, STx, B} ->
+            BlockHash = aec_headers:hash_header(aec_blocks:to_header(B)),
             {BlockHash, STx};
         none ->
-            case lists_mapfind(Hash, tx_hash, Pool) of
+            case lists_funfind(Hash, fun aetx_sign:hash/1, Pool) of
                 false ->
                     none;
-                #{signed_tx := STx} ->
+                STx ->
                     {mempool, STx}
             end
     end.
@@ -857,14 +855,14 @@ chain_req_(Req, ChainP) when is_pid(ChainP) ->
     gen_server:call(ChainP, Req).
 
 %% like lists:keyfind/3, but comparing map keys
-lists_mapfind(Val, Key, [H|T]) ->
-    case maps:find(Key, H) of
-        {ok, Val} ->
+lists_funfind(Val, Fun, [H|T]) ->
+    case Val =:= Fun(H) of
+        true ->
             H;
         _ ->
-            lists_mapfind(Val, Key, T)
+            lists_funfind(Val, Fun, T)
     end;
-lists_mapfind(_, _, []) ->
+lists_funfind(_, _, []) ->
     false.
 
 new_keypair() ->

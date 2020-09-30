@@ -40,7 +40,7 @@ sample() ->
     {ok, Tx} = aec_spend_tx:new(#{ sender_id => SenderId, recipient_id => SenderId, amount => 1,
                                    fee => 5, nonce => 1, payload => Payload, ttl => 0 }),
     BinaryTx = aec_governance:add_network_id(aetx:serialize_to_binary(Tx)),
-    SignedTx = aetx_sign:new(Tx, [enacl:sign_detached(BinaryTx, PrivKey)]),
+    SignedTx = aec_test_utils:sign_tx(Tx, [enacl:sign_detached(BinaryTx, PrivKey)]),
     TxHash = aetx_sign:hash(SignedTx),
     %% The next format is prepared accordingly to simualtor internal representation;
     %% Res = aec_chain_sim:push(#{ tx_hash => TxHash, signed_tx  => SignedTx }),
@@ -85,7 +85,7 @@ format_fate_args(X) ->
     X.
 
 new_account(Balance) ->
-    {ok, Acct} = aec_chain_sim:new_account(Balance),
+    {ok, #{pubkey := Acct}} = aec_chain_sim:new_account(Balance),
     Acct.
 
 restricted_account() ->
@@ -207,4 +207,3 @@ scheme() ->
     X2 = aec_chain_sim:get_balance(Acct),
     %% ?assertEqual(X1, X2 + 100000),
     ok.
-
