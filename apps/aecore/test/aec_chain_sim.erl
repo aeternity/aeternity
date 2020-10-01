@@ -461,7 +461,7 @@ get_balance_(ForkId, PK, Chain) ->
     end.
 
 add_microblock_(ForkId, #{mempool := Pool} = Chain, Opts) ->
-    Txs = lists:reverse(Pool),
+    Txs = lists:reverse(Pool),  % because LIFO
     add_microblock_(ForkId, Txs, Chain#{mempool => []}, Opts).
 
 add_microblock_(ForkId, Txs, #{forks := Forks} = Chain, Opts) ->
@@ -477,7 +477,7 @@ add_microblock_(ForkId, Txs, #{forks := Forks} = Chain, Opts) ->
                Height, PrevHash, PrevKeyHash,
                root_hash(), 0, txs_hash(), pof_hash(), 0),
     Block = aec_blocks:new_micro_from_header(NewHdr, Txs, no_fraud),
-    BlockEntry = with_trees(ForkId, Txs, Block, Chain),
+    {BlockEntry, Evs} = with_trees(ForkId, Txs, Block, Chain),
     ?LOG("Microblock = ~p", [Block]),
     NewFork = F#{blocks => [BlockEntry | Blocks]},
     ?LOG("NewFork(~p): ~p", [ForkId, NewFork]),
@@ -550,12 +550,12 @@ announce(ForkId, Txs, #{ forks := Forks } = Chain, Opts) ->
             , prev_hash    => PrevHash
             , height       => Height },
     if SimulatorT == parent_chain ->
-        aec_events:publish({parent_chain, top_changed}, Info#{txs => Txs});
-        true ->
+            aec_events:publish({parent_chain, top_changed}, Info#{txs => Txs});
+       true ->
             send_tx_events(Txs, Info),
             (ForkId == main) andalso
                 begin ?LOG("Publishing top_changed, I = ~p", [Info]),
-                aec_events:publish(top_changed, Info)
+                      aec_events:publish(top_changed, Info)
                 end
     end,
     Chain.
@@ -599,43 +599,10 @@ add_keyblock_(ForkId, #{forks := Forks, miner := #{pubkey := Miner}} = Chain, Op
     announce(ForkId, [], NewChain, Opts),
     {{ok, Block},  NewChain}.
 
-send_tx_events(Txs, #{ block_hash   := BlockHash
-                     , block_origin := Origin }) ->
+send_tx_events(Evs, Info) ->
     lists:foreach(
-      fun(SignedTx) ->
-              TxHash = aetx_sign:hash(SignedTx),
-              {TxType, _} = aetx:specialize_type(
-                              aetx_sign:innermost_tx(SignedTx)),
-              case is_channel_tx_type(TxType) of
-                  true ->
-                      {Mod, TxI} = aetx:specialize_callback(aetx_sign:innermost_tx(SignedTx)),
-                      {id, channel, ChId} = Mod:channel_id(TxI),
-                      Evt = {channel, ChId},
-                      Info = #{ type         => TxType
-                              , tx_hash      => TxHash
-                              , block_hash   => BlockHash
-                              , block_origin => Origin },
-                      ?LOG("Publish tx_event ~p, I = ~p", [Evt, Info]),
-                      aec_events:publish({tx_event, Evt}, Info);
-                  false ->
-                      skip
-              end
-      end, Txs).
-
-is_channel_tx_type(T) when T == channel_create_tx
-                         ; T == channel_deposit_tx
-                         ; T == channel_withdraw_tx
-                         ; T == channel_force_progress_tx
-                         ; T == channel_close_mutual_tx
-                         ; T == channel_close_solo_tx
-                         ; T == channel_slash_tx
-                         ; T == channel_settle_tx
-                         ; T == channel_snapshot_solo_tx
-                         ; T == channel_offchain_tx ->
-    true;
-is_channel_tx_type(_) ->
-    false.
-
+      fun(Ev) -> ec_events:publish({tx_event, Ev}, Info)
+      end, Evs).
 
 with_trees(ForkId, Txs, Block, Chain) ->
     Blocks = blocks(ForkId, Chain),
@@ -645,8 +612,8 @@ with_trees(ForkId, Txs, Block, Chain) ->
                 error ->
                     aec_trees:new_without_backend()
             end,
-    NewTrees = update_trees(Txs, Trees),
-    #{ block => Block, trees => NewTrees }.
+    {NewTrees, Evs} = update_trees(Txs, Trees),
+    {#{ block => Block, trees => NewTrees }, Evs}.
 
 trees(Blocks) ->
     case lists:dropwhile(
@@ -663,8 +630,8 @@ trees(Blocks) ->
 update_trees(Txs, Trees) ->
     Height = 2137, %% FIXME or ensure that it is not important
     Env = aetx_env:tx_env(Height),
-    {ok, _, [], NewTrees, _} = aec_trees:apply_txs_on_state_trees_strict(Txs, Trees, Env),
-    NewTrees.
+    {ok, _, [], NewTrees, Evs} = aec_trees:apply_txs_on_state_trees_strict(Txs, Trees, Env),
+    {NewTrees, Evs}.
 
 blocks_until_hash(Hash, Blocks) ->
     lists:dropwhile(
