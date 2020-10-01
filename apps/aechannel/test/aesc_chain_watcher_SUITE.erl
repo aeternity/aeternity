@@ -154,19 +154,20 @@ kill_client(Client) ->
     end.
 
 set_up_channel(Config) ->
-    CreateTx = create_tx(Config),
-    TxHash = aetx_sign:hash(CreateTx),
-    {ok, ChId} = aesc_utils:channel_pubkey(CreateTx),
-    ok = push(CreateTx),
+    SignedTx = create_tx(Config),
+    TxHash = aetx_sign:hash(SignedTx),
+    ct:log("TxHash ~p", [TxHash]),
+    {ok, ChId} = aesc_utils:channel_pubkey(SignedTx),
+    none = aec_chain:find_tx_with_location(TxHash),
+    ok = push(SignedTx),
+    {mempool, SignedTx} = aec_chain:find_tx_with_location(TxHash),
     ClientIxs = [1,2,3],
     [C1,C2,C3] = Cs = [spawn_client(N, ChId) || N <- ClientIxs],
     Watchers = [C1, C2],
     [ok,ok] = [set_reg_watch(C, ChId) || C <- Watchers],
     ok = set_reg_close(C3, ChId, 3),
     %%
-    ct:log("State ~p", [aec_chain:get_top_state()]),
     add_microblock(),
-    ct:log("State ~p", [aec_chain:get_top_state()]),
     ok = watchers_notified(
            fun({channel_changed_on_chain, I}, _C) ->
                    #{tx := CreateTx} = I,
@@ -218,7 +219,8 @@ flush_cache(_Config) ->
 innocent_fork(_Config) ->
     ChSetup = get_channel_setup(),
     #{clients := Cs} = maps:get(hd(maps:keys(ChSetup)), ChSetup),
-    {ok, #{hash := ForkHash}} = add_keyblock(),
+    {ok, ForkBlock} = add_keyblock(),
+    {ok, ForkHash} = aec_blocks:hash_internal_representation(ForkBlock),
     {ok, _} = fork_from_hash(ForkId = ?FORK, ForkHash),
     add_microblock(ForkId),
     add_microblock(ForkId),
@@ -232,12 +234,14 @@ fork_touches(Config) ->
      , watchers   := Watchers } = maps:get(ChId, ChSetup),
     DepositTx = deposit_tx(ChId, Config),
     TxHash = aetx_sign:hash(DepositTx),
-    {ok, #{ hash := ForkPoint }} = add_keyblock(),
+    {ok, ForkBlock} = add_keyblock(),
+    {ok, ForkPoint} = aec_blocks:hash_internal_representation(ForkBlock),
     push(DepositTx),
     C1 = hd(Cs),
     ok = set_min_depth_watch(C1, ChId, TxHash, _MinDepth = 3, _MType = ?TYPE),
     assert_no_events(Cs),
-    {ok, #{ hash := MicroHash }} = add_microblock(),
+    {ok, MicroBlock} = add_microblock(),
+    {ok, MicroHash} = aec_blocks:hash_internal_representation(MicroBlock),
     ok = watchers_notified(
            fun({channel_changed_on_chain, I}, _C) ->
                    #{tx := _SignedTx} = I,
@@ -529,7 +533,7 @@ log(_, _, _, _) ->
 
 create_and_sign_tx(#{mod := Mod} = TxInfo, SKs) ->
     try
-        {ok, Tx} = Mod:new(maps:merge(#{fee => 1, nonce => 1},
+        {ok, Tx} = Mod:new(maps:merge(#{fee => 50000 * aec_test_utils:min_gas_price(), nonce => 1},
                                       maps:remove(mod, TxInfo))),
         ?LOG("Tx = ~p", [Tx]),
         aec_test_utils:sign_tx(Tx, SKs)
@@ -557,7 +561,7 @@ create_tx(Config) ->
     R = ?config(responder, Config),
     ISK = ?config(initiator_sk, Config),
     RSK = ?config(responder_sk, Config),
-    {ok, TopHash} = aec_chain:top_block_hash(),
+    TopHash = aec_chain:top_block_hash(),
     Nonce = next_nonce(I),
     Tx0 = #{ mod              => aesc_create_tx
            , initiator_id     => I
@@ -566,14 +570,14 @@ create_tx(Config) ->
            , responder_amount => 10
            , channel_reserve  => 10
            , lock_period      => 3
-           , fee              => 1000000000000
+           , fee              => 50000 * aec_test_utils:min_gas_price()
            , state_hash       => <<>>
            , nonce            => Nonce },
     StateHash = state_hash(TopHash, term_to_binary(Tx0)),
     create_and_sign_tx(Tx0#{state_hash => StateHash}, [RSK, ISK]).
 
 deposit_tx(ChId, Config) ->
-    Round = channel_round(ChId),
+    Round = channel_round(ChId) + 1,
     I = ?config(initiator, Config),
     ISK = ?config(initiator_sk, Config),
     RSK = ?config(responder_sk, Config),
@@ -583,7 +587,7 @@ deposit_tx(ChId, Config) ->
            , channel_id     => aeser_id:create(channel, ChId)
            , from_id        => I
            , amount         => 10
-           , fee            => 1
+           , fee            => 50000 * aec_test_utils:min_gas_price()
            , state_hash     => <<>>
            , round          => Round
            , nonce          => Nonce },
