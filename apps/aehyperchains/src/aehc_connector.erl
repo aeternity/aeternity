@@ -4,7 +4,7 @@
 
 -export([send_tx/4, get_block_by_hash/2, get_top_block/1]).
 
--export([commitment/3, parent_block/4]).
+-export([commitment/2, parent_block/4]).
 -export([publish_block/2]).
 
 -type connector() :: atom().
@@ -22,11 +22,18 @@
 %%%  Parent chain simplified proto
 %%%===================================================================
 %% This API should be used by connector's developer as a wrapper around internal abstract commitments data type;
--spec commitment(Delegate::binary(), KeyblockHash::binary(), PoGFHash::binary()) ->
+-spec commitment(Delegate::binary(), KeyblockHash::binary()) ->
     commitment().
-commitment(Delegate, KeyblockHash, PoGFHash) when
-    is_binary(Delegate), is_binary(KeyblockHash), is_binary(PoGFHash) ->
-    aehc_commitment:new(aehc_commitment_header:new(Delegate, KeyblockHash, PoGFHash)).
+commitment(Delegate, KeyblockHash) when
+    is_binary(Delegate), is_binary(KeyblockHash) ->
+    aehc_commitment:new(aehc_commitment_header:new(Delegate, KeyblockHash)).
+
+%% TODO: Opened for discussion with gorbak25 and radrow;
+%%-spec commitment(Delegate::binary(), KeyblockHash::binary(), PoGFHash::binary()) ->
+%%    commitment().
+%%commitment(Delegate, KeyblockHash, PoGFHash) when
+%%    is_binary(Delegate), is_binary(KeyblockHash), is_binary(PoGFHash) ->
+%%    aehc_commitment:new(aehc_commitment_header:new(Delegate, KeyblockHash, PoGFHash)).
 
 -spec parent_block(Height::non_neg_integer(), Hash::binary(), PrevHash::binary(), Commitments::[commitment()]) ->
     parent_block().
