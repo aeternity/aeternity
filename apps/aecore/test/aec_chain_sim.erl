@@ -496,14 +496,9 @@ clone_micro_on_fork_(Hash, ForkId, #{forks := Forks} = Chain, Opts) ->
     case lists_funfind(Hash, BlockHash, Blocks) of
         false ->
             error({no_such_hash, Hash});
-        B ->
-            case aec_blocks:is_key_block(B) of
-                false ->
-                    Txs = aec_blocks:txs(B),
-                    add_microblock_(ForkId, Txs, Chain);
-                true ->
-                    add_microblock_(ForkId, [], Chain)
-            end
+        #{block := B} ->
+            Txs = aec_blocks:txs(B),
+            add_microblock_(ForkId, Txs, Chain)
     end.
 
 fork_from_hash_(ForkId, Hash, #{ forks   := Forks } = Chain, Opts) ->
@@ -691,7 +686,7 @@ search_forks_for_hash(H, Forks, Orphans) ->
             ?LOG("~p not in forks", [H]),
             case blocks_until_hash(H, Orphans) of
                 [#{block := B}|_] ->
-                    Prev = aec_header:prev_hash(aec_blocks:to_header(B)),
+                    Prev = aec_headers:prev_hash(aec_blocks:to_header(B)),
                     ?LOG("~p found in orphans; trying its Prev (~p)", [H, Prev]),
                     search_forks_for_hash(Prev, Forks, Orphans);
                 [] ->

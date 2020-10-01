@@ -260,13 +260,15 @@ fork_evicts(Config) ->
     #{ clients    := Cs
      , watchers   := Watchers } = maps:get(ChId, ChSetup),
     StateHash1 = channel_state_hash(ChId), % fallback state hash
-    #{ tx_hash := TxHash } = DepositTx = deposit_tx(ChId, Config),
-    {ok, #{ hash := ForkPoint }} = add_keyblock(),
+    DepositTx = deposit_tx(ChId, Config),
+    TxHash = aetx_sign:hash(DepositTx),
+    {ok, ForkBlock} = add_keyblock(),
+    {ok, ForkPoint} = aec_blocks:hash_internal_representation(ForkBlock),
     push(DepositTx),
     C1 = hd(Cs),
     ok = set_min_depth_watch(C1, ChId, TxHash, _MinDepth = 3, _MType = ?TYPE),
     assert_no_events(Cs),
-    {ok, #{ hash := _MicroHash }} = add_microblock(),
+    {ok, _} = add_microblock(),
     ok = watchers_notified(
            fun({channel_changed_on_chain, I}, _C) ->
                    #{tx := _SignedTx} = I,
