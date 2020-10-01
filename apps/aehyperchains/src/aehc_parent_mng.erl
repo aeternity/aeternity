@@ -3,19 +3,19 @@
 %%% @copyright (C) 2020, Aeternity Anstalt
 %%% @doc
 %%% Hyperchains parent's layer manager
-%%% This component is responsible to manage the abstract parent's chain layer through so called "tracks".
-%%% Each track consists of a synchronized address at the particular parent chain and is supplied with a responsible interface provider.
+%%% This component is responsible for managing the abstract parent's chain layer through so called "tracks".
+%%% Each track consists of a synchronized hash at the particular branch of the parent chain and is supplied with an interface provider.
 %%% Please note that:
-%%% - The first track supplies the "master" connector and eligible to dictate the election period through event's announcement;
-%%% - The synchronization occurs from the current highest block until track's genesis_hash value has achived;
-%%% - Here is and the next time we mention term "genesis hash" (please don't confuse with the common "genesis block" terminology);
-%%% - The component is responsible to manage fork switching by traversing hash-pointers of the parent blocks. Each time when fork occurs:
+%%% - The first track supplies the "master" connector and is eligible to dictate the election period through event's announcement;
+%%% - Synchronization starts by taking the currently highest known block and then walking the prev pointer's until we encounter the genesis block;
+%%% - "genesis hash" does not need to be related to the genesis block of the parent chain;
+%%% - The component is responsible for managing fork switching by traversing hash-pointers of the parent blocks. Each time a fork occurs:
 %%%     a) The database is updated by the new parent chain representation;
 %%%     b) The child chain is reverted and the new election process is started from the last synced track height;
 %%% - To be able to run the Hyperchains the system must satisfy the connector's acceptance criteria;
 %%%     a) For default mode: get_top_block/0, get_block_by_hash/1l
 %%%     b) For delegate mode: default mode + send_tx/1;
-%%% - Each interested developer can supply his own connector's implementation for the particular parent chain;
+%%% - Each interested developer can supply their own connector's implementation for the particular parent chain;
 %%% (TODO: To supply link to the official connector's development guide);
 %%% @end
 %%%-------------------------------------------------------------------
@@ -60,33 +60,32 @@
 %% API.
 
 -spec start_link() ->
-    {ok, pid()} | ingnore | {error, term()}.
+    {ok, pid()} | ignore | {error, term()}.
 start_link() ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
 
 %% This event issued each time by connector when the new block is generated;
 -spec publish_block(aehc_connector:connector(), aehc_parent_block:parent_block()) -> ok.
 publish_block(Connector, Block) ->
-    erlang:send(?MODULE, {publish_block, Connector, Block}).
+    erlang:send(?MODULE, {publish_block, Connector, Block}),
+    ok.
 
 %%%===================================================================
 %%%  gen_server behaviour
 %%%===================================================================
 
-%% TODO: Connector check API;
 -record(state, { master :: aehc_connector:connector(), tracks :: list() }).
 
 init([]) ->
-    %% TODO: To extract the current block from Db;
     process_flag(trap_exit, true),
     %% Read configuration;;
     Tracks = [conf_track(C) || C <- tracks_config()],
     %% Db initialization
     InitTracks = [init_db_track(Track) || Track <- Tracks],
-    %% Execute acceptance procedure;
-    [accept_connector(T) || T <- InitTracks],
     %% Run conenctor's instances;
     [start_connector(T) || T <- InitTracks],
+    %% Execute acceptance procedure;
+    [accept_connector(T) || T <- InitTracks],
     %% Forks synchronization by fetched blocks;
     SynchedTracks = [sync_track(T) || T <- InitTracks],
     %% TODO: To request the current top block hash;
@@ -131,9 +130,11 @@ terminate(_Reason, #state{tracks = Tracks}) ->
 %%%  State management
 %%%===================================================================
 
+-spec get_track_by_connector(#state{}, aehc_connector:connector()) -> track().
 get_track_by_connector(#state{tracks = Tracks}, Connector) ->
     lists:keyfind(Connector, #track.connector, Tracks).
 
+-spec set_track(#state{}, track()) -> #state{}.
 set_track(#state{tracks = Tracks} = State, Track) ->
     Connector = connector(Track),
     Update = lists:keyreplace(Connector, #track.connector, Tracks, Track),
@@ -145,8 +146,9 @@ set_track(#state{tracks = Tracks} = State, Track) ->
 
 -spec accept_connector(track()) -> boolean().
 accept_connector(Track) ->
+    Criteria = [fun accept_top_block/1, fun accept_block_by_hash/1, fun accept_send_tx/1],
     try
-        [Criteria(Track) || Criteria <- fun accept_top_block/1, fun accept_block_by_hash/1, fun accept_send_tx/1],
+        [Fun(Track) || Fun <- Criteria],
         ok
     catch E:R ->
         {error, {E, R}}
@@ -177,8 +179,8 @@ accept_send_tx(Track) ->
             Con = connector(Track),
             Delegate = aec_keys:pubkey(),
             KeyblockHash = aec_chain:top_key_block_hash(),
-            Payload = aehc_commitment_header:hash(aehc_commitment_header:new(Delegate, KeyblockHash)),
-            ok = aehc_connector:send_tx(Con, Payload)
+            PoGF = aehc_pogf:hash(no_pogf),
+            aehc_connector:send_tx(Con, Delegate, KeyblockHash, PoGF)
         end.
 
 %%%===================================================================
@@ -213,7 +215,7 @@ sync_track(Track) ->
 sync_track(Track, Block) ->
     sync_track(Block, Track, [], []) .
 
-%% This function is responsible to manage fetch and fork switching procedures;
+%% This function is responsible for managing fetch and fork switching procedures;
 %% This function produces side effect with updated DB by the actual parent chain view;
 %% This function can produce appropriate events for the conductor (gorbak25, radrow your opinions?);
 %% The result is an updated track record with the latest top block entries;
@@ -250,7 +252,7 @@ sync_track(Track, Block, Fetched, Reverted) ->
             PrevSynchedBlock = aehc_parent_db:get_parent_block(CurrentPrevHash),
             sync_track(init_track(Track, PrevSynchedBlock), PrevBlock, [Block|Fetched], Reverted);
         _ ->
-            %% Sync procedure is continue it the fork switch mode (the current persisted block isn't achived);
+            %% Sync procedure is continue it the fork switch mode (we passed the current height but the matched block hasn't achived);
             PrevBlock = aehc_connector:get_block_by_hash(connector(Track), PrevHash),
             PrevSynchedBlock = aehc_parent_db:get_parent_block(CurrentPrevHash),
             %% There is a place where erase DB can be done (do we need to delete reverted blocks?)
