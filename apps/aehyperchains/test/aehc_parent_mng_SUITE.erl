@@ -19,9 +19,13 @@
         ]).
 
 %% Test cases
--export([string/1, integer/1]).
-
--define(CONNECT_STR, "DSN=sqlserver;UID=alladin;PWD=sesame").
+-export([ init/1
+        , fetch_block/1
+        , fetch_height/1
+        , fork_switch/1
+        , accept_connector/1
+        , terminate/1
+        ]).
 
 %%--------------------------------------------------------------------
 %% COMMON TEST CALLBACK FUNCTIONS
@@ -48,9 +52,7 @@ suite() ->
 %% Description: Initialization before the suite.
 %%--------------------------------------------------------------------
 init_per_suite(Config) ->
-    {ok, Ref} = db:connect(?CONNECT_STR, []),
-    TableName = db_lib:unique_table_name(),
-    [{con_ref, Ref },{table_name, TableName}| Config].
+    Config.
 
 %%--------------------------------------------------------------------
 %% Function: end_per_suite(Config) -> term()
@@ -60,9 +62,7 @@ init_per_suite(Config) ->
 %%
 %% Description: Cleanup after the suite.
 %%--------------------------------------------------------------------
-end_per_suite(Config) ->
-    Ref = ?config(con_ref, Config),
-    db:disconnect(Ref),
+end_per_suite(_Config) ->
     ok.
 
 %%--------------------------------------------------------------------
@@ -76,9 +76,6 @@ end_per_suite(Config) ->
 %% Description: Initialization before each test case.
 %%--------------------------------------------------------------------
 init_per_testcase(Case, Config) ->
-    Ref = ?config(con_ref, Config),
-    TableName = ?config(table_name, Config),
-    ok = db:create_table(Ref, TableName, table_type(Case)),
     Config.
 
 %%--------------------------------------------------------------------
@@ -92,9 +89,6 @@ init_per_testcase(Case, Config) ->
 %% Description: Cleanup after each test case.
 %%--------------------------------------------------------------------
 end_per_testcase(_Case, Config) ->
-    Ref = ?config(con_ref, Config),
-    TableName = ?config(table_name, Config),
-    ok = db:delete_table(Ref, TableName),
     ok.
 
 %%--------------------------------------------------------------------
@@ -110,25 +104,27 @@ end_per_testcase(_Case, Config) ->
 %%              are to be executed.
 %%--------------------------------------------------------------------
 all() ->
-    [string, integer].
+    [ init, fetch_block, fetch_height, fork_switch, accept_connector, terminate].
 
 
 %%--------------------------------------------------------------------
 %% TEST CASES
 %%--------------------------------------------------------------------
 
-string(Config) ->
-    insert_and_lookup(dummy_key, "Dummy string", Config).
+init(_Config) ->
+    ok.
 
-integer(Config) ->
-    insert_and_lookup(dummy_key, 42, Config).
+fetch_block(_Config) ->
+    ok.
 
+fetch_height(_Config) ->
+    ok.
 
-insert_and_lookup(Key, Value, Config) ->
-    Ref = ?config(con_ref, Config),
-    TableName = ?config(table_name, Config),
-    ok = db:insert(Ref, TableName, Key, Value),
-    [Value] = db:lookup(Ref, TableName, Key),
-    ok = db:delete(Ref, TableName, Key),
-    [] = db:lookup(Ref, TableName, Key),
+fork_switch(_Config) ->
+    ok.
+
+accept_connector(_Config) ->
+    ok.
+
+terminate(_Config) ->
     ok.
