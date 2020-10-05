@@ -16,8 +16,8 @@
         , write_parent_block/1
         ]).
 
--export([ write_parent_chain_track/2
-        , get_parent_chain_track/1
+-export([ write_parent_chain_view/2
+        , get_parent_chain_view/1
         ]).
 
 -export([
@@ -40,13 +40,13 @@
 -record(hc_db_pogf, {key, value}).
 -record(hc_db_commitment_header, {key, value}).
 -record(hc_db_parent_block_header, {key, value}).
--record(hc_db_parent_chain_track, {key, value}).
+-record(hc_db_parent_chain_view, {key, value}).
 
 table_specs(Mode) ->
     [ ?TAB(hc_db_pogf)
     , ?TAB(hc_db_commitment_header)
     , ?TAB(hc_db_parent_block_header)
-    , ?TAB(hc_db_parent_chain_track)
+    , ?TAB(hc_db_parent_chain_view)
     ].
 
 check_tables(Acc) ->
@@ -151,28 +151,23 @@ write_parent_block(ParentBlock) ->
            [mnesia:write(DBPoGF) || DBPoGF <- DBPoGFs]
        end).
 
-%%%===================================================================
-%%%  Parent chain state management
-%%%===================================================================
-
-%% Track determinates traversing path within particular parent chain (genesis -> top);
-%% The genesis key accesses particular parent state which is ended by top of the view;
--spec write_parent_chain_track(binary(), binary()) -> ok.
-write_parent_chain_track(GenesisHash, TopHash) when is_binary(GenesisHash),
+%% The parent chain view entry determines traversing path within the current persisted log (genesis -> top);
+-spec write_parent_chain_view(binary(), binary()) -> ok.
+write_parent_chain_view(GenesisHash, TopHash) when is_binary(GenesisHash),
                                                     is_binary(TopHash) ->
-    ?t(mnesia:write(#hc_db_parent_chain_track{key = GenesisHash, value = TopHash}),
-        [{hc_db_parent_chain_track, GenesisHash}]).
+    ?t(mnesia:write(#hc_db_parent_chain_view{key = GenesisHash, value = TopHash}),
+        [{hc_db_parent_chain_view, GenesisHash}]).
 
--spec get_parent_chain_track(binary()) -> binary() | undefined.
-get_parent_chain_track(GenesisHash) ->
-    ?t(case mnesia:read(hc_db_parent_chain_track, GenesisHash) of
-           [#hc_db_parent_chain_track{value = Value}] ->
+-spec get_parent_chain_view(binary()) -> binary() | undefined.
+get_parent_chain_view(GenesisHash) ->
+    ?t(case mnesia:read(hc_db_parent_chain_view, GenesisHash) of
+           [#hc_db_parent_chain_view{value = Value}] ->
                Value;
            _ ->
                undefined
        end).
 
-%% Get parent tob block within particular view;
+%% Get parent tob block within particular parent view;
 -spec get_parent_top_block(binary()) -> aehc_parent_block:parent_block() | undefined.
 get_parent_top_block(GenesisHash) ->
-    ?t(get_parent_block(get_parent_chain_track(GenesisHash))).
+    ?t(get_parent_block(get_parent_chain_view(GenesisHash))).

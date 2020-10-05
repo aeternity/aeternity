@@ -3,32 +3,19 @@
 %%% @copyright (C) 2020, Aeternity Anstalt
 %%% @doc
 %%% <h3>Hyperchains parent's process manager</h3>
-%%% See the "ProcessManager" (https://www.enterpriseintegrationpatterns.com/patterns/messaging/ProcessManager.html) pattern.
+%%% See the pattern "ProcessManager" (https://www.enterpriseintegrationpatterns.com/patterns/messaging/ProcessManager.html).
 %%% This component is responsible for orchestration the abstract parent's chain layer through:
 %%%  a) dedicated workers (trackers);
 %%%  b) supplied interface providers (conenctors);
 %%% - The first supplied connector acts as the "master" and is eligible to dictate the election period through event's announcement;
 %%% - A tracker performs synchronization from the highest known block until genesis pointer through "previous_hash" property;
 %%% - To be able to run the Hyperchains the system must satisfy the connector's acceptance criteria;
-%%%     a) For default mode: get_top_block/0, get_block_by_hash/1l
-%%%     b) For delegate mode: default mode + send_tx/1;
+%%%     a) default mode: get_top_block/0, get_block_by_hash/1l
+%%%     b) delegate mode: default mode + send_tx/1;
 %%% - Each interested developer can supply their own connector's implementation over the particular parent chain;
 %%% (TODO: To supply link to the official connector's development guide);
 %%% @end
 %%%-------------------------------------------------------------------
-
-
-%%% This module provides implementation of the parent chain worker which is managed by aehc_parent_mng process manager;
-%%% The main responsibility of tracker:
-%%%  a) To keep synchronized state at the particular branch of the parent chain;
-%%%  b) To fetche missing blocks via appropriate interface provider (connector)
-%%% - Synchronization starts by taking the currently highest known block and then walking the prev pointer's until we encounter the genesis block;
-%%% - "genesis hash" does not need to be related to the genesis block of the parent chain;
-%%% - The component is responsible for managing fork switching by traversing hash-pointers of the parent blocks. Each time a fork occurs:
-%%%     a) The database is updated by the new parent chain representation;
-%%%     b) The child chain is reverted and the new election process is started from the last synced track height;
-
-
 -module(aehc_parent_mng).
 
 -behaviour(gen_server).
@@ -36,6 +23,7 @@
 %% API.
 -export([start_link/0]).
 -export([accept_connector/1]).
+-export([get_commitments/1]).
 
 -export([publish_block/2]).
 
@@ -63,6 +51,7 @@
         genesis_hash :: binary(),
         %% The current executable;
         tracker :: pid(),
+        args :: map(),
         %% Textual description;
         note :: binary()
     }).
@@ -103,7 +92,6 @@ init([]) ->
     [accept_connector(T) || T <- InitTracks],
     %% Forks synchronization by fetched blocks;
     [sync_track(T) || T <- InitTracks],
-    %% TODO: To request the current top block hash;
     {ok, #state{ master = connector(Master) }}.
 
 handle_call(_Request, _From, State) ->
@@ -172,14 +160,20 @@ select_registry() ->
 %%%===================================================================
 %%%  Jobs scheduling
 %%%===================================================================
-%% Sync of track by fetching the current top;
+%%% The main responsibility of tracker's job:
+%%%  a) To keep synchronized state at the particular branch of the parent chain;
+%%%  b) To fetch missing blocks via appropriate interface provider (connector);
+%%%  c) To manage fork switching by traversing hash-pointers of the parent blocks.
+%%% Each time a fork occurs:
+%%%  a) The database is updated by the new parent chain representation;
+%%%  b) The child chain is reverted and the new election process is started from the last synced track height;
 -spec sync_track(track()) -> track().
 sync_track(Track) ->
     spawn(
         fun() ->
-            set_job(Track, self()),
+            set_tracker(Track, self()),
             Res = sync_track(aehc_connector:get_top_block(connector(Track)), Track, [], []),
-            reset_job(Res)
+            reset_tracker(Res)
         end).
 
 %% Sync of track by event;
@@ -187,22 +181,21 @@ sync_track(Track) ->
 sync_track(Track, Block) ->
     spawn(
         fun() ->
-            set_job(Track, self()),
+            set_tracker(Track, self()),
             Res = sync_track(Block, Track, [], []),
-            reset_job(Res)
+            reset_tracker(Res)
         end).
 
-set_job(Track, Pid) ->
+set_tracker(Track, Pid) ->
     update_registry(tracker(Track, Pid)).
 
-reset_job(Track) ->
+reset_tracker(Track) ->
     update_registry(tracker(Track, #track{}#track.tracker)),
     publish_track(Track).
 
 %%%===================================================================
 %%%  Connector's management
 %%%===================================================================
-
 -spec accept_connector(track()) -> boolean().
 accept_connector(Track) ->
     Criteria = [fun accept_top_block/1, fun accept_block_by_hash/1, fun accept_send_tx/1],
@@ -245,16 +238,15 @@ accept_send_tx(Track) ->
 %%%===================================================================
 %%%  Tracks management
 %%%===================================================================
-
 %% Initialization of view within Db (initial empty Db keep Genesis hash address as the top of parent view);
 -spec init_db_track(track()) -> track().
 init_db_track(Track) ->
     GenesisHash = genesis_hash(Track),
-    Res = aehc_parent_db:get_parent_chain_track(GenesisHash),
+    Res = aehc_parent_db:get_parent_chain_view(GenesisHash),
     TopBlockHash =
         case Res of
             undefined ->
-                aehc_parent_db:write_parent_chain_track(GenesisHash, GenesisHash),
+                aehc_parent_db:write_parent_chain_view(GenesisHash, GenesisHash),
                 GenesisHash;
             _ when is_binary(Res) ->
                 Res
@@ -332,7 +324,6 @@ conf_track(Conf) ->
 %%%===================================================================
 %%%  Configuration access layer
 %%%===================================================================
-
 tracks_config() ->
     aeu_env:user_config([<<"hyperchains">>, <<"tracks">>]).
 
