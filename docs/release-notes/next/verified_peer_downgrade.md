@@ -5,5 +5,5 @@
   allows them to stay verified.
   This PR tightens the process - once a peer is being detected to be
   unreachable - it is being downgraded from verified to unverified
-  immedeately. The processing of unverified being deleted is left unchanged -
+  immediately. The processing of unverified being deleted is left unchanged -
   they still enter the standby mode for a few times before being removed.
