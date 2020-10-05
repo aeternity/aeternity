@@ -299,7 +299,7 @@ get_info_object_signed_tx(BlockHash, STx, GAIds, OrigTx) ->
             {CB, CTx} = aetx:specialize_callback(Tx),
             get_ga_meta_tx_info(BlockHash, CB, CTx, GAIds, OrigTx);
         {channel_force_progress_tx, FPTx} ->
-            {Contract, Caller} =
+            {_Contract, Caller} =
                 aesc_force_progress_tx:contract_pubkey_and_caller(FPTx),
             Round = aesc_force_progress_tx:round(FPTx),
             TxHash = aetx_sign:hash(OrigTx),
