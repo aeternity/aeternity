@@ -28,7 +28,7 @@ start_link(Args) ->
 %%%  aehc_connector behaviour
 %%%===================================================================
 
--spec send_tx(binary(), binary(), binary()) -> binary().
+-spec send_tx(binary(), binary(), binary()) -> ok.
 send_tx(Delegate, Commitment, PoGF) ->
     gen_server:call(?MODULE, {send_tx, Delegate, Commitment, PoGF}).
 

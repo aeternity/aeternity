@@ -80,7 +80,7 @@ commitments_in_block(#hc_parent_block{commitments = Commitments}) ->
 hash_block(#hc_parent_block{header = #hc_parent_block_header{hash = Hash}}) ->
     Hash.
 
--spec height_block(parent_block()) -> binary().
+-spec height_block(parent_block()) -> non_neg_integer().
 height_block(#hc_parent_block{header = #hc_parent_block_header{height = Height}}) ->
     Height.
 
