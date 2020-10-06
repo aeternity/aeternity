@@ -300,11 +300,12 @@ start_blocked_second(Config) ->
 
     %% Check that there is only one non-blocked peer (dev3) and no connected peers
     NonBlocked = rpc:call(N1, aec_peers, get_random, [all], 5000),
+    Standby = rpc:call(N1, aec_peers, count, [standby], 5000),
     Connected  = rpc:call(N1, aec_peers, connected_peers, [], 5000),
     ct:log("Non-blocked peers on dev1: ~p", [NonBlocked]),
     ct:log("Connected peers on dev1: ~p", [Connected]),
     [] = Connected,
-    [_] = NonBlocked,
+    1 = Standby,
 
     %% Also check that they have different top blocks
     B1 = rpc:call(N1, aec_chain, top_block, [], 5000),
