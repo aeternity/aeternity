@@ -806,6 +806,7 @@ test_connection_down() ->
 
 
     % Last retry of unverified peer, should be removed.
+    % This depends on max_rejections = 3 in the setup
     {ok, Conn4} = ?assertCalled(connect, [#{ conn_type := noise, r_pubkey := PubKey }], {ok, _}, 500),
     conn_kill(Conn4),
 

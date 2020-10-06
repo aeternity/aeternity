@@ -644,9 +644,9 @@ select(St, Now, PeerId) ->
 %% again before some time has passed. The time the peer will stay on standby
 %% depends on the number of time it got rejected.
 %%
-%% If the peer reached the maximum number of rejections, it is downgraded to
-%% the unverified pool if verified, or removed completely if unverified; the
-%% rejection counter is reset when downgrading.
+%% If the peer is verified, it is downgraded to the unverified pool; if it is
+%% unverified - the rejection counter is increased; if an unverified peer
+%% reaches the maximum counter of rejections, one is removed completely
 -spec reject(state(), millitimestamp(), peer_id()) -> state().
 reject(St, Now, PeerId) ->
     reject_peer(St, Now, PeerId).
