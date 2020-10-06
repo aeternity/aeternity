@@ -3096,8 +3096,8 @@ request_signing(Tag, Aetx, Updates, BlockHash, #data{} = D, SendAction) ->
                        aec_blocks:block_header_hash(),
                        #data{}) -> {ok, #data{}, [gen_statem:action()]}
                                  | {error, any()}.
-request_signing_(Tag, SignedTx, BlockHash, Updates, D) ->
-    request_signing_(Tag, SignedTx, BlockHash, Updates, D, send).
+request_signing_(Tag, SignedTx, Updates, BlockHash, D) ->
+    request_signing_(Tag, SignedTx, Updates, BlockHash, D, send).
 
 -spec request_signing_(sign_tag(),
                        aetx_sign:signed_tx(),
