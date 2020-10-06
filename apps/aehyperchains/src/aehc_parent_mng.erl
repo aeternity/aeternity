@@ -23,9 +23,10 @@
 %% API.
 -export([start_link/0]).
 -export([accept_connector/1]).
--export([get_commitments/1]).
 
 -export([publish_block/2]).
+-export([publish_track/1]).
+-export([sync_track/1, sync_track/2]).
 
 %% gen_server.
 -export([init/1]).
@@ -43,14 +44,15 @@
         connector :: aehc_connector:connector(),
         %% The current syncronized top block hash from the Db;
         current_hash::binary(),
-        %% The previous syncronized top block hash from the Db;
-        previous_hash::binary(),
+        %% The previous syncronized block hash from the Db;
+        previous_hash:: undefined | binary(),
         %% The current syncronized top block height from the Db;
         current_height::non_neg_integer(),
         %% The genesis hash from the config;
         genesis_hash :: binary(),
         %% The current executable;
-        tracker :: pid(),
+        tracker :: undefined | pid(),
+        %% Passed arguments;
         args :: map(),
         %% Textual description;
         note :: binary()
@@ -82,16 +84,17 @@ publish_track(Track) ->
 
 init([]) ->
     init_registry(),
-    %% Read configuration;;
-    [Master|_] = Tracks = [conf_track(C) || C <- tracks_config()],
+    %% Read configuration;
+    {ok, Config} = tracks_config(),
+    [Master|_] = Tracks = [conf_track(Track) || Track <- Config],
     %% Db initialization
     InitTracks = [init_db_track(Track) || Track <- Tracks],
     %% Run conenctor's instances;
-    [start_connector(T) || T <- InitTracks],
+    [start_connector(Track) || Track <- InitTracks],
     %% Execute acceptance procedure;
-    [accept_connector(T) || T <- InitTracks],
+    [accept_connector(Track) || Track <- InitTracks],
     %% Forks synchronization by fetched blocks;
-    [sync_track(T) || T <- InitTracks],
+    [spawn(?MODULE, sync_track, [Track]) || Track <- InitTracks],
     {ok, #state{ master = connector(Master) }}.
 
 handle_call(_Request, _From, State) ->
@@ -116,15 +119,16 @@ handle_info({publish_block, Connector, Block}, #state{} = State) ->
         true = aehc_parent_block:is_hc_parent_block(Block),
         %% %% Fork synchronization by by the new arrived block;
         [Track] = lookup_registry(Connector),
-        sync_track(Track, Block),
+        spawn(?MODULE, sync_track, [Track, Block]),
         %% Log event
         Hash = aehc_parent_block:hash_block(Block),
         Height = aehc_parent_block:height_block(Block),
         Length = length(aehc_parent_block:commitments_in_block(Block)),
         Info = "Block has accepted (connector: ~p, hash: ~p, height: ~p, capacity: ~p)",
         lager:info(Info, [Connector, Hash, Height, Length])
-        ?_catch_(error, E, StackTrace)
-            lager:error("CRASH: ~p; ~p", [E, StackTrace])
+    catch E:R:StackTrace ->
+        lager:error("CRASH: ~p; ~p", [E, StackTrace]),
+        {error, E, R}
     end,
     {noreply, State};
 
@@ -148,12 +152,6 @@ update_registry(Track) ->
 lookup_registry(Key) ->
     ets:lookup(?MODULE, Key).
 
-select_registry(Match) ->
-    ets:select(?MODULE, Match).
-
-foldl_registry(Fun, Acc) ->
-    ets:foldl(Fun, Acc, ?MODULE).
-
 select_registry() ->
     ets:tab2list(?MODULE).
 
@@ -161,42 +159,41 @@ select_registry() ->
 %%%  Jobs scheduling
 %%%===================================================================
 %%% The main responsibility of tracker's job:
-%%%  a) To keep synchronized state at the particular branch of the parent chain;
+%%%  a) To ensure synchronized state at the particular branch of the parent chain;
 %%%  b) To fetch missing blocks via appropriate interface provider (connector);
 %%%  c) To manage fork switching by traversing hash-pointers of the parent blocks.
 %%% Each time a fork occurs:
 %%%  a) The database is updated by the new parent chain representation;
 %%%  b) The child chain is reverted and the new election process is started from the last synced track height;
--spec sync_track(track()) -> track().
+-spec sync_track(track()) -> pid().
 sync_track(Track) ->
-    spawn(
-        fun() ->
-            set_tracker(Track, self()),
-            Res = sync_track(aehc_connector:get_top_block(connector(Track)), Track, [], []),
-            reset_tracker(Res)
-        end).
+    Pid = self(),
+    set_tracker(Track, Pid),
+    {ok, Block} = aehc_connector:get_top_block(connector(Track)),
+    Res = sync_track(Track, Block, [], []),
+    reset_tracker(Res),
+    Pid.
 
 %% Sync of track by event;
--spec sync_track(track(), aehc_parent_block:parent_block()) -> track().
+-spec sync_track(track(), aehc_parent_block:parent_block()) -> pid().
 sync_track(Track, Block) ->
-    spawn(
-        fun() ->
-            set_tracker(Track, self()),
-            Res = sync_track(Block, Track, [], []),
-            reset_tracker(Res)
-        end).
+    Pid = self(),
+    set_tracker(Track, Pid),
+    Res = sync_track(Track, Block, [], []),
+    reset_tracker(Res),
+    Pid.
 
 set_tracker(Track, Pid) ->
     update_registry(tracker(Track, Pid)).
 
 reset_tracker(Track) ->
-    update_registry(tracker(Track, #track{}#track.tracker)),
+    update_registry(tracker(Track, undefined)),
     publish_track(Track).
 
 %%%===================================================================
 %%%  Connector's management
 %%%===================================================================
--spec accept_connector(track()) -> boolean().
+-spec accept_connector(track()) -> ok | {error, {term(), term()}}.
 accept_connector(Track) ->
     Criteria = [fun accept_top_block/1, fun accept_block_by_hash/1, fun accept_send_tx/1],
     try
@@ -217,28 +214,40 @@ terminate_connector(Track) ->
 accept_top_block(Track) ->
     %% Ability to request the current top block;
     Con = connector(Track),
-    {ok, _} = aehc_connector:get_top_block(Con).
+    {ok, Block} = aehc_connector:get_top_block(Con),
+    Hash = aehc_parent_block:hash_block(Block),
+    Height = aehc_parent_block:height_block(Block),
+    Info = "Accept get_top_block procedure has passed (connector: ~p, hash: ~p, height: ~p)",
+    lager:info(Info, [Con, Hash, Height]).
 
 accept_block_by_hash(Track) ->
     %% Ability to request genesis hash track;
-    Con = connector(Track), Genesis = genesis_hash(Track),
-    {ok, _} = aehc_connector:get_block_by_hash(Con, Genesis).
+    Con = connector(Track),
+    Genesis = genesis_hash(Track),
+    {ok, Block} = aehc_connector:get_block_by_hash(Con, Genesis),
+    Hash = aehc_parent_block:hash_block(Block),
+    Height = aehc_parent_block:height_block(Block),
+    Info = "Accept get_block_by_hash procedure has passed (connector: ~p, hash: ~p, height: ~p)",
+    lager:info(Info, [Con, Hash, Height]).
 
 accept_send_tx(Track) ->
     %% Ability to execute commitment call;
     delegate_config() == undefined orelse
         begin
             Con = connector(Track),
-            Delegate = aec_keys:pubkey(),
+            {ok, Delegate} = aec_keys:pubkey(),
             KeyblockHash = aec_chain:top_key_block_hash(),
             PoGF = aehc_pogf:hash(no_pogf),
-            aehc_connector:send_tx(Con, Delegate, KeyblockHash, PoGF)
+            aehc_connector:send_tx(Con, Delegate, KeyblockHash, PoGF),
+            Info = "Accept send_tx procedure has passed (connector: ~p, delegate: ~p, hash: ~p, pogf: ~p)",
+            lager:info(Info, [Con, Delegate, KeyblockHash, PoGF])
         end.
 
 %%%===================================================================
 %%%  Tracks management
 %%%===================================================================
-%% Initialization of view within Db (initial empty Db keep Genesis hash address as the top of parent view);
+%% Initialization of view within Db;
+%% Initial Db keeps pinpointed genesis hash address as the top of the parent view + fetched block;
 -spec init_db_track(track()) -> track().
 init_db_track(Track) ->
     GenesisHash = genesis_hash(Track),
@@ -246,13 +255,16 @@ init_db_track(Track) ->
     TopBlockHash =
         case Res of
             undefined ->
+                %% Initialize parent view by genesis -> genesis if the db log is empty;
                 aehc_parent_db:write_parent_chain_view(GenesisHash, GenesisHash),
+                {ok, Block} = aehc_connector:get_block_by_hash(connector(Track), GenesisHash),
+                ok = aehc_parent_db:write_parent_block(Block),
                 GenesisHash;
             _ when is_binary(Res) ->
                 Res
         end,
-    Block = aehc_parent_db:get_parent_top_block(TopBlockHash),
-    init_track(Track, Block).
+    CurrentBlock = aehc_parent_db:get_parent_top_block(TopBlockHash),
+    init_track(Track, CurrentBlock).
 
 
 %% This function is responsible for managing fetch and fork switching procedures;
@@ -288,14 +300,13 @@ sync_track(Track, Block, Fetched, Reverted) ->
             ok;
         _ when Height > CurrentHeight ->
             %% Sync procedure is continue it the fetch mode (the current persisted block isn't achived);
-            PrevBlock = aehc_connector:get_block_by_hash(connector(Track), PrevHash),
+            {ok, PrevBlock} = aehc_connector:get_block_by_hash(connector(Track), PrevHash),
             PrevSynchedBlock = aehc_parent_db:get_parent_block(CurrentPrevHash),
             sync_track(init_track(Track, PrevSynchedBlock), PrevBlock, [Block|Fetched], Reverted);
         _ ->
             %% Sync procedure is continue it the fork switch mode (we passed the current height but the matched block hasn't achived);
-            PrevBlock = aehc_connector:get_block_by_hash(connector(Track), PrevHash),
+            {ok, PrevBlock} = aehc_connector:get_block_by_hash(connector(Track), PrevHash),
             PrevSynchedBlock = aehc_parent_db:get_parent_block(CurrentPrevHash),
-            %% There is a place where erase DB can be done (do we need to delete reverted blocks?)
             sync_track(init_track(Track, PrevSynchedBlock), PrevBlock, [Block|Fetched], [CurrentHash|Reverted])
     end,
     _SynchedTrack = init_track(Track, Block).
@@ -324,9 +335,12 @@ conf_track(Conf) ->
 %%%===================================================================
 %%%  Configuration access layer
 %%%===================================================================
+-spec tracks_config() -> {ok, nonempty_list(map())}.
 tracks_config() ->
-    aeu_env:user_config([<<"hyperchains">>, <<"tracks">>]).
+    Res = {ok, _} = aeu_env:user_config([<<"hyperchains">>, <<"tracks">>]),
+    Res.
 
+-spec delegate_config() -> undefined | {ok, map()}.
 delegate_config() ->
     aeu_env:user_config([<<"hyperchains">>, <<"delegate">>]).
 
@@ -365,11 +379,7 @@ genesis_hash(T) ->
 connector(T) ->
     T#track.connector.
 
--spec tracker(track()) -> pid().
-tracker(T) ->
-    T#track.tracker.
-
--spec tracker(track(), pid()) -> track().
+-spec tracker(track(), undefined | pid()) -> track().
 tracker(T, Tracker) ->
     T#track{tracker = Tracker}.
 
