@@ -17,11 +17,6 @@
         , hash/1
         ]).
 
--export([ payload_delegate/1
-        , payload_commitment/1
-        , payload_pogf/1
-        ]).
-
 -include("../../aecore/include/blocks.hrl").
 -include("aehc_utils.hrl").
 
@@ -59,20 +54,3 @@ header(#hc_commitment{header = Header}) ->
 -spec hash(commitment()) -> commitment_hash().
 hash(#hc_commitment{header = Header}) ->
     aehc_commitment_header:hash(Header).
-
-%%%===================================================================
-%%%  Payload accessors
-%%%===================================================================
-
--spec payload_delegate(commitment_hash()) -> commiter_pubkey().
-payload_delegate(<<Delegate:?COMMITER_PUB_BYTES, _:?COMMITMENT_HASH_BYTES, _:?POGF_HASH_BYTES>>) ->
-    Delegate.
-
-
--spec payload_commitment(commitment_hash()) -> block_header_hash().
-payload_commitment(<<_:?COMMITER_PUB_BYTES, Commitment:?COMMITMENT_HASH_BYTES, _:?POGF_HASH_BYTES>>) ->
-    Commitment.
-
--spec payload_pogf(commitment_hash()) -> pogf_hash().
-payload_pogf(<<_:?COMMITER_PUB_BYTES, _:?COMMITMENT_HASH_BYTES, PoGFHash:?POGF_HASH_BYTES>>) ->
-    PoGFHash.
