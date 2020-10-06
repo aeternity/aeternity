@@ -15,9 +15,9 @@ start_link() ->
 init([]) ->
     {ok, {{one_for_one, 5, 10}, []}}.
 
--spec start_child(term(), map(), binary()) -> {ok, pid()}.
+-spec start_child(atom(), map(), binary()) -> {ok, pid()}.
 start_child(Id, Args, Desc) ->
-    Res = {ok, _Pid} = supervisor:start_child(?SERVER, ?CHILD(Id, Args, 5000, worker)),
+    Res = {ok, _Pid} = supervisor:start_child(?SERVER, ?CHILD(Id, [Args], 5000, worker)),
     lager:info("~p start connector: ~p (~p)", [Id, Desc]),
     Res.
 
