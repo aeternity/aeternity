@@ -124,12 +124,12 @@ references:
     restore_cache:
       key: *rebar_cache_key
 
-  build_otp21_cache_key: &build_otp21_cache_key build-otp21-cache-v4-{{ .Revision }}
+  build_otp21_cache_key: &build_otp21_cache_key build-otp21-cache-v5-{{ .Revision }}
   restore_build_otp21_cache: &restore_build_otp21_cache
     restore_cache:
       key: *build_otp21_cache_key
 
-  build_otp22_cache_key: &build_otp22_cache_key build-otp22-cache-v1-{{ .Revision }}
+  build_otp22_cache_key: &build_otp22_cache_key build-otp22-cache-v2-{{ .Revision }}
   restore_build_otp22_cache: &restore_build_otp22_cache
     restore_cache:
       key: *build_otp22_cache_key
@@ -609,7 +609,7 @@ jobs:
           name: Build
           command: make KIND=test
       - save_cache:
-          key: *build_otp21_cache_key
+          key: *build_otp22_cache_key
           paths:
             - "_build"
       - save_cache:
@@ -711,6 +711,14 @@ jobs:
       - MAKE_TARGET: ct-latest
     steps: *test_steps
 
+  # Sanity check whether the latest aesophia compiler works
+  test_latest_with_aesophia_compiler:
+    executor: builder_container_otp22
+    parallelism: 1
+    environment:
+      - MAKE_TARGET: ct-latest-no-aci
+    steps: *test_steps
+
   test_latest_otp21:
     executor: builder_container_otp21
     parallelism: 3
@@ -774,7 +782,7 @@ jobs:
     steps:
       - checkout
       - *restore_rebar_cache
-      - *restore_build_otp21_cache
+      - *restore_build_otp22_cache
       - run:
           name: AEVM Tests
           command: |
@@ -788,20 +796,20 @@ jobs:
       - checkout
       - run: make dockerignore-check
       - *restore_rebar_cache
-      - *restore_build_otp21_cache
+      - *restore_build_otp22_cache
       - run: ./rebar3 edoc
       - restore_cache:
           keys:
-            - dialyzer-cache-v4-{{ .Branch }}-{{ .Revision }}
-            - dialyzer-cache-v4-{{ .Branch }}-
-            - dialyzer-cache-v4-
+            - dialyzer-otp22-cache-v5-{{ .Branch }}-{{ .Revision }}
+            - dialyzer-otp22-cache-v5-{{ .Branch }}-
+            - dialyzer-otp22-cache-v5-
       - run:
           name: Update dialyzer PLT
           command: make dialyzer-install
       - save_cache:
-          key: dialyzer-cache-v4-{{ .Branch }}-{{ .Revision }}
+          key: dialyzer-otp22-cache-v5-{{ .Branch }}-{{ .Revision }}
           paths:
-            - *container_otp21_plt
+            - *container_otp22_plt
       - run:
           name: Run dialyzer
           no_output_timeout: 20m
@@ -916,7 +924,7 @@ jobs:
 
   osx_package:
     macos:
-      xcode: "10.0.0" # 10.0.0 is macOS 10.13.6
+      xcode: "10.1.0" # 10.1.0 is macOS 10.13.6
     working_directory: ~/aeternity
     steps:
       - checkout
@@ -926,6 +934,7 @@ jobs:
           # libsodium headers cannot be found without explicit brew link
           command: |
             brew update
+            brew rm python@2
             brew install gmp libsodium erlang@21
             brew link gmp
             brew link libsodium
@@ -1193,16 +1202,6 @@ jobs:
           path: docs/state-channels
       - *fail_notification
 
-  integration_sync:
-    executor: infrastructure_container_unstable
-    steps:
-      - checkout
-      - run:
-          name: Integration sync
-          command: |
-            cd /infrastructure && DEPLOY_ENV=integration_sync make mnesia-reset-once
-      - *fail_notification
-
   # Windows jobs
   windows_package:
     <<: *windows_container
@@ -1327,6 +1326,16 @@ workflows:
                 - system-tests
 
       - test_latest:
+          requires:
+            - build
+          filters:
+            branches:
+              ignore:
+                - env/dev1
+                - env/dev2
+                - system-tests
+
+      - test_latest_with_aesophia_compiler:
           requires:
             - build
           filters:
@@ -1512,6 +1521,7 @@ workflows:
             - test_fortuna
             - test_lima
             - test_latest
+            - test_latest_with_aesophia_compiler
             - test_mnesia_leveled
             - test_mnesia_rocksdb
             - eunit_roma
@@ -1536,6 +1546,7 @@ workflows:
             - test_fortuna
             - test_lima
             - test_latest
+            - test_latest_with_aesophia_compiler
             - test_mnesia_leveled
             - test_mnesia_rocksdb
             - eunit_roma
@@ -1559,6 +1570,7 @@ workflows:
             - test_fortuna
             - test_lima
             - test_latest
+            - test_latest_with_aesophia_compiler
             - test_mnesia_leveled
             - test_mnesia_rocksdb
             - eunit_roma
@@ -1769,16 +1781,3 @@ workflows:
                 - *master_branch
     jobs:
       - docker_system_tests
-
-  integration_sync:
-    triggers:
-      - schedule:
-          # run at midnight and noon UTC
-          cron: "0 0,12 * * *"
-          filters:
-            branches:
-              only:
-                - *master_branch
-    jobs:
-      - integration_sync:
-          context: ae-node-builds
