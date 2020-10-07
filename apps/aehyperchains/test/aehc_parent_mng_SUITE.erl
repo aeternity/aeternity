@@ -75,7 +75,7 @@ end_per_suite(_Config) ->
 %%
 %% Description: Initialization before each test case.
 %%--------------------------------------------------------------------
-init_per_testcase(Case, Config) ->
+init_per_testcase(_Case, Config) ->
     Config.
 
 %%--------------------------------------------------------------------
@@ -88,7 +88,7 @@ init_per_testcase(Case, Config) ->
 %%
 %% Description: Cleanup after each test case.
 %%--------------------------------------------------------------------
-end_per_testcase(_Case, Config) ->
+end_per_testcase(_Case, _Config) ->
     ok.
 
 %%--------------------------------------------------------------------

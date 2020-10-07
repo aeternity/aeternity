@@ -15,7 +15,7 @@
 -export([handle_info/2]).
 -export([terminate/2]).
 
--export([send_tx/1, get_block_by_hash/1, get_top_block/0]).
+-export([send_tx/3, get_block_by_hash/1, get_top_block/0]).
 
 %% API.
 
@@ -53,15 +53,13 @@ init([]) ->
     lager:info("Parent chain's connector ~p is attached: ~p", [?MODULE, Pid]),
     {ok, #state{ pid = Pid }}.
 
-handle_call({send_tx, Delegate, Commitment, PoGF}, _From, State) ->
+handle_call({send_tx, Delegate, _Commitment, _PoGF}, _From, State) ->
     %% The current validator credentials;
     %% Requested transaction by hash from a simulator's block should satisfy the origin of validator;
-    {ok, Pub} = aec_keys:pubkey(),
     {ok, PrivKey} = aec_keys:sign_privkey(),
-    SenderId = aeser_id:create(account, Pub),
     %% The main intention of this call is to emulate post action with signed payload from delegate;
     %% Fee, nonce, ttl and amount fields have decorated nature;
-    Header = aehc_commitment:new(aehc_commitment_header:new(<<"D1">>, <<"BLOCK 1">>)),
+    Header = aehc_commitment_header:new(<<"D1">>, <<"BLOCK 1">>),
     Payload = aehc_commitment_header:hash(Header),
     {ok, Tx} = aec_spend_tx:new(#{ sender_id => Delegate, recipient_id => Delegate, amount => 1,
                                         fee => 5, nonce => 1, payload => Payload, ttl => 0 }),
