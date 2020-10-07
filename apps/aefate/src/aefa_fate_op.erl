@@ -1762,7 +1762,8 @@ aens_transfer(Arg0, Arg1, Arg2, Arg3, EngineState) ->
         true ->
             ok
     end,
-    HashBin = hash_name(aens_transfer, NameString, ES1),
+    ?FATE_STRING(NameBin) = NameString,
+    HashBin = hash_name(aens_transfer, NameBin, ES1),
     ?FATE_BYTES(SignBin) = Signature,
     ?FATE_ADDRESS(FromPubkey) = From,
     ?FATE_ADDRESS(ToPubkey) = To,
@@ -1788,7 +1789,8 @@ aens_revoke(Arg0, Arg1, Arg2, EngineState) ->
         true ->
             ok
     end,
-    HashBin = hash_name(aens_revoke, NameString, ES1),
+    ?FATE_STRING(NameBin) = NameString,
+    HashBin = hash_name(aens_revoke, NameBin, ES1),
     ?FATE_BYTES(SignBin) = Signature,
     ?FATE_ADDRESS(Pubkey) = Account,
     ES2 = check_delegation_signature(aens_revoke, {Pubkey, HashBin}, SignBin, ES1),

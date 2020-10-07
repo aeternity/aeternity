@@ -347,17 +347,17 @@ tx_event_data(aens_claim, {Pubkey, Name, Salt, NameFee, DeltaTTL}, _Type) ->
 tx_event_data(aens_transfer, {FromPubkey, ToPubkey, NameId}, _Type) ->
     ok(aens_transfer_tx:new(#{ account_id   => acct_id(FromPubkey)
                              , recipient_id => acct_id(ToPubkey)
-                             , name_id      => NameId
+                             , name_id      => name_id(NameId)
                              , nonce        => 0
                              , fee          => 0 }));
 tx_event_data(aens_revoke, {Pubkey, NameId}, _Type) ->
     ok(aens_revoke_tx:new(#{ account_id => acct_id(Pubkey)
-                           , name_id    => NameId
+                           , name_id    => name_id(NameId)
                            , nonce      => 0
                            , fee        => 0 }));
-tx_event_data(aens_update, {Pubkey, NameId, TTL, ClientTTL, Pointers}, _Type) ->
+tx_event_data(aens_update, {Pubkey, NameHash, TTL, ClientTTL, Pointers}, _Type) ->
     ok(aens_update_tx:new(#{ account_id => acct_id(Pubkey)
-                           , name_id    => NameId
+                           , name_id    => name_id(NameHash)
                            , name_ttl   => val(TTL, 0)
                            , pointers   => val(Pointers, [])
                            , client_ttl => val(ClientTTL, 0)
@@ -368,6 +368,9 @@ tx_event_data(_, _, _) ->
 
 acct_id(Pubkey) ->
     aeser_id:create(account, Pubkey).
+
+name_id(Name) ->
+    aeser_id:create(name, Name).
 
 ora_id(Pubkey) ->
     aeser_id:create(oracle, Pubkey).
@@ -743,31 +746,25 @@ aens_claim(Pubkey, NameBin, SaltInt, NameFee, #state{} = S) when ?IS_ONCHAIN(S) 
     eval_primops(Instructions, S, size_gas([NameBin])).
 
 aens_transfer(FromPubkey, HashBin, ToPubkey, #state{} = S) when ?IS_ONCHAIN(S) ->
-    %% We need to lookup the Name for the tx_event op, unfortunately
-    {Name, S1} = get_name_id(HashBin, S),
     Instructions = [ aeprimop:name_transfer_op(FromPubkey, account, ToPubkey, HashBin)
-                   , tx_event_op(aens_transfer, {FromPubkey, ToPubkey, Name})
+                   , tx_event_op(aens_transfer, {FromPubkey, ToPubkey, HashBin})
                    ],
-    eval_primops(Instructions, S1).
+    eval_primops(Instructions, S).
 
 aens_revoke(Pubkey, HashBin, #state{} = S) when ?IS_ONCHAIN(S) ->
-    %% Need to look up the name for the tx_event_op
-    {Name, S1} = get_name_id(HashBin, S),
     ProtectedDeltaTTL = aec_governance:name_protection_period(),
     Instructions = [ aeprimop:name_revoke_op(Pubkey, HashBin, ProtectedDeltaTTL)
-                   , tx_event_op(aens_revoke, {Pubkey, Name,
-                                               ttl(ProtectedDeltaTTL, S1)})
+                   , tx_event_op(aens_revoke, {Pubkey, HashBin, ttl(ProtectedDeltaTTL, S)})
                    ],
-    eval_primops(Instructions, S1).
+    eval_primops(Instructions, S).
 
-aens_update(Pubkey, HashBin, TTL, ClientTTL, Pointers, #state{} = S) when ?IS_ONCHAIN(S) ->
-    %% Need to look up the name for the tx_event_op
-    {Name, S1} = get_name_id(HashBin, S),
+aens_update(Pubkey, HashBin, TTL, ClientTTL, Pointers, #state{} = S)
+  when ?IS_ONCHAIN(S) ->
     Instructions = [ aeprimop:name_update_op(Pubkey, HashBin, TTL, ClientTTL, Pointers)
-                   , tx_event_op(aens_update, {Pubkey, Name, ttl(TTL, S1),
-                                               ttl(ClientTTL, S1), Pointers})
+                   , tx_event_op(aens_update, {Pubkey, HashBin, ttl(TTL, S),
+                                               ttl(ClientTTL, S), Pointers})
                    ],
-    eval_primops(Instructions, S1).
+    eval_primops(Instructions, S).
 
 aens_lookup(NameString, S) ->
     case aens_lookup_from_pstate(NameString, get_pstate(S)) of
@@ -799,15 +796,6 @@ aens_lookup_from_pstate(NameString, PState) ->
             end;
         {error, _} = Err ->
             Err
-    end.
-
-get_name_id(Hash, S) ->
-    case aeprimop_state:find_name(Hash, get_pstate(S)) of
-        {NameRec, PState1} ->
-            {aens_names:id(NameRec), set_pstate(PState1, S)};
-        none ->
-            %% Not expected to happen, but tx_events shouldn't crash the eval
-            {<<"<unknown>">>, S}
     end.
 
 %%%-------------------------------------------------------------------
