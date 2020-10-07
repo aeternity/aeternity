@@ -22,7 +22,6 @@
 
 %% API.
 -export([start_link/0]).
--export([accept_connector/1]).
 
 -export([publish_block/2]).
 -export([publish_track/1]).
