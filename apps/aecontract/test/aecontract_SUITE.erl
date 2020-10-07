@@ -263,6 +263,12 @@
         false -> ?assertMatch(__Exp, __Res)
     end).
 
+-define(assertMatchFATE(__ExpVm1, __ExpVm2, __Res),
+    case vm_version() of
+        ?VM_FATE_SOPHIA_1 -> ?assertMatch(__ExpVm1, __Res);
+        ?VM_FATE_SOPHIA_2 -> ?assertMatch(__ExpVm2, __Res)
+    end).
+
 -define(assertMatchVM(AEVM, FATE, Res),
     case ?IS_AEVM_SOPHIA(vm_version()) of
         true  -> ?assertMatch(AEVM, Res);
@@ -6725,8 +6731,9 @@ fate_environment(_Cfg) ->
     %% Block hash is mocked to return the height if it gets a valid height
     %% since we don't have a chain.
     BHHeight = 1000,
-    ?assertEqual(none, ?call(call_contract, Acc, Contract, block_hash, {option, word}, {BHHeight},
-                          #{height => BHHeight})),
+    %% Behavior at current height changed in FATE_VM2.
+    ?assertMatchFATE(none, {some, {bytes, <<BBHeight:256>>}},
+        ?call(call_contract, Acc, Contract, block_hash, {option, word}, {BHHeight}, #{height => BHHeight})),
     ?assertEqual(none, ?call(call_contract, Acc, Contract, block_hash, {option, word}, {BHHeight + 1},
                           #{height => BHHeight})),
     ?assertEqual(none, ?call(call_contract, Acc, Contract, block_hash, {option, word}, {BHHeight - 256},
