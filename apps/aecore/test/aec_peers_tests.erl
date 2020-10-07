@@ -766,41 +766,8 @@ test_connection_down() ->
     ?assertEqual(1, aec_peers:count(unverified)),
     ?assertEqual(1, aec_peers:count(standby)),
 
-    % Check first retry.
-    {ok, Conn2} = ?assertCalled(connect, [#{ conn_type := noise, r_pubkey := PubKey }], {ok, _}, 400),
-    ok = conn_peer_connected(Conn2),
-    conn_kill(Conn2),
-
-    ?assertMatch([], aec_peers:connected_peers()),
-    ?assertMatch([Peer], aec_peers:get_random(all)),
-    ?assertMatch({error, _}, aec_peers:get_connection(Id)),
-
-    ?assertEqual(0, aec_peers:count(connections)),
-    ?assertEqual(1, aec_peers:count(verified)),
-    ?assertEqual(0, aec_peers:count(unverified)),
-    ?assertEqual(1, aec_peers:count(standby)),
-
-    % Check second retry.
-    {ok, Conn3} = ?assertCalled(connect, [#{ conn_type := noise, r_pubkey := PubKey }], {ok, _}, 500),
-    ok = conn_peer_connected(Conn3),
-    conn_kill(Conn3),
-
-    ?assertMatch([], aec_peers:connected_peers()),
-    ?assertMatch([Peer], aec_peers:get_random(all)),
-    ?assertMatch({error, _}, aec_peers:get_connection(Id)),
-
-    ?assertEqual(0, aec_peers:count(connections)),
-    ?assertEqual(1, aec_peers:count(verified)),
-    ?assertEqual(0, aec_peers:count(unverified)),
-    ?assertEqual(1, aec_peers:count(standby)),
-
-    % Check last retry.
-    {ok, Conn4} = ?assertCalled(connect, [#{ conn_type := noise, r_pubkey := PubKey }], {ok, _}, 500),
-    ok = conn_peer_connected(Conn4),
-    conn_kill(Conn4),
-
     % Peer is downgraded to the unverified pool, and retried.
-    {ok, Conn5} = ?assertCalled(connect, [#{ conn_type := noise, r_pubkey := PubKey }], {ok, _}, 200),
+    {ok, Conn2} = ?assertCalled(connect, [#{ conn_type := noise, r_pubkey := PubKey }], {ok, _}, 200),
 
     ?assertMatch([], aec_peers:connected_peers()),
     ?assertMatch([], aec_peers:get_random(all)),
@@ -814,13 +781,7 @@ test_connection_down() ->
     % Killing the connection before calling peer_connected
     % so the peer stay unverified.
 
-    conn_kill(Conn5),
-
-    {ok, Conn6} = ?assertCalled(connect, [#{ conn_type := noise, r_pubkey := PubKey }], {ok, _}, 400),
-    conn_kill(Conn6),
-
-    {ok, Conn7} = ?assertCalled(connect, [#{ conn_type := noise, r_pubkey := PubKey }], {ok, _}, 500),
-    conn_kill(Conn7),
+    conn_kill(Conn2),
 
     ?assertMatch([], aec_peers:connected_peers()),
     ?assertMatch([], aec_peers:get_random(all)),
@@ -831,10 +792,23 @@ test_connection_down() ->
     ?assertEqual(1, aec_peers:count(unverified)),
     ?assertEqual(1, aec_peers:count(standby)),
 
-    % Last retry of unverified peer, should be removed.
 
-    {ok, Conn8} = ?assertCalled(connect, [#{ conn_type := noise, r_pubkey := PubKey }], {ok, _}, 500),
-    conn_kill(Conn8),
+    {ok, Conn3} = ?assertCalled(connect, [#{ conn_type := noise, r_pubkey := PubKey }], {ok, _}, 400),
+    conn_kill(Conn3),
+    ?assertMatch([], aec_peers:connected_peers()),
+    ?assertMatch([], aec_peers:get_random(all)),
+    ?assertMatch({error, _}, aec_peers:get_connection(Id)),
+
+    ?assertEqual(0, aec_peers:count(connections)),
+    ?assertEqual(0, aec_peers:count(verified)),
+    ?assertEqual(1, aec_peers:count(unverified)),
+    ?assertEqual(1, aec_peers:count(standby)),
+
+
+    % Last retry of unverified peer, should be removed.
+    % This depends on max_rejections = 3 in the setup
+    {ok, Conn4} = ?assertCalled(connect, [#{ conn_type := noise, r_pubkey := PubKey }], {ok, _}, 500),
+    conn_kill(Conn4),
 
     ?assertMatch([], aec_peers:connected_peers()),
     ?assertMatch([], aec_peers:get_random(all)),

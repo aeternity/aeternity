@@ -644,9 +644,9 @@ select(St, Now, PeerId) ->
 %% again before some time has passed. The time the peer will stay on standby
 %% depends on the number of time it got rejected.
 %%
-%% If the peer reached the maximum number of rejections, it is downgraded to
-%% the unverified pool if verified, or removed completely if unverified; the
-%% rejection counter is reset when downgrading.
+%% If the peer is verified, it is downgraded to the unverified pool; if it is
+%% unverified - the rejection counter is increased; if an unverified peer
+%% reaches the maximum counter of rejections, one is removed completely
 -spec reject(state(), millitimestamp(), peer_id()) -> state().
 reject(St, Now, PeerId) ->
     reject_peer(St, Now, PeerId).
@@ -914,13 +914,17 @@ reject_peer(St, Now, PeerId) ->
             Peer2 = peer_reject(Peer, Now),
             Peer3 = peer_deselect(Peer2, Now),
             St3 = set_peer(St2, PeerId, Peer3),
-            case {peer_has_expired(Peer3, MaxRejections), peer_state(Peer3)} of
-                {true, unverified} ->
-                    del_peer(St3, PeerId);
-                {true, verified} ->
+            case peer_state(Peer3) of
+                verified ->
+                    %% verified is downgraded on first notice
                     verified_downgrade(St3, Now, PeerId);
-                {false, _} ->
-                    standby_add(St3, PeerId)
+                unverified ->
+                    case peer_has_expired(Peer3, MaxRejections) of
+                        true ->
+                            del_peer(St3, PeerId);
+                        false ->
+                            standby_add(St3, PeerId)
+                    end
             end;
         _ ->
             St
@@ -1174,9 +1178,7 @@ verified_del(St, PeerId) ->
             del_lookup_verif_all(St4, PeerId)
     end.
 
-%% Downgrade a verified peer to unverified.
-%% Returns a boolean stating if the peer was added to the unverified pool of
-%% deleted COMPLETLY.
+%% Downgrade a verified peer to unverified or delete it completely.
 -spec verified_downgrade(state(), millitimestamp(), peer_id()) -> state().
 verified_downgrade(St, Now, PeerId) ->
     Peer = get_peer(St, PeerId),
