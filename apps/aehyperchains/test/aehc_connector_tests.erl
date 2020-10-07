@@ -11,12 +11,11 @@
 
 -include_lib("eunit/include/eunit.hrl").
 
+-define(CONNECTOR, aehc_chain_sim_connector).
+
 hyperchains_simulator_test_() ->
     {foreach,
         fun() ->
-            meck:new(aehc_app, [passthrough]),
-            meck:expect(aehc_app, get_connector_id, 0, <<"aehc_chain_sim_connector">>),
-
             application:ensure_started(gproc),
             ok = application:ensure_started(crypto),
 
@@ -31,10 +30,9 @@ hyperchains_simulator_test_() ->
         end,
         [{"Sent payload == Requested payload",
             fun() ->
-                %
-                Payload = <<"test">>,
-                %
-                ?assertEqual(ok, aehc_connector:send_tx(<<"Delegate">>, <<"Commitment">>, <<"PoGF">>)),
+                {ok, Pub} = aec_keys:pubkey(),
+                SenderId = aeser_id:create(account, Pub),
+                ?assertEqual(ok, aehc_connector:send_tx(?CONNECTOR, SenderId, <<"Commitment">>, <<"PoGF">>)),
                 ok
             end}
         ]}.
