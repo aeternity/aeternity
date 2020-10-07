@@ -1,1 +1,0 @@
-* Added CORS headers for error responses

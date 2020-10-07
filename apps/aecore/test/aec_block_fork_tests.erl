@@ -248,6 +248,7 @@ lima_migration_test(Source) ->
      ok.
 
 lima_contract(Nonce, Amount) ->
+    put('$abi_version', ?ABI_FATE_SOPHIA_1),
     {ok, Code}     = aect_test_utils:compile_contract(?SOPHIA_LIMA_FATE, token_migration),
     {ok, Contract} = aect_test_utils:read_contract(?SOPHIA_LIMA_FATE, token_migration),
     RootHash       = "\"" ++ ?UAT_ROOT_HASH ++ "\"",
@@ -409,6 +410,7 @@ migrate_tx(Account, Nonce, #{receiver  := Receiver,
                              index     := Index,
                              siblings  := Siblings,
                              signature := Signature}) ->
+    put('$abi_version', ?ABI_FATE_SOPHIA_1),
     {ok, Contract} = aect_test_utils:read_contract(?SOPHIA_LIMA_FATE, token_migration),
     Args = [integer_to_list(Amount),
             Receiver,
@@ -427,6 +429,7 @@ migrate_tx(Account, Nonce, #{receiver  := Receiver,
                        call_data   => CallData}).
 
 root_hash_tx(Account, Nonce) ->
+    put('$abi_version', ?ABI_FATE_SOPHIA_1),
     {ok, Contract} = aect_test_utils:read_contract(?SOPHIA_LIMA_FATE, token_migration),
     {ok, CallData} = aect_test_utils:encode_call_data(?SOPHIA_LIMA_FATE, Contract, <<"root_hash">>, []),
     aect_call_tx:new(#{caller_id   => aeser_id:create(account, Account),
