@@ -1123,9 +1123,12 @@ blockhash(Arg0, Arg1, ES) ->
         {?FATE_INTEGER_VALUE(N), ES1} when ?IS_FATE_INTEGER(N) ->
             GenesisHeight = aec_block_genesis:height(),
             API = aefa_engine_state:chain_api(ES1),
+            VMVsn = aefa_engine_state:vm_version(ES1),
             CurrentHeight = aefa_chain_api:generation(API),
             case (N < GenesisHeight orelse
-                  N >= CurrentHeight orelse
+                  %% BlockHash at current height available from FATE VM version 2
+                  (N == CurrentHeight andalso VMVsn < ?VM_FATE_SOPHIA_2) orelse
+                  N > CurrentHeight orelse
                   N =< CurrentHeight - 256) of
                 true ->
                     write(Arg0, aeb_fate_data:make_variant([0, 1], 0, {}), ES1);
