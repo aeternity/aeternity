@@ -37,6 +37,7 @@
          find_block_tx_hashes/1,
          find_discovered_pof/1,
          find_header/1,
+         dirty_find_header/1,
          find_headers_at_height/1,
          find_headers_and_hash_at_height/1,
          find_key_block/1,
@@ -408,6 +409,13 @@ find_key_block(Hash) ->
 -spec find_header(binary()) -> 'none' | {'value', aec_headers:header()}.
 find_header(Hash) ->
     case ?t(mnesia:read(aec_headers, Hash)) of
+        [#aec_headers{value = DBHeader}] -> {value, aec_headers:from_db_header(DBHeader)};
+        [] -> none
+    end.
+
+-spec dirty_find_header(binary()) -> 'none' | {'value', aec_headers:header()}.
+dirty_find_header(Hash) ->
+    case mnesia:dirty_read(aec_headers, Hash) of
         [#aec_headers{value = DBHeader}] -> {value, aec_headers:from_db_header(DBHeader)};
         [] -> none
     end.
