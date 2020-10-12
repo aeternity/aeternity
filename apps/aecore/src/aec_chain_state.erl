@@ -259,16 +259,18 @@ new_state_from_persistence() ->
           end,
     aec_db:ensure_transaction(Fun).
 
-persist_state(State) ->
-    case get_genesis_hash(State) of
-        undefined -> ok;
-        GenesisHash ->
-            aec_db:write_genesis_hash(GenesisHash),
-            case get_top_block_hash(State) of
-                undefined -> ok;
-                TopBlockHash ->
-                    aec_db:write_top_block_hash(TopBlockHash)
-            end
+persist_state(OldState, NewState) ->
+    case {get_genesis_hash(OldState), get_genesis_hash(NewState)} of
+        {_, undefined} -> ok;
+        {GH, GH} -> ok;
+        {_, GenesisHash} ->
+            aec_db:write_genesis_hash(GenesisHash)
+    end,
+    case {get_top_block_hash(OldState), get_top_block_hash(NewState)} of
+        {_, undefined} -> ok;
+        {TH, TH} -> ok;
+        {_, TopBlockHash} ->
+            aec_db:write_top_block_hash(TopBlockHash)
     end.
 
 -spec internal_error(_) -> no_return().
@@ -501,7 +503,10 @@ internal_insert(Node, Block, Origin) ->
                 case InsertCtx of
                     {error, _} = Err -> Err;
                     _ ->
-                        aec_db:ensure_transaction(Fun)
+                        Res = aec_db:ensure_transaction(Fun),
+                        %% Great! We inserted the block - time to update the cache
+                        update_recent_cache(Node, InsertCtx),
+                        Res
                 end
             catch
                 exit:{aborted, {throw, ?internal_error(What)}} ->
@@ -624,6 +629,20 @@ ctx_db_get_node(H) ->
         {ok, R} -> R
     end.
 
+update_recent_cache(#node{type = micro}, _InsertCtx) -> ok;
+update_recent_cache(#node{type = key, header = Header, hash = H}, #insertion_ctx{window_len = N, recent_key_headers = Recents}) ->
+    Entry =
+        case N < recent_cache_n() of
+            true ->
+                #recent_blocks{key = H, len = N+1, recent_key_headers = [Header|Recents]};
+            false ->
+                %% Evict the cache for the oldest entry to ensure an upper bound on the used memory
+                {ok, ToEvict} = aec_headers:hash_header(lists:last(Recents)),
+                ets:delete(?RECENT_CACHE, ToEvict),
+                #recent_blocks{key = H, len = N, recent_key_headers = [Header|lists:droplast(Recents)]}
+        end,
+    ets:insert(?RECENT_CACHE, Entry).
+
 internal_insert_transaction(Node, Block, Origin, Ctx) ->
     State1 = new_state_from_persistence(),
     assert_not_new_genesis(Node, State1),
@@ -646,23 +665,16 @@ internal_insert_transaction(Node, Block, Origin, Ctx) ->
     end,
     ok = db_put_node(Block, hash(Node)),
     {State3, Events} = update_state_tree(Node, State2, Ctx),
-    persist_state(State3),
+    persist_state(State1, State3),
     case maps:get(found_pof, State3) of
         no_fraud  -> {ok, Events};
         PoF       -> {pof, PoF, Events}
     end.
 
 assert_not_illegal_fork_or_orphan(Node, Origin, State) ->
-    assert_connection_to_chain(Node),
     case Origin of
         sync -> ok;
         undefined -> assert_height_delta(Node, State)
-    end.
-
-assert_connection_to_chain(Node) ->
-    case hash_is_connected_to_genesis(prev_hash(Node)) of
-        true  -> ok;
-        false -> internal_error({illegal_orphan, hash(Node)})
     end.
 
 assert_height_delta(Node, State) ->
