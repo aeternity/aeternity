@@ -238,9 +238,34 @@ reinit_chain_state() ->
     exit(whereis(aec_tx_pool), kill),
     aec_tx_pool:await_tx_pool(),
     ok.
+
+reinit_chain_impl(State1 = #state{ consensus = Cons }) ->
+    %% NOTE: ONLY FOR TEST
+    ok = reinit_chain_state(),
+    TopBlockHash = aec_chain:top_block_hash(),
+    TopKeyBlockHash = aec_chain:top_key_block_hash(),
+    State2 = State1#state{top_block_hash = TopBlockHash,
+                          top_key_block_hash = TopKeyBlockHash},
+    State =
+        case State2#state.mining_state of
+            stopped  ->
+                State2;
+            running ->
+                epoch_mining:info("Mining stopped"),
+                State3 = kill_all_workers(State2),
+                hard_reset_block_generator(),
+                epoch_mining:info("Mining started" ++ print_opts(State3)),
+                start_mining_(State3#state{mining_state = running,
+                                           micro_block_candidate = undefined,
+                                           key_block_candidates = undefined,
+                                           consensus = Cons#consensus{leader = false}})
+        end,
+    {reply, ok, State}.
 -else.
-reinit_chain_state() ->
-    error("DISABLED outside testing env").
+reinit_chain_impl(State) ->
+    epoch_mining:error("Received unknown request: ~p", [reinit_chain]),
+    Reply = ok,
+    {reply, Reply, State}.
 -endif.
 
 handle_call({add_synced_block, Block},_From, State) ->
@@ -292,28 +317,8 @@ handle_call(get_mining_workers, _From, State) ->
     {reply, worker_pids_by_tag(mining, State), State};
 handle_call(is_leader, _From, State = #state{ consensus = Cons }) ->
     {reply, Cons#consensus.leader, State};
-handle_call(reinit_chain, _From, State1 = #state{ consensus = Cons }) ->
-    %% NOTE: ONLY FOR TEST
-    ok = reinit_chain_state(),
-    TopBlockHash = aec_chain:top_block_hash(),
-    TopKeyBlockHash = aec_chain:top_key_block_hash(),
-    State2 = State1#state{top_block_hash = TopBlockHash,
-                          top_key_block_hash = TopKeyBlockHash},
-    State =
-        case State2#state.mining_state of
-            stopped  ->
-                State2;
-            running ->
-                epoch_mining:info("Mining stopped"),
-                State3 = kill_all_workers(State2),
-                hard_reset_block_generator(),
-                epoch_mining:info("Mining started" ++ print_opts(State3)),
-                start_mining_(State3#state{mining_state = running,
-                                           micro_block_candidate = undefined,
-                                           key_block_candidates = undefined,
-                                           consensus = Cons#consensus{leader = false}})
-        end,
-    {reply, ok, State};
+handle_call(reinit_chain, _From, State) ->
+    reinit_chain_impl(State);
 handle_call(Request, _From, State) ->
     epoch_mining:error("Received unknown request: ~p", [Request]),
     Reply = ok,
@@ -1157,6 +1162,7 @@ is_leader(NewTopBlock) ->
         {error, _}     -> false
     end.
 
+-ifdef(TEST).
 hard_reset_block_generator() ->
     %% Hard reset of aec_block_generator
     exit(whereis(aec_block_generator), kill),
@@ -1169,6 +1175,7 @@ flush_candidate() ->
     after 10 ->
             ok
     end.
+-endif.
 
 setup_loop(State = #state{ consensus = Cons }, RestartMining, IsLeader, Origin) ->
     State1 = State#state{ consensus = Cons#consensus{ leader = IsLeader } },

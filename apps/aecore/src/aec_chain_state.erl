@@ -1169,10 +1169,6 @@ db_get_header(Hash) when is_binary(Hash) ->
     {value, Header} =  aec_db:find_header(Hash),
     Header.
 
-dirty_db_get_header(Hash) when is_binary(Hash) ->
-    {value, Header} =  aec_db:dirty_find_header(Hash),
-    Header.
-
 db_find_key_nodes_at_height(Height) when is_integer(Height) ->
     case aec_db:find_headers_and_hash_at_height(Height) of
         [_|_] = Headers ->
