@@ -226,15 +226,22 @@ init_chain_state() ->
             ok
     end.
 
+-ifdef(TEST).
 reinit_chain_state() ->
     %% NOTE: ONLY FOR TEST
-    aec_db:ensure_transaction(fun() ->
-                                      aec_db:clear_db(),
-                                      init_chain_state()
-                              end),
+    %% Because we are using dirty reads to optimise the DB in production
+    %% let's clear the db in a separate db tx
+    %% this is ok as anyway this is only a test endpoint used in one place:
+    %% apps/aehttp/test/aehttp_integration_SUITE.erl
+    aec_db:ensure_transaction(fun aec_db:clear_db/0),
+    aec_db:ensure_transaction(fun init_chain_state/0),
     exit(whereis(aec_tx_pool), kill),
     aec_tx_pool:await_tx_pool(),
     ok.
+-else.
+reinit_chain_state() ->
+    error("DISABLED outside testing env").
+-endif.
 
 handle_call({add_synced_block, Block},_From, State) ->
     {Reply, State1} = handle_synced_block(Block, State),
