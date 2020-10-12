@@ -514,60 +514,109 @@ internal_insert(Node, Block, Origin) ->
     end.
 
 %% Builds the insertion context from cached data and the node to insert
-%% Please note that this is called in dirty context
+%% Please note that this is called in dirty context without a try
+%% clause - don't hard crash here.
+%% Performs basic checks to ensure the chain consistency
 build_insertion_ctx(Node, micro, undefined) ->
     % Microblocks only require the prev node and prev_key_node for validation
-    {PrevNode, PrevKeyNode} = build_insertion_ctx_prev(Node, []),
-    #insertion_ctx{ prev_key_node = PrevKeyNode
-                  , prev_node = PrevNode };
+    case build_insertion_ctx_prev(Node, []) of
+        {ok, PrevNode, PrevKeyNode} ->
+            #insertion_ctx{ prev_key_node = PrevKeyNode
+                          , prev_node = PrevNode };
+        {error, _} = Err ->
+            Err
+    end;
 build_insertion_ctx(Node, micro, #recent_blocks{recent_key_headers = RecentKeyHeaders}) ->
-    {PrevNode, PrevKeyNode} = build_insertion_ctx_prev(Node, RecentKeyHeaders),
-    #insertion_ctx{ prev_key_node = PrevKeyNode
-                  , prev_node = PrevNode };
+    case build_insertion_ctx_prev(Node, RecentKeyHeaders) of
+        {ok, PrevNode, PrevKeyNode} ->
+            #insertion_ctx{ prev_key_node = PrevKeyNode
+                          , prev_node = PrevNode };
+        {error, _} = Err ->
+            Err
+    end;
 build_insertion_ctx(Node, key, undefined) ->
     Height        = node_height(Node),
     GenesisHeight = aec_block_genesis:height(),
     N = min(Height-GenesisHeight, recent_cache_n()),
-    case get_n_key_headers_from(Node, N+1) of
-        {ok, H} ->
-            [_|RecentKeyHeaders] = lists:reverse(H),
-            {PrevNode, PrevKeyNode} = build_insertion_ctx_prev(Node, RecentKeyHeaders),
+    case build_insertion_ctx_prev(Node, []) of
+        {ok, undefined, undefined} ->
+            #insertion_ctx{ window_len = 0
+                          , recent_key_headers = [] };
+        {ok, PrevNode, PrevKeyNode} ->
+            case get_n_key_headers_from(PrevKeyNode, N) of
+                {ok, H} ->
+                    RecentKeyHeaders = lists:reverse(H),
+                    #insertion_ctx{ prev_key_node = PrevKeyNode
+                                  , prev_node = PrevNode
+                                  , window_len = N
+                                  , recent_key_headers = RecentKeyHeaders };
+                _ ->
+                    %% This may only happen if this is an orphan block
+                    {error, {illegal_orphan, hash(Node)}}
+            end;
+        {error, _} = Err ->
+            Err
+    end;
+build_insertion_ctx(Node, key, #recent_blocks{recent_key_headers = RecentKeyHeaders, len = N}) ->
+    case build_insertion_ctx_prev(Node, RecentKeyHeaders) of
+        {ok, PrevNode, PrevKeyNode} ->
             #insertion_ctx{ prev_key_node = PrevKeyNode
                           , prev_node = PrevNode
                           , window_len = N
                           , recent_key_headers = RecentKeyHeaders };
+        {error, _} = Err ->
+            Err
+    end.
+
+%% Retrieves the prev and prev_key node - performs basic consistency checks
+build_insertion_ctx_prev(Node, []) ->
+    build_insertion_ctx_prev(Node, [ctx_db_get_node(prev_key_hash(Node))]);
+build_insertion_ctx_prev(Node, [undefined]) ->
+    %% Ok we don't have the prev key hash in our db - this means that this MUST be a genesis
+    %% block - if this is not the case then reject this block
+    case node_height(Node) =:= aec_block_genesis:height() of
+        true ->
+            {ok, undefined, undefined};
         _ ->
-            %% This may only happen if this is an orphan block
             {error, {illegal_orphan, hash(Node)}}
     end;
-build_insertion_ctx(Node, key, #recent_blocks{recent_key_headers = RecentKeyHeaders, len = N}) ->
-    {PrevNode, PrevKeyNode} = build_insertion_ctx_prev(Node, RecentKeyHeaders),
-    #insertion_ctx{ prev_key_node = PrevKeyNode
-                  , prev_node = PrevNode
-                  , window_len = N
-                  , recent_key_headers = RecentKeyHeaders }.
-
-build_insertion_ctx_prev(Node, []) ->
-    PrevNode = ctx_db_get_node(prev_hash(Node)),
-    PrevKeyNode = case PrevNode of
-                       undefined -> ctx_db_get_node(prev_key_hash(Node));
-                       _ ->
-                           case node_type(PrevNode) of
-                               key -> PrevNode;
-                               _ -> ctx_db_get_node(prev_key_hash(Node))
-                           end
-                   end,
-    {PrevNode, PrevKeyNode};
+build_insertion_ctx_prev(Node, [#node{header = H}]) ->
+    build_insertion_ctx_prev(Node, [H]);
 build_insertion_ctx_prev(Node, [PrevKeyHeader|_]) ->
     PrevKeyHash = prev_key_hash(Node),
     PrevKeyNode = #node{hash = PrevKeyHash, header = PrevKeyHeader, type = key},
-    PrevNode = case prev_hash(Node) of
-                   PrevKeyHash ->
-                       PrevKeyNode;
-                   H ->
-                       ctx_db_get_node(H)
-               end,
-    {PrevNode, PrevKeyNode}.
+    case prev_hash(Node) of
+        PrevKeyHash ->
+            build_insertion_ctx_check_prev_height(Node, PrevKeyNode, PrevKeyNode);
+        H ->
+            case ctx_db_get_node(H) of
+                undefined ->
+                    %% Ok so the prev keyblock is present but not the prev block?
+                    %% this shouldn't be the case even for the genesis block
+                    {error, {illegal_orphan, hash(Node)}};
+                #node{type = key} ->
+                    {error, prev_key_hash_inconsistency};
+                PrevNode ->
+                    case prev_key_hash(PrevNode) =:= PrevKeyHash of
+                        true ->
+                            %% Now assert heights
+                            build_insertion_ctx_check_prev_height(Node, PrevNode, PrevKeyNode);
+                        false ->
+                            {error, prev_key_hash_inconsistency}
+                    end
+            end
+   end.
+
+build_insertion_ctx_check_prev_height(#node{type = key} = Node, PrevNode, PrevKeyNode) ->
+    case node_height(PrevNode) =:= (node_height(Node) - 1) of
+        true -> {ok, PrevNode, PrevKeyNode};
+        false -> {error, height_inconsistent_for_keyblock_with_previous_hash}
+    end;
+build_insertion_ctx_check_prev_height(#node{type = micro} = Node, PrevNode, PrevKeyNode) ->
+    case node_height(PrevNode) =:= node_height(Node) of
+        true -> {ok, PrevNode, PrevKeyNode};
+        false -> {error, height_inconsistent_for_microblock_with_previous_hash}
+    end.
 
 ctx_db_get_node(H) ->
     case dirty_db_find_node(H) of
@@ -584,8 +633,6 @@ internal_insert_transaction(Node, Block, Origin, Ctx) ->
             ok;
         false ->
             assert_not_illegal_fork_or_orphan(Node, Origin, State2),
-            assert_previous_height(Node, Ctx),
-            assert_previous_key_block_hash(Node, Ctx),
             case node_type(Node) of
                 key ->
                     assert_key_block_time(Node, Ctx),
@@ -625,37 +672,6 @@ assert_height_delta(Node, State) ->
     case Height >= TopHeight - gossip_allowed_height_from_top() of
         false -> internal_error({too_far_below_top, Height, TopHeight});
         true -> ok
-    end.
-
-%% NG-INFO: micro blocks inherit the height from the last key block
-assert_previous_height(Node, Ctx) ->
-    PrevNode = ctx_prev(Ctx),
-    case is_key_block(Node) of
-        true ->
-            case node_height(PrevNode) =:= (node_height(Node) - 1) of
-                true -> ok;
-                false -> internal_error(height_inconsistent_for_keyblock_with_previous_hash)
-            end;
-        false ->
-            case node_height(PrevNode) =:= node_height(Node) of
-                true -> ok;
-                false -> internal_error(height_inconsistent_for_microblock_with_previous_hash)
-            end
-    end.
-
-assert_previous_key_block_hash(Node, Ctx) ->
-    PrevNode = ctx_prev(Ctx),
-    case is_key_block(PrevNode) of
-        true ->
-            case hash(PrevNode) =:= prev_key_hash(Node) of
-                true -> ok;
-                false -> internal_error(prev_key_hash_inconsistency)
-            end;
-        false ->
-            case prev_key_hash(PrevNode) =:= prev_key_hash(Node) of
-                true -> ok;
-                false -> internal_error(prev_key_hash_inconsistency)
-            end
     end.
 
 %% To assert key block target calculation we need DeltaHeight headers counted
