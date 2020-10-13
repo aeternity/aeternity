@@ -277,57 +277,5 @@ persisted_database_write_error_test_() ->
                aec_test_utils:run_throughput_test(TestFun, Blocks, Opts),
 
                ok
-       end},
-       {"Throughput test inserting a chain with 50 blocks on ram and testing the state transitions",
-       fun() ->
-               %% Setup
-               TotalBlockCount = 50, %% To ensure overlap...
-               InsertTestFun = fun(B) -> {ok, _} = aec_chain_state:insert_block(B) end,
-               ReadTestFun = fun(B) ->
-                   {ok, H} = aec_blocks:hash_internal_representation(B),
-                   aec_db:get_header(H)
-                 end,
-               Blocks = aec_test_utils:gen_blocks_only_chain(TotalBlockCount),
-                Opts = #{db_mode => ram, test_fun => {aec_chain_state, insert_block},
-                        block_type => key},
-               GenesisHash = aec_db:get_genesis_hash(),
-               try
-                    %% I know it looks bad
-                    aec_db:ensure_transaction(fun() -> mnesia:write({aec_chain_state, genesis_hash, undefined}) end),
-                    aec_test_utils:run_throughput_test(InsertTestFun, Blocks, Opts),
-                    aec_test_utils:run_throughput_test(ReadTestFun, Blocks, Opts#{test_fun => {aec_db, get_header}})
-               after
-                   aec_db:ensure_transaction(fun() -> mnesia:write({aec_chain_state, genesis_hash, GenesisHash}) end)
-               end,
-               ok
-       end},
-       {"Throughput test inserting a chain with 50 blocks on disc and testing the state transitions",
-       fun() ->
-               %% Setup
-               TotalBlockCount = 50, %% To ensure overlap...
-               InsertTestFun = fun(B) -> {ok, _} = aec_chain_state:insert_block(B) end,
-               ReadTestFun = fun(B) ->
-                   {ok, H} = aec_blocks:hash_internal_representation(B),
-                   aec_db:get_header(H)
-                 end,
-               ForkIdTestFun = fun(B) ->
-                   {ok, H} = aec_blocks:hash_internal_representation(B),
-                   aec_db:find_block_fork_id(H)
-                               end,
-               Blocks = aec_test_utils:gen_blocks_only_chain(TotalBlockCount),
-                Opts = #{db_mode => disc, test_fun => {aec_chain_state, insert_block},
-                        block_type => key},
-               GenesisHash = aec_db:get_genesis_hash(),
-               try
-                    %% I know it looks bad
-                    aec_db:ensure_transaction(fun() -> mnesia:write({aec_chain_state, genesis_hash, undefined}) end),
-                    aec_test_utils:run_throughput_test(InsertTestFun, Blocks, Opts),
-                    aec_test_utils:run_throughput_test(ReadTestFun, Blocks, Opts#{test_fun => {aec_db, get_header}}),
-                    aec_test_utils:run_throughput_test(ForkIdTestFun, Blocks, Opts#{test_fun => {aec_db, find_block_fork_id}})
-               after
-                   aec_db:ensure_transaction(fun() -> mnesia:write({aec_chain_state, genesis_hash, GenesisHash}) end)
-               end,
-
-               ok
        end}
      ]}.
