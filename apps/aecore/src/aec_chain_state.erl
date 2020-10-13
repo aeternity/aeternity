@@ -306,7 +306,7 @@ set_top_block_hash(H, State) when is_binary(H) -> State#{top_block_hash => H}.
                        %% window of last N keyheaders newest first
                        %% All but the first header in this list is stripped
                        %% Invariant: {ok, key} = calulate_hash(hd(recent_key_headers))
-                       , recent_key_headers :: [aec_headers:header() | any()]
+                       , recent_key_headers :: [aec_headers:header() | term()]
                        %% current length of the header window
                        , len :: non_neg_integer()
                        }).
@@ -326,7 +326,7 @@ recent_cache_trim_header(Header) ->
         %% window of last N keyheaders newest first
         window_len = undefined :: non_neg_integer() | undefined,
         %% Recent key headers -> ALWAYS stripped
-        recent_key_headers = undefined :: [aec_headers:header()] | undefined,
+        recent_key_headers = undefined :: [term()] | undefined,
         prev_node = undefined :: #node{} | undefined,
         prev_key_node = undefined :: #node{} | undefined
     }).

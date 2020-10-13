@@ -91,7 +91,7 @@ recalculate_from_stripped(TimesAndTargets) ->
     NewTargetInt             = TemperedTST * K div (DesiredTimeBetweenBlocks * SumKDivTargets),
     min(?HIGHEST_TARGET_SCI, aeminer_pow:integer_to_scientific(NewTargetInt)).
 
--spec verify(aec_headers:header(), nonempty_list({binary(), non_neg_integer(), non_neg_integer()})) ->
+-spec verify(aec_headers:header(), nonempty_list(term())) ->
           ok | {error, {wrong_target, non_neg_integer(), non_neg_integer()}}.
 verify(Top, TimesAndTargets) ->
     HeaderTarget = aec_headers:target(Top),
