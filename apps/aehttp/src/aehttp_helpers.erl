@@ -663,7 +663,8 @@ tx_event_result({EventKey, EventVal} = E, Acc) ->
 
 serialize_event({internal_call_tx, Key}, #{ type    := Type
 					  , tx_hash := TxHash
-					  , info    := Tx }) ->
+					  , info    := Tx } = Evt) ->
+    lager:debug("internal_call_tx (~p), Evt = ~p", [Key, Evt]),
     {CB, TxI} = aetx:specialize_callback(Tx),
     TxS = CB:for_client(TxI),
     #{ kind    => internal_call_tx
