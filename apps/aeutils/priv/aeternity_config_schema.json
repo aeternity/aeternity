@@ -528,9 +528,13 @@
                         "type":"object",
                         "description": "Tracks are configuration entries for attached blockchains (parent chains)",
                         "properties": {
+                            "name":{
+                                "description": "The name of synchronized parent chain view within system",
+                                "type" : "string"
+                            },
                             "connector": {
                                 "properties": {
-                                    "id": {
+                                    "module": {
                                         "description": "Parent chain driver",
                                         "type": "string"
                                     },
@@ -551,8 +555,9 @@
                         "minItems": 1,
                         "default" : [
                             {
+                                "name":"aeternity",
                                 "connector": {
-                                    "id":"aehc_aeternity_connector",
+                                    "module":"aehc_aeternity_connector",
                                     "args": {
                                         "host":"localhost",
                                         "port":8332,
