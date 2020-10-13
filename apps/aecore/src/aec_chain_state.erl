@@ -304,6 +304,8 @@ set_top_block_hash(H, State) when is_binary(H) -> State#{top_block_hash => H}.
 -define(RECENT_CACHE, aec_chain_state_cache).
 -record(recent_blocks, { key :: binary()
                        %% window of last N keyheaders newest first
+                       %% All but the first header in this list is stripped
+                       %% Invariant: {ok, key} = calulate_hash(hd(recent_key_headers))
                        , recent_key_headers :: [aec_headers:header()]
                        %% current length of the header window
                        , len :: non_neg_integer()
@@ -312,10 +314,29 @@ set_top_block_hash(H, State) when is_binary(H) -> State#{top_block_hash => H}.
 recent_cache_n() ->
     max(aec_governance:key_blocks_to_check_difficulty_count() + 1, aec_governance:median_timestamp_key_blocks()).
 
+%% Slims down the given key header for caching
+%% In case of BitcoinNG we should only care about the time, height and difficulty
+%% What get's cached depends on the currently active consensus engine
+recent_cache_trim_header(Header) ->
+    aec_headers:new_key_header(
+        aec_headers:height(Header),
+        <<>>,
+        <<>>,
+        <<>>,
+        <<>>,
+        <<>>,
+        aec_headers:target(Header),
+        no_value,
+        0,
+        aec_headers:time_in_msecs(Header),
+        default,
+        -1).
+
 %% Insertion context - cached data used during block insertion
 -record(insertion_ctx, {
         %% window of last N keyheaders newest first
         window_len = undefined :: non_neg_integer() | undefined,
+        %% Recent key headers -> ALWAYS stripped
         recent_key_headers = undefined :: [aec_headers:header()] | undefined,
         prev_node = undefined :: #node{} | undefined,
         prev_key_node = undefined :: #node{} | undefined
@@ -549,8 +570,8 @@ build_insertion_ctx(Node, key, undefined) ->
                           , recent_key_headers = [] };
         {ok, PrevNode, PrevKeyNode} ->
             case get_n_key_headers_from(PrevKeyNode, N) of
-                {ok, H} ->
-                    RecentKeyHeaders = lists:reverse(H),
+                {ok, Headers} ->
+                    RecentKeyHeaders = [recent_cache_trim_header(H) || H <- lists:reverse(Headers)],
                     #insertion_ctx{ prev_key_node = PrevKeyNode
                                   , prev_node = PrevNode
                                   , window_len = N
@@ -562,13 +583,13 @@ build_insertion_ctx(Node, key, undefined) ->
         {error, _} = Err ->
             Err
     end;
-build_insertion_ctx(Node, key, #recent_blocks{recent_key_headers = RecentKeyHeaders, len = N}) ->
-    case build_insertion_ctx_prev(Node, RecentKeyHeaders) of
+build_insertion_ctx(Node, key, #recent_blocks{recent_key_headers = [H|T], len = N}) ->
+    case build_insertion_ctx_prev(Node, [H]) of
         {ok, PrevNode, PrevKeyNode} ->
             #insertion_ctx{ prev_key_node = PrevKeyNode
                           , prev_node = PrevNode
                           , window_len = N
-                          , recent_key_headers = RecentKeyHeaders };
+                          , recent_key_headers = [recent_cache_trim_header(H)|T] };
         {error, _} = Err ->
             Err
     end.
