@@ -306,7 +306,7 @@ set_top_block_hash(H, State) when is_binary(H) -> State#{top_block_hash => H}.
                        %% window of last N keyheaders newest first
                        %% All but the first header in this list is stripped
                        %% Invariant: {ok, key} = calulate_hash(hd(recent_key_headers))
-                       , recent_key_headers :: [aec_headers:header()]
+                       , recent_key_headers :: [aec_headers:header() | any()]
                        %% current length of the header window
                        , len :: non_neg_integer()
                        }).
@@ -318,19 +318,8 @@ recent_cache_n() ->
 %% In case of BitcoinNG we should only care about the time, height and difficulty
 %% What get's cached depends on the currently active consensus engine
 recent_cache_trim_header(Header) ->
-    aec_headers:new_key_header(
-        aec_headers:height(Header),
-        <<>>,
-        <<>>,
-        <<>>,
-        <<>>,
-        <<>>,
-        aec_headers:target(Header),
-        no_value,
-        0,
-        aec_headers:time_in_msecs(Header),
-        default,
-        -1).
+    {ok, Hash} = aec_headers:hash_header(Header),
+    {Hash, aec_headers:target(Header), aec_headers:time_in_msecs(Header)}.
 
 %% Insertion context - cached data used during block insertion
 -record(insertion_ctx, {
@@ -552,8 +541,8 @@ build_insertion_ctx(Node, micro, undefined) ->
         {error, _} = Err ->
             Err
     end;
-build_insertion_ctx(Node, micro, #recent_blocks{recent_key_headers = RecentKeyHeaders}) ->
-    case build_insertion_ctx_prev(Node, RecentKeyHeaders) of
+build_insertion_ctx(Node, micro, #recent_blocks{recent_key_headers = [H|_]}) ->
+    case build_insertion_ctx_prev(Node, [H]) of
         {ok, PrevNode, PrevKeyNode} ->
             #insertion_ctx{ prev_key_node = PrevKeyNode
                           , prev_node = PrevNode };
@@ -608,7 +597,7 @@ build_insertion_ctx_prev(Node, [undefined]) ->
     end;
 build_insertion_ctx_prev(Node, [#node{header = H}]) ->
     build_insertion_ctx_prev(Node, [H]);
-build_insertion_ctx_prev(Node, [PrevKeyHeader|_]) ->
+build_insertion_ctx_prev(Node, [PrevKeyHeader]) ->
     PrevKeyHash = prev_key_hash(Node),
     PrevKeyNode = #node{hash = PrevKeyHash, header = PrevKeyHeader, type = key},
     case prev_hash(Node) of
@@ -658,7 +647,7 @@ update_recent_cache(#node{type = key, header = Header, hash = H}, #insertion_ctx
                 #recent_blocks{key = H, len = N+1, recent_key_headers = [Header|Recents]};
             false ->
                 %% Evict the cache for the oldest entry to ensure an upper bound on the used memory
-                {ok, ToEvict} = aec_headers:hash_header(lists:last(Recents)),
+                {ToEvict, _, _} = lists:last(Recents),
                 ets:delete(?RECENT_CACHE, ToEvict),
                 #recent_blocks{key = H, len = N, recent_key_headers = [Header|lists:droplast(Recents)]}
         end,
@@ -769,7 +758,7 @@ median_timestamp(Node, Ctx) ->
             {ok, aec_block_genesis:time_in_msecs()};
         false ->
             Headers = ctx_get_n_key_headers(Ctx, TimeStampKeyBlocks),
-            Times = [aec_headers:time_in_msecs(H) || H <- Headers],
+            Times = [T || {_, _, T} <- Headers],
             {ok, median(Times)}
     end.
 
