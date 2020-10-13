@@ -6,6 +6,10 @@
 
 -export([commitment/2, parent_block/4]).
 -export([publish_block/2]).
+-export([module/1]).
+-export([args/1]).
+
+-export([accept/1]).
 
 -type connector() :: atom().
 
@@ -73,10 +77,63 @@ get_block_by_hash(Con, Hash) ->
     end.
 
 %%%===================================================================
+%%%  Connector's management
+%%%===================================================================
+-spec accept(map()) -> ok | {error, {term(), term()}}.
+accept(Conf) ->
+    Criteria = [fun accept_top_block/1, fun accept_block_by_hash/1, fun accept_send_tx/1],
+    try
+        [Fun(Conf) || Fun <- Criteria],
+        ok
+    catch E:R ->
+        {error, {E, R}}
+    end.
+
+accept_top_block(Conf) ->
+    %% Ability to request the current top block;
+    Module = module(Conf),
+    {ok, TopBlock} = get_top_block(Module),
+    Hash = aehc_parent_block:hash_block(TopBlock),
+    Height = aehc_parent_block:height_block(TopBlock),
+    Info = "Accept get_top_block procedure has passed (connector: ~p, hash: ~p, height: ~p)",
+    lager:info(Info, [Module, Hash, Height]).
+
+accept_block_by_hash(Conf) ->
+    %% Ability to request genesis block;
+    Module = module(Conf),
+    Genesis = maps:get(<<"genesis_hash">>, Conf),
+    {ok, Block} = get_block_by_hash(Module, Genesis),
+    Hash = aehc_parent_block:hash_block(Block),
+    Height = aehc_parent_block:height_block(Block),
+    Info = "Accept get_block_by_hash procedure has passed (connector: ~p, hash: ~p, height: ~p)",
+    lager:info(Info, [Module, Hash, Height]).
+
+accept_send_tx(Conf) ->
+    %% Ability to execute commitment call;
+    Module = module(Conf),
+    Conf = aeu_env:user_config([<<"hyperchains">>, <<"delegate">>]),
+    Conf == undefined orelse
+        begin
+            {ok, Delegate} = aec_keys:pubkey(),
+            KeyblockHash = aec_chain:top_key_block_hash(),
+            PoGF = aehc_pogf:hash(no_pogf),
+            send_tx(Module, Delegate, KeyblockHash, PoGF),
+            Info = "Accept send_tx procedure has passed (connector: ~p, delegate: ~p, hash: ~p, pogf: ~p)",
+            lager:info(Info, [Module, Delegate, KeyblockHash, PoGF])
+        end.
+
+%%%===================================================================
 %%%  Parent chain events
 %%%===================================================================
 
--spec publish_block(connector(), parent_block()) -> ok.
-publish_block(Connector, Block) ->
-    aehc_parent_mng:publish_block(Connector, Block).
+-spec publish_block(term(), parent_block()) -> ok.
+publish_block(View, Block) ->
+    aehc_parent_mng:publish_block(View, Block).
 
+module(Conf) ->
+    ConConf = maps:get(<<"connector">>, Conf),
+    binary_to_existing_atom(maps:get(<<"module">>, ConConf), utf8).
+
+args(Conf) ->
+    ConConf = maps:get(<<"connector">>, Conf),
+    maps:get(<<"args">>, ConConf).
