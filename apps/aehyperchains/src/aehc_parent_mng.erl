@@ -40,12 +40,6 @@
 start_link() ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
 
-get_commitment(Hash) ->
-    gen_statem:call(?SERVER(View), {get_commitment, Hash}).
-
-get_candidates(View, Height, Hash) ->
-    gen_statem:call(?SERVER(View), {get_candidates, Height, Hash}).
-
 %% This event issued each time by connector when the new block is generated;
 -spec publish_block(term(), aehc_parent_block:parent_block()) -> ok.
 publish_block(View, Block) ->
@@ -56,15 +50,16 @@ publish_block(View, Block) ->
 %%%  gen_server behaviour
 %%%===================================================================
 
--record(state, { master :: term() }).
+-record(state, { master :: term(), views :: list() }).
 init([]) ->
     process_flag(trap_exit, true),
     %% Read configuration;
     {ok, Config} = tracks_config(),
-    [Master|_] = Config,
+    Views = [name(Track)|| Track <- Config],
+    [Master|_] = Views,
     %% Run parent views;
     [aehc_sup:start_view(name(Conf), Conf, note(Conf)) || Conf <- Config],
-    {ok, #state{ master = name(Master) }}.
+    {ok, #state{ master = Master, views = Views }}.
 
 handle_call(_Request, _From, State) ->
     {reply, ignored, State}.
