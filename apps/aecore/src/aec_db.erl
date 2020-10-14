@@ -37,6 +37,7 @@
          find_block_tx_hashes/1,
          find_discovered_pof/1,
          find_header/1,
+         dirty_find_header/1,
          find_headers_at_height/1,
          find_headers_and_hash_at_height/1,
          find_key_block/1,
@@ -412,6 +413,13 @@ find_header(Hash) ->
         [] -> none
     end.
 
+-spec dirty_find_header(binary()) -> 'none' | {'value', aec_headers:header()}.
+dirty_find_header(Hash) ->
+    case mnesia:dirty_read(aec_headers, Hash) of
+        [#aec_headers{value = DBHeader}] -> {value, aec_headers:from_db_header(DBHeader)};
+        [] -> none
+    end.
+
 -spec find_headers_at_height(pos_integer()) -> [aec_headers:header()].
 find_headers_at_height(Height) when is_integer(Height), Height >= 0 ->
     ?t([aec_headers:from_db_header(H) || #aec_headers{value = H}
@@ -555,49 +563,49 @@ find_block_state_and_data(Hash) ->
     end.
 
 find_oracles_node(Hash) ->
-    case ?t(mnesia:read(aec_oracle_state, Hash)) of
+    case mnesia:dirty_read(aec_oracle_state, Hash) of
         [#aec_oracle_state{value = Node}] -> {value, Node};
         [] -> none
     end.
 
 find_oracles_cache_node(Hash) ->
-    case ?t(mnesia:read(aec_oracle_cache, Hash)) of
+    case mnesia:dirty_read(aec_oracle_cache, Hash) of
         [#aec_oracle_cache{value = Node}] -> {value, Node};
         [] -> none
     end.
 
 find_calls_node(Hash) ->
-    case ?t(mnesia:read(aec_call_state, Hash)) of
+    case mnesia:dirty_read(aec_call_state, Hash) of
         [#aec_call_state{value = Node}] -> {value, Node};
         [] -> none
     end.
 
 find_channels_node(Hash) ->
-    case ?t(mnesia:read(aec_channel_state, Hash)) of
+    case mnesia:dirty_read(aec_channel_state, Hash) of
         [#aec_channel_state{value = Node}] -> {value, Node};
         [] -> none
     end.
 
 find_contracts_node(Hash) ->
-    case ?t(mnesia:read(aec_contract_state, Hash)) of
+    case mnesia:dirty_read(aec_contract_state, Hash) of
         [#aec_contract_state{value = Node}] -> {value, Node};
         [] -> none
     end.
 
 find_ns_node(Hash) ->
-    case ?t(mnesia:read(aec_name_service_state, Hash)) of
+    case mnesia:dirty_read(aec_name_service_state, Hash) of
         [#aec_name_service_state{value = Node}] -> {value, Node};
         [] -> none
     end.
 
 find_ns_cache_node(Hash) ->
-    case ?t(mnesia:read(aec_name_service_cache, Hash)) of
+    case mnesia:dirty_read(aec_name_service_cache, Hash) of
         [#aec_name_service_cache{value = Node}] -> {value, Node};
         [] -> none
     end.
 
 find_accounts_node(Hash) ->
-    case ?t(mnesia:read(aec_account_state, Hash)) of
+    case mnesia:dirty_read(aec_account_state, Hash) of
         [#aec_account_state{value = Node}] -> {value, Node};
         [] -> none
     end.

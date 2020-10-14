@@ -79,11 +79,23 @@ recalculate(PrevHeaders0) ->
     NewTargetInt             = TemperedTST * K div (DesiredTimeBetweenBlocks * SumKDivTargets),
     min(?HIGHEST_TARGET_SCI, aeminer_pow:integer_to_scientific(NewTargetInt)).
 
--spec verify(aec_headers:header(), nonempty_list(aec_headers:header())) ->
+recalculate_from_stripped(TimesAndTargets) ->
+    N                        = aec_governance:key_blocks_to_check_difficulty_count(),
+    N                        = length(TimesAndTargets) - 1, %% Sanity check.
+    K                        = aeminer_pow:scientific_to_integer(?HIGHEST_TARGET_SCI) * (1 bsl 32),
+    SumKDivTargets           = lists:sum([ K div aeminer_pow:scientific_to_integer(Target)
+                                           || {_, Target, _} <- tl(TimesAndTargets) ]),
+    DesiredTimeBetweenBlocks = aec_governance:expected_block_mine_rate(),
+    TotalSolveTime           = total_solve_time_from_stripped(TimesAndTargets),
+    TemperedTST              = (3 * N * DesiredTimeBetweenBlocks) div 4 + (2523 * TotalSolveTime) div 10000,
+    NewTargetInt             = TemperedTST * K div (DesiredTimeBetweenBlocks * SumKDivTargets),
+    min(?HIGHEST_TARGET_SCI, aeminer_pow:integer_to_scientific(NewTargetInt)).
+
+-spec verify(aec_headers:header(), nonempty_list(term())) ->
           ok | {error, {wrong_target, non_neg_integer(), non_neg_integer()}}.
-verify(Top, PrevHeaders) ->
+verify(Top, TimesAndTargets) ->
     HeaderTarget = aec_headers:target(Top),
-    ExpectedTarget = recalculate(PrevHeaders),
+    ExpectedTarget = recalculate_from_stripped(TimesAndTargets),
     case HeaderTarget == ExpectedTarget of
         true ->
             ok;
@@ -109,3 +121,18 @@ total_solve_time([Hdr2 | [Hdr1 | _] = Hdrs], MinMax = {Min, Max}, Acc) ->
         end,
     total_solve_time(Hdrs, MinMax, Acc + SolveTime).
 
+-spec total_solve_time_from_stripped([aec_headers:header()]) -> integer().
+total_solve_time_from_stripped(TimesAndTargets) ->
+    Min = -aec_governance:accepted_future_block_time_shift(),
+    Max = 6 * aec_governance:expected_block_mine_rate(),
+    total_solve_time_from_stripped(TimesAndTargets, {Min, Max}, 0).
+
+total_solve_time_from_stripped([_], _MinMax, Acc) -> Acc;
+total_solve_time_from_stripped([{_, _, T2} | [{_, _, T1} | _] = TimesAndTargets], MinMax = {Min, Max}, Acc) ->
+    SolveTime0 = T1 - T2,
+    SolveTime =
+        if SolveTime0 < Min -> Min;
+           SolveTime0 > Max -> Max;
+           true             -> SolveTime0
+        end,
+    total_solve_time_from_stripped(TimesAndTargets, MinMax, Acc + SolveTime).

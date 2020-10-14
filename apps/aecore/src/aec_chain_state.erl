@@ -75,6 +75,9 @@
 
 -module(aec_chain_state).
 
+%% Let's not add another entry to the supervision tree
+-on_load(setup_etc_cache/0).
+
 -export([ calculate_state_for_new_keyblock/4
         , find_common_ancestor/2
         , get_key_block_hash_at_height/1
@@ -256,16 +259,18 @@ new_state_from_persistence() ->
           end,
     aec_db:ensure_transaction(Fun).
 
-persist_state(State) ->
-    case get_genesis_hash(State) of
-        undefined -> ok;
-        GenesisHash ->
-            aec_db:write_genesis_hash(GenesisHash),
-            case get_top_block_hash(State) of
-                undefined -> ok;
-                TopBlockHash ->
-                    aec_db:write_top_block_hash(TopBlockHash)
-            end
+persist_state(OldState, NewState) ->
+    case {get_genesis_hash(OldState), get_genesis_hash(NewState)} of
+        {_, undefined} -> ok;
+        {GH, GH} -> ok;
+        {_, GenesisHash} ->
+            aec_db:write_genesis_hash(GenesisHash)
+    end,
+    case {get_top_block_hash(OldState), get_top_block_hash(NewState)} of
+        {_, undefined} -> ok;
+        {TH, TH} -> ok;
+        {_, TopBlockHash} ->
+            aec_db:write_top_block_hash(TopBlockHash)
     end.
 
 -spec internal_error(_) -> no_return().
@@ -286,6 +291,55 @@ set_top_block_hash(H, State) when is_binary(H) -> State#{top_block_hash => H}.
               , hash   :: binary()
               , type   :: block_type()
               }).
+
+%% Cache for block insertion
+%% For performance reasons an valid cache entry MUST be connected to genesis
+%% Ensuring this removes an additional read query to the db
+%% When the window reaches max capacity(as defined by the consensus engine)
+%% then the cache for the oldest block in the window gets evicted - this ensures that the
+%% amount of memory consumed by the ?RECENT_CACHE is bounded
+%% When the window size is N then we cache N^2 headers
+%% Orphaned key blocks will leak memory - fortunately leaking memory will require PoW
+%% TODO: periodically remove orphans from ram
+-define(RECENT_CACHE, aec_chain_state_cache).
+-record(recent_blocks, { key :: binary()
+                       %% window of last N keyheaders newest first
+                       %% All but the first header in this list is stripped
+                       %% Invariant: {ok, key} = calulate_hash(hd(recent_key_headers))
+                       , recent_key_headers :: [aec_headers:header() | term()]
+                       %% current length of the header window
+                       , len :: non_neg_integer()
+                       }).
+
+recent_cache_n() ->
+    max(aec_governance:key_blocks_to_check_difficulty_count() + 1, aec_governance:median_timestamp_key_blocks()).
+
+%% Slims down the given key header for caching
+%% In case of BitcoinNG we should only care about the time, height and difficulty
+%% What get's cached depends on the currently active consensus engine
+recent_cache_trim_header(Header) ->
+    {ok, Hash} = aec_headers:hash_header(Header),
+    {Hash, aec_headers:target(Header), aec_headers:time_in_msecs(Header)}.
+
+%% Insertion context - cached data used during block insertion
+-record(insertion_ctx, {
+        %% window of last N keyheaders newest first
+        window_len = undefined :: non_neg_integer() | undefined,
+        %% Recent key headers -> ALWAYS stripped
+        recent_key_headers = undefined :: [term()] | undefined,
+        prev_node = undefined :: #node{} | undefined,
+        prev_key_node = undefined :: #node{} | undefined
+    }).
+
+%% Should hard crash when not enough headers are present
+ctx_get_n_key_headers(#insertion_ctx{window_len = L, recent_key_headers = Headers}, N) when L >= N ->
+    ctx_get_n_key_headers(Headers, N, []).
+
+ctx_get_n_key_headers(_, 0, Acc) -> Acc;
+ctx_get_n_key_headers([H|T], N, Acc) -> ctx_get_n_key_headers(T, N-1, [H|Acc]).
+
+ctx_prev(#insertion_ctx{prev_node = PrevNode}) -> PrevNode.
+ctx_prev_key(#insertion_ctx{prev_key_node = PrevKeyNode}) -> PrevKeyNode.
 
 hash(#node{hash = Hash}) -> Hash.
 
@@ -440,17 +494,30 @@ hash_is_in_main_chain(Hash, TopHash) ->
 %%%-------------------------------------------------------------------
 
 internal_insert(Node, Block, Origin) ->
-    case db_find_node(hash(Node)) of
+    case dirty_db_find_node(hash(Node)) of
         error ->
+            %% Build the insertion context using dirty reads to the DB and possibly
+            %% The ets cache, the insertion context depends on the type of block being inserted
+            InsertCtx = case ets:lookup(?RECENT_CACHE, prev_key_hash(Node)) of
+                            [C] -> build_insertion_ctx(Node, node_type(Node), C);
+                            [] -> build_insertion_ctx(Node, node_type(Node), undefined)
+                        end,
             %% To preserve the invariants of the chain,
             %% Only add the block if we can do the whole
             %% transitive operation (i.e., calculate all the state
             %% trees, and update the pointers)
             Fun = fun() ->
-                          internal_insert_transaction(Node, Block, Origin)
+                          internal_insert_transaction(Node, Block, Origin, InsertCtx)
                   end,
             try
-                aec_db:ensure_transaction(Fun)
+                case InsertCtx of
+                    {error, _} = Err -> Err;
+                    _ ->
+                        Res = aec_db:ensure_transaction(Fun),
+                        %% Great! We inserted the block - time to update the cache
+                        update_recent_cache(Node, InsertCtx),
+                        Res
+                end
             catch
                 exit:{aborted, {throw, ?internal_error(What)}} ->
                     {error, What}
@@ -461,7 +528,132 @@ internal_insert(Node, Block, Origin) ->
             {error, {same_key_different_content, Node, Old}}
     end.
 
-internal_insert_transaction(Node, Block, Origin) ->
+%% Builds the insertion context from cached data and the node to insert
+%% Please note that this is called in dirty context without a try
+%% clause - don't hard crash here.
+%% Performs basic checks to ensure the chain consistency
+build_insertion_ctx(Node, micro, undefined) ->
+    % Microblocks only require the prev node and prev_key_node for validation
+    case build_insertion_ctx_prev(Node, []) of
+        {ok, PrevNode, PrevKeyNode} ->
+            #insertion_ctx{ prev_key_node = PrevKeyNode
+                          , prev_node = PrevNode };
+        {error, _} = Err ->
+            Err
+    end;
+build_insertion_ctx(Node, micro, #recent_blocks{recent_key_headers = [H|_]}) ->
+    case build_insertion_ctx_prev(Node, [H]) of
+        {ok, PrevNode, PrevKeyNode} ->
+            #insertion_ctx{ prev_key_node = PrevKeyNode
+                          , prev_node = PrevNode };
+        {error, _} = Err ->
+            Err
+    end;
+build_insertion_ctx(Node, key, undefined) ->
+    Height        = node_height(Node),
+    GenesisHeight = aec_block_genesis:height(),
+    N = min(Height-GenesisHeight, recent_cache_n()),
+    case build_insertion_ctx_prev(Node, []) of
+        {ok, undefined, undefined} ->
+            #insertion_ctx{ window_len = 0
+                          , recent_key_headers = [] };
+        {ok, PrevNode, PrevKeyNode} ->
+            case get_n_key_headers_from(PrevKeyNode, N) of
+                {ok, Headers} ->
+                    RecentKeyHeaders = [recent_cache_trim_header(H) || H <- lists:reverse(Headers)],
+                    #insertion_ctx{ prev_key_node = PrevKeyNode
+                                  , prev_node = PrevNode
+                                  , window_len = N
+                                  , recent_key_headers = RecentKeyHeaders };
+                _ ->
+                    %% This may only happen if this is an orphan block
+                    {error, {illegal_orphan, hash(Node)}}
+            end;
+        {error, _} = Err ->
+            Err
+    end;
+build_insertion_ctx(Node, key, #recent_blocks{recent_key_headers = [H|T], len = N}) ->
+    case build_insertion_ctx_prev(Node, [H]) of
+        {ok, PrevNode, PrevKeyNode} ->
+            #insertion_ctx{ prev_key_node = PrevKeyNode
+                          , prev_node = PrevNode
+                          , window_len = N
+                          , recent_key_headers = [recent_cache_trim_header(H)|T] };
+        {error, _} = Err ->
+            Err
+    end.
+
+%% Retrieves the prev and prev_key node - performs basic consistency checks
+build_insertion_ctx_prev(Node, []) ->
+    build_insertion_ctx_prev(Node, [ctx_db_get_node(prev_key_hash(Node))]);
+build_insertion_ctx_prev(Node, [undefined]) ->
+    %% Ok we don't have the prev key hash in our db - this means that this MUST be a genesis
+    %% block - if this is not the case then reject this block
+    case node_height(Node) =:= aec_block_genesis:height() of
+        true ->
+            {ok, undefined, undefined};
+        _ ->
+            {error, {illegal_orphan, hash(Node)}}
+    end;
+build_insertion_ctx_prev(Node, [#node{header = H}]) ->
+    build_insertion_ctx_prev(Node, [H]);
+build_insertion_ctx_prev(Node, [PrevKeyHeader]) ->
+    PrevKeyHash = prev_key_hash(Node),
+    PrevKeyNode = #node{hash = PrevKeyHash, header = PrevKeyHeader, type = key},
+    case prev_hash(Node) of
+        PrevKeyHash ->
+            build_insertion_ctx_check_prev_height(Node, PrevKeyNode, PrevKeyNode);
+        H ->
+            case ctx_db_get_node(H) of
+                undefined ->
+                    %% Ok so the prev keyblock is present but not the prev block?
+                    %% this shouldn't be the case even for the genesis block
+                    {error, {illegal_orphan, hash(Node)}};
+                #node{type = key} ->
+                    {error, prev_key_hash_inconsistency};
+                PrevNode ->
+                    case prev_key_hash(PrevNode) =:= PrevKeyHash of
+                        true ->
+                            %% Now assert heights
+                            build_insertion_ctx_check_prev_height(Node, PrevNode, PrevKeyNode);
+                        false ->
+                            {error, prev_key_hash_inconsistency}
+                    end
+            end
+   end.
+
+build_insertion_ctx_check_prev_height(#node{type = key} = Node, PrevNode, PrevKeyNode) ->
+    case node_height(PrevNode) =:= (node_height(Node) - 1) of
+        true -> {ok, PrevNode, PrevKeyNode};
+        false -> {error, height_inconsistent_for_keyblock_with_previous_hash}
+    end;
+build_insertion_ctx_check_prev_height(#node{type = micro} = Node, PrevNode, PrevKeyNode) ->
+    case node_height(PrevNode) =:= node_height(Node) of
+        true -> {ok, PrevNode, PrevKeyNode};
+        false -> {error, height_inconsistent_for_microblock_with_previous_hash}
+    end.
+
+ctx_db_get_node(H) ->
+    case dirty_db_find_node(H) of
+        error -> undefined;
+        {ok, R} -> R
+    end.
+
+update_recent_cache(#node{type = micro}, _InsertCtx) -> ok;
+update_recent_cache(#node{type = key, header = Header, hash = H}, #insertion_ctx{window_len = N, recent_key_headers = Recents}) ->
+    Entry =
+        case N < recent_cache_n() of
+            true ->
+                #recent_blocks{key = H, len = N+1, recent_key_headers = [Header|Recents]};
+            false ->
+                %% Evict the cache for the oldest entry to ensure an upper bound on the used memory
+                {ToEvict, _, _} = lists:last(Recents),
+                ets:delete(?RECENT_CACHE, ToEvict),
+                #recent_blocks{key = H, len = N, recent_key_headers = [Header|lists:droplast(Recents)]}
+        end,
+    ets:insert(?RECENT_CACHE, Entry).
+
+internal_insert_transaction(Node, Block, Origin, Ctx) ->
     State1 = new_state_from_persistence(),
     assert_not_new_genesis(Node, State1),
     State2 = maybe_add_pof(maybe_add_genesis_hash(State1, Node), Block),
@@ -470,43 +662,29 @@ internal_insert_transaction(Node, Block, Origin) ->
             ok;
         false ->
             assert_not_illegal_fork_or_orphan(Node, Origin, State2),
-            PrevNode = db_get_node(prev_hash(Node)),
-            assert_previous_height(PrevNode, Node),
-            assert_previous_key_block_hash(PrevNode, Node),
             case node_type(Node) of
                 key ->
-                    KeyHeaders = assert_key_block_time_return_headers(Node),
-                    assert_key_block_target(Node, KeyHeaders),
+                    assert_key_block_time(Node, Ctx),
+                    assert_key_block_target(Node, Ctx),
                     maybe_put_signal_count(Block, hash(Node), aeu_env:get_env(aecore, fork, undefined));
                 micro ->
-                    assert_micro_block_time(PrevNode, Node),
-                    assert_micro_signature(PrevNode, Node),
-                    assert_micro_pof(PrevNode, Node, Block)
+                    assert_micro_block_time(Node, Ctx),
+                    assert_micro_signature(Node, Ctx),
+                    assert_micro_pof(Block, Ctx)
             end
     end,
     ok = db_put_node(Block, hash(Node)),
-    {State3, Events} = update_state_tree(Node, State2),
-    persist_state(State3),
+    {State3, Events} = update_state_tree(Node, State2, Ctx),
+    persist_state(State1, State3),
     case maps:get(found_pof, State3) of
         no_fraud  -> {ok, Events};
         PoF       -> {pof, PoF, Events}
     end.
 
 assert_not_illegal_fork_or_orphan(Node, Origin, State) ->
-    case node_is_genesis(Node, State) of
-        true -> ok;
-        false ->
-            assert_connection_to_chain(Node),
-            case Origin of
-                sync -> ok;
-                undefined -> assert_height_delta(Node, State)
-            end
-    end.
-
-assert_connection_to_chain(Node) ->
-    case hash_is_connected_to_genesis(prev_hash(Node)) of
-        true  -> ok;
-        false -> internal_error({illegal_orphan, hash(Node)})
+    case Origin of
+        sync -> ok;
+        undefined -> assert_height_delta(Node, State)
     end.
 
 assert_height_delta(Node, State) ->
@@ -518,81 +696,29 @@ assert_height_delta(Node, State) ->
         true -> ok
     end.
 
-%% NG-INFO: micro blocks inherit the height from the last key block
-assert_previous_height(PrevNode, Node) ->
-    case is_key_block(Node) of
-        true ->
-            case node_height(PrevNode) =:= (node_height(Node) - 1) of
-                true -> ok;
-                false -> internal_error(height_inconsistent_for_keyblock_with_previous_hash)
-            end;
-        false ->
-            case node_height(PrevNode) =:= node_height(Node) of
-                true -> ok;
-                false -> internal_error(height_inconsistent_for_microblock_with_previous_hash)
-            end
-    end.
-
-assert_previous_key_block_hash(PrevNode, Node) ->
-    case is_key_block(PrevNode) of
-        true ->
-            case hash(PrevNode) =:= prev_key_hash(Node) of
-                true -> ok;
-                false -> internal_error(prev_key_hash_inconsistency)
-            end;
-        false ->
-            case prev_key_hash(PrevNode) =:= prev_key_hash(Node) of
-                true -> ok;
-                false -> internal_error(prev_key_hash_inconsistency)
-            end
-    end.
-
 %% To assert key block target calculation we need DeltaHeight headers counted
 %% backwards from the node we want to assert.
-assert_key_block_target(Node, Headers) ->
-    case db_find_node(prev_hash(Node)) of
-        error -> ok;
-        {ok, PrevNode} ->
-            Delta         = aec_governance:key_blocks_to_check_difficulty_count() + 1,
-            Height        = node_height(Node),
-            GenesisHeight = aec_block_genesis:height(),
-            case Delta >= Height - GenesisHeight of
-                true ->
-                    %% We only need to verify that the target is equal to its predecessor.
-                    assert_target_equal_to_prev(Node, PrevNode);
-                false ->
-                    assert_calculated_target(Node, PrevNode, Delta, Headers)
-            end
-    end.
+assert_key_block_target(Node, Ctx) ->
+        Delta         = aec_governance:key_blocks_to_check_difficulty_count() + 1,
+        Height        = node_height(Node),
+        GenesisHeight = aec_block_genesis:height(),
+        case Delta >= Height - GenesisHeight of
+            true ->
+                %% We only need to verify that the target is equal to its predecessor.
+                assert_target_equal_to_prev(Node, Ctx);
+            false ->
+                assert_calculated_target(Node, Delta, Ctx)
+        end.
 
-assert_target_equal_to_prev(Node, PrevNode) ->
-    PrevKeyNode = case is_key_block(PrevNode) of
-                      true  ->
-                          PrevNode;
-                      false ->
-                          KeyHash = prev_key_hash(PrevNode),
-                          {ok, KeyNode} = db_find_node(KeyHash),
-                          KeyNode
-                  end,
+assert_target_equal_to_prev(Node, Ctx) ->
+    PrevKeyNode = ctx_prev_key(Ctx),
     case {node_target(Node), node_target(PrevKeyNode)} of
         {X, X} -> ok;
         {X, Y} -> internal_error({target_not_equal_to_parent, Node, X, Y})
     end.
 
-assert_calculated_target(Node, PrevNode, Delta, HeadersIn) ->
-    {ok, Headers} =
-        case length(HeadersIn) of
-            0 ->
-                get_n_key_headers_from(PrevNode, Delta);
-            N when N == Delta ->
-                {ok, HeadersIn};
-            N when N > Delta ->
-                {ok, lists:nthtail(N - Delta, HeadersIn)};
-            N when N < Delta ->
-                NextHash = aec_headers:prev_key_hash(hd(HeadersIn)),
-                NextNode = db_get_node(NextHash),
-                get_n_key_headers_from({ok, NextNode}, Delta - N, HeadersIn)
-        end,
+assert_calculated_target(Node, Delta, Ctx) ->
+    Headers = ctx_get_n_key_headers(Ctx, Delta),
     case aec_target:verify(node_header(Node), Headers) of
         ok -> ok;
         {error, {wrong_target, Actual, Expected}} ->
@@ -604,7 +730,7 @@ get_n_key_headers_from(Node, N) ->
         key   ->
             get_n_key_headers_from({ok, Node}, N, []);
         micro ->
-            get_n_key_headers_from(db_find_node(prev_key_hash(Node)), N, [])
+            get_n_key_headers_from(dirty_db_find_node(prev_key_hash(Node)), N, [])
     end.
 
 get_n_key_headers_from(_, 0, Acc) ->
@@ -612,36 +738,32 @@ get_n_key_headers_from(_, 0, Acc) ->
 get_n_key_headers_from({ok, Node}, N, Acc) ->
     %% Assert
     key = node_type(Node),
-    MaybePrevKeyNode = db_find_node(prev_key_hash(Node)),
+    MaybePrevKeyNode = dirty_db_find_node(prev_key_hash(Node)),
     get_n_key_headers_from(MaybePrevKeyNode, N-1, [node_header(Node) | Acc]);
 get_n_key_headers_from(error, _N, _Acc) ->
     error.
 
-assert_key_block_time_return_headers(Node) ->
+assert_key_block_time(Node, Ctx) ->
     Time = node_time(Node),
-    case median_timestamp_and_headers(Node) of
-        {ok, Median, Headers} when Time > Median -> Headers;
-        {ok,_Median,_Headers} -> internal_error(key_block_from_the_past)
+    case median_timestamp(Node, Ctx) of
+        {ok, Median} when Time > Median -> ok;
+        {ok,_Median} -> internal_error(key_block_from_the_past)
     end.
 
 %% Compute the median timestamp for last aec_governance:median_timestamp_key_blocks()
-median_timestamp_and_headers(Node) ->
+median_timestamp(Node, Ctx) ->
     TimeStampKeyBlocks = aec_governance:median_timestamp_key_blocks(),
     case node_height(Node) =< TimeStampKeyBlocks of
         true ->
-            {ok, aec_block_genesis:time_in_msecs(), []};
+            {ok, aec_block_genesis:time_in_msecs()};
         false ->
-            PrevKeyNode = db_get_node(prev_key_hash(Node)),
-            case get_n_key_headers_from(PrevKeyNode, TimeStampKeyBlocks) of
-                {ok, Headers} ->
-                    Times = [aec_headers:time_in_msecs(H) || H <- Headers],
-                    {ok, median(Times), Headers};
-                error ->
-                    error
-            end
+            Headers = ctx_get_n_key_headers(Ctx, TimeStampKeyBlocks),
+            Times = [T || {_, _, T} <- Headers],
+            {ok, median(Times)}
     end.
 
-assert_micro_block_time(PrevNode, Node) ->
+assert_micro_block_time(Node, Ctx) ->
+    PrevNode = ctx_prev(Ctx),
     case is_micro_block(Node) of
         true ->
             case is_micro_block(PrevNode) of
@@ -662,46 +784,31 @@ assert_micro_block_time(PrevNode, Node) ->
 time_diff_greater_than_minimal(Node, PrevNode) ->
     node_time(Node) >= node_time(PrevNode) + aec_governance:micro_block_cycle().
 
-assert_micro_signature(PrevNode, Node) ->
-    case is_micro_block(Node) of
-        true ->
-            {ok, KeyNode} =
-                case node_type(PrevNode) of
-                    key   -> {ok, PrevNode};
-                    micro -> db_find_node(prev_key_hash(Node))
-                end,
-            case aeu_sig:verify(node_header(Node), node_miner(KeyNode)) of
-                ok         -> ok;
-                {error, _} -> internal_error(signature_verification_failed)
-            end;
-        false ->
-            ok
+assert_micro_signature(Node, Ctx) ->
+    case aeu_sig:verify(node_header(Node), node_miner(ctx_prev_key(Ctx))) of
+        ok         -> ok;
+        {error, _} -> internal_error(signature_verification_failed)
     end.
 
-assert_micro_pof(PrevNode, Node, Block) ->
-    case is_micro_block(Node) of
-        false ->
+assert_micro_pof(Block, Ctx) ->
+    case aec_blocks:pof(Block) of
+        no_fraud ->
             ok;
-        true ->
-            case aec_blocks:pof(Block) of
-                no_fraud ->
+        Pof ->
+            FraudNode = get_fraud_node(Ctx),
+            case aec_pof:pubkey(Pof) =:= node_miner(FraudNode) of
+                true ->
                     ok;
-                Pof ->
-                    FraudNode = get_fraud_node(PrevNode, Node),
-                    case aec_pof:pubkey(Pof) =:= node_miner(FraudNode) of
-                        true ->
-                            ok;
-                        false ->
-                            internal_error(wrong_pubkey_in_pof)
-                    end
+                false ->
+                    internal_error(wrong_pubkey_in_pof)
             end
     end.
 
-get_fraud_node(PrevNode, Node) ->
+get_fraud_node(Ctx) ->
+    PrevNode = ctx_prev(Ctx),
     case node_type(PrevNode) of
         micro ->
-            PrevKey = db_get_node(prev_key_hash(Node)),
-            db_get_node(prev_key_hash(PrevKey));
+            ctx_prev_key(Ctx);
         key ->
             db_get_node(prev_key_hash(PrevNode))
     end.
@@ -712,10 +819,10 @@ get_fraud_node(PrevNode, Node) ->
                    , fraud
                    }).
 
-update_state_tree(Node, State) ->
+update_state_tree(Node, State, Ctx) ->
     {ok, Trees, ForkInfoIn} = get_state_trees_in(Node, State),
     {ForkInfo, MicSibHeaders} = maybe_set_new_fork_id(Node, ForkInfoIn, State),
-    State1 = update_found_pof(Node, MicSibHeaders, State),
+    State1 = update_found_pof(Node, MicSibHeaders, State, Ctx),
     {State2, NewTopDifficulty, Events} = update_state_tree(Node, Trees, ForkInfo, State1),
     OldTopHash = get_top_block_hash(State),
     handle_top_block_change(OldTopHash, NewTopDifficulty, Events, State2).
@@ -764,7 +871,7 @@ get_state_trees_in(Node, State) ->
                     %% For key blocks, reset:
                     %% 1. Fees, to accumulate new fees for generation
                     %% 2. Fraud, since a new generation starts fresh
-                    case node_type(db_get_node(PrevHash)) of
+                    case node_type(db_get_node(prev_hash(Node))) of
                         key   -> {ok, Trees, ForkInfo#fork_info{fees = 0,
                                                                 fraud = false}};
                         micro -> {ok, Trees, ForkInfo}
@@ -817,7 +924,7 @@ handle_top_block_change(OldTopHash, NewTopDifficulty, Events, State) ->
                     {ok, OldTopDifficulty} = db_find_difficulty(OldTopHash),
                     case OldTopDifficulty >= NewTopDifficulty of
                         true ->
-                            State1 =set_top_block_hash(OldTopHash, State), %% Reset
+                            State1 = set_top_block_hash(OldTopHash, State), %% Reset
                             {State1, Events};
                         false ->
                             State1 = update_main_chain(OldTopHash, NewTopHash,
@@ -1070,6 +1177,12 @@ db_find_node(Hash) when is_binary(Hash) ->
         none -> error
     end.
 
+dirty_db_find_node(Hash) when is_binary(Hash) ->
+    case aec_db:dirty_find_header(Hash) of
+        {value, Header} -> {ok, wrap_header(Header, Hash)};
+        none -> error
+    end.
+
 db_get_node(Hash) when is_binary(Hash) ->
     {ok, Node} = db_find_node(Hash),
     Node.
@@ -1186,17 +1299,16 @@ match_prev_at_height(Height, PrevHash, Hash) ->
                H =/= Hash,
                aec_headers:prev_hash(Header) =:= PrevHash].
 
-update_found_pof(Node, MicroSibHeaders, State) ->
-    State#{found_pof => maybe_pof(Node, MicroSibHeaders)}.
+update_found_pof(Node, MicroSibHeaders, State, Ctx) ->
+    State#{found_pof => maybe_pof(Node, MicroSibHeaders, Ctx)}.
 
-maybe_pof(_Node, []) ->
+maybe_pof(_Node, [], _Ctx) ->
     no_fraud;
-maybe_pof(Node, MicroSibHeaders) ->
+maybe_pof(Node, MicroSibHeaders, Ctx) ->
     case node_type(Node) of
         key -> no_fraud;
         micro ->
-            PrevKeyHash = prev_key_hash(Node),
-            Miner = node_miner(db_get_node(PrevKeyHash)),
+            Miner = node_miner(ctx_prev_key(Ctx)),
             [Header| _] = MicroSibHeaders,
             aec_pof:new(node_header(Node), Header, Miner)
     end.
@@ -1310,3 +1422,27 @@ fork_result(Count, #{signalling_block_count := SigCount}) when Count >= SigCount
     true;
 fork_result(_Count, _Fork) ->
     false.
+
+setup_etc_cache() ->
+    %% Lager might not be up so don't bother with logging
+    Self = self(),
+    Tab = ?RECENT_CACHE,
+    Keypos = #recent_blocks.key,
+    case ets:info(Tab, name) of
+        undefined ->
+            spawn(fun() ->
+                ets:new(Tab, [set, public, named_table, {keypos, Keypos}]),
+                Self ! cache_ready,
+                timer:sleep(infinity)
+            end),
+            receive
+                cache_ready ->
+                    ok
+            after
+                3000 ->
+                    exit(timeout)
+            end;
+        _ ->
+            ok
+    end,
+    ok.
