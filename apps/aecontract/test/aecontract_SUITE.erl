@@ -629,10 +629,17 @@ init_per_testcase_common(TC, Config) ->
                           iris    -> ?IRIS_PROTOCOL_VSN;
                           lima    -> ?LIMA_PROTOCOL_VSN
                       end,
+    AciDisabled = case os:getenv("SOPHIA_NO_ACI") of
+                  false ->
+                      ?config(aci_disabled, Config);
+                  _ ->
+                      true
+              end,
     put('$vm_version', VmVersion),
     put('$abi_version', ABIVersion),
     put('$sophia_version', SophiaVersion),
     put('$protocol_version', ProtocolVersion),
+    put('$aci_disabled', AciDisabled),
     case ?IS_AEVM_SOPHIA(VmVersion) of
         true ->
             Config;
