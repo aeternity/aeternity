@@ -550,16 +550,16 @@ do_dry_run() ->
                 lager:debug("tx_events = ~p", [Events]),
                 case aec_dry_run:dry_run(Top, As, Txs, [{tx_events, Events}]) of
                     {ok, Res} ->
-			{Results, EventRes} = R = dry_run_results(Res),
+                        {Results, EventRes} = R = dry_run_results(Res),
                         lager:debug("dry_run_results: ~p", [R]),
-			ResultsObj0 = #{ results => Results },
-			ResultsObj = case Events of
-					 true ->
-					     ResultsObj0#{ tx_events => EventRes };
-					 false ->
-					     ResultsObj0
-				     end,
-			{ok, {200, [], ResultsObj}};
+                        ResultsObj0 = #{ results => Results },
+                        ResultsObj = case Events of
+                                         true ->
+                                             ResultsObj0#{ tx_events => EventRes };
+                                         false ->
+                                             ResultsObj0
+                                     end,
+                        {ok, {200, [], ResultsObj}};
                     {error, Reason} -> dry_run_err(Reason)
                 end;
             {error, Reason} ->
@@ -589,11 +589,11 @@ prepare_dry_run_param(txs, #{ txs := Txs }) ->
     dry_run_txs_(Txs, []);
 prepare_dry_run_param(tx_events, State) ->
     case maps:get(tx_events, State, false) of
-	Events when is_boolean(Events) ->
-	    {ok, Events};
-	_Other ->
+        Events when is_boolean(Events) ->
+            {ok, Events};
+        _Other ->
             lager:debug("Unexpected: tx_events => ~p", [_Other]),
-	    {error, "Bad parameter, tx_events"}
+            {error, "Bad parameter, tx_events"}
     end;
 prepare_dry_run_param(Param, _State) ->
     {error, lists:concat(["Bad parameter ", Param])}.
@@ -653,17 +653,17 @@ dry_run_result(_Type, ok, Res) ->
 tx_event_result({EventKey, EventVal} = E, Acc) ->
     lager:debug("TxEvent ~p", [E]),
     case serialize_event(EventKey, EventVal) of
-	error ->
-	    lager:debug("Couldn't serialize ~p", [E]),
-	    Acc;
-	SerEvent ->
-	    lager:debug("SerEvent = ~p", [SerEvent]),
-	    [SerEvent | Acc]
+        error ->
+            lager:debug("Couldn't serialize ~p", [E]),
+            Acc;
+        SerEvent ->
+            lager:debug("SerEvent = ~p", [SerEvent]),
+            [SerEvent | Acc]
     end.
 
 serialize_event({internal_call_tx, Key}, #{ type    := Type
-					  , tx_hash := TxHash
-					  , info    := Tx } = Evt) ->
+                                          , tx_hash := TxHash
+                                          , info    := Tx } = Evt) ->
     lager:debug("internal_call_tx (~p), Evt = ~p", [Key, Evt]),
     {CB, TxI} = aetx:specialize_callback(Tx),
     TxS = CB:for_client(TxI),
@@ -673,11 +673,11 @@ serialize_event({internal_call_tx, Key}, #{ type    := Type
      , tx_hash => TxHash
      , info    => TxS };
 serialize_event({channel, ChId}, #{ type    := Type
-				  , tx_hash := TxHash } = I) ->
+                                  , tx_hash := TxHash } = I) ->
     E = #{ kind => channel
-	 , key  => ChId
-	 , type => Type
-	 , tx_hash => TxHash },
+         , key  => ChId
+         , type => Type
+         , tx_hash => TxHash },
     maps:merge(E, maps:with([info], I));
 serialize_event(_, _) ->
     error.

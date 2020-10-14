@@ -57,7 +57,7 @@
         , set_payer/2
         , set_signed_tx/2
         , tx_event/3
-	, tx_event/4
+        , tx_event/4
         , set_events/2
         , update_env/2
         ]).
