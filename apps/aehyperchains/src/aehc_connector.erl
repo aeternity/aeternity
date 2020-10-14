@@ -111,8 +111,8 @@ accept_block_by_hash(Conf) ->
 accept_send_tx(Conf) ->
     %% Ability to execute commitment call;
     Module = module(Conf),
-    Conf = aeu_env:user_config([<<"hyperchains">>, <<"delegate">>]),
-    Conf == undefined orelse
+    DelegateConf = aeu_env:user_config([<<"hyperchains">>, <<"delegate">>]),
+    DelegateConf == undefined orelse
         begin
             {ok, Delegate} = aec_keys:pubkey(),
             KeyblockHash = aec_chain:top_key_block_hash(),

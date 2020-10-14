@@ -27,7 +27,7 @@ init([]) ->
 
 -spec start_view(term(), map(), binary()) -> {ok, pid()}.
 start_view(View, Conf, Desc) ->
-    Res = {ok, _Pid} = supervisor:start_child(?SERVER, ?CHILD(Id, aehc_parent_sup, [View, Conf], 5000, worker)),
+    Res = {ok, _Pid} = supervisor:start_child(?SERVER, ?CHILD(View, aehc_parent_sup, [View, Conf], 5000, worker)),
     lager:info("~p start parent view: ~p (~p)", [View, Desc]),
     Res.
 
