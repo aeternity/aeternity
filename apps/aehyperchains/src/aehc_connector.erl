@@ -99,7 +99,7 @@ accept_top_block(Conf) ->
     lager:info(Info, [Module, Hash, Height]).
 
 accept_block_by_hash(Conf) ->
-    %% Ability to request genesis block;
+%%     Ability to request genesis block;
     Module = module(Conf),
     Genesis = maps:get(<<"genesis_hash">>, Conf),
     {ok, Block} = get_block_by_hash(Module, Genesis),
