@@ -111,6 +111,8 @@ new_with_backend(RootHash, CacheRootHash) ->
                 , cache  = Cache
                 }.
 
+-spec new_with_dirty_backend(aeu_mtrees:root_hash() | 'empty',
+                             aeu_mtrees:root_hash() | 'empty') -> tree().
 new_with_dirty_backend(RootHash, CacheRootHash) ->
     OTree  = aeu_mtrees:new_with_backend(RootHash, aec_db_backends:dirty_oracles_backend()),
     Cache  = aeu_mtrees:new_with_backend(CacheRootHash, aec_db_backends:dirty_oracles_cache_backend()),

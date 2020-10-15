@@ -74,6 +74,7 @@ new_with_backend(Hash) ->
     CtTree = aeu_mtrees:new_with_backend(Hash, aec_db_backends:calls_backend()),
     #call_tree{calls = CtTree}.
 
+-spec new_with_dirty_backend(aeu_mtrees:root_hash() | 'empty') -> tree().
 new_with_dirty_backend(Hash) ->
     CtTree = aeu_mtrees:new_with_backend(Hash, aec_db_backends:dirty_calls_backend()),
     #call_tree{calls = CtTree}.

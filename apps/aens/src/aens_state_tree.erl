@@ -109,6 +109,8 @@ new_with_backend(RootHash, CacheRootHash) ->
     Cache = aeu_mtrees:new_with_backend(CacheRootHash, aec_db_backends:ns_cache_backend()),
     #ns_tree{mtree = MTree, cache = Cache}.
 
+-spec new_with_dirty_backend(aeu_mtrees:root_hash() | 'empty',
+                             aeu_mtrees:root_hash() | 'empty') -> tree().
 new_with_dirty_backend(RootHash, CacheRootHash) ->
     MTree = aeu_mtrees:new_with_backend(RootHash, aec_db_backends:dirty_ns_backend()),
     Cache = aeu_mtrees:new_with_backend(CacheRootHash, aec_db_backends:dirty_ns_cache_backend()),
