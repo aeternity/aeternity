@@ -53,8 +53,7 @@ set_env(F, V) when is_function(F, 1) ->
 
 -spec trackers_config() -> nonempty_list(map()).
 trackers_config() ->
-    {ok, Res} = aeu_env:user_config([<<"hyperchains">>, <<"trackers">>]),
-    Res.
+    aeu_env:config_value([<<"hyperchains">>, <<"trackers">>], aehyperchains, [hyperchains, trackers], []).
 
 -spec tracker_name(map()) -> term().
 tracker_name(Conf) ->
