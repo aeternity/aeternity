@@ -25,6 +25,7 @@
         , lookup_query/3
         , lookup_oracle/2
         , new_with_backend/2
+        , new_with_dirty_backend/2
         , prune/2
         , root_hash/1
         ]).
@@ -106,6 +107,15 @@ empty_with_backend() ->
 new_with_backend(RootHash, CacheRootHash) ->
     OTree  = aeu_mtrees:new_with_backend(RootHash, aec_db_backends:oracles_backend()),
     Cache  = aeu_mtrees:new_with_backend(CacheRootHash, aec_db_backends:oracles_cache_backend()),
+    #oracle_tree{ otree  = OTree
+                , cache  = Cache
+                }.
+
+-spec new_with_dirty_backend(aeu_mtrees:root_hash() | 'empty',
+                             aeu_mtrees:root_hash() | 'empty') -> tree().
+new_with_dirty_backend(RootHash, CacheRootHash) ->
+    OTree  = aeu_mtrees:new_with_backend(RootHash, aec_db_backends:dirty_oracles_backend()),
+    Cache  = aeu_mtrees:new_with_backend(CacheRootHash, aec_db_backends:dirty_oracles_cache_backend()),
     #oracle_tree{ otree  = OTree
                 , cache  = Cache
                 }.

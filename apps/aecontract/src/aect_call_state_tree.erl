@@ -16,6 +16,7 @@
         , insert_call/2
         , lookup_call/3
         , new_with_backend/1
+        , new_with_dirty_backend/1
         , iterator/1
         , prune/2
         , prune_without_backend/1
@@ -71,6 +72,11 @@ empty_with_backend() ->
 -spec new_with_backend(aeu_mtrees:root_hash() | 'empty') -> tree().
 new_with_backend(Hash) ->
     CtTree = aeu_mtrees:new_with_backend(Hash, aec_db_backends:calls_backend()),
+    #call_tree{calls = CtTree}.
+
+-spec new_with_dirty_backend(aeu_mtrees:root_hash() | 'empty') -> tree().
+new_with_dirty_backend(Hash) ->
+    CtTree = aeu_mtrees:new_with_backend(Hash, aec_db_backends:dirty_calls_backend()),
     #call_tree{calls = CtTree}.
 
 %% A new block always starts with an empty calls tree.

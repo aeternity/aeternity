@@ -31,7 +31,7 @@
          sum_total_coin/1
         ]).
 
--export([ deserialize_from_db/1
+-export([ deserialize_from_db/2
         , serialize_for_db/1
         % could get big, used in force progress
         , serialize_to_binary/1
@@ -400,8 +400,8 @@ sum_auctions({AuctionHash, SerAuction, Iter}, Acc) ->
 
 -define(AEC_TREES_VERSION, 0).
 
--spec deserialize_from_db(binary()) -> trees().
-deserialize_from_db(Bin) when is_binary(Bin) ->
+-spec deserialize_from_db(binary(), boolean()) -> trees().
+deserialize_from_db(Bin, DirtyBackend) when is_binary(Bin), is_boolean(DirtyBackend) ->
     [ {contracts_hash, Contracts}
     , {calls_hash, Calls}
     , {channels_hash, Channels}
@@ -417,13 +417,24 @@ deserialize_from_db(Bin) when is_binary(Bin) ->
                     db_serialization_template(?AEC_TREES_VERSION),
                     Bin
                    )),
-    #trees{ contracts = aect_state_tree:new_with_backend(Contracts)
-          , calls     = aect_call_state_tree:new_with_backend(Calls)
-          , channels  = aesc_state_tree:new_with_backend(Channels)
-          , ns        = aens_state_tree:new_with_backend(NS, NSCache)
-          , oracles   = aeo_state_tree:new_with_backend(Oracles, OraclesCache)
-          , accounts  = aec_accounts_trees:new_with_backend(Accounts)
-          }.
+    case DirtyBackend of
+        false ->
+            #trees{ contracts = aect_state_tree:new_with_backend(Contracts)
+                  , calls     = aect_call_state_tree:new_with_backend(Calls)
+                  , channels  = aesc_state_tree:new_with_backend(Channels)
+                  , ns        = aens_state_tree:new_with_backend(NS, NSCache)
+                  , oracles   = aeo_state_tree:new_with_backend(Oracles, OraclesCache)
+                  , accounts  = aec_accounts_trees:new_with_backend(Accounts)
+            };
+        true ->
+            #trees{ contracts = aect_state_tree:new_with_dirty_backend(Contracts)
+                  , calls     = aect_call_state_tree:new_with_dirty_backend(Calls)
+                  , channels  = aesc_state_tree:new_with_dirty_backend(Channels)
+                  , ns        = aens_state_tree:new_with_dirty_backend(NS, NSCache)
+                  , oracles   = aeo_state_tree:new_with_dirty_backend(Oracles, OraclesCache)
+                  , accounts  = aec_accounts_trees:new_with_dirty_backend(Accounts)
+            }
+    end.
 
 -spec serialize_for_db(trees()) -> binary().
 serialize_for_db(#trees{} = Trees) ->
