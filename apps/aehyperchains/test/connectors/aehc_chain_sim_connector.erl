@@ -6,7 +6,7 @@
 -behaviour(gen_server).
 
 %% API.
--export([start_link/0]).
+-export([start_link/1]).
 
 %% gen_server.
 -export([init/1]).
@@ -19,10 +19,10 @@
 
 %% API.
 
--spec start_link() ->
+-spec start_link(Args::term()) ->
     {ok, pid()} | ingnore | {error, term()}.
-start_link() ->
-    gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
+start_link(Args) ->
+    gen_server:start_link({local, ?MODULE}, ?MODULE, Args, []).
 
 %%%===================================================================
 %%%  aehc_connector behaviour
@@ -46,7 +46,7 @@ get_block_by_hash(Hash) ->
 
 -record(state, { pid::pid(), height = 0::non_neg_integer() }).
 
-init([]) ->
+init(_Args) ->
     process_flag(trap_exit, true),
     true = aec_events:subscribe(top_changed),
     {ok, Pid} = aec_chain_sim:start(#{ simulator => parent_chain }),
@@ -74,12 +74,12 @@ handle_call({get_top_block}, _From, State) ->
     Hash = aec_chain_sim:top_block_hash(),
     {ok, Info} = aec_chain_sim:block_by_hash(Hash),
     Block = format_block(Info),
-    {reply, {ok, Block}, State};
+    {reply, Block, State};
 
 handle_call({get_block_by_hash, Hash}, _From, State) ->
     {ok, Info} = aec_chain_sim:block_by_hash(Hash),
     Block = format_block(Info),
-    {reply, {ok, Block}, State};
+    {reply, Block, State};
 
 handle_call(Request, _From, State) ->
     lager:info("Unexpected call: ~p", [Request]),
@@ -116,9 +116,17 @@ sender_id(SignedTx) ->
     SenderId = aec_spend_tx:sender_id(SpendTx), true = is_binary(SenderId),
     SenderId.
 
-format_block(SimBlock) ->
-    _Txs = [aehc_connector:tx(sender_id(Tx), payload(Tx)) || Tx <- maps:get(txs, SimBlock)],
-    Hash = maps:get(block_hash, SimBlock),
-    PrevHash = maps:get(prev_hash, SimBlock),
-    %% TODO To update simulator with ability to pass height;
-    aehc_connector:parent_block(0, Hash, PrevHash, []).
+format_block(MicroBlock) ->
+    %% TODO: This function has to provide the actual verification of included tx;
+    %% This is extremely simplified procedure to pass proto test SUITE;
+    Txs = maps:get(txs, MicroBlock),
+    FilterdTxs = lists:filter(fun (Tx) -> payload(Tx) == <<"Test commitment">> end, Txs),
+    Commitments = [aehc_connector:commitment(sender_id(Tx), payload(Tx)) || Tx <- FilterdTxs],
+    %% NOTE: Simulator operates via encoded hashes (kh_23h5LKLEXqTGSn14K2XqYJq1uzWXbRTBeQNnjEq5KCFoM4xUd7);
+    Header = maps:get(header, MicroBlock),
+    _Type = aec_headers:type(Header),
+    Hash = maps:get(hash, MicroBlock),
+    PrevHash = aec_headers:prev_hash(Header),
+    Height = aec_headers:height(Header),
+    aehc_connector:parent_block(Height, Hash, PrevHash, Commitments).
+

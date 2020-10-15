@@ -23,14 +23,15 @@
 %% API.
 -export([start_link/0]).
 
--export([publish_block/2]).
-
 %% gen_server.
 -export([init/1]).
 -export([handle_call/3]).
 -export([handle_cast/2]).
 -export([handle_info/2]).
 -export([terminate/2]).
+
+-export([start_view/2, terminate_view/1]).
+-export([publish_block/2]).
 
 -include_lib("aeutils/include/aeu_stacktrace.hrl").
 %% API.
@@ -39,6 +40,14 @@
     {ok, pid()} | ignore | {error, term()}.
 start_link() ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
+
+-spec start_view(term(), map()) -> {ok, pid()}.
+start_view(Name, Conf) ->
+    gen_server:call(?MODULE, {start_view, Name, Conf}).
+
+-spec terminate_view(term()) -> ok.
+terminate_view(Name) ->
+    gen_server:call(?MODULE, {terminate_view, Name}).
 
 %% This event issued each time by connector when the new block is generated;
 -spec publish_block(term(), aehc_parent_block:parent_block()) -> ok.
@@ -50,19 +59,24 @@ publish_block(View, Block) ->
 %%%  gen_server behaviour
 %%%===================================================================
 
--record(state, { master :: term(), views :: list() }).
+-record(state, { master :: term(), trackers :: list() }).
 init([]) ->
     process_flag(trap_exit, true),
     %% Read configuration;
-    {ok, Config} = tracks_config(),
-    Views = [name(Track)|| Track <- Config],
-    [Master|_] = Views,
+    Trackers = [aehc_app:tracker_name(Tracker)|| Tracker <- aehc_app:trackers_config()],
+    [Master|_] = Trackers,
     %% Run parent views;
-    [aehc_sup:start_view(name(Conf), Conf, note(Conf)) || Conf <- Config],
-    {ok, #state{ master = Master, views = Views }}.
+    {ok, #state{ master = Master, trackers = Trackers }}.
 
-handle_call(_Request, _From, State) ->
-    {reply, ignored, State}.
+handle_call({start_view, View, Conf}, _From, State) ->
+    Res = aehc_sup:start_view(View, Conf),
+    lager:info("~p start parent view: ~p (~p)", [View, aehc_app:tracker_name(Conf)]),
+    {reply, Res, State};
+
+handle_call({terminate_view, View}, _From, State) ->
+    Res = aehc_sup:terminate_view(View),
+    lager:info("~p terminate parent view: ~p", [View]),
+    {reply, Res, State}.
 
 handle_cast(_Msg, State) ->
     {noreply, State}.
@@ -86,17 +100,3 @@ handle_info(_Info, State) ->
 
 terminate(_Reason, _State) ->
     ok.
-
--spec name(map()) -> term().
-name(Conf) ->
-    maps:get(<<"name">>, Conf).
-
--spec note(map()) -> term().
-note(Conf) ->
-    maps:get(<<"note">>, Conf).
-
--spec tracks_config() -> {ok, nonempty_list(map())}.
-tracks_config() ->
-    Res = {ok, _} = aeu_env:user_config([<<"hyperchains">>, <<"tracks">>]),
-    Res.
-

@@ -22,6 +22,6 @@ start_link(View, Conf) ->
 init([View, Conf]) ->
     Con = aehc_connector:module(Conf),
     Args = aehc_connector:args(Conf),
-    ConSpec = ?CHILD(Con, Args, 5000, worker),
+    ConSpec = ?CHILD(Con, [Args], 5000, worker),
     TrackSpec = ?CHILD(aehc_parent_tracker, [View, Conf], 5000, worker),
     {ok, {{one_for_all, 5, 10}, [ConSpec, TrackSpec]}}.
