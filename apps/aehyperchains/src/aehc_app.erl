@@ -9,8 +9,12 @@
         , check_env/0
         ]).
 
+-export([trackers_config/0, tracker_name/1, tracker_note/1]).
+
 start(_StartType, _StartArgs) ->
-    aehc_sup:start_link().
+    Res = aehc_sup:start_link(),
+    [aehc_parent_mng:start_view(tracker_name(Conf), Conf) || Conf <- trackers_config()],
+    Res.
 
 start_phase(_Phase, _StartType, _PhaseArgs) ->
     ok.
@@ -46,3 +50,16 @@ set_env({set_env, K}, V) when is_atom(K) ->
     application:set_env(aehyperchains, K, V);
 set_env(F, V) when is_function(F, 1) ->
     F(V).
+
+-spec trackers_config() -> nonempty_list(map()).
+trackers_config() ->
+    {ok, Res} = aeu_env:user_config([<<"hyperchains">>, <<"trackers">>]),
+    Res.
+
+-spec tracker_name(map()) -> term().
+tracker_name(Conf) ->
+    maps:get(<<"name">>, Conf).
+
+-spec tracker_note(map()) -> term().
+tracker_note(Conf) ->
+    maps:get(<<"note">>, Conf).
