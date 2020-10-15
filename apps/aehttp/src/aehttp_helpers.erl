@@ -299,7 +299,7 @@ get_info_object_signed_tx(BlockHash, STx, GAIds, OrigTx) ->
             {CB, CTx} = aetx:specialize_callback(Tx),
             get_ga_meta_tx_info(BlockHash, CB, CTx, GAIds, OrigTx);
         {channel_force_progress_tx, FPTx} ->
-            {Contract, Caller} =
+            {_Contract, Caller} =
                 aesc_force_progress_tx:contract_pubkey_and_caller(FPTx),
             Round = aesc_force_progress_tx:round(FPTx),
             TxHash = aetx_sign:hash(OrigTx),
@@ -545,10 +545,21 @@ prepare_dry_run_params([Param | Params], State) ->
 
 do_dry_run() ->
     fun(_Req, State) ->
-        case prepare_dry_run_params([top, txs, accounts], State) of
-            {ok, #{top := Top, accounts := As, txs := Txs}} ->
-                case aec_dry_run:dry_run(Top, As, Txs) of
-                    {ok, Res}       -> {ok, {200, [], #{ results => dry_run_results(Res) }}};
+        case prepare_dry_run_params([top, txs, accounts, tx_events], State) of
+            {ok, #{top := Top, accounts := As, txs := Txs, tx_events := Events}} ->
+                lager:debug("tx_events = ~p", [Events]),
+                case aec_dry_run:dry_run(Top, As, Txs, [{tx_events, Events}]) of
+                    {ok, Res} ->
+                        {Results, EventRes} = R = dry_run_results(Res),
+                        lager:debug("dry_run_results: ~p", [R]),
+                        ResultsObj0 = #{ results => Results },
+                        ResultsObj = case Events of
+                                         true ->
+                                             ResultsObj0#{ tx_events => EventRes };
+                                         false ->
+                                             ResultsObj0
+                                     end,
+                        {ok, {200, [], ResultsObj}};
                     {error, Reason} -> dry_run_err(Reason)
                 end;
             {error, Reason} ->
@@ -576,6 +587,14 @@ prepare_dry_run_param(accounts, #{ accounts := Accounts }) ->
     dry_run_accounts_(Accounts, []);
 prepare_dry_run_param(txs, #{ txs := Txs }) ->
     dry_run_txs_(Txs, []);
+prepare_dry_run_param(tx_events, State) ->
+    case maps:get(tx_events, State, false) of
+        Events when is_boolean(Events) ->
+            {ok, Events};
+        _Other ->
+            lager:debug("Unexpected: tx_events => ~p", [_Other]),
+            {error, "Bad parameter, tx_events"}
+    end;
 prepare_dry_run_param(Param, _State) ->
     {error, lists:concat(["Bad parameter ", Param])}.
 
@@ -613,8 +632,9 @@ dry_run_txs_([#{ <<"call_req">> := CallReq } | Txs], Acc) ->
     dry_run_txs_(Txs, [{call_req, CallReq} | Acc]).
 
 
-dry_run_results(Rs) ->
-    [dry_run_result(R) || R <- Rs].
+dry_run_results({Rs, Events}) ->
+    {[dry_run_result(R) || R <- Rs],
+     lists:foldr(fun tx_event_result/2, [], Events)}.
 
 dry_run_result({Type, Res}) ->
     dry_run_result(Type, Res, #{ type => type(Type), result => ok_err(Res)}).
@@ -629,6 +649,38 @@ dry_run_result(Type, {ok, CallObj}, Res) when Type =:= contract_call_tx;
     Res#{ call_obj => aect_call:serialize_for_client(CallObj) };
 dry_run_result(_Type, ok, Res) ->
     Res.
+
+tx_event_result({EventKey, EventVal} = E, Acc) ->
+    lager:debug("TxEvent ~p", [E]),
+    case serialize_event(EventKey, EventVal) of
+        error ->
+            lager:debug("Couldn't serialize ~p", [E]),
+            Acc;
+        SerEvent ->
+            lager:debug("SerEvent = ~p", [SerEvent]),
+            [SerEvent | Acc]
+    end.
+
+serialize_event({internal_call_tx, Key}, #{ type    := Type
+                                          , tx_hash := TxHash
+                                          , info    := Tx } = Evt) ->
+    lager:debug("internal_call_tx (~p), Evt = ~p", [Key, Evt]),
+    {CB, TxI} = aetx:specialize_callback(Tx),
+    TxS = CB:for_client(TxI),
+    #{ kind    => internal_call_tx
+     , key     => Key
+     , type    => Type
+     , tx_hash => TxHash
+     , info    => TxS };
+serialize_event({channel, ChId}, #{ type    := Type
+                                  , tx_hash := TxHash } = I) ->
+    E = #{ kind => channel
+         , key  => ChId
+         , type => Type
+         , tx_hash => TxHash },
+    maps:merge(E, maps:with([info], I));
+serialize_event(_, _) ->
+    error.
 
 ok_err({error, _}) -> <<"error">>;
 ok_err(_)          -> <<"ok">>.

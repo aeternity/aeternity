@@ -27,7 +27,16 @@
                         , dry_run_results/1
                         ]).
 
+-export([patterns/0]).
+
 -include("../../aecontract/include/aecontract.hrl").
+
+patterns() ->
+    [{?MODULE, F, A, []} || {F, A} <- [ {handle_request, 3}
+				      , {forbidden, 1}
+				      , {ok_response, 1}
+				      , {process_request, 2}
+				      , {dry_run_results, 1}]].
 
 -spec forbidden( OperationID :: atom() ) -> boolean().
 forbidden(OpId) ->
@@ -116,9 +125,11 @@ handle_request_('PostContractCall', #{'ContractCallTx' := Req}, _Context) ->
     process_request(ParseFuns, Req);
 
 handle_request_('DryRunTxs', #{ 'DryRunInput' := Req }, _Context) ->
+    lager:debug("DryRunInput := ~p", [Req]),
     ParseFuns = [parse_map_to_atom_keys(),
                  read_required_params([txs]),
-                 read_optional_params([{top, top, top}, {accounts, accounts, []}]),
+                 read_optional_params([{top, top, top}, {accounts, accounts, []},
+                                       {tx_events, tx_events, false}]),
                  do_dry_run()],
     process_request(ParseFuns, Req);
 

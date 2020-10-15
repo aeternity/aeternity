@@ -972,7 +972,7 @@ add_call(Call0, TxHash, Trees, Env) ->
 -spec add_event(aec_trees:trees(), binary(), aetx_env:env()) ->
                        {ok, aec_trees:trees(), aetx_env:env()}.
 add_event(Trees, ChannelPubKey, Env) ->
-    {ok, Trees, aetx_env:tx_event({channel, ChannelPubKey}, Env)}.
+    {ok, Trees, aetx_env:tx_event(channel, ChannelPubKey, Env)}.
 
 %% This is meant to be a faster way of detecting how many signatures have been
 %% added to the Tx. Plain signatures are 'usorted' (no duplicates), so we can

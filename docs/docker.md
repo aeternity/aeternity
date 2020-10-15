@@ -127,4 +127,4 @@ The example above uses the less memory intensive lean miner, if you want to use 
 
 You also need to provide beneficiary account in the configuration, please refer to [the beneficiary section in the configuration documentation](configuration.md#beneficiary-account) how to create one if you don't have yet.
 
-For more information see [miner configuration documentation](configuration#miner-configuration).
+For more information see [miner configuration documentation](configuration.md#miner-configuration).
