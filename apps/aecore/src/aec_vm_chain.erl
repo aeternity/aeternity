@@ -695,6 +695,8 @@ get_contract_fun_types(Target, VMVersion, TypeHash, State) ->
             {error, {no_such_contract, Target}}
     end.
 
+%% GH3283: If the idea is to be able to follow tokens throughout the system,
+%% we should probably make a pseudo spend if Value is > 0.
 
 %% @doc Call another contract.
 -spec call_contract(aec_keys:pubkey(), non_neg_integer(), non_neg_integer(), binary(),
@@ -778,6 +780,8 @@ apply_call_transaction(Tx, Gas, #state{tx_env = Env} = State) ->
             {aevm_chain_api:call_exception(ReturnAtom, Gas), State}
     end.
 
+%% GH3283: Here is a good place to (possibly with a filter) add the pseudo-tx to
+%% the Env...
 apply_transaction(Tx, #state{tx_env = Env } = State) ->
     Trees = get_top_trees(State),
     case aetx:process(Tx, Trees, Env) of

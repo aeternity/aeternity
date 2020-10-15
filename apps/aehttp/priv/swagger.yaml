@@ -2889,6 +2889,10 @@ definitions:
         description: Txs
         items:
           $ref: '#/definitions/DryRunInputItem'
+      tx_events:
+        type: boolean
+        default: false
+        description: 'Collect and return on-chain tx events that would result from the call'
     required:
       - txs
   DryRunInputItem:
@@ -2948,6 +2952,11 @@ definitions:
         description: results
         items:
           $ref: '#/definitions/DryRunResult'
+      tx_events:
+        type: array
+        description: 'on-chain tx events'
+        items:
+          $ref: '#/definitions/TxEvent'
     required:
       - results
   DryRunResult:
@@ -2964,6 +2973,8 @@ definitions:
     required:
       - type
       - result
+  TxEvent:
+    type: object
   Peer:
     type: string
     description: 'Aeternity node'

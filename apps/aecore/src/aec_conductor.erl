@@ -748,12 +748,21 @@ preempt_if_new_top(#state{ top_block_hash = OldHash,
             end
     end.
 
+%% GH3283: If we start storing more kinds of tx_events - we have to expand this
+%% function. I don't think we necessarily wants to publish the internal
+%% contract txs in the same way as channel events...
+%%
+%% Exactly how we present the internal contract txs is an open question, but
+%% some way to associate ContractCallTxHash with [InternalTxs]... And also
+%% making the storage of this optional?!
 maybe_publish_tx_events(Events, Hash, Origin) when Origin =/= block_synced,
-                                                   map_size(Events) > 0 ->
+                                                   Events =/= [] ->
+    %% For performance reasons, the Events list is LIFO. We want to publish
+    %% events in the order in which they were generated, so we reverse it.
     lager:debug("publish tx_events: ~p", [Events]),
     [aec_events:publish({tx_event, Event}, Info#{ block_hash => Hash
                                                 , block_origin => Origin})
-     || {Event, Info} <- maps:to_list(Events)];
+     || {Event, Info} <- lists:reverse(Events)];
 maybe_publish_tx_events(_, _, _) ->
     ok.
 

@@ -48,9 +48,17 @@ validator() ->
     Validator :: jesse_state:state()
     ) -> ok | no_return().
 
-response(_OperationId, _Method0, Code, _Response, _Validator) when Code >= 500 andalso Code < 600 ->
+response(OperationId, Method, Code, Response, Validator) ->
+    try response_(OperationId, Method, Code, Response, Validator)
+    catch
+	error:R:S ->
+	    lager:debug("CAUGHT ~p / ~p", [R, S]),
+	    error(R)
+    end.
+
+response_(_OperationId, _Method0, Code, _Response, _Validator) when Code >= 500 andalso Code < 600 ->
     ok;
-response(OperationId, Method0, Code, Response, Validator) ->
+response_(OperationId, Method0, Code, Response, Validator) ->
     Method = to_method(Method0),
     #{responses := Resps} = maps:get(Method, endpoints:operation(OperationId)),
     case maps:get(Code, Resps, not_found) of
