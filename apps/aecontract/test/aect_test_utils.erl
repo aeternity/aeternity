@@ -372,8 +372,9 @@ compile_(SophiaVsn, File) when SophiaVsn == ?SOPHIA_IRIS_FATE ->
     case aeso_compiler:from_string(Source, [{backend, fate}] ++ ACIFlag) of
         {ok, Map} ->
             case Map of
-                #{aci := ACI} ->
+                #{aci := JAci} ->
                     AciId = make_aci_id(Source),
+                    ACI = aeaci_aci:from_string(jsx:encode(JAci), #{backend => fate}),
                     cache_aci(AciId, ACI);
                 _ -> ok
             end,
