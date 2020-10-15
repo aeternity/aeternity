@@ -522,7 +522,7 @@
                         }
                     }
                 },
-                "tracks":{
+                "trackers":{
                     "type": "array",
                     "items":{
                         "type":"object",

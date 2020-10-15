@@ -45,7 +45,7 @@ start_link(View, Conf) ->
 -spec publish_block(binary(), aehc_parent_block:parent_block()) ->
     ok.
 publish_block(View, Block) ->
-    gen_statem:cast(?SERVER(View), {publish_block, Block}).
+    gen_server:cast(?SERVER(View), {publish_block, Block}).
 
 %%%===================================================================
 %%%  State machine callbacks
@@ -100,15 +100,12 @@ fetched(internal, {added_block, Block, SynchedBlock}, Data) ->
             %% TODO: Place for the new added block anouncement;
             %% Sync procedure is continue it the fetch mode (the current persisted block isn't achived);
             %% To persist the fetched block;
-            ok = aehc_parent_db:write_parent_block(Block),
+            aehc_parent_db:write_parent_block(Block),
             {ok, PrevBlock} = aehc_connector:get_block_by_hash(connector(Data), PrevHash),
             {keep_state, Data, [{next_event, internal, {added_block, PrevBlock, SynchedBlock}}]};
         _ ->
             %% Sync procedure is continue it the fork switch mode (we passed the current height but the matched block isn't achived);
-            {ok, PrevBlock} = aehc_connector:get_block_by_hash(connector(Data), PrevHash),
-            SynchedPrevHash = aehc_parent_block:prev_hash_block(SynchedBlock),
-            PrevSynchedBlock = aehc_parent_db:get_parent_block(SynchedPrevHash),
-            {next_state, orphaned, Data, [{next_event, internal, {added_block, PrevBlock, PrevSynchedBlock}}]}
+            {next_state, orphaned, Data, [{next_event, internal, {added_block, Block, SynchedBlock}}]}
     end;
 
 %% Postponing service requests until fetching is done;
@@ -135,6 +132,7 @@ orphaned(internal, {added_block, Block, SynchedBlock}, Data) ->
             %% TODO: Place for the new added block anouncement;
             %% TODO: Place for abandoned block anouncement;
             %% Sync procedure is continue it the fetch mode (the current persisted block isn't achived);
+            aehc_parent_db:write_parent_block(Block),
             {ok, PrevBlock} = aehc_connector:get_block_by_hash(connector(Data), PrevHash),
             SynchedPrevHash = aehc_parent_block:prev_hash_block(SynchedBlock),
             PrevSynchedBlock = aehc_parent_db:get_parent_block(SynchedPrevHash),
@@ -145,11 +143,12 @@ orphaned(internal, {added_block, Block, SynchedBlock}, Data) ->
             %% If the worst case got happened and fork exceeded pre-configured genesis hash entry the system should be:
             %%  a) Reconfigured by the new (older ones) genesis entry;
             %%  b) Restarted;
+            aehc_parent_db:write_parent_block(Block),
             Info = "Parent chain state machine got exceeded genesis entry (genesis: ~p, synched: ~p, height: ~p, note: ~p)",
             GenesisHash = genesis_hash(Data),
             Note = note(Data),
-            lager:error(Info, [GenesisHash, SynchedHash, Height, Note]),
-            {stop, <<"Genesis entry got exceeded">>, Data}
+            lager:info(Info, [GenesisHash, SynchedHash, Height, Note]),
+            {next_state, synced, Data}
     end;
 
 %% Postponing service requests until fork solving is done;
@@ -166,7 +165,7 @@ synced(enter, _OldState, Data) ->
     lager:info(Info, [SynchedHash, CurrentHeight, Note]),
     {keep_state, Data};
 
-synced(info, {publish_block, Block}, Data) ->
+synced(cast, {publish_block, Block}, Data) ->
     SynchedBlock = aehc_parent_db:get_parent_block(current_hash(Data)),
     {next_state, fetched, Data, [{next_event, internal, {added_block, Block, SynchedBlock}}]}.
 
@@ -228,7 +227,7 @@ init_data(Data) ->
             undefined ->
                 %% Initialize parent view by genesis -> genesis if the db log is empty;
                 aehc_parent_db:write_parent_chain_view(GenesisHash, GenesisHash),
-                ok = aehc_parent_db:write_parent_block(GenesisBlock),
+                aehc_parent_db:write_parent_block(GenesisBlock),
                 GenesisHash;
             _ when is_binary(Res) ->
                 Res
