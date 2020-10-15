@@ -1222,7 +1222,7 @@ db_put_found_pof(Node, PoF) ->
     end.
 
 db_find_state(Hash) ->
-    case aec_db:find_block_state_and_data(Hash) of
+    case aec_db:find_block_state_and_data(Hash, true) of
         {value, Trees, Difficulty, ForkId, Fees, Fraud} ->
             {ok, Trees,
              #fork_info{ difficulty = Difficulty
