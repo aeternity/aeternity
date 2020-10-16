@@ -751,17 +751,18 @@ connect(State0) ->
 -spec tcp_probe(peer_pool_name(), state()) -> state().
 tcp_probe(PeerPoolName, State0) ->
     State = cancel_tcp_probe_timer(PeerPoolName, State0),
-    case is_tcp_probe_allowed(State0) of
+    case is_tcp_probe_allowed(State) of
         false ->
             schedule_tcp_probe(?MAX_TCP_PROBE_INTERVAL, PeerPoolName, State0);
         true ->
             case pool_random_select(PeerPoolName, State) of
                 {unavailable, State2} ->
-                    epoch_sync:debug("No peers available for TCP probe", []),
+                    epoch_sync:debug("No peers available for TCP probe in ~p",
+                                     [PeerPoolName]),
                     schedule_tcp_probe(?MAX_TCP_PROBE_INTERVAL, PeerPoolName, State2);
                 {wait, Delay, State2} ->
-                    epoch_sync:debug("No peers available for TCP probe, "
-                                    "waiting ~b ms", [Delay]),
+                    epoch_sync:debug("No peers available for TCP probe in ~p, "
+                                    "waiting ~b ms", [PeerPoolName, Delay]),
                     schedule_tcp_probe(Delay, PeerPoolName, State2);
                 {selected, Peer, State2} ->
                     schedule_tcp_probe(undefined, PeerPoolName,
@@ -810,7 +811,8 @@ schedule_tcp_probe(MinDelay, PeerPoolName, State0) ->
     State = cancel_tcp_probe_timer(PeerPoolName, State0),
     NextDelay = next_tcp_probe_delay(PeerPoolName, State),
     Delay = safe_max(MinDelay, NextDelay),
-    epoch_sync:debug("Waiting ~b ms for the next TCP probe", [Delay]),
+    epoch_sync:debug("Waiting ~b ms for the next TCP probe in ~p",
+                     [Delay, PeerPoolName]),
     Ref = start_timer({tcp_probe, PeerPoolName}, Delay),
     case PeerPoolName of
         verified -> State#state{ tcp_verified_probe_ref = Ref };
@@ -1320,8 +1322,9 @@ on_tcp_probe_timeout(Ref, verified, #state{ tcp_verified_probe_ref = Ref } = Sta
     tcp_probe(verified, State#state{ tcp_verified_probe_ref = undefined });
 on_tcp_probe_timeout(Ref, unverified, #state{ tcp_unverified_probe_ref = Ref } = State) ->
     tcp_probe(unverified, State#state{ tcp_unverified_probe_ref = undefined });
-on_tcp_probe_timeout(_Ref, _, State) ->
-    epoch_sync:info("TCP probe timeout with invalid reference", []),
+on_tcp_probe_timeout(_Ref, PeerPoolName, State) ->
+    epoch_sync:info("TCP probe timeout with invalid reference in ~p",
+                    [PeerPoolName]),
     State.
 
 %% Handles ping timeout event.
