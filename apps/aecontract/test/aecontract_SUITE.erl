@@ -4077,10 +4077,8 @@ sophia_signatures_aens(Cfg) ->
     AccSig          = sign(<<Acc/binary, NHash/binary, Ct/binary>>, Acc),
     APubkey  = 1,
     OPubkey  = 2,
-    Pointers = [aens_pointer:new(<<"account_pubkey">>, aeser_id:create(account, <<APubkey:256>>)),
-                aens_pointer:new(<<"oracle_pubkey">>, aeser_id:create(oracle, <<OPubkey:256>>))
-               ],
 
+    %% PreClaim
     NonceBeforePreclaim = aec_accounts:nonce(aect_test_utils:get_account(NameAcc, state())),
     BadPreclaim = ?call(call_contract, Acc, Ct, signedPreclaim, {tuple, []}, {NameAcc, CHash, AccSig}, #{ height => 10 }),
     ?assertMatchVM({error, <<"out_of_gas">>},
@@ -4090,22 +4088,55 @@ sophia_signatures_aens(Cfg) ->
     %% FATE_SOPHIA_1 had a bug that set TTL for preclaims to 0 - check it is fixed in FATE_SOPHIA_2
     [ ?call(perform_pre_transformations, 11) || vm_version() >= ?VM_FATE_SOPHIA_2 ],
     NonceAfterPreclaim = aec_accounts:nonce(aect_test_utils:get_account(NameAcc, state())),
+
+    %% Claim
     BadClaim = ?call(call_contract, Acc, Ct, signedClaim,    {tuple, []}, {NameAcc, Name1, Salt1, AccSig}, #{ height => 11 }),
     ?assertMatchVM({error, <<"out_of_gas">>},
                    {error,<<"Error in aens_claim: bad_signature">>},
                    BadClaim),
     {} = ?call(call_contract, Acc, Ct, signedClaim,    {tuple, []}, {NameAcc, Name1, Salt1, NameSig}, #{ height => 11 }),
     NonceAfterClaim = aec_accounts:nonce(aect_test_utils:get_account(NameAcc, state())),
+
+    %% Update - Only in FATE > v1
+    case protocol_version() of
+        P when P >= ?IRIS_PROTOCOL_VSN ->
+            AccountPointee  = fun (A) -> {variant, [1, 1, 1, 1], 0, {A}} end,
+            OraclePointee   = fun (A) -> {variant, [1, 1, 1, 1], 1, {A}} end,
+            Pointers = #{<<"account_pubkey">> => AccountPointee(<<APubkey:256>>),
+                         <<"oracle_pubkey">>  => OraclePointee(<<OPubkey:256>>)},
+            None = none,
+            Some = fun (X) -> {some, X} end,
+
+            BadUpdate = ?call(call_contract, Acc, Ct, signedUpdate, {tuple, []}, {NameAcc, NameArg, None, None, None, AccSig},   #{ height => 12 }),
+            ?assertMatch({error,<<"Error in aens_update: bad_signature">>}, BadUpdate),
+
+            {} = ?call(call_contract, Acc, Ct, signedUpdate, {tuple, []}, {NameAcc, NameArg, None, None, Some(Pointers), NameSig}, #{height => 12}),
+            NonceAfterUpdate = aec_accounts:nonce(aect_test_utils:get_account(NameAcc, state())),
+            ?assertMatch(NonceBeforePreclaim, NonceAfterUpdate);
+        _ ->
+            Pointers = [aens_pointer:new(<<"account_pubkey">>, aeser_id:create(account, <<APubkey:256>>)),
+                        aens_pointer:new(<<"oracle_pubkey">>, aeser_id:create(oracle, <<OPubkey:256>>)) ],
+            ok = ?call(aens_update, NameAcc, NHash, Pointers)
+    end,
+
+    %% Resolve
+    {some, Oracle} = ?call(call_contract, Acc, Ct, resolve_oracle, {option, word}, {Name1, <<"oracle_pubkey">>}),
+    ?assertMatchVM(OPubkey, {oracle, OPubkey}, Oracle),
+
+    %% Transfer
+    NonceBeforeTransfer = aec_accounts:nonce(aect_test_utils:get_account(NameAcc, state())),
     BadTransfer = ?call(call_contract, Acc, Ct, signedTransfer, {tuple, []}, {NameAcc, Acc, NameArg, AccSig},   #{ height => 12 }),
     ?assertMatchVM({error, <<"out_of_gas">>},
                    {error,<<"Error in aens_transfer: bad_signature">>},
                    BadTransfer),
     {} = ?call(call_contract, Acc, Ct, signedTransfer, {tuple, []}, {NameAcc, Acc, NameArg, NameSig},   #{ height => 12 }),
     NonceAfterTransfer = aec_accounts:nonce(aect_test_utils:get_account(NameAcc, state())),
-    ok = ?call(aens_update, Acc, NHash, Pointers),
 
+    %% Resolve
     {some, Oracle} = ?call(call_contract, Acc, Ct, resolve_oracle, {option, word}, {Name1, <<"oracle_pubkey">>}),
     ?assertMatchVM(OPubkey, {oracle, OPubkey}, Oracle),
+
+    %% Revoke
     BadRevoke1 = ?call(call_contract, Acc, Ct, signedRevoke, {tuple, []}, {NameAcc, NameArg, NameSig}, #{ height => 13 }),
     ?assertMatchVM({error, <<"out_of_gas">>},
                    {error,<<"Error in aens_revoke: name_not_owned">>},
@@ -4114,18 +4145,19 @@ sophia_signatures_aens(Cfg) ->
     ?assertMatchVM({error, <<"out_of_gas">>},
                    {error,<<"Error in aens_revoke: bad_signature">>},
                    BadRevoke2),
-    NonceBeforeRevoke =  aec_accounts:nonce(aect_test_utils:get_account(Acc, state())),
+
+    NonceBeforeRevoke = aec_accounts:nonce(aect_test_utils:get_account(Acc, state())),
     {} = ?call(call_contract, NameAcc, Ct, signedRevoke, {tuple, []}, {Acc, NameArg, AccSig}, #{ height => 13 }),
     NonceAfterRevoke =  aec_accounts:nonce(aect_test_utils:get_account(Acc, state())),
 
     %% In Roma, nonce are bumped for the delegated name service primops, but after Roma it isn't
     ExpectedNonceAfterPreclaimRoma = NonceBeforePreclaim + 1,
     ExpectedNonceAfterClaimRoma = ExpectedNonceAfterPreclaimRoma + 1,
-    ExpectedNonceAfterTransferRoma = ExpectedNonceAfterClaimRoma + 1,
+    ExpectedNonceAfterTransferRoma = NonceBeforeTransfer + 1,
     ExpectedNonceAfterRevokeRoma = NonceBeforeRevoke + 1,
     ?assertMatchProtocol(NonceAfterPreclaim, ExpectedNonceAfterPreclaimRoma, NonceBeforePreclaim),
     ?assertMatchProtocol(NonceAfterClaim, ExpectedNonceAfterClaimRoma, NonceBeforePreclaim),
-    ?assertMatchProtocol(NonceAfterTransfer, ExpectedNonceAfterTransferRoma, NonceBeforePreclaim),
+    ?assertMatchProtocol(NonceAfterTransfer, ExpectedNonceAfterTransferRoma, NonceBeforeTransfer),
     ?assertMatchProtocol(NonceAfterRevoke, ExpectedNonceAfterRevokeRoma, NonceBeforeRevoke),
     ok.
 
