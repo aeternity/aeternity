@@ -15,7 +15,7 @@
 -export([handle_info/2]).
 -export([terminate/2]).
 
--export([send_tx/3, get_block_by_hash/1, get_top_block/0]).
+-export([send_tx/3, get_block_by_hash/1, get_top_block/0, dry_send_tx/3]).
 
 %% API.
 
@@ -40,6 +40,10 @@ get_top_block() ->
 get_block_by_hash(Hash) ->
     gen_server:call(?MODULE, {get_block_by_hash, Hash}).
 
+-spec dry_send_tx(binary(), binary(), binary()) -> binary().
+dry_send_tx(Delegate, Commitment, PoGF) ->
+    gen_server:call(?MODULE, {dry_send_tx, Delegate, Commitment, PoGF}).
+
 %%%===================================================================
 %%%  gen_server behaviour
 %%%===================================================================
@@ -53,14 +57,14 @@ init(_Args) ->
     lager:info("Parent chain's connector ~p is attached: ~p", [?MODULE, Pid]),
     {ok, #state{ pid = Pid }}.
 
-handle_call({send_tx, Delegate, _Commitment, _PoGF}, _From, State) ->
+handle_call({send_tx, Delegate, Commitment, PoGF}, _From, State) ->
     %% The current validator credentials;
     %% Requested transaction by hash from a simulator's block should satisfy the origin of validator;
     {ok, PrivKey} = aec_keys:sign_privkey(),
     %% The main intention of this call is to emulate post action with signed payload from delegate;
     %% Fee, nonce, ttl and amount fields have decorated nature;
-    Header = aehc_commitment_header:new(<<"D1">>, <<"BLOCK 1">>),
-    Payload = aehc_commitment_header:hash(Header),
+    Header = aehc_commitment_header:new(Delegate, Commitment, PoGF),
+    Payload = term_to_binary(aehc_commitment:new(Header), [compressed]),
     {ok, Tx} = aec_spend_tx:new(#{ sender_id => Delegate, recipient_id => Delegate, amount => 1,
                                         fee => 5, nonce => 1, payload => Payload, ttl => 0 }),
     BinaryTx = aec_governance:add_network_id(aetx:serialize_to_binary(Tx)),
@@ -80,6 +84,9 @@ handle_call({get_block_by_hash, Hash}, _From, State) ->
     {ok, Info} = aec_chain_sim:block_by_hash(Hash),
     Block = format_block(Info),
     {reply, Block, State};
+
+handle_call({dry_send_tx, _Delegate, _Commitment, _PoGF}, _From, State) ->
+    {reply, ok, State};
 
 handle_call(Request, _From, State) ->
     lager:info("Unexpected call: ~p", [Request]),
