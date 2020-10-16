@@ -21,6 +21,7 @@
         , lookup_contract/2
         , lookup_contract/3
         , new_with_backend/1
+        , new_with_dirty_backend/1
         , gc_cache/1
         , root_hash/1]).
 
@@ -78,6 +79,11 @@ empty_with_backend() ->
 -spec new_with_backend(aeu_mtrees:root_hash() | 'empty') -> tree().
 new_with_backend(Hash) ->
     CtTree = aeu_mtrees:new_with_backend(Hash, aec_db_backends:contracts_backend()),
+    #contract_tree{contracts = CtTree}.
+
+-spec new_with_dirty_backend(aeu_mtrees:root_hash() | 'empty') -> tree().
+new_with_dirty_backend(Hash) ->
+    CtTree = aeu_mtrees:new_with_backend(Hash, aec_db_backends:dirty_contracts_backend()),
     #contract_tree{contracts = CtTree}.
 
 -spec gc_cache(tree()) -> tree().

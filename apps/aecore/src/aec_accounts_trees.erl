@@ -11,6 +11,7 @@
          get/2,
          lookup/2,
          new_with_backend/1,
+         new_with_dirty_backend/1,
          gc_cache/1,
          enter/2]).
 
@@ -61,6 +62,10 @@ empty_with_backend() ->
 -spec new_with_backend(aeu_mtrees:root_hash() | 'empty') -> tree().
 new_with_backend(Hash) ->
     aeu_mtrees:new_with_backend(Hash, aec_db_backends:accounts_backend()).
+
+-spec new_with_dirty_backend(aeu_mtrees:root_hash() | 'empty') -> tree().
+new_with_dirty_backend(Hash) ->
+    aeu_mtrees:new_with_backend(Hash, aec_db_backends:dirty_accounts_backend()).
 
 -spec gc_cache(tree()) -> tree().
 gc_cache(Tree) ->
