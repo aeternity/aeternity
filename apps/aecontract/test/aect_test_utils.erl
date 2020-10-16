@@ -418,9 +418,9 @@ compiler_cmd(Vsn) ->
 aci_json_enabled(Vsn) ->
     case aci_disabled() of
         true -> no;
-        _  when Vsn < ?SOPHIA_LIMA_FATE -> no;
-        _  when Vsn < ?SOPHIA_IRIS_FATE -> yes_manual;
-        _                               -> yes_automatic
+        _  when Vsn =< ?SOPHIA_ROMA      -> no;
+        _  when Vsn =< ?SOPHIA_LIMA_FATE -> yes_manual;
+        _                                -> yes_automatic
     end.
 
 tempfile_name(Prefix, Opts) ->
