@@ -317,12 +317,11 @@ compile(Vsn, File) ->
     %% Lookup the res in the cache - if not present just calculate the result
     CompilationId = #compilation_id{vsn = Vsn, filename = File},
     NoCache = os:getenv("SOPHIA_NO_CACHE"),
-    %% Generate ACI in parallel to the compilation
-    %% The newest compiler can return the ACI together with the bytecode
-    %% For now just generate the aci in parallel as this functionality would need
-    %% to be backported and it's not a priority to do so
+    %% Depending on the compiler support, generate ACI either in parallel, during
+    %% the compilation process, or don't do it at all
     case aci_json_enabled(Vsn) of
-        true ->
+        yes_automatic -> ok; % will generate during compilation
+        yes_manual ->
             Self = self(),
             spawn(fun() ->
                 {ok, AsmBin} = file:read_file(File),
@@ -332,10 +331,10 @@ compile(Vsn, File) ->
                     _ ->
                         Self ! {aci_done, ok}
                 end end);
-        false -> ok
+        no -> ok
     end,
     Result1 = case ets:lookup(?COMPILE_TAB, CompilationId) of
-        _ when NoCache /= false ->
+        _ when NoCache =/= false ->
             compile_(Vsn, File);
         [#compilation_cache_entry{result = Result}] ->
             %% This should save 200ms - 2000ms per invocation
@@ -348,7 +347,8 @@ compile(Vsn, File) ->
             Result
     end,
     case aci_json_enabled(Vsn) of
-        true ->
+        yes_automatic -> Result1;
+        yes_manual ->
             receive
                 {aci_done, ok} ->
                     Result1;
@@ -359,16 +359,27 @@ compile(Vsn, File) ->
                     ct:log("ACI process failed to deliver response", []),
                     exit(logic_error)
             end;
-        false ->
-            Result1
+        no -> Result1
     end.
 
 compile_(SophiaVsn, File) when SophiaVsn == ?SOPHIA_IRIS_FATE ->
     {ok, AsmBin} = file:read_file(File),
     Source = binary_to_list(AsmBin),
-    case aeso_compiler:from_string(Source, [{backend, fate}]) of
-        {ok, Map} -> {ok, aect_sophia:serialize(Map, latest_sophia_contract_version())};
-        {error, E} = Err -> io:format("~p\n", [E]), Err
+    ACIFlag = case aci_json_enabled(SophiaVsn) of
+                  yes_automatic -> [{aci, json}];
+                  _ -> []
+              end,
+    case aeso_compiler:from_string(Source, [{backend, fate}] ++ ACIFlag) of
+        {ok, Map} ->
+            case Map of
+                #{aci := JAci} ->
+                    AciId = make_aci_id(Source),
+                    ACI = aeaci_aci:from_string(jsx:encode(JAci), #{backend => fate}),
+                    cache_aci(AciId, ACI);
+                _ -> ok
+            end,
+            {ok, aect_sophia:serialize(Map, latest_sophia_contract_version())};
+        {error, E} = Err -> ct:log("~p\n", [E]), Err
     end;
 compile_(LegacyVersion, File) ->
     case legacy_compile(LegacyVersion, File) of
@@ -404,7 +415,13 @@ compiler_cmd(Vsn) ->
         ?SOPHIA_LIMA_FATE -> filename:join([BaseDir, "v4.3.1", "aesophia_cli"])
     end.
 
-aci_json_enabled(Vsn) -> Vsn > ?SOPHIA_ROMA andalso not aci_disabled().
+aci_json_enabled(Vsn) ->
+    case aci_disabled() of
+        true -> no;
+        _  when Vsn =< ?SOPHIA_ROMA      -> no;
+        _  when Vsn =< ?SOPHIA_LIMA_FATE -> yes_manual;
+        _                                -> yes_automatic
+    end.
 
 tempfile_name(Prefix, Opts) ->
     File = tempfile:name(Prefix, Opts),
@@ -438,7 +455,9 @@ encode_call_data(Vsn, Code, Fun, Args) ->
 
 maybe_fast_encode_call_data(Vsn, Code, Fun, Args) ->
     case aci_json_enabled(Vsn) of
-        true ->
+        no ->
+            slow_encode_call_data(Vsn, Code, Fun, Args);
+        _ -> % yes_manual | yes_automatic
             Aci = generate_json_aci(Vsn, Code),
             Args1 = string:join([ to_str(Arg) || Arg <- Args ], ", "),
             Args2 = to_str(Fun) ++ "(" ++ Args1 ++ ")",
@@ -448,9 +467,7 @@ maybe_fast_encode_call_data(Vsn, Code, Fun, Args) ->
                 {error, Reason} = Err ->
                     ct:log("Encoding call data using JSON ACI failed: ~p\n", [Reason]),
                     Err
-            end;
-        false ->
-            slow_encode_call_data(Vsn, Code, Fun, Args)
+            end
     end.
 
 slow_encode_call_data(Vsn, Code, Fun, Args) ->
@@ -532,7 +549,7 @@ decode_call_result(Backend, Code, Fun, Res, Value) ->
 
 generate_json_aci(Vsn, Code) ->
     Backend = backend(),
-    AciId = #aci_cache_id{code_hash = crypto:hash(md5, Code), backend = Backend},
+    AciId = make_aci_id(Code),
     NoCache = os:getenv("SOPHIA_ACI_NO_CACHE"),
     case ets:lookup(?ACI_TAB, AciId) of
         _ when NoCache /= false ->
@@ -543,7 +560,7 @@ generate_json_aci(Vsn, Code) ->
         [] ->
             ct:log("ACI cache MISS :)"),
             Result = generate_json_aci_(Vsn, Backend, Code),
-            ets:insert_new(?ACI_TAB, #aci_cache_entry{aci_id = AciId, result = Result}),
+            cache_aci(AciId, Result),
             Result
     end.
 
@@ -576,6 +593,12 @@ generate_json_aci_(Vsn, Backend, Code) ->
     after
         cleanup_tempfiles()
     end.
+
+make_aci_id(Code) ->
+    #aci_cache_id{code_hash = crypto:hash(md5, Code), backend = backend()}.
+
+cache_aci(AciId, Aci) ->
+    ets:insert_new(?ACI_TAB, #aci_cache_entry{aci_id = AciId, result = Aci}).
 
 decode_data(Type, <<"cb_", _/binary>> = EncData) ->
     case aeser_api_encoder:safe_decode(contract_bytearray, EncData) of
