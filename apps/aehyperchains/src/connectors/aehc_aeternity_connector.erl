@@ -15,7 +15,7 @@
 -export([handle_info/2]).
 -export([terminate/2]).
 
--export([send_tx/3, get_block_by_hash/1, get_top_block/0]).
+-export([send_tx/3, get_block_by_hash/1, get_top_block/0, dry_send_tx/3]).
 
 %% API.
 
@@ -40,6 +40,10 @@ get_top_block() ->
 get_block_by_hash(Hash) ->
     gen_server:call(?MODULE, {get_block_by_hash, Hash}).
 
+-spec dry_send_tx(binary(), binary(), binary()) -> ok.
+dry_send_tx(Delegate, Commitment, PoGF) ->
+    gen_server:call(?MODULE, {dry_send_tx, Delegate, Commitment, PoGF}).
+
 %%%===================================================================
 %%%  gen_server behaviour
 %%%===================================================================
@@ -47,7 +51,6 @@ get_block_by_hash(Hash) ->
 -record(state, { stub::boolean() }).
 
 init(Args) ->
-    io:format("~nArgs: ~p~n",[Args]),
     %% Stub mode allows to pass acceptance procedure without parent node (only for dev purpouses);
     Stub = maps:get(<<"stub">>, Args, false),
     process_flag(trap_exit, true),
@@ -60,7 +63,11 @@ handle_call({get_top_block}, _From, #state{ stub = true} = State) ->
     {reply, stub_block(), State};
 
 handle_call({get_block_by_hash, _Hash}, _From, #state{ stub = true} = State) ->
-    {reply, stub_block(), State}.
+    {reply, stub_block(), State};
+
+handle_call({dry_send_tx, Delegate, Commitment, PoGF}, _From, #state{ stub = true} = State) ->
+    lager:info("~p: ~p = dry_send_tx(~p, ~p, ~p)", [?MODULE, ok, Delegate, Commitment, PoGF]),
+    {reply, ok, State}.
 
 handle_cast(_Msg, State) ->
     {noreply, State}.
