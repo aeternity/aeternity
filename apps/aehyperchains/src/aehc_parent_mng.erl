@@ -6,13 +6,13 @@
 %%% See the pattern "ProcessManager" (https://www.enterpriseintegrationpatterns.com/patterns/messaging/ProcessManager.html).
 %%% This component is responsible for orchestration the abstract parent's chain layer through:
 %%%  a) dedicated workers (trackers);
-%%%  b) supplied interface providers (conenctors);
+%%%  b) supplied interface providers (connectors);
 %%% - The first configured view acts as the "master view" and is eligible to dictate the election period through event's announcement;
 %%% - A tracker performs synchronization from the highest known block until genesis pointer through "previous_hash" property;
 %%% - To be able to run the Hyperchains the system must satisfy the connector's acceptance criteria;
 %%%     a) default mode: get_top_block/0, get_block_by_hash/1l
-%%%     b) delegate mode: default mode + send_tx/1;
-%%% - Each interested developer can supply their own connector's implementation over the particular parent chain;
+%%%     b) delegate mode: default mode + dry_send_tx/1;
+%%% - Interested developers can develop their own connectors for a particular parent chain;
 %%% (TODO: To supply link to the official connector's development guide);
 %%% @end
 %%%-------------------------------------------------------------------
@@ -82,7 +82,7 @@ handle_cast(_Msg, State) ->
     {noreply, State}.
 
 handle_info({publish_block, View, Block}, #state{} = State) ->
-    %% To be able to persists the block we have to be sure that it connects to the previous existed one in the DB;
+    %% To be able to persists the block we have to be sure that it connects to the previous existing one in the DB;
     %% That guaranties sequential order and consistency of the current chain view;
     %% Check that condition each time when block arrived allows to skip the whole chain traversing procedure;
     try

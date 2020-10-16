@@ -2,7 +2,7 @@
 %%%-------------------------------------------------------------------
 -module(aehc_connector).
 
--export([send_tx/4, get_block_by_hash/2, get_top_block/1]).
+-export([send_tx/4, get_block_by_hash/2, get_top_block/1, dry_send_tx/4]).
 
 -export([commitment/2, parent_block/4]).
 -export([publish_block/2]).
@@ -19,6 +19,8 @@
 -callback send_tx(binary(), binary(), binary()) -> ok.
 -callback get_top_block() -> parent_block().
 -callback get_block_by_hash(binary()) -> parent_block().
+
+-callback dry_send_tx(binary(), binary(), binary()) -> ok.
 
 -export_type([connector/0]).
 
@@ -43,7 +45,8 @@ commitment(Delegate, KeyblockHash) when
     parent_block().
 parent_block(Height, Hash, PrevHash, Commitments) when
     is_integer(Height), is_binary(Hash), is_binary(PrevHash), is_list(Commitments) ->
-    Header = aehc_parent_block:new_header(Hash, PrevHash, Height),
+    Hashes = [aehc_commitment:hash(Commitment) || Commitment <- Commitments],
+    Header = aehc_parent_block:new_header(Hash, PrevHash, Height, Hashes),
     aehc_parent_block:new_block(Header, Commitments).
 
 %%%===================================================================
@@ -76,12 +79,19 @@ get_block_by_hash(Con, Hash) ->
             {error, {E, R}}
     end.
 
+-spec dry_send_tx(connector(), binary(), binary(), binary()) -> ok | {error, {term(), term()}}.
+dry_send_tx(Con, Delegate, Commitment, PoGF) ->
+    try
+        ok = Con:dry_send_tx(Delegate, Commitment, PoGF)
+    catch E:R ->
+        {error, {E, R}}
+    end.
 %%%===================================================================
 %%%  Connector's management
 %%%===================================================================
 -spec accept(map()) -> ok | {error, {term(), term()}}.
 accept(Conf) ->
-    Criteria = [fun accept_top_block/1, fun accept_block_by_hash/1, fun accept_send_tx/1],
+    Criteria = [fun accept_top_block/1, fun accept_block_by_hash/1, fun accept_dry_send_tx/1],
     try
         [Fun(Conf) || Fun <- Criteria],
         ok
@@ -108,7 +118,7 @@ accept_block_by_hash(Conf) ->
     Info = "Accept get_block_by_hash procedure has passed (connector: ~p, hash: ~p, height: ~p)",
     lager:info(Info, [Module, Hash, Height]).
 
-accept_send_tx(Conf) ->
+accept_dry_send_tx(Conf) ->
     %% Ability to execute commitment call;
     Module = module(Conf),
     DelegateConf = aeu_env:user_config([<<"hyperchains">>, <<"delegate">>]),
@@ -117,8 +127,8 @@ accept_send_tx(Conf) ->
             {ok, Delegate} = aec_keys:pubkey(),
             KeyblockHash = aec_chain:top_key_block_hash(),
             PoGF = aehc_pogf:hash(no_pogf),
-            send_tx(Module, Delegate, KeyblockHash, PoGF),
-            Info = "Accept send_tx procedure has passed (connector: ~p, delegate: ~p, hash: ~p, pogf: ~p)",
+            dry_send_tx(Module, Delegate, KeyblockHash, PoGF),
+            Info = "Accept dry_send_tx procedure has passed (connector: ~p, delegate: ~p, hash: ~p, pogf: ~p)",
             lager:info(Info, [Module, Delegate, KeyblockHash, PoGF])
         end.
 
@@ -130,6 +140,8 @@ accept_send_tx(Conf) ->
 publish_block(View, Block) ->
     aehc_parent_mng:publish_block(View, Block).
 
+%% NOTE: Safely call to existing atom.
+%% In the case of non loaded modules related issues should be addressed;
 module(Conf) ->
     ConConf = maps:get(<<"connector">>, Conf),
     binary_to_existing_atom(maps:get(<<"module">>, ConConf), utf8).
