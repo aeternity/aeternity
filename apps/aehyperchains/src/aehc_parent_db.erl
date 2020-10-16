@@ -151,7 +151,7 @@ write_parent_block(ParentBlock) ->
            [mnesia:write(DBPoGF) || DBPoGF <- DBPoGFs]
        end).
 
-%% The parent chain view entry determines traversing path within the current persisted log (genesis -> top);
+%% This entry determines traversing path within the current db log (the range bewtween genesis and top);
 -spec write_parent_chain_view(binary(), binary()) -> ok.
 write_parent_chain_view(GenesisHash, TopHash) when is_binary(GenesisHash),
                                                     is_binary(TopHash) ->
