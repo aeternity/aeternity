@@ -55,7 +55,8 @@
          update_micro_candidate/3,
          validate_key_block_header/2,
          validate_micro_block_header/2,
-         version/1
+         version/1,
+         strip_extra/1
         ]).
 
 -pluggable([ deserialize_from_binary/1
@@ -149,12 +150,16 @@
         ]).
 
 raw_key_header() ->
-  #key_header{ root_hash = <<0:32/unit:8>>,
-               version = aec_hard_forks:protocol_effective_at_height(0) }.
+    populate_extra(
+      #key_header{ root_hash = <<0:32/unit:8>>,
+                   version = aec_hard_forks:protocol_effective_at_height(0) }
+    ).
 
 raw_micro_header() ->
-  #mic_header{ root_hash = <<0:32/unit:8>>,
-               version = aec_hard_forks:protocol_effective_at_height(0) }.
+    populate_extra(
+      #mic_header{ root_hash = <<0:32/unit:8>>,
+                   version = aec_hard_forks:protocol_effective_at_height(0) }
+    ).
 
 set_version(#key_header{} = H, Version) -> H#key_header{version = Version};
 set_version(#mic_header{} = H, Version) -> H#mic_header{version = Version}.
@@ -185,18 +190,20 @@ type(#mic_header{}) -> micro.
 
 -spec from_db_header(tuple() | header()) -> header().
 %% We might have a legacy tuple in the db
-from_db_header(#key_header{} = K) -> K;
-from_db_header(#mic_header{} = M) -> M;
-from_db_header({mic_header,
-                Height,
-                Pof_hash,
-                Prev_hash,
-                Prev_key,
-                Root_hash,
-                Signature,
-                Txs_hash,
-                Time,
-                Version}) ->
+from_db_header(Header) -> populate_extra(from_db_header_(Header)).
+
+from_db_header_(#key_header{} = K) -> K;
+from_db_header_(#mic_header{} = M) -> M;
+from_db_header_({mic_header,
+                 Height,
+                 Pof_hash,
+                 Prev_hash,
+                 Prev_key,
+                 Root_hash,
+                 Signature,
+                 Txs_hash,
+                 Time,
+                 Version}) ->
     #mic_header{
        height    = Height,
        pof_hash  = Pof_hash,
@@ -207,20 +214,20 @@ from_db_header({mic_header,
        txs_hash  = Txs_hash,
        time      = Time,
        version   = Version};
-from_db_header({key_header,
-                Height,
-                PrevHash,
-                PrevKey,
-                RootHash,
-                Target,
-                Nonce,
-                Time,
-                Version,
-                Pow,
-                Miner,
-                Beneficiary,
-                Info
-               }) ->
+from_db_header_({key_header,
+                 Height,
+                 PrevHash,
+                 PrevKey,
+                 RootHash,
+                 Target,
+                 Nonce,
+                 Time,
+                 Version,
+                 Pow,
+                 Miner,
+                 Beneficiary,
+                 Info
+                }) ->
             #key_header{
                height       = Height,
                prev_hash    = PrevHash,
@@ -235,19 +242,19 @@ from_db_header({key_header,
                beneficiary  = Beneficiary,
                info         = Info
               };
-from_db_header({key_header,
-                Height,
-                PrevHash,
-                PrevKey,
-                RootHash,
-                Target,
-                Nonce,
-                Time,
-                Version,
-                Pow,
-                Miner,
-                Beneficiary
-               }) ->
+from_db_header_({key_header,
+                 Height,
+                 PrevHash,
+                 PrevKey,
+                 RootHash,
+                 Target,
+                 Nonce,
+                 Time,
+                 Version,
+                 Pow,
+                 Miner,
+                 Beneficiary
+                }) ->
             #key_header{
                height       = Height,
                prev_hash    = PrevHash,
@@ -262,7 +269,7 @@ from_db_header({key_header,
                beneficiary  = Beneficiary,
                info         = <<>>
               };
-from_db_header(_) ->
+from_db_header_(_) ->
     error(bad_db_header).
 
 %%%===================================================================
@@ -278,19 +285,20 @@ from_db_header(_) ->
                     ) -> header().
 new_key_header(Height, PrevHash, PrevKeyHash, RootHash, Miner, Beneficiary,
                Target, Evd, Nonce, Time, Info, Version) ->
-    #key_header{height       = Height,
-                prev_hash    = PrevHash,
-                prev_key     = PrevKeyHash,
-                root_hash    = RootHash,
-                miner        = Miner,
-                beneficiary  = Beneficiary,
-                target       = Target,
-                pow_evidence = Evd,
-                nonce        = Nonce,
-                time         = Time,
-                info         = make_info(Version, Info),
-                version      = Version
-               }.
+    populate_extra(
+        #key_header{height       = Height,
+                    prev_hash    = PrevHash,
+                    prev_key     = PrevKeyHash,
+                    root_hash    = RootHash,
+                    miner        = Miner,
+                    beneficiary  = Beneficiary,
+                    target       = Target,
+                    pow_evidence = Evd,
+                    nonce        = Nonce,
+                    time         = Time,
+                    info         = make_info(Version, Info),
+                    version      = Version
+               }).
 
 make_info(Version, Info) when (Version >= ?MINERVA_PROTOCOL_VSN), ?IS_INT_INFO(Info) ->
     <<Info:?OPTIONAL_INFO_BYTES/unit:8>>;
@@ -304,15 +312,17 @@ make_info(_Version, default) ->
                        aec_pof:hash(), non_neg_integer()
                       ) -> header().
 new_micro_header(Height, PrevHash, PrevKey, RootHash, Time, TxsHash, PoFHash, Version) ->
-    #mic_header{height    = Height,
-                pof_hash  = PoFHash,
-                prev_hash = PrevHash,
-                prev_key  = PrevKey,
-                root_hash = RootHash,
-                txs_hash  = TxsHash,
-                time      = Time,
-                version   = Version
-               }.
+    populate_extra(
+        #mic_header{height    = Height,
+                    pof_hash  = PoFHash,
+                    prev_hash = PrevHash,
+                    prev_key  = PrevKey,
+                    root_hash = RootHash,
+                    txs_hash  = TxsHash,
+                    time      = Time,
+                    version   = Version
+                   }
+    ).
 
 %%%===================================================================
 %%% Header hash
@@ -457,6 +467,12 @@ update_micro_candidate(#mic_header{} = H, TxsRootHash, RootHash) ->
                  root_hash = RootHash
                 }.
 
+-spec set_extra(header(), map()) -> header().
+set_extra(#mic_header{} = Header, Extra) ->
+    Header#mic_header{extra = Extra};
+set_extra(#key_header{} = Header, Extra) ->
+    Header#key_header{extra = Extra}.
+
 %%%===================================================================
 %%% Serialization
 %%%===================================================================
@@ -511,7 +527,8 @@ encode_pof_hash(PofHash) ->
 -spec deserialize_from_client(key, map()) -> {ok, header()} | {error, term()}.
 deserialize_from_client(key, KeyBlock) ->
     try
-        {ok, #key_header{height       = maps:get(<<"height">>, KeyBlock),
+        {ok, populate_extra(
+             #key_header{height       = maps:get(<<"height">>, KeyBlock),
                          prev_hash    = decode(block_hash, maps:get(<<"prev_hash">>, KeyBlock)),
                          prev_key     = decode(key_block_hash, maps:get(<<"prev_key_hash">>, KeyBlock)),
                          root_hash    = decode(block_state_hash, maps:get(<<"state_hash">>, KeyBlock)),
@@ -523,7 +540,7 @@ deserialize_from_client(key, KeyBlock) ->
                          time         = maps:get(<<"time">>, KeyBlock),
                          version      = maps:get(<<"version">>, KeyBlock),
                          info         = decode(contract_bytearray, maps:get(<<"info">>, KeyBlock))
-                        }}
+                        })}
     catch
         _:_ -> {error, invalid_header}
     end.
@@ -670,7 +687,7 @@ deserialize_key_from_binary(<<Version:32,
                     version = Version,
                     info = Info
                    },
-    {ok, H};
+    {ok, populate_extra(H)};
 deserialize_key_from_binary(_Other) ->
     {error, malformed_header}.
 
@@ -707,7 +724,7 @@ deserialize_micro_from_binary(<<Version:32,
                             txs_hash = TxsHash,
                             time = Time,
                             version = Version},
-            {ok, H};
+            {ok, populate_extra(H)};
         _ ->
             {error, malformed_header}
     end;
@@ -822,3 +839,11 @@ validate_max_time(Header, _Protocol) ->
 decode(Type, Enc) ->
     {ok, Val} = aeser_api_encoder:safe_decode(Type, Enc),
     Val.
+
+strip_extra(Header) ->
+    set_extra(Header, #{}).
+
+populate_extra(Header) ->
+    Height = height(Header),
+    Consensus = aec_bitcoin_ng, %% TODO: derive module from height
+    set_extra(Header, Consensus:populate_extra(Header)).

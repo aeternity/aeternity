@@ -329,7 +329,7 @@ write_block(Block) ->
     write_block(Block, Hash).
 
 write_block(Block, Hash) ->
-    Header = aec_blocks:to_header(Block),
+    Header = aec_headers:strip_extra(aec_blocks:to_header(Block)),
     Height = aec_headers:height(Header),
 
     case aec_blocks:type(Block) of
