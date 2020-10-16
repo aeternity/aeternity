@@ -197,20 +197,22 @@ hash_is_in_main_chain(Hash) ->
         aec_keys:pubkey(),
         aec_hard_forks:protocol_vsn()) -> {'ok', aec_trees:trees()} | 'error'.
 calculate_state_for_new_keyblock(PrevHash, Miner, Beneficiary, Protocol) ->
-    case db_find_node(PrevHash) of
-        error -> error;
-        {ok, PrevNode} ->
-            Height = node_height(PrevNode) + 1,
-            Node  = fake_key_node(PrevNode, Height, Miner, Beneficiary, Protocol),
-            State = new_state_from_persistence(),
-            case get_state_trees_in(Node, State) of
-                error -> error;
-                {ok, TreesIn, ForkInfoIn} ->
-                    {Trees,_Fees,_Events} = apply_node_transactions(Node, TreesIn,
-                                                                    ForkInfoIn, State),
-                    {ok, Trees}
-            end
-    end.
+    aec_db:ensure_transaction(fun() ->
+        case db_find_node(PrevHash) of
+            error -> error;
+            {ok, PrevNode} ->
+                Height = node_height(PrevNode) + 1,
+                Node  = fake_key_node(PrevNode, Height, Miner, Beneficiary, Protocol),
+                State = new_state_from_persistence(),
+                case get_state_trees_in(Node, State, true) of
+                    error -> error;
+                    {ok, TreesIn, ForkInfoIn} ->
+                        {Trees,_Fees,_Events} = apply_node_transactions(Node, TreesIn,
+                                                                        ForkInfoIn, State),
+                        {ok, Trees}
+                end
+        end
+    end).
 
 -define(DEFAULT_GOSSIP_ALLOWED_HEIGHT_FROM_TOP, 5).
 
@@ -822,7 +824,7 @@ get_fraud_node(Ctx) ->
                    }).
 
 update_state_tree(Node, State, Ctx) ->
-    {ok, Trees, ForkInfoIn} = get_state_trees_in(Node, State),
+    {ok, Trees, ForkInfoIn} = get_state_trees_in(Node, State, true),
     {ForkInfo, MicSibHeaders} = maybe_set_new_fork_id(Node, ForkInfoIn, State),
     State1 = update_found_pof(Node, MicSibHeaders, State, Ctx),
     {State2, NewTopDifficulty, Events} = update_state_tree(Node, Trees, ForkInfo, State1),
@@ -830,7 +832,7 @@ update_state_tree(Node, State, Ctx) ->
     handle_top_block_change(OldTopHash, NewTopDifficulty, Events, State2).
 
 update_state_tree(Node, TreesIn, ForkInfo, State) ->
-    case db_find_state(hash(Node)) of
+    case db_find_state(hash(Node), true) of
         {ok,_Trees,_ForkInfo} ->
             %% NOTE: This is an internal inconsistency check,
             %% so don't use internal_error
@@ -855,7 +857,7 @@ maybe_set_new_fork_id(Node, ForkInfoIn, State) ->
             end
     end.
 
-get_state_trees_in(Node, State) ->
+get_state_trees_in(Node, State, DirtyBackend) ->
     case node_is_genesis(Node, State) of
         true  ->
             {ok,
@@ -868,7 +870,7 @@ get_state_trees_in(Node, State) ->
             };
         false ->
             PrevHash = prev_hash(Node),
-            case db_find_state(PrevHash) of
+            case db_find_state(PrevHash, DirtyBackend) of
                 {ok, Trees, ForkInfo} ->
                     %% For key blocks, reset:
                     %% 1. Fees, to accumulate new fees for generation
@@ -1221,8 +1223,8 @@ db_put_found_pof(Node, PoF) ->
         {value, _} -> ok
     end.
 
-db_find_state(Hash) ->
-    case aec_db:find_block_state_and_data(Hash, true) of
+db_find_state(Hash, DirtyBackend) ->
+    case aec_db:find_block_state_and_data(Hash, DirtyBackend) of
         {value, Trees, Difficulty, ForkId, Fees, Fraud} ->
             {ok, Trees,
              #fork_info{ difficulty = Difficulty
