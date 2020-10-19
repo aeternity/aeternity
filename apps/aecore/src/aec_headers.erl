@@ -38,6 +38,7 @@
          set_nonce_and_pow/3,
          set_info/2,
          set_pof_hash/2,
+         set_pow/2,
          set_prev_hash/2,
          set_prev_key_hash/2,
          set_root_hash/2,
@@ -56,22 +57,15 @@
          validate_key_block_header/2,
          validate_micro_block_header/2,
          version/1,
-         strip_extra/1
+         strip_extra/1,
+         set_extra/2,
+         extra/1,
+         consensus_module/1
         ]).
-
--pluggable([ deserialize_from_binary/1
-           , deserialize_from_binary_partial/1
-           , deserialize_key_from_binary/1
-           , deserialize_micro_from_binary/1
-           , validate_key_block_header/2
-           , validate_micro_block_header/2
-           , validate_pow/2
-           ]).
 
 -include_lib("aeminer/include/aeminer.hrl").
 -include_lib("aecontract/include/hard_forks.hrl").
 -include("blocks.hrl").
--include("aec_plugin.hrl").
 
 %%%===================================================================
 %%% Records and types
@@ -402,6 +396,10 @@ set_pof_hash(Header, Hash) when byte_size(Hash) =:= 0;
 pow(#key_header{pow_evidence = Evd}) ->
     Evd.
 
+-spec set_pow(key_header(), aeminer_pow_cuckoo:solution() | no_value) -> key_header().
+set_pow(#key_header{} = Header, Pow) ->
+    Header#key_header{pow_evidence = Pow}.
+
 -spec root_hash(header()) -> state_hash().
 root_hash(#key_header{root_hash = H}) -> H;
 root_hash(#mic_header{root_hash = H}) -> H.
@@ -468,10 +466,20 @@ update_micro_candidate(#mic_header{} = H, TxsRootHash, RootHash) ->
                 }.
 
 -spec set_extra(header(), map()) -> header().
-set_extra(#mic_header{} = Header, Extra) ->
-    Header#mic_header{extra = Extra};
 set_extra(#key_header{} = Header, Extra) ->
-    Header#key_header{extra = Extra}.
+    Header#key_header{extra = Extra};
+set_extra(#mic_header{} = Header, Extra) ->
+    Header#mic_header{extra = Extra}.
+
+-spec extra(header()) -> map().
+extra(#key_header{extra = Extra}) -> Extra;
+extra(#mic_header{extra = Extra}) -> Extra.
+
+%% The consensus module gets populated in the extra map in the consensus module
+-spec consensus_module(header()) -> atom().
+consensus_module(Header) ->
+    #{consensus := Consensus} = extra(Header),
+    Consensus.
 
 %%%===================================================================
 %%% Serialization
@@ -766,7 +774,7 @@ deserialize_pow_evidence(_) ->
 
 validate_key_block_header(Header, Protocol) ->
     Validators = [fun validate_protocol/2,
-                  fun validate_pow/2,
+                  fun validate_key_header_seal/2,
                   fun validate_max_time/2],
     aeu_validation:run(Validators, [Header, Protocol]).
 
@@ -786,22 +794,12 @@ validate_protocol(Header, Protocol) ->
         false -> {error, protocol_version_mismatch}
     end.
 
--spec validate_pow(header(), aec_hard_forks:protocol_vsn()) ->
+-spec validate_key_header_seal(header(), aec_hard_forks:protocol_vsn()) ->
                           ok | {error, incorrect_pow}.
-validate_pow(#key_header{nonce        = Nonce,
-                         pow_evidence = Evd,
-                         target       = Target} = Header, _Protocol)
+validate_key_header_seal(#key_header{nonce = Nonce} = Header, Protocol)
   when Nonce >= 0, Nonce =< ?MAX_NONCE ->
-    %% Zero nonce and pow_evidence before hashing, as this is how the mined block
-    %% got hashed.
-    Header1 = Header#key_header{nonce = 0, pow_evidence = no_value},
-    HeaderBinary = serialize_to_binary(Header1),
-    case aec_mining:verify(HeaderBinary, Nonce, Evd, Target) of
-        true ->
-            ok;
-        false ->
-            {error, incorrect_pow}
-    end.
+    Consensus = consensus_module(Header),
+    Consensus:validate_key_header_seal(Header, Protocol).
 
 -spec validate_micro_block_cycle_time(header(), aec_hard_forks:protocol_vsn()) ->
                                              ok | {error, bad_micro_block_interval}.
@@ -843,7 +841,9 @@ decode(Type, Enc) ->
 strip_extra(Header) ->
     set_extra(Header, #{}).
 
-populate_extra(Header) ->
-    Height = height(Header),
-    Consensus = aec_bitcoin_ng, %% TODO: derive module from height
-    set_extra(Header, Consensus:populate_extra(Header)).
+populate_extra(Header1) ->
+    Height = height(Header1),
+    Consensus = aec_consensus_bitcoin_ng, %% TODO: derive module from height
+    Header2 = set_extra(Header1, Consensus:extra_from_header(Header1)),
+    Consensus = consensus_module(Header2),
+    Header2.

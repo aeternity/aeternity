@@ -185,8 +185,8 @@ reinit_chain() ->
 %%% Stratum mining pool API
 
 -spec stratum_reply({aeminer_pow:nonce(), aeminer_pow_cuckoo:solution()}, candidate_hash()) -> term().
-stratum_reply({Nonce, Evd}, HeaderBin) ->
-    ?SERVER ! {stratum_reply, {{ok, {Nonce, Evd}}, HeaderBin}}.
+stratum_reply({Nonce, Evd}, ForSealing) ->
+    ?SERVER ! {stratum_reply, {{ok, {Nonce, Evd}}, ForSealing}}.
 
 %%%===================================================================
 %%% gen_server callbacks
@@ -384,11 +384,13 @@ try_fetch_and_make_candidate() ->
     end.
 
 make_key_candidate(Block) ->
-    HeaderBin = aec_headers:serialize_to_binary(aec_blocks:to_header(Block)),
-    Nonce     = aeminer_pow:pick_nonce(),
-    {HeaderBin, #candidate{ block    = Block,
-                            nonce    = Nonce,
-                            top_hash = aec_blocks:prev_hash(Block) }}.
+    Consensus   = aec_blocks:consensus_module(Block),
+    BlockHeader = aec_blocks:to_header(Block),
+    ForSealing  = Consensus:key_header_for_sealing(BlockHeader),
+    Nonce       = Consensus:nonce_for_sealing(BlockHeader),
+    {ForSealing, #candidate{ block    = Block,
+                             nonce    = Nonce,
+                             top_hash = aec_blocks:prev_hash(Block) }}.
 
 make_micro_candidate(Block) ->
     #candidate{ block    = Block,
@@ -851,61 +853,73 @@ start_mining_(#state{key_block_candidates = [{_, #candidate{top_hash = OldHash}}
     %% Regenerate the candidate.
     epoch_mining:info("Key block candidate for old top hash; regenerating"),
     create_key_block_candidate(State);
-start_mining_(#state{stratum_mode = false, key_block_candidates = [{HeaderBin, Candidate} | Candidates]} = State) ->
+start_mining_(#state{stratum_mode = false, key_block_candidates = [{ForSealing, Candidate} | Candidates]} = State) ->
     case available_miner_instance(State) of
         none -> State;
         Instance ->
             epoch_mining:info("Starting miner on top of ~p", [State#state.top_block_hash]),
-            Target            = aec_blocks:target(Candidate#candidate.block),
+            Consensus         = aec_blocks:consensus_module(Candidate#candidate.block),
+            Header            = aec_blocks:to_header(Candidate#candidate.block),
             MinerConfig       = Instance#miner_instance.config,
             AddressedInstance = Instance#miner_instance.instance,
-            Nonce             = aeminer_pow:trim_nonce(Candidate#candidate.nonce, MinerConfig),
+            Nonce             = Consensus:trim_sealing_nonce(Candidate#candidate.nonce, MinerConfig),
             Info              = [{top_block_hash, State#state.top_block_hash}],
             aec_events:publish(start_mining, Info),
             Fun = fun() ->
-                          {aec_mining:generate(HeaderBin, Target, Nonce, MinerConfig, AddressedInstance)
-                          , HeaderBin}
+                          { Consensus:generate_key_header_seal(
+                              ForSealing,
+                              Header,
+                              Nonce,
+                              MinerConfig,
+                              AddressedInstance)
+                          , ForSealing}
                   end,
-            Candidate1 = register_miner(Candidate, Nonce, MinerConfig),
-            State1 = State#state{key_block_candidates = [{HeaderBin, Candidate1} | Candidates]},
+            Candidate1 = register_miner(Candidate, Consensus, Nonce, MinerConfig),
+            State1 = State#state{key_block_candidates = [{ForSealing, Candidate1} | Candidates]},
             {State2, Pid} = dispatch_worker(mining, Fun, State1),
             State3 = register_miner_instance(Instance, Pid, State2),
             epoch_mining:info("Miner ~p started", [Pid]),
             start_mining_(State3)
     end;
 start_mining_(#state{stratum_mode = true,
-                     key_block_candidates = [{HeaderBin, #candidate{refs = StratumRefs} = Candidate} | Candidates]} = State)
+                     key_block_candidates = [{ForSealing, #candidate{refs = StratumRefs} = Candidate} | Candidates]} = State)
   when StratumRefs =:= 0  ->
-    epoch_mining:info("Stratum dispatch ~p", [HeaderBin]),
+    epoch_mining:info("Stratum dispatch ~p", [ForSealing]),
     Target            = aec_blocks:target(Candidate#candidate.block),
     Info              = [{top_block_hash, State#state.top_block_hash}],
     Server            = self(),
     aec_events:publish(start_mining, Info),
-    aec_events:publish(stratum_new_candidate, [{HeaderBin, Candidate, Target, Server}]),
+    aec_events:publish(stratum_new_candidate, [{ForSealing, Candidate, Target, Server}]),
     Candidate1 = register_stratum(Candidate),
-    State1 = State#state{key_block_candidates = [{HeaderBin, Candidate1} | Candidates]},
+    State1 = State#state{key_block_candidates = [{ForSealing, Candidate1} | Candidates]},
     State1.
 
 register_stratum(Candidate = #candidate{refs  = Refs}) ->
     Candidate#candidate{refs  = Refs + 1}.
 
-register_miner(Candidate = #candidate{refs  = Refs}, Nonce, MinerConfig) ->
-    NextNonce = aeminer_pow:next_nonce(Nonce, MinerConfig),
+register_miner(Candidate = #candidate{refs  = Refs}, Consensus, Nonce, MinerConfig) ->
+    NextNonce = Consensus:next_nonce_for_sealing(Nonce, MinerConfig),
     Candidate#candidate{refs  = Refs + 1,
                         nonce = NextNonce}.
 
-handle_mining_reply(Reply, #state{key_block_candidates = undefined} = State) ->
+handle_mining_reply({{continue_mining, MaybeSeal}, ForSealing}, State) ->
+    handle_mining_reply_({MaybeSeal, ForSealing}, State);
+handle_mining_reply({{stop_mining, MaybeSeal}, ForSealing}, State) ->
+    handle_mining_reply_({MaybeSeal, ForSealing}, State#state{mining_state = 'stopped'}).
+
+handle_mining_reply_(Reply, #state{key_block_candidates = undefined} = State) ->
     %% Something invalidated the block candidates already.
     epoch_mining:debug("Candidate invalidated in conductor ~p", [Reply]),
     start_mining_(State);
-handle_mining_reply({{ok, {Nonce, Evd}}, HeaderBin}, #state{} = State) ->
+handle_mining_reply_({{ok, Seal}, ForSealing}, #state{} = State) ->
     Candidates = State#state.key_block_candidates,
     %% Check that the solution is for one of the valid candidates.
-    case proplists:get_value(HeaderBin, Candidates) of
+    case proplists:get_value(ForSealing, Candidates) of
         #candidate{block = CandidateBlock} ->
             aec_metrics:try_update([ae,epoch,aecore,mining,blocks_mined], 1),
             State1 = State#state{key_block_candidates = undefined},
-            Block = aec_blocks:set_nonce_and_pow(CandidateBlock, Nonce, Evd),
+            Consensus = aec_blocks:consensus_module(CandidateBlock),
+            Block = Consensus:set_key_block_seal(CandidateBlock, Seal),
             case handle_mined_block(Block, State1) of
                 {ok, State2} ->
                     State2;
@@ -918,31 +932,31 @@ handle_mining_reply({{ok, {Nonce, Evd}}, HeaderBin}, #state{} = State) ->
             epoch_mining:error("Found solution for old block", []),
             start_mining_(State)
     end;
-handle_mining_reply({{error, no_solution}, HeaderBin}, State) ->
+handle_mining_reply_({{error, no_solution}, ForSealing}, State) ->
     aec_metrics:try_update([ae,epoch,aecore,mining,retries], 1),
     epoch_mining:debug("Failed to mine block, no solution; retrying."),
-    retry_mining(State, HeaderBin);
-handle_mining_reply({{error, {runtime, Reason}}, HeaderBin}, State) ->
+    retry_mining(State, ForSealing);
+handle_mining_reply_({{error, {runtime, Reason}}, ForSealing}, State) ->
     aec_metrics:try_update([ae,epoch,aecore,mining,retries], 1),
     epoch_mining:error("Failed to mine block, runtime error; "
                        "retrying with different nonce. "
                        "Error: ~p", [Reason]),
-    retry_mining(State, HeaderBin).
+    retry_mining(State, ForSealing).
 
 %%%===================================================================
 %%% Retry mining when we failed to find a solution.
 
-retry_mining(S = #state{key_block_candidates = [{HeaderBin, Candidate} | Candidates]}, HeaderBin) ->
+retry_mining(S = #state{key_block_candidates = [{ForSealing, Candidate} | Candidates]}, ForSealing) ->
     Candidate1 = Candidate#candidate{refs = Candidate#candidate.refs - 1},
-    start_mining_(S#state{key_block_candidates = [{HeaderBin, Candidate1} | Candidates]});
-retry_mining(S = #state{key_block_candidates = Candidates}, HeaderBin) when is_list(Candidates) ->
-    case proplists:get_value(HeaderBin, Candidates) of
+    start_mining_(S#state{key_block_candidates = [{ForSealing, Candidate1} | Candidates]});
+retry_mining(S = #state{key_block_candidates = Candidates}, ForSealing) when is_list(Candidates) ->
+    case proplists:get_value(ForSealing, Candidates) of
         undefined ->
             create_key_block_candidate(S);
         #candidate{refs = 1} ->
-            create_key_block_candidate(S#state{key_block_candidates = proplists:delete(HeaderBin, Candidates)});
+            create_key_block_candidate(S#state{key_block_candidates = proplists:delete(ForSealing, Candidates)});
         #candidate{refs = N} = C when N > 1 ->
-            Candidates1 = lists:keyreplace(HeaderBin, 1, Candidates, {HeaderBin, C#candidate{refs = N - 1}}),
+            Candidates1 = lists:keyreplace(ForSealing, 1, Candidates, {ForSealing, C#candidate{refs = N - 1}}),
             create_key_block_candidate(S#state{key_block_candidates = Candidates1})
     end.
 
@@ -1035,10 +1049,10 @@ handle_key_block_candidate_reply({{ok, KeyBlockCandidate}, TopHash},
                       "Its target is ~p (= difficulty ~p).",
                       [aec_blocks:target(KeyBlockCandidate),
                        aec_blocks:difficulty(KeyBlockCandidate)]),
-    {HeaderBin, Candidate} = make_key_candidate(KeyBlockCandidate),
+    {ForSealing, Candidate} = make_key_candidate(KeyBlockCandidate),
     Candidates = case Candidates0 of
-                     undefined -> [{HeaderBin, Candidate}];
-                     _         -> [{HeaderBin, Candidate} | Candidates0]
+                     undefined -> [{ForSealing, Candidate}];
+                     _         -> [{ForSealing, Candidate} | Candidates0]
                  end,
     State1 = State#state{key_block_candidates = Candidates},
     start_mining_(State1);

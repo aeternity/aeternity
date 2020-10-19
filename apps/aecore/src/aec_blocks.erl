@@ -10,6 +10,7 @@
 %% API
 -export([assert_block/1,
          beneficiary/1,
+         consensus_module/1,
          deserialize_from_binary/1,
          difficulty/1,
          gas/1,
@@ -126,6 +127,12 @@ set_header(#mic_block{} = B, H) ->
 set_header(#key_block{} = B, H) ->
     aec_headers:assert_key_header(H),
     B#key_block{header = H}.
+
+-spec consensus_module(block()) -> atom().
+consensus_module(#key_block{header = H}) ->
+    aec_headers:consensus_module(H);
+consensus_module(#mic_block{header = H}) ->
+    aec_headers:consensus_module(H).
 
 %%%===================================================================
 %%% Block structure
