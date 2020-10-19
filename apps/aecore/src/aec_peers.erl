@@ -452,7 +452,7 @@ handle_call({connection_closed, PeerId, PeerCon}, _From, State0) ->
     {reply, ok, update_peer_metrics(schedule_connect(State))};
 handle_call({peer_dead, PeerId, PeerCon}, _From, State0) ->
     State = on_peer_dead(PeerId, PeerCon, State0),
-    {reply, ok, update_peer_metrics(State)};
+    {reply, ok, update_peer_metrics(maybe_start_tcp_probe_timers(State))};
 handle_call({peer_connected, PeerId, PeerCon}, _From, State0) ->
     {Result, State} = on_peer_connected(PeerId, PeerCon, State0),
     {reply, Result, update_peer_metrics(schedule_connect(State))};
@@ -461,7 +461,7 @@ handle_call({peer_accepted, PeerAddr, PeerInfo, PeerCon}, _From, State0) ->
     {reply, Result, update_peer_metrics(State)};
 handle_call({peer_alive, PeerId, PeerCon}, _From, State0) ->
     {Result, State} = on_peer_alive(PeerId, PeerCon, State0),
-    {reply, Result, update_peer_metrics(State)}.
+    {reply, Result, update_peer_metrics(maybe_start_tcp_probe_timers(State))}.
 
 handle_cast({log_ping, Outcome, PeerId, _Time}, State) ->
     update_ping_metrics(Outcome),
@@ -864,12 +864,12 @@ maybe_start_tcp_probe_timers(State) ->
     _State = maybe_start_tcp_probe_timer(unverified, State1).
 
 -spec maybe_start_tcp_probe_timer(peer_pool_name(), state()) -> state().
-maybe_start_tcp_probe_timer(verified, #state{ last_tcp_verified_probe_time = undefined } = State) ->
+maybe_start_tcp_probe_timer(verified, #state{ tcp_verified_probe_ref = undefined } = State) ->
     Delay = initial_tcp_probe_delay(),
     RefVerified = start_timer({tcp_probe, verified}, Delay),
     State#state{ last_tcp_verified_probe_time = timestamp(),
                  tcp_verified_probe_ref = RefVerified };
-maybe_start_tcp_probe_timer(unverified, #state{ last_tcp_unverified_probe_time = undefined } = State) ->
+maybe_start_tcp_probe_timer(unverified, #state{ tcp_unverified_probe_ref = undefined } = State) ->
     Delay = initial_tcp_probe_delay(),
     RefUnverified = start_timer({tcp_probe, unverified}, Delay),
     State#state{ last_tcp_unverified_probe_time = timestamp(),
