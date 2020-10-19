@@ -442,7 +442,7 @@ new_account_(ForkId, Balance, #{forks := Forks} = Chain) ->
                 error ->
                     aec_trees:new_without_backend()
             end,
-    NewChain = insert_key_pair(ForkId, KP, Chain),
+    NewChain = insert_key_pair(KP, Chain),
     NewTrees = aec_trees:set_accounts(Trees, aec_accounts_trees:enter(Acct, aec_trees:accounts(Trees))),
     NewBlocks = [TopBlock#{trees => NewTrees}|RestBlocks],
     {{ok, KP}, NewChain#{forks => Forks#{ForkId => F#{blocks => NewBlocks}}}}.
@@ -477,13 +477,12 @@ add_microblock_(ForkId, Txs, #{forks := Forks} = Chain, Opts) ->
                Height, PrevHash, PrevKeyHash,
                root_hash(), 0, txs_hash(), pof_hash(), 0),
     Block = aec_blocks:new_micro_from_header(NewHdr, Txs, no_fraud),
-    {BlockEntry, Evs1} = with_trees(ForkId, Txs, Block, Chain),
-    Evs2 = maps:to_list(Evs1),
+    {BlockEntry, Evs} = with_trees(ForkId, Txs, Block, Chain),
     ?LOG("Microblock = ~p", [Block]),
     NewFork = F#{blocks => [BlockEntry | Blocks]},
     ?LOG("NewFork(~p): ~p", [ForkId, NewFork]),
     NewForks = Forks#{ForkId => NewFork},
-    NewChain = announce(ForkId, Txs, Evs2, Chain#{forks => NewForks}, Opts),
+    NewChain = announce(ForkId, Txs, Evs, Chain#{forks => NewForks}, Opts),
     #{block := FinalMicroBlock} = BlockEntry,
     {{ok, FinalMicroBlock}, NewChain}.
 
@@ -498,7 +497,7 @@ clone_micro_on_fork_(Hash, ForkId, #{forks := Forks} = Chain, Opts) ->
             error({no_such_hash, Hash});
         #{block := B} ->
             Txs = aec_blocks:txs(B),
-            add_microblock_(ForkId, Txs, Chain)
+            add_microblock_(ForkId, Txs, Chain, Opts)
     end.
 
 fork_from_hash_(ForkId, Hash, #{ forks   := Forks } = Chain, Opts) ->
@@ -806,11 +805,7 @@ find_tx_with_location_(Hash, #{forks := Forks, mempool := Pool}) ->
             end
     end.
 
-insert_key_pair(KP, Chain) ->
-    insert_key_pair(main, KP, Chain).
-
-insert_key_pair( ForkId
-               , #{pubkey := PK, privkey := SK}
+insert_key_pair( #{pubkey := PK, privkey := SK}
                , #{key_pairs := KPs} = Chain) ->
     Chain#{key_pairs => KPs#{PK => SK}}.
 
