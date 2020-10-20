@@ -96,7 +96,7 @@
  {<<"leveled">>,
   {git,"https://github.com/martinsumner/leveled.git",
       {ref,"5bc137e4ef90d55f1e0da216a5ef5801d2a3d813"}},
-  0},
+  1},
  {<<"lhttpc">>,{pkg,<<"lhttpc">>,<<"1.6.2">>},1},
  {<<"lz4">>,
   {git,"https://github.com/szktty/erlang-lz4.git",
