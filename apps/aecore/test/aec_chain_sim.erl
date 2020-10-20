@@ -81,8 +81,7 @@
 
 
 %% TODO: Use CT logging or system logging - possibly configurable
--define(LOG(Fmt, Args), io:fwrite("~w:~w/~w - " ++ Fmt, [?MODULE, ?FUNCTION_NAME, ?LINE | Args])).
-%%-define(LOG(Fmt, Args), ok).
+-define(LOG(Fmt, Args), io:fwrite(user, "~w:~w/~w - " ++ Fmt, [?MODULE, ?FUNCTION_NAME, ?LINE | Args])).
 
 %%% @equiv start(#{}).
 %%
