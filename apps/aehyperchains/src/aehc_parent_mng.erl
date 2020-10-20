@@ -65,7 +65,6 @@ init([]) ->
     %% Read configuration;
     Trackers = [aehc_app:tracker_name(Tracker)|| Tracker <- aehc_app:trackers_config()],
     [Master|_] = Trackers,
-    %% Run parent views;
     {ok, #state{ master = Master, trackers = Trackers }}.
 
 handle_call({start_view, View, Conf}, _From, State) ->
