@@ -151,7 +151,7 @@ write_parent_block(ParentBlock) ->
            [mnesia:write(DBPoGF) || DBPoGF <- DBPoGFs]
        end).
 
-%% This entry determines traversing path within the current db log (the range bewtween genesis and top);
+%% This entry determines traversing path within the current db log (the current range between genesis and top);
 -spec write_parent_chain_view(binary(), binary()) -> ok.
 write_parent_chain_view(GenesisHash, TopHash) when is_binary(GenesisHash),
                                                     is_binary(TopHash) ->
@@ -167,7 +167,7 @@ get_parent_chain_view(GenesisHash) ->
                undefined
        end).
 
-%% Get parent tob block within particular parent view;
+%% Get the parent tob block of a particular parent view;
 -spec get_parent_top_block(binary()) -> aehc_parent_block:parent_block() | undefined.
 get_parent_top_block(GenesisHash) ->
     ?t(get_parent_block(get_parent_chain_view(GenesisHash))).

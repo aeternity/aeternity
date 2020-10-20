@@ -9,13 +9,19 @@
 
 -include_lib("common_test/include/ct.hrl").
 
--define(VIEW, <<"chain_sim">>).
+-define(SIM_VIEW, <<"chain_sim">>).
+-define(SIM_CONNECTOR, <<"aehc_chain_sim_connector">>).
+
+-define(LOG(Fmt, Args), io:fwrite("~w:~w/~w - " ++ Fmt, [?MODULE, ?FUNCTION_NAME, ?LINE | Args])).
 
 %% Test server callbacks
 -export([ suite/0
         , all/0
+        , groups/0
         , init_per_suite/1
         , end_per_suite/1
+        , init_per_group/2
+        , end_per_group/2
         , init_per_testcase/2
         , end_per_testcase/2
         ]).
@@ -23,205 +29,155 @@
 %% Test cases
 -export([ fetch_block/1
         , fetch_height/1
-        , fork_switch/1
+        , fetch_fork/1
         ]).
 
+-export([ post_block/1 ]).
 %%--------------------------------------------------------------------
 %% COMMON TEST CALLBACK FUNCTIONS
 %%--------------------------------------------------------------------
 
-%%--------------------------------------------------------------------
-%% Function: suite() -> Info
-%%
-%% Info = [tuple()]
-%%   List of key/value pairs.
-%%
-%% Description: Returns list of tuples to set default properties
-%%              for the suite.
-%%--------------------------------------------------------------------
+all() ->
+    [{group, fetch}, {group, post}].
+
+groups() ->
+    [
+        {fetch, [sequence], [fetch_block, fetch_height, fetch_fork]},
+        {post, [], [post_block]}
+    ].
+
 suite() ->
     [{timetrap,{minutes,1}}].
 
-%%--------------------------------------------------------------------
-%% Function: init_per_suite(Config0) -> Config1
-%%
-%% Config0 = Config1 = [tuple()]
-%%   A list of key/value pairs, holding the test case configuration.
-%%
-%% Description: Initialization before the suite.
-%%--------------------------------------------------------------------
 init_per_suite(Config) ->
-    %% aec_chain_sim related apps;
-    application:ensure_started(gproc),
-    ok = application:ensure_started(crypto),
-
     Config.
 
-%%--------------------------------------------------------------------
-%% Function: end_per_suite(Config) -> term()
-%%
-%% Config = [tuple()]
-%%   A list of key/value pairs, holding the test case configuration.
-%%
-%% Description: Cleanup after the suite.
-%%--------------------------------------------------------------------
 end_per_suite(_Config) ->
     ok.
 
-%%--------------------------------------------------------------------
-%% Function: init_per_testcase(TestCase, Config0) -> Config1
-%%
-%% TestCase = atom()
-%%   Name of the test case that is about to run.
-%% Config0 = Config1 = [tuple()]
-%%   A list of key/value pairs, holding the test case configuration.
-%%
-%% Description: Initialization before each test case.
-%%--------------------------------------------------------------------
-init_per_testcase(_TestCase, Config) ->
-    %% aehc_parent_mng related mocks;
-    meck:new(aehc_app, [passthrough]),
-    TrackersConf = [
-        #{
-            <<"name">> => <<"chain_sim">>,
-            <<"connector">> => #{
-                <<"module">> => <<"aehc_chain_sim_connector">>,
-                <<"args">> => #{
-                    <<"host">> => <<"localhost">>,
-                    <<"port">> => 8332,
-                    <<"stub">> => true}
-            },
-            %% Here is binary format to avoid decode -> encode overhead;
-            <<"genesis_hash">> => <<137,206,99,218,17,5,58,206,158,154,48,45,
-                104,202,228,107,195,195,17,77,208,56,184,
-                52,164,245,229,245,163,141,193,230>>,
-            <<"note">> => <<"Hyperchains simulator">>
-        }],
-    meck:expect(aehc_app, trackers_config, 0, TrackersConf),
+init_per_group(_, Config) ->
+    %% aec_chain_sim related apps;
+    application:ensure_started(gproc),
+    ok = application:ensure_started(crypto),
     meck:new(aehc_utils, [passthrough]),
     meck:expect(aehc_utils, hc_enabled, 0, true),
     %% aec_chain_sim_ related mocks;
     aec_test_utils:mock_genesis_and_forks(),
     Dir = aec_test_utils:aec_keys_setup(),
-
     %% aehc_tracker related install;
-    {ok, _} = aec_db_error_store:start_link(),
     aec_test_utils:start_chain_db(),
     aehc_db:create_tables(ram),
     Tabs = [Tab || {Tab, _} <- aehc_parent_db:table_specs(ram)],
     ok = mnesia:wait_for_tables(Tabs, 10000),
 
-    {ok, Pid} = aehc_sup:start_link(), true = is_pid(Pid),
-    [aehc_parent_mng:start_view(aehc_app:tracker_name(Conf), Conf) || Conf <- aehc_app:trackers_config()],
+    [{dir, Dir}|Config].
 
-    [{dir, Dir}, {pid, Pid}|Config].
-%%--------------------------------------------------------------------
-%% Function: end_per_testcase(TestCase, Config) -> term()
-%%
-%% TestCase = atom()
-%%   Name of the test case that is finished.
-%% Config = [tuple()]
-%%   A list of key/value pairs, holding the test case configuration.
-%%
-%% Description: Cleanup after each test case.
-%%--------------------------------------------------------------------
-end_per_testcase(_TestCase, Config) ->
+end_per_group(_, Config) ->
+%%    aec_test_utils:aec_keys_cleanup(?config(dir, Config)),
+    %% aehc_tracker related uninstall;
+    ok = aec_test_utils:stop_chain_db().
+
+init_per_testcase(_, Config) ->
+    %% aehc_parent_mng related mocks;
+    meck:new(aehc_utils, [passthrough]),
+    meck:expect(aehc_utils, hc_enabled, 0, true),
+    meck:new(aehc_app, [passthrough]),
+    meck:expect(aehc_app, trackers_config, 0, trackers_conf(aec_block_genesis:genesis_header())),
+    {ok, _} = aec_db_error_store:start_link(),
+    {ok, Pid} = aehc_sup:start_link(), true = is_pid(Pid),
+    [{ok, _} = aehc_parent_mng:start_view(aehc_app:tracker_name(Conf), Conf) || Conf <- aehc_app:trackers_config()],
+    [{pid, Pid}|Config].
+
+end_per_testcase(_, Config) ->
     %% aehc_parent_mng related mocks;
     meck:unload(aehc_app),
-    meck:unload(aehc_utils),
-    %% aec_chain_sim related mocks;
-    aec_test_utils:unmock_genesis_and_forks(),
-    aec_test_utils:aec_keys_cleanup(?config(dir, Config)),
-    %% aehc_tracker related uninstall;
-    aec_test_utils:stop_chain_db(),
-    ok = aec_db_error_store:stop(),
     exit(?config(pid, Config), normal),
-    ok.
-
-%%--------------------------------------------------------------------
-%% Function: all() -> GroupsAndTestCases
-%%
-%% GroupsAndTestCases = [{group,GroupName} | TestCase]
-%% GroupName = atom()
-%%   Name of a test case group.
-%% TestCase = atom()
-%%   Name of a test case.
-%%
-%% Description: Returns the list of groups and test cases that
-%%              are to be executed.
-%%--------------------------------------------------------------------
-all() ->
-    [ fetch_block ].
-
+    ok = aec_db_error_store:stop().
 
 %%--------------------------------------------------------------------
 %% TEST CASES
 %%--------------------------------------------------------------------
 
 fetch_block(_Config) ->
-    Block = generate_block(main, 0, undefined),
-    aehc_parent_mng:publish_block(?VIEW, Block),
-    timer:sleep(100),
-    Hash = aehc_parent_block:hash_block(Block),
-    %% The extracted block from DB has TO be absolutely identical;
+    {ok, SimBlock} = aec_chain_sim:add_keyblock(),
+    timer:sleep(1000),
+    Hash = maps:get(hash, SimBlock),
     Block = aehc_parent_db:get_parent_block(Hash),
+    true = (Hash == aehc_parent_block:hash_block(Block)),
     ok.
 
 fetch_height(_Config) ->
-    Chain = generate_chain(0, 10),
-    TopBlock = hd(Chain),
-    GenesisBlock = lists:last(Chain),
-    [aehc_parent_mng:publish_block(?VIEW, Block)||Block <- Chain],
-    TopBlockHash = aehc_parent_block:hash_block(TopBlock),
-    GenesisBlockHash = aehc_parent_block:hash_block(GenesisBlock),
-    %% The parent chain log from DB has to be absolutely identical;
-    timer:sleep(100),
-    Chain = traverse(TopBlockHash, GenesisBlockHash),
+    {ok, Start} = aec_chain_sim:add_keyblock(),
+    Res = [aec_chain_sim:add_keyblock() || _ <- lists:seq(2, 100)],
+    {ok, End} = lists:last(Res),
+    timer:sleep(1000),
+    Log = traverse(maps:get(hash, End), maps:get(hash, Start)),
+    true = (length(Res) == length(Log)),
     ok.
 
-fork_switch(_Config) ->
-    Chain = generate_chain(main, 0, 600),
-    ForkedChain = generate_chain(fork, 500, 1000),
-    TopBlock = hd(ForkedChain),
-    GenesisBlock = lists:last(ForkedChain),
-    [aehc_parent_mng:publish_block(?VIEW, Block)||Block <- Chain],
-    [aehc_parent_mng:publish_block(?VIEW, Block)||Block <- ForkedChain],
-    TopBlockHash = aehc_parent_block:hash_block(TopBlock),
-    GenesisBlockHash = aehc_parent_block:hash_block(GenesisBlock),
-    %% The parent chain log from DB has to be absolutely identical after fork switch has applied;
-    timer:sleep(100),
-    ForkedChain = traverse(TopBlockHash, GenesisBlockHash),
+fetch_fork(_Config) ->
+    %% The main chain;
+    MainRes = [aec_chain_sim:add_keyblock() || _ <- lists:seq(1, 80)],
+    {ok, MainEnd} = lists:last(MainRes),
+    %% Fork (Demo) chain;
+    {ok, DemoStart} = aec_chain_sim:fork_from_hash(demo, maps:get(hash, MainEnd)),
+    DemoRes = [aec_chain_sim:add_keyblock(demo) || _ <- lists:seq(1, 20)],
+    {ok, DemoEnd} = lists:last(DemoRes),
+    aec_chain_sim:fork_switch(demo),
+    timer:sleep(1000),
+
+    DemoLog = traverse(maps:get(hash, DemoEnd), maps:get(hash, DemoStart)),
+    true = (length(DemoRes) == length(DemoLog)),
     ok.
 
+post_block(_Config) ->
+    Dir = aec_test_utils:aec_keys_setup(),
+
+    {ok, PrivKey} = aec_keys:sign_privkey(),
+    {ok, Pub} = aec_keys:pubkey(),
+    Delegate = aeser_id:create(account, Pub),
+    %% The main intention of this call is to emulate post action with signed payload from delegate;
+    %% Fee, nonce, ttl and amount fields have decorated nature;
+    KeyblockHash = aec_chain:top_key_block_hash(),
+    PoGF = aehc_pogf:hash(no_pogf),
+    Header = aehc_commitment_header:new(Delegate, KeyblockHash, PoGF),
+
+    Payload = term_to_binary(aehc_commitment:new(Header), [compressed]),
+    {ok, Tx} = aec_spend_tx:new(#{ sender_id => Delegate, recipient_id => Delegate, amount => 1,
+        fee => 5, nonce => 1, payload => Payload, ttl => 0 }),
+    BinaryTx = aec_governance:add_network_id(aetx:serialize_to_binary(Tx)),
+    SignedTx = aetx_sign:new(Tx, [enacl:sign_detached(BinaryTx, PrivKey)]),
+    TxHash = aetx_sign:hash(SignedTx),
+    %% The next format is prepared accordingly to simualtor internal representation;
+    aec_chain_sim:push(#{ tx_hash => TxHash, signed_tx  => SignedTx }),
+    timer:sleep(1000),
+
+    {ok, SimBlock} = aec_chain_sim:add_keyblock(),
+    Block = aehc_parent_db:get_parent_block(maps:get(hash, SimBlock)),
+    true = aehc_parent_block:is_hc_parent_block(Block),
+
+    aec_test_utils:aec_keys_cleanup(Dir),
+    ok.
 %%%===================================================================
-%%%  parent chain demo generator
+%%%  Configuration level
 %%%===================================================================
-%% NOTE: This generator is extremely simplified and source of entropy is based directly on Height param;
-%% Now is the late night time (hope to agree some better solution with gorbak25 and radrow tomorrow);
-generate_chain(From, To) ->
-    generate_chain(main, From, To).
 
-generate_chain(Fork, From, To) ->
-    GenesisBlock = generate_block(Fork, From, generate_hash(From)),
-    {Res, _} = lists:foldl(
-        fun (CurrentHeight, {Acc, Prev}) ->
-            PrevHash = aehc_parent_block:prev_hash_block(Prev),
-            Block = generate_block(Fork, CurrentHeight, PrevHash),
-            {[Block|Acc], Block}
-        end,
-        {[], GenesisBlock},
-        lists:seq(From + 1, To)
-    ),
-    Res.
-
-generate_block(Fork, Height, PrevHash) ->
-    Header = aehc_parent_block:new_header(generate_hash([Fork, Height]), PrevHash, Height),
-    %% TODO: To provide source of entropy for commitments data;
-    Commitments = [],
-    aehc_parent_block:new_block(Header, Commitments).
-
-generate_hash(Input) ->
-    aec_hash:hash(demo, term_to_binary(Input)).
+trackers_conf(GenesisHeader) ->
+    %% NOTE: Genesis header on the simulator is a dynamic entity, code performs preliminary init;
+    {ok, GenesisHash} = aec_headers:hash_header(GenesisHeader),
+    [
+        #{
+            <<"name">> => ?SIM_VIEW,
+            <<"connector">> => #{
+                <<"module">> => ?SIM_CONNECTOR,
+                <<"args">> => #{
+                    <<"genesis_header">> => GenesisHeader
+                }
+            },
+            %% NOTE: Simulator operates via encoded hashes;
+            <<"genesis_hash">> => GenesisHash,
+            <<"note">> => <<"Hyperchains simulator based parent chain">>
+        }].
 
 %%%===================================================================
 %%%  parent chain log traversing
@@ -231,10 +187,11 @@ traverse(From, To) ->
     traverse(TopBlock, To, []).
 
 traverse(Block, To, Acc) ->
-    case aehc_parent_block:prev_hash_block(Block) of
-        To ->
+    Prev = aehc_parent_block:prev_hash_block(Block),
+    case Prev of
+        _ when Prev == To; Prev == <<"">> ->
             lists:reverse([Block|Acc]);
-        Prev ->
+        _ ->
             PrevBlock = aehc_parent_db:get_parent_block(Prev),
             traverse(PrevBlock, To, [Block|Acc])
     end.
