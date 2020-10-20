@@ -151,9 +151,6 @@ post_block(_Config) ->
     %% The next format is prepared accordingly to simualtor internal representation;
     aec_chain_sim:push(#{ tx_hash => TxHash, signed_tx  => SignedTx }),
     {ok, SimBlock} = aec_chain_sim:add_keyblock(),
-    timer:sleep(1000),
-    Block = aehc_parent_db:get_parent_block(maps:get(hash, SimBlock)),
-    true = aehc_parent_block:is_hc_parent_block(Block),
 
     aec_test_utils:aec_keys_cleanup(Dir),
     ok.
