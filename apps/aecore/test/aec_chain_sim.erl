@@ -64,12 +64,19 @@
         , terminate/2
         , code_change/3 ]).
 
+%% Parametrization
+-export([ sim_type_param/1
+        , sim_type_param/2
+        , genesis_header_param/1
+        , genesis_header_param/2 ]).
+
+
 -record(st, { opts = #{}
             , mref
             , dict = #{}
             , chain }).
 
--type simulator() :: default | parent_chain.
+-type sim_type_param() :: default | parent_chain.
 
 -type fork_id()    :: main | term().
 -type block_hash() :: aec_blocks:block_header_hash().
@@ -98,7 +105,7 @@ start() ->
 %% Starts the simulator
 %% Supported options:
 %% - monitor => pid(): The simulator will terminate if the monitored process dies
-%% - simulator => simulator(): The simulator mode (parent chain for Hyperchains or default)
+%% - sim_type_param => sim_type_param(): The simulator mode (parent chain for Hyperchains or default)
 %%
 start(Opts) when is_map(Opts) ->
     gen_server:start(?MODULE, Opts, []).
@@ -121,18 +128,36 @@ stop() ->
             end
     end.
 
-
--spec simulator(map()) -> simulator().
+%%%===================================================================
+%%%  Simulator parametrization
+%%%===================================================================
+-spec sim_type_param(map()) -> sim_type_param().
+%% Simulator type. Ability to isntantiate sim process as a parent chain based model;
 %%
-%% Simulator type. default is used mostly in test suites.
-%% parent_chain is used to run the process as attached "parent chain"
-%% to reproduce various parent chain scenarios for Hyperchains;
 %%
-simulator(Opts) ->
-    Type = maps:get(simulator, Opts, default),
+sim_type_param(Opts) ->
+    Type = maps:get(sim_type_param, Opts, default),
     true = (Type == default orelse Type == parent_chain),
     Type.
 
+sim_type_param(Opts, Type) when Type == parent_chain->
+    Opts#{ sim_type_param => Type }.
+
+%% Genesis header. Ability to instantiate parent chain by predefined genesis;
+%%
+%%
+genesis_header_param(Opts) ->
+    GenesisHeader = maps:get(genesis_header, Opts, genesis_header()),
+    Type = aec_headers:type(GenesisHeader),
+    true = (Type == key),
+    GenesisHeader.
+
+genesis_header_param(Opts, Hdr) ->
+    Opts#{ genesis_header => Hdr }.
+
+%%%===================================================================
+%%%  Simulator access
+%%%===================================================================
 %% Chain simulator requests
 
 -spec next_nonce(Acct :: aec_keys:pubkey()) -> integer().
@@ -300,8 +325,8 @@ remove_meck() ->
 
 init(Opts) when is_map(Opts) ->
     gproc:reg({n,l,{?MODULE, chain_process}}),
-    Chain = new_chain(),
-    ?LOG("Initial chain (~p simulator): ~p", [simulator(Opts), Chain]),
+    Chain = new_chain(Opts),
+    ?LOG("Initial chain (~p sim_type_param): ~p", [sim_type_param(Opts), Chain]),
     {ok, maybe_monitor(#st{opts = Opts, chain = Chain})}.
 
 maybe_monitor(#st{opts = #{monitor := Pid}} = St) when is_pid(Pid) ->
@@ -448,7 +473,7 @@ announce(ForkId, Txs, #{ forks := Forks } = Chain, Opts) ->
     #{ ForkId := #{ blocks := [#{ hash := TopHash
                                 , prev := PrevHash
                                 , header := Hdr } | _] = Blocks} } = Forks,
-    SimulatorT = simulator(Opts),
+    SimulatorT = sim_type_param(Opts),
     Height = length(Blocks) + 1,
     Type = aec_headers:type(Hdr),
     Origin = origin(Type),
@@ -459,7 +484,9 @@ announce(ForkId, Txs, #{ forks := Forks } = Chain, Opts) ->
             , prev_hash    => PrevHash
             , height       => Height },
     if SimulatorT == parent_chain ->
-        aec_events:publish({parent_chain, top_changed}, Info#{txs => Txs});
+        %% TODO: To supply parameterized formatter;
+        ParentBlock = Info#{txs => Txs, header => Hdr, hash => TopHash},
+        aec_events:publish({parent_chain, top_changed}, ParentBlock);
         true ->
             send_tx_events(Txs, Info),
             (ForkId == main) andalso
@@ -478,11 +505,11 @@ origin(micro) ->
 %% Block generation
 %% Chain represented as a LIFO list of #{hash, header, txs} entries
 %% wrapped inside a #{blocks, miner => #{privkey,pubkey}} map
-new_chain() ->
+new_chain(Opt) ->
     Miner = new_keypair(),
-    Hdr = genesis_header(),
+    Hdr = genesis_header_param(Opt),
     {ok, Hash} = aec_headers:hash_header(Hdr),
-    Blocks = [#{hash => Hash, header => genesis_header(), txs => []}],
+    Blocks = [#{hash => Hash, header => Hdr, txs => []}],
     #{ miner   => Miner
      , mempool => []
      , orphans => []

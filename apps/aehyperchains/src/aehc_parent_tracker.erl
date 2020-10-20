@@ -2,6 +2,16 @@
 %%%-------------------------------------------------------------------
 %%% @copyright (C) 2020, Aeternity Anstalt
 %%% @doc
+%% The state machine keeps synchronized state at the particular branch of the parent chain;
+%% The state machine manages fetch and fork switching procedures by traversing hash-pointers of the parent blocks;
+%% The state machine fetches missing blocks via appropriate interface provider (connector);
+%% The state machine produces side effect with updated DB log with the actual parent chain view;
+%% The state machine produces appropriate state change events for the conductor;
+%% The state machine operates in 3 modes:
+%% a) fetched (adding a new blocks);
+%% b) orphaned (fork switching);
+%% c) synced (consistent, ready to use mode).
+
 %%% @end
 -module(aehc_parent_tracker).
 
@@ -19,7 +29,7 @@
 
 %% The data record represents the current synchronized view of a particular parent chain within state machine;
 -record(data, {
-    %% The name of a synchronized view;
+    %% The name of dedicated parent chain state machine;
     name :: binary(),
     %% The genesis hash from the config;
     genesis_hash :: binary(),
@@ -27,14 +37,13 @@
     genesis_height :: undefined | non_neg_integer(),
     %% Responsible connector module;
     connector :: aehc_connector:connector(),
-    %% The current syncronized top block hash from the Db;
+    %% The current synchronized top block hash from the Db;
     current_hash :: binary(),
-    %% The current syncronized top block height from the Db;
+    %% The current synchronized top block height from the Db;
     current_height :: non_neg_integer(),
-    %% Textual description of a tracker;
+    %% Textual description of a parent chain view;
     note :: binary()
 }).
-
 -type data() :: #data{}.
 
 -spec start_link(term(), map()) ->
@@ -50,15 +59,6 @@ publish_block(View, Block) ->
 %%%===================================================================
 %%%  State machine callbacks
 %%%===================================================================
-%% The state machine keeps synchronized state at the particular branch of the parent chain;
-%% The state machine manages fetch and fork switching procedures by traversing hash-pointers of the parent blocks;
-%% The state machine fetches missing blocks via appropriate interface provider (connector);
-%% The state machine produces side effect with updated DB log by the actual parent chain view;
-%% The state machine produces appropriate state change events for the conductor;
-%% The state machine operates in 3 modes:
-%% a) fetched (adding a new blocks);
-%% b) orphaned (fork switching);
-%% c) synced (consistent, ready to use mode).
 
 init(Conf) ->
     Data = conf_data(Conf),
@@ -71,7 +71,7 @@ init(Conf) ->
     %% The top block of the current view;
     SynchedBlock = aehc_parent_db:get_parent_block(current_hash(InitData)),
     %% Apply fetched top block as the top of view;
-    SyncData = sync_data(InitData,Block),
+    SyncData = sync_data(InitData, Block),
     {ok, fetched, SyncData, [{next_event, internal, {added_block, Block, SynchedBlock}}]}.
 
 callback_mode() ->
@@ -98,13 +98,14 @@ fetched(internal, {added_block, Block, SynchedBlock}, Data) ->
             {next_state, synced, Data};
         _ when Height > SynchedHeight ->
             %% TODO: Place for the new added block anouncement;
-            %% Sync procedure is continue it the fetch mode (the current persisted block isn't achived);
+            %% Sync procedure is continue it the fetch mode (the current persisted block isn't achieved);
             %% To persist the fetched block;
             aehc_parent_db:write_parent_block(Block),
             {ok, PrevBlock} = aehc_connector:get_block_by_hash(connector(Data), PrevHash),
             {keep_state, Data, [{next_event, internal, {added_block, PrevBlock, SynchedBlock}}]};
         _ ->
-            %% Sync procedure is continue it the fork switch mode (we passed the current height but the matched block isn't achived);
+            %% Sync procedure is continue on the fork switch mode
+            %% (we passed the synced height but the matched condition isn't satisfied);
             {next_state, orphaned, Data, [{next_event, internal, {added_block, Block, SynchedBlock}}]}
     end;
 
@@ -112,7 +113,7 @@ fetched(internal, {added_block, Block, SynchedBlock}, Data) ->
 fetched(_, _, Data) ->
     {keep_state, Data, [postpone]}.
 
-%% Parent chain switching log state (fork);
+%% Parent chain switching state (fork);
 orphaned(enter, _OldState, Data) ->
     {keep_state, Data};
 
@@ -138,8 +139,8 @@ orphaned(internal, {added_block, Block, SynchedBlock}, Data) ->
             PrevSynchedBlock = aehc_parent_db:get_parent_block(SynchedPrevHash),
             {keep_state, Data, [{next_event, internal, {added_block, PrevBlock, PrevSynchedBlock}}]};
         _ ->
-            %% NOTE: This case has designed by taking into account the dynamic nature of HC which relies on parent chain;
-            %% Genesis hash entry has to be choosen precisely and by the most optimnal way (productivity VS security);
+            %% NOTE: This case has designed by taking into account the dynamic nature of HC which relies on parent chains;
+            %% Genesis hash entry has to be chosen precisely and by the most optimal way (productivity VS security);
             %% If the worst case got happened and fork exceeded pre-configured genesis hash entry the system should be:
             %%  a) Reconfigured by the new (older ones) genesis entry;
             %%  b) Restarted;
@@ -214,7 +215,7 @@ note(Data) ->
 %%%===================================================================
 %%%  Data constructor
 %%%===================================================================
-%% Initialization of view within Db;
+%% Initialization of the view within Db;
 %% Initial Db keeps pinpointed genesis hash address as the top of the parent view + fetched block;
 -spec init_data(data()) -> data().
 init_data(Data) ->

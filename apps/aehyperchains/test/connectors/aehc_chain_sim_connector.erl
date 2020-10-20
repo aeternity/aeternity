@@ -50,10 +50,12 @@ dry_send_tx(Delegate, Commitment, PoGF) ->
 
 -record(state, { pid::pid(), height = 0::non_neg_integer() }).
 
-init(_Args) ->
+init(Args) ->
     process_flag(trap_exit, true),
-    true = aec_events:subscribe(top_changed),
-    {ok, Pid} = aec_chain_sim:start(#{ simulator => parent_chain }),
+    true = aec_events:subscribe({parent_chain, top_changed}),
+    Hdr = maps:get(<<"genesis_header">>, Args),
+    SimParam = aec_chain_sim:sim_type_param(#{}, parent_chain),
+    {ok, Pid} = aec_chain_sim:start(aec_chain_sim:genesis_header_param(SimParam, Hdr)),
     lager:info("Parent chain's connector ~p is attached: ~p", [?MODULE, Pid]),
     {ok, #state{ pid = Pid }}.
 
@@ -100,7 +102,7 @@ handle_info({gproc_ps_event, {parent_chain, top_changed}, #{info := Info}}, Stat
     (State#state.pid == Pid) andalso
         begin
             Block = format_block(Info),
-            aehc_connector:publish_block(?MODULE, Block)
+            aehc_connector:publish_block(<<"chain_sim">>, Block)
         end,
     {noreply, State};
 
@@ -109,6 +111,7 @@ handle_info(Info, State) ->
     {noreply, State}.
 
 terminate(_Reason, _State) ->
+    aec_chain_sim:stop(),
     ok.
 
 -spec payload(aetx_sign:signed_tx()) -> binary().
