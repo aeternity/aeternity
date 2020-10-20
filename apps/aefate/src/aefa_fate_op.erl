@@ -1738,7 +1738,7 @@ aens_update(Arg0, Arg1, Arg2, Arg3, Arg4, Arg5, EngineState) ->
                   end, [], Pointers_)
         end,
     HashBin = hash_name(aens_update, NameBin, ES1),
-    ES2 = check_delegation_signature(aens_update, Pubkey, SignBin, ES1),
+    ES2 = check_delegation_signature(aens_update, {Pubkey, HashBin}, SignBin, ES1),
     API = aefa_engine_state:chain_api(ES2),
     case aefa_chain_api:aens_update(Pubkey, HashBin, TTL, ClientTTL, Pointers, API) of
         {ok, API1} ->
@@ -1833,13 +1833,13 @@ check_delegation_signature(Type, Data, SignBin, Current, ES0) ->
     end.
 
 delegation_signature_data(Type, Pubkey, Current) when Type =:= aens_preclaim;
-                                                      Type =:= aens_update;
                                                       Type =:= oracle_register;
                                                       Type =:= oracle_extend ->
     {<<Pubkey/binary, Current/binary>>, Pubkey};
 delegation_signature_data(oracle_respond, {Pubkey, QueryId}, Current) ->
     {<<QueryId/binary, Current/binary>>, Pubkey};
 delegation_signature_data(Type, {Pubkey, Hash}, Current) when Type =:= aens_claim;
+                                                              Type =:= aens_update;
                                                               Type =:= aens_transfer;
                                                               Type =:= aens_revoke ->
     {<<Pubkey/binary, Hash/binary, Current/binary>>, Pubkey}.
