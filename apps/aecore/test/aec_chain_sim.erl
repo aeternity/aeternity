@@ -470,7 +470,7 @@ add_microblock_(ForkId, Txs, #{forks := Forks} = Chain, Opts) ->
     TopHdr = aec_blocks:to_header(B),
     {ok, PrevHash} = aec_headers:hash_header(TopHdr),
     ?LOG("PrevHash = ~p", [PrevHash]),
-    PrevKeyHash = case aec_headers:is_key(TopHdr) of
+    PrevKeyHash = case aec_blocks:is_key_block(B) of
                       true -> PrevHash;
                       false -> aec_headers:prev_key_hash(TopHdr)
                   end,
