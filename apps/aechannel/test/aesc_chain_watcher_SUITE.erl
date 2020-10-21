@@ -58,6 +58,8 @@
 -define(TYPE, {type, ?LINE}).   % unique type info for min-depth callback
 -define(FORK, {fork, ?LINE}).   % fork id
 
+-define(BIG_AMOUNT, 10000000000000000000000000000 * aec_test_utils:min_gas_price()).
+
 all() ->
     [{group, all_tests}].
 
@@ -156,7 +158,6 @@ kill_client(Client) ->
 set_up_channel(Config) ->
     SignedTx = create_tx(Config),
     TxHash = aetx_sign:hash(SignedTx),
-    ct:log("TxHash ~p", [TxHash]),
     {ok, ChId} = aesc_utils:channel_pubkey(SignedTx),
     none = aec_chain:find_tx_with_location(TxHash),
     ok = push(SignedTx),
@@ -677,8 +678,8 @@ init_per_group(GrpName, Config) ->
             Config;
         _ ->
             {ok, ChainP} = start_chain_process(),
-            {ok, #{pubkey := Initiator, privkey := InitiatorSK}} = aec_chain_sim:new_account(1000000000000000000000000000000000000000000000000000000000000000),
-            {ok, #{pubkey := Responder, privkey := ResponderSK}} = aec_chain_sim:new_account(1000000000000000000000000000000000000000000000000000000000000000),
+            {ok, #{pubkey := Initiator, privkey := InitiatorSK}} = aec_chain_sim:new_account(?BIG_AMOUNT),
+            {ok, #{pubkey := Responder, privkey := ResponderSK}} = aec_chain_sim:new_account(?BIG_AMOUNT),
             {ok, Watcher} = start_chain_watcher(),
             [ {watcher, Watcher}
             , {chain_process, ChainP}

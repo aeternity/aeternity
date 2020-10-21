@@ -189,7 +189,7 @@ sign_and_push(Account, Tx) ->
 add_keyblock() ->
     add_keyblock(main).
 
--spec block_by_hash(block_hash()) -> {ok, aec_blocks:key_block() |aec_blocks:micro_block()}.
+-spec block_by_hash(block_hash()) -> {ok, aec_blocks:block()}.
 block_by_hash(BlockHash) ->
     chain_req({block_by_hash, BlockHash}).
 
@@ -470,7 +470,10 @@ add_microblock_(ForkId, Txs, #{forks := Forks} = Chain, Opts) ->
     TopHdr = aec_blocks:to_header(B),
     {ok, PrevHash} = aec_headers:hash_header(TopHdr),
     ?LOG("PrevHash = ~p", [PrevHash]),
-    PrevKeyHash = aec_headers:prev_key_hash(TopHdr),
+    PrevKeyHash = case aec_headers:is_key(TopHdr) of
+                      true -> PrevHash;
+                      false -> aec_headers:prev_key_hash(TopHdr)
+                  end,
     Height = aec_headers:height(TopHdr),
     NewHdr = aec_headers:new_micro_header(
                Height, PrevHash, PrevKeyHash,
