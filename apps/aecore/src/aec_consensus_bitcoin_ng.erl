@@ -22,13 +22,19 @@
         , genesis_height/0
         , genesis_header/0
         , genesis_state/0
+        , genesis_target/0
         , key_header_for_sealing/1
         , validate_key_header_seal/2
         , generate_key_header_seal/5
         , set_key_block_seal/2
         , nonce_for_sealing/1
         , next_nonce_for_sealing/2
-        , trim_sealing_nonce/2]).
+        , trim_sealing_nonce/2
+        , default_target/0
+        , assert_key_target_range/1
+        , key_header_difficulty/1 ]).
+
+-include_lib("aeminer/include/aeminer.hrl").
 
 can_be_turned_off() -> true.
 dirty_validate_key_header() -> error(todo).
@@ -49,10 +55,20 @@ genesis_block_with_state() -> error(todo).
 genesis_height() -> error(todo).
 genesis_header() -> error(todo).
 genesis_state() -> error(todo).
+-ifdef(TEST).
+genesis_target() ->
+   ?HIGHEST_TARGET_SCI.
+-else.
+genesis_target() ->
+    case aec_governance:get_network_id() of
+        <<"ae_mainnet">> -> 16#1F1F1F1F;
+        _                -> ?HIGHEST_TARGET_SCI
+    end.
+-endif.
 
 key_header_for_sealing(Header) ->
     Header1 = aec_headers:set_nonce(Header, 0),
-    Header2 = aec_headers:set_pow(Header1, no_value),
+    Header2 = aec_headers:set_key_seal(Header1, no_value),
     aec_headers:serialize_to_binary(Header2).
 
 validate_key_header_seal(Header, _Protocol) ->
@@ -86,3 +102,12 @@ next_nonce_for_sealing(Nonce, MinerConfig) ->
 
 trim_sealing_nonce(Nonce, MinerConfig) ->
     aeminer_pow:trim_nonce(Nonce, MinerConfig).
+
+default_target() ->
+    ?HIGHEST_TARGET_SCI.
+
+assert_key_target_range(Target) ->
+    ok.
+
+key_header_difficulty(Header) ->
+    aeminer_pow:target_to_difficulty(aec_headers:target(Header)).

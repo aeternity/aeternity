@@ -85,7 +85,7 @@
              , ga_tx                 :: undefined | aetx:tx()
              , ga_tx_hash            :: undefined | binary()
              , payer                 :: undefined | aec_keys:pubkey()
-             , difficulty            :: aeminer_pow:difficulty()
+             , difficulty            :: aec_consensus:key_difficulty()
              , dry_run = false       :: boolean()
              , height                :: aec_blocks:height()
              , key_hash              :: aec_blocks:block_header_hash()
@@ -224,7 +224,7 @@ set_dry_run(Env, X) -> Env#env{dry_run = X}.
 
 %%------
 
--spec difficulty(env()) -> aeminer_pow:difficulty().
+-spec difficulty(env()) -> aec_consensus:key_difficulty().
 difficulty(#env{difficulty = X}) -> X.
 
 %%------

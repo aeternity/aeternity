@@ -1,4 +1,4 @@
-%%% -*- erlang-indent-level: 4 -*-
+%%% -*- erlang-indent-level:4; indent-tabs-mode: nil -*-
 %%% -------------------------------------------------------------------
 %%% @copyright (C) 2020, Aeternity Anstalt
 %%% @doc Consensus behavior for customizing the node
@@ -21,7 +21,7 @@
 %%%      - Ignore PoW in the block headers
 %%%      - Use plugins almost anywhere
 %%%      - Provide an API for instrumenting the chain:
-%%%        * Start from <real_block_hash> - starts a chain simulator based on real-world state
+%%%        * Start from real_block_hash - starts a chain simulator based on real-world state
 %%%          (might be taken from mainnet/testnet).
 %%%        * Start empty - starts a new chain simulator
 %%%        * Enable/Disable instant tx processing
@@ -56,6 +56,13 @@
 
 %% API
 -export([]).
+
+-type key_seal() :: [integer()].
+-type key_target() :: integer().
+-type key_difficulty() :: integer().
+-type key_nonce() :: integer().
+
+-export_type([key_seal/0, key_target/0, key_difficulty/0, key_nonce/0]).
 
 %% -------------------------------------------------------------------
 %% Global consensus features
@@ -117,6 +124,7 @@
 -callback genesis_height() -> non_neg_integer().
 -callback genesis_header() -> aec_headers:header().
 -callback genesis_state() -> aec_trees:trees().
+-callback genesis_target() -> key_target().
 
 %% -------------------------------------------------------------------
 %% Block sealing
@@ -135,8 +143,13 @@
 %% Gets the nonce used for sealing - please note that this field might be used for instance for a custom voting protocol
 %% Some consensus modules might have already calculated the nonce before and stored it in the header
 %% PoW usually will increase the nonce after an unsuccessful mining attempt
--callback nonce_for_sealing(aec_headers:header()) -> non_neg_integer().
--callback next_nonce_for_sealing(non_neg_integer(), term()) -> non_neg_integer().
--callback trim_sealing_nonce(non_neg_integer(), term()) -> non_neg_integer().
+-callback nonce_for_sealing(aec_headers:header()) -> key_nonce().
+-callback next_nonce_for_sealing(key_nonce(), term()) -> key_nonce().
+-callback trim_sealing_nonce(integer(), term()) -> key_nonce().
+
+%% Block target and difficulty
+-callback default_target() -> key_target().
+-callback assert_key_target_range(key_target()) -> ok | no_return().
+-callback key_header_difficulty(aec_headers:key_header()) -> key_difficulty().
 
 -optional_callbacks([stop/0, extra_http_endpoints/0]).

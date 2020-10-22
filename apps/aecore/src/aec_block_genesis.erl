@@ -44,7 +44,6 @@
 -export([genesis_block_with_state/1]).
 -endif.
 
--include_lib("aeminer/include/aeminer.hrl").
 -include_lib("aecontract/include/hard_forks.hrl").
 -include("blocks.hrl").
 
@@ -76,16 +75,8 @@ version() -> ?GENESIS_VERSION.
 
 time_in_msecs() -> ?GENESIS_TIME.
 
--ifdef(TEST).
 target() ->
-   ?HIGHEST_TARGET_SCI.
--else.
-target() ->
-    case aec_governance:get_network_id() of
-        <<"ae_mainnet">> -> 16#1F1F1F1F;
-        _                -> ?HIGHEST_TARGET_SCI
-    end.
--endif.
+   aec_consensus_bitcoin_ng:genesis_target().
 
 %% Returns the genesis block and the state trees.
 %%

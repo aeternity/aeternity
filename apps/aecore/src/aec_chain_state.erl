@@ -110,7 +110,6 @@
         ]).
 -endif.
 
--include_lib("aeminer/include/aeminer.hrl").
 -include("blocks.hrl").
 
 -type events() :: aetx_env:events().
@@ -474,7 +473,7 @@ fake_key_node(PrevNode, Height, Miner, Beneficiary, Protocol) ->
                                hash(PrevNode),
                                PrevKeyHash,
                                <<123:?STATE_HASH_BYTES/unit:8>>,
-                               ?HIGHEST_TARGET_SCI,
+                               aec_consensus_bitcoin_ng:default_target(),
                                0, aeu_time:now_in_msecs(),
                                default,
                                Protocol,
