@@ -21,6 +21,7 @@
         , get_generation_by_hash/2
         , get_generation_by_height/2
         , get_header/1
+        , dirty_get_header/1
         , get_key_header_by_height/1
         , get_n_generation_headers_backwards_from_hash/2
         , get_at_most_n_generation_headers_forward_from_hash/2
@@ -666,6 +667,13 @@ get_generation_by_height(Height, forward) ->
 -spec get_header(binary()) -> {'ok', aec_headers:header()} | 'error'.
 get_header(Hash) when is_binary(Hash) ->
     case aec_db:find_header(Hash) of
+        none -> error;
+        {value, Header} -> {ok, Header}
+    end.
+
+-spec dirty_get_header(binary()) -> {'ok', aec_headers:header()} | 'error'.
+dirty_get_header(Hash) when is_binary(Hash) ->
+    case aec_db:dirty_find_header(Hash) of
         none -> error;
         {value, Header} -> {ok, Header}
     end.
