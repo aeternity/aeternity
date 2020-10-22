@@ -4705,11 +4705,11 @@ sophia_polymorphic_entrypoint(_Cfg) ->
     Res = ?call(call_contract, Acc, Ct1, test, {map, string, {map, string, string}}, {?cid(Ct2), #{}, #{}}),
     ?assertEqual(#{<<"">> => #{}}, Res),
 
-    %% ?assertMatch({error, <<"Type of remote function does not match expected type">>},
-    %%     ?call(call_contract, Acc, Ct1, test_bad, string, {?cid(Ct2), <<>>, #{}})),
+    ?assertMatch({error, <<"Type of remote function does not match expected type">>},
+        ?call(call_contract, Acc, Ct1, test_bad, string, {?cid(Ct2), <<>>, #{}})),
 
-    %% ?assertMatch({error, <<"Type of remote function does not match expected type">>},
-    %%     ?call(call_contract, Acc, Ct1, test_bad_mono, string, {?cid(Ct2), <<>>, #{}})),
+    ?assertMatch({error, <<"Type of remote function does not match expected type">>},
+        ?call(call_contract, Acc, Ct1, test_bad_mono, string, {?cid(Ct2), <<>>, #{}})),
 
     ok.
 
