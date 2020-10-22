@@ -111,7 +111,7 @@ start(Opts) when is_map(Opts) ->
 stop() ->
     case get_chain_process() of
         undefined ->
-            ?LOG("No chain process running!!", []),
+%%            ?LOG("No chain process running!!", []),
             ok;
         P when is_pid(P) ->
             MRef = monitor(process, P),
@@ -385,7 +385,7 @@ remove_meck() ->
 init(Opts) when is_map(Opts) ->
     gproc:reg({n,l,{?MODULE, chain_process}}),
     Chain = new_chain(),
-    ?LOG("Initial chain (~p simulator): ~p", [simulator(Opts), Chain]),
+%%    ?LOG("Initial chain (~p simulator): ~p", [simulator(Opts), Chain]),
     {ok, maybe_monitor(#st{opts = Opts, chain = Chain})}.
 
 maybe_monitor(#st{opts = #{monitor := Pid}} = St) when is_pid(Pid) ->
@@ -471,7 +471,7 @@ handle_cast(_Msg, Chain) ->
     {noreply, Chain}.
 
 handle_info({'DOWN', MRef, _, Pid, Reason}, #st{mref = MRef} = St) ->
-    ?LOG("Received 'DOWN' from monitored ~p: ~p", [Pid, Reason]),
+%%    ?LOG("Received 'DOWN' from monitored ~p: ~p", [Pid, Reason]),
     {stop, normal, St};
 handle_info(_Msg, Chain) ->
     {noreply, Chain}.
@@ -524,12 +524,12 @@ add_microblock_(ForkId, #{mempool := Pool} = Chain, Opts) ->
     add_microblock_(ForkId, Txs, Chain#{mempool => []}, Opts).
 
 add_microblock_(ForkId, Txs, #{forks := Forks} = Chain, Opts) ->
-    ?LOG("add_microblock(Txs = ~p", [Txs]),
+%%    ?LOG("add_microblock(Txs = ~p", [Txs]),
     #{blocks := Blocks} = F = maps:get(ForkId, Forks),
     #{block := B} = hd(Blocks),
     TopHdr = aec_blocks:to_header(B),
     {ok, PrevHash} = aec_headers:hash_header(TopHdr),
-    ?LOG("PrevHash = ~p", [PrevHash]),
+%%    ?LOG("PrevHash = ~p", [PrevHash]),
     PrevKeyHash = case aec_blocks:is_key_block(B) of
                       true -> PrevHash;
                       false -> aec_headers:prev_key_hash(TopHdr)
@@ -540,9 +540,9 @@ add_microblock_(ForkId, Txs, #{forks := Forks} = Chain, Opts) ->
                root_hash(), 0, txs_hash(), pof_hash(), 0),
     Block = aec_blocks:new_micro_from_header(NewHdr, Txs, no_fraud),
     {BlockEntry, Evs} = with_trees(ForkId, Txs, Block, Chain),
-    ?LOG("Microblock = ~p", [Block]),
+%%    ?LOG("Microblock = ~p", [Block]),
     NewFork = F#{blocks => [BlockEntry | Blocks]},
-    ?LOG("NewFork(~p): ~p", [ForkId, NewFork]),
+%%    ?LOG("NewFork(~p): ~p", [ForkId, NewFork]),
     NewForks = Forks#{ForkId => NewFork},
     NewChain = announce(ForkId, Txs, Evs, Chain#{forks => NewForks}, Opts),
     #{block := FinalMicroBlock} = BlockEntry,
@@ -591,7 +591,7 @@ fork_switch_(ForkId, #{forks := Forks, mempool := Pool, orphans := Orphans} = Ch
     ReturnTxs = lists:flatten([ aec_blocks:txs(B)
         || #{block := B} <- lists:reverse(Evict),
         not aec_blocks:is_key_block(B)]),
-    ?LOG("Evicting txs: ~p", [ReturnTxs]),
+%%    ?LOG("Evicting txs: ~p", [ReturnTxs]),
     NewPool = lists:reverse(ReturnTxs) ++ Pool,
     NewForks = maps:remove(ForkId, Forks#{main => M#{blocks => FBlocks}}),
     NewChain = Chain#{ forks => NewForks
@@ -620,8 +620,9 @@ announce(ForkId, Txs, Events, #{ forks := Forks } = Chain, Opts) ->
        true ->
             send_tx_events(Events, TopHash, Info),
             (ForkId == main) andalso
-                begin ?LOG("Publishing top_changed, I = ~p", [Info]),
-                      aec_events:publish(top_changed, Info)
+                begin
+%%                    ?LOG("Publishing top_changed, I = ~p", [Info]),
+                    aec_events:publish(top_changed, Info)
                 end
     end,
     Chain.
@@ -651,7 +652,7 @@ new_chain() ->
 
 %% Called from the chain process
 add_keyblock_(ForkId, #{forks := Forks, miner := #{pubkey := Miner}} = Chain, Opts) ->
-    ?LOG("add_keyblock(~p)", [ForkId]),
+%%    ?LOG("add_keyblock(~p)", [ForkId]),
     #{ ForkId := #{blocks := Blocks} = F } = Forks,
     #{block := Block} = hd(Blocks),
     TopHdr = aec_blocks:to_header(Block),
@@ -667,7 +668,7 @@ add_keyblock_(ForkId, #{forks := Forks, miner := #{pubkey := Miner}} = Chain, Op
     {{ok, Block},  NewChain}.
 
 send_tx_events(Events, Hash, Origin) ->
-    ?LOG("send_tx_events(~p, ~p ~p)", [Events, Hash, Origin]),
+%%    ?LOG("send_tx_events(~p, ~p ~p)", [Events, Hash, Origin]),
     [aec_events:publish({tx_event, Event}, Info#{ block_hash => Hash
                                                 , block_origin => Origin})
      || {Event, Info} <- Events].
@@ -753,18 +754,18 @@ find_common_ancestor_(Hash1, Hash2, #{forks := Forks, orphans := Orphans}) ->
 search_forks_for_hash(H, Forks, Orphans) ->
     case search_forks_for_hash_(H, Forks) of
         none ->
-            ?LOG("~p not in forks", [H]),
+%%            ?LOG("~p not in forks", [H]),
             case blocks_until_hash(H, Orphans) of
                 [#{block := B}|_] ->
                     Prev = aec_headers:prev_hash(aec_blocks:to_header(B)),
-                    ?LOG("~p found in orphans; trying its Prev (~p)", [H, Prev]),
+%%                    ?LOG("~p found in orphans; trying its Prev (~p)", [H, Prev]),
                     search_forks_for_hash(Prev, Forks, Orphans);
                 [] ->
-                    ?LOG("~p also not an orphan", [H]),
+%%                    ?LOG("~p also not an orphan", [H]),
                     none
             end;
         [_|_] = Result ->
-            ?LOG("Found ~p in forks", [H]),
+%%            ?LOG("Found ~p in forks", [H]),
             Result
     end.
 
@@ -903,7 +904,7 @@ get_chain_process() ->
     gproc:where({n, l, {?MODULE, chain_process}}).
 
 chain_req_(Req, ChainP) when is_pid(ChainP) ->
-    ?LOG("chain_req(~p)", [Req]),
+%%    ?LOG("chain_req(~p)", [element(1, Req)]),
     gen_server:call(ChainP, Req).
 
 %% like lists:keyfind/3, but comparing map keys
