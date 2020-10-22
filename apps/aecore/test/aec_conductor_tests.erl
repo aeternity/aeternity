@@ -629,8 +629,198 @@ test_add_new_block_after_fork(_NetworkId, _ProtocolChange, _AddFunction) ->
     ok.
 
 %%%===================================================================
+%%% Test case - sync throughput test (ram)
+%%%===================================================================
+
+throughput_ram_test_() ->
+    {foreach,
+     fun() ->
+             meck:new(aec_governance, [passthrough]),
+             meck:expect(aec_governance,
+                 accepted_future_block_time_shift, fun() -> 352 * 24 * 60 * 60 * 1000 end),
+             Persist = application:get_env(aecore, persist),
+             application:set_env(aecore, persist, true),
+             {ok, _} = aec_db_error_store:start_link(),
+             aec_db:check_db(),
+             aec_db:clear_db(),
+             TmpDir = aec_test_utils:aec_keys_setup(),
+             ok = meck:new(mnesia_rocksdb_lib, [passthrough]),
+             aec_test_utils:mock_genesis_and_forks(genesis_accounts()),
+             aec_test_utils:dev_reward_setup(true, true, 100),
+             meck:new(aeminer_pow_cuckoo, [passthrough]),
+             meck:expect(aeminer_pow_cuckoo, verify, fun(_, _, _, _, _) -> true end),
+             ok = application:ensure_started(gproc),
+             aec_block_generator:start_link(),
+             {ok, _} = aec_tx_pool_gc:start_link(),
+             {ok, _} = aec_tx_pool:start_link(),
+             {ok, _} = ?TEST_MODULE:start_link([{autostart, false}]),
+             {TmpDir, Persist}
+     end,
+     fun({TmpDir, Persist}) ->
+             ?assert(meck:validate(aec_governance)),
+             meck:unload(aec_governance),
+             ok = ?TEST_MODULE:stop(),
+             application:stop(mnesia),
+             aec_test_utils:unmock_genesis_and_forks(),
+             aec_test_utils:aec_keys_cleanup(TmpDir),
+             application:set_env(aecore, persist, Persist),
+             ok = aec_db_error_store:stop(),
+             ok = meck:unload(mnesia_rocksdb_lib),
+             meck:unload(aeminer_pow_cuckoo),
+             ok = mnesia:delete_schema([node()]),
+             aec_tx_pool_gc:stop(),
+             aec_tx_pool:stop(),
+             aec_block_generator:stop(),
+             ok = application:stop(gproc),
+             _  = flush_gproc()
+     end,
+     [{"Throughput test building chain with 100 key blocks in ram",
+       fun() ->
+               %% Setup
+               TotalBlockCount = 100,
+               TestFun = fun(B) -> ok = aec_conductor:add_synced_block(B) end,
+               [_GB|Blocks] = prep_key_blocks(TotalBlockCount+1),
+               Opts = #{db_mode => ram, test_fun => {aec_conductor, add_synced_block},
+                        block_type => key},
+               aec_test_utils:run_throughput_test(TestFun, Blocks, Opts),
+
+               ok
+       end},
+      {"Throughput test building chain with 100 micro blocks in ram",
+       fun() ->
+               TotalBlockCount = 100,
+               TestFun = fun(B) -> ok = aec_conductor:add_synced_block(B) end,
+               Blocks = prep_micro_blocks(TotalBlockCount),
+               Opts = #{db_mode => ram, test_fun => {aec_conductor, add_synced_block},
+                        block_type => micro, txs_per_block => 1},
+               aec_test_utils:run_throughput_test(TestFun, Blocks, Opts),
+
+               ok
+       end}
+     ]}.
+
+%%%===================================================================
+%%% Test case - sync throughput test (disc)
+%%%===================================================================
+
+throughput_disc_test_() ->
+    {foreach,
+     fun() ->
+             meck:new(aec_governance, [passthrough]),
+             meck:expect(aec_governance,
+                 accepted_future_block_time_shift, fun() -> 352 * 24 * 60 * 60 * 1000 end),
+             Persist = application:get_env(aecore, persist),
+             application:set_env(aecore, persist, true),
+             {ok, _} = aec_db_error_store:start_link(),
+             aec_db:check_db(),
+             aec_db:clear_db(),
+             TmpDir = aec_test_utils:aec_keys_setup(),
+             ok = meck:new(mnesia_rocksdb_lib, [passthrough]),
+             aec_test_utils:mock_genesis_and_forks(genesis_accounts()),
+             aec_test_utils:dev_reward_setup(true, true, 100),
+             meck:new(aeminer_pow_cuckoo, [passthrough]),
+             meck:expect(aeminer_pow_cuckoo, verify, fun(_, _, _, _, _) -> true end),
+             ok = application:ensure_started(gproc),
+             aec_block_generator:start_link(),
+             {ok, _} = aec_tx_pool_gc:start_link(),
+             {ok, _} = aec_tx_pool:start_link(),
+             {ok, _} = ?TEST_MODULE:start_link([{autostart, false}]),
+             {TmpDir, Persist}
+     end,
+     fun({TmpDir, Persist}) ->
+             ?assert(meck:validate(aec_governance)),
+             meck:unload(aec_governance),
+             ok = ?TEST_MODULE:stop(),
+             application:stop(mnesia),
+             aec_test_utils:unmock_genesis_and_forks(),
+             aec_test_utils:aec_keys_cleanup(TmpDir),
+             application:set_env(aecore, persist, Persist),
+             ok = aec_db_error_store:stop(),
+             ok = meck:unload(mnesia_rocksdb_lib),
+             meck:unload(aeminer_pow_cuckoo),
+             ok = mnesia:delete_schema([node()]),
+             aec_tx_pool_gc:stop(),
+             aec_tx_pool:stop(),
+             aec_block_generator:stop(),
+             ok = application:stop(gproc),
+             _  = flush_gproc()
+     end,
+     [{"Throughput test building chain with 10 key blocks on disc",
+       fun() ->
+               %% Setup
+               TotalBlockCount = 10,
+               TestFun = fun(B) -> ok = aec_conductor:add_synced_block(B) end,
+               [_GB|Blocks] = prep_key_blocks(TotalBlockCount+1),
+               Opts = #{db_mode => disc, test_fun => {aec_conductor, add_synced_block},
+                        block_type => key},
+               aec_test_utils:run_throughput_test(TestFun, Blocks, Opts),
+
+               ok
+       end},
+      {"Throughput test building chain with 10 micro blocks on disc",
+       fun() ->
+               TotalBlockCount = 10,
+               TestFun = fun(B) -> ok = aec_conductor:add_synced_block(B) end,
+               Blocks = prep_micro_blocks(TotalBlockCount),
+               Opts = #{db_mode => disc, test_fun => {aec_conductor, add_synced_block},
+                        block_type => micro, txs_per_block => 1},
+               aec_test_utils:run_throughput_test(TestFun, Blocks, Opts),
+
+               ok
+       end}
+     ]}.
+
+%%%===================================================================
 %%% Helpers
 %%%===================================================================
+
+%% TODO: Move to helper module
+prep_key_blocks(Count) ->
+    aec_test_utils:gen_blocks_only_chain(Count, genesis_accounts()).
+
+prep_micro_blocks(Count) ->
+    #{pubkey := PubKey, privkey := PrivKey} = patron(),
+
+    Fee = 20000 * aec_test_utils:min_gas_price(),
+    Amount = 1,
+    SpendTxs = [sign_tx(make_spend_tx(PubKey, Nonce, PubKey, Fee, Amount), PrivKey)
+                || Nonce <- lists:seq(1, Count)],
+
+    Chain0 = [{GB, _}, {B1, _}] =
+        aec_test_utils:gen_block_chain_with_state(2, genesis_accounts()),
+    [{GB, _}, {B1, _} | Rest] =
+        aec_test_utils:extend_block_chain_with_micro_blocks(Chain0, SpendTxs),
+
+    {ok, _} = aec_chain_state:insert_block(B1),
+
+    aec_test_utils:blocks_only_chain(Rest).
+
+genesis_accounts() ->
+    #{pubkey := PubKey} = patron(),
+    [{PubKey, 10000000000000000000 * aec_test_utils:min_gas_price()}].
+
+patron() ->
+    #{pubkey  => <<206,167,173,228,112,201,249,157,157,78,64,8,128,168,111,29,
+                   73,187,68,75,98,241,26,158,187,100,187,207,235,115,254,243>>,
+      privkey => <<230,169,29,99,60,119,207,87,113,50,157,51,84,179,188,239,27,
+                   197,224,50,196,61,112,182,211,90,249,35,206,30,183,77,206,
+                   167,173,228,112,201,249,157,157,78,64,8,128,168,111,29,73,
+                   187,68,75,98,241,26,158,187,100,187,207,235,115,254,243>>}.
+
+make_spend_tx(Sender, SenderNonce, Recipient, Fee, Amount) ->
+    SenderId = aeser_id:create(account, Sender),
+    RecipientId = aeser_id:create(account, Recipient),
+    Args = #{sender_id => SenderId,
+             recipient_id => RecipientId,
+             amount => Amount,
+             fee => Fee,
+             nonce => SenderNonce,
+             payload => <<"spend">>},
+    {ok, SpendTx} = aec_spend_tx:new(Args),
+    SpendTx.
+
+sign_tx(Tx, PrivKey) ->
+    aec_test_utils:sign_tx(Tx, PrivKey).
 
 beneficiary_keys() ->
     {ok, Pub} = aec_keys:pubkey(),
