@@ -603,7 +603,7 @@ fork_switch_(ForkId, #{forks := Forks, mempool := Pool, orphans := Orphans} = Ch
     ReturnTxs = lists:flatten([ aec_blocks:txs(B)
         || #{block := B} <- lists:reverse(Evict),
         not aec_blocks:is_key_block(B)]),
-    ?LOG("Evicting txs: ~p", [aetx_sign:hash(Tx) || Tx <- ReturnTxs]),
+    ?LOG("Evicting txs: ~p", [[aetx_sign:hash(Tx) || Tx <- ReturnTxs]]),
     NewPool = lists:reverse(ReturnTxs) ++ Pool,
     NewForks = maps:remove(ForkId, Forks#{main => M#{blocks => FBlocks}}),
     NewChain = Chain#{ forks => NewForks
