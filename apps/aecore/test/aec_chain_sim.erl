@@ -102,20 +102,7 @@ start() ->
 %% - simulator => simulator(): The simulator mode (parent chain for Hyperchains or default)
 %%
 start(Opts) when is_map(Opts) ->
-    {ok, Pid} = gen_server:start(?MODULE, Opts, []),
-    LogFileDir = filename:join(
-        hd(string:split(code:priv_dir(aesophia), "_build")),
-        "_build/test/logs/"),
-    LogFileName =
-        begin
-            {{Year,Month,Day},{Hour,Min,Sec}} = erlang:localtime(),
-            io_lib:format("chain_simulator_~p-~p-~p_~p:~p:~p.log", [Year, Month, Day, Hour, Min, Sec])
-        end,
-    LogFilePath = filename:join(LogFileDir, LogFileName),
-    filelib:ensure_dir(LogFilePath),
-    {ok, LogFile} = file:open(LogFilePath, [write]),
-    group_leader(LogFile, Pid),
-    {ok, Pid}.
+    gen_server:start(?MODULE, Opts, []).
 
 -spec stop() -> ok.
 %%
@@ -395,8 +382,24 @@ remove_meck() ->
 %$% gen_server implementation
 %%%===================================================================
 
+setup_log_file() ->
+    LogFileDir = filename:join(
+        hd(string:split(code:priv_dir(aesophia), "_build", trailing)),
+        "_build/test/logs/"),
+    LogFileName =
+        begin
+            {{Year,Month,Day},{Hour,Min,Sec}} = erlang:localtime(),
+            io_lib:format("chain_simulator_~p-~p-~p_~p:~p:~p.log", [Year, Month, Day, Hour, Min, Sec])
+        end,
+    LogFilePath = filename:join(LogFileDir, LogFileName),
+    filelib:ensure_dir(LogFilePath),
+    {ok, LogFile} = file:open(LogFilePath, [write]),
+    LogFile.
+
 init(Opts) when is_map(Opts) ->
     gproc:reg({n,l,{?MODULE, chain_process}}),
+    group_leader(setup_log_file(), self()),
+
     Chain = new_chain(),
     ?LOG("Initial chain (~p simulator): ~p", [simulator(Opts), Chain]),
     {ok, maybe_monitor(#st{opts = Opts, chain = Chain})}.
