@@ -18,6 +18,7 @@
 -define(CALL_COST, (1000 * aec_test_utils:min_gas_price())).
 -define(CALL_GAS, 1000000).
 
+
 setup() ->
     erlang:system_flag(backtrace_depth, 100),
     application:ensure_all_started(gproc),
@@ -43,25 +44,30 @@ mock_protocol() ->
 unmock_protocol() ->
     meck:unload(aec_hard_forks).
 
+-define(PROTOCOL_GATE(X), case init:get_argument(network_id) of
+                              {ok,[["local_iris_testnet"]]} -> X;
+                              _ -> []
+                          end).
+
 staking_contract_unit_test_() ->
-    [{timeout, 20, {foreach, fun setup/0, fun unsetup/1,
-      [ {"Unit fun protocol_restrict", fun test_fun_protocol_restrict/0}
-      , {"Unit fun valuate", fun test_fun_valuate/0}
-      , {"Unit fun staked_tokens", fun test_fun_staked_tokens/0}
-      , {"Unit fun requested_withdrawals", fun test_fun_requested_withdrawals/0}
-      , {"Unit fun retracted_stake", fun test_fun_retracted_stake/0}
-      , {"Unit fun extract_ripe_withdrawals", fun test_fun_extract_ripe_withdrawals/0}
-      , {"Unit fun decrease_stake", fun test_fun_decrease_stake/0}
-      , {"Unit fun punish", fun test_fun_punish/0}
-      ]}}].
+    [{timeout, 20, {foreach, fun setup/0, fun unsetup/1, ?PROTOCOL_GATE(
+        [ {"Unit fun protocol_restrict", fun test_fun_protocol_restrict/0}
+        , {"Unit fun valuate", fun test_fun_valuate/0}
+        , {"Unit fun staked_tokens", fun test_fun_staked_tokens/0}
+        , {"Unit fun requested_withdrawals", fun test_fun_requested_withdrawals/0}
+        , {"Unit fun retracted_stake", fun test_fun_retracted_stake/0}
+        , {"Unit fun extract_ripe_withdrawals", fun test_fun_extract_ripe_withdrawals/0}
+        , {"Unit fun decrease_stake", fun test_fun_decrease_stake/0}
+        , {"Unit fun punish", fun test_fun_punish/0}
+        ])}}].
 
 staking_contract_scenarios_test_() ->
-    [{timeout, 40, {foreach, fun setup/0, fun unsetup/1,
+    [{timeout, 40, {foreach, fun setup/0, fun unsetup/1, ?PROTOCOL_GATE(
         [ {"Simple deposit/withdraw scenario", fun test_deposit_withdraw/0}
         , {"Complex deposit/withdraw scenario", fun test_complex_deposit_withdraw/0}
         , {"Greedy guy trying to steal tokens", fun test_greedy_dude_trying_to_steal_tokens/0}
         , {"Simple election", fun test_simple_election/0}
-        ]}}].
+        ])}}].
 
 
 make_calldata(Fun, Args) when is_atom(Fun) ->
@@ -420,7 +426,7 @@ test_fun_extract_ripe_withdrawals() ->
 
     InitHeight = aec_chain_sim:get_height(),
 
-    [add_keyblock() || _ <- [1,2,3,4,5,6,7,8,9,10]],
+    [add_keyblock() || _ <- lists:seq(1, 10)],
     % Height should be around 10, so requests of height < 5
     % would get extracted and > 5 would remain.
 
@@ -500,10 +506,10 @@ test_fun_punish() ->
 
     deposit_stake(Acct, 10),
     request_withdraw(Acct, 5),
-    add_microblock(),
+    ?assertStakedTokens(Acct, 10),
+    ?assertRequestedWithdrawals(Acct, 5),
 
     punish(Acct),
-    add_microblock(),
 
     ?assertStakedTokens(Acct, 0),
     ?assertRequestedWithdrawals(Acct, 0),
