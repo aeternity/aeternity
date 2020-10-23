@@ -46,6 +46,7 @@
         , push/3
         , size/0
         , top_change/3
+        , top_change/4
         , dbs/0
         ]).
 
@@ -255,6 +256,12 @@ get_candidate(MaxGas, BlockHash) when is_integer(MaxGas), MaxGas > 0,
         {get_candidate, MaxGas, BlockHash}).
 
 %% It assumes that the persisted mempool has been updated.
+-spec top_change(key | micro, binary(), binary(), binary()) -> ok.
+top_change(Type, OldHash, NewHash, PrevNewHash) when Type==key; Type==micro ->
+    gen_server:call(?SERVER, {top_change, Type, OldHash, NewHash, PrevNewHash},
+                    ?LONG_CALL_TIMEOUT).
+
+%% It assumes that the persisted mempool has been updated.
 -spec top_change(key | micro, binary(), binary()) -> ok.
 top_change(Type, OldHash, NewHash) when Type==key; Type==micro ->
     gen_server:call(?SERVER, {top_change, Type, OldHash, NewHash},
@@ -330,6 +337,12 @@ handle_call_({get_max_nonce, Sender}, _From, #state{dbs = #dbs{db = Db}} = State
 handle_call_({push, Tx, Hash, Event}, _From, State) ->
     {Res, State1} = do_pool_db_put(pool_db_key(Tx), Tx, Hash, Event, State),
     {reply, Res, State1};
+handle_call_({top_change, Type, OldHash, NewHash, OldHash}, _From, State) ->
+    {_, State1} = do_top_change(OldHash, Type, OldHash, NewHash, State),
+    {reply, ok, State1};
+handle_call_({top_change, Type, OldHash, NewHash, _}, _From, State) ->
+    {_, State1} = do_top_change(Type, OldHash, NewHash, State),
+    {reply, ok, State1};
 handle_call_({top_change, Type, OldHash, NewHash}, _From, State) ->
     {_, State1} = do_top_change(Type, OldHash, NewHash, State),
     {reply, ok, State1};
@@ -650,17 +663,25 @@ sel_return('$end_of_table' ) -> [];
 sel_return({Matches, _Cont}) -> Matches.
 
 do_top_change(Type, OldHash, NewHash, State0) ->
+    %% NG: does this work for common ancestor for micro blocks?
+    {ok, Ancestor} =
+        aec_db:ensure_activity(async_dirty,
+            fun() ->
+                aec_chain:find_common_ancestor(OldHash, NewHash)
+            end),
+    do_top_change(Ancestor, Type, OldHash, NewHash, State0).
+
+do_top_change(Ancestor, Type, OldHash, NewHash, State0) ->
     %% Add back transactions to the pool from discarded part of the chain
     %% Mind that we don't need to add those which are incoming in the fork
-
-    %% NG: does this work for common ancestor for micro blocks?
-    {ok, Ancestor} = aec_chain:find_common_ancestor(OldHash, NewHash),
     {GCHeight, State} = get_gc_height(State0),
     Info = {State#state.dbs, State#state.origins_cache, GCHeight},
 
     Handled = ets:new(foo, [private, set]),
-    update_pool_from_blocks(Ancestor, OldHash, Info, Handled),
-    update_pool_from_blocks(Ancestor, NewHash, Info, Handled),
+    aec_db:ensure_activity(async_dirty, fun() ->
+            update_pool_from_blocks(Ancestor, OldHash, Info, Handled),
+            update_pool_from_blocks(Ancestor, NewHash, Info, Handled)
+        end),
     ets:delete(Handled),
     Ret = case Type of
               key -> revisit(State#state.dbs);

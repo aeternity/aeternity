@@ -165,14 +165,38 @@ hash_is_connected_to_genesis(Hash) ->
 
 -spec find_common_ancestor(binary(), binary()) ->
                                   {'ok', binary()} | {error, atom()}.
+find_common_ancestor(H, H) -> {ok, H};
 find_common_ancestor(Hash1, Hash2) ->
-    case {db_find_node(Hash1), db_find_node(Hash2)} of
-        {{ok,_Node1}, {ok,_Node2}} ->
-            case find_fork_point(Hash1, Hash2) of
-                error          -> {error, not_found};
-                {ok, ForkHash} -> {ok, ForkHash}
+    case db_find_node(Hash2) of
+        {ok, Node2} ->
+            case {prev_hash(Node2), prev_key_hash(Node2)} of
+                {Hash1, _} ->
+                    {ok, Hash1};
+                {_, Hash1} ->
+                    {ok, Hash1};
+                _ ->
+                    %% Don't fold this case to the above one! IO is expensive!
+                    case db_find_node(Hash1) of
+                        {ok, Node1} ->
+                            case {prev_hash(Node1), prev_key_hash(Node1), prev_hash(Node2), prev_key_hash(Node2)} of
+                                {Hash2, _, _, _} ->
+                                    {ok, Hash2};
+                                {_, Hash2, _, _} ->
+                                    {ok, Hash2};
+                                {H, _, H, _} ->
+                                    {ok, H};
+                                _ ->
+                                    case find_fork_point(Node1, Hash1, Node2, Hash2) of
+                                        error          -> {error, not_found};
+                                        {ok, ForkHash} -> {ok, ForkHash}
+                                    end
+                            end;
+                        _ ->
+                            {error, unknown_hash}
+                    end
             end;
-        _ -> {error, unknown_hash}
+        _ ->
+            {error, unknown_hash}
     end.
 
 -spec hash_is_in_main_chain(binary()) -> boolean().
@@ -487,7 +511,7 @@ keyblock_hash_in_main_chain([],_TopHash) ->
     error.
 
 hash_is_in_main_chain(Hash, TopHash) ->
-    case find_fork_point(Hash, TopHash) of
+    case find_common_ancestor(Hash, TopHash) of
         {ok, Hash} -> true;
         {ok, _} -> false;
         error -> false
@@ -1027,7 +1051,7 @@ find_predecessor_at_height(Node, Height) ->
 find_one_predecessor([N|Left], Node) ->
     Hash1 = hash(N),
     Hash2 = hash(Node),
-    case find_fork_point(Hash1, Hash2) of
+    case find_common_ancestor(Hash1, Hash2) of
         {ok, Hash1} -> N;
         {ok, _} -> find_one_predecessor(Left, Node);
         error -> find_one_predecessor(Left, Node)
@@ -1114,34 +1138,41 @@ apply_micro_block_transactions(Node, FeesIn, Trees) ->
             internal_error(invalid_transactions_in_block)
     end.
 
-find_fork_point(Hash1, Hash2) ->
-    find_fork_point(Hash1, db_find_fork_id(Hash1), Hash2, db_find_fork_id(Hash2)).
+find_fork_point(Node1, Hash1, Node2, Hash2) ->
+    find_fork_point(Node1, Hash1, db_find_fork_id(Hash1), Node2, Hash2, db_find_fork_id(Hash2)).
 
-find_fork_point(Hash,  {ok, FHash}, Hash,  {ok, FHash}) ->
+find_fork_point(_, Hash,  {ok, FHash}, _, Hash,  {ok, FHash}) ->
     {ok, Hash};
-find_fork_point(Hash1, {ok, FHash}, Hash2, {ok, FHash}) ->
-    Height1 = node_height(db_get_node(Hash1)),
-    Height2 = node_height(db_get_node(Hash2)),
+find_fork_point(MaybeNode1, Hash1, {ok, FHash}, MaybeNode2, Hash2, {ok, FHash}) ->
+    Node1 = find_fork_point_maybe_node(MaybeNode1, Hash1),
+    Node2 = find_fork_point_maybe_node(MaybeNode2, Hash2),
+    Height1 = node_height(Node1),
+    Height2 = node_height(Node2),
     if
         Height1  >  Height2 -> {ok, Hash2};
         Height1  <  Height2 -> {ok, Hash1};
         Height1 =:= Height2 -> find_micro_fork_point(Hash1, Hash2) %% Microblock keeps height.
     end;
-find_fork_point(Hash1, {ok, FHash1}, Hash2, {ok, FHash2}) ->
-    Height1 = node_height(db_get_node(FHash1)),
-    Height2 = node_height(db_get_node(FHash2)),
+find_fork_point(MaybeNode1, Hash1, {ok, FHash1}, MaybeNode2, Hash2, {ok, FHash2}) ->
+    FNode1 = db_get_node(FHash1),
+    FNode2 = db_get_node(FHash2),
+    Height1 = node_height(FNode1),
+    Height2 = node_height(FNode2),
     if
         Height1 >= Height2 ->
-            PrevHash = db_get_prev_hash(FHash1),
+            PrevHash = prev_hash(FNode1),
             PrevRes = db_find_fork_id(PrevHash),
-            find_fork_point(PrevHash, PrevRes, Hash2, {ok, FHash2});
+            find_fork_point(undefined, PrevHash, PrevRes, MaybeNode2, Hash2, {ok, FHash2});
         Height2 > Height1 ->
-            PrevHash = db_get_prev_hash(FHash2),
+            PrevHash = prev_hash(FNode2),
             PrevRes = db_find_fork_id(PrevHash),
-            find_fork_point(Hash1, {ok, FHash1}, PrevHash, PrevRes)
+            find_fork_point(MaybeNode1, Hash1, {ok, FHash1}, undefined, PrevHash, PrevRes)
     end;
-find_fork_point(_Hash1, _Res1,_Hash2,_Res2) ->
+find_fork_point(_MaybeNode1, _Hash1, _Res1, _MaybeNode2, _Hash2, _Res2) ->
     error.
+
+find_fork_point_maybe_node(undefined, Hash) -> db_get_node(Hash);
+find_fork_point_maybe_node(Node, Hash) -> Node.
 
 find_micro_fork_point(Hash1, Hash2) ->
     case do_find_micro_fork_point(Hash1, Hash2) of
@@ -1156,9 +1187,10 @@ find_micro_fork_point(Hash1, Hash2) ->
 
 do_find_micro_fork_point(Hash, Hash)   -> {ok, Hash};
 do_find_micro_fork_point(Hash1, Hash2) ->
-    case is_key_block(db_get_node(Hash1)) of
+    Node = db_get_node(Hash1),
+    case is_key_block(Node) of
         true  -> error;
-        false -> do_find_micro_fork_point(db_get_prev_hash(Hash1), Hash2)
+        false -> do_find_micro_fork_point(prev_hash(Node), Hash2)
     end.
 
 median(Xs) ->

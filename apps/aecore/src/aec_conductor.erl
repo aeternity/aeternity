@@ -714,8 +714,9 @@ preempt_if_new_top(#state{ top_block_hash = OldHash,
         NewHash ->
             {ok, NewBlock} = aec_chain:get_block(NewHash),
             BlockType = aec_blocks:type(NewBlock),
-            ok = aec_tx_pool:top_change(BlockType, OldHash, NewHash),
-
+            PrevNewHash = aec_blocks:prev_hash(NewBlock),
+            {T, ok} = timer:tc(fun() -> aec_tx_pool:top_change(BlockType, OldHash, NewHash, PrevNewHash) end),
+            io:format(user, "Tx pool top change took: ~p\n", [T]),
             Hdr = aec_blocks:to_header(NewBlock),
             Height = aec_headers:height(Hdr),
             aec_events:publish(top_changed, #{ block_hash => NewHash
@@ -1114,7 +1115,9 @@ handle_add_block(Block, Hash, Prev, #state{top_block_hash = TopBlockHash} = Stat
     %% produce ourselves.
     case aec_chain_state:insert_block(Block, Origin) of
         {ok, Events}  ->
-            handle_successfully_added_block(Block, Hash, Events, State, Origin);
+            {T, V} = timer:tc(fun() -> handle_successfully_added_block(Block, Hash, Events, State, Origin) end),
+            io:format(user, "Postprocessing took: ~p\n", [T]),
+            V;
         {pof,_PoF,Events} ->
             %% TODO: should we really publish tx_events in this case?
             lager:info("PoF found in ~p", [Hash]),
