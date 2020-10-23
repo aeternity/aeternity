@@ -19,12 +19,27 @@
 -define(CALL_GAS, 1000000).
 
 
+setup_log_file() ->
+    LogFileDir = filename:join(
+        hd(string:split(code:priv_dir(aesophia), "_build", trailing)),
+        "_build/test/logs/"),
+    LogFileName =
+        begin
+            {{Year,Month,Day},{Hour,Min,Sec}} = erlang:localtime(),
+            io_lib:format("chain_simulator_~p-~p-~p_~p:~p:~p.log", [Year, Month, Day, Hour, Min, Sec])
+        end,
+    LogFilePath = filename:join(LogFileDir, LogFileName),
+    filelib:ensure_dir(LogFilePath),
+    {ok, LogFile} = file:open(LogFilePath, [write]),
+    LogFile.
+
 setup() ->
     erlang:system_flag(backtrace_depth, 100),
     application:ensure_all_started(gproc),
     aec_test_utils:mock_genesis_and_forks(),
     mock_protocol(),
     ok = lager:start(),
+    group_leader(setup_log_file(), self()),
     aec_keys:start_link(),
     {ok, _} = aec_chain_sim:start(),
     ok.
@@ -49,8 +64,14 @@ unmock_protocol() ->
                               _ -> []
                           end).
 
-staking_contract_unit_test_() ->
-    [{timeout, 20, {foreach, fun setup/0, fun unsetup/1, ?PROTOCOL_GATE(
+staking_contract_test_() ->
+    {setup, fun setup/0, fun unsetup/1, ?PROTOCOL_GATE(
+        [ staking_contract_unit_test_group()
+        , staking_contract_scenarios_test_group()
+        ])}.
+
+staking_contract_unit_test_group() ->
+    {timeout, 20,
         [ {"Unit fun protocol_restrict", fun test_fun_protocol_restrict/0}
         , {"Unit fun valuate", fun test_fun_valuate/0}
         , {"Unit fun staked_tokens", fun test_fun_staked_tokens/0}
@@ -59,15 +80,15 @@ staking_contract_unit_test_() ->
         , {"Unit fun extract_ripe_withdrawals", fun test_fun_extract_ripe_withdrawals/0}
         , {"Unit fun decrease_stake", fun test_fun_decrease_stake/0}
         , {"Unit fun punish", fun test_fun_punish/0}
-        ])}}].
+        ]}.
 
-staking_contract_scenarios_test_() ->
-    [{timeout, 40, {foreach, fun setup/0, fun unsetup/1, ?PROTOCOL_GATE(
+staking_contract_scenarios_test_group() ->
+    {timeout, 40,
         [ {"Simple deposit/withdraw scenario", fun test_deposit_withdraw/0}
         , {"Complex deposit/withdraw scenario", fun test_complex_deposit_withdraw/0}
         , {"Greedy guy trying to steal tokens", fun test_greedy_dude_trying_to_steal_tokens/0}
         , {"Simple election", fun test_simple_election/0}
-        ])}}].
+        ]}.
 
 
 make_calldata(Fun, Args) when is_atom(Fun) ->
