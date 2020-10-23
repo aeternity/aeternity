@@ -12,8 +12,6 @@
 -define(SIM_VIEW, <<"chain_sim">>).
 -define(SIM_CONNECTOR, <<"aehc_chain_sim_connector">>).
 
--define(LOG(Fmt, Args), io:fwrite("~w:~w/~w - " ++ Fmt, [?MODULE, ?FUNCTION_NAME, ?LINE | Args])).
-
 %% Test server callbacks
 -export([ suite/0
         , all/0
@@ -36,7 +34,6 @@
 %%--------------------------------------------------------------------
 %% COMMON TEST CALLBACK FUNCTIONS
 %%--------------------------------------------------------------------
-
 all() ->
     [{group, fetch}, {group, post}].
 
@@ -70,9 +67,10 @@ init_per_group(_, Config) ->
     Tabs = [Tab || {Tab, _} <- aehc_parent_db:table_specs(ram)],
     ok = mnesia:wait_for_tables(Tabs, 10000),
 
-    [{dir, Dir}|Config].
+    GenesisState = aec_block_genesis:genesis_block_with_state(),
+    [{dir, Dir}, {genesis_state, GenesisState}|Config].
 
-end_per_group(_, Config) ->
+end_per_group(_, _Config) ->
 %%    aec_test_utils:aec_keys_cleanup(?config(dir, Config)),
     %% aehc_tracker related uninstall;
     ok = aec_test_utils:stop_chain_db().
@@ -82,7 +80,7 @@ init_per_testcase(_, Config) ->
     meck:new(aehc_utils, [passthrough]),
     meck:expect(aehc_utils, hc_enabled, 0, true),
     meck:new(aehc_app, [passthrough]),
-    meck:expect(aehc_app, trackers_config, 0, trackers_conf(aec_block_genesis:genesis_header())),
+    meck:expect(aehc_app, trackers_config, 0, trackers_conf(?config(genesis_state, Config))),
     {ok, _} = aec_db_error_store:start_link(),
     {ok, Pid} = aehc_sup:start_link(), true = is_pid(Pid),
     [{ok, _} = aehc_parent_mng:start_view(aehc_app:tracker_name(Conf), Conf) || Conf <- aehc_app:trackers_config()],
@@ -99,35 +97,42 @@ end_per_testcase(_, Config) ->
 %%--------------------------------------------------------------------
 
 fetch_block(_Config) ->
-    {ok, SimBlock} = aec_chain_sim:add_keyblock(),
+    {ok, Block} = aec_chain_sim:add_microblock(),
     timer:sleep(1000),
-    Hash = maps:get(hash, SimBlock),
-    Block = aehc_parent_db:get_parent_block(Hash),
-    true = (Hash == aehc_parent_block:hash_block(Block)),
+    {ok, Hash} = aec_headers:hash_header(aec_blocks:to_header(Block)),
+    ParentBlock = aehc_parent_db:get_parent_block(Hash),
+    true = (Hash == aehc_parent_block:hash_block(ParentBlock)),
     ok.
 
-fetch_height(_Config) ->
-    {ok, Start} = aec_chain_sim:add_keyblock(),
-    Res = [aec_chain_sim:add_keyblock() || _ <- lists:seq(2, 100)],
-    {ok, End} = lists:last(Res),
+fetch_height(Config) ->
+    %% The synchronized height == produced by simulator;
+    {GenesisBlock, _} = ?config(genesis_state, Config),
+    {ok, GenesisHash} = aec_headers:hash_header(aec_blocks:to_header(GenesisBlock)),
+    Res = [aec_chain_sim:add_microblock() || _ <- lists:seq(1, 5)],
+    {ok, TopBlock} = aec_chain_sim:add_keyblock(),
     timer:sleep(1000),
-    Log = traverse(maps:get(hash, End), maps:get(hash, Start)),
-    true = (length(Res) == length(Log)),
+    {ok, TopHash} = aec_headers:hash_header(aec_blocks:to_header(TopBlock)),
+    Log = traverse(TopHash, GenesisHash),
+    true = (length([TopBlock|Res]) == length(Log)),
     ok.
 
-fetch_fork(_Config) ->
+fetch_fork(Config) ->
     %% The main chain;
-    MainRes = [aec_chain_sim:add_keyblock() || _ <- lists:seq(1, 80)],
-    {ok, MainEnd} = lists:last(MainRes),
+    {GenesisBlock, _} = ?config(genesis_state, Config),
+    {ok, GenesisHash} = aec_headers:hash_header(aec_blocks:to_header(GenesisBlock)),
+    [aec_chain_sim:add_microblock() || _ <- lists:seq(1, 5)],
+    {ok, MainTop} = aec_chain_sim:add_keyblock(),
+    {ok, ForkHash} = aec_headers:hash_header(aec_blocks:to_header(MainTop)),
     %% Fork (Demo) chain;
-    {ok, DemoStart} = aec_chain_sim:fork_from_hash(demo, maps:get(hash, MainEnd)),
-    DemoRes = [aec_chain_sim:add_keyblock(demo) || _ <- lists:seq(1, 20)],
-    {ok, DemoEnd} = lists:last(DemoRes),
+    {ok, _} = aec_chain_sim:fork_from_hash(demo, ForkHash),
+    [aec_chain_sim:add_microblock(demo) || _ <- lists:seq(1, 3)],
+    {ok, DemoEnd} = aec_chain_sim:add_keyblock(),
     aec_chain_sim:fork_switch(demo),
     timer:sleep(1000),
 
-    DemoLog = traverse(maps:get(hash, DemoEnd), maps:get(hash, DemoStart)),
-    true = (length(DemoRes) == length(DemoLog)),
+    {ok, EndHash} = aec_headers:hash_header(aec_blocks:to_header(DemoEnd)),
+    DemoLog = traverse(EndHash, GenesisHash),
+    GenesisHash = aehc_parent_block:prev_hash_block(lists:last(DemoLog)),
     ok.
 
 post_block(_Config) ->
@@ -150,7 +155,7 @@ post_block(_Config) ->
     TxHash = aetx_sign:hash(SignedTx),
     %% The next format is prepared accordingly to simualtor internal representation;
     aec_chain_sim:push(#{ tx_hash => TxHash, signed_tx  => SignedTx }),
-    {ok, SimBlock} = aec_chain_sim:add_keyblock(),
+    aec_chain_sim:add_keyblock(),
 
     aec_test_utils:aec_keys_cleanup(Dir),
     ok.
@@ -158,16 +163,16 @@ post_block(_Config) ->
 %%%  Configuration level
 %%%===================================================================
 
-trackers_conf(GenesisHeader) ->
+trackers_conf({Block, _} = GenesisState) ->
     %% NOTE: Genesis header on the simulator is a dynamic entity, code performs preliminary init;
-    {ok, GenesisHash} = aec_headers:hash_header(GenesisHeader),
+    {ok, GenesisHash} = aec_headers:hash_header(aec_blocks:to_header(Block)),
     [
         #{
             <<"name">> => ?SIM_VIEW,
             <<"connector">> => #{
                 <<"module">> => ?SIM_CONNECTOR,
                 <<"args">> => #{
-                    <<"genesis_header">> => GenesisHeader
+                    <<"genesis_state_param">> => GenesisState
                 }
             },
             %% NOTE: Simulator operates via encoded hashes;

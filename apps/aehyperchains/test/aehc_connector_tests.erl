@@ -21,7 +21,8 @@ hyperchains_simulator_test_() ->
 
             aec_test_utils:mock_genesis_and_forks(),
             Dir = aec_test_utils:aec_keys_setup(),
-            aehc_chain_sim_connector:start_link(#{ <<"genesis_header">> => aec_block_genesis:genesis_header() }),
+            GenesisState = aec_block_genesis:genesis_block_with_state(),
+            aehc_chain_sim_connector:start_link(#{ <<"genesis_state_param">> => GenesisState }),
             Dir
         end,
         fun(TmpDir) ->

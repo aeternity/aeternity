@@ -53,9 +53,9 @@ dry_send_tx(Delegate, Commitment, PoGF) ->
 init(Args) ->
     process_flag(trap_exit, true),
     true = aec_events:subscribe({parent_chain, top_changed}),
-    Hdr = maps:get(<<"genesis_header">>, Args),
+    GenesisState = maps:get(<<"genesis_state_param">>, Args),
     SimParam = aec_chain_sim:sim_type_param(#{}, parent_chain),
-    {ok, Pid} = aec_chain_sim:start(aec_chain_sim:genesis_header_param(SimParam, Hdr)),
+    {ok, Pid} = aec_chain_sim:start(aec_chain_sim:genesis_state_param(SimParam, GenesisState)),
     lager:info("Parent chain's connector ~p is attached: ~p", [?MODULE, Pid]),
     {ok, #state{ pid = Pid }}.
 
@@ -78,14 +78,12 @@ handle_call({send_tx, Delegate, Commitment, PoGF}, _From, State) ->
 
 handle_call({get_top_block}, _From, State) ->
     Hash = aec_chain_sim:top_block_hash(),
-    {ok, Info} = aec_chain_sim:block_by_hash(Hash),
-    Block = format_block(Info),
-    {reply, Block, State};
+    {ok, Block} = aec_chain_sim:block_by_hash(Hash),
+    {reply, format_block(Block), State};
 
 handle_call({get_block_by_hash, Hash}, _From, State) ->
-    {ok, Info} = aec_chain_sim:block_by_hash(Hash),
-    Block = format_block(Info),
-    {reply, Block, State};
+    {ok, Block} = aec_chain_sim:block_by_hash(Hash),
+    {reply, format_block(Block), State};
 
 handle_call({dry_send_tx, _Delegate, _Commitment, _PoGF}, _From, State) ->
     {reply, ok, State};
@@ -101,8 +99,12 @@ handle_info({gproc_ps_event, {parent_chain, top_changed}, #{info := Info}}, Stat
     Pid = maps:get(pid, Info, undefined),
     (State#state.pid == Pid) andalso
         begin
-            Block = format_block(Info),
-            aehc_connector:publish_block(<<"chain_sim">>, Block)
+            Hash = maps:get(block_hash, Info),
+            PrevHash = maps:get(prev_hash, Info),
+            Height = maps:get(height, Info),
+            Txs = maps:get(txs, Info),
+            ParentBlock = aehc_connector:parent_block(Height, Hash, PrevHash, commitments(Txs)),
+            aehc_connector:publish_block(<<"chain_sim">>, ParentBlock)
         end,
     {noreply, State};
 
@@ -114,6 +116,31 @@ terminate(_Reason, _State) ->
     aec_chain_sim:stop(),
     ok.
 
+format_block(Block) ->
+    Header = aec_blocks:to_header(Block),
+    Height = aec_headers:height(Header),
+    Type = aec_headers:type(Header),
+    Txs = case Type of
+              micro ->
+                  aec_blocks:txs(Block);
+              key ->
+                  []
+          end,
+    {ok, Hash} = aec_headers:hash_header(Header),
+    PrevHash = aec_headers:prev_hash(Header),
+    aehc_connector:parent_block(Height, Hash, PrevHash, commitments(Txs)).
+
+-spec commitments(aec_blocks:tx_list()) -> [aehc_commitment:commitment()].
+commitments(Txs) ->
+     %% TODO: This function has to provide the actual verification of included tx;
+    %% This is extremely simplified procedure to pass proto test SUITE;
+    Match = <<"Test commitment">>,
+    Txs = lists:filter(fun (Tx) -> payload(Tx) == Match end, Txs),
+    [aehc_connector:commitment(sender_id(Tx), payload(Tx)) || Tx <- Txs].
+
+%%%===================================================================
+%%%  Txs accessors
+%%%===================================================================
 -spec payload(aetx_sign:signed_tx()) -> binary().
 payload(SignedTx) ->
     Tx = aetx_sign:tx(SignedTx), SpendTx = aetx:tx(Tx),
@@ -125,18 +152,3 @@ sender_id(SignedTx) ->
     Tx = aetx_sign:tx(SignedTx), SpendTx = aetx:tx(Tx),
     SenderId = aec_spend_tx:sender_id(SpendTx), true = is_binary(SenderId),
     SenderId.
-
-format_block(MicroBlock) ->
-    %% TODO: This function has to provide the actual verification of included tx;
-    %% This is extremely simplified procedure to pass proto test SUITE;
-    Txs = maps:get(txs, MicroBlock),
-    FilterdTxs = lists:filter(fun (Tx) -> payload(Tx) == <<"Test commitment">> end, Txs),
-    Commitments = [aehc_connector:commitment(sender_id(Tx), payload(Tx)) || Tx <- FilterdTxs],
-    %% NOTE: Simulator operates via encoded hashes (kh_23h5LKLEXqTGSn14K2XqYJq1uzWXbRTBeQNnjEq5KCFoM4xUd7);
-    Header = maps:get(header, MicroBlock),
-    _Type = aec_headers:type(Header),
-    Hash = maps:get(hash, MicroBlock),
-    PrevHash = aec_headers:prev_hash(Header),
-    Height = aec_headers:height(Header),
-    aehc_connector:parent_block(Height, Hash, PrevHash, Commitments).
-
