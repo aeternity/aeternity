@@ -87,6 +87,7 @@
         , hash_is_in_main_chain/2
         , insert_block/1
         , insert_block/2
+        , insert_block_conductor/2
         , gossip_allowed_height_from_top/0
         , proof_of_fraud_report_delay/0
         , get_fork_result/2
@@ -130,6 +131,15 @@ get_n_key_headers_backward_from(Header, N) ->
                                         | {'pof', aec_pof:pof(), events()}
                                         | {'error', any()}.
 insert_block(Block) ->
+    insert_block_strip_res(do_insert_block(Block, undefined)).
+
+-spec insert_block_conductor(aec_blocks:block(), atom()) ->
+    {'ok', boolean(), aec_headers:key_header() | undefined, events()}
+    | {'pof', boolean(), aec_headers:key_header() | undefined, aec_pof:pof(), events()}
+    | {'error', any()}.
+insert_block_conductor(Block, block_synced) ->
+    do_insert_block(Block, sync);
+insert_block_conductor(Block, _Origin) ->
     do_insert_block(Block, undefined).
 
 %% We should not check the height distance to top for synced block, so
@@ -139,9 +149,13 @@ insert_block(Block) ->
       | {'pof', aec_pof:pof(), events()}
       | {'error', any()}.
 insert_block(Block, block_synced) ->
-    do_insert_block(Block, sync);
+    insert_block_strip_res(do_insert_block(Block, sync));
 insert_block(Block, _Origin) ->
-    do_insert_block(Block, undefined).
+    insert_block_strip_res(do_insert_block(Block, undefined)).
+
+insert_block_strip_res({ok, _, _, Events}) -> {ok, Events};
+insert_block_strip_res({pof, _, _, PoF, Events}) -> {pof, PoF, Events};
+insert_block_strip_res(Other) -> Other.
 
 do_insert_block(Block, Origin) ->
     aec_blocks:assert_block(Block),
@@ -298,7 +312,8 @@ persist_state(OldState, NewState) ->
         {_, undefined} -> ok;
         {TH, TH} -> ok;
         {_, TopBlockHash} ->
-            aec_db:write_top_block_hash(TopBlockHash)
+            aec_db:write_top_block_hash(TopBlockHash),
+            top_changed
     end.
 
 -spec internal_error(_) -> no_return().
@@ -703,10 +718,16 @@ internal_insert_transaction(Node, Block, Origin, Ctx) ->
     end,
     ok = db_put_node(Block, hash(Node)),
     {State3, Events} = update_state_tree(Node, State2, Ctx),
-    persist_state(State1, State3),
+    TopChanged = persist_state(State1, State3) =:= top_changed,
+    PrevKeyHeader = case ctx_prev_key(Ctx) of
+                  #node{header = H} ->
+                      H;
+                  undefined ->
+                      undefined
+              end,
     case maps:get(found_pof, State3) of
-        no_fraud  -> {ok, Events};
-        PoF       -> {pof, PoF, Events}
+        no_fraud  -> {ok, TopChanged, PrevKeyHeader, Events};
+        PoF       -> {pof, TopChanged, PrevKeyHeader, PoF, Events}
     end.
 
 assert_not_illegal_fork_or_orphan(Node, Origin, State) ->
@@ -853,7 +874,7 @@ update_state_tree(Node, State, Ctx) ->
     State1 = update_found_pof(Node, MicSibHeaders, State, Ctx),
     {State2, NewTopDifficulty, Events} = update_state_tree(Node, Trees, ForkInfo, State1),
     OldTopHash = get_top_block_hash(State),
-    handle_top_block_change(OldTopHash, NewTopDifficulty, Events, State2).
+    handle_top_block_change(OldTopHash, NewTopDifficulty, Node, Events, State2).
 
 update_state_tree(Node, TreesIn, ForkInfo, State) ->
     case db_find_state(hash(Node), true) of
@@ -872,12 +893,22 @@ maybe_set_new_fork_id(Node, ForkInfoIn, State) ->
     case node_is_genesis(Node, State) of
         true  -> {ForkInfoIn, []};
         false ->
-            case db_sibling_blocks(Node) of
-                #{key_siblings   := [],
-                  micro_siblings := []} ->
+            case {get_top_block_hash(State), prev_hash(Node)} of
+                {H, H} ->
+                    %% When extending the existing top it doesn't make sense to perform a full scan
+                    %% of 2 generations. PrevHash(Node) =:= TopHash() can only be true if we have NO siblings
+                    %% This will be the case when syncing and will allow us to skip the expensive DB scan
                     {ForkInfoIn, []};
-                #{micro_siblings := MicSibs} ->
-                    {ForkInfoIn#fork_info{fork_id = hash(Node)}, MicSibs}
+                _ ->
+                    %% When benchmarking it turned out that this is very expensive to calculate
+                    %% Execute it only when it's possible for siblings to exist
+                    case db_sibling_blocks(Node) of
+                        #{key_siblings   := [],
+                          micro_siblings := []} ->
+                            {ForkInfoIn, []};
+                        #{micro_siblings := MicSibs} ->
+                            {ForkInfoIn#fork_info{fork_id = hash(Node)}, MicSibs}
+                    end
             end
     end.
 
@@ -932,14 +963,25 @@ update_fraud_info(ForkInfoIn, Node, State) ->
             end
     end.
 
-handle_top_block_change(OldTopHash, NewTopDifficulty, Events, State) ->
+handle_top_block_change(OldTopHash, NewTopDifficulty, Node, Events, State) ->
     case get_top_block_hash(State) of
         OldTopHash -> State;
         NewTopHash when OldTopHash =:= undefined ->
-            State1 = update_main_chain(get_genesis_hash(State), NewTopHash, State),
+            State1 = case {get_genesis_hash(State), prev_hash(Node)} of
+                         {H, H} ->
+                             update_main_chain(H, NewTopHash, H, State);
+                         {H, _} ->
+                             %% TODO: Is this case even possible?
+                             update_main_chain(H, NewTopHash, State)
+                     end,
             {State1, Events};
         NewTopHash ->
-            {ok, ForkHash} = find_fork_point(OldTopHash, NewTopHash),
+            {ok, ForkHash} = case prev_hash(Node) of
+                                 OldTopHash ->
+                                     {ok, OldTopHash};
+                                 _ ->
+                                     find_common_ancestor(OldTopHash, NewTopHash)
+                             end,
             case ForkHash =:= OldTopHash of
                 true ->
                     %% We are extending the current chain.
@@ -963,7 +1005,7 @@ handle_top_block_change(OldTopHash, NewTopDifficulty, Events, State) ->
     end.
 
 update_main_chain(OldTopHash, NewTopHash, State) ->
-    {ok, ForkHash} = find_fork_point(OldTopHash, NewTopHash),
+    {ok, ForkHash} = find_common_ancestor(OldTopHash, NewTopHash),
     update_main_chain(OldTopHash, NewTopHash, ForkHash, State).
 
 update_main_chain(OldTopHash, NewTopHash, ForkHash, State) ->
@@ -1172,7 +1214,7 @@ find_fork_point(_MaybeNode1, _Hash1, _Res1, _MaybeNode2, _Hash2, _Res2) ->
     error.
 
 find_fork_point_maybe_node(undefined, Hash) -> db_get_node(Hash);
-find_fork_point_maybe_node(Node, Hash) -> Node.
+find_fork_point_maybe_node(Node, _Hash) -> Node.
 
 find_micro_fork_point(Hash1, Hash2) ->
     case do_find_micro_fork_point(Hash1, Hash2) of
