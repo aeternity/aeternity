@@ -92,6 +92,7 @@
                          , header => aec_headers:micro_header()
                          }.
 
+%%
 %% TODO: Use CT logging or system logging - possibly configurable
 -define(LOG(Fmt, Args), io:fwrite("~w:~w/~w - " ++ Fmt, [?MODULE, ?FUNCTION_NAME, ?LINE | Args])).
 
