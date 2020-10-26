@@ -440,7 +440,7 @@ find_headers_at_height(Height) when is_integer(Height), Height >= 0 ->
                                              [{aec_headers:header(), binary()}].
 find_headers_and_hash_at_height(Height) when is_integer(Height), Height >= 0 ->
     ?t([{aec_headers:from_db_header(H), K} || #aec_headers{key = K, value = H}
-                 <- mnesia:index_read(aec_headers, Height, height)]).
+                 <- mnesia:index_read(aec_headers, Height, #aec_headers.height)]).
 
 find_discovered_pof(Hash) ->
     case ?t(read(aec_discovered_pof, Hash)) of

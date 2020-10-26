@@ -719,15 +719,9 @@ internal_insert_transaction(Node, Block, Origin, Ctx) ->
     ok = db_put_node(Block, hash(Node)),
     {State3, Events} = update_state_tree(Node, State2, Ctx),
     TopChanged = persist_state(State1, State3) =:= top_changed,
-    PrevKeyHeader = case ctx_prev_key(Ctx) of
-                  #node{header = H} ->
-                      H;
-                  undefined ->
-                      undefined
-              end,
     case maps:get(found_pof, State3) of
-        no_fraud  -> {ok, TopChanged, PrevKeyHeader, Events};
-        PoF       -> {pof, TopChanged, PrevKeyHeader, PoF, Events}
+        no_fraud  -> {ok, TopChanged, Events};
+        PoF       -> {pof, TopChanged, PoF, Events}
     end.
 
 assert_not_illegal_fork_or_orphan(Node, Origin, State) ->
@@ -1214,7 +1208,7 @@ find_fork_point(_MaybeNode1, _Hash1, _Res1, _MaybeNode2, _Hash2, _Res2) ->
     error.
 
 find_fork_point_maybe_node(undefined, Hash) -> db_get_node(Hash);
-find_fork_point_maybe_node(Node, _Hash) -> Node.
+find_fork_point_maybe_node(Node, Hash) -> Node.
 
 find_micro_fork_point(Hash1, Hash2) ->
     case do_find_micro_fork_point(Hash1, Hash2) of
