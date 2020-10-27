@@ -893,9 +893,13 @@ handle_get_generation(S, Msg) ->
     send_response(S, generation, Response),
     S.
 
-do_get_generation(Hash, true) ->
+do_get_generation(Hash, Forward) ->
+    aec_db:ensure_transaction(fun() ->
+        do_get_generation_(Hash, Forward) end).
+
+do_get_generation_(Hash, true) ->
     aec_chain:get_generation_by_hash(Hash, forward);
-do_get_generation(Hash, false) ->
+do_get_generation_(Hash, false) ->
     aec_chain:get_generation_by_hash(Hash, backward).
 
 handle_get_generation_rsp(S, {get_generation, From, _TRef}, Msg) ->
