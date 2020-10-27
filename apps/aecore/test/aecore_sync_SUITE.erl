@@ -35,7 +35,9 @@
     report_metrics/1,
     check_metrics_logged/1,
     crash_syncing_worker/1,
-    large_msgs/1
+    large_msgs/1,
+    inject_long_chain/1,
+    measure_second_node_sync_time/1
    ]).
 
 -include_lib("common_test/include/ct.hrl").
@@ -55,7 +57,8 @@ groups() ->
                               {group, semantically_invalid_tx},
                               {group, mempool_sync},
                               {group, one_blocked},
-                              {group, large_msgs}
+                              {group, large_msgs},
+                              {group, performance}
                              ]},
      {two_nodes, [sequence],
       [start_first_node,
@@ -114,7 +117,20 @@ groups() ->
        mine_on_first,
        start_blocked_second]},
      {large_msgs, [sequence],
-      [large_msgs]}
+      [large_msgs]},
+     {performance, [sequence],
+          [{group, bench_only_key},
+           {group, bench_only_micro},
+           {group, bench_mixed_small},
+           {group, bench_mixed_big}]},
+     {bench_only_key, [{group, run_benchmark}]},
+     {bench_only_micro, [{group, run_benchmark}]},
+     {bench_mixed_small, [{group, run_benchmark}]},
+     {bench_mixed_big, [{group, run_benchmark}]},
+     {run_benchmark, [sequence],
+      [start_first_node,
+       inject_long_chain,
+       measure_second_node_sync_time]}
     ].
 
 suite() ->
@@ -152,13 +168,21 @@ end_per_suite(Config) ->
     stop_devs(Config).
 
 init_per_group(TwoNodes, Config) when
-        TwoNodes == two_nodes; TwoNodes == semantically_invalid_tx;
-        TwoNodes == mempool_sync ->
+        TwoNodes =:= two_nodes; TwoNodes =:= semantically_invalid_tx;
+        TwoNodes =:= mempool_sync; TwoNodes =:= run_benchmark ->
     Config1 = config({devs, [dev1, dev2]}, Config),
     InitialApps = {running_apps(), loaded_apps()},
     {ok, _} = application:ensure_all_started(exometer_core),
     ok = aec_metrics_test_utils:start_statsd_loggers(aec_metrics_test_utils:port_map(Config1)),
     [{initial_apps, InitialApps} | Config1];
+init_per_group(performance, Config) ->
+    case os:getenv("SYNC_BENCHMARK") of
+        false ->
+            {skip, "Enable sync performance tests by adding "
+                   "SYNC_BENCHMARK os environment variable"};
+        _ ->
+            Config
+    end;
 init_per_group(three_nodes, Config) ->
     Config1 = config({devs, [dev1, dev2, dev3]}, Config),
     InitialApps = {running_apps(), loaded_apps()},
@@ -178,6 +202,14 @@ init_per_group(Group, Config) when Group =:= one_blocked;
                                              {add_peers, true}
                                             ]),
     [{initial_apps, InitialApps} | Config1];
+init_per_group(bench_only_key, Config) ->
+    [{generations, 1000},{micro_per_generation, 0},{tx_per_micro, 0}|Config];
+init_per_group(bench_only_micro, Config) ->
+    [{generations, 1},{micro_per_generation, 1000},{tx_per_micro, 1}|Config];
+init_per_group(bench_mixed_small, Config) ->
+    [{generations, 10},{micro_per_generation, 10},{tx_per_micro, 1}|Config];
+init_per_group(bench_mixed_big, Config) ->
+    [{generations, 50},{micro_per_generation, 100},{tx_per_micro, 0}|Config];
 init_per_group(all_nodes, Config) ->
     Config.
 
@@ -206,7 +238,8 @@ end_per_group(mempool_sync, Config) ->
     ok;
 end_per_group(Group, Config) when Group =:= two_nodes;
                                   Group =:= three_nodes;
-                                  Group =:= semantically_invalid_tx ->
+                                  Group =:= semantically_invalid_tx;
+                                  Group =:= run_benchmark ->
     ct:log("Metrics: ~p", [aec_metrics_test_utils:fetch_data()]),
     ok = aec_metrics_test_utils:stop_statsd_loggers(),
     stop_devs(Config),
@@ -215,6 +248,11 @@ end_per_group(Group, Config) when Group =:= two_nodes;
         {_, {OldRunningApps, OldLoadedApps}} ->
             ok = restore_stopped_and_unloaded_apps(OldRunningApps, OldLoadedApps)
     end,
+    ok;
+end_per_group(Benchmark, _Config) when
+    Benchmark =:= performance;
+    Benchmark =:= bench_only_key; Benchmark =:= bench_only_micro;
+    Benchmark =:= bench_mixed_small; Benchmark =:= bench_mixed_big ->
     ok;
 end_per_group(all_nodes, _Config) ->
    ok.
@@ -632,6 +670,75 @@ large_msgs(Config) ->
 
     true = expect_same(T0, Config).
 
+inject_long_chain(Config) ->
+    [ Dev1 | _ ] = proplists:get_value(devs, Config),
+    Node = aecore_suite_utils:node_name(Dev1),
+    {G, M, NTx} = get_bench_config(Config),
+    %% Ensure not mining
+    stopped = rpc:call(Node, aec_conductor, get_mining_state, []),
+    %% Disable PoW checks
+    aecore_suite_utils:start_mock(Node, block_pow),
+    %% Create chain
+    put(nonce, 1),
+    {T, _} = timer:tc(fun() -> [inject_generation(Node, M, NTx) || _ <- lists:seq(1, G)] end),
+    {G, M, NTx} = get_bench_config(Config),
+    io:format(user, "\nTest chain(~p/~p/~p) on Node1 created and inserted in ~p us\n", [G, M, NTx, T]).
+
+inject_generation(Node, NMicro, NTx) ->
+    %% Start a generation
+    TopHash = rpc:call(Node, aec_chain, top_block_hash, []),
+    {ok, Pub} = rpc:call(Node, aec_keys, pubkey, []),
+    {ok, Block} = rpc:call(Node, aec_block_key_candidate, create, [TopHash, Pub]),
+    ok = rpc:call(Node, aec_conductor, post_block, [Block]),
+    %% Add microblocks
+    [inject_microblock(Node, NTx) || _ <- lists:seq(1, NMicro)].
+
+inject_microblock(Node, NTx) ->
+    TopHash = rpc:call(Node, aec_chain, top_block_hash, []),
+    inject_txs(Node, NTx),
+    {ok, MicroBlock, _} = rpc:call(Node, aec_block_micro_candidate, create, [TopHash]),
+    NTx = length(aec_blocks:txs(MicroBlock)),
+    {ok, MicroBlockS} = rpc:call(Node, aec_keys, sign_micro_block, [MicroBlock]),
+    ok = rpc:call(Node, aec_conductor, post_block, [MicroBlockS]),
+    ok.
+
+inject_txs(Node, NTx) ->
+    [ begin
+        Nonce = get(nonce),
+        add_spend_tx(Node, 10, 500000 * aec_test_utils:min_gas_price(), Nonce, 100, <<>>),
+        put(nonce, Nonce+1)
+      end || _ <- lists:seq(1, NTx)].
+
+measure_second_node_sync_time(Config) ->
+    [Dev1, Dev2] = [dev1, dev2],
+    N1 = aecore_suite_utils:node_name(Dev1),
+    N2 = aecore_suite_utils:node_name(Dev2),
+    aecore_suite_utils:start_node(Dev2, Config),
+    {T, _} = timer:tc(fun() ->
+        aecore_suite_utils:connect(N2),
+        aecore_suite_utils:start_mock(N2, block_pow),
+        Self = self(),
+        Watcher = rpc:call(N2, erlang, spawn, [fun() ->
+            aec_events:subscribe(chain_sync),
+            receive
+                {gproc_ps_event,chain_sync, #{info := {chain_sync_done, _}}} ->
+                    Self ! {self(), sync_done}
+            end end]),
+        receive
+            {Watcher, sync_done} ->
+                ok
+        after
+            60000 ->
+                error(sync_failed)
+        end
+      end),
+    {G, M, NTx} = get_bench_config(Config),
+    Fmt = "\nSyncing on Node2 ~p generations with ~p microblocks per generation "
+          "with ~p SpendTx per microblock took ~p us\n",
+    ct:log(Fmt, [G, M, NTx, T]),
+    %% This test is meant to be run manually in the shell
+    io:format(user, Fmt, [G, M, NTx, T]).
+
 %% ==================================================
 %% Private functions
 %% ==================================================
@@ -767,3 +874,7 @@ new_pubkey() ->
     #{ public := PubKey } = enacl:sign_keypair(),
     PubKey.
 
+get_bench_config(Config) ->
+    { proplists:get_value(generations, Config)
+    , proplists:get_value(micro_per_generation, Config)
+    , proplists:get_value(tx_per_micro, Config)}.
