@@ -145,14 +145,14 @@ simulator(Opts) ->
 next_nonce(Acct) ->
     chain_req({next_nonce, Acct}).
 
--spec new_account(Balance :: non_neg_integer()) -> aec_keys:pubkey().
+-spec new_account(Balance :: non_neg_integer()) -> {ok, map()}.
 %%
 %% Equivalent to new_account(main, Balance)
 %%
 new_account(Balance) ->
     new_account(main, Balance).
 
--spec new_account(fork_id(), Balance :: non_neg_integer()) -> aec_keys:pubkey().
+-spec new_account(fork_id(), Balance :: non_neg_integer()) -> {ok, map()}.
 %%
 %% Creates new account with given balance
 %%
@@ -195,7 +195,7 @@ get_height(ForkId) ->
 push(Tx) ->
     chain_req({push, Tx}).
 
--spec sign_and_push(aec_keys:pubkey(), aetx_sign:signed_tx()) -> ok | {error, unknown_privkey}.
+-spec sign_and_push(aec_keys:pubkey(), aetx:tx()) -> ok | {error, unknown_privkey}.
 %%
 %% Signs and pushes tx to the simulated mempool
 %%

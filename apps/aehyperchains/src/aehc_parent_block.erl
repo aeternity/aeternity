@@ -88,7 +88,7 @@ height_block(#hc_parent_block{header = #hc_parent_block_header{height = Height}}
 block_header(#hc_parent_block{header = Header}) ->
     Header.
 
--spec is_hc_parent_block(parent_block() | term()) -> boolean().
+-spec is_hc_parent_block(any()) -> boolean().
 is_hc_parent_block(#hc_parent_block{}) ->
     true;
 is_hc_parent_block(_) ->

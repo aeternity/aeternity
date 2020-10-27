@@ -99,8 +99,8 @@ accept(Conf) ->
         {error, {E, R}}
     end.
 
+%% Acceptance check (request the current top block);
 accept_top_block(Conf) ->
-    %% Ability to request the current top block;
     Module = module(Conf),
     {ok, TopBlock} = get_top_block(Module),
     Hash = aehc_parent_block:hash_block(TopBlock),
@@ -108,8 +108,8 @@ accept_top_block(Conf) ->
     Info = "Accept get_top_block procedure has passed (connector: ~p, hash: ~p, height: ~p)",
     lager:info(Info, [Module, Hash, Height]).
 
+%% Acceptance check (request genesis block);
 accept_block_by_hash(Conf) ->
-    %% Ability to request genesis block;
     Module = module(Conf),
     Genesis = maps:get(<<"genesis_hash">>, Conf),
     {ok, Block} = get_block_by_hash(Module, Genesis),
@@ -118,8 +118,8 @@ accept_block_by_hash(Conf) ->
     Info = "Accept get_block_by_hash procedure has passed (connector: ~p, hash: ~p, height: ~p)",
     lager:info(Info, [Module, Hash, Height]).
 
+%% Acceptance check (commitment call preliminary check);
 accept_dry_send_tx(Conf) ->
-    %% Ability to execute commitment call;
     Module = module(Conf),
     DelegateConf = aeu_env:user_config([<<"hyperchains">>, <<"delegate">>]),
     DelegateConf == undefined orelse

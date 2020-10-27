@@ -7,6 +7,7 @@
 -module(aehc_parent_mng_SUITE).
 -author("sojourner").
 
+-include_lib("aecontract/include/hard_forks.hrl").
 -include_lib("common_test/include/ct.hrl").
 
 -define(SIM_VIEW, <<"chain_sim">>).
@@ -30,7 +31,9 @@
         , fetch_fork/1
         ]).
 
--export([ post_block/1 ]).
+-export([ post_commitment/1
+        , post_pogf/1
+        ]).
 %%--------------------------------------------------------------------
 %% COMMON TEST CALLBACK FUNCTIONS
 %%--------------------------------------------------------------------
@@ -40,7 +43,7 @@ all() ->
 groups() ->
     [
         {fetch, [sequence], [fetch_block, fetch_height, fetch_fork]},
-        {post, [], [post_block]}
+        {post, [], [post_commitment, post_pogf]}
     ].
 
 suite() ->
@@ -135,34 +138,45 @@ fetch_fork(Config) ->
     GenesisHash = aehc_parent_block:prev_hash_block(lists:last(DemoLog)),
     ok.
 
-post_block(_Config) ->
+post_commitment(_Config) ->
     Dir = aec_test_utils:aec_keys_setup(),
-
-    {ok, PrivKey} = aec_keys:sign_privkey(),
-    {ok, Pub} = aec_keys:pubkey(),
-    Delegate = aeser_id:create(account, Pub),
+    Delegate = account(),
     %% The main intention of this call is to emulate post action with signed payload from delegate;
     %% Fee, nonce, ttl and amount fields have decorated nature;
     KeyblockHash = aec_chain:top_key_block_hash(),
     PoGF = aehc_pogf:hash(no_pogf),
     Header = aehc_commitment_header:new(Delegate, KeyblockHash, PoGF),
-
     Payload = term_to_binary(aehc_commitment:new(Header), [compressed]),
-    {ok, Tx} = aec_spend_tx:new(#{ sender_id => Delegate, recipient_id => Delegate, amount => 1,
-        fee => 5, nonce => 1, payload => Payload, ttl => 0 }),
-    BinaryTx = aec_governance:add_network_id(aetx:serialize_to_binary(Tx)),
-    SignedTx = aetx_sign:new(Tx, [enacl:sign_detached(BinaryTx, PrivKey)]),
-    TxHash = aetx_sign:hash(SignedTx),
+    {ok, Tx} = tx(Delegate, Payload),
     %% The next format is prepared accordingly to simualtor internal representation;
-    aec_chain_sim:push(#{ tx_hash => TxHash, signed_tx  => SignedTx }),
+    aec_chain_sim:sign_and_push(Delegate, Tx),
     aec_chain_sim:add_keyblock(),
 
     aec_test_utils:aec_keys_cleanup(Dir),
     ok.
+
+post_pogf(_Config) ->
+    Dir = aec_test_utils:aec_keys_setup(),
+    Delegate = account(),
+    %% The main intention of this call is to emulate post action with signed payload from delegate;
+    %% Fee, nonce, ttl and amount fields have decorated nature;
+    KeyblockHash = aec_chain:top_key_block_hash(),
+    Header1 = key_header(15),
+    Header2 = key_header(16),
+    PoGF = aehc_pogf:new(Header1, Header2),
+    Header = aehc_commitment_header:new(Delegate, KeyblockHash, PoGF),
+    Payload = term_to_binary(aehc_commitment:new(Header, PoGF), [compressed]),
+    {ok, Tx} = tx(Delegate, Payload),
+    %% The next format is prepared accordingly to simualtor internal representation;
+    aec_chain_sim:sign_and_push(Delegate, Tx),
+    aec_chain_sim:add_keyblock(),
+
+    aec_test_utils:aec_keys_cleanup(Dir),
+    ok.
+
 %%%===================================================================
 %%%  Configuration level
 %%%===================================================================
-
 trackers_conf({Block, _} = GenesisState) ->
     %% NOTE: Genesis header on the simulator is a dynamic entity, code performs preliminary init;
     {ok, GenesisHash} = aec_headers:hash_header(aec_blocks:to_header(Block)),
@@ -196,3 +210,41 @@ traverse(Block, To, Acc) ->
             PrevBlock = aehc_parent_db:get_parent_block(Prev),
             traverse(PrevBlock, To, [Block|Acc])
     end.
+
+%%%===================================================================
+%%%  Commitment modelling
+%%%===================================================================
+-spec account() -> aec_keys:pubkey().
+account() ->
+    Amount = round(math:pow(10, 10)) * aec_test_utils:min_gas_price(),
+    {ok, #{pubkey := Res}} = aec_chain_sim:new_account(Amount * aec_test_utils:min_gas_price()),
+    Res.
+
+-spec tx(aec_keys:pubkey(), binary()) -> {ok, aetx:tx()}.
+tx(Delegate, Payload) ->
+    aec_spend_tx:new(
+        #{
+            sender_id => aeser_id:create(account, Delegate),
+            recipient_id => aeser_id:create(account, Delegate),
+            amount => 1,
+            fee => 5,
+            nonce => 1,
+            payload => Payload,
+            ttl => 0
+        }).
+
+key_header(Height) ->
+    RawKey = aec_headers:set_version_and_height(aec_headers:raw_key_header(), ?FORTUNA_PROTOCOL_VSN, Height),
+    aec_headers:new_key_header(
+        aec_headers:height(RawKey),
+        aec_headers:prev_hash(RawKey),
+        aec_headers:prev_key_hash(RawKey),
+        aec_headers:root_hash(RawKey),
+        aec_headers:miner(RawKey),
+        aec_headers:beneficiary(RawKey),
+        aec_headers:target(RawKey),
+        aec_headers:pow(RawKey),
+        aec_headers:nonce(RawKey),
+        aec_headers:time_in_msecs(RawKey),
+        default,
+        ?FORTUNA_PROTOCOL_VSN).

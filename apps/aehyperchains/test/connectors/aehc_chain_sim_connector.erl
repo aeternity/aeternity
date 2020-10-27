@@ -19,7 +19,7 @@
 
 %% API.
 
--spec start_link(Args::term()) ->
+-spec start_link(Args::map()) ->
     {ok, pid()} | ingnore | {error, term()}.
 start_link(Args) ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, Args, []).
