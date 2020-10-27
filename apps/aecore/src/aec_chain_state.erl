@@ -179,9 +179,12 @@ hash_is_connected_to_genesis(Hash) ->
 
 -spec find_common_ancestor(binary(), binary()) ->
                                   {'ok', binary()} | {error, atom()}.
-find_common_ancestor(H, H) -> {ok, H};
 find_common_ancestor(Hash1, Hash2) ->
-    case db_find_node(Hash2) of
+    find_common_ancestor(undefined, Hash1, undefined, Hash2).
+
+find_common_ancestor(_, H, _, H) -> {ok, H};
+find_common_ancestor(MaybeNode1, Hash1, MaybeNode2, Hash2) ->
+    case maybe_db_find_node(MaybeNode2, Hash2) of
         {ok, Node2} ->
             case {prev_hash(Node2), prev_key_hash(Node2)} of
                 {Hash1, _} ->
@@ -190,7 +193,7 @@ find_common_ancestor(Hash1, Hash2) ->
                     {ok, Hash1};
                 _ ->
                     %% Don't fold this case to the above one! IO is expensive!
-                    case db_find_node(Hash1) of
+                    case maybe_db_find_node(MaybeNode1, Hash1) of
                         {ok, Node1} ->
                             case {prev_hash(Node1), prev_key_hash(Node1), prev_hash(Node2), prev_key_hash(Node2)} of
                                 {Hash2, _, _, _} ->
@@ -222,9 +225,10 @@ hash_is_in_main_chain(Hash) ->
                 undefined -> false;
                 TopHash ->
                     Height        = node_height(Node),
-                    TopHeight     = node_height(db_get_node(TopHash)),
-                    {ok, ChokePt} = choke_point(Height, TopHeight, TopHash),
-                    hash_is_in_main_chain(Hash, ChokePt)
+                    TopNode       = db_get_node(TopHash),
+                    TopHeight     = node_height(TopNode),
+                    {ok, {MaybeChokeNode, ChokePt}} = choke_point(Height, TopHeight, TopNode, TopHash),
+                    hash_is_in_main_chain(Node, Hash, MaybeChokeNode, ChokePt)
             end;
         error -> false
     end.
@@ -491,8 +495,8 @@ wrap_header(Header, Hash) ->
 get_key_block_hash_at_height(Height, State) when is_integer(Height), Height >= 0 ->
     case get_top_block_hash(State) of
         undefined -> error;
-        Hash ->
-            TopNode = db_get_node(Hash),
+        TopHash ->
+            TopNode = db_get_node(TopHash),
             TopHeight = node_height(TopNode),
             case Height > TopHeight of
                 true -> error;
@@ -501,35 +505,38 @@ get_key_block_hash_at_height(Height, State) when is_integer(Height), Height >= 0
                         error        -> error({broken_chain, Height});
                         {ok, [Node]} -> {ok, hash(Node)};
                         {ok, [_|_] = Nodes} ->
-                            {ok, ChokePt} = choke_point(Height, TopHeight, Hash),
-                            keyblock_hash_in_main_chain(Nodes, ChokePt)
+                            {ok, {MaybeChokeNode, ChokePt}} = choke_point(Height, TopHeight, TopNode, TopHash),
+                            keyblock_hash_in_main_chain(Nodes, MaybeChokeNode, ChokePt)
                     end
             end
     end.
 
 %% The assumption is that forks are short (normally a handful of blocks) and
 %% not too frequent. Or else this isn't much of an optimization.
-choke_point(Height, TopHeight, TopHash) when Height >= TopHeight -> {ok, TopHash};
-choke_point(Height, TopHeight, TopHash) ->
+choke_point(Height, TopHeight, MaybeTopNode, TopHash) when Height >= TopHeight -> {ok, {MaybeTopNode, TopHash}};
+choke_point(Height, TopHeight, MaybeTopNode, TopHash) ->
     case db_find_key_nodes_at_height(Height + 1) of
-        error        -> {ok, TopHash};
-        {ok, [Node]} -> {ok, hash(Node)};
-        {ok, _}      -> choke_point(Height + 1, TopHeight, TopHash)
+        error        -> {ok, {MaybeTopNode, TopHash}};
+        {ok, [Node]} -> {ok, {Node, hash(Node)}};
+        {ok, _}      -> choke_point(Height + 1, TopHeight, MaybeTopNode, TopHash)
     end.
 
-keyblock_hash_in_main_chain([Node|Left], TopHash) ->
-    case hash_is_in_main_chain(hash(Node), TopHash) of
+keyblock_hash_in_main_chain([Node|Left], MaybeTopNode, TopHash) ->
+    case hash_is_in_main_chain(Node, hash(Node), MaybeTopNode, TopHash) of
         true  -> {ok, hash(Node)};
-        false -> keyblock_hash_in_main_chain(Left, TopHash)
+        false -> keyblock_hash_in_main_chain(Left, MaybeTopNode, TopHash)
     end;
-keyblock_hash_in_main_chain([],_TopHash) ->
+keyblock_hash_in_main_chain([], _MaybeTopNode, _TopHash) ->
     error.
 
 hash_is_in_main_chain(Hash, TopHash) ->
-    case find_common_ancestor(Hash, TopHash) of
+    hash_is_in_main_chain(undefined, Hash, undefined, TopHash).
+
+hash_is_in_main_chain(MaybeNode, Hash, MaybeTopNode, TopHash) ->
+    case find_common_ancestor(MaybeNode, Hash, MaybeTopNode, TopHash) of
         {ok, Hash} -> true;
         {ok, _} -> false;
-        error -> false
+        {error, _} -> false
     end.
 
 %%%-------------------------------------------------------------------
@@ -719,9 +726,15 @@ internal_insert_transaction(Node, Block, Origin, Ctx) ->
     ok = db_put_node(Block, hash(Node)),
     {State3, Events} = update_state_tree(Node, State2, Ctx),
     TopChanged = persist_state(State1, State3) =:= top_changed,
+    PrevKeyHeader = case ctx_prev_key(Ctx) of
+                  #node{header = H} ->
+                      H;
+                  undefined ->
+                      undefined
+              end,
     case maps:get(found_pof, State3) of
-        no_fraud  -> {ok, TopChanged, Events};
-        PoF       -> {pof, TopChanged, PoF, Events}
+        no_fraud  -> {ok, TopChanged, PrevKeyHeader, Events};
+        PoF       -> {pof, TopChanged, PrevKeyHeader, PoF, Events}
     end.
 
 assert_not_illegal_fork_or_orphan(Node, Origin, State) ->
@@ -961,21 +974,11 @@ handle_top_block_change(OldTopHash, NewTopDifficulty, Node, Events, State) ->
     case get_top_block_hash(State) of
         OldTopHash -> State;
         NewTopHash when OldTopHash =:= undefined ->
-            State1 = case {get_genesis_hash(State), prev_hash(Node)} of
-                         {H, H} ->
-                             update_main_chain(H, NewTopHash, H, State);
-                         {H, _} ->
-                             %% TODO: Is this case even possible?
-                             update_main_chain(H, NewTopHash, State)
-                     end,
+            NewTopHash = get_genesis_hash(State), %% Internal inconsistency check
+            State1 = update_main_chain(NewTopHash, NewTopHash, NewTopHash, State),
             {State1, Events};
         NewTopHash ->
-            {ok, ForkHash} = case prev_hash(Node) of
-                                 OldTopHash ->
-                                     {ok, OldTopHash};
-                                 _ ->
-                                     find_common_ancestor(OldTopHash, NewTopHash)
-                             end,
+            {ok, ForkHash} = find_common_ancestor(undefined, OldTopHash, Node, NewTopHash),
             case ForkHash =:= OldTopHash of
                 true ->
                     %% We are extending the current chain.
@@ -997,10 +1000,6 @@ handle_top_block_change(OldTopHash, NewTopDifficulty, Node, Events, State) ->
                     end
             end
     end.
-
-update_main_chain(OldTopHash, NewTopHash, State) ->
-    {ok, ForkHash} = find_common_ancestor(OldTopHash, NewTopHash),
-    update_main_chain(OldTopHash, NewTopHash, ForkHash, State).
 
 update_main_chain(OldTopHash, NewTopHash, ForkHash, State) ->
     case OldTopHash =:= ForkHash of
@@ -1087,10 +1086,10 @@ find_predecessor_at_height(Node, Height) ->
 find_one_predecessor([N|Left], Node) ->
     Hash1 = hash(N),
     Hash2 = hash(Node),
-    case find_common_ancestor(Hash1, Hash2) of
+    case find_common_ancestor(N, Hash1, Node, Hash2) of
         {ok, Hash1} -> N;
         {ok, _} -> find_one_predecessor(Left, Node);
-        error -> find_one_predecessor(Left, Node)
+        {error, _} -> find_one_predecessor(Left, Node)
     end.
 
 %% A miner is reported for fraud in the key block that closes the next
@@ -1180,8 +1179,8 @@ find_fork_point(Node1, Hash1, Node2, Hash2) ->
 find_fork_point(_, Hash,  {ok, FHash}, _, Hash,  {ok, FHash}) ->
     {ok, Hash};
 find_fork_point(MaybeNode1, Hash1, {ok, FHash}, MaybeNode2, Hash2, {ok, FHash}) ->
-    Node1 = find_fork_point_maybe_node(MaybeNode1, Hash1),
-    Node2 = find_fork_point_maybe_node(MaybeNode2, Hash2),
+    Node1 = maybe_db_get_node(MaybeNode1, Hash1),
+    Node2 = maybe_db_get_node(MaybeNode2, Hash2),
     Height1 = node_height(Node1),
     Height2 = node_height(Node2),
     if
@@ -1207,8 +1206,10 @@ find_fork_point(MaybeNode1, Hash1, {ok, FHash1}, MaybeNode2, Hash2, {ok, FHash2}
 find_fork_point(_MaybeNode1, _Hash1, _Res1, _MaybeNode2, _Hash2, _Res2) ->
     error.
 
-find_fork_point_maybe_node(undefined, Hash) -> db_get_node(Hash);
-find_fork_point_maybe_node(Node, Hash) -> Node.
+maybe_db_get_node(undefined, Hash) -> db_get_node(Hash);
+maybe_db_get_node(Node, _Hash) -> Node.
+maybe_db_find_node(undefined, Hash) -> db_find_node(Hash);
+maybe_db_find_node(Node, _Hash) -> {ok, Node}.
 
 find_micro_fork_point(Hash1, Hash2) ->
     case do_find_micro_fork_point(Hash1, Hash2) of
