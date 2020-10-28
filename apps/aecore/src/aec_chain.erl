@@ -592,16 +592,30 @@ get_key_block_by_height(Height) when is_integer(Height), Height >= 0 ->
 get_current_generation() ->
     get_generation_(top_block_hash()).
 
-get_generation_(TopHash) -> get_generation_(TopHash, []).
+get_generation_(TopHash) ->
+    case get_header(TopHash) of
+        {ok, TopHeader} ->
+            case aec_headers:type(TopHeader) of
+                key ->
+                    {ok, #{ key_block => aec_blocks:new_key_from_header(TopHeader), micro_blocks => [], dir => forward }};
+                micro ->
+                    Index = maps:from_list(aec_db:find_headers_and_hash_at_height(aec_headers:height(TopHeader))),
+                    get_generation_with_header_index(TopHash, Index)
+            end;
+        _ ->
+            error
+    end.
 
-get_generation_(TopHash, MBs) ->
-    case aec_db:find_block(TopHash) of
-        none -> error;
-        {value, Block} ->
-            case aec_blocks:type(Block) of
-                micro -> get_generation_(aec_blocks:prev_hash(Block), [Block | MBs]);
-                key   -> {ok, #{ key_block => Block, micro_blocks => MBs, dir => forward }}
-            end
+get_generation_with_header_index(TopHash, Index) ->
+    get_generation_with_header_index(TopHash, Index, []).
+
+get_generation_with_header_index(TopHash, Index, MBs) ->
+    H = maps:get(TopHash, Index),
+    case aec_headers:type(H) of
+        key -> {ok, #{ key_block => aec_blocks:new_key_from_header(H), micro_blocks => MBs, dir => forward }};
+        micro ->
+            Block = aec_db:get_block_from_micro_header(TopHash, H),
+            get_generation_with_header_index(aec_headers:prev_hash(H), Index, [Block | MBs])
     end.
 
 -spec get_generation_by_hash(binary(), forward | backward) ->

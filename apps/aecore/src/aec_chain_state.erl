@@ -1267,7 +1267,7 @@ db_get_header(Hash) when is_binary(Hash) ->
 db_find_key_nodes_at_height(Height) when is_integer(Height) ->
     case aec_db:find_headers_and_hash_at_height(Height) of
         [_|_] = Headers ->
-            case [wrap_header(H, Hash) || {H, Hash} <- Headers, aec_headers:type(H) =:= key] of
+            case [wrap_header(H, Hash) || {Hash, H} <- Headers, aec_headers:type(H) =:= key] of
                 [] -> error;
                 List -> {ok, List}
             end;
@@ -1368,7 +1368,7 @@ db_put_signal_count(Hash, Count) ->
     aec_db:write_signal_count(Hash, Count).
 
 match_prev_at_height(Height, PrevHash, Hash) ->
-    [Header || {Header, H} <- aec_db:find_headers_and_hash_at_height(Height),
+    [Header || {H, Header} <- aec_db:find_headers_and_hash_at_height(Height),
                H =/= Hash,
                aec_headers:prev_hash(Header) =:= PrevHash].
 
