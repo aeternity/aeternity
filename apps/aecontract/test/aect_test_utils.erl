@@ -304,20 +304,25 @@ contract_filename(Compiler, Name) ->
 
 compile_filename(FileName) ->
     compile(sophia_version(), FileName).
+
 compile_filename(Compiler, FileName) ->
     compile(Compiler, FileName, []).
+
 compile_filename(Compiler, FileName, Opts) ->
     compile(Compiler, FileName, Opts).
 
 compile_contract(File) ->
     compile_contract(sophia_version(), File).
+
 compile_contract(Compiler, File) ->
     compile_contract(Compiler, File, []).
+
 compile_contract(Compiler, File, Opts) ->
     compile_filename(Compiler, contract_filename(Compiler, File), Opts).
 
 compile(Vsn, File) ->
     compile(Vsn, File, []).
+
 compile(Vsn, File, Opts) ->
     %% Lookup the res in the cache - if not present just calculate the result
     CompilationId = #compilation_id{vsn = Vsn, filename = File},
