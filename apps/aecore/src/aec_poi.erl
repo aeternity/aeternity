@@ -22,9 +22,10 @@
         , serialization_format_template/0
         ]).
 
--export([ proof_db_get/2
-        , proof_db_put/3
-        , proof_db_drop_cache/1
+-behavior(aeu_mp_trees_db).
+-export([ mpt_db_get/2
+        , mpt_db_put/3
+        , mpt_db_drop_cache/1
         ]).
 
 -export_type([ poi/0
@@ -158,18 +159,16 @@ new_proof_db() ->
 proof_db_spec() ->
     #{ handle => gb_trees
      , cache  => gb_trees:empty()
-     , get    => {?MODULE, proof_db_get}
-     , put    => {?MODULE, proof_db_put}
-     , drop_cache => {?MODULE, proof_db_drop_cache}
+     , module => ?MODULE
      }.
 
-proof_db_get(Key, Proof) ->
+mpt_db_get(Key, Proof) ->
     gb_trees:lookup(Key, Proof).
 
-proof_db_put(Key, Val, Proof) ->
+mpt_db_put(Key, Val, Proof) ->
     gb_trees:enter(Key, Val, Proof).
 
-proof_db_drop_cache(_Cache) ->
+mpt_db_drop_cache(_Cache) ->
     error(no_drop_cache_in_proof).
 
 proof_serialize_to_list(Proof) ->
