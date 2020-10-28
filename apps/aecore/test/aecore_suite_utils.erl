@@ -140,9 +140,12 @@ patron() ->
 
 -spec known_mocks() -> #{atom() => #mock_def{}}.
 known_mocks() ->
-    #{ block_pow    => #mock_def{ module     = aec_mining
-                                , init_fun   = mock_block_mining_init
-                                , finish_fun = mock_block_mining_end}
+    #{ block_pow          => #mock_def{ module     = aec_mining
+                                      , init_fun   = mock_block_mining_init
+                                      , finish_fun = mock_block_mining_end }
+     , instant_tx_confirm => #mock_def{ module     = aec_tx_pool
+                                      , init_fun   = instant_tx_confirm_init
+                                      , finish_fun = instant_tx_confirm_end }
      }.
 
 %%%=============================================================================
@@ -297,10 +300,23 @@ mine_blocks(Node, NumBlocksToMine, MiningRate, Opts) ->
     mine_blocks(Node, NumBlocksToMine, MiningRate, any, Opts).
 
 mine_blocks(Node, NumBlocksToMine, MiningRate, Type, Opts) ->
-    Fun = fun() ->
-              mine_blocks_loop(NumBlocksToMine, Type)
-          end,
-    mine_safe_setup(Node, MiningRate, Opts, Fun).
+    case rpc:call(Node, aec_tx_pool, instant_tx_confirm_enabled, []) of
+        true ->
+            case {rpc:call(Node, aec_conductor, is_leader, []), Type} of
+                {_, Type} when Type =:= key; Type =:= any ->
+                    {ok, [rpc:call(Node, aec_instant_mining_plugin, emit_kb, []) || _ <- lists:seq(1, NumBlocksToMine)]};
+                {true, micro} ->
+                    {ok, [rpc:call(Node, aec_instant_mining_plugin, emit_mb, []) || _ <- lists:seq(1, NumBlocksToMine)]};
+                {false, micro} ->
+                    rpc:call(Node, aec_instant_mining_plugin, emit_kb, []),
+                    {ok, [rpc:call(Node, aec_instant_mining_plugin, emit_mb, []) || _ <- lists:seq(1, NumBlocksToMine)]}
+            end;
+        false ->
+            Fun = fun() ->
+                mine_blocks_loop(NumBlocksToMine, Type)
+            end,
+            mine_safe_setup(Node, MiningRate, Opts, Fun)
+    end.
 
 mine_all_txs(Node, MaxBlocks) ->
     case rpc:call(Node, aec_tx_pool, peek, [infinity]) of
@@ -319,10 +335,32 @@ mine_blocks_until_txs_on_chain(Node, TxHashes, MiningRate, Max) ->
 mine_blocks_until_txs_on_chain(Node, TxHashes, MiningRate, Max, Opts) ->
     %% Fail early rather than having to wait until max_reached if txs already on-chain
     ok = assert_not_already_on_chain(Node, TxHashes),
-    Fun = fun() ->
-              mine_blocks_until_txs_on_chain_loop(Node, TxHashes, Max, [])
-          end,
-    mine_safe_setup(Node, MiningRate, Opts, Fun).
+    case rpc:call(Node, aec_tx_pool, instant_tx_confirm_enabled, []) of
+        true ->
+            instant_mine_blocks_until_txs_on_chain(Node, TxHashes, Max, []);
+        false ->
+            Fun = fun() ->
+                mine_blocks_until_txs_on_chain_loop(Node, TxHashes, Max, [])
+            end,
+            mine_safe_setup(Node, MiningRate, Opts, Fun)
+    end.
+
+instant_mine_blocks_until_txs_on_chain(_Node, _TxHashes, 0, _Blocks) ->
+    {error, max_reached};
+instant_mine_blocks_until_txs_on_chain(Node, TxHashes, Max, Blocks) ->
+    case rpc:call(Node, aec_conductor, is_leader, []) of
+        false ->
+            KB = rpc:call(Node, aec_instant_mining_plugin, emit_kb, []),
+            instant_mine_blocks_until_txs_on_chain(Node, TxHashes, Max-1, [KB|Blocks]);
+        true ->
+            MB = rpc:call(Node, aec_instant_mining_plugin, emit_mb, []),
+            KB = rpc:call(Node, aec_instant_mining_plugin, emit_kb, []),
+            NewAcc = [KB|Blocks],
+            case txs_not_in_microblock(MB, TxHashes) of
+                []        -> {ok, lists:reverse(NewAcc)};
+                TxHashes1 -> instant_mine_blocks_until_txs_on_chain(Node, TxHashes1, Max - 1, NewAcc)
+            end
+    end.
 
 mine_micro_block_emptying_mempool_or_fail(Node) ->
     Fun = fun() ->
@@ -522,7 +560,7 @@ connect(N, Mocks) when is_list(Mocks) ->
 
 -spec connect(atom()) -> ok.
 connect(N) ->
-    connect_(N, 100),
+    connect_(N, 50),
     report_node_config(N),
     ok.
 
@@ -985,7 +1023,7 @@ backup_config(EpochConfig) ->
 %% ============================================================
 
 -define(PROXY, aeternity_multi_node_test_proxy).
--define(PROXY_CALL_RETRIES, 5).
+-define(PROXY_CALL_RETRIES, 50).
 
 proxy() ->
     register(?PROXY, self()),
@@ -1070,9 +1108,9 @@ call_proxy(N, Req, Tries, Timeout) when Tries > 0 ->
     {?PROXY, N} ! {self(), Ref, Req},
     receive
         {'DOWN', Ref, _, _, noproc} ->
-            ct:log("proxy not yet there, retrying in 1 sec...", []),
+            ct:log("proxy not yet there, retrying in 0.1 sec...", []),
             receive
-            after 1000 ->
+            after 100 ->
                     call_proxy(N, Req, Tries-1, Timeout)
             end;
         {'DOWN', Ref, _, _, Reason} ->

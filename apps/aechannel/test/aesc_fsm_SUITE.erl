@@ -117,7 +117,7 @@
 -include_lib("aecontract/include/hard_forks.hrl").
 -include_lib("aeutils/include/aeu_stacktrace.hrl").
 
--define(TIMEOUT, 10000).
+-define(TIMEOUT, 500).
 -define(LONG_TIMEOUT, 60000).
 -define(PORT, 9325).
 
@@ -430,7 +430,7 @@ init_per_group_(Config) ->
             Config;
         false ->
             aecore_suite_utils:start_node(dev1, Config),
-            aecore_suite_utils:connect(aecore_suite_utils:node_name(dev1), [block_pow]),
+            aecore_suite_utils:connect(aecore_suite_utils:node_name(dev1), [block_pow, instant_tx_confirm]),
             ?LOG("dev1 connected", []),
             try begin
                     Node = dev1,
@@ -1773,6 +1773,9 @@ check_mutual_close_after_close_solo(Cfg) ->
     %% cannot shutdown the channel after it was closed but before the TTL runs out
     case aect_test_utils:latest_protocol_version() < ?LIMA_PROTOCOL_VSN of
         true ->
+            %% TODO: Instant TX confirm is too fast and the tests
+            %% fail without this sleep
+            timer:sleep(100),
             {error, unknown_request} = rpc(dev1, aesc_fsm, shutdown, [FsmI, #{}]),
             {error, unknown_request} = rpc(dev1, aesc_fsm, shutdown, [FsmR, #{}]),
 
