@@ -828,7 +828,7 @@ name_claim({AccountPubkey, PlainName, NameSalt, NameFee, PreclaimDelta}, S) ->
         0 ->
             %% No auction for this name, preclaim delta suffices
             %% For clarity DeltaTTL for name computed here
-            DeltaTTL = aec_governance:name_claim_max_expiration(),
+            DeltaTTL = aec_governance:name_claim_max_expiration(S#state.protocol),
             CommitmentHash = commitment_hash(NameAscii, NameSalt),
             {Commitment, S1} = get_commitment(CommitmentHash, name_not_preclaimed, S0),
             assert_claim_after_preclaim({AccountPubkey, Commitment, NameAscii, NameRegistrar, NameFee, PreclaimDelta}, S1),
@@ -968,8 +968,8 @@ ttl_or_from(undefined, {Rec, Getter}, _S) -> aens_names:Getter(Rec).
 ttl_val({relative_ttl, Delta}, S) -> S#state.height + Delta;
 ttl_val({fixed_ttl, Abs}, _S) -> Abs.
 
-assert_ttl({relative_ttl, Delta}, #state{}) when ?IS_NON_NEG_INTEGER(Delta) ->
-    Delta =< aec_governance:name_claim_max_expiration() orelse runtime_error(ttl_too_high);
+assert_ttl({relative_ttl, Delta}, #state{protocol = P}) when ?IS_NON_NEG_INTEGER(Delta) ->
+    Delta =< aec_governance:name_claim_max_expiration(P) orelse runtime_error(ttl_too_high);
 assert_ttl({fixed_ttl, Abs}, #state{height = Current} = S) when ?IS_NON_NEG_INTEGER(Abs) ->
     (Abs >= Current orelse runtime_error(ttl_too_low))
         andalso assert_ttl({relative_ttl, Abs - Current}, S);

@@ -19,7 +19,7 @@
          enter_name_auction/2,
          enter_name/2,
          get_name/2,
-         prune/2,
+         prune/3,
          lookup_commitment/2,
          lookup_name_auction/2,
          lookup_name/2,
@@ -116,11 +116,11 @@ new_with_dirty_backend(RootHash, CacheRootHash) ->
     Cache = aeu_mtrees:new_with_backend(CacheRootHash, aec_db_backends:dirty_ns_cache_backend()),
     #ns_tree{mtree = MTree, cache = Cache}.
 
--spec prune(block_height(), aec_trees:trees()) -> aec_trees:trees().
-prune(NextBlockHeight, Trees) ->
+-spec prune(block_height(), aec_hard_forks:protocol_vsn(), aec_trees:trees()) -> aec_trees:trees().
+prune(NextBlockHeight, Protocol, Trees) ->
     {NTree, ExpiredActions} = int_prune(NextBlockHeight - 1, aec_trees:ns(Trees)),
     Trees1 = aec_trees:set_ns(Trees, NTree),
-    run_elapsed(ExpiredActions, Trees1, NextBlockHeight).
+    run_elapsed(ExpiredActions, Trees1, Protocol, NextBlockHeight).
 
 -spec auction_iterator(tree()) -> aeu_mtrees:iterator().
 auction_iterator(#ns_tree{mtree = MTree}) ->
@@ -142,20 +142,20 @@ auction_iterator_next(Iter) ->
     end.
 
 
-run_elapsed([], Trees, _) ->
+run_elapsed([], Trees, _, _) ->
     Trees;
-run_elapsed([{aens_names, Id, Serialized}|Expired], Trees, Height) ->
+run_elapsed([{aens_names, Id, Serialized}|Expired], Trees, Protocol, Height) ->
     Name = aens_names:deserialize(Id, Serialized),
     {ok, Trees1} = run_elapsed_name(Name, Trees, Height),
-    run_elapsed(Expired, Trees1, Height);
-run_elapsed([{aens_auctions, Id, Serialized}|Expired], Trees, Height) ->
+    run_elapsed(Expired, Trees1, Protocol, Height);
+run_elapsed([{aens_auctions, Id, Serialized}|Expired], Trees, Protocol, Height) ->
     Auction = aens_auctions:deserialize(Id, Serialized),
-    {ok, Trees1} = run_elapsed_name_auction(Auction, Trees, Height),
-    run_elapsed(Expired, Trees1, Height);
-run_elapsed([{aens_commitments, Id, Serialized}|Expired], Trees, Height) ->
+    {ok, Trees1} = run_elapsed_name_auction(Auction, Trees, Protocol, Height),
+    run_elapsed(Expired, Trees1, Protocol, Height);
+run_elapsed([{aens_commitments, Id, Serialized}|Expired], Trees, Protocol, Height) ->
     Commitment = aens_commitments:deserialize(Id, Serialized),
     {ok, Trees1} = run_elapsed_commitment(Commitment, Trees),
-    run_elapsed(Expired, Trees1, Height).
+    run_elapsed(Expired, Trees1, Protocol, Height).
 
 -spec enter_commitment(commitment(), tree()) -> tree().
 enter_commitment(Commitment, Tree) ->
@@ -331,7 +331,7 @@ run_elapsed_name(Name, Trees, NextBlockHeight) ->
             {ok, aec_trees:set_ns(Trees, NamesTree1)}
     end.
 
-run_elapsed_name_auction(Auction, Trees, NextBlockHeight) ->
+run_elapsed_name_auction(Auction, Trees, Protocol, NextBlockHeight) ->
     NamesTree0 = aec_trees:ns(Trees),
     ExpirationBlockHeight = aens_auctions:ttl(Auction),
     case ExpirationBlockHeight =:= (NextBlockHeight - 1) of
@@ -342,7 +342,7 @@ run_elapsed_name_auction(Auction, Trees, NextBlockHeight) ->
         true ->
             AuctionHash = aens_auctions:hash(Auction),
             NameHash   = aens_hash:from_auction_hash(AuctionHash),
-            DeltaTTL   = aec_governance:name_claim_max_expiration(),
+            DeltaTTL   = aec_governance:name_claim_max_expiration(Protocol),
             AccountPubkey = aens_auctions:bidder_pubkey(Auction),
             Name       = aens_names:new(NameHash, AccountPubkey, ExpirationBlockHeight + DeltaTTL),
             NamesTree1 = aens_state_tree:delete_name_auction(AuctionHash, NamesTree0),

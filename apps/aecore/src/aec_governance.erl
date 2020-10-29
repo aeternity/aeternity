@@ -18,7 +18,7 @@
          name_claim_fee/2,
          name_claim_bid_timeout/2,
          name_claim_bid_increment/0,
-         name_claim_max_expiration/0,
+         name_claim_max_expiration/1,
          name_protection_period/0,
          name_claim_preclaim_delta/0,
          name_registrars/1,
@@ -253,8 +253,11 @@ name_preclaim_expiration() ->
 name_claim_locked_fee() ->
     3.
 
-name_claim_max_expiration() ->
-    50000.
+-spec name_claim_max_expiration(aec_hard_forks:protocol_vsn()) -> non_neg_integer().
+name_claim_max_expiration(Protocol) when Protocol < ?IRIS_PROTOCOL_VSN ->
+    50000;
+name_claim_max_expiration(_Protocol) ->
+    180000. %% At 480 generations per day this is 375 days, i.e. ~1 year.
 
 name_protection_period() ->
     2016.
