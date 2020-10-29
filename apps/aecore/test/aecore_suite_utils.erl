@@ -232,8 +232,23 @@ start_node(N, Config) ->
          {"CODE_LOADING_MODE", "interactive"}
         ]).
 
-stop_node(N, Config) ->
-    cmd(?OPS_BIN, node_shortcut(N, Config), "bin", ["stop"]).
+stop_node(N, _Config) ->
+    ct:log("Stopping node ~p", [N]),
+    Node = node_name(N),
+    monitor_node(Node, true),
+    case rpc:call(Node, init, stop, []) of
+        ok ->
+            ct:log("Stop request to node ~p was sent succesfully", [N]),
+            receive
+                {nodedown, Node} ->
+                    ct:log("Node ~p stopped", [N]),
+                    ok
+            after 30000 ->
+                error(stop_failed)
+            end;
+        {badrpc, nodedown} ->
+            ct:log("Not stopping node ~p as it's stopped", [N])
+    end.
 
 get_node_db_config(Rpc) when is_function(Rpc, 3) ->
     IsDbPersisted = Rpc(application, get_env, [aecore, persist, false]),
