@@ -42,6 +42,7 @@
 -include_lib("common_test/include/ct.hrl").
 -include("../../aecore/include/blocks.hrl").
 -include_lib("aecontract/include/hard_forks.hrl").
+-include_lib("stdlib/include/assert.hrl").
 
 
 %%%===================================================================
@@ -568,19 +569,19 @@ update_expire_at_once(Cfg) ->
     ok.
 
 update_negative(Cfg) ->
+    Protocol = ?config(protocol, Cfg),
     {PubKey, NHash, S1} = claim(Cfg),
     Trees = aens_test_utils:trees(S1),
     Height = ?PRE_CLAIM_HEIGHT + 1,
     Env = aetx_env:tx_env(Height),
 
     %% Test TX TTL too low
-    MaxTTL = aec_governance:name_claim_max_expiration(),
     TxSpec0 = aens_test_utils:update_tx_spec(PubKey, NHash, #{ttl => Height - 1}, S1),
     {ok, Tx0} = aens_update_tx:new(TxSpec0),
     {error, ttl_expired} = aetx:process(Tx0, Trees, Env),
 
     %% Test name TTL too high
-    MaxTTL = aec_governance:name_claim_max_expiration(),
+    MaxTTL = aec_governance:name_claim_max_expiration(Protocol),
     TxSpec1 = aens_test_utils:update_tx_spec(PubKey, NHash, #{name_ttl => MaxTTL + 1}, S1),
     {ok, Tx1} = aens_update_tx:new(TxSpec1),
     {error, ttl_too_high} = aetx:process(Tx1, Trees, Env),
@@ -858,6 +859,10 @@ prune_claim_auction(Cfg) ->
     NHash    = aens_names:hash(N),
     PubKey   = aens_names:owner_pubkey(N),
     claimed  = aens_names:status(N),
+
+    Protocol = ?config(protocol, Cfg),
+    ExpTTL   = aec_governance:name_claim_max_expiration(Protocol),
+    ?assertEqual(ExpTTL, aens_names:ttl(N) - TTL1),
 
     {PubKey, NHash, S2}.
 

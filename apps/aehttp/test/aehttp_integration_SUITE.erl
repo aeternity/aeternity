@@ -3185,7 +3185,7 @@ naming_system_manage_name(_Config) ->
 
     %% Check that name entry is present
     EncodedNHash = aeser_api_encoder:encode(name, NHash),
-    ExpectedTTL1 = (Height3 - 1) + aec_governance:name_claim_max_expiration(),
+    ExpectedTTL1 = (Height3 - 1) + aec_governance:name_claim_max_expiration(Protocol),
     {ok, 200, #{<<"id">>       := EncodedNHash,
                 <<"ttl">>      := ExpectedTTL1,
                 <<"pointers">> := []}} = get_names_entry_by_name_sut(Name),
