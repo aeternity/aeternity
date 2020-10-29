@@ -393,7 +393,8 @@ insurer_can_withdraw_after_insurance_expires(Cfg0) ->
                                     [integer_to_list(Reward + Generations * PricePerGeneration)],
                                     0, Cfg),
           ok
-      end).
+      end),
+    aehttp_sc_SUITE:sc_ws_close_(Cfg).
 
 insurer_can_deposit_multiple_times(Cfg0) ->
     City = "Sofia, Bulgaria",
@@ -507,7 +508,8 @@ insurer_can_withdraw_exess_tokens(Cfg0) ->
                                     [integer_to_list(Bonus + Generations * PricePerGeneration)],
                                     0, Cfg),
           ok
-      end).
+      end),
+    aehttp_sc_SUITE:sc_ws_close_(Cfg).
 
 insurer_can_withdraw_if_no_insurance(Cfg0) ->
     City = "Sofia, Bulgaria",
@@ -550,7 +552,8 @@ insurer_can_withdraw_if_no_insurance(Cfg0) ->
                                     ContractName, "withdraw",
                                     [integer_to_list(Compensation)], 0, Cfg),
           ok
-      end).
+      end),
+    aehttp_sc_SUITE:sc_ws_close_(Cfg).
 
 can_not_insure_if_not_enough_compensation(Cfg0) ->
     City = "Sofia, Bulgaria",

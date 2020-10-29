@@ -629,7 +629,7 @@ large_msgs(Config) ->
     N2 = aecore_suite_utils:node_name(Dev2),
 
     aecore_suite_utils:start_node(Dev1, Config),
-    aecore_suite_utils:connect(aecore_suite_utils:node_name(Dev1)),
+    aecore_suite_utils:connect(aecore_suite_utils:node_name(Dev1), [block_pow, instant_tx_confirm]),
 
     ok = rpc:call(N1, application, set_env, [aecore, block_gas_limit, 100000000]),
 
@@ -658,7 +658,7 @@ large_msgs(Config) ->
 
     T0 = os:timestamp(),
     aecore_suite_utils:start_node(Dev2, Config),
-    aecore_suite_utils:connect(N2),
+    aecore_suite_utils:connect(N2, [block_pow, instant_tx_confirm]),
 
     %% Set the same mining_rate to validate target
     %% Only needed when chain more than 18 blocks

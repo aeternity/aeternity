@@ -303,7 +303,16 @@ mine_blocks(Node, NumBlocksToMine, MiningRate, Type, Opts) ->
     case rpc:call(Node, aec_tx_pool, instant_tx_confirm_enabled, []) of
         true ->
             case {rpc:call(Node, aec_conductor, is_leader, []), Type} of
-                {_, Type} when Type =:= key; Type =:= any ->
+                {_, any} ->
+                    %% Some test might expect to mine a tx - interleave KB with MB
+                    Pairs = NumBlocksToMine div 2,
+                    Rem = NumBlocksToMine rem 2,
+                    P = [[ rpc:call(Node, aec_instant_mining_plugin, emit_kb, [])
+                         , rpc:call(Node, aec_instant_mining_plugin, emit_mb, [])
+                         ] || _ <- lists:seq(1, Pairs)],
+                    R = [ rpc:call(Node, aec_instant_mining_plugin, emit_kb, []) || _ <- lists:seq(1, Rem)],
+                    {ok, lists:flatten([P,R])};
+                {_, key} ->
                     {ok, [rpc:call(Node, aec_instant_mining_plugin, emit_kb, []) || _ <- lists:seq(1, NumBlocksToMine)]};
                 {true, micro} ->
                     {ok, [rpc:call(Node, aec_instant_mining_plugin, emit_mb, []) || _ <- lists:seq(1, NumBlocksToMine)]};
@@ -363,21 +372,30 @@ instant_mine_blocks_until_txs_on_chain(Node, TxHashes, Max, Blocks) ->
     end.
 
 mine_micro_block_emptying_mempool_or_fail(Node) ->
-    Fun = fun() ->
-              mine_blocks_loop(2, any)
-          end,
-    {ok, Blocks} = mine_safe_setup(Node, expected_mine_rate(), #{}, Fun),
-    [key, micro] = [aec_blocks:type(B) || B <- Blocks],
+    case rpc:call(Node, aec_tx_pool, instant_tx_confirm_enabled, []) of
+        true ->
+            KB = rpc:call(Node, aec_instant_mining_plugin, emit_kb, []),
+            MB = rpc:call(Node, aec_instant_mining_plugin, emit_mb, []),
+            %% If instant mining is enabled then we can't have microforks :)
+            {ok, []} = rpc:call(Node, aec_tx_pool, peek, [infinity]),
+            {ok, [KB, MB]};
+        false ->
+            Fun = fun() ->
+                      mine_blocks_loop(2, any)
+                  end,
+            {ok, Blocks} = mine_safe_setup(Node, expected_mine_rate(), #{}, Fun),
+            [key, micro] = [aec_blocks:type(B) || B <- Blocks],
 
-    case rpc:call(Node, aec_tx_pool, peek, [infinity]) of
-        {ok, []} ->
-            {ok, Blocks};
-        {ok, [_|_]} ->
-            %% So, Tx(s) is/are back in the mempool, this means (unless some Txs arrived
-            %% from thin air) that we had a micro-fork. Let's check what state we stopped in
-            {ok, NewBlocks} = mine_safe_setup(Node, expected_mine_rate(), #{}, Fun),
-            [key, micro] = [aec_blocks:type(B) || B <- NewBlocks],
-            {ok, NewBlocks}
+            case rpc:call(Node, aec_tx_pool, peek, [infinity]) of
+                {ok, []} ->
+                    {ok, Blocks};
+                {ok, [_|_]} ->
+                    %% So, Tx(s) is/are back in the mempool, this means (unless some Txs arrived
+                    %% from thin air) that we had a micro-fork. Let's check what state we stopped in
+                    {ok, NewBlocks} = mine_safe_setup(Node, expected_mine_rate(), #{}, Fun),
+                    [key, micro] = [aec_blocks:type(B) || B <- NewBlocks],
+                    {ok, NewBlocks}
+            end
     end.
 
 assert_not_already_on_chain(Node, TxHashes) ->
