@@ -17,6 +17,7 @@ executors:
     working_directory: ~/aeternity
     environment:
       OTP_VERSION: 21.3.8.17
+      ERLANG_ROCKSDB_BUILDOPTS: "-j2"
   builder_container_otp22:
     docker:
       - image: aeternity/builder:otp22
@@ -24,6 +25,7 @@ executors:
     working_directory: ~/aeternity
     environment:
       OTP_VERSION: 22.3.4.9
+      ERLANG_ROCKSDB_BUILDOPTS: "-j2"
   builder_container_otp23:
     docker:
       - image: aeternity/builder:otp23
@@ -31,6 +33,7 @@ executors:
     working_directory: ~/aeternity
     environment:
       OTP_VERSION: 23.0.3
+      ERLANG_ROCKSDB_BUILDOPTS: "-j2"
   builder_container_nix_alpine:
     docker:
       - image: nixorg/nix:circleci
