@@ -523,7 +523,7 @@ clear_locked_until(#req{info = I} = R) when is_map(I) ->
 handle_info({gproc_ps_event, top_changed, #{info := Info}}, #st{} = St) ->
     case ets:info(?T_REQUESTS, size) of
         0 ->
-            {noreply, St};
+            {noreply, St#st{ last_top = undefined }};
         _ ->
             {noreply, check_status(Info, St)}
     end;
