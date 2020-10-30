@@ -91,20 +91,20 @@ registration(_Cfg) ->
     ok.
 
 real_registration() ->
-    undefined = aec_plugin:get_module(aec_headers),
-    ok = aec_plugin:register(#{aec_headers => ?MODULE}),
-    ?MODULE = aec_plugin:get_module(aec_headers),
+    undefined = aec_plugin:get_module(aec_tx_pool),
+    ok = aec_plugin:register(#{aec_tx_pool => ?MODULE}),
+    ?MODULE = aec_plugin:get_module(aec_tx_pool),
     ok.
 
 legacy_registration() ->
-    undefined = aec_plugin:get_module(aec_headers),
+    undefined = aec_plugin:get_module(aec_tx_pool),
     try begin
-            aec_plugin:register(#{aec_headers => ?MODULE}),
+            aec_plugin:register(#{aec_tx_pool => ?MODULE}),
             error(should_fail)
         end
     catch
         error:requires_OTP21 ->
-            undefined = aec_plugin:get_module(aec_headers),
+            undefined = aec_plugin:get_module(aec_tx_pool),
             ok
     end.
 
