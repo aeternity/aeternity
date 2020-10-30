@@ -6759,7 +6759,7 @@ fate_environment(_Cfg) ->
     Time1 = aeu_time:now_in_msecs(),
     Timestamp = ?call(call_contract, Acc, Contract, timestamp, word, {}),
     Time2 = aeu_time:now_in_msecs(),
-    ?assert(Time1 < Timestamp andalso Timestamp < Time2),
+    ?assert(Time1 =< Timestamp andalso Timestamp =< Time2),
 
     SentValue = 12340,
     Value1 = ?call(call_contract, Acc, Contract, call_value, word, {}, #{amount => SentValue}),
