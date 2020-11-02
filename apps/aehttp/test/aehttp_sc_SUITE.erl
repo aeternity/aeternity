@@ -5075,11 +5075,21 @@ sc_ws_optional_params_fail_slash(Cfg0) ->
             %% is malicious to post it on-chain
 
             %% post the malicious tx and wait it to be included
+            %% Ensure both fsms get notified
             post_transactions_sut(EncRound2CloseTx),
-            ok = wait_for_tx_hash_on_chain(Round2CloseTxHash),
-            aecore_suite_utils:mine_key_blocks(aecore_suite_utils:node_name(?NODE),
-                                           ?DEFAULT_MIN_DEPTH),
-
+            Conns = proplists:get_value(channel_clients, Cfg),
+            wait_for_info_msgs(
+              Conns, #{ <<"event">> => <<"closing">> },
+              fun() ->
+                      wait_for_onchain_tx_events(
+                        Conns, #{ <<"info">> => <<"can_slash">>
+                                , <<"type">> => <<"channel_offchain_tx">> },
+                        fun() ->
+                            ok = wait_for_tx_hash_on_chain(Round2CloseTxHash),
+                            aecore_suite_utils:mine_key_blocks(aecore_suite_utils:node_name(?NODE),
+                                ?DEFAULT_MIN_DEPTH)
+                        end, Cfg)
+              end, Cfg),
             ok
         end,
     PostAction =
@@ -5458,11 +5468,13 @@ sc_ws_abort_slash_(WhoCloses, WhoRejects, Cfg0) ->
 
     %% at this point the Round2CloseTx is not based on the latest state so it
     %% is malicious to post it on-chain
-    with_registered_events([sign], [WhoPid],
+    with_registered_events([sign, info], [WhoPid],
         fun() ->
             %% post the malicious tx and wait it to be included
             post_transactions_sut(EncRound2CloseTx),
             ok = wait_for_tx_hash_on_chain(Round2CloseTxHash),
+            {ok, _, #{<<"event">> := <<"closing">>}} =
+                wait_for_channel_event(WhoPid, info, Cfg),
             ws_send_tagged(WhoPid, <<"channels.slash">>, #{}, Cfg),
             {ok, _, <<"slash_tx">>, _Data} =
                 wait_for_channel_event(WhoPid, sign, Cfg)
