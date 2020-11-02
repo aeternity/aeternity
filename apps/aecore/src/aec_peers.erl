@@ -1264,7 +1264,8 @@ on_add_peer(SourceAddr, Peer, State0) ->
                     %% The TCP probe timer is started with addition of the firts peer.
                     State2 = maybe_start_tcp_probe_timers(State),
                     add_peer(SourceAddr, Peer, State2);
-                {{ok, PeerId}, {ok, #peer{ pubkey = PeerId} = Peer2}} -> %% same peer id and same IP and port
+                {{ok, PeerId}, {ok, #peer{ pubkey = SamePeerId} = Peer2}}
+                    when SamePeerId =:= PeerId -> %% same peer id and same IP and port
                     % Only update gossip time and source.
                     {_, State2} = pool_update(SourceAddr, Peer2, State),
                     State2;
@@ -1552,7 +1553,7 @@ pool_find(PeerId, State) when is_binary(PeerId) ->
     aec_peers_pool:find(Pool, PeerId).
 
 %% Gets a peer record from the pool by its socket
--spec pool_find_by_socket(peer_socket(), state()) -> error | {ok, peer()}.
+-spec pool_find_by_socket(peer_socket(), state()) -> error | {ok, peer_id()}.
 pool_find_by_socket(PeerSocket, State) ->
     #state{ known_sockets = KnownSockets} = State,
     case gb_trees:lookup(PeerSocket, KnownSockets) of
