@@ -77,4 +77,3 @@ get_registry() ->
     persistent_term:get({?MODULE, registry}, undefined).
 
 -endif.
-
