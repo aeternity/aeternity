@@ -824,24 +824,39 @@ test_connection_failure() ->
 
     aec_peers:add_peers(Source, Peer),
     {ok, Conn1} = ?assertCalled(connect, [#{ conn_type := noise, r_pubkey := PubKey }], {ok, _}, 200),
-    ok = conn_connection_failed(Conn1),
+    ok = conn_peer_connected(Conn1),
+
+    ?assertEqual(1, aec_peers:count(connections)),
+    ?assertEqual(1, aec_peers:count(verified)),
+    ?assertEqual(0, aec_peers:count(unverified)),
+    ?assertEqual(0, aec_peers:count(standby)),
+
+    ok = conn_connection_closed(Conn1),
+
+    ?assertEqual(0, aec_peers:count(connections)),
+    ?assertEqual(1, aec_peers:count(verified)),
+    ?assertEqual(0, aec_peers:count(unverified)),
+    ?assertEqual(0, aec_peers:count(standby)),
+
+    {ok, Conn2} = ?assertCalled(connect, [#{ conn_type := noise, r_pubkey := PubKey }], {ok, _}, 300),
+    ok = conn_connection_failed(Conn2),
 
     ?assertMatch([], aec_peers:connected_peers()),
-    ?assertMatch([], aec_peers:get_random(all)),
+    ?assertMatch([Peer], aec_peers:get_random(all)),
     ?assertMatch({error, _}, aec_peers:get_connection(Id)),
 
     ?assertEqual(0, aec_peers:count(connections)),
-    ?assertEqual(0, aec_peers:count(verified)),
-    ?assertEqual(1, aec_peers:count(unverified)),
-    ?assertEqual(1, aec_peers:count(standby)),
+    ?assertEqual(1, aec_peers:count(verified)),
+    ?assertEqual(0, aec_peers:count(unverified)),
+    ?assertEqual(0, aec_peers:count(standby)),
 
     % Check it is retried after 200 milliseconds
-    {ok, Conn2} = ?assertCalled(connect, [#{ conn_type := noise, r_pubkey := PubKey }], {ok, _}, 300),
-    ok = conn_peer_connected(Conn2),
+    {ok, Conn3} = ?assertCalled(connect, [#{ conn_type := noise, r_pubkey := PubKey }], {ok, _}, 300),
+    ok = conn_peer_connected(Conn3),
 
     ?assertMatch([Peer], aec_peers:connected_peers()),
     ?assertMatch([Peer], aec_peers:get_random(all)),
-    ?assertMatch({ok, Conn2}, aec_peers:get_connection(Id)),
+    ?assertMatch({ok, Conn3}, aec_peers:get_connection(Id)),
 
     ?assertEqual(1, aec_peers:count(connections)),
     ?assertEqual(0, aec_peers:count(inbound)),

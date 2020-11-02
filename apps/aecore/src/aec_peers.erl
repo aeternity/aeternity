@@ -993,7 +993,7 @@ on_connection_failed(PeerId, Pid, State) ->
         {#conn{ pid = Pid } = Conn, State2} ->
             epoch_sync:debug("Peer ~p - connection to ~s failed by process ~p",
                              [ppp(PeerId), format_address(Conn), Pid]),
-            pool_reject(PeerId, conn_cleanup(Conn, State2));
+            pool_release(PeerId, conn_cleanup(Conn, State2));
         {#conn{ pid = OtherPid }, _State2} ->
             epoch_sync:info("Peer ~p - got connection_failed from unexpected "
                             "process ~p; supposed to come from ~p",
