@@ -1492,7 +1492,7 @@ settle_(Config, Closer, Params) when Closer =:= initiator;
 
     ok = wait_for_signed_transaction_in_block(SettleTx),
     ?PEEK_MSGQ,
-    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 15),
+    aecore_suite_utils:mine_key_blocks(aecore_suite_utils:node_name(?NODE), 15),
     ?CHECK_INFO(20),
     {ok, SettleTx}.
 
@@ -1650,7 +1650,7 @@ sc_ws_deposit_(Config, Origin, XOpts) when Origin =:= initiator
     Fee = aetx:fee(aetx_sign:tx(SignedDepositTx)),
     {SStartB1, _, _} = {SStartB - 2 - Fee, SStartB1, SStartB},
 
-    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE),
+    aecore_suite_utils:mine_key_blocks(aecore_suite_utils:node_name(?NODE),
                                    ?DEFAULT_MIN_DEPTH),
     {ok, _, #{<<"event">> := <<"own_deposit_locked">>}} = wait_for_channel_event(SenderConnPid, info, Config),
     {ok, _, #{<<"event">> := <<"own_deposit_locked">>}} = wait_for_channel_event(AckConnPid, info, Config),
@@ -1726,7 +1726,7 @@ sc_ws_withdraw_(Config, Origin, XOpts) when Origin =:= initiator
     Fee = aetx:fee(aetx_sign:tx(SignedWTx)),
     {SStartB1, _, _} = {SStartB + 2 - Fee, SStartB1, SStartB},
 
-    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE),
+    aecore_suite_utils:mine_key_blocks(aecore_suite_utils:node_name(?NODE),
                                    ?DEFAULT_MIN_DEPTH, #{strictly_follow_top => true}),
     {ok, _, #{<<"event">> := <<"own_withdraw_locked">>}} = wait_for_channel_event(SenderConnPid, info, Config),
     {ok, _, #{<<"event">> := <<"own_withdraw_locked">>}} = wait_for_channel_event(AckConnPid, info, Config),
@@ -5077,7 +5077,7 @@ sc_ws_optional_params_fail_slash(Cfg0) ->
             %% post the malicious tx and wait it to be included
             post_transactions_sut(EncRound2CloseTx),
             ok = wait_for_tx_hash_on_chain(Round2CloseTxHash),
-            aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE),
+            aecore_suite_utils:mine_key_blocks(aecore_suite_utils:node_name(?NODE),
                                            ?DEFAULT_MIN_DEPTH),
 
             ok
@@ -5102,7 +5102,7 @@ sc_ws_optional_params_fail_slash(Cfg0) ->
               fun() ->
                       ok = wait_for_tx_hash_on_chain(SlashTxHash)
               end, CleanCfg),
-            aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE),
+            aecore_suite_utils:mine_key_blocks(aecore_suite_utils:node_name(?NODE),
                                            ?DEFAULT_MIN_DEPTH),
             settle_(CleanCfg, initiator)
         end,
@@ -5117,7 +5117,7 @@ sc_ws_optional_params_fail_settle(Cfg0) ->
             %% make an update so we are not at channel_create_tx
             _Round1 = sc_ws_update_basic_round_(Round0, Cfg),
             {ok, _SignedTx} = sc_ws_close_solo_(Cfg, initiator, #{}),
-            aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE),
+            aecore_suite_utils:mine_key_blocks(aecore_suite_utils:node_name(?NODE),
                                            ?DEFAULT_MIN_DEPTH),
 
             ok
@@ -5138,7 +5138,7 @@ sc_ws_optional_params_fail_force_progress(Cfg0) ->
         fun(_ConnPid, Cfg) ->
             %% create and call some contracts
             sc_ws_contract_(Cfg, ContractName, initiator),
-            aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE),
+            aecore_suite_utils:mine_key_blocks(aecore_suite_utils:node_name(?NODE),
                                            ?DEFAULT_MIN_DEPTH),
 
             ok
