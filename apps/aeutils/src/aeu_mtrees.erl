@@ -44,9 +44,10 @@
         ]).
 
 %% For internal functional db
--export([ proof_db_drop_cache/1
-        , proof_db_get/2
-        , proof_db_put/3
+-behavior(aeu_mp_trees_db).
+-export([ mpt_db_drop_cache/1
+        , mpt_db_get/2
+        , mpt_db_put/3
         ]).
 
 -export([ serialize/1
@@ -262,18 +263,16 @@ new_proof_db() ->
 proof_db_spec() ->
     #{ handle => dict:new()
      , cache  => dict:new()
-     , get    => {?MODULE, proof_db_get}
-     , put    => {?MODULE, proof_db_put}
-     , drop_cache => {?MODULE, proof_db_drop_cache}
+     , module => ?MODULE
      }.
 
-proof_db_get(Key, Proof) ->
+mpt_db_get(Key, Proof) ->
     {value, dict:fetch(Key, Proof)}.
 
-proof_db_put(Key, Val, Proof) ->
+mpt_db_put(Key, Val, Proof) ->
     dict:store(Key, Val, Proof).
 
-proof_db_drop_cache(_Cache) ->
+mpt_db_drop_cache(_Cache) ->
     dict:new().
 
 %%%===================================================================
