@@ -343,7 +343,7 @@ start_blocked_second(Config) ->
     ct:log("Non-blocked peers on dev1: ~p", [NonBlocked]),
     ct:log("Connected peers on dev1: ~p", [Connected]),
     [] = Connected,
-    1 = Standby,
+    0 = Standby,
 
     %% Also check that they have different top blocks
     B1 = rpc:call(N1, aec_chain, top_block, [], 5000),

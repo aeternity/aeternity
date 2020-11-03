@@ -147,7 +147,13 @@ aec_peers_test_() ->
                     {peer_unblock_interval, 2000, 900000}
                 ]) end,
                 fun teardown/1,
-                {timeout, 12, fun test_blocking/0}}
+                {timeout, 12, fun test_blocking/0}},
+        {setup, fun() -> setup([
+                    {sync_single_outbound_per_group, false, true},
+                    {ping_interval, 1000, ?DEFAULT_PING_INTERVAL}
+                ]) end,
+                fun teardown/1,
+                fun test_duplicating_peer/0}
     ]}
 ].
 
@@ -244,6 +250,107 @@ test_single_normal_peer() ->
     ?assertMatch([], aec_peers:available_peers(verified)),
     ?assertMatch([], aec_peers:available_peers(unverified)),
     ?assertEqual(0, aec_peers:count(available)),
+    ok.
+
+test_duplicating_peer() ->
+    test_mgr_set_recipient(self()),
+
+    TrustedPubKey = <<"ef42d46eace742cd0000000000000000">>,
+    TrustedPeerAddress = "10.1.0.1",
+    TrustedPeerPort = 4000,
+    TrustedPeer = peer(TrustedPubKey, TrustedPeerAddress, TrustedPeerPort),
+    TrustedId = aec_peers:peer_id(TrustedPubKey),
+
+    ?assertMatch(false, aec_peers:is_blocked(TrustedId)),
+    ?assertMatch([], aec_peers:blocked_peers()),
+    ?assertMatch([], aec_peers:connected_peers()),
+    ?assertMatch([], aec_peers:available_peers()),
+    ?assertMatch([], aec_peers:available_peers(both)),
+    ?assertMatch([], aec_peers:available_peers(verified)),
+    ?assertMatch([], aec_peers:available_peers(unverified)),
+    ?assertEqual(0, aec_peers:count(available)),
+    ?assertMatch([], aec_peers:get_random(all)),
+    ?assertMatch({error, _}, aec_peers:get_connection(TrustedId)),
+
+    ?assertEqual(0, aec_peers:count(connections)),
+    ?assertEqual(0, aec_peers:count(inbound)),
+    ?assertEqual(0, aec_peers:count(outbound)),
+    ?assertEqual(0, aec_peers:count(peers)),
+    ?assertEqual(0, aec_peers:count(verified)),
+    ?assertEqual(0, aec_peers:count(unverified)),
+    ?assertEqual(0, aec_peers:count(standby)),
+
+    aec_peers:add_trusted(TrustedPeer),
+    {ok, Conn} = ?assertCalled(connect, [#{ conn_type := noise, r_pubkey := TrustedPubKey }], {ok, _}, 200),
+
+    ?assertMatch([], aec_peers:connected_peers()),
+    ?assertMatch([#{ pubkey := TrustedPubKey }], aec_peers:get_random(all)),
+    ?assertMatch({error, _}, aec_peers:get_connection(TrustedId)),
+
+    ?assertEqual(1, aec_peers:count(connections)),
+    ?assertEqual(0, aec_peers:count(inbound)),
+    ?assertEqual(1, aec_peers:count(outbound)),
+    ?assertEqual(1, aec_peers:count(peers)),
+    ?assertEqual(1, aec_peers:count(verified)),
+    ?assertEqual(0, aec_peers:count(unverified)),
+    ?assertEqual(0, aec_peers:count(standby)),
+
+    Source = {192, 168, 0, 1},
+    PubKey1 = <<"df42d46eace742cd0000000000000000">>,
+    ?assertEqual(true, TrustedPubKey =/= PubKey1),
+    %% create a different peer with the same address and port
+    Peer1 = peer(PubKey1, TrustedPeerAddress, TrustedPeerPort),
+    aec_peers:add_peers(Source, Peer1),
+
+    ?assertEqual(1, aec_peers:count(connections)),
+    ?assertEqual(0, aec_peers:count(inbound)),
+    ?assertEqual(1, aec_peers:count(outbound)),
+    ?assertEqual(1, aec_peers:count(peers)),
+    ?assertEqual(1, aec_peers:count(verified)),
+    ?assertEqual(0, aec_peers:count(unverified)),
+    ?assertEqual(0, aec_peers:count(standby)),
+
+    ok = conn_peer_connected(Conn),
+
+    ?assertMatch([#{ pubkey := TrustedPubKey }], aec_peers:connected_peers()),
+    ?assertMatch([#{ pubkey := TrustedPubKey }], aec_peers:get_random(all)),
+    ?assertMatch({ok, Conn}, aec_peers:get_connection(TrustedId)),
+
+    aec_peers:add_peers(Source, Peer1),
+
+    ?assertMatch([#{ pubkey := TrustedPubKey }], aec_peers:connected_peers()),
+    ?assertMatch([#{ pubkey := TrustedPubKey }], aec_peers:get_random(all)),
+    ?assertMatch({ok, Conn}, aec_peers:get_connection(TrustedId)),
+
+
+    ?assertMatch([], aec_peers:available_peers()),
+    ?assertMatch([], aec_peers:available_peers(both)),
+    ?assertMatch([], aec_peers:available_peers(verified)),
+    ?assertMatch([], aec_peers:available_peers(unverified)),
+    ?assertEqual(0, aec_peers:count(available)),
+
+    TrustedPeerPort2 = 4001,
+    PubKey2 = <<"af42d46eace742cd0000000000000000">>,
+    %% create a different peer with the same address and a different port
+    ?assertEqual(true, TrustedPeerPort =/= TrustedPeerPort2),
+    Peer2 = peer(PubKey2, TrustedPeerAddress, TrustedPeerPort2),
+    PeerId2 = aec_peers:peer_id(PubKey2),
+    aec_peers:add_peers(Source, Peer2),
+
+    {ok, Conn1} = ?assertCalled(connect, [#{ conn_type := noise, r_pubkey := PubKey2 }], {ok, _}, 3500),
+
+    ?assertMatch([#{ pubkey := TrustedPubKey }], aec_peers:connected_peers()),
+    ?assertMatch({error, _}, aec_peers:get_connection(PeerId2)),
+
+    ?assertEqual(2, aec_peers:count(connections)),
+    ?assertEqual(0, aec_peers:count(inbound)),
+    ?assertEqual(2, aec_peers:count(outbound)),
+    ?assertEqual(2, aec_peers:count(peers)),
+    ?assertEqual(1, aec_peers:count(verified)),
+    ?assertEqual(1, aec_peers:count(unverified)),
+    ?assertEqual(0, aec_peers:count(standby)),
+
+
     ok.
 
 test_multiple_trusted_peers() ->
@@ -564,7 +671,7 @@ test_address_group_selection() ->
     Peer3 = peer(PubKey3, "10.2.0.1", 4000),
     PubKey4 = <<"9d9e1c43de304d810000000000000000">>,
     Id4 = aec_peers:peer_id(PubKey4),
-    Peer4 = peer(PubKey4, "10.2.0.1", 4000),
+    Peer4 = peer(PubKey4, "10.2.0.2", 4000),
     PubKey5 = <<"75640b5ffaac40480000000000000000">>,
     Id5 = aec_peers:peer_id(PubKey5),
     Peer5 = peer(PubKey5, "10.3.0.1", 4000),
@@ -717,24 +824,39 @@ test_connection_failure() ->
 
     aec_peers:add_peers(Source, Peer),
     {ok, Conn1} = ?assertCalled(connect, [#{ conn_type := noise, r_pubkey := PubKey }], {ok, _}, 200),
-    ok = conn_connection_failed(Conn1),
+    ok = conn_peer_connected(Conn1),
+
+    ?assertEqual(1, aec_peers:count(connections)),
+    ?assertEqual(1, aec_peers:count(verified)),
+    ?assertEqual(0, aec_peers:count(unverified)),
+    ?assertEqual(0, aec_peers:count(standby)),
+
+    ok = conn_connection_closed(Conn1),
+
+    ?assertEqual(0, aec_peers:count(connections)),
+    ?assertEqual(1, aec_peers:count(verified)),
+    ?assertEqual(0, aec_peers:count(unverified)),
+    ?assertEqual(0, aec_peers:count(standby)),
+
+    {ok, Conn2} = ?assertCalled(connect, [#{ conn_type := noise, r_pubkey := PubKey }], {ok, _}, 300),
+    ok = conn_connection_failed(Conn2),
 
     ?assertMatch([], aec_peers:connected_peers()),
-    ?assertMatch([], aec_peers:get_random(all)),
+    ?assertMatch([Peer], aec_peers:get_random(all)),
     ?assertMatch({error, _}, aec_peers:get_connection(Id)),
 
     ?assertEqual(0, aec_peers:count(connections)),
-    ?assertEqual(0, aec_peers:count(verified)),
-    ?assertEqual(1, aec_peers:count(unverified)),
-    ?assertEqual(1, aec_peers:count(standby)),
+    ?assertEqual(1, aec_peers:count(verified)),
+    ?assertEqual(0, aec_peers:count(unverified)),
+    ?assertEqual(0, aec_peers:count(standby)),
 
     % Check it is retried after 200 milliseconds
-    {ok, Conn2} = ?assertCalled(connect, [#{ conn_type := noise, r_pubkey := PubKey }], {ok, _}, 300),
-    ok = conn_peer_connected(Conn2),
+    {ok, Conn3} = ?assertCalled(connect, [#{ conn_type := noise, r_pubkey := PubKey }], {ok, _}, 300),
+    ok = conn_peer_connected(Conn3),
 
     ?assertMatch([Peer], aec_peers:connected_peers()),
     ?assertMatch([Peer], aec_peers:get_random(all)),
-    ?assertMatch({ok, Conn2}, aec_peers:get_connection(Id)),
+    ?assertMatch({ok, Conn3}, aec_peers:get_connection(Id)),
 
     ?assertEqual(1, aec_peers:count(connections)),
     ?assertEqual(0, aec_peers:count(inbound)),

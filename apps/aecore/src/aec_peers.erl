@@ -109,6 +109,11 @@
     pid               :: pid()
 }).
 
+-record(peer_socket, {
+    address           :: inet:ip_address(),
+    port              :: inet:port_number()
+}).
+
 -record(state, {
     pool              :: aec_peers_pool:state(),
     %$ The address groups we have an outbound connection for.
@@ -135,6 +140,8 @@
     last_tcp_unverified_probe_time :: undefined | non_neg_integer(),
     %% The blocked peers.
     blocked           :: gb_trees:tree(peer_id(), peer_info()),
+    %% The set of known addresses and ports
+    known_sockets     :: gb_trees:tree(peer_socket(), peer_id()),
     %% For universal handling of URIs.
     local_peer        :: peer_info(),
     %% The time of next unblock as an erlang timestamp in ms.
@@ -165,6 +172,7 @@
 -type peer_pool_name() :: verified | unverified.
 -type conn() :: #conn{}.
 -type state() :: #state{}.
+-type peer_socket() :: #peer_socket{}.
 
 -export_type([peer_id/0,
               peer_info/0]).
@@ -375,6 +383,11 @@ peer_id(#{ pubkey := PubKey }) ->
 peer_id(#peer{ pubkey = PubKey }) ->
     PubKey.
 
+-spec peer_socket(#peer{}) -> peer_socket().
+peer_socket(#peer{address = Address,
+                  port    = Port}) ->
+    #peer_socket{address = Address, port = Port}.
+
 %% @doc Tries formating a peer for logging.
 -spec ppp(peer_id() | peer_info() | peer()) -> string().
 ppp(PeerId) when is_binary(PeerId) ->
@@ -412,7 +425,8 @@ init(ok) ->
         last_connect_time = timestamp(),
         monitors = #{},
         hostnames = #{},
-        blocked = gb_trees:empty()
+        blocked = gb_trees:empty(),
+        known_sockets = gb_trees:empty()
     }}.
 
 handle_call({is_blocked, PeerId}, _From, State0) ->
@@ -525,9 +539,12 @@ handle_info({'DOWN', Ref, process, Pid, _}, State0) ->
 handle_info(log_peer_conn_count_timeout, State) ->
     %% Outbound - node initiated connections to other nodes.
     %% Inbound - other nodes initiated connections to this node.
-    lager:info("Peer connections outbound: ~p/~p, inbound: ~p/~p",
+    lager:info("Peer connections outbound: ~p/~p, inbound: ~p/~p, verified ~p, unverified ~p, standby ~p",
                [conn_count(outbound, State), max_outbound(),
-                conn_count(inbound, State), max_inbound()]),
+                conn_count(inbound, State), max_inbound(),
+                count(verified, State),
+                count(unverified, State),
+                count(standby, State)]),
     LogTimeout = log_peer_connection_count_interval(),
     erlang:send_after(LogTimeout, self(), log_peer_conn_count_timeout),
     {noreply, State};
@@ -976,7 +993,7 @@ on_connection_failed(PeerId, Pid, State) ->
         {#conn{ pid = Pid } = Conn, State2} ->
             epoch_sync:debug("Peer ~p - connection to ~s failed by process ~p",
                              [ppp(PeerId), format_address(Conn), Pid]),
-            pool_reject(PeerId, conn_cleanup(Conn, State2));
+            pool_release(PeerId, conn_cleanup(Conn, State2));
         {#conn{ pid = OtherPid }, _State2} ->
             epoch_sync:info("Peer ~p - got connection_failed from unexpected "
                             "process ~p; supposed to come from ~p",
@@ -1234,27 +1251,37 @@ on_resolve_peer(SourceAddr, PeerInfo, IsTrusted, State) ->
 on_add_peer(SourceAddr, Peer, State0) ->
     State = maybe_unblock(State0),
     PeerId = peer_id(Peer),
-    #peer{ pubkey = PPK, address = PA, port = PP } = Peer,
     case is_local(PeerId, State) orelse is_blocked(PeerId, State) of
         true ->
             epoch_sync:debug("Peer ~p - will not be added; local or blocked",
                              [ppp(PeerId)]),
             State;
         false ->
-            case pool_find(PeerId, State) of
-                error ->
+            PeerSocket = peer_socket(Peer),
+            case {pool_find_by_socket(PeerSocket, State),
+                  pool_find(PeerId, State)} of
+                {error, error}  -> %% unknown peer and unknown address and port
                     %% The TCP probe timer is started with addition of the firts peer.
                     State2 = maybe_start_tcp_probe_timers(State),
                     add_peer(SourceAddr, Peer, State2);
-                {ok, #peer{ pubkey = PPK, address = PA, port = PP} = Peer2} ->
+                {{ok, PeerId}, {ok, #peer{ pubkey = SamePeerId} = Peer2}}
+                    when SamePeerId =:= PeerId -> %% same peer id and same IP and port
                     % Only update gossip time and source.
                     {_, State2} = pool_update(SourceAddr, Peer2, State),
                     State2;
-                {ok, OtherPeer} ->
+                {_, {ok, OtherPeer}} ->
                     epoch_sync:info("Peer ~p - ignoring peer address changed "
                                     "from ~s to ~s by ~s", [ppp(PeerId),
                                     format_address(OtherPeer),
                                     format_address(Peer),
+                                    format_address(SourceAddr)]),
+                    State;
+                {{ok, OtherPeerPubkey}, error} ->
+                    epoch_sync:info("Peer ~p with address ~p - ignoring peer pubkey changed "
+                                    "from ~s to ~s by ~s", [ppp(PeerId),
+                                    format_address(Peer),
+                                    ppp(PeerId),
+                                    ppp(OtherPeerPubkey),
                                     format_address(SourceAddr)]),
                     State
             end
@@ -1402,14 +1429,19 @@ pool_log_changes(Id, Old, New) ->
 -spec pool_update(inet:ip_address(), peer(), state())
     -> {ignored | verified | unverified, state()}.
 pool_update(SourceAddr, Peer, State) ->
-    #state{ pool = Pool } = State,
+    #state{ pool = Pool
+          , known_sockets = KnownSockets} = State,
     #peer{ pubkey = PeerId, address = PeerAddr, trusted = IsTrusted } = Peer,
     Now = timestamp(),
     {OldPoolName, _} = aec_peers_pool:peer_state(Pool, PeerId),
     {NewPoolName, Pool2} = aec_peers_pool:update(Pool, Now, PeerId, PeerAddr,
                                                  SourceAddr, IsTrusted, Peer),
     pool_log_changes(PeerId, OldPoolName, NewPoolName),
-    {NewPoolName, State#state{ pool = Pool2 }}.
+
+    {NewPoolName, State#state{ pool = Pool2
+                             , known_sockets = gb_trees:enter(peer_socket(Peer),
+                                                              PeerId,
+                                                              KnownSockets)}}.
 
 -spec pool_random_select(state())
     -> {selected, peer(), state()}
@@ -1500,18 +1532,34 @@ pool_release(PeerId, State) ->
 
 %% Removes a peer from the pool and disconnect
 -spec pool_delete(peer_id(), state()) -> state().
-pool_delete(PeerId, State) when is_binary(PeerId) ->
-    #state{ pool = Pool } = State,
+pool_delete(PeerId, State0) when is_binary(PeerId) ->
+    #state{ pool = Pool
+          , known_sockets = KnownSockets } = State0,
     {OldPoolName, _} = aec_peers_pool:peer_state(Pool, PeerId),
     Pool2 = aec_peers_pool:delete(Pool, PeerId),
     pool_log_changes(PeerId, OldPoolName, undefined),
-    State#state{ pool = Pool2 }.
+    State1 = State0#state{pool = Pool2},
+    case pool_find(PeerId, State0) of
+        error -> State1;
+        {ok, Peer} ->
+            State1#state{known_sockets = gb_trees:delete_any(peer_socket(Peer),
+                                                             KnownSockets)}
+    end.
 
 %% Gets a peer record from the pool.
 -spec pool_find(peer_id(), state()) -> error | {ok, peer()}.
 pool_find(PeerId, State) when is_binary(PeerId) ->
     #state{ pool = Pool } = State,
     aec_peers_pool:find(Pool, PeerId).
+
+%% Gets a peer record from the pool by its socket
+-spec pool_find_by_socket(peer_socket(), state()) -> error | {ok, peer_id()}.
+pool_find_by_socket(PeerSocket, State) ->
+    #state{ known_sockets = KnownSockets} = State,
+    case gb_trees:lookup(PeerSocket, KnownSockets) of
+        none -> error; %% not found
+        {value, PeerId} -> {ok, PeerId}
+    end.
 
 %% Gets a random subset of pooled peers.
 -spec pool_random_subset(non_neg_integer(), [peer_id()] | undefined, state())
