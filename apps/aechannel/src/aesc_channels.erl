@@ -14,7 +14,7 @@
          is_solo_closing/1,
          is_last_state_forced/1,
          locked_until/1,
-         new/13,
+         new/11,
          peers/1,
          serialize/1,
          serialize_for_client/1,
@@ -51,6 +51,12 @@
          auth_store_key/2]).
 
 -compile({no_auto_import, [round/1]}).
+
+-ifdef(TEST).
+-export([set_solo_round/2,
+         set_state_hash/2,
+         set_solo_closing/2]).
+-endif.
 
 -include("../../aecontract/include/hard_forks.hrl").
 -include("aesc_values.hrl").
@@ -313,15 +319,16 @@ pubkey(<<_:?PUB_SIZE/binary>> = InitiatorPubKey,
 is_last_state_forced(#channel{solo_round = SoloRound}) ->
     SoloRound =/= ?LAST_ROUND_MUTUAL.
 
--spec new(aec_keys:pubkey(), non_neg_integer(),
-          aec_keys:pubkey(), non_neg_integer(),
-          aec_accounts:account(), aec_accounts:account(),
+-spec new(aec_accounts:account(), non_neg_integer(),
+          aec_accounts:account(), non_neg_integer(),
           non_neg_integer(), [aec_keys:pubkey()],
           aec_hash:hash(), non_neg_integer(),
           sc_nonce(), aec_blocks:height(), non_neg_integer()) -> channel().
-new(InitiatorPubKey, InitiatorAmount, ResponderPubKey, ResponderAmount, InitAccount,
-    RespAccount, ReserveAmount, DelegatePubkeys, StateHash, LockPeriod, Nonce,
+new(InitiatorAcc, InitiatorAmount, ResponderAcc, ResponderAmount,
+    ReserveAmount, DelegatePubkeys, StateHash, LockPeriod, Nonce,
     Protocol, Round) ->
+    InitiatorPubKey = aec_accounts:pubkey(InitiatorAcc),
+    ResponderPubKey = aec_accounts:pubkey(ResponderAcc),
     PubKey = pubkey(InitiatorPubKey, Nonce, ResponderPubKey),
     Version =
         case Protocol of
@@ -331,8 +338,8 @@ new(InitiatorPubKey, InitiatorAmount, ResponderPubKey, ResponderAmount, InitAcco
     #channel{id                   = aeser_id:create(channel, PubKey),
              initiator_id         = aeser_id:create(account, InitiatorPubKey),
              responder_id         = aeser_id:create(account, ResponderPubKey),
-             initiator_auth       = parse_auth(InitAccount),
-             responder_auth       = parse_auth(RespAccount),
+             initiator_auth       = parse_auth(InitiatorAcc),
+             responder_auth       = parse_auth(ResponderAcc),
              channel_amount       = InitiatorAmount + ResponderAmount,
              initiator_amount     = InitiatorAmount,
              responder_amount     = ResponderAmount,
@@ -529,6 +536,19 @@ round(#channel{round = Round}) ->
 -spec solo_round(channel()) -> solo_round().
 solo_round(#channel{solo_round = SoloRound}) ->
     SoloRound.
+
+-ifdef(TEST).
+-spec set_solo_round(channel(), solo_round()) -> channel().
+set_solo_round(Channel, SoloRound) ->
+    Channel#channel{solo_round = SoloRound}.
+
+-spec set_solo_closing(channel(), aec_blocks:height()) -> channel().
+set_solo_closing(Channel, LockedUntil) ->
+    Channel#channel{locked_until = LockedUntil}.
+
+set_state_hash(Channel, StateHash) ->
+    Channel#channel{state_hash = StateHash}.
+-endif.
 
 -spec fetch_amount_from_poi(aec_trees:poi(), aec_keys:pubkey()) -> amount().
 fetch_amount_from_poi(PoI, Pubkey) ->

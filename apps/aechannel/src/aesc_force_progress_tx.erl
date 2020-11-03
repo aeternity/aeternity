@@ -221,9 +221,8 @@ from_pubkey(#channel_force_progress_tx{from_id = FromId}) ->
     aeser_id:specialize(FromId, account).
 
 -spec check(tx(), aec_trees:trees(), aetx_env:env()) -> {ok, aec_trees:trees()} | {error, term()}.
-check(#channel_force_progress_tx{payload       = Payload,
-                                 offchain_trees= OffChainTrees} = Tx, Trees, Env) ->
-    case aesc_utils:check_force_progress( Tx, Payload, OffChainTrees, Trees, Env) of
+check(#channel_force_progress_tx{} = Tx, Trees, Env) ->
+    case aesc_utils:check_force_progress(Tx, Trees, Env) of
         ok -> {ok, Trees};
         Err ->
             Err
