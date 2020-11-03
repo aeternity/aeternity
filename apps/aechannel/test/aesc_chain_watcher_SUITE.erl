@@ -28,6 +28,7 @@
         , fork_touches/1
         , fork_evicts/1
         , cleanup/1
+        , dummy_request_mine_blocks/1
         ]).
 
 %% Watcher callbacks
@@ -70,7 +71,8 @@ groups() ->
                               , {group, cache_flushing}
                               , {group, innocent_fork}
                               , {group, fork_touches_but_no_change}
-                              , {group, fork_evicts_tx} ]}
+                              , {group, fork_evicts_tx}
+                              , {group, pause_between_requests}]}
     , {admin, [sequence], [ reg_unreg ]}
     , {channel_lifecycle, [sequence], [ set_up_channel
                                       , deposit
@@ -97,6 +99,11 @@ groups() ->
                                    , deposit
                                    , fork_evicts
                                    , cleanup ]}
+    , {pause_between_requests, [sequence], [ dummy_request_mine_blocks
+                                           , set_up_channel
+                                           , deposit
+                                           , cleanup
+        ]}
     ].
 
 suite() ->
@@ -302,6 +309,16 @@ verify_min_depth(MDWs, ChId, TxHash, MinDepth, Cs) ->
                    ok
            end, MDWs),
     assert_no_events(OtherCs),
+    ok.
+
+dummy_request_mine_blocks(_Cfg) ->
+    Client = spawn_link(fun() ->
+                                ok = reg_watch(chid(1)),
+                                receive die -> ok end
+                        end),
+    add_keyblock(),
+    kill_client(Client),
+    add_keyblock(),
     ok.
 
 %% ======================================================================
