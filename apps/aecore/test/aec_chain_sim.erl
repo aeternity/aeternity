@@ -41,11 +41,17 @@
         , new_account/2                %% (ForkId, Balance) -> KeyPair
         , get_balance/1                %% (Acct) -> Balance
         , get_balance/2                %% (ForkId, Acct) -> Balance
+        , get_height/0                 %% () -> Int
+        , get_height/1                 %% (ForkId) -> Int
         , push/1                       %% (Tx) -> ok
         , find_signed_tx/1             %% (TxHash) -> {value, STx)} | none
         , top_block_hash/0             %% () -> Hash
         , block_by_hash/1              %% (BlockHash) -> {ok, Block}
         , sign_and_push/2              %% (Acct, Tx) -> ok
+        , get_call/2                   %% (ContractKey, CallKey) -> Call
+        , get_call/3                   %% (ForkId, ContractKey, CallKey) -> Call
+        , get_trees/0                  %% () -> Trees
+        , get_trees/1                  %% (ForkId) -> {ok, Trees} | error
         , add_keyblock/0               %% () -> {ok, Block}
         , add_keyblock/1               %% (ForkId) -> {ok, Block}
         , add_microblock/0             %% () -> {ok, Block}
@@ -81,7 +87,7 @@
 
 
 %% TODO: Use CT logging or system logging - possibly configurable
--define(LOG(Fmt, Args), io:fwrite(user, "~w:~w/~w - " ++ Fmt, [?MODULE, ?FUNCTION_NAME, ?LINE | Args])).
+-define(LOG(Fmt, Args), io:format("~w:~w/~w -\n" ++ Fmt ++ "\n\n", [?MODULE, ?FUNCTION_NAME, ?LINE | Args])).
 
 %%% @equiv start(#{}).
 %%
@@ -168,6 +174,20 @@ get_balance(ForkId, Acct) ->
     chain_req({get_balance, ForkId, Acct}).
 
 
+-spec get_height() -> integer().
+%%
+%% Equivalent to get_height(main)
+%%
+get_height() ->
+    get_height(main).
+
+-spec get_height(fork_id()) -> integer().
+%%
+%% Queries the chain for account's balance
+%%
+get_height(ForkId) ->
+    chain_req({get_height, ForkId}).
+
 -spec push(aetx_sign:signed_tx()) -> ok.
 %%
 %% Pushes the signed tx to the simulated mempool
@@ -181,6 +201,34 @@ push(Tx) ->
 %%
 sign_and_push(Account, Tx) ->
     chain_req({sign_and_push, Account, Tx}).
+
+-spec get_call(Contract :: aect_contracts:id(), Call :: aect_call:id()) -> aect_call:call().
+%%
+%% Equivalent to get_call(main, Contract, Call)
+%%
+get_call(Contract, Call) ->
+    get_call(main, Contract, Call).
+
+-spec get_call(ForkId :: fork_id(), Contract :: aect_contracts:id(), Call :: aect_call:id()) -> aect_call:call().
+%%
+%% Equivalent to get_call(main, Contract, Call)
+%%
+get_call(ForkId, Contract, Call) ->
+    chain_req({get_call, ForkId, Contract, Call}).
+
+-spec get_trees() -> {ok, aec_trees:trees()} | error.
+%%
+%% Equivalent to get_trees(main)
+%%
+get_trees() ->
+    get_trees(main).
+
+-spec get_trees(fork_id()) -> {ok, aec_trees:trees()} | error.
+%%
+%% Returns state trees from the top of a given fork
+%%
+get_trees(ForkId) ->
+    chain_req({get_trees, ForkId}).
 
 -spec add_keyblock() -> aec_blocks:key_block().
 %%
@@ -361,6 +409,9 @@ handle_call({add_key, ForkId}, _From, #st{opts = Opts, chain = Chain} = St) ->
 handle_call({get_balance, ForkId, Acct}, _From, #st{chain = Chain} = St) ->
     Res = get_balance_(ForkId, Acct, Chain),
     {reply, Res, St};
+handle_call({get_height, ForkId}, _From, #st{chain = Chain} = St) ->
+    Res = get_height_(ForkId, Chain),
+    {reply, Res, St};
 handle_call({fork_from_hash, ForkId, FromHash}, _From, #st{opts = Opts, chain = Chain} = St) ->
     {Res, Chain1} = fork_from_hash_(ForkId, FromHash, Chain, Opts),
     {reply, Res, St#st{chain = Chain1}};
@@ -379,6 +430,11 @@ handle_call( {sign_and_push, PK, Tx}, _From
             {reply, ok, St#st{chain = Chain#{mempool => [aec_test_utils:sign_tx(Tx, SK)|Pool]}}};
         _ -> {reply, {error, unknown_privkey}, Chain}
     end;
+handle_call({get_call, ForkId, ContractId, CallId}, _From, #st{chain = Chain} = St) ->
+    {reply, get_call_(ForkId, ContractId, CallId, Chain), St};
+handle_call({get_trees, ForkId}, _From, #st{chain = Chain} = St) ->
+    #{forks := #{ ForkId := #{blocks := Blocks}}} = Chain,
+    {reply, trees(Blocks), St};
 handle_call({next_nonce, Acct}, _From, #st{chain = #{nonces := Nonces} = Chain} = St) ->
     N = maps:get(Acct, Nonces, 0),
     NewN = N + 1,
@@ -459,12 +515,16 @@ get_balance_(ForkId, PK, Chain) ->
             aec_accounts:balance(Acct)
     end.
 
+get_height_(ForkId, #{forks := Forks}) ->
+    #{ ForkId := #{ blocks := Blocks} } = Forks,
+    length([{} || #{block := B} <- Blocks, aec_blocks:is_key_block(B)]).
+
 add_microblock_(ForkId, #{mempool := Pool} = Chain, Opts) ->
     Txs = lists:reverse(Pool),  % because LIFO
     add_microblock_(ForkId, Txs, Chain#{mempool => []}, Opts).
 
 add_microblock_(ForkId, Txs, #{forks := Forks} = Chain, Opts) ->
-    ?LOG("add_microblock(Txs = ~p", [Txs]),
+    ?LOG("add_microblock(Txs = ~p", [[aetx_sign:hash(Tx) || Tx <- Txs]]),
     #{blocks := Blocks} = F = maps:get(ForkId, Forks),
     #{block := B} = hd(Blocks),
     TopHdr = aec_blocks:to_header(B),
@@ -480,9 +540,8 @@ add_microblock_(ForkId, Txs, #{forks := Forks} = Chain, Opts) ->
                root_hash(), 0, txs_hash(), pof_hash(), 0),
     Block = aec_blocks:new_micro_from_header(NewHdr, Txs, no_fraud),
     {BlockEntry, Evs} = with_trees(ForkId, Txs, Block, Chain),
-    ?LOG("Microblock = ~p", [Block]),
+    ?LOG("Microblock = ~p", [aec_headers:hash_header(aec_blocks:to_header(Block))]),
     NewFork = F#{blocks => [BlockEntry | Blocks]},
-    ?LOG("NewFork(~p): ~p", [ForkId, NewFork]),
     NewForks = Forks#{ForkId => NewFork},
     NewChain = announce(ForkId, Txs, Evs, Chain#{forks => NewForks}, Opts),
     #{block := FinalMicroBlock} = BlockEntry,
@@ -531,7 +590,7 @@ fork_switch_(ForkId, #{forks := Forks, mempool := Pool, orphans := Orphans} = Ch
     ReturnTxs = lists:flatten([ aec_blocks:txs(B)
         || #{block := B} <- lists:reverse(Evict),
         not aec_blocks:is_key_block(B)]),
-    ?LOG("Evicting txs: ~p", [ReturnTxs]),
+    ?LOG("Evicting txs: ~p", [[aetx_sign:hash(Tx) || Tx <- ReturnTxs]]),
     NewPool = lists:reverse(ReturnTxs) ++ Pool,
     NewForks = maps:remove(ForkId, Forks#{main => M#{blocks => FBlocks}}),
     NewChain = Chain#{ forks => NewForks
@@ -560,8 +619,9 @@ announce(ForkId, Txs, Events, #{ forks := Forks } = Chain, Opts) ->
        true ->
             send_tx_events(Events, TopHash, Info),
             (ForkId == main) andalso
-                begin ?LOG("Publishing top_changed, I = ~p", [Info]),
-                      aec_events:publish(top_changed, Info)
+                begin
+                    ?LOG("Publishing top_changed, I = ~p", [Info]),
+                    aec_events:publish(top_changed, Info)
                 end
     end,
     Chain.
@@ -579,13 +639,15 @@ new_chain() ->
     Miner = new_keypair(),
     {Gen, Tre} = aec_block_genesis:genesis_block_with_state(),
     {ok, Hash} = aec_headers:hash_header(aec_blocks:to_header(Gen)),
-    #{ miner     => Miner
-     , mempool   => []
-     , orphans   => []
-     , nonces    => #{}
-     , key_pairs => #{}
-     , forks     => #{ main => #{ fork_point => Hash
-                                , blocks     => [#{block => Gen, trees => Tre}] } }}.
+    Chain0 =
+        #{ miner     => Miner
+        ,  mempool   => []
+        ,  orphans   => []
+        ,  nonces    => #{}
+        ,  key_pairs => #{}
+        ,  forks     => #{ main => #{ fork_point => Hash
+                                   ,  blocks     => [#{block => Gen, trees => Tre}] } }},
+    Chain0.
 
 %% Called from the chain process
 add_keyblock_(ForkId, #{forks := Forks, miner := #{pubkey := Miner}} = Chain, Opts) ->
@@ -605,7 +667,7 @@ add_keyblock_(ForkId, #{forks := Forks, miner := #{pubkey := Miner}} = Chain, Op
     {{ok, Block},  NewChain}.
 
 send_tx_events(Events, Hash, Origin) ->
-    ?LOG("send_tx_events(~p, ~p ~p)", [Events, Hash, Origin]),
+    ?LOG("send_tx_events(~p, ~p)", [Events, Hash]),
     [aec_events:publish({tx_event, Event}, Info#{ block_hash => Hash
                                                 , block_origin => Origin})
      || {Event, Info} <- Events].
@@ -633,9 +695,16 @@ trees(Blocks) ->
     end.
 
 update_trees(Txs, Trees, Height) ->
-    Env = aetx_env:tx_env(Height),
-    {ok, _, [], NewTrees, Evs} = aec_trees:apply_txs_on_state_trees_strict(Txs, Trees, Env),
+    Env0 = aetx_env:tx_env(Height),
+    Env1 = aetx_env:set_dry_run(Env0, true),  % To expose error messages
+    {ok, _, [], NewTrees, Evs} = aec_trees:apply_txs_on_state_trees_strict(Txs, Trees, Env1),
     {NewTrees, Evs}.
+
+get_call_(ForkId, ContractId, CallId, #{forks := Forks}) ->
+    #{ ForkId := #{blocks := Blocks}} = Forks,
+    {ok, Trees} = trees(Blocks),
+    Calls = aec_trees:calls(Trees),
+    aect_call_state_tree:get_call(ContractId, CallId, Calls).
 
 blocks_until_hash(Hash, Blocks) ->
     lists:dropwhile(
@@ -834,7 +903,6 @@ get_chain_process() ->
     gproc:where({n, l, {?MODULE, chain_process}}).
 
 chain_req_(Req, ChainP) when is_pid(ChainP) ->
-    ?LOG("chain_req(~p)", [Req]),
     gen_server:call(ChainP, Req).
 
 %% like lists:keyfind/3, but comparing map keys
