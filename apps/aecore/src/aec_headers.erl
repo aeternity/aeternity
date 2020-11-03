@@ -785,7 +785,7 @@ validate_pow(#key_header{nonce        = Nonce,
 validate_micro_block_cycle_time(Header, _Protocol) ->
     Time = time_in_msecs(Header),
     PrevHash = prev_hash(Header),
-    case aec_chain:get_header(PrevHash) of
+    case aec_chain:dirty_get_header(PrevHash) of
         {ok, PrevHeader} ->
             PrevTime = time_in_msecs(PrevHeader),
             MinAccepted =

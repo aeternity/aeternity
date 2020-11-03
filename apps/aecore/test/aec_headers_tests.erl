@@ -235,7 +235,7 @@ validate_test_() ->
              meck:new(aec_hard_forks, [passthrough]),
              meck:new(aec_mining, [passthrough]),
              meck:new(aec_chain, [passthrough]),
-             meck:expect(aec_chain, get_header, 1, error),
+             meck:expect(aec_chain, dirty_get_header, 1, error),
              meck:new(aeu_time, [passthrough])
      end,
      fun(_) ->

@@ -24,7 +24,7 @@ validate_test_() ->
              meck:new(enacl, [passthrough]),
              meck:expect(enacl, sign_verify_detached, 3, {ok, <<>>}),
              meck:new(aec_chain, [passthrough]),
-             meck:expect(aec_chain, get_header, 1, error),
+             meck:expect(aec_chain, dirty_get_header, 1, error),
              TmpKeysDir
      end,
      fun(TmpKeysDir) ->

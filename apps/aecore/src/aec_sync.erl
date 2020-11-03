@@ -980,12 +980,12 @@ gen_is_consecutive(backward, KB, MBs = [MB1, MB2 | _]) ->
 %%%=============================================================================
 
 has_generation(KeyBlockHash) ->
-    %% We are looking for the generation backwards from this Hash
-    %% Possibly optimize by implementing aec_chain:has_generation operating on
-    %% headers only
-    case aec_chain:get_generation_by_hash(KeyBlockHash, backward) of
-        {ok, _Generation} -> true;
-        error             -> false
+    case aec_chain:get_header(KeyBlockHash) of
+        error ->
+            false;
+        {ok, Header} ->
+            aec_headers:assert_key_header(Header),
+            true
     end.
 
 header_hash(Block) ->

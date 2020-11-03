@@ -838,7 +838,8 @@ handle_get_header_by_height(S, ?GET_HEADER_BY_HEIGHT_VSN,
 %% -- Get N Successors -------------------------------------------------------
 
 do_get_n_successors(Hash, N) ->
-    case aec_chain:get_at_most_n_generation_headers_forward_from_hash(Hash, N+1) of
+    F = fun() -> aec_chain:get_at_most_n_generation_headers_forward_from_hash(Hash, N+1) end,
+    case aec_db:ensure_activity(async_dirty, F) of
         {ok, [_ | Headers]} ->
             HHashes = [ begin
                             {ok, HHash} = aec_headers:hash_header(H),
@@ -893,9 +894,13 @@ handle_get_generation(S, Msg) ->
     send_response(S, generation, Response),
     S.
 
-do_get_generation(Hash, true) ->
+do_get_generation(Hash, Forward) ->
+    aec_db:ensure_activity(async_dirty, fun() ->
+        do_get_generation_(Hash, Forward) end).
+
+do_get_generation_(Hash, true) ->
     aec_chain:get_generation_by_hash(Hash, forward);
-do_get_generation(Hash, false) ->
+do_get_generation_(Hash, false) ->
     aec_chain:get_generation_by_hash(Hash, backward).
 
 handle_get_generation_rsp(S, {get_generation, From, _TRef}, Msg) ->
