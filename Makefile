@@ -106,6 +106,7 @@ console: $(SWAGGER_ENDPOINTS_SPEC)
 
 test-build: KIND=test
 test-build: internal-build
+	cd _build/$(KIND)/lib/aestratum_client && ../../../../$(REBAR) as test release
 
 local-build: KIND=local
 local-build: internal-build
@@ -413,8 +414,7 @@ internal-clean:
 internal-distclean:
 	@rm -rf ./_build/$(KIND)
 
-internal-ct: internal-build
-	cd _build/$(KIND)/lib/aestratum_client && ../../../../$(REBAR) as test release
+internal-ct: test-build
 	@NODE_PROCESSES="$$(ps -fea | grep bin/aeternity | grep -v grep)"; \
 	if [ $$(printf "%b" "$${NODE_PROCESSES}" | wc -l) -gt 0 ] ; then \
 		(printf "%b\n%b\n" "Failed testing: another node is already running" "$${NODE_PROCESSES}" >&2; exit 1);\
