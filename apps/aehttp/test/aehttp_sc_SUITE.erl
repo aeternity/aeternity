@@ -759,8 +759,6 @@ sc_ws_open_(Config, ChannelOpts0, MinBlocksToMine, LogDir) ->
     IPubkey = aesc_create_tx:initiator_pubkey(Tx),
     RPubkey = aesc_create_tx:responder_pubkey(Tx),
 
-    ok = ?WS:unregister_test_for_channel_events(IConnPid, TestEvents),
-    ok = ?WS:unregister_test_for_channel_events(RConnPid, TestEvents),
     %% We stuff the channel id into the Clients map out of convenience
     ChannelClients = #{ channel_id => ChId
                       , initiator  => IConnPid
@@ -775,9 +773,10 @@ sc_ws_open_(Config, ChannelOpts0, MinBlocksToMine, LogDir) ->
     %%
     case proplists:get_value(mine_create_tx, Config, true) of
         true ->
-            finish_sc_ws_open(Config1, MinBlocksToMine);
+            finish_sc_ws_open(Config1, MinBlocksToMine, false);
         false ->
-            ok
+            ok = ?WS:unregister_test_for_channel_events(IConnPid, TestEvents),
+            ok = ?WS:unregister_test_for_channel_events(RConnPid, TestEvents)
     end,
     Config1.
 
@@ -799,6 +798,9 @@ sc_ws_open_events() ->
     [info, get, sign, on_chain_tx, update].
 
 finish_sc_ws_open(Config, MinBlocksToMine) ->
+    finish_sc_ws_open(Config, MinBlocksToMine, true).
+
+finish_sc_ws_open(Config, MinBlocksToMine, Register) ->
     ct:log("finish_sc_ws_open", []),
     #{ channel_id := ChId
      , initiator  := IConnPid
@@ -808,8 +810,13 @@ finish_sc_ws_open(Config, MinBlocksToMine) ->
     SignedCrTx = proplists:get_value(create_tx, Config),
     %%
     TestEvents = sc_ws_open_events(),
-    ok = ?WS:register_test_for_channel_events(IConnPid, TestEvents),
-    ok = ?WS:register_test_for_channel_events(RConnPid, TestEvents),
+    case Register of
+        true ->
+            ok = ?WS:register_test_for_channel_events(IConnPid, TestEvents),
+            ok = ?WS:register_test_for_channel_events(RConnPid, TestEvents);
+        false ->
+            ok
+    end,
     %%
     ok = maybe_mine_create_tx(SignedCrTx, Config, IConnPid, RConnPid),
     CrTx = aetx_sign:innermost_tx(SignedCrTx),
@@ -882,14 +889,21 @@ channel_send_conn_open_infos(RConnPid, IConnPid, Config) ->
 
 channel_send_locking_infos(IConnPid, RConnPid, Config) ->
     {ok, #{channel_id := ChId,
-           data := #{<<"event">> := <<"own_funding_locked">>}}}
+           data := #{<<"event">> := IE1}}}
         = wait_for_channel_event_full(IConnPid, info, Config),
     {ok, #{channel_id := ChId,
-           data := #{<<"event">> := <<"own_funding_locked">>}}}
+           data := #{<<"event">> := RE1}}}
+        = wait_for_channel_event_full(RConnPid, info, Config),
+    {ok, #{channel_id := ChId,
+           data := #{<<"event">> := IE2}}}
+        = wait_for_channel_event_full(IConnPid, info, Config),
+    {ok, #{channel_id := ChId,
+           data := #{<<"event">> := RE2}}}
         = wait_for_channel_event_full(RConnPid, info, Config),
 
-    {ok, _, #{<<"event">> := <<"funding_locked">>}} = wait_for_channel_event(IConnPid, info, Config),
-    {ok, _, #{<<"event">> := <<"funding_locked">>}} = wait_for_channel_event(RConnPid, info, Config),
+    MF = fun(<<"own_funding_locked">>, <<"funding_locked">>) -> ok end,
+    MF(IE1, IE2),
+    MF(RE1, RE2),
     {ok, ChId}.
 
 channel_send_chan_open_infos(RConnPid, IConnPid, Config) ->
