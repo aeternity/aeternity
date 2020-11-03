@@ -8,6 +8,7 @@ in {
     name = "aeternity";
     ## required to compile the C parts of cuckoo
     hardeningDisable = [ "format" ];
+    nativeBuildInputs = [ stable.cmake ];
     buildInputs = [
       ## base
       stable.stdenv
