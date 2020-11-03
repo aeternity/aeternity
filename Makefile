@@ -104,6 +104,9 @@ export AEVM_EXTERNAL_TEST_VERSION=348b0633f4a6ee3c100368bf0f4fca71394b4d01
 console: $(SWAGGER_ENDPOINTS_SPEC)
 	@$(REBAR) as local shell --config config/dev.config --sname aeternity@localhost
 
+test-build: KIND=test
+test-build: internal-build
+
 local-build: KIND=local
 local-build: internal-build
 
@@ -448,6 +451,7 @@ test-arch-os-dependencies:
 
 .PHONY: \
 	all console \
+	test-build \
 	local-build local-start local-stop local-attach \
 	prod-build prod-start prod-stop prod-attach prod-package prod-compile-deps \
 	multi-build multi-start multi-stop multi-clean multi-distclean \

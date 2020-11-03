@@ -641,7 +641,7 @@ jobs:
       - *restore_rebar_cache
       - run:
           name: Build
-          command: make KIND=test
+          command: make test-build
       - save_cache:
           key: *build_otp22_cache_key
           paths:
