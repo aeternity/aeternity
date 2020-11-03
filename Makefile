@@ -427,7 +427,7 @@ $(DEB_PKG_CHANGELOG_FILE):
 	dch -r $(AE_DEB_DCH_REL_NOTE)
 
 prod-deb-package: $(DEB_PKG_CHANGELOG_FILE)
-	debuild --preserve-envvar DEB_SKIP_DH_AUTO_CLEAN -b -uc -us
+	debuild -e DEB_SKIP_DH_AUTO_CLEAN -e ERLANG_ROCKSDB_BUILDOPTS -b -uc -us
 
 $(PLANTUML_JAR):
 	curl -fsS --create-dirs -o $@ https://netcologne.dl.sourceforge.net/project/plantuml/${PLANTUML_V}/plantuml.${PLANTUML_V}.jar

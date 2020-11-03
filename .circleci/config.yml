@@ -45,8 +45,6 @@ executors:
       - image: aeternity/builder:1804
         user: builder
     working_directory: ~/aeternity
-    environment:
-      ERLANG_ROCKSDB_BUILDOPTS: "-j2"
   buildpack:
     docker:
       - image: circleci/buildpack-deps:xenial
@@ -213,6 +211,7 @@ references:
         # This prevents the presence of broken/dummy debian/rules file without
         # clean targets. For example when running debuild directly without
         # `make prod-deb-package`.
+        ERLANG_ROCKSDB_BUILDOPTS: "-j2"
       command: |
         make prod-clean
         make clean
@@ -277,6 +276,31 @@ references:
           if [ "$CIRCLE_BRANCH" = "${NOTIFY_BRANCH:?}" ]; then
             HOOK_DATA=$(printf "$HOOK_TEMPLATE" "${CIRCLE_JOB:?}" "${CIRCLE_BRANCH:?}" "${CIRCLE_USERNAME:-unknown}" "${CIRCLE_BUILD_URL:?}")
             curl -X POST -H 'Content-Type: application/json' ${ROCKET_HOOK_URL:?} --data "${HOOK_DATA:?}"
+          fi
+        fi
+      when: on_fail
+
+  fail_notification_nix: &fail_notification_nix
+    run:
+      name: Send failure notification
+      environment:
+        NOTIFY_BRANCH: *master_branch
+        HOOK_TEMPLATE: |
+          {
+            "text": "CircleCI job **%s** failed on branch **%s** by @%s",
+            "attachments": [
+              {
+                "title": "Build Link",
+                "title_link": "%s",
+                "color": "#FAD6D6"
+              }
+            ]
+          }
+      command: |
+        if [ -n "$CIRCLE_BRANCH" ]; then
+          if [ "$CIRCLE_BRANCH" = "${NOTIFY_BRANCH:?}" ]; then
+            HOOK_DATA=$(printf "$HOOK_TEMPLATE" "${CIRCLE_JOB:?}" "${CIRCLE_BRANCH:?}" "${CIRCLE_USERNAME:-unknown}" "${CIRCLE_BUILD_URL:?}")
+            nix-shell webhook.nix -j auto --run "curl -X POST -H 'Content-Type: application/json' ${ROCKET_HOOK_URL:?} --data \"${HOOK_DATA:?}\""
           fi
         fi
       when: on_fail
@@ -681,7 +705,7 @@ jobs:
           paths:
             - .cache/rebar3
       - *store_rebar3_crashdump
-      - *fail_notification
+      - *fail_notification_nix
 
   test_roma:
     executor: builder_container_otp22
