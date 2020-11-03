@@ -1,0 +1,403 @@
+@compiler >= 4.3
+
+include "List.aes"
+include "Pair.aes"
+include "Option.aes"
+
+/**
+ * Simple implementation of a staking contract for aeternity
+ * hyperchains. Supports stake aging and randomized elections
+ * (the entropy should come from external source).
+ * Delegated voting is not supported.
+ */
+payable contract SimpleElection =
+
+  type delegate     = address
+  type block_height = int
+  type tokens       = int
+
+  /**
+   * Single stake entry
+   */
+  record stake = {
+    value     : tokens,
+    created   : block_height }
+
+
+  /**
+   * Deferred withdrawal
+   */
+  record withdraw_request = {
+    value   : tokens,
+    created : block_height }
+
+
+  /**
+   * General variables and configurations
+   * - deposit_delay: how much does it take for the staked tokens to
+   *   provide the voting power
+   * - stake_retraction_delay: how long should the tokens provide voting 
+   *   power after the delegate has requested to withdraw them
+   * - withdraw_delay: after what period of time are the tokens eligible
+   *   to be withdrawn after delegate's request
+   * 
+   * Should satisfy withdraw_delay >= stake_retraction_delay
+   */
+  record config = {
+    deposit_delay          : block_height,
+    stake_retraction_delay : block_height,
+    withdraw_delay         : block_height }
+
+
+  /**
+   * Leader candidate with calculated voting power
+   */
+  record candidate = {
+    address : delegate,
+    power   : int }
+
+  
+  /**
+   * Description of the election result on a given block height
+   */
+  record election_result = {
+    leader : delegate,
+    height : block_height }
+
+
+  /**
+   * The state of the staking contract
+   * - stakes: list of all staked entries for each delegate
+   * - withdraw_requests: list of all withdrawal requests for each delegate'
+   * - last_election: hypothetical information about the most recent election.
+   *   Should set to None initially and updated with each election
+   * - config: overall tweaks of the election/staking rules 
+   */
+  record state = {
+    stakes : map(delegate, list(stake)),
+    withdraw_requests : map(delegate, list(withdraw_request)),
+    last_election : option(election_result),
+    config : config }
+
+
+  entrypoint
+    init : (config, map(address, int)) => state
+    init(config, initial_stakes) =
+      require(
+        config.deposit_delay >= 0,
+        "NEGATIVE_DEPOSIT_DELAY")
+      require(
+        config.stake_retraction_delay >= 0,
+        "NEGATIVE_STAKE_RETRACTION_DELAY")
+      require(
+        config.withdraw_delay >= 0,
+        "NEGATIVE_WITHDRAW_DELAY")
+      require(
+        config.withdraw_delay >= config.stake_retraction_delay,
+        "STAKE_RETRACTION_AFTER_WITHDRAW"
+        )
+      let init_stakes_list = Map.to_list(initial_stakes)
+      [abort("NEGATIVE_INIT_STAKE") | (_, x) <- init_stakes_list, if(x =< 0)]
+      require(
+        List.sum(List.map(Pair.snd, init_stakes_list)) =< Contract.balance,
+        ""
+        )
+      { stakes = Map.from_list([(addr, [{value = x, created = -config.deposit_delay}]) | (addr, x) <- init_stakes_list]),
+        withdraw_requests = {},
+        last_election = None,
+        config = config }
+
+
+  /**
+   * Default configuration – can be adjusted in the `init` entrypoint
+   */
+  entrypoint
+    default_config : () => config
+    default_config() =
+      { deposit_delay          = 5,
+        stake_retraction_delay = 5,
+        withdraw_delay         = 10 }
+      
+  
+
+  /**
+   * Constant that defines range of hashes
+   */
+  function
+    hash_range : () => int
+    hash_range() =
+      Bytes.to_int(#ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff : hash)
+
+
+  /**
+   * Make the function impossible to call by a regular user
+   */
+  function
+    protocol_restrict : () => unit
+    protocol_restrict() =
+      require(Call.origin == Contract.creator, "PROTOCOL_RESTRICTED")
+
+
+  /**
+   * Calculates the voting power of a stake entry
+   */
+  function
+    valuate : stake => int  
+    valuate(s) =
+      let age = Chain.block_height - s.created
+      if(age >= state.config.deposit_delay) s.value + age^2
+      else 0
+
+
+  /**
+   * Get total of staked tokens of a delegate
+   */
+  entrypoint
+    staked_tokens : delegate => tokens 
+    staked_tokens(address) =
+      List.sum([s.value | s <- state.stakes[address = []]])
+
+
+  /**
+   * Get total number of tokens that a delegate requested to thaw
+   */
+  entrypoint
+    requested_withdrawals : delegate => tokens 
+    requested_withdrawals(address) =
+      List.sum([w.value | w <- state.withdraw_requests[address = []]])
+
+
+  /**
+   * Get the amount of the stake that is already retracted by
+   * withdrawal requests, but not yet withdrawn
+   */
+  entrypoint
+    retracted_stake : delegate => tokens
+    retracted_stake(address) =
+      List.sum([ w.value 
+               | w <- state.withdraw_requests[address = []]
+               , if(Chain.block_height >=
+                    w.created + state.config.stake_retraction_delay)
+               ])
+
+
+  /**
+   * Filters out the premature withdrawals and calculates the value
+   * of the rest
+   */
+  function
+    extract_ripe_withdrawals : list(withdraw_request) =>
+                               (tokens * list(withdraw_request)) 
+    extract_ripe_withdrawals([]) = (0, [])
+    extract_ripe_withdrawals(w::t) =
+      let (tokens, rest) = extract_ripe_withdrawals(t)
+      if(Chain.block_height >= w.created + state.config.withdraw_delay)
+        // We take it
+        (tokens + w.value, rest)
+      else
+        // We leave it
+        (tokens, w::rest)
+  
+
+  /**
+   * Drops the least valuable tokens from the stake entries
+   */
+  function
+    decrease_stake : (list(stake), tokens) => list(stake)
+    decrease_stake(stakes, value) =
+      run_decrease_stake(List.sort((s1, s2) => valuate(s1) < valuate(s2), stakes), value)
+
+  function
+    run_decrease_stake : (list(stake), tokens) => list(stake)
+    run_decrease_stake(l, 0) = l
+    run_decrease_stake(h::t, amount) =
+      if(h.value > amount) h{value = h.value - amount}::t
+      else run_decrease_stake(t, amount - h.value)
+
+
+  /**
+   * Calculates the voting power of a delegate
+   */
+  function 
+    voting_power : delegate => int
+    voting_power(address) =
+      let retracted_stake = retracted_stake(address)
+      let stakes = decrease_stake(state.stakes[address], retracted_stake)
+      List.sum([valuate(s) | s <- stakes])
+
+
+  /**
+   * Extracts list of candidates along with their voting power
+   * from the state
+   */
+  function
+    get_candidates : list(delegate) => list(candidate) 
+    get_candidates(delegates) =
+      let is_considered(d : delegate) =
+        List.find((x) => x == d, delegates) != None
+      let stakes = List.filter((p) => is_considered(Pair.fst(p)), Map.to_list(state.stakes))
+      let make_candidate((addr, stks)) = {
+        address = addr,
+        power = List.sum([valuate(st) | st <- stks]) }
+
+      List.map(make_candidate, stakes)
+
+
+  /**
+   * Ordering on candidates
+   */
+  function 
+    candidate_cmp : (candidate, candidate) => bool
+    candidate_cmp(c1, c2) =
+      if(c1.power == c2.power) c1.address < c2.address
+      else c1.power < c2.power
+
+
+  /**
+   * Extracts the chosen leader from the delegates list
+   */
+  function
+    choose_by_power : (list(candidate), int) => option(delegate) 
+    choose_by_power(delegates, shot) =
+      switch(delegates)
+        []   => None
+        h::t =>
+          if(h.power > shot) Some(h.address)
+          else choose_by_power(t, shot - h.power)
+
+
+  /**
+   * Performs the election of the leader depending on the random hash
+   */
+  function
+    elect_candidate : (list(candidate), hash) => option(delegate)
+    elect_candidate(candidates, rand) =
+      let total_power = List.sum([c.power | c <- candidates])
+      let sorted = List.sort(candidate_cmp, candidates)
+      let shot = total_power * Bytes.to_int(rand) / hash_range()
+      choose_by_power(sorted, shot)
+
+
+  /**
+   * Combines all entries of the delegate into a single one with refreshed
+   * creation date
+   */
+  stateful function
+    reset_stake_age : delegate => unit
+    reset_stake_age(addr) =
+      let total = List.sum([s.value | s <- state.stakes[addr = []]])
+      put(state{
+        stakes[addr] = [{value = total, created = Chain.block_height}]})
+
+
+  /**
+   * Updates the entry of the last election result
+   */
+  stateful function 
+    set_leader : delegate => unit
+    set_leader(addr) =
+      put(state{
+        last_election = Some({leader = addr, height = Chain.block_height})})
+
+
+  /**
+   * Returns the leader of the upcoming generation without
+   * performing the election
+   */
+  entrypoint
+    get_computed_leader : () => option(delegate)
+    get_computed_leader() =
+      switch(state.last_election)
+        None     => None
+        Some(le) =>
+          if(Chain.block_height != le.height) None
+          else Some(le.leader)
+
+
+  /*** STAKERS' ACTIONS ***/
+
+  /**
+   * Freezes tokens to be counted as stake
+   */
+  payable stateful entrypoint
+    deposit_stake : () => unit
+    deposit_stake() =
+      let caller = Call.origin
+      let value = Call.value
+      require(value > 0, "ZERO_STAKE_DEPOSIT")
+      let new_stake = {value = value, created = Chain.block_height}
+
+      put(state{stakes[caller = []] @ sts = new_stake :: sts})
+
+
+  /**
+   * Registers withdrawal request
+   */
+  stateful entrypoint 
+    request_withdraw : tokens => unit
+    request_withdraw(amount) =
+      let caller = Call.origin
+      require(
+        amount > 0,
+        "NON_POSITIVE_WITHDRAW_REQUEST")
+      require(
+        staked_tokens(caller) - requested_withdrawals(caller) >= amount,
+        "WITHDRAW_TOO_MUCH")
+      let new_withdrawal =
+        {value = amount, created = Chain.block_height}
+
+      put(state{withdraw_requests[caller = []] @ ws = new_withdrawal :: ws})
+
+
+  /**
+   * Withdraws tokens from ripe withdraw requests
+   */
+  stateful entrypoint
+    withdraw : () => tokens
+    withdraw() =
+      let caller = Call.origin
+      let (total_value, new_withdrawals) =
+        extract_ripe_withdrawals(state.withdraw_requests[caller])
+      
+      put(state{
+        stakes[caller] @ stakes = decrease_stake(stakes, total_value), 
+        withdraw_requests[caller] = new_withdrawals})
+      Chain.spend(caller, total_value)
+      
+      total_value
+
+
+  /*** RESTRICTED ACTIONS ***/
+
+  /**
+   * Performs the leader election.
+   */
+  stateful entrypoint
+    get_leader : (list(delegate), hash) => delegate
+    get_leader(delegates, rand) =
+      protocol_restrict()
+
+      switch(get_computed_leader())
+        Some(le) => le
+        None => 
+          let candidates = get_candidates(delegates)
+          switch (elect_candidate(candidates, rand))
+            // if the election fails then pick the previous one
+            None => switch(state.last_election)
+              None => abort("NO_CANDIDATE")
+              Some(le) => le.leader
+            Some(leader) =>
+              reset_stake_age(leader)
+              set_leader(leader)
+              leader
+
+
+  /**
+   * Vanishes the staked funds of the user in case of a fraud
+   */
+  stateful entrypoint
+    punish : delegate => unit
+    punish(address) =
+      protocol_restrict()
+      let stake = staked_tokens(address)
+      put(state{stakes[address] = [], withdraw_requests[address] = []})
