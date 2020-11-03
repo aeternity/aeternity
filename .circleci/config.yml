@@ -45,8 +45,6 @@ executors:
       - image: aeternity/builder:1804
         user: builder
     working_directory: ~/aeternity
-    environment:
-      ERLANG_ROCKSDB_BUILDOPTS: "-j2"
   buildpack:
     docker:
       - image: circleci/buildpack-deps:xenial
@@ -213,6 +211,7 @@ references:
         # This prevents the presence of broken/dummy debian/rules file without
         # clean targets. For example when running debuild directly without
         # `make prod-deb-package`.
+        ERLANG_ROCKSDB_BUILDOPTS: "-j2"
       command: |
         make prod-clean
         make clean
