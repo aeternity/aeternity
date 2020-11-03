@@ -33,7 +33,6 @@
         , compile_contract/2
         , compile_filename/1
         , compile_filename/2
-        , compile_filename/3
         , encode_call_data/3
         , encode_call_data/4
         , decode_data/2
@@ -306,24 +305,15 @@ compile_filename(FileName) ->
     compile(sophia_version(), FileName).
 
 compile_filename(Compiler, FileName) ->
-    compile(Compiler, FileName, []).
-
-compile_filename(Compiler, FileName, Opts) ->
-    compile(Compiler, FileName, Opts).
+    compile(Compiler, FileName).
 
 compile_contract(File) ->
     compile_contract(sophia_version(), File).
 
 compile_contract(Compiler, File) ->
-    compile_contract(Compiler, File, []).
-
-compile_contract(Compiler, File, Opts) ->
-    compile_filename(Compiler, contract_filename(Compiler, File), Opts).
+    compile_filename(Compiler, contract_filename(Compiler, File)).
 
 compile(Vsn, File) ->
-    compile(Vsn, File, []).
-
-compile(Vsn, File, Opts) ->
     %% Lookup the res in the cache - if not present just calculate the result
     CompilationId = #compilation_id{vsn = Vsn, filename = File},
     NoCache = os:getenv("SOPHIA_NO_CACHE"),
@@ -345,14 +335,14 @@ compile(Vsn, File, Opts) ->
     end,
     Result1 = case ets:lookup(?COMPILE_TAB, CompilationId) of
         _ when NoCache =/= false ->
-            compile_(Vsn, File, Opts);
+            compile_(Vsn, File);
         [#compilation_cache_entry{result = Result}] ->
             %% This should save 200ms - 2000ms per invocation
             ct:log("Compilation cache HIT  :)"),
             Result;
         [] ->
             ct:log("Compilation cache MISS :("),
-            Result = compile_(Vsn, File, Opts),
+            Result = compile_(Vsn, File),
             ets:insert_new(?COMPILE_TAB, #compilation_cache_entry{compilation_id = CompilationId, result = Result}),
             Result
     end,
@@ -372,14 +362,14 @@ compile(Vsn, File, Opts) ->
         no -> Result1
     end.
 
-compile_(SophiaVsn, File, Opts) when SophiaVsn == ?SOPHIA_IRIS_FATE ->
+compile_(SophiaVsn, File) when SophiaVsn == ?SOPHIA_IRIS_FATE ->
     {ok, AsmBin} = file:read_file(File),
     Source = binary_to_list(AsmBin),
     ACIFlag = case aci_json_enabled(SophiaVsn) of
                   yes_automatic -> [{aci, json}];
                   _ -> []
               end,
-    case aeso_compiler:from_string(Source, [{backend, fate}] ++ ACIFlag ++ Opts) of
+    case aeso_compiler:from_string(Source, [{backend, fate}] ++ ACIFlag) of
         {ok, Map} ->
             case Map of
                 #{aci := JAci} ->
@@ -391,7 +381,7 @@ compile_(SophiaVsn, File, Opts) when SophiaVsn == ?SOPHIA_IRIS_FATE ->
             {ok, aect_sophia:serialize(Map, latest_sophia_contract_version())};
         {error, E} = Err -> ct:log("~p\n", [E]), Err
     end;
-compile_(LegacyVersion, File, _Opts) ->
+compile_(LegacyVersion, File) ->
     case legacy_compile(LegacyVersion, File) of
         {ok, Code}      -> {ok, Code};
         {error, Reason} -> {error, {compiler_error, File, Reason}}
