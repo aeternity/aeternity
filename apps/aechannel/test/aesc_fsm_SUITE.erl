@@ -361,6 +361,7 @@ end_per_suite(Config) ->
     [ok = application:stop(A) || A <- lists:reverse(StartedApps)],
     TableOwner = ?config(table_owner, Config),
     TableOwner ! die,
+    aecore_suite_utils:stop_node(dev1, Config),
     ok.
 
 init_per_group(signatures, Config0) ->
