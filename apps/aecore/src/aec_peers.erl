@@ -383,7 +383,7 @@ peer_id(#{ pubkey := PubKey }) ->
 peer_id(#peer{ pubkey = PubKey }) ->
     PubKey.
 
--spec peer_socket(#peer{}) -> #peer_socket{}.
+-spec peer_socket(#peer{}) -> peer_socket().
 peer_socket(#peer{address = Address,
                   port    = Port}) ->
     #peer_socket{address = Address, port = Port}.
@@ -426,7 +426,7 @@ init(ok) ->
         monitors = #{},
         hostnames = #{},
         blocked = gb_trees:empty(),
-        known_sockets= gb_trees:empty()
+        known_sockets = gb_trees:empty()
     }}.
 
 handle_call({is_blocked, PeerId}, _From, State0) ->
@@ -1269,14 +1269,14 @@ on_add_peer(SourceAddr, Peer, State0) ->
                     % Only update gossip time and source.
                     {_, State2} = pool_update(SourceAddr, Peer2, State),
                     State2;
-              {_, {ok, OtherPeer}} ->
+                {_, {ok, OtherPeer}} ->
                     epoch_sync:info("Peer ~p - ignoring peer address changed "
                                     "from ~s to ~s by ~s", [ppp(PeerId),
                                     format_address(OtherPeer),
                                     format_address(Peer),
                                     format_address(SourceAddr)]),
                     State;
-              {{ok, OtherPeerPubkey}, error} ->
+                {{ok, OtherPeerPubkey}, error} ->
                     epoch_sync:info("Peer ~p with address ~p - ignoring peer pubkey changed "
                                     "from ~s to ~s by ~s", [ppp(PeerId),
                                     format_address(Peer),
@@ -1538,7 +1538,7 @@ pool_delete(PeerId, State0) when is_binary(PeerId) ->
     {OldPoolName, _} = aec_peers_pool:peer_state(Pool, PeerId),
     Pool2 = aec_peers_pool:delete(Pool, PeerId),
     pool_log_changes(PeerId, OldPoolName, undefined),
-    State1 = State0#state{ pool = Pool2},
+    State1 = State0#state{pool = Pool2},
     case pool_find(PeerId, State0) of
         error -> State1;
         {ok, Peer} ->
