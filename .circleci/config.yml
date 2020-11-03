@@ -932,8 +932,6 @@ jobs:
   osx_package:
     macos:
       xcode: "10.1.0" # 10.1.0 is macOS 10.13.6
-    environment:
-      ERLANG_ROCKSDB_BUILDOPTS: "-j2"
     working_directory: ~/aeternity
     steps:
       - checkout
