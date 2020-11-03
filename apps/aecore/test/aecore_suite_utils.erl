@@ -275,6 +275,18 @@ delete_node_db_if_persisted({true, {ok, MnesiaDir}}) ->
     {false, _} = {filelib:is_file(MnesiaDir), MnesiaDir},
     ok.
 
+rpc_instant_tx_confirm_enabled(Node) ->
+    rpc:call(Node, aec_tx_pool, instant_tx_confirm_enabled, []).
+
+rpc_is_leader(Node) ->
+    rpc:call(Node, aec_conductor, is_leader, []).
+
+rpc_emit_kb(Node) ->
+    rpc:call(Node, aec_instant_mining_plugin, emit_kb, []).
+
+rpc_emit_mb(Node) ->
+    rpc:call(Node, aec_instant_mining_plugin, emit_mb, []).
+
 expected_mine_rate() ->
     ?DEFAULT_CUSTOM_EXPECTED_MINE_RATE.
 
@@ -300,25 +312,25 @@ mine_blocks(Node, NumBlocksToMine, MiningRate, Opts) ->
     mine_blocks(Node, NumBlocksToMine, MiningRate, any, Opts).
 
 mine_blocks(Node, NumBlocksToMine, MiningRate, Type, Opts) ->
-    case rpc:call(Node, aec_tx_pool, instant_tx_confirm_enabled, []) of
+    case rpc_instant_tx_confirm_enabled(Node) of
         true ->
-            case {rpc:call(Node, aec_conductor, is_leader, []), Type} of
+            case {rpc_is_leader(Node), Type} of
                 {_, any} ->
                     %% Some test might expect to mine a tx - interleave KB with MB
                     Pairs = NumBlocksToMine div 2,
                     Rem = NumBlocksToMine rem 2,
-                    P = [[ rpc:call(Node, aec_instant_mining_plugin, emit_kb, [])
-                         , rpc:call(Node, aec_instant_mining_plugin, emit_mb, [])
+                    P = [[ rpc_emit_kb(Node)
+                         , rpc_emit_mb(Node)
                          ] || _ <- lists:seq(1, Pairs)],
-                    R = [ rpc:call(Node, aec_instant_mining_plugin, emit_kb, []) || _ <- lists:seq(1, Rem)],
+                    R = [ rpc_emit_kb(Node) || _ <- lists:seq(1, Rem)],
                     {ok, lists:flatten([P,R])};
                 {_, key} ->
-                    {ok, [rpc:call(Node, aec_instant_mining_plugin, emit_kb, []) || _ <- lists:seq(1, NumBlocksToMine)]};
+                    {ok, [rpc_emit_kb(Node) || _ <- lists:seq(1, NumBlocksToMine)]};
                 {true, micro} ->
-                    {ok, [rpc:call(Node, aec_instant_mining_plugin, emit_mb, []) || _ <- lists:seq(1, NumBlocksToMine)]};
+                    {ok, [rpc_emit_mb(Node) || _ <- lists:seq(1, NumBlocksToMine)]};
                 {false, micro} ->
-                    rpc:call(Node, aec_instant_mining_plugin, emit_kb, []),
-                    {ok, [rpc:call(Node, aec_instant_mining_plugin, emit_mb, []) || _ <- lists:seq(1, NumBlocksToMine)]}
+                    rpc_emit_kb(Node),
+                    {ok, [rpc_emit_mb(Node) || _ <- lists:seq(1, NumBlocksToMine)]}
             end;
         false ->
             Fun = fun() ->
@@ -344,7 +356,7 @@ mine_blocks_until_txs_on_chain(Node, TxHashes, MiningRate, Max) ->
 mine_blocks_until_txs_on_chain(Node, TxHashes, MiningRate, Max, Opts) ->
     %% Fail early rather than having to wait until max_reached if txs already on-chain
     ok = assert_not_already_on_chain(Node, TxHashes),
-    case rpc:call(Node, aec_tx_pool, instant_tx_confirm_enabled, []) of
+    case rpc_instant_tx_confirm_enabled(Node) of
         true ->
             instant_mine_blocks_until_txs_on_chain(Node, TxHashes, Max, []);
         false ->
@@ -357,13 +369,13 @@ mine_blocks_until_txs_on_chain(Node, TxHashes, MiningRate, Max, Opts) ->
 instant_mine_blocks_until_txs_on_chain(_Node, _TxHashes, 0, _Blocks) ->
     {error, max_reached};
 instant_mine_blocks_until_txs_on_chain(Node, TxHashes, Max, Blocks) ->
-    case rpc:call(Node, aec_conductor, is_leader, []) of
+    case rpc_is_leader(Node) of
         false ->
-            KB = rpc:call(Node, aec_instant_mining_plugin, emit_kb, []),
+            KB = rpc_emit_kb(Node),
             instant_mine_blocks_until_txs_on_chain(Node, TxHashes, Max-1, [KB|Blocks]);
         true ->
-            MB = rpc:call(Node, aec_instant_mining_plugin, emit_mb, []),
-            KB = rpc:call(Node, aec_instant_mining_plugin, emit_kb, []),
+            MB = rpc_emit_mb(Node),
+            KB = rpc_emit_kb(Node),
             NewAcc = [KB|Blocks],
             case txs_not_in_microblock(MB, TxHashes) of
                 []        -> {ok, lists:reverse(NewAcc)};
@@ -372,10 +384,10 @@ instant_mine_blocks_until_txs_on_chain(Node, TxHashes, Max, Blocks) ->
     end.
 
 mine_micro_block_emptying_mempool_or_fail(Node) ->
-    case rpc:call(Node, aec_tx_pool, instant_tx_confirm_enabled, []) of
+    case rpc_instant_tx_confirm_enabled(Node) of
         true ->
-            KB = rpc:call(Node, aec_instant_mining_plugin, emit_kb, []),
-            MB = rpc:call(Node, aec_instant_mining_plugin, emit_mb, []),
+            KB = rpc_emit_kb(Node),
+            MB = rpc_emit_mb(Node),
             %% If instant mining is enabled then we can't have microforks :)
             {ok, []} = rpc:call(Node, aec_tx_pool, peek, [infinity]),
             {ok, [KB, MB]};
