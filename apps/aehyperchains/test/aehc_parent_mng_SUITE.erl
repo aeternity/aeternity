@@ -186,7 +186,7 @@ trackers_conf({Block, _} = GenesisState) ->
             <<"connector">> => #{
                 <<"module">> => ?SIM_CONNECTOR,
                 <<"args">> => #{
-                    <<"genesis_state_param">> => GenesisState
+                    <<"genesis_state">> => GenesisState
                 }
             },
             %% NOTE: Simulator operates via encoded hashes;

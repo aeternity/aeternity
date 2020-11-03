@@ -53,9 +53,8 @@ dry_send_tx(Delegate, Commitment, PoGF) ->
 init(Args) ->
     process_flag(trap_exit, true),
     true = aec_events:subscribe({parent_chain, top_changed}),
-    GenesisState = maps:get(<<"genesis_state_param">>, Args),
-    SimParam = aec_chain_sim:sim_type_param(#{}, parent_chain),
-    {ok, Pid} = aec_chain_sim:start(aec_chain_sim:genesis_state_param(SimParam, GenesisState)),
+    State = maps:get(<<"genesis_state">>, Args),
+    {ok, Pid} = aec_chain_sim:start(#{ sim_type => parent_chain, genesis_state => State }),
     lager:info("Parent chain's connector ~p is attached: ~p", [?MODULE, Pid]),
     {ok, #state{ pid = Pid }}.
 
