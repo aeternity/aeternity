@@ -300,7 +300,7 @@ test_duplicating_peer() ->
     ?assertEqual(true, TrustedPubKey =/= PubKey1),
     %% create a different peer with the same address and port
     Peer1 = peer(PubKey1, TrustedPeerAddress, TrustedPeerPort),
-%%    aec_peers:add_peers(Source, Peer1),
+    aec_peers:add_peers(Source, Peer1),
 
     ?assertEqual(1, aec_peers:count(connections)),
     ?assertEqual(0, aec_peers:count(inbound)),
@@ -316,7 +316,7 @@ test_duplicating_peer() ->
     ?assertMatch([#{ pubkey := TrustedPubKey }], aec_peers:get_random(all)),
     ?assertMatch({ok, Conn}, aec_peers:get_connection(TrustedId)),
 
-%%    aec_peers:add_peers(Source, Peer1),
+    aec_peers:add_peers(Source, Peer1),
 
     ?assertMatch([#{ pubkey := TrustedPubKey }], aec_peers:connected_peers()),
     ?assertMatch([#{ pubkey := TrustedPubKey }], aec_peers:get_random(all)),
