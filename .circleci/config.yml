@@ -132,22 +132,22 @@ references:
     restore_cache:
       key: *rebar_cache_key
 
-  build_otp21_cache_key: &build_otp21_cache_key build-otp21-cache-v5-{{ .Revision }}
+  build_otp21_cache_key: &build_otp21_cache_key build-otp21-cache-v6-{{ .Revision }}
   restore_build_otp21_cache: &restore_build_otp21_cache
     restore_cache:
       key: *build_otp21_cache_key
 
-  build_otp22_cache_key: &build_otp22_cache_key build-otp22-cache-v2-{{ .Revision }}
+  build_otp22_cache_key: &build_otp22_cache_key build-otp22-cache-v3-{{ .Revision }}
   restore_build_otp22_cache: &restore_build_otp22_cache
     restore_cache:
       key: *build_otp22_cache_key
 
-  build_otp23_cache_key: &build_otp23_cache_key build-otp23-cache-v1-{{ .Revision }}
+  build_otp23_cache_key: &build_otp23_cache_key build-otp23-cache-v2-{{ .Revision }}
   restore_build_otp23_cache: &restore_build_otp23_cache
     restore_cache:
       key: *build_otp23_cache_key
 
-  build_nix_cache_key: &build_nix_cache_key build-nix-cache-v1-{{ .Revision }}
+  build_nix_cache_key: &build_nix_cache_key build-nix-cache-v2-{{ .Revision }}
   restore_build_nix_cache: &restore_build_nix_cache
     restore_cache:
       key: *build_nix_cache_key
@@ -365,7 +365,17 @@ references:
         dmesg > ${SYSTEM_TEST_HOST_LOGS_DIR:?}/dmesg.log
       when: always
 
-  test_steps: &test_steps
+  trim_test_artifacts: &trim_test_artifacts
+      run:
+        name: trim down artifacts
+        command: |
+          find _build/test/logs -iname bin | xargs rm -rf
+          find _build/test/logs -iname data | xargs rm -rf
+          find _build/test/logs -iname releases | xargs rm -rf
+          find _build/test/logs -iname extensions | xargs rm -rf
+          find _build/test/logs -iname hooks | xargs rm -rf
+
+  test_steps_otp21: &test_steps_otp21
     - checkout
     - *restore_rebar_cache
     - *restore_build_otp21_cache
@@ -383,15 +393,76 @@ references:
           mv _build/test/logs/junit.xml _build/test/reports/
     - store_test_results:
         path: _build/test/reports
+    - *trim_test_artifacts
     - store_artifacts:
         path: _build/test/logs
     - *store_rebar3_crashdump
     - *fail_notification
 
-  eunit_steps: &eunit_steps
+  test_steps_otp22: &test_steps_otp22
+    - checkout
+    - *restore_rebar_cache
+    - *restore_build_otp22_cache
+    - run:
+        name: Test
+        command: |
+          epmd -daemon
+          make ${MAKE_TARGET:?} CT_TEST_FLAGS="--suite=$(.circleci/split_suites.sh)"
+    # Isolates the junit.xml report because additional files in _build/test/logs
+    # are somehow causing issue with xunit report upload, parsing and merging
+    - run:
+        name: move test report
+        command: |
+          mkdir _build/test/reports
+          mv _build/test/logs/junit.xml _build/test/reports/
+    - store_test_results:
+        path: _build/test/reports
+    - *trim_test_artifacts
+    - store_artifacts:
+        path: _build/test/logs
+    - *store_rebar3_crashdump
+    - *fail_notification
+
+  test_steps_otp23: &test_steps_otp23
+    - checkout
+    - *restore_rebar_cache
+    - *restore_build_otp23_cache
+    - run:
+        name: Test
+        command: |
+          epmd -daemon
+          make ${MAKE_TARGET:?} CT_TEST_FLAGS="--suite=$(.circleci/split_suites.sh)"
+    # Isolates the junit.xml report because additional files in _build/test/logs
+    # are somehow causing issue with xunit report upload, parsing and merging
+    - run:
+        name: move test report
+        command: |
+          mkdir _build/test/reports
+          mv _build/test/logs/junit.xml _build/test/reports/
+    - store_test_results:
+        path: _build/test/reports
+    - *trim_test_artifacts
+    - store_artifacts:
+        path: _build/test/logs
+    - *store_rebar3_crashdump
+    - *fail_notification
+
+  eunit_steps_otp21: &eunit_steps_otp21
     - checkout
     - *restore_rebar_cache
     - *restore_build_otp21_cache
+    - run:
+        name: Test
+        command: |
+          epmd -daemon
+          make ${MAKE_TARGET:?}
+    - *store_rebar3_crashdump
+    - *fail_notification
+
+  eunit_steps_otp22: &eunit_steps_otp22
+    - checkout
+    - *restore_rebar_cache
+    - *restore_build_otp22_cache
     - run:
         name: Test
         command: |
@@ -660,7 +731,7 @@ jobs:
       - *restore_rebar_cache
       - run:
           name: Build
-          command: make KIND=test
+          command: make test-build
       - save_cache:
           key: *build_otp21_cache_key
           paths:
@@ -679,7 +750,7 @@ jobs:
       - *restore_rebar_cache
       - run:
           name: Build
-          command: make KIND=test
+          command: make test-build
       - save_cache:
           key: *build_otp23_cache_key
           paths:
@@ -696,6 +767,7 @@ jobs:
     steps:
       - checkout
       - *restore_rebar_cache
+      - *restore_build_nix_cache
       - run:
           name: Build
           command: nix-shell -j auto --run "make KIND=test"
@@ -715,35 +787,35 @@ jobs:
     parallelism: 3
     environment:
       - MAKE_TARGET: ct-roma
-    steps: *test_steps
+    steps: *test_steps_otp22
 
   test_minerva:
     executor: builder_container_otp22
     parallelism: 3
     environment:
       - MAKE_TARGET: ct-minerva
-    steps: *test_steps
+    steps: *test_steps_otp22
 
   test_fortuna:
     executor: builder_container_otp22
     parallelism: 3
     environment:
       - MAKE_TARGET: ct-fortuna
-    steps: *test_steps
+    steps: *test_steps_otp22
 
   test_lima:
     executor: builder_container_otp22
     parallelism: 3
     environment:
       - MAKE_TARGET: ct-lima
-    steps: *test_steps
+    steps: *test_steps_otp22
 
   test_latest:
     executor: builder_container_otp22
     parallelism: 3
     environment:
       - MAKE_TARGET: ct-latest
-    steps: *test_steps
+    steps: *test_steps_otp22
 
   # Sanity check whether the latest aesophia compiler works
   test_latest_with_aesophia_compiler:
@@ -751,65 +823,65 @@ jobs:
     parallelism: 1
     environment:
       - MAKE_TARGET: ct-latest-no-aci
-    steps: *test_steps
+    steps: *test_steps_otp22
 
   test_latest_otp21:
     executor: builder_container_otp21
     parallelism: 3
     environment:
       - MAKE_TARGET: ct-latest
-    steps: *test_steps
+    steps: *test_steps_otp21
 
   test_latest_otp23:
     executor: builder_container_otp23
     parallelism: 3
     environment:
       - MAKE_TARGET: ct-latest
-    steps: *test_steps
+    steps: *test_steps_otp23
 
   test_mnesia_leveled:
     executor: builder_container_otp22
     parallelism: 3
     environment:
       - MAKE_TARGET: ct-mnesia-leveled
-    steps: *test_steps
+    steps: *test_steps_otp22
 
   test_mnesia_rocksdb:
     executor: builder_container_otp22
     parallelism: 3
     environment:
       - MAKE_TARGET: ct-mnesia-rocksdb
-    steps: *test_steps
+    steps: *test_steps_otp22
 
   eunit_roma:
     executor: builder_container_otp22
     environment:
       - MAKE_TARGET: eunit-roma
-    steps: *eunit_steps
+    steps: *eunit_steps_otp22
 
   eunit_minerva:
     executor: builder_container_otp22
     environment:
       - MAKE_TARGET: eunit-minerva
-    steps: *eunit_steps
+    steps: *eunit_steps_otp22
 
   eunit_fortuna:
     executor: builder_container_otp22
     environment:
       - MAKE_TARGET: eunit-fortuna
-    steps: *eunit_steps
+    steps: *eunit_steps_otp22
 
   eunit_lima:
     executor: builder_container_otp22
     environment:
       - MAKE_TARGET: eunit-lima
-    steps: *eunit_steps
+    steps: *eunit_steps_otp22
 
   eunit_latest:
     executor: builder_container_otp22
     environment:
       - MAKE_TARGET: eunit-latest
-    steps: *eunit_steps
+    steps: *eunit_steps_otp22
 
   aevm_tests:
     executor: builder_container_otp22
@@ -1046,6 +1118,7 @@ jobs:
       - *install_os_deps
       - *install_otp
       - *install_libsodium
+      - *restore_rebar_cache
       - *restore_machine_build_cache
       - *prepare_ubuntu_user
       - *install_system_test_deps

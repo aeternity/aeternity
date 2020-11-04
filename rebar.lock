@@ -26,7 +26,7 @@
   0},
  {<<"aestratum_lib">>,
   {git,"https://github.com/aeternity/aestratum_lib.git",
-      {ref,"96ffd9a36fab0d65640e87000e8466458276b8f3"}},
+      {ref,"a0432722a990da2b9d8bbf3cb29a345d97f18d16"}},
   0},
  {<<"base58">>,
   {git,"https://github.com/aeternity/erl-base58.git",

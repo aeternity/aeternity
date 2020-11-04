@@ -105,8 +105,18 @@ console: $(SWAGGER_ENDPOINTS_SPEC)
 	@$(REBAR) as local shell --config config/dev.config --sname aeternity@localhost
 
 test-build: KIND=test
-test-build: internal-build
-	cd _build/$(KIND)/lib/aestratum_client && ../../../../$(REBAR) as test release
+test-build: internal-build aestratum_client_build
+
+AESTRATUM_CLIENT_DIR = _build/$(KIND)/lib/aestratum_client
+aestratum_client_build:
+	touch $(AESTRATUM_CLIENT_DIR)/.build_lock
+	cd $(AESTRATUM_CLIENT_DIR); \
+	if ! cmp .git/HEAD .build_lock; then \
+	  	mkdir -p _build/default; \
+	  	rm -rf _build/default; \
+		../../../../$(REBAR) as test release; \
+		cp .git/HEAD .build_lock; \
+	fi
 
 local-build: KIND=local
 local-build: internal-build
