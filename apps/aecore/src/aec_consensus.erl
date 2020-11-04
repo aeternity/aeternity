@@ -55,14 +55,30 @@
 -module(aec_consensus).
 
 %% API
--export([]).
+-export([ get_consensus_module_at_height/1
+        , get_consensus_config_at_height/1
+        , get_genesis_consensus_module/0
+        , get_genesis_consensus_config/0
+        ]).
 
+%% Global config
+%% Height => {ConsensusName, ConsensusConfiguration}
+-type consensus_module() :: atom().
+-type consensus_config() :: #{binary() => term()}.
+-type global_consensus_config() :: [{non_neg_integer(), {consensus_module(), consensus_config()}}].
+
+%% Block sealing
 -type key_seal() :: [integer()].
 -type key_target() :: integer().
 -type key_difficulty() :: integer().
 -type key_nonce() :: integer().
 
--export_type([key_seal/0, key_target/0, key_difficulty/0, key_nonce/0]).
+-export_type([ key_seal/0
+             , key_target/0
+             , key_difficulty/0
+             , key_nonce/0
+             , consensus_module/0
+             , consensus_config/0 ]).
 
 %% -------------------------------------------------------------------
 %% Global consensus features
@@ -153,3 +169,86 @@
 -callback key_header_difficulty(aec_headers:key_header()) -> key_difficulty().
 
 -optional_callbacks([stop/0, extra_http_endpoints/0]).
+
+%% Consensus configuration
+
+-spec calc_consensus() -> global_consensus_config().
+calc_consensus() ->
+    NetworkId = aec_governance:get_network_id(),
+    lists:keysort(1, consensus_from_network_id(NetworkId)).
+
+-spec set_consensus() -> ok.
+set_consensus() ->
+    persistent_term:put({?MODULE, consensus}, calc_consensus()).
+
+-spec get_consensus() -> global_consensus_config().
+get_consensus() ->
+    case persistent_term:get({?MODULE, consensus}, error) of
+        error ->
+            set_consensus(),
+            get_consensus();
+        Consensus ->
+            Consensus
+    end.
+
+get_consensus_spec_at_height(Height) ->
+    [{0,H}|R] = get_consensus(),
+    consensus_at_height(H, R, Height).
+
+%% This is a placeholder for later - the idea is that if at some point
+%% the network decides to change the configuration variables which are
+%% under consensus - for instance the micro block time then it should be easy to do so
+%% without introducing a new "protocol" or hiring erlang devs
+%% TODO: Gradually move away from aec_governance and rely on the consensus module and this configuration
+-spec get_consensus_config_at_height(non_neg_integer()) -> consensus_config().
+get_consensus_config_at_height(Height) ->
+    {_, Config} = get_consensus_spec_at_height(Height),
+    Config.
+
+-spec get_consensus_module_at_height(non_neg_integer()) -> consensus_module().
+get_consensus_module_at_height(Height) ->
+    {Module, _} = get_consensus_spec_at_height(Height),
+    Module.
+
+-spec get_genesis_consensus_module() -> consensus_module().
+get_genesis_consensus_module() ->
+    get_consensus_module_at_height(0).
+
+-spec get_genesis_consensus_config() -> consensus_config().
+get_genesis_consensus_config() ->
+    get_consensus_config_at_height(0).
+
+-spec consensus_at_height({consensus_module(), consensus_config()}, global_consensus_config(), non_neg_integer()) -> {consensus_module(), consensus_config()}.
+consensus_at_height(R, [], _) -> R;
+consensus_at_height(R, [{H1,_}|_], H2) when H1>H2 -> R;
+consensus_at_height(_, [{_,R}|T], H) -> consensus_at_height(R, T, H).
+
+-spec consensus_from_network_id(binary()) -> global_consensus_config().
+consensus_from_network_id(<<"ae_mainnet">>) ->
+    [{0, {aec_consensus_bitcoin_ng, #{}}}];
+consensus_from_network_id(<<"ae_uat">>) ->
+    [{0, {aec_consensus_bitcoin_ng, #{}}}];
+consensus_from_network_id(<<"local_roma_testnet">>) ->
+    [{0, {aec_consensus_bitcoin_ng, #{}}}];
+consensus_from_network_id(<<"local_minerva_testnet">>) ->
+    [{0, {aec_consensus_bitcoin_ng, #{}}}];
+consensus_from_network_id(<<"local_fortuna_testnet">>) ->
+    [{0, {aec_consensus_bitcoin_ng, #{}}}];
+consensus_from_network_id(<<"local_iris_testnet">>) ->
+    [{0, {aec_consensus_bitcoin_ng, #{}}}];
+consensus_from_network_id(_) ->
+    case aeu_env:user_map_or_env([<<"chain">>, <<"consensus">>], aecore, consensus, undefined) of
+        undefined ->
+            [{0, {aec_consensus_bitcoin_ng, #{}}}];
+        M when is_map(M) ->
+            Conf = maps:fold(fun(H, #{<<"name">> := ConsensusName} = V, Acc) ->
+                              ConsensusConfig = maps:get(<<"config">>, V, #{}),
+                              Acc#{binary_to_integer(H) => {consensus_module_from_name(ConsensusName), ConsensusConfig}}
+                      end, #{}, M),
+            maps:to_list(Conf)
+    end.
+
+%% Don't crash here as config validation is performed during node startup in the consensus module
+-spec consensus_module_from_name(binary()) -> consensus_module().
+consensus_module_from_name(<<"pow_cuckoo">>) -> aec_consensus_bitcoin_ng;
+consensus_module_from_name(_) -> undefined.

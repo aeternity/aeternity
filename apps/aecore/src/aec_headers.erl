@@ -146,10 +146,11 @@
         ]).
 
 raw_key_header() ->
+    Module = aec_consensus:get_genesis_consensus_module(),
     populate_extra(
       #key_header{ root_hash = <<0:32/unit:8>>
                  , version = aec_hard_forks:protocol_effective_at_height(0)
-                 , target  = aec_consensus_bitcoin_ng:default_target() }
+                 , target  = Module:default_target() }
                %%, target  = aec_consensus:default_target_at_height(0) }
     ).
 
@@ -861,7 +862,7 @@ strip_extra(Header) ->
 
 populate_extra(Header1) ->
     Height = height(Header1),
-    Consensus = aec_consensus_bitcoin_ng, %% TODO: derive module from height
+    Consensus = aec_consensus:get_consensus_module_at_height(Height),
     [Consensus:assert_key_target_range(Header1#key_header.target) || aec_headers:type(Header1) =:= key],
     Header2 = set_extra(Header1, Consensus:extra_from_header(Header1)),
     Consensus = consensus_module(Header2),

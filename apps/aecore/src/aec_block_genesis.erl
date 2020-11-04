@@ -76,7 +76,8 @@ version() -> ?GENESIS_VERSION.
 time_in_msecs() -> ?GENESIS_TIME.
 
 target() ->
-   aec_consensus_bitcoin_ng:genesis_target().
+    Module = aec_consensus:get_genesis_consensus_module(),
+    Module:genesis_target().
 
 %% Returns the genesis block and the state trees.
 %%

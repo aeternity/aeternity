@@ -469,11 +469,12 @@ fake_key_node(PrevNode, Height, Miner, Beneficiary, Protocol) ->
                       key   -> hash(PrevNode);
                       micro -> prev_key_hash(PrevNode)
                   end,
+    Module = aec_consensus:get_consensus_module_at_height(Height),
     Block = aec_blocks:new_key(Height,
                                hash(PrevNode),
                                PrevKeyHash,
                                <<123:?STATE_HASH_BYTES/unit:8>>,
-                               aec_consensus_bitcoin_ng:default_target(),
+                               Module:default_target(),
                                0, aeu_time:now_in_msecs(),
                                default,
                                Protocol,
