@@ -67,7 +67,7 @@ init_per_group(VM, Config) when VM == aevm; VM == fate ->
 init_per_group(dry_run, Config) ->
     NodeName = aecore_suite_utils:node_name(?NODE),
     aecore_suite_utils:start_node(?NODE, Config),
-    aecore_suite_utils:connect(NodeName),
+    aecore_suite_utils:connect(NodeName, [block_pow, instant_tx_confirm]),
 
     ToMine = max(0, aecore_suite_utils:latest_fork_height()),
     ct:pal("ToMine ~p\n", [ToMine]),

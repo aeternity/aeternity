@@ -22,7 +22,7 @@ get_module(_Tag, _Default) ->
 -else.
 
 tags() ->
-    [aec_headers].
+    [aec_tx_pool].
 
 register(Map) when is_map(Map) ->
     case valid_registry(Map) of

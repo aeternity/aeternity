@@ -798,26 +798,26 @@ start_node(Group, Config) ->
     start_node(proplists:is_defined(node, Config), Group, Config).
 
 start_node(true, _Group, Config) ->
-    aecore_suite_utils:start_mock(aecore_suite_utils:node_name(?NODE), block_pow),
+    aecore_suite_utils:start_mocks(aecore_suite_utils:node_name(?NODE), [block_pow, instant_tx_confirm]),
     Config;
 start_node(false, Group, Config) ->
     %% TODO: consider reinint_chain to speed up tests
     aecore_suite_utils:start_node(?NODE, Config),
     Node = aecore_suite_utils:node_name(?NODE),
-    aecore_suite_utils:connect(Node, [block_pow]),
+    aecore_suite_utils:connect(Node, [block_pow, instant_tx_confirm]),
     [{node, Node}, {node_start_group, Group} | Config].
 
 start_node_no_mock(Group, Config) ->
     start_node_no_mock(proplists:is_defined(node, Config), Group, Config).
 
 start_node_no_mock(true, _Group, Config) ->
-    aecore_suite_utils:end_mock(aecore_suite_utils:node_name(?NODE), block_pow),
+    aecore_suite_utils:end_mocks(aecore_suite_utils:node_name(?NODE), [block_pow, instant_tx_confirm]),
     Config;
 start_node_no_mock(false, Group, Config) ->
     %% TODO: consider reinint_chain to speed up tests
     aecore_suite_utils:start_node(?NODE, Config),
     Node = aecore_suite_utils:node_name(?NODE),
-    aecore_suite_utils:connect(Node, [block_pow]),
+    aecore_suite_utils:connect(Node, [block_pow, instant_tx_confirm]),
     [{node, Node}, {node_start_group, Group} | Config].
 
 stop_node(Group, Config) ->
