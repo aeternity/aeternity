@@ -114,7 +114,6 @@ aestratum_client_build:
 	if ! cmp .git/HEAD .build_lock; then \
 	  	mkdir -p _build/default; \
 	  	rm -rf _build/default; \
-  		cp -r ../../../default _build/default; \
 		../../../../$(REBAR) as test release; \
 		cp .git/HEAD .build_lock; \
 	fi

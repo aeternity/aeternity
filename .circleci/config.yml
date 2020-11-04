@@ -718,7 +718,7 @@ jobs:
       - *restore_rebar_cache
       - run:
           name: Build
-          command: make KIND=test
+          command: make test-build
       - save_cache:
           key: *build_otp21_cache_key
           paths:
@@ -737,7 +737,7 @@ jobs:
       - *restore_rebar_cache
       - run:
           name: Build
-          command: make KIND=test
+          command: make test-build
       - save_cache:
           key: *build_otp23_cache_key
           paths:
