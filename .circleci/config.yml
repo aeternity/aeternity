@@ -365,6 +365,16 @@ references:
         dmesg > ${SYSTEM_TEST_HOST_LOGS_DIR:?}/dmesg.log
       when: always
 
+  trim_test_artifacts: &trim_test_artifacts
+      run:
+        name: trim down artifacts
+        command: |
+          find _build/test/logs -iname bin | xargs rm -rf
+          find _build/test/logs -iname data | xargs rm -rf
+          find _build/test/logs -iname releases | xargs rm -rf
+          find _build/test/logs -iname extensions | xargs rm -rf
+          find _build/test/logs -iname hooks | xargs rm -rf
+
   test_steps_otp21: &test_steps_otp21
     - checkout
     - *restore_rebar_cache
@@ -383,6 +393,7 @@ references:
           mv _build/test/logs/junit.xml _build/test/reports/
     - store_test_results:
         path: _build/test/reports
+    - *trim_test_artifacts
     - store_artifacts:
         path: _build/test/logs
     - *store_rebar3_crashdump
@@ -406,6 +417,7 @@ references:
           mv _build/test/logs/junit.xml _build/test/reports/
     - store_test_results:
         path: _build/test/reports
+    - *trim_test_artifacts
     - store_artifacts:
         path: _build/test/logs
     - *store_rebar3_crashdump
@@ -429,6 +441,7 @@ references:
           mv _build/test/logs/junit.xml _build/test/reports/
     - store_test_results:
         path: _build/test/reports
+    - *trim_test_artifacts
     - store_artifacts:
         path: _build/test/logs
     - *store_rebar3_crashdump
