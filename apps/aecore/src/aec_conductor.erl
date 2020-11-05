@@ -707,45 +707,40 @@ deregister_miner_instance(Pid, #state{miner_instances = MinerInstances0} = State
 %%%===================================================================
 %%% Preemption of workers if the top of the chain changes.
 
-preempt_if_new_top(#state{ top_block_hash = OldHash,
-                           top_key_block_hash = OldKeyHash } = State, Origin) ->
-    case aec_chain:top_block_hash() of
-        OldHash -> no_change;
-        NewHash ->
-            {ok, NewBlock} = aec_chain:get_block(NewHash),
-            BlockType = aec_blocks:type(NewBlock),
-            ok = aec_tx_pool:top_change(BlockType, OldHash, NewHash),
+preempt_on_new_top(#state{ top_block_hash = OldHash,
+                           top_key_block_hash = OldKeyHash } = State, NewBlock, NewHash, Origin) ->
+    BlockType = aec_blocks:type(NewBlock),
+    PrevNewHash = aec_blocks:prev_hash(NewBlock),
+    aec_tx_pool:top_change(BlockType, OldHash, NewHash, PrevNewHash),
+    Hdr = aec_blocks:to_header(NewBlock),
+    Height = aec_headers:height(Hdr),
+    aec_events:publish(top_changed, #{ block_hash => NewHash
+                                     , block_type => BlockType
+                                     , prev_hash  => aec_headers:prev_hash(Hdr)
+                                     , height     => Height }),
+    maybe_publish_top(Origin, NewBlock),
+    aec_metrics:try_update([ae,epoch,aecore,chain,height], Height),
+    State1 = State#state{top_block_hash = NewHash},
+    KeyHash = aec_blocks:prev_key_hash(NewBlock),
+    %% A new micro block from the same generation should
+    %% not cause a pre-emption or full re-generation of key-block.
+    case BlockType of
+        micro when OldKeyHash =:= KeyHash ->
+            {micro_changed, State1};
+        KeyOrNewForkMicro ->
+            State2 = kill_all_workers_with_tag(mining, State1),
+            State3 = kill_all_workers_with_tag(create_key_block_candidate, State2),
+            State4 = kill_all_workers_with_tag(micro_sleep, State3), %% in case we are the leader
+            NewTopKey = case KeyOrNewForkMicro of
+                            micro -> KeyHash;
+                            key   -> NewHash
+                        end,
+            State5 = State4#state{ top_key_block_hash = NewTopKey,
+                                   key_block_candidates = undefined },
 
-            Hdr = aec_blocks:to_header(NewBlock),
-            Height = aec_headers:height(Hdr),
-            aec_events:publish(top_changed, #{ block_hash => NewHash
-                                             , block_type => BlockType
-                                             , prev_hash  => aec_headers:prev_hash(Hdr)
-                                             , height     => Height }),
-            maybe_publish_top(Origin, NewBlock),
-            aec_metrics:try_update([ae,epoch,aecore,chain,height], Height),
-            State1 = State#state{top_block_hash = NewHash},
-            KeyHash = aec_blocks:prev_key_hash(NewBlock),
-            %% A new micro block from the same generation should
-            %% not cause a pre-emption or full re-generation of key-block.
-            case BlockType of
-                micro when OldKeyHash =:= KeyHash ->
-                    {micro_changed, State1};
-                KeyOrNewForkMicro ->
-                    State2 = kill_all_workers_with_tag(mining, State1),
-                    State3 = kill_all_workers_with_tag(create_key_block_candidate, State2),
-                    State4 = kill_all_workers_with_tag(micro_sleep, State3), %% in case we are the leader
-                    NewTopKey = case KeyOrNewForkMicro of
-                                    micro -> KeyHash;
-                                    key   -> NewHash
-                                end,
-                    State5 = State4#state{ top_key_block_hash = NewTopKey,
-                                           key_block_candidates = undefined },
+            [ aec_keys:promote_candidate(aec_blocks:miner(NewBlock)) || KeyOrNewForkMicro == key ],
 
-                    [ aec_keys:promote_candidate(aec_blocks:miner(NewBlock)) || KeyOrNewForkMicro == key ],
-
-                    {changed, KeyOrNewForkMicro, NewBlock, create_key_block_candidate(State5)}
-            end
+            {changed, KeyOrNewForkMicro, NewBlock, create_key_block_candidate(State5)}
     end.
 
 %% GH3283: If we start storing more kinds of tx_events - we have to expand this
@@ -1112,13 +1107,13 @@ handle_add_block(Block, Hash, Prev, #state{top_block_hash = TopBlockHash} = Stat
     %% Block validation is performed in the caller's context for
     %% external (gossip/sync) blocks and we trust the ones we
     %% produce ourselves.
-    case aec_chain_state:insert_block(Block, Origin) of
-        {ok, Events}  ->
-            handle_successfully_added_block(Block, Hash, Events, State, Origin);
-        {pof,_PoF,Events} ->
+    case aec_chain_state:insert_block_conductor(Block, Origin) of
+        {ok, TopChanged, PrevKeyHeader, Events}  ->
+            handle_successfully_added_block(Block, Hash, TopChanged, PrevKeyHeader, Events, State, Origin);
+        {pof, TopChanged, PrevKeyHeader, _PoF, Events} ->
             %% TODO: should we really publish tx_events in this case?
             lager:info("PoF found in ~p", [Hash]),
-            handle_successfully_added_block(Block, Hash, Events, State, Origin);
+            handle_successfully_added_block(Block, Hash, TopChanged, PrevKeyHeader, Events, State, Origin);
         {error, already_in_db} ->
             epoch_mining:debug("Block (~p) already in chain when top is (~p) [conductor]",
                                [Hash, TopBlockHash]),
@@ -1134,16 +1129,18 @@ handle_add_block(Block, Hash, Prev, #state{top_block_hash = TopBlockHash} = Stat
             {{error, Reason}, State}
     end.
 
-handle_successfully_added_block(Block, Hash, Events, State, Origin) ->
+handle_successfully_added_block(Block, Hash, false, _, Events, State, Origin) ->
     maybe_publish_tx_events(Events, Hash, Origin),
     maybe_publish_block(Origin, Block),
-    case preempt_if_new_top(State, Origin) of
-        no_change ->
-            {ok, State};
+    {ok, State};
+handle_successfully_added_block(Block, Hash, true, PrevKeyHeader, Events, State, Origin) ->
+    maybe_publish_tx_events(Events, Hash, Origin),
+    maybe_publish_block(Origin, Block),
+    case preempt_on_new_top(State, Block, Hash, Origin) of
         {micro_changed, State2 = #state{ consensus = Cons }} ->
             {ok, setup_loop(State2, false, Cons#consensus.leader, Origin)};
         {changed, BlockType, NewTopBlock, State2} ->
-            IsLeader = is_leader(NewTopBlock),
+            IsLeader = is_leader(NewTopBlock, PrevKeyHeader),
             case IsLeader of
                 true ->
                     ok; %% Don't spend time when we are the leader.
@@ -1154,17 +1151,13 @@ handle_successfully_added_block(Block, Hash, Events, State, Origin) ->
             {ok, setup_loop(State2, true, IsLeader, Origin)}
     end.
 
-
-%% NG-TODO: This is pretty inefficient and can be helped with some info
-%%          in the state.
-is_leader(NewTopBlock) ->
+is_leader(NewTopBlock, PrevKeyHeader) ->
     LeaderKey =
         case aec_blocks:type(NewTopBlock) of
-            key   -> aec_blocks:miner(NewTopBlock);
+            key   ->
+                aec_blocks:miner(NewTopBlock);
             micro ->
-                KeyHash = aec_blocks:prev_key_hash(NewTopBlock),
-                {ok, Block} = aec_chain:get_block(KeyHash),
-                aec_blocks:miner(Block)
+                aec_headers:miner(PrevKeyHeader)
         end,
     case aec_keys:pubkey() of
         {ok, MinerKey} -> LeaderKey =:= MinerKey;

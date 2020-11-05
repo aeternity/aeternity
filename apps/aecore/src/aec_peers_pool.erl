@@ -642,7 +642,7 @@ select(St, Now, PeerId) ->
 %%
 %% This means that the peer couldn't be contacted and shouldn't be selected
 %% again before some time has passed. The time the peer will stay on standby
-%% depends on the number of time it got rejected.
+%% depends on the number of times it got rejected.
 %%
 %% If the peer is verified, it is downgraded to the unverified pool; if it is
 %% unverified - the rejection counter is increased; if an unverified peer

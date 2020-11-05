@@ -30,19 +30,15 @@
              , db_spec/0
              ]).
 
--record(db, { handle :: handle()
+-record(db, { module :: atom()
+            , handle :: handle()
             , cache  :: cache()
-            , drop_cache :: drop_cache_mf()
-            , get    :: get_mf()
-            , put    :: put_mf()
             }).
 
 -opaque db() :: #db{}.
 
--type db_spec() :: #{ 'get'    := get_mf()
-                    , 'put'    := put_mf()
+-type db_spec() :: #{ 'module' := atom()
                     , 'cache'  := cache()
-                    , 'drop_cache' := drop_cache_mf()
                     , 'handle' := handle()
                     }.
 
@@ -51,16 +47,9 @@
 -type key()    :: aeu_mp_trees:key().
 -type value()  :: aeu_mp_trees:value().
 
-%% TODO: This should be a behavior
-
-%% fun((key(), cache()|handle()) -> {'value', term()} | 'none').
--type get_mf() :: {module(), atom()}.
-
-%% fun((key(), value(), cache()) -> cache()).
--type put_mf() :: {module(), atom()}.
-
-%% fun((cache()) -> cache()).
--type drop_cache_mf() :: {module(), atom()}.
+-callback mpt_db_get(key(), cache() | handle()) -> {'value', term()} | 'none'.
+-callback mpt_db_put(key(), value(), cache() | handle()) -> cache() | handle().
+-callback mpt_db_drop_cache(cache()) -> cache().
 
 %% ==================================================================
 %% Trace support
@@ -73,32 +62,14 @@ record_fields(_ ) -> no.
 %%%===================================================================
 
 -spec new(db_spec()) -> db().
-new(#{ 'get'    := GetMF
-     , 'put'    := PutMF
+new(#{ 'module' := Module
      , 'cache'  := Cache
-     , 'drop_cache' := DropCacheMF
      , 'handle' := Handle
      }) ->
-    validate_exported(put, PutMF, 3),
-    validate_exported(get, GetMF, 2),
-    validate_exported(drop_cache, DropCacheMF, 1),
-    #db{ get    = GetMF
-       , put    = PutMF
+    #db{ module = Module
        , cache  = Cache
-       , drop_cache = DropCacheMF
        , handle = Handle
        }.
-
-validate_exported(Type, {M, F}, A) when is_atom(M), is_atom(F) ->
-    try lists:member({F, A}, M:module_info(exports)) of
-        true -> ok;
-        false -> error({invalid, Type, {M, F, A}})
-    catch _:_ ->
-            error({invalid, Type, {M, F, A}})
-    end;
-validate_exported(Type, Other,_A) ->
-    error({invalid, Type, Other}).
-
 
 -spec get(key(), db()) -> {'value', value()} | 'none'.
 get(Key, DB) ->
@@ -142,22 +113,21 @@ get_handle(#db{handle = Handle}) ->
 %%% Cache
 %%%===================================================================
 
-int_cache_get(Key, #db{cache = Cache, get = {M, F}}) ->
-    M:F(Key, Cache).
+int_cache_get(Key, #db{cache = Cache, module = M}) ->
+    M:mpt_db_get(Key, Cache).
 
-int_cache_put(Key, Val, #db{cache = Cache, put = {M, F}} = DB) ->
-    DB#db{cache = M:F(Key, Val, Cache)}.
+int_cache_put(Key, Val, #db{cache = Cache, module = M} = DB) ->
+    DB#db{cache = M:mpt_db_put(Key, Val, Cache)}.
 
-int_drop_cache(#db{drop_cache = {M, F}, cache = Cache} = DB) ->
-    DB#db{cache = M:F(Cache)}.
+int_drop_cache(#db{cache = Cache, module = M} = DB) ->
+    DB#db{cache = M:mpt_db_drop_cache(Cache)}.
 
 %%%===================================================================
 %%% DB
 %%%===================================================================
 
-int_db_get(Key, #db{handle = Handle, get = {M, F}}) ->
-    M:F(Key, Handle).
+int_db_get(Key, #db{handle = Handle, module = M}) ->
+    M:mpt_db_get(Key, Handle).
 
-int_db_put(Key, Val, #db{handle = Handle, put = {M, F}} = DB) ->
-    DB#db{handle = M:F(Key, Val, Handle)}.
-
+int_db_put(Key, Val, #db{handle = Handle, module = M} = DB) ->
+    DB#db{handle = M:mpt_db_put(Key, Val, Handle)}.

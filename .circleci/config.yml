@@ -17,6 +17,8 @@ executors:
     working_directory: ~/aeternity
     environment:
       OTP_VERSION: 21.3.8.17
+      ERLANG_ROCKSDB_BUILDOPTS: "-j2"
+      ERLANG_ROCKSDB_OPTS: "-DWITH_SYSTEM_ROCKSDB=ON -DWITH_SNAPPY=ON -DWITH_LZ4=ON -DWITH_BZ2=ON -DWITH_ZSTD=ON"
   builder_container_otp22:
     docker:
       - image: aeternity/builder:otp22
@@ -24,6 +26,8 @@ executors:
     working_directory: ~/aeternity
     environment:
       OTP_VERSION: 22.3.4.9
+      ERLANG_ROCKSDB_BUILDOPTS: "-j2"
+      ERLANG_ROCKSDB_OPTS: "-DWITH_SYSTEM_ROCKSDB=ON -DWITH_SNAPPY=ON -DWITH_LZ4=ON -DWITH_BZ2=ON -DWITH_ZSTD=ON"
   builder_container_otp23:
     docker:
       - image: aeternity/builder:otp23
@@ -31,10 +35,14 @@ executors:
     working_directory: ~/aeternity
     environment:
       OTP_VERSION: 23.0.3
+      ERLANG_ROCKSDB_BUILDOPTS: "-j2"
+      ERLANG_ROCKSDB_OPTS: "-DWITH_SYSTEM_ROCKSDB=ON -DWITH_SNAPPY=ON -DWITH_LZ4=ON -DWITH_BZ2=ON -DWITH_ZSTD=ON"
   builder_container_nix_alpine:
     docker:
       - image: nixorg/nix:circleci
     working_directory: ~/aeternity
+    environment:
+      ERLANG_ROCKSDB_BUILDOPTS: "-j2"
   builder_container_1804:
     docker:
       - image: aeternity/builder:1804
@@ -124,33 +132,33 @@ references:
     restore_cache:
       key: *rebar_cache_key
 
-  build_otp21_cache_key: &build_otp21_cache_key build-otp21-cache-v5-{{ .Revision }}
+  build_otp21_cache_key: &build_otp21_cache_key build-otp21-cache-v6-{{ .Revision }}
   restore_build_otp21_cache: &restore_build_otp21_cache
     restore_cache:
       key: *build_otp21_cache_key
 
-  build_otp22_cache_key: &build_otp22_cache_key build-otp22-cache-v2-{{ .Revision }}
+  build_otp22_cache_key: &build_otp22_cache_key build-otp22-cache-v3-{{ .Revision }}
   restore_build_otp22_cache: &restore_build_otp22_cache
     restore_cache:
       key: *build_otp22_cache_key
 
-  build_otp23_cache_key: &build_otp23_cache_key build-otp23-cache-v1-{{ .Revision }}
+  build_otp23_cache_key: &build_otp23_cache_key build-otp23-cache-v2-{{ .Revision }}
   restore_build_otp23_cache: &restore_build_otp23_cache
     restore_cache:
       key: *build_otp23_cache_key
 
-  build_nix_cache_key: &build_nix_cache_key build-nix-cache-v1-{{ .Revision }}
+  build_nix_cache_key: &build_nix_cache_key build-nix-cache-v2-{{ .Revision }}
   restore_build_nix_cache: &restore_build_nix_cache
     restore_cache:
       key: *build_nix_cache_key
 
-  machine_build_cache_key: &machine_build_cache_key machine-build-cache-v10-{{ .Branch }}-{{ .Revision }}
+  machine_build_cache_key: &machine_build_cache_key machine-build-cache-v11-{{ .Branch }}-{{ .Revision }}
   restore_machine_build_cache: &restore_machine_build_cache
     restore_cache:
       keys:
         - *machine_build_cache_key
-        - machine-build-cache-v10-{{ .Branch }}-
-        - machine-build-cache-v10-
+        - machine-build-cache-v11-{{ .Branch }}-
+        - machine-build-cache-v11-
 
   save_machine_build_cache: &save_machine_build_cache
     save_cache:
@@ -206,6 +214,7 @@ references:
         # This prevents the presence of broken/dummy debian/rules file without
         # clean targets. For example when running debuild directly without
         # `make prod-deb-package`.
+        ERLANG_ROCKSDB_BUILDOPTS: "-j2"
       command: |
         make prod-clean
         make clean
@@ -274,6 +283,31 @@ references:
         fi
       when: on_fail
 
+  fail_notification_nix: &fail_notification_nix
+    run:
+      name: Send failure notification
+      environment:
+        NOTIFY_BRANCH: *master_branch
+        HOOK_TEMPLATE: |
+          {
+            "text": "CircleCI job **%s** failed on branch **%s** by @%s",
+            "attachments": [
+              {
+                "title": "Build Link",
+                "title_link": "%s",
+                "color": "#FAD6D6"
+              }
+            ]
+          }
+      command: |
+        if [ -n "$CIRCLE_BRANCH" ]; then
+          if [ "$CIRCLE_BRANCH" = "${NOTIFY_BRANCH:?}" ]; then
+            HOOK_DATA=$(printf "$HOOK_TEMPLATE" "${CIRCLE_JOB:?}" "${CIRCLE_BRANCH:?}" "${CIRCLE_USERNAME:-unknown}" "${CIRCLE_BUILD_URL:?}")
+            nix-shell webhook.nix -j auto --run "curl -X POST -H 'Content-Type: application/json' ${ROCKET_HOOK_URL:?} --data \"${HOOK_DATA:?}\""
+          fi
+        fi
+      when: on_fail
+
   fail_notification_system_test: &fail_notification_system_test
     run:
       name: Send failure notification on system test
@@ -331,7 +365,17 @@ references:
         dmesg > ${SYSTEM_TEST_HOST_LOGS_DIR:?}/dmesg.log
       when: always
 
-  test_steps: &test_steps
+  trim_test_artifacts: &trim_test_artifacts
+      run:
+        name: trim down artifacts
+        command: |
+          find _build/test/logs -iname bin | xargs rm -rf
+          find _build/test/logs -iname data | xargs rm -rf
+          find _build/test/logs -iname releases | xargs rm -rf
+          find _build/test/logs -iname extensions | xargs rm -rf
+          find _build/test/logs -iname hooks | xargs rm -rf
+
+  test_steps_otp21: &test_steps_otp21
     - checkout
     - *restore_rebar_cache
     - *restore_build_otp21_cache
@@ -349,15 +393,76 @@ references:
           mv _build/test/logs/junit.xml _build/test/reports/
     - store_test_results:
         path: _build/test/reports
+    - *trim_test_artifacts
     - store_artifacts:
         path: _build/test/logs
     - *store_rebar3_crashdump
     - *fail_notification
 
-  eunit_steps: &eunit_steps
+  test_steps_otp22: &test_steps_otp22
+    - checkout
+    - *restore_rebar_cache
+    - *restore_build_otp22_cache
+    - run:
+        name: Test
+        command: |
+          epmd -daemon
+          make ${MAKE_TARGET:?} CT_TEST_FLAGS="--suite=$(.circleci/split_suites.sh)"
+    # Isolates the junit.xml report because additional files in _build/test/logs
+    # are somehow causing issue with xunit report upload, parsing and merging
+    - run:
+        name: move test report
+        command: |
+          mkdir _build/test/reports
+          mv _build/test/logs/junit.xml _build/test/reports/
+    - store_test_results:
+        path: _build/test/reports
+    - *trim_test_artifacts
+    - store_artifacts:
+        path: _build/test/logs
+    - *store_rebar3_crashdump
+    - *fail_notification
+
+  test_steps_otp23: &test_steps_otp23
+    - checkout
+    - *restore_rebar_cache
+    - *restore_build_otp23_cache
+    - run:
+        name: Test
+        command: |
+          epmd -daemon
+          make ${MAKE_TARGET:?} CT_TEST_FLAGS="--suite=$(.circleci/split_suites.sh)"
+    # Isolates the junit.xml report because additional files in _build/test/logs
+    # are somehow causing issue with xunit report upload, parsing and merging
+    - run:
+        name: move test report
+        command: |
+          mkdir _build/test/reports
+          mv _build/test/logs/junit.xml _build/test/reports/
+    - store_test_results:
+        path: _build/test/reports
+    - *trim_test_artifacts
+    - store_artifacts:
+        path: _build/test/logs
+    - *store_rebar3_crashdump
+    - *fail_notification
+
+  eunit_steps_otp21: &eunit_steps_otp21
     - checkout
     - *restore_rebar_cache
     - *restore_build_otp21_cache
+    - run:
+        name: Test
+        command: |
+          epmd -daemon
+          make ${MAKE_TARGET:?}
+    - *store_rebar3_crashdump
+    - *fail_notification
+
+  eunit_steps_otp22: &eunit_steps_otp22
+    - checkout
+    - *restore_rebar_cache
+    - *restore_build_otp22_cache
     - run:
         name: Test
         command: |
@@ -607,7 +712,7 @@ jobs:
       - *restore_rebar_cache
       - run:
           name: Build
-          command: make KIND=test
+          command: make test-build
       - save_cache:
           key: *build_otp22_cache_key
           paths:
@@ -626,7 +731,7 @@ jobs:
       - *restore_rebar_cache
       - run:
           name: Build
-          command: make KIND=test
+          command: make test-build
       - save_cache:
           key: *build_otp21_cache_key
           paths:
@@ -645,7 +750,7 @@ jobs:
       - *restore_rebar_cache
       - run:
           name: Build
-          command: make KIND=test
+          command: make test-build
       - save_cache:
           key: *build_otp23_cache_key
           paths:
@@ -662,6 +767,7 @@ jobs:
     steps:
       - checkout
       - *restore_rebar_cache
+      - *restore_build_nix_cache
       - run:
           name: Build
           command: nix-shell -j auto --run "make KIND=test"
@@ -674,42 +780,42 @@ jobs:
           paths:
             - .cache/rebar3
       - *store_rebar3_crashdump
-      - *fail_notification
+      - *fail_notification_nix
 
   test_roma:
     executor: builder_container_otp22
     parallelism: 3
     environment:
       - MAKE_TARGET: ct-roma
-    steps: *test_steps
+    steps: *test_steps_otp22
 
   test_minerva:
     executor: builder_container_otp22
     parallelism: 3
     environment:
       - MAKE_TARGET: ct-minerva
-    steps: *test_steps
+    steps: *test_steps_otp22
 
   test_fortuna:
     executor: builder_container_otp22
     parallelism: 3
     environment:
       - MAKE_TARGET: ct-fortuna
-    steps: *test_steps
+    steps: *test_steps_otp22
 
   test_lima:
     executor: builder_container_otp22
     parallelism: 3
     environment:
       - MAKE_TARGET: ct-lima
-    steps: *test_steps
+    steps: *test_steps_otp22
 
   test_latest:
     executor: builder_container_otp22
     parallelism: 3
     environment:
       - MAKE_TARGET: ct-latest
-    steps: *test_steps
+    steps: *test_steps_otp22
 
   # Sanity check whether the latest aesophia compiler works
   test_latest_with_aesophia_compiler:
@@ -717,65 +823,65 @@ jobs:
     parallelism: 1
     environment:
       - MAKE_TARGET: ct-latest-no-aci
-    steps: *test_steps
+    steps: *test_steps_otp22
 
   test_latest_otp21:
     executor: builder_container_otp21
     parallelism: 3
     environment:
       - MAKE_TARGET: ct-latest
-    steps: *test_steps
+    steps: *test_steps_otp21
 
   test_latest_otp23:
     executor: builder_container_otp23
     parallelism: 3
     environment:
       - MAKE_TARGET: ct-latest
-    steps: *test_steps
+    steps: *test_steps_otp23
 
   test_mnesia_leveled:
     executor: builder_container_otp22
     parallelism: 3
     environment:
       - MAKE_TARGET: ct-mnesia-leveled
-    steps: *test_steps
+    steps: *test_steps_otp22
 
   test_mnesia_rocksdb:
     executor: builder_container_otp22
     parallelism: 3
     environment:
       - MAKE_TARGET: ct-mnesia-rocksdb
-    steps: *test_steps
+    steps: *test_steps_otp22
 
   eunit_roma:
     executor: builder_container_otp22
     environment:
       - MAKE_TARGET: eunit-roma
-    steps: *eunit_steps
+    steps: *eunit_steps_otp22
 
   eunit_minerva:
     executor: builder_container_otp22
     environment:
       - MAKE_TARGET: eunit-minerva
-    steps: *eunit_steps
+    steps: *eunit_steps_otp22
 
   eunit_fortuna:
     executor: builder_container_otp22
     environment:
       - MAKE_TARGET: eunit-fortuna
-    steps: *eunit_steps
+    steps: *eunit_steps_otp22
 
   eunit_lima:
     executor: builder_container_otp22
     environment:
       - MAKE_TARGET: eunit-lima
-    steps: *eunit_steps
+    steps: *eunit_steps_otp22
 
   eunit_latest:
     executor: builder_container_otp22
     environment:
       - MAKE_TARGET: eunit-latest
-    steps: *eunit_steps
+    steps: *eunit_steps_otp22
 
   aevm_tests:
     executor: builder_container_otp22
@@ -935,10 +1041,11 @@ jobs:
           command: |
             brew update
             brew rm python@2
-            brew install gmp libsodium erlang@21
+            brew install gmp libsodium erlang@21 cmake
             brew link gmp
             brew link libsodium
             brew link --force erlang@21
+            brew link cmake
       - *save_macos_package_cache
       - *set_package_path
       - *test_arch_os_dependencies
@@ -1011,6 +1118,7 @@ jobs:
       - *install_os_deps
       - *install_otp
       - *install_libsodium
+      - *restore_rebar_cache
       - *restore_machine_build_cache
       - *prepare_ubuntu_user
       - *install_system_test_deps

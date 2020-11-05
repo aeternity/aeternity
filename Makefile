@@ -107,6 +107,20 @@ console: $(SWAGGER_ENDPOINTS_SPEC)
 hyperchains-console: $(SWAGGER_ENDPOINTS_SPEC)
 	@$(REBAR) as local shell --config config/hyperchains-dev.config --sname aeternity@localhost
 
+test-build: KIND=test
+test-build: internal-build aestratum_client_build
+
+AESTRATUM_CLIENT_DIR = _build/$(KIND)/lib/aestratum_client
+aestratum_client_build:
+	touch $(AESTRATUM_CLIENT_DIR)/.build_lock
+	cd $(AESTRATUM_CLIENT_DIR); \
+	if ! cmp .git/HEAD .build_lock; then \
+	  	mkdir -p _build/default; \
+	  	rm -rf _build/default; \
+		../../../../$(REBAR) as test release; \
+		cp .git/HEAD .build_lock; \
+	fi
+
 local-build: KIND=local
 local-build: internal-build
 
@@ -413,8 +427,7 @@ internal-clean:
 internal-distclean:
 	@rm -rf ./_build/$(KIND)
 
-internal-ct: internal-build
-	cd _build/$(KIND)/lib/aestratum_client && ../../../../$(REBAR) as test release
+internal-ct: test-build
 	@NODE_PROCESSES="$$(ps -fea | grep bin/aeternity | grep -v grep)"; \
 	if [ $$(printf "%b" "$${NODE_PROCESSES}" | wc -l) -gt 0 ] ; then \
 		(printf "%b\n%b\n" "Failed testing: another node is already running" "$${NODE_PROCESSES}" >&2; exit 1);\
@@ -430,7 +443,7 @@ $(DEB_PKG_CHANGELOG_FILE):
 	dch -r $(AE_DEB_DCH_REL_NOTE)
 
 prod-deb-package: $(DEB_PKG_CHANGELOG_FILE)
-	debuild --preserve-envvar DEB_SKIP_DH_AUTO_CLEAN -b -uc -us
+	debuild -e DEB_SKIP_DH_AUTO_CLEAN -e ERLANG_ROCKSDB_BUILDOPTS -b -uc -us
 
 $(PLANTUML_JAR):
 	curl -fsS --create-dirs -o $@ https://netcologne.dl.sourceforge.net/project/plantuml/${PLANTUML_V}/plantuml.${PLANTUML_V}.jar
@@ -451,6 +464,7 @@ test-arch-os-dependencies:
 
 .PHONY: \
 	all console hyperchains-console \
+	test-build \
 	local-build local-start local-stop local-attach \
 	prod-build prod-start prod-stop prod-attach prod-package prod-compile-deps \
 	multi-build multi-start multi-stop multi-clean multi-distclean \

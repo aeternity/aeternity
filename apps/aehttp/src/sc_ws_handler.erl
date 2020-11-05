@@ -266,7 +266,6 @@ websocket_handle_(_Data, H) ->
 
 websocket_info(?ERROR_TO_CLIENT(Err), #handler{protocol = Protocol} = H) ->
     {reply, Resp} = sc_ws_api:error_response(Protocol, Err),
-    timer:sleep(1000),
     lager:info("Handler critical error: ~p", [Err]),
     {reply, {text, jsx:encode(Resp)}, H};
 websocket_info(stop, #handler{} = H) ->

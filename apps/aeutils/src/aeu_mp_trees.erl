@@ -34,9 +34,10 @@
         ]).
 
 %% For internal functional db
--export([ dict_db_drop_cache/1
-        , dict_db_get/2
-        , dict_db_put/3
+-behavior(aeu_mp_trees_db).
+-export([ mpt_db_drop_cache/1
+        , mpt_db_get/2
+        , mpt_db_put/3
         ]).
 
 -export([record_fields/1]).
@@ -1130,21 +1131,19 @@ new_dict_db() ->
 dict_db_spec() ->
     #{ handle => dict:new()
      , cache  => dict:new()
-     , get    => {?MODULE, dict_db_get}
-     , put    => {?MODULE, dict_db_put}
-     , drop_cache => {?MODULE, dict_db_drop_cache}
+     , module => ?MODULE
      }.
 
-dict_db_get(Key, Dict) ->
+mpt_db_get(Key, Dict) ->
     case dict:find(Key, Dict) of
         {ok, Val} -> {value, Val};
         error -> none
     end.
 
-dict_db_put(Key, Val, Dict) ->
+mpt_db_put(Key, Val, Dict) ->
     dict:store(Key, Val, Dict).
 
-dict_db_drop_cache(_Cache) ->
+mpt_db_drop_cache(_Cache) ->
     dict:new().
 
 %%%===================================================================

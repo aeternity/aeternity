@@ -50,7 +50,8 @@
          get_top_block_hash/0,
          get_top_block_height/0,
          get_block_state/1,
-         get_block_state/2
+         get_block_state/2,
+         get_block_from_micro_header/2
         ]).
 
 %% Location of chain transactions
@@ -405,6 +406,19 @@ find_block(Hash) ->
            [] -> none
        end).
 
+-spec get_block_from_micro_header(binary(), aec_headers:micro_header()) -> aec_blocks:micro_block().
+get_block_from_micro_header(Hash, MicroHeader) ->
+    aec_headers:assert_micro_header(MicroHeader),
+    ?t(begin
+        [#aec_blocks{txs = TxHashes, pof = PoF}] = mnesia:read(aec_blocks, Hash),
+        Txs = [begin
+                  [#aec_signed_tx{value = DBSTx}] =
+                      mnesia:read(aec_signed_tx, TxHash),
+                  aetx_sign:from_db_format(DBSTx)
+              end || TxHash <- TxHashes],
+        aec_blocks:new_micro_from_header(MicroHeader, Txs, PoF)
+       end).
+
 -spec find_key_block(binary()) -> 'none' | {'value', aec_blocks:key_block()}.
 find_key_block(Hash) ->
     ?t(case mnesia:read(aec_headers, Hash) of
@@ -437,10 +451,10 @@ find_headers_at_height(Height) when is_integer(Height), Height >= 0 ->
                  <- mnesia:index_read(aec_headers, Height, height)]).
 
 -spec find_headers_and_hash_at_height(pos_integer()) ->
-                                             [{aec_headers:header(), binary()}].
+                                             [{binary(), aec_headers:header()}].
 find_headers_and_hash_at_height(Height) when is_integer(Height), Height >= 0 ->
-    ?t([{aec_headers:from_db_header(H), K} || #aec_headers{key = K, value = H}
-                 <- mnesia:index_read(aec_headers, Height, height)]).
+    ?t([{K, aec_headers:from_db_header(H)} || #aec_headers{key = K, value = H}
+                 <- mnesia:index_read(aec_headers, Height, #aec_headers.height)]).
 
 find_discovered_pof(Hash) ->
     case ?t(read(aec_discovered_pof, Hash)) of

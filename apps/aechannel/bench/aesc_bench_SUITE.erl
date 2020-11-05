@@ -128,7 +128,7 @@ init_per_group(_Group, Config) ->
 
 init_per_group_(Config) ->
     aecore_suite_utils:start_node(dev1, Config),
-    aecore_suite_utils:connect(aecore_suite_utils:node_name(dev1), [block_pow]),
+    aecore_suite_utils:connect(aecore_suite_utils:node_name(dev1), [block_pow, instant_tx_confirm]),
     ?LOG("dev1 connected", []),
     try begin
             Node = dev1,

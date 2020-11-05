@@ -550,7 +550,7 @@ end_per_testcase(_Case, Config) ->
 start_node(Config) ->
     aecore_suite_utils:start_node(?NODE, Config),
     Node = aecore_suite_utils:node_name(?NODE),
-    aecore_suite_utils:connect(Node, [block_pow]),
+    aecore_suite_utils:connect(Node, [block_pow, instant_tx_confirm]),
 
     {ok, 404, _} = get_balance_at_top(),
     aecore_suite_utils:mine_key_blocks(Node, 10),
@@ -759,8 +759,6 @@ sc_ws_open_(Config, ChannelOpts0, MinBlocksToMine, LogDir) ->
     IPubkey = aesc_create_tx:initiator_pubkey(Tx),
     RPubkey = aesc_create_tx:responder_pubkey(Tx),
 
-    ok = ?WS:unregister_test_for_channel_events(IConnPid, TestEvents),
-    ok = ?WS:unregister_test_for_channel_events(RConnPid, TestEvents),
     %% We stuff the channel id into the Clients map out of convenience
     ChannelClients = #{ channel_id => ChId
                       , initiator  => IConnPid
@@ -775,9 +773,10 @@ sc_ws_open_(Config, ChannelOpts0, MinBlocksToMine, LogDir) ->
     %%
     case proplists:get_value(mine_create_tx, Config, true) of
         true ->
-            finish_sc_ws_open(Config1, MinBlocksToMine);
+            finish_sc_ws_open(Config1, MinBlocksToMine, false);
         false ->
-            ok
+            ok = ?WS:unregister_test_for_channel_events(IConnPid, TestEvents),
+            ok = ?WS:unregister_test_for_channel_events(RConnPid, TestEvents)
     end,
     Config1.
 
@@ -799,6 +798,9 @@ sc_ws_open_events() ->
     [info, get, sign, on_chain_tx, update].
 
 finish_sc_ws_open(Config, MinBlocksToMine) ->
+    finish_sc_ws_open(Config, MinBlocksToMine, true).
+
+finish_sc_ws_open(Config, MinBlocksToMine, Register) ->
     ct:log("finish_sc_ws_open", []),
     #{ channel_id := ChId
      , initiator  := IConnPid
@@ -808,8 +810,13 @@ finish_sc_ws_open(Config, MinBlocksToMine) ->
     SignedCrTx = proplists:get_value(create_tx, Config),
     %%
     TestEvents = sc_ws_open_events(),
-    ok = ?WS:register_test_for_channel_events(IConnPid, TestEvents),
-    ok = ?WS:register_test_for_channel_events(RConnPid, TestEvents),
+    case Register of
+        true ->
+            ok = ?WS:register_test_for_channel_events(IConnPid, TestEvents),
+            ok = ?WS:register_test_for_channel_events(RConnPid, TestEvents);
+        false ->
+            ok
+    end,
     %%
     ok = maybe_mine_create_tx(SignedCrTx, Config, IConnPid, RConnPid),
     CrTx = aetx_sign:innermost_tx(SignedCrTx),
@@ -882,14 +889,21 @@ channel_send_conn_open_infos(RConnPid, IConnPid, Config) ->
 
 channel_send_locking_infos(IConnPid, RConnPid, Config) ->
     {ok, #{channel_id := ChId,
-           data := #{<<"event">> := <<"own_funding_locked">>}}}
+           data := #{<<"event">> := IE1}}}
         = wait_for_channel_event_full(IConnPid, info, Config),
     {ok, #{channel_id := ChId,
-           data := #{<<"event">> := <<"own_funding_locked">>}}}
+           data := #{<<"event">> := RE1}}}
+        = wait_for_channel_event_full(RConnPid, info, Config),
+    {ok, #{channel_id := ChId,
+           data := #{<<"event">> := IE2}}}
+        = wait_for_channel_event_full(IConnPid, info, Config),
+    {ok, #{channel_id := ChId,
+           data := #{<<"event">> := RE2}}}
         = wait_for_channel_event_full(RConnPid, info, Config),
 
-    {ok, _, #{<<"event">> := <<"funding_locked">>}} = wait_for_channel_event(IConnPid, info, Config),
-    {ok, _, #{<<"event">> := <<"funding_locked">>}} = wait_for_channel_event(RConnPid, info, Config),
+    MF = fun(<<"own_funding_locked">>, <<"funding_locked">>) -> ok end,
+    MF(IE1, IE2),
+    MF(RE1, RE2),
     {ok, ChId}.
 
 channel_send_chan_open_infos(RConnPid, IConnPid, Config) ->
@@ -1492,7 +1506,7 @@ settle_(Config, Closer, Params) when Closer =:= initiator;
 
     ok = wait_for_signed_transaction_in_block(SettleTx),
     ?PEEK_MSGQ,
-    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 15),
+    aecore_suite_utils:mine_key_blocks(aecore_suite_utils:node_name(?NODE), 15),
     ?CHECK_INFO(20),
     {ok, SettleTx}.
 
@@ -1650,7 +1664,7 @@ sc_ws_deposit_(Config, Origin, XOpts) when Origin =:= initiator
     Fee = aetx:fee(aetx_sign:tx(SignedDepositTx)),
     {SStartB1, _, _} = {SStartB - 2 - Fee, SStartB1, SStartB},
 
-    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE),
+    aecore_suite_utils:mine_key_blocks(aecore_suite_utils:node_name(?NODE),
                                    ?DEFAULT_MIN_DEPTH),
     {ok, _, #{<<"event">> := <<"own_deposit_locked">>}} = wait_for_channel_event(SenderConnPid, info, Config),
     {ok, _, #{<<"event">> := <<"own_deposit_locked">>}} = wait_for_channel_event(AckConnPid, info, Config),
@@ -1726,7 +1740,7 @@ sc_ws_withdraw_(Config, Origin, XOpts) when Origin =:= initiator
     Fee = aetx:fee(aetx_sign:tx(SignedWTx)),
     {SStartB1, _, _} = {SStartB + 2 - Fee, SStartB1, SStartB},
 
-    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE),
+    aecore_suite_utils:mine_key_blocks(aecore_suite_utils:node_name(?NODE),
                                    ?DEFAULT_MIN_DEPTH, #{strictly_follow_top => true}),
     {ok, _, #{<<"event">> := <<"own_withdraw_locked">>}} = wait_for_channel_event(SenderConnPid, info, Config),
     {ok, _, #{<<"event">> := <<"own_withdraw_locked">>}} = wait_for_channel_event(AckConnPid, info, Config),
@@ -5075,11 +5089,21 @@ sc_ws_optional_params_fail_slash(Cfg0) ->
             %% is malicious to post it on-chain
 
             %% post the malicious tx and wait it to be included
+            %% Ensure both fsms get notified
             post_transactions_sut(EncRound2CloseTx),
-            ok = wait_for_tx_hash_on_chain(Round2CloseTxHash),
-            aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE),
-                                           ?DEFAULT_MIN_DEPTH),
-
+            Conns = proplists:get_value(channel_clients, Cfg),
+            wait_for_info_msgs(
+              Conns, #{ <<"event">> => <<"closing">> },
+              fun() ->
+                      wait_for_onchain_tx_events(
+                        Conns, #{ <<"info">> => <<"can_slash">>
+                                , <<"type">> => <<"channel_offchain_tx">> },
+                        fun() ->
+                            ok = wait_for_tx_hash_on_chain(Round2CloseTxHash),
+                            aecore_suite_utils:mine_key_blocks(aecore_suite_utils:node_name(?NODE),
+                                ?DEFAULT_MIN_DEPTH)
+                        end, Cfg)
+              end, Cfg),
             ok
         end,
     PostAction =
@@ -5102,7 +5126,7 @@ sc_ws_optional_params_fail_slash(Cfg0) ->
               fun() ->
                       ok = wait_for_tx_hash_on_chain(SlashTxHash)
               end, CleanCfg),
-            aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE),
+            aecore_suite_utils:mine_key_blocks(aecore_suite_utils:node_name(?NODE),
                                            ?DEFAULT_MIN_DEPTH),
             settle_(CleanCfg, initiator)
         end,
@@ -5117,7 +5141,7 @@ sc_ws_optional_params_fail_settle(Cfg0) ->
             %% make an update so we are not at channel_create_tx
             _Round1 = sc_ws_update_basic_round_(Round0, Cfg),
             {ok, _SignedTx} = sc_ws_close_solo_(Cfg, initiator, #{}),
-            aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE),
+            aecore_suite_utils:mine_key_blocks(aecore_suite_utils:node_name(?NODE),
                                            ?DEFAULT_MIN_DEPTH),
 
             ok
@@ -5138,7 +5162,7 @@ sc_ws_optional_params_fail_force_progress(Cfg0) ->
         fun(_ConnPid, Cfg) ->
             %% create and call some contracts
             sc_ws_contract_(Cfg, ContractName, initiator),
-            aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE),
+            aecore_suite_utils:mine_key_blocks(aecore_suite_utils:node_name(?NODE),
                                            ?DEFAULT_MIN_DEPTH),
 
             ok
@@ -5458,11 +5482,13 @@ sc_ws_abort_slash_(WhoCloses, WhoRejects, Cfg0) ->
 
     %% at this point the Round2CloseTx is not based on the latest state so it
     %% is malicious to post it on-chain
-    with_registered_events([sign], [WhoPid],
+    with_registered_events([sign, info], [WhoPid],
         fun() ->
             %% post the malicious tx and wait it to be included
             post_transactions_sut(EncRound2CloseTx),
             ok = wait_for_tx_hash_on_chain(Round2CloseTxHash),
+            {ok, _, #{<<"event">> := <<"closing">>}} =
+                wait_for_channel_event(WhoPid, info, Cfg),
             ws_send_tagged(WhoPid, <<"channels.slash">>, #{}, Cfg),
             {ok, _, <<"slash_tx">>, _Data} =
                 wait_for_channel_event(WhoPid, sign, Cfg)
