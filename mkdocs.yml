@@ -8,6 +8,11 @@ theme:
         - yaml
         - json
         - bash
+        
+markdown_extensions:
+    - attr_list
+    - admonition
+    
 nav:
 - Installation: 'installation.md'
 - Configuration: 'configuration.md'
