@@ -161,7 +161,7 @@ test_single_trusted_peer() ->
     test_mgr_set_recipient(self()),
 
     PubKey = <<"ef42d46eace742cd0000000000000000">>,
-    Id = aec_peers:peer_id(PubKey),
+    Id = peer_id(PubKey),
 
     ?assertMatch(false, aec_peers:is_blocked(Id)),
     ?assertMatch([], aec_peers:blocked_peers()),
@@ -217,7 +217,7 @@ test_single_normal_peer() ->
 
     Source = {192, 168, 0, 1},
     PubKey = <<"ef42d46eace742cd0000000000000000">>,
-    Id = aec_peers:peer_id(PubKey),
+    Id = peer_id(PubKey),
     Peer = peer(PubKey, <<"10.1.0.1">>, 4000),
 
     aec_peers:add_peers(Source, Peer),
@@ -259,7 +259,7 @@ test_duplicating_peer() ->
     TrustedPeerAddress = "10.1.0.1",
     TrustedPeerPort = 4000,
     TrustedPeer = peer(TrustedPubKey, TrustedPeerAddress, TrustedPeerPort),
-    TrustedId = aec_peers:peer_id(TrustedPubKey),
+    TrustedId = peer_id(TrustedPubKey),
 
     ?assertMatch(false, aec_peers:is_blocked(TrustedId)),
     ?assertMatch([], aec_peers:blocked_peers()),
@@ -334,7 +334,7 @@ test_duplicating_peer() ->
     %% create a different peer with the same address and a different port
     ?assertEqual(true, TrustedPeerPort =/= TrustedPeerPort2),
     Peer2 = peer(PubKey2, TrustedPeerAddress, TrustedPeerPort2),
-    PeerId2 = aec_peers:peer_id(PubKey2),
+    PeerId2 = peer_id(PubKey2),
     aec_peers:add_peers(Source, Peer2),
 
     {ok, Conn1} = ?assertCalled(connect, [#{ conn_type := noise, r_pubkey := PubKey2 }], {ok, _}, 3500),
@@ -357,11 +357,11 @@ test_multiple_trusted_peers() ->
     test_mgr_set_recipient(self()),
 
     PubKey1 = <<"ef42d46eace742cd0000000000000000">>,
-    Id1 = aec_peers:peer_id(PubKey1),
+    Id1 = peer_id(PubKey1),
     PubKey2 = <<"854a8e1f93f94b950000000000000000">>,
-    Id2 = aec_peers:peer_id(PubKey2),
+    Id2 = peer_id(PubKey2),
     PubKey3 = <<"eb56e9292dda481c0000000000000000">>,
-    Id3 = aec_peers:peer_id(PubKey3),
+    Id3 = peer_id(PubKey3),
 
     Peers = [
         peer(PubKey1, <<"10.1.0.1">>, 4000),
@@ -411,11 +411,11 @@ test_multiple_normal_peers() ->
 
     Source = {192, 168, 0, 1},
     PubKey1 = <<"ef42d46eace742cd0000000000000000">>,
-    Id1 = aec_peers:peer_id(PubKey1),
+    Id1 = peer_id(PubKey1),
     PubKey2 = <<"854a8e1f93f94b950000000000000000">>,
-    Id2 = aec_peers:peer_id(PubKey2),
+    Id2 = peer_id(PubKey2),
     PubKey3 = <<"eb56e9292dda481c0000000000000000">>,
-    Id3 = aec_peers:peer_id(PubKey3),
+    Id3 = peer_id(PubKey3),
 
     Peers = [
         peer(PubKey1, <<"10.1.0.1">>, 4000),
@@ -459,11 +459,11 @@ test_tcp_probe() ->
 
     Source = {192, 168, 0, 1},
     PubKey1 = <<"ef42d46eace742cd0000000000000000">>,
-    Id1 = aec_peers:peer_id(PubKey1),
+    Id1 = peer_id(PubKey1),
     PubKey2 = <<"854a8e1f93f94b950000000000000000">>,
-    _Id2 = aec_peers:peer_id(PubKey2),
+    _Id2 = peer_id(PubKey2),
     PubKey3 = <<"eb56e9292dda481c0000000000000000">>,
-    _Id3 = aec_peers:peer_id(PubKey3),
+    _Id3 = peer_id(PubKey3),
 
     Peer1 = peer(PubKey1, <<"10.1.0.1">>, 4000),
     Peer2 = peer(PubKey2, <<"10.2.0.1">>, 4000),
@@ -526,7 +526,7 @@ test_invalid_hostname() ->
     Source = {192, 168, 0, 1},
     PubKey1 = <<"ef42d46eace742cd0000000000000000">>,
     Peer1 = peer(PubKey1, <<"aeternity.com">>, 4000),
-    Id1 = aec_peers:peer_id(Peer1),
+    Id1 = peer_id(Peer1),
 
     PubKey2 = <<"ff92adcbcc684dda0000000000000000">>,
     Peer2 = peer(PubKey2, <<"aeternity.com">>, 5000),
@@ -587,7 +587,7 @@ test_invalid_hostname() ->
     mock_getaddr({error, nxdomain}),
 
     % Delete peer2 and add back both.
-    aec_peers:del_peer(Peer2),
+    aec_peers:del_peer(peer_id(Peer2)),
     ?assertCalled(disconnect, [Conn1], ok, 100),
     aec_peers:add_peers(Source, Peer1),
     ?assertMessage({getaddr, "aeternity.com"}, 100),
@@ -661,19 +661,19 @@ test_address_group_selection() ->
 
     Source = {192, 168, 0, 1},
     PubKey1 = <<"ef42d46eace742cd0000000000000000">>,
-    Id1 = aec_peers:peer_id(PubKey1),
+    Id1 = peer_id(PubKey1),
     Peer1 = peer(PubKey1, "10.1.0.1", 4000),
     PubKey2 = <<"854a8e1f93f94b950000000000000000">>,
-    Id2 = aec_peers:peer_id(PubKey2),
+    Id2 = peer_id(PubKey2),
     Peer2 = peer(PubKey2, "10.1.0.2", 4000),
     PubKey3 = <<"eb56e9292dda481c0000000000000000">>,
-    Id3 = aec_peers:peer_id(PubKey3),
+    Id3 = peer_id(PubKey3),
     Peer3 = peer(PubKey3, "10.2.0.1", 4000),
     PubKey4 = <<"9d9e1c43de304d810000000000000000">>,
-    Id4 = aec_peers:peer_id(PubKey4),
+    Id4 = peer_id(PubKey4),
     Peer4 = peer(PubKey4, "10.2.0.2", 4000),
     PubKey5 = <<"75640b5ffaac40480000000000000000">>,
-    Id5 = aec_peers:peer_id(PubKey5),
+    Id5 = peer_id(PubKey5),
     Peer5 = peer(PubKey5, "10.3.0.1", 4000),
 
     aec_peers:add_peers(Source, Peer1),
@@ -740,13 +740,13 @@ test_selection_without_address_group() ->
 
     Source = {192, 168, 0, 1},
     PubKey1 = <<"ef42d46eace742cd0000000000000000">>,
-    Id1 = aec_peers:peer_id(PubKey1),
+    Id1 = peer_id(PubKey1),
     Peer1 = peer(PubKey1, "10.1.0.1", 4000),
     PubKey2 = <<"854a8e1f93f94b950000000000000000">>,
-    Id2 = aec_peers:peer_id(PubKey2),
+    Id2 = peer_id(PubKey2),
     Peer2 = peer(PubKey2, "10.1.0.2", 4000),
     PubKey3 = <<"eb56e9292dda481c0000000000000000">>,
-    Id3 = aec_peers:peer_id(PubKey3),
+    Id3 = peer_id(PubKey3),
     Peer3 = peer(PubKey3, "10.1.0.3", 4000),
 
     aec_peers:add_peers(Source, Peer1),
@@ -775,7 +775,7 @@ test_connection_closed() ->
 
     Source = {192, 168, 0, 1},
     PubKey = <<"ef42d46eace742cd0000000000000000">>,
-    Id = aec_peers:peer_id(PubKey),
+    Id = peer_id(PubKey),
     Peer = peer(PubKey, "10.1.0.1", 4000),
 
     aec_peers:add_peers(Source, Peer),
@@ -819,7 +819,7 @@ test_connection_failure() ->
 
     Source = {192, 168, 0, 1},
     PubKey = <<"ef42d46eace742cd0000000000000000">>,
-    Id = aec_peers:peer_id(PubKey),
+    Id = peer_id(PubKey),
     Peer = peer(PubKey, "10.1.0.1", 4000),
 
     aec_peers:add_peers(Source, Peer),
@@ -872,7 +872,7 @@ test_connection_down() ->
 
     Source = {192, 168, 0, 1},
     PubKey = <<"ef42d46eace742cd0000000000000000">>,
-    Id = aec_peers:peer_id(PubKey),
+    Id = peer_id(PubKey),
     Peer = peer(PubKey, "10.1.0.1", 4000),
 
     aec_peers:add_peers(Source, Peer),
@@ -950,7 +950,7 @@ test_inbound_connections() ->
     lists:foldl(fun(Peer, Acc) ->
         {ok, Conn} = test_mgr_start_inbound(Peer),
         ?assertEqual(permanent, conn_peer_accepted(Conn, maps:get(host, Peer))),
-        PeerId = aec_peers:peer_id(Peer),
+        PeerId = peer_id(Peer),
         Acc#{ PeerId => Conn }
     end, #{}, Peers),
 
@@ -1043,7 +1043,7 @@ test_ping() ->
 
     Source = {192, 168, 0, 1},
     PubKey = <<"ef42d46eace742cd0000000000000000">>,
-    Id = aec_peers:peer_id(PubKey),
+    Id = peer_id(PubKey),
     Peer = peer(PubKey, "10.1.0.1", 4000),
 
     ok = aec_peers:add_peers(Source, Peer),
@@ -1070,10 +1070,10 @@ test_connection_conflict() ->
     Source = {192, 168, 0, 1},
     Peer1 = peer(1, "10.1.0.1", 4000),
     #{ pubkey := PubKey1 } = Peer1,
-    Id1 = aec_peers:peer_id(PubKey1),
+    Id1 = peer_id(PubKey1),
     Peer2 = peer(9, "10.1.0.2", 4000),
     #{ pubkey := PubKey2 } = Peer2,
-    Id2 = aec_peers:peer_id(PubKey2),
+    Id2 = peer_id(PubKey2),
 
     ok = aec_peers:add_peers(Source, Peer1),
     {ok, Conn1} = ?assertCalled(connect, [#{ conn_type := noise, r_pubkey := PubKey1 }], {ok, _}, 200),
@@ -1141,16 +1141,16 @@ test_blocking() ->
 
     Source = {192, 168, 0, 1},
     Peer1 = peer(1, "10.1.0.1", 1),
-    Id1 = aec_peers:peer_id(Peer1),
+    Id1 = peer_id(Peer1),
     #{ pubkey := PubKey1 } = Peer1,
     Peer2 = peer(2, "10.1.0.2", 2),
     #{ pubkey := PubKey2 } = Peer2,
-    Id2 = aec_peers:peer_id(Peer2),
+    Id2 = peer_id(Peer2),
     Peer3 = peer(3, "10.1.0.3", 3),
     #{ pubkey := PubKey3 } = Peer3,
-    Id3 = aec_peers:peer_id(Peer3),
+    Id3 = peer_id(Peer3),
     Peer4 = peer(4, "10.1.0.4", 4),
-    Id4 = aec_peers:peer_id(Peer4),
+    Id4 = peer_id(Peer4),
 
     A = erlang:system_time(millisecond),
 
@@ -1504,7 +1504,7 @@ proc_conn_init(Parent, Recipient, {outbound, Opts}) ->
         id => PeerId
     });
 proc_conn_init(Parent, Recipient, {inbound, PeerInfo}) ->
-    PeerId = aec_peers:peer_id(PeerInfo),
+    PeerId = peer_id(PeerInfo),
     proc_conn_loop(#{
         connected => false,
         parent => Parent,
@@ -1586,4 +1586,6 @@ proc_conn_loop(S) ->
             reply(From, ok)
     end.
 
+    peer_id(Bin) when is_binary(Bin) -> Bin;
+    peer_id(InfoOrPeer) -> aec_peer:id(InfoOrPeer).
 -endif.

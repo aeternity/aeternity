@@ -3375,7 +3375,7 @@ peers(_Config) ->
 
     %% ensure no peers
     lists:foreach(
-        fun(Peer) -> rpc(aec_peers, del_peer, [Peer]) end,
+        fun(Peer) -> rpc(aec_peers, del_peer, [aec_peer:id(Peer)]) end,
         rpc(aec_peers, get_random, [all])),
 
     {ok, 200, #{<<"blocked">> := [], <<"peers">> := []}} = get_peers(),

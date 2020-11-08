@@ -11,7 +11,7 @@
 -behaviour(gen_server).
 
 -import(aeu_debug, [pp/1]).
--import(aec_peers, [ppp/1]).
+-import(aec_peer, [ppp/1]).
 
 %% API
 -export([start_link/0]).
@@ -113,20 +113,20 @@ handle_worker(Task, Action) ->
                      , height :: aec_blocks:height()
                      }).
 -record(chain, { id :: chain_id()
-               , peers :: [aec_peers:peer_id()]
+               , peers :: [aec_peer:id()]
                , blocks :: [#chain_block{}, ...]
                }).
 -record(pool_item, { height :: aec_blocks:height()
                    , hash :: aec_blocks:block_header_hash()
                    , got :: false
-                          | { aec_peers:peer_id()
+                          | { aec_peer:id()
                             , local | #{ key_block := aec_blocks:key_block()
                                        , micro_blocks := [aec_blocks:micro_block()]
                                        , dir := backward
                                        }
                             }
                    }).
--record(worker, { peer_id :: aec_peers:peer_id()
+-record(worker, { peer_id :: aec_peer:id()
                 , pid :: pid()
                 }).
 -record(sync_task, {id :: chain_id(),
@@ -251,13 +251,13 @@ handle_info({gproc_ps_event, Event, #{info := Info}},
     %% Take a random subset (possibly empty) of peers that agree with us
     %% on chain height to forward blocks and transactions to.
     MaxGossip = max_gossip(),
-    PeerIds = [ aec_peers:peer_id(P) || P <- aec_peers:get_random_connected(MaxGossip) ],
+    PeerIds = [ aec_peer:id(P) || P <- aec_peers:get_random_connected(MaxGossip) ],
     NonSyncingPeerIds = [ P || P <- PeerIds, not peer_in_sync(State, P) ],
     case Event of
         block_to_publish ->
             case Info of
                 {created, Block} ->
-                    PeerIds1 = [ aec_peers:peer_id(P) || P <- aec_peers:connected_peers(all) ],
+                    PeerIds1 = [ aec_peer:id(P) || P <- aec_peers:connected_peers(all) ],
                     enqueue(block, Block, PeerIds1);
                 {received, Block} ->
                     enqueue(block, Block, NonSyncingPeerIds)
