@@ -276,17 +276,14 @@ read_config(Mode) when Mode =:= silent; Mode =:= report ->
 apply_os_env() ->
     try
     Pfx = "AECONF",  %% TODO: make configurable
-    Names = schema_key_names(Pfx),
+    %% We sort on variable names to allow specific values to override object
+    %% definitions at a higher level (e.g. AECONF__mempool followed by AECONF__mempool__tx_ttl)
+    Names = lists:keysort(1, schema_key_names(Pfx)),
     error_logger:info_msg("Env names: ~p~n", [Names]),
     Map = lists:foldl(
-            fun({Name, Key}, Acc) ->
-                    case os:getenv(Name) of
-                        false ->
-                            Acc;
-                        Value ->
-                            Value1 = coerce_type(Key, Value),
-                            update_map(to_map(Key, Value1), Acc)
-                    end
+            fun({_Name, Key, Value}, Acc) ->
+                    Value1 = coerce_type(Key, Value),
+                    update_map(to_map(Key, Value1), Acc)
             end, #{}, Names),
     error_logger:info_msg("Map fr os env: ~p~n", [Map]),
     if map_size(Map) > 0 ->
@@ -311,20 +308,31 @@ to_map([H|T], Val, M) ->
             
 
 coerce_type(Key, Value) ->
+    error_logger:info_msg("coerce_type(~p, ~p)~n", [Key, Value]),
     case schema(Key) of
         {ok, #{<<"type">> := Type}} ->
             case Type of
-                <<"integer">> -> list_to_integer(Value);
-                <<"string">>  -> list_to_binary(Value);
+                <<"integer">> -> to_integer(Value);
+                <<"string">>  -> to_string(Value);
                 <<"boolean">> -> to_bool(Value);
-                Other         -> error({cant_coerce, Other})
+                <<"array">>   -> jsx:decode(list_to_binary(Value), [return_maps]);
+                <<"object">>  -> jsx:decode(list_to_binary(Value), [return_maps])
             end;
         _ ->
             error({unknown_key, Key})
     end.
 
+to_integer(I) when is_integer(I) -> I;
+to_integer(L) when is_list(L)    -> list_to_integer(L);
+to_integer(B) when is_binary(B)  -> binary_to_integer(B).
+
+to_string(L) when is_list(L)   -> list_to_binary(L);
+to_string(B) when is_binary(B) -> B.
+
 to_bool("true")  -> true;
 to_bool("false") -> false;
+to_bool(B) when is_boolean(B) ->
+    B;
 to_bool(Other) ->
     error({expected_boolean, Other}).
 
@@ -341,11 +349,16 @@ schema_key_names(NamePfx, KeyPfx, Map, Acc0) when is_map(Map) ->
       fun(SubKey, SubMap, Acc) ->
               NamePfx1 = NamePfx ++ "__" ++ binary_to_list(SubKey),
               KeyPfx1 = KeyPfx ++ [SubKey],
+              Acc1 = case os:getenv(NamePfx1) of
+                         false -> Acc;
+                         Value ->
+                             [{NamePfx1, KeyPfx1, Value} | Acc]
+                     end,
               case maps:find(<<"properties">>, SubMap) of
                   error ->
-                      [{NamePfx1, KeyPfx1} | Acc];
+                      Acc1;
                   {ok, Props} ->
-                      schema_key_names(NamePfx1, KeyPfx1, Props, Acc)
+                      schema_key_names(NamePfx1, KeyPfx1, Props, Acc1)
               end
       end, Acc0, Map).
 
