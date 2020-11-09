@@ -275,17 +275,18 @@ read_config(Mode) when Mode =:= silent; Mode =:= report ->
 
 apply_os_env() ->
     try
-    Pfx = "AECONF",  %% TODO: make configurable
+    Pfx = "AE",  %% TODO: make configurable
     %% We sort on variable names to allow specific values to override object
-    %% definitions at a higher level (e.g. AECONF__mempool followed by AECONF__mempool__tx_ttl)
+    %% definitions at a higher level (e.g. AE__MEMPOOL followed by AE__MEMPOOL__TX_TTL)
+    %% Note that all schema name parts are converted to uppercase.
     Names = lists:keysort(1, schema_key_names(Pfx)),
-    error_logger:info_msg("Env names: ~p~n", [Names]),
+    error_logger:info_msg("OS env config: ~p~n", [Names]),
     Map = lists:foldl(
             fun({_Name, Key, Value}, Acc) ->
                     Value1 = coerce_type(Key, Value),
                     update_map(to_map(Key, Value1), Acc)
             end, #{}, Names),
-    error_logger:info_msg("Map fr os env: ~p~n", [Map]),
+    error_logger:info_msg("Map fr OS env config: ~p~n", [Map]),
     if map_size(Map) > 0 ->
             update_config(Map);
        true ->
@@ -308,7 +309,6 @@ to_map([H|T], Val, M) ->
             
 
 coerce_type(Key, Value) ->
-    error_logger:info_msg("coerce_type(~p, ~p)~n", [Key, Value]),
     case schema(Key) of
         {ok, #{<<"type">> := Type}} ->
             case Type of
@@ -347,7 +347,7 @@ schema_key_names(Prefix) ->
 schema_key_names(NamePfx, KeyPfx, Map, Acc0) when is_map(Map) ->
     maps:fold(
       fun(SubKey, SubMap, Acc) ->
-              NamePfx1 = NamePfx ++ "__" ++ binary_to_list(SubKey),
+              NamePfx1 = NamePfx ++ "__" ++ string:to_upper(binary_to_list(SubKey)),
               KeyPfx1 = KeyPfx ++ [SubKey],
               Acc1 = case os:getenv(NamePfx1) of
                          false -> Acc;
