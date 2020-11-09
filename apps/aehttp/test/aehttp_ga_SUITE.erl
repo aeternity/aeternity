@@ -105,15 +105,19 @@ init_per_suite(Config0) ->
     %% We want to run some suites with and some suites without client side cache
     %% Arbitrary run this suite with cache disabled.
     DefCfg = #{<<"chain">> =>
-                   #{<<"persist">> => true,
+                   #{<<"persist">> => false,
                      <<"hard_forks">> => Forks},
               <<"http">> =>
                    #{<<"cache">> => #{<<"enabled">> => false}}},
-    Config1 = [{symlink_name, "latest.http_ga"}, {test_module, ?MODULE}] ++ Config0,
+    Config1 = [{instant_mining, true}, {symlink_name, "latest.http_ga"}, {test_module, ?MODULE}] ++ Config0,
     Config2 = aecore_suite_utils:init_per_suite([?NODE], DefCfg, Config1),
-    [{nodes, [aecore_suite_utils:node_tuple(?NODE)]}] ++ Config2.
+    NodeName = aecore_suite_utils:node_name(?NODE),
+    aecore_suite_utils:start_node(?NODE, Config2),
+    aecore_suite_utils:connect(NodeName, []),
+    [{node_name, NodeName}, {nodes, [aecore_suite_utils:node_tuple(?NODE)]}] ++ Config2.
 
-end_per_suite(_Config) ->
+end_per_suite(Config) ->
+    aecore_suite_utils:stop_node(?NODE, Config),
     ok.
 
 init_per_group(VMGroup, Config) when VMGroup == aevm; VMGroup == fate ->
@@ -123,10 +127,7 @@ init_per_group(VMGroup, Config) when VMGroup == aevm; VMGroup == fate ->
         _ -> aect_test_utils:init_per_group(VMGroup, Config)
     end;
 init_per_group(_GAGroup, Config) ->
-    NodeName = aecore_suite_utils:node_name(?NODE),
-    aecore_suite_utils:start_node(?NODE, Config),
-    aecore_suite_utils:connect(NodeName, [block_pow, instant_tx_confirm]),
-
+    aecore_suite_utils:reinit_with_ct_consensus(?NODE),
     ToMine = max(0, aecore_suite_utils:latest_fork_height()),
     ct:pal("ToMine ~p\n", [ToMine]),
     [ ?MINE_BLOCKS(ToMine) || ToMine > 0 ],
@@ -141,15 +142,9 @@ init_per_group(_GAGroup, Config) ->
     %% Save account information
     Accounts = #{acc_a => #{pub_key => APK, priv_key => ASK, start_amt => StartAmt},
                  acc_b => #{pub_key => BPK, priv_key => BSK, start_amt => StartAmt}},
-    [{accounts, Accounts}, {node_name, NodeName} | Config].
+    [{accounts, Accounts} | Config].
 
-end_per_group(VMGroup, _Config) when VMGroup == aevm; VMGroup == fate ->
-    ok;
-end_per_group(_GAGroup, Config) ->
-    RpcFun = fun(M, F, A) -> aecore_suite_utils:rpc(?NODE, M, F, A) end,
-    {ok, DbCfg} = aecore_suite_utils:get_node_db_config(RpcFun),
-    aecore_suite_utils:stop_node(?NODE, Config),
-    aecore_suite_utils:delete_node_db_if_persisted(DbCfg),
+end_per_group(_VMGroup, _Config) ->
     ok.
 
 init_per_testcase(_Case, Config) ->

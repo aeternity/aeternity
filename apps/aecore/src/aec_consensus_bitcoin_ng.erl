@@ -12,11 +12,14 @@
         , assert_config/1
         , dirty_validate_key_header/0
         , start/1
-        , stop/1
+        , stop/0
         , is_providing_extra_http_endpoints/0
+        , client_request/1
         , extra_from_header/1
         , recent_cache_n/0
         , recent_cache_trim_header/1
+        , keyblocks_for_target_calc/0
+        , keyblock_create_adjust_target/2
         , dirty_validate_block_pre_conductor/1
         , dirty_validate_key_header/1
         , genesis_block_with_state/0
@@ -40,16 +43,36 @@
 can_be_turned_off() -> true.
 assert_config(_Config) -> ok.
 start(_Config) -> ok.
-stop(_Config) -> ok.
+stop() -> ok.
 
 dirty_validate_key_header() -> error(todo).
 
 is_providing_extra_http_endpoints() -> false.
+client_request(_) -> error(unsupported).
+
 extra_from_header(_) ->
     #{consensus => ?MODULE}.
 
 recent_cache_n() -> 10.
 recent_cache_trim_header(_) -> {}.
+
+keyblocks_for_target_calc() ->
+    aec_governance:key_blocks_to_check_difficulty_count().
+keyblock_create_adjust_target(Block, AdjHeaders) ->
+    Header = aec_blocks:to_header(Block),
+    DeltaHeight = aec_governance:key_blocks_to_check_difficulty_count() + 1,
+    case aec_headers:height(Header) =< DeltaHeight of
+        true ->
+            %% For the first DeltaHeight blocks, use pre-defined target
+            Target = aec_block_genesis:target(),
+            {ok, aec_blocks:set_target(Block, Target)};
+        false when DeltaHeight == length(AdjHeaders) ->
+            CalculatedTarget = aec_target:recalculate(AdjHeaders),
+            Block1 = aec_blocks:set_target(Block, CalculatedTarget),
+            {ok, Block1};
+        false -> %% Wrong number of headers in AdjHeaders...
+            {error, {wrong_headers_for_target_adjustment, DeltaHeight, length(AdjHeaders)}}
+    end.
 
 dirty_validate_block_pre_conductor(_) -> ok.
 dirty_validate_key_header(_) -> error(todo).
@@ -109,7 +132,7 @@ trim_sealing_nonce(Nonce, MinerConfig) ->
 default_target() ->
     ?HIGHEST_TARGET_SCI.
 
-assert_key_target_range(Target) ->
+assert_key_target_range(_Target) ->
     ok.
 
 key_header_difficulty(Header) ->

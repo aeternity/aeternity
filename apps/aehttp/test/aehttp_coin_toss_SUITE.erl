@@ -110,7 +110,7 @@ init_per_suite(Config) ->
         Vsn when Vsn >= ?LIMA_PROTOCOL_VSN ->
             Forks = aecore_suite_utils:forks(),
             DefCfg = #{<<"chain">> =>
-                          #{<<"persist">> => true,
+                          #{<<"persist">> => false,
                             <<"hard_forks">> => Forks},
                       <<"mining">> =>
                           #{<<"micro_block_cycle">> => 1,
@@ -118,7 +118,7 @@ init_per_suite(Config) ->
                             <<"name_claim_bid_timeout">> => 0}},
             {ok, StartedApps} = application:ensure_all_started(gproc),
             Config1 = aecore_suite_utils:init_per_suite([?NODE], DefCfg,
-                                                        [{symlink_name, "latest.whitepaper"}, {test_module, ?MODULE}] ++ Config),
+                                                        [{instant_mining, true}, {symlink_name, "latest.whitepaper"}, {test_module, ?MODULE}] ++ Config),
             aehttp_sc_SUITE:start_node([ {nodes, [aecore_suite_utils:node_tuple(?NODE)]}
                                        , {started_apps, StartedApps}
                                        , {ws_port, 12340}] ++ Config1)

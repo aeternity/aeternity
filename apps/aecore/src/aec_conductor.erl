@@ -201,8 +201,13 @@ get_active_consensus_module() ->
 consensus_request(Request) ->
     %% When changing the active consensus module or the configuration
     %% The conductor ensures that the given "consensus" was fully started
-    M = get_active_consensus_module(),
-    M:client_request(Request).
+    try
+        M = get_active_consensus_module(),
+        M:client_request(Request)
+    catch
+        Error:Reason:Stack ->
+            lager:debug("consensus_request(~p) Failed: ~p ~p ~p\n", [Request, Error, Reason, Stack])
+    end.
 
 %%%===================================================================
 %%% Stratum mining pool API
@@ -261,32 +266,40 @@ reinit_chain_state() ->
     %% let's clear the db in a separate db tx
     %% this is ok as anyway this is only a test endpoint used in one place:
     %% apps/aehttp/test/aehttp_integration_SUITE.erl
+    ok = supervisor:terminate_child(aecore_sup, aec_tx_pool),
     aec_db:ensure_transaction(fun aec_db:clear_db/0),
     aec_db:ensure_transaction(fun init_chain_state/0),
-    exit(whereis(aec_tx_pool), kill),
+    {ok, _} = supervisor:restart_child(aecore_sup, aec_tx_pool),
     aec_tx_pool:await_tx_pool(),
     ok.
 
-reinit_chain_impl(State1 = #state{ consensus = Cons }) ->
+reinit_chain_impl(State1 = #state{ consensus = #consensus{consensus_module = ActiveConsensus} = Cons }) ->
     %% NOTE: ONLY FOR TEST
+    ActiveConsensus:stop(),
+    aec_consensus:set_consensus(), %% It's time to commit env changes
     ok = reinit_chain_state(),
     TopBlockHash = aec_chain:top_block_hash(),
     TopKeyBlockHash = aec_chain:top_key_block_hash(),
+    {ok, TopHeader} = aec_chain:get_header(TopBlockHash),
+    ConsensusModule = aec_headers:consensus_module(TopHeader),
+    ConsensusConfig = aec_consensus:get_consensus_config_at_height(aec_headers:height(TopHeader)),
+    ConsensusModule:start(ConsensusConfig), %% Might do nothing or it might spawn a genserver :P
     State2 = State1#state{top_block_hash = TopBlockHash,
                           top_key_block_hash = TopKeyBlockHash},
+    Cons1 = Cons#consensus{consensus_module = ConsensusModule},
+    epoch_mining:info("Mining stopped"),
+    State3 = kill_all_workers(State2),
+    hard_reset_block_generator(),
     State =
         case State2#state.mining_state of
             stopped  ->
-                State2;
+                State3#state{consensus = Cons1};
             running ->
-                epoch_mining:info("Mining stopped"),
-                State3 = kill_all_workers(State2),
-                hard_reset_block_generator(),
                 epoch_mining:info("Mining started" ++ print_opts(State3)),
                 start_mining_(State3#state{mining_state = running,
                                            micro_block_candidate = undefined,
                                            key_block_candidates = undefined,
-                                           consensus = Cons#consensus{leader = false}})
+                                           consensus = Cons1#consensus{leader = false}})
         end,
     {reply, ok, State}.
 -else.

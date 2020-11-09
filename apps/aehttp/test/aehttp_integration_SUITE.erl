@@ -10,23 +10,6 @@
 -import(aecore_suite_utils, [http_request/4, httpc_request/4, process_http_return/1]).
 -import(aecore_suite_utils, [internal_address/0, external_address/0, rpc/3, rpc/4]).
 
-%% exports for another suites
--export([
-         start_node/2,
-         stop_node/2,
-         end_per_testcase_all/1,
-         sign_and_post_tx/2,
-         get_transactions_by_hash_sut/1,
-         wait_for_tx_hash_on_chain/1,
-         %% account handling
-         initialize_account/1,
-         get_accounts_by_pubkey_sut/1,
-         %% naming
-         get_names_entry_by_name_sut/1,
-         get_name_preclaim/1, get_commitment_id/2, get_name_claim/1
-        ]
-       ).
-
 %% common_test exports
 -export(
    [
@@ -36,9 +19,19 @@
     init_per_testcase/2, end_per_testcase/2
    ]).
 
+%% Exports for other tests
 -export(
-   [
-    get_top_block/1
+   [ initialize_account/1
+   , get_name_preclaim/1
+   , get_name_claim/1
+   , get_names_entry_by_name_sut/1
+   , get_commitment_id/2
+   , get_accounts_by_pubkey_sut/1
+   , get_transactions_by_hash_sut/1
+   , get_top_block/1
+   , wait_for_tx_hash_on_chain/1
+   , sign_and_post_tx/2
+   , end_per_testcase_all/1
    ]).
 
 -export(
@@ -517,18 +510,23 @@ suite() ->
 init_per_suite(Config) ->
     Forks = aecore_suite_utils:forks(),
     DefCfg = #{<<"chain">> =>
-                   #{<<"persist">> => true,
+                   #{<<"persist">> => false,
                      <<"hard_forks">> => Forks},
                <<"mining">> =>
                    #{<<"micro_block_cycle">> => 1,
                      <<"name_claim_bid_timeout">> => 0 %% NO name auctions
                     }},
     {ok, StartedApps} = application:ensure_all_started(gproc),
-    Config1 = aecore_suite_utils:init_per_suite([?NODE], DefCfg, [{symlink_name, "latest.http_endpoints"}, {test_module, ?MODULE}] ++ Config),
-    [ {nodes, [aecore_suite_utils:node_tuple(?NODE)]}
-    , {started_apps, StartedApps} ]  ++ Config1.
+    Config1 = aecore_suite_utils:init_per_suite([?NODE], DefCfg, [{instant_mining, true}, {symlink_name, "latest.http_endpoints"}, {test_module, ?MODULE}] ++ Config),
+    Config2 = [ {nodes, [aecore_suite_utils:node_tuple(?NODE)]}
+              , {started_apps, StartedApps} ]  ++ Config1,
+    aecore_suite_utils:start_node(?NODE, Config2),
+    Node = aecore_suite_utils:node_name(?NODE),
+    aecore_suite_utils:connect(Node, []),
+    [{node, Node} | Config2].
 
 end_per_suite(Config) ->
+    aecore_suite_utils:stop_node(?NODE, Config),
     [application:stop(A) ||
         A <- lists:reverse(
                proplists:get_value(started_apps, Config, []))],
@@ -538,7 +536,6 @@ init_per_group(all, Config) ->
     Config;
 init_per_group(Group, Config) when
       Group =:= debug_endpoints;
-      Group =:= block_endpoints;
       Group =:= account_endpoints;
       Group =:= transaction_endpoints;
       %%Group =:= contract_endpoint;
@@ -547,10 +544,12 @@ init_per_group(Group, Config) when
       %%Group =:= channel_endpoints;
       Group =:= peer_endpoints;
       Group =:= status_endpoints ->
-    start_node(Group, Config);
+    Config;
 %% block_endpoints
-init_per_group(on_genesis_block = Group, Config) ->
-    Config1 = start_node_no_mock(Group, Config),
+init_per_group(block_endpoints, Config) ->
+    aecore_suite_utils:reinit_with_bitcoin_ng(?NODE),
+    Config;
+init_per_group(on_genesis_block, Config) ->
     GenesisBlock = rpc(aec_chain, genesis_block, []),
     {ok, PendingKeyBlock} = wait_for_key_block_candidate(),
     [{current_block, GenesisBlock},
@@ -558,10 +557,9 @@ init_per_group(on_genesis_block = Group, Config) ->
      {current_block_hash_wrong_type, hash(micro, GenesisBlock)},
      {current_block_height, 0},
      {current_block_type, genesis_block},
-     {pending_key_block, PendingKeyBlock} | Config1];
-init_per_group(on_key_block = Group, Config) ->
-    Config1 = start_node_no_mock(Group, Config),
-    Node = ?config(node, Config1),
+     {pending_key_block, PendingKeyBlock} | Config];
+init_per_group(on_key_block, Config) ->
+    Node = aecore_suite_utils:node_name(?NODE),
     %% Mine at least 2 key blocks (fork height may be 0).
     ToMine = max(2, aecore_suite_utils:latest_fork_height()),
     aecore_suite_utils:mine_key_blocks(Node, ToMine),
@@ -573,10 +571,9 @@ init_per_group(on_key_block = Group, Config) ->
      {current_block_hash_wrong_type, hash(micro, KeyBlock)},
      {current_block_height, aec_blocks:height(KeyBlock)},
      {current_block_type, key_block},
-     {pending_key_block, PendingKeyBlock} | Config1];
-init_per_group(on_micro_block = Group, Config) ->
-    Config1 = start_node_no_mock(Group, Config),
-    [ {NodeId, Node} | _ ] = ?config(nodes, Config1),
+     {pending_key_block, PendingKeyBlock} | Config];
+init_per_group(on_micro_block, Config) ->
+    [ {NodeId, Node} | _ ] = ?config(nodes, Config),
     %% Mine at least 2 key blocks (fork height may be 0).
     ToMine = max(2, aecore_suite_utils:latest_fork_height()),
     aecore_suite_utils:mine_key_blocks(Node, ToMine),
@@ -599,21 +596,21 @@ init_per_group(on_micro_block = Group, Config) ->
              {current_block_height, aec_blocks:height(KeyBlock)},
              {current_block_txs, [Tx]},
              {current_block_type, micro_block},
-             {pending_key_block, PendingKeyBlock} | Config1];
+             {pending_key_block, PendingKeyBlock} | Config];
         {error, Reason} ->
             ct:fail({could_not_setup_on_micro_block, Reason})
     end;
 init_per_group(block_info, Config) ->
     Config;
 %% account_endpoints
-init_per_group(nonexistent_account = Group, Config) ->
-    Config1 = start_node(Group, Config),
+init_per_group(nonexistent_account, Config) ->
+    aecore_suite_utils:reinit_with_ct_consensus(?NODE),
     {_, Pubkey} = aecore_suite_utils:sign_keys(?NODE),
     [{account_id, aeser_api_encoder:encode(account_pubkey, Pubkey)},
-     {account_exists, false} | Config1];
-init_per_group(account_with_balance = Group, Config) ->
-    Config1 = start_node(Group, Config),
-    [ {NodeId, Node} | _ ] = ?config(nodes, Config1),
+     {account_exists, false} | Config];
+init_per_group(account_with_balance, Config) ->
+    aecore_suite_utils:reinit_with_ct_consensus(?NODE),
+    [ {NodeId, Node} | _ ] = ?config(nodes, Config),
     {_, Pubkey} = aecore_suite_utils:sign_keys(NodeId),
     ToMine = max(2, aecore_suite_utils:latest_fork_height()),
     aecore_suite_utils:mine_key_blocks(Node, ToMine),
@@ -621,7 +618,7 @@ init_per_group(account_with_balance = Group, Config) ->
     true = aec_blocks:is_key_block(KeyBlock1),
     true = aec_blocks:is_key_block(KeyBlock2),
     [{account_id, aeser_api_encoder:encode(account_pubkey, Pubkey)},
-     {account_exists, true} | Config1];
+     {account_exists, true} | Config];
 init_per_group(account_with_pending_tx, Config) ->
     [ {NodeId, Node} | _ ] = ?config(nodes, Config),
     {_, Pub} = aecore_suite_utils:sign_keys(NodeId),
@@ -634,11 +631,11 @@ init_per_group(account_with_pending_tx, Config) ->
 init_per_group(account_info, Config) ->
     Config;
 %% transaction_endpoints
-init_per_group(nonexistent_tx = Group, Config) ->
-    start_node(Group, Config);
-init_per_group(tx_is_pending = Group, Config) ->
-    Config1 = start_node(Group, Config),
-    [ {NodeId, Node} | _ ] = ?config(nodes, Config1),
+init_per_group(nonexistent_tx, Config) ->
+    Config;
+init_per_group(tx_is_pending, Config) ->
+    [ {NodeId, Node} | _ ] = ?config(nodes, Config),
+    aecore_suite_utils:reinit_with_ct_consensus(?NODE),
     {_, Pub} = aecore_suite_utils:sign_keys(NodeId),
     ToMine = max(2, aecore_suite_utils:latest_fork_height()),
     aecore_suite_utils:mine_key_blocks(Node, ToMine),
@@ -651,8 +648,7 @@ init_per_group(tx_is_pending = Group, Config) ->
      {block_with_txs_hash, <<"none">>},
      {block_with_txs_height, -1} | Config];
 init_per_group(tx_is_on_chain = Group, Config) ->
-    Config1 = start_node(Group, Config),
-    Node = ?config(node, Config1),
+    Node = aecore_suite_utils:node_name(?NODE),
     case aecore_suite_utils:mine_micro_block_emptying_mempool_or_fail(Node) of
         {ok, [KeyBlock, MicroBlock]} ->
             true = aec_blocks:is_key_block(KeyBlock),
@@ -661,13 +657,13 @@ init_per_group(tx_is_on_chain = Group, Config) ->
             [{on_chain_txs, [{aeser_api_encoder:encode(tx_hash, aetx_sign:hash(Tx)), Tx}]},
              {block_with_txs, MicroBlock},
              {block_with_txs_hash, hash(micro, MicroBlock)},
-             {block_with_txs_height, aec_blocks:height(KeyBlock)} | Config1];
+             {block_with_txs_height, aec_blocks:height(KeyBlock)} | Config];
         {error, Reason} ->
             ct:fail({could_not_setup_tx_is_on_chain, Reason})
     end;
-init_per_group(post_tx_to_mempool = Group, Config) ->
-    Config1 = start_node(Group, Config),
-    [ {NodeId, Node} | _ ] = ?config(nodes, Config1),
+init_per_group(post_tx_to_mempool, Config) ->
+    [ {NodeId, Node} | _ ] = ?config(nodes, Config),
+    aecore_suite_utils:reinit_with_ct_consensus(?NODE),
     {_, Pub} = aecore_suite_utils:sign_keys(NodeId),
     ToMine = max(2, aecore_suite_utils:latest_fork_height()),
     aecore_suite_utils:mine_key_blocks(Node, ToMine),
@@ -677,33 +673,38 @@ init_per_group(post_tx_to_mempool = Group, Config) ->
      {recipient_id, aeser_api_encoder:encode(account_pubkey, random_hash())},
      {amount, 1},
      {fee, ?SPEND_FEE},
-     {payload, <<"foo">>} | Config1];
+     {payload, <<"foo">>} | Config];
 init_per_group(tx_info, Config) ->
     Config;
 %% contract_endpoints
 %% oracle_endpoints
-init_per_group(nonexistent_oracle = Group, Config) ->
-    start_node(Group, Config);
-init_per_group(oracle_txs = Group, Config) ->
-    Config1 = start_node(Group, Config),
-    Node = ?config(node, Config1),
+init_per_group(nonexistent_oracle, Config) ->
+    Config;
+init_per_group(oracle_txs, Config) ->
+    Node = aecore_suite_utils:node_name(?NODE),
+    aecore_suite_utils:reinit_with_ct_consensus(?NODE),
     ToMine = max(2, aecore_suite_utils:latest_fork_height()),
     aecore_suite_utils:mine_key_blocks(Node, ToMine),
     {ok, [KeyBlock]} = aecore_suite_utils:mine_key_blocks(Node, 1),
     true = aec_blocks:is_key_block(KeyBlock),
-    Config1;
+    Config;
 %% name_endpoints
-init_per_group(nonexistent_name = Group, Config) ->
-    start_node(Group, Config);
+init_per_group(nonexistent_name, Config) ->
+    Config;
 init_per_group(name_txs, _Config) ->
     {skip, not_implemented};
 
-init_per_group(Group, Config) ->
-    Config1 = start_node(Group, Config),
-    Node = ?config(node, Config1),
-    BlocksToMine = aecore_suite_utils:latest_fork_height(),
-    aecore_suite_utils:mine_blocks(Node, BlocksToMine),
-    Config1.
+init_per_group(external_endpoints, Config) ->
+    [ {_, Node} | _ ] = ?config(nodes, Config),
+    aecore_suite_utils:reinit_with_ct_consensus(?NODE),
+    ToMine = max(2, aecore_suite_utils:latest_fork_height()),
+    aecore_suite_utils:mine_key_blocks(Node, ToMine),
+    {ok, [KeyBlock]} = aecore_suite_utils:mine_key_blocks(Node, 1),
+    true = aec_blocks:is_key_block(KeyBlock),
+    Config;
+
+init_per_group(_Group, Config) ->
+    Config.
 
 end_per_group(Group, _Config) when
       Group =:= all;
@@ -715,9 +716,16 @@ end_per_group(account_with_pending_tx, _Config) ->
     ok;
 end_per_group(oracle_txs, _Config) ->
     ok;
-end_per_group(Group, Config) ->
-    ok = stop_node(Group, Config).
-
+end_per_group(on_micro_block, _Config) ->
+    ok;
+end_per_group(on_genesis_block, _Config) ->
+    ok;
+end_per_group(on_key_block, _Config) ->
+    ok;
+end_per_group(block_endpoints, Config) ->
+    ok;
+end_per_group(_Group, Config) ->
+    ok.
 
 init_per_testcase(named_oracle_transactions, Config) ->
     case aect_test_utils:latest_protocol_version() >= ?IRIS_PROTOCOL_VSN of
@@ -793,53 +801,6 @@ end_per_testcase_all(Config) ->
            [[{N, aecore_suite_utils:all_events_since(N, Ts0)}
              || {_,N} <- ?config(nodes, Config)]]),
     ok.
-
-start_node(Group, Config) ->
-    start_node(proplists:is_defined(node, Config), Group, Config).
-
-start_node(true, _Group, Config) ->
-    aecore_suite_utils:start_mocks(aecore_suite_utils:node_name(?NODE), [block_pow, instant_tx_confirm]),
-    Config;
-start_node(false, Group, Config) ->
-    %% TODO: consider reinint_chain to speed up tests
-    aecore_suite_utils:start_node(?NODE, Config),
-    Node = aecore_suite_utils:node_name(?NODE),
-    aecore_suite_utils:connect(Node, [block_pow, instant_tx_confirm]),
-    [{node, Node}, {node_start_group, Group} | Config].
-
-start_node_no_mock(Group, Config) ->
-    start_node_no_mock(proplists:is_defined(node, Config), Group, Config).
-
-start_node_no_mock(true, _Group, Config) ->
-    aecore_suite_utils:end_mocks(aecore_suite_utils:node_name(?NODE), [block_pow, instant_tx_confirm]),
-    Config;
-start_node_no_mock(false, Group, Config) ->
-    %% TODO: consider reinint_chain to speed up tests
-    aecore_suite_utils:start_node(?NODE, Config),
-    Node = aecore_suite_utils:node_name(?NODE),
-    aecore_suite_utils:connect(Node, [block_pow, instant_tx_confirm]),
-    [{node, Node}, {node_start_group, Group} | Config].
-
-stop_node(Group, Config) ->
-    stop_node(proplists:is_defined(node, Config), Group, Config).
-
-stop_node(true, Group, Config) ->
-    NodeStartGroup = ?config(node_start_group, Config),
-    case Group =:= NodeStartGroup of
-        true ->
-            stop_node_(?NODE, Config),
-            ok;
-        false ->
-            ok
-    end;
-stop_node(false, _Group, _Config) ->
-    ok.
-
-stop_node_(Node, Config) ->
-    RpcFun = fun(M, F, A) -> rpc(Node, M, F, A) end,
-    {ok, DbCfg} = aecore_suite_utils:get_node_db_config(RpcFun),
-    aecore_suite_utils:stop_node(Node, Config),
-    aecore_suite_utils:delete_node_db_if_persisted(DbCfg).
 
 %% ============================================================
 %% Test cases
@@ -1285,10 +1246,11 @@ get_account_by_pubkey_and_height(false, Config) ->
     ok;
 get_account_by_pubkey_and_height(true, Config) ->
     AccountId = ?config(account_id, Config),
-    Header = rpc(?NODE, aec_chain, top_header, []),
+    {ok, TopBlock} = rpc(?NODE, aec_chain, top_key_block, []),
+    Header = aec_blocks:to_header(TopBlock),
     Height = aec_headers:height(Header),
     {ok, Hash} = aec_headers:hash_header(Header),
-    PrevHash = aec_headers:prev_hash(Header),
+    PrevHash = aec_headers:prev_key_hash(Header),
     EncodedHash = aeser_api_encoder:encode(key_block_hash, Hash),
     EncodedPrevHash = aeser_api_encoder:encode(key_block_hash, PrevHash),
     {ok, 200, Account1} = get_accounts_by_pubkey_and_height_sut(AccountId, Height - 1),

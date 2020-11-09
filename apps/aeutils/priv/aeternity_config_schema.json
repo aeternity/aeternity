@@ -465,13 +465,11 @@
                 "consensus" : {
                     "description" : "The consensus algorithms used for validating blocks. Ignored if 'fork_management > network_id' has value 'ae_mainnet' or 'ae_uat'.",
                     "type" : "object",
-                    "additionalProperties": false,
                     "patternProperties" : {
                         "^[1-9][0-9]*$" : {
                             "description" : "Minimum height at which the given consensus algorithm gets activated. By default from genesis Cuckoo cycle based BitcoinNG is used.",
                             "type" : "object",
                             "required": ["name"],
-                            "additionalProperties": false,
                             "properties": {
                                 "name": {
                                     "description": "The name of the consensus algorithm used at the given height",

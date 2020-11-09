@@ -677,7 +677,8 @@ large_msgs(Config) ->
     N2 = aecore_suite_utils:node_name(Dev2),
 
     aecore_suite_utils:start_node(Dev1, Config),
-    aecore_suite_utils:connect(aecore_suite_utils:node_name(Dev1), [block_pow, instant_tx_confirm]),
+    aecore_suite_utils:connect(aecore_suite_utils:node_name(Dev1), []),
+    aecore_suite_utils:reinit_with_ct_consensus(Dev1),
 
     ok = rpc:call(N1, application, set_env, [aecore, block_gas_limit, 100000000]),
 
@@ -706,7 +707,8 @@ large_msgs(Config) ->
 
     T0 = os:timestamp(),
     aecore_suite_utils:start_node(Dev2, Config),
-    aecore_suite_utils:connect(N2, [block_pow, instant_tx_confirm]),
+    aecore_suite_utils:connect(N2, []),
+    aecore_suite_utils:reinit_with_ct_consensus(Dev2),
 
     %% Set the same mining_rate to validate target
     %% Only needed when chain more than 18 blocks
@@ -725,7 +727,7 @@ inject_long_chain(Config) ->
     %% Ensure not mining
     stopped = rpc:call(Node, aec_conductor, get_mining_state, []),
     %% Disable PoW checks
-    aecore_suite_utils:start_mock(Node, block_pow),
+    aecore_suite_utils:reinit_with_ct_consensus(Dev1),
     %% Create chain
     put(nonce, 1),
     {T, _} = timer:tc(fun() -> [inject_generation(Node, M, NTx) || _ <- lists:seq(1, G)] end),
@@ -763,7 +765,7 @@ measure_second_node_sync_time(Config) ->
     aecore_suite_utils:start_node(Dev2, Config),
     {T, _} = timer:tc(fun() ->
         aecore_suite_utils:connect(N2),
-        aecore_suite_utils:start_mock(N2, block_pow),
+        aecore_suite_utils:reinit_with_ct_consensus(Dev2),
         Self = self(),
         Watcher = rpc:call(N2, erlang, spawn, [fun() ->
             aec_events:subscribe(chain_sync),

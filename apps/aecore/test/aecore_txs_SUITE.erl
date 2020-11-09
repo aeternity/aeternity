@@ -45,17 +45,23 @@ init_per_suite(Config) ->
         },
         <<"mempool">> => #{ <<"invalid_tx_ttl">> => 2 }
     },
-    Config1 = aecore_suite_utils:init_per_suite([dev1, dev2], DefCfg,
-                                                [{add_peers, true}],
-                                                [{symlink_name, "latest.txs"},
-                                                 {test_module, ?MODULE},
-                                                 {micro_block_cycle,
-                                                  MicroBlockCycle}] ++
+    Config1 = aecore_suite_utils:init_per_suite([dev1, dev2], DefCfg, 
+                                                [{add_peers, true}], 
+                                                [{symlink_name, "latest.txs"}, 
+                                                 {test_module, ?MODULE}, 
+                                                 {micro_block_cycle, 
+                                                  MicroBlockCycle}] ++ 
                                                 Config),
+    [begin
+        aecore_suite_utils:start_node(N, Config1),
+        Node = aecore_suite_utils:node_name(N),
+        aecore_suite_utils:connect(Node) end || N <- [dev1, dev2]],
     [{nodes, [aecore_suite_utils:node_tuple(dev1),
               aecore_suite_utils:node_tuple(dev2)]} | Config1].
 
-end_per_suite(_Config) ->
+end_per_suite(Config) ->
+    aecore_suite_utils:stop_node(dev1, Config),
+    aecore_suite_utils:stop_node(dev2, Config),
     ok.
 
 init_per_testcase(_Case, Config) ->
@@ -66,18 +72,15 @@ end_per_testcase(_Case, Config) ->
     Ts0 = ?config(tc_start, Config),
     ct:log("Events during TC: ~p", [[{N, aecore_suite_utils:all_events_since(N, Ts0)}
                                      || {_,N} <- ?config(nodes, Config)]]),
-    aecore_suite_utils:stop_node(dev1, Config),
-    aecore_suite_utils:stop_node(dev2, Config),
     ok.
 
 %% ============================================================
 %% Test cases
 %% ============================================================
 txs_gc(Config) ->
-    aecore_suite_utils:start_node(dev1, Config),
+    aecore_suite_utils:reinit_with_bitcoin_ng(dev1),
     N1 = aecore_suite_utils:node_name(dev1),
-    aecore_suite_utils:connect(N1),
-    ok = aecore_suite_utils:set_env(N1, aecore, mempool_nonce_offset, 100),
+    ok = aecore_suite_utils:mock_mempool_nonce_offset(N1, 100),
 
     Height0 = 0,
 
@@ -133,7 +136,8 @@ txs_gc(Config) ->
     %% Now there should be no transactions in mempool
     pool_check(N1, 0),
 
-    ok = aecore_suite_utils:check_for_logs([dev1], Config).
+    ok = aecore_suite_utils:check_for_logs([dev1], Config),
+    aecore_suite_utils:unmock_mempool_nonce_offset(N1).
 
 pool_check(Node, ExpectedNTxs) ->
     pool_check_(Node, ExpectedNTxs, 5).
@@ -164,14 +168,11 @@ pool_peek(Node) ->
     rpc:call(Node, aec_tx_pool, peek, [infinity]).
 
 missing_tx_gossip(Config) ->
-    aecore_suite_utils:start_node(dev1, Config),
-    aecore_suite_utils:start_node(dev2, Config),
-
     N1 = aecore_suite_utils:node_name(dev1),
     N2 = aecore_suite_utils:node_name(dev2),
 
-    aecore_suite_utils:connect(N1),
-    aecore_suite_utils:connect(N2),
+    aecore_suite_utils:reinit_with_bitcoin_ng(dev1),
+    aecore_suite_utils:reinit_with_bitcoin_ng(dev2),
 
     %% Both nodes are up, now turn off gossiping of TXs
     %% Also (virtually) disable ping
@@ -209,9 +210,8 @@ missing_tx_gossip(Config) ->
 
 check_coinbase_validation(Config) ->
     %% Mine on a node a contract tx using coinbase.
-    aecore_suite_utils:start_node(dev1, Config),
     N1 = aecore_suite_utils:node_name(dev1),
-    aecore_suite_utils:connect(N1),
+    aecore_suite_utils:reinit_with_bitcoin_ng(dev1),
     {ok, TxH1, Ct1, Code} =
         create_contract_tx(N1, chain, [],  300000 * aec_test_utils:min_gas_price(),  1,  100),
     {ok, TxH2} =
@@ -220,8 +220,9 @@ check_coinbase_validation(Config) ->
         aecore_suite_utils:mine_blocks_until_txs_on_chain(N1, [TxH1, TxH2], ?MAX_MINED_BLOCKS),
 
     %% Start a second node with distinct beneficiary.
-    aecore_suite_utils:start_node(dev2, Config),
+    aecore_suite_utils:stop_node(dev2, Config),
     N2 = aecore_suite_utils:node_name(dev2),
+    aecore_suite_utils:start_node(dev2, Config),
     aecore_suite_utils:connect(N2),
     {ok, Ben1} = rpc:call(N1, aec_conductor, get_beneficiary, []),
     {ok, Ben2} = rpc:call(N2, aec_conductor, get_beneficiary, []),
@@ -252,9 +253,8 @@ yield() -> timer:sleep(10).
 
 micro_block_cycle(Config) ->
     MBC = ?config(micro_block_cycle, Config),
-    aecore_suite_utils:start_node(dev1, Config),
     N1 = aecore_suite_utils:node_name(dev1),
-    aecore_suite_utils:connect(N1),
+    aecore_suite_utils:reinit_with_bitcoin_ng(dev1),
 
     %% Mine a block to get some funds. Height=1
     aecore_suite_utils:mine_key_blocks(N1, 1),

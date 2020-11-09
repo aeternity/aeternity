@@ -759,7 +759,8 @@ assert_height_delta(Node, State) ->
 %% To assert key block target calculation we need DeltaHeight headers counted
 %% backwards from the node we want to assert.
 assert_key_block_target(Node, Ctx) ->
-        Delta         = aec_governance:key_blocks_to_check_difficulty_count() + 1,
+        Consensus     = aec_headers:consensus_module(node_header(Node)),
+        Delta         = Consensus:keyblocks_for_target_calc() + 1,
         Height        = node_height(Node),
         GenesisHeight = aec_block_genesis:height(),
         case Delta >= Height - GenesisHeight of
@@ -767,7 +768,12 @@ assert_key_block_target(Node, Ctx) ->
                 %% We only need to verify that the target is equal to its predecessor.
                 assert_target_equal_to_prev(Node, Ctx);
             false ->
-                assert_calculated_target(Node, Delta, Ctx)
+                case Delta of
+                    1 ->
+                        ok;
+                    _ ->
+                        assert_calculated_target(Node, Delta, Ctx)
+                end
         end.
 
 assert_target_equal_to_prev(Node, Ctx) ->

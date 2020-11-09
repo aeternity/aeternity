@@ -16,6 +16,7 @@
 -export([schema/0, schema/1]).
 -export([user_config_or_env/3, user_config_or_env/4]).
 -export([user_map_or_env/4]).
+-export([env_or_user_map/4]).
 -export([config_value/4]).
 -export([find_config/2]).
 -export([nested_map_get/2]).
@@ -116,6 +117,19 @@ user_map_or_env(CfgKey, App, EnvKey, Default) ->
             get_env(App, EnvKey, Default);
         {ok, Value} ->
             Value
+    end.
+
+-spec env_or_user_map(config_key(), atom(), env_key(), any()) -> any().
+env_or_user_map(CfgKey, App, EnvKey, Default) ->
+    case get_env(App, EnvKey) of
+        {ok, V}   -> V;
+        undefined ->
+            case user_map(CfgKey) of
+                undefined ->
+                    Default;
+                {ok, Value} ->
+                    Value
+            end
     end.
 
 config_value(CfgKey, App, Env, Default) ->

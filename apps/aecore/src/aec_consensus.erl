@@ -56,6 +56,7 @@
 
 %% API
 -export([ check_env/0
+        , set_consensus/0
         , get_consensus_module_at_height/1
         , get_consensus_config_at_height/1
         , get_genesis_consensus_module/0
@@ -128,6 +129,10 @@
 %% Callbacks for building the db insertion ctx
 -callback recent_cache_n() -> non_neg_integer().
 -callback recent_cache_trim_header(aec_headers:header()) -> term().
+
+-callback keyblocks_for_target_calc() -> non_neg_integer().
+-callback keyblock_create_adjust_target(aec_blocks:block(), list(aec_headers:header())) ->
+    {ok, aec_blocks:block()} | {error, term()}.
 
 %% Pre conductor validation - filters blocks before passing it to the conductor
 %% The idea is that "dev mode" can ensure that after it gets enabled no REAL block
@@ -209,7 +214,7 @@ check_env() ->
         [] ->
             ok;
         [false] ->
-            [false] = lists:last(Changeable);
+            false = lists:last(Changeable);
         _ ->
             error(cannot_turn_off_consensus)
     end,
@@ -268,16 +273,8 @@ consensus_from_network_id(<<"ae_mainnet">>) ->
     [{0, {aec_consensus_bitcoin_ng, #{}}}];
 consensus_from_network_id(<<"ae_uat">>) ->
     [{0, {aec_consensus_bitcoin_ng, #{}}}];
-consensus_from_network_id(<<"local_roma_testnet">>) ->
-    [{0, {aec_consensus_bitcoin_ng, #{}}}];
-consensus_from_network_id(<<"local_minerva_testnet">>) ->
-    [{0, {aec_consensus_bitcoin_ng, #{}}}];
-consensus_from_network_id(<<"local_fortuna_testnet">>) ->
-    [{0, {aec_consensus_bitcoin_ng, #{}}}];
-consensus_from_network_id(<<"local_iris_testnet">>) ->
-    [{0, {aec_consensus_bitcoin_ng, #{}}}];
 consensus_from_network_id(_) ->
-    case aeu_env:user_map_or_env([<<"chain">>, <<"consensus">>], aecore, consensus, undefined) of
+    case aeu_env:env_or_user_map([<<"chain">>, <<"consensus">>], aecore, consensus, undefined) of
         undefined ->
             [{0, {aec_consensus_bitcoin_ng, #{}}}];
         M when is_map(M) ->
@@ -290,5 +287,12 @@ consensus_from_network_id(_) ->
 
 %% Don't crash here as config validation is performed during node startup in the consensus module
 -spec consensus_module_from_name(binary()) -> consensus_module().
+
+-ifdef(TEST).
+consensus_module_from_name(<<"pow_cuckoo">>) -> aec_consensus_bitcoin_ng;
+consensus_module_from_name(<<"ct_tests">>) -> aec_consensus_common_tests;
+consensus_module_from_name(_) -> undefined.
+-else.
 consensus_module_from_name(<<"pow_cuckoo">>) -> aec_consensus_bitcoin_ng;
 consensus_module_from_name(_) -> undefined.
+-endif.

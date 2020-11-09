@@ -64,7 +64,9 @@ difficulty_recalculation_test_() ->
 
                  Chain = compute_chain(Now, Height0, GoodTarget, 0),
 
-                 {ok, Block} = aec_block_key_candidate:adjust_target(Block0, Chain),
+                 Consensus = aec_blocks:consensus_module(Block0),
+                 aec_consensus_bitcoin_ng = Consensus,
+                 {ok, Block} = Consensus:keyblock_create_adjust_target(Block0, Chain),
 
                  NewDifficulty = ?HIGHEST_TARGET_INT / aeminer_pow:scientific_to_integer(aec_blocks:target(Block)),
 
@@ -88,7 +90,9 @@ difficulty_recalculation_test_() ->
                  %% Compute chain with almost perfect timing
                  Chain = compute_chain(Now, Height0, GoodTarget, Offset),
 
-                 {ok, Block} = aec_block_key_candidate:adjust_target(Block0, Chain),
+                 Consensus = aec_blocks:consensus_module(Block0),
+                 aec_consensus_bitcoin_ng = Consensus,
+                 {ok, Block} = Consensus:keyblock_create_adjust_target(Block0, Chain),
 
                  NewDifficulty = ?HIGHEST_TARGET_INT / aeminer_pow:scientific_to_integer(aec_blocks:target(Block)),
                  ?assert(NewDifficulty < GoodDifficulty),
@@ -110,7 +114,9 @@ difficulty_recalculation_test_() ->
                  %% Compute chain with almost perfect timing
                  Chain = compute_chain(Now, Height0, GoodTarget, -Offset),
 
-                 {ok, Block} = aec_block_key_candidate:adjust_target(Block0, Chain),
+                 Consensus = aec_blocks:consensus_module(Block0),
+                 aec_consensus_bitcoin_ng = Consensus,
+                 {ok, Block} = Consensus:keyblock_create_adjust_target(Block0, Chain),
 
                  NewDifficulty = ?HIGHEST_TARGET_INT / aeminer_pow:scientific_to_integer(aec_blocks:target(Block)),
                  ?assert(NewDifficulty > GoodDifficulty),
