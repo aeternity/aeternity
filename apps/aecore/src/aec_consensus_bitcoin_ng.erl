@@ -9,14 +9,15 @@
 
 %% API
 -export([ can_be_turned_off/0
+        , assert_config/1
         , dirty_validate_key_header/0
-        , prepare_start/0
-        , start/0
-        , stop/0
+        , start/1
+        , stop/1
         , is_providing_extra_http_endpoints/0
         , extra_from_header/1
         , recent_cache_n/0
         , recent_cache_trim_header/1
+        , dirty_validate_block_pre_conductor/1
         , dirty_validate_key_header/1
         , genesis_block_with_state/0
         , genesis_height/0
@@ -37,10 +38,11 @@
 -include_lib("aeminer/include/aeminer.hrl").
 
 can_be_turned_off() -> true.
+assert_config(_Config) -> ok.
+start(_Config) -> ok.
+stop(_Config) -> ok.
+
 dirty_validate_key_header() -> error(todo).
-prepare_start() -> error(todo).
-start() -> error(todo).
-stop() -> error(todo).
 
 is_providing_extra_http_endpoints() -> false.
 extra_from_header(_) ->
@@ -49,6 +51,7 @@ extra_from_header(_) ->
 recent_cache_n() -> 10.
 recent_cache_trim_header(_) -> {}.
 
+dirty_validate_block_pre_conductor(_) -> ok.
 dirty_validate_key_header(_) -> error(todo).
 
 genesis_block_with_state() -> error(todo).

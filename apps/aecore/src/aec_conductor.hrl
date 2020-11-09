@@ -25,7 +25,8 @@
                    }).
 
 -record(consensus, {leader             = false    :: boolean(),
-                    micro_block_cycle             :: integer()
+                    micro_block_cycle             :: integer(),
+                    consensus_module              :: atom()
                     }).
 
 -type instance_state() :: pid() | 'available'.

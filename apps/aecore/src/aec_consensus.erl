@@ -55,7 +55,8 @@
 -module(aec_consensus).
 
 %% API
--export([ get_consensus_module_at_height/1
+-export([ check_env/0
+        , get_consensus_module_at_height/1
         , get_consensus_config_at_height/1
         , get_genesis_consensus_module/0
         , get_genesis_consensus_config/0
@@ -88,13 +89,16 @@
 %% PoA or HC consensus can be turned off and changed to something else
 -callback can_be_turned_off() -> boolean().
 
-%% Some consensus implementations should ensure that it can be enabled at the given point in time
-%% for instance by killing the peer pool, disabling the mining conductor etc...
--callback prepare_start() -> ok.
+%% Assert user configuration
+-callback assert_config(consensus_config()) -> ok.
 
 %% Should start the given consensus implementation - called only after prepare_start
--callback start() -> ok.
-%% Should stop the given consensus implementation
+%% Some consensus implementations should ensure that it can be enabled at the given point in time
+%% for instance by killing the peer pool, bypassing the mining conductor etc...
+%% gets the configuration previously validated by assert_config/1
+-callback start(consensus_config()) -> ok.
+%% Stops the given consensus
+%% Only required for consensuses for which can_be_turned_off() =:= true
 -callback stop() -> ok.
 
 %% Some consensus implementations might provide external http methods
@@ -103,6 +107,8 @@
 -callback is_providing_extra_http_endpoints() -> boolean().
 -callback extra_http_endpoints() -> term().
 %% Special consensus features - some of them are exposed via the above http endpoints
+%% This API is meant to be used ONLY by the node operator
+%% This will be used by at most one user and all requests go through the mining conductor
 -callback client_request(term()) -> term().
 
 %% -------------------------------------------------------------------
@@ -122,6 +128,14 @@
 %% Callbacks for building the db insertion ctx
 -callback recent_cache_n() -> non_neg_integer().
 -callback recent_cache_trim_header(aec_headers:header()) -> term().
+
+%% Pre conductor validation - filters blocks before passing it to the conductor
+%% The idea is that "dev mode" can ensure that after it gets enabled no REAL block
+%% can get inserted via the mining conductor. "dev mode" should avoid mutating the real
+%% DB with invalid state - after restarting the node the DB should be usable again
+%% The chain simulator in dev mode should preferably keep the state in ram or in a temporary
+%% mnesia disk table
+-callback dirty_validate_block_pre_conductor(aec_blocks:block()) -> ok | {error, any()}.
 
 %% This callback is called in dirty context before starting the block insertion
 %% It's called only when the insertion context got properly created:
@@ -170,12 +184,38 @@
 
 -optional_callbacks([stop/0, extra_http_endpoints/0]).
 
-%% Consensus configuration
+%% -------------------------------------------------------------------
+%% Consensus utilities
+%% -------------------------------------------------------------------
 
 -spec calc_consensus() -> global_consensus_config().
 calc_consensus() ->
     NetworkId = aec_governance:get_network_id(),
     lists:keysort(1, consensus_from_network_id(NetworkId)).
+
+%% Consensus configuration
+-spec check_env() -> ok.
+check_env() ->
+    ConsensusSpec = calc_consensus(),
+    %% Check that the first consensus specification starts at 0
+    [{0,_}|_] = ConsensusSpec,
+    %% No duplicated specs
+    ConsensusSpec = lists:usort(ConsensusSpec),
+    %% We know the requested consensus algorithms
+    [] = lists:filter(fun ({_,{undefined,_}}) -> true; (_) -> false end, ConsensusSpec),
+    %% Some consensuses like dev mode can't be turned off
+    Changeable = [M:can_be_turned_off() || {_,{M,_}} <- ConsensusSpec],
+    case lists:filter(fun erlang:'not'/1, Changeable) of
+        [] ->
+            ok;
+        [false] ->
+            [false] = lists:last(Changeable);
+        _ ->
+            error(cannot_turn_off_consensus)
+    end,
+    %% Assert particular consensus configs
+    [M:assert_config(Config) || {_, {M, Config}} <- ConsensusSpec],
+    ok.
 
 -spec set_consensus() -> ok.
 set_consensus() ->

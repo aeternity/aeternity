@@ -16,9 +16,15 @@
 %%%===================================================================
 
 validate_block(Block, Version) ->
-    case aec_blocks:is_key_block(Block) of
-        true ->
-            aec_blocks:validate_key_block(Block, Version);
-        false ->
-            aec_blocks:validate_micro_block(Block, Version)
+    ConsensusModule = aec_blocks:consensus_module(Block),
+    case ConsensusModule:dirty_validate_block_pre_conductor(Block) of
+        ok ->
+            case aec_blocks:is_key_block(Block) of
+                true ->
+                    aec_blocks:validate_key_block(Block, Version);
+                false ->
+                    aec_blocks:validate_micro_block(Block, Version)
+            end;
+        {error, Reason} ->
+            {error, {consensus, Reason}}
     end.

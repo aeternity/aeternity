@@ -61,6 +61,11 @@
         , post_block/1
         ]).
 
+%% Consensus API
+-export([ get_active_consensus_module/0
+        , consensus_request/1
+        ]).
+
 -ifdef(TEST).
 -export([reinit_chain/0
         ]).
@@ -148,6 +153,9 @@ post_block(Block) ->
     case aec_validation:validate_block(Block, Protocol) of
         ok ->
             gen_server:call(?SERVER, {post_block, Block}, 30000);
+        {error, {consensus, Reason}} ->
+            epoch_mining:info("Consensus rejected block: ~p", [Reason]),
+            {error, Reason};
         {error, {header, Reason}} ->
             epoch_mining:info("Header failed validation: ~p", [Reason]),
             {error, Reason};
@@ -163,6 +171,9 @@ add_synced_block(Block) ->
     case aec_validation:validate_block(Block, Protocol) of
         ok ->
             gen_server:call(?SERVER, {add_synced_block, Block}, 30000);
+        {error, {consensus, Reason}} ->
+            epoch_mining:info("Consensus rejected block: ~p", [Reason]),
+            {error, Reason};
         {error, {header, Reason}} ->
             epoch_mining:info("Header failed validation: ~p", [Reason]),
             {error, Reason};
@@ -182,6 +193,18 @@ reinit_chain() ->
 -endif.
 
 %%%===================================================================
+%%% Consensus API
+get_active_consensus_module() ->
+    gen_server:call(?SERVER, get_active_consensus_module).
+
+%% Shortcut for calling the currently active consensus module
+consensus_request(Request) ->
+    %% When changing the active consensus module or the configuration
+    %% The conductor ensures that the given "consensus" was fully started
+    M = get_active_consensus_module(),
+    M:client_request(Request).
+
+%%%===================================================================
 %%% Stratum mining pool API
 
 -spec stratum_reply({aec_consensus:key_nonce(), aec_consensus:key_seal()}, candidate_hash()) -> term().
@@ -197,8 +220,13 @@ init(Options) ->
     ok     = init_chain_state(),
     TopBlockHash = aec_chain:top_block_hash(),
     TopKeyBlockHash = aec_chain:top_key_block_hash(),
-    Consensus = #consensus{micro_block_cycle = aec_governance:micro_block_cycle(),
-                           leader = false},
+    {ok, TopHeader} = aec_chain:get_header(TopBlockHash),
+    ConsensusModule = aec_headers:consensus_module(TopHeader),
+    ConsensusConfig = aec_consensus:get_consensus_config_at_height(aec_headers:height(TopHeader)),
+    ConsensusModule:start(ConsensusConfig), %% Might do nothing or it might spawn a genserver :P
+    Consensus = #consensus{ micro_block_cycle = aec_governance:micro_block_cycle()
+                          , leader = false
+                          , consensus_module = ConsensusModule },
     State1 = #state{ top_block_hash     = TopBlockHash,
                      top_key_block_hash = TopKeyBlockHash,
                      consensus          = Consensus},
@@ -289,6 +317,8 @@ handle_call(get_key_block_candidate,_From, State) ->
     {reply, Res, State1};
 handle_call(get_miner_instances, _From, State) ->
     {reply, State#state.miner_instances, State};
+handle_call(get_active_consensus_module, _From, State) ->
+    {reply, (State#state.consensus)#consensus.consensus_module, State};
 handle_call({post_block, Block},_From, State) ->
     {Reply, State1} = handle_post_block(Block, State),
     {reply, Reply, State1};
@@ -1099,9 +1129,23 @@ ok({ok, Value}) ->
     Value.
 
 
-handle_add_block(Block, #state{} = State, Origin) ->
+handle_add_block(Block, #state{consensus = #consensus{consensus_module = ActiveConsensus}} = State, Origin) ->
     Header = aec_blocks:to_header(Block),
-    handle_add_block(Header, Block, State, Origin).
+    case aec_headers:consensus_module(Header) of
+        ActiveConsensus ->
+            handle_add_block(Header, Block, State, Origin);
+        _ ->
+            case ActiveConsensus:can_be_turned_off() of
+                true ->
+                    %% This is OK only when we deal with ordinary consensus algorithms
+                    %% This is expected when switching between PoA, PoW, Hyperchains
+                    handle_add_block(Header, Block, State, Origin);
+                false ->
+                    %% "Dev mode" consensus should have killed the peer pool and other unnecessary components by now
+                    %% Some pending blocks might still be present in the message queue - ignore them
+                    {{error, special_consensus_active}, State}
+            end
+    end.
 
 handle_add_block(Header, Block, State, Origin) ->
     {ok, Hash} = aec_headers:hash_header(Header),
@@ -1146,11 +1190,13 @@ handle_add_block(Block, Hash, Prev, #state{top_block_hash = TopBlockHash} = Stat
 handle_successfully_added_block(Block, Hash, false, _, Events, State, Origin) ->
     maybe_publish_tx_events(Events, Hash, Origin),
     maybe_publish_block(Origin, Block),
-    {ok, State};
+    State1 = maybe_consensus_change(State, Block),
+    {ok, State1};
 handle_successfully_added_block(Block, Hash, true, PrevKeyHeader, Events, State, Origin) ->
     maybe_publish_tx_events(Events, Hash, Origin),
     maybe_publish_block(Origin, Block),
-    case preempt_on_new_top(State, Block, Hash, Origin) of
+    State1 = maybe_consensus_change(State, Block),
+    case preempt_on_new_top(State1, Block, Hash, Origin) of
         {micro_changed, State2 = #state{ consensus = Cons }} ->
             {ok, setup_loop(State2, false, Cons#consensus.leader, Origin)};
         {changed, BlockType, NewTopBlock, State2} ->
@@ -1163,6 +1209,25 @@ handle_successfully_added_block(Block, Hash, true, PrevKeyHeader, Events, State,
                     [ maybe_garbage_collect_accounts() || BlockType == key ]
             end,
             {ok, setup_loop(State2, true, IsLeader, Origin)}
+    end.
+
+maybe_consensus_change(#state{ consensus = Consensus } = State, Block) ->
+    %% When a new block got successfully inserted we need to check whether the next block
+    %% would use different consensus algorithm - This is the point where
+    %% dev mode should wreck havoc on the entire system and redirect everything
+    %% to a chain simulator ;)
+    #consensus{ consensus_module = ActiveConsensus } = Consensus,
+    H = aec_blocks:height(Block),
+    case aec_consensus:get_consensus_module_at_height(H + 1) of
+        ActiveConsensus ->
+            State;
+        NewConsensus ->
+            %% It looks like dev mode needs to be activated :)
+            true = ActiveConsensus:can_be_turned_off(),
+            ActiveConsensus:stop(),
+            NewConfig = aec_consensus:get_consensus_config_at_height(H+1),
+            NewConsensus:start(NewConfig),
+            State#state{ consensus = Consensus#consensus{ consensus_module = NewConsensus } }
     end.
 
 is_leader(NewTopBlock, PrevKeyHeader) ->
