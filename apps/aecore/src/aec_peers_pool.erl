@@ -793,9 +793,7 @@ update_peer(St, Now, SourceAddr, PeerData) ->
                     {updated, set_peer(St, PeerId, Peer2)};
                 false ->
                     ignored
-            end;
-        _ ->
-            ignored
+            end
     end.
 
 %% Deletes a peer and all its references.
