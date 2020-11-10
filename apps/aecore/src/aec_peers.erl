@@ -1372,12 +1372,11 @@ pool_update(SourceAddr, Peer, State) ->
     #state{ pool = Pool
           , known_sockets = KnownSockets} = State,
     PeerId = aec_peer:id(Peer),
-    PeerAddr = aec_peer:ip(Peer),
     IsTrusted = aec_peer:is_trusted(Peer),
     Now = timestamp(),
     {OldPoolName, _} = aec_peers_pool:peer_state(Pool, PeerId),
-    {NewPoolName, Pool2} = aec_peers_pool:update(Pool, Now, PeerId, PeerAddr,
-                                                 SourceAddr, IsTrusted, Peer),
+    {NewPoolName, Pool2} = aec_peers_pool:update(Pool, Now, SourceAddr,
+                                                 IsTrusted, Peer),
     pool_log_changes(PeerId, OldPoolName, NewPoolName),
 
     Socket = aec_peer:socket(Peer),
@@ -1443,8 +1442,7 @@ pool_upversel(Peer, State) ->
     IsTrusted = aec_peer:is_trusted(Peer),
     Now = timestamp(),
     {OldPoolName, _} = aec_peers_pool:peer_state(Pool, PeerId),
-    case aec_peers_pool:update(Pool, Now, PeerId, PeerAddr,
-                               PeerAddr, IsTrusted, Peer) of
+    case aec_peers_pool:update(Pool, Now, PeerAddr, IsTrusted, Peer) of
         {unverified, Pool2} ->
             {NewPoolName, Pool3} = aec_peers_pool:verify(Pool2, Now, PeerId),
             Pool4 = aec_peers_pool:select(Pool3, Now, PeerId),
