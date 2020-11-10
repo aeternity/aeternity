@@ -20,7 +20,7 @@
     is_verified/2,
     is_unverified/2,
     is_available/2,
-    update/5,
+    update/4,
     verify/3,
     random_subset/3,
     random_select/4,
@@ -84,11 +84,9 @@ reference_bug_test() ->
     lists:foldl(fun(_, {S, N}) ->
         % Update 10 random peers
         {S2, N2} = lists:foldl(fun(_, {Sf, Nf}) ->
-            RandPeer  = X = rand_peek(Peers),
-            RandPeerId = aec_peer:id(RandPeer),
-            RandPeerAddress = aec_peer:ip(RandPeer),
+            RandPeer  = rand_peek(Peers),
             A2 = rand_peek(Sources),
-            {_, Sf2} = aec_peers_pool:update(Sf, Nf, A2, false, X),
+            {_, Sf2} = aec_peers_pool:update(Sf, Nf, A2, RandPeer),
             {Sf2, Nf + 1}
         end, {S, N}, lists:seq(1, 10)),
 
@@ -153,7 +151,7 @@ add_single_normal_test() ->
     Now = erlang:system_time(millisecond),
     NoFilterFun = make_ext_exclude_filter([]),
     FilterFun = make_ext_exclude_filter([Id1]),
-    {unverified, P2} = update(P, Now, Addr1, false, RandomPeer),
+    {unverified, P2} = update(P, Now, Addr1, RandomPeer),
     ?assertEqual(1, count(P2, all, both)),
     ?assertEqual(0, count(P2, all, verified)),
     ?assertEqual(1, count(P2, all, unverified)),
@@ -211,13 +209,13 @@ add_single_normal_test() ->
 %% Tests pool behavior with a single trusted peer.
 add_single_trusted_test() ->
     P = new(?BASE_POOL_OPTS),
-    RandomPeer = random_peer(),
+    RandomPeer = random_peer(#{trusted => true}),
     Id1 = aec_peer:id(RandomPeer),
     Addr1 = aec_peer:ip(RandomPeer),
     Now = erlang:system_time(millisecond),
     NoFilterFun = make_ext_exclude_filter([]),
     FilterFun = make_ext_exclude_filter([Id1]),
-    {verified, P2} = update(P, Now, Addr1, true, RandomPeer),
+    {verified, P2} = update(P, Now, Addr1, RandomPeer),
     ?assertEqual(1, count(P2, all, both)),
     ?assertEqual(1, count(P2, all, verified)),
     ?assertEqual(0, count(P2, all, unverified)),
@@ -280,9 +278,8 @@ multiple_peers_subset_test() ->
     UnexCount = VerifCount - ExcludedCount,
 
     Pool2 = maps:fold(fun(_, Peer, P) ->
-        T = aec_peer:is_trusted(Peer),
         S = random_address(),
-        {_, P2} = update(P, Now, S, T, Peer),
+        {_, P2} = update(P, Now, S, Peer),
         P2
     end, Pool1, Peers),
 
@@ -370,11 +367,8 @@ multiple_peers_select_test() ->
     UnexUnverIds = [I || I <- UnverIds, not lists:member(I, ExcludedIds)],
 
     Pool2 = maps:fold(fun(_, Peer, P) ->
-        Id = aec_peer:id(Peer),
-        Trusted = aec_peer:is_trusted(Peer),
-        Addr = aec_peer:ip(Peer),
         Source = random_address(),
-        {_, P2} = update(P, Now, Source, Trusted, Peer),
+        {_, P2} = update(P, Now, Source, Peer),
         P2
     end, Pool1, Peers),
 
@@ -420,11 +414,8 @@ peer_selection_unavailability_test() ->
     Peers = make_peers(TotalCount, VerifCount),
 
     Pool2 = maps:fold(fun(_, Peer, P) ->
-        Id = aec_peer:id(Peer),
-        Addr = aec_peer:ip(Peer),
-        Source = Addr,
-        Trusted = aec_peer:is_trusted(Peer),
-        {_, P2} = update(P, Now, Source, Trusted, Peer),
+        Source = random_address(),
+        {_, P2} = update(P, Now, Source, Peer),
         P2
     end, Pool1, Peers),
 
@@ -540,11 +531,8 @@ peer_release_test() ->
     Peers = make_peers(6, 3),
 
     Pool2 = maps:fold(fun(_, Peer, P) ->
-        Id = aec_peer:id(Peer),
-        Addr = aec_peer:ip(Peer),
-        Source = Addr,
-        Trusted = aec_peer:is_trusted(Peer),
-        {_, P2} = update(P, Now, Source, Trusted, Peer),
+        Source = random_address(),
+        {_, P2} = update(P, Now, Source, Peer),
         P2
     end, Pool1, Peers),
 
@@ -637,11 +625,8 @@ peer_rejection_test() ->
     Peers = make_peers(3, 1),
 
     Pool2 = maps:fold(fun(_, Peer, P) ->
-        Id = aec_peer:id(Peer),
-        Addr = aec_peer:ip(Peer),
-        Source = Addr,
-        Trusted = aec_peer:is_trusted(Peer),
-        {_, P2} = update(P, Now1, Source, Trusted, Peer),
+        Source = random_address(),
+        {_, P2} = update(P, Now1, Source, Peer),
         P2
     end, Pool1, Peers),
 
@@ -765,7 +750,7 @@ rejection_downgrade_test() ->
     Addr = aec_peer:ip(Peer),
 
 
-    {unverified, Pool2} = update(Pool1, Now1, Addr, false, Peer),
+    {unverified, Pool2} = update(Pool1, Now1, Addr, Peer),
     {verified, Pool3} = verify(Pool2, Now1, Id),
     ?assertEqual({verified, true}, peer_state(Pool3, Id)),
 
@@ -823,7 +808,7 @@ basic_verification_test() ->
     Id = aec_peer:id(Peer),
     Addr = aec_peer:ip(Peer),
 
-    {unverified, Pool2} = update(Pool1, Now, Addr, false, Peer),
+    {unverified, Pool2} = update(Pool1, Now, Addr, Peer),
     ?assertEqual(true, is_available(Pool2, Id)),
     ?assertEqual(false, is_verified(Pool2, Id)),
     ?assertEqual(true, is_unverified(Pool2, Id)),
@@ -859,7 +844,7 @@ verification_of_selected_peer_test() ->
     Id = aec_peer:id(Peer),
     Addr = aec_peer:ip(Peer),
 
-    {unverified, Pool2} = update(Pool1, Now, Addr, false, Peer),
+    {unverified, Pool2} = update(Pool1, Now, Addr, Peer),
     {selected, {Id, _}, Pool3} =
         random_select(Pool2, Now, unverified, undefined),
     ?assertEqual(false, is_available(Pool3, Id)),
@@ -895,7 +880,7 @@ verification_of_standby_peer_test() ->
     Addr = aec_peer:ip(Peer),
 
 
-    {unverified, Pool2} = update(Pool1, Now, Addr, false, Peer),
+    {unverified, Pool2} = update(Pool1, Now, Addr, Peer),
     {selected, {Id, _}, Pool3} =
         random_select(Pool2, Now, unverified, undefined),
     Pool4 = reject(Pool3, Now, Id),
@@ -934,9 +919,9 @@ verification_canceled_test() ->
 
 
     {unverified, Pool2} =
-        update(Pool1, Now, Addr1, false, Peer1),
+        update(Pool1, Now, Addr1, Peer1),
     {unverified, Pool3} =
-        update(Pool2, Now, Addr2, false, Peer2),
+        update(Pool2, Now, Addr2, Peer2),
 
     {verified, Pool4} = verify(Pool3, Now, Id1),
     ?assertEqual({verified, true}, peer_state(Pool4, Id1)),
@@ -968,30 +953,32 @@ update_ignored_test() ->
     Id1 = aec_peer:id(Peer1),
     Addr1 = aec_peer:ip(Peer1),
     Peer1DifferentAddress = random_peer(#{pubkey => Id1}),
+    Peer1Trusted = random_peer(#{pubkey => Id1, address => Addr1,
+                                 trusted => true}), %% it is false by default
 
     Peer2 = random_peer(),
     Id2 = aec_peer:id(Peer2),
     Addr2 = aec_peer:ip(Peer2),
 
     {unverified, Pool2} =
-        update(Pool1, Now, Addr1, false, Peer1),
+        update(Pool1, Now, Addr1, Peer1),
     ?assertEqual({unverified, true}, peer_state(Pool2, Id1)),
     ?assertEqual({undefined, undefined}, peer_state(Pool2, Id2)),
 
     % Updating with a different address is ignored.
     {ignored, Pool3} =
-        update(Pool2, Now, Addr2, false, Peer1DifferentAddress),
+        update(Pool2, Now, Addr2, Peer1DifferentAddress),
     ?assertEqual({unverified, true}, peer_state(Pool3, Id1)),
     ?assertEqual({undefined, undefined}, peer_state(Pool3, Id2)),
 
     % Updating with a different trust status is ignored.
-    {ignored, Pool4} = update(Pool3, Now, Addr1, true, Peer1),
+    {ignored, Pool4} = update(Pool3, Now, Addr1, Peer1Trusted),
     ?assertEqual({unverified, true}, peer_state(Pool4, Id1)),
     ?assertEqual({undefined, undefined}, peer_state(Pool4, Id2)),
 
     % Normal update evict the old peer.
     {unverified, Pool5} =
-        update(Pool4, Now, Addr2, false, Peer2),
+        update(Pool4, Now, Addr2, Peer2),
     ?assertEqual({undefined, undefined}, peer_state(Pool5, Id1)),
     ?assertEqual({unverified, true}, peer_state(Pool5, Id2)),
 
@@ -1001,7 +988,7 @@ update_ignored_test() ->
     ?assertEqual({unverified, false}, peer_state(Pool6, Id2)),
 
     % Update should be ignored due to not being able to evict any peer.
-    {ignored, Pool7} = update(Pool6, Now, Addr1, false, Peer1),
+    {ignored, Pool7} = update(Pool6, Now, Addr1, Peer1),
     ?assertEqual({undefined, undefined}, peer_state(Pool7, Id1)),
     ?assertEqual({unverified, false}, peer_state(Pool7, Id2)),
     ok.
@@ -1027,10 +1014,10 @@ downgrade_to_bucket_with_no_eviction_possible_test() ->
     Addr2 = aec_peer:ip(RandomPeer2),
 
     {unverified, Pool2} =
-        update(Pool1, Now, Addr1, false, RandomPeer1),
+        update(Pool1, Now, Addr1, RandomPeer1),
     {verified, Pool3} = verify(Pool2, Now, Id1),
     {unverified, Pool4} =
-        update(Pool3, Now, Addr2, false, RandomPeer2),
+        update(Pool3, Now, Addr2, RandomPeer2),
     ?assertEqual({verified, true}, peer_state(Pool4, Id1)),
     ?assertEqual({unverified, true}, peer_state(Pool4, Id2)),
 
@@ -1063,9 +1050,9 @@ manual_selection_of_standby_peer_test() ->
     RandomPeer = random_peer(),
     Id = aec_peer:id(RandomPeer),
     Addr = aec_peer:ip(RandomPeer),
-    false = Trusted = aec_peer:is_trusted(RandomPeer),
+    false = aec_peer:is_trusted(RandomPeer),
 
-    {unverified, Pool2} = update(Pool1, Now, Addr, Trusted, RandomPeer),
+    {unverified, Pool2} = update(Pool1, Now, Addr, RandomPeer),
     {selected, {Id, _}, Pool3} =
         random_select(Pool2, Now, unverified, undefined),
     Pool4 = reject(Pool3, Now, Id),
@@ -1096,7 +1083,7 @@ unverified_selected_are_not_evicted_test() ->
         lists:foldl(
             fun(Peer, {P, N}) ->
                 Source = random_address(),
-                {unverified, P2} = update(P, N, Source, false, Peer),
+                {unverified, P2} = update(P, N, Source, Peer),
                 {P2, N + 1000}
             end,
             {Pool1, Now1},
@@ -1121,7 +1108,7 @@ unverified_selected_are_not_evicted_test() ->
         lists:foldl(
             fun(Peer, P) ->
                 Source = random_address(),
-                {unverified, P2} = update(P, Now2, Source, false, Peer),
+                {unverified, P2} = update(P, Now2, Source, Peer),
                 P2
             end,
             Pool5,
@@ -1159,7 +1146,7 @@ unverified_old_peers_are_removed_test() ->
         lists:foldl(
             fun(Peer, {P, N}) ->
                 Source = random_address(),
-                {unverified, P2} = update(P, N, Source, false, Peer),
+                {unverified, P2} = update(P, N, Source, Peer),
                 {P2, N + 1000}
             end,
             {Pool1, Now1},
@@ -1185,7 +1172,7 @@ unverified_old_peers_are_removed_test() ->
     Peer11 = lists:nth(11, PeersList),
     Source = random_address(),
     {unverified, Pool6} =
-        update(Pool5, Now3, Source, false, Peer11),
+        update(Pool5, Now3, Source, Peer11),
 
     % Selected peers should NOT be removed
     ?assertEqual(true, is_unverified(Pool6, SelId1)),
@@ -1252,7 +1239,7 @@ unverified_reference_eviction_test() ->
     Src1b = find_unverified_source(Pool1, Addr1, BIdx1b),
 
     {unverified, Pool2} =
-        update(Pool1, Now, Src1a, false, Peer1),
+        update(Pool1, Now, Src1a, Peer1),
     ?assertEqual(true, is_unverified(Pool2, Id1)),
     ?assertEqual(1, aec_peers_pool:reference_count(Pool2, Id1)),
     ?assertEqual(1, count(Pool2, all, both)),
@@ -1269,7 +1256,7 @@ unverified_reference_eviction_test() ->
     Src2 = random_address(),
 
     {unverified, Pool4} =
-        update(Pool3, Now, Src2, false, Peer2),
+        update(Pool3, Now, Src2, Peer2),
     ?assertEqual(true, is_unverified(Pool4, Id1)),
     ?assertEqual(true, is_unverified(Pool4, Id2)),
     ?assertEqual(1, aec_peers_pool:reference_count(Pool4, Id1)),
@@ -1290,20 +1277,19 @@ verified_selected_and_trusted_peers_are_not_evicted_test() ->
     Now = erlang:system_time(millisecond),
     Peers = make_peers(500, 2), % 2 peers are trusted
     TrustedPeers = [TrustedPeer1, TrustedPeer2] =
-        [P || {I, P} <- maps:to_list(Peers), aec_peer:is_trusted(P)],
+        [P || {_, P} <- maps:to_list(Peers), aec_peer:is_trusted(P)],
     TrustedId1 = aec_peer:id(TrustedPeer1),
     TrustedId2 = aec_peer:id(TrustedPeer2),
     UntrustedPeers = 
-        [P || {I, P} <- maps:to_list(Peers), aec_peer:is_trusted(P) =:= false],
+        [P || {_, P} <- maps:to_list(Peers), aec_peer:is_trusted(P) =:= false],
     PeersToPost = TrustedPeers ++ lists:sublist(UntrustedPeers, 8),
 
     UpdatePeers =
         fun(Pool, PList, Verify) ->
             lists:foldl(
                 fun(Peer, P) ->
-                    IsTrusted = aec_peer:is_trusted(Peer),
                     Source = random_address(),
-                    {_, P1} = update(P, Now, Source, IsTrusted, Peer),
+                    {_, P1} = update(P, Now, Source, Peer),
                     case Verify of
                         true ->
                             Id = aec_peer:id(Peer),
@@ -1383,20 +1369,17 @@ verified_old_peers_are_removed_test() ->
     TrustedCnt = 2,
     Peers = make_peers(20, TrustedCnt),
     TrustedPeers = [TrustedPeer1, TrustedPeer2] =
-        [P || {I, P} <- maps:to_list(Peers), aec_peer:is_trusted(P)],
+        [P || {_, P} <- maps:to_list(Peers), aec_peer:is_trusted(P)],
     TrustedId1 = aec_peer:id(TrustedPeer1),
     TrustedId2 = aec_peer:id(TrustedPeer2),
     UntrustedPeers = 
-        [P || {I, P} <- maps:to_list(Peers), aec_peer:is_trusted(P) =:= false],
+        [P || {_, P} <- maps:to_list(Peers), aec_peer:is_trusted(P) =:= false],
 
     
     PeersToPost = TrustedPeers ++ lists:sublist(UntrustedPeers, 8),
     {Pool2, Now2} = lists:foldl(fun(Peer, {P, N}) ->
-        Id = aec_peer:id(Peer),
-        Addr = aec_peer:ip(Peer),
-        Trusted = aec_peer:is_trusted(Peer),
         Source = random_address(),
-        {_, P2} = update(P, N, Source, Trusted, Peer),
+        {_, P2} = update(P, N, Source, Peer),
         {P2, N + 1000}
     end, {Pool1, Now1}, PeersToPost),
 
@@ -1425,10 +1408,9 @@ verified_old_peers_are_removed_test() ->
     Now3 = Now2 + 30000,
 
     [Peer11 | _] = maps:values(Peers) -- PeersToPost,
-    Id = aec_peer:id(Peer11),
-    Addr = aec_peer:ip(Peer11),
+    Peer11Trusted = aec_peer:set_trusted(Peer11, true),
     Source = random_address(),
-    {verified, Pool7} = update(Pool6, Now3, Source, true, Peer11),
+    {verified, Pool7} = update(Pool6, Now3, Source, Peer11Trusted),
 
     % Selected peers should NOT be removed
     ?assertEqual(true, is_verified(Pool7, SelId1)),
@@ -1503,7 +1485,7 @@ validate_counters() ->
                             RandomPeer = random_peer(#{pubkey => Id,
                                                        address => Addr}),
                             Source = random_address(),
-                            {_, P2} = update(P, N, Source, false, RandomPeer),
+                            {_, P2} = update(P, N, Source, RandomPeer),
                             {P2, N + 500, A, S}
                     end;
                 _ ->
@@ -1511,7 +1493,7 @@ validate_counters() ->
                     Id = aec_peer:id(RandomPeer),
                     Addr = aec_peer:ip(RandomPeer),
                     Source = random_address(),
-                    {_, P2} = update(P, N, Source, false, RandomPeer),
+                    {_, P2} = update(P, N, Source, RandomPeer),
                     {P2, N + 500, [{Id, Addr} | A], S}
             end
     end, {Pool1, Now1, [], []}, lists:seq(1, 100000)),
@@ -2071,7 +2053,7 @@ unver_add_refs(Pool, Now, Peer, SourceAddr0, Count, Max) ->
         undefined -> random_address();
         Addr -> Addr
     end,
-    {unverified, Pool2} = update(Pool, Now, SourceAddr, false, Peer),
+    {unverified, Pool2} = update(Pool, Now, SourceAddr, Peer),
     PeerId = aec_peer:id(Peer),
     case aec_peers_pool:reference_count(Pool2, PeerId) =:= Count of
         true -> Pool2;

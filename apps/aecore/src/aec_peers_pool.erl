@@ -10,15 +10,15 @@
 %%% <ul>
 %%%   <li>When setting up, add trusted peers:
 %%%     <ul>
-%%%       <li>Call {@link update/5} with the trust flag set; this will add
-%%%           the peer to the verified pool and prevent it from ever being
-%%%           evicted.
+%%%       <li>Call {@link update/4} with peer data with the trust flag set;
+%%%           this will add the peer to the verified pool and prevent it from ever
+%%%           being evicted.
 %%%       </li>
 %%%     </ul>
 %%%   </li>
 %%%   <li>When receiving a peer through gossip:
 %%%     <ul>
-%%%       <li>Call {@link updatee5}; if this is a new peer this will add the
+%%%       <li>Call {@link update/4}; if this is a new peer this will add the
 %%%           peer to the unverifiedpool; if the peer is already pooled it will
 %%%           just refresh it.
 %%%       </li>
@@ -55,7 +55,7 @@
 %%%   <li>When an inbound connection is established and the first gossip
 %%%    message is received:
 %%%     <ul>
-%%%       <li>Call {@link update/5} to add the connecting peer to the pool.</li>
+%%%       <li>Call {@link update/4} to add the connecting peer to the pool.</li>
 %%%       <li>Call {@link verify/3} to move it to the verified pool.</li>
 %%%       <li>Call {@link select/4} to mark it as selected.</li>
 %%%     </ul>
@@ -96,7 +96,7 @@
 -export([is_verified/2]).
 -export([is_unverified/2]).
 -export([is_available/2]).
--export([update/5]).
+-export([update/4]).
 -export([verify/3]).
 -export([random_subset/3]).
 -export([random_select/4]).
@@ -163,8 +163,6 @@
 %=== TYPES =====================================================================
 
 -record(peer, {
-    % If the peer is trusted and should never be downgraded.
-    trusted = false        :: boolean(),
     % The IP address of the source of the peer.
     source                 :: peer_addr(),
     % the peer immutable data 
@@ -527,17 +525,16 @@ is_available(St, PeerId) ->
 %% {@link random_select/4} alongside the peer identifier.
 %% This information will <b>not</b> be updated if the peer already
 %% exists and is considered immutable
--spec update(state(), millitimestamp(),
-             peer_addr(), boolean(), aec_peer:peer())
+-spec update(state(), millitimestamp(), peer_addr(), aec_peer:peer())
     -> {verified | unverified | ignored, state()}.
-update(St, Now, SourceAddr, IsTrusted, PeerData) ->
+update(St, Now, SourceAddr, PeerData) ->
     ?assertNotEqual(undefined, SourceAddr),
-    case update_peer(St, Now, SourceAddr, IsTrusted, PeerData) of
+    case update_peer(St, Now, SourceAddr, PeerData) of
         ignored ->
             {ignored, St};
         {updated, St2} ->
             PeerId = aec_peer:id(PeerData),
-            Result = case IsTrusted of
+            Result = case aec_peer:is_trusted(PeerData) of
                 true -> verified_maybe_add(St2, Now, PeerId);
                 false -> unverified_maybe_add(St2, Now, PeerId, undefined)
             end,
@@ -773,23 +770,24 @@ set_peer(St, PeerId, Peer) ->
     St#?ST{peers = Peers2}.
 
 %% Updates or adds a peer; only the source address can be updated.
--spec update_peer(state(), millitimestamp(),
-                  peer_addr(), boolean(), aec_peer:peer())
+-spec update_peer(state(), millitimestamp(), peer_addr(), aec_peer:peer())
     -> ignored | {updated, state()}.
-update_peer(St, Now, SourceAddr, IsTrusted, PeerData) ->
+update_peer(St, Now, SourceAddr, PeerData) ->
     PeerId = aec_peer:id(PeerData),
     case find_peer(St, PeerId) of
         undefined ->
             #?ST{peers = Peers} = St,
-            Peer = peer_new(SourceAddr, IsTrusted, PeerData),
+            Peer = peer_new(SourceAddr, PeerData),
             Peer2 = Peer#peer{update_time = Now},
             PeerId = aec_peer:id(PeerData),
             Peers2 = Peers#{PeerId => Peer2},
             {updated, St#?ST{peers = Peers2}};
-        #peer{trusted = IsTrusted, immutable = CurrPeerData} = CurrPeer ->
+        #peer{immutable = CurrPeerData} = CurrPeer ->
             PeerAddr = aec_peer:ip(PeerData),
             CurrPeerAddr = aec_peer:ip(CurrPeerData),
-            case PeerAddr =:= CurrPeerAddr of
+            IsTrusted = aec_peer:is_trusted(PeerData),
+            CurrIsTrusted = aec_peer:is_trusted(CurrPeerData),
+            case PeerAddr =:= CurrPeerAddr andalso IsTrusted =:= CurrIsTrusted of
                 true ->
                     Peer2 = CurrPeer#peer{update_time = Now, source = SourceAddr},
                     {updated, set_peer(St, PeerId, Peer2)};
@@ -1077,9 +1075,10 @@ make_bucket_filtering_fun(St, Now, KeepPeerId) ->
     fun
         (PeerId) when PeerId =:= KeepPeerId -> keep;
         (PeerId) ->
-            #{PeerId := Peer} = Peers,
+            #{PeerId := #peer{immutable = PeerData} = Peer} = Peers,
+            IsTrusted = aec_peer:is_trusted(PeerData),
             case Peer of
-                #peer{trusted = true} -> keep;
+                _ when IsTrusted -> keep;
                 #peer{selected = true} -> keep;
                 #peer{update_time = T} when (Now - T) > MaxLapse -> remove;
                 _ -> evict
@@ -1450,11 +1449,10 @@ unverified_select(St, _Now, FilterFun) ->
 %--- PEER HANDLING FUNCTIONS ---------------------------------------------------
 
 %% Creates a new peer record.
--spec peer_new(peer_addr(), boolean(), aec_peer:peer())
+-spec peer_new(peer_addr(), aec_peer:peer())
     -> peer().
-peer_new(SourceAddr, IsTrusted, PeerData) ->
+peer_new(SourceAddr, PeerData) ->
     #peer{
-        trusted = IsTrusted,
         source = SourceAddr,
         immutable = PeerData
     }.
@@ -1505,9 +1503,11 @@ peer_is_in_standby(Peer, BackoffTable, Now) ->
 
 %% Returns if the given peer reached its rejection limit.
 -spec peer_has_expired(peer(), pos_integer()) -> boolean().
-peer_has_expired(#peer{trusted = true}, _MaxRejections) -> false;
-peer_has_expired(#peer{rejected = Rejections}, MaxRejections) ->
-    Rejections > MaxRejections.
+peer_has_expired(#peer{immutable = PeerData, rejected = Rejections}, MaxRejections) ->
+    case aec_peer:is_trusted(PeerData) of
+        true -> false;
+        false -> Rejections > MaxRejections
+    end.
 
 %% Adds a peer to a lookup table, handling other peers being moved.
 -spec peers_lookup_add(peer_map(), rand_state(), peer_id(),

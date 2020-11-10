@@ -18,6 +18,10 @@
         , format_address/1
         ]).
 
+-ifdef(TEST).
+-export([ set_trusted/2]).
+-endif.
+
 -record(peer, {
     pubkey            :: aec_keys:pubkey(),
     host              :: host(),
@@ -115,3 +119,8 @@ port(#{ port := Port }) -> Port.
 
 -spec is_trusted(peer()) -> boolean().
 is_trusted(#peer{ trusted = Trusted }) -> Trusted.
+
+-ifdef(TEST).
+set_trusted(Peer, Trusted) ->
+    Peer#peer{trusted = Trusted}.
+-endif.
