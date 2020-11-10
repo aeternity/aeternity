@@ -163,8 +163,6 @@
 %=== TYPES =====================================================================
 
 -record(peer, {
-    % The peer unique identifier.
-    id                     :: binary(),
     % If the peer is trusted and should never be downgraded.
     trusted = false        :: boolean(),
     % The IP address of the source of the peer.
@@ -1138,7 +1136,8 @@ verified_maybe_add(St, Now, PeerId) ->
     -> {verified, state()} | {ignored, state()}.
 verified_add(St, Now, Peer) ->
     ?assertEqual(undefined, Peer#peer.vidx),
-    #peer{ id = PeerId, immutable = PeerData} = Peer,
+    #peer{immutable = PeerData} = Peer,
+    PeerId = aec_peer:id(PeerData),
     PeerAddr = aec_peer:ip(PeerData),
     BucketIdx = verified_bucket_index(St, PeerAddr),
     case verified_make_space_for(St, Now, BucketIdx, PeerId) of
@@ -1313,7 +1312,8 @@ unverified_maybe_add(St, Now, PeerId, KeepPeerId) ->
 -spec unverified_add(state(), millitimestamp(), peer(), peer_id() | undefined)
     -> {unverified, state()} | {ignored, state()}.
 unverified_add(St, Now, Peer, KeepPeerId) ->
-    #peer{id = PeerId, source = SourceAddr, immutable = PeerData} = Peer,
+    #peer{source = SourceAddr, immutable = PeerData} = Peer,
+    PeerId = aec_peer:id(PeerData),
     ?assertEqual([], Peer#peer.uidxs),
     PeerAddr = aec_peer:ip(PeerData),
     BucketIdx = unverified_bucket_index(St, SourceAddr, PeerAddr),
@@ -1343,11 +1343,11 @@ unverified_add(St, Now, Peer, KeepPeerId) ->
     -> state().
 unverified_add_reference(St, Now, Peer, KeepPeerId) ->
     #peer{
-        id = PeerId,
         source = SourceAddr,
         uidxs = Idxs,
         immutable = PeerData
     } = Peer,
+    PeerId = aec_peer:id(PeerData),
     PeerAddr = aec_peer:ip(PeerData),
     ?assertNotEqual([], Idxs),
     BucketIdx = unverified_bucket_index(St, SourceAddr, PeerAddr),
@@ -1453,9 +1453,7 @@ unverified_select(St, _Now, FilterFun) ->
 -spec peer_new(peer_addr(), boolean(), aec_peer:peer())
     -> peer().
 peer_new(SourceAddr, IsTrusted, PeerData) ->
-    PeerId = aec_peer:id(PeerData),
     #peer{
-        id = PeerId,
         trusted = IsTrusted,
         source = SourceAddr,
         immutable = PeerData
