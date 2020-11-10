@@ -20,6 +20,7 @@
 -export([find_config/2]).
 -export([nested_map_get/2]).
 -export([read_config/0]).
+-export([apply_os_env/0]).
 -export([parse_key_value_string/1]).
 -export([data_dir/1]).
 -export([check_config/1, check_config/2]).
@@ -272,6 +273,95 @@ read_config(Mode) when Mode =:= silent; Mode =:= report ->
             do_read_config(F, schema_filename(), store, Mode)
     end.
 
+apply_os_env() ->
+    try
+    Pfx = "AE",  %% TODO: make configurable
+    %% We sort on variable names to allow specific values to override object
+    %% definitions at a higher level (e.g. AE__MEMPOOL followed by AE__MEMPOOL__TX_TTL)
+    %% Note that all schema name parts are converted to uppercase.
+    Names = lists:keysort(1, schema_key_names(Pfx)),
+    error_logger:info_msg("OS env config: ~p~n", [Names]),
+    Map = lists:foldl(
+            fun({_Name, Key, Value}, Acc) ->
+                    Value1 = coerce_type(Key, Value),
+                    update_map(to_map(Key, Value1), Acc)
+            end, #{}, Names),
+    error_logger:info_msg("Map fr OS env config: ~p~n", [Map]),
+    if map_size(Map) > 0 ->
+            update_config(Map);
+       true ->
+            no_change
+    end
+    catch
+        error:E:ST ->
+            error_logger:info_msg("CAUGHT error:~p / ~p~n", [E, ST]),
+            {error, E}
+    end.
+
+to_map(K, V) ->
+    to_map(K, V, #{}).
+
+to_map([K], Val, M) ->
+    M#{K => Val};
+to_map([H|T], Val, M) ->
+    SubMap = maps:get(H, M, #{}),
+    M#{H => to_map(T, Val, SubMap)}.
+            
+
+coerce_type(Key, Value) ->
+    case schema(Key) of
+        {ok, #{<<"type">> := Type}} ->
+            case Type of
+                <<"integer">> -> to_integer(Value);
+                <<"string">>  -> to_string(Value);
+                <<"boolean">> -> to_bool(Value);
+                <<"array">>   -> jsx:decode(list_to_binary(Value), [return_maps]);
+                <<"object">>  -> jsx:decode(list_to_binary(Value), [return_maps])
+            end;
+        _ ->
+            error({unknown_key, Key})
+    end.
+
+to_integer(I) when is_integer(I) -> I;
+to_integer(L) when is_list(L)    -> list_to_integer(L);
+to_integer(B) when is_binary(B)  -> binary_to_integer(B).
+
+to_string(L) when is_list(L)   -> list_to_binary(L);
+to_string(B) when is_binary(B) -> B.
+
+to_bool("true")  -> true;
+to_bool("false") -> false;
+to_bool(B) when is_boolean(B) ->
+    B;
+to_bool(Other) ->
+    error({expected_boolean, Other}).
+
+schema_key_names(Prefix) ->
+    case schema() of
+        #{<<"$schema">> := _, <<"properties">> := Props} ->
+            schema_key_names(Prefix, [], Props, []);
+        _ ->
+            []
+    end.
+
+schema_key_names(NamePfx, KeyPfx, Map, Acc0) when is_map(Map) ->
+    maps:fold(
+      fun(SubKey, SubMap, Acc) ->
+              NamePfx1 = NamePfx ++ "__" ++ string:to_upper(binary_to_list(SubKey)),
+              KeyPfx1 = KeyPfx ++ [SubKey],
+              Acc1 = case os:getenv(NamePfx1) of
+                         false -> Acc;
+                         Value ->
+                             [{NamePfx1, KeyPfx1, Value} | Acc]
+                     end,
+              case maps:find(<<"properties">>, SubMap) of
+                  error ->
+                      Acc1;
+                  {ok, Props} ->
+                      schema_key_names(NamePfx1, KeyPfx1, Props, Acc1)
+              end
+      end, Acc0, Map).
+
 check_config(F) ->
     do_read_config(F, schema_filename(), check, silent).
 
@@ -435,7 +525,6 @@ to_tree_(E) ->
 lst(L) when is_list(L) -> L;
 lst(E) -> [E].
 
--ifdef(TEST).
 update_config(Map) when is_map(Map) ->
     Schema = application:get_env(aeutils, '$schema', #{}),
     check_validation([jesse:validate_with_schema(Schema, Map, [])],
@@ -459,7 +548,6 @@ update_map(With, Map) when is_map(With), is_map(Map) ->
                       Acc#{K => V}
               end
       end, Map, With).
--endif.
 
 set_env(App, K, V) ->
     error_logger:info_msg("Set config (~p): ~p = ~p~n", [App, K, V]),

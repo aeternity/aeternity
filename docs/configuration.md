@@ -314,4 +314,32 @@ Notes:
   However it is possible to make snapshots which could be used to speed up syncing of new nodes. 
  - Initial sync might take a lot of time and that heavily depends on the available CPU/IOPS.
  - Restarting a node might be slow on certain configurations due to intensive DB consistency checks.
- 
+
+## Configuration from the Command line or scripts
+
+It is possible to set configuration values from the command line or shell scripts using
+OS environment variables. The variable names correspond to a path in the config schema,
+using the name prefix `AE__` and with each level name, converted to uppercase, separated
+by two underscores.
+
+Examples:
+`AE__PEERS` corresponds to `{"peers": ...}`
+`AE__HTTP__CORS__MAX_AGE` corresponds to `{"http": {"cors": {"max_age": ...}}}`
+
+Simple configuration values (integers, strings, booleans) are given as-is. Structured values
+(arrays, objects) need to be encoded as JSON data.
+
+Example: `AE__MEMPOOL="{\"tx_ttl\":17,\"sync_interval\":4777}"`
+
+It is possible to provide an object definition and then override some specific value, as
+the variable names are processed in alphabetical order:
+
+Example:
+
+```json
+AE__MEMPOOL="{\"tx_ttl\":17,\"sync_interval\":4777}" \
+ AE__MEMPOOL__SYNC_INTERVAL=9999
+```
+
+The OS environment variables are applied after reading any provided config file, so can be used
+to override a static user configuration.
