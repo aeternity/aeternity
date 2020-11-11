@@ -519,7 +519,7 @@ is_available(St, PeerId) ->
 %% number of references, another reference may be added to the unverified pool;
 %% the peer last update time and source address fields are updated too.
 %%
-%% Some immutable peed data must be specified; this will be returned by
+%% Some immutable peer data must be specified; this will be returned by
 %% {@link random_select/4} alongside the peer identifier.
 %% This information will <b>not</b> be updated if the peer already
 %% exists and is considered immutable
