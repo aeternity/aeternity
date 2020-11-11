@@ -10,7 +10,7 @@
 %%% <ul>
 %%%   <li>When setting up, add trusted peers:
 %%%     <ul>
-%%%       <li>Call {@link update/4} with peer data with the trust flag set;
+%%%       <li>Call {@link update/3} with peer data with the trust flag set;
 %%%           this will add the peer to the verified pool and prevent it from ever
 %%%           being evicted.
 %%%       </li>
@@ -18,7 +18,7 @@
 %%%   </li>
 %%%   <li>When receiving a peer through gossip:
 %%%     <ul>
-%%%       <li>Call {@link update/4}; if this is a new peer this will add the
+%%%       <li>Call {@link update/3}; if this is a new peer this will add the
 %%%           peer to the unverifiedpool; if the peer is already pooled it will
 %%%           just refresh it.
 %%%       </li>
@@ -55,7 +55,7 @@
 %%%   <li>When an inbound connection is established and the first gossip
 %%%    message is received:
 %%%     <ul>
-%%%       <li>Call {@link update/4} to add the connecting peer to the pool.</li>
+%%%       <li>Call {@link update/3} to add the connecting peer to the pool.</li>
 %%%       <li>Call {@link verify/3} to move it to the verified pool.</li>
 %%%       <li>Call {@link select/4} to mark it as selected.</li>
 %%%     </ul>
@@ -96,7 +96,7 @@
 -export([is_verified/2]).
 -export([is_unverified/2]).
 -export([is_available/2]).
--export([update/4]).
+-export([update/3]).
 -export([verify/3]).
 -export([random_subset/3]).
 -export([random_select/4]).
@@ -163,8 +163,6 @@
 %=== TYPES =====================================================================
 
 -record(peer, {
-    % The IP address of the source of the peer.
-    source                 :: peer_addr(),
     % the peer immutable data 
     immutable              :: aec_peer:peer(),
     % The index of the verified pool's bucket the peer is located in.
@@ -525,11 +523,10 @@ is_available(St, PeerId) ->
 %% {@link random_select/4} alongside the peer identifier.
 %% This information will <b>not</b> be updated if the peer already
 %% exists and is considered immutable
--spec update(state(), millitimestamp(), peer_addr(), aec_peer:peer())
+-spec update(state(), millitimestamp(), aec_peer:peer())
     -> {verified | unverified | ignored, state()}.
-update(St, Now, SourceAddr, PeerData) ->
-    ?assertNotEqual(undefined, SourceAddr),
-    case update_peer(St, Now, SourceAddr, PeerData) of
+update(St, Now, PeerData) ->
+    case update_peer(St, Now, PeerData) of
         ignored ->
             {ignored, St};
         {updated, St2} ->
@@ -560,7 +557,7 @@ verify(St, Now, PeerId) ->
 %% @doc Returns a random subset of all the verified pooled peers.
 %%
 %% Return a list of peer identifiers and there corresponding immutable data given
-%% the <b>first</b> time it was added by {@link update/7}.
+%% the <b>first</b> time it was added by {@link update/3}.
 %%
 %% A filtering function can be specified to limit the possible results.
 -spec random_subset(state(), all | pos_integer(), filter_fun() | undefined)
@@ -595,7 +592,7 @@ random_subset(St, Size, ExtFilterFun) ->
 %%
 %% If a peer is available in targeted pools, the call returns the peer
 %% identifier and its immutable data given the <b>first</b> time it was added by
-%% {@link update/7}.
+%% {@link update/3}.
 %%
 %% If there is no peers readily available because they are on standby, the call
 %% returns the minimum delay afterwich one will get out of standby.
@@ -616,7 +613,7 @@ random_select(St, Now, Target, FilterFun) ->
 %%
 %% This call is intended to mark a peer retrieved through other means than
 %% {@link random_select/4} as selected. For example, a peer that was just added
-%% to the pool with {@link update/7} and {@link verify/3}.
+%% to the pool with {@link update/3} and {@link verify/3}.
 %%
 %% If the peer wasn't selected, this call mark it as selected; it means that it
 %% will <b>never</b> be returned by {@link select/3} again until it is released
@@ -770,14 +767,14 @@ set_peer(St, PeerId, Peer) ->
     St#?ST{peers = Peers2}.
 
 %% Updates or adds a peer; only the source address can be updated.
--spec update_peer(state(), millitimestamp(), peer_addr(), aec_peer:peer())
+-spec update_peer(state(), millitimestamp(), aec_peer:peer())
     -> ignored | {updated, state()}.
-update_peer(St, Now, SourceAddr, PeerData) ->
+update_peer(St, Now, PeerData) ->
     PeerId = aec_peer:id(PeerData),
     case find_peer(St, PeerId) of
         undefined ->
             #?ST{peers = Peers} = St,
-            Peer = peer_new(SourceAddr, PeerData),
+            Peer = peer_new(PeerData),
             Peer2 = Peer#peer{update_time = Now},
             PeerId = aec_peer:id(PeerData),
             Peers2 = Peers#{PeerId => Peer2},
@@ -789,7 +786,11 @@ update_peer(St, Now, SourceAddr, PeerData) ->
             CurrIsTrusted = aec_peer:is_trusted(CurrPeerData),
             case PeerAddr =:= CurrPeerAddr andalso IsTrusted =:= CurrIsTrusted of
                 true ->
-                    Peer2 = CurrPeer#peer{update_time = Now, source = SourceAddr},
+                    PeerData1 = aec_peer:set_source(CurrPeerData,
+                                                    aec_peer:source(PeerData)),
+                    Peer2 = CurrPeer#peer{update_time = Now,
+                                          %% update source
+                                          immutable = PeerData1},
                     {updated, set_peer(St, PeerId, Peer2)};
                 false ->
                     ignored
@@ -1309,8 +1310,9 @@ unverified_maybe_add(St, Now, PeerId, KeepPeerId) ->
 -spec unverified_add(state(), millitimestamp(), peer(), peer_id() | undefined)
     -> {unverified, state()} | {ignored, state()}.
 unverified_add(St, Now, Peer, KeepPeerId) ->
-    #peer{source = SourceAddr, immutable = PeerData} = Peer,
+    #peer{immutable = PeerData} = Peer,
     PeerId = aec_peer:id(PeerData),
+    SourceAddr = aec_peer:source(PeerData),
     ?assertEqual([], Peer#peer.uidxs),
     PeerAddr = aec_peer:ip(PeerData),
     BucketIdx = unverified_bucket_index(St, SourceAddr, PeerAddr),
@@ -1340,12 +1342,12 @@ unverified_add(St, Now, Peer, KeepPeerId) ->
     -> state().
 unverified_add_reference(St, Now, Peer, KeepPeerId) ->
     #peer{
-        source = SourceAddr,
         uidxs = Idxs,
         immutable = PeerData
     } = Peer,
     PeerId = aec_peer:id(PeerData),
     PeerAddr = aec_peer:ip(PeerData),
+    SourceAddr = aec_peer:source(PeerData),
     ?assertNotEqual([], Idxs),
     BucketIdx = unverified_bucket_index(St, SourceAddr, PeerAddr),
     case lists:member(BucketIdx, Idxs) of
@@ -1447,11 +1449,10 @@ unverified_select(St, _Now, FilterFun) ->
 %--- PEER HANDLING FUNCTIONS ---------------------------------------------------
 
 %% Creates a new peer record.
--spec peer_new(peer_addr(), aec_peer:peer())
+-spec peer_new(aec_peer:peer())
     -> peer().
-peer_new(SourceAddr, PeerData) ->
+peer_new(PeerData) ->
     #peer{
-        source = SourceAddr,
         immutable = PeerData
     }.
 

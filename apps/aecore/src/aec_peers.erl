@@ -428,8 +428,8 @@ handle_call({peer_alive, PeerId, PeerCon}, _From, State0) ->
 handle_cast({log_ping, Outcome, PeerId, _Time}, State) ->
     update_ping_metrics(Outcome),
     {noreply, on_log_ping(PeerId, Outcome, State)};
-handle_cast({add_peer, SourceAddr, Peer}, State0) ->
-    State = on_add_peer(SourceAddr, Peer, State0),
+handle_cast({add_peer, Peer}, State0) ->
+    State = on_add_peer(Peer, State0),
     {noreply, update_peer_metrics(schedule_connect(State))};
 handle_cast({del_peer, PeerId}, State0) ->
     State = on_del_peer(PeerId, State0),
@@ -452,11 +452,11 @@ handle_cast({resolved_hostname, Host, {ok, Addr}}, #state{hostnames = HostMap} =
             NewState =
                 maps:fold(fun
                               (_, {undefined, PeerInfo, IsTrusted}, S) ->
-                                  Peer = aec_peer:new(Addr, PeerInfo, IsTrusted),
-                                  on_add_peer(Addr, Peer, S);
+                                  Peer = aec_peer:new(Addr, Addr, PeerInfo, IsTrusted),
+                                  on_add_peer(Peer, S);
                               (_, {SourceAddr, PeerInfo, IsTrusted}, S) ->
-                                  Peer = aec_peer:new(Addr, PeerInfo, IsTrusted),
-                                  on_add_peer(SourceAddr, Peer, S)
+                                  Peer = aec_peer:new(Addr, SourceAddr, PeerInfo, IsTrusted),
+                                  on_add_peer(Peer, S)
                           end, State2, PeerMap),
             {noreply, update_peer_metrics(schedule_connect(NewState))};
         _ ->
@@ -591,11 +591,11 @@ async_add_peer(SourceAddr0, #{ host := Host} = PeerInfo, IsTrusted) ->
                      gen_server:cast(?MODULE, {resolve_peer, SourceAddr0,
                                                PeerInfo, IsTrusted});
                  {ok, Addr} when SourceAddr0 == undefined ->
-                     Peer = aec_peer:new(Addr, PeerInfo, IsTrusted),
-                     gen_server:cast(?MODULE, {add_peer, Addr, Peer});
+                     Peer = aec_peer:new(Addr, Addr, PeerInfo, IsTrusted),
+                     gen_server:cast(?MODULE, {add_peer, Peer});
                  {ok, Addr} when SourceAddr0 =/= undefined ->
-                     Peer = aec_peer:new(Addr, PeerInfo, IsTrusted),
-                     gen_server:cast(?MODULE, {add_peer, SourceAddr0, Peer})
+                     Peer = aec_peer:new(Addr, SourceAddr0, PeerInfo, IsTrusted),
+                     gen_server:cast(?MODULE, {add_peer, Peer})
              end
           end),
     ok.
@@ -1017,7 +1017,7 @@ on_peer_accepted(PeerAddr, PeerInfo, Pid, State0) ->
             case pool_find(PeerId, State) of
                 error ->
                     % New unknown peer.
-                    Peer = aec_peer:new(PeerAddr, PeerInfo, false),
+                    Peer = aec_peer:new(PeerAddr, PeerAddr, PeerInfo, false),
                     new_inbound_resolve_conflicts(Peer, Pid, State);
                 {ok, FoundPeer} ->
                     ExpectedSocket = aec_peer:socket(PeerAddr, Port),
@@ -1026,11 +1026,12 @@ on_peer_accepted(PeerAddr, PeerInfo, Pid, State0) ->
                     case ExpectedSocket =:= FoundPSocket of
                         true ->
                             % Known peer.
-                            new_inbound_resolve_conflicts(FoundPeer, Pid, State);
+                            FoundPeer1 = aec_peer:set_source(FoundPeer, PeerAddr),
+                            new_inbound_resolve_conflicts(FoundPeer1, Pid, State);
                         false when not Trusted ->
                             % Peer's address changed and it is not trusted;
                             % deleting the old peer and its connections.
-                            NewPeer = aec_peer:new(PeerAddr, PeerInfo, false),
+                            NewPeer = aec_peer:new(PeerAddr, PeerAddr, PeerInfo, false),
                             epoch_sync:info("Peer ~p - peer address change from ~s "
                                             "to ~s", [aec_peer:ppp(PeerId),
                                             aec_peer:format_address(FoundPeer),
@@ -1178,10 +1179,11 @@ on_resolve_peer(SourceAddr, PeerInfo, IsTrusted, State) ->
 
 
 %% Handles event adding a new peer to the pool.
--spec on_add_peer(inet:ip_address(), aec_peer:peer(), state()) -> state().
-on_add_peer(SourceAddr, Peer, State0) ->
+-spec on_add_peer(aec_peer:peer(), state()) -> state().
+on_add_peer(Peer, State0) ->
     State = maybe_unblock(State0),
     PeerId = aec_peer:id(Peer),
+    SourceAddr = aec_peer:source(Peer),
     LogMismatch =
         fun(OtherPeer) ->
             epoch_sync:info("Peer ~p - ignoring peer address changed "
@@ -1202,12 +1204,12 @@ on_add_peer(SourceAddr, Peer, State0) ->
                 {error, error}  -> %% unknown peer and unknown address and port
                     %% The TCP probe timer is started with addition of the firts peer.
                     State2 = maybe_start_tcp_probe_timers(State),
-                    add_peer(SourceAddr, Peer, State2);
+                    add_peer(Peer, State2);
                 {{ok, PeerId}, {ok, Peer2}} ->
                     case aec_peer:id(Peer2) of
                         PeerId -> %% same peer id and same IP and port
                             % Only update gossip time and source.
-                            {_, State2} = pool_update(SourceAddr, Peer2, State),
+                            {_, State2} = pool_update(aec_peer:set_source(Peer2, SourceAddr),State),
                             State2;
                         _ ->
                             LogMismatch(Peer2),
@@ -1228,9 +1230,9 @@ on_add_peer(SourceAddr, Peer, State0) ->
     end.
 
 %% Adds a NEW peer to the pool and connect to it if it is trusted.
--spec add_peer(inet:ip_address(), aec_peer:peer(), state()) -> state().
-add_peer(SourceAddr, Peer, State) ->
-    case pool_update(SourceAddr, Peer, State) of
+-spec add_peer(aec_peer:peer(), state()) -> state().
+add_peer(Peer, State) ->
+    case pool_update(Peer, State) of
         {ignored, State2} -> State2;
         {_, State2} ->
             IsTrusted = aec_peer:is_trusted(Peer),
@@ -1241,6 +1243,7 @@ add_peer(SourceAddr, Peer, State) ->
                                      [aec_peer:ppp(PeerId), aec_peer:format_address(Peer)]),
                     connect(PeerId, State2);
                 false ->
+                    SourceAddr = aec_peer:source(Peer),
                     epoch_sync:debug("Peer ~p - adding peer ~s given by ~s",
                                      [aec_peer:ppp(Peer), aec_peer:format_address(Peer),
                                       aec_peer:format_address(SourceAddr)]),
@@ -1366,16 +1369,15 @@ pool_log_changes(Id, Old, New) ->
                      [aec_peer:ppp(Id), Old, New]).
 
 %% Tries to add given peer to the pool.
--spec pool_update(inet:ip_address(), aec_peer:peer(), state())
+-spec pool_update(aec_peer:peer(), state())
     -> {ignored | verified | unverified, state()}.
-pool_update(SourceAddr, Peer, State) ->
+pool_update(Peer, State) ->
     #state{ pool = Pool
           , known_sockets = KnownSockets} = State,
     PeerId = aec_peer:id(Peer),
     Now = timestamp(),
     {OldPoolName, _} = aec_peers_pool:peer_state(Pool, PeerId),
-    {NewPoolName, Pool2} = aec_peers_pool:update(Pool, Now, SourceAddr,
-                                                 Peer),
+    {NewPoolName, Pool2} = aec_peers_pool:update(Pool, Now, Peer),
     pool_log_changes(PeerId, OldPoolName, NewPoolName),
 
     Socket = aec_peer:socket(Peer),
@@ -1437,10 +1439,9 @@ pool_verify(PeerId, State) ->
 pool_upversel(Peer, State) ->
     #state{ pool = Pool } = State,
     PeerId = aec_peer:id(Peer),
-    PeerAddr = aec_peer:ip(Peer),
     Now = timestamp(),
     {OldPoolName, _} = aec_peers_pool:peer_state(Pool, PeerId),
-    case aec_peers_pool:update(Pool, Now, PeerAddr, Peer) of
+    case aec_peers_pool:update(Pool, Now, Peer) of
         {unverified, Pool2} ->
             {NewPoolName, Pool3} = aec_peers_pool:verify(Pool2, Now, PeerId),
             Pool4 = aec_peers_pool:select(Pool3, Now, PeerId),

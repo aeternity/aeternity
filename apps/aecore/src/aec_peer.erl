@@ -1,7 +1,7 @@
 -module(aec_peer).
 
 %% API
--export([new/3,
+-export([new/4,
          socket/2
         ]).
 
@@ -16,6 +16,8 @@
         , ppp/1
         , info/1
         , format_address/1
+        , source/1
+        , set_source/2
         ]).
 
 -ifdef(TEST).
@@ -26,6 +28,7 @@
     pubkey            :: aec_keys:pubkey(),
     host              :: host(),
     address           :: inet:ip_address(),
+    source            :: inet:ip_address(),
     port              :: inet:port_number(),
     % If it is a pre-configured peer.
     trusted = false   :: boolean()
@@ -54,13 +57,14 @@
               socket/0]).
 
 
--spec new(inet:ip_address(), aec_peer:info(), boolean()) -> peer().
-new(PeerAddr, PeerInfo, IsTrusted) ->
+-spec new(inet:ip_address(), inet:ip_address(), aec_peer:info(), boolean()) -> peer().
+new(PeerAddr, Source, PeerInfo, IsTrusted) ->
     #{ pubkey := PubKey, host := Host, port := Port } = PeerInfo,
     #peer{
         pubkey = PubKey,
         host = Host,
         address = PeerAddr,
+        source = Source,
         port = Port,
         trusted = IsTrusted
     }.
@@ -124,3 +128,12 @@ is_trusted(#peer{ trusted = Trusted }) -> Trusted.
 set_trusted(Peer, Trusted) ->
     Peer#peer{trusted = Trusted}.
 -endif.
+
+-spec source(peer()) -> inet:ip_address().
+source(#peer{source = Source}) ->
+    Source.
+
+-spec set_source(peer(), inet:ip_address()) -> peer().
+set_source(Peer, Source) ->
+    Peer#peer{source = Source}.
+
