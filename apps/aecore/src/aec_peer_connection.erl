@@ -763,7 +763,7 @@ ping_obj_rsp(S, RemotePingObj) ->
     #{ share := Share, peers := TheirPeers } = RemotePingObj,
     LocalPingObj = local_ping_obj(S),
     ping_obj(LocalPingObj#{ share => Share },
-             [PeerId | [aec_peers:peer_id(P) || P <- TheirPeers]]).
+             [PeerId | [aec_peer:id(P) || P <- TheirPeers]]).
 
 local_ping_obj(#{ kind := ConnKind, ext_sync_port := Port }) ->
     GHash = aec_chain:genesis_hash(),

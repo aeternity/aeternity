@@ -479,7 +479,7 @@ crash_syncing_worker(Config) ->
 
     %% Ensure compatible notation of uri:
     {ok, PeerInfo} = aec_peers:parse_peer_address(aecore_suite_utils:peer_info(Dev1)),
-    PeerId = aec_peers:peer_id(PeerInfo),
+    PeerId = aec_peer:id(PeerInfo),
     ct:log("PeerId of Dev1 ~p", [PeerId]),
 
     spawn_link(fun() -> kill_sync_worker(N2, PeerId) end),

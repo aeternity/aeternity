@@ -20,7 +20,7 @@
     is_verified/2,
     is_unverified/2,
     is_available/2,
-    update/7,
+    update/3,
     verify/3,
     random_subset/3,
     random_select/4,
@@ -78,15 +78,14 @@ reference_bug_test() ->
 
     % Create 50 peers
     Peers = lists:foldl(fun(_, Acc) ->
-        [{random_peer_id(), random_address()} | Acc]
+        [random_peer(#{source => rand_peek(Sources)}) | Acc]
     end, [], lists:seq(1, 50)),
 
     lists:foldl(fun(_, {S, N}) ->
         % Update 10 random peers
         {S2, N2} = lists:foldl(fun(_, {Sf, Nf}) ->
-            {I, A1} = X = rand_peek(Peers),
-            A2 = rand_peek(Sources),
-            {_, Sf2} = aec_peers_pool:update(Sf, Nf, I, A1, A2, false, X),
+            RandPeer  = rand_peek(Peers),
+            {_, Sf2} = aec_peers_pool:update(Sf, Nf, RandPeer),
             {Sf2, Nf + 1}
         end, {S, N}, lists:seq(1, 10)),
 
@@ -145,12 +144,12 @@ empty_pool_test() ->
 %% Tests pool behaviour with a single normal peer.
 add_single_normal_test() ->
     P = new(?BASE_POOL_OPTS),
-    Id1 = random_peer_id(),
-    Addr1 = random_address(),
+    RandomPeer = random_peer(),
+    Id1 = aec_peer:id(RandomPeer),
     Now = erlang:system_time(millisecond),
     NoFilterFun = make_ext_exclude_filter([]),
     FilterFun = make_ext_exclude_filter([Id1]),
-    {unverified, P2} = update(P, Now, Id1, Addr1, Addr1, false, bar),
+    {unverified, P2} = update(P, Now, RandomPeer),
     ?assertEqual(1, count(P2, all, both)),
     ?assertEqual(0, count(P2, all, verified)),
     ?assertEqual(1, count(P2, all, unverified)),
@@ -160,10 +159,10 @@ add_single_normal_test() ->
     ?assertEqual(0, count(P2, standby, both)),
     ?assertEqual(0, count(P2, standby, verified)),
     ?assertEqual(0, count(P2, standby, unverified)),
-    ?assertEqual([{Id1, bar}], available(P2, both)),
+    ?assertEqual([{Id1, RandomPeer}], available(P2, both)),
     ?assertEqual([], available(P2, verified)),
-    ?assertEqual([{Id1, bar}], available(P2, unverified)),
-    ?assertEqual({ok, bar}, find(P2, Id1)),
+    ?assertEqual([{Id1, RandomPeer}], available(P2, unverified)),
+    ?assertEqual({ok, RandomPeer}, find(P2, Id1)),
     ?assertEqual(false, is_verified(P2, Id1)),
     ?assertEqual(true, is_unverified(P2, Id1)),
     ?assertMatch({[], _}, random_subset(P2, all, undefined)),
@@ -176,18 +175,18 @@ add_single_normal_test() ->
     ?assertMatch({[], _}, random_subset(P2, 10, NoFilterFun)),
     ?assertMatch({[], _}, random_subset(P2, 10, FilterFun)),
     {verified, P3} = verify(P2, Now, Id1),
-    ?assertMatch({[{Id1, bar}], _}, random_subset(P3, all, undefined)),
-    ?assertMatch({[{Id1, bar}], _}, random_subset(P3, all, NoFilterFun)),
+    ?assertMatch({[{Id1, RandomPeer}], _}, random_subset(P3, all, undefined)),
+    ?assertMatch({[{Id1, RandomPeer}], _}, random_subset(P3, all, NoFilterFun)),
     ?assertMatch({[], _}, random_subset(P3, all, FilterFun)),
-    ?assertMatch({[{Id1, bar}], _}, random_subset(P3, 1, undefined)),
-    ?assertMatch({[{Id1, bar}], _}, random_subset(P3, 1, NoFilterFun)),
+    ?assertMatch({[{Id1, RandomPeer}], _}, random_subset(P3, 1, undefined)),
+    ?assertMatch({[{Id1, RandomPeer}], _}, random_subset(P3, 1, NoFilterFun)),
     ?assertMatch({[], _}, random_subset(P3, 1, FilterFun)),
-    ?assertMatch({[{Id1, bar}], _}, random_subset(P3, 10, undefined)),
-    ?assertMatch({[{Id1, bar}], _}, random_subset(P3, 10, NoFilterFun)),
+    ?assertMatch({[{Id1, RandomPeer}], _}, random_subset(P3, 10, undefined)),
+    ?assertMatch({[{Id1, RandomPeer}], _}, random_subset(P3, 10, NoFilterFun)),
     ?assertMatch({[], _}, random_subset(P3, 10, FilterFun)),
-    ?assertMatch({selected, {Id1, bar}, _},
+    ?assertMatch({selected, {Id1, RandomPeer}, _},
                random_select(P3, Now, both, undefined)),
-    ?assertMatch({selected, {Id1, bar}, _},
+    ?assertMatch({selected, {Id1, RandomPeer}, _},
                random_select(P3, Now, both, NoFilterFun)),
     ?assertMatch({unavailable, _},
                random_select(P3, Now, both, FilterFun)),
@@ -197,9 +196,9 @@ add_single_normal_test() ->
                random_select(P3, Now, unverified, NoFilterFun)),
     ?assertMatch({unavailable, _},
                random_select(P3, Now, unverified, FilterFun)),
-    ?assertMatch({selected, {Id1, bar}, _},
+    ?assertMatch({selected, {Id1, RandomPeer}, _},
                random_select(P3, Now, verified, undefined)),
-    ?assertMatch({selected, {Id1, bar}, _},
+    ?assertMatch({selected, {Id1, RandomPeer}, _},
                random_select(P3, Now, verified, NoFilterFun)),
     ?assertMatch({unavailable, _},
                random_select(P3, Now, verified, FilterFun)),
@@ -208,12 +207,12 @@ add_single_normal_test() ->
 %% Tests pool behavior with a single trusted peer.
 add_single_trusted_test() ->
     P = new(?BASE_POOL_OPTS),
-    Id1 = random_peer_id(),
-    Addr1 = random_address(),
+    RandomPeer = random_peer(#{trusted => true}),
+    Id1 = aec_peer:id(RandomPeer),
     Now = erlang:system_time(millisecond),
     NoFilterFun = make_ext_exclude_filter([]),
     FilterFun = make_ext_exclude_filter([Id1]),
-    {verified, P2} = update(P, Now, Id1, Addr1, Addr1, true, foo),
+    {verified, P2} = update(P, Now, RandomPeer),
     ?assertEqual(1, count(P2, all, both)),
     ?assertEqual(1, count(P2, all, verified)),
     ?assertEqual(0, count(P2, all, unverified)),
@@ -223,29 +222,29 @@ add_single_trusted_test() ->
     ?assertEqual(0, count(P2, standby, both)),
     ?assertEqual(0, count(P2, standby, verified)),
     ?assertEqual(0, count(P2, standby, unverified)),
-    ?assertEqual([{Id1, foo}], available(P2, both)),
-    ?assertEqual([{Id1, foo}], available(P2, verified)),
+    ?assertEqual([{Id1, RandomPeer}], available(P2, both)),
+    ?assertEqual([{Id1, RandomPeer}], available(P2, verified)),
     ?assertEqual([], available(P2, unverified)),
     ?assertEqual(true, is_verified(P2, Id1)),
     ?assertEqual(false, is_unverified(P2, Id1)),
-    ?assertMatch({[{Id1, foo}], _}, random_subset(P2, all, undefined)),
-    ?assertMatch({[{Id1, foo}], _}, random_subset(P2, all, NoFilterFun)),
+    ?assertMatch({[{Id1, RandomPeer}], _}, random_subset(P2, all, undefined)),
+    ?assertMatch({[{Id1, RandomPeer}], _}, random_subset(P2, all, NoFilterFun)),
     ?assertMatch({[], _}, random_subset(P2, all, FilterFun)),
-    ?assertMatch({[{Id1, foo}], _}, random_subset(P2, 1, undefined)),
-    ?assertMatch({[{Id1, foo}], _}, random_subset(P2, 1, NoFilterFun)),
+    ?assertMatch({[{Id1, RandomPeer}], _}, random_subset(P2, 1, undefined)),
+    ?assertMatch({[{Id1, RandomPeer}], _}, random_subset(P2, 1, NoFilterFun)),
     ?assertMatch({[], _}, random_subset(P2, 1, FilterFun)),
-    ?assertMatch({[{Id1, foo}], _}, random_subset(P2, 10, undefined)),
-    ?assertMatch({[{Id1, foo}], _}, random_subset(P2, 10, NoFilterFun)),
+    ?assertMatch({[{Id1, RandomPeer}], _}, random_subset(P2, 10, undefined)),
+    ?assertMatch({[{Id1, RandomPeer}], _}, random_subset(P2, 10, NoFilterFun)),
     ?assertMatch({[], _}, random_subset(P2, 10, FilterFun)),
-    ?assertMatch({selected, {Id1, foo}, _},
+    ?assertMatch({selected, {Id1, RandomPeer}, _},
                random_select(P2, Now, both, undefined)),
-    ?assertMatch({selected, {Id1, foo}, _},
+    ?assertMatch({selected, {Id1, RandomPeer}, _},
                random_select(P2, Now, both, NoFilterFun)),
     ?assertMatch({unavailable, _},
                random_select(P2, Now, both, FilterFun)),
-    ?assertMatch({selected, {Id1, foo}, _},
+    ?assertMatch({selected, {Id1, RandomPeer}, _},
                random_select(P2, Now, verified, undefined)),
-    ?assertMatch({selected, {Id1, foo}, _},
+    ?assertMatch({selected, {Id1, RandomPeer}, _},
                random_select(P2, Now, verified, NoFilterFun)),
     ?assertMatch({unavailable, _},
                random_select(P2, Now, verified, FilterFun)),
@@ -267,16 +266,16 @@ multiple_peers_subset_test() ->
     Now = erlang:system_time(millisecond),
     Pool1 = new(?POOL_OPTS),
     Peers = make_peers(TotalCount, VerifCount),
-    ExcludedKeys = rand_int_list(1, VerifCount + 1, ExcludedCount),
-    ExcludedIds = [maps:get(id, maps:get(K, Peers)) || K <- ExcludedKeys],
+    ExcludedIdxs = rand_int_list(1, VerifCount + 1, ExcludedCount),
+    VerifiedIds = [I || {I, P} <- maps:to_list(Peers), aec_peer:is_trusted(P)],
+    ExcludedIds = [lists:nth(Int, VerifiedIds) || Int <- ExcludedIdxs],
     FilterFun = make_ext_exclude_filter(ExcludedIds),
 
     UnverCount = TotalCount - VerifCount,
     UnexCount = VerifCount - ExcludedCount,
 
     Pool2 = maps:fold(fun(_, Peer, P) ->
-        #{id := I, addr := A, source := S, trusted := T} = Peer,
-        {_, P2} = update(P, Now, I, A, S, T, Peer),
+        {_, P2} = update(P, Now, Peer),
         P2
     end, Pool1, Peers),
 
@@ -286,63 +285,58 @@ multiple_peers_subset_test() ->
     ?assertEqual(TotalCount, count(Pool2, available, both)),
     ?assertEqual(VerifCount, count(Pool2, available, verified)),
     ?assertEqual(UnverCount, count(Pool2, available, unverified)),
-    ?assertEqual(lists:sort([{maps:get(id, P), P} || P <- maps:values(Peers)]),
+    ?assertEqual(lists:sort([{aec_peer:id(P), P} || P <- maps:values(Peers)]),
                  lists:sort(available(Pool2, both))),
-    ?assertEqual(lists:sort([{maps:get(id, P), P}
-                             || #{trusted := true} = P <- maps:values(Peers)]),
+    ?assertEqual(lists:sort([{aec_peer:id(P), P}
+                             ||  P <- maps:values(Peers), aec_peer:is_trusted(P)]),
                  lists:sort(available(Pool2, verified))),
-    ?assertEqual(lists:sort([{maps:get(id, P), P}
-                             || #{trusted := false} = P <- maps:values(Peers)]),
+    ?assertEqual(lists:sort([{aec_peer:id(P), P}
+                             ||  P <- maps:values(Peers),
+                                 aec_peer:is_trusted(P) =:= false]),
                  lists:sort(available(Pool2, unverified))),
 
     {S2a, _} = random_subset(Pool2, all, undefined),
     ?assertEqual(VerifCount, length(S2a)),
     ?assertEqual(VerifCount, length(lists:usort([I || {I, _} <- S2a]))),
-    lists:foreach(fun({I, #{key := Key} = P}) ->
-        ?assertEqual(maps:get(Key, Peers), P),
-        ?assertMatch(#{id := I}, P)
+    lists:foreach(fun({I, P}) ->
+        ?assertEqual(maps:get(I, Peers), P) %% same peer
     end, S2a),
 
     {S2b, _} = random_subset(Pool2, all, FilterFun),
     ?assertEqual(UnexCount, length(S2b)),
     ?assertEqual(UnexCount, length(lists:usort([I || {I, _} <- S2b]))),
-    lists:foreach(fun({I, #{key := Key} = P}) ->
-        ?assertEqual(maps:get(Key, Peers), P),
-        ?assertMatch(#{id := I}, P),
+    lists:foreach(fun({I, P}) ->
+        ?assertEqual(maps:get(I, Peers), P),
         ?assertNot(lists:member(I, ExcludedIds))
     end, S2b),
 
     {S2c, _} = random_subset(Pool2, VerifCount * 2, undefined),
     ?assertEqual(VerifCount, length(S2c)),
     ?assertEqual(VerifCount, length(lists:usort([I || {I, _} <- S2c]))),
-    lists:foreach(fun({I, #{key := Key} = P}) ->
-        ?assertEqual(maps:get(Key, Peers), P),
-        ?assertMatch(#{id := I}, P)
+    lists:foreach(fun({I, P}) ->
+        ?assertEqual(maps:get(I, Peers), P)
     end, S2c),
 
     {S2d, _} = random_subset(Pool2, VerifCount * 2, FilterFun),
     ?assertEqual(UnexCount, length(S2d)),
     ?assertEqual(UnexCount, length(lists:usort([I || {I, _} <- S2d]))),
-    lists:foreach(fun({I, #{key := Key} = P}) ->
-        ?assertEqual(maps:get(Key, Peers), P),
-        ?assertMatch(#{id := I}, P),
+    lists:foreach(fun({I, P}) ->
+        ?assertEqual(maps:get(I, Peers), P),
         ?assertNot(lists:member(I, ExcludedIds))
     end, S2d),
 
     {S2e, _} = random_subset(Pool2, 30, undefined),
     ?assertEqual(30, length(S2e)),
     ?assertEqual(30, length(lists:usort([I || {I, _} <- S2e]))),
-    lists:foreach(fun({I, #{key := Key} = P}) ->
-        ?assertEqual(maps:get(Key, Peers), P),
-        ?assertMatch(#{id := I}, P)
+    lists:foreach(fun({I, P}) ->
+        ?assertEqual(maps:get(I, Peers), P)
     end, S2e),
 
     {S2f, _} = random_subset(Pool2, 30, FilterFun),
     ?assertEqual(30, length(S2f)),
     ?assertEqual(30, length(lists:usort([I || {I, _} <- S2f]))),
-    lists:foreach(fun({I, #{key := Key} = P}) ->
-        ?assertEqual(maps:get(Key, Peers), P),
-        ?assertMatch(#{id := I}, P),
+    lists:foreach(fun({I, P}) ->
+        ?assertEqual(maps:get(I, Peers), P),
         ?assertNot(lists:member(I, ExcludedIds))
     end, S2f),
     ok.
@@ -351,51 +345,55 @@ multiple_peers_subset_test() ->
 multiple_peers_select_test() ->
     TotalCount = 1000,
     VerifCount = 50,
-    ExcludedCount = 100,
+    ExcludedCount = 10,
 
     Now = erlang:system_time(millisecond),
     Pool1 = new(?BASE_POOL_OPTS),
     Peers = make_peers(TotalCount, VerifCount),
-    ExcludedKeys = rand_int_list(1, TotalCount + 1, ExcludedCount),
-    ExcludedIds = [maps:get(id, maps:get(K, Peers)) || K <- ExcludedKeys],
+    ExcludedIdxs = rand_int_list(1, VerifCount + 1, ExcludedCount),
+    VerifiedIds = [I || {I, P} <- maps:to_list(Peers), aec_peer:is_trusted(P)],
+    ExcludedIds = [lists:nth(Int, VerifiedIds) || Int <- ExcludedIdxs],
     FilterFun = make_ext_exclude_filter(ExcludedIds),
 
-    AllIds = [I || {_, #{id := I}} <- maps:to_list(Peers)],
+    AllIds = [I || {I, _} <- maps:to_list(Peers)],
     UnexIds = [I || I <- AllIds, not lists:member(I, ExcludedIds)],
-    VerifIds = [I || {_, #{id := I, trusted := true}} <- maps:to_list(Peers)],
+    VerifIds = [I || {I, P} <- maps:to_list(Peers), aec_peer:is_trusted(P)],
     UnexVerifIds = [I || I <- VerifIds, not lists:member(I, ExcludedIds)],
-    UnverIds = [I || {_, #{id := I, trusted := false}} <- maps:to_list(Peers)],
+    UnverIds = [I || {I, P} <- maps:to_list(Peers), aec_peer:is_trusted(P) =:= false],
     UnexUnverIds = [I || I <- UnverIds, not lists:member(I, ExcludedIds)],
 
     Pool2 = maps:fold(fun(_, Peer, P) ->
-        #{id := Id, addr := Addr, source := Source, trusted := Trusted} = Peer,
-        {_, P2} = update(P, Now, Id, Addr, Source, Trusted, Peer),
+        {_, P2} = update(P, Now, Peer),
         P2
     end, Pool1, Peers),
 
     {selected, {I2a, P2a}, _} =
         random_select(Pool2, Now, both, undefined),
-    ?assertMatch(#{id := I2a}, P2a),
+    ?assertMatch(I2a, aec_peer:id(P2a)),
     ?assert(lists:member(I2a, AllIds)),
     {selected, {I2b, P2b}, _} =
         random_select(Pool2, Now, both, FilterFun),
-    ?assertMatch(#{id := I2b}, P2b),
+    ?assertMatch(I2b, aec_peer:id(P2b)),
     ?assert(lists:member(I2b, UnexIds)),
     {selected, {I2c, P2c}, _} =
         random_select(Pool2, Now, verified, undefined),
-    ?assertMatch(#{id := I2c, trusted := true}, P2c),
+    ?assertMatch(I2c, aec_peer:id(P2c)),
+    ?assertMatch(true, aec_peer:is_trusted(P2c)),
     ?assert(lists:member(I2c, VerifIds)),
     {selected, {I2d, P2d}, _} =
         random_select(Pool2, Now, verified, FilterFun),
-    ?assertMatch(#{id := I2d, trusted := true}, P2d),
+    ?assertMatch(I2d, aec_peer:id(P2d)),
+    ?assertMatch(true, aec_peer:is_trusted(P2d)),
     ?assert(lists:member(I2d, UnexVerifIds)),
     {selected, {I2e, P2e}, _} =
         random_select(Pool2, Now, unverified, undefined),
-    ?assertMatch(#{id := I2e, trusted := false}, P2e),
+    ?assertMatch(I2e, aec_peer:id(P2e)),
+    ?assertMatch(false, aec_peer:is_trusted(P2e)),
     ?assert(lists:member(I2e, UnverIds)),
     {selected, {I2f, P2f}, _} =
         random_select(Pool2, Now, unverified, FilterFun),
-    ?assertMatch(#{id := I2f, trusted := false}, P2f),
+    ?assertMatch(I2f, aec_peer:id(P2f)),
+    ?assertMatch(false, aec_peer:is_trusted(P2f)),
     ?assert(lists:member(I2f, UnexUnverIds)),
     ok.
 
@@ -411,19 +409,20 @@ peer_selection_unavailability_test() ->
     Peers = make_peers(TotalCount, VerifCount),
 
     Pool2 = maps:fold(fun(_, Peer, P) ->
-        #{id := Id, addr := Addr, source := Source, trusted := Trusted} = Peer,
-        {_, P2} = update(P, Now, Id, Addr, Source, Trusted, Peer),
+        {_, P2} = update(P, Now, Peer),
         P2
     end, Pool1, Peers),
 
     {Pool3, _, _, _} = lists:foldl(fun(_, {P, A, V, U}) ->
-        {selected, {I, X}, P2} = random_select(P, Now, both, undefined),
-        ?assertNot(lists:member(I, A)),
-        ?assertEqual(true, is_available(P, I)),
-        ?assertEqual(false, is_available(P2, I)),
-        {A2, V2, U2} = case X of
-            #{id := I, trusted := true} -> {[I | A], [I | V], U};
-            #{id := I, trusted := false} -> {[I | A], V, [I | U]}
+        {selected, {Id, Peer}, P2} = random_select(P, Now, both, undefined),
+        ?assertNot(lists:member(Id, A)),
+        ?assertEqual(true, is_available(P, Id)),
+        ?assertEqual(false, is_available(P2, Id)),
+        IsTrusted = aec_peer:is_trusted(Peer),
+        ?assertEqual(Id, aec_peer:id(Peer)),
+        {A2, V2, U2} = case IsTrusted of
+            true -> {[Id | A], [Id | V], U};
+            false -> {[Id | A], V, [Id | U]}
         end,
         ?assertEqual(TotalCount, count(P2, all, both)),
         ?assertEqual(VerifCount, count(P2, all, verified)),
@@ -442,12 +441,13 @@ peer_selection_unavailability_test() ->
                  random_select(Pool3, Now, unverified, undefined)),
 
     {Pool4, _} = lists:foldl(fun(_, {P, V}) ->
-        {selected, {I, X}, P2} = random_select(P, Now, verified, undefined),
-        ?assertNot(lists:member(I, V)),
-        ?assertMatch(#{id := I, trusted := true}, X),
-        ?assertEqual(true, is_verified(P2, I)),
-        ?assertEqual(false, is_unverified(P2, I)),
-        V2 = [I | V],
+        {selected, {Id, Peer}, P2} = random_select(P, Now, verified, undefined),
+        ?assertNot(lists:member(Id, V)),
+        ?assertEqual(Id, aec_peer:id(Peer)),
+        ?assertEqual(true, aec_peer:is_trusted(Peer)),
+        ?assertEqual(true, is_verified(P2, Id)),
+        ?assertEqual(false, is_unverified(P2, Id)),
+        V2 = [Id | V],
         ?assertEqual(TotalCount, count(P2, all, both)),
         ?assertEqual(VerifCount, count(P2, all, verified)),
         ?assertEqual(UnverCount, count(P2, all, unverified)),
@@ -465,12 +465,12 @@ peer_selection_unavailability_test() ->
                  random_select(Pool4, Now, unverified, undefined)),
 
     {Pool5, _} = lists:foldl(fun(_, {P, U}) ->
-        {selected, {I, X}, P2} = random_select(P, Now, unverified, undefined),
-        ?assertNot(lists:member(I, U)),
-        ?assertMatch(#{id := I, trusted := false}, X),
-        ?assertEqual(false, is_verified(P2, I)),
-        ?assertEqual(true, is_unverified(P2, I)),
-        U2 = [I | U],
+        {selected, {Id, Peer}, P2} = random_select(P, Now, unverified, undefined),
+        ?assertNot(lists:member(Id, U)),
+        ?assertEqual(Id, aec_peer:id(Peer)),
+        ?assertEqual(false, aec_peer:is_trusted(Peer)),
+        ?assertEqual(true, is_unverified(P2, Id)),
+        U2 = [Id | U],
         ?assertEqual(TotalCount, count(P2, all, both)),
         ?assertEqual(VerifCount, count(P2, all, verified)),
         ?assertEqual(UnverCount, count(P2, all, unverified)),
@@ -489,16 +489,16 @@ peer_selection_unavailability_test() ->
 
     % Check explicit selection.
 
-    {Pool6, _, _, _} = lists:foldl(fun(K, {P, A, V, U}) ->
-        #{K := Peer} = Peers,
-        #{id := I} = Peer,
-        ?assertNot(lists:member(I, A)),
-        P2 = select(P, Now, I),
-        ?assertEqual(true, is_available(P, I)),
-        ?assertEqual(false, is_available(P2, I)),
-        {A2, V2, U2} = case Peer of
-            #{trusted := true} -> {[I | A], [I | V], U};
-            #{trusted := false} -> {[I | A], V, [I | U]}
+    {Pool6, _, _, _} = lists:foldl(fun(Id, {P, A, V, U}) ->
+        #{Id := Peer} = Peers,
+        ?assertNot(lists:member(Id, A)),
+        P2 = select(P, Now, Id),
+        ?assertEqual(true, is_available(P, Id)),
+        ?assertEqual(false, is_available(P2, Id)),
+        IsTrusted = aec_peer:is_trusted(Peer),
+        {A2, V2, U2} = case IsTrusted of
+            true -> {[Id | A], [Id | V], U};
+            false -> {[Id | A], V, [Id | U]}
         end,
         ?assertEqual(TotalCount, count(P2, all, both)),
         ?assertEqual(VerifCount, count(P2, all, verified)),
@@ -507,7 +507,7 @@ peer_selection_unavailability_test() ->
         ?assertEqual(VerifCount - length(V2), count(P2, available, verified)),
         ?assertEqual(UnverCount - length(U2), count(P2, available, unverified)),
         {P2, A2, V2, U2}
-    end, {Pool2, [], [], []}, lists:seq(1, TotalCount)),
+    end, {Pool2, [], [], []}, maps:keys(Peers)),
 
     ?assertMatch({unavailable, _},
                  random_select(Pool6, Now, both, undefined)),
@@ -525,8 +525,7 @@ peer_release_test() ->
     Peers = make_peers(6, 3),
 
     Pool2 = maps:fold(fun(_, Peer, P) ->
-        #{id := Id, addr := Addr, source := Source, trusted := Trusted} = Peer,
-        {_, P2} = update(P, Now, Id, Addr, Source, Trusted, Peer),
+        {_, P2} = update(P, Now, Peer),
         P2
     end, Pool1, Peers),
 
@@ -596,17 +595,17 @@ peer_release_test() ->
     % Check released peers can be selected again.
 
     {AllSelIds, _} = select_all(Pool8, Now, both, undefined),
-    ?assertEqual(lists:sort([I || {_, #{id := I}} <- maps:to_list(Peers)]),
+    ?assertEqual(lists:sort([I || {I, _} <- maps:to_list(Peers)]),
                  lists:sort(AllSelIds)),
 
     {VerifSelIds, _} = select_all(Pool8, Now, verified, undefined),
-    ?assertEqual(lists:sort([I || {_, #{id := I, trusted := true}}
-                                  <- maps:to_list(Peers)]),
+    ?assertEqual(lists:sort([I || {I, P} <- maps:to_list(Peers),
+                             aec_peer:is_trusted(P)]),
                  lists:sort(VerifSelIds)),
 
     {UnverSelIds, _} = select_all(Pool8, Now, unverified, undefined),
-    ?assertEqual(lists:sort([I || {_, #{id := I, trusted := false}}
-                                  <- maps:to_list(Peers)]),
+    ?assertEqual(lists:sort([I || {I, P} <- maps:to_list(Peers),
+                             aec_peer:is_trusted(P) =:= false]),
                  lists:sort(UnverSelIds)),
     ok.
 
@@ -619,8 +618,7 @@ peer_rejection_test() ->
     Peers = make_peers(3, 1),
 
     Pool2 = maps:fold(fun(_, Peer, P) ->
-        #{id := Id, addr := Addr, source := Source, trusted := Trusted} = Peer,
-        {_, P2} = update(P, Now1, Id, Addr, Source, Trusted, Peer),
+        {_, P2} = update(P, Now1, Peer),
         P2
     end, Pool1, Peers),
 
@@ -739,10 +737,11 @@ rejection_downgrade_test() ->
     Now1 = erlang:system_time(millisecond),
     Pool1 = new(?POOL_OPTS),
 
-    Id = random_peer_id(),
-    Addr = random_address(),
+    Peer = random_peer(),
+    Id = aec_peer:id(Peer),
 
-    {unverified, Pool2} = update(Pool1, Now1, Id, Addr, Addr, false, undefined),
+
+    {unverified, Pool2} = update(Pool1, Now1, Peer),
     {verified, Pool3} = verify(Pool2, Now1, Id),
     ?assertEqual({verified, true}, peer_state(Pool3, Id)),
 
@@ -796,10 +795,10 @@ basic_verification_test() ->
     Now = erlang:system_time(millisecond),
     Pool1 = new(?POOL_OPTS),
 
-    Id = random_peer_id(),
-    Addr = random_address(),
+    Peer = random_peer(),
+    Id = aec_peer:id(Peer),
 
-    {unverified, Pool2} = update(Pool1, Now, Id, Addr, Addr, false, undefined),
+    {unverified, Pool2} = update(Pool1, Now, Peer),
     ?assertEqual(true, is_available(Pool2, Id)),
     ?assertEqual(false, is_verified(Pool2, Id)),
     ?assertEqual(true, is_unverified(Pool2, Id)),
@@ -831,10 +830,10 @@ verification_of_selected_peer_test() ->
     Now = erlang:system_time(millisecond),
     Pool1 = new(?POOL_OPTS),
 
-    Id = random_peer_id(),
-    Addr = random_address(),
+    Peer = random_peer(),
+    Id = aec_peer:id(Peer),
 
-    {unverified, Pool2} = update(Pool1, Now, Id, Addr, Addr, false, undefined),
+    {unverified, Pool2} = update(Pool1, Now, Peer),
     {selected, {Id, _}, Pool3} =
         random_select(Pool2, Now, unverified, undefined),
     ?assertEqual(false, is_available(Pool3, Id)),
@@ -865,10 +864,11 @@ verification_of_standby_peer_test() ->
     Now = erlang:system_time(millisecond),
     Pool1 = new(?POOL_OPTS),
 
-    Id = random_peer_id(),
-    Addr = random_address(),
+    Peer = random_peer(),
+    Id = aec_peer:id(Peer),
 
-    {unverified, Pool2} = update(Pool1, Now, Id, Addr, Addr, false, undefined),
+
+    {unverified, Pool2} = update(Pool1, Now, Peer),
     {selected, {Id, _}, Pool3} =
         random_select(Pool2, Now, unverified, undefined),
     Pool4 = reject(Pool3, Now, Id),
@@ -897,15 +897,17 @@ verification_canceled_test() ->
     Pool1 = new(PoolOpts),
     Now = erlang:system_time(millisecond),
 
-    Id1 = random_peer_id(),
-    Addr1 = random_address(),
-    Id2 = random_peer_id(),
-    Addr2 = random_address(),
+    Peer1 = random_peer(),
+    Id1 = aec_peer:id(Peer1),
+
+    Peer2 = random_peer(),
+    Id2 = aec_peer:id(Peer2),
+
 
     {unverified, Pool2} =
-        update(Pool1, Now, Id1, Addr1, Addr1, false, undefined),
+        update(Pool1, Now, Peer1),
     {unverified, Pool3} =
-        update(Pool2, Now, Id2, Addr2, Addr2, false, undefined),
+        update(Pool2, Now, Peer2),
 
     {verified, Pool4} = verify(Pool3, Now, Id1),
     ?assertEqual({verified, true}, peer_state(Pool4, Id1)),
@@ -933,30 +935,35 @@ update_ignored_test() ->
     Pool1 = new(PoolOpts),
     Now = erlang:system_time(millisecond),
 
-    Id1 = random_peer_id(),
-    Addr1 = random_address(),
-    Id2 = random_peer_id(),
-    Addr2 = random_address(),
+    Peer1 = random_peer(),
+    Id1 = aec_peer:id(Peer1),
+    Peer1DifferentAddress = random_peer(#{pubkey => Id1}),
+    Peer1Trusted = random_peer(#{pubkey => Id1,
+                                 address => aec_peer:ip(Peer1),
+                                 trusted => true}), %% it is false by default
+
+    Peer2 = random_peer(),
+    Id2 = aec_peer:id(Peer2),
 
     {unverified, Pool2} =
-        update(Pool1, Now, Id1, Addr1, Addr1, false, undefined),
+        update(Pool1, Now, Peer1),
     ?assertEqual({unverified, true}, peer_state(Pool2, Id1)),
     ?assertEqual({undefined, undefined}, peer_state(Pool2, Id2)),
 
     % Updating with a different address is ignored.
     {ignored, Pool3} =
-        update(Pool2, Now, Id1, Addr2, Addr2, false, undefined),
+        update(Pool2, Now, Peer1DifferentAddress),
     ?assertEqual({unverified, true}, peer_state(Pool3, Id1)),
     ?assertEqual({undefined, undefined}, peer_state(Pool3, Id2)),
 
     % Updating with a different trust status is ignored.
-    {ignored, Pool4} = update(Pool3, Now, Id1, Addr1, Addr1, true, undefined),
+    {ignored, Pool4} = update(Pool3, Now, Peer1Trusted),
     ?assertEqual({unverified, true}, peer_state(Pool4, Id1)),
     ?assertEqual({undefined, undefined}, peer_state(Pool4, Id2)),
 
     % Normal update evict the old peer.
     {unverified, Pool5} =
-        update(Pool4, Now, Id2, Addr2, Addr2, false, undefined),
+        update(Pool4, Now, Peer2),
     ?assertEqual({undefined, undefined}, peer_state(Pool5, Id1)),
     ?assertEqual({unverified, true}, peer_state(Pool5, Id2)),
 
@@ -966,7 +973,7 @@ update_ignored_test() ->
     ?assertEqual({unverified, false}, peer_state(Pool6, Id2)),
 
     % Update should be ignored due to not being able to evict any peer.
-    {ignored, Pool7} = update(Pool6, Now, Id1, Addr1, Addr1, false, undefined),
+    {ignored, Pool7} = update(Pool6, Now, Peer1),
     ?assertEqual({undefined, undefined}, peer_state(Pool7, Id1)),
     ?assertEqual({unverified, false}, peer_state(Pool7, Id2)),
     ok.
@@ -983,16 +990,17 @@ downgrade_to_bucket_with_no_eviction_possible_test() ->
     Pool1 = new(PoolOpts),
     Now = erlang:system_time(millisecond),
 
-    Id1 = random_peer_id(),
-    Addr1 = random_address(),
-    Id2 = random_peer_id(),
-    Addr2 = random_address(),
+    RandomPeer1 = random_peer(),
+    Id1 = aec_peer:id(RandomPeer1),
+
+    RandomPeer2 = random_peer(),
+    Id2 = aec_peer:id(RandomPeer2),
 
     {unverified, Pool2} =
-        update(Pool1, Now, Id1, Addr1, Addr1, false, undefined),
+        update(Pool1, Now, RandomPeer1),
     {verified, Pool3} = verify(Pool2, Now, Id1),
     {unverified, Pool4} =
-        update(Pool3, Now, Id2, Addr2, Addr2, false, undefined),
+        update(Pool3, Now, RandomPeer2),
     ?assertEqual({verified, true}, peer_state(Pool4, Id1)),
     ?assertEqual({unverified, true}, peer_state(Pool4, Id2)),
 
@@ -1022,10 +1030,11 @@ manual_selection_of_standby_peer_test() ->
     Now = erlang:system_time(millisecond),
     Pool1 = new(?POOL_OPTS),
 
-    Id = random_peer_id(),
-    Addr = random_address(),
+    RandomPeer = random_peer(),
+    Id = aec_peer:id(RandomPeer),
+    false = aec_peer:is_trusted(RandomPeer),
 
-    {unverified, Pool2} = update(Pool1, Now, Id, Addr, Addr, false, undefined),
+    {unverified, Pool2} = update(Pool1, Now, RandomPeer),
     {selected, {Id, _}, Pool3} =
         random_select(Pool2, Now, unverified, undefined),
     Pool4 = reject(Pool3, Now, Id),
@@ -1050,13 +1059,16 @@ unverified_selected_are_not_evicted_test() ->
 
     Now1 = erlang:system_time(millisecond),
     Peers = make_peers(200, 0),
+    PeersList = [P || {_, P} <- maps:to_list(Peers)],
 
-    {Pool2, Now2} = lists:foldl(fun(K, {P, N}) ->
-        #{K := Peer} = Peers,
-        #{id := Id, addr := Addr, source := Source} = Peer,
-        {unverified, P2} = update(P, N, Id, Addr, Source, false, undefined),
-        {P2, N + 1000}
-    end, {Pool1, Now1}, lists:seq(1, 10)),
+    {Pool2, Now2} =
+        lists:foldl(
+            fun(Peer, {P, N}) ->
+                {unverified, P2} = update(P, N, Peer),
+                {P2, N + 1000}
+            end,
+            {Pool1, Now1},
+            lists:sublist(PeersList, 10)),
 
     % Select some of the peer to ensure they never get evicted.
     {selected, {SelId1, _}, Pool3} =
@@ -1073,12 +1085,14 @@ unverified_selected_are_not_evicted_test() ->
     ?assertEqual( 0, count(Pool5, available, verified)),
     ?assertEqual( 7, count(Pool5, available, unverified)),
 
-    Pool6 = lists:foldl(fun(K, P) ->
-        #{K := Peer} = Peers,
-        #{id := Id, addr := Addr, source := Source} = Peer,
-        {unverified, P2} = update(P, Now2, Id, Addr, Source, false, undefined),
-        P2
-    end, Pool5, lists:seq(11, 100)),
+    Pool6 =
+        lists:foldl(
+            fun(Peer, P) ->
+                {unverified, P2} = update(P, Now2, Peer),
+                P2
+            end,
+            Pool5,
+            lists:sublist(PeersList, 11, 100)),
 
     ?assertEqual(true, is_unverified(Pool6, SelId1)),
     ?assertEqual(true, is_unverified(Pool6, SelId2)),
@@ -1106,13 +1120,16 @@ unverified_old_peers_are_removed_test() ->
 
     Now1 = erlang:system_time(millisecond),
     Peers = make_peers(20, 0),
+    PeersList = [P || {_, P} <- maps:to_list(Peers)],
 
-    {Pool2, Now2} = lists:foldl(fun(K, {P, N}) ->
-        #{K := Peer} = Peers,
-        #{id := Id, addr := Addr, source := Source} = Peer,
-        {unverified, P2} = update(P, N, Id, Addr, Source, false, undefined),
-        {P2, N + 1000}
-    end, {Pool1, Now1}, lists:seq(1, 10)),
+    {Pool2, Now2} =
+        lists:foldl(
+            fun(Peer, {P, N}) ->
+                {unverified, P2} = update(P, N, Peer),
+                {P2, N + 1000}
+            end,
+            {Pool1, Now1},
+            lists:sublist(PeersList, 10)),
 
     % Select some of the peer to ensure they never get evicted.
     {selected, {SelId1, _}, Pool3} =
@@ -1131,10 +1148,8 @@ unverified_old_peers_are_removed_test() ->
 
     Now3 = Now2 + 30000,
 
-    #{11 := Peer11} = Peers,
-    #{id := Id, addr := Addr, source := Source} = Peer11,
-    {unverified, Pool6} =
-        update(Pool5, Now3, Id, Addr, Source, false, undefined),
+    Peer11 = lists:nth(11, PeersList),
+    {unverified, Pool6} = update(Pool5, Now3, Peer11),
 
     % Selected peers should NOT be removed
     ?assertEqual(true, is_unverified(Pool6, SelId1)),
@@ -1159,10 +1174,9 @@ unverified_multiple_references_test() ->
     Pool1 = new(PoolOpts),
 
     Now = erlang:system_time(millisecond),
-    PeerId = random_peer_id(),
-    PeerAddr = random_address(),
-
-    Pool2 = unver_add_refs(Pool1, Now, PeerId, PeerAddr, MaxRefs, 10000),
+    Peer = random_peer(),
+    PeerId = aec_peer:id(Peer),
+    Pool2 = unver_add_refs(Pool1, Now, Peer, random_source, MaxRefs, 10000),
 
     ?assertEqual(MaxRefs, aec_peers_pool:reference_count(Pool2, PeerId)),
     ?assertEqual(1, count(Pool2, all, both)),
@@ -1173,7 +1187,7 @@ unverified_multiple_references_test() ->
     ?assertEqual(1, count(Pool2, available, unverified)),
 
     % Checks than 1000 more updates do not add anymore references.
-    Pool3 = unver_add_refs(Pool2, Now, PeerId, PeerAddr, MaxRefs + 1, 1000),
+    Pool3 = unver_add_refs(Pool2, Now, Peer, random_source, MaxRefs + 1, 1000),
 
     ?assertEqual(MaxRefs, aec_peers_pool:reference_count(Pool3, PeerId)),
     ?assertEqual(1, count(Pool3, all, both)),
@@ -1192,33 +1206,31 @@ unverified_reference_eviction_test() ->
     Pool1 = new(PoolOpts),
     Now = erlang:system_time(millisecond),
 
-    Id1 = random_peer_id(),
-    Addr1 = random_address(),
-    Src1a = random_address(),
+    Peer1 = random_peer(),
+    Id1 = aec_peer:id(Peer1),
+    Addr1 = aec_peer:ip(Peer1),
+    Src1a = aec_peer:source(Peer1),
     BIdx1a = aec_peers_pool:unverified_bucket_index(Pool1, Src1a, Addr1),
     % Find a source address that match to the other bucket...
     BIdx1b = abs(BIdx1a - 1),
     Src1b = find_unverified_source(Pool1, Addr1, BIdx1b),
 
-    {unverified, Pool2} =
-        update(Pool1, Now, Id1, Addr1, Src1a, false, undefined),
+    {unverified, Pool2} = update(Pool1, Now, Peer1),
     ?assertEqual(true, is_unverified(Pool2, Id1)),
     ?assertEqual(1, aec_peers_pool:reference_count(Pool2, Id1)),
     ?assertEqual(1, count(Pool2, all, both)),
     ?assertEqual(1, count(Pool2, available, both)),
 
-    Pool3 = unver_add_refs(Pool2, Now, Id1, Addr1, Src1b, 2, 1000),
+    Pool3 = unver_add_refs(Pool2, Now, aec_peer:set_source(Peer1, Src1b), 2, 1000),
     ?assertEqual(true, is_unverified(Pool2, Id1)),
     ?assertEqual(2, aec_peers_pool:reference_count(Pool3, Id1)),
     ?assertEqual(1, count(Pool3, all, both)),
     ?assertEqual(1, count(Pool3, available, both)),
 
-    Id2 = random_peer_id(),
-    Addr2 = random_address(),
-    Src2 = random_address(),
+    Peer2 = random_peer(),
+    Id2 = aec_peer:id(Peer2),
 
-    {unverified, Pool4} =
-        update(Pool3, Now, Id2, Addr2, Src2, false, undefined),
+    {unverified, Pool4} = update(Pool3, Now, Peer2),
     ?assertEqual(true, is_unverified(Pool4, Id1)),
     ?assertEqual(true, is_unverified(Pool4, Id2)),
     ?assertEqual(1, aec_peers_pool:reference_count(Pool4, Id1)),
@@ -1237,16 +1249,44 @@ verified_selected_and_trusted_peers_are_not_evicted_test() ->
     Pool1 = new(PoolOpts),
 
     Now = erlang:system_time(millisecond),
-    Peers = make_peers(500, 2), % First 2 peers are trusted
-    TrustedId1 = maps:get(id, maps:get(1, Peers)),
-    TrustedId2 = maps:get(id, maps:get(2, Peers)),
+    Peers = make_peers(500, 2), % 2 peers are trusted
+    TrustedPeers = [TrustedPeer1, TrustedPeer2] =
+        [P || {_, P} <- maps:to_list(Peers), aec_peer:is_trusted(P)],
+    TrustedId1 = aec_peer:id(TrustedPeer1),
+    TrustedId2 = aec_peer:id(TrustedPeer2),
+    UntrustedPeers = 
+        [P || {_, P} <- maps:to_list(Peers), aec_peer:is_trusted(P) =:= false],
+    PeersToPost = TrustedPeers ++ lists:sublist(UntrustedPeers, 8),
 
-    Pool2 = lists:foldl(fun(K, P) ->
-        #{K := Peer} = Peers,
-        #{id := Id, addr := Addr, source := Source, trusted := Trusted} = Peer,
-        {_, P2} = update(P, Now, Id, Addr, Source, Trusted, undefined),
-        P2
-    end, Pool1, lists:seq(1, 10)),
+    UpdatePeers =
+        fun(Pool, PList, Verify) ->
+            lists:foldl(
+                fun(Peer, P) ->
+                    {_, P1} = update(P, Now, Peer),
+                    case Verify of
+                        true ->
+                            Id = aec_peer:id(Peer),
+                            {verified, P2} = verify(P1, Now, Id),
+                            P2;
+                        false -> P1
+                    end
+                end,
+                Pool,
+                PList)
+        end,
+    VerifyPeers =
+        fun(Pool, PList) ->
+            lists:foldl(
+                fun(Peer, P) ->
+                    Id = aec_peer:id(Peer),
+                    {verified, P1} = verify(P, Now, Id),
+                    P1
+                end,
+                Pool,
+                PList)
+        end,
+
+    Pool2 = UpdatePeers(Pool1, PeersToPost, false),
 
     % Select some of the peer to ensure they never get evicted.
     {selected, {SelId1, _}, Pool4} =
@@ -1257,12 +1297,7 @@ verified_selected_and_trusted_peers_are_not_evicted_test() ->
         random_select(Pool5, Now, unverified, undefined),
 
     % Verify all the peers to fill the single verified bucket
-    Pool7 = lists:foldl(fun(K, P) ->
-        #{K := Peer} = Peers,
-        #{id := Id} = Peer,
-        {verified, P2} = verify(P, Now, Id),
-        P2
-    end, Pool6, lists:seq(1, 10)),
+    Pool7 = VerifyPeers(Pool6, PeersToPost),
 
     ?assertEqual(10, count(Pool7, all, both)),
     ?assertEqual(10, count(Pool7, all, verified)),
@@ -1272,13 +1307,8 @@ verified_selected_and_trusted_peers_are_not_evicted_test() ->
     ?assertEqual( 0, count(Pool7, available, unverified)),
 
     % Update and verify all the other peers.
-    Pool8 = lists:foldl(fun(K, P) ->
-        #{K := Peer} = Peers,
-        #{id := Id, addr := Addr, source := Source} = Peer,
-        {unverified, P2} = update(P, Now, Id, Addr, Source, false, undefined),
-        {verified, P3} = verify(P2, Now, Id),
-        P3
-    end, Pool7, lists:seq(11, 100)),
+    SecondBatchOfPeers = lists:sublist(UntrustedPeers, 9, 100),
+    Pool8 = UpdatePeers(Pool7, SecondBatchOfPeers, true),
 
     % Selected peers didn't get evicted.
     ?assertEqual(true, is_verified(Pool8, SelId1)),
@@ -1309,16 +1339,21 @@ verified_old_peers_are_removed_test() ->
     Pool1 = new(PoolOpts),
 
     Now1 = erlang:system_time(millisecond),
-    Peers = make_peers(20, 2),
-    TrustedId1 = maps:get(id, maps:get(1, Peers)),
-    TrustedId2 = maps:get(id, maps:get(2, Peers)),
+    TrustedCnt = 2,
+    Peers = make_peers(20, TrustedCnt),
+    TrustedPeers = [TrustedPeer1, TrustedPeer2] =
+        [P || {_, P} <- maps:to_list(Peers), aec_peer:is_trusted(P)],
+    TrustedId1 = aec_peer:id(TrustedPeer1),
+    TrustedId2 = aec_peer:id(TrustedPeer2),
+    UntrustedPeers = 
+        [P || {_, P} <- maps:to_list(Peers), aec_peer:is_trusted(P) =:= false],
 
-    {Pool2, Now2} = lists:foldl(fun(K, {P, N}) ->
-        #{K := Peer} = Peers,
-        #{id := Id, addr := Addr, source := Source, trusted := Trusted} = Peer,
-        {_, P2} = update(P, N, Id, Addr, Source, Trusted, undefined),
+    
+    PeersToPost = TrustedPeers ++ lists:sublist(UntrustedPeers, 8),
+    {Pool2, Now2} = lists:foldl(fun(Peer, {P, N}) ->
+        {_, P2} = update(P, N, Peer),
         {P2, N + 1000}
-    end, {Pool1, Now1}, lists:seq(1, 10)),
+    end, {Pool1, Now1}, PeersToPost),
 
     % Select some of the peer to ensure they never get evicted.
     {selected, {SelId1, _}, Pool3} =
@@ -1329,12 +1364,11 @@ verified_old_peers_are_removed_test() ->
         random_select(Pool4, Now2, unverified, undefined),
 
     % Verify all the peers to fill the single verified bucket
-    Pool6 = lists:foldl(fun(K, P) ->
-        #{K := Peer} = Peers,
-        #{id := Id} = Peer,
+    Pool6 = lists:foldl(fun(Peer, P) ->
+        Id = aec_peer:id(Peer),
         {verified, P2} = verify(P, Now2, Id),
         P2
-    end, Pool5, lists:seq(1, 10)),
+    end, Pool5, PeersToPost),
 
     ?assertEqual(10, count(Pool6, all, both)),
     ?assertEqual(10, count(Pool6, all, verified)),
@@ -1345,9 +1379,9 @@ verified_old_peers_are_removed_test() ->
 
     Now3 = Now2 + 30000,
 
-    #{11 := Peer11} = Peers,
-    #{id := Id, addr := Addr, source := Source} = Peer11,
-    {verified, Pool7} = update(Pool6, Now3, Id, Addr, Source, true, undefined),
+    [Peer11 | _] = maps:values(Peers) -- PeersToPost,
+    Peer11Trusted = aec_peer:set_trusted(Peer11, true),
+    {verified, Pool7} = update(Pool6, Now3, Peer11Trusted),
 
     % Selected peers should NOT be removed
     ?assertEqual(true, is_verified(Pool7, SelId1)),
@@ -1419,16 +1453,16 @@ validate_counters() ->
                     case peer_state(P, Id) of
                         {undefined, _} -> {P, N + 500, A2, S};
                         _ ->
-                            Source = random_address(),
-                            {_, P2} = update(P, N, Id, Addr, Source,
-                                             false, undefined),
+                            RandomPeer = random_peer(#{pubkey => Id,
+                                                       address => Addr}),
+                            {_, P2} = update(P, N, RandomPeer),
                             {P2, N + 500, A, S}
                     end;
                 _ ->
-                    Id = random_peer_id(),
-                    Addr = random_address(),
-                    Source = random_address(),
-                    {_, P2} = update(P, N, Id, Addr, Source, false, undefined),
+                    RandomPeer = random_peer(),
+                    Id = aec_peer:id(RandomPeer),
+                    Addr = aec_peer:ip(RandomPeer),
+                    {_, P2} = update(P, N, RandomPeer),
                     {P2, N + 500, [{Id, Addr} | A], S}
             end
     end, {Pool1, Now1, [], []}, lists:seq(1, 100000)),
@@ -1926,18 +1960,13 @@ random_address(A, B) ->
 
 make_peers(TotalCount, TrustedCount) ->
     ?assert(TotalCount >= TrustedCount),
-    make_peers(TotalCount, TrustedCount, 1, #{}).
+    make_peers(TotalCount, TrustedCount, #{}).
 
-make_peers(0, _, _, Acc) -> Acc;
-make_peers(TotalCount, TrustedCount, Key, Acc) ->
-    Peer = #{
-        key => Key,
-        id => random_peer_id(),
-        addr => random_address(),
-        source => random_address(),
-        trusted => TrustedCount > 0
-    },
-    make_peers(TotalCount - 1, TrustedCount - 1, Key + 1, Acc#{Key => Peer}).
+make_peers(0, _, Acc) -> Acc;
+make_peers(TotalCount, TrustedCount,  Acc) ->
+    Peer = random_peer(#{trusted => TrustedCount > 0}), 
+    make_peers(TotalCount - 1, TrustedCount - 1,
+               Acc#{aec_peer:id(Peer) => Peer}).
 
 make_ext_exclude_filter(ExcludePeerIds) ->
     fun(PeerId, _) -> not lists:member(PeerId, ExcludePeerIds) end.
@@ -1984,22 +2013,35 @@ select_all(Pool, Now, Target, FilterFun, Acc) ->
             select_all(Pool2, Now, Target, FilterFun, [I | Acc])
     end.
 
-unver_add_refs(Pool, Now, PeerId, PeerAddr, Count, Max) ->
-    unver_add_refs(Pool, Now, PeerId, PeerAddr, undefined, Count, Max).
+unver_add_refs(Pool, Now, Peer, Count, Max) ->
+    unver_add_refs(Pool, Now, Peer, keep_source, Count, Max).
 
-unver_add_refs(Pool, _Now, _PeerId, _PeerAddr, _SourceAddr, _Count, 0) -> Pool;
-unver_add_refs(Pool, Now, PeerId, PeerAddr, SourceAddr0, Count, Max) ->
-    SourceAddr = case SourceAddr0 of
-        undefined -> random_address();
-        Addr -> Addr
-    end,
-    {unverified, Pool2} = update(Pool, Now, PeerId, PeerAddr,
-                                 SourceAddr, false, undefined),
+unver_add_refs(Pool, _Now, _Peer, _Source, _Count, 0) -> Pool;
+unver_add_refs(Pool, Now, Peer0, SourceAtom, Count, Max) ->
+    Peer =
+        case SourceAtom of
+            random_source -> aec_peer:set_source(Peer0, random_address());
+            keep_source -> Peer0
+        end,
+    {unverified, Pool2} = update(Pool, Now, Peer),
+    PeerId = aec_peer:id(Peer),
     case aec_peers_pool:reference_count(Pool2, PeerId) =:= Count of
         true -> Pool2;
         false ->
-            unver_add_refs(Pool2, Now, PeerId, PeerAddr,
-                           SourceAddr0, Count, Max - 1)
+            unver_add_refs(Pool2, Now, Peer, SourceAtom, Count, Max - 1)
     end.
+
+random_peer() ->
+    random_peer(#{}).
+
+random_peer(Opts) ->
+    PeerInfo =
+        maps:merge(#{ pubkey => random_peer_id(), host => <<>>, port => 4000 },
+                   Opts),
+    aec_peer:new(maps:get(address, Opts, random_address()),
+                 maps:get(source, Opts, random_address()), 
+                 PeerInfo,
+                 maps:get(trusted, Opts, false)).
+
 
 -endif.
