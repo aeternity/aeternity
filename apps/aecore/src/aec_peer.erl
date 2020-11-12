@@ -21,7 +21,7 @@
         ]).
 
 -ifdef(TEST).
--export([ set_trusted/2]).
+-export([ set_trusted/2 ]).
 -endif.
 
 -record(peer, {
@@ -41,7 +41,7 @@
 
 %% The Peer is identified by its pubkey for now.
 -type info() :: #{
-    pubkey  := aec_keys:pubkey(),
+    pubkey  => aec_keys:pubkey(),
     host    => host(),
     port    => inet:port_number()
 }.
@@ -78,7 +78,7 @@ id(#{ pubkey := PubKey }) ->
 
 -spec socket(peer()) -> socket().
 socket(#peer{address = Address,
-                  port    = Port}) ->
+             port    = Port}) ->
     socket(Address, Port).
 
 socket(Address, Port) ->
