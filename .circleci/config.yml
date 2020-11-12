@@ -194,7 +194,12 @@ references:
       name: Build Package Tarball
       environment:
         PACKAGES_DIR: *packages_workspace
+        ERLANG_ROCKSDB_OPTS: ""
       command: |
+        # Ensure rocksdb gets build statically
+        rm -rf _build/default/lib/rocksdb/
+        rm -rf _build/default/lib/mnesia_rocksdb
+        # Build the package
         make prod-package
         mkdir ${PACKAGES_DIR:?}
         mv _build/prod/rel/aeternity/aeternity-$(cat VERSION).tar.gz ${PACKAGE_TARBALL:?}
