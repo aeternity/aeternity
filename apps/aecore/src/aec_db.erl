@@ -108,6 +108,11 @@
         , find_block_state_and_data/1
         , find_block_state_and_data/2
         ]).
+
+-export([ write_peer/1
+        , delete_peer/1
+        , read_all_peers/0
+        ]).
 %%
 %% for testing
 -export([backend_mode/0]).
@@ -161,6 +166,7 @@ tables(Mode) ->
    , ?TAB(aec_tx_pool)
    , ?TAB(aec_discovered_pof)
    , ?TAB(aec_signal_count)
+   , ?TAB(aec_peers)
     ].
 
 tab(Mode0, Record, Attributes, Extra) ->
@@ -1041,3 +1047,18 @@ handle_activity_result(Res, ErrorKeys) ->
             %% layer.
             exit(Err)
     end.
+
+write_peer(Peer) ->
+    PeerId = aec_peer:id(Peer),
+    ?t(mnesia:write(#aec_peers{key = PeerId, value = Peer}),
+      [{aec_peers, PeerId}]).
+
+delete_peer(Peer) ->
+    PeerId = aec_peer:id(Peer),
+    ?t(mnesia:delete({aec_peers, PeerId})).
+
+read_all_peers() ->
+    Fun = fun(#aec_peers{value = Peer}, Acc) ->
+              [Peer | Acc]
+          end,
+    ?t(mnesia:foldl(Fun, [], aec_peers)).
