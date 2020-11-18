@@ -778,6 +778,7 @@ update_peer(St, Now, PeerData) ->
             Peer2 = Peer#peer{update_time = Now},
             PeerId = aec_peer:id(PeerData),
             Peers2 = Peers#{PeerId => Peer2},
+            db_persist_peer(PeerData),
             {updated, St#?ST{peers = Peers2}};
         #peer{immutable = CurrPeerData} = CurrPeer ->
             PeerAddr = aec_peer:ip(PeerData),
@@ -791,6 +792,7 @@ update_peer(St, Now, PeerData) ->
                     Peer2 = CurrPeer#peer{update_time = Now,
                                           %% update source
                                           immutable = PeerData1},
+                    db_persist_peer(PeerData1),
                     {updated, set_peer(St, PeerId, Peer2)};
                 false ->
                     ignored
@@ -816,7 +818,9 @@ del_peer(St, PeerId) ->
         {#?ST.lookup_unver, #peer.lookup_unver_idx}
     ]),
     #?ST{peers = Peers} = St5,
-    ?assert(maps:is_key(PeerId, Peers)),
+    %% this asserts the peer is present
+    Peer = get_peer(St, PeerId),
+    db_delete_peer(Peer#peer.immutable),
     ?assertEqual(false, (maps:get(PeerId, Peers))#peer.selected),
     St5#?ST{peers = maps:remove(PeerId, Peers)}.
 
@@ -1916,3 +1920,20 @@ max_rejections() ->
     aeu_env:user_config_or_env([<<"sync">>, <<"peer_pool">>, <<"max_rejections">>],
                                aecore, [peer_pool, max_rejections],
                                ?DEFAULT_MAX_REJECTIONS).
+
+db_persist_peer(PeerData) ->
+    case aec_peer:is_trusted(PeerData) of
+        true ->
+        %% Trusted peers are loaded by config. Since the essence of
+        %% trusted peers is that they are never downgraded and there is no
+        %% other way of removing peers, we persist in the DB only non-trusted
+        %% peers. The way of adding or removing trusted peers is using the
+        %% config instead.
+            pass;
+        false -> aec_db:write_peer(PeerData)
+    end,
+    ok.
+
+db_delete_peer(PeerData) ->
+    aec_db:delete_peer(PeerData),
+    ok.

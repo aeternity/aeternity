@@ -276,11 +276,7 @@ parse_peer_address(PeerAddress) ->
         {ok, {aenode, EncPubKey, Host, Port, _Path, _Query}} ->
             case aeser_api_encoder:safe_decode(peer_pubkey, to_binary(EncPubKey)) of
                 {ok, PubKey} ->
-                    PeerInfo = #{
-                        pubkey => PubKey,
-                        host => to_binary(Host),
-                        port => Port
-                    },
+                    PeerInfo = aec_peer:info(PubKey, Host, Port),
                     {ok, PeerInfo};
                 {error, _} = Error ->
                     Error

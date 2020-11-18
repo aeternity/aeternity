@@ -31,8 +31,10 @@
     available/2
 ]).
 
--export([random_peer/0,
-         random_peer/1
+-export([seed_process_random/0,
+         random_peer/0,
+         random_peer/1,
+         random_address/0
 ]).
 
 %=== MACROS ====================================================================
@@ -1952,7 +1954,7 @@ rand_take(Col) when is_list(Col)->
     {R, L1 ++ L2}.
 
 random_peer_id() ->
-    A = rand_int(1, 1 bsl 64),
+    A = rand_int(1, 1234567),
     <<A:32/unit:8>>.
 
 random_address() ->

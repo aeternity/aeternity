@@ -15,6 +15,7 @@
         , is_trusted/1
         , ppp/1
         , info/1
+        , info/3
         , format_address/1
         , source/1
         , set_source/2
@@ -97,6 +98,11 @@ ppp(X) -> X.
 -spec info(peer()) -> info().
 info(#peer{ host = H, port = P, pubkey = PK }) ->
     #{ host => H, port => P, pubkey => PK }.
+
+info(PK, Host, Port) when is_list(Host) ->
+    info(PK, list_to_binary(Host), Port);
+info(PK, Host, Port) when is_binary(Host) ->
+    #{ host => Host, port => Port, pubkey => PK }.
 
 -spec format_address(peer() | inet:ip_address() | {inet:ip_address(), inet:port_number()})
     -> binary().

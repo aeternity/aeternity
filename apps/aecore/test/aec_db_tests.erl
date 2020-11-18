@@ -331,6 +331,17 @@ peers_test_() ->
            P1T = aec_peer:set_trusted(P1U, true),
            aec_db:write_peer(P1T),
            [P1T] = aec_db:read_all_peers(),
+           aec_db:delete_peer(P1T),
+           [] = aec_db:read_all_peers(),
+           P2 = untrusted_peer(),
+           aec_db:write_peer(P2),
+           [P2] = aec_db:read_all_peers(),
+           P2Updated =
+              aec_peer:set_source(P2, aec_peers_pool_tests:random_address()),
+           aec_db:write_peer(P2Updated),
+           [P2Updated] = aec_db:read_all_peers(),
+           aec_db:delete_peer(P2Updated),
+           [] = aec_db:read_all_peers(),
            ok
        end},
       {"Write a couple of peers",

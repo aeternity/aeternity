@@ -39,7 +39,8 @@
     inject_long_chain/1,
     measure_second_node_sync_time/1,
     validate_default_peers/1,
-    restart_with_different_defaults/1
+    restart_with_different_defaults/1,
+    start_with_trusted_peers/1
    ]).
 
 -include_lib("common_test/include/ct.hrl").
@@ -61,7 +62,8 @@ groups() ->
                               {group, one_blocked},
                               {group, large_msgs},
                               {group, performance},
-                              {group, config_overwrites_defaults}
+                              {group, config_overwrites_defaults},
+                              {group, persistence}
                              ]},
      {two_nodes, [sequence],
       [start_first_node,
@@ -138,7 +140,11 @@ groups() ->
       [start_first_node,
        validate_default_peers,
        restart_with_different_defaults
-       ]}
+       ]},
+     {persistence, [sequence],
+          [
+           start_with_trusted_peers
+          ]}
     ].
 
 suite() ->
@@ -170,7 +176,9 @@ init_per_suite(Config0) ->
             <<"micro_block_cycle">> => 100
         }
     },
-    aecore_suite_utils:init_per_suite([dev1, dev2, dev3], DefCfg, [{add_peers, true}], [{symlink_name, "latest.sync"}, {test_module, ?MODULE}] ++ Config).
+    aecore_suite_utils:init_per_suite([dev1, dev2, dev3], DefCfg,
+                                      [{add_peers, true}],
+                                      [{symlink_name, "latest.sync"}, {test_module, ?MODULE}] ++ Config).
 
 end_per_suite(Config) ->
     stop_devs(Config).
@@ -201,6 +209,9 @@ init_per_group(performance, Config) ->
         _ ->
             Config
     end;
+init_per_group(persistence, Config) ->
+    Config1 = config({devs, [dev1]}, Config),
+    Config1;
 init_per_group(three_nodes, Config) ->
     Config1 = config({devs, [dev1, dev2, dev3]}, Config),
     InitialApps = {running_apps(), loaded_apps()},
@@ -232,7 +243,7 @@ init_per_group(all_nodes, Config) ->
     Config.
 
 end_per_group(Group, Config) when Group =:= one_blocked;
-                                   Group =:= large_msgs ->
+                                  Group =:= large_msgs ->
     ct:log("Metrics: ~p", [aec_metrics_test_utils:fetch_data()]),
     ok = aec_metrics_test_utils:stop_statsd_loggers(),
     stop_devs(Config),
@@ -278,6 +289,9 @@ end_per_group(config_overwrites_defaults, Config) ->
     EpochCfg = EpochCfg0#{<<"include_default_peers">> => false},
     aecore_suite_utils:create_config(Dev1, Config, EpochCfg,
                                             [{add_peers, true}]),
+    ok;
+end_per_group(persistence, Config) ->
+    stop_devs(Config),
     ok;
 end_per_group(all_nodes, _Config) ->
    ok.
@@ -764,6 +778,26 @@ measure_second_node_sync_time(Config) ->
     %% This test is meant to be run manually in the shell
     io:format(user, Fmt, [G, M, NTx, T]).
 
+start_with_trusted_peers(Config) ->
+    Dev1 = dev1,
+    N1 = aecore_suite_utils:node_name(Dev1),
+    aec_peers_pool_tests:seed_process_random(), %% required for the random_peer()
+    Peer1 = aec_peers_pool_tests:random_peer(),
+    Peer2 = aec_peers_pool_tests:random_peer(),
+    Peer3 = aec_peers_pool_tests:random_peer(),
+
+    EpochCfg = aecore_suite_utils:epoch_config(Dev1, Config),
+    Peers = [encode_peer_for_config(Peer1),
+             encode_peer_for_config(Peer2),
+             encode_peer_for_config(Peer3)],
+    aecore_suite_utils:create_config(Dev1, Config, EpochCfg,
+                                            [{trusted_peers, Peers}
+                                            ]),
+    start_first_node(Config),
+    5 = rpc:call(N1, aec_peers, count, [verified], 5000),
+    ok.
+    
+
 %% ==================================================
 %% Private functions
 %% ==================================================
@@ -933,8 +967,7 @@ restart_with_different_defaults(Config) ->
     EpochCfg = EpochCfg0#{<<"peers">> => [aec_peer:peer_config_info(Peer)],
                           <<"include_default_peers">> => false},
     aecore_suite_utils:create_config(Dev1, Config, EpochCfg,
-                                            [
-                                            ]),
+                                            []),
     start_first_node(Config),
     1 = rpc:call(N1, aec_peers, count, [verified], 5000),
     %% the peer connection is still trying
@@ -944,3 +977,8 @@ restart_with_different_defaults(Config) ->
     aecore_suite_utils:stop_node(Dev1, Config),
     ok.
 
+encode_peer_for_config(Peer) ->
+    PK = aeser_api_encoder:encode(peer_pubkey, aec_peer:id(Peer)),
+    Host = aec_peer:format_address(aec_peer:ip(Peer)),
+    Port = integer_to_binary(aec_peer:port(Peer)),
+    <<"aenode://", PK/binary, "@", Host/binary, ":", Port/binary>>.

@@ -1057,6 +1057,7 @@ delete_peer(Peer) ->
     PeerId = aec_peer:id(Peer),
     ?t(mnesia:delete({aec_peers, PeerId})).
 
+%% to be used only in aec_sync:init to load persisted peeers
 read_all_peers() ->
     Fun = fun(#aec_peers{value = Peer}, Acc) ->
               [Peer | Acc]
