@@ -149,6 +149,7 @@ out_of_order_test_block_chain() ->
              end,
     PresetAccounts = [{PubKey, 1000000 * min_gas_price()}],
     meck:expect(aec_fork_block_settings, genesis_accounts, 0, PresetAccounts),
+    aec_consensus:set_genesis_hash(),
     Chain0 = gen_block_chain_with_state_by_target(
                PresetAccounts,
                [?HIGHEST_TARGET_SCI, ?HIGHEST_TARGET_SCI], 1, TxsFun),
@@ -290,6 +291,7 @@ broken_chain_wrong_prev_key_hash() ->
     RecipientPubKey = <<42:32/unit:8>>,
     PresetAccounts = [{SenderPubKey, 1000000 * min_gas_price()}],
     meck:expect(aec_fork_block_settings, genesis_accounts, 0, PresetAccounts),
+    aec_consensus:set_genesis_hash(),
     Spend1 = aec_test_utils:sign_tx(make_spend_tx(SenderPubKey, 1, RecipientPubKey), SenderPrivKey),
     Spend2 = aec_test_utils:sign_tx(make_spend_tx(SenderPubKey, 2, RecipientPubKey), SenderPrivKey),
 
@@ -322,6 +324,7 @@ broken_chain_invalid_transaction() ->
     RecipientPubKey = <<42:32/unit:8>>,
     PresetAccounts = [{SenderPubKey, 1000000 * min_gas_price()}],
     meck:expect(aec_fork_block_settings, genesis_accounts, 0, PresetAccounts),
+    aec_consensus:set_genesis_hash(),
     Spend = aec_test_utils:sign_tx(make_spend_tx(SenderPubKey, 1, RecipientPubKey), SenderPrivKey),
 
     Chain0 = gen_block_chain_with_state_by_target(PresetAccounts, [?GENESIS_TARGET], 111),
@@ -357,6 +360,7 @@ broken_chain_invalid_micro_block_signature() ->
     RecipientPubKey = <<42:32/unit:8>>,
     PresetAccounts = [{SenderPubKey, 1000000 * min_gas_price()}],
     meck:expect(aec_fork_block_settings, genesis_accounts, 0, PresetAccounts),
+    aec_consensus:set_genesis_hash(),
     Spend = aec_test_utils:sign_tx(make_spend_tx(SenderPubKey, 1, RecipientPubKey), SenderPrivKey),
 
     Chain0 = gen_block_chain_with_state_by_target(PresetAccounts, [?GENESIS_TARGET], 111),
@@ -744,6 +748,7 @@ fork_get_transaction() ->
     RecipientPubKey = <<42:32/unit:8>>,
     PresetAccounts = [{SenderPubKey, 100000 * min_gas_price()}],
     meck:expect(aec_fork_block_settings, genesis_accounts, 0, PresetAccounts),
+    aec_consensus:set_genesis_hash(),
     Spend1 = aec_test_utils:sign_tx(make_spend_tx(SenderPubKey, 1, RecipientPubKey), SenderPrivKey),
     Spend2 = aec_test_utils:sign_tx(make_spend_tx(SenderPubKey, 2, RecipientPubKey), SenderPrivKey),
     CommonChainTargets = [?GENESIS_TARGET, ?GENESIS_TARGET, 1, 1],
@@ -795,6 +800,7 @@ fork_on_micro_block() ->
     #{ public := PubKey, secret := PrivKey } = enacl:sign_keypair(),
     PresetAccounts = [{PubKey, 1000000 * min_gas_price()}],
     meck:expect(aec_fork_block_settings, genesis_accounts, 0, PresetAccounts),
+    aec_consensus:set_genesis_hash(),
 
     %% Create main chain with both key and micro blocks
     TxsFun = fun(1) ->
@@ -839,6 +845,7 @@ fork_on_old_fork_point() ->
     #{ public := PubKey, secret := PrivKey } = enacl:sign_keypair(),
     PresetAccounts = [{PubKey, 1000000 * min_gas_price()}],
     meck:expect(aec_fork_block_settings, genesis_accounts, 0, PresetAccounts),
+    aec_consensus:set_genesis_hash(),
 
     CommonChain = gen_block_chain_with_state_by_target(
                     PresetAccounts, [?GENESIS_TARGET, ?GENESIS_TARGET], 111),
@@ -1023,6 +1030,7 @@ fees_three_beneficiaries() ->
 
     PresetAccounts = [{PubKey1, 1000000 * min_gas_price()}],
     meck:expect(aec_fork_block_settings, genesis_accounts, 0, PresetAccounts),
+    aec_consensus:set_genesis_hash(),
 
     %% Three accounts to act as miners
     #{ public := PubKey3, secret := PrivKey3 } = enacl:sign_keypair(),
@@ -1133,6 +1141,7 @@ fees_delayed_reward() ->
 
     PresetAccounts = [{PubKey1, 1000000 * min_gas_price()}],
     meck:expect(aec_fork_block_settings, genesis_accounts, 0, PresetAccounts),
+    aec_consensus:set_genesis_hash(),
 
     %% An account to act as a beneficiary
     #{ public := PubKey3, secret := _PrivKey3 } = enacl:sign_keypair(),
@@ -1214,6 +1223,7 @@ pof_fork_on_key_block() ->
     #{ public := PubKey, secret := PrivKey } = enacl:sign_keypair(),
     PresetAccounts = [{PubKey, 1000000 * min_gas_price()}],
     meck:expect(aec_fork_block_settings, genesis_accounts, 0, PresetAccounts),
+    aec_consensus:set_genesis_hash(),
 
     %% Create main chain
     TxsFun = fun(1) -> [aec_test_utils:sign_tx(make_spend_tx(PubKey, 1, PubKey, 20000 * min_gas_price(), 2), PrivKey)];
@@ -1246,6 +1256,7 @@ pof_fork_on_micro_block() ->
     #{ public := PubKey, secret := PrivKey } = enacl:sign_keypair(),
     PresetAccounts = [{PubKey, 1000000 * min_gas_price()}],
     meck:expect(aec_fork_block_settings, genesis_accounts, 0, PresetAccounts),
+    aec_consensus:set_genesis_hash(),
 
     %% Create main chain
     Fee = 20000 * min_gas_price(),
@@ -1285,6 +1296,7 @@ pof_reported_late() ->
     #{ public := PubKey, secret := PrivKey } = enacl:sign_keypair(),
     PresetAccounts = [{PubKey, 1000000 * min_gas_price()}],
     meck:expect(aec_fork_block_settings, genesis_accounts, 0, PresetAccounts),
+    aec_consensus:set_genesis_hash(),
     Fee = 20000 * min_gas_price(),
 
     %% Create main chain
@@ -1372,6 +1384,7 @@ token_supply_coinbase() ->
     PresetAccounts = [{PubKey, PresetAmount}],
     meck:expect(aec_fork_block_settings, genesis_accounts, 0, PresetAccounts),
     meck:expect(aec_governance, beneficiary_reward_delay, 0, Delay),
+    aec_consensus:set_genesis_hash(),
     Targets = lists:duplicate(TestHeight, ?GENESIS_TARGET),
     Chain = gen_blocks_only_chain_by_target(PresetAccounts, Targets, 111),
     ok = write_blocks_to_chain(Chain),
@@ -1414,6 +1427,7 @@ token_supply_spend() ->
              end,
     meck:expect(aec_fork_block_settings, genesis_accounts, 0, PresetAccounts),
     meck:expect(aec_governance, beneficiary_reward_delay, 0, Delay),
+    aec_consensus:set_genesis_hash(),
     Targets = lists:duplicate(TestHeight, ?GENESIS_TARGET),
     Chain = gen_blocks_only_chain_by_target(PresetAccounts, Targets, 111, TxsFun),
     ok = write_blocks_to_chain(Chain),
@@ -1477,6 +1491,7 @@ token_supply_oracles() ->
              end,
     meck:expect(aec_fork_block_settings, genesis_accounts, 0, PresetAccounts),
     meck:expect(aec_governance, beneficiary_reward_delay, 0, Delay),
+    aec_consensus:set_genesis_hash(),
     Targets = lists:duplicate(TestHeight, ?GENESIS_TARGET),
     Chain = gen_blocks_only_chain_by_target(PresetAccounts, Targets, 111, TxsFun),
     ok = write_blocks_to_chain(Chain),
@@ -1547,6 +1562,7 @@ token_supply_channels() ->
              end,
     meck:expect(aec_fork_block_settings, genesis_accounts, 0, PresetAccounts),
     meck:expect(aec_governance, beneficiary_reward_delay, 0, Delay),
+    aec_consensus:set_genesis_hash(),
     Targets = lists:duplicate(TestHeight, ?GENESIS_TARGET),
     Chain = gen_blocks_only_chain_by_target(PresetAccounts, Targets, 111, TxsFun),
     ok = write_blocks_to_chain(Chain),
@@ -1596,6 +1612,7 @@ token_supply_contracts() ->
              end,
     meck:expect(aec_fork_block_settings, genesis_accounts, 0, PresetAccounts),
     meck:expect(aec_governance, beneficiary_reward_delay, 0, Delay),
+    aec_consensus:set_genesis_hash(),
     Targets = lists:duplicate(TestHeight, ?GENESIS_TARGET),
     Chain = gen_blocks_only_chain_by_target(PresetAccounts, Targets, 111, TxsFun),
     ok = write_blocks_to_chain(Chain),
@@ -1642,6 +1659,7 @@ token_supply_ga() ->
              end,
     meck:expect(aec_fork_block_settings, genesis_accounts, 0, PresetAccounts),
     meck:expect(aec_governance, beneficiary_reward_delay, 0, Delay),
+    aec_consensus:set_genesis_hash(),
     Targets = lists:duplicate(TestHeight, ?GENESIS_TARGET),
     Chain = gen_blocks_only_chain_by_target(PresetAccounts, Targets, 111, TxsFun),
     ok = write_blocks_to_chain(Chain),
@@ -1728,6 +1746,7 @@ token_supply_auctions() ->
              end,
     meck:expect(aec_fork_block_settings, genesis_accounts, 0, PresetAccounts),
     meck:expect(aec_governance, beneficiary_reward_delay, 0, Delay),
+    aec_consensus:set_genesis_hash(),
     Targets = lists:duplicate(TestHeight, ?GENESIS_TARGET),
     Chain = gen_blocks_only_chain_by_target(PresetAccounts, Targets, 111, TxsFun),
     ok = write_blocks_to_chain(Chain),
@@ -2153,6 +2172,7 @@ get_transactions_between_two_microblocks() ->
              end,
     PresetAccounts = [{PubKey, 1000000000000000000000000000 * min_gas_price()}],
     meck:expect(aec_fork_block_settings, genesis_accounts, 0, PresetAccounts),
+    aec_consensus:set_genesis_hash(),
 
     Chain0 = gen_block_chain_with_state_by_target(
                PresetAccounts,

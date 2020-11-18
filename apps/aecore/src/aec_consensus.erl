@@ -57,10 +57,12 @@
 %% API
 -export([ check_env/0
         , set_consensus/0
+        , set_genesis_hash/0
         , get_consensus_module_at_height/1
         , get_consensus_config_at_height/1
         , get_genesis_consensus_module/0
         , get_genesis_consensus_config/0
+        , get_genesis_hash/0 %% Cached access to the genesis hash using persistent term :)
         ]).
 
 %% Global config
@@ -155,11 +157,9 @@
 %%-callback validate_key_header_with_state(term())
 
 %% Consensus modules might define their own genesis block
--callback genesis_block_with_state() -> {aec_blocks:block(), aec_trees:trees()}.
--callback genesis_height() -> non_neg_integer().
--callback genesis_header() -> aec_headers:header().
--callback genesis_state() -> aec_trees:trees().
--callback genesis_target() -> key_target().
+-callback genesis_transform_trees(aec_trees:trees(), consensus_config()) -> aec_trees:trees().
+-callback genesis_raw_header() -> aec_headers:key_header().
+-callback genesis_difficulty() -> key_difficulty().
 
 %% -------------------------------------------------------------------
 %% Block sealing
@@ -296,3 +296,20 @@ consensus_module_from_name(_) -> undefined.
 consensus_module_from_name(<<"pow_cuckoo">>) -> aec_consensus_bitcoin_ng;
 consensus_module_from_name(_) -> undefined.
 -endif.
+
+calc_genesis_hash() ->
+    Header = aec_block_genesis:genesis_header(),
+    {ok, Hash} = aec_headers:hash_header(Header),
+    Hash.
+
+set_genesis_hash() ->
+    persistent_term:put({?MODULE, genesis_hash}, calc_genesis_hash()).
+
+get_genesis_hash() ->
+    case persistent_term:get({?MODULE, genesis_hash}, error) of
+        error ->
+            set_genesis_hash(),
+            get_genesis_hash();
+        Consensus ->
+            Consensus
+    end.

@@ -277,6 +277,7 @@ reinit_chain_impl(State1 = #state{ consensus = #consensus{consensus_module = Act
     %% NOTE: ONLY FOR TEST
     ActiveConsensus:stop(),
     aec_consensus:set_consensus(), %% It's time to commit env changes
+    aec_consensus:set_genesis_hash(),
     ok = reinit_chain_state(),
     TopBlockHash = aec_chain:top_block_hash(),
     TopKeyBlockHash = aec_chain:top_key_block_hash(),

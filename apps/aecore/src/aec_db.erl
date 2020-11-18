@@ -212,7 +212,7 @@ persisted_valid_genesis_block() ->
         false ->
             true;
         true ->
-            {ok, ExpectedGH} = aec_headers:hash_header(aec_block_genesis:genesis_header()),
+            ExpectedGH = aec_consensus:get_genesis_hash(),
             case aec_db:get_genesis_hash() of
                 undefined ->
                     lager:info("Loaded empty persisted chain"),

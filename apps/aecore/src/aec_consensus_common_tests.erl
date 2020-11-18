@@ -28,11 +28,9 @@
         , keyblock_create_adjust_target/2
         , dirty_validate_block_pre_conductor/1
         , dirty_validate_key_header/1
-        , genesis_block_with_state/0
-        , genesis_height/0
-        , genesis_header/0
-        , genesis_state/0
-        , genesis_target/0
+        , genesis_transform_trees/2
+        , genesis_raw_header/0
+        , genesis_difficulty/0
         , key_header_for_sealing/1
         , validate_key_header_seal/2
         , generate_key_header_seal/5
@@ -43,6 +41,9 @@
         , default_target/0
         , assert_key_target_range/1
         , key_header_difficulty/1 ]).
+
+-include_lib("aecontract/include/hard_forks.hrl").
+-include("blocks.hrl").
 
 can_be_turned_off() -> false.
 assert_config(_Config) -> ok.
@@ -130,12 +131,22 @@ keyblock_create_adjust_target(Block, []) -> {ok, Block}.
 dirty_validate_block_pre_conductor(_) -> ok.
 dirty_validate_key_header(_) -> error(todo).
 
-genesis_block_with_state() -> error(todo).
-genesis_height() -> error(todo).
-genesis_header() -> error(todo).
-genesis_state() -> error(todo).
-
-genesis_target() -> ?TAG.
+genesis_transform_trees(Trees, #{}) -> Trees.
+genesis_raw_header() ->
+    aec_headers:new_key_header(
+        0,
+        aec_governance:contributors_messages_hash(),
+        <<0:?BLOCK_HEADER_HASH_BYTES/unit:8>>,
+        <<0:32/unit:8>>,
+        <<0:?MINER_PUB_BYTES/unit:8>>,
+        <<0:?BENEFICIARY_PUB_BYTES/unit:8>>,
+        ?TAG,
+        no_value,
+        0,
+        0,
+        default,
+        ?ROMA_PROTOCOL_VSN).
+genesis_difficulty() -> 0.
 
 key_header_for_sealing(Header) ->
     aec_headers:root_hash(Header).

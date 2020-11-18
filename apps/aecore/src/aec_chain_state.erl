@@ -301,19 +301,17 @@ get_info_field(_Height, undefined) ->
 
 new_state_from_persistence() ->
     Fun = fun() ->
-                  #{ type                  => ?MODULE
-                   , top_block_hash        => aec_db:get_top_block_hash()
-                   , genesis_block_hash    => aec_db:get_genesis_hash()
+                  #{ top_block_hash        => aec_db:get_top_block_hash()
                    }
           end,
     aec_db:ensure_transaction(Fun).
 
-persist_state(OldState, NewState) ->
-    case {get_genesis_hash(OldState), get_genesis_hash(NewState)} of
-        {_, undefined} -> ok;
-        {GH, GH} -> ok;
-        {_, GenesisHash} ->
-            aec_db:write_genesis_hash(GenesisHash)
+persist_state(Node, OldState, NewState) ->
+    case node_is_genesis(Node) of
+        true ->
+            aec_db:write_genesis_hash(aec_consensus:get_genesis_hash());
+        false ->
+            ok
     end,
     case {get_top_block_hash(OldState), get_top_block_hash(NewState)} of
         {_, undefined} -> ok;
@@ -324,11 +322,8 @@ persist_state(OldState, NewState) ->
     end.
 
 -spec internal_error(_) -> no_return().
-
 internal_error(What) ->
     throw(?internal_error(What)).
-
-get_genesis_hash(#{genesis_block_hash := GH}) -> GH.
 
 get_top_block_hash(#{top_block_hash := H}) -> H.
 set_top_block_hash(H, State) when is_binary(H) -> State#{top_block_hash => H}.
@@ -428,37 +423,14 @@ prev_version(Node) ->
         false -> version(db_get_node(prev_hash(Node)))
     end.
 
-maybe_add_genesis_hash(#{genesis_block_hash := undefined} = State, Node) ->
-    case node_height(Node) =:= aec_block_genesis:height() of
-        true  -> State#{genesis_block_hash => hash(Node)};
-        false -> State
-    end;
-maybe_add_genesis_hash(State,_Node) ->
-    State.
-
 maybe_add_pof(State, Block) ->
     case aec_blocks:type(Block) of
         key   -> State#{pof => no_fraud};
         micro -> State#{pof => aec_blocks:pof(Block)}
     end.
 
-%% NG-INFO: microblock cannot be a genesis block
-assert_not_new_genesis(#node{type = micro}, #{genesis_block_hash := undefined}) ->
-    internal_error(rejecting_micro_genesis_block);
-assert_not_new_genesis(#node{type = micro}, _) -> ok;
-assert_not_new_genesis(_Node, #{genesis_block_hash := undefined}) -> ok;
-assert_not_new_genesis(Node, #{genesis_block_hash := GHash}) ->
-    case (node_height(Node) =:= aec_block_genesis:height()
-          andalso (hash(Node) =/= GHash)) of
-        true  -> internal_error(rejecting_new_genesis_block);
-        false -> ok
-    end.
-
-%% this is when we insert the genesis block the first time
-node_is_genesis(Node, #{genesis_block_hash := undefined}) ->
-    node_height(Node) =:= aec_block_genesis:height();
-node_is_genesis(Node, State) ->
-    hash(Node) =:= get_genesis_hash(State).
+node_is_genesis(Node) ->
+    hash(Node) =:= aec_consensus:get_genesis_hash().
 
 wrap_block(Block) ->
     Header = aec_blocks:to_header(Block),
@@ -548,38 +520,83 @@ hash_is_in_main_chain(MaybeNode, Hash, MaybeTopNode, TopHash) ->
 %%%-------------------------------------------------------------------
 
 internal_insert(Node, Block, Origin) ->
+    CanBeGenesis = node_height(Node) == aec_block_genesis:height(),
+    IsKeyblock = is_key_block(Node),
     case dirty_db_find_node(hash(Node)) of
         error ->
-            %% Build the insertion context using dirty reads to the DB and possibly
-            %% The ets cache, the insertion context depends on the type of block being inserted
-            InsertCtx = case ets:lookup(?RECENT_CACHE, prev_key_hash(Node)) of
-                            [C] -> build_insertion_ctx(Node, node_type(Node), C);
-                            [] -> build_insertion_ctx(Node, node_type(Node), undefined)
-                        end,
-            %% To preserve the invariants of the chain,
-            %% Only add the block if we can do the whole
-            %% transitive operation (i.e., calculate all the state
-            %% trees, and update the pointers)
-            Fun = fun() ->
-                          internal_insert_transaction(Node, Block, Origin, InsertCtx)
-                  end,
-            try
-                case InsertCtx of
-                    {error, _} = Err -> Err;
-                    _ ->
-                        Res = aec_db:ensure_transaction(Fun),
-                        %% Great! We inserted the block - time to update the cache
-                        update_recent_cache(Node, InsertCtx),
-                        Res
-                end
-            catch
-                exit:{aborted, {throw, ?internal_error(What)}} ->
-                    {error, What}
+            case node_is_genesis(Node) of
+                true ->
+                    internal_insert_genesis(Node, Block);
+                false when CanBeGenesis, IsKeyblock ->
+                    {error, rejecting_new_genesis_block};
+                false when CanBeGenesis ->
+                    {error, rejecting_micro_genesis_block};
+                false ->
+                    internal_insert_normal(Node, Block, Origin)
             end;
         {ok, Node} ->
             {error, already_in_db};
         {ok, Old} ->
             {error, {same_key_different_content, Node, Old}}
+    end.
+
+internal_insert_genesis(Node, Block) ->
+    %% Avoid unnecessary branching and an extra DB lookup for the genesis hash in the general case
+    %% by hardcoding the "genesis" case we may omit a lot of checks in the general case and simplify many preconditions
+    Fun = fun() ->
+        Assert = fun (X, X, _Err) -> ok;
+                     (_Expected, _Actual, Err) -> internal_error(Err) end,
+        Assert(undefined, aec_db:get_top_block_hash(), genesis_already_inserted),
+        Assert(undefined, aec_db:get_genesis_hash(), genesis_already_inserted),
+        Trees = aec_block_genesis:genesis_populated_trees(),
+        Assert(node_root_hash(Node), aec_trees:hash(Trees), inconsistent_genesis_block),
+        NewTopHash = hash(Node),
+        ok = aec_db:write_block(Block, NewTopHash),
+        ok = aec_db:write_block_state(
+                NewTopHash,
+                Trees,
+                aec_block_genesis:genesis_difficulty() + node_difficulty(Node),
+                NewTopHash,
+                0,
+                false),
+        ok = aec_db:write_genesis_hash(NewTopHash),
+        ok = aec_db:write_top_block_hash(NewTopHash),
+        ok = aec_db:write_top_block_height(node_height(Node)),
+        {ok, true, undefined, no_events()}
+    end,
+    try
+        aec_db:ensure_transaction(Fun)
+    catch
+        exit:{aborted, {throw, ?internal_error(What)}} ->
+            {error, What}
+    end.
+
+internal_insert_normal(Node, Block, Origin) ->
+    %% Build the insertion context using dirty reads to the DB and possibly
+    %% The ets cache, the insertion context depends on the type of block being inserted
+    InsertCtx = case ets:lookup(?RECENT_CACHE, prev_key_hash(Node)) of
+                    [C] -> build_insertion_ctx(Node, node_type(Node), C);
+                    [] -> build_insertion_ctx(Node, node_type(Node), undefined)
+                end,
+    %% To preserve the invariants of the chain,
+    %% Only add the block if we can do the whole
+    %% transitive operation (i.e., calculate all the state
+    %% trees, and update the pointers)
+    Fun = fun() ->
+                  internal_insert_transaction(Node, Block, Origin, InsertCtx)
+          end,
+    try
+        case InsertCtx of
+            {error, _} = Err -> Err;
+            _ ->
+                Res = aec_db:ensure_transaction(Fun),
+                %% Great! We inserted the block - time to update the cache
+                update_recent_cache(Node, InsertCtx),
+                Res
+        end
+    catch
+        exit:{aborted, {throw, ?internal_error(What)}} ->
+            {error, What}
     end.
 
 %% Builds the insertion context from cached data and the node to insert
@@ -709,9 +726,8 @@ update_recent_cache(#node{type = key, header = Header, hash = H}, #insertion_ctx
 
 internal_insert_transaction(Node, Block, Origin, Ctx) ->
     State1 = new_state_from_persistence(),
-    assert_not_new_genesis(Node, State1),
-    State2 = maybe_add_pof(maybe_add_genesis_hash(State1, Node), Block),
-    case node_is_genesis(Node, State2) of
+    State2 = maybe_add_pof(State1, Block),
+    case node_is_genesis(Node) of
         true ->
             ok;
         false ->
@@ -729,7 +745,7 @@ internal_insert_transaction(Node, Block, Origin, Ctx) ->
     end,
     ok = db_put_node(Block, hash(Node)),
     {State3, Events} = update_state_tree(Node, State2, Ctx),
-    TopChanged = persist_state(State1, State3) =:= top_changed,
+    TopChanged = persist_state(Node, State1, State3) =:= top_changed,
     PrevKeyHeader = case ctx_prev_key(Ctx) of
                   #node{header = H} ->
                       H;
@@ -918,7 +934,7 @@ update_state_tree(Node, TreesIn, ForkInfo, State) ->
     end.
 
 maybe_set_new_fork_id(Node, ForkInfoIn, State) ->
-    case node_is_genesis(Node, State) of
+    case node_is_genesis(Node) of
         true  -> {ForkInfoIn, []};
         false ->
             case {get_top_block_hash(State), prev_hash(Node)} of
@@ -941,7 +957,7 @@ maybe_set_new_fork_id(Node, ForkInfoIn, State) ->
     end.
 
 get_state_trees_in(Node, State, DirtyBackend) ->
-    case node_is_genesis(Node, State) of
+    case node_is_genesis(Node) of
         true  ->
             {ok,
              aec_block_genesis:populated_trees(),
@@ -995,7 +1011,6 @@ handle_top_block_change(OldTopHash, NewTopDifficulty, Node, Events, State) ->
     case get_top_block_hash(State) of
         OldTopHash -> {State, no_events()};
         NewTopHash when OldTopHash =:= undefined ->
-            NewTopHash = get_genesis_hash(State), %% Internal inconsistency check
             State1 = update_main_chain(NewTopHash, NewTopHash, NewTopHash, State),
             {State1, Events};
         NewTopHash ->
@@ -1143,7 +1158,7 @@ grant_fees(Node, Trees, Delay, FraudStatus, State) ->
     FraudReward1 = aec_governance:fraud_report_reward(node_height(KeyNode1)),
     {BeneficiaryReward1, BeneficiaryReward2, LockAmount} =
         calc_rewards(FraudStatus1, FraudStatus2, KeyFees, MineReward2,
-                     FraudReward1, node_is_genesis(KeyNode1, State)),
+                     FraudReward1, node_is_genesis(KeyNode1)),
 
     OldestBeneficiaryVersion = version(KeyNode1),
     {{AdjustedReward1, AdjustedReward2}, DevRewards} =
