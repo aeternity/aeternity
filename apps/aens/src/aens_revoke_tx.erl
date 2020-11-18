@@ -16,6 +16,7 @@
          ttl/1,
          nonce/1,
          origin/1,
+         entities/1,
          check/3,
          process/3,
          signers/2,
@@ -100,6 +101,11 @@ name_id(#ns_revoke_tx{name_id = NameId}) ->
 -spec origin(tx()) -> aec_keys:pubkey().
 origin(#ns_revoke_tx{} = Tx) ->
     account_pubkey(Tx).
+
+-spec entities(tx()) -> [aeser_id:id()].
+%% origin id first
+entities(#ns_revoke_tx{account_id = AId, name_id = NId}) ->
+    [AId, NId].
 
 -spec check(tx(), aec_trees:trees(), aetx_env:env()) -> {ok, aec_trees:trees()} | {error, term()}.
 check(#ns_revoke_tx{}, Trees,_Env) ->

@@ -15,6 +15,7 @@
         , db/1
         , delete/2
         , gc_cache/1
+        , list_cache/1
         , get/2
         , has_node/3
         , iterator/1
@@ -39,6 +40,9 @@
         , mpt_db_get/2
         , mpt_db_put/3
         ]).
+
+%% For receiving proxy tree updates
+-export([ apply_proxy_updates/3 ]).
 
 -export([record_fields/1]).
 
@@ -122,7 +126,12 @@ new() ->
 new(DB) ->
     #mpt{db = DB}.
 
--spec new(hash(), db()) -> tree().
+-spec new(hash() | {proxy, hash()}, db()) -> tree().
+new({proxy, RootHash}, DB) ->
+    %% Just assume that the root hash is present
+    #mpt{ hash = RootHash
+        , db   = DB
+        };
 new(RootHash, DB) ->
     %% Assert that at least the root hash is present in the db.
     _ = db_get(RootHash, DB),
@@ -201,6 +210,9 @@ gc_cache(#mpt{db = DB, hash = Hash} = MPT) ->
     DB1 = int_visit_reachable_hashes_in_cache([Hash], DB, FreshDB, VisitFun),
     MPT#mpt{db = DB1}.
 
+-spec list_cache(tree()) -> [{any(), any()}].
+list_cache(#mpt{db = DB}) ->
+    db_list_cache(DB).
 
 -spec construct_proof(key(), db(), tree()) -> {value(), db()}.
 construct_proof(Key, ProofDB, #mpt{db = DB, hash = Hash}) ->
@@ -317,6 +329,14 @@ pp(#mpt{hash = Hash, db = DB}) ->
     [io:format("~s\n", [S])
      || S <- lists:flatten([pp_tree(decode_node(Hash, DB), DB)])],
     ok.
+
+apply_proxy_updates(Hash, Updates, #mpt{db = DB} = MPT) ->
+    DB1 = lists:foldl(fun apply_update/2, DB, Updates),
+    MPT#mpt{hash = Hash, db = DB1}.
+
+apply_update({Key, Value}, DB) ->
+    %% amounts to a cache update
+    aeu_mp_trees_db:put(Key, Value, DB).
 
 %%%===================================================================
 %%% Internal functions
@@ -1122,6 +1142,9 @@ db_commit_from_cache(Hash, RawNode, DB) ->
 db_drop_cache(DB) ->
     aeu_mp_trees_db:drop_cache(DB).
 
+db_list_cache(DB) ->
+    aeu_mp_trees_db:list_cache(DB).
+
 %%%===================================================================
 %%% Dict db backend (default if nothing else was given in new/2)
 
@@ -1145,6 +1168,9 @@ mpt_db_put(Key, Val, Dict) ->
 
 mpt_db_drop_cache(_Cache) ->
     dict:new().
+
+dict_db_list_cache(Cache) ->
+    dict:to_list(Cache).
 
 %%%===================================================================
 %%% Compact encoding of hex sequence with optional terminator

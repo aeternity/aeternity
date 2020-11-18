@@ -17,6 +17,7 @@
          ttl/1,
          nonce/1,
          origin/1,
+         entities/1,
          check/3,
          process/3,
          signers/2,
@@ -97,6 +98,11 @@ nonce(#channel_snapshot_solo_tx{nonce = Nonce}) ->
 -spec origin(tx()) -> aec_keys:pubkey().
 origin(#channel_snapshot_solo_tx{} = Tx) ->
     from_pubkey(Tx).
+
+-spec entities(tx()) -> [aeser_id:id()].
+%% origin id first
+entities(#channel_snapshot_solo_tx{channel_id = ChId, from_id = FromId}) ->
+    [FromId, ChId].
 
 -spec channel_pubkey(tx()) -> aesc_channels:pubkey().
 channel_pubkey(#channel_snapshot_solo_tx{channel_id = ChannelId}) ->

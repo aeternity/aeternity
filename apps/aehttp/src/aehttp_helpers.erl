@@ -545,10 +545,12 @@ prepare_dry_run_params([Param | Params], State) ->
 
 do_dry_run() ->
     fun(_Req, State) ->
-        case prepare_dry_run_params([top, txs, accounts, tx_events], State) of
-            {ok, #{top := Top, accounts := As, txs := Txs, tx_events := Events}} ->
+        case prepare_dry_run_params([top, txs, accounts, tx_events, parallel], State) of
+            {ok, #{ top := Top, accounts := As, txs := Txs, tx_events := Events
+                  , parallel := Parallel }} ->
                 lager:debug("tx_events = ~p", [Events]),
-                case aec_dry_run:dry_run(Top, As, Txs, [{tx_events, Events}]) of
+                case aec_dry_run:dry_run(Top, As, Txs, [ {tx_events, Events}
+                                                       , {parallel, Parallel} ]) of
                     {ok, Res} ->
                         {Results, EventRes} = R = dry_run_results(Res),
                         lager:debug("dry_run_results: ~p", [R]),
@@ -594,6 +596,14 @@ prepare_dry_run_param(tx_events, State) ->
         _Other ->
             lager:debug("Unexpected: tx_events => ~p", [_Other]),
             {error, "Bad parameter, tx_events"}
+    end;
+prepare_dry_run_param(parallel, State) ->
+    case maps:get(parallel, State, false) of
+        P when is_boolean(P) ->
+            {ok, P};
+        _Other ->
+            lager:debug("Unexpected: parallel => ~p", [_Other]),
+            {error, "Bad parameter, parallel"}
     end;
 prepare_dry_run_param(Param, _State) ->
     {error, lists:concat(["Bad parameter ", Param])}.

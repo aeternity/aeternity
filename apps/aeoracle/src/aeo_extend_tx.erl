@@ -18,6 +18,7 @@
          ttl/1,
          nonce/1,
          origin/1,
+         entities/1,
          check/3,
          process/3,
          signers/2,
@@ -97,6 +98,10 @@ nonce(#oracle_extend_tx{nonce = Nonce}) ->
 -spec origin(tx()) -> aec_keys:pubkey().
 origin(#oracle_extend_tx{} = Tx) ->
     oracle_pubkey(Tx).
+
+-spec entities(tx()) -> [aeser_id:id()].
+entities(#oracle_extend_tx{oracle_id = OID}) ->
+    [OID].
 
 -spec check(tx(), aec_trees:trees(), aetx_env:env()) -> {ok, aec_trees:trees()} | {error, term()}.
 check(#oracle_extend_tx{} = _Tx, Trees,_Env) ->

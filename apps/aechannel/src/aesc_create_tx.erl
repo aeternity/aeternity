@@ -17,6 +17,7 @@
          ttl/1,
          nonce/1,
          origin/1,
+         entities/1,
          check/3,
          process/3,
          signers/2,
@@ -133,6 +134,12 @@ nonce(#channel_create_tx{nonce = Nonce}) ->
 -spec origin(tx()) -> aec_keys:pubkey().
 origin(#channel_create_tx{} = Tx) ->
     initiator_pubkey(Tx).
+
+-spec entities(tx()) -> [aeser_id:id()].
+%% origin id first
+entities(#channel_create_tx{ initiator_id = IId
+                           , responder_id = RId }) ->
+    [IId, RId].
 
 -spec check(tx(), aec_trees:trees(), aetx_env:env()) -> {ok, aec_trees:trees()} | {error, term()}.
 check(#channel_create_tx{}, Trees,_Env) ->

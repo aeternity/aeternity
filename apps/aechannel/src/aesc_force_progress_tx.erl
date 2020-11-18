@@ -17,6 +17,7 @@
          ttl/1,
          nonce/1,
          origin/1,
+         entities/1,
          check/3,
          process/3,
          signers/2,
@@ -210,6 +211,11 @@ nonce(#channel_force_progress_tx{nonce = Nonce}) ->
 -spec origin(tx()) -> aec_keys:pubkey().
 origin(#channel_force_progress_tx{} = Tx) ->
     from_pubkey(Tx).
+
+-spec entities(tx()) -> [aeser_id:id()].
+entities(#channel_force_progress_tx{ channel_id = ChId
+                                   , from_id = FromId }) ->
+    [FromId, ChId].
 
 channel(#channel_force_progress_tx{channel_id = ChannelId}) ->
     ChannelId.

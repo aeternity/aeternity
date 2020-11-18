@@ -25,6 +25,9 @@
          lookup_name/2,
          new_with_backend/2,
          new_with_dirty_backend/2,
+         proxy_tree/2,
+         get_mtree/1,
+         set_mtree/2,
          root_hash/1,
          auction_iterator/1,
          auction_iterator_next/1]).
@@ -115,6 +118,18 @@ new_with_dirty_backend(RootHash, CacheRootHash) ->
     MTree = aeu_mtrees:new_with_backend(RootHash, aec_db_backends:dirty_ns_backend()),
     Cache = aeu_mtrees:new_with_backend(CacheRootHash, aec_db_backends:dirty_ns_cache_backend()),
     #ns_tree{mtree = MTree, cache = Cache}.
+
+-spec proxy_tree(aeu_mtrees:mtree(), aeu_mtrees:mtree()) -> tree().
+proxy_tree(MTree, CacheTree) ->
+    #ns_tree{mtree = MTree, cache = CacheTree}.
+
+-spec get_mtree(tree()) -> aeu_mtrees:mtree().
+get_mtree(#ns_tree{mtree = MTree}) ->
+    MTree.
+
+-spec set_mtree(aeu_mtrees:mtree(), tree()) -> tree().
+set_mtree(MTree, #ns_tree{} = T) ->
+    T#ns_tree{mtree = MTree}.
 
 -spec prune(block_height(), aec_trees:trees()) -> aec_trees:trees().
 prune(NextBlockHeight, Trees) ->

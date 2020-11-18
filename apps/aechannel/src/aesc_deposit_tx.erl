@@ -17,6 +17,7 @@
          gas/1,
          nonce/1,
          origin/1,
+         entities/1,
          amount/1,
          check/3,
          process/3,
@@ -118,6 +119,11 @@ nonce(#channel_deposit_tx{nonce = Nonce}) ->
 -spec origin(tx()) -> aec_keys:pubkey().
 origin(#channel_deposit_tx{} = Tx) ->
     from_pubkey(Tx).
+
+-spec entities(tx()) -> [aeser_id:id()].
+%% origin id first
+entities(#channel_deposit_tx{channel_id = ChId, from_id = FromId}) ->
+    [FromId, ChId].
 
 from_pubkey(#channel_deposit_tx{from_id = FromId}) ->
     aeser_id:specialize(FromId, account).

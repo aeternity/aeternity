@@ -19,6 +19,7 @@
          ttl/1,
          nonce/1,
          origin/1,
+         entities/1,
          check/3,
          process/3,
          signers/2,
@@ -159,6 +160,10 @@ nonce(#ga_meta_tx{}) ->
 -spec origin(tx()) -> aec_keys:pubkey().
 origin(#ga_meta_tx{} = Tx) ->
     ga_pubkey(Tx).
+
+-spec entities(tx()) -> [aeser_id:id()].
+entities(#ga_meta_tx{ga_id = GAId}) ->
+    [GAId].
 
 -spec check(tx(), aec_trees:trees(), aetx_env:env()) -> {ok, aec_trees:trees()} | {error, term()}.
 check(#ga_meta_tx{}, Trees,_Env) ->

@@ -22,7 +22,10 @@
         , lookup_contract/3
         , new_with_backend/1
         , new_with_dirty_backend/1
+        , proxy_tree/1
+        , get/2
         , gc_cache/1
+        , list_cache/1
         , root_hash/1]).
 
 %% API - Proof of inclusion
@@ -32,6 +35,10 @@
         ]).
 
 -export([ to_list/1
+        ]).
+
+-export([ get_mtree/1
+        , set_mtree/2
         ]).
 
 -export([ from_binary_without_backend/1
@@ -55,6 +62,18 @@
 -opaque tree() :: #contract_tree{}.
 
 -define(VSN, 1).
+
+-record(proxy, {mod, arg}).
+
+-define(PROXY(F, Mod, P),
+        F(#proxy{mod = Mod} = P) -> Mod:do(?MODULE, F, P)).
+                
+-define(PROXY(F, Arg1, Mod, P),
+        F(Arg1, #proxy{mod = Mod} = P) -> Mod:do(?MODULE, F, Arg1, P)).
+
+-define(PROXY(F, Arg1, Arg2, Mod, P),
+        F(Arg1, Arg2, #proxy{mod = Mod} = P) -> Mod:do(?MODULE, F, Arg1, Arg2, P)).
+
 
 %% ==================================================================
 %% Tracing support
@@ -85,14 +104,28 @@ new_with_backend(Hash) ->
 new_with_dirty_backend(Hash) ->
     CtTree = aeu_mtrees:new_with_backend(Hash, aec_db_backends:dirty_contracts_backend()),
     #contract_tree{contracts = CtTree}.
+-spec proxy_tree(contract_tree()) -> tree().
+proxy_tree(Tree) ->
+    #contract_tree{contracts = Tree}.
+
+-spec get(aec_keys:pubkey(), tree()) -> binary().
+?PROXY(get, Key, Mod, Arg);
+get(Key, #contract_tree{contracts = CtTree}) ->
+    aeu_mtrees:get(Key, CtTree).
 
 -spec gc_cache(tree()) -> tree().
+?PROXY(gc_cache, Mod, Arg);
 gc_cache(#contract_tree{contracts = CtTree} = Tree) ->
     Tree#contract_tree{contracts =  aeu_mtrees:gc_cache(CtTree)}.
+
+-spec list_cache(tree()) -> [{term(), term()}].
+list_cache(#contract_tree{contracts = CtTree}) ->
+    aeu_mtrees:list_cache(CtTree).
 
 %% -- Contracts --
 
 -spec insert_contract(aect_contracts:contract(), tree()) -> tree().
+?PROXY(insert_contract, Contract, Mod, Arg);
 insert_contract(Contract, Tree = #contract_tree{ contracts = CtTree }) ->
     Pubkey     = aect_contracts:pubkey(Contract),
     Serialized = aect_contracts:serialize(Contract),
@@ -102,6 +135,7 @@ insert_contract(Contract, Tree = #contract_tree{ contracts = CtTree }) ->
 
 -spec copy_contract_store(aect_contracts:contract(),
                           aect_contracts:pubkey(), tree()) -> tree().
+?PROXY(copy_contract_store, Contract, NewId, Mod, P);
 copy_contract_store(Contract, NewId, Tree = #contract_tree{ contracts = CtTree }) ->
     Id    = aect_contracts:compute_contract_store_id(NewId),
     Store = aect_contracts:state(Contract),
@@ -305,6 +339,14 @@ lookup_poi(Pubkey, Poi) ->
 -spec to_list(tree()) -> [{term(), term()}].
 to_list(#contract_tree{contracts = CtTree}) ->
     aeu_mtrees:to_list(CtTree).
+
+-spec get_mtree(tree()) -> aeu_mtrees:mtree().
+get_mtree(#contract_tree{contracts = CtTree}) ->
+    CtTree.
+
+-spec set_mtree(aeu_mtrees:mtree(), tree()) -> tree().
+set_mtree(CtTree, #contract_tree{} = T) ->
+    T#contract_tree{contracts = CtTree}.
 
 lookup_store_poi(Id, Poi) ->
     case aec_poi:read_only_subtree(Id, Poi) of

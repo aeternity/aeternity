@@ -2893,6 +2893,10 @@ definitions:
         type: boolean
         default: false
         description: 'Collect and return on-chain tx events that would result from the call'
+      parallel:
+        type: boolean
+        default: false
+        description: 'Evaluate txs in parallel (default: false)'
     required:
       - txs
   DryRunInputItem:

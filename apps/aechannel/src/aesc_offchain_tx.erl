@@ -11,6 +11,7 @@
          ttl/1,
          nonce/1,
          origin/1,
+         entities/1,
          check/3,
          process/3,
          signers/2,
@@ -107,6 +108,10 @@ nonce(#channel_offchain_tx{round = N}) ->
 
 -spec origin(tx()) -> aec_keys:pubkey().
 origin(#channel_offchain_tx{}) ->
+    error(do_not_use).
+
+-spec entities(tx()) -> [aeser_id:id()].
+entities(#channel_offchain_tx{}) ->
     error(do_not_use).
 
 -spec check(tx(), aec_trees:trees(), aetx_env:env()) -> {ok, aec_trees:trees()} | {error, term()}.

@@ -18,6 +18,7 @@
          ttl/1,
          nonce/1,
          origin/1,
+         entities/1,
          check/3,
          process/3,
          signers/2,
@@ -114,6 +115,11 @@ nonce(#oracle_response_tx{nonce = Nonce}) ->
 -spec origin(tx()) -> aec_keys:pubkey().
 origin(#oracle_response_tx{} = Tx) ->
     oracle_pubkey(Tx).
+
+-spec entities(tx()) -> [aeser_id:id()].
+%% origin id first
+entities(#oracle_response_tx{oracle_id = OId, query_id = QId}) ->
+    [OId, QId].
 
 -spec check(tx(), aec_trees:trees(), aetx_env:env()) ->
         {ok, aec_trees:trees()} | {error, term()}.

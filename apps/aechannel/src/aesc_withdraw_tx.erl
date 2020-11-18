@@ -17,6 +17,7 @@
          ttl/1,
          nonce/1,
          origin/1,
+         entities/1,
          amount/1,
          check/3,
          process/3,
@@ -114,6 +115,11 @@ nonce(#channel_withdraw_tx{nonce = Nonce}) ->
 -spec origin(tx()) -> aec_keys:pubkey().
 origin(#channel_withdraw_tx{} = Tx) ->
     to_pubkey(Tx).
+
+-spec entities(tx()) -> [aeser_id:id()].
+entities(#channel_withdraw_tx{ channel_id = ChId
+                             , to_id = ToId }) ->
+    [ToId, ChId].
 
 to_pubkey(#channel_withdraw_tx{to_id = ToId}) ->
     aeser_id:specialize(ToId, account).

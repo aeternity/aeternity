@@ -171,6 +171,9 @@ mpt_db_put(Key, Val, Proof) ->
 mpt_db_drop_cache(_Cache) ->
     error(no_drop_cache_in_proof).
 
+proof_db_list_cache(Cache) ->
+    gb_trees:to_list(Cache).
+
 proof_serialize_to_list(Proof) ->
     gb_trees:to_list(aeu_mp_trees_db:get_cache(Proof)).
 

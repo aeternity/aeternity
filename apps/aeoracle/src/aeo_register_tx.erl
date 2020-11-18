@@ -20,6 +20,7 @@
          abi_version/1,
          nonce/1,
          origin/1,
+         entities/1,
          check/3,
          process/3,
          signers/2,
@@ -131,6 +132,10 @@ nonce(#oracle_register_tx{nonce = Nonce}) ->
 -spec origin(tx()) -> aec_keys:pubkey().
 origin(#oracle_register_tx{} = Tx) ->
     account_pubkey(Tx).
+
+-spec entities(tx()) -> [aeser_id:id()].
+entities(#oracle_register_tx{account_id = AID}) ->
+    [AID].
 
 -spec check(tx(), aec_trees:trees(), aetx_env:env()) ->
         {ok, aec_trees:trees()} | {error, term()}.

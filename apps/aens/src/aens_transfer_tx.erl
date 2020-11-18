@@ -17,6 +17,7 @@
          ttl/1,
          nonce/1,
          origin/1,
+         entities/1,
          check/3,
          process/3,
          signers/2,
@@ -101,6 +102,11 @@ nonce(#ns_transfer_tx{nonce = Nonce}) ->
 -spec origin(tx()) -> aec_keys:pubkey().
 origin(#ns_transfer_tx{} = Tx) ->
     account_pubkey(Tx).
+
+-spec entities(tx()) -> [aeser_id:id()].
+%% origin id first
+entities(#ns_transfer_tx{account_id = AId, name_id = NId, recipient_id = RId}) ->
+    [AId, NId, RId].
 
 account_pubkey(#ns_transfer_tx{account_id = AccountId}) ->
     aeser_id:specialize(AccountId, account).

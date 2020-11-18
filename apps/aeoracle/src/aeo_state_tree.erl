@@ -26,6 +26,9 @@
         , lookup_oracle/2
         , new_with_backend/2
         , new_with_dirty_backend/2
+        , proxy_tree/2
+        , get_mtree/1
+        , set_mtree/2
         , prune/2
         , root_hash/1
         ]).
@@ -119,6 +122,19 @@ new_with_dirty_backend(RootHash, CacheRootHash) ->
     #oracle_tree{ otree  = OTree
                 , cache  = Cache
                 }.
+
+-spec proxy_tree(aeu_mtrees:mtree(), aeu_mtrees:mtree()) -> tree().
+proxy_tree(OTree, Cache) ->
+    #oracle_tree{ otree = OTree
+                , cache = Cache }.
+
+-spec get_mtree(tree()) -> aeu_mtrees:mtree().
+get_mtree(#oracle_tree{otree = OTree}) ->
+    OTree.
+
+-spec set_mtree(aeu_mtrees:mtree(), tree()) -> tree().
+set_mtree(OTree, #oracle_tree{} = T) ->
+    T#oracle_tree{otree = OTree}.
 
 -spec prune(block_height(), aec_trees:trees()) -> aec_trees:trees().
 prune(Height, Trees) ->

@@ -19,6 +19,7 @@
          ttl/1,
          nonce/1,
          origin/1,
+         entities/1,
          check/3,
          process/3,
          signers/2,
@@ -116,6 +117,13 @@ nonce(#paying_for_tx{nonce = Nonce}) ->
 -spec origin(tx()) -> aec_keys:pubkey().
 origin(#paying_for_tx{} = Tx) ->
     payer_pubkey(Tx).
+
+-spec entities(tx()) -> [aeser_id:id()].
+%% origin id first
+entities(#paying_for_tx{payer_id = PId, tx = STx}) ->
+    Tx = aetx_sign:tx(STx),
+    {CB, Tx} = aetx:specialize_callback(aetx_sign:tx(STx)),
+    [PId | CB:entities(Tx)].
 
 -spec check(tx(), aec_trees:trees(), aetx_env:env()) -> {ok, aec_trees:trees()} | {error, term()}.
 check(#paying_for_tx{}, Trees, _Env) ->

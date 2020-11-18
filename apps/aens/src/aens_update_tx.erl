@@ -17,6 +17,7 @@
          ttl/1,
          nonce/1,
          origin/1,
+         entities/1,
          check/3,
          process/3,
          signers/2,
@@ -104,6 +105,11 @@ nonce(#ns_update_tx{nonce = Nonce}) ->
 -spec origin(tx()) -> aec_keys:pubkey().
 origin(#ns_update_tx{} = Tx) ->
     account_pubkey(Tx).
+
+-spec entities(tx()) -> [aeser_id:id()].
+%% origin id first
+entities(#ns_update_tx{account_id = AId, name_id = NId, pointers = Ps}) ->
+    [AId, NId | [aens_pointer:id(P) || P <- Ps]].
 
 -spec check(tx(), aec_trees:trees(), aetx_env:env()) -> {ok, aec_trees:trees()} | {error, term()}.
 check(#ns_update_tx{} = _Tx, Trees,_Env) ->

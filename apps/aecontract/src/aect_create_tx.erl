@@ -18,6 +18,7 @@
          ttl/1,
          nonce/1,
          origin/1,
+         entities/1,
          check/3,
          process/3,
          signers/2,
@@ -194,6 +195,10 @@ nonce(#contract_create_tx{nonce = Nonce}) ->
 -spec origin(tx()) -> aec_keys:pubkey().
 origin(#contract_create_tx{} = Tx) ->
     owner_pubkey(Tx).
+
+-spec entities(tx()) -> [aeser_id:id()].
+entities(#contract_create_tx{owner_id = OwnerId}) ->
+    [OwnerId].
 
 %% Owner should exist, and have enough funds for the fee, the amount
 %% the deposit and the gas

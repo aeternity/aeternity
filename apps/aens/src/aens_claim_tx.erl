@@ -18,6 +18,7 @@
          ttl/1,
          nonce/1,
          origin/1,
+         entities/1,
          check/3,
          process/3,
          signers/2,
@@ -140,6 +141,10 @@ nonce(#ns_claim_tx{nonce = Nonce}) ->
 -spec origin(tx()) -> aec_keys:pubkey().
 origin(#ns_claim_tx{} = Tx) ->
     account_pubkey(Tx).
+
+-spec entities(tx()) -> [aeser_id:id()].
+entities(#ns_claim_tx{account_id = AId}) ->
+    [AId].
 
 -spec check(tx(), aec_trees:trees(), aetx_env:env()) -> {ok, aec_trees:trees()}.
 check(#ns_claim_tx{}, Trees, _Env) ->

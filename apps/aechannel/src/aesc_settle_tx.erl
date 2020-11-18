@@ -16,6 +16,7 @@
          ttl/1,
          nonce/1,
          origin/1,
+         entities/1,
          check/3,
          process/3,
          signers/2,
@@ -99,6 +100,12 @@ nonce(#channel_settle_tx{nonce = Nonce}) ->
 -spec origin(tx()) -> aec_keys:pubkey().
 origin(#channel_settle_tx{} = Tx) ->
     from_pubkey(Tx).
+
+-spec entities(tx()) -> [aeser_id:id()].
+%% origin id first
+entities(#channel_settle_tx{channel_id = ChId, from_id = FromId}) ->
+    %% Unfortunately, we cannot include the peer id here
+    [FromId, ChId].
 
 from_pubkey(#channel_settle_tx{from_id = FromId}) ->
     aeser_id:specialize(FromId, account).

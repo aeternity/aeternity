@@ -16,6 +16,7 @@
          ttl/1,
          nonce/1,
          origin/1,
+         entities/1,
          check/3,
          process/3,
          signers/2,
@@ -105,6 +106,12 @@ nonce(#channel_close_mutual_tx{nonce = Nonce}) ->
 -spec origin(tx()) -> aec_keys:pubkey().
 origin(#channel_close_mutual_tx{from_id = FromId}) ->
     aeser_id:specialize(FromId, account).
+
+-spec entities(tx()) -> [aeser_id:id()].
+%% origin id first
+entities(#channel_close_mutual_tx{channel_id = ChId, from_id = FromId}) ->
+    %% unfortunately, we can't cheaply include the peer id
+    [FromId, ChId].
 
 -spec channel_pubkey(tx()) -> aesc_channels:pubkey().
 channel_pubkey(#channel_close_mutual_tx{channel_id = ChannelId}) ->

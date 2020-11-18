@@ -18,6 +18,7 @@
          ttl/1,
          nonce/1,
          origin/1,
+         entities/1,
          check/3,
          process/3,
          signers/2,
@@ -183,6 +184,11 @@ nonce(#contract_call_tx{nonce = Nonce}) ->
 -spec origin(tx()) -> aec_keys:pubkey().
 origin(#contract_call_tx{} = Tx) ->
     caller_pubkey(Tx).
+
+-spec entities(tx()) -> [aeser_id:id()].
+%% origin id first
+entities(#contract_call_tx{caller_id = CId, contract_id = CoId}) ->
+    [CId, CoId].
 
 call_origin(#contract_call_tx{call_origin = CallOrigin}) ->
     CallOrigin.

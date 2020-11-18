@@ -39,9 +39,12 @@
          lookup_proof/3,
          commit_to_db/1,
          new_with_backend/2,
+         proxy_tree/2,
          gc_cache/1,
          empty_with_backend/1
         ]).
+
+-include("aeu_proxy.hrl").
 
 %% For internal functional db
 -behavior(aeu_mp_trees_db).
@@ -74,19 +77,20 @@
 -type value() :: binary().
 -type mtree() :: mtree(key(), value()).
 
--opaque iterator() :: aeu_mp_trees:iterator().
+-opaque iterator() :: aeu_mp_trees:iterator() | #proxy_mp_tree_iter{}.
 -type iterator_opts() :: aeu_mp_trees:iterator_opts().
 
 %% Enable specification of types of key and value for enabling code
 %% using this module to document types for readability.
 %% Both key and value must be binaries.
--type mtree(_K, _V) :: aeu_mp_trees:tree().
+-type mtree(_K, _V) :: aeu_mp_trees:tree() | #proxy_mp_tree{}.
 
 %% 256 bits as of ?HASH_BYTES * 8
 -type root_hash() :: <<_:256>>.
 -type db() :: aeu_mp_trees:db().
 
 -type proof() :: aeu_mp_trees_db:db().
+
 
 %%%===================================================================
 %%% API - subset of OTP `gb_trees` module
@@ -100,25 +104,36 @@ empty() ->
 empty_with_backend(DB) ->
     aeu_mp_trees:new(DB).
 
--spec new_with_backend(root_hash() | 'empty', aeu_mp_trees_db:db()) -> mtree().
+-spec new_with_backend( root_hash()
+                      | 'empty'
+                      | {proxy, root_hash()}, aeu_mp_trees_db:db()) -> mtree().
 new_with_backend(empty, DB) ->
     empty_with_backend(DB);
+new_with_backend({proxy, _} = Proxy, DB) ->
+    aeu_mp_trees:new(Proxy, DB);
 new_with_backend(<<_:256>> = Hash, DB) ->
     aeu_mp_trees:new(Hash, DB).
 
+proxy_tree(Mod, Arg) ->
+    Mod:proxy_init(Arg).
+
 -spec gc_cache(mtree()) -> mtree().
+?PROXY_GET(gc_cache, Mod, P);
 gc_cache(Tree) ->
     aeu_mp_trees:gc_cache(Tree).
 
+?PROXY_PUT(delete, Key, Mod, P);
 delete(Key, Tree) when ?IS_KEY(Key) ->
     aeu_mp_trees:delete(Key, Tree).
 
+?PROXY_GET(get, Key, Mod, P);
 get(Key, Tree) when ?IS_KEY(Key) ->
     case aeu_mp_trees:get(Key, Tree) of
         <<>> -> error({not_present, Key});
         Val -> Val
     end.
 
+?PROXY_GET(lookup, Key, Mod, P);
 lookup(Key, Tree) when ?IS_KEY(Key) ->
     case aeu_mp_trees:get(Key, Tree) of
         <<>> ->
@@ -127,46 +142,56 @@ lookup(Key, Tree) when ?IS_KEY(Key) ->
             {value, Value}
     end.
 
+?PROXY_PUT(enter, Key, Value, Mod, P); 
 enter(Key, Value, Tree) when ?IS_KEY(Key), ?IS_VALUE(Value) ->
     aeu_mp_trees:put(Key, Value, Tree).
 
+?PROXY_PUT(insert, Key, Value, Mod, P);
 insert(Key, Value, Tree) when ?IS_KEY(Key), ?IS_VALUE(Value) ->
     case lookup(Key, Tree) of
-        none -> aeu_mp_trees:put(Key, Value, Tree);
+        none -> enter(Key, Value, Tree);
         {value, _} -> error({already_present, Key})
     end.
 
 %% NOTE: The key needs to have a value in the tree for this to succeed.
 -spec read_only_subtree(key(), mtree()) -> {ok, mtree()} | {error, no_such_subtree}.
+?PROXY_GET(read_only_subtree, Key, Mod, P);
 read_only_subtree(Key, Tree) when ?IS_KEY(Key) ->
     aeu_mp_trees:read_only_subtree(Key, Tree).
 
 -spec iterator(mtree()) -> iterator().
+?PROXY_GET(iterator, Mod, P);
 iterator(Tree) ->
     aeu_mp_trees:iterator(Tree).
 
 -spec iterator(mtree(), iterator_opts()) -> iterator().
+?PROXY_GET(iterator, Opts, Mod, P);
 iterator(Tree, Opts) ->
     aeu_mp_trees:iterator(Tree, Opts).
 
 -spec iterator_from(key(), mtree()) -> iterator().
+?PROXY_GET(iterator_from, Key, Mod, P);
 iterator_from(Key, Tree) ->
     aeu_mp_trees:iterator_from(Key, Tree).
 
 -spec iterator_from(key(), mtree(), iterator_opts()) -> iterator().
+?PROXY_GET(iterator_from, Key, Opts, Mod, P);
 iterator_from(Key, Tree, Opts) ->
     aeu_mp_trees:iterator_from(Key, Tree, Opts).
 
 -spec iterator_next(iterator()) ->
                            {key(), value(), iterator()} | '$end_of_table'.
+?PROXY_ITER(iterator_next, Mod, I);
 iterator_next(Iter) ->
     aeu_mp_trees:iterator_next(Iter).
 
 -spec to_list(mtree()) -> [{key(), value()}].
+?PROXY_GET(to_list, Mod, P);
 to_list(Tree) ->
     map(fun(K, V) -> {K, V} end, Tree).
 
 -spec map(fun((key(), value()) -> term()), mtree()) -> list(term()).
+?PROXY_GET(map, Fun, Mod, P);
 map(Fun, Tree) ->
     MapThroughValues =
         fun Map('$end_of_table', Accum) -> Accum;
@@ -187,6 +212,7 @@ map(Fun, Tree) ->
       Acc1 :: Acc,
       AccIn :: Acc,
       AccOut :: Acc.
+?PROXY_ITER(fold, Fun, Acc0, Mod, I);
 fold(Fun, Acc0, Iter) ->
     case iterator_next(Iter) of
         '$end_of_table' -> Acc0;
@@ -200,6 +226,7 @@ fold(Fun, Acc0, Iter) ->
 
 %% Return root hash of specified non-empty Merkle tree.
 -spec root_hash(mtree()) -> {ok, root_hash()} | {error, empty}.
+?PROXY_GET(root_hash, Mod, P);
 root_hash(Tree) ->
     case aeu_mp_trees:root_hash(Tree) of
         <<>> ->

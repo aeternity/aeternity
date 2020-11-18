@@ -12,6 +12,7 @@
          ttl/1,
          nonce/1,
          origin/1,
+         entities/1,
          sender_id/1,
          sender_pubkey/1,
          recipient_id/1,
@@ -109,6 +110,11 @@ nonce(#spend_tx{nonce = Nonce}) ->
 -spec origin(tx()) -> aec_keys:pubkey().
 origin(#spend_tx{} = Tx) ->
     sender_pubkey(Tx).
+
+-spec entities(tx()) -> [aeser_id:id()].
+%% origin id first
+entities(#spend_tx{sender_id = SId, recipient_id = RId}) ->
+    [SId, RId].
 
 -spec sender_id(tx()) -> aeser_id:id().
 sender_id(#spend_tx{sender_id = SenderId}) ->
