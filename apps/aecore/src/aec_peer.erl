@@ -21,7 +21,8 @@
         ]).
 
 -ifdef(TEST).
--export([ set_trusted/2 ]).
+-export([ set_trusted/2,
+          peer_config_info/1 ]).
 -endif.
 
 -record(peer, {
@@ -127,6 +128,12 @@ is_trusted(#peer{ trusted = Trusted }) -> Trusted.
 -ifdef(TEST).
 set_trusted(Peer, Trusted) ->
     Peer#peer{trusted = Trusted}.
+
+peer_config_info(#peer{ pubkey = PK } = Peer) ->
+    EncodedPK = aeser_api_encoder:encode(peer_pubkey, PK),
+    FormattedAddr = format_address(Peer),
+    <<"aenode://", EncodedPK/binary, "@", FormattedAddr/binary>>.
+
 -endif.
 
 -spec source(peer()) -> inet:ip_address().
