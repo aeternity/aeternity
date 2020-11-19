@@ -778,6 +778,45 @@ measure_second_node_sync_time(Config) ->
     %% This test is meant to be run manually in the shell
     io:format(user, Fmt, [G, M, NTx, T]).
 
+validate_default_peers(_Config) ->
+    %% this test relies on having those as default peers in the config/dev1/sys.config
+    %% [<<"aenode://pp_23YdvfRPQ1b1AMWmkKZUGk2cQLqygQp55FzDWZSEUicPjhxtp5@localhost:3025">>,
+    %%  <<"aenode://pp_2M9oPohzsWgJrBBCFeYi3PVT4YF7F2botBtq6J1EGcVkiutx3R@localhost:3035">>]
+    Peer2Id = <<"pp_23YdvfRPQ1b1AMWmkKZUGk2cQLqygQp55FzDWZSEUicPjhxtp5">>, 
+    Peer3Id = <<"pp_2M9oPohzsWgJrBBCFeYi3PVT4YF7F2botBtq6J1EGcVkiutx3R">>, 
+    DefaultIds = [I || {ok, I} <- [aeser_api_encoder:safe_decode(peer_pubkey, P) ||
+                                   P <- [Peer2Id, Peer3Id]]],
+    N1 = aecore_suite_utils:node_name(dev1),
+    2 = rpc:call(N1, aec_peers, count, [verified], 5000),
+    %% the following relies on the peers beeing set as localhost, thus the
+    %% failed connect attempt had already passed
+    Peers = rpc:call(N1, aec_peers, available_peers, [], 5000),
+    2 = length(Peers),
+    PeerIds = [aec_peer:id(P) || P <- Peers],
+    SortedDefaultIds = lists:sort(DefaultIds),
+    SortedPeerIds = lists:sort(PeerIds),
+    SortedPeerIds = SortedDefaultIds,
+    ok.
+
+restart_with_different_defaults(Config) ->
+    Dev1 = dev1,
+    N1 = aecore_suite_utils:node_name(Dev1),
+    aecore_suite_utils:stop_node(Dev1, Config),
+    Peer = aec_peers_pool_tests:random_peer(),
+    EpochCfg0 = aecore_suite_utils:epoch_config(Dev1, Config),
+    EpochCfg = EpochCfg0#{<<"peers">> => [aec_peer:peer_config_info(Peer)],
+                          <<"include_default_peers">> => false},
+    aecore_suite_utils:create_config(Dev1, Config, EpochCfg,
+                                            []),
+    start_first_node(Config),
+    1 = rpc:call(N1, aec_peers, count, [verified], 5000),
+    %% the peer connection is still trying
+    [] = rpc:call(N1, aec_peers, available_peers, [], 5000),
+    {error, connecting} = %% a proof that there is such peerID
+        rpc:call(N1, aec_peers, get_connection, [aec_peer:id(Peer)], 5000),
+    aecore_suite_utils:stop_node(Dev1, Config),
+    ok.
+
 start_with_trusted_peers(Config) ->
     Dev1 = dev1,
     N1 = aecore_suite_utils:node_name(Dev1),
@@ -795,6 +834,12 @@ start_with_trusted_peers(Config) ->
                                             ]),
     start_first_node(Config),
     3 = rpc:call(N1, aec_peers, count, [verified], 5000),
+    {error, connecting} = %% a proof that there is such peerID
+        rpc:call(N1, aec_peers, get_connection, [aec_peer:id(Peer1)], 5000),
+    {error, connecting} = %% a proof that there is such peerID
+        rpc:call(N1, aec_peers, get_connection, [aec_peer:id(Peer2)], 5000),
+    {error, connecting} = %% a proof that there is such peerID
+        rpc:call(N1, aec_peers, get_connection, [aec_peer:id(Peer3)], 5000),
     ok.
     
 
@@ -937,45 +982,6 @@ get_bench_config(Config) ->
     { proplists:get_value(generations, Config)
     , proplists:get_value(micro_per_generation, Config)
     , proplists:get_value(tx_per_micro, Config)}.
-
-validate_default_peers(_Config) ->
-    %% this test relies on having those as default peers in the config/dev1/sys.config
-    %% [<<"aenode://pp_23YdvfRPQ1b1AMWmkKZUGk2cQLqygQp55FzDWZSEUicPjhxtp5@localhost:3025">>,
-    %%  <<"aenode://pp_2M9oPohzsWgJrBBCFeYi3PVT4YF7F2botBtq6J1EGcVkiutx3R@localhost:3035">>]
-    Peer2Id = <<"pp_23YdvfRPQ1b1AMWmkKZUGk2cQLqygQp55FzDWZSEUicPjhxtp5">>, 
-    Peer3Id = <<"pp_2M9oPohzsWgJrBBCFeYi3PVT4YF7F2botBtq6J1EGcVkiutx3R">>, 
-    DefaultIds = [I || {ok, I} <- [aeser_api_encoder:safe_decode(peer_pubkey, P) ||
-                                   P <- [Peer2Id, Peer3Id]]],
-    N1 = aecore_suite_utils:node_name(dev1),
-    2 = rpc:call(N1, aec_peers, count, [verified], 5000),
-    %% the following relies on the peers beeing set as localhost, thus the
-    %% failed connect attempt had already passed
-    Peers = rpc:call(N1, aec_peers, available_peers, [], 5000),
-    2 = length(Peers),
-    PeerIds = [aec_peer:id(P) || P <- Peers],
-    SortedDefaultIds = lists:sort(DefaultIds),
-    SortedPeerIds = lists:sort(PeerIds),
-    SortedPeerIds = SortedDefaultIds,
-    ok.
-
-restart_with_different_defaults(Config) ->
-    Dev1 = dev1,
-    N1 = aecore_suite_utils:node_name(Dev1),
-    aecore_suite_utils:stop_node(Dev1, Config),
-    Peer = aec_peers_pool_tests:random_peer(),
-    EpochCfg0 = aecore_suite_utils:epoch_config(Dev1, Config),
-    EpochCfg = EpochCfg0#{<<"peers">> => [aec_peer:peer_config_info(Peer)],
-                          <<"include_default_peers">> => false},
-    aecore_suite_utils:create_config(Dev1, Config, EpochCfg,
-                                            []),
-    start_first_node(Config),
-    1 = rpc:call(N1, aec_peers, count, [verified], 5000),
-    %% the peer connection is still trying
-    [] = rpc:call(N1, aec_peers, available_peers, [], 5000),
-    {error, connecting} = %% a proof that there is such peerID
-        rpc:call(N1, aec_peers, get_connection, [aec_peer:id(Peer)], 5000),
-    aecore_suite_utils:stop_node(Dev1, Config),
-    ok.
 
 encode_peer_for_config(Peer) ->
     PK = aeser_api_encoder:encode(peer_pubkey, aec_peer:id(Peer)),
