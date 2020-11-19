@@ -150,7 +150,13 @@ init([]) ->
     aec_events:subscribe(tx_created),
     aec_events:subscribe(tx_received),
 
-    Peers0       = parse_peers(aeu_env:user_config(<<"peers">>, default_peers())),
+    DefaultPeers = 
+        case aeu_env:user_config(<<"include_default_peers">>, true) of
+            true -> default_peers();
+            false -> []
+        end,
+    Peers0       = parse_peers(aeu_env:user_config(<<"peers">>, []) ++ DefaultPeers),
+
     BlockedPeers = parse_peers(aeu_env:user_map_or_env(<<"blocked_peers">>, aecore, blocked_peers, [])),
     Peers        = Peers0 -- BlockedPeers,
 

@@ -992,7 +992,8 @@ default_config(N, Config) ->
       <<"chain">> =>
           #{<<"persist">> => true},
       <<"fork_management">> =>
-          #{<<"network_id">> => NetworkId}
+          #{<<"network_id">> => NetworkId},
+      <<"include_default_peers">> => false
      }.
 
 epoch_config_dir(N, Config) ->

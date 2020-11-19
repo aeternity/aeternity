@@ -10,6 +10,7 @@ peers:
 # Pre-configured addresses of epoch nodes NOT to contact
 blocked_peers:
     - aenode://pp_2M9oPohzsWgJrBBCFeYi3PVT4YF7F2botBtq6J1EGcVkiutx3R@some-really-bad-peer-address:3015
+include_default_peers: true
 
 sync:
     # If the UPnP / NAT-PMP service should be started

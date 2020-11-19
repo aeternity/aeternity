@@ -14,6 +14,11 @@
                 "pattern": "^aenode://pp_[a-zA-Z0-9]+@[^:\\.\"!#$%^&*()',/]+(\\.[^:\\.\"!#$%^&*()',/]+)*:[0-9]+/*$"
             }
         },
+        "include_default_peers": {
+            "description" : "If the default peers shall be added as trusted peers. Note: setting this to false means that the default seed nodes would not be used and a proper set of peers had been added instead.",
+            "type" : "boolean",
+            "default": true
+            },
         "blocked_peers" : {
             "description" :
             "Pre-configured addresses of nodes NOT to contact",
@@ -39,7 +44,7 @@
                 },
                 "sync_interval" : {
                     "description" : "Interval between mempool (re-)synchronization (in ms)",
-                    "type" : "integer"
+                   "type" : "integer"
                 },
                 "nonce_offset" : {
                     "description" : "Maximum nonce offset accepted",

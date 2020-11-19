@@ -185,8 +185,10 @@ init_per_group(TwoNodes, Config) when
     [{initial_apps, InitialApps} | Config1];
 init_per_group(config_overwrites_defaults, Config) ->
     Dev1 = dev1,
+    aecore_suite_utils:stop_node(Dev1, Config),
     Config1 = config({devs, [Dev1]}, Config),
-    EpochCfg = aecore_suite_utils:epoch_config(Dev1, Config),
+    EpochCfg0 = aecore_suite_utils:epoch_config(Dev1, Config),
+    EpochCfg = EpochCfg0#{<<"include_default_peers">> => true},
     aecore_suite_utils:create_config(Dev1, Config1, EpochCfg,
                                             [no_peers
                                             ]),
@@ -272,7 +274,8 @@ end_per_group(Benchmark, _Config) when
     ok;
 end_per_group(config_overwrites_defaults, Config) ->
     Dev1 = dev1,
-    EpochCfg = aecore_suite_utils:epoch_config(Dev1, Config),
+    EpochCfg0 = aecore_suite_utils:epoch_config(Dev1, Config),
+    EpochCfg = EpochCfg0#{<<"include_default_peers">> => false},
     aecore_suite_utils:create_config(Dev1, Config, EpochCfg,
                                             [{add_peers, true}]),
     ok;
@@ -927,7 +930,8 @@ restart_with_different_defaults(Config) ->
     aecore_suite_utils:stop_node(Dev1, Config),
     Peer = aec_peers_pool_tests:random_peer(),
     EpochCfg0 = aecore_suite_utils:epoch_config(Dev1, Config),
-    EpochCfg = EpochCfg0#{<<"peers">> => [aec_peer:peer_config_info(Peer)]},
+    EpochCfg = EpochCfg0#{<<"peers">> => [aec_peer:peer_config_info(Peer)],
+                          <<"include_default_peers">> => false},
     aecore_suite_utils:create_config(Dev1, Config, EpochCfg,
                                             [
                                             ]),
