@@ -194,7 +194,7 @@ references:
       name: Build Package Tarball
       environment:
         PACKAGES_DIR: *packages_workspace
-        ERLANG_ROCKSDB_OPTS: ""
+        ERLANG_ROCKSDB_OPTS: "-DWITH_BUNDLE_LZ4=ON"
       command: |
         # Ensure rocksdb gets build statically
         rm -rf _build/default/lib/rocksdb/
