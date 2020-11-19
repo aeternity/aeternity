@@ -40,7 +40,9 @@
     measure_second_node_sync_time/1,
     validate_default_peers/1,
     restart_with_different_defaults/1,
-    start_with_trusted_peers/1
+    start_with_trusted_peers/1,
+    restart_with_no_trusted_peers/1,
+    add_untrusted_peers_and_restart/1
    ]).
 
 -include_lib("common_test/include/ct.hrl").
@@ -143,7 +145,9 @@ groups() ->
        ]},
      {persistence, [sequence],
           [
-           start_with_trusted_peers
+           start_with_trusted_peers,
+           restart_with_no_trusted_peers,
+           add_untrusted_peers_and_restart
           ]}
     ].
 
@@ -192,6 +196,7 @@ init_per_group(TwoNodes, Config) when
     ok = aec_metrics_test_utils:start_statsd_loggers(aec_metrics_test_utils:port_map(Config1)),
     [{initial_apps, InitialApps} | Config1];
 init_per_group(config_overwrites_defaults, Config) ->
+    aec_peers_pool_tests:seed_process_random(), %% required for the random_peer()
     Dev1 = dev1,
     aecore_suite_utils:stop_node(Dev1, Config),
     Config1 = config({devs, [Dev1]}, Config),
@@ -210,6 +215,7 @@ init_per_group(performance, Config) ->
             Config
     end;
 init_per_group(persistence, Config) ->
+    aec_peers_pool_tests:seed_process_random(), %% required for the random_peer()
     Config1 = config({devs, [dev1]}, Config),
     Config1;
 init_per_group(three_nodes, Config) ->
@@ -802,7 +808,7 @@ restart_with_different_defaults(Config) ->
     Dev1 = dev1,
     N1 = aecore_suite_utils:node_name(Dev1),
     aecore_suite_utils:stop_node(Dev1, Config),
-    Peer = aec_peers_pool_tests:random_peer(),
+    Peer = random_peer(),
     EpochCfg0 = aecore_suite_utils:epoch_config(Dev1, Config),
     EpochCfg = EpochCfg0#{<<"peers">> => [aec_peer:peer_config_info(Peer)],
                           <<"include_default_peers">> => false},
@@ -810,20 +816,18 @@ restart_with_different_defaults(Config) ->
                                             []),
     start_first_node(Config),
     1 = rpc:call(N1, aec_peers, count, [verified], 5000),
+    0 = rpc:call(N1, aec_peers, count, [unverified], 5000),
     %% the peer connection is still trying
-    [] = rpc:call(N1, aec_peers, available_peers, [], 5000),
-    {error, connecting} = %% a proof that there is such peerID
-        rpc:call(N1, aec_peers, get_connection, [aec_peer:id(Peer)], 5000),
+    assert_available_peers(N1, [Peer]),
     aecore_suite_utils:stop_node(Dev1, Config),
     ok.
 
 start_with_trusted_peers(Config) ->
     Dev1 = dev1,
     N1 = aecore_suite_utils:node_name(Dev1),
-    aec_peers_pool_tests:seed_process_random(), %% required for the random_peer()
-    Peer1 = aec_peers_pool_tests:random_peer(),
-    Peer2 = aec_peers_pool_tests:random_peer(),
-    Peer3 = aec_peers_pool_tests:random_peer(),
+    Peer1 = random_peer(),
+    Peer2 = random_peer(),
+    Peer3 = random_peer(),
 
     EpochCfg = aecore_suite_utils:epoch_config(Dev1, Config),
     Peers = [encode_peer_for_config(Peer1),
@@ -834,14 +838,67 @@ start_with_trusted_peers(Config) ->
                                             ]),
     start_first_node(Config),
     3 = rpc:call(N1, aec_peers, count, [verified], 5000),
-    {error, connecting} = %% a proof that there is such peerID
-        rpc:call(N1, aec_peers, get_connection, [aec_peer:id(Peer1)], 5000),
-    {error, connecting} = %% a proof that there is such peerID
-        rpc:call(N1, aec_peers, get_connection, [aec_peer:id(Peer2)], 5000),
-    {error, connecting} = %% a proof that there is such peerID
-        rpc:call(N1, aec_peers, get_connection, [aec_peer:id(Peer3)], 5000),
+    0 = rpc:call(N1, aec_peers, count, [unverified], 5000),
+    assert_available_peers(N1, [Peer1, Peer2, Peer3]),
+    aecore_suite_utils:stop_node(Dev1, Config),
     ok.
     
+%% this tests that trusted peers are not persisted
+restart_with_no_trusted_peers(Config) ->
+    Dev1 = dev1,
+    N1 = aecore_suite_utils:node_name(Dev1),
+    EpochCfg = aecore_suite_utils:epoch_config(Dev1, Config),
+    aecore_suite_utils:create_config(Dev1, Config, EpochCfg,
+                                            [{trusted_peers, []}
+                                            ]),
+    start_first_node(Config),
+    0 = rpc:call(N1, aec_peers, count, [verified], 5000),
+    0 = rpc:call(N1, aec_peers, count, [unverified], 5000),
+    aecore_suite_utils:stop_node(Dev1, Config),
+    ok.
+
+
+%% this tests that untrusted peers are persisted
+add_untrusted_peers_and_restart(Config) ->
+    Dev1 = dev1,
+    N1 = aecore_suite_utils:node_name(Dev1),
+    EpochCfg = aecore_suite_utils:epoch_config(Dev1, Config),
+    aecore_suite_utils:create_config(Dev1, Config, EpochCfg,
+                                            [{trusted_peers, []}
+                                            ]),
+    start_first_node(Config),
+    0 = rpc:call(N1, aec_peers, count, [verified], 5000),
+    0 = rpc:call(N1, aec_peers, count, [unverified], 5000),
+
+    %% add an untrusted peer
+    Peer1 = random_peer(),
+    Peer2 = random_peer(),
+    Peer3 = random_peer(),
+    Peer4 = random_peer(),
+    Add =
+        fun(P) ->
+            ok = rpc:call(N1, aec_peers, add_peers, [aec_peer:source(P),
+                                                    [aec_peer:info(P)
+                                                    ]])
+        end,
+    Add(Peer1),
+    Add(Peer2),
+    Add(Peer3),
+    Add(Peer4),
+    0 = rpc:call(N1, aec_peers, count, [verified], 5000),
+    4 = rpc:call(N1, aec_peers, count, [unverified], 5000),
+
+    assert_available_peers(N1, [Peer1, Peer2, Peer3, Peer4]),
+
+    %% stop the node and start it over
+    aecore_suite_utils:stop_node(Dev1, Config),
+    start_first_node(Config),
+    0 = rpc:call(N1, aec_peers, count, [verified], 5000),
+    4 = rpc:call(N1, aec_peers, count, [unverified], 5000),
+
+    assert_available_peers(N1, [Peer1, Peer2, Peer3, Peer4]),
+    aecore_suite_utils:stop_node(Dev1, Config),
+    ok.
 
 %% ==================================================
 %% Private functions
@@ -988,3 +1045,19 @@ encode_peer_for_config(Peer) ->
     Host = aec_peer:format_address(aec_peer:ip(Peer)),
     Port = integer_to_binary(aec_peer:port(Peer)),
     <<"aenode://", PK/binary, "@", Host/binary, ":", Port/binary>>.
+
+random_peer() ->
+    aec_peers_pool_tests:random_peer(#{host => <<"127.0.0.1">>,
+                                       address => {127,0,0,1}}).
+
+assert_available_peers(N1, ExpectedPeers) ->
+    GetIds = fun(Peers) -> lists:sort([aec_peer:id(P) || P <- Peers]) end,
+    ExpectedIds = GetIds(ExpectedPeers),
+    AvPeers = rpc:call(N1, aec_peers, available_peers, [], 5000),
+    AvailableIds = GetIds(AvPeers),
+    ExpectedIds = AvailableIds,
+    ok.
+
+
+
+

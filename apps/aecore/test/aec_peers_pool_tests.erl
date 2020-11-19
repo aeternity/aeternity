@@ -2041,7 +2041,8 @@ random_peer() ->
 
 random_peer(Opts) ->
     PeerInfo =
-        maps:merge(#{ pubkey => random_peer_id(), host => <<>>, port => 4000 },
+        maps:merge(#{ pubkey => random_peer_id(), host => <<>>,
+                      port => rand_int(4000, 4999) },
                    Opts),
     aec_peer:new(maps:get(address, Opts, random_address()),
                  maps:get(source, Opts, random_address()), 
