@@ -156,7 +156,7 @@ init([]) ->
             {ok, false} -> [];
             undefined -> []
         end,
-    ConfigPeers  = parse_peers(aeu_env:user_config(<<"peers">>, []) ++ DefaultPeers),
+    ConfigPeers  = aeu_env:user_config(<<"peers">>, []),
     lager:debug("Config peers: ~p", [ConfigPeers]),
     lager:debug("Sys config peers: ~p", [DefaultPeers]),
 

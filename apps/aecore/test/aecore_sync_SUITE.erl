@@ -794,7 +794,7 @@ start_with_trusted_peers(Config) ->
                                             [{trusted_peers, Peers}
                                             ]),
     start_first_node(Config),
-    5 = rpc:call(N1, aec_peers, count, [verified], 5000),
+    3 = rpc:call(N1, aec_peers, count, [verified], 5000),
     ok.
     
 
