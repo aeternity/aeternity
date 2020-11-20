@@ -135,9 +135,10 @@ is_trusted(#peer{ trusted = Trusted }) -> Trusted.
 set_trusted(Peer, Trusted) ->
     Peer#peer{trusted = Trusted}.
 
-peer_config_info(#peer{ pubkey = PK } = Peer) ->
+peer_config_info(PeerOrInfo) ->
+    PK = pubkey(PeerOrInfo),
     EncodedPK = aeser_api_encoder:encode(peer_pubkey, PK),
-    FormattedAddr = format_address(Peer),
+    FormattedAddr = format_address(PeerOrInfo),
     <<"aenode://", EncodedPK/binary, "@", FormattedAddr/binary>>.
 
 -endif.

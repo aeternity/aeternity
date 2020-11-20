@@ -42,7 +42,9 @@
     restart_with_different_defaults/1,
     start_with_trusted_peers/1,
     restart_with_no_trusted_peers/1,
-    add_and_delete_untrusted_peers_and_restart/1
+    add_and_delete_untrusted_peers_and_restart/1,
+    trusted_peer_is_untrusted_after_a_restart/1,
+    stop_devs/1
    ]).
 
 -include_lib("common_test/include/ct.hrl").
@@ -147,7 +149,9 @@ groups() ->
           [
            start_with_trusted_peers,
            restart_with_no_trusted_peers,
-           add_and_delete_untrusted_peers_and_restart
+           add_and_delete_untrusted_peers_and_restart,
+           trusted_peer_is_untrusted_after_a_restart,
+           stop_devs %% delete the db to cleanup
           ]}
     ].
 
@@ -216,7 +220,7 @@ init_per_group(performance, Config) ->
     end;
 init_per_group(persistence, Config) ->
     aec_peers_pool_tests:seed_process_random(), %% required for the random_peer()
-    Config1 = config({devs, [dev1]}, Config),
+    Config1 = config({devs, [dev1, dev2]}, Config),
     Config1;
 init_per_group(three_nodes, Config) ->
     Config1 = config({devs, [dev1, dev2, dev3]}, Config),
@@ -296,8 +300,7 @@ end_per_group(config_overwrites_defaults, Config) ->
     aecore_suite_utils:create_config(Dev1, Config, EpochCfg,
                                             [{add_peers, true}]),
     ok;
-end_per_group(persistence, Config) ->
-    stop_devs(Config),
+end_per_group(persistence, _Config) ->
     ok;
 end_per_group(all_nodes, _Config) ->
    ok.
@@ -755,8 +758,7 @@ inject_txs(Node, NTx) ->
       end || _ <- lists:seq(1, NTx)].
 
 measure_second_node_sync_time(Config) ->
-    [Dev1, Dev2] = [dev1, dev2],
-    N1 = aecore_suite_utils:node_name(Dev1),
+    Dev2 = dev2,
     N2 = aecore_suite_utils:node_name(Dev2),
     aecore_suite_utils:start_node(Dev2, Config),
     {T, _} = timer:tc(fun() ->
@@ -944,8 +946,58 @@ add_and_delete_untrusted_peers_and_restart(Config) ->
     0 = rpc:call(N1, aec_peers, count, [verified], 5000),
     0 = rpc:call(N1, aec_peers, count, [unverified], 5000),
     assert_available_peers(N1, []),
-
+    aecore_suite_utils:stop_node(Dev1, Config),
     ok.
+
+%% this tests that trusted peers are loaded as untrusted after a restart
+trusted_peer_is_untrusted_after_a_restart(Config) ->
+    Dev1 = dev1,
+    N1 = aecore_suite_utils:node_name(Dev1),
+    start_first_node(Config),
+    0 = rpc:call(N1, aec_peers, count, [verified], 5000),
+    0 = rpc:call(N1, aec_peers, count, [unverified], 5000),
+
+    %% add an untrusted peer
+    Peer1 = random_peer(),
+    Peer2 = random_peer(),
+    ok = rpc:call(N1, aec_peers, add_peers, [aec_peer:source(Peer1),
+                                            [aec_peer:info(Peer1)
+                                            ]]),
+    ok = rpc:call(N1, aec_peers, add_peers, [aec_peer:source(Peer2),
+                                            [aec_peer:info(Peer2)
+                                            ]]),
+    0 = rpc:call(N1, aec_peers, count, [verified], 5000),
+    2 = rpc:call(N1, aec_peers, count, [unverified], 5000),
+    assert_available_peers(N1, [Peer1, Peer2]),
+    Dev2 = dev2,
+    N2 = aecore_suite_utils:node_name(Dev2),
+    EpochCfg = aecore_suite_utils:epoch_config(Dev2, Config),
+    aecore_suite_utils:create_config(Dev2, Config, EpochCfg,
+                                            [{trusted_peers, []}
+                                            ]),
+    start_second_node(Config),
+    N2PeerInfo = rpc:call(N2, aec_peers, local_peer_info, []),
+    ok = rpc:call(N1, aec_peers, add_peers, [{127, 0, 0, 1},
+                                            [N2PeerInfo
+                                            ]]),
+    %% make sure nodes dev1 and dev2 sync
+    mine_on_first(Config),
+    expect_same_top([N1, N2], 5),
+
+    %% now they are marked as trusted
+    1 = rpc:call(N1, aec_peers, count, [verified], 5000),
+    2 = rpc:call(N1, aec_peers, count, [unverified], 5000),
+    1 = rpc:call(N2, aec_peers, count, [verified], 5000),
+
+    aecore_suite_utils:stop_node(Dev1, Config),
+    aecore_suite_utils:stop_node(Dev2, Config),
+
+    start_first_node(Config),
+    0 = rpc:call(N1, aec_peers, count, [verified], 5000),
+    3 = rpc:call(N1, aec_peers, count, [unverified], 5000),
+    start_second_node(Config),
+    ok.
+
 
 %% ==================================================
 %% Private functions
