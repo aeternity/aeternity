@@ -151,7 +151,7 @@ init([]) ->
     aec_events:subscribe(tx_received),
 
     DefaultPeers = 
-        case aeu_env:find_config(<<"include_default_peers">>, [user_config, schema_default, {value, true}]) of
+        case aeu_env:find_config([<<"include_default_peers">>], [user_config, schema_default, {value, true}]) of
             {ok, true} -> default_peers();
             {ok, false} -> [];
             undefined -> []
