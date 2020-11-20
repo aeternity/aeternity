@@ -45,7 +45,13 @@ init_per_suite(Config) ->
         },
         <<"mempool">> => #{ <<"invalid_tx_ttl">> => 2 }
     },
-    Config1 = aecore_suite_utils:init_per_suite([dev1, dev2], DefCfg, [{symlink_name, "latest.txs"}, {test_module, ?MODULE}, {micro_block_cycle, MicroBlockCycle}] ++ Config),
+    Config1 = aecore_suite_utils:init_per_suite([dev1, dev2], DefCfg,
+                                                [{add_peers, true}],
+                                                [{symlink_name, "latest.txs"},
+                                                 {test_module, ?MODULE},
+                                                 {micro_block_cycle,
+                                                  MicroBlockCycle}] ++
+                                                Config),
     [{nodes, [aecore_suite_utils:node_tuple(dev1),
               aecore_suite_utils:node_tuple(dev2)]} | Config1].
 

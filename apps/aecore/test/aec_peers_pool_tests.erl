@@ -31,6 +31,10 @@
     available/2
 ]).
 
+-export([random_peer/0,
+         random_peer/1
+        ]).
+
 %=== MACROS ====================================================================
 
 -define(BASE_POOL_OPTS, []).
@@ -1949,8 +1953,7 @@ rand_take(Col) when is_list(Col)->
 
 random_peer_id() ->
     A = rand_int(1, 1 bsl 64),
-    B = rand_int(1, 1 bsl 64),
-    <<A:64, B:64>>.
+    <<A:32/unit:8>>.
 
 random_address() ->
     {rand_byte(), rand_byte(), rand_byte(), rand_byte()}.

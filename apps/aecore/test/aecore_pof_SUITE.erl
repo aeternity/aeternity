@@ -41,7 +41,11 @@ init_per_suite(Config) ->
             <<"beneficiary_reward_delay">> => 2
         }
     },
-    Config1 = aecore_suite_utils:init_per_suite([dev1, dev2], DefCfg, [{symlink_name, "latest.pof"}, {test_module, ?MODULE}] ++ Config),
+    Config1 = aecore_suite_utils:init_per_suite([dev1, dev2], DefCfg,
+                                                [{add_peers, true}],
+                                                [{symlink_name, "latest.pof"},
+                                                 {test_module, ?MODULE}] ++
+                                                Config),
     [{nodes, [aecore_suite_utils:node_tuple(dev1),
               aecore_suite_utils:node_tuple(dev2)]} | Config1].
 

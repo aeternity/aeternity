@@ -11,10 +11,7 @@
          groups/0,
          suite/0,
          init_per_suite/1,
-         end_per_suite/1,
-         init_per_group/2,
-         end_per_group/2,
-         init_per_testcase/2,
+         end_per_suite/1, init_per_group/2, end_per_group/2, init_per_testcase/2,
          end_per_testcase/2]).
 
 -export([session_in_authorized_phase/1,
@@ -68,8 +65,10 @@ init_per_suite_(Cfg) ->
     ct:log("Environment = ~p", [[{args, init:get_arguments()},
                                  {node, node()},
                                  {cookie, erlang:get_cookie()}]]),
-    aecore_suite_utils:create_config(?STRATUM_SERVER_NODE, Cfg1, stratum_server_node_config(false), []),
-    aecore_suite_utils:create_config(?MINING_NODE, Cfg1, mining_node_config(maps:get(pubkey, new_keypair())), []),
+    aecore_suite_utils:create_config(?STRATUM_SERVER_NODE, Cfg1, stratum_server_node_config(false),
+                                     [{add_peers, true}]),
+    aecore_suite_utils:create_config(?MINING_NODE, Cfg1, mining_node_config(maps:get(pubkey, new_keypair())),
+                                     [{add_peers, true}]),
     aecore_suite_utils:make_multi(Cfg1, [?STRATUM_SERVER_NODE, ?MINING_NODE]),
     Cfg2 = write_stratum_keys("stratum_test_keys", [{stratum_keypair, new_keypair()} | Cfg1]),
 

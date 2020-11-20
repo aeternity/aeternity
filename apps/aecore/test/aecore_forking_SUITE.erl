@@ -41,7 +41,12 @@ suite() ->
     [].
 
 init_per_suite(Config) ->
-    aecore_suite_utils:init_per_suite([dev1, dev2], [{symlink_name, "latest.fork"}, {test_module, ?MODULE}] ++ Config).
+    aecore_suite_utils:init_per_suite([dev1, dev2],
+                                      #{},
+                                      [{add_peers, true}],
+                                      [{symlink_name, "latest.fork"},
+                                       {test_module, ?MODULE}]
+                                      ++ Config).
 
 end_per_suite(Config) ->
     aecore_suite_utils:stop_node(dev1, Config),
