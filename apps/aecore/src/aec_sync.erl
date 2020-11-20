@@ -152,8 +152,9 @@ init([]) ->
 
     DefaultPeers = 
         case aeu_env:find_config(<<"include_default_peers">>, [user_config, schema_default, {value, true}]) of
-            true -> default_peers();
-            false -> []
+            {ok, true} -> default_peers();
+            {ok, false} -> [];
+            undefined -> []
         end,
     Peers0       = parse_peers(aeu_env:user_config(<<"peers">>, []) ++ DefaultPeers),
 
