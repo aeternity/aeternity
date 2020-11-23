@@ -131,6 +131,7 @@
 %% - name_service_state
 %% - name_service_cache
 %% - one per state tree
+%% - untrusted peers
 
 -define(TAB(Record),
         {Record, tab(Mode, Record, record_info(fields, Record), [])}).
@@ -901,8 +902,11 @@ handle_table_errors(_Tables, _Mode, []) ->
     ok;
 handle_table_errors(Tables, Mode, [{missing_table, aec_signal_count = Table} | Tl]) ->
     %% The table is new in node version 5.1.0.
-    {Table, Spec} = lists:keyfind(Table, 1, Tables),
-    {atomic, ok} = mnesia:create_table(Table, Spec),
+    new_table_migration(Table, Tables),
+    handle_table_errors(Tables, Mode, Tl);
+handle_table_errors(Tables, Mode, [{missing_table, aec_peers = Table} | Tl]) ->
+    %% The table is new in node version 5.6.0.
+    new_table_migration(Table, Tables),
     handle_table_errors(Tables, Mode, Tl);
 handle_table_errors(Tables, Mode, [{missing_table, aesc_state_cache_v2} | Tl]) ->
     aesc_db:create_tables(Mode),
@@ -1063,3 +1067,7 @@ read_all_peers() ->
               [Peer | Acc]
           end,
     ?t(mnesia:foldl(Fun, [], aec_peers)).
+
+new_table_migration(Table, Tables) ->
+    {Table, Spec} = lists:keyfind(Table, 1, Tables),
+    {atomic, ok} = mnesia:create_table(Table, Spec).
