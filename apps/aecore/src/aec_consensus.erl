@@ -65,6 +65,8 @@
         , get_genesis_hash/0 %% Cached access to the genesis hash using persistent term :)
         ]).
 
+-include("aec_block_insertion.hrl").
+
 %% Global config
 %% Height => {ConsensusName, ConsensusConfiguration}
 -type consensus_module() :: atom().
@@ -130,7 +132,7 @@
 %% -------------------------------------------------------------------
 %% Callbacks for building the db insertion ctx
 -callback recent_cache_n() -> non_neg_integer().
--callback recent_cache_trim_header(aec_headers:header()) -> term().
+-callback recent_cache_trim_key_header(aec_headers:header()) -> term().
 
 -callback keyblocks_for_target_calc() -> non_neg_integer().
 -callback keyblock_create_adjust_target(aec_blocks:block(), list(aec_headers:header())) ->
@@ -144,19 +146,33 @@
 %% mnesia disk table
 -callback dirty_validate_block_pre_conductor(aec_blocks:block()) -> ok | {error, any()}.
 
-%% This callback is called in dirty context before starting the block insertion
+%% This callback is called in dirty context before starting the DB transaction for block insertion
 %% It's called only when the insertion context got properly created:
 %%    - It's not a genesis block
 %%    - The chain invariants were verified:
 %%      * The block is not an orphan - prev block and prev key block are present and were validated
 %%      * min(Height-GenesisHeight, recent_cache_n()) previous key headers are present in the DB
-%%      * height deltas were checked
-%%      * prev_block points to the same generation as prev_key_blocks
--callback dirty_validate_key_header(aec_headers:header()) -> ok | {error, term()}.
-%%
-%%-callback validate_key_header_with_state(term())
+%%      * height is consecutive
+%%      * prev_block points to the same generation as prev_key_block
+%% Do not crash as it's called in dirty context
+-callback dirty_validate_key_node_with_ctx(#node{}, aec_blocks:micro_block(), #insertion_ctx{}) -> ok | {error, term()}.
+-callback dirty_validate_micro_node_with_ctx(#node{}, aec_blocks:micro_block(), #insertion_ctx{}) -> ok | {error, term()}.
+
+%% Customized state transitions - in case of keyblocks the callbacks are called with pruned state trees
+%% Those callbacks run in a DB context - to abort the execution please call aec_block_insertion:abort_state_transition(Reason)
+%% Performs initial state transformation when the previous block used a different consensus algorithm
+-callback state_pre_transform_key_node_consensus_switch(#node{}, aec_trees:trees()) -> aec_trees:trees() | no_return().
+%% State pre transformations on every keyblock
+-callback state_pre_transform_key_node(#node{}, aec_trees:trees()) -> aec_trees:trees() | no_return().
+%% State pre transformations on every microblock
+-callback state_pre_transform_micro_node(#node{}, aec_trees:trees()) -> aec_trees:trees() | no_return().
+
+%% Block rewards :)
+-callback state_grant_reward(aec_keys:pubkey(), aec_trees:trees(), non_neg_integer()) -> aec_trees:trees() | no_return().
+-callback state_apply_pof(aec_keys:pubkey(), aec_trees:trees()) -> aec_trees:trees() | no_return().
 
 %% Consensus modules might define their own genesis block
+%% The initial state populated with presets for accounts/contracts can be mutated here
 -callback genesis_transform_trees(aec_trees:trees(), consensus_config()) -> aec_trees:trees().
 -callback genesis_raw_header() -> aec_headers:key_header().
 -callback genesis_difficulty() -> key_difficulty().

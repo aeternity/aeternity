@@ -16,21 +16,35 @@
 %% API
 -export([ can_be_turned_off/0
         , assert_config/1
-        , dirty_validate_key_header/0
         , start/1
         , stop/0
         , is_providing_extra_http_endpoints/0
         , client_request/1
+        %% Deserialization
         , extra_from_header/1
+        %% Building the Insertion Ctx
         , recent_cache_n/0
-        , recent_cache_trim_header/1
+        , recent_cache_trim_key_header/1
+        %% Target adjustment when creating keyblocks
         , keyblocks_for_target_calc/0
         , keyblock_create_adjust_target/2
+        %% Preconductor hook
         , dirty_validate_block_pre_conductor/1
-        , dirty_validate_key_header/1
+        %% Dirty validation before starting the state transition
+        , dirty_validate_key_node_with_ctx/3
+        , dirty_validate_micro_node_with_ctx/3
+        %% State transition
+        , state_pre_transform_key_node_consensus_switch/2
+        , state_pre_transform_key_node/2
+        , state_pre_transform_micro_node/2
+        %% Block rewards
+        , state_grant_reward/3
+        , state_apply_pof/2
+        %% Genesis block
         , genesis_transform_trees/2
         , genesis_raw_header/0
         , genesis_difficulty/0
+        %% Keyblock sealing
         , key_header_for_sealing/1
         , validate_key_header_seal/2
         , generate_key_header_seal/5
@@ -38,6 +52,7 @@
         , nonce_for_sealing/1
         , next_nonce_for_sealing/2
         , trim_sealing_nonce/2
+        %% Block target and difficulty
         , default_target/0
         , assert_key_target_range/1
         , key_header_difficulty/1 ]).
@@ -50,10 +65,9 @@ assert_config(_Config) -> ok.
 start(_Config) -> ok.
 stop() -> ok.
 
-dirty_validate_key_header() -> error(todo).
-
 is_providing_extra_http_endpoints() -> false.
 %% This is not yet dev mode but it's close :)
+%% TODO: Expose via HTTP <3
 client_request(emit_kb) ->
     TopHash = aec_chain:top_block_hash(),
     {ok, Beneficiary} = aec_conductor:get_beneficiary(),
@@ -123,14 +137,29 @@ extra_from_header(_) ->
     #{consensus => ?MODULE}.
 
 recent_cache_n() -> 1.
-recent_cache_trim_header(_) -> {}.
+recent_cache_trim_key_header(_) -> ok.
 
 keyblocks_for_target_calc() -> 0.
 keyblock_create_adjust_target(Block, []) -> {ok, Block}.
 
 dirty_validate_block_pre_conductor(_) -> ok.
-dirty_validate_key_header(_) -> error(todo).
+%% Don't waste CPU cycles when we are only interested in state transitions...
+dirty_validate_key_node_with_ctx(_Node, _Block, _Ctx) -> ok.
+dirty_validate_micro_node_with_ctx(_Node, _Block, _Ctx) -> ok.
 
+%% -------------------------------------------------------------------
+%% Custom state transitions
+state_pre_transform_key_node_consensus_switch(_Node, Trees) -> Trees.
+state_pre_transform_key_node(_Node, Trees) -> Trees.
+state_pre_transform_micro_node(_Node, Trees) -> Trees.
+
+%% -------------------------------------------------------------------
+%% Block rewards
+state_grant_reward(Beneficiary, Trees, Amount) -> aec_consensus_bitcoin_ng:state_grant_reward(Beneficiary, Trees, Amount).
+state_apply_pof(_Fraudster, Trees) -> Trees.
+
+%% -------------------------------------------------------------------
+%% Genesis block
 genesis_transform_trees(Trees, #{}) -> Trees.
 genesis_raw_header() ->
     aec_headers:new_key_header(
