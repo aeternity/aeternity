@@ -103,7 +103,11 @@
         ]).
 
 -ifdef(TEST).
--export([calc_rewards/6]).
+-export([calc_rewards/6,
+         wrap_block/1,
+         internal_insert_transaction/4,
+         build_insertion_ctx/3
+        ]).
 -endif.
 
 -include_lib("aeminer/include/aeminer.hrl").
@@ -885,10 +889,21 @@ update_state_tree(Node, State, Ctx) ->
 
 update_state_tree(Node, TreesIn, ForkInfo, State) ->
     case db_find_state(hash(Node), true) of
-        {ok,_Trees,_ForkInfo} ->
-            %% NOTE: This is an internal inconsistency check,
-            %% so don't use internal_error
-            error({found_already_calculated_state, hash(Node)});
+        {ok, FoundTrees, FoundForkInfo} ->
+            {Trees, _Fees, Events} = apply_node_transactions(Node, TreesIn,
+                                                             ForkInfo, State),
+            case aec_trees:hash(Trees) =:= aec_trees:hash(FoundTrees) of
+                true -> %% race condition, we've already inserted this block
+                    %% in case of fork, set the correct top:
+                    State1 = set_top_block_hash(hash(Node), State),
+                    {State1,
+                     FoundForkInfo#fork_info.difficulty, %% keep correct difficulty
+                     Events};
+                false ->
+                    %% NOTE: This is an internal inconsistency check,
+                    %% so don't use internal_error
+                    error({found_already_calculated_state, hash(Node)})
+            end;
         error ->
             {DifficultyOut, Events} = apply_and_store_state_trees(Node, TreesIn,
                                                         ForkInfo, State),
@@ -972,7 +987,7 @@ update_fraud_info(ForkInfoIn, Node, State) ->
 
 handle_top_block_change(OldTopHash, NewTopDifficulty, Node, Events, State) ->
     case get_top_block_hash(State) of
-        OldTopHash -> State;
+        OldTopHash -> {State, no_events()};
         NewTopHash when OldTopHash =:= undefined ->
             NewTopHash = get_genesis_hash(State), %% Internal inconsistency check
             State1 = update_main_chain(NewTopHash, NewTopHash, NewTopHash, State),

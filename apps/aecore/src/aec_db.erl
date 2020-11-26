@@ -734,7 +734,7 @@ find_signal_count(Hash) ->
 add_tx_location(STxHash, BlockHash) when is_binary(STxHash),
                                          is_binary(BlockHash) ->
     ?t(mnesia:write(#aec_tx_location{key = STxHash, value = BlockHash}),
-       [aec_tx_location, STxHash]).
+       [{aec_tx_location, STxHash}]).
 
 remove_tx_location(TxHash) when is_binary(TxHash) ->
     ?t(mnesia:delete({aec_tx_location, TxHash}),

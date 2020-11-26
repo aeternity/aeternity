@@ -487,3 +487,45 @@ make_spend_tx(Sender, SenderNonce, Recipient, Fee, Amount) ->
 
 sign_tx(Tx, PrivKey) ->
     aec_test_utils:sign_tx(Tx, PrivKey).
+
+%%%===================================================================
+%%% Test case - resume from incomplete DB
+%%%===================================================================
+
+accept_existing_db_node_test_() ->
+    {foreach,
+     fun() ->
+             Persist = application:get_env(aecore, persist),
+             application:set_env(aecore, persist, true),
+             {ok, _} = aec_db_error_store:start_link(),
+             aec_db:check_db(),
+             aec_db:clear_db(),
+             TmpDir = aec_test_utils:aec_keys_setup(),
+             ok = meck:new(mnesia_rocksdb_lib, [passthrough]),
+             aec_test_utils:mock_genesis_and_forks(genesis_accounts()),
+             aec_test_utils:dev_reward_setup(true, true, 100),
+             {TmpDir, Persist}
+     end,
+     fun({TmpDir, Persist}) ->
+             application:stop(mnesia),
+             aec_test_utils:unmock_genesis_and_forks(),
+             aec_test_utils:aec_keys_cleanup(TmpDir),
+             application:set_env(aecore, persist, Persist),
+             ok = aec_db_error_store:stop(),
+             ok = meck:unload(mnesia_rocksdb_lib),
+             ok = mnesia:delete_schema([node()])
+     end,
+     [
+      {"", fun accept_existing_db_node/0}
+     ]}.
+
+accept_existing_db_node() ->
+    [B1, B2, B3] = prep_micro_blocks(3),
+    {ok, _} = ?TEST_MODULE:insert_block(B1),
+    {ok, _} = ?TEST_MODULE:insert_block(B2),
+    Node = ?TEST_MODULE:wrap_block(B3),
+    Ctx = ?TEST_MODULE:build_insertion_ctx(Node, micro, undefined),
+    {ok, _} = ?TEST_MODULE:insert_block(B3),
+    ?TEST_MODULE:internal_insert_transaction(Node, B3, undefined, Ctx),
+
+    ok.
