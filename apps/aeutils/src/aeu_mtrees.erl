@@ -49,6 +49,7 @@
 %% For internal functional db
 -behavior(aeu_mp_trees_db).
 -export([ mpt_db_drop_cache/1
+        , mpt_db_list_cache/1
         , mpt_db_get/2
         , mpt_db_put/3
         ]).
@@ -64,6 +65,8 @@
               root_hash/0,
               db/0,
               proof/0]).
+
+-export([ pp_term/1 ]).
 
 
 -define(HASH_BYTES, 32).
@@ -91,6 +94,8 @@
 
 -type proof() :: aeu_mp_trees_db:db().
 
+pp_term(Term) ->
+    aeu_mp_trees:pp_term(Term).
 
 %%%===================================================================
 %%% API - subset of OTP `gb_trees` module
@@ -301,6 +306,9 @@ mpt_db_put(Key, Val, Proof) ->
 
 mpt_db_drop_cache(_Cache) ->
     dict:new().
+
+mpt_db_list_cache(Cache) ->
+    dict:to_list(Cache).
 
 %%%===================================================================
 %%% serialization

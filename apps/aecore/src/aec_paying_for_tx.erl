@@ -39,6 +39,8 @@
 -export([set_tx/2
         ]).
 
+-export([ record_fields/1 ]).
+
 -define(PAYING_FOR_TX_VSN, 1).
 -define(PAYING_FOR_TX_TYPE, paying_for_tx).
 
@@ -59,6 +61,15 @@
 -opaque tx() :: #paying_for_tx{}.
 
 -export_type([tx/0]).
+
+%% ==================================================================
+%% Tracing support
+
+record_fields(paying_for_tx) -> record_info(fields, paying_for_tx);
+record_fields(_) ->
+    no.
+
+%% ==================================================================
 
 %%%===================================================================
 %%% Getters

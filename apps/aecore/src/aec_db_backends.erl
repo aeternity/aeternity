@@ -29,9 +29,21 @@
 
 %% Callbacks for aeu_mp_trees_db
 -export([ mpt_db_drop_cache/1
+        , mpt_db_list_cache/1
         , mpt_db_get/2
         , mpt_db_put/3
         ]).
+
+%% ==================================================================
+%% Trace support
+-export([pp_term/1]).
+
+pp_term({gb_trees, Tree}) ->
+    {yes, tr_ttb:pp_custom(Tree, '$gb_trees', fun gb_trees:to_list/1)};
+pp_term(_) ->
+    no.
+
+%% ==================================================================
 
 %%%===================================================================
 %%% API
@@ -175,3 +187,6 @@ mpt_db_put(Key, Val, Handle) when Handle =:= oracles_cache; Handle =:= dirty_ora
 
 mpt_db_drop_cache({gb_trees, _}) ->
     gb_trees:empty().
+
+mpt_db_list_cache({gb_trees, T}) ->
+    gb_trees:to_list(T).

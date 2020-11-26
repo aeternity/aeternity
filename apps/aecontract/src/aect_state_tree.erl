@@ -25,7 +25,6 @@
         , proxy_tree/1
         , get/2
         , gc_cache/1
-        , list_cache/1
         , root_hash/1]).
 
 %% API - Proof of inclusion
@@ -45,7 +44,8 @@
         , to_binary_without_backend/1
         ]).
 
--export([record_fields/1]).
+-export([ record_fields/1
+        , pp_term/1 ]).
 
 -export_type([tree/0]).
 
@@ -79,6 +79,10 @@
 %% Tracing support
 record_fields(contract_tree) -> record_info(fields, contract_tree);
 record_fields(_            ) -> no.
+
+pp_term(Term) ->
+    aeu_mp_trees:tree_pp_term(Term, '$contracts', fun aect_contracts:deserialize/2).
+
 %% ==================================================================
 
 
@@ -117,10 +121,6 @@ get(Key, #contract_tree{contracts = CtTree}) ->
 ?PROXY(gc_cache, Mod, Arg);
 gc_cache(#contract_tree{contracts = CtTree} = Tree) ->
     Tree#contract_tree{contracts =  aeu_mtrees:gc_cache(CtTree)}.
-
--spec list_cache(tree()) -> [{term(), term()}].
-list_cache(#contract_tree{contracts = CtTree}) ->
-    aeu_mtrees:list_cache(CtTree).
 
 %% -- Contracts --
 

@@ -30,6 +30,8 @@
 
 -export([payload/1]).
 
+-export([ record_fields/1 ]).
+
 -behavior(aetx).
 
 -include("blocks.hrl").
@@ -49,6 +51,16 @@
 -opaque tx() :: #spend_tx{}.
 
 -export_type([tx/0]).
+
+%% ==================================================================
+%% Tracing support
+
+record_fields(spend_tx) -> record_info(fields, spend_tx);
+record_fields(_) ->
+    no.
+
+%% ==================================================================
+
 
 -spec new(map()) -> {ok, aetx:tx()}.
 new(#{sender_id    := SenderId,

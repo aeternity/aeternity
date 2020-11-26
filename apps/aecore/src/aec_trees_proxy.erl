@@ -1,6 +1,7 @@
 -module(aec_trees_proxy).
 
 -export([ prepare_for_par_eval/1
+        , par_eval/4
         , start_monitor/4 ]).
         %% , register_clients/2 ]).
 
@@ -51,10 +52,12 @@
                     , deps          := deps_map()
                     , claims        := claims_map() }.
 
--record(st, { trees         :: trees()
+-record(st, { parent        :: pid()
+            , trees         :: trees()
             , env           :: aetx_env:env()
             , proxy_trees   :: aec_trees:trees()
             , dontverify    :: boolean()
+            , strict        :: boolean()
             %% , ctrees        :: #{ index() => aec_trees:trees() }
             , status  = #{} :: #{ index() => done | ongoing }
             , deps    = #{} :: deps_map()
@@ -62,8 +65,8 @@
             , clients = #{} :: #{ index() => {pid(), reference(), signed_tx()} }
             , pids    = #{} :: #{ pid() => index() }
             , pending = gb_trees:empty()  :: gb_trees:tree(index(), req())
-            , valid   = []  :: [signed_tx()]
-            , invalid = []  :: [signed_tx()]
+            , valid   = []  :: [{index(), signed_tx()}]
+            , invalid = []  :: [{index(), signed_tx()}]
             , events  = []  :: aetx_env:events() }).
 
 -record(pstate, { cache :: term()
@@ -73,16 +76,31 @@
 -include_lib("aeutils/include/aeu_proxy.hrl").
 -include_lib("mnesia/src/mnesia.hrl").
 
+par_eval(Trees, Env, Context, Opts) ->
+    {ok, {Pid, MRef}} = start_monitor(Trees, Env, Context, Opts),
+    receive
+        {Pid, result, Result} ->
+            receive
+                {'DOWN', MRef, _, _, _} ->
+                    Result
+            end;
+        {'DOWN', MRef, _, _, Error} ->
+            {error, Error}
+    after 5000 ->
+            {error, timeout}
+    end.
+
 -spec start_monitor(aec_trees:trees(), aetx_env:env(), context(), proplist()) ->
           {ok, {pid(), reference()}}.
 -if(?OTP_RELEASE >= 23).
 start_monitor(Trees, Env, #{indexed := _} = Ctxt, Opts) ->
-    gen_server:start_monitor(?MODULE, {Trees, Env, Ctxt}, []).
+    gen_server:start_monitor(?MODULE, {self(), Trees, Env, Ctxt}, []).
 -else.
 start_monitor(Trees, Env, #{indexed := _} = Ctxt, Opts) ->
     _TStore = get_tstore(),
-    lager:debug("_TStore = ~p", [_TStore]),
-    {ok, Pid} = gen_server:start(?MODULE, {Trees, Env, Ctxt, Opts}, []),
+    %% lager:debug("_TStore = ~p", [_TStore]),
+    %% lager:debug("Context = ~p", [Ctxt]),
+    {ok, Pid} = gen_server:start(?MODULE, {self(), Trees, Env, Ctxt, Opts}, []),
     MRef = monitor(process, Pid),
     {ok, {Pid, MRef}}.
 -endif.
@@ -91,22 +109,25 @@ start_monitor(Trees, Env, #{indexed := _} = Ctxt, Opts) ->
 %% Gen_server side
 %% ======================================================================
 
--spec init({trees(), env(), context(), proplist()}) -> {ok, #st{}}.
-init({Trees, Env, #{ indexed := Indexed
-                   , deps    := Deps
-                   , claims  := Claims }, Opts}) ->
+-spec init({pid(), trees(), env(), context(), proplist()}) -> {ok, #st{}}.
+init({Parent, Trees, Env, #{ indexed := Indexed
+                           , deps    := Deps
+                           , claims  := Claims }, Opts}) ->
     ArgF = fun(Type) ->
                    aeu_mtrees:proxy_tree(?MODULE, #{ type => Type
                                                    , pid  => self() })
            end,
     ProxyTrees = aec_trees:proxy_trees(ArgF),
     DontVerify = proplists:get_value(dont_verify_signature, Opts, false),
+    Strict = proplists:get_value(strict, Opts, false),
     Events = aetx_env:events(Env),
-    S0 = #st{ clients     = #{}
+    S0 = #st{ parent      = Parent
+            , clients     = #{}
             , deps        = Deps
             , claims      = Claims
             , proxy_trees = ProxyTrees
             , dontverify  = DontVerify
+            , strict      = Strict
             , env         = Env
             , trees       = Trees
             , events      = Events },
@@ -118,13 +139,18 @@ handle_call({?MODULE, #req{} = Req}, {Pid, _} = From, #st{} = St) ->
 handle_cast(_, St) ->
     {noreply, St}.
 
-handle_info({'DOWN', _MRef, process, Pid, Reason}, #st{ clients = Cs } = St) ->
-    case maps:find(Pid, Cs) of
+handle_info({'DOWN', _MRef, process, Pid, Reason}, #st{ pids = Pids } = St) ->
+    case maps:find(Pid, Pids) of
         {ok, Ix} ->
             lager:debug("DOWN (~p) -> tx ~p", [Pid, Ix]),
-            tx_down(Ix, Reason, St#st{clients = maps:remove(Pid, Cs)});
+            lager:debug("Reason = ~p", [Reason]),
+            Pids1 = maps:remove(Pid, Pids),
+            lager:debug("Pids1 = ~p", [Pids1]),
+            lager:debug("Deps = ~p", [St#st.deps]),
+            lager:debug("St = ~p", [lager_pr(St)]),
+            tx_down(Ix, Pid, Reason, St#st{pids = Pids1});
         error ->
-            lager:debug("Ignoring DOWN from ~p", [Pid]),
+            lager:debug("Ignoring DOWN from ~p (Pids = ~p", [Pid, Pids]),
             {noreply, St}
     end;
 handle_info(_, St) ->
@@ -136,8 +162,10 @@ terminate(_Reason, _St) ->
 code_change(_FromVsn, St, _Extra) ->
     {ok, St}.
 
-tx_down(Ix, Reason, #st{ status = Status
-                       , events = Events0 } = St) ->
+tx_down(_Ix, Pid, {'$caught', Type, What}, #st{strict = true} = St) ->
+    throw_error(Type, What, Pid, St);
+tx_down(Ix, _Pid, Reason, #st{ status = Status
+                             , events = Events0 } = St) ->
     %% All valid txs must have at least some claims.
     {IsValid, Events} =
         case Reason of
@@ -148,7 +176,23 @@ tx_down(Ix, Reason, #st{ status = Status
         end,
     St1 = log_valid(IsValid, Ix, St#st{ status = Status#{Ix => done}
                                       , events = Events }),
-    {noreply, serve_pending(St1)}.
+    case map_size(St1#st.pids) of
+        0 ->
+            lager:debug("No workers left", []),
+            #st{parent = Parent, valid = Valid, invalid = Invalid, trees = Trees} = St1,
+            Valid1 = [STx || {_, STx} <- lists:keysort(1, Valid)],
+            Invalid1 = [STx || {_, STx} <- lists:keysort(1, Invalid)],
+            Parent ! {self(), result, {ok, Valid1, Invalid1, Trees, Events}},
+            {stop, normal, St1};
+        _ ->
+            {noreply, serve_pending(St1)}
+    end.
+
+throw_error(Type, What, Pid, #st{parent = Parent, clients = Cs} = St) ->
+    [kill_worker(W) || {P,_,_} = W <- maps:values(Cs),
+                       P =/= Pid],
+    Parent ! {self(), result, {error, {Type, What}}},
+    {stop, normal, St}.
 
 -spec start_workers(indexed_txs(), aec_trees:trees(), aetx_env:env(), boolean(), #st{}) -> #st{}.
 start_workers(IndexedTxs, ProxyTrees, Env, DontVerify, S) ->
@@ -188,10 +232,9 @@ restart_worker(Ix, #st{ clients     = Cs0
                       , proxy_trees = ProxyTrees
                       , dontverify  = DontVerify } = S) ->
     case maps:find(Ix, Cs0) of
-        {ok, {Pid, MRef, SignedTx}} ->
+        {ok, {Pid, _, SignedTx} = Worker} ->
             lager:debug("Restarting worker ~p (~p)", [Ix, Pid]),
-            erlang:demonitor(MRef),
-            exit(Pid, kill),
+            kill_worker(Worker),
             {Cs, Pids} = start_worker(
                            Ix, SignedTx, ProxyTrees, Env, DontVerify,
                            {Cs0, maps:remove(Pid, Pids0)}),
@@ -200,14 +243,19 @@ restart_worker(Ix, #st{ clients     = Cs0
             S
     end.
 
+kill_worker({Pid, MRef, _}) ->
+    erlang:demonitor(MRef),
+    exit(Pid, kill).
+
 -spec prepare_for_par_eval([signed_tx()]) -> context().
 prepare_for_par_eval(SignedTxs) ->
     {IndexedTxs, {TxCnt, {MaxDepCnt, Deps, Claims}}} =
         lists:mapfoldl(
           fun(SignedTx, {N, Acc}) ->
-                  { {N, SignedTx},
-                    {N+1, log_initial_deps(SignedTx, N, Acc)} }
-          end, {1, {0, #{}, #{}}}, SignedTxs),
+                  N1 = N+1,
+                  { {N1, SignedTx},
+                    {N1, log_initial_deps(SignedTx, N, Acc)} }
+          end, {0, {0, #{}, #{}}}, SignedTxs),
     #{ indexed       => IndexedTxs
      , tx_count      => TxCnt
      , max_dep_count => MaxDepCnt
@@ -261,7 +309,7 @@ apply_one_tx(SignedTx, Trees, Env, DontVerify, Protocol) ->
     catch
         Type:What:ST ->
             lager:debug("CAUGHT: ~p:~p / ~p", [Type, What, ST]),
-            exit({Type, What})
+            exit({'$caught', Type, What})
     end.
 
 -spec log_valid(boolean(), index(), #st{}) -> #st{}.
@@ -269,9 +317,9 @@ log_valid(IsValid, Ix, #st{valid = Valid, invalid = Invalid, clients = Cs} = St)
     {_, _, SignedTx} = maps:get(Ix, Cs),
     case IsValid of
         true->
-            St#st{valid = [SignedTx | Valid]};
+            St#st{valid = [{Ix, SignedTx} | Valid]};
         false ->
-            St#st{invalid = [SignedTx | Invalid]}
+            St#st{invalid = [{Ix, SignedTx} | Invalid]}
     end.
 
 maybe_add_pend(Mode, Ix, Req, #st{pending = Pend} = St) ->
@@ -305,32 +353,46 @@ serve_pending({Ix, Req, I}, #st{pending = Pend, status = Status} = St) ->
 handle_req(Req, Pid, #st{pids = Pids} = St) ->
     case maps:find(Pid, Pids) of
         {ok, Ix} ->
-            try_serve_req(Req, Ix, St, new);
+            %% All replies are explicit
+            {noreply, try_serve_req(Req, Ix, St, new)};
         error ->
+            %% ... except this one
             {reply, {'$fail', unknown_pid}, St}
     end.
 
 try_serve_req(#req{op = Op, type = Type, f = F, args = Args, from = From} = Req, Ix, St, Mode) ->
-    case check_deps(Req, Ix, St) of
+    try check_deps(Req, Ix, St) of
         {reply, Reply, St1} ->
-            gen_server:reply(From, Reply),
+            reply(From, Ix, Reply),
             maybe_remove_pend(Mode, Ix, St1);
         {ok, St1} ->
             {Res, St2} = perform_req(Op, F, Args, Type, St1),
-            gen_server:reply(From, Res),
+            reply(From, Ix, Res),
             maybe_remove_pend(Mode, Ix, St2);
         {wait, St1} ->
-            maybe_add_pend(Mode, Ix, Req, St1)
+            maybe_add_pend(Mode, Ix, Req, St1);
+        {restart, _, St1} ->
+            lager:debug("Restarting worker ~p (Mode: ~p)", [Ix, Mode]),
+            restart_worker(Ix, St1)
+    catch
+        throw:{error, _} = Error ->
+            reply(From, Ix, Error),
+            St
         %% {error, _} = Err ->
         %%     gen_server:reply(From, {'$fail', Err}),
         %%     maybe_remove_pend(Mode, Ix, St)
     end.
 
+reply(From, Ix, Reply) ->
+    lager:debug("Reply(~p): ~p", [Ix, Reply]),
+    gen_server:reply(From, Reply).
+
 perform_req(get, F, Args, Type, St) ->
     {perform_get(F, Args, Type, St), St};
 perform_req(put, F, Args, Type, St) ->
-    {Res, Tree} = perform_put(F, Args, Type, St),
-    {Res, set_mtree(Type, Tree, St)}.
+    lager:debug("F = ~p, Args = ~p, Type = ~p", [F, Args, Type]),
+    Tree = perform_put(F, Args, Type, St),
+    {ok, set_mtree(Type, Tree, St)}.
 
 perform_get(lookup, {Key}, Type, St) ->
     aeu_mtrees:lookup(Key, get_mtree(Type, St));
@@ -369,12 +431,13 @@ deps_ids(read_only_subtree, {Key}, Type, Trees) ->
     Tree = aec_trees:get_mtree(Type, Trees),
     case aeu_mtrees:read_only_subtree(Key, Tree) of
         {ok, Subtree} ->
-            {[ {Type, K} || {K, _} <- aeu_mtrees:to_list(Subtree) ], Subtree};
-        {error, _} ->
-            []
+            {[ {Type, K} || {K, _} <- aeu_mtrees:to_list(Subtree) ], {ok, Subtree}};
+        {error, _} = Error ->
+            throw(Error)
     end.
 
-check_deps(#req{type = Type, f = F, args = Args}, Ix, #st{trees = Trees} = St) ->
+check_deps(#req{type = Type, f = F, args = Args} = Req, Ix, #st{trees = Trees} = St) ->
+    lager:debug("Req = ~p", [lager:pr(Req, ?MODULE)]),
     case deps_ids(F, Args, Type, Trees) of
         {Ids, CachedResult} ->
             %% e.g. for read_only_subtree
@@ -502,13 +565,14 @@ proxy_init(#{ type := Type
                                    , type  = Type
                                    , pid   = Pid } }.
 
-proxy_get(Mod, F, Args, P) ->
+proxy_get(F, Mod, Args, P) ->
     call(#req{op = get, mod = Mod, f = F, args = Args}, P).
 
-proxy_put(Mod, F, Args, P) ->
-    call(#req{op = put, mod = Mod, f = F, args = Args}, P).
+proxy_put(F, Mod, Args, P) ->
+    ok = call(#req{op = put, mod = Mod, f = F, args = Args}, P),
+    P.
 
-proxy_iter(_Mod, _F, _Args, _I) ->
+proxy_iter(_F, _Mod, _Args, _I) ->
     error(nyi).
 
 call(#req{} = Req, #proxy_mp_tree{state = #pstate{ pid  = Proxy
@@ -520,3 +584,6 @@ call(#req{} = Req, #proxy_mp_tree{state = #pstate{ pid  = Proxy
             Reply
     end.
 
+-dialyzer({nowarn_function, lager_pr/1}).
+lager_pr(St) ->
+    lager:pr(St#st{trees=hidden, proxy_trees=hidden}, ?MODULE).

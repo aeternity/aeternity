@@ -13,6 +13,10 @@
 -define(TEST_MODULE, aec_trees).
 -define(MINER_PUBKEY, <<42:?MINER_PUB_BYTES/unit:8>>).
 
+-define(OPTS, [{line, ?LINE}, {fname, ?FUNCTION_NAME}]).
+
+-define(SOPHIA_IRIS_FATE, 6).
+
 ensure_account_test_() ->
     [{"Not existing account is created with 0 balance",
       fun() ->
@@ -38,6 +42,7 @@ ensure_account_test_() ->
 signatures_check_test_() ->
     {setup,
      fun() ->
+             ok = ensure_logging(),
              ok = meck:new(aec_chain, [passthrough]),
              meck:expect(aec_chain, get_top_state, 0, {ok, aec_trees:new()}),
              aec_test_utils:aec_keys_setup()
@@ -61,7 +66,7 @@ signatures_check_test_() ->
             TreesIn = aec_test_utils:create_state_tree_with_account(Account),
             Env = aetx_env:tx_env(1),
             {ok, ValidTxs, _InvalidTxs, _Trees, _Events} =
-                ?TEST_MODULE:apply_txs_on_state_trees(SignedTxs, TreesIn, Env),
+                apply_txs_on_state_trees(SignedTxs, TreesIn, Env, ?OPTS),
             ?assertEqual(SignedTxs, ValidTxs),
             ok
         end}
@@ -71,7 +76,7 @@ signatures_check_test_() ->
             MalformedTxs = [aec_test_utils:sign_tx(Tx, <<0:64/unit:8>>)],
             Env = aetx_env:tx_env(1),
             {ok, ValidTxs, _InvalidTxs, _Trees, _Events} =
-                ?TEST_MODULE:apply_txs_on_state_trees(MalformedTxs, aec_trees:new(), Env),
+                apply_txs_on_state_trees(MalformedTxs, aec_trees:new(), Env, ?OPTS),
             ?assertEqual([], ValidTxs),
             ok
         end}
@@ -80,6 +85,7 @@ signatures_check_test_() ->
 process_txs_test_() ->
     {setup,
      fun() ->
+             ok = ensure_logging(),
              ok = meck:new(aetx, [passthrough]),
              aec_test_utils:aec_keys_setup()
      end,
@@ -105,13 +111,104 @@ process_txs_test_() ->
             meck:expect(aetx, process, fun(_, _, _) -> error(foo) end),
 
             {ok, ValidTxs, SignedTxs, _Trees, _Events} =
-                ?TEST_MODULE:apply_txs_on_state_trees(SignedTxs, TreesIn, Env),
+                apply_txs_on_state_trees(SignedTxs, TreesIn, Env, ?OPTS),
             ?assertEqual([], ValidTxs),
             {error, {error, foo}} =
-                ?TEST_MODULE:apply_txs_on_state_trees_strict(SignedTxs, TreesIn, Env),
+                apply_txs_on_state_trees(SignedTxs, TreesIn, Env, [strict|?OPTS]),
             ok
         end}
      ]}.
+
+par_eval_test_() ->
+    {setup,
+     fun() ->
+             ok = ensure_logging(),
+             TmpKeysDir = aec_test_utils:aec_keys_setup(),
+             St0 = #{keys_dir => TmpKeysDir},
+             setup_par_eval_ctxt(St0)
+     end,
+     fun(#{keys_dir := TmpKeysDir}) ->
+             ok = aec_test_utils:aec_keys_cleanup(TmpKeysDir)
+     end,
+     fun(S) ->
+             [ {"1 spend tx",
+                fun() -> normal_par_eval([ {spend, 0, 1, 10} ], S, ?OPTS) end},
+               {"2 txs, same account",
+                fun() ->
+                        %% start_trace(),
+                        %% try
+                        normal_par_eval([ {spend, 0, 1, 10}
+                                        , {spend, 0, 2, 10} ], S, ?OPTS)
+                        %% after
+                        %%     stop_trace()
+                        %% end
+                end},
+               {"3 txs, nothing shared",
+                fun() ->
+                        normal_par_eval([ {spend, 0, 1, 10}
+                                        , {spend, 2, 3, 10}
+                                        , {spend, 4, 5, 10} ], S, ?OPTS)
+                end},
+               {"4 txs, nothing shared",
+                fun() ->
+                        normal_par_eval([ {spend, 0, 1, 10}
+                                        , {spend, 2, 3, 10}
+                                        , {spend, 4, 5, 10}
+                                        , {spend, 6, 7, 10} ], S, ?OPTS)
+                end},
+               {"5 txs, nothing shared",
+                fun() ->
+                        normal_par_eval([ {spend, 0, 1, 10}
+                                        , {spend, 2, 3, 10}
+                                        , {spend, 4, 5, 10}
+                                        , {spend, 6, 7, 10}
+                                        , {spend, 8, 9, 10} ], S, ?OPTS)
+                end},
+               {"6 txs, nothing shared",
+                fun() ->
+                        normal_par_eval([ {spend, 0, 1, 10}
+                                        , {spend, 2, 3, 10}
+                                        , {spend, 4, 5, 10}
+                                        , {spend, 6, 7, 10}
+                                        , {spend, 8, 9, 10}
+                                        , {spend, 10, 11, 10} ], S, ?OPTS)
+                end},
+               {"7 txs, nothing shared",
+                fun() ->
+                        normal_par_eval([ {spend, 0, 1, 10}
+                                        , {spend, 2, 3, 10}
+                                        , {spend, 4, 5, 10}
+                                        , {spend, 6, 7, 10}
+                                        , {spend, 8, 9, 10}
+                                        , {spend, 10, 11, 10}
+                                        , {spend, 12, 13, 10} ], S, ?OPTS)
+                end},
+               {"8 txs, nothing shared",
+                fun() ->
+                        normal_par_eval([ {spend, 0, 1, 10}
+                                        , {spend, 2, 3, 10}
+                                        , {spend, 4, 5, 10}
+                                        , {spend, 6, 7, 10}
+                                        , {spend, 8, 9, 10}
+                                        , {spend, 10, 11, 10}
+                                        , {spend, 12, 13, 10}
+                                        , {spend, 14, 15, 10} ], S, ?OPTS)
+                end}
+                        %% after
+                        %%     stop_trace()
+                        %% end
+                        %% end}
+             ]
+     end}.
+
+normal_par_eval(AbstTxs, S, Opts) ->
+    {SignedTxs, S1} = signed_txs(AbstTxs, S),
+    #{trees := TreesIn, env := Env} = S1,
+    {ok, ValidTxs, InvalidTxs, _Trees, _Events} =
+        apply_txs_on_state_trees(SignedTxs, TreesIn, Env, Opts),
+    ?assertEqual(SignedTxs, ValidTxs),
+    ?assertEqual([], InvalidTxs),
+    ok.
 
 make_spend_tx(Sender, Recipient) ->
     {ok, SpendTx} = aec_spend_tx:new(#{sender_id => aeser_id:create(account, Sender),
@@ -738,8 +835,160 @@ ct_create_tx(Sender, VmVersion, ABIVersion) ->
     {ok, Tx} = aect_create_tx:new(Spec),
     Tx.
 
+apply_txs_on_state_trees(SignedTxs, TreesIn, Env, Opts) ->
+    T0 = erlang:system_time(microsecond),
+    SeqRes = ?TEST_MODULE:apply_txs_on_state_trees(SignedTxs, TreesIn, Env, Opts),
+    T1 = erlang:system_time(microsecond),
+    ParRes = ?TEST_MODULE:apply_txs_on_state_trees(SignedTxs, TreesIn, Env, [parallel|Opts]),
+    T2 = erlang:system_time(microsecond),
+    io:fwrite(user, "~s N = ~p, SeqT = ~p, ParT = ~p~n",
+              [fn(Opts), length(SignedTxs), T1-T0, T2-T1]),
+    %% ?assertEqual({SeqRes,Opts}, {ParRes,Opts}),
+    diff_results(SeqRes, ParRes),
+    SeqRes.
+
+diff_results({ok, VTxs1, ITxs1, Trees1, Evts1},
+             {ok, VTxs2, ITxs2, Trees2, Evts2}) ->
+    Tests = [ {valid_txs, VTxs1, VTxs2}
+            , {invalid_txs, ITxs1, ITxs2}
+            , {tree_hashes, hashes(Trees1), hashes(Trees2)}
+            , {events, Evts1, Evts2} ],
+    case lists:filter(fun({_, A, B}) -> A =/= B end, Tests) of
+        [] ->
+            ok;
+        Diffs ->
+            error({not_equal, Diffs})
+    end;
+diff_results({ok,_,_,_,_}, Other) ->
+    error({par_failed, Other});
+diff_results(Other, {ok,_,_,_,_}) ->
+    error({seq_failed, Other});
+diff_results(Other, Other) ->
+    ok.
+
+hashes(Trees) ->
+    lists:foldr(
+      fun({Type, Mod}, Acc) ->
+              Tree = aec_trees:get_tree(Type, Trees),
+              [{Type, hash(Type, Mod, Tree)}|Acc]
+      end, [], aec_trees:types()).
+
+hash(Type, Mod, Tree) when Type == ns; Type == oracles ->
+    {Mod:root_hash(Tree), Mod:cache_root_hash(Tree)};
+hash(_, Mod, Tree) ->
+    Mod:root_hash(Tree).
+
+fn(Opts) ->
+    Fname = proplists:get_value(fname, Opts, unknown),
+    Line = proplists:get_value(line, Opts, unknown),
+    lists:flatten(io_lib:fwrite("~w:~w", [Fname, Line])).
+
+setup_par_eval_ctxt(#{} = S0) ->
+    {ok, MainPub, MainPriv} = aec_test_utils:wait_for_pubkey(),
+    MainAcct = aec_accounts:new(MainPub, amount(1000000000)),
+    Trees0 = aec_test_utils:create_state_tree_with_accounts([MainAcct], no_backend),
+    Env = aetx_env:tx_env(1),
+    {Accts, Trees1} = lists:foldl(
+                        fun(N, {Acctsx, Treesx}) ->
+                                new_account(N, Acctsx, Treesx)
+                        end, {#{0 => #{ pub   => MainPub
+                                      , priv  => MainPriv
+                                      , nonce => 1}}, Trees0}, lists:seq(1,15)),
+    S0#{ accounts => Accts
+       , trees    => Trees1
+       , env      => Env }.
+
+%% add_contract(Name, Ix, S) ->
+%%     case compile_contract(Name) of
+%%         {ok, Code} ->
+%%             create_contract_with_code(Owner, Name, Args, Options, S);
+%%         {error, Reason} ->
+%%             error({fail, {error, compile_should_work, got, Reason}})
+%%     end.
+
+%% compile_contract(Name) ->
+%%     aect_test_utils:compile_contract(sophia_version(), Name).
+
+%% sophia_version() ->
+%%     ?SOPHIA_IRIS_FATE.
+
+
+
+new_account(N, Accts, Trees) ->
+    {Pub, Priv} = new_key_pair(),
+    A = aec_accounts:new(Pub, amount(1000000000)),
+    AcctTree = aec_accounts_trees:enter(A, aec_trees:accounts(Trees)),
+    Trees1 = aec_trees:set_accounts(Trees, AcctTree),
+    {Accts#{N => #{ pub   => Pub
+                  , priv  => Priv
+                  , nonce => 1}}, Trees1}.
+
+amount(X) ->
+    X * aec_test_utils:min_gas_price().
+
+new_key_pair() ->
+    #{ public := Pubkey, secret := Privkey } = enacl:sign_keypair(),
+    {Pubkey, Privkey}.
+
+signed_txs(L, S) ->
+    lists:mapfoldl(
+      fun(T, Sx) ->
+              signed_tx(T, Sx)
+      end, S, L).
+
+signed_tx({spend, A1, A2, Amt}, #{accounts := Accts} = S) ->
+    #{pub := Pub1, priv := Priv1, nonce := Nonce} = maps:get(A1, Accts),
+    #{pub := Pub2} = maps:get(A2, Accts),
+    {ok, Tx} = aec_spend_tx:new(#{ sender_id    => aeser_id:create(account, Pub1)
+                                 , recipient_id => aeser_id:create(account, Pub2)
+                                 , amount       => Amt
+                                 , fee          => amount(100)
+                                 , nonce        => Nonce
+                                 , payload      => <<>> }),
+    {aec_test_utils:sign_tx(Tx, Priv1), incr_nonce(A1, S)}.
+
+incr_nonce(N, #{accounts := As} = S) ->
+    #{nonce := Nonce} = A = maps:get(N, As),
+    S#{accounts => As#{N => A#{nonce => Nonce + 1}}}.
+
 %% Unused
 %% vm_versions() ->
 %%     [ ?AEVM_01_Sophia_01
 %%     , ?AEVM_01_Solidity_01
 %%     ].
+
+ensure_logging() ->
+    case whereis(lager_event) of
+        undefined ->
+            io:fwrite(user, "starting lager~n", []),
+            start_logging();
+        P when is_pid(P) ->
+            io:fwrite(user, "Lager already started ~n", []),
+            ok
+    end.
+
+start_logging() ->
+    Dir = filename:join(filename:dirname(code:which(?MODULE)), "log"),
+    ok = application:load(lager),
+    ok = application:set_env(lager, log_root, Dir),
+    ok = application:set_env(lager, handlers,
+                             [{lager_file_backend,[{file,"debug.log"},{level,debug}]}]),
+    {ok,_} = application:ensure_all_started(lager),
+    ok.
+
+
+start_trace() ->
+    %% dbg:tracer(),
+    tr_ttb:dbg_tracer(#{time_resolution => microsecond}),
+    dbg:tpl(aec_trees,x),
+    %% [dbg:tpl(aec_trees,Fn,x)
+    %%  || Fn <- [ apply_txs_on_state_trees_strict
+    %%          , apply_txs_on_state_trees
+    %%          , apply_txs_on_state_trees_
+    %%          , apply_one_tx]],
+    dbg:tpl(aec_trees_proxy,x),
+    dbg:p(all,[c, timestamp]).
+
+stop_trace() ->
+    dbg:ctpl('_'),
+    tr_ttb:dbg_stop().

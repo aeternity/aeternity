@@ -66,7 +66,8 @@
          verify_poi/4
         ]).
 
--export([record_fields/1]).
+-export([ record_fields/1
+        , pp_term/1 ]).
 
 -ifdef(TEST).
 -export([internal_serialize_poi_fields/1,
@@ -133,13 +134,58 @@
 %% Tracing support
 record_fields(trees) -> record_info(fields, trees);
 record_fields(poi  ) -> record_info(fields, poi);
-record_fields(_    ) -> {check_mods, [ aeu_mp_trees
+record_fields(_    ) -> {check_mods, [ aetx_sign
+                                     , aeu_mp_trees
                                      , aec_accounts_trees
                                      , aect_state_tree
                                      , aect_call_state_tree
                                      , aec_state_tree
                                      , aens_state_tree
-                                     , aeo_state_tree ]}.
+                                     , aeo_state_tree | aetx:tx_callbacks() ]}.
+
+-dialyzer([{nowarn_function, pp_term/1}, no_opaque]).
+pp_term(#trees{ accounts  = A
+              , calls     = C
+              , channels  = Ch
+              , contracts = Co
+              , ns      = Ns
+              , oracles   = Or } = Trees) ->
+    {yes, Trees#trees{ accounts  = sub_pp(aec_accounts_trees, A)
+                     , calls     = sub_pp(aect_call_state_tree, C)
+                     , channels  = sub_pp(aesc_state_tree, Ch)
+                     , contracts = sub_pp(aect_state_tree, Co)
+                     , ns        = sub_pp(aens_state_tree, Ns)
+                     , oracles   = sub_pp(aeo_state_tree, Or) }};
+pp_term(T) when element(1, T) == mpt ->
+    Handle = aeu_mp_trees_db:get_handle(aeu_mp_trees:db(T)),
+    {Tag, Deserialize} = deser_fun(Handle),
+    aeu_mp_trees:tree_pp_term(T, Tag, Deserialize);
+pp_term(_) ->
+    no.
+
+sub_pp(M, X) ->
+    tr_ttb:pp_term(X, M).
+
+%% This is dirty, but will have to do for now.
+-dialyzer([{nowarn_function, deser_fun/1}, no_unused]).
+deser_fun(accounts) -> {'$accounts', fun aec_accounts:deserialize/2};
+deser_fun(dirty_accounts) -> {'$accounts', fun aec_accounts:deserialize/2};
+deser_fun(calls) -> {'$calls', fun aect_call:deserialize/2};
+deser_fun(dirty_calls) -> {'$calls', fun aect_call:deserialize/2};
+deser_fun(channels) -> {'$channels', fun aesc_channels:deserialize/2};
+deser_fun(dirty_channels) -> {'$channels', fun aesc_channels:deserialize/2};
+deser_fun(contracts) -> {'$contracts', fun aect_contracts:deserialize/2};
+deser_fun(dirty_contracts) -> {'$contracts', fun aect_contracts:deserialize/2};
+deser_fun(ns) -> {'$ns', fun aens_state_tree:deserialize_name_or_commitment/2};
+deser_fun(dirty_ns) -> {'$ns', fun aens_state_tree:deserialize_name_or_commitment/2};
+deser_fun(ns_cache) -> {'$ns', fun aens_state_tree:deserialize_name_or_commitment/2};
+deser_fun(dirty_ns_cache) -> {'$ns', fun aens_state_tree:deserialize_name_or_commitment/2};
+deser_fun(oracles) -> {'$oracles', fun aeo_state_tree:deserialize_value/2};
+deser_fun(dirty_oracles) -> {'$oracles', fun aeo_state_tree:deserialize_value/2};
+deser_fun(oracles_cache) -> {'$oracles', fun aeo_state_tree:deserialize_value/2};
+deser_fun(dirty_oracles_cache) -> {'$oracles', fun aeo_state_tree:deserialize_value/2};
+deser_fun(_) -> {'$mpt', fun(X) -> X end}.
+
 %% ==================================================================
 
 %%%%=============================================================================
@@ -745,25 +791,28 @@ apply_txs_on_state_trees(SignedTxs, Trees, Env, Opts) ->
 -spec par_apply_txs_on_state_trees(signed_txs(), valid_txs(), invalid_txs(),
                                    trees(), env(), opts()) -> apply_result().
 par_apply_txs_on_state_trees(SignedTxs, Valid, Invalid, Trees, Env, Opts) ->
-    ParMaxDeps = proplists:get_value(par_max_deps_ratio, Opts, 0.7),
+    ParMaxDeps = proplists:get_value(par_max_deps_ratio, Opts, undefined),
     case aec_trees_proxy:prepare_for_par_eval(SignedTxs) of
-        #{tx_count := TxC, max_dep_count := DepC} when DepC / TxC > ParMaxDeps ->
+        #{tx_count := TxC, max_dep_count := DepC} when (DepC / TxC) > ParMaxDeps ->
             lager:debug("Too many deps (~p/~p); falling back to serial", [DepC, TxC]),
             apply_txs_on_state_trees_(SignedTxs, Valid, Invalid, Trees, Env, Opts);
         Context ->
             Strict     = proplists:get_value(strict, Opts, false),
-            {ok, {Proxy, MRef}} = aec_trees_proxy:start_monitor(Trees, Env, Context, Opts),
-            receive
-                {'DOWN', MRef, process, Proxy, Result} ->
-                    check_par_apply_result(Result, Valid, Invalid, Trees, Env,
-                                           SignedTxs, Strict)
-            end
+            %% {ok, {Proxy, MRef}} = aec_trees_proxy:start_monitor(Trees, Env, Context, Opts),
+            %% lager:debug("{Proxy, MRef} = ~p", [{Proxy, MRef}]),
+            %% receive
+            %%     {'DOWN', MRef, process, Proxy, Result} ->
+            Result = aec_trees_proxy:par_eval(Trees, Env, Context, Opts),
+            lager:debug("Result = ~p", [Result]),
+            check_par_apply_result(Result, Valid, Invalid, Trees, Env,
+                                   SignedTxs, Strict)
+            %% end
     end.
 
 check_par_apply_result(Result, Valid, Invalid, Trees, Env,
                        SignedTxs, Strict) ->
     case Result of
-        {ok, {Valid1, Invalid1, Trees1, Events1}} ->
+        {ok, Valid1, Invalid1, Trees1, Events1} ->
             ValidTxs = fetch_txs(Valid1, SignedTxs),
             InvalidTxs = fetch_txs(Invalid1, SignedTxs),
             {ok, Valid ++ ValidTxs, Invalid ++ InvalidTxs, Trees1, Events1};

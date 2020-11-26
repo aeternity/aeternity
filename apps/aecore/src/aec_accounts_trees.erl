@@ -16,7 +16,6 @@
          new_with_backend/1,
          new_with_dirty_backend/1,
          gc_cache/1,
-         list_cache/1,
          enter/2]).
 
 %% API - Merkle tree
@@ -36,6 +35,9 @@
         , lookup_poi/2
         ]).
 
+-export([ record_fields/1
+        , pp_term/1 ]).
+
 -ifdef(TEST).
 -export([delete/2]).
 -endif.
@@ -50,6 +52,17 @@
 -type key() :: aec_keys:pubkey().
 -type value() :: aec_accounts:deterministic_account_binary_with_pubkey().
 -opaque tree() :: aeu_mtrees:mtree(key(), value()).
+
+%% ==================================================================
+%% Trace support
+
+record_fields(_) -> {check_mods, [ aec_accounts ]}.
+
+pp_term(Term) ->
+    aeu_mp_trees:tree_pp_term(Term, '$accounts', fun aec_accounts:deserialize/2).
+
+%% ==================================================================
+
 
 -define(VSN, 1).
 %%%===================================================================
@@ -84,9 +97,6 @@ set_mtree(Tree, _) ->
 -spec gc_cache(tree()) -> tree().
 gc_cache(Tree) ->
     aeu_mtrees:gc_cache(Tree).
-
-list_cache(Tree) ->
-    aeu_mtrees:list_cache(Tree).
 
 -spec get(aec_keys:pubkey(), tree()) -> aec_accounts:account().
 get(Pubkey, Tree) ->

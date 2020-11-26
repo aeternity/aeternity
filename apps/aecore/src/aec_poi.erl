@@ -26,6 +26,7 @@
 -export([ mpt_db_get/2
         , mpt_db_put/3
         , mpt_db_drop_cache/1
+        , mpt_db_list_cache/1
         ]).
 
 -export_type([ poi/0
@@ -171,7 +172,7 @@ mpt_db_put(Key, Val, Proof) ->
 mpt_db_drop_cache(_Cache) ->
     error(no_drop_cache_in_proof).
 
-proof_db_list_cache(Cache) ->
+mpt_db_list_cache(Cache) ->
     gb_trees:to_list(Cache).
 
 proof_serialize_to_list(Proof) ->

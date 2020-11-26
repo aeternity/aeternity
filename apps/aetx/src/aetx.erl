@@ -32,10 +32,13 @@
         , signers/2
         , specialize_type/1
         , specialize_callback/1
+        , tx_callbacks/0
         , update_tx/2
         , valid_at_protocol/2
         , check_protocol/2
         ]).
+
+-export([ record_fields/1 ]).
 
 -ifdef(TEST).
 -export([tx/1]).
@@ -182,6 +185,16 @@
 
 
 -optional_callbacks([gas_price/1]).
+
+%% ==================================================================
+%% Tracing support
+
+record_fields(aetx) -> record_info(fields, aetx);
+record_fields(_) ->
+    no.
+
+%% ==================================================================
+
 
 %%%===================================================================
 %%% Getters and setters
@@ -551,6 +564,16 @@ deserialize_from_binary(Bin) ->
     Template = CB:serialization_template(Vsn),
     Fields = aeserialization:decode_fields(Template, RawFields),
     #aetx{cb = CB, type = Type, size = byte_size(Bin), tx = CB:deserialize(Vsn, Fields)}.
+
+tx_callbacks() ->
+    [ aec_spend_tx, aec_paying_for_tx
+    , aeo_register_tx, aeo_extend_tx, aeo_query_tx, aeo_response_tx
+    , aens_preclaim_tx, aens_claim_tx, aens_transfer_tx, aens_update_tx, aens_revoke_tx
+    , aect_call_tx, aect_create_tx
+    , aega_attach_tx, aega_meta_tx
+    , aesc_create_tx, aesc_deposit_tx, aesc_withdraw_tx, aesc_force_progress_tx
+    , aesc_close_solo_tx, aesc_close_mutual_tx, aesc_slash_tx, aesc_settle_tx
+    , aesc_snapshot_solo_tx, aesc_offchain_tx ].
 
 type_to_cb(spend_tx)                    -> aec_spend_tx;
 type_to_cb(oracle_register_tx)          -> aeo_register_tx;

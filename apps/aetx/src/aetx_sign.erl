@@ -38,6 +38,8 @@
          serialize_to_binary/1,
          deserialize_from_binary/1]).
 
+-export([ record_fields/1 ]).
+
 -ifdef(TEST).
 -export([set_tx/2]).
 -endif.
@@ -56,6 +58,15 @@
 -type binary_signed_tx() :: binary().
 
 -define(VALID_PUBK(K), byte_size(K) =:= 32).
+
+%% ==================================================================
+%% Tracing support
+
+record_fields(signed_tx) -> record_info(fields, signed_tx);
+record_fields(_) ->
+    {check_mods, [ aetx ]}.
+
+%% ==================================================================
 
 -spec new(aetx:tx(), [binary()]) -> signed_tx().
 new(Bin, Signatures) when is_binary(Bin) ->

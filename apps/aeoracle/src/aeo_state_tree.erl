@@ -37,7 +37,9 @@
         , to_binary_without_backend/1
         ]).
 
--export([record_fields/1]).
+-export([ record_fields/1
+        , pp_term/1
+        , deserialize_value/2]).
 
 -ifdef(TEST).
 -export([ query_list/1
@@ -85,6 +87,18 @@
 %% Tracing support
 record_fields(oracle_tree) -> record_info(fields, oracle_tree);
 record_fields(_          ) -> no.
+
+pp_term(#oracle_tree{ otree = OT, cache = Cache } = T) ->
+    {yes, T#oracle_tree{ otree = pp_tree(OT)
+                       , cache = pp_tree(Cache) }};
+pp_term(_) ->
+    no.
+
+pp_tree(T) ->
+    tr_ttb:pp_term(T, fun(T1) ->
+                              aeu_mp_trees:tree_pp_term(T1, '$oracles', fun deserialize_value/2)
+                      end).
+
 %% ==================================================================
 
 %%%===================================================================

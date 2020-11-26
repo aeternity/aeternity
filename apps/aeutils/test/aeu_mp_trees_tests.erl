@@ -11,6 +11,7 @@
 %% For internal functional db
 -behavior(aeu_mp_trees_db).
 -export([ mpt_db_drop_cache/1
+        , mpt_db_list_cache/1
         , mpt_db_get/2
         , mpt_db_put/3
         ]).
@@ -600,3 +601,6 @@ mpt_db_put(Key, Val, Dict) ->
 
 mpt_db_drop_cache(_Dict) ->
     dict:new().
+
+mpt_db_list_cache(Dict) ->
+    dict:to_list(Dict).

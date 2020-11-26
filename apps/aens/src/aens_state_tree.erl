@@ -36,7 +36,9 @@
         , to_binary_without_backend/1
         ]).
 
--export([record_fields/1]).
+-export([ record_fields/1
+        , pp_term/1
+        , deserialize_name_or_commitment/2]).
 
 %% Export for test
 -ifdef(TEST).
@@ -74,6 +76,16 @@
 %% Tracing support
 record_fields(ns_tree) -> record_info(fields, ns_tree);
 record_fields(_      ) -> no.
+
+pp_term(#ns_tree{mtree = MTree, cache = CacheMT} = T) ->
+    {yes, T#ns_tree{mtree = pp_tree(MTree), cache = pp_tree(CacheMT)}};
+pp_term(_) ->
+    no.
+
+pp_tree(MTree) ->
+    {yes, PP} = aeu_mp_trees:tree_pp_term(
+                  MTree, '$ns', fun deserialize_name_or_commitment/2),
+    PP.
 %% ==================================================================
 
 %%%===================================================================

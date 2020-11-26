@@ -30,7 +30,8 @@
         , serialize_to_client/1
         ]).
 
--export([record_fields/1]).
+-export([ record_fields/1
+        , pp_term/1 ]).
 
 -ifdef(TEST).
 -export([to_list/1]).
@@ -57,6 +58,10 @@
 %% Tracing support
 record_fields(call_tree) -> record_info(fields, call_tree);
 record_fields(_        ) -> no.
+
+pp_term(Term) ->
+    aeu_mp_trees:tree_pp_term(Term, '$calls', fun aect_call:deserialize/2).
+
 %% ==================================================================
 
 

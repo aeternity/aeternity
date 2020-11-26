@@ -30,6 +30,8 @@
          serialize/1,
          serialize_for_client/1]).
 
+-export([ record_fields/1 ]).
+
 -include_lib("aecontract/include/hard_forks.hrl").
 -include("../../aecontract/include/aecontract.hrl").
 
@@ -54,6 +56,13 @@
 -export_type([account/0, deterministic_account_binary_with_pubkey/0]).
 
 -type deterministic_account_binary_with_pubkey() :: binary().
+
+%% ==================================================================
+%% Tracing support
+record_fields(account) -> record_info(fields, account);
+record_fields(_) -> no.
+
+%% ==================================================================
 
 -spec new(aec_keys:pubkey(), non_neg_integer()) -> account().
 new(Pubkey, Balance) ->
