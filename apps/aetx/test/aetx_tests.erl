@@ -33,28 +33,31 @@ apply_signed_txs_test_() ->
                {ok, MinerPubkey} = aec_keys:pubkey(),
                {ok, MinerPrivkey} = aec_keys:sign_privkey(),
 
-               MinerAccount = aec_accounts:set_nonce(aec_accounts:new(MinerPubkey, 100000), 10),
-               AnotherAccount = aec_accounts:set_nonce(aec_accounts:new(?RECIPIENT_PUBKEY, 80000), 12),
+               Nonce = 10,
+               SomeAmt = 40,
+               Fee = 20000,
+               SenderBalance = Fee + SomeAmt + 10, %% some extra, so we don't end with a balance of 0
+               MinerAccount =
+                  aec_accounts:set_nonce(aec_accounts:new(MinerPubkey, SenderBalance),
+                                         Nonce),
+               RecipientBalance = 80000,
+               AnotherAccount =
+                  aec_accounts:set_nonce(aec_accounts:new(?RECIPIENT_PUBKEY,
+                                                          RecipientBalance), 12),
                StateTree0 = aec_test_utils:create_state_tree_with_accounts([MinerAccount, AnotherAccount]),
 
                BlockHeight = 30,
                %% Create 2 signed transactions (1 valid, 1 invalid)
-               {ok, SpendTx} = aec_spend_tx:new(
-                                 #{sender_id => aeser_id:create(account, MinerPubkey),
-                                   recipient_id => aeser_id:create(account, ?RECIPIENT_PUBKEY),
-                                   amount => 40,
-                                   fee => 20000,
-                                   ttl => 100,
-                                   nonce => 11,
-                                   payload => <<"">>}),
-               {ok, OverBalanceTx} = aec_spend_tx:new(
+               {ok, SpendTx} =
+                    spend_tx(#{sender_id => aeser_id:create(account, MinerPubkey),
+                               nonce => Nonce + 1,
+                               fee => Fee,
+                               amount => SomeAmt}),
+               {ok, OverBalanceTx} = spend_tx(
                                        #{sender_id => aeser_id:create(account, MinerPubkey),
-                                         recipient_id => aeser_id:create(account, ?RECIPIENT_PUBKEY),
-                                         amount => 30000,
-                                         fee => 20000,
-                                         ttl => 100,
-                                         nonce => 13,
-                                         payload => <<"">>}),
+                                         amount => SenderBalance + 1,
+                                         fee => Fee,
+                                         nonce => Nonce + 2}),
                SignedSpendTx = aec_test_utils:sign_tx(SpendTx, MinerPrivkey),
                SignedOverBalanceTx = aec_test_utils:sign_tx(OverBalanceTx, MinerPrivkey),
 
@@ -70,7 +73,20 @@ apply_signed_txs_test_() ->
                {value, ResultRecipientAccount} = aec_accounts_trees:lookup(?RECIPIENT_PUBKEY, ResultAccountsTree),
 
                %% Initial balance - spend_tx amount - spend_tx fee
-               ?assertEqual(100000 - 40 - 20000, aec_accounts:balance(ResultMinerAccount)),
-               ?assertEqual(80000 + 40, aec_accounts:balance(ResultRecipientAccount))
+               ?assertEqual(SenderBalance - SomeAmt - Fee, aec_accounts:balance(ResultMinerAccount)),
+               ?assertEqual(RecipientBalance + SomeAmt, aec_accounts:balance(ResultRecipientAccount))
        end
       }]}.
+
+spend_tx(Opts) ->
+    {ok, MinerPubkey} = aec_keys:pubkey(),
+    DefaultOpts =
+        #{sender_id => aeser_id:create(account, MinerPubkey),
+          recipient_id => aeser_id:create(account, ?RECIPIENT_PUBKEY),
+          amount => 40,
+          fee => 20000,
+          ttl => 100,
+          nonce => 11,
+          payload => <<"">>},
+    {ok, _SpendTx} = aec_spend_tx:new(maps:merge(DefaultOpts, Opts)).
+

@@ -516,7 +516,7 @@ accept_existing_db_node_test_() ->
              ok = mnesia:delete_schema([node()])
      end,
      [
-      {"", fun accept_existing_db_node/0}
+      {"Accept existing DB node even if is is already present", fun accept_existing_db_node/0}
      ]}.
 
 accept_existing_db_node() ->
