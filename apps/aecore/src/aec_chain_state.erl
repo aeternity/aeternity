@@ -987,7 +987,7 @@ update_fraud_info(ForkInfoIn, Node, State) ->
 
 handle_top_block_change(OldTopHash, NewTopDifficulty, Node, Events, State) ->
     case get_top_block_hash(State) of
-        OldTopHash -> {State, []};
+        OldTopHash -> {State, no_events()};
         NewTopHash when OldTopHash =:= undefined ->
             NewTopHash = get_genesis_hash(State), %% Internal inconsistency check
             State1 = update_main_chain(NewTopHash, NewTopHash, NewTopHash, State),
