@@ -585,5 +585,4 @@ lager_pr(St) ->
     lager:pr(St#st{trees=hidden, proxy_trees=hidden}, ?MODULE).
 
 %% For trace-based debugging
-event(_L, E) -> ok.
 event(_L, _E, _S) -> ok.
