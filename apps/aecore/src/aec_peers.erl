@@ -276,11 +276,7 @@ parse_peer_address(PeerAddress) ->
         {ok, {aenode, EncPubKey, Host, Port, _Path, _Query}} ->
             case aeser_api_encoder:safe_decode(peer_pubkey, to_binary(EncPubKey)) of
                 {ok, PubKey} ->
-                    PeerInfo = #{
-                        pubkey => PubKey,
-                        host => to_binary(Host),
-                        port => Port
-                    },
+                    PeerInfo = aec_peer:info(PubKey, Host, Port),
                     {ok, PeerInfo};
                 {error, _} = Error ->
                     Error
@@ -352,6 +348,11 @@ peer_id(#conn{ peer = Peer }) ->
 unblock_all() ->
     gen_server:call(?MODULE, unblock_all).
 
+-spec local_peer_info() -> aec_peer:info().
+local_peer_info() ->
+    {ok, LP} = gen_server:call(?MODULE, local_peer_info),
+    LP.
+
 -endif.
 
 %--- BEHAVIOUR gen_server CALLBACKS AND API FUNCTIONS --------------------------
@@ -361,12 +362,17 @@ start_link() ->
 
 init(ok) ->
     {ok, PubKey} = aec_keys:peer_pubkey(),
-    LocalPeer = #{ pubkey => PubKey },
+    LocalExternalPort = aec_connection_sup:ext_sync_port(),
+    %% since we don't know the external IP, the host is set to localhost.
+    %% do not use the host in real life scenario (it is useful for tests,
+    %% though)
+    LocalPeerInfo =
+        aec_peer:info(PubKey, <<"127.0.0.1">>, LocalExternalPort),
     LogTimeout = log_peer_connection_count_interval(),
     erlang:send_after(LogTimeout, self(), log_peer_conn_count_timeout),
-    epoch_sync:info("aec_peers started for ~p", [aec_peer:ppp(LocalPeer)]),
+    epoch_sync:info("aec_peers started for ~p", [aec_peer:ppp(LocalPeerInfo)]),
     {ok, #state{
-        local_peer = LocalPeer,
+        local_peer = LocalPeerInfo,
         pool = aec_peers_pool:new(pool_config()),
         groups = #{},
         conns = #{},
@@ -388,6 +394,8 @@ handle_call({unblock_peer, PeerId}, _From, State0) ->
     {reply, ok, update_peer_metrics(schedule_connect(State))};
 handle_call(unblock_all, _From, State) -> % Only used in tests
     {reply, ok, update_peer_metrics(schedule_connect(unblock_all(State)))};
+handle_call(local_peer_info, _From, #state{local_peer = LocalPeer} = State) -> % Only used in tests
+    {reply, {ok, LocalPeer}, State};
 handle_call({count, Tag}, _From, State) ->
     {reply, count(Tag, State), State};
 handle_call({connected_peers, Tag}, _From, State) ->

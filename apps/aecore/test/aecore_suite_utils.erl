@@ -223,7 +223,6 @@ make_shortcut(Config) ->
     ok = symlink(PrivDir, Shortcut).
 
 start_node(N, Config) ->
-    %TestModule = ?config(test_module, Config),
     MyDir = filename:dirname(code:which(?MODULE)),
     ConfigFilename = proplists:get_value(config_name, Config, "default"),
     Flags = ["-pa ", MyDir, " -config ./" ++ ConfigFilename],
@@ -939,6 +938,9 @@ config_apply_options(_Node, Cfg, []) ->
     Cfg;
 config_apply_options(Node, Cfg, [{block_peers, BlockedPeers}| T]) ->
     Cfg1 = Cfg#{<<"blocked_peers">> => [peer_info(P) || P <- BlockedPeers]},
+    config_apply_options(Node, Cfg1, T);
+config_apply_options(Node, Cfg, [{trusted_peers, Peers}| T]) ->
+    Cfg1 = Cfg#{<<"peers">> => Peers},
     config_apply_options(Node, Cfg1, T);
 config_apply_options(Node, Cfg, [{add_peers, true}| T]) ->
     Cfg1 = Cfg#{<<"peers">> =>

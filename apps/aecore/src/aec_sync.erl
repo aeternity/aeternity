@@ -156,13 +156,30 @@ init([]) ->
             {ok, false} -> [];
             undefined -> []
         end,
-    Peers0       = parse_peers(aeu_env:user_config(<<"peers">>, []) ++ DefaultPeers),
+    ConfigPeers  = aeu_env:user_config(<<"peers">>, []),
+    lager:debug("Config peers: ~p", [ConfigPeers]),
+    lager:debug("Sys config peers: ~p", [DefaultPeers]),
 
+    Peers0       = parse_peers(ConfigPeers ++ DefaultPeers),
     BlockedPeers = parse_peers(aeu_env:user_map_or_env(<<"blocked_peers">>, aecore, blocked_peers, [])),
     Peers        = Peers0 -- BlockedPeers,
+    lager:debug("Peers0: ~p", [Peers0]),
+    lager:debug("Blocked peers: ~p", [BlockedPeers]),
+    lager:info("Trusted peers: ~p", [Peers]),
 
-    [aec_peers:block_peer(P) || P <- BlockedPeers],
     aec_peers:add_trusted(Peers),
+
+    lists:foreach(
+        fun(Peer) ->
+            Source = aec_peer:source(Peer),
+            Info = aec_peer:info(Peer),
+            %% add untrusted
+            aec_peers:add_peers(Source, [Info])
+        end,
+        aec_db:read_all_peers()),
+
+    %% block untrusted peers after they've been added
+    [aec_peers:block_peer(P) || P <- BlockedPeers],
 
     erlang:send_after(rand:uniform(1000), self(), update_sync_progress_metric),
 
@@ -1014,7 +1031,9 @@ parse_peer(P) ->
     case aec_peers:parse_peer_address(P) of
         {ok, PInfo} ->
             [PInfo];
-        {error, _} ->
+        {error, Reason} ->
+            lager:warning("Not adding peer ~p because of error ~p",
+                          [P, Reason]),
             []
     end.
 

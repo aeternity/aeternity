@@ -15,6 +15,7 @@
         , is_trusted/1
         , ppp/1
         , info/1
+        , info/3
         , format_address/1
         , source/1
         , set_source/2
@@ -98,6 +99,11 @@ ppp(X) -> X.
 info(#peer{ host = H, port = P, pubkey = PK }) ->
     #{ host => H, port => P, pubkey => PK }.
 
+info(PK, Host, Port) when is_list(Host) ->
+    info(PK, list_to_binary(Host), Port);
+info(PK, Host, Port) when is_binary(Host) ->
+    #{ host => Host, port => Port, pubkey => PK }.
+
 -spec format_address(peer() | inet:ip_address() | {inet:ip_address(), inet:port_number()})
     -> binary().
 format_address({A, B, C, D}) ->
@@ -129,9 +135,10 @@ is_trusted(#peer{ trusted = Trusted }) -> Trusted.
 set_trusted(Peer, Trusted) ->
     Peer#peer{trusted = Trusted}.
 
-peer_config_info(#peer{ pubkey = PK } = Peer) ->
+peer_config_info(PeerOrInfo) ->
+    PK = pubkey(PeerOrInfo),
     EncodedPK = aeser_api_encoder:encode(peer_pubkey, PK),
-    FormattedAddr = format_address(Peer),
+    FormattedAddr = format_address(PeerOrInfo),
     <<"aenode://", EncodedPK/binary, "@", FormattedAddr/binary>>.
 
 -endif.

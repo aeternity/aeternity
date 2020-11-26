@@ -108,6 +108,11 @@
         , find_block_state_and_data/1
         , find_block_state_and_data/2
         ]).
+
+-export([ write_peer/1
+        , delete_peer/1
+        , read_all_peers/0
+        ]).
 %%
 %% for testing
 -export([backend_mode/0]).
@@ -126,6 +131,7 @@
 %% - name_service_state
 %% - name_service_cache
 %% - one per state tree
+%% - untrusted peers
 
 -define(TAB(Record),
         {Record, tab(Mode, Record, record_info(fields, Record), [])}).
@@ -161,6 +167,7 @@ tables(Mode) ->
    , ?TAB(aec_tx_pool)
    , ?TAB(aec_discovered_pof)
    , ?TAB(aec_signal_count)
+   , ?TAB(aec_peers)
     ].
 
 tab(Mode0, Record, Attributes, Extra) ->
@@ -895,8 +902,11 @@ handle_table_errors(_Tables, _Mode, []) ->
     ok;
 handle_table_errors(Tables, Mode, [{missing_table, aec_signal_count = Table} | Tl]) ->
     %% The table is new in node version 5.1.0.
-    {Table, Spec} = lists:keyfind(Table, 1, Tables),
-    {atomic, ok} = mnesia:create_table(Table, Spec),
+    new_table_migration(Table, Tables),
+    handle_table_errors(Tables, Mode, Tl);
+handle_table_errors(Tables, Mode, [{missing_table, aec_peers = Table} | Tl]) ->
+    %% The table is new in node version 5.6.0.
+    new_table_migration(Table, Tables),
     handle_table_errors(Tables, Mode, Tl);
 handle_table_errors(Tables, Mode, [{missing_table, aesc_state_cache_v2} | Tl]) ->
     aesc_db:create_tables(Mode),
@@ -1041,3 +1051,23 @@ handle_activity_result(Res, ErrorKeys) ->
             %% layer.
             exit(Err)
     end.
+
+write_peer(Peer) ->
+    PeerId = aec_peer:id(Peer),
+    ?t(mnesia:write(#aec_peers{key = PeerId, value = Peer}),
+      [{aec_peers, PeerId}]).
+
+delete_peer(Peer) ->
+    PeerId = aec_peer:id(Peer),
+    ?t(mnesia:delete({aec_peers, PeerId})).
+
+%% to be used only in aec_sync:init to load persisted peeers
+read_all_peers() ->
+    Fun = fun(#aec_peers{value = Peer}, Acc) ->
+              [Peer | Acc]
+          end,
+    ?t(mnesia:foldl(Fun, [], aec_peers)).
+
+new_table_migration(Table, Tables) ->
+    {Table, Spec} = lists:keyfind(Table, 1, Tables),
+    {atomic, ok} = mnesia:create_table(Table, Spec).

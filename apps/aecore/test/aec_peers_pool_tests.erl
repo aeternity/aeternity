@@ -31,9 +31,11 @@
     available/2
 ]).
 
--export([random_peer/0,
-         random_peer/1
-        ]).
+-export([seed_process_random/0,
+         random_peer/0,
+         random_peer/1,
+         random_address/0
+]).
 
 %=== MACROS ====================================================================
 
@@ -63,9 +65,17 @@
 
 %=== TEST CASES ================================================================
 
+regressions_test() ->
+    {foreach,
+     fun db_setup/0,
+     fun db_teardown/1,
+     [
+        {"Check for regression of aec_peers_pool:unverified_add_reference/4", fun reference_bug/0}
+     ]}.
+    
 %% Test that put in evidence a bug in aec_peers_pool:unverified_add_reference/4.
 %% The test depends heavily on the fixed random seeds.
-reference_bug_test() ->
+reference_bug() ->
     seed_process_random(),
     P = new([
         {verif_bcount, 1},
@@ -103,8 +113,38 @@ reference_bug_test() ->
     end, {P, 1}, lists:seq(1, 5)),
     ok.
 
+pools_test() ->
+    {foreach,
+     fun db_setup/0,
+     fun db_teardown/1,
+     [
+        {"Check when empty", fun empty_pool/0},
+        {"Check when with a single untrusted peer", fun add_single_normal/0},
+        {"Check when with a single trusted peer", fun add_single_trusted/0},
+        {"Check when with multiple peers subset", fun multiple_peers_subset/0},
+        {"Select multiple peers", fun multiple_peers_select/0},
+        {"Check peer selection unavailablility", fun peer_selection_unavailability/0},
+        {"Check peer release", fun peer_release/0},
+        {"Check peer rejection", fun peer_rejection/0},
+        {"Check peer rejection downgrade", fun rejection_downgrade/0},
+        {"Check peer verification", fun basic_verification/0},
+        {"Check peer verification: selected peer", fun verification_of_selected_peer/0},
+        {"Check peer verification: standby peer", fun verification_of_standby_peer/0},
+        {"Check canceled verification", fun verification_canceled/0},
+        {"Check ignored update", fun update_ignored/0},
+        {"Check downgrade when no space in unverified", fun downgrade_to_bucket_with_no_eviction_possible/0},
+        {"Check manual select of a standby peer", fun manual_selection_of_standby_peer/0},
+        {"Check unverified selected peeres are not evicted", fun unverified_selected_are_not_evicted/0},
+        {"Check unverified old peers are removed", fun unverified_old_peers_are_removed/0},
+        {"Check unverified multiple references", fun unverified_multiple_references/0},
+        {"Check unverified references are evicted", fun unverified_reference_eviction/0},
+        {"Check verified selected and trusted peers are not evicted", fun verified_selected_and_trusted_peers_are_not_evicted/0},
+        {"Check verified old peers are removed", fun verified_old_peers_are_removed/0},
+        {"Test pool counter synchronization", {timeout, 100, fun validate_counters/0}}
+     ]}.
+
 %% Tests pool behavior when empty.
-empty_pool_test() ->
+empty_pool() ->
     P = new(?BASE_POOL_OPTS),
     A = random_peer_id(),
     Now = erlang:system_time(millisecond),
@@ -146,7 +186,7 @@ empty_pool_test() ->
     ok.
 
 %% Tests pool behaviour with a single normal peer.
-add_single_normal_test() ->
+add_single_normal() ->
     P = new(?BASE_POOL_OPTS),
     RandomPeer = random_peer(),
     Id1 = aec_peer:id(RandomPeer),
@@ -209,7 +249,7 @@ add_single_normal_test() ->
     ok.
 
 %% Tests pool behavior with a single trusted peer.
-add_single_trusted_test() ->
+add_single_trusted() ->
     P = new(?BASE_POOL_OPTS),
     RandomPeer = random_peer(#{trusted => true}),
     Id1 = aec_peer:id(RandomPeer),
@@ -261,7 +301,7 @@ add_single_trusted_test() ->
     ok.
 
 %% Tests adding multiple peers both normal and trusted.
-multiple_peers_subset_test() ->
+multiple_peers_subset() ->
     seed_process_random(),
     TotalCount = 1000,
     VerifCount = 50,
@@ -346,7 +386,7 @@ multiple_peers_subset_test() ->
     ok.
 
 %% Test peer selection behavior.
-multiple_peers_select_test() ->
+multiple_peers_select() ->
     TotalCount = 1000,
     VerifCount = 50,
     ExcludedCount = 10,
@@ -402,7 +442,7 @@ multiple_peers_select_test() ->
     ok.
 
 %% Tests that selected peers cannot be selected.
-peer_selection_unavailability_test() ->
+peer_selection_unavailability() ->
     seed_process_random(),
     UnverCount = 500,
     VerifCount = 500,
@@ -522,7 +562,7 @@ peer_selection_unavailability_test() ->
     ok.
 
 %% Tests peer release behavior.
-peer_release_test() ->
+peer_release() ->
     seed_process_random(),
     Now = erlang:system_time(millisecond),
     Pool1 = new(?POOL_OPTS),
@@ -614,7 +654,7 @@ peer_release_test() ->
     ok.
 
 %% Tests peer rejection behavior.
-peer_rejection_test() ->
+peer_rejection() ->
     seed_process_random(),
     % Assumes backoff delays are [5, 15, 30, 60, 120, 300, 600]
     Now1 = erlang:system_time(millisecond),
@@ -735,7 +775,7 @@ peer_rejection_test() ->
     ok.
 
 %% Tests peer downgrading behavior.
-rejection_downgrade_test() ->
+rejection_downgrade() ->
     seed_process_random(),
     % Assumes backoff delays are [5, 15, 30, 60, 120, 300, 600]
     Now1 = erlang:system_time(millisecond),
@@ -794,7 +834,7 @@ rejection_downgrade_test() ->
     ok.
 
 %% Tests peer verification behavior.
-basic_verification_test() ->
+basic_verification() ->
     seed_process_random(),
     Now = erlang:system_time(millisecond),
     Pool1 = new(?POOL_OPTS),
@@ -829,7 +869,7 @@ basic_verification_test() ->
     ok.
 
 %% Tests the verification of a selected peer.
-verification_of_selected_peer_test() ->
+verification_of_selected_peer() ->
     seed_process_random(),
     Now = erlang:system_time(millisecond),
     Pool1 = new(?POOL_OPTS),
@@ -863,7 +903,7 @@ verification_of_selected_peer_test() ->
     ok.
 
 %% Tests the verification of a peer on standby.
-verification_of_standby_peer_test() ->
+verification_of_standby_peer() ->
     seed_process_random(),
     Now = erlang:system_time(millisecond),
     Pool1 = new(?POOL_OPTS),
@@ -895,7 +935,7 @@ verification_of_standby_peer_test() ->
 
 %% Tests when no free space can be allocated in the target bucket
 %% of a new verified peer; the peer should stay in the unverified pool.
-verification_canceled_test() ->
+verification_canceled() ->
     seed_process_random(),
     PoolOpts = [{verif_bcount, 1}, {verif_bsize, 1} | ?POOL_OPTS],
     Pool1 = new(PoolOpts),
@@ -933,7 +973,7 @@ verification_canceled_test() ->
 %% Tests when a peer update is ignoring the update due to being unable to
 %% allocate space in the unverified pool, or the peer address/trusted status
 %% changed.
-update_ignored_test() ->
+update_ignored() ->
     seed_process_random(),
     PoolOpts = [{unver_bcount, 1}, {unver_bsize, 1} | ?POOL_OPTS],
     Pool1 = new(PoolOpts),
@@ -984,7 +1024,7 @@ update_ignored_test() ->
 
 %% Tests when a peer evicted from the verified pool cannot be added to its
 %% target bucket in the unverified pool due to not being able to free space.
-downgrade_to_bucket_with_no_eviction_possible_test() ->
+downgrade_to_bucket_with_no_eviction_possible() ->
     seed_process_random(),
     PoolOpts = [
         {verif_bcount, 1}, {verif_bsize, 1},
@@ -1029,7 +1069,7 @@ downgrade_to_bucket_with_no_eviction_possible_test() ->
     ok.
 
 %% Tests explicit peer selection behavior.
-manual_selection_of_standby_peer_test() ->
+manual_selection_of_standby_peer() ->
     seed_process_random(),
     Now = erlang:system_time(millisecond),
     Pool1 = new(?POOL_OPTS),
@@ -1055,7 +1095,7 @@ manual_selection_of_standby_peer_test() ->
     ok.
 
 %% Tests that selected peers are not evicted from the unverified pool.
-unverified_selected_are_not_evicted_test() ->
+unverified_selected_are_not_evicted() ->
     seed_process_random(),
     % Use a single bucket of 10 peers to simplify testing.
     PoolOpts = [{unver_bcount, 1}, {unver_bsize, 10} | ?POOL_OPTS],
@@ -1112,7 +1152,7 @@ unverified_selected_are_not_evicted_test() ->
 
 %% Tests that peers not updates since a configured time are removed from
 %% the pool when trying to free space in a bucket.
-unverified_old_peers_are_removed_test() ->
+unverified_old_peers_are_removed() ->
     seed_process_random(),
     % Use a single bucket of 10 peers to simplify testing.
     PoolOpts = [
@@ -1169,7 +1209,7 @@ unverified_old_peers_are_removed_test() ->
     ok.
 
 %% Tests the multi-reference handling in the unverified pool.
-unverified_multiple_references_test() ->
+unverified_multiple_references() ->
     seed_process_random(),
     % Use only 10 buckets to make it faster.
     PoolOpts = [{unver_bcount, 10}, {unver_bsize, 10} | ?POOL_OPTS],
@@ -1203,7 +1243,7 @@ unverified_multiple_references_test() ->
     ok.
 
 %% Tests evicting references do not delete the peer in the unverified pool.
-unverified_reference_eviction_test() ->
+unverified_reference_eviction() ->
     seed_process_random(),
     % Use only 2 buckets to make it faster.
     PoolOpts = [{unver_bcount, 2}, {unver_bsize, 1} | ?POOL_OPTS],
@@ -1243,7 +1283,7 @@ unverified_reference_eviction_test() ->
     ok.
 
 %% Tests that selected and trusted peers are not evicted from the verified pool.
-verified_selected_and_trusted_peers_are_not_evicted_test() ->
+verified_selected_and_trusted_peers_are_not_evicted() ->
     seed_process_random(),
     PoolOpts = [
         {verif_bcount, 1}, {verif_bsize, 10},
@@ -1332,7 +1372,7 @@ verified_selected_and_trusted_peers_are_not_evicted_test() ->
 
 %% Tests that peers not updated for a configurable time are removed from the
 %% verified pool buckets when trying to free space.
-verified_old_peers_are_removed_test() ->
+verified_old_peers_are_removed() ->
     seed_process_random(),
     % Use a single bucket of 10 peers to simplify testing.
     PoolOpts = [
@@ -1406,10 +1446,6 @@ verified_old_peers_are_removed_test() ->
 
 %% Tests that the counters and internal structures stay synchronized when
 %% performing a lot of different operations.
-validate_counters_test_() ->
-    {"Test pool counter synchronization",
-     {timeout, 100, fun validate_counters/0}}.
-
 validate_counters() ->
     seed_process_random(),
     PoolOpts = [
@@ -1952,7 +1988,7 @@ rand_take(Col) when is_list(Col)->
     {R, L1 ++ L2}.
 
 random_peer_id() ->
-    A = rand_int(1, 1 bsl 64),
+    A = rand_int(1, 1234567),
     <<A:32/unit:8>>.
 
 random_address() ->
@@ -2039,12 +2075,28 @@ random_peer() ->
 
 random_peer(Opts) ->
     PeerInfo =
-        maps:merge(#{ pubkey => random_peer_id(), host => <<>>, port => 4000 },
+        maps:merge(#{ pubkey => random_peer_id(), host => <<>>,
+                      port => rand_int(4000, 4999) },
                    Opts),
     aec_peer:new(maps:get(address, Opts, random_address()),
                  maps:get(source, Opts, random_address()), 
                  PeerInfo,
                  maps:get(trusted, Opts, false)).
 
+
+
+db_setup() ->
+    Persist = application:get_env(aecore, persist),
+    application:set_env(aecore, persist, false),
+    {ok, _} = aec_db_error_store:start_link(),
+    aec_db:check_db(),
+    aec_db:clear_db(),
+    Persist.
+
+db_teardown(Persist) ->
+    application:stop(mnesia),
+    application:set_env(aecore, persist, Persist),
+    ok = aec_db_error_store:stop(),
+    ok = mnesia:delete_schema([node()]).
 
 -endif.

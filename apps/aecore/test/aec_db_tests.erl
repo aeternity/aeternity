@@ -7,6 +7,9 @@
         ?assertEqual(aec_blocks:serialize_to_binary(B1),
                      aec_blocks:serialize_to_binary(B2))).
 
+-define(compareLists(L1, L2),
+        ?assertEqual(lists:sort(L1),lists:sort(L2))).
+
 block_hash(B) ->
     {ok, Hash} = aec_headers:hash_header(aec_blocks:to_header(B)),
     Hash.
@@ -279,3 +282,89 @@ persisted_database_write_error_test_() ->
                ok
        end}
      ]}.
+
+peers_test_() ->
+    {foreach,
+     fun() ->
+          Persist = application:get_env(aecore, persist),
+          application:set_env(aecore, persist, true),
+          {ok, _} = aec_db_error_store:start_link(),
+          aec_db:check_db(),
+          aec_db:clear_db(),
+          Persist
+
+     end,
+     fun(Persist) ->
+          application:stop(mnesia),
+          application:set_env(aecore, persist, Persist),
+          ok = aec_db_error_store:stop(),
+          ok = mnesia:delete_schema([node()])
+     end,
+     [{"Write and retrieve a peer",
+       fun() ->
+           P1 = untrusted_peer(),
+           aec_db:write_peer(P1),
+           [P1] = aec_db:read_all_peers(),
+           ok
+       end},
+      {"Write and retrieve a trusted peer",
+       fun() ->
+           P1 = trusted_peer(),
+           aec_db:write_peer(P1),
+           [P1] = aec_db:read_all_peers(),
+           ok
+       end},
+      {"Write and delete a peer",
+       fun() ->
+           P1 = untrusted_peer(),
+           aec_db:write_peer(P1),
+           [P1] = aec_db:read_all_peers(),
+           aec_db:delete_peer(P1),
+           [] = aec_db:read_all_peers(),
+           ok
+       end},
+      {"Update peer",
+       fun() ->
+           P1U = untrusted_peer(),
+           aec_db:write_peer(P1U),
+           [P1U] = aec_db:read_all_peers(),
+           P1T = aec_peer:set_trusted(P1U, true),
+           aec_db:write_peer(P1T),
+           [P1T] = aec_db:read_all_peers(),
+           aec_db:delete_peer(P1T),
+           [] = aec_db:read_all_peers(),
+           P2 = untrusted_peer(),
+           aec_db:write_peer(P2),
+           [P2] = aec_db:read_all_peers(),
+           P2Updated =
+              aec_peer:set_source(P2, aec_peers_pool_tests:random_address()),
+           aec_db:write_peer(P2Updated),
+           [P2Updated] = aec_db:read_all_peers(),
+           aec_db:delete_peer(P2Updated),
+           [] = aec_db:read_all_peers(),
+           ok
+       end},
+      {"Write a couple of peers",
+       fun() ->
+           P1 = untrusted_peer(),
+           aec_db:write_peer(P1),
+           P2 = untrusted_peer(),
+           aec_db:write_peer(P2),
+           P3 = untrusted_peer(),
+           aec_db:write_peer(P3),
+           ?compareLists(aec_db:read_all_peers(), [P1, P2, P3]),
+           P4 = untrusted_peer(),
+           aec_db:write_peer(P4),
+           ?compareLists(aec_db:read_all_peers(), [P1, P2, P3, P4]),
+           aec_db:delete_peer(P1),
+           ?compareLists(aec_db:read_all_peers(), [P2, P3, P4]),
+           ok
+       end}
+     ]}.
+
+untrusted_peer() ->
+    aec_peers_pool_tests:random_peer(#{trusted => false}).
+
+trusted_peer() ->
+    aec_peers_pool_tests:random_peer(#{trusted => true}).
+

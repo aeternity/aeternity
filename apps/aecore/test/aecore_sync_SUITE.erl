@@ -39,7 +39,12 @@
     inject_long_chain/1,
     measure_second_node_sync_time/1,
     validate_default_peers/1,
-    restart_with_different_defaults/1
+    restart_with_different_defaults/1,
+    start_with_trusted_peers/1,
+    restart_with_no_trusted_peers/1,
+    add_and_delete_untrusted_peers_and_restart/1,
+    trusted_peer_is_untrusted_after_a_restart/1,
+    stop_devs/1
    ]).
 
 -include_lib("common_test/include/ct.hrl").
@@ -61,7 +66,8 @@ groups() ->
                               {group, one_blocked},
                               {group, large_msgs},
                               {group, performance},
-                              {group, config_overwrites_defaults}
+                              {group, config_overwrites_defaults},
+                              {group, persistence}
                              ]},
      {two_nodes, [sequence],
       [start_first_node,
@@ -138,7 +144,15 @@ groups() ->
       [start_first_node,
        validate_default_peers,
        restart_with_different_defaults
-       ]}
+       ]},
+     {persistence, [sequence],
+          [
+           start_with_trusted_peers,
+           restart_with_no_trusted_peers,
+           add_and_delete_untrusted_peers_and_restart,
+           trusted_peer_is_untrusted_after_a_restart,
+           stop_devs %% delete the db to cleanup
+          ]}
     ].
 
 suite() ->
@@ -170,7 +184,9 @@ init_per_suite(Config0) ->
             <<"micro_block_cycle">> => 100
         }
     },
-    aecore_suite_utils:init_per_suite([dev1, dev2, dev3], DefCfg, [{add_peers, true}], [{symlink_name, "latest.sync"}, {test_module, ?MODULE}] ++ Config).
+    aecore_suite_utils:init_per_suite([dev1, dev2, dev3], DefCfg,
+                                      [{add_peers, true}],
+                                      [{symlink_name, "latest.sync"}, {test_module, ?MODULE}] ++ Config).
 
 end_per_suite(Config) ->
     stop_devs(Config).
@@ -184,6 +200,7 @@ init_per_group(TwoNodes, Config) when
     ok = aec_metrics_test_utils:start_statsd_loggers(aec_metrics_test_utils:port_map(Config1)),
     [{initial_apps, InitialApps} | Config1];
 init_per_group(config_overwrites_defaults, Config) ->
+    aec_peers_pool_tests:seed_process_random(), %% required for the random_peer()
     Dev1 = dev1,
     aecore_suite_utils:stop_node(Dev1, Config),
     Config1 = config({devs, [Dev1]}, Config),
@@ -201,6 +218,10 @@ init_per_group(performance, Config) ->
         _ ->
             Config
     end;
+init_per_group(persistence, Config) ->
+    aec_peers_pool_tests:seed_process_random(), %% required for the random_peer()
+    Config1 = config({devs, [dev1, dev2]}, Config),
+    Config1;
 init_per_group(three_nodes, Config) ->
     Config1 = config({devs, [dev1, dev2, dev3]}, Config),
     InitialApps = {running_apps(), loaded_apps()},
@@ -232,7 +253,7 @@ init_per_group(all_nodes, Config) ->
     Config.
 
 end_per_group(Group, Config) when Group =:= one_blocked;
-                                   Group =:= large_msgs ->
+                                  Group =:= large_msgs ->
     ct:log("Metrics: ~p", [aec_metrics_test_utils:fetch_data()]),
     ok = aec_metrics_test_utils:stop_statsd_loggers(),
     stop_devs(Config),
@@ -278,6 +299,8 @@ end_per_group(config_overwrites_defaults, Config) ->
     EpochCfg = EpochCfg0#{<<"include_default_peers">> => false},
     aecore_suite_utils:create_config(Dev1, Config, EpochCfg,
                                             [{add_peers, true}]),
+    ok;
+end_per_group(persistence, _Config) ->
     ok;
 end_per_group(all_nodes, _Config) ->
    ok.
@@ -735,8 +758,7 @@ inject_txs(Node, NTx) ->
       end || _ <- lists:seq(1, NTx)].
 
 measure_second_node_sync_time(Config) ->
-    [Dev1, Dev2] = [dev1, dev2],
-    N1 = aecore_suite_utils:node_name(Dev1),
+    Dev2 = dev2,
     N2 = aecore_suite_utils:node_name(Dev2),
     aecore_suite_utils:start_node(Dev2, Config),
     {T, _} = timer:tc(fun() ->
@@ -763,6 +785,219 @@ measure_second_node_sync_time(Config) ->
     ct:log(Fmt, [G, M, NTx, T]),
     %% This test is meant to be run manually in the shell
     io:format(user, Fmt, [G, M, NTx, T]).
+
+validate_default_peers(_Config) ->
+    %% this test relies on having those as default peers in the config/dev1/sys.config
+    %% [<<"aenode://pp_23YdvfRPQ1b1AMWmkKZUGk2cQLqygQp55FzDWZSEUicPjhxtp5@localhost:3025">>,
+    %%  <<"aenode://pp_2M9oPohzsWgJrBBCFeYi3PVT4YF7F2botBtq6J1EGcVkiutx3R@localhost:3035">>]
+    Peer2Id = <<"pp_23YdvfRPQ1b1AMWmkKZUGk2cQLqygQp55FzDWZSEUicPjhxtp5">>, 
+    Peer3Id = <<"pp_2M9oPohzsWgJrBBCFeYi3PVT4YF7F2botBtq6J1EGcVkiutx3R">>, 
+    DefaultIds = [I || {ok, I} <- [aeser_api_encoder:safe_decode(peer_pubkey, P) ||
+                                   P <- [Peer2Id, Peer3Id]]],
+    N1 = aecore_suite_utils:node_name(dev1),
+    2 = rpc:call(N1, aec_peers, count, [verified], 5000),
+    %% the following relies on the peers beeing set as localhost, thus the
+    %% failed connect attempt had already passed
+    Peers = rpc:call(N1, aec_peers, available_peers, [], 5000),
+    2 = length(Peers),
+    PeerIds = [aec_peer:id(P) || P <- Peers],
+    SortedDefaultIds = lists:sort(DefaultIds),
+    SortedPeerIds = lists:sort(PeerIds),
+    SortedPeerIds = SortedDefaultIds,
+    ok.
+
+restart_with_different_defaults(Config) ->
+    Dev1 = dev1,
+    N1 = aecore_suite_utils:node_name(Dev1),
+    aecore_suite_utils:stop_node(Dev1, Config),
+    Peer = random_peer(),
+    EpochCfg0 = aecore_suite_utils:epoch_config(Dev1, Config),
+    EpochCfg = EpochCfg0#{<<"peers">> => [aec_peer:peer_config_info(Peer)],
+                          <<"include_default_peers">> => false},
+    aecore_suite_utils:create_config(Dev1, Config, EpochCfg,
+                                            []),
+    start_first_node(Config),
+    1 = rpc:call(N1, aec_peers, count, [verified], 5000),
+    0 = rpc:call(N1, aec_peers, count, [unverified], 5000),
+    %% the peer connection is still trying
+    assert_available_peers(N1, [Peer]),
+    aecore_suite_utils:stop_node(Dev1, Config),
+    ok.
+
+start_with_trusted_peers(Config) ->
+    Dev1 = dev1,
+    N1 = aecore_suite_utils:node_name(Dev1),
+    Peer1 = random_peer(),
+    Peer2 = random_peer(),
+    Peer3 = random_peer(),
+
+    EpochCfg = aecore_suite_utils:epoch_config(Dev1, Config),
+    Peers = [encode_peer_for_config(Peer1),
+             encode_peer_for_config(Peer2),
+             encode_peer_for_config(Peer3)],
+    aecore_suite_utils:create_config(Dev1, Config, EpochCfg,
+                                            [{trusted_peers, Peers}
+                                            ]),
+    start_first_node(Config),
+    3 = rpc:call(N1, aec_peers, count, [verified], 5000),
+    0 = rpc:call(N1, aec_peers, count, [unverified], 5000),
+    assert_available_peers(N1, [Peer1, Peer2, Peer3]),
+    aecore_suite_utils:stop_node(Dev1, Config),
+    ok.
+    
+%% this tests that trusted peers are not persisted
+restart_with_no_trusted_peers(Config) ->
+    Dev1 = dev1,
+    N1 = aecore_suite_utils:node_name(Dev1),
+    EpochCfg = aecore_suite_utils:epoch_config(Dev1, Config),
+    aecore_suite_utils:create_config(Dev1, Config, EpochCfg,
+                                            [{trusted_peers, []}
+                                            ]),
+    start_first_node(Config),
+    0 = rpc:call(N1, aec_peers, count, [verified], 5000),
+    0 = rpc:call(N1, aec_peers, count, [unverified], 5000),
+    aecore_suite_utils:stop_node(Dev1, Config),
+    ok.
+
+
+%% this tests that untrusted peers are persisted
+add_and_delete_untrusted_peers_and_restart(Config) ->
+    Dev1 = dev1,
+    N1 = aecore_suite_utils:node_name(Dev1),
+    EpochCfg = aecore_suite_utils:epoch_config(Dev1, Config),
+    aecore_suite_utils:create_config(Dev1, Config, EpochCfg,
+                                            [{trusted_peers, []}
+                                            ]),
+    start_first_node(Config),
+    0 = rpc:call(N1, aec_peers, count, [verified], 5000),
+    0 = rpc:call(N1, aec_peers, count, [unverified], 5000),
+
+    %% add an untrusted peer
+    Peer1 = random_peer(),
+    Peer2 = random_peer(),
+    Peer3 = random_peer(),
+    Peer4 = random_peer(),
+    Add =
+        fun(P) ->
+            ok = rpc:call(N1, aec_peers, add_peers, [aec_peer:source(P),
+                                                    [aec_peer:info(P)
+                                                    ]])
+        end,
+    Add(Peer1),
+    Add(Peer2),
+    Add(Peer3),
+    Add(Peer4),
+    0 = rpc:call(N1, aec_peers, count, [verified], 5000),
+    4 = rpc:call(N1, aec_peers, count, [unverified], 5000),
+
+    assert_available_peers(N1, [Peer1, Peer2, Peer3, Peer4]),
+
+    %% stop the node and start it over
+    aecore_suite_utils:stop_node(Dev1, Config),
+    start_first_node(Config),
+    0 = rpc:call(N1, aec_peers, count, [verified], 5000),
+    4 = rpc:call(N1, aec_peers, count, [unverified], 5000),
+
+    assert_available_peers(N1, [Peer1, Peer2, Peer3, Peer4]),
+    rpc:call(N1, aec_peers, del_peer, [aec_peer:id(Peer1)], 5000),
+    0 = rpc:call(N1, aec_peers, count, [verified], 5000),
+    3 = rpc:call(N1, aec_peers, count, [unverified], 5000),
+    assert_available_peers(N1, [Peer2, Peer3, Peer4]),
+
+    %% stop the node and start it over
+    aecore_suite_utils:stop_node(Dev1, Config),
+    start_first_node(Config),
+    0 = rpc:call(N1, aec_peers, count, [verified], 5000),
+    3 = rpc:call(N1, aec_peers, count, [unverified], 5000),
+    assert_available_peers(N1, [Peer2, Peer3, Peer4]),
+
+    rpc:call(N1, aec_peers, del_peer, [aec_peer:id(Peer2)], 5000),
+    0 = rpc:call(N1, aec_peers, count, [verified], 5000),
+    2 = rpc:call(N1, aec_peers, count, [unverified], 5000),
+    assert_available_peers(N1, [Peer3, Peer4]),
+ 
+    %% stop the node and start it over
+    aecore_suite_utils:stop_node(Dev1, Config),
+    start_first_node(Config),
+    0 = rpc:call(N1, aec_peers, count, [verified], 5000),
+    2 = rpc:call(N1, aec_peers, count, [unverified], 5000),
+    assert_available_peers(N1, [Peer3, Peer4]),
+
+    rpc:call(N1, aec_peers, del_peer, [aec_peer:id(Peer3)], 5000),
+    0 = rpc:call(N1, aec_peers, count, [verified], 5000),
+    1 = rpc:call(N1, aec_peers, count, [unverified], 5000),
+    assert_available_peers(N1, [Peer4]),
+ 
+    %% stop the node and start it over
+    aecore_suite_utils:stop_node(Dev1, Config),
+    start_first_node(Config),
+    0 = rpc:call(N1, aec_peers, count, [verified], 5000),
+    1 = rpc:call(N1, aec_peers, count, [unverified], 5000),
+    assert_available_peers(N1, [Peer4]),
+
+    rpc:call(N1, aec_peers, del_peer, [aec_peer:id(Peer4)], 5000),
+    0 = rpc:call(N1, aec_peers, count, [verified], 5000),
+    0 = rpc:call(N1, aec_peers, count, [unverified], 5000),
+    assert_available_peers(N1, []),
+ 
+    %% stop the node and start it over
+    aecore_suite_utils:stop_node(Dev1, Config),
+    start_first_node(Config),
+    0 = rpc:call(N1, aec_peers, count, [verified], 5000),
+    0 = rpc:call(N1, aec_peers, count, [unverified], 5000),
+    assert_available_peers(N1, []),
+    aecore_suite_utils:stop_node(Dev1, Config),
+    ok.
+
+%% this tests that trusted peers are loaded as untrusted after a restart
+trusted_peer_is_untrusted_after_a_restart(Config) ->
+    Dev1 = dev1,
+    N1 = aecore_suite_utils:node_name(Dev1),
+    start_first_node(Config),
+    0 = rpc:call(N1, aec_peers, count, [verified], 5000),
+    0 = rpc:call(N1, aec_peers, count, [unverified], 5000),
+
+    %% add an untrusted peer
+    Peer1 = random_peer(),
+    Peer2 = random_peer(),
+    ok = rpc:call(N1, aec_peers, add_peers, [aec_peer:source(Peer1),
+                                            [aec_peer:info(Peer1)
+                                            ]]),
+    ok = rpc:call(N1, aec_peers, add_peers, [aec_peer:source(Peer2),
+                                            [aec_peer:info(Peer2)
+                                            ]]),
+    0 = rpc:call(N1, aec_peers, count, [verified], 5000),
+    2 = rpc:call(N1, aec_peers, count, [unverified], 5000),
+    assert_available_peers(N1, [Peer1, Peer2]),
+    Dev2 = dev2,
+    N2 = aecore_suite_utils:node_name(Dev2),
+    EpochCfg = aecore_suite_utils:epoch_config(Dev2, Config),
+    aecore_suite_utils:create_config(Dev2, Config, EpochCfg,
+                                            [{trusted_peers, []}
+                                            ]),
+    start_second_node(Config),
+    N2PeerInfo = rpc:call(N2, aec_peers, local_peer_info, []),
+    ok = rpc:call(N1, aec_peers, add_peers, [{127, 0, 0, 1},
+                                            [N2PeerInfo
+                                            ]]),
+    %% make sure nodes dev1 and dev2 sync
+    mine_on_first(Config),
+    expect_same_top([N1, N2], 5),
+
+    %% now they are marked as trusted
+    1 = rpc:call(N1, aec_peers, count, [verified], 5000),
+    2 = rpc:call(N1, aec_peers, count, [unverified], 5000),
+    1 = rpc:call(N2, aec_peers, count, [verified], 5000),
+
+    aecore_suite_utils:stop_node(Dev1, Config),
+    aecore_suite_utils:stop_node(Dev2, Config),
+
+    start_first_node(Config),
+    0 = rpc:call(N1, aec_peers, count, [verified], 5000),
+    3 = rpc:call(N1, aec_peers, count, [unverified], 5000),
+    start_second_node(Config),
+    ok.
+
 
 %% ==================================================
 %% Private functions
@@ -904,43 +1139,23 @@ get_bench_config(Config) ->
     , proplists:get_value(micro_per_generation, Config)
     , proplists:get_value(tx_per_micro, Config)}.
 
-validate_default_peers(_Config) ->
-    %% this test relies on having those as default peers in the config/dev1/sys.config
-    %% [<<"aenode://pp_23YdvfRPQ1b1AMWmkKZUGk2cQLqygQp55FzDWZSEUicPjhxtp5@localhost:3025">>,
-    %%  <<"aenode://pp_2M9oPohzsWgJrBBCFeYi3PVT4YF7F2botBtq6J1EGcVkiutx3R@localhost:3035">>]
-    Peer2Id = <<"pp_23YdvfRPQ1b1AMWmkKZUGk2cQLqygQp55FzDWZSEUicPjhxtp5">>, 
-    Peer3Id = <<"pp_2M9oPohzsWgJrBBCFeYi3PVT4YF7F2botBtq6J1EGcVkiutx3R">>, 
-    DefaultIds = [I || {ok, I} <- [aeser_api_encoder:safe_decode(peer_pubkey, P) ||
-                                   P <- [Peer2Id, Peer3Id]]],
-    N1 = aecore_suite_utils:node_name(dev1),
-    2 = rpc:call(N1, aec_peers, count, [verified], 5000),
-    %% the following relies on the peers beeing set as localhost, thus the
-    %% failed connect attempt had already passed
-    Peers = rpc:call(N1, aec_peers, available_peers, [], 5000),
-    2 = length(Peers),
-    PeerIds = [aec_peer:id(P) || P <- Peers],
-    SortedDefaultIds = lists:sort(DefaultIds),
-    SortedPeerIds = lists:sort(PeerIds),
-    SortedPeerIds = SortedDefaultIds,
+encode_peer_for_config(Peer) ->
+    PK = aeser_api_encoder:encode(peer_pubkey, aec_peer:id(Peer)),
+    Host = aec_peer:format_address(aec_peer:ip(Peer)),
+    Port = integer_to_binary(aec_peer:port(Peer)),
+    <<"aenode://", PK/binary, "@", Host/binary, ":", Port/binary>>.
+
+random_peer() ->
+    aec_peers_pool_tests:random_peer(#{host => <<"127.0.0.1">>,
+                                       address => {127,0,0,1}}).
+
+assert_available_peers(N1, ExpectedPeers) ->
+    GetInfos= fun(Peers) -> lists:sort([aec_peer:info(P) || P <- Peers]) end,
+    ExpectedInfos= GetInfos(ExpectedPeers),
+    AvPeerInfos= lists:sort(rpc:call(N1, aec_peers, available_peers, [], 5000)),
+    {ExpectedInfos, ExpectedInfos} = {ExpectedInfos, AvPeerInfos},
     ok.
 
-restart_with_different_defaults(Config) ->
-    Dev1 = dev1,
-    N1 = aecore_suite_utils:node_name(Dev1),
-    aecore_suite_utils:stop_node(Dev1, Config),
-    Peer = aec_peers_pool_tests:random_peer(),
-    EpochCfg0 = aecore_suite_utils:epoch_config(Dev1, Config),
-    EpochCfg = EpochCfg0#{<<"peers">> => [aec_peer:peer_config_info(Peer)],
-                          <<"include_default_peers">> => false},
-    aecore_suite_utils:create_config(Dev1, Config, EpochCfg,
-                                            [
-                                            ]),
-    start_first_node(Config),
-    1 = rpc:call(N1, aec_peers, count, [verified], 5000),
-    %% the peer connection is still trying
-    [] = rpc:call(N1, aec_peers, available_peers, [], 5000),
-    {error, connecting} = %% a proof that there is such peerID
-        rpc:call(N1, aec_peers, get_connection, [aec_peer:id(Peer)], 5000),
-    aecore_suite_utils:stop_node(Dev1, Config),
-    ok.
+
+
 
