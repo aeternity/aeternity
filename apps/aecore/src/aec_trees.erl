@@ -794,16 +794,10 @@ par_apply_txs_on_state_trees(SignedTxs, Valid, Invalid, Trees, Env, Opts) ->
     ParMaxDeps = proplists:get_value(par_max_deps_ratio, Opts, undefined),
     case aec_trees_proxy:prepare_for_par_eval(SignedTxs) of
         #{tx_count := TxC, max_dep_count := DepC} when (DepC / TxC) > ParMaxDeps ->
-            lager:debug("Too many deps (~p/~p); falling back to serial", [DepC, TxC]),
             apply_txs_on_state_trees_(SignedTxs, Valid, Invalid, Trees, Env, Opts);
         Context ->
             Strict     = proplists:get_value(strict, Opts, false),
-            %% {ok, {Proxy, MRef}} = aec_trees_proxy:start_monitor(Trees, Env, Context, Opts),
-            %% lager:debug("{Proxy, MRef} = ~p", [{Proxy, MRef}]),
-            %% receive
-            %%     {'DOWN', MRef, process, Proxy, Result} ->
             Result = aec_trees_proxy:par_eval(Trees, Env, Context, Opts),
-            lager:debug("Result = ~p", [Result]),
             check_par_apply_result(Result, Valid, Invalid, Trees, Env,
                                    SignedTxs, Strict)
             %% end
@@ -843,7 +837,6 @@ apply_txs_on_state_trees(SignedTxs, Valid, Invalid, Trees, Env, Opts) ->
     end.
 
 apply_txs_on_state_trees_([], ValidTxs, InvalidTxs, Trees,Env,Opts) ->
-    lager:debug("Opts = ~p", [Opts]),
     Events = case proplists:get_bool(tx_events, Opts) of
                  true -> aetx_env:events(Env);
                  false -> []
