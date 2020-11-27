@@ -214,7 +214,7 @@ get_fraud_miner(Ctx) ->
             {ok, aec_block_insertion:node_miner(aec_block_insertion:ctx_prev_key(Ctx))};
         key ->
             case aec_chain:dirty_get_header(aec_block_insertion:node_prev_key_hash(PrevNode)) of
-                {ok, H} -> aec_headers:miner(H);
+                {ok, H} -> {ok, aec_headers:miner(H)};
                 _ -> error
             end
     end.

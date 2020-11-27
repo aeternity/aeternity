@@ -68,7 +68,7 @@ stop() -> ok.
 
 is_providing_extra_http_endpoints() -> false.
 %% This is not yet dev mode but it's close :)
-%% TODO: Expose via HTTP <3
+%% TODO: Expose via HTTP
 client_request(emit_kb) ->
     TopHash = aec_chain:top_block_hash(),
     {ok, Beneficiary} = aec_conductor:get_beneficiary(),

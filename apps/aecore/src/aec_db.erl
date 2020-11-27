@@ -556,10 +556,6 @@ write_top_block_hash(Hash) when is_binary(Hash) ->
     ?t(mnesia:write(#aec_chain_state{key = top_block_hash, value = Hash}),
        [{aec_chain_state, top_block_hash}]).
 
-write_top_block_height(Height) when is_integer(Height) ->
-    ?t(mnesia:write(#aec_chain_state{key = top_block_height, value = Height}),
-       [{aec_chain_state, top_block_height}]).
-
 write_signal_count(Hash, Count) when is_binary(Hash), is_integer(Count) ->
     ?t(mnesia:write(#aec_signal_count{key = Hash, value = Count}),
        [{aec_signal_count, Hash}]).
