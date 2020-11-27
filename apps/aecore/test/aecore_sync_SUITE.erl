@@ -798,6 +798,7 @@ validate_default_peers(_Config) ->
     2 = rpc:call(N1, aec_peers, count, [verified], 5000),
     %% the following relies on the peers beeing set as localhost, thus the
     %% failed connect attempt had already passed
+    timer:sleep(100),
     Peers = rpc:call(N1, aec_peers, available_peers, [], 5000),
     2 = length(Peers),
     PeerIds = [aec_peer:id(P) || P <- Peers],
@@ -966,6 +967,7 @@ trusted_peer_is_untrusted_after_a_restart(Config) ->
     ok = rpc:call(N1, aec_peers, add_peers, [aec_peer:source(Peer2),
                                             [aec_peer:info(Peer2)
                                             ]]),
+    timer:sleep(100),
     0 = rpc:call(N1, aec_peers, count, [verified], 5000),
     2 = rpc:call(N1, aec_peers, count, [unverified], 5000),
     assert_available_peers(N1, [Peer1, Peer2]),
