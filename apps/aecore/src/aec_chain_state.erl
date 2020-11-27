@@ -503,6 +503,7 @@ internal_insert_normal(Node, Block, Origin) ->
     end.
 
 internal_insert_transaction(Node, Block, Origin, Ctx) ->
+    Consensus = aec_block_insertion:node_consensus(Node),
     State1 = new_state_from_persistence(),
     State2 = maybe_add_pof(State1, Block),
     assert_not_illegal_fork_or_orphan(Node, Origin, State2), %% TODO: move this check to aec_conductor... it doesn't really belong here
@@ -516,6 +517,12 @@ internal_insert_transaction(Node, Block, Origin, Ctx) ->
     {State3, Events} = update_state_tree(Node, State2, Ctx),
     TopChanged = persist_state(State1, State3),
     #node{header = PrevKeyHeader} = aec_block_insertion:ctx_prev_key(Ctx),
+    case maps:get(found_pogf, State3) of
+        no_fraud -> ok;
+        {H1, H2} ->
+            %% Inform the consensus engine to act accordingly :(
+            Consensus:pogf_detected(H1, H2)
+    end,
     case maps:get(found_pof, State3) of
         no_fraud  -> {ok, TopChanged, PrevKeyHeader, Events};
         PoF       -> {pof, TopChanged, PrevKeyHeader, PoF, Events}
@@ -538,11 +545,12 @@ assert_height_delta(Node, State) ->
 
 update_state_tree(Node, State, Ctx) ->
     {ok, Trees, ForkInfoIn} = get_state_trees_in(Node, aec_block_insertion:ctx_prev(Ctx), true),
-    {ForkInfo, MicSibHeaders} = maybe_set_new_fork_id(Node, ForkInfoIn, State),
+    {ForkInfo, MicSibHeaders, KeySibHeaders} = maybe_set_new_fork_id(Node, ForkInfoIn, State),
     State1 = update_found_pof(Node, MicSibHeaders, State, Ctx),
-    {State2, NewTopDifficulty, Events} = update_state_tree(Node, Trees, ForkInfo, State1),
+    State2 = update_found_pogf(Node, KeySibHeaders, State1),
+    {State3, NewTopDifficulty, Events} = update_state_tree(Node, Trees, ForkInfo, State2),
     OldTopHash = get_top_block_hash(State),
-    handle_top_block_change(OldTopHash, NewTopDifficulty, Node, Events, State2).
+    handle_top_block_change(OldTopHash, NewTopDifficulty, Node, Events, State3).
 
 update_state_tree(Node, TreesIn, ForkInfo, State) ->
      case db_find_state(node_hash(Node), true) of
@@ -574,16 +582,17 @@ maybe_set_new_fork_id(Node, ForkInfoIn, State) ->
             %% When extending the existing top it doesn't make sense to perform a full scan
             %% of 2 generations. PrevHash(Node) =:= TopHash() can only be true if we have NO siblings
             %% This will be the case when syncing and will allow us to skip the expensive DB scan
-            {ForkInfoIn, []};
+            {ForkInfoIn, [], []};
         _ ->
             %% When benchmarking it turned out that this is very expensive to calculate
             %% Execute it only when it's possible for siblings to exist
             case db_sibling_blocks(Node) of
                 #{key_siblings   := [],
                   micro_siblings := []} ->
-                    {ForkInfoIn, []};
-                #{micro_siblings := MicSibs} ->
-                    {ForkInfoIn#fork_info{fork_id = node_hash(Node)}, MicSibs}
+                    {ForkInfoIn, [], []};
+                #{ micro_siblings := MicSibs
+                 , key_siblings := KeySibs} ->
+                    {ForkInfoIn#fork_info{fork_id = node_hash(Node)}, MicSibs, KeySibs}
             end
     end.
 
@@ -1030,6 +1039,9 @@ match_prev_at_height(Height, PrevHash, Hash) ->
 update_found_pof(Node, MicroSibHeaders, State, Ctx) ->
     State#{found_pof => maybe_pof(Node, MicroSibHeaders, Ctx)}.
 
+update_found_pogf(Node, KeySibHeaders, State) ->
+    State#{found_pogf => maybe_pogf(Node, KeySibHeaders)}.
+
 maybe_pof(_Node, [], _Ctx) ->
     no_fraud;
 maybe_pof(Node, MicroSibHeaders, Ctx) ->
@@ -1039,6 +1051,19 @@ maybe_pof(Node, MicroSibHeaders, Ctx) ->
             Miner = node_miner(aec_block_insertion:ctx_prev_key(Ctx)),
             [Header| _] = MicroSibHeaders,
             aec_pof:new(node_header(Node), Header, Miner)
+    end.
+
+maybe_pogf(_Node, []) -> no_fraud;
+maybe_pogf(Node, [Sibling|T]) ->
+    case node_type(Node) of
+        micro -> no_fraud;
+        key ->
+            case node_miner(Node) =:= aec_headers:miner(Sibling) of
+                true ->
+                    {node_header(Node), Sibling};
+                false ->
+                    maybe_pogf(Node, T)
+            end
     end.
 
 % if a miner is fraudulent - one does not receive a reward and it is locked

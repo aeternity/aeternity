@@ -169,7 +169,9 @@
 
 %% Block rewards :)
 -callback state_grant_reward(aec_keys:pubkey(), aec_trees:trees(), non_neg_integer()) -> aec_trees:trees() | no_return().
--callback state_apply_pof(aec_keys:pubkey(), aec_trees:trees()) -> aec_trees:trees() | no_return().
+
+%% PoGF - called just before exiting the DB transaction and fully validating the node in question
+-callback pogf_detected(aec_headers:key_header(), aec_headers:key_header()) -> ok.
 
 %% Consensus modules might define their own genesis block
 %% The initial state populated with presets for accounts/contracts can be mutated here
@@ -219,18 +221,29 @@ calc_consensus() ->
 check_env() ->
     ConsensusSpec = calc_consensus(),
     %% Check that the first consensus specification starts at 0
-    [{0,_}|_] = ConsensusSpec,
+    case ConsensusSpec of
+        [{0,_}|_] -> ok;
+        _ -> error(first_consensus_does_not_activate_at_genesis)
+    end,
     %% No duplicated specs
     ConsensusSpec = lists:usort(ConsensusSpec),
     %% We know the requested consensus algorithms
-    [] = lists:filter(fun ({_,{undefined,_}}) -> true; (_) -> false end, ConsensusSpec),
+    case lists:filter(fun ({_,{undefined,_}}) -> true; (_) -> false end, ConsensusSpec) of
+        [] -> ok;
+        _ -> error(unknown_consensus)
+    end,
     %% Some consensuses like dev mode can't be turned off
     Changeable = [M:can_be_turned_off() || {_,{M,_}} <- ConsensusSpec],
     case lists:filter(fun erlang:'not'/1, Changeable) of
         [] ->
             ok;
         [false] ->
-            false = lists:last(Changeable);
+            case lists:last(Changeable) of
+                true ->
+                    error(cannot_turn_off_consensus);
+                false ->
+                    ok
+            end;
         _ ->
             error(cannot_turn_off_consensus)
     end,
@@ -307,6 +320,9 @@ consensus_from_network_id(_) ->
 -ifdef(TEST).
 consensus_module_from_name(<<"pow_cuckoo">>) -> aec_consensus_bitcoin_ng;
 consensus_module_from_name(<<"ct_tests">>) -> aec_consensus_common_tests;
+consensus_module_from_name(<<"eunit_one">>) -> module_eunit_one;
+consensus_module_from_name(<<"eunit_two">>) -> module_eunit_two;
+consensus_module_from_name(<<"eunit_three">>) -> module_eunit_three;
 consensus_module_from_name(_) -> undefined.
 -else.
 consensus_module_from_name(<<"pow_cuckoo">>) -> aec_consensus_bitcoin_ng;

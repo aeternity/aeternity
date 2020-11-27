@@ -33,7 +33,8 @@
         , state_pre_transform_micro_node/2
         %% Block rewards
         , state_grant_reward/3
-        , state_apply_pof/2
+        %% PoGF
+        , pogf_detected/2
         %% Genesis block
         , genesis_transform_trees/2
         , genesis_raw_header/0
@@ -155,7 +156,12 @@ assert_target_equal_to_prev(Node, Ctx) ->
 
 assert_calculated_target(Node, Delta, Ctx) ->
     Stats = aec_block_insertion:ctx_get_recent_n(Ctx, Delta),
-    aec_target:verify(aec_block_insertion:node_header(Node), Stats).
+    case aec_target:verify(aec_block_insertion:node_header(Node), Stats) of
+        {error, {wrong_target, Actual, Expected}} ->
+            {error, {wrong_target, Node, Actual, Expected}};
+        R ->
+            R
+    end.
 
 %% -------------------------------------------------------------------
 %% Dirty validation of microblocks just before starting the state transition
@@ -225,7 +231,10 @@ state_pre_transform_micro_node(_Node, Trees) -> Trees.
 %% -------------------------------------------------------------------
 %% Block rewards
 state_grant_reward(Beneficiary, Trees, Amount) -> aec_trees:grant_fee(Beneficiary, Trees, Amount).
-state_apply_pof(_Fraudster, Trees) -> Trees.
+
+%% -------------------------------------------------------------------
+%% PoGF
+pogf_detected(_H1, _H2) -> ok.
 
 %% -------------------------------------------------------------------
 %% Genesis block

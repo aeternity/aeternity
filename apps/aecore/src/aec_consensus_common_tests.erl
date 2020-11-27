@@ -39,7 +39,8 @@
         , state_pre_transform_micro_node/2
         %% Block rewards
         , state_grant_reward/3
-        , state_apply_pof/2
+        %% PoGF
+        , pogf_detected/2
         %% Genesis block
         , genesis_transform_trees/2
         , genesis_raw_header/0
@@ -156,7 +157,10 @@ state_pre_transform_micro_node(_Node, Trees) -> Trees.
 %% -------------------------------------------------------------------
 %% Block rewards
 state_grant_reward(Beneficiary, Trees, Amount) -> aec_consensus_bitcoin_ng:state_grant_reward(Beneficiary, Trees, Amount).
-state_apply_pof(_Fraudster, Trees) -> Trees.
+
+%% -------------------------------------------------------------------
+%% PoGF
+pogf_detected(_H1, _H2) -> ok.
 
 %% -------------------------------------------------------------------
 %% Genesis block

@@ -275,7 +275,7 @@ get_n_key_headers_from(Node, N) ->
         error ->
             error;
         {ok, Headers} ->
-            [node_header(H) || H <- Headers]
+            {ok, [node_header(H) || H <- Headers]}
     end.
 
 get_n_key_nodes_from(Node, N) ->
