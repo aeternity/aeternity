@@ -45,7 +45,8 @@
          sign_on_node/2,
          sign_on_node/3,
          forks/0,
-         latest_fork_height/0]).
+         latest_fork_height/0,
+         latest_protocol_version/0]).
 
 -export([mock_mempool_nonce_offset/2,
          unmock_mempool_nonce_offset/1]).
@@ -559,6 +560,9 @@ forks() ->
 latest_fork_height() ->
     lists:max(maps:values(forks())).
 
+latest_protocol_version() ->
+    lists:max(maps:keys(aec_hard_forks:protocols())).
+
 mock_mempool_nonce_offset(Node, Offset) ->
     ok = set_env(Node, aecore, mempool_nonce_offset, Offset).
 
@@ -954,7 +958,7 @@ config_apply_options(Node, Cfg, [OptNodesCfg | T]) when is_map(OptNodesCfg) ->
                #{Node := OptNodeCfg} -> maps_merge(Cfg, OptNodeCfg);
                #{} -> Cfg
            end,
-    config_apply_options(Node, Cfg, T).
+    config_apply_options(Node, Cfg1, T).
 
 
 write_keys(Node, Config) ->

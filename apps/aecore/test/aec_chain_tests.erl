@@ -1960,13 +1960,19 @@ make_ga_attach_tx(Pubkey, Code, AuthFun, CallData, Nonce, Fee, Gas, GasPrice) ->
 make_ga_meta_tx(Pubkey, AuthData, InnerTx, Fee, Gas, GasPrice) ->
     AccountId = aeser_id:create(account, Pubkey),
     ABI = aect_test_utils:latest_sophia_abi_version(),
-    {ok, Tx} = aega_meta_tx:new(#{ ga_id       => AccountId
-                                 , auth_data   => AuthData
-                                 , abi_version => ABI
-                                 , gas         => Gas
-                                 , gas_price   => GasPrice
-                                 , fee         => Fee
-                                 , tx          => InnerTx}),
+    Opts0 = #{ ga_id       => AccountId
+             , auth_data   => AuthData
+             , abi_version => ABI
+             , gas         => Gas
+             , gas_price   => GasPrice
+             , fee         => Fee
+             , tx          => InnerTx },
+    Opts =
+        case aecore_suite_utils:latest_protocol_version() >= ?IRIS_PROTOCOL_VSN of
+            true -> Opts0;
+            false -> Opts0#{ttl => 0}
+        end,
+    {ok, Tx} = aega_meta_tx:new(Opts),
     Tx.
 
 make_name_preclaim_tx(Pubkey, Nonce, Name, Salt, Fee) ->

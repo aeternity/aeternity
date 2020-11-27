@@ -12,6 +12,13 @@
 -define(TEST_MODULE, aetx).
 
 -define(RECIPIENT_PUBKEY, <<"_________recipient_pubkey_______">>).
+-define(FORTUNA_ON(Tests),
+        begin case aecore_suite_utils:latest_protocol_version() >= ?FORTUNA_PROTOCOL_VSN of
+                  true -> Tests;
+                  false -> []
+              end
+        end).
+      
 
 %%%-------------------------------------------------------------------
 %%% Test that the proper TTL is fetched
@@ -24,11 +31,12 @@ ttl_test_() ->
      fun(TmpKeysDir) ->
              ok = aec_test_utils:aec_keys_cleanup(TmpKeysDir)
      end,
-     [
-      {"Ensure that spend TTL is set", fun spend_ttl/0},
-      {"Check single meta tx ttl", fun single_meta_ttl/0},
-      {"Check nested meta tx ttl", fun nested_meta_ttl/0}
-     ]}.
+     ?FORTUNA_ON(
+        [
+          {"Ensure that spend TTL is set", fun spend_ttl/0},
+          {"Check single meta tx ttl", fun single_meta_ttl/0},
+          {"Check nested meta tx ttl", fun nested_meta_ttl/0}
+        ])}.
 
 spend_ttl() ->
     TTL = 1234,
@@ -37,9 +45,7 @@ spend_ttl() ->
     ok.
 
 single_meta_ttl() ->
-    case latest_protocol_version() of
-        ?ROMA_PROTOCOL_VSN -> ok;
-        ?MINERVA_PROTOCOL_VSN -> ok;
+    case aecore_suite_utils:latest_protocol_version() of
         Protocol when Protocol < ?IRIS_PROTOCOL_VSN ->
             SpendTTL = 123,
             {ok, SpendTx} = spend_tx(#{ttl => SpendTTL,
@@ -56,9 +62,7 @@ single_meta_ttl() ->
     end.
 
 nested_meta_ttl() ->
-    case latest_protocol_version() of
-        ?ROMA_PROTOCOL_VSN -> ok;
-        ?MINERVA_PROTOCOL_VSN -> ok;
+    case aecore_suite_utils:latest_protocol_version() of
         Protocol when Protocol < ?IRIS_PROTOCOL_VSN ->
             SpendTTL = 123,
             {ok, SpendTx} = spend_tx(#{ttl => SpendTTL,
@@ -88,12 +92,13 @@ version_test_() ->
      fun(TmpKeysDir) ->
              ok = aec_test_utils:aec_keys_cleanup(TmpKeysDir)
      end,
-     [
-      {"Ensure old meta tx is valid pre-Iris", fun allow_ttl_pre_iris/0},
-      {"Ensure new meta tx is invalid pre-Iris", fun require_ttl_pre_iris/0},
-      {"Ensure old meta tx is invalid post Iris", fun forbid_ttl_post_iris/0},
-      {"Ensure new meta tx is valid post Iris", fun no_ttl_post_iris/0}
-     ]}.
+     ?FORTUNA_ON(
+        [
+          {"Ensure old meta tx is valid pre-Iris", fun allow_ttl_pre_iris/0},
+          {"Ensure new meta tx is invalid pre-Iris", fun require_ttl_pre_iris/0},
+          {"Ensure old meta tx is invalid post Iris", fun forbid_ttl_post_iris/0},
+          {"Ensure new meta tx is valid post Iris", fun no_ttl_post_iris/0}
+        ])}.
 
 allow_ttl_pre_iris() ->
     ttl_iris(allowed, pre_iris, has_ttl).
@@ -119,9 +124,7 @@ ttl_iris(Allowed, Iris, HasTTL) ->
             allowed -> true;
             forbidden -> false
         end,
-    case latest_protocol_version() of
-        ?ROMA_PROTOCOL_VSN -> ok;
-        ?MINERVA_PROTOCOL_VSN -> ok;
+    case aecore_suite_utils:latest_protocol_version() of
         Protocol when (Protocol < ?IRIS_PROTOCOL_VSN) =:= PreIris ->
             SpendTTL = 123,
             {ok, SpendTx} = spend_tx(#{ttl => SpendTTL,
@@ -156,7 +159,7 @@ spend_tx(Opts) ->
 
 meta(InnerTx, Opts) ->
     {ok, MinerPubkey} = aec_keys:pubkey(),
-    Protocol = latest_protocol_version(),
+    Protocol = aecore_suite_utils:latest_protocol_version(),
     DefaultOpts =
         #{ga_id       => aeser_id:create(account, MinerPubkey),
           auth_data   => <<"fake_auth_data">>,
@@ -167,5 +170,3 @@ meta(InnerTx, Opts) ->
           tx          => InnerTx},
     {ok, _MetaTx} = aega_meta_tx:new(maps:merge(DefaultOpts, Opts)).
 
-latest_protocol_version() ->
-    lists:max(maps:keys(aec_hard_forks:protocols())).
