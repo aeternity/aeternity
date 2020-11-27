@@ -1431,9 +1431,9 @@ dry_run_txs(Calls) ->
 %% dry_run_txs_(Calls) ->
     Txs = [ #{tx => Tx} || {#{tx_encoded := Tx}, _} <- Calls ],
     {ok, 200, #{ <<"results">> := Results }} =
-        with_trace(fun(_) -> dry_run(Txs) end, [], "dry_run", always),
+        with_trace(fun(_) -> dry_run(Txs) end, [], "dry_run"),
     {ok, 200, #{ <<"results">> := Results }} =
-        with_trace(fun(_) -> dry_run_parallel(Txs) end, [], "dry_run_par", always),
+        with_trace(fun(_) -> dry_run_parallel(Txs) end, [], "dry_run_par"),
     {ok, 200, #{ <<"results">> := Results
                , <<"tx_events">> := TxEvents }} = dry_run_w_events(Txs),
     ct:log("TxEvents = ~p", [TxEvents]),

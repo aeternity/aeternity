@@ -24,12 +24,17 @@
 %% -type tree_type() :: aec_trees:tree_type().
 -type subtree_type() :: aec_trees:subtree_type().
 
+%% the requests will show up in crash reports as "Last message in", but those reports
+%% don't reveal the pid of the caller. By setting the 'from' field to self(), we can
+%% match the caller pid with a transaction index. The from field is immediately overwritten
+%% with {Pid, Ref}, i.e. the gen_server reply handle, upon receipt.
+%%
 -record(req, { op   :: get | put
              , mod  :: module()
              , type :: subtree_type() | undefined
              , f    :: atom()
              , args :: tuple()
-             , from :: {pid(), reference()} | undefined
+             , from = self() :: {pid(), reference()} | pid()
              }).
 
 -type req() :: #req{}.
@@ -474,19 +479,18 @@ check_deps_for_id(Id, Ix, #st{ deps    = Deps
 check_claim(Id, Ix, Deps, Claims, Status) ->
     case maps:find(Id, Deps) of
         {ok, IdDeps} ->
-            {First, IdDeps1} = prune_deps(IdDeps, Status),
-            case First of
-                Ix ->
-                    {ok, [], Deps, Claims};
-                HdIx when HdIx < Ix ->
-                    Action = wait_or_restart(Ix, Status),
-                    {Action, [], Deps#{Id => gb_sets:add_element(Ix, IdDeps1)}, Claims};
+            case prune_deps(IdDeps, Status) of
                 empty ->
                     {ok, [], Deps#{Id => gb_sets:singleton(Ix)}, add_claim(Ix, Id, Claims)};
-                HdIx when HdIx > Ix ->
+                {Ix, IdDeps1} ->
+                    {ok, [], Deps#{Id => IdDeps1}, Claims};
+                {HdIx, IdDeps1} when HdIx < Ix ->
+                    Action = wait_or_restart(Ix, Status),
+                    {Action, [], Deps#{Id => gb_sets:add_element(Ix, IdDeps1)}, Claims};
+                {HdIx, IdDeps1} when HdIx > Ix ->
                     Restart = maybe_restart_rest(IdDeps1, Status),
                     {ok, Restart, Deps#{Id => gb_sets:add_element(Ix, IdDeps1)},
-                    add_claim(Ix, Id, Claims)}
+                     add_claim(Ix, Id, Claims)}
             end;
         error ->
             {ok, [], Deps#{Id => gb_sets:singleton(Ix)}, add_claim(Ix, Id, Claims)}
