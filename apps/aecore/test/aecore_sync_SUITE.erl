@@ -790,21 +790,8 @@ validate_default_peers(_Config) ->
     %% this test relies on having those as default peers in the config/dev1/sys.config
     %% [<<"aenode://pp_23YdvfRPQ1b1AMWmkKZUGk2cQLqygQp55FzDWZSEUicPjhxtp5@localhost:3025">>,
     %%  <<"aenode://pp_2M9oPohzsWgJrBBCFeYi3PVT4YF7F2botBtq6J1EGcVkiutx3R@localhost:3035">>]
-    Peer2Id = <<"pp_23YdvfRPQ1b1AMWmkKZUGk2cQLqygQp55FzDWZSEUicPjhxtp5">>, 
-    Peer3Id = <<"pp_2M9oPohzsWgJrBBCFeYi3PVT4YF7F2botBtq6J1EGcVkiutx3R">>, 
-    DefaultIds = [I || {ok, I} <- [aeser_api_encoder:safe_decode(peer_pubkey, P) ||
-                                   P <- [Peer2Id, Peer3Id]]],
     N1 = aecore_suite_utils:node_name(dev1),
     2 = rpc:call(N1, aec_peers, count, [verified], 5000),
-    %% the following relies on the peers beeing set as localhost, thus the
-    %% failed connect attempt had already passed
-    timer:sleep(100),
-    Peers = rpc:call(N1, aec_peers, available_peers, [], 5000),
-    2 = length(Peers),
-    PeerIds = [aec_peer:id(P) || P <- Peers],
-    SortedDefaultIds = lists:sort(DefaultIds),
-    SortedPeerIds = lists:sort(PeerIds),
-    SortedPeerIds = SortedDefaultIds,
     ok.
 
 restart_with_different_defaults(Config) ->
@@ -1148,7 +1135,7 @@ encode_peer_for_config(Peer) ->
     <<"aenode://", PK/binary, "@", Host/binary, ":", Port/binary>>.
 
 random_peer() ->
-    aec_peers_pool_tests:random_peer(#{host => <<"127.0.0.1">>,
+    aec_peers_pool_tests:random_peer(#{host    => <<"127.0.0.1">>,
                                        address => {127,0,0,1}}).
 
 assert_available_peers(N1, ExpectedPeers) ->
