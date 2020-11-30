@@ -252,7 +252,7 @@ perform_pre_transformations(Trees, TxEnv, PrevProtocol) ->
     Protocol = aetx_env:consensus_version(TxEnv),
     Trees0 = aect_call_state_tree:prune(Height, Trees),
     Trees1 = aeo_state_tree:prune(Height, Trees0),
-    Trees2 = aens_state_tree:prune(Height, Trees1),
+    Trees2 = aens_state_tree:prune(Height, Protocol, Trees1),
     perform_pre_transformations(Trees2, TxEnv, Protocol, PrevProtocol).
 
 perform_pre_transformations(Trees, _TxEnv, _Protocol, undefined) ->
