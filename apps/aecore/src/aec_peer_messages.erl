@@ -99,6 +99,10 @@ serialize(response, Response, Vsn = ?RESPONSE_VSN) ->
               , {type,   maps:get(type, Response)}
               , {reason, maps:get(reason, Response, <<>>)}
               , {object, maps:get(object, Response, <<>>)} ]);
+serialize(get_node_info, _, Vsn = ?GET_NODE_INFO_VSN) ->
+    serialize_flds(get_node_info, Vsn, []);
+serialize(node_info, _, Vsn = ?NODE_INFO_VSN) ->
+    serialize_flds(node_info, Vsn, []);
 serialize(close, _, Vsn = ?CLOSE_VSN) ->
     serialize_flds(close, Vsn, []).
 
@@ -134,6 +138,8 @@ tag(txps_init)            -> ?MSG_TX_POOL_SYNC_INIT;
 tag(txps_unfold)          -> ?MSG_TX_POOL_SYNC_UNFOLD;
 tag(txps_get)             -> ?MSG_TX_POOL_SYNC_GET;
 tag(txps_finish)          -> ?MSG_TX_POOL_SYNC_FINISH;
+tag(get_node_info)        -> ?MSG_GET_NODE_INFO;
+tag(node_info)            -> ?MSG_NODE_INFO;
 tag(close)                -> ?MSG_CLOSE.
 
 rev_tag(?MSG_PING)                 -> ping;
@@ -154,6 +160,8 @@ rev_tag(?MSG_TX_POOL_SYNC_INIT)    -> txps_init;
 rev_tag(?MSG_TX_POOL_SYNC_UNFOLD)  -> txps_unfold;
 rev_tag(?MSG_TX_POOL_SYNC_GET)     -> txps_get;
 rev_tag(?MSG_TX_POOL_SYNC_FINISH)  -> txps_finish;
+rev_tag(?MSG_GET_NODE_INFO)        -> get_node_info;
+rev_tag(?MSG_NODE_INFO)            -> node_info;
 rev_tag(?MSG_CLOSE)                -> close.
 
 latest_vsn(ping)                 -> ?PING_VSN;
@@ -174,6 +182,8 @@ latest_vsn(txps_init)            -> ?TX_POOL_SYNC_INIT_VSN;
 latest_vsn(txps_unfold)          -> ?TX_POOL_SYNC_UNFOLD_VSN;
 latest_vsn(txps_get)             -> ?TX_POOL_SYNC_GET_VSN;
 latest_vsn(txps_finish)          -> ?TX_POOL_SYNC_FINISH_VSN;
+latest_vsn(get_node_info)        -> ?GET_NODE_INFO_VSN;
+latest_vsn(node_info)            -> ?NODE_INFO_VSN;
 latest_vsn(close)                -> ?CLOSE_VSN.
 
 deserialize(ping, Vsn, PingFlds) when Vsn == ?PING_VSN ->
@@ -291,6 +301,13 @@ deserialize(response, Vsn, RspFlds) when Vsn == ?RESPONSE_VSN ->
         false ->
             {response, Vsn, R#{ reason => Reason }}
     end;
+deserialize(node_info, Vsn, NodeInfoFlds) ->
+    NodeInfoData =
+        [ {version, _Version}
+        ] = aeserialization:decode_fields(
+                                serialization_template(node_info, Vsn),
+                                NodeInfoFlds),
+    maps:from_list(NodeInfoData);
 deserialize(close, Vsn, _CloseFlds) when Vsn == ?CLOSE_VSN ->
     {close, Vsn, #{}}.
 
@@ -347,6 +364,11 @@ serialization_template(response, ?RESPONSE_VSN) ->
     , {type, int}
     , {reason, binary}
     , {object, binary} ];
+serialization_template(node_info, ?NODE_INFO_VSN) ->
+    [ {version, binary}
+    ];
+serialization_template(node_info, ?GET_NODE_INFO_VSN) ->
+    [ ];
 serialization_template(close, ?CLOSE_VSN) ->
     [ ].
 
