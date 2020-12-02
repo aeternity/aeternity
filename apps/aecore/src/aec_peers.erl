@@ -325,6 +325,15 @@ connection_closed(PeerId, PeerCon) ->
 peer_dead(PeerId, PeerCon) ->
     gen_server:call(?MODULE, {peer_dead, PeerId, PeerCon}).
 
+-ifdef(TEST).
+all() ->
+    gen_server:call(?MODULE, {all_peers, both}).
+
+all(PeerPool) when PeerPool =:= verified
+            orelse PeerPool =:= unverified
+            orelse PeerPool =:= both ->
+    gen_server:call(?MODULE, {all_peers, PeerPool}).
+-endif.
 %--- UTILITY FUNCTIONS FOR aec_sync ONLY ---------------------------------------
 
 -spec log_ping(aec_peer:id(), ok | error) -> ok | {error, any()}.
@@ -431,6 +440,10 @@ handle_call({peer_accepted, PeerAddr, PeerInfo, PeerCon}, _From, State0) ->
     {reply, Result, update_peer_metrics(State)};
 handle_call({peer_alive, PeerId, PeerCon}, _From, State0) ->
     {Result, State} = on_peer_alive(PeerId, PeerCon, State0),
+    {reply, Result, update_peer_metrics(maybe_start_tcp_probe_timers(State))};
+handle_call({all_peers, PeerPool}, _From, State) ->
+    #state{pool = Pool} = State,
+    Result = [ aec_peer:info(P) || {_, P} <- aec_peers_pool:all(Pool, PeerPool) ],
     {reply, Result, update_peer_metrics(maybe_start_tcp_probe_timers(State))}.
 
 handle_cast({log_ping, Outcome, PeerId, _Time}, State) ->

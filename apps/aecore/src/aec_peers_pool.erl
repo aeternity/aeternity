@@ -106,7 +106,9 @@
 -export([delete/2]).
 
 %% Functions for debug/testing.
--export([available/2]).
+-export([available/2,
+         all/1,
+         all/2]).
 
 -ifdef(TEST).
 -compile([export_all, nowarn_export_all]).
@@ -665,6 +667,28 @@ available(St, unverified) ->
 available(St, both) ->
     #?ST{lookup_verif = Verif, lookup_unver = Unver} = St,
     export_results(St, lookup_to_list(Verif) ++ lookup_to_list(Unver)).
+
+%% this could be computationaly heavy, hence it is expected to be used only in
+%% tests context. The difference between this and available/2 is that this
+%% function returns all peers, including already selected ones
+-spec all(state()) -> [ext_peer()].
+all(State) ->
+    all(State, both).
+
+-spec all(state(), both | verified | unverified) -> [ext_peer()].
+all(St, DesiredPeerState) ->
+    #?ST{peers = Peers} = St,
+    Pred =
+        fun(_PeerId, Peer) -> peer_state(Peer) =:= DesiredPeerState end,
+    FilteredPeers =
+        case DesiredPeerState of
+            both -> Peers;
+            _ -> maps:filter(Pred, Peers)
+        end,
+    export_results(St, maps:keys(FilteredPeers)).
+
+
+
 
 %=== INTERNAL FUNCTIONS ========================================================
 
