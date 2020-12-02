@@ -2817,7 +2817,7 @@ co_sign_tx(Signer, SignedTx, Cfg) ->
             #{auth_idx := N} = Signer,
             #{auth_params := Auths} = ?config(ga, Cfg),
             AuthOpts = maps:get(Role, Auths),
-            {meta(Pubkey, AuthOpts, N + 1, SignedTx), Signer#{auth_idx => N + 1}}
+            {meta(Pubkey, AuthOpts, SignedTx), Signer#{auth_idx => N + 1}}
     end.
 
 
@@ -3369,7 +3369,7 @@ ga_spend(From, To, Amt, Cfg) ->
                   , payload      => <<>>
                   },
     {ok, SpendAetx} = aec_spend_tx:new(SpendProps),
-    SignedTx = meta(SendPub, Auth, 1, aetx_sign:new(SpendAetx, [])),
+    SignedTx = meta(SendPub, Auth, aetx_sign:new(SpendAetx, [])),
     ok = rpc(dev1, aec_tx_pool, push, [SignedTx]),
     TxHash = aeser_api_encoder:encode(tx_hash, aetx_sign:hash(SignedTx)),
     aecore_suite_utils:mine_blocks_until_txs_on_chain(
@@ -3426,7 +3426,7 @@ btc_auth(TxHash, Nonce, PrivKey) ->
     Sig  = aega_test_utils:to_hex_lit(64, aeu_crypto:ecdsa_from_der_sig(Sig0)),
     aega_test_utils:make_calldata("bitcoin_auth", "authorize", [Nonce, Sig]).
 
-meta(Owner, AuthOpts, _N, SignedTx) ->
+meta(Owner, AuthOpts, SignedTx) ->
     {Nonce, Aetx} =
         case aetx:specialize_callback(aetx_sign:innermost_tx(SignedTx)) of
             {aesc_offchain_tx, OffChainTx} ->

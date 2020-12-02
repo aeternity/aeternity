@@ -9,6 +9,7 @@
 
 -include("../../aecontract/test/include/aect_sophia_vsn.hrl").
 -include("../../aecontract/include/aecontract.hrl").
+-include_lib("aecontract/include/hard_forks.hrl").
 
 %%%===================================================================
 %%% Transactions
@@ -45,13 +46,18 @@ ga_meta_tx(PubKey, Spec0) ->
     Tx.
 
 ga_meta_tx_default(PubKey) ->
-    #{ fee         => 1000000 * aec_test_utils:min_gas_price()
-     , ga_id       => aeser_id:create(account, PubKey)
-     , abi_version => aega_SUITE:abi_version()
-     , gas         => 20000
-     , gas_price   => 1000 * aec_test_utils:min_gas_price()
-     , ttl         => 0
-     }.
+    Protocol = aect_test_utils:latest_protocol_version(),
+    Def0 =
+        #{ fee         => 1000000 * aec_test_utils:min_gas_price()
+        , ga_id       => aeser_id:create(account, PubKey)
+        , abi_version => aega_SUITE:abi_version()
+        , gas         => 20000
+        , gas_price   => 1000 * aec_test_utils:min_gas_price()
+        },
+    case Protocol < ?IRIS_PROTOCOL_VSN of
+        true -> Def0#{ttl => 0};
+        false -> Def0
+    end.
 
 %%%===================================================================
 %%% Offchain state functions

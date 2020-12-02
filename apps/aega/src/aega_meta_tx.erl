@@ -46,7 +46,8 @@
 -export([set_tx/2
         ]).
 
--define(GA_META_TX_VSN, 1).
+-define(NO_TTL_VSN, 2).
+-define(PRE_IRIS_VSN, 1).
 -define(GA_META_TX_TYPE, ga_meta_tx).
 
 %% Should this be in a header file somewhere?
@@ -63,7 +64,7 @@
           gas         :: amount(),
           gas_price   :: amount(),
           fee         :: amount(),
-          ttl         :: aetx:tx_ttl(),
+          ttl         :: aetx:tx_ttl() | no_ttl,
           tx          :: aetx_sign:signed_tx()
         }).
 
@@ -126,6 +127,9 @@ fee(#ga_meta_tx{fee = Fee}) ->
     Fee.
 
 -spec ttl(tx()) -> aetx:tx_ttl().
+ttl(#ga_meta_tx{ttl = no_ttl, tx = SignedTx}) ->
+    Aetx = aetx_sign:tx(SignedTx),
+    aetx:ttl(Aetx); %% works for nested metas as well: it fetches innermost ttl
 ttl(#ga_meta_tx{ttl = TTL}) ->
     TTL.
 
@@ -144,7 +148,7 @@ new(#{ga_id       := GAId,
                      gas         = Gas,
                      gas_price   = GasPrice,
                      fee         = Fee,
-                     ttl         = maps:get(ttl, Args, 0),
+                     ttl         = maps:get(ttl, Args, no_ttl),
                      tx          = InnerTx},
     {ok, aetx:new(?MODULE, Tx)}.
 
@@ -252,18 +256,51 @@ serialize(#ga_meta_tx{ga_id       = GAId,
                       ttl         = TTL,
                       tx          = InnerTx} = Tx) ->
     SerTx = aetx_sign:serialize_to_binary(InnerTx),
-    {version(Tx),
-     [ {ga_id, GAId}
-     , {auth_data, AuthData}
-     , {abi_version, ABIVersion}
-     , {fee, Fee}
-     , {gas, Gas}
-     , {gas_price, GasPrice}
-     , {ttl, TTL}
-     , {tx, SerTx}
-     ]}.
+    Version = version(Tx),
+    case Version of
+        ?PRE_IRIS_VSN ->
+            {Version,
+            [ {ga_id, GAId}
+            , {auth_data, AuthData}
+            , {abi_version, ABIVersion}
+            , {fee, Fee}
+            , {gas, Gas}
+            , {gas_price, GasPrice}
+            , {ttl, TTL}
+            , {tx, SerTx}
+            ]};
+        ?NO_TTL_VSN ->
+            {Version,
+            [ {ga_id, GAId}
+            , {auth_data, AuthData}
+            , {abi_version, ABIVersion}
+            , {fee, Fee}
+            , {gas, Gas}
+            , {gas_price, GasPrice}
+            , {tx, SerTx}
+            ]}
+    end.
 
-deserialize(?GA_META_TX_VSN,
+
+deserialize(?NO_TTL_VSN,
+            [ {ga_id, GAId}
+            , {auth_data, AuthData}
+            , {abi_version, ABIVersion}
+            , {fee, Fee}
+            , {gas, Gas}
+            , {gas_price, GasPrice}
+            , {tx, SerTx}]) ->
+    account = aeser_id:specialize_type(GAId),
+    Tx = aetx_sign:deserialize_from_binary(SerTx),
+    #ga_meta_tx{ga_id       = GAId,
+                auth_data   = AuthData,
+                abi_version = ABIVersion,
+                fee         = Fee,
+                gas         = Gas,
+                gas_price   = GasPrice,
+                ttl         = no_ttl,
+                tx          = Tx};
+deserialize(?PRE_IRIS_VSN,
             [ {ga_id, GAId}
             , {auth_data, AuthData}
             , {abi_version, ABIVersion}
@@ -283,7 +320,16 @@ deserialize(?GA_META_TX_VSN,
                 ttl         = TTL,
                 tx          = Tx}.
 
-serialization_template(?GA_META_TX_VSN) ->
+serialization_template(?NO_TTL_VSN) ->
+    [ {ga_id, id}
+    , {auth_data, binary}
+    , {abi_version, int}
+    , {fee, int}
+    , {gas, int}
+    , {gas_price, int}
+    , {tx, binary}
+    ];
+serialization_template(?PRE_IRIS_VSN) ->
     [ {ga_id, id}
     , {auth_data, binary}
     , {abi_version, int}
@@ -302,20 +348,33 @@ for_client(#ga_meta_tx{ ga_id       = GAId,
                         gas_price   = GasPrice,
                         ttl         = TTL,
                         tx          = InnerTx}) ->
-    #{<<"ga_id">>       => aeser_api_encoder:encode(id_hash, GAId),
-      <<"auth_data">>   => aeser_api_encoder:encode(contract_bytearray, AuthData),
-      <<"abi_version">> => ABIVersion,
-      <<"fee">>         => Fee,
-      <<"gas">>         => Gas,
-      <<"gas_price">>   => GasPrice,
-      <<"ttl">>         => TTL,
-      <<"tx">>          => aetx_sign:serialize_for_client_inner(InnerTx, #{})}.
+    M = #{<<"ga_id">>       => aeser_api_encoder:encode(id_hash, GAId),
+          <<"auth_data">>   => aeser_api_encoder:encode(contract_bytearray, AuthData),
+          <<"abi_version">> => ABIVersion,
+          <<"fee">>         => Fee,
+          <<"gas">>         => Gas,
+          <<"gas_price">>   => GasPrice,
+          <<"ttl">>         => TTL,
+          <<"tx">>          => aetx_sign:serialize_for_client_inner(InnerTx, #{})},
+    case TTL of
+        no_ttl -> maps:remove(<<"ttl">>, M);
+        I when is_integer(I) -> M
+    end.
 
 -spec version(tx()) -> non_neg_integer().
+version(#ga_meta_tx{ttl = no_ttl}) ->
+    ?NO_TTL_VSN;
 version(_) ->
-    ?GA_META_TX_VSN.
+    ?PRE_IRIS_VSN.
 
 -spec valid_at_protocol(aec_hard_forks:protocol_vsn(), tx()) -> boolean().
+valid_at_protocol(P, #ga_meta_tx{ ttl = no_ttl}) when P < ?IRIS_PROTOCOL_VSN ->
+    %% TTL is mandatory before Iris
+    false;
+valid_at_protocol(P, #ga_meta_tx{ ttl = TTL}) when P >= ?IRIS_PROTOCOL_VSN
+                                                   andalso is_integer(TTL) ->
+    %% TTL is no more from Iris on
+    false;
 valid_at_protocol(P, #ga_meta_tx{ tx = SignedTx }) ->
     P >= ?FORTUNA_PROTOCOL_VSN andalso
         aetx:valid_at_protocol(P, aetx_sign:tx(SignedTx)).

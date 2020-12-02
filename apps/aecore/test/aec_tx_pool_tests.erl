@@ -914,14 +914,20 @@ signed_ct_call_tx(Sender, Nonce, Fee, GasPrice) ->
 a_meta_tx(Sender, OuterFee, GasPrice, InnerFee) ->
     {ok, Tx} = a_spend_tx(Sender, Sender, 0, InnerFee, 0),
     STx = aetx_sign:new(Tx, []),
-    {ok, MTx} =
-        aega_meta_tx:new(#{ga_id       => aeser_id:create(account, Sender),
-                           auth_data   => <<"">>,
-                           abi_version => 1,
-                           gas         => 20000,
-                           gas_price   => GasPrice,
-                           fee         => OuterFee,
-                           tx          => STx}),
+    Opts0 =
+        #{ga_id       => aeser_id:create(account, Sender),
+          auth_data   => <<"">>,
+          abi_version => 1,
+          gas         => 20000,
+          gas_price   => GasPrice,
+          fee         => OuterFee,
+          tx          => STx},
+    Opts =
+        case aecore_suite_utils:latest_protocol_version() >= ?IRIS_PROTOCOL_VSN of
+            true -> Opts0;
+            false -> Opts0#{ttl => 0}
+        end,
+    {ok, MTx} = aega_meta_tx:new(Opts),
     aetx_sign:new(MTx, []).
 
 sign(me, Tx) ->
