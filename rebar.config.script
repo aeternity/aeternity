@@ -13,6 +13,20 @@ FilterRelxRocksDb = fun(Apps) ->
                         end
                     end,
 
+case FilterRocksDbCheck of
+    false ->
+        case os:getenv("ERLANG_ROCKSDB_OPTS") of
+            false ->
+                RocksDbOpts = "-DWITH_SNAPPY=ON -DWITH_LZ4=ON",
+                true = os:putenv("ERLANG_ROCKSDB_OPTS", RocksDbOpts);
+            _ ->
+                %% If manually set, we assume it's thought through
+                skip
+        end;
+    true ->
+        skip
+end.
+
 FilterDepsRocksDb = fun(Deps) ->
                         case FilterRocksDbCheck of
                             false ->
