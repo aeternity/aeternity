@@ -76,8 +76,12 @@ groups() ->
                               {group, large_msgs},
                               {group, performance},
                               {group, config_overwrites_defaults},
-                              {group, persistence},
-                              {group, node_info}
+                              {group, node_info},
+                              %% keep this one last as it corrupts the DB of
+                              %% the peers
+                              %% TODO: investigate why
+                              {group, persistence}
+                              
                              ]},
      {two_nodes, [sequence],
       [start_first_node,
