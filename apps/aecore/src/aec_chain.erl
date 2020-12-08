@@ -740,3 +740,4 @@ sum_pending_rewards(Hash, StopHeight, Acc) ->
         false ->
             Acc1
     end.
+

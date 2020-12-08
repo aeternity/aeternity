@@ -101,8 +101,17 @@ serialize(response, Response, Vsn = ?RESPONSE_VSN) ->
               , {object, maps:get(object, Response, <<>>)} ]);
 serialize(get_node_info, _, Vsn = ?GET_NODE_INFO_VSN) ->
     serialize_flds(get_node_info, Vsn, []);
-serialize(node_info, _, Vsn = ?NODE_INFO_VSN) ->
-    serialize_flds(node_info, Vsn, []);
+serialize(node_info, NodeInfoMap, Vsn = ?NODE_INFO_VSN) ->
+    #{ version := NodeVersion
+     , os := OS
+     , network_id := NetworkID 
+     , verified_peers := VerPeers
+     , unverified_peers := UnverPeers } = NodeInfoMap,
+    serialize_flds(node_info, Vsn, [ {version, NodeVersion}
+                                   , {os, OS}
+                                   , {network_id, NetworkID}
+                                   , {verified_peers, VerPeers}
+                                   , {unverified_peers, UnverPeers}]);
 serialize(close, _, Vsn = ?CLOSE_VSN) ->
     serialize_flds(close, Vsn, []).
 
@@ -301,13 +310,26 @@ deserialize(response, Vsn, RspFlds) when Vsn == ?RESPONSE_VSN ->
         false ->
             {response, Vsn, R#{ reason => Reason }}
     end;
+deserialize(get_node_info, Vsn, NodeInfoFlds) ->
+    [
+    ] = aeserialization:decode_fields( serialization_template(get_node_info,
+                                                              Vsn),
+                                       NodeInfoFlds),
+    {get_node_info, Vsn, #{}};
 deserialize(node_info, Vsn, NodeInfoFlds) ->
-    NodeInfoData =
-        [ {version, _Version}
-        ] = aeserialization:decode_fields(
-                                serialization_template(node_info, Vsn),
-                                NodeInfoFlds),
-    maps:from_list(NodeInfoData);
+    [ {version, Version}
+    , {os, OS}
+    , {network_id, NetworkID}
+    , {verified_peers, Verified}
+    , {unverified_peers, Unverified}
+    ] = aeserialization:decode_fields(serialization_template(node_info, Vsn),
+                                      NodeInfoFlds),
+    NodeInfo = #{ node_version => Version
+                , os => OS
+                , network_id => NetworkID
+                , peers => #{ verified   => Verified
+                            , unverified => Unverified }},
+    {node_info, Vsn, NodeInfo};
 deserialize(close, Vsn, _CloseFlds) when Vsn == ?CLOSE_VSN ->
     {close, Vsn, #{}}.
 
@@ -366,8 +388,12 @@ serialization_template(response, ?RESPONSE_VSN) ->
     , {object, binary} ];
 serialization_template(node_info, ?NODE_INFO_VSN) ->
     [ {version, binary}
+    , {os, binary}
+    , {network_id, binary}
+    , {verified_peers, int}
+    , {unverified_peers, int}
     ];
-serialization_template(node_info, ?GET_NODE_INFO_VSN) ->
+serialization_template(get_node_info, ?GET_NODE_INFO_VSN) ->
     [ ];
 serialization_template(close, ?CLOSE_VSN) ->
     [ ].

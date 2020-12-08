@@ -203,6 +203,11 @@
                             "default" : 7
                         }
                     }
+                },
+                "provide_node_info" : {
+                    "description": "Provide node version to peers",
+                    "type" : "boolean",
+                    "default": true 
                 }
             }
         },
