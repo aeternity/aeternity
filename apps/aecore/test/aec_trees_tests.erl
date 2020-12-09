@@ -193,6 +193,60 @@ par_eval_test_() ->
                                         , {spend, 10, 11, 10}
                                         , {spend, 12, 13, 10}
                                         , {spend, 14, 15, 10} ], S, ?OPTS)
+                end},
+               {"16 txs, nothing shared",
+                fun() ->
+                        normal_par_eval([ {spend, 0, 1, 10}
+                                        , {spend, 2, 3, 10}
+                                        , {spend, 4, 5, 10}
+                                        , {spend, 6, 7, 10}
+                                        , {spend, 8, 9, 10}
+                                        , {spend, 10, 11, 10}
+                                        , {spend, 12, 13, 10}
+                                        , {spend, 14, 15, 10}
+                                        , {spend, 16, 17, 10}
+                                        , {spend, 18, 19, 10}
+                                        , {spend, 20, 21, 10}
+                                        , {spend, 22, 23, 10}
+                                        , {spend, 24, 25, 10}
+                                        , {spend, 26, 27, 10}
+                                        , {spend, 28, 29, 10}
+                                        , {spend, 30, 31, 10}], S, ?OPTS)
+                end},
+                 {"32 txs, half shared",
+                fun() ->
+                        normal_par_eval([ {spend, 0, 1, 10}
+                                        , {spend, 2, 3, 10}
+                                        , {spend, 4, 5, 10}
+                                        , {spend, 6, 7, 10}
+                                        , {spend, 8, 9, 10}
+                                        , {spend, 10, 11, 10}
+                                        , {spend, 12, 13, 10}
+                                        , {spend, 14, 15, 10}
+                                        , {spend, 16, 17, 10}
+                                        , {spend, 18, 19, 10}
+                                        , {spend, 20, 21, 10}
+                                        , {spend, 22, 23, 10}
+                                        , {spend, 24, 25, 10}
+                                        , {spend, 26, 27, 10}
+                                        , {spend, 28, 29, 10}
+                                        , {spend, 30, 31, 10}
+                                        , {spend, 0, 2, 20}
+                                        , {spend, 2, 3, 20}
+                                        , {spend, 4, 5, 20}
+                                        , {spend, 6, 7, 20}
+                                        , {spend, 8, 9, 20}
+                                        , {spend, 10, 11, 20}
+                                        , {spend, 12, 13, 20}
+                                        , {spend, 14, 15, 20}
+                                        , {spend, 16, 17, 20}
+                                        , {spend, 18, 19, 20}
+                                        , {spend, 20, 21, 20}
+                                        , {spend, 22, 23, 20}
+                                        , {spend, 24, 25, 20}
+                                        , {spend, 26, 27, 20}
+                                        , {spend, 28, 29, 20}
+                                        , {spend, 30, 31, 20}], S, ?OPTS)
                 end}
                         %% after
                         %%     stop_trace()
@@ -893,7 +947,7 @@ setup_par_eval_ctxt(#{} = S0) ->
                                 new_account(N, Acctsx, Treesx)
                         end, {#{0 => #{ pub   => MainPub
                                       , priv  => MainPriv
-                                      , nonce => 1}}, Trees0}, lists:seq(1,15)),
+                                      , nonce => 1}}, Trees0}, lists:seq(1,32)),
     S0#{ accounts => Accts
        , trees    => Trees1
        , env      => Env }.
