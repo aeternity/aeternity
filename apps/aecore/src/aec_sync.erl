@@ -1150,7 +1150,7 @@ process_infos(Infos) ->
       Failed =
           lists:foldl(
               fun(Err, Accum) ->
-                  maps:put(Err, maps:get(Err, Accum, 0) + 1, Accum)
+                  maps:update_with(Err, fun(X) -> X + 1 end, 1, Accum)
               end,
               #{},
               Failed0),
@@ -1166,7 +1166,7 @@ process_infos(Infos) ->
               Res =
                   lists:foldl(
                       fun(#{Key := NodeVsn}, Accum) ->
-                          maps:update_with(NodeVsn, fun(X) -> X + 1 end, 0, Accum)
+                          maps:update_with(NodeVsn, fun(X) -> X + 1 end, 1, Accum)
                       end,
                       #{},
                       Responded),
