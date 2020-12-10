@@ -1166,7 +1166,7 @@ process_infos(Infos) ->
               Res =
                   lists:foldl(
                       fun(#{Key := NodeVsn}, Accum) ->
-                          maps:put(NodeVsn, maps:get(NodeVsn, Accum, 0) + 1, Accum)
+                          maps:update_with(NodeVsn, fun(X) -> X + 1 end, 0, Accum)
                       end,
                       #{},
                       Responded),
