@@ -1469,11 +1469,13 @@ handle_get_node_info(S) ->
         true ->
             NodeVersion = integer_to_binary(?KEY_HEADER_INFO_LIMA_POINT_RELEASE),
             OS = aeu_info:get_os(),
+            Verified = aec_peers:count(verified),
+            Unverified = aec_peers:count(unverified),
             NodeInfo = #{ version => NodeVersion
                         , os => OS
                         , network_id => aec_governance:get_network_id()
-                        , verified_peers => 2
-                        , unverified_peers => 2 },
+                        , verified_peers => Verified
+                        , unverified_peers => Unverified },
             send_response(S, node_info, {ok, NodeInfo}),
             S
     end.

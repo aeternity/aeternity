@@ -1172,9 +1172,16 @@ process_infos(Infos) ->
                       Responded),
               NoneIfEmpty(Res)
           end,
+      Peers =
+          lists:map(
+              fun(#{ peers := Peers }) ->
+                  Peers
+              end,
+              Responded),
       #{ versions => Aggr(node_version)
-        , os       => Aggr(os)
-        , failed   => NoneIfEmpty(Failed)}.
+        , os      => Aggr(os)
+        , failed  => NoneIfEmpty(Failed)
+        , peers   => Peers }.
 
 collect_infos(Timeout) ->
     ConnectedPeers = aec_peers:connected_peers(),
@@ -1192,33 +1199,40 @@ collect_infos(Timeout) ->
     pmap(Fun, ConnectedPeers, Timeout + 2000 + TimerOffset).
 
 pmap(Fun, L, Timeout) ->
-    Parent = self(),
-    lists:foreach(
-        fun(E) ->
-            spawn(fun() ->
-                      Child = self(),
-                      spawn(fun() ->
-                                Res = Fun(E),
-                                Child ! {pmap_result_inner, Res}
-                            end),
-                      Result =
-                          receive
-                              {pmap_result_inner, R} -> R
-                          after Timeout -> {error, request_timeout}
-                          end,
-                      Parent ! {pmap_result, Result}
-                  end)
-        end,
-        L),
-    pmap_gather(length(L), []).
+    Workers =
+        lists:map(
+            fun(E) ->
+                spawn_monitor(
+                    fun() ->
+                        {WorkerPid, WorkerMRef} =
+                            spawn_monitor(
+                                fun() ->
+                                    Res = Fun(E),
+                                    exit({ok, Res}) 
+                                end),
+                        Result =
+                            receive
+                                {'DOWN', WorkerMRef, process, WorkerPid, Res} ->
+                                    case Res of
+                                        {ok, R} -> {ok, R};
+                                        _       -> {error, failed}
+                                    end
+                            after Timeout -> {error, request_timeout}
+                            end,
+                        exit(Result)
+                    end)
+            end,
+            L),
+    pmap_gather(Workers, []).
 
-    
-pmap_gather(0, Accum) -> Accum;
-pmap_gather(Left, Accum) ->
-    Res =
-        receive
-            {pmap_result, R} -> R
-        %% note: no timeout here. This relies on the inner functions
-        %% timeouting when no response had been received
-        end,
-    pmap_gather(Left - 1, [Res | Accum]).
+pmap_gather([], Acc) ->
+    Acc;
+pmap_gather([{Pid, MRef} | Pids], Acc) ->
+    receive
+        {'DOWN', MRef, process, Pid, Res} ->
+            case Res of
+                {ok, GoodRes} -> pmap_gather(Pids, [GoodRes | Acc]);
+                {error, _} = Err -> pmap_gather(Pids, [Err | Acc])
+            end
+    end.
+
