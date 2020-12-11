@@ -103,11 +103,13 @@ serialize(get_node_info, _, Vsn = ?GET_NODE_INFO_VSN) ->
     serialize_flds(get_node_info, Vsn, []);
 serialize(node_info, NodeInfoMap, Vsn = ?NODE_INFO_VSN) ->
     #{ version := NodeVersion
+     , revision := Revision 
      , os := OS
      , network_id := NetworkID 
      , verified_peers := VerPeers
      , unverified_peers := UnverPeers } = NodeInfoMap,
     serialize_flds(node_info, Vsn, [ {version, NodeVersion}
+                                   , {revision, Revision}
                                    , {os, OS}
                                    , {network_id, NetworkID}
                                    , {verified_peers, VerPeers}
@@ -318,6 +320,7 @@ deserialize(get_node_info, Vsn, NodeInfoFlds) ->
     {get_node_info, Vsn, #{}};
 deserialize(node_info, Vsn, NodeInfoFlds) ->
     [ {version, Version}
+    , {revision, Revision}
     , {os, OS}
     , {network_id, NetworkID}
     , {verified_peers, Verified}
@@ -325,6 +328,7 @@ deserialize(node_info, Vsn, NodeInfoFlds) ->
     ] = aeserialization:decode_fields(serialization_template(node_info, Vsn),
                                       NodeInfoFlds),
     NodeInfo = #{ node_version => Version
+                , revision => Revision 
                 , os => OS
                 , network_id => NetworkID
                 , peers => #{ verified   => Verified
@@ -388,6 +392,7 @@ serialization_template(response, ?RESPONSE_VSN) ->
     , {object, binary} ];
 serialization_template(node_info, ?NODE_INFO_VSN) ->
     [ {version, binary}
+    , {revision, binary}
     , {os, binary}
     , {network_id, binary}
     , {verified_peers, int}

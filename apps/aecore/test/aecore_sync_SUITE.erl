@@ -1231,17 +1231,20 @@ first_fetch_node_infos(Successes, Fails) ->
     N1 = aecore_suite_utils:node_name(Dev1),
     Timeout = 5000, %% giving participants 2s to respond, ok for a test
     Info = rpc:call(N1, aec_sync, ask_all_for_node_info, [Timeout], Timeout + 500),
-    #{ versions := Versions
-     , os       := OSes
-     , failed   := Failed } = Info,
+    #{ versions  := Versions
+     , revisions := Revisions 
+     , os        := OSes
+     , failed    := Failed } = Info,
     case Successes of
         none ->
             none = Versions,
             none = OSes;
         _ when is_integer(Successes) ->
             OS = aeu_info:get_os(),
-            NodeVersion = integer_to_binary(?KEY_HEADER_INFO_LIMA_POINT_RELEASE),
+            NodeVersion = aeu_info:get_version(),
+            NodeRevision = aeu_info:get_revision(),
             #{NodeVersion := Successes} = Versions,
+            #{NodeRevision := Successes} = Revisions,
             #{OS := Successes} = OSes
     end,
     case Fails  of

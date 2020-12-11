@@ -1178,10 +1178,11 @@ process_infos(Infos) ->
                   Peers
               end,
               Responded),
-      #{ versions => Aggr(node_version)
-        , os      => Aggr(os)
-        , failed  => NoneIfEmpty(Failed)
-        , peers   => Peers }.
+      #{ versions       => Aggr(node_version)
+       , revisions      => Aggr(revision)
+       , os             => Aggr(os)
+       , failed         => NoneIfEmpty(Failed)
+       , peers          => Peers }.
 
 collect_infos(Timeout) ->
     ConnectedPeers = aec_peers:connected_peers(),

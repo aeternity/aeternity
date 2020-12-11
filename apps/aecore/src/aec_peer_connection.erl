@@ -1467,11 +1467,13 @@ handle_get_node_info(S) ->
     case is_node_info_sharing_enabled() of
         false -> S;
         true ->
-            NodeVersion = integer_to_binary(?KEY_HEADER_INFO_LIMA_POINT_RELEASE),
+            NodeVersion = aeu_info:get_version(),
+            NodeRevision = aeu_info:get_revision(),
             OS = aeu_info:get_os(),
             Verified = aec_peers:count(verified),
             Unverified = aec_peers:count(unverified),
             NodeInfo = #{ version => NodeVersion
+                        , revision => NodeRevision 
                         , os => OS
                         , network_id => aec_governance:get_network_id()
                         , verified_peers => Verified
