@@ -1101,42 +1101,40 @@ do_activity(transaction, Fun) ->
                     M when map_size(M) =:= 0 ->
                         throw({bypass, R});
                     M ->
-                        {Found, NotFound, Errored} = lists:foldl(
-                            fun ({Table, Batch}, {AccFound, AccNotFound, AccErrored}) ->
+                        {Found, NotFound} = lists:foldl(
+                            fun ({Table, Batch}, {AccFound, AccNotFound}) ->
                                 case maps:find(Table, Handles) of
-                                    error -> {AccFound, [Table|AccNotFound], AccErrored};
+                                    error -> {AccFound, [Table|AccNotFound]};
                                     {ok, H} ->
-                                        case rocksdb:write(H, Batch, []) of %% {sync, true} ?
-                                            ok -> {[Table|AccFound], AccNotFound, AccErrored};
-                                            {error, E} -> {AccFound, AccNotFound, [{Table, E}|AccErrored]}
+                                        case aec_db_lib:rocksdb_write(H, Batch, []) of %% {sync, true} ?
+                                            ok -> {[Table|AccFound], AccNotFound};
+                                            {error, Err} ->
+                                                lager:debug("DB transaction commit failed: ~p\n", [{Table, Err}]),
+                                                throw({error, {io_error, {Table, Err}}})
                                         end
                                 end
-                            end, {[], [], []}, maps:to_list(M)),
-                        case Errored of
-                            [] ->
-                                case NotFound of
-                                    [] -> throw({bypass, R});
-                                    _ ->
-                                        lager:debug("Missed tables in mnesia bypass: ~p\n", [NotFound]),
-                                        %% Fixup the transaction store as we have still data left to write :P
-                                        [begin
-                                             Batch = maps:get(Table, M),
-                                             lists:foreach(
-                                                 fun ({put, Key, _}) -> ets:delete(TStore, {Table, sext:decode(Key)});
-                                                     ({delete, Key}) -> ets:delete(TStore, {Table, sext:decode(Key)})
-                                                 end, Batch)
-                                         end || Table <- Found],
-                                        R
-                                end;
-                            _ ->
-                                lager:debug("DB transaction commit failed: ~p\n", [Errored]),
-                                throw({error, io_error})
-                        end
+                            end, {[], []}, safe_batch_sort(maps:to_list(M))),
+                            case NotFound of
+                                [] -> throw({bypass, R});
+                                _ ->
+                                    lager:debug("Missed tables in mnesia bypass: ~p\n", [NotFound]),
+                                    %% Fixup the transaction store as we have still data left to write :P
+                                    [begin
+                                         Batch = maps:get(Table, M),
+                                         lists:foreach(
+                                             fun ({put, Key, _}) -> ets:delete(TStore, {Table, sext:decode(Key)});
+                                                 ({delete, Key}) -> ets:delete(TStore, {Table, sext:decode(Key)})
+                                             end, Batch)
+                                     end || Table <- Found],
+                                    R
+                            end
                 end;
             no_bypass -> R
         end
     end)
-    catch exit:{aborted, {throw, {bypass, R}}} -> R
+    catch
+        exit:{aborted, {throw, {bypass, R}}} -> R;
+        exit:{aborted, {throw, {error, {io_error, _}} = Err}} -> Err
     end;
 do_activity(Type, Fun) ->
     mnesia:activity(Type, Fun).
@@ -1156,6 +1154,20 @@ walk_tstore({{aec_headers, _}, _, delete}, Acc) ->
     erlang:error(fixme); %% We never delete headers...
 walk_tstore({{Table, Key}, _, delete}, Acc) ->
     Acc#{Table => [{delete, sext:encode(Key)} | maps:get(Table, Acc, [])]}.
+
+%% Until we migrate away to a proper DB we need to be careful
+%% This is the safest ordering when inserting things to our databases
+safe_batch_sort(L) -> lists:sort(fun safe_batch_cmp/2, L).
+safe_batch_cmp({aec_account_state, _}, _) -> true;
+safe_batch_cmp({aec_contract_state, _}, _) -> true;
+safe_batch_cmp({aec_call_state, _}, _) -> true;
+safe_batch_cmp({aec_oracle_cache, _}, _) -> true;
+safe_batch_cmp({aec_oracle_state, _}, _) -> true;
+safe_batch_cmp({aec_channel_state, _}, _) -> true;
+safe_batch_cmp({aec_name_service_cache, _}, _) -> true;
+safe_batch_cmp({aec_name_service_state, _}, _) -> true;
+safe_batch_cmp(_, {aec_headers, _}) -> false;
+safe_batch_cmp(_, _) -> false.
 
 write_peer(Peer) ->
     PeerId = aec_peer:id(Peer),

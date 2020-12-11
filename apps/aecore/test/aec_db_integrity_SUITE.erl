@@ -7,7 +7,8 @@
          init_per_testcase/2, end_per_testcase/2]).
 
 %% Tests
--export([abort_large_insertion/1]).
+-export([ abort_large_insertion/1
+        , fault_injection/1 ]).
 
 -include_lib("common_test/include/ct.hrl").
 
@@ -15,7 +16,7 @@ all() ->
     [{group, all}].
 
 groups() ->
-    [{all, [sequence], [abort_large_insertion]}].
+    [{all, [sequence], [abort_large_insertion, fault_injection]}].
 
 suite() ->
     [].
@@ -74,6 +75,7 @@ end_per_testcase(_Case, Config) ->
 %% ============================================================
 
 abort_large_insertion(Config) ->
+    %% This is the easy case as the uncommited data is present in the ETS transaction store
     N = aecore_suite_utils:node_name(dev1),
     Accounts = ?config(accounts, Config),
     %% Mine 10 keyblocks
@@ -93,19 +95,81 @@ abort_large_insertion(Config) ->
     %% Sign the almost valid microblock
     {ok, MB1S} = rpc:call(N, aec_keys, sign_micro_block, [MB1]),
     %% Snapshot most of the mnesia tables
-    State = rpc:call(N, mnesia, dirty_all_keys, [aec_account_state]),
+    State = lists:usort(rpc:call(N, mnesia, dirty_all_keys, [aec_account_state])),
     CheckFun = fun() ->
         %% Did mnesia do it's job properly?
-        {atomic, State} = rpc:call(N, mnesia, transaction, [fun() -> mnesia:all_keys(aec_account_state) end])
+        {atomic, State} = rpc:call(N, mnesia, transaction, [fun() -> lists:usort(mnesia:all_keys(aec_account_state)) end])
     end,
-    MutatorFun = fun F(0) -> ok;
-                     F(N) ->
+    MutatorFun = fun() ->
                         %% This should do a lot of accesses to the state trees and then trigger an abort
-                        {error,invalid_transactions_in_block} = rpc:call(N, aec_conductor, post_block, [MB1S]),
-                        F(N-1)
+                        {error,invalid_transactions_in_block} = rpc:call(N, aec_conductor, post_block, [MB1S])
                  end,
-    spawn(fun() -> MutatorFun(100) end),
+    %% Race it!
+    spawn_link(fun() -> [MutatorFun() || _ <- lists:seq(1, 100)] end),
     [CheckFun() || _ <- lists:seq(1, 100)],
+    ok.
+
+fault_injection(Config) ->
+    %% This is the funny part!
+    %% Try injecting some faults to the storage layer and see what happens :)
+    N = aecore_suite_utils:node_name(dev1),
+    Accounts = ?config(accounts, Config),
+    %% Mine 10 keyblocks
+    aecore_suite_utils:mine_key_blocks(N, 10),
+    %% Now create a heavy microblock
+    {KB0, Trees0} = rpc:call(N, aec_chain, top_block_with_state, []),
+    true = aec_blocks:is_key_block(KB0),
+    Fee = 1500000 * aec_test_utils:min_gas_price(),
+    TxOk = [element(1, create_spend_tx(10, Fee, Nonce, 100, PK)) || {Nonce, PK} <- lists:zip(lists:seq(1, length(Accounts)), Accounts)],
+    {MB0, _} = rpc:call(N, aec_block_micro_candidate, create_with_state, [KB0, KB0, TxOk, Trees0]),
+    {ok, MB0S} = rpc:call(N, aec_keys, sign_micro_block, [MB0]),
+    %% Get the initial table state
+    State0 = lists:usort(rpc:call(N, mnesia, dirty_all_keys, [aec_account_state])),
+    %% Now figure out what the final state should look like
+    {aborted, {throw, State1}} = rpc:call(N, mnesia, transaction, [
+        fun() ->
+            aec_chain_state:insert_block(MB0S),
+            throw(lists:usort(mnesia:all_keys(aec_account_state)))
+        end]),
+    false = State0 =:= State1,
+    %% Now inject some faults to rocksdb :)
+    {rocksdb, #{aec_account_state := Handle}} = rpc:call(N, persistent_term, get, [{aec_db, mnesia_bypass}, no_bypass]),
+    Pid = rpc:call(N, erlang, spawn, [
+        fun() ->
+            meck:new(aec_db_lib, []),
+            meck:expect(aec_db_lib, rocksdb_write, fun (Ref, _, _) when Ref =:= Handle -> {error, better_luck_next_time};
+                                                       (Ref, Batch, Opts) -> meck:passthrough([Ref, Batch, Opts]) end),
+            receive
+                {done, P} ->
+                    meck:unload(aec_db_lib),
+                    P ! done,
+                    ok
+            end
+        end]),
+    true = rpc:call(N, erlang, is_process_alive, [Pid]),
+    State0 = lists:usort(rpc:call(N, mnesia, dirty_all_keys, [aec_account_state])),
+    {error, {io_error, {aec_account_state, better_luck_next_time}}} = rpc:call(N, aec_chain_state, insert_block, [MB0S]),
+    Pid ! {done, self()},
+    receive
+        done ->
+            false = rpc:call(N, erlang, is_process_alive, [Pid]),
+            ok
+    end,
+    %% Check if the DB is consistent at this point :(
+    case lists:usort(rpc:call(N, mnesia, dirty_all_keys, [aec_account_state])) of
+        State0 ->
+            ok;
+        _ ->
+            ct:fail("DB INCONSISTENT!!!")
+    end,
+    %% Now check that when the error went away the insertion worked as intended
+    {ok, _} = rpc:call(N, aec_chain_state, insert_block, [MB0S]),
+    case lists:usort(rpc:call(N, mnesia, dirty_all_keys, [aec_account_state])) of
+        State1 ->
+            ok;
+        _ ->
+            ct:fail("DB INCONSISTENT!!!")
+    end,
     ok.
 
 %% Helpers
