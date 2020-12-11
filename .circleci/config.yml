@@ -1624,9 +1624,10 @@ workflows:
       - osx_package:
           filters:
             branches:
-              only:
-                - /releases\/.*/
-                - *master_branch
+              ignore:
+                - env/dev1
+                - env/dev2
+                - system-tests
 
       - deploy_integration:
           context: ae-node-builds
