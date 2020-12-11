@@ -14,8 +14,7 @@ get_revision() ->
     read_trimmed_file(?REVISION_FILE).
 
 get_os() ->
-    Bin = fun(A) when is_atom(A)    -> atom_to_binary(A, utf8);
-             (I) when is_integer(I) -> integer_to_binary(I)
+    Bin = fun(A) when is_atom(A)    -> atom_to_binary(A, utf8)
           end,
     {OSFamily, OSName} = os:type(),
     BOSFamily = Bin(OSFamily),
