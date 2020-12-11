@@ -45,6 +45,7 @@
          serialize_for_client/2,
          set_target/2,
          set_time_in_msecs/2,
+         set_txs_hash/2,
          signature/1,
          target/1,
          time_in_msecs/1,
@@ -427,6 +428,11 @@ set_target(Header, NewTarget) ->
 -spec txs_hash(micro_header()) -> txs_hash().
 txs_hash(#mic_header{txs_hash = Hash}) ->
     Hash.
+
+-spec set_txs_hash(micro_header(), txs_hash()) -> micro_header().
+set_txs_hash(#mic_header{} = H, TxsRootHash) ->
+    H#mic_header{txs_hash = TxsRootHash
+                }.
 
 -spec version(header()) -> non_neg_integer().
 version(#key_header{version = V}) -> V;
