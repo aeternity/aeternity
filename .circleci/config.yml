@@ -1045,6 +1045,8 @@ jobs:
           name: Install required tools
           # libsodium headers cannot be found without explicit brew link
           command: |
+            git -C "/usr/local/Homebrew/Library/Taps/homebrew/homebrew-core" fetch --unshallow
+            git -C "/usr/local/Homebrew/Library/Taps/homebrew/homebrew-cask" fetch --unshallow
             brew update
             brew rm python@2
             brew install gmp libsodium erlang@21 cmake
