@@ -886,11 +886,17 @@ check_db() ->
         ok = application:ensure_started(mnesia),
         ok = assert_schema_node_name(Mode),
         initialize_db(Mode, Storage),
-        prepare_mnesia_bypass()
+        maybe_prepare_bypass()
     ?_catch_(error, Reason, StackTrace)
         error_logger:error_msg("CAUGHT error:~p / ~p~n", [Reason, StackTrace]),
         erlang:error(Reason)
     end.
+
+-ifdef(TEST).
+maybe_prepare_bypass() -> prepare_mnesia_bypass().
+-else.
+maybe_prepare_bypass() -> ok.
+-endif.
 
 %% Test interface
 initialize_db(ram) ->
