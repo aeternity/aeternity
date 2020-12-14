@@ -15,7 +15,8 @@
          tab_copies/1,                  % for create_tables hooks
          check_table/3,                 % for check_tables hooks
          tab/4,
-         persisted_valid_genesis_block/0
+         persisted_valid_genesis_block/0,
+         prepare_mnesia_bypass/0
         ]).
 
 -export([ensure_transaction/1,
@@ -132,6 +133,8 @@
 %% - name_service_cache
 %% - one per state tree
 %% - untrusted peers
+
+-define(BYPASS, {?MODULE, mnesia_bypass}).
 
 -define(TAB(Record),
         {Record, tab(Mode, Record, record_info(fields, Record), [])}).
@@ -445,9 +448,24 @@ find_header(Hash) ->
         [] -> none
     end.
 
+-define(dirty_dirty_read(TABLE, KEY),
+    begin
+        case persistent_term:get(?BYPASS, no_bypass) of
+            {rocksdb, #{TABLE := Ref}} ->
+                case rocksdb:get(Ref, sext:encode(KEY), []) of
+                    {ok, EncVal} ->
+                        [binary_to_term(EncVal)]; %% We don't the key...
+                    _ ->
+                        []
+                end;
+            _ ->
+                mnesia:dirty_read(TABLE, KEY)
+        end
+    end).
+
 -spec dirty_find_header(binary()) -> 'none' | {'value', aec_headers:header()}.
 dirty_find_header(Hash) ->
-    case mnesia:dirty_read(aec_headers, Hash) of
+    case ?dirty_dirty_read(aec_headers, Hash) of
         [#aec_headers{value = DBHeader}] -> {value, aec_headers:from_db_header(DBHeader)};
         [] -> none
     end.
@@ -610,7 +628,7 @@ find_oracles_node(Hash) ->
     end.
 
 dirty_find_oracles_node(Hash) ->
-    case mnesia:dirty_read(aec_oracle_state, Hash) of
+    case ?dirty_dirty_read(aec_oracle_state, Hash) of
         [#aec_oracle_state{value = Node}] -> {value, Node};
         [] -> none
     end.
@@ -622,7 +640,7 @@ find_oracles_cache_node(Hash) ->
     end.
 
 dirty_find_oracles_cache_node(Hash) ->
-    case mnesia:dirty_read(aec_oracle_cache, Hash) of
+    case ?dirty_dirty_read(aec_oracle_cache, Hash) of
         [#aec_oracle_cache{value = Node}] -> {value, Node};
         [] -> none
     end.
@@ -634,7 +652,7 @@ find_calls_node(Hash) ->
     end.
 
 dirty_find_calls_node(Hash) ->
-    case mnesia:dirty_read(aec_call_state, Hash) of
+    case ?dirty_dirty_read(aec_call_state, Hash) of
         [#aec_call_state{value = Node}] -> {value, Node};
         [] -> none
     end.
@@ -646,7 +664,7 @@ find_channels_node(Hash) ->
     end.
 
 dirty_find_channels_node(Hash) ->
-    case mnesia:dirty_read(aec_channel_state, Hash) of
+    case ?dirty_dirty_read(aec_channel_state, Hash) of
         [#aec_channel_state{value = Node}] -> {value, Node};
         [] -> none
     end.
@@ -658,7 +676,7 @@ find_contracts_node(Hash) ->
     end.
 
 dirty_find_contracts_node(Hash) ->
-    case mnesia:dirty_read(aec_contract_state, Hash) of
+    case ?dirty_dirty_read(aec_contract_state, Hash) of
         [#aec_contract_state{value = Node}] -> {value, Node};
         [] -> none
     end.
@@ -670,7 +688,7 @@ find_ns_node(Hash) ->
     end.
 
 dirty_find_ns_node(Hash) ->
-    case mnesia:dirty_read(aec_name_service_state, Hash) of
+    case ?dirty_dirty_read(aec_name_service_state, Hash) of
         [#aec_name_service_state{value = Node}] -> {value, Node};
         [] -> none
     end.
@@ -682,7 +700,7 @@ find_ns_cache_node(Hash) ->
     end.
 
 dirty_find_ns_cache_node(Hash) ->
-    case mnesia:dirty_read(aec_name_service_cache, Hash) of
+    case ?dirty_dirty_read(aec_name_service_cache, Hash) of
         [#aec_name_service_cache{value = Node}] -> {value, Node};
         [] -> none
     end.
@@ -694,7 +712,7 @@ find_accounts_node(Hash) ->
     end.
 
 dirty_find_accounts_node(Hash) ->
-    case mnesia:dirty_read(aec_account_state, Hash) of
+    case ?dirty_dirty_read(aec_account_state, Hash) of
         [#aec_account_state{value = Node}] -> {value, Node};
         [] -> none
     end.
@@ -814,7 +832,8 @@ fold_mempool(FunIn, InitAcc) ->
 load_database() ->
     lager:debug("load_database()", []),
     wait_for_tables(),
-    aec_db_gc:maybe_swap_nodes().
+    aec_db_gc:maybe_swap_nodes(),
+    prepare_mnesia_bypass().
 
 wait_for_tables() ->
     Tabs = mnesia:system_info(tables) -- [schema],
@@ -837,6 +856,22 @@ wait_for_tables(Tabs, Sofar, _, _) ->
     init:stop(),
     erlang:error({tables_not_loaded, Tabs}).
 
+%% Prepare bypass
+prepare_mnesia_bypass() ->
+    P = mnesia:table_info(aec_account_state, all),
+    TNames = [N || {N,_} <- tables()],
+    case proplists:get_value(rocksdb_copies, P) of
+        [] -> ok;
+        [_] ->
+            Tabs = maps:from_list([
+                begin
+                    Name = list_to_existing_atom("mnesia_ext_proc_" ++ atom_to_list(N) ++ "-_tab"),
+                    {Ref, set} = gen_server:call(Name, get_ref),
+                    {N, Ref}
+                end || N <- TNames]),
+            persistent_term:put(?BYPASS, {rocksdb, Tabs})
+    end.
+
 %% Initialization routines
 
 check_db() ->
@@ -848,7 +883,8 @@ check_db() ->
         Storage = ensure_schema_storage_mode(Mode),
         ok = application:ensure_started(mnesia),
         ok = assert_schema_node_name(Mode),
-        initialize_db(Mode, Storage)
+        initialize_db(Mode, Storage),
+        prepare_mnesia_bypass()
     ?_catch_(error, Reason, StackTrace)
         error_logger:error_msg("CAUGHT error:~p / ~p~n", [Reason, StackTrace]),
         erlang:error(Reason)
