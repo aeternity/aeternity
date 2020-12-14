@@ -860,10 +860,12 @@ wait_for_tables(Tabs, Sofar, _, _) ->
 prepare_mnesia_bypass() ->
     P = mnesia:table_info(aec_account_state, all),
     TNames = [N || {N,_} <- tables()],
-    case proplists:get_value(rocksdb_copies, P) of
+    case proplists:get_value(rocksdb_copies, P, []) of
         [] -> ok;
         [_] ->
-            Tabs = maps:from_list([
+            HIndex = 'mnesia_ext_proc_aec_headers-4-_ix',
+            {HIndexRef, set} = gen_server:call(HIndex, get_ref),
+            Tabs = maps:from_list([{aec_headers_index, HIndexRef}] ++ [
                 begin
                     Name = list_to_existing_atom("mnesia_ext_proc_" ++ atom_to_list(N) ++ "-_tab"),
                     {Ref, set} = gen_server:call(Name, get_ref),
@@ -1067,10 +1069,10 @@ try_activity(Type, Fun, ErrorKeys) ->
 %% This function must not be called from inside another transaction because this
 %% will mess with Mnesia's internal retry mechanism.
 try_activity(Type, Fun, ErrorKeys, Retries) when Retries =< 0 ->
-    handle_activity_result(mnesia:activity(Type, Fun), ErrorKeys);
+    handle_activity_result(do_activity(Type, Fun), ErrorKeys);
 try_activity(Type, Fun, ErrorKeys, Retries) ->
     try
-        handle_activity_result(mnesia:activity(Type, Fun), ErrorKeys)
+        handle_activity_result(do_activity(Type, Fun), ErrorKeys)
     catch
         exit:Reason ->
             lager:warning("Mnesia activity Type=~p exit with Reason=~p, retrying", [Type, Reason]),
@@ -1087,6 +1089,73 @@ handle_activity_result(Res, ErrorKeys) ->
             %% layer.
             exit(Err)
     end.
+
+do_activity(transaction, Fun) ->
+    try
+    mnesia:activity(transaction, fun() ->
+        R = Fun(),
+        case persistent_term:get(?BYPASS, no_bypass) of
+            {rocksdb, Handles} ->
+                {mnesia, _, {tidstore, TStore, _, _}} = get(mnesia_activity_state),
+                case ets:foldl(fun walk_tstore/2, #{}, TStore) of
+                    M when map_size(M) =:= 0 ->
+                        throw({bypass, R});
+                    M ->
+                        {Found, NotFound, Errored} = lists:foldl(
+                            fun ({Table, Batch}, {AccFound, AccNotFound, AccErrored}) ->
+                                case maps:find(Table, Handles) of
+                                    error -> {AccFound, [Table|AccNotFound], AccErrored};
+                                    {ok, H} ->
+                                        case rocksdb:write(H, Batch, []) of %% {sync, true} ?
+                                            ok -> {[Table|AccFound], AccNotFound, AccErrored};
+                                            {error, E} -> {AccFound, AccNotFound, [{Table, E}|AccErrored]}
+                                        end
+                                end
+                            end, {[], [], []}, maps:to_list(M)),
+                        case Errored of
+                            [] ->
+                                case NotFound of
+                                    [] -> throw({bypass, R});
+                                    _ ->
+                                        lager:debug("Missed tables in mnesia bypass: ~p\n", [NotFound]),
+                                        %% Fixup the transaction store as we have still data left to write :P
+                                        [begin
+                                             Batch = maps:get(Table, M),
+                                             lists:foreach(
+                                                 fun ({put, Key, _}) -> ets:delete(TStore, {Table, sext:decode(Key)});
+                                                     ({delete, Key}) -> ets:delete(TStore, {Table, sext:decode(Key)})
+                                                 end, Batch)
+                                         end || Table <- Found],
+                                        R
+                                end;
+                            _ ->
+                                lager:debug("DB transaction commit failed: ~p\n", [Errored]),
+                                throw({error, io_error})
+                        end
+                end;
+            no_bypass -> R
+        end
+    end)
+    catch exit:{aborted, {throw, {bypass, R}}} -> R
+    end;
+do_activity(Type, Fun) ->
+    mnesia:activity(Type, Fun).
+
+walk_tstore({{locks, _, _}, _}, Acc) -> Acc;
+walk_tstore({nodes, _}, Acc) -> Acc;
+walk_tstore({{aec_headers, Key}, Val, write}, Acc) ->
+    O = maps:get(aec_headers, Acc, []),
+    I = maps:get(aec_headers_index, Acc, []),
+    Height = element(4, Val),
+    Acc#{ aec_headers       => [{put, sext:encode(Key), term_to_binary(setelement(2, Val, []))} | O]
+        , aec_headers_index => [{put, sext:encode({Height, Key}), term_to_binary({[]})} | I]
+        };
+walk_tstore({{Table, Key}, Val, write}, Acc) ->
+    Acc#{Table => [{put, sext:encode(Key), term_to_binary(setelement(2, Val, []))} | maps:get(Table, Acc, [])]};
+walk_tstore({{aec_headers, _}, _, delete}, Acc) ->
+    erlang:error(fixme); %% We never delete headers...
+walk_tstore({{Table, Key}, _, delete}, Acc) ->
+    Acc#{Table => [{delete, sext:encode(Key)} | maps:get(Table, Acc, [])]}.
 
 write_peer(Peer) ->
     PeerId = aec_peer:id(Peer),
