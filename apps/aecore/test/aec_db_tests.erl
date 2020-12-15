@@ -241,6 +241,7 @@ persisted_database_write_error_test_() ->
              application:set_env(aecore, persist, true),
              {ok, _} = aec_db_error_store:start_link(),
              aec_db:check_db(),
+             aec_db:prepare_mnesia_bypass(),
              aec_db:clear_db(),
              TmpDir = aec_test_utils:aec_keys_setup(),
              ok = meck:new(aec_db_lib, [passthrough]),
@@ -290,6 +291,7 @@ peers_test_() ->
           application:set_env(aecore, persist, true),
           {ok, _} = aec_db_error_store:start_link(),
           aec_db:check_db(),
+          aec_db:prepare_mnesia_bypass(),
           aec_db:clear_db(),
           Persist
 

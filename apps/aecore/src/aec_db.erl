@@ -905,18 +905,11 @@ check_db() ->
         Storage = ensure_schema_storage_mode(Mode),
         ok = application:ensure_started(mnesia),
         ok = assert_schema_node_name(Mode),
-        initialize_db(Mode, Storage),
-        maybe_prepare_bypass()
+        initialize_db(Mode, Storage)
     ?_catch_(error, Reason, StackTrace)
         error_logger:error_msg("CAUGHT error:~p / ~p~n", [Reason, StackTrace]),
         erlang:error(Reason)
     end.
-
--ifdef(TEST).
-maybe_prepare_bypass() -> prepare_mnesia_bypass().
--else.
-maybe_prepare_bypass() -> ok.
--endif.
 
 %% Test interface
 initialize_db(ram) ->
@@ -1153,7 +1146,7 @@ do_activity(transaction, Fun) ->
                                 end
                             end, {[], []}, safe_batch_sort(maps:to_list(M))), %% Order matters! We first write the state trees and only then other metadata
                             case NotFound of
-                                [] -> throw({bypass, R}); %% Great we bypassed all tables may exit early :)
+                                [] -> throw({bypass, R}); %% Great we bypassed all tables and we may exit early :)
                                 _ ->
                                     %% When not all data was bypassed then log what was not bypassed
                                     lager:debug("Missed tables in mnesia bypass: ~p\n", [NotFound]),
