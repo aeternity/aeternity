@@ -150,6 +150,11 @@
 
 tables() -> tables(ram).
 
+%% WARNING: We are migrating away from mnesia - currently some
+%%          backends are bypasing the mnesia transaction manager and issuing
+%%          a custom commit to the backend - as a results indexes are not
+%%          updated automatically - If you add another index then you need
+%%          to update the custom bypass logic
 tables(Mode) when Mode==ram; Mode==disc ->
     tables(expand_mode(Mode));
 tables(Mode) ->
@@ -448,17 +453,22 @@ find_header(Hash) ->
         [] -> none
     end.
 
+%% Dirty dirty reads bypass mnesia entirely for some backends
+%% This yields observable performance improvements for the rocksdb backend
 -define(dirty_dirty_read(TABLE, KEY),
     begin
         case persistent_term:get(?BYPASS, no_bypass) of
             {rocksdb, #{TABLE := Ref}} ->
+                %% When bypass is possible then talk to the DB directly
                 case rocksdb:get(Ref, sext:encode(KEY), []) of
                     {ok, EncVal} ->
-                        [binary_to_term(EncVal)]; %% We don't the key...
+                        %% We don't use the key from this object anymore - we don't restore it
+                        [binary_to_term(EncVal)];
                     _ ->
                         []
                 end;
             _ ->
+                %% Otherwise let mnesia handle it
                 mnesia:dirty_read(TABLE, KEY)
         end
     end).
@@ -860,15 +870,25 @@ wait_for_tables(Tabs, Sofar, _, _) ->
 prepare_mnesia_bypass() ->
     P = mnesia:table_info(aec_account_state, all),
     TNames = [N || {N,_} <- tables()],
+    %% Check whether we can bypass mnesia in some cases
     case proplists:get_value(rocksdb_copies, P, []) of
-        [] -> ok;
+        [] -> persistent_term:erase(?BYPASS); %% TODO: add leveled backend here
         [_] ->
+            %% TODO: Export the appropriate helper functions in mnesia_rocksdb
+            %%       for now just hard code it
             HIndex = 'mnesia_ext_proc_aec_headers-4-_ix',
-            {HIndexRef, set} = gen_server:call(HIndex, get_ref),
+            {HIndexRef, set} = gen_server:call(HIndex, get_ref), %% Ask the backend for the handle
             Tabs = maps:from_list([{aec_headers_index, HIndexRef}] ++ [
                 begin
                     Name = list_to_existing_atom("mnesia_ext_proc_" ++ atom_to_list(N) ++ "-_tab"),
                     {Ref, set} = gen_server:call(Name, get_ref),
+                    %% This is a sanity check designed to ensure that we crash the node when someone adds a new index
+                    %% If you add a new index and we still didn't move away to a proper DB then add your new index here
+                    %% and modify do_activity!
+                    case N of
+                        aec_headers -> {index, set, [{{4,ordered},_}]} = mnesia_lib:val({N, index_info});
+                        _ -> {index, set, []} = mnesia_lib:val({N, index_info})
+                    end,
                     {N, Ref}
                 end || N <- TNames]),
             persistent_term:put(?BYPASS, {rocksdb, Tabs})
@@ -1099,30 +1119,43 @@ handle_activity_result(Res, ErrorKeys) ->
 do_activity(transaction, Fun) ->
     try
     mnesia:activity(transaction, fun() ->
-        R = Fun(),
+        R = Fun(), %% Get the result of the transaction
+        %% Normally mnesia would commit this transaction but we may speed up things
+        %% a lot by bypassing mnesia_tm in some cases
         case persistent_term:get(?BYPASS, no_bypass) of
             {rocksdb, Handles} ->
+                %% Ok we may try to do a custom bypass
                 {mnesia, _, {tidstore, TStore, _, _}} = get(mnesia_activity_state),
-                case ets:foldl(fun walk_tstore/2, #{}, TStore) of
+                %% Find our what we need to actually commit
+                try ets:foldl(fun walk_tstore/2, #{}, TStore) of
                     M when map_size(M) =:= 0 ->
+                        %% If there is nothing to commit
+                        %% aborting the transaction will be faster than going through commit protocols and checkpointing in mnesia
                         throw({bypass, R});
                     M ->
+                        %% This might be paralleized but by doing so we can get an inconsistent DB in case of IO failures
+                        %% Right now commit things sequentially to N separate databases - this won't be a problem after we have the new DB in place
+                        %% As the node might add custom mnesia tables we check which tables we can bypass
                         {Found, NotFound} = lists:foldl(
                             fun ({Table, Batch}, {AccFound, AccNotFound}) ->
                                 case maps:find(Table, Handles) of
-                                    error -> {AccFound, [Table|AccNotFound]};
+                                    error -> {AccFound, [Table|AccNotFound]}; %% Not bypassable table
                                     {ok, H} ->
+                                        %% Commit the entire batch of data
                                         case aec_db_lib:rocksdb_write(H, Batch, []) of %% {sync, true} ?
                                             ok -> {[Table|AccFound], AccNotFound};
                                             {error, Err} ->
+                                                %% In case of IO errors abort immediately - we still might leave the DB in an inconsistent state
+                                                %% Fortunately by writing the state trees first the inconsistency won't be fatal :)
                                                 lager:debug("DB transaction commit failed: ~p\n", [{Table, Err}]),
                                                 throw({error, {io_error, {Table, Err}}})
                                         end
                                 end
-                            end, {[], []}, safe_batch_sort(maps:to_list(M))),
+                            end, {[], []}, safe_batch_sort(maps:to_list(M))), %% Order matters! We first write the state trees and only then other metadata
                             case NotFound of
-                                [] -> throw({bypass, R});
+                                [] -> throw({bypass, R}); %% Great we bypassed all tables may exit early :)
                                 _ ->
+                                    %% When not all data was bypassed then log what was not bypassed
                                     lager:debug("Missed tables in mnesia bypass: ~p\n", [NotFound]),
                                     %% Fixup the transaction store as we have still data left to write :P
                                     [begin
@@ -1134,6 +1167,8 @@ do_activity(transaction, Fun) ->
                                      end || Table <- Found],
                                     R
                             end
+                catch
+                    throw:bypass_abort -> R
                 end;
             no_bypass -> R
         end
@@ -1157,12 +1192,15 @@ walk_tstore({{aec_headers, Key}, Val, write}, Acc) ->
 walk_tstore({{Table, Key}, Val, write}, Acc) ->
     Acc#{Table => [{put, sext:encode(Key), term_to_binary(setelement(2, Val, []))} | maps:get(Table, Acc, [])]};
 walk_tstore({{aec_headers, _}, _, delete}, Acc) ->
-    erlang:error(fixme); %% We never delete headers...
+    %% We never delete headers...
+    lager:debug("Unimplemented delete of aec_headers due to index - reverting back to an ordinary mnesia commit\n", []),
+    throw(bypass_abort);
 walk_tstore({{Table, Key}, _, delete}, Acc) ->
     Acc#{Table => [{delete, sext:encode(Key)} | maps:get(Table, Acc, [])]}.
 
 %% Until we migrate away to a proper DB we need to be careful
 %% This is the safest ordering when inserting things to our databases
+%% This ensures that state trees are written first and only then we proceed to write other metadata
 safe_batch_sort(L) -> lists:sort(fun safe_batch_cmp/2, L).
 safe_batch_cmp({aec_account_state, _}, _) -> true;
 safe_batch_cmp({aec_contract_state, _}, _) -> true;
