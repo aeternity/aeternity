@@ -49,7 +49,8 @@ init_per_suite(Config0) ->
                                                                  #{<<"db_backend">> => <<"mnesia">>,
                                                                    <<"garbage_collection">> =>
                                                                        #{<<"enabled">> => false}}}}],
-                                                [{symlink_name, "latest.sync"},
+                                                [{instant_mining, true},
+                                                 {symlink_name, "latest.sync"},
                                                  {test_module, ?MODULE},
                                                  {accounts, Accounts} | Config1]),
     aecore_suite_utils:start_node(dev1, Config2),
@@ -59,12 +60,15 @@ init_per_suite(Config0) ->
 
     node_log_details(N1, up),
 
+    aecore_suite_utils:mock_mempool_nonce_offset(N1, 200),
     Fee   = 1500000 * aec_test_utils:min_gas_price(),
-    lists:foreach(
-      fun ({Nonce, PK}) ->
+    Txs = lists:foldl(
+      fun ({Nonce, PK}, Acc) ->
               {ok, Tx} = add_spend_tx(N1, 10, Fee, Nonce, 100, PK),
-              aecore_suite_utils:mine_blocks_until_txs_on_chain(N1, [Tx], ?MAX_MINED_BLOCKS)
-      end, lists:zip(lists:seq(1, length(Accounts)), Accounts)),
+              [Tx|Acc]
+      end, [], lists:zip(lists:seq(1, length(Accounts)), Accounts)),
+    aecore_suite_utils:mine_blocks_until_txs_on_chain(N1, Txs, ?MAX_MINED_BLOCKS),
+    aecore_suite_utils:unmock_mempool_nonce_offset(N1),
     check_accounts(Config2),
 
     node_log_details(N1, accounts_on_chain),
@@ -150,11 +154,11 @@ main_test(_Config) ->
     mine_until_height(N1, N2, ?GC_INTERVAL + 1),
     receive {nodedown, N1} -> ct:log("////////// ~p restarted~n", [N1]) end,
 
-    block_while(fun () -> not net_kernel:hidden_connect_node(N1) end, 30, 3000),
+    block_while(fun () -> not net_kernel:hidden_connect_node(N1) end, 300, 300),
 
-    block_while(fun () -> not started(N1) end, 30, 3000),
+    block_while(fun () -> not started(N1) end, 300, 300),
 
-    block_while(fun () -> has_table(N1, aec_account_state_gced) end, 50, 1000),
+    block_while(fun () -> has_table(N1, aec_account_state_gced) end, 500, 100),
 
     false = has_table(N1, aec_account_state_gced),
     false = has_key(N1, ?DUMMY_HASH, aec_account_state),
