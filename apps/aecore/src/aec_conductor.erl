@@ -270,7 +270,6 @@ reinit_chain_state() ->
     aec_db:ensure_transaction(fun aec_db:clear_db/0),
     aec_db:ensure_transaction(fun init_chain_state/0),
     {ok, _} = supervisor:restart_child(aecore_sup, aec_tx_pool),
-    aec_tx_pool:await_tx_pool(),
     ok.
 
 reinit_chain_impl(State1 = #state{ consensus = #consensus{consensus_module = ActiveConsensus} = Cons }) ->

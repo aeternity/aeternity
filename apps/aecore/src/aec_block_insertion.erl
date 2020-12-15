@@ -38,7 +38,7 @@
 -include("aec_block_insertion.hrl").
 
 %% Let's not add another entry to the supervision tree
--on_load(setup_etc_cache/0).
+-on_load(setup_ets_cache/0).
 
 -define(internal_error(____E____), {aec_chain_state_error, ____E____}).
 
@@ -296,7 +296,7 @@ get_n_key_nodes_from({ok, Node}, N, Acc) ->
 get_n_key_nodes_from(error, _N, _Acc) ->
     error.
 
-setup_etc_cache() ->
+setup_ets_cache() ->
     %% Lager might not be up so don't bother with logging
     Self = self(),
     Tab = ?RECENT_CACHE,

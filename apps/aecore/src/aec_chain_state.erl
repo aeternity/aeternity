@@ -332,9 +332,8 @@ prev_version(Node) ->
     H = node_height(Node),
     case H =:= aec_block_genesis:height() of
         true  -> undefined;
-        %% IO is expensive...
-        %% TODO: Use persistent term in aec_hard_forks like in aec_consensus
-        false -> aec_hard_forks:protocol_effective_at_height(H-1)
+        %% Might return different protocols for the same height due to block signaling
+        false -> node_version(db_get_node(node_prev_hash(Node)))
     end.
 
 maybe_add_pof(State, Block) ->
