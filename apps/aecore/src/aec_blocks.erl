@@ -40,6 +40,7 @@
          set_target/2,
          set_time_in_msecs/2,
          set_txs/2,
+         set_txs_hash/2,
          signature/1,
          target/1,
          time_in_msecs/1,
@@ -317,6 +318,10 @@ txs(Block) ->
 -spec set_txs(micro_block(), tx_list()) -> micro_block().
 set_txs(Block, Txs) ->
     Block#mic_block{txs = Txs}.
+
+-spec set_txs_hash(micro_block(), binary()) -> micro_block().
+set_txs_hash(Block, TxsRootHash) ->
+    Block#mic_block{header = aec_headers:set_txs_hash(aec_blocks:to_header(Block), TxsRootHash)}.
 
 -spec txs_hash(micro_block()) -> binary().
 txs_hash(Block) ->

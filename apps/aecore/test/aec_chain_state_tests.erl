@@ -399,6 +399,7 @@ throughput_disc_test_() ->
              application:set_env(aecore, persist, true),
              {ok, _} = aec_db_error_store:start_link(),
              aec_db:check_db(),
+             aec_db:prepare_mnesia_bypass(),
              aec_db:clear_db(),
              TmpDir = aec_test_utils:aec_keys_setup(),
              ok = meck:new(mnesia_rocksdb_lib, [passthrough]),
@@ -418,7 +419,7 @@ throughput_disc_test_() ->
      [{"Throughput test building chain with 10 key blocks on disc",
        fun() ->
                %% Setup
-               TotalBlockCount = 10,
+               TotalBlockCount = 100,
                TestFun = fun(B) -> {ok, _} = aec_chain_state:insert_block(B) end,
                Blocks = prep_key_blocks(TotalBlockCount),
                Opts = #{db_mode => disc, test_fun => {aec_chain_state, insert_block},
@@ -429,7 +430,7 @@ throughput_disc_test_() ->
        end},
       {"Throughput test building chain with 10 micro blocks on disc",
        fun() ->
-               TotalBlockCount = 10,
+               TotalBlockCount = 100,
                TestFun = fun(B) -> {ok, _} = aec_chain_state:insert_block(B) end,
                Blocks = prep_micro_blocks(TotalBlockCount),
                Opts = #{db_mode => disc, test_fun => {aec_chain_state, insert_block},
@@ -499,6 +500,7 @@ accept_existing_db_node_test_() ->
              application:set_env(aecore, persist, true),
              {ok, _} = aec_db_error_store:start_link(),
              aec_db:check_db(),
+             aec_db:prepare_mnesia_bypass(),
              aec_db:clear_db(),
              TmpDir = aec_test_utils:aec_keys_setup(),
              ok = meck:new(mnesia_rocksdb_lib, [passthrough]),

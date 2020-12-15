@@ -15,7 +15,8 @@
          tab_copies/1,                  % for create_tables hooks
          check_table/3,                 % for check_tables hooks
          tab/4,
-         persisted_valid_genesis_block/0
+         persisted_valid_genesis_block/0,
+         prepare_mnesia_bypass/0
         ]).
 
 -export([ensure_transaction/1,
@@ -133,6 +134,8 @@
 %% - one per state tree
 %% - untrusted peers
 
+-define(BYPASS, {?MODULE, mnesia_bypass}).
+
 -define(TAB(Record),
         {Record, tab(Mode, Record, record_info(fields, Record), [])}).
 -define(TAB(Record, Extra),
@@ -147,6 +150,11 @@
 
 tables() -> tables(ram).
 
+%% WARNING: We are migrating away from mnesia - currently some
+%%          backends are bypasing the mnesia transaction manager and issuing
+%%          a custom commit to the backend - as a results indexes are not
+%%          updated automatically - If you add another index then you need
+%%          to update the custom bypass logic
 tables(Mode) when Mode==ram; Mode==disc ->
     tables(expand_mode(Mode));
 tables(Mode) ->
@@ -445,9 +453,29 @@ find_header(Hash) ->
         [] -> none
     end.
 
+%% Dirty dirty reads bypass mnesia entirely for some backends
+%% This yields observable performance improvements for the rocksdb backend
+-define(dirty_dirty_read(TABLE, KEY),
+    begin
+        case persistent_term:get(?BYPASS, no_bypass) of
+            {rocksdb, #{TABLE := Ref}} ->
+                %% When bypass is possible then talk to the DB directly
+                case rocksdb:get(Ref, sext:encode(KEY), []) of
+                    {ok, EncVal} ->
+                        %% We don't use the key from this object anymore - we don't restore it
+                        [binary_to_term(EncVal)];
+                    _ ->
+                        []
+                end;
+            _ ->
+                %% Otherwise let mnesia handle it
+                mnesia:dirty_read(TABLE, KEY)
+        end
+    end).
+
 -spec dirty_find_header(binary()) -> 'none' | {'value', aec_headers:header()}.
 dirty_find_header(Hash) ->
-    case mnesia:dirty_read(aec_headers, Hash) of
+    case ?dirty_dirty_read(aec_headers, Hash) of
         [#aec_headers{value = DBHeader}] -> {value, aec_headers:from_db_header(DBHeader)};
         [] -> none
     end.
@@ -610,7 +638,7 @@ find_oracles_node(Hash) ->
     end.
 
 dirty_find_oracles_node(Hash) ->
-    case mnesia:dirty_read(aec_oracle_state, Hash) of
+    case ?dirty_dirty_read(aec_oracle_state, Hash) of
         [#aec_oracle_state{value = Node}] -> {value, Node};
         [] -> none
     end.
@@ -622,7 +650,7 @@ find_oracles_cache_node(Hash) ->
     end.
 
 dirty_find_oracles_cache_node(Hash) ->
-    case mnesia:dirty_read(aec_oracle_cache, Hash) of
+    case ?dirty_dirty_read(aec_oracle_cache, Hash) of
         [#aec_oracle_cache{value = Node}] -> {value, Node};
         [] -> none
     end.
@@ -634,7 +662,7 @@ find_calls_node(Hash) ->
     end.
 
 dirty_find_calls_node(Hash) ->
-    case mnesia:dirty_read(aec_call_state, Hash) of
+    case ?dirty_dirty_read(aec_call_state, Hash) of
         [#aec_call_state{value = Node}] -> {value, Node};
         [] -> none
     end.
@@ -646,7 +674,7 @@ find_channels_node(Hash) ->
     end.
 
 dirty_find_channels_node(Hash) ->
-    case mnesia:dirty_read(aec_channel_state, Hash) of
+    case ?dirty_dirty_read(aec_channel_state, Hash) of
         [#aec_channel_state{value = Node}] -> {value, Node};
         [] -> none
     end.
@@ -658,7 +686,7 @@ find_contracts_node(Hash) ->
     end.
 
 dirty_find_contracts_node(Hash) ->
-    case mnesia:dirty_read(aec_contract_state, Hash) of
+    case ?dirty_dirty_read(aec_contract_state, Hash) of
         [#aec_contract_state{value = Node}] -> {value, Node};
         [] -> none
     end.
@@ -670,7 +698,7 @@ find_ns_node(Hash) ->
     end.
 
 dirty_find_ns_node(Hash) ->
-    case mnesia:dirty_read(aec_name_service_state, Hash) of
+    case ?dirty_dirty_read(aec_name_service_state, Hash) of
         [#aec_name_service_state{value = Node}] -> {value, Node};
         [] -> none
     end.
@@ -682,7 +710,7 @@ find_ns_cache_node(Hash) ->
     end.
 
 dirty_find_ns_cache_node(Hash) ->
-    case mnesia:dirty_read(aec_name_service_cache, Hash) of
+    case ?dirty_dirty_read(aec_name_service_cache, Hash) of
         [#aec_name_service_cache{value = Node}] -> {value, Node};
         [] -> none
     end.
@@ -694,7 +722,7 @@ find_accounts_node(Hash) ->
     end.
 
 dirty_find_accounts_node(Hash) ->
-    case mnesia:dirty_read(aec_account_state, Hash) of
+    case ?dirty_dirty_read(aec_account_state, Hash) of
         [#aec_account_state{value = Node}] -> {value, Node};
         [] -> none
     end.
@@ -814,7 +842,8 @@ fold_mempool(FunIn, InitAcc) ->
 load_database() ->
     lager:debug("load_database()", []),
     wait_for_tables(),
-    aec_db_gc:maybe_swap_nodes().
+    aec_db_gc:maybe_swap_nodes(),
+    prepare_mnesia_bypass().
 
 wait_for_tables() ->
     Tabs = mnesia:system_info(tables) -- [schema],
@@ -836,6 +865,34 @@ wait_for_tables(Tabs, Sofar, _, _) ->
     %% of keeping retrying, but also raise an error for the crash log.
     init:stop(),
     erlang:error({tables_not_loaded, Tabs}).
+
+%% Prepare bypass
+prepare_mnesia_bypass() ->
+    P = mnesia:table_info(aec_account_state, all),
+    TNames = [N || {N,_} <- tables()],
+    %% Check whether we can bypass mnesia in some cases
+    case proplists:get_value(rocksdb_copies, P, []) of
+        [] -> persistent_term:erase(?BYPASS); %% TODO: add leveled backend here
+        [_] ->
+            %% TODO: Export the appropriate helper functions in mnesia_rocksdb
+            %%       for now just hard code it
+            HIndex = 'mnesia_ext_proc_aec_headers-4-_ix',
+            {HIndexRef, set} = gen_server:call(HIndex, get_ref), %% Ask the backend for the handle
+            Tabs = maps:from_list([{aec_headers_index, HIndexRef}] ++ [
+                begin
+                    Name = list_to_existing_atom("mnesia_ext_proc_" ++ atom_to_list(N) ++ "-_tab"),
+                    {Ref, set} = gen_server:call(Name, get_ref),
+                    %% This is a sanity check designed to ensure that we crash the node when someone adds a new index
+                    %% If you add a new index and we still didn't move away to a proper DB then add your new index here
+                    %% and modify do_activity!
+                    case N of
+                        aec_headers -> {index, set, [{{4,ordered},_}]} = mnesia_lib:val({N, index_info});
+                        _ -> {index, set, []} = mnesia_lib:val({N, index_info})
+                    end,
+                    {N, Ref}
+                end || N <- TNames]),
+            persistent_term:put(?BYPASS, {rocksdb, Tabs})
+    end.
 
 %% Initialization routines
 
@@ -1031,10 +1088,10 @@ try_activity(Type, Fun, ErrorKeys) ->
 %% This function must not be called from inside another transaction because this
 %% will mess with Mnesia's internal retry mechanism.
 try_activity(Type, Fun, ErrorKeys, Retries) when Retries =< 0 ->
-    handle_activity_result(mnesia:activity(Type, Fun), ErrorKeys);
+    handle_activity_result(do_activity(Type, Fun), ErrorKeys);
 try_activity(Type, Fun, ErrorKeys, Retries) ->
     try
-        handle_activity_result(mnesia:activity(Type, Fun), ErrorKeys)
+        handle_activity_result(do_activity(Type, Fun), ErrorKeys)
     catch
         exit:Reason ->
             lager:warning("Mnesia activity Type=~p exit with Reason=~p, retrying", [Type, Reason]),
@@ -1051,6 +1108,103 @@ handle_activity_result(Res, ErrorKeys) ->
             %% layer.
             exit(Err)
     end.
+
+do_activity(transaction, Fun) ->
+    try
+    mnesia:activity(transaction, fun() ->
+        R = Fun(), %% Get the result of the transaction
+        %% Normally mnesia would commit this transaction but we may speed up things
+        %% a lot by bypassing mnesia_tm in some cases
+        case persistent_term:get(?BYPASS, no_bypass) of
+            {rocksdb, Handles} ->
+                %% Ok we may try to do a custom bypass
+                {mnesia, _, {tidstore, TStore, _, _}} = get(mnesia_activity_state),
+                %% Find our what we need to actually commit
+                try ets:foldl(fun walk_tstore/2, #{}, TStore) of
+                    M when map_size(M) =:= 0 ->
+                        %% If there is nothing to commit
+                        %% aborting the transaction will be faster than going through commit protocols and checkpointing in mnesia
+                        throw({bypass, R});
+                    M ->
+                        %% This might be paralleized but by doing so we can get an inconsistent DB in case of IO failures
+                        %% Right now commit things sequentially to N separate databases - this won't be a problem after we have the new DB in place
+                        %% As the node might add custom mnesia tables we check which tables we can bypass
+                        {Found, NotFound} = lists:foldl(
+                            fun ({Table, Batch}, {AccFound, AccNotFound}) ->
+                                case maps:find(Table, Handles) of
+                                    error -> {AccFound, [Table|AccNotFound]}; %% Not bypassable table
+                                    {ok, H} ->
+                                        %% Commit the entire batch of data
+                                        case aec_db_lib:rocksdb_write(H, Batch, []) of %% {sync, true} ?
+                                            ok -> {[Table|AccFound], AccNotFound};
+                                            {error, Err} ->
+                                                %% In case of IO errors abort immediately - we still might leave the DB in an inconsistent state
+                                                %% Fortunately by writing the state trees first the inconsistency won't be fatal :)
+                                                lager:debug("DB transaction commit failed: ~p\n", [{Table, Err}]),
+                                                throw({error, {io_error, {Table, Err}}})
+                                        end
+                                end
+                            end, {[], []}, safe_batch_sort(maps:to_list(M))), %% Order matters! We first write the state trees and only then other metadata
+                            case NotFound of
+                                [] -> throw({bypass, R}); %% Great we bypassed all tables and we may exit early :)
+                                _ ->
+                                    %% When not all data was bypassed then log what was not bypassed
+                                    lager:debug("Missed tables in mnesia bypass: ~p\n", [NotFound]),
+                                    %% Fixup the transaction store as we have still data left to write :P
+                                    [begin
+                                         Batch = maps:get(Table, M),
+                                         lists:foreach(
+                                             fun ({put, Key, _}) -> ets:delete(TStore, {Table, sext:decode(Key)});
+                                                 ({delete, Key}) -> ets:delete(TStore, {Table, sext:decode(Key)})
+                                             end, Batch)
+                                     end || Table <- Found],
+                                    R
+                            end
+                catch
+                    throw:bypass_abort -> R
+                end;
+            no_bypass -> R
+        end
+    end)
+    catch
+        exit:{aborted, {throw, {bypass, R}}} -> R;
+        exit:{aborted, {throw, {error, {io_error, _}} = Err}} -> Err
+    end;
+do_activity(Type, Fun) ->
+    mnesia:activity(Type, Fun).
+
+walk_tstore({{locks, _, _}, _}, Acc) -> Acc;
+walk_tstore({nodes, _}, Acc) -> Acc;
+walk_tstore({{aec_headers, Key}, Val, write}, Acc) ->
+    O = maps:get(aec_headers, Acc, []),
+    I = maps:get(aec_headers_index, Acc, []),
+    Height = element(4, Val),
+    Acc#{ aec_headers       => [{put, sext:encode(Key), term_to_binary(setelement(2, Val, []))} | O]
+        , aec_headers_index => [{put, sext:encode({Height, Key}), term_to_binary({[]})} | I]
+        };
+walk_tstore({{Table, Key}, Val, write}, Acc) ->
+    Acc#{Table => [{put, sext:encode(Key), term_to_binary(setelement(2, Val, []))} | maps:get(Table, Acc, [])]};
+walk_tstore({{aec_headers, _}, _, delete}, Acc) ->
+    %% We never delete headers...
+    lager:debug("Unimplemented delete of aec_headers due to index - reverting back to an ordinary mnesia commit\n", []),
+    throw(bypass_abort);
+walk_tstore({{Table, Key}, _, delete}, Acc) ->
+    Acc#{Table => [{delete, sext:encode(Key)} | maps:get(Table, Acc, [])]}.
+
+%% Until we migrate away to a proper DB we need to be careful
+%% This is the safest ordering when inserting things to our databases
+%% This ensures that state trees are written first and only then we proceed to write other metadata
+safe_batch_sort(L) -> lists:sort(fun safe_batch_cmp/2, L).
+safe_batch_cmp({aec_account_state, _}, _) -> true;
+safe_batch_cmp({aec_contract_state, _}, _) -> true;
+safe_batch_cmp({aec_call_state, _}, _) -> true;
+safe_batch_cmp({aec_oracle_cache, _}, _) -> true;
+safe_batch_cmp({aec_oracle_state, _}, _) -> true;
+safe_batch_cmp({aec_channel_state, _}, _) -> true;
+safe_batch_cmp({aec_name_service_cache, _}, _) -> true;
+safe_batch_cmp({aec_name_service_state, _}, _) -> true;
+safe_batch_cmp(_, {aec_headers, _}) -> false;
+safe_batch_cmp(_, _) -> false.
 
 write_peer(Peer) ->
     PeerId = aec_peer:id(Peer),

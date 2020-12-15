@@ -1310,6 +1310,7 @@ global_setup() ->
     application:set_env(aecore, persist, false),
     {ok, _} = aec_db_error_store:start_link(),
     aec_db:check_db(),
+    aec_db:prepare_mnesia_bypass(),
     aec_db:clear_db(),
     Persist.
 
