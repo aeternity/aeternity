@@ -350,7 +350,11 @@ init_per_suite(Config) ->
                <<"mining">> => #{<<"micro_block_cycle">> => 1,
                                  <<"beneficiary">> => Miner,
                                  <<"beneficiary_reward_delay">> => 2}},
-    Config1 = aecore_suite_utils:init_per_suite([dev1], DefCfg, [{symlink_name, "latest.aesc_fsm"}, {test_module, ?MODULE}] ++ Config),
+    Config1 = aecore_suite_utils:init_per_suite([dev1], DefCfg, [{instant_mining, true}, {symlink_name, "latest.aesc_fsm"}, {test_module, ?MODULE}] ++ Config),
+    Node = aecore_suite_utils:node_name(dev1),
+    aecore_suite_utils:start_node(dev1, Config1),
+    aecore_suite_utils:connect(Node),
+    ?LOG("dev1 connected", []),
     [ {nodes, [aecore_suite_utils:node_tuple(N)
                || N <- [dev1]]}
     , {table_owner, TableOwner}
@@ -429,25 +433,18 @@ init_per_group_(Config) ->
         true ->
             Config;
         false ->
-            aecore_suite_utils:start_node(dev1, Config),
-            aecore_suite_utils:connect(aecore_suite_utils:node_name(dev1), [block_pow, instant_tx_confirm]),
-            ?LOG("dev1 connected", []),
-            try begin
-                    Node = dev1,
-                    prepare_patron(Node),
-                    Initiator = prep_initiator(?ACCOUNT_BALANCE, Node),
-                    Responder = prep_responder(?ACCOUNT_BALANCE, Node),
-                    Responder2 = prep_responder(?ACCOUNT_BALANCE, Node),
-                    set_configs([ {initiator, Initiator}
-                                , {responder, Responder}
-                                , {responder2, Responder2}
-                                , {port, ?PORT}
-                                ], Config)
-                end
-            ?_catch_(error, Reason, Trace)
-                catch stop_node(dev1, Config),
-                error(Reason, Trace)
-            end
+            Node = dev1,
+            aecore_suite_utils:reinit_with_ct_consensus(Node),
+            prepare_patron(Node),
+            Initiator = prep_initiator(?ACCOUNT_BALANCE, Node),
+            Responder = prep_responder(?ACCOUNT_BALANCE, Node),
+            Responder2 = prep_responder(?ACCOUNT_BALANCE, Node),
+            set_configs([ {initiator, Initiator}
+                        , {responder, Responder}
+                        , {responder2, Responder2}
+                        , {port, ?PORT}
+                        ], Config)
+
     end.
 
 end_per_group(Group, Config) ->
@@ -456,11 +453,13 @@ end_per_group(Group, Config) ->
             case lists:member(Group, [initiator_is_ga,
                                       responder_is_ga, both_are_ga]) of
                 true ->
-                    _Config1 = stop_node(dev1, Config);
+                    ok;
+                    %%_Config1 = stop_node(dev1, Config);
                 false -> pass
             end;
         false ->
-            _Config1 = stop_node(dev1, Config)
+            ok
+            %%_Config1 = stop_node(dev1, Config)
     end,
     ok.
 
@@ -589,11 +588,7 @@ stop_miner_helper(Pid) ->
 spawn_miner_helper() ->
     Parent = self(),
     spawn(fun() ->
-                  MiningRate = aecore_suite_utils:expected_mine_rate(),
-                  ok = rpc(
-                         dev1, application, set_env, [aecore, expected_mine_rate, MiningRate],
-                         5000),
-                  SubRes =aecore_suite_utils:subscribe(aecore_suite_utils:node_name(dev1), top_changed),
+                  SubRes = aecore_suite_utils:subscribe(aecore_suite_utils:node_name(dev1), top_changed),
                   ct:pal("SubRes = ~p", [SubRes]),
                   Height = current_height(dev1),
                   miner_loop(#miner{parent = Parent, height = Height})
@@ -601,17 +596,19 @@ spawn_miner_helper() ->
 
 miner_loop(#miner{parent = Parent} = St) ->
     ct:pal("miner_loop(~p)", [St]),
+    if St#miner.mining ->
+            %% One key block followed by a micro block
+            aecore_suite_utils:mine_key_blocks(aecore_suite_utils:node_name(dev1), 1),
+            aecore_suite_utils:mine_micro_blocks(aecore_suite_utils:node_name(dev1), 1);
+       true ->
+            ok
+    end,
     receive
         {'$call', From, Req} ->
             St1 = miner_handle_call(From, Req, St),
             miner_loop(St1);
         {Parent, done} ->
             ct:pal("miner helper done", []),
-            if St#miner.mining ->
-                    stop_mining();
-               true ->
-                    ok
-            end,
             exit(normal);
         {gproc_ps_event, top_changed, #{ info := #{ height := NewH } }} ->
             ct:pal("top_changed; new height = ~p", [NewH]),
@@ -666,18 +663,8 @@ miner_reply({From, Ref}, Reply) ->
 report_miner_loop_status(Pid) ->
     call_miner(Pid, report_status, ?TIMEOUT).
 
-start_mining() ->
-    ct:pal("start mining", []),
-    ok = rpc(dev1, aec_conductor, start_mining, [#{strictly_follow_top => true}], 5000).
-
-stop_mining() ->
-    ct:pal("stop mining", []),
-    rpc(dev1, aec_conductor, stop_mining, [], 5000).
-
-
 add_mining_req(Req, #miner{requests = Reqs, mining = Mining} = St) ->
     Mining1 = if (Reqs == []) andalso (not Mining) ->
-                      start_mining(),
                       true;
                  true ->
                       Mining
@@ -703,7 +690,6 @@ check_if_reqs_fulfilled(NewH, #miner{requests = Reqs, mining = Mining} = St) ->
                       end
               end, Reqs),
     Mining1 = if (Reqs1 == []) andalso Mining ->
-                      stop_mining(),
                       false;
                  true ->
                       Mining
@@ -1492,7 +1478,7 @@ too_many_fsms(Cfg) ->
         end,
     ok = spawn_multiple_channels(F, MaxChannels, 9450, ?SLOGAN, Cfg),
     %% With the other fsms gone, creating a channel should work again
-    timer:sleep(100),
+    timer:sleep(20),
     #{i := _, r := _} = create_channel_(Cfg),
     ok.
 
@@ -2097,7 +2083,7 @@ wrong_action({I, R, _Spec, _Port, Debug}, Poster, Malicious,
             case Action() of
                 ok -> ok;
                 {error, unknown_request} -> % race in test
-                    timer:sleep(100),
+                    timer:sleep(20),
                     %% retry
                     ok = Action()
             end
@@ -2121,7 +2107,7 @@ wrong_action({I, R, _Spec, _Port, Debug}, Poster, Malicious,
 
             DetectConflictFun(D, Debug),
             % make sure setting back defaults if process is still there
-            timer:sleep(50),
+            timer:sleep(20),
             ok = rpc(dev1, aesc_fsm, strict_checks, [FsmD, true], Debug);
         false ->
             Post(),
@@ -2153,7 +2139,7 @@ wait_for_fsm_state(St, FsmPid, Retries, Debug) when Retries > 0 ->
             error(fsm_not_running);
         Other ->
             ?LOG(Debug, "Fsm state (~p) is ~p - retrying for ~p", [FsmPid, Other, St]),
-            timer:sleep(50),
+            timer:sleep(20),
             wait_for_fsm_state(St, FsmPid, Retries-1, Debug)
     end.
 
@@ -2247,7 +2233,7 @@ client_reconnect_(Role, Cfg) ->
     ?LOG(Debug, "Reconnecting before disconnecting failed: ~p", [Err]),
     unlink(Proxy),
     exit(Proxy, kill),
-    timer:sleep(50),  % give the above exit time to propagate
+    timer:sleep(20),  % give the above exit time to propagate
     ok = things_that_should_fail_if_no_client(Role, I, R, Debug, Cfg),
     Res = reconnect(RoleI, Debug),
     ?LOG(Debug, "Reconnect req -> ~p", [Res]),
@@ -2432,7 +2418,7 @@ create_channel_from_spec(I, R, Spec0, Port, UseAny, Debug, Cfg) ->
     RSpec = customize_spec(responder, Spec, Cfg),
     ISpec = customize_spec(initiator, Spec, Cfg),
     ?LOG(Debug, "RSpec = ~p~nISpec = ~p", [RSpec, ISpec]),
-    SpawnInterval = proplists:get_value(spawn_interval, Cfg, 100),
+    SpawnInterval = proplists:get_value(spawn_interval, Cfg, 20),
     SpawnR = fun() ->
                         spawn_responder(Port, RSpec, R, UseAny, Debug)
                 end,
@@ -3713,7 +3699,7 @@ leave_reestablish_loop_step_(Idx, Info, Debug, ResponderStays) ->
                    initiator),
     case ResponderStays of
         false ->
-            retry(3, 100, fun() -> assert_cache_is_on_disk(ChId) end);
+            retry(5, 20, fun() -> assert_cache_is_on_disk(ChId) end);
         true -> pass
     end,
     assert_empty_msgq(Debug),
@@ -4023,7 +4009,7 @@ assert_cache_is_gone(ChannelId) ->
 
 assert_cache_is_gone_after_on_disk(ChannelId) ->
     try
-        retry(3, 100, fun() -> assert_cache_is_on_disk(ChannelId) end),
+        retry(5, 20, fun() -> assert_cache_is_on_disk(ChannelId) end),
         mine_blocks(dev1),
         assert_cache_is_gone(ChannelId)
     catch

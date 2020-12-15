@@ -61,6 +61,11 @@
         , post_block/1
         ]).
 
+%% Consensus API
+-export([ get_active_consensus_module/0
+        , consensus_request/1
+        ]).
+
 -ifdef(TEST).
 -export([reinit_chain/0
         ]).
@@ -148,6 +153,9 @@ post_block(Block) ->
     case aec_validation:validate_block(Block, Protocol) of
         ok ->
             gen_server:call(?SERVER, {post_block, Block}, 30000);
+        {error, {consensus, Reason}} ->
+            epoch_mining:info("Consensus rejected block: ~p", [Reason]),
+            {error, Reason};
         {error, {header, Reason}} ->
             epoch_mining:info("Header failed validation: ~p", [Reason]),
             {error, Reason};
@@ -163,6 +171,9 @@ add_synced_block(Block) ->
     case aec_validation:validate_block(Block, Protocol) of
         ok ->
             gen_server:call(?SERVER, {add_synced_block, Block}, 30000);
+        {error, {consensus, Reason}} ->
+            epoch_mining:info("Consensus rejected block: ~p", [Reason]),
+            {error, Reason};
         {error, {header, Reason}} ->
             epoch_mining:info("Header failed validation: ~p", [Reason]),
             {error, Reason};
@@ -182,11 +193,28 @@ reinit_chain() ->
 -endif.
 
 %%%===================================================================
+%%% Consensus API
+get_active_consensus_module() ->
+    gen_server:call(?SERVER, get_active_consensus_module).
+
+%% Shortcut for calling the currently active consensus module
+consensus_request(Request) ->
+    %% When changing the active consensus module or the configuration
+    %% The conductor ensures that the given "consensus" was fully started
+    try
+        M = get_active_consensus_module(),
+        M:client_request(Request)
+    catch
+        Error:Reason:Stack ->
+            lager:debug("consensus_request(~p) Failed: ~p ~p ~p\n", [Request, Error, Reason, Stack])
+    end.
+
+%%%===================================================================
 %%% Stratum mining pool API
 
--spec stratum_reply({aeminer_pow:nonce(), aeminer_pow_cuckoo:solution()}, candidate_hash()) -> term().
-stratum_reply({Nonce, Evd}, HeaderBin) ->
-    ?SERVER ! {stratum_reply, {{ok, {Nonce, Evd}}, HeaderBin}}.
+-spec stratum_reply({aec_consensus:key_nonce(), aec_consensus:key_seal()}, candidate_hash()) -> term().
+stratum_reply({Nonce, Evd}, ForSealing) ->
+    ?SERVER ! {stratum_reply, {{continue_mining, {ok, {Nonce, Evd}}}, ForSealing}}.
 
 %%%===================================================================
 %%% gen_server callbacks
@@ -197,8 +225,13 @@ init(Options) ->
     ok     = init_chain_state(),
     TopBlockHash = aec_chain:top_block_hash(),
     TopKeyBlockHash = aec_chain:top_key_block_hash(),
-    Consensus = #consensus{micro_block_cycle = aec_governance:micro_block_cycle(),
-                           leader = false},
+    {ok, TopHeader} = aec_chain:get_header(TopBlockHash),
+    ConsensusModule = aec_headers:consensus_module(TopHeader),
+    ConsensusConfig = aec_consensus:get_consensus_config_at_height(aec_headers:height(TopHeader)),
+    ConsensusModule:start(ConsensusConfig), %% Might do nothing or it might spawn a genserver :P
+    Consensus = #consensus{ micro_block_cycle = aec_governance:micro_block_cycle()
+                          , leader = false
+                          , consensus_module = ConsensusModule },
     State1 = #state{ top_block_hash     = TopBlockHash,
                      top_key_block_hash = TopKeyBlockHash,
                      consensus          = Consensus},
@@ -233,32 +266,40 @@ reinit_chain_state() ->
     %% let's clear the db in a separate db tx
     %% this is ok as anyway this is only a test endpoint used in one place:
     %% apps/aehttp/test/aehttp_integration_SUITE.erl
+    ok = supervisor:terminate_child(aecore_sup, aec_tx_pool),
     aec_db:ensure_transaction(fun aec_db:clear_db/0),
     aec_db:ensure_transaction(fun init_chain_state/0),
-    exit(whereis(aec_tx_pool), kill),
-    aec_tx_pool:await_tx_pool(),
+    {ok, _} = supervisor:restart_child(aecore_sup, aec_tx_pool),
     ok.
 
-reinit_chain_impl(State1 = #state{ consensus = Cons }) ->
+reinit_chain_impl(State1 = #state{ consensus = #consensus{consensus_module = ActiveConsensus} = Cons }) ->
     %% NOTE: ONLY FOR TEST
+    ActiveConsensus:stop(),
+    aec_consensus:set_consensus(), %% It's time to commit env changes
+    aec_consensus:set_genesis_hash(),
     ok = reinit_chain_state(),
     TopBlockHash = aec_chain:top_block_hash(),
     TopKeyBlockHash = aec_chain:top_key_block_hash(),
+    {ok, TopHeader} = aec_chain:get_header(TopBlockHash),
+    ConsensusModule = aec_headers:consensus_module(TopHeader),
+    ConsensusConfig = aec_consensus:get_consensus_config_at_height(aec_headers:height(TopHeader)),
+    ConsensusModule:start(ConsensusConfig), %% Might do nothing or it might spawn a genserver :P
     State2 = State1#state{top_block_hash = TopBlockHash,
                           top_key_block_hash = TopKeyBlockHash},
+    Cons1 = Cons#consensus{consensus_module = ConsensusModule},
+    epoch_mining:info("Mining stopped"),
+    State3 = kill_all_workers(State2),
+    hard_reset_block_generator(),
     State =
         case State2#state.mining_state of
             stopped  ->
-                State2;
+                State3#state{consensus = Cons1};
             running ->
-                epoch_mining:info("Mining stopped"),
-                State3 = kill_all_workers(State2),
-                hard_reset_block_generator(),
                 epoch_mining:info("Mining started" ++ print_opts(State3)),
                 start_mining_(State3#state{mining_state = running,
                                            micro_block_candidate = undefined,
                                            key_block_candidates = undefined,
-                                           consensus = Cons#consensus{leader = false}})
+                                           consensus = Cons1#consensus{leader = false}})
         end,
     {reply, ok, State}.
 -else.
@@ -289,6 +330,8 @@ handle_call(get_key_block_candidate,_From, State) ->
     {reply, Res, State1};
 handle_call(get_miner_instances, _From, State) ->
     {reply, State#state.miner_instances, State};
+handle_call(get_active_consensus_module, _From, State) ->
+    {reply, (State#state.consensus)#consensus.consensus_module, State};
 handle_call({post_block, Block},_From, State) ->
     {Reply, State1} = handle_post_block(Block, State),
     {reply, Reply, State1};
@@ -384,11 +427,13 @@ try_fetch_and_make_candidate() ->
     end.
 
 make_key_candidate(Block) ->
-    HeaderBin = aec_headers:serialize_to_binary(aec_blocks:to_header(Block)),
-    Nonce     = aeminer_pow:pick_nonce(),
-    {HeaderBin, #candidate{ block    = Block,
-                            nonce    = Nonce,
-                            top_hash = aec_blocks:prev_hash(Block) }}.
+    Consensus   = aec_blocks:consensus_module(Block),
+    BlockHeader = aec_blocks:to_header(Block),
+    ForSealing  = Consensus:key_header_for_sealing(BlockHeader),
+    Nonce       = Consensus:nonce_for_sealing(BlockHeader),
+    {ForSealing, #candidate{ block    = Block,
+                             nonce    = Nonce,
+                             top_hash = aec_blocks:prev_hash(Block) }}.
 
 make_micro_candidate(Block) ->
     #candidate{ block    = Block,
@@ -851,61 +896,73 @@ start_mining_(#state{key_block_candidates = [{_, #candidate{top_hash = OldHash}}
     %% Regenerate the candidate.
     epoch_mining:info("Key block candidate for old top hash; regenerating"),
     create_key_block_candidate(State);
-start_mining_(#state{stratum_mode = false, key_block_candidates = [{HeaderBin, Candidate} | Candidates]} = State) ->
+start_mining_(#state{stratum_mode = false, key_block_candidates = [{ForSealing, Candidate} | Candidates]} = State) ->
     case available_miner_instance(State) of
         none -> State;
         Instance ->
             epoch_mining:info("Starting miner on top of ~p", [State#state.top_block_hash]),
-            Target            = aec_blocks:target(Candidate#candidate.block),
+            Consensus         = aec_blocks:consensus_module(Candidate#candidate.block),
+            Header            = aec_blocks:to_header(Candidate#candidate.block),
             MinerConfig       = Instance#miner_instance.config,
             AddressedInstance = Instance#miner_instance.instance,
-            Nonce             = aeminer_pow:trim_nonce(Candidate#candidate.nonce, MinerConfig),
+            Nonce             = Consensus:trim_sealing_nonce(Candidate#candidate.nonce, MinerConfig),
             Info              = [{top_block_hash, State#state.top_block_hash}],
             aec_events:publish(start_mining, Info),
             Fun = fun() ->
-                          {aec_mining:generate(HeaderBin, Target, Nonce, MinerConfig, AddressedInstance)
-                          , HeaderBin}
+                          { Consensus:generate_key_header_seal(
+                              ForSealing,
+                              Header,
+                              Nonce,
+                              MinerConfig,
+                              AddressedInstance)
+                          , ForSealing}
                   end,
-            Candidate1 = register_miner(Candidate, Nonce, MinerConfig),
-            State1 = State#state{key_block_candidates = [{HeaderBin, Candidate1} | Candidates]},
+            Candidate1 = register_miner(Candidate, Consensus, Nonce, MinerConfig),
+            State1 = State#state{key_block_candidates = [{ForSealing, Candidate1} | Candidates]},
             {State2, Pid} = dispatch_worker(mining, Fun, State1),
             State3 = register_miner_instance(Instance, Pid, State2),
             epoch_mining:info("Miner ~p started", [Pid]),
             start_mining_(State3)
     end;
 start_mining_(#state{stratum_mode = true,
-                     key_block_candidates = [{HeaderBin, #candidate{refs = StratumRefs} = Candidate} | Candidates]} = State)
+                     key_block_candidates = [{ForSealing, #candidate{refs = StratumRefs} = Candidate} | Candidates]} = State)
   when StratumRefs =:= 0  ->
-    epoch_mining:info("Stratum dispatch ~p", [HeaderBin]),
+    epoch_mining:info("Stratum dispatch ~p", [ForSealing]),
     Target            = aec_blocks:target(Candidate#candidate.block),
     Info              = [{top_block_hash, State#state.top_block_hash}],
     Server            = self(),
     aec_events:publish(start_mining, Info),
-    aec_events:publish(stratum_new_candidate, [{HeaderBin, Candidate, Target, Server}]),
+    aec_events:publish(stratum_new_candidate, [{ForSealing, Candidate, Target, Server}]),
     Candidate1 = register_stratum(Candidate),
-    State1 = State#state{key_block_candidates = [{HeaderBin, Candidate1} | Candidates]},
+    State1 = State#state{key_block_candidates = [{ForSealing, Candidate1} | Candidates]},
     State1.
 
 register_stratum(Candidate = #candidate{refs  = Refs}) ->
     Candidate#candidate{refs  = Refs + 1}.
 
-register_miner(Candidate = #candidate{refs  = Refs}, Nonce, MinerConfig) ->
-    NextNonce = aeminer_pow:next_nonce(Nonce, MinerConfig),
+register_miner(Candidate = #candidate{refs  = Refs}, Consensus, Nonce, MinerConfig) ->
+    NextNonce = Consensus:next_nonce_for_sealing(Nonce, MinerConfig),
     Candidate#candidate{refs  = Refs + 1,
                         nonce = NextNonce}.
 
-handle_mining_reply(Reply, #state{key_block_candidates = undefined} = State) ->
+handle_mining_reply({{continue_mining, MaybeSeal}, ForSealing}, State) ->
+    handle_mining_reply_({MaybeSeal, ForSealing}, State);
+handle_mining_reply({{stop_mining, MaybeSeal}, ForSealing}, State) ->
+    handle_mining_reply_({MaybeSeal, ForSealing}, State#state{mining_state = 'stopped'}).
+
+handle_mining_reply_(Reply, #state{key_block_candidates = undefined} = State) ->
     %% Something invalidated the block candidates already.
     epoch_mining:debug("Candidate invalidated in conductor ~p", [Reply]),
     start_mining_(State);
-handle_mining_reply({{ok, {Nonce, Evd}}, HeaderBin}, #state{} = State) ->
+handle_mining_reply_({{ok, Seal}, ForSealing}, #state{} = State) ->
     Candidates = State#state.key_block_candidates,
     %% Check that the solution is for one of the valid candidates.
-    case proplists:get_value(HeaderBin, Candidates) of
+    case proplists:get_value(ForSealing, Candidates) of
         #candidate{block = CandidateBlock} ->
             aec_metrics:try_update([ae,epoch,aecore,mining,blocks_mined], 1),
             State1 = State#state{key_block_candidates = undefined},
-            Block = aec_blocks:set_nonce_and_pow(CandidateBlock, Nonce, Evd),
+            Consensus = aec_blocks:consensus_module(CandidateBlock),
+            Block = Consensus:set_key_block_seal(CandidateBlock, Seal),
             case handle_mined_block(Block, State1) of
                 {ok, State2} ->
                     State2;
@@ -918,31 +975,31 @@ handle_mining_reply({{ok, {Nonce, Evd}}, HeaderBin}, #state{} = State) ->
             epoch_mining:error("Found solution for old block", []),
             start_mining_(State)
     end;
-handle_mining_reply({{error, no_solution}, HeaderBin}, State) ->
+handle_mining_reply_({{error, no_solution}, ForSealing}, State) ->
     aec_metrics:try_update([ae,epoch,aecore,mining,retries], 1),
     epoch_mining:debug("Failed to mine block, no solution; retrying."),
-    retry_mining(State, HeaderBin);
-handle_mining_reply({{error, {runtime, Reason}}, HeaderBin}, State) ->
+    retry_mining(State, ForSealing);
+handle_mining_reply_({{error, {runtime, Reason}}, ForSealing}, State) ->
     aec_metrics:try_update([ae,epoch,aecore,mining,retries], 1),
     epoch_mining:error("Failed to mine block, runtime error; "
                        "retrying with different nonce. "
                        "Error: ~p", [Reason]),
-    retry_mining(State, HeaderBin).
+    retry_mining(State, ForSealing).
 
 %%%===================================================================
 %%% Retry mining when we failed to find a solution.
 
-retry_mining(S = #state{key_block_candidates = [{HeaderBin, Candidate} | Candidates]}, HeaderBin) ->
+retry_mining(S = #state{key_block_candidates = [{ForSealing, Candidate} | Candidates]}, ForSealing) ->
     Candidate1 = Candidate#candidate{refs = Candidate#candidate.refs - 1},
-    start_mining_(S#state{key_block_candidates = [{HeaderBin, Candidate1} | Candidates]});
-retry_mining(S = #state{key_block_candidates = Candidates}, HeaderBin) when is_list(Candidates) ->
-    case proplists:get_value(HeaderBin, Candidates) of
+    start_mining_(S#state{key_block_candidates = [{ForSealing, Candidate1} | Candidates]});
+retry_mining(S = #state{key_block_candidates = Candidates}, ForSealing) when is_list(Candidates) ->
+    case proplists:get_value(ForSealing, Candidates) of
         undefined ->
             create_key_block_candidate(S);
         #candidate{refs = 1} ->
-            create_key_block_candidate(S#state{key_block_candidates = proplists:delete(HeaderBin, Candidates)});
+            create_key_block_candidate(S#state{key_block_candidates = proplists:delete(ForSealing, Candidates)});
         #candidate{refs = N} = C when N > 1 ->
-            Candidates1 = lists:keyreplace(HeaderBin, 1, Candidates, {HeaderBin, C#candidate{refs = N - 1}}),
+            Candidates1 = lists:keyreplace(ForSealing, 1, Candidates, {ForSealing, C#candidate{refs = N - 1}}),
             create_key_block_candidate(S#state{key_block_candidates = Candidates1})
     end.
 
@@ -1035,10 +1092,10 @@ handle_key_block_candidate_reply({{ok, KeyBlockCandidate}, TopHash},
                       "Its target is ~p (= difficulty ~p).",
                       [aec_blocks:target(KeyBlockCandidate),
                        aec_blocks:difficulty(KeyBlockCandidate)]),
-    {HeaderBin, Candidate} = make_key_candidate(KeyBlockCandidate),
+    {ForSealing, Candidate} = make_key_candidate(KeyBlockCandidate),
     Candidates = case Candidates0 of
-                     undefined -> [{HeaderBin, Candidate}];
-                     _         -> [{HeaderBin, Candidate} | Candidates0]
+                     undefined -> [{ForSealing, Candidate}];
+                     _         -> [{ForSealing, Candidate} | Candidates0]
                  end,
     State1 = State#state{key_block_candidates = Candidates},
     start_mining_(State1);
@@ -1085,9 +1142,23 @@ ok({ok, Value}) ->
     Value.
 
 
-handle_add_block(Block, #state{} = State, Origin) ->
+handle_add_block(Block, #state{consensus = #consensus{consensus_module = ActiveConsensus}} = State, Origin) ->
     Header = aec_blocks:to_header(Block),
-    handle_add_block(Header, Block, State, Origin).
+    case aec_headers:consensus_module(Header) of
+        ActiveConsensus ->
+            handle_add_block(Header, Block, State, Origin);
+        _ ->
+            case ActiveConsensus:can_be_turned_off() of
+                true ->
+                    %% This is OK only when we deal with ordinary consensus algorithms
+                    %% This is expected when switching between PoA, PoW, Hyperchains
+                    handle_add_block(Header, Block, State, Origin);
+                false ->
+                    %% "Dev mode" consensus should have killed the peer pool and other unnecessary components by now
+                    %% Some pending blocks might still be present in the message queue - ignore them
+                    {{error, special_consensus_active}, State}
+            end
+    end.
 
 handle_add_block(Header, Block, State, Origin) ->
     {ok, Hash} = aec_headers:hash_header(Header),
@@ -1132,11 +1203,13 @@ handle_add_block(Block, Hash, Prev, #state{top_block_hash = TopBlockHash} = Stat
 handle_successfully_added_block(Block, Hash, false, _, Events, State, Origin) ->
     maybe_publish_tx_events(Events, Hash, Origin),
     maybe_publish_block(Origin, Block),
-    {ok, State};
+    State1 = maybe_consensus_change(State, Block),
+    {ok, State1};
 handle_successfully_added_block(Block, Hash, true, PrevKeyHeader, Events, State, Origin) ->
     maybe_publish_tx_events(Events, Hash, Origin),
     maybe_publish_block(Origin, Block),
-    case preempt_on_new_top(State, Block, Hash, Origin) of
+    State1 = maybe_consensus_change(State, Block),
+    case preempt_on_new_top(State1, Block, Hash, Origin) of
         {micro_changed, State2 = #state{ consensus = Cons }} ->
             {ok, setup_loop(State2, false, Cons#consensus.leader, Origin)};
         {changed, BlockType, NewTopBlock, State2} ->
@@ -1149,6 +1222,25 @@ handle_successfully_added_block(Block, Hash, true, PrevKeyHeader, Events, State,
                     [ maybe_garbage_collect_accounts() || BlockType == key ]
             end,
             {ok, setup_loop(State2, true, IsLeader, Origin)}
+    end.
+
+maybe_consensus_change(#state{ consensus = Consensus } = State, Block) ->
+    %% When a new block got successfully inserted we need to check whether the next block
+    %% would use different consensus algorithm - This is the point where
+    %% dev mode should wreck havoc on the entire system and redirect everything
+    %% to a chain simulator ;)
+    #consensus{ consensus_module = ActiveConsensus } = Consensus,
+    H = aec_blocks:height(Block),
+    case aec_consensus:get_consensus_module_at_height(H + 1) of
+        ActiveConsensus ->
+            State;
+        NewConsensus ->
+            %% It looks like dev mode needs to be activated :)
+            true = ActiveConsensus:can_be_turned_off(),
+            ActiveConsensus:stop(),
+            NewConfig = aec_consensus:get_consensus_config_at_height(H+1),
+            NewConsensus:start(NewConfig),
+            State#state{ consensus = Consensus#consensus{ consensus_module = NewConsensus } }
     end.
 
 is_leader(NewTopBlock, PrevKeyHeader) ->

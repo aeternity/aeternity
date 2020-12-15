@@ -54,20 +54,25 @@ suite() -> [].
 
 init_per_suite(Config) ->
     Forks = aecore_suite_utils:forks(),
-    DefCfg = #{<<"chain">> => #{<<"persist">> => true,
+    DefCfg = #{<<"chain">> => #{<<"persist">> => false,
                                 <<"hard_forks">> => Forks}},
-    Config1 = aecore_suite_utils:init_per_suite([?NODE], DefCfg, [{symlink_name, "latest.http_dryrun"}, {test_module, ?MODULE}] ++ Config),
+    Config1 = aecore_suite_utils:init_per_suite([?NODE], DefCfg, [ {instant_mining, true}
+                                                                 , {symlink_name, "latest.http_dryrun"}
+                                                                 , {test_module, ?MODULE}] ++ Config),
+    aecore_suite_utils:start_node(?NODE, Config1),
+    Node = aecore_suite_utils:node_name(?NODE),
+    aecore_suite_utils:connect(Node, []),
     [{nodes, [aecore_suite_utils:node_tuple(?NODE)]}]  ++ Config1.
 
-end_per_suite(_Config) ->
+end_per_suite(Config) ->
+    aecore_suite_utils:stop_node(?NODE, Config),
     ok.
 
 init_per_group(VM, Config) when VM == aevm; VM == fate ->
     aect_test_utils:init_per_group(VM, Config);
 init_per_group(dry_run, Config) ->
+    aecore_suite_utils:reinit_with_ct_consensus(?NODE),
     NodeName = aecore_suite_utils:node_name(?NODE),
-    aecore_suite_utils:start_node(?NODE, Config),
-    aecore_suite_utils:connect(NodeName, [block_pow, instant_tx_confirm]),
 
     ToMine = max(0, aecore_suite_utils:latest_fork_height()),
     ct:pal("ToMine ~p\n", [ToMine]),
@@ -102,12 +107,6 @@ init_per_group(dry_run, Config) ->
     {ok, TopHash} = aec_blocks:hash_internal_representation(Top),
     [{top_hash, TopHash}, {accounts, Accounts}, {node_name, NodeName} | Config].
 
-end_per_group(dry_run, Config) ->
-    RpcFun = fun(M, F, A) -> rpc(?NODE, M, F, A) end,
-    {ok, DbCfg} = aecore_suite_utils:get_node_db_config(RpcFun),
-    aecore_suite_utils:stop_node(?NODE, Config),
-    aecore_suite_utils:delete_node_db_if_persisted(DbCfg),
-    ok;
 end_per_group(_VM, _Config) ->
     ok.
 

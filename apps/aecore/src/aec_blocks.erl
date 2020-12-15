@@ -10,6 +10,7 @@
 %% API
 -export([assert_block/1,
          beneficiary/1,
+         consensus_module/1,
          deserialize_from_binary/1,
          difficulty/1,
          gas/1,
@@ -127,6 +128,12 @@ set_header(#key_block{} = B, H) ->
     aec_headers:assert_key_header(H),
     B#key_block{header = H}.
 
+-spec consensus_module(block()) -> atom().
+consensus_module(#key_block{header = H}) ->
+    aec_headers:consensus_module(H);
+consensus_module(#mic_block{header = H}) ->
+    aec_headers:consensus_module(H).
+
 %%%===================================================================
 %%% Block structure
 %%%===================================================================
@@ -154,7 +161,7 @@ type(#mic_block{}) -> 'micro'.
 %%%===================================================================
 
 -spec new_key(height(), block_header_hash(), block_header_hash(), state_hash(),
-              aeminer_pow:sci_target(),
+              aec_consensus:key_target(),
               non_neg_integer(), non_neg_integer(), info(),
               aec_hard_forks:protocol_vsn(), miner_pubkey(), beneficiary_pubkey()
              ) -> key_block().
@@ -232,9 +239,9 @@ height(Block) ->
 set_height(Block, Height) ->
     set_header(Block, aec_headers:set_height(to_header(Block), Height)).
 
--spec difficulty(key_block()) -> aeminer_pow:difficulty().
+-spec difficulty(key_block()) -> aec_consensus:key_difficulty().
 difficulty(Block) ->
-    aeminer_pow:target_to_difficulty(target(Block)).
+    aec_headers:difficulty(to_key_header(Block)).
 
 -spec gas(micro_block()) -> non_neg_integer().
 gas(#mic_block{txs = Txs} = Block) ->
@@ -270,7 +277,7 @@ set_miner(Block, M) ->
 version(Block) ->
     aec_headers:version(to_header(Block)).
 
--spec set_nonce(key_block(), aeminer_pow:nonce()) -> key_block().
+-spec set_nonce(key_block(), aec_consensus:key_nonce()) -> key_block().
 set_nonce(Block, Nonce) ->
     set_header(Block, aec_headers:set_nonce(to_key_header(Block), Nonce)).
 
@@ -284,14 +291,14 @@ set_pof(#mic_block{} = Block, PoF) ->
     Header = aec_headers:set_pof_hash(to_micro_header(Block), PoFHash),
     set_header(Block#mic_block{pof = PoF}, Header).
 
--spec pow(key_block()) -> aeminer_pow_cuckoo:solution().
+-spec pow(key_block()) -> aec_consensus:key_seal().
 pow(Block) ->
     aec_headers:pow(to_key_header(Block)).
 
--spec set_nonce_and_pow(key_block(), aeminer_pow:nonce(), aeminer_pow_cuckoo:solution()
+-spec set_nonce_and_pow(key_block(), aec_consensus:key_nonce(), aec_consensus:key_seal()
                        ) -> key_block().
 set_nonce_and_pow(Block, Nonce, Evd) ->
-    H = aec_headers:set_nonce_and_pow(to_key_header(Block), Nonce, Evd),
+    H = aec_headers:set_nonce_and_key_seal(to_key_header(Block), Nonce, Evd),
     set_header(Block, H).
 
 -spec signature(micro_block()) -> binary() | undefined.

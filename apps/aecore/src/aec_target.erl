@@ -84,7 +84,7 @@ recalculate_from_stripped(TimesAndTargets) ->
     N                        = length(TimesAndTargets) - 1, %% Sanity check.
     K                        = aeminer_pow:scientific_to_integer(?HIGHEST_TARGET_SCI) * (1 bsl 32),
     SumKDivTargets           = lists:sum([ K div aeminer_pow:scientific_to_integer(Target)
-                                           || {_, Target, _} <- tl(TimesAndTargets) ]),
+                                           || {Target, _} <- tl(TimesAndTargets) ]),
     DesiredTimeBetweenBlocks = aec_governance:expected_block_mine_rate(),
     TotalSolveTime           = total_solve_time_from_stripped(TimesAndTargets),
     TemperedTST              = (3 * N * DesiredTimeBetweenBlocks) div 4 + (2523 * TotalSolveTime) div 10000,
@@ -128,7 +128,7 @@ total_solve_time_from_stripped(TimesAndTargets) ->
     total_solve_time_from_stripped(TimesAndTargets, {Min, Max}, 0).
 
 total_solve_time_from_stripped([_], _MinMax, Acc) -> Acc;
-total_solve_time_from_stripped([{_, _, T2} | [{_, _, T1} | _] = TimesAndTargets], MinMax = {Min, Max}, Acc) ->
+total_solve_time_from_stripped([{_, T2} | [{_, T1} | _] = TimesAndTargets], MinMax = {Min, Max}, Acc) ->
     SolveTime0 = T1 - T2,
     SolveTime =
         if SolveTime0 < Min -> Min;

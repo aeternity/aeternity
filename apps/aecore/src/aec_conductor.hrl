@@ -19,13 +19,14 @@
 
 -type candidate_hash() :: aec_blocks:block_header_hash().
 -record(candidate, {block     :: aec_blocks:block(),
-                    nonce     :: aeminer_pow:nonce() | 'undefined',
+                    nonce     :: aec_consensus:key_nonce() | 'undefined',
                     top_hash  :: binary(),
                     refs = 0  :: non_neg_integer() %% Number of miner workers operating on the candidate
                    }).
 
 -record(consensus, {leader             = false    :: boolean(),
-                    micro_block_cycle             :: integer()
+                    micro_block_cycle             :: integer(),
+                    consensus_module              :: atom()
                     }).
 
 -type instance_state() :: pid() | 'available'.

@@ -26,6 +26,7 @@
          nonce/1,
          pof_hash/1,
          pow/1,
+         key_seal/1,
          prev_hash/1,
          prev_key_hash/1,
          root_hash/1,
@@ -36,8 +37,10 @@
          set_miner/2,
          set_nonce/2,
          set_nonce_and_pow/3,
+         set_nonce_and_key_seal/3,
          set_info/2,
          set_pof_hash/2,
+         set_key_seal/2,
          set_prev_hash/2,
          set_prev_key_hash/2,
          set_root_hash/2,
@@ -55,22 +58,16 @@
          update_micro_candidate/3,
          validate_key_block_header/2,
          validate_micro_block_header/2,
-         version/1
+         version/1,
+         strip_extra/1,
+         set_extra/2,
+         extra/1,
+         consensus_module/1
         ]).
 
--pluggable([ deserialize_from_binary/1
-           , deserialize_from_binary_partial/1
-           , deserialize_key_from_binary/1
-           , deserialize_micro_from_binary/1
-           , validate_key_block_header/2
-           , validate_micro_block_header/2
-           , validate_pow/2
-           ]).
-
--include_lib("aeminer/include/aeminer.hrl").
+-include("aec_consensus.hrl").
 -include_lib("aecontract/include/hard_forks.hrl").
 -include("blocks.hrl").
--include("aec_plugin.hrl").
 
 %%%===================================================================
 %%% Records and types
@@ -100,11 +97,11 @@
           prev_hash    = <<0:?BLOCK_HEADER_HASH_BYTES/unit:8>> :: block_header_hash(),
           prev_key     = <<0:?BLOCK_HEADER_HASH_BYTES/unit:8>> :: block_header_hash(),
           root_hash    = <<0:?STATE_HASH_BYTES/unit:8>>        :: state_hash(),
-          target       = ?HIGHEST_TARGET_SCI                   :: aeminer_pow:sci_target(),
+          target                                               :: aec_consensus:key_target(),
           nonce        = 0                                     :: non_neg_integer(),
           time         = 0                                     :: non_neg_integer(),
           version                                              :: non_neg_integer(),
-          pow_evidence = no_value                              :: aeminer_pow_cuckoo:solution() | no_value,
+          key_seal     = no_value                              :: aec_consensus:key_seal() | no_value,
           miner        = <<0:?MINER_PUB_BYTES/unit:8>>         :: miner_pubkey(),
           beneficiary  = <<0:?BENEFICIARY_PUB_BYTES/unit:8>>   :: beneficiary_pubkey(),
           info         = <<>>                                  :: bin_info(),
@@ -134,7 +131,7 @@
              , micro_header/0
              ]).
 
--define(POW_EV_SIZE, 42).
+-deprecated([{pow, 1, eventually}, {set_nonce_and_pow, 3, eventually}]).
 
 %%%===================================================================
 %%% Test interface
@@ -149,12 +146,19 @@
         ]).
 
 raw_key_header() ->
-  #key_header{ root_hash = <<0:32/unit:8>>,
-               version = aec_hard_forks:protocol_effective_at_height(0) }.
+    Module = aec_consensus:get_genesis_consensus_module(),
+    populate_extra(
+      #key_header{ root_hash = <<0:32/unit:8>>
+                 , version = aec_hard_forks:protocol_effective_at_height(0)
+                 , target  = Module:default_target() }
+               %%, target  = aec_consensus:default_target_at_height(0) }
+    ).
 
 raw_micro_header() ->
-  #mic_header{ root_hash = <<0:32/unit:8>>,
-               version = aec_hard_forks:protocol_effective_at_height(0) }.
+    populate_extra(
+      #mic_header{ root_hash = <<0:32/unit:8>>
+                 , version   = aec_hard_forks:protocol_effective_at_height(0) }
+    ).
 
 set_version(#key_header{} = H, Version) -> H#key_header{version = Version};
 set_version(#mic_header{} = H, Version) -> H#mic_header{version = Version}.
@@ -185,18 +189,20 @@ type(#mic_header{}) -> micro.
 
 -spec from_db_header(tuple() | header()) -> header().
 %% We might have a legacy tuple in the db
-from_db_header(#key_header{} = K) -> K;
-from_db_header(#mic_header{} = M) -> M;
-from_db_header({mic_header,
-                Height,
-                Pof_hash,
-                Prev_hash,
-                Prev_key,
-                Root_hash,
-                Signature,
-                Txs_hash,
-                Time,
-                Version}) ->
+from_db_header(Header) -> populate_extra(from_db_header_(Header)).
+
+from_db_header_(#key_header{} = K) -> K;
+from_db_header_(#mic_header{} = M) -> M;
+from_db_header_({mic_header,
+                 Height,
+                 Pof_hash,
+                 Prev_hash,
+                 Prev_key,
+                 Root_hash,
+                 Signature,
+                 Txs_hash,
+                 Time,
+                 Version}) ->
     #mic_header{
        height    = Height,
        pof_hash  = Pof_hash,
@@ -207,20 +213,20 @@ from_db_header({mic_header,
        txs_hash  = Txs_hash,
        time      = Time,
        version   = Version};
-from_db_header({key_header,
-                Height,
-                PrevHash,
-                PrevKey,
-                RootHash,
-                Target,
-                Nonce,
-                Time,
-                Version,
-                Pow,
-                Miner,
-                Beneficiary,
-                Info
-               }) ->
+from_db_header_({key_header,
+                 Height,
+                 PrevHash,
+                 PrevKey,
+                 RootHash,
+                 Target,
+                 Nonce,
+                 Time,
+                 Version,
+                 KeySeal,
+                 Miner,
+                 Beneficiary,
+                 Info
+                }) ->
             #key_header{
                height       = Height,
                prev_hash    = PrevHash,
@@ -230,24 +236,24 @@ from_db_header({key_header,
                nonce        = Nonce,
                time         = Time,
                version      = Version,
-               pow_evidence = Pow,
+               key_seal     = KeySeal,
                miner        = Miner,
                beneficiary  = Beneficiary,
                info         = Info
               };
-from_db_header({key_header,
-                Height,
-                PrevHash,
-                PrevKey,
-                RootHash,
-                Target,
-                Nonce,
-                Time,
-                Version,
-                Pow,
-                Miner,
-                Beneficiary
-               }) ->
+from_db_header_({key_header,
+                 Height,
+                 PrevHash,
+                 PrevKey,
+                 RootHash,
+                 Target,
+                 Nonce,
+                 Time,
+                 Version,
+                 KeySeal,
+                 Miner,
+                 Beneficiary
+                }) ->
             #key_header{
                height       = Height,
                prev_hash    = PrevHash,
@@ -257,12 +263,12 @@ from_db_header({key_header,
                nonce        = Nonce,
                time         = Time,
                version      = Version,
-               pow_evidence = Pow,
+               key_seal     = KeySeal,
                miner        = Miner,
                beneficiary  = Beneficiary,
                info         = <<>>
               };
-from_db_header(_) ->
+from_db_header_(_) ->
     error(bad_db_header).
 
 %%%===================================================================
@@ -271,26 +277,27 @@ from_db_header(_) ->
 
 -spec new_key_header(height(), block_header_hash(), block_header_hash(),
                      state_hash(), miner_pubkey(), beneficiary_pubkey(),
-                     aeminer_pow:sci_target(),
-                     aeminer_pow_cuckoo:solution() | 'no_value',
+                     aec_consensus:key_target(),
+                     aec_consensus:key_seal() | 'no_value',
                      non_neg_integer(), non_neg_integer(), info(),
                      aec_hard_forks:protocol_vsn()
                     ) -> header().
 new_key_header(Height, PrevHash, PrevKeyHash, RootHash, Miner, Beneficiary,
-               Target, Evd, Nonce, Time, Info, Version) ->
-    #key_header{height       = Height,
-                prev_hash    = PrevHash,
-                prev_key     = PrevKeyHash,
-                root_hash    = RootHash,
-                miner        = Miner,
-                beneficiary  = Beneficiary,
-                target       = Target,
-                pow_evidence = Evd,
-                nonce        = Nonce,
-                time         = Time,
-                info         = make_info(Version, Info),
-                version      = Version
-               }.
+               Target, KeySeal, Nonce, Time, Info, Version) ->
+    populate_extra(
+        #key_header{height       = Height,
+                    prev_hash    = PrevHash,
+                    prev_key     = PrevKeyHash,
+                    root_hash    = RootHash,
+                    miner        = Miner,
+                    beneficiary  = Beneficiary,
+                    target       = Target,
+                    key_seal     = KeySeal,
+                    nonce        = Nonce,
+                    time         = Time,
+                    info         = make_info(Version, Info),
+                    version      = Version
+               }).
 
 make_info(Version, Info) when (Version >= ?MINERVA_PROTOCOL_VSN), ?IS_INT_INFO(Info) ->
     <<Info:?OPTIONAL_INFO_BYTES/unit:8>>;
@@ -304,15 +311,17 @@ make_info(_Version, default) ->
                        aec_pof:hash(), non_neg_integer()
                       ) -> header().
 new_micro_header(Height, PrevHash, PrevKey, RootHash, Time, TxsHash, PoFHash, Version) ->
-    #mic_header{height    = Height,
-                pof_hash  = PoFHash,
-                prev_hash = PrevHash,
-                prev_key  = PrevKey,
-                root_hash = RootHash,
-                txs_hash  = TxsHash,
-                time      = Time,
-                version   = Version
-               }.
+    populate_extra(
+        #mic_header{height    = Height,
+                    pof_hash  = PoFHash,
+                    prev_hash = PrevHash,
+                    prev_key  = PrevKey,
+                    root_hash = RootHash,
+                    txs_hash  = TxsHash,
+                    time      = Time,
+                    version   = Version
+                   }
+    ).
 
 %%%===================================================================
 %%% Header hash
@@ -388,9 +397,18 @@ set_pof_hash(Header, Hash) when byte_size(Hash) =:= 0;
                                 byte_size(Hash) =:= 32 ->
     Header#mic_header{pof_hash = Hash}.
 
--spec pow(key_header()) -> aeminer_pow_cuckoo:solution().
-pow(#key_header{pow_evidence = Evd}) ->
-    Evd.
+-spec pow(key_header()) -> aec_consensus:key_seal().
+%% Deprecated - please use key_seal/1 in new code
+pow(H) ->
+    key_seal(H).
+
+-spec key_seal(key_header()) -> aec_consensus:key_seal().
+key_seal(#key_header{key_seal = Seal}) ->
+    Seal.
+
+-spec set_key_seal(key_header(), aec_consensus:key_seal() | no_value) -> key_header().
+set_key_seal(#key_header{} = Header, KeySeal) ->
+    Header#key_header{key_seal = KeySeal}.
 
 -spec root_hash(header()) -> state_hash().
 root_hash(#key_header{root_hash = H}) -> H;
@@ -400,14 +418,21 @@ root_hash(#mic_header{root_hash = H}) -> H.
 set_root_hash(#key_header{} = H, Hash) -> H#key_header{root_hash = Hash};
 set_root_hash(#mic_header{} = H, Hash) -> H#mic_header{root_hash = Hash}.
 
--spec set_nonce_and_pow(key_header(), aeminer_pow:nonce(),
-                        aeminer_pow_cuckoo:solution()) -> key_header().
-set_nonce_and_pow(#key_header{} = H, Nonce, Evd) ->
-    H#key_header{nonce = Nonce, pow_evidence = Evd}.
+-spec set_nonce_and_pow(key_header(), aec_consensus:key_nonce(),
+                        aec_consensus:key_seal()) -> key_header().
+%% Deprecated - please use set_nonce_and_key_seal/3 in new code
+set_nonce_and_pow(H, Nonce, KeySeal) ->
+    set_nonce_and_key_seal(H, Nonce, KeySeal).
 
--spec difficulty(key_header()) -> aeminer_pow:difficulty().
+-spec set_nonce_and_key_seal(key_header(), aec_consensus:key_nonce(),
+                        aec_consensus:key_seal()) -> key_header().
+set_nonce_and_key_seal(#key_header{} = H, Nonce, KeySeal) ->
+    H#key_header{nonce = Nonce, key_seal = KeySeal}.
+
+-spec difficulty(key_header()) -> aec_consensus:key_difficulty().
 difficulty(Header) ->
-    aeminer_pow:target_to_difficulty(target(Header)).
+    Consensus = consensus_module(Header),
+    Consensus:key_header_difficulty(Header).
 
 -spec signature(micro_header()) -> block_signature().
 signature(Header) ->
@@ -417,12 +442,14 @@ signature(Header) ->
 set_signature(#mic_header{} = Header, Sig) ->
     Header#mic_header{signature = Sig}.
 
--spec target(key_header()) -> aeminer_pow:sci_target().
+-spec target(key_header()) -> aec_consensus:key_target().
 target(Header) ->
     Header#key_header.target.
 
--spec set_target(key_header(), aeminer_pow:sci_target()) -> header().
-set_target(Header, NewTarget) ->
+-spec set_target(key_header(), aec_consensus:key_target()) -> header().
+set_target(Header, NewTarget) when ?MIN_TARGET =< NewTarget, NewTarget =< ?MAX_TARGET ->
+    Consensus = consensus_module(Header),
+    Consensus:assert_key_target_range(NewTarget),
     Header#key_header{ target = NewTarget }.
 
 -spec txs_hash(micro_header()) -> txs_hash().
@@ -457,6 +484,22 @@ update_micro_candidate(#mic_header{} = H, TxsRootHash, RootHash) ->
                  root_hash = RootHash
                 }.
 
+-spec set_extra(header(), map()) -> header().
+set_extra(#key_header{} = Header, Extra) ->
+    Header#key_header{extra = Extra};
+set_extra(#mic_header{} = Header, Extra) ->
+    Header#mic_header{extra = Extra}.
+
+-spec extra(header()) -> map().
+extra(#key_header{extra = Extra}) -> Extra;
+extra(#mic_header{extra = Extra}) -> Extra.
+
+%% The consensus module gets populated in the extra map in the consensus module
+-spec consensus_module(header()) -> atom().
+consensus_module(Header) ->
+    #{consensus := Consensus} = extra(Header),
+    Consensus.
+
 %%%===================================================================
 %%% Serialization
 %%%===================================================================
@@ -477,11 +520,11 @@ serialize_for_client(#key_header{} = Header, PrevBlockType) ->
           <<"version">>       => Header#key_header.version,
           <<"info">>          => aeser_api_encoder:encode(contract_bytearray, Header#key_header.info)
          },
-    case Header#key_header.pow_evidence of
+    case Header#key_header.key_seal of
         no_value ->
             Res;
         _ ->
-            Res#{<<"pow">>   => serialize_pow_evidence(Header#key_header.pow_evidence),
+            Res#{<<"pow">>   => serialize_pow_evidence(Header#key_header.key_seal),
                  <<"nonce">> => Header#key_header.nonce}
     end;
 serialize_for_client(#mic_header{} = Header, PrevBlockType) ->
@@ -511,19 +554,20 @@ encode_pof_hash(PofHash) ->
 -spec deserialize_from_client(key, map()) -> {ok, header()} | {error, term()}.
 deserialize_from_client(key, KeyBlock) ->
     try
-        {ok, #key_header{height       = maps:get(<<"height">>, KeyBlock),
+        {ok, populate_extra(
+             #key_header{height       = maps:get(<<"height">>, KeyBlock),
                          prev_hash    = decode(block_hash, maps:get(<<"prev_hash">>, KeyBlock)),
                          prev_key     = decode(key_block_hash, maps:get(<<"prev_key_hash">>, KeyBlock)),
                          root_hash    = decode(block_state_hash, maps:get(<<"state_hash">>, KeyBlock)),
                          miner        = decode(account_pubkey, maps:get(<<"miner">>, KeyBlock)),
                          beneficiary  = decode(account_pubkey, maps:get(<<"beneficiary">>, KeyBlock)),
                          target       = maps:get(<<"target">>, KeyBlock),
-                         pow_evidence = deserialize_pow_evidence(maps:get(<<"pow">>, KeyBlock)),
+                         key_seal     = deserialize_pow_evidence(maps:get(<<"pow">>, KeyBlock)),
                          nonce        = maps:get(<<"nonce">>, KeyBlock),
                          time         = maps:get(<<"time">>, KeyBlock),
                          version      = maps:get(<<"version">>, KeyBlock),
                          info         = decode(contract_bytearray, maps:get(<<"info">>, KeyBlock))
-                        }}
+                        })}
     catch
         _:_ -> {error, invalid_header}
     end.
@@ -541,7 +585,7 @@ serialize_to_signature_binary(#mic_header{signature = Sig} = H) ->
 
 -spec serialize_to_binary(header()) -> deterministic_header_binary().
 serialize_to_binary(#key_header{} = Header) ->
-    PowEvidence = serialize_pow_evidence_to_binary(Header#key_header.pow_evidence),
+    PowEvidence = serialize_pow_evidence_to_binary(Header#key_header.key_seal),
     Flags = construct_key_flags(Header),
     %% Todo check size of hashes = (?BLOCK_HEADER_HASH_BYTES*8),
     <<(Header#key_header.version):32,
@@ -664,13 +708,13 @@ deserialize_key_from_binary(<<Version:32,
                     miner = Miner,
                     beneficiary = Beneficiary,
                     target = Target,
-                    pow_evidence = PowEvidence,
+                    key_seal = PowEvidence,
                     nonce = Nonce,
                     time = Time,
                     version = Version,
                     info = Info
                    },
-    {ok, H};
+    {ok, populate_extra(H)};
 deserialize_key_from_binary(_Other) ->
     {error, malformed_header}.
 
@@ -707,7 +751,7 @@ deserialize_micro_from_binary(<<Version:32,
                             txs_hash = TxsHash,
                             time = Time,
                             version = Version},
-            {ok, H};
+            {ok, populate_extra(H)};
         _ ->
             {error, malformed_header}
     end;
@@ -718,11 +762,11 @@ serialize_pow_evidence_to_binary(Ev) ->
    << <<E:32>> || E <- serialize_pow_evidence(Ev) >>.
 
 serialize_pow_evidence(Ev) ->
-    case is_list(Ev) andalso length(Ev) =:= ?POW_EV_SIZE of
+    case is_list(Ev) andalso length(Ev) =:= ?KEY_SEAL_SIZE of
         true ->
             Ev;
         false ->
-            lists:duplicate(?POW_EV_SIZE, 0)
+            lists:duplicate(?KEY_SEAL_SIZE, 0)
     end.
 
 deserialize_pow_evidence_from_binary(Bin) ->
@@ -733,8 +777,8 @@ deserialize_pow_evidence(L) when is_list(L) ->
     % numbers
     PowEvidence =
       lists:filter(fun(N) -> is_integer(N) andalso N >=0 end, L),
-    NoPow = lists:duplicate(?POW_EV_SIZE, 0),
-    case PowEvidence =:= NoPow orelse length(PowEvidence) =/= ?POW_EV_SIZE of
+    NoPow = lists:duplicate(?KEY_SEAL_SIZE, 0),
+    case PowEvidence =:= NoPow orelse length(PowEvidence) =/= ?KEY_SEAL_SIZE of
         true -> % broken PoW
             'no_value';
         false ->
@@ -749,7 +793,7 @@ deserialize_pow_evidence(_) ->
 
 validate_key_block_header(Header, Protocol) ->
     Validators = [fun validate_protocol/2,
-                  fun validate_pow/2,
+                  fun validate_key_header_seal/2,
                   fun validate_max_time/2],
     aeu_validation:run(Validators, [Header, Protocol]).
 
@@ -769,22 +813,12 @@ validate_protocol(Header, Protocol) ->
         false -> {error, protocol_version_mismatch}
     end.
 
--spec validate_pow(header(), aec_hard_forks:protocol_vsn()) ->
+-spec validate_key_header_seal(header(), aec_hard_forks:protocol_vsn()) ->
                           ok | {error, incorrect_pow}.
-validate_pow(#key_header{nonce        = Nonce,
-                         pow_evidence = Evd,
-                         target       = Target} = Header, _Protocol)
-  when Nonce >= 0, Nonce =< ?MAX_NONCE ->
-    %% Zero nonce and pow_evidence before hashing, as this is how the mined block
-    %% got hashed.
-    Header1 = Header#key_header{nonce = 0, pow_evidence = no_value},
-    HeaderBinary = serialize_to_binary(Header1),
-    case aec_mining:verify(HeaderBinary, Nonce, Evd, Target) of
-        true ->
-            ok;
-        false ->
-            {error, incorrect_pow}
-    end.
+validate_key_header_seal(#key_header{nonce = Nonce} = Header, Protocol)
+  when Nonce >= ?MIN_NONCE, Nonce =< ?MAX_NONCE ->
+    Consensus = consensus_module(Header),
+    Consensus:validate_key_header_seal(Header, Protocol).
 
 -spec validate_micro_block_cycle_time(header(), aec_hard_forks:protocol_vsn()) ->
                                              ok | {error, bad_micro_block_interval}.
@@ -822,3 +856,14 @@ validate_max_time(Header, _Protocol) ->
 decode(Type, Enc) ->
     {ok, Val} = aeser_api_encoder:safe_decode(Type, Enc),
     Val.
+
+strip_extra(Header) ->
+    set_extra(Header, #{}).
+
+populate_extra(Header1) ->
+    Height = height(Header1),
+    Consensus = aec_consensus:get_consensus_module_at_height(Height),
+    [Consensus:assert_key_target_range(Header1#key_header.target) || aec_headers:type(Header1) =:= key],
+    Header2 = set_extra(Header1, Consensus:extra_from_header(Header1)),
+    Consensus = consensus_module(Header2),
+    Header2.

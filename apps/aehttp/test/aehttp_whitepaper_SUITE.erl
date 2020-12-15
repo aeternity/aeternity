@@ -101,7 +101,7 @@ init_per_suite(Config) ->
                             <<"name_claim_bid_timeout">> => 0}},
             {ok, StartedApps} = application:ensure_all_started(gproc),
             Config1 = aecore_suite_utils:init_per_suite([?NODE], DefCfg,
-                                                        [{symlink_name, "latest.whitepaper"}, {test_module, ?MODULE}] ++ Config),
+                                                        [{instant_mining, true}, {symlink_name, "latest.whitepaper"}, {test_module, ?MODULE}] ++ Config),
             aehttp_sc_SUITE:start_node([ {nodes, [aecore_suite_utils:node_tuple(?NODE)]}
                                        , {started_apps, StartedApps}
                                        , {ws_port, 12340}] ++ Config1)

@@ -357,14 +357,16 @@ suite() -> [].
 init_per_suite(Config) ->
     Forks = aecore_suite_utils:forks(),
     DefCfg = #{<<"chain">> =>
-                   #{<<"persist">> => true,
+                   #{<<"persist">> => false,
                      <<"hard_forks">> => Forks},
                <<"mining">> =>
                    #{<<"micro_block_cycle">> => 1,
                      %% disable name claim auction
                      <<"name_claim_bid_timeout">> => 0}},
     {ok, StartedApps} = application:ensure_all_started(gproc),
-    Config1 = aecore_suite_utils:init_per_suite([?NODE], DefCfg, [{symlink_name, "latest.http_sc"}, {test_module, ?MODULE}] ++ Config),
+    Config1 = aecore_suite_utils:init_per_suite([?NODE], DefCfg, [ {instant_mining, true}
+                                                                 , {symlink_name, "latest.http_sc"}
+                                                                 , {test_module, ?MODULE}] ++ Config),
     ct:log("Config1 = ~p", [Config1]),
     make_channel_docs_symlink(Config1),
     start_node([ {nodes, [aecore_suite_utils:node_tuple(?NODE)]}
@@ -550,7 +552,7 @@ end_per_testcase(_Case, Config) ->
 start_node(Config) ->
     aecore_suite_utils:start_node(?NODE, Config),
     Node = aecore_suite_utils:node_name(?NODE),
-    aecore_suite_utils:connect(Node, [block_pow, instant_tx_confirm]),
+    aecore_suite_utils:connect(Node, []),
 
     {ok, 404, _} = get_balance_at_top(),
     aecore_suite_utils:mine_key_blocks(Node, 10),
@@ -594,10 +596,7 @@ inc_group_port(Grp, Config) ->
 
 
 stop_node(Config) ->
-    RpcFun = fun(M, F, A) -> rpc(?NODE, M, F, A) end,
-    {ok, DbCfg} = aecore_suite_utils:get_node_db_config(RpcFun),
-    aecore_suite_utils:stop_node(?NODE, Config),
-    aecore_suite_utils:delete_node_db_if_persisted(DbCfg).
+    aecore_suite_utils:stop_node(?NODE, Config).
 
 %% ============================================================
 %% Test cases

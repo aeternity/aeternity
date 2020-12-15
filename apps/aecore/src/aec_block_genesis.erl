@@ -22,101 +22,53 @@
 %%%-------------------------------------------------------------------
 -module(aec_block_genesis).
 
-%% API
--export([ genesis_header/0,
-          genesis_block_with_state/0,
-          populated_trees/0 ]).
+%% Helpers for the consensus active at genesis - all other functions are just helpers for those two
+-export([ genesis_populated_trees/0
+        , genesis_populated_trees/1
+        , genesis_raw_header/0 ]).
 
--export([genesis_difficulty/0]).
-
--export([beneficiary/0,
-         height/0,
-         miner/0,
-         pow/0,
-         prev_hash/0,
-         target/0,
-         time_in_msecs/0,
-         version/0
+%% All functionality is implemented internally using the two functions listed above
+-export([ genesis_header/0
+        , genesis_block_with_state/0
+        , populated_trees/0
+        , genesis_difficulty/0
+        , beneficiary/0
+        , height/0
+        , miner/0
+        , pow/0
+        , prev_hash/0
+        , target/0
+        , time_in_msecs/0
+        , version/0
         ]).
 
-
 -ifdef(TEST).
--export([genesis_block_with_state/1]).
+-export([ genesis_block_with_state/1 ]).
 -endif.
 
--include_lib("aeminer/include/aeminer.hrl").
--include_lib("aecontract/include/hard_forks.hrl").
--include("blocks.hrl").
+%% Genesis block presets
+-type populated_trees_options() :: #{ preset_accounts => [{aec_keys:pubkey(), non_neg_integer()}]
+                                    , state_tree => aec_trees:trees() }.
 
--define(GENESIS_VERSION, ?ROMA_PROTOCOL_VSN).
--define(GENESIS_HEIGHT, 0).
--define(GENESIS_TIME, 0).
+%% Use with caution - the in ram state trees are allocated in the process heap
+%% Presets are loaded from files
+%% TODO: Optionally load presets from the environment
+-spec genesis_populated_trees() -> aec_trees:trees().
+genesis_populated_trees() ->
+    genesis_populated_trees(#{}).
 
-%% Since preset accounts are being loaded from a file - please use with caution
-genesis_header() ->
-    {B, _S} = genesis_block_with_state(),
-    aec_blocks:to_header(B).
+-spec genesis_populated_trees(populated_trees_options()) -> aec_trees:trees().
+genesis_populated_trees(Options) ->
+    Module = aec_consensus:get_genesis_consensus_module(),
+    Config = aec_consensus:get_genesis_consensus_config(),
+    InitialTrees = initial_populated_trees(get_presets(Options)),
+    %% Consensus modules might apply additional transformations
+    Module:genesis_transform_trees(InitialTrees, Config).
 
-prev_hash() ->
-    aec_governance:contributors_messages_hash().
-
-prev_key_hash() ->
-    <<0:?BLOCK_HEADER_HASH_BYTES/unit:8>>.
-
-pow() ->
-    no_value.
-
-height() -> ?GENESIS_HEIGHT.
-
-miner() -> <<0:?MINER_PUB_BYTES/unit:8>>.
-
-beneficiary() -> <<0:?BENEFICIARY_PUB_BYTES/unit:8>>.
-
-version() -> ?GENESIS_VERSION.
-
-time_in_msecs() -> ?GENESIS_TIME.
-
--ifdef(TEST).
-target() ->
-   ?HIGHEST_TARGET_SCI.
--else.
-target() ->
-    case aec_governance:get_network_id() of
-        <<"ae_mainnet">> -> 16#1F1F1F1F;
-        _                -> ?HIGHEST_TARGET_SCI
-    end.
--endif.
-
-%% Returns the genesis block and the state trees.
-%%
-%% The current implementation of state trees causes a new Erlang term,
-%% representing the initial state trees, to be allocated in the
-%% heap memory of the calling process.
-%%
-%% Since preset accounts are being loaded from a file - please use with caution
-genesis_block_with_state() ->
-    genesis_block_with_state(#{preset_accounts => aec_fork_block_settings:genesis_accounts()}).
-
-genesis_block_with_state(Map) ->
-    Trees = populated_trees(Map),
-
-    Block = aec_blocks:new_key(height(), prev_hash(), prev_key_hash(),
-                               aec_trees:hash(Trees),
-                               target(), 0, time_in_msecs(), default,
-                               version(), miner(), beneficiary()),
-    {Block, Trees}.
-
-%% Returns state trees at genesis block.
-%%
-%% It includes preset accounts.
-%%
-%% It does not include reward for miner account.
-populated_trees() ->
-    populated_trees(#{preset_accounts => aec_fork_block_settings:genesis_accounts()}).
-
-populated_trees(Map) ->
-    PresetAccounts = maps:get(preset_accounts, Map),
-    StateTrees = maps:get(state_tree, Map, aec_trees:new()),
+-spec initial_populated_trees(populated_trees_options()) -> aec_trees:trees().
+initial_populated_trees(Options) ->
+    PresetAccounts = maps:get(preset_accounts, Options),
+    StateTrees = maps:get(state_tree, Options),
     PopulatedAccountsTree =
         lists:foldl(fun({PubKey, Amount}, T) ->
                             Account = aec_accounts:new(PubKey, Amount),
@@ -124,8 +76,50 @@ populated_trees(Map) ->
                     end, aec_trees:accounts(StateTrees), PresetAccounts),
     aec_trees:set_accounts(StateTrees, PopulatedAccountsTree).
 
+-spec get_presets(populated_trees_options()) -> populated_trees_options().
+get_presets(Options) ->
+    maps:map(fun (_, F) when is_function(F, 0) -> F();
+                 (_, R) -> R
+             end, maps:merge(default_presets(), Options)).
+
+default_presets() ->
+    %% TODO: Consult the environment and user config add presets for contracts
+    #{ preset_accounts => fun() -> aec_fork_block_settings:genesis_accounts() end
+     , state_tree => fun() -> aec_trees:new() end
+     }.
+
+-spec genesis_raw_header() -> aec_headers:key_header().
+genesis_raw_header() ->
+    Module = aec_consensus:get_genesis_consensus_module(),
+    Module:genesis_raw_header().
+
+%%-------------------------------------------
+%% Consensus independent code
+%%-------------------------------------------
+genesis_header() ->
+    Trees = genesis_populated_trees(),
+    aec_headers:set_root_hash(genesis_raw_header(), aec_trees:hash(Trees)).
+
+genesis_block_with_state() ->
+    genesis_block_with_state(#{}).
+
+genesis_block_with_state(Options) ->
+    Trees = genesis_populated_trees(Options),
+    Header = aec_headers:set_root_hash(genesis_raw_header(), aec_trees:hash(Trees)),
+    {aec_blocks:new_key_from_header(Header), Trees}.
+
+populated_trees()    -> genesis_populated_trees().
+beneficiary()        -> aec_headers:beneficiary(genesis_raw_header()).
+height()             -> aec_headers:height(genesis_raw_header()).
+miner()              -> aec_headers:miner(genesis_raw_header()).
+pow()                -> aec_headers:key_seal(genesis_raw_header()).
+prev_hash()          -> aec_headers:prev_hash(genesis_raw_header()).
+target()             -> aec_headers:target(genesis_raw_header()).
+time_in_msecs()      -> aec_headers:time_in_msecs(genesis_raw_header()).
+version()            -> aec_headers:version(genesis_raw_header()).
 
 %% Returns the difficulty of the genesis block meant to be used in the
 %% computation of the chain difficulty.
 genesis_difficulty() ->
-    0. %% Genesis block is unmined.
+    Module = aec_consensus:get_genesis_consensus_module(),
+    Module:genesis_difficulty().

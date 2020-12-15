@@ -159,6 +159,8 @@ mock_genesis_and_forks(PresetAccounts) ->
     meck:expect(aec_fork_block_settings, lima_accounts, 0, []),
     meck:expect(aec_fork_block_settings, lima_extra_accounts, 0, []),
     meck:expect(aec_fork_block_settings, lima_contracts, 0, []),
+    aec_consensus:set_consensus(),
+    aec_consensus:set_genesis_hash(),
     ok.
 
 unmock_genesis_and_forks() ->

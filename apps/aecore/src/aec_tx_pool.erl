@@ -63,8 +63,7 @@
         , raw_delete/2
         ]).
 
--export([ await_tx_pool/0
-        , instant_tx_confirm_enabled/0 ]).
+-export([ await_tx_pool/0 ]).
 
 -include("aec_tx_pool.hrl").
 -include_lib("aecontract/include/hard_forks.hrl").
@@ -79,8 +78,6 @@
 -export([peek_db/0]).
 -export([peek_visited/0]).
 -export([peek_nonces/0]).
--export([instant_tx_confirm_init/0]).
--export([instant_tx_confirm_end/0]).
 -endif.
 
 %% gen_server callbacks
@@ -203,7 +200,6 @@ push_(Tx, TxHash, Event, Timeout) ->
     end.
 
 instant_tx_confirm_hook(_) -> ok.
-instant_tx_confirm_enabled() -> false.
 
 incr(Metric) ->
     aec_metrics:try_update([ae,epoch,aecore,tx_pool | Metric], 1).
@@ -975,16 +971,3 @@ minimum_miner_gas_price() ->
 maximum_auth_fun_gas() ->
     aeu_env:user_config_or_env([<<"mining">>, <<"max_auth_fun_gas">>],
                                aecore, mining_max_auth_fun_gas, ?DEFAULT_MAX_AUTH_FUN_GAS).
-
--ifdef(TEST).
-instant_tx_confirm_init() ->
-    %% This should avoid spawning a separate process and consuming CPU resources which could be used to parallelize tests
-    lager:debug("Enabling instant TX confirmation"),
-    aec_plugin:register(#{aec_tx_pool => aec_instant_mining_plugin}),
-    ok.
-
-instant_tx_confirm_end() ->
-    lager:debug("Disabling instant TX confirmation"),
-    aec_plugin:register(#{}),
-    ok.
--endif.

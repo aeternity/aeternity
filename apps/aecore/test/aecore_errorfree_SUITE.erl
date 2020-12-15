@@ -23,7 +23,7 @@ all() ->
     , jobs_server_test ].
 
 init_per_suite(Config) ->
-    Config1 = aecore_suite_utils:init_per_suite([dev1, dev2], [{symlink_name, "latest.errorfree"}, {test_module, ?MODULE}] ++ Config),
+    Config1 = aecore_suite_utils:init_per_suite([dev1, dev2], [{instant_mining, true}, {symlink_name, "latest.errorfree"}, {test_module, ?MODULE}] ++ Config),
     [{nodes, [aecore_suite_utils:node_tuple(dev1),
               aecore_suite_utils:node_tuple(dev2)]} | Config1].
 

@@ -526,7 +526,7 @@ accept_existing_db_node() ->
     {ok, _} = ?TEST_MODULE:insert_block(B1),
     {ok, _} = ?TEST_MODULE:insert_block(B2),
     Node = ?TEST_MODULE:wrap_block(B3),
-    Ctx = ?TEST_MODULE:build_insertion_ctx(Node, micro, undefined),
+    Ctx = aec_block_insertion:build_insertion_ctx(Node, B3),
     {ok, _} = ?TEST_MODULE:insert_block(B3),
     ?TEST_MODULE:internal_insert_transaction(Node, B3, undefined, Ctx),
 

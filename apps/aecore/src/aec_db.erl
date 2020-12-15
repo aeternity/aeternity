@@ -32,7 +32,6 @@
          write_discovered_pof/2,
          write_genesis_hash/1,
          write_top_block_hash/1,
-         write_top_block_height/1,
          write_signal_count/2,
          find_block/1,
          find_block_tx_hashes/1,
@@ -49,7 +48,6 @@
          get_genesis_hash/0,
          get_signed_tx/1,
          get_top_block_hash/0,
-         get_top_block_height/0,
          get_block_state/1,
          get_block_state/2,
          get_block_from_micro_header/2
@@ -212,7 +210,7 @@ persisted_valid_genesis_block() ->
         false ->
             true;
         true ->
-            {ok, ExpectedGH} = aec_headers:hash_header(aec_block_genesis:genesis_header()),
+            ExpectedGH = aec_consensus:get_genesis_hash(),
             case aec_db:get_genesis_hash() of
                 undefined ->
                     lager:info("Loaded empty persisted chain"),
@@ -329,7 +327,7 @@ write_block(Block) ->
     write_block(Block, Hash).
 
 write_block(Block, Hash) ->
-    Header = aec_blocks:to_header(Block),
+    Header = aec_headers:strip_extra(aec_blocks:to_header(Block)),
     Height = aec_headers:height(Header),
 
     case aec_blocks:type(Block) of
@@ -558,10 +556,6 @@ write_top_block_hash(Hash) when is_binary(Hash) ->
     ?t(mnesia:write(#aec_chain_state{key = top_block_hash, value = Hash}),
        [{aec_chain_state, top_block_hash}]).
 
-write_top_block_height(Height) when is_integer(Height) ->
-    ?t(mnesia:write(#aec_chain_state{key = top_block_height, value = Height}),
-       [{aec_chain_state, top_block_height}]).
-
 write_signal_count(Hash, Count) when is_binary(Hash), is_integer(Count) ->
     ?t(mnesia:write(#aec_signal_count{key = Hash, value = Count}),
        [{aec_signal_count, Hash}]).
@@ -571,9 +565,6 @@ get_genesis_hash() ->
 
 get_top_block_hash() ->
     get_chain_state_value(top_block_hash).
-
-get_top_block_height() ->
-    get_chain_state_value(top_block_height).
 
 get_block_state(Hash) ->
     get_block_state(Hash, false).

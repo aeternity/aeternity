@@ -103,12 +103,20 @@ suite() ->
 init_per_suite(Config) ->
     Forks = aecore_suite_utils:forks(),
     DefCfg = #{<<"chain">> =>
-                   #{<<"persist">> => true,
+                   #{<<"persist">> => false,
                      <<"hard_forks">> => Forks}},
-    Config1 = aecore_suite_utils:init_per_suite([?NODE], DefCfg, [{symlink_name, "latest.http_contracts"}, {test_module, ?MODULE}] ++ Config),
-    [{nodes, [aecore_suite_utils:node_tuple(?NODE)]}]  ++ Config1.
+    Config1 = aecore_suite_utils:init_per_suite([?NODE], DefCfg, [ {instant_mining, true}
+                                                                 , {symlink_name, "latest.http_contracts"}
+                                                                 , {test_module, ?MODULE}] ++ Config),
+    aecore_suite_utils:start_node(?NODE, Config1),
+    Node = aecore_suite_utils:node_name(?NODE),
+    aecore_suite_utils:connect(Node, []),
+    [ {node_name, Node}
+    , {nodes, [aecore_suite_utils:node_tuple(?NODE)]}
+    ] ++ Config1.
 
-end_per_suite(_Config) ->
+end_per_suite(Config) ->
+    aecore_suite_utils:stop_node(?NODE, Config),
     ok.
 
 init_per_group(VM, Config) when VM == aevm; VM == fate ->
@@ -116,8 +124,7 @@ init_per_group(VM, Config) when VM == aevm; VM == fate ->
 
 init_per_vm(Config) ->
     NodeName = aecore_suite_utils:node_name(?NODE),
-    aecore_suite_utils:start_node(?NODE, Config),
-    aecore_suite_utils:connect(NodeName, [block_pow, instant_tx_confirm]),
+    aecore_suite_utils:reinit_with_ct_consensus(?NODE),
 
     ToMine = max(0, aecore_suite_utils:latest_fork_height()),
     ct:pal("ToMine ~p\n", [ToMine]),
@@ -147,14 +154,10 @@ init_per_vm(Config) ->
                  acc_d => #{pub_key => DPubkey,
                             priv_key => DPrivkey,
                             start_amt => StartAmt}},
-    [{accounts,Accounts},{node_name,NodeName}|Config].
+    [{accounts,Accounts}|Config].
 
 
-end_per_group(_Group, Config) ->
-    RpcFun = fun(M, F, A) -> rpc(?NODE, M, F, A) end,
-    {ok, DbCfg} = aecore_suite_utils:get_node_db_config(RpcFun),
-    aecore_suite_utils:stop_node(?NODE, Config),
-    aecore_suite_utils:delete_node_db_if_persisted(DbCfg),
+end_per_group(_Group, _Config) ->
     ok.
 
 init_per_testcase(_Case, Config) ->
@@ -742,8 +745,9 @@ environment_contract_(Config) ->
     ct:pal("Calling difficulty\n"),
     Difficulty = fun(Hdr) ->
                     #{<<"prev_key_hash">> := KeyHash} = Hdr,
-                    {ok, 200, #{<<"target">> := T}} = get_key_block(KeyHash),
-                    aeminer_pow:target_to_difficulty(T)
+                    %% There are other tests which check the target with bitcoin_ng consensus
+                    {ok, 200, #{<<"target">> := 1337}} = get_key_block(KeyHash),
+                    1337
                  end,
     CallF(BPub, BPriv, EncCPub, Contract, "difficulty", [], Difficulty),
 

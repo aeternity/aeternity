@@ -579,7 +579,7 @@ handle_request_('GetPeerPubkey', _Params, _Context) ->
 
 handle_request_('GetStatus', _Params, _Context) ->
     {ok, TopKeyBlock} = aec_chain:top_key_block(),
-    {ok, GenesisBlockHash} = aec_headers:hash_header(aec_block_genesis:genesis_header()),
+    GenesisBlockHash = aec_consensus:get_genesis_hash(),
     Solutions = 0, %% TODO
     Difficulty = aec_blocks:difficulty(TopKeyBlock),
     Syncing = aec_sync:is_syncing(),

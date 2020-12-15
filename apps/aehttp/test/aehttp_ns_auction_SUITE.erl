@@ -40,7 +40,7 @@ groups() ->
 init_per_suite(Config) ->
     Forks = aecore_suite_utils:forks(),
     DefCfg = #{<<"chain">> =>
-                   #{<<"persist">> => true,
+                   #{<<"persist">> => false,
                      <<"hard_forks">> => Forks},
                <<"mining">> =>
                    #{<<"micro_block_cycle">> => 1,
@@ -48,24 +48,29 @@ init_per_suite(Config) ->
                     }},
     {ok, StartedApps} = application:ensure_all_started(gproc),
     Config0 = [{protocol_vsn, aect_test_utils:latest_protocol_version()} | Config],
-    Config1 = aecore_suite_utils:init_per_suite([?NODE], DefCfg, [{symlink_name, "latest.http_endpoints"},
+    Config1 = aecore_suite_utils:init_per_suite([?NODE], DefCfg, [{instant_mining, true},
+                                                                  {symlink_name, "latest.http_endpoints"},
                                                                   {test_module, ?MODULE}] ++ Config0),
-    [ {nodes, [aecore_suite_utils:node_tuple(?NODE)]}
+    aecore_suite_utils:start_node(?NODE, Config1),
+    Node = aecore_suite_utils:node_name(?NODE),
+    aecore_suite_utils:connect(Node, []),
+    [ {node, Node}
+    , {nodes, [aecore_suite_utils:node_tuple(?NODE)]}
     , {started_apps, StartedApps} ]  ++ Config1.
 
 end_per_suite(Config) ->
+    aecore_suite_utils:stop_node(?NODE, Config),
     [application:stop(A) ||
         A <- lists:reverse(
                proplists:get_value(started_apps, Config, []))],
     ok.
 
 
-init_per_group(Group, Config) ->
-    ?HTTP_INT:start_node(Group, Config).
+init_per_group(_Group, Config) ->
+    Config.
 
-end_per_group(Group, Config) ->
-    ok = ?HTTP_INT:stop_node(Group, Config).
-
+end_per_group(_Group, Config) ->
+    Config.
 
 init_per_testcase(naming_system_auction, Config) ->
     case ?config(protocol_vsn, Config) >= ?LIMA_PROTOCOL_VSN of

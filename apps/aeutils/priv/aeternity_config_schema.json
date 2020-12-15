@@ -462,6 +462,30 @@
                         }
                     }
                 },
+                "consensus" : {
+                    "description" : "The consensus algorithms used for validating blocks. Ignored if 'fork_management > network_id' has value 'ae_mainnet' or 'ae_uat'.",
+                    "type" : "object",
+                    "patternProperties" : {
+                        "^[1-9][0-9]*$" : {
+                            "description" : "Minimum height at which the given consensus algorithm gets activated. By default from genesis Cuckoo cycle based BitcoinNG is used.",
+                            "type" : "object",
+                            "required": ["name"],
+                            "properties": {
+                                "name": {
+                                    "description": "The name of the consensus algorithm used at the given height",
+                                    "type": "string"
+                                },
+                                "config": {
+                                    "description": "Configuration for the given consensus algorithm",
+                                    "type": "object",
+                                    "oneOf": [
+                                        {"properties": {}}
+                                    ]
+                                }
+                            }
+                        }
+                    }
+                },
                 "protocol_beneficiaries_enabled" : {
                     "description" :
                     "If true, the node will split rewards and send part to protocol_beneficiaries",
