@@ -1233,6 +1233,7 @@ first_fetch_node_infos(Successes, Fails) ->
     Info = rpc:call(N1, aec_sync, ask_all_for_node_info, [Timeout], Timeout + 500),
     #{ versions  := Versions
      , revisions := Revisions 
+     , vendors   := Vendors
      , os        := OSes
      , failed    := Failed } = Info,
     case Successes of
@@ -1243,8 +1244,10 @@ first_fetch_node_infos(Successes, Fails) ->
             OS = aeu_info:get_os(),
             NodeVersion = aeu_info:get_version(),
             NodeRevision = aeu_info:get_revision(),
+            Vendor = aeu_info:vendor(),
             #{NodeVersion := Successes} = Versions,
             #{NodeRevision := Successes} = Revisions,
+            #{Vendor := Successes} = Vendors,
             #{OS := Successes} = OSes
     end,
     case Fails  of

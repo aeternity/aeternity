@@ -1474,6 +1474,7 @@ handle_get_node_info(S) ->
             Unverified = aec_peers:count(unverified),
             NodeInfo = #{ version => NodeVersion
                         , revision => NodeRevision 
+                        , vendor => aeu_info:vendor()
                         , os => OS
                         , network_id => aec_governance:get_network_id()
                         , verified_peers => Verified

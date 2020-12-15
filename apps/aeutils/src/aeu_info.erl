@@ -2,7 +2,8 @@
 
 -export([get_version/0,
          get_revision/0,
-         get_os/0]).
+         get_os/0,
+         vendor/0]).
 
 -define(VERSION_FILE, <<"VERSION">>).
 -define(REVISION_FILE, <<"REVISION">>).
@@ -20,6 +21,9 @@ get_os() ->
     BOSFamily = Bin(OSFamily),
     BOSName = Bin(OSName),
     <<BOSFamily/binary, ":", BOSName/binary>>.
+
+vendor() ->
+    <<"Erlang reference node">>.
 
 %% Internals
 

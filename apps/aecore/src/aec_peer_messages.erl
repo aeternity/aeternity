@@ -104,12 +104,14 @@ serialize(get_node_info, _, Vsn = ?GET_NODE_INFO_VSN) ->
 serialize(node_info, NodeInfoMap, Vsn = ?NODE_INFO_VSN) ->
     #{ version := NodeVersion
      , revision := Revision 
+     , vendor := Vendor 
      , os := OS
      , network_id := NetworkID 
      , verified_peers := VerPeers
      , unverified_peers := UnverPeers } = NodeInfoMap,
     serialize_flds(node_info, Vsn, [ {version, NodeVersion}
                                    , {revision, Revision}
+                                   , {vendor, Vendor}
                                    , {os, OS}
                                    , {network_id, NetworkID}
                                    , {verified_peers, VerPeers}
@@ -321,6 +323,7 @@ deserialize(get_node_info, Vsn, NodeInfoFlds) ->
 deserialize(node_info, Vsn, NodeInfoFlds) ->
     [ {version, Version}
     , {revision, Revision}
+    , {vendor, Vendor}
     , {os, OS}
     , {network_id, NetworkID}
     , {verified_peers, Verified}
@@ -329,6 +332,7 @@ deserialize(node_info, Vsn, NodeInfoFlds) ->
                                       NodeInfoFlds),
     NodeInfo = #{ node_version => Version
                 , revision => Revision 
+                , vendor => Vendor 
                 , os => OS
                 , network_id => NetworkID
                 , peers => #{ verified   => Verified
@@ -393,6 +397,7 @@ serialization_template(response, ?RESPONSE_VSN) ->
 serialization_template(node_info, ?NODE_INFO_VSN) ->
     [ {version, binary}
     , {revision, binary}
+    , {vendor, binary}
     , {os, binary}
     , {network_id, binary}
     , {verified_peers, int}

@@ -1180,6 +1180,7 @@ process_infos(Infos) ->
               Responded),
       #{ versions       => Aggr(node_version)
        , revisions      => Aggr(revision)
+       , vendors        => Aggr(vendor)
        , os             => Aggr(os)
        , failed         => NoneIfEmpty(Failed)
        , peers          => Peers }.
