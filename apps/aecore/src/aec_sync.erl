@@ -21,7 +21,9 @@
 
 -export([ start_sync/3
         , get_generation/2
-        , set_last_generation_in_sync/0 ]).
+        , set_last_generation_in_sync/0
+        , ask_all_for_node_info/0
+        , ask_all_for_node_info/1]).
 
 -export([is_syncing/0,
          sync_progress/0]).
@@ -49,6 +51,15 @@ get_generation(PeerId, Hash) ->
 
 set_last_generation_in_sync() ->
     gen_server:cast(?MODULE, set_last_generation_in_sync).
+
+ask_all_for_node_info() ->
+    ask_all_for_node_info(8500).
+
+%% there are a bunch of processes adding their own overhead for this timer.
+%% While this function will timeout in Timeout milliseconds, the acutal
+%% timeout for the peer to respond is Timeout - 3000
+ask_all_for_node_info(Timeout) when Timeout > 3000 ->
+    gen_server:call(?MODULE, {ask_all_for_node_info, Timeout - 500}, Timeout).
 
 schedule_ping(PeerId) ->
     gen_server:cast(?MODULE, {schedule_ping, PeerId}).
@@ -225,6 +236,14 @@ handle_call(sync_progress, _From, State) ->
     {reply, sync_progress(State), State};
 handle_call(is_syncing, _From, State) ->
     {reply, is_syncing(State), State};
+handle_call({ask_all_for_node_info, Timeout}, From, State) ->
+    run_job(sync_tasks,
+            fun() ->
+                Infos = collect_infos(Timeout),
+                Response = process_infos(Infos),
+                gen_server:reply(From, Response)
+            end),
+    {noreply, State};
 handle_call(_, _From, State) ->
     {reply, error, State}.
 
@@ -1117,3 +1136,105 @@ pp_sync_task(ST = #sync_task{}) ->
                 , {#sync_task.pending, fun(X) -> lists:map(PPPoolF, X) end}
                 , {#sync_task.workers, fun pp_worker/1}
                 ]).
+
+process_infos(Infos) ->
+    {Responded, Failed0} =
+        lists:foldl(
+            fun({error, Err}, {RAccum, FAccum}) ->
+                {RAccum, [Err | FAccum]};
+               ({ok, #{} = NodeInfo }, {RAccum, FAccum}) ->
+                {[NodeInfo | RAccum], FAccum}
+            end,
+            {[], []},
+            Infos),
+      Failed =
+          lists:foldl(
+              fun(Err, Accum) ->
+                  maps:update_with(Err, fun(X) -> X + 1 end, 1, Accum)
+              end,
+              #{},
+              Failed0),
+      NoneIfEmpty =
+          fun(M) ->
+              case map_size(M) =:= 0 of
+                  true -> none;
+                  false -> M 
+              end
+          end,
+      Aggr =
+          fun(Key) ->
+              Res =
+                  lists:foldl(
+                      fun(#{Key := NodeVsn}, Accum) ->
+                          maps:update_with(NodeVsn, fun(X) -> X + 1 end, 1, Accum)
+                      end,
+                      #{},
+                      Responded),
+              NoneIfEmpty(Res)
+          end,
+      Peers =
+          lists:map(
+              fun(#{ peers := Peers }) ->
+                  Peers
+              end,
+              Responded),
+      #{ versions       => Aggr(node_version)
+       , revisions      => Aggr(revision)
+       , vendors        => Aggr(vendor)
+       , os             => Aggr(os)
+       , failed         => NoneIfEmpty(Failed)
+       , peers          => Peers }.
+
+collect_infos(Timeout) ->
+    ConnectedPeers = aec_peers:connected_peers(),
+    TimerOffset = 500, %% time overhead for this process' timeout
+    Fun =
+        fun(PeerInfo) ->
+            PeerId = aec_peer:id(PeerInfo),
+            %% this timeouts in Timeout milliseconds but there is a second
+            %% outher timeout in the gen_server:call to the connection itself
+            %% so we call the aec_peer_connection:get_node_info/2 with 
+            %% Timeout - 2000 - TimerOffset
+            aec_peer_connection:get_node_info(PeerId, Timeout - 2000 -
+                                              TimerOffset)
+        end,
+    pmap(Fun, ConnectedPeers, Timeout + 2000 + TimerOffset).
+
+pmap(Fun, L, Timeout) ->
+    Workers =
+        lists:map(
+            fun(E) ->
+                spawn_monitor(
+                    fun() ->
+                        {WorkerPid, WorkerMRef} =
+                            spawn_monitor(
+                                fun() ->
+                                    Res = Fun(E),
+                                    exit({ok, Res}) 
+                                end),
+                        Result =
+                            receive
+                                {'DOWN', WorkerMRef, process, WorkerPid, Res} ->
+                                    case Res of
+                                        {ok, R} -> {ok, R};
+                                        _       -> {error, failed}
+                                    end
+                            after Timeout -> {error, request_timeout}
+                            end,
+                        exit(Result)
+                    end)
+            end,
+            L),
+    pmap_gather(Workers, []).
+
+pmap_gather([], Acc) ->
+    Acc;
+pmap_gather([{Pid, MRef} | Pids], Acc) ->
+    receive
+        {'DOWN', MRef, process, Pid, Res} ->
+            case Res of
+                {ok, GoodRes} -> pmap_gather(Pids, [GoodRes | Acc]);
+                {error, _} = Err -> pmap_gather(Pids, [Err | Acc])
+            end
+    end.
+

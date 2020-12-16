@@ -16,12 +16,15 @@
 -define(MSG_MICRO_BLOCK, 11).
 -define(MSG_GENERATION, 12).
 -define(MSG_GET_HEADER_BY_HEIGHT, 15).
+-define(MSG_GET_NODE_INFO, 125).
+-define(MSG_NODE_INFO, 126).
 -define(MSG_CLOSE, 127).
 
 -define(MSG_TX_POOL_SYNC_INIT,   20).
 -define(MSG_TX_POOL_SYNC_UNFOLD, 21).
 -define(MSG_TX_POOL_SYNC_GET,    22).
 -define(MSG_TX_POOL_SYNC_FINISH, 23).
+
 
 -define(RESPONSE_VSN, 1).
 -define(PING_VSN, 1).
@@ -44,6 +47,8 @@
 -define(TX_POOL_SYNC_UNFOLD_VSN, 1).
 -define(TX_POOL_SYNC_GET_VSN,    1).
 -define(TX_POOL_SYNC_FINISH_VSN, 1).
+-define(GET_NODE_INFO_VSN, 1).
+-define(NODE_INFO_VSN, 1).
 -define(CLOSE_VSN, 1).
 
 -define(VSN_1, 1).

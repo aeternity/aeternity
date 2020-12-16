@@ -30,6 +30,7 @@
         , send_tx/2
         , stop/1
         , set_sync_height/2
+        , get_node_info/2
         ]).
 
 %% API Mempool sync
@@ -44,6 +45,7 @@
          gossip_serialize_tx/1]).
 
 -include("aec_peer_messages.hrl").
+-include("blocks.hrl").
 
 -behaviour(gen_server).
 
@@ -128,27 +130,33 @@ set_sync_height(PeerId, Height) ->
 stop(PeerCon) ->
     gen_server:cast(PeerCon, stop).
 
+get_node_info(PeerId, Timeout) ->
+    call(PeerId, {get_node_info, [Timeout]}, Timeout).
 
-call(PeerCon, Call) when is_pid(PeerCon) ->
-    try gen_server:call(PeerCon, Call, ?REQUEST_TIMEOUT + 2000)
+
+call(P, Call) ->
+    call(P, Call, ?REQUEST_TIMEOUT).
+
+call(PeerCon, Call, Timeout) when is_pid(PeerCon) ->
+    try gen_server:call(PeerCon, Call, Timeout + 2000)
     catch
       exit:{normal, _}  -> {error, aborted};
       exit:{timeout, _} -> {error, timeout};
       exit:{noproc, _}  -> {error, no_connection}
     end;
-call(PeerId, Call) when is_binary(PeerId) ->
-    cast_or_call(PeerId, call, Call).
+call(PeerId, Call, Timeout) when is_binary(PeerId) ->
+    cast_or_call(PeerId, call, Call, Timeout).
 
 cast(PeerCon, Cast) when is_pid(PeerCon) ->
     try gen_server:cast(PeerCon, Cast)
     catch exit:{noproc, _} -> {error, no_connection}
     end;
 cast(PeerId, Cast) when is_binary(PeerId) ->
-    cast_or_call(PeerId, cast, Cast).
+    cast_or_call(PeerId, cast, Cast, not_used).
 
-cast_or_call(PeerId, Action, CastOrCall) ->
+cast_or_call(PeerId, Action, CastOrCall, Timeout) ->
     case aec_peers:get_connection(PeerId) of
-        {ok, PeerCon} when Action == call -> call(PeerCon, CastOrCall);
+        {ok, PeerCon} when Action == call -> call(PeerCon, CastOrCall, Timeout);
         {ok, PeerCon} when Action == cast -> cast(PeerCon, CastOrCall);
         Err = {error, _} ->
             Err
@@ -438,8 +446,11 @@ get_request(S, Kind) ->
     maps:get(map_request(Kind), maps:get(requests, S, #{}), none).
 
 set_request(S, Kind, From) ->
+    set_request(S, Kind, From, ?REQUEST_TIMEOUT).
+
+set_request(S, Kind, From, Timeout) ->
     Rs = maps:get(requests, S, #{}),
-    TRef = erlang:start_timer(?REQUEST_TIMEOUT, self(), {request, Kind}),
+    TRef = erlang:start_timer(Timeout, self(), {request, Kind}),
     S#{ requests => Rs#{ Kind => {Kind, From, TRef} } }.
 
 remove_request_fld(S, Kind) ->
@@ -472,6 +483,7 @@ map_request(txps_init)            -> tx_pool;
 map_request(txps_unfold)          -> tx_pool;
 map_request(txs)                  -> tx_pool;
 map_request(txps_finish)          -> tx_pool;
+map_request(get_node_info)        -> node_info;
 map_request(Request)              -> Request.
 
 try_connect(Parent, Host, Port, Timeout) when is_binary(Host) ->
@@ -577,7 +589,8 @@ handle_msg(S, MsgType, false, Request, {ok, Vsn, Msg}) ->
         txps_init            -> handle_tx_pool_sync_init(S, Msg);
         txps_unfold          -> handle_tx_pool_sync_unfold(S, Msg);
         txps_get             -> handle_tx_pool_sync_get(S, Msg);
-        txps_finish          -> handle_tx_pool_sync_finish(S, Msg)
+        txps_finish          -> handle_tx_pool_sync_finish(S, Msg);
+        get_node_info        -> handle_get_node_info(S)
     end;
 handle_msg(S, MsgType, true, Request, {ok, _Vsn, Msg}) ->
     case MsgType of
@@ -588,8 +601,8 @@ handle_msg(S, MsgType, true, Request, {ok, _Vsn, Msg}) ->
         txps_init     -> handle_tx_pool_sync_rsp(S, init, Request, Msg);
         txps_unfold   -> handle_tx_pool_sync_rsp(S, unfold, Request, Msg);
         txs           -> handle_tx_pool_sync_rsp(S, get, Request, Msg);
-        txps_finish   -> handle_tx_pool_sync_rsp(S, finish, Request, Msg)
-
+        txps_finish   -> handle_tx_pool_sync_rsp(S, finish, Request, Msg);
+        node_info     -> handle_node_info_rsp(S, Request, Msg)
     end.
 
 handle_request(S, {Request, Args}, From) ->
@@ -607,8 +620,9 @@ handle_request(S, tx_pool, TxPoolArgs, From) ->
     handle_tx_pool(S, TxPoolArgs, From);
 handle_request(S, Request, Args, From) ->
     ReqData = prepare_request_data(S, Request, Args),
+    CustomTimeout = custom_timeout(Request, Args),
     send_msg(S, Request, aec_peer_messages:serialize(Request, ReqData)),
-    {noreply, set_request(S, map_request(Request), From)}.
+    {noreply, set_request(S, map_request(Request), From, CustomTimeout)}.
 
 prepare_request_data(S, ping, []) ->
     ping_obj(local_ping_obj(S), [peer_id(S)]);
@@ -619,7 +633,12 @@ prepare_request_data(_S, get_header_by_height, [Height, TopHash]) ->
 prepare_request_data(_S, get_n_successors, [FromHash, TargetHash, N]) ->
     #{ from_hash => FromHash, target_hash => TargetHash, n => N };
 prepare_request_data(_S, get_generation, [Hash, Dir]) ->
-    #{ hash => Hash, forward => (Dir == forward) }.
+    #{ hash => Hash, forward => (Dir == forward) };
+prepare_request_data(_S, get_node_info, _) ->
+    #{}.
+
+custom_timeout(get_node_info, [Timeout]) -> Timeout;
+custom_timeout(_, _) -> ?REQUEST_TIMEOUT.
 
 handle_tx_pool(S, Args, From) ->
     {Msg, MsgData} =
@@ -645,7 +664,6 @@ handle_ping_rsp(S, {ping, From, _TRef}, RemotePingObj) ->
 
 handle_ping(S, none, RemotePingObj) ->
     {PeerOk, S1} = handle_first_ping(S, RemotePingObj),
-
     Response =
         case PeerOk of
             ok ->
@@ -1443,3 +1461,35 @@ validate_micro_signature(MicroHeader, _PrevHeader, PrevKeyHeader)
     end;
 validate_micro_signature(_MicroHeader, _PrevHeader, not_found) ->
     {error, signer_not_found}.
+
+%% -- Node info  message -----------------------------------------------------------
+handle_get_node_info(S) ->
+    case is_node_info_sharing_enabled() of
+        false -> S;
+        true ->
+            NodeVersion = aeu_info:get_version(),
+            NodeRevision = aeu_info:get_revision(),
+            OS = aeu_info:get_os(),
+            Verified = aec_peers:count(verified),
+            Unverified = aec_peers:count(unverified),
+            NodeInfo = #{ version => NodeVersion
+                        , revision => NodeRevision 
+                        , vendor => aeu_info:vendor()
+                        , os => OS
+                        , network_id => aec_governance:get_network_id()
+                        , verified_peers => Verified
+                        , unverified_peers => Unverified },
+            send_response(S, node_info, {ok, NodeInfo}),
+            S
+    end.
+
+handle_node_info_rsp(S, {node_info, From, _TRef} = _Request, NodeInfo) ->
+    gen_server:reply(From, {ok, NodeInfo}),
+    remove_request_fld(S, get_node_info).
+
+-spec is_node_info_sharing_enabled() -> boolean().
+is_node_info_sharing_enabled() ->
+    case aeu_env:find_config([<<"sync">>, <<"provide_node_info">>], [user_config, schema_default, {value, true}]) of
+        {ok, Val} -> Val;
+        undefined -> true
+    end.

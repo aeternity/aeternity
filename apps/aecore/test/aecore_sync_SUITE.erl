@@ -44,10 +44,19 @@
     restart_with_no_trusted_peers/1,
     add_and_delete_untrusted_peers_and_restart/1,
     trusted_peer_is_untrusted_after_a_restart/1,
-    stop_devs/1
+    stop_devs/1,
+    first_fetch_node_infos_2_successes/1,
+    first_fetch_node_infos_1_success_1_failure/1,
+    first_fetch_node_infos_2_failures/1,
+    stop_three_nodes/1,
+    start_second_with_enabled_node_info/1,
+    start_second_with_disabled_node_info/1,
+    start_third_with_enabled_node_info/1,
+    start_third_with_disabled_node_info/1
    ]).
 
 -include_lib("common_test/include/ct.hrl").
+-include("blocks.hrl").
 
 -import(aecore_suite_utils, [patron/0]).
 -import(aec_test_utils, [running_apps/0, loaded_apps/0, restore_stopped_and_unloaded_apps/2]).
@@ -67,7 +76,12 @@ groups() ->
                               {group, large_msgs},
                               {group, performance},
                               {group, config_overwrites_defaults},
+                              {group, node_info},
+                              %% keep this one last as it corrupts the DB of
+                              %% the peers
+                              %% TODO: investigate why
                               {group, persistence}
+                              
                              ]},
      {two_nodes, [sequence],
       [start_first_node,
@@ -152,7 +166,36 @@ groups() ->
            add_and_delete_untrusted_peers_and_restart,
            trusted_peer_is_untrusted_after_a_restart,
            stop_devs %% delete the db to cleanup
-          ]}
+      ]},
+     {node_info, [sequence],
+      [%% all nodes respond:
+       start_first_node,
+       mine_on_first,
+       start_second_node,
+       start_third_node,
+       first_fetch_node_infos_2_successes,
+       stop_three_nodes,
+       %% one out 2 nodes reponds:
+       start_first_node,
+       mine_on_first,
+       start_second_with_disabled_node_info,
+       start_third_node,
+       first_fetch_node_infos_1_success_1_failure,
+       stop_three_nodes,
+       %% noone responded 
+       start_first_node,
+       mine_on_first,
+       start_second_with_disabled_node_info,
+       start_third_with_disabled_node_info,
+       first_fetch_node_infos_2_failures,
+       stop_three_nodes,
+       %% setting to true works
+       start_first_node,
+       mine_on_first,
+       start_second_with_enabled_node_info,
+       start_third_with_enabled_node_info,
+       first_fetch_node_infos_2_successes
+      ]}
     ].
 
 suite() ->
@@ -222,7 +265,8 @@ init_per_group(persistence, Config) ->
     aec_peers_pool_tests:seed_process_random(), %% required for the random_peer()
     Config1 = config({devs, [dev1, dev2]}, Config),
     Config1;
-init_per_group(three_nodes, Config) ->
+init_per_group(ThreeNodes, Config) when ThreeNodes =:= three_nodes
+                                 orelse ThreeNodes =:= node_info ->
     Config1 = config({devs, [dev1, dev2, dev3]}, Config),
     InitialApps = {running_apps(), loaded_apps()},
     {ok, _} = application:ensure_all_started(exometer_core),
@@ -277,6 +321,7 @@ end_per_group(mempool_sync, Config) ->
     ok;
 end_per_group(Group, Config) when Group =:= two_nodes;
                                   Group =:= three_nodes;
+                                  Group =:= node_info;
                                   Group =:= semantically_invalid_tx;
                                   Group =:= run_benchmark ->
     ct:log("Metrics: ~p", [aec_metrics_test_utils:fetch_data()]),
@@ -1172,6 +1217,80 @@ assert_all_peers(N1, PeerPool, ExpectedPeers) ->
     {ExpectedInfos, ExpectedInfos} = {ExpectedInfos, AvPeerInfos},
     ok.
 
+first_fetch_node_infos_2_successes(_Cfg) ->
+    first_fetch_node_infos(2, none).
+
+first_fetch_node_infos_1_success_1_failure(_Cfg) ->
+    first_fetch_node_infos(1, 1).
+
+first_fetch_node_infos_2_failures(_Cfg) ->
+    first_fetch_node_infos(none, 2).
 
 
+first_fetch_node_infos(Successes, Fails) ->
+    timer:sleep(1000),
+    Dev1 = dev1,
+    N1 = aecore_suite_utils:node_name(Dev1),
+    Timeout = 5000, %% giving participants 2s to respond, ok for a test
+    Info = rpc:call(N1, aec_sync, ask_all_for_node_info, [Timeout], Timeout + 500),
+    #{ versions  := Versions
+     , revisions := Revisions 
+     , vendors   := Vendors
+     , os        := OSes
+     , failed    := Failed } = Info,
+    case Successes of
+        none ->
+            none = Versions,
+            none = OSes;
+        _ when is_integer(Successes) ->
+            OS = aeu_info:get_os(),
+            NodeVersion = aeu_info:get_version(),
+            NodeRevision = aeu_info:get_revision(),
+            Vendor = aeu_info:vendor(),
+            #{NodeVersion := Successes} = Versions,
+            #{NodeRevision := Successes} = Revisions,
+            #{Vendor := Successes} = Vendors,
+            #{OS := Successes} = OSes
+    end,
+    case Fails  of
+        none ->
+            none = Failed;
+        _ when is_integer(Fails) ->
+            #{request_timeout := Fails} = Failed
+    end,
+    ok.
 
+stop_three_nodes(Cfg) ->
+    lists:foreach(
+        fun(Node) ->
+            {ok, DbCfg} = node_db_cfg(Node),
+            aecore_suite_utils:stop_node(Node, Cfg),
+            aecore_suite_utils:delete_node_db_if_persisted(DbCfg)
+        end,
+        [dev1, dev2, dev3]),
+    ok.
+
+start_second_with_disabled_node_info(Cfg) ->
+    start_a_node_with_node_info(Cfg, dev2, false).
+
+start_second_with_enabled_node_info(Cfg) ->
+    start_a_node_with_node_info(Cfg, dev2, true).
+
+start_third_with_disabled_node_info(Cfg) ->
+    start_a_node_with_node_info(Cfg, dev3, false).
+
+start_third_with_enabled_node_info(Cfg) ->
+    start_a_node_with_node_info(Cfg, dev3, true).
+
+start_a_node_with_node_info(Cfg, Node, NodeInfoFlag) ->
+    EpochCfg0 = aecore_suite_utils:epoch_config(Node, Cfg),
+    Sync0 = maps:get(<<"sync">>, EpochCfg0, #{}),
+    Sync = Sync0#{<<"provide_node_info">> => NodeInfoFlag},
+    EpochCfg = EpochCfg0#{<<"sync">> => Sync},
+    aecore_suite_utils:create_config(Node, Cfg, EpochCfg,
+                                            [
+                                            ]),
+    aecore_suite_utils:start_node(Node, Cfg),
+    aecore_suite_utils:connect(aecore_suite_utils:node_name(Node)),
+    ok = aecore_suite_utils:check_for_logs([Node], Cfg),
+    ok.
