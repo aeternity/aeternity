@@ -23,7 +23,7 @@ get_os() ->
     <<BOSFamily/binary, ":", BOSName/binary>>.
 
 vendor() ->
-    <<"Erlang reference node">>.
+    <<"Aeternity reference node">>.
 
 %% Internals
 
