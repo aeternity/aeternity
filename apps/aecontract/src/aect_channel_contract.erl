@@ -136,7 +136,8 @@ assert_init_function(CallData, VMVersion, SerializedCode) when ?IS_AEVM_SOPHIA(V
 -spec run(aect_contracts:pubkey(), aect_contracts:abi_version(), aect_call:call(),
           binary(), [non_neg_integer()], aec_trees:trees(),
           non_neg_integer(), non_neg_integer(), non_neg_integer(),
-          aec_trees:trees(), aetx_env:env(), aec_keys:pubkey()) -> aec_trees:trees().
+          aec_trees:trees(), aetx_env:env(), aec_keys:pubkey()) ->
+    {aec_trees:trees(), aect_call:call()}.
 run(ContractPubKey, ABIVersion, Call, CallData, CallStack, Trees0,
     Amount, GasPrice, Gas, OnChainTrees, OnChainEnv, CallerPubkey) ->
     ContractsTree  = aec_trees:contracts(Trees0),
@@ -155,7 +156,7 @@ run(ContractPubKey, ABIVersion, Call, CallData, CallStack, Trees0,
               CallData, CallStack, Code, Store, Call, OnChainTrees, OnChainEnv, Trees0),
     {CallRes, Trees, _} = aect_dispatch:run(#{vm => VmVersion, abi => ABIVersion}, CallDef),
     UpdatedTrees = aect_utils:insert_call_in_trees(CallRes, Trees),
-    aec_trees:gc_cache(UpdatedTrees, [accounts, contracts]).
+    {aec_trees:gc_cache(UpdatedTrees, [accounts, contracts]), CallRes}.
 
 
 
