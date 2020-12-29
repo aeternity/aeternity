@@ -5655,7 +5655,7 @@ sc_ws_failed_force_progress_balances(Config0) ->
             #{pub_key := ForcerPubkey} = maps:get(Forcer, Participants),
             #{Forcer := ConnPid} = proplists:get_value(channel_clients, Config),
             ContractName = counter,
-            ContractName2 = channel_whitepaper_example,
+            ContractName2 = chain,
             %% create and call some contracts
             sc_ws_contract_(Config, ContractName, ContractOwner),
             perform_snapshot_solo(Snapshotter, Config, #{}),
@@ -5665,10 +5665,10 @@ sc_ws_failed_force_progress_balances(Config0) ->
             {ok, ForcerBalance0} = sc_ws_get_balance(ConnPid, ForcerPubkey, Config),
             %% force progress with some unexpected calldata: this is a
             %% correctly structured calldata but not for this contract
-            %% there is no "deposit" function and this can be known only after
+            %% there is no "miner" function and this can be known only after
             %% a contract execution. The FSM does not protect from this
             {ok, _SignedTx} = sc_ws_force_progress_(Forcer, ContractPubkey,
-                              ContractName2, "deposit", [], Amount, #{},
+                              ContractName2, "miner", [], Amount, #{},
                               Config, <<"error">>),
             {ok, ContractBalance} = sc_ws_get_balance(ConnPid, ContractPubkey, Config),
             {ok, ForcerBalance} = sc_ws_get_balance(ConnPid, ForcerPubkey, Config),

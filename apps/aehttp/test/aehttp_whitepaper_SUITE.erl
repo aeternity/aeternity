@@ -583,8 +583,7 @@ can_not_insure_if_not_enough_compensation(Cfg0) ->
                                           UpdateVolley, Cfg, 0),
     ContractPubkey = contract_id_from_create_update(IPubkey, UnsignedStateTx),
     ContractName = channel_whitepaper_example,
-    {ok, ContractBalance0} = aehttp_sc_SUITE:sc_ws_get_balance(IConnPid,
-                                                               RPubkey, Cfg),
+    {ok, _} = aehttp_sc_SUITE:sc_ws_get_balance(IConnPid, RPubkey, Cfg),
     {revert, <<"not_enough_compensation">>} =
         call_offchain_contract(responder, ContractPubkey,
                               ContractName, "insure",
@@ -1255,12 +1254,6 @@ post_spend_tx(SenderId, RecipientId, Amount, Fee, Payload) ->
                    amount => Amount,
                    fee => Fee,
                    payload => Payload}).
-
-assert_balance(Pubkey, ExpectedBalance) ->
-    assert_balance(Pubkey, ExpectedBalance, equal).
-
-assert_balance_at_most(Pubkey, ExpectedBalance) ->
-    assert_balance(Pubkey, ExpectedBalance, equal_or_less).
 
 assert_balance_at_least(Pubkey, MaxExpectedBalance) ->
     assert_balance(Pubkey, MaxExpectedBalance, equal_or_greater).
