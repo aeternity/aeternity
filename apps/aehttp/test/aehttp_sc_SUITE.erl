@@ -98,6 +98,7 @@
          sc_ws_close_/1,
          sc_ws_close_mutual_/2,
          sc_ws_get_both_balances/4,
+         sc_ws_get_balance/3,
          start_node/1,
          stop_node/1,
          sign_post_mine/2,
@@ -5662,6 +5663,10 @@ sc_ws_failed_force_progress_balances(Config0) ->
             Amount = 10,
             {ok, ContractBalance0} = sc_ws_get_balance(ConnPid, ContractPubkey, Config),
             {ok, ForcerBalance0} = sc_ws_get_balance(ConnPid, ForcerPubkey, Config),
+            %% force progress with some unexpected calldata: this is a
+            %% correctly structured calldata but not for this contract
+            %% there is no "deposit" function and this can be known only after
+            %% a contract execution. The FSM does not protect from this
             {ok, _SignedTx} = sc_ws_force_progress_(Forcer, ContractPubkey,
                               ContractName2, "deposit", [], Amount, #{},
                               Config, <<"error">>),

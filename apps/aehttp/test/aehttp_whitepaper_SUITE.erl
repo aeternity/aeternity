@@ -562,7 +562,7 @@ can_not_insure_if_not_enough_compensation(Cfg0) ->
     Generations = 1000,
     Cfg = channel_open(Cfg0),
     #{initiator := #{pub_key := IPubkey},
-      responder := #{pub_key := _RPubkey}} = proplists:get_value(participants, Cfg),
+      responder := #{pub_key := RPubkey}} = proplists:get_value(participants, Cfg),
     #{initiator := IConnPid,
       responder := RConnPid} = proplists:get_value(channel_clients, Cfg),
     Pids = [IConnPid, RConnPid],
@@ -583,6 +583,8 @@ can_not_insure_if_not_enough_compensation(Cfg0) ->
                                           UpdateVolley, Cfg, 0),
     ContractPubkey = contract_id_from_create_update(IPubkey, UnsignedStateTx),
     ContractName = channel_whitepaper_example,
+    {ok, ContractBalance0} = aehttp_sc_SUITE:sc_ws_get_balance(IConnPid,
+                                                               RPubkey, Cfg),
     {revert, <<"not_enough_compensation">>} =
         call_offchain_contract(responder, ContractPubkey,
                               ContractName, "insure",

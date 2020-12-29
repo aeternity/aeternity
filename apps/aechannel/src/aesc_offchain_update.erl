@@ -229,7 +229,11 @@ apply_on_trees(Update, Trees0, OnChainTrees, OnChainEnv, Round, Reserve) ->
                     %% as in a ForceProgress transaction. Active since Iris
                     case is_protocol_active(OnChainEnv, ?IRIS_PROTOCOL_VSN) of
                         true ->
-                            Trees3 = remove_tokens(ContractPubKey, Amount, Trees, Reserve),
+                            %% the contract is not subject to the minimum
+                            %% channel reserve and thus is allowed to go as
+                            %% low as 0 tokens:
+                            Trees3 = remove_tokens(ContractPubKey, Amount, Trees,
+                                                   0),
                             Trees4 = add_tokens(Caller, Amount, Trees3);
                         false -> Trees
                     end
