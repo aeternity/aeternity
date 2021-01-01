@@ -66,6 +66,7 @@
         , substitute_innermost_tx/2
         , sign_tx/3
         , sign_tx_hash/2
+        , sign_tx_with_specific_network_id_prefix/3
         , signed_spend_tx/1
         , wait_for_pubkey/0
         , min_gas_price/0
@@ -631,16 +632,29 @@ sign_tx(Tx, PrivKey) ->
 sign_tx_hash(Tx, PrivKey) ->
     sign_tx(Tx, PrivKey, true).
 
+sign_tx_with_specific_network_id_prefix(Tx, PrivKey, PubKeyPrefix) ->
+    sign_tx(Tx, PrivKey, true, PubKeyPrefix).
+
 -define(VALID_PRIVK(K), byte_size(K) =:= 64).
 
-sign_tx(Tx, PrivKey, SignHash) when is_binary(PrivKey) ->
-    sign_tx(Tx, [PrivKey], SignHash);
-sign_tx(Tx, PrivKeys, SignHash) when is_list(PrivKeys) ->
+sign_tx(Tx, PrivKey, SignHash) ->
+    sign_tx(Tx, PrivKey, SignHash, undefined).
+
+sign_tx(Tx, PrivKey, SignHash, PubKeyPrefix) when is_binary(PrivKey) ->
+    sign_tx(Tx, [PrivKey], SignHash, PubKeyPrefix);
+sign_tx(Tx, PrivKeys, SignHash, PubKeyPrefix) when is_list(PrivKeys) ->
     Bin0 = aetx:serialize_to_binary(Tx),
-    Bin =
+    Bin1 =
         case SignHash of
             true  -> aec_hash:hash(signed_tx, Bin0);
             false -> Bin0
+        end,
+    Bin =
+        case PubKeyPrefix of
+            undefined -> Bin1;
+            _ ->
+              PEnc = aeser_api_encoder:encode(account_pubkey, PubKeyPrefix),
+              <<"-", PEnc/binary, Bin1/binary>>
         end,
     BinForNetwork = aec_governance:add_network_id(Bin),
     case lists:filter(fun(PrivKey) -> not (?VALID_PRIVK(PrivKey)) end, PrivKeys) of
