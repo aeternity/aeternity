@@ -458,10 +458,10 @@ find_header(Hash) ->
         case persistent_term:get(?BYPASS, no_bypass) of
             {rocksdb, #{TABLE := Ref}} ->
                 %% When bypass is possible then talk to the DB directly
-                case rocksdb:get(Ref, sext:encode(KEY), []) of
+                case rocksdb:get(Ref, mnesia_rocksdb:encode_key(KEY), []) of
                     {ok, EncVal} ->
                         %% We don't use the key from this object anymore - we don't restore it
-                        [binary_to_term(EncVal)];
+                        [mnesia_rocksdb:decode_val(EncVal)];
                     _ ->
                         []
                 end;
@@ -865,14 +865,11 @@ prepare_mnesia_bypass() ->
     case proplists:get_value(rocksdb_copies, P, []) of
         [] -> persistent_term:erase(?BYPASS); %% TODO: add leveled backend here
         [_] ->
-            %% TODO: Export the appropriate helper functions in mnesia_rocksdb
-            %%       for now just hard code it
-            HIndex = 'mnesia_ext_proc_aec_headers-4-_ix',
-            {HIndexRef, set} = gen_server:call(HIndex, get_ref), %% Ask the backend for the handle
+            %% Ask the backend for the handle
+            {HIndexRef, set} = mnesia_rocksdb:get_ref(undefined, {aec_headers, index, {4, ordered}}),
             Tabs = maps:from_list([{aec_headers_index, HIndexRef}] ++ [
                 begin
-                    Name = list_to_existing_atom("mnesia_ext_proc_" ++ atom_to_list(N) ++ "-_tab"),
-                    {Ref, set} = gen_server:call(Name, get_ref),
+                    {Ref, set} = mnesia_rocksdb:get_ref(undefined, N),
                     %% This is a sanity check designed to ensure that we crash the node when someone adds a new index
                     %% If you add a new index and we still didn't move away to a proper DB then add your new index here
                     %% and modify do_activity!
@@ -1145,8 +1142,8 @@ do_activity(transaction, Fun) ->
                                     [begin
                                          Batch = maps:get(Table, M),
                                          lists:foreach(
-                                             fun ({put, Key, _}) -> ets:delete(TStore, {Table, sext:decode(Key)});
-                                                 ({delete, Key}) -> ets:delete(TStore, {Table, sext:decode(Key)})
+                                             fun ({put, Key, _}) -> ets:delete(TStore, {Table, mnesia_rocksdb:decode_key(Key)});
+                                                 ({delete, Key}) -> ets:delete(TStore, {Table, mnesia_rocksdb:decode_key(Key)})
                                              end, Batch)
                                      end || Table <- Found],
                                     R
@@ -1170,17 +1167,17 @@ walk_tstore({{aec_headers, Key}, Val, write}, Acc) ->
     O = maps:get(aec_headers, Acc, []),
     I = maps:get(aec_headers_index, Acc, []),
     Height = element(4, Val),
-    Acc#{ aec_headers       => [{put, sext:encode(Key), term_to_binary(setelement(2, Val, []))} | O]
-        , aec_headers_index => [{put, sext:encode({Height, Key}), term_to_binary({[]})} | I]
+    Acc#{ aec_headers       => [{put, mnesia_rocksdb:encode_key(Key), mnesia_rocksdb:encode_val(setelement(2, Val, []))} | O]
+        , aec_headers_index => [{put, mnesia_rocksdb:encode_key({Height, Key}), mnesia_rocksdb:encode_val({[]})} | I]
         };
 walk_tstore({{Table, Key}, Val, write}, Acc) ->
-    Acc#{Table => [{put, sext:encode(Key), term_to_binary(setelement(2, Val, []))} | maps:get(Table, Acc, [])]};
+    Acc#{Table => [{put, mnesia_rocksdb:encode_key(Key), mnesia_rocksdb:encode_val(setelement(2, Val, []))} | maps:get(Table, Acc, [])]};
 walk_tstore({{aec_headers, _}, _, delete}, Acc) ->
     %% We never delete headers...
     lager:debug("Unimplemented delete of aec_headers due to index - reverting back to an ordinary mnesia commit\n", []),
     throw(bypass_abort);
 walk_tstore({{Table, Key}, _, delete}, Acc) ->
-    Acc#{Table => [{delete, sext:encode(Key)} | maps:get(Table, Acc, [])]}.
+    Acc#{Table => [{delete, mnesia_rocksdb:encode_key(Key)} | maps:get(Table, Acc, [])]}.
 
 %% Until we migrate away to a proper DB we need to be careful
 %% This is the safest ordering when inserting things to our databases
