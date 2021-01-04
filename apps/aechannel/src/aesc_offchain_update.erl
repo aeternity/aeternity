@@ -234,7 +234,7 @@ apply_on_trees(Update, Trees0, OnChainTrees, OnChainEnv, Round, Reserve) ->
                             %% low as 0 tokens:
                             Trees3 = remove_tokens(ContractPubKey, Amount, Trees,
                                                    0),
-                            Trees4 = add_tokens(Caller, Amount, Trees3);
+                            _Trees4 = add_tokens(Caller, Amount, Trees3);
                         false -> Trees
                     end
             end;
@@ -532,4 +532,3 @@ set_gas_price(_NewGasPrice, Update) ->
 is_protocol_active(OnChainEnv, Protocol) ->
     Height = aetx_env:height(OnChainEnv),
     aec_hard_forks:protocol_effective_at_height(Height) >= Protocol.
-
