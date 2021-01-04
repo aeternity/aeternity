@@ -110,17 +110,15 @@ signatures(#signed_tx{signatures = Sigs}) ->
 verify_w_env(#signed_tx{tx = Tx, signatures = Sigs}, Trees, TxEnv) ->
     Bin      = aetx:serialize_to_binary(Tx),
     Protocol = aetx_env:consensus_version(TxEnv),
-    Payer = 
+    Prefix = 
         case aetx_env:payer(TxEnv) of
             undefined -> undefined;
-            P ->
-              PEnc = aeser_api_encoder:encode(account_pubkey, P),
-              <<"-", PEnc/binary>>
+            P when is_binary(P) -> <<"-inner_tx">>
         end,
     case aetx:signers(Tx, Trees) of
         {ok, Signers} ->
             RemainingSigners = Signers -- aetx_env:ga_auth_ids(TxEnv),
-            verify_signatures(RemainingSigners, Bin, Sigs, Protocol, Payer);
+            verify_signatures(RemainingSigners, Bin, Sigs, Protocol, Prefix);
         {error, _Reason} ->
             {error, signature_verification_failed}
     end.
@@ -181,7 +179,6 @@ verify_one_pubkey(Sigs, PubKey, Bin, Protocol, SignPrefix) when ?VALID_PUBK(PubK
 verify_one_pubkey(_Sigs, _PubKey, _Bin, _Protocol, _SignPrefix) ->
     error. %% invalid pubkey
 
-%% HERE
 maybe_add_predix(undefined, Bin) ->
     Bin;
 maybe_add_predix(SignPrefix, Bin) ->
