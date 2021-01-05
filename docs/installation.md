@@ -25,7 +25,6 @@ The release binaries are published on [GitHub][releases] and are tested on the f
 
 * Ubuntu 16.04.3 LTS (x86-64);
 * Ubuntu 18.04 LTS (x86-64);
-* macOS High Sierra 10.13 (x86-64);
 * macOS Mojave 10.14 (x86-64).
 * Windows 10 (x86-64)
 
