@@ -76,7 +76,7 @@ gossip_txs(GossipTxs) ->
 sync_in_progress(PeerId) ->
     gen_server:call(?MODULE, {sync_in_progress, PeerId}).
 
--spec sync_progress() -> float().
+-spec sync_progress() -> {boolean(), float()}.
 sync_progress() ->
     gen_server:call(?MODULE, sync_progress).
 
@@ -321,7 +321,7 @@ handle_info({'EXIT', Pid, Reason}, State) ->
     end,
     {noreply, do_terminate_worker(Pid, State, Reason)};
 handle_info(update_sync_progress_metric, State) ->
-    SyncProgress = sync_progress(State),
+    {_, SyncProgress} = sync_progress(State),
     aec_metrics:try_update([ae,epoch,aecore,sync,progress], SyncProgress),
 
     %% Next try in 30 secs.
@@ -1077,9 +1077,10 @@ max_gossip() ->
 is_syncing(#state{sync_tasks = SyncTasks}) ->
     SyncTasks =/= [].
 
+-spec sync_progress(#state{}) -> {boolean(), float()}.
 sync_progress(#state{sync_tasks = SyncTasks} = State) ->
     case is_syncing(State) of
-        false -> 100.0;
+        false -> {false, 100.0};
         true ->
             TargetHeight =
                 lists:foldl(
@@ -1089,15 +1090,17 @@ sync_progress(#state{sync_tasks = SyncTasks} = State) ->
                           max(Height, MaxHeight)
                   end, 0, SyncTasks),
             TopHeight = aec_headers:height(aec_chain:top_header()),
-            SyncProgress = round(10000000 * TopHeight / TargetHeight) / 100000,
+            SyncProgress0 = round(10000000 * TopHeight / TargetHeight) / 100000,
             %% It is possible to have TopHeight already higher than Height in sync task,
             %% e.g. when a block was mined and the sync task was not yet removed.
             %% Then HTTP handler will crash, since sync_progress is defined in Swagger
             %% to be in range from 0.0 to 100.0.
-            case SyncProgress > 100.0 of
-                true -> 100.0;
-                false -> SyncProgress
-            end
+            SyncProgress =
+                case SyncProgress0 > 100.0 of
+                    true -> 99.9;
+                    false -> SyncProgress0
+                end,
+            {true, SyncProgress}
     end.
 
 pp_chain_block(#chain_block{hash = Hash, height = Height}) ->
