@@ -38,6 +38,7 @@
     sc_ws_slash/1,
     sc_ws_force_progress_based_on_offchain_state/1,
     sc_ws_force_progress_based_on_onchain_state/1,
+    sc_ws_failed_force_progress_balances/1,
     sc_ws_leave_reestablish/1,
     sc_ws_leave_reestablish_wrong_fsm_id/1,
     sc_ws_leave_reestablish_responder_stays/1,
@@ -97,6 +98,7 @@
          sc_ws_close_/1,
          sc_ws_close_mutual_/2,
          sc_ws_get_both_balances/4,
+         sc_ws_get_balance/3,
          start_node/1,
          stop_node/1,
          sign_post_mine/2,
@@ -305,6 +307,7 @@ groups() ->
      {force_progress, [sequence],
       [ sc_ws_force_progress_based_on_offchain_state
       , sc_ws_force_progress_based_on_onchain_state
+      , sc_ws_failed_force_progress_balances
       ]},
 
       %% possible to leave and reestablish channel
@@ -5644,6 +5647,46 @@ sc_ws_force_progress_based_on_onchain_state(Config0) ->
                                                , Forcer <- ?ROLES],
     ok.
 
+sc_ws_failed_force_progress_balances(Config0) ->
+    Test =
+        fun(ContractOwner, Snapshotter, Forcer) ->
+            Config = sc_ws_open_(Config0),
+            Participants = proplists:get_value(participants, Config),
+            #{pub_key := ForcerPubkey} = maps:get(Forcer, Participants),
+            #{Forcer := ConnPid} = proplists:get_value(channel_clients, Config),
+            ContractName = counter,
+            ContractName2 = chain,
+            %% create and call some contracts
+            sc_ws_contract_(Config, ContractName, ContractOwner),
+            perform_snapshot_solo(Snapshotter, Config, #{}),
+            [ContractPubkey] = contract_ids(Config),
+            Amount = 10,
+            {ok, ContractBalance0} = sc_ws_get_balance(ConnPid, ContractPubkey, Config),
+            {ok, ForcerBalance0} = sc_ws_get_balance(ConnPid, ForcerPubkey, Config),
+            %% force progress with some unexpected calldata: this is a
+            %% correctly structured calldata but not for this contract
+            %% there is no "miner" function and this can be known only after
+            %% a contract execution. The FSM does not protect from this
+            {ok, _SignedTx} = sc_ws_force_progress_(Forcer, ContractPubkey,
+                              ContractName2, "miner", [], Amount, #{},
+                              Config, <<"error">>),
+            {ok, ContractBalance} = sc_ws_get_balance(ConnPid, ContractPubkey, Config),
+            {ok, ForcerBalance} = sc_ws_get_balance(ConnPid, ForcerPubkey, Config),
+            case aect_test_utils:latest_protocol_version() of
+                PostIrisVsn when PostIrisVsn >= ?IRIS_PROTOCOL_VSN ->
+                    ?assertEqual(ContractBalance, ContractBalance0),
+                    ?assertEqual(ForcerBalance, ForcerBalance0);
+                _PreIrisVsn ->
+                    ?assertEqual(ContractBalance - Amount, ContractBalance0),
+                    ?assertEqual(ForcerBalance + Amount, ForcerBalance0)
+            end
+        end,
+    [Test(ContractOwner, Snapshotter, Forcer) || ContractOwner <- ?ROLES
+                                               , Snapshotter <- ?ROLES
+                                               , Forcer <- ?ROLES],
+    ok.
+
+
 contract_ids(Config) ->
     #{initiator := IConnPid} = proplists:get_value(channel_clients, Config),
     {ok, #{ trees := StateTrees }} = sc_ws_get_state(IConnPid, Config),
@@ -5651,9 +5694,23 @@ contract_ids(Config) ->
     [ Key || {Key = <<_:256>>, _} <- aect_state_tree:to_list(ContractsTree)].
 
 sc_ws_force_progress_(Origin, ContractPubkey,
-                      ContractName, Function, Arguments, Amount, XOpts, Config)
+                      ContractName, Function, Arguments, Amount, XOpts,
+                      Config) ->
+    sc_ws_force_progress_(Origin, ContractPubkey,
+                          ContractName, Function, Arguments, Amount, XOpts,
+                          Config, <<"ok">>).
+
+sc_ws_force_progress_(Origin, ContractPubkey,
+                      ContractName, Function, Arguments, Amount, XOpts,
+                      Config, ReturnType)
     when Origin =:= initiator orelse Origin =:= responder ->
     ct:log("*** Forcing progress ***", []),
+    {ok, EncodedData} = encode_call_data(ContractName, Function, Arguments),
+    sc_ws_force_progress_(Origin, ContractPubkey,
+                          EncodedData, Amount, XOpts, Config, ReturnType).
+
+sc_ws_force_progress_(Origin, ContractPubkey,
+                      EncodedData, Amount, XOpts, Config, ReturnType) ->
     Participants = proplists:get_value(participants, Config),
     #{ channel_id := ChannelId
      , initiator  := IConnPid
@@ -5670,7 +5727,6 @@ sc_ws_force_progress_(Origin, ContractPubkey,
     StateHash0 = aesc_channels:state_hash(Channel0),
 
     %% force progress
-    {ok, EncodedData} = encode_call_data(ContractName, Function, Arguments),
     %% using random gas_price to check no hardcoded one
     GasPrice = aec_test_utils:min_gas_price() + rand:uniform(10000),
     FPOpts =
@@ -5702,7 +5758,7 @@ sc_ws_force_progress_(Origin, ContractPubkey,
                        <<"gas_used">> := _,
                        <<"height">> := _,
                        <<"log">> := _,
-                       <<"return_type">> := <<"ok">>,
+                       <<"return_type">> := ReturnType,
                        <<"return_value">> := _}}} =
         aehttp_integration_SUITE:get_transaction_info_by_hash_sut(binary_to_list(TxHash)),
 

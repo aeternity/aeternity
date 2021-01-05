@@ -1,5 +1,39 @@
 -module(aesc_offchain_update).
 
+-export([ op_transfer/3
+        , op_deposit/2
+        , op_withdraw/2
+        , op_new_contract/6
+        , op_call_contract/6
+        , op_call_contract/8
+        , op_meta/1
+        ]).
+
+-export([serialize/1,
+         deserialize/1,
+         for_client/1,
+         apply_on_trees/6]).
+
+-export([is_call/1,
+         is_contract_create/1,
+         extract_call/1,
+         extract_caller/1,
+         extract_contract_pubkey/1,
+         extract_amounts/1,
+         extract_abi_version/1]).
+
+-export([get_gas_price/1,
+         set_gas_price/2]).
+
+-export([from_db_format/1
+        ]).
+
+-ifdef(TEST).
+-export([type2swagger_name/1]).
+-endif.
+
+-include_lib("aecontract/include/hard_forks.hrl").
+
 -define(UPDATE_VSN_1, 1).
 -define(UPDATE_VSN_2, 2).
 
@@ -52,38 +86,6 @@
                        call_contract | meta.
 
 -export_type([update/0]).
-
--export([ op_transfer/3
-        , op_deposit/2
-        , op_withdraw/2
-        , op_new_contract/6
-        , op_call_contract/6
-        , op_call_contract/8
-        , op_meta/1
-        ]).
-
--export([serialize/1,
-         deserialize/1,
-         for_client/1,
-         apply_on_trees/6]).
-
--export([is_call/1,
-         is_contract_create/1,
-         extract_call/1,
-         extract_caller/1,
-         extract_contract_pubkey/1,
-         extract_amounts/1,
-         extract_abi_version/1]).
-
--export([get_gas_price/1,
-         set_gas_price/2]).
-
--export([from_db_format/1
-        ]).
-
--ifdef(TEST).
--export([type2swagger_name/1]).
--endif.
 
 -spec from_db_format(update() | tuple()) -> update().
 from_db_format(#transfer{} = U) ->
@@ -211,11 +213,31 @@ apply_on_trees(Update, Trees0, OnChainTrees, OnChainEnv, Round, Reserve) ->
             Trees1 = remove_tokens(Caller, Amount, Trees0, Reserve),
             Trees2 = add_tokens(ContractPubKey, Amount, Trees1),
             Call = aect_call:new(CallerId, Round, ContractId, Round, GasPrice),
-            _Trees = aect_channel_contract:run(ContractPubKey, ABIVersion, Call,
-                                               CallData, CallStack,
-                                               Trees2, Amount, GasPrice, Gas,
-                                               OnChainTrees, OnChainEnv,
-                                               Caller);
+            {Trees, CallRes}
+                = aect_channel_contract:run(ContractPubKey, ABIVersion, Call,
+                                            CallData, CallStack,
+                                            Trees2, Amount, GasPrice, Gas,
+                                            OnChainTrees, OnChainEnv,
+                                            Caller),
+            case aect_call:return_type(CallRes) of
+                ok ->
+                    Trees;
+                Failed when Failed =:= error;
+                            Failed =:= revert ->
+                    %% the off-chain contract call failed. Revert the amounts
+                    %% this has impact on the on-chain when this is being used
+                    %% as in a ForceProgress transaction. Active since Iris
+                    case is_protocol_active(OnChainEnv, ?IRIS_PROTOCOL_VSN) of
+                        true ->
+                            %% the contract is not subject to the minimum
+                            %% channel reserve and thus is allowed to go as
+                            %% low as 0 tokens:
+                            Trees3 = remove_tokens(ContractPubKey, Amount, Trees,
+                                                   0),
+                            _Trees4 = add_tokens(Caller, Amount, Trees3);
+                        false -> Trees
+                    end
+            end;
         #meta{} ->
             Trees0
     end.
@@ -507,4 +529,6 @@ set_gas_price(NewGasPrice, #call_contract{} = Update) ->
 set_gas_price(_NewGasPrice, Update) ->
     Update.
 
-    
+is_protocol_active(OnChainEnv, Protocol) ->
+    Height = aetx_env:height(OnChainEnv),
+    aec_hard_forks:protocol_effective_at_height(Height) >= Protocol.
