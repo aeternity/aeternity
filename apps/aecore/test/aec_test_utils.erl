@@ -66,6 +66,7 @@
         , substitute_innermost_tx/2
         , sign_tx/3
         , sign_tx_hash/2
+        , sign_pay_for_inner_tx/2
         , signed_spend_tx/1
         , wait_for_pubkey/0
         , min_gas_price/0
@@ -631,16 +632,28 @@ sign_tx(Tx, PrivKey) ->
 sign_tx_hash(Tx, PrivKey) ->
     sign_tx(Tx, PrivKey, true).
 
+sign_pay_for_inner_tx(Tx, PrivKey) ->
+    sign_tx(Tx, PrivKey, true, <<"inner_tx">>).
+
 -define(VALID_PRIVK(K), byte_size(K) =:= 64).
 
-sign_tx(Tx, PrivKey, SignHash) when is_binary(PrivKey) ->
-    sign_tx(Tx, [PrivKey], SignHash);
-sign_tx(Tx, PrivKeys, SignHash) when is_list(PrivKeys) ->
+sign_tx(Tx, PrivKey, SignHash) ->
+    sign_tx(Tx, PrivKey, SignHash, undefined).
+
+sign_tx(Tx, PrivKey, SignHash, AdditionalPrefix) when is_binary(PrivKey) ->
+    sign_tx(Tx, [PrivKey], SignHash, AdditionalPrefix);
+sign_tx(Tx, PrivKeys, SignHash, AdditionalPrefix) when is_list(PrivKeys) ->
     Bin0 = aetx:serialize_to_binary(Tx),
-    Bin =
+    Bin1 =
         case SignHash of
             true  -> aec_hash:hash(signed_tx, Bin0);
             false -> Bin0
+        end,
+    Bin =
+        case AdditionalPrefix of
+            undefined -> Bin1;
+            _ ->
+              <<"-", AdditionalPrefix/binary, Bin1/binary>>
         end,
     BinForNetwork = aec_governance:add_network_id(Bin),
     case lists:filter(fun(PrivKey) -> not (?VALID_PRIVK(PrivKey)) end, PrivKeys) of

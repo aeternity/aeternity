@@ -1033,7 +1033,7 @@ paying_for_outer(_Cfg) ->
                   nonce        => aect_test_utils:next_nonce(Acc2, State)}),
 
     PrivKey  = aect_test_utils:priv_key(Acc2, State),
-    SignedTx = aec_test_utils:sign_tx(SpendTx, PrivKey),
+    SignedTx = aec_test_utils:sign_pay_for_inner_tx(SpendTx, PrivKey),
 
     PreBalance  = ?call(account_balance, Acc2),
     {ok, #{tx_res := ok}} =

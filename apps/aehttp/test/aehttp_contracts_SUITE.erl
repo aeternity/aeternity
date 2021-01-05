@@ -1288,7 +1288,7 @@ paying_for_contract(Config) ->
     SpendTx = aega_test_utils:spend_tx(#{ sender_id => aeser_id:create(account, BPub)
                                         , recipient_id => aeser_id:create(account, BrokePub1)
                                         , nonce => get_online_nonce(BPub) }),
-    SignSpendTx = aec_test_utils:sign_tx(SpendTx, BPriv),
+    SignSpendTx = aec_test_utils:sign_pay_for_inner_tx(SpendTx, BPriv),
     {ok, PayingForTx1} = aec_paying_for_tx:new(#{payer_id => aeser_id:create(account, APub),
                                                  nonce    => get_online_nonce(APub),
                                                  fee      => 10000 * aec_test_utils:min_gas_price(),
@@ -1322,7 +1322,7 @@ paying_for_contract(Config) ->
                   nonce => get_online_nonce(BrokePub1) },
     Call1Tx = aect_test_utils:call_tx(BrokePub1, DecP, CallSpec1, #{}),
 
-    SignCall1Tx = aec_test_utils:sign_tx(Call1Tx, BrokePriv1),
+    SignCall1Tx = aec_test_utils:sign_pay_for_inner_tx(Call1Tx, BrokePriv1),
     {ok, PayingForTx2} = aec_paying_for_tx:new(#{payer_id => aeser_id:create(account, APub),
                                                  nonce    => get_online_nonce(APub),
                                                  fee      => 10000 * aec_test_utils:min_gas_price(),
