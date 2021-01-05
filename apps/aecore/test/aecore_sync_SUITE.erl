@@ -1026,6 +1026,7 @@ trusted_peer_is_untrusted_after_a_restart(Config) ->
     ok = rpc:call(N1, aec_peers, add_peers, [aec_peer:source(Peer2),
                                             [aec_peer:info(Peer2)
                                             ]]),
+    timer:sleep(100),
     0 = rpc:call(N1, aec_peers, count, [verified], 5000),
     2 = rpc:call(N1, aec_peers, count, [unverified], 5000),
     assert_all_peers(N1, verified, []),
