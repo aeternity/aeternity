@@ -1213,6 +1213,9 @@ handle_successfully_added_block(Block, Hash, true, PrevKeyHeader, Events, State,
         {micro_changed, State2 = #state{ consensus = Cons }} ->
             {ok, setup_loop(State2, false, Cons#consensus.leader, Origin)};
         {changed, BlockType, NewTopBlock, State2} ->
+            (BlockType == key) andalso
+                aec_metrics:try_update(
+                  [ae,epoch,aecore,blocks,key,info], info_value(NewTopBlock)),
             IsLeader = is_leader(NewTopBlock, PrevKeyHeader),
             case IsLeader of
                 true ->
@@ -1241,6 +1244,14 @@ maybe_consensus_change(#state{ consensus = Consensus } = State, Block) ->
             NewConfig = aec_consensus:get_consensus_config_at_height(H+1),
             NewConsensus:start(NewConfig),
             State#state{ consensus = Consensus#consensus{ consensus_module = NewConsensus } }
+    end.
+
+info_value(Block) ->
+    case aec_headers:info(aec_blocks:to_key_header(Block)) of
+        I when is_integer(I) ->
+            I;
+        undefined ->
+            0
     end.
 
 is_leader(NewTopBlock, PrevKeyHeader) ->
