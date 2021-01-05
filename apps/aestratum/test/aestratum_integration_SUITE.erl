@@ -116,7 +116,7 @@ init_per_group(single_client, Cfg) ->
     aecore_suite_utils:stop_node(?STRATUM_SERVER_NODE, Cfg),
 
     StratumServerNodeCfg = stratum_server_node_config(true),
-    aecore_suite_utils:create_config(?STRATUM_SERVER_NODE, Cfg, StratumServerNodeCfg, []),
+    aecore_suite_utils:create_config(?STRATUM_SERVER_NODE, Cfg, StratumServerNodeCfg, [{add_peers, true}]),
     aecore_suite_utils:start_node(?STRATUM_SERVER_NODE, Cfg),
     aecore_suite_utils:connect(SNode),
     await_app_started(?STRATUM_SERVER_NODE, aestratum),
@@ -162,6 +162,11 @@ session_in_authorized_phase(_Cfg) ->
 mining_stratum_block(Cfg) ->
     Nodes = ?config(nodes, Cfg),
     MNode = proplists:get_value(?MINING_NODE, Nodes),
+
+    ct:log("Connected peers on Mining node: ~p",
+       [rpc:call(?MINING_NODE, aec_peers, connected_peers, [], 5000)]),
+    ct:log("Connected peers on Stratum node: ~p",
+       [rpc:call(?STRATUM_SERVER_NODE, aec_peers, connected_peers, [], 5000)]),
 
     #{session := #{jobs := Jobs}} =
         server_account_status(?STRATUM_SERVER_NODE, ?CLIENT1_ACCOUNT),
