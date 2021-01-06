@@ -1036,7 +1036,7 @@ jobs:
 
   osx_package:
     macos:
-      xcode: "10.1.0" # 10.1.0 is macOS 10.13.6
+      xcode: "11.1.0" # 11.1.0 is macOS 10.14.4
     working_directory: ~/aeternity
     steps:
       - checkout
