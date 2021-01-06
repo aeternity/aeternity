@@ -1,6 +1,6 @@
-c About this release
+# About this release
 
-[This](https://github.com/aeternity/aeternity/releases/tag/v5.6.0) is a maintenance Lima release candidate.
+[This](https://github.com/aeternity/aeternity/releases/tag/v5.6.0) is a maintenance Lima release.
 
 It:
 * Enchances the p2p noise protocol with an optional setting to ask a peer
