@@ -1,2 +1,0 @@
-* Enhances FSM behaviour: when the initiator is offline, allows the responder
-  to stay online waiting for it even if the timeout timer is reached.

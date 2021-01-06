@@ -78,6 +78,17 @@ It:
 * Provides some fine tuning to the supervision tree of the conductor. This
   will prevent the node making too many recovery attempts after a crash.
 
+* Enhances FSM behaviour: when the initiator is offline, allows the responder
+  to stay online waiting for it even if the timeout timer is reached.
+
+* Adds an explicit settings for `local_lima_testnet`. So far those were
+  implicit as Lima is the currently running release. The MDW though uses a
+  macro to parse those and if there is no explicit function head - it fails.
+  This aims at providing the MDW with capabilities to work with a local Lima
+  test environment.
+
+* Due to MacOS High Sierra reaching EOL status we no longer build and provide release binaries for MacOS High Sierra. MacOS Mojave and above is supported.
+
 Please join the **mainnet** by following the instructions in the documentation below,
 and let us know if you have any problems by [opening a ticket](https://github.com/aeternity/aeternity/issues).
 Troubleshooting of common issues is documented [in the wiki](https://github.com/aeternity/aeternity/wiki/Troubleshooting).

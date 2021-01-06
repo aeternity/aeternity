@@ -1,5 +1,0 @@
-* Adds an explicit settings for `local_lima_testnet`. So far those were
-  implicit as Lima is the currently running release. The MDW though uses a
-  macro to parse those and if there is no explicit function head - it fails.
-  This aims at providing the MDW with capabilities to work with a local Lima
-  test environment.
