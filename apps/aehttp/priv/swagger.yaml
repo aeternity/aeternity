@@ -2096,6 +2096,8 @@ definitions:
     properties:
       id:
         $ref: '#/definitions/EncodedValue'
+      owner:
+        $ref: '#/definitions/EncodedPubkey'
       ttl:
         $ref: '#/definitions/UInt64'
       pointers:

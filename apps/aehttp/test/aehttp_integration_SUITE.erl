@@ -3150,6 +3150,7 @@ naming_system_manage_name(_Config) ->
     ExpectedTTL1 = (Height3 - 1) + aec_governance:name_claim_max_expiration(Protocol),
     {ok, 200, #{<<"id">>       := EncodedNHash,
                 <<"ttl">>      := ExpectedTTL1,
+                <<"owner">>    := PubKeyEnc,
                 <<"pointers">> := []}} = get_names_entry_by_name_sut(Name),
 
     %% Submit name updated tx and check it is in mempool

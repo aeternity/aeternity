@@ -547,8 +547,10 @@ handle_request_('GetNameEntryByName', Params, _Context) ->
     case aec_chain:name_entry(Name) of
         {ok, #{id       := Id,
                ttl      := TTL,
+               owner    := Owner,
                pointers := Pointers}} ->
             {200, [], #{<<"id">>       => aeser_api_encoder:encode(id_hash, Id),
+                        <<"owner">>    => aeser_api_encoder:encode(account_pubkey, Owner),
                         <<"ttl">>      => TTL,
                         <<"pointers">> => [aens_pointer:serialize_for_client(P) || P <- Pointers]}};
         {error, name_not_found} ->
