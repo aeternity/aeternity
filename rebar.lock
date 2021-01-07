@@ -58,7 +58,7 @@
   0},
  {<<"enacl">>,
   {git,"https://github.com/aeternity/enacl.git",
-      {ref,"26180f42c0b3a450905d2efd8bc7fd5fd9cece75"}},
+      {ref,"a45b433f88cdea0f282ca5c027fbb4c7c76beba4"}},
   0},
  {<<"enoise">>,
   {git,"https://github.com/aeternity/enoise.git",
