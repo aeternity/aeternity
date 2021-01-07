@@ -8,7 +8,8 @@
          fortuna_accounts/0,
          lima_accounts/0,
          lima_extra_accounts/0,
-         lima_contracts/0
+         lima_contracts/0,
+         block_whitelist/0
         ]).
 
 -export([ accounts_file_name/1
@@ -57,6 +58,22 @@ lima_extra_accounts() -> preset_accounts(extra_accounts, ?LIMA_PROTOCOL_VSN,
 lima_contracts() -> preset_contracts(?LIMA_PROTOCOL_VSN,
                                      lima_contracts_file_missing).
 
+block_whitelist() ->
+    P = filename:join(aeu_env:data_dir(aecore), ".block_whitelist.json"),
+    case filelib:is_file(P) of
+        false ->
+            lager:debug("Block whitelist not present"),
+            #{};
+        true ->
+            lager:debug("Loading block whitelist"),
+            {ok, Data} = file:read_file(P),
+            Whitelist = maps:from_list([
+                begin
+                    {key_block_hash, V1} = aeser_api_encoder:decode(V),
+                    {binary_to_integer(K), V1} end || {K,V} <- maps:to_list(jsx:decode(Data, [return_maps]))]),
+            lager:debug("Loaded ~p whitelisted blocks", [maps:size(Whitelist)]),
+            Whitelist
+    end.
 
 -spec preset_accounts(accounts | extra_accounts, aec_hard_forks:protocol_vsn(), atom()) -> list().
 preset_accounts(Type, Release, ErrorMsg) ->
