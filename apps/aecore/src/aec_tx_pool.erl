@@ -130,7 +130,7 @@
 -type push_timeout() :: non_neg_integer() | infinity.
 
 -ifndef(TEST).
--define(DEFAULT_TX_TTL, 256).
+-define(DEFAULT_TX_TTL, 20 * 24 * 2 * 7). %% 2 weeks
 -define(DEFAULT_INVALID_TX_TTL, 5).
 -else.
 -define(DEFAULT_TX_TTL, 8).
@@ -949,8 +949,9 @@ int_gas_price(Tx) ->
     end.
 
 tx_ttl() ->
-    aeu_env:user_config_or_env([<<"mempool">>, <<"tx_ttl">>],
-                               aecore, mempool_tx_ttl, ?DEFAULT_TX_TTL).
+%%    aeu_env:user_config_or_env([<<"mempool">>, <<"tx_ttl">>],
+%%                               aecore, mempool_tx_ttl, ?DEFAULT_TX_TTL).
+    ?DEFAULT_TX_TTL.
 
 invalid_tx_ttl() ->
     aeu_env:user_config_or_env([<<"mempool">>, <<"invalid_tx_ttl">>],
