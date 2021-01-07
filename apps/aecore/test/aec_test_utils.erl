@@ -21,6 +21,7 @@
         , mock_prebuilt_cuckoo_pow/1
         , mock_genesis_and_forks/0
         , mock_genesis_and_forks/1
+        , mock_genesis_and_forks/2
         , unmock_genesis_and_forks/0
         , ensure_not_mocked/1
         , ensure_no_mocks/0
@@ -153,6 +154,9 @@ mock_genesis_and_forks() ->
     mock_genesis_and_forks(genesis_accounts()).
 
 mock_genesis_and_forks(PresetAccounts) ->
+    mock_genesis_and_forks(PresetAccounts, #{}).
+
+mock_genesis_and_forks(PresetAccounts, Whitelist) ->
     meck:new(aec_fork_block_settings, [passthrough]),
     meck:expect(aec_fork_block_settings, genesis_accounts, 0, PresetAccounts),
     meck:expect(aec_fork_block_settings, minerva_accounts, 0, []),
@@ -160,6 +164,7 @@ mock_genesis_and_forks(PresetAccounts) ->
     meck:expect(aec_fork_block_settings, lima_accounts, 0, []),
     meck:expect(aec_fork_block_settings, lima_extra_accounts, 0, []),
     meck:expect(aec_fork_block_settings, lima_contracts, 0, []),
+    meck:expect(aec_fork_block_settings, block_whitelist, 0, Whitelist),
     aec_consensus:set_consensus(),
     aec_consensus:set_genesis_hash(),
     ok.
