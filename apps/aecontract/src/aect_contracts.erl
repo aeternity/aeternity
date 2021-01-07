@@ -166,7 +166,7 @@ is_legal_version_at_protocol_(create, #{vm := ?VM_AEVM_SOPHIA_4, abi := ?ABI_AEV
         ?MINERVA_PROTOCOL_VSN         -> false;
         ?FORTUNA_PROTOCOL_VSN         -> false;
         ?LIMA_PROTOCOL_VSN            -> true;
-        P when P > ?LIMA_PROTOCOL_VSN -> true %% TODO: If you bump to VM_AEVM_SOPHIA_5 please turn VM_AEVM_SOPHIA_4 off for the new consensus protocol!
+        P when P > ?LIMA_PROTOCOL_VSN -> false
     end;
 is_legal_version_at_protocol_(create, #{vm := ?VM_FATE_SOPHIA_1, abi := ?ABI_FATE_SOPHIA_1}, Protocol) ->
     case Protocol of
@@ -224,8 +224,8 @@ is_legal_version_at_protocol_(call, #{vm := VMVersion}, Protocol) ->
     end;
 is_legal_version_at_protocol_(oracle_register, #{abi := ?ABI_NO_VM}, _Protocol) ->
     true;
-is_legal_version_at_protocol_(oracle_register, #{abi := ?ABI_AEVM_SOPHIA_1}, _Protocol) ->
-    true;
+is_legal_version_at_protocol_(oracle_register, #{abi := ?ABI_AEVM_SOPHIA_1}, Protocol) ->
+    Protocol =< ?LIMA_PROTOCOL_VSN;
 is_legal_version_at_protocol_(oracle_register, #{abi := ?ABI_FATE_SOPHIA_1}, Protocol) ->
     Protocol >= ?LIMA_PROTOCOL_VSN;
 is_legal_version_at_protocol_(_, _, _) ->

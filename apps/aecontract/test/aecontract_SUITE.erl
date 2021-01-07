@@ -65,10 +65,10 @@
         , sophia_list_comp/1
         , sophia_stdlib_tests/1
         , sophia_remote_identity/1
-        , sophia_vm_interaction/1
         , fate_vm_interaction/1
         , fate_vm_version_switching/1
         , contract_init_on_chain_fate/1
+        , aevm_version_interaction/1
         , sophia_state/1
         , sophia_match_bug/1
         , sophia_spend/1
@@ -347,7 +347,7 @@ all() ->
 groups() ->
     [ {aevm, [], ?ALL_TESTS ++ ?AEVM_SPECIFIC}
     , {fate, [], ?ALL_TESTS ++ ?FATE_SPECIFIC}
-    , {protocol_interaction, [], [ sophia_vm_interaction
+    , {protocol_interaction, [], [ aevm_version_interaction
                                  , create_contract_init_error_no_create_account
                                  ]}
     , {protocol_interaction_fate, [], [ fate_vm_interaction
@@ -577,8 +577,7 @@ init_per_group(protocol_interaction, Cfg) ->
                      (H) when H >= IHeight -> ?IRIS_PROTOCOL_VSN
                   end,
             meck:expect(aec_hard_forks, protocol_effective_at_height, Fun),
-            [{sophia_version, ?SOPHIA_MINERVA}, {vm_version, ?VM_AEVM_SOPHIA_2},
-             {fork_heights, #{ minerva => MHeight,
+            [{fork_heights, #{ minerva => MHeight,
                                fortuna => FHeight,
                                lima    => LHeight,
                                iris    => IHeight
@@ -629,6 +628,10 @@ end_per_group(_Grp, Cfg) ->
     Cfg.
 
 %% Process dict magic in the right process ;-)
+init_per_testcase(TC, Config) when TC == aevm_version_interaction;
+                                   TC == create_contract_init_error_no_create_account ->
+    Config1 = [{sophia_version, ?SOPHIA_MINERVA}, {vm_version, ?VM_AEVM_SOPHIA_2} | Config],
+    init_per_testcase_common(TC, Config1);
 init_per_testcase(fate_environment, Config) ->
     meck:new(aefa_chain_api, [passthrough]),
     meck:expect(aefa_chain_api, blockhash,
@@ -2010,7 +2013,7 @@ sophia_auth_tx(_Cfg) ->
     ok.
 
 
-sophia_vm_interaction(Cfg) ->
+aevm_version_interaction(Cfg) ->
     state(aect_test_utils:new_state()),
     ForkHeights   = ?config(fork_heights, Cfg),
     RomaHeight    = maps:get(minerva, ForkHeights) - 1,
@@ -2055,8 +2058,8 @@ sophia_vm_interaction(Cfg) ->
     RemCFortuna = ?call(create_contract_with_code, Acc, RemCode, {}, FortunaSpec),
     IdCLima     = ?call(create_contract_with_code, Acc, IdCode2, {}, LimaSpec),
     RemCLima    = ?call(create_contract_with_code, Acc, RemCode2, {}, LimaSpec),
-    IdCIris     = ?call(create_contract_with_code, Acc, IdCode2, {}, IrisSpec),
-    RemCIris    = ?call(create_contract_with_code, Acc, RemCode2, {}, IrisSpec),
+    {error, illegal_vm_version} = ?call(tx_fail_create_contract_with_code, Acc, IdCode2, {}, IrisSpec),
+    {error, illegal_vm_version} = ?call(tx_fail_create_contract_with_code, Acc, RemCode2, {}, IrisSpec),
 
     %% Check that we cannot create contracts with old vms after the forks
     BadSpec1   = RomaSpec#{height => MinervaHeight},
@@ -2065,8 +2068,8 @@ sophia_vm_interaction(Cfg) ->
     {error, illegal_vm_version} = ?call(tx_fail_create_contract_with_code, Acc, IdCode, {}, BadSpec2),
     BadSpec3   = MinervaSpec#{height => LimaHeight},
     {error, illegal_vm_version} = ?call(tx_fail_create_contract_with_code, Acc, IdCode, {}, BadSpec3),
-    %% BadSpec4   = LimaSpec#{height => IrisHeight},
-    %% {error, illegal_vm_version} = ?call(tx_fail_create_contract_with_code, Acc, IdCode, {}, BadSpec4),
+    BadSpec4   = LimaSpec#{height => IrisHeight},
+    {error, illegal_vm_version} = ?call(tx_fail_create_contract_with_code, Acc, IdCode, {}, BadSpec4),
 
     LatestCallSpec = #{height => IrisHeight,
                        gas_price => MinGasPrice,
@@ -2087,17 +2090,12 @@ sophia_vm_interaction(Cfg) ->
                      , {RemCMinerva, IdCRoma}
                      , {RemCFortuna, IdCRoma}
                      , {RemCLima,    IdCRoma}
-                     , {RemCIris,    IdCRoma}
                      , {RemCMinerva, IdCMinerva}
                      , {RemCFortuna, IdCMinerva}
                      , {RemCLima,    IdCMinerva}
-                     , {RemCIris,    IdCMinerva}
                      , {RemCFortuna, IdCFortuna}
                      , {RemCLima,    IdCFortuna}
-                     , {RemCIris,    IdCFortuna}
                      , {RemCLima,    IdCLima}
-                     , {RemCIris,    IdCLima}
-                     , {RemCIris,    IdCIris}
                      ]],
 
     %% Call newVM -> oldVM -> oldVM
@@ -2106,13 +2104,9 @@ sophia_vm_interaction(Cfg) ->
      || {Rem1, Id, Rem2} <- [ {RemCMinerva, IdCRoma, RemCRoma}
                             , {RemCFortuna, IdCRoma, RemCRoma}
                             , {RemCLima,    IdCRoma, RemCRoma}
-                            , {RemCIris,    IdCRoma, RemCRoma}
                             , {RemCFortuna, IdCMinerva, RemCMinerva}
                             , {RemCLima,    IdCMinerva, RemCMinerva}
-                            , {RemCIris,    IdCMinerva, RemCMinerva}
                             , {RemCLima,    IdCFortuna, RemCFortuna}
-                            , {RemCIris,    IdCFortuna, RemCFortuna}
-                            , {RemCIris,    IdCLima, RemCLima}
                             ]],
 
     %% Fail calling oldVM -> newVM
@@ -2121,13 +2115,9 @@ sophia_vm_interaction(Cfg) ->
      || {Rem, Id} <- [ {RemCRoma, IdCMinerva}
                      , {RemCRoma, IdCFortuna}
                      , {RemCRoma, IdCLima}
-                     , {RemCRoma, IdCIris}
                      , {RemCMinerva, IdCFortuna}
                      , {RemCMinerva, IdCLima}
-                     , {RemCMinerva, IdCIris}
                      , {RemCFortuna, IdCLima}
-                     , {RemCFortuna, IdCIris}
-                     %% , {RemCLima, IdCIris}
                     ]],
     ok.
 
