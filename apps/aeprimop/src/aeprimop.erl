@@ -959,7 +959,7 @@ name_update({OwnerPubkey, NameHash, TTL, ClientTTL, Pointers}, S) ->
     assert_name_owner(Rec, OwnerPubkey),
     assert_name_claimed(Rec),
     %% 'undefined' means we got here from FATE - thus we don't expect to
-    %% fail on legcy invalid pointers - so explicitly sanitize them.
+    %% fail on legacy invalid pointers - so explicitly sanitize them.
     Pointers1  = if Pointers == undefined ->
                         aens_pointer:sanitize_pointers(aens_names:pointers(Rec));
                     is_list(Pointers) ->

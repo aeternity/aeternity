@@ -663,7 +663,6 @@ init_per_testcase(TC, Config) when TC == sophia_auth_tx;
 init_per_testcase(TC = bad_aens_pointer_handling_lima_to_iris, Config) ->
     case aect_test_utils:latest_protocol_version() of
         ?IRIS_PROTOCOL_VSN ->
-            LHeight = 20,
             IHeight = 25,
             Fun = fun(H) when H <  IHeight -> ?LIMA_PROTOCOL_VSN;
                      (H) when H >= IHeight -> ?IRIS_PROTOCOL_VSN
@@ -672,9 +671,7 @@ init_per_testcase(TC = bad_aens_pointer_handling_lima_to_iris, Config) ->
             meck:expect(aec_governance, name_claim_bid_timeout, fun(_, _) -> 0 end),
             Config1 =
                 [{sophia_version, ?SOPHIA_IRIS_FATE}, {vm_version, ?VM_FATE_SOPHIA_2},
-                 {fork_heights, #{ lima    => LHeight,
-                                   iris    => IHeight
-                                 }},
+                 {fork_heights, #{ iris    => IHeight }},
                  {protocol, iris} | Config],
             init_per_testcase_common(TC, Config1);
         _ ->
@@ -6293,7 +6290,6 @@ sophia_aens_update_transaction(_Cfg) ->
     ok.
 
 bad_aens_pointer_handling_lima_to_iris(Cfg) ->
-    _LimaHeight = maps:get(lima, ?config(fork_heights, Cfg)),
     IrisHeight = maps:get(iris, ?config(fork_heights, Cfg)),
 
     state(aect_test_utils:new_state()),
