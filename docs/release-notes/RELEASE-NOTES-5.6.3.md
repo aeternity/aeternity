@@ -2,6 +2,10 @@
 
 [This](https://github.com/aeternity/aeternity/releases/tag/v5.6.3) is an emergency Lima release.
 
+There had been a 51% attack on the network. This release is an expression of
+the ecosystem's desire to move from the attacker's fork to the community one.
+If you prefer staying on the former, please use release 5.6.0
+
 Please join the **mainnet** by following the instructions in the documentation below,
 and let us know if you have any problems by [opening a ticket](https://github.com/aeternity/aeternity/issues).
 Troubleshooting of common issues is documented [in the wiki](https://github.com/aeternity/aeternity/wiki/Troubleshooting).
