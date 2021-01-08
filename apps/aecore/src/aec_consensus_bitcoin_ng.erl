@@ -104,20 +104,24 @@ keyblock_create_adjust_target(Block, AdjHeaders) ->
 %% -------------------------------------------------------------------
 %% Preconductor hook - called in sync process just before invoking the conductor
 dirty_validate_block_pre_conductor(B) ->
-    W = persistent_term:get(?WHITELIST),
-    Height = aec_blocks:height(B),
-    case aec_blocks:is_key_block(B) of
-        true ->
-            case maps:find(Height, W) of
-                {ok, Hash} ->
-                    case aec_blocks:hash_internal_representation(B) of
-                        {ok, Hash} -> ok;
-                        _ -> {error, blocked_by_whitelist}
+    case aec_governance:get_network_id() of
+        <<"ae_mainnet">> ->
+            W = persistent_term:get(?WHITELIST),
+            Height = aec_blocks:height(B),
+            case aec_blocks:is_key_block(B) of
+                true ->
+                    case maps:find(Height, W) of
+                        {ok, Hash} ->
+                            case aec_blocks:hash_internal_representation(B) of
+                                {ok, Hash} -> ok;
+                                _ -> {error, blocked_by_whitelist}
+                            end;
+                        error ->
+                            ok
                     end;
-                error ->
-                    ok
+                false -> ok
             end;
-        false -> ok
+        _ -> ok
     end.
 
 %% -------------------------------------------------------------------
