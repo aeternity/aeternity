@@ -52,6 +52,10 @@
         , assert_key_target_range/1
         , key_header_difficulty/1 ]).
 
+-ifdef(TEST).
+-export([load_whitelist/0]).
+-endif.
+
 -include_lib("aecontract/include/hard_forks.hrl").
 -include("blocks.hrl").
 -include_lib("aeminer/include/aeminer.hrl").
@@ -63,8 +67,7 @@
 can_be_turned_off() -> true.
 assert_config(_Config) -> ok.
 start(_Config) ->
-    W = aec_fork_block_settings:block_whitelist(),
-    persistent_term:put(?WHITELIST, W),
+    load_whitelist(),
     ok.
 stop() -> ok.
 
@@ -104,24 +107,20 @@ keyblock_create_adjust_target(Block, AdjHeaders) ->
 %% -------------------------------------------------------------------
 %% Preconductor hook - called in sync process just before invoking the conductor
 dirty_validate_block_pre_conductor(B) ->
-    case aec_governance:get_network_id() of
-        <<"ae_mainnet">> ->
-            W = persistent_term:get(?WHITELIST),
-            Height = aec_blocks:height(B),
-            case aec_blocks:is_key_block(B) of
-                true ->
-                    case maps:find(Height, W) of
-                        {ok, Hash} ->
-                            case aec_blocks:hash_internal_representation(B) of
-                                {ok, Hash} -> ok;
-                                _ -> {error, blocked_by_whitelist}
-                            end;
-                        error ->
-                            ok
+    W = persistent_term:get(?WHITELIST),
+    Height = aec_blocks:height(B),
+    case aec_blocks:is_key_block(B) of
+        true ->
+            case maps:find(Height, W) of
+                {ok, Hash} ->
+                    case aec_blocks:hash_internal_representation(B) of
+                        {ok, Hash} -> ok;
+                        _ -> {error, blocked_by_whitelist}
                     end;
-                false -> ok
+                error ->
+                    ok
             end;
-        _ -> ok
+        false -> ok
     end.
 
 %% -------------------------------------------------------------------
@@ -343,3 +342,9 @@ assert_key_target_range(_Target) ->
 
 key_header_difficulty(Header) ->
     aeminer_pow:target_to_difficulty(aec_headers:target(Header)).
+
+
+load_whitelist() ->
+    W = aec_fork_block_settings:block_whitelist(),
+    persistent_term:put(?WHITELIST, W).
+

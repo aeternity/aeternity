@@ -62,6 +62,7 @@ basic_access_test_() ->
      fun() ->
              aec_test_utils:mock_genesis_and_forks(),
              aec_test_utils:start_chain_db(),
+             aec_consensus_bitcoin_ng:load_whitelist(),
              aec_test_utils:aec_keys_setup()
      end,
      fun(TmpDir) ->
@@ -120,6 +121,7 @@ out_of_order_test_() ->
      fun() ->
              aec_test_utils:start_chain_db(),
              aec_test_utils:mock_genesis_and_forks(),
+             aec_consensus_bitcoin_ng:load_whitelist(),
              aec_test_utils:aec_keys_setup()
      end,
      fun(TmpDir) ->
@@ -198,6 +200,7 @@ broken_chain_test_() ->
     {foreach,
      fun() ->
              aec_test_utils:start_chain_db(),
+             aec_consensus_bitcoin_ng:load_whitelist(),
              setup_meck_and_keys()
      end,
      fun(TmpDir) ->
@@ -405,6 +408,7 @@ n_headers_test_() ->
     {foreach,
      fun() ->
              aec_test_utils:start_chain_db(),
+             aec_consensus_bitcoin_ng:load_whitelist(),
              setup_meck_and_keys()
      end,
      fun(TmpDir) ->
@@ -517,6 +521,7 @@ target_validation_test_() ->
              meck:expect(aec_governance, key_blocks_to_check_difficulty_count, 0, 2),
              meck:expect(aec_governance, expected_block_mine_rate, 0, 1800000), %% 50 mins
              aec_test_utils:mock_genesis_and_forks(),
+             aec_consensus_bitcoin_ng:load_whitelist(),
              aec_test_utils:aec_keys_setup()
      end,
      fun(TmpDir) ->
@@ -1804,6 +1809,7 @@ setup_meck_and_keys() ->
     aec_test_utils:mock_difficulty_as_target(),
     aec_test_utils:mock_governance(),
     aec_test_utils:mock_genesis_and_forks(),
+    aec_consensus_bitcoin_ng:load_whitelist(),
     aec_test_utils:aec_keys_setup().
 
 teardown_meck_and_keys(TmpDir) ->

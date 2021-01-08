@@ -49,11 +49,10 @@ teardown_minimal(TmpKeysDir) ->
     ok.
 
 setup_cuckoo_pow() ->
-    ok = meck:new(aeu_env, [passthrough]),
     aec_test_utils:mock_fast_cuckoo_pow().
 
 teardown_cuckoo_pow(_) ->
-    ok = meck:unload(aeu_env).
+    ok.
 
 setup_common() ->
     setup_cuckoo_pow(),

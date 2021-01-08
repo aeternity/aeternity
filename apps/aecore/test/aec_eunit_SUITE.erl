@@ -129,6 +129,7 @@ application_test(Config) ->
     meck:expect(aec_fork_block_settings, lima_accounts, 0, []),
     meck:expect(aec_fork_block_settings, lima_extra_accounts, 0, []),
     meck:expect(aec_fork_block_settings, lima_contracts, 0, []),
+    meck:expect(aec_fork_block_settings, block_whitelist, 0, []),
     {ok,_} = application:ensure_all_started(aecore),
     timer:sleep(100),
     ok = application:stop(aecore),
