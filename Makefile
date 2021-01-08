@@ -1,5 +1,4 @@
 CORE = rel/aeternity/bin/aeternity
-VER := $(shell cat VERSION)
 
 REBAR ?= ./rebar3
 
@@ -38,10 +37,6 @@ PACKAGE_SPEC_WIN32 ?= ../.circleci/windows/package.cfg
 # unreleased/not stable version (i.e. builds) MUST always have higher
 # version (i.e. pre-release). Otherwise package managers and repository management
 # software complain.
-AE_DEB_PKG_VERSION ?= `cat VERSION`
-AE_DEB_DCH_REL_NOTE= \
-"Release notes are available in /usr/share/doc/aeternity-node/docs/release-notes/RELEASE-NOTES-`cat VERSION`.md"
-
 AE_DEB_PKG_NAME="aeternity-node"
 AE_DEB_MAINT_EMAIL="info@aeternity.com"
 AE_DEB_MAINT_NAME="Aeternity Team"
@@ -49,7 +44,7 @@ DEB_PKG_CHANGELOG_FILE=debian/changelog
 
 all:	local-build
 
-$(SWAGGER_ENDPOINTS_SPEC):
+$(SWAGGER_ENDPOINTS_SPEC): VERSION
 	$(REBAR) swagger_endpoints
 
 null  :=
@@ -101,7 +96,7 @@ endif
 export AEVM_EXTERNAL_TEST_DIR=aevm_external
 export AEVM_EXTERNAL_TEST_VERSION=348b0633f4a6ee3c100368bf0f4fca71394b4d01
 
-console: $(SWAGGER_ENDPOINTS_SPEC)
+console: VERSION REVISION $(SWAGGER_ENDPOINTS_SPEC)
 	@$(REBAR) as local shell --config config/dev.config --sname aeternity@localhost
 
 test-build: KIND=test
@@ -245,6 +240,9 @@ $(CT_DB_TARGETS):
 REVISION:
 	@git rev-parse HEAD > $@ || echo "unknown" > $@
 
+VERSION:
+	@git describe --tags --exact-match 2> /dev/null || git describe --all --dirty --long 2> /dev/null | sed -e "s/^heads\///" > $@
+
 eunit-%: KIND=test
 eunit-%: internal-build
 	ERL_FLAGS="-args_file $(EUNIT_VM_ARGS) -config $(EUNIT_SYS_CONFIG) -network_id local_$*_testnet" $(REBAR) do eunit $(EUNIT_TEST_FLAGS)
@@ -368,6 +366,7 @@ killall:
 clean:
 	@$(REBAR) clean
 	@-rm REVISION
+	@-rm VERSION
 	@-rm $(SWAGGER_ENDPOINTS_SPEC)
 	@$(MAKE) multi-distclean
 	@$(MAKE) eqc-clean
@@ -386,7 +385,8 @@ distclean: clean
 	( cd otp_patches && $(MAKE) distclean; )
 	@rm -rf _build/
 
-multi-build: dev1-build
+multi-build: VERSION dev1-build
+	$(eval VER=$(hell cat VERSION))
 	@$(MAKE) dev2-distclean
 	@$(MAKE) dev3-distclean
 	@for x in dev2 dev3; do \
@@ -402,10 +402,10 @@ multi-build: dev1-build
 internal-compile-deps:
 	@$(REBAR) as $(KIND) compile -d
 
-internal-package: REVISION internal-compile-deps $(SWAGGER_ENDPOINTS_SPEC)
+internal-package: VERSION REVISION internal-compile-deps $(SWAGGER_ENDPOINTS_SPEC)
 	@$(REBAR) as $(KIND) tar
 
-internal-build: REVISION internal-compile-deps $(SWAGGER_ENDPOINTS_SPEC)
+internal-build: VERSION REVISION internal-compile-deps $(SWAGGER_ENDPOINTS_SPEC)
 	@$(REBAR) as $(KIND) release
 
 internal-start:
@@ -433,10 +433,12 @@ internal-ct: test-build
 			$(REBAR) ct $(CT_TEST_FLAGS) --sys_config $(SYSCONFIG); \
 	fi
 
-$(DEB_PKG_CHANGELOG_FILE):
+$(DEB_PKG_CHANGELOG_FILE): VERSION
+	AE_DEB_PKG_VERSION=`cat VERSION`; \
+	AE_DEB_DCH_REL_NOTE="Release notes are available in /usr/share/doc/aeternity-node/docs/release-notes/RELEASE-NOTES-`cat VERSION`.md"; \
 	@export DEBEMAIL=$(AE_DEB_MAINT_EMAIL); \
 	export DEBFULLNAME=$(AE_DEB_MAINT_NAME) ; \
-	dch --create --package=$(AE_DEB_PKG_NAME) -v $(AE_DEB_PKG_VERSION) $(AE_DEB_DCH_REL_NOTE); \
+	dch --create --package=$(AE_DEB_PKG_NAME) -v $AE_DEB_PKG_VERSION $AE_DEB_DCH_REL_NOTE; \
 	dch -r $(AE_DEB_DCH_REL_NOTE)
 
 prod-deb-package: $(DEB_PKG_CHANGELOG_FILE)
@@ -480,5 +482,6 @@ test-arch-os-dependencies:
 	clean distclean \
 	build-uml \
 	REVISION \
+	VERSION \
 	prod-deb-package \
 	regen-fate
