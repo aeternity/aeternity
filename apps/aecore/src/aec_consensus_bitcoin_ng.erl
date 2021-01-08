@@ -101,6 +101,7 @@ force_community_fork() ->
     end.
 
 do_rollback(ForkPoint, TopHash) ->
+    ensure_gc_disabled(),
     aec_db:ensure_transaction(fun () ->
         rollback_to_fork_point(ForkPoint, TopHash),
         {ok, ForkHeader} = aec_chain:get_header(ForkPoint),
@@ -117,6 +118,15 @@ do_rollback(ForkPoint, TopHash) ->
         end || H <- lists:seq(ForkHeight+1, ForkHeight+Delta)],
         aec_db:write_top_block_hash(ForkPoint)
     end).
+
+ensure_gc_disabled() ->
+    case aec_db_gc:config() of
+        #{enabled := false} -> ok;
+        #{enabled := true} ->
+            Msg = "It looks like you want to join the community fork but you are already on the wrong chain. Unfortunatelly as the garbage collector is enabled there is nothing we can do switch automatically - please either sync from genesis or start the node from a db backup from before the forking point and reenable GC after syncing with the correct chain",
+            lager:error(Msg, []),
+            init:stop(Msg)
+    end.
 
 rollback_to_fork_point(Stop, Stop) -> ok;
 rollback_to_fork_point(Stop, Cur) ->
