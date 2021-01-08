@@ -68,11 +68,65 @@ can_be_turned_off() -> true.
 assert_config(_Config) -> ok.
 start(_Config) ->
     load_whitelist(),
+    case aec_governance:get_network_id() of
+        <<"ae_mainnet">> -> force_community_fork();
+        _                -> ok
+    end,
     ok.
 stop() -> ok.
 
 is_providing_extra_http_endpoints() -> false.
 client_request(_) -> error(unsupported).
+
+%% If a node is not on the community fork then force it...
+force_community_fork() ->
+    CommunityForkHeight = 368500,
+    {key_block_hash, CommunityForkHash} = aeser_api_encoder:decode(<<"kh_x1LvKteTFC8WBJkj5J5429MAz5gp4iPbfBiJdQVZQiaaXfc6m">>),
+    TopHash = aec_chain:top_block_hash(),
+    {ok, TopHeader} = aec_chain:get_header(TopHash),
+    case aec_headers:height(TopHeader) > CommunityForkHeight of
+        false -> ok;
+        true ->
+            case aec_chain_state:find_common_ancestor(CommunityForkHash, TopHash) of
+                {ok, CommunityForkHash} -> ok; %% Everything is OK and we are on the proper fork
+                {ok, ForkPoint} ->
+                    %% We're not on the community fork - rollback to fork point
+                    do_rollback(ForkPoint, TopHash);
+                {error, _} ->
+                    %% This is the tricky case - This means that we only have the wrong fork on the node
+                    %% Rollback to the whitelist interval so the node can sync with the community fork
+                    {ok, ForkPoint} = aec_chain_state:get_key_block_hash_at_height(CommunityForkHeight), %% THIS MUST EXIST
+                    do_rollback(ForkPoint, TopHash)
+            end
+    end.
+
+do_rollback(ForkPoint, TopHash) ->
+    aec_db:ensure_transaction(fun () ->
+        rollback_to_fork_point(ForkPoint, TopHash),
+        {ok, ForkHeader} = aec_chain:get_header(ForkPoint),
+        ForkHeight = aec_headers:height(ForkHeader),
+        %% Preemtively nuke a height interval to ensure the node syncs
+        Delta = 1000,
+        [begin
+            [begin
+                Del = element(2, T),
+                ok = mnesia:delete(aec_headers, Del, write),
+                ok = mnesia:delete(aec_blocks, Del, write),
+                ok = mnesia:delete(aec_block_state, Del, write)
+             end || T <- mnesia:index_read(aec_headers, H, height)]
+        end || H <- lists:seq(ForkHeight+1, ForkHeight+Delta)],
+        aec_db:write_top_block_hash(ForkPoint)
+    end).
+
+rollback_to_fork_point(Stop, Stop) -> ok;
+rollback_to_fork_point(Stop, Cur) ->
+     {ok, TopHeader} = aec_chain:get_header(Cur),
+     ok = mnesia:delete(aec_headers, Cur, write),
+     ok = mnesia:delete(aec_blocks, Cur, write),
+     ok = mnesia:delete(aec_block_state, Cur, write),
+     Prev = aec_headers:prev_hash(TopHeader),
+     aec_db:write_top_block_hash(Prev),
+     rollback_to_fork_point(Stop, Prev).
 
 %% -------------------------------------------------------------------
 %% Deserialization

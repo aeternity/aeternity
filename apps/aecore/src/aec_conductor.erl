@@ -223,15 +223,21 @@ stratum_reply({Nonce, Evd}, ForSealing) ->
 init(Options) ->
     process_flag(trap_exit, true),
     ok     = init_chain_state(),
-    TopBlockHash = aec_chain:top_block_hash(),
-    TopKeyBlockHash = aec_chain:top_key_block_hash(),
-    {ok, TopHeader} = aec_chain:get_header(TopBlockHash),
-    ConsensusModule = aec_headers:consensus_module(TopHeader),
-    ConsensusConfig = aec_consensus:get_consensus_config_at_height(aec_headers:height(TopHeader)),
+    TopBlockHash0 = aec_chain:top_block_hash(),
+    {ok, TopHeader0} = aec_chain:get_header(TopBlockHash0),
+    ConsensusModule = aec_headers:consensus_module(TopHeader0),
+    ConsensusConfig = aec_consensus:get_consensus_config_at_height(aec_headers:height(TopHeader0)),
+
+    %% Might mutate the DB in some cases
     ConsensusModule:start(ConsensusConfig), %% Might do nothing or it might spawn a genserver :P
+
     Consensus = #consensus{ micro_block_cycle = aec_governance:micro_block_cycle()
                           , leader = false
                           , consensus_module = ConsensusModule },
+
+    TopBlockHash = aec_chain:top_block_hash(),
+    TopKeyBlockHash = aec_chain:top_key_block_hash(),
+
     State1 = #state{ top_block_hash     = TopBlockHash,
                      top_key_block_hash = TopKeyBlockHash,
                      consensus          = Consensus},
