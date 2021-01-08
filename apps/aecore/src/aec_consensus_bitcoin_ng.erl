@@ -106,14 +106,18 @@ keyblock_create_adjust_target(Block, AdjHeaders) ->
 dirty_validate_block_pre_conductor(B) ->
     W = persistent_term:get(?WHITELIST),
     Height = aec_blocks:height(B),
-    case maps:find(Height, W) of
-        {ok, Hash} ->
-             case aec_blocks:hash_internal_representation(B) of
-                 {ok, Hash} -> ok;
-                 _ -> {error, blocked_by_whitelist}
-             end;
-        error ->
-            ok
+    case aec_blocks:is_key_block(B) of
+        true ->
+            case maps:find(Height, W) of
+                {ok, Hash} ->
+                    case aec_blocks:hash_internal_representation(B) of
+                        {ok, Hash} -> ok;
+                        _ -> {error, blocked_by_whitelist}
+                    end;
+                error ->
+                    ok
+            end;
+        false -> ok
     end.
 
 %% -------------------------------------------------------------------
