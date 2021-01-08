@@ -181,6 +181,7 @@ chain_test_() ->
              aec_test_utils:mock_governance(),
              {ok, _} = aec_db_error_store:start_link(),
              aec_test_utils:start_chain_db(),
+             aec_consensus_bitcoin_ng:load_whitelist(),
              aec_test_utils:aec_keys_setup()
      end,
      fun(TmpDir) ->
@@ -356,6 +357,7 @@ throughput_ram_test_() ->
              aec_test_utils:start_chain_db(),
              aec_test_utils:mock_genesis_and_forks(genesis_accounts()),
              aec_test_utils:dev_reward_setup(true, true, 100),
+             aec_consensus_bitcoin_ng:load_whitelist(),
              aec_test_utils:aec_keys_setup()
      end,
      fun(TmpDir) ->
@@ -405,6 +407,7 @@ throughput_disc_test_() ->
              ok = meck:new(mnesia_rocksdb_lib, [passthrough]),
              aec_test_utils:mock_genesis_and_forks(genesis_accounts()),
              aec_test_utils:dev_reward_setup(true, true, 100),
+             aec_consensus_bitcoin_ng:load_whitelist(),
              {TmpDir, Persist}
      end,
      fun({TmpDir, Persist}) ->
@@ -505,6 +508,7 @@ accept_existing_db_node_test_() ->
              TmpDir = aec_test_utils:aec_keys_setup(),
              ok = meck:new(mnesia_rocksdb_lib, [passthrough]),
              aec_test_utils:mock_genesis_and_forks(genesis_accounts()),
+             aec_consensus_bitcoin_ng:load_whitelist(),
              aec_test_utils:dev_reward_setup(true, true, 100),
              {TmpDir, Persist}
      end,

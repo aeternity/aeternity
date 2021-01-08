@@ -59,7 +59,7 @@ lima_contracts() -> preset_contracts(?LIMA_PROTOCOL_VSN,
                                      lima_contracts_file_missing).
 
 block_whitelist() ->
-    P = filename:join(aeu_env:data_dir(aecore), ".block_whitelist.json"),
+    P = filename:join(aeu_env:data_dir(aecore), whitelist_json_file()),
     case filelib:is_file(P) of
         false ->
             lager:debug("Block whitelist not present"),
@@ -235,6 +235,9 @@ extra_accounts_json_file() ->
 contracts_json_file() ->
     "contracts_test.json".
 
+whitelist_json_file() ->
+    ".block_whitelist.json".
+
 -else.
 accounts_json_file() ->
     case aec_governance:get_network_id() of
@@ -255,5 +258,12 @@ contracts_json_file() ->
         <<"ae_mainnet">> -> "contracts.json";
         <<"ae_uat">>     -> "contracts_uat.json";
         _                -> "contracts_test.json"
+    end.
+
+whitelist_json_file() ->
+    case aec_governance:get_network_id() of
+        <<"ae_mainnet">> -> ".block_whitelist.json";
+        <<"ae_uat">>     -> ".block_whitelist_uat.json";
+        _                -> ".block_whitelist_test.json"
     end.
 -endif.
