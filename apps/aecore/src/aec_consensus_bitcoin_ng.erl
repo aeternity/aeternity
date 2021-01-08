@@ -56,11 +56,16 @@
 -include("blocks.hrl").
 -include_lib("aeminer/include/aeminer.hrl").
 
+-define(WHITELIST, {?MODULE, whitelist}).
+
 %% -------------------------------------------------------------------
 %% Configuration and extra features/http endpoints
 can_be_turned_off() -> true.
 assert_config(_Config) -> ok.
-start(_Config) -> ok.
+start(_Config) ->
+    W = aec_fork_block_settings:block_whitelist(),
+    persistent_term:put(?WHITELIST, W),
+    ok.
 stop() -> ok.
 
 is_providing_extra_http_endpoints() -> false.
@@ -98,15 +103,38 @@ keyblock_create_adjust_target(Block, AdjHeaders) ->
 
 %% -------------------------------------------------------------------
 %% Preconductor hook - called in sync process just before invoking the conductor
-dirty_validate_block_pre_conductor(_) -> ok.
+dirty_validate_block_pre_conductor(B) ->
+    case aec_governance:get_network_id() of
+        <<"ae_mainnet">> ->
+            W = persistent_term:get(?WHITELIST),
+            Height = aec_blocks:height(B),
+            case aec_blocks:is_key_block(B) of
+                true ->
+                    case maps:find(Height, W) of
+                        {ok, Hash} ->
+                            case aec_blocks:hash_internal_representation(B) of
+                                {ok, Hash} -> ok;
+                                _ -> {error, blocked_by_whitelist}
+                            end;
+                        error ->
+                            ok
+                    end;
+                false -> ok
+            end;
+        _ -> ok
+    end.
 
 %% -------------------------------------------------------------------
 %% Dirty validation of keyblocks just before starting the state transition
 dirty_validate_key_node_with_ctx(Node, Block, Ctx) ->
-    Validators = [ fun ctx_validate_key_time/3
+    Validators = [ fun ctx_enforce_whitelist/3
+                 , fun ctx_validate_key_time/3
                  , fun ctx_validate_key_target/3
                  ],
     aeu_validation:run(Validators, [Node, Block, Ctx]).
+
+ctx_enforce_whitelist(_Node, Block, _Ctx) ->
+    dirty_validate_block_pre_conductor(Block).
 
 ctx_validate_key_time(Node, _Block, Ctx) ->
     Time = aec_block_insertion:node_time(Node),
