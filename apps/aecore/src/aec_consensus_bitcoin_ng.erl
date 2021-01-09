@@ -135,16 +135,6 @@ ensure_gc_disabled() ->
             init:stop(Msg)
     end.
 
-rollback_to_fork_point(Stop, Stop) -> ok;
-rollback_to_fork_point(Stop, Cur) ->
-     {ok, TopHeader} = aec_chain:get_header(Cur),
-     ok = mnesia:delete(aec_headers, Cur, write),
-     ok = mnesia:delete(aec_blocks, Cur, write),
-     ok = mnesia:delete(aec_block_state, Cur, write),
-     Prev = aec_headers:prev_hash(TopHeader),
-     aec_db:write_top_block_hash(Prev),
-     rollback_to_fork_point(Stop, Prev).
-
 %% -------------------------------------------------------------------
 %% Deserialization
 extra_from_header(_) ->
