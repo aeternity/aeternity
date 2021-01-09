@@ -99,10 +99,10 @@ force_community_fork() ->
 do_rollback(ForkPoint, Height, TopHeight) ->
     lager:info("Jumping to the community fork", []),
     ensure_gc_disabled(),
+    ok = supervisor:terminate_child(aecore_sup, aec_tx_pool),
+    ok = supervisor:terminate_child(aecore_sup, aec_connection_sup),
     SafetyMargin = 1000, %% Why not?
-    %% Warning with the current DB design transaction won't help
-    %% As the bypass logic does not implement removal of headers
-    aec_db:ensure_activity(sync_dirty, fun() ->
+    aec_db:ensure_transaction(fun() ->
         [begin
              [begin
                   Del = element(2, T),
@@ -123,8 +123,10 @@ do_rollback(ForkPoint, Height, TopHeight) ->
               end || T <- mnesia:index_read(aec_headers, H, height)]
          end || H <- lists:seq(Height+1, TopHeight+SafetyMargin)],
         aec_db:write_top_block_hash(ForkPoint)
-   end),
-   init:restart().
+      end),
+    {ok, _} = supervisor:restart_child(aecore_sup, aec_connection_sup),
+    {ok, _} = supervisor:restart_child(aecore_sup, aec_tx_pool),
+    ok.
 
 ensure_gc_disabled() ->
     case aec_db_gc:config() of
