@@ -102,7 +102,7 @@ do_rollback(ForkPoint, Height, TopHeight) ->
     ok = supervisor:terminate_child(aecore_sup, aec_tx_pool),
     ok = supervisor:terminate_child(aecore_sup, aec_connection_sup),
     SafetyMargin = 1000, %% Why not?
-    aec_db:ensure_transaction(fun() ->
+    aec_db:ensure_activity(sync_dirty, fun() ->
         [begin
              [begin
                   Del = element(2, T),
