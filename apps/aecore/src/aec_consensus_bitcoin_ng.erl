@@ -81,8 +81,11 @@ client_request(_) -> error(unsupported).
 %% If a node is not on the community fork then force it...
 force_community_fork() ->
     %% The start of the 51% attack!
-    CommunityForkHeight = 366181,
-    {key_block_hash, CommunityForkHash} = aeser_api_encoder:decode(<<"kh_jzsdZmVDgoG9QQ8zQBLE6sURzukcmpSbume1jyfcHEpT1DEQ2">>),
+    %% The common ancestor between the attacker and the community fork is
+    %% 366181 - kh_jzsdZmVDgoG9QQ8zQBLE6sURzukcmpSbume1jyfcHEpT1DEQ2
+    %% Check for the NEXT height
+    CommunityForkHeight = 366182,
+    {key_block_hash, CommunityForkHash} = aeser_api_encoder:decode(<<"kh_YGDYbJQL4TV84CSaEA4VgcppUkpVyxSWFyHbS3frKkPjHPw2m">>),
     TopHash = aec_chain:top_block_hash(),
     {ok, TopHeader} = aec_chain:get_header(TopHash),
     TopHeight = aec_headers:height(TopHeader),
