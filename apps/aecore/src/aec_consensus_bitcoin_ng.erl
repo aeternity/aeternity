@@ -96,7 +96,19 @@ force_community_fork() ->
                 {ok, CommunityForkHash} -> ok; %% Everything is OK and we are on the proper fork
                 {ok, ForkPoint} ->
                     %% We're not on the community fork - rollback to fork point
-                    do_rollback(ForkPoint, CommunityForkHeight, TopHeight)
+                    do_rollback(ForkPoint, CommunityForkHeight, TopHeight),
+                    %% Ensure the node comes back up gracefully
+                    %% Make sure we don't block here
+                    spawn(fun() ->
+                        %% Teardown some apps
+                        _ = catch (application:stop(aehttp)),
+                        _ = catch (application:stop(aesc)),
+                        _ = catch (application:stop(aecore)),
+                        %% Start them again
+                        _ = catch (application:start(aecore)),
+                        _ = catch (application:start(aesc)),
+                        _ = catch (application:start(aehttp))
+                          end)
             end
     end.
 
