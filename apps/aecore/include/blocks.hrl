@@ -12,7 +12,7 @@
 -define(KEY_HEADER_MIN_BYTES, 364).
 -define(MIC_HEADER_MIN_BYTES, 216).
 
--define(KEY_HEADER_INFO_LIMA_POINT_RELEASE, 562).
+-define(KEY_HEADER_INFO_LIMA_POINT_RELEASE, 563).
 
 -type(txs_hash() :: <<_:(?TXS_HASH_BYTES*8)>>).
 -type(state_hash() :: <<_:(?STATE_HASH_BYTES*8)>>).
