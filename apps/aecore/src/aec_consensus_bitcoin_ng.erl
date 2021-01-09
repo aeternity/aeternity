@@ -80,8 +80,9 @@ client_request(_) -> error(unsupported).
 
 %% If a node is not on the community fork then force it...
 force_community_fork() ->
-    CommunityForkHeight = 368500,
-    {key_block_hash, CommunityForkHash} = aeser_api_encoder:decode(<<"kh_x1LvKteTFC8WBJkj5J5429MAz5gp4iPbfBiJdQVZQiaaXfc6m">>),
+    %% The start of the 51% attack!
+    CommunityForkHeight = 366181,
+    {key_block_hash, CommunityForkHash} = aeser_api_encoder:decode(<<"kh_jzsdZmVDgoG9QQ8zQBLE6sURzukcmpSbume1jyfcHEpT1DEQ2">>),
     TopHash = aec_chain:top_block_hash(),
     {ok, TopHeader} = aec_chain:get_header(TopHash),
     TopHeight = aec_headers:height(TopHeader),
@@ -100,7 +101,7 @@ do_rollback(ForkPoint, Height, TopHeight) ->
     lager:info("Jumping to the community fork", []),
     ensure_gc_disabled(),
     SafetyMargin = 1000, %% Why not?
-    aec_db:ensure_activity(sync_dirty, fun() ->
+    aec_db:ensure_transaction(fun() ->
         [begin
              [begin
                   Del = element(2, T),
@@ -109,12 +110,11 @@ do_rollback(ForkPoint, Height, TopHeight) ->
                   case aec_headers:type(Header) of
                       key -> ok;
                       micro ->
-                          ok
-                          %[B] = mnesia:dirty_read(aec_blocks, Del),
-                          %TxHs = element(3, B),
-                          %[begin
-                          %     ok = mnesia:delete(aec_tx_location, TxH, write)
-                          % end || TxH <- TxHs]
+                          [B] = mnesia:dirty_read(aec_blocks, Del),
+                          TxHs = element(3, B),
+                          [begin
+                               ok = mnesia:delete(aec_tx_location, TxH, write)
+                           end || TxH <- TxHs]
                   end,
                   ok = mnesia:delete(aec_headers, Del, write),
                   ok = mnesia:delete(aec_blocks, Del, write),
@@ -123,6 +123,7 @@ do_rollback(ForkPoint, Height, TopHeight) ->
          end || H <- lists:seq(Height+1, TopHeight+SafetyMargin)],
         aec_db:write_top_block_hash(ForkPoint)
       end),
+    init:restart(),
     ok.
 
 ensure_gc_disabled() ->
