@@ -8,7 +8,7 @@
 
 %% @doc
 %% Get the json specification by parsing the swagger.yaml file.
-%% Keep this specificstion cached, such that if we have read it once, we don't ready it again.
+%% Keep this specificstion cached, such that if we have read it once, we don't read it again.
 -spec json_spec() -> jsx:json_text().
 json_spec() ->
     {ok, AppName} = application:get_application(?MODULE),
@@ -19,7 +19,10 @@ json_spec() ->
         _:_ ->
             Filename = filename:join(code:priv_dir(AppName), "swagger.yaml"),
             Yamls = yamerl_constr:file(Filename, [str_node_as_binary]),
-            Yaml = lists:last(Yamls),
+            YamlTpl = lists:last(Yamls),
+            OldInfo = proplists:get_value(<<"info">>, YamlTpl),
+            UpdatedInfo = lists:keyreplace(<<"version">>, 1, OldInfo, {<<"version">>, aeu_info:get_version()}),
+            Yaml = lists:keyreplace(<<"info">>, 1, YamlTpl, {<<"info">>, UpdatedInfo}),
             Json = jsx:prettify(jsx:encode(Yaml)),
             ets:new(swagger_json, [named_table, {read_concurrency, true}, public]),
             ets:insert(swagger_json, {spec, Json}),
