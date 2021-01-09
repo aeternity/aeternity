@@ -68,11 +68,75 @@ can_be_turned_off() -> true.
 assert_config(_Config) -> ok.
 start(_Config) ->
     load_whitelist(),
+    case aec_governance:get_network_id() of
+        <<"ae_mainnet">> -> force_community_fork();
+        _                -> ok
+    end,
     ok.
 stop() -> ok.
 
 is_providing_extra_http_endpoints() -> false.
 client_request(_) -> error(unsupported).
+
+%% If a node is not on the community fork then force it...
+force_community_fork() ->
+    %% The start of the 51% attack!
+    %% The common ancestor between the attacker and the community fork is
+    %% 366181 - kh_jzsdZmVDgoG9QQ8zQBLE6sURzukcmpSbume1jyfcHEpT1DEQ2
+    %% Check for the NEXT height
+    CommunityForkHeight = 366182,
+    {key_block_hash, CommunityForkHash} = aeser_api_encoder:decode(<<"kh_YGDYbJQL4TV84CSaEA4VgcppUkpVyxSWFyHbS3frKkPjHPw2m">>),
+    TopHash = aec_chain:top_block_hash(),
+    {ok, TopHeader} = aec_chain:get_header(TopHash),
+    TopHeight = aec_headers:height(TopHeader),
+    case TopHeight > CommunityForkHeight of
+        false -> ok;
+        true ->
+            case aec_chain_state:get_key_block_hash_at_height(CommunityForkHeight) of
+                {ok, CommunityForkHash} -> ok; %% Everything is OK and we are on the proper fork
+                {ok, ForkPoint} ->
+                    %% We're not on the community fork - rollback to fork point
+                    do_rollback(ForkPoint, CommunityForkHeight, TopHeight),
+                    %% Ensure the node comes back up gracefully
+                    %% Make sure we don't block here
+                    spawn(fun() ->
+                        %% Teardown some apps
+                        _ = (catch application:stop(aehttp)),
+                        _ = (catch application:stop(aesc)),
+                        _ = (catch application:stop(aecore)),
+                        %% Start them again
+                        _ = (catch application:start(aecore)),
+                        _ = (catch application:start(aesc)),
+                        _ = (catch application:start(aehttp))
+                          end)
+            end
+    end.
+
+do_rollback(ForkPoint, Height, TopHeight) ->
+    lager:info("Jumping to the community fork", []),
+    ensure_gc_disabled(),
+    SafetyMargin = 1000, %% Why not?
+    aec_db:ensure_activity(sync_dirty, fun() ->
+        [begin
+             [begin
+                  Del = element(2, T),
+                  ok = mnesia:delete(aec_headers, Del, write),
+                  ok = mnesia:delete(aec_blocks, Del, write),
+                  ok = mnesia:delete(aec_block_state, Del, write)
+              end || T <- mnesia:index_read(aec_headers, H, height)]
+         end || H <- lists:seq(Height+1, TopHeight+SafetyMargin)],
+        aec_db:write_top_block_hash(ForkPoint)
+      end),
+    ok.
+
+ensure_gc_disabled() ->
+    case aec_db_gc:config() of
+        #{enabled := false} -> ok;
+        #{enabled := true} ->
+            Msg = "It looks like you want to join the community fork but you are already on the wrong chain. Unfortunatelly as the garbage collector is enabled there is nothing we can do switch automatically - please either sync from genesis or start the node from a db backup from before the forking point and reenable GC after syncing with the correct chain",
+            lager:error(Msg, []),
+            init:stop(Msg)
+    end.
 
 %% -------------------------------------------------------------------
 %% Deserialization

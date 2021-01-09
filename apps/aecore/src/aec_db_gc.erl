@@ -42,6 +42,8 @@
 -export([callback_mode/0, init/1, terminate/3, code_change/4]).
 -export([handle_event/4]).
 
+-export([config/0]).
+
 -record(data,
         {enabled    :: boolean(),                         % do we garbage collect?
          interval   :: non_neg_integer(),                 % how often (every `interval` blocks) GC runs
