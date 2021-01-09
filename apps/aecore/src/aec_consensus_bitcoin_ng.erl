@@ -104,21 +104,10 @@ do_rollback(ForkPoint, Height, TopHeight) ->
     lager:info("Jumping to the community fork", []),
     ensure_gc_disabled(),
     SafetyMargin = 1000, %% Why not?
-    aec_db:ensure_transaction(fun() ->
+    aec_db:ensure_activity(sync_dirty, fun() ->
         [begin
              [begin
                   Del = element(2, T),
-                  DBHeader = element(3, T),
-                  Header = aec_headers:from_db_header(DBHeader),
-                  case aec_headers:type(Header) of
-                      key -> ok;
-                      micro ->
-                          [B] = mnesia:dirty_read(aec_blocks, Del),
-                          TxHs = element(3, B),
-                          [begin
-                               ok = mnesia:delete(aec_tx_location, TxH, write)
-                           end || TxH <- TxHs]
-                  end,
                   ok = mnesia:delete(aec_headers, Del, write),
                   ok = mnesia:delete(aec_blocks, Del, write),
                   ok = mnesia:delete(aec_block_state, Del, write)
@@ -126,7 +115,6 @@ do_rollback(ForkPoint, Height, TopHeight) ->
          end || H <- lists:seq(Height+1, TopHeight+SafetyMargin)],
         aec_db:write_top_block_hash(ForkPoint)
       end),
-    init:restart(),
     ok.
 
 ensure_gc_disabled() ->
