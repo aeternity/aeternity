@@ -99,8 +99,6 @@ force_community_fork() ->
 do_rollback(ForkPoint, Height, TopHeight) ->
     lager:info("Jumping to the community fork", []),
     ensure_gc_disabled(),
-    ok = supervisor:terminate_child(aecore_sup, aec_tx_pool),
-    ok = supervisor:terminate_child(aecore_sup, aec_connection_sup),
     SafetyMargin = 1000, %% Why not?
     aec_db:ensure_activity(sync_dirty, fun() ->
         [begin
@@ -111,11 +109,12 @@ do_rollback(ForkPoint, Height, TopHeight) ->
                   case aec_headers:type(Header) of
                       key -> ok;
                       micro ->
-                          [B] = mnesia:dirty_read(aec_blocks, Del),
-                          TxHs = element(3, B),
-                          [begin
-                               ok = mnesia:delete(aec_tx_location, TxH, write)
-                           end || TxH <- TxHs]
+                          ok
+                          %[B] = mnesia:dirty_read(aec_blocks, Del),
+                          %TxHs = element(3, B),
+                          %[begin
+                          %     ok = mnesia:delete(aec_tx_location, TxH, write)
+                          % end || TxH <- TxHs]
                   end,
                   ok = mnesia:delete(aec_headers, Del, write),
                   ok = mnesia:delete(aec_blocks, Del, write),
@@ -124,8 +123,6 @@ do_rollback(ForkPoint, Height, TopHeight) ->
          end || H <- lists:seq(Height+1, TopHeight+SafetyMargin)],
         aec_db:write_top_block_hash(ForkPoint)
       end),
-    {ok, _} = supervisor:restart_child(aecore_sup, aec_connection_sup),
-    {ok, _} = supervisor:restart_child(aecore_sup, aec_tx_pool),
     ok.
 
 ensure_gc_disabled() ->
