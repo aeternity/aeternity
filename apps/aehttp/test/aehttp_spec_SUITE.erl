@@ -113,8 +113,11 @@ validate_api(Config) ->
 %%% --- utility
 
 json_from_yaml(Config) ->
-    SpecFile = filename:join([proplists:get_value(top_dir, Config),
+    Filename = filename:join([proplists:get_value(top_dir, Config),
                               "apps/aehttp/priv/swagger.yaml"]),
-    Yamls = yamerl:decode_file(SpecFile, [str_node_as_binary]),
-    Yaml = lists:last(Yamls),
+    Yamls = yamerl:decode_file(Filename, [str_node_as_binary]),
+    YamlTpl = lists:last(Yamls),
+    OldInfo = proplists:get_value(<<"info">>, YamlTpl),
+    UpdatedInfo = lists:keyreplace(<<"version">>, 1, OldInfo, {<<"version">>, aeu_info:get_version()}),
+    Yaml = lists:keyreplace(<<"info">>, 1, YamlTpl, {<<"info">>, UpdatedInfo}),
     jsx:prettify(jsx:encode(Yaml)).
