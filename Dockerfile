@@ -1,8 +1,9 @@
 FROM aeternity/builder:otp21 as builder
 
 # Add required files to download and compile only the dependencies
-ADD rebar.config rebar.lock Makefile rebar3 rebar.config.script VERSION /app/
+ADD rebar.config rebar.lock Makefile rebar3 rebar.config.script /app/
 ENV ERLANG_ROCKSDB_OPTS "-DWITH_BUNDLE_LZ4=ON -DWITH_BUNDLE_SNAPPY=ON"
+
 RUN cd /app && make prod-compile-deps
 # Add the whole project and compile aeternity itself.
 ADD . /app
