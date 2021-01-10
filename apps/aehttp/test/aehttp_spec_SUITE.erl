@@ -58,7 +58,7 @@ end_per_testcase(_Case, Config) ->
 get_api(Config) ->
     %% ensure http interface is up and running
     aecore_suite_utils:connect(aecore_suite_utils:node_name(?NODE)),
-    Spec = json_from_yaml(Config),
+    Spec = aehttp_spec:json(),
 
     Host = aecore_suite_utils:external_address(),
     URL = binary_to_list(iolist_to_binary([Host, "/api"])),
@@ -77,7 +77,7 @@ get_api(Config) ->
     ok.
 
 validate_api(Config) ->
-    Spec = json_from_yaml(Config),
+    Spec = aehttp_spec:json(),
 
     Url = "https://validator.swagger.io/validator/",
     case httpc:request(post, {Url, [],  "application/json", Spec}, [], []) of
@@ -109,12 +109,3 @@ validate_api(Config) ->
             ct:pal("Connection problem: ~p", [Other]),
             {fail, "cannot connect to swagger validation server"}
     end.
-
-%%% --- utility
-
-json_from_yaml(Config) ->
-    SpecFile = filename:join([proplists:get_value(top_dir, Config),
-                              "apps/aehttp/priv/swagger.yaml"]),
-    Yamls = yamerl:decode_file(SpecFile, [str_node_as_binary]),
-    Yaml = lists:last(Yamls),
-    jsx:prettify(jsx:encode(Yaml)).
