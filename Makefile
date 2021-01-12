@@ -241,7 +241,7 @@ REVISION:
 	@git rev-parse HEAD > $@ || echo "unknown" > $@
 
 VERSION:
-	@git describe --tags --exact-match 2> /dev/null || git describe --all --dirty --long 2> /dev/null | sed -e "s/^heads\///" > $@
+	@git describe --tags | sed -E "s/^v(.*)\-([0-9]+)\-g([a-f0-9]+)$$/v\1+\2.\3/" > $@
 
 eunit-%: KIND=test
 eunit-%: internal-build
