@@ -208,6 +208,11 @@
                     "description": "Provide node version to peers",
                     "type" : "boolean",
                     "default": true 
+                },
+                "peer_analytics" : {
+                    "description": "If enabled aggregates info about remote peers and exposes them via HTTP. Overrides max_inbound and max_outbound",
+                    "type" : "boolean",
+                    "default": false
                 }
             }
         },

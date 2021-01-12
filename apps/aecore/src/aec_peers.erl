@@ -787,10 +787,15 @@ next_connect_delay(State) ->
     case is_outbound_allowed(State) of
         false  -> infinity;
         true ->
-            #state{ last_connect_time = LastTime, outbound = Outbound } = State,
-            ExpDelay = floor(math:pow(2, Outbound - 1)) * 1000,
-            BoundDelay = min(ExpDelay, ?MAX_CONNECTION_INTERVAL),
-            max(?MIN_CONNECTION_INTERVAL, BoundDelay - (timestamp() - LastTime))
+            case aeu_env:user_config([<<"sync">>, <<"peer_analytics">>], false) of
+                false ->
+                    #state{ last_connect_time = LastTime, outbound = Outbound } = State,
+                    ExpDelay = floor(math:pow(2, Outbound - 1)) * 1000,
+                    BoundDelay = min(ExpDelay, ?MAX_CONNECTION_INTERVAL),
+                    max(?MIN_CONNECTION_INTERVAL, BoundDelay - (timestamp() - LastTime));
+                %% If this is a monitoring node then aggressively connect to peers
+                true -> ?MIN_CONNECTION_INTERVAL
+            end
     end.
 
 %% Gives the node some time to receive peers and establish outbound connections

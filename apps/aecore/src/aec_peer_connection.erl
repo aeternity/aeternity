@@ -721,7 +721,15 @@ handle_ping_msg(S, RemotePingObj) ->
        difficulty   := LDiff } = local_ping_obj(S),
     #{ address := SourceAddr } = S,
     PeerId = peer_id(S),
-    case decode_remote_ping(RemotePingObj) of
+    DecodedPingObj = decode_remote_ping(RemotePingObj),
+    case DecodedPingObj of
+        {ok, true, RGHash0, RTHash0, RDiff0, _} ->
+            aec_peer_analytics:log_peer_status(S, RGHash0, RTHash0, RDiff0);
+        {ok, true, RGHash0, RTHash0, RDiff0, _} ->
+            aec_peer_analytics:log_temporary_peer_status(S, RGHash0, RTHash0, RDiff0);
+        {error, _} -> ok
+    end,
+    case DecodedPingObj of
         {ok, true, RGHash, RTHash, RDiff, RPeers}
           when RGHash == LGHash, LSyncAllowed =:= true ->
             case {{LTHash, LDiff}, {RTHash, RDiff}} of
