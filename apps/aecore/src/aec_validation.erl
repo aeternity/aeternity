@@ -8,7 +8,8 @@
 -module(aec_validation).
 
 %% API
--export([validate_block/2
+-export([ validate_block/2
+        , validate_header/1
         ]).
 
 %%%===================================================================
@@ -28,3 +29,7 @@ validate_block(Block, Version) ->
         {error, Reason} ->
             {error, {consensus, Reason}}
     end.
+
+validate_header(Header) ->
+    ConsensusModule = aec_headers:consensus_module(Header),
+    ConsensusModule:dirty_validate_header_pre_conductor(Header).

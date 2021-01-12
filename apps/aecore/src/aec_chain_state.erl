@@ -499,9 +499,20 @@ internal_insert_normal(Node, Block, Origin) ->
                 Res ->
                     %% Great! We inserted the block - time to update the cache
                     aec_block_insertion:update_recent_cache(Node, InsertCtx),
+                    maybe_cache_new_top(Res, Node),
                     Res
             end
     end.
+
+maybe_cache_new_top({ok, true, _PrevKeyHdr, _Events}, Node) ->
+    cache_new_top(Node);
+maybe_cache_new_top({pof, true, _PrevKeyHdr, _PoF, _Events}, Node) ->
+    cache_new_top(Node);
+maybe_cache_new_top(_, _) ->
+    ok.
+
+cache_new_top(#node{} = Node) ->
+    aec_block_insertion:update_top(Node).
 
 internal_insert_transaction(Node, Block, Origin, Ctx) ->
     Consensus = aec_block_insertion:node_consensus(Node),
@@ -538,19 +549,24 @@ internal_insert_transaction(Node, Block, Origin, Ctx) ->
     end.
 
 assert_not_illegal_fork_or_orphan(Node, Origin, State) ->
-    case Origin of
-        sync -> ok;
-        undefined -> assert_height_delta(Node, State)
-    end.
-
-assert_height_delta(Node, State) ->
     Top       = db_get_node(get_top_block_hash(State)),
     TopHeight = node_height(Top),
     Height    = node_height(Node),
-    case Height >= TopHeight - gossip_allowed_height_from_top() of
-        false -> aec_block_insertion:abort_state_transition({too_far_below_top, Height, TopHeight});
-        true -> ok
+    case assert_height_delta(Origin, Height, TopHeight) of
+        true -> ok;
+        false ->
+            aec_block_insertion:abort_state_transition({too_far_below_top, Height, TopHeight})
     end.
+
+assert_height_delta(sync, Height, TopHeight) ->
+    case aec_resilience:fork_resistance_active() of
+        {yes, Delta} ->
+            Height >= (TopHeight - Delta);
+        no ->
+            true
+    end;
+assert_height_delta(undefined, Height, TopHeight) ->
+    Height >= ( TopHeight - gossip_allowed_height_from_top() ).
 
 update_state_tree(Node, State, Ctx) ->
     {ok, Trees, ForkInfoIn} = get_state_trees_in(Node, aec_block_insertion:ctx_prev(Ctx), true),
@@ -779,7 +795,7 @@ find_one_predecessor([N|Left], Node) ->
 %% NOTE: If the restriction of reporting a miner in the next
 %% generation is lifted, we need to do something more elaborate.
 
-grant_fees(Node, Trees, Delay, FraudStatus, State) ->
+grant_fees(Node, Trees, Delay, FraudStatus, _State) ->
     Consensus = aec_block_insertion:node_consensus(Node),
     NewestBlockHeight = node_height(Node) - Delay + ?POF_REPORT_DELAY,
     KeyNode4 = find_predecessor_at_height(Node, NewestBlockHeight),

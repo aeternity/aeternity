@@ -71,6 +71,9 @@
          call_proxy/2,
          await_aehttp/1,
          await_sync_complete/2,
+         %% await_sync_toggle/2,
+         start_subscriber/2,
+         stop_subscriber/1,
          rpc/3,
          rpc/4,
          http_request/4,
@@ -648,13 +651,56 @@ await_sync_complete(T0, Nodes) ->
                   check_event(Msg, Acc)
           end, Nodes, AllEvents),
     ct:log("SyncNodes = ~p", [SyncNodes]),
+    ct:log("Messages = ~p", [process_info(self(), messages)]),
     collect_sync_events(SyncNodes, 100).
+
+%% A subscriber spawns P on the given node, starts an aec_events subscrition
+%% on the given event, and then relays all published messages to its parent,
+%% on the form {relayed_event, P, Event, Msg}.
+%%
+%% The subscriber is stopped using stop_subscriber(P). This unlinks and kills
+%% the process P, and also flushes all relayed messages.
+start_subscriber(Node, Event) ->
+    Me = self(),
+    spawn_link(
+      Node,
+      fun() ->
+              aec_events:subscribe(Event),
+              subscriber_relay(Me)
+      end).
+
+stop_subscriber(Pid) when is_pid(Pid) ->
+    MRef = erlang:monitor(process, Pid),
+    unlink(Pid),
+    exit(Pid, kill),
+    receive
+        {'DOWN', MRef, _, _, _} ->
+            flush_relay_msgs(Pid)
+    after 10000 ->
+            error(timeout)
+    end.
+
+flush_relay_msgs(Pid) ->
+    receive
+        {event_rely, Pid, _, _} ->
+            flush_relay_msgs(Pid)
+    after 0 ->
+            ok
+    end.
+
+subscriber_relay(Parent) ->
+    receive
+        {gproc_ps_event, Event, Msg} ->
+            Parent ! {relayed_event, self(), Event, Msg},
+            subscriber_relay(Parent)
+    end.
 
 collect_sync_events(_, 0) -> error(retry_exhausted);
 collect_sync_events([], _) -> done;
 collect_sync_events(SyncNodes, N) ->
     receive
-        {gproc_ps_event, chain_sync, Msg} ->
+        {gproc_ps_event, chain_sync, #{info := {chain_sync_done, _}} = Msg} ->
+            ct:log("chain_sync event: ~p", [Msg]),
             SyncNodes1 = check_event(Msg, SyncNodes),
             collect_sync_events(SyncNodes1, N-1)
     after 20000 ->

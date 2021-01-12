@@ -30,6 +30,8 @@
         , keyblock_create_adjust_target/2
         %% Preconductor hook
         , dirty_validate_block_pre_conductor/1
+        , dirty_validate_header_pre_conductor/1
+        , dirty_validate_key_hash_at_height/2
         %% Dirty validation before starting the state transition
         , dirty_validate_key_node_with_ctx/3
         , dirty_validate_micro_node_with_ctx/3
@@ -144,6 +146,8 @@ keyblocks_for_target_calc() -> 0.
 keyblock_create_adjust_target(Block, []) -> {ok, Block}.
 
 dirty_validate_block_pre_conductor(_) -> ok.
+dirty_validate_header_pre_conductor(_) -> ok.
+dirty_validate_key_hash_at_height(_, _) -> ok.
 %% Don't waste CPU cycles when we are only interested in state transitions...
 dirty_validate_key_node_with_ctx(_Node, _Block, _Ctx) -> ok.
 dirty_validate_micro_node_with_ctx(_Node, _Block, _Ctx) -> ok.

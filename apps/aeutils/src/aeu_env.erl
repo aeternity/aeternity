@@ -26,9 +26,7 @@
 -export([data_dir/1]).
 -export([check_config/1, check_config/2]).
 
--ifdef(TEST).
 -export([update_config/1]).
--endif.
 
 -type basic_type() :: number() | binary() | boolean().
 -type basic_or_list()  :: basic_type() | [basic_type()].
@@ -548,6 +546,7 @@ update_config(Map) when is_map(Map) ->
     ConfigTree1 = to_tree(ConfigMap1),
     set_env(aeutils, '$user_map', ConfigMap1),
     set_env(aeutils, '$user_config', ConfigTree1),
+    aec_events:publish(update_config, Map),
     ok.
 
 update_map(With, Map) when is_map(With), is_map(Map) ->

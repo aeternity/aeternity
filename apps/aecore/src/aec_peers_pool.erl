@@ -19,7 +19,7 @@
 %%%   <li>When receiving a peer through gossip:
 %%%     <ul>
 %%%       <li>Call {@link update/3}; if this is a new peer this will add the
-%%%           peer to the unverifiedpool; if the peer is already pooled it will
+%%%           peer to the unverified pool; if the peer is already pooled it will
 %%%           just refresh it.
 %%%       </li>
 %%%     </ul>
@@ -68,15 +68,15 @@
 %%%   </li>
 %%% </ul>
 %%%
-%%% This data structur do not make any assumtion about the time; it requires
-%%% it to be passed as parameter to function requiring it.
-%%% Some functions takes a time in millisecond as it would be returned from
+%%% This data structure does not make any assumption about the time; it requires
+%%% it to be passed as a parameter to any function requiring it.
+%%% Some functions takes a time in milliseconds as it would be returned from
 %%% `erlang:system_time(millisecond)' and uses it as if it was the current time.
-%%% Every calls should be given a time greater or equal to the last call.
+%%% Every call should be given a time greater or equal to the last call.
 %%%
 %%% To support selecting peers from a new address group, a filter function
 %%% must be given to {@link random_select/4} that will reject peers from the
-%%% current connections address groups.
+%%% current connection's address groups.
 %%%
 %%% @end
 %%%=============================================================================

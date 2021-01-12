@@ -30,6 +30,7 @@
 -export([del_peer/1]).
 -export([block_peer/1]).
 -export([unblock_peer/1]).
+-export([peer_suspect/1]).
 
 %% API for getters and flags.
 -export([is_blocked/1]).
@@ -181,6 +182,9 @@ block_peer(PeerInfo) ->
 -spec unblock_peer(aec_peer:id()) -> ok | {error, term()}.
 unblock_peer(PeerId) ->
     gen_server:call(?MODULE, {unblock_peer, PeerId}).
+
+peer_suspect(PeerId) ->
+    gen_server:call(?MODULE, {peer_suspect, PeerId}).
 
 %--- GETTERS AND FLAGS FUNCTIONS -----------------------------------------------
 
@@ -405,6 +409,9 @@ handle_call(unblock_all, _From, State) -> % Only used in tests
     {reply, ok, update_peer_metrics(schedule_connect(unblock_all(State)))};
 handle_call(local_peer_info, _From, #state{local_peer = LocalPeer} = State) -> % Only used in tests
     {reply, {ok, LocalPeer}, State};
+handle_call({peer_suspect, PeerId}, _From, State0) ->
+    State = on_peer_suspect(PeerId, State0),
+    {reply, ok, update_peer_metrics(State)};
 handle_call({count, Tag}, _From, State) ->
     {reply, count(Tag, State), State};
 handle_call({connected_peers, Tag}, _From, State) ->
@@ -994,6 +1001,18 @@ on_peer_dead(PeerId, Pid, State) ->
             State
     end.
 
+-spec on_peer_suspect(aec_peer:id(), state()) -> state().
+on_peer_suspect(PeerId, State) ->
+    case conn_take(PeerId, State) of
+        {#conn{} = Conn, State2} ->
+            epoch_sync:debug("Peer ~p flagged as suspect", [aec_peer:ppp(PeerId)]),
+            pool_reject(PeerId, conn_cleanup(Conn, State2));
+        error ->
+            epoch_sync:info("Peer ~p flagged as suspect, but no current connection",
+                            [aec_peer:ppp(PeerId)]),
+            State
+    end.
+
 %% Handles outbound connection being successfully estabished.
 -spec on_peer_connected(aec_peer:id(), pid(), state())
     -> {ok, state()} | {{error, term()}, state()}.
@@ -1458,7 +1477,7 @@ pool_verify(PeerId, State) ->
 
 %% Updates, verify and select given peer.
 %% `update' to be sure the peer is pooled, `verify' to move it to the
-%% verified pool becuase it is connected, and `select' so we will not try
+%% verified pool because it is connected, and `select' so we will not try
 %% to connect to it later on.
 -spec pool_upversel(aec_peer:peer(), state())
     -> {ok, state()} | {{error, term()}, state()}.

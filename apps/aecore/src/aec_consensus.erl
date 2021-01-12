@@ -145,6 +145,9 @@
 %% The chain simulator in dev mode should preferably keep the state in ram or in a temporary
 %% mnesia disk table
 -callback dirty_validate_block_pre_conductor(aec_blocks:block()) -> ok | {error, any()}.
+-callback dirty_validate_header_pre_conductor(aec_headers:header()) -> ok | {error, any()}.
+-callback dirty_validate_key_hash_at_height(non_neg_integer(), aec_blocks:block_header_hash()) ->
+    ok | {error, any()}.
 
 %% This callback is called in dirty context before starting the DB transaction for block insertion
 %% It's called only when the insertion context got properly created:
