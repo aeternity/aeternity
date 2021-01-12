@@ -936,6 +936,7 @@ add_and_delete_untrusted_peers_and_restart(Config) ->
     Add(Peer2),
     Add(Peer3),
     Add(Peer4),
+    timer:sleep(100),
     0 = rpc:call(N1, aec_peers, count, [verified], 5000),
     4 = rpc:call(N1, aec_peers, count, [unverified], 5000),
 
