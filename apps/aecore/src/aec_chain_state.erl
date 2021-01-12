@@ -528,19 +528,24 @@ internal_insert_transaction(Node, Block, Origin, Ctx) ->
     end.
 
 assert_not_illegal_fork_or_orphan(Node, Origin, State) ->
-    case Origin of
-        sync -> ok;
-        undefined -> assert_height_delta(Node, State)
-    end.
-
-assert_height_delta(Node, State) ->
     Top       = db_get_node(get_top_block_hash(State)),
     TopHeight = node_height(Top),
     Height    = node_height(Node),
-    case Height >= TopHeight - gossip_allowed_height_from_top() of
-        false -> aec_block_insertion:abort_state_transition({too_far_below_top, Height, TopHeight});
-        true -> ok
+    case assert_height_delta(Origin, Height, TopHeight) of
+        true -> ok;
+        false ->
+            aec_block_insertion:abort_state_transition({too_far_below_top, Height, TopHeight})
     end.
+
+assert_height_delta(sync, Height, TopHeight) ->
+    case aec_resilience:fork_resistance_active() of
+        {yes, Delta} ->
+            Height >= (TopHeight - Delta);
+        no ->
+            true
+    end;
+assert_height_delta(undefined, Height, TopHeight) ->
+    Height >= ( TopHeight - gossip_allowed_height_from_top() ).
 
 update_state_tree(Node, State, Ctx) ->
     {ok, Trees, ForkInfoIn} = get_state_trees_in(Node, aec_block_insertion:ctx_prev(Ctx), true),

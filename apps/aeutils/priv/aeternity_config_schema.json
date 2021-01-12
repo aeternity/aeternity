@@ -163,6 +163,26 @@
                     "description": "Allowed height difference from current top for incoming blocks (via gossip)",
                     "type" : "integer"
                 },
+                "sync_allowed_height_from_top" : {
+                    "description": "Once own node is synced, reject sync blocks at least this far from the current top; 0 means disabled",
+                    "type" : "integer",
+                    "default" : 0
+                },
+                "block_whitelist" : {
+                    "type" : "object",
+                    "additionalProperties" : false,
+                    "properties" : {
+                        "set" : {
+                            "$ref" : "#/definitions/whitelist_objects"
+                        },
+                        "add" : {
+                            "$ref" : "#/definitions/whitelist_objects"
+                        },
+                        "del" : {
+                            "$ref" : "#/definitions/whitelist_objects"
+                        }
+                    }
+                },
                 "log_peer_connection_count_interval" : {
                     "description": "Time (milliseconds) between logging info about connected peers",
                     "type" : "integer",
@@ -1219,6 +1239,15 @@
     "definitions" : {
         "key_value_pattern": {
             "pattern" : "^[a-zA-Z0-9\\-_\\.]+\\h*:\\h*[0-9]+(\\h*,\\h*[a-zA-Z_]+\\h*:\\h*[0-9]+)*"
+        },
+        "whitelist_objects" : {
+            "type" : "array",
+            "items" : {
+                "type" : "string",
+                "description" : "Array of Height:KeyBlockHash strings",
+                "pattern" : "^[0-9]+:kh_[1-9A-HJ-NP-Za-km-z]+$",
+                "example" : "365349:kh_pgnGHhUWtK8ae4GGQrnswVdbMnyAFxvP6HUHQT2Utpmgr9mss"
+            }
         }
     }
 }
