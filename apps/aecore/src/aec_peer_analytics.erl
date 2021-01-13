@@ -55,6 +55,12 @@ enabled() -> aeu_env:user_config([<<"sync">>, <<"peer_analytics">>], false).
 start_link() ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
 
+%% Ask the nodes for their version every hour
+time_between_version_probes() -> 60 * 60.
+
+%% Maximum inactivity in seconds after which we garbage collect the stats
+max_allowed_peer_inactivity() -> 24 * 60 * 60. %% If a node was last seen a day ago then garbage collect it
+
 -spec init(any()) -> {ok, state()}.
 init(_) ->
     Enabled = enabled(),
@@ -65,6 +71,7 @@ init(_) ->
             application:set_env(aecore, sync_max_inbound, 1000000);
         false -> lager:info("Detailed peer statistics are disabled")
     end,
+    timer:send_interval((max_allowed_peer_inactivity() + 5 * 60) * 1000, sweep),
     {ok, #{enabled => Enabled, stats => #{}, probes_pids => #{}, probes_mref => #{}}}.
 
 handle_call({log_peer_info, Pub, NetID, Ver, Os, Rev, Vendor}, _From, #{ stats := Stats } = St) ->
@@ -84,7 +91,14 @@ handle_call(Msg, _From, #{} = St) ->
 
 handle_info({'DOWN', MRef, process, _, _}, #{probes_pids := PPids, probes_mref := PRefs} = St) ->
     Pub = maps:get(MRef, PRefs),
-    {noreply, St#{probes_pids := maps:remove(Pub, PPids), probes_mref := maps:remove(MRef, PRefs)}}.
+    {noreply, St#{probes_pids := maps:remove(Pub, PPids), probes_mref := maps:remove(MRef, PRefs)}};
+handle_info(sweep, #{stats := Stats} = St) ->
+    %% Garbage collected stats don't have a version probe pending
+    Max = max_allowed_peer_inactivity(),
+    {noreply, St#{stats => maps:filter(
+        fun (_, #{first_seen := FT, last_seen := LT}) when LT-FT =< Max -> true;
+            (_, _) -> false end,
+        Stats)}}.
 
 handle_cast(_Msg, #{enabled := false} = St) -> {noreply, St};
 handle_cast({log_temporary_peer_status, #{r_pubkey := Pub, host := Host, port := Port}, GHash, THash, Diff}, St) ->
@@ -112,9 +126,6 @@ log_ping(#{stats := Stats} = St, Pub, Host, Port, GHash, THash, Diff) ->
 unix_time() ->
     {MegaSecs, Secs, _MicroSecs} = now(),
     MegaSecs * 1000000 + Secs.
-
-%% Ask the nodes for their version every hour
-time_between_version_probes() -> 60 * 60.
 
 maybe_schedule_version_probe(#{stats := Stats, probes_pids := PPids, probes_mref := MRefs} = St, Pub) ->
     #{first_seen := First, last_seen := Last, info := Info} = maps:get(Pub, Stats),
