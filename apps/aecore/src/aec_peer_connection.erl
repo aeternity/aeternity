@@ -44,6 +44,10 @@
 -export([gossip_serialize_block/1,
          gossip_serialize_tx/1]).
 
+-ifdef(TEST).
+-export([is_node_info_sharing_enabled/0]).
+-endif.
+
 -include("aec_peer_messages.hrl").
 -include("blocks.hrl").
 
