@@ -22,6 +22,7 @@
 -export([ log_peer_status/4
         , log_temporary_peer_status/4
         , get_stats/0
+        , enabled/0
         ]).
 
 -type peer_stat() :: #{ host => string() | binary()
@@ -49,13 +50,14 @@ log_peer_info(Pub, NetID, Ver, Os, Rev, Vendor) ->
 log_peer_info_unknown(Pub) ->
     gen_server:call(?MODULE, {log_peer_info_unknown, Pub}).
 get_stats() -> gen_server:call(?MODULE, get_stats).
+enabled() -> aeu_env:user_config([<<"sync">>, <<"peer_analytics">>], false).
 
 start_link() ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
 
 -spec init(any()) -> {ok, state()}.
 init(_) ->
-    Enabled = aeu_env:user_config([<<"sync">>, <<"peer_analytics">>], false),
+    Enabled = enabled(),
     case Enabled of
         true ->
             lager:info("Enabling detailed peer statistics"),
