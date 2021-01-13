@@ -58,7 +58,7 @@ commands_(OpsBin, Cfg) ->
     wait_for_value({height, 0}, [node1], ?STARTUP_TIMEOUT, Cfg),
     {0, Output1} = run_cmd_in_node_dir(node1, [OpsBin, "versions"], Cfg),
     ?assertMatch({match, _}, re:run(Output1,
-        "Installed versions:[\r\n]*\\*[ \t]*[0-9\\.\\-a-z]*[ \t]*permanent[\r\n]*")),
+        "Installed versions:[\r\n]*\\*[ \t]*[0-9\\.\\-a-z]*[0-9\\.\\+a-z]*[ \t]*permanent[\r\n]*")),
 
     {0, Output2} = run_cmd_in_node_dir(node1, [OpsBin, "peer_key"], Cfg),
     {ok, PeerKey} = aeser_api_encoder:safe_decode(peer_pubkey, list_to_binary(string:trim(Output2, trailing, "\n"))),
