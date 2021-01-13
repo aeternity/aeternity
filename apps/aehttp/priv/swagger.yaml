@@ -950,7 +950,7 @@ paths:
   /status/network:
     get:
       tags:
-        - external
+        - internal
         - node_info
       operationId: GetNetworkStatus
       description: 'Get detailed analytics on peers'
@@ -958,7 +958,7 @@ paths:
         - application/json
       parameters: []
       responses:
-        '400':
+        '404':
           description: Analytics disabled
           schema:
             $ref: '#/definitions/Error'

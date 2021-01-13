@@ -27,6 +27,9 @@
                         , dry_run_results/1
                         ]).
 
+-define(READ_Q, http_read).
+-define(WRITE_Q, http_update).
+
 -export([patterns/0]).
 
 -include("../../aecontract/include/aecontract.hrl").
@@ -47,6 +50,9 @@ forbidden(OpId) ->
         false -> false
     end.
 
+queue('GetNetworkStatus') -> ?READ_Q;
+queue(_)                  -> ?WRITE_Q.
+
 -spec handle_request(
         OperationID :: atom(),
         Req :: map(),
@@ -54,7 +60,7 @@ forbidden(OpId) ->
                    ) -> {Status :: cowboy:http_status(), Headers :: list(), Body :: map()}.
 
 handle_request(OperationID, Req, Context) ->
-    try aec_jobs_queues:run(http_update,
+    try aec_jobs_queues:run(queue(OperationID),
                             fun() -> handle_request_(OperationID, Req, Context) end)
     catch
         error:{rejected, _} ->
@@ -410,6 +416,14 @@ handle_request_('GetTokenSupplyByHeight', Req, _Context) ->
             {200, [], Result};
         {error, chain_too_short} ->
             {400, [], #{reason => <<"Chain too short">>}}
+    end;
+
+handle_request_('GetNetworkStatus', _Req, _Context) ->
+    case aec_peer_analytics:enabled() of
+        false ->
+            {404, [], #{reason => <<"Network analytics disabled in node config">>}};
+        true ->
+            {200, [], aec_peer_analytics:get_stats_for_client()}
     end;
 
 handle_request_(OperationID, Req, Context) ->

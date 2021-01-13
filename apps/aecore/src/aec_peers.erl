@@ -787,7 +787,7 @@ next_connect_delay(State) ->
     case is_outbound_allowed(State) of
         false  -> infinity;
         true ->
-            case aeu_env:user_config([<<"sync">>, <<"peer_analytics">>], false) of
+            case aec_peer_analytics:enabled() of
                 false ->
                     #state{ last_connect_time = LastTime, outbound = Outbound } = State,
                     ExpDelay = floor(math:pow(2, Outbound - 1)) * 1000,

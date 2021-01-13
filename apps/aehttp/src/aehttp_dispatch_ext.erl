@@ -90,7 +90,6 @@ queue('GetNameEntryByName')                     -> ?READ_Q;
 queue('GetChannelByPubkey')                     -> ?READ_Q;
 queue('GetPeerPubkey')                          -> ?READ_Q;
 queue('GetStatus')                              -> ?READ_Q;
-queue('GetNetworkStatus')                       -> ?READ_Q;
 queue('GetPeerKey')                             -> ?READ_Q;
 %% update transactions (default to update in catch-all)
 queue('PostTransaction')                        -> ?WRITE_Q;
@@ -630,19 +629,7 @@ handle_request_('GetStatus', _Params, _Context) ->
        <<"peer_pubkey">>                => aeser_api_encoder:encode(peer_pubkey, PeerPubkey),
        <<"top_key_block_hash">>         => aeser_api_encoder:encode(key_block_hash, TopBlockHash),
        <<"top_block_height">>           => TopBlockHeight}};
-handle_request_('GetNetworkStatus', _Params, _Context) ->
-    case aec_peer_analytics:enabled() of
-        false ->
-            {400, [], #{reason => <<"Network analytics disabled in node config">>}};
-        true ->
-            Stats0 = maps:to_list(aec_peer_analytics:get_stats()),
-            Stats1 = lists:map(fun({K, V}) ->
-                { aeser_api_encoder:encode(peer_pubkey, K)
-                , encode_peer_details(V)} end,
-                Stats0),
-            Stats2 = maps:from_list(Stats1),
-            {200, [], Stats2}
-    end;
+
 handle_request_(OperationID, Req, Context) ->
     error_logger:error_msg(
       ">>> Got not implemented request to process: ~p~n",
@@ -674,40 +661,6 @@ encode_generation(KeyBlock, MicroBlocks, PrevBlockType) ->
                            {ok, Hash} = aec_blocks:hash_internal_representation(M),
                            aeser_api_encoder:encode(micro_block_hash, Hash)
                        end || M <- MicroBlocks]}.
-
-encode_peer_details(#{ host := Host
-                     , port := Port
-                     , first_seen := FT
-                     , last_seen := LT
-                     , genesis_hash := GH
-                     , top_hash := TH
-                     , difficulty := D
-                     , info := Info}) ->
-    EInfo = encode_peer_info(Info),
-    EStatus = #{ <<"host">> => Host
-               , <<"port">> => Port
-               , <<"first_seen">> => FT
-               , <<"last_seen">> => LT
-               , <<"genesis_hash">> => aeser_api_encoder:encode(key_block_hash, GH)
-               , <<"top_hash">> => aeser_api_encoder:encode(key_block_hash, TH)
-               , <<"top_difficulty">> => D
-               },
-    maps:merge(EStatus, EInfo).
-
-encode_peer_info(unresolved) -> #{};
-encode_peer_info(unknown) -> #{};
-encode_peer_info(#{ network_id := NetID
-                  , version := Ver
-                  , os := Os
-                  , revision := Rev
-                  , vendor := Vendor
-                  }) ->
-    #{ <<"network_id">> => NetID
-     , <<"node_version">> => Ver
-     , <<"node_revision">> => Rev
-     , <<"node_vendor">> => Vendor
-     , <<"node_os">> => Os
-     }.
 
 deserialize_transaction(Tx) ->
     try

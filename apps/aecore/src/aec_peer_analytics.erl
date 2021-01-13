@@ -16,12 +16,15 @@
         , handle_call/3
         , handle_cast/2
         , handle_info/2
+        , terminate/2
+        , code_change/3
         ]).
 
 %% Peer stats
 -export([ log_peer_status/4
         , log_temporary_peer_status/4
         , get_stats/0
+        , get_stats_for_client/0
         , enabled/0
         ]).
 
@@ -43,14 +46,62 @@
 
 log_temporary_peer_status(S, GHash, THash, Diff) ->
     gen_server:cast(?MODULE, {log_temporary_peer_status, S, GHash, THash, Diff}).
+
 log_peer_status(S, GHash, THash, Diff) ->
     gen_server:cast(?MODULE, {log_peer_status, S, GHash, THash, Diff}).
+
 log_peer_info(Pub, NetID, Ver, Os, Rev, Vendor) ->
     gen_server:call(?MODULE, {log_peer_info, Pub, NetID, Ver, Os, Rev, Vendor}).
+
 log_peer_info_unknown(Pub) ->
     gen_server:call(?MODULE, {log_peer_info_unknown, Pub}).
+
 get_stats() -> gen_server:call(?MODULE, get_stats).
-enabled() -> aeu_env:user_config([<<"sync">>, <<"peer_analytics">>], false).
+
+get_stats_for_client() ->
+    maps:fold(fun(K, V, Acc) ->
+        Acc#{ aeser_api_encoder:encode(peer_pubkey, K) => encode_peer_details_for_client(V) }
+              end, #{}, get_stats()).
+
+encode_peer_details_for_client(#{ host := Host
+                                 , port := Port
+                                 , first_seen := FT
+                                 , last_seen := LT
+                                 , genesis_hash := GH
+                                 , top_hash := TH
+                                 , difficulty := D
+                                 , info := Info}) ->
+    EInfo = encode_peer_info_for_client(Info),
+    EStatus = #{ <<"host">> => Host
+               , <<"port">> => Port
+               , <<"first_seen">> => FT
+               , <<"last_seen">> => LT
+               , <<"genesis_hash">> => aeser_api_encoder:encode(key_block_hash, GH)
+               , <<"top_hash">> => aeser_api_encoder:encode(key_block_hash, TH)
+               , <<"top_difficulty">> => D
+               },
+    maps:merge(EStatus, EInfo).
+
+encode_peer_info_for_client(unresolved) -> #{};
+encode_peer_info_for_client(unknown) -> #{};
+encode_peer_info_for_client(#{ network_id := NetID
+                             , version := Ver
+                             , os := Os
+                             , revision := Rev
+                             , vendor := Vendor
+                             }) ->
+    #{ <<"network_id">> => NetID
+     , <<"node_version">> => Ver
+     , <<"node_revision">> => Rev
+     , <<"node_vendor">> => Vendor
+     , <<"node_os">> => Os
+     }.
+
+enabled() ->
+    {ok, Enabled} =
+        aeu_env:find_config( [<<"sync">>, <<"peer_analytics">>]
+                           , [user_config, schema_default, {value,false}]),
+    Enabled.
 
 start_link() ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
@@ -73,6 +124,9 @@ init(_) ->
     end,
     timer:send_interval((max_allowed_peer_inactivity() + 5 * 60) * 1000, sweep),
     {ok, #{enabled => Enabled, stats => #{}, probes_pids => #{}, probes_mref => #{}}}.
+
+terminate(_Reason, _St) -> ok.
+code_change(_FromVsn, St, _Extra) -> {ok, St}.
 
 handle_call({log_peer_info, Pub, NetID, Ver, Os, Rev, Vendor}, _From, #{ stats := Stats } = St) ->
     Info = #{ network_id => NetID
@@ -124,8 +178,7 @@ log_ping(#{stats := Stats} = St, Pub, Host, Port, GHash, THash, Diff) ->
     St#{stats => Stats#{ Pub => PS }}.
 
 unix_time() ->
-    {MegaSecs, Secs, _MicroSecs} = now(),
-    MegaSecs * 1000000 + Secs.
+    erlang:monotonic_time(second) + erlang:time_offset(second).
 
 maybe_schedule_version_probe(#{stats := Stats, probes_pids := PPids, probes_mref := MRefs} = St, Pub) ->
     #{first_seen := First, last_seen := Last, info := Info} = maps:get(Pub, Stats),
