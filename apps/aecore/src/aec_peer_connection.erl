@@ -725,7 +725,7 @@ handle_ping_msg(S, RemotePingObj) ->
     case DecodedPingObj of
         {ok, true, RGHash0, RTHash0, RDiff0, _} ->
             aec_peer_analytics:log_peer_status(S, RGHash0, RTHash0, RDiff0);
-        {ok, true, RGHash0, RTHash0, RDiff0, _} ->
+        {ok, false, RGHash0, RTHash0, RDiff0, _} ->
             aec_peer_analytics:log_temporary_peer_status(S, RGHash0, RTHash0, RDiff0);
         {error, _} -> ok
     end,
