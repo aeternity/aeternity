@@ -952,6 +952,7 @@ paths:
       tags:
         - internal
         - node_info
+        - debug
       operationId: GetNetworkStatus
       description: 'Get detailed analytics on peers'
       produces:
