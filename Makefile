@@ -299,7 +299,7 @@ system-test: KIND=system_test
 system-test: internal-build
 	@$(REBAR) as $(KIND) do ct $(ST_CT_DIR) $(ST_CT_FLAGS) $(CT_TEST_FLAGS)
 
-aevm-test: aevm-test-deps
+aevm-test: VERSION aevm-test-deps
 	@$(REBAR) eunit --application=aevm
 
 aevm-test-deps: $(AEVM_EXTERNAL_TEST_DIR)/ethereum_tests
