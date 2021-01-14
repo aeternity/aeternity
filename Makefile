@@ -221,6 +221,9 @@ dialyzer-install: $(SWAGGER_ENDPOINTS_SPEC)
 dialyzer: $(SWAGGER_ENDPOINTS_SPEC)
 	@$(REBAR) dialyzer
 
+edoc: VERSION
+	@$(REBAR) edoc
+
 $(CT_TARGETS):
 	@KIND=test \
 	SYSCONFIG=config/test-$(patsubst ct-%,%,$@).config \
