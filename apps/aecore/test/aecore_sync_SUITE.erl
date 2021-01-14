@@ -1301,17 +1301,20 @@ first_fetch_node_infos(Successes, Fails) ->
 
 first_fetch_analytics(_Cfg) ->
     %% Verify preconditions
-    [{N1, true}, {N2, S2}, {_, S3}] = lists:map(fun({Dev, R}) ->
+    [{N1, true}, {N2, S2}, {N3, S3}] = lists:map(fun({Dev, R}) ->
         N = aecore_suite_utils:node_name(Dev),
         R = rpc:call(N, aec_peer_analytics, enabled, []),
         S = rpc:call(N, aec_peer_connection, is_node_info_sharing_enabled, []),
         {N, S} end,
         [{dev1, true}, {dev2, false}, {dev3, false}]),
-    timer:sleep(2000), %% Give the first node 2s to gather analytics
+    %% Wait for sync
+    expect_same_top([N1, N2, N3], 5),
+    pool_stats_until_two(N1, 100, 50), %% Wait for 2 entries to appear
+    pool_stats_until_no_pending_requests(N1, 100, 100), %% Wait for node info to resolve
     %% Check that results obtained via different methods agree
-    A1 = ensure_fixpoint(fun() -> rpc:call(N1, aec_peer_analytics, get_stats, []) end),
-    A2 = ensure_fixpoint(fun() -> rpc:call(N1, aec_peer_analytics, get_stats_for_client, []) end),
-    {ok, 200, A3} = ensure_fixpoint(fun() -> http_get_network_status(N1) end),
+    A1 = rpc:call(N1, aec_peer_analytics, get_stats, []),
+    A2 = rpc:call(N1, aec_peer_analytics, get_stats_for_client, []),
+    {ok, 200, A3} = http_get_network_status(N1),
     {ok, 404, #{reason := <<"Network analytics disabled in node config">>}}
         = http_get_network_status(N2),
     ct:log("Direct: ~p", [A1]),
@@ -1319,11 +1322,15 @@ first_fetch_analytics(_Cfg) ->
     ct:log("Over http: ~p", [A3]),
     true = maps:size(A1) =:= maps:size(A3),
     true = maps:size(A2) =:= maps:size(A3),
-    A4 = maps:map(fun(_, X) ->
-        maps:fold(fun(K, V, Acc) when is_atom(K) -> Acc#{atom_to_binary(K) => V};
-                     (K, V, Acc) -> Acc#{K => V}
-                  end, #{}, X) end, A3),
-    true = A2 =:= A4, %% Map match semantics
+    Norm = fun(A) -> maps:map(fun(_, X) ->
+        maps:fold(fun F(<<"last_seen">>, _, Acc) -> Acc;
+                      F(<<"top_hash">>, _, Acc) -> Acc;
+                      F(<<"top_difficulty">>, _, Acc) -> Acc;
+                      F(<<"host">> = K, <<"127.0.0.1">>, Acc) -> F(K, <<"localhost">>, Acc);
+                      F(K, V, Acc) when is_atom(K) -> F(erlang:atom_to_binary(K, utf8), V, Acc);
+                      F(K, V, Acc) -> Acc#{K => V}
+                  end, #{}, X) end, A) end,
+    true = Norm(A2) =:= Norm(A3), %% Map match semantics
     %% Check how many peers responded to the info probe
     C1 = fun(true) -> 1; (false) -> 0 end,
     C2 = fun(#{info := #{vendor := _}}) -> 1; (#{}) -> 0 end,
@@ -1331,10 +1338,23 @@ first_fetch_analytics(_Cfg) ->
     R = lists:sum(lists:map(C2, maps:values(A1))),
     ok.
 
-ensure_fixpoint(F) ->
-    X = F(),
-    X = F(),
-    X.
+pool_stats_until_two(_, _, 0) -> ct:fail("Network stat acquisition failed");
+pool_stats_until_two(N, T, R) ->
+    case rpc:call(N, aec_peer_analytics, get_stats, []) of
+        X when map_size(X) =:= 2 -> ok;
+        _ ->
+            timer:sleep(T),
+            pool_stats_until_two(N, T, R-1)
+    end.
+
+pool_stats_until_no_pending_requests(_, _, 0) -> ct:fail("Failed to fetch node info");
+pool_stats_until_no_pending_requests(N, T, R) ->
+    case rpc:call(N, aec_peer_analytics, pending_requests, []) of
+        false -> ok;
+        true ->
+            timer:sleep(T),
+            pool_stats_until_no_pending_requests(N, T, R-1)
+    end.
 
 stop_three_nodes(Cfg) ->
     MRefs = lists:map(

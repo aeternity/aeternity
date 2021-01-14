@@ -26,6 +26,7 @@
         , get_stats/0
         , get_stats_for_client/0
         , enabled/0
+        , pending_requests/0
         ]).
 
 -type peer_stat() :: #{ host => string() | binary()
@@ -97,6 +98,8 @@ encode_peer_info_for_client(#{ network_id := NetID
      , <<"node_os">> => Os
      }.
 
+pending_requests() -> gen_server:call(?MODULE, pending_requests).
+
 enabled() ->
     {ok, Enabled} =
         aeu_env:find_config( [<<"sync">>, <<"peer_analytics">>]
@@ -139,6 +142,7 @@ handle_call({log_peer_info, Pub, NetID, Ver, Os, Rev, Vendor}, _From, #{ stats :
 handle_call({log_peer_info_unknown, Pub}, _From, #{ stats := Stats } = St) ->
     {reply, ok, St#{stats => update_peer_info(Stats, Pub, unknown)}};
 handle_call(get_stats, _From, #{stats := Stats } = St) -> {reply, Stats, St};
+handle_call(pending_requests, _From, #{probes_pids := PPids} = St) -> {reply, maps:size(PPids) /= 0, St};
 handle_call(Msg, _From, #{} = St) ->
     lager:debug("Unhandled call in peer analytics ~p", [Msg]),
     {noreply, St}.

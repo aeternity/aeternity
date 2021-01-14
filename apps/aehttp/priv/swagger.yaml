@@ -947,7 +947,7 @@ paths:
           description: 'Successful operation'
           schema:
             $ref: '#/definitions/Status'
-  /status/network:
+  /debug/network:
     get:
       tags:
         - internal
