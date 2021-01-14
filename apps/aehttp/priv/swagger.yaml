@@ -947,7 +947,26 @@ paths:
           description: 'Successful operation'
           schema:
             $ref: '#/definitions/Status'
-
+  /debug/network:
+    get:
+      tags:
+        - internal
+        - node_info
+        - debug
+      operationId: GetNetworkStatus
+      description: 'Get detailed analytics on peers'
+      produces:
+        - application/json
+      parameters: []
+      responses:
+        '404':
+          description: Analytics disabled
+          schema:
+            $ref: '#/definitions/Error'
+        '200':
+          description: 'Successful operation'
+          schema:
+            $ref: '#/definitions/NetworkStatus'
   /debug/contracts/create:
     post:
       tags:
@@ -2624,6 +2643,52 @@ definitions:
     required:
       - inbound
       - outbound
+  NetworkStatus:
+    type: object
+    additionalProperties:
+      $ref: '#/definitions/PeerDetails'
+  PeerDetails:
+    type: object
+    properties:
+      host:
+        description: 'Hostname of peer'
+        type: string
+      port:
+        description: 'Port of peer'
+        $ref: '#/definitions/UInt32'
+      first_seen:
+        description: 'Unix timestamp of when the peer was first pinged'
+        $ref: '#/definitions/UInt32'
+      last_seen:
+        description: 'Unix timestamp of when the peer was last pinged'
+        $ref: '#/definitions/UInt32'
+      genesis_hash:
+        description: 'The genesis hash the remote node reports'
+        $ref: '#/definitions/EncodedHash'
+      top_hash:
+        description: 'The top hash the remote node reports'
+        $ref: '#/definitions/EncodedHash'
+      top_difficulty:
+        description: 'The total top difficulty the node reports'
+        $ref: '#/definitions/UInt64'
+      network_id:
+        type: string
+      node_version:
+        type: string
+      node_revision:
+        type: string
+      node_vendor:
+        type: string
+      node_os:
+        type: string
+    required:
+      - host
+      - port
+      - first_seen
+      - last_seen
+      - genesis_hash
+      - top_hash
+      - top_difficulty
   GenericSignedTx:
     type: object
     properties:

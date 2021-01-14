@@ -662,7 +662,6 @@ encode_generation(KeyBlock, MicroBlocks, PrevBlockType) ->
                            aeser_api_encoder:encode(micro_block_hash, Hash)
                        end || M <- MicroBlocks]}.
 
-
 deserialize_transaction(Tx) ->
     try
         {ok, aetx_sign:deserialize_from_binary(Tx)}

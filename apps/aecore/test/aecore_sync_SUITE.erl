@@ -13,6 +13,7 @@
 -export(
    [
     start_first_node/1,
+    start_first_node_with_analytics/1,
     start_second_node/1,
     start_third_node/1,
     start_blocked_second/1,
@@ -48,11 +49,12 @@
     first_fetch_node_infos_2_successes/1,
     first_fetch_node_infos_1_success_1_failure/1,
     first_fetch_node_infos_2_failures/1,
+    first_fetch_analytics/1,
     stop_three_nodes/1,
-    start_second_with_enabled_node_info/1,
-    start_second_with_disabled_node_info/1,
-    start_third_with_enabled_node_info/1,
-    start_third_with_disabled_node_info/1
+    start_second_with_enabled_node_info_no_analytics/1,
+    start_second_with_disabled_node_info_no_analytics/1,
+    start_third_with_enabled_node_info_no_analytics/1,
+    start_third_with_disabled_node_info_no_analytics/1
    ]).
 
 -include_lib("common_test/include/ct.hrl").
@@ -178,23 +180,46 @@ groups() ->
        %% one out 2 nodes reponds:
        start_first_node,
        mine_on_first,
-       start_second_with_disabled_node_info,
+       start_second_with_disabled_node_info_no_analytics,
        start_third_node,
        first_fetch_node_infos_1_success_1_failure,
        stop_three_nodes,
        %% noone responded 
        start_first_node,
        mine_on_first,
-       start_second_with_disabled_node_info,
-       start_third_with_disabled_node_info,
+       start_second_with_disabled_node_info_no_analytics,
+       start_third_with_disabled_node_info_no_analytics,
        first_fetch_node_infos_2_failures,
        stop_three_nodes,
        %% setting to true works
        start_first_node,
        mine_on_first,
-       start_second_with_enabled_node_info,
-       start_third_with_enabled_node_info,
-       first_fetch_node_infos_2_successes
+       start_second_with_enabled_node_info_no_analytics,
+       start_third_with_enabled_node_info_no_analytics,
+       first_fetch_node_infos_2_successes,
+       stop_three_nodes
+      ]},
+     {peer_analytics, [sequence],
+      [%% Node info disabled for everyone
+       start_first_node_with_analytics,
+       mine_on_first,
+       start_second_with_disabled_node_info_no_analytics,
+       start_third_with_disabled_node_info_no_analytics,
+       first_fetch_analytics,
+       stop_three_nodes,
+       %% Node info enabled for one
+       start_first_node_with_analytics,
+       mine_on_first,
+       start_second_with_enabled_node_info_no_analytics,
+       start_third_with_disabled_node_info_no_analytics,
+       first_fetch_analytics,
+       stop_three_nodes,
+       %% Node info enabled for both
+       start_first_node_with_analytics,
+       mine_on_first,
+       start_second_with_enabled_node_info_no_analytics,
+       start_third_with_enabled_node_info_no_analytics,
+       first_fetch_analytics
       ]}
     ].
 
@@ -265,8 +290,9 @@ init_per_group(persistence, Config) ->
     aec_peers_pool_tests:seed_process_random(), %% required for the random_peer()
     Config1 = config({devs, [dev1, dev2]}, Config),
     Config1;
-init_per_group(ThreeNodes, Config) when ThreeNodes =:= three_nodes
-                                 orelse ThreeNodes =:= node_info ->
+init_per_group(ThreeNodes, Config) when ThreeNodes =:= three_nodes;
+                                        ThreeNodes =:= node_info;
+                                        ThreeNodes =:= peer_analytics ->
     Config1 = config({devs, [dev1, dev2, dev3]}, Config),
     InitialApps = {running_apps(), loaded_apps()},
     {ok, _} = application:ensure_all_started(exometer_core),
@@ -322,6 +348,7 @@ end_per_group(mempool_sync, Config) ->
 end_per_group(Group, Config) when Group =:= two_nodes;
                                   Group =:= three_nodes;
                                   Group =:= node_info;
+                                  Group =:= peer_analytics;
                                   Group =:= semantically_invalid_tx;
                                   Group =:= run_benchmark ->
     ct:log("Metrics: ~p", [aec_metrics_test_utils:fetch_data()]),
@@ -383,6 +410,9 @@ start_first_node(Config) ->
     aecore_suite_utils:connect(aecore_suite_utils:node_name(dev1)),
     ok = aecore_suite_utils:check_for_logs([dev1], Config),
     ok.
+
+start_first_node_with_analytics(Config) ->
+    start_a_node_with_node_info_and_analytics(Config, dev1, true, true).
 
 start_second_node(Config) ->
     [Dev1, Dev2] = [dev1, dev2],
@@ -1126,26 +1156,33 @@ get_pool({_, Name}) ->
     rpc:call(Name, aec_tx_pool, peek, [infinity], 5000).
 
 new_tx(#{node1 := {PK1, {_,N1} = T1}, node2 := {PK2, _}, amount := Am, fee := Fee} = _M) ->
-    ExtPort = rpc:call(N1, aeu_env, user_config_or_env,
-                       [ [<<"http">>, <<"external">>, <<"port">>],
-                         aehttp, [external, port], 8043], 5000),
-    IntPort = rpc:call(N1, aeu_env, user_config_or_env,
-                       [ [<<"http">>, <<"internal">>, <<"port">>],
-                         aehttp, [internal, port], 8143], 5000),
     Params = #{sender_id => aeser_api_encoder:encode(account_pubkey, PK1),
                recipient_id => aeser_api_encoder:encode(account_pubkey, PK2),
                amount => Am,
                fee => Fee,
                payload => <<"foo">>},
     %% It's internal API so ext_addr is not included here.
-    Cfg = [{ext_http, "http://127.0.0.1:" ++ integer_to_list(ExtPort)},
-           {int_http, "http://127.0.0.1:" ++ integer_to_list(IntPort)}],
+    Cfg = http_config(N1),
     ct:log(">>> PARAMS: ~p", [Params]),
 
     {ok, 200, #{tx := SpendTx}} = aehttp_client:request('PostSpend', Params, Cfg),
     SignedSpendTx = sign_tx(T1, SpendTx),
     {ok, 200, _} = aehttp_client:request('PostTransaction', #{tx => SignedSpendTx}, Cfg),
     ok.
+
+http_get_network_status(N) ->
+    Cfg = http_config(N),
+    aehttp_client:request('GetNetworkStatus', #{}, Cfg).
+
+http_config(N) ->
+    ExtPort = rpc:call(N, aeu_env, user_config_or_env,
+                       [ [<<"http">>, <<"external">>, <<"port">>],
+                         aehttp, [external, port], 8043], 5000),
+    IntPort = rpc:call(N, aeu_env, user_config_or_env,
+                       [ [<<"http">>, <<"internal">>, <<"port">>],
+                         aehttp, [internal, port], 8143], 5000),
+    [ {ext_http, "http://127.0.0.1:" ++ integer_to_list(ExtPort)},
+      {int_http, "http://127.0.0.1:" ++ integer_to_list(IntPort)} ].
 
 ensure_new_tx(T, Tx) ->
     retry(fun() -> ensure_new_tx_(T, Tx) end,
@@ -1262,32 +1299,95 @@ first_fetch_node_infos(Successes, Fails) ->
     end,
     ok.
 
-stop_three_nodes(Cfg) ->
-    lists:foreach(
-        fun(Node) ->
-            {ok, DbCfg} = node_db_cfg(Node),
-            aecore_suite_utils:stop_node(Node, Cfg),
-            aecore_suite_utils:delete_node_db_if_persisted(DbCfg)
-        end,
-        [dev1, dev2, dev3]),
+first_fetch_analytics(_Cfg) ->
+    %% Verify preconditions
+    [{N1, true}, {N2, S2}, {N3, S3}] = lists:map(fun({Dev, R}) ->
+        N = aecore_suite_utils:node_name(Dev),
+        R = rpc:call(N, aec_peer_analytics, enabled, []),
+        S = rpc:call(N, aec_peer_connection, is_node_info_sharing_enabled, []),
+        {N, S} end,
+        [{dev1, true}, {dev2, false}, {dev3, false}]),
+    %% Wait for sync
+    expect_same_top([N1, N2, N3], 5),
+    pool_stats_until_two(N1, 100, 50), %% Wait for 2 entries to appear
+    pool_stats_until_no_pending_requests(N1, 100, 100), %% Wait for node info to resolve
+    %% Check that results obtained via different methods agree
+    A1 = rpc:call(N1, aec_peer_analytics, get_stats, []),
+    A2 = rpc:call(N1, aec_peer_analytics, get_stats_for_client, []),
+    {ok, 200, A3} = http_get_network_status(N1),
+    {ok, 404, #{reason := <<"Network analytics disabled in node config">>}}
+        = http_get_network_status(N2),
+    ct:log("Direct: ~p", [A1]),
+    ct:log("Direct client encoded: ~p", [A2]),
+    ct:log("Over http: ~p", [A3]),
+    true = maps:size(A1) =:= maps:size(A3),
+    true = maps:size(A2) =:= maps:size(A3),
+    Norm = fun(A) -> maps:map(fun(_, X) ->
+        maps:fold(fun F(<<"last_seen">>, _, Acc) -> Acc;
+                      F(<<"top_hash">>, _, Acc) -> Acc;
+                      F(<<"top_difficulty">>, _, Acc) -> Acc;
+                      F(<<"host">> = K, <<"127.0.0.1">>, Acc) -> F(K, <<"localhost">>, Acc);
+                      F(K, V, Acc) when is_atom(K) -> F(erlang:atom_to_binary(K, utf8), V, Acc);
+                      F(K, V, Acc) -> Acc#{K => V}
+                  end, #{}, X) end, A) end,
+    true = Norm(A2) =:= Norm(A3), %% Map match semantics
+    %% Check how many peers responded to the info probe
+    C1 = fun(true) -> 1; (false) -> 0 end,
+    C2 = fun(#{info := #{vendor := _}}) -> 1; (#{}) -> 0 end,
+    R = lists:sum(lists:map(C1, [S2, S3])),
+    R = lists:sum(lists:map(C2, maps:values(A1))),
     ok.
 
-start_second_with_disabled_node_info(Cfg) ->
-    start_a_node_with_node_info(Cfg, dev2, false).
+pool_stats_until_two(_, _, 0) -> ct:fail("Network stat acquisition failed");
+pool_stats_until_two(N, T, R) ->
+    case rpc:call(N, aec_peer_analytics, get_stats, []) of
+        X when map_size(X) =:= 2 -> ok;
+        _ ->
+            timer:sleep(T),
+            pool_stats_until_two(N, T, R-1)
+    end.
 
-start_second_with_enabled_node_info(Cfg) ->
-    start_a_node_with_node_info(Cfg, dev2, true).
+pool_stats_until_no_pending_requests(_, _, 0) -> ct:fail("Failed to fetch node info");
+pool_stats_until_no_pending_requests(N, T, R) ->
+    case rpc:call(N, aec_peer_analytics, pending_requests, []) of
+        false -> ok;
+        true ->
+            timer:sleep(T),
+            pool_stats_until_no_pending_requests(N, T, R-1)
+    end.
 
-start_third_with_disabled_node_info(Cfg) ->
-    start_a_node_with_node_info(Cfg, dev3, false).
+stop_three_nodes(Cfg) ->
+    MRefs = lists:map(
+        fun(Node) ->
+            {_, MRef} = spawn_monitor(fun() ->
+                {ok, DbCfg} = node_db_cfg(Node),
+                aecore_suite_utils:stop_node(Node, Cfg),
+                aecore_suite_utils:delete_node_db_if_persisted(DbCfg)
+            end),
+            MRef
+        end,
+        [dev1, dev2, dev3]),
+    [receive {'DOWN', MRef, process, _, _} -> ok end || MRef <- MRefs],
+    ok.
 
-start_third_with_enabled_node_info(Cfg) ->
-    start_a_node_with_node_info(Cfg, dev3, true).
+start_second_with_disabled_node_info_no_analytics(Cfg) ->
+    start_a_node_with_node_info_and_analytics(Cfg, dev2, false, false).
 
-start_a_node_with_node_info(Cfg, Node, NodeInfoFlag) ->
+start_second_with_enabled_node_info_no_analytics(Cfg) ->
+    start_a_node_with_node_info_and_analytics(Cfg, dev2, true, false).
+
+start_third_with_disabled_node_info_no_analytics(Cfg) ->
+    start_a_node_with_node_info_and_analytics(Cfg, dev3, false, false).
+
+start_third_with_enabled_node_info_no_analytics(Cfg) ->
+    start_a_node_with_node_info_and_analytics(Cfg, dev3, true, false).
+
+start_a_node_with_node_info_and_analytics(Cfg, Node, NodeInfoFlag, AnalyticsFlag) ->
     EpochCfg0 = aecore_suite_utils:epoch_config(Node, Cfg),
     Sync0 = maps:get(<<"sync">>, EpochCfg0, #{}),
-    Sync = Sync0#{<<"provide_node_info">> => NodeInfoFlag},
+    Sync = Sync0#{ <<"provide_node_info">> => NodeInfoFlag
+                 , <<"peer_analytics">> => AnalyticsFlag
+                 },
     EpochCfg = EpochCfg0#{<<"sync">> => Sync},
     aecore_suite_utils:create_config(Node, Cfg, EpochCfg,
                                             [

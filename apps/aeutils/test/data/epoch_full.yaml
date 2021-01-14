@@ -63,6 +63,8 @@ sync:
       standby_times: [5000, 15000, 30000, 60000, 120000, 300000, 600000]
       # The default maximum number of times a peer can get rejected. When reached, the peer is downgraded or removed (if not trusted)
       max_rejections: 7
+    provide_node_info: true
+    peer_analytics: false
 
 mempool:
     # Number of blocks before inactive TXs are garbage collected
