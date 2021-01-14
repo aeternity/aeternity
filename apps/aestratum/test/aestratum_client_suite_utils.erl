@@ -32,7 +32,7 @@ setup_nodes(NodesList, CustomNodeCfg, CTCfg) ->
 start_node(N, Cfg) ->
     TopClientDir = ?config(top_client_dir, Cfg),
     Flags = ["-pa ", TopClientDir ++ "_build/test/lib/aestratum_client"],
-    aecore_suite_utils:cmd(?OPS_BIN, node_shortcut(N, Cfg), "bin", ["start"],
+    aecore_suite_utils:cmd(?OPS_BIN, node_shortcut(N, Cfg), "bin", ["daemon"],
         [
          {"ERL_FLAGS", Flags},
          {"AESTRATUM_CLIENT_CONFIG", "data/" ++ ?CONFIG_FILE},
