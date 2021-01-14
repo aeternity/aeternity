@@ -240,7 +240,7 @@ start_node(N, Config) ->
     MyDir = filename:dirname(code:which(?MODULE)),
     ConfigFilename = proplists:get_value(config_name, Config, "default"),
     Flags = ["-pa ", MyDir, " -config ./" ++ ConfigFilename],
-    cmd(?OPS_BIN, node_shortcut(N, Config), "bin", ["start"],
+    cmd(?OPS_BIN, node_shortcut(N, Config), "bin", ["daemon"],
         [
          {"ERL_FLAGS", Flags},
          {"AETERNITY_CONFIG", "data/aeternity.json"},
