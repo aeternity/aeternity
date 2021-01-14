@@ -926,7 +926,6 @@ jobs:
           name: Run dialyzer
           no_output_timeout: 20m
           command: make dialyzer
-      - run: ./rebar3 xref || true
       - run:
           name: Check OTP version (for effective CI caching)
           # How to retrieve OTP version in installed OTP development system: http://erlang.org/doc/system_principles/versions.html
