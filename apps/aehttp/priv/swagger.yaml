@@ -947,6 +947,23 @@ paths:
           description: 'Successful operation'
           schema:
             $ref: '#/definitions/Status'
+  /status/chain-ends:
+    get:
+      tags:
+        - external
+        - chain
+      operationId: GetChainEnds
+      description: 'Get oldest keyblock hashes counting from genesis including orphans'
+      produces:
+        - application/json
+      parameters: []
+      responses:
+        '200':
+          description: 'Successful operation'
+          schema:
+            type: array
+            items:
+              $ref: '#/definitions/EncodedHash'
   /debug/network:
     get:
       tags:

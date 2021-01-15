@@ -698,15 +698,21 @@ fork_common_block(EasyChain, TopHashEasy, HardChain, TopHashHard) ->
     %% The second chain should take over
     ok = write_blocks_to_chain(EasyChain),
     ?assertEqual(TopHashEasy, top_block_hash()),
+    ?assertEqual([TopHashEasy], aec_db:find_chain_end_hashes()),
     ok = write_blocks_to_chain(HardChain),
     ?assertEqual(TopHashHard, top_block_hash()),
+    ?assertEqual( lists:usort([TopHashEasy, TopHashHard])
+                , lists:usort(aec_db:find_chain_end_hashes())),
 
     restart_chain_db(),
     %% The second chain should not take over
     ok = write_blocks_to_chain(HardChain),
     ?assertEqual(TopHashHard, top_block_hash()),
+    ?assertEqual([TopHashHard], aec_db:find_chain_end_hashes()),
     ok = write_blocks_to_chain(EasyChain),
     ?assertEqual(TopHashHard, top_block_hash()),
+    ?assertEqual( lists:usort([TopHashEasy, TopHashHard])
+                , lists:usort(aec_db:find_chain_end_hashes())),
     ok.
 
 fork_get_by_height() ->
@@ -834,6 +840,7 @@ fork_on_micro_block() ->
 
     {ok, KB2ForkHash} = aec_blocks:hash_internal_representation(KB2Fork),
     ?assertEqual(KB2ForkHash, aec_chain:top_block_hash()),
+    ?assertEqual([KB2ForkHash], aec_db:find_chain_end_hashes()),
 
     %% Insert main chain
     ok = insert_block(MB2),
@@ -843,7 +850,8 @@ fork_on_micro_block() ->
     %% Check main chain took over
     {ok, KB3Hash} = aec_blocks:hash_internal_representation(KB3),
     ?assertEqual(KB3Hash, aec_chain:top_block_hash()),
-
+    ?assertEqual( lists:usort([KB2ForkHash, KB3Hash])
+                , lists:usort(aec_db:find_chain_end_hashes())),
     ok.
 
 fork_on_old_fork_point() ->

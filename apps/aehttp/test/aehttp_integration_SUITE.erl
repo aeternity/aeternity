@@ -29,6 +29,7 @@
    , get_accounts_by_pubkey_sut/1
    , get_transactions_by_hash_sut/1
    , get_top_block/1
+   , get_chain_ends/1
    , wait_for_tx_hash_on_chain/1
    , sign_and_post_tx/2
    , end_per_testcase_all/1
@@ -236,7 +237,7 @@ groups() ->
     [
      {all, [sequence],
       [
-       %% /key-blocks/* /micro-blocks/* /generations/*
+       %% /key-blocks/* /micro-blocks/* /generations/* status/chain-ends
        {group, block_endpoints},
        %% /accounts/*
        {group, account_endpoints},
@@ -288,6 +289,7 @@ groups() ->
      {block_info, [sequence],
       [
        get_top_block,
+       get_chain_ends,
        get_current_key_block,
        get_current_key_block_hash,
        get_current_key_block_height,
@@ -811,6 +813,28 @@ contract_bytearray_decode(X) ->
         {ok, Y} -> Y;
         {error, _} = E -> error(E)
     end.
+
+%% /status/chain-ends
+
+get_chain_ends(Config) ->
+    get_chain_ends(?config(current_block_type, Config),
+                   ?config(current_block_hash, Config),
+                   Config).
+
+get_chain_ends(CurrentBlockType, CurrentBlockHash, _Config) when
+      CurrentBlockType =:= genesis_block; CurrentBlockType =:= key_block ->
+    ?assertMatch({ok, 200, [CurrentBlockHash]}, get_chain_ends_sut()),
+    ok;
+get_chain_ends(micro_block, CurrentBlockHash, Config) ->
+    {ok, 200, #{<<"micro_block">> := Block}} = get_top_sut(),
+    ?assertEqual(CurrentBlockHash, maps:get(<<"hash">>, Block)),
+    KH = maps:get(<<"prev_key_hash">>, Block),
+    get_chain_ends(key_block, KH, Config),
+    ok.
+
+get_chain_ends_sut() ->
+    Host = external_address(),
+    http_request(Host, get, "status/chain-ends", []).
 
 %% /blocks/top
 

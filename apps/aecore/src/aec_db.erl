@@ -112,6 +112,13 @@
         , delete_peer/1
         , read_all_peers/0
         ]).
+
+%% Fork tracking and selection
+-export([ find_chain_end_hashes/0
+        , mark_chain_end_hash/1
+        , unmark_chain_end_hash/1
+        ]).
+
 %%
 %% for testing
 -export([backend_mode/0]).
@@ -555,6 +562,16 @@ write_genesis_hash(Hash) when is_binary(Hash) ->
 write_top_block_hash(Hash) when is_binary(Hash) ->
     ?t(mnesia:write(#aec_chain_state{key = top_block_hash, value = Hash}),
        [{aec_chain_state, top_block_hash}]).
+
+mark_chain_end_hash(Hash) when is_binary(Hash) ->
+    ?t(mnesia:write(#aec_chain_state{key = {end_block_hash, Hash}, value = []}),
+       [{aec_chain_state, {end_block_hash, Hash}}]).
+
+unmark_chain_end_hash(Hash) when is_binary(Hash) ->
+    ?t(mnesia:delete(aec_chain_state, {end_block_hash, Hash}, write)).
+
+find_chain_end_hashes() ->
+    [H || {end_block_hash, H} <- mnesia:dirty_all_keys(aec_chain_state)].
 
 write_signal_count(Hash, Count) when is_binary(Hash), is_integer(Count) ->
     ?t(mnesia:write(#aec_signal_count{key = Hash, value = Count}),

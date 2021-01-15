@@ -475,6 +475,7 @@ internal_insert_genesis(Node, Block) ->
                 false),
         ok = aec_db:write_genesis_hash(NewTopHash),
         ok = aec_db:write_top_block_hash(NewTopHash),
+        ok = aec_db:mark_chain_end_hash(NewTopHash),
         {ok, true, undefined, no_events()}
     end).
 
@@ -521,6 +522,14 @@ internal_insert_transaction(Node, Block, Origin, Ctx) ->
         {H1, H2} ->
             %% Inform the consensus engine to act accordingly :(
             Consensus:pogf_detected(H1, H2)
+    end,
+    %% Update fork info
+    case node_type(Node) of
+        key ->
+            ok = aec_db:mark_chain_end_hash(node_hash(Node)),
+            ok = aec_db:unmark_chain_end_hash(node_prev_key_hash(Node));
+        micro ->
+            ok
     end,
     case maps:get(found_pof, State3) of
         no_fraud  -> {ok, TopChanged, PrevKeyHeader, Events};
