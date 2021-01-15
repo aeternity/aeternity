@@ -117,6 +117,9 @@
 -export([ find_chain_end_hashes/0
         , mark_chain_end_hash/1
         , unmark_chain_end_hash/1
+        , write_chain_end_migration_state/1
+        , delete_chain_end_migration_state/0
+        , find_chain_end_migration_state/0
         ]).
 
 %%
@@ -572,6 +575,18 @@ unmark_chain_end_hash(Hash) when is_binary(Hash) ->
 
 find_chain_end_hashes() ->
     [H || {end_block_hash, H} <- mnesia:dirty_all_keys(aec_chain_state)].
+
+write_chain_end_migration_state(State) ->
+    ?t(mnesia:write(#aec_chain_state{key = end_block_migration, value = State})). %% Crashes when error keys are present
+
+delete_chain_end_migration_state() ->
+    ?t(mnesia:delete(aec_chain_state, end_block_migration, write)).
+
+find_chain_end_migration_state() ->
+    case ?t(mnesia:read(aec_chain_state, end_block_migration)) of
+        [#aec_chain_state{value = State}] -> {ok, State};
+        _ -> error
+    end.
 
 write_signal_count(Hash, Count) when is_binary(Hash), is_integer(Count) ->
     ?t(mnesia:write(#aec_signal_count{key = Hash, value = Count}),
