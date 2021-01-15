@@ -25,6 +25,7 @@ nosetests.xml
 *.pyc
 .chain
 REVISION
+VERSION
 aevm_external
 apps/*/doc/*.html
 apps/*/doc/edoc-info

@@ -78,8 +78,11 @@ Relx0 = lists:keyfind(relx, 1, CONFIG),
 {relx, [{release, {aeternity, _}, RelxApps0} | RelxT0]} = Relx0,
 {overlay, RelxOverlay0} = lists:keyfind(overlay, 1, RelxT0),
 RelxT1 = lists:keyreplace(overlay, 1, RelxT0, {overlay, AdaptOverlayBin(RelxOverlay0)}),
-{ok, VersionBin} = file:read_file(<<"VERSION">>),
-Version = string:trim(binary_to_list(VersionBin)),
+%% VERSION file could be missing in some cases i.e. clean target
+Version = case file:read_file(<<"VERSION">>) of
+    {ok, VersionBin} -> string:trim(binary_to_list(VersionBin));
+    _ -> "UNKNOWN_VERSION"
+end,
 %% the release should be in front
 RelxApps1 = FilterRelxRocksDb(RelxApps0),
 RelxApps2 = AddMeckInCommonTests(RelxApps1),

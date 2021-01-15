@@ -7,20 +7,15 @@
 
 
 %% @doc
-%% Get the json specification by parsing the swagger.yaml file.
-%% Keep this specificstion cached, such that if we have read it once, we don't ready it again.
+%% Get the json specification and keep it cached, such that if we have read it once, we don't read it again.
 -spec json_spec() -> jsx:json_text().
 json_spec() ->
-    {ok, AppName} = application:get_application(?MODULE),
     try
         [{spec, CachedJson}] = ets:lookup(swagger_json, spec),
         CachedJson
     catch
         _:_ ->
-            Filename = filename:join(code:priv_dir(AppName), "swagger.yaml"),
-            Yamls = yamerl_constr:file(Filename, [str_node_as_binary]),
-            Yaml = lists:last(Yamls),
-            Json = jsx:prettify(jsx:encode(Yaml)),
+            Json = aehttp_spec:json(),
             ets:new(swagger_json, [named_table, {read_concurrency, true}, public]),
             ets:insert(swagger_json, {spec, Json}),
             Json
