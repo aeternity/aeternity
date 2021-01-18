@@ -1259,6 +1259,7 @@ chain_ends_finish_migration(Height, OldTops0) ->
     lager:info("[Orphan key blocks scan] Finished - applying the scan result"),
     save_migration_state(Height, OldTops0),
     OldTops = sets:to_list(OldTops0),
+    lager:debug("[Orphan key blocks scan] Finished - found ~p orphans: ~p", [length(OldTops), OldTops]),
     %% This needs to respect ACID!
     ok = aec_db:ensure_transaction(fun() ->
         NewTops = aec_db:find_chain_end_hashes(),
@@ -1274,6 +1275,7 @@ chain_ends_maybe_apply([H|T], [], NewTops) -> %% No objections
 chain_ends_maybe_apply([H|T], [H|_], NewTops) -> %% Already found
     chain_ends_maybe_apply(T, NewTops, NewTops);
 chain_ends_maybe_apply([H1|T1] = OldTops, [H2|T2], NewTops) -> %% Check if H1 is a direct predecessor of H2
+    lager:debug("[Orphan key blocks scan] Finished - find_common_ancestor(~p, ~p)", [H1, H2]),
     case find_common_ancestor(H1, H2) of
         {ok, H1} -> chain_ends_maybe_apply(T1, NewTops, NewTops); %% H2 is more recent than H1
         {ok, _} -> chain_ends_maybe_apply(OldTops, T2, NewTops) %% H1 might be new
