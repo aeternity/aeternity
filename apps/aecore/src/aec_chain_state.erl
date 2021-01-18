@@ -1223,7 +1223,11 @@ start_chain_ends_migration() ->
       end).
 
 chain_ends_migration_step(Height, Tops) when Height > 0, Height rem 10000 =:= 0 ->
-    lager:debug("[Orphan key blocks scan] Scanned 10k generations"),
+    TH = mnesia:activity(async_dirty, fun() ->
+        aec_headers:height(aec_chain:top_header())
+      end),
+    Progress = round(10000000 * Height / TH) / 100000,
+    lager:debug("[Orphan key blocks scan] Scanned 10k generations. Progress ~p%", [Progress]),
     save_migration_state(Height, Tops),
     chain_ends_migration_scan(Height, Tops);
 chain_ends_migration_step(Height, Tops) when Height > 0, Height rem 1000 =:= 0 ->
