@@ -577,7 +577,9 @@ find_chain_end_hashes() ->
     mnesia:dirty_select(aec_chain_state, [{ #aec_chain_state{key = {end_block_hash, '$1'}, _ = '_'}, [], ['$1'] }]).
 
 write_chain_end_migration_state(State) ->
-    ?t(mnesia:write(#aec_chain_state{key = end_block_migration, value = State})). %% Crashes when error keys are present
+    %% Writes occur before the error store is initialized - if error keys are present then this will crash
+    %% Fortunately this write will be correctly handled by the rocksdb bypass logic
+    ?t(mnesia:write(#aec_chain_state{key = end_block_migration, value = State})).
 
 delete_chain_end_migration_state() ->
     ?t(mnesia:delete(aec_chain_state, end_block_migration, write)).
