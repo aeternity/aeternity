@@ -574,7 +574,7 @@ unmark_chain_end_hash(Hash) when is_binary(Hash) ->
     ?t(mnesia:delete(aec_chain_state, {end_block_hash, Hash}, write)).
 
 find_chain_end_hashes() ->
-    [H || {end_block_hash, H} <- mnesia:dirty_all_keys(aec_chain_state)].
+    mnesia:dirty_select(aec_chain_state, [{ #aec_chain_state{key = {end_block_hash, '$1'}, _ = '_'}, [], ['$1'] }]).
 
 write_chain_end_migration_state(State) ->
     ?t(mnesia:write(#aec_chain_state{key = end_block_migration, value = State})). %% Crashes when error keys are present
