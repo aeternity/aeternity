@@ -1218,7 +1218,9 @@ start_chain_ends_migration() ->
         try
             chain_ends_migration_step(Height, Tops)
         catch
-            _:_ -> init:stop("[Orphan key blocks scan] Encountered a fatal error during the migration. Terminating the node")
+            E:R:S ->
+                io:format(user, "[Orphan key blocks scan] Terminating node: ~p ~p ~p", [E, R, S]),
+                init:stop("[Orphan key blocks scan] Encountered a fatal error during the migration. Terminating the node")
         end
       end).
 
@@ -1238,12 +1240,12 @@ chain_ends_migration_step(Height, Tops) ->
 
 chain_ends_migration_scan(Height, Tops) ->
     NextHeight = Height + 1,
-    Headers = mnesia:activity(async_dirty, fun() -> aec_db:find_headers_and_hash_at_height(NextHeight) end),
+    Headers = aec_db:find_key_headers_and_hash_at_height(NextHeight),
     case Headers of
         [] ->
             chain_ends_finish_migration(Height, Tops);
         _ ->
-            Hashes = [{Hash, aec_headers:prev_key_hash(H)} || {Hash, H} <- Headers, key =:= aec_headers:type(H)],
+            Hashes = [{Hash, aec_headers:prev_key_hash(H)} || {Hash, H} <- Headers],
             NextTops = lists:foldl(fun({Hash, PrevHash}, S0) ->
                 S1 = sets:del_element(PrevHash, S0),
                 sets:add_element(Hash, S1)
@@ -1259,7 +1261,7 @@ chain_ends_finish_migration(Height, OldTops0) ->
     lager:info("[Orphan key blocks scan] Finished - applying the scan result"),
     save_migration_state(Height, OldTops0),
     OldTops = sets:to_list(OldTops0),
-    lager:debug("[Orphan key blocks scan] Finished - found ~p orphans: ~p", [length(OldTops), OldTops]),
+    lager:debug("[Orphan key blocks scan] Finished - found ~p orphans", [length(OldTops)]),
     %% This needs to respect ACID!
     ok = aec_db:ensure_transaction(fun() ->
         NewTops = aec_db:find_chain_end_hashes(),
@@ -1275,10 +1277,14 @@ chain_ends_maybe_apply([H|T], [], NewTops) -> %% No objections
 chain_ends_maybe_apply([H|T], [H|_], NewTops) -> %% Already found
     chain_ends_maybe_apply(T, NewTops, NewTops);
 chain_ends_maybe_apply([H1|T1] = OldTops, [H2|T2], NewTops) -> %% Check if H1 is a direct predecessor of H2
-    lager:debug("[Orphan key blocks scan] Finished - find_common_ancestor(~p, ~p)", [H1, H2]),
     case find_common_ancestor(H1, H2) of
         {ok, H1} -> chain_ends_maybe_apply(T1, NewTops, NewTops); %% H2 is more recent than H1
-        {ok, _} -> chain_ends_maybe_apply(OldTops, T2, NewTops) %% H1 might be new
+        {ok, _} -> chain_ends_maybe_apply(OldTops, T2, NewTops); %% H1 might be new
+        {error, unknown_hash} -> %% Community fork migration
+            EH1 = aeser_api_encoder:encode(key_block_hash, H1),
+            EH2 = aeser_api_encoder:encode(key_block_hash, H2),
+            lager:info("[Orphan key blocks scan] ignoring deleted header: find_common_ancestor(~p, ~p)", [EH1, EH2]),
+            chain_ends_maybe_apply(T1, NewTops, NewTops)
     end.
 
 save_migration_state(Height, Tops) ->

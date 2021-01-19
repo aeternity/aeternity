@@ -39,6 +39,7 @@
          find_header/1,
          dirty_find_header/1,
          find_headers_at_height/1,
+         find_key_headers_and_hash_at_height/1,
          find_headers_and_hash_at_height/1,
          find_key_block/1,
          find_signed_tx/1,
@@ -498,6 +499,14 @@ find_headers_at_height(Height) when is_integer(Height), Height >= 0 ->
 find_headers_and_hash_at_height(Height) when is_integer(Height), Height >= 0 ->
     ?t([{K, aec_headers:from_db_header(H)} || #aec_headers{key = K, value = H}
                  <- mnesia:index_read(aec_headers, Height, #aec_headers.height)]).
+
+-spec find_key_headers_and_hash_at_height(pos_integer()) -> [{binary(), aec_headers:key_header()}].
+find_key_headers_and_hash_at_height(Height) when is_integer(Height), Height >= 0 ->
+    R = mnesia:dirty_select(aec_headers, [{ #aec_headers{key = '_', value = '$1', height = Height}
+                                          , [{'=:=', {element, 1, '$1'}, key_header}]
+                                          , ['$_']
+                                          }]),
+    [{Hash, aec_headers:from_db_header(Header)} || #aec_headers{key = Hash, value = Header} <- R].
 
 find_discovered_pof(Hash) ->
     case ?t(read(aec_discovered_pof, Hash)) of
