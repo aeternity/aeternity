@@ -35,6 +35,15 @@
             , cache  :: cache()
             }).
 
+-type mf() :: {module(), atom()}.
+
+-record(old_db, { handle     :: atom()
+                , cache      :: cache()
+                , drop_cache :: mf()
+                , get        :: mf()
+                , put        :: mf()
+            }).
+
 -opaque db() :: #db{}.
 
 -type db_spec() :: #{ 'module' := atom()
@@ -72,41 +81,51 @@ new(#{ 'module' := Module
        }.
 
 -spec get(key(), db()) -> {'value', value()} | 'none'.
-get(Key, DB) ->
+get(Key, DB0) ->
+    DB = to_new_db(DB0),
     case int_cache_get(Key, DB) of
         'none' -> int_db_get(Key, DB);
         {value, _} = Res -> Res
     end.
 
 -spec cache_get(key(), db()) -> {'value', value()} | 'none'.
-cache_get(Key, DB) ->
+cache_get(Key, DB0) ->
+    DB = to_new_db(DB0),
     int_cache_get(Key, DB).
 
 -spec drop_cache(db()) -> db().
-drop_cache(DB) ->
+drop_cache(DB0) ->
+    DB = to_new_db(DB0),
     int_drop_cache(DB).
 
 -spec put(key(), value(), db()) -> db().
-put(Key, Val, DB) ->
+put(Key, Val, DB0) ->
+    DB = to_new_db(DB0),
     int_cache_put(Key, Val, DB).
 
 -spec unsafe_write_to_backend(key(), value(), db()) -> db().
-unsafe_write_to_backend(Key, Val, DB) ->
+unsafe_write_to_backend(Key, Val, DB0) ->
     %% NOTE: Disregards the actual cache value, and does not invalidate
     %%       the cache. Make sure you know what you are doing!
     %%       This should only be called with the actual cache value.
+    DB = to_new_db(DB0),
     int_db_put(Key, Val, DB).
 
 -spec is_db(term()) -> boolean().
-is_db(#db{}) -> true;
-is_db(_) -> false.
+is_db(DB) ->
+    case to_new_db(DB) of
+        #db{} -> true;
+        _ -> false
+    end.
 
 -spec get_cache(db()) -> cache().
-get_cache(#db{cache = Cache}) ->
+get_cache(DB) ->
+    #db{cache = Cache} = to_new_db(DB),
     Cache.
 
 -spec get_handle(db()) -> handle().
-get_handle(#db{handle = Handle}) ->
+get_handle(DB) ->
+    #db{handle = Handle} = to_new_db(DB),
     Handle.
 
 %%%===================================================================
@@ -131,3 +150,19 @@ int_db_get(Key, #db{handle = Handle, module = M}) ->
 
 int_db_put(Key, Val, #db{handle = Handle, module = M} = DB) ->
     DB#db{handle = M:mpt_db_put(Key, Val, Handle)}.
+
+-spec to_new_db(term()) -> db() | not_db.
+to_new_db(#db{} = DB) -> DB;
+to_new_db({db, _, _, _, _, _} = OldDB) ->
+    case setelement(1, OldDB, old_db) of
+        #old_db{ handle = Handle
+               , cache  = Cache 
+               , drop_cache = {Module, _}
+               , get        = {Module, _}
+               , put        = {Module, _} } ->
+            new(#{ module => Module
+                , cache   => Cache
+                , handle  => Handle});
+        _ -> not_db
+    end.
+    
