@@ -151,7 +151,7 @@ int_db_get(Key, #db{handle = Handle, module = M}) ->
 int_db_put(Key, Val, #db{handle = Handle, module = M} = DB) ->
     DB#db{handle = M:mpt_db_put(Key, Val, Handle)}.
 
--spec to_new_db(term()) -> db().
+-spec to_new_db(term()) -> db() | not_db.
 to_new_db(#db{} = DB) -> DB;
 to_new_db({db, _, _, _, _, _} = OldDB) ->
     case setelement(1, OldDB, old_db) of
