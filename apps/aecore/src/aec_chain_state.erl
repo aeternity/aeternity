@@ -937,6 +937,9 @@ db_get_header(Hash) when is_binary(Hash) ->
     {value, Header} =  aec_db:find_header(Hash),
     Header.
 
+%% TODO: This primitive is being used heavily(sync, block insertion, user api) and the current implementation is slowish
+%% The usual result of this function call is one header, sometimes two headers. On heavy generations on a good SSD
+%% using the rocksdb backend this right now takes 13-14ms which is bad in the hot path... This should take at most 100us -.-
 db_find_key_nodes_at_height(Height) when is_integer(Height) ->
     case aec_db:find_headers_and_hash_at_height(Height) of
         [_|_] = Headers ->
@@ -1195,16 +1198,16 @@ ensure_chain_ends() ->
     case aec_db:get_top_block_hash() of
         undefined -> ok; %% Fresh DB
         _ -> %% Ok this is not a fresh DB
-            case aec_db:find_chain_end_migration_state() of
-                error -> %% No migration is in progress
+            case aec_db:chain_end_migration_status() of
+                done -> %% No migration is in progress
                     case aec_db:find_chain_end_hashes() of
                         [] -> %% Ok this is an old DB - migration required
-                            save_migration_state(-1, sets:new()),
+                            aec_db:start_chain_end_migration(),
                             start_chain_ends_migration();
                         _ -> %% No migration required
                             ok
                     end;
-                {ok, _} -> %% The migration was interrupted and not finished yet
+                in_progress -> %% The migration was interrupted and not finished yet
                     lager:info("[Orphan key blocks scan] Resuming interrupted scan"),
                     start_chain_ends_migration()
             end
@@ -1212,61 +1215,47 @@ ensure_chain_ends() ->
 
 start_chain_ends_migration() ->
     lager:info("[Orphan key blocks scan] Scanning the DB for orphan keyblocks in the background"),
-    {ok, {Height, Tops}} = aec_db:find_chain_end_migration_state(),
     spawn(fun() -> %% Don't use spawn_link here - we can't be killed by the setup process
         %% An error here should bring down the entire node with it!
         try
-            chain_ends_migration_step(Height, Tops)
+            %% On a cloud ssd it executed in 158s compared to 1.5h by doing it without hacks
+            %% The reason why it's so fast is that mnesia_rocksdb creates an iterator object and while iterating
+            %% rocksdb aggressively prefetches the data in increasingly bigger chunks
+            %% Retrieves tuples {hash, prev_key_hash, height} and should work for legacy header formats
+            %% Takes up at most a few MB of RAM
+            {Time, R0} = timer:tc(fun() ->
+                mnesia:dirty_select(aec_headers, [{ {aec_headers, '$1', '$2', '$3'}
+                                                  , [{'=:=', {element, 1, '$2'}, key_header}]
+                                                  , [{{'$1', {element, 4, '$2'}, '$3'}}]
+                                                  }])
+              end),
+            lager:info("[Orphan key blocks scan] Retrieved the key header chain in ~p seconds", [Time]),
+            R1 = lists:keysort(3, R0),
+            S = lists:foldl(fun({Hash, PrevKeyHash, _}, S0) ->
+                S1 = sets:del_element(PrevKeyHash, S0),
+                sets:add_element(Hash, S1)
+              end, sets:new(), R1),
+            chain_ends_finish_migration(S)
         catch
-            E:R:S ->
-                io:format(user, "[Orphan key blocks scan] Terminating node: ~p ~p ~p", [E, R, S]),
+            E:R:Stack ->
+                io:format(user, "[Orphan key blocks scan] Terminating node: ~p ~p ~p", [E, R, Stack]),
                 init:stop("[Orphan key blocks scan] Encountered a fatal error during the migration. Terminating the node")
         end
       end).
-
-chain_ends_migration_step(Height, Tops) when Height > 0, Height rem 10000 =:= 0 ->
-    TH = mnesia:activity(async_dirty, fun() ->
-        aec_headers:height(aec_chain:top_header())
-      end),
-    Progress = round(10000000 * Height / TH) / 100000,
-    lager:debug("[Orphan key blocks scan] Scanned 10k generations. Progress ~p%", [Progress]),
-    save_migration_state(Height, Tops),
-    chain_ends_migration_scan(Height, Tops);
-chain_ends_migration_step(Height, Tops) when Height > 0, Height rem 1000 =:= 0 ->
-    save_migration_state(Height, Tops),
-    chain_ends_migration_scan(Height, Tops);
-chain_ends_migration_step(Height, Tops) ->
-    chain_ends_migration_scan(Height, Tops).
-
-chain_ends_migration_scan(Height, Tops) ->
-    NextHeight = Height + 1,
-    Headers = aec_db:find_key_headers_and_hash_at_height(NextHeight),
-    case Headers of
-        [] ->
-            chain_ends_finish_migration(Height, Tops);
-        _ ->
-            Hashes = [{Hash, aec_headers:prev_key_hash(H)} || {Hash, H} <- Headers],
-            NextTops = lists:foldl(fun({Hash, PrevHash}, S0) ->
-                S1 = sets:del_element(PrevHash, S0),
-                sets:add_element(Hash, S1)
-               end, Tops, Hashes),
-            chain_ends_migration_step(NextHeight, NextTops)
-    end.
 
 %% Finishes the DB migration - this is kind of tricky as the migration was done while the node was running
 %% We insert a orphan top to the DB only when we don't have already a newer orphan which is a predecessor
 %% Let's do it in O(N*M*O_is_predecesor) where N is the number of orphans found while the migration was in progress and M
 %% is the numbers of orphans found by the migration, N should be relatively small
-chain_ends_finish_migration(Height, OldTops0) ->
+chain_ends_finish_migration(OldTops0) ->
     lager:info("[Orphan key blocks scan] Finished - applying the scan result"),
-    save_migration_state(Height, OldTops0),
     OldTops = sets:to_list(OldTops0),
     lager:debug("[Orphan key blocks scan] Finished - found ~p orphans", [length(OldTops)]),
     %% This needs to respect ACID!
     ok = aec_db:ensure_transaction(fun() ->
         NewTops = aec_db:find_chain_end_hashes(),
         chain_ends_maybe_apply(OldTops, NewTops, NewTops),
-        aec_db:delete_chain_end_migration_state(),
+        aec_db:finish_chain_end_migration(),
         ok
       end).
 

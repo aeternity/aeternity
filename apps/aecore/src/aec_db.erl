@@ -118,9 +118,9 @@
 -export([ find_chain_end_hashes/0
         , mark_chain_end_hash/1
         , unmark_chain_end_hash/1
-        , write_chain_end_migration_state/1
-        , delete_chain_end_migration_state/0
-        , find_chain_end_migration_state/0
+        , start_chain_end_migration/0
+        , finish_chain_end_migration/0
+        , chain_end_migration_status/0
         ]).
 
 %%
@@ -500,6 +500,7 @@ find_headers_and_hash_at_height(Height) when is_integer(Height), Height >= 0 ->
     ?t([{K, aec_headers:from_db_header(H)} || #aec_headers{key = K, value = H}
                  <- mnesia:index_read(aec_headers, Height, #aec_headers.height)]).
 
+%% When benchmarked on an cloud SSD it is faster then mnesia:index_read followed by filter
 -spec find_key_headers_and_hash_at_height(pos_integer()) -> [{binary(), aec_headers:key_header()}].
 find_key_headers_and_hash_at_height(Height) when is_integer(Height), Height >= 0 ->
     R = mnesia:dirty_select(aec_headers, [{ #aec_headers{key = '_', value = '$1', height = Height}
@@ -585,18 +586,19 @@ unmark_chain_end_hash(Hash) when is_binary(Hash) ->
 find_chain_end_hashes() ->
     mnesia:dirty_select(aec_chain_state, [{ #aec_chain_state{key = {end_block_hash, '$1'}, _ = '_'}, [], ['$1'] }]).
 
-write_chain_end_migration_state(State) ->
+start_chain_end_migration() ->
     %% Writes occur before the error store is initialized - if error keys are present then this will crash
     %% Fortunately this write will be correctly handled by the rocksdb bypass logic
-    ?t(mnesia:write(#aec_chain_state{key = end_block_migration, value = State})).
+    ?t(mnesia:write(#aec_chain_state{key = chain_end_migration_lock, value = chain_end_migration_lock})).
 
-delete_chain_end_migration_state() ->
-    ?t(mnesia:delete(aec_chain_state, end_block_migration, write)).
+finish_chain_end_migration() ->
+    ?t(mnesia:delete(aec_chain_state, chain_end_migration_lock, write)).
 
-find_chain_end_migration_state() ->
-    case ?t(mnesia:read(aec_chain_state, end_block_migration)) of
-        [#aec_chain_state{value = State}] -> {ok, State};
-        _ -> error
+-spec chain_end_migration_status() -> in_progress | done.
+chain_end_migration_status() ->
+    case ?t(mnesia:read(aec_chain_state, chain_end_migration_lock)) of
+        [#aec_chain_state{}] -> in_progress;
+        _ -> done
     end.
 
 write_signal_count(Hash, Count) when is_binary(Hash), is_integer(Count) ->
