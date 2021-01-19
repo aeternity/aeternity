@@ -1275,6 +1275,3 @@ chain_ends_maybe_apply([H1|T1] = OldTops, [H2|T2], NewTops) -> %% Check if H1 is
             lager:info("[Orphan key blocks scan] ignoring deleted header: find_common_ancestor(~p, ~p)", [EH1, EH2]),
             chain_ends_maybe_apply(T1, NewTops, NewTops)
     end.
-
-save_migration_state(Height, Tops) ->
-    aec_db:write_chain_end_migration_state({Height, Tops}).
