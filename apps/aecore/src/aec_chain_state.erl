@@ -1229,7 +1229,7 @@ start_chain_ends_migration() ->
                                                   , [{{'$1', {element, 4, '$2'}, '$3'}}]
                                                   }])
               end),
-            lager:info("[Orphan key blocks scan] Retrieved the key header chain in ~p seconds", [Time]),
+            lager:info("[Orphan key blocks scan] Retrieved the key header chain in ~p microseconds", [Time]),
             R1 = lists:keysort(3, R0),
             S = lists:foldl(fun({Hash, PrevKeyHash, _}, S0) ->
                 S1 = sets:del_element(PrevKeyHash, S0),
@@ -1238,7 +1238,8 @@ start_chain_ends_migration() ->
             chain_ends_finish_migration(S)
         catch
             E:R:Stack ->
-                io:format(user, "[Orphan key blocks scan] Terminating node: ~p ~p ~p", [E, R, Stack]),
+                (catch io:format(user, "[Orphan key blocks scan] Terminating node: ~p ~p ~p", [E, R, Stack])),
+                (catch lager:error("[Orphan key blocks scan] Terminating node: ~p ~p ~p", [E, R, Stack])),
                 init:stop("[Orphan key blocks scan] Encountered a fatal error during the migration. Terminating the node")
         end
       end).
