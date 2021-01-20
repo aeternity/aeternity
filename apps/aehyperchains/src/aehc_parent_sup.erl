@@ -20,8 +20,18 @@ start_link(View, Conf) ->
     supervisor:start_link(?MODULE, [View, Conf]).
 
 init([View, Conf]) ->
-    Con = aehc_connector:module(Conf),
-    Args = aehc_connector:args(Conf),
+    Con = module(Conf),
+    Args = args(Conf),
     ConSpec = ?CHILD(Con, [Args], 5000, worker),
     TrackSpec = ?CHILD(aehc_parent_tracker, [View, Conf], 5000, worker),
     {ok, {{one_for_all, 5, 10}, [ConSpec, TrackSpec]}}.
+
+%% NOTE: Safely call to existing atom.
+%% In the case of non loaded modules related issues should be addressed;
+module(Conf) ->
+    ConConf = maps:get(<<"connector">>, Conf),
+    binary_to_existing_atom(maps:get(<<"module">>, ConConf), utf8).
+
+args(Conf) ->
+    ConConf = maps:get(<<"connector">>, Conf),
+    maps:get(<<"args">>, ConConf).

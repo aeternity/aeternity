@@ -2,12 +2,13 @@
 %%%-------------------------------------------------------------------
 %%% @copyright (C) 2020, Aeternity Anstalt
 %%% @doc
-%% The state machine keeps synchronized state at the particular branch of the parent chain;
-%% The state machine manages fetch and fork switching procedures by traversing hash-pointers of the parent blocks;
-%% The state machine fetches missing blocks via appropriate interface provider (connector);
-%% The state machine produces side effect with updated DB log with the actual parent chain view;
-%% The state machine produces appropriate state change events for the conductor;
-%% The state machine operates in 3 modes:
+%% The state machine which represents the attached blockchain (parent chain).
+%% The main responsibility are:
+%% - to manage the state change when fork switching event occurs;
+%% - to traverse hash-pointers via connector network interface;
+%% - to update database log by the current parent chain state;
+%% - to emit appropriate state change events on aehc_parent_mng queue
+%% The main operational modes are:
 %% a) fetched (adding a new blocks);
 %% b) orphaned (fork switching);
 %% c) synced (consistent, ready to use mode).
@@ -18,56 +19,69 @@
 -behaviour(gen_statem).
 
 %% API
--export([start_link/2]).
+-export([start/3]).
+-export([send_tx/4]).
+-export([stop/1]).
+
 -export([publish_block/2]).
+
+%% gen_statem.
 -export([init/1]).
--export([fetched/3, orphaned/3, synced/3]).
 -export([terminate/3]).
 -export([callback_mode/0]).
 
--define(SERVER(Name), {via, gproc, {n, l, {?MODULE, Name}}}).
+%% state transitions
+-export([fetched/3, migrated/3, synced/3]).
 
-%% The data record represents the current synchronized view of a particular parent chain within state machine;
--record(data, {
-    %% The name of dedicated parent chain state machine;
-    name :: binary(),
-    %% The genesis hash from the config;
-    genesis_hash :: binary(),
-    %% The genesis height;
-    genesis_height :: undefined | non_neg_integer(),
-    %% Responsible connector module;
-    connector :: aehc_connector:connector(),
-    %% The current synchronized top block hash from the Db;
-    current_hash :: binary(),
-    %% The current synchronized top block height from the Db;
-    current_height :: non_neg_integer(),
-    %% Textual description of a parent chain view;
-    note :: binary()
-}).
--type data() :: #data{}.
+-type connector() :: aeconnector:connector().
+-type block() :: aeconnector_block:block().
 
--spec start_link(term(), map()) ->
-    {ok, pid()} | ignore | {error, term()}.
-start_link(View, Conf) ->
-    gen_statem:start_link(?SERVER(View), ?MODULE, Conf, []).
+-type aehc_parent_block() :: aehc_parent_block:parent_block().
 
--spec publish_block(binary(), aehc_parent_block:parent_block()) ->
-    ok.
-publish_block(View, Block) ->
-    gen_server:cast(?SERVER(View), {publish_block, Block}).
+
+-spec start(connector(), map(), binary()) -> {ok, pid()} | {error, term()}.
+start(Connector, Args, Genesis) ->
+    Data = data(Connector, Args, Genesis),
+    gen_statem:start(?MODULE, Data, []).
+
+%% reply(From :: from(), Reply :: term())
+-spec send_tx(pid(), binary(), binary(), term()) -> ok | {error, term()}.
+send_tx(Pid, Delegate, Payload, From) ->
+    gen_statem:cast(Pid, {send_tx, Delegate, Payload, From}).
+
+-spec stop(pid()) -> ok.
+stop(Pid) ->
+    gen_statem:stop(Pid).
+
+-spec publish_block(connector(), block()) -> ok.
+publish_block(_Connector, Block) ->
+    gen_statem:cast(?MODULE, {publish_block, Block}).
 
 %%%===================================================================
 %%%  State machine callbacks
 %%%===================================================================
 
+-record(data, {
+    %% The the real world blockchain interface: https://github.com/aeternity/aeconnector/wiki
+    connector :: connector(),
+    %% Connector configuration which should be passed the module:connect/2
+    args :: map(),
+    %% The block address on which state machine history begins
+    genesis:: binary(),
+    %% The current synchronized top block hash
+    hash :: binary(),
+    %% The current synchronized top block height
+    height :: non_neg_integer()
+}).
+
+-type data() :: #data{}.
+
 init(Conf) ->
     Data = conf_data(Conf),
-    %% Execute acceptance procedure;
-    ok = aehc_connector:accept(Conf),
     %% Db initialization
     InitData = init_data(Data),
     %% The top block from the connector;
-    {ok, Block} = aehc_connector:get_top_block(connector(InitData)),
+    {ok, Block} = aeconnector:get_top_block(connector(InitData)),
     %% The top block of the current view;
     SynchedBlock = aehc_parent_db:get_parent_block(current_hash(InitData)),
     %% Apply fetched top block as the top of view;
@@ -77,6 +91,12 @@ init(Conf) ->
 callback_mode() ->
     [state_functions, state_enter].
 
+terminate(_Reason, _State, _Data) ->
+    ok.
+
+%%%===================================================================
+%%%  State machine callbacks
+%%%===================================================================
 %% Entering into parent chain fetching log state;
 fetched(enter, _OldState, Data) ->
     %% TODO: Place for the sync initiation announcement;
@@ -101,7 +121,7 @@ fetched(internal, {added_block, Block, SynchedBlock}, Data) ->
             %% Sync procedure is continue it the fetch mode (the current persisted block isn't achieved);
             %% To persist the fetched block;
             aehc_parent_db:write_parent_block(Block),
-            {ok, PrevBlock} = aehc_connector:get_block_by_hash(connector(Data), PrevHash),
+            {ok, PrevBlock} = aeconnector:get_block_by_hash(connector(Data), PrevHash),
             {keep_state, Data, [{next_event, internal, {added_block, PrevBlock, SynchedBlock}}]};
         _ ->
             %% Sync procedure is continue on the fork switch mode
@@ -130,16 +150,16 @@ orphaned(internal, {added_block, Block, SynchedBlock}, Data) ->
             %% Sync is done in the fork mode;
             {next_state, synced, Data};
         _ when Height > GenesisHeight ->
-            %% TODO: Place for the new added block anouncement;
-            %% TODO: Place for abandoned block anouncement;
+            %% TODO: Place for the new added block announcement;
+            %% TODO: Place for abandoned block announcement;
             %% Sync procedure is continue it the fetch mode (the current persisted block isn't achived);
             aehc_parent_db:write_parent_block(Block),
-            {ok, PrevBlock} = aehc_connector:get_block_by_hash(connector(Data), PrevHash),
+            {ok, PrevBlock} = aeconnector:get_block_by_hash(connector(Data), PrevHash),
             SynchedPrevHash = aehc_parent_block:prev_hash_block(SynchedBlock),
             PrevSynchedBlock = aehc_parent_db:get_parent_block(SynchedPrevHash),
             {keep_state, Data, [{next_event, internal, {added_block, PrevBlock, PrevSynchedBlock}}]};
         _ ->
-            %% NOTE: This case has designed by taking into account the dynamic nature of HC which relies on parent chains;
+            %% NOTE: This case is designed with the dynamic nature of HC which relies on the parent chains
             %% Genesis hash entry has to be chosen precisely and by the most optimal way (productivity VS security);
             %% If the worst case got happened and fork exceeded pre-configured genesis hash entry the system should be:
             %%  a) Reconfigured by the new (older ones) genesis entry;
@@ -170,57 +190,15 @@ synced(cast, {publish_block, Block}, Data) ->
     SynchedBlock = aehc_parent_db:get_parent_block(current_hash(Data)),
     {next_state, fetched, Data, [{next_event, internal, {added_block, Block, SynchedBlock}}]}.
 
-terminate(_Reason, _State, _Data) ->
-    ok.
-
 %%%===================================================================
 %%%  Data access layer
 %%%===================================================================
--spec current_height(data()) -> non_neg_integer().
-current_height(Data) ->
-    Data#data.current_height.
-
--spec current_height(data(), non_neg_integer()) -> data().
-current_height(Data, Height) ->
-    Data#data{current_height = Height}.
-
--spec current_hash(data()) -> binary().
-current_hash(Data) ->
-    Data#data.current_hash.
-
--spec current_hash(data(), binary()) -> data().
-current_hash(Data, Hash) ->
-    Data#data{current_hash = Hash}.
-
--spec genesis_hash(data()) -> binary().
-genesis_hash(Data) ->
-    Data#data.genesis_hash.
-
--spec genesis_height(data()) -> non_neg_integer().
-genesis_height(Data) ->
-    Data#data.genesis_height.
-
--spec genesis_height(data(), non_neg_integer()) -> data().
-genesis_height(Data, Height) ->
-    Data#data{genesis_height = Height}.
-
--spec connector(data()) -> aehc_connector:connector().
-connector(Data) ->
-    Data#data.connector.
-
--spec note(data()) -> binary().
-note(Data) ->
-    Data#data.note.
-
-%%%===================================================================
-%%%  Data constructor
-%%%===================================================================
-%% Initialization of the view within Db;
+%% Initialization of the Db view;
 %% Initial Db keeps pinpointed genesis hash address as the top of the parent view + fetched block;
 -spec init_data(data()) -> data().
 init_data(Data) ->
     GenesisHash = genesis_hash(Data),
-    {ok, GenesisBlock} = aehc_connector:get_block_by_hash(connector(Data), GenesisHash),
+    {ok, GenesisBlock} = aeconnector:get_block_by_hash(connector(Data), GenesisHash),
     GenesisHeight = aehc_parent_block:height_block(GenesisBlock),
     Res = aehc_parent_db:get_parent_chain_view(GenesisHash),
     TopBlockHash =
@@ -242,18 +220,46 @@ sync_data(Data, Block) ->
     Height = aehc_parent_block:height_block(Block),
     current_height(current_hash(Data, Hash), Height).
 
-%%%===================================================================
-%%%  Configuration access layer
-%%%===================================================================
--spec conf_data(map()) -> data().
-conf_data(Conf) ->
-    GenesisHash = maps:get(<<"genesis_hash">>, Conf),
-    Module = aehc_connector:module(Conf),
-    #data{
-        name = maps:get(<<"name">>, Conf),
-        current_height = 0,
-        current_hash = GenesisHash,
-        genesis_hash = GenesisHash,
-        connector = Module,
-        note = maps:get(<<"note">>, Conf)
-    }.
+-spec id(data()) -> term().
+id(Data) ->
+    Data#data.id.
+
+-spec id(data(), term()) -> data().
+id(Data, Id) ->
+    Data#data{ id = Id }.
+
+-spec current_height(data()) -> non_neg_integer().
+current_height(Data) ->
+    Data#data.current_height.
+
+-spec current_height(data(), non_neg_integer()) -> data().
+current_height(Data, Height) ->
+    Data#data{ current_height = Height }.
+
+-spec current_hash(data()) -> binary().
+current_hash(Data) ->
+    Data#data.current_hash.
+
+-spec current_hash(data(), binary()) -> data().
+current_hash(Data, Hash) ->
+    Data#data{ current_hash = Hash }.
+
+-spec genesis_hash(data()) -> binary().
+genesis_hash(Data) ->
+    Data#data.genesis_hash.
+
+-spec genesis_height(data()) -> non_neg_integer().
+genesis_height(Data) ->
+    Data#data.genesis_height.
+
+-spec genesis_height(data(), non_neg_integer()) -> data().
+genesis_height(Data, Height) ->
+    Data#data{ genesis_height = Height }.
+
+-spec connector(data()) -> aeconnector:connector().
+connector(Data) ->
+    Data#data.connector.
+
+-spec note(data()) -> binary().
+note(Data) ->
+    Data#data.note.
