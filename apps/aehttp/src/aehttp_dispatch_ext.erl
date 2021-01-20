@@ -91,6 +91,7 @@ queue('GetChannelByPubkey')                     -> ?READ_Q;
 queue('GetPeerPubkey')                          -> ?READ_Q;
 queue('GetStatus')                              -> ?READ_Q;
 queue('GetPeerKey')                             -> ?READ_Q;
+queue('GetChainEnds')                           -> ?READ_Q;
 %% update transactions (default to update in catch-all)
 queue('PostTransaction')                        -> ?WRITE_Q;
 queue(_)                                        -> ?WRITE_Q.
@@ -629,6 +630,9 @@ handle_request_('GetStatus', _Params, _Context) ->
        <<"peer_pubkey">>                => aeser_api_encoder:encode(peer_pubkey, PeerPubkey),
        <<"top_key_block_hash">>         => aeser_api_encoder:encode(key_block_hash, TopBlockHash),
        <<"top_block_height">>           => TopBlockHeight}};
+
+handle_request_('GetChainEnds', _Params, _Context) ->
+    {200, [], [aeser_api_encoder:encode(key_block_hash, H) || H <- aec_db:find_chain_end_hashes()]};
 
 handle_request_(OperationID, Req, Context) ->
     error_logger:error_msg(

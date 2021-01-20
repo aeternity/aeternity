@@ -89,6 +89,7 @@
         , proof_of_fraud_report_delay/0
         , get_fork_result/2
         , get_info_field/2
+        , ensure_chain_ends/0
         ]).
 
 -import(aetx_env, [no_events/0]).
@@ -475,6 +476,7 @@ internal_insert_genesis(Node, Block) ->
                 false),
         ok = aec_db:write_genesis_hash(NewTopHash),
         ok = aec_db:write_top_block_hash(NewTopHash),
+        ok = aec_db:mark_chain_end_hash(NewTopHash),
         {ok, true, undefined, no_events()}
     end).
 
@@ -521,6 +523,14 @@ internal_insert_transaction(Node, Block, Origin, Ctx) ->
         {H1, H2} ->
             %% Inform the consensus engine to act accordingly :(
             Consensus:pogf_detected(H1, H2)
+    end,
+    %% Update fork info
+    case node_type(Node) of
+        key ->
+            ok = aec_db:mark_chain_end_hash(node_hash(Node)),
+            ok = aec_db:unmark_chain_end_hash(node_prev_key_hash(Node));
+        micro ->
+            ok
     end,
     case maps:get(found_pof, State3) of
         no_fraud  -> {ok, TopChanged, PrevKeyHeader, Events};
@@ -927,6 +937,9 @@ db_get_header(Hash) when is_binary(Hash) ->
     {value, Header} =  aec_db:find_header(Hash),
     Header.
 
+%% TODO: This primitive is being used heavily(sync, block insertion, user api) and the current implementation is slowish
+%% The usual result of this function call is one header, sometimes two headers. On heavy generations on a good SSD
+%% using the rocksdb backend this right now takes 13-14ms which is bad in the hot path... This should take at most 100us -.-
 db_find_key_nodes_at_height(Height) when is_integer(Height) ->
     case aec_db:find_headers_and_hash_at_height(Height) of
         [_|_] = Headers ->
@@ -1174,3 +1187,92 @@ fork_result(Count, #{signalling_block_count := SigCount}) when Count >= SigCount
     true;
 fork_result(_Count, _Fork) ->
     false.
+
+%% Ok this is a DB migration which is pretty heavy to execute
+%% as it involves a DFS search of the ENTIRE header chain starting from genesis
+%% If the migration is required then starts a background task which does this + uses aec_chain_state as a temporary store
+%% We essentially walk the entire header chain and at the end insert the results to the DB in an atomic transaction
+%% comparing to what already was inserted
+-spec ensure_chain_ends() -> ok | pid().
+ensure_chain_ends() ->
+    case aec_db:get_top_block_hash() of
+        undefined -> ok; %% Fresh DB
+        _ -> %% Ok this is not a fresh DB
+            case aec_db:chain_end_migration_status() of
+                done -> %% No migration is in progress
+                    case aec_db:find_chain_end_hashes() of
+                        [] -> %% Ok this is an old DB - migration required
+                            aec_db:start_chain_end_migration(),
+                            start_chain_ends_migration();
+                        _ -> %% No migration required
+                            ok
+                    end;
+                in_progress -> %% The migration was interrupted and not finished yet
+                    lager:info("[Orphan key blocks scan] Resuming interrupted scan"),
+                    start_chain_ends_migration()
+            end
+    end.
+
+start_chain_ends_migration() ->
+    lager:info("[Orphan key blocks scan] Scanning the DB for orphan keyblocks in the background"),
+    spawn(fun() -> %% Don't use spawn_link here - we can't be killed by the setup process
+        %% An error here should bring down the entire node with it!
+        try
+            %% On a cloud ssd it executed in 158s compared to 1.5h by doing it without hacks
+            %% The reason why it's so fast is that mnesia_rocksdb creates an iterator object and while iterating
+            %% rocksdb aggressively prefetches the data in increasingly bigger chunks
+            %% Retrieves tuples {hash, prev_key_hash, height} and should work for legacy header formats
+            %% Takes up at most a few MB of RAM
+            {Time, R0} = timer:tc(fun() ->
+                mnesia:dirty_select(aec_headers, [{ {aec_headers, '$1', '$2', '$3'}
+                                                  , [{'=:=', {element, 1, '$2'}, key_header}]
+                                                  , [{{'$1', {element, 4, '$2'}, '$3'}}]
+                                                  }])
+              end),
+            lager:info("[Orphan key blocks scan] Retrieved the key header chain in ~p microseconds", [Time]),
+            R1 = lists:keysort(3, R0),
+            S = lists:foldl(fun({Hash, PrevKeyHash, _}, S0) ->
+                S1 = sets:del_element(PrevKeyHash, S0),
+                sets:add_element(Hash, S1)
+              end, sets:new(), R1),
+            chain_ends_finish_migration(S)
+        catch
+            E:R:Stack ->
+                (catch io:format(user, "[Orphan key blocks scan] Terminating node: ~p ~p ~p", [E, R, Stack])),
+                (catch lager:error("[Orphan key blocks scan] Terminating node: ~p ~p ~p", [E, R, Stack])),
+                init:stop("[Orphan key blocks scan] Encountered a fatal error during the migration. Terminating the node")
+        end
+      end).
+
+%% Finishes the DB migration - this is kind of tricky as the migration was done while the node was running
+%% We insert a orphan top to the DB only when we don't have already a newer orphan which is a predecessor
+%% Let's do it in O(N*M*O_is_predecesor) where N is the number of orphans found while the migration was in progress and M
+%% is the numbers of orphans found by the migration, N should be relatively small
+chain_ends_finish_migration(OldTops0) ->
+    lager:info("[Orphan key blocks scan] Finished - applying the scan result"),
+    OldTops = sets:to_list(OldTops0),
+    lager:debug("[Orphan key blocks scan] Finished - found ~p orphans", [length(OldTops)]),
+    %% This needs to respect ACID!
+    ok = aec_db:ensure_transaction(fun() ->
+        NewTops = aec_db:find_chain_end_hashes(),
+        chain_ends_maybe_apply(OldTops, NewTops, NewTops),
+        aec_db:finish_chain_end_migration(),
+        ok
+      end).
+
+chain_ends_maybe_apply([], _, _) -> ok; %% Done
+chain_ends_maybe_apply([H|T], [], NewTops) -> %% No objections
+    aec_db:mark_chain_end_hash(H),
+    chain_ends_maybe_apply(T, NewTops, NewTops);
+chain_ends_maybe_apply([H|T], [H|_], NewTops) -> %% Already found
+    chain_ends_maybe_apply(T, NewTops, NewTops);
+chain_ends_maybe_apply([H1|T1] = OldTops, [H2|T2], NewTops) -> %% Check if H1 is a direct predecessor of H2
+    case find_common_ancestor(H1, H2) of
+        {ok, H1} -> chain_ends_maybe_apply(T1, NewTops, NewTops); %% H2 is more recent than H1
+        {ok, _} -> chain_ends_maybe_apply(OldTops, T2, NewTops); %% H1 might be new
+        {error, unknown_hash} -> %% Community fork migration
+            EH1 = aeser_api_encoder:encode(key_block_hash, H1),
+            EH2 = aeser_api_encoder:encode(key_block_hash, H2),
+            lager:info("[Orphan key blocks scan] ignoring deleted header: find_common_ancestor(~p, ~p)", [EH1, EH2]),
+            chain_ends_maybe_apply(T1, NewTops, NewTops)
+    end.

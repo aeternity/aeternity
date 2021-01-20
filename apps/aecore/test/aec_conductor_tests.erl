@@ -871,8 +871,10 @@ assert_stopped_and_genesis_at_top() ->
     Keys = beneficiary_keys(),
     Preset = preset_accounts(Keys),
     {Genesis, _} = aec_test_utils:genesis_block_with_state(Preset),
+    GenesisHash = header_hash( aec_blocks:to_header( Genesis )),
     ?assertEqual(aec_chain:top_block_hash(),
-                 header_hash( aec_blocks:to_header( Genesis ))).
+                 GenesisHash),
+    ?assertEqual([GenesisHash], aec_db:find_chain_end_hashes()).
 
 assert_leader(Value) ->
     ?assertEqual(Value, ?TEST_MODULE:is_leader()).

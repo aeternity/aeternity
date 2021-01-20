@@ -698,16 +698,34 @@ fork_common_block(EasyChain, TopHashEasy, HardChain, TopHashHard) ->
     %% The second chain should take over
     ok = write_blocks_to_chain(EasyChain),
     ?assertEqual(TopHashEasy, top_block_hash()),
+    fork_test_chain_ends_and_migration([TopHashEasy]),
     ok = write_blocks_to_chain(HardChain),
     ?assertEqual(TopHashHard, top_block_hash()),
+    fork_test_chain_ends_and_migration([TopHashEasy, TopHashHard]),
 
     restart_chain_db(),
     %% The second chain should not take over
     ok = write_blocks_to_chain(HardChain),
     ?assertEqual(TopHashHard, top_block_hash()),
+    fork_test_chain_ends_and_migration([TopHashHard]),
     ok = write_blocks_to_chain(EasyChain),
     ?assertEqual(TopHashHard, top_block_hash()),
+    fork_test_chain_ends_and_migration([TopHashEasy, TopHashHard]),
     ok.
+
+fork_test_chain_ends_and_migration(Expected) ->
+    F = fun() -> ?assertEqual( lists:usort(Expected)
+                             , lists:usort(aec_db:find_chain_end_hashes())) end,
+    F(),
+    [aec_db:unmark_chain_end_hash(H) || H <- Expected],
+    case aec_chain_state:ensure_chain_ends() of
+        ok -> error("Migration did not trigger!");
+        Pid ->
+            MRef = erlang:monitor(process, Pid),
+            receive {'DOWN', MRef, process, _, _} -> ok end,
+            F(),
+            ok = aec_chain_state:ensure_chain_ends() %% Already migrated
+    end.
 
 fork_get_by_height() ->
     CommonChain = gen_block_chain_with_state_by_target([?GENESIS_TARGET, ?GENESIS_TARGET, 1, 1], 111),
@@ -834,6 +852,7 @@ fork_on_micro_block() ->
 
     {ok, KB2ForkHash} = aec_blocks:hash_internal_representation(KB2Fork),
     ?assertEqual(KB2ForkHash, aec_chain:top_block_hash()),
+    fork_test_chain_ends_and_migration([KB2ForkHash]),
 
     %% Insert main chain
     ok = insert_block(MB2),
@@ -843,7 +862,7 @@ fork_on_micro_block() ->
     %% Check main chain took over
     {ok, KB3Hash} = aec_blocks:hash_internal_representation(KB3),
     ?assertEqual(KB3Hash, aec_chain:top_block_hash()),
-
+    fork_test_chain_ends_and_migration([KB2ForkHash, KB3Hash]),
     ok.
 
 fork_on_old_fork_point() ->
