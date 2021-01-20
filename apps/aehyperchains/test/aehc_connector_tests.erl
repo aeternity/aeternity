@@ -2,7 +2,7 @@
 %%%-------------------------------------------------------------------
 %%% @copyright (C) 2020, Aeternity Anstalt
 %%% @doc
-%%% Tests for aehc_connector
+%%% Tests for aeconnector
 %%% @end
 %%%-------------------------------------------------------------------
 -module(aehc_connector_tests).
@@ -33,7 +33,7 @@ hyperchains_simulator_test_() ->
             fun() ->
                 {ok, Pub} = aec_keys:pubkey(),
                 SenderId = aeser_id:create(account, Pub),
-                ?assertEqual(ok, aehc_connector:send_tx(?CONNECTOR, SenderId, <<"Commitment">>, <<"PoGF">>)),
+                ?assertEqual(ok, aeconnector:send_tx(?CONNECTOR, SenderId, <<"Hyperchains trace">>)),
                 ok
             end}
         ]}.

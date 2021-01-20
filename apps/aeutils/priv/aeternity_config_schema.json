@@ -225,7 +225,7 @@
                 "provide_node_info" : {
                     "description": "Provide node version to peers",
                     "type" : "boolean",
-                    "default": true 
+                    "default": true
                 },
                 "peer_analytics" : {
                     "description": "If enabled aggregates info about remote peers and exposes them via HTTP. Overrides max_inbound and max_outbound",
@@ -558,109 +558,89 @@
             "type" : "object",
             "additionalProperties" : false,
             "properties" : {
-                "enabled": {
-                    "description": "",
-                    "type": "boolean",
-                    "default": false
-                },
-                "delegate":{
-                    "type" : "object",
-                    "additionalProperties" : false,
-                    "properties" : {
-                        "keys": {
-                            "type"    : "object",
-                            "additionalProperties": false,
-                            "properties" : {
-                                "dir": {
-                                    "description" : "Directory of the public/private key pair used for signing of the commitment contract call.",
-                                    "type" : "string"
-                                }
-                            }
-                        }
-                    }
-                },
-                "staking_contract_address": {
-                    "type": "string",
-                    "example" : "ct_DummyPubKeyDoNotEverUse999999999999999999999999999",
-                    "pattern": "^ct_[1-9A-HJ-NP-Za-km-z]*$",
-                    "description": "The address of the deployed staking contract. If not set then the node will deploy a system staking contract when activating the consensus. Use when performing a onchain vote on enabling Hyperchain consensus."
-                },
-                "activation_criteria": {
-                    "type": "object",
-                    "description": "Activation criteria of the hyperchain consensus. If not set HC will operate in PoW mode",
+              "enabled": {
+                "description": "",
+                "type": "boolean",
+                "default": false
+              },
+              "delegate":{
+                "type" : "object",
+                "additionalProperties" : false,
+                "properties" : {
+                  "keys" : {
+                    "type"    : "object",
                     "additionalProperties": false,
-                    "required" : [
-                        "minimum_stake",
-                        "unique_delegates",
-                        "check_frequency",
-                        "confirmation_depth"
-                    ],
                     "properties" : {
-                        "minimum_stake": {
-                            "description": "Minimum amount(in aettos, 1AE = 1e18 aettos) of stake required to be locked in the staking contract",
-                            "type": "integer"
-                        },
-                        "unique_delegates": {
-                            "description": "Minimum amount of unique delegates staking in the staking contract",
-                            "type": "integer"
-                        },
-                        "check_frequency": {
-                            "description": "How often we check the fulfillment of the activation criteria. If set to N we check the criteria at keyblocks at heights divisible by N",
-                            "type": "integer"
-                        },
-                        "confirmation_depth": {
-                            "description": "The minimum confirmation depth of the activation criteria",
-                            "type": "integer"
-                        }
+                      "dir": {
+                        "description" : "Directory of the public/private key pair used for signing of the commitment contract call.",
+                        "type" : "string"
+                      }
                     }
-                },
-                "trackers":{
+                  }
+                }
+              },
+              "staking_contract_address": {
+                "type": "string",
+                "example" : "ct_DummyPubKeyDoNotEverUse999999999999999999999999999",
+                "pattern": "^ct_[1-9A-HJ-NP-Za-km-z]*$",
+                "description": "The address of the deployed staking contract. If not set then the node will deploy a system staking contract when activating the consensus. Use when performing a onchain vote on enabling Hyperchain consensus."
+              },
+              "activation_criteria": {
+                "type": "object",
+                "description": "Activation criteria of the hyperchain consensus. If not set HC will operate in PoW mode",
+                "additionalProperties": false,
+                "required" : [
+                  "minimum_stake",
+                  "unique_delegates",
+                  "check_frequency",
+                  "confirmation_depth"
+                ],
+                "properties" : {
+                  "minimum_stake": {
+                    "description": "Minimum amount(in aettos, 1AE = 1e18 aettos) of stake required to be locked in the staking contract",
+                    "type": "integer"
+                  },
+                  "unique_delegates": {
+                    "description": "Minimum amount of unique delegates staking in the staking contract",
+                    "type": "integer"
+                  },
+                  "check_frequency": {
+                    "description": "How often we check the fulfillment of the activation criteria. If set to N we check the criteria at keyblocks at heights divisible by N",
+                    "type": "integer"
+                  },
+                  "confirmation_depth": {
+                    "description": "The minimum confirmation depth of the activation criteria",
+                    "type": "integer"
+                  }
+                }
+              },
+              "setup":{
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "state": {
+                    "type": "string",
+                    "enum": [ "monolith", "replica", "shard" ],
+                    "default": "monolith",
+                    "description": "Connector's setup: https://github.com/aeternity/aeconnector"
+                  },
+                  "primary":{
+                    "$ref": "#/definitions/backend"
+                  },
+                  "height":{
+                    "type": "integer",
+                    "description": "Effective height. The point of maturity of the primary chain"
+                  },
+                  "replicas":{
                     "type": "array",
                     "items":{
-                        "type":"object",
-                        "description": "Tracks are configuration entries for attached blockchains (parent chains)",
-                        "properties": {
-                            "name":{
-                                "description": "The name of synchronized parent chain view within system",
-                                "type" : "string"
-                            },
-                            "connector": {
-                                "properties": {
-                                    "module": {
-                                        "description": "Parent chain driver",
-                                        "type": "string"
-                                    },
-                                    "args":{
-                                        "type":"object",
-                                        "description": "User defined arguments list (passed as is to the connector)"
-                                    }
-                                }
-                            },
-                            "genesis_hash":{
-                                "description" : "The block address on the parent chain (the genesis pointer on the parent chain view)",
-                                "type" : "string"
-                            },
-                            "note":{
-                                "type" : "string"
-                            }
-                        },
-                        "minItems": 1
-                    },
-                    "default" : [
-                        {
-                            "name":"aeternity",
-                            "connector": {
-                                "module":"aehc_aeternity_connector",
-                                "args": {
-                                    "host":"localhost",
-                                    "port":8332,
-                                    "stub": true
-                                }
-                            },
-                            "genesis_hash":"kh_2pDTjhABi43q1LrpXrBRj8GaBhJbZQSpYks9EYqfvW5fk31eWy",
-                            "note": "Initial Hyperchains test track (release version 5.5.4)"
-                        }]
+                      "uniqueItems": true,
+                      "$ref": "#/definitions/backend"
+                    }
+                  },
+                  "description": "Deployment setup configuration"
                 }
+              }
             }
         },
         "mining" : {
@@ -1397,6 +1377,30 @@
     "definitions" : {
         "key_value_pattern": {
             "pattern" : "^[a-zA-Z0-9\\-_\\.]+\\h*:\\h*[0-9]+(\\h*,\\h*[a-zA-Z_]+\\h*:\\h*[0-9]+)*"
+        },
+      "backend":{
+        "type":"object",
+        "description": "State machine which represents the attached blockchain (parent chain)",
+        "properties": {
+          "module": {
+            "description": "The the real world blockchain interface: https://github.com/aeternity/aeconnector/wiki",
+            "type": "string",
+            "default": "aeconnector_btc_full_node"
+          },
+          "args":{
+            "type":"object",
+            "description": "Connector configuration which should be passed the module:connect/2"
+          },
+          "capacity":{
+            "type": "integer",
+            "default": 0,
+            "description": "Commitment capacity. The blocks count accumulated in one commitment transaction"
+          },
+          "hash":{
+            "description" : "The block address on which state machine history begins",
+            "type" : "string"
+          }
         }
+      }
     }
 }
