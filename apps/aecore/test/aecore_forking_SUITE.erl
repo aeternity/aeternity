@@ -23,6 +23,8 @@
 -include_lib("common_test/include/ct.hrl").
 -include_lib("stdlib/include/assert.hrl").
 
+-define(MINE_RATE, 100).
+
 all() ->
     [
      {group, all_nodes}
@@ -42,7 +44,8 @@ suite() ->
 
 init_per_suite(Config) ->
     aecore_suite_utils:init_per_suite([dev1, dev2],
-                                      #{},
+                                      #{<<"mining">> =>
+                                            #{<<"expected_mine_rate">> => ?MINE_RATE}},
                                       [{add_peers, true}],
                                       [{symlink_name, "latest.fork"},
                                        {test_module, ?MODULE}]
@@ -80,8 +83,8 @@ create_dev1_chain(Config) ->
     aecore_suite_utils:start_node(dev1, Config),
     N1 = aecore_suite_utils:node_name(dev1),
     aecore_suite_utils:connect(N1),
-    {ok, Blocks} = aecore_suite_utils:mine_key_blocks(N1, 8),
-    true = (length(lists:usort(Blocks)) >= 8),
+    {ok, Blocks} = mine_key_blocks(N1, 20),
+    true = (length(lists:usort(Blocks)) >= 20),
     N1Top = rpc:call(N1, aec_chain, top_block, [], 5000),
     ct:log("top of chain dev1: ~p (mined ~p)", [N1Top, lists:last(Blocks)]),
     N1Top = lists:last(Blocks),
@@ -93,7 +96,7 @@ create_dev2_chain(Config) ->
     aecore_suite_utils:start_node(dev2, Config),
     N2 = aecore_suite_utils:node_name(dev2),
     aecore_suite_utils:connect(N2),
-    aecore_suite_utils:mine_key_blocks(N2, 1),
+    mine_key_blocks(N2, 1),
     ForkTop = rpc:call(N2, aec_chain, top_block, [], 5000),
     ct:log("top of fork dev2: ~p", [ ForkTop ]),
     aecore_suite_utils:stop_node(dev2, Config),
@@ -130,4 +133,5 @@ sync_fork_in_wrong_order(Config) ->
       N1Top),
     ok.
 
-
+mine_key_blocks(Node, N) ->
+    aecore_suite_utils:mine_blocks(Node, N, ?MINE_RATE, key, #{}).
