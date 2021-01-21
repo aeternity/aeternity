@@ -69,7 +69,7 @@ log_block(Block) ->
     %% Commitment capacity. The blocks count accumulated into one commitment transaction
     capacity::integer(),
     %% The block address on which the state machine history begins
-    hash::binary()
+    address::binary()
 }).
 
 -type tracker() :: #tracker{}.
@@ -152,56 +152,13 @@ shard(_Event, _Req, Data) ->
 
 -spec start_tracker(tracker(), function()) -> {ok, pid()}.
 start_tracker(Tracker, Callback) ->
-    Hash = Tracker#tracker.hash, Args = Tracker#tracker.args,
-    aehc_parent_tracker:start(Hash, Args, Callback).
+    Address = Tracker#tracker.address, Args = Tracker#tracker.args,
+    aehc_parent_tracker:start(Address, Args, Callback).
 
 -spec stop_tracker(tracker()) -> ok.
 stop_tracker(Tracker) ->
     Pid = Tracker#tracker.pid,
     aehc_parent_tracker:stop(Pid).
-
-%%handle_info({publish_block, Con, Block}, #state{} = State) ->
-%% To be able to persists the block we have to be sure that it connects to the previous existing one in the DB;
-%% That guaranties sequential order and consistency of the current chain view;
-%% Check that condition each time when block is arrived allows us to skip the whole chain traversing procedure;
-%%    try
-%%        true = aehc_parent_block:is_hc_parent_block(Block),
-%% Fork synchronization by by the new arrived block;
-%%        aehc_parent_tracker:publish_block(View, Block)
-%%    catch E:R:StackTrace ->
-%%        lager:error("CRASH: ~p; ~p", [E, StackTrace]),
-%%        {error, E, R}
-%%    end,
-%%    {noreply, State};
-
-%%%===================================================================
-%%%  Parent chain simplified proto
-%%%===================================================================
-%% This API should be used by connector's developer as a wrapper around internal abstract commitments data type;
--spec commitment(Delegate::binary(), KeyblockHash::binary()) ->
-    commitment().
-commitment(Delegate, KeyblockHash) when
-    is_binary(Delegate), is_binary(KeyblockHash) ->
-    aehc_commitment:new(aehc_commitment_header:new(Delegate, KeyblockHash)).
-
-%% TODO: Opened for discussion with gorbak25 and radrow;
-%%-spec commitment(Delegate::binary(), KeyblockHash::binary(), PoGFHash::binary()) ->
-%%    commitment().
-%%commitment(Delegate, KeyblockHash, PoGFHash) when
-%%    is_binary(Delegate), is_binary(KeyblockHash), is_binary(PoGFHash) ->
-%%    aehc_commitment:new(aehc_commitment_header:new(Delegate, KeyblockHash, PoGFHash)).
-
--spec parent_block(Height::non_neg_integer(), Hash::binary(), PrevHash::binary(), Commitments::[commitment()]) ->
-    parent_block().
-parent_block(Height, Hash, PrevHash, Commitments) when
-    is_integer(Height), is_binary(Hash), is_binary(PrevHash), is_list(Commitments) ->
-    Hashes = [aehc_commitment:hash(Commitment) || Commitment <- Commitments],
-    Header = aehc_parent_block:new_header(Hash, PrevHash, Height, Hashes),
-    aehc_parent_block:new_block(Header, Commitments).
-
-
-%% NOTE: Safely call to existing atom.
-%% In the case of non loaded modules related issues should be addressed;
 
 %%%===================================================================
 %%%  Data access layer
@@ -210,11 +167,11 @@ parent_block(Height, Hash, PrevHash, Commitments) when
 tracker(Tracker) ->
     Module = maps:get(<<"module">>, Tracker),
     Args = maps:get(<<"args">>, Tracker),
-    Hash = maps:get(<<"hash">>, Tracker),
+    Address = maps:get(<<"address">>, Tracker),
     #tracker{
         module = binary_to_atom(Module, unicode),
         args = Args,
-        hash = Hash
+        address = Address
     }.
 
 -spec data(map()) -> data().
