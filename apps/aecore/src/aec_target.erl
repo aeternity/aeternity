@@ -89,11 +89,15 @@ recalculate_from_stripped(TimesAndTargets) ->
     TotalSolveTime           = total_solve_time_from_stripped(TimesAndTargets),
     TemperedTST              = (3 * N * DesiredTimeBetweenBlocks) div 4 + (2523 * TotalSolveTime) div 10000,
     NewTargetInt             = TemperedTST * K div (DesiredTimeBetweenBlocks * SumKDivTargets),
+    lager:debug("N = ~p, K = ~p, SKDT = ~p, DTBB = ~p, TST = ~p, TTST = ~p, NTI = ~p",
+                [N, K, SumKDivTargets, DesiredTimeBetweenBlocks, TotalSolveTime, TemperedTST,
+                 NewTargetInt]),
     min(?HIGHEST_TARGET_SCI, aeminer_pow:integer_to_scientific(NewTargetInt)).
 
 -spec verify(aec_headers:header(), nonempty_list(term())) ->
           ok | {error, {wrong_target, non_neg_integer(), non_neg_integer()}}.
 verify(Top, TimesAndTargets) ->
+    lager:debug("Top = ~p", [Top]),
     HeaderTarget = aec_headers:target(Top),
     ExpectedTarget = recalculate_from_stripped(TimesAndTargets),
     case HeaderTarget == ExpectedTarget of
