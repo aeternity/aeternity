@@ -1396,7 +1396,7 @@
             "default": 0,
             "description": "Commitment capacity. The blocks count accumulated in one commitment transaction"
           },
-          "hash":{
+          "address":{
             "description" : "The block address on which state machine history begins",
             "type" : "string"
           }
