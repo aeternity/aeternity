@@ -618,7 +618,7 @@
                 "type": "object",
                 "additionalProperties": false,
                 "properties": {
-                  "state": {
+                  "mode": {
                     "type": "string",
                     "enum": [ "monolith", "replica", "shard" ],
                     "default": "monolith",
@@ -637,9 +637,9 @@
                       "uniqueItems": true,
                       "$ref": "#/definitions/backend"
                     }
-                  },
-                  "description": "Deployment setup configuration"
-                }
+                  }
+                },
+                "description": "Deployment setup configuration"
               }
             }
         },

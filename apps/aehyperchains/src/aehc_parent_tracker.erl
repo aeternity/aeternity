@@ -87,10 +87,10 @@ publish_block(_Connector, Block) ->
 
 init(Data) ->
     {ok, Pid} = connect(Data), _Ref = erlang:monitor(process, Pid),
-
     ok = init_db(Data),
     Data2 = sync_state(Data),
-    {ok, Block} = aeconnector:get_top_block(connector(Data)),
+    {ok, Hash} = aeconnector:get_top_block(connector(Data)),
+    {ok, Block} = aeconnector:get_block_by_hash(connector(Data), Hash),
     Data3 = indicate(Data2, Block),
 
     {ok, fetched, Data3, [{next_event, internal, {added_block, Block}}]}.
@@ -186,9 +186,14 @@ migrated(_, _, Data) ->
 synced(enter, _OldState, Data) ->
     Top = top(Data), Indicator = indicator(Data),
     %% TODO: Place for the sync finalization anouncement;
-    Data2 = index(state(Data, Top), Indicator),
+    Data2 = index(state(Data, Indicator), Top),
     commit_state(Data2),
     {keep_state, Data2};
+
+synced(cast, {send_tx, Delegate, Payload, From}, Data) ->
+    Res = aeconnector:send_tx(connector(Data), Delegate, Payload),
+    gen_statem:reply(From, Res),
+    {keep_state, Data};
 
 synced(cast, {publish_block, Block}, Data) ->
     Data2 = indicate(Data, Block),
@@ -198,7 +203,7 @@ synced(cast, {publish_block, Block}, Data) ->
 init_db(Data) ->
     Address = address(Data),
     State = aehc_parent_db:get_parent_state(Address),
-    (State == undefined) orelse
+    (State == undefined) andalso
     begin
         {ok, Block} = aeconnector:get_block_by_hash(connector(Data), Address),
         %% TODO To transform into parent block
@@ -213,8 +218,8 @@ init_db(Data) ->
 sync_state(Data) ->
     Address = address(Data),
     State = aehc_parent_db:get_parent_state(Address),
-    Top = aehc_parent_state:top(State),
-    state(Data, Top).
+    Top = aehc_parent_state:top(State), Height = aehc_parent_state:height(State),
+    top(state(Data, Top), Height).
 
 indicate(Data, Block) ->
     Hash = aeconnector_block:hash(Block), Height = aeconnector_block:height(Block),
@@ -239,21 +244,21 @@ commit_state(Data) ->
 -spec commitment(tx()) -> commitment().
 commitment(Tx) ->
     Delegate = aeconnector_tx:account(Tx),
-    KeyblockHash = aeconnector_tx:payload(Tx),
-    Header = aehc_commitment_header:new(Delegate, KeyblockHash),
+    _KeyblockHash = aeconnector_tx:payload(Tx),
+    Header = aehc_commitment_header:new(Delegate, <<>>),
     aehc_commitment:new(Header).
 
 -spec parent_block(block()) -> parent_block().
 parent_block(Block) ->
-    CList = [commitment(Tx) || Tx <- aeconnector_block:txs(Block)],
-    CHList = [aehc_commitment:hash(C) || C <- CList],
+%%    CList = [commitment(Tx) || Tx <- aeconnector_block:txs(Block)],
+%%    _CHList = [aehc_commitment:hash(C) || C <- CList],
 
     Hash = aeconnector_block:hash(Block),
     PrevHash = aeconnector_block:prev_hash(Block),
     Height = aeconnector_block:height(Block),
 
-    Header = aehc_parent_block:new_header(Hash, PrevHash, Height, CHList),
-    aehc_parent_block:new_block(Header, CList).
+    Header = aehc_parent_block:new_header(Hash, PrevHash, Height, []),
+    aehc_parent_block:new_block(Header, []).
 
 %%%===================================================================
 %%%  Data access layer
@@ -274,15 +279,15 @@ connector(Data) ->
 args(Data) ->
     Data#data.args.
 
--spec indicator(data()) -> non_neg_integer().
+-spec indicator(data()) -> binary().
 indicator(Data) ->
     Data#data.indicator.
 
--spec indicator(data(), non_neg_integer()) -> data().
-indicator(Data, Value) ->
-    Data#data{ indicator = Value }.
+-spec indicator(data(), binary()) -> data().
+indicator(Data, Hash) ->
+    Data#data{ indicator = Hash }.
 
--spec top(data()) -> binary().
+-spec top(data()) -> non_neg_integer().
 top(Data) ->
     Data#data.top.
 
@@ -306,7 +311,7 @@ index(Data) ->
 index(Data, Index) ->
     Data#data{ index = Index }.
 
--spec address(data()) -> non_neg_integer().
+-spec genesis(data()) -> non_neg_integer().
 genesis(Data) ->
     Data#data.genesis.
 

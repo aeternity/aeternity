@@ -20,7 +20,7 @@
 
 -type parent_state() :: #parent_state{}.
 
--export_type([parent_chain_state/0]).
+-export_type([parent_state/0]).
 
 -spec parent_state(binary(), binary(), non_neg_integer()) -> parent_state().
 parent_state(Genesis, Top, Height) when is_binary(Genesis), is_binary(Top), is_integer(Height) ->
