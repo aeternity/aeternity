@@ -45,7 +45,7 @@ table_specs(Mode) ->
     [ ?TAB(hc_db_pogf)
     , ?TAB(hc_db_commitment_header)
     , ?TAB(hc_db_parent_block_header)
-    , ?TAB(hc_db_parent_chain_view)
+    , ?TAB(hc_db_parent_state)
     ].
 
 check_tables(Acc) ->
@@ -155,7 +155,7 @@ write_parent_block(ParentBlock) ->
 write_parent_state(ParentState) ->
     Genesis = aehc_parent_state:genesis(ParentState),
     ?t(mnesia:write(#hc_db_parent_state{key = Genesis, value = ParentState}),
-        [{hc_db_parent_state, Genesis}]).
+        []).
 
 -spec get_parent_state(binary()) -> aehc_parent_state:parent_state() | undefined.
 get_parent_state(Genesis) ->

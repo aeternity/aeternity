@@ -31,20 +31,17 @@
         , fetch_fork/1
         ]).
 
--export([ post_commitment/1
-        , post_pogf/1
-        ]).
+-export([ post_commitment/1 ]).
 %%--------------------------------------------------------------------
 %% COMMON TEST CALLBACK FUNCTIONS
 %%--------------------------------------------------------------------
 all() ->
-    [{group, fetch},
-     {group, post}].
+    [{group, fetch}, {group, post}].
 
 groups() ->
     [
         {fetch, [sequence], [fetch_block, fetch_height, fetch_fork]},
-        {post, [], [post_commitment, post_pogf]}
+        {post, [], [post_commitment]}
     ].
 
 suite() ->
@@ -57,43 +54,43 @@ end_per_suite(_Config) ->
     ok.
 
 init_per_group(_, Config) ->
+    %% aec_chain_sim related apps;
     application:ensure_started(gproc),
-    meck:new(aehc_utils, [passthrough, no_link]),
+    ok = application:ensure_started(crypto),
+    meck:new(aehc_utils, [passthrough]),
     meck:expect(aehc_utils, hc_enabled, 0, true),
-    %% aec_chain_sim related mocks;
-    aec_test_utils:mock_genesis_and_forks_no_link(),
+    %% aec_chain_sim_ related mocks;
+    aec_test_utils:mock_genesis_and_forks(),
+    Dir = aec_test_utils:aec_keys_setup(),
     %% aehc_tracker related install;
     aec_test_utils:start_chain_db(),
     aehc_db:create_tables(ram),
     Tabs = [Tab || {Tab, _} <- aehc_parent_db:table_specs(ram)],
     ok = mnesia:wait_for_tables(Tabs, 10000),
+
     GenesisState = aec_block_genesis:genesis_block_with_state(),
-    %% aehc_parent_mng related mocks
-    meck:new(aehc_app, [passthrough, no_link]),
-    meck:expect(aehc_app, trackers_config, 0, trackers_conf(GenesisState)),
-    Pid = self(),
-    [{ppid, Pid},{genesis_state, GenesisState}|Config].
+    [{dir, Dir}, {genesis_state, GenesisState}|Config].
 
 end_per_group(_, _Config) ->
-    meck:unload(aehc_app),
-    ok = aec_test_utils:stop_chain_db(),
-    aec_test_utils:unmock_genesis_and_forks(),
-    %% aec_chain_sim related apps;
-    ok = application:stop(gproc),
-    meck:unload(aehc_utils).
-
+%%    aec_test_utils:aec_keys_cleanup(?config(dir, Config)),
+    %% aehc_tracker related uninstall;
+    ok = aec_test_utils:stop_chain_db().
 
 init_per_testcase(_, Config) ->
     %% aehc_parent_mng related mocks;
+    meck:new(aehc_utils, [passthrough]),
+    meck:expect(aehc_utils, hc_enabled, 0, true),
+    meck:new(aeu_env, [passthrough]),
+    meck:expect(aeu_env, find_config, 2, setup(?config(genesis_state, Config))),
     {ok, _} = aec_db_error_store:start_link(),
-    true = aehc_utils:hc_enabled(),
-    {ok, Pid} = aehc_sup:start_link(), true = is_pid(Pid),
-    [{ok, _} = aehc_parent_mng:start_view(aehc_app:tracker_name(Conf), Conf) || Conf <- aehc_app:trackers_config()],
-    [{pid, Pid}|Config].
+    {ok, Pid} = aehc_parent_mng:start_link(), true = is_pid(Pid),
+    ct:log("~naehc_parent_mng Pid is ~p~n",[Pid]),
+    Config.
 
-end_per_testcase(_, Config) ->
-    [ok = aehc_parent_mng:terminate_view(aehc_app:tracker_name(Conf)) || Conf <- aehc_app:trackers_config()],
-    exit(?config(pid, Config), normal),
+end_per_testcase(_, _Config) ->
+    %% aehc_parent_mng related mocks;
+    meck:unload(aehc_app),
+    aehc_parent_mng:stop(),
     ok = aec_db_error_store:stop().
 
 %%--------------------------------------------------------------------
@@ -140,6 +137,7 @@ fetch_fork(Config) ->
     ok.
 
 post_commitment(_Config) ->
+    Dir = aec_test_utils:aec_keys_setup(),
     Delegate = account(),
     %% The main intention of this call is to emulate post action with signed payload from delegate;
     %% Fee, nonce, ttl and amount fields have decorated nature;
@@ -152,43 +150,25 @@ post_commitment(_Config) ->
     aec_chain_sim:sign_and_push(Delegate, Tx),
     aec_chain_sim:add_keyblock(),
 
-    ok.
-
-post_pogf(_Config) ->
-    Delegate = account(),
-    %% The main intention of this call is to emulate post action with signed payload from delegate;
-    %% Fee, nonce, ttl and amount fields have decorated nature;
-    KeyblockHash = aec_chain:top_key_block_hash(),
-    Header1 = key_header(15),
-    Header2 = key_header(16),
-    PoGF = aehc_pogf:new(Header1, Header2),
-    Header = aehc_commitment_header:new(Delegate, KeyblockHash, PoGF),
-    Payload = term_to_binary(aehc_commitment:new(Header, PoGF), [compressed]),
-    {ok, Tx} = tx(Delegate, Payload),
-    %% The next format is prepared accordingly to simualtor internal representation;
-    aec_chain_sim:sign_and_push(Delegate, Tx),
-    aec_chain_sim:add_keyblock(),
+    aec_test_utils:aec_keys_cleanup(Dir),
     ok.
 
 %%%===================================================================
 %%%  Configuration level
 %%%===================================================================
-trackers_conf({Block, _} = GenesisState) ->
+setup({Block, _} = State) ->
     %% NOTE: Genesis header on the simulator is a dynamic entity, code performs preliminary init;
     {ok, GenesisHash} = aec_headers:hash_header(aec_blocks:to_header(Block)),
-    [
-        #{
-            <<"name">> => ?SIM_VIEW,
-            <<"connector">> => #{
-                <<"module">> => ?SIM_CONNECTOR,
-                <<"args">> => #{
-                    <<"genesis_state">> => GenesisState
-                }
+    {ok, #{
+        <<"mode">> => <<"monolith">>,
+        <<"primary">> => #{
+            <<"module">> => ?SIM_CONNECTOR,
+            <<"args">> => #{
+                <<"genesis_state">> => State
             },
-            %% NOTE: Simulator operates via encoded hashes;
-            <<"genesis_hash">> => GenesisHash,
-            <<"note">> => <<"Hyperchains simulator based parent chain">>
-        }].
+            <<"address">> => GenesisHash
+        }
+    }}.
 
 %%%===================================================================
 %%%  parent chain log traversing
@@ -228,20 +208,3 @@ tx(Delegate, Payload) ->
             payload => Payload,
             ttl => 0
         }).
-
-key_header(Height) ->
-    RawKey = aec_headers:set_version_and_height(aec_headers:raw_key_header(), ?FORTUNA_PROTOCOL_VSN, Height),
-    aec_headers:new_key_header(
-        aec_headers:height(RawKey),
-        aec_headers:prev_hash(RawKey),
-        aec_headers:prev_key_hash(RawKey),
-        aec_headers:root_hash(RawKey),
-        aec_headers:miner(RawKey),
-        aec_headers:beneficiary(RawKey),
-        aec_headers:target(RawKey),
-        aec_headers:pow(RawKey),
-        aec_headers:nonce(RawKey),
-        aec_headers:time_in_msecs(RawKey),
-        0,  % Can't use `default` as we are unable to read VERSION file in tests.
-            % This is much easier than solving the real problem...
-        ?FORTUNA_PROTOCOL_VSN).

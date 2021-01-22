@@ -15,10 +15,15 @@
 %%%-------------------------------------------------------------------
 -module(aehc_parent_mng).
 
+-include("../../aecore/include/blocks.hrl").
+-include("aehc_utils.hrl").
+
 -behaviour(gen_statem).
 
 %% API.
 -export([start_link/0]).
+-export([send_commitment/2]).
+-export([stop/0]).
 
 %% gen_statem.
 -export([init/1]).
@@ -28,11 +33,8 @@
 %% transitions
 -export([monolith/3, replica/3, shard/3]).
 
--export([publish_block/1]).
--export([log_block/1]).
-
--type conenctor() :: aeconnector:conenctor().
--type parent_block() :: aehc_parent_block:parent_block().
+-type connector() :: aeconnector:connector().
+%-type parent_block() :: aehc_parent_block:parent_block().
 
 %% API.
 
@@ -44,17 +46,13 @@ start_link() ->
     Data = data(Backend),
     gen_statem:start_link({local, ?MODULE}, ?MODULE, Data, []).
 
--spec publish_block(parent_block()) -> ok.
-publish_block(Block) ->
-    erlang:send(?MODULE, {publish_block, Block}),
-    ok.
+-spec send_commitment(commiter_pubkey(), block_header_hash()) -> ok.
+send_commitment(Delegate, KeyblockHash) ->
+    gen_statem:call(?MODULE, {send_commitment, Delegate, KeyblockHash}).
 
--spec log_block(parent_block()) -> ok.
-log_block(Block) ->
-    Hash = aehc_parent_block:hash_block(Block),
-    Height = aehc_parent_block:height_block(Block),
-    lager:debug("~nA new replica block ~p has produced at height: ~p~n",[Hash, Height]),
-    ok.
+-spec stop() -> ok.
+stop() ->
+    gen_statem:stop(?MODULE).
 
 %%%===================================================================
 %%%  gen_statem behaviour
@@ -75,8 +73,8 @@ log_block(Block) ->
 -type tracker() :: #tracker{}.
 
 -record(data, {
-    %% Backend state (monolith, replica, shard)
-    state::atom(),
+    %% Backend mode (monolith, replica, shard)
+    mode::atom(),
     %% Effective height.
     %% The point where primary blockchain reaches the level of maturity and replicas should be detached
     height::integer() | infinity,
@@ -92,13 +90,12 @@ log_block(Block) ->
 
 init(Data) ->
     process_flag(trap_exit, true),
-    State = state(Data),
+    Mode = mode(Data),
     Primary = primary(Data),
-    {ok, Pid} = start_tracker(Primary, fun publish_block/1),
+    {ok, Pid} = start_tracker(Primary),
     Ref = erlang:monitor(process, Pid),
     Data2 = primary(Data, Primary#tracker{ pid = Pid, ref = Ref }),
-
-    {ok, State, Data2}.
+    {ok, Mode, Data2}.
 
 callback_mode() ->
     [state_functions, state_enter].
@@ -115,6 +112,11 @@ terminate(_Reason, _State, Data) ->
 monolith(enter, _OldState, Data) ->
     {keep_state, Data, []};
 
+monolith({call, From}, {send_commitment, Delegate, KeyblockHash}, Data) ->
+    Primary = primary(Data), Pid = Primary#tracker.pid,
+    aehc_parent_tracker:send_tx(Pid, Delegate, KeyblockHash, From),
+    {keep_state, Data, []};
+
 monolith(_Event, _Req, Data) ->
     %% TODO
     {keep_state, Data, [postpone]}.
@@ -124,7 +126,7 @@ replica(enter, _OldState, Data) ->
     Replicas =
         lists:foldl(
             fun (Tracker, Acc) ->
-                {ok, Pid} = start_tracker(Tracker, fun log_block/1),
+                {ok, Pid} = start_tracker(Tracker),
                 Ref = erlang:monitor(process, Pid),
                 [Tracker#tracker{ pid = Pid, ref = Ref }|Acc]
             end,
@@ -141,7 +143,7 @@ replica(_Event, _Req, Data) ->
 shard(enter, _OldState, Data) ->
     %% NOTE Shard setup assumes the two backends: election master and history keeper
     [Tracker] = replicas(Data),
-    {ok, Pid} = start_tracker(Tracker, fun log_block/1),
+    {ok, Pid} = start_tracker(Tracker),
     Ref = erlang:monitor(process, Pid),
     Data2 = replicas(Data, [Tracker#tracker{ pid = Pid, ref = Ref }]),
     {keep_state, Data2, []};
@@ -150,10 +152,10 @@ shard(_Event, _Req, Data) ->
     %% TODO
     {keep_state, Data, [postpone]}.
 
--spec start_tracker(tracker(), function()) -> {ok, pid()}.
-start_tracker(Tracker, Callback) ->
-    Address = Tracker#tracker.address, Args = Tracker#tracker.args,
-    aehc_parent_tracker:start(Address, Args, Callback).
+-spec start_tracker(tracker()) -> {ok, pid()}.
+start_tracker(Tracker) ->
+    Module = Tracker#tracker.module, Args = Tracker#tracker.args, Address = Tracker#tracker.address,
+    aehc_parent_tracker:start(Module, Args, Address).
 
 -spec stop_tracker(tracker()) -> ok.
 stop_tracker(Tracker) ->
@@ -176,21 +178,21 @@ tracker(Tracker) ->
 
 -spec data(map()) -> data().
 data(Setup) ->
-    State = maps:get(<<"state">>, Setup),
+    Mode = maps:get(<<"mode">>, Setup),
     Primary = maps:get(<<"primary">>, Setup),
     Replicas = maps:get(<<"replicas">>, Setup, []),
     Height = maps:get(<<"height">>, Setup, infinity),
     #data{
-        state = binary_to_atom(State, unicode),
+        mode = binary_to_atom(Mode, unicode),
         primary = tracker(Primary),
         height = Height,
         replicas = [tracker(R)||R <- Replicas],
         events = queue:new()
     }.
 
--spec state(data()) -> atom().
-state(Data) ->
-    Data#data.state.
+-spec mode(data()) -> atom().
+mode(Data) ->
+    Data#data.mode.
 
 -spec primary(data()) -> [tracker()].
 primary(Data) ->

@@ -11,15 +11,14 @@
 -export([get_top_block/0, get_block_by_hash/1]).
 -export([disconnect/0]).
 
--export([push_tx/1, pop_tx/0]).
-
-
 %% gen_server.
 -export([init/1]).
 -export([handle_call/3]).
 -export([handle_cast/2]).
 -export([handle_info/2]).
 -export([terminate/2]).
+
+-type block() :: aeconnector_block:block().
 
 %%%===================================================================
 %%%  aeconnector behaviour
@@ -141,10 +140,6 @@ callback(State) ->
 -spec genesis(state()) -> term().
 genesis(State) ->
     State#state.genesis.
-
--spec pid(state()) -> pid().
-pid(State) ->
-    State#state.pid.
 
 -spec pid(state(), pid()) -> state().
 pid(State, Pid) ->

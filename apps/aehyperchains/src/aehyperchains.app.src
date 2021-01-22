@@ -8,7 +8,8 @@
     stdlib,
     lager,
     gproc,
-    sext
+    sext,
+    aeconnector
    ]},
   {mod,{aehc_app,[]}},
   {env,[
