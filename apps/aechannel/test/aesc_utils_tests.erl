@@ -1,6 +1,7 @@
 -module(aesc_utils_tests).
 
 -include_lib("eunit/include/eunit.hrl").
+-include_lib("aecontract/include/hard_forks.hrl").
 
 get_channel_test_() ->
     {foreach,
@@ -1491,7 +1492,7 @@ check_solo_snapshot_not_a_peer() ->
     OnChainTrees = set_channel(Channel, aec_trees:new_without_backend()),
     OnChainTrees1 = set_account(aec_accounts:new(FromPubKey, Amt), OnChainTrees),
     %% with non-empty payload with account present
-    {error, account_not_peer} =
+    {error, Error} =
         aesc_utils:check_solo_snapshot_payload(ChannelPubKey,
                                                FromPubKey,
                                                _Nonce = 1,
@@ -1499,6 +1500,10 @@ check_solo_snapshot_not_a_peer() ->
                                                Bin,
                                                OnChainTrees1,
                                                tx_env()),
+    case active_protocol() < ?IRIS_PROTOCOL_VSN of
+        true -> {Error, Error} = {Error, account_not_peer};
+        false -> {Error, Error} = {Error, account_not_peer_or_delegate}
+    end,
     ok.
 
 check_solo_snapshot_already_closing() ->
