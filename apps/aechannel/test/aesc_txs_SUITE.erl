@@ -125,7 +125,7 @@
          snapshot_old_payload/1,
          snapshot_can_not_replace_create/1,
          snapshot_not_participant/1,
-         snapshot_delegate_not_allowed/1
+         snapshot_delegate_sometimes_allowed/1
         ]).
 
 %% positive force progress
@@ -194,6 +194,7 @@
 %% more complex scenarios
 -export([ fp_close_solo_slash_with_same_round/1
         , fp_fp_close_solo_with_same_round/1
+        , fp_from_delegate_after_iris/1
         ]).
 
 %% fork related tests
@@ -340,7 +341,7 @@ groups() ->
        snapshot_old_payload,
        snapshot_can_not_replace_create,
        snapshot_not_participant,
-       snapshot_delegate_not_allowed
+       snapshot_delegate_sometimes_allowed
       ]},
      {force_progress, [sequence],
       [fp_after_create,
@@ -411,7 +412,9 @@ force_progress_payload_negative_seq() ->
       fp_solo_payload_broken_call,
       % closing, balances are checked
       fp_solo_payload_closing_overflowing_balances,
-      fp_can_not_replace_create
+      fp_can_not_replace_create,
+      fp_from_delegate_after_iris
+
     ].
 
 force_progress_negative_seq() ->
@@ -506,7 +509,7 @@ create_missing_account(_Cfg) ->
 
     {BadPubKey, BadPrivKey} = aesc_test_utils:new_key_pair(), % not present in state
     Trees = aesc_test_utils:trees(S),
-    Height = 1,
+    Height = 100,
     Env0 = aetx_env:tx_env(Height),
 
     TxSpec1 = aesc_test_utils:create_tx_spec(BadPubKey, PubKey, S),
@@ -527,7 +530,7 @@ create_same_account(_Cfg) ->
     {PubKey, S} = aesc_test_utils:setup_new_account(aesc_test_utils:new_state()),
     PrivKey = aesc_test_utils:priv_key(PubKey, S),
     Trees = aesc_test_utils:trees(S),
-    Height = 1,
+    Height = 100,
     Env0 = aetx_env:tx_env(Height),
 
     %% Test channel with oneself is not allowed
@@ -546,7 +549,7 @@ create_insufficient_funds(_Cfg) ->
     LoadedPrivKey = aesc_test_utils:priv_key(Loaded, S),
     NotLoadedPrivKey = aesc_test_utils:priv_key(NotLoaded, S),
     Trees = aesc_test_utils:trees(S),
-    Height = 1,
+    Height = 100,
     Env0 = aetx_env:tx_env(Height),
 
     %% Test insufficient initiator funds
@@ -578,7 +581,7 @@ create_insufficient_funds_reserve(_Cfg) ->
     Loaded1PrivKey = aesc_test_utils:priv_key(Loaded1, S),
     Loaded2PrivKey = aesc_test_utils:priv_key(Loaded2, S),
     Trees = aesc_test_utils:trees(S),
-    Height = 1,
+    Height = 100,
     Env0 = aetx_env:tx_env(Height),
 
     %% Test initiator funds lower than channel reserve
@@ -620,7 +623,7 @@ create_wrong_nonce(_Cfg) ->
     Nonce = 42,
     S = aesc_test_utils:set_account_nonce(Initiator, Nonce, S0),
     Trees = aesc_test_utils:trees(S),
-    Height = 1,
+    Height = 100,
     Env0 = aetx_env:tx_env(Height),
 
     Test =
@@ -1908,10 +1911,26 @@ snapshot_can_not_replace_create(Cfg) ->
     test_both_can_not_replace_create(Cfg, fun snapshot_solo_/2).
 
 snapshot_not_participant(Cfg) ->
-    test_not_participant(Cfg, fun snapshot_solo_/2).
+    Height = 100,
+    PreIris = aec_hard_forks:protocol_effective_at_height(Height) < ?IRIS_PROTOCOL_VSN,
+    ErrorMsg =
+        case PreIris of
+            true -> account_not_peer;
+            false -> account_not_peer_or_delegate
+        end,
+    test_not_participant(Cfg, fun snapshot_solo_/2, #{height => Height},
+                         ErrorMsg).
 
-snapshot_delegate_not_allowed(Cfg) ->
-    test_delegate_not_allowed(Cfg, fun snapshot_solo_/2).
+snapshot_delegate_sometimes_allowed(Cfg) ->
+    Height = 100,
+    PreIris = aec_hard_forks:protocol_effective_at_height(Height) < ?IRIS_PROTOCOL_VSN,
+    case PreIris of
+        true ->
+            test_delegate_not_allowed(Cfg, fun snapshot_solo_/2, #{height => Height});
+        false ->
+            test_delegate_allowed(Cfg, fun snapshot_solo_/2, #{height => Height})
+    end,
+    ok.
 
 %%%===================================================================
 %%% Force progress
@@ -2075,7 +2094,7 @@ fp_on_top_of_fp(Cfg) ->
 fp_after_fp_missing_rounds(Cfg) ->
     Contract1Round = 10,
     Contract2Round = 11,
-    InitHeight = 10,
+    InitHeight = 100,
     LockPeriod = 42,
     AfterFP =
         fun(Owner, Forcer1, Forcer2, FPRound1, FPRound2) ->
@@ -2464,8 +2483,8 @@ fp_after_slash(Cfg) ->
             IAmt0 = 30,
             RAmt0 = 30,
             LockPeriod = 10,
-            CloseHeight = 10,
-            SlashHeight = 12,
+            CloseHeight = 100,
+            SlashHeight = 102,
             CallDeposit = 10,
             true = SlashHeight < CloseHeight + LockPeriod,
             ContractCreateRound = 10,
@@ -2593,8 +2612,8 @@ fp_chain_is_replaced_by_slash(Cfg) ->
             IAmt0 = 30,
             RAmt0 = 30,
             LockPeriod = 10,
-            CloseHeight = 10,
-            SlashHeight = 12,
+            CloseHeight = 100,
+            SlashHeight = 102,
             true = SlashHeight < CloseHeight + LockPeriod,
             ContractCreateRound = 10,
             run(#{cfg => Cfg, initiator_amount => IAmt0,
@@ -2658,7 +2677,7 @@ fp_chain_is_replaced_by_slash(Cfg) ->
 fp_use_onchain_oracle(Cfg) ->
     FPRound = 20,
     LockPeriod = 10,
-    FPHeight0 = 20,
+    FPHeight0 = 100,
     Question = <<"To be, or not to be?">>,
     OQuestion = sophia_value(Question),
     Answer = <<"oh, yes">>,
@@ -2754,7 +2773,7 @@ fp_use_onchain_oracle(Cfg) ->
 fp_use_onchain_name_resolution(Cfg) ->
     FPRound = 20,
     LockPeriod = 10,
-    FPHeight0 = 20,
+    FPHeight0 = 100,
     Name = aens_test_utils:fullname(<<"lorem">>),
     ForceCallCheckName =
         fun(Forcer, K, Found) when is_binary(K) andalso is_boolean(Found) ->
@@ -2802,7 +2821,7 @@ fp_use_onchain_name_resolution(Cfg) ->
 fp_use_onchain_enviroment(Cfg) ->
     FPRound = 20,
     LockPeriod = 10,
-    FPHeight0 = 20,
+    FPHeight0 = 100,
     ForceCall =
         fun(Forcer, Fun, RType, R) ->
             fun(Props) ->
@@ -2884,7 +2903,7 @@ fp_use_onchain_enviroment(Cfg) ->
 fp_use_remote_call(Cfg) ->
     FPRound = 20,
     LockPeriod = 10,
-    FPHeight0 = 20,
+    FPHeight0 = 100,
     RemoteCall =
         fun(Forcer, Int) when is_integer(Int) ->
             fun(Props) ->
@@ -2959,7 +2978,7 @@ fp_use_remote_call(Cfg) ->
 fp_use_onchain_contract(Cfg) ->
     FPRound = 20,
     LockPeriod = 10,
-    Height =  10,
+    Height =  100,
     RemoteCall =
         fun(Forcer, ContractHandle) ->
             fun(Props) ->
@@ -3842,8 +3861,8 @@ fp_settle_too_soon(Cfg) ->
             IAmt0 = 30,
             RAmt0 = 30,
             LockPeriod = 10,
-            CloseHeight = 10,
-            SlashHeight = 12,
+            CloseHeight = 100,
+            SlashHeight = 102,
             FPHeight = SlashHeight + 1,
             CallDeposit = 10,
             true = SlashHeight < CloseHeight + LockPeriod,
@@ -4411,6 +4430,8 @@ maybe_snapshot(Cfg, Round) ->
         end
     end.
 
+negative_force_progress_sequence(Cfg, Round, Forcer, {negative, ErrMsg}) ->
+    negative_force_progress_sequence(Cfg, Round, Forcer, ErrMsg);
 negative_force_progress_sequence(Cfg, Round, Forcer, ErrMsg) ->
     Fee = 500000 * aec_test_utils:min_gas_price(),
     SetIfNotPresent =
@@ -4529,10 +4550,12 @@ positive(Fun) ->
 negative(Fun, ErrMsg) ->
     fun(Props) -> Fun(Props, {negative, ErrMsg}) end.
 
-set_from(Role) ->
+set_from(do_not_change_from) ->
+    fun(Props) -> Props end;
+set_from(Role) when Role =:= initiator; Role =:= responder ->
     set_from(Role, from_pubkey, from_privkey).
 
-set_from(Role, PubkeyKey, PrivkeyKey) ->
+set_from(Role, PubkeyKey, PrivkeyKey) when Role =:= initiator; Role =:= responder ->
     fun(Props) ->
         {KeyPub, KeyPriv} =
             case Role of
@@ -4656,13 +4679,14 @@ create_contract_call_payload_with_calldata(Key, ContractId, CallData, Amount) ->
           round             := Round,
           state             := State,
           trees             := Trees0} = Props) ->
+        OffChainUpdateFrom = maps:get(offchain_update_from, Props, From),
         Reserve = maps:get(channel_reserve, Props, 0),
         OnChainTrees = aesc_test_utils:trees(State),
         Env = tx_env(Props),
         Update =
             maps:get(solo_payload_update, Props,
                 aesc_offchain_update:op_call_contract(
-                    aeser_id:create(account, From),
+                    aeser_id:create(account, OffChainUpdateFrom),
                     aeser_id:create(contract, ContractId),
                     aect_test_utils:abi_version(), Amount, CallData,
                     [],
@@ -4828,7 +4852,7 @@ create_from_state(S, DefaultSpec) ->
 
     %% Create Channel Create tx and apply it on trees
     Trees = aesc_test_utils:trees(S2),
-    Height = 1,
+    Height = 100,
     TxSpec = aesc_test_utils:create_tx_spec(PubKey1, PubKey2, DefaultSpec, S2),
     {ok, Tx} = aesc_create_tx:new(TxSpec),
     SignedTx = aec_test_utils:sign_tx(Tx, [PrivKey1, PrivKey2]),
@@ -4882,7 +4906,7 @@ create_channel_(#{cfg := Cfg} = Props, _) ->
     PrivKey1 = aesc_test_utils:priv_key(PubKey1, S0),
     PrivKey2 = aesc_test_utils:priv_key(PubKey2, S0),
 
-    Height = 2,
+    Height = 100,
 
     %% Get channel and account funds
 
@@ -5324,7 +5348,9 @@ test_delegate_not_allowed(Cfg, Fun) ->
     test_delegate_not_allowed(Cfg, Fun, #{}).
 
 test_delegate_not_allowed(Cfg, Fun, InitProps) ->
-    run(InitProps#{cfg => Cfg},
+    Height = 100,
+    run(InitProps#{ cfg => Cfg
+                  , height => Height},
       [fun(Props) ->
             {Delegate1, Delegate2, S} = create_loaded_accounts(100000 * aec_test_utils:min_gas_price(),
                                                                100000 * aec_test_utils:min_gas_price()),
@@ -5341,10 +5367,36 @@ test_delegate_not_allowed(Cfg, Fun, InitProps) ->
         negative(Fun, {error, account_not_peer})]),
     ok.
 
+test_delegate_allowed(Cfg, Fun) ->
+    test_delegate_allowed(Cfg, Fun, #{}).
+
+test_delegate_allowed(Cfg, Fun, InitProps) ->
+    Height = 100,
+    run(InitProps#{ cfg => Cfg
+                  , height => Height},
+      [fun(Props) ->
+            {Delegate1, Delegate2, S} = create_loaded_accounts(100000 * aec_test_utils:min_gas_price(),
+                                                               100000 * aec_test_utils:min_gas_price()),
+            Props#{cfg => [{state, S} | Cfg],
+                    delegate_ids => [aeser_id:create(account, Delegate1),
+                                     aeser_id:create(account, Delegate2)]}
+        end,
+        positive(fun create_channel_/2),
+        fun(#{delegate_ids := [D1 |_], state := S} = Props) ->
+            D1Pubkey = aeser_id:specialize(D1, account),
+            D1PrivKey = aesc_test_utils:priv_key(D1Pubkey, S),
+            Props#{from_pubkey => D1Pubkey, from_privkey => D1PrivKey}
+        end,
+        positive(Fun)]),
+    ok.
+
 test_not_participant(Cfg, Fun) ->
     test_not_participant(Cfg, Fun, #{}).
 
 test_not_participant(Cfg, Fun, InitProps) ->
+    test_not_participant(Cfg, Fun, InitProps, account_not_peer).
+
+test_not_participant(Cfg, Fun, InitProps, Error) ->
     run(InitProps#{cfg => Cfg},
         [positive(fun create_channel_/2),
          fun(#{state := S0} = Props) ->
@@ -5352,7 +5404,7 @@ test_not_participant(Cfg, Fun, InitProps) ->
             PrivKey = aesc_test_utils:priv_key(NewAcc, S1),
             Props#{state => S1, from_pubkey => NewAcc, from_privkey => PrivKey}
          end,
-         negative(Fun, {error, account_not_peer})]),
+         negative(Fun, {error, Error})]),
     ok.
 
 register_new_oracle(QFormat, RFormat, QueryFee) ->
@@ -5865,6 +5917,63 @@ fp_close_solo_slash_with_same_round(Cfg) ->
            {CloseHeight, IsPossitiveTest} <- [{SwitchHeight - 1, true},
                                               {SwitchHeight    , false},
                                               {SwitchHeight + 1, false}]],
+    ok.
+
+fp_from_delegate_after_iris(Cfg) ->
+    Height = 100,
+    %%PreIris = aec_hard_forks:protocol_effective_at_height(Height) < ?IRIS_PROTOCOL_VSN,
+    PreIris = true, 
+    FPRound = 30,
+    ContractRound = 2,
+    PrepareFP =
+        fun(Props) ->
+            run(Props,
+                [ rename_prop(from_pubkey, delegate_pubkey, delete_old),
+                  rename_prop(from_privkey, delegate_privkey, delete_old),
+                  set_from(initiator),
+                  fun(#{ initiator_pubkey := Initiator
+                      , responder_pubkey := Responder
+                      , from_pubkey      := From 
+                      , delegate_pubkey  := Delegate} = Props1) ->
+                      ?TEST_LOG("Initiator: ~p,\nresponder: ~p,\ndelegate: ~p",
+                                [Initiator, Responder, Delegate]),
+                      ?TEST_LOG("From: ~p", [From]),
+                      Props1#{offchain_update_from => Initiator}
+                  end,
+                  create_contract_poi_and_payload(FPRound - 1, ContractRound, initiator),
+                  rename_prop(delegate_pubkey, from_pubkey, keep_old),
+                  rename_prop(delegate_privkey, from_privkey, keep_old)
+                ])
+          end,
+    case PreIris of
+        true ->
+            test_delegate_not_allowed(Cfg,
+                fun(Props, {negative, {error, Err}}) ->
+                    {Err, Err} = {account_not_peer, Err},
+                    run(Props,
+                        [PrepareFP,
+                         negative_force_progress_sequence(Cfg, FPRound,
+                                                          _Forcer = do_not_change_from,
+                                                          Err)
+                        ])
+                end,
+                #{ height => Height });
+        false ->
+            test_delegate_allowed(Cfg,
+                fun(Props, positive) ->
+                    run(Props,
+                        [PrepareFP,
+                         set_prop(round, FPRound),
+                         set_prop(fee, 100000 * aec_test_utils:min_gas_price()),
+                          fun(#{contract_id := ContractId, contract_file := CName} = Props1) ->
+                              (create_contract_call_payload(ContractId, CName, <<"main">>,
+                                                            [<<"42">>], 1))(Props1)
+                          end,
+                         positive(fun force_progress_/2)
+                        ])
+                end,
+                #{ height => Height })
+    end,
     ok.
 
 fp_fp_close_solo_with_same_round(Cfg) ->
