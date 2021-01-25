@@ -196,8 +196,8 @@ groups() ->
        mine_on_first,
        start_second_with_enabled_node_info_no_analytics,
        start_third_with_enabled_node_info_no_analytics,
-       first_fetch_node_infos_2_successes,
-       stop_three_nodes
+       first_fetch_node_infos_2_successes
+       %% stop_three_nodes         %% (nodes stopped in end_per_group)
       ]},
      {peer_analytics, [sequence],
       [%% Node info disabled for everyone
