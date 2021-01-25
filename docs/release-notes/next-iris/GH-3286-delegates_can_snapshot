@@ -1,0 +1,4 @@
+* Improves the functionality of State Channel delegates: now they can provide
+  `channel_solo_snapshot_tx` as well. This is really handy in cases one party
+  is missing and the other is doing malicious force progess on-chain while the
+  channel is still open.

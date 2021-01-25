@@ -466,7 +466,8 @@ check_payload(Channel, PayloadTx, FromPubKey, SignedState, Trees, Env, Type) ->
     Checks =
         [ fun() -> check_channel_id_in_payload(Channel, PayloadTx) end,
           fun() -> check_round_in_payload(Channel, PayloadTx, Type) end,
-          fun() -> is_peer_or_delegate(ChannelId, FromPubKey, SignedState, Trees, Type) end,
+          fun() -> is_peer_or_delegate(ChannelId, FromPubKey, SignedState,
+                                       Trees, Type, Env) end,
           fun() -> verify_signatures_offchain(Channel, SignedState, Trees, Env) end
         ],
     aeu_validation:run(Checks).
@@ -491,11 +492,13 @@ check_peers_and_amounts_in_poi(Channel, PoI) ->
             end
     end.
 
-is_peer_or_delegate(ChannelId, FromPubKey, SignedState, Trees, Type) ->
+is_peer_or_delegate(ChannelId, FromPubKey, SignedState, Trees, Type, Env) ->
     case is_peer(FromPubKey, SignedState, Trees) of
         ok -> ok;
         {error, account_not_peer} = E0 ->
-            case is_delegatable_tx_type(Type) of
+            Protocol =
+                aec_hard_forks:protocol_effective_at_height(aetx_env:height(Env)),
+            case is_delegatable_tx_type(Type, Protocol) of
                 true ->
                     case is_delegate(ChannelId, FromPubKey, Trees) of
                         ok -> ok;
@@ -671,11 +674,14 @@ set_auth_tx_hash(STx, Env, TxType) ->
     BinForNetwork = aec_governance:add_network_id(aetx:serialize_to_binary(Tx)),
     aetx_env:set_ga_tx_hash(Env, aec_hash:hash(tx, BinForNetwork)).
 
-is_delegatable_tx_type(Type) ->
-    lists:member(Type, delegatable_tx_types()).
+is_delegatable_tx_type(Type, Protocol) ->
+    lists:member(Type, delegatable_tx_types(Protocol)).
 
-delegatable_tx_types() ->
-    [slash].
+delegatable_tx_types(Protocol) when Protocol < ?IRIS_PROTOCOL_VSN ->
+    [slash];
+delegatable_tx_types(_PostIrisProtocol) ->
+    %%[slash, solo_snapshot, force_progress].
+    [slash, solo_snapshot].
 
 -spec verify_signatures_onchain(aetx_sign:signed_tx(), aec_trees:trees(),
                                 aetx_env:env()) -> ok | {error, atom()}.
