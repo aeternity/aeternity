@@ -11,6 +11,7 @@
 %% API
 -export([ get_commitment/1
         , get_parent_block/1
+        , get_parent_blocks/2
         , get_candidates_in_election_cycle/2
         , write_parent_block/1
         ]).
@@ -95,6 +96,21 @@ get_parent_block(ParentBlockHash) ->
                           end || CommitmentHash <- CommitmentHashes],
            aehc_parent_block:new_block(ParentBlockHeader, Commitments)
     end).
+
+-spec get_parent_blocks(non_neg_integer(), binary()) -> [aehc_parent_block:aehc_parent_block()].
+get_parent_blocks(Height, Hash) ->
+    get_parent_blocks(Hash, [], Height).
+
+get_parent_blocks(_Hash, Acc, 0) ->
+    Acc;
+get_parent_blocks(Hash, Acc, Height) ->
+    Block = get_parent_block(Hash),
+    case aehc_parent_block:prev_hash_block(Block) of
+        Hash ->
+            Acc;
+        PrevHash ->
+            get_parent_blocks(PrevHash, [Block|Acc], Height - 1)
+    end.
 
 -spec get_candidates_in_election_cycle(non_neg_integer(), binary()) -> [aehc_commitment:commitment()].
 get_candidates_in_election_cycle(_Height, ParentBlockHash) ->

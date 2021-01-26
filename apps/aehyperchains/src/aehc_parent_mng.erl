@@ -22,8 +22,15 @@
 
 %% API.
 -export([start_link/0]).
--export([send_commitment/2]).
+
+-export([commit/2]).
+-export([read/1]).
+-export([pop/0]).
+-export([queue/0]).
+
 -export([stop/0]).
+
+-export([emit/4]).
 
 %% gen_statem.
 -export([init/1]).
@@ -34,7 +41,7 @@
 -export([monolith/3, replica/3, shard/3]).
 
 -type connector() :: aeconnector:connector().
-%-type parent_block() :: aehc_parent_block:parent_block().
+-type parent_block() :: aehc_parent_block:parent_block().
 
 %% API.
 
@@ -46,9 +53,26 @@ start_link() ->
     Data = data(Backend),
     gen_statem:start_link({local, ?MODULE}, ?MODULE, Data, []).
 
--spec send_commitment(commiter_pubkey(), block_header_hash()) -> ok.
-send_commitment(Delegate, KeyblockHash) ->
-    gen_statem:call(?MODULE, {send_commitment, Delegate, KeyblockHash}).
+-spec commit(commiter_pubkey(), block_header_hash()) -> ok.
+commit(Delegate, KeyblockHash) ->
+    gen_statem:call(?MODULE, {commit, Delegate, KeyblockHash}).
+
+-spec read(non_neg_integer()) -> [parent_block()].
+read(Height) ->
+    gen_statem:call(?MODULE, {read, Height}).
+
+-spec pop() -> {value, parent_block()} | empty.
+pop() ->
+    gen_statem:call(?MODULE, {pop}).
+
+%% You should check it anyway at the early initialization stage
+-spec queue() -> [parent_block()].
+queue() ->
+    gen_statem:call(?MODULE, {queue}).
+
+-spec emit(term(), binary(), non_neg_integer(), [parent_block()]) -> ok.
+emit(From, Hash, Height, Blocks) ->
+    gen_statem:cast(?MODULE, {emit, From, Hash, Height, Blocks}).
 
 -spec stop() -> ok.
 stop() ->
@@ -58,16 +82,16 @@ stop() ->
 %%%  gen_statem behaviour
 %%%===================================================================
 -record(tracker, {
-    pid::pid(),
-    ref::reference(),
+    pid :: term(),
+    ref :: term(),
     %% The the real world blockchain interface: https://github.com/aeternity/aeconnector/wiki
-    module::connector(),
+    module :: connector(),
     %% Connector configuration which should be passed the module:connect/2
-    args::map(),
+    args :: map(),
     %% Commitment capacity. The blocks count accumulated into one commitment transaction
-    capacity::integer(),
+    capacity = 0 :: integer(),
     %% The block address on which the state machine history begins
-    address::binary()
+    address :: binary()
 }).
 
 -type tracker() :: #tracker{}.
@@ -81,20 +105,22 @@ stop() ->
     %% The primary (election) state machine
     primary::tracker(),
     %% Dedicated replica state machines
-    replicas :: [] | [tracker()],
-    %% Queued announcements
-    events::term()
+    replicas = [] :: [tracker()],
+    %% FIFO queue of produced blocks
+    queue::term()
 }).
 
 -type data() :: #data{}.
 
 init(Data) ->
     process_flag(trap_exit, true),
+%%    [mnesia:clear_table(Tab) || Tab <- [hc_db_parent_state, hc_db_pogf, hc_db_commitment_header, hc_db_parent_block_header]],
     Mode = mode(Data),
     Primary = primary(Data),
-    {ok, Pid} = start_tracker(Primary),
-    Ref = erlang:monitor(process, Pid),
+    {ok, Pid} = start_tracker(Primary), Ref = erlang:monitor(process, Pid),
     Data2 = primary(Data, Primary#tracker{ pid = Pid, ref = Ref }),
+
+
     {ok, Mode, Data2}.
 
 callback_mode() ->
@@ -112,10 +138,30 @@ terminate(_Reason, _State, Data) ->
 monolith(enter, _OldState, Data) ->
     {keep_state, Data, []};
 
-monolith({call, From}, {send_commitment, Delegate, KeyblockHash}, Data) ->
+monolith({call, From}, {commit, Delegate, KeyblockHash}, Data) ->
     Primary = primary(Data), Pid = Primary#tracker.pid,
-    aehc_parent_tracker:send_tx(Pid, Delegate, KeyblockHash, From),
+    aehc_parent_tracker:commit(Pid, Delegate, KeyblockHash, From),
     {keep_state, Data, []};
+
+monolith({call, From}, {pop}, Data) ->
+    {Res, Data2} = out(Data),
+    gen_statem:reply(From, Res),
+    {keep_state, Data2, []};
+
+monolith({call, From}, {queue}, Data) ->
+    Queue = queue(Data), Res = queue:to_list(Queue),
+    gen_statem:reply(From, Res),
+    {keep_state, queue(Data, queue:new()), []};
+
+monolith({call, From}, {read, Height}, Data) ->
+    Primary = primary(Data), Pid = Primary#tracker.pid,
+    aehc_parent_tracker:read(Pid, Height, From),
+    {keep_state, Data, []};
+
+monolith(cast, {emit, _From, Hash, Height, Blocks}, Data) ->
+    Data2 = lists:foldl(fun in/2, Data, Blocks),
+    Info = #{ block_hash => Hash, Height => Height }, aec_events:publish(parent_top_changed, Info),
+    {keep_state, Data2, []};
 
 monolith(_Event, _Req, Data) ->
     %% TODO
@@ -160,7 +206,7 @@ start_tracker(Tracker) ->
 -spec stop_tracker(tracker()) -> ok.
 stop_tracker(Tracker) ->
     Pid = Tracker#tracker.pid,
-    aehc_parent_tracker:stop(Pid).
+    ok = aehc_parent_tracker:stop(Pid).
 
 %%%===================================================================
 %%%  Data access layer
@@ -187,14 +233,14 @@ data(Setup) ->
         primary = tracker(Primary),
         height = Height,
         replicas = [tracker(R)||R <- Replicas],
-        events = queue:new()
+        queue = queue:new()
     }.
 
 -spec mode(data()) -> atom().
 mode(Data) ->
     Data#data.mode.
 
--spec primary(data()) -> [tracker()].
+-spec primary(data()) -> tracker().
 primary(Data) ->
     Data#data.primary.
 
@@ -209,3 +255,27 @@ replicas(Data) ->
 -spec replicas(data(), [tracker()]) -> data().
 replicas(Data, Trackers) ->
     Data#data{ replicas = Trackers }.
+
+-spec queue(data()) -> term().
+queue(Data) ->
+    Data#data.queue.
+
+-spec queue(data(), term()) -> data().
+queue(Data, Queue) ->
+    Data#data{ queue = Queue }.
+
+-spec in(term(), data()) -> data().
+in(Item, Data) ->
+    Queue2 = queue:in(Item, queue(Data)),
+    queue(Data, Queue2).
+
+-spec out(data()) -> {{value, term()}, data()} | {empty, data()}.
+out(Data) ->
+    Queue = queue(Data),
+    case queue:out(Queue) of
+        {Res = {value, _}, Queue2} ->
+            Data2 = queue(Data, Queue2),
+            {Res, Data2};
+        {Res = empty, _Queue2} ->
+            {Res, Data}
+    end.

@@ -625,7 +625,7 @@ announce(ForkId, Txs, Events, #{ forks := Forks } = Chain, Opts) ->
     if SimulatorT == parent_chain ->
         %% TODO: To supply parameterized formatter;
         ParentBlock = Info#{txs => Txs, header => Hdr, hash => TopHash},
-        aec_events:publish({parent_chain, top_changed}, ParentBlock);
+        aec_events:publish(parent_top_changed, ParentBlock);
         true ->
             send_tx_events(Events, TopHash, Info),
             (ForkId == main) andalso

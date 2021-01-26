@@ -60,7 +60,7 @@ disconnect() ->
 
 init(State) ->
     process_flag(trap_exit, true),
-    true = aec_events:subscribe({parent_chain, top_changed}),
+    true = aec_events:subscribe(parent_top_changed),
     Genesis = genesis(State),
     {ok, Pid} = aec_chain_sim:start(#{ sim_type => parent_chain, genesis_state => Genesis }),
     lager:info("Parent chain's connector ~p is attached: ~p", [?MODULE, Pid]),
@@ -102,7 +102,7 @@ handle_call(Request, _From, State) ->
 handle_cast(_Msg, State) ->
     {noreply, State}.
 
-handle_info({gproc_ps_event, {parent_chain, top_changed}, #{info := Info}}, State) ->
+handle_info({gproc_ps_event, parent_top_changed, #{info := Info}}, State) ->
     Pid = maps:get(pid, Info, undefined),
     (State#state.pid == Pid) andalso
         begin
