@@ -11,7 +11,7 @@ The configuration variable
 
 ```yaml
 sync:
-    gossip\_allowed\_height\_from\_top : <height>
+    gossip_allowed_height_from_top : <height>
 ```
 limits the height difference allowed for incoming blocks via gossip. This variable has a
 hard-coded default of `5`, but can be changed via the `aeternity_config.[yaml|json]`
@@ -30,7 +30,7 @@ The following configuration variable,
 
 ```yaml
 sync:
-    sync\_allowed\_height\_from_top: <height>
+    sync_allowed_height_from_top: <height>
 ```
 will instruct the node to reject blocks received via sync whose height is more than `<height>`
 blocks below the current top. The default value is `100`. A value of `0` disables the
@@ -42,7 +42,7 @@ It is possible to enable fork resistance immediately, using the following settin
 
 ```yaml
 sync:
-    resist\_forks\_from\_start: true`
+    resist_forks_from_start: true`
 ```
 
 Note that configuration variables can be set both via the config file and via OS
@@ -50,7 +50,7 @@ environment variables. This means that it's possible to instruct the node to res
 forks at a given node start in the following way:
 
 ```
-AE\_\_resist\_\_forks\_\_from\_\_start=true bin/aeternity start
+AE__resist__forks__from__start=true bin/aeternity start
 ```
 (see [the configuration documentation](configuration.md#configuration-from-the-command-line-or-scripts))
 
