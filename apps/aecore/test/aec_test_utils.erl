@@ -73,6 +73,7 @@
         , min_gas_price/0
         , dev_reward_setup/3
         , run_throughput_test/3
+        , eunit_with_consensus/2
         ]).
 
 -include_lib("eunit/include/eunit.hrl").
@@ -895,3 +896,22 @@ run_throughput_test(TestFun, Blocks, Opts) ->
               [length(Blocks), TotalRuntime, Min, Max, Mean, Mode, Range, Median]
              ),
     ok.
+
+eunit_with_consensus(Consensus, Tests) ->
+    {foreach,
+        fun() ->
+            Old = application:get_env(aecore, consensus),
+            application:set_env(aecore, consensus, Consensus),
+            aec_consensus:set_consensus(),
+            ?assertEqual(ok, aec_consensus:check_env()),
+            Old
+        end,
+        fun(Old) ->
+            case Old of
+                {ok, OldConsensus} -> application:set_env(aecore, consensus, OldConsensus);
+                undefined -> application:unset_env(aecore, consensus)
+            end,
+            aec_consensus:set_consensus(),
+            ?assertEqual(ok, aec_consensus:check_env())
+        end,
+        Tests}.

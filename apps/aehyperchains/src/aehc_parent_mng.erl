@@ -63,7 +63,7 @@ publish_block(View, Block) ->
 init([]) ->
     process_flag(trap_exit, true),
     %% Read configuration;
-    Trackers = [aehc_app:tracker_name(Tracker)|| Tracker <- aehc_app:trackers_config()],
+    Trackers = [aehc_app:tracker_name(Tracker) || Tracker <- aehc_app:trackers_config()],
     [Master|_] = Trackers,
     {ok, #state{ master = Master, trackers = Trackers }}.
 
