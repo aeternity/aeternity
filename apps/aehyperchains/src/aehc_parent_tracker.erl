@@ -3,7 +3,7 @@
 %%% @copyright (C) 2020, Aeternity Anstalt
 %%% @doc
 %% The state machine which represents the attached blockchain (parent chain).
-%% The main responsibility are:
+%% The main responsibilities are:
 %% - to manage the state change when fork switching event occurs;
 %% - to traverse hash-pointers via connector network interface;
 %% - to update database log by the current parent chain state;
@@ -20,7 +20,10 @@
 
 %% API
 -export([start/3]).
--export([send_tx/4]).
+
+-export([commit/4]).
+-export([read/3]).
+
 -export([stop/1]).
 
 -export([publish_block/2]).
@@ -47,10 +50,13 @@ start(Connector, Args, Address) ->
     Data = data(Connector, Args, Address),
     gen_statem:start(?MODULE, Data, []).
 
-%% reply(From :: from(), Reply :: term())
--spec send_tx(pid(), binary(), binary(), term()) -> ok | {error, term()}.
-send_tx(Pid, Delegate, Payload, From) ->
-    gen_statem:cast(Pid, {send_tx, Delegate, Payload, From}).
+-spec commit(pid(), binary(), binary(), term()) -> ok | {error, term()}.
+commit(Pid, Delegate, Payload, From) ->
+    gen_statem:cast(Pid, {commit, Delegate, Payload, From}).
+
+-spec read(pid(), non_neg_integer(), term()) -> [] | [parent_block()].
+read(Pid, Height, From) ->
+    gen_statem:cast(Pid, {read, Height, From}).
 
 -spec stop(pid()) -> ok.
 stop(Pid) ->
@@ -65,18 +71,20 @@ publish_block(_Connector, Block) ->
 %%%===================================================================
 
 -record(data, {
-    %% The the real world blockchain interface: https://github.com/aeternity/aeconnector/wiki
+    %% The real world blockchain interface: https://github.com/aeternity/aeconnector/wiki
     connector :: connector(),
-    %% Connector configuration which should be passed the module:connect/2
+    %% Connector configuration which should be passed to module:connect/2
     args :: map(),
     %% The block address on which state machine history ends
     indicator :: binary(),
     %% The block height on which state machine history ends
     top :: non_neg_integer(),
-    %% The current processed state machine hash
-    state :: binary(),
+    %% The current processed state machine address
+    location :: binary(),
     %% The current processed state machine index
     index :: non_neg_integer(),
+    %% LIFO stack of fetched blocks
+    stack = [] :: [term()],
     %% The genesis block height on which state machine history begins
     genesis :: non_neg_integer(),
     %% The genesis block address on which state machine history begins
@@ -123,19 +131,19 @@ fetched(enter, _OldState, Data) ->
 fetched(internal, {added_block, Block}, Data) ->
     Hash = aeconnector_block:hash(Block),
 
-    State = state(Data), Index = index(Data),
+    Loc = location(Data), Index = index(Data),
     case Index of
-        _ when Hash == State ->
+        _ when Hash == Loc ->
             %% NOTE Sync is done in the fetch mode
             {next_state, synced, Data};
         _ when Index > 0  ->
             %% TODO: Place for the new added block anouncement;
             %% NOTE Sync procedure is continue it the fetch mode
-            aehc_parent_db:write_parent_block(parent_block(Block)),
+            ParentBlock = parent_block(Block),
+            aehc_parent_db:write_parent_block(ParentBlock), Data2 = push(Data, ParentBlock),
             PrevHash = aeconnector_block:prev_hash(Block),
             {ok, PrevBlock} = aeconnector:get_block_by_hash(connector(Data), PrevHash),
-            Data2 = locate(Data, PrevBlock),
-            {keep_state, Data2, [{next_event, internal, {added_block, PrevBlock}}]};
+            {keep_state, locate(Data2, PrevBlock), [{next_event, internal, {added_block, PrevBlock}}]};
         _ ->
             %% NOTE Sync is continue on the fork switch mode
             {next_state, migrated, Data, [{next_event, internal, {added_block, Block}}]}
@@ -150,13 +158,14 @@ migrated(enter, _OldState, Data) ->
     {keep_state, Data};
 
 migrated(internal, {added_block, Block}, Data) ->
-    aehc_parent_db:write_parent_block(parent_block(Block)),
+    ParentBlock = parent_block(Block),
+    aehc_parent_db:write_parent_block(ParentBlock), Data2 = push(Data, ParentBlock),
     %% TODO: Place for the new added block announcement;
     PrevHash = aeconnector_block:prev_hash(Block), Height = aeconnector_block:height(Block),
-    State = state(Data), Genesis = genesis(Data),
+    Loc = location(Data2), Genesis = genesis(Data2),
 
     %% TODO This block should be announced on a queue and deleted (maybe)
-    DbBlock = aehc_parent_db:get_parent_block(State), PrevDbHash = aehc_parent_block:prev_hash_block(DbBlock),
+    DbBlock = aehc_parent_db:get_parent_block(Loc), PrevDbHash = aehc_parent_block:prev_hash_block(DbBlock),
 
     case Height of
         _ when PrevHash == PrevDbHash ->
@@ -165,8 +174,7 @@ migrated(internal, {added_block, Block}, Data) ->
         _ when Height >= Genesis ->
             %% NOTE Sync procedure is continue it the migrated mode
             {ok, PrevBlock} = aeconnector:get_block_by_hash(connector(Data), PrevHash),
-            Data2 = locate(Data, PrevBlock),
-            {keep_state, Data2, [{next_event, internal, {added_block, PrevBlock}}]};
+            {keep_state, locate(Data2, PrevBlock), [{next_event, internal, {added_block, PrevBlock}}]};
         _ ->
             %% NOTE: This case is designed with the dynamic nature of HC which relies on the parent blockchains
             %% Genesis hash entry has to be chosen precisely and by the most optimal way (productivity VS security);
@@ -186,12 +194,20 @@ migrated(_, _, Data) ->
 synced(enter, _OldState, Data) ->
     Top = top(Data), Indicator = indicator(Data),
     %% TODO: Place for the sync finalization anouncement;
-    Data2 = index(state(Data, Indicator), Top),
-    commit_state(Data2),
-    {keep_state, Data2};
+    Data2 = index(location(Data, Indicator), 0),
+    ok = commit_state(Data2),
+    From = self(), Stack = stack(Data2),
+    ok = aehc_parent_mng:emit(From, Indicator, Top, Stack),
+    {keep_state, stack(Data2, [])};
 
-synced(cast, {send_tx, Delegate, Payload, From}, Data) ->
+synced(cast, {commit, Delegate, Payload, From}, Data) ->
     Res = aeconnector:send_tx(connector(Data), Delegate, Payload),
+    gen_statem:reply(From, Res),
+    {keep_state, Data};
+
+synced(cast, {read, Height, From}, Data) ->
+    Loc = location(Data),
+    Res = aehc_parent_db:get_parent_blocks(Height, Loc),
     gen_statem:reply(From, Res),
     {keep_state, Data};
 
@@ -207,8 +223,9 @@ init_db(Data) ->
     begin
         {ok, Block} = aeconnector:get_block_by_hash(connector(Data), Address),
         %% TODO To transform into parent block
-        aehc_parent_db:write_parent_block(parent_block(Block)),
-        Height = aehc_parent_block:height_block(parent_block(Block)),
+        GenesisBlock = aehc_parent_block:to_genesis(parent_block(Block)),
+        aehc_parent_db:write_parent_block(GenesisBlock),
+        Height = aehc_parent_block:height_block(GenesisBlock),
         State2 = aehc_parent_state:parent_state(Address, _Top = Address, Height),
         aehc_parent_db:write_parent_state(State2)
     end,
@@ -219,7 +236,7 @@ sync_state(Data) ->
     Address = address(Data),
     State = aehc_parent_db:get_parent_state(Address),
     Top = aehc_parent_state:top(State), Height = aehc_parent_state:height(State),
-    top(state(Data, Top), Height).
+    top(location(Data, Top), Height).
 
 indicate(Data, Block) ->
     Hash = aeconnector_block:hash(Block), Height = aeconnector_block:height(Block),
@@ -227,14 +244,14 @@ indicate(Data, Block) ->
     index(indicator(top(Data, Height), Hash), Height - Top).
 
 locate(Data, Block) ->
-    Hash = aeconnector_block:hash(Block),
+    _Hash = aeconnector_block:hash(Block),
     Index = index(Data),
-    index(state(Data, Hash), Index - 1).
+    index(Data, Index - 1).
 
 -spec commit_state(data()) -> ok.
 commit_state(Data) ->
-    Address = address(Data), Hash = state(Data), Index = index(Data),
-    State = aehc_parent_state:parent_state(Address, Hash, Index),
+    Address = address(Data), Loc = location(Data), Index = index(Data),
+    State = aehc_parent_state:parent_state(Address, Loc, Index),
     ok = aehc_parent_db:write_parent_state(State).
 
 %%%===================================================================
@@ -295,13 +312,26 @@ top(Data) ->
 top(Data, Top) ->
     Data#data{ top = Top }.
 
--spec state(data()) -> binary().
-state(Data) ->
-    Data#data.state.
+-spec location(data()) -> binary().
+location(Data) ->
+    Data#data.location.
 
--spec state(data(), binary()) -> data().
-state(Data, State) ->
-    Data#data{ state = State }.
+-spec location(data(), binary()) -> data().
+location(Data, Loc) ->
+    Data#data{ location = Loc }.
+
+-spec stack(data()) -> [term()].
+stack(Data) ->
+    Data#data.stack.
+
+-spec stack(data(), [term()]) -> data().
+stack(Data, Stack) ->
+    Data#data{ stack = Stack }.
+
+-spec push(data(), parent_block()) -> data().
+push(Data, Block) ->
+    Stack = stack(Data),
+    stack(Data, [Block|Stack]).
 
 -spec index(data()) -> non_neg_integer().
 index(Data) ->

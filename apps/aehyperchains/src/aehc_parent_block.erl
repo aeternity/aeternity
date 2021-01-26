@@ -19,8 +19,9 @@
         , hash_block/1
         , height_block/1
         , block_header/1
-        , is_hc_parent_block/1
         ]).
+
+-export([to_genesis/1, is_hc_parent_block/1]).
 
 -include("../../aecore/include/blocks.hrl").
 -include("aehc_utils.hrl").
@@ -87,6 +88,12 @@ height_block(#hc_parent_block{header = #hc_parent_block_header{height = Height}}
 -spec block_header(parent_block()) -> parent_block_header().
 block_header(#hc_parent_block{header = Header}) ->
     Header.
+
+-spec to_genesis(parent_block()) -> parent_block().
+to_genesis(#hc_parent_block{header = Header, commitments = Commitments}) ->
+    #hc_parent_block_header{ hash = Hash, height = Height } = Header,
+    Header2 = new_header(Hash, Hash, Height),
+    new_block(Header2, Commitments).
 
 -spec is_hc_parent_block(any()) -> boolean().
 is_hc_parent_block(#hc_parent_block{}) ->

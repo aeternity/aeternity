@@ -31,7 +31,7 @@
                | peers
                | metric
                | chain_sync
-               | {parent_chain, any()}
+               | parent_top_changed
                | oracle_query_tx_created
                | oracle_response_tx_created
                | {tx_event, any()}.
