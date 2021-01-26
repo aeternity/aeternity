@@ -139,7 +139,7 @@ sync_fork_in_wrong_order(Config) ->
     T0 = os:timestamp(),
     aecore_suite_utils:start_node(dev1, Config),
     aecore_suite_utils:connect(N1),
-    aecore_suite_utils:await_sync_complete(T0, [N2]),
+    done = aecore_suite_utils:await_sync_complete(T0, [N2]),
     aec_test_utils:wait_for_it(
       fun() -> rpc:call(N2, aec_chain, top_block, [], 5000) end,
       N1Top),
@@ -147,19 +147,23 @@ sync_fork_in_wrong_order(Config) ->
 
 add_dev3_node(Config) ->
     %% dev1 and dev2 are in sync
+    [N1, N2, N3] = [aecore_suite_utils:node_name(D) || D <- [dev1, dev2, dev3]],
     T0 = os:timestamp(),
     aecore_suite_utils:start_node(dev1, Config),
-    aecore_suite_utils:start_node(dev2, Config),
-    [N1, N2, N3] = [aecore_suite_utils:node_name(D) || D <- [dev1, dev2, dev3]],
     aecore_suite_utils:connect(N1),
+    aecore_suite_utils:start_node(dev2, Config),
     aecore_suite_utils:connect(N2),
-    aecore_suite_utils:await_sync_complete(T0, [N1, N2]),
+    %% N1 and N2 should already be in sync
+    done = aecore_suite_utils:await_sync_complete(T0, [N1, N2]),
     Top = rpc:call(N1, aec_chain, top_block, [], 5000),
     Top = rpc:call(N2, aec_chain, top_block, [], 5000),
     T1 = os:timestamp(),
     aecore_suite_utils:start_node(dev3, Config),
     aecore_suite_utils:connect(N3),
-    aecore_suite_utils:await_sync_complete(T1, [N3]),
+    [{N3, true, Ts1}] = aecore_suite_utils:await_is_syncing(T1, [N3]),
+    [{N3, false, _}] = aecore_suite_utils:await_is_syncing(Ts1, [N3]),
+    %% ok = await_relayed_sync_toggle(false, Sub3),
+    %% ok = stop_subscriber(Sub3),
     Top = rpc:call(N3, aec_chain, top_block, [], 5000),
     %% Nodes are all in sync
     ok = stop_and_check([dev1, dev2, dev3], Config),
@@ -180,7 +184,7 @@ dev3_failed_attack(Config) ->
     aecore_suite_utils:connect(N1),
     aecore_suite_utils:start_node(dev2, Config),
     aecore_suite_utils:connect(N2),
-    aecore_suite_utils:await_sync_complete(T2, [N1, N2]),
+    done = aecore_suite_utils:await_sync_complete(T2, [N1, N2]),
     {ok, BlocksN1N2} = mine_key_blocks(N1, 10),  %% fewer than N3
     NewTop = rpc:call(N1, aec_chain, top_block, [], 5000),
     ct:log("top of fork dev1 (NewTop): ~p", [ NewTop ]),
@@ -190,31 +194,20 @@ dev3_failed_attack(Config) ->
     SetCfg = #{<<"sync">> => #{<<"sync_allowed_height_from_top">> => 5}},
     NewTop = lists:last(BlocksN1N2),
     [ok = rpc:call(N, aeu_env, update_config, [SetCfg]) || N <- [N1, N2]],
-    Sub1 = aecore_suite_utils:start_subscriber(N1, chain_sync),
-    Sub2 = aecore_suite_utils:start_subscriber(N2, chain_sync),
+    T3 = os:timestamp(),
     aecore_suite_utils:start_node(dev3, Config),
-    await_relayed_sync_toggle(Sub1, true),
-    await_relayed_sync_toggle(Sub2, true),
+    aecore_suite_utils:connect(N3),
+    [{N1,true,Ts1}, {N2,true,Ts2}] = aecore_suite_utils:await_is_syncing(T3, [N1, N2]),
     ct:log("Sync started on dev1 and dev2", []),
-    await_relayed_sync_toggle(Sub1, false),
-    await_relayed_sync_toggle(Sub2, false),
+    [{N1,false,_}] = aecore_suite_utils:await_is_syncing(Ts1, [N1]),
+    [{N2,false,_}] = aecore_suite_utils:await_is_syncing(Ts2, [N2]),
     ct:log("Sync stopped on dev1 and dev2", []),
-    aecore_suite_utils:stop_subscriber(Sub1),
-    aecore_suite_utils:stop_subscriber(Sub2),
-    %% timer:sleep(10000),   %% FIXME! What to do here, exactly?
     %% Ensure that dev1 and dev2 still have the same top.
     NewTop = rpc:call(N1, aec_chain, top_block, [], 5000),
     NewTop = rpc:call(N2, aec_chain, top_block, [], 5000),
     false = (N3Top == NewTop),
     ok = stop_and_check([dev1, dev2, dev3], Config).
 
-await_relayed_sync_toggle(Sub, Flag) ->
-    receive
-        {relayed_event, Sub, chain_sync, #{info := {is_syncing, Flag}}} ->
-            ok
-    after 10000 ->
-            error(timeout)
-    end.
 
 dev3_syncs_to_community(_Config) ->
     %% This has not yet been implemented

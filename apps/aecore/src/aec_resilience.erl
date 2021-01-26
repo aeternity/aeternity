@@ -30,12 +30,13 @@ fork_resistance_active() ->
     Res.
 
 start_link() ->
+    ensure_tab(),   % ets table will survive process restart
     gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
 
 init([]) ->
-    ensure_tab(),   % ets table will survive process restart
     aec_events:subscribe(chain_sync),
     aec_events:subscribe(update_config),
+    maybe_enable_fork_resistance_at_startup(),
     {ok, #st{}}.
 
 handle_call(_Req, _From, St) ->
@@ -71,6 +72,20 @@ terminate(_Reason, _St) ->
 
 code_change(_FromVsn, St, _Extra) ->
     {ok, St}.
+
+maybe_enable_fork_resistance_at_startup() ->
+    case lookup(fork_resistance, undefined) of
+        undefined ->
+            case aeu_env:find_config([<<"sync">>, <<"resist_forks_from_start">>],
+                                     [ user_config, schema_default ]) of
+                {ok, true} ->
+                    maybe_enable_fork_resistance();
+                _ ->
+                    ok
+            end;
+        _ ->
+            ok
+    end.
 
 maybe_enable_fork_resistance() ->
     case get_fork_resistance() of
