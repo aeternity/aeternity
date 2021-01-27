@@ -68,7 +68,7 @@
           lock_period        :: non_neg_integer(),
           ttl                :: aetx:tx_ttl(),
           fee                :: non_neg_integer(),
-          delegate_ids       :: [aeser_id:id()],
+          delegate_ids       :: [aeser_id:id()] | {[aeser_id:id()], [aeser_id:id()]},
           state_hash         :: binary(),
           nonce              :: non_neg_integer()
          }).

@@ -751,7 +751,9 @@ is_delegate(ChannelId, FromPubKey, Trees) ->
                  end, ChannelPubKey, Trees).
 
 is_delegate_(Channel, FromPubKey) ->
-    case lists:member(FromPubKey, aesc_channels:delegate_pubkeys(Channel)) of
+    %% TODO!!!!!
+    case lists:member(FromPubKey, aesc_channels:delegate_pubkeys(Channel,
+                                                                 initiator)) of
         true ->
             ok;
         false ->
