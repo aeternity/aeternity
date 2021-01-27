@@ -1179,12 +1179,16 @@ peer_get_n_successors(PeerId, StartHash, TargetHash, N) ->
 peer_get_generation(PeerId, LastHash, Dir) when Dir == backward; Dir == forward ->
     case aec_peer_connection:get_generation(PeerId, LastHash, Dir) of
         {ok, KeyBlock, _MicroBlocks, Dir} = Ok ->
-            case validate_block(KeyBlock) of
+            try validate_block(KeyBlock) of
                 ok ->
                     Ok;
                 {error, _} = Error1 ->
                     lager:debug("KeyBlock fails validation: ~p", [Error1]),
                     Error1
+            catch
+                error:Crash:ST ->
+                    lager:debug("CAUGHT KeyBlock validation error:~p/~p", [Crash, ST]),
+                    {error, validation_exception}
             end;
         {error, _} = Error ->
             Error
@@ -1199,12 +1203,16 @@ fails_whitelist({Height, Hash}) ->
     end.
 
 validate_header({ok, Header}, PeerId) ->
-    case aec_validation:validate_header(Header) of
+    try aec_validation:validate_header(Header) of
         ok ->
             {ok, Header};
         {error, _} = Error ->
             lager:debug("Header from ~p failed validation: ~p", [PeerId, Header]),
             Error
+    catch
+        error:Crash:ST ->
+            lager:debug("CAUGHT header validation error:~p/~p", [Crash, ST]),
+            {error, validation_exception}
     end;
 validate_header({error, _} = Error, PeerId) ->
     lager:debug("Error from ~p: ~p", [PeerId, Error]),
