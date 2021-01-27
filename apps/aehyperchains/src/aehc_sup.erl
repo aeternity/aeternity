@@ -19,7 +19,6 @@ start_link() ->
 init([]) ->
     Spec = case aehc_utils:hc_enabled() of
         true ->
-
             [?CHILD(aehc_parent_mng, 5000, worker)];
         false ->
             []

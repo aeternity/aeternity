@@ -13,7 +13,12 @@
 
 start(_StartType, _StartArgs) ->
     Res = aehc_sup:start_link(),
-    [aehc_parent_mng:start_view(tracker_name(Conf), Conf) || Conf <- trackers_config()],
+    case aehc_utils:hc_enabled() of
+        true ->
+            [aehc_parent_mng:start_view(tracker_name(Conf), Conf) || Conf <- trackers_config()];
+        false ->
+            ok
+    end,
     Res.
 
 start_phase(_Phase, _StartType, _PhaseArgs) ->
