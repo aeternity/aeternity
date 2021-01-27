@@ -94,7 +94,21 @@ new(#{initiator_id       := InitiatorId,
       state_hash         := StateHash,
       nonce              := Nonce} = Args) ->
     true = aesc_utils:check_state_hash_size(StateHash),
-    DelegateIds = maps:get(delegate_ids, Args, []),
+
+    ValidateAccounts =
+        fun(Ids) ->
+            lists:foreach(fun(D) -> account = aeser_id:specialize_type(D) end, Ids) end,
+    %% Note that delegate_ids are required from Iris hardfork on
+    DelegateIds =
+        case maps:get(delegate_ids, Args, []) of
+            L when is_list(L) ->
+                ValidateAccounts(L),
+                L;
+            {IIds, RIds} = DIds when is_list(IIds), is_list(RIds) ->
+                ValidateAccounts(IIds),
+                ValidateAccounts(RIds),
+                DIds
+        end,
     lists:foreach(fun(D) -> account = aeser_id:specialize_type(D) end, DelegateIds),
     account = aeser_id:specialize_type(InitiatorId),
     account = aeser_id:specialize_type(ResponderId),

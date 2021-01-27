@@ -1,0 +1,23 @@
+diff --git a/apps/aechannel/src/aesc_create_tx.erl b/apps/aechannel/src/aesc_create_tx.erl
+index 6b196323..4ebffea7 100644
+--- a/apps/aechannel/src/aesc_create_tx.erl
++++ b/apps/aechannel/src/aesc_create_tx.erl
+@@ -68,7 +68,7 @@
+           lock_period        :: non_neg_integer(),
+           ttl                :: aetx:tx_ttl(),
+           fee                :: non_neg_integer(),
+-          delegate_ids       :: [aeser_id:id()],
++          delegate_ids       :: [aeser_id:id()] | {[aeser_id:id()], [aeser_id:id()]},
+           state_hash         :: binary(),
+           nonce              :: non_neg_integer()
+          }).
+@@ -94,7 +94,8 @@ new(#{initiator_id       := InitiatorId,
+       state_hash         := StateHash,
+       nonce              := Nonce} = Args) ->
+     true = aesc_utils:check_state_hash_size(StateHash),
+-    DelegateIds = maps:get(delegate_ids, Args, []),
++    DelegateIds =
++        case maps:get(delegate_ids, Args, {[],[]} of
+     lists:foreach(fun(D) -> account = aeser_id:specialize_type(D) end, DelegateIds),
+     account = aeser_id:specialize_type(InitiatorId),
+     account = aeser_id:specialize_type(ResponderId),
