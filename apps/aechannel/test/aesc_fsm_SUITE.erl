@@ -118,6 +118,7 @@
 -include_lib("aeutils/include/aeu_stacktrace.hrl").
 
 -define(TIMEOUT, 500).
+-define(SLIGHTLY_LONGER_TIMEOUT, 2000).
 -define(LONG_TIMEOUT, 60000).
 -define(PORT, 9325).
 
@@ -1094,9 +1095,9 @@ do_update(From, To, Amount, #{fsm := FsmI} = I, R, Debug, Cfg) ->
             {R1, _} = await_signing_request(update_ack, R, Debug, Cfg),
             %% TODO: Refactor remaining check_info calls - this one needed to be refactored together
             %% TODO: with state cache encryption because the tests failed randomly because of it
-            await_update_incoming_report(R1, ?TIMEOUT, Debug),
-            I2 = await_update_report(I1, ?TIMEOUT, Debug),
-            R2 = await_update_report(R1, ?TIMEOUT, Debug),
+            await_update_incoming_report(R1, ?SLIGHTLY_LONGER_TIMEOUT, Debug),
+            R2 = await_update_report(R1, ?SLIGHTLY_LONGER_TIMEOUT, Debug),
+            I2 = await_update_report(I1, ?SLIGHTLY_LONGER_TIMEOUT, Debug),
             ?LOG(Debug, "update successful", []),
             {I2, R2}
     end.
