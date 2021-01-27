@@ -71,6 +71,7 @@
          call_proxy/2,
          await_aehttp/1,
          await_sync_complete/2,
+         await_is_syncing/2,
          rpc/3,
          rpc/4,
          http_request/4,
@@ -582,7 +583,18 @@ subscribe(N, Event) ->
     call_proxy(N, {subscribe, Event}).
 
 unsubscribe(N, Event) ->
-    call_proxy(N, {unsubscribe, Event}).
+    ok = call_proxy(N, {unsubscribe, Event}),
+    flush_events(N, Event).
+
+flush_events(N, Event) ->
+    receive
+        {app_started, #{test_node := N}} when Event == app_started ->
+            flush_events(N, Event);
+        {gproc_ps_event, Event, #{sender := From}} when node(From) == N ->
+            flush_events(N, Event)
+    after 0 ->
+            ok
+    end.
 
 all_events_since(N, TS) ->
     [{E, try events_since(N, E, TS) catch error:Err -> Err end}
@@ -638,9 +650,7 @@ expected_logs() ->
 
 await_sync_complete(T0, Nodes) ->
     [ok = subscribe(N, chain_sync) || N <- Nodes],
-    AllEvents = lists:flatten(
-                  [events_since(N, chain_sync, T0) || N <- Nodes]
-                 ),
+    AllEvents = events_since_on_nodes(chain_sync, T0, Nodes),
     ct:log("AllEvents = ~p", [AllEvents]),
     SyncNodes =
         lists:foldl(
@@ -648,19 +658,68 @@ await_sync_complete(T0, Nodes) ->
                   check_event(Msg, Acc)
           end, Nodes, AllEvents),
     ct:log("SyncNodes = ~p", [SyncNodes]),
-    collect_sync_events(SyncNodes, 100).
+    ct:log("Messages = ~p", [process_info(self(), messages)]),
+    Res = collect_sync_events(SyncNodes, 100),
+    [ok = unsubscribe(N, chain_sync) || N <- Nodes],
+    Res.
+
+await_is_syncing(T0, Nodes) ->
+    [ok = subscribe(N, chain_sync) || N <- Nodes],
+    AllEvents = events_since_on_nodes(chain_sync, T0, Nodes),
+    ct:log("AllEvents = ~p", [AllEvents]),
+    {Sofar, RestNodes} =
+        lists:foldl(
+          fun(#{sender := From, info := {is_syncing, Flag}, time := Te}, {Found, Ns} = Acc) ->
+                  Node = node(From),
+                  case lists:member(Node, Ns) of
+                      true ->
+                          {[{Node, Flag, Te}|Found], Ns -- [Node]};
+                      false ->
+                          Acc
+                  end;
+             (_, Acc) ->
+                  Acc
+          end, {[], Nodes}, AllEvents),
+    [ok = unsubscribe(N, chain_sync) || {N,_,_} <- Sofar],
+    Res = collect_is_syncing(RestNodes, Sofar),
+    [ok = unsubscribe(N, chain_sync) || N <- RestNodes],
+    %% Ensure same order as in the Nodes list
+    [{_,_,_} = lists:keyfind(N, 1, Res) || N <- Nodes].
+
+events_since_on_nodes(Event, T0, Nodes) ->
+    lists:flatten(
+      [events_since(N, Event, T0) || N <- Nodes]
+     ).
 
 collect_sync_events(_, 0) -> error(retry_exhausted);
 collect_sync_events([], _) -> done;
 collect_sync_events(SyncNodes, N) ->
     receive
-        {gproc_ps_event, chain_sync, Msg} ->
+        {gproc_ps_event, chain_sync, #{info := {chain_sync_done, _}} = Msg} ->
+            ct:log("chain_sync event: ~p", [Msg]),
             SyncNodes1 = check_event(Msg, SyncNodes),
             collect_sync_events(SyncNodes1, N-1)
     after 20000 ->
             ct:log("Timeout in collect_sync_events: ~p~n"
                    "~p", [SyncNodes, process_info(self(), messages)]),
             error(timeout)
+    end.
+
+collect_is_syncing(Nodes, Acc) ->
+    TRef = erlang:start_timer(10000, self(), is_syncing),
+    collect_is_syncing(Nodes, TRef, Acc).
+
+collect_is_syncing([], TRef, Acc) ->
+    erlang:cancel_timer(TRef),
+    Acc;
+collect_is_syncing([N|Ns], TRef, Acc) ->
+    receive
+        {timeout, TRef, _} ->
+            error(timeout);
+        {gproc_ps_event, chain_sync, #{ sender := From
+                                      , info := {is_syncing, Flag}
+                                      , time := Te }} when node(From) == N ->
+            collect_is_syncing(Ns, TRef, [{N, Flag, Te}|Acc])
     end.
 
 check_event(#{sender := From, info := Info}, Nodes) ->
@@ -1095,8 +1154,9 @@ proxy_loop(Subs, Events) ->
             Res = case dict:find(E, Events) of
                       error -> [];
                       {ok, Es} ->
+                          %% exclude events before or AT Since
                           lists:dropwhile(
-                            fun(#{time := T}) -> T < Since end, Es)
+                            fun(#{time := T}) -> T =< Since end, Es)
                   end,
             From ! {Ref, Res},
             proxy_loop(Subs, Events);
@@ -1105,7 +1165,7 @@ proxy_loop(Subs, Events) ->
             tell_subscribers(Subs, Event, {gproc_ps_event, Event, Info}),
             proxy_loop(Subs, dict:append(Event, Info, Events));
         {application_started, T, App} ->
-            Info = #{time => T, info => App},
+            Info = #{time => T, info => App, test_node => node()},
             tell_subscribers(Subs, app_started, {app_started, Info}),
             Subs1 = case App of
                         gproc ->
@@ -1113,9 +1173,7 @@ proxy_loop(Subs, Events) ->
                             ensure_markers(Es, Subs);
                         _ -> Subs
                     end,
-            proxy_loop(Subs1, dict:append(
-                               app_started,
-                               #{time => T, info => App}, Events));
+            proxy_loop(Subs1, dict:append(app_started, Info, Events));
         Other ->
             io:fwrite("Proxy got ~p~n", [Other]),
             proxy_loop(Subs, Events)

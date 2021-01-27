@@ -163,6 +163,20 @@
                     "description": "Allowed height difference from current top for incoming blocks (via gossip)",
                     "type" : "integer"
                 },
+                "sync_allowed_height_from_top" : {
+                    "description": "Once own node is synced, reject sync blocks at least this far from the current top; 0 means disabled",
+                    "type" : "integer",
+                    "default" : 100
+                },
+                "resist_forks_from_start" : {
+                    "description": "If sync_allowed_height_from_top > 0, this is applied at startup",
+                    "type" : "boolean",
+                    "default" : false
+                },
+                "whitelist_file" : {
+                    "description" : "The name of a block hash whitelist file (JSON format)",
+                    "type" : "string"
+                },
                 "log_peer_connection_count_interval" : {
                     "description": "Time (milliseconds) between logging info about connected peers",
                     "type" : "integer",

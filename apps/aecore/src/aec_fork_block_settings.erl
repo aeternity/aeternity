@@ -15,6 +15,7 @@
 -export([ accounts_file_name/1
         , extra_accounts_file_name/1
         , contracts_file_name/1
+        , whitelist_filename/0
         ]).
 
 -define(GENESIS_DIR, ".genesis").
@@ -59,7 +60,7 @@ lima_contracts() -> preset_contracts(?LIMA_PROTOCOL_VSN,
                                      lima_contracts_file_missing).
 
 block_whitelist() ->
-    P = filename:join(aeu_env:data_dir(aecore), whitelist_json_file()),
+    P = whitelist_filename(),
     case filelib:is_file(P) of
         false ->
             lager:debug("Block whitelist not present"),
@@ -74,6 +75,12 @@ block_whitelist() ->
             lager:debug("Loaded ~p whitelisted blocks", [maps:size(Whitelist)]),
             Whitelist
     end.
+
+whitelist_filename() ->
+    {ok, F} = aeu_env:find_config([<<"sync">>, <<"whitelist_file">>],
+                                  [user_config,
+                                   {value, whitelist_json_file()}]),
+    filename:absname(setup:expand_value(aecore, F)).
 
 -spec preset_accounts(accounts | extra_accounts, aec_hard_forks:protocol_vsn(), atom()) -> list().
 preset_accounts(Type, Release, ErrorMsg) ->

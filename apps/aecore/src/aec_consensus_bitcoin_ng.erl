@@ -24,6 +24,8 @@
         , keyblock_create_adjust_target/2
         %% Preconductor hook
         , dirty_validate_block_pre_conductor/1
+        , dirty_validate_header_pre_conductor/1
+        , dirty_validate_key_hash_at_height/2
         %% Dirty validation before starting the state transition
         , dirty_validate_key_node_with_ctx/3
         , dirty_validate_micro_node_with_ctx/3
@@ -171,20 +173,35 @@ keyblock_create_adjust_target(Block, AdjHeaders) ->
 %% -------------------------------------------------------------------
 %% Preconductor hook - called in sync process just before invoking the conductor
 dirty_validate_block_pre_conductor(B) ->
+    Header = aec_blocks:to_header(B),
+    dirty_validate_header_pre_conductor(Header).
+
+dirty_validate_header_pre_conductor(H) ->
     W = persistent_term:get(?WHITELIST),
-    Height = aec_blocks:height(B),
-    case aec_blocks:is_key_block(B) of
-        true ->
+    Height = aec_headers:height(H),
+    case aec_headers:type(H) of
+        key ->
             case maps:find(Height, W) of
                 {ok, Hash} ->
-                    case aec_blocks:hash_internal_representation(B) of
+                    case aec_headers:hash_header(H) of
                         {ok, Hash} -> ok;
                         _ -> {error, blocked_by_whitelist}
                     end;
                 error ->
                     ok
             end;
-        false -> ok
+        micro -> ok
+    end.
+
+dirty_validate_key_hash_at_height(Height, Hash) ->
+    W = persistent_term:get(?WHITELIST),
+    case maps:find(Height, W) of
+        {ok, Hash} ->
+            ok;
+        {ok, _} ->
+            {error, blocked_by_whitelist};
+        error ->
+            ok
     end.
 
 %% -------------------------------------------------------------------

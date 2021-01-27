@@ -141,6 +141,7 @@ handle_worker(Task, Action) ->
                 , pid :: pid()
                 }).
 -record(sync_task, {id :: chain_id(),
+                    suspect = false :: boolean(),
                     chain :: #chain{},
                     pool = [] :: [#pool_item{}],
                     agreed :: undefined | #chain_block{},
@@ -151,6 +152,7 @@ handle_worker(Task, Action) ->
                , last_generation_in_sync = false :: boolean()
                , top_target = 0                  :: aec_blocks:height()
                , gossip_txs = true               :: boolean()
+               , is_syncing = false              :: boolean()
                }).
 
 start_link() ->
@@ -379,13 +381,19 @@ handle_last_result(ST, {post_blocks, ok}) ->
 handle_last_result(ST, {post_blocks, {ok, NewTop}}) ->
     inform_workers(ST, {new_top, NewTop}),
     ST#sync_task{ adding = [] };
+handle_last_result(ST, {post_blocks, {rejected, BlockFromPeerId, Height}}) ->
+    mark_workers_as_suspect(ST#sync_task.workers),
+    sync_task_post_error(ST#sync_task{suspect = true, workers = []}, BlockFromPeerId, Height);
 handle_last_result(ST, {post_blocks, {error, BlockFromPeerId, Height}}) ->
     inform_workers(ST, {new_top, Height}),
+    sync_task_post_error(ST, BlockFromPeerId, Height).
+
+sync_task_post_error(ST, BlockFromPeerId, Height) ->
     #sync_task{ adding = Add, pending = Pends, pool = Pool
               , chain = Chain
               } = ST,
     %% Put back the blocks we did not manage to post, and schedule failing block
-    %% for another retreival.
+    %% for another retrieval.
     [#pool_item{ height = Height, hash = Hash } | PutBack] =
         lists:dropwhile(fun(#pool_item{ height = H }) -> H < Height end,
                         Add) ++ lists:append(Pends),
@@ -393,6 +401,14 @@ handle_last_result(ST, {post_blocks, {error, BlockFromPeerId, Height}}) ->
     ST1 = ST#sync_task{ adding = [], pending = [], pool = NewPool },
 
     ST1#sync_task{ chain = Chain#chain{ peers = Chain#chain.peers -- [BlockFromPeerId] }}.
+
+mark_workers_as_suspect(Ws) ->
+    lists:foreach(
+      fun(#worker{ peer_id = P }) ->
+              aec_peer_connection:disconnect(P),
+              aec_peers:peer_suspect(P),
+              aec_events:publish(chain_sync, {chain_sync_done, P})
+      end, Ws).
 
 inform_workers(#sync_task{ workers = Ws }, {new_top, Height}) ->
     [ aec_peer_connection:set_sync_height(P, Height) || #worker{ peer_id = P } <- Ws ].
@@ -402,8 +418,8 @@ split_pool(Pool) ->
 
 get_next_work_item(State, STId, PeerId) ->
     case get_sync_task(STId, State) of
-        {ok, ST = #sync_task{ chain = #chain{ peers = PeerIds } }} ->
-            case lists:member(PeerId, PeerIds) of
+        {ok, ST = #sync_task{ suspect = Suspect, chain = #chain{ peers = PeerIds } }} ->
+            case (not Suspect) andalso lists:member(PeerId, PeerIds) of
                 true ->
                     {Reply, ST1} = get_next_work_item(ST),
                     {Reply, set_sync_task(STId, ST1, State)};
@@ -414,6 +430,9 @@ get_next_work_item(State, STId, PeerId) ->
             {abort_work, State}
     end.
 
+get_next_work_item(ST = #sync_task{ suspect = true }) ->
+    epoch_sync:info("Sync task flagged as suspect: ~1000p", [pp_sync_task(ST)]),
+    {take_a_break, ST};
 get_next_work_item(ST = #sync_task{ adding = [], pending = [ToAdd | NewPending] }) ->
     {{post_blocks, ToAdd}, ST#sync_task{ adding = ToAdd, pending = NewPending }};
 get_next_work_item(ST = #sync_task{ agreed = undefined }) ->
@@ -452,10 +471,18 @@ get_next_work_item(ST) ->
 maybe_end_sync_task(State, ST) ->
     case ST#sync_task.chain of
         #chain{ peers = [], blocks = [Target | _] } ->
-            epoch_sync:info("Removing/ending sync task ~p target was ~p",
-                            [ST#sync_task.id, pp_chain_block(Target)]),
-            State1 = delete_sync_task(ST, State),
-            maybe_update_top_target(State1);
+            case ST#sync_task.suspect of
+                false ->
+                    epoch_sync:info("Removing/ending sync task ~p target was ~p",
+                                    [ST#sync_task.id, pp_chain_block(Target)]),
+                    State1 = delete_sync_task(ST, State),
+                    maybe_update_top_target(State1);
+                true ->
+                    epoch_sync:info("Keeping sync task ~p around; target was ~p",
+                                    [ST#sync_task.id, pp_chain_block(Target)]),
+                    State1 = set_sync_task(ST, State),
+                    maybe_update_top_target(State1)
+            end;
         _ ->
             set_sync_task(ST, State)
     end.
@@ -468,7 +495,8 @@ maybe_new_top_target(#chain{ blocks = [B | _] }, State) ->
     end.
 
 maybe_update_top_target(State = #state{}) ->
-    #state{ top_target = TopTarget, sync_tasks = STs } = State,
+    STs = valid_sync_tasks(State),
+    #state{ top_target = TopTarget} = State,
     NewTop = lists:foldl(fun(#sync_task{ chain = Chain }, PrevMax) ->
                              case Chain#chain.blocks of
                                  [#chain_block{ height = H } | _] when H > PrevMax -> H;
@@ -479,6 +507,9 @@ maybe_update_top_target(State = #state{}) ->
         true  -> State;
         false -> update_top_target(NewTop, State)
     end.
+
+valid_sync_tasks(#state{sync_tasks = STs}) ->
+    [ST || #sync_task{suspect = false} = ST <- STs].
 
 update_top_target(TopTarget, State) ->
     aec_tx_pool:new_sync_top_target(TopTarget),
@@ -511,12 +542,24 @@ set_sync_task(ST = #sync_task{ id = STId }, State) ->
     set_sync_task(STId, ST, State).
 
 set_sync_task(STId, ST, S = #state{ sync_tasks = STs }) ->
-    S#state{ sync_tasks = lists:keystore(STId, #sync_task.id, STs, ST) }.
+    State1 = S#state{ sync_tasks = lists:keystore(STId, #sync_task.id, STs, ST) },
+    check_is_syncing(State1).
 
 delete_sync_task(#sync_task{ id = STId }, S) ->
     delete_sync_task(STId, S);
 delete_sync_task(STId, S = #state{ sync_tasks = STs }) ->
-    S#state{ sync_tasks = lists:keydelete(STId, #sync_task.id, STs) }.
+    State1 = S#state{ sync_tasks = lists:keydelete(STId, #sync_task.id, STs) },
+    check_is_syncing(State1).
+
+check_is_syncing(State) ->
+    case {is_syncing(State), State#state.is_syncing} of
+        {Same, Same} ->
+            State;
+        {New, _} ->
+            lager:debug("is_syncing changed to ~p", [New]),
+            aec_events:publish(chain_sync, {is_syncing, New}),
+            State#state{is_syncing = New}
+    end.
 
 add_chain_info(Chain = #chain{ id = CId }, S) ->
     case get_sync_task(CId, S) of
@@ -676,7 +719,7 @@ do_start_sync(PeerId, RemoteHash) ->
     end.
 
 do_start_sync1(PeerId, RemoteHash) ->
-    case aec_peer_connection:get_header_by_hash(PeerId, RemoteHash) of
+    case peer_get_header_by_hash(PeerId, RemoteHash) of
         {ok, Hdr} ->
             epoch_sync:debug("New header received (~p): ~p", [ppp(PeerId), pp(Hdr)]),
 
@@ -747,7 +790,7 @@ next_known_hash(Cs, N) ->
 do_get_header_by_height([], _N, _TopHash) ->
     {error, header_not_found};
 do_get_header_by_height([PeerId | PeerIds], N, TopHash) ->
-    case aec_peer_connection:get_header_by_height(PeerId, N, TopHash) of
+    case peer_get_header_by_height(PeerId, N, TopHash) of
         {ok, Header} ->
             {ok, Header};
         {error, Reason} ->
@@ -840,7 +883,7 @@ get_header_by_height(PeerId, Height, RemoteTop) ->
     case Height == aec_block_genesis:height() of
         true  -> aec_chain:genesis_hash(); %% Handshake ensure we agree on genesis
         false ->
-            case aec_peer_connection:get_header_by_height(PeerId, Height, RemoteTop) of
+            case peer_get_header_by_height(PeerId, Height, RemoteTop) of
                 {ok, RemoteAtHeight} ->
                     {ok, RHash} = aec_headers:hash_header(RemoteAtHeight),
                     RHash;
@@ -870,7 +913,14 @@ post_blocks(From, To, [#pool_item{ height = Height, got = {PeerId, Block} } | Bl
         {error, Reason} ->
             epoch_sync:info("Failed to add synced block ~p: ~p", [Height, Reason]),
             [ epoch_sync:info("Synced blocks ~p - ~p", [From, To - 1]) || To > From ],
-            {error, PeerId, Height}
+            case Reason of
+                {too_far_below_top, _, _} ->
+                    {rejected, PeerId, Height};
+                blocked_by_whitelist ->
+                    {rejected, PeerId, Height};
+                _ ->
+                    {error, PeerId, Height}
+            end
     end.
 
 %% In order not to timeout the conductor, large generations are added in
@@ -896,7 +946,7 @@ add_blocks([B | Bs]) ->
     end.
 
 fill_pool(PeerId, StartHash, TargetHash, ST) ->
-    case aec_peer_connection:get_n_successors(PeerId, StartHash, TargetHash, ?MAX_HEADERS_PER_CHUNK) of
+    case peer_get_n_successors(PeerId, StartHash, TargetHash, ?MAX_HEADERS_PER_CHUNK) of
         {ok, []} ->
             aec_peer_connection:set_sync_height(PeerId, none),
             do_get_generation(PeerId, StartHash),
@@ -947,7 +997,7 @@ heights_are_consecutive([{FirstHeight, _} | _] = Hashes) when
                 tl(Hashes)).
 
 do_get_generation(PeerId, LastHash) ->
-    case aec_peer_connection:get_generation(PeerId, LastHash, forward) of
+    case peer_get_generation(PeerId, LastHash, forward) of
         {ok, KeyBlock, MicroBlocks, forward} ->
             Generation = #{ key_block => KeyBlock,
                             micro_blocks => MicroBlocks,
@@ -968,7 +1018,7 @@ do_fetch_generation(PeerId, Hash) ->
 
 do_fetch_generation_ext(Hash, PeerId) ->
     epoch_sync:debug("we don't have the block -fetching (~p)", [pp(Hash)]),
-    case aec_peer_connection:get_generation(PeerId, Hash, backward) of
+    case peer_get_generation(PeerId, Hash, backward) of
         {ok, KeyBlock, MicroBlocks, backward} ->
             %% Types of blocks (key vs. macro) guaranteed by deserialization.
             case header_hash(KeyBlock) =:= Hash of
@@ -1056,7 +1106,7 @@ parse_peer(P) ->
             []
     end.
 
-peer_in_sync(#state{ sync_tasks = STs }, PeerId) ->
+peer_in_sync(#state{sync_tasks = STs}, PeerId) ->
     L = lists:flatmap(fun(ST) -> ST#sync_task.chain#chain.peers end, STs),
     lists:member(PeerId, L).
 
@@ -1075,7 +1125,7 @@ max_gossip() ->
                                ?DEFAULT_MAX_GOSSIP).
 
 is_syncing(#state{sync_tasks = SyncTasks}) ->
-    SyncTasks =/= [].
+    [1 || #sync_task{suspect = false} <- SyncTasks] =/= [].
 
 -spec sync_progress(#state{}) -> {boolean(), float()}.
 sync_progress(#state{sync_tasks = SyncTasks} = State) ->
@@ -1084,7 +1134,9 @@ sync_progress(#state{sync_tasks = SyncTasks} = State) ->
         true ->
             TargetHeight =
                 lists:foldl(
-                  fun(SyncTask, MaxHeight) ->
+                  fun(#sync_task{suspect = true}, Acc) ->
+                          Acc;
+                     (SyncTask, MaxHeight) ->
                           #chain{blocks = Chain} = SyncTask#sync_task.chain,
                           [#chain_block{height = Height} | _] = Chain,
                           max(Height, MaxHeight)
@@ -1102,6 +1154,74 @@ sync_progress(#state{sync_tasks = SyncTasks} = State) ->
                 end,
             {true, SyncProgress}
     end.
+
+peer_get_header_by_hash(PeerId, RemoteHash) ->
+    validate_header(aec_peer_connection:get_header_by_hash(PeerId, RemoteHash), PeerId).
+
+peer_get_header_by_height(PeerId, Height, TopHash) ->
+    validate_header(
+      aec_peer_connection:get_header_by_height(PeerId, Height, TopHash), PeerId).
+
+peer_get_n_successors(PeerId, StartHash, TargetHash, N) ->
+    case aec_peer_connection:get_n_successors(PeerId, StartHash, TargetHash, N) of
+        {ok, Hashes} = Ok ->
+            case lists:any(fun fails_whitelist/1, Hashes) of
+                true ->
+                    lager:debug("Successor batch from ~p failed whitelist", [PeerId]),
+                    {error, blocked_by_whitelist};
+                false ->
+                    Ok
+            end;
+        {error, _} = Error ->
+            Error
+    end.
+
+peer_get_generation(PeerId, LastHash, Dir) when Dir == backward; Dir == forward ->
+    case aec_peer_connection:get_generation(PeerId, LastHash, Dir) of
+        {ok, KeyBlock, _MicroBlocks, Dir} = Ok ->
+            try validate_block(KeyBlock) of
+                ok ->
+                    Ok;
+                {error, _} = Error1 ->
+                    lager:debug("KeyBlock fails validation: ~p", [Error1]),
+                    Error1
+            catch
+                error:Crash:ST ->
+                    lager:debug("CAUGHT KeyBlock validation error:~p/~p", [Crash, ST]),
+                    {error, validation_exception}
+            end;
+        {error, _} = Error ->
+            Error
+    end.
+
+fails_whitelist({Height, Hash}) ->
+    Consensus = aec_consensus:get_consensus_module_at_height(Height),
+    case Consensus:dirty_validate_key_hash_at_height(Height, Hash) of
+        {error, blocked_by_whitelist} -> true;
+        _ ->
+            false
+    end.
+
+validate_header({ok, Header}, PeerId) ->
+    try aec_validation:validate_header(Header) of
+        ok ->
+            {ok, Header};
+        {error, _} = Error ->
+            lager:debug("Header from ~p failed validation: ~p", [PeerId, Header]),
+            Error
+    catch
+        error:Crash:ST ->
+            lager:debug("CAUGHT header validation error:~p/~p", [Crash, ST]),
+            {error, validation_exception}
+    end;
+validate_header({error, _} = Error, PeerId) ->
+    lager:debug("Error from ~p: ~p", [PeerId, Error]),
+    Error.
+
+validate_block(Block) ->
+    Height = aec_blocks:height(Block),
+    Protocol = aec_hard_forks:protocol_effective_at_height(Height),
+    aec_validation:validate_block(Block, Protocol).
 
 pp_chain_block(#chain_block{hash = Hash, height = Height}) ->
     #{ hash => Hash

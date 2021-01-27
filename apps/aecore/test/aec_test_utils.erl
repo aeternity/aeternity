@@ -165,12 +165,15 @@ mock_genesis_and_forks(PresetAccounts, Whitelist) ->
     meck:expect(aec_fork_block_settings, lima_extra_accounts, 0, []),
     meck:expect(aec_fork_block_settings, lima_contracts, 0, []),
     meck:expect(aec_fork_block_settings, block_whitelist, 0, Whitelist),
+    meck:new(aec_resilience, [passthrough]),
+    meck:expect(aec_resilience, fork_resistance_active, 0, no),
     aec_consensus:set_consensus(),
     aec_consensus:set_genesis_hash(),
     ok.
 
 unmock_genesis_and_forks() ->
     meck:unload(aec_fork_block_settings),
+    meck:unload(aec_resilience),
     ok.
 
 ensure_not_mocked(Mods) when is_list(Mods) ->

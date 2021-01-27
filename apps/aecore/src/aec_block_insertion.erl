@@ -10,7 +10,6 @@
 -export([ start_state_transition/1
         , abort_state_transition/1
         %% Wrapped header helpers
-        , node_hash/1
         , node_prev_hash/1
         , node_prev_key_hash/1
         , node_height/1
@@ -24,16 +23,21 @@
         , node_version/1
         , node_is_key_block/1
         , node_is_micro_block/1
+        , node_hash/1
         , node_header/1
         , node_consensus/1
         %% Insertion context
         , update_recent_cache/2
+        , update_top/1
         , build_insertion_ctx/2
         , ctx_prev_key/1
         , ctx_prev/1
         , ctx_get_recent_n/2
         %% DB helpers
         , get_n_key_headers_from/2
+        , get_top_hash/0
+        , get_top_header/0
+        , get_top_height/0
         ]).
 -include("aec_block_insertion.hrl").
 
@@ -52,6 +56,7 @@
 %% Orphaned key blocks will leak memory - fortunately leaking memory will require PoW
 %% TODO: periodically remove orphans from ram
 -define(RECENT_CACHE, aec_chain_state_cache).
+-define(REGISTRY_CACHE, aec_chain_state_registry_cache).
 
 -spec start_state_transition(fun(() -> T)) -> T | {error, term()}.
 start_state_transition(Fun) ->
@@ -67,8 +72,6 @@ start_state_transition(Fun) ->
 %% start_state_transition. Rollbacks all changes made by start_state_transition.
 abort_state_transition(Reason) ->
     throw(?internal_error(Reason)).
-
-node_hash(#node{hash = Hash}) -> Hash.
 
 node_prev_hash(#node{header = H}) -> aec_headers:prev_hash(H).
 
@@ -96,6 +99,8 @@ node_version(#node{header = H}) -> aec_headers:version(H).
 node_is_key_block(N) -> node_type(N) =:= key.
 
 node_is_micro_block(N) -> node_type(N) =:= micro.
+
+node_hash(#node{hash = Hash}) -> Hash.
 
 node_header(#node{header = H}) -> H.
 
@@ -177,7 +182,8 @@ build_insertion_ctx(Consensus, Node, key, undefined) ->
         {ok, PrevNode, PrevKeyNode} ->
             case get_n_key_nodes_from(PrevKeyNode, N) of
                 {ok, Nodes} ->
-                    RecentKeyHeaders = [recent_cache_trim_node(Consensus, N) || N <- lists:reverse(Nodes)],
+                    RecentKeyHeaders = [recent_cache_trim_node(Consensus, N1)
+                                        || N1 <- lists:reverse(Nodes)],
                     #insertion_ctx{ prev_key_node = PrevKeyNode
                                   , prev_node = PrevNode
                                   , window_len = N
@@ -270,6 +276,21 @@ update_recent_cache(#node{type = key, hash = H} = Node, #insertion_ctx{window_le
         end,
     ets:insert(?RECENT_CACHE, Entry).
 
+update_top(#node{} = Node) ->
+    ets:insert(?REGISTRY_CACHE, {top_node, Node}).
+
+get_top_node() ->
+    ets:lookup_element(?REGISTRY_CACHE, top_node, 2).
+
+get_top_header() ->
+    node_header(get_top_node()).
+
+get_top_hash() ->
+    node_hash(get_top_node()).
+
+get_top_height() ->
+    node_height(get_top_node()).
+
 get_n_key_headers_from(Node, N) ->
     case get_n_key_nodes_from(Node, N) of
         error ->
@@ -300,11 +321,13 @@ setup_ets_cache() ->
     %% Lager might not be up so don't bother with logging
     Self = self(),
     Tab = ?RECENT_CACHE,
+    Registry = ?REGISTRY_CACHE,
     Keypos = #recent_blocks.key,
     case ets:info(Tab, name) of
         undefined ->
             spawn(fun() ->
                 ets:new(Tab, [set, public, named_table, {keypos, Keypos}]),
+                ets:new(Registry, [set, public, named_table]),
                 Self ! cache_ready,
                 timer:sleep(infinity)
             end),
