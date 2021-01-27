@@ -11,28 +11,44 @@
 
 -include_lib("eunit/include/eunit.hrl").
 
-install_uninstall_only_in_early_boot_test_() ->
-    {foreach,
-     fun() ->
-             InitialApps = {running_apps(), loaded_apps()},
-             ok = lager:start(),
-             meck:new(application, [unstick, passthrough]),
-             InitialApps
-     end,
-     fun({OldRunningApps, OldLoadedApps}) ->
-             meck:unload(application),
-             ok = restore_stopped_and_unloaded_apps(OldRunningApps, OldLoadedApps)
-end,
-     [{"HC installs/uninstalls only in early boot",
-       fun() ->
-            meck:expect(application, which_applications, 0, []),
-            ?assertEqual(ok, aehc_utils:hc_install()),
-            ?assertEqual(ok, aehc_utils:hc_uninstall()),
-
-            meck:expect(application, which_applications, 0, [{aecore, "Blockchain for aeapps", 20}]),
-            ?assertException(error, forbidden, aehc_utils:hc_install()),
-            ?assertException(error, forbidden, aehc_utils:hc_uninstall()),
-
-            ok
-       end}
-     ]}.
+is_hc_enabled_test_() ->
+    { foreach,
+      fun() ->
+          ?assertEqual(false, aehc_utils:hc_enabled()),
+          ok
+      end,
+      fun(_) ->
+          ?assertEqual(false, aehc_utils:hc_enabled())
+      end,
+      [ aec_test_utils:eunit_with_consensus(aehc_test_utils:hc_from_genesis(),
+          [{ "Test consensus eunit helper - HC consensus"
+           , fun() ->
+                  ?assertEqual(true, aehc_utils:hc_enabled())
+             end
+           }]),
+        aec_test_utils:eunit_with_consensus(aehc_test_utils:cuckoo_pow_from_genesis(),
+          [{ "Test consensus eunit helper - POW Cuckoo"
+           , fun() ->
+                  ?assertEqual(false, aehc_utils:hc_enabled())
+             end
+           }]),
+        aec_test_utils:eunit_with_consensus(
+            #{ <<"0">>    => aehc_test_utils:hc_consensus()
+             , <<"1337">> => aehc_test_utils:cuckoo_pow_consensus()
+             },
+          [{ "Test consensus eunit helper - Mixed"
+           , fun() ->
+                  ?assertEqual(true, aehc_utils:hc_enabled())
+             end
+           }]),
+        aec_test_utils:eunit_with_consensus(
+            #{ <<"0">>    => aehc_test_utils:cuckoo_pow_consensus()
+             , <<"1337">> => aehc_test_utils:hc_consensus()
+             },
+          [{ "Test consensus eunit helper - Mixed"
+           , fun() ->
+                  ?assertEqual(true, aehc_utils:hc_enabled())
+             end
+           }])
+     ]
+    }.

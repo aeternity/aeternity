@@ -58,6 +58,7 @@
 -export([ check_env/0
         , set_consensus/0
         , set_genesis_hash/0
+        , get_consensus/0
         , get_consensus_module_at_height/1
         , get_consensus_config_at_height/1
         , get_genesis_consensus_module/0
@@ -322,6 +323,7 @@ consensus_from_network_id(_) ->
 
 -ifdef(TEST).
 consensus_module_from_name(<<"pow_cuckoo">>) -> aec_consensus_bitcoin_ng;
+consensus_module_from_name(<<"hyperchains">>) -> aehc_consensus_hyperchains;
 consensus_module_from_name(<<"ct_tests">>) -> aec_consensus_common_tests;
 consensus_module_from_name(<<"eunit_one">>) -> module_eunit_one;
 consensus_module_from_name(<<"eunit_two">>) -> module_eunit_two;
@@ -329,6 +331,7 @@ consensus_module_from_name(<<"eunit_three">>) -> module_eunit_three;
 consensus_module_from_name(_) -> undefined.
 -else.
 consensus_module_from_name(<<"pow_cuckoo">>) -> aec_consensus_bitcoin_ng;
+consensus_module_from_name(<<"hyperchains">>) -> aehc_consensus_hyperchains;
 consensus_module_from_name(_) -> undefined.
 -endif.
 

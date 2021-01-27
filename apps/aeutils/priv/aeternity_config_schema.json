@@ -605,22 +605,22 @@
                                 "type" : "string"
                             }
                         },
-                        "minItems": 1,
-                        "default" : [
-                            {
-                                "name":"aeternity",
-                                "connector": {
-                                    "module":"aehc_aeternity_connector",
-                                    "args": {
-                                        "host":"localhost",
-                                        "port":8332,
-                                        "stub": true
-                                    }
-                                },
-                                "genesis_hash":"kh_2pDTjhABi43q1LrpXrBRj8GaBhJbZQSpYks9EYqfvW5fk31eWy",
-                                "note": "Initial Hyperhains test track (release version 5.5.4)"
-                            }]
-                    }
+                        "minItems": 1
+                    },
+                    "default" : [
+                        {
+                            "name":"aeternity",
+                            "connector": {
+                                "module":"aehc_aeternity_connector",
+                                "args": {
+                                    "host":"localhost",
+                                    "port":8332,
+                                    "stub": true
+                                }
+                            },
+                            "genesis_hash":"kh_2pDTjhABi43q1LrpXrBRj8GaBhJbZQSpYks9EYqfvW5fk31eWy",
+                            "note": "Initial Hyperchains test track (release version 5.5.4)"
+                        }]
                 }
             }
         },

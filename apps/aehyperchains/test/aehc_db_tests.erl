@@ -34,11 +34,16 @@ hyperchains_unable_to_use_normal_db_test_() ->
              meck:expect(aecore_sup, start_link, 0, {ok, pid}),
              meck:new(aec_jobs_queues, [passthrough]),
              meck:expect(aec_jobs_queues, start, 0, ok),
+             meck:new(aec_chain_state, [passthrough]),
+             meck:expect(aec_chain_state, ensure_chain_ends, 0, ok),
+             meck:new(aec_consensus, [passthrough]),
              ok = lager:start(),
 
              InitialApps
      end,
      fun({OldRunningApps, OldLoadedApps}) ->
+             meck:unload(aec_consensus),
+             meck:unload(aec_chain_state),
              meck:unload(aec_jobs_queues),
              meck:unload(aecore_sup),
              meck:unload(aec_db),
@@ -47,53 +52,57 @@ hyperchains_unable_to_use_normal_db_test_() ->
 end,
      [{"HC Genesis block != Mainnet Genesis block",
        fun() ->
-            % Get genesis hashes
-            {ok, MainnetGenesisHash} = aec_headers:hash_header(aec_block_genesis:genesis_header()),
-            aehc_utils:hc_install(),
-            {ok, HyperchainGenesisHash} = aec_headers:hash_header(aec_block_genesis:genesis_header()),
-            aehc_utils:hc_uninstall(),
+            try
+                % Get genesis hashes
+                aehc_test_utils:enable_pow_cuckoo_from_genesis(),
+                {ok, MainnetGenesisHash} = aec_headers:hash_header(aec_block_genesis:genesis_header()),
+                aehc_test_utils:enable_hc_from_genesis(),
+                {ok, HyperchainGenesisHash} = aec_headers:hash_header(aec_block_genesis:genesis_header()),
+                aehc_test_utils:enable_pow_cuckoo_from_genesis(),
 
-            % If enabling HC didn't change the genesis hash then something must be broken
-            ?assertNotEqual(MainnetGenesisHash, HyperchainGenesisHash),
+                % If enabling HC didn't change the genesis hash then something must be broken
+                ?assertNotEqual(MainnetGenesisHash, HyperchainGenesisHash),
 
-            % No HC, No DB - starts normally
-            meck:expect(aec_db, get_genesis_hash, 0, undefined),
-            ?assertEqual({ok, pid}, aecore_app:start(normal, [])),
+                % No HC, No DB - starts normally
+                meck:expect(aec_db, get_genesis_hash, 0, undefined),
+                meck:expect(aec_consensus, get_genesis_hash, 0, MainnetGenesisHash),
+                ?assertEqual({ok, pid}, aecore_app:start(normal, [])),
 
-            % No HC, Mainnet DB present - starts normally
-            meck:expect(aec_db, get_genesis_hash, 0, MainnetGenesisHash),
-            ?assertEqual({ok, pid}, aecore_app:start(normal, [])),
+                % No HC, Mainnet DB present - starts normally
+                meck:expect(aec_db, get_genesis_hash, 0, MainnetGenesisHash),
+                meck:expect(aec_consensus, get_genesis_hash, 0, MainnetGenesisHash),
+                ?assertEqual({ok, pid}, aecore_app:start(normal, [])),
 
-            % No HC, Hyperchain DB present - fails to start
-            meck:expect(aec_db, get_genesis_hash, 0, HyperchainGenesisHash),
-            ?assertEqual({error, inconsistent_database}, aecore_app:start(normal, [])),
+                % No HC, Hyperchain DB present - fails to start
+                meck:expect(aec_db, get_genesis_hash, 0, HyperchainGenesisHash),
+                meck:expect(aec_consensus, get_genesis_hash, 0, MainnetGenesisHash),
+                ?assertEqual({error, inconsistent_database}, aecore_app:start(normal, [])),
 
-            % Enable hyperchains
-            aehc_utils:hc_install(),
+                % HC Enabled, No DB - starts normally
+                meck:expect(aec_db, get_genesis_hash, 0, undefined),
+                meck:expect(aec_consensus, get_genesis_hash, 0, HyperchainGenesisHash),
+                ?assertEqual({ok, pid}, aecore_app:start(normal, [])),
 
-            % HC Enabled, No DB - starts normally
-            meck:expect(aec_db, get_genesis_hash, 0, undefined),
-            ?assertEqual({ok, pid}, aecore_app:start(normal, [])),
+                % HC Enabled, Mainnet DB present - fails to start
+                meck:expect(aec_db, get_genesis_hash, 0, MainnetGenesisHash),
+                meck:expect(aec_consensus, get_genesis_hash, 0, HyperchainGenesisHash),
+                ?assertEqual({error, inconsistent_database}, aecore_app:start(normal, [])),
 
-            % HC Enabled, Mainnet DB present - fails to start
-            meck:expect(aec_db, get_genesis_hash, 0, MainnetGenesisHash),
-            ?assertEqual({error, inconsistent_database}, aecore_app:start(normal, [])),
-
-            % HC Enabled, Hyperchain DB present - starts normally
-            meck:expect(aec_db, get_genesis_hash, 0, HyperchainGenesisHash),
-            ?assertEqual({ok, pid}, aecore_app:start(normal, [])),
-
-            % Disable hyperchains
-            aehc_utils:hc_uninstall(),
+                % HC Enabled, Hyperchain DB present - starts normally
+                meck:expect(aec_db, get_genesis_hash, 0, HyperchainGenesisHash),
+                meck:expect(aec_consensus, get_genesis_hash, 0, HyperchainGenesisHash),
+                ?assertEqual({ok, pid}, aecore_app:start(normal, []))
+            after
+                aehc_test_utils:enable_pow_cuckoo_from_genesis()
+            end,
             ok
        end}
      ]}.
 
 write_parent_chain_test_() ->
+    aec_test_utils:eunit_with_consensus(aehc_test_utils:hc_from_genesis(), [
     {foreach,
      fun() ->
-             application:set_env(aehyperchains, enabled, true),
-             aehc_utils:hc_install(),
              ok = application:ensure_started(gproc),
              {ok, _} = aec_db_error_store:start_link(),
              aec_test_utils:start_chain_db(),
@@ -124,9 +133,7 @@ write_parent_chain_test_() ->
              aec_test_utils:unmock_genesis_and_forks(),
              aec_test_utils:stop_chain_db(),
              ok = aec_db_error_store:stop(),
-             aec_test_utils:aec_keys_cleanup(TmpDir),
-             aehc_utils:hc_uninstall(),
-             application:set_env(aehyperchains, enabled, false)
+             aec_test_utils:aec_keys_cleanup(TmpDir)
      end,
      [{"Write and read back pinpointed genesis block",
        fun() ->
@@ -149,4 +156,4 @@ write_parent_chain_test_() ->
             ?assertEqual(ParentBlock, aehc_parent_db:get_parent_block(?PARENT_GENESIS_HASH)),
             ?assertEqual(CList, aehc_parent_db:get_candidates_in_election_cycle(1337, ?PARENT_GENESIS_HASH))
        end}
-     ]}.
+     ]}]).

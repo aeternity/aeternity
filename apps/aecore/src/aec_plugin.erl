@@ -7,7 +7,7 @@
         ]).
 
 tags() ->
-    [aec_tx_pool, aec_fork_block_settings].
+    [aec_tx_pool].
 
 valid_registry(R) when is_map(R) ->
     lists:all(
