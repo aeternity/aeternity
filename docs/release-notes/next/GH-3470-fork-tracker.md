@@ -1,1 +1,0 @@
-* Introduces an external HTTP endpoint(/v2/status/chain-ends) which reports keyhashes for which no successor is present in the database. Useful for retrieving orphan blocks and tracking chain reorganizations.
