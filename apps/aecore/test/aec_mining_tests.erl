@@ -67,6 +67,7 @@ mine_block_test_() ->
                  TopBlock = aec_blocks:set_height(RawBlock, aec_block_genesis:height()),
                  Nonce = case aec_hard_forks:protocol_effective_at_height(100) of
                              ?LIMA_PROTOCOL_VSN -> 123;
+                             ?FORTUNA_PROTOCOL_VSN -> 127;
                              ?IRIS_PROTOCOL_VSN -> 127;
                              _                  -> 41
                          end,
