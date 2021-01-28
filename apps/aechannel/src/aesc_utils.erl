@@ -741,19 +741,21 @@ is_basic_signers(CheckFun, [Signer | Signers], Trees) ->
         Err = {error, _} -> Err
     end.
 
--spec is_delegate(aesc_channels:id(), aec_keys:pubkey(),
-                  aec_trees:trees())
-                  -> ok | {error, atom()}.
 is_delegate(ChannelId, FromPubKey, Trees) ->
+    is_delegate(ChannelId, FromPubKey, Trees, any).
+
+-spec is_delegate(aesc_channels:id(), aec_keys:pubkey(),
+                  aec_trees:trees(), initiator | responder | any)
+                  -> ok | {error, atom()}.
+is_delegate(ChannelId, FromPubKey, Trees, Role) ->
     ChannelPubKey = aeser_id:specialize(ChannelId, channel),
     with_channel(fun(Channel) ->
-                         is_delegate_(Channel, FromPubKey)
+                         is_delegate_(Channel, FromPubKey, Role)
                  end, ChannelPubKey, Trees).
 
-is_delegate_(Channel, FromPubKey) ->
-    %% TODO!!!!!
+is_delegate_(Channel, FromPubKey, Role) ->
     case lists:member(FromPubKey, aesc_channels:delegate_pubkeys(Channel,
-                                                                 initiator)) of
+                                                                 Role)) of
         true ->
             ok;
         false ->

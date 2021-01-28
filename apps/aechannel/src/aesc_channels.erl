@@ -211,24 +211,25 @@ deserialize(IdBin, Bin) ->
                   Type, Vsn, serialization_template(Vsn), Bin),
             [account = aeser_id:specialize_type(D) || D <- DelegateIds];
         {?CHANNEL_TYPE = Type, ?CHANNEL_VSN_3 = Vsn, _Rest} ->
-            [ {initiator_id       , InitiatorId}
-            , {responder_id       , ResponderId}
-            , {channel_amount     , ChannelAmount}
-            , {initiator_amount   , InitiatorAmount}
-            , {responder_amount   , ResponderAmount}
-            , {channel_reserve    , ChannelReserve}
-            , {delegate_ids       , [IDelegateIDs, RDelegatesIDs]}
-            , {state_hash         , StateHash}
-            , {round              , Round}
-            , {solo_round         , SoloRound}
-            , {lock_period        , LockPeriod}
-            , {locked_until       , LockedUntil}
-            , {initiator_auth     , InitatorAuth}
-            , {responder_auth     , ResponderAuth}
+            [ {initiator_id           , InitiatorId}
+            , {responder_id           , ResponderId}
+            , {channel_amount         , ChannelAmount}
+            , {initiator_amount       , InitiatorAmount}
+            , {responder_amount       , ResponderAmount}
+            , {channel_reserve        , ChannelReserve}
+            , {initiator_delegate_ids , IDelegateIDs}
+            , {responder_delegate_ids , RDelegateIDs}
+            , {state_hash             , StateHash}
+            , {round                  , Round}
+            , {solo_round             , SoloRound}
+            , {lock_period            , LockPeriod}
+            , {locked_until           , LockedUntil}
+            , {initiator_auth         , InitatorAuth}
+            , {responder_auth         , ResponderAuth}
             ] = aeser_chain_objects:deserialize(
                   Type, Vsn, serialization_template(Vsn), Bin),
             DelegateIds = #{ initiator => IDelegateIDs
-                           , responder => RDelegatesIDs}
+                           , responder => RDelegateIDs}
     end,
     account = aeser_id:specialize_type(InitiatorId),
     account = aeser_id:specialize_type(ResponderId),
@@ -343,8 +344,7 @@ is_last_state_forced(#channel{solo_round = SoloRound}) ->
 -spec new(aec_accounts:account(), non_neg_integer(),
           aec_accounts:account(), non_neg_integer(),
           non_neg_integer(),
-          [aec_keys:pubkey()] | #{ initiator => [aec_keys:pubkey()]
-                                 , responder => [aec_keys:pubkey()]},
+          [aec_keys:pubkey()] | {[aec_keys:pubkey()], [aec_keys:pubkey()]},
           aec_hash:hash(), non_neg_integer(),
           sc_nonce(), aec_blocks:height(), non_neg_integer()) -> channel().
 new(InitiatorAcc, InitiatorAmount, ResponderAcc, ResponderAmount,
@@ -359,14 +359,12 @@ new(InitiatorAcc, InitiatorAmount, ResponderAcc, ResponderAmount,
             P when P >= ?FORTUNA_PROTOCOL_VSN -> ?CHANNEL_VSN_2;
             P when P <  ?FORTUNA_PROTOCOL_VSN -> ?CHANNEL_VSN_1
         end,
-
     CreateIDs = fun(Pubkeys) -> [aeser_id:create(account, D) || D <- Pubkeys] end,
     DelegateIds =
         case Version >= ?CHANNEL_VSN_3 of
             true ->
                 %% assert the structure
-                #{ initiator := IDelegates
-                 , responder := RDelegates} = DelegatePubkeys,
+                { IDelegates, RDelegates} = DelegatePubkeys,
                 #{ initiator =>  CreateIDs(IDelegates)
                  , responder =>  CreateIDs(RDelegates)};
             false when is_list(DelegatePubkeys) ->
@@ -403,39 +401,67 @@ peers(#channel{} = Ch) ->
 -spec serialize(channel()) -> serialized().
 serialize(#channel{initiator_id = InitiatorId,
                    responder_id = ResponderId,
-                   delegate_ids = DelegateIds0,
+                   delegate_ids = DelegateIds,
                    version      = Vsn} = Ch) ->
-    DelegateIds =
-        case Vsn >= ?CHANNEL_VSN_3 of
-            true ->
-                #{initiator := IDelegates, responder := RDelegates} = DelegateIds0,
-                [IDelegates, RDelegates];
-            false -> DelegateIds0
+    Fields =
+        case Vsn of
+            ?CHANNEL_VSN_1 ->
+                [ {initiator_id       , InitiatorId}
+                , {responder_id       , ResponderId}
+                , {channel_amount     , channel_amount(Ch)}
+                , {initiator_amount   , initiator_amount(Ch)}
+                , {responder_amount   , responder_amount(Ch)}
+                , {channel_reserve    , channel_reserve(Ch)}
+                , {delegate_ids       , DelegateIds}
+                , {state_hash         , state_hash(Ch)}
+                , {round              , round(Ch)}
+                , {solo_round         , solo_round(Ch)}
+                , {lock_period        , lock_period(Ch)}
+                , {locked_until       , locked_until(Ch)}
+                ];
+            ?CHANNEL_VSN_2 ->
+                InitAuth = serialize_auth(initiator_auth(Ch)),
+                RespAuth = serialize_auth(responder_auth(Ch)),
+                [ {initiator_id       , InitiatorId}
+                , {responder_id       , ResponderId}
+                , {channel_amount     , channel_amount(Ch)}
+                , {initiator_amount   , initiator_amount(Ch)}
+                , {responder_amount   , responder_amount(Ch)}
+                , {channel_reserve    , channel_reserve(Ch)}
+                , {delegate_ids       , DelegateIds}
+                , {state_hash         , state_hash(Ch)}
+                , {round              , round(Ch)}
+                , {solo_round         , solo_round(Ch)}
+                , {lock_period        , lock_period(Ch)}
+                , {locked_until       , locked_until(Ch)}
+                , {initiator_auth     , InitAuth}
+                , {responder_auth     , RespAuth}
+                ];
+            ?CHANNEL_VSN_3 ->
+                #{initiator := IIds,responder := RIds} = DelegateIds,
+                InitAuth = serialize_auth(initiator_auth(Ch)),
+                RespAuth = serialize_auth(responder_auth(Ch)),
+                [ {initiator_id             , InitiatorId}
+                , {responder_id             , ResponderId}
+                , {channel_amount           , channel_amount(Ch)}
+                , {initiator_amount         , initiator_amount(Ch)}
+                , {responder_amount         , responder_amount(Ch)}
+                , {channel_reserve          , channel_reserve(Ch)}
+                , {initiator_delegate_ids   , IIds}
+                , {responder_delegate_ids   , RIds}
+                , {state_hash               , state_hash(Ch)}
+                , {round                    , round(Ch)}
+                , {solo_round               , solo_round(Ch)}
+                , {lock_period              , lock_period(Ch)}
+                , {locked_until             , locked_until(Ch)}
+                , {initiator_auth           , InitAuth}
+                , {responder_auth           , RespAuth}
+                ]
         end,
     aeser_chain_objects:serialize(
       ?CHANNEL_TYPE, Vsn,
       serialization_template(Vsn),
-      [ {initiator_id       , InitiatorId}
-      , {responder_id       , ResponderId}
-      , {channel_amount     , channel_amount(Ch)}
-      , {initiator_amount   , initiator_amount(Ch)}
-      , {responder_amount   , responder_amount(Ch)}
-      , {channel_reserve    , channel_reserve(Ch)}
-      , {delegate_ids       , DelegateIds}
-      , {state_hash         , state_hash(Ch)}
-      , {round              , round(Ch)}
-      , {solo_round         , solo_round(Ch)}
-      , {lock_period        , lock_period(Ch)}
-      , {locked_until       , locked_until(Ch)}
-      ] ++
-      case Vsn of
-          ?CHANNEL_VSN_1 -> [];
-          ?CHANNEL_VSN_2 ->
-            InitAuth = serialize_auth(initiator_auth(Ch)),
-            RespAuth = serialize_auth(responder_auth(Ch)),
-            [ {initiator_auth, InitAuth}, {responder_auth, RespAuth} ]
-      end
-    ).
+      Fields).
 
 serialization_template(?CHANNEL_VSN_1) ->
     [ {initiator_id       , id}
@@ -468,20 +494,21 @@ serialization_template(?CHANNEL_VSN_2) ->
     , {responder_auth     , binary}
     ];
 serialization_template(?CHANNEL_VSN_3) ->
-    [ {initiator_id       , id}
-    , {responder_id       , id}
-    , {channel_amount     , int}
-    , {initiator_amount   , int}
-    , {responder_amount   , int}
-    , {channel_reserve    , int}
-    , {delegate_ids       , [[id], [id]]}
-    , {state_hash         , binary}
-    , {round              , int}
-    , {solo_round         , int}
-    , {lock_period        , int}
-    , {locked_until       , int}
-    , {initiator_auth     , binary}
-    , {responder_auth     , binary}
+    [ {initiator_id             , id}
+    , {responder_id             , id}
+    , {channel_amount           , int}
+    , {initiator_amount         , int}
+    , {responder_amount         , int}
+    , {channel_reserve          , int}
+    , {initiator_delegate_ids   , [id]}
+    , {responder_delegate_ids   , [id]}
+    , {state_hash               , binary}
+    , {round                    , int}
+    , {solo_round               , int}
+    , {lock_period              , int}
+    , {locked_until             , int}
+    , {initiator_auth           , binary}
+    , {responder_auth           , binary}
     ].
 
 serialize_auth(basic) ->
@@ -589,16 +616,18 @@ channel_reserve(#channel{channel_reserve = ChannelReserve}) ->
 lock_period(#channel{lock_period = LockPeriod}) ->
     LockPeriod.
 
--spec delegate_ids(channel(), initiator | responder) -> list(aeser_id:id()).
+-spec delegate_ids(channel(), initiator | responder | any) -> list(aeser_id:id()).
 delegate_ids(#channel{delegate_ids = Ids, version = Vsn}, _Role)
     when Vsn < ?CHANNEL_VSN_3 ->
     Ids;
+delegate_ids(#channel{delegate_ids = #{initiator := IIds, responder := RIds}}, any) ->
+    IIds ++ RIds;
 delegate_ids(#channel{delegate_ids = Ids}, Role)
     when Role =:= initiator;
          Role =:= responder ->
     maps:get(Role, Ids).
 
--spec delegate_pubkeys(channel(), initiator | responder) -> list(aec_keys:pubkey()).
+-spec delegate_pubkeys(channel(), initiator | responder | any) -> list(aec_keys:pubkey()).
 delegate_pubkeys(Channel, Role) ->
     [aeser_id:specialize(Id, account) || Id <- delegate_ids(Channel, Role)].
 

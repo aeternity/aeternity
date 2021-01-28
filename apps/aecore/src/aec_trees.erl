@@ -625,6 +625,7 @@ apply_txs_on_state_trees([SignedTx | Rest], ValidTxs, InvalidTxs, Trees, Env, Op
                     {error, Reason};
                 Type:What when not Strict ->
                     Reason = {Type, What},
+                    lager:debug("Stacktrace: ~p", [erlang:get_stacktrace()]),
                     lager:debug("Tx ~p cannot be applied due to an error ~p", [Tx, Reason]),
                     Invalid1 = [SignedTx| InvalidTxs],
                     apply_txs_on_state_trees(Rest, ValidTxs, Invalid1, Trees, Env, Opts)

@@ -50,11 +50,14 @@
 -ifdef(TEST).
 -export([set_state_hash/2]).
 -endif.
+
+-include_lib("aecontract/include/hard_forks.hrl").
 %%%===================================================================
 %%% Types
 %%%===================================================================
 
 -define(CHANNEL_CREATE_TX_VSN, 1).
+-define(CHANNEL_CREATE_TX_VSN_DELEGATES, 2).
 -define(CHANNEL_CREATE_TX_TYPE, channel_create_tx).
 
 -type vsn() :: non_neg_integer().
@@ -109,7 +112,6 @@ new(#{initiator_id       := InitiatorId,
                 ValidateAccounts(RIds),
                 DIds
         end,
-    lists:foreach(fun(D) -> account = aeser_id:specialize_type(D) end, DelegateIds),
     account = aeser_id:specialize_type(InitiatorId),
     account = aeser_id:specialize_type(ResponderId),
     Tx = #channel_create_tx{initiator_id       = InitiatorId,
@@ -189,22 +191,48 @@ serialize(#channel_create_tx{initiator_id       = InitiatorId,
                              delegate_ids       = DelegateIds,
                              state_hash         = StateHash,
                              nonce              = Nonce} = Tx) ->
-    {version(Tx),
-     [ {initiator_id      , InitiatorId}
-     , {initiator_amount  , InitiatorAmount}
-     , {responder_id      , ResponderId}
-     , {responder_amount  , ResponderAmount}
-     , {channel_reserve   , ChannelReserve}
-     , {lock_period       , LockPeriod}
-     , {ttl               , TTL}
-     , {fee               , Fee}
-     , {delegate_ids      , DelegateIds}
-     , {state_hash        , StateHash}
-     , {nonce             , Nonce}
-     ]}.
+    Version = version(Tx),
+    Fields =
+        case Version of
+            ?CHANNEL_CREATE_TX_VSN ->
+                [ {initiator_id      , InitiatorId}
+                , {initiator_amount  , InitiatorAmount}
+                , {responder_id      , ResponderId}
+                , {responder_amount  , ResponderAmount}
+                , {channel_reserve   , ChannelReserve}
+                , {lock_period       , LockPeriod}
+                , {ttl               , TTL}
+                , {fee               , Fee}
+                , {delegate_ids      , DelegateIds}
+                , {state_hash        , StateHash}
+                , {nonce             , Nonce}
+                ];
+            ?CHANNEL_CREATE_TX_VSN_DELEGATES ->
+                {IIds, RIds} = DelegateIds,
+                [ {initiator_id             , InitiatorId}
+                , {initiator_amount         , InitiatorAmount}
+                , {responder_id             , ResponderId}
+                , {responder_amount         , ResponderAmount}
+                , {channel_reserve          , ChannelReserve}
+                , {lock_period              , LockPeriod}
+                , {ttl                      , TTL}
+                , {fee                      , Fee}
+                , {initiator_delegate_ids   , IIds}
+                , {responder_delegate_ids   , RIds}
+                , {state_hash               , StateHash}
+                , {nonce                    , Nonce}
+                ]
+        end,
+    {Version, Fields}.
+
 
 -spec deserialize(vsn(), list()) -> tx().
-deserialize(?CHANNEL_CREATE_TX_VSN,
+deserialize(Vsn, Fields) ->
+    ValidateAccounts =
+        fun(Ids) ->
+            lists:foreach(fun(D) -> account = aeser_id:specialize_type(D) end, Ids) end,
+    case {Vsn, Fields} of
+        {?CHANNEL_CREATE_TX_VSN,
             [ {initiator_id      , InitiatorId}
             , {initiator_amount  , InitiatorAmount}
             , {responder_id      , ResponderId}
@@ -215,10 +243,28 @@ deserialize(?CHANNEL_CREATE_TX_VSN,
             , {fee               , Fee}
             , {delegate_ids      , DelegateIds}
             , {state_hash        , StateHash}
-            , {nonce             , Nonce}]) ->
+            , {nonce             , Nonce}]} ->
+            ValidateAccounts(DelegateIds),
+            pass;
+        {?CHANNEL_CREATE_TX_VSN_DELEGATES,
+            [ {initiator_id             , InitiatorId}
+            , {initiator_amount         , InitiatorAmount}
+            , {responder_id             , ResponderId}
+            , {responder_amount         , ResponderAmount}
+            , {channel_reserve          , ChannelReserve}
+            , {lock_period              , LockPeriod}
+            , {ttl                      , TTL}
+            , {fee                      , Fee}
+            , {initiator_delegate_ids   , IIds}
+            , {responder_delegate_ids   , RIds}
+            , {state_hash               , StateHash}
+            , {nonce                    , Nonce}]} ->
+            ValidateAccounts(IIds),
+            ValidateAccounts(RIds),
+            DelegateIds = {IIds, RIds}
+    end,
     account = aeser_id:specialize_type(InitiatorId),
     account = aeser_id:specialize_type(ResponderId),
-    [account = aeser_id:specialize_type(D) || D <- DelegateIds],
     true = aesc_utils:check_state_hash_size(StateHash),
     #channel_create_tx{initiator_id       = InitiatorId,
                        initiator_amount   = InitiatorAmount,
@@ -241,9 +287,18 @@ for_client(#channel_create_tx{initiator_id       = InitiatorId,
                               lock_period        = LockPeriod,
                               nonce              = Nonce,
                               ttl                = TTL,
-                              delegate_ids       = DelegateIds,
+                              delegate_ids       = DelegateIds0,
                               state_hash         = StateHash,
                               fee                = Fee}) ->
+    EncodeIds =
+        fun(Ids) -> [aeser_api_encoder:encode(id_hash, D) || D <- Ids] end,
+    DelegateIds =
+        case DelegateIds0 of
+            L when is_list(L) -> EncodeIds(L);
+            {IL, RL} when is_list(IL), is_list(RL) ->
+                #{ <<"initiator_delegate_ids">> => EncodeIds(IL)
+                 , <<"responder_delegate_ids">> => EncodeIds(RL)}
+        end,
     #{<<"initiator_id">>       => aeser_api_encoder:encode(id_hash, InitiatorId),
       <<"initiator_amount">>   => InitiatorAmount,
       <<"responder_id">>       => aeser_api_encoder:encode(id_hash, ResponderId),
@@ -252,7 +307,7 @@ for_client(#channel_create_tx{initiator_id       = InitiatorId,
       <<"lock_period">>        => LockPeriod,
       <<"nonce">>              => Nonce,
       <<"ttl">>                => TTL,
-      <<"delegate_ids">>       => [aeser_api_encoder:encode(id_hash, D) || D <- DelegateIds],
+      <<"delegate_ids">>       => DelegateIds,
       <<"state_hash">>         => aeser_api_encoder:encode(state, StateHash),
       <<"fee">>                => Fee}.
 
@@ -268,6 +323,20 @@ serialization_template(?CHANNEL_CREATE_TX_VSN) ->
     , {delegate_ids      , [id]}
     , {state_hash        , binary}
     , {nonce             , int}
+    ];
+serialization_template(?CHANNEL_CREATE_TX_VSN_DELEGATES) ->
+    [ {initiator_id               , id}
+    , {initiator_amount           , int}
+    , {responder_id               , id}
+    , {responder_amount           , int}
+    , {channel_reserve            , int}
+    , {lock_period                , int}
+    , {ttl                        , int}
+    , {fee                        , int}
+    , {initiator_delegate_ids     , [id]}
+    , {responder_delegate_ids     , [id]}
+    , {state_hash                 , binary}
+    , {nonce                      , int}
     ].
 
 %%%===================================================================
@@ -325,17 +394,31 @@ round(#channel_create_tx{}) ->
 delegate_ids(#channel_create_tx{delegate_ids = DelegateIds}) ->
     DelegateIds.
 
--spec delegate_pubkeys(tx()) -> [aec_keys:pubkey()].
-delegate_pubkeys(#channel_create_tx{delegate_ids = DelegateIds}) ->
-    [aeser_id:specialize(D, account) || D <- DelegateIds].
+-spec delegate_pubkeys(tx()) -> [aec_keys:pubkey()] | {[aec_keys:pubkey()],
+                                                        [aec_keys:pubkey()]}.
+
+delegate_pubkeys(#channel_create_tx{} = Tx) ->
+    Specialize = fun(Ids) -> [aeser_id:specialize(D, account) || D <- Ids] end,
+    case delegate_ids(Tx) of
+        {IL, RL} -> {Specialize(IL), Specialize(RL)};
+        L -> Specialize(L)
+    end.
 
 -spec version(tx()) -> non_neg_integer().
-version(_) ->
-    ?CHANNEL_CREATE_TX_VSN.
+version(#channel_create_tx{delegate_ids = DelegateIds}) ->
+    case DelegateIds of
+        L when is_list(L) -> ?CHANNEL_CREATE_TX_VSN;
+        {IL, RL} when is_list(IL), is_list(RL) ->
+            ?CHANNEL_CREATE_TX_VSN_DELEGATES
+    end.
 
 -spec valid_at_protocol(aec_hard_forks:protocol_vsn(), tx()) -> boolean().
-valid_at_protocol(_, _) ->
-    true.
+valid_at_protocol(Protocol, Tx) ->
+    case version(Tx) of
+        ?CHANNEL_CREATE_TX_VSN when Protocol < ?IRIS_PROTOCOL_VSN -> true;
+        ?CHANNEL_CREATE_TX_VSN_DELEGATES when Protocol >= ?IRIS_PROTOCOL_VSN -> true;
+        _ -> false
+    end.
 
 %%%===================================================================
 %%% Test setters 

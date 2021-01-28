@@ -512,13 +512,14 @@ create_missing_account(_Cfg) ->
     Height = 100,
     Env0 = aetx_env:tx_env(Height),
 
-    TxSpec1 = aesc_test_utils:create_tx_spec(BadPubKey, PubKey, S),
+    DefSpec = no_delegates_spec(Height),
+    TxSpec1 = aesc_test_utils:create_tx_spec(BadPubKey, PubKey, DefSpec, S),
     {ok, Tx1} = aesc_create_tx:new(TxSpec1),
     SignedTx1 = aec_test_utils:sign_tx(Tx1, [PrivKey, BadPrivKey]),
     Env1 = aetx_env:set_signed_tx(Env0, {value, SignedTx1}),
     {error, account_not_found} = aetx:process(Tx1, Trees, Env1),
 
-    TxSpec2 = aesc_test_utils:create_tx_spec(PubKey, BadPubKey, S),
+    TxSpec2 = aesc_test_utils:create_tx_spec(PubKey, BadPubKey, DefSpec, S),
     {ok, Tx2} = aesc_create_tx:new(TxSpec2),
     SignedTx2 = aec_test_utils:sign_tx(Tx2, [PrivKey, BadPrivKey]),
     Env2 = aetx_env:set_signed_tx(Env0, {value, SignedTx2}),
@@ -536,7 +537,7 @@ create_same_account(_Cfg) ->
     %% Test channel with oneself is not allowed
     TxSpecI = aesc_test_utils:create_tx_spec(
                 PubKey, PubKey,
-                #{}, S),
+                no_delegates_spec(Height), S),
     {ok, TxI} = aesc_create_tx:new(TxSpecI),
     SignedTx = aec_test_utils:sign_tx(TxI, [PrivKey]),
     Env = aetx_env:set_signed_tx(Env0, {value, SignedTx}),
@@ -555,8 +556,10 @@ create_insufficient_funds(_Cfg) ->
     %% Test insufficient initiator funds
     TxSpecI = aesc_test_utils:create_tx_spec(
                 NotLoaded, Loaded,
-                #{initiator_amount => 2,
-                  fee => 50000 * aec_test_utils:min_gas_price()}, S),
+                maps:merge(no_delegates_spec(Height),
+                          #{ initiator_amount => 2
+                           , fee => 50000 * aec_test_utils:min_gas_price()}),
+                S),
     {ok, TxI} = aesc_create_tx:new(TxSpecI),
     SignedTxI = aec_test_utils:sign_tx(TxI, [LoadedPrivKey, NotLoadedPrivKey]),
     EnvI = aetx_env:set_signed_tx(Env0, {value, SignedTxI}),
@@ -565,8 +568,10 @@ create_insufficient_funds(_Cfg) ->
     %% Test insufficient responder funds
     TxSpecR = aesc_test_utils:create_tx_spec(
                 Loaded, NotLoaded,
-                #{responder_amount => 2,
-                  fee => 50000 * aec_test_utils:min_gas_price()}, S),
+                maps:merge(no_delegates_spec(Height),
+                           #{ responder_amount => 2
+                            , fee => 50000 * aec_test_utils:min_gas_price()}),
+                S),
     {ok, TxR} = aesc_create_tx:new(TxSpecR),
     SignedTxR = aec_test_utils:sign_tx(TxR, [LoadedPrivKey, NotLoadedPrivKey]),
     EnvR = aetx_env:set_signed_tx(Env0, {value, SignedTxR}),
@@ -587,8 +592,10 @@ create_insufficient_funds_reserve(_Cfg) ->
     %% Test initiator funds lower than channel reserve
     TxSpecI = aesc_test_utils:create_tx_spec(
                 Loaded1, Loaded2,
-                #{initiator_amount => 1,
-                  channel_reserve => 2}, S),
+                maps:merge(no_delegates_spec(Height),
+                           #{ initiator_amount => 1
+                            , channel_reserve => 2}),
+                S),
     {ok, TxI} = aesc_create_tx:new(TxSpecI),
     SignedTxI = aec_test_utils:sign_tx(TxI, [Loaded1PrivKey, Loaded2PrivKey]),
     EnvI = aetx_env:set_signed_tx(Env0, {value, SignedTxI}),
@@ -597,8 +604,10 @@ create_insufficient_funds_reserve(_Cfg) ->
     %% Test responder funds lower than channel reserve
     TxSpecR = aesc_test_utils:create_tx_spec(
                 Loaded1, Loaded2,
-                #{responder_amount => 1,
-                  channel_reserve => 2}, S),
+                maps:merge(no_delegates_spec(Height),
+                           #{ responder_amount => 1
+                            , channel_reserve => 2}),
+                S),
     {ok, TxR} = aesc_create_tx:new(TxSpecR),
     SignedTxR = aec_test_utils:sign_tx(TxR, [Loaded1PrivKey, Loaded2PrivKey]),
     EnvR = aetx_env:set_signed_tx(Env0, {value, SignedTxR}),
@@ -629,7 +638,8 @@ create_wrong_nonce(_Cfg) ->
     Test =
         fun(TestNonce, Err) ->
             TxSpec = aesc_test_utils:create_tx_spec(Initiator, Responder,
-                                                    #{nonce => TestNonce}, S),
+                maps:merge(no_delegates_spec(Height),
+                           #{nonce => TestNonce}), S),
             {ok, Tx} = aesc_create_tx:new(TxSpec),
             SignedTx = aec_test_utils:sign_tx(Tx, [InitiatorPrivKey,
                                                    ResponderPrivKey]),
@@ -1085,16 +1095,19 @@ slash_after_lock_timer(Cfg) ->
     ok.
 
 slash_by_delegate(Cfg) ->
+    Height = 100,
     Test =
         fun(Closer, Round0, Round1) ->
             run(#{cfg => Cfg},
                [fun(Props) ->
                     {Delegate1, Delegate2, S} = create_loaded_accounts(100000 * aec_test_utils:min_gas_price(),
                                                                        100000 * aec_test_utils:min_gas_price()),
-                    Props#{cfg => [{state, S} | Cfg],
-                           delegate_ids => [aeser_id:create(account, Delegate1),
-                                            aeser_id:create(account, Delegate2)]}
+                    maps:merge(Props#{cfg => [{state, S} | Cfg]},
+                               delegates_spec([aeser_id:create(account, Delegate1)],
+                                              [aeser_id:create(account, Delegate2)],
+                                              Height))
                 end,
+                set_prop(height, Height),
                 positive(fun create_channel_/2),
                 set_from(Closer),
                 set_prop(round, Round0),
@@ -1106,7 +1119,8 @@ slash_by_delegate(Cfg) ->
                     Props
                 end,
                 set_prop(round, Round1),
-                fun(#{delegate_ids := [D1 |_], state := S} = Props) ->
+                fun(#{delegate_ids := Ds, state := S} = Props) ->
+                    D1 = pick_random_delegate(Ds),
                     D1Pubkey = aeser_id:specialize(D1, account),
                     D1PrivKey = aesc_test_utils:priv_key(D1Pubkey, S),
                     Props#{from_pubkey => D1Pubkey, from_privkey => D1PrivKey}
@@ -1768,22 +1782,27 @@ settle_not_participant(Cfg) ->
     ok.
 
 settle_delegate_not_allowed(Cfg) ->
+    Height = 100,
     Test =
         fun(Closer) ->
             run(#{cfg => Cfg},
               [fun(Props) ->
                     {Delegate1, Delegate2, S} = create_loaded_accounts(100000 * aec_test_utils:min_gas_price(),
                                                                        100000 * aec_test_utils:min_gas_price()),
-                    Props#{cfg => [{state, S} | Cfg],
-                            delegate_ids => [aeser_id:create(account, Delegate1),
-                                             aeser_id:create(account, Delegate2)]}
+                    #{delegate_ids := DelegateIds} =
+                        delegates_spec([aeser_id:create(account, Delegate1)], %% initiator delegates
+                                      [aeser_id:create(account, Delegate2)], %% responder delegates
+                                      Height),
+                    Props#{ cfg => [{state, S} | Cfg]
+                          , delegate_ids => DelegateIds}
                 end,
                 positive(fun create_channel_/2),
                 set_from(Closer),
-                set_prop(height, 10),
+                set_prop(height, Height - 11),
                 positive(fun close_solo_with_payload/2),
-                set_prop(height, 21),
-                fun(#{delegate_ids := [D1 |_], state := S} = Props) ->
+                set_prop(height, Height),
+                fun(#{delegate_ids := Ds, state := S} = Props) ->
+                    D1 = pick_random_delegate(Ds), 
                     D1Pubkey = aeser_id:specialize(D1, account),
                     D1PrivKey = aesc_test_utils:priv_key(D1Pubkey, S),
                     Props#{from_pubkey => D1Pubkey, from_privkey => D1PrivKey}
@@ -4894,19 +4913,21 @@ create_channel_(#{cfg := Cfg} = Props, _) ->
                    fun(K, _V) -> lists:member(K, [state, initiator_amount,
                                                  responder_amount,
                                                  channel_reserve,
-                                                 lock_period,
-                                                 delegate_ids])
+                                                 lock_period])
                    end,
                    Props),
     IAmt = maps:get(initiator_amount, Props, 30 * aec_test_utils:min_gas_price()),
     RAmt = maps:get(responder_amount, Props, 70 * aec_test_utils:min_gas_price()),
+    Height = 100,
+    #{delegate_ids := NoDelegates} = no_delegates_spec(Height),
+    Delegates = maps:get(delegate_ids, Props, NoDelegates),
     CreateOpts = CreateOpts0#{initiator_amount => IAmt,
-                              responder_amount => RAmt}, % ensure amounts
+                              responder_amount => RAmt,
+                              delegate_ids => Delegates}, % ensure amounts and delegates
     {PubKey1, PubKey2, ChannelPubKey, _, S0} = create_(Cfg, CreateOpts),
     PrivKey1 = aesc_test_utils:priv_key(PubKey1, S0),
     PrivKey2 = aesc_test_utils:priv_key(PubKey2, S0),
 
-    Height = 100,
 
     %% Get channel and account funds
 
@@ -5354,12 +5375,16 @@ test_delegate_not_allowed(Cfg, Fun, InitProps) ->
       [fun(Props) ->
             {Delegate1, Delegate2, S} = create_loaded_accounts(100000 * aec_test_utils:min_gas_price(),
                                                                100000 * aec_test_utils:min_gas_price()),
-            Props#{cfg => [{state, S} | Cfg],
-                    delegate_ids => [aeser_id:create(account, Delegate1),
-                                     aeser_id:create(account, Delegate2)]}
+            #{delegate_ids := DelegateIds} =
+                delegates_spec([aeser_id:create(account, Delegate1)], %% initiator delegates
+                               [aeser_id:create(account, Delegate2)], %% responder delegates
+                               Height),
+            Props#{ cfg => [{state, S} | Cfg]
+                  , delegate_ids => DelegateIds}
         end,
         positive(fun create_channel_/2),
-        fun(#{delegate_ids := [D1 |_], state := S} = Props) ->
+        fun(#{delegate_ids := Ds, state := S} = Props) ->
+            D1 = pick_random_delegate(Ds), 
             D1Pubkey = aeser_id:specialize(D1, account),
             D1PrivKey = aesc_test_utils:priv_key(D1Pubkey, S),
             Props#{from_pubkey => D1Pubkey, from_privkey => D1PrivKey}
@@ -5377,12 +5402,16 @@ test_delegate_allowed(Cfg, Fun, InitProps) ->
       [fun(Props) ->
             {Delegate1, Delegate2, S} = create_loaded_accounts(100000 * aec_test_utils:min_gas_price(),
                                                                100000 * aec_test_utils:min_gas_price()),
-            Props#{cfg => [{state, S} | Cfg],
-                    delegate_ids => [aeser_id:create(account, Delegate1),
-                                     aeser_id:create(account, Delegate2)]}
+            #{delegate_ids := DelegateIds} =
+                delegates_spec([aeser_id:create(account, Delegate1)], %% initiator delegates
+                               [aeser_id:create(account, Delegate2)], %% responder delegates
+                               Height),
+            Props#{ cfg => [{state, S} | Cfg]
+                  , delegate_ids => DelegateIds}
         end,
         positive(fun create_channel_/2),
-        fun(#{delegate_ids := [D1 |_], state := S} = Props) ->
+        fun(#{delegate_ids := Ds, state := S} = Props) ->
+            D1 = pick_random_delegate(Ds), 
             D1Pubkey = aeser_id:specialize(D1, account),
             D1PrivKey = aesc_test_utils:priv_key(D1Pubkey, S),
             Props#{from_pubkey => D1Pubkey, from_privkey => D1PrivKey}
@@ -6025,3 +6054,20 @@ fp_fp_close_solo_with_same_round(Cfg) ->
                                               {SwitchHeight + 1, false}]],
     ok.
 
+no_delegates_spec(Height) ->
+    delegates_spec([], [], Height).
+
+delegates_spec(IIds, RIds, Height) ->
+    case aec_hard_forks:protocol_effective_at_height(Height) < ?IRIS_PROTOCOL_VSN of
+        true -> #{delegate_ids => IIds ++ RIds};
+        false -> #{delegate_ids => {IIds, RIds}}
+    end.
+
+pick_random_delegate(DelegateIds) ->
+    Ds = case DelegateIds of
+            L when is_list(L) -> L;
+            {L1, L2} -> L1 ++ L2
+          end,
+    %% pick a random delegate. If this fails inermittently, it could
+    %% be a symptom of an actual bug
+    lists:nth(rand:uniform(length(Ds)), Ds).

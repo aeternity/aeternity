@@ -359,7 +359,8 @@ contract_call_from_contract_instructions(CallerPubKey, ContractPubkey, CallData,
     ].
 
 -spec channel_create_tx_instructions(
-        pubkey(), amount(), pubkey(), amount(), amount(), [pubkey()],
+        pubkey(), amount(), pubkey(), amount(), amount(),
+        [pubkey()] | {[pubkey()], [pubkey()]},
         hash(), ttl(), fee(), nonce(), non_neg_integer(),
         pubkey()) -> [op()].
 channel_create_tx_instructions(InitiatorPubkey, InitiatorAmount,
@@ -989,12 +990,22 @@ channel_create_op(InitiatorPubkey, InitiatorAmount,
                         ?IS_HASH(ResponderPubkey),
                         ?IS_NON_NEG_INTEGER(ReserveAmount),
                         ?IS_NON_NEG_INTEGER(ReserveAmount),
-                        is_list(DelegatePubkeys),
                         ?IS_HASH(StateHash),
                         ?IS_NON_NEG_INTEGER(LockPeriod),
                         ?IS_NON_NEG_INTEGER(Nonce),
                         ?IS_NON_NEG_INTEGER(Round) ->
-    true = lists:all(fun(X) -> ?IS_HASH(X) end, DelegatePubkeys),
+    %% assert delegagate pubkeys
+    ValidateHashes =
+        fun(L) -> true = lists:all(fun(X) -> ?IS_HASH(X) end, L) end,
+    case DelegatePubkeys of
+        L when is_list(L) ->
+            ValidateHashes(L),
+            pass;
+        {IL, RL} when is_list(IL), is_list(RL) ->
+            ValidateHashes(IL),
+            ValidateHashes(RL),
+            pass
+    end,
     {channel_create, {InitiatorPubkey, InitiatorAmount,
                       ResponderPubkey, ResponderAmount,
                       ReserveAmount, DelegatePubkeys,

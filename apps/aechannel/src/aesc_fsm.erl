@@ -1968,12 +1968,18 @@ create_tx_for_signing(#data{opts = #{ initiator        := Initiator
                                     , responder_amount := RAmt
                                     , channel_reserve  := ChannelReserve
                                     , lock_period      := LockPeriod } = Opts } = D) ->
+    NoDelegates =
+        case curr_protocol() of
+            Protocol when Protocol < ?IRIS_PROTOCOL_VSN -> [];
+            _PostIris -> {[], []}
+        end,
     Obligatory =
         #{ acct => Initiator
          , initiator_amount => IAmt
          , responder_amount => RAmt
          , channel_reserve  => ChannelReserve
-         , lock_period      => LockPeriod },
+         , lock_period      => LockPeriod
+         , delegate_ids     => NoDelegates},
     %% nonce is not exposed to the client via WebSocket but is used in tests
     %% shall we expose it to the client as well?
     Optional = maps:with([nonce, fee, gas_price], Opts),
