@@ -600,13 +600,19 @@ get_key_block_by_height(Height) when is_integer(Height), Height >= 0 ->
 get_current_generation() ->
     get_generation_(top_block_node()).
 
-get_generation_(#{hash := TopHash, header := TopHeader}) ->
-    case aec_headers:type(TopHeader) of
+get_generation_(#{hash := Hash, header := Header}) ->
+    case aec_headers:type(Header) of
         key ->
-            {ok, #{ key_block => aec_blocks:new_key_from_header(TopHeader), micro_blocks => [], dir => forward }};
+            {ok, #{ key_block => aec_blocks:new_key_from_header(Header), micro_blocks => [], dir => forward }};
         micro ->
-            Index = maps:from_list(aec_db:find_headers_and_hash_at_height(aec_headers:height(TopHeader))),
-            get_generation_with_header_index(TopHash, Index)
+            Index = maps:from_list(aec_db:find_headers_and_hash_at_height(aec_headers:height(Header))),
+            get_generation_with_header_index(Hash, Index)
+    end;
+get_generation_(Hash) when is_binary(Hash) ->
+    case get_header(Hash) of
+        error -> error;
+        {ok, Header} ->
+            get_generation_(#{hash => Hash, header => Header})
     end;
 get_generation_(_) ->
     error.
