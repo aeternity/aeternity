@@ -126,18 +126,23 @@ ensure_finalized_height(AllowedHeightFromTop) ->
 
 ensure_finalized_height_(AllowedHeightFromTop) ->
     #{ header := TopHeader } = aec_db:get_top_block_node(),
-    ExpectedFinalizedHeight = aec_headers:height(TopHeader) - AllowedHeightFromTop - 1,
-    case aec_db:get_finalized_height() of
-        undefined ->
-            lager:debug("No finalized height; setting to ~p", [ExpectedFinalizedHeight]),
-            aec_db:write_finalized_height(ExpectedFinalizedHeight);
-        ExpectedFinalizedHeight ->
-            lager:debug("Already finalized height: ~p", [ExpectedFinalizedHeight]),
-            ok;
-        Other ->
-            lager:debug("Previous finalized height: ~p; changed to ~p",
-                        [Other, ExpectedFinalizedHeight]),
-            aec_db:write_finalized_height(ExpectedFinalizedHeight)
+    case aec_headers:height(TopHeader) - AllowedHeightFromTop - 1 of
+        Height when Height > 0 ->
+            case aec_db:get_finalized_height() of
+                undefined ->
+                    lager:debug("No finalized height; setting to ~p", [Height]),
+                    aec_db:write_finalized_height(Height);
+                Height ->
+                    lager:debug("Already finalized height: ~p", [Height]),
+                    ok;
+                Other ->
+                    lager:debug("Previous finalized height: ~p; changed to ~p",
+                                [Other, Height]),
+                    aec_db:write_finalized_height(Height)
+            end;
+        _ ->
+            lager:debug("Not yet high enough to set finalized height", []),
+            ok
     end.
 
 lookup(Key, Default) ->

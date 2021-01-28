@@ -944,8 +944,8 @@ fold_mempool(FunIn, InitAcc) ->
 load_database() ->
     lager:debug("load_database()", []),
     wait_for_tables(),
-    aec_db_gc:maybe_swap_nodes(),
     convert_top_block_entry(),
+    aec_db_gc:maybe_swap_nodes(),
     prepare_mnesia_bypass().
 
 wait_for_tables() ->
