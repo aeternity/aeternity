@@ -1300,34 +1300,40 @@ check_slash_payload_correct_delegate() ->
     {ok, PoI1} = aec_trees:add_poi(accounts, IPub, Trees, PoI0),
     {ok, PoI} = aec_trees:add_poi(accounts, RPub, Trees, PoI1),
     PoIHash = aec_trees:poi_hash(PoI),
-    Channel0 = new_channel(#{ initiator_pubkey => IPub
-                            , responder_pubkey => RPub
-                            %% make an onchain total balance of TotalAmount
-                            , initiator_amount => TotalAmount - 2
-                            , responder_amount => 2
-                            , round => Round
-                            , state_hash => PoIHash
-                            , delegate_pubkeys => [DelegatePub] }),
-    Channel = aesc_channels:set_solo_closing(Channel0, ClosedHeight),
-    ChannelPubKey = aesc_channels:pubkey(Channel),
-    OnChainTrees = set_channel(Channel, aec_trees:new_without_backend()),
-    Amt = 100,
-    From = DelegatePub,
-    OnChainTrees1 = set_account(aec_accounts:new(From, Amt), OnChainTrees),
-    {Bin1, _, _} = payload(#{ channel_pubkey => ChannelPubKey
-                            , round => Round + 1
-                            , state_hash => PoIHash
-                            , initiator_privkey => IPriv
-                            , responder_privkey => RPriv }),
-    ok =
-        aesc_utils:check_slash_payload(ChannelPubKey,
-                                       From,
-                                       _Nonce = 1,
-                                       _Fee1 = Amt,
-                                       Bin1,
-                                       PoI,
-                                       OnChainTrees1,
-                                       tx_env()),
+    
+    Test =
+        fun(Delegates) ->
+            Channel0 = new_channel(#{ initiator_pubkey => IPub
+                                    , responder_pubkey => RPub
+                                    %% make an onchain total balance of TotalAmount
+                                    , initiator_amount => TotalAmount - 2
+                                    , responder_amount => 2
+                                    , round => Round
+                                    , state_hash => PoIHash
+                                    , delegate_pubkeys => Delegates }),
+            Channel = aesc_channels:set_solo_closing(Channel0, ClosedHeight),
+            ChannelPubKey = aesc_channels:pubkey(Channel),
+            OnChainTrees = set_channel(Channel, aec_trees:new_without_backend()),
+            Amt = 100,
+            From = DelegatePub,
+            OnChainTrees1 = set_account(aec_accounts:new(From, Amt), OnChainTrees),
+            {Bin1, _, _} = payload(#{ channel_pubkey => ChannelPubKey
+                                    , round => Round + 1
+                                    , state_hash => PoIHash
+                                    , initiator_privkey => IPriv
+                                    , responder_privkey => RPriv }),
+            ok =
+                aesc_utils:check_slash_payload(ChannelPubKey,
+                                              From,
+                                              _Nonce = 1,
+                                              _Fee1 = Amt,
+                                              Bin1,
+                                              PoI,
+                                              OnChainTrees1,
+                                              tx_env())
+        end,
+    Test(delegates([DelegatePub], [])), %% test with initiator's delegate
+    Test(delegates([], [DelegatePub])), %% test with responder's delegate
     ok.
 
 
@@ -1713,7 +1719,7 @@ new_channel(Opts) ->
                      , ResponderAcc
                      , maps:get(responder_amount, Opts, 43)
                      , maps:get(reserve_amount, Opts, 20)
-                     , maps:get(delegate_pubkeys, Opts, [])
+                     , maps:get(delegate_pubkeys, Opts, no_delegates())
                      , maps:get(state_hash, Opts, <<123:32/unit:8>>)
                      , maps:get(lock_period, Opts, 3)
                      , maps:get(nonce, Opts, 1)
@@ -1853,3 +1859,12 @@ create_force_progess_tx(#{ payload := Payload
 strip_aetx(Aetx) ->
     {_, InnerTx} = aetx:specialize_callback(Aetx),
     InnerTx.
+
+no_delegates() ->
+    delegates([], []).
+
+delegates(IIds, RIds) ->
+   case active_protocol() < ?IRIS_PROTOCOL_VSN of
+      true -> IIds ++ RIds;
+      false -> {IIds, RIds}
+    end.

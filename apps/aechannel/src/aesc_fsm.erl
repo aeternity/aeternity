@@ -4921,7 +4921,7 @@ handle_common_event_(timeout, Info, _St, _M, D) when D#data.ongoing_update == tr
 handle_common_event_(timeout, St = T, St, _, #data{ role = Role
                                                   , opts = Opts } = D) ->
     KeepRunning = maps:get(keep_running, Opts, false),
-    case KeepRunning andalso D#data.role =:= responder of
+    case KeepRunning andalso Role =:= responder of
         true ->
             keep_state(D);
         false ->
@@ -5427,7 +5427,7 @@ process_incoming_forced_progress_(#{ tx := SignedTx
                                   Channel,
                                   #data{ state = State
                                        , opts = Opts
-                                       , on_chain_id = ChannelPubkey } = D) ->
+                                       , on_chain_id = _ChannelPubkey } = D) ->
     %% we don't check the authentication of the incoming transaction as at
     %% this point it had already been included in a microblock and this block
     %% had been accepted as valid by our own node. Relying on those checks, we

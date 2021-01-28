@@ -1945,6 +1945,11 @@ make_oracle_response_tx(OraclePubkey, Nonce, Fee, QueryId) ->
 make_channel_create_tx(InitiatorPubkey, Nonce, ResponderPubkey, Amount, Fee) ->
     InitiatorId = aeser_id:create(account, InitiatorPubkey),
     ResponderId = aeser_id:create(account, ResponderPubkey),
+    Delegates =
+        case aecore_suite_utils:latest_protocol_version() >= ?IRIS_PROTOCOL_VSN of
+            true -> {[], []};
+            false -> [] 
+        end,
     {ok, Tx} = aesc_create_tx:new(#{initiator_id       => InitiatorId,
                                     initiator_amount   => Amount,
                                     responder_id       => ResponderId,
@@ -1953,7 +1958,8 @@ make_channel_create_tx(InitiatorPubkey, Nonce, ResponderPubkey, Amount, Fee) ->
                                     lock_period        => 0,
                                     fee                => Fee,
                                     state_hash         => <<123:256>>,
-                                    nonce              => Nonce}),
+                                    nonce              => Nonce,
+                                    delegate_ids       => Delegates}),
     Tx.
 
 make_channel_close_mutual_tx(FromPubKey, Nonce, ChannelId, Amount, Fee) ->
