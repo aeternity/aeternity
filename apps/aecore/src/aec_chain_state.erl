@@ -313,7 +313,7 @@ get_info_field(_Height, undefined) ->
 
 new_state_from_persistence() ->
     Fun = fun() ->
-                  #{ top_block_hash        => aec_db:get_top_block_hash()
+                  #{ top_block_node        => db_get_top_block_node()
                    }
           end,
     aec_db:ensure_transaction(Fun).
@@ -322,12 +322,52 @@ persist_state(OldState, NewState) ->
     case {get_top_block_hash(OldState), get_top_block_hash(NewState)} of
         {TH, TH} -> false;
         {_, TopBlockHash} ->
-            aec_db:write_top_block_hash(TopBlockHash),
+            Node = get_top_block_node(NewState),
+            db_write_top_block_node(Node),
+            maybe_set_finalized_height(NewState),
             true
     end.
 
-get_top_block_hash(#{top_block_hash := H}) -> H.
-set_top_block_hash(H, State) when is_binary(H) -> State#{top_block_hash => H}.
+db_write_top_block_node(#node{ header = Header
+                             , hash   = Hash }) ->
+    aec_db:write_top_block_node(Hash, Header).
+
+db_get_top_block_node() ->
+    case aec_db:get_top_block_node() of
+        undefined ->
+            undefined;
+        #{ hash := Hash
+         , header := Header } ->
+            wrap_header(Header, Hash)
+    end.
+
+maybe_set_finalized_height(State) ->
+    Node = get_top_block_node(State),
+    case node_type(Node) of
+        key ->
+            TopHeight = node_height(Node),
+            case aec_resilience:fork_resistance_active() of
+                {yes, FRHeight} ->
+                    %% Set finalized height to one block below the allowed height
+                    case TopHeight - FRHeight - 1 of
+                        H when H > 0 ->
+                            aec_db:write_finalized_height(H);
+                        _ ->
+                            ok
+                    end;
+                _ ->
+                    ok
+            end;
+        micro ->
+            ok
+    end.
+
+get_top_block_hash(#{top_block_node := #node{hash = H}}) -> H;
+get_top_block_hash(_) -> undefined.
+
+get_top_block_node(#{top_block_node := N}) -> N.
+
+set_top_block_node(#node{} = N, State) -> State#{top_block_node => N}.
 
 prev_version(Node) ->
     H = node_height(Node),
@@ -475,7 +515,7 @@ internal_insert_genesis(Node, Block) ->
                 0,
                 false),
         ok = aec_db:write_genesis_hash(NewTopHash),
-        ok = aec_db:write_top_block_hash(NewTopHash),
+        ok = db_write_top_block_node(Node),
         ok = aec_db:mark_chain_end_hash(NewTopHash),
         {ok, true, undefined, no_events()}
     end).
@@ -549,7 +589,7 @@ internal_insert_transaction(Node, Block, Origin, Ctx) ->
     end.
 
 assert_not_illegal_fork_or_orphan(Node, Origin, State) ->
-    Top       = db_get_node(get_top_block_hash(State)),
+    Top       = get_top_block_node(State),
     TopHeight = node_height(Top),
     Height    = node_height(Node),
     case assert_height_delta(Origin, Height, TopHeight) of
@@ -563,7 +603,12 @@ assert_height_delta(sync, Height, TopHeight) ->
         {yes, Delta} ->
             Height >= (TopHeight - Delta);
         no ->
-            true
+            case aec_db:dirty_get_finalized_height() of
+                undefined ->
+                    true;
+                FHeight ->
+                    Height > FHeight
+            end
     end;
 assert_height_delta(undefined, Height, TopHeight) ->
     Height >= ( TopHeight - gossip_allowed_height_from_top() ).
@@ -574,8 +619,8 @@ update_state_tree(Node, State, Ctx) ->
     State1 = update_found_pof(Node, MicSibHeaders, State, Ctx),
     State2 = update_found_pogf(Node, KeySibHeaders, State1),
     {State3, NewTopDifficulty, Events} = update_state_tree(Node, Trees, ForkInfo, State2),
-    OldTopHash = get_top_block_hash(State),
-    handle_top_block_change(OldTopHash, NewTopDifficulty, Node, Events, State3).
+    OldTopNode = get_top_block_node(State),
+    handle_top_block_change(OldTopNode, NewTopDifficulty, Node, Events, State3).
 
 update_state_tree(Node, TreesIn, ForkInfo, State) ->
      case db_find_state(node_hash(Node), true) of
@@ -585,7 +630,7 @@ update_state_tree(Node, TreesIn, ForkInfo, State) ->
             case aec_trees:hash(Trees) =:= aec_trees:hash(FoundTrees) of
                 true -> %% race condition, we've already inserted this block
                     %% in case of fork, set the correct top:
-                    State1 = set_top_block_hash(node_hash(Node), State),
+                    State1 = set_top_block_node(Node, State),
                     {State1,
                      FoundForkInfo#fork_info.difficulty, %% keep correct difficulty
                      Events};
@@ -597,7 +642,7 @@ update_state_tree(Node, TreesIn, ForkInfo, State) ->
          error ->
              {DifficultyOut, Events} = apply_and_store_state_trees(Node, TreesIn,
                                                         ForkInfo, State),
-            State1 = set_top_block_hash(node_hash(Node), State),
+            State1 = set_top_block_node(Node, State),
             {State1, DifficultyOut, Events}
     end.
 
@@ -663,7 +708,8 @@ update_fraud_info(ForkInfoIn, Node, State) ->
             end
     end.
 
-handle_top_block_change(OldTopHash, NewTopDifficulty, Node, Events, State) ->
+handle_top_block_change(OldTopNode, NewTopDifficulty, Node, Events, State) ->
+    OldTopHash = node_hash(OldTopNode),
     case get_top_block_hash(State) of
         OldTopHash -> {State, no_events()};
         NewTopHash ->
@@ -680,7 +726,7 @@ handle_top_block_change(OldTopHash, NewTopDifficulty, Node, Events, State) ->
                     {ok, OldTopDifficulty} = db_find_difficulty(OldTopHash),
                     case OldTopDifficulty >= NewTopDifficulty of
                         true ->
-                            State1 = set_top_block_hash(OldTopHash, State), %% Reset
+                            State1 = set_top_block_node(OldTopNode, State), %% Reset
                             {State1, Events};
                         false ->
                             State1 = update_main_chain(OldTopHash, NewTopHash,

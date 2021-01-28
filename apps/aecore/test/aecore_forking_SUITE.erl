@@ -22,6 +22,9 @@
     dev3_syncs_to_community/1
    ]).
 
+%% tr_ttb behavior callbacks
+-export([ flags/0
+        , patterns/0 ]).
 
 -include_lib("common_test/include/ct.hrl").
 -include_lib("stdlib/include/assert.hrl").
@@ -222,3 +225,15 @@ stop_and_check(Ns, Config) ->
 
 mine_key_blocks(Node, N) ->
     aecore_suite_utils:mine_blocks(Node, N, ?MINE_RATE, key, #{}).
+
+with_trace(F, Config, File) ->
+    aecore_suite_ttb:with_trace(F, Config, File, ?MODULE).
+
+patterns() ->
+    [ {aec_sync, '_', '_', []}
+    , {aec_resilience, '_', '_', []}
+    | [ {aec_chain_state, F, A, []} || {F, A} <- aec_chain_state:module_info(exports) ]]
+    ++ [{aec_chain, F, A, []} || {F, A} <- aec_chain:module_info(exports) ].
+
+flags() ->
+    {all, call}.
