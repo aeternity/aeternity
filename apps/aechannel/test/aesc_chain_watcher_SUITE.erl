@@ -51,6 +51,7 @@
 
 -include_lib("common_test/include/ct.hrl").
 -include_lib("aeutils/include/aeu_stacktrace.hrl").
+-include_lib("aecontract/include/hard_forks.hrl").
 
 -define(LOG(_Fmt, _Args), log(_Fmt, _Args, ?LINE, true)).
 -define(LOG(_D, _Fmt, _Args), log(_Fmt, _Args, ?LINE, _D)).
@@ -586,7 +587,8 @@ create_tx(Config) ->
            , lock_period      => 3
            , fee              => 1
            , state_hash       => <<>>
-           , nonce            => Nonce },
+           , nonce            => Nonce
+           , delegate_ids     => no_delegates()},
     StateHash = state_hash(TopHash, term_to_binary(Tx0)),
     create_and_sign_tx(Tx0#{state_hash => StateHash}).
 
@@ -783,3 +785,9 @@ stop_chain_watcher(Config) ->
 
 %%
 %% ======================================================================
+no_delegates() ->
+    case aec_hard_forks:protocol_effective_at_height(100) < ?IRIS_PROTOCOL_VSN of
+        true -> [];
+        false -> {[], []}
+    end.
+

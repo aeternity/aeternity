@@ -364,7 +364,7 @@ new(InitiatorAcc, InitiatorAmount, ResponderAcc, ResponderAmount,
         case Version >= ?CHANNEL_VSN_3 of
             true ->
                 %% assert the structure
-                { IDelegates, RDelegates} = DelegatePubkeys,
+                {IDelegates, RDelegates} = DelegatePubkeys,
                 #{ initiator =>  CreateIDs(IDelegates)
                  , responder =>  CreateIDs(RDelegates)};
             false when is_list(DelegatePubkeys) ->

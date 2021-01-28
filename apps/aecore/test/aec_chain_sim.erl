@@ -661,14 +661,15 @@ new_channel(#{ channel_id       := _ChId
              , channel_reserve  := ChanReserve
              , lock_period      := LockPeriod
              , state_hash       := StateHash
-             , nonce            := Nonce } = _CreateTx) ->
+             , nonce            := Nonce
+             , delegate_ids     := Delegates } = _CreateTx) ->
     Protocol = 5,    %% LIMA protocol, not that it's likely to matter here
     Initiator = aeser_id:specialize(InitiatorId, account),
     Responder = aeser_id:specialize(ResponderId, account),
     %% TODO: assert that the above ChId is the same as for the channel object
     aesc_channels:new(aec_accounts:new(Initiator, InitiatorAmt), InitiatorAmt,
                       aec_accounts:new(Responder, ResponderAmt), ResponderAmt,
-                      ChanReserve, _Delegates = [], StateHash,
+                      ChanReserve, Delegates, StateHash,
                       LockPeriod, Nonce, Protocol, _Round = 1).
 
 find_block_tx_hashes_(Hash, Chain) ->
