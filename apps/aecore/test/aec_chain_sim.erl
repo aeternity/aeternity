@@ -512,6 +512,9 @@ maybe_update_trees(_, #{txs := []} = Block, _Chain) ->
     Block;
 maybe_update_trees(ForkId, #{txs := Txs} = Block, Chain) ->
     Blocks = blocks(ForkId, Chain),
+    #{header := TopHdr} = hd(Blocks),
+    Height = aec_headers:height(TopHdr),
+    Protocol = aec_hard_forks:protocol_effective_at_height(Height),
     Trees = case trees(Blocks) of
                 {ok, Ts} ->
                     Ts;
@@ -520,7 +523,7 @@ maybe_update_trees(ForkId, #{txs := Txs} = Block, Chain) ->
             end,
     NewTrees = lists:foldl(
                  fun(Tx, Ts) ->
-                         update_trees(Tx, Ts)
+                         update_trees(Tx, Ts, Protocol)
                  end, Trees, Txs),
     Block#{ trees => NewTrees }.
 
@@ -536,18 +539,18 @@ trees(Blocks) ->
     end.
 
 update_trees(#{ mod := aesc_create_tx
-              , channel_id := ChId } = Tx, Trees) ->
+              , channel_id := ChId } = Tx, Trees, Protocol) ->
     case maps:is_key({channel, ChId}, Trees) of
         true ->
             error({channel_exists, ChId});
         false ->
-            Trees#{ {channel, ChId} => new_channel(Tx) }
+            Trees#{ {channel, ChId} => new_channel(Tx, Protocol) }
     end;
 update_trees(#{ mod        := aesc_deposit_tx
               , channel_id := ChId
               , amount     := Amount
               , round      := Round
-              , state_hash := StateHash }, Trees) ->
+              , state_hash := StateHash }, Trees, _Protocol) ->
     Ch = maps:get({channel, ChId}, Trees),
     Ch1 = aesc_channels:deposit(Ch, Amount, Round, StateHash),
     Trees#{ {channel, ChId} => Ch1 }.
@@ -662,8 +665,7 @@ new_channel(#{ channel_id       := _ChId
              , lock_period      := LockPeriod
              , state_hash       := StateHash
              , nonce            := Nonce
-             , delegate_ids     := Delegates } = _CreateTx) ->
-    Protocol = 5,    %% LIMA protocol, not that it's likely to matter here
+             , delegate_ids     := Delegates } = _CreateTx, Protocol) ->
     Initiator = aeser_id:specialize(InitiatorId, account),
     Responder = aeser_id:specialize(ResponderId, account),
     %% TODO: assert that the above ChId is the same as for the channel object
