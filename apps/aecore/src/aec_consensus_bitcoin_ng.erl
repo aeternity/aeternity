@@ -54,6 +54,9 @@
         , assert_key_target_range/1
         , key_header_difficulty/1 ]).
 
+-export([ get_whitelist/0
+        , rollback/1 ]).
+
 -ifdef(TEST).
 -export([load_whitelist/0]).
 -endif.
@@ -114,8 +117,19 @@ force_community_fork() ->
             end
     end.
 
+rollback(Height) ->
+    F = fun() ->
+                TopHeight = aec_chain:top_height(),
+                {ok, ForkPoint} = aec_chain_state:get_key_block_hash_at_height(Height),
+                do_rollback_(ForkPoint, Height, TopHeight)
+        end,
+    aec_db:ensure_activity(sync_dirty, F).
+
 do_rollback(ForkPoint, Height, TopHeight) ->
     lager:info("Jumping to the community fork", []),
+    do_rollback_(ForkPoint, Height, TopHeight).
+
+do_rollback_(ForkPoint, Height, TopHeight) ->
     ensure_gc_disabled(),
     {value, FPHeader} = aec_db:find_header(ForkPoint),
     SafetyMargin = 1000, %% Why not?
@@ -178,7 +192,7 @@ dirty_validate_block_pre_conductor(B) ->
     dirty_validate_header_pre_conductor(Header).
 
 dirty_validate_header_pre_conductor(H) ->
-    W = persistent_term:get(?WHITELIST),
+    W = get_whitelist(),
     Height = aec_headers:height(H),
     case aec_headers:type(H) of
         key ->
@@ -195,7 +209,7 @@ dirty_validate_header_pre_conductor(H) ->
     end.
 
 dirty_validate_key_hash_at_height(Height, Hash) ->
-    W = persistent_term:get(?WHITELIST),
+    W = get_whitelist(),
     case maps:find(Height, W) of
         {ok, Hash} ->
             ok;
@@ -429,4 +443,9 @@ key_header_difficulty(Header) ->
 load_whitelist() ->
     W = aec_fork_block_settings:block_whitelist(),
     persistent_term:put(?WHITELIST, W).
+
+%% ------------------------------------------------------------------
+%% Accessor function for block whitelist
+get_whitelist() ->
+    persistent_term:get(?WHITELIST).
 

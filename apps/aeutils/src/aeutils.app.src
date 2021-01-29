@@ -8,6 +8,7 @@
     lager,
     gproc,
     jobs,
+    argparse,
     exometer_core,
     yamerl
    ]},

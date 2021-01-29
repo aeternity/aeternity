@@ -1,0 +1,130 @@
+#!/usr/bin/env escript
+%% -*- erlang-indent-level: 4; indent-tabs-mode: nil -*-
+
+-mode(compile).
+
+%% See https://hexdocs.pm/argparse/
+%% Argparse supports a hierarchical structure of commands and subcommands, each
+%% with its own arguments. This spec (no command specified) describes the top level.
+%%
+%% We only provide the user-level arguments. The node connection arguments, which
+%% are automatically 
+spec() -> #{ arguments => args() }.
+
+args() ->
+    [ #{ name => height, short => $h, long => "-height"   , required => false,
+         type => int   , help => "Chain height, from which to start deleting"}
+    , #{ name => hash  , short => $b, long => "-blockhash", required => false,
+         type => string, help => "Keyblock hash, from which to start deleting"}
+    , #{ name => whitelist, short => $w, long => "-whitelist", required => false,
+         type => boolean, help => "Roll back based on contents of whitelist",
+         default => false }
+    ].
+
+
+main(Args) ->
+    Opts = aeu_ext_scripts:parse_opts(Args, spec()),
+    {ok, Node} = aeu_ext_scripts:connect_node(Opts),
+    rollback(Node, Opts).
+
+rollback(Node, #{opts := Opts}) ->
+    TopHeight = rpc:call(Node, aec_chain, top_height, []),
+    TopHash   = rpc:call(Node, aec_chain, top_block_hash, []),
+    EncHash = aeser_api_encoder:encode(key_block_hash, TopHash),
+    St = #{ top_height => TopHeight
+          , top_hash   => TopHash
+          , enc_top_hash => EncHash },
+    io:fwrite("Current top (height: ~p): ~s~n", [TopHeight, EncHash]),
+    case Opts of
+        #{whitelist := true} ->
+            %% Should we check whether there are conflicting options?
+            %% Right now, the --whitelist option takes precedence.
+            Whitelist = rpc:call(Node, aec_consensus_bitcoin_ng, get_whitelist, []),
+            case map_size(Whitelist) of
+                0 ->
+                    abort("No whitelist loaded");
+                _ ->
+                    case whitelisted_starting_point(Node, Whitelist, TopHeight) of
+                        undefined ->
+                            abort("Could not rollback from whitelist", []);
+                        {H, Hdr} ->
+                            do_rollback(St#{from => #{ height => H
+                                                     , header => Hdr }}, Node, Opts)
+                    end
+            end;
+        #{height := H} ->
+            do_rollback(state_at_height(Node, H, St), Node, Opts);
+        #{hash := Hash} ->
+            case aeser_api_encoder:safe_decode(key_block_hash, Hash) of
+                {error, _} ->
+                    abort("Specified hash is not a valid keyblock hash");
+                {ok, DecHash} ->
+                    case rpc:call(Node, aec_chain, get_header, [DecHash]) of
+                        {ok, Hdr} ->
+                            HdrHeight = aec_headers:height(Hdr),
+                            Type = aec_headers:type(Hdr),
+                            case Type of
+                                key ->
+                                    St1 = St#{ from => #{ height  => HdrHeight
+                                                        , header  => Hdr }},
+                                    do_rollback(St1, Node, Opts);
+                                micro ->
+                                    abort("Cannot roll back to a microblock")
+                            end;
+                        error ->
+                            abort("Cannot find specified hash")
+                    end
+            end
+    end.
+
+do_rollback(Spec, Node, _Opts) ->
+    #{ from := #{ height := Height }} = Spec,
+    io:fwrite("Will rollback: ~p~n", [Spec]),
+    PrevMode = rpc:call(Node, aeu_ext_scripts, ensure_mode, [maintenance]),
+    Res = rpc:call(Node, aec_consensus_bitcoin_ng, rollback, [Height]),
+    io:fwrite(standard_io, "Rollback to height ~p complete: ~p~n", [Height, Res]),
+    ok = rpc:call(Node, aeu_ext_scripts, restore_mode, [PrevMode]),
+    ok.
+
+state_at_height(_Node, H, #{ top_height := TopHeight }) when H > TopHeight ->
+    abort("Rollback height (~p) exceeds current top height (~p)", [H, TopHeight]);
+state_at_height(Node, H, St) ->
+    St#{ from => #{ height => H
+                  , header => header_by_height(Node, H) }}.
+
+abort(Str) ->
+    abort(Str, []).
+
+abort(Str, Args) ->
+    io:fwrite(standard_error, Str ++ "~n", Args),
+    halt(1).
+
+%% We want to find start either from the highest whitelisted height where
+%% the hashes actually match, or the height right below the lowest whitelisted
+%% height.
+%%
+whitelisted_starting_point(Node, W, TopHeight) ->
+    Sorted = lists:keysort(1, maps:to_list(W)),
+    whitelisted_starting_point_(Sorted, Node, TopHeight, undefined).
+
+whitelisted_starting_point_([{H, Hash}|T], Node, TopHeight, Sofar) when H < TopHeight ->
+    Hdr = header_by_height(Node, H),
+    case aec_headers:hash_header(Hdr) of
+        {ok, Hash} ->
+            whitelisted_starting_point_(T, Node, TopHeight, {H, Hdr});
+        _ when Sofar == undefined ->
+            PrevH = H - 1,
+            {PrevH, header_by_height(Node, PrevH)};
+        _ ->
+            Sofar
+    end;
+whitelisted_starting_point_(_, _, _, Sofar) ->
+    Sofar.
+
+header_by_height(Node, H) ->
+    case rpc:call(Node, aec_chain, get_key_header_by_height, [H]) of
+        {ok, Hdr} ->
+            Hdr;
+        _ ->
+            abort("Could not fetch header at height ~p", [H])
+    end.

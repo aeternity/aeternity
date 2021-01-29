@@ -1,0 +1,165 @@
+#!/usr/bin/env escript
+%% -*- erlang-indent-level: 4; indent-tabs-mode: nil -*-
+
+-mode(compile).
+
+
+main(Args) ->
+    Res = try begin
+                  {RestArgs, TargetNode} = process_node_args(Args, [], undefined),
+                  Opts = check_args(RestArgs),
+                  continue(Opts, TargetNode)
+              end
+          catch
+              error:_ ->
+                  help(),
+                  1
+          end,
+    init:stop(Res).
+
+help() ->
+    io:fwrite("Usage: create_whitelist [-start Start] [-n N] [-step Step] [-o Outfile]~n"
+              "-start Start : Begin <Start> key blocks below the current top (default: 100)~n"
+              "-n     N     : Collect <N> hashes for the whitelist (default: 1000)~n"
+              "-step  Step  : Separate the whitelisted hashes by <Step> (default: 1)~n"
+              "-outfile F   : Write JSON to file <F> (default: ./block_whitelist-X-Y-Z.json)~n"
+              "~n"
+              "When running as standalone script (not via bin/aeternity), connection params~n"
+              "must be provided: -sname (or -name) and -setcookie, matching the node~n",
+              []).
+
+continue(Opts, TargetNode) ->
+    ok = connect_node(TargetNode),
+    CallF = fun(M,F,A) -> rpc:call(TargetNode, M, F, A) end,
+    Hashes = fetch_whitelist_hashes(Opts, CallF),
+    load_jsx(CallF),
+    JSON = jsx:prettify(jsx:encode(maps:from_list(Hashes))),
+    write_to_file(maps:get(outfile, Opts), JSON),
+    0.
+
+fetch_whitelist_hashes(#{start := Start, n := N, step := Step}, CallF) ->
+    TopHeight = get_top_height(CallF),
+    case TopHeight - Start of
+        Low when Low =< 0 ->
+            io:fwrite("Start height too low~n", []),
+            error(start_value_too_low);
+        StartHeight ->
+            fetch_whitelist_hashes(N, StartHeight, Step, CallF, [])
+    end.
+
+fetch_whitelist_hashes(N, Height, Step, CallF, Acc) when N > 0, Height > 0 ->
+    case get_hash_at_height(Height, CallF) of
+        {ok, Hash} ->
+            Enc = CallF(aeser_api_encoder, encode, [key_block_hash, Hash]),
+            fetch_whitelist_hashes(N-1, Height - Step, Step, CallF, [{Height, Enc}|Acc]);
+        error ->
+            Acc
+    end;
+fetch_whitelist_hashes(_, _, _, _, Acc) ->
+    Acc.
+
+get_top_height(CallF) ->
+    TopHeader = CallF(aec_chain, top_header, []),
+    CallF(aec_headers, height, [TopHeader]).
+
+get_hash_at_height(Height, CallF) ->
+    CallF(aec_chain_state, get_key_block_hash_at_height, [Height]).
+
+load_jsx(CallF) ->
+    LibDir = CallF(code, lib_dir, [jsx]),
+    code:add_path(filename:join(LibDir, "ebin")).
+
+write_to_file(F, String) ->
+    io:fwrite("Writing to file: ~s~n", [F]),
+    case file:open(F, [write]) of
+        {ok, Fd} ->
+            try io:fwrite(Fd, "~s~n", [String])
+            after
+                file:close(Fd)
+            end;
+        {error, Reason} ->
+            io:fwrite("Couldn't open file ~s: ~p~n", [F, Reason]),
+            error({output, Reason})
+    end.
+
+defaults() ->
+    #{ start => 100
+     , step  => 1
+     , n     => 1000
+     , outfile => tmp_outfile() }.
+
+tmp_outfile() ->
+    {MS,S,US} = os:timestamp(),
+    lists:flatten(io_lib:fwrite("block_whitelist-~w-~w-~w.json", [MS,S,US])).
+
+check_args([]) ->
+    error(help_needed);
+check_args(Args) ->
+    check_args(Args, defaults()).
+
+check_args([], O) ->
+    O;
+check_args(["-start", Start | Args], O) ->
+    StartN = to_integer(Start, "-start"),
+    check_args(Args, O#{start => StartN});
+check_args(["-n", NStr | Args], O) ->
+    N = to_integer(NStr, "-n"),
+    check_args(Args, O#{n => N});
+check_args(["-step", NStr | Args], O) ->
+    N = to_integer(NStr, "-step"),
+    check_args(Args, O#{step => N});
+check_args(["-o", OutFile | Args], O) ->
+    check_args(Args, O#{outfile => OutFile});
+check_args(Args, _) ->
+    io:fwrite("Unknown arguments: ~p~n", [Args]),
+    error({unknown_arguments, Args}).
+
+to_integer(Str, Arg) ->            
+    try list_to_integer(Str)
+    catch
+        error:_ ->
+            io:fwrite("Not an integer: ~s~n", [Arg]),
+            error({invalid_arg, Arg})
+    end.
+
+process_node_args([], Acc, TargetNode) ->
+    {lists:reverse(Acc), TargetNode};
+process_node_args(["-setcookie", Cookie | Rest], Acc, TargetNode) ->
+    erlang:set_cookie(node(), list_to_atom(Cookie)),
+    process_node_args(Rest, Acc, TargetNode);
+process_node_args(["-name", TargetName | Rest], Acc, _) ->
+    ThisNode = append_node_suffix(TargetName, "_util_"),
+    {ok, _} = net_kernel:start([ThisNode, longnames]),
+    process_node_args(Rest, Acc, nodename(TargetName));
+process_node_args(["-sname", TargetName | Rest], Acc, _) ->
+    ThisNode = append_node_suffix(TargetName, "_util_"),
+    {ok, _} = net_kernel:start([ThisNode, shortnames]),
+    process_node_args(Rest, Acc, nodename(TargetName));
+process_node_args([Arg | Rest], Acc, Opts) ->
+    process_node_args(Rest, [Arg | Acc], Opts).
+
+append_node_suffix(Name, Suffix) ->
+    case re:split(Name, "@", [{return, list}, unicode]) of
+        [Node, Host] ->
+            list_to_atom(lists:concat([Node, Suffix, os:getpid(), "@", Host]));
+        [Node] ->
+            list_to_atom(lists:concat([Node, Suffix, os:getpid()]))
+    end.
+
+nodename(Name) ->
+    case re:split(Name, "@", [{return, list}, unicode]) of
+        [_Node, _Host] ->
+            list_to_atom(Name);
+        [Node] ->
+            [_, Host] = re:split(atom_to_list(node()), "@", [{return, list}, unicode]),
+            list_to_atom(lists:concat([Node, "@", Host]))
+    end.
+
+connect_node(TargetNode) ->
+    case {net_kernel:hidden_connect_node(TargetNode), net_adm:ping(TargetNode)} of
+        {true, pong} ->
+            ok;
+        {_, pang} ->
+            io:fwrite("Cannot connect to ~p~n", [TargetNode]),
+            error
+    end.
