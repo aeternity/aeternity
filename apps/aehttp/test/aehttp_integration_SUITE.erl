@@ -1758,11 +1758,12 @@ get_channel_by_pubkey(_Config) ->
      } = aesc_fsm_SUITE:create_channel_on_port(9311),
     ChannelId = aeser_api_encoder:encode(channel, ChannelId0),
 
+    NoDelegates = no_delegates(),
     {ok, 200, #{
         <<"id">> := ChannelId,
         <<"initiator_id">> := InitiatorId,
         <<"responder_id">> := ResponderId,
-        <<"delegate_ids">> := [],         %% Update needed
+        <<"delegate_ids">> := NoDelegates,
         <<"state_hash">> := StateHash
       }} = get_channel_by_pubkey_sut(ChannelId),
 
@@ -2614,6 +2615,12 @@ state_channel_pubkey(Tx) ->
     aesc_channels:pubkey(Initiator, Nonce, Responder).
 
 state_channels_create(MinerPubkey, ResponderPubkey) ->
+    EncodedDelegates = no_delegates(),
+    Delegates =
+        case EncodedDelegates of
+            L when is_list(L) -> L;
+            #{<<"initiator">> := IL, <<"responder">> := RL} -> {IL, RL}
+        end,
     Encoded = #{initiator_id => aeser_api_encoder:encode(account_pubkey, MinerPubkey),
                 initiator_amount => 2,
                 responder_id => aeser_api_encoder:encode(account_pubkey, ResponderPubkey),
@@ -2621,11 +2628,13 @@ state_channels_create(MinerPubkey, ResponderPubkey) ->
                 push_amount => 5, channel_reserve => 5,
                 lock_period => 20,
                 state_hash => aeser_api_encoder:encode(state, ?BOGUS_STATE_HASH),
-                fee => 100000 * aec_test_utils:min_gas_price()},
+                fee => 100000 * aec_test_utils:min_gas_price(),
+                delegate_ids => EncodedDelegates},
     Decoded = maps:merge(Encoded,
                         #{initiator_id => aeser_id:create(account, MinerPubkey),
                           responder_id => aeser_id:create(account, ResponderPubkey),
-                          state_hash => ?BOGUS_STATE_HASH}),
+                          state_hash => ?BOGUS_STATE_HASH,
+                          delegate_ids => Delegates}),
     {ok, Tx} = unsigned_tx_positive_test(Decoded, Encoded,
                                fun get_channel_create/1,
                                fun aesc_create_tx:new/1, MinerPubkey),
@@ -2636,23 +2645,44 @@ state_channels_create(MinerPubkey, ResponderPubkey) ->
     %% test delegates
     TestDelegates =
         fun(Ds) ->
-            Enc = Encoded#{delegate_ids => [aeser_api_encoder:encode(account_pubkey, D)
-                                            || D <- Ds]},
-            Dec = Decoded#{delegate_ids => [aeser_id:create(account, D) || D <- Ds]},
+            EncodeL = fun(L) -> [aeser_api_encoder:encode(account_pubkey, D)
+                                 || D <- L] end,
+            ToIds = fun(L) -> [aeser_id:create(account, D) || D <- L] end,
+            {Ids, EncDs} =
+                case Ds of
+                    _ when is_list(Ds) -> {ToIds(Ds), EncodeL(Ds)};
+                    {IIds, RIds} ->
+                        {{ToIds(IIds), ToIds(RIds)},
+                         #{<<"initiator">> => EncodeL(IIds),
+                           <<"responder">> => EncodeL(RIds)}}
+                end,
+            Enc = Encoded#{delegate_ids => EncDs},
+            Dec = Decoded#{delegate_ids => Ids},
             {ok, _Tx} = unsigned_tx_positive_test(Dec, Enc,
                                                   fun get_channel_create/1,
                                                   fun aesc_create_tx:new/1, MinerPubkey),
             Msg = list_to_binary("Invalid hash: delegate_ids"),
             TestBroken =
                 fun(Broken) ->
-                    BrokenDelegates1 = [Broken | maps:get(delegate_ids, Enc)],
-                    BrokenDelegates2 = maps:get(delegate_ids, Enc) ++ [Broken],
-                    {ok, 400, #{<<"reason">> := Msg}} =
-                        get_channel_create(Enc#{delegate_ids =>
-                                                BrokenDelegates1}),
-                    {ok, 400, #{<<"reason">> := Msg}} =
-                        get_channel_create(Enc#{delegate_ids =>
-                                                BrokenDelegates2}),
+                    Ds0= maps:get(delegate_ids, Enc),
+                    T = fun(E) -> {ok, 400, #{<<"reason">> := Msg}} = get_channel_create(E) end,
+                    case Ds0 of
+                        _ when is_list(Ds0) ->
+                            BrokenDelegates1 = [Broken | maps:get(delegate_ids, Enc)],
+                            T(Enc#{delegate_ids => BrokenDelegates1}),
+                            BrokenDelegates2 = maps:get(delegate_ids, Enc) ++ [Broken],
+                            T(Enc#{delegate_ids => BrokenDelegates2});
+                        #{<<"initiator">> := IIds0, <<"responder">> := RIds0} ->
+                            BrokenI1 = Ds0#{<<"initiator">> => [Broken | IIds0]},
+                            T(Enc#{delegate_ids => BrokenI1}),
+                            BrokenI2 = Ds0#{<<"initiator">> => IIds0 ++ [Broken]},
+                            T(Enc#{delegate_ids => BrokenI2}),
+
+                            BrokenR1 = Ds0#{<<"responder">> => [Broken | RIds0]},
+                            T(Enc#{delegate_ids => BrokenR1}),
+                            BrokenR2 = Ds0#{<<"responder">> => RIds0 ++ [Broken]},
+                            T(Enc#{delegate_ids => BrokenR2})
+                    end,
                     ok
                 end,
             CorrectAddress = <<1234:32/unit:8>>,
@@ -2664,9 +2694,15 @@ state_channels_create(MinerPubkey, ResponderPubkey) ->
 
             ok
         end,
-    TestDelegates([]),
-    TestDelegates([<<42:32/unit:8>>]),
-    TestDelegates([<<42:32/unit:8>>, <<43:32/unit:8>>]),
+    NoDelegates = [],
+    OneDelegate = [<<42:32/unit:8>>],
+    TwoDelegates = [<<42:32/unit:8>>, <<43:32/unit:8>>],
+    Cases = [NoDelegates, OneDelegate, TwoDelegates],
+    %% old serialization
+    lists:foreach(TestDelegates, Cases),
+    %% new serialization
+    lists:foreach(TestDelegates, [{IIds, RIds} || IIds <- Cases,
+                                                  RIds <- Cases]),
 
 
     {ok, Tx}.
@@ -2894,7 +2930,7 @@ unsigned_tx_positive_test(Data, Params0, HTTPCallFun, NewFun, Pubkey,
             {ok, SerializedTx} = aeser_api_encoder:safe_decode(transaction, ActualTx),
             Tx = aetx:deserialize_from_binary(SerializedTx),
             ct:log("Expected ~p~nActual ~p", [ExpectedTx, Tx]),
-            ExpectedTx = Tx,
+            {Tx, Tx} = {Tx, ExpectedTx},
             Tx
         end,
     Params =
@@ -4140,6 +4176,12 @@ setup_name_pointing_to_oracle(NameNoPrefix, OraclePubKey) ->
 
     {ok, Name, NHash}.
 
+no_delegates() ->
+    case aect_test_utils:latest_protocol_version() >= ?IRIS_PROTOCOL_VSN of
+        false -> [];
+        true -> #{<<"initiator">> => [], <<"responder">> => []}
+    end.
+
 %%%%%
 %% OAS3
 %%%%%
@@ -4175,3 +4217,4 @@ get_top_header(_Config) ->
     Time = binary_to_integer(TimeStr),
     Version = binary_to_integer(VersionStr),
     ok.
+

@@ -296,8 +296,8 @@ for_client(#channel_create_tx{initiator_id       = InitiatorId,
         case DelegateIds0 of
             L when is_list(L) -> EncodeIds(L);
             {IL, RL} when is_list(IL), is_list(RL) ->
-                #{ <<"initiator_delegate_ids">> => EncodeIds(IL)
-                 , <<"responder_delegate_ids">> => EncodeIds(RL)}
+                #{ <<"initiator">> => EncodeIds(IL)
+                 , <<"responder">> => EncodeIds(RL)}
         end,
     #{<<"initiator_id">>       => aeser_api_encoder:encode(id_hash, InitiatorId),
       <<"initiator_amount">>   => InitiatorAmount,

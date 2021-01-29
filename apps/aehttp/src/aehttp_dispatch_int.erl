@@ -20,6 +20,7 @@
                         , verify_oracle_existence/1
                         , verify_oracle_query_existence/2
                         , poi_decode/1
+                        , delegates_decode/1
                         , contract_bytearray_params_decode/1
                         , unsigned_tx_response/1
                         , ok_response/1
@@ -215,16 +216,15 @@ handle_request_('PostChannelCreate', #{'ChannelCreateTx' := Req}, _Context) ->
                                        state_hash,
                                        responder_id, responder_amount,
                                        push_amount, channel_reserve,
-                                       lock_period, fee]),
-                 read_optional_params([{ttl, ttl, '$no_value'},
-                                       {delegate_ids, delegate_ids, []}]),
+                                       lock_period, fee, delegate_ids]),
+                 read_optional_params([{ttl, ttl, '$no_value'}]),
                  api_decode([{initiator_id, initiator_id, {id_hash, [account_pubkey]}},
                               {responder_id, responder_id, {id_hash, [account_pubkey]}},
-                              {state_hash, state_hash, state},
-                              {delegate_ids, delegate_ids, {list, {id_hash, [account_pubkey]}}}
+                              {state_hash, state_hash, state}
                               ]),
                  api_str_to_int([initiator_amount, responder_amount,
                                  push_amount, channel_reserve, lock_period, fee, ttl]),
+                 delegates_decode(delegate_ids),
                  get_nonce_from_account_id(initiator_id),
                  unsigned_tx_response(fun aesc_create_tx:new/1)
                 ],
