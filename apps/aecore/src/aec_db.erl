@@ -643,7 +643,7 @@ convert_top_block_entry_() ->
         undefined ->
             case get_chain_state_value(top_block_hash) of
                 undefined ->
-                    weird;
+                    ok;
                 Hash ->
                     case find_header(Hash) of
                         {value, Header} ->
