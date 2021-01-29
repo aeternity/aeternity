@@ -12,10 +12,21 @@ main(Args) ->
               end
           catch
               error:_ ->
-                  io:fwrite("Exiting~n", []),
+                  help(),
                   1
           end,
     init:stop(Res).
+
+help() ->
+    io:fwrite("Usage: create_whitelist [-start Start] [-n N] [-step Step] [-o Outfile]~n"
+              "-start Start : Begin <Start> key blocks below the current top (default: 100)~n"
+              "-n     N     : Collect <N> hashes for the whitelist (default: 1000)~n"
+              "-step  Step  : Separate the whitelisted hashes by <Step> (default: 1)~n"
+              "-outfile F   : Write JSON to file <F> (default: ./block_whitelist-X-Y-Z.json)~n"
+              "~n"
+              "When running as standalone script (not via bin/aeternity), connection params~n"
+              "must be provided: -sname (or -name) and -setcookie, matching the node~n",
+              []).
 
 continue(Opts, TargetNode) ->
     ok = connect_node(TargetNode),
@@ -81,6 +92,8 @@ tmp_outfile() ->
     {MS,S,US} = os:timestamp(),
     lists:flatten(io_lib:fwrite("block_whitelist-~w-~w-~w.json", [MS,S,US])).
 
+check_args([]) ->
+    error(help_needed);
 check_args(Args) ->
     check_args(Args, defaults()).
 
