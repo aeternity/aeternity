@@ -3138,10 +3138,12 @@ fp_not_participant(Cfg) ->
     Round = 10,
     Height = 100,
     PreIris = aec_hard_forks:protocol_effective_at_height(Height) < ?IRIS_PROTOCOL_VSN,
+    NonEmptyPayload = proplists:get_value(force_progress_use_payload, Cfg, true),
     Err =
         case PreIris of
             true -> account_not_peer;
-            false -> account_not_peer_or_delegate
+            false when NonEmptyPayload =:= true -> account_not_peer_or_delegate;
+            false when NonEmptyPayload =:= false -> account_not_peer
         end,
     Test =
         fun(Owner) ->
@@ -3176,7 +3178,7 @@ fp_not_participant(Cfg) ->
                 end,
                 set_prop(fee, 100000 * aec_test_utils:min_gas_price()),
                 fun(Props) ->
-                    case proplists:get_value(force_progress_use_payload, Cfg, true) of
+                    case NonEmptyPayload of
                         true ->
                             Props;
                         false ->
@@ -3194,7 +3196,8 @@ fp_not_participant(Cfg) ->
                 end,
                 negative(fun force_progress_/2, {error, Err})])
         end,
-    [Test(Owner) || Owner <- ?ROLES],
+%    [Test(Owner) || Owner <- ?ROLES],
+    Test(responder),
     ok.
 
 fp_missing_channel(Cfg) ->
