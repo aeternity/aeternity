@@ -1743,7 +1743,6 @@ get_status(_Config) ->
     ?assertMatch({ok, _}, aeser_api_encoder:safe_decode(key_block_hash, TopKeyBlockHash)),
     ?assertMatch(X when is_integer(X) andalso X >= 0, TopBlockHeight),
     {ok, Mp} = re:compile(?SEMVER_RE),
-    ct:log("Ver: ~p", [NodeVersion]),
     case re:run(NodeVersion, Mp) of
         {match, _} -> ok;
         _ -> ct:fail("Node version is not semver")
