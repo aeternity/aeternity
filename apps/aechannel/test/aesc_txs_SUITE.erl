@@ -3136,9 +3136,16 @@ fp_closed_channel(Cfg) ->
 
 fp_not_participant(Cfg) ->
     Round = 10,
+    Height = 100,
+    PreIris = aec_hard_forks:protocol_effective_at_height(Height) < ?IRIS_PROTOCOL_VSN,
+    Err =
+        case PreIris of
+            true -> account_not_peer;
+            false -> account_not_peer_or_delegate
+        end,
     Test =
         fun(Owner) ->
-            run(#{cfg => Cfg},
+            run(#{cfg => Cfg, height => Height},
                [positive(fun create_channel_/2),
                 fun(#{state := S0} = Props) ->
                     {NewAcc, S1} = aesc_test_utils:setup_new_account(S0),
@@ -3185,7 +3192,7 @@ fp_not_participant(Cfg) ->
                                 ])
                     end
                 end,
-                negative(fun force_progress_/2, {error, account_not_peer})])
+                negative(fun force_progress_/2, {error, Err})])
         end,
     [Test(Owner) || Owner <- ?ROLES],
     ok.
@@ -5379,12 +5386,17 @@ test_delegate_not_allowed(Cfg, Fun, InitProps) ->
                 delegates_spec([aeser_id:create(account, Delegate1)], %% initiator delegates
                                [aeser_id:create(account, Delegate2)], %% responder delegates
                                Height),
+            ?TEST_LOG("DelegateIds ~p", [DelegateIds]),
             Props#{ cfg => [{state, S} | Cfg]
                   , delegate_ids => DelegateIds}
         end,
         positive(fun create_channel_/2),
         fun(#{delegate_ids := Ds, state := S} = Props) ->
-            D1 = pick_random_delegate(Ds), 
+            D1 =
+                case maps:get(use_delegate, Props, random) of
+                    random -> pick_random_delegate(Ds);
+                    Role -> pick_delegate_for_role(Role, Ds)
+                end,
             D1Pubkey = aeser_id:specialize(D1, account),
             D1PrivKey = aesc_test_utils:priv_key(D1Pubkey, S),
             Props#{from_pubkey => D1Pubkey, from_privkey => D1PrivKey}
@@ -5400,19 +5412,25 @@ test_delegate_allowed(Cfg, Fun, InitProps) ->
     run(InitProps#{ cfg => Cfg
                   , height => Height},
       [fun(Props) ->
-            {Delegate1, Delegate2, S} = create_loaded_accounts(100000 * aec_test_utils:min_gas_price(),
-                                                               100000 * aec_test_utils:min_gas_price()),
+            {Delegate1, Delegate2, S} = create_loaded_accounts(100000000 * aec_test_utils:min_gas_price(),
+                                                               100000000 * aec_test_utils:min_gas_price()),
             #{delegate_ids := DelegateIds} =
                 delegates_spec([aeser_id:create(account, Delegate1)], %% initiator delegates
                                [aeser_id:create(account, Delegate2)], %% responder delegates
                                Height),
+            ?TEST_LOG("DelegateIds ~p", [DelegateIds]),
             Props#{ cfg => [{state, S} | Cfg]
                   , delegate_ids => DelegateIds}
         end,
         positive(fun create_channel_/2),
         fun(#{delegate_ids := Ds, state := S} = Props) ->
-            D1 = pick_random_delegate(Ds), 
+            D1 =
+                case maps:get(use_delegate, Props, random) of
+                    random -> pick_random_delegate(Ds);
+                    Role -> pick_delegate_for_role(Role, Ds)
+                end,
             D1Pubkey = aeser_id:specialize(D1, account),
+            ?TEST_LOG("Chosen delegate is ~p", [D1Pubkey]),
             D1PrivKey = aesc_test_utils:priv_key(D1Pubkey, S),
             Props#{from_pubkey => D1Pubkey, from_privkey => D1PrivKey}
         end,
@@ -5950,8 +5968,7 @@ fp_close_solo_slash_with_same_round(Cfg) ->
 
 fp_from_delegate_after_iris(Cfg) ->
     Height = 100,
-    %%PreIris = aec_hard_forks:protocol_effective_at_height(Height) < ?IRIS_PROTOCOL_VSN,
-    PreIris = true, 
+    PreIris = aec_hard_forks:protocol_effective_at_height(Height) < ?IRIS_PROTOCOL_VSN,
     FPRound = 30,
     ContractRound = 2,
     PrepareFP =
@@ -5961,9 +5978,9 @@ fp_from_delegate_after_iris(Cfg) ->
                   rename_prop(from_privkey, delegate_privkey, delete_old),
                   set_from(initiator),
                   fun(#{ initiator_pubkey := Initiator
-                      , responder_pubkey := Responder
-                      , from_pubkey      := From 
-                      , delegate_pubkey  := Delegate} = Props1) ->
+                       , responder_pubkey := Responder
+                       , from_pubkey      := From 
+                       , delegate_pubkey  := Delegate} = Props1) ->
                       ?TEST_LOG("Initiator: ~p,\nresponder: ~p,\ndelegate: ~p",
                                 [Initiator, Responder, Delegate]),
                       ?TEST_LOG("From: ~p", [From]),
@@ -6001,7 +6018,7 @@ fp_from_delegate_after_iris(Cfg) ->
                          positive(fun force_progress_/2)
                         ])
                 end,
-                #{ height => Height })
+                #{ height => Height, use_delegate => initiator })
     end,
     ok.
 
@@ -6061,6 +6078,13 @@ delegates_spec(IIds, RIds, Height) ->
     case aec_hard_forks:protocol_effective_at_height(Height) < ?IRIS_PROTOCOL_VSN of
         true -> #{delegate_ids => IIds ++ RIds};
         false -> #{delegate_ids => {IIds, RIds}}
+    end.
+
+pick_delegate_for_role(Role, DelegateIds) ->
+    case DelegateIds of
+        [CommonDelegate | _] -> CommonDelegate;
+        {[ID | _] , _} when Role =:= initiator -> ID;
+        {_, [RD | _]} when Role =:= responder -> RD
     end.
 
 pick_random_delegate(DelegateIds) ->

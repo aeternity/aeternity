@@ -31,6 +31,8 @@
          pubkey/3,
          initiator_id/1,
          initiator_pubkey/1,
+         role_by_id/2,
+         role_by_pubkey/2,
          initiator_auth/1,
          responder_id/1,
          responder_pubkey/1,
@@ -595,6 +597,16 @@ responder_id(#channel{responder_id = ResponderId}) ->
 -spec responder_pubkey(channel()) -> aec_keys:pubkey().
 responder_pubkey(#channel{responder_id = ResponderId}) ->
     aeser_id:specialize(ResponderId, account).
+
+-spec role_by_pubkey(channel(), aec_keys:pubkey()) -> initiator | responder | none.
+role_by_pubkey(Channel, Pubkey) ->
+    Id = aeser_id:create(account, Pubkey),
+    role_by_id(Channel, Id).
+
+-spec role_by_id(channel(), aeser_id:id()) -> initiator | responder | none.
+role_by_id(#channel{initiator_id = InitiatorId}, InitiatorId) -> initiator;
+role_by_id(#channel{responder_id = ResponderId}, ResponderId) -> responder;
+role_by_id(_Channel, _UnknownId) -> none.
 
 -spec channel_amount(channel()) -> amount().
 channel_amount(#channel{channel_amount = ChannelAmount}) ->
