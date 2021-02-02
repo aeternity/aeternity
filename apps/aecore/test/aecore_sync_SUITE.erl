@@ -1283,8 +1283,8 @@ first_fetch_node_infos(Successes, Fails) ->
             none = OSes;
         _ when is_integer(Successes) ->
             OS = aeu_info:get_os(),
-            NodeVersion = aeu_info:get_version(),
-            NodeRevision = aeu_info:get_revision(),
+            NodeVersion = rpc:call(N1, aeu_info, get_version, []),
+            NodeRevision = rpc:call(N1, aeu_info, get_revision, []),
             Vendor = aeu_info:vendor(),
             #{NodeVersion := Successes} = Versions,
             #{NodeRevision := Successes} = Revisions,
