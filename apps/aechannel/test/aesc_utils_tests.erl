@@ -216,10 +216,11 @@ check_is_peer() ->
     Alice = <<1:32/unit:8>>,
     Bob = <<2:32/unit:8>>,
     Carol = <<3:32/unit:8>>,
-    Peers = [Alice, Bob],
-    ok = aesc_utils:check_is_peer(Alice, Peers),
-    ok = aesc_utils:check_is_peer(Bob, Peers),
-    {error, account_not_peer} = aesc_utils:check_is_peer(Carol, Peers),
+    Channel = new_channel(#{ initiator_pubkey => Alice
+                           , responder_pubkey => Bob}),
+    ok = aesc_utils:check_is_peer(Alice, Channel),
+    ok = aesc_utils:check_is_peer(Bob, Channel),
+    {error, account_not_peer} = aesc_utils:check_is_peer(Carol, Channel),
     ok.
 
 deserialize_empty_payload() ->
