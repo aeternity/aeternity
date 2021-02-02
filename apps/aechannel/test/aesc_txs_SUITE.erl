@@ -195,6 +195,7 @@
 -export([ fp_close_solo_slash_with_same_round/1
         , fp_fp_close_solo_with_same_round/1
         , fp_from_delegate_after_iris/1
+        , fp_wrong_delegate_after_iris/1
         ]).
 
 %% fork related tests
@@ -412,8 +413,7 @@ force_progress_payload_negative_seq() ->
       fp_solo_payload_broken_call,
       % closing, balances are checked
       fp_solo_payload_closing_overflowing_balances,
-      fp_can_not_replace_create,
-      fp_from_delegate_after_iris
+      fp_can_not_replace_create
 
     ].
 
@@ -434,7 +434,10 @@ force_progress_negative_seq() ->
       fp_register_oracle,
       fp_oracle_query,
       fp_oracle_extend,
-      fp_oracle_respond
+      fp_oracle_respond,
+
+      fp_from_delegate_after_iris,
+      fp_wrong_delegate_after_iris
     ].
 
 suite() ->
@@ -5379,12 +5382,15 @@ test_delegate_not_allowed(Cfg, Fun) ->
     test_delegate_not_allowed(Cfg, Fun, #{}).
 
 test_delegate_not_allowed(Cfg, Fun, InitProps) ->
+    test_delegate_not_allowed(Cfg, Fun, InitProps, account_not_peer).
+
+test_delegate_not_allowed(Cfg, Fun, InitProps, Err) ->
     Height = 100,
     run(InitProps#{ cfg => Cfg
                   , height => Height},
       [fun(Props) ->
-            {Delegate1, Delegate2, S} = create_loaded_accounts(100000 * aec_test_utils:min_gas_price(),
-                                                               100000 * aec_test_utils:min_gas_price()),
+            {Delegate1, Delegate2, S} = create_loaded_accounts(1000000000 * aec_test_utils:min_gas_price(),
+                                                               1000000000 * aec_test_utils:min_gas_price()),
             #{delegate_ids := DelegateIds} =
                 delegates_spec([aeser_id:create(account, Delegate1)], %% initiator delegates
                                [aeser_id:create(account, Delegate2)], %% responder delegates
@@ -5401,10 +5407,11 @@ test_delegate_not_allowed(Cfg, Fun, InitProps) ->
                     Role -> pick_delegate_for_role(Role, Ds)
                 end,
             D1Pubkey = aeser_id:specialize(D1, account),
+            ?TEST_LOG("Use delegate: ~p", [D1Pubkey]),
             D1PrivKey = aesc_test_utils:priv_key(D1Pubkey, S),
             Props#{from_pubkey => D1Pubkey, from_privkey => D1PrivKey}
         end,
-        negative(Fun, {error, account_not_peer})]),
+        negative(Fun, {error, Err})]),
     ok.
 
 test_delegate_allowed(Cfg, Fun) ->
@@ -5974,55 +5981,124 @@ fp_from_delegate_after_iris(Cfg) ->
     PreIris = aec_hard_forks:protocol_effective_at_height(Height) < ?IRIS_PROTOCOL_VSN,
     FPRound = 30,
     ContractRound = 2,
-    PrepareFP =
-        fun(Props) ->
-            run(Props,
-                [ rename_prop(from_pubkey, delegate_pubkey, delete_old),
-                  rename_prop(from_privkey, delegate_privkey, delete_old),
-                  set_from(initiator),
-                  fun(#{ initiator_pubkey := Initiator
-                       , responder_pubkey := Responder
-                       , from_pubkey      := From 
-                       , delegate_pubkey  := Delegate} = Props1) ->
-                      ?TEST_LOG("Initiator: ~p,\nresponder: ~p,\ndelegate: ~p",
-                                [Initiator, Responder, Delegate]),
-                      ?TEST_LOG("From: ~p", [From]),
-                      Props1#{offchain_update_from => Initiator}
+    Test =
+        fun(WhosDelegate) ->
+            PrepareFP =
+                fun(Props) ->
+                    run(Props,
+                        [ rename_prop(from_pubkey, delegate_pubkey, delete_old),
+                          rename_prop(from_privkey, delegate_privkey, delete_old),
+                          set_from(WhosDelegate),
+                          fun(#{ initiator_pubkey := Initiator
+                              , responder_pubkey := Responder
+                              , from_pubkey      := From 
+                              , delegate_pubkey  := Delegate} = Props1) ->
+                              ?TEST_LOG("Initiator: ~p,\nresponder: ~p,\ndelegate: ~p",
+                                        [Initiator, Responder, Delegate]),
+                              ?TEST_LOG("From: ~p", [From]),
+                              Props1#{offchain_update_from => From}
+                          end,
+                          create_contract_poi_and_payload(FPRound - 1, ContractRound, WhosDelegate),
+                          rename_prop(delegate_pubkey, from_pubkey, keep_old),
+                          rename_prop(delegate_privkey, from_privkey, keep_old)
+                        ])
                   end,
-                  create_contract_poi_and_payload(FPRound - 1, ContractRound, initiator),
-                  rename_prop(delegate_pubkey, from_pubkey, keep_old),
-                  rename_prop(delegate_privkey, from_privkey, keep_old)
-                ])
-          end,
-    case PreIris of
-        true ->
+            case PreIris of
+                true ->
+                    test_delegate_not_allowed(Cfg,
+                        fun(Props, {negative, {error, Err}}) ->
+                            {Err, Err} = {account_not_peer, Err},
+                            run(Props,
+                                [PrepareFP,
+                                negative_force_progress_sequence(Cfg, FPRound,
+                                                                  _Forcer = do_not_change_from,
+                                                                  Err)
+                                ])
+                        end,
+                        #{ height => Height });
+                false ->
+                    test_delegate_allowed(Cfg,
+                        fun(Props, positive) ->
+                            run(Props,
+                                [PrepareFP,
+                                set_prop(round, FPRound),
+                                set_prop(fee, 100000 * aec_test_utils:min_gas_price()),
+                                  fun(#{contract_id := ContractId, contract_file := CName} = Props1) ->
+                                      (create_contract_call_payload(ContractId, CName, <<"main">>,
+                                                                    [<<"42">>], 1))(Props1)
+                                  end,
+                                positive(fun force_progress_/2)
+                                ])
+                        end,
+                        #{ height => Height, use_delegate => WhosDelegate })
+            end
+        end,
+    Test(initiator),
+    Test(responder),
+    ok.
+
+fp_wrong_delegate_after_iris(Cfg) ->
+    Height = 100,
+    PreIris = aec_hard_forks:protocol_effective_at_height(Height) < ?IRIS_PROTOCOL_VSN,
+    NonEmptyPayload = proplists:get_value(force_progress_use_payload, Cfg, true),
+    FPRound = 30,
+    ContractRound = 2,
+    Test =
+        fun(CallFrom, WhosDelegate) ->
+            PrepareFP =
+                fun(Props) ->
+                    run(Props,
+                        [ rename_prop(from_pubkey, delegate_pubkey, delete_old),
+                          rename_prop(from_privkey, delegate_privkey, delete_old),
+                          set_from(CallFrom),
+                          fun(#{ initiator_pubkey := Initiator
+                               , responder_pubkey := Responder
+                               , from_pubkey      := From 
+                               , delegate_pubkey  := Delegate} = Props1) ->
+                              ?TEST_LOG("Initiator: ~p,\nresponder: ~p,\ndelegate: ~p",
+                                        [Initiator, Responder, Delegate]),
+                              ?TEST_LOG("From: ~p", [From]),
+                              Props1#{offchain_update_from => From}
+                          end,
+                          set_prop(round, FPRound - 1),
+                          create_contract_poi_and_payload(FPRound - 1, ContractRound, WhosDelegate),
+                          set_prop(fee, 100000 * aec_test_utils:min_gas_price()),
+                          fun(Props1) ->
+                              case NonEmptyPayload of
+                                  true ->
+                                      Props1;
+                                  false ->
+                                      run(Props1,
+                                          [ set_from(initiator),
+                                            positive(fun snapshot_solo_/2),
+                                            set_prop(payload, <<>>),
+                                            set_prop(round, FPRound)
+                                          ])
+                              end
+                          end,
+                          rename_prop(delegate_pubkey, from_pubkey, keep_old),
+                          rename_prop(delegate_privkey, from_privkey, keep_old)
+                        ])
+                  end,
+            Err = 
+                case PreIris of
+                    true  -> account_not_peer;
+                    false -> not_caller_or_delegate
+                end,
             test_delegate_not_allowed(Cfg,
-                fun(Props, {negative, {error, Err}}) ->
-                    {Err, Err} = {account_not_peer, Err},
+                fun(Props, {negative, {error, Err1}}) ->
+                    {Err, Err} = {Err, Err1},
                     run(Props,
                         [PrepareFP,
-                         negative_force_progress_sequence(Cfg, FPRound,
+                        negative_force_progress_sequence(Cfg, FPRound,
                                                           _Forcer = do_not_change_from,
                                                           Err)
                         ])
                 end,
-                #{ height => Height });
-        false ->
-            test_delegate_allowed(Cfg,
-                fun(Props, positive) ->
-                    run(Props,
-                        [PrepareFP,
-                         set_prop(round, FPRound),
-                         set_prop(fee, 100000 * aec_test_utils:min_gas_price()),
-                          fun(#{contract_id := ContractId, contract_file := CName} = Props1) ->
-                              (create_contract_call_payload(ContractId, CName, <<"main">>,
-                                                            [<<"42">>], 1))(Props1)
-                          end,
-                         positive(fun force_progress_/2)
-                        ])
-                end,
-                #{ height => Height, use_delegate => initiator })
-    end,
+                #{ height => Height, use_delegate => WhosDelegate }, Err)
+        end,
+    Test(initiator, responder),
+    Test(responder, initiator),
     ok.
 
 fp_fp_close_solo_with_same_round(Cfg) ->
