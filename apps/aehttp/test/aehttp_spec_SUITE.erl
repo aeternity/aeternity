@@ -57,8 +57,9 @@ end_per_testcase(_Case, Config) ->
 %% ============================================================
 get_api(Config) ->
     %% ensure http interface is up and running
-    aecore_suite_utils:connect(aecore_suite_utils:node_name(?NODE)),
-    Spec = aehttp_spec:json(),
+    N1 = aecore_suite_utils:node_name(?NODE),
+    aecore_suite_utils:connect(N1),
+    Spec = rpc:call(N1, aehttp_spec, json, []),
 
     Host = aecore_suite_utils:external_address(),
     URL = binary_to_list(iolist_to_binary([Host, "/api"])),

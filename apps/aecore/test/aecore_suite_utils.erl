@@ -820,10 +820,8 @@ setup_node(N, Top, Epoch, Config) ->
     %%
     CfgD = filename:join([Top, "config/", N]),
     RelD = filename:dirname(filename:join([DDir, "releases", Version, "aeternity.rel"])),
-    cp_file(filename:join(CfgD, "sys.config"),
-            filename:join(RelD, "sys.config")),
-    cp_file(filename:join(CfgD, "vm.args"),
-            filename:join(RelD, "vm.args")),
+    [cp_file(filename:join(CfgD, F), filename:join(RelD, F)) || F <- ["vm.args", "sys.config"]],
+    [cp_file(filename:join(Epoch, F), filename:join(DDir, F)) || F <- ["VERSION", "REVISION"]],
     delete_file(filename:join(RelD, "vm.args.orig")),
     delete_file(filename:join(RelD, "sys.config.orig")),
     TestsDir = filename:dirname(code:which(?MODULE)),

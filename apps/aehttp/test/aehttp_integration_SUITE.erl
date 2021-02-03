@@ -1700,6 +1700,9 @@ get_peers_pubkey_sut() ->
 
 %% /status/*
 
+%% Official semver regex https://semver.org/#is-there-a-suggested-regular-expression-regex-to-check-a-semver-string
+-define(SEMVER_RE, "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(?:-((?:0|[1-9]\\d*|\\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\\.(?:0|[1-9]\\d*|\\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\\+([0-9a-zA-Z-]+(?:\\.[0-9a-zA-Z-]+)*))?$").
+
 get_status(_Config) ->
     {ok, 200, #{
        <<"genesis_key_block_hash">>     := GenesisKeyBlocHash,
@@ -1709,8 +1712,8 @@ get_status(_Config) ->
        <<"sync_progress">>              := SyncProgress,
        <<"listening">>                  := Listening,
        <<"protocols">>                  := Protocols,
-       <<"node_version">>               := _NodeVersion,
-       <<"node_revision">>              := _NodeRevision,
+       <<"node_version">>               := NodeVersion,
+       <<"node_revision">>              := NodeRevision,
        <<"peer_count">>                 := PeerCount,
        <<"peer_connections">>           := #{<<"inbound">>  := InboundPeerConns,
                                              <<"outbound">> := OutboundPeerConns},
@@ -1739,6 +1742,12 @@ get_status(_Config) ->
     ?assertMatch({ok, _}, aeser_api_encoder:safe_decode(peer_pubkey, PeerPubKey)),
     ?assertMatch({ok, _}, aeser_api_encoder:safe_decode(key_block_hash, TopKeyBlockHash)),
     ?assertMatch(X when is_integer(X) andalso X >= 0, TopBlockHeight),
+    {ok, Mp} = re:compile(?SEMVER_RE),
+    case re:run(NodeVersion, Mp) of
+        {match, _} -> ok;
+        _ -> ct:fail("Node version is not semver")
+    end,
+    ?assertEqual(40, byte_size(NodeRevision)),
     ok.
 
 get_status_sut() ->

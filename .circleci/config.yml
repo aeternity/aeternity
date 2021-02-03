@@ -536,15 +536,22 @@ commands:
       - run:
           name: Start branch docker image
           command: |
-            docker run --name ae_${CIRCLE_SHA1:?} ${DOCKERHUB_REPO:?}:${CIRCLE_BRANCH/\//_} bin/aeternity console -noinput -network_id ae_test
+            docker run -d -e AE__CHAIN__PERSIST -e AE__FORK_MANAGEMENT__NETWORK_ID --name ae_${CIRCLE_SHA1:?} ${DOCKERHUB_REPO:?}:${CIRCLE_BRANCH/\//_} bin/aeternity console -noinput -network_id ae_test
+      - run:
+          name: Display logs from branch docker image
+          command: |
+            docker logs -f ae_${CIRCLE_SHA1:?}
           background: true
+      - run:
+          name: Wait for container to be ready
+          command: |
+            docker exec -it ae_${CIRCLE_SHA1:?} curl -4 --retry-connrefused --max-time 60 --retry 6 --connect-timeout 10 http://localhost:3013/v2/status
       - run:
           name: Health check
           command: |
-            sleep 60 # give it some so that docker health checks kicks in
-            STATUS=$(docker inspect --format='{{.State.Health.Status}}' ae_${CIRCLE_SHA1:?})
-            echo $STATUS
-            [ $STATUS == 'healthy' ]
+            until [ "`docker inspect -f {{.State.Health.Status}} ae_${CIRCLE_SHA1:?}`"=="healthy" ]; do
+                sleep 1;
+            done;
 
   restore_windows_package_cache:
     parameters:
@@ -1077,6 +1084,25 @@ jobs:
       - *setup_remote_docker
       - docker_build_branch
 
+  docker_js_sdk_smoke_test:
+    executor: buildpack
+    environment:
+      - AE__CHAIN__PERSIST: false
+      - AE__FORK_MANAGEMENT__NETWORK_ID: local_iris_testnet
+    steps:
+      - checkout
+      - *setup_remote_docker
+      - docker_build_branch
+      - run:
+          name: Start NodeJS
+          command: docker run -d --network container:ae_${CIRCLE_SHA1:?} --name nodejs circleci/node:15.0.0-buster sleep 1337
+      - run:
+          name: Copy tests
+          command: docker cp ./sdk_smoke_test/aepp-sdk-js nodejs:/tests
+      - run:
+          name: Run JS SDK smoke test
+          command: docker exec -it nodejs sh -c "cd /tests && npm install && npm test"
+
   docker_test_push_branch:
     executor: buildpack
     steps:
@@ -1170,6 +1196,41 @@ jobs:
           path: *system_test_logs
       - store_artifacts:
           path: *system_test_host_logs
+
+  js_sdk_smoke_test:
+    docker:
+      - image: node:15.0.0-buster
+    environment:
+      - AE__CHAIN__PERSIST: false
+      - AE__FORK_MANAGEMENT__NETWORK_ID: local_iris_testnet
+      - PACKAGES_DIR: *packages_workspace
+    steps:
+      - checkout
+      - run:
+          name: Prepare Jessie repository
+          command: echo "deb https://deb.debian.org/debian/ jessie main" > /etc/apt/sources.list.d/jessie.list
+      - run:
+          name: Install OS Deps
+          command: apt-get update && apt-get install -y libsodium23 libtinfo5 libssl1.0
+      - *set_package_path
+      - attach_workspace:
+          at: *packages_workspace
+      - run:
+          name: Install JS SDK
+          command: cd ./sdk_smoke_test/aepp-sdk-js && npm install
+      - run:
+          name: Unzip built node
+          command: mkdir node && tar -xvf ${PACKAGE_TARBALL:?} -C ./node
+      - run:
+          name: Start node
+          command: ./node/bin/aeternity start && sleep 10
+      - run:
+          name: Run js sdk smoke test
+          command: cd ./sdk_smoke_test/aepp-sdk-js && npm test
+      - run:
+          name: Stop node
+          command: ./node/bin/aeternity stop
+      - *fail_notification
 
   deploy_integration:
     executor: infrastructure_container_unstable
@@ -1391,8 +1452,31 @@ workflows:
                 - /releases\/.*/
                 - *master_branch
 
+      - docker_js_sdk_smoke_test:
+          context: ae-node-builds
+          requires:
+            - docker_smoke_tests
+          filters:
+            branches:
+              ignore:
+                - env/dev1
+                - env/dev2
+                - system-tests
+                - /releases\/.*/
+                - *master_branch
+
       - docker_system_smoke_tests:
           requires: []
+          filters:
+            branches:
+              ignore:
+                - env/dev1
+                - env/dev2
+                - system-tests
+
+      - js_sdk_smoke_test:
+          requires:
+            - linux_package
           filters:
             branches:
               ignore:
