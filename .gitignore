@@ -62,3 +62,6 @@ eqc
 /docs/.tools/
 /docs/state-channels/*.svg
 .contracts_test_cache
+nohup.out
+data.aeternity_ct@localhost/
+eunit_report/*.xml
