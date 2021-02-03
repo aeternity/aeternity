@@ -1107,6 +1107,65 @@ jobs:
           name: Run JS SDK smoke test
           command: docker exec -it nodejs sh -c "cd /tests && npm install && npm test"
 
+  docker_db_smoke_test:
+    docker:
+      - image: circleci/buildpack-deps:buster
+    environment:
+      - DOCKERHUB_REPO: aeternity/aeternity
+      - AE__CHAIN__PERSIST: true
+    steps:
+      - checkout
+      - *setup_remote_docker
+      - run:
+          name: Prepare Jessie repository
+          command: sudo sh -c "echo \"deb https://deb.debian.org/debian/ jessie main\" > /etc/apt/sources.list.d/jessie.list"
+      - run:
+          name: Install OS Deps
+          command: sudo apt-get update && sudo apt-get install -y libsodium23 libtinfo5 libssl1.0
+      - run:
+          name: Download latest release package
+          command: wget https://releases.aeternity.io/aeternity-latest-ubuntu-x86_64.tar.gz
+      - run:
+          name: Unzip stable node
+          command: mkdir node_stable && tar -xvf aeternity-latest-ubuntu-x86_64.tar.gz -C ./node_stable
+      - run:
+          name: Generate an old DB
+          command: |
+            ./node_stable/bin/aeternity start
+            sleep 60 # Let it sync a bit
+            ./node_stable/bin/aeternity stop
+      - run:
+          name: Build branch docker image
+          command: |
+            docker pull aeternity/builder:otp21
+            docker build -t ${DOCKERHUB_REPO:?}:${CIRCLE_BRANCH/\//_} .
+      - run:
+          name: Start container
+          command: |
+            docker run -d --name ae_${CIRCLE_SHA1:?} ${DOCKERHUB_REPO:?}:${CIRCLE_BRANCH/\//_} sleep 1337
+      - run:
+          name: Copy the old DB into the container
+          command: |
+            docker exec -u root -it ae_${CIRCLE_SHA1:?} mkdir /old_db
+            docker cp ./node_stable/data/mnesia ae_${CIRCLE_SHA1:?}:/old_db/mnesia
+            docker exec -u root -it ae_${CIRCLE_SHA1:?} chown -R aeternity:aeternity /old_db/mnesia
+      - run:
+          name: Exec the node
+          command: |
+            export AE__CHAIN__DB_PATH=/old_db
+            docker exec -it -e AE__CHAIN__DB_PATH -e AE__CHAIN__PERSIST -e AE__FORK_MANAGEMENT__NETWORK_ID ae_${CIRCLE_SHA1:?} bin/aeternity console -noinput
+          background: true
+      - run:
+          name: Wait for the node to be ready
+          command: |
+            docker exec -it ae_${CIRCLE_SHA1:?} curl -4 --retry-connrefused --max-time 60 --retry 6 --connect-timeout 10 http://localhost:3013/v2/status
+      - run:
+          name: Health check
+          command: |
+            until [ "`docker inspect -f {{.State.Health.Status}} ae_${CIRCLE_SHA1:?}`"=="healthy" ]; do
+                sleep 1;
+            done;
+
   docker_test_push_branch:
     executor: buildpack
     steps:
@@ -1235,6 +1294,48 @@ jobs:
           name: Stop node
           command: ./node/bin/aeternity stop
       - *fail_notification
+
+  db_smoke_test:
+    docker:
+      - image: circleci/buildpack-deps:buster
+    environment:
+      - AE__CHAIN__PERSIST: true
+      - PACKAGES_DIR: *packages_workspace
+    steps:
+      - checkout
+      - run:
+          name: Prepare Jessie repository
+          command: sudo sh -c "echo \"deb https://deb.debian.org/debian/ jessie main\" > /etc/apt/sources.list.d/jessie.list"
+      - run:
+          name: Install OS Deps
+          command: sudo apt-get update && sudo apt-get install -y libsodium23 libtinfo5 libssl1.0
+      - *set_package_path
+      - attach_workspace:
+          at: *packages_workspace
+      - run:
+          name: Unzip built node
+          command: mkdir node_new && tar -xvf ${PACKAGE_TARBALL:?} -C ./node_new
+      - run:
+          name: Download latest release package
+          command: wget https://releases.aeternity.io/aeternity-latest-ubuntu-x86_64.tar.gz
+      - run:
+          name: Unzip stable node
+          command: mkdir node_stable && tar -xvf aeternity-latest-ubuntu-x86_64.tar.gz -C ./node_stable
+      - run:
+          name: Generate an old DB
+          command: |
+            ./node_stable/bin/aeternity start
+            sleep 60 # Let it sync a bit
+            curl http://localhost:3013/v2/status
+            ./node_stable/bin/aeternity stop
+      - run:
+          name: Test DB compatibility
+          command: |
+            cp -r ./node_stable/data/mnesia ./node_new/data/
+            ./node_new/bin/aeternity start
+            sleep 30
+            curl http://localhost:3013/v2/status
+            ./node_new/bin/aeternity stop
 
   deploy_integration:
     executor: infrastructure_container_unstable
@@ -1469,6 +1570,19 @@ workflows:
                 - /releases\/.*/
                 - *master_branch
 
+      - docker_db_smoke_test:
+          context: ae-node-builds
+          requires:
+            - docker_smoke_tests
+          filters:
+            branches:
+              ignore:
+                - env/dev1
+                - env/dev2
+                - system-tests
+                - /releases\/.*/
+                - *master_branch
+
       - docker_system_smoke_tests:
           requires: []
           filters:
@@ -1479,6 +1593,16 @@ workflows:
                 - system-tests
 
       - js_sdk_smoke_test:
+          requires:
+            - linux_package
+          filters:
+            branches:
+              ignore:
+                - env/dev1
+                - env/dev2
+                - system-tests
+
+      - db_smoke_test:
           requires:
             - linux_package
           filters:
@@ -1719,6 +1843,8 @@ workflows:
       - deploy_integration:
           context: ae-node-builds
           requires:
+            - docker_db_smoke_test
+            - db_smoke_test
             - test_roma
             - test_minerva
             - test_fortuna
