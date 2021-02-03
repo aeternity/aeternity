@@ -34,6 +34,7 @@
         , sum_tokens_at_height/1
         , top_block/0
         , top_block_hash/0
+        , top_block_node/0
         , top_key_block/0
         , top_key_block_hash/0
         , top_block_with_state/0
@@ -378,9 +379,11 @@ find_tx_location(TxHash) ->
 
 -spec top_header() -> 'undefined' | aec_headers:header().
 top_header() ->
-    case top_block_hash() of
-        undefined -> undefined;
-        Hash -> aec_db:get_header(Hash)
+    case top_block_node() of
+        #{ header := Header } ->
+            Header;
+        undefined ->
+            undefined
     end.
 
 -spec top_block() -> 'undefined' | aec_blocks:block().
@@ -389,6 +392,11 @@ top_block() ->
         undefined -> undefined;
         Hash -> aec_db:get_block(Hash)
     end.
+
+-spec top_block_node() -> 'undefined' | #{ hash := binary()
+                                         , header := aec_headers:header() }.
+top_block_node() ->
+    aec_db:get_top_block_node().
 
 -spec top_block_hash() -> 'undefined' | binary().
 top_block_hash() ->
@@ -399,10 +407,9 @@ top_block_hash() ->
                                       aec_blocks:block_header_hash(),
                                       aec_trees:trees()}.
 top_header_hash_and_state() ->
-    case top_block_hash() of
+    case top_block_node() of
         undefined -> error;
-        Hash ->
-            {ok, Header} = get_header(Hash),
+        #{hash := Hash, header := Header} ->
             {Header, Hash, aec_db:get_block_state(Hash)}
     end.
 
@@ -591,21 +598,24 @@ get_key_block_by_height(Height) when is_integer(Height), Height >= 0 ->
 
 -spec get_current_generation() -> 'error' | {'ok', generation()}.
 get_current_generation() ->
-    get_generation_(top_block_hash()).
+    get_generation_(top_block_node()).
 
-get_generation_(TopHash) ->
-    case get_header(TopHash) of
-        {ok, TopHeader} ->
-            case aec_headers:type(TopHeader) of
-                key ->
-                    {ok, #{ key_block => aec_blocks:new_key_from_header(TopHeader), micro_blocks => [], dir => forward }};
-                micro ->
-                    Index = maps:from_list(aec_db:find_headers_and_hash_at_height(aec_headers:height(TopHeader))),
-                    get_generation_with_header_index(TopHash, Index)
-            end;
-        _ ->
-            error
-    end.
+get_generation_(#{hash := Hash, header := Header}) ->
+    case aec_headers:type(Header) of
+        key ->
+            {ok, #{ key_block => aec_blocks:new_key_from_header(Header), micro_blocks => [], dir => forward }};
+        micro ->
+            Index = maps:from_list(aec_db:find_headers_and_hash_at_height(aec_headers:height(Header))),
+            get_generation_with_header_index(Hash, Index)
+    end;
+get_generation_(Hash) when is_binary(Hash) ->
+    case get_header(Hash) of
+        error -> error;
+        {ok, Header} ->
+            get_generation_(#{hash => Hash, header => Header})
+    end;
+get_generation_(_) ->
+    error.
 
 get_generation_with_header_index(TopHash, Index) ->
     get_generation_with_header_index(TopHash, Index, []).
@@ -649,10 +659,10 @@ get_generation_by_height(Height, backward) ->
             end
     end;
 get_generation_by_height(Height, forward) ->
-    TopHash   = top_block_hash(),
-    TopHeight = aec_headers:height(aec_db:get_header(TopHash)),
+    #{header := TopHeader} = TopNode = top_block_node(),
+    TopHeight = aec_headers:height(TopHeader),
     if TopHeight < Height  -> error;
-       TopHeight == Height -> get_generation_(TopHash);
+       TopHeight == Height -> get_generation_(TopNode);
        true                ->
            case get_key_block_by_height(Height + 1) of
                {error, _Reason} -> error;

@@ -95,6 +95,7 @@ maybe_enable_fork_resistance() ->
                                            [ user_config, schema_default ]) of
                       {ok, Height} when Height > 0 ->
                           lager:debug("Activating fork resistance for Height = ~p", [Height]),
+                          ensure_finalized_height(Height),
                           {yes, Height};
                       _ ->
                           lager:debug("No fork resistance", []),
@@ -118,6 +119,31 @@ note_chain_sync_done(Bool) when is_boolean(Bool) ->
 -spec chain_sync_is_done() -> boolean().
 chain_sync_is_done() ->
     lookup(chain_sync_done, false).
+
+ensure_finalized_height(AllowedHeightFromTop) ->
+    Fun = fun() -> ensure_finalized_height_(AllowedHeightFromTop) end,
+    aec_db:ensure_transaction(Fun).
+
+ensure_finalized_height_(AllowedHeightFromTop) ->
+    #{ header := TopHeader } = aec_db:get_top_block_node(),
+    case aec_headers:height(TopHeader) - AllowedHeightFromTop - 1 of
+        Height when Height > 0 ->
+            case aec_db:get_finalized_height() of
+                undefined ->
+                    lager:debug("No finalized height; setting to ~p", [Height]),
+                    aec_db:write_finalized_height(Height);
+                Height ->
+                    lager:debug("Already finalized height: ~p", [Height]),
+                    ok;
+                Other ->
+                    lager:debug("Previous finalized height: ~p; changed to ~p",
+                                [Other, Height]),
+                    aec_db:write_finalized_height(Height)
+            end;
+        _ ->
+            lager:debug("Not yet high enough to set finalized height", []),
+            ok
+    end.
 
 lookup(Key, Default) ->
     case ets:lookup(?TAB, Key) of

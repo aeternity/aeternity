@@ -117,6 +117,7 @@ force_community_fork() ->
 do_rollback(ForkPoint, Height, TopHeight) ->
     lager:info("Jumping to the community fork", []),
     ensure_gc_disabled(),
+    {value, FPHeader} = aec_db:find_header(ForkPoint),
     SafetyMargin = 1000, %% Why not?
     aec_db:ensure_activity(sync_dirty, fun() ->
         [begin
@@ -127,7 +128,7 @@ do_rollback(ForkPoint, Height, TopHeight) ->
                   ok = mnesia:delete(aec_block_state, Del, write)
               end || T <- mnesia:index_read(aec_headers, H, height)]
          end || H <- lists:seq(Height+1, TopHeight+SafetyMargin)],
-        aec_db:write_top_block_hash(ForkPoint)
+        aec_db:write_top_block_node(ForkPoint, FPHeader)
       end),
     ok.
 

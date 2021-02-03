@@ -31,7 +31,8 @@
          write_block_state/6,
          write_discovered_pof/2,
          write_genesis_hash/1,
-         write_top_block_hash/1,
+         write_top_block_node/2,
+         write_finalized_height/1,
          write_signal_count/2,
          find_block/1,
          find_block_tx_hashes/1,
@@ -49,6 +50,9 @@
          get_genesis_hash/0,
          get_signed_tx/1,
          get_top_block_hash/0,
+         get_top_block_node/0,
+         get_finalized_height/0,
+         dirty_get_finalized_height/0,
          get_block_state/1,
          get_block_state/2,
          get_block_from_micro_header/2
@@ -572,9 +576,18 @@ write_genesis_hash(Hash) when is_binary(Hash) ->
     ?t(mnesia:write(#aec_chain_state{key = genesis_hash, value = Hash}),
        [{aec_chain_state, genesis_hash}]).
 
-write_top_block_hash(Hash) when is_binary(Hash) ->
-    ?t(mnesia:write(#aec_chain_state{key = top_block_hash, value = Hash}),
-       [{aec_chain_state, top_block_hash}]).
+write_top_block_node(Hash, Hdr) when is_binary(Hash) ->
+    ?t(mnesia:write(#aec_chain_state{key = top_block_node, value = #{ hash => Hash
+                                                                    , header => Hdr} }),
+       [{aec_chain_state, top_block_node}]).
+
+write_finalized_height(0) ->
+    lager:debug("clearing finalized height", []),
+    ?t(mnesia:delete(aec_chain_state, finalized_height, write));
+write_finalized_height(Height) when is_integer(Height), Height > 0 ->
+    lager:debug("Height = ~p", [Height]),
+    ?t(mnesia:write(#aec_chain_state{key = finalized_height, value = Height}),
+       [{aec_chain_state, finalized_height}]).
 
 mark_chain_end_hash(Hash) when is_binary(Hash) ->
     ?t(mnesia:write(#aec_chain_state{key = {end_block_hash, Hash}, value = []}),
@@ -609,7 +622,48 @@ get_genesis_hash() ->
     get_chain_state_value(genesis_hash).
 
 get_top_block_hash() ->
-    get_chain_state_value(top_block_hash).
+    case get_chain_state_value(top_block_node) of
+        #{hash := Hash} ->
+            Hash;
+        undefined ->
+            undefined
+    end.
+
+get_top_block_node() ->
+    get_chain_state_value(top_block_node).
+
+%% Some migration code: Ideally, top_block_node is there, and we're done.
+%% If not, we should find top_block_hash. Fetch the corresponding
+%% header, delete the obsolete top_block_hash and put in the new top_block_node.
+convert_top_block_entry() ->
+    ?t(convert_top_block_entry_()).
+
+convert_top_block_entry_() ->
+    case get_chain_state_value(top_block_node) of
+        undefined ->
+            case get_chain_state_value(top_block_hash) of
+                undefined ->
+                    ok;
+                Hash ->
+                    case find_header(Hash) of
+                        {value, Header} ->
+                            delete_chain_state_value(top_block_hash),
+                            write_top_block_node(Hash, Header),
+                            #{ hash => Hash
+                             , header => Header };
+                        none ->
+                            weird
+                    end
+            end;
+        _Node ->
+            ok
+    end.
+
+get_finalized_height() ->
+    get_chain_state_value(finalized_height).
+
+dirty_get_finalized_height() ->
+    dirty_get_chain_state_value(finalized_height).
 
 get_block_state(Hash) ->
     get_block_state(Hash, false).
@@ -771,6 +825,18 @@ get_chain_state_value(Key) ->
                undefined
        end).
 
+delete_chain_state_value(Key) ->
+    ?t(mnesia:delete({aec_chain_state, Key}),
+       [{aec_chain_state, Key}]).
+
+dirty_get_chain_state_value(Key) ->
+    case ?dirty_dirty_read(aec_chain_state, Key) of
+        [#aec_chain_state{value = Value}] ->
+            Value;
+        [] ->
+            undefined
+    end.
+
 gc_tx(TxHash) ->
     ?t(case find_tx_location(TxHash) of
            BlockHash when is_binary(BlockHash) ->
@@ -878,6 +944,7 @@ fold_mempool(FunIn, InitAcc) ->
 load_database() ->
     lager:debug("load_database()", []),
     wait_for_tables(),
+    convert_top_block_entry(),
     aec_db_gc:maybe_swap_nodes(),
     prepare_mnesia_bypass().
 
@@ -1217,7 +1284,7 @@ walk_tstore({{aec_headers, Key}, Val, write}, Acc) ->
         };
 walk_tstore({{Table, Key}, Val, write}, Acc) ->
     Acc#{Table => [{put, mnesia_rocksdb:encode_key(Key), mnesia_rocksdb:encode_val(setelement(2, Val, []))} | maps:get(Table, Acc, [])]};
-walk_tstore({{aec_headers, _}, _, delete}, Acc) ->
+walk_tstore({{aec_headers, _}, _, delete}, _Acc) ->
     %% We never delete headers...
     lager:debug("Unimplemented delete of aec_headers due to index - reverting back to an ordinary mnesia commit\n", []),
     throw(bypass_abort);

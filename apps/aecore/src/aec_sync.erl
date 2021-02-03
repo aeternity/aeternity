@@ -1203,7 +1203,7 @@ fails_whitelist({Height, Hash}) ->
     end.
 
 validate_header({ok, Header}, PeerId) ->
-    try aec_validation:validate_header(Header) of
+    try validate_header_(Header) of
         ok ->
             {ok, Header};
         {error, _} = Error ->
@@ -1218,10 +1218,25 @@ validate_header({error, _} = Error, PeerId) ->
     lager:debug("Error from ~p: ~p", [PeerId, Error]),
     Error.
 
+validate_header_(Header) ->
+    case aec_headers:height(Header) of
+        0 ->
+            %% the validation function won't work on genesis
+            ok;
+        H when H > 0 ->
+            aec_validation:validate_header(Header)
+    end.
+
 validate_block(Block) ->
     Height = aec_blocks:height(Block),
-    Protocol = aec_hard_forks:protocol_effective_at_height(Height),
-    aec_validation:validate_block(Block, Protocol).
+    case Height of
+        0 ->
+            %% the validation function won't work on genesis
+            ok;
+        H when H > 0 ->
+            Protocol = aec_hard_forks:protocol_effective_at_height(Height),
+            aec_validation:validate_block(Block, Protocol)
+    end.
 
 pp_chain_block(#chain_block{hash = Hash, height = Height}) ->
     #{ hash => Hash
