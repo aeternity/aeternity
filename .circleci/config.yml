@@ -1692,12 +1692,12 @@ workflows:
               ignore:
                 - system-tests
 
-      - ubuntu_package #:
-          #filters:
-          #  branches:
-          #    only:
-          #      - /releases\/.*/
-          #      - *master_branch
+      - ubuntu_package:
+          filters:
+            branches:
+              only:
+                - /releases\/.*/
+                - *master_branch
 
       - upload_build_artifacts:
           context: ae-node-builds
