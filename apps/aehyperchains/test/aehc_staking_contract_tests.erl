@@ -1,4 +1,4 @@
--module(aehc_contract_tests).
+-module(aehc_staking_contract_tests).
 
 
 -include("../../aecontract/src/aect_sophia.hrl").
@@ -160,9 +160,9 @@ create_staking_contract(#{ deposit_delay := D
                              _ -> {lists:sum(maps:values(Stakers0)), Stakers0}
                          end,
     {ok, Code} = aect_test_utils:compile_filename(compiler_version()
-        , "apps/aehyperchains/test/contracts/SimpleElection.aes"
+        , "apps/aehyperchains/src/contracts/SimpleElection.aes"
         , [debug_mode]),
-    CallData = make_calldata(init, [{D, R, W}, Stakers1]),
+    CallData = make_calldata(init, [{D, R, W}, Stakers1, Restricted]),
     Nonce = aec_chain_sim:next_nonce(Restricted),
     {ok, Tx} = aect_create_tx:new(
                  #{ fee         => ?CALL_COST
@@ -180,7 +180,8 @@ create_staking_contract(#{ deposit_delay := D
                  }),
     aec_chain_sim:sign_and_push(Restricted, Tx),
     Contract = aect_contracts:compute_contract_pubkey(Restricted, Nonce),
-    aec_chain_sim:dict_set(staking_contract, Contract), staking_contract().
+    aec_chain_sim:dict_set(staking_contract, Contract),
+    staking_contract().
 
 
 call_staking_contract(Fun, Args, Type) ->

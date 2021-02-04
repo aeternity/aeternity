@@ -6,6 +6,7 @@
         , cuckoo_pow_from_genesis/0
         , enable_hc_from_genesis/0
         , enable_pow_cuckoo_from_genesis/0
+        , with_mocked_fork_settings/1
         ]).
 
 -include_lib("eunit/include/eunit.hrl").
@@ -28,3 +29,15 @@ enable_pow_cuckoo_from_genesis() ->
     ?assertEqual(ok, aec_consensus:check_env()),
     ok.
 
+with_mocked_fork_settings(What) ->
+    { foreach,
+      fun() ->
+          ?assertEqual(false, aehc_utils:hc_enabled()),
+          aec_test_utils:mock_genesis_and_forks(),
+          ok
+      end,
+      fun(_) ->
+          aec_test_utils:unmock_genesis_and_forks(),
+          ?assertEqual(false, aehc_utils:hc_enabled())
+      end, What
+    }.
