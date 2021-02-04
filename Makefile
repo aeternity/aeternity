@@ -412,7 +412,7 @@ multi-build: VERSION dev1-build
 # Build rules
 #
 
-internal-compile-deps:
+internal-compile-deps: hc-compile-staking-contract
 	@$(REBAR) as $(KIND) compile -d
 
 internal-package: VERSION REVISION internal-compile-deps endpoints
@@ -474,6 +474,13 @@ test-arch-os-dependencies: KIND=test
 test-arch-os-dependencies:
 	make ct-latest SUITE=apps/aecontract/test/aecontract GROUP=sophia TEST=sophia_crypto
 
+hc-compile-staking-contract:
+	./rebar3 aesophia -s v4.3.1 -c ./apps/aehyperchains/src/contracts/SimpleElection.aes -o ./data/aehyperchains/StakingContract.json
+
+# TODO: Verify release packages
+hc-verify-staking-contract:
+	./rebar3 aesophia -s v4.3.1 -c ./apps/aehyperchains/src/contracts/SimpleElection.aes -o ./data/aehyperchains/StakingContract.json -v
+
 .PHONY: \
 	all console hyperchains-console \
 	test-build \
@@ -497,4 +504,5 @@ test-arch-os-dependencies:
 	REVISION \
 	VERSION \
 	prod-deb-package \
-	regen-fate
+	regen-fate \
+	hc-compile-staking-contract hc-verify-staking-contract

@@ -171,6 +171,8 @@ mock_genesis_and_forks(PresetAccounts, Whitelist) ->
     meck:new(aec_resilience, [passthrough]),
     meck:expect(aec_resilience, fork_resistance_active, 0, no),
     meck:expect(aec_resilience, fork_resistance_configured, 0, no),
+    meck:expect(aec_fork_block_settings, hc_staking_contract_file, 0,
+        filename:join(filename:dirname(setup:data_dir()), "data/aehyperchains/StakingContract.json")),
     aec_consensus:set_consensus(),
     aec_consensus:set_genesis_hash(),
     ok.

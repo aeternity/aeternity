@@ -64,6 +64,7 @@
         , get_genesis_consensus_module/0
         , get_genesis_consensus_config/0
         , get_genesis_hash/0 %% Cached access to the genesis hash using persistent term :)
+        , config_assertion_failed/3
         ]).
 
 -include("aec_block_insertion.hrl").
@@ -351,3 +352,10 @@ get_genesis_hash() ->
         Consensus ->
             Consensus
     end.
+
+%% Brings down the entire node!
+%% Tries to inform the user what went wrong using any means
+config_assertion_failed(Msg, Format, Args) ->
+    (catch io:format(user, Msg ++ Format, Args)),
+    (catch lager:error(Msg ++ Format, Args)),
+    init:stop(Msg).

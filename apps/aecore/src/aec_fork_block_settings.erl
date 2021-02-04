@@ -10,7 +10,8 @@
          lima_extra_accounts/0,
          lima_contracts/0,
          block_whitelist/0,
-         pre_iris_map_ordering/0
+         pre_iris_map_ordering/0,
+         hc_staking_contract_file/0
         ]).
 
 -export([ accounts_file_name/1
@@ -106,6 +107,9 @@ pre_iris_map_ordering() ->
             lager:debug("Loaded ~p pre iris map orderings", [maps:size(MapOrdering)]),
             MapOrdering
     end.
+
+hc_staking_contract_file() ->
+    filename:join(aeu_env:data_dir(aehyperchains), "StakingContract.json").
 
 -spec preset_accounts(accounts | extra_accounts, aec_hard_forks:protocol_vsn(), atom()) -> list().
 preset_accounts(Type, Release, ErrorMsg) ->

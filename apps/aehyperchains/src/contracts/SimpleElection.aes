@@ -77,12 +77,14 @@ payable contract SimpleElection =
     stakes : map(delegate, list(stake)),
     withdraw_requests : map(delegate, list(withdraw_request)),
     last_election : option(election_result),
-    config : config }
+    config : config,
+    system_account: address
+    }
 
 
   entrypoint
-    init : (config, map(address, int)) => state
-    init(config, initial_stakes) =
+    init : (config, map(address, int), address) => state
+    init(config, initial_stakes, system_account) =
       require(
         config.deposit_delay >= 0,
         "NEGATIVE_DEPOSIT_DELAY")
@@ -105,7 +107,8 @@ payable contract SimpleElection =
       { stakes = Map.from_list([(addr, [{value = x, created = -config.deposit_delay}]) | (addr, x) <- init_stakes_list]),
         withdraw_requests = {},
         last_election = None,
-        config = config }
+        config = config,
+        system_account = system_account}
 
 
   /**
@@ -128,6 +131,12 @@ payable contract SimpleElection =
     hash_range() =
       Bytes.to_int(#ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff : hash)
 
+  /**
+   * The address of protocol restricted calls. The private key must remain unknown
+   */
+  entrypoint
+    restricted_address : () => address
+    restricted_address() = state.system_account // 0 address
 
   /**
    * Make the function impossible to call by a regular user
@@ -135,7 +144,7 @@ payable contract SimpleElection =
   function
     protocol_restrict : () => unit
     protocol_restrict() =
-      require(Call.origin == Contract.creator, "PROTOCOL_RESTRICTED")
+      require(Call.origin == state.system_account, "PROTOCOL_RESTRICTED")
 
 
   /**
