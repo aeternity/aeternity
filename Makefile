@@ -436,16 +436,16 @@ internal-ct: test-build
 			$(REBAR) ct $(CT_TEST_FLAGS) --sys_config $(SYSCONFIG); \
 	fi
 
-$(DEB_PKG_CHANGELOG_FILE): VERSION
-	AE_DEB_PKG_VERSION=`cat VERSION`; \
-	AE_DEB_DCH_REL_NOTE="Release notes are available in /usr/share/doc/aeternity-node/docs/release-notes/RELEASE-NOTES-`cat VERSION`.md"; \
+$(DEB_PKG_CHANGELOG_FILE): VERSION REVISION
+	export AE_DEB_PKG_VERSION=$(or $(AE_DEB_PKG_VERSION),`cat VERSION`); \
+	export AE_DEB_DCH_REL_NOTE="Release notes are available in /usr/share/doc/aeternity-node/docs/release-notes/RELEASE-NOTES-`cat VERSION`.md"; \
 	@export DEBEMAIL=$(AE_DEB_MAINT_EMAIL); \
 	export DEBFULLNAME=$(AE_DEB_MAINT_NAME) ; \
-	dch --create --package=$(AE_DEB_PKG_NAME) -v $AE_DEB_PKG_VERSION $AE_DEB_DCH_REL_NOTE; \
-	dch -r $(AE_DEB_DCH_REL_NOTE)
+	dch --create --package=$(AE_DEB_PKG_NAME) -v $$AE_DEB_PKG_VERSION $$AE_DEB_DCH_REL_NOTE; \
+	dch -r $$AE_DEB_DCH_REL_NOTE
 
 prod-deb-package: $(DEB_PKG_CHANGELOG_FILE)
-	debuild -e DEB_SKIP_DH_AUTO_CLEAN -e ERLANG_ROCKSDB_BUILDOPTS -b -uc -us
+	debuild -e DEB_SKIP_DH_AUTO_CLEAN -e ERLANG_ROCKSDB_OPTS -e ERLANG_ROCKSDB_BUILDOPTS -b -uc -us
 
 $(PLANTUML_JAR):
 	curl -fsS --create-dirs -o $@ https://netcologne.dl.sourceforge.net/project/plantuml/${PLANTUML_V}/plantuml.${PLANTUML_V}.jar
