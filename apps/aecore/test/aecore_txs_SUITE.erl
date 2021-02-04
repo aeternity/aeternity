@@ -28,8 +28,11 @@
 -define(MAX_MINED_BLOCKS, 20).
 
 all() ->
-    [ micro_block_cycle
-    , missing_tx_gossip
+    [
+    %% Bitcoin NG
+      missing_tx_gossip
+    , micro_block_cycle
+    %% CT Consensus
     , txs_gc
     , check_coinbase_validation
     ].
@@ -46,8 +49,8 @@ init_per_suite(Config) ->
         <<"mempool">> => #{ <<"invalid_tx_ttl">> => 2 }
     },
     Config1 = aecore_suite_utils:init_per_suite([dev1, dev2], DefCfg, 
-                                                [{add_peers, true}], 
-                                                [{symlink_name, "latest.txs"}, 
+                                                [{add_peers, true}],
+                                                [{symlink_name, "latest.txs"},
                                                  {test_module, ?MODULE}, 
                                                  {micro_block_cycle, 
                                                   MicroBlockCycle}] ++ 
@@ -92,6 +95,7 @@ txs_gc(Config) ->
     %% The old test suite was implicitly calling aec_tx_pool:garbage_collect() when mining stopped.
     %% To simulate receiving blocks from external entities - call aec_tx_pool:garbage_collect() explicitly :)
     aecore_suite_utils:reinit_with_ct_consensus(dev1),
+    aecore_suite_utils:reinit_with_ct_consensus(dev2),
     N1 = aecore_suite_utils:node_name(dev1),
     ok = aecore_suite_utils:mock_mempool_nonce_offset(N1, 100),
 
@@ -280,6 +284,7 @@ micro_block_cycle(Config) ->
     MBC = ?config(micro_block_cycle, Config),
     N1 = aecore_suite_utils:node_name(dev1),
     aecore_suite_utils:reinit_with_bitcoin_ng(dev1),
+    aecore_suite_utils:reinit_with_bitcoin_ng(dev2),
 
     %% Mine a block to get some funds. Height=1
     aecore_suite_utils:mine_key_blocks(N1, 1),
