@@ -30,6 +30,8 @@ hyperchains_unable_to_use_normal_db_test_() ->
 
              meck:new(aec_db, [passthrough]),
              meck:expect(aec_db, load_database, 0, ok),
+             meck:expect(aec_db, find_hc_staking_contract_address, 0, none),
+             meck:expect(aec_db, write_hc_staking_contract_address, 1, ok),
              meck:new(aecore_sup, [passthrough]),
              meck:expect(aecore_sup, start_link, 0, {ok, pid}),
              meck:new(aec_jobs_queues, [passthrough]),
@@ -37,11 +39,13 @@ hyperchains_unable_to_use_normal_db_test_() ->
              meck:new(aec_chain_state, [passthrough]),
              meck:expect(aec_chain_state, ensure_chain_ends, 0, ok),
              meck:new(aec_consensus, [passthrough]),
+             aec_test_utils:mock_genesis_and_forks(),
              ok = lager:start(),
 
              InitialApps
      end,
      fun({OldRunningApps, OldLoadedApps}) ->
+             aec_test_utils:unmock_genesis_and_forks(),
              meck:unload(aec_consensus),
              meck:unload(aec_chain_state),
              meck:unload(aec_jobs_queues),
@@ -100,6 +104,7 @@ end,
      ]}.
 
 write_parent_chain_test_() ->
+    aehc_test_utils:with_mocked_fork_settings([
     aec_test_utils:eunit_with_consensus(aehc_test_utils:hc_from_genesis(), [
     {foreach,
      fun() ->
@@ -115,11 +120,11 @@ write_parent_chain_test_() ->
              meck:expect(aec_mining, verify, fun(_, _, _, _) -> true end),
              meck:new(aec_events, [passthrough]),
              meck:expect(aec_events, publish, fun(_, _) -> ok end),
-             aec_test_utils:mock_genesis_and_forks(),
              TmpDir = aec_test_utils:aec_keys_setup(),
              {ok, PubKey} = aec_keys:pubkey(),
              ok = application:set_env(aecore, beneficiary, aeser_api_encoder:encode(account_pubkey, PubKey)),
              {ok, _} = aec_tx_pool:start_link(),
+             aec_consensus:set_genesis_hash(),
              {ok, _} = aec_conductor:start_link([{autostart, false}]),
              TmpDir
      end,
@@ -130,7 +135,6 @@ write_parent_chain_test_() ->
              ok = application:stop(gproc),
              meck:unload(aec_mining),
              meck:unload(aec_events),
-             aec_test_utils:unmock_genesis_and_forks(),
              aec_test_utils:stop_chain_db(),
              ok = aec_db_error_store:stop(),
              aec_test_utils:aec_keys_cleanup(TmpDir)
@@ -156,4 +160,4 @@ write_parent_chain_test_() ->
             ?assertEqual(ParentBlock, aehc_parent_db:get_parent_block(?PARENT_GENESIS_HASH)),
             ?assertEqual(CList, aehc_parent_db:get_candidates_in_election_cycle(1337, ?PARENT_GENESIS_HASH))
        end}
-     ]}]).
+     ]}])]).

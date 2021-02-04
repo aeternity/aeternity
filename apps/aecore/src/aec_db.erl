@@ -127,6 +127,13 @@
         , chain_end_migration_status/0
         ]).
 
+%% For Hyperchains
+%% TODO: Until the DB gets refactored we need to share tables in order to not regress on performance
+%%       Context: Every table is backed right now by a separate full blown DB -.-
+-export([ write_hc_staking_contract_address/1
+        , find_hc_staking_contract_address/0
+        ]).
+
 %%
 %% for testing
 -export([backend_mode/0]).
@@ -612,6 +619,15 @@ chain_end_migration_status() ->
     case ?t(mnesia:read(aec_chain_state, chain_end_migration_lock)) of
         [#aec_chain_state{}] -> in_progress;
         _ -> done
+    end.
+
+write_hc_staking_contract_address(Address) when is_binary(Address) ->
+    ?t(mnesia:write(#aec_chain_state{key = hc_staking_contract_address, value = Address})).
+
+find_hc_staking_contract_address() ->
+    case ?t(mnesia:read(aec_chain_state, hc_staking_contract_address)) of
+        [#aec_chain_state{value = Address}] -> {value, Address};
+        [] -> none
     end.
 
 write_signal_count(Hash, Count) when is_binary(Hash), is_integer(Count) ->

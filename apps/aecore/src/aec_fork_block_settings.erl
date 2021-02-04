@@ -9,7 +9,8 @@
          lima_accounts/0,
          lima_extra_accounts/0,
          lima_contracts/0,
-         block_whitelist/0
+         block_whitelist/0,
+         hc_staking_contract_file/0
         ]).
 
 -export([ accounts_file_name/1
@@ -85,6 +86,9 @@ whitelist_filename() ->
                                   [user_config,
                                    {value, whitelist_json_file()}]),
     filename:absname(setup:expand_value(aecore, F)).
+
+hc_staking_contract_file() ->
+    filename:join(aeu_env:data_dir(aehyperchains), "StakingContract.json").
 
 -spec preset_accounts(accounts | extra_accounts, aec_hard_forks:protocol_vsn(), atom()) -> list().
 preset_accounts(Type, Release, ErrorMsg) ->
