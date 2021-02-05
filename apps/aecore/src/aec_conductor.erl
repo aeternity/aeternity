@@ -273,12 +273,17 @@ reinit_chain_state() ->
     %% this is ok as anyway this is only a test endpoint used in one place:
     %% apps/aehttp/test/aehttp_integration_SUITE.erl
     ok = supervisor:terminate_child(aecore_sup, aec_tx_pool),
+    ok = supervisor:terminate_child(aecore_sup, aec_tx_pool_gc),
+    ok = supervisor:terminate_child(aecore_sup, aec_connection_sup),
     aec_db:ensure_transaction(fun aec_db:clear_db/0),
     aec_db:ensure_transaction(fun init_chain_state/0),
+    {ok, _} = supervisor:restart_child(aecore_sup, aec_connection_sup),
+    {ok, _} = supervisor:restart_child(aecore_sup, aec_tx_pool_gc),
     {ok, _} = supervisor:restart_child(aecore_sup, aec_tx_pool),
     ok.
 
 reinit_chain_impl(State1 = #state{ consensus = #consensus{consensus_module = ActiveConsensus} = Cons }) ->
+    lager:info("Reinitializing chain"),
     %% NOTE: ONLY FOR TEST
     ActiveConsensus:stop(),
     aec_consensus:set_consensus(), %% It's time to commit env changes
@@ -307,6 +312,7 @@ reinit_chain_impl(State1 = #state{ consensus = #consensus{consensus_module = Act
                                            key_block_candidates = undefined,
                                            consensus = Cons1#consensus{leader = false}})
         end,
+    lager:info("Reinitialized chain"),
     {reply, ok, State}.
 -else.
 reinit_chain_impl(State) ->

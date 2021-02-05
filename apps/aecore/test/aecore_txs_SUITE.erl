@@ -28,8 +28,11 @@
 -define(MAX_MINED_BLOCKS, 20).
 
 all() ->
-    [ micro_block_cycle
-    , missing_tx_gossip
+    [
+    %% Bitcoin NG
+      missing_tx_gossip
+    , micro_block_cycle
+    %% CT Consensus
     , txs_gc
     , check_coinbase_validation
     ].
@@ -46,23 +49,33 @@ init_per_suite(Config) ->
         <<"mempool">> => #{ <<"invalid_tx_ttl">> => 2 }
     },
     Config1 = aecore_suite_utils:init_per_suite([dev1, dev2], DefCfg, 
-                                                [{add_peers, true}], 
-                                                [{symlink_name, "latest.txs"}, 
+                                                [{add_peers, true}],
+                                                [{symlink_name, "latest.txs"},
                                                  {test_module, ?MODULE}, 
                                                  {micro_block_cycle, 
                                                   MicroBlockCycle}] ++ 
                                                 Config),
-    [begin
+    pforeach(fun(N) ->
         aecore_suite_utils:start_node(N, Config1),
         Node = aecore_suite_utils:node_name(N),
-        aecore_suite_utils:connect(Node) end || N <- [dev1, dev2]],
+        aecore_suite_utils:connect(Node) end, [dev1, dev2]),
     [{nodes, [aecore_suite_utils:node_tuple(dev1),
               aecore_suite_utils:node_tuple(dev2)]} | Config1].
 
 end_per_suite(Config) ->
-    aecore_suite_utils:stop_node(dev1, Config),
-    aecore_suite_utils:stop_node(dev2, Config),
+    pforeach(fun(Node) -> aecore_suite_utils:stop_node(Node, Config) end, [dev1, dev2]),
     ok.
+
+pforeach(F, List) ->
+    MRefs = lists:map(
+        fun(E) ->
+            {_, MRef} = spawn_monitor(fun() ->
+                F(E)
+            end),
+            MRef
+        end,
+    List),
+    [receive {'DOWN', MRef, process, _, _} -> ok end || MRef <- MRefs].
 
 init_per_testcase(_Case, Config) ->
     ct:log("testcase pid: ~p", [self()]),
@@ -78,12 +91,17 @@ end_per_testcase(_Case, Config) ->
 %% Test cases
 %% ============================================================
 txs_gc(Config) ->
-    aecore_suite_utils:reinit_with_bitcoin_ng(dev1),
+    %% WARNING: GC is triggered only when we receive a keyblock and we are NOT the leader
+    %% The old test suite was implicitly calling aec_tx_pool:garbage_collect() when mining stopped.
+    %% To simulate receiving blocks from external entities - call aec_tx_pool:garbage_collect() explicitly :)
+    aecore_suite_utils:reinit_with_ct_consensus(dev1),
+    aecore_suite_utils:reinit_with_ct_consensus(dev2),
     N1 = aecore_suite_utils:node_name(dev1),
     ok = aecore_suite_utils:mock_mempool_nonce_offset(N1, 100),
 
-    Height0 = 0,
-
+    %% WARNING: There is another nasty hidden assumption here
+    %%          the generation where TxH2 was mined needs to contain at least 2
+    %%          microblocks in order for GC1 to be marked for GC at 3
     %% Add a bunch of transactions...
     {ok, TxH1} = add_spend_tx(N1, 1000, 20000 * aec_test_utils:min_gas_price(),  1,  10), %% Ok
     {ok, _GC1} = add_spend_tx(N1, 1000, 20000 * aec_test_utils:min_gas_price(),  2,  10), %% Should expire ?EXPIRE_TX_TTL after
@@ -99,31 +117,38 @@ txs_gc(Config) ->
     pool_check(N1, 7),
 
     %% Mine to get TxH1-3 onto chain
-    {ok, Blocks1} = aecore_suite_utils:mine_blocks_until_txs_on_chain(N1, [TxH1, TxH2, TxH3], ?MAX_MINED_BLOCKS),
-    Height1 = Height0 + length(Blocks1), %% Very unlikely to be > 6...
+    aecore_suite_utils:mine_key_blocks(N1, 1), %% Make us the leader
+    aecore_suite_utils:mine_micro_blocks(N1, 2),
+    aecore_suite_utils:mine_key_blocks(N1, 1),
+    aecore_suite_utils:mine_micro_blocks(N1, 2),
+    rpc:call(N1, aec_tx_pool, garbage_collect, []),
 
-    %% At Height1 there should be 4 transactions in mempool
-    pool_check(N1, 4, {Height1, 2}),
+    %% At height 2 there should be 4 transactions in mempool
+    pool_check(N1, 4),
 
     %% Mine 1 more key block to ensure one TX is GC:ed.
     aecore_suite_utils:mine_key_blocks(N1, 1),
-    Height2 = Height1 + 1,
+    rpc:call(N1, aec_tx_pool, garbage_collect, []),
+    Height2 = 3,
 
-    %% Now at Height2 there should be 3 transactions in mempool - _GC1 is GC:ed
-    pool_check(N1, 3, {Height2, 6}),
+    %% Now at height 3 there should be 3 transactions in mempool - _GC1 is GC:ed
+    pool_check(N1, 3),
 
     %% Add the missing tx
     {ok, TxH4} = add_spend_tx(N1, 1000, 20000 * aec_test_utils:min_gas_price(),  4,  10), %% consecutive nonce
 
     %% Mine to get TxH4-5 onto chain
     {ok, Blocks2} = aecore_suite_utils:mine_blocks_until_txs_on_chain(N1, [TxH4, TxH5], ?MAX_MINED_BLOCKS),
+    rpc:call(N1, aec_tx_pool, garbage_collect, []),
     Height3 = Height2 + length(Blocks2),
 
     %% Now if at height 5 or 6 there should be 2 transactions in mempool
     pool_check(N1, 2, {Height3, 6}),
 
     %% Mine 1 more key block if Height is 5 ensure one TX should be GC:ed.
-    [ aecore_suite_utils:mine_key_blocks(N1, 7 - Height3) || Height3 < 7 ],
+    [ begin
+          aecore_suite_utils:mine_key_blocks(N1, 7 - Height3), rpc:call(N1, aec_tx_pool, garbage_collect, [])
+      end || Height3 < 7 ],
 
     Height4 = max(Height3, 7),
 
@@ -132,6 +157,7 @@ txs_gc(Config) ->
 
     %% Mine 2 more blocks then all TXs should be GC:ed. Height>=10
     aecore_suite_utils:mine_key_blocks(N1, 3),
+    rpc:call(N1, aec_tx_pool, garbage_collect, []),
 
     %% Now there should be no transactions in mempool
     pool_check(N1, 0),
@@ -208,10 +234,12 @@ missing_tx_gossip(Config) ->
 
     ok.
 
+%% CT Consensus does not change the coinbase
 check_coinbase_validation(Config) ->
     %% Mine on a node a contract tx using coinbase.
     N1 = aecore_suite_utils:node_name(dev1),
-    aecore_suite_utils:reinit_with_bitcoin_ng(dev1),
+    aecore_suite_utils:reinit_with_ct_consensus(dev1),
+    aecore_suite_utils:reinit_with_ct_consensus(dev2),
     {ok, TxH1, Ct1, Code} =
         create_contract_tx(N1, chain, [],  300000 * aec_test_utils:min_gas_price(),  1,  100),
     {ok, TxH2} =
@@ -219,14 +247,14 @@ check_coinbase_validation(Config) ->
     {ok, _} =
         aecore_suite_utils:mine_blocks_until_txs_on_chain(N1, [TxH1, TxH2], ?MAX_MINED_BLOCKS),
 
-    %% Start a second node with distinct beneficiary.
-    aecore_suite_utils:stop_node(dev2, Config),
+    %% Check if dev2 syncs with dev1 from genesis
     N2 = aecore_suite_utils:node_name(dev2),
-    aecore_suite_utils:start_node(dev2, Config),
-    aecore_suite_utils:connect(N2),
+    aecore_suite_utils:reinit_with_ct_consensus(dev2),
+
+    %% Sanity check on the test nodes.
     {ok, Ben1} = rpc:call(N1, aec_conductor, get_beneficiary, []),
     {ok, Ben2} = rpc:call(N2, aec_conductor, get_beneficiary, []),
-    ?assertNotEqual(Ben1, Ben2), %% Sanity check on the test nodes.
+    ?assertNotEqual(Ben1, Ben2),
 
     %% Check that the second node syncs the mined tx with the initial node.
     {ok, Tx1Hash} = aeser_api_encoder:safe_decode(tx_hash, TxH1),
@@ -251,10 +279,12 @@ wait_till_hash_in_block_on_node(Node, TxHash, Limit) ->
 
 yield() -> timer:sleep(10).
 
+%% Test specific to BitcoinNG - don't enable CT consensus
 micro_block_cycle(Config) ->
     MBC = ?config(micro_block_cycle, Config),
     N1 = aecore_suite_utils:node_name(dev1),
     aecore_suite_utils:reinit_with_bitcoin_ng(dev1),
+    aecore_suite_utils:reinit_with_bitcoin_ng(dev2),
 
     %% Mine a block to get some funds. Height=1
     aecore_suite_utils:mine_key_blocks(N1, 1),
