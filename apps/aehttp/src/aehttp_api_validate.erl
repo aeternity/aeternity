@@ -185,10 +185,20 @@ prepare_param_({"type", "integer"}, Value, Name, _) ->
     end;
 prepare_param_({"type", "string"}, _, _, _) -> ok;
 % schema
-prepare_param_({"schema", #{<<"$ref">> := <<"/definitions/", Ref/binary>>}},
+prepare_param_({"schema", #{<<"$ref">> := FullRef}},
                Value, Name, Validator) ->
     try
-        Schema = #{<<"$ref">> => <<"#/definitions/", Ref/binary>>},
+        Prefix = list_to_binary(endpoints:definitions_prefix()),
+        Ref =
+            case endpoints:definitions_prefix() of
+                "/definitions/" ->
+                    <<"/definitions/", Ref0/binary>> = FullRef,
+                    Ref0;
+                "/components/schemas/" ->
+                    <<"/components/schemas/", Ref0/binary>> = FullRef,
+                    Ref0
+            end,
+        Schema = #{<<"$ref">> => <<"#", Prefix/binary, Ref/binary>>},
         jesse_schema_validator:validate_with_state(Schema, Value, Validator),
         {ok, Value, Ref}
     catch
