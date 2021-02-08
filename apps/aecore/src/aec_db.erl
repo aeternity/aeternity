@@ -1108,27 +1108,15 @@ default_dir() ->
             Dir
     end.
 
-try_activity(Type, Fun, ErrorKeys) ->
-    %% If no configuration is found, we only retry once.
-    MaxRetries = aeu_env:user_config_or_env([<<"chain">>, <<"db_write_max_retries">>],
-                                            aecore, db_write_max_retries, 1),
-    try_activity(Type, Fun, ErrorKeys, MaxRetries).
-
-%% @doc Run function in an mnesia activity context. If retries is 0 or less, the
-%% operation will not be retried upon failure. If retries is greater than 0, the
-%% operation will be retried upon failure and the retry counter will be
-%% decremented.
+%% @doc Run function in an mnesia activity context.
 %% This function must not be called from inside another transaction because this
 %% will mess with Mnesia's internal retry mechanism.
-try_activity(Type, Fun, ErrorKeys, Retries) when Retries =< 0 ->
-    handle_activity_result(do_activity(Type, Fun), ErrorKeys);
-try_activity(Type, Fun, ErrorKeys, Retries) ->
+try_activity(Type, Fun, ErrorKeys) ->
     try
         handle_activity_result(do_activity(Type, Fun), ErrorKeys)
     catch
         exit:Reason ->
-            lager:warning("Mnesia activity Type=~p exit with Reason=~p, retrying", [Type, Reason]),
-            try_activity(Type, Fun, ErrorKeys, Retries - 1)
+            lager:warning("Mnesia activity Type=~p exit with Reason=~p", [Type, Reason])
     end.
 
 handle_activity_result(Res, ErrorKeys) ->
