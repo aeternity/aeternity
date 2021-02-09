@@ -43,7 +43,7 @@ mine_block_test_() ->
                              ?MINERVA_PROTOCOL_VSN -> 14355842201894252133;
                              ?FORTUNA_PROTOCOL_VSN -> 7559967028720457330;
                              ?LIMA_PROTOCOL_VSN    -> 12722243844980722948;
-                             ?IRIS_PROTOCOL_VSN    -> 16960305589119113986
+                             ?IRIS_PROTOCOL_VSN    -> 6213455596009988662 
                          end,
                  {BlockCandidate,_} = aec_test_utils:create_keyblock_with_state(
                                         [{TopBlock, aec_trees:new()}], ?TEST_PUB),
