@@ -139,7 +139,7 @@ start(_Config) ->
                 "Predeploy address is different from the already deployed contract",
                 " Deployed: ~p, Predeploy: ~p",
                 [ aeser_api_encoder:encode(contract_pubkey, X)
-                , aeser_api_encoder:encode(contract_pubkey, y)
+                , aeser_api_encoder:encode(contract_pubkey, Y)
                 ]);
         {_, _} -> ok
     end,
@@ -303,7 +303,7 @@ get_predeploy_address() ->
         Addr -> {ok, Addr}
     end.
 
-%% Deploys the staking contract by the first free system account :)
+%% Deploys the staking contract using a free system account :)
 %% TODO: For now just hardcode the settings
 -define(VM_VERSION, 5).
 -define(ABI_VERSION, 3).
@@ -416,6 +416,7 @@ static_contract_call(Trees0, TxEnv0, Query) ->
         {error, _What} = Err -> Err
     end.
 
+%% Helpers for static queries of the staking contract
 %% TODO: Better names - We're not JAVA programmers
 static_staking_contract_call_on_top_block(Query) ->
     aec_db:ensure_activity(async_dirty, fun() ->
@@ -434,3 +435,43 @@ static_staking_contract_call_on_block_hash(BlockHash, Query) ->
                 {Env, Trees} = aetx_env:tx_env_and_trees_from_hash('aetx_transaction', BlockHash),
                 static_contract_call(Trees, Env, Query)
         end end).
+
+%% Stateful staking contract invocation using the restricted account
+%% Used to perform the election of the leader of the next generation or to punish someone for misbehaving
+protocol_staking_contract_call(Trees0, TxEnv, Query) ->
+    Aci = get_staking_contract_aci(),
+    {ok, ContractPubkey} = get_staking_contract_address(),
+    {ok, CallData} = aeaci_aci:encode_call_data(Aci, Query),
+    Accounts0 = aec_trees:accounts(Trees0),
+    SavedAccount = case aec_accounts_trees:lookup(?RESTRICTED_ACCOUNT, Accounts0) of
+          none -> error;
+          {value, A} -> {ok, A}
+      end,
+    Accounts1 = aec_accounts_trees:enter(aec_accounts:new(?RESTRICTED_ACCOUNT, 1 bsl 61), Accounts0),
+    Trees1 = aec_trees:set_accounts(Trees0, Accounts1),
+    TxSpec = #{ caller_id   => aeser_id:create(account, ?RESTRICTED_ACCOUNT)
+              , nonce       => 1
+              , contract_id => aeser_id:create(contract, ContractPubkey)
+              , abi_version => ?ABI_VERSION
+              , fee         => 1 bsl 60
+              , amount      => 0
+              , gas         => 1 bsl 30
+              , gas_price   => 1 bsl 30
+              , call_data   => CallData
+              },
+    {ok, Tx} = aect_call_tx:new(TxSpec),
+    case aetx:process(Tx, Trees1, TxEnv) of
+        {ok, Trees2, _} ->
+            CallPubkey     = aect_call:id(?DRY_RUN_ACCOUNT, 1, ContractPubkey),
+            CallTree       = aec_trees:calls(Trees2),
+            {value, Call}  = aect_call_state_tree:lookup_call(ContractPubkey, CallPubkey, CallTree),
+            case aect_call:return_type(Call) of
+                ok ->
+                    Accounts2 = aec_accounts_trees:enter(SavedAccount, aec_trees:accounts(Trees2)),
+                    Trees3 = aec_trees:set_accounts(Trees2, Accounts2),
+                    {ok, Trees3, aeb_fate_encoding:deserialize(aect_call:return_value(Call))};
+                What ->
+                    {error, {What, aect_call:return_type(Call)}}
+            end;
+        {error, _What} = Err -> Err
+    end.
