@@ -143,6 +143,12 @@ start(_Config) ->
                 ]);
         {_, _} -> ok
     end,
+    case get_staking_contract_address() of
+        {ok, X} ->
+            %% TODO: Sanity check the existing staking contract deployment against our bytecode
+            ok;
+        not_deployed -> ok
+    end,
     %% Spawn the block generator etc...
     %% Crank down the finalized height delta to 2-4 ;)
     ok.
@@ -175,6 +181,7 @@ state_pre_transform_key_node_consensus_switch(KeyNode, Trees) ->
                     %% When the staking contract was not found it is better to
                     %% bring down the entire node down. By rejecting the state transition
                     %% the node will get stuck syncing on the specified height
+                    %% TODO: Sanity check the staking contract deployment against out deployment
                     Trees;
                     %%find_existing_staking_contract(Deployer, Trees);
                 error ->
