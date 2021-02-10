@@ -403,7 +403,6 @@ handle_request_('GetPeers', _Req, _Context) ->
     InboundPeers = aehttp_logic:connected_peers(inbound),
     OutboundPeers = aehttp_logic:connected_peers(outbound),
     Blocked = aehttp_logic:blocked_peers(),
-
     {200, [], #{peers => lists:map(fun aec_peers:encode_peer_address/1, Peers),
                 inbound => lists:map(fun aec_peers:encode_peer_address/1, InboundPeers),
                 outbound => lists:map(fun aec_peers:encode_peer_address/1, OutboundPeers),
