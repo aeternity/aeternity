@@ -50,7 +50,7 @@ environment variables. This means that it's possible to instruct the node to res
 forks at a given node start in the following way:
 
 ```
-AE__resist__forks__from__start=true bin/aeternity start
+AE__SYNC__RESIST_FORKS_FROM_START=true bin/aeternity start
 ```
 (see [the configuration documentation](configuration.md#configuration-from-the-command-line-or-scripts))
 

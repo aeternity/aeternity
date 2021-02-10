@@ -115,6 +115,7 @@ maybe_enable_fork_resistance() ->
     maybe_enable_fork_resistance(read_and_cache_config()).
 
 maybe_enable_fork_resistance(Config) ->
+    lager:debug("Config = ~p", [Config]),
     Res = case Config of
               {yes, Height} when Height > 0 ->
                   lager:debug("Activating fork resistance for Height = ~p", [Height]),
@@ -129,8 +130,8 @@ maybe_enable_fork_resistance(Config) ->
 read_and_cache_config() ->
     Res = case aeu_env:find_config([<<"sync">>, <<"sync_allowed_height_from_top">>],
                                    [ user_config, schema_default ]) of
-              {yes, Height} = Ok when Height > 0 ->
-                  Ok;
+              {ok, Height} when Height > 0 ->
+                  {yes, Height};
               _ ->
                   no
           end,
