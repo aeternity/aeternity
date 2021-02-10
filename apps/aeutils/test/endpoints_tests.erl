@@ -8,7 +8,8 @@ operation_method_test() ->
    ?assertEqual([get], maps:keys(endpoints:operation('GetTopBlock'))).
 
 path_without_test() ->
-   ?assertEqual(<<"/v2/blocks/top">>, endpoints:path(get, 'GetTopBlock', #{})).
+   ?assertEqual(<<"/v2/blocks/top">>, endpoints:path(get, 'GetTopBlock', #{})),
+   ?assertEqual(<<"/v2/debug/peers">>, endpoints:path(get, 'GetPeers', #{})).
 
 path_with_params_test() ->
    ?assertEqual(<<"/v2/key-blocks/height/3">>,
