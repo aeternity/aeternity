@@ -9,13 +9,21 @@
 -spec json(version()) -> jsx:json_text().
 json(SpecVsn) ->
     Filename = filename:join(code:priv_dir(aehttp), filename(SpecVsn)),
-    Yamls = yamerl_constr:file(Filename, [str_node_as_binary]),
-    YamlTpl = lists:last(Yamls),
-    OldInfo = proplists:get_value(<<"info">>, YamlTpl),
-    UpdatedInfo = lists:keyreplace(<<"version">>, 1, OldInfo, {<<"version">>, aeu_info:get_version()}),
-    Yaml = lists:keyreplace(<<"info">>, 1, YamlTpl, {<<"info">>, UpdatedInfo}),
+    [Yaml0] = yamerl_constr:file(Filename, [str_node_as_binary]),
+    Yaml =
+        lists:foldl(
+            fun(Fun, Accum) -> Fun(Accum) end,
+            Yaml0,
+            [fun set_version/1
+            ]),
     Json = jsx:prettify(jsx:encode(Yaml)),
     Json.
 
+set_version(Yaml) ->
+    OldInfo = proplists:get_value(<<"info">>, Yaml),
+    UpdatedInfo = lists:keyreplace(<<"version">>, 1, OldInfo, {<<"version">>, aeu_info:get_version()}),
+    lists:keyreplace(<<"info">>, 1, Yaml, {<<"info">>, UpdatedInfo}).
+
 filename(?SWAGGER2) -> "swagger.yaml";
 filename(?OAS3) -> "oas3.yaml".
+
