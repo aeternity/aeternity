@@ -297,7 +297,11 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/GenericTxs"
+                properties:
+                  transactions:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/GenericTx"
         "400":
           description: Invalid hash
           content:
@@ -613,7 +617,11 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/GenericTxs"
+                properties:
+                  transactions:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/GenericTx"
         "400":
           description: Invalid public key
           content:
@@ -1720,7 +1728,11 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/GenericTxs"
+                properties:
+                  transactions:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/GenericTx"
   /debug/names/commitment-id:
     get:
       tags:
@@ -1997,15 +2009,6 @@ components:
           $ref: "#/components/schemas/KeyBlock"
         micro_block:
           $ref: "#/components/schemas/MicroBlockHeader"
-    GenericTxs:
-      type: object
-      properties:
-        transactions:
-          type: array
-          items:
-            $ref: "#/components/schemas/GenericSignedTx"
-      required:
-        - transactions
     Account:
       type: object
       properties:
@@ -2838,98 +2841,6 @@ components:
       required:
         - version
         - type
-    ChannelCreateTxJSON:
-      allOf:
-        - $ref: "#/components/schemas/GenericTx"
-        - $ref: "#/components/schemas/ChannelCreateTx"
-    ChannelDepositTxJSON:
-      allOf:
-        - $ref: "#/components/schemas/GenericTx"
-        - $ref: "#/components/schemas/ChannelDepositTx"
-    ChannelWithdrawalTxJSON:
-      allOf:
-        - $ref: "#/components/schemas/GenericTx"
-        - $ref: "#/components/schemas/ChannelWithdrawTx"
-    ChannelForceProgressTxJSON:
-      allOf:
-        - $ref: "#/components/schemas/GenericTx"
-        - $ref: "#/components/schemas/ChannelForceProgressTx"
-    ChannelCloseMutualTxJSON:
-      allOf:
-        - $ref: "#/components/schemas/GenericTx"
-        - $ref: "#/components/schemas/ChannelCloseMutualTx"
-    ChannelCloseSoloTxJSON:
-      allOf:
-        - $ref: "#/components/schemas/GenericTx"
-        - $ref: "#/components/schemas/ChannelCloseSoloTx"
-    ChannelSlashTxJSON:
-      allOf:
-        - $ref: "#/components/schemas/GenericTx"
-        - $ref: "#/components/schemas/ChannelSlashTx"
-    ChannelSettleTxJSON:
-      allOf:
-        - $ref: "#/components/schemas/GenericTx"
-        - $ref: "#/components/schemas/ChannelSettleTx"
-    ChannelSnapshotSoloTxJSON:
-      allOf:
-        - $ref: "#/components/schemas/GenericTx"
-        - $ref: "#/components/schemas/ChannelSnapshotSoloTx"
-    SpendTxJSON:
-      allOf:
-        - $ref: "#/components/schemas/GenericTx"
-        - $ref: "#/components/schemas/SpendTx"
-    OracleRegisterTxJSON:
-      allOf:
-        - $ref: "#/components/schemas/GenericTx"
-        - $ref: "#/components/schemas/OracleRegisterTx"
-    OracleExtendTxJSON:
-      allOf:
-        - $ref: "#/components/schemas/GenericTx"
-        - $ref: "#/components/schemas/OracleExtendTx"
-    OracleQueryTxJSON:
-      allOf:
-        - $ref: "#/components/schemas/GenericTx"
-        - $ref: "#/components/schemas/OracleQueryTx"
-    OracleResponseTxJSON:
-      allOf:
-        - $ref: "#/components/schemas/GenericTx"
-        - $ref: "#/components/schemas/OracleRespondTx"
-    NamePreclaimTxJSON:
-      allOf:
-        - $ref: "#/components/schemas/GenericTx"
-        - $ref: "#/components/schemas/NamePreclaimTx"
-    NameClaimTxJSON:
-      allOf:
-        - $ref: "#/components/schemas/GenericTx"
-        - $ref: "#/components/schemas/NameClaimTx"
-    NameUpdateTxJSON:
-      allOf:
-        - $ref: "#/components/schemas/GenericTx"
-        - $ref: "#/components/schemas/NameUpdateTx"
-    NameTransferTxJSON:
-      allOf:
-        - $ref: "#/components/schemas/GenericTx"
-        - $ref: "#/components/schemas/NameTransferTx"
-    NameRevokeTxJSON:
-      allOf:
-        - $ref: "#/components/schemas/GenericTx"
-        - $ref: "#/components/schemas/NameRevokeTx"
-    ContractCreateTxJSON:
-      allOf:
-        - $ref: "#/components/schemas/GenericTx"
-        - $ref: "#/components/schemas/ContractCreateTx"
-    ContractCallTxJSON:
-      allOf:
-        - $ref: "#/components/schemas/GenericTx"
-        - $ref: "#/components/schemas/ContractCallTx"
-    GAAttachTxJSON:
-      allOf:
-        - $ref: "#/components/schemas/GenericTx"
-        - $ref: "#/components/schemas/GAAttachTx"
-    GAMetaTxJSON:
-      allOf:
-        - $ref: "#/components/schemas/GenericTx"
-        - $ref: "#/components/schemas/GAMetaTx"
     TxInfoObject:
       type: object
       properties:
