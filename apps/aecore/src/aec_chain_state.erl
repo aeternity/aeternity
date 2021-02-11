@@ -603,11 +603,17 @@ assert_height_delta(sync, Height, TopHeight) ->
         {yes, Delta} ->
             Height >= (TopHeight - Delta);
         no ->
-            case aec_db:dirty_get_finalized_height() of
-                undefined ->
-                    true;
-                FHeight ->
-                    Height > FHeight
+            case aec_resilience:fork_resistance_configured() of
+                {yes, _} ->
+                    case aec_db:dirty_get_finalized_height() of
+                        undefined ->
+                            true;
+                        FHeight ->
+                            Height > FHeight
+                    end;
+                no ->
+                    %% Don't enforce finalized_height if FR not configured
+                    true
             end
     end;
 assert_height_delta(undefined, Height, TopHeight) ->

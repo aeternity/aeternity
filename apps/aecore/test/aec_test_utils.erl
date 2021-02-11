@@ -167,6 +167,7 @@ mock_genesis_and_forks(PresetAccounts, Whitelist) ->
     meck:expect(aec_fork_block_settings, block_whitelist, 0, Whitelist),
     meck:new(aec_resilience, [passthrough]),
     meck:expect(aec_resilience, fork_resistance_active, 0, no),
+    meck:expect(aec_resilience, fork_resistance_configured, 0, no),
     aec_consensus:set_consensus(),
     aec_consensus:set_genesis_hash(),
     ok.

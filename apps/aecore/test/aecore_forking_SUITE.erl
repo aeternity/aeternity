@@ -174,14 +174,19 @@ add_dev3_node(Config) ->
 
 dev3_failed_attack(Config) ->
     [N1, N2, N3] = [aecore_suite_utils:node_name(D) || D <- [dev1, dev2, dev3]],
+    %%
+    %% Start node N3 (dev3), mine a malicious fork, then stop the node
+    %%
     aecore_suite_utils:start_node(dev3, Config),
     aecore_suite_utils:connect(N3),
-    %% Mine a fork on dev3
+    %% Mine a fork on N3
     {ok, BlocksN3} = mine_key_blocks(N3, 20),
     N3Top = lists:last(BlocksN3),
     ct:log("top of fork dev3 (N3Top): ~p", [ N3Top ]),
     ok = stop_and_check([dev3], Config),
-    %% restart dev1, dev2, sync, mine some and set fork resilience
+    %%
+    %% restart N1 (dev1), N2 (dev2), sync, mine some blocks and set fork resilience
+    %%
     T2 = os:timestamp(),
     aecore_suite_utils:start_node(dev1, Config),
     aecore_suite_utils:connect(N1),
@@ -190,6 +195,7 @@ dev3_failed_attack(Config) ->
     done = aecore_suite_utils:await_sync_complete(T2, [N1, N2]),
     {ok, BlocksN1N2} = mine_key_blocks(N1, 10),  %% fewer than N3
     NewTop = rpc:call(N1, aec_chain, top_block, [], 5000),
+    NewTopHeight = aec_blocks:height(NewTop),
     ct:log("top of fork dev1 (NewTop): ~p", [ NewTop ]),
     aec_test_utils:wait_for_it(
       fun() -> rpc:call(N2, aec_chain, top_block, [], 5000) end,
@@ -197,18 +203,63 @@ dev3_failed_attack(Config) ->
     SetCfg = #{<<"sync">> => #{<<"sync_allowed_height_from_top">> => 5}},
     NewTop = lists:last(BlocksN1N2),
     [ok = rpc:call(N, aeu_env, update_config, [SetCfg]) || N <- [N1, N2]],
+    FHeight = NewTopHeight - 5 - 1,
+    {ok, _} = aec_test_utils:wait_for_it_or_timeout(
+                fun() -> rpc:call(N1, aec_db, get_finalized_height, [], 1000) end,
+                FHeight, 5000),
+    {ok, _} = aec_test_utils:wait_for_it_or_timeout(
+               fun() -> rpc:call(N2, aec_db, get_finalized_height, [], 1000) end,
+               FHeight, 5000),
+    ct:log("finalized height (~p) set on N1 and N2", [FHeight]),
+    %%
+    %% Now, stop dev2 before trying to sync N3 against N1.
+    %% What should happen is that N1 rejects N3's fork, despite its greater
+    %% difficulty. This rejection should be based on the
+    %% `sync_allow_height_from_top` setting, as N1 is up and running.
+    %%
+    ok = stop_and_check([dev2], Config),
     T3 = os:timestamp(),
     aecore_suite_utils:start_node(dev3, Config),
     aecore_suite_utils:connect(N3),
-    [{N1,true,Ts1}, {N2,true,Ts2}] = aecore_suite_utils:await_is_syncing(T3, [N1, N2]),
-    ct:log("Sync started on dev1 and dev2", []),
+    [{N1,true,Ts1}] = aecore_suite_utils:await_is_syncing(T3, [N1]),
+    ct:log("Sync started on dev1", []),
     [{N1,false,_}] = aecore_suite_utils:await_is_syncing(Ts1, [N1]),
-    [{N2,false,_}] = aecore_suite_utils:await_is_syncing(Ts2, [N2]),
-    ct:log("Sync stopped on dev1 and dev2", []),
-    %% Ensure that dev1 and dev2 still have the same top.
+    %% [{N2,false,_}] = aecore_suite_utils:await_is_syncing(Ts2, [N2]),
+    ct:log("Sync stopped on dev1", []),
+    %% Ensure that dev1 still has the same top.
     NewTop = rpc:call(N1, aec_chain, top_block, [], 5000),
-    NewTop = rpc:call(N2, aec_chain, top_block, [], 5000),
+    %% NewTop = rpc:call(N2, aec_chain, top_block, [], 5000),
     false = (N3Top == NewTop),
+    %%
+    %% Now, start dev2. This checks that N3 can be resisted even by a restarting
+    %% node. This rejection is based on the persisted finalized_depth.
+    %% Since the YAML config has fork resistance turned off, we pass a config
+    %% as an OS env variable.
+    %%
+    T4 = os:timestamp(),
+    Env = [{"AE__SYNC__SYNC_ALLOWED_HEIGHT_FROM_TOP", "5"}],
+    aecore_suite_utils:start_node(dev2, Config, Env),
+    aecore_suite_utils:connect(N2),
+    [{N2,true,Ts2}] = aecore_suite_utils:await_is_syncing(T4, [N2]),
+    ct:log("Sync started on dev2", []),
+    [{N2,false,_}] = aecore_suite_utils:await_is_syncing(Ts2, [N2]),
+    ct:log("Sync stopped on dev2", []),
+    NewTop = rpc:call(N2, aec_chain, top_block, [], 5000),
+    ct:log("dev2 synced against N1 - not N3", []),
+    %%
+    %% Stop and restart dev2, but this time without fork resistance.
+    %% The finalized depth entry will still be in the DB, but not acted on,
+    %% since FR is configured to be disabled. N2 should sync against N3.
+    %%
+    ok = stop_and_check([dev2], Config),
+    T5 = os:timestamp(),
+    aecore_suite_utils:start_node(dev2, Config),
+    aecore_suite_utils:connect(N2),
+    [{N2,true,Ts2_1}] = aecore_suite_utils:await_is_syncing(T5, [N2]),
+    ct:log("Sync started on dev2", []),
+    [{N2,false,_}] = aecore_suite_utils:await_is_syncing(Ts2_1, [N2]),
+    N3Top = rpc:call(N2, aec_chain, top_block, [], 5000),
+    ct:log("Without fork resistance, N2 synced against N3", []),
     ok = stop_and_check([dev1, dev2, dev3], Config).
 
 

@@ -50,9 +50,23 @@ environment variables. This means that it's possible to instruct the node to res
 forks at a given node start in the following way:
 
 ```
-AE__resist__forks__from__start=true bin/aeternity start
+AE__SYNC__RESIST_FORKS_FROM_START=true bin/aeternity start
 ```
 (see [the configuration documentation](configuration.md#configuration-from-the-command-line-or-scripts))
+
+### Finalized depth
+
+When sync fork resistance (`sync: sync_allowed_height_from_top`) is active, the node
+will persist the height just below the fork resistance depth as `finalized_height`.
+If the node should restart and starts syncing with other nodes (recall that the dynamic
+fork resistance is not activated until the node has successfully synced with one peer),
+it will reject any chain that presents a key block hash at the finalized height which 
+differs from what the node already has on record.
+
+This shores up the dynamic protection offered by `sync_allowed_height_from_top` to also defend
+against malicious nodes during node restarts. The function is automatic, once fork resistance
+has been configured. If fork resistance is later turned off, finalized height will not be
+enforced.
 
 ### Discussion
 
@@ -76,3 +90,11 @@ Network latency and network failures may increase the frequency and length of na
 competing forks, and setting the fork resistance too low might increase the risk of
 chain splits, where different nodes end up on different forks and cannot resolve the
 situation without manual intervention.
+
+From a user experience perspective, fork resistance sets an upper bound on the confirmation
+time needed to secure high-value transactions, since there is no need to wait longer than
+the configured fork resistance depth. Once the generation that contains a transaction is
+at or below the finalized depth, the transaction _cannot_ be evicted, either accidentally
+or through a malicious attack. Using the default setting of `100`, this would mean that
+a block confirmation time of 100 key blocks (5 hours) will be sufficient to protect any transaction
+amount.
