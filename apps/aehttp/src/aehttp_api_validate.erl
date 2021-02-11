@@ -147,6 +147,7 @@ prepare_param([ Rule | Rules ], Value, Name, Validator) ->
 prepare_param_({"in", _}, _, _, _) -> ok;
 prepare_param_({"name", _}, _, _, _) -> ok;
 prepare_param_({"description", _}, _, _, _) -> ok;
+prepare_param_({"example", _}, _, _, _) -> ok;
 prepare_param_({"default", _}, _, _, _) -> ok;
 % required
 prepare_param_({"required",true}, undefined, Name, _) -> param_error(required, Name);

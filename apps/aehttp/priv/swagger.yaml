@@ -31,7 +31,15 @@ tags:
     description: Debug endpoints
   - name: obsolete
     description: Old endpoints that will be removed
+externalDocs:
+  description: Find out more about Aeternity
+  url: http://www.aeternity.com
+servers:
+  - url: /v2
 paths:
+###
+## External endpoints
+###
   /blocks/top:
     get:
       tags:
@@ -158,6 +166,7 @@ paths:
           required: true
           schema:
             type: string
+            example: "kh_2ikjGFZGFpE99mDtsgkGFsTCqpPpXZRNRa5Pic989FJLcJStgx"
       responses:
         "200":
           description: Successful operation
@@ -193,6 +202,7 @@ paths:
             type: integer
             minimum: 0
             maximum: 18446744073709552000
+            example: 42
       responses:
         "200":
           description: Successful operation
@@ -206,6 +216,9 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+###
+## External endpoints
+###
   /key-blocks:
     post:
       tags:
@@ -243,6 +256,7 @@ paths:
           required: true
           schema:
             type: string
+            example: "mh_ZCWcnCG5YF2LhQMTmZ5K5rRmGxatgc5YWxDpGNy2YBAHP6urH"
       responses:
         "200":
           description: Successful operation
@@ -276,6 +290,7 @@ paths:
           required: true
           schema:
             type: string
+            example: "mh_ZCWcnCG5YF2LhQMTmZ5K5rRmGxatgc5YWxDpGNy2YBAHP6urH"
       responses:
         "200":
           description: Successful operation
@@ -309,6 +324,7 @@ paths:
           required: true
           schema:
             type: string
+            example: "mh_ZCWcnCG5YF2LhQMTmZ5K5rRmGxatgc5YWxDpGNy2YBAHP6urH"
         - in: path
           name: index
           description: The index of the transaction in a block
@@ -316,6 +332,7 @@ paths:
           schema:
             type: integer
             minimum: 1
+            example: 1
       responses:
         "200":
           description: Successful operation
@@ -349,6 +366,7 @@ paths:
           required: true
           schema:
             type: string
+            example: "mh_ZCWcnCG5YF2LhQMTmZ5K5rRmGxatgc5YWxDpGNy2YBAHP6urH"
       responses:
         "200":
           description: Successful operation
@@ -405,6 +423,7 @@ paths:
           required: true
           schema:
             type: string
+            example: "kh_2ikjGFZGFpE99mDtsgkGFsTCqpPpXZRNRa5Pic989FJLcJStgx"
       responses:
         "200":
           description: Successful operation
@@ -440,6 +459,7 @@ paths:
             type: integer
             minimum: 0
             maximum: 18446744073709552000
+            example: 1
       responses:
         "200":
           description: Successful operation
@@ -467,6 +487,7 @@ paths:
           required: true
           schema:
             type: string
+            example: "ak_dArxCkAsk1mZB1L9CX3cdz1GDN4hN84L3Q8dMLHN4v8cU85TF"
       responses:
         "200":
           description: Successful operation
@@ -501,6 +522,7 @@ paths:
           required: true
           schema:
             type: string
+            example: "ak_dArxCkAsk1mZB1L9CX3cdz1GDN4hN84L3Q8dMLHN4v8cU85TF"
         - in: path
           name: height
           description: The height
@@ -509,6 +531,7 @@ paths:
             type: integer
             minimum: 0
             maximum: 18446744073709552000
+            example: 42
       responses:
         "200":
           description: Successful operation
@@ -534,7 +557,7 @@ paths:
         - external
         - account
       operationId: GetAccountByPubkeyAndHash
-      description: Get an account by public key after the block indicated by hash
+      description: "Get an account by public key after the block indicated by hash. Can be either a micro block or a keyblock hash"
       parameters:
         - in: path
           name: pubkey
@@ -542,12 +565,14 @@ paths:
           required: true
           schema:
             type: string
+            example: "ak_dArxCkAsk1mZB1L9CX3cdz1GDN4hN84L3Q8dMLHN4v8cU85TF"
         - in: path
           name: hash
           description: The hash of the block
           required: true
           schema:
             type: string
+            example: "kh_2ikjGFZGFpE99mDtsgkGFsTCqpPpXZRNRa5Pic989FJLcJStgx"
       responses:
         "200":
           description: Successful operation
@@ -581,6 +606,7 @@ paths:
           required: true
           schema:
             type: string
+            example: "ak_dArxCkAsk1mZB1L9CX3cdz1GDN4hN84L3Q8dMLHN4v8cU85TF"
       responses:
         "200":
           description: Successful operation
@@ -614,6 +640,7 @@ paths:
           required: true
           schema:
             type: string
+            example: "th_2w75xjDjHEmphsHDSXrThRnPx6hSUiS7hhSRcuytJABZZ2KkdG"
       responses:
         "200":
           description: Successful operation
@@ -646,6 +673,7 @@ paths:
           required: true
           schema:
             type: string
+            example: "th_2w75xjDjHEmphsHDSXrThRnPx6hSUiS7hhSRcuytJABZZ2KkdG"
       responses:
         "200":
           description: Successful operation
@@ -706,6 +734,7 @@ paths:
           required: true
           schema:
             type: string
+            example: "ct_TV5KbBYdjw1ufKWvAtNNjUnagvRmWMMugFzLKzmLASXB5iH1E"
       responses:
         "200":
           description: Successful operation
@@ -735,6 +764,7 @@ paths:
           required: true
           schema:
             type: string
+            example: "ct_TV5KbBYdjw1ufKWvAtNNjUnagvRmWMMugFzLKzmLASXB5iH1E"
       responses:
         "200":
           description: Contract code
@@ -768,6 +798,7 @@ paths:
           required: true
           schema:
             type: string
+            example: "ct_TV5KbBYdjw1ufKWvAtNNjUnagvRmWMMugFzLKzmLASXB5iH1E"
       responses:
         "200":
           description: Successful operation
@@ -801,6 +832,7 @@ paths:
           required: true
           schema:
             type: string
+            example: "ok_24jcHLTZQfsou7NvomRJ1hKEnjyNqbYSq2Az7DmyrAyUHPq8uR"
       responses:
         "200":
           description: Successful operation
@@ -834,12 +866,14 @@ paths:
           required: true
           schema:
             type: string
+            example: "ok_24jcHLTZQfsou7NvomRJ1hKEnjyNqbYSq2Az7DmyrAyUHPq8uR"
         - in: query
           name: from
           description: Last query id in previous page
           required: false
           schema:
             type: string
+            example: "oq_q3UrSagF6JfgvAwMiLa6yyEoerx6tQC87m5X8W98NrdDArNZH"
         - in: query
           name: limit
           description: Max number of oracle queries
@@ -848,6 +882,7 @@ paths:
             type: integer
             minimum: 1
             maximum: 1000
+            example: 1
         - in: query
           name: type
           description: "The type of a query: open, closed or all"
@@ -858,6 +893,7 @@ paths:
               - open
               - closed
               - all
+            example: open
       responses:
         "200":
           description: Successful operation
@@ -891,12 +927,14 @@ paths:
           required: true
           schema:
             type: string
+            example: "ok_24jcHLTZQfsou7NvomRJ1hKEnjyNqbYSq2Az7DmyrAyUHPq8uR"
         - in: path
           name: query-id
           description: The ID of the query
           required: true
           schema:
             type: string
+            example: "oq_q3UrSagF6JfgvAwMiLa6yyEoerx6tQC87m5X8W98NrdDArNZH"
       responses:
         "200":
           description: Successful operation
@@ -930,6 +968,7 @@ paths:
           required: true
           schema:
             type: string
+            example: "dimitar.chain"
       responses:
         "200":
           description: Successful operation
@@ -963,6 +1002,7 @@ paths:
           required: true
           schema:
             type: string
+            example: "ch_2tceSwiqxgBcPirX3VYgW3sXgQdJeHjrNWHhLWyfZL7pT4gZF4"
       responses:
         "200":
           description: Successful operation
@@ -1836,11 +1876,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
-externalDocs:
-  description: Find out more about Aeternity
-  url: http://www.aeternity.com
-servers:
-  - url: /v2
 components:
   schemas:
     UInt:
