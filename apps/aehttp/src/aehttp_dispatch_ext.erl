@@ -424,7 +424,8 @@ handle_request_('GetTransactionByHash', Params, _Config) ->
                 none ->
                     {404, [], #{<<"reason">> => <<"Transaction not found">>}};
                 {mempool, Tx} ->
-                    {200, [], aetx_sign:serialize_for_client_pending(Tx)};
+                    SerializedTx = aetx_sign:serialize_for_client_pending(Tx),
+                    {200, [], SerializedTx};
                 {BlockHash, Tx} ->
                     {ok, Header} = aec_chain:get_header(BlockHash),
                     {200, [], aetx_sign:serialize_for_client(Header, Tx)}
