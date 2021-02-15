@@ -132,6 +132,13 @@ payable contract SimpleElection =
       Bytes.to_int(#ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff : hash)
 
   /**
+   * Contract balance - convenience for user
+   */
+  entrypoint
+    balance : () => tokens
+    balance() = Contract.balance
+
+  /**
    * The address of protocol restricted calls. The private key must remain unknown
    */
   entrypoint

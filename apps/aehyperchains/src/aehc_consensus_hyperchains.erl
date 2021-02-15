@@ -144,12 +144,14 @@ start(_Config) ->
         {_, _} -> ok
     end,
     case get_staking_contract_address() of
-        {ok, X} ->
-            %% TODO: Sanity check the existing staking contract deployment against our bytecode
-            ok;
+        {ok, ContractPubkey} ->
+            aec_db:ensure_activity(async_dirty, fun() ->
+                TopHash = aec_chain:top_block_hash(),
+                {TxEnv, Trees} = aetx_env:tx_env_and_trees_from_hash('aetx_transaction', TopHash),
+                verify_existing_staking_contract(ContractPubkey, Trees, TxEnv)
+              end);
         not_deployed -> ok
     end,
-    %% Spawn the block generator etc...
     %% Crank down the finalized height delta to 2-4 ;)
     ok.
 stop() -> ok.
@@ -176,18 +178,20 @@ dirty_validate_micro_node_with_ctx(_Node, _Block, _Ctx) -> ok.
 state_pre_transform_key_node_consensus_switch(KeyNode, Trees) ->
     case get_staking_contract_address() of
         not_deployed ->
+            Header = aec_block_insertion:node_header(KeyNode),
+            TxEnv = aetx_env:tx_env_from_key_header(Header, aec_block_insertion:node_hash(KeyNode),
+                aec_block_insertion:node_time(KeyNode), aec_block_insertion:node_prev_hash(KeyNode)),
             case get_predeploy_address() of
-                {ok, Address} ->
+                {ok, ContractPubkey} ->
                     %% When the staking contract was not found it is better to
                     %% bring down the entire node down. By rejecting the state transition
                     %% the node will get stuck syncing on the specified height
-                    %% TODO: Sanity check the staking contract deployment against out deployment
-                    Trees;
-                    %%find_existing_staking_contract(Deployer, Trees);
+                    %% This actually incurs a risk on whether the staking contract was finalized
+                    %% As we force finality after 100 blocks we can assume that every fork
+                    %% at the switch height contains the staking contract
+                    verify_existing_staking_contract(ContractPubkey, Trees, TxEnv),
+                    set_staking_contract_address(ContractPubkey);
                 error ->
-                    Header = aec_block_insertion:node_header(KeyNode),
-                    TxEnv = aetx_env:tx_env_from_key_header(Header, aec_block_insertion:node_hash(KeyNode),
-                        aec_block_insertion:node_time(KeyNode), aec_block_insertion:node_prev_hash(KeyNode)),
                     deploy_staking_contract_by_system(Trees, TxEnv)
             end;
         {ok, _} -> Trees
@@ -356,7 +360,7 @@ deploy_staking_contract_by_system(Trees0, TxEnv) ->
                     %% Ok contract deployed :)
                     set_staking_contract_address(ContractPubkey),
                     %% Sanity check the deployment - should never fail
-                    {ok, {address, ?RESTRICTED_ACCOUNT}} = static_contract_call(Trees2, TxEnv, "restricted_address()"),
+                    verify_existing_staking_contract(ContractPubkey, Trees2, TxEnv),
                     Trees2;
                 What ->
                     Value = aect_call:return_type(Call),
@@ -387,6 +391,50 @@ cleanup_system_owner(OldA, Trees) ->
     Account = aec_accounts:set_nonce(OldA, aec_accounts:nonce(OldA) + 1),
     Accounts1 = aec_accounts_trees:enter(Account, Accounts0),
     aec_trees:set_accounts(Trees, Accounts1).
+
+verify_existing_staking_contract(Address, Trees, TxEnv) ->
+    UserAddr = aeser_api_encoder:encode(contract_pubkey, Address),
+    lager:debug("Validating the existing staking contract at ~p", [UserAddr]),
+    ErrF = fun(Err) -> aec_consensus:config_assertion_failed("Staking contract validation failed", " Addr: ~p, Reason: ~p\n", [UserAddr, Err]) end,
+    case aec_accounts_trees:lookup(Address, aec_trees:accounts(Trees)) of
+        none ->
+            ErrF("Contract not found");
+        {value, Account} ->
+            case aec_accounts:is_payable(Account) of
+                false -> ErrF("Contract not payable");
+                true ->
+                    case aect_state_tree:lookup_contract(Address, aec_trees:contracts(Trees), [no_store]) of
+                        none ->
+                            ErrF("Contract not found");
+                        {value, Contract} ->
+                            OnchainAbi = aect_contracts:abi_version(Contract),
+                            OnchainVm = aect_contracts:vm_version(Contract),
+                            OnchainCode = aect_contracts:code(Contract),
+
+                            %% TODO: Remove the stripping for IRIS...
+                            Code0 = aeser_contract_code:deserialize(get_staking_contract_bytecode()),
+                            FateCode0  = aeb_fate_code:deserialize(maps:get(byte_code, Code0)),
+                            FateCode1 = aeb_fate_code:strip_init_function(FateCode0),
+                            Bytecode = aeb_fate_code:serialize(FateCode1),
+                            LocalCode = aeser_contract_code:serialize(Code0#{ byte_code => Bytecode
+                                                                            , compiler_version => <<"unknown">>
+                                                                            }),
+
+                            if  OnchainAbi /= ?ABI_VERSION -> ErrF("Wrong ABI version");
+                                OnchainVm /= ?VM_VERSION -> ErrF("Wrong VM version");
+                                LocalCode /= OnchainCode -> ErrF("Invalid staking contract bytecode");
+                                true ->
+                                    {ok, {address, Restricted}} = static_contract_call(Trees, TxEnv, "restricted_address()"),
+                                    case Restricted of
+                                        ?RESTRICTED_ACCOUNT ->
+                                            lager:debug("Staking contract at ~p is safe to use", [UserAddr]);
+                                        _ ->
+                                            ErrF("Invalid restricted account")
+                                    end
+                            end
+                    end
+            end
+    end.
 
 %% Makes a static query using <<1:32/unit-8>> as the caller - similar to dry run
 %% It's safe as we never commit the result to the database - any state mutations are kept in the MPT cache
