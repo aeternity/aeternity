@@ -46,14 +46,14 @@ paths:
         - external
         - chain
       operationId: GetTopBlock
-      description: Get the top block (either key or micro block)
+      description: Get the top header (either key or micro block)
       responses:
         "200":
           description: Successful operation
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/KeyBlockOrMicroBlockHeader"
+                $ref: "#/components/schemas/Header"
         "404":
           description: Block not found
           content:
@@ -2002,13 +2002,10 @@ components:
         - signature
         - time
         - version
-    KeyBlockOrMicroBlockHeader:
-      type: object
-      properties:
-        key_block:
-          $ref: "#/components/schemas/KeyBlock"
-        micro_block:
-          $ref: "#/components/schemas/MicroBlockHeader"
+    Header:
+      anyOf:
+        - $ref: "#/components/schemas/KeyBlock"
+        - $ref: "#/components/schemas/MicroBlockHeader"
     Account:
       type: object
       properties:

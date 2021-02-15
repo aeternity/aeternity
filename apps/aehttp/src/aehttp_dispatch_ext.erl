@@ -103,20 +103,15 @@ handle_request_('GetTopBlock', _, _Context) ->
             case aec_blocks:height(Block) of
                 0 ->
                     Header = aec_blocks:to_header(Block),
-                    {200, [], #{key_block => aec_headers:serialize_for_client(Header, key)}};
+                    {200, [], aec_headers:serialize_for_client(Header, key)};
                 _ ->
                     PrevBlockHash = aec_blocks:prev_hash(Block),
                     case aec_chain:get_block(PrevBlockHash) of
                         {ok, PrevBlock} ->
                             PrevBlockType = aec_blocks:type(PrevBlock),
                             Header = aec_blocks:to_header(Block),
-                            Header1 = aec_headers:serialize_for_client(Header, PrevBlockType),
-                            Res =
-                                case aec_headers:type(Header) of
-                                    key   -> #{key_block => Header1};
-                                    micro -> #{micro_block => Header1}
-                                end,
-                            {200, [], Res};
+                            SerializedHeader = aec_headers:serialize_for_client(Header, PrevBlockType),
+                            {200, [], SerializedHeader};
                         error ->
                             {404, [], #{reason => <<"Block not found">>}}
                     end
