@@ -21,7 +21,6 @@
 
 -behavior(aec_consensus).
 
--define(TAG, 13370).
 -define(STAKING_CONTRACT, {?MODULE, staking_contract}).
 -define(STAKING_CONTRACT_ADDR, {?MODULE, staking_contract_addr}).
 %% Lima or Iris as we need the FATE VM at genesis
@@ -88,6 +87,7 @@
 
 -include_lib("aecontract/include/hard_forks.hrl").
 -include("../../aecore/include/blocks.hrl").
+-include_lib("aeminer/include/aeminer.hrl").
 
 can_be_turned_off() -> true.
 assert_config(_Config) ->
@@ -147,12 +147,17 @@ start(_Config) ->
         {ok, ContractPubkey} ->
             aec_db:ensure_activity(async_dirty, fun() ->
                 TopHash = aec_chain:top_block_hash(),
-                {TxEnv, Trees} = aetx_env:tx_env_and_trees_from_hash('aetx_transaction', TopHash),
+                {TxEnv0, Trees} = aetx_env:tx_env_and_trees_from_hash('aetx_transaction', TopHash),
+                TxEnv = case aetx_env:height(TxEnv0) of
+                            0 ->
+                                genesis_tx_env();
+                            _ -> TxEnv0
+                        end,
                 verify_existing_staking_contract(ContractPubkey, Trees, TxEnv)
               end);
         not_deployed -> ok
     end,
-    %% Crank down the finalized height delta to 2-4 ;)
+    %% Crank down the finalized height delta to 2-4 in case the staking contract is active ;)
     ok.
 stop() -> ok.
 
@@ -162,16 +167,32 @@ client_request(_) -> error(todo).
 extra_from_header(_) ->
     #{consensus => ?MODULE}.
 
-recent_cache_n() -> 1.
-recent_cache_trim_key_header(_) -> ok.
+recent_cache_n() ->
+    M = fallback_consensus(),
+    M:recent_cache_n().
+recent_cache_trim_key_header(H) ->
+    M = fallback_consensus(),
+    M:recent_cache_trim_key_header(H).
 
-keyblocks_for_target_calc() -> 0.
-keyblock_create_adjust_target(Block, []) -> {ok, Block}.
+keyblocks_for_target_calc() ->
+    M = fallback_consensus(),
+    M:keyblocks_for_target_calc().
 
-dirty_validate_block_pre_conductor(_) -> ok.
-%% Don't waste CPU cycles when we are only interested in state transitions...
-dirty_validate_key_node_with_ctx(_Node, _Block, _Ctx) -> ok.
-dirty_validate_micro_node_with_ctx(_Node, _Block, _Ctx) -> ok.
+keyblock_create_adjust_target(B, R) ->
+    M = fallback_consensus(),
+    M:keyblock_create_adjust_target(B, R).
+
+dirty_validate_block_pre_conductor(B) ->
+    M = fallback_consensus(),
+    M:dirty_validate_block_pre_conductor(B).
+
+dirty_validate_key_node_with_ctx(Node, Block, Ctx) ->
+    M = fallback_consensus(),
+    M:dirty_validate_key_node_with_ctx(Node, Block, Ctx).
+
+dirty_validate_micro_node_with_ctx(Node, Block, Ctx) ->
+    M = fallback_consensus(),
+    M:dirty_validate_micro_node_with_ctx(Node, Block, Ctx).
 
 %% -------------------------------------------------------------------
 %% Custom state transitions
@@ -202,7 +223,9 @@ state_pre_transform_micro_node(_Node, Trees) -> Trees.
 
 %% -------------------------------------------------------------------
 %% Block rewards
-state_grant_reward(Beneficiary, Trees, Amount) -> aec_consensus_bitcoin_ng:state_grant_reward(Beneficiary, Trees, Amount).
+state_grant_reward(Beneficiary, Trees, Amount) ->
+    M = fallback_consensus(),
+    M:state_grant_reward(Beneficiary, Trees, Amount).
 
 %% -------------------------------------------------------------------
 %% PoGF
@@ -218,11 +241,9 @@ genesis_transform_trees(Trees0, #{}) ->
         error ->
             %% WARNING: We fake the genesis hash and the height here -
             %% the init function of the contract MUST NOT rely on the block hash or the height
-            %% TODO: In case we would need to rely on the hash in the init function then
-            %%       forbid inserting the contract at genesis
-            Header = aec_headers:set_height(genesis_raw_header(), 1), %% Fake the height
-            TxEnv = aetx_env:tx_env_from_key_header(Header, <<0:?BLOCK_HEADER_HASH_BYTES/unit:8>>,
-                aec_headers:time_in_msecs(Header), aec_headers:prev_hash(Header)),
+            %% In case we would need to rely on the hash in the init function then
+            %% forbid inserting the contract at genesis
+            TxEnv = genesis_tx_env(),
             %% We don't need to check the protocol version against the block
             %% The insertion of the genesis block bypasses the version check
             Trees1 = case ?HC_GENESIS_VERSION of
@@ -240,7 +261,7 @@ genesis_raw_header() ->
         <<0:32/unit:8>>,
         <<0:?MINER_PUB_BYTES/unit:8>>,
         <<0:?BENEFICIARY_PUB_BYTES/unit:8>>,
-        ?TAG,
+        genesis_target(),
         no_value,
         0,
         0,
@@ -248,35 +269,67 @@ genesis_raw_header() ->
         ?HC_GENESIS_VERSION).
 genesis_difficulty() -> 0.
 
+-ifdef(TEST).
+genesis_target() ->
+   ?HIGHEST_TARGET_SCI.
+-else.
+genesis_target() ->
+    case aec_governance:get_network_id() of
+        <<"ae_mainnet">> -> 16#1F1F1F1F;
+        _                -> ?HIGHEST_TARGET_SCI
+    end.
+-endif.
+
 key_header_for_sealing(Header) ->
-    aec_headers:root_hash(Header).
+    M = fallback_consensus(),
+    M:key_header_for_sealing(Header).
 
-validate_key_header_seal(_Header, _Protocol) ->
-    ok.
+validate_key_header_seal(Header, Protocol) ->
+    M = fallback_consensus(),
+    M:validate_key_header_seal(Header, Protocol).
 
-generate_key_header_seal(_, _, ?TAG, _, _) ->
-    { continue_mining, {ok, ?TAG} }.
+generate_key_header_seal(HeaderBin, Header, Nonce, MinerConfig, AddressedInstance) ->
+    M = fallback_consensus(),
+    M:generate_key_header_seal(HeaderBin, Header, Nonce, MinerConfig, AddressedInstance).
 
-set_key_block_seal(Block, ?TAG) ->
-    aec_blocks:set_nonce_and_pow(Block, ?TAG, [?TAG]).
+set_key_block_seal(Block, Seal) ->
+    M = fallback_consensus(),
+    M:set_key_block_seal(Block, Seal).
 
-nonce_for_sealing(_Header) ->
-    ?TAG.
+nonce_for_sealing(Header) ->
+    M = fallback_consensus(),
+    M:nonce_for_sealing(Header).
 
-next_nonce_for_sealing(?TAG, _) ->
-    ?TAG.
+next_nonce_for_sealing(Nonce, MinerConfig) ->
+    M = fallback_consensus(),
+    M:next_nonce(Nonce, MinerConfig).
 
-trim_sealing_nonce(?TAG, _) ->
-    ?TAG.
+trim_sealing_nonce(Nonce, MinerConfig) ->
+    M = fallback_consensus(),
+    M:trim_sealing_nonce(Nonce, MinerConfig).
+
+%% -------------------------------------------------------------------
+%% Block target and difficulty
 
 default_target() ->
-    ?TAG.
+    M = fallback_consensus(),
+    M:default_target().
 
-assert_key_target_range(?TAG) ->
-    ok.
+assert_key_target_range(Target) ->
+    M = fallback_consensus(),
+    M:assert_key_target_range(Target).
 
-key_header_difficulty(_) ->
-    ?TAG.
+key_header_difficulty(Header) ->
+    M = fallback_consensus(),
+    M:key_header_difficulty(Header).
+
+%% -------------------------------------------------------------------
+%% Hyperchains specific
+
+genesis_tx_env() ->
+    Header = aec_headers:set_height(genesis_raw_header(), 1), %% Fake the height
+    aetx_env:tx_env_from_key_header(Header, <<0:?BLOCK_HEADER_HASH_BYTES/unit:8>>,
+        aec_headers:time_in_msecs(Header), aec_headers:prev_hash(Header)).
 
 get_staking_contract_bytecode() -> maps:get(bytecode, persistent_term:get(?STAKING_CONTRACT)).
 get_staking_contract_aci() -> maps:get(aci, persistent_term:get(?STAKING_CONTRACT)).
@@ -438,14 +491,20 @@ verify_existing_staking_contract(Address, Trees, TxEnv) ->
 
 %% Makes a static query using <<1:32/unit-8>> as the caller - similar to dry run
 %% It's safe as we never commit the result to the database - any state mutations are kept in the MPT cache
+%% Can be used on the genesis block
 static_contract_call(Trees0, TxEnv0, Query) ->
+    TxEnv1 = case aetx_env:height(TxEnv0) of
+            0 ->
+                genesis_tx_env();
+            _ -> TxEnv0
+        end,
     Aci = get_staking_contract_aci(),
     {ok, ContractPubkey} = get_staking_contract_address(),
     {ok, CallData} = aeaci_aci:encode_call_data(Aci, Query),
     Accounts0 = aec_trees:accounts(Trees0),
     Accounts1 = aec_accounts_trees:enter(aec_accounts:new(?DRY_RUN_ACCOUNT, 1 bsl 61), Accounts0),
     Trees1 = aec_trees:set_accounts(Trees0, Accounts1),
-    TxEnv = aetx_env:set_dry_run(TxEnv0, true),
+    TxEnv = aetx_env:set_dry_run(TxEnv1, true),
     TxSpec = #{ caller_id   => aeser_id:create(account, ?DRY_RUN_ACCOUNT)
               , nonce       => 1
               , contract_id => aeser_id:create(contract, ContractPubkey)
@@ -493,6 +552,7 @@ static_staking_contract_call_on_block_hash(BlockHash, Query) ->
 
 %% Stateful staking contract invocation using the restricted account
 %% Used to perform the election of the leader of the next generation or to punish someone for misbehaving
+%% Protocol calls at genesis are disallowed - it's impossible for the staking contract to be active at genesis
 protocol_staking_contract_call(Trees0, TxEnv, Query) ->
     Aci = get_staking_contract_aci(),
     {ok, ContractPubkey} = get_staking_contract_address(),
@@ -530,3 +590,8 @@ protocol_staking_contract_call(Trees0, TxEnv, Query) ->
             end;
         {error, _What} = Err -> Err
     end.
+
+%% What consensus shall we use in case the activation criteria of the hyperchain consensus weren't meet?
+%% TODO: customize
+fallback_consensus() ->
+    aec_consensus_bitcoin_ng.
