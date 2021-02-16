@@ -90,6 +90,7 @@
         , get_fork_result/2
         , get_info_field/2
         , ensure_chain_ends/0
+        , wrap_block/1
         ]).
 
 -import(aetx_env, [no_events/0]).
@@ -118,7 +119,6 @@
 
 -ifdef(TEST).
 -export([calc_rewards/6,
-         wrap_block/1,
          internal_insert_transaction/4
         ]).
 -endif.
