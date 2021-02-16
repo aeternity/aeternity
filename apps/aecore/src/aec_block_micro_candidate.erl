@@ -141,6 +141,7 @@ int_create(BlockHash, Block, KeyBlock, Trees) ->
 int_create_block(PrevBlockHash, PrevBlock, KeyBlock, Trees, Txs) ->
     %% Micro block always has the same protocol version as the last key block.
     Protocol = aec_blocks:version(KeyBlock),
+    Consensus = aec_blocks:consensus_module(KeyBlock),
 
     PrevKeyHash = case aec_blocks:type(PrevBlock) of
                       micro -> aec_blocks:prev_key_hash(PrevBlock);
@@ -152,7 +153,13 @@ int_create_block(PrevBlockHash, PrevBlock, KeyBlock, Trees, Txs) ->
     KeyHeader = aec_blocks:to_header(KeyBlock),
     Env = aetx_env:tx_env_from_key_header(KeyHeader, PrevKeyHash,
                                           Time, PrevBlockHash),
-    {ok, Txs1, Trees2, Events} = int_apply_block_txs(Txs, Trees, Env, false),
+
+    FakeBlock = aec_blocks:new_micro(Height, PrevBlockHash, PrevKeyHash,
+                                    <<0:32/unit:8>>, <<0:32/unit:8>>, [],
+                                    Time, no_fraud, Protocol),
+    FakeNode = aec_chain_state:wrap_block(FakeBlock),
+    Trees1 = Consensus:state_pre_transform_micro_node(FakeNode, Trees),
+    {ok, Txs1, Trees2, Events} = int_apply_block_txs(Txs, Trees1, Env, false),
 
     TxsTree = aec_txs_trees:from_txs(Txs1),
     TxsRootHash = aec_txs_trees:pad_empty(aec_txs_trees:root_hash(TxsTree)),
