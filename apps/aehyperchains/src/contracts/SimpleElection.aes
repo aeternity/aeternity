@@ -78,7 +78,8 @@ payable contract SimpleElection =
     withdraw_requests : map(delegate, list(withdraw_request)),
     last_election : option(election_result),
     config : config,
-    system_account: address
+    system_account: address,
+    enabled : bool
     }
 
 
@@ -108,7 +109,8 @@ payable contract SimpleElection =
         withdraw_requests = {},
         last_election = None,
         config = config,
-        system_account = system_account}
+        system_account = system_account,
+        enabled = false} // The hyperchain consensus can only be enabled by a protocol level call
 
 
   /**
@@ -130,6 +132,13 @@ payable contract SimpleElection =
     hash_range : () => int
     hash_range() =
       Bytes.to_int(#ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff : hash)
+
+  /**
+   * Is HC consensus active
+   */
+  entrypoint
+    enabled : () => bool
+    enabled() = state.enabled
 
   /**
    * Contract balance - convenience for user
@@ -417,3 +426,12 @@ payable contract SimpleElection =
       protocol_restrict()
       let stake = staked_tokens(address)
       put(state{stakes[address] = [], withdraw_requests[address] = []})
+
+  /**
+  * Enables the hyperchain consensus
+  */
+  stateful entrypoint
+    protocol_enable : () => unit
+    protocol_enable() =
+      protocol_restrict()
+      put(state{enabled = true})
