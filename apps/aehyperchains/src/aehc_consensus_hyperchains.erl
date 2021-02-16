@@ -27,6 +27,11 @@
 %% In case that's unwanted then start up another consensus before hyperchains
 -define(HC_GENESIS_VERSION, ?LIMA_PROTOCOL_VSN).
 
+%% Magic nonces
+-define(NONCE_HC_ENABLED, 0).
+-define(NONCE_HC_POGF, 16#ffffffffffffffff).
+-define(NONCE_HC_GENESIS, 1). %% Hyperchain at genesis :)
+
 %% Consensus API
 -export([ can_be_turned_off/0
         , assert_config/1
@@ -83,6 +88,11 @@
 -export([ get_predeploy_address/0
         , set_predeploy_address/1
         , unset_predeploy_address/0
+        ]).
+
+%% General helpers
+-export([ hc_header_type/1
+        , is_hc_pos_header/1
         ]).
 
 -include_lib("aecontract/include/hard_forks.hrl").
@@ -158,41 +168,91 @@ start(_Config) ->
         not_deployed -> ok
     end,
     %% Crank down the finalized height delta to 2-4 in case the staking contract is active ;)
+    %% Just load whathever the fallback cosensus might need
+    M = fallback_consensus(),
+    M:start(#{}),
     ok.
 stop() -> ok.
 
 is_providing_extra_http_endpoints() -> false.
 client_request(_) -> error(todo).
 
-extra_from_header(_) ->
-    #{consensus => ?MODULE}.
+% -----------------------------------------
+
+extra_from_header(Header) ->
+    Type = case aec_headers:type(Header) of
+               key ->
+                    case aec_headers:nonce(Header) of
+                       ?NONCE_HC_ENABLED -> key_pos;  %% The first key block after the contract got "activated"
+                       ?NONCE_HC_POGF -> key_pos_pogf;
+                       _ -> key_pow
+                   end;
+               micro -> micro
+           end,
+    %% We can't really switch to another consensus right now as we rely on the global consensus setting most of the time
+    #{ consensus => ?MODULE
+     , type => Type
+     , pos => Type =:= key_pos orelse Type =:= key_pos_pogf
+     }.
+
+-spec hc_header_type(aec_headers:header()) -> key_pos | key_pos_pogf | key_pow | micro | no_return().
+hc_header_type(Header) ->
+    maps:get(type, aec_headers:extra(Header)).
+
+-spec is_hc_pos_header(aec_headers:header()) -> boolean().
+is_hc_pos_header(Header) ->
+    maps:get(pos, aec_headers:extra(Header)).
+
+% -----------------------------------------
 
 recent_cache_n() ->
     M = fallback_consensus(),
-    M:recent_cache_n().
+    max(1, M:recent_cache_n()).
+
 recent_cache_trim_key_header(H) ->
-    M = fallback_consensus(),
-    M:recent_cache_trim_key_header(H).
+    case is_hc_pos_header(H) of
+        true -> ok;
+        false ->
+            M = fallback_consensus(),
+            M:recent_cache_trim_key_header(H)
+    end.
 
 keyblocks_for_target_calc() ->
     M = fallback_consensus(),
-    M:keyblocks_for_target_calc().
+    max(1, M:keyblocks_for_target_calc()).
 
 keyblock_create_adjust_target(B, R) ->
-    M = fallback_consensus(),
-    M:keyblock_create_adjust_target(B, R).
+    case is_hc_pos_header(aec_blocks:to_header(B)) of
+        true ->
+            {ok, aec_blocks:set_target(B, 0)}; %% TODO: calculate the target based on the voting power
+        false ->
+            M = fallback_consensus(),
+            M:keyblock_create_adjust_target(B, R)
+    end.
 
 dirty_validate_block_pre_conductor(B) ->
-    M = fallback_consensus(),
-    M:dirty_validate_block_pre_conductor(B).
+    case is_hc_pos_header(aec_blocks:to_header(B)) of
+        true -> error(todo);
+        false ->
+            M = fallback_consensus(),
+            M:dirty_validate_block_pre_conductor(B)
+    end.
 
 dirty_validate_key_node_with_ctx(Node, Block, Ctx) ->
-    M = fallback_consensus(),
-    M:dirty_validate_key_node_with_ctx(Node, Block, Ctx).
+    case is_hc_pos_header(aec_blocks:to_header(Block)) of
+        true -> error(todo);
+        false ->
+            M = fallback_consensus(),
+            M:dirty_validate_key_node_with_ctx(Node, Block, Ctx)
+    end.
 
 dirty_validate_micro_node_with_ctx(Node, Block, Ctx) ->
-    M = fallback_consensus(),
-    M:dirty_validate_micro_node_with_ctx(Node, Block, Ctx).
+    case is_hc_pos_header(aec_blocks:to_header(Block)) of
+        true -> error(todo);
+        false ->
+            M = fallback_consensus(),
+            M:dirty_validate_micro_node_with_ctx(Node, Block, Ctx)
+    end.
 
 %% -------------------------------------------------------------------
 %% Custom state transitions
@@ -211,7 +271,8 @@ state_pre_transform_key_node_consensus_switch(KeyNode, Trees) ->
                     %% As we force finality after 100 blocks we can assume that every fork
                     %% at the switch height contains the staking contract
                     verify_existing_staking_contract(ContractPubkey, Trees, TxEnv),
-                    set_staking_contract_address(ContractPubkey);
+                    set_staking_contract_address(ContractPubkey),
+                    {ok, false} = is_hc_enabled(Trees, TxEnv);
                 error ->
                     deploy_staking_contract_by_system(Trees, TxEnv)
             end;
@@ -219,17 +280,18 @@ state_pre_transform_key_node_consensus_switch(KeyNode, Trees) ->
     end.
 
 state_pre_transform_key_node(_Node, Trees) -> Trees.
+
 state_pre_transform_micro_node(_Node, Trees) -> Trees.
 
 %% -------------------------------------------------------------------
 %% Block rewards
-state_grant_reward(Beneficiary, Trees, Amount) ->
+state_grant_reward(Beneficiary, Trees, Amount) -> %% TODO: we need the header here
     M = fallback_consensus(),
     M:state_grant_reward(Beneficiary, Trees, Amount).
 
 %% -------------------------------------------------------------------
 %% PoGF
-pogf_detected(_H1, _H2) -> ok.
+pogf_detected(_H1, _H2) -> ok. %% TODO: we can't punish for forks due to forking on the parent chain - inspect the key headers at the given height
 
 %% -------------------------------------------------------------------
 %% Genesis block
@@ -263,7 +325,7 @@ genesis_raw_header() ->
         <<0:?BENEFICIARY_PUB_BYTES/unit:8>>,
         genesis_target(),
         no_value,
-        0,
+        ?NONCE_HC_POGF,
         0,
         default,
         ?HC_GENESIS_VERSION).
@@ -281,29 +343,53 @@ genesis_target() ->
 -endif.
 
 key_header_for_sealing(Header) ->
-    M = fallback_consensus(),
-    M:key_header_for_sealing(Header).
+    case is_hc_pos_header(Header) of
+        true -> error(todo);
+        false ->
+            M = fallback_consensus(),
+            M:key_header_for_sealing(Header)
+    end.
 
 validate_key_header_seal(Header, Protocol) ->
-    M = fallback_consensus(),
-    M:validate_key_header_seal(Header, Protocol).
+    case is_hc_pos_header(Header) of
+        true -> error(todo);
+        false ->
+            M = fallback_consensus(),
+            M:validate_key_header_seal(Header, Protocol)
+    end.
 
 generate_key_header_seal(HeaderBin, Header, Nonce, MinerConfig, AddressedInstance) ->
-    M = fallback_consensus(),
-    M:generate_key_header_seal(HeaderBin, Header, Nonce, MinerConfig, AddressedInstance).
+    case is_hc_pos_header(Header) of
+        true -> error(todo);
+        false ->
+            M = fallback_consensus(),
+            M:generate_key_header_seal(HeaderBin, Header, Nonce, MinerConfig, AddressedInstance)
+    end.
 
 set_key_block_seal(Block, Seal) ->
-    M = fallback_consensus(),
-    M:set_key_block_seal(Block, Seal).
+    case is_hc_pos_header(aec_blocks:to_header(Block)) of
+        true -> error(todo);
+        false ->
+            M = fallback_consensus(),
+            M:set_key_block_seal(Block, Seal)
+    end.
 
 nonce_for_sealing(Header) ->
-    M = fallback_consensus(),
-    M:nonce_for_sealing(Header).
+    case is_hc_pos_header(Header) of
+        true -> error(todo);
+        false ->
+            M = fallback_consensus(),
+            M:nonce_for_sealing(Header)
+    end.
 
+next_nonce_for_sealing(?NONCE_HC_ENABLED, _) -> ?NONCE_HC_ENABLED;
+next_nonce_for_sealing(?NONCE_HC_POGF, _) -> ?NONCE_HC_POGF;
 next_nonce_for_sealing(Nonce, MinerConfig) ->
     M = fallback_consensus(),
     M:next_nonce(Nonce, MinerConfig).
 
+trim_sealing_nonce(?NONCE_HC_ENABLED, _) -> ?NONCE_HC_ENABLED;
+trim_sealing_nonce(?NONCE_HC_POGF, _) -> ?NONCE_HC_POGF;
 trim_sealing_nonce(Nonce, MinerConfig) ->
     M = fallback_consensus(),
     M:trim_sealing_nonce(Nonce, MinerConfig).
@@ -320,8 +406,12 @@ assert_key_target_range(Target) ->
     M:assert_key_target_range(Target).
 
 key_header_difficulty(Header) ->
-    M = fallback_consensus(),
-    M:key_header_difficulty(Header).
+    case is_hc_pos_header(Header) of
+        true -> 0; %% TODO: retrieve the amount of stake which voted in this election
+        false ->
+            M = fallback_consensus(),
+            M:key_header_difficulty(Header)
+    end.
 
 %% -------------------------------------------------------------------
 %% Hyperchains specific
@@ -414,6 +504,7 @@ deploy_staking_contract_by_system(Trees0, TxEnv) ->
                     set_staking_contract_address(ContractPubkey),
                     %% Sanity check the deployment - should never fail
                     verify_existing_staking_contract(ContractPubkey, Trees2, TxEnv),
+                    {ok, false} = is_hc_enabled(Trees2, TxEnv),
                     Trees2;
                 What ->
                     Value = aect_call:return_type(Call),
@@ -529,6 +620,8 @@ static_contract_call(Trees0, TxEnv0, Query) ->
             end;
         {error, _What} = Err -> Err
     end.
+
+is_hc_enabled(Trees, TxEnv) -> static_contract_call(Trees, TxEnv, "enabled()").
 
 %% Helpers for static queries of the staking contract
 %% TODO: Better names - We're not JAVA programmers
