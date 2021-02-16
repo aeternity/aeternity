@@ -4,7 +4,6 @@
 %% simple tests to verify functionality of /api endpoint
 %%
 
--include("aehttp_spec.hrl").
 -include_lib("common_test/include/ct.hrl").
 -include_lib("aecontract/include/hard_forks.hrl").
 -define(NODE, dev1).
@@ -120,5 +119,5 @@ validate_api(_Config) ->
                     {fail, "cannot connect to swagger validation server"}
             end
         end,
-        [?SWAGGER2, ?OAS3]).
+        [swagger2, oas3]).
 
