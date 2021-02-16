@@ -1,37 +1,45 @@
 -module(aehttp_api_validate).
 
--export([request/4]).
--export([response/5]).
--export([validator/0]).
--export([json_spec/0]).
+-export([request/5]).
+-export([response/6]).
+-export([validator/1]).
+-export([json_spec/1]).
+
+-define(ETS_TABLE, swagger_json).
 
 
 %% @doc
 %% Get the json specification and keep it cached, such that if we have read it once, we don't read it again.
--spec json_spec() -> jsx:json_text().
-json_spec() ->
+-spec json_spec(aehttp_spec:version()) -> jsx:json_text().
+json_spec(SpecVsn) ->
+    EtsKey = {spec, SpecVsn},
     try
-        [{spec, CachedJson}] = ets:lookup(swagger_json, spec),
+        [{EtsKey, CachedJson}] = ets:lookup(?ETS_TABLE, EtsKey),
         CachedJson
     catch
         _:_ ->
-            Json = aehttp_spec:json(),
-            ets:new(swagger_json, [named_table, {read_concurrency, true}, public]),
-            ets:insert(swagger_json, {spec, Json}),
+            case ets:whereis(?ETS_TABLE) of
+                undefined ->
+                    ets:new(?ETS_TABLE, [named_table, {read_concurrency, true}, public]);
+                _ -> pass
+            end,
+            Json = aehttp_spec:json(SpecVsn),
+            ets:insert(?ETS_TABLE, {EtsKey, Json}),
             Json
     end.
 
--spec validator() -> jesse_state:state().
-validator() ->
+-spec validator(aehttp_spec:version()) -> jesse_state:state().
+validator(SpecVsn) ->
+    EtsKey = {validator, SpecVsn},
     try
-        [{validator, CachedValidator}] = ets:lookup(swagger_json, validator),
+        [{EtsKey, CachedValidator}] = ets:lookup(?ETS_TABLE, EtsKey),
         CachedValidator
     catch
         _:_ ->
-            Json = json_spec(),
+            Json = json_spec(SpecVsn),
             R = jsx:decode(Json),
             Validator = jesse_state:new(R, [{default_schema_ver, <<"http://json-schema.org/draft-04/schema#">>}]),
-            ets:insert(swagger_json, {validator, Validator}),
+            ets:insert(?ETS_TABLE, {EtsKey, Validator}),
             Validator
     end.
 
@@ -40,22 +48,23 @@ validator() ->
     Methohd :: binary(),
     Code :: 200..599,
     Response :: jesse:json_term(),
-    Validator :: jesse_state:state()
+    Validator :: jesse_state:state(),
+    EndpointsMod :: module()
     ) -> ok | no_return().
 
-response(OperationId, Method, Code, Response, Validator) ->
-    try response_(OperationId, Method, Code, Response, Validator)
+response(OperationId, Method, Code, Response, Validator, EndpointsMod) ->
+    try response_(OperationId, Method, Code, Response, Validator, EndpointsMod)
     catch
 	error:R:S ->
 	    lager:debug("CAUGHT ~p / ~p", [R, S]),
 	    error(R)
     end.
 
-response_(_OperationId, _Method0, Code, _Response, _Validator) when Code >= 500 andalso Code < 600 ->
+response_(_OperationId, _Method0, Code, _Response, _Validator, _EndpointsMod) when Code >= 500 andalso Code < 600 ->
     ok;
-response_(OperationId, Method0, Code, Response, Validator) ->
+response_(OperationId, Method0, Code, Response, Validator, EndpointsMod) ->
     Method = to_method(Method0),
-    #{responses := Resps} = maps:get(Method, endpoints:operation(OperationId)),
+    #{responses := Resps} = maps:get(Method, EndpointsMod:operation(OperationId)),
     case maps:get(Code, Resps, not_found) of
         undefined -> ok;
         not_found -> throw({error, {Code, unspecified_response_code}});
@@ -92,14 +101,15 @@ fix_def_refs(_, X) ->
     OperationId :: atom(),
     Methohd :: binary(),
     Req :: cowboy_req:req(),
-    Validator :: jesse_state:state()
+    Validator :: jesse_state:state(),
+    Mod :: module()
     ) ->
     {ok, Model :: #{}, cowboy_req:req()}
     | {error, Reason :: any(), cowboy_req:req()}.
 
-request(OperationId, Method0, Req, Validator) ->
+request(OperationId, Method0, Req, Validator, EndpointsMod) ->
     Method = to_method(Method0),
-    #{parameters := Params} = maps:get(Method, endpoints:operation(OperationId)),
+    #{parameters := Params} = maps:get(Method, EndpointsMod:operation(OperationId)),
     params(Params, #{}, Req, Validator).
 
 params([], Model, Req, _) -> {ok, Model, Req};

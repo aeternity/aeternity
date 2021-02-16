@@ -62,6 +62,7 @@ run(Queue, F) ->
 
 %% read transactions
 queue('GetTopBlock')                            -> ?READ_Q;
+queue('GetTopHeader')                           -> ?READ_Q;
 queue('GetCurrentKeyBlock')                     -> ?READ_Q;
 queue('GetCurrentKeyBlockHash')                 -> ?READ_Q;
 queue('GetCurrentKeyBlockHeight')               -> ?READ_Q;
@@ -123,6 +124,30 @@ handle_request_('GetTopBlock', _, _Context) ->
         undefined ->
             {404, [], #{reason => <<"Block not found">>}}
     end;
+
+handle_request_('GetTopHeader', _, _Context) ->
+    case aec_chain:top_block() of
+        Block when Block =/= undefined ->
+            case aec_blocks:height(Block) of
+                0 ->
+                    Header = aec_blocks:to_header(Block),
+                    {200, [], aec_headers:serialize_for_client(Header, key)};
+                _ ->
+                    PrevBlockHash = aec_blocks:prev_hash(Block),
+                    case aec_chain:get_block(PrevBlockHash) of
+                        {ok, PrevBlock} ->
+                            PrevBlockType = aec_blocks:type(PrevBlock),
+                            Header = aec_blocks:to_header(Block),
+                            SerHeader = aec_headers:serialize_for_client(Header, PrevBlockType),
+                            {200, [], SerHeader};
+                        error ->
+                            {404, [], #{reason => <<"Block not found">>}}
+                    end
+            end;
+        undefined ->
+            {404, [], #{reason => <<"Block not found">>}}
+    end;
+
 
 handle_request_('GetCurrentKeyBlock', _Req, _Context) ->
     case aec_chain:top_key_block() of

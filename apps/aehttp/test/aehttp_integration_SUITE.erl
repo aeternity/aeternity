@@ -29,6 +29,7 @@
    , get_accounts_by_pubkey_sut/1
    , get_transactions_by_hash_sut/1
    , get_top_block/1
+   , get_top_header/1
    , get_chain_ends/1
    , wait_for_tx_hash_on_chain/1
    , sign_and_post_tx/2
@@ -236,6 +237,9 @@ all() ->
 groups() ->
     [
      {all, [sequence],
+      [{group, swagger2},
+       {group, oas3}]},
+     {swagger2, [sequence],
       [
        %% /key-blocks/* /micro-blocks/* /generations/* status/chain-ends
        {group, block_endpoints},
@@ -503,6 +507,9 @@ groups() ->
      ]},
      {naming, [sequence],
       [naming_system_manage_name
+      ]},
+     {oas3, [sequence],
+      [get_top_header
       ]}
     ].
 
@@ -536,6 +543,9 @@ end_per_suite(Config) ->
 
 init_per_group(all, Config) ->
     Config;
+init_per_group(SwaggerVsn, Config) when SwaggerVsn =:= swagger2;
+                                        SwaggerVsn =:= oas3 ->
+    [{swagger_version, SwaggerVsn} | Config];
 init_per_group(Group, Config) when
       Group =:= debug_endpoints;
       Group =:= account_endpoints;
@@ -785,6 +795,8 @@ init_per_testcase(_Case, Config) ->
 init_per_testcase_all(Config) ->
     [{_, Node} | _] = ?config(nodes, Config),
     aecore_suite_utils:mock_mempool_nonce_offset(Node, 100),
+    SwaggerVsn = proplists:get_value(swagger_version, Config),
+    aecore_suite_utils:use_swagger(SwaggerVsn),
     [{tc_start, os:timestamp()} | Config].
 
 end_per_testcase(Case, Config) when
@@ -856,6 +868,10 @@ get_top_block(micro_block, CurrentBlockHash, _Config) ->
 get_top_sut() ->
     Host = external_address(),
     http_request(Host, get, "blocks/top", []).
+
+get_top_header_sut() ->
+    Host = external_address(),
+    http_request(Host, get, "headers/top", []).
 
 %% /key-blocks/*
 
@@ -4062,3 +4078,13 @@ setup_name_pointing_to_oracle(NameNoPrefix, OraclePubKey) ->
         get_names_entry_by_name_sut(Name),
 
     {ok, Name, NHash}.
+
+%%%%%
+%% OAS3
+%%%%%
+get_top_header(_Config) ->
+    %% this is present in oas3.yaml
+    {ok, 200, #{<<"hash">> := <<"kh_",_/binary>>}}= get_top_header_sut(),
+    %% this is not present in oas3.yaml but swagger.yaml
+    {ok, 404, #{}} = get_top_sut(),
+    ok.
