@@ -493,7 +493,8 @@ create_keyblock_with_state([{PrevBlock, TreesIn} | _] = Chain, MinerAccount, Ben
                           fun() -> aec_hard_forks:protocol_effective_at_height(Height) end),
     TxEnv = aetx_env:tx_env(Height, Protocol),
     PrevProtocol = aec_blocks:version(PrevBlock),
-    Trees1 = aec_trees:perform_pre_transformations(TreesIn, TxEnv, PrevProtocol),
+    Consensus = aec_consensus:get_consensus_module_at_height(Height),
+    PrevConsensus = aec_consensus:get_consensus_module_at_height(Height-1),
     Delay = aec_governance:beneficiary_reward_delay(),
     PrevKeyHash = case aec_blocks:type(PrevBlock) of
                       micro -> aec_blocks:prev_key_hash(PrevBlock);
@@ -506,17 +507,23 @@ create_keyblock_with_state([{PrevBlock, TreesIn} | _] = Chain, MinerAccount, Ben
     Block = aec_blocks:new_key(Height, PrevBlockHash, PrevKeyHash, aec_trees:hash(TreesIn),
                                Target, 0, Timestamp, Info, Protocol,
                                MinerAccount, BeneficiaryAccount),
-    Trees2 = case Height > Delay of
+    Node = aec_chain_state:wrap_block(Block),
+    Trees1 = aec_trees:perform_pre_transformations(TreesIn, TxEnv, PrevProtocol),
+    Trees2 = if Consensus =:= PrevConsensus -> Trees1;
+                true -> Consensus:state_pre_transform_key_node_consensus_switch(Node, Trees1)
+         end,
+    Trees3 = Consensus:state_pre_transform_key_node(Node, Trees2),
+    Trees4 = case Height > Delay of
                  true ->
                      grant_fees(Height - Delay - 1, [{Block, TreesIn}|Chain],
-                                Trees1, BeneficiaryAccount);
+                                Trees3, BeneficiaryAccount);
                  false ->
-                     Trees1
+                     Trees3
              end,
-    Block1 = aec_blocks:new_key(Height, PrevBlockHash, PrevKeyHash, aec_trees:hash(Trees2),
+    Block1 = aec_blocks:new_key(Height, PrevBlockHash, PrevKeyHash, aec_trees:hash(Trees4),
                                 Target, 0, Timestamp, Info, Protocol,
                                 MinerAccount, BeneficiaryAccount),
-    {Block1, Trees2}.
+    {Block1, Trees4}.
 
 adjust_target([{PrevBlock, _} | _Rest] = Chain) ->
     Height = aec_blocks:height(PrevBlock) + 1,
