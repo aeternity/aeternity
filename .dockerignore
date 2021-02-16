@@ -27,4 +27,5 @@ apps/aefate/aefateasm
 apps/aefate/aefateasm.cmd
 apps/aefate/src/aefa_fate_eval.erl
 apps/aeutils/src/endpoints.erl
+apps/aeutils/src/oas_endpoints.erl
 otp_patches/*.erl
