@@ -132,6 +132,7 @@
 %%       Context: Every table is backed right now by a separate full blown DB -.-
 -export([ write_hc_staking_contract_address/1
         , find_hc_staking_contract_address/0
+        , delete_hc_staking_contract_address/0
         ]).
 
 %%
@@ -629,6 +630,9 @@ find_hc_staking_contract_address() ->
         [#aec_chain_state{value = Address}] -> {value, Address};
         [] -> none
     end.
+
+delete_hc_staking_contract_address() ->
+    ?t(mnesia:delete(aec_chain_state, hc_staking_contract_address, write)).
 
 write_signal_count(Hash, Count) when is_binary(Hash), is_integer(Count) ->
     ?t(mnesia:write(#aec_signal_count{key = Hash, value = Count}),

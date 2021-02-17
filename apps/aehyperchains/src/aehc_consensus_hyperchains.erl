@@ -28,9 +28,9 @@
 -define(HC_GENESIS_VERSION, ?LIMA_PROTOCOL_VSN).
 
 %% Magic nonces
--define(NONCE_HC_ENABLED, 0).
+-define(NONCE_HC_ENABLED, 16#ffffffffffffffff - 1).
 -define(NONCE_HC_POGF, 16#ffffffffffffffff).
--define(NONCE_HC_GENESIS, 1). %% Hyperchain at genesis :)
+-define(NONCE_HC_GENESIS, 2). %% Hyperchain at genesis :)
 
 %% Consensus API
 -export([ can_be_turned_off/0
@@ -49,6 +49,8 @@
         , keyblock_create_adjust_target/2
         %% Preconductor hook
         , dirty_validate_block_pre_conductor/1
+        , dirty_validate_header_pre_conductor/1
+        , dirty_validate_key_hash_at_height/2
         %% Dirty validation before starting the state transition
         , dirty_validate_key_node_with_ctx/3
         , dirty_validate_micro_node_with_ctx/3
@@ -82,6 +84,7 @@
         , get_staking_contract_address/0
         , static_staking_contract_call_on_top_block/1
         , static_staking_contract_call_on_block_hash/2
+        , load_staking_contract_address/0
         ]).
 
 %% Staking contract predeploy
@@ -101,6 +104,7 @@
 
 can_be_turned_off() -> true.
 assert_config(_Config) ->
+    persistent_term:erase(?STAKING_CONTRACT_ADDR), %% So eunit can simulate node restarts
     %% For now assume that the staking contract can't change during the lifetime of the hyperchain
     case persistent_term:get(?STAKING_CONTRACT, error) of
         error ->
@@ -201,7 +205,7 @@ hc_header_type(Header) ->
 
 -spec is_hc_pos_header(aec_headers:header()) -> boolean().
 is_hc_pos_header(Header) ->
-    maps:get(pos, aec_headers:extra(Header)).
+    maps:get(pos, aec_headers:extra(Header), false).
 
 % -----------------------------------------
 
@@ -209,6 +213,7 @@ recent_cache_n() ->
     M = fallback_consensus(),
     max(1, M:recent_cache_n()).
 
+%% Might get a pow block when switching between consensus algorithms
 recent_cache_trim_key_header(H) ->
     case is_hc_pos_header(H) of
         true -> ok;
@@ -238,6 +243,18 @@ dirty_validate_block_pre_conductor(B) ->
             M:dirty_validate_block_pre_conductor(B)
     end.
 
+dirty_validate_header_pre_conductor(H) ->
+    case is_hc_pos_header(H) of
+        true -> error(todo);
+        false ->
+            M = fallback_consensus(),
+            M:dirty_validate_header_pre_conductor(H)
+    end.
+
+dirty_validate_key_hash_at_height(Height, Hash) ->
+    M = fallback_consensus(),
+    M:dirty_validate_key_hash_at_height(Height, Hash).
+
 dirty_validate_key_node_with_ctx(Node, Block, Ctx) ->
     case is_hc_pos_header(aec_blocks:to_header(Block)) of
         true -> error(todo);
@@ -257,26 +274,47 @@ dirty_validate_micro_node_with_ctx(Node, Block, Ctx) ->
 %% -------------------------------------------------------------------
 %% Custom state transitions
 state_pre_transform_key_node_consensus_switch(KeyNode, Trees) ->
+    Header = aec_block_insertion:node_header(KeyNode),
+    TxEnv = aetx_env:tx_env_from_key_header(Header, aec_block_insertion:node_hash(KeyNode),
+        aec_block_insertion:node_time(KeyNode), aec_block_insertion:node_prev_hash(KeyNode)),
     case get_staking_contract_address() of
         not_deployed ->
-            Header = aec_block_insertion:node_header(KeyNode),
-            TxEnv = aetx_env:tx_env_from_key_header(Header, aec_block_insertion:node_hash(KeyNode),
-                aec_block_insertion:node_time(KeyNode), aec_block_insertion:node_prev_hash(KeyNode)),
-            case get_predeploy_address() of
-                {ok, ContractPubkey} ->
-                    %% When the staking contract was not found it is better to
-                    %% bring down the entire node down. By rejecting the state transition
-                    %% the node will get stuck syncing on the specified height
-                    %% This actually incurs a risk on whether the staking contract was finalized
-                    %% As we force finality after 100 blocks we can assume that every fork
-                    %% at the switch height contains the staking contract
-                    verify_existing_staking_contract(ContractPubkey, Trees, TxEnv),
-                    set_staking_contract_address(ContractPubkey),
-                    {ok, false} = is_hc_enabled(Trees, TxEnv);
-                error ->
-                    deploy_staking_contract_by_system(Trees, TxEnv)
-            end;
-        {ok, _} -> Trees
+            ensure_staking_contract_on_consensus_switch(Trees, TxEnv);
+        {ok, ContractAddress} ->
+            %% After deploying the staking contract we cache the address
+            %% Subsequent calls to this functions on the same key node and trees shall
+            %% yield the same results
+            %% We might be dealing with Consensuses like Pow -> HC -> ??? -> HC
+            %% Check whether the contract was already deployed - if not then deploy it
+            case aect_state_tree:lookup_contract(ContractAddress, aec_trees:contracts(Trees)) of
+                {value, _} ->
+                    %% Ok we are just switching between settings
+                    verify_existing_staking_contract(ContractAddress, Trees, TxEnv);
+                none ->
+                    %% Assume we need to deploy it
+                    Trees1 = ensure_staking_contract_on_consensus_switch(Trees, TxEnv),
+                    %% Quick sanity check
+                    {ok, ContractAddress} = get_staking_contract_address(),
+                    Trees1
+            end
+    end.
+
+ensure_staking_contract_on_consensus_switch(Trees, TxEnv) ->
+    case get_predeploy_address() of
+        {ok, ContractPubkey} ->
+            %% When the staking contract was not found it is better to
+            %% bring down the entire node down. By rejecting the state transition
+            %% the node will get stuck syncing on the specified height
+            %% This actually incurs a risk on whether the staking contract was finalized
+            %% As we force finality after 100 blocks we can assume that every fork
+            %% at the switch height contains the staking contract
+            %% TODO: Don't crash the node fully
+            %%       There is an exotic but possible DOS vector here
+            verify_existing_staking_contract(ContractPubkey, Trees, TxEnv),
+            set_staking_contract_address(ContractPubkey),
+            {ok, false} = is_hc_enabled(Trees, TxEnv);
+        error ->
+            deploy_staking_contract_by_system(Trees, TxEnv)
     end.
 
 state_pre_transform_key_node(_Node, Trees) -> Trees.
@@ -325,7 +363,7 @@ genesis_raw_header() ->
         <<0:?BENEFICIARY_PUB_BYTES/unit:8>>,
         genesis_target(),
         no_value,
-        ?NONCE_HC_POGF,
+        ?NONCE_HC_GENESIS,
         0,
         default,
         ?HC_GENESIS_VERSION).
@@ -521,7 +559,7 @@ prepare_system_owner(Deployer, Trees) ->
     {ok, NewA, OldA} = case aec_accounts_trees:lookup(Deployer, Accounts0) of
                   none ->
                       A = aec_accounts:new(Deployer, 1 bsl 61),
-                      {ok, A, A};
+                      {ok, A, aec_accounts:new(Deployer, 0)};
                   {value, A0} ->
                       {ok, A1} = aec_accounts:earn(A0, 1 bsl 61),
                       {ok, A1, A0}

@@ -1,2 +1,0 @@
--module(aehc_staking_contract_deploy_SUITE).
--export([]).

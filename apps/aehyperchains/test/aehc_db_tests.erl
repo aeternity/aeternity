@@ -104,41 +104,7 @@ end,
      ]}.
 
 write_parent_chain_test_() ->
-    aehc_test_utils:with_mocked_fork_settings([
-    aec_test_utils:eunit_with_consensus(aehc_test_utils:hc_from_genesis(), [
-    {foreach,
-     fun() ->
-             ok = application:ensure_started(gproc),
-             {ok, _} = aec_db_error_store:start_link(),
-             aec_test_utils:start_chain_db(),
-             %% somehow setup:find_env_vars can't find this hook in eunit tests
-             aehc_db:create_tables(ram),
-             Tabs = [Tab || {Tab, _} <- aehc_parent_db:table_specs(ram)],
-             ok = mnesia:wait_for_tables(Tabs, 10000),
-
-             meck:new(aec_mining, [passthrough]),
-             meck:expect(aec_mining, verify, fun(_, _, _, _) -> true end),
-             meck:new(aec_events, [passthrough]),
-             meck:expect(aec_events, publish, fun(_, _) -> ok end),
-             TmpDir = aec_test_utils:aec_keys_setup(),
-             {ok, PubKey} = aec_keys:pubkey(),
-             ok = application:set_env(aecore, beneficiary, aeser_api_encoder:encode(account_pubkey, PubKey)),
-             {ok, _} = aec_tx_pool:start_link(),
-             aec_consensus:set_genesis_hash(),
-             {ok, _} = aec_conductor:start_link([{autostart, false}]),
-             TmpDir
-     end,
-     fun(TmpDir) ->
-             ok = application:unset_env(aecore, beneficiary),
-             ok = aec_conductor:stop(),
-             ok = aec_tx_pool:stop(),
-             ok = application:stop(gproc),
-             meck:unload(aec_mining),
-             meck:unload(aec_events),
-             aec_test_utils:stop_chain_db(),
-             ok = aec_db_error_store:stop(),
-             aec_test_utils:aec_keys_cleanup(TmpDir)
-     end,
+    aehc_test_utils:hc_chain_eunit_testcase(aehc_test_utils:hc_from_genesis(),
      [{"Write and read back pinpointed genesis block",
        fun() ->
              ParentBlock = aehc_parent_block:new_block(?PARENT_GENESIS_HEADER, []),
@@ -160,4 +126,4 @@ write_parent_chain_test_() ->
             ?assertEqual(ParentBlock, aehc_parent_db:get_parent_block(?PARENT_GENESIS_HASH)),
             ?assertEqual(CList, aehc_parent_db:get_candidates_in_election_cycle(1337, ?PARENT_GENESIS_HASH))
        end}
-     ]}])]).
+     ]).
