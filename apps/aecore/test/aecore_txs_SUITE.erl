@@ -230,6 +230,7 @@ missing_tx_gossip(Config) ->
     aecore_suite_utils:wait_for_height(N2, aec_blocks:height(lists:last(MinedKeyBlocks1))),
     ?assertMatch({X,_} when is_binary(X), rpc:call(N2, aec_chain, find_tx_with_location, [Tx1Hash])),
     ?assertMatch({X,_} when is_binary(X), rpc:call(N2, aec_chain, find_tx_with_location, [Tx4Hash])),
+    ?assertMatch({mempool,_}, rpc:call(N2, aec_chain, find_tx_with_location, [Tx5Hash])),
 
     {ok, _} = mine_blocks_until_txs_on_chain(N2, [TxH5]),
 
