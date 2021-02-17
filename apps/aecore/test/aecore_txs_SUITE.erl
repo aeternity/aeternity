@@ -234,12 +234,7 @@ missing_tx_gossip(Config) ->
         end,
     AssertTxIncluded(N2, Tx1Hash),
     AssertTxIncluded(N2, Tx4Hash),
-    case rpc:call(N2, aec_chain, find_tx_with_location, [Tx4Hash]) of
-        {mempool, _} ->
-            {ok, _} = mine_blocks_until_txs_on_chain(N2, [TxH5]);
-        {X, _} when is_binary(X) -> %% already mined
-            pass
-    end,
+    {ok, _} = mine_blocks_until_txs_on_chain(N2, [TxH5]),
     ok.
 
 %% CT Consensus does not change the coinbase
