@@ -51,6 +51,7 @@ init_per_suite(Config) ->
     Config1 = aecore_suite_utils:init_per_suite([dev1, dev2], DefCfg, 
                                                 [{add_peers, true}],
                                                 [{symlink_name, "latest.txs"},
+                                                 {instant_mining, true}, 
                                                  {test_module, ?MODULE}, 
                                                  {micro_block_cycle, 
                                                   MicroBlockCycle}] ++ 
