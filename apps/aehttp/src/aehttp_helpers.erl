@@ -670,7 +670,7 @@ serialize_event({internal_call_tx, Key}, #{ type    := Type
     #{ kind    => internal_call_tx
      , key     => Key
      , type    => Type
-     , tx_hash => TxHash
+     , tx_hash => aeser_api_encoder:encode(tx_hash, TxHash)
      , info    => TxS };
 serialize_event({channel, ChId}, #{ type    := Type
                                   , tx_hash := TxHash } = I) ->
