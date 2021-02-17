@@ -1267,23 +1267,21 @@ use_swagger(SpecVsn) ->
         end,
     put(api_prefix, Prefix).
 
+get(Key, Default) ->
+    case get(Key) of
+        undefined -> Default;
+        V -> V
+    end.
+
 http_request(Host, get, Path, Params) ->
-    Prefix =
-        case get(api_prefix) of
-            undefined -> "/v2/";
-            V -> V
-        end,
+    Prefix = get(api_prefix, "/v2/"),
     URL = binary_to_list(
             iolist_to_binary([Host, Prefix, Path, encode_get_params(Params)])),
     ct:log("GET ~p", [URL]),
     R = httpc_request(get, {URL, []}, [], []),
     process_http_return(R);
 http_request(Host, post, Path, Params) ->
-    Prefix =
-        case get(api_prefix) of
-            undefined -> "/v2/";
-            V -> V
-        end,
+    Prefix = get(api_prefix, "/v2/"),
     URL = binary_to_list(iolist_to_binary([Host, Prefix, Path])),
     {Type, Body} = case Params of
                        Map when is_map(Map) ->
