@@ -1432,6 +1432,7 @@ dry_run_txs(Calls) ->
     {ok, 200, #{ <<"results">> := Results }} = dry_run(Txs),
     {ok, 200, #{ <<"results">> := Results
                , <<"tx_events">> := TxEvents }} = dry_run_w_events(Txs),
+    [#{ <<"tx_hash">> := <<"th_", _/binary>> } = E || E <- TxEvents],
     ct:log("TxEvents = ~p", [TxEvents]),
     check_dry_calls(Calls, Results).
 
