@@ -7,8 +7,15 @@
         , cuckoo_pow_from_genesis/0
         , enable_hc_from_genesis/0
         , enable_pow_cuckoo_from_genesis/0
+        , enable_consensus/1
         , with_mocked_fork_settings/1
         , hc_chain_eunit_testcase/2
+        , patron/0
+        , genesis_accounts/0
+        , gen_blocks_only_chain/1
+        , gen_blocks_only_chain/2
+        , gen_block_chain_with_state/2
+        , gen_block_chain_with_state/3
         ]).
 
 -include_lib("eunit/include/eunit.hrl").
@@ -24,22 +31,34 @@ pow_to_hc_switch(Height) ->
      }.
 
 enable_hc_from_genesis() ->
-    application:set_env(aecore, consensus, hc_from_genesis()),
+    enable_consensus(hc_from_genesis()).
+
+enable_pow_cuckoo_from_genesis() ->
+    enable_consensus(cuckoo_pow_from_genesis()).
+
+enable_consensus(Consensus) ->
+    application:set_env(aecore, consensus, Consensus),
     aec_consensus:set_consensus(),
     ?assertEqual(ok, aec_consensus:check_env()),
     ok.
 
-enable_pow_cuckoo_from_genesis() ->
-    application:set_env(aecore, consensus, cuckoo_pow_from_genesis()),
-    aec_consensus:set_consensus(),
-    ?assertEqual(ok, aec_consensus:check_env()),
-    ok.
+genesis_accounts() ->
+    #{pubkey := PubKey} = patron(),
+    [{PubKey, 10000000000000000000 * aec_test_utils:min_gas_price()}].
+
+patron() ->
+    #{pubkey  => <<206,167,173,228,112,201,249,157,157,78,64,8,128,168,111,29,
+                   73,187,68,75,98,241,26,158,187,100,187,207,235,115,254,243>>,
+      privkey => <<230,169,29,99,60,119,207,87,113,50,157,51,84,179,188,239,27,
+                   197,224,50,196,61,112,182,211,90,249,35,206,30,183,77,206,
+                   167,173,228,112,201,249,157,157,78,64,8,128,168,111,29,73,
+                   187,68,75,98,241,26,158,187,100,187,207,235,115,254,243>>}.
 
 with_mocked_fork_settings(What) ->
     { foreach,
       fun() ->
           ?assertEqual(false, aehc_utils:hc_enabled()),
-          aec_test_utils:mock_genesis_and_forks(),
+          aec_test_utils:mock_genesis_and_forks(genesis_accounts()),
           ok
       end,
       fun(_) ->
@@ -84,3 +103,19 @@ hc_chain_eunit_testcase(Consensus, What) ->
              ok = aec_db_error_store:stop(),
              aec_test_utils:aec_keys_cleanup(TmpDir)
      end, What}])]).
+
+gen_blocks_only_chain(Count) ->
+    aec_test_utils:gen_blocks_only_chain(Count, genesis_accounts()).
+
+gen_blocks_only_chain(Count, BlockCfg) ->
+    aec_test_utils:gen_blocks_only_chain(Count, genesis_accounts(), BlockCfg).
+
+gen_block_chain_with_state(Targets, TxsFun) -> gen_block_chain_with_state(Targets, TxsFun, lists:duplicate(length(Targets), undefined)).
+
+gen_block_chain_with_state(Targets, TxsFun, Timestamps) ->
+    {B0, S0} = aec_block_genesis:genesis_block_with_state(#{preset_accounts => genesis_accounts()}),
+    aec_test_utils:extend_block_chain_with_state([{B0, S0}],
+        #{ targets => Targets
+         , txs_by_height_fun => TxsFun
+         , timestamps => Timestamps
+         }).
