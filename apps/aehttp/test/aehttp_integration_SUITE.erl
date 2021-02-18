@@ -28,6 +28,7 @@
    , get_commitment_id/2
    , get_accounts_by_pubkey_sut/1
    , get_transactions_by_hash_sut/1
+   , get_top_block/1
    , get_top_header/1
    , get_chain_ends/1
    , wait_for_tx_hash_on_chain/1
@@ -291,7 +292,7 @@ groups() ->
       ]},
      {block_info, [sequence],
       [
-       get_top_header,
+       get_top_block,
        get_chain_ends,
        get_current_key_block,
        get_current_key_block_hash,
@@ -837,7 +838,7 @@ get_chain_ends(CurrentBlockType, CurrentBlockHash, _Config) when
     ?assertMatch({ok, 200, [CurrentBlockHash]}, get_chain_ends_sut()),
     ok;
 get_chain_ends(micro_block, CurrentBlockHash, Config) ->
-    {ok, 200, Block} = get_top_sut(),
+    {ok, 200, #{<<"micro_block">> := Block}} = get_top_sut(),
     Hash = maps:get(<<"hash">>, Block),
     ?assertEqual(CurrentBlockHash, Hash),
     <<"mh_", _K/binary>> = Hash,
@@ -851,19 +852,19 @@ get_chain_ends_sut() ->
 
 %% /blocks/top
 
-get_top_header(Config) ->
-    get_top_header(?config(current_block_type, Config),
-                   ?config(current_block_hash, Config),
-                   Config).
+get_top_block(Config) ->
+    get_top_block(?config(current_block_type, Config),
+                  ?config(current_block_hash, Config),
+                  Config).
 
-get_top_header(CurrentBlockType, CurrentBlockHash, _Config) when
+get_top_block(CurrentBlockType, CurrentBlockHash, _Config) when
       CurrentBlockType =:= genesis_block; CurrentBlockType =:= key_block ->
-    {ok, 200, #{<<"hash">> := Hash}} = get_top_sut(),
+    {ok, 200, #{<<"key_block">> := #{<<"hash">> := Hash}}} = get_top_sut(),
     <<"kh_", _K/binary>> = Hash,
     ?assertEqual(CurrentBlockHash, Hash),
     ok;
-get_top_header(micro_block, CurrentBlockHash, _Config) ->
-    {ok, 200, #{<<"hash">> := Hash}} = get_top_sut(),
+get_top_block(micro_block, CurrentBlockHash, _Config) ->
+    {ok, 200, #{<<"micro_block">> := #{<<"hash">> := Hash}}} = get_top_sut(),
     <<"mh_", _K/binary>> = Hash,
     ?assertEqual(CurrentBlockHash, Hash),
     ok.
