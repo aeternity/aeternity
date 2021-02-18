@@ -23,14 +23,8 @@ stop(_State) ->
 
 check_env() ->
     check_env([{[<<"chain">>, <<"hyperchains">>, <<"enabled">>], {set_env, enabled}}]),
-    case aehc_utils:hc_enabled() of
-        true ->
-            lager:info("Hyperchains are enabled"),
-            aehc_utils:hc_install();
-        false ->
-            lager:info("Hyperchains are disabled"),
-            ok
-    end.
+    aehc_utils:hc_enabled() andalso lager:info("Hyperchains is enabled"),
+    ok.
 
 check_env(Spec) ->
     lists:foreach(

@@ -527,6 +527,7 @@ genesis_transform_trees(Trees0, #{}) ->
             end,
             deploy_staking_contract_by_system(Trees1, TxEnv)
     end.
+
 genesis_raw_header() ->
     aec_headers:new_key_header(
         0,
@@ -541,6 +542,7 @@ genesis_raw_header() ->
         0,
         default,
         ?HC_GENESIS_VERSION).
+
 genesis_difficulty() -> 0.
 
 -ifdef(TEST).
