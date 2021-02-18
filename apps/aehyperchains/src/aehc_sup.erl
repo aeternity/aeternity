@@ -15,7 +15,7 @@ start_link() ->
 init([]) ->
     Spec = case aehc_utils:hc_enabled() of
         true ->
-            lager:info("Starting Hyperchains"),
+            lager:info("Starting Hyperchains...."),
             [?CHILD(aehc_parent_mng, 5000, worker)];
         false ->
             []
