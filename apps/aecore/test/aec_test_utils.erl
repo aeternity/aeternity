@@ -603,7 +603,7 @@ blocks_only_chain(Chain) ->
 create_micro_block(PrevBlock, PrevKeyBlock, PrivKey, Txs, Trees, Offset) ->
     {Block1, Trees1} =
         aec_block_micro_candidate:create_with_state(PrevBlock, PrevKeyBlock, Txs, Trees),
-    Block2 = aec_blocks:set_time_in_msecs(Block1, Offset + aec_blocks:time_in_msecs(Block1)),
+    Block2 = aec_blocks:set_time_in_msecs(Block1, Offset + aec_blocks:time_in_msecs(PrevKeyBlock)),
     SignedMicroBlock = sign_micro_block(Block2, PrivKey),
     {SignedMicroBlock, Trees1}.
 

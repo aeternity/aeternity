@@ -54,7 +54,8 @@
          update_micro_candidate/4,
          validate_key_block/2,
          validate_micro_block/2,
-         version/1
+         version/1,
+         strip_extra/1
         ]).
 
 -include("blocks.hrl").
@@ -455,3 +456,11 @@ validate_pof(#mic_block{pof = PoF} = Block) ->
         true ->
             aec_pof:validate(PoF)
     end.
+
+strip_extra(#mic_block{header = H, pof = P, txs = T}) ->
+    #mic_block{ header = aec_headers:strip_extra(H)
+              , pof = P
+              , txs = T
+              };
+strip_extra(#key_block{header = H}) ->
+    #key_block{header = aec_headers:strip_extra(H)}.
