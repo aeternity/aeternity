@@ -28,6 +28,8 @@
 -export([check_env/0]).
 -export([enable_internal_debug_endpoints/0]).
 
+-include("aehttp_spec.hrl").
+
 %%====================================================================
 %% API
 %%====================================================================
@@ -90,7 +92,8 @@ start_http_api(Target, LogicHandler) ->
     PoolSize = get_http_api_acceptors(Target),
     Port = get_http_api_port(Target),
     ListenAddress = get_http_api_listen_address(Target),
-    _ = aehttp_api_validate:validator(),  %% caches spec and validator
+    _ = aehttp_api_validate:validator(?SWAGGER2),  %% caches spec and validator
+    _ = aehttp_api_validate:validator(?OAS3),  %% caches spec and validator
 
     Paths = aehttp_api_router:get_paths(Target, LogicHandler),
     Dispatch = cowboy_router:compile([{'_', Paths}]),

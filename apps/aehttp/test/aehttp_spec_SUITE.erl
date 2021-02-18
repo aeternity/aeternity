@@ -59,54 +59,65 @@ get_api(Config) ->
     %% ensure http interface is up and running
     N1 = aecore_suite_utils:node_name(?NODE),
     aecore_suite_utils:connect(N1),
-    Spec = rpc:call(N1, aehttp_spec, json, []),
-
-    Host = aecore_suite_utils:external_address(),
-    URL = binary_to_list(iolist_to_binary([Host, "/api"])),
-    Repl1 = httpc:request(URL),
-
-    {ok, {{"HTTP/1.1", 200, "OK"}, _, Json}} = Repl1,
-    ct:log("~p returned spec: ~p", [?NODE, Json]),
-
-    JsonObj = jsx:decode(Spec),
-    JsonObj = jsx:decode(list_to_binary(Json)),
     Type = "application/json",
     Body = <<"{broken_json">>,
 
-    {ok,{{"HTTP/1.1",405,"Method Not Allowed"},_,_}} =
-         httpc:request(post, {URL, [], Type, Body}, [], []),
+    Test =
+        fun(SpecVsn, Path) ->
+            Spec = rpc:call(N1, aehttp_spec, json, [SpecVsn]),
+
+            Host = aecore_suite_utils:external_address(),
+            URL = binary_to_list(iolist_to_binary([Host, Path])),
+            Repl1 = httpc:request(URL),
+
+            {ok, {{"HTTP/1.1", 200, "OK"}, _, Json}} = Repl1,
+            ct:log("~p returned spec: ~p", [?NODE, Json]),
+            JsonObj = jsx:decode(Spec),
+            JsonObj = jsx:decode(list_to_binary(Json)),
+
+            %% negative test
+            {ok,{{"HTTP/1.1",405,"Method Not Allowed"},_,_}} =
+                httpc:request(post, {URL, [], Type, Body}, [], [])
+        end,
+    Test(swagger2, "/api"),
+    Test(oas3, "/api?oas3"),
     ok.
 
-validate_api(Config) ->
-    Spec = aehttp_spec:json(),
+validate_api(_Config) ->
+    lists:foreach(
+        fun(SpecVsn) ->
+            Spec = aehttp_spec:json(SpecVsn),
 
-    Url = "https://validator.swagger.io/validator/",
-    case httpc:request(post, {Url, [],  "application/json", Spec}, [], []) of
-        {ok, {{_, 200, _}, _Headers, Body}} ->
-            %% For manual verification visit https://github.com/swagger-api/validator-badge
-            %% A picture is returned in the body
-            case aec_hash:blake2b_256_hash(list_to_binary(Body)) of
-                <<85,250,111,235,97,122,213,232,25,130,236,210,99,16,245,146,67,
-                  186,213,194,192,223,209,154,83,237,158,255,97,67,22,185>> ->
-                    %% Valid picture returned
-                    ok;
-                _ ->
-                    ct:pal("Wrong hash on swagger validation picture"),
-                    case httpc:request(post, {Url++"debug", [],  "application/json", Spec}, [], []) of
-                        {ok, {{_, 200, "OK"}, _, Msg}} ->
-                            case yamerl:decode(Msg) of
-                                [[{"messages",null},{"schemaValidationMessages",null}]] ->
-                                    ct:pal("Yaml correct. Update picture hash to speed up this test"),
-                                    {fail, update_hash};
-                                Yml ->
-                                    {fail, Yml}
-                            end;
-                        Response ->
-                            ct:log("Returned error ~s", [Response]),
-                            {fail, Response}
-                    end
-            end;
-        Other ->
-            ct:pal("Connection problem: ~p", [Other]),
-            {fail, "cannot connect to swagger validation server"}
-    end.
+            Url = "https://validator.swagger.io/validator/",
+            case httpc:request(post, {Url, [],  "application/json", Spec}, [], []) of
+                {ok, {{_, 200, _}, _Headers, Body}} ->
+                    %% For manual verification visit https://github.com/swagger-api/validator-badge
+                    %% A picture is returned in the body
+                    case aec_hash:blake2b_256_hash(list_to_binary(Body)) of
+                        <<85,250,111,235,97,122,213,232,25,130,236,210,99,16,245,146,67,
+                          186,213,194,192,223,209,154,83,237,158,255,97,67,22,185>> ->
+                            %% Valid picture returned
+                            ok;
+                        _ ->
+                            ct:pal("Wrong hash on swagger validation picture"),
+                            case httpc:request(post, {Url++"debug", [],  "application/json", Spec}, [], []) of
+                                {ok, {{_, 200, "OK"}, _, Msg}} ->
+                                    case yamerl:decode(Msg) of
+                                        [[{"messages",null},{"schemaValidationMessages",null}]] ->
+                                            ct:pal("Yaml correct. Update picture hash to speed up this test"),
+                                            {fail, update_hash};
+                                        Yml ->
+                                            {fail, Yml}
+                                    end;
+                                Response ->
+                                    ct:log("Returned error ~s", [Response]),
+                                    {fail, Response}
+                            end
+                    end;
+                Other ->
+                    ct:pal("Connection problem: ~p", [Other]),
+                    {fail, "cannot connect to swagger validation server"}
+            end
+        end,
+        [swagger2, oas3]).
+

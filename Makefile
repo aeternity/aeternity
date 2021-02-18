@@ -23,6 +23,8 @@ EQC_EUNIT_TESTING_TIME_MULTIPLIER ?= 1
 EQC_EUNIT_TEST_FLAGS_FINAL = $(EQC_EUNIT_TEST_FLAGS)
 
 SWAGGER_ENDPOINTS_SPEC = apps/aeutils/src/endpoints.erl
+OAS_ENDPOINTS_SPEC = apps/aeutils/src/oas_endpoints.erl
+OAS_YAML = apps/aehttp/priv/oas3.yaml
 
 PACKAGE_SPEC_WIN32 ?= ../.circleci/windows/package.cfg
 
@@ -44,8 +46,10 @@ DEB_PKG_CHANGELOG_FILE=debian/changelog
 
 all:	local-build
 
-$(SWAGGER_ENDPOINTS_SPEC): VERSION
+
+endpoints: VERSION
 	$(REBAR) swagger_endpoints
+	$(REBAR) swagger_endpoints --file=$(OAS_YAML) --out=$(OAS_ENDPOINTS_SPEC) 
 
 null  :=
 space := $(null) # space
@@ -96,7 +100,7 @@ endif
 export AEVM_EXTERNAL_TEST_DIR=aevm_external
 export AEVM_EXTERNAL_TEST_VERSION=348b0633f4a6ee3c100368bf0f4fca71394b4d01
 
-console: VERSION REVISION $(SWAGGER_ENDPOINTS_SPEC)
+console: VERSION REVISION endpoints 
 	@$(REBAR) as local shell --config config/dev.config --sname aeternity@localhost
 
 test-build: KIND=test
@@ -214,11 +218,11 @@ dev3-clean: internal-clean
 dev3-distclean: KIND=dev3
 dev3-distclean: internal-distclean
 
-dialyzer-install: $(SWAGGER_ENDPOINTS_SPEC)
+dialyzer-install: endpoints
 	@$(REBAR) tree
 	@$(REBAR) dialyzer -u true -s false
 
-dialyzer: $(SWAGGER_ENDPOINTS_SPEC)
+dialyzer: endpoints 
 	@$(REBAR) dialyzer
 
 edoc: VERSION
@@ -371,6 +375,7 @@ clean:
 	@-rm REVISION
 	@-rm VERSION
 	@-rm $(SWAGGER_ENDPOINTS_SPEC)
+	@-rm $(OAS_ENDPOINTS_SPEC)
 	@$(MAKE) multi-distclean
 	@$(MAKE) eqc-clean
 	@rm -rf _build/system_test+test _build/system_test _build/test _build/prod _build/local
@@ -405,10 +410,10 @@ multi-build: VERSION dev1-build
 internal-compile-deps:
 	@$(REBAR) as $(KIND) compile -d
 
-internal-package: VERSION REVISION internal-compile-deps $(SWAGGER_ENDPOINTS_SPEC)
+internal-package: VERSION REVISION internal-compile-deps endpoints
 	@$(REBAR) as $(KIND) tar
 
-internal-build: VERSION REVISION internal-compile-deps $(SWAGGER_ENDPOINTS_SPEC)
+internal-build: VERSION REVISION internal-compile-deps endpoints
 	@$(REBAR) as $(KIND) release
 
 internal-start:

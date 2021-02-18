@@ -75,6 +75,7 @@
          await_is_syncing/2,
          rpc/3,
          rpc/4,
+         use_swagger/1,
          http_request/4,
          httpc_request/4,
          process_http_return/1,
@@ -1258,14 +1259,30 @@ await_new_jobs_pid_recurse(N, OldP, TRef) ->
             await_new_jobs_pid(N, OldP, TRef)
     end.
 
+use_swagger(SpecVsn) ->
+    Prefix =
+        case SpecVsn of
+            oas3 -> "/v3/";
+            swagger2 -> "/v2/"
+        end,
+    put(api_prefix, Prefix).
+
+get(Key, Default) ->
+    case get(Key) of
+        undefined -> Default;
+        V -> V
+    end.
+
 http_request(Host, get, Path, Params) ->
+    Prefix = get(api_prefix, "/v2/"),
     URL = binary_to_list(
-            iolist_to_binary([Host, "/v2/", Path, encode_get_params(Params)])),
+            iolist_to_binary([Host, Prefix, Path, encode_get_params(Params)])),
     ct:log("GET ~p", [URL]),
     R = httpc_request(get, {URL, []}, [], []),
     process_http_return(R);
 http_request(Host, post, Path, Params) ->
-    URL = binary_to_list(iolist_to_binary([Host, "/v2/", Path])),
+    Prefix = get(api_prefix, "/v2/"),
+    URL = binary_to_list(iolist_to_binary([Host, Prefix, Path])),
     {Type, Body} = case Params of
                        Map when is_map(Map) ->
                            %% JSON-encoded

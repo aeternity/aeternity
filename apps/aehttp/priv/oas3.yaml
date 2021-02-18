@@ -1,0 +1,217 @@
+openapi: 3.0.0
+info:
+  description: This is the [Aeternity](https://www.aeternity.com/) node API.
+  version: x.y.z
+  title: Aeternity node
+  termsOfService: https://www.aeternity.com/terms/
+  contact:
+    email: apiteam@aeternity.com
+tags:
+  - name: external
+    description: External API
+  - name: internal
+    description: Internal API
+  - name: chain
+    description: Chain related endpoints
+  - name: transaction
+    description: Transaction related endpoints
+  - name: account
+    description: Account related endpoints
+  - name: contract
+    description: Contract related endpoints
+  - name: oracle
+    description: Oracle related endpoints
+  - name: name_service
+    description: Name service related endpoints
+  - name: channel
+    description: State channel related endpoints
+  - name: node_info
+    description: Node information related endpoints
+  - name: debug
+    description: Debug endpoints
+  - name: obsolete
+    description: Old endpoints that will be removed
+externalDocs:
+  description: Find out more about Aeternity
+  url: http://www.aeternity.com
+servers:
+  - url: /v3
+paths:
+###
+## External endpoints
+###
+  /headers/top:
+    get:
+      tags:
+        - external
+        - chain
+      operationId: GetTopHeader
+      description: Get the top header (either key or micro block)
+      responses:
+        "200":
+          description: Successful operation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Header"
+        "404":
+          description: Block not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /key-blocks/hash/{hash}:
+    get:
+      tags:
+        - external
+        - chain
+      operationId: GetKeyBlockByHash
+      description: 'Get a key block by hash'
+      produces:
+        - application/json
+      parameters:
+        - in: path
+          name: hash
+          description: 'The hash of the block'
+          required: true
+          # Encoded key block hash
+          # pattern: "^kh_[1-9A-HJ-NP-Za-km-z]*$"
+          type: string
+      responses:
+        '200':
+          description: 'Successful operation'
+          schema:
+            $ref: '#/definitions/KeyBlock'
+        '400':
+          description: 'Invalid hash'
+          schema:
+            $ref: '#/definitions/Error'
+        '404':
+          description: 'Block not found'
+          schema:
+            $ref: '#/definitions/Error'
+components:
+  schemas:
+    Error:
+      type: object
+      properties:
+        reason:
+          type: string
+      required:
+        - reason
+    UInt:
+      type: integer
+      minimum: 0
+    UInt16:
+      type: integer
+      minimum: 0
+      maximum: 65535
+    UInt32:
+      type: integer
+      minimum: 0
+      maximum: 4294967295
+    UInt64:
+      type: integer
+      minimum: 0
+      maximum: 18446744073709552000
+    TxBlockHeight:
+      type: integer
+      minimum: -1
+      maximum: 18446744073709552000
+    EncodedHash:
+      description: Base58Check encoded tagged hash
+      type: string
+    EncodedPubkey:
+      description: Base58Check encoded tagged pubkey
+      type: string
+    EncodedValue:
+      description: Base58Check encoded tagged value
+      type: string
+    EncodedByteArray:
+      description: Base64Check encoded tagged byte array
+      type: string
+    Pow:
+      type: array
+      items:
+        $ref: "#/components/schemas/UInt32"
+      minItems: 42
+      maxItems: 42
+    KeyBlock:
+      type: object
+      properties:
+        hash:
+          $ref: "#/components/schemas/EncodedHash"
+        height:
+          $ref: "#/components/schemas/UInt64"
+        prev_hash:
+          $ref: "#/components/schemas/EncodedHash"
+        prev_key_hash:
+          $ref: "#/components/schemas/EncodedHash"
+        state_hash:
+          $ref: "#/components/schemas/EncodedHash"
+        miner:
+          $ref: "#/components/schemas/EncodedPubkey"
+        beneficiary:
+          $ref: "#/components/schemas/EncodedPubkey"
+        target:
+          $ref: "#/components/schemas/UInt32"
+        pow:
+          $ref: "#/components/schemas/Pow"
+        nonce:
+          $ref: "#/components/schemas/UInt64"
+        time:
+          $ref: "#/components/schemas/UInt64"
+        version:
+          $ref: "#/components/schemas/UInt32"
+        info:
+          $ref: "#/components/schemas/EncodedByteArray"
+      required:
+        - hash
+        - height
+        - prev_hash
+        - prev_key_hash
+        - state_hash
+        - miner
+        - beneficiary
+        - target
+        - time
+        - version
+        - info
+    MicroBlockHeader:
+      type: object
+      properties:
+        hash:
+          $ref: "#/components/schemas/EncodedHash"
+        height:
+          $ref: "#/components/schemas/UInt64"
+        pof_hash:
+          $ref: "#/components/schemas/EncodedHash"
+        prev_hash:
+          $ref: "#/components/schemas/EncodedHash"
+        prev_key_hash:
+          $ref: "#/components/schemas/EncodedHash"
+        state_hash:
+          $ref: "#/components/schemas/EncodedHash"
+        txs_hash:
+          $ref: "#/components/schemas/EncodedHash"
+        signature:
+          $ref: "#/components/schemas/EncodedValue"
+        time:
+          $ref: "#/components/schemas/UInt64"
+        version:
+          $ref: "#/components/schemas/UInt32"
+      required:
+        - hash
+        - height
+        - pof_hash
+        - prev_hash
+        - prev_key_hash
+        - state_hash
+        - txs_hash
+        - signature
+        - time
+        - version
+    Header:
+      anyOf:
+        - $ref: "#/components/schemas/KeyBlock"
+        - $ref: "#/components/schemas/MicroBlockHeader"

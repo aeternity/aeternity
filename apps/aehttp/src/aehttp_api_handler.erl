@@ -17,19 +17,26 @@
     operation_id :: atom(),
     allowed_method :: binary(),
     logic_handler :: atom(),
-    validator :: jesse_state:state()
+    validator :: jesse_state:state(),
+    endpoints :: module()
 }).
 
 -include_lib("aeutils/include/aeu_stacktrace.hrl").
 
 -define(DEFAULT_HTTP_CACHE_ENABLED, false).
 
-init(Req, {OperationId, AllowedMethod, LogicHandler}) ->
+init(Req, {SpecVsn, OperationId, AllowedMethod, LogicHandler}) ->
+    Mod =
+        case SpecVsn of
+            oas3 -> oas_endpoints;
+            swagger2 -> endpoints
+        end,
     State = #state{
         operation_id = OperationId,
         allowed_method = AllowedMethod,
         logic_handler = LogicHandler,
-        validator = aehttp_api_validate:validator()
+        validator = aehttp_api_validate:validator(SpecVsn),
+        endpoints = Mod
     },
     {cowboy_rest, Req, State}.
 
@@ -68,15 +75,17 @@ expires(Req, State = #state{operation_id = OperationId}) ->
 handle_request_json(Req0, State = #state{
         operation_id = OperationId,
         logic_handler = LogicHandler,
-        validator = Validator
+        validator = Validator,
+        endpoints = Mod
     }) ->
     Method = cowboy_req:method(Req0),
-    try aehttp_api_validate:request(OperationId, Method, Req0, Validator) of
+    try aehttp_api_validate:request(OperationId, Method, Req0, Validator, Mod) of
         {ok, Params, Req1} ->
             Context = #{},
             {Code, Headers, Body} = LogicHandler:handle_request(OperationId, Params, Context),
 
-            _ = aehttp_api_validate:response(OperationId, Method, Code, Body, Validator),
+            _ = aehttp_api_validate:response(OperationId, Method, Code, Body,
+                                             Validator, Mod),
 
             Req = cowboy_req:reply(Code, to_headers(Headers), jsx:encode(Body), Req1),
             {stop, Req, State};
