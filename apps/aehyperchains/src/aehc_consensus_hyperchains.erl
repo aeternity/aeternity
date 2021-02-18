@@ -81,6 +81,7 @@
 
 %% Staking contract helpers
 -export([ get_staking_contract_aci/0
+        , get_staking_contract_bytecode/0
         , get_staking_contract_address/0
         , static_staking_contract_call_on_top_block/1
         , static_staking_contract_call_on_block_hash/2
@@ -91,6 +92,12 @@
 -export([ get_predeploy_address/0
         , set_predeploy_address/1
         , unset_predeploy_address/0
+        ]).
+
+%% Hyperchains activation criteria
+-export([ get_hc_activation_criteria/0
+        , set_hc_activation_criteria/2
+        , unset_hc_activation_criteria/0
         ]).
 
 %% General helpers
@@ -289,7 +296,8 @@ state_pre_transform_key_node_consensus_switch(KeyNode, Trees) ->
             case aect_state_tree:lookup_contract(ContractAddress, aec_trees:contracts(Trees)) of
                 {value, _} ->
                     %% Ok we are just switching between settings
-                    verify_existing_staking_contract(ContractAddress, Trees, TxEnv);
+                    verify_existing_staking_contract(ContractAddress, Trees, TxEnv),
+                    Trees;
                 none ->
                     %% Assume we need to deploy it
                     Trees1 = ensure_staking_contract_on_consensus_switch(Trees, TxEnv),
@@ -312,7 +320,8 @@ ensure_staking_contract_on_consensus_switch(Trees, TxEnv) ->
             %%       There is an exotic but possible DOS vector here
             verify_existing_staking_contract(ContractPubkey, Trees, TxEnv),
             set_staking_contract_address(ContractPubkey),
-            {ok, false} = is_hc_enabled(Trees, TxEnv);
+            {ok, false} = is_hc_enabled(Trees, TxEnv),
+            Trees;
         error ->
             deploy_staking_contract_by_system(Trees, TxEnv)
     end.
@@ -495,6 +504,26 @@ get_predeploy_address() ->
         Addr -> {ok, Addr}
     end.
 
+%% Sets the HC activation criteria
+%% 1. The minimum amount of stake required to start the HC
+%% 2. The minimum amount of unique delegates
+-spec set_hc_activation_criteria(integer(), integer()) -> ok.
+set_hc_activation_criteria(MinimumStake, MinimumDelegates) ->
+    application:set_env(aehyperchains, activation_criteria, {MinimumStake, MinimumDelegates}),
+    ok.
+
+%% Unsets the HC activation criteria
+unset_hc_activation_criteria() -> application:unset_env(aehyperchains, activation_criteria).
+
+%% Gets the HC activation criteria - if none specified then HC can't be activated
+-spec get_hc_activation_criteria() -> {ok, {integer(), integer()}} | error.
+get_hc_activation_criteria() ->
+    %% TODO: Expose in config
+    case application:get_env(aehyperchains, activation_criteria, error) of
+        error -> error;
+        Criteria -> {ok, Criteria}
+    end.
+
 %% Deploys the staking contract using a free system account :)
 %% TODO: For now just hardcode the settings
 -define(VM_VERSION, 5).
@@ -606,6 +635,7 @@ verify_existing_staking_contract(Address, Trees, TxEnv) ->
                                 OnchainVm /= ?VM_VERSION -> ErrF("Wrong VM version");
                                 LocalCode /= OnchainCode -> ErrF("Invalid staking contract bytecode");
                                 true ->
+                                    set_staking_contract_address(Address),
                                     {ok, {address, Restricted}} = static_contract_call(Trees, TxEnv, "restricted_address()"),
                                     case Restricted of
                                         ?RESTRICTED_ACCOUNT ->
