@@ -951,7 +951,7 @@ fork_gen_key_candidate() ->
     Protocol = aec_blocks:version(TopBlock),
     ?assertMatch({ok, _},
                  aec_chain_state:calculate_state_for_new_keyblock(
-                   TopBlockHash, Pubkey, Pubkey, Protocol)),
+                   TopBlockHash, aec_blocks:to_header(TopBlock), Pubkey, Pubkey, Protocol)),
     ok.
 
 %%%===================================================================

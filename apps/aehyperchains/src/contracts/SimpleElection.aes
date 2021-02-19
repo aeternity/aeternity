@@ -434,4 +434,5 @@ payable contract SimpleElection =
     protocol_enable : () => unit
     protocol_enable() =
       protocol_restrict()
+      require(!state.enabled, "Can only enable the protocol once!")
       put(state{enabled = true})

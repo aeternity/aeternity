@@ -61,7 +61,7 @@ int_create(BlockHash, Block, Beneficiary, AdjChain, Protocol) ->
 
 int_create(PrevBlockHash, PrevBlock, Miner, Beneficiary, AdjChain, Protocol) ->
     {ok, Trees} =
-        aec_chain_state:calculate_state_for_new_keyblock(PrevBlockHash, Miner, Beneficiary, Protocol),
+        aec_chain_state:calculate_state_for_new_keyblock(PrevBlockHash, aec_blocks:to_header(PrevBlock), Miner, Beneficiary, Protocol),
     Block = int_create_block(PrevBlockHash, PrevBlock, Miner, Beneficiary, Trees, Protocol),
     Consensus = aec_blocks:consensus_module(Block),
     case Consensus:keyblock_create_adjust_target(Block, AdjChain) of

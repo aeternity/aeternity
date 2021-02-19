@@ -55,9 +55,9 @@
         , dirty_validate_key_node_with_ctx/3
         , dirty_validate_micro_node_with_ctx/3
         %% State transition
-        , state_pre_transform_key_node_consensus_switch/2
-        , state_pre_transform_key_node/2
-        , state_pre_transform_micro_node/2
+        , state_pre_transform_key_node_consensus_switch/4
+        , state_pre_transform_key_node/4
+        , state_pre_transform_micro_node/4
         %% Block rewards
         , state_grant_reward/3
         %% PoGF
@@ -96,7 +96,7 @@
 
 %% Hyperchains activation criteria
 -export([ get_hc_activation_criteria/0
-        , set_hc_activation_criteria/2
+        , set_hc_activation_criteria/4
         , unset_hc_activation_criteria/0
         ]).
 
@@ -214,6 +214,9 @@ hc_header_type(Header) ->
 is_hc_pos_header(Header) ->
     maps:get(pos, aec_headers:extra(Header), false).
 
+-spec hc_pos_key_header_parent_hash(aec_headers:header()) -> binary().
+hc_pos_key_header_parent_hash(Header) -> maps:get(parent_hash, aec_headers:extra(Header)).
+
 % -----------------------------------------
 
 recent_cache_n() ->
@@ -264,7 +267,8 @@ dirty_validate_key_hash_at_height(Height, Hash) ->
 
 dirty_validate_key_node_with_ctx(Node, Block, Ctx) ->
     case is_hc_pos_header(aec_blocks:to_header(Block)) of
-        true -> error(todo);
+        true ->
+            error(todo);
         false ->
             M = fallback_consensus(),
             M:dirty_validate_key_node_with_ctx(Node, Block, Ctx)
@@ -280,7 +284,7 @@ dirty_validate_micro_node_with_ctx(Node, Block, Ctx) ->
 
 %% -------------------------------------------------------------------
 %% Custom state transitions
-state_pre_transform_key_node_consensus_switch(KeyNode, Trees) ->
+state_pre_transform_key_node_consensus_switch(KeyNode, _PrevNode, _PrevKeyNode, Trees) ->
     Header = aec_block_insertion:node_header(KeyNode),
     TxEnv = aetx_env:tx_env_from_key_header(Header, aec_block_insertion:node_hash(KeyNode),
         aec_block_insertion:node_time(KeyNode), aec_block_insertion:node_prev_hash(KeyNode)),
@@ -326,9 +330,48 @@ ensure_staking_contract_on_consensus_switch(Trees, TxEnv) ->
             deploy_staking_contract_by_system(Trees, TxEnv)
     end.
 
-state_pre_transform_key_node(_Node, Trees) -> Trees.
+state_pre_transform_key_node(KeyNode, _PrevNode, PrevKeyNode, Trees1) ->
+    Header = aec_block_insertion:node_header(KeyNode),
+    TxEnv = aetx_env:tx_env_from_key_header(Header, aec_block_insertion:node_hash(KeyNode),
+        aec_block_insertion:node_time(KeyNode), aec_block_insertion:node_prev_hash(KeyNode)),
+    case is_hc_pos_header(Header) of
+        true ->
+            case get_hc_activation_criteria() of
+                error -> aec_block_insertion:abort_state_transition(hc_activation_criteria_not_set);
+                _ -> ok
+            end,
+            %% TODO: refactor after I get it to a working state
+            Trees3 = case is_hc_pos_header(aec_block_insertion:node_header(PrevKeyNode)) of
+                         true -> Trees1;
+                         %% Switchover block which enables staking!
+                         false ->
+                             %% Assert the activation criteria
+                             case evaluate_hc_activation_criteria(KeyNode, Trees1) of
+                                 true -> ok;
+                                 false -> aec_block_insertion:abort_state_transition(hc_activation_criteria_were_not_meet)
+                             end,
+                             case protocol_staking_contract_call(Trees1, TxEnv, "protocol_enable()") of
+                                 {ok, Trees2, asdf} -> Trees2;
+                                 Err1 -> aec_block_insertion:abort_state_transition(Err1)
+                             end
+                     end,
+            %% Perform the leader election if not already performed
+            ParentHash = hc_pos_key_header_parent_hash(Header),
+            Candidates = aehc_parent_db:get_candidates_in_election_cycle(aec_headers:height(Header), ParentHash),
+            Call = lists:flatten(io_lib:format("get_leader(~p, ~p)", [Candidates, ParentHash])),
+            case protocol_staking_contract_call(Trees3, TxEnv, Call) of
+                {ok, Trees4, asdf} ->
+                    Trees4;
+                Err2 -> aec_block_insertion:abort_state_transition(Err2)
+            end;
+        false ->
+            %% No adjustment required for PoW blocks
+            Trees1
+    end.
 
-state_pre_transform_micro_node(_Node, Trees) -> Trees.
+evaluate_hc_activation_criteria(KeyNode, Trees1) -> false.
+
+state_pre_transform_micro_node(_Node, _PrevNode, _PrevKeyNode, Trees) -> Trees.
 
 %% -------------------------------------------------------------------
 %% Block rewards
@@ -504,19 +547,39 @@ get_predeploy_address() ->
         Addr -> {ok, Addr}
     end.
 
+%% 1. The minimum stake in the staking contract required to start the HC
+%% 2. The minimum amount of unique delegates required to start the HC
+%% 3. The frequency at which we check the criteria
+%% 4. The confirmation depth of the criteria
+%%    The first HC PoS block MUST fulfill the activation criteria and the Nth-key predecessor must also fulfill them
+%%    For instance when the config is (100AE, 2, 10, 2) and the criteria were first meet at block 20 then:
+%%    - HC can't be enabled at 20 - as at height 18 the criteria weren't meet
+%%    - HC gets enabled at height 30 - we run the check at height 30 and the criteria pass both at height 30 and 28
+%%      making block 30 eligible to be the first HC block - validators commit to block 29, block 30 is the FIRST to deviate from PoW
+-record(activation_criteria, {
+        minimum_stake :: integer(),
+        minimum_delegates :: integer(),
+        check_frequency :: integer(),
+        confirmations :: integer()
+    }).
+
 %% Sets the HC activation criteria
-%% 1. The minimum amount of stake required to start the HC
-%% 2. The minimum amount of unique delegates
--spec set_hc_activation_criteria(integer(), integer()) -> ok.
-set_hc_activation_criteria(MinimumStake, MinimumDelegates) ->
-    application:set_env(aehyperchains, activation_criteria, {MinimumStake, MinimumDelegates}),
+-spec set_hc_activation_criteria(integer(), integer(), integer(), integer()) -> ok.
+set_hc_activation_criteria(MinimumStake, MinimumDelegates, BlockFrequency, BlockConfirmations) ->
+    application:set_env(aehyperchains, activation_criteria,
+        #activation_criteria{
+            minimum_stake = MinimumStake,
+            minimum_delegates = MinimumDelegates,
+            check_frequency = BlockFrequency,
+            confirmations = BlockConfirmations
+        }),
     ok.
 
 %% Unsets the HC activation criteria
 unset_hc_activation_criteria() -> application:unset_env(aehyperchains, activation_criteria).
 
 %% Gets the HC activation criteria - if none specified then HC can't be activated
--spec get_hc_activation_criteria() -> {ok, {integer(), integer()}} | error.
+-spec get_hc_activation_criteria() -> {ok, #activation_criteria{}} | error.
 get_hc_activation_criteria() ->
     %% TODO: Expose in config
     case application:get_env(aehyperchains, activation_criteria, error) of
