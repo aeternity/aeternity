@@ -36,9 +36,9 @@
         , dirty_validate_key_node_with_ctx/3
         , dirty_validate_micro_node_with_ctx/3
         %% State transition
-        , state_pre_transform_key_node_consensus_switch/2
-        , state_pre_transform_key_node/2
-        , state_pre_transform_micro_node/2
+        , state_pre_transform_key_node_consensus_switch/4
+        , state_pre_transform_key_node/4
+        , state_pre_transform_micro_node/4
         %% Block rewards
         , state_grant_reward/3
         %% PoGF
@@ -154,9 +154,9 @@ dirty_validate_micro_node_with_ctx(_Node, _Block, _Ctx) -> ok.
 
 %% -------------------------------------------------------------------
 %% Custom state transitions
-state_pre_transform_key_node_consensus_switch(_Node, Trees) -> Trees.
-state_pre_transform_key_node(_Node, Trees) -> Trees.
-state_pre_transform_micro_node(_Node, Trees) -> Trees.
+state_pre_transform_key_node_consensus_switch(_Node, _PrevNode, _PrevKeyNode, Trees) -> Trees.
+state_pre_transform_key_node(_Node, _PrevNode, _PrevKeyNode, Trees) -> Trees.
+state_pre_transform_micro_node(_Node, _PrevNode, _PrevKeyNode, Trees) -> Trees.
 
 %% -------------------------------------------------------------------
 %% Block rewards

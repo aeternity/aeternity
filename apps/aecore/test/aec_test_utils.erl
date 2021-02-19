@@ -503,16 +503,20 @@ create_keyblock_with_state([{PrevBlock, TreesIn} | _] = Chain, MinerAccount, Ben
     Target = get_config(target, BlockCfg, fun() -> adjust_target(Chain) end),
     Info = get_config(info, BlockCfg, fun() -> default end),
     Timestamp = get_config(timestamp, BlockCfg, fun() -> adjust_timestamp(Chain) end),
-    %% Dummy block to calculate the fees.
+    [{PrevKeyBlock, _}|_] = lists:dropwhile(fun({B, _}) -> aec_blocks:type(B) =:= micro end,
+        Chain),
+    PrevNode = aec_chain_state:wrap_block(PrevBlock),
+    PrevKeyNode = aec_chain_state:wrap_block(PrevKeyBlock),
+    UnminedNode = Consensus:new_unmined_key_node(PrevNode, PrevKeyNode, Height, MinerAccount, BeneficiaryAccount, Protocol, TreesIn),
     Block = aec_blocks:new_key(Height, PrevBlockHash, PrevKeyHash, aec_trees:hash(TreesIn),
                                Target, 0, Timestamp, Info, Protocol,
                                MinerAccount, BeneficiaryAccount),
-    Node = aec_chain_state:wrap_block(Block),
     Trees1 = aec_trees:perform_pre_transformations(TreesIn, TxEnv, PrevProtocol),
+
     Trees2 = if Consensus =:= PrevConsensus -> Trees1;
-                true -> Consensus:state_pre_transform_key_node_consensus_switch(Node, Trees1)
+                true -> Consensus:state_pre_transform_key_node_consensus_switch(UnminedNode, PrevNode, PrevKeyNode, Trees1)
          end,
-    Trees3 = Consensus:state_pre_transform_key_node(Node, Trees2),
+    Trees3 = Consensus:state_pre_transform_key_node(UnminedNode, PrevNode, PrevKeyNode, Trees2),
     Trees4 = case Height > Delay of
                  true ->
                      grant_fees(Height - Delay - 1, [{Block, TreesIn}|Chain],

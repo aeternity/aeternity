@@ -158,7 +158,9 @@ int_create_block(PrevBlockHash, PrevBlock, KeyBlock, Trees, Txs) ->
                                     <<0:32/unit:8>>, <<0:32/unit:8>>, [],
                                     Time, no_fraud, Protocol),
     FakeNode = aec_chain_state:wrap_block(FakeBlock),
-    Trees1 = Consensus:state_pre_transform_micro_node(FakeNode, Trees),
+    PrevNode = aec_chain_state:wrap_block(PrevBlock),
+    PrevKeyNode = aec_chain_state:wrap_block(KeyBlock),
+    Trees1 = Consensus:state_pre_transform_micro_node(FakeNode, PrevNode, PrevKeyNode, Trees),
     {ok, Txs1, Trees2, Events} = int_apply_block_txs(Txs, Trees1, Env, false),
 
     TxsTree = aec_txs_trees:from_txs(Txs1),
