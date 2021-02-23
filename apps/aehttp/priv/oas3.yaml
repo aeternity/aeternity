@@ -216,32 +216,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
-###
-## External endpoints
-###
-  /key-blocks:
-    post:
-      tags:
-        - internal
-        - chain
-      operationId: PostKeyBlock
-      description: Post a mined key block
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/KeyBlock"
-        description: Mined key block
-        required: true
-      responses:
-        "200":
-          description: Successful operation
-        "400":
-          description: Invalid block
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
   "/micro-blocks/hash/{hash}/header":
     get:
       tags:
@@ -301,7 +275,7 @@ paths:
                   transactions:
                     type: array
                     items:
-                      $ref: "#/components/schemas/GenericSignedTx"
+                      $ref: "#/components/schemas/SignedTx"
         "400":
           description: Invalid hash
           content:
@@ -343,7 +317,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/GenericSignedTx"
+                $ref: "#/components/schemas/SignedTx"
         "400":
           description: Invalid hash or index
           content:
@@ -621,7 +595,7 @@ paths:
                   transactions:
                     type: array
                     items:
-                      $ref: "#/components/schemas/GenericSignedTx"
+                      $ref: "#/components/schemas/SignedTx"
         "400":
           description: Invalid public key
           content:
@@ -655,7 +629,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/GenericSignedTx"
+                $ref: "#/components/schemas/SignedTx"
         "400":
           description: Invalid hash
           content:
@@ -712,7 +686,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/Tx"
+              $ref: "#/components/schemas/EncodedTx"
         description: The new transaction
         required: true
       responses:
@@ -1074,6 +1048,32 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/EncodedHash"
+###
+## Internal endpoints
+###
+  /key-blocks:
+    post:
+      tags:
+        - internal
+        - chain
+      operationId: PostKeyBlock
+      description: Post a mined key block
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/KeyBlock"
+        description: Mined key block
+        required: true
+      responses:
+        "200":
+          description: Successful operation
+        "400":
+          description: Invalid block
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
   /debug/network:
     get:
       tags:
@@ -1732,7 +1732,7 @@ paths:
                   transactions:
                     type: array
                     items:
-                      $ref: "#/components/schemas/GenericSignedTx"
+                      $ref: "#/components/schemas/SignedTx"
   /debug/names/commitment-id:
     get:
       tags:
@@ -2032,7 +2032,7 @@ components:
         - id
         - balance
         - nonce
-    Tx:
+    EncodedTx:
       type: object
       properties:
         tx:
@@ -2804,11 +2804,11 @@ components:
         - genesis_hash
         - top_hash
         - top_difficulty
-    GenericSignedTx:
+    SignedTx:
       type: object
       properties:
         tx:
-          $ref: "#/components/schemas/GenericTx"
+          $ref: "#/components/schemas/Tx"
         block_height:
           $ref: "#/components/schemas/TxBlockHeight"
         block_hash:
@@ -2827,7 +2827,7 @@ components:
         - block_hash
         - hash
         - signatures
-    GenericTx:
+    Tx:
       allOf:
         - type: object
           discriminator:
@@ -3417,7 +3417,7 @@ components:
         auth_data:
           $ref: "#/components/schemas/EncodedByteArray"
         tx:
-          $ref: "#/components/schemas/GenericSignedTx"
+          $ref: "#/components/schemas/SignedTx"
       required:
         - ga_id
         - abi_version

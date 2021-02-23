@@ -509,7 +509,58 @@ groups() ->
       [naming_system_manage_name
       ]},
      {oas3, [sequence],
-      [get_top_header
+      [
+       %% /key-blocks/* /micro-blocks/* /generations/* status/chain-ends
+       {group, oas_block_endpoints},
+       %% /accounts/*
+       {group, account_endpoints},
+       %% /transactions/*
+       {group, transaction_endpoints},
+       %% /contracts/*
+       {group, contract_endpoints},
+       %% /oracles/*
+       {group, oracle_endpoints},
+       %% /names/*
+       {group, name_endpoints},
+       %% /channels/*
+       {group, channel_endpoints},
+       %% /peers/*
+       {group, peer_endpoints},
+       %% /status/*
+       {group, status_endpoints},
+
+       {group, external_endpoints},
+       {group, internal_endpoints},
+       {group, debug_endpoints},
+       {group, swagger_validation},
+       {group, wrong_http_method_endpoints},
+       {group, naming}
+      ]},
+     {oas_block_endpoints, [sequence],
+      [
+       {group, oas_on_genesis_block} %% standalone
+      ]},
+     {oas_on_genesis_block, [sequence],
+      [
+       {group, oas_block_info}
+      ]},
+     {oas_block_info, [sequence],
+      [
+       get_top_header,
+       get_chain_ends,
+       get_current_key_block,
+       get_current_key_block_hash,
+       get_current_key_block_height,
+       get_pending_key_block,
+       get_key_block_by_hash,
+       get_key_block_by_height,
+       get_micro_block_header_by_hash,
+       get_micro_block_transactions_by_hash,
+       get_micro_block_transactions_count_by_hash,
+       get_micro_block_transaction_by_hash_and_index,
+       get_generation_current,
+       get_generation_by_hash,
+       get_generation_by_height
       ]}
     ].
 
@@ -558,10 +609,12 @@ init_per_group(Group, Config) when
       Group =:= status_endpoints ->
     Config;
 %% block_endpoints
-init_per_group(block_endpoints, Config) ->
+init_per_group(BlockEndpoints, Config) when BlockEndpoints =:= block_endpoints;
+                                            BlockEndpoints =:= oas_block_endpoints ->
     aecore_suite_utils:reinit_with_bitcoin_ng(?NODE),
     Config;
-init_per_group(on_genesis_block, Config) ->
+init_per_group(OnGenesis, Config) when OnGenesis =:= on_genesis_block;
+                                       OnGenesis =:= oas_on_genesis_block ->
     GenesisBlock = rpc(aec_chain, genesis_block, []),
     {ok, PendingKeyBlock} = wait_for_key_block_candidate(),
     [{current_block, GenesisBlock},
@@ -3787,7 +3840,12 @@ charset_param_in_content_type(_Config) ->
 
 wrong_http_method_top(_Config) ->
     Host = external_address(),
-    {ok, 405, _} = http_request(Host, post, "blocks/top", []).
+    Path =
+        case aecore_suite_utils:http_api_version() of
+            swagger2 -> "blocks/top";
+            oas3 -> "headers/top"
+        end,
+    {ok, 405, _} = http_request(Host, post, Path, []).
 
 wrong_http_method_contract_create(_Config) ->
     Host = internal_address(),

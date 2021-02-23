@@ -455,8 +455,12 @@ handle_request_('GetTransactionInfoByHash', Params, _Config) ->
     process_request(ParseFuns, Params);
 
 
-handle_request_('PostTransaction', #{'Tx' := Tx}, _Context) ->
-    case aeser_api_encoder:safe_decode(transaction, maps:get(<<"tx">>, Tx)) of
+handle_request_('PostTransaction', #{'Tx' := Tx}, _Context) -> %% swagger2
+    handle_request_('PostTransaction', Tx, _Context);
+handle_request_('PostTransaction', #{'EncodedTx' := Tx}, _Context) -> %% oas3
+    handle_request_('PostTransaction', Tx, _Context);
+handle_request_('PostTransaction', #{<<"tx">> := Tx}, _Context) ->
+    case aeser_api_encoder:safe_decode(transaction, Tx) of
         {ok, TxDec} ->
             case deserialize_transaction(TxDec) of
                 {ok, SignedTx} ->
