@@ -240,13 +240,14 @@ start_node(N, Config) ->
     MyDir = filename:dirname(code:which(?MODULE)),
     ConfigFilename = proplists:get_value(config_name, Config, "default"),
     Flags = ["-pa ", MyDir, " -config ./" ++ ConfigFilename],
-    cmd(?OPS_BIN, node_shortcut(N, Config), "bin", ["daemon"],
-        [
-         {"ERL_FLAGS", Flags},
-         {"AETERNITY_CONFIG", "data/aeternity.json"},
-         {"RUNNER_LOG_DIR","log"},
-         {"CODE_LOADING_MODE", "interactive"}
-        ]).
+    Env0 = [
+            {"ERL_FLAGS", Flags},
+            {"AETERNITY_CONFIG", "data/aeternity.json"},
+            {"RUNNER_LOG_DIR","log"},
+            {"CODE_LOADING_MODE", "interactive"}
+           ],
+    Env = maybe_override(ExtraEnv, Env0),
+    cmd(?OPS_BIN, node_shortcut(N, Config), "bin", ["daemon"], Env).
 
 stop_node(N, _Config) ->
     ct:log("Stopping node ~p", [N]),
