@@ -110,7 +110,8 @@ write_parent_chain_test_() ->
      [{"Write and read back pinpointed genesis block",
        fun() ->
              ParentBlock = aehc_parent_block:new_block(?PARENT_GENESIS_HEADER, []),
-             aehc_parent_db:write_parent_block(ParentBlock),
+             ParentTrees = aehc_parent_trees:new(),
+             aehc_parent_db:write_parent_block(ParentBlock, ParentTrees),
              ?assertEqual(ParentBlock, aehc_parent_db:get_parent_block(?PARENT_GENESIS_HASH)),
              ?assertEqual([], aehc_parent_db:get_candidates_in_election_cycle(1337, ?PARENT_GENESIS_HASH))
        end},
@@ -124,7 +125,8 @@ write_parent_chain_test_() ->
             CHList = [aehc_commitment:hash(C) || C <- CList],
             ParentBlockHeader = aehc_parent_block:new_header(?PARENT_GENESIS_HASH, ?PARENT_GENESIS_HASH, 1, CHList),
             ParentBlock = aehc_parent_block:new_block(ParentBlockHeader, CList),
-            aehc_parent_db:write_parent_block(ParentBlock),
+            ParentTrees = aehc_parent_trees:new(),
+            aehc_parent_db:write_parent_block(ParentBlock, ParentTrees),
             ?assertEqual(ParentBlock, aehc_parent_db:get_parent_block(?PARENT_GENESIS_HASH)),
             ?assertEqual(CList, aehc_parent_db:get_candidates_in_election_cycle(1337, ?PARENT_GENESIS_HASH))
        end}

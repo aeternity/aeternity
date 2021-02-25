@@ -8,6 +8,7 @@
 %%% - dedicated state machines (trackers);
 %%% - blockchain interfaces (https://github.com/aeternity/aeconnector/wiki);
 %%% TODO: To provide HTTP API for scheduled commitments
+%%% TODO: To show dialog about registry record (show notify + address in telegram, throw error on commitment)
 %%% a) Setup #1 (monolith)
 %%% b) Setup #2 (replica)
 %%% c) Setup #3 (shard: history keeper/election master)

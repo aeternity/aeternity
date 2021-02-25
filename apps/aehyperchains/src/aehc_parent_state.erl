@@ -21,11 +21,11 @@
 -type parent_state() :: #parent_state{}.
 
 -export_type([parent_state/0]).
-
+%% TODO To rename into pointer
 -spec parent_state(binary(), binary(), non_neg_integer()) -> parent_state().
-parent_state(Genesis, Top, Height) when is_binary(Genesis), is_binary(Top), is_integer(Height) ->
+parent_state(Pointer, Top, Height) when is_binary(Pointer), is_binary(Top), is_integer(Height) ->
     #parent_state{
-        genesis = Genesis,
+        genesis = Pointer,
         top = Top,
         height = Height
     }.
@@ -53,3 +53,5 @@ height(ParentState) ->
 -spec height(parent_state(), non_neg_integer()) -> parent_state().
 height(ParentState, Height) ->
     ParentState#parent_state{ height = Height }.
+
+%% TODO To add support of custom vocabulary

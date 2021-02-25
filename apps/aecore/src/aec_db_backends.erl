@@ -15,6 +15,7 @@
         , ns_cache_backend/0
         , oracles_backend/0
         , oracles_cache_backend/0
+        , delegates_backend/0
         , dirty_accounts_backend/0
         , dirty_calls_backend/0
         , dirty_channels_backend/0
@@ -101,6 +102,10 @@ oracles_cache_backend() ->
 dirty_oracles_cache_backend() ->
     aeu_mp_trees_db:new(db_spec(dirty_oracles_cache)).
 
+-spec delegates_backend() -> aeu_mp_trees_db:db().
+delegates_backend() ->
+    aeu_mp_trees_db:new(db_spec(delegates)).
+
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
@@ -144,7 +149,9 @@ mpt_db_get(Key, dirty_oracles) ->
 mpt_db_get(Key, oracles_cache) ->
     aec_db:find_oracles_cache_node(Key);
 mpt_db_get(Key, dirty_oracles_cache) ->
-    aec_db:dirty_find_oracles_cache_node(Key).
+    aec_db:dirty_find_oracles_cache_node(Key);
+mpt_db_get(Key, delegates) ->
+    aehc_parent_db:find_delegates_node(Key).
 
 mpt_db_put(Key, Val, {gb_trees, Tree}) ->
     {gb_trees, gb_trees:enter(Key, Val, Tree)};
@@ -171,6 +178,9 @@ mpt_db_put(Key, Val, Handle) when Handle =:= oracles; Handle =:= dirty_oracles -
     Handle;
 mpt_db_put(Key, Val, Handle) when Handle =:= oracles_cache; Handle =:= dirty_oracles_cache ->
     ok = aec_db:write_oracles_cache_node(Key, Val),
+    Handle;
+mpt_db_put(Key, Val, Handle) when Handle =:= delegates ->
+    ok = aehc_parent_db:write_delegates_node(Key, Val),
     Handle.
 
 mpt_db_drop_cache({gb_trees, _}) ->
