@@ -10,7 +10,7 @@ include "Option.aes"
  * (the entropy should come from external source).
  * Delegated voting is not supported.
  */
-payable contract SimpleElection =
+contract SimpleElection =
 
   type delegate     = address
   type block_height = int
@@ -146,6 +146,20 @@ payable contract SimpleElection =
   entrypoint
     balance : () => tokens
     balance() = Contract.balance
+
+  /**
+   * Contract stake -- TODO: Optimize or just use balance()
+   */
+  entrypoint
+    total_stake : () => tokens
+    total_stake() = List.sum([List.sum([x | {value = x} <- s]) | (_, s) <- Map.to_list(state.stakes)])
+
+  /**
+   * Contract delegates
+   */
+  entrypoint
+    unique_delegates_count : () => int
+    unique_delegates_count() = Map.size(state.stakes)
 
   /**
    * The address of protocol restricted calls. The private key must remain unknown
@@ -410,7 +424,10 @@ payable contract SimpleElection =
             // if the election fails then pick the previous one
             None => switch(state.last_election)
               None => abort("NO_CANDIDATE")
-              Some(le) => le.leader
+              Some(le) =>
+                reset_stake_age(le.leader)
+                set_leader(le.leader)
+                le.leader
             Some(leader) =>
               reset_stake_age(leader)
               set_leader(leader)

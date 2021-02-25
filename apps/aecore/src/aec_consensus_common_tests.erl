@@ -25,9 +25,6 @@
         %% Building the Insertion Ctx
         , recent_cache_n/0
         , recent_cache_trim_key_header/1
-        %% Target adjustment when creating keyblocks
-        , keyblocks_for_target_calc/0
-        , keyblock_create_adjust_target/2
         %% Preconductor hook
         , dirty_validate_block_pre_conductor/1
         , dirty_validate_header_pre_conductor/1
@@ -47,6 +44,10 @@
         , genesis_transform_trees/2
         , genesis_raw_header/0
         , genesis_difficulty/0
+        %% Keyblock creation
+        , new_unmined_key_node/8
+        , keyblocks_for_unmined_keyblock_adjust/0
+        , adjust_unmined_keyblock/2
         %% Keyblock sealing
         , key_header_for_sealing/1
         , validate_key_header_seal/2
@@ -142,9 +143,6 @@ extra_from_header(_) ->
 recent_cache_n() -> 1.
 recent_cache_trim_key_header(_) -> ok.
 
-keyblocks_for_target_calc() -> 0.
-keyblock_create_adjust_target(Block, []) -> {ok, Block}.
-
 dirty_validate_block_pre_conductor(_) -> ok.
 dirty_validate_header_pre_conductor(_) -> ok.
 dirty_validate_key_hash_at_height(_, _) -> ok.
@@ -184,6 +182,13 @@ genesis_raw_header() ->
         default,
         ?ROMA_PROTOCOL_VSN).
 genesis_difficulty() -> 0.
+
+%% -------------------------------------------------------------------
+%% Keyblock creation
+new_unmined_key_node(PrevNode, PrevKeyNode, Height, Miner, Beneficiary, Protocol, InfoField, TreesIn) ->
+    aec_consensus_bitcoin_ng:new_unmined_key_node(PrevNode, PrevKeyNode, Height, Miner, Beneficiary, Protocol, InfoField, TreesIn).
+keyblocks_for_unmined_keyblock_adjust() -> 0.
+adjust_unmined_keyblock(Block, []) -> {ok, Block}.
 
 key_header_for_sealing(Header) ->
     aec_headers:root_hash(Header).

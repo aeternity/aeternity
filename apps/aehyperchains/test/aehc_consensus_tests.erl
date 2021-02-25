@@ -9,6 +9,18 @@
 
 -include_lib("eunit/include/eunit.hrl").
 
+%% Magic nonces
+-define(NONCE_HC_ENABLED, 16#ffffffffffffffff - 1).
+-define(NONCE_HC_POGF, 16#ffffffffffffffff).
+-define(AE, 1_000_000_000_000_000_000).
+-define(GENESIS_TARGET, 553713663).
+
+-define(PARENT_GENESIS_HASH, <<"GENESIS_AAAAAAAAAAAAAAAAAAAAAAAA">>).
+-define(PARENT_HASH1, <<"Parent block 1_AAAAAAAAAAAAAAAAA">>).
+-define(PARENT_HASH2, <<"Parent block 2_AAAAAAAAAAAAAAAAA">>).
+-define(PARENT_GENESIS_HEADER,
+    aehc_parent_block:new_header(?PARENT_GENESIS_HASH, ?PARENT_GENESIS_HASH, 1)).
+
 %% PoW genesis - aec_conductor is not started
 pow_from_genesis_test_() ->
     aec_test_utils:eunit_with_consensus(aehc_test_utils:cuckoo_pow_from_genesis(),
@@ -43,6 +55,102 @@ pow_from_genesis_test_() ->
                       end || B <- Chain]
                  end}
              ]}
+        ]).
+
+dummy_key_header_with_nonce_and_seal(Nonce, Seal) ->
+    aec_headers:new_key_header(1337,
+               <<1337:32/unit:8>>,
+               <<1337_1337:32/unit:8>>,
+               <<1337_1337_1337:32/unit:8>>,
+               <<1337_1337_1337_1337:32/unit:8>>,
+               <<1337_1337_1337_1337_1337:32/unit:8>>,
+               1337,
+               Seal,
+               Nonce,
+               aeu_time:now_in_msecs(),
+               default,
+               3).
+
+%% Check the structure of a hyperchains block
+pos_block_structure_test_() ->
+    aehc_test_utils:hc_chain_eunit_testcase(aehc_test_utils:hc_from_genesis(),
+        [ {"Parent hash and miner signature roundtrip",
+            fun() ->
+                error = aehc_consensus_hyperchains:deserialize_pos_pow_field(no_value),
+                error = aehc_consensus_hyperchains:deserialize_pos_pow_field(0),
+                RoundtripF = fun(H, S) ->
+                        Seal = aehc_consensus_hyperchains:create_pos_pow_field(H, S),
+                        {ok, H, S} = aehc_consensus_hyperchains:deserialize_pos_pow_field(Seal),
+                        error = aehc_consensus_hyperchains:deserialize_pos_pow_field([1|Seal]),
+                        error = aehc_consensus_hyperchains:deserialize_pos_pow_field(tl(Seal) ++ [1])
+                    end,
+                RoundtripF(<<0:32/unit:8>>, <<0:64/unit:8>>),
+                RoundtripF(<<0:32/unit:8>>, <<1337:64/unit:8>>),
+                RoundtripF(<<1337:32/unit:8>>, <<0:64/unit:8>>),
+                Test1 = list_to_binary(lists:seq(1,32)),
+                Test2 = list_to_binary(lists:reverse(lists:seq(1,64))),
+                RoundtripF(Test1, Test2),
+                ok
+            end},
+          {"Key header with special nonce but no special key seal is a PoW block",
+           fun() ->
+               [false = aehc_consensus_hyperchains:is_hc_pos_header(dummy_key_header_with_nonce_and_seal(Nonce, no_value)) || Nonce <- [?NONCE_HC_ENABLED, ?NONCE_HC_POGF]],
+               [key_pow = aehc_consensus_hyperchains:hc_header_type(dummy_key_header_with_nonce_and_seal(Nonce, no_value)) || Nonce <- [?NONCE_HC_ENABLED, ?NONCE_HC_POGF]],
+               ok
+           end},
+          {"Key header with special nonce and special key seal is a PoS block",
+           fun() ->
+               ParentHash = list_to_binary(lists:seq(1,32)),
+               MinerSignature = list_to_binary(lists:reverse(lists:seq(1,64))),
+               Seal = aehc_consensus_hyperchains:create_pos_pow_field(ParentHash, MinerSignature),
+               [true = aehc_consensus_hyperchains:is_hc_pos_header(dummy_key_header_with_nonce_and_seal(Nonce, Seal)) || Nonce <- [?NONCE_HC_ENABLED, ?NONCE_HC_POGF]],
+               key_pos = aehc_consensus_hyperchains:hc_header_type(dummy_key_header_with_nonce_and_seal(?NONCE_HC_ENABLED, Seal)),
+               key_pos_pogf = aehc_consensus_hyperchains:hc_header_type(dummy_key_header_with_nonce_and_seal(?NONCE_HC_POGF, Seal)),
+               ok
+           end},
+           {"PoS keyheader binary roundtrip",
+            fun() ->
+               ParentHash = list_to_binary(lists:seq(1,32)),
+               MinerSignature = list_to_binary(lists:reverse(lists:seq(1,64))),
+               Seal = aehc_consensus_hyperchains:create_pos_pow_field(ParentHash, MinerSignature),
+               [begin
+                    Header = dummy_key_header_with_nonce_and_seal(Nonce, Seal),
+                    true = aehc_consensus_hyperchains:is_hc_pos_header(Header),
+                    Type = aehc_consensus_hyperchains:hc_header_type(Header),
+                    Serialized = aec_headers:serialize_to_binary(Header),
+                    Header = aec_headers:deserialize_from_binary(Serialized)
+                end || {Nonce, Type} <- [ {?NONCE_HC_ENABLED, key_pos}
+                                        , {?NONCE_HC_POGF, key_pos_pogf}
+                                        ]],
+                ok
+            end},
+           {"Parent hash and miner signature setter/getter",
+            fun() ->
+                ParentHash1 = list_to_binary(lists:seq(1,32)),
+                ParentHash2 = list_to_binary(lists:seq(33,64)),
+                MinerSignature1 = list_to_binary(lists:reverse(lists:seq(1,64))),
+                MinerSignature2 = list_to_binary(lists:reverse(lists:seq(65,128))),
+                Seal = aehc_consensus_hyperchains:create_pos_pow_field(ParentHash1, MinerSignature1),
+                [begin
+                    Header1 = dummy_key_header_with_nonce_and_seal(Nonce, Seal),
+                    ParentHash1 = aehc_consensus_hyperchains:get_pos_header_parent_hash(Header1),
+                    MinerSignature1 = aehc_consensus_hyperchains:get_pos_header_miner_signature(Header1),
+
+                    Header2 = aehc_consensus_hyperchains:set_pos_header_parent_hash(Header1, ParentHash2),
+                    ParentHash2 = aehc_consensus_hyperchains:get_pos_header_parent_hash(Header2),
+                    MinerSignature1 = aehc_consensus_hyperchains:get_pos_header_miner_signature(Header2),
+
+                    Header3 = aehc_consensus_hyperchains:set_pos_header_miner_signature(Header1, MinerSignature2),
+                    ParentHash1 = aehc_consensus_hyperchains:get_pos_header_parent_hash(Header3),
+                    MinerSignature2 = aehc_consensus_hyperchains:get_pos_header_miner_signature(Header3),
+
+                    Header4 = aehc_consensus_hyperchains:set_pos_header_miner_signature(Header2, MinerSignature2),
+                    Header4 = aehc_consensus_hyperchains:set_pos_header_parent_hash(Header3, ParentHash2),
+                    ParentHash2 = aehc_consensus_hyperchains:get_pos_header_parent_hash(Header4),
+                    MinerSignature2 = aehc_consensus_hyperchains:get_pos_header_miner_signature(Header4)
+                end || Nonce <- [?NONCE_HC_ENABLED, ?NONCE_HC_POGF]],
+                ok
+            end}
         ]).
 
 %% HC genesis - aec_conductor is started
@@ -86,9 +194,76 @@ hc_from_genesis_test_() ->
                  end || B <- Blocks],
                 ok
             end}
+        , {"One delegate, HC activation at 10. Activation criteria (1AE, 1, 5, 0)",
+            fun() ->
+                try
+                    meck:new(aehc_utils, [passthrough]),
+                    aehc_consensus_hyperchains:set_hc_activation_criteria(1 * ?AE, 1, 5, 0),
+                    %% Make the patron the delegate
+                    #{pubkey := PatronPubkey} = Patron = aehc_test_utils:patron(),
+                    {ok, ContractAddress} = aehc_consensus_hyperchains:get_staking_contract_address(),
+                    Aci = aehc_consensus_hyperchains:get_staking_contract_aci(),
+                    Fee = 1 bsl 60,
+                    Gas = 1 bsl 30,
+                    GasPrice = 1 bsl 30,
+                    MkCallF = fun(#{ pubkey := Pub, privkey := Priv }, Nonce, Amount, Call) ->
+                                Tx = make_contract_call_tx(Pub, ContractAddress, Call, Nonce, Amount, Fee, Gas, GasPrice),
+                                aec_test_utils:sign_tx(Tx, Priv)
+                             end,
+                    {ok, CallDepositStake} = aeaci_aci:encode_call_data(Aci, "deposit_stake()"),
+                    %% The overall picture of what's going on in the chain
+                    TxFuns =
+                        fun %% Deposit 1 AE at height 5
+                            (5) -> [ MkCallF(Patron, 1, 1 * ?AE, CallDepositStake) ];
+                            (_) -> []
+                        end,
+                    Targets = [?GENESIS_TARGET || _ <- lists:seq(1,9)],
+                    Chain1 = aehc_test_utils:gen_block_chain_with_state(Targets, TxFuns),
+                    insert_blocks(aec_test_utils:blocks_only_chain(tl(Chain1))),
+                    assert_static_staking_call_result({ok, false}, "enabled()"),
+                    assert_static_staking_call_result({ok, 1 * ?AE}, "balance()"),
+                    %% Now we create the block at 10 - the first HC block :)
+                    meck:expect(aehc_utils, submit_commitment,
+                        fun(KeyNode, Delegate) ->
+                            PatronPubkey = Delegate,
+                            C = aehc_commitment:new(aehc_commitment_header:new(Delegate, aec_block_insertion:node_hash(KeyNode)), no_pogf),
+                            CList = [C],
+                            CHList = [aehc_commitment:hash(C) || C <- CList],
+                            ParentBlockHeader = aehc_parent_block:new_header(?PARENT_GENESIS_HASH, ?PARENT_GENESIS_HASH, 1, CHList),
+                            ParentBlock = aehc_parent_block:new_block(ParentBlockHeader, CList),
+                            aehc_parent_db:write_parent_block(ParentBlock),
+                            ParentBlock
+                        end),
+                    Chain2 = aec_test_utils:extend_block_chain_with_key_blocks(Chain1, 1, PatronPubkey, PatronPubkey, #{}),
+                    insert_blocks(aec_test_utils:blocks_only_chain(Chain2)),
+                    assert_static_staking_call_result({ok, true}, "enabled()"),
+                    assert_static_staking_call_result({ok, {variant, [0, 1], 1, {{address, PatronPubkey}}}}, "get_computed_leader()"),
+                    assert_static_staking_call_result({ok, 1 * ?AE}, "balance()"),
+                    %% Great! We're a hyperchain!
+                    %% Emit another block to show that everything works :)
+                    meck:expect(aehc_utils, submit_commitment,
+                        fun(KeyNode, Delegate) ->
+                            PatronPubkey = Delegate,
+                            C = aehc_commitment:new(aehc_commitment_header:new(Delegate, aec_block_insertion:node_hash(KeyNode)), no_pogf),
+                            CList = [C],
+                            CHList = [aehc_commitment:hash(C) || C <- CList],
+                            ParentBlockHeader = aehc_parent_block:new_header(?PARENT_HASH1, ?PARENT_GENESIS_HASH, 2, CHList),
+                            ParentBlock = aehc_parent_block:new_block(ParentBlockHeader, CList),
+                            aehc_parent_db:write_parent_block(ParentBlock),
+                            ParentBlock
+                        end),
+                    Chain3 = aec_test_utils:extend_block_chain_with_key_blocks(Chain2, 1, PatronPubkey, PatronPubkey, #{}),
+                    insert_blocks(aec_test_utils:blocks_only_chain(Chain3)),
+                    assert_static_staking_call_result({ok, true}, "enabled()"),
+                    assert_static_staking_call_result({ok, {variant, [0, 1], 1, {{address, PatronPubkey}}}}, "get_computed_leader()"),
+                    assert_static_staking_call_result({ok, 1 * ?AE}, "balance()"),
+                    ok
+                after
+                    meck:unload(aehc_utils),
+                    aehc_consensus_hyperchains:unset_hc_activation_criteria()
+                end
+            end}
         ]).
-
--define(GENESIS_TARGET, 553713663).
 
 hc_switchover_at_10_test_() ->
     aehc_test_utils:hc_chain_eunit_testcase(aehc_test_utils:pow_to_hc_switch(10),

@@ -136,10 +136,6 @@
 -callback recent_cache_n() -> non_neg_integer().
 -callback recent_cache_trim_key_header(aec_headers:header()) -> term().
 
--callback keyblocks_for_target_calc() -> non_neg_integer().
--callback keyblock_create_adjust_target(aec_blocks:block(), list(aec_headers:header())) ->
-    {ok, aec_blocks:block()} | {error, term()}.
-
 %% Pre conductor validation - filters blocks before passing it to the conductor
 %% The idea is that "dev mode" can ensure that after it gets enabled no REAL block
 %% can get inserted via the mining conductor. "dev mode" should avoid mutating the real
@@ -185,10 +181,22 @@
 -callback genesis_difficulty() -> key_difficulty().
 
 %% -------------------------------------------------------------------
+%% Keyblock creation
+%% -------------------------------------------------------------------
+%% Creates a fake key node used for creating new keyblocks - can be blocking
+%% For POW it's a simple operation, for HC a commitment transaction might be submitted to another blockchain
+%%        new_unmined_key_node(Prev,    PrevKey, Height,    Miner,             Beneficiary,       Protocol,  InfoField,          TreesIn)
+-callback new_unmined_key_node(#node{}, #node{}, integer(), aec_keys:pubkey(), aec_keys:pubkey(), integer(), aec_headers:info(), aec_trees:trees()) -> #node{}.
+
+%% After creating a new unmined keynode and calculating the new state adjusts the block based on recent keyheaders
+%% For POW it adjusts the target based on recent blocks, for HC it's a nop operation as the work is done in new_unmined_key_node
+-callback keyblocks_for_unmined_keyblock_adjust() -> non_neg_integer().
+-callback adjust_unmined_keyblock(aec_blocks:block(), list(aec_headers:header())) ->
+    {ok, aec_blocks:block()} | {error, term()}.
+
+%% -------------------------------------------------------------------
 %% Block sealing
 %% -------------------------------------------------------------------
-%% Creates a fake key node used for creating new keyblocks
--callback new_unmined_key_node(PrevNode, PrevKeyNode, Height, MinerAccount, BeneficiaryAccount, Protocol, TreesIn) -> #node{}.
 %% Serializes the key header to the form expected for sealing
 -callback key_header_for_sealing(aec_headers:header()) -> binary().
 %% Validates the crypto seal on the given key block
