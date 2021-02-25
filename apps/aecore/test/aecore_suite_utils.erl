@@ -20,7 +20,9 @@
          set_env/4,
          unset_env/3]).
 
--export([start_node/2,
+-export([start_node/2,  % (N, Config)
+         start_node/3,  % (N, Config, ExtraEnv :: [{OSEnvVarName, Value}])
+
          stop_node/2,
          reinit_with_bitcoin_ng/1,
          reinit_with_ct_consensus/1,
@@ -237,6 +239,9 @@ make_shortcut(Config) ->
     ok = symlink(PrivDir, Shortcut).
 
 start_node(N, Config) ->
+    start_node(N, Config, []).
+
+start_node(N, Config, ExtraEnv) ->
     MyDir = filename:dirname(code:which(?MODULE)),
     ConfigFilename = proplists:get_value(config_name, Config, "default"),
     Flags = ["-pa ", MyDir, " -config ./" ++ ConfigFilename],
@@ -248,6 +253,11 @@ start_node(N, Config) ->
            ],
     Env = maybe_override(ExtraEnv, Env0),
     cmd(?OPS_BIN, node_shortcut(N, Config), "bin", ["daemon"], Env).
+
+maybe_override([{K,_} = H|T], L0) ->
+    [H | maybe_override(T, lists:keydelete(K, 1, L0))];
+maybe_override([], L0) ->
+    L0.
 
 stop_node(N, _Config) ->
     ct:log("Stopping node ~p", [N]),
