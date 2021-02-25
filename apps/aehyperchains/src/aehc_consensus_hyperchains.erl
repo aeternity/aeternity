@@ -44,9 +44,6 @@
         %% Building the Insertion Ctx
         , recent_cache_n/0
         , recent_cache_trim_key_header/1
-        %% Target adjustment when creating keyblocks
-        , keyblocks_for_target_calc/0
-        , keyblock_create_adjust_target/2
         %% Preconductor hook
         , dirty_validate_block_pre_conductor/1
         , dirty_validate_header_pre_conductor/1
@@ -66,6 +63,10 @@
         , genesis_transform_trees/2
         , genesis_raw_header/0
         , genesis_difficulty/0
+        %% Keyblock creation
+        , new_unmined_key_node/8
+        , keyblocks_for_unmined_keyblock_adjust/0
+        , adjust_unmined_keyblock/2
         %% Keyblock sealing
         , key_header_for_sealing/1
         , validate_key_header_seal/2
@@ -103,11 +104,24 @@
 %% General helpers
 -export([ hc_header_type/1
         , is_hc_pos_header/1
+        , get_pos_header_parent_hash/1
+        , get_pos_header_miner_signature/1
+        , set_pos_header_parent_hash/2
+        , set_pos_header_miner_signature/2
+        , create_pos_pow_field/2
+        , deserialize_pos_pow_field/1
         ]).
 
 -include_lib("aecontract/include/hard_forks.hrl").
 -include("../../aecore/include/blocks.hrl").
 -include_lib("aeminer/include/aeminer.hrl").
+
+-record(activation_criteria, {
+        minimum_stake :: integer(),
+        minimum_delegates :: integer(),
+        check_frequency :: integer(),
+        confirmations :: integer()
+    }).
 
 can_be_turned_off() -> true.
 assert_config(_Config) ->
@@ -188,10 +202,11 @@ stop() -> ok.
 is_providing_extra_http_endpoints() -> false.
 client_request(_) -> error(todo).
 
-% -----------------------------------------
-
+%% -------------------------------------------------------------------
+%% Deserialization
 extra_from_header(Header) ->
-    Type = case aec_headers:type(Header) of
+    %% Check if we use a special nonce - if yes then we MIGHT be a POS block
+    Type1 = case aec_headers:type(Header) of
                key ->
                     case aec_headers:nonce(Header) of
                        ?NONCE_HC_ENABLED -> key_pos;  %% The first key block after the contract got "activated"
@@ -200,11 +215,42 @@ extra_from_header(Header) ->
                    end;
                micro -> micro
            end,
+    IsPoS1 = Type1 =:= key_pos orelse Type1 =:= key_pos_pogf,
+    {IsPoS2, Type2, PoSMeta} =
+        case IsPoS1 of
+            false -> {false, Type1, #{}};
+            true -> %% Try interpreting the key_seal as PoS
+                case deserialize_pos_pow_field(aec_headers:key_seal(Header)) of
+                    {ok, ParentHash, MinerSignature} ->
+                        {true, Type1, #{parent_hash => ParentHash, miner_signature => MinerSignature}};
+                    error ->
+                        {false, key_pow, #{}}
+                end
+        end,
     %% We can't really switch to another consensus right now as we rely on the global consensus setting most of the time
-    #{ consensus => ?MODULE
-     , type => Type
-     , pos => Type =:= key_pos orelse Type =:= key_pos_pogf
-     }.
+    maps:merge(PoSMeta,
+        #{ consensus => ?MODULE
+         , type => Type2
+         , pos => IsPoS2
+         }).
+
+create_pos_pow_field(ParentHash, Signature) when is_binary(Signature), byte_size(Signature) =:= 64, is_binary(ParentHash), byte_size(ParentHash) =:= 32 ->
+    [X || <<X:32>> <= ParentHash]
+    ++
+    [X || <<X:32>> <= Signature]
+    ++
+    [0 || _ <- lists:seq(1, 42-24)].
+
+deserialize_pos_pow_field(no_value) -> error;
+deserialize_pos_pow_field([H1, H2, H3, H4, H5, H6, H7, H8, S1, S2, S3, S4, S5, S6, S7, S8, S9, S10, S11, S12, S13, S14, S15, S16 | T]) ->
+    case [0 || _ <- lists:seq(1, 42-24)] of
+        T -> { ok
+             , <<H1:32, H2:32, H3:32, H4:32, H5:32, H6:32, H7:32, H8:32>>
+             , <<S1:32, S2:32, S3:32, S4:32, S5:32, S6:32, S7:32, S8:32, S9:32, S10:32, S11:32, S12:32, S13:32, S14:32, S15:32, S16:32>>
+             };
+        _ -> error
+    end;
+deserialize_pos_pow_field(_) -> error.
 
 -spec hc_header_type(aec_headers:header()) -> key_pos | key_pos_pogf | key_pow | micro | no_return().
 hc_header_type(Header) ->
@@ -214,11 +260,30 @@ hc_header_type(Header) ->
 is_hc_pos_header(Header) ->
     maps:get(pos, aec_headers:extra(Header), false).
 
--spec hc_pos_key_header_parent_hash(aec_headers:header()) -> binary().
-hc_pos_key_header_parent_hash(Header) -> maps:get(parent_hash, aec_headers:extra(Header)).
+-spec get_pos_header_parent_hash(aec_headers:header()) -> binary().
+get_pos_header_parent_hash(Header) -> maps:get(parent_hash, aec_headers:extra(Header)).
 
-% -----------------------------------------
+-spec get_pos_header_miner_signature(aec_headers:header()) -> binary().
+get_pos_header_miner_signature(Header) -> maps:get(miner_signature, aec_headers:extra(Header)).
 
+-spec set_pos_header_miner_signature(aec_headers:header(), binary()) -> aec_headers:header().
+set_pos_header_miner_signature(Header1, Signature) when is_binary(Signature), byte_size(Signature) =:= 64 ->
+    ParentHash = get_pos_header_parent_hash(Header1),
+    Extra = aec_headers:extra(Header1),
+    Seal = create_pos_pow_field(ParentHash, Signature),
+    Header2 = aec_headers:set_extra(Header1, maps:put(miner_signature, Signature, Extra)),
+    aec_headers:set_key_seal(Header2, Seal).
+
+-spec set_pos_header_parent_hash(aec_headers:header(), binary()) -> aec_headers:header().
+set_pos_header_parent_hash(Header1, ParentHash) when is_binary(ParentHash), byte_size(ParentHash) =:= 32 ->
+    Signature = get_pos_header_miner_signature(Header1),
+    Extra = aec_headers:extra(Header1),
+    Seal = create_pos_pow_field(ParentHash, Signature),
+    Header2 = aec_headers:set_extra(Header1, maps:put(parent_hash, ParentHash, Extra)),
+    aec_headers:set_key_seal(Header2, Seal).
+
+%% -------------------------------------------------------------------
+%% Building the Insertion Ctx
 recent_cache_n() ->
     M = fallback_consensus(),
     max(1, M:recent_cache_n()).
@@ -232,22 +297,11 @@ recent_cache_trim_key_header(H) ->
             M:recent_cache_trim_key_header(H)
     end.
 
-keyblocks_for_target_calc() ->
-    M = fallback_consensus(),
-    max(1, M:keyblocks_for_target_calc()).
-
-keyblock_create_adjust_target(B, R) ->
-    case is_hc_pos_header(aec_blocks:to_header(B)) of
-        true ->
-            {ok, aec_blocks:set_target(B, 0)}; %% TODO: calculate the target based on the voting power
-        false ->
-            M = fallback_consensus(),
-            M:keyblock_create_adjust_target(B, R)
-    end.
-
+%% -------------------------------------------------------------------
+%% Preconductor hook - called in sync process just before invoking the conductor
 dirty_validate_block_pre_conductor(B) ->
     case is_hc_pos_header(aec_blocks:to_header(B)) of
-        true -> error(todo);
+        true -> ok;%%error(todo);
         false ->
             M = fallback_consensus(),
             M:dirty_validate_block_pre_conductor(B)
@@ -255,7 +309,7 @@ dirty_validate_block_pre_conductor(B) ->
 
 dirty_validate_header_pre_conductor(H) ->
     case is_hc_pos_header(H) of
-        true -> error(todo);
+        true -> ok;%%error(todo);
         false ->
             M = fallback_consensus(),
             M:dirty_validate_header_pre_conductor(H)
@@ -265,18 +319,22 @@ dirty_validate_key_hash_at_height(Height, Hash) ->
     M = fallback_consensus(),
     M:dirty_validate_key_hash_at_height(Height, Hash).
 
+%% -------------------------------------------------------------------
+%% Dirty validation of keyblocks just before starting the state transition
 dirty_validate_key_node_with_ctx(Node, Block, Ctx) ->
     case is_hc_pos_header(aec_blocks:to_header(Block)) of
         true ->
-            error(todo);
+            ok;%%error(todo);
         false ->
             M = fallback_consensus(),
             M:dirty_validate_key_node_with_ctx(Node, Block, Ctx)
     end.
 
+%% -------------------------------------------------------------------
+%% Dirty validation of microblocks just before starting the state transition
 dirty_validate_micro_node_with_ctx(Node, Block, Ctx) ->
     case is_hc_pos_header(aec_blocks:to_header(Block)) of
-        true -> error(todo);
+        true -> ok;%%error(todo);
         false ->
             M = fallback_consensus(),
             M:dirty_validate_micro_node_with_ctx(Node, Block, Ctx)
@@ -285,9 +343,7 @@ dirty_validate_micro_node_with_ctx(Node, Block, Ctx) ->
 %% -------------------------------------------------------------------
 %% Custom state transitions
 state_pre_transform_key_node_consensus_switch(KeyNode, _PrevNode, _PrevKeyNode, Trees) ->
-    Header = aec_block_insertion:node_header(KeyNode),
-    TxEnv = aetx_env:tx_env_from_key_header(Header, aec_block_insertion:node_hash(KeyNode),
-        aec_block_insertion:node_time(KeyNode), aec_block_insertion:node_prev_hash(KeyNode)),
+    TxEnv = node_tx_env(KeyNode),
     case get_staking_contract_address() of
         not_deployed ->
             ensure_staking_contract_on_consensus_switch(Trees, TxEnv);
@@ -332,8 +388,7 @@ ensure_staking_contract_on_consensus_switch(Trees, TxEnv) ->
 
 state_pre_transform_key_node(KeyNode, _PrevNode, PrevKeyNode, Trees1) ->
     Header = aec_block_insertion:node_header(KeyNode),
-    TxEnv = aetx_env:tx_env_from_key_header(Header, aec_block_insertion:node_hash(KeyNode),
-        aec_block_insertion:node_time(KeyNode), aec_block_insertion:node_prev_hash(KeyNode)),
+    TxEnv = node_tx_env(KeyNode),
     case is_hc_pos_header(Header) of
         true ->
             case get_hc_activation_criteria() of
@@ -342,34 +397,83 @@ state_pre_transform_key_node(KeyNode, _PrevNode, PrevKeyNode, Trees1) ->
             end,
             %% TODO: refactor after I get it to a working state
             Trees3 = case is_hc_pos_header(aec_block_insertion:node_header(PrevKeyNode)) of
-                         true -> Trees1;
-                         %% Switchover block which enables staking!
+                         true -> Trees1; %% We build on top of a HC block
+                         %% Switchover block which enables staking! The prev block is being secured by PoW
                          false ->
                              %% Assert the activation criteria
-                             case evaluate_hc_activation_criteria(KeyNode, Trees1) of
-                                 true -> ok;
-                                 false -> aec_block_insertion:abort_state_transition(hc_activation_criteria_were_not_meet)
+                             case ensure_hc_activation_criteria(KeyNode, TxEnv, Trees1) of
+                                 ok -> ok;
+                                 {error, Reason} -> aec_block_insertion:abort_state_transition({hc_activation_criteria_were_not_meet, Reason})
                              end,
+                             %% Notify users that staking got enabled :)
                              case protocol_staking_contract_call(Trees1, TxEnv, "protocol_enable()") of
-                                 {ok, Trees2, asdf} -> Trees2;
-                                 Err1 -> aec_block_insertion:abort_state_transition(Err1)
+                                 {ok, Trees2, {tuple, {}}} -> Trees2;
+                                 Err1 -> aec_block_insertion:abort_state_transition({activation_failed, Err1})
                              end
                      end,
-            %% Perform the leader election if not already performed
-            ParentHash = hc_pos_key_header_parent_hash(Header),
-            Candidates = aehc_parent_db:get_candidates_in_election_cycle(aec_headers:height(Header), ParentHash),
-            Call = lists:flatten(io_lib:format("get_leader(~p, ~p)", [Candidates, ParentHash])),
+            %% Perform the leader election
+            ParentHash = get_pos_header_parent_hash(Header),
+            Commitments = aehc_parent_db:get_candidates_in_election_cycle(aec_headers:height(Header), ParentHash),
+            %% TODO: actually hardcode the encoding
+            Candidates = ["[", lists:join(", ", [aeser_api_encoder:encode(account_pubkey, aehc_commitment_header:hc_delegate(aehc_commitment:header(X))) || X <- Commitments]), "]"],
+            Call = lists:flatten(io_lib:format("get_leader(~s, #~s)", [Candidates, lists:flatten([integer_to_list(X,16) || <<X>> <= ParentHash])])),
+            %%io:format(user, "Election: ~p\n", [Call]),
             case protocol_staking_contract_call(Trees3, TxEnv, Call) of
-                {ok, Trees4, asdf} ->
-                    Trees4;
-                Err2 -> aec_block_insertion:abort_state_transition(Err2)
+                {ok, Trees4, {address, Leader}} ->
+                    %% Assert that the miner is the person which got elected
+                    case aec_block_insertion:node_miner(KeyNode) of
+                        Leader -> Trees4;
+                        _ -> aec_block_insertion:abort_state_transition(miner_not_leader)
+                    end;
+                Err2 -> aec_block_insertion:abort_state_transition({election_failed, Err2})
             end;
         false ->
             %% No adjustment required for PoW blocks
             Trees1
     end.
 
-evaluate_hc_activation_criteria(KeyNode, Trees1) -> false.
+-spec ensure_hc_activation_criteria(node(), aetx_env:env(), aec_trees:trees()) -> ok | {error, any()}.
+ensure_hc_activation_criteria(KeyNode, TxEnv, Trees) ->
+    {ok,
+        #activation_criteria{ check_frequency = CheckFrequency
+                            , confirmations = Confirmations } = Criteria
+    } = get_hc_activation_criteria(),
+    Height = aec_block_insertion:node_height(KeyNode),
+    case Height rem CheckFrequency =:= 0 of
+        false -> {error, invalid_criteria_evaluation_point};
+        true ->
+            %% First evaluate the criteria at the current trees
+            case ensure_hc_activation_criteria_at_trees(TxEnv, Trees, Criteria) of
+                {error, _} = Err -> Err;
+                ok ->
+                    Done = Confirmations =:= 1 andalso aec_block_insertion:node_prev_key_hash(KeyNode) =:= aec_block_insertion:node_prev_hash(KeyNode),
+                    %% Now take a look at the criteria in the past
+                    case aec_chain_state:find_predecessor_at_height(KeyNode, Height-Confirmations) of
+                        KeyNode -> ok; %% Zero confirmations
+                        _ when Done -> ok; %% We already evaluated the criteria
+                        KeyPredecessor ->
+                            {PredecessorTxEnv, PredecessorTrees} = aetx_env:tx_env_and_trees_from_hash('aetx_transaction', aec_block_insertion:node_hash(KeyPredecessor)),
+                            ensure_hc_activation_criteria_at_trees(PredecessorTxEnv, PredecessorTrees, Criteria)
+                    end
+            end
+    end.
+
+-spec ensure_hc_activation_criteria_at_trees(aetx_env:env(), aec_trees:trees(), #activation_criteria{}) -> ok | {error, any()}.
+ensure_hc_activation_criteria_at_trees(TxEnv, Trees,
+    #activation_criteria{ minimum_delegates = MinimumDelegates
+                        , minimum_stake = MinimumStake
+                        }) ->
+    case { static_contract_call(Trees, TxEnv, "balance()")
+         , static_contract_call(Trees, TxEnv, "unique_delegates_count()") } of
+        {{ok, Stake}, {ok, Delegates}} when Stake >= MinimumStake, Delegates >= MinimumDelegates ->
+            ok;
+        {{ok, Stake}, _} when Stake < MinimumStake ->
+            {error, not_enough_stake};
+        {_, {ok, Delegates}} ->
+            {error, not_enough_delegates};
+        {Err, _} -> {error, {failed_call, Err}};
+        {_, Err} -> {error, {failed_call, Err}}
+    end.
 
 state_pre_transform_micro_node(_Node, _PrevNode, _PrevKeyNode, Trees) -> Trees.
 
@@ -432,6 +536,81 @@ genesis_target() ->
     end.
 -endif.
 
+%% -------------------------------------------------------------------
+%% Keyblock creation
+-define(FAKE_SIGNATURE, <<0:?BLOCK_SIGNATURE_BYTES/unit:8>>).
+-define(FAKE_BLOCK_HASH, <<0:?BLOCK_HEADER_HASH_BYTES/unit:8>>).
+-define(FAKE_STATE_HASH, <<1337:?STATE_HASH_BYTES/unit:8>>).
+new_unmined_key_node(PrevNode, PrevKeyNode, Height, Miner, Beneficiary, Protocol, InfoField, TreesIn) ->
+    %% Ok this will be really funny
+    %% First we need to determine whether we are a PoS or PoW block
+    %% If the PrevKeyNode is a PoS block then we are a PoS block
+    %% Otherwise check if we are at a possible HC activation point
+    %% If yes the evaluate the activation criteria using the provided Trees
+    Header = aec_headers:new_key_header(Height,
+                               aec_block_insertion:node_hash(PrevNode),
+                               aec_block_insertion:node_hash(PrevKeyNode),
+                               ?FAKE_STATE_HASH,
+                               Miner,
+                               Beneficiary,
+                               default_target(),
+                               no_value,
+                               0,
+                               aeu_time:now_in_msecs(),
+                               InfoField,
+                               Protocol),
+    PowNode = aec_chain_state:wrap_header(Header, ?FAKE_BLOCK_HASH),
+    case is_hc_pos_header(aec_block_insertion:node_header(PrevKeyNode)) of
+        true ->
+            new_pos_key_node(PrevNode, PrevKeyNode, Height, Miner, Beneficiary, Protocol, InfoField, TreesIn);
+        false -> %% PoW block or a switchover block
+            case get_hc_activation_criteria() of
+                error -> PowNode;
+                {ok, #activation_criteria{check_frequency = Frequency}} when Height rem Frequency =:= 0 ->
+                    case ensure_hc_activation_criteria(PowNode, node_tx_env(PowNode), TreesIn) of
+                        {error, _} -> PowNode;
+                        ok ->
+                            new_pos_key_node(PrevNode, PrevKeyNode, Height, Miner, Beneficiary, Protocol, InfoField, TreesIn)
+                    end;
+                _ -> %% Not at a possible activation point
+                    PowNode
+            end
+    end.
+
+new_pos_key_node(PrevNode, PrevKeyNode, Height, Miner, Beneficiary, Protocol, InfoField, _TreesIn) ->
+    %% TODO: PoGF - for now just ignore generational fraud - let's first get a basic version working
+    %%       When handling PoGF the commitment point is in a different place than usual
+    ParentBlock = aehc_utils:submit_commitment(PrevKeyNode, Miner), %% TODO: Miner vs Delegate, Which shall register?
+    Seal = create_pos_pow_field(aehc_parent_block:hash_block(ParentBlock), ?FAKE_SIGNATURE),
+    Header = aec_headers:new_key_header(Height,
+                           aec_block_insertion:node_hash(PrevNode),
+                           aec_block_insertion:node_hash(PrevKeyNode),
+                           ?FAKE_STATE_HASH,
+                           Miner,
+                           Beneficiary,
+                           default_target(), %% TODO: target calculation - evaluate the stakes
+                           Seal,
+                           ?NONCE_HC_ENABLED,
+                           aeu_time:now_in_msecs(),
+                           InfoField,
+                           Protocol),
+    aec_chain_state:wrap_header(Header, ?FAKE_BLOCK_HASH).
+
+keyblocks_for_unmined_keyblock_adjust() ->
+    M = fallback_consensus(),
+    max(1, M:keyblocks_for_target_calc()).
+
+adjust_unmined_keyblock(B, R) ->
+    case is_hc_pos_header(aec_blocks:to_header(B)) of
+        true ->
+            {ok, aec_blocks:set_target(B, 0)}; %% No adjustment required - everything is done by new_unmined_key_node
+        false ->
+            M = fallback_consensus(),
+            M:adjust_unmined_keyblock(B, R)
+    end.
+
+%% -------------------------------------------------------------------
+%% Keyblock sealing
 key_header_for_sealing(Header) ->
     case is_hc_pos_header(Header) of
         true -> error(todo);
@@ -486,7 +665,6 @@ trim_sealing_nonce(Nonce, MinerConfig) ->
 
 %% -------------------------------------------------------------------
 %% Block target and difficulty
-
 default_target() ->
     M = fallback_consensus(),
     M:default_target().
@@ -505,11 +683,15 @@ key_header_difficulty(Header) ->
 
 %% -------------------------------------------------------------------
 %% Hyperchains specific
-
 genesis_tx_env() ->
     Header = aec_headers:set_height(genesis_raw_header(), 1), %% Fake the height
     aetx_env:tx_env_from_key_header(Header, <<0:?BLOCK_HEADER_HASH_BYTES/unit:8>>,
         aec_headers:time_in_msecs(Header), aec_headers:prev_hash(Header)).
+
+node_tx_env(Node) ->
+    Header = aec_block_insertion:node_header(Node),
+    aetx_env:tx_env_from_key_header(Header, aec_block_insertion:node_hash(Node),
+        aec_block_insertion:node_time(Node), aec_block_insertion:node_prev_hash(Node)).
 
 get_staking_contract_bytecode() -> maps:get(bytecode, persistent_term:get(?STAKING_CONTRACT)).
 get_staking_contract_aci() -> maps:get(aci, persistent_term:get(?STAKING_CONTRACT)).
@@ -547,21 +729,42 @@ get_predeploy_address() ->
         Addr -> {ok, Addr}
     end.
 
-%% 1. The minimum stake in the staking contract required to start the HC
+%% 1. The minimum balance of the staking contract required to start the HC
 %% 2. The minimum amount of unique delegates required to start the HC
 %% 3. The frequency at which we check the criteria
 %% 4. The confirmation depth of the criteria
-%%    The first HC PoS block MUST fulfill the activation criteria and the Nth-key predecessor must also fulfill them
-%%    For instance when the config is (100AE, 2, 10, 2) and the criteria were first meet at block 20 then:
-%%    - HC can't be enabled at 20 - as at height 18 the criteria weren't meet
-%%    - HC gets enabled at height 30 - we run the check at height 30 and the criteria pass both at height 30 and 28
-%%      making block 30 eligible to be the first HC block - validators commit to block 29, block 30 is the FIRST to deviate from PoW
--record(activation_criteria, {
-        minimum_stake :: integer(),
-        minimum_delegates :: integer(),
-        check_frequency :: integer(),
-        confirmations :: integer()
-    }).
+%%    The first HC PoS block MUST fulfill the activation criteria(the state on which we base the block on MUST fulfill the criteria) and the Nth-key predecessor must also fulfill them
+%%    For instance when the config is (100AE, 2, 10, 2) and the criteria were first meet at one microblock in the generation with height 19 then:
+%%    - HC can't be enabled at the keyblock at height 20 - although the criteria were meet at the predecesor, the keyblock predecesor at height 18 doesn't pass the criteria
+%%    - We never run the check at keyblocks with heights not divisible by 10(21-29 in the example)
+%%    - HC gets enabled at the keyblock at height 30 - the criteria pass at the direct predecessor and the keyblock at height 28
+%%      making the keyblock with height 30 eligible to be the first HC block - validators commit to block 29, block 30 is the FIRST to deviate from PoW
+%% More examples(assuming activation at height 30 and where we checked at height 30):
+%% * (100AE, 2, 10, 0)
+%%                     Chain:            K - m - m - K - m - m - K
+%%                     Height:           29  29  29  30  30  30  31
+%%                     First HC block:               X
+%%                     Criteria pass at:     X   X   X   X   X   X
+%%                     Criteria checks:           X
+%% * (100AE, 2, 10, 1)
+%%                     Chain:            K - m - m - K - m - m - K
+%%                     Height:           29  29  29  30  30  30  31
+%%                     First HC block:               X
+%%                     Criteria pass at: X   X   X   X   X   X   X
+%%                     Criteria checks:  X        X
+%% * (100AE, 2, 1, 1)
+%%                     Chain:                 K - m - K - m - m - K - m - m - K
+%%                     Height:                28  28  29  29  29  30  30  30  31
+%%                     First HC block:                            X
+%%                     Criteria pass at:          X   X   X   X   X   X   X   X
+%%                     Criteria checks at 30:         X       X
+%%                     Criteria checks at 29: X   X
+%% * (100AE, 2, 10, 2)
+%%                     Chain:                 K - m - K - m - m - K - m - m - K
+%%                     Height:                28  28  29  29  29  30  30  30  31
+%%                     First HC block:                            X
+%%                     Criteria pass at:      X   X   X   X   X   X   X   X   X
+%%                     Criteria checks at 30: X               X
 
 %% Sets the HC activation criteria
 -spec set_hc_activation_criteria(integer(), integer(), integer(), integer()) -> ok.
@@ -675,8 +878,8 @@ verify_existing_staking_contract(Address, Trees, TxEnv) ->
             ErrF("Contract not found");
         {value, Account} ->
             case aec_accounts:is_payable(Account) of
-                false -> ErrF("Contract not payable");
-                true ->
+                true -> ErrF("Contract can't be payable");
+                false ->
                     case aect_state_tree:lookup_contract(Address, aec_trees:contracts(Trees), [no_store]) of
                         none ->
                             ErrF("Contract not found");
@@ -747,7 +950,7 @@ static_contract_call(Trees0, TxEnv0, Query) ->
                 ok ->
                     {ok, aeb_fate_encoding:deserialize(aect_call:return_value(Call))};
                 What ->
-                    {error, {What, aect_call:return_type(Call)}}
+                    {error, {What, aeb_fate_encoding:deserialize(aect_call:return_value(Call))}}
             end;
         {error, _What} = Err -> Err
     end.
@@ -801,16 +1004,20 @@ protocol_staking_contract_call(Trees0, TxEnv, Query) ->
     {ok, Tx} = aect_call_tx:new(TxSpec),
     case aetx:process(Tx, Trees1, TxEnv) of
         {ok, Trees2, _} ->
-            CallPubkey     = aect_call:id(?DRY_RUN_ACCOUNT, 1, ContractPubkey),
+            CallPubkey     = aect_call:id(?RESTRICTED_ACCOUNT, 1, ContractPubkey),
             CallTree       = aec_trees:calls(Trees2),
             {value, Call}  = aect_call_state_tree:lookup_call(ContractPubkey, CallPubkey, CallTree),
             case aect_call:return_type(Call) of
                 ok ->
-                    Accounts2 = aec_accounts_trees:enter(SavedAccount, aec_trees:accounts(Trees2)),
+                    Accounts2 =
+                        case SavedAccount of
+                           {ok, Pub} -> aec_accounts_trees:enter(Pub, aec_trees:accounts(Trees2));
+                           error -> aec_accounts_trees:delete(?RESTRICTED_ACCOUNT, aec_trees:accounts(Trees2))
+                        end,
                     Trees3 = aec_trees:set_accounts(Trees2, Accounts2),
-                    {ok, Trees3, aeb_fate_encoding:deserialize(aect_call:return_value(Call))};
+                    {ok, aect_call_state_tree:prune(1, Trees3), aeb_fate_encoding:deserialize(aect_call:return_value(Call))};
                 What ->
-                    {error, {What, aect_call:return_type(Call)}}
+                    {error, {What, aeb_fate_encoding:deserialize(aect_call:return_value(Call))}}
             end;
         {error, _What} = Err -> Err
     end.

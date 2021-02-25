@@ -483,7 +483,7 @@ create_keyblock_with_state([{PrevBlock, TreesIn} | _] = Chain, MinerAccount, Ben
         Chain),
     PrevNode = aec_chain_state:wrap_block(PrevBlock),
     PrevKeyNode = aec_chain_state:wrap_block(PrevKeyBlock),
-    UnminedNode = Consensus:new_unmined_key_node(PrevNode, PrevKeyNode, Height, MinerAccount, BeneficiaryAccount, Protocol, TreesIn),
+    UnminedNode = Consensus:new_unmined_key_node(PrevNode, PrevKeyNode, Height, MinerAccount, BeneficiaryAccount, Protocol, Info, TreesIn),
     Block = aec_blocks:new_key(Height, PrevBlockHash, PrevKeyHash, aec_trees:hash(TreesIn),
                                Target, 0, Timestamp, Info, Protocol,
                                MinerAccount, BeneficiaryAccount),
@@ -500,9 +500,13 @@ create_keyblock_with_state([{PrevBlock, TreesIn} | _] = Chain, MinerAccount, Ben
                  false ->
                      Trees3
              end,
-    Block1 = aec_blocks:new_key(Height, PrevBlockHash, PrevKeyHash, aec_trees:hash(Trees4),
-                                Target, 0, Timestamp, Info, Protocol,
-                                MinerAccount, BeneficiaryAccount),
+    UnminedHeader = aec_block_insertion:node_header(UnminedNode),
+    Block1 = aec_blocks:new_key_from_header(
+        aec_headers:set_time_in_msecs(
+            aec_headers:set_target(
+                aec_headers:set_root_hash(UnminedHeader, aec_trees:hash(Trees4))
+            , Target)
+        , Timestamp)),
     {Block1, Trees4}.
 
 adjust_target([{PrevBlock, _} | _Rest] = Chain) ->

@@ -75,8 +75,9 @@
 
 -module(aec_chain_state).
 
--export([ calculate_state_for_new_keyblock/5
+-export([ calculate_new_unmined_keyblock/5
         , find_common_ancestor/2
+        , find_predecessor_at_height/2
         , get_key_block_hash_at_height/1
         , get_n_key_headers_backward_from/2
         , hash_is_connected_to_genesis/1
@@ -91,6 +92,8 @@
         , get_info_field/2
         , ensure_chain_ends/0
         , wrap_block/1
+        , wrap_header/1
+        , wrap_header/2
         ]).
 
 -import(aetx_env, [no_events/0]).
@@ -248,13 +251,13 @@ hash_is_in_main_chain(Hash) ->
         error -> false
     end.
 
--spec calculate_state_for_new_keyblock(
+-spec calculate_new_unmined_keyblock(
+        aec_headers:key_header(),
         binary(),
-        aec_blocks:block(),
         aec_keys:pubkey(),
         aec_keys:pubkey(),
-        aec_hard_forks:protocol_vsn()) -> {'ok', aec_trees:trees(), aec_headers:header()} | 'error'.
-calculate_state_for_new_keyblock(PrevHash, PrevHeader, Miner, Beneficiary, Protocol) ->
+        aec_hard_forks:protocol_vsn()) -> {'ok', aec_blocks:key_block(), aec_trees:trees()} | 'error'.
+calculate_new_unmined_keyblock(PrevHeader, PrevHash, Miner, Beneficiary, Protocol) ->
     aec_db:ensure_transaction(fun() ->
         PrevNode = wrap_header(PrevHeader, PrevHash),
         Height = node_height(PrevNode) + 1,
@@ -267,11 +270,14 @@ calculate_state_for_new_keyblock(PrevHash, PrevHeader, Miner, Beneficiary, Proto
             error -> error;
             {ok, TreesIn, ForkInfoIn} ->
                 Consensus = aec_consensus:get_consensus_module_at_height(Height),
-                UnminedNode  = Consensus:new_unmined_key_node(PrevNode, PrevKeyNode, Height, Miner, Beneficiary, Protocol, TreesIn),
+                Fork = aeu_env:get_env(aecore, fork, undefined),
+                InfoField = aec_chain_state:get_info_field(Height, Fork),
+                UnminedNode  = Consensus:new_unmined_key_node(PrevNode, PrevKeyNode, Height, Miner, Beneficiary, Protocol, InfoField, TreesIn),
                 State = new_state_from_persistence(),
                 {Trees,_Fees,_Events} = apply_node_transactions(UnminedNode, PrevNode, PrevKeyNode, TreesIn,
                                                                 ForkInfoIn, State),
-                {ok, Trees, UnminedNode}
+                UnminedHeader = aec_headers:set_root_hash(node_header(UnminedNode), aec_trees:hash(Trees)),
+                {ok, aec_blocks:new_key_from_header(UnminedHeader), Trees}
         end
     end).
 
@@ -393,20 +399,6 @@ node_is_genesis(Node) ->
 wrap_block(Block) ->
     Header = aec_blocks:to_header(Block),
     wrap_header(Header).
-
-fake_key_node(PrevNode, PrevKeyHash, Height, Miner, Beneficiary, Protocol) ->
-    Module = aec_consensus:get_consensus_module_at_height(Height),
-    Block = aec_blocks:new_key(Height,
-                               node_hash(PrevNode),
-                               PrevKeyHash,
-                               <<123:?STATE_HASH_BYTES/unit:8>>,
-                               Module:default_target(),
-                               0, aeu_time:now_in_msecs(),
-                               default,
-                               Protocol,
-                               Miner,
-                               Beneficiary),
-    wrap_header(aec_blocks:to_header(Block)).
 
 wrap_header(Header) ->
     {ok, Hash} = aec_headers:hash_header(Header),
