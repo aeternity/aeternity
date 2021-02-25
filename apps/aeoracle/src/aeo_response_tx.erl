@@ -204,7 +204,7 @@ for_client(#oracle_response_tx{oracle_id = OracleId,
       <<"nonce">>       => Nonce,
       <<"query_id">>    => aeser_api_encoder:encode(oracle_query_id, QueryId),
       <<"response">>    => Response,
-      <<"response_ttl">> => #{<<"type">>  => ResponseTTLType,
+      <<"response_ttl">> => #{<<"type">>  => atom_to_binary(ResponseTTLType, utf8),
                               <<"value">> => ResponseTTLValue},
       <<"fee">>         => Fee,
       <<"ttl">>         => TTL}.

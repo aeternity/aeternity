@@ -60,45 +60,1836 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
-  /key-blocks/hash/{hash}:
+  /key-blocks/current:
+    get:
+      tags:
+        - external
+        - chain
+      operationId: GetCurrentKeyBlock
+      description: Get the current key block
+      responses:
+        "200":
+          description: Successful operation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/KeyBlock"
+        "404":
+          description: Block not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /key-blocks/current/hash:
+    get:
+      tags:
+        - external
+        - chain
+      operationId: GetCurrentKeyBlockHash
+      description: Get the hash of the current key block
+      responses:
+        "200":
+          description: Successful operation
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  hash:
+                    $ref: "#/components/schemas/EncodedHash"
+        "404":
+          description: Block not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /key-blocks/current/height:
+    get:
+      tags:
+        - external
+        - chain
+      operationId: GetCurrentKeyBlockHeight
+      description: Get the height of the current key block
+      responses:
+        "200":
+          description: Successful operation
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  height:
+                    $ref: "#/components/schemas/UInt64"
+        "404":
+          description: Block not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /key-blocks/pending:
+    get:
+      tags:
+        - external
+        - chain
+      operationId: GetPendingKeyBlock
+      description: Get the pending key block
+      responses:
+        "200":
+          description: Successful operation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/KeyBlock"
+        "400":
+          description: Beneficiary not configured
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Block not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  "/key-blocks/hash/{hash}":
     get:
       tags:
         - external
         - chain
       operationId: GetKeyBlockByHash
-      description: 'Get a key block by hash'
-      produces:
-        - application/json
+      description: Get a key block by hash
       parameters:
         - in: path
           name: hash
-          description: 'The hash of the block'
+          description: The hash of the block
           required: true
-          # Encoded key block hash
-          # pattern: "^kh_[1-9A-HJ-NP-Za-km-z]*$"
-          type: string
+          schema:
+            type: string
+            example: "kh_2ikjGFZGFpE99mDtsgkGFsTCqpPpXZRNRa5Pic989FJLcJStgx"
       responses:
-        '200':
-          description: 'Successful operation'
+        "200":
+          description: Successful operation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/KeyBlock"
+        "400":
+          description: Invalid hash
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Block not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  "/key-blocks/height/{height}":
+    get:
+      tags:
+        - external
+        - chain
+      operationId: GetKeyBlockByHeight
+      description: Get a key block by height
+      parameters:
+        - in: path
+          name: height
+          description: The height
+          required: true
           schema:
-            $ref: '#/definitions/KeyBlock'
-        '400':
-          description: 'Invalid hash'
+            type: integer
+            minimum: 0
+            maximum: 18446744073709552000
+            example: 42
+      responses:
+        "200":
+          description: Successful operation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/KeyBlock"
+        "404":
+          description: Block not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  "/micro-blocks/hash/{hash}/header":
+    get:
+      tags:
+        - external
+        - chain
+      operationId: GetMicroBlockHeaderByHash
+      description: Get a micro block header by hash
+      parameters:
+        - in: path
+          name: hash
+          description: The hash of the block
+          required: true
           schema:
-            $ref: '#/definitions/Error'
-        '404':
-          description: 'Block not found'
+            type: string
+            example: "mh_ZCWcnCG5YF2LhQMTmZ5K5rRmGxatgc5YWxDpGNy2YBAHP6urH"
+      responses:
+        "200":
+          description: Successful operation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MicroBlockHeader"
+        "400":
+          description: Invalid hash
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Block not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  "/micro-blocks/hash/{hash}/transactions":
+    get:
+      tags:
+        - external
+        - chain
+      operationId: GetMicroBlockTransactionsByHash
+      description: Get micro block transactions by hash
+      parameters:
+        - in: path
+          name: hash
+          description: The hash of the block
+          required: true
           schema:
-            $ref: '#/definitions/Error'
+            type: string
+            example: "mh_ZCWcnCG5YF2LhQMTmZ5K5rRmGxatgc5YWxDpGNy2YBAHP6urH"
+      responses:
+        "200":
+          description: Successful operation
+          content:
+            application/json:
+              schema:
+                properties:
+                  transactions:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/SignedTx"
+        "400":
+          description: Invalid hash
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Block not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  "/micro-blocks/hash/{hash}/transactions/index/{index}":
+    get:
+      tags:
+        - external
+        - chain
+      operationId: GetMicroBlockTransactionByHashAndIndex
+      description: Get a micro block transaction by hash and index
+      parameters:
+        - in: path
+          name: hash
+          description: The hash of the block
+          required: true
+          schema:
+            type: string
+            example: "mh_ZCWcnCG5YF2LhQMTmZ5K5rRmGxatgc5YWxDpGNy2YBAHP6urH"
+        - in: path
+          name: index
+          description: The index of the transaction in a block
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+            example: 1
+      responses:
+        "200":
+          description: Successful operation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SignedTx"
+        "400":
+          description: Invalid hash or index
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Block not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  "/micro-blocks/hash/{hash}/transactions/count":
+    get:
+      tags:
+        - external
+        - chain
+      operationId: GetMicroBlockTransactionsCountByHash
+      description: Get micro block transaction count by hash
+      parameters:
+        - in: path
+          name: hash
+          description: The hash of the block
+          required: true
+          schema:
+            type: string
+            example: "mh_ZCWcnCG5YF2LhQMTmZ5K5rRmGxatgc5YWxDpGNy2YBAHP6urH"
+      responses:
+        "200":
+          description: Successful operation
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  count:
+                    $ref: "#/components/schemas/UInt32"
+        "400":
+          description: Invalid hash
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Block not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /generations/current:
+    get:
+      tags:
+        - external
+        - chain
+      operationId: GetCurrentGeneration
+      description: Get the current generation
+      responses:
+        "200":
+          description: Successful operation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Generation"
+        "404":
+          description: Generation not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  "/generations/hash/{hash}":
+    get:
+      tags:
+        - external
+        - chain
+      operationId: GetGenerationByHash
+      description: Get a generation by hash
+      parameters:
+        - in: path
+          name: hash
+          description: The hash of the generation
+          required: true
+          schema:
+            type: string
+            example: "kh_2ikjGFZGFpE99mDtsgkGFsTCqpPpXZRNRa5Pic989FJLcJStgx"
+      responses:
+        "200":
+          description: Successful operation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Generation"
+        "400":
+          description: Invalid hash
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Generation not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  "/generations/height/{height}":
+    get:
+      tags:
+        - external
+        - chain
+      operationId: GetGenerationByHeight
+      description: Get a generation by height
+      parameters:
+        - in: path
+          name: height
+          description: The height
+          required: true
+          schema:
+            type: integer
+            minimum: 0
+            maximum: 18446744073709552000
+            example: 1
+      responses:
+        "200":
+          description: Successful operation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Generation"
+        "404":
+          description: Generation not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  "/accounts/{pubkey}":
+    get:
+      tags:
+        - external
+        - account
+      operationId: GetAccountByPubkey
+      description: Get an account by public key
+      parameters:
+        - in: path
+          name: pubkey
+          description: The public key of the account
+          required: true
+          schema:
+            type: string
+            example: "ak_dArxCkAsk1mZB1L9CX3cdz1GDN4hN84L3Q8dMLHN4v8cU85TF"
+      responses:
+        "200":
+          description: Successful operation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Account"
+        "400":
+          description: Invalid public key
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Account not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  "/accounts/{pubkey}/height/{height}":
+    get:
+      tags:
+        - external
+        - account
+      operationId: GetAccountByPubkeyAndHeight
+      description: Get an account by public key after the opening key block of the
+        generation at height
+      parameters:
+        - in: path
+          name: pubkey
+          description: The public key of the account
+          required: true
+          schema:
+            type: string
+            example: "ak_dArxCkAsk1mZB1L9CX3cdz1GDN4hN84L3Q8dMLHN4v8cU85TF"
+        - in: path
+          name: height
+          description: The height
+          required: true
+          schema:
+            type: integer
+            minimum: 0
+            maximum: 18446744073709552000
+            example: 42
+      responses:
+        "200":
+          description: Successful operation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Account"
+        "400":
+          description: Invalid public key or invalid height
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Account not found or height not available
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  "/accounts/{pubkey}/hash/{hash}":
+    get:
+      tags:
+        - external
+        - account
+      operationId: GetAccountByPubkeyAndHash
+      description: "Get an account by public key after the block indicated by hash. Can be either a micro block or a keyblock hash"
+      parameters:
+        - in: path
+          name: pubkey
+          description: The public key of the account
+          required: true
+          schema:
+            type: string
+            example: "ak_dArxCkAsk1mZB1L9CX3cdz1GDN4hN84L3Q8dMLHN4v8cU85TF"
+        - in: path
+          name: hash
+          description: The hash of the block
+          required: true
+          schema:
+            type: string
+            example: "kh_2ikjGFZGFpE99mDtsgkGFsTCqpPpXZRNRa5Pic989FJLcJStgx"
+      responses:
+        "200":
+          description: Successful operation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Account"
+        "400":
+          description: Invalid public key or invalid hash
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Account not found or hash not available
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  "/accounts/{pubkey}/transactions/pending":
+    get:
+      tags:
+        - external
+        - account
+      operationId: GetPendingAccountTransactionsByPubkey
+      description: Get pending account transactions by public key
+      parameters:
+        - in: path
+          name: pubkey
+          description: The public key of the account
+          required: true
+          schema:
+            type: string
+            example: "ak_dArxCkAsk1mZB1L9CX3cdz1GDN4hN84L3Q8dMLHN4v8cU85TF"
+      responses:
+        "200":
+          description: Successful operation
+          content:
+            application/json:
+              schema:
+                properties:
+                  transactions:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/SignedTx"
+        "400":
+          description: Invalid public key
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Account not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  "/transactions/{hash}":
+    get:
+      tags:
+        - external
+        - transaction
+      operationId: GetTransactionByHash
+      description: Get a transaction by hash
+      parameters:
+        - in: path
+          name: hash
+          description: The hash of the transaction
+          required: true
+          schema:
+            type: string
+            example: "th_2w75xjDjHEmphsHDSXrThRnPx6hSUiS7hhSRcuytJABZZ2KkdG"
+      responses:
+        "200":
+          description: Successful operation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SignedTx"
+        "400":
+          description: Invalid hash
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Transaction not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  "/transactions/{hash}/info":
+    get:
+      tags:
+        - external
+        - transaction
+      operationId: GetTransactionInfoByHash
+      parameters:
+        - in: path
+          name: hash
+          description: The hash of the transaction
+          required: true
+          schema:
+            type: string
+            example: "th_2w75xjDjHEmphsHDSXrThRnPx6hSUiS7hhSRcuytJABZZ2KkdG"
+      responses:
+        "200":
+          description: Successful operation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TxInfoObject"
+        "400":
+          description: Invalid hash
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Transaction not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /transactions:
+    post:
+      tags:
+        - external
+        - transaction
+      operationId: PostTransaction
+      description: Post a new transaction
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EncodedTx"
+        description: The new transaction
+        required: true
+      responses:
+        "200":
+          description: Successful operation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PostTxResponse"
+        "400":
+          description: Invalid transaction
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  "/contracts/{pubkey}":
+    get:
+      tags:
+        - external
+        - contract
+      operationId: GetContract
+      description: Get a contract by pubkey
+      parameters:
+        - in: path
+          name: pubkey
+          description: The pubkey of the contract
+          required: true
+          schema:
+            type: string
+            example: "ct_TV5KbBYdjw1ufKWvAtNNjUnagvRmWMMugFzLKzmLASXB5iH1E"
+      responses:
+        "200":
+          description: Successful operation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ContractObject"
+        "400":
+          description: Invalid pubkey
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Contract not found
+  "/contracts/{pubkey}/code":
+    get:
+      tags:
+        - external
+        - contract
+      operationId: GetContractCode
+      description: Get contract code by pubkey
+      parameters:
+        - in: path
+          name: pubkey
+          description: The pubkey of the contract
+          required: true
+          schema:
+            type: string
+            example: "ct_TV5KbBYdjw1ufKWvAtNNjUnagvRmWMMugFzLKzmLASXB5iH1E"
+      responses:
+        "200":
+          description: Contract code
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ByteCode"
+        "400":
+          description: Invalid pubkey
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Contract not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  "/contracts/{pubkey}/poi":
+    get:
+      tags:
+        - external
+        - contract
+      operationId: GetContractPoI
+      description: Get a proof of inclusion for a contract
+      parameters:
+        - in: path
+          name: pubkey
+          description: Contract pubkey to get proof for
+          required: true
+          schema:
+            type: string
+            example: "ct_TV5KbBYdjw1ufKWvAtNNjUnagvRmWMMugFzLKzmLASXB5iH1E"
+      responses:
+        "200":
+          description: Successful operation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PoI"
+        "400":
+          description: Invalid contract key
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Contract not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  "/oracles/{pubkey}":
+    get:
+      tags:
+        - external
+        - oracle
+      operationId: GetOracleByPubkey
+      description: Get an oracle by public key
+      parameters:
+        - in: path
+          name: pubkey
+          description: The public key of the oracle
+          required: true
+          schema:
+            type: string
+            example: "ok_24jcHLTZQfsou7NvomRJ1hKEnjyNqbYSq2Az7DmyrAyUHPq8uR"
+      responses:
+        "200":
+          description: Successful operation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RegisteredOracle"
+        "400":
+          description: Invalid public key
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Oracle not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  "/oracles/{pubkey}/queries":
+    get:
+      tags:
+        - external
+        - oracle
+      operationId: GetOracleQueriesByPubkey
+      description: Get oracle queries by public key
+      parameters:
+        - in: path
+          name: pubkey
+          description: The public key of the oracle
+          required: true
+          schema:
+            type: string
+            example: "ok_24jcHLTZQfsou7NvomRJ1hKEnjyNqbYSq2Az7DmyrAyUHPq8uR"
+        - in: query
+          name: from
+          description: Last query id in previous page
+          required: false
+          schema:
+            type: string
+            example: "oq_q3UrSagF6JfgvAwMiLa6yyEoerx6tQC87m5X8W98NrdDArNZH"
+        - in: query
+          name: limit
+          description: Max number of oracle queries
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 1000
+            example: 1
+        - in: query
+          name: type
+          description: "The type of a query: open, closed or all"
+          required: false
+          schema:
+            type: string
+            enum:
+              - open
+              - closed
+              - all
+            example: open
+      responses:
+        "200":
+          description: Successful operation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OracleQueries"
+        "400":
+          description: Invalid public key
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Oracle not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  "/oracles/{pubkey}/queries/{query-id}":
+    get:
+      tags:
+        - external
+        - oracle
+      operationId: GetOracleQueryByPubkeyAndQueryId
+      description: Get an oracle query by public key and query ID
+      parameters:
+        - in: path
+          name: pubkey
+          description: The public key of the oracle
+          required: true
+          schema:
+            type: string
+            example: "ok_24jcHLTZQfsou7NvomRJ1hKEnjyNqbYSq2Az7DmyrAyUHPq8uR"
+        - in: path
+          name: query-id
+          description: The ID of the query
+          required: true
+          schema:
+            type: string
+            example: "oq_q3UrSagF6JfgvAwMiLa6yyEoerx6tQC87m5X8W98NrdDArNZH"
+      responses:
+        "200":
+          description: Successful operation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OracleQuery"
+        "400":
+          description: Invalid public key or query ID
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Oracle query not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  "/names/{name}":
+    get:
+      tags:
+        - external
+        - name_service
+      operationId: GetNameEntryByName
+      description: Get name entry from naming system
+      parameters:
+        - in: path
+          name: name
+          description: The name key of the name entry
+          required: true
+          schema:
+            type: string
+            example: "dimitar.chain"
+      responses:
+        "200":
+          description: Successful operation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NameEntry"
+        "400":
+          description: Invalid name
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Name not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  "/channels/{pubkey}":
+    get:
+      tags:
+        - external
+        - channel
+      operationId: GetChannelByPubkey
+      description: Get channel by public key
+      parameters:
+        - in: path
+          name: pubkey
+          description: The pubkey of the channel
+          required: true
+          schema:
+            type: string
+            example: "ch_2tceSwiqxgBcPirX3VYgW3sXgQdJeHjrNWHhLWyfZL7pT4gZF4"
+      responses:
+        "200":
+          description: Successful operation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Channel"
+        "400":
+          description: Invalid public key
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Channel not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /peers/pubkey:
+    get:
+      tags:
+        - external
+        - node_info
+      operationId: GetPeerPubkey
+      description: Get peer public key
+      responses:
+        "200":
+          description: Successful operation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PeerPubKey"
+  /status:
+    get:
+      tags:
+        - external
+        - node_info
+      operationId: GetStatus
+      description: Get the status of a node
+      responses:
+        "200":
+          description: Successful operation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Status"
+  /status/chain-ends:
+    get:
+      tags:
+        - external
+        - chain
+      operationId: GetChainEnds
+      description: Get oldest keyblock hashes counting from genesis including orphans
+      responses:
+        "200":
+          description: Successful operation
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/EncodedHash"
+###
+## Internal endpoints
+###
+  /key-blocks:
+    post:
+      tags:
+        - internal
+        - chain
+      operationId: PostKeyBlock
+      description: Post a mined key block
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/KeyBlock"
+        description: Mined key block
+        required: true
+      responses:
+        "200":
+          description: Successful operation
+        "400":
+          description: Invalid block
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /debug/network:
+    get:
+      tags:
+        - internal
+        - node_info
+        - debug
+      operationId: GetNetworkStatus
+      description: Get detailed analytics on peers
+      responses:
+        "200":
+          description: Successful operation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NetworkStatus"
+        "404":
+          description: Analytics disabled
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /debug/contracts/create:
+    post:
+      tags:
+        - internal
+        - contract
+        - debug
+      operationId: PostContractCreate
+      description: Get a contract_create transaction object
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ContractCreateTx"
+        required: true
+      responses:
+        "200":
+          description: Successful operation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreateContractUnsignedTx"
+        "400":
+          description: Invalid transaction
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Owner account not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /debug/contracts/call:
+    post:
+      tags:
+        - internal
+        - contract
+        - debug
+      operationId: PostContractCall
+      description: Get a contract_call transaction object
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ContractCallTx"
+        required: true
+      responses:
+        "200":
+          description: Successful operation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UnsignedTx"
+        "400":
+          description: Invalid transaction
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Caller account or contract not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /debug/oracles/register:
+    post:
+      tags:
+        - internal
+        - oracle
+        - debug
+      operationId: PostOracleRegister
+      description: Get a oracle_register transaction object
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OracleRegisterTx"
+        required: true
+      responses:
+        "200":
+          description: Successful operation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UnsignedTx"
+        "400":
+          description: Invalid transaction
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Account not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /debug/oracles/extend:
+    post:
+      tags:
+        - internal
+        - oracle
+        - debug
+      operationId: PostOracleExtend
+      description: Get an oracle_extend transaction object
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OracleExtendTx"
+        required: true
+      responses:
+        "200":
+          description: Successful operation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UnsignedTx"
+        "400":
+          description: Invalid transaction
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Account not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /debug/oracles/query:
+    post:
+      tags:
+        - internal
+        - oracle
+        - debug
+      operationId: PostOracleQuery
+      description: Get an oracle_query transaction object
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OracleQueryTx"
+        required: true
+      responses:
+        "200":
+          description: Successful operation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UnsignedTx"
+        "400":
+          description: Invalid transaction
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Account or oracle not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /debug/oracles/respond:
+    post:
+      tags:
+        - internal
+        - oracle
+        - debug
+      operationId: PostOracleRespond
+      description: Get an oracle_response transaction object
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OracleRespondTx"
+        required: true
+      responses:
+        "200":
+          description: Successful operation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UnsignedTx"
+        "400":
+          description: Invalid transaction
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Oracle or query not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /debug/names/preclaim:
+    post:
+      tags:
+        - internal
+        - name_service
+        - debug
+      operationId: PostNamePreclaim
+      description: Get a name_preclaim transaction object
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NamePreclaimTx"
+        required: true
+      responses:
+        "200":
+          description: Successful operation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UnsignedTx"
+        "400":
+          description: Invalid transaction
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Account not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /debug/names/claim:
+    post:
+      tags:
+        - internal
+        - name_service
+        - debug
+      operationId: PostNameClaim
+      description: Get a name_claim transaction object
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NameClaimTx"
+        required: true
+      responses:
+        "200":
+          description: Successful operation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UnsignedTx"
+        "400":
+          description: Invalid transaction
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Account or name not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /debug/names/update:
+    post:
+      tags:
+        - internal
+        - name_service
+        - debug
+      operationId: PostNameUpdate
+      description: Get a name_update transaction object
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NameUpdateTx"
+        required: true
+      responses:
+        "200":
+          description: Successful operation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UnsignedTx"
+        "400":
+          description: Invalid transaction
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Account or oracle not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /debug/names/transfer:
+    post:
+      tags:
+        - internal
+        - name_service
+        - debug
+      operationId: PostNameTransfer
+      description: Get a name_transfer transaction object
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NameTransferTx"
+        required: true
+      responses:
+        "200":
+          description: Successful operation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UnsignedTx"
+        "400":
+          description: Invalid transaction
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Account or name not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /debug/names/revoke:
+    post:
+      tags:
+        - internal
+        - name_service
+        - debug
+      operationId: PostNameRevoke
+      description: Get a name_revoke transaction object
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NameRevokeTx"
+        required: true
+      responses:
+        "200":
+          description: Successful operation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UnsignedTx"
+        "400":
+          description: Invalid transaction
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Account or name not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /debug/transactions/spend:
+    post:
+      tags:
+        - internal
+        - transaction
+        - debug
+      operationId: PostSpend
+      description: Get a spend transaction object
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SpendTx"
+        description: A spend transaction
+        required: true
+      responses:
+        "200":
+          description: Successful operation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UnsignedTx"
+        "400":
+          description: Invalid transaction
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Sender account not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /debug/channels/create:
+    post:
+      tags:
+        - internal
+        - channel
+        - debug
+      operationId: PostChannelCreate
+      description: Get a channel_create transaction object
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChannelCreateTx"
+        required: true
+      responses:
+        "200":
+          description: Successful operation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UnsignedTx"
+        "400":
+          description: Invalid transaction
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Initiator not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /debug/channels/deposit:
+    post:
+      tags:
+        - internal
+        - channel
+        - debug
+      operationId: PostChannelDeposit
+      description: Get a channel_deposit transaction object
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChannelDepositTx"
+        required: true
+      responses:
+        "200":
+          description: Successful operation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UnsignedTx"
+        "400":
+          description: Invalid transaction
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /debug/channels/withdraw:
+    post:
+      tags:
+        - internal
+        - channel
+        - debug
+      operationId: PostChannelWithdraw
+      description: Get a channel_withdrawal transaction object
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChannelWithdrawTx"
+        required: true
+      responses:
+        "200":
+          description: Successful operation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UnsignedTx"
+        "400":
+          description: Invalid transaction
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /debug/channels/snapshot/solo:
+    post:
+      tags:
+        - internal
+        - channel
+        - debug
+      operationId: PostChannelSnapshotSolo
+      description: Get a channel_snapshot_solo transaction object
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChannelSnapshotSoloTx"
+        required: true
+      responses:
+        "200":
+          description: Successful operation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UnsignedTx"
+        "400":
+          description: Invalid transaction
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /debug/channels/close/mutual:
+    post:
+      tags:
+        - internal
+        - channel
+        - debug
+      operationId: PostChannelCloseMutual
+      description: Get a channel_close_mutual transaction object
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChannelCloseMutualTx"
+        required: true
+      responses:
+        "200":
+          description: Successful operation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UnsignedTx"
+        "400":
+          description: Invalid transaction
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /debug/channels/close/solo:
+    post:
+      tags:
+        - internal
+        - channel
+        - debug
+      operationId: PostChannelCloseSolo
+      description: Get a channel_close_solo transaction object
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChannelCloseSoloTx"
+        required: true
+      responses:
+        "200":
+          description: Successful operation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UnsignedTx"
+        "400":
+          description: Invalid transaction
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /debug/channels/slash:
+    post:
+      tags:
+        - internal
+        - channel
+        - debug
+      operationId: PostChannelSlash
+      description: Get a channel_slash transaction object
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChannelSlashTx"
+        required: true
+      responses:
+        "200":
+          description: Successful operation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UnsignedTx"
+        "400":
+          description: Invalid transaction
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /debug/channels/settle:
+    post:
+      tags:
+        - internal
+        - channel
+        - debug
+      operationId: PostChannelSettle
+      description: Get a channel_settle transaction object
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChannelSettleTx"
+        required: true
+      responses:
+        "200":
+          description: Successful operation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UnsignedTx"
+        "400":
+          description: Invalid transaction
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /debug/transactions/pending:
+    get:
+      tags:
+        - internal
+        - transaction
+        - debug
+      operationId: GetPendingTransactions
+      description: Get pending transactions
+      responses:
+        "200":
+          description: Successful operation
+          content:
+            application/json:
+              schema:
+                properties:
+                  transactions:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/SignedTx"
+  /debug/names/commitment-id:
+    get:
+      tags:
+        - internal
+        - name_service
+        - debug
+      operationId: GetCommitmentId
+      description: Compute commitment ID for a given salt and name
+      parameters:
+        - in: query
+          name: name
+          description: Name
+          required: true
+          schema:
+            type: string
+        - in: query
+          name: salt
+          description: Salt
+          required: true
+          schema:
+            type: integer
+            minimum: 0
+      responses:
+        "200":
+          description: Successful operation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CommitmentId"
+        "400":
+          description: Invalid name
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /debug/accounts/beneficiary:
+    get:
+      tags:
+        - internal
+        - node_info
+        - debug
+      operationId: GetNodeBeneficiary
+      description: Get node's beneficiary public key
+      responses:
+        "200":
+          description: Successful operation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PubKey"
+        "404":
+          description: Beneficiary error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /debug/accounts/node:
+    get:
+      tags:
+        - internal
+        - node_info
+        - debug
+      operationId: GetNodePubkey
+      description: Get node's public key
+      responses:
+        "200":
+          description: Successful operation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PubKey"
+        "404":
+          description: Public key not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /debug/peers:
+    get:
+      tags:
+        - internal
+        - node_info
+        - debug
+      operationId: GetPeers
+      description: Get node Peers
+      responses:
+        "200":
+          description: successful operation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Peers"
+        "403":
+          description: Info not enabled
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /debug/transactions/dry-run:
+    post:
+      tags:
+        - internal
+        - debug
+      operationId: DryRunTxs
+      description: Dry-run transactions on top of a given block. Supports all TXs except
+        GAMetaTx, PayingForTx and OffchainTx
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DryRunInput"
+        description: transactions
+        required: true
+      responses:
+        "200":
+          description: Dry-run result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DryRunResults"
+        "403":
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  "/debug/token-supply/height/{height}":
+    get:
+      tags:
+        - internal
+        - debug
+      operationId: GetTokenSupplyByHeight
+      description: Get total token supply at height
+      parameters:
+        - in: path
+          name: height
+          description: The height
+          required: true
+          schema:
+            type: integer
+            minimum: 0
+            maximum: 18446744073709552000
+      responses:
+        "200":
+          description: Total token supply at height divided in categories
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TokenSupply"
+        "400":
+          description: Height not available
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
 components:
   schemas:
-    Error:
-      type: object
-      properties:
-        reason:
-          type: string
-      required:
-        - reason
     UInt:
       type: integer
       minimum: 0
@@ -215,3 +2006,1423 @@ components:
       anyOf:
         - $ref: "#/components/schemas/KeyBlock"
         - $ref: "#/components/schemas/MicroBlockHeader"
+    Account:
+      type: object
+      properties:
+        id:
+          $ref: "#/components/schemas/EncodedPubkey"
+        balance:
+          $ref: "#/components/schemas/UInt"
+        nonce:
+          $ref: "#/components/schemas/UInt64"
+        payable:
+          description: Payable
+          type: boolean
+        kind:
+          type: string
+          enum:
+            - basic
+            - generalized
+        contract_id:
+          $ref: "#/components/schemas/EncodedPubkey"
+        auth_fun:
+          description: Name of authorization function for generalized account
+          type: string
+      required:
+        - id
+        - balance
+        - nonce
+    EncodedTx:
+      type: object
+      properties:
+        tx:
+          $ref: "#/components/schemas/EncodedByteArray"
+      required:
+        - tx
+    RegisteredOracle:
+      type: object
+      properties:
+        id:
+          $ref: "#/components/schemas/EncodedPubkey"
+        query_format:
+          type: string
+        response_format:
+          type: string
+        query_fee:
+          $ref: "#/components/schemas/UInt"
+        ttl:
+          $ref: "#/components/schemas/UInt64"
+        abi_version:
+          $ref: "#/components/schemas/UInt16"
+      required:
+        - id
+        - query_format
+        - response_format
+        - query_fee
+        - ttl
+        - abi_version
+    OracleQuery:
+      type: object
+      properties:
+        id:
+          $ref: "#/components/schemas/EncodedValue"
+        sender_id:
+          $ref: "#/components/schemas/EncodedPubkey"
+        sender_nonce:
+          $ref: "#/components/schemas/UInt64"
+        oracle_id:
+          $ref: "#/components/schemas/EncodedPubkey"
+        query:
+          type: string
+        response:
+          type: string
+        ttl:
+          $ref: "#/components/schemas/UInt64"
+        response_ttl:
+          $ref: "#/components/schemas/TTL"
+        fee:
+          $ref: "#/components/schemas/UInt"
+      required:
+        - id
+        - sender_id
+        - sender_nonce
+        - oracle_id
+        - query
+        - response
+        - ttl
+        - response_ttl
+        - fee
+    OracleQueries:
+      type: object
+      properties:
+        oracle_queries:
+          type: array
+          items:
+            $ref: "#/components/schemas/OracleQuery"
+      required:
+        - oracle_queries
+    SpendTx:
+      type: object
+      properties:
+        recipient_id:
+          $ref: "#/components/schemas/EncodedPubkey"
+        amount:
+          $ref: "#/components/schemas/UInt"
+        fee:
+          $ref: "#/components/schemas/UInt"
+        ttl:
+          $ref: "#/components/schemas/UInt64"
+        sender_id:
+          $ref: "#/components/schemas/EncodedPubkey"
+        nonce:
+          $ref: "#/components/schemas/UInt64"
+        payload:
+          $ref: "#/components/schemas/EncodedByteArray"
+      required:
+        - recipient_id
+        - amount
+        - fee
+        - sender_id
+        - payload
+    OracleRegisterTx:
+      type: object
+      properties:
+        query_format:
+          type: string
+        response_format:
+          type: string
+        query_fee:
+          $ref: "#/components/schemas/UInt"
+        oracle_ttl:
+          $ref: "#/components/schemas/TTL"
+        account_id:
+          $ref: "#/components/schemas/EncodedPubkey"
+        nonce:
+          $ref: "#/components/schemas/UInt64"
+        fee:
+          $ref: "#/components/schemas/UInt"
+        ttl:
+          $ref: "#/components/schemas/UInt64"
+        abi_version:
+          $ref: "#/components/schemas/UInt16"
+      required:
+        - query_format
+        - response_format
+        - query_fee
+        - fee
+        - oracle_ttl
+        - account_id
+    OracleExtendTx:
+      type: object
+      properties:
+        fee:
+          $ref: "#/components/schemas/UInt"
+        oracle_ttl:
+          $ref: "#/components/schemas/RelativeTTL"
+        oracle_id:
+          $ref: "#/components/schemas/EncodedPubkey"
+        nonce:
+          $ref: "#/components/schemas/UInt64"
+        ttl:
+          $ref: "#/components/schemas/UInt64"
+      required:
+        - fee
+        - oracle_ttl
+        - oracle_id
+    OracleQueryTx:
+      type: object
+      properties:
+        oracle_id:
+          $ref: "#/components/schemas/EncodedPubkey"
+        query:
+          type: string
+        query_fee:
+          $ref: "#/components/schemas/UInt"
+        query_ttl:
+          $ref: "#/components/schemas/TTL"
+        response_ttl:
+          $ref: "#/components/schemas/RelativeTTL"
+        fee:
+          $ref: "#/components/schemas/UInt"
+        ttl:
+          $ref: "#/components/schemas/UInt64"
+        sender_id:
+          $ref: "#/components/schemas/EncodedPubkey"
+        nonce:
+          $ref: "#/components/schemas/UInt64"
+      required:
+        - oracle_id
+        - query
+        - query_fee
+        - query_ttl
+        - response_ttl
+        - fee
+        - sender_id
+    OracleRespondTx:
+      type: object
+      properties:
+        query_id:
+          $ref: "#/components/schemas/EncodedValue"
+        response:
+          type: string
+        response_ttl:
+          $ref: "#/components/schemas/RelativeTTL"
+        fee:
+          $ref: "#/components/schemas/UInt"
+        ttl:
+          $ref: "#/components/schemas/UInt64"
+        oracle_id:
+          $ref: "#/components/schemas/EncodedPubkey"
+        nonce:
+          $ref: "#/components/schemas/UInt64"
+      required:
+        - query_id
+        - response
+        - response_ttl
+        - fee
+        - oracle_id
+    TTL:
+      type: object
+      properties:
+        type:
+          type: string
+          enum:
+            - delta
+            - block
+        value:
+          $ref: "#/components/schemas/UInt64"
+      required:
+        - type
+        - value
+    RelativeTTL:
+      type: object
+      properties:
+        type:
+          type: string
+          enum:
+            - delta
+        value:
+          $ref: "#/components/schemas/UInt64"
+      required:
+        - type
+        - value
+    NameEntry:
+      type: object
+      properties:
+        id:
+          $ref: "#/components/schemas/EncodedValue"
+        owner:
+          $ref: "#/components/schemas/EncodedPubkey"
+        ttl:
+          $ref: "#/components/schemas/UInt64"
+        pointers:
+          type: array
+          items:
+            $ref: "#/components/schemas/NamePointer"
+      required:
+        - id
+        - ttl
+        - pointers
+    NamePreclaimTx:
+      type: object
+      properties:
+        commitment_id:
+          $ref: "#/components/schemas/EncodedValue"
+        fee:
+          $ref: "#/components/schemas/UInt"
+        ttl:
+          $ref: "#/components/schemas/UInt64"
+        account_id:
+          $ref: "#/components/schemas/EncodedPubkey"
+        nonce:
+          $ref: "#/components/schemas/UInt64"
+      required:
+        - commitment_id
+        - fee
+        - account_id
+    NameClaimTx:
+      type: object
+      properties:
+        name:
+          type: string
+        name_salt:
+          $ref: "#/components/schemas/UInt"
+        name_fee:
+          $ref: "#/components/schemas/UInt"
+        fee:
+          $ref: "#/components/schemas/UInt"
+        ttl:
+          $ref: "#/components/schemas/UInt64"
+        account_id:
+          $ref: "#/components/schemas/EncodedPubkey"
+        nonce:
+          $ref: "#/components/schemas/UInt64"
+      required:
+        - name
+        - name_salt
+        - fee
+        - account_id
+    NameUpdateTx:
+      type: object
+      properties:
+        name_id:
+          $ref: "#/components/schemas/EncodedValue"
+        name_ttl:
+          $ref: "#/components/schemas/UInt64"
+        pointers:
+          type: array
+          items:
+            $ref: "#/components/schemas/NamePointer"
+        client_ttl:
+          $ref: "#/components/schemas/UInt64"
+        fee:
+          $ref: "#/components/schemas/UInt"
+        ttl:
+          $ref: "#/components/schemas/UInt64"
+        account_id:
+          $ref: "#/components/schemas/EncodedPubkey"
+        nonce:
+          $ref: "#/components/schemas/UInt64"
+      required:
+        - name_id
+        - name_ttl
+        - client_ttl
+        - pointers
+        - fee
+        - account_id
+    NameTransferTx:
+      type: object
+      properties:
+        name_id:
+          $ref: "#/components/schemas/EncodedValue"
+        recipient_id:
+          $ref: "#/components/schemas/EncodedPubkey"
+        fee:
+          $ref: "#/components/schemas/UInt"
+        ttl:
+          $ref: "#/components/schemas/UInt64"
+        account_id:
+          $ref: "#/components/schemas/EncodedPubkey"
+        nonce:
+          $ref: "#/components/schemas/UInt64"
+      required:
+        - name_id
+        - recipient_id
+        - fee
+        - account_id
+    NameRevokeTx:
+      type: object
+      properties:
+        name_id:
+          $ref: "#/components/schemas/EncodedValue"
+        fee:
+          $ref: "#/components/schemas/UInt"
+        ttl:
+          $ref: "#/components/schemas/UInt64"
+        account_id:
+          $ref: "#/components/schemas/EncodedPubkey"
+        nonce:
+          $ref: "#/components/schemas/UInt64"
+      required:
+        - name_id
+        - fee
+        - account_id
+    CommitmentId:
+      type: object
+      properties:
+        commitment_id:
+          $ref: "#/components/schemas/EncodedValue"
+      required:
+        - commitment_id
+    NameHash:
+      type: object
+      properties:
+        name_id:
+          $ref: "#/components/schemas/EncodedValue"
+      required:
+        - name_id
+    NamePointer:
+      type: object
+      properties:
+        key:
+          type: string
+        id:
+          $ref: "#/components/schemas/EncodedPubkey"
+      required:
+        - key
+        - id
+    Channel:
+      type: object
+      properties:
+        id:
+          $ref: "#/components/schemas/EncodedPubkey"
+        initiator_id:
+          $ref: "#/components/schemas/EncodedPubkey"
+        responder_id:
+          $ref: "#/components/schemas/EncodedPubkey"
+        channel_amount:
+          $ref: "#/components/schemas/UInt"
+        initiator_amount:
+          $ref: "#/components/schemas/UInt"
+        responder_amount:
+          $ref: "#/components/schemas/UInt"
+        channel_reserve:
+          $ref: "#/components/schemas/UInt"
+        delegate_ids:
+          type: array
+          items:
+            $ref: "#/components/schemas/EncodedPubkey"
+        state_hash:
+          $ref: "#/components/schemas/EncodedHash"
+        round:
+          $ref: "#/components/schemas/UInt64"
+        solo_round:
+          $ref: "#/components/schemas/UInt64"
+        lock_period:
+          $ref: "#/components/schemas/UInt64"
+        locked_until:
+          $ref: "#/components/schemas/UInt64"
+      required:
+        - id
+        - initiator_id
+        - responder_id
+        - channel_amount
+        - initiator_amount
+        - responder_amount
+        - channel_reserve
+        - delegate_ids
+        - state_hash
+        - round
+        - solo_round
+        - lock_period
+        - locked_until
+    ChannelCreateTx:
+      type: object
+      properties:
+        initiator_id:
+          $ref: "#/components/schemas/EncodedPubkey"
+        initiator_amount:
+          $ref: "#/components/schemas/UInt"
+        responder_id:
+          $ref: "#/components/schemas/EncodedPubkey"
+        responder_amount:
+          $ref: "#/components/schemas/UInt"
+        push_amount:
+          $ref: "#/components/schemas/UInt"
+        channel_reserve:
+          $ref: "#/components/schemas/UInt"
+        lock_period:
+          $ref: "#/components/schemas/UInt64"
+        ttl:
+          $ref: "#/components/schemas/UInt64"
+        fee:
+          $ref: "#/components/schemas/UInt"
+        nonce:
+          $ref: "#/components/schemas/UInt64"
+        state_hash:
+          $ref: "#/components/schemas/EncodedHash"
+        delegate_ids:
+          type: array
+          items:
+            $ref: "#/components/schemas/EncodedPubkey"
+      required:
+        - initiator_id
+        - initiator_amount
+        - responder_id
+        - responder_amount
+        - push_amount
+        - channel_reserve
+        - lock_period
+        - fee
+        - state_hash
+    ChannelDepositTx:
+      type: object
+      properties:
+        channel_id:
+          $ref: "#/components/schemas/EncodedPubkey"
+        from_id:
+          $ref: "#/components/schemas/EncodedPubkey"
+        amount:
+          $ref: "#/components/schemas/UInt"
+        ttl:
+          $ref: "#/components/schemas/UInt64"
+        fee:
+          $ref: "#/components/schemas/UInt"
+        nonce:
+          $ref: "#/components/schemas/UInt64"
+        state_hash:
+          $ref: "#/components/schemas/EncodedHash"
+        round:
+          $ref: "#/components/schemas/UInt64"
+      required:
+        - channel_id
+        - from_id
+        - amount
+        - fee
+        - nonce
+        - state_hash
+        - round
+    ChannelWithdrawTx:
+      type: object
+      properties:
+        channel_id:
+          $ref: "#/components/schemas/EncodedPubkey"
+        to_id:
+          $ref: "#/components/schemas/EncodedPubkey"
+        amount:
+          $ref: "#/components/schemas/UInt"
+        ttl:
+          $ref: "#/components/schemas/UInt64"
+        fee:
+          $ref: "#/components/schemas/UInt"
+        nonce:
+          $ref: "#/components/schemas/UInt64"
+        state_hash:
+          $ref: "#/components/schemas/EncodedHash"
+        round:
+          $ref: "#/components/schemas/UInt64"
+      required:
+        - channel_id
+        - to_id
+        - amount
+        - fee
+        - nonce
+        - state_hash
+        - round
+    ChannelForceProgressTx:
+      type: object
+      properties:
+        channel_id:
+          $ref: "#/components/schemas/EncodedPubkey"
+        from_id:
+          $ref: "#/components/schemas/EncodedPubkey"
+        payload:
+          $ref: "#/components/schemas/EncodedByteArray"
+        round:
+          $ref: "#/components/schemas/UInt64"
+        update:
+          $ref: "#/components/schemas/OffChainUpdate"
+        state_hash:
+          $ref: "#/components/schemas/EncodedHash"
+        ttl:
+          $ref: "#/components/schemas/UInt64"
+        fee:
+          $ref: "#/components/schemas/UInt"
+        nonce:
+          $ref: "#/components/schemas/UInt64"
+        offchain_trees:
+          $ref: "#/components/schemas/EncodedByteArray"
+      required:
+        - channel_id
+        - from_id
+        - payload
+        - round
+        - update
+        - state_hash
+        - fee
+    ChannelCloseMutualTx:
+      type: object
+      properties:
+        channel_id:
+          $ref: "#/components/schemas/EncodedPubkey"
+        from_id:
+          $ref: "#/components/schemas/EncodedPubkey"
+        initiator_amount_final:
+          $ref: "#/components/schemas/UInt"
+        responder_amount_final:
+          $ref: "#/components/schemas/UInt"
+        ttl:
+          $ref: "#/components/schemas/UInt64"
+        fee:
+          $ref: "#/components/schemas/UInt64"
+        nonce:
+          $ref: "#/components/schemas/UInt64"
+      required:
+        - channel_id
+        - from_id
+        - initiator_amount_final
+        - responder_amount_final
+        - fee
+        - nonce
+    ChannelCloseSoloTx:
+      type: object
+      properties:
+        channel_id:
+          $ref: "#/components/schemas/EncodedPubkey"
+        from_id:
+          $ref: "#/components/schemas/EncodedPubkey"
+        payload:
+          $ref: "#/components/schemas/EncodedByteArray"
+        ttl:
+          $ref: "#/components/schemas/UInt64"
+        fee:
+          $ref: "#/components/schemas/UInt"
+        nonce:
+          $ref: "#/components/schemas/UInt64"
+        poi:
+          $ref: "#/components/schemas/EncodedByteArray"
+      required:
+        - channel_id
+        - from_id
+        - payload
+        - fee
+        - poi
+    ChannelSlashTx:
+      type: object
+      properties:
+        channel_id:
+          $ref: "#/components/schemas/EncodedPubkey"
+        from_id:
+          $ref: "#/components/schemas/EncodedPubkey"
+        payload:
+          $ref: "#/components/schemas/EncodedByteArray"
+        ttl:
+          $ref: "#/components/schemas/UInt64"
+        fee:
+          $ref: "#/components/schemas/UInt"
+        nonce:
+          $ref: "#/components/schemas/UInt64"
+        poi:
+          $ref: "#/components/schemas/EncodedByteArray"
+      required:
+        - channel_id
+        - from_id
+        - payload
+        - fee
+        - poi
+    ChannelSettleTx:
+      type: object
+      properties:
+        channel_id:
+          $ref: "#/components/schemas/EncodedPubkey"
+        from_id:
+          $ref: "#/components/schemas/EncodedPubkey"
+        initiator_amount_final:
+          $ref: "#/components/schemas/UInt"
+        responder_amount_final:
+          $ref: "#/components/schemas/UInt"
+        ttl:
+          $ref: "#/components/schemas/UInt64"
+        fee:
+          $ref: "#/components/schemas/UInt"
+        nonce:
+          $ref: "#/components/schemas/UInt64"
+      required:
+        - channel_id
+        - from_id
+        - initiator_amount_final
+        - responder_amount_final
+        - fee
+        - nonce
+    ChannelSnapshotSoloTx:
+      type: object
+      properties:
+        channel_id:
+          $ref: "#/components/schemas/EncodedPubkey"
+        from_id:
+          $ref: "#/components/schemas/EncodedPubkey"
+        payload:
+          $ref: "#/components/schemas/EncodedByteArray"
+        ttl:
+          $ref: "#/components/schemas/UInt64"
+        fee:
+          $ref: "#/components/schemas/UInt"
+        nonce:
+          $ref: "#/components/schemas/UInt64"
+      required:
+        - channel_id
+        - from_id
+        - payload
+        - fee
+    PeerPubKey:
+      type: object
+      properties:
+        pubkey:
+          $ref: "#/components/schemas/EncodedPubkey"
+      required:
+        - pubkey
+    PubKey:
+      type: object
+      properties:
+        pub_key:
+          $ref: "#/components/schemas/EncodedPubkey"
+      required:
+        - pub_key
+    Status:
+      type: object
+      properties:
+        genesis_key_block_hash:
+          $ref: "#/components/schemas/EncodedHash"
+        solutions:
+          $ref: "#/components/schemas/UInt64"
+        difficulty:
+          $ref: "#/components/schemas/UInt64"
+        syncing:
+          type: boolean
+        sync_progress:
+          type: number
+          format: float
+          minimum: 0
+          maximum: 100
+        listening:
+          type: boolean
+        protocols:
+          type: array
+          items:
+            $ref: "#/components/schemas/Protocol"
+        node_version:
+          type: string
+        node_revision:
+          type: string
+        peer_count:
+          $ref: "#/components/schemas/UInt32"
+        peer_connections:
+          $ref: "#/components/schemas/PeerConnections"
+        pending_transactions_count:
+          $ref: "#/components/schemas/UInt32"
+        network_id:
+          type: string
+        peer_pubkey:
+          $ref: "#/components/schemas/EncodedPubkey"
+        top_key_block_hash:
+          $ref: "#/components/schemas/EncodedHash"
+        top_block_height:
+          $ref: "#/components/schemas/UInt64"
+      required:
+        - genesis_key_block_hash
+        - solutions
+        - difficulty
+        - syncing
+        - listening
+        - protocols
+        - node_version
+        - node_revision
+        - peer_count
+        - peer_connections
+        - pending_transactions_count
+        - network_id
+        - peer_pubkey
+        - top_key_block_hash
+        - top_block_height
+    Protocol:
+      type: object
+      properties:
+        version:
+          $ref: "#/components/schemas/UInt32"
+        effective_at_height:
+          $ref: "#/components/schemas/UInt64"
+      required:
+        - version
+        - effective_at_height
+    PeerConnections:
+      type: object
+      properties:
+        inbound:
+          $ref: "#/components/schemas/UInt32"
+        outbound:
+          $ref: "#/components/schemas/UInt32"
+      required:
+        - inbound
+        - outbound
+    NetworkStatus:
+      type: object
+      additionalProperties:
+        $ref: "#/components/schemas/PeerDetails"
+    PeerDetails:
+      type: object
+      properties:
+        host:
+          description: Hostname of peer
+          type: string
+        port:
+          $ref: "#/components/schemas/UInt32"
+        first_seen:
+          $ref: "#/components/schemas/UInt32"
+        last_seen:
+          $ref: "#/components/schemas/UInt32"
+        genesis_hash:
+          $ref: "#/components/schemas/EncodedHash"
+        top_hash:
+          $ref: "#/components/schemas/EncodedHash"
+        top_difficulty:
+          $ref: "#/components/schemas/UInt64"
+        network_id:
+          type: string
+        node_version:
+          type: string
+        node_revision:
+          type: string
+        node_vendor:
+          type: string
+        node_os:
+          type: string
+      required:
+        - host
+        - port
+        - first_seen
+        - last_seen
+        - genesis_hash
+        - top_hash
+        - top_difficulty
+    SignedTx:
+      type: object
+      properties:
+        tx:
+          $ref: "#/components/schemas/Tx"
+        block_height:
+          $ref: "#/components/schemas/TxBlockHeight"
+        block_hash:
+          $ref: "#/components/schemas/EncodedHash"
+        hash:
+          $ref: "#/components/schemas/EncodedHash"
+        signatures:
+          description: At least one signature is required unless for Generalized Account
+            Meta transactions
+          type: array
+          items:
+            $ref: "#/components/schemas/EncodedValue"
+      required:
+        - tx
+        - block_height
+        - block_hash
+        - hash
+        - signatures
+    Tx:
+      allOf:
+        - type: object
+          discriminator:
+            propertyName: type
+          properties:
+            version:
+              $ref: "#/components/schemas/UInt32"
+            type:
+              type: string
+              enum: [ SpendTx,
+                      ChannelCreateTx,
+                      ChannelDepositTx,
+                      ChannelWithdrawTx,
+                      ChannelForceProgressTx,
+                      ChannelCloseMutualTx,
+                      ChannelCloseSoloTx,
+                      ChannelSlashTx,
+                      ChannelSettleTx,
+                      ChannelSnapshotSoloTx,
+                      OracleRegisterTx,
+                      OracleExtendTx,
+                      OracleQueryTx,
+                      OracleRespondTx,
+                      NamePreclaimTx,
+                      NameClaimTx,
+                      NameUpdateTx,
+                      NameTransferTx,
+                      NameRevokeTx,
+                      ContractCreateTx,
+                      ContractCallTx,
+                      GAAttachTx,
+                      GAMetaTx ]
+          required:
+            - version
+            - type
+        - anyOf:
+          - $ref: "#/components/schemas/SpendTx"
+          - $ref: "#/components/schemas/ChannelCreateTx"
+          - $ref: "#/components/schemas/ChannelDepositTx"
+          - $ref: "#/components/schemas/ChannelWithdrawTx"
+          - $ref: "#/components/schemas/ChannelForceProgressTx"
+          - $ref: "#/components/schemas/ChannelCloseMutualTx"
+          - $ref: "#/components/schemas/ChannelCloseSoloTx"
+          - $ref: "#/components/schemas/ChannelSlashTx"
+          - $ref: "#/components/schemas/ChannelSettleTx"
+          - $ref: "#/components/schemas/ChannelSnapshotSoloTx"
+          - $ref: "#/components/schemas/OracleRegisterTx"
+          - $ref: "#/components/schemas/OracleExtendTx"
+          - $ref: "#/components/schemas/OracleQueryTx"
+          - $ref: "#/components/schemas/OracleRespondTx"
+          - $ref: "#/components/schemas/NamePreclaimTx"
+          - $ref: "#/components/schemas/NameClaimTx"
+          - $ref: "#/components/schemas/NameUpdateTx"
+          - $ref: "#/components/schemas/NameTransferTx"
+          - $ref: "#/components/schemas/NameRevokeTx"
+          - $ref: "#/components/schemas/ContractCreateTx"
+          - $ref: "#/components/schemas/ContractCallTx"
+          - $ref: "#/components/schemas/GAAttachTx"
+          - $ref: "#/components/schemas/GAMetaTx"
+    TxInfoObject:
+      type: object
+      properties:
+        call_info:
+          $ref: "#/components/schemas/ContractCallObject"
+        ga_info:
+          $ref: "#/components/schemas/GAObject"
+        tx_info:
+          type: string
+    ContractCallObject:
+      type: object
+      properties:
+        caller_id:
+          $ref: "#/components/schemas/EncodedPubkey"
+        caller_nonce:
+          $ref: "#/components/schemas/UInt64"
+        height:
+          $ref: "#/components/schemas/UInt64"
+        contract_id:
+          $ref: "#/components/schemas/EncodedPubkey"
+        gas_price:
+          $ref: "#/components/schemas/UInt"
+        gas_used:
+          $ref: "#/components/schemas/UInt64"
+        log:
+          type: array
+          items:
+            $ref: "#/components/schemas/Event"
+        return_value:
+          $ref: "#/components/schemas/EncodedByteArray"
+        return_type:
+          description: The status of the call 'ok | error | revert'.
+          type: string
+      required:
+        - caller_id
+        - caller_nonce
+        - height
+        - contract_id
+        - gas_price
+        - gas_used
+        - log
+        - return_value
+        - return_type
+    GAObject:
+      type: object
+      properties:
+        caller_id:
+          $ref: "#/components/schemas/EncodedPubkey"
+        height:
+          $ref: "#/components/schemas/UInt64"
+        gas_price:
+          $ref: "#/components/schemas/UInt"
+        gas_used:
+          $ref: "#/components/schemas/UInt64"
+        return_value:
+          $ref: "#/components/schemas/EncodedByteArray"
+        return_type:
+          description: The status of the call 'ok | error'.
+          type: string
+        inner_object:
+          $ref: "#/components/schemas/TxInfoObject"
+      required:
+        - caller_id
+        - height
+        - gas_price
+        - gas_used
+        - return_value
+        - return_type
+    Event:
+      type: object
+      properties:
+        address:
+          $ref: "#/components/schemas/EncodedPubkey"
+        topics:
+          description: Event topics
+          type: array
+          items:
+            $ref: "#/components/schemas/UInt"
+        data:
+          $ref: "#/components/schemas/EncodedByteArray"
+      required:
+        - address
+        - topics
+        - data
+    Error:
+      type: object
+      properties:
+        reason:
+          type: string
+      required:
+        - reason
+    ContractObject:
+      type: object
+      properties:
+        id:
+          $ref: "#/components/schemas/EncodedPubkey"
+        owner_id:
+          $ref: "#/components/schemas/EncodedPubkey"
+        vm_version:
+          $ref: "#/components/schemas/UInt16"
+        abi_version:
+          $ref: "#/components/schemas/UInt16"
+        active:
+          type: boolean
+        referrer_ids:
+          type: array
+          items:
+            $ref: "#/components/schemas/EncodedPubkey"
+        deposit:
+          $ref: "#/components/schemas/UInt64"
+      required:
+        - id
+        - owner_id
+        - vm_version
+        - abi_version
+        - active
+        - referrer_ids
+        - deposit
+    ByteCode:
+      type: object
+      properties:
+        bytecode:
+          $ref: "#/components/schemas/EncodedByteArray"
+      required:
+        - bytecode
+    DryRunInput:
+      type: object
+      properties:
+        top:
+          $ref: "#/components/schemas/EncodedHash"
+        accounts:
+          type: array
+          description: Accounts
+          items:
+            $ref: "#/components/schemas/DryRunAccount"
+        txs:
+          type: array
+          description: Txs
+          items:
+            $ref: "#/components/schemas/DryRunInputItem"
+        tx_events:
+          type: boolean
+          default: false
+          description: Collect and return on-chain tx events that would result from the call
+      required:
+        - txs
+    DryRunInputItem:
+      type: object
+      properties:
+        tx:
+          $ref: "#/components/schemas/EncodedByteArray"
+        call_req:
+          $ref: "#/components/schemas/DryRunCallReq"
+    DryRunCallReq:
+      type: object
+      properties:
+        calldata:
+          $ref: "#/components/schemas/EncodedByteArray"
+        contract:
+          $ref: "#/components/schemas/EncodedPubkey"
+        amount:
+          $ref: "#/components/schemas/UInt"
+        gas:
+          $ref: "#/components/schemas/UInt"
+        caller:
+          $ref: "#/components/schemas/EncodedPubkey"
+        nonce:
+          $ref: "#/components/schemas/UInt64"
+        abi_version:
+          $ref: "#/components/schemas/UInt16"
+        context:
+          $ref: "#/components/schemas/DryRunCallContext"
+      required:
+        - calldata
+        - contract
+    DryRunCallContext:
+      type: object
+      properties:
+        tx:
+          $ref: "#/components/schemas/EncodedByteArray"
+        tx_hash:
+          $ref: "#/components/schemas/EncodedHash"
+        stateful:
+          description: This call will have effects on the next call in this dry-run (or not)
+          type: boolean
+    DryRunAccount:
+      type: object
+      properties:
+        pub_key:
+          $ref: "#/components/schemas/EncodedPubkey"
+        amount:
+          $ref: "#/components/schemas/UInt"
+      required:
+        - pub_key
+        - amount
+    DryRunResults:
+      type: object
+      properties:
+        results:
+          type: array
+          description: results
+          items:
+            $ref: "#/components/schemas/DryRunResult"
+        tx_events:
+          type: array
+          description: on-chain tx events
+          items:
+            $ref: "#/components/schemas/TxEvent"
+      required:
+        - results
+    DryRunResult:
+      type: object
+      properties:
+        type:
+          type: string
+        result:
+          type: string
+        reason:
+          type: string
+        call_obj:
+          $ref: "#/components/schemas/ContractCallObject"
+      required:
+        - type
+        - result
+    TxEvent:
+      type: object
+    Peer:
+      type: string
+      description: Aeternity node
+    Peers:
+      type: object
+      properties:
+        peers:
+          type: array
+          description: All discovered peers
+          items:
+            $ref: "#/components/schemas/Peer"
+        blocked:
+          type: array
+          description: All blocked peers
+          items:
+            $ref: "#/components/schemas/Peer"
+      required:
+        - peers
+        - blocked
+    ContractCreateTx:
+      type: object
+      properties:
+        owner_id:
+          $ref: "#/components/schemas/EncodedPubkey"
+        nonce:
+          $ref: "#/components/schemas/UInt64"
+        code:
+          $ref: "#/components/schemas/EncodedByteArray"
+        vm_version:
+          $ref: "#/components/schemas/UInt16"
+        abi_version:
+          $ref: "#/components/schemas/UInt16"
+        deposit:
+          $ref: "#/components/schemas/UInt"
+        amount:
+          $ref: "#/components/schemas/UInt"
+        gas:
+          $ref: "#/components/schemas/UInt64"
+        gas_price:
+          $ref: "#/components/schemas/UInt"
+        fee:
+          $ref: "#/components/schemas/UInt"
+        ttl:
+          $ref: "#/components/schemas/UInt64"
+        call_data:
+          $ref: "#/components/schemas/EncodedByteArray"
+      required:
+        - owner_id
+        - code
+        - vm_version
+        - abi_version
+        - deposit
+        - amount
+        - gas
+        - gas_price
+        - fee
+        - call_data
+    ContractCallTx:
+      type: object
+      properties:
+        caller_id:
+          $ref: "#/components/schemas/EncodedPubkey"
+        nonce:
+          $ref: "#/components/schemas/UInt64"
+        contract_id:
+          $ref: "#/components/schemas/EncodedPubkey"
+        abi_version:
+          $ref: "#/components/schemas/UInt16"
+        fee:
+          $ref: "#/components/schemas/UInt"
+        ttl:
+          $ref: "#/components/schemas/UInt64"
+        amount:
+          $ref: "#/components/schemas/UInt"
+        gas:
+          $ref: "#/components/schemas/UInt64"
+        gas_price:
+          $ref: "#/components/schemas/UInt"
+        call_data:
+          $ref: "#/components/schemas/EncodedByteArray"
+      required:
+        - caller_id
+        - contract_id
+        - abi_version
+        - fee
+        - amount
+        - gas
+        - gas_price
+        - call_data
+    UnsignedTx:
+      type: object
+      properties:
+        tx:
+          $ref: "#/components/schemas/EncodedByteArray"
+      required:
+        - tx
+    PostTxResponse:
+      type: object
+      properties:
+        tx_hash:
+          $ref: "#/components/schemas/EncodedHash"
+      required:
+        - tx_hash
+    CreateContractUnsignedTx:
+      allOf:
+        - $ref: "#/components/schemas/UnsignedTx"
+        - type: object
+          properties:
+            contract_id:
+              $ref: "#/components/schemas/EncodedPubkey"
+          required:
+            - contract_id
+    PoI:
+      type: object
+      properties:
+        poi:
+          $ref: "#/components/schemas/EncodedByteArray"
+      required:
+        - poi
+    Generation:
+      type: object
+      properties:
+        key_block:
+          $ref: "#/components/schemas/KeyBlock"
+        micro_blocks:
+          type: array
+          items:
+            $ref: "#/components/schemas/EncodedPubkey"
+      required:
+        - key_block
+        - micro_blocks
+    OffChainUpdate:
+      type: object
+      discriminator:
+        propertyName: op
+      properties:
+        op:
+          type: string
+      required:
+        - op
+    OffChainTransfer:
+      allOf:
+        - $ref: "#/components/schemas/OffChainUpdate"
+        - type: object
+          properties:
+            from:
+              $ref: "#/components/schemas/EncodedPubkey"
+            to:
+              $ref: "#/components/schemas/EncodedPubkey"
+            amount:
+              $ref: "#/components/schemas/UInt"
+          required:
+            - from
+            - to
+            - amount
+    OffChainWithdrawal:
+      allOf:
+        - $ref: "#/components/schemas/OffChainUpdate"
+        - type: object
+          properties:
+            to:
+              $ref: "#/components/schemas/EncodedPubkey"
+            amount:
+              $ref: "#/components/schemas/UInt"
+          required:
+            - to
+            - amount
+    OffChainDeposit:
+      allOf:
+        - $ref: "#/components/schemas/OffChainUpdate"
+        - type: object
+          properties:
+            from:
+              $ref: "#/components/schemas/EncodedPubkey"
+            amount:
+              $ref: "#/components/schemas/UInt"
+          required:
+            - from
+            - amount
+    OffChainNewContract:
+      allOf:
+        - $ref: "#/components/schemas/OffChainUpdate"
+        - type: object
+          properties:
+            owner:
+              $ref: "#/components/schemas/EncodedPubkey"
+            vm_version:
+              $ref: "#/components/schemas/UInt16"
+            abi_version:
+              $ref: "#/components/schemas/UInt16"
+            code:
+              $ref: "#/components/schemas/ByteCode"
+            deposit:
+              $ref: "#/components/schemas/UInt"
+            call_data:
+              $ref: "#/components/schemas/EncodedByteArray"
+          required:
+            - owner
+            - vm_version
+            - abi_version
+            - code
+            - deposit
+            - call_data
+    OffChainCallContract:
+      allOf:
+        - $ref: "#/components/schemas/OffChainUpdate"
+        - type: object
+          properties:
+            caller:
+              $ref: "#/components/schemas/EncodedPubkey"
+            contract:
+              $ref: "#/components/schemas/EncodedPubkey"
+            abi_version:
+              $ref: "#/components/schemas/UInt16"
+            amount:
+              $ref: "#/components/schemas/UInt"
+            gas:
+              $ref: "#/components/schemas/UInt64"
+            gas_price:
+              $ref: "#/components/schemas/UInt"
+            call_data:
+              $ref: "#/components/schemas/EncodedByteArray"
+          required:
+            - caller
+            - contract
+            - abi_version
+            - amount
+            - call_data
+            - gas
+            - gas_price
+    TokenSupply:
+      type: object
+      properties:
+        accounts:
+          $ref: "#/components/schemas/UInt"
+        contracts:
+          $ref: "#/components/schemas/UInt"
+        contract_oracles:
+          $ref: "#/components/schemas/UInt"
+        locked:
+          $ref: "#/components/schemas/UInt"
+        oracles:
+          $ref: "#/components/schemas/UInt"
+        oracle_queries:
+          $ref: "#/components/schemas/UInt"
+        pending_rewards:
+          $ref: "#/components/schemas/UInt"
+        total:
+          $ref: "#/components/schemas/UInt"
+    GAAttachTx:
+      type: object
+      properties:
+        owner_id:
+          $ref: "#/components/schemas/EncodedPubkey"
+        nonce:
+          $ref: "#/components/schemas/UInt64"
+        code:
+          $ref: "#/components/schemas/EncodedByteArray"
+        vm_version:
+          $ref: "#/components/schemas/UInt16"
+        abi_version:
+          $ref: "#/components/schemas/UInt16"
+        gas:
+          $ref: "#/components/schemas/UInt64"
+        gas_price:
+          $ref: "#/components/schemas/UInt"
+        fee:
+          $ref: "#/components/schemas/UInt"
+        ttl:
+          $ref: "#/components/schemas/UInt64"
+        call_data:
+          $ref: "#/components/schemas/EncodedByteArray"
+        auth_fun:
+          description: Contract authorization function hash (hex encoded)
+          type: string
+          pattern: ^(0x|0X)?[a-fA-F0-9]+$'
+      required:
+        - owner_id
+        - code
+        - vm_version
+        - abi_version
+        - gas
+        - gas_price
+        - fee
+        - call_data
+        - auth_fun
+    GAMetaTx:
+      type: object
+      properties:
+        ga_id:
+          $ref: "#/components/schemas/EncodedPubkey"
+        abi_version:
+          $ref: "#/components/schemas/UInt16"
+        gas:
+          $ref: "#/components/schemas/UInt64"
+        gas_price:
+          $ref: "#/components/schemas/UInt"
+        fee:
+          $ref: "#/components/schemas/UInt"
+        ttl:
+          $ref: "#/components/schemas/UInt64"
+        auth_data:
+          $ref: "#/components/schemas/EncodedByteArray"
+        tx:
+          $ref: "#/components/schemas/SignedTx"
+      required:
+        - ga_id
+        - abi_version
+        - gas
+        - gas_price
+        - fee
+        - auth_data
+        - tx

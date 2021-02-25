@@ -110,13 +110,13 @@ handle_request_('GetTopBlock', _, _Context) ->
                         {ok, PrevBlock} ->
                             PrevBlockType = aec_blocks:type(PrevBlock),
                             Header = aec_blocks:to_header(Block),
-                            Header1 = aec_headers:serialize_for_client(Header, PrevBlockType),
-                            Res =
+                            Type =
                                 case aec_headers:type(Header) of
-                                    key   -> #{key_block => Header1};
-                                    micro -> #{micro_block => Header1}
+                                    key -> key_block;
+                                    micro -> micro_block
                                 end,
-                            {200, [], Res};
+                            SerializedHeader = aec_headers:serialize_for_client(Header, PrevBlockType),
+                            {200, [], #{Type => SerializedHeader}};
                         error ->
                             {404, [], #{reason => <<"Block not found">>}}
                     end
@@ -424,7 +424,8 @@ handle_request_('GetTransactionByHash', Params, _Config) ->
                 none ->
                     {404, [], #{<<"reason">> => <<"Transaction not found">>}};
                 {mempool, Tx} ->
-                    {200, [], aetx_sign:serialize_for_client_pending(Tx)};
+                    SerializedTx = aetx_sign:serialize_for_client_pending(Tx),
+                    {200, [], SerializedTx};
                 {BlockHash, Tx} ->
                     {ok, Header} = aec_chain:get_header(BlockHash),
                     {200, [], aetx_sign:serialize_for_client(Header, Tx)}
@@ -454,8 +455,12 @@ handle_request_('GetTransactionInfoByHash', Params, _Config) ->
     process_request(ParseFuns, Params);
 
 
-handle_request_('PostTransaction', #{'Tx' := Tx}, _Context) ->
-    case aeser_api_encoder:safe_decode(transaction, maps:get(<<"tx">>, Tx)) of
+handle_request_('PostTransaction', #{'Tx' := Tx}, _Context) -> %% swagger2
+    handle_request_('PostTransaction', Tx, _Context);
+handle_request_('PostTransaction', #{'EncodedTx' := Tx}, _Context) -> %% oas3
+    handle_request_('PostTransaction', Tx, _Context);
+handle_request_('PostTransaction', #{<<"tx">> := Tx}, _Context) ->
+    case aeser_api_encoder:safe_decode(transaction, Tx) of
         {ok, TxDec} ->
             case deserialize_transaction(TxDec) of
                 {ok, SignedTx} ->

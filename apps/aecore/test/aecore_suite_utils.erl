@@ -78,6 +78,7 @@
          use_swagger/1,
          http_request/4,
          httpc_request/4,
+         http_api_version/0,
          process_http_return/1,
          internal_address/0,
          external_address/0
@@ -1271,6 +1272,12 @@ get(Key, Default) ->
     case get(Key) of
         undefined -> Default;
         V -> V
+    end.
+
+http_api_version() ->
+    case get(api_prefix, "/v2/") of
+       "/v2/" -> swagger2;
+       "/v3/" -> oas3
     end.
 
 http_request(Host, get, Path, Params) ->

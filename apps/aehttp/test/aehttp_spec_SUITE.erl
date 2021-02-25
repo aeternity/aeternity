@@ -55,7 +55,7 @@ end_per_testcase(_Case, Config) ->
 %% ============================================================
 %% Test cases
 %% ============================================================
-get_api(Config) ->
+get_api(_Config) ->
     %% ensure http interface is up and running
     N1 = aecore_suite_utils:node_name(?NODE),
     aecore_suite_utils:connect(N1),

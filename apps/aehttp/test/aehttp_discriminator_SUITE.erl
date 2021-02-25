@@ -81,13 +81,15 @@ groups() ->
 
 %% Swagger discriminator must be definition. See https://github.com/OAI/OpenAPI-Specification/blob/04f659aeffd3082de70212189477def845c68aa6/versions/2.0.md#composition-and-inheritance-polymorphism
 is_definition(X) when is_list(X) ->
+    Prefix = endpoints:definitions_prefix(),
+    Len = length(Prefix),
     case
         lists:filter(
           fun
-              ({"/definitions/" ++ D, _}) when D =:= X ->
-                  true;
-              ({K, _}) when is_list(K) ->
-                  false
+              ({Def, _}) ->
+                  Prefix1 = string:substr(Def, 1, Len),
+                  D = string:substr(Def, Len + 1),
+                  Prefix =:= Prefix1 andalso D =:= X
           end,
           endpoints:definitions())
     of

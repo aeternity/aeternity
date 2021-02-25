@@ -110,57 +110,58 @@ fix_def_refs(_, X) ->
 request(OperationId, Method0, Req, Validator, EndpointsMod) ->
     Method = to_method(Method0),
     #{parameters := Params} = maps:get(Method, EndpointsMod:operation(OperationId)),
-    params(Params, #{}, Req, Validator).
+    params(Params, #{}, Req, Validator, EndpointsMod).
 
-params([], Model, Req, _) -> {ok, Model, Req};
-params([Param | Params], Model, Req0, Validator) ->
-   case populate_param(Param, Req0, Validator) of
+params([], Model, Req, _, _) -> {ok, Model, Req};
+params([Param | Params], Model, Req0, Validator, EndpointsMod) ->
+   case populate_param(Param, Req0, Validator, EndpointsMod) of
         {ok, K, V, Req} ->
             NewModel = maps:put(to_atom(K), V, Model),
-            params(Params, NewModel, Req, Validator);
+            params(Params, NewModel, Req, Validator, EndpointsMod);
         Error ->
             Error
     end.
 
-populate_param(Param, Req, Validator) ->
+populate_param(Param, Req, Validator, EndpointsMod) ->
     In = proplists:get_value("in", Param),
     Name = proplists:get_value("name", Param),
     case get_param_value(In, Name, Req) of
         {ok, Value, Req1} ->
-            case prepare_param(Param, Value, Name, Validator) of
+            case prepare_param(Param, Value, Name, Validator, EndpointsMod) of
                 {ok, NewName, NewValue} -> {ok, NewName, NewValue, Req1};
                 {error, Reason} -> {error, Reason, Req1}
             end;
         Error -> Error
     end.
 
-prepare_param([], Value, Name, _) -> {ok, Name, Value};
-prepare_param([ Rule | Rules ], Value, Name, Validator) ->
-    case prepare_param_(Rule, Value, Name, Validator) of
-        ok -> prepare_param(Rules, Value, Name, Validator);
-        {ok, NewValue} -> prepare_param(Rules, NewValue, Name, Validator);
-        {ok, NewValue, NewName} -> prepare_param(Rules, NewValue, NewName, Validator);
+prepare_param([], Value, Name, _, _) -> {ok, Name, Value};
+prepare_param([ Rule | Rules ], Value, Name, Validator, EndpointsMod) ->
+    case prepare_param_(Rule, Value, Name, Validator, EndpointsMod) of
+        ok -> prepare_param(Rules, Value, Name, Validator, EndpointsMod);
+        {ok, NewValue} -> prepare_param(Rules, NewValue, Name, Validator, EndpointsMod);
+        {ok, NewValue, NewName} -> prepare_param(Rules, NewValue, NewName, Validator, EndpointsMod);
         Error -> Error
     end.
 
 % unused rules
-prepare_param_({"in", _}, _, _, _) -> ok;
-prepare_param_({"name", _}, _, _, _) -> ok;
-prepare_param_({"description", _}, _, _, _) -> ok;
-prepare_param_({"default", _}, _, _, _) -> ok;
+prepare_param_({"in", _}, _, _, _, _) -> ok;
+prepare_param_({"name", _}, _, _, _, _) -> ok;
+prepare_param_({"description", _}, _, _, _, _) -> ok;
+prepare_param_({"example", _}, _, _, _, _) -> ok;
+prepare_param_({"default", _}, _, _, _, _) -> ok;
 % required
-prepare_param_({"required",true}, undefined, Name, _) -> param_error(required, Name);
-prepare_param_({"required",_}, _, _, _) -> ok;
-prepare_param_(_, undefined, _, _) -> ok;
+prepare_param_({"required",true}, undefined, Name, _, _) -> param_error(required, Name);
+prepare_param_({"required",_}, _, _, _, _) -> ok;
+prepare_param_(_, undefined, _, _, _) -> ok;
 % {type, _}
-prepare_param_({"type", "binary"}, Value, Name, _) ->
+prepare_param_({"type", "binary"}, Value, Name, _, _) ->
     case is_binary(Value) of
         true -> ok;
         false -> param_error({type, Value}, Name)
     end;
-prepare_param_({"type", "boolean"}, Value, _, _) when is_boolean(Value) ->
+prepare_param_({"type", "boolean"}, Value, _, _, _) when is_boolean(Value) ->
     ok;
-prepare_param_({"type", "boolean"}, Value, Name, _) ->
+prepare_param_({"type", "boolean"}, Value, Name, _, _) ->
     V = list_to_binary(string:to_lower(to_list(Value))),
     try
         case binary_to_existing_atom(V, utf8) of
@@ -171,34 +172,44 @@ prepare_param_({"type", "boolean"}, Value, Name, _) ->
         error:badarg ->
             param_error({type, Value}, Name)
     end;
-prepare_param_({"type", "date"}, Value, Name, _) ->
+prepare_param_({"type", "date"}, Value, Name, _, _) ->
     case is_binary(Value) of
         true -> ok;
         false -> param_error({type, Value}, Name)
     end;
-prepare_param_({"type", "datetime"}, Value, Name, _) ->
+prepare_param_({"type", "datetime"}, Value, Name, _, _) ->
     case is_binary(Value) of
         true -> ok;
         false -> param_error({type, Value}, Name)
     end;
-prepare_param_({"type", "float"}, Value, Name, _) ->
+prepare_param_({"type", "float"}, Value, Name, _, _) ->
     try {ok, to_float(Value)}
     catch
         error:badarg ->
             param_error({type, Value}, Name)
     end;
-prepare_param_({"type", "integer"}, Value, Name, _) ->
+prepare_param_({"type", "integer"}, Value, Name, _, _) ->
     try {ok, to_int(Value)}
     catch
         error:badarg ->
             param_error({type, Value}, Name)
     end;
-prepare_param_({"type", "string"}, _, _, _) -> ok;
+prepare_param_({"type", "string"}, _, _, _, _) -> ok;
 % schema
-prepare_param_({"schema", #{<<"$ref">> := <<"/definitions/", Ref/binary>>}},
-               Value, Name, Validator) ->
+prepare_param_({"schema", #{<<"$ref">> := FullRef}},
+               Value, Name, Validator, EndpointsMod) ->
     try
-        Schema = #{<<"$ref">> => <<"#/definitions/", Ref/binary>>},
+        Prefix = list_to_binary(EndpointsMod:definitions_prefix()),
+        Ref =
+            case EndpointsMod:definitions_prefix() of
+                "/definitions/" ->
+                    <<"/definitions/", Ref0/binary>> = FullRef,
+                    Ref0;
+                "/components/schemas/" ->
+                    <<"/components/schemas/", Ref0/binary>> = FullRef,
+                    Ref0
+            end,
+        Schema = #{<<"$ref">> => <<"#", Prefix/binary, Ref/binary>>},
         jesse_schema_validator:validate_with_state(Schema, Value, Validator),
         {ok, Value, Ref}
     catch
@@ -208,9 +219,9 @@ prepare_param_({"schema", #{<<"$ref">> := <<"/definitions/", Ref/binary>>}},
             Info2 = proplists:delete(invalid, Info1),
             param_error({schema, Info2}, Name)
     end;
-prepare_param_({"schema",#{<<"type">> := _}}, _, _, _) -> ok;
+prepare_param_({"schema",#{<<"type">> := _}}, _, _, _, _) -> ok;
 % enum
-prepare_param_({"enum", Values0}, Value0, Name, _) ->
+prepare_param_({"enum", Values0}, Value0, Name, _, _) ->
     try
         Values = [ to_atom(Acc) || Acc <- Values0 ],
         Value = to_existing_atom(Value0),
@@ -223,12 +234,12 @@ prepare_param_({"enum", Values0}, Value0, Name, _) ->
             param_error({enum, Value0}, Name)
     end;
 % arythmetic
-prepare_param_({"minimum", Min}, Value, Name, _) ->
+prepare_param_({"minimum", Min}, Value, Name, _, _) ->
     case Value >= Min of
         true -> ok;
         false -> param_error({not_in_range, Value}, Name)
     end;
-prepare_param_({"maximum", Max}, Value, Name, _) ->
+prepare_param_({"maximum", Max}, Value, Name, _, _) ->
     case Value =< Max of
         true -> ok;
         false -> param_error({not_in_range, Value}, Name)

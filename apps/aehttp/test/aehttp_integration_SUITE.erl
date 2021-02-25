@@ -509,7 +509,58 @@ groups() ->
       [naming_system_manage_name
       ]},
      {oas3, [sequence],
-      [get_top_header
+      [
+       %% /key-blocks/* /micro-blocks/* /generations/* status/chain-ends
+       {group, oas_block_endpoints},
+       %% /accounts/*
+       {group, account_endpoints},
+       %% /transactions/*
+       {group, transaction_endpoints},
+       %% /contracts/*
+       {group, contract_endpoints},
+       %% /oracles/*
+       {group, oracle_endpoints},
+       %% /names/*
+       {group, name_endpoints},
+       %% /channels/*
+       {group, channel_endpoints},
+       %% /peers/*
+       {group, peer_endpoints},
+       %% /status/*
+       {group, status_endpoints},
+
+       {group, external_endpoints},
+       {group, internal_endpoints},
+       {group, debug_endpoints},
+       {group, swagger_validation},
+       {group, wrong_http_method_endpoints},
+       {group, naming}
+      ]},
+     {oas_block_endpoints, [sequence],
+      [
+       {group, oas_on_genesis_block} %% standalone
+      ]},
+     {oas_on_genesis_block, [sequence],
+      [
+       {group, oas_block_info}
+      ]},
+     {oas_block_info, [sequence],
+      [
+       get_top_header,
+       get_chain_ends,
+       get_current_key_block,
+       get_current_key_block_hash,
+       get_current_key_block_height,
+       get_pending_key_block,
+       get_key_block_by_hash,
+       get_key_block_by_height,
+       get_micro_block_header_by_hash,
+       get_micro_block_transactions_by_hash,
+       get_micro_block_transactions_count_by_hash,
+       get_micro_block_transaction_by_hash_and_index,
+       get_generation_current,
+       get_generation_by_hash,
+       get_generation_by_height
       ]}
     ].
 
@@ -558,10 +609,12 @@ init_per_group(Group, Config) when
       Group =:= status_endpoints ->
     Config;
 %% block_endpoints
-init_per_group(block_endpoints, Config) ->
+init_per_group(BlockEndpoints, Config) when BlockEndpoints =:= block_endpoints;
+                                            BlockEndpoints =:= oas_block_endpoints ->
     aecore_suite_utils:reinit_with_bitcoin_ng(?NODE),
     Config;
-init_per_group(on_genesis_block, Config) ->
+init_per_group(OnGenesis, Config) when OnGenesis =:= on_genesis_block;
+                                       OnGenesis =:= oas_on_genesis_block ->
     GenesisBlock = rpc(aec_chain, genesis_block, []),
     {ok, PendingKeyBlock} = wait_for_key_block_candidate(),
     [{current_block, GenesisBlock},
@@ -839,7 +892,9 @@ get_chain_ends(CurrentBlockType, CurrentBlockHash, _Config) when
     ok;
 get_chain_ends(micro_block, CurrentBlockHash, Config) ->
     {ok, 200, #{<<"micro_block">> := Block}} = get_top_sut(),
-    ?assertEqual(CurrentBlockHash, maps:get(<<"hash">>, Block)),
+    Hash = maps:get(<<"hash">>, Block),
+    ?assertEqual(CurrentBlockHash, Hash),
+    <<"mh_", _K/binary>> = Hash,
     KH = maps:get(<<"prev_key_hash">>, Block),
     get_chain_ends(key_block, KH, Config),
     ok.
@@ -857,12 +912,14 @@ get_top_block(Config) ->
 
 get_top_block(CurrentBlockType, CurrentBlockHash, _Config) when
       CurrentBlockType =:= genesis_block; CurrentBlockType =:= key_block ->
-    {ok, 200, #{<<"key_block">> := Block}} = get_top_sut(),
-    ?assertEqual(CurrentBlockHash, maps:get(<<"hash">>, Block)),
+    {ok, 200, #{<<"key_block">> := #{<<"hash">> := Hash}}} = get_top_sut(),
+    <<"kh_", _K/binary>> = Hash,
+    ?assertEqual(CurrentBlockHash, Hash),
     ok;
 get_top_block(micro_block, CurrentBlockHash, _Config) ->
-    {ok, 200, #{<<"micro_block">> := Block}} = get_top_sut(),
-    ?assertEqual(CurrentBlockHash, maps:get(<<"hash">>, Block)),
+    {ok, 200, #{<<"micro_block">> := #{<<"hash">> := Hash}}} = get_top_sut(),
+    <<"mh_", _K/binary>> = Hash,
+    ?assertEqual(CurrentBlockHash, Hash),
     ok.
 
 get_top_sut() ->
@@ -3745,10 +3802,7 @@ expires_cache_header(_Config) ->
         httpc_request(get, {Host ++ "/v2/blocks/top", []}, [], []),
 
     true = proplists:is_defined("expires", Headers),
-    Blocktime = case get_top_sut() of
-        {ok, 200, #{<<"key_block">> := Block}} -> maps:get(<<"time">>, Block);
-        {ok, 200, #{<<"micro_block">> := MicroBlock}} -> maps:get(<<"time">>, MicroBlock)
-    end,
+    #{<<"time">> := Blocktime} = get_top_sut(),
     ExpiresStr = proplists:get_value("expires", Headers),
     Expires = http_datetime_to_unixtime(ExpiresStr) * 1000, % to msecs
     true = Expires - Blocktime =< aec_governance:micro_block_cycle(),
@@ -3786,7 +3840,12 @@ charset_param_in_content_type(_Config) ->
 
 wrong_http_method_top(_Config) ->
     Host = external_address(),
-    {ok, 405, _} = http_request(Host, post, "blocks/top", []).
+    Path =
+        case aecore_suite_utils:http_api_version() of
+            swagger2 -> "blocks/top";
+            oas3 -> "headers/top"
+        end,
+    {ok, 405, _} = http_request(Host, post, Path, []).
 
 wrong_http_method_contract_create(_Config) ->
     Host = internal_address(),
