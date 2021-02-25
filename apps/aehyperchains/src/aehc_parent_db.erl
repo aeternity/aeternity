@@ -13,11 +13,19 @@
         , get_parent_block/1
         , get_parent_blocks/2
         , get_candidates_in_election_cycle/2
-        , write_parent_block/1
+        , write_parent_block/2
         ]).
 
 -export([ write_parent_state/1
         , get_parent_state/1
+        ]).
+
+-export([ get_parent_block_state/1
+        , write_parent_block_state/2
+        ]).
+
+-export([ find_delegates_node/1
+        , write_delegates_node/2
         ]).
 
 -export([
@@ -40,13 +48,17 @@
 -record(hc_db_pogf, {key, value}).
 -record(hc_db_commitment_header, {key, value}).
 -record(hc_db_parent_block_header, {key, value}).
+-record(hc_db_parent_block_state, {key, value}).
 -record(hc_db_parent_state, {key, value}).
+-record(hc_db_delegate_state, {key, value}).
 
 table_specs(Mode) ->
     [ ?TAB(hc_db_pogf)
     , ?TAB(hc_db_commitment_header)
     , ?TAB(hc_db_parent_block_header)
+    , ?TAB(hc_db_parent_block_state)
     , ?TAB(hc_db_parent_state)
+    , ?TAB(hc_db_delegate_state)
     ].
 
 check_tables(Acc) ->
@@ -54,6 +66,10 @@ check_tables(Acc) ->
       fun({Tab, Spec}, Acc1) ->
               aec_db:check_table(Tab, Spec, Acc1)
       end, Acc, table_specs(disc)).
+
+%%%===================================================================
+%%% API
+%%%===================================================================
 
 -spec get_commitment(commitment_hash()) -> aehc_commitment:commitment().
 get_commitment(CommitmentHash) ->
@@ -142,42 +158,94 @@ get_candidates_in_election_cycle_(ParentBlockHash, Acc, N) ->
             get_candidates_in_election_cycle_(PrevHash, [Candidates | Acc], N-1)
     end.
 
--spec write_parent_block(aehc_parent_block:parent_block()) -> ok.
-write_parent_block(ParentBlock) ->
+%%% Block record
+
+-spec write_parent_block(aehc_parent_block:parent_block(), aehc_parent_trees:trees()) -> ok.
+write_parent_block(ParentBlock, Trees) ->
+    ?t(begin
+           [
+               ok = Fun(ParentBlock)|| Fun <- [ fun write_parent_block_header/1
+                                              , fun write_commitments/1
+                                              , fun write_pogf/1
+                                              ]
+           ],
+           ok = write_parent_block_state(ParentBlock, Trees)
+       end
+    ).
+
+write_parent_block_header(ParentBlock) ->
     ParentBlockHeader = aehc_parent_block:block_header(ParentBlock),
     DBHeader = #hc_db_parent_block_header{ key = aehc_parent_block:hash_block(ParentBlock)
-                                         , value = ParentBlockHeader
-                                         },
+        , value = ParentBlockHeader
+    },
+    mnesia:write(DBHeader).
+
+write_commitments(ParentBlock) ->
+    ParentBlockHeader = aehc_parent_block:block_header(ParentBlock),
     Commitments = aehc_parent_block:commitments_in_block(ParentBlock),
     CommitmentHashes = aehc_parent_block:commitment_hashes(ParentBlockHeader),
     DBCommitments = lists:map(
         fun({K,V}) ->
             #hc_db_commitment_header{key = K, value = aehc_commitment:header(V)}
         end, lists:zip(CommitmentHashes, Commitments)),
+    [ok = mnesia:write(DBCommitment) || DBCommitment <- DBCommitments],
+    ok.
+
+write_pogf(ParentBlock) ->
+    Commitments = aehc_parent_block:commitments_in_block(ParentBlock),
     DBPoGFs = lists:filtermap(
         fun(El) ->
             aehc_commitment:has_pogf(El) andalso
                 {true, #hc_db_pogf{ key = aehc_commitment:pogf_hash(El)
-                                  , value = aehc_commitment:pogf(El)
-                                  }}
+                    , value = aehc_commitment:pogf(El)
+                }}
         end, Commitments),
+    [ok = mnesia:write(DBPoGF) || DBPoGF <- DBPoGFs],
+    ok.
+
+write_parent_block_state(ParentBlock, Trees) ->
+    Hash = aehc_parent_block:hash_block(ParentBlock),
+    Trees2 = aehc_parent_trees:serialize_for_db(aehc_parent_trees:commit_to_db(Trees)),
+    ParentBlockState = #hc_db_parent_block_state{ key = Hash, value = Trees2},
+    mnesia:write(ParentBlockState).
+
+get_parent_block_state(Hash) ->
     ?t(begin
-           mnesia:write(DBHeader),
-           [mnesia:write(DBCommitment) || DBCommitment <- DBCommitments],
-           [mnesia:write(DBPoGF) || DBPoGF <- DBPoGFs]
+           [#hc_db_parent_block_state{value = Trees}] =
+               mnesia:read(hc_db_parent_block_state, Hash),
+           aehc_parent_trees:deserialize_from_db(Trees)
        end).
 
--spec write_parent_state(aehc_parent_state:parent_state()) -> ok.
-write_parent_state(ParentState) ->
-    Genesis = aehc_parent_state:genesis(ParentState),
-    ?t(mnesia:write(#hc_db_parent_state{key = Genesis, value = ParentState}),
-        []).
+%%%===================================================================
+%%% Chain state API
+%%%===================================================================
 
 -spec get_parent_state(binary()) -> aehc_parent_state:parent_state() | undefined.
-get_parent_state(Genesis) ->
-    ?t(case mnesia:read(hc_db_parent_state, Genesis) of
+get_parent_state(Pointer) ->
+    ?t(case mnesia:read(hc_db_parent_state, Pointer) of
            [#hc_db_parent_state{value = Value}] ->
                Value;
            _ ->
                undefined
        end).
+
+-spec write_parent_state(aehc_parent_state:parent_state()) -> ok.
+write_parent_state(ParentState) ->
+    Pointer = aehc_parent_state:genesis(ParentState),
+    ?t(mnesia:write(#hc_db_parent_state{key = Pointer, value = ParentState}),
+        []).
+
+%%%===================================================================
+%%% State trees API
+%%%===================================================================
+
+find_delegates_node(Hash) ->
+    case ?t(mnesia:read(aec_delegate_state, Hash)) of
+        [#hc_db_delegate_state{value = Node}] -> {value, Node};
+        [] -> none
+    end.
+
+write_delegates_node(Hash, Node) ->
+    ?t(mnesia:write(#hc_db_delegate_state{key = Hash, value = Node}),
+        [{hc_db_delegate_state, Hash}]).
+%% TODO TO initiate parent genesis with trees

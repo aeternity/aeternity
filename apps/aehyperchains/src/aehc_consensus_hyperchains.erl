@@ -215,6 +215,7 @@ start(_Config) ->
     M = fallback_consensus(),
     M:start(#{}),
     ok.
+
 stop() -> ok.
 
 is_providing_extra_http_endpoints() -> false.
@@ -882,7 +883,7 @@ prepare_system_owner(Deployer, Trees) ->
     Accounts1 = aec_accounts_trees:enter(NewA, Accounts0),
     {aec_trees:set_accounts(Trees, Accounts1), OldA}.
 
-%% Ensures the system account has the same balace as before(we don't touch the inflation curve) and bumped nonce
+%% Ensures the system account has the same balance as before(we don't touch the inflation curve) and bumped nonce
 cleanup_system_owner(OldA, Trees) ->
     Accounts0 = aec_trees:accounts(Trees),
     Account = aec_accounts:set_nonce(OldA, aec_accounts:nonce(OldA) + 1),
@@ -892,7 +893,10 @@ cleanup_system_owner(OldA, Trees) ->
 verify_existing_staking_contract(Address, Trees, TxEnv) ->
     UserAddr = aeser_api_encoder:encode(contract_pubkey, Address),
     lager:debug("Validating the existing staking contract at ~p", [UserAddr]),
-    ErrF = fun(Err) -> aec_consensus:config_assertion_failed("Staking contract validation failed", " Addr: ~p, Reason: ~p\n", [UserAddr, Err]) end,
+    ErrF =
+        fun(Err) ->
+            aec_consensus:config_assertion_failed("Staking contract validation failed", " Addr: ~p, Reason: ~p\n", [UserAddr, Err])
+        end,
     case aec_accounts_trees:lookup(Address, aec_trees:accounts(Trees)) of
         none ->
             ErrF("Contract not found");

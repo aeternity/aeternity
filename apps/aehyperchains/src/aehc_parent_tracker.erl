@@ -139,8 +139,8 @@ fetched(internal, {added_block, Block}, Data) ->
         _ when Index > 0  ->
             %% TODO: Place for the new added block anouncement;
             %% NOTE Sync procedure is continue it the fetch mode
-            ParentBlock = parent_block(Block),
-            aehc_parent_db:write_parent_block(ParentBlock), Data2 = push(Data, ParentBlock),
+            ParentBlock = parent_block(Block), ParentTrees = aehc_parent_trees:new(), %% TODO TO update trees
+            aehc_parent_db:write_parent_block(ParentBlock, ParentTrees), Data2 = push(Data, ParentBlock),
             PrevHash = aeconnector_block:prev_hash(Block),
             {ok, PrevBlock} = aeconnector:get_block_by_hash(connector(Data), PrevHash),
             {keep_state, locate(Data2, PrevBlock), [{next_event, internal, {added_block, PrevBlock}}]};
@@ -158,8 +158,8 @@ migrated(enter, _OldState, Data) ->
     {keep_state, Data};
 
 migrated(internal, {added_block, Block}, Data) ->
-    ParentBlock = parent_block(Block),
-    aehc_parent_db:write_parent_block(ParentBlock), Data2 = push(Data, ParentBlock),
+    ParentBlock = parent_block(Block), ParentTrees = aehc_parent_trees:new(), %% TODO TO update trees
+    aehc_parent_db:write_parent_block(ParentBlock, ParentTrees), Data2 = push(Data, ParentBlock),
     %% TODO: Place for the new added block announcement;
     PrevHash = aeconnector_block:prev_hash(Block), Height = aeconnector_block:height(Block),
     Loc = location(Data2), Genesis = genesis(Data2),
@@ -224,7 +224,8 @@ init_db(Data) ->
         {ok, Block} = aeconnector:get_block_by_hash(connector(Data), Address),
         %% TODO To transform into parent block
         GenesisBlock = aehc_parent_block:to_genesis(parent_block(Block)),
-        aehc_parent_db:write_parent_block(GenesisBlock),
+        ParentTrees = aehc_parent_trees:new(), %% TODO TO update trees
+        aehc_parent_db:write_parent_block(GenesisBlock, ParentTrees),
         Height = aehc_parent_block:height_block(GenesisBlock),
         State2 = aehc_parent_state:parent_state(Address, _Top = Address, Height),
         aehc_parent_db:write_parent_state(State2)
