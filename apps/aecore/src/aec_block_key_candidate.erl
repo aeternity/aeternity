@@ -33,7 +33,7 @@ create(Block, Beneficiary) ->
 int_create(BlockHash, Block, Beneficiary, Protocol) ->
     H = aec_blocks:height(Block) + 1,
     Consensus = aec_consensus:get_consensus_module_at_height(H),
-    N = Consensus:keyblocks_for_target_calc() + 1,
+    N = Consensus:keyblocks_for_unmined_keyblock_adjust() + 1,
     case aec_blocks:height(Block) < N of
         true  ->
             int_create(BlockHash, Block, Beneficiary, [], Protocol);
@@ -60,25 +60,10 @@ int_create(BlockHash, Block, Beneficiary, AdjChain, Protocol) ->
     end.
 
 int_create(PrevBlockHash, PrevBlock, Miner, Beneficiary, AdjChain, Protocol) ->
-    {ok, Trees} =
-        aec_chain_state:calculate_state_for_new_keyblock(PrevBlockHash, aec_blocks:to_header(PrevBlock), Miner, Beneficiary, Protocol),
-    Block = int_create_block(PrevBlockHash, PrevBlock, Miner, Beneficiary, Trees, Protocol),
+    {ok, Block, _} =
+        aec_chain_state:calculate_new_unmined_keyblock(aec_blocks:to_header(PrevBlock), PrevBlockHash, Miner, Beneficiary, Protocol),
     Consensus = aec_blocks:consensus_module(Block),
-    case Consensus:keyblock_create_adjust_target(Block, AdjChain) of
+    case Consensus:adjust_unmined_keyblock(Block, AdjChain) of
         {ok, AdjBlock} -> {ok, AdjBlock};
-        {error, Reason} -> {error, {failed_to_adjust_target, Reason}}
+        {error, Reason} -> {error, {failed_to_adjust_new_block, Reason}}
     end.
-
-int_create_block(PrevBlockHash, PrevBlock, Miner, Beneficiary, Trees, Protocol) ->
-    Height = aec_blocks:height(PrevBlock) + 1,
-    Consensus = aec_consensus:get_consensus_module_at_height(Height),
-    PrevKeyHash = case aec_blocks:type(PrevBlock) of
-                      micro -> aec_blocks:prev_key_hash(PrevBlock);
-                      key   -> PrevBlockHash
-                  end,
-    Fork = aeu_env:get_env(aecore, fork, undefined),
-    InfoField = aec_chain_state:get_info_field(Height, Fork),
-    aec_blocks:new_key(Height, PrevBlockHash, PrevKeyHash,
-                       aec_trees:hash(Trees), Consensus:default_target(),
-                       0, aeu_time:now_in_msecs(), InfoField, Protocol,
-                       Miner, Beneficiary).

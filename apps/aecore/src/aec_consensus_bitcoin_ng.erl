@@ -19,9 +19,6 @@
         %% Building the Insertion Ctx
         , recent_cache_n/0
         , recent_cache_trim_key_header/1
-        %% Target adjustment when creating keyblocks
-        , keyblocks_for_target_calc/0
-        , keyblock_create_adjust_target/2
         %% Preconductor hook
         , dirty_validate_block_pre_conductor/1
         , dirty_validate_header_pre_conductor/1
@@ -41,6 +38,10 @@
         , genesis_transform_trees/2
         , genesis_raw_header/0
         , genesis_difficulty/0
+        %% Keyblock creation
+        , new_unmined_key_node/8
+        , keyblocks_for_unmined_keyblock_adjust/0
+        , adjust_unmined_keyblock/2
         %% Keyblock sealing
         , key_header_for_sealing/1
         , validate_key_header_seal/2
@@ -152,26 +153,6 @@ recent_cache_n() -> max(aec_governance:key_blocks_to_check_difficulty_count(), a
 recent_cache_trim_key_header(Header) -> {aec_headers:target(Header), aec_headers:time_in_msecs(Header)}.
 
 %% -------------------------------------------------------------------
-%% Target adjustment when creating keyblocks
-keyblocks_for_target_calc() ->
-    aec_governance:key_blocks_to_check_difficulty_count().
-keyblock_create_adjust_target(Block, AdjHeaders) ->
-    Header = aec_blocks:to_header(Block),
-    DeltaHeight = aec_governance:key_blocks_to_check_difficulty_count() + 1,
-    case aec_headers:height(Header) =< DeltaHeight of
-        true ->
-            %% For the first DeltaHeight blocks, use pre-defined target
-            Target = aec_block_genesis:target(),
-            {ok, aec_blocks:set_target(Block, Target)};
-        false when DeltaHeight == length(AdjHeaders) ->
-            CalculatedTarget = aec_target:recalculate(AdjHeaders),
-            Block1 = aec_blocks:set_target(Block, CalculatedTarget),
-            {ok, Block1};
-        false -> %% Wrong number of headers in AdjHeaders...
-            {error, {wrong_headers_for_target_adjustment, DeltaHeight, length(AdjHeaders)}}
-    end.
-
-%% -------------------------------------------------------------------
 %% Preconductor hook - called in sync process just before invoking the conductor
 dirty_validate_block_pre_conductor(B) ->
     Header = aec_blocks:to_header(B),
@@ -226,7 +207,7 @@ ctx_validate_key_time(Node, _Block, Ctx) ->
 %% To assert key block target calculation we need DeltaHeight headers counted
 %% backwards from the node we want to assert.
 ctx_validate_key_target(Node, _Block, Ctx) ->
-    Delta         = keyblocks_for_target_calc() + 1,
+    Delta         = keyblocks_for_unmined_keyblock_adjust() + 1,
     Height        = aec_block_insertion:node_height(Node),
     GenesisHeight = aec_block_genesis:height(),
     case Delta >= Height - GenesisHeight of
@@ -376,6 +357,43 @@ genesis_target() ->
 -endif.
 
 %% -------------------------------------------------------------------
+%% Keyblock creation
+new_unmined_key_node(PrevNode, PrevKeyNode, Height, Miner, Beneficiary, Protocol, InfoField, _TreesIn) ->
+    FakeBlockHash = <<0:?BLOCK_HEADER_HASH_BYTES/unit:8>>,
+    FakeStateHash = <<1337:?STATE_HASH_BYTES/unit:8>>,
+    Header = aec_headers:new_key_header(Height,
+                               aec_block_insertion:node_hash(PrevNode),
+                               aec_block_insertion:node_hash(PrevKeyNode),
+                               FakeStateHash,
+                               Miner,
+                               Beneficiary,
+                               default_target(),
+                               no_value,
+                               0,
+                               aeu_time:now_in_msecs(),
+                               InfoField,
+                               Protocol),
+    aec_chain_state:wrap_header(Header, FakeBlockHash).
+
+keyblocks_for_unmined_keyblock_adjust() ->
+    aec_governance:key_blocks_to_check_difficulty_count().
+adjust_unmined_keyblock(Block, AdjHeaders) ->
+    Header = aec_blocks:to_header(Block),
+    DeltaHeight = aec_governance:key_blocks_to_check_difficulty_count() + 1,
+    case aec_headers:height(Header) =< DeltaHeight of
+        true ->
+            %% For the first DeltaHeight blocks, use pre-defined target
+            Target = aec_block_genesis:target(),
+            {ok, aec_blocks:set_target(Block, Target)};
+        false when DeltaHeight == length(AdjHeaders) ->
+            CalculatedTarget = aec_target:recalculate(AdjHeaders),
+            Block1 = aec_blocks:set_target(Block, CalculatedTarget),
+            {ok, Block1};
+        false -> %% Wrong number of headers in AdjHeaders...
+            {error, {wrong_headers_for_target_adjustment, DeltaHeight, length(AdjHeaders)}}
+    end.
+
+%% -------------------------------------------------------------------
 %% Keyblock sealing
 key_header_for_sealing(Header) ->
     Header1 = aec_headers:set_nonce(Header, 0),
@@ -425,8 +443,6 @@ assert_key_target_range(_Target) ->
 key_header_difficulty(Header) ->
     aeminer_pow:target_to_difficulty(aec_headers:target(Header)).
 
-
 load_whitelist() ->
     W = aec_fork_block_settings:block_whitelist(),
     persistent_term:put(?WHITELIST, W).
-
