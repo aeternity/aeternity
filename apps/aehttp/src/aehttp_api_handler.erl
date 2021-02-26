@@ -82,11 +82,14 @@ handle_request_json(Req0, State = #state{
     try aehttp_api_validate:request(OperationId, Method, Req0, Validator, Mod) of
         {ok, Params, Req1} ->
             Context = #{},
-            {Code, Headers, Body} = LogicHandler:handle_request(OperationId, Params, Context),
-
+            {Code, Headers, Body0} = LogicHandler:handle_request(OperationId, Params, Context),
+            Body =
+                case maps:get('big-int-as-string', Params) of
+                    false -> Body0;
+                    true -> convert_all_ints_to_string(Body0)
+                end,
             _ = aehttp_api_validate:response(OperationId, Method, Code, Body,
                                              Validator, Mod),
-
             Req = cowboy_req:reply(Code, to_headers(Headers), jsx:encode(Body), Req1),
             {stop, Req, State};
         {error, Reason, Req1} ->
@@ -114,3 +117,11 @@ to_error({Reason, Name, Info}) ->
 cache_enabled() ->
     aeu_env:user_config_or_env([<<"http">>, <<"cache">>, <<"enabled">>],
                                aehttp, [cache, enabled], ?DEFAULT_HTTP_CACHE_ENABLED).
+
+convert_all_ints_to_string(Map) ->
+   maps:map(
+      fun(_, I) when is_integer(I) -> integer_to_binary(I);
+         (_, M) when is_map(M) -> convert_all_ints_to_string(M);
+         (_, Other) -> Other
+      end,
+      Map).

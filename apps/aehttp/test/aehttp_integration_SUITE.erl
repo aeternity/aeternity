@@ -927,8 +927,11 @@ get_top_sut() ->
     http_request(Host, get, "blocks/top", []).
 
 get_top_header_sut() ->
+    get_top_header_sut([]).
+
+get_top_header_sut(Opts) ->
     Host = external_address(),
-    http_request(Host, get, "headers/top", []).
+    http_request(Host, get, "headers/top", Opts).
 
 %% /key-blocks/*
 
@@ -4143,7 +4146,33 @@ setup_name_pointing_to_oracle(NameNoPrefix, OraclePubKey) ->
 %%%%%
 get_top_header(_Config) ->
     %% this is present in oas3.yaml
-    {ok, 200, #{<<"hash">> := <<"kh_",_/binary>>}}= get_top_header_sut(),
+    {ok, 200, HeaderOrig}= get_top_header_sut(),
+    #{<<"beneficiary">> := <<"ak_",Acc/binary>>,
+      <<"hash">> := <<"kh_",Hash/binary>>,
+      <<"height">> := Height,
+      <<"info">> := <<"cb_Xfbg4g==">>,
+      <<"miner">> := <<"ak_",Miner/binary>>,
+      <<"prev_hash">> := <<"kh_",PrevHash/binary>>,
+      <<"prev_key_hash">> := <<"kh_",PrevKeyHash/binary>>,
+      <<"state_hash">> := <<"bs_",StateHash/binary>>,
+      <<"target">> := Target,
+      <<"time">> := Time,<<"version">> := Version} = HeaderOrig,
     %% this is not present in oas3.yaml but swagger.yaml
     {ok, 404, #{}} = get_top_sut(),
+    {ok, 200, HeaderOrig}= get_top_header_sut([{'big-int-as-string', false}]),
+    {ok, 200, HeaderStrings}= get_top_header_sut([{'big-int-as-string', true}]),
+    #{<<"beneficiary">> := <<"ak_",Acc/binary>>,
+      <<"hash">> := <<"kh_",Hash/binary>>,
+      <<"height">> := HeightStr,
+      <<"info">> := <<"cb_Xfbg4g==">>,
+      <<"miner">> := <<"ak_",Miner/binary>>,
+      <<"prev_hash">> := <<"kh_",PrevHash/binary>>,
+      <<"prev_key_hash">> := <<"kh_",PrevKeyHash/binary>>,
+      <<"state_hash">> := <<"bs_",StateHash/binary>>,
+      <<"target">> := TargetStr,
+      <<"time">> := TimeStr,<<"version">> := VersionStr} = HeaderStrings,
+    Height = binary_to_integer(HeightStr),
+    Target = binary_to_integer(TargetStr),
+    Time = binary_to_integer(TimeStr),
+    Version = binary_to_integer(VersionStr),
     ok.

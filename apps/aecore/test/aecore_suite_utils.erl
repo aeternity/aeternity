@@ -1316,9 +1316,17 @@ httpc_request(Method, Request, HTTPOptions, Options, Profile) ->
 encode_get_params(#{} = Ps) ->
     encode_get_params(maps:to_list(Ps));
 encode_get_params([{K,V}|T]) ->
-    ["?", [str(K),"=",uenc(V)
-           | [["&", str(K1), "=", uenc(V1)]
-              || {K1, V1} <- T]]];
+    Enc =
+        fun(Key, Value) ->
+            case Value of
+                true -> str(Key);
+                _ -> [str(Key), "=", uenc(Value)]
+            end
+        end,
+    lists:flatten(
+        ["?", [Enc(K, V)
+              | [["&", Enc(K1, V1)]
+                  || {K1, V1} <- T]]]);
 encode_get_params([]) ->
     [].
 
@@ -1327,6 +1335,8 @@ str(A) when is_atom(A) ->
 str(S) when is_list(S); is_binary(S) ->
     S.
 
+uenc(B) when is_boolean(B) ->
+    uenc(atom_to_list(B));
 uenc(I) when is_integer(I) ->
     uenc(integer_to_list(I));
 uenc(V) ->

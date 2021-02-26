@@ -47,6 +47,8 @@ paths:
         - chain
       operationId: GetTopHeader
       description: Get the top header (either key or micro block)
+      parameters:
+        - $ref: '#/components/parameters/bigIngAsStringParam'
       responses:
         "200":
           description: Successful operation
@@ -395,6 +397,7 @@ paths:
       operationId: GetGenerationByHash
       description: Get a generation by hash
       parameters:
+        - $ref: '#/components/parameters/bigIngAsStringParam'
         - in: path
           name: hash
           description: The hash of the generation
@@ -1891,20 +1894,28 @@ paths:
 components:
   schemas:
     UInt:
-      type: integer
-      minimum: 0
+      oneOf:
+        - type: integer
+          minimum: 0
+        - type: string
     UInt16:
-      type: integer
-      minimum: 0
-      maximum: 65535
+      oneOf:
+        - type: integer
+          minimum: 0
+          maximum: 65535
+        - type: string
     UInt32:
-      type: integer
-      minimum: 0
-      maximum: 4294967295
+      oneOf:
+        - type: integer
+          minimum: 0
+          maximum: 4294967295
+        - type: string
     UInt64:
-      type: integer
-      minimum: 0
-      maximum: 18446744073709552000
+      oneOf:
+        - type: integer
+          minimum: 0
+          maximum: 18446744073709552000
+        - type: string
     TxBlockHeight:
       type: integer
       minimum: -1
@@ -3426,3 +3437,15 @@ components:
         - fee
         - auth_data
         - tx
+    Header:
+      anyOf:
+        - $ref: "#/components/schemas/KeyBlock"
+        - $ref: "#/components/schemas/MicroBlockHeader"
+  parameters:
+    bigIngAsStringParam:
+      in: query
+      name: "big-int-as-string"
+      description: 'If this flag is set to true, the response will have all integers set as strings'
+      required: false
+      type: boolean
+      default: false
