@@ -22,6 +22,7 @@
 
 -export([start_node/2,  % (N, Config)
          start_node/3,  % (N, Config, ExtraEnv :: [{OSEnvVarName, Value}])
+
          stop_node/2,
          reinit_with_bitcoin_ng/1,
          reinit_with_ct_consensus/1,
@@ -254,7 +255,7 @@ start_node(N, Config, ExtraEnv) ->
             {"CODE_LOADING_MODE", "interactive"}
            ],
     Env = maybe_override(ExtraEnv, Env0),
-    cmd(?OPS_BIN, node_shortcut(N, Config), "bin", ["start"], Env).
+    cmd(?OPS_BIN, node_shortcut(N, Config), "bin", ["daemon"], Env).
 
 maybe_override([{K,_} = H|T], L0) ->
     [H | maybe_override(T, lists:keydelete(K, 1, L0))];
