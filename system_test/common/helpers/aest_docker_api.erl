@@ -177,6 +177,7 @@ exec(ID, Cmd, Opts) ->
     },
     case docker_post([containers, ID, exec], #{}, ExecCreateBody) of
         {ok, 404, _} -> throw({container_not_found, ID});
+        {ok, 409, _} -> throw({container_not_running, ID});
         {ok, 500, Response} ->
             throw({docker_error, maps:get(message, Response)});
         {ok, 201, #{'Id' := ExecId}} ->
