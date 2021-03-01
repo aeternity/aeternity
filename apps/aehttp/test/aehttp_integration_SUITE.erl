@@ -712,7 +712,7 @@ init_per_group(tx_is_pending, Config) ->
      {block_with_txs, undefined},
      {block_with_txs_hash, <<"none">>},
      {block_with_txs_height, -1} | Config];
-init_per_group(tx_is_on_chain = Group, Config) ->
+init_per_group(tx_is_on_chain = _Group, Config) ->
     Node = aecore_suite_utils:node_name(?NODE),
     case aecore_suite_utils:mine_micro_block_emptying_mempool_or_fail(Node) of
         {ok, [KeyBlock, MicroBlock]} ->
@@ -787,9 +787,9 @@ end_per_group(on_genesis_block, _Config) ->
     ok;
 end_per_group(on_key_block, _Config) ->
     ok;
-end_per_group(block_endpoints, Config) ->
+end_per_group(block_endpoints, _Config) ->
     ok;
-end_per_group(_Group, Config) ->
+end_per_group(_Group, _Config) ->
     ok.
 
 init_per_testcase(named_oracle_transactions, Config) ->
@@ -1446,6 +1446,18 @@ post_spend_tx_(Config, SignHash) ->
           fee          => ?config(fee, Config),
           payload      => ?config(payload, Config)},
     {TxHash, Tx} = prepare_tx(spend_tx, TxArgs, SignHash),
+    case aecore_suite_utils:http_api_version() of
+        oas3 ->
+            TxArgsStrings =
+                #{sender_id    => ?config(sender_id, Config),
+                  recipient_id => ?config(recipient_id, Config),
+                  amount       => integer_to_binary(?config(amount, Config)),
+                  fee          => integer_to_binary(?config(fee, Config)),
+                  payload      => ?config(payload, Config)},
+            %% assert same result
+            {TxHash, Tx} = prepare_tx(spend_tx, TxArgsStrings, SignHash);
+        swagger2 -> pass
+    end,
     case lists:last(aec_hard_forks:sorted_protocol_versions()) of
         Vsn when Vsn < ?LIMA_PROTOCOL_VSN andalso SignHash ->
             ?assertMatch({ok, 400, #{<<"reason">> := <<"Invalid tx">>}},

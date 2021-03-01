@@ -107,6 +107,7 @@ api_str_to_int(Params) ->
                 undefined             -> no_value;
                 Str when is_list(Str) -> {ok, list_to_integer(Str)};
                 I when is_integer(I)  -> {ok, I};
+                B when is_binary(B)   -> {ok, binary_to_integer(B)};
                 #{type := _, value := V} = TTL -> {ok, TTL#{value => to_int(V)}}
             end
         end,
