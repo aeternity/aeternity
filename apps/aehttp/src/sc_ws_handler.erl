@@ -254,8 +254,8 @@ websocket_handle_({text, MsgBin}, #handler{protocol = Protocol,
         {reply, Resp}     ->
             Reply = try {text, jsx:encode(Resp)}
                     catch
-                        error:E ->
-                            lager:debug("CAUGHT error:~p / ~p", [E, erlang:get_stacktrace()]),
+                        error:E:ST ->
+                            lager:debug("CAUGHT error:~p / ~p", [E, ST]),
                             error(E)
                     end,
             {reply, Reply, H};
