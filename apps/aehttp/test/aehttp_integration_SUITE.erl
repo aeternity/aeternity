@@ -3711,20 +3711,6 @@ swagger_validation_schema(_Config) ->
             <<"reason">> := <<"validation_error">>,
             <<"parameter">> := <<"body">>,
             <<"info">> :=  #{
-                        <<"data">> := <<"wrong_fee_data">>,
-                        <<"error">> := <<"wrong_type">>,
-                        <<"path">> := [<<"fee">>]
-        }}} = http_request(Host, post, "debug/transactions/spend", #{
-                   sender_id => <<"">>,
-                   recipient_id => <<"">>,
-                   amount => 0,
-                   fee => <<"wrong_fee_data">>,
-                   ttl => 100,
-                   payload => <<"">>}),
-    {ok, 400, #{
-            <<"reason">> := <<"validation_error">>,
-            <<"parameter">> := <<"body">>,
-            <<"info">> :=  #{
                         <<"data">> := <<"recipient_id">>,
                         <<"error">> := <<"missing_required_property">>,
                         <<"path">> := []
@@ -3739,7 +3725,7 @@ swagger_validation_schema(_Config) ->
             <<"parameter">> := <<"body">>,
             <<"info">> :=  #{
                         <<"data">> := -1,
-                        <<"error">> := <<"not_in_range">>,
+                        <<"error">> := Error,
                         <<"path">> := [<<"amount">>]
         }}} = http_request(Host, post, "debug/transactions/spend", #{
                    sender_id => <<"">>,
@@ -3747,7 +3733,8 @@ swagger_validation_schema(_Config) ->
                    amount => -1,
                    fee => 0,
                    ttl => 100,
-                   payload => <<"">>}).
+                   payload => <<"">>}),
+    true = lists:member(Error, [<<"not_in_range">>, <<"not_one_schema_valid">>]) .
 
 %%swagger_validation_types(_Config) ->
 %%    Host = internal_address(),

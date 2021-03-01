@@ -221,6 +221,7 @@ prepare_param_({"schema", #{<<"$ref">> := FullRef}},
             param_error({schema, Info2}, Name)
     end;
 prepare_param_({"schema",#{<<"type">> := _}}, _, _, _, _) -> ok;
+prepare_param_({"schema",[{"type",  _} | _]}, _, _, _, _) -> ok;
 % enum
 prepare_param_({"enum", Values0}, Value0, Name, _, _) ->
     try

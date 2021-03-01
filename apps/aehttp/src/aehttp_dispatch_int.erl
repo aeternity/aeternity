@@ -10,6 +10,7 @@
                         , api_decode/1
                         , api_optional_decode/1
                         , api_conditional_decode/1
+                        , api_str_to_int/1
                         , get_nonce_from_account_id/1
                         , get_contract_code/2
                         , verify_name/1
@@ -89,6 +90,7 @@ handle_request_('PostSpend', #{'SpendTx' := Req}, _Context) ->
                  api_decode([{sender_id, sender_id, {id_hash, [account_pubkey]}},
                              {recipient_id, recipient_id, {id_hash, AllowedRecipients}}]),
                  api_optional_decode([{payload, bytearray}]),
+                 api_str_to_int([amount, fee]),
                  get_nonce_from_account_id(sender_id),
                  unsigned_tx_response(fun aec_spend_tx:new/1)
                 ],
@@ -100,6 +102,8 @@ handle_request_('PostContractCreate', #{'ContractCreateTx' := Req}, _Context) ->
                                        amount, gas, gas_price, fee, call_data]),
                  read_optional_params([{ttl, ttl, '$no_value'}]),
                  api_decode([{owner_id, owner_id, {id_hash, [account_pubkey]}}]),
+                 api_str_to_int([vm_version, abi_version, deposit, amount,
+                                 gas, gas_price, fee]),
                  get_nonce_from_account_id(owner_id),
                  contract_bytearray_params_decode([code, call_data]),
                  ok_response(
@@ -123,6 +127,7 @@ handle_request_('PostContractCall', #{'ContractCallTx' := Req}, _Context) ->
                  read_optional_params([{ttl, ttl, '$no_value'}]),
                  api_decode([{caller_id, caller_id, {id_hash, [account_pubkey]}},
                                 {contract_id, contract_id, {id_hash, [contract_pubkey]}}]),
+                 api_str_to_int([abi_version, amount, gas, gas_price, fee, ttl]),
                  get_nonce_from_account_id(caller_id),
                  get_contract_code(contract_id, contract_code),
                  contract_bytearray_params_decode([call_data]),
@@ -145,6 +150,7 @@ handle_request_('PostNamePreclaim', #{'NamePreclaimTx' := Req}, _Context) ->
                  read_optional_params([{ttl, ttl, '$no_value'}]),
                  api_decode([{account_id, account_id, {id_hash, [account_pubkey]}},
                                 {commitment_id, commitment_id, {id_hash, [commitment]}}]),
+                 api_str_to_int([abi_version, amount, gas, gas_price, fee, ttl]),
                  get_nonce_from_account_id(account_id),
                  unsigned_tx_response(fun aens_preclaim_tx:new/1)
                 ],
@@ -157,6 +163,7 @@ handle_request_('PostNameUpdate', #{'NameUpdateTx' := Req}, _Context) ->
                  read_optional_params([{ttl, ttl, '$no_value'}]),
                  api_decode([{account_id, account_id, {id_hash, [account_pubkey]}},
                                 {name_id, name_id, {id_hash, [name]}}]),
+                 api_str_to_int([name_ttl, fee, ttl]),
                  nameservice_pointers_decode(pointers),
                  get_nonce_from_account_id(account_id),
                  unsigned_tx_response(fun aens_update_tx:new/1)
@@ -169,6 +176,7 @@ handle_request_('PostNameClaim', #{'NameClaimTx' := Req}, _Context) ->
                  read_optional_params([{ttl, ttl, '$no_value'}, {name_fee, name_fee, prelima}]),
                  api_decode([{account_id, account_id, {id_hash, [account_pubkey]}},
                                 {name, name, name}]),
+                 api_str_to_int([fee, ttl]),
                  get_nonce_from_account_id(account_id),
                  verify_name(name),
                  unsigned_tx_response(fun aens_claim_tx:new/1)
@@ -181,8 +189,9 @@ handle_request_('PostNameTransfer', #{'NameTransferTx' := Req}, _Context) ->
                  read_optional_params([{ttl, ttl, '$no_value'}]),
                  api_decode([{account_id, account_id, {id_hash, [account_pubkey]}},
                                 {recipient_id, recipient_id,
-                                 {id_hash, [account_pubkey, name]}},
+                                {id_hash, [account_pubkey, name]}},
                                 {name_id, name_id, {id_hash, [name]}}]),
+                 api_str_to_int([fee, ttl]),
                  get_nonce_from_account_id(account_id),
                  unsigned_tx_response(fun aens_transfer_tx:new/1)
                 ],
@@ -194,6 +203,7 @@ handle_request_('PostNameRevoke', #{'NameRevokeTx' := Req}, _Context) ->
                  read_optional_params([{ttl, ttl, '$no_value'}]),
                  api_decode([{account_id, account_id, {id_hash, [account_pubkey]}},
                                 {name_id, name_id, {id_hash, [name]}}]),
+                 api_str_to_int([fee, ttl]),
                  get_nonce_from_account_id(account_id),
                  unsigned_tx_response(fun aens_revoke_tx:new/1)
                 ],
@@ -213,6 +223,8 @@ handle_request_('PostChannelCreate', #{'ChannelCreateTx' := Req}, _Context) ->
                               {state_hash, state_hash, state},
                               {delegate_ids, delegate_ids, {list, {id_hash, [account_pubkey]}}}
                               ]),
+                 api_str_to_int([initiator_amount, responder_amount,
+                                 push_amount, channel_reserve, lock_period, fee, ttl]),
                  get_nonce_from_account_id(initiator_id),
                  unsigned_tx_response(fun aesc_create_tx:new/1)
                 ],
@@ -226,6 +238,7 @@ handle_request_('PostChannelDeposit', #{'ChannelDepositTx' := Req}, _Context) ->
                  api_decode([{channel_id, channel_id, {id_hash, [channel]}},
                                 {from_id, from_id, {id_hash, [account_pubkey]}},
                                 {state_hash, state_hash, state}]),
+                 api_str_to_int([amount, fee, round, nonce, ttl]),
                  unsigned_tx_response(fun aesc_deposit_tx:new/1)
                 ],
     process_request(ParseFuns, Req);
@@ -238,6 +251,7 @@ handle_request_('PostChannelWithdraw', #{'ChannelWithdrawTx' := Req}, _Context) 
                  api_decode([{channel_id, channel_id, {id_hash, [channel]}},
                                 {to_id, to_id, {id_hash, [account_pubkey]}},
                                 {state_hash, state_hash, state}]),
+                 api_str_to_int([amount, fee, round, nonce, ttl]),
                  unsigned_tx_response(fun aesc_withdraw_tx:new/1)
                 ],
     process_request(ParseFuns, Req);
@@ -250,6 +264,7 @@ handle_request_('PostChannelSnapshotSolo', #{'ChannelSnapshotSoloTx' := Req}, _C
                  api_decode([{channel_id, channel_id, {id_hash, [channel]}},
                              {from_id, from_id, {id_hash, [account_pubkey]}},
                              {payload, payload, bytearray}]),
+                 api_str_to_int([fee, ttl]),
                  get_nonce_from_account_id(from_id),
                  unsigned_tx_response(fun aesc_snapshot_solo_tx:new/1)
                 ],
@@ -264,6 +279,8 @@ handle_request_('PostChannelCloseMutual', #{'ChannelCloseMutualTx' := Req}, _Con
                  read_optional_params([{ttl, ttl, '$no_value'}]),
                  api_decode([{channel_id, channel_id, {id_hash, [channel]}},
                                 {from_id, from_id, {id_hash, [account_pubkey]}}]),
+                 api_str_to_int([initiator_amount_final,
+                                 responder_amount_final, fee, ttl]),
                  unsigned_tx_response(fun aesc_close_mutual_tx:new/1)
                 ],
     process_request(ParseFuns, Req);
@@ -276,6 +293,7 @@ handle_request_('PostChannelCloseSolo', #{'ChannelCloseSoloTx' := Req}, _Context
                  api_decode([{channel_id, channel_id, {id_hash, [channel]}},
                              {from_id, from_id, {id_hash, [account_pubkey]}},
                              {poi, poi, poi}, {payload, payload, bytearray}]),
+                 api_str_to_int([fee, ttl]),
                  get_nonce_from_account_id(from_id),
                  poi_decode(poi),
                  unsigned_tx_response(fun aesc_close_solo_tx:new/1)
@@ -290,6 +308,7 @@ handle_request_('PostChannelSlash', #{'ChannelSlashTx' := Req}, _Context) ->
                  api_decode([{channel_id, channel_id, {id_hash, [channel]}},
                              {from_id, from_id, {id_hash, [account_pubkey]}},
                              {poi, poi, poi}, {payload, payload, bytearray}]),
+                 api_str_to_int([fee, ttl]),
                  get_nonce_from_account_id(from_id),
                  poi_decode(poi),
                  unsigned_tx_response(fun aesc_slash_tx:new/1)
@@ -305,6 +324,8 @@ handle_request_('PostChannelSettle', #{'ChannelSettleTx' := Req}, _Context) ->
                  read_optional_params([{ttl, ttl, '$no_value'}]),
                  api_decode([{channel_id, channel_id, {id_hash, [channel]}},
                                 {from_id, from_id, {id_hash, [account_pubkey]}}]),
+                 api_str_to_int([initiator_amount_final,
+                                 responder_amount_final, nonce, fee, ttl]),
                  unsigned_tx_response(fun aesc_settle_tx:new/1)
                 ],
     process_request(ParseFuns, Req);
@@ -318,6 +339,7 @@ handle_request_('PostOracleRegister', #{'OracleRegisterTx' := Req}, _Context) ->
                  api_decode([{account_id, account_id, {id_hash, [account_pubkey]}}]),
                  api_conditional_decode([{query_format, {contract_bytearray, IsVmABI}},
                                          {response_format, {contract_bytearray, IsVmABI}}]),
+                 api_str_to_int([oracle_fee, oracle_ttl, fee, ttl]),
                  get_nonce_from_account_id(account_id),
                  ttl_decode(oracle_ttl),
                  unsigned_tx_response(fun aeo_register_tx:new/1)
@@ -329,6 +351,7 @@ handle_request_('PostOracleExtend', #{'OracleExtendTx' := Req}, _Context) ->
                  read_required_params([oracle_id, oracle_ttl, fee]),
                  read_optional_params([{ttl, ttl, '$no_value'}]),
                  api_decode([{oracle_id, oracle_id, {id_hash, [oracle_pubkey]}}]),
+                 api_str_to_int([oracle_ttl, fee, ttl]),
                  get_nonce_from_account_id(oracle_id),
                  relative_ttl_decode(oracle_ttl),
                  unsigned_tx_response(fun aeo_extend_tx:new/1)
@@ -342,6 +365,7 @@ handle_request_('PostOracleQuery', #{'OracleQueryTx' := Req}, _Context) ->
                  read_optional_params([{ttl, ttl, '$no_value'}]),
                  api_decode([{sender_id, sender_id, {id_hash, [account_pubkey]}},
                              {oracle_id, oracle_id, {id_hash, [oracle_pubkey, name]}}]),
+                 api_str_to_int([query_fee, query_ttl, response_ttl, fee, ttl]),
                  get_nonce_from_account_id(sender_id),
                  api_optional_decode([{query, contract_bytearray}]),
                  ttl_decode(query_ttl),
@@ -358,6 +382,7 @@ handle_request_('PostOracleRespond', #{'OracleRespondTx' := Req}, _Context) ->
                  api_decode([{oracle_id, oracle_id, {id_hash, [oracle_pubkey]}},
                                 {query_id, query_id, oracle_query_id}]),
                  api_optional_decode([{response, contract_bytearray}]),
+                 api_str_to_int([response_ttl, fee, ttl]),
                  get_nonce_from_account_id(oracle_id),
                  relative_ttl_decode(response_ttl),
                  verify_oracle_query_existence(oracle_id, query_id),
@@ -409,7 +434,7 @@ handle_request_('GetPeers', _Req, _Context) ->
                 blocked => lists:map(fun aec_peers:encode_peer_address/1, Blocked)}};
 
 handle_request_('GetTokenSupplyByHeight', Req, _Context) ->
-    Height = maps:get(height, Req),
+    Height = aehttp_helpers:to_int(maps:get(height, Req)),
     case aec_chain:sum_tokens_at_height(Height) of
         {ok, Result} ->
             {200, [], Result};

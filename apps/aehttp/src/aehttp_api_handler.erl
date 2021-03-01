@@ -84,7 +84,7 @@ handle_request_json(Req0, State = #state{
             Context = #{},
             {Code, Headers, Body0} = LogicHandler:handle_request(OperationId, Params, Context),
             Body =
-                case maps:get('big-int-as-string', Params) of
+                case maps:get('big-int-as-string', Params, false) of
                     false -> Body0;
                     true -> convert_all_ints_to_string(Body0)
                 end,
@@ -108,7 +108,15 @@ to_headers(Headers) when is_list(Headers) ->
 to_headers(Headers) ->
     Headers.
 
-to_error({Reason, Name, Info}) ->
+to_error({Reason, Name, Info0}) ->
+    Info = 
+        case is_map(Info0) of
+            true -> Info0;
+            false ->
+                [{K, V} || {K, V} <- Info0, K =:= error
+                                    orelse K =:= data
+                                    orelse K =:= path]
+        end,
     #{ reason => Reason,
        parameter => Name,
        info => Info }.
