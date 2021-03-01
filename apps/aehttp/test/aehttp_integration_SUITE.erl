@@ -4158,8 +4158,8 @@ get_top_header(_Config) ->
       <<"time">> := Time,<<"version">> := Version} = HeaderOrig,
     %% this is not present in oas3.yaml but swagger.yaml
     {ok, 404, #{}} = get_top_sut(),
-    {ok, 200, HeaderOrig}= get_top_header_sut([{'big-int-as-string', false}]),
-    {ok, 200, HeaderStrings}= get_top_header_sut([{'big-int-as-string', true}]),
+    {ok, 200, HeaderOrig}= get_top_header_sut([{'int-as-string', false}]),
+    {ok, 200, HeaderStrings}= get_top_header_sut([{'int-as-string', true}]),
     #{<<"beneficiary">> := <<"ak_",Acc/binary>>,
       <<"hash">> := <<"kh_",Hash/binary>>,
       <<"height">> := HeightStr,

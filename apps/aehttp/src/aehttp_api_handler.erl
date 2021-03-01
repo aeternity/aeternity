@@ -84,7 +84,7 @@ handle_request_json(Req0, State = #state{
             Context = #{},
             {Code, Headers, Body0} = LogicHandler:handle_request(OperationId, Params, Context),
             Body =
-                case maps:get('big-int-as-string', Params, false) of
+                case maps:get('int-as-string', Params, false) of
                     false -> Body0;
                     true -> convert_all_ints_to_string(Body0)
                 end,

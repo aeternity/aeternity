@@ -3390,7 +3390,7 @@ components:
   parameters:
     bigIngAsString:
       in: query
-      name: "big-int-as-string"
+      name: "int-as-string"
       description: 'If this flag is set to true, the response will have all integers set as strings'
       required: false
       type: boolean
