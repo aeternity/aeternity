@@ -1,8 +1,8 @@
-FROM aeternity/builder:otp21 as builder
+FROM aeternity/builder:1804 as builder
 
 # Add required files to download and compile only the dependencies
 ADD rebar.config rebar.lock Makefile rebar3 rebar.config.script /app/
-ENV ERLANG_ROCKSDB_OPTS "-DWITH_BUNDLE_LZ4=ON -DWITH_BUNDLE_SNAPPY=ON"
+ENV ERLANG_ROCKSDB_OPTS "-DWITH_SYSTEM_ROCKSDB=ON -DWITH_LZ4=ON -DWITH_SNAPPY=ON -DWITH_BZ2=ON -DWITH_ZSTD=ON"
 
 RUN cd /app && make prod-compile-deps
 # Add the whole project and compile aeternity itself.
@@ -12,13 +12,22 @@ RUN cd /app && make prod-build
 # Put aeternity node in second stage container
 FROM ubuntu:18.04
 
-# Deploy application code from builder container
-COPY --from=builder /app/_build/prod/rel/aeternity /home/aeternity/node
-
-# OpenSSL is shared lib dependency
-RUN apt-get -qq update && apt-get -qq -y install libssl1.0.0 curl libsodium23 libgmp10 \
+# Install shared library dependencies
+RUN apt-get -qq update \
+    && apt-get -qq -y install libssl1.0.0 curl libsodium23 libgmp10 \
+        libsnappy1v5 liblz4-1 libzstd1 libgflags2.2 libbz2-1.0 \
     && ldconfig \
     && rm -rf /var/lib/apt/lists/*
+
+# Install shared rocksdb code from builder container
+COPY --from=builder /usr/local/lib/librocksdb.so.6.13.3 /usr/local/lib/
+RUN ln -fs librocksdb.so.6.13.3 /usr/local/lib/librocksdb.so.6.13 \
+    && ln -fs librocksdb.so.6.13.3 /usr/local/lib/librocksdb.so.6 \
+    && ln -fs librocksdb.so.6.13.3 /usr/local/lib/librocksdb.so \
+    && ldconfig
+
+# Deploy application code from builder container
+COPY --from=builder /app/_build/prod/rel/aeternity /home/aeternity/node
 
 # Aeternity app won't run as root for security reasons
 RUN useradd --shell /bin/bash aeternity \
