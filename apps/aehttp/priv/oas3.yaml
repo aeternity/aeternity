@@ -47,6 +47,8 @@ paths:
         - chain
       operationId: GetTopHeader
       description: Get the top header (either key or micro block)
+      parameters:
+        - $ref: '#/components/parameters/intAsString'
       responses:
         "200":
           description: Successful operation
@@ -67,6 +69,8 @@ paths:
         - chain
       operationId: GetCurrentKeyBlock
       description: Get the current key block
+      parameters:
+        - $ref: '#/components/parameters/intAsString'
       responses:
         "200":
           description: Successful operation
@@ -87,6 +91,8 @@ paths:
         - chain
       operationId: GetCurrentKeyBlockHash
       description: Get the hash of the current key block
+      parameters:
+        - $ref: '#/components/parameters/intAsString'
       responses:
         "200":
           description: Successful operation
@@ -110,6 +116,8 @@ paths:
         - chain
       operationId: GetCurrentKeyBlockHeight
       description: Get the height of the current key block
+      parameters:
+        - $ref: '#/components/parameters/intAsString'
       responses:
         "200":
           description: Successful operation
@@ -133,6 +141,8 @@ paths:
         - chain
       operationId: GetPendingKeyBlock
       description: Get the pending key block
+      parameters:
+        - $ref: '#/components/parameters/intAsString'
       responses:
         "200":
           description: Successful operation
@@ -160,13 +170,8 @@ paths:
       operationId: GetKeyBlockByHash
       description: Get a key block by hash
       parameters:
-        - in: path
-          name: hash
-          description: The hash of the block
-          required: true
-          schema:
-            type: string
-            example: "kh_2ikjGFZGFpE99mDtsgkGFsTCqpPpXZRNRa5Pic989FJLcJStgx"
+        - $ref: '#/components/parameters/intAsString'
+        - $ref: '#/components/parameters/blockHash'
       responses:
         "200":
           description: Successful operation
@@ -194,15 +199,8 @@ paths:
       operationId: GetKeyBlockByHeight
       description: Get a key block by height
       parameters:
-        - in: path
-          name: height
-          description: The height
-          required: true
-          schema:
-            type: integer
-            minimum: 0
-            maximum: 18446744073709552000
-            example: 42
+        - $ref: '#/components/parameters/intAsString'
+        - $ref: '#/components/parameters/height'
       responses:
         "200":
           description: Successful operation
@@ -224,13 +222,8 @@ paths:
       operationId: GetMicroBlockHeaderByHash
       description: Get a micro block header by hash
       parameters:
-        - in: path
-          name: hash
-          description: The hash of the block
-          required: true
-          schema:
-            type: string
-            example: "mh_ZCWcnCG5YF2LhQMTmZ5K5rRmGxatgc5YWxDpGNy2YBAHP6urH"
+        - $ref: '#/components/parameters/intAsString'
+        - $ref: '#/components/parameters/blockHash'
       responses:
         "200":
           description: Successful operation
@@ -258,13 +251,8 @@ paths:
       operationId: GetMicroBlockTransactionsByHash
       description: Get micro block transactions by hash
       parameters:
-        - in: path
-          name: hash
-          description: The hash of the block
-          required: true
-          schema:
-            type: string
-            example: "mh_ZCWcnCG5YF2LhQMTmZ5K5rRmGxatgc5YWxDpGNy2YBAHP6urH"
+        - $ref: '#/components/parameters/intAsString'
+        - $ref: '#/components/parameters/microBlockHash'
       responses:
         "200":
           description: Successful operation
@@ -296,13 +284,8 @@ paths:
       operationId: GetMicroBlockTransactionByHashAndIndex
       description: Get a micro block transaction by hash and index
       parameters:
-        - in: path
-          name: hash
-          description: The hash of the block
-          required: true
-          schema:
-            type: string
-            example: "mh_ZCWcnCG5YF2LhQMTmZ5K5rRmGxatgc5YWxDpGNy2YBAHP6urH"
+        - $ref: '#/components/parameters/intAsString'
+        - $ref: '#/components/parameters/microBlockHash'
         - in: path
           name: index
           description: The index of the transaction in a block
@@ -338,13 +321,8 @@ paths:
       operationId: GetMicroBlockTransactionsCountByHash
       description: Get micro block transaction count by hash
       parameters:
-        - in: path
-          name: hash
-          description: The hash of the block
-          required: true
-          schema:
-            type: string
-            example: "mh_ZCWcnCG5YF2LhQMTmZ5K5rRmGxatgc5YWxDpGNy2YBAHP6urH"
+        - $ref: '#/components/parameters/intAsString'
+        - $ref: '#/components/parameters/microBlockHash'
       responses:
         "200":
           description: Successful operation
@@ -374,6 +352,8 @@ paths:
         - chain
       operationId: GetCurrentGeneration
       description: Get the current generation
+      parameters:
+        - $ref: '#/components/parameters/intAsString'
       responses:
         "200":
           description: Successful operation
@@ -395,13 +375,8 @@ paths:
       operationId: GetGenerationByHash
       description: Get a generation by hash
       parameters:
-        - in: path
-          name: hash
-          description: The hash of the generation
-          required: true
-          schema:
-            type: string
-            example: "kh_2ikjGFZGFpE99mDtsgkGFsTCqpPpXZRNRa5Pic989FJLcJStgx"
+        - $ref: '#/components/parameters/intAsString'
+        - $ref: '#/components/parameters/keyBlockHash'
       responses:
         "200":
           description: Successful operation
@@ -429,15 +404,8 @@ paths:
       operationId: GetGenerationByHeight
       description: Get a generation by height
       parameters:
-        - in: path
-          name: height
-          description: The height
-          required: true
-          schema:
-            type: integer
-            minimum: 0
-            maximum: 18446744073709552000
-            example: 1
+        - $ref: '#/components/parameters/intAsString'
+        - $ref: '#/components/parameters/height'
       responses:
         "200":
           description: Successful operation
@@ -459,13 +427,8 @@ paths:
       operationId: GetAccountByPubkey
       description: Get an account by public key
       parameters:
-        - in: path
-          name: pubkey
-          description: The public key of the account
-          required: true
-          schema:
-            type: string
-            example: "ak_dArxCkAsk1mZB1L9CX3cdz1GDN4hN84L3Q8dMLHN4v8cU85TF"
+        - $ref: '#/components/parameters/intAsString'
+        - $ref: '#/components/parameters/accountPubkey'
       responses:
         "200":
           description: Successful operation
@@ -494,22 +457,9 @@ paths:
       description: Get an account by public key after the opening key block of the
         generation at height
       parameters:
-        - in: path
-          name: pubkey
-          description: The public key of the account
-          required: true
-          schema:
-            type: string
-            example: "ak_dArxCkAsk1mZB1L9CX3cdz1GDN4hN84L3Q8dMLHN4v8cU85TF"
-        - in: path
-          name: height
-          description: The height
-          required: true
-          schema:
-            type: integer
-            minimum: 0
-            maximum: 18446744073709552000
-            example: 42
+        - $ref: '#/components/parameters/intAsString'
+        - $ref: '#/components/parameters/accountPubkey'
+        - $ref: '#/components/parameters/height'
       responses:
         "200":
           description: Successful operation
@@ -537,20 +487,9 @@ paths:
       operationId: GetAccountByPubkeyAndHash
       description: "Get an account by public key after the block indicated by hash. Can be either a micro block or a keyblock hash"
       parameters:
-        - in: path
-          name: pubkey
-          description: The public key of the account
-          required: true
-          schema:
-            type: string
-            example: "ak_dArxCkAsk1mZB1L9CX3cdz1GDN4hN84L3Q8dMLHN4v8cU85TF"
-        - in: path
-          name: hash
-          description: The hash of the block
-          required: true
-          schema:
-            type: string
-            example: "kh_2ikjGFZGFpE99mDtsgkGFsTCqpPpXZRNRa5Pic989FJLcJStgx"
+        - $ref: '#/components/parameters/intAsString'
+        - $ref: '#/components/parameters/accountPubkey'
+        - $ref: '#/components/parameters/blockHash'
       responses:
         "200":
           description: Successful operation
@@ -578,13 +517,8 @@ paths:
       operationId: GetPendingAccountTransactionsByPubkey
       description: Get pending account transactions by public key
       parameters:
-        - in: path
-          name: pubkey
-          description: The public key of the account
-          required: true
-          schema:
-            type: string
-            example: "ak_dArxCkAsk1mZB1L9CX3cdz1GDN4hN84L3Q8dMLHN4v8cU85TF"
+        - $ref: '#/components/parameters/intAsString'
+        - $ref: '#/components/parameters/accountPubkey'
       responses:
         "200":
           description: Successful operation
@@ -616,13 +550,8 @@ paths:
       operationId: GetTransactionByHash
       description: Get a transaction by hash
       parameters:
-        - in: path
-          name: hash
-          description: The hash of the transaction
-          required: true
-          schema:
-            type: string
-            example: "th_2w75xjDjHEmphsHDSXrThRnPx6hSUiS7hhSRcuytJABZZ2KkdG"
+        - $ref: '#/components/parameters/intAsString'
+        - $ref: '#/components/parameters/txHash'
       responses:
         "200":
           description: Successful operation
@@ -649,13 +578,8 @@ paths:
         - transaction
       operationId: GetTransactionInfoByHash
       parameters:
-        - in: path
-          name: hash
-          description: The hash of the transaction
-          required: true
-          schema:
-            type: string
-            example: "th_2w75xjDjHEmphsHDSXrThRnPx6hSUiS7hhSRcuytJABZZ2KkdG"
+        - $ref: '#/components/parameters/intAsString'
+        - $ref: '#/components/parameters/txHash'
       responses:
         "200":
           description: Successful operation
@@ -682,6 +606,8 @@ paths:
         - transaction
       operationId: PostTransaction
       description: Post a new transaction
+      parameters:
+        - $ref: '#/components/parameters/intAsString'
       requestBody:
         content:
           application/json:
@@ -710,13 +636,8 @@ paths:
       operationId: GetContract
       description: Get a contract by pubkey
       parameters:
-        - in: path
-          name: pubkey
-          description: The pubkey of the contract
-          required: true
-          schema:
-            type: string
-            example: "ct_TV5KbBYdjw1ufKWvAtNNjUnagvRmWMMugFzLKzmLASXB5iH1E"
+        - $ref: '#/components/parameters/intAsString'
+        - $ref: '#/components/parameters/contractPubkey'
       responses:
         "200":
           description: Successful operation
@@ -740,13 +661,8 @@ paths:
       operationId: GetContractCode
       description: Get contract code by pubkey
       parameters:
-        - in: path
-          name: pubkey
-          description: The pubkey of the contract
-          required: true
-          schema:
-            type: string
-            example: "ct_TV5KbBYdjw1ufKWvAtNNjUnagvRmWMMugFzLKzmLASXB5iH1E"
+        - $ref: '#/components/parameters/intAsString'
+        - $ref: '#/components/parameters/contractPubkey'
       responses:
         "200":
           description: Contract code
@@ -774,13 +690,8 @@ paths:
       operationId: GetContractPoI
       description: Get a proof of inclusion for a contract
       parameters:
-        - in: path
-          name: pubkey
-          description: Contract pubkey to get proof for
-          required: true
-          schema:
-            type: string
-            example: "ct_TV5KbBYdjw1ufKWvAtNNjUnagvRmWMMugFzLKzmLASXB5iH1E"
+        - $ref: '#/components/parameters/intAsString'
+        - $ref: '#/components/parameters/contractPubkey'
       responses:
         "200":
           description: Successful operation
@@ -808,13 +719,8 @@ paths:
       operationId: GetOracleByPubkey
       description: Get an oracle by public key
       parameters:
-        - in: path
-          name: pubkey
-          description: The public key of the oracle
-          required: true
-          schema:
-            type: string
-            example: "ok_24jcHLTZQfsou7NvomRJ1hKEnjyNqbYSq2Az7DmyrAyUHPq8uR"
+        - $ref: '#/components/parameters/intAsString'
+        - $ref: '#/components/parameters/oraclePubkey'
       responses:
         "200":
           description: Successful operation
@@ -842,13 +748,8 @@ paths:
       operationId: GetOracleQueriesByPubkey
       description: Get oracle queries by public key
       parameters:
-        - in: path
-          name: pubkey
-          description: The public key of the oracle
-          required: true
-          schema:
-            type: string
-            example: "ok_24jcHLTZQfsou7NvomRJ1hKEnjyNqbYSq2Az7DmyrAyUHPq8uR"
+        - $ref: '#/components/parameters/intAsString'
+        - $ref: '#/components/parameters/oraclePubkey'
         - in: query
           name: from
           description: Last query id in previous page
@@ -903,13 +804,8 @@ paths:
       operationId: GetOracleQueryByPubkeyAndQueryId
       description: Get an oracle query by public key and query ID
       parameters:
-        - in: path
-          name: pubkey
-          description: The public key of the oracle
-          required: true
-          schema:
-            type: string
-            example: "ok_24jcHLTZQfsou7NvomRJ1hKEnjyNqbYSq2Az7DmyrAyUHPq8uR"
+        - $ref: '#/components/parameters/intAsString'
+        - $ref: '#/components/parameters/oraclePubkey'
         - in: path
           name: query-id
           description: The ID of the query
@@ -944,6 +840,7 @@ paths:
       operationId: GetNameEntryByName
       description: Get name entry from naming system
       parameters:
+        - $ref: '#/components/parameters/intAsString'
         - in: path
           name: name
           description: The name key of the name entry
@@ -978,6 +875,7 @@ paths:
       operationId: GetChannelByPubkey
       description: Get channel by public key
       parameters:
+        - $ref: '#/components/parameters/intAsString'
         - in: path
           name: pubkey
           description: The pubkey of the channel
@@ -1011,6 +909,8 @@ paths:
         - node_info
       operationId: GetPeerPubkey
       description: Get peer public key
+      parameters:
+        - $ref: '#/components/parameters/intAsString'
       responses:
         "200":
           description: Successful operation
@@ -1025,6 +925,8 @@ paths:
         - node_info
       operationId: GetStatus
       description: Get the status of a node
+      parameters:
+        - $ref: '#/components/parameters/intAsString'
       responses:
         "200":
           description: Successful operation
@@ -1039,6 +941,8 @@ paths:
         - chain
       operationId: GetChainEnds
       description: Get oldest keyblock hashes counting from genesis including orphans
+      parameters:
+        - $ref: '#/components/parameters/intAsString'
       responses:
         "200":
           description: Successful operation
@@ -1082,6 +986,8 @@ paths:
         - debug
       operationId: GetNetworkStatus
       description: Get detailed analytics on peers
+      parameters:
+        - $ref: '#/components/parameters/intAsString'
       responses:
         "200":
           description: Successful operation
@@ -1103,6 +1009,8 @@ paths:
         - debug
       operationId: PostContractCreate
       description: Get a contract_create transaction object
+      parameters:
+        - $ref: '#/components/parameters/intAsString'
       requestBody:
         content:
           application/json:
@@ -1136,6 +1044,8 @@ paths:
         - debug
       operationId: PostContractCall
       description: Get a contract_call transaction object
+      parameters:
+        - $ref: '#/components/parameters/intAsString'
       requestBody:
         content:
           application/json:
@@ -1169,6 +1079,8 @@ paths:
         - debug
       operationId: PostOracleRegister
       description: Get a oracle_register transaction object
+      parameters:
+        - $ref: '#/components/parameters/intAsString'
       requestBody:
         content:
           application/json:
@@ -1202,6 +1114,8 @@ paths:
         - debug
       operationId: PostOracleExtend
       description: Get an oracle_extend transaction object
+      parameters:
+        - $ref: '#/components/parameters/intAsString'
       requestBody:
         content:
           application/json:
@@ -1235,6 +1149,8 @@ paths:
         - debug
       operationId: PostOracleQuery
       description: Get an oracle_query transaction object
+      parameters:
+        - $ref: '#/components/parameters/intAsString'
       requestBody:
         content:
           application/json:
@@ -1268,6 +1184,8 @@ paths:
         - debug
       operationId: PostOracleRespond
       description: Get an oracle_response transaction object
+      parameters:
+        - $ref: '#/components/parameters/intAsString'
       requestBody:
         content:
           application/json:
@@ -1301,6 +1219,8 @@ paths:
         - debug
       operationId: PostNamePreclaim
       description: Get a name_preclaim transaction object
+      parameters:
+        - $ref: '#/components/parameters/intAsString'
       requestBody:
         content:
           application/json:
@@ -1334,6 +1254,8 @@ paths:
         - debug
       operationId: PostNameClaim
       description: Get a name_claim transaction object
+      parameters:
+        - $ref: '#/components/parameters/intAsString'
       requestBody:
         content:
           application/json:
@@ -1367,6 +1289,8 @@ paths:
         - debug
       operationId: PostNameUpdate
       description: Get a name_update transaction object
+      parameters:
+        - $ref: '#/components/parameters/intAsString'
       requestBody:
         content:
           application/json:
@@ -1400,6 +1324,8 @@ paths:
         - debug
       operationId: PostNameTransfer
       description: Get a name_transfer transaction object
+      parameters:
+        - $ref: '#/components/parameters/intAsString'
       requestBody:
         content:
           application/json:
@@ -1433,6 +1359,8 @@ paths:
         - debug
       operationId: PostNameRevoke
       description: Get a name_revoke transaction object
+      parameters:
+        - $ref: '#/components/parameters/intAsString'
       requestBody:
         content:
           application/json:
@@ -1466,6 +1394,8 @@ paths:
         - debug
       operationId: PostSpend
       description: Get a spend transaction object
+      parameters:
+        - $ref: '#/components/parameters/intAsString'
       requestBody:
         content:
           application/json:
@@ -1500,6 +1430,8 @@ paths:
         - debug
       operationId: PostChannelCreate
       description: Get a channel_create transaction object
+      parameters:
+        - $ref: '#/components/parameters/intAsString'
       requestBody:
         content:
           application/json:
@@ -1533,6 +1465,8 @@ paths:
         - debug
       operationId: PostChannelDeposit
       description: Get a channel_deposit transaction object
+      parameters:
+        - $ref: '#/components/parameters/intAsString'
       requestBody:
         content:
           application/json:
@@ -1560,6 +1494,8 @@ paths:
         - debug
       operationId: PostChannelWithdraw
       description: Get a channel_withdrawal transaction object
+      parameters:
+        - $ref: '#/components/parameters/intAsString'
       requestBody:
         content:
           application/json:
@@ -1587,6 +1523,8 @@ paths:
         - debug
       operationId: PostChannelSnapshotSolo
       description: Get a channel_snapshot_solo transaction object
+      parameters:
+        - $ref: '#/components/parameters/intAsString'
       requestBody:
         content:
           application/json:
@@ -1614,6 +1552,8 @@ paths:
         - debug
       operationId: PostChannelCloseMutual
       description: Get a channel_close_mutual transaction object
+      parameters:
+        - $ref: '#/components/parameters/intAsString'
       requestBody:
         content:
           application/json:
@@ -1641,6 +1581,8 @@ paths:
         - debug
       operationId: PostChannelCloseSolo
       description: Get a channel_close_solo transaction object
+      parameters:
+        - $ref: '#/components/parameters/intAsString'
       requestBody:
         content:
           application/json:
@@ -1668,6 +1610,8 @@ paths:
         - debug
       operationId: PostChannelSlash
       description: Get a channel_slash transaction object
+      parameters:
+        - $ref: '#/components/parameters/intAsString'
       requestBody:
         content:
           application/json:
@@ -1695,6 +1639,8 @@ paths:
         - debug
       operationId: PostChannelSettle
       description: Get a channel_settle transaction object
+      parameters:
+        - $ref: '#/components/parameters/intAsString'
       requestBody:
         content:
           application/json:
@@ -1722,6 +1668,8 @@ paths:
         - debug
       operationId: GetPendingTransactions
       description: Get pending transactions
+      parameters:
+        - $ref: '#/components/parameters/intAsString'
       responses:
         "200":
           description: Successful operation
@@ -1742,6 +1690,7 @@ paths:
       operationId: GetCommitmentId
       description: Compute commitment ID for a given salt and name
       parameters:
+        - $ref: '#/components/parameters/intAsString'
         - in: query
           name: name
           description: Name
@@ -1797,6 +1746,8 @@ paths:
         - debug
       operationId: GetNodePubkey
       description: Get node's public key
+      parameters:
+        - $ref: '#/components/parameters/intAsString'
       responses:
         "200":
           description: Successful operation
@@ -1818,6 +1769,8 @@ paths:
         - debug
       operationId: GetPeers
       description: Get node Peers
+      parameters:
+        - $ref: '#/components/parameters/intAsString'
       responses:
         "200":
           description: successful operation
@@ -1839,6 +1792,8 @@ paths:
       operationId: DryRunTxs
       description: Dry-run transactions on top of a given block. Supports all TXs except
         GAMetaTx, PayingForTx and OffchainTx
+      parameters:
+        - $ref: '#/components/parameters/intAsString'
       requestBody:
         content:
           application/json:
@@ -1867,14 +1822,8 @@ paths:
       operationId: GetTokenSupplyByHeight
       description: Get total token supply at height
       parameters:
-        - in: path
-          name: height
-          description: The height
-          required: true
-          schema:
-            type: integer
-            minimum: 0
-            maximum: 18446744073709552000
+        - $ref: '#/components/parameters/intAsString'
+        - $ref: '#/components/parameters/height'
       responses:
         "200":
           description: Total token supply at height divided in categories
@@ -1891,20 +1840,28 @@ paths:
 components:
   schemas:
     UInt:
-      type: integer
-      minimum: 0
+      oneOf:
+        - type: integer
+          minimum: 0
+        - type: string
     UInt16:
-      type: integer
-      minimum: 0
-      maximum: 65535
+      oneOf:
+        - type: integer
+          minimum: 0
+          maximum: 65535
+        - type: string
     UInt32:
-      type: integer
-      minimum: 0
-      maximum: 4294967295
+      oneOf:
+        - type: integer
+          minimum: 0
+          maximum: 4294967295
+        - type: string
     UInt64:
-      type: integer
-      minimum: 0
-      maximum: 18446744073709552000
+      oneOf:
+        - type: integer
+          minimum: 0
+          maximum: 18446744073709552000
+        - type: string
     TxBlockHeight:
       type: integer
       minimum: -1
@@ -3426,3 +3383,81 @@ components:
         - fee
         - auth_data
         - tx
+    Header:
+      anyOf:
+        - $ref: "#/components/schemas/KeyBlock"
+        - $ref: "#/components/schemas/MicroBlockHeader"
+  parameters:
+    intAsString:
+      in: query
+      name: "int-as-string"
+      description: 'If this flag is set to true, the response will have all integers set as strings'
+      required: false
+      type: boolean
+      default: false
+    blockHash:
+      in: path
+      name: hash
+      description: The hash of the block - either a keyblock or a microblock
+      required: true
+      schema:
+        type: string
+        example: "kh_2ikjGFZGFpE99mDtsgkGFsTCqpPpXZRNRa5Pic989FJLcJStgx"
+    keyBlockHash:
+      in: path
+      name: hash
+      description: The hash of the key block
+      required: true
+      schema:
+        type: string
+        example: "kh_2ikjGFZGFpE99mDtsgkGFsTCqpPpXZRNRa5Pic989FJLcJStgx"
+    microBlockHash:
+      in: path
+      name: hash
+      description: The hash of the micro block
+      required: true
+      schema:
+        type: string
+        example: "mh_ZCWcnCG5YF2LhQMTmZ5K5rRmGxatgc5YWxDpGNy2YBAHP6urH"
+    accountPubkey:
+      in: path
+      name: pubkey
+      description: The public key of the account
+      required: true
+      schema:
+        type: string
+        example: "ak_dArxCkAsk1mZB1L9CX3cdz1GDN4hN84L3Q8dMLHN4v8cU85TF"
+    height:
+      in: path
+      name: height
+      description: The height
+      required: true
+      schema:
+        type: integer
+        minimum: 0
+        maximum: 18446744073709552000
+        example: 42
+    txHash:
+      in: path
+      name: hash
+      description: The hash of the transaction
+      required: true
+      schema:
+        type: string
+        example: "th_2w75xjDjHEmphsHDSXrThRnPx6hSUiS7hhSRcuytJABZZ2KkdG"
+    contractPubkey:
+      in: path
+      name: pubkey
+      description: Contract pubkey to get proof for
+      required: true
+      schema:
+        type: string
+        example: "ct_TV5KbBYdjw1ufKWvAtNNjUnagvRmWMMugFzLKzmLASXB5iH1E"
+    oraclePubkey:
+      in: path
+      name: pubkey
+      description: The public key of the oracle
+      required: true
+      schema:
+        type: string
+        example: "ok_24jcHLTZQfsou7NvomRJ1hKEnjyNqbYSq2Az7DmyrAyUHPq8uR"

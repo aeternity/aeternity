@@ -7,6 +7,7 @@
         , api_decode/1
         , api_optional_decode/1
         , api_conditional_decode/1
+        , api_str_to_int/1
         , contract_bytearray_params_decode/1
         , ttl_decode/1
         , poi_decode/1
@@ -27,6 +28,7 @@
         , safe_get_txs/1
         , do_dry_run/0
         , dry_run_results/1
+        , to_int/1
         ]).
 
 -export([ get_transaction/2
@@ -95,6 +97,21 @@ api_opt_decode_fun({Name, Type}, _, Data) ->
 api_conditional_decode(Params) ->
     params_read_fun([ {K, K, T} || {K, T} <- Params ],
                     fun api_cond_decode_fun/3, "Invalid decode").
+
+api_str_to_int(Params) ->
+    params_read_fun(Params,
+        fun(Name, Req, _) ->
+            %% swagger puts an 'undefined' value for missing not reqired
+            %% params
+            case maps:get(Name, Req, undefined) of
+                undefined             -> no_value;
+                Str when is_list(Str) -> {ok, list_to_integer(Str)};
+                I when is_integer(I)  -> {ok, I};
+                B when is_binary(B)   -> {ok, binary_to_integer(B)};
+                #{type := _, value := V} = TTL -> {ok, TTL#{value => to_int(V)}}
+            end
+        end,
+        "Invalid encoding").
 
 api_cond_decode_fun({Name, {Type, Cond}}, _, Data) ->
     Encoded = maps:get(Name, Data),
@@ -201,7 +218,7 @@ get_nonce(AccountKey) ->
                         {error, {404, [], #{<<"reason">> => list_to_binary(Msg)}}}
                 end;
             Nonce ->
-                {ok, maps:put(nonce, Nonce, State)}
+                {ok, maps:put(nonce, to_int(Nonce), State)}
         end
     end.
 
@@ -233,7 +250,7 @@ get_nonce_from_account_id(AccountKey) ->
                         end
                 end;
             Nonce ->
-                {ok, maps:put(nonce, Nonce, State)}
+                {ok, maps:put(nonce, to_int(Nonce), State)}
         end
     end.
 
@@ -877,3 +894,8 @@ safe_get_txs(Block) ->
         'key' -> [];
         'micro' -> aec_blocks:txs(Block)
     end.
+
+to_int(I) when is_integer(I) -> I;
+to_int(Str) when is_list(Str) -> list_to_integer(Str);
+to_int(Bin) when is_binary(Bin) -> binary_to_integer(Bin).
+

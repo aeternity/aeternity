@@ -152,13 +152,13 @@ references:
     restore_cache:
       key: *build_nix_cache_key
 
-  machine_build_cache_key: &machine_build_cache_key machine-build-cache-v13-{{ .Branch }}-{{ .Revision }}
+  machine_build_cache_key: &machine_build_cache_key machine-build-cache-v14-{{ .Branch }}-{{ .Revision }}
   restore_machine_build_cache: &restore_machine_build_cache
     restore_cache:
       keys:
         - *machine_build_cache_key
-        - machine-build-cache-v13-{{ .Branch }}-
-        - machine-build-cache-v13-
+        - machine-build-cache-v14-{{ .Branch }}-
+        - machine-build-cache-v14-
 
   save_machine_build_cache: &save_machine_build_cache
     save_cache:

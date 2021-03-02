@@ -230,7 +230,7 @@ handle_request_('GetKeyBlockByHash', Params, _Context) ->
     end;
 
 handle_request_('GetKeyBlockByHeight', Params, _Context) ->
-    Height = maps:get(height, Params),
+    Height =  aehttp_helpers:to_int(maps:get(height, Params)),
     case aec_chain:get_key_block_by_height(Height) of
         {ok, Block} ->
             Header = aec_blocks:to_header(Block),
@@ -290,7 +290,7 @@ handle_request_('GetMicroBlockTransactionsByHash', Params, _Context) ->
 
 handle_request_('GetMicroBlockTransactionByHashAndIndex', Params, _Context) ->
     HashDec = aeser_api_encoder:safe_decode(micro_block_hash, maps:get(hash, Params)),
-    IndexDec = maps:get(index, Params),
+    IndexDec = aehttp_helpers:to_int(maps:get(index, Params)),
     case {HashDec, IndexDec} of
         {{ok, Hash}, Index} when is_integer(Index) ->
             case aehttp_logic:get_micro_block_by_hash(Hash) of
@@ -339,7 +339,7 @@ handle_request_('GetGenerationByHash', Params, _Context) ->
             end
     end;
 handle_request_('GetGenerationByHeight', Params, _Context) ->
-    Height = maps:get('height', Params),
+    Height = aehttp_helpers:to_int(maps:get('height', Params)),
     case aec_chain_state:get_key_block_hash_at_height(Height) of
         error -> {404, [], #{reason => <<"Chain too short">>}};
         {ok, Hash} -> generation_rsp(aec_chain:get_generation_by_hash(Hash, forward))
@@ -365,7 +365,7 @@ handle_request_('GetAccountByPubkeyAndHeight', Params, _Context) ->
     case aeser_api_encoder:safe_decode({id_hash, AllowedTypes}, maps:get(pubkey, Params)) of
         {ok, Id} ->
             {_IdType, Pubkey} = aeser_id:specialize(Id),
-            Height = maps:get(height, Params),
+            Height = aehttp_helpers:to_int(maps:get(height, Params)),
             case aec_chain:get_account_at_height(Pubkey, Height) of
                 {value, Account} ->
                     {200, [], aec_accounts:serialize_for_client(Account)};
@@ -702,3 +702,4 @@ deserialize_transaction(Tx) ->
     catch
         _:_ -> {error, broken_tx}
     end.
+

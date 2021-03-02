@@ -712,7 +712,7 @@ init_per_group(tx_is_pending, Config) ->
      {block_with_txs, undefined},
      {block_with_txs_hash, <<"none">>},
      {block_with_txs_height, -1} | Config];
-init_per_group(tx_is_on_chain = Group, Config) ->
+init_per_group(tx_is_on_chain = _Group, Config) ->
     Node = aecore_suite_utils:node_name(?NODE),
     case aecore_suite_utils:mine_micro_block_emptying_mempool_or_fail(Node) of
         {ok, [KeyBlock, MicroBlock]} ->
@@ -787,9 +787,9 @@ end_per_group(on_genesis_block, _Config) ->
     ok;
 end_per_group(on_key_block, _Config) ->
     ok;
-end_per_group(block_endpoints, Config) ->
+end_per_group(block_endpoints, _Config) ->
     ok;
-end_per_group(_Group, Config) ->
+end_per_group(_Group, _Config) ->
     ok.
 
 init_per_testcase(named_oracle_transactions, Config) ->
@@ -927,8 +927,11 @@ get_top_sut() ->
     http_request(Host, get, "blocks/top", []).
 
 get_top_header_sut() ->
+    get_top_header_sut([]).
+
+get_top_header_sut(Opts) ->
     Host = external_address(),
-    http_request(Host, get, "headers/top", []).
+    http_request(Host, get, "headers/top", Opts).
 
 %% /key-blocks/*
 
@@ -1443,6 +1446,18 @@ post_spend_tx_(Config, SignHash) ->
           fee          => ?config(fee, Config),
           payload      => ?config(payload, Config)},
     {TxHash, Tx} = prepare_tx(spend_tx, TxArgs, SignHash),
+    case aecore_suite_utils:http_api_version() of
+        oas3 ->
+            TxArgsStrings =
+                #{sender_id    => ?config(sender_id, Config),
+                  recipient_id => ?config(recipient_id, Config),
+                  amount       => integer_to_binary(?config(amount, Config)),
+                  fee          => integer_to_binary(?config(fee, Config)),
+                  payload      => ?config(payload, Config)},
+            %% assert same result
+            {TxHash, Tx} = prepare_tx(spend_tx, TxArgsStrings, SignHash);
+        swagger2 -> pass
+    end,
     case lists:last(aec_hard_forks:sorted_protocol_versions()) of
         Vsn when Vsn < ?LIMA_PROTOCOL_VSN andalso SignHash ->
             ?assertMatch({ok, 400, #{<<"reason">> := <<"Invalid tx">>}},
@@ -3708,20 +3723,6 @@ swagger_validation_schema(_Config) ->
             <<"reason">> := <<"validation_error">>,
             <<"parameter">> := <<"body">>,
             <<"info">> :=  #{
-                        <<"data">> := <<"wrong_fee_data">>,
-                        <<"error">> := <<"wrong_type">>,
-                        <<"path">> := [<<"fee">>]
-        }}} = http_request(Host, post, "debug/transactions/spend", #{
-                   sender_id => <<"">>,
-                   recipient_id => <<"">>,
-                   amount => 0,
-                   fee => <<"wrong_fee_data">>,
-                   ttl => 100,
-                   payload => <<"">>}),
-    {ok, 400, #{
-            <<"reason">> := <<"validation_error">>,
-            <<"parameter">> := <<"body">>,
-            <<"info">> :=  #{
                         <<"data">> := <<"recipient_id">>,
                         <<"error">> := <<"missing_required_property">>,
                         <<"path">> := []
@@ -3736,7 +3737,7 @@ swagger_validation_schema(_Config) ->
             <<"parameter">> := <<"body">>,
             <<"info">> :=  #{
                         <<"data">> := -1,
-                        <<"error">> := <<"not_in_range">>,
+                        <<"error">> := Error,
                         <<"path">> := [<<"amount">>]
         }}} = http_request(Host, post, "debug/transactions/spend", #{
                    sender_id => <<"">>,
@@ -3744,7 +3745,8 @@ swagger_validation_schema(_Config) ->
                    amount => -1,
                    fee => 0,
                    ttl => 100,
-                   payload => <<"">>}).
+                   payload => <<"">>}),
+    true = lists:member(Error, [<<"not_in_range">>, <<"not_one_schema_valid">>]) .
 
 %%swagger_validation_types(_Config) ->
 %%    Host = internal_address(),
@@ -4143,7 +4145,33 @@ setup_name_pointing_to_oracle(NameNoPrefix, OraclePubKey) ->
 %%%%%
 get_top_header(_Config) ->
     %% this is present in oas3.yaml
-    {ok, 200, #{<<"hash">> := <<"kh_",_/binary>>}}= get_top_header_sut(),
+    {ok, 200, HeaderOrig}= get_top_header_sut(),
+    #{<<"beneficiary">> := <<"ak_",Acc/binary>>,
+      <<"hash">> := <<"kh_",Hash/binary>>,
+      <<"height">> := Height,
+      <<"info">> := <<"cb_Xfbg4g==">>,
+      <<"miner">> := <<"ak_",Miner/binary>>,
+      <<"prev_hash">> := <<"kh_",PrevHash/binary>>,
+      <<"prev_key_hash">> := <<"kh_",PrevKeyHash/binary>>,
+      <<"state_hash">> := <<"bs_",StateHash/binary>>,
+      <<"target">> := Target,
+      <<"time">> := Time,<<"version">> := Version} = HeaderOrig,
     %% this is not present in oas3.yaml but swagger.yaml
     {ok, 404, #{}} = get_top_sut(),
+    {ok, 200, HeaderOrig}= get_top_header_sut([{'int-as-string', false}]),
+    {ok, 200, HeaderStrings}= get_top_header_sut([{'int-as-string', true}]),
+    #{<<"beneficiary">> := <<"ak_",Acc/binary>>,
+      <<"hash">> := <<"kh_",Hash/binary>>,
+      <<"height">> := HeightStr,
+      <<"info">> := <<"cb_Xfbg4g==">>,
+      <<"miner">> := <<"ak_",Miner/binary>>,
+      <<"prev_hash">> := <<"kh_",PrevHash/binary>>,
+      <<"prev_key_hash">> := <<"kh_",PrevKeyHash/binary>>,
+      <<"state_hash">> := <<"bs_",StateHash/binary>>,
+      <<"target">> := TargetStr,
+      <<"time">> := TimeStr,<<"version">> := VersionStr} = HeaderStrings,
+    Height = binary_to_integer(HeightStr),
+    Target = binary_to_integer(TargetStr),
+    Time = binary_to_integer(TimeStr),
+    Version = binary_to_integer(VersionStr),
     ok.
