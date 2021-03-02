@@ -4,3 +4,5 @@
   channel objects can still be used but users are strongly recomended to reset
   their `delegates` list if they had any. Note that the HTTP representations
   are changed accordingly.
+* Allows delegates to force progress from behalf of the user that autorized
+  them to do so.
