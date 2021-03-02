@@ -455,13 +455,19 @@ make_shortcut(Cfg) ->
 write_stratum_keys(Dir, Cfg) ->
     #{pubkey := PubKey, privkey := PrivKey} = ?config(stratum_keypair, Cfg),
     MNodeTopDir = aecore_suite_utils:node_shortcut(?STRATUM_SERVER_NODE, Cfg),
-    [StratumTopDir] = filelib:wildcard(filename:join([MNodeTopDir, "lib", "aestratum-*"])),
+    StratumTopDir = latest_version(MNodeTopDir),
+    ct:log("StratumTopDir = ~p", [StratumTopDir]),
     StratumKeysDir = filename:join([StratumTopDir, "priv", Dir]),
     filelib:ensure_dir(filename:join([StratumKeysDir, "foo"])),
     file:write_file(filename:join(StratumKeysDir, ?STRATUM_PRIVKEY_FILE), PrivKey),
     file:write_file(filename:join(StratumKeysDir, ?STRATUM_PUBKEY_FILE), PubKey),
     [{stratum_top_dir, StratumTopDir},
      {stratum_keys_dir, StratumKeysDir} | Cfg].
+
+latest_version(Top) ->
+    Vsns = filelib:wildcard(filename:join([Top, "lib", "aestratum-*"])),
+    %% TODO: make sort respect semantic versioning (not necessarily alphanumeric order)
+    lists:last(lists:sort(Vsns)).
 
 del_stratum_keys(Cfg) ->
     StratumKeysDir = ?config(stratum_keys_dir, Cfg),
