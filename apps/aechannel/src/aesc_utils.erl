@@ -357,7 +357,7 @@ check_force_progress_(PayloadHash, PayloadRound,
                           true -> {error, not_caller};
                           false ->
                               case aesc_channels:role_by_pubkey(Channel, CallerPubKey) of
-                                  none -> {error, not_caller};
+                                  none -> {error, not_caller_or_delegate};
                                   Role ->
                                       case is_delegate(Channel, FromPubKey, Role) of
                                           ok -> ok;

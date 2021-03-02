@@ -5979,6 +5979,7 @@ fp_close_solo_slash_with_same_round(Cfg) ->
 fp_from_delegate_after_iris(Cfg) ->
     Height = 100,
     PreIris = aec_hard_forks:protocol_effective_at_height(Height) < ?IRIS_PROTOCOL_VSN,
+    NonEmptyPayload = proplists:get_value(force_progress_use_payload, Cfg, true),
     FPRound = 30,
     ContractRound = 2,
     Test =
@@ -6005,9 +6006,14 @@ fp_from_delegate_after_iris(Cfg) ->
                   end,
             case PreIris of
                 true ->
+                    Err =
+                        case NonEmptyPayload of
+                            true -> account_not_peer;
+                            false -> not_caller
+                        end,
                     test_delegate_not_allowed(Cfg,
-                        fun(Props, {negative, {error, Err}}) ->
-                            {Err, Err} = {account_not_peer, Err},
+                        fun(Props, {negative, {error, Err1}}) ->
+                            {Err, Err} = {Err, Err1},
                             run(Props,
                                 [PrepareFP,
                                 negative_force_progress_sequence(Cfg, FPRound,
@@ -6015,7 +6021,7 @@ fp_from_delegate_after_iris(Cfg) ->
                                                                   Err)
                                 ])
                         end,
-                        #{ height => Height });
+                        #{ height => Height }, Err);
                 false ->
                     test_delegate_allowed(Cfg,
                         fun(Props, positive) ->
@@ -6082,7 +6088,8 @@ fp_wrong_delegate_after_iris(Cfg) ->
                   end,
             Err = 
                 case PreIris of
-                    true  -> account_not_peer;
+                    true  when NonEmptyPayload -> account_not_peer;
+                    true  -> not_caller;
                     false -> not_caller_or_delegate
                 end,
             test_delegate_not_allowed(Cfg,
