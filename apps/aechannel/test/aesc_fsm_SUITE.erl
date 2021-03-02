@@ -443,8 +443,7 @@ init_per_group(accomodate_missed_onchain_tx, Config) ->
     end;
 init_per_group(assume_min_depth, Config) ->
     Config1 = init_per_group_(Config),
-    [ {debug, true}
-    , {assume_min_depth, true} | Config1 ];
+    [ {assume_min_depth, true} | Config1 ];
 init_per_group(_Group, Config) ->
     init_per_group_(Config).
 
@@ -1400,15 +1399,32 @@ check_log_([{Op, Type, Match} = H|T], [{Op, Type, _, Info} =  H1|T1], Participan
             check_log_(T, T1, Participant)
     catch
         error:_ ->
-            rpt_log_error(H, H1, T, T1, Participant)
+            case is_already_assumed(H1) of
+                true ->
+                    %% Assume it's ok to ignore
+                    ?LOG("Log check skipping already assumed msg {~p, ~p}", [Op, Type]),
+                    check_log_([H|T], T1, Participant);
+                false ->
+                    rpt_log_error(H, H1, T, T1, Participant)
+            end
     end;
 check_log_([H|T], [H1|Tactual], Participant) ->
-    rpt_log_error(H, H1, T, Tactual, Participant);
+    case is_already_assumed(H1) of
+        true ->
+            check_log_([H|T], Tactual, Participant);
+        false ->
+            rpt_log_error(H, H1, T, Tactual, Participant)
+    end;
 check_log_([_|_], [], _) ->
     %% the log is a sliding window; events may be flushed at the tail
     ok;
 check_log_([], _, _) ->
     ok.
+
+is_already_assumed({rpt, info, _, #{notice := already_assumed}}) ->
+    true;
+is_already_assumed(_) ->
+    false.
 
 match_log_msg(Match, Info) when is_function(Match, 1) ->
     Match(Info);
@@ -2555,47 +2571,18 @@ assume_for(_, _, _) ->
     [].
 
 add_min_depth_filter(Hash, Type, #{fsm := F} = I) ->
+    %% Proxy filters are allowed to fail on successful match, and must otherwise return
+    %% {Action, NewUserState}, where Action :: relay | discard
     add_proxy_filter(fun({aesc_fsm, Fsm, #{ type := report, tag := info
-                                          , info := #{ event := min_depth_achieved
+                                          , info := #{ event := minimum_depth_achieved
                                                      , tx_hash := TxHash
                                                      , tx_type := TxType }
-                                          , notice := not_waiting }}, US)
+                                          , notice := already_assumed }}, US)
                            when TxHash == Hash,
                                 TxType == Type,
                                 Fsm    == F ->
-                             US#{ {min_depth_achieved, TxHash} => TxType }
+                             {discard, US#{ {min_depth_achieved, TxHash} => TxType }}
                      end, I).
-
-collect_any_extra_min_depth_rpts(#{ assume_for := [] }, _, _Debug) ->
-    ok;
-collect_any_extra_min_depth_rpts(#{ assume_for := AssumeFor
-                                  , min_depth  := MD
-                                  , signed_tx  := SignedTx }, _Cfg, Debug) ->
-    ct:log("Will mine ~p blocks to collect extra min_depth reports for:~n"
-           "~p", [MD, AssumeFor]),
-    ok = mine_until_min_depth(MD, SignedTx, Debug),
-    %% collect reports
-    TxHash = aetx_sign:hash(SignedTx),
-    {TxType, _} = aetx:specialize_type(aetx_sign:innermost_tx(SignedTx)),
-    [ok = collect_min_depth_rpt(R, TxHash, TxType, Debug) || R <- AssumeFor],
-    ok.
-
-collect_min_depth_rpt(#{fsm := Fsm}, TxHash, TxType, Debug) ->
-    receive
-        {aesc_fsm, Fsm, #{ type := report, tag := info
-                         , info := #{ event   := min_depth_achieved
-                                    , tx_hash := TxHash
-                                    , tx_type := TxType }
-                         , notice := not_waiting }} ->
-            ?LOG(Debug, "Got delayed min_depth rpt (type = ~p) for ~p", [TxType, Fsm]),
-            ok;
-        Other ->
-            ct:log("(Type=~p, Fsm=~p, Hash=~p~n"
-                   "OTHER = ~p", [TxType, Fsm, TxHash, Other]),
-            error(wrong_msg)
-    after ?TIMEOUT ->
-            error(timeout)
-    end.
 
 mine_until_min_depth(0, _, Debug) ->
     ?LOG(Debug, "NOT mining blocks for minimum depth", []),

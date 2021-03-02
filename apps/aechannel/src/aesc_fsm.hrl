@@ -78,6 +78,7 @@
 -define(WATCH_SNAPSHOT_SOLO, snapshot_solo).
 -define(WATCH_FORCE_PROGRESS, force_progress_tx).
 -define(MIN_DEPTH, min_depth).
+-define(MAX_ASSUMPTIONS, 10000).
 
 -define(NO_OP, no_op).
 
@@ -163,6 +164,7 @@
               , error_msg_type                :: undefined | error_msg_type()
               , last_reported_update          :: undefined | non_neg_integer()
               , last_channel_change           :: undefined | binary()          %% on-chain tx hash
+              , past_assumptions = gb_sets:new() :: gb_sets:set(binary())
               , log                           :: log()
               , strict_checks = true          :: boolean()
               }).

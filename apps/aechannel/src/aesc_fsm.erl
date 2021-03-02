@@ -4841,10 +4841,18 @@ handle_call_(channel_closing, {attach_responder, #{ reestablish := true
 handle_call_(St, {assume_minimum_depth, TxHash}, From, #data{ op = #op_min_depth{
                                                                       tag = Tag
                                                                     , tx_hash = TxHash }
-                                                            , on_chain_id = ChainId } = D) ->
-    if St == awaiting_locked; St == channel_closed ->
+                                                            , on_chain_id = ChainId
+                                                            , past_assumptions = Past} = D) ->
+    %% We allow short-cutting a min-depth wait when we are actually waiting for one,
+    %% and also impose a limit on how many times min-depth checks can be assumed
+    %% without actually collecting the results. This is mainly to keep an fsm to blow
+    %% the RAM of the serving node.
+    Allowed = (St == awaiting_locked orelse St == channel_closed)
+        andalso (gb_sets:size(Past) =< ?MAX_ASSUMPTIONS),
+    if Allowed ->
             StuffedEvent = {?MIN_DEPTH_ACHIEVED, ChainId, Tag, TxHash},
-            keep_state(D, [ {reply, From, ok}
+            D1 = D#data{past_assumptions = gb_sets:add(TxHash, Past)},
+            keep_state(D1, [ {reply, From, ok}
                           , {next_event, cast, StuffedEvent} ]);
        true ->
             keep_state(D, [ {reply, {error, From, not_allowed_now}} ])
@@ -5023,19 +5031,36 @@ handle_common_event_(cast, {?MIN_DEPTH_ACHIEVED, _ChainId,
                        , type => aesc_snapshot_solo_tx:type()
                        , tx_hash => TxHash }, D),
     keep_state(D1);
-handle_common_event_(cast, {?MIN_DEPTH_ACHIEVED, _ChainId, Tag, TxHash}, _St, _,
-                     #data{op = Op} = D) when TxHash =/= undefined,
-                                              not is_record(Op, op_min_depth) ->
+handle_common_event_(cast, {?MIN_DEPTH_ACHIEVED, _ChainId, Tag, TxHash} = Msg, _St, Mode,
+                     #data{past_assumptions = Past} = D) when TxHash =/= undefined ->
     %% If user has called `assume_minimum_depth`, we could get straggler min-depth
     %% events. Pass them along to the client.
     %% The locked_until wait on solo close is also reported as min_depth_achieved,
     %% but with TxHash == undefined. We make sure not to match on those.
-    lager:debug("Received min_depth confirmation while not waiting: ~p/~p, St = ~p",
-                [Tag, TxHash, _St]),
-    D1 = report_with_notice(info, #{ event => min_depth_achieved
-                                   , type  => min_depth_op_type(Tag)
-                                   , tx_hash => TxHash }, not_waiting, D),
-    keep_state(D1);
+    {DoReport, D1} = case gb_sets:is_element(TxHash, Past) of
+                         true ->
+                             {true, D#data{past_assumptions = gb_sets:delete(TxHash, Past)}};
+                         false ->
+                             {false, D}
+                     end,
+    case DoReport of
+        true ->
+            lager:debug("Received min_depth confirmation while not waiting: ~p/~p, St = ~p",
+                        [Tag, TxHash, _St]),
+            D2 = report_with_notice(info, #{ event => minimum_depth_achieved
+                                           , tx_type  => min_depth_op_type(Tag)
+                                           , tx_hash => TxHash }, already_assumed, D1),
+            keep_state(D2);
+        false ->
+            case Mode of
+                E when E == error; E == error_all ->
+                    close(protocol_error, D1);
+                postpone ->
+                    postpone(D1);
+                discard ->
+                    keep_state(log(drop, msg_type(Msg), Msg, D1))
+            end
+    end;
 handle_common_event_(cast, {?CHANNEL_CLOSED = OpTag, #{ tx_hash := TxHash
                                                       , tx := SignedTx} = _Info} = Msg, _St, _, D) ->
     %% Start a minimum-depth watch, then (if confirmed) terminate
@@ -5459,7 +5484,7 @@ process_incoming_forced_progress_(#{ tx := SignedTx
                                   Channel,
                                   #data{ state = State
                                        , opts = Opts
-                                       , on_chain_id = ChannelPubkey } = D) ->
+                                       , on_chain_id = _ChannelPubkey } = D) ->
     %% we don't check the authentication of the incoming transaction as at
     %% this point it had already been included in a microblock and this block
     %% had been accepted as valid by our own node. Relying on those checks, we
