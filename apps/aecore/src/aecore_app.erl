@@ -153,7 +153,7 @@ live_set_level(L) ->
     lager:set_loglevel(epoch_mining_lager_event,
                        {lager_file_backend, "log/aeternity_mining.log"},
                        undefined, L),
-    lager:set_loglevel(epoch_pow_cuckoo_lager_event,
+    lager:set_loglevel(aeminer_lager_event,
                        {lager_file_backend, "log/aeternity_pow_cuckoo.log"},
                        undefined, L),
     lager:set_loglevel(epoch_sync_lager_event,
