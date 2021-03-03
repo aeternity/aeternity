@@ -43,6 +43,8 @@
          mine_micro_blocks/2,
          mine_micro_blocks/3,
          get_key_hash_by_delta/2,
+         wait_for_tx_in_pool/2,
+         wait_for_tx_in_pool/3,
          wait_for_height/2,
          flush_new_blocks/0,
          spend/5,         %% (Node, FromPub, ToPub, Amount, Fee) -> ok
@@ -363,6 +365,31 @@ mine_all_txs(Node, MaxBlocks) ->
             mine_blocks_until_txs_on_chain(Node, TxsHs, MaxBlocks)
     end.
 
+wait_for_tx_in_pool(Node, Tx) ->
+    wait_for_tx_in_pool(Node, Tx, 5000).
+
+wait_for_tx_in_pool(Node, SignedTx, Timeout) ->
+    true = rpc:call(Node, aec_events, subscribe , [tx_created]),
+    true = rpc:call(Node, aec_events, subscribe , [tx_received]),
+    Hash = aetx_sign:hash(SignedTx),
+    case rpc:call(Node, aec_chain, find_tx_location, [Hash]) of
+        mempool -> ok;
+        B when is_binary(B) -> error({already_on_chain, SignedTx});
+        none -> error({already_gc, SignedTx});
+        not_found ->
+            receive
+                {gproc_ps_event, tx_received, #{info := SignedTx}} -> ok;
+                {gproc_ps_event, tx_created, #{info :=SignedTx}} -> ok
+            after
+                Timeout ->
+                    ct:log("timeout waiting for transaction ~p~n"
+                            "~p", [SignedTx, process_info(self(), messages)]),
+                    error({timeout_waiting_for_tx, SignedTx})
+            end,
+            rpc:call(Node, aec_events, unsubscribe , [tx_created]),
+            rpc:call(Node, aec_events, unsubscribe , [tx_received])
+    end.
+
 mine_blocks_until_txs_on_chain(Node, TxHashes, MaxBlocks) ->
     mine_blocks_until_txs_on_chain(Node, TxHashes, ?DEFAULT_CUSTOM_EXPECTED_MINE_RATE, MaxBlocks).
 
@@ -417,27 +444,9 @@ assert_not_already_on_chain(Node, TxHashes) ->
             error({already_on_chain, AlreadyOnChain})
     end.
 
-is_tx_onchain(Node, TxHash) ->
-    case rpc:call(Node, aec_chain, find_tx_location, [TxHash]) of
-        mempool -> false;
-        X when is_binary(X) ->
-            ct:log("Transaction already included ~p",
-                  [TxHash]),
-            true;
-        none ->
-            ct:log("Transaction already GCed ~p",
-                  [TxHash]),
-            false;
-        not_found ->
-            ct:log("Transaction not received yet ~p",
-                  [TxHash]),
-            false
-    end.
-
 mine_blocks_until_txs_on_chain_loop(_Node, _TxHashes, 0, _Acc) ->
     {error, max_reached};
-mine_blocks_until_txs_on_chain_loop(Node, TxHashes0, Max, Acc) ->
-    TxHashes = lists:filter(fun(Hash) -> not is_tx_onchain(Node, Hash) end, TxHashes0),
+mine_blocks_until_txs_on_chain_loop(Node, TxHashes, Max, Acc) ->
     case mine_blocks_loop(1, key) of
         {ok, [Block]} -> %% We are only observing key blocks
             NewAcc = [Block | Acc],
