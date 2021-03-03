@@ -105,15 +105,15 @@ txs_gc(Config) ->
     %%          the generation where TxH2 was mined needs to contain at least 2
     %%          microblocks in order for GC1 to be marked for GC at 3
     %% Add a bunch of transactions...
-    {ok, TxH1} = add_spend_tx(N1, 1000, 20000 * aec_test_utils:min_gas_price(),  1,  10), %% Ok
-    {ok, _GC1} = add_spend_tx(N1, 1000, 20000 * aec_test_utils:min_gas_price(),  2,  10), %% Should expire ?EXPIRE_TX_TTL after
+    {ok, _, TxH1} = add_spend_tx(N1, 1000, 20000 * aec_test_utils:min_gas_price(),  1,  10), %% Ok
+    {ok, _, _GC1} = add_spend_tx(N1, 1000, 20000 * aec_test_utils:min_gas_price(),  2,  10), %% Should expire ?EXPIRE_TX_TTL after
                                                          %% TxH2 is on chain = ~1 + 2 = ~3
-    {ok, TxH2} = add_spend_tx(N1, 1000, 20001 * aec_test_utils:min_gas_price(),  2,  10), %% Duplicate should be preferred
-    {ok, TxH3} = add_spend_tx(N1, 1000, 20000 * aec_test_utils:min_gas_price(),  3,  10), %% Ok
+    {ok, _, TxH2} = add_spend_tx(N1, 1000, 20001 * aec_test_utils:min_gas_price(),  2,  10), %% Duplicate should be preferred
+    {ok, _, TxH3} = add_spend_tx(N1, 1000, 20000 * aec_test_utils:min_gas_price(),  3,  10), %% Ok
 
-    {ok, TxH5} = add_spend_tx(N1, 1000, 20000 * aec_test_utils:min_gas_price(),  5,  10), %% Non consecutive nonce
-    {ok, _}    = add_spend_tx(N1, 1000, 20000 * aec_test_utils:min_gas_price(),  7,  10), %% Non consecutive nonce
-    {ok, _}    = add_spend_tx(N1, 1000, 20000 * aec_test_utils:min_gas_price(),  8,  7),  %% Short TTL - expires at 7
+    {ok, _, TxH5} = add_spend_tx(N1, 1000, 20000 * aec_test_utils:min_gas_price(),  5,  10), %% Non consecutive nonce
+    {ok, _, _}    = add_spend_tx(N1, 1000, 20000 * aec_test_utils:min_gas_price(),  7,  10), %% Non consecutive nonce
+    {ok, _, _}    = add_spend_tx(N1, 1000, 20000 * aec_test_utils:min_gas_price(),  8,  7),  %% Short TTL - expires at 7
 
     %% Now there should be 7 transactions in mempool
     pool_check(N1, 7),
@@ -137,7 +137,7 @@ txs_gc(Config) ->
     pool_check(N1, 3),
 
     %% Add the missing tx
-    {ok, TxH4} = add_spend_tx(N1, 1000, 20000 * aec_test_utils:min_gas_price(),  4,  10), %% consecutive nonce
+    {ok, _, TxH4} = add_spend_tx(N1, 1000, 20000 * aec_test_utils:min_gas_price(),  4,  10), %% consecutive nonce
 
     %% Mine to get TxH4-5 onto chain
     {ok, Blocks2} = mine_blocks_until_txs_on_chain(N1, [TxH4, TxH5]),
@@ -209,17 +209,14 @@ missing_tx_gossip(Config) ->
     rpc:call(N1, application, set_env, [aecore, ping_interval, 1000000], 5000),
     rpc:call(N2, application, set_env, [aecore, ping_interval, 1000000], 5000),
 
-    {ok, TxH1} = add_spend_tx(N1, 1000, 20000 * aec_test_utils:min_gas_price(),  1,  100), %% Ok
-    {ok, TxH2} = add_spend_tx(N1, 1000, 20000 * aec_test_utils:min_gas_price(),  2,  100), %% Ok
-    {ok, TxH3} = add_spend_tx(N1, 1000, 20000 * aec_test_utils:min_gas_price(),  3,  100), %% Ok
-    {ok, TxH4} = add_spend_tx(N1, 1000, 20000 * aec_test_utils:min_gas_price(),  4,  100), %% Ok
-    {ok, TxH5} = add_spend_tx(N2, 1000, 20000 * aec_test_utils:min_gas_price(),  5,  100), %% Ok
+    {ok, _, TxH1} = add_spend_tx(N1, 1000, 20000 * aec_test_utils:min_gas_price(),  1,  100), %% Ok
+    {ok, _, TxH2} = add_spend_tx(N1, 1000, 20000 * aec_test_utils:min_gas_price(),  2,  100), %% Ok
+    {ok, _, TxH3} = add_spend_tx(N1, 1000, 20000 * aec_test_utils:min_gas_price(),  3,  100), %% Ok
+    {ok, _, TxH4} = add_spend_tx(N1, 1000, 20000 * aec_test_utils:min_gas_price(),  4,  100), %% Ok
 
     {ok, Tx1Hash} = aeser_api_encoder:safe_decode(tx_hash, TxH1),
     {ok, Tx4Hash} = aeser_api_encoder:safe_decode(tx_hash, TxH4),
-    {ok, Tx5Hash} = aeser_api_encoder:safe_decode(tx_hash, TxH5),
     ?assertMatch({mempool, _}, rpc:call(N1, aec_chain, find_tx_with_location, [Tx1Hash])), %% Smoke test approach used in the following for checking txs.
-    ?assertMatch({mempool, _}, rpc:call(N2, aec_chain, find_tx_with_location, [Tx5Hash])), %% Smoke test approach used in the following for checking txs.
 
     none = rpc:call(N2, aec_chain, find_tx_with_location, [Tx1Hash]),
     none = rpc:call(N2, aec_chain, find_tx_with_location, [Tx4Hash]),
@@ -228,14 +225,16 @@ missing_tx_gossip(Config) ->
     %% Only needed when chain more than 18 blocks
     ok = rpc:call(N2, application, set_env, [aecore, expected_mine_rate, aecore_suite_utils:expected_mine_rate()], 5000),
     {ok, MinedKeyBlocks1} = mine_blocks_until_txs_on_chain(N1, [TxH1, TxH2, TxH3, TxH4]),
+
+    {ok, Tx5, TxH5} = add_spend_tx(N2, 1000, 20000 * aec_test_utils:min_gas_price(),  5,  100), %% Ok
+    {ok, Tx5Hash} = aeser_api_encoder:safe_decode(tx_hash, TxH5),
     aecore_suite_utils:wait_for_height(N2, aec_blocks:height(lists:last(MinedKeyBlocks1))),
-    AssertTxIncluded =
-        fun(Node, Hash) ->
-            ?assertMatch({X,_} when is_binary(X), rpc:call(Node, aec_chain, find_tx_with_location, [Hash]))
-        end,
-    AssertTxIncluded(N2, Tx1Hash),
-    AssertTxIncluded(N2, Tx4Hash),
-    {ok, _} = mine_blocks_until_txs_on_chain(N2, [TxH5]),
+    ?assertMatch({X,_} when is_binary(X), rpc:call(N2, aec_chain, find_tx_with_location, [Tx1Hash])),
+    ?assertMatch({X,_} when is_binary(X), rpc:call(N2, aec_chain, find_tx_with_location, [Tx4Hash])),
+    ok = aecore_suite_utils:wait_for_tx_in_pool(N2, Tx5),
+    ?assertMatch({mempool, _}, rpc:call(N2, aec_chain, find_tx_with_location, [Tx5Hash])), %% Smoke test approach used in the following for checking txs.
+
+    {ok, _} = aecore_suite_utils:mine_blocks_until_txs_on_chain(N2, [TxH5], ?MAX_MINED_BLOCKS),
     ok.
 
 %% CT Consensus does not change the coinbase
@@ -328,7 +327,7 @@ add_spend_tx(Node, Amount, Fee, Nonce, TTL, Sender, Recipient) ->
     {ok, Tx} = aec_spend_tx:new(Params),
     STx = aec_test_utils:sign_tx(Tx, maps:get(privkey, Sender)),
     Res = rpc:call(Node, aec_tx_pool, push, [STx]),
-    {Res, aeser_api_encoder:encode(tx_hash, aetx_sign:hash(STx))}.
+    {Res, STx, aeser_api_encoder:encode(tx_hash, aetx_sign:hash(STx))}.
 
 
 create_contract_tx(Node, Name, Args, Fee, Nonce, TTL) ->
