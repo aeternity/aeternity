@@ -46,11 +46,13 @@ init_per_suite(Config) ->
         <<"mining">> => #{
             <<"micro_block_cycle">> => MicroBlockCycle
         },
-        <<"mempool">> => #{ <<"invalid_tx_ttl">> => 2 }
+        <<"mempool">> => #{ <<"invalid_tx_ttl">> => 2
+                          , <<"nonce_baseline">> => 10 }
     },
     Config1 = aecore_suite_utils:init_per_suite([dev1, dev2], DefCfg, 
                                                 [{add_peers, true}],
                                                 [{symlink_name, "latest.txs"},
+                                                 {instant_mining, true}, 
                                                  {test_module, ?MODULE}, 
                                                  {micro_block_cycle, 
                                                   MicroBlockCycle}] ++ 
@@ -138,7 +140,7 @@ txs_gc(Config) ->
     {ok, TxH4} = add_spend_tx(N1, 1000, 20000 * aec_test_utils:min_gas_price(),  4,  10), %% consecutive nonce
 
     %% Mine to get TxH4-5 onto chain
-    {ok, Blocks2} = aecore_suite_utils:mine_blocks_until_txs_on_chain(N1, [TxH4, TxH5], ?MAX_MINED_BLOCKS),
+    {ok, Blocks2} = mine_blocks_until_txs_on_chain(N1, [TxH4, TxH5]),
     rpc:call(N1, aec_tx_pool, garbage_collect, []),
     Height3 = Height2 + length(Blocks2),
 
@@ -225,13 +227,15 @@ missing_tx_gossip(Config) ->
     %% Set the same mining_rate to validate target
     %% Only needed when chain more than 18 blocks
     ok = rpc:call(N2, application, set_env, [aecore, expected_mine_rate, aecore_suite_utils:expected_mine_rate()], 5000),
-    {ok, MinedKeyBlocks1} = aecore_suite_utils:mine_blocks_until_txs_on_chain(N1, [TxH1, TxH2, TxH3, TxH4], ?MAX_MINED_BLOCKS),
+    {ok, MinedKeyBlocks1} = mine_blocks_until_txs_on_chain(N1, [TxH1, TxH2, TxH3, TxH4]),
     aecore_suite_utils:wait_for_height(N2, aec_blocks:height(lists:last(MinedKeyBlocks1))),
-    ?assertMatch({X,_} when is_binary(X), rpc:call(N2, aec_chain, find_tx_with_location, [Tx1Hash])),
-    ?assertMatch({X,_} when is_binary(X), rpc:call(N2, aec_chain, find_tx_with_location, [Tx4Hash])),
-
-    {ok, _} = aecore_suite_utils:mine_blocks_until_txs_on_chain(N2, [TxH5], ?MAX_MINED_BLOCKS),
-
+    AssertTxIncluded =
+        fun(Node, Hash) ->
+            ?assertMatch({X,_} when is_binary(X), rpc:call(Node, aec_chain, find_tx_with_location, [Hash]))
+        end,
+    AssertTxIncluded(N2, Tx1Hash),
+    AssertTxIncluded(N2, Tx4Hash),
+    {ok, _} = mine_blocks_until_txs_on_chain(N2, [TxH5]),
     ok.
 
 %% CT Consensus does not change the coinbase
@@ -244,8 +248,7 @@ check_coinbase_validation(Config) ->
         create_contract_tx(N1, chain, [],  300000 * aec_test_utils:min_gas_price(),  1,  100),
     {ok, TxH2} =
         call_contract_tx(N1, Ct1, Code, <<"save_coinbase">>, [], 600000 * aec_test_utils:min_gas_price(),  2,  100),
-    {ok, _} =
-        aecore_suite_utils:mine_blocks_until_txs_on_chain(N1, [TxH1, TxH2], ?MAX_MINED_BLOCKS),
+    {ok, _} = mine_blocks_until_txs_on_chain(N1, [TxH1, TxH2]),
 
     %% Check if dev2 syncs with dev1 from genesis
     N2 = aecore_suite_utils:node_name(dev2),
@@ -394,3 +397,10 @@ new_pubkey() ->
     #{ public := PubKey } = enacl:sign_keypair(),
     PubKey.
 
+mine_blocks_until_txs_on_chain(Node, TxHashes) ->
+    aecore_suite_utils:mine_blocks_until_txs_on_chain(
+      Node,
+      TxHashes,
+      aecore_suite_utils:expected_mine_rate(),
+      ?MAX_MINED_BLOCKS,
+      #{strictly_follow_top => true}).

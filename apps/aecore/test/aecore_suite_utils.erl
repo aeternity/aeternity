@@ -417,9 +417,27 @@ assert_not_already_on_chain(Node, TxHashes) ->
             error({already_on_chain, AlreadyOnChain})
     end.
 
+is_tx_onchain(Node, TxHash) ->
+    case rpc:call(Node, aec_chain, find_tx_location, [TxHash]) of
+        mempool -> false;
+        X when is_binary(X) ->
+            ct:log("Transaction already included ~p",
+                  [TxHash]),
+            true;
+        none ->
+            ct:log("Transaction already GCed ~p",
+                  [TxHash]),
+            false;
+        not_found ->
+            ct:log("Transaction not received yet ~p",
+                  [TxHash]),
+            false
+    end.
+
 mine_blocks_until_txs_on_chain_loop(_Node, _TxHashes, 0, _Acc) ->
     {error, max_reached};
-mine_blocks_until_txs_on_chain_loop(Node, TxHashes, Max, Acc) ->
+mine_blocks_until_txs_on_chain_loop(Node, TxHashes0, Max, Acc) ->
+    TxHashes = lists:filter(fun(Hash) -> not is_tx_onchain(Node, Hash) end, TxHashes0),
     case mine_blocks_loop(1, key) of
         {ok, [Block]} -> %% We are only observing key blocks
             NewAcc = [Block | Acc],
