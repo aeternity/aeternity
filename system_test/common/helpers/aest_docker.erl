@@ -569,10 +569,11 @@ retry_epoch_stop(NodeState, ID, Cmd, Opts, Retry) ->
     {ok, Status, Res0} = aest_docker_api:exec(ID, Cmd, Opts),
     Res1 =
          case Res0 of
-             undefined -> <<"ok">>;
+             undefined -> "ok";
+             _ when is_binary(Res0) -> binary_to_list(string:trim(Res0, trailing, [$\r, $\n]));
              _ when is_list(Res0) -> string:trim(Res0, trailing, [$\r, $\n])
          end,
-    case {Status, string:equal(Res1, <<"ok">>)} of
+    case {Status, string:equal(Res1, "ok")} of
         {137, true} ->
             ok;
         _ ->
