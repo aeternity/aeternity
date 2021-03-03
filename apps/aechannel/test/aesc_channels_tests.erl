@@ -91,7 +91,7 @@ different_delegates() ->
         fun(IDelegates, RDelegates) ->
             Delegates = delegates(IDelegates, RDelegates),
             Channel = new_channel_(#{delegate_pubkeys => Delegates}),
-            EncL = fun(L) -> [aeser_id:create(account, Pubkey) || Pubkey <- L]end,
+            EncL = fun(L) -> [aeser_id:create(account, Pubkey) || Pubkey <- L] end,
             case aesc_channels:version(Channel) < 3 of
                 true ->
                     Delegates = aesc_channels:delegate_pubkeys(Channel, initiator),
