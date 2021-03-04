@@ -3199,8 +3199,7 @@ fp_not_participant(Cfg) ->
                 end,
                 negative(fun force_progress_/2, {error, Err})])
         end,
-%    [Test(Owner) || Owner <- ?ROLES],
-    Test(responder),
+    [Test(Owner) || Owner <- ?ROLES],
     ok.
 
 fp_missing_channel(Cfg) ->

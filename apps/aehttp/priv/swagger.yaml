@@ -3409,23 +3409,23 @@ definitions:
       - fee
       - auth_data
       - tx
-  OldDelegates:
+  DelegatesList:
     type: array
     items:
       $ref: '#/definitions/EncodedPubkey'
-  NewDelegates:
+  DelegatesObject:
     type: object
     properties:
       initiator:
         description: Initiator's delegates 
-        $ref: '#/definitions/OldDelegates'
+        $ref: '#/definitions/DelegatesList'
       responder:
         description: Responder's delegates 
-        $ref: '#/definitions/OldDelegates'
+        $ref: '#/definitions/DelegatesList'
   Delegates:
     oneOf:
-      - $ref: '#/definitions/OldDelegates'
-      - $ref: '#/definitions/NewDelegates'
+      - $ref: '#/definitions/DelegatesList'
+      - $ref: '#/definitions/DelegatesObject'
 
 externalDocs:
   description: Find out more about Aeternity
