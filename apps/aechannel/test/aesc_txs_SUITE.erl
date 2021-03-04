@@ -194,6 +194,7 @@
 %% more complex scenarios
 -export([ fp_close_solo_slash_with_same_round/1
         , fp_fp_close_solo_with_same_round/1
+        , fp_from_delegate_after_iris_not_closing/1
         , fp_from_delegate_after_iris/1
         , fp_wrong_delegate_after_iris/1
         ]).
@@ -437,6 +438,7 @@ force_progress_negative_seq() ->
       fp_oracle_respond,
 
       fp_from_delegate_after_iris,
+      fp_from_delegate_after_iris_not_closing,
       fp_wrong_delegate_after_iris
     ].
 
@@ -4457,7 +4459,16 @@ maybe_snapshot(Cfg, Round) ->
             false ->
                 run(Props,
                     [ set_prop(round, Round),
-                      positive(fun snapshot_solo_/2)])
+                      fun(#{channel_pubkey := ChannelPubKey, state := S} = Props1) ->
+                          % make sure the channel is not active any more
+                          Channel = aesc_test_utils:get_channel(ChannelPubKey, S),
+                          IsChannelActive = aesc_channels:is_active(Channel),
+                          ?TEST_LOG("The channel is active: ~p", [IsChannelActive]),
+                          case IsChannelActive of
+                              true -> (positive(fun snapshot_solo_/2))(Props1);
+                              false -> (positive(fun slash_/2))(Props1)
+                          end
+                      end])
         end
     end.
 
@@ -5975,7 +5986,7 @@ fp_close_solo_slash_with_same_round(Cfg) ->
                                               {SwitchHeight + 1, false}]],
     ok.
 
-fp_from_delegate_after_iris(Cfg) ->
+fp_from_delegate_after_iris_not_closing(Cfg) ->
     Height = 100,
     PreIris = aec_hard_forks:protocol_effective_at_height(Height) < ?IRIS_PROTOCOL_VSN,
     NonEmptyPayload = proplists:get_value(force_progress_use_payload, Cfg, true),
@@ -5988,6 +5999,59 @@ fp_from_delegate_after_iris(Cfg) ->
                     run(Props,
                         [ rename_prop(from_pubkey, delegate_pubkey, delete_old),
                           rename_prop(from_privkey, delegate_privkey, delete_old),
+                          set_from(WhosDelegate),
+                          fun(#{ initiator_pubkey := Initiator
+                              , responder_pubkey := Responder
+                              , from_pubkey      := From 
+                              , delegate_pubkey  := Delegate} = Props1) ->
+                              ?TEST_LOG("Initiator: ~p,\nresponder: ~p,\ndelegate: ~p",
+                                        [Initiator, Responder, Delegate]),
+                              ?TEST_LOG("From: ~p", [From]),
+                              Props1#{offchain_update_from => From}
+                          end,
+                          create_contract_poi_and_payload(FPRound - 1, ContractRound, WhosDelegate),
+                          rename_prop(delegate_pubkey, from_pubkey, keep_old),
+                          rename_prop(delegate_privkey, from_privkey, keep_old)
+                        ])
+                  end,
+            Err =
+                case PreIris of
+                    true when NonEmptyPayload -> account_not_peer;
+                    true -> not_caller;
+                    false -> channel_not_closing
+                end,
+            test_delegate_not_allowed(Cfg,
+                fun(Props, {negative, {error, Err1}}) ->
+                    {Err, Err} = {Err, Err1},
+                    run(Props,
+                        [PrepareFP,
+                        negative_force_progress_sequence(Cfg, FPRound,
+                                                          _Forcer = do_not_change_from,
+                                                          Err)
+                        ])
+                end,
+                #{ height => Height }, Err)
+        end,
+    Test(initiator),
+    Test(responder),
+    ok.
+
+fp_from_delegate_after_iris(Cfg) ->
+    Height = 100,
+    PreIris = aec_hard_forks:protocol_effective_at_height(Height) < ?IRIS_PROTOCOL_VSN,
+    NonEmptyPayload = proplists:get_value(force_progress_use_payload, Cfg, true),
+    FPRound = 30,
+    ContractRound = 2,
+    Test =
+        fun(WhosDelegate, WhoCloses) ->
+            PrepareFP =
+                fun(Props) ->
+                    run(Props,
+                        [ rename_prop(from_pubkey, delegate_pubkey, delete_old),
+                          rename_prop(from_privkey, delegate_privkey, delete_old),
+                          set_prop(round, FPRound - 2),
+                          set_from(WhoCloses),
+                          positive(fun close_solo_with_payload/2),
                           set_from(WhosDelegate),
                           fun(#{ initiator_pubkey := Initiator
                               , responder_pubkey := Responder
@@ -6038,8 +6102,9 @@ fp_from_delegate_after_iris(Cfg) ->
                         #{ height => Height, use_delegate => WhosDelegate })
             end
         end,
-    Test(initiator),
-    Test(responder),
+    [Test(WhosDelegate, WhoCloses)
+        || WhosDelegate  <- ?ROLES,
+           WhoCloses     <- ?ROLES],
     ok.
 
 fp_wrong_delegate_after_iris(Cfg) ->
@@ -6049,12 +6114,19 @@ fp_wrong_delegate_after_iris(Cfg) ->
     FPRound = 30,
     ContractRound = 2,
     Test =
-        fun(CallFrom, WhosDelegate) ->
+        fun(WhosDelegate, WhoCloses) ->
+            CallFrom =
+                case WhosDelegate of
+                    initiator -> responder;
+                    responder -> initiator
+                end,
             PrepareFP =
                 fun(Props) ->
                     run(Props,
                         [ rename_prop(from_pubkey, delegate_pubkey, delete_old),
                           rename_prop(from_privkey, delegate_privkey, delete_old),
+                          set_from(WhoCloses),
+                          positive(fun close_solo_with_payload/2),
                           set_from(CallFrom),
                           fun(#{ initiator_pubkey := Initiator
                                , responder_pubkey := Responder
@@ -6075,9 +6147,11 @@ fp_wrong_delegate_after_iris(Cfg) ->
                                   false ->
                                       run(Props1,
                                           [ set_from(initiator),
-                                            positive(fun snapshot_solo_/2),
-                                            set_prop(payload, <<>>),
-                                            set_prop(round, FPRound)
+                                            set_prop(round, FPRound-1),
+                                            delete_prop(state_hash),
+                                            delete_prop(payload),
+                                            positive(fun slash_/2),
+                                            set_prop(payload, <<>>)
                                           ])
                               end
                           end,
@@ -6103,8 +6177,9 @@ fp_wrong_delegate_after_iris(Cfg) ->
                 end,
                 #{ height => Height, use_delegate => WhosDelegate }, Err)
         end,
-    Test(initiator, responder),
-    Test(responder, initiator),
+    [Test(WhosDelegate, WhoCloses)
+        || WhosDelegate  <- ?ROLES,
+           WhoCloses     <- ?ROLES],
     ok.
 
 fp_fp_close_solo_with_same_round(Cfg) ->

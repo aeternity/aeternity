@@ -353,9 +353,15 @@ check_force_progress_(PayloadHash, PayloadRound,
               case CallerPubKey =:= FromPubKey of
                   true -> check_is_peer(FromPubKey, Channel);
                   false ->
-                      case Protocol < ?IRIS_PROTOCOL_VSN of
-                          true -> {error, not_caller};
-                          false ->
+                      aeu_validation:run([
+                          fun() ->
+                              case Protocol < ?IRIS_PROTOCOL_VSN of
+                                  true -> {error, not_caller};
+                                  false -> ok
+                              end
+                          end,
+                          fun() -> check_is_closing(Channel) end,
+                          fun() ->
                               case aesc_channels:role_by_pubkey(Channel, CallerPubKey) of
                                   none -> {error, not_caller_or_delegate};
                                   Role ->
@@ -365,7 +371,7 @@ check_force_progress_(PayloadHash, PayloadRound,
                                               {error, not_caller_or_delegate}
                                       end
                               end
-                      end
+                          end])
               end
           end,
           fun() ->
