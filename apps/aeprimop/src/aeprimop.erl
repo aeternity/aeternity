@@ -999,12 +999,10 @@ channel_create_op(InitiatorPubkey, InitiatorAmount,
         fun(L) -> true = lists:all(fun(X) -> ?IS_HASH(X) end, L) end,
     case DelegatePubkeys of
         L when is_list(L) ->
-            ValidateHashes(L),
-            pass;
+            ValidateHashes(L);
         {IL, RL} when is_list(IL), is_list(RL) ->
             ValidateHashes(IL),
-            ValidateHashes(RL),
-            pass
+            ValidateHashes(RL)
     end,
     {channel_create, {InitiatorPubkey, InitiatorAmount,
                       ResponderPubkey, ResponderAmount,

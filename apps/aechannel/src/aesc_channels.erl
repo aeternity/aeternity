@@ -357,7 +357,7 @@ new(InitiatorAcc, InitiatorAmount, ResponderAcc, ResponderAmount,
     PubKey = pubkey(InitiatorPubKey, Nonce, ResponderPubKey),
     Version =
         case Protocol of
-            P when P >= ?IRIS_PROTOCOL_VSN -> ?CHANNEL_VSN_3;
+            P when P >= ?IRIS_PROTOCOL_VSN    -> ?CHANNEL_VSN_3;
             P when P >= ?FORTUNA_PROTOCOL_VSN -> ?CHANNEL_VSN_2;
             P when P <  ?FORTUNA_PROTOCOL_VSN -> ?CHANNEL_VSN_1
         end,

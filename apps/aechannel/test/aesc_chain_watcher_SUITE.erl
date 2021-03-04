@@ -694,6 +694,10 @@ init_per_group(GrpName, Config) ->
         _ ->
             {ok, ChainP} = start_chain_process(),
             {ok, Watcher} = start_chain_watcher(),
+            %% mine a few keyblocks so we are on the right protocol
+            lists:foreach(
+                fun(_) -> add_keyblock() end,
+                lists:seq(1, 2)),
             [{watcher, Watcher}, {chain_process, ChainP} | Config]
     end.
 
