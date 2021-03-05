@@ -195,7 +195,7 @@ traverse_to_key_hash(H, KeyHash) ->
     end.
 
 -spec contract_fate_code(pubkey(), state()) -> 'error' |
-                                               {'ok', term(), state()}.
+                                               {'ok', {term(), aect_contracts:vm_version()}, state()}.
 contract_fate_code(Pubkey, #state{primop_state = PState} = S) ->
     case aeprimop_state:find_contract_without_store(Pubkey, PState) of
         none -> error;
@@ -205,7 +205,7 @@ contract_fate_code(Pubkey, #state{primop_state = PState} = S) ->
                     SerCode = aect_contracts:code(Contract),
                     #{ byte_code := ByteCode} = aect_sophia:deserialize(SerCode),
                     try aeb_fate_code:deserialize(ByteCode) of
-                        FateCode -> {ok, FateCode, S#state{primop_state = PState}}
+                        FateCode -> {ok, {FateCode, VMV}, S#state{primop_state = PState}}
                     catch _:_ -> error
                     end;
                 _ ->

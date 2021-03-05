@@ -75,7 +75,7 @@
         , push_return_type_check/4
         , spend_gas/2
         , spend_gas_for_new_cells/2
-        , update_for_remote_call/4
+        , update_for_remote_call/5
         ]).
 
 -ifdef(TEST).
@@ -175,11 +175,12 @@ add_trace(I, #es{trace = Trace} = ES) ->
     ES#es{trace = [{I, erlang:process_info(self(), reductions)}|Trace]}.
 -endif.
 
--spec update_for_remote_call(pubkey(), term(), aeb_fate_data:fate_address(), state()) -> state().
-update_for_remote_call(Contract, ContractCode, Caller, ES) ->
+-spec update_for_remote_call(pubkey(), term(), aect_contracts:vm_version(), aeb_fate_data:fate_address(), state()) -> state().
+update_for_remote_call(Contract, ContractCode, VMV, Caller, ES) ->
     ES#es{ functions = aeb_fate_code:functions(ContractCode)
          , current_contract = Contract
          , caller = Caller
+         , vm_version = VMV
          }.
 
 -spec check_reentrant_remote(aeb_fate_data:fate_contract(), state()) ->
@@ -220,6 +221,7 @@ push_arguments([A|As], Acc, Stack, ES) ->
 push_call_stack(#es{ current_bb = BB
                    , current_function = Function
                    , current_contract = Contract
+                   , vm_version = VmVersion
                    , current_tvars    = TVars
                    , accumulator = Acc
                    , accumulator_stack = AccS
@@ -230,7 +232,7 @@ push_call_stack(#es{ current_bb = BB
     AccS1 = [Acc || Acc /= void] ++ AccS,
     ES#es{accumulator       = void,
           accumulator_stack = [],
-          call_stack        = [{Caller, Contract, Function, TVars, BB + 1, AccS1, Mem, Value}|Stack]}.
+          call_stack        = [{Caller, Contract, VmVersion, Function, TVars, BB + 1, AccS1, Mem, Value}|Stack]}.
 
 %% TODO: Make better types for all these things
 -spec pop_call_stack(state()) ->
@@ -252,7 +254,7 @@ pop_call_stack(#es{accumulator = ReturnValue,
                        , call_stack = Rest
                        },
             pop_call_stack(ES1);
-        [{_Caller, Current, Function, TVars, BB, AccS, Mem, Value}| Rest] ->
+        [{_Caller, Current, _VmVersion, Function, TVars, BB, AccS, Mem, Value}| Rest] ->
             {local, Function, TVars, BB,
              ES#es{ call_value = Value
                   , accumulator = ReturnValue
@@ -260,7 +262,7 @@ pop_call_stack(#es{accumulator = ReturnValue,
                   , memory = Mem
                   , call_stack = Rest
                   }};
-        [{Caller, Pubkey, Function, TVars, BB, AccS, Mem, Value}| Rest] ->
+        [{Caller, Pubkey, VmVersion, Function, TVars, BB, AccS, Mem, Value}| Rest] ->
             Seen = pop_seen_contracts(Pubkey, ES),
             NewCurrent =
                 case aefa_chain_api:generation(ES#es.chain_api) of
@@ -278,6 +280,7 @@ pop_call_stack(#es{accumulator = ReturnValue,
                   , call_stack = Rest
                   , seen_contracts = Seen
                   , current_contract = NewCurrent
+                  , vm_version = VmVersion
                   }}
     end.
 
@@ -297,7 +300,7 @@ collect_gas_stores([{gas_store, Gas}|Left], AccGas) ->
     collect_gas_stores(Left, AccGas + Gas);
 collect_gas_stores([{return_check, _, _, _, _, _}|Left], AccGas) ->
     collect_gas_stores(Left, AccGas);
-collect_gas_stores([{_, _, _, _, _, _, _, _}|Left], AccGas) ->
+collect_gas_stores([{_, _, _, _, _, _, _, _, _}|Left], AccGas) ->
     collect_gas_stores(Left, AccGas);
 collect_gas_stores([], AccGas) ->
     AccGas.
