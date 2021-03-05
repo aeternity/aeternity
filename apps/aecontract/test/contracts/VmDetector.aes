@@ -1,0 +1,7 @@
+@compiler >= 4.3
+
+contract Detector =
+  payable entrypoint main(dat: int) =
+    switch(Chain.block_hash(Chain.block_height))
+      None => 1
+      Some(_hash) => 2

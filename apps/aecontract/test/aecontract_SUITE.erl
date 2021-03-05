@@ -66,6 +66,8 @@
         , sophia_stdlib_tests/1
         , sophia_remote_identity/1
         , sophia_vm_interaction/1
+        , fate_vm_interaction/1
+        , fate_vm_version_switching/1
         , sophia_state/1
         , sophia_match_bug/1
         , sophia_spend/1
@@ -337,6 +339,9 @@ groups() ->
     , {protocol_interaction, [], [ sophia_vm_interaction
                                  , create_contract_init_error_no_create_account
                                  ]}
+    , {protocol_interaction_fate, [], [ fate_vm_interaction
+                                      , fate_vm_version_switching
+                                      ]}
     , {transactions, [], [ create_contract
                          , create_contract_init_error
                          , create_contract_init_error_call_wrong_function
@@ -563,6 +568,26 @@ init_per_group(protocol_interaction, Cfg) ->
         _ ->
             {skip, only_test_protocol_interaction_on_latest_protocol}
     end;
+init_per_group(protocol_interaction_fate, Cfg) ->
+    case aect_test_utils:latest_protocol_version() of
+        ?IRIS_PROTOCOL_VSN ->
+            LHeight = 20,
+            IHeight = 25,
+            Fun = fun(H) when H <  LHeight -> ?FORTUNA_PROTOCOL_VSN;
+                (H) when H <  IHeight -> ?LIMA_PROTOCOL_VSN;
+                (H) when H >= IHeight -> ?IRIS_PROTOCOL_VSN
+                  end,
+            meck:expect(aec_hard_forks, protocol_effective_at_height, Fun),
+            [{sophia_version, ?SOPHIA_IRIS_FATE},
+             {vm_version, ?VM_FATE_SOPHIA_2},
+             {abi_version, ?ABI_FATE_SOPHIA_1},
+             {fork_heights, #{ lima    => LHeight,
+                               iris    => IHeight
+                             }},
+             {protocol, iris} | Cfg];
+        _ ->
+            {skip, only_test_protocol_interaction_on_latest_protocol}
+    end;
 init_per_group(Group, Cfg) ->
     case ?IS_FATE_SOPHIA(?config(vm_version, Cfg)) of
         true ->
@@ -576,6 +601,9 @@ init_per_group(Group, Cfg) ->
     end.
 
 end_per_group(protocol_interaction, Cfg) ->
+    meck:unload(aec_hard_forks),
+    Cfg;
+end_per_group(protocol_interaction_fate, Cfg) ->
     meck:unload(aec_hard_forks),
     Cfg;
 end_per_group(_Grp, Cfg) ->
@@ -1393,6 +1421,9 @@ create_tx(Owner, Spec0, State) ->
          , amount      => 200
          , gas         => 10000 }, Spec0),
     aect_test_utils:create_tx(Owner, Spec, State).
+
+compile_local_contract(Name) ->
+    aect_test_utils:compile_filename(sophia_version(), "../../lib/aecontract/test/contracts/" ++ Name ++ ".aes").
 
 compile_contract(Name) ->
     aect_test_utils:compile_contract(sophia_version(), Name).
@@ -6591,7 +6622,133 @@ lima_migration(_Config) ->
     ok.
 
 
+fate_vm_interaction(Cfg) ->
+    state(aect_test_utils:new_state()),
+    ForkHeights   = ?config(fork_heights, Cfg),
+    LimaHeight = maps:get(lima, ForkHeights),
+    IrisHeight = maps:get(iris, ForkHeights),
+    Protocol = aec_hard_forks:protocol_effective_at_height(LimaHeight),
+    GasPrice = aec_governance:minimum_gas_price(Protocol),
+    MinerMinGasPrice= aec_tx_pool:minimum_miner_gas_price(),
+    MinGasPrice   = max(GasPrice, MinerMinGasPrice),
+    Acc           = ?call(new_account, 10000000000 * MinGasPrice),
+    LimaSpec      = #{height => LimaHeight, vm_version => ?VM_FATE_SOPHIA_1,
+        amount => 100,
+        gas_price => MinGasPrice,
+        fee => 1000000 * MinGasPrice},
+    IrisSpec      = #{height => IrisHeight, vm_version => ?VM_FATE_SOPHIA_2,
+        amount => 100,
+        gas_price => MinGasPrice,
+        fee => 1000000 * MinGasPrice},
+    {ok, IdCode}  = compile_contract(identity),
+    {ok, RemCode} = compile_contract(remote_call),
 
+    %% Create contracts on both sides of the fork
+    IdCLima     = ?call(create_contract_with_code, Acc, IdCode, {}, LimaSpec),
+    RemCLima    = ?call(create_contract_with_code, Acc, RemCode, {}, LimaSpec),
+    Rem2CLima    = ?call(create_contract_with_code, Acc, RemCode, {}, LimaSpec),
+    IdCIris     = ?call(create_contract_with_code, Acc, IdCode, {}, IrisSpec),
+    RemCIris    = ?call(create_contract_with_code, Acc, RemCode, {}, IrisSpec),
+    Rem2CIris    = ?call(create_contract_with_code, Acc, RemCode, {}, IrisSpec),
+
+    %% Check that we cannot create contracts with old vms after the forks
+    BadSpec   = LimaSpec#{height => IrisHeight},
+    {error, illegal_vm_version} = ?call(tx_fail_create_contract_with_code, Acc, IdCode, {}, BadSpec),
+
+    LatestCallSpec = #{height => IrisHeight,
+                       gas_price => MinGasPrice,
+                       fee => 1000000 * MinGasPrice},
+
+    %% Call directly old VMs
+    [?assertEqual(42, ?call(call_contract, Acc, Id, main, word, 42, LatestCallSpec))
+        || Id <- [ IdCLima
+                 , IdCIris
+                 ]],
+
+    %% Call new/oldVM -> old/newVM
+    [?assertEqual(98, ?call(call_contract, Acc, Rem, call, word, {?cid(Id), 98},
+        LatestCallSpec))
+        || {Rem, Id} <- [ {RemCLima,    IdCLima}
+                        , {RemCIris,    IdCLima}
+                        , {RemCLima,    IdCIris}
+                        , {RemCIris,    IdCIris}
+                        ]],
+
+    %% Call new/oldVM -> new/oldVM -> new/oldVM in different orders
+    [?assertEqual(77, ?call(call_contract, Acc, Rem1, staged_call, word,
+        {?cid(Id), ?cid(Rem2), 77}, LatestCallSpec))
+        || {Rem1, Id, Rem2} <- [ {RemCIris, IdCIris, Rem2CLima}
+                               , {RemCIris, IdCIris, Rem2CIris}
+                               , {RemCIris, IdCLima, Rem2CIris}
+                               , {RemCIris, IdCLima, Rem2CLima}
+                               , {RemCLima, IdCIris, Rem2CLima}
+                               , {RemCLima, IdCIris, Rem2CIris}
+                               , {RemCLima, IdCLima, Rem2CLima}
+                               , {RemCLima, IdCLima, Rem2CIris}
+                               ]],
+    ok.
+
+
+fate_vm_version_switching(Cfg) ->
+    state(aect_test_utils:new_state()),
+    ForkHeights   = ?config(fork_heights, Cfg),
+    LimaHeight = maps:get(lima, ForkHeights),
+    IrisHeight = maps:get(iris, ForkHeights),
+    Protocol = aec_hard_forks:protocol_effective_at_height(LimaHeight),
+    GasPrice = aec_governance:minimum_gas_price(Protocol),
+    MinerMinGasPrice= aec_tx_pool:minimum_miner_gas_price(),
+    MinGasPrice   = max(GasPrice, MinerMinGasPrice),
+    Acc           = ?call(new_account, 10000000000 * MinGasPrice),
+    LimaSpec      = #{height => LimaHeight, vm_version => ?VM_FATE_SOPHIA_1,
+        amount => 100,
+        gas_price => MinGasPrice,
+        fee => 1000000 * MinGasPrice},
+    IrisSpec      = #{height => IrisHeight, vm_version => ?VM_FATE_SOPHIA_2,
+        amount => 100,
+        gas_price => MinGasPrice,
+        fee => 1000000 * MinGasPrice},
+    {ok, DetectorContract} = compile_local_contract("VmDetector"),
+    {ok, RemCode} = compile_contract(remote_call),
+
+    %% Create contracts on both sides of the fork
+    DetCLima  = ?call(create_contract_with_code, Acc, DetectorContract, {}, LimaSpec),
+    DetCIris  = ?call(create_contract_with_code, Acc, DetectorContract, {}, IrisSpec),
+    RemCLima  = ?call(create_contract_with_code, Acc, RemCode, {}, LimaSpec),
+    Rem2CLima = ?call(create_contract_with_code, Acc, RemCode, {}, LimaSpec),
+    RemCIris  = ?call(create_contract_with_code, Acc, RemCode, {}, IrisSpec),
+    Rem2CIris = ?call(create_contract_with_code, Acc, RemCode, {}, IrisSpec),
+
+    LatestCallSpec = #{height => IrisHeight,
+                       gas_price => MinGasPrice,
+                       fee => 1000000 * MinGasPrice},
+
+    %% Call directly old VMs
+    ?assertEqual(1, ?call(call_contract, Acc, DetCLima, main, word, {1}, LatestCallSpec)),
+    ?assertEqual(2, ?call(call_contract, Acc, DetCIris, main, word, {1}, LatestCallSpec)),
+    %% Call new/oldVM -> old/newVM
+    [?assertEqual(Expected, ?call(call_contract, Acc, Rem, call, word, {?cid(Id), 1},
+        LatestCallSpec))
+        || {Rem, Id, Expected} <- [
+          {RemCLima, DetCLima, 1}
+        , {RemCIris, DetCLima, 1}
+        , {RemCLima, DetCIris, 2}
+        , {RemCIris, DetCIris, 2}
+    ]],
+
+    %% Call new/oldVM -> new/oldVM -> new/oldVM in different orders
+    [?assertEqual(Expected, ?call(call_contract, Acc, Rem1, staged_call, word,
+        {?cid(Id), ?cid(Rem2), 1}, LatestCallSpec))
+        || {Rem1, Id, Rem2, Expected} <- [
+          {RemCIris, DetCIris, Rem2CLima, 2}
+        , {RemCIris, DetCIris, Rem2CIris, 2}
+        , {RemCIris, DetCLima, Rem2CIris, 1}
+        , {RemCIris, DetCLima, Rem2CLima, 1}
+        , {RemCLima, DetCIris, Rem2CLima, 2}
+        , {RemCLima, DetCIris, Rem2CIris, 2}
+        , {RemCLima, DetCLima, Rem2CLima, 1}
+        , {RemCLima, DetCLima, Rem2CIris, 1}
+    ]],
+    ok.
 
 
 
