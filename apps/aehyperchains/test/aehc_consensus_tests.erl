@@ -21,9 +21,14 @@
 -define(PARENT_GENESIS_HEADER,
     aehc_parent_block:new_header(?PARENT_GENESIS_HASH, ?PARENT_GENESIS_HASH, 1)).
 
+-define(PROTOCOL_GATE(X), case init:get_argument(network_id) of
+                              {ok,[["local_lima_testnet"]]} -> X;
+                              _ -> []
+                          end).
+
 %% PoW genesis - aec_conductor is not started
 pow_from_genesis_test_() ->
-    aec_test_utils:eunit_with_consensus(aehc_test_utils:cuckoo_pow_from_genesis(),
+    aec_test_utils:eunit_with_consensus(aehc_test_utils:cuckoo_pow_from_genesis(), ?PROTOCOL_GATE(
         [{foreach,
              fun() ->
                      persistent_term:erase({aehc_consensus_hyperchains, staking_contract}),
@@ -55,7 +60,7 @@ pow_from_genesis_test_() ->
                       end || B <- Chain]
                  end}
              ]}
-        ]).
+        ])).
 
 dummy_key_header_with_nonce_and_seal(Nonce, Seal) ->
     aec_headers:new_key_header(1337,
@@ -73,7 +78,7 @@ dummy_key_header_with_nonce_and_seal(Nonce, Seal) ->
 
 %% Check the structure of a hyperchains block
 pos_block_structure_test_() ->
-    aehc_test_utils:hc_chain_eunit_testcase(aehc_test_utils:hc_from_genesis(),
+    aehc_test_utils:hc_chain_eunit_testcase(aehc_test_utils:hc_from_genesis(), ?PROTOCOL_GATE(
         [ {"Parent hash and miner signature roundtrip",
             fun() ->
                 error = aehc_consensus_hyperchains:deserialize_pos_pow_field(no_value),
@@ -151,11 +156,11 @@ pos_block_structure_test_() ->
                 end || Nonce <- [?NONCE_HC_ENABLED, ?NONCE_HC_POGF]],
                 ok
             end}
-        ]).
+        ])).
 
 %% HC genesis - aec_conductor is started
 hc_from_genesis_test_() ->
-    aehc_test_utils:hc_chain_eunit_testcase(aehc_test_utils:hc_from_genesis(),
+    aehc_test_utils:hc_chain_eunit_testcase(aehc_test_utils:hc_from_genesis(), ?PROTOCOL_GATE(
         [ {"Can mine some blocks",
             fun() ->
                 [GB | Blocks] = aehc_test_utils:gen_blocks_only_chain(10),
@@ -263,10 +268,111 @@ hc_from_genesis_test_() ->
                     aehc_consensus_hyperchains:unset_hc_activation_criteria()
                 end
             end}
-        ]).
+        , {"Two delegates, HC activation at 10. Activation criteria (1AE, 1, 5, 0)",
+            fun() ->
+                try
+                    meck:new(aehc_utils, [passthrough]),
+                    aehc_consensus_hyperchains:set_hc_activation_criteria(1 * ?AE, 1, 5, 0),
+                    assert_static_staking_call_result({ok, false}, "enabled()"),
+                    assert_static_staking_call_result({ok, 0}, "balance()"),
+                    %% Use the patron to fund 2 accounts
+                    #{ pubkey := PatronPubKey, privkey := PatronPrivKey } = aehc_test_utils:patron(),
+                    #{public := D1Pub} = Delegate1 = enacl:sign_keypair(),
+                    #{public := D2Pub} = Delegate2 = enacl:sign_keypair(),
+                    {ok, ContractAddress} = aehc_consensus_hyperchains:get_staking_contract_address(),
+                    Aci = aehc_consensus_hyperchains:get_staking_contract_aci(),
+                    Fee = 1 bsl 60,
+                    Gas = 1 bsl 30,
+                    GasPrice = 1 bsl 30,
+                    MkCallF = fun(#{ public := Pub, secret := Priv }, Nonce, Amount, Call) ->
+                                Tx = make_contract_call_tx(Pub, ContractAddress, Call, Nonce, Amount, Fee, Gas, GasPrice),
+                                aec_test_utils:sign_tx(Tx, Priv)
+                             end,
+                    MkFundingF = fun(#{ public := Dest }, Nonce, Amount) -> aec_test_utils:sign_tx(make_spend_tx(PatronPubKey, Nonce, Dest, Amount), PatronPrivKey) end,
+                    {ok, CallDepositStake} = aeaci_aci:encode_call_data(Aci, "deposit_stake()"),
+                    %% The overall picture of what's going on in the chain
+                    TxFuns =
+                        fun %% Fund the accounts with 2 AE
+                            (2) -> [ MkFundingF(Delegate1, 1, 4 * ?AE)
+                                   , MkFundingF(Delegate2, 2, 4 * ?AE)
+                                   ];
+                            %% Delegate1 stakes 1AE, Delegate2 stakes 1AE
+                            (5) -> [ MkCallF(Delegate1, 1, 1 * ?AE, CallDepositStake)
+                                   , MkCallF(Delegate2, 1, 1 * ?AE, CallDepositStake)
+                                   ];
+                            (_) -> []
+                        end,
+                    Targets = [?GENESIS_TARGET || _ <- lists:seq(1,9)],
+                    Chain1 = aehc_test_utils:gen_block_chain_with_state(Targets, TxFuns),
+                    insert_blocks(aec_test_utils:blocks_only_chain(tl(Chain1))),
+                    assert_static_staking_call_result({ok, false}, "enabled()"),
+                    assert_static_staking_call_result({ok, 2 * ?AE}, "balance()"),
+                    %% Now we create the block at 10 - the first HC block :)
+                    %% Only delegate1 commits to the block at 9
+                    meck:expect(aehc_utils, submit_commitment,
+                        fun(KeyNode, Delegate) ->
+                            PatronPubkey = Delegate,
+                            C = aehc_commitment:new(aehc_commitment_header:new(Delegate, aec_block_insertion:node_hash(KeyNode)), no_pogf),
+                            CList = [C],
+                            CHList = [aehc_commitment:hash(C) || C <- CList],
+                            ParentBlockHeader = aehc_parent_block:new_header(?PARENT_GENESIS_HASH, ?PARENT_GENESIS_HASH, 1, CHList),
+                            ParentBlock = aehc_parent_block:new_block(ParentBlockHeader, CList),
+                            aehc_parent_db:write_parent_block(ParentBlock),
+                            ParentBlock
+                        end),
+                    Chain2 = aec_test_utils:extend_block_chain_with_key_blocks(Chain1, 1, D1Pub, D1Pub, #{}),
+                    insert_blocks(aec_test_utils:blocks_only_chain(Chain2)),
+                    assert_static_staking_call_result({ok, true}, "enabled()"),
+                    assert_static_staking_call_result({ok, {variant, [0, 1], 1, {{address, D1Pub}}}}, "get_computed_leader()"),
+                    assert_static_staking_call_result({ok, 2 * ?AE}, "balance()"),
+                    %% Emit a block by delegate2
+                    meck:expect(aehc_utils, submit_commitment,
+                        fun(KeyNode, Delegate) ->
+                            PatronPubkey = Delegate,
+                            C = aehc_commitment:new(aehc_commitment_header:new(Delegate, aec_block_insertion:node_hash(KeyNode)), no_pogf),
+                            CList = [C],
+                            CHList = [aehc_commitment:hash(C) || C <- CList],
+                            ParentBlockHeader = aehc_parent_block:new_header(?PARENT_HASH1, ?PARENT_GENESIS_HASH, 2, CHList),
+                            ParentBlock = aehc_parent_block:new_block(ParentBlockHeader, CList),
+                            aehc_parent_db:write_parent_block(ParentBlock),
+                            ParentBlock
+                        end),
+                    Chain3 = aec_test_utils:extend_block_chain_with_key_blocks(Chain2, 1, D2Pub, D2Pub, #{}),
+                    insert_blocks(aec_test_utils:blocks_only_chain(Chain3)),
+                    assert_static_staking_call_result({ok, true}, "enabled()"),
+                    assert_static_staking_call_result({ok, {variant, [0, 1], 1, {{address, D2Pub}}}}, "get_computed_leader()"),
+                    assert_static_staking_call_result({ok, 2 * ?AE}, "balance()"),
+                    %% Test that if D2 got elected D1 cannot insert a block
+                    [B1] = aec_test_utils:blocks_only_chain(Chain3),
+                    B2 = aec_blocks:set_miner(B1, D1Pub),
+                    {error,miner_not_leader} = aec_chain_state:insert_block(B2),
+                    %% Time to make a more complicated election
+                    %% Commit 1 and 2
+                    meck:expect(aehc_utils, submit_commitment,
+                        fun(KeyNode, Delegate) ->
+                            PatronPubkey = Delegate,
+                            C1 = aehc_commitment:new(aehc_commitment_header:new(D1Pub, aec_block_insertion:node_hash(KeyNode)), no_pogf),
+                            C2 = aehc_commitment:new(aehc_commitment_header:new(D2Pub, aec_block_insertion:node_hash(KeyNode)), no_pogf),
+                            CList = [C1, C2],
+                            CHList = [aehc_commitment:hash(C) || C <- CList],
+                            ParentBlockHeader = aehc_parent_block:new_header(?PARENT_HASH2, ?PARENT_HASH1, 3, CHList),
+                            ParentBlock = aehc_parent_block:new_block(ParentBlockHeader, CList),
+                            aehc_parent_db:write_parent_block(ParentBlock),
+                            ParentBlock
+                        end),
+                    Chain4 = aec_test_utils:extend_block_chain_with_key_blocks(Chain3, 1, D2Pub, D2Pub, #{}),
+                    insert_blocks(aec_test_utils:blocks_only_chain(Chain4)),
+                    ok
+                after
+                    meck:unload(aehc_utils),
+                    aehc_consensus_hyperchains:unset_hc_activation_criteria()
+                end
+            end
+          }
+        ])).
 
 hc_switchover_at_10_test_() ->
-    aehc_test_utils:hc_chain_eunit_testcase(aehc_test_utils:pow_to_hc_switch(10),
+    aehc_test_utils:hc_chain_eunit_testcase(aehc_test_utils:pow_to_hc_switch(10), ?PROTOCOL_GATE(
         [ {"Can mine some blocks. Accepts PoW blocks even with the global contract address available",
             fun() ->
                 not_deployed = aehc_consensus_hyperchains:get_staking_contract_address(),
@@ -470,7 +576,7 @@ hc_switchover_at_10_test_() ->
                 end,
                 ok
             end}
-        ]).
+        ])).
 
 sanity_check_staking_contract_deployment(ContractAddress) ->
     {_, Trees} = aec_chain:top_block_with_state(),
