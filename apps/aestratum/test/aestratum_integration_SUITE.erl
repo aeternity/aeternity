@@ -466,8 +466,23 @@ write_stratum_keys(Dir, Cfg) ->
 
 latest_version(Top) ->
     Vsns = filelib:wildcard(filename:join([Top, "lib", "aestratum-*"])),
-    %% TODO: make sort respect semantic versioning (not necessarily alphanumeric order)
-    lists:last(lists:sort(Vsns)).
+    lists:last(lists:sort(fun vsn_cmp/2, Vsns)).
+
+vsn_cmp(A, B) ->
+    sortable_vsn(A) =< sortable_vsn(B).
+
+sortable_vsn(Path) ->
+    {match, VsnStr} = re:run(Path, "-([a-zA-Z0-9\\.]+)$", [{capture,[1],list}]),
+    Parts = re:split(VsnStr, "\\.", [{return, list}]),
+    [leading_num(V) || V <- Parts].
+
+leading_num(V) ->
+    case re:run(V, "([0-9]+)([^0-9].*)", [{capture,[1,2],list}]) of
+        nomatch ->
+            [list_to_integer(V)];
+        {match, [N,A]} ->
+            [list_to_integer(N), A]
+    end.
 
 del_stratum_keys(Cfg) ->
     StratumKeysDir = ?config(stratum_keys_dir, Cfg),
