@@ -567,7 +567,7 @@
                     "type" : "object",
                     "additionalProperties" : false,
                     "properties" : {
-                        "keys" : {
+                        "keys": {
                             "type"    : "object",
                             "additionalProperties": false,
                             "properties" : {
@@ -576,6 +576,41 @@
                                     "type" : "string"
                                 }
                             }
+                        }
+                    }
+                },
+                "staking_contract_address": {
+                    "type": "string",
+                    "example" : "ct_DummyPubKeyDoNotEverUse999999999999999999999999999",
+                    "pattern": "^ct_[1-9A-HJ-NP-Za-km-z]*$",
+                    "description": "The address of the deployed staking contract. If not set then the node will deploy a system staking contract when activating the consensus. Use when performing a onchain vote on enabling Hyperchain consensus."
+                },
+                "activation_criteria": {
+                    "type": "object",
+                    "description": "Activation criteria of the hyperchain consensus. If not set HC will operate in PoW mode",
+                    "additionalProperties": false,
+                    "required" : [
+                        "minimum_stake",
+                        "unique_delegates",
+                        "check_frequency",
+                        "confirmation_depth"
+                    ],
+                    "properties" : {
+                        "minimum_stake": {
+                            "description": "Minimum amount(in aettos, 1AE = 1e18 aettos) of stake required to be locked in the staking contract",
+                            "type": "integer"
+                        },
+                        "unique_delegates": {
+                            "description": "Minimum amount of unique delegates staking in the staking contract",
+                            "type": "integer"
+                        },
+                        "check_frequency": {
+                            "description": "How often we check the fulfillment of the activation criteria. If set to N we check the criteria at keyblocks at heights divisible by N",
+                            "type": "integer"
+                        },
+                        "confirmation_depth": {
+                            "description": "The minimum confirmation depth of the activation criteria",
+                            "type": "integer"
                         }
                     }
                 },
