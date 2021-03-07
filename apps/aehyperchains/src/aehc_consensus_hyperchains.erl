@@ -162,7 +162,20 @@ assert_config(_Config) ->
                     end
             end;
         X -> X
-    end.
+    end,
+    case aeu_env:user_config([<<"hyperchains">>, <<"staking_contract_address">>]) of
+        undefined -> ok;
+        {ok, EAddr} ->
+            lager:debug("Trying to set the staking contract address"),
+            {contract_address, Addr} = aeser_api_encoder:decode(EAddr),
+            set_staking_contract_address(Addr)
+    end,
+    case aeu_env:user_config([<<"hyperchains">>, <<"activation_criteria">>]) of
+        undefined -> ok;
+        {ok, Criteria} ->
+            lager:debug("Trying to set the activation criteria")
+    end,
+    ok.
 
 start(_Config) ->
     %% We can't load the staking contract address in assert_config as the DB is not ready yet
