@@ -50,6 +50,8 @@
           responder_delegate_ids :: [aeser_id:id()],
           from_id                :: aeser_id:id(),
           payload                :: binary(),
+          state_hash             :: binary(),
+          round                  :: non_neg_integer(),
           ttl                    :: aetx:tx_ttl(),
           fee                    :: non_neg_integer(),
           nonce                  :: non_neg_integer()
@@ -69,6 +71,8 @@ new(#{channel_id             := ChannelId,
       initiator_delegate_ids := IDelegates,
       responder_delegate_ids := RDelegates,
       payload                := Payload,
+      state_hash             := StateHash,
+      round                  := Round,
       fee                    := Fee,
       nonce                  := Nonce} = Args) ->
     channel = aeser_id:specialize_type(ChannelId),
@@ -81,6 +85,8 @@ new(#{channel_id             := ChannelId,
             initiator_delegate_ids = IDelegates,
             responder_delegate_ids = RDelegates,
             payload                = Payload,
+            state_hash             = StateHash,
+            round                  = Round,
             ttl                    = maps:get(ttl, Args, 0),
             fee                    = Fee,
             nonce                  = Nonce},
@@ -114,32 +120,30 @@ channel_pubkey(#channel_set_delegates_tx{channel_id = ChannelId}) ->
     aeser_id:specialize(ChannelId, channel).
 
 -spec state_hash(tx()) -> binary().
-state_hash(#channel_create_tx{state_hash = StateHash}) -> StateHash.
+state_hash(#channel_set_delegates_tx{state_hash = StateHash}) -> StateHash.
 
 -spec round(tx()) -> non_neg_integer().
-round(#channel_create_tx{}) ->
-    1.
+round(#channel_set_delegates_tx{round = Round}) -> Round.
 
 
 channel_id(#channel_set_delegates_tx{channel_id = ChannelId}) ->
     ChannelId.
-
--spec payload(tx()) -> binary().
-payload(#channel_set_delegates_tx{payload = Payload}) ->
-    Payload.
 
 from_pubkey(#channel_set_delegates_tx{from_id = FromId}) ->
     aeser_id:specialize(FromId, account).
 
 -spec check(tx(), aec_trees:trees(), aetx_env:env()) -> {ok, aec_trees:trees()} | {error, term()}.
 check(#channel_set_delegates_tx{payload    = Payload,
+                                state_hash = StateHash,
+                                round      = Round,
                                 fee        = Fee,
                                 nonce      = Nonce} = Tx, Trees, Env) ->
     ChannelPubKey = channel_pubkey(Tx),
     FromPubKey    = from_pubkey(Tx),
     %% the same checks with snapshot
-    case aesc_utils:check_solo_snapshot_payload(
-           ChannelPubKey, FromPubKey, Nonce, Fee, Payload, Trees, Env) of
+    %% TODO ensure round and state_hash are the same as in payload
+    case aesc_utils:check_set_delegates(
+           ChannelPubKey, FromPubKey, Nonce, Fee, Payload, StateHash, Round, Trees, Env) of
         ok -> {ok, Trees};
         Err -> Err
     end.
@@ -172,6 +176,8 @@ serialize(#channel_set_delegates_tx{channel_id             = ChannelId,
                                     initiator_delegate_ids = IDelegates,
                                     responder_delegate_ids = RDelegates,
                                     payload                = Payload,
+                                    state_hash             = StateHash,
+                                    round                  = Round,
                                     ttl                    = TTL,
                                     fee                    = Fee,
                                     nonce                  = Nonce} = Tx) ->
@@ -181,6 +187,8 @@ serialize(#channel_set_delegates_tx{channel_id             = ChannelId,
      , {initiator_delegate_ids, IDelegates}
      , {responder_delegate_ids, RDelegates}
      , {payload               , Payload}
+     , {state_hash            , StateHash}
+     , {round                 , Round}
      , {ttl                   , TTL}
      , {fee                   , Fee}
      , {nonce                 , Nonce}
@@ -193,16 +201,22 @@ deserialize(?INITIAL_VSN,
             , {initiator_delegate_ids, IDelegates}
             , {responder_delegate_ids, RDelegates}
             , {payload               , Payload}
+            , {state_hash            , StateHash}
+            , {round                 , Round}
             , {ttl                   , TTL}
             , {fee                   , Fee}
             , {nonce                 , Nonce}]) ->
     channel = aeser_id:specialize_type(ChannelId),
     account = aeser_id:specialize_type(FromId),
+    lists:all(fun(Id) -> account =:= aeser_id:specialize_type(Id) end,
+              IDelegates ++ RDelegates),
     #channel_set_delegates_tx{channel_id             = ChannelId,
                               from_id                = FromId,
                               initiator_delegate_ids = IDelegates,
                               responder_delegate_ids = RDelegates,
                               payload                = Payload,
+                              state_hash             = StateHash,
+                              round                  = Round,
                               ttl                    = TTL,
                               fee                    = Fee,
                               nonce                  = Nonce}.
@@ -213,6 +227,8 @@ for_client(#channel_set_delegates_tx{channel_id             = ChannelId,
                                      initiator_delegate_ids = IDelegates,
                                      responder_delegate_ids = RDelegates,
                                      payload                = Payload,
+                                     state_hash             = StateHash,
+                                     round                  = Round,
                                      ttl                    = TTL,
                                      fee                    = Fee,
                                      nonce                  = Nonce}) ->
@@ -223,6 +239,8 @@ for_client(#channel_set_delegates_tx{channel_id             = ChannelId,
       <<"responder_delegate_ids">> => [aeser_api_encoder:encode(id_hash, Id)
                                        || Id <- RDelegates],
       <<"payload">>                => aeser_api_encoder:encode(transaction, Payload),
+      <<"state_hash">>             => aeser_api_encoder:encode(state, StateHash),
+      <<"round">>                  => Round,
       <<"ttl">>                    => TTL,
       <<"fee">>                    => Fee,
       <<"nonce">>                  => Nonce}.
@@ -233,6 +251,8 @@ serialization_template(?INITIAL_VSN) ->
     , {initiator_delegate_ids_id, [id]}
     , {responder_delegate_ids_id, [id]}
     , {payload                  , binary}
+    , {state_hash               , binary}
+    , {round                    , int}
     , {ttl                      , int}
     , {fee                      , int}
     , {nonce                    , int}
@@ -243,6 +263,7 @@ version(_) ->
     ?INITIAL_VSN.
 
 -spec valid_at_protocol(aec_hard_forks:protocol_vsn(), tx()) -> boolean().
+valid_at_protocol(Protocol, _) when Protocol =< ?IRIS_PROTOCOL_VSN -> false;
 valid_at_protocol(Protocol, #channel_set_delegates_tx{payload = Payload}) ->
     aesc_utils:is_payload_valid_at_protocol(Protocol, Payload).
 
