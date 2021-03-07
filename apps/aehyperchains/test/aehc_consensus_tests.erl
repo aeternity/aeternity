@@ -12,7 +12,7 @@
 %% Magic nonces
 -define(NONCE_HC_ENABLED, 16#ffffffffffffffff - 1).
 -define(NONCE_HC_POGF, 16#ffffffffffffffff).
--define(AE, 1_000_000_000_000_000_000).
+-define(AE, 1000000000000000000).
 -define(GENESIS_TARGET, 553713663).
 
 -define(PARENT_GENESIS_HASH, <<"GENESIS_AAAAAAAAAAAAAAAAAAAAAAAA">>).
