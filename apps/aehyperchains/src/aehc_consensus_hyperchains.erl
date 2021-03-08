@@ -2,19 +2,19 @@
 %%% -------------------------------------------------------------------
 %%% @copyright (C) 2020, Aeternity Anstalt
 %%% @doc Hyperchains consensus - https://github.com/aeternity/hyperchains-whitepaper
-%%% The deployer of the staking contract is either an ordinary user or <<2:32/unit-8>>
+%%% The deployer of the staking contract is either an ordinary user or 2:32/unit-8
 %%% If the address of the contract was specified then the contract MUST exist on-chain when enabling HC consensus
 %%% Furthermore the bytecode of the specified contract MUST match the bytecode of our local contract copy
 %%% Additionally we sanity check the contract configuration
 %%% Keep in mind that the deployer of the contract doesn't have any special privileges
 %%% over the contract after it was deployed.
 %%% When we don't rely on an already deployed staking contract then we take the first free system account and deploy it as a system contract
-%%% in case of ae-mainnet when no ordinary user deployed the staking contract the contract WILL get deployed by <<2:32/unit-8>>
+%%% in case of ae-mainnet when no ordinary user deployed the staking contract the contract WILL get deployed by 2:32/unit-8
 %%% When enabling HC consensus we check whether the staking contract was already predeployed by an ordinary user
-%%% All stateful contract calls to the staking contract are made using <<2:32/unit-8>>, stateless calls are made using <<1:32/unit-8>>
-%%% Calls originating from <<2:32/unit-8>> and <<1:32/unit-8>> are made using funds created from thin air
-%%% System calls using <<2:32/unit-8>> never change the funds of that account nor bump the nonce
-%%% Calls made using <<1:32/unit-8>> never require special preprocessing as we throw away the new state trees
+%%% All stateful contract calls to the staking contract are made using 2:32/unit-8, stateless calls are made using 1:32/unit-8
+%%% Calls originating from 2:32/unit-8 and 1:32/unit-8 are made using funds created from thin air
+%%% System calls using 2:32/unit-8 never change the funds of that account nor bump the nonce
+%%% Calls made using 1:32/unit-8 never require special preprocessing as we throw away the new state trees
 %%% @end
 %%% -------------------------------------------------------------------
 -module(aehc_consensus_hyperchains).
