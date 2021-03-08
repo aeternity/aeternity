@@ -25,6 +25,7 @@ cuckoo_pow_consensus() -> #{<<"name">> => <<"pow_cuckoo">>}.
 
 hc_from_genesis() -> #{<<"0">> => hc_consensus()}.
 cuckoo_pow_from_genesis() -> #{<<"0">> => cuckoo_pow_consensus()}.
+
 pow_to_hc_switch(Height) ->
     #{<<"0">> => cuckoo_pow_consensus()
      , integer_to_binary(Height) => hc_consensus()

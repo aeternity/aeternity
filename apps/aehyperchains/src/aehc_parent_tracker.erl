@@ -213,6 +213,7 @@ synced(cast, {read, Height, From}, Data) ->
 
 synced(cast, {publish_block, Block}, Data) ->
     Data2 = indicate(Data, Block),
+    aec_events:publish(parent_top_changed, Block),
     {next_state, fetched, Data2, [{next_event, internal, {added_block, Block}}]}.
 
 -spec init_db(data()) -> data().
