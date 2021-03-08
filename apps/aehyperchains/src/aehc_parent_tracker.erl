@@ -21,7 +21,7 @@
 %% API
 -export([start/3]).
 
--export([commit/4]).
+-export([commit/3]).
 -export([read/3]).
 
 -export([stop/1]).
@@ -50,9 +50,9 @@ start(Connector, Args, Address) ->
     Data = data(Connector, Args, Address),
     gen_statem:start(?MODULE, Data, []).
 
--spec commit(pid(), binary(), binary(), term()) -> ok | {error, term()}.
-commit(Pid, Delegate, Payload, From) ->
-    gen_statem:cast(Pid, {commit, Delegate, Payload, From}).
+-spec commit(pid(), commitment(), term()) -> ok | {error, term()}.
+commit(Pid, Commitment, From) ->
+    gen_statem:cast(Pid, {commit, Commitment, From}).
 
 -spec read(pid(), non_neg_integer(), term()) -> [] | [parent_block()].
 read(Pid, Height, From) ->
@@ -200,7 +200,13 @@ synced(enter, _OldState, Data) ->
     ok = aehc_parent_mng:emit(From, Indicator, Top, Stack),
     {keep_state, stack(Data2, [])};
 
-synced(cast, {commit, Delegate, Payload, From}, Data) ->
+synced(cast, {commit, Commitment, From}, Data) ->
+    Header = aehc_commitment:header(Commitment),
+    Delegate = aehc_commitment_header:hc_delegate(Header),
+    KeyBlock = aehc_commitment_header:hc_keyblock(Header),
+
+    Payload = aeser_api_encoder:encode(key_block_hash, KeyBlock),
+
     Res = aeconnector:send_tx(connector(Data), Delegate, Payload),
     gen_statem:reply(From, Res),
     {keep_state, Data};
@@ -257,31 +263,34 @@ commit_state(Data) ->
     ok = aehc_parent_db:write_parent_state(State).
 
 %%%===================================================================
-%%%  HC protocol upgrade
+%%%  HC protocol
 %%%===================================================================
 
 -spec commitment(tx()) -> commitment().
 commitment(Tx) ->
-    Delegate = aeconnector_tx:account(Tx),
-    _KeyblockHash = aeconnector_tx:payload(Tx),
-    Header = aehc_commitment_header:new(Delegate, <<>>),
+    Delegate = aeconnector_tx:account(Tx), %% TODO Place to substitute delegate via trees;
+    Payload = aeconnector_tx:payload(Tx),
+    KeyblockHash = aeser_api_encoder:decode(Payload),
+
+    Header = aehc_commitment_header:new(Delegate, KeyblockHash),
     aehc_commitment:new(Header).
 
 -spec parent_block(block()) -> parent_block().
 parent_block(Block) ->
-%%    CList = [commitment(Tx) || Tx <- aeconnector_block:txs(Block)],
-%%    _CHList = [aehc_commitment:hash(C) || C <- CList],
+    CList = [commitment(Tx) || Tx <- aeconnector_block:txs(Block)],
+    CHList = [aehc_commitment:hash(C) || C <- CList],
 
     Hash = aeconnector_block:hash(Block),
     PrevHash = aeconnector_block:prev_hash(Block),
     Height = aeconnector_block:height(Block),
 
-    Header = aehc_parent_block:new_header(Hash, PrevHash, Height, []),
-    aehc_parent_block:new_block(Header, []).
+    Header = aehc_parent_block:new_header(Hash, PrevHash, Height, CHList),
+    aehc_parent_block:new_block(Header, CList).
 
 %%%===================================================================
-%%%  Data access layer
+%%%  Data access
 %%%===================================================================
+
 -spec data(connector(), map(), binary()) -> data().
 data(Connector, Args, Address) ->
     #data{

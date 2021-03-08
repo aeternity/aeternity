@@ -24,7 +24,7 @@
 %% API.
 -export([start_link/0]).
 
--export([commit/2]).
+-export([commit/1]).
 -export([read/1]).
 -export([pop/0]).
 -export([queue/0]).
@@ -42,6 +42,8 @@
 -export([monolith/3, replica/3, shard/3]).
 
 -type connector() :: aeconnector:connector().
+
+-type commitment() ::  aehc_commitment:commitment().
 -type parent_block() :: aehc_parent_block:parent_block().
 
 %% API.
@@ -54,9 +56,9 @@ start_link() ->
     Data = data(Backend),
     gen_statem:start_link({local, ?MODULE}, ?MODULE, Data, []).
 
--spec commit(commiter_pubkey(), block_header_hash()) -> ok.
-commit(Delegate, KeyblockHash) ->
-    gen_statem:call(?MODULE, {commit, Delegate, KeyblockHash}).
+-spec commit(commitment()) -> ok.
+commit(Commitment) ->
+    gen_statem:call(?MODULE, {commit, Commitment}).
 
 -spec read(non_neg_integer()) -> [parent_block()].
 read(Height) ->
@@ -139,9 +141,9 @@ terminate(_Reason, _State, Data) ->
 monolith(enter, _OldState, Data) ->
     {keep_state, Data, []};
 
-monolith({call, From}, {commit, Delegate, KeyblockHash}, Data) ->
+monolith({call, From}, {commit, Commitment}, Data) ->
     Primary = primary(Data), Pid = Primary#tracker.pid,
-    aehc_parent_tracker:commit(Pid, Delegate, KeyblockHash, From),
+    aehc_parent_tracker:commit(Pid, Commitment, From),
     {keep_state, Data, []};
 
 monolith({call, From}, {pop}, Data) ->

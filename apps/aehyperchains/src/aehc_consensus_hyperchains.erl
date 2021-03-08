@@ -406,6 +406,7 @@ ensure_staking_contract_on_consensus_switch(Trees, TxEnv) ->
     end.
 
 state_pre_transform_key_node(KeyNode, _PrevNode, PrevKeyNode, Trees1) ->
+    %% NOTE ---------------
     Header = aec_block_insertion:node_header(KeyNode),
     TxEnv = node_tx_env(KeyNode),
     case is_hc_pos_header(Header) of
@@ -599,6 +600,7 @@ new_unmined_key_node(PrevNode, PrevKeyNode, Height, Miner, Beneficiary, Protocol
     end.
 
 new_pos_key_node(PrevNode, PrevKeyNode, Height, Miner, Beneficiary, Protocol, InfoField, _TreesIn) ->
+    %% NOTE --------------
     %% TODO: PoGF - for now just ignore generational fraud - let's first get a basic version working
     %%       When handling PoGF the commitment point is in a different place than usual
     ParentBlock = aehc_utils:submit_commitment(PrevKeyNode, Miner), %% TODO: Miner vs Delegate, Which shall register?
