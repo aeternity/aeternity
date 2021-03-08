@@ -54,6 +54,9 @@
          snapshot_solo_tx_spec/4,
          snapshot_solo_tx_spec/5,
 
+         set_delegates_tx_spec/8,
+         set_delegates_tx_spec/9,
+
          force_progress_tx_spec/8,
          force_progress_tx_spec/9
         ]).
@@ -449,4 +452,30 @@ force_progress_default_spec(FromPubKey, State) ->
     #{fee              => 50000 * aec_test_utils:min_gas_price(),
       nonce            => try next_nonce(FromPubKey, State) catch _:_ -> 1 end}.
 
+%%%===================================================================
+%%% Set delegates 
+%%%===================================================================
+
+set_delegates_tx_spec(ChannelPubKey, FromPubKey, IDelegates, RDelegates,
+                      StateHash, Round, Payload, State) ->
+    set_delegates_tx_spec(ChannelPubKey, FromPubKey, IDelegates, RDelegates,
+                          StateHash, Round,
+                          Payload, #{}, State).
+
+set_delegates_tx_spec(ChannelPubKey, FromPubKey, IDelegates, RDelegates,
+                      StateHash, Round,
+                      Payload, Spec0, State) ->
+    Spec = maps:merge(set_delegates_default_spec(FromPubKey, State), Spec0),
+    Spec#{channel_id      => aeser_id:create(channel, ChannelPubKey),
+          from_id         => aeser_id:create(account, FromPubKey),
+          initiator_delegate_ids => IDelegates,
+          responder_delegate_ids => RDelegates,
+          payload         => Payload,
+          state_hash      => StateHash,
+          round           => Round,
+          ttl             => maps:get(ttl, Spec, 0)}.
+
+set_delegates_default_spec(FromPubKey, State) ->
+    #{fee              => 50000 * aec_test_utils:min_gas_price(),
+      nonce            => try next_nonce(FromPubKey, State) catch _:_ -> 1 end}.
 

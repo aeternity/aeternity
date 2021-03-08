@@ -23,7 +23,8 @@
          force_progress_last_onchain/6,
          force_progress_with_payload/6,
          snapshot_solo/2,
-         withdraw/4]).
+         withdraw/4,
+         set_delegates/3]).
 
 %% Getters
 -export([id/1,
@@ -565,6 +566,13 @@ withdraw(#channel{channel_amount = ChannelAmount} = Ch, Amount, Round, StateHash
                state_hash = StateHash,
                solo_round = ?LAST_ROUND_MUTUAL,
                round = Round}.
+
+-spec set_delegates(channel(), [aec_keys:pubkey()], [aec_keys:pubkey()]) -> channel().
+set_delegates(Channel, IDelegates, RDelegates) ->
+    CreateIDs = fun(Pubkeys) -> [aeser_id:create(account, D) || D <- Pubkeys] end,
+    DelegateIds = #{ initiator =>  CreateIDs(IDelegates)
+                   , responder =>  CreateIDs(RDelegates)},
+    Channel#channel{delegate_ids = DelegateIds}.
 
 %%%===================================================================
 %%% Getters

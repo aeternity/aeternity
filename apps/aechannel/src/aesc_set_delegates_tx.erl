@@ -140,12 +140,14 @@ check(#channel_set_delegates_tx{payload    = Payload,
                                 nonce      = Nonce} = Tx, Trees, Env) ->
     ChannelPubKey = channel_pubkey(Tx),
     FromPubKey    = from_pubkey(Tx),
-    %% the same checks with snapshot
-    %% TODO ensure round and state_hash are the same as in payload
+    %% the same checks with snapshot but we make sure the state_hash and round
+    %% are the same as in the payload. This could be tricky as the payload
+    %% could as well be empty: in the case when the transaction is based on
+    %% latest on-chain state
     case aesc_utils:check_set_delegates(
            ChannelPubKey, FromPubKey, Nonce, Fee, Payload, StateHash, Round, Trees, Env) of
-        ok -> {ok, Trees};
-        Err -> Err
+        ok -> {ok, Trees}
+        %Err -> Err
     end.
 
 -spec process(tx(), aec_trees:trees(), aetx_env:env()) -> {ok, aec_trees:trees(), aetx_env:env()}.
@@ -157,8 +159,13 @@ process(#channel_set_delegates_tx{payload                = Payload,
         Trees, Env) ->
     ChannelPubKey = channel_pubkey(Tx),
     FromPubKey    = from_pubkey(Tx),
-    aesc_utils:process_set_delegates(ChannelPubKey, FromPubKey, IDelegates,
-                                     RDelegates, Nonce, Fee, Payload, Trees, Env).
+    %% note that since the state hash and the round are already validated,
+    %% the payload is not being used
+    Specialize = fun(L) -> [aeser_id:specialize(Id, account) || Id <- L] end,
+    aesc_utils:process_set_delegates(ChannelPubKey, FromPubKey,
+                                     Specialize(IDelegates), Specialize(RDelegates),
+                                     Payload,
+                                     Nonce, Fee, Trees, Env).
 
 -spec signers(tx(), aec_trees:trees()) -> {ok, list(aec_keys:pubkey())}.
 signers(#channel_set_delegates_tx{} = Tx, Trees) ->
@@ -248,8 +255,8 @@ for_client(#channel_set_delegates_tx{channel_id             = ChannelId,
 serialization_template(?INITIAL_VSN) ->
     [ {channel_id               , id}
     , {from_id                  , id}
-    , {initiator_delegate_ids_id, [id]}
-    , {responder_delegate_ids_id, [id]}
+    , {initiator_delegate_ids   , [id]}
+    , {responder_delegate_ids   , [id]}
     , {payload                  , binary}
     , {state_hash               , binary}
     , {round                    , int}
@@ -263,7 +270,7 @@ version(_) ->
     ?INITIAL_VSN.
 
 -spec valid_at_protocol(aec_hard_forks:protocol_vsn(), tx()) -> boolean().
-valid_at_protocol(Protocol, _) when Protocol =< ?IRIS_PROTOCOL_VSN -> false;
+valid_at_protocol(Protocol, _) when Protocol < ?IRIS_PROTOCOL_VSN -> false;
 valid_at_protocol(Protocol, #channel_set_delegates_tx{payload = Payload}) ->
     aesc_utils:is_payload_valid_at_protocol(Protocol, Payload).
 

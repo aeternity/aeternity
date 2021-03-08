@@ -21,7 +21,14 @@
                     Trees   :: aec_trees:trees(),
                     Nonce   :: non_neg_integer(),
                     Amount  :: non_neg_integer(),
-                    Env     :: aetx_env:env()   ) -> ok | {error, term()}.
+                    Env     :: aetx_env:env()   )
+    -> ok |
+       {error, account_not_found |
+               insufficient_funds |
+               tx_nonce_already_used_for_account |
+               tx_nonce_too_high_for_account |
+               nonce_in_ga_tx_should_be_zero |
+               bad_ga_tx_env}.
 check_account(AccountPubKey, Trees, Nonce, Amount, Env) ->
     case get_account(AccountPubKey, Trees) of
         {value, Account} ->

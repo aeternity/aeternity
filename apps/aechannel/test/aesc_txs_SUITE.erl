@@ -29,7 +29,8 @@
          deposit/1,
          withdraw/1,
          settle/1,
-         snapshot_solo/1]).
+         snapshot_solo/1,
+         set_delegagates/1]).
 
 %% negative create
 -export([create_missing_account/1,
@@ -54,6 +55,9 @@
          close_solo_already_closing/1,
          close_solo_delegate_not_allowed/1
          ]).
+
+%-export([set_delegagates_unknown_from/1
+%        ]).
 
 %% negative close mutual
 %% close mutual does not have a `from` - it is always implicitly the initiator
@@ -264,7 +268,8 @@ groups() ->
        {group, snapshot_solo_negative},
        {group, aevm},
        {group, fate},
-       {group, fork_awareness}
+       {group, fork_awareness},
+       set_delegagates
       ]
      },
 
@@ -4846,6 +4851,7 @@ apply_on_trees_(#{height := Height} = Props, SignedTx, S, positive) ->
             S1 = aesc_test_utils:set_trees(Trees1, S),
             Props#{state => S1};
         Err ->
+            ?TEST_LOG("Transaction failed to be applied ~p", [SignedTx]),
             throw({case_failed, Err})
     end;
 apply_on_trees_(#{height := Height} = Props, SignedTx, S, {negative, ExpectedError}) ->
@@ -5098,6 +5104,28 @@ snapshot_solo_(#{ channel_pubkey    := ChannelPubKey,
 
     SignedTx = aec_test_utils:sign_tx(SnapshotTx, [FromPrivkey]),
     apply_on_trees_(Props, SignedTx, S, Expected).
+
+set_delegates_(#{ channel_pubkey          := ChannelPubKey,
+                  from_pubkey             := FromPubKey,
+                  from_privkey            := FromPrivkey,
+                  initiator_delegate_ids  := IDelegates,
+                  responder_delegate_ids  := RDelegates,
+                  fee                     := Fee,
+                  state                   := S} = Props, Expected) ->
+    StateHashSize = aeser_api_encoder:byte_size_for_type(state),
+    StateHash = maps:get(state_hash, Props, <<42:StateHashSize/unit:8>>),
+    Round = maps:get(round, Props, 43),
+    Payload = reuse_or_create_payload(payload, Props#{state_hash => StateHash}),
+
+    SetDelegatesTxSpec =
+        aesc_test_utils:set_delegates_tx_spec(ChannelPubKey, FromPubKey,
+                                              IDelegates, RDelegates,
+                                              StateHash, Round, Payload, #{fee => Fee}, S),
+    {ok, SetDelegatesTx} = aesc_set_delegates_tx:new(SetDelegatesTxSpec),
+
+    SignedTx = aec_test_utils:sign_tx(SetDelegatesTx, [FromPrivkey]),
+    apply_on_trees_(Props, SignedTx, S, Expected).
+
 
 force_progress_(#{channel_pubkey    := ChannelPubKey,
                   offchain_trees    := OffChainTrees,
@@ -6255,3 +6283,113 @@ pick_random_delegate(DelegateIds) ->
     %% pick a random delegate. If this fails inermittently, it could
     %% be a symptom of an actual bug
     lists:nth(rand:uniform(length(Ds)), Ds).
+
+set_delegagates(Cfg) ->
+    Height = 100,
+    Round = 43,
+    OldRound = Round - 5,
+    StateHashSize = aeser_api_encoder:byte_size_for_type(state),
+    OldStateHash = <<40:StateHashSize/unit:8>>,
+    StateHash = <<43:StateHashSize/unit:8>>,
+    TestWithPayload =
+        fun(Snapshoter, Setter, IDelegates, RDelegates) ->
+            ?TEST_LOG("Test with payload,~nSnapshoter is ~p,~nSetter is ~p,~nIDelegates are ~p,~nRDelegates are ~p",
+                      [Snapshoter, Setter, IDelegates, RDelegates]),
+            run(#{cfg => Cfg
+                 , initiator_delegate_ids => IDelegates
+                 , responder_delegate_ids => RDelegates
+                 , height => Height},
+               [positive(fun create_channel_/2),
+                fun(#{channel_pubkey := ChannelPubKey, state := S} = Props) ->
+                    % ensure no delegates
+                    Channel = aesc_test_utils:get_channel(ChannelPubKey, S),
+                    [] = aesc_channels:delegate_ids(Channel, any),
+                    [] = aesc_channels:delegate_ids(Channel, initiator),
+                    [] = aesc_channels:delegate_ids(Channel, responder),
+                    Props
+                end,
+                set_from(Snapshoter),
+                set_prop(round, OldRound),
+                set_prop(state_hash, OldStateHash),
+                positive(fun snapshot_solo_/2),
+                set_from(Setter),
+                set_prop(round, Round),
+                set_prop(state_hash, StateHash),
+                positive(fun set_delegates_/2),
+                fun(#{channel_pubkey := ChannelPubKey, state := S} = Props) ->
+                    % ensure channel had been updated
+                    Channel = aesc_test_utils:get_channel(ChannelPubKey, S),
+                    Round = aesc_channels:round(Channel),
+                    StateHash = aesc_channels:state_hash(Channel),
+                    % ensure updated delegates
+                    Channel = aesc_test_utils:get_channel(ChannelPubKey, S),
+                    IDelegates = aesc_channels:delegate_ids(Channel, initiator),
+                    RDelegates = aesc_channels:delegate_ids(Channel, responder),
+                    AllDelegates = IDelegates ++ RDelegates,
+                    AllDelegates = aesc_channels:delegate_ids(Channel, any),
+                    Props
+                end
+                ])
+        end,
+    Encode = fun(L) -> [aeser_id:create(account, D) || D <- L] end,
+    AccountHashSize = aeser_api_encoder:byte_size_for_type(account_pubkey),
+    [FakeId1, FakeId2, FakeId3, FakeId4] =
+        Encode([<<999:AccountHashSize/unit:8>>,
+                <<998:AccountHashSize/unit:8>>,
+                <<997:AccountHashSize/unit:8>>,
+                <<996:AccountHashSize/unit:8>>]),
+    Combinations1 = [[],%% no ids
+                     [FakeId1], %% one id
+                     [FakeId1, FakeId2]], %% two ids
+    Combinations2 = [[], %% no ids
+                     [FakeId3], %% one id
+                     [FakeId3, FakeId4]], %% two ids
+    [TestWithPayload(Role1, Role2, IDels, RDels) || Role1 <- ?ROLES,
+                                                    Role2 <- ?ROLES,
+                                                    IDels <- Combinations1,
+                                                    RDels <- Combinations2],
+    TestWithEmptyPayload =
+        fun(Snapshoter, Setter, IDelegates, RDelegates) ->
+            ?TEST_LOG("Test with payload,~nSnapshoter is ~p,~nSetter is ~p,~nIDelegates are ~p,~nRDelegates are ~p",
+                      [Snapshoter, Setter, IDelegates, RDelegates]),
+            run(#{cfg => Cfg
+                 , initiator_delegate_ids => IDelegates
+                 , responder_delegate_ids => RDelegates
+                 , height => Height},
+               [positive(fun create_channel_/2),
+                fun(#{channel_pubkey := ChannelPubKey, state := S} = Props) ->
+                    % ensure no delegates
+                    Channel = aesc_test_utils:get_channel(ChannelPubKey, S),
+                    [] = aesc_channels:delegate_ids(Channel, any),
+                    [] = aesc_channels:delegate_ids(Channel, initiator),
+                    [] = aesc_channels:delegate_ids(Channel, responder),
+                    Props
+                end,
+                set_from(Snapshoter),
+                set_prop(round, Round),
+                set_prop(state_hash, StateHash),
+                positive(fun snapshot_solo_/2),
+                set_from(Setter),
+                set_prop(payload, <<>>),
+                positive(fun set_delegates_/2),
+                fun(#{channel_pubkey := ChannelPubKey, state := S} = Props) ->
+                    % ensure channel had been updated
+                    Channel = aesc_test_utils:get_channel(ChannelPubKey, S),
+                    Round = aesc_channels:round(Channel),
+                    StateHash = aesc_channels:state_hash(Channel),
+                    % ensure updated delegates
+                    Channel = aesc_test_utils:get_channel(ChannelPubKey, S),
+                    IDelegates = aesc_channels:delegate_ids(Channel, initiator),
+                    RDelegates = aesc_channels:delegate_ids(Channel, responder),
+                    AllDelegates = IDelegates ++ RDelegates,
+                    AllDelegates = aesc_channels:delegate_ids(Channel, any),
+                    Props
+                end
+                ])
+        end,
+    [TestWithEmptyPayload(Role1, Role2, IDels, RDels) || Role1 <- ?ROLES,
+                                                         Role2 <- ?ROLES,
+                                                         IDels <- Combinations1,
+                                                         RDels <- Combinations2],
+    ok.
+
