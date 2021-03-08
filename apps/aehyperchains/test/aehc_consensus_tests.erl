@@ -253,8 +253,9 @@ hc_from_genesis_test_() ->
                             CList = [C],
                             CHList = [aehc_commitment:hash(C) || C <- CList],
                             ParentBlockHeader = aehc_parent_block:new_header(?PARENT_HASH1, ?PARENT_GENESIS_HASH, 2, CHList),
+                            ParentTrees = aehc_delegates_trees:empty(),
                             ParentBlock = aehc_parent_block:new_block(ParentBlockHeader, CList),
-                            aehc_parent_db:write_parent_block(ParentBlock),
+                            aehc_parent_db:write_parent_block(ParentBlock, ParentTrees),
                             ParentBlock
                         end),
                     Chain3 = aec_test_utils:extend_block_chain_with_key_blocks(Chain2, 1, PatronPubkey, PatronPubkey, #{}),
@@ -316,8 +317,9 @@ hc_from_genesis_test_() ->
                             CList = [C],
                             CHList = [aehc_commitment:hash(C) || C <- CList],
                             ParentBlockHeader = aehc_parent_block:new_header(?PARENT_GENESIS_HASH, ?PARENT_GENESIS_HASH, 1, CHList),
+                            ParentTrees = aehc_delegates_trees:empty(),
                             ParentBlock = aehc_parent_block:new_block(ParentBlockHeader, CList),
-                            aehc_parent_db:write_parent_block(ParentBlock),
+                            aehc_parent_db:write_parent_block(ParentBlock, ParentTrees),
                             ParentBlock
                         end),
                     Chain2 = aec_test_utils:extend_block_chain_with_key_blocks(Chain1, 1, D1Pub, D1Pub, #{}),
