@@ -11,6 +11,7 @@
         , contract_bytearray_params_decode/1
         , ttl_decode/1
         , poi_decode/1
+        , delegates_decode/1
         , relative_ttl_decode/1
         , nameservice_pointers_decode/1
         , get_nonce/1
@@ -495,6 +496,43 @@ poi_decode(PoIKey) ->
         catch
             _:_ ->
                 {error, {400, [], #{<<"reason">> => <<"Invalid proof of inclusion">>}}}
+        end
+    end.
+
+delegates_decode(DelegatesKey) ->
+    fun(_Req, State) ->
+        Type = {id_hash, [account_pubkey]},
+        Decode =
+            fun(Ids) ->
+                lists:foldr(
+                    fun(_, error) -> error;
+                       (EncodedId, Accum) ->
+                        case aeser_api_encoder:safe_decode(Type, EncodedId) of
+                            {ok, PK} -> [PK | Accum];
+                            {error, _} -> error
+                        end
+                    end,
+                    [],
+                    Ids)
+            end,
+        Delegates =
+            case maps:get(DelegatesKey, State) of
+                L when is_list(L) -> Decode(L);
+                #{initiator := IIds, responder := RIds}
+                    when is_list(IIds),
+                         is_list(RIds) ->
+                    case {Decode(IIds), Decode(RIds)} of
+                        {error, _} -> error;
+                        {_, error} -> error;
+                        {_DecodedIIds, _DecodedRIds} = Dels -> Dels
+                    end;
+                _ -> error
+            end,
+        case Delegates of
+            error ->
+                {error, {400, [], #{<<"reason">> => <<"Invalid hash: delegate_ids">>}}};
+            _ ->
+                {ok, maps:put(DelegatesKey, Delegates, State)}
         end
     end.
 

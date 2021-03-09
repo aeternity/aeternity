@@ -2348,6 +2348,21 @@ components:
       required:
         - key
         - id
+    Delegates:
+      oneOf:
+        - type: array
+          items:
+            $ref: "#/components/schemas/EncodedPubkey"
+        - type: object
+          properties:
+            initiator:
+              type: array
+              items:
+                $ref: "#/components/schemas/EncodedPubkey"
+            responder:
+              type: array
+              items:
+                $ref: "#/components/schemas/EncodedPubkey"
     Channel:
       type: object
       properties:
@@ -2366,9 +2381,7 @@ components:
         channel_reserve:
           $ref: "#/components/schemas/UInt"
         delegate_ids:
-          type: array
-          items:
-            $ref: "#/components/schemas/EncodedPubkey"
+          $ref: "#/components/schemas/Delegates"
         state_hash:
           $ref: "#/components/schemas/EncodedHash"
         round:
@@ -2419,9 +2432,7 @@ components:
         state_hash:
           $ref: "#/components/schemas/EncodedHash"
         delegate_ids:
-          type: array
-          items:
-            $ref: "#/components/schemas/EncodedPubkey"
+          $ref: "#/components/schemas/Delegates"
       required:
         - initiator_id
         - initiator_amount
