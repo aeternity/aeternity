@@ -146,8 +146,8 @@ check(#channel_set_delegates_tx{payload    = Payload,
     %% latest on-chain state
     case aesc_utils:check_set_delegates(
            ChannelPubKey, FromPubKey, Nonce, Fee, Payload, StateHash, Round, Trees, Env) of
-        ok -> {ok, Trees}
-        %Err -> Err
+        ok -> {ok, Trees};
+        Err -> Err
     end.
 
 -spec process(tx(), aec_trees:trees(), aetx_env:env()) -> {ok, aec_trees:trees(), aetx_env:env()}.
