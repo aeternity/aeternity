@@ -6711,43 +6711,36 @@ fate_vm_version_switching(Cfg) ->
     {ok, RemCode} = compile_contract(remote_call),
 
     %% Create contracts on both sides of the fork
-    DetCLima  = ?call(create_contract_with_code, Acc, DetectorContract, {}, LimaSpec),
-    DetCIris  = ?call(create_contract_with_code, Acc, DetectorContract, {}, IrisSpec),
-    RemCLima  = ?call(create_contract_with_code, Acc, RemCode, {}, LimaSpec),
-    Rem2CLima = ?call(create_contract_with_code, Acc, RemCode, {}, LimaSpec),
-    RemCIris  = ?call(create_contract_with_code, Acc, RemCode, {}, IrisSpec),
-    Rem2CIris = ?call(create_contract_with_code, Acc, RemCode, {}, IrisSpec),
+    DetC1Lima  = ?call(create_contract_with_code, Acc, DetectorContract, {}, LimaSpec),
+    DetC2Lima  = ?call(create_contract_with_code, Acc, DetectorContract, {}, LimaSpec),
+    DetC3Lima  = ?call(create_contract_with_code, Acc, DetectorContract, {}, LimaSpec),
+    DetC1Iris  = ?call(create_contract_with_code, Acc, DetectorContract, {}, IrisSpec),
+    DetC2Iris  = ?call(create_contract_with_code, Acc, DetectorContract, {}, IrisSpec),
+    DetC3Iris  = ?call(create_contract_with_code, Acc, DetectorContract, {}, IrisSpec),
 
     LatestCallSpec = #{height => IrisHeight,
                        gas_price => MinGasPrice,
                        fee => 1000000 * MinGasPrice},
 
     %% Call directly old VMs
-    ?assertEqual(1, ?call(call_contract, Acc, DetCLima, main, word, {1}, LatestCallSpec)),
-    ?assertEqual(2, ?call(call_contract, Acc, DetCIris, main, word, {1}, LatestCallSpec)),
+    ?assertEqual(1, ?call(call_contract, Acc, DetC1Lima, detect, word, {}, LatestCallSpec)),
+    ?assertEqual(2, ?call(call_contract, Acc, DetC1Iris, detect, word, {}, LatestCallSpec)),
     %% Call new/oldVM -> old/newVM
-    [?assertEqual(Expected, ?call(call_contract, Acc, Rem, call, word, {?cid(Id), 1},
+    [?assertEqual({V1, V2}, ?call(call_contract, Acc, Det1, Func, {tuple, [word, word]}, {?cid(Det2)},
         LatestCallSpec))
-        || {Rem, Id, Expected} <- [
-          {RemCLima, DetCLima, 1}
-        , {RemCIris, DetCLima, 1}
-        , {RemCLima, DetCIris, 2}
-        , {RemCIris, DetCIris, 2}
-    ]],
+        || {Det1, V1} <- [{DetC1Lima, 1}, {DetC1Iris, 2}]
+        ,  {Det2, V2} <- [{DetC2Lima, 1}, {DetC2Iris, 2}]
+        ,  Func <- [call_detect, detect_call]
+    ],
 
     %% Call new/oldVM -> new/oldVM -> new/oldVM in different orders
-    [?assertEqual(Expected, ?call(call_contract, Acc, Rem1, staged_call, word,
-        {?cid(Id), ?cid(Rem2), 1}, LatestCallSpec))
-        || {Rem1, Id, Rem2, Expected} <- [
-          {RemCIris, DetCIris, Rem2CLima, 2}
-        , {RemCIris, DetCIris, Rem2CIris, 2}
-        , {RemCIris, DetCLima, Rem2CIris, 1}
-        , {RemCIris, DetCLima, Rem2CLima, 1}
-        , {RemCLima, DetCIris, Rem2CLima, 2}
-        , {RemCLima, DetCIris, Rem2CIris, 2}
-        , {RemCLima, DetCLima, Rem2CLima, 1}
-        , {RemCLima, DetCLima, Rem2CIris, 1}
-    ]],
+    [?assertEqual({V1, V2, V3}, ?call(call_contract, Acc, Det1, Func, {tuple, [word, word, word]}, {?cid(Det2), ?cid(Det3)},
+                                  LatestCallSpec))
+     || {Det1, V1} <- [{DetC1Lima, 1}, {DetC1Iris, 2}]
+     ,  {Det2, V2} <- [{DetC2Lima, 1}, {DetC2Iris, 2}]
+     ,  {Det3, V3} <- [{DetC3Lima, 1}, {DetC3Iris, 2}]
+     ,  Func <- [call_call_detect, detect_call_call]
+    ],
     ok.
 
 
