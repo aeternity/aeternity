@@ -1573,7 +1573,7 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
- /debug/channels/close/mutual:
+  /debug/channels/close/mutual:
     post:
       tags:
         - internal
@@ -1988,10 +1988,6 @@ components:
         - signature
         - time
         - version
-    Header:
-      anyOf:
-        - $ref: "#/components/schemas/KeyBlock"
-        - $ref: "#/components/schemas/MicroBlockHeader"
     Account:
       type: object
       properties:
@@ -2908,7 +2904,7 @@ components:
           - $ref: "#/components/schemas/ChannelSlashTx"
           - $ref: "#/components/schemas/ChannelSettleTx"
           - $ref: "#/components/schemas/ChannelSnapshotSoloTx"
-          - $ref: "#/components/schemas/ChannelSetDelegatesTx"
+          - $ref: "#/components/schemas/ChannelSnapshotSoloTx"
           - $ref: "#/components/schemas/OracleRegisterTx"
           - $ref: "#/components/schemas/OracleExtendTx"
           - $ref: "#/components/schemas/OracleQueryTx"
