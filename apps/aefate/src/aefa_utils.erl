@@ -4,13 +4,15 @@
 %%% @end
 %%%-------------------------------------------------------------------
 
--module(aefate_test_utils).
+-module(aefa_utils).
 
 -export([encode/1,
          decode/1,
-         decode/2
+         decode/2,
+         format_args/1
         ]).
 
+-include("../../aecontract/include/address.hrl").
 -include_lib("aebytecode/include/aeb_fate_data.hrl").
 
 %% Encode is a convinience function for testing, encoding an Erlang term
@@ -133,4 +135,27 @@ decode_variant([], [], _N, _Values, '$undefined$') ->
 decode_variant([], [], _N, _Values, Acc) ->
     Acc.
 
-
+format_args(?cid(B)) ->
+    {contract, B};
+format_args(?hsh(B)) ->
+    {bytes, B};
+format_args(?sig(B)) ->
+    {bytes, B};
+format_args(?oid(B)) ->
+    {oracle, B};
+format_args(?qid(B)) ->
+    {oracle_query, B};
+format_args(<<_:256>> = B) ->
+    {address, B}; %% Assume it is an address
+format_args({bytes, B}) ->
+    {bytes, B};
+format_args({bytecode, B}) ->
+    {bytecode, B};
+format_args([H|T]) ->
+    [format_args(H) | format_args(T)];
+format_args(T) when is_tuple(T) ->
+    list_to_tuple(format_args(tuple_to_list(T)));
+format_args(M) when is_map(M) ->
+    maps:from_list(format_args(maps:to_list(M)));
+format_args(X) ->
+    X.

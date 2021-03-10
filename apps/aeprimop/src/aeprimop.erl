@@ -52,6 +52,7 @@
         , spend_fee_op/2
         , spend_op/3
         , transfer_value_op/3
+        , contract_create_op/11
         , tx_event_op/2
         , tx_event_op/3
         ]).
