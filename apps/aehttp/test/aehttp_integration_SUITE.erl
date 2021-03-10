@@ -2601,6 +2601,7 @@ state_channels_onchain_transactions(_Config) ->
     state_channels_deposit(ChannelPubKey, MinerPubkey),
     state_channels_withdrawal(ChannelPubKey, MinerPubkey),
     state_channels_snapshot_solo(ChannelPubKey, MinerPubkey),
+    state_channels_set_delegates(ChannelPubKey, MinerPubkey),
     state_channels_close_mutual(ChannelPubKey, MinerPubkey),
     state_channels_close_solo(ChannelPubKey, MinerPubkey),
     state_channels_slash(ChannelPubKey, MinerPubkey),
@@ -2767,6 +2768,32 @@ state_channels_snapshot_solo(ChannelId, MinerPubkey) ->
                                fun aesc_snapshot_solo_tx:new/1, MinerPubkey),
     test_invalid_hash({account_pubkey, MinerPubkey}, from_id, Encoded, fun get_channel_snapshot_solo/1),
     ok.
+
+state_channels_set_delegates(ChannelId, MinerPubkey) ->
+    _PoI = aec_trees:new_poi(aec_trees:new_without_backend()),
+    Payload = <<"hejsan svejsan">>, %%TODO proper payload
+    Encoded = #{channel_id => aeser_api_encoder:encode(channel, ChannelId),
+                initiator_delegate_ids => [aeser_api_encoder:encode(account_pubkey, MinerPubkey)],
+                responder_delegate_ids => [aeser_api_encoder:encode(account_pubkey, MinerPubkey)],
+                state_hash => aeser_api_encoder:encode(state, ?BOGUS_STATE_HASH),
+                round => 42,
+                from_id => aeser_api_encoder:encode(account_pubkey, MinerPubkey),
+                payload => aeser_api_encoder:encode(bytearray, Payload),
+                fee => 100000 * aec_test_utils:min_gas_price()},
+    Decoded = maps:merge(Encoded,
+                        #{from_id => aeser_id:create(account, MinerPubkey),
+                          channel_id => aeser_id:create(channel, ChannelId),
+                          initiator_delegate_ids => [aeser_id:create(account, MinerPubkey)],
+                          responder_delegate_ids => [aeser_id:create(account, MinerPubkey)],
+                          state_hash => ?BOGUS_STATE_HASH,
+                          payload => Payload}),
+    unsigned_tx_positive_test(Decoded, Encoded,
+                               fun get_channel_set_delegates/1,
+                               fun aesc_set_delegates_tx:new/1, MinerPubkey),
+    test_invalid_hash({account_pubkey, MinerPubkey}, from_id, Encoded, fun get_channel_set_delegates/1),
+    test_invalid_hash({channel, ChannelId}, channel_id, Encoded, fun get_channel_set_delegates/1),
+    ok.
+
 
 state_channels_close_mutual(ChannelId, InitiatorPubkey) ->
     Encoded = #{channel_id => aeser_api_encoder:encode(channel, ChannelId),
@@ -3640,6 +3667,10 @@ get_channel_withdrawal(Data) ->
 get_channel_snapshot_solo(Data) ->
     Host = internal_address(),
     http_request(Host, post, "debug/channels/snapshot/solo", Data).
+
+get_channel_set_delegates(Data) ->
+    Host = internal_address(),
+    http_request(Host, post, "debug/channels/set-delegates", Data).
 
 get_channel_close_mutual(Data) ->
     Host = internal_address(),

@@ -2671,9 +2671,9 @@ components:
       type: object
       properties:
         channel_id:
-          $ref: '#/definitions/EncodedPubkey'
+          $ref: "#/components/schemas/EncodedPubkey"
         from_id:
-          $ref: '#/definitions/EncodedPubkey'
+          $ref: "#/components/schemas/EncodedPubkey"
         initiator_delegate_ids:
           type: array
           items:
@@ -2683,17 +2683,17 @@ components:
           items:
             $ref: "#/components/schemas/EncodedPubkey"
         state_hash:
-          $ref: '#/definitions/EncodedHash'
+          $ref: "#/components/schemas/EncodedPubkey"
         round:
-          $ref: '#/definitions/UInt64'
+          $ref: '#/components/schemas/UInt64'
         payload:
-          $ref: '#/definitions/EncodedByteArray'
+          $ref: '#/components/schemas/EncodedByteArray'
         ttl:
-          $ref: '#/definitions/UInt64'
+          $ref: '#/components/schemas/UInt64'
         fee:
-          $ref: '#/definitions/UInt'
+          $ref: '#/components/schemas/UInt'
         nonce:
-          $ref: '#/definitions/UInt64'
+          $ref: '#/components/schemas/UInt64'
       required:
         - channel_id
         - from_id
@@ -2904,7 +2904,7 @@ components:
           - $ref: "#/components/schemas/ChannelSlashTx"
           - $ref: "#/components/schemas/ChannelSettleTx"
           - $ref: "#/components/schemas/ChannelSnapshotSoloTx"
-          - $ref: "#/components/schemas/ChannelSnapshotSoloTx"
+          - $ref: "#/components/schemas/ChannelSetDelegatesTx"
           - $ref: "#/components/schemas/OracleRegisterTx"
           - $ref: "#/components/schemas/OracleExtendTx"
           - $ref: "#/components/schemas/OracleQueryTx"
