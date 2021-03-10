@@ -1,0 +1,106 @@
+@compiler >= 4.3
+
+include "List.aes"
+
+contract StorageTester =
+    record state = {
+        dim_x: int, dim_y: int, dim_z: int,
+        m: map(int, map(int, map(int, int)))
+        }
+    datatype ops = Swap1(int, int)
+                 | Swap2(int, int, int, int)
+                 | Write(int, int, int, int)
+                 | Copy1(int, int)
+                 | Copy2(int, int, int, int)
+
+    entrypoint init() : state = inita(5,5,5)
+    entrypoint inita(dim_x: int, dim_y: int, dim_z: int) : state =
+        {
+            m = List.foldl(
+                (acc, x) => acc{[x] = List.foldl(
+                    (acc, y) => acc{[y] = List.foldl(
+                        (acc,z) => acc{[z] = z+10*(y+10*x)}
+                        ,{}
+                        ,List.from_to(1,dim_z)
+                        )}
+                    ,{}
+                    ,List.from_to(1,dim_y)
+                    )}
+                ,{}
+                ,List.from_to(1,dim_x)
+                )
+            , dim_x= dim_x, dim_y= dim_y, dim_z= dim_z
+            }
+    entrypoint getState() : state = state
+    entrypoint getHash() : int =
+        //The following two values are prime
+        let p_z = 100003
+        let p_mod = 200000000041
+        //Following are powers of p_z
+        let m_x = 41850756719 //p_z^100
+        let m_y = 74482681767 //p_z^10
+        List.foldl(
+            (acc, x) => (acc*m_x + List.foldl(
+                (acc, y) => (acc*m_y + List.foldl(
+                    (acc,z) => (acc*p_z + state.m[x][y][z]) mod p_mod
+                    ,0
+                    ,List.from_to(1,state.dim_z)
+                    )) mod p_mod
+                ,0
+                ,List.from_to(1,state.dim_y)
+                )) mod p_mod
+            ,0
+            ,List.from_to(1,state.dim_x)
+            )
+    stateful entrypoint swap_l1(x1, x2) =
+        put(state{
+            m=state.m{
+                [x1]=state.m[x2]
+               ,[x2]=state.m[x1]
+               }
+            })
+    stateful entrypoint swap_l2(x1, y1, x2, y2) =
+        let m1 = state.m{
+             [x1]=state.m[x1]{
+                 [y1]=state.m[x2][y2]
+                 }
+            }
+        let m2 = m1{
+             [x2]=m1[x2]{
+                 [y2]=state.m[x1][y1]
+                 }
+            }
+        put(state{m=m2})
+    stateful entrypoint write_val(x,y,z,val) =
+        put(state{
+            m=state.m{
+                [x]=state.m[x]{
+                    [y]=state.m[x][y]{
+                        [z]=val
+                        }
+                    }
+                }
+            })
+    stateful entrypoint copy_l1(x1, x2) =
+        put(state{
+            m=state.m{
+                [x1]=state.m[x2]
+               }
+            })
+    stateful entrypoint copy_l2(x1, y1, x2, y2) =
+        put(state{
+            m=state.m{
+                [x1]=state.m[x1]{
+                    [y1]=state.m[x2][y2]
+                    }
+                }
+            })
+    stateful entrypoint do_op(op: ops) =
+        switch(op)
+            Swap1(x1,x2) => swap_l1(x1,x2)
+            Swap2(x1,y1,x2,y2) => swap_l2(x1,y1,x2,y2)
+            Write(x,y,z,val) => write_val(x,y,z,val)
+            Copy1(x1,x2) => copy_l1(x1,x2)
+            Copy2(x1,y1,x2,y2) => copy_l2(x1,y1,x2,y2)
+    stateful entrypoint do_op_list(op_list: list(ops)) =
+        List.foldl((_, op) => do_op(op), (), op_list)
