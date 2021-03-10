@@ -270,6 +270,26 @@ handle_request_('PostChannelSnapshotSolo', #{'ChannelSnapshotSoloTx' := Req}, _C
                 ],
     process_request(ParseFuns, Req);
 
+handle_request_('PostChannelSetDelegates', #{'ChannelSetDelegatesTx' := Req}, _Context) ->
+    ParseFuns = [parse_map_to_atom_keys(),
+                 read_required_params([channel_id, from_id,
+                                       initiator_delegate_ids,
+                                       responder_delegate_ids,
+                                       state_hash, round,
+                                       payload, fee]),
+                 read_optional_params([{ttl, ttl, '$no_value'}]),
+                 api_decode([{channel_id, channel_id, {id_hash, [channel]}},
+                             {from_id, from_id, {id_hash, [account_pubkey]}},
+                             {state_hash, state_hash, state},
+                             {payload, payload, bytearray}]),
+                 delegates_decode(initiator_delegate_ids),
+                 delegates_decode(responder_delegate_ids),
+                 api_str_to_int([fee, ttl, round]),
+                 get_nonce_from_account_id(from_id),
+                 unsigned_tx_response(fun aesc_set_delegates_tx:new/1)
+                ],
+    process_request(ParseFuns, Req);
+
 handle_request_('PostChannelCloseMutual', #{'ChannelCloseMutualTx' := Req}, _Context) ->
     ParseFuns = [parse_map_to_atom_keys(),
                  read_required_params([channel_id, from_id,
