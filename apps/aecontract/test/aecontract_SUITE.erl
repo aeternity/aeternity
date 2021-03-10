@@ -182,6 +182,8 @@
         , sophia_use_memory_gas/1
         , lima_migration/1
         , store_single_ops/1
+        , store_multiple_random_ops/1
+        , store_onetype_random_ops/1
         ]).
 
 -include_lib("common_test/include/ct.hrl").
@@ -514,7 +516,9 @@ groups() ->
                           , merge_new_zero_value
                           ]}
     , {store_map_ops, [], [
-        store_single_ops
+          store_single_ops
+        , store_multiple_random_ops
+        , store_onetype_random_ops
     ]}
     ].
 
@@ -6881,14 +6885,20 @@ store_rand_do_op({copy1, {X1, X2}}, M) ->
 store_rand_do_op({copy2, {X1, Y1, X2, Y2}}, M) ->
     maps:put(X1, maps:put(Y1, maps:get(Y2, maps:get(X2, M)), maps:get(X1, M)), M).
 
-store_rand_random_op({DimX, DimY, DimZ}) ->
+store_rand_random_write({DimX, DimY, DimZ}) ->
+    {write, {random:uniform(DimX), random:uniform(DimY), random:uniform(DimZ), random:uniform(10000)}}.
+
+store_rand_random_op({DimX, DimY, DimZ} = Dim) ->
     case random:uniform(5) of
         1 -> {swap1, {random:uniform(DimX), random:uniform(DimX)}};
         2 -> {swap2, {random:uniform(DimX), random:uniform(DimY), random:uniform(DimX), random:uniform(DimY)}};
-        3 -> {write, {random:uniform(DimX), random:uniform(DimY), random:uniform(DimZ), random:uniform(10000)}};
+        3 -> store_rand_random_write(Dim);
         4 -> {copy1, {random:uniform(DimX), random:uniform(DimX)}};
         5 -> {copy2, {random:uniform(DimX), random:uniform(DimY), random:uniform(DimX), random:uniform(DimY)}}
     end.
+
+store_rand_random_swap2({DimX, DimY, DimZ}) ->
+    {swap2, {random:uniform(DimX), random:uniform(DimY), random:uniform(DimX), random:uniform(DimY)}}.
 
 store_rand_encode({T,V}) ->
     Arrities = [2,4,4,2,4],
@@ -6900,20 +6910,24 @@ store_rand_encode({T,V}) ->
                             copy2 -> 4
                         end, V}.
 
+store_rand_exe_oplist(Ops, State, Dim, Tester, Acc, Spec) ->
+    State2 = lists:foldl(fun(X, Acc) -> store_rand_do_op(X, Acc) end, State, Ops),
+    ?assertEqual({}, ?call(call_contract, Acc, Tester, do_op_list, {tuple, []},
+    {lists:map(fun(X) -> store_rand_encode(X) end, Ops)}, Spec)),
+    ?assertEqual(store_rand_hash(Dim, State2), ?call(call_contract, Acc, Tester, getHash, word, {}, Spec)),
+    State2.
+
 %%%%%%%%%%%%%%%%
 %% Actual Tests
 %%%%%%%%%%%%%%%%
 
 store_single_ops(Cfg) ->
-    ?skipRest(not ?IS_FATE_SOPHIA(vm_version()), state_tests_only_for_fate),
+    state(aect_test_utils:new_state()),
     Dim={5,5,5},
     InitialState = store_rand_initial_state(Dim),
-    state(aect_test_utils:new_state()),
-    Acc           = ?call(new_account, 1000000000000000000000000000000000000000 * aec_test_utils:min_gas_price()),
-    Spec      = #{gas => 10000000000},
+    Acc = ?call(new_account, 1000000000000000000000000000000000000000 * aec_test_utils:min_gas_price()),
+    Spec = #{gas => 10000000000},
     {ok, TesterContract} = compile_local_contract("StorageTester"),
-
-    %% Create contracts on both sides of the fork
     Tester = ?call(create_contract_with_code, Acc, TesterContract, {}, Spec),
 
     %% Check initial hash
@@ -6940,6 +6954,87 @@ store_single_ops(Cfg) ->
     ok.
 
 
+store_multiple_random_ops(Cfg) ->
+    state(aect_test_utils:new_state()),
+    Dim={5,5,5},
+    InitialState = store_rand_initial_state(Dim),
+    Acc           = ?call(new_account, 1000000000000000000000000000000000000000 * aec_test_utils:min_gas_price()),
+    Spec      = #{gas => 10000000000},
+    {ok, TesterContract} = compile_local_contract("StorageTester"),
+
+    %% Create contracts on both sides of the fork
+    Tester = ?call(create_contract_with_code, Acc, TesterContract, {}, Spec),
+
+    %% Check initial hash
+    ?assertEqual(133682544366, store_rand_hash(Dim, InitialState)),
+    ?assertEqual(133682544366, ?call(call_contract, Acc, Tester, getHash, word, {}, Spec)),
+
+    TestOps = fun(Ops, State) -> store_rand_exe_oplist(Ops, State, Dim, Tester, Acc, Spec) end,
+
+    State2 = lists:foldl(
+        fun(_, State) -> TestOps([store_rand_random_op(Dim) || _ <- lists:seq(1,2)], State) end,
+        InitialState,
+        lists:seq(1,50)
+    ),
+    State3 = lists:foldl(
+        fun(_, State) -> TestOps([store_rand_random_op(Dim) || _ <- lists:seq(1,5)], State) end,
+        State2,
+        lists:seq(1,50)
+    ),
+    lists:foldl(
+        fun(_, State) -> TestOps([store_rand_random_op(Dim) || _ <- lists:seq(1,20)], State) end,
+        State3,
+        lists:seq(1,50)
+    ),
+    ok.
+
+
+store_onetype_random_ops(Cfg) ->
+    state(aect_test_utils:new_state()),
+    Dim={5,5,5},
+    InitialState = store_rand_initial_state(Dim),
+    Acc = ?call(new_account, 1000000000000000000000000000000000000000 * aec_test_utils:min_gas_price()),
+    Spec = #{gas => 10000000000},
+    {ok, TesterContract} = compile_local_contract("StorageTester"),
+    Tester = ?call(create_contract_with_code, Acc, TesterContract, {}, Spec),
+
+    %% Check initial hash
+    ?assertEqual(133682544366, store_rand_hash(Dim, InitialState)),
+    ?assertEqual(133682544366, ?call(call_contract, Acc, Tester, getHash, word, {}, Spec)),
+
+    TestOps = fun(Ops, State) -> store_rand_exe_oplist(Ops, State, Dim, Tester, Acc, Spec) end,
+
+    State2 = lists:foldl(
+        fun(_, State) -> TestOps([store_rand_random_swap2(Dim) || _ <- lists:seq(1,2)], State) end,
+        InitialState,
+        lists:seq(1,50)
+    ),
+    State3 = lists:foldl(
+        fun(_, State) -> TestOps([store_rand_random_swap2(Dim) || _ <- lists:seq(1,5)], State) end,
+        State2,
+        lists:seq(1,50)
+    ),
+    State4 = lists:foldl(
+        fun(_, State) -> TestOps([store_rand_random_swap2(Dim) || _ <- lists:seq(1,20)], State) end,
+        State3,
+        lists:seq(1,50)
+    ),
+    State5 = lists:foldl(
+        fun(_, State) -> TestOps([store_rand_random_write(Dim) || _ <- lists:seq(1,2)], State) end,
+        State4,
+        lists:seq(1,50)
+    ),
+    State6 = lists:foldl(
+        fun(_, State) -> TestOps([store_rand_random_write(Dim) || _ <- lists:seq(1,5)], State) end,
+        State5,
+        lists:seq(1,50)
+    ),
+    lists:foldl(
+        fun(_, State) -> TestOps([store_rand_random_write(Dim) || _ <- lists:seq(1,20)], State) end,
+        State6,
+        lists:seq(1,50)
+    ),
+    ok.
 
 %%%===================================================================
 %%% Remote call type errors
