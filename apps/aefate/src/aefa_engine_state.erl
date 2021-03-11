@@ -88,6 +88,7 @@
 
 -include_lib("aebytecode/include/aeb_fate_data.hrl").
 -include("../../aecontract/include/aecontract.hrl").
+-include("../../aecontract/include/hard_forks.hrl").
 
 -type void_or_fate() :: ?FATE_VOID | aeb_fate_data:fate_type().
 -type pubkey() :: <<_:256>>.
@@ -149,8 +150,9 @@ new(Gas, Value, Spec, Stores, APIState, CodeCache, VMVersion) ->
        , vm_version        = VMVersion
        }.
 
-aefa_stores(#es{ vm_version = Version }) ->
-    case Version >= ?VM_FATE_SOPHIA_2 of
+aefa_stores(#es{ chain_api = APIState }) ->
+    Protocol = aetx_env:consensus_version(aefa_chain_api:tx_env(APIState)),
+    case Protocol >= ?IRIS_PROTOCOL_VSN of
         true  -> aefa_stores;
         false -> aefa_stores_lima
     end.

@@ -184,6 +184,8 @@
         , store_single_ops/1
         , store_multiple_random_ops/1
         , store_onetype_random_ops/1
+        , fate_vm_cross_protocol_store_big/1
+        , fate_vm_cross_protocol_store_multi_small/1
         ]).
 
 -include_lib("common_test/include/ct.hrl").
@@ -345,6 +347,8 @@ groups() ->
                                  ]}
     , {protocol_interaction_fate, [], [ fate_vm_interaction
                                       , fate_vm_version_switching
+                                      , fate_vm_cross_protocol_store_big
+                                      , fate_vm_cross_protocol_store_multi_small
                                       ]}
     , {transactions, [], [ create_contract
                          , create_contract_init_error
@@ -7034,6 +7038,65 @@ store_onetype_random_ops(Cfg) ->
         State6,
         lists:seq(1,50)
     ),
+    ok.
+
+fate_vm_cross_protocol_store_big(Cfg) ->
+    state(aect_test_utils:new_state()),
+    Dim={5,5,5},
+    InitialState = store_rand_initial_state(Dim),
+    ForkHeights   = ?config(fork_heights, Cfg),
+    LimaHeight = maps:get(lima, ForkHeights),
+    IrisHeight = maps:get(iris, ForkHeights),
+    Acc = ?call(new_account, 1000000000000000000000000000000000000000 * aec_test_utils:min_gas_price()),
+    LimaSpec      = #{height => LimaHeight, vm_version => ?VM_FATE_SOPHIA_1, gas => 10000000000},
+    IrisSpec      = #{height => IrisHeight, vm_version => ?VM_FATE_SOPHIA_2, gas => 10000000000},
+    {ok, TesterContract} = compile_local_contract("StorageTester"),
+    Tester = ?call(create_contract_with_code, Acc, TesterContract, {}, LimaSpec),
+    TestOps = fun(Ops, State, Spec) -> store_rand_exe_oplist(Ops, State, Dim, Tester, Acc, Spec) end,
+
+    % Do a bunch of operations on Lima
+    State2 = lists:foldl(
+        fun(_, State) -> TestOps([store_rand_random_op(Dim) || _ <- lists:seq(1,5)], State, LimaSpec) end,
+        InitialState,
+        lists:seq(1,50)
+    ),
+    % Do operations on Iris
+    lists:foldl(
+        fun(_, State) -> TestOps([store_rand_random_op(Dim) || _ <- lists:seq(1,5)], State, IrisSpec) end,
+        State2,
+        lists:seq(1,50)
+    ),
+    ok.
+
+fate_vm_cross_protocol_store_multi_small(Cfg) ->
+    state(aect_test_utils:new_state()),
+    Dim={5,5,5},
+    InitialState = store_rand_initial_state(Dim),
+    ForkHeights   = ?config(fork_heights, Cfg),
+    LimaHeight = maps:get(lima, ForkHeights),
+    IrisHeight = maps:get(iris, ForkHeights),
+    Acc = ?call(new_account, 1000000000000000000000000000000000000000 * aec_test_utils:min_gas_price()),
+    LimaSpec      = #{height => LimaHeight, vm_version => ?VM_FATE_SOPHIA_1, gas => 10000000000},
+    IrisSpec      = #{height => IrisHeight, vm_version => ?VM_FATE_SOPHIA_2, gas => 10000000000},
+    {ok, TesterContract} = compile_local_contract("StorageTester"),
+
+    DoTest = fun() ->
+        Tester = ?call(create_contract_with_code, Acc, TesterContract, {}, LimaSpec),
+        TestOps = fun(Ops, State, Spec) -> store_rand_exe_oplist(Ops, State, Dim, Tester, Acc, Spec) end,
+        % Do a bunch of operations on Lima
+        State2 = lists:foldl(
+            fun(_, State) -> TestOps([store_rand_random_op(Dim) || _ <- lists:seq(1,5)], State, LimaSpec) end,
+            InitialState,
+            lists:seq(1,3)
+        ),
+        % Do operations on Iris
+        lists:foldl(
+            fun(_, State) -> TestOps([store_rand_random_op(Dim) || _ <- lists:seq(1,5)], State, IrisSpec) end,
+            State2,
+            lists:seq(1,3)
+        )
+    end,
+    [DoTest() || _ <- lists:seq(1,20)],
     ok.
 
 %%%===================================================================
