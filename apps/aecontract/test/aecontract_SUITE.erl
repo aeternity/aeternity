@@ -1435,9 +1435,6 @@ create_tx(Owner, Spec0, State) ->
          , gas         => 10000 }, Spec0),
     aect_test_utils:create_tx(Owner, Spec, State).
 
-compile_local_contract(Name) ->
-    aect_test_utils:compile_filename(sophia_version(), "../../lib/aecontract/test/contracts/" ++ Name ++ ".aes").
-
 compile_contract(Name) ->
     aect_test_utils:compile_contract(sophia_version(), Name).
 
@@ -6720,7 +6717,7 @@ fate_vm_version_switching(Cfg) ->
         amount => 100,
         gas_price => MinGasPrice,
         fee => 1000000 * MinGasPrice},
-    {ok, DetectorContract} = compile_local_contract("VmDetector"),
+    {ok, DetectorContract} = compile_contract(vm_detector),
     {ok, RemCode} = compile_contract(remote_call),
 
     %% Create contracts on both sides of the fork
@@ -6931,7 +6928,7 @@ store_single_ops(Cfg) ->
     InitialState = store_rand_initial_state(Dim),
     Acc = ?call(new_account, 1000000000000000000000000000000000000000 * aec_test_utils:min_gas_price()),
     Spec = #{gas => 10000000000},
-    {ok, TesterContract} = compile_local_contract("StorageTester"),
+    {ok, TesterContract} = compile_contract(storage_tester),
     Tester = ?call(create_contract_with_code, Acc, TesterContract, {}, Spec),
 
     %% Check initial hash
@@ -6964,7 +6961,7 @@ store_multiple_random_ops(Cfg) ->
     InitialState = store_rand_initial_state(Dim),
     Acc           = ?call(new_account, 1000000000000000000000000000000000000000 * aec_test_utils:min_gas_price()),
     Spec      = #{gas => 10000000000},
-    {ok, TesterContract} = compile_local_contract("StorageTester"),
+    {ok, TesterContract} = compile_contract(storage_tester),
 
     %% Create contracts on both sides of the fork
     Tester = ?call(create_contract_with_code, Acc, TesterContract, {}, Spec),
@@ -6999,7 +6996,7 @@ store_onetype_random_ops(Cfg) ->
     InitialState = store_rand_initial_state(Dim),
     Acc = ?call(new_account, 1000000000000000000000000000000000000000 * aec_test_utils:min_gas_price()),
     Spec = #{gas => 10000000000},
-    {ok, TesterContract} = compile_local_contract("StorageTester"),
+    {ok, TesterContract} = compile_contract(storage_tester),
     Tester = ?call(create_contract_with_code, Acc, TesterContract, {}, Spec),
 
     %% Check initial hash
@@ -7050,7 +7047,7 @@ fate_vm_cross_protocol_store_big(Cfg) ->
     Acc = ?call(new_account, 1000000000000000000000000000000000000000 * aec_test_utils:min_gas_price()),
     LimaSpec      = #{height => LimaHeight, vm_version => ?VM_FATE_SOPHIA_1, gas => 10000000000},
     IrisSpec      = #{height => IrisHeight, vm_version => ?VM_FATE_SOPHIA_2, gas => 10000000000},
-    {ok, TesterContract} = compile_local_contract("StorageTester"),
+    {ok, TesterContract} = compile_contract(storage_tester),
     Tester = ?call(create_contract_with_code, Acc, TesterContract, {}, LimaSpec),
     TestOps = fun(Ops, State, Spec) -> store_rand_exe_oplist(Ops, State, Dim, Tester, Acc, Spec) end,
 
@@ -7078,7 +7075,7 @@ fate_vm_cross_protocol_store_multi_small(Cfg) ->
     Acc = ?call(new_account, 1000000000000000000000000000000000000000 * aec_test_utils:min_gas_price()),
     LimaSpec      = #{height => LimaHeight, vm_version => ?VM_FATE_SOPHIA_1, gas => 10000000000},
     IrisSpec      = #{height => IrisHeight, vm_version => ?VM_FATE_SOPHIA_2, gas => 10000000000},
-    {ok, TesterContract} = compile_local_contract("StorageTester"),
+    {ok, TesterContract} = compile_contract(storage_tester),
 
     DoTest = fun() ->
         Tester = ?call(create_contract_with_code, Acc, TesterContract, {}, LimaSpec),
