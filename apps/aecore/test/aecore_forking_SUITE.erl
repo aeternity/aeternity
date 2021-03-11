@@ -25,7 +25,8 @@
     mine_a_key_block_on_dev1/1,
     mine_a_key_block_on_dev2/1,
     spend_on_dev1/1,
-    spend_on_dev2/1
+    spend_on_dev2/1,
+    mine_a_micro_block_on_dev1/1
    ]).
 
 %% tr_ttb behavior callbacks
@@ -69,6 +70,7 @@ groups() ->
        mine_a_key_block_on_dev1,
        mine_a_key_block_on_dev1,
        spend_on_dev1,
+       mine_a_micro_block_on_dev1,
        stop_dev1,
        start_dev2,
        mine_a_key_block_on_dev2,
@@ -323,7 +325,11 @@ mine_a_key_block_on_dev1(_Config) -> mine_a_key_block(dev1).
 
 mine_a_key_block_on_dev2(_Config) -> mine_a_key_block(dev2).
 
-%%mine_a_micro_block_on_dev1(_Config) -> 
+mine_a_micro_block_on_dev1(_Config) -> mine_a_micro_block(dev1).
+
+mine_a_micro_block(Node) -> 
+    NName= aecore_suite_utils:node_name(Node),
+    aecore_suite_utils:mine_blocks(NName, 1, ?MINE_RATE, micro, #{}).
 
 spend(Node) ->
     {_, Pub} = aecore_suite_utils:sign_keys(Node),
