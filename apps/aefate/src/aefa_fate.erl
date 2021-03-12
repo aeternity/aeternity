@@ -290,10 +290,15 @@ catch_protected(Err, ES) ->
 %% -----------------------------------------------------------
 
 setup_engine(#{ contract := <<_:256>> = ContractPubkey
-              , code := ByteCode} = Spec, Env) ->
+              , code := ByteCode
+              , allow_init := AllowInit } = Spec, Env) ->
     try aeb_fate_code:deserialize(ByteCode) of
         Code ->
-            Cache = #{ ContractPubkey => Code },
+            Code1 = case AllowInit of
+                        true -> Code;
+                        false -> aeb_fate_code:strip_init_function(Code)
+                    end,
+            Cache = #{ ContractPubkey => Code1 },
             setup_engine(Spec, Env, Cache)
     catch _:_ ->
             abort(bad_bytecode, no_state)
@@ -336,10 +341,11 @@ set_remote_function(Caller, ?FATE_CONTRACT(Pubkey), Function, CheckPayable, Chec
             APIState  = aefa_engine_state:chain_api(ES),
             case aefa_chain_api:contract_fate_code(Pubkey, APIState) of
                 {ok, ContractCode, APIState1} ->
-                    CodeCache1 = maps:put(Pubkey, ContractCode, CodeCache),
+                    ContractCode1 = aeb_fate_code:strip_init_function(ContractCode),
+                    CodeCache1 = maps:put(Pubkey, ContractCode1, CodeCache),
                     ES1 = aefa_engine_state:set_code_cache(CodeCache1, ES),
                     ES2 = aefa_engine_state:set_chain_api(APIState1, ES1),
-                    ES3 = aefa_engine_state:update_for_remote_call(Pubkey, ContractCode, Caller, ES2),
+                    ES3 = aefa_engine_state:update_for_remote_call(Pubkey, ContractCode1, Caller, ES2),
                     check_flags_and_set_local_function(CheckPayable, CheckPrivate, Function, ES3);
                 error ->
                     abort({trying_to_call_contract, Pubkey}, ES)
