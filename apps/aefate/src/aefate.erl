@@ -65,7 +65,8 @@ load_file(FileName, Opts) ->
             Code = aeb_fate_code:deserialize(File),
             SerializedCall = aeb_fate_asm:function_call(Call),
             What = #{ contract => FileName
-                    , call => SerializedCall},
+                    , call => SerializedCall
+                    , allow_init => true},
             Chain = #{ contracts =>
                            #{ FileName => Code}},
             case aefa_fate:run(What, Chain) of
