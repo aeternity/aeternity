@@ -365,9 +365,13 @@ start_nodes_and_wait_sync(CorrectForkNode, OtherNode, Config) ->
 
 assert_orphaned_tx_in_pool(_Config) ->
     NName = aecore_suite_utils:node_name(dev1),
-    {ok, [Tx]} = rpc:call(NName, aec_tx_pool, peek, [infinity], 5000),
+    {ok, [SignedTx]} = rpc:call(NName, aec_tx_pool, peek, [infinity], 5000),
+    TxHash = aetx_sign:hash(SignedTx),
 
     timer:sleep(10000),
     N2Name = aecore_suite_utils:node_name(dev2),
-    {ok, [Tx]} = rpc:call(N2Name, aec_tx_pool, peek, [infinity], 5000),
+    TxLocation = rpc:call(N2Name, aec_chain, find_tx_location, [TxHash], 5000),
+    {true, _} = {(TxLocation =/= none), none}, %% tx had been GCed
+    {true, _} = {(TxLocation =/= not_found), not_found},%% tx had not been seen on the node yet
+    {ok, [SignedTx]} = rpc:call(N2Name, aec_tx_pool, peek, [infinity], 5000),
     ok.
