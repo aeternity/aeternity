@@ -2,7 +2,7 @@
 
 -ifdef(TEST).
 -define(CATCH_LOG(Err), ?_catch_(error, Err, ST)
-        ST1 = case is_function(pr_stacktrace, 1) of
+        ST1 = case erlang:function_exported(?MODULE, pr_stacktrace, 1) of
             true ->
                 apply(?MODULE, pr_stacktrace, [ST]);
             false ->
@@ -11,7 +11,7 @@
         lager:debug("CAUGHT ~p / ~p", [Err, ST1]),
        ).
 -define(CATCH_LOG(Err, Prefix), ?_catch_(error, Err, ST)
-        ST1 = case is_function(pr_stacktrace, 1) of
+        ST1 = case erlang:function_exported(?MODULE, pr_stacktrace, 1) of
             true ->
                 apply(?MODULE, pr_stacktrace, [ST]);
             false ->

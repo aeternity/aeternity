@@ -51,6 +51,7 @@
         , upd_transfer/4          %% (fsm() , from(), to(), amount())
         , upd_transfer/5          %% (fsm() , from(), to(), amount(), #{})
         , upd_withdraw/2          %% (fsm() , map())
+        , assume_minimum_depth/2  %% (fsm() , tx_hash())
         , where/2
         ]).
 
@@ -136,6 +137,9 @@
         , get_state/1
         , pr_stacktrace/1
         ]).
+-define(ST(E), pr_stacktrace(E)).
+-else.
+-define(ST(E), E).
 -endif.
 
 %% ==================================================================
@@ -289,6 +293,9 @@ where(ChanId, Role) when Role == initiator; Role == responder ->
         undefined ->
             undefined
     end.
+
+assume_minimum_depth(Fsm, TxHash) ->
+    gen_statem:call(Fsm, {assume_minimum_depth, TxHash}).
 
 %% ==================================================================
 %% Inspection and configuration functions
@@ -4837,6 +4844,25 @@ handle_call_(channel_closing, {attach_responder, #{ reestablish := true
             lager:debug("Attach failed with ~p", [Error]),
             keep_state(D, [{reply, From, {error, invalid_attach}}])
     end;
+handle_call_(St, {assume_minimum_depth, TxHash}, From, #data{ op = #op_min_depth{
+                                                                      tag = Tag
+                                                                    , tx_hash = TxHash }
+                                                            , on_chain_id = ChainId
+                                                            , past_assumptions = Past} = D) ->
+    %% We allow short-cutting a min-depth wait when we are actually waiting for one,
+    %% and also impose a limit on how many times min-depth checks can be assumed
+    %% without actually collecting the results. This is mainly to keep an fsm to blow
+    %% the RAM of the serving node.
+    Allowed = (St == awaiting_locked orelse St == channel_closed)
+        andalso (gb_sets:size(Past) =< ?MAX_ASSUMPTIONS),
+    if Allowed ->
+            StuffedEvent = {?MIN_DEPTH_ACHIEVED, ChainId, Tag, TxHash},
+            D1 = D#data{past_assumptions = gb_sets:add(TxHash, Past)},
+            keep_state(D1, [ {reply, From, ok}
+                          , {next_event, cast, StuffedEvent} ]);
+       true ->
+            keep_state(D, [ {reply, {error, From, not_allowed_now}} ])
+    end;
 handle_call_(_, {strict_checks, Strict}, From, #data{} = D) when
         is_boolean(Strict) ->
     keep_state(D#data{strict_checks = Strict}, [{reply, From, ok}]);
@@ -5011,6 +5037,36 @@ handle_common_event_(cast, {?MIN_DEPTH_ACHIEVED, _ChainId,
                        , type => aesc_snapshot_solo_tx:type()
                        , tx_hash => TxHash }, D),
     keep_state(D1);
+handle_common_event_(cast, {?MIN_DEPTH_ACHIEVED, _ChainId, Tag, TxHash} = Msg, _St, Mode,
+                     #data{past_assumptions = Past} = D) when TxHash =/= undefined ->
+    %% If user has called `assume_minimum_depth`, we could get straggler min-depth
+    %% events. Pass them along to the client.
+    %% The locked_until wait on solo close is also reported as min_depth_achieved,
+    %% but with TxHash == undefined. We make sure not to match on those.
+    {DoReport, D1} = case gb_sets:is_element(TxHash, Past) of
+                         true ->
+                             {true, D#data{past_assumptions = gb_sets:delete(TxHash, Past)}};
+                         false ->
+                             {false, D}
+                     end,
+    case DoReport of
+        true ->
+            lager:debug("Received min_depth confirmation while not waiting: ~p/~p, St = ~p",
+                        [Tag, TxHash, _St]),
+            D2 = report_with_notice(info, #{ event => minimum_depth_achieved
+                                           , tx_type  => min_depth_op_type(Tag)
+                                           , tx_hash => TxHash }, already_assumed, D1),
+            keep_state(D2);
+        false ->
+            case Mode of
+                E when E == error; E == error_all ->
+                    close(protocol_error, D1);
+                postpone ->
+                    postpone(D1);
+                discard ->
+                    keep_state(log(drop, msg_type(Msg), Msg, D1))
+            end
+    end;
 handle_common_event_(cast, {?CHANNEL_CLOSED = OpTag, #{ tx_hash := TxHash
                                                       , tx := SignedTx} = _Info} = Msg, _St, _, D) ->
     %% Start a minimum-depth watch, then (if confirmed) terminate
@@ -5215,6 +5271,13 @@ safe_watched_action_report(SignedTx, Msg, D, Updates, ActionFun, WatchTag,
                  ActionFun(SignedTx, D2)
          end,
     report_on_chain_tx(ReportTag, SignedTx, D3).
+
+min_depth_op_type(?WATCH_FND   ) -> aesc_create_tx:type();
+min_depth_op_type(?WATCH_DEP   ) -> aesc_deposit_tx:type();
+min_depth_op_type(?WATCH_WDRAW ) -> aesc_withdraw_tx:type();
+min_depth_op_type(?WATCH_CLOSED) -> close;
+min_depth_op_type(Tag) ->
+    Tag.
 
 push_to_mempool(SignedTx) ->
     case aec_tx_pool:push(SignedTx) of
