@@ -294,7 +294,7 @@ setup_engine(#{ contract := <<_:256>> = ContractPubkey
               , vm_version := VMVersion} = Spec, Env) ->
     try aeb_fate_code:deserialize(ByteCode) of
         Code ->
-            Cache = #{ ContractPubkey => {Code,VMVersion} },
+            Cache = #{ ContractPubkey => {Code, VMVersion} },
             setup_engine(Spec, Env, Cache)
     catch _:_ ->
             abort(bad_bytecode, no_state)
@@ -739,4 +739,3 @@ make_none() ->
 
 make_some(Val) ->
     aeb_fate_data:make_variant([0, 1], 1, {Val}).
-
