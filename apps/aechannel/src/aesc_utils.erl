@@ -475,13 +475,12 @@ check_force_progress_(PayloadHash, PayloadRound,
               aeu_validation:run([
                   fun() ->
                       ContractTrees = aec_trees:contracts(OffChainTrees),
-                      case aect_state_tree:lookup_contract(ContractPubkey,
-                                                           ContractTrees) of
+                      case aect_state_tree:lookup_contract_with_code(ContractPubkey,
+                                                                     ContractTrees) of
                           none -> {error, contract_missing};
-                          {value, Contract} ->
+                          {value, Contract, Code} ->
                             ABIVersion = aesc_offchain_update:extract_abi_version(Update),
                             CTVersion = aect_contracts:ct_version(Contract),
-                            Code = aect_contracts:code(Contract),
                             case check_abi_version(CTVersion, ABIVersion, Protocol) of
                                 ok ->
                                     check_code_serialization(Code, CTVersion, Protocol);
@@ -687,9 +686,9 @@ verify_meta_tx(SignerId, StoreKey, AuthContractId, MetaTx, Trees, Env, TxType)
     Call = aect_call:new(SignerId, 0, AuthContractId, Height,
                          aega_meta_tx:gas_price(MetaTx)),
     CTree = aec_trees:contracts(Trees),
-    case {aect_state_tree:lookup_contract(AuthContractPK, CTree, [no_store]),
+    case {aect_state_tree:lookup_contract_with_code(AuthContractPK, CTree, [no_store]),
           aect_state_tree:read_contract_store(StoreKey, CTree)} of
-        {{value, Contract}, {ok, Store}} ->
+        {{value, Contract, Code}, {ok, Store}} ->
             CallDef = #{ caller      => SignerPK
                        , contract    => AuthContractPK
                        , gas         => aega_meta_tx:gas_limit(MetaTx, Height, Protocol)
@@ -697,7 +696,7 @@ verify_meta_tx(SignerId, StoreKey, AuthContractId, MetaTx, Trees, Env, TxType)
                        , call_data   => aega_meta_tx:auth_data(MetaTx)
                        , amount      => 0
                        , call_stack  => []
-                       , code        => aect_contracts:code(Contract)
+                       , code        => Code
                        , store       => Store
                        , call        => Call
                        , trees       => Trees

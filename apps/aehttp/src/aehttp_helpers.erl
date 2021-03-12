@@ -268,12 +268,12 @@ get_contract_code(ContractKey, CodeKey) ->
         TopBlockHash = aec_chain:top_block_hash(),
         {ok, Trees} = aec_chain:get_block_state(TopBlockHash),
         Tree = aec_trees:contracts(Trees),
-        case aect_state_tree:lookup_contract(ContractPubKey, Tree) of
+        case aect_state_tree:lookup_contract_with_code(ContractPubKey, Tree) of
             none ->
                 Msg = "Contract address for key " ++ atom_to_list(ContractKey) ++ " not found",
                 {error, {404, [], #{<<"reason">> => list_to_binary(Msg)}}};
-            {value, Contract} ->
-                {ok, maps:put(CodeKey, aect_contracts:code(Contract), State)}
+            {value, _Contract, Code} ->
+                {ok, maps:put(CodeKey, Code, State)}
         end
     end.
 

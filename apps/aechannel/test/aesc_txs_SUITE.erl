@@ -5838,7 +5838,7 @@ fp_sophia_versions(Cfg) ->
                 fun(#{contract_id := ContractId,
                       trees := Trees0} = Props) ->
                     Contract = aect_test_utils:get_contract(ContractId, #{trees => Trees0}),
-                    Code = aect_contracts:code(Contract),
+                    {code, Code} = aect_contracts:code(Contract),
                     Deserialized = aect_sophia:deserialize(Code),
                     %% ensure contract serialization version
                     CodeSVsn = maps:get(contract_vsn, Deserialized),

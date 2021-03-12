@@ -27,9 +27,8 @@ new(Owner, Round, CTVersion, Code, Deposit, Trees0) ->
 run_new(ContractPubKey, Call, CallData, Trees0, OnChainTrees,
         OnChainEnv) ->
     ContractsTree  = aec_trees:contracts(Trees0),
-    Contract0 = aect_state_tree:get_contract(ContractPubKey, ContractsTree),
+    {Contract0, Code} = aect_state_tree:get_contract_with_code(ContractPubKey, ContractsTree),
     OwnerPubKey = aect_contracts:owner_pubkey(Contract0),
-    Code = aect_contracts:code(Contract0),
     CallStack = [], %% TODO: should we have a call stack for create_tx also
                     %% when creating a contract in a contract.
     VmVersion = aect_contracts:vm_version(Contract0),
@@ -38,7 +37,7 @@ run_new(ContractPubKey, Call, CallData, Trees0, OnChainTrees,
                                                not ?IS_FATE_SOPHIA(VmVersion)],
     assert_init_function(CallData, VmVersion, Code),
     Protocol = aetx_env:consensus_version(OnChainEnv),
-    {Contract, Trees1} = prepare_init_call(VmVersion, Protocol, Contract0, Trees0),
+    {Contract, Trees1} = prepare_init_call(VmVersion, Protocol, Contract0, Code, Trees0),
     Store = aect_contracts:state(Contract),
     CallDef = make_call_def(OwnerPubKey, OwnerPubKey, ContractPubKey,
                             _Gas = 1000000, _GasPrice = 1,
@@ -73,8 +72,8 @@ run_new(ContractPubKey, Call, CallData, Trees0, OnChainTrees,
             erlang:error(contract_init_failed)
     end.
 
-prepare_init_call(VmVersion, Protocol, Contract, Trees0) when ?IS_FATE_SOPHIA(VmVersion) ->
-    Code = #{ byte_code := ByteCode } = aeser_contract_code:deserialize(aect_contracts:code(Contract)),
+prepare_init_call(VmVersion, Protocol, Contract, SerializedCode, Trees0) when ?IS_FATE_SOPHIA(VmVersion) ->
+    Code = #{ byte_code := ByteCode } = aeser_contract_code:deserialize(SerializedCode),
     ByteCode1 =
         if
             % Before FATE 2 we do not include init function in code put in trees
@@ -100,9 +99,9 @@ prepare_init_call(VmVersion, Protocol, Contract, Trees0) when ?IS_FATE_SOPHIA(Vm
     ContractsTree0 = aec_trees:contracts(Trees0),
     ContractsTree1 = aect_state_tree:enter_contract(Contract2, ContractsTree0),
     {Contract1, aec_trees:set_contracts(Trees0, ContractsTree1)};
-prepare_init_call(VmVersion, Protocol, Contract, Trees0)
+prepare_init_call(VmVersion, Protocol, Contract, SerializedCode, Trees0)
   when ?IS_AEVM_SOPHIA(VmVersion), VmVersion >= ?VM_AEVM_SOPHIA_4 ->
-    #{ type_info := TypeInfo } = Code = aeser_contract_code:deserialize(aect_contracts:code(Contract)),
+    #{ type_info := TypeInfo } = Code = aeser_contract_code:deserialize(SerializedCode),
     TypeInfo1 = lists:keydelete(<<"init">>, 2, TypeInfo),
     Code1     = Code#{ type_info := TypeInfo1 },
     %% The serialization was broken in the Lima release - setting the
@@ -114,7 +113,7 @@ prepare_init_call(VmVersion, Protocol, Contract, Trees0)
     SerCode   = aeser_contract_code:serialize(Code2, maps:get(contract_vsn, Code2, 3)),
     Contract1 = aect_contracts:set_code(SerCode, Contract),
     {Contract1, Trees0};
-prepare_init_call(_, _, Contract, Trees0) ->
+prepare_init_call(_, _, Contract, _Code, Trees0) ->
     {Contract, Trees0}.
 
 assert_init_function(CallData, VMVersion,_SerializedCode) when ?IS_FATE_SOPHIA(VMVersion) ->
@@ -147,9 +146,8 @@ assert_init_function(CallData, VMVersion, SerializedCode) when ?IS_AEVM_SOPHIA(V
 run(ContractPubKey, ABIVersion, Call, CallData, CallStack, Trees0,
     Amount, GasPrice, Gas, OnChainTrees, OnChainEnv, CallerPubkey) ->
     ContractsTree  = aec_trees:contracts(Trees0),
-    Contract = aect_state_tree:get_contract(ContractPubKey, ContractsTree),
+    {Contract, Code} = aect_state_tree:get_contract_with_code(ContractPubKey, ContractsTree),
     OwnerPubkey = aect_contracts:owner_pubkey(Contract),
-    Code = aect_contracts:code(Contract),
     Store = aect_contracts:state(Contract),
     VmVersion = aect_contracts:vm_version(Contract),
     case aect_contracts:abi_version(Contract) =:= ABIVersion of

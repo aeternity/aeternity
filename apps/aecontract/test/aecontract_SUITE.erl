@@ -1398,7 +1398,7 @@ state_tree(_Cfg) ->
     Call1 = ?call(get_call, Ct1, Call1),
     Call2 = ?call(get_call, Ct1, Call2),
     Ct1   = ?call(get_contract, Ct1),
-    <<"Code for C1">> = aect_contracts:code(Ct1),
+    {code, <<"Code for C1">>} = aect_contracts:code(Ct1),
     ok.
 
 %%%===================================================================
@@ -1620,7 +1620,8 @@ make_fate_function_id(FunctionName) when is_binary(FunctionName) ->
 
 make_calldata_from_id(Id, Fun, Args, State) ->
     {{value, C}, _S} = lookup_contract_by_id(Id, State),
-    make_calldata_from_code(aect_contracts:code(C), Fun, Args).
+    {code, Code} = aect_contracts:code(C),
+    make_calldata_from_code(Code, Fun, Args).
 
 format_aevm_type({bytes, N}) ->
     case lists:seq(1, N, 32) of
@@ -5545,7 +5546,8 @@ sophia_compiler_version(_Cfg) ->
     Acc = ?call(new_account, 10000000 * aec_test_utils:min_gas_price()),
     IdC = ?call(create_contract, Acc, identity, {}, #{}),
     {value, C} = ?call(lookup_contract_by_id, IdC),
-    CMap = aeser_contract_code:deserialize(aect_contracts:code(C)),
+    {code, Code} = aect_contracts:code(C),
+    CMap = aeser_contract_code:deserialize(Code),
     ?assertMatchProtocol(maps:get(compiler_version, CMap, undefined),
                          undefined, <<"2.1.0">>, <<"3.2.0">>, <<"unknown">>, <<"4.3.0">>),
     ok.
