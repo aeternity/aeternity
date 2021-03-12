@@ -43,7 +43,7 @@ run_new(ContractPubKey, Call, CallData, Trees0, OnChainTrees,
     CallDef = make_call_def(OwnerPubKey, OwnerPubKey, ContractPubKey,
                             _Gas = 1000000, _GasPrice = 1,
                             _Amount = 0, %TODO: make this configurable
-                            CallData, CallStack, Code, Store, Call, OnChainTrees, OnChainEnv, Trees1),
+                            CallData, _AllowInit = true, CallStack, Code, Store, Call, OnChainTrees, OnChainEnv, Trees1),
     CTVersion = aect_contracts:ct_version(Contract),
     {CallRes, Trees, _} = aect_dispatch:run(CTVersion, CallDef),
     case aect_call:return_type(CallRes) of
@@ -76,7 +76,12 @@ run_new(ContractPubKey, Call, CallData, Trees0, OnChainTrees,
 prepare_init_call(VmVersion, Protocol, Contract, Trees0) when ?IS_FATE_SOPHIA(VmVersion) ->
     Code = #{ byte_code := ByteCode } = aeser_contract_code:deserialize(aect_contracts:code(Contract)),
     FateCode  = aeb_fate_code:deserialize(ByteCode),
-    FateCode1 = aeb_fate_code:strip_init_function(FateCode),
+    FateCode1 =
+        if
+        % Before FATE 2 we do not include init function in code put in trees
+            VmVersion == ?VM_FATE_SOPHIA_1 -> aeb_fate_code:strip_init_function(FateCode);
+            true -> FateCode
+        end,
     ByteCode1 = aeb_fate_code:serialize(FateCode1),
     Code1     = Code#{ byte_code := ByteCode1 },
     %% The serialization was broken in the Lima release - setting the
@@ -153,7 +158,7 @@ run(ContractPubKey, ABIVersion, Call, CallData, CallStack, Trees0,
         false                                -> erlang:error(wrong_abi_version)
     end,
     CallDef = make_call_def(CallerPubkey, OwnerPubkey, ContractPubKey, Gas, GasPrice, Amount,
-              CallData, CallStack, Code, Store, Call, OnChainTrees, OnChainEnv, Trees0),
+              CallData, false, CallStack, Code, Store, Call, OnChainTrees, OnChainEnv, Trees0),
     {CallRes, Trees, _} = aect_dispatch:run(#{vm => VmVersion, abi => ABIVersion}, CallDef),
     UpdatedTrees = aect_utils:insert_call_in_trees(CallRes, Trees),
     {aec_trees:gc_cache(UpdatedTrees, [accounts, contracts]), CallRes}.
@@ -161,7 +166,7 @@ run(ContractPubKey, ABIVersion, Call, CallData, CallStack, Trees0,
 
 
 make_call_def(CallerPubkey, OwnerPubKey, ContractPubKey, GasLimit, GasPrice, Amount,
-              CallData, CallStack, Code, Store, Call, OnChainTrees, OnChainEnv,
+              CallData, AllowInit, CallStack, Code, Store, Call, OnChainTrees, OnChainEnv,
               OffChainTrees) ->
     #{caller          => CallerPubkey
     , contract        => ContractPubKey
@@ -179,6 +184,7 @@ make_call_def(CallerPubkey, OwnerPubKey, ContractPubKey, GasLimit, GasPrice, Amo
     , on_chain_trees  => OnChainTrees
     , origin          => CallerPubkey
     , creator         => OwnerPubKey
+    , allow_init      => AllowInit
     }.
 
 
