@@ -60,6 +60,7 @@
 
 -type amount() :: non_neg_integer().
 -type store() :: aect_contracts_store:store().
+-type serialization_version() :: 1 | 2.
 
 -record(contract, {
         %% Normal account fields
@@ -67,11 +68,13 @@
         owner_id     :: aeser_id:id(),
         ct_version   :: version(),
         code         :: binary(),     %% The byte code
+        code_ref     :: no_ref | {ref, aeser_id:id()},
         store        :: store(),      %% The current state/store (stored in a subtree in mpt)
         log          :: binary(),     %% The current event log
         active       :: boolean(),    %% false when disabled, but don't remove unless referrer_ids == []
         referrer_ids :: list(aeser_id:id()), %% List of contracts depending on this contract
-        deposit      :: amount()
+        deposit      :: amount(),
+        version      :: serialization_version()
     }).
 
 -opaque contract() :: #contract{}.
@@ -87,6 +90,7 @@
 -type protocol() :: aec_hard_forks:protocol_vsn().
 -type vm_usage_type() ::  'call' | 'create' | 'oracle_register'.
 -type ct_nonce() :: non_neg_integer() | binary().
+%-type code_maybe() :: {code, binary()} | {ref, id()}
 
 -export_type([ contract/0
              , amount/0
@@ -102,7 +106,8 @@
 -define(PUB_SIZE, 32).
 -define(HASH_SIZE, 32).
 -define(CONTRACT_TYPE, contract).
--define(CONTRACT_VSN, 1).
+-define(CODE_REF_VSN, 2).
+-define(PRE_IRIS_VSN, 1).
 -define(STORE_PREFIX, <<16:8/integer-unsigned-unit:1>>). %% To collect storage trees in one subtree.
 
 %%%===================================================================
@@ -245,11 +250,13 @@ new(Owner, Nonce, CTVersion, Code, Deposit) ->
                    owner_id     = aeser_id:create(account, Owner),
                    ct_version   = CTVersion,
                    code         = Code,
+                   code_ref     = no_ref,
                    store        = aect_contracts_store:new(),
                    log          = <<>>,
                    active       = true,
                    referrer_ids = [],
-                   deposit      = Deposit
+                   deposit      = Deposit,
+                   version      = serialization_version_for_vm(CTVersion)
                  },
     C = assert_fields(C),
     C.
@@ -261,11 +268,12 @@ serialize(#contract{owner_id     = OwnerId,
                     log          = Log,
                     active       = Active,
                     referrer_ids = ReferrerIds,
-                    deposit      = Deposit}) ->
+                    deposit      = Deposit,
+                    version      = ?PRE_IRIS_VSN}) ->
     aeser_chain_objects:serialize(
       ?CONTRACT_TYPE,
-      ?CONTRACT_VSN,
-      serialization_template(?CONTRACT_VSN),
+      ?PRE_IRIS_VSN,
+      serialization_template(?PRE_IRIS_VSN),
       [ {owner_id, OwnerId}
       , {ct_version, pack_vm_abi(CTVersion)}
       , {code, Code}
@@ -273,7 +281,34 @@ serialize(#contract{owner_id     = OwnerId,
       , {active, Active}
       , {referrer_ids, ReferrerIds}
       , {deposit, Deposit}
-      ]).
+      ]);
+serialize(#contract{owner_id     = OwnerId,
+                    ct_version   = CTVersion,
+                    code         = Code,
+                    code_ref     = CodeRef,
+                    log          = Log,
+                    active       = Active,
+                    referrer_ids = ReferrerIds,
+                    deposit      = Deposit,
+                    version      = ?CODE_REF_VSN}) ->
+    RefMaybe =
+        case CodeRef of
+            noref -> [];
+            {ref, Ref} -> [Ref]
+        end,
+    aeser_chain_objects:serialize(
+        ?CONTRACT_TYPE,
+        ?CODE_REF_VSN,
+        serialization_template(?CODE_REF_VSN),
+        [ {owner_id, OwnerId}
+        , {ct_version, pack_vm_abi(CTVersion)}
+        , {code, Code}
+        , {code_ref, RefMaybe}
+        , {log, Log}
+        , {active, Active}
+        , {referrer_ids, ReferrerIds}
+        , {deposit, Deposit}
+        ]).
 
 -spec serialize_for_client(contract()) -> map().
 serialize_for_client(#contract{id           = Id,
@@ -294,6 +329,10 @@ serialize_for_client(#contract{id           = Id,
 
 -spec deserialize(pubkey(), serialized()) -> contract().
 deserialize(Pubkey, Bin) ->
+    {?CONTRACT_TYPE, Vsn, RawFields} = aeser_chain_objects:deserialize_type_and_vsn(Bin),
+    deserialize(Pubkey, Vsn, RawFields).
+
+deserialize(Pubkey, ?PRE_IRIS_VSN, RawFields) ->
     [ {owner_id, OwnerId}
     , {ct_version, CTVersion}
     , {code, Code}
@@ -301,26 +340,61 @@ deserialize(Pubkey, Bin) ->
     , {active, Active}
     , {referrer_ids, ReferrerIds}
     , {deposit, Deposit}
-    ] = aeser_chain_objects:deserialize(
-          ?CONTRACT_TYPE,
-          ?CONTRACT_VSN,
-          serialization_template(?CONTRACT_VSN),
-          Bin
-          ),
+    ] = aeserialization:decode_fields(
+        serialization_template(?PRE_IRIS_VSN),
+        RawFields
+    ),
     [contract = aeser_id:specialize_type(R) || R <- ReferrerIds],
     account = aeser_id:specialize_type(OwnerId),
     #contract{ id           = aeser_id:create(contract, Pubkey)
              , owner_id     = OwnerId
              , ct_version   = split_vm_abi(CTVersion)
              , code         = Code
+             , code_ref     = no_ref
              , store        = aect_contracts_store:new()
              , log          = Log
              , active       = Active
              , referrer_ids = ReferrerIds
              , deposit      = Deposit
-             }.
+             , version      = ?PRE_IRIS_VSN
+             };
 
-serialization_template(?CONTRACT_VSN) ->
+deserialize(Pubkey, ?CODE_REF_VSN, RawFields) ->
+    [ {owner_id, OwnerId}
+    , {ct_version, CTVersion}
+    , {code, Code}
+    , {code_ref, MaybeRef}
+    , {log, Log}
+    , {active, Active}
+    , {referrer_ids, ReferrerIds}
+    , {deposit, Deposit}
+    ] = aeserialization:decode_fields(
+        serialization_template(?CODE_REF_VSN),
+        RawFields
+    ),
+    CodeRef =
+        case MaybeRef of
+            [Ref] ->
+                <<>> = Code,
+                {ref, Ref};
+            [] -> noref
+        end,
+    [contract = aeser_id:specialize_type(R) || R <- ReferrerIds],
+    account = aeser_id:specialize_type(OwnerId),
+    #contract{ id           = aeser_id:create(contract, Pubkey)
+        , owner_id     = OwnerId
+        , ct_version   = split_vm_abi(CTVersion)
+        , code         = Code
+        , code_ref     = CodeRef
+        , store        = aect_contracts_store:new()
+        , log          = Log
+        , active       = Active
+        , referrer_ids = ReferrerIds
+        , deposit      = Deposit
+        , version      = ?CODE_REF_VSN
+    }.
+
+serialization_template(?PRE_IRIS_VSN) ->
     [ {owner_id, id}
     , {ct_version, int}
     , {code, binary}
@@ -328,7 +402,26 @@ serialization_template(?CONTRACT_VSN) ->
     , {active, bool}
     , {referrer_ids, [id]}
     , {deposit, int}
+    ];
+
+serialization_template(?CODE_REF_VSN) ->
+    [ {owner_id, id}
+    , {ct_version, int}
+    , {code, binary}
+    , {code_ref, [id]}
+    , {log, binary}
+    , {active, bool}
+    , {referrer_ids, [id]}
+    , {deposit, int}
     ].
+
+serialization_version_for_vm(#{vm := VMVersion}) when ?IS_FATE_SOPHIA(VMVersion) ->
+    case VMVersion of
+        ?VM_FATE_SOPHIA_1 -> ?PRE_IRIS_VSN;
+        _ -> ?CODE_REF_VSN
+    end;
+serialization_version_for_vm(_) ->
+    ?PRE_IRIS_VSN.
 
 -spec compute_contract_pubkey(aec_keys:pubkey(), ct_nonce()) -> aec_keys:pubkey().
 compute_contract_pubkey(<<_:?PUB_SIZE/binary>> = Owner, Nonce) when is_integer(Nonce), Nonce >= 0  ->
