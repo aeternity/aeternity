@@ -494,10 +494,9 @@ handle_request_('GetContractCode', Req, _Context) ->
     case aeser_api_encoder:safe_decode(contract_pubkey, maps:get(pubkey, Req)) of
         {error, _} -> {400, [], #{reason => <<"Invalid public key">>}};
         {ok, PubKey} ->
-            case aec_chain:get_contract(PubKey) of
+            case aec_chain:get_contract_with_code(PubKey) of
                 {error, _} -> {404, [], #{reason => <<"Contract not found">>}};
-                {ok, Contract} ->
-                    Code = aect_contracts:code(Contract),
+                {ok, _Contract, Code} ->
                     {200, [], #{ <<"bytecode">> => aeser_api_encoder:encode(contract_bytearray, Code) }}
             end
     end;

@@ -90,7 +90,7 @@
 -type protocol() :: aec_hard_forks:protocol_vsn().
 -type vm_usage_type() ::  'call' | 'create' | 'oracle_register'.
 -type ct_nonce() :: non_neg_integer() | binary().
-%-type code_maybe() :: {code, binary()} | {ref, id()}
+-type code_maybe() :: {code, binary()} | {ref, id()}.
 
 -export_type([ contract/0
              , amount/0
@@ -101,6 +101,7 @@
              , abi_version/0
              , vm_version/0
              , store/0
+             , code_maybe/0
              ]).
 
 -define(PUB_SIZE, 32).
@@ -484,9 +485,11 @@ vm_version(#contract{ct_version = #{vm := VmVersion}}) ->
     VmVersion.
 
 %% The contract byte code.
--spec code(contract()) -> binary().
-code(#contract{code = Code}) ->
-    Code.
+-spec code(contract()) -> code_maybe().
+code(#contract{code = Code, code_ref = noref}) ->
+    {code, Code};
+code(#contract{code = <<>>, code_ref = {ref, Ref}}) ->
+    {ref, Ref}.
 
 %% The representation of the contract state data.
 -spec state(contract()) -> store().
