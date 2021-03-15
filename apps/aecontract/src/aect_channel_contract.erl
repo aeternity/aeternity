@@ -72,8 +72,8 @@ run_new(ContractPubKey, Call, CallData, Trees0, OnChainTrees,
             erlang:error(contract_init_failed)
     end.
 
-prepare_init_call(VmVersion, Protocol, Contract, Code, Trees0) when ?IS_FATE_SOPHIA(VmVersion) ->
-    Code = #{ byte_code := ByteCode } = aeser_contract_code:deserialize(Code),
+prepare_init_call(VmVersion, Protocol, Contract, SerializedCode, Trees0) when ?IS_FATE_SOPHIA(VmVersion) ->
+    Code = #{ byte_code := ByteCode } = aeser_contract_code:deserialize(SerializedCode),
     FateCode  = aeb_fate_code:deserialize(ByteCode),
     FateCode1 =
         if
@@ -98,9 +98,9 @@ prepare_init_call(VmVersion, Protocol, Contract, Code, Trees0) when ?IS_FATE_SOP
     ContractsTree0 = aec_trees:contracts(Trees0),
     ContractsTree1 = aect_state_tree:enter_contract(Contract2, ContractsTree0),
     {Contract1, aec_trees:set_contracts(Trees0, ContractsTree1)};
-prepare_init_call(VmVersion, Protocol, Contract, Code, Trees0)
+prepare_init_call(VmVersion, Protocol, Contract, SerializedCode, Trees0)
   when ?IS_AEVM_SOPHIA(VmVersion), VmVersion >= ?VM_AEVM_SOPHIA_4 ->
-    #{ type_info := TypeInfo } = Code = aeser_contract_code:deserialize(Code),
+    #{ type_info := TypeInfo } = Code = aeser_contract_code:deserialize(SerializedCode),
     TypeInfo1 = lists:keydelete(<<"init">>, 2, TypeInfo),
     Code1     = Code#{ type_info := TypeInfo1 },
     %% The serialization was broken in the Lima release - setting the
