@@ -10,7 +10,12 @@
         ]).
 
 start(_StartType, _StartArgs) ->
-    aehc_sup:start_link().
+    Res = aehc_sup:start_link(),
+    %% NOTE: In order to start and the common sync procedure HC performs:
+    %% - fetching the parent chain data via network interface (connector);
+    %% - processing thq queue of parent chain blocks via acknowledgement interface
+    _ = pop(),
+    Res.
 
 start_phase(_Phase, _StartType, _PhaseArgs) ->
     ok.
@@ -40,3 +45,7 @@ set_env({set_env, K}, V) when is_atom(K) ->
     application:set_env(aehyperchains, K, V);
 set_env(F, V) when is_function(F, 1) ->
     F(V).
+
+
+pop() ->
+    Res = aehc_parent_mng:pop(), lager:info("~nPop: ~p~n",[Res]), (Res == empty) orelse pop().

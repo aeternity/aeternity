@@ -16,7 +16,7 @@
         , write_parent_block/2
         ]).
 
--export([ write_parent_state/1
+-export([ write_parent_state/2
         , get_parent_state/1
         ]).
 
@@ -204,6 +204,7 @@ write_pogf(ParentBlock) ->
     ok.
 
 write_parent_block_state(ParentBlock, Trees) ->
+
     Hash = aehc_parent_block:hash_block(ParentBlock),
     Trees2 = aehc_parent_trees:serialize_for_db(aehc_parent_trees:commit_to_db(Trees)),
     ParentBlockState = #hc_db_parent_block_state{ key = Hash, value = Trees2},
@@ -229,9 +230,8 @@ get_parent_state(Pointer) ->
                undefined
        end).
 
--spec write_parent_state(aehc_parent_state:parent_state()) -> ok.
-write_parent_state(ParentState) ->
-    Pointer = aehc_parent_state:genesis(ParentState),
+-spec write_parent_state(binary(), aehc_parent_state:parent_state()) -> ok.
+write_parent_state(Pointer, ParentState) ->
     ?t(mnesia:write(#hc_db_parent_state{key = Pointer, value = ParentState}),
         []).
 

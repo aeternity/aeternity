@@ -8,12 +8,18 @@
 %% - to traverse hash-pointers via connector network interface;
 %% - to update database log by the current parent chain state;
 %% - to emit appropriate state change events on aehc_parent_mng queue
-%% The main operational modes are:
+
+%% The main operational states are:
 %% a) fetched (adding a new blocks);
 %% b) migrated (fork switching);
-%% c) synced (consistent, ready to use mode).
+%% c) synced (consistent, ready to use mode)
 
+%% Used patterns:
+%% - https://martinfowler.com/eaaCatalog/dataMapper.html
+%% - https://martinfowler.com/eaaCatalog/unitOfWork.html
+%% - https://www.enterpriseintegrationpatterns.com/patterns/messaging/PollingConsumer.html
 %%% @end
+%%%-------------------------------------------------------------------
 -module(aehc_parent_tracker).
 
 -behaviour(gen_statem).
@@ -22,11 +28,12 @@
 -export([start/3]).
 
 -export([commit/3]).
--export([read/3]).
+-export([pop/2]).
+-export([candidates/4]).
 
 -export([stop/1]).
 
--export([publish_block/2]).
+-export([publish/2]).
 
 %% gen_statem.
 -export([init/1]).
@@ -44,27 +51,30 @@
 -type parent_block() :: aehc_parent_block:parent_block().
 -type commitment() :: aehc_commitment:commitment().
 
-
 -spec start(connector(), map(), binary()) -> {ok, pid()} | {error, term()}.
-start(Connector, Args, Address) ->
-    Data = data(Connector, Args, Address),
+start(Connector, Args, Pointer) ->
+    Data = data(Connector, Args, Pointer),
     gen_statem:start(?MODULE, Data, []).
 
 -spec commit(pid(), commitment(), term()) -> ok | {error, term()}.
 commit(Pid, Commitment, From) ->
     gen_statem:cast(Pid, {commit, Commitment, From}).
 
--spec read(pid(), non_neg_integer(), term()) -> [] | [parent_block()].
-read(Pid, Height, From) ->
-    gen_statem:cast(Pid, {read, Height, From}).
+-spec pop(pid(), term()) -> {value, parent_block()} | empty.
+pop(Pid, From) ->
+    gen_statem:cast(Pid, {pop, From}).
+
+-spec candidates(pid(), non_neg_integer(), binary(), term()) -> [commitment()].
+candidates(Pid, Period, Hash, From) ->
+    gen_statem:cast(Pid, {candidates, Period, Hash, From}).
 
 -spec stop(pid()) -> ok.
 stop(Pid) ->
     gen_statem:stop(Pid).
 
--spec publish_block(connector(), block()) -> ok.
-publish_block(_Connector, Block) ->
-    gen_statem:cast(?MODULE, {publish_block, Block}).
+-spec publish(pid(), block()) -> ok.
+publish(Pid, Block) ->
+    gen_statem:cast(Pid, {publish, Block}).
 
 %%%===================================================================
 %%%  State machine callbacks
@@ -73,34 +83,33 @@ publish_block(_Connector, Block) ->
 -record(data, {
     %% The real world blockchain interface: https://github.com/aeternity/aeconnector/wiki
     connector :: connector(),
-    %% Connector configuration which should be passed to module:connect/2
+    %% Connector configuration which should be passed to connector:connect/2
     args :: map(),
     %% The block address on which state machine history ends
     indicator :: binary(),
     %% The block height on which state machine history ends
     top :: non_neg_integer(),
-    %% The current processed state machine address
+    %% The current processed state machine position
     location :: binary(),
     %% The current processed state machine index
     index :: non_neg_integer(),
-    %% LIFO stack of fetched blocks
-    stack = [] :: [term()],
+    %% FIFO task queue of fetched blocks
+    queue :: term(),
     %% The genesis block height on which state machine history begins
     genesis :: non_neg_integer(),
-    %% The genesis block address on which state machine history begins
-    address :: binary()
+    %% The pointer (block hash) on which state machine history begins
+    pointer :: binary()
 }).
 
 -type data() :: #data{}.
 
 init(Data) ->
     {ok, Pid} = connect(Data), _Ref = erlang:monitor(process, Pid),
-    ok = init_db(Data),
+    ok = init_state(Data),
     Data2 = sync_state(Data),
     {ok, Hash} = aeconnector:get_top_block(connector(Data)),
     {ok, Block} = aeconnector:get_block_by_hash(connector(Data), Hash),
     Data3 = indicate(Data2, Block),
-
     {ok, fetched, Data3, [{next_event, internal, {added_block, Block}}]}.
 
 callback_mode() ->
@@ -111,7 +120,8 @@ terminate(_Reason, _State, Data) ->
 
 -spec connect(data()) -> {ok, pid()}.
 connect(Data) ->
-    Con = connector(Data), Args = args(Data), Callback = fun publish_block/2,
+    Con = connector(Data), Args = args(Data),
+    Callback = fun (_, Block) -> publish(_Pid = self(), Block) end,
     aeconnector:connect(Con, Args, Callback).
 
 -spec disconnect(data()) -> ok.
@@ -130,8 +140,11 @@ fetched(enter, _OldState, Data) ->
 %% Processing parent chain fetching log state;
 fetched(internal, {added_block, Block}, Data) ->
     Hash = aeconnector_block:hash(Block),
-
     Loc = location(Data), Index = index(Data),
+
+    io:format(user, "~nIndex: ~p~n",[Index]),
+    io:format(user, "~nHash: ~p~n",[Hash]), io:format(user, "~nPrevHash: ~p~n",[aeconnector_block:prev_hash(Block)]),
+
     case Index of
         _ when Hash == Loc ->
             %% NOTE Sync is done in the fetch mode
@@ -140,9 +153,11 @@ fetched(internal, {added_block, Block}, Data) ->
             %% TODO: Place for the new added block anouncement;
             %% NOTE Sync procedure is continue it the fetch mode
             ParentBlock = parent_block(Block), ParentTrees = aehc_parent_trees:new(), %% TODO TO update trees
-            aehc_parent_db:write_parent_block(ParentBlock, ParentTrees), Data2 = push(Data, ParentBlock),
+            aehc_parent_db:write_parent_block(ParentBlock, ParentTrees),
+            Data2 = push(Data, ParentBlock),
             PrevHash = aeconnector_block:prev_hash(Block),
             {ok, PrevBlock} = aeconnector:get_block_by_hash(connector(Data), PrevHash),
+
             {keep_state, locate(Data2, PrevBlock), [{next_event, internal, {added_block, PrevBlock}}]};
         _ ->
             %% NOTE Sync is continue on the fork switch mode
@@ -174,6 +189,7 @@ migrated(internal, {added_block, Block}, Data) ->
         _ when Height >= Genesis ->
             %% NOTE Sync procedure is continue it the migrated mode
             {ok, PrevBlock} = aeconnector:get_block_by_hash(connector(Data), PrevHash),
+
             {keep_state, locate(Data2, PrevBlock), [{next_event, internal, {added_block, PrevBlock}}]};
         _ ->
             %% NOTE: This case is designed with the dynamic nature of HC which relies on the parent blockchains
@@ -183,6 +199,7 @@ migrated(internal, {added_block, Block}, Data) ->
             %%  b) Restarted;
             Template = "State machine got exceeded genesis entry (genesis: ~p, height: ~p)",
             Reason = io_lib:format(Template, [Genesis, Height]),
+
             {stop, Reason}
     end;
 
@@ -192,13 +209,13 @@ migrated(_, _, Data) ->
 
 %% Synchronized state (ready to use);
 synced(enter, _OldState, Data) ->
-    Top = top(Data), Indicator = indicator(Data),
+    Indicator = indicator(Data),
     %% TODO: Place for the sync finalization anouncement;
     Data2 = index(location(Data, Indicator), 0),
     ok = commit_state(Data2),
-    From = self(), Stack = stack(Data2),
-    ok = aehc_parent_mng:emit(From, Indicator, Top, Stack),
-    {keep_state, stack(Data2, [])};
+
+    From = self(), ok = aehc_parent_mng:announce(From, Indicator),
+    {keep_state, Data2};
 
 synced(cast, {commit, Commitment, From}, Data) ->
     Header = aehc_commitment:header(Commitment),
@@ -207,44 +224,33 @@ synced(cast, {commit, Commitment, From}, Data) ->
 
     Payload = aeser_api_encoder:encode(key_block_hash, KeyBlock),
 
-    Res = aeconnector:send_tx(connector(Data), Delegate, Payload),
+%%    Res = aeconnector:send_tx(connector(Data), Delegate, Payload),
+    Res = ok,
     gen_statem:reply(From, Res),
+
     {keep_state, Data};
 
-synced(cast, {read, Height, From}, Data) ->
-    Loc = location(Data),
-    Res = aehc_parent_db:get_parent_blocks(Height, Loc),
+synced(cast, {candidates, Period, Hash, From}, Data) ->
+    Res = aehc_parent_db:get_candidates_in_election_cycle(Period, Hash),
     gen_statem:reply(From, Res),
+
     {keep_state, Data};
+
+synced(cast, {pop, From}, Data) ->
+    {Res, Data2} = pop(Data),
+    gen_statem:reply(From, Res),
+
+    {keep_state, Data2};
 
 synced(cast, {publish_block, Block}, Data) ->
     Data2 = indicate(Data, Block),
-    aec_events:publish(parent_top_changed, Block),
+
     {next_state, fetched, Data2, [{next_event, internal, {added_block, Block}}]}.
 
--spec init_db(data()) -> data().
-init_db(Data) ->
-    Address = address(Data),
-    State = aehc_parent_db:get_parent_state(Address),
-    (State == undefined) andalso
-    begin
-        {ok, Block} = aeconnector:get_block_by_hash(connector(Data), Address),
-        %% TODO To transform into parent block
-        GenesisBlock = aehc_parent_block:to_genesis(parent_block(Block)),
-        ParentTrees = aehc_parent_trees:new(), %% TODO TO update trees
-        aehc_parent_db:write_parent_block(GenesisBlock, ParentTrees),
-        Height = aehc_parent_block:height_block(GenesisBlock),
-        State2 = aehc_parent_state:parent_state(Address, _Top = Address, Height),
-        aehc_parent_db:write_parent_state(State2)
-    end,
-    ok.
 
--spec sync_state(data()) -> data().
-sync_state(Data) ->
-    Address = address(Data),
-    State = aehc_parent_db:get_parent_state(Address),
-    Top = aehc_parent_state:top(State), Height = aehc_parent_state:height(State),
-    top(location(Data, Top), Height).
+%%%===================================================================
+%%%  Data tracker
+%%%===================================================================
 
 indicate(Data, Block) ->
     Hash = aeconnector_block:hash(Block), Height = aeconnector_block:height(Block),
@@ -256,28 +262,74 @@ locate(Data, Block) ->
     Index = index(Data),
     index(Data, Index - 1).
 
+%%%===================================================================
+%%%  Data mapper
+%%%===================================================================
+
+-spec init_state(data()) -> data().
+init_state(Data) ->
+    Pointer = pointer(Data),
+    State = aehc_parent_db:get_parent_state(Pointer),
+    (State == undefined) andalso
+    begin
+        {ok, Block} = aeconnector:get_block_by_hash(connector(Data), Pointer),
+        %% TODO To transform into parent block
+        GenesisBlock = aehc_parent_block:to_genesis(parent_block(Block)),
+        ParentTrees = aehc_parent_trees:new(), %% TODO TO update trees
+        aehc_parent_db:write_parent_block(GenesisBlock, ParentTrees),
+        Hash = aehc_parent_block:hash_block(GenesisBlock),
+        Height = aehc_parent_block:height_block(GenesisBlock),
+
+        State2 = indicator(top(location(Data, Pointer), Height), Hash),
+        commit_state(State2)
+    end,
+    ok.
+
+-spec sync_state(data()) -> data().
+sync_state(Data) ->
+    Pointer = pointer(Data), Queue = queue(Data), Args = args(Data),
+    State = aehc_parent_db:get_parent_state(Pointer),
+
+    args(queue(State, Queue), Args).
+
 -spec commit_state(data()) -> ok.
 commit_state(Data) ->
-    Address = address(Data), Loc = location(Data), Index = index(Data),
-    State = aehc_parent_state:parent_state(Address, Loc, Index),
-    ok = aehc_parent_db:write_parent_state(State).
+    Pointer = pointer(Data), Top = top(Data), Loc = location(Data), Index = index(Data),
+    State = Data#data{ queue = undefined, args = #{} },
+    ok = aehc_parent_db:write_parent_state(Pointer, State).
 
 %%%===================================================================
 %%%  HC protocol
 %%%===================================================================
 
+-spec is_commitment(binary()) -> boolean().
+is_commitment(<<"kh",_/binary>>) ->
+    true;
+is_commitment(_) ->
+    false.
+
+-spec is_registry(binary()) -> boolean().
+is_registry(<<"ak",_/binary>>) ->
+    true;
+is_registry(_) ->
+    false.
+
 -spec commitment(tx()) -> commitment().
 commitment(Tx) ->
     Delegate = aeconnector_tx:account(Tx), %% TODO Place to substitute delegate via trees;
     Payload = aeconnector_tx:payload(Tx),
-    KeyblockHash = aeser_api_encoder:decode(Payload),
+%%    KeyblockHash = aeser_api_encoder:decode(Payload),
 
-    Header = aehc_commitment_header:new(Delegate, KeyblockHash),
+    Header = aehc_commitment_header:new(Delegate, <<"KeyblockHash">>),
     aehc_commitment:new(Header).
 
 -spec parent_block(block()) -> parent_block().
 parent_block(Block) ->
-    CList = [commitment(Tx) || Tx <- aeconnector_block:txs(Block)],
+    Log = [commitment(Tx) || Tx <- aeconnector_block:txs(Block)],
+
+    CList = [Entry|| Entry <- Log, is_commitment(Entry)],
+    RList = [Entry|| Entry <- Log, is_registry(Entry)],
+
     CHList = [aehc_commitment:hash(C) || C <- CList],
 
     Hash = aeconnector_block:hash(Block),
@@ -292,16 +344,21 @@ parent_block(Block) ->
 %%%===================================================================
 
 -spec data(connector(), map(), binary()) -> data().
-data(Connector, Args, Address) ->
+data(Connector, Args, Pointer) ->
     #data{
         connector = Connector,
         args = Args,
-        address = Address
+        pointer = Pointer,
+        queue = queue:new()
     }.
 
 -spec connector(data()) -> aeconnector:connector().
 connector(Data) ->
     Data#data.connector.
+
+-spec args(data(), map()) -> data().
+args(Data, Args) ->
+    Data#data{ args = Args }.
 
 -spec args(data()) -> map().
 args(Data) ->
@@ -331,18 +388,29 @@ location(Data) ->
 location(Data, Loc) ->
     Data#data{ location = Loc }.
 
--spec stack(data()) -> [term()].
-stack(Data) ->
-    Data#data.stack.
+-spec queue(data()) -> term().
+queue(Data) ->
+    Data#data.queue.
 
--spec stack(data(), [term()]) -> data().
-stack(Data, Stack) ->
-    Data#data{ stack = Stack }.
+-spec queue(data(), term()) -> data().
+queue(Data, Queue) ->
+    Data#data{ queue = Queue }.
 
 -spec push(data(), parent_block()) -> data().
 push(Data, Block) ->
-    Stack = stack(Data),
-    stack(Data, [Block|Stack]).
+    Queue = queue:in(Block, queue(Data)),
+    queue(Data, Queue).
+
+-spec pop(data()) -> {{value, parent_block()}, data()} | {empty, data()}.
+pop(Data) ->
+    Queue = queue(Data),
+    case queue:out(Queue) of
+        {Res = {value, _}, Queue2} ->
+            Data2 = queue(Data, Queue2),
+            {Res, Data2};
+        {Res = empty, _Queue2} ->
+            {Res, Data}
+    end.
 
 -spec index(data()) -> non_neg_integer().
 index(Data) ->
@@ -356,7 +424,7 @@ index(Data, Index) ->
 genesis(Data) ->
     Data#data.genesis.
 
--spec address(data()) -> binary().
-address(Data) ->
-    Data#data.address.
+-spec pointer(data()) -> binary().
+pointer(Data) ->
+    Data#data.pointer.
 
