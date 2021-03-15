@@ -433,7 +433,7 @@ state_pre_transform_key_node(KeyNode, _PrevNode, PrevKeyNode, Trees1) ->
                      end,
             %% Perform the leader election
             ParentHash = get_pos_header_parent_hash(Header),
-            Commitments = aehc_parent_db:get_candidates_in_election_cycle(aec_headers:height(Header), ParentHash),
+            Commitments = aehc_parent_mng:candidates(ParentHash),
             %% TODO: actually hardcode the encoding
             Candidates = ["[", lists:join(", ", [aeser_api_encoder:encode(account_pubkey, aehc_commitment_header:hc_delegate(aehc_commitment:header(X))) || X <- Commitments]), "]"],
             Call = lists:flatten(io_lib:format("get_leader(~s, #~s)", [Candidates, lists:flatten([integer_to_list(X,16) || <<X:4>> <= ParentHash])])),
@@ -568,7 +568,7 @@ new_unmined_key_node(PrevNode, PrevKeyNode, Height, Miner, Beneficiary, Protocol
     %% First we need to determine whether we are a PoS or PoW block
     %% If the PrevKeyNode is a PoS block then we are a PoS block
     %% Otherwise check if we are at a possible HC activation point
-    %% If yes the evaluate the activation criteria using the provided Trees
+    %% If yes then evaluate the activation criteria using the provided Trees
     Header = aec_headers:new_key_header(Height,
                                aec_block_insertion:node_hash(PrevNode),
                                aec_block_insertion:node_hash(PrevKeyNode),
@@ -603,7 +603,9 @@ new_pos_key_node(PrevNode, PrevKeyNode, Height, Miner, Beneficiary, Protocol, In
     %% NOTE --------------
     %% TODO: PoGF - for now just ignore generational fraud - let's first get a basic version working
     %%       When handling PoGF the commitment point is in a different place than usual
-    ParentBlock = aehc_utils:submit_commitment(PrevKeyNode, Miner), %% TODO: Miner vs Delegate, Which shall register?
+    ok = aehc_utils:submit_commitment(PrevKeyNode, Miner), _ = aehc_utils:confirm_commitment(),
+    %% TODO: Miner vs Delegate, Which shall register?
+    ParentBlock = aehc_parent_mng:pop(),
     Seal = create_pos_pow_field(aehc_parent_block:hash_block(ParentBlock), ?FAKE_SIGNATURE),
     Header = aec_headers:new_key_header(Height,
                            aec_block_insertion:node_hash(PrevNode),

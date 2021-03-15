@@ -2,16 +2,19 @@
 %%%-------------------------------------------------------------------
 %%% @copyright (C) 2020, Aeternity Anstalt
 %%% @doc
-%%% Parent chains process manager
-%%% See the pattern "ProcessManager" (https://www.enterpriseintegrationpatterns.com/patterns/messaging/ProcessManager.html).
-%%% This component is responsible for orchestration of the Hyperchains backends (parent chains) through:
-%%% - dedicated state machines (trackers);
-%%% - blockchain interfaces (https://github.com/aeternity/aeconnector/wiki);
-%%% TODO: To provide HTTP API for scheduled commitments
-%%% TODO: To show dialog about registry record (show notify + address in telegram, throw error on commitment)
-%%% a) Setup #1 (monolith)
-%%% b) Setup #2 (replica)
-%%% c) Setup #3 (shard: history keeper/election master)
+%% Parent chains process manager
+%% This component is responsible for orchestration of the Hyperchains backends (parent chains) through:
+%% - dedicated state machines (trackers);
+%% - blockchain interfaces (https://github.com/aeternity/aeconnector/wiki);
+%% The component traverses parent chain data via lazy evaluation mode (on demand)
+%% TODO: To provide HTTP API for scheduled commitments
+%% TODO: To show dialog about registry record (show notify + address in telegram, throw error on commitment)
+%% a) Setup #1 (monolith)
+%% b) Setup #2 (replica)
+%% c) Setup #3 (shard: history keeper/election master)
+
+%% Used patterns:
+%% - https://www.enterpriseintegrationpatterns.com/patterns/messaging/ProcessManager.html)
 %%% @end
 %%%-------------------------------------------------------------------
 -module(aehc_parent_mng).
@@ -25,13 +28,12 @@
 -export([start_link/0]).
 
 -export([commit/1]).
--export([read/1]).
+-export([candidates/1, candidates/2]).
 -export([pop/0]).
--export([queue/0]).
 
 -export([stop/0]).
 
--export([emit/4]).
+-export([announce/2]).
 
 %% gen_statem.
 -export([init/1]).
@@ -60,22 +62,24 @@ start_link() ->
 commit(Commitment) ->
     gen_statem:call(?MODULE, {commit, Commitment}).
 
--spec read(non_neg_integer()) -> [parent_block()].
-read(Height) ->
-    gen_statem:call(?MODULE, {read, Height}).
+-spec candidates(binary()) -> [commitment()].
+candidates(Hash) ->
+    candidates(_ElectionPeriod = 1, Hash).
+%% TODO To support method "sync to to"
+-spec candidates(non_neg_integer(), binary()) -> [parent_block()].
+candidates(Period, Hash) ->
+    gen_statem:call(?MODULE, {candidates, Period, Hash}).
 
+%% NOTE The starter app should check the empty stack condition at the initialization stage
+%% To extract the block from a queue (FIFO)
 -spec pop() -> {value, parent_block()} | empty.
 pop() ->
     gen_statem:call(?MODULE, {pop}).
 
-%% You should check it anyway at the early initialization stage
--spec queue() -> [parent_block()].
-queue() ->
-    gen_statem:call(?MODULE, {queue}).
-
--spec emit(term(), binary(), non_neg_integer(), [parent_block()]) -> ok.
-emit(From, Hash, Height, Blocks) ->
-    gen_statem:cast(?MODULE, {emit, From, Hash, Height, Blocks}).
+%% The announcement of new parent top
+-spec announce(pid(), binary()) -> ok.
+announce(From, Top) ->
+    gen_statem:cast(?MODULE, {announce, From, Top}).
 
 -spec stop() -> ok.
 stop() ->
@@ -84,17 +88,17 @@ stop() ->
 %%%===================================================================
 %%%  gen_statem behaviour
 %%%===================================================================
+
 -record(tracker, {
-    pid :: term(),
-    ref :: term(),
+    pid :: term(), ref :: term(),
     %% The the real world blockchain interface: https://github.com/aeternity/aeconnector/wiki
     module :: connector(),
     %% Connector configuration which should be passed the module:connect/2
     args :: map(),
     %% Commitment capacity. The blocks count accumulated into one commitment transaction
-    capacity = 0 :: integer(),
-    %% The block address on which the state machine history begins
-    address :: binary()
+    capacity :: undefined | integer(),
+    %% The pointer (block hash) on which the state machine history begins
+    pointer :: binary()
 }).
 
 -type tracker() :: #tracker{}.
@@ -109,7 +113,7 @@ stop() ->
     primary::tracker(),
     %% Dedicated replica state machines
     replicas = [] :: [tracker()],
-    %% FIFO queue of produced blocks
+    %% FIFO queue of accumulated commitments
     queue::term()
 }).
 
@@ -122,7 +126,6 @@ init(Data) ->
     Primary = primary(Data),
     {ok, Pid} = start_tracker(Primary), Ref = erlang:monitor(process, Pid),
     Data2 = primary(Data, Primary#tracker{ pid = Pid, ref = Ref }),
-
 
     {ok, Mode, Data2}.
 
@@ -138,33 +141,33 @@ terminate(_Reason, _State, Data) ->
 %%%===================================================================
 %%%  State machine callbacks
 %%%===================================================================
+
 monolith(enter, _OldState, Data) ->
     {keep_state, Data, []};
 
 monolith({call, From}, {commit, Commitment}, Data) ->
-    Primary = primary(Data), Pid = Primary#tracker.pid,
-    aehc_parent_tracker:commit(Pid, Commitment, From),
-    {keep_state, Data, []};
+    Data2 = in(Commitment, Data),
+    Primary = primary(Data2),
+    Data3 = commit(Primary, Data2, From),
+
+    {keep_state, Data3, []};
 
 monolith({call, From}, {pop}, Data) ->
-    {Res, Data2} = out(Data),
-    gen_statem:reply(From, Res),
-    {keep_state, Data2, []};
-
-monolith({call, From}, {queue}, Data) ->
-    Queue = queue(Data), Res = queue:to_list(Queue),
-    gen_statem:reply(From, Res),
-    {keep_state, queue(Data, queue:new()), []};
-
-monolith({call, From}, {read, Height}, Data) ->
     Primary = primary(Data), Pid = Primary#tracker.pid,
-    aehc_parent_tracker:read(Pid, Height, From),
+    aehc_parent_tracker:pop(Pid, From),
+
     {keep_state, Data, []};
 
-monolith(cast, {emit, _From, Hash, Height, Blocks}, Data) ->
-    Data2 = lists:foldl(fun in/2, Data, Blocks),
-    Info = #{ block_hash => Hash, Height => Height }, aec_events:publish(parent_top_changed, Info),
-    {keep_state, Data2, []};
+monolith({call, From}, {candidates, Period, Hash}, Data) ->
+    Primary = primary(Data), Pid = Primary#tracker.pid,
+    aehc_parent_tracker:candidates(Pid, Period, Hash, From),
+
+    {keep_state, Data, []};
+
+monolith(cast, {announce, _From, Top}, Data) ->
+    aec_events:publish(parent_top_changed, Top),
+
+    {keep_state, Data, []};
 
 monolith(_Event, _Req, Data) ->
     %% TODO
@@ -183,6 +186,7 @@ replica(enter, _OldState, Data) ->
             replicas(Data)
         ),
     Data2 = replicas(Data, Replicas),
+
     {keep_state, Data2, []};
 
 replica(_Event, _Req, Data) ->
@@ -195,6 +199,7 @@ shard(enter, _OldState, Data) ->
     {ok, Pid} = start_tracker(Tracker),
     Ref = erlang:monitor(process, Pid),
     Data2 = replicas(Data, [Tracker#tracker{ pid = Pid, ref = Ref }]),
+
     {keep_state, Data2, []};
 
 shard(_Event, _Req, Data) ->
@@ -203,26 +208,44 @@ shard(_Event, _Req, Data) ->
 
 -spec start_tracker(tracker()) -> {ok, pid()}.
 start_tracker(Tracker) ->
-    Module = Tracker#tracker.module, Args = Tracker#tracker.args, Address = Tracker#tracker.address,
-    aehc_parent_tracker:start(Module, Args, Address).
+    Module = Tracker#tracker.module, Args = Tracker#tracker.args, Pointer = Tracker#tracker.pointer,
+    aehc_parent_tracker:start(Module, Args, Pointer).
 
 -spec stop_tracker(tracker()) -> ok.
 stop_tracker(Tracker) ->
     Pid = Tracker#tracker.pid,
     ok = aehc_parent_tracker:stop(Pid).
 
+-spec commit(tracker(), data(), term()) -> data().
+commit(Tracker, Data, From) ->
+    Queue = queue:to_list(queue(Data)),
+    Length = length(Queue), Capacity = Tracker#tracker.capacity,
+    if
+        Capacity == undefined; (Length rem Capacity) == 0 ->
+            %% Design notes:
+            %% a) We could utilize compose algorithms to apply the list of commitments as a package
+            %% b) We could route commitments between parent chains (based on setup)
+            [Commitment|_]  = Queue,
+            Primary = primary(Data), Pid = Primary#tracker.pid,
+            aehc_parent_tracker:commit(Pid, Commitment, From),
+            queue(Data, queue:new());
+        true ->
+            Data
+    end.
+
 %%%===================================================================
 %%%  Data access layer
 %%%===================================================================
+
 -spec tracker(map()) -> tracker().
 tracker(Tracker) ->
     Module = maps:get(<<"module">>, Tracker),
     Args = maps:get(<<"args">>, Tracker),
-    Address = maps:get(<<"address">>, Tracker),
+    Pointer = maps:get(<<"pointer">>, Tracker),
     #tracker{
         module = binary_to_atom(Module, unicode),
         args = Args,
-        address = Address
+        pointer = Pointer
     }.
 
 -spec data(map()) -> data().
@@ -271,14 +294,3 @@ queue(Data, Queue) ->
 in(Item, Data) ->
     Queue2 = queue:in(Item, queue(Data)),
     queue(Data, Queue2).
-
--spec out(data()) -> {{value, term()}, data()} | {empty, data()}.
-out(Data) ->
-    Queue = queue(Data),
-    case queue:out(Queue) of
-        {Res = {value, _}, Queue2} ->
-            Data2 = queue(Data, Queue2),
-            {Res, Data2};
-        {Res = empty, _Queue2} ->
-            {Res, Data}
-    end.
