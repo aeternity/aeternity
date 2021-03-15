@@ -758,7 +758,9 @@ remove_locations(Hash, Hash) ->
 remove_locations(StopHash, CurrentHash) ->
     lists:foreach(fun(TxHash) ->
                           aec_db:remove_tx_location(TxHash),
-                          aec_db:add_tx_hash_to_mempool(TxHash)
+                          aec_db:add_tx_hash_to_mempool(TxHash),
+                          Tx = aec_db:get_signed_tx(TxHash),
+                          aec_events:publish(tx_received, Tx)
                   end, db_safe_get_tx_hashes(CurrentHash)),
     remove_locations(StopHash, db_get_prev_hash(CurrentHash)).
 

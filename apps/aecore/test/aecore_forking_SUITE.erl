@@ -26,9 +26,11 @@
     spend_on_dev1/1,
     spend_on_dev2/1,
     mine_a_micro_block_on_dev1/1,
+    mine_a_micro_block_on_dev2/1,
     start_nodes_and_wait_sync_dev1_chain_wins/1,
     start_nodes_and_wait_sync_dev2_chain_wins/1,
-    assert_orphaned_tx_in_pool/1
+    assert_orphaned_tx_in_pool_dev1_receives/1,
+    assert_orphaned_tx_in_pool_dev2_receives/1
    ]).
 
 %% tr_ttb behavior callbacks
@@ -68,10 +70,45 @@ groups() ->
        dev3_failed_attack,
        dev3_syncs_to_community]},
      {orphaned_txs_get_included, [sequence],
+      [{group, on_micro_block},
+       {group, on_key_block}
+      ]},
+     {on_micro_block, [sequence],
       [start_dev1,
+       start_dev2,
        %% mine more than 2 blocks so the beneficiary has some tokens to spend
        mine_a_key_block_on_dev1,
        mine_a_key_block_on_dev1,
+       mine_a_key_block_on_dev1,
+       stop_dev2,
+       mine_a_key_block_on_dev1,
+       spend_on_dev1,
+       mine_a_micro_block_on_dev1,
+       mine_a_key_block_on_dev1,
+       stop_dev1,
+       start_dev2,
+       mine_a_key_block_on_dev2,
+       mine_a_key_block_on_dev2,
+       mine_a_key_block_on_dev2,
+       mine_a_key_block_on_dev2,
+       mine_a_key_block_on_dev2,
+       mine_a_key_block_on_dev2,
+       mine_a_key_block_on_dev2,
+       stop_dev2,
+       start_nodes_and_wait_sync_dev2_chain_wins,
+       assert_orphaned_tx_in_pool_dev2_receives,
+       mine_a_micro_block_on_dev2,
+       stop_dev1,
+       stop_dev2
+       ]},
+     {on_key_block, [sequence],
+      [start_dev1,
+       start_dev2,
+       %% mine more than 2 blocks so the beneficiary has some tokens to spend
+       mine_a_key_block_on_dev1,
+       mine_a_key_block_on_dev1,
+       mine_a_key_block_on_dev1,
+       stop_dev2,
        mine_a_key_block_on_dev1,
        spend_on_dev1,
        mine_a_micro_block_on_dev1,
@@ -85,7 +122,8 @@ groups() ->
        mine_a_key_block_on_dev2,
        stop_dev2,
        start_nodes_and_wait_sync_dev2_chain_wins,
-       assert_orphaned_tx_in_pool,
+       assert_orphaned_tx_in_pool_dev2_receives,
+       mine_a_micro_block_on_dev2,
        stop_dev1,
        stop_dev2
        ]}
@@ -99,6 +137,8 @@ init_per_suite(Config) ->
     aecore_suite_utils:init_per_suite([dev1, dev2, dev3],
                                       #{ <<"sync">> =>
                                              #{<<"sync_allowed_height_from_top">> => 0}
+                                       , <<"mempool">> =>
+                                             #{ <<"sync_interval">> => 1000} %% every second
                                        , <<"mining">> =>
                                              #{ <<"expected_mine_rate">> => ?MINE_RATE,
                                                 %% this is important so beneficiary can spend
@@ -309,6 +349,7 @@ mine_a_key_block_on_dev1(_Config) -> mine_a_key_block(dev1).
 mine_a_key_block_on_dev2(_Config) -> mine_a_key_block(dev2).
 
 mine_a_micro_block_on_dev1(_Config) -> mine_a_micro_block(dev1).
+mine_a_micro_block_on_dev2(_Config) -> mine_a_micro_block(dev2).
 
 mine_a_micro_block(Node) -> 
     NName = aecore_suite_utils:node_name(Node),
@@ -363,13 +404,19 @@ start_nodes_and_wait_sync(CorrectForkNode, OtherNode, Config) ->
     wait_nodes_to_sync(CFTop, OtherNode, T0),
     ok.
 
-assert_orphaned_tx_in_pool(_Config) ->
-    NName = aecore_suite_utils:node_name(dev1),
+assert_orphaned_tx_in_pool_dev1_receives(Config) ->
+    assert_orphaned_tx_in_pool(dev1, dev2, Config).
+
+assert_orphaned_tx_in_pool_dev2_receives(Config) ->
+    assert_orphaned_tx_in_pool(dev2, dev1, Config).
+
+assert_orphaned_tx_in_pool(CorrectForkNode, OtherNode, _Config) ->
+    NName = aecore_suite_utils:node_name(OtherNode),
     {ok, [SignedTx]} = rpc:call(NName, aec_tx_pool, peek, [infinity], 5000),
     TxHash = aetx_sign:hash(SignedTx),
 
-    timer:sleep(10000),
-    N2Name = aecore_suite_utils:node_name(dev2),
+    timer:sleep(100),
+    N2Name = aecore_suite_utils:node_name(CorrectForkNode),
     TxLocation = rpc:call(N2Name, aec_chain, find_tx_location, [TxHash], 5000),
     {true, _} = {(TxLocation =/= none), none}, %% tx had been GCed
     {true, _} = {(TxLocation =/= not_found), not_found},%% tx had not been seen on the node yet
