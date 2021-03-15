@@ -171,11 +171,10 @@ get_contract(PubKey, Tree) ->
 
 -spec get_contract(aect_contracts:pubkey(), tree(), [no_store | full_store_cache]) ->
                       aect_contracts:contract().
-get_contract(Pubkey, #contract_tree{ contracts = CtTree }, Options) ->
-    Contract = aect_contracts:deserialize(Pubkey, aeu_mtrees:get(Pubkey, CtTree)),
-    case proplists:get_value(no_store, Options, false) of
-        false -> add_store(Contract, CtTree, Options);
-        true  -> Contract
+get_contract(Pubkey, Tree, Options) ->
+    case lookup_contract(Pubkey, Tree, Options) of
+        none -> error({not_present, Pubkey});
+        {value, Contract} -> Contract
     end.
 
 -spec get_contract_with_code(aect_contracts:pubkey(), tree()) -> {aect_contracts:contract(), binary()}.
@@ -184,17 +183,10 @@ get_contract_with_code(PubKey, Tree) ->
 
 -spec get_contract_with_code(aect_contracts:pubkey(), tree(), [no_store | full_store_cache]) -> {aect_contracts:contract(), binary()}.
 get_contract_with_code(Pubkey, Tree, Options) ->
-    Contract = get_contract(Pubkey, Tree, Options),
-    Code =
-        case aect_contracts:code(Contract) of
-            {code, Code} -> Code;
-            {ref, Ref} ->
-                RefContractPK = aeser_id:specialize(Ref, contract),
-                RefContract = get_contract(RefContractPK, Tree, Options),
-                {code, Code} = aect_contracts:code(RefContract),
-                Code
-        end,
-    {Contract, Code}.
+    case lookup_contract_with_code(Pubkey, Tree, Options) of
+        none -> error({not_present, Pubkey});
+        {value, Contract, Code} -> {Contract, Code}
+    end.
 
 add_store(Contract, CtTree, Options) ->
     StoreId = aect_contracts:store_id(Contract),
@@ -246,12 +238,12 @@ lookup_contract_with_code(Pubkey, Tree, Options) ->
         {value, Contract} ->
             Code =
             case aect_contracts:code(Contract) of
-                {code, Code} -> Code;
+                {code, C} -> C;
                 {ref, Ref} ->
                     RefContractPK = aeser_id:specialize(Ref, contract),
-                    RefContract = get_contract(RefContractPK, Tree, Options),
-                    {code, Code} = aect_contracts:code(RefContract),
-                    Code
+                    {value, RefContract} = lookup_contract(RefContractPK, Tree, Options),
+                    {code, C} = aect_contracts:code(RefContract),
+                    C
             end,
             {value, Contract, Code}
     end.

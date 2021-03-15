@@ -698,7 +698,7 @@ get_contract_with_code(Target, State) ->
         {value, Contract} ->
             SerializedCode =
                 case aect_contracts:code(Contract) of
-                    {code, SerializedCode} -> SerializedCode;
+                    {code, Code} -> Code;
                     {ref, Ref} ->
                         RefContractPK = aeser_id:specialize(Ref, contract),
                         {value, RefContract} = aect_state_tree:lookup_contract(RefContractPK, CT, [no_store]),

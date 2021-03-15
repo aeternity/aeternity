@@ -268,16 +268,16 @@ get_contract(PubKey) ->
     {'ok', aect_contracts:contract(), binary()} |
     {'error', atom()}.
 get_contract_with_code(PubKey) ->
-    case get_contract(Pubkey) of
+    case get_contract(PubKey) of
         {ok, Contract} ->
             Code =
                 case aect_contracts:code(Contract) of
-                    {code, Code} -> Code;
+                    {code, C} -> C;
                     {ref, Ref} ->
                         RefContractPK = aeser_id:specialize(Ref, contract),
                         {ok, RefContract} = get_contract(RefContractPK),
-                        {code, Code} = aect_contracts:code(RefContract),
-                        Code
+                        {code, C} = aect_contracts:code(RefContract),
+                        C
                 end,
             {ok, Contract, Code};
         {error, _} = Err -> Err

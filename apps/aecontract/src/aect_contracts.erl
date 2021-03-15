@@ -294,7 +294,7 @@ serialize(#contract{owner_id     = OwnerId,
                     version      = ?CODE_REF_VSN}) ->
     RefMaybe =
         case CodeRef of
-            noref -> [];
+            no_ref -> [];
             {ref, Ref} -> [Ref]
         end,
     aeser_chain_objects:serialize(
@@ -378,7 +378,7 @@ deserialize(Pubkey, ?CODE_REF_VSN, RawFields) ->
             [Ref] ->
                 <<>> = Code,
                 {ref, Ref};
-            [] -> noref
+            [] -> no_ref
         end,
     [contract = aeser_id:specialize_type(R) || R <- ReferrerIds],
     account = aeser_id:specialize_type(OwnerId),
@@ -486,7 +486,7 @@ vm_version(#contract{ct_version = #{vm := VmVersion}}) ->
 
 %% The contract byte code.
 -spec code(contract()) -> code_maybe().
-code(#contract{code = Code, code_ref = noref}) ->
+code(#contract{code = Code, code_ref = no_ref}) ->
     {code, Code};
 code(#contract{code = <<>>, code_ref = {ref, Ref}}) ->
     {ref, Ref}.

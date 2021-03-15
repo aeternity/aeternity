@@ -1601,12 +1601,12 @@ run_contract(CallerId, Contract, GasLimit, GasPrice, CallData, AllowInit,
              Origin, Amount, CallStack, Nonce, S) ->
     Code =
         case aect_contracts:code(Contract) of
-            {code, Code} -> Code;
+            {code, C} -> C;
             {ref, Ref} ->
                 RefContractPK = aeser_id:specialize(Ref, contract),
                 {ok, RefContract} = get_contract_no_cache(RefContractPK, S),
-                {code, Code} = aect_contracts:code(RefContract),
-                Code
+                {code, C} = aect_contracts:code(RefContract),
+                C
         end,
     run_contract(CallerId, Code, Contract, GasLimit,
                  GasPrice, CallData, AllowInit, Origin, Amount, CallStack, Nonce, S).
