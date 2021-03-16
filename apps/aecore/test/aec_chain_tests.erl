@@ -1829,12 +1829,15 @@ setup_meck_and_keys() ->
     aec_test_utils:mock_governance(),
     aec_test_utils:mock_genesis_and_forks(),
     aec_consensus_bitcoin_ng:load_whitelist(),
+    meck:new(aec_events, [passthrough]),
+    meck:expect(aec_events, publish, fun(tx_received, _Tx) -> ok end),
     aec_test_utils:aec_keys_setup().
 
 teardown_meck_and_keys(TmpDir) ->
     aec_test_utils:unmock_difficulty_as_target(),
     aec_test_utils:unmock_governance(),
     aec_test_utils:unmock_genesis_and_forks(),
+    meck:unload(aec_events),
     aec_test_utils:aec_keys_cleanup(TmpDir).
 
 write_blocks_to_chain([H|T]) ->
