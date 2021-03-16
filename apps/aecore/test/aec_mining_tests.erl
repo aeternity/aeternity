@@ -46,7 +46,8 @@ mine_block_test_() ->
                              ?IRIS_PROTOCOL_VSN    -> 9446698485151902999 
                          end,
                  {BlockCandidate,_} = aec_test_utils:create_keyblock_with_state(
-                                        [{TopBlock, aec_trees:new()}], ?TEST_PUB),
+                                        [{TopBlock, aec_trees:new()}],
+                                        ?TEST_PUB, ?TEST_PUB, #{info => 591}),
 
                  HeaderBin = aec_headers:serialize_to_binary(aec_blocks:to_header(BlockCandidate)),
 
