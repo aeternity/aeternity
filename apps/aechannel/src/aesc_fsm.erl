@@ -3354,10 +3354,10 @@ maybe_act_on_tx(channel_snapshot_solo_tx, SignedTx, D) ->
     case call_cb(aetx_sign:innermost_tx(SignedTx), origin, []) of
         MyPubkey ->
             lager:debug("snapshot_solo_tx from my client", []),
-            #data{op = OrigOp} = D,
+            #data{chain_op = OrigOp} = D,
             %% We want to order a local min_depth watch, but not log it as a wait state op.
             {ok, D1} = watcher_request({?MIN_DEPTH, ?WATCH_SNAPSHOT_SOLO}, SignedTx, [], D),
-            D1#data{op = OrigOp};
+            D1#data{chain_op = OrigOp};
         OtherPubkey ->
             lager:debug("snapshot_solo_tx from other client (~p)", [OtherPubkey]),
             D
@@ -4849,9 +4849,9 @@ handle_call_(channel_closing, {attach_responder, #{ reestablish := true
             lager:debug("Attach failed with ~p", [Error]),
             keep_state(D, [{reply, From, {error, invalid_attach}}])
     end;
-handle_call_(St, {assume_minimum_depth, TxHash}, From, #data{ op = #op_min_depth{
-                                                                      tag = Tag
-                                                                    , tx_hash = TxHash }
+handle_call_(St, {assume_minimum_depth, TxHash}, From, #data{ chain_op = #op_min_depth{
+                                                                            tag = Tag
+                                                                           , tx_hash = TxHash }
                                                             , on_chain_id = ChainId
                                                             , past_assumptions = Past} = D) ->
     %% We allow short-cutting a min-depth wait when we are actually waiting for one,
@@ -4999,7 +4999,7 @@ handle_common_event_(cast, {?CHANNEL_CHANGED, #{ tx_hash := TxHash
         true ->
             process_incoming_forced_progress(St, Info, D1);
         false ->
-            case D1#data.op of
+            case D1#data.chain_op of
                 #op_min_depth{tx_hash = LatestTxHash} when TxHash =/= LatestTxHash ->
                     %% This is a problem: channel changed while waiting to confirm
                     %% other tx hash
@@ -5145,7 +5145,7 @@ is_solo_tx_from_op(Op) ->
 op_data_from_op(#op_sign{data = OpData}) -> OpData;
 op_data_from_op(#op_ack{data = OpData}) -> OpData;
 op_data_from_op(#op_lock{data = OpData}) -> OpData;
-op_data_from_op(#op_min_depth{data = OpData}) -> OpData;
+%% op_data_from_op(#op_min_depth{data = OpData}) -> OpData;
 op_data_from_op(#op_watch{data = OpData}) -> OpData;
 op_data_from_op(#op_close{data = OpData}) -> OpData.
 
