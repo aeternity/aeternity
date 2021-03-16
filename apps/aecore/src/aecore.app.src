@@ -38,7 +38,6 @@
     aevm,
     aeprimop,
     aeoracle,
-    aechannel,
     aecontract,
     aebytecode,
     aens,
@@ -48,6 +47,21 @@
     ranch
   ]},
   {env, [
+         {'$app_ctrl',
+          [
+            {roles,
+             [ {basic, []}
+             , {active, [aesync, aehttp, aemon, aestratum]}
+             ]}
+          , {mode, normal}
+          , {modes,
+             [ {normal, [basic, active]}
+             , {maintenance, [basic]}
+             ]}
+          , {modify,
+             [ {protected_mode_apps, [{add, [lager, mnesia]}]}
+             ]}
+          ]},
          {exometer_predefined,
           {script, "$PRIV_DIR/exometer_predefined.script"}},
          {exometer_defaults,
@@ -73,6 +87,8 @@
            {[ae,epoch,aecore,eper] , aec_eper_metrics_probe}]},
          {'$setup_hooks',
           [
+           %% The different hooks *could* be placed in the app env of each
+           %% corresponding application. This would be less transparent, though.
            {normal, [
                      {110, {aecore_app, check_env, []}},
                      {110, {aec_dev_reward, ensure_env, []}},
@@ -80,7 +96,8 @@
                      {110, {aec_consensus, check_env, []}},
                      {110, {aec_hard_forks, ensure_env, []}},
                      {110, {aec_mining, check_env, []}},
-                     {200, {aec_db, check_db, []}}
+                     {200, {aec_db, check_db, []}},
+                     {1000, {aecore_app, set_app_ctrl_mode, []}}
                     ]}
           ]}
         ]},

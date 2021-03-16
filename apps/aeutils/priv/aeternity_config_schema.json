@@ -3,6 +3,17 @@
     "type" : "object",
     "additionalProperties" : false,
     "properties" : {
+        "system" : {
+            "type" : "object",
+            "additionalProperties" : false,
+            "properties" : {
+                "maintenance_mode" : {
+                    "description" : "When true, the node disables sync, mining, http endpoints etc",
+                    "type" : "boolean",
+                    "default" : true
+                }
+            }
+        },
         "peers" : {
             "description" :
             "Pre-configured addresses of nodes to contact. If not set testnet or mainnet seed peers will be used based on network_id configuration value.",

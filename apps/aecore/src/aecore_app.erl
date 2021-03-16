@@ -7,7 +7,8 @@
          start_phase/3,
          prep_stop/1,
          stop/1]).
--export([check_env/0]).
+-export([check_env/0,
+         set_app_ctrl_mode/0]).
 %%====================================================================
 %% API
 %%====================================================================
@@ -46,17 +47,31 @@ prep_stop(State) ->
 stop(_State) ->
     ok.
 
+set_app_ctrl_mode() ->
+    Mode = case ok(aeu_env:find_config([<<"system">>, <<"maintenance_mode">>],
+                                       [user_config, schema_default])) of
+               true  -> maintenance;
+               false -> normal
+           end,
+    %% This setting will take effect once `app_ctrl` leaves protected mode
+    lager:info("Set app_ctrl mode: ~p", [Mode]),
+    app_ctrl_config:set_current_mode(Mode).
+
+ok({ok, Value}) ->
+    Value.
+
 %% Checking user-provided configs. The logic is somewhat complicated
 %% by the fact that 'setup' is not guaranteed to start before lager,
 %% so we have to be prepared to apply changes to both the lager env
 %% and the (possibly) running lager. (This problem is solvable, but not
 %% trivially. Basically, the aeternity.rel file must be pre-sorted and passed
 %% to relx.
+%%
 check_env() ->
     expand_lager_log_root(),
     check_env([{[<<"logging">>, <<"hwm">>]     , fun set_hwm/1},
                {[<<"logging">>, <<"level">>]   , fun set_level/1},
-               {[<<"mining">>, <<"autostart">>], {set_env, autostart}},
+               {[<<"mining">>, <<"autostart">>], fun set_autostart/2},
                {[<<"mining">>, <<"strictly_follow_top">>], {set_env, strictly_follow_top}},
                {[<<"mining">>, <<"attempt_timeout">>], {set_env, mining_attempt_timeout}},
                {[<<"chain">>, <<"persist">>]   , {set_env, persist}},
@@ -90,19 +105,26 @@ expand_lager_log_root() ->
     end.
 
 check_env(Spec) ->
+    {ok, MMode} = aeu_env:find_config([<<"system">>, <<"maintenance_mode">>],
+                                      [user_config, schema_default]),
     lists:foreach(
       fun({K, F}) ->
               case aeu_env:user_config(K) of
                   undefined -> ignore;
-                  {ok, V}   -> set_env(F, V)
+                  {ok, V}   -> set_env(F, V, MMode)
               end
       end, Spec).
 
-set_env({set_env, K}, V) when is_atom(K) ->
+set_env({set_env, K}, V, _MMode) when is_atom(K) ->
     io:fwrite("setenv K=~p, V=~p~n", [K, V]),
     application:set_env(aecore, K, V);
-set_env(F, V) when is_function(F, 1) ->
-    F(V).
+set_env(F, V, _MMode) when is_function(F, 1) ->
+    F(V);
+set_env(F, V, MMode) when is_function(F, 2) ->
+    F(V, MMode).
+
+set_autostart(V, MMode) ->
+    application:set_env(aecore, autostart, V andalso (not MMode)).
 
 set_mnesia_dir(Path) ->
     MnesiaDir = filename:join(binary_to_list(Path), "mnesia"),
