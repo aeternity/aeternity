@@ -68,6 +68,7 @@
         , sophia_vm_interaction/1
         , fate_vm_interaction/1
         , fate_vm_version_switching/1
+        , contract_init_on_chain_fate/1
         , sophia_state/1
         , sophia_match_bug/1
         , sophia_spend/1
@@ -349,6 +350,7 @@ groups() ->
                                       , fate_vm_version_switching
                                       , fate_vm_cross_protocol_store_big
                                       , fate_vm_cross_protocol_store_multi_small
+                                      , contract_init_on_chain_fate
                                       ]}
     , {transactions, [], [ create_contract
                          , create_contract_init_error
@@ -6754,6 +6756,44 @@ fate_vm_version_switching(Cfg) ->
     ok.
 
 
+contract_init_on_chain_fate(Cfg) ->
+    state(aect_test_utils:new_state()),
+    ForkHeights   = ?config(fork_heights, Cfg),
+    LimaHeight = maps:get(lima, ForkHeights),
+    IrisHeight = maps:get(iris, ForkHeights),
+    Protocol = aec_hard_forks:protocol_effective_at_height(LimaHeight),
+    GasPrice = aec_governance:minimum_gas_price(Protocol),
+    MinerMinGasPrice= aec_tx_pool:minimum_miner_gas_price(),
+    MinGasPrice   = max(GasPrice, MinerMinGasPrice),
+    Acc           = ?call(new_account, 10000000000 * MinGasPrice),
+    LimaSpec      = #{height => LimaHeight, vm_version => ?VM_FATE_SOPHIA_1,
+                      amount => 100,
+                      gas_price => MinGasPrice,
+                      fee => 1000000 * MinGasPrice},
+    IrisSpec      = #{height => IrisHeight, vm_version => ?VM_FATE_SOPHIA_2,
+                      amount => 100,
+                      gas_price => MinGasPrice,
+                      fee => 1000000 * MinGasPrice},
+    {ok, IdCode}  = compile_contract(identity),
+
+    GetFunctionsOnHardFork = fun(CallSpec) ->
+        Id = ?call(create_contract_with_code, Acc, IdCode, {}, CallSpec),
+        {value, Contract} = ?call(lookup_contract_by_id, Id),
+        aeb_fate_code:functions(
+            aeb_fate_code:deserialize(
+                aect_contracts:code(Contract)))
+                             end,
+
+    HasInit = fun(Functions) ->
+        InitIdentifier = aeb_fate_code:symbol_identifier(<<"init">>),
+        maps:is_key(InitIdentifier, Functions)
+              end,
+
+    FunctionsLima = GetFunctionsOnHardFork(LimaSpec),
+    ?assertEqual(false, HasInit(FunctionsLima)),
+    FunctionsIris = GetFunctionsOnHardFork(IrisSpec),
+    ?assertEqual(true, HasInit(FunctionsIris)),
+    ok.
 %%%===================================================================
 %%% Store
 %%%===================================================================
