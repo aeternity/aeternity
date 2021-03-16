@@ -3,7 +3,8 @@
 -export([get_version/0,
          get_revision/0,
          get_os/0,
-         vendor/0]).
+         vendor/0,
+         block_info/0]).
 
 -define(VERSION_FILE, <<"VERSION">>).
 -define(REVISION_FILE, <<"REVISION">>).
@@ -15,6 +16,14 @@ get_version() ->
 
 get_revision() ->
     cached_file(?REVISION_FILE).
+
+block_info() ->
+    cached_file(block_info,
+                fun(block_info) ->
+                    binary_to_integer(re:replace(cached_file(?VERSION_FILE), "\\.", "",
+                                                 [{return, binary}, global]))
+
+                end).
 
 get_os() ->
     Bin = fun(A) when is_atom(A)    -> atom_to_binary(A, utf8)
@@ -41,6 +50,9 @@ trim_ending_whitespace(Binary) ->
     re:replace(Binary, "\\s+$", "", [{return, binary}, global]).
 
 cached_file(Filename) ->
+    cached_file(Filename, fun read_trimmed_file/1).
+
+cached_file(Filename, ReadFun) ->
     EtsKey = {file, Filename},
     try
         [{EtsKey, Data}] = ets:lookup(?ETS_TABLE, EtsKey),
@@ -52,7 +64,7 @@ cached_file(Filename) ->
                     ets:new(?ETS_TABLE, [named_table, {read_concurrency, true}, public]);
                 _ -> pass
             end,
-            ReadData = read_trimmed_file(Filename),
+            ReadData = ReadFun(Filename),
             ets:insert(?ETS_TABLE, {EtsKey, ReadData}),
             ReadData
     end.
