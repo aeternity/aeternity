@@ -1544,6 +1544,35 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+  /debug/channels/set-delegates:
+    post:
+      tags:
+        - internal
+        - channel
+        - debug
+      operationId: PostChannelSetDelegates
+      description: 'Get a channel_set_delegates_tx transaction object'
+      parameters:
+        - $ref: '#/components/parameters/intAsString'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChannelSetDelegatesTx"
+        required: true
+      responses:
+        "200":
+          description: Successful operation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UnsignedTx"
+        "400":
+          description: Invalid transaction
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
   /debug/channels/close/mutual:
     post:
       tags:
@@ -1959,10 +1988,6 @@ components:
         - signature
         - time
         - version
-    Header:
-      anyOf:
-        - $ref: "#/components/schemas/KeyBlock"
-        - $ref: "#/components/schemas/MicroBlockHeader"
     Account:
       type: object
       properties:
@@ -2642,6 +2667,42 @@ components:
         - from_id
         - payload
         - fee
+    ChannelSetDelegatesTx:
+      type: object
+      properties:
+        channel_id:
+          $ref: "#/components/schemas/EncodedPubkey"
+        from_id:
+          $ref: "#/components/schemas/EncodedPubkey"
+        initiator_delegate_ids:
+          type: array
+          items:
+            $ref: "#/components/schemas/EncodedPubkey"
+        responder_delegate_ids:
+          type: array
+          items:
+            $ref: "#/components/schemas/EncodedPubkey"
+        state_hash:
+          $ref: "#/components/schemas/EncodedPubkey"
+        round:
+          $ref: '#/components/schemas/UInt64'
+        payload:
+          $ref: '#/components/schemas/EncodedByteArray'
+        ttl:
+          $ref: '#/components/schemas/UInt64'
+        fee:
+          $ref: '#/components/schemas/UInt'
+        nonce:
+          $ref: '#/components/schemas/UInt64'
+      required:
+        - channel_id
+        - from_id
+        - initiator_delegate_ids
+        - responder_delegate_ids
+        - state_hash
+        - round
+        - payload
+        - fee
     PeerPubKey:
       type: object
       properties:
@@ -2815,6 +2876,7 @@ components:
                       ChannelSlashTx,
                       ChannelSettleTx,
                       ChannelSnapshotSoloTx,
+                      ChannelSetDelegatesTx,
                       OracleRegisterTx,
                       OracleExtendTx,
                       OracleQueryTx,
@@ -2842,6 +2904,7 @@ components:
           - $ref: "#/components/schemas/ChannelSlashTx"
           - $ref: "#/components/schemas/ChannelSettleTx"
           - $ref: "#/components/schemas/ChannelSnapshotSoloTx"
+          - $ref: "#/components/schemas/ChannelSetDelegatesTx"
           - $ref: "#/components/schemas/OracleRegisterTx"
           - $ref: "#/components/schemas/OracleExtendTx"
           - $ref: "#/components/schemas/OracleQueryTx"

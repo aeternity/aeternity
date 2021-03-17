@@ -18,7 +18,7 @@
   0},
  {<<"aeserialization">>,
   {git,"https://github.com/aeternity/aeserialization.git",
-      {ref,"80ff8a49f4765db390d6194beae4662e6872ad85"}},
+      {ref,"58e34ae7b5abfcc54f505ea8d57183d04f67120e"}},
   0},
  {<<"aesophia_aci_encoder">>,
   {git,"https://github.com/aeternity/aesophia_aci_encoder",

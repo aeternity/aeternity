@@ -82,6 +82,7 @@
                  | channel_slash_tx
                  | channel_settle_tx
                  | channel_snapshot_solo_tx
+                 | channel_set_delegates_tx
                  | channel_offchain_tx
                  | channel_client_reconnect_tx
                  | paying_for_tx.
@@ -112,6 +113,7 @@
 %%                      | aesc_slash_tx:tx()
 %%                      | aesc_settle_tx:tx()
 %%                      | aesc_snapshot_solo_tx:tx()
+%%                      | aesc_set_delegates_tx:tx()
 %%                      | aesc_offchain_tx:tx()
 %%                      | aec_paying_for_tx:tx().
 
@@ -576,6 +578,7 @@ type_to_cb(channel_close_mutual_tx)     -> aesc_close_mutual_tx;
 type_to_cb(channel_slash_tx)            -> aesc_slash_tx;
 type_to_cb(channel_settle_tx)           -> aesc_settle_tx;
 type_to_cb(channel_snapshot_solo_tx)    -> aesc_snapshot_solo_tx;
+type_to_cb(channel_set_delegates_tx)    -> aesc_set_delegates_tx;
 type_to_cb(channel_offchain_tx)         -> aesc_offchain_tx.
 
 type_to_swagger_name(spend_tx)                    -> <<"SpendTx">>;
@@ -602,6 +605,7 @@ type_to_swagger_name(channel_close_mutual_tx)     -> <<"ChannelCloseMutualTx">>;
 type_to_swagger_name(channel_slash_tx)            -> <<"ChannelSlashTx">>;
 type_to_swagger_name(channel_settle_tx)           -> <<"ChannelSettleTx">>;
 type_to_swagger_name(channel_snapshot_solo_tx)    -> <<"ChannelSnapshotSoloTx">>;
+type_to_swagger_name(channel_set_delegates_tx)    -> <<"ChannelSetDelegatesTx">>;
 %% not exposed in HTTP API:
 type_to_swagger_name(channel_offchain_tx)         -> <<"ChannelOffchainTx">>.
 

@@ -149,6 +149,7 @@ tx_base_gas(channel_force_progress_tx, Protocol) ->
 tx_base_gas(channel_slash_tx, _)          -> ?TX_BASE_GAS;
 tx_base_gas(channel_settle_tx, _)         -> ?TX_BASE_GAS;
 tx_base_gas(channel_snapshot_solo_tx, _)  -> ?TX_BASE_GAS;
+tx_base_gas(channel_set_delegates_tx, _)  -> ?TX_BASE_GAS;
 tx_base_gas(channel_withdraw_tx, _)       -> ?TX_BASE_GAS;
 tx_base_gas(name_preclaim_tx, _)          -> ?TX_BASE_GAS;
 tx_base_gas(name_revoke_tx, _)            -> ?TX_BASE_GAS;

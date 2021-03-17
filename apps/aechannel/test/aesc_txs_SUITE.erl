@@ -29,7 +29,8 @@
          deposit/1,
          withdraw/1,
          settle/1,
-         snapshot_solo/1]).
+         snapshot_solo/1,
+         set_delegates/1]).
 
 %% negative create
 -export([create_missing_account/1,
@@ -54,6 +55,18 @@
          close_solo_already_closing/1,
          close_solo_delegate_not_allowed/1
          ]).
+
+-export([set_delegates_unknown_from/1,
+         set_delegates_missing_channel/1,
+         set_delegates_not_participant/1,
+         set_delegates_already_closing/1,
+         set_delegates_payload_from_another_channel/1,
+         set_delegates_payload_not_co_signed/1,
+         set_delegates_old_payload/1,
+         set_delegates_can_not_replace_create/1,
+         set_delegates_state_hash_mismatch/1,
+         set_delegates_round_mismatch/1
+        ]).
 
 %% negative close mutual
 %% close mutual does not have a `from` - it is always implicitly the initiator
@@ -264,7 +277,8 @@ groups() ->
        {group, snapshot_solo_negative},
        {group, aevm},
        {group, fate},
-       {group, fork_awareness}
+       {group, fork_awareness},
+       {group, set_delegates}
       ]
      },
 
@@ -384,6 +398,22 @@ groups() ->
      {complex_sequences, [sequence],
       [ fp_close_solo_slash_with_same_round
       , fp_fp_close_solo_with_same_round
+      ]},
+     {set_delegates, [sequence],
+      [set_delegates,
+       {group, set_delegates_negative}
+      ]},
+     {set_delegates_negative, [sequence],
+      [set_delegates_unknown_from,
+       set_delegates_missing_channel,
+       set_delegates_not_participant,
+       set_delegates_already_closing,
+       set_delegates_payload_from_another_channel,
+       set_delegates_payload_not_co_signed,
+       set_delegates_old_payload,
+       set_delegates_can_not_replace_create,
+       set_delegates_state_hash_mismatch,
+       set_delegates_round_mismatch
       ]}
     ].
 
@@ -473,6 +503,12 @@ init_per_group(fp_with_payload, Config) ->
     init_per_group_([{force_progress_use_payload, true} | Config]);
 init_per_group(fp_empty_payload, Config) ->
     init_per_group_([{force_progress_use_payload, false} | Config]);
+init_per_group(set_delegates, Config) ->
+    case aect_test_utils:latest_protocol_version() of
+        P when P < ?IRIS_PROTOCOL_VSN -> {skip, no_set_delegates_before_iris};
+        _P ->
+            Config
+    end;
 init_per_group(_Group, Config) ->
     init_per_group_(Config).
 
@@ -4846,6 +4882,7 @@ apply_on_trees_(#{height := Height} = Props, SignedTx, S, positive) ->
             S1 = aesc_test_utils:set_trees(Trees1, S),
             Props#{state => S1};
         Err ->
+            ?TEST_LOG("Transaction failed to be applied ~p", [SignedTx]),
             throw({case_failed, Err})
     end;
 apply_on_trees_(#{height := Height} = Props, SignedTx, S, {negative, ExpectedError}) ->
@@ -5099,6 +5136,32 @@ snapshot_solo_(#{ channel_pubkey    := ChannelPubKey,
     SignedTx = aec_test_utils:sign_tx(SnapshotTx, [FromPrivkey]),
     apply_on_trees_(Props, SignedTx, S, Expected).
 
+set_delegates_(#{ channel_pubkey          := ChannelPubKey,
+                  from_pubkey             := FromPubKey,
+                  from_privkey            := FromPrivkey,
+                  initiator_delegate_ids  := IDelegates,
+                  responder_delegate_ids  := RDelegates,
+                  round                   := Round,
+                  fee                     := Fee,
+                  state                   := S} = Props, Expected) ->
+    StateHashSize = aeser_api_encoder:byte_size_for_type(state),
+    StateHash = maps:get(state_hash, Props, <<42:StateHashSize/unit:8>>),
+    Round = maps:get(round, Props, 43),
+    PayloadStateHash = maps:get(payload_state_hash, Props, StateHash),
+    PayloadRound = maps:get(payload_round, Props, Round),
+    Payload = reuse_or_create_payload(payload, Props#{state_hash => PayloadStateHash,
+                                                      round => PayloadRound}),
+
+    SetDelegatesTxSpec =
+        aesc_test_utils:set_delegates_tx_spec(ChannelPubKey, FromPubKey,
+                                              IDelegates, RDelegates,
+                                              StateHash, Round, Payload, #{fee => Fee}, S),
+    {ok, SetDelegatesTx} = aesc_set_delegates_tx:new(SetDelegatesTxSpec),
+
+    SignedTx = aec_test_utils:sign_tx(SetDelegatesTx, [FromPrivkey]),
+    apply_on_trees_(Props, SignedTx, S, Expected).
+
+
 force_progress_(#{channel_pubkey    := ChannelPubKey,
                   offchain_trees    := OffChainTrees,
                   from_pubkey       := From,
@@ -5216,9 +5279,12 @@ test_both_wrong_nonce(Cfg, Fun, InitProps) ->
     ok.
 
 test_both_payload_from_different_channel(Cfg, Fun) ->
+    test_both_payload_from_different_channel(Cfg, Fun, #{}).
+
+test_both_payload_from_different_channel(Cfg, Fun, Opts) ->
     Test =
         fun(Poster) ->
-            run(#{cfg => Cfg},
+            run(Opts#{cfg => Cfg},
                [positive(fun create_channel_/2), % create a channelA
                 create_payload(), % produce a payload for channelA
                 % create another channelB and replace the old one with the
@@ -6255,3 +6321,281 @@ pick_random_delegate(DelegateIds) ->
     %% pick a random delegate. If this fails inermittently, it could
     %% be a symptom of an actual bug
     lists:nth(rand:uniform(length(Ds)), Ds).
+
+set_delegates(Cfg) ->
+    Height = 100,
+    Round = 43,
+    OldRound = Round - 5,
+    StateHashSize = aeser_api_encoder:byte_size_for_type(state),
+    OldStateHash = <<40:StateHashSize/unit:8>>,
+    StateHash = <<43:StateHashSize/unit:8>>,
+    TestWithPayload =
+        fun(Snapshoter, Setter, IDelegates, RDelegates) ->
+            ?TEST_LOG("Test with payload,~nSnapshoter is ~p,~nSetter is ~p,~nIDelegates are ~p,~nRDelegates are ~p",
+                      [Snapshoter, Setter, IDelegates, RDelegates]),
+            run(#{cfg => Cfg
+                 , initiator_delegate_ids => IDelegates
+                 , responder_delegate_ids => RDelegates
+                 , height => Height},
+               [positive(fun create_channel_/2),
+                fun(#{channel_pubkey := ChannelPubKey, state := S} = Props) ->
+                    % ensure no delegates
+                    Channel = aesc_test_utils:get_channel(ChannelPubKey, S),
+                    [] = aesc_channels:delegate_ids(Channel, any),
+                    [] = aesc_channels:delegate_ids(Channel, initiator),
+                    [] = aesc_channels:delegate_ids(Channel, responder),
+                    Props
+                end,
+                set_from(Snapshoter),
+                set_prop(round, OldRound),
+                set_prop(state_hash, OldStateHash),
+                positive(fun snapshot_solo_/2),
+                set_from(Setter),
+                set_prop(round, Round),
+                set_prop(state_hash, StateHash),
+                positive(fun set_delegates_/2),
+                fun(#{channel_pubkey := ChannelPubKey, state := S} = Props) ->
+                    % ensure channel had been updated
+                    Channel = aesc_test_utils:get_channel(ChannelPubKey, S),
+                    Round = aesc_channels:round(Channel),
+                    StateHash = aesc_channels:state_hash(Channel),
+                    % ensure updated delegates
+                    Channel = aesc_test_utils:get_channel(ChannelPubKey, S),
+                    IDelegates = aesc_channels:delegate_ids(Channel, initiator),
+                    RDelegates = aesc_channels:delegate_ids(Channel, responder),
+                    AllDelegates = IDelegates ++ RDelegates,
+                    AllDelegates = aesc_channels:delegate_ids(Channel, any),
+                    Props
+                end
+                ])
+        end,
+    [FakeId1, FakeId2, FakeId3, FakeId4] = fake_account_ids(4),
+    Combinations1 = [[],%% no ids
+                     [FakeId1], %% one id
+                     [FakeId1, FakeId2]], %% two ids
+    Combinations2 = [[], %% no ids
+                     [FakeId3], %% one id
+                     [FakeId3, FakeId4]], %% two ids
+    [TestWithPayload(Role1, Role2, IDels, RDels) || Role1 <- ?ROLES,
+                                                    Role2 <- ?ROLES,
+                                                    IDels <- Combinations1,
+                                                    RDels <- Combinations2],
+    TestWithEmptyPayload =
+        fun(Snapshoter, Setter, IDelegates, RDelegates) ->
+            ?TEST_LOG("Test with payload,~nSnapshoter is ~p,~nSetter is ~p,~nIDelegates are ~p,~nRDelegates are ~p",
+                      [Snapshoter, Setter, IDelegates, RDelegates]),
+            run(#{cfg => Cfg
+                 , initiator_delegate_ids => IDelegates
+                 , responder_delegate_ids => RDelegates
+                 , height => Height},
+               [positive(fun create_channel_/2),
+                fun(#{channel_pubkey := ChannelPubKey, state := S} = Props) ->
+                    % ensure no delegates
+                    Channel = aesc_test_utils:get_channel(ChannelPubKey, S),
+                    [] = aesc_channels:delegate_ids(Channel, any),
+                    [] = aesc_channels:delegate_ids(Channel, initiator),
+                    [] = aesc_channels:delegate_ids(Channel, responder),
+                    Props
+                end,
+                set_from(Snapshoter),
+                set_prop(round, Round),
+                set_prop(state_hash, StateHash),
+                positive(fun snapshot_solo_/2),
+                set_from(Setter),
+                set_prop(payload, <<>>),
+                positive(fun set_delegates_/2),
+                fun(#{channel_pubkey := ChannelPubKey, state := S} = Props) ->
+                    % ensure channel had been updated
+                    Channel = aesc_test_utils:get_channel(ChannelPubKey, S),
+                    Round = aesc_channels:round(Channel),
+                    StateHash = aesc_channels:state_hash(Channel),
+                    % ensure updated delegates
+                    Channel = aesc_test_utils:get_channel(ChannelPubKey, S),
+                    IDelegates = aesc_channels:delegate_ids(Channel, initiator),
+                    RDelegates = aesc_channels:delegate_ids(Channel, responder),
+                    AllDelegates = IDelegates ++ RDelegates,
+                    AllDelegates = aesc_channels:delegate_ids(Channel, any),
+                    Props
+                end
+                ])
+        end,
+    [TestWithEmptyPayload(Role1, Role2, IDels, RDels) || Role1 <- ?ROLES,
+                                                         Role2 <- ?ROLES,
+                                                         IDels <- Combinations1,
+                                                         RDels <- Combinations2],
+    ok.
+
+set_delegates_unknown_from(Config) ->
+    {MissingAccount, S} = aesc_test_utils:setup_new_account(aesc_test_utils:new_state()),
+    PrivKey = aesc_test_utils:priv_key(MissingAccount, S),
+    Round = 42,
+    Height = 100,
+    [FakeId1, FakeId2] = fake_account_ids(2),
+    TestWithPayload =
+        fun() ->
+            run(#{cfg => Config, height => Height},
+                [positive(fun create_channel_/2),
+                 set_prop(from_pubkey, MissingAccount),
+                 set_prop(from_privkey, PrivKey),
+                 set_prop(round, Round),
+                 set_prop(initiator_delegate_ids, [FakeId1]),
+                 set_prop(responder_delegate_ids, [FakeId2]),
+                 negative(fun set_delegates_/2, {error, account_not_found})])
+        end,
+    TestWithPayload(),
+
+    StateHashSize = aeser_api_encoder:byte_size_for_type(state),
+    
+    TestWithoutPayload =
+        fun(Snapshoter) ->
+            run(#{cfg => Config, height => Height},
+                [positive(fun create_channel_/2),
+                 set_from(Snapshoter),
+                 set_prop(round, Round - 5),
+                 set_prop(state_hash, <<42:StateHashSize/unit:8>>),
+                 positive(fun snapshot_solo_/2),
+                 set_prop(from_pubkey, MissingAccount),
+                 set_prop(from_privkey, PrivKey),
+                 set_prop(round, Round),
+                 set_prop(initiator_delegate_ids, [FakeId1]),
+                 set_prop(responder_delegate_ids, [FakeId2]),
+                 negative(fun set_delegates_/2, {error, account_not_found})])
+        end,
+    [TestWithoutPayload(Role) || Role <- ?ROLES],
+    ok.
+
+fake_account_ids(Cnt) ->
+    fake_account_ids(Cnt, []).
+
+fake_account_ids(Cnt, Accum) when Cnt < 1 -> Accum;
+fake_account_ids(Cnt, Accum) ->
+    UniqueNumber = 10000 - Cnt,
+    AccountHashSize = aeser_api_encoder:byte_size_for_type(account_pubkey),
+    Id = aeser_id:create(account, <<UniqueNumber:AccountHashSize/unit:8>>),
+    fake_account_ids(Cnt - 1, [Id | Accum]).
+
+set_delegates_missing_channel(Config) ->
+    StateHashSize = aeser_api_encoder:byte_size_for_type(state),
+    Opts = #{initiator_delegate_ids => [],
+             responder_delegate_ids => [],
+             round => 42,
+             state_hash => <<42:StateHashSize/unit:8>>,
+             fee => 50000 * aec_test_utils:min_gas_price(),
+             height => 100},
+    test_both_missing_channel(Config, fun set_delegates_/2, Opts).
+
+set_delegates_not_participant(Config) ->
+    StateHashSize = aeser_api_encoder:byte_size_for_type(state),
+    Opts = #{initiator_delegate_ids => [],
+             responder_delegate_ids => [],
+             round => 42,
+             state_hash => <<42:StateHashSize/unit:8>>,
+             fee => 50000 * aec_test_utils:min_gas_price(),
+             height => 100},
+    test_not_participant(Config, fun set_delegates_/2, Opts).
+
+set_delegates_already_closing(Config) ->
+    Opts = #{initiator_delegate_ids => [],
+             responder_delegate_ids => [],
+             round => 42,
+             %% do not set state_hash as it will mess up the close solo's
+             %% state
+             fee => 50000 * aec_test_utils:min_gas_price(),
+             height => 100},
+    test_both_closing_channel(Config, fun set_delegates_/2, Opts).
+
+set_delegates_payload_from_another_channel(Config) ->
+    Opts = #{initiator_delegate_ids => [],
+             responder_delegate_ids => [],
+             round => 42,
+             fee => 50000 * aec_test_utils:min_gas_price(),
+             height => 100},
+    test_both_payload_from_different_channel(Config, fun set_delegates_/2, Opts).
+
+set_delegates_payload_not_co_signed(Config) ->
+    test_payload_not_both_signed(
+        Config,
+        fun(ChannelPubKey, FromPubKey, PayloadBin, _PoI, S) ->
+            Payload = aetx_sign:deserialize_from_binary(PayloadBin),
+            {channel_offchain_tx, OffChainTx} = aetx:specialize_type(aetx_sign:tx(Payload)),
+            StateHash = aesc_offchain_tx:state_hash(OffChainTx),
+            Round = aesc_offchain_tx:round(OffChainTx),
+            aesc_test_utils:set_delegates_tx_spec(ChannelPubKey,
+                                                  FromPubKey,
+                                                  [],
+                                                  [],
+                                                  StateHash,
+                                                  Round,
+                                                  PayloadBin,
+                                                  S)
+        end,
+        fun aesc_set_delegates_tx:new/1).
+
+set_delegates_old_payload(Config) ->
+    StateHashSize = aeser_api_encoder:byte_size_for_type(state),
+    Opts = #{initiator_delegate_ids => [],
+             responder_delegate_ids => [],
+             round => 42,
+             state_hash => <<42:StateHashSize/unit:8>>,
+             fee => 50000 * aec_test_utils:min_gas_price(),
+             height => 100},
+    test_both_old_round(Config, fun set_delegates_/2, Opts, old_round).
+
+set_delegates_can_not_replace_create(Config) ->
+    StateHashSize = aeser_api_encoder:byte_size_for_type(state),
+    Opts = #{initiator_delegate_ids => [],
+             responder_delegate_ids => [],
+             round => 42,
+             state_hash => <<42:StateHashSize/unit:8>>,
+             fee => 50000 * aec_test_utils:min_gas_price(),
+             height => 100},
+    test_both_can_not_replace_create(Config, fun set_delegates_/2, Opts).
+
+set_delegates_state_hash_mismatch(Config) ->
+    Height = 100,
+    Round = 43,
+    StateHashSize = aeser_api_encoder:byte_size_for_type(state),
+    StateHash = <<42:StateHashSize/unit:8>>,
+    PayloadStateHash = <<43:StateHashSize/unit:8>>,
+    Test =
+        fun(Setter) ->
+            ?TEST_LOG("Test Setter is ~p", [Setter]),
+            run(#{cfg => Config
+                , initiator_delegate_ids => []
+                , responder_delegate_ids => [] 
+                , height => Height},
+               [positive(fun create_channel_/2),
+                set_from(Setter),
+                set_prop(round, Round),
+                set_prop(state_hash, StateHash),
+                set_prop(payload_state_hash, PayloadStateHash),
+                negative(fun set_delegates_/2, {error, unexpected_state_hash})
+                ])
+        end,
+    [Test(Role) || Role <- ?ROLES],
+    ok.
+
+set_delegates_round_mismatch(Config) ->
+    Height = 100,
+    Round = 43,
+    PayloadRound = 44,
+    StateHashSize = aeser_api_encoder:byte_size_for_type(state),
+    StateHash = <<42:StateHashSize/unit:8>>,
+    Test =
+        fun(Setter) ->
+            ?TEST_LOG("Test Setter is ~p", [Setter]),
+            run(#{cfg => Config
+                , initiator_delegate_ids => []
+                , responder_delegate_ids => [] 
+                , height => Height},
+               [positive(fun create_channel_/2),
+                set_from(Setter),
+                set_prop(round, Round),
+                set_prop(payload_round, PayloadRound),
+                set_prop(state_hash, StateHash),
+                negative(fun set_delegates_/2, {error, unexpected_round})
+                ])
+        end,
+    [Test(Role) || Role <- ?ROLES],
+    ok.
+

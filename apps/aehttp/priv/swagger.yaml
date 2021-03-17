@@ -1451,6 +1451,31 @@ paths:
           description: Invalid transaction
           schema:
             $ref: '#/definitions/Error'
+  /debug/channels/set-delegates:
+    post:
+      tags:
+        - internal
+        - channel
+        - debug
+      operationId: PostChannelSetDelegates
+      description: 'Get a channel_set_delegates_tx transaction object'
+      produces:
+        - application/json
+      parameters:
+        - in: body
+          name: body
+          required: true
+          schema:
+            $ref: '#/definitions/ChannelSetDelegatesTx'
+      responses:
+        '200':
+          description: Successful operation
+          schema:
+            $ref: '#/definitions/UnsignedTx'
+        '400':
+          description: Invalid transaction
+          schema:
+            $ref: '#/definitions/Error'
   /debug/channels/close/mutual:
     post:
       tags:
@@ -2560,6 +2585,38 @@ definitions:
     required:
       - channel_id
       - from_id
+      - payload
+      - fee
+  ChannelSetDelegatesTx:
+    type: object
+    properties:
+      channel_id:
+        $ref: '#/definitions/EncodedPubkey'
+      from_id:
+        $ref: '#/definitions/EncodedPubkey'
+      initiator_delegate_ids:
+        $ref: '#/definitions/Delegates'
+      responder_delegate_ids:
+        $ref: '#/definitions/Delegates'
+      state_hash:
+        $ref: '#/definitions/EncodedHash'
+      round:
+        $ref: '#/definitions/UInt64'
+      payload:
+        $ref: '#/definitions/EncodedByteArray'
+      ttl:
+        $ref: '#/definitions/UInt64'
+      fee:
+        $ref: '#/definitions/UInt'
+      nonce:
+        $ref: '#/definitions/UInt64'
+    required:
+      - channel_id
+      - from_id
+      - initiator_delegate_ids
+      - responder_delegate_ids
+      - state_hash
+      - round
       - payload
       - fee
   PeerPubKey:
