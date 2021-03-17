@@ -803,6 +803,7 @@ paths:
           type: integer
           minimum: 1
           maximum: 1000
+          default: 20
         - in: query
           name: type
           description: 'The type of a query: open, closed or all'
