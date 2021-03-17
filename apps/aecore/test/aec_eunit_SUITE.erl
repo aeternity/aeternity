@@ -130,10 +130,13 @@ application_test(Config) ->
     meck:expect(aec_fork_block_settings, lima_extra_accounts, 0, []),
     meck:expect(aec_fork_block_settings, lima_contracts, 0, []),
     meck:expect(aec_fork_block_settings, block_whitelist, 0, #{}),
+    meck:new(aeu_info, []),
+    meck:expect(aeu_info, block_info, 0, 591),
     {ok,_} = application:ensure_all_started(aecore),
     timer:sleep(100),
     ok = application:stop(aecore),
     meck:unload(aec_fork_block_settings),
+    meck:unload(aeu_info),
 
     app_stop(StartedApps -- ?TO_BE_STOPPED_APPS_BLACKLIST, TempDir).
 
