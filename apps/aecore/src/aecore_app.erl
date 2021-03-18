@@ -16,6 +16,7 @@ start(_StartType, _StartArgs) ->
     ok = lager:info("Starting aecore node"),
     ok = aec_jobs_queues:start(),
     ok = application:ensure_started(mnesia),
+    _ = aeu_info:block_info(), %% init the cache so this process is the owner of the table
     aec_db:load_database(),
     case aec_db:persisted_valid_genesis_block() of
         true ->

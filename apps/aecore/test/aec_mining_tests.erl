@@ -45,8 +45,14 @@ mine_block_test_() ->
                              ?LIMA_PROTOCOL_VSN    -> 2331533446344578375;
                              ?IRIS_PROTOCOL_VSN    -> 9446698485151902999 
                          end,
+                 Info =
+                    case aec_hard_forks:protocol_effective_at_height(Height + 1) of
+                        ?ROMA_PROTOCOL_VSN -> default;
+                        _ -> 591
+                    end,
                  {BlockCandidate,_} = aec_test_utils:create_keyblock_with_state(
-                                        [{TopBlock, aec_trees:new()}], ?TEST_PUB),
+                                        [{TopBlock, aec_trees:new()}],
+                                        ?TEST_PUB, ?TEST_PUB, #{info => Info}),
 
                  HeaderBin = aec_headers:serialize_to_binary(aec_blocks:to_header(BlockCandidate)),
 
