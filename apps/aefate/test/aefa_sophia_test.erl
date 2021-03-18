@@ -20,7 +20,7 @@ compile_contracts(Contracts) ->
     compile_contracts(Contracts, default_options()).
 
 compile_contracts(Contracts, Options) ->
-    maps:from_list([ {pad_contract_name(Name), compile_contract(Code, Options)}
+    maps:from_list([ {pad_contract_name(Name), {compile_contract(Code, Options), ?VM_FATE_SOPHIA_2}}
                      || {Name, Code} <- Contracts ]).
 
 make_contract(Name) -> aeb_fate_data:make_contract(pad_contract_name(Name)).

@@ -278,12 +278,12 @@ make_call(Contract, Function0, Arguments) ->
                          }
                  }
                 )
-     , vm_version => ?VM_FATE_SOPHIA_1
+     , vm_version => ?VM_FATE_SOPHIA_2
      }.
 
 setup_contracts() ->
     Cs = contracts(),
-    NewCs = [{pad_contract_name(C), setup_contract(Functions)}
+    NewCs = [{pad_contract_name(C), {setup_contract(Functions), ?VM_FATE_SOPHIA_2}}
              || {C, Functions} <- maps:to_list(Cs)],
     maps:from_list(NewCs).
 

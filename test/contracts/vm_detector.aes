@@ -1,0 +1,32 @@
+@compiler >= 4.3
+
+contract DetectorInterface2 =
+  entrypoint detect : () => int
+
+contract DetectorInterface =
+  entrypoint detect : () => int
+  entrypoint call_detect : (DetectorInterface2) => (int * int)
+  entrypoint detect_call : (DetectorInterface2) => (int * int)
+
+contract Detector =
+  entrypoint detect() : int =
+    switch(Chain.block_hash(Chain.block_height))
+      None => 1
+      Some(_hash) => 2
+  entrypoint call_detect(detector : DetectorInterface) : (int * int) =
+    let d_1 = detector.detect()
+    (detect(), d_1)
+
+  entrypoint call_call_detect(detector1 : DetectorInterface, detector2 : DetectorInterface2) : (int * int * int) =
+    let (d_1, d_2) = detector1.call_detect(detector2)
+    (detect(), d_1, d_2)
+
+  entrypoint detect_call(detector : DetectorInterface) : (int * int) =
+    let d_0 = detect()
+    let d_1 = detector.detect()
+    (d_0, d_1)
+
+  entrypoint detect_call_call(detector1 : DetectorInterface, detector2 : DetectorInterface2) : (int * int * int) =
+    let d_0 = detect()
+    let (d_1, d_2) = detector1.detect_call(detector2)
+    (d_0, d_1, d_2)

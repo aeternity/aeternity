@@ -290,10 +290,11 @@ catch_protected(Err, ES) ->
 %% -----------------------------------------------------------
 
 setup_engine(#{ contract := <<_:256>> = ContractPubkey
-              , code := ByteCode} = Spec, Env) ->
+              , code := ByteCode
+              , vm_version := VMVersion} = Spec, Env) ->
     try aeb_fate_code:deserialize(ByteCode) of
         Code ->
-            Cache = #{ ContractPubkey => Code },
+            Cache = #{ ContractPubkey => {Code, VMVersion} },
             setup_engine(Spec, Env, Cache)
     catch _:_ ->
             abort(bad_bytecode, no_state)
@@ -335,17 +336,17 @@ set_remote_function(Caller, ?FATE_CONTRACT(Pubkey), Function, CheckPayable, Chec
         void ->
             APIState  = aefa_engine_state:chain_api(ES),
             case aefa_chain_api:contract_fate_code(Pubkey, APIState) of
-                {ok, ContractCode, APIState1} ->
-                    CodeCache1 = maps:put(Pubkey, ContractCode, CodeCache),
+                {ok, {ContractCode, VMV}, APIState1} ->
+                    CodeCache1 = maps:put(Pubkey, {ContractCode, VMV}, CodeCache),
                     ES1 = aefa_engine_state:set_code_cache(CodeCache1, ES),
                     ES2 = aefa_engine_state:set_chain_api(APIState1, ES1),
-                    ES3 = aefa_engine_state:update_for_remote_call(Pubkey, ContractCode, Caller, ES2),
+                    ES3 = aefa_engine_state:update_for_remote_call(Pubkey, ContractCode, VMV, Caller, ES2),
                     check_flags_and_set_local_function(CheckPayable, CheckPrivate, Function, ES3);
                 error ->
                     abort({trying_to_call_contract, Pubkey}, ES)
             end;
-        ContractCode ->
-            ES1 = aefa_engine_state:update_for_remote_call(Pubkey, ContractCode, Caller, ES),
+        {ContractCode, VMV} ->
+            ES1 = aefa_engine_state:update_for_remote_call(Pubkey, ContractCode, VMV, Caller, ES),
             check_flags_and_set_local_function(CheckPayable, CheckPrivate, Function, ES1)
     end.
 
@@ -738,4 +739,3 @@ make_none() ->
 
 make_some(Val) ->
     aeb_fate_data:make_variant([0, 1], 1, {Val}).
-
