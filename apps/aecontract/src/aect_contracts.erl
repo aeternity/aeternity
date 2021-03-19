@@ -14,6 +14,7 @@
         , is_legal_version_at_protocol/3
         , new/1
         , new/5 %% For use without transaction
+        , new_clone/5
         , serialize/1
         , serialize_for_client/1
         , compute_contract_pubkey/2
@@ -67,8 +68,8 @@
         id           :: aeser_id:id(),
         owner_id     :: aeser_id:id(),
         ct_version   :: version(),
-        code         :: binary(),     %% The byte code
-        code_ref     :: no_ref | {ref, aeser_id:id()},
+        code         :: binary(),     %% The byte code when code_ref=no_ref
+        code_ref     :: no_ref | {ref, aeser_id:id()},     %% no_ref or DIRECT reference to contract with bytecode
         store        :: store(),      %% The current state/store (stored in a subtree in mpt)
         log          :: binary(),     %% The current event log
         active       :: boolean(),    %% false when disabled, but don't remove unless referrer_ids == []
@@ -246,12 +247,21 @@ new(RTx) ->
 -spec new(aec_keys:pubkey(), ct_nonce(), version(), binary(), amount()) -> contract().
 %% NOTE: Should only be used for contract execution without transaction
 new(Owner, Nonce, CTVersion, Code, Deposit) ->
+    new_internal(Owner, Nonce, CTVersion, Code, no_ref, Deposit).
+
+%% NOTE: When cloning passed CodeRefPK has to have code_ref=no_ref (NO INDIRECT CODE REFERENCE)
+-spec new_clone(aec_keys:pubkey(), ct_nonce(), version(), aec_keys:pubkey(), amount()) -> contract().
+new_clone(Owner, Nonce, CTVersion, CodeRefPK, Deposit) ->
+    CodeRef = aeser_id:create(contract, CodeRefPK),
+    new_internal(Owner, Nonce, CTVersion, <<>>, CodeRef, Deposit).
+
+new_internal(Owner, Nonce, CTVersion, Code, CodeRef, Deposit) ->
     Pubkey = compute_contract_pubkey(Owner, Nonce),
     C = #contract{ id           = aeser_id:create(contract, Pubkey),
                    owner_id     = aeser_id:create(account, Owner),
                    ct_version   = CTVersion,
                    code         = Code,
-                   code_ref     = no_ref,
+                   code_ref     = CodeRef,
                    store        = aect_contracts_store:new(),
                    log          = <<>>,
                    active       = true,
