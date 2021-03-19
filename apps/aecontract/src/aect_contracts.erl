@@ -253,7 +253,7 @@ new(Owner, Nonce, CTVersion, Code, Deposit) ->
 -spec new_clone(aec_keys:pubkey(), ct_nonce(), version(), aec_keys:pubkey(), amount()) -> contract().
 new_clone(Owner, Nonce, CTVersion, CodeRefPK, Deposit) ->
     CodeRef = aeser_id:create(contract, CodeRefPK),
-    new_internal(Owner, Nonce, CTVersion, <<>>, CodeRef, Deposit).
+    new_internal(Owner, Nonce, CTVersion, <<>>, {ref, CodeRef}, Deposit).
 
 new_internal(Owner, Nonce, CTVersion, Code, CodeRef, Deposit) ->
     Pubkey = compute_contract_pubkey(Owner, Nonce),
