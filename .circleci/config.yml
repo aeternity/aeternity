@@ -252,7 +252,7 @@ references:
       path: rebar3.crashdump
 
   deploy_steps: &deploy_steps
-    - checkout
+    - fixed_checkout
     - *set_package_path
     - attach_workspace:
         at: *packages_workspace
@@ -383,7 +383,7 @@ references:
           find _build/test/logs -iname hooks | xargs rm -rf
 
   test_steps_otp21: &test_steps_otp21
-    - checkout
+    - fixed_checkout
     - *restore_rebar_cache
     - *restore_build_otp21_cache
     - run:
@@ -407,7 +407,7 @@ references:
     - *fail_notification
 
   test_steps_otp22: &test_steps_otp22
-    - checkout
+    - fixed_checkout
     - *restore_rebar_cache
     - *restore_build_otp22_cache
     - run:
@@ -431,7 +431,7 @@ references:
     - *fail_notification
 
   test_steps_otp23: &test_steps_otp23
-    - checkout
+    - fixed_checkout
     - *restore_rebar_cache
     - *restore_build_otp23_cache
     - run:
@@ -455,7 +455,7 @@ references:
     - *fail_notification
 
   eunit_steps_otp21: &eunit_steps_otp21
-    - checkout
+    - fixed_checkout
     - *restore_rebar_cache
     - *restore_build_otp21_cache
     - run:
@@ -469,7 +469,7 @@ references:
     - *fail_notification
 
   eunit_steps_otp22: &eunit_steps_otp22
-    - checkout
+    - fixed_checkout
     - *restore_rebar_cache
     - *restore_build_otp22_cache
     - run:
@@ -517,6 +517,16 @@ references:
     environment: *windows_env
 
 commands:
+  fixed_checkout:
+    steps:
+      - checkout
+      - run:
+          name: Reset to proper SHA1
+          command: |
+            if [ -n "$CIRCLE_TAG" ]; then
+              git reset --hard $(git rev-parse "$CIRCLE_TAG")
+            fi
+
   setup_secrets:
     steps:
       - run:
@@ -650,7 +660,7 @@ commands:
       otp_version:
         type: string
     steps:
-      - checkout
+      - fixed_checkout
       - install_win_otp:
           install_path: << parameters.otp_install_path >>
           otp_version: << parameters.otp_version >>
@@ -694,7 +704,7 @@ commands:
 
   upload_build_artifacts:
     steps:
-      - checkout
+      - fixed_checkout
       - *set_package_path
       - setup_secrets
       - attach_workspace:
@@ -704,7 +714,7 @@ commands:
 
   upload_release_artifacts:
     steps:
-      - checkout
+      - fixed_checkout
       - *set_package_path
       - setup_secrets
       - attach_workspace:
@@ -714,7 +724,7 @@ commands:
 
   upload_latest_artifacts:
     steps:
-      - checkout
+      - fixed_checkout
       - *set_package_path
       - setup_secrets
       - attach_workspace:
@@ -726,7 +736,7 @@ jobs:
   build:
     executor: builder_container_otp22
     steps:
-      - checkout
+      - fixed_checkout
       - *restore_rebar_cache
       - run:
           name: Build
@@ -745,7 +755,7 @@ jobs:
   build_otp21:
     executor: builder_container_otp21
     steps:
-      - checkout
+      - fixed_checkout
       - *restore_rebar_cache
       - run:
           name: Build
@@ -764,7 +774,7 @@ jobs:
   build_otp23:
     executor: builder_container_otp23
     steps:
-      - checkout
+      - fixed_checkout
       - *restore_rebar_cache
       - run:
           name: Build
@@ -783,7 +793,7 @@ jobs:
   build_nix:
     executor: builder_container_nix_alpine
     steps:
-      - checkout
+      - fixed_checkout
       - *restore_rebar_cache
       - *restore_build_nix_cache
       - run:
@@ -904,7 +914,7 @@ jobs:
   aevm_tests:
     executor: builder_container_otp22
     steps:
-      - checkout
+      - fixed_checkout
       - *restore_rebar_cache
       - *restore_build_otp22_cache
       - run:
@@ -917,7 +927,7 @@ jobs:
   static_analysis:
     executor: builder_container_otp22
     steps:
-      - checkout
+      - fixed_checkout
       - run: make dockerignore-check
       - *restore_rebar_cache
       - *restore_build_otp22_cache
@@ -948,7 +958,7 @@ jobs:
   static_analysis_otp21:
     executor: builder_container_otp21
     steps:
-      - checkout
+      - fixed_checkout
       - *restore_rebar_cache
       - *restore_build_otp21_cache
       - restore_cache:
@@ -977,7 +987,7 @@ jobs:
   static_analysis_otp23:
     executor: builder_container_otp23
     steps:
-      - checkout
+      - fixed_checkout
       - *restore_rebar_cache
       - *restore_build_otp23_cache
       - restore_cache:
@@ -1006,7 +1016,7 @@ jobs:
   rebar_lock_check:
     executor: builder_container_otp22
     steps:
-      - checkout
+      - fixed_checkout
       - run:
           name: Ensure lock file is up-to-date
           command: |
@@ -1018,7 +1028,7 @@ jobs:
   linux_package:
     executor: builder_container_otp22
     steps:
-      - checkout
+      - fixed_checkout
       - *set_package_path
       - *test_arch_os_dependencies
       - *build_package
@@ -1040,7 +1050,7 @@ jobs:
     executor: builder_container_1804
     working_directory: ~/aeternity_deb
     steps:
-      - checkout
+      - fixed_checkout
       - *build_ubuntu_package
       - *store_package_artifacts
       - *fail_notification
@@ -1050,7 +1060,7 @@ jobs:
       xcode: "11.1.0" # 11.1.0 is macOS 10.14.4
     working_directory: ~/aeternity
     steps:
-      - checkout
+      - fixed_checkout
       - *restore_macos_package_cache
       - run:
           name: Install required tools
@@ -1085,7 +1095,7 @@ jobs:
   docker_smoke_tests:
     executor: buildpack
     steps:
-      - checkout
+      - fixed_checkout
       - *setup_remote_docker
       - docker_build_branch
 
@@ -1095,7 +1105,7 @@ jobs:
       - AE__CHAIN__PERSIST: false
       - AE__FORK_MANAGEMENT__NETWORK_ID: local_iris_testnet
     steps:
-      - checkout
+      - fixed_checkout
       - *setup_remote_docker
       - docker_build_branch
       - run:
@@ -1115,7 +1125,7 @@ jobs:
       - DOCKERHUB_REPO: aeternity/aeternity
       - AE__CHAIN__PERSIST: true
     steps:
-      - checkout
+      - fixed_checkout
       - *setup_remote_docker
       - run:
           name: Prepare Jessie repository
@@ -1170,7 +1180,7 @@ jobs:
   docker_test_push_branch:
     executor: buildpack
     steps:
-      - checkout
+      - fixed_checkout
       - *setup_remote_docker
       - docker_build_branch
       - run:
@@ -1184,7 +1194,7 @@ jobs:
     executor: infrastructure_container_stable
     <<: *infrastructure_config
     steps:
-      - checkout
+      - fixed_checkout
       - *setup_remote_docker
       - docker_login
       - run:
@@ -1198,7 +1208,7 @@ jobs:
     executor: infrastructure_container_stable
     <<: *infrastructure_config
     steps:
-      - checkout
+      - fixed_checkout
       - *setup_remote_docker
       - docker_login
       - run:
@@ -1211,7 +1221,7 @@ jobs:
     executor: machine_1604
     steps:
       - *print_system_test_host_info
-      - checkout
+      - fixed_checkout
       - *install_os_deps
       - *install_otp
       - *install_libsodium
@@ -1238,7 +1248,7 @@ jobs:
     executor: machine_1604
     steps:
       - *print_system_test_host_info
-      - checkout
+      - fixed_checkout
       - *install_os_deps
       - *install_otp
       - *install_libsodium
@@ -1269,7 +1279,7 @@ jobs:
       - AE__FORK_MANAGEMENT__NETWORK_ID: local_iris_testnet
       - PACKAGES_DIR: *packages_workspace
     steps:
-      - checkout
+      - fixed_checkout
       - run:
           name: Prepare Jessie repository
           command: echo "deb https://deb.debian.org/debian/ jessie main" > /etc/apt/sources.list.d/jessie.list
@@ -1303,7 +1313,7 @@ jobs:
       - AE__CHAIN__PERSIST: true
       - PACKAGES_DIR: *packages_workspace
     steps:
-      - checkout
+      - fixed_checkout
       - run:
           name: Prepare Jessie repository
           command: sudo sh -c "echo \"deb https://deb.debian.org/debian/ jessie main\" > /etc/apt/sources.list.d/jessie.list"
@@ -1474,7 +1484,7 @@ jobs:
     docker:
       - image: circleci/openjdk:11-jdk-stretch
     steps:
-      - checkout
+      - fixed_checkout
       - run:
           name: Install PlantUML dependencies
           command: |
