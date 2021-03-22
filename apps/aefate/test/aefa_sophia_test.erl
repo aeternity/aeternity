@@ -131,7 +131,8 @@ make_call_spec(Contract, Function0, Arguments, Store) ->
        value      => 0,
        call       => aeb_fate_encoding:serialize(Calldata),
        store      => CtStore,
-       vm_version => ?VM_FATE_SOPHIA_2
+       vm_version => ?VM_FATE_SOPHIA_2,
+       allow_init => true
      }.
 
 pad_contract_name(Name) ->

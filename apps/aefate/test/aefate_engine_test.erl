@@ -279,6 +279,7 @@ make_call(Contract, Function0, Arguments) ->
                  }
                 )
      , vm_version => ?VM_FATE_SOPHIA_2
+     , allow_init => true
      }.
 
 setup_contracts() ->
