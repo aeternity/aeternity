@@ -70,14 +70,21 @@ mine_block_test_() ->
         {"Proof of work fails with no_solution",
          fun() ->
                  RawBlock = aec_blocks:raw_key_block(),
-                 TopBlock = aec_blocks:set_height(RawBlock, aec_block_genesis:height()),
+                 Height = aec_block_genesis:height(),
+                 TopBlock = aec_blocks:set_height(RawBlock, Height),
                  Nonce = case aec_hard_forks:protocol_effective_at_height(100) of
                              _                     -> 41
                          end,
 
                  meck:expect(aeminer_pow, pick_nonce, 0, Nonce),
+                 Info =
+                    case aec_hard_forks:protocol_effective_at_height(Height + 1) of
+                        ?ROMA_PROTOCOL_VSN -> default;
+                        _ -> 591
+                    end,
                  {BlockCandidate,_} = aec_test_utils:create_keyblock_with_state(
-                                        [{TopBlock, aec_trees:new()}], ?TEST_PUB),
+                                        [{TopBlock, aec_trees:new()}],
+                                        ?TEST_PUB, ?TEST_PUB, #{info => Info}),
 
                  HeaderBin = aec_headers:serialize_to_binary(aec_blocks:to_header(BlockCandidate)),
                  Target = aec_blocks:target(BlockCandidate),
