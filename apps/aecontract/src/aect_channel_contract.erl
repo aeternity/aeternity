@@ -158,7 +158,7 @@ run(ContractPubKey, ABIVersion, Call, CallData, CallStack, Trees0,
         false                                -> erlang:error(wrong_abi_version)
     end,
     CallDef = make_call_def(CallerPubkey, OwnerPubkey, ContractPubKey, Gas, GasPrice, Amount,
-              CallData, false, CallStack, Code, Store, Call, OnChainTrees, OnChainEnv, Trees0),
+              CallData, _AllowInit = false, CallStack, Code, Store, Call, OnChainTrees, OnChainEnv, Trees0),
     {CallRes, Trees, _} = aect_dispatch:run(#{vm => VmVersion, abi => ABIVersion}, CallDef),
     UpdatedTrees = aect_utils:insert_call_in_trees(CallRes, Trees),
     {aec_trees:gc_cache(UpdatedTrees, [accounts, contracts]), CallRes}.
