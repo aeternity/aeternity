@@ -69,7 +69,7 @@ Please test the **iris** protocol by activating it in the configuration file as 
     network_id: "my_test_iris"
 ```
 
-Please et us know if you have any problems by [opening a ticket](https://github.com/aeternity/aeternity/issues).
+Please let us know if you have any problems by [opening a ticket](https://github.com/aeternity/aeternity/issues).
 Troubleshooting of common issues is documented [in the wiki](https://github.com/aeternity/aeternity/wiki/Troubleshooting).
 
 ## Documentation
