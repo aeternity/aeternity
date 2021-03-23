@@ -426,10 +426,14 @@ state_pre_transform_key_node(KeyNode, _PrevNode, PrevKeyNode, Trees1) ->
                                  {error, Reason} -> aec_block_insertion:abort_state_transition({hc_activation_criteria_were_not_meet, Reason})
                              end,
                              %% Notify users that staking got enabled :)
-                             case protocol_staking_contract_call(Trees1, TxEnv, "protocol_enable()") of
-                                 {ok, Trees2, {tuple, {}}} -> Trees2;
-                                 Err1 -> aec_block_insertion:abort_state_transition({activation_failed, Err1})
-                             end
+                             Res =
+                                 case protocol_staking_contract_call(Trees1, TxEnv, "protocol_enable()") of
+                                     {ok, Trees2, {tuple, {}}} -> Trees2;
+                                     Err1 -> aec_block_insertion:abort_state_transition({activation_failed, Err1})
+                                 end,
+                             %% NOTE Setup of parent chain pointer
+
+                             Res
                      end,
             %% Perform the leader election
             ParentHash = get_pos_header_parent_hash(Header),

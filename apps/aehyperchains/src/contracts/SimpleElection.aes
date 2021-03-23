@@ -10,7 +10,7 @@ include "Option.aes"
  * (the entropy should come from external source).
  * Delegated voting is not supported.
  */
-payable contract SimpleElection =
+contract SimpleElection =
 
   type delegate     = address
   type block_height = int
@@ -77,12 +77,15 @@ payable contract SimpleElection =
     stakes : map(delegate, list(stake)),
     withdraw_requests : map(delegate, list(withdraw_request)),
     last_election : option(election_result),
-    config : config }
+    config : config,
+    system_account: address,
+    enabled : bool
+    }
 
 
   entrypoint
-    init : (config, map(address, int)) => state
-    init(config, initial_stakes) =
+    init : (config, map(address, int), address) => state
+    init(config, initial_stakes, system_account) =
       require(
         config.deposit_delay >= 0,
         "NEGATIVE_DEPOSIT_DELAY")
@@ -105,7 +108,9 @@ payable contract SimpleElection =
       { stakes = Map.from_list([(addr, [{value = x, created = -config.deposit_delay}]) | (addr, x) <- init_stakes_list]),
         withdraw_requests = {},
         last_election = None,
-        config = config }
+        config = config,
+        system_account = system_account,
+        enabled = false} // The hyperchain consensus can only be enabled by a protocol level call
 
 
   /**
@@ -128,6 +133,40 @@ payable contract SimpleElection =
     hash_range() =
       Bytes.to_int(#ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff : hash)
 
+  /**
+   * Is HC consensus active
+   */
+  entrypoint
+    enabled : () => bool
+    enabled() = state.enabled
+
+  /**
+   * Contract balance - convenience for user
+   */
+  entrypoint
+    balance : () => tokens
+    balance() = Contract.balance
+
+  /**
+   * Contract stake -- TODO: Optimize or just use balance()
+   */
+  entrypoint
+    total_stake : () => tokens
+    total_stake() = List.sum([List.sum([x | {value = x} <- s]) | (_, s) <- Map.to_list(state.stakes)])
+
+  /**
+   * Contract delegates
+   */
+  entrypoint
+    unique_delegates_count : () => int
+    unique_delegates_count() = Map.size(state.stakes)
+
+  /**
+   * The address of protocol restricted calls. The private key must remain unknown
+   */
+  entrypoint
+    restricted_address : () => address
+    restricted_address() = state.system_account // 0 address
 
   /**
    * Make the function impossible to call by a regular user
@@ -135,7 +174,7 @@ payable contract SimpleElection =
   function
     protocol_restrict : () => unit
     protocol_restrict() =
-      require(Call.origin == Contract.creator, "PROTOCOL_RESTRICTED")
+      require(Call.origin == state.system_account, "PROTOCOL_RESTRICTED")
 
 
   /**
@@ -385,7 +424,10 @@ payable contract SimpleElection =
             // if the election fails then pick the previous one
             None => switch(state.last_election)
               None => abort("NO_CANDIDATE")
-              Some(le) => le.leader
+              Some(le) =>
+                reset_stake_age(le.leader)
+                set_leader(le.leader)
+                le.leader
             Some(leader) =>
               reset_stake_age(leader)
               set_leader(leader)
@@ -401,3 +443,13 @@ payable contract SimpleElection =
       protocol_restrict()
       let stake = staked_tokens(address)
       put(state{stakes[address] = [], withdraw_requests[address] = []})
+
+  /**
+  * Enables the hyperchain consensus
+  */
+  stateful entrypoint
+    protocol_enable : () => unit
+    protocol_enable() =
+      protocol_restrict()
+      require(!state.enabled, "Can only enable the protocol once!")
+      put(state{enabled = true})

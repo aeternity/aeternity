@@ -5,7 +5,7 @@
 %% The state machine which represents the attached blockchain (parent chain).
 %% The main responsibilities are:
 %% - to manage the state change when fork switching event occurs;
-%% - to traverse hash-pointers via connector network interface;
+%% - to traverse hash cursor via connector network interface;
 %% - to update database log by the current parent chain state;
 %% - to emit appropriate state change events on aehc_parent_mng queue
 
@@ -27,7 +27,7 @@
 %% API
 -export([start/3]).
 
--export([commit/3]).
+-export([post/3]).
 -export([pop/2]).
 -export([candidates/4]).
 
@@ -56,9 +56,9 @@ start(Connector, Args, Pointer) ->
     Data = data(Connector, Args, Pointer),
     gen_statem:start(?MODULE, Data, []).
 
--spec commit(pid(), commitment(), term()) -> ok | {error, term()}.
-commit(Pid, Commitment, From) ->
-    gen_statem:cast(Pid, {commit, Commitment, From}).
+-spec post(pid(), commitment(), term()) -> ok | {error, term()}.
+post(Pid, Payload, From) ->
+    gen_statem:cast(Pid, {post, Payload, From}).
 
 -spec pop(pid(), term()) -> {value, parent_block()} | empty.
 pop(Pid, From) ->
@@ -88,12 +88,13 @@ publish(Pid, Block) ->
     %% The block address on which state machine history ends
     indicator :: binary(),
     %% The block height on which state machine history ends
-    top :: non_neg_integer(),
-    %% The current processed state machine position
-    location :: binary(),
+    height :: non_neg_integer(),
+    %% The current processed state machine hash
+    cursor :: binary(),
+    %% TODO TO supply pointer (first request) start of history
     %% The current processed state machine index
     index :: non_neg_integer(),
-    %% FIFO task queue of fetched blocks
+    %% FIFO task queue of fetched blocks to handle
     queue :: term(),
     %% The genesis block height on which state machine history begins
     genesis :: non_neg_integer(),
@@ -121,7 +122,8 @@ terminate(_Reason, _State, Data) ->
 -spec connect(data()) -> {ok, pid()}.
 connect(Data) ->
     Con = connector(Data), Args = args(Data),
-    Callback = fun (_, Block) -> publish(_Pid = self(), Block) end,
+    Pid = self(),
+    Callback = fun (_, Block) -> publish(Pid, Block) end,
     aeconnector:connect(Con, Args, Callback).
 
 -spec disconnect(data()) -> ok.
@@ -140,13 +142,14 @@ fetched(enter, _OldState, Data) ->
 %% Processing parent chain fetching log state;
 fetched(internal, {added_block, Block}, Data) ->
     Hash = aeconnector_block:hash(Block),
-    Loc = location(Data), Index = index(Data),
+    Cursor = cursor(Data), Index = index(Data),
 
     io:format(user, "~nIndex: ~p~n",[Index]),
+    io:format(user, "~nCursor: ~p~n",[Cursor]),
     io:format(user, "~nHash: ~p~n",[Hash]), io:format(user, "~nPrevHash: ~p~n",[aeconnector_block:prev_hash(Block)]),
 
     case Index of
-        _ when Hash == Loc ->
+        _ when Hash == Cursor ->
             %% NOTE Sync is done in the fetch mode
             {next_state, synced, Data};
         _ when Index > 0  ->
@@ -177,10 +180,10 @@ migrated(internal, {added_block, Block}, Data) ->
     aehc_parent_db:write_parent_block(ParentBlock, ParentTrees), Data2 = push(Data, ParentBlock),
     %% TODO: Place for the new added block announcement;
     PrevHash = aeconnector_block:prev_hash(Block), Height = aeconnector_block:height(Block),
-    Loc = location(Data2), Genesis = genesis(Data2),
+    Cursor = cursor(Data2), Genesis = genesis(Data2),
 
     %% TODO This block should be announced on a queue and deleted (maybe)
-    DbBlock = aehc_parent_db:get_parent_block(Loc), PrevDbHash = aehc_parent_block:prev_hash_block(DbBlock),
+    DbBlock = aehc_parent_db:get_parent_block(Cursor), PrevDbHash = aehc_parent_block:prev_hash_block(DbBlock),
 
     case Height of
         _ when PrevHash == PrevDbHash ->
@@ -211,19 +214,14 @@ migrated(_, _, Data) ->
 synced(enter, _OldState, Data) ->
     Indicator = indicator(Data),
     %% TODO: Place for the sync finalization anouncement;
-    Data2 = index(location(Data, Indicator), 0),
+    Data2 = index(cursor(Data, Indicator), 0),
     ok = commit_state(Data2),
 
     From = self(), ok = aehc_parent_mng:announce(From, Indicator),
     {keep_state, Data2};
 
-synced(cast, {commit, Commitment, From}, Data) ->
-    Header = aehc_commitment:header(Commitment),
-    Delegate = aehc_commitment_header:hc_delegate(Header),
-    KeyBlock = aehc_commitment_header:hc_keyblock(Header),
-
-    Payload = aeser_api_encoder:encode(key_block_hash, KeyBlock),
-
+synced(cast, {post, Payload, From}, Data) ->
+    lager:info("~nParent tracker mocks a payload: ~p~n",[Payload]),
 %%    Res = aeconnector:send_tx(connector(Data), Delegate, Payload),
     Res = ok,
     gen_statem:reply(From, Res),
@@ -242,11 +240,10 @@ synced(cast, {pop, From}, Data) ->
 
     {keep_state, Data2};
 
-synced(cast, {publish_block, Block}, Data) ->
+synced(cast, {publish, Block}, Data) ->
     Data2 = indicate(Data, Block),
 
     {next_state, fetched, Data2, [{next_event, internal, {added_block, Block}}]}.
-
 
 %%%===================================================================
 %%%  Data tracker
@@ -254,8 +251,7 @@ synced(cast, {publish_block, Block}, Data) ->
 
 indicate(Data, Block) ->
     Hash = aeconnector_block:hash(Block), Height = aeconnector_block:height(Block),
-    Top = top(Data),
-    index(indicator(top(Data, Height), Hash), Height - Top).
+    index(indicator(height(Data, Height), Hash), Height - height(Data)).
 
 locate(Data, Block) ->
     _Hash = aeconnector_block:hash(Block),
@@ -280,7 +276,7 @@ init_state(Data) ->
         Hash = aehc_parent_block:hash_block(GenesisBlock),
         Height = aehc_parent_block:height_block(GenesisBlock),
 
-        State2 = indicator(top(location(Data, Pointer), Height), Hash),
+        State2 = indicator(height(cursor(Data, Pointer), Height), Hash),
         commit_state(State2)
     end,
     ok.
@@ -294,7 +290,7 @@ sync_state(Data) ->
 
 -spec commit_state(data()) -> ok.
 commit_state(Data) ->
-    Pointer = pointer(Data), Top = top(Data), Loc = location(Data), Index = index(Data),
+    Pointer = pointer(Data),
     State = Data#data{ queue = undefined, args = #{} },
     ok = aehc_parent_db:write_parent_state(Pointer, State).
 
@@ -372,21 +368,21 @@ indicator(Data) ->
 indicator(Data, Hash) ->
     Data#data{ indicator = Hash }.
 
--spec top(data()) -> non_neg_integer().
-top(Data) ->
-    Data#data.top.
+-spec height(data()) -> non_neg_integer().
+height(Data) ->
+    Data#data.height.
 
--spec top(data(), non_neg_integer()) -> data().
-top(Data, Top) ->
-    Data#data{ top = Top }.
+-spec height(data(), non_neg_integer()) -> data().
+height(Data, Height) ->
+    Data#data{ height = Height }.
 
--spec location(data()) -> binary().
-location(Data) ->
-    Data#data.location.
+-spec cursor(data()) -> binary().
+cursor(Data) ->
+    Data#data.cursor.
 
--spec location(data(), binary()) -> data().
-location(Data, Loc) ->
-    Data#data{ location = Loc }.
+-spec cursor(data(), binary()) -> data().
+cursor(Data, Cursor) ->
+    Data#data{ cursor = Cursor }.
 
 -spec queue(data()) -> term().
 queue(Data) ->
