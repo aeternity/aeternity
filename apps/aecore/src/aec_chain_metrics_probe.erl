@@ -127,8 +127,8 @@ sample_(_, Acc) ->
     Acc.
 
 total_difficulty() ->
-    try aec_chain:difficulty_at_top_block() of
-        {ok, V} -> V
+    try {ok, V} = aec_chain:difficulty_at_top_block(),
+         V
     catch
         error:_ -> 0
     end.
