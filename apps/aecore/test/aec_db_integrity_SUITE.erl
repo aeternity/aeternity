@@ -134,11 +134,14 @@ fault_injection(Config) ->
     false = State0 =:= State1,
     %% Now inject some faults to rocksdb :)
     {rocksdb, #{aec_account_state := Handle}} = rpc:call(N, persistent_term, get, [{aec_db, mnesia_bypass}, no_bypass]),
+    Me = self(),
     Pid = rpc:call(N, erlang, spawn, [
         fun() ->
             meck:new(aec_db_lib, []),
             meck:expect(aec_db_lib, rocksdb_write, fun (Ref, _, _) when Ref =:= Handle -> {error, better_luck_next_time};
-                                                       (Ref, Batch, Opts) -> meck:passthrough([Ref, Batch, Opts]) end),
+                                                       (Ref, Batch, Opts) -> meck:passthrough([Ref, Batch, Opts])
+                                                   end),
+            Me ! {self(), started},
             receive
                 {done, P} ->
                     meck:unload(aec_db_lib),
@@ -146,7 +149,12 @@ fault_injection(Config) ->
                     ok
             end
         end]),
-    true = rpc:call(N, erlang, is_process_alive, [Pid]),
+    %% Ensure we don't have a race between the mocking and the db access
+    receive
+        {Pid, started} -> ok
+    after 5000 ->
+            error(timeout)
+    end,
     State0 = lists:usort(rpc:call(N, mnesia, dirty_all_keys, [aec_account_state])),
     {error, {io_error, {aec_account_state, better_luck_next_time}}} = rpc:call(N, aec_chain_state, insert_block, [MB0S]),
     Pid ! {done, self()},
