@@ -14,6 +14,7 @@
         , get_parent_blocks/2
         , get_candidates_in_election_cycle/2
         , write_parent_block/2
+        , find_parent_block/1
         ]).
 
 -export([ write_parent_state/2
@@ -76,42 +77,68 @@ get_commitment(CommitmentHash) ->
     NoFraud = aehc_pogf:hash(no_pogf),
     ?t(begin
        [#hc_db_commitment_header{value = DBCommitmentHeader}]
-           = mnesia:read(hc_db_commitment_header, CommitmentHash),
+           = get_commitment_header(CommitmentHash),
        CommitmentHeader = aehc_commitment_header:from_db(DBCommitmentHeader),
        case aehc_commitment_header:hc_pogf_hash(CommitmentHeader) of
             NoFraud ->
                 aehc_commitment:new(CommitmentHeader, no_pogf);
             PoGFHash ->
-                [#hc_db_pogf{value = DBPoGF}] = mnesia:read(hc_db_pogf, PoGFHash),
+                [#hc_db_pogf{value = DBPoGF}] = get_pogf(PoGFHash),
                 aehc_commitment:new(CommitmentHeader, aehc_pogf:from_db(DBPoGF))
        end
     end).
 
 -spec get_parent_block(binary()) -> aehc_parent_block:parent_block().
 get_parent_block(ParentBlockHash) ->
-    NoFraud = aehc_pogf:hash(no_pogf),
     ?t(begin
            [#hc_db_parent_block_header{value = DBParentHeader}]
-                = mnesia:read(hc_db_parent_block_header, ParentBlockHash),
+                = get_parent_header(ParentBlockHash),
            ParentBlockHeader = aehc_parent_block:header_from_db(DBParentHeader),
            CommitmentHashes = aehc_parent_block:commitment_hashes(ParentBlockHeader),
-           Commitments = [begin
-                              [#hc_db_commitment_header{value = DBCommitmentHeader}]
-                                  = mnesia:read(hc_db_commitment_header, CommitmentHash),
-                              CommitmentHeader =
-                                  aehc_commitment_header:from_db(DBCommitmentHeader),
-                              case aehc_commitment_header:hc_pogf_hash(CommitmentHeader) of
-                                  NoFraud ->
-                                      aehc_commitment:new(CommitmentHeader, no_pogf);
-                                  PoGFHash ->
-                                      [#hc_db_pogf{value = DBPoGF}]
-                                          = mnesia:read(hc_db_pogf, PoGFHash),
-                                      PoGFF = aehc_pogf:from_db(DBPoGF),
-                                      aehc_commitment:new(CommitmentHeader, PoGFF)
-                              end
-                          end || CommitmentHash <- CommitmentHashes],
+           Commitments = get_commitments(CommitmentHashes),
+
            aehc_parent_block:new_block(ParentBlockHeader, Commitments)
     end).
+
+-spec find_parent_block(binary()) -> 'none' | {'value', aehc_parent_block:parent_block()}.
+find_parent_block(ParentBlockHash) ->
+    ?t(case get_parent_header(ParentBlockHash) of
+           [#hc_db_parent_block_header{value = DBParentHeader}] ->
+               ParentBlockHeader = aehc_parent_block:header_from_db(DBParentHeader),
+               CommitmentHashes = aehc_parent_block:commitment_hashes(ParentBlockHeader),
+               Commitments = get_commitments(CommitmentHashes),
+
+               aehc_parent_block:new_block(ParentBlockHeader, Commitments);
+           [] ->
+               none
+       end).
+
+get_parent_header(ParentBlockHash) ->
+    mnesia:read(hc_db_parent_block_header, ParentBlockHash).
+
+get_commitment_header(CommitmentHash) ->
+    mnesia:read(hc_db_commitment_header, CommitmentHash).
+
+get_pogf(PoGFHash) ->
+    mnesia:read(hc_db_pogf, PoGFHash).
+
+get_commitments(CommitmentHashes) ->
+    NoFraud = aehc_pogf:hash(no_pogf),
+    [begin
+         [#hc_db_commitment_header{value = DBCommitmentHeader}]
+             = get_commitment_header(CommitmentHash),
+         CommitmentHeader =
+             aehc_commitment_header:from_db(DBCommitmentHeader),
+         case aehc_commitment_header:hc_pogf_hash(CommitmentHeader) of
+             NoFraud ->
+                 aehc_commitment:new(CommitmentHeader, no_pogf);
+             PoGFHash ->
+                 [#hc_db_pogf{value = DBPoGF}]
+                     = get_pogf(PoGFHash),
+                 PoGFF = aehc_pogf:from_db(DBPoGF),
+                 aehc_commitment:new(CommitmentHeader, PoGFF)
+         end
+     end || CommitmentHash <- CommitmentHashes].
 
 -spec get_parent_blocks(non_neg_integer(), binary()) -> [aehc_parent_block:aehc_parent_block()].
 get_parent_blocks(Height, Hash) ->

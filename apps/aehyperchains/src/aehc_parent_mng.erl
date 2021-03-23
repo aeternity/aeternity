@@ -28,8 +28,11 @@
 -export([start_link/0]).
 
 -export([commit/1]).
--export([candidates/1, candidates/2]).
+-export([candidates/1]).
 -export([pop/0]).
+
+-export([register/1]).
+%%-export([setup/0]).
 
 -export([stop/0]).
 
@@ -62,13 +65,10 @@ start_link() ->
 commit(Commitment) ->
     gen_statem:call(?MODULE, {commit, Commitment}).
 
--spec candidates(binary()) -> [commitment()].
-candidates(Hash) ->
-    candidates(_ElectionPeriod = 1, Hash).
 %% TODO To support method "sync to to"
--spec candidates(non_neg_integer(), binary()) -> [parent_block()].
-candidates(Period, Hash) ->
-    gen_statem:call(?MODULE, {candidates, Period, Hash}).
+-spec candidates(binary()) -> [parent_block()].
+candidates(Hash) ->
+    gen_statem:call(?MODULE, {candidates, Hash}).
 
 %% NOTE The starter app should check the empty stack condition at the initialization stage
 %% To extract the block from a queue (FIFO)
@@ -80,6 +80,10 @@ pop() ->
 -spec announce(pid(), binary()) -> ok.
 announce(From, Top) ->
     gen_statem:cast(?MODULE, {announce, From, Top}).
+
+-spec register(binary()) -> ok.
+register(Hash) ->
+    gen_statem:call(?MODULE, {register, Hash}).
 
 -spec stop() -> ok.
 stop() ->
@@ -158,15 +162,22 @@ monolith({call, From}, {pop}, Data) ->
 
     {keep_state, Data, []};
 
-monolith({call, From}, {candidates, Period, Hash}, Data) ->
+monolith({call, From}, {candidates, Hash}, Data) ->
     Primary = primary(Data), Pid = Primary#tracker.pid,
-    aehc_parent_tracker:candidates(Pid, Period, Hash, From),
+    aehc_parent_tracker:candidates(Pid, 1, Hash, From),
 
     {keep_state, Data, []};
 
 monolith(cast, {announce, _From, Top}, Data) ->
     aec_events:publish(parent_top_changed, Top),
 
+    {keep_state, Data, []};
+
+monolith({call, From}, {register, Hash}, Data) ->
+    Primary = primary(Data), Pid = Primary#tracker.pid,
+    Payload = aehc_parent_data:registry(Hash),
+
+    aehc_parent_tracker:post(Pid, Payload, From),
     {keep_state, Data, []};
 
 monolith(_Event, _Req, Data) ->
@@ -227,7 +238,10 @@ commit(Tracker, Data, From) ->
             %% b) We could route commitments between parent chains (based on setup)
             [Commitment|_]  = Queue,
             Primary = primary(Data), Pid = Primary#tracker.pid,
-            aehc_parent_tracker:commit(Pid, Commitment, From),
+
+            Payload = aehc_parent_data:commitment(Commitment),
+
+            aehc_parent_tracker:post(Pid, Payload, From),
             queue(Data, queue:new());
         true ->
             Data
