@@ -113,7 +113,7 @@ final_trees(EngineState) ->
     aefa_chain_api:final_trees(aefa_engine_state:chain_api(EngineState)).
 
 verify_init_calldata(CallData) ->
-    Init = aeb_fate_code:symbol_identifier(<<"init">>),
+    Init = ?FATE_INIT_ID,
     case decode_calldata(CallData) of
         {Init, _Args} -> ok;
         _             -> error
