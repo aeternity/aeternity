@@ -209,6 +209,8 @@ abort({trying_to_reach_bb, BB}, ES) ->
     ?t("Trying to jump to non existing bb: ~p", [BB], ES);
 abort({trying_to_call_function, Name}, ES) ->
     ?t("Trying to call undefined function: ~w", [Name], ES);
+abort(invalid_init_call, ES) ->
+    ?t("Calling init is not allowed in this context", [], ES);
 abort({trying_to_call_contract, Pubkey}, ES) ->
     ?t("Trying to call invalid contract: ~w", [Pubkey], ES);
 abort({not_allowed_in_auth_context, Op}, ES) ->
@@ -365,7 +367,7 @@ check_flags_and_set_local_function(CheckPayable, CheckPrivate, Function, AllowIn
 set_local_function(Function, _AllowInit = true, ES) ->
     set_local_function_(Function, ES);
 set_local_function(?FATE_INIT_ID, false, ES) ->
-    abort({trying_to_call_function, ?FATE_INIT_ID}, ES);
+    abort(invalid_init_call, ES);
 set_local_function(Function, false, ES) ->
     set_local_function_(Function, ES).
 

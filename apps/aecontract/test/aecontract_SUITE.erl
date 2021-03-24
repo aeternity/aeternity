@@ -273,6 +273,10 @@
 
 -define(assertMatchFATE(__ExpVm1, __ExpVm2, __Res),
     case vm_version() of
+        ?VM_AEVM_SOPHIA_1 -> ok;
+        ?VM_AEVM_SOPHIA_2 -> ok;
+        ?VM_AEVM_SOPHIA_3 -> ok;
+        ?VM_AEVM_SOPHIA_4 -> ok;
         ?VM_FATE_SOPHIA_1 -> ?assertMatch(__ExpVm1, __Res);
         ?VM_FATE_SOPHIA_2 -> ?assertMatch(__ExpVm2, __Res)
     end).
@@ -7422,5 +7426,6 @@ sophia_no_calls_to_init(_Cfg) ->
 
     Res = ?call(call_contract_with_calldata, Acc, C, word, CallData, #{}),
     ?assertMatchAEVM(Res, 32, 32, 32, {error, <<"unknown_function">>}),
-    ?assertMatchFATE({error, <<"Trying to call undefined function: <<68,214,68,31>>">>}, Res),
+    ?assertMatchFATE({error,<<"Trying to call undefined function: <<68,214,68,31>>">>},
+                     {error, <<"Calling init is not allowed in this context">>}, Res),
     ok.
