@@ -113,10 +113,9 @@ final_trees(EngineState) ->
     aefa_chain_api:final_trees(aefa_engine_state:chain_api(EngineState)).
 
 verify_init_calldata(CallData) ->
-    Init = ?FATE_INIT_ID,
     case decode_calldata(CallData) of
-        {Init, _Args} -> ok;
-        _             -> error
+        {?FATE_INIT_ID, _Args} -> ok;
+        _                      -> error
     end.
 
 is_valid_calldata(CallData) ->
@@ -363,7 +362,7 @@ check_flags_and_set_local_function(CheckPayable, CheckPrivate, Function, AllowIn
         false -> abort({function_is_not_payable, Function}, ES)
     end.
 
-set_local_function(Function, true, ES) ->
+set_local_function(Function, _AllowInit = true, ES) ->
     set_local_function_(Function, ES);
 set_local_function(?FATE_INIT_ID, false, ES) ->
     abort({trying_to_call_function, ?FATE_INIT_ID}, ES);
@@ -749,4 +748,3 @@ make_none() ->
 
 make_some(Val) ->
     aeb_fate_data:make_variant([0, 1], 1, {Val}).
-
