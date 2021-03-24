@@ -210,14 +210,22 @@ call(Arg0, EngineState) ->
     {Args, ES2} = aefa_fate:pop_args_from_signature(Signature, ES1),
     ES3         = aefa_fate:push_return_address(ES2),
     ES4         = aefa_fate:bind_args(Args, ES3),
-    {jump, 0, aefa_fate:set_local_function(Fun, ES4)}.
+    AllowInit = case aefa_engine_state:vm_version(ES3) of
+                    ?VM_FATE_SOPHIA_1 -> true;
+                    _ -> false
+                end,
+    {jump, 0, aefa_fate:set_local_function(Fun, AllowInit, ES4)}.
 
 call_t(Arg0, EngineState) ->
     {Fun, ES1}  = get_op_arg(Arg0, EngineState),
     Signature   = aefa_fate:get_function_signature(Fun, ES1),
     {Args, ES2} = aefa_fate:pop_args_from_signature(Signature, ES1),
     ES3         = aefa_fate:bind_args(Args, ES2),
-    {jump, 0, aefa_fate:set_local_function(Fun, ES3)}.
+    AllowInit = case aefa_engine_state:vm_version(ES3) of
+                    ?VM_FATE_SOPHIA_1 -> true;
+                    _ -> false
+                end,
+    {jump, 0, aefa_fate:set_local_function(Fun, AllowInit, ES3)}.
 
 call_r(Arg0, Arg1, Arg2, Arg3, Arg4, EngineState) ->
     {[Contract, ArgType, RetType, Value], ES1} = get_op_args([Arg0, Arg2, Arg3, Arg4], EngineState),
@@ -258,7 +266,7 @@ remote_call_common(Contract, Function, ?FATE_TYPEREP({tuple, ArgTypes}), ?FATE_T
                             {gas_cap, Cap} -> aefa_fate:push_gas_cap(Cap, ES3)
                         end,
             ES5       = aefa_fate:check_remote(Contract, ES4),
-            ES6       = aefa_fate:set_remote_function(Caller, Contract, Function, Value > 0, true, ES5),
+            ES6       = aefa_fate:set_remote_function(Caller, Contract, Function, Value > 0, true, false, ES5),
             Signature = aefa_fate:get_function_signature(Function, ES6),
             ES7       = aefa_fate:check_signature(Args, Signature, ES6),
             TVars     = aefa_engine_state:current_tvars(ES7),

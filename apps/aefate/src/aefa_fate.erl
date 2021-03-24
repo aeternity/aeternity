@@ -35,8 +35,8 @@
         , push_return_type_check/5
         , runtime_exit/2
         , runtime_revert/2
-        , set_local_function/2
-        , set_remote_function/6
+        , set_local_function/3
+        , set_remote_function/7
         ]
        ).
 
@@ -113,10 +113,9 @@ final_trees(EngineState) ->
     aefa_chain_api:final_trees(aefa_engine_state:chain_api(EngineState)).
 
 verify_init_calldata(CallData) ->
-    Init = aeb_fate_code:symbol_identifier(<<"init">>),
     case decode_calldata(CallData) of
-        {Init, _Args} -> ok;
-        _             -> error
+        {?FATE_INIT_ID, _Args} -> ok;
+        _                      -> error
     end.
 
 is_valid_calldata(CallData) ->
@@ -210,6 +209,8 @@ abort({trying_to_reach_bb, BB}, ES) ->
     ?t("Trying to jump to non existing bb: ~p", [BB], ES);
 abort({trying_to_call_function, Name}, ES) ->
     ?t("Trying to call undefined function: ~w", [Name], ES);
+abort(invalid_init_call, ES) ->
+    ?t("Calling init is not allowed in this context", [], ES);
 abort({trying_to_call_contract, Pubkey}, ES) ->
     ?t("Trying to call invalid contract: ~w", [Pubkey], ES);
 abort({not_allowed_in_auth_context, Op}, ES) ->
@@ -294,7 +295,7 @@ setup_engine(#{ contract := <<_:256>> = ContractPubkey
               , vm_version := VMVersion} = Spec, Env) ->
     try aeb_fate_code:deserialize(ByteCode) of
         Code ->
-            Cache = #{ ContractPubkey => {Code, VMVersion} },
+            Cache = #{ ContractPubkey => { Code, VMVersion } },
             setup_engine(Spec, Env, Cache)
     catch _:_ ->
             abort(bad_bytecode, no_state)
@@ -306,6 +307,7 @@ setup_engine(#{ contract := <<_:256>> = ContractPubkey
               , value := Value
               , store := Store
               , vm_version := VMVersion
+              , allow_init := AllowInit
               }, Env, Cache) ->
     {tuple, {Function, {tuple, ArgTuple}}} =
         aeb_fate_encoding:deserialize(Call),
@@ -315,7 +317,7 @@ setup_engine(#{ contract := <<_:256>> = ContractPubkey
     APIState = aefa_chain_api:new(Env),
     ES1 = aefa_engine_state:new(Gas, Value, Env, Stores, APIState, Cache, VMVersion),
     Caller = aeb_fate_data:make_address(maps:get(caller, Env)),
-    ES2 = set_remote_function(Caller, Contract, Function, Value > 0, true, ES1),
+    ES2 = set_remote_function(Caller, Contract, Function, Value > 0, true, AllowInit, ES1),
     Signature = get_function_signature(Function, ES2),
     ES3 = check_signature(Arguments, Signature, ES2),
     bind_args(Arguments, ES3).
@@ -330,7 +332,7 @@ check_remote(Contract, EngineState) ->
             abort(reentrant_call, EngineState)
     end.
 
-set_remote_function(Caller, ?FATE_CONTRACT(Pubkey), Function, CheckPayable, CheckPrivate, ES) ->
+set_remote_function(Caller, ?FATE_CONTRACT(Pubkey), Function, CheckPayable, CheckPrivate, AllowInit, ES) ->
     CodeCache = aefa_engine_state:code_cache(ES),
     case maps:get(Pubkey, CodeCache, void) of
         void ->
@@ -341,28 +343,35 @@ set_remote_function(Caller, ?FATE_CONTRACT(Pubkey), Function, CheckPayable, Chec
                     ES1 = aefa_engine_state:set_code_cache(CodeCache1, ES),
                     ES2 = aefa_engine_state:set_chain_api(APIState1, ES1),
                     ES3 = aefa_engine_state:update_for_remote_call(Pubkey, ContractCode, VMV, Caller, ES2),
-                    check_flags_and_set_local_function(CheckPayable, CheckPrivate, Function, ES3);
+                    check_flags_and_set_local_function(CheckPayable, CheckPrivate, Function, AllowInit, ES3);
                 error ->
                     abort({trying_to_call_contract, Pubkey}, ES)
             end;
         {ContractCode, VMV} ->
             ES1 = aefa_engine_state:update_for_remote_call(Pubkey, ContractCode, VMV, Caller, ES),
-            check_flags_and_set_local_function(CheckPayable, CheckPrivate, Function, ES1)
+            check_flags_and_set_local_function(CheckPayable, CheckPrivate, Function, AllowInit, ES1)
     end.
 
-check_flags_and_set_local_function(false, false, Function, ES) ->
-    set_local_function(Function, ES);
-check_flags_and_set_local_function(CheckPayable, CheckPrivate, Function, ES) ->
+check_flags_and_set_local_function(false, false, Function, AllowInit, ES) ->
+    set_local_function(Function, AllowInit, ES);
+check_flags_and_set_local_function(CheckPayable, CheckPrivate, Function, AllowInit, ES) ->
     case (not CheckPayable) orelse is_function_payable(Function, ES) of
         true  ->
             case CheckPrivate andalso is_function_private(Function, ES) of
-                false -> set_local_function(Function, ES);
+                false -> set_local_function(Function, AllowInit, ES);
                 true  -> abort({function_is_private, Function}, ES)
             end;
         false -> abort({function_is_not_payable, Function}, ES)
     end.
 
-set_local_function(Function, ES) ->
+set_local_function(Function, _AllowInit = true, ES) ->
+    set_local_function_(Function, ES);
+set_local_function(?FATE_INIT_ID, false, ES) ->
+    abort(invalid_init_call, ES);
+set_local_function(Function, false, ES) ->
+    set_local_function_(Function, ES).
+
+set_local_function_(Function, ES) ->
     BBs = get_function_code(Function, ES),
     ES1 = aefa_engine_state:set_current_function(Function, ES),
     ES2 = aefa_engine_state:set_current_bb(0, ES1),
@@ -614,7 +623,8 @@ pop_call_stack(ES) ->
             ES2 = check_return_type_protected(Protected, RetType, TVars, Stores, API, ES1),
             pop_call_stack(ES2);
         {local, Function, TVars, BB, ES1} ->
-            ES2 = set_local_function(Function, ES1),
+            % Allow returning to init
+            ES2 = set_local_function(Function, true, ES1),
             ES3 = aefa_engine_state:set_current_tvars(TVars, ES2),
             {jump, BB, ES3};
         {remote, Caller, Contract, Function, TVars, BB, ES1} ->
@@ -622,7 +632,8 @@ pop_call_stack(ES) ->
             %% but we need to unfold the store maps as the callee.
             Callee = aefa_engine_state:current_contract(ES),
             ES2    = with_current_contract(Callee, ES1, fun unfold_store_maps/1),
-            ES3 = set_remote_function(Caller, Contract, Function, false, false, ES2),
+            % Allow returning to init
+            ES3 = set_remote_function(Caller, Contract, Function, false, false, true, ES2),
             ES4 = aefa_engine_state:set_current_tvars(TVars, ES3),
             {jump, BB, ES4}
     end.

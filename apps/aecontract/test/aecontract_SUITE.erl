@@ -68,6 +68,7 @@
         , sophia_vm_interaction/1
         , fate_vm_interaction/1
         , fate_vm_version_switching/1
+        , contract_init_on_chain_fate/1
         , sophia_state/1
         , sophia_match_bug/1
         , sophia_spend/1
@@ -272,6 +273,10 @@
 
 -define(assertMatchFATE(__ExpVm1, __ExpVm2, __Res),
     case vm_version() of
+        ?VM_AEVM_SOPHIA_1 -> ok;
+        ?VM_AEVM_SOPHIA_2 -> ok;
+        ?VM_AEVM_SOPHIA_3 -> ok;
+        ?VM_AEVM_SOPHIA_4 -> ok;
         ?VM_FATE_SOPHIA_1 -> ?assertMatch(__ExpVm1, __Res);
         ?VM_FATE_SOPHIA_2 -> ?assertMatch(__ExpVm2, __Res)
     end).
@@ -349,6 +354,7 @@ groups() ->
                                       , fate_vm_version_switching
                                       , fate_vm_cross_protocol_store_big
                                       , fate_vm_cross_protocol_store_multi_small
+                                      , contract_init_on_chain_fate
                                       ]}
     , {transactions, [], [ create_contract
                          , create_contract_init_error
@@ -6634,35 +6640,37 @@ lima_migration(_Config) ->
 
 fate_vm_interaction(Cfg) ->
     state(aect_test_utils:new_state()),
-    ForkHeights   = ?config(fork_heights, Cfg),
+    ForkHeights = ?config(fork_heights, Cfg),
     LimaHeight = maps:get(lima, ForkHeights),
     IrisHeight = maps:get(iris, ForkHeights),
     Protocol = aec_hard_forks:protocol_effective_at_height(LimaHeight),
     GasPrice = aec_governance:minimum_gas_price(Protocol),
-    MinerMinGasPrice= aec_tx_pool:minimum_miner_gas_price(),
-    MinGasPrice   = max(GasPrice, MinerMinGasPrice),
-    Acc           = ?call(new_account, 10000000000 * MinGasPrice),
-    LimaSpec      = #{height => LimaHeight, vm_version => ?VM_FATE_SOPHIA_1,
-        amount => 100,
-        gas_price => MinGasPrice,
-        fee => 1000000 * MinGasPrice},
-    IrisSpec      = #{height => IrisHeight, vm_version => ?VM_FATE_SOPHIA_2,
-        amount => 100,
-        gas_price => MinGasPrice,
-        fee => 1000000 * MinGasPrice},
+    MinerMinGasPrice = aec_tx_pool:minimum_miner_gas_price(),
+    MinGasPrice = max(GasPrice, MinerMinGasPrice),
+    Acc = ?call(new_account, 10000000000 * MinGasPrice),
+    LimaSpec = #{height => LimaHeight,
+                 vm_version => ?VM_FATE_SOPHIA_1,
+                 amount => 100,
+                 gas_price => MinGasPrice,
+                 fee => 1000000 * MinGasPrice},
+    IrisSpec = #{height => IrisHeight,
+                 vm_version => ?VM_FATE_SOPHIA_2,
+                 amount => 100,
+                 gas_price => MinGasPrice,
+                 fee => 1000000 * MinGasPrice},
     {ok, IdCode}  = compile_contract(identity),
     {ok, RemCode} = compile_contract(remote_call),
 
     %% Create contracts on both sides of the fork
-    IdCLima     = ?call(create_contract_with_code, Acc, IdCode, {}, LimaSpec),
-    RemCLima    = ?call(create_contract_with_code, Acc, RemCode, {}, LimaSpec),
-    Rem2CLima    = ?call(create_contract_with_code, Acc, RemCode, {}, LimaSpec),
-    IdCIris     = ?call(create_contract_with_code, Acc, IdCode, {}, IrisSpec),
-    RemCIris    = ?call(create_contract_with_code, Acc, RemCode, {}, IrisSpec),
-    Rem2CIris    = ?call(create_contract_with_code, Acc, RemCode, {}, IrisSpec),
+    IdCLima   = ?call(create_contract_with_code, Acc, IdCode, {}, LimaSpec),
+    RemCLima  = ?call(create_contract_with_code, Acc, RemCode, {}, LimaSpec),
+    Rem2CLima = ?call(create_contract_with_code, Acc, RemCode, {}, LimaSpec),
+    IdCIris   = ?call(create_contract_with_code, Acc, IdCode, {}, IrisSpec),
+    RemCIris  = ?call(create_contract_with_code, Acc, RemCode, {}, IrisSpec),
+    Rem2CIris = ?call(create_contract_with_code, Acc, RemCode, {}, IrisSpec),
 
     %% Check that we cannot create contracts with old vms after the forks
-    BadSpec   = LimaSpec#{height => IrisHeight},
+    BadSpec = LimaSpec#{height => IrisHeight},
     {error, illegal_vm_version} = ?call(tx_fail_create_contract_with_code, Acc, IdCode, {}, BadSpec),
 
     LatestCallSpec = #{height => IrisHeight,
@@ -6678,10 +6686,10 @@ fate_vm_interaction(Cfg) ->
     %% Call new/oldVM -> old/newVM
     [?assertEqual(98, ?call(call_contract, Acc, Rem, call, word, {?cid(Id), 98},
         LatestCallSpec))
-        || {Rem, Id} <- [ {RemCLima,    IdCLima}
-                        , {RemCIris,    IdCLima}
-                        , {RemCLima,    IdCIris}
-                        , {RemCIris,    IdCIris}
+        || {Rem, Id} <- [ {RemCLima, IdCLima}
+                        , {RemCIris, IdCLima}
+                        , {RemCLima, IdCIris}
+                        , {RemCIris, IdCIris}
                         ]],
 
     %% Call new/oldVM -> new/oldVM -> new/oldVM in different orders
@@ -6701,32 +6709,34 @@ fate_vm_interaction(Cfg) ->
 
 fate_vm_version_switching(Cfg) ->
     state(aect_test_utils:new_state()),
-    ForkHeights   = ?config(fork_heights, Cfg),
+    ForkHeights = ?config(fork_heights, Cfg),
     LimaHeight = maps:get(lima, ForkHeights),
     IrisHeight = maps:get(iris, ForkHeights),
     Protocol = aec_hard_forks:protocol_effective_at_height(LimaHeight),
     GasPrice = aec_governance:minimum_gas_price(Protocol),
-    MinerMinGasPrice= aec_tx_pool:minimum_miner_gas_price(),
-    MinGasPrice   = max(GasPrice, MinerMinGasPrice),
-    Acc           = ?call(new_account, 10000000000 * MinGasPrice),
-    LimaSpec      = #{height => LimaHeight, vm_version => ?VM_FATE_SOPHIA_1,
-        amount => 100,
-        gas_price => MinGasPrice,
-        fee => 1000000 * MinGasPrice},
-    IrisSpec      = #{height => IrisHeight, vm_version => ?VM_FATE_SOPHIA_2,
-        amount => 100,
-        gas_price => MinGasPrice,
-        fee => 1000000 * MinGasPrice},
+    MinerMinGasPrice = aec_tx_pool:minimum_miner_gas_price(),
+    MinGasPrice = max(GasPrice, MinerMinGasPrice),
+    Acc = ?call(new_account, 10000000000 * MinGasPrice),
+    LimaSpec = #{height => LimaHeight,
+                 vm_version => ?VM_FATE_SOPHIA_1,
+                 amount => 100,
+                 gas_price => MinGasPrice,
+                 fee => 1000000 * MinGasPrice},
+    IrisSpec = #{height => IrisHeight,
+                 vm_version => ?VM_FATE_SOPHIA_2,
+                 amount => 100,
+                 gas_price => MinGasPrice,
+                 fee => 1000000 * MinGasPrice},
     {ok, DetectorContract} = compile_contract(vm_detector),
     {ok, RemCode} = compile_contract(remote_call),
 
     %% Create contracts on both sides of the fork
-    DetC1Lima  = ?call(create_contract_with_code, Acc, DetectorContract, {}, LimaSpec),
-    DetC2Lima  = ?call(create_contract_with_code, Acc, DetectorContract, {}, LimaSpec),
-    DetC3Lima  = ?call(create_contract_with_code, Acc, DetectorContract, {}, LimaSpec),
-    DetC1Iris  = ?call(create_contract_with_code, Acc, DetectorContract, {}, IrisSpec),
-    DetC2Iris  = ?call(create_contract_with_code, Acc, DetectorContract, {}, IrisSpec),
-    DetC3Iris  = ?call(create_contract_with_code, Acc, DetectorContract, {}, IrisSpec),
+    DetC1Lima = ?call(create_contract_with_code, Acc, DetectorContract, {}, LimaSpec),
+    DetC2Lima = ?call(create_contract_with_code, Acc, DetectorContract, {}, LimaSpec),
+    DetC3Lima = ?call(create_contract_with_code, Acc, DetectorContract, {}, LimaSpec),
+    DetC1Iris = ?call(create_contract_with_code, Acc, DetectorContract, {}, IrisSpec),
+    DetC2Iris = ?call(create_contract_with_code, Acc, DetectorContract, {}, IrisSpec),
+    DetC3Iris = ?call(create_contract_with_code, Acc, DetectorContract, {}, IrisSpec),
 
     LatestCallSpec = #{height => IrisHeight,
                        gas_price => MinGasPrice,
@@ -6753,6 +6763,49 @@ fate_vm_version_switching(Cfg) ->
     ],
     ok.
 
+
+contract_init_on_chain_fate(Cfg) ->
+    state(aect_test_utils:new_state()),
+    ForkHeights = ?config(fork_heights, Cfg),
+    LimaHeight = maps:get(lima, ForkHeights),
+    IrisHeight = maps:get(iris, ForkHeights),
+    Protocol = aec_hard_forks:protocol_effective_at_height(LimaHeight),
+    GasPrice = aec_governance:minimum_gas_price(Protocol),
+    MinerMinGasPrice = aec_tx_pool:minimum_miner_gas_price(),
+    MinGasPrice = max(GasPrice, MinerMinGasPrice),
+    Acc = ?call(new_account, 10000000000 * MinGasPrice),
+    LimaSpec = #{height => LimaHeight,
+                 vm_version => ?VM_FATE_SOPHIA_1,
+                 amount => 100,
+                 gas_price => MinGasPrice,
+                 fee => 1000000 * MinGasPrice},
+    IrisSpec = #{height => IrisHeight,
+                 vm_version => ?VM_FATE_SOPHIA_2,
+                 amount => 100,
+                 gas_price => MinGasPrice,
+                 fee => 1000000 * MinGasPrice},
+    {ok, IdCode} = compile_contract(identity),
+
+    GetFunctionsOnHardFork =
+        fun(CallSpec) ->
+            Id = ?call(create_contract_with_code, Acc, IdCode, {}, CallSpec),
+            {value, Contract} = ?call(lookup_contract_by_id, Id),
+            aeb_fate_code:functions(
+                aeb_fate_code:deserialize(
+                    aect_contracts:code(Contract)))
+        end,
+
+    HasInit =
+        fun(Functions) ->
+            InitIdentifier = aeb_fate_code:symbol_identifier(<<"init">>),
+            maps:is_key(InitIdentifier, Functions)
+        end,
+
+    FunctionsLima = GetFunctionsOnHardFork(LimaSpec),
+    ?assertEqual(false, HasInit(FunctionsLima)),
+    FunctionsIris = GetFunctionsOnHardFork(IrisSpec),
+    ?assertEqual(true, HasInit(FunctionsIris)),
+    ok.
 
 %%%===================================================================
 %%% Store
@@ -7373,5 +7426,6 @@ sophia_no_calls_to_init(_Cfg) ->
 
     Res = ?call(call_contract_with_calldata, Acc, C, word, CallData, #{}),
     ?assertMatchAEVM(Res, 32, 32, 32, {error, <<"unknown_function">>}),
-    ?assertMatchFATE({error, <<"Trying to call undefined function: <<68,214,68,31>>">>}, Res),
+    ?assertMatchFATE({error,<<"Trying to call undefined function: <<68,214,68,31>>">>},
+                     {error, <<"Calling init is not allowed in this context">>}, Res),
     ok.
