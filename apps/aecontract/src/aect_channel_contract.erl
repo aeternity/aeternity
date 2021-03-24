@@ -75,14 +75,15 @@ run_new(ContractPubKey, Call, CallData, Trees0, OnChainTrees,
 
 prepare_init_call(VmVersion, Protocol, Contract, Trees0) when ?IS_FATE_SOPHIA(VmVersion) ->
     Code = #{ byte_code := ByteCode } = aeser_contract_code:deserialize(aect_contracts:code(Contract)),
-    FateCode  = aeb_fate_code:deserialize(ByteCode),
-    FateCode1 =
+    ByteCode1 =
         if
-        % Before FATE 2 we do not include init function in code put in trees
-            VmVersion == ?VM_FATE_SOPHIA_1 -> aeb_fate_code:strip_init_function(FateCode);
-            true -> FateCode
+            % Before FATE 2 we do not include init function in code put in trees
+            VmVersion == ?VM_FATE_SOPHIA_1 ->
+                FateCode  = aeb_fate_code:deserialize(ByteCode),
+                FateCode1 = aeb_fate_code:strip_init_function(FateCode),
+                aeb_fate_code:serialize(FateCode1);
+            true -> ByteCode
         end,
-    ByteCode1 = aeb_fate_code:serialize(FateCode1),
     Code1     = Code#{ byte_code := ByteCode1 },
     %% The serialization was broken in the Lima release - setting the
     %% compiler version to "unknown" regardless of the actual value.
