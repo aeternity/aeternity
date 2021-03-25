@@ -53,6 +53,10 @@
                 "nonce_baseline" : {
                     "description" : "Maximum nonce accepted when pubkey is not present in state",
                     "type" : "integer"
+                },
+                "cache_size" : {
+                    "description" : "Maximum number of recently received cached transactions",
+                    "type" : "integer"
                 }
             }
         },
