@@ -202,7 +202,15 @@ contract_fate_code(Pubkey, #state{primop_state = PState} = S) ->
         {value, Contract} ->
             case aect_contracts:vm_version(Contract) of
                 VMV when ?IS_FATE_SOPHIA(VMV) ->
-                    SerCode = aect_contracts:code(Contract),
+                    SerCode =
+                        case aect_contracts:code(Contract) of
+                            {code, Code} -> Code;
+                            {ref, Ref} ->
+                                RefContractPK = aeser_id:specialize(Ref, contract),
+                                {value, RefContract} = aeprimop_state:find_contract_without_store(RefContractPK, PState),
+                                {code, Code} = aect_contracts:code(RefContract),
+                                Code
+                        end,
                     #{ byte_code := ByteCode} = aect_sophia:deserialize(SerCode),
                     try aeb_fate_code:deserialize(ByteCode) of
                         FateCode -> {ok, {FateCode, VMV}, S#state{primop_state = PState}}

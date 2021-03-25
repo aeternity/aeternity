@@ -1599,7 +1599,16 @@ contract_call_fail(Call0, Fee, S) ->
 
 run_contract(CallerId, Contract, GasLimit, GasPrice, CallData, AllowInit,
              Origin, Amount, CallStack, Nonce, S) ->
-    run_contract(CallerId, aect_contracts:code(Contract), Contract, GasLimit,
+    Code =
+        case aect_contracts:code(Contract) of
+            {code, C} -> C;
+            {ref, Ref} ->
+                RefContractPK = aeser_id:specialize(Ref, contract),
+                {ok, RefContract} = get_contract_no_cache(RefContractPK, S),
+                {code, C} = aect_contracts:code(RefContract),
+                C
+        end,
+    run_contract(CallerId, Code, Contract, GasLimit,
                  GasPrice, CallData, AllowInit, Origin, Amount, CallStack, Nonce, S).
 
 run_contract(CallerId, Code, Contract, GasLimit, GasPrice, CallData, AllowInit,

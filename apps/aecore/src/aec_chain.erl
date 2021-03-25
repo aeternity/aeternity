@@ -64,6 +64,7 @@
 
 %%% Contracts API
 -export([ get_contract/1
+        , get_contract_with_code/1
         , get_contract_call/3
         ]).
 
@@ -261,6 +262,25 @@ get_contract(PubKey) ->
             catch error:{not_present,_ContractKey} -> {error, not_present}
             end;
         error -> {error, no_state_trees}
+    end.
+
+-spec get_contract_with_code(aec_keys:pubkey()) ->
+    {'ok', aect_contracts:contract(), binary()} |
+    {'error', atom()}.
+get_contract_with_code(PubKey) ->
+    case get_contract(PubKey) of
+        {ok, Contract} ->
+            Code =
+                case aect_contracts:code(Contract) of
+                    {code, C} -> C;
+                    {ref, Ref} ->
+                        RefContractPK = aeser_id:specialize(Ref, contract),
+                        {ok, RefContract} = get_contract(RefContractPK),
+                        {code, C} = aect_contracts:code(RefContract),
+                        C
+                end,
+            {ok, Contract, Code};
+        {error, _} = Err -> Err
     end.
 
 -spec get_contract_call(aect_contracts:id() | binary(), aect_call:id(), binary()) ->

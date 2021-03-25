@@ -15,11 +15,15 @@
         , empty_with_backend/0
         , get_contract/2
         , get_contract/3
+        , get_contract_with_code/2
+        , get_contract_with_code/3
         , insert_contract/2
         , enter_contract/2
         , is_contract/2
         , lookup_contract/2
         , lookup_contract/3
+        , lookup_contract_with_code/2
+        , lookup_contract_with_code/3
         , new_with_backend/1
         , new_with_dirty_backend/1
         , gc_cache/1
@@ -167,11 +171,21 @@ get_contract(PubKey, Tree) ->
 
 -spec get_contract(aect_contracts:pubkey(), tree(), [no_store | full_store_cache]) ->
                       aect_contracts:contract().
-get_contract(Pubkey, #contract_tree{ contracts = CtTree }, Options) ->
-    Contract = aect_contracts:deserialize(Pubkey, aeu_mtrees:get(Pubkey, CtTree)),
-    case proplists:get_value(no_store, Options, false) of
-        false -> add_store(Contract, CtTree, Options);
-        true  -> Contract
+get_contract(Pubkey, Tree, Options) ->
+    case lookup_contract(Pubkey, Tree, Options) of
+        none -> error({not_present, Pubkey});
+        {value, Contract} -> Contract
+    end.
+
+-spec get_contract_with_code(aect_contracts:pubkey(), tree()) -> {aect_contracts:contract(), binary()}.
+get_contract_with_code(PubKey, Tree) ->
+    get_contract_with_code(PubKey, Tree, []).
+
+-spec get_contract_with_code(aect_contracts:pubkey(), tree(), [no_store | full_store_cache]) -> {aect_contracts:contract(), binary()}.
+get_contract_with_code(Pubkey, Tree, Options) ->
+    case lookup_contract_with_code(Pubkey, Tree, Options) of
+        none -> error({not_present, Pubkey});
+        {value, Contract, Code} -> {Contract, Code}
     end.
 
 add_store(Contract, CtTree, Options) ->
@@ -211,6 +225,27 @@ lookup_contract(Pubkey, Tree, Options) ->
                 true  -> {value, Contract}
             end;
         none         -> none
+    end.
+
+-spec lookup_contract_with_code(aect_contracts:pubkey(), tree()) -> {value, aect_contracts:contract(), binary()} | none.
+lookup_contract_with_code(PubKey, Tree) ->
+    lookup_contract_with_code(PubKey, Tree, []).
+
+-spec lookup_contract_with_code(aect_contracts:pubkey(), tree(), [no_store | full_store_cache]) -> {value, aect_contracts:contract(), binary()} | none.
+lookup_contract_with_code(Pubkey, Tree, Options) ->
+    case lookup_contract(Pubkey, Tree, Options) of
+        none -> none;
+        {value, Contract} ->
+            Code =
+            case aect_contracts:code(Contract) of
+                {code, C} -> C;
+                {ref, Ref} ->
+                    RefContractPK = aeser_id:specialize(Ref, contract),
+                    {value, RefContract} = lookup_contract(RefContractPK, Tree, Options),
+                    {code, C} = aect_contracts:code(RefContract),
+                    C
+            end,
+            {value, Contract, Code}
     end.
 
 %% -- Hashing --
