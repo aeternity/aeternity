@@ -17,6 +17,7 @@
     push_7_txs/1,
     transaction_over_the_account_nonce_limit_fails/1,
     push_tx_skipped_nonce/1,
+    maybe_push_tx_out_cache/1,
     mine_key_blocks_to_gc_txs/1,
     invalid_GCed_tx_does_not_reenter_pool/1,
     stop_node/1
@@ -31,6 +32,15 @@
 -define(ACCOUNT_NONCE_LIMIT, 7).
 -define(REWARD_DELAY, 2).
 -define(GC_TTL, 8). %% HARDCODED IN THE CODE
+-define(CACHE_SIZE, 2). %% HARDCODED IN THE CODE
+
+-define(ALICE, {
+    <<177,181,119,188,211,39,203,57,229,94,108,2,107,214, 167,74,27,
+      53,222,108,6,80,196,174,81,239,171,117,158,65,91,102>>,
+    <<145,69,14,254,5,22,194,68,118,57,0,134,66,96,8,20,124,253,238,
+      207,230,147,95,173,161,192,86,195,165,186,115,251,177,181,119,
+      188,211,39,203,57,229,94,108,2,107,214,167,74,27,53,222,108,6,
+      80,196,174,81,239,171,117,158,65,91,102>>}).
 
 all() ->
     [
@@ -57,6 +67,7 @@ groups() ->
       ]},
      {gc, [sequence],
       [push_tx_skipped_nonce,
+       maybe_push_tx_out_cache,
        mine_key_blocks_to_gc_txs,
        %% this pushes the exact same transaction again
        push_tx_skipped_nonce,
@@ -76,7 +87,7 @@ init_per_suite(Config) ->
                                        , <<"mempool">> =>
                                              #{ <<"tx_ttl">> => ?GC_TTL, %% default 2 weeks
                                                 <<"nonce_offset">> => ?ACCOUNT_NONCE_LIMIT, %% default 5
-                                                <<"cache_size">> => 2 %% default 200
+                                                <<"cache_size">> => ?CACHE_SIZE %% default 200
                                               }
                                        , <<"mining">> =>
                                              #{ <<"expected_mine_rate">> => ?MINE_RATE,
@@ -149,7 +160,14 @@ start_node(Config) ->
             {ok, _} = aecore_suite_utils:mine_blocks(NodeName, ?GC_TTL, ?MINE_RATE, key, #{}),
             {ok, []} = rpc:call(NodeName, aec_tx_pool, peek, [infinity]),
             ok
-    end.
+    end,
+    Alice = pubkey(?ALICE),
+    SpendTx = prepare_spend_tx(Node, 
+                               #{recipient_id => aeser_id:create(account, Alice),
+                                 amount => ?SPEND_FEE * 100}),
+    ok = rpc:call(NodeName, aec_tx_pool, push, [SpendTx, tx_created]),
+    mine_tx(Node, SpendTx),
+    ok.
 
 stop_node(Config) -> stop_and_check([dev1], Config).
 
@@ -197,7 +215,7 @@ push_7_txs(Config) ->
     SortedPoolPayloads = SortedPayloads,
     ok.
 
-transaction_over_the_account_nonce_limit_fails(Config) ->
+transaction_over_the_account_nonce_limit_fails(_Config) ->
     Node = dev1,
     NodeName = aecore_suite_utils:node_name(Node),
     {_, Pub} = aecore_suite_utils:sign_keys(Node),
@@ -206,10 +224,8 @@ transaction_over_the_account_nonce_limit_fails(Config) ->
     {value, Acc} = rpc:call(NodeName, aec_chain, get_account, [Pub]),
     ct:log("Account: ~p", [Acc]),
     CurrentNonce = aec_accounts:nonce(Acc),
+    ct:log("Account nonce: ~p", [CurrentNonce]),
     {CurrentNonce, NextNonce} = {CurrentNonce, CurrentNonce + 1 + ?ACCOUNT_NONCE_LIMIT},
-    SpendTx = prepare_spend_tx(Node),
-    ct:log("Spend tx: ~p", [SpendTx]),
-    {error, nonce_too_high} = push(NodeName, SpendTx, Config),
     ok.
 
 push_tx_skipped_nonce(Config) ->
@@ -223,6 +239,27 @@ push_tx_skipped_nonce(Config) ->
     ok = push(NodeName, SpendTx, Config),
     {ok, [SpendTx]} = rpc:call(NodeName, aec_tx_pool, peek, [infinity]),
     ok.
+
+maybe_push_tx_out_cache(Config) ->
+    case ?config(push_event, Config) of
+        tx_created -> ok;
+        tx_received ->
+            Node = dev1,
+            NodeName = aecore_suite_utils:node_name(Node),
+            Pub = pubkey(?ALICE),
+            Priv = privkey(?ALICE),
+            Opts = 
+                #{sender_id    => aeser_id:create(account, Pub),
+                  recipient_id => aeser_id:create(account, Pub)},
+            lists:foreach(
+                fun(_) ->
+                    SpendTx = prepare_spend_tx(Node, Opts, Pub, Priv),
+                    ct:log("Spend tx: ~p", [SpendTx]),
+                    ok = push(NodeName, SpendTx, Config)
+                end,
+                lists:seq(1, ?CACHE_SIZE)),
+            ok
+    end.
 
 mine_key_blocks_to_gc_txs(Config) ->
     Node = dev1,
@@ -271,14 +308,9 @@ invalid_GCed_tx_does_not_reenter_pool(Config) ->
                 STx
             end,
             [<<"tx1">>, <<"tx2 that invalidates the GCed tx">>]),
-    TxNonceFun = 
-        fun(STx) ->
-            {spend_tx, SpendTx} = aetx:specialize_type(aetx_sign:tx(STx)),
-            aec_spend_tx:nonce(SpendTx)
-        end,
     %% assert nonce assumptions and pool transactions
-    NextNonce = TxNonceFun(Spend1),
-    SkippedNonce = TxNonceFun(Spend2),
+    NextNonce = tx_nonce(Spend1),
+    SkippedNonce = tx_nonce(Spend2),
     {ok, PoolTxs} = rpc:call(NodeName, aec_tx_pool, peek, [infinity]),
     SortedTxs = lists:sort([Spend1, Spend2]),
     SortedPoolTxs = lists:sort(PoolTxs),
@@ -311,4 +343,19 @@ prepare_spend_tx(Node, Opts, Pub, Priv) ->
     aec_test_utils:sign_tx(Tx, Priv, false).
 
 push(NodeName, SignedTx, Config) ->
-    rpc:call(NodeName, aec_tx_pool, push, [SignedTx]).
+    EventType = ?config(push_event, Config),
+    rpc:call(NodeName, aec_tx_pool, push, [SignedTx, EventType]).
+
+tx_nonce(SignedTx) ->
+    _Nonce = aetx:nonce(aetx_sign:tx(SignedTx)).
+
+pubkey({Pubkey, _}) -> Pubkey.
+
+privkey({_, Privkey}) -> Privkey.
+
+mine_tx(Node, SignedTx) ->
+    NodeName = aecore_suite_utils:node_name(Node),
+    TxHash = aeser_api_encoder:encode(tx_hash, aetx_sign:hash(SignedTx)),
+    aecore_suite_utils:mine_blocks_until_txs_on_chain(NodeName,
+                                                      [TxHash],
+                                                      10). %% max keyblocks
