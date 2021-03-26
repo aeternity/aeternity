@@ -304,6 +304,7 @@ mine_key_blocks_to_gc_txs(Config) ->
         end,
         lists:seq(1, ?GC_TTL - 1)),
     mine_a_key_block(Config),
+    timer:sleep(100), %% give time for a slower environment to GC the txs
     {ok, []} = rpc:call(NodeName, aec_tx_pool, peek, [infinity]),
     ok.
 
