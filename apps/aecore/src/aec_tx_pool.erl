@@ -955,9 +955,8 @@ int_gas_price(Tx) ->
     end.
 
 tx_ttl() ->
-%%    aeu_env:user_config_or_env([<<"mempool">>, <<"tx_ttl">>],
-%%                               aecore, mempool_tx_ttl, ?DEFAULT_TX_TTL).
-    ?DEFAULT_TX_TTL.
+    aeu_env:user_config_or_env([<<"mempool">>, <<"tx_ttl">>],
+                               aecore, mempool_tx_ttl, ?DEFAULT_TX_TTL).
 
 invalid_tx_ttl() ->
     aeu_env:user_config_or_env([<<"mempool">>, <<"invalid_tx_ttl">>],

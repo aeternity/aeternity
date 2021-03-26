@@ -20,6 +20,7 @@
     maybe_push_tx_out_cache/1,
     mine_key_blocks_to_gc_txs/1,
     invalid_GCed_tx_does_not_reenter_pool/1,
+    repush_tx_skipped_nonce_is_stopped_by_cache/1,
     stop_node/1
    ]).
 
@@ -56,16 +57,17 @@ groups() ->
      {tx_created, [sequence],
       [{group, common_tests}]},
      {tx_received, [sequence],
-      [{group, common_tests}]},
+      [{group, common_tests},
+       {group, garbage_collected_tx_can_not_enter_the_pool_if_stopped_by_cache}]},
      {common_tests, [sequence],
       [{group, tx_push},
-       {group, gc}
+       {group, garbage_collected_tx_can_enter_the_pool}
        ]},
      {tx_push, [sequence],
       [push_7_txs,
        transaction_over_the_account_nonce_limit_fails
       ]},
-     {gc, [sequence],
+     {garbage_collected_tx_can_enter_the_pool, [sequence],
       [push_tx_skipped_nonce,
        maybe_push_tx_out_cache,
        mine_key_blocks_to_gc_txs,
@@ -73,6 +75,15 @@ groups() ->
        push_tx_skipped_nonce,
        mine_key_blocks_to_gc_txs,
        invalid_GCed_tx_does_not_reenter_pool
+      ]},
+     {garbage_collected_tx_can_not_enter_the_pool_if_stopped_by_cache, [sequence],
+      [push_tx_skipped_nonce,
+       mine_key_blocks_to_gc_txs,
+       repush_tx_skipped_nonce_is_stopped_by_cache,
+       %% if other transactions push this one out of cache, it is still accepted
+       maybe_push_tx_out_cache,
+       mine_key_blocks_to_gc_txs,
+       push_tx_skipped_nonce
       ]}
     ].
 
@@ -232,12 +243,26 @@ push_tx_skipped_nonce(Config) ->
     Node = dev1,
     NodeName = aecore_suite_utils:node_name(Node),
     {_, Pub} = aecore_suite_utils:sign_keys(Node),
+    %% precondition
+    {ok, []} = rpc:call(NodeName, aec_tx_pool, peek, [infinity]),
     {ok, NextNonce} = rpc:call(NodeName, aec_next_nonce, pick_for_account, [Pub]),
     ct:log("NextNonce: ~p", [NextNonce]),
     SpendTx = prepare_spend_tx(Node, #{nonce => NextNonce + 1}),
     ct:log("Spend tx: ~p", [SpendTx]),
     ok = push(NodeName, SpendTx, Config),
     {ok, [SpendTx]} = rpc:call(NodeName, aec_tx_pool, peek, [infinity]),
+    ok.
+
+repush_tx_skipped_nonce_is_stopped_by_cache(Config) ->
+    Node = dev1,
+    NodeName = aecore_suite_utils:node_name(Node),
+    {_, Pub} = aecore_suite_utils:sign_keys(Node),
+    {ok, NextNonce} = rpc:call(NodeName, aec_next_nonce, pick_for_account, [Pub]),
+    ct:log("NextNonce: ~p", [NextNonce]),
+    SpendTx = prepare_spend_tx(Node, #{nonce => NextNonce + 1}),
+    ct:log("Spend tx: ~p", [SpendTx]),
+    ok = push(NodeName, SpendTx, Config),
+    {ok, []} = rpc:call(NodeName, aec_tx_pool, peek, [infinity]),
     ok.
 
 maybe_push_tx_out_cache(Config) ->
