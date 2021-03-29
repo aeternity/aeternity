@@ -167,7 +167,16 @@ start_node(Config) ->
     NodeName = aecore_suite_utils:node_name(Node),
     case rpc:call(NodeName, aec_tx_pool, peek, [infinity]) of
         {ok, []} -> ok;
-        {ok, _} ->
+        {ok, Txs} ->
+            TxHashes = [aeser_api_encoder:encode(tx_hash, aetx_sign:hash(STx))
+                        || STx <- Txs],
+            try
+                aecore_suite_utils:mine_blocks_until_txs_on_chain(NodeName,
+                                                                  TxHashes,
+                                                                  ?GC_TTL)
+            catch error:max_reached ->
+                ok
+            end,
             {ok, _} = aecore_suite_utils:mine_blocks(NodeName, ?GC_TTL, ?MINE_RATE, key, #{}),
             {ok, []} = rpc:call(NodeName, aec_tx_pool, peek, [infinity]),
             ok
