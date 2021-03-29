@@ -49,6 +49,7 @@
          get_header/1,
          get_genesis_hash/0,
          get_signed_tx/1,
+         dirty_get_signed_tx/1,
          get_top_block_hash/0,
          get_top_block_node/0,
          get_finalized_height/0,
@@ -853,6 +854,12 @@ gc_tx(TxHash) ->
 get_signed_tx(Hash) ->
     [#aec_signed_tx{value = DBSTx}] = ?t(read(aec_signed_tx, Hash)),
     aetx_sign:from_db_format(DBSTx).
+
+dirty_get_signed_tx(Hash) ->
+    case ?dirty_dirty_read(aec_signed_tx, Hash) of
+        [#aec_signed_tx{value = DBSTx}] -> {ok, aetx_sign:from_db_format(DBSTx)};
+        [] -> none
+    end.
 
 find_signed_tx(Hash) ->
     case ?t(read(aec_signed_tx, Hash)) of
