@@ -295,26 +295,17 @@ maybe_push_tx_out_cache(Config) ->
             ok
     end.
 
-mine_key_blocks_to_gc_txs(Config) ->
+mine_key_blocks_to_gc_txs(_Config) ->
     Node = dev1,
     NodeName = aecore_suite_utils:node_name(Node),
     {ok, PoolTxs1} = rpc:call(NodeName, aec_tx_pool, peek, [infinity]),
-
-    %% mine keyblocks - 1 and ensure txs are not yet GCed
-    lists:foreach(
-        fun(Idx) ->
-            ct:log("Keyblock: ~p", [Idx]),
-            {ok, [_]} = aecore_suite_utils:mine_blocks(NodeName, 1, ?MINE_RATE, key, #{}),
-            %% ensure txs are not yet GCed
-            {ok, PoolTxs2} = rpc:call(NodeName, aec_tx_pool, peek, [infinity]),
-            SortedTxs1 = lists:sort(PoolTxs1),
-            SortedTxs2 = lists:sort(PoolTxs2),
-            {SortedTxs1, SortedTxs1} = {SortedTxs1, SortedTxs2}
-        end,
-        lists:seq(1, ?GC_TTL - 1)),
-    mine_a_key_block(Config),
-    timer:sleep(100), %% give time for a slower environment to GC the txs
-    {ok, []} = rpc:call(NodeName, aec_tx_pool, peek, [infinity]),
+    case PoolTxs1 =:= [] of
+        false ->
+            {ok, _} = aecore_suite_utils:mine_blocks(NodeName, ?GC_TTL, ?MINE_RATE, key, #{}),
+            timer:sleep(100), %% give time for a slower environment to GC the txs
+            {ok, []} = rpc:call(NodeName, aec_tx_pool, peek, [infinity]);
+        true -> pass
+    end,
     ok.
 
 invalid_GCed_tx_does_not_reenter_pool(Config) ->
