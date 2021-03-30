@@ -716,7 +716,7 @@ update_pool_on_tx_hash(TxHash, {#dbs{gc_db = GCDb} = Dbs, OriginsCache, GCHeight
         true -> ok;
         false ->
             ets:insert(Handled, {TxHash}),
-            Tx = aec_db:get_signed_tx(TxHash),
+            {ok, Tx} = aec_db:dirty_get_signed_tx(TxHash),
             case aec_db:is_in_tx_pool(TxHash) of
                 false ->
                     %% Added to chain
