@@ -35,6 +35,7 @@
 -export([ get_transaction/2
         , encode_transaction/2
         , decode_pointers/1
+        , decode_transaction/1
         ]).
 
 -export([ ok_response/1
@@ -926,6 +927,21 @@ get_block_hash_optionally_by_hash_or_height(PutKey) ->
                 {ok, maps:put(PutKey, BlockHash, State)}
         end
     end.
+
+decode_transaction(ParamName) ->
+    params_read_fun([ParamName],
+        fun(Name, _, State) ->
+            Tx = maps:get(Name, State),
+            case aeser_api_encoder:safe_decode(transaction, Tx) of
+                {error, _} -> error;
+                {ok, TxDec} ->
+                    try {ok, aetx_sign:deserialize_from_binary(TxDec)}
+                    catch 
+                        _:_ -> error
+                    end
+            end
+        end,
+        "Invalid inner transaction").
 
 safe_get_txs(Block) ->
     case aec_blocks:type(Block) of

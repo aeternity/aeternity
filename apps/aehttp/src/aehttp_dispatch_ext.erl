@@ -1,6 +1,6 @@
 -module(aehttp_dispatch_ext).
 
--export([forbidden/1]).
+-export([forbidden/2]).
 -export([handle_request/3]).
 
 -import(aeu_debug, [pp/1]).
@@ -38,8 +38,8 @@
 
 -define(TC(Expr, Msg), begin {Time, Res} = timer:tc(fun() -> Expr end), lager:debug("[~p] Msg = ~p", [Time, Msg]), Res end).
 
--spec forbidden( OperationID :: atom() ) -> boolean().
-forbidden(_OpId) -> false.
+-spec forbidden( Mod :: module(), OperationID :: atom() ) -> boolean().
+forbidden(_Mod, _OpId) -> false.
 
 -spec handle_request(
         OperationID :: atom(),

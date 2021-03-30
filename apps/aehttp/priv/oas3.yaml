@@ -1843,6 +1843,42 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+  /debug/transactions/paying-for:
+    post:
+      tags:
+        - internal
+        - transaction
+        - debug
+      operationId: PostPayingFor
+      description: Get a paying for transaction object
+      parameters:
+        - $ref: '#/components/parameters/intAsString'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PayingForTx"
+        description: A paying for transaction
+        required: true
+      responses:
+        "200":
+          description: Successful operation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UnsignedTx"
+        "400":
+          description: Invalid transaction
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Sender account not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
   "/debug/token-supply/height/{height}":
     get:
       tags:
@@ -2889,7 +2925,8 @@ components:
                       ContractCreateTx,
                       ContractCallTx,
                       GAAttachTx,
-                      GAMetaTx ]
+                      GAMetaTx,
+                      PayingForTx ]
           required:
             - version
             - type
@@ -2918,6 +2955,7 @@ components:
           - $ref: "#/components/schemas/ContractCallTx"
           - $ref: "#/components/schemas/GAAttachTx"
           - $ref: "#/components/schemas/GAMetaTx"
+          - $ref: "#/components/schemas/PayingForTx"
     TxInfoObject:
       type: object
       properties:
@@ -3456,6 +3494,21 @@ components:
         - gas_price
         - fee
         - auth_data
+        - tx
+    PayingForTx:
+      type: object
+      properties:
+        payer_id:
+          $ref: "#/components/schemas/EncodedPubkey"
+        fee:
+          $ref: "#/components/schemas/UInt"
+        nonce:
+          $ref: "#/components/schemas/UInt64"
+        tx:
+          $ref: "#/components/schemas/EncodedByteArray"
+      required:
+        - payer_id
+        - fee
         - tx
     Header:
       anyOf:

@@ -219,6 +219,9 @@
     wrong_http_method_peers/1
     ]).
 
+-export([
+    post_paying_for_tx/1]).
+
 -include_lib("common_test/include/ct.hrl").
 -include_lib("aecontract/include/hard_forks.hrl").
 
@@ -265,6 +268,8 @@ groups() ->
        {group, debug_endpoints},
        {group, swagger_validation},
        {group, wrong_http_method_endpoints},
+       %% TODO: handle swagger2
+       %%{group, paying_for_tx}
        {group, naming}
       ]},
 
@@ -534,7 +539,8 @@ groups() ->
        {group, debug_endpoints},
        {group, swagger_validation},
        {group, wrong_http_method_endpoints},
-       {group, naming}
+       {group, naming},
+       {group, paying_for_tx}
       ]},
      {oas_block_endpoints, [sequence],
       [
@@ -561,7 +567,10 @@ groups() ->
        get_generation_current,
        get_generation_by_hash,
        get_generation_by_height
-      ]}
+      ]},
+     %% /oracles/*
+     {paying_for_tx, [sequence],
+      [post_paying_for_tx]}
     ].
 
 suite() ->
@@ -3688,6 +3697,10 @@ get_channel_settle(Data) ->
     Host = internal_address(),
     http_request(Host, post, "debug/channels/settle", Data).
 
+get_paying_for(Data) ->
+    Host = internal_address(),
+    http_request(Host, post, "debug/transactions/paying-for", Data).
+
 get_pending_transactions() ->
     Host = internal_address(),
     http_request(Host, get, "debug/transactions/pending", []).
@@ -4247,5 +4260,42 @@ get_top_header(_Config) ->
     Target = binary_to_integer(TargetStr),
     Time = binary_to_integer(TimeStr),
     Version = binary_to_integer(VersionStr),
+    ok.
+
+post_paying_for_tx(Config) ->
+    [ {_NodeId, Node} | _ ] = ?config(nodes, Config),
+    {AlicePubKey, AlicePrivKey} = initialize_account(100000000 * aec_test_utils:min_gas_price()),
+    {BobPubKey, BobPrivKey} = initialize_account(100000000 * aec_test_utils:min_gas_price()),
+
+    {ok, Nonce} = rpc(aec_next_nonce, pick_for_account, [AlicePubKey]),
+    Sign =
+        fun(Aetx, PrivKey) ->
+            SignedTx = aec_test_utils:sign_tx(Aetx, PrivKey),
+            aeser_api_encoder:encode(transaction, aetx_sign:serialize_to_binary(SignedTx))
+        end,
+    {ok, SpendTx} =
+        aec_spend_tx:new(
+          #{sender_id => aeser_id:create(account, AlicePubKey),
+            recipient_id => aeser_id:create(account, random_hash()),
+            amount => 1,
+            fee => ?SPEND_FEE,
+            nonce => Nonce,
+            payload => <<"foo">>}),
+    EncodedSignedSpendTx = Sign(SpendTx, AlicePrivKey),
+    PayingForData =
+        #{payer_id => aeser_api_encoder:encode(account_pubkey, BobPubKey),
+          fee => 3 * ?SPEND_FEE,
+          tx => EncodedSignedSpendTx},
+    %% get the node to produce the tx:
+    {ok, 200, #{<<"tx">> := EncodedPayingForTx}} = get_paying_for(PayingForData),
+    {ok, 400, #{<<"reason">> := <<"Invalid inner transaction: tx">>}} = get_paying_for(PayingForData#{ tx => <<>>}),
+
+    %% post the tx
+    {ok, SerializedUnsignedTx} = aeser_api_encoder:safe_decode(transaction, EncodedPayingForTx),
+    UnsignedTx = aetx:deserialize_from_binary(SerializedUnsignedTx),
+    SignedPayingFor = Sign(UnsignedTx, BobPrivKey),
+    {ok, 200, _} = post_transactions_sut(SignedPayingFor),
+
+    {ok, [Tx]} = rpc:call(Node, aec_tx_pool, peek, [infinity]),
     ok.
 

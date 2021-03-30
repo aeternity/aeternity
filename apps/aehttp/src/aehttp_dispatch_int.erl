@@ -1,6 +1,6 @@
 -module(aehttp_dispatch_int).
 
--export([forbidden/1]).
+-export([forbidden/2]).
 -export([handle_request/3]).
 
 -import(aeu_debug, [pp/1]).
@@ -27,6 +27,7 @@
                         , process_request/2
                         , do_dry_run/0
                         , dry_run_results/1
+                        , decode_transaction/1
                         ]).
 
 -define(READ_Q, http_read).
@@ -43,9 +44,9 @@ patterns() ->
 				      , {process_request, 2}
 				      , {dry_run_results, 1}]].
 
--spec forbidden( OperationID :: atom() ) -> boolean().
-forbidden(OpId) ->
-    OpSpec = endpoints:operation(OpId),
+-spec forbidden( Mod :: module(), OperationID :: atom() ) -> boolean().
+forbidden(Mod, OpId) ->
+    OpSpec = Mod:operation(OpId),
     [ #{ tags := Tags } | _ ] = maps:values(OpSpec),
     case lists:member(<<"debug">>, Tags) of
         true -> not aehttp_app:enable_internal_debug_endpoints();
@@ -347,6 +348,17 @@ handle_request_('PostChannelSettle', #{'ChannelSettleTx' := Req}, _Context) ->
                  api_str_to_int([initiator_amount_final,
                                  responder_amount_final, nonce, fee, ttl]),
                  unsigned_tx_response(fun aesc_settle_tx:new/1)
+                ],
+    process_request(ParseFuns, Req);
+
+handle_request_('PostPayingFor', #{'PayingForTx' := Req}, _Context) ->
+    ParseFuns = [parse_map_to_atom_keys(),
+                 read_required_params([payer_id, fee, tx]),
+                 api_decode([{payer_id, payer_id, {id_hash, [account_pubkey]}}]),
+                 get_nonce_from_account_id(payer_id),
+                 api_str_to_int([nonce, fee]),
+                 decode_transaction(tx),
+                 unsigned_tx_response(fun aec_paying_for_tx:new/1)
                 ],
     process_request(ParseFuns, Req);
 

@@ -46,9 +46,10 @@ allowed_methods(Req, State = #state{ allowed_method = Method }) ->
 
 forbidden(Req, State = #state{
         operation_id = OperationId,
-        logic_handler = LogicHandler
+        logic_handler = LogicHandler,
+        endpoints = Mod
     }) ->
-    IsForbidden = LogicHandler:forbidden(OperationId),
+    IsForbidden = LogicHandler:forbidden(Mod, OperationId),
     {IsForbidden, Req, State}.
 
 content_types_accepted(Req, State) ->
