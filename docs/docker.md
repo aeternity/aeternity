@@ -33,8 +33,9 @@ To join the testnet a network_id with value `ae_uat` argument must be passed:
 ```bash
 mkdir -p ~/.aeternity/testdb
 docker run -p 3013:3013 -p 3015:3015 \
+    -e AE__FORK_MANAGEMENT__NETWORK_ID=ae_uat \
     -v ~/.aeternity/testdb:/home/aeternity/node/data/mnesia \
-    aeternity/aeternity bin/aeternity console -noinput -network_id ae_uat
+    aeternity/aeternity
 ```
 
 You should see the console output of the running node and a lot of information related to syncing with the network.
@@ -79,13 +80,14 @@ docker run -p 3013:3013 -p 3015:3015 \
     aeternity/aeternity
 ```
 
-Arguments can also be passed to the node by changing the docker command, for example to change expected mine rate:
+Configuration can also be changed by providing environment variables to the container:
 
 ```bash
-mkdir -p ~/.aeternity/mydb
+mkdir -p ~/.aeternity/testdb
 docker run -p 3013:3013 -p 3015:3015 \
-    -v ~/.aeternity/mydb:/home/aeternity/node/data/mnesia \
-    aeternity/aeternity bin/aeternity console -noinput -aecore expected_mine_rate 100000
+    -e AE__FORK_MANAGEMENT__NETWORK_ID=ae_uat \
+    -v ~/.aeternity/testdb:/home/aeternity/node/data/mnesia \
+    aeternity/aeternity
 ```
 
 More details about node configuration can be found in [configuration documentation](configuration.md).
