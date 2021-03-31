@@ -6720,7 +6720,7 @@ fate_vm_version_switching(Cfg) ->
                  gas_price => MinGasPrice,
                  fee => 1000000 * MinGasPrice},
     {ok, DetectorContract} = compile_contract(vm_detector),
-    {ok, RemCode} = compile_contract(remote_call),
+    {ok, _RemCode} = compile_contract(remote_call),
 
     %% Create contracts on both sides of the fork
     DetC1Lima = ?call(create_contract_with_code, Acc, DetectorContract, {}, LimaSpec),
@@ -6905,9 +6905,9 @@ store_rand_hash({DimX, DimY, DimZ}, M) ->
     M_x = 41850756719,
     M_y = 74482681767,
     lists:foldl(
-        fun(X, Acc) -> (Acc*M_x + lists:foldl(
-            fun(Y, Acc) -> (Acc*M_y + lists:foldl(
-                fun(Z, Acc) -> (Acc*P_z + maps:get(Z,maps:get(Y, maps:get(X, M)))) rem P_mod end,
+        fun(X, AccX) -> (AccX*M_x + lists:foldl(
+            fun(Y, AccY) -> (AccY*M_y + lists:foldl(
+                fun(Z, AccZ) -> (AccZ*P_z + maps:get(Z,maps:get(Y, maps:get(X, M)))) rem P_mod end,
                 0,
                 lists:seq(1,DimZ)
             )) rem P_mod end,
@@ -6932,19 +6932,19 @@ store_rand_do_op({copy2, {X1, Y1, X2, Y2}}, M) ->
     maps:put(X1, maps:put(Y1, maps:get(Y2, maps:get(X2, M)), maps:get(X1, M)), M).
 
 store_rand_random_write({DimX, DimY, DimZ}) ->
-    {write, {random:uniform(DimX), random:uniform(DimY), random:uniform(DimZ), random:uniform(10000)}}.
+    {write, {rand:uniform(DimX), rand:uniform(DimY), rand:uniform(DimZ), rand:uniform(10000)}}.
 
-store_rand_random_op({DimX, DimY, DimZ} = Dim) ->
-    case random:uniform(5) of
-        1 -> {swap1, {random:uniform(DimX), random:uniform(DimX)}};
-        2 -> {swap2, {random:uniform(DimX), random:uniform(DimY), random:uniform(DimX), random:uniform(DimY)}};
+store_rand_random_op({DimX, DimY, _DimZ} = Dim) ->
+    case rand:uniform(5) of
+        1 -> {swap1, {rand:uniform(DimX), rand:uniform(DimX)}};
+        2 -> {swap2, {rand:uniform(DimX), rand:uniform(DimY), rand:uniform(DimX), rand:uniform(DimY)}};
         3 -> store_rand_random_write(Dim);
-        4 -> {copy1, {random:uniform(DimX), random:uniform(DimX)}};
-        5 -> {copy2, {random:uniform(DimX), random:uniform(DimY), random:uniform(DimX), random:uniform(DimY)}}
+        4 -> {copy1, {rand:uniform(DimX), rand:uniform(DimX)}};
+        5 -> {copy2, {rand:uniform(DimX), rand:uniform(DimY), rand:uniform(DimX), rand:uniform(DimY)}}
     end.
 
-store_rand_random_swap2({DimX, DimY, DimZ}) ->
-    {swap2, {random:uniform(DimX), random:uniform(DimY), random:uniform(DimX), random:uniform(DimY)}}.
+store_rand_random_swap2({DimX, DimY, _DimZ}) ->
+    {swap2, {rand:uniform(DimX), rand:uniform(DimY), rand:uniform(DimX), rand:uniform(DimY)}}.
 
 store_rand_encode({T,V}) ->
     Arrities = [2,4,4,2,4],
@@ -6957,7 +6957,7 @@ store_rand_encode({T,V}) ->
                         end, V}.
 
 store_rand_exe_oplist(Ops, State, Dim, Tester, Acc, Spec) ->
-    State2 = lists:foldl(fun(X, Acc) -> store_rand_do_op(X, Acc) end, State, Ops),
+    State2 = lists:foldl(fun(X, AccX) -> store_rand_do_op(X, AccX) end, State, Ops),
     ?assertEqual({}, ?call(call_contract, Acc, Tester, do_op_list, {tuple, []},
     {lists:map(fun(X) -> store_rand_encode(X) end, Ops)}, Spec)),
     ?assertEqual(store_rand_hash(Dim, State2), ?call(call_contract, Acc, Tester, getHash, word, {}, Spec)),
@@ -6967,7 +6967,7 @@ store_rand_exe_oplist(Ops, State, Dim, Tester, Acc, Spec) ->
 %% Actual Tests
 %%%%%%%%%%%%%%%%
 
-store_single_ops(Cfg) ->
+store_single_ops(_Cfg) ->
     state(aect_test_utils:new_state()),
     Dim={5,5,5},
     InitialState = store_rand_initial_state(Dim),
@@ -7000,7 +7000,7 @@ store_single_ops(Cfg) ->
     ok.
 
 
-store_multiple_random_ops(Cfg) ->
+store_multiple_random_ops(_Cfg) ->
     state(aect_test_utils:new_state()),
     Dim={5,5,5},
     InitialState = store_rand_initial_state(Dim),
@@ -7035,7 +7035,7 @@ store_multiple_random_ops(Cfg) ->
     ok.
 
 
-store_onetype_random_ops(Cfg) ->
+store_onetype_random_ops(_Cfg) ->
     state(aect_test_utils:new_state()),
     Dim={5,5,5},
     InitialState = store_rand_initial_state(Dim),
