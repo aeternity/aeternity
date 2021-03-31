@@ -4263,16 +4263,11 @@ get_top_header(_Config) ->
     ok.
 
 post_paying_for_tx(Config) ->
-    [ {_NodeId, Node} | _ ] = ?config(nodes, Config),
+    [ {NodeId, Node} | _ ] = ?config(nodes, Config),
     {AlicePubKey, AlicePrivKey} = initialize_account(100000000 * aec_test_utils:min_gas_price()),
     {BobPubKey, BobPrivKey} = initialize_account(100000000 * aec_test_utils:min_gas_price()),
 
     {ok, Nonce} = rpc(aec_next_nonce, pick_for_account, [AlicePubKey]),
-    Sign =
-        fun(Aetx, PrivKey) ->
-            SignedTx = aec_test_utils:sign_tx(Aetx, PrivKey),
-            aeser_api_encoder:encode(transaction, aetx_sign:serialize_to_binary(SignedTx))
-        end,
     {ok, SpendTx} =
         aec_spend_tx:new(
           #{sender_id => aeser_id:create(account, AlicePubKey),
@@ -4281,21 +4276,39 @@ post_paying_for_tx(Config) ->
             fee => ?SPEND_FEE,
             nonce => Nonce,
             payload => <<"foo">>}),
-    EncodedSignedSpendTx = Sign(SpendTx, AlicePrivKey),
+    %% note that the inner tx has a different network id and is invalid
+    %% without the paying-for wrapper
+    SignedSpendTx = aec_test_utils:sign_pay_for_inner_tx(SpendTx, AlicePrivKey),
     PayingForData =
         #{payer_id => aeser_api_encoder:encode(account_pubkey, BobPubKey),
           fee => 3 * ?SPEND_FEE,
-          tx => EncodedSignedSpendTx},
+          tx => aetx_sign:serialize_for_client_inner(SignedSpendTx, #{})},
     %% get the node to produce the tx:
     {ok, 200, #{<<"tx">> := EncodedPayingForTx}} = get_paying_for(PayingForData),
-    {ok, 400, #{<<"reason">> := <<"Invalid inner transaction: tx">>}} = get_paying_for(PayingForData#{ tx => <<>>}),
+    %{ok, 400, #{<<"reason">> := <<"Invalid inner transaction: tx">>}} = get_paying_for(PayingForData#{ tx => <<>>}),
 
     %% post the tx
     {ok, SerializedUnsignedTx} = aeser_api_encoder:safe_decode(transaction, EncodedPayingForTx),
-    UnsignedTx = aetx:deserialize_from_binary(SerializedUnsignedTx),
-    SignedPayingFor = Sign(UnsignedTx, BobPrivKey),
-    {ok, 200, _} = post_transactions_sut(SignedPayingFor),
+    PayingForTx = aetx:deserialize_from_binary(SerializedUnsignedTx),
+    SignedTx = aec_test_utils:sign_tx(PayingForTx, BobPrivKey),
+    EncodedSignedTx = aeser_api_encoder:encode(transaction, aetx_sign:serialize_to_binary(SignedTx)),
+    {ok, 200, _} = post_transactions_sut(EncodedSignedTx),
 
-    {ok, [Tx]} = rpc:call(Node, aec_tx_pool, peek, [infinity]),
+    #{<<"tx">> := ClientRepresentationPayingFor,
+      <<"signatures">> := EncSigs} = PendingPayingFor = aetx_sign:serialize_for_client_pending(SignedTx),
+    {ok, [SignedTx]} = rpc:call(Node, aec_tx_pool, peek, [infinity]), %% same tx
+    {ok, 200, #{<<"transactions">> := [PendingPayingFor]}} = get_pending_transactions(), %% still same tx
+    TxHash = mine_tx(NodeId, SignedTx),
+    {ok, 200, #{<<"tx">> := ClientRepresentationPayingFor,
+                <<"signatures">> := EncSigs,
+                <<"block_hash">> := BlockHash } = MinedPayingForTx} = get_transactions_by_hash_sut(TxHash),
+    {ok, 200, #{<<"transactions">> := [MinedPayingForTx]}} = get_micro_blocks_transactions_by_hash_sut(BlockHash),
     ok.
 
+mine_tx(Node, SignedTx) ->
+    NodeName = aecore_suite_utils:node_name(Node),
+    TxHash = aeser_api_encoder:encode(tx_hash, aetx_sign:hash(SignedTx)),
+    {ok, _Blocks} = aecore_suite_utils:mine_blocks_until_txs_on_chain(NodeName,
+                                                                      [TxHash],
+                                                                      10), %% max keyblocks
+    TxHash.

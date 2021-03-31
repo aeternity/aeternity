@@ -468,7 +468,8 @@ handle_request_('PostTransaction', #{<<"tx">> := Tx}, _Context) ->
                         ok ->
                             Hash = aetx_sign:hash(SignedTx),
                             {200, [], #{<<"tx_hash">> => aeser_api_encoder:encode(tx_hash, Hash)}};
-                        {error, _} ->
+                        {error, E} ->
+                            lager:debug("Transaciton ~p failed to be pushed in pool because: ~p", [SignedTx, E]),
                             {400, [], #{reason => <<"Invalid tx">>}}
                     end;
                 {error, broken_tx} ->

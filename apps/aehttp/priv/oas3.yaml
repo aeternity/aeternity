@@ -2888,9 +2888,6 @@ components:
             $ref: "#/components/schemas/EncodedValue"
       required:
         - tx
-        - block_height
-        - block_hash
-        - hash
         - signatures
     Tx:
       allOf:
@@ -3505,7 +3502,7 @@ components:
         nonce:
           $ref: "#/components/schemas/UInt64"
         tx:
-          $ref: "#/components/schemas/EncodedByteArray"
+          $ref: "#/components/schemas/SignedTx"
       required:
         - payer_id
         - fee

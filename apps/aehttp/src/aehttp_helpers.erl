@@ -861,7 +861,8 @@ get_poi(Type, KeyName, PutKey) when Type =:= account
         end
     end.
 
--spec safe_binary_to_atom(binary()) -> {ok, atom()} | {error, non_existing}.
+-spec safe_binary_to_atom(atom() | binary()) -> {ok, atom()} | {error, non_existing}.
+safe_binary_to_atom(A) when is_atom(A) -> {ok, A};
 safe_binary_to_atom(Binary) when is_binary(Binary) ->
     try binary_to_existing_atom(Binary, utf8) of
         Atom -> {ok, Atom}

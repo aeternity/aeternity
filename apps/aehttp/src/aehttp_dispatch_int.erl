@@ -39,7 +39,7 @@
 
 patterns() ->
     [{?MODULE, F, A, []} || {F, A} <- [ {handle_request, 3}
-				      , {forbidden, 1}
+				      , {forbidden, 2}
 				      , {ok_response, 1}
 				      , {process_request, 2}
 				      , {dry_run_results, 1}]].
@@ -85,18 +85,7 @@ handle_request_('PostKeyBlock', #{'KeyBlock' := Data}, _Context) ->
     end;
 
 handle_request_('PostSpend', #{'SpendTx' := Req}, _Context) ->
-    AllowedRecipients = [account_pubkey, name, oracle_pubkey, contract_pubkey],
-    ParseFuns = [parse_map_to_atom_keys(),
-                 read_required_params([sender_id, recipient_id, amount, fee, payload]),
-                 read_optional_params([{ttl, ttl, '$no_value'}]),
-                 api_decode([{sender_id, sender_id, {id_hash, [account_pubkey]}},
-                             {recipient_id, recipient_id, {id_hash, AllowedRecipients}}]),
-                 api_optional_decode([{payload, bytearray}]),
-                 api_str_to_int([amount, fee]),
-                 get_nonce_from_account_id(sender_id),
-                 unsigned_tx_response(fun aec_spend_tx:new/1)
-                ],
-    process_request(ParseFuns, Req);
+    produce_tx(spend_tx, Req);
 
 handle_request_('PostContractCreate', #{'ContractCreateTx' := Req}, _Context) ->
     ParseFuns = [parse_map_to_atom_keys(),
@@ -352,13 +341,35 @@ handle_request_('PostChannelSettle', #{'ChannelSettleTx' := Req}, _Context) ->
     process_request(ParseFuns, Req);
 
 handle_request_('PostPayingFor', #{'PayingForTx' := Req}, _Context) ->
-    ParseFuns = [parse_map_to_atom_keys(),
-                 read_required_params([payer_id, fee, tx]),
-                 api_decode([{payer_id, payer_id, {id_hash, [account_pubkey]}}]),
-                 get_nonce_from_account_id(payer_id),
-                 api_str_to_int([nonce, fee]),
-                 decode_transaction(tx),
-                 unsigned_tx_response(fun aec_paying_for_tx:new/1)
+    ParseFuns = [ parse_map_to_atom_keys(),
+                  read_required_params([payer_id, fee, tx]),
+                  api_decode([{payer_id, payer_id, {id_hash, [account_pubkey]}}]),
+                  get_nonce_from_account_id(payer_id),
+                  api_str_to_int([nonce, fee]),
+                  fun(#{tx := #{ tx := InnerTxReq, signatures := Sigs}}, State) ->
+                      case produce_tx(spend_tx, InnerTxReq) of
+                          {200, [], #{tx := TxBin}} ->
+                              {ok, Tx} =
+                                  case aeser_api_encoder:safe_decode(transaction, TxBin) of
+                                      {error, _} = E -> E;
+                                      {ok, TxDec} ->
+                                          try {ok, aetx:deserialize_from_binary(TxDec)}
+                                          catch 
+                                              _:_ -> error
+                                          end
+                                  end,
+                              Signatures =
+                                  lists:map(
+                                      fun(S) ->
+                                          {ok, B} = aeser_api_encoder:safe_decode(signature, S),
+                                          B
+                                      end, Sigs),
+                              {ok, State#{tx => aetx_sign:new(Tx, Signatures)}};
+                          {error, {400, [],  #{<<"reason">> := R}}} ->
+                              {error, {400, [], #{<<"reason">> => <<"Inner tx: ", R/binary>>}}}
+                      end
+                  end,
+                  unsigned_tx_response(fun aec_paying_for_tx:new/1)
                 ],
     process_request(ParseFuns, Req);
 
@@ -488,3 +499,17 @@ handle_request_(OperationID, Req, Context) ->
       [{OperationID, Req, Context}]
      ),
     {501, [], #{}}.
+
+produce_tx(spend_tx, Req) ->
+    AllowedRecipients = [account_pubkey, name, oracle_pubkey, contract_pubkey],
+    ParseFuns = [parse_map_to_atom_keys(),
+                 read_required_params([sender_id, recipient_id, amount, fee, payload]),
+                 read_optional_params([{ttl, ttl, '$no_value'}]),
+                 api_decode([{sender_id, sender_id, {id_hash, [account_pubkey]}},
+                             {recipient_id, recipient_id, {id_hash, AllowedRecipients}}]),
+                 api_optional_decode([{payload, bytearray}]),
+                 api_str_to_int([amount, fee]),
+                 get_nonce_from_account_id(sender_id),
+                 unsigned_tx_response(fun aec_spend_tx:new/1)
+                ],
+    process_request(ParseFuns, Req).
