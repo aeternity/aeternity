@@ -1711,6 +1711,38 @@ paths:
           description: Invalid input
           schema:
             $ref: '#/definitions/Error'
+  /debug/transactions/paying-for:
+    post:
+      tags:
+        - internal
+        - transaction
+        - debug
+      operationId: 'PostPayingFor'
+      description: Get a paying for transaction object
+      consumes:
+        - application/json
+      produces:
+        - application/json
+      parameters:
+        - in: body
+          name: body
+          description: transactions
+          required: true
+          schema:
+            $ref: '#/definitions/PayingForTx'
+      responses:
+        '200':
+          description: Successful operation
+          schema:
+            $ref: '#/definitions/UnsignedTx'
+        '400':
+          description: Invalid transaction
+          schema:
+            $ref: '#/definitions/Error'
+        '404':
+          description: Payer account not found
+          schema:
+            $ref: '#/definitions/Error'
   /debug/token-supply/height/{height}:
     get:
       tags:
@@ -2778,9 +2810,7 @@ definitions:
           $ref: '#/definitions/EncodedValue'
     required:
       - tx
-      - block_height
-      - block_hash
-      - hash
+      - signatures
   GenericTx:
     type: object
     discriminator: type
@@ -2884,6 +2914,10 @@ definitions:
     allOf:
       - $ref: '#/definitions/GenericTx'
       - $ref: '#/definitions/GAMetaTx'
+  PayingForTxJSON:
+    allOf:
+      - $ref: '#/definitions/GenericTx'
+      - $ref: '#/definitions/PayingForTx'
   TxInfoObject:
      type: object
      properties:
@@ -3465,6 +3499,21 @@ definitions:
       - gas_price
       - fee
       - auth_data
+      - tx
+  PayingForTx:
+    type: object
+    properties:
+      payer_id:
+        $ref: '#/definitions/EncodedPubkey'
+      fee:
+        $ref: '#/definitions/UInt'
+      nonce:
+        $ref: '#/definitions/UInt64'
+      tx:
+        $ref: '#/definitions/GenericSignedTx'
+    required:
+      - payer_id
+      - fee
       - tx
   DelegatesList:
     type: array

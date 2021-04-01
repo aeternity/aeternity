@@ -268,9 +268,8 @@ groups() ->
        {group, debug_endpoints},
        {group, swagger_validation},
        {group, wrong_http_method_endpoints},
-       %% TODO: handle swagger2
-       %%{group, paying_for_tx}
-       {group, naming}
+       {group, naming},
+       {group, paying_for_tx}
       ]},
 
      %% /key-blocks/* /micro-blocks/* /generations/*

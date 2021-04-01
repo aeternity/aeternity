@@ -84,44 +84,37 @@ handle_request_('PostKeyBlock', #{'KeyBlock' := Data}, _Context) ->
             {400, [], #{reason => <<"Invalid block">>}}
     end;
 
-handle_request_('PostSpend', #{'SpendTx' := Req}, _Context) ->
-    produce_tx(spend_tx, Req);
-
-handle_request_('PostContractCreate', #{'ContractCreateTx' := Req}, _Context) ->
-    produce_tx(contract_create_tx, Req);
-handle_request_('PostContractCall', #{'ContractCallTx' := Req}, _Context) ->
-    produce_tx(contract_call_tx, Req);
+handle_request_(OperationId, Req, _Context)
+    when  OperationId =:= 'PostSpend';
+          OperationId =:= 'PostContractCreate';
+          OperationId =:= 'PostContractCall';
+          OperationId =:= 'DryRunTxs';
+          OperationId =:= 'PostNamePreclaim';
+          OperationId =:= 'PostNameUpdate';
+          OperationId =:= 'PostNameClaim';
+          OperationId =:= 'PostNameTransfer';
+          OperationId =:= 'PostNameRevoke';
+          OperationId =:= 'PostChannelCreate';
+          OperationId =:= 'PostChannelDeposit';
+          OperationId =:= 'PostChannelWithdraw';
+          OperationId =:= 'PostChannelSnapshotSolo';
+          OperationId =:= 'PostChannelSetDelegates';
+          OperationId =:= 'PostChannelCloseMutual';
+          OperationId =:= 'PostChannelCloseSolo';
+          OperationId =:= 'PostChannelSlash';
+          OperationId =:= 'PostChannelSettle';
+          OperationId =:= 'PostOracleRegister';
+          OperationId =:= 'PostOracleExtend';
+          OperationId =:= 'PostOracleQuery';
+          OperationId =:= 'PostOracleRespond' ->
+    SwaggerName = tx_swagger_name_from_operation_id(OperationId),
+    SwaggerNameBin = atom_to_binary(SwaggerName, utf8),
+    TxType = aetx:swagger_name_to_type(SwaggerNameBin),
+    TxCreateData = maps:get(SwaggerName, Req),
+    produce_tx(TxType, TxCreateData);
 handle_request_('DryRunTxs', #{ 'DryRunInput' := Req }, _Context) ->
     lager:debug("DryRunInput := ~p", [Req]),
     produce_tx(dry_run_txs, Req);
-handle_request_('PostNamePreclaim', #{'NamePreclaimTx' := Req}, _Context) ->
-    produce_tx(name_preclaim_tx, Req);
-handle_request_('PostNameUpdate', #{'NameUpdateTx' := Req}, _Context) ->
-    produce_tx(name_update_tx, Req);
-handle_request_('PostNameClaim', #{'NameClaimTx' := Req}, _Context) ->
-    produce_tx(name_claim_tx, Req);
-handle_request_('PostNameTransfer', #{'NameTransferTx' := Req}, _Context) ->
-    produce_tx(name_transfer_tx, Req);
-handle_request_('PostNameRevoke', #{'NameRevokeTx' := Req}, _Context) ->
-    produce_tx(name_revoke_tx, Req);
-handle_request_('PostChannelCreate', #{'ChannelCreateTx' := Req}, _Context) ->
-    produce_tx(channel_create_tx, Req);
-handle_request_('PostChannelDeposit', #{'ChannelDepositTx' := Req}, _Context) ->
-    produce_tx(channel_deposit_tx, Req);
-handle_request_('PostChannelWithdraw', #{'ChannelWithdrawTx' := Req}, _Context) ->
-    produce_tx(channel_withdraw_tx, Req);
-handle_request_('PostChannelSnapshotSolo', #{'ChannelSnapshotSoloTx' := Req}, _Context) ->
-    produce_tx(channel_snapshot_solo_tx, Req);
-handle_request_('PostChannelSetDelegates', #{'ChannelSetDelegatesTx' := Req}, _Context) ->
-    produce_tx(channel_set_delegates_tx, Req);
-handle_request_('PostChannelCloseMutual', #{'ChannelCloseMutualTx' := Req}, _Context) ->
-    produce_tx(channel_close_mutual_tx, Req);
-handle_request_('PostChannelCloseSolo', #{'ChannelCloseSoloTx' := Req}, _Context) ->
-    produce_tx(channel_close_solo_tx, Req);
-handle_request_('PostChannelSlash', #{'ChannelSlashTx' := Req}, _Context) ->
-    produce_tx(channel_slash_tx, Req);
-handle_request_('PostChannelSettle', #{'ChannelSettleTx' := Req}, _Context) ->
-    produce_tx(channel_settle_tx, Req);
 handle_request_('PostPayingFor', #{'PayingForTx' := Req}, _Context) ->
     ParseFuns = [ parse_map_to_atom_keys(),
                   read_required_params([payer_id, fee, tx]),
@@ -129,7 +122,9 @@ handle_request_('PostPayingFor', #{'PayingForTx' := Req}, _Context) ->
                   get_nonce_from_account_id(payer_id),
                   api_str_to_int([nonce, fee]),
                   fun(#{tx := #{ tx := InnerTxReq, signatures := Sigs}}, State) ->
-                      case produce_tx(spend_tx, InnerTxReq) of
+                      #{type := InnerTxSwaggerNameBin} = InnerTxReq,
+                      InnerTxType = aetx:swagger_name_to_type(InnerTxSwaggerNameBin),
+                      case produce_tx(InnerTxType, InnerTxReq) of
                           {200, [], #{tx := TxBin}} ->
                               {ok, Tx} =
                                   case aeser_api_encoder:safe_decode(transaction, TxBin) of
@@ -154,15 +149,6 @@ handle_request_('PostPayingFor', #{'PayingForTx' := Req}, _Context) ->
                   unsigned_tx_response(fun aec_paying_for_tx:new/1)
                 ],
     process_request(ParseFuns, Req);
-
-handle_request_('PostOracleRegister', #{'OracleRegisterTx' := Req}, _Context) ->
-    produce_tx(oracle_register_tx, Req);
-handle_request_('PostOracleExtend', #{'OracleExtendTx' := Req}, _Context) ->
-    produce_tx(oracle_extend_tx, Req);
-handle_request_('PostOracleQuery', #{'OracleQueryTx' := Req}, _Context) ->
-    produce_tx(oracle_query_tx, Req);
-handle_request_('PostOracleRespond', #{'OracleRespondTx' := Req}, _Context) ->
-    produce_tx(oracle_response_tx, Req);
 handle_request_('GetNodeBeneficiary', _, _Context) ->
     case aec_conductor:get_beneficiary() of
         {ok, PubKey} ->
@@ -540,5 +526,26 @@ produce_tx(paying_for_tx, _Req) ->
       %% here as it would allow the creaton of recoursive paying for
       %% transactions
       err.
-      
+
+tx_swagger_name_from_operation_id('PostSpend') -> 'SpendTx';
+tx_swagger_name_from_operation_id('PostContractCreate') -> 'ContractCreateTx';
+tx_swagger_name_from_operation_id('PostContractCall') -> 'ContractCallTx';
+tx_swagger_name_from_operation_id('PostNamePreclaim') -> 'NamePreclaimTx';
+tx_swagger_name_from_operation_id('PostNameUpdate') -> 'NameUpdateTx';
+tx_swagger_name_from_operation_id('PostNameClaim') -> 'NameClaimTx';
+tx_swagger_name_from_operation_id('PostNameTransfer') -> 'NameTransferTx';
+tx_swagger_name_from_operation_id('PostNameRevoke') -> 'NameRevokeTx';
+tx_swagger_name_from_operation_id('PostChannelCreate') -> 'ChannelCreateTx';
+tx_swagger_name_from_operation_id('PostChannelDeposit') -> 'ChannelDepositTx';
+tx_swagger_name_from_operation_id('PostChannelWithdraw') -> 'ChannelWithdrawTx';
+tx_swagger_name_from_operation_id('PostChannelSnapshotSolo') -> 'ChannelSnapshotSoloTx';
+tx_swagger_name_from_operation_id('PostChannelSetDelegates') -> 'ChannelSetDelegatesTx';
+tx_swagger_name_from_operation_id('PostChannelCloseMutual') -> 'ChannelCloseMutualTx';
+tx_swagger_name_from_operation_id('PostChannelCloseSolo') -> 'ChannelCloseSoloTx';
+tx_swagger_name_from_operation_id('PostChannelSlash') -> 'ChannelSlashTx';
+tx_swagger_name_from_operation_id('PostChannelSettle') -> 'ChannelSettleTx';
+tx_swagger_name_from_operation_id('PostOracleRegister') -> 'OracleRegisterTx';
+tx_swagger_name_from_operation_id('PostOracleExtend') -> 'OracleExtendTx';
+tx_swagger_name_from_operation_id('PostOracleQuery') -> 'OracleQueryTx';
+tx_swagger_name_from_operation_id('PostOracleRespond') -> 'OracleRespondTx'.
 

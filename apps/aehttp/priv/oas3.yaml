@@ -1874,7 +1874,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
         "404":
-          description: Sender account not found
+          description: Payer account not found
           content:
             application/json:
               schema:
