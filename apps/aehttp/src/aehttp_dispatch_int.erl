@@ -141,7 +141,16 @@ handle_request_('PostPayingFor', #{'PayingForTx' := Req}, _Context) ->
                                           {ok, B} = aeser_api_encoder:safe_decode(signature, S),
                                           B
                                       end, Sigs),
-                              {ok, State#{tx => aetx_sign:new(Tx, Signatures)}};
+                              InnerTx = aetx_sign:new(Tx, Signatures),
+                              {Env0, Trees} = aetx_env:tx_env_and_trees_from_top(aetx_transaction),
+                              {account, PayerPubKey} = aeser_id:specialize(maps:get(payer_id, State)),
+                              Env = aetx_env:set_payer(Env0, PayerPubKey),
+                              case aetx_sign:verify_w_env(InnerTx, Trees, Env) of
+                                  ok ->
+                                      {ok, State#{tx => InnerTx}};
+                                  {error, _} ->
+                                      {error, {400, [], #{<<"reason">> => <<"Inner tx: invalid authentication">>}}}
+                              end;
                           {error, {400, [],  #{<<"reason">> := R}}} ->
                               {error, {400, [], #{<<"reason">> => <<"Inner tx: ", R/binary>>}}}
                       end

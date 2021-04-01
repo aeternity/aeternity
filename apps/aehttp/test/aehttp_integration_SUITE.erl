@@ -219,8 +219,7 @@
     wrong_http_method_peers/1
     ]).
 
--export([
-    post_paying_for_tx/1]).
+-export([post_paying_for_tx/1]).
 
 -include_lib("common_test/include/ct.hrl").
 -include_lib("aecontract/include/hard_forks.hrl").
@@ -4278,20 +4277,24 @@ post_paying_for_tx(Config) ->
     %% note that the inner tx has a different network id and is invalid
     %% without the paying-for wrapper
     SignedSpendTx = aec_test_utils:sign_pay_for_inner_tx(SpendTx, AlicePrivKey),
-    PayingForData =
+    PayingForData0 =
         #{payer_id => aeser_api_encoder:encode(account_pubkey, BobPubKey),
-          fee => 3 * ?SPEND_FEE,
-          tx => aetx_sign:serialize_for_client_inner(SignedSpendTx, #{})},
+          fee => 3 * ?SPEND_FEE},
+    PayingForData = PayingForData0#{tx => aetx_sign:serialize_for_client_inner(SignedSpendTx, #{})},
     %% get the node to produce the tx:
     {ok, 200, #{<<"tx">> := EncodedPayingForTx}} = get_paying_for(PayingForData),
-    %{ok, 400, #{<<"reason">> := <<"Invalid inner transaction: tx">>}} = get_paying_for(PayingForData#{ tx => <<>>}),
 
     %% post the tx
     {ok, SerializedUnsignedTx} = aeser_api_encoder:safe_decode(transaction, EncodedPayingForTx),
     PayingForTx = aetx:deserialize_from_binary(SerializedUnsignedTx),
-    SignedTx = aec_test_utils:sign_tx(PayingForTx, BobPrivKey),
-    EncodedSignedTx = aeser_api_encoder:encode(transaction, aetx_sign:serialize_to_binary(SignedTx)),
-    {ok, 200, _} = post_transactions_sut(EncodedSignedTx),
+    SignAndPost =
+        fun(Aetx, PrivKey) ->
+            STx = aec_test_utils:sign_tx(Aetx, PrivKey),
+            EncodedSignedTx = aeser_api_encoder:encode(transaction, aetx_sign:serialize_to_binary(STx)),
+            {ok, _Code, _} = Res = post_transactions_sut(EncodedSignedTx),
+            {STx, Res}
+        end,
+    {SignedTx, {ok, 200, _}} = SignAndPost(PayingForTx, BobPrivKey),
 
     #{<<"tx">> := ClientRepresentationPayingFor,
       <<"signatures">> := EncSigs} = PendingPayingFor = aetx_sign:serialize_for_client_pending(SignedTx),
@@ -4302,6 +4305,12 @@ post_paying_for_tx(Config) ->
                 <<"signatures">> := EncSigs,
                 <<"block_hash">> := BlockHash } = MinedPayingForTx} = get_transactions_by_hash_sut(TxHash),
     {ok, 200, #{<<"transactions">> := [MinedPayingForTx]}} = get_micro_blocks_transactions_by_hash_sut(BlockHash),
+
+    %% lets test that we get a proper message when inner tx is wrongly signed
+    WronglySignedInnerTx = aec_test_utils:sign_tx(SpendTx, AlicePrivKey, true, <<"some other network id suffix">>),
+    PayingForData1 =
+        PayingForData0#{tx => aetx_sign:serialize_for_client_inner(WronglySignedInnerTx, #{})},
+    {ok, 400, #{<<"reason">> := <<"Inner tx: invalid authentication">>}} = get_paying_for(PayingForData1),
     ok.
 
 mine_tx(Node, SignedTx) ->
