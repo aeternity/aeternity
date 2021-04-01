@@ -527,7 +527,7 @@ find_key_headers_and_hash_at_height(Height) when is_integer(Height), Height >= 0
                                                         , ['$_']
                                                           }]),
             [{Hash, aec_headers:from_db_header(Header)}
-             || #aec_chain_state{key = {key_block, Height, Hash}, value = Header} <- R]
+             || #aec_chain_state{key = {key_block, _, Hash}, value = Header} <- R]
     end.
 
 find_discovered_pof(Hash) ->
