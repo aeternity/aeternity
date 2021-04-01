@@ -17,6 +17,7 @@ persisted_valid_gen_block_test_() ->
              meck:expect(aec_jobs_queues, start, 0, ok),
              meck:new(aec_chain_state, [passthrough]),
              meck:expect(aec_chain_state, ensure_chain_ends, 0, ok),
+             meck:expect(aec_chain_state, ensure_key_headers_height_store, 0, ok),
              ok = lager:start(),
              InitialApps
      end,
