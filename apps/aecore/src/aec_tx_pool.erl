@@ -168,17 +168,14 @@ push(Tx, Event) ->
 
 -spec push(aetx_sign:signed_tx(), event(), push_timeout()) -> ok | {error, atom()}.
 push(Tx, Event = tx_received, Timeout) ->
-    lager:debug("[domat] tx_received", []),
     TxHash = safe_tx_hash(Tx),
     case aec_tx_gossip_cache:in_cache(TxHash) of
         true ->
-            lager:debug("[domat] tx_received blocked by cache", []),
             ok;
         false ->
             aec_jobs_queues:run(tx_pool_push, fun() -> push_(Tx, TxHash, Event, Timeout) end)
     end;
 push(Tx, Event = tx_created, Timeout) ->
-    lager:debug("[domat] tx_created", []),
     push_(Tx, safe_tx_hash(Tx), Event, Timeout).
 
 safe_tx_hash(Tx) ->
@@ -191,14 +188,12 @@ safe_tx_hash(Tx) ->
 push_(Tx, TxHash, Event, Timeout) ->
     case check_pool_db_put(Tx, TxHash, Event) of
         ignore ->
-            lager:debug("[domat] tx ignored", []),
             incr([push, ignore]),
             ok;
         {error,_} = E ->
             incr([push, error]),
             E;
         ok ->
-            lager:debug("[domat] tx pushed", []),
             incr([push]),
             Res = gen_server:call(?SERVER, {push, Tx, TxHash, Event}, Timeout),
             instant_tx_confirm_hook(TxHash),

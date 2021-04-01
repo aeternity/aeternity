@@ -112,4 +112,4 @@ in_cache(TxHash, State = #state{ size = S, evict_q = Q, cache = C, hit = H, miss
 
 max_cache_size() ->
     aeu_env:user_config_or_env([<<"mempool">>, <<"cache_size">>], aecore,
-                               stratum_enabled, ?CACHE_SIZE).
+                               cache_size, ?CACHE_SIZE).

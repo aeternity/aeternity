@@ -43,7 +43,7 @@
                     "type" : "integer"
                 },
                 "sync_interval" : {
-                    "description" : "Interval between mempool (re-)synchronization (in ms)",
+                   "description" : "Interval between mempool (re-)synchronization (in ms)",
                    "type" : "integer"
                 },
                 "nonce_offset" : {
