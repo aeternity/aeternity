@@ -1325,7 +1325,7 @@ clone_common(CloneePK, InitArgsTypes, Value, GasCap, Prot, ES0) ->
                                   write( {stack, 0}, make_some(?FATE_CONTRACT(ContractPK))
                                        , ES1_
                                        );
-                              {{variant, [0,1],0,{}}, ES1_} ->
+                              {{variant, [0, 1], 0, {}}, ES1_} ->
                                   write({stack, 0}, make_none(), ES1_)
                           end
                   end
