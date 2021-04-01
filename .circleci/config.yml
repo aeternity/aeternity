@@ -1116,20 +1116,17 @@ jobs:
           command: docker cp ./sdk_smoke_test/aepp-sdk-js nodejs:/tests
       - run:
           name: Run JS SDK smoke test
-          command: docker exec -it nodejs sh -c "cd /tests && npm install && npm test"
+          command: docker exec -it nodejs sh -c "cd /tests && npm ci && npm test"
 
   docker_db_smoke_test:
     docker:
-      - image: circleci/buildpack-deps:buster
+      - image: circleci/buildpack-deps:bionic
     environment:
       - DOCKERHUB_REPO: aeternity/aeternity
       - AE__CHAIN__PERSIST: true
     steps:
       - fixed_checkout
       - *setup_remote_docker
-      - run:
-          name: Prepare Jessie repository
-          command: sudo sh -c "echo \"deb https://deb.debian.org/debian/ jessie main\" > /etc/apt/sources.list.d/jessie.list"
       - run:
           name: Install OS Deps
           command: sudo apt-get update && sudo apt-get install -y libsodium23 libtinfo5 libssl1.0
@@ -1273,7 +1270,7 @@ jobs:
 
   js_sdk_smoke_test:
     docker:
-      - image: node:15.0.0-buster
+      - image: circleci/buildpack-deps:bionic
     environment:
       - AE__CHAIN__PERSIST: false
       - AE__FORK_MANAGEMENT__NETWORK_ID: local_iris_testnet
@@ -1281,23 +1278,25 @@ jobs:
     steps:
       - fixed_checkout
       - run:
-          name: Prepare Jessie repository
-          command: echo "deb https://deb.debian.org/debian/ jessie main" > /etc/apt/sources.list.d/jessie.list
-      - run:
           name: Install OS Deps
-          command: apt-get update && apt-get install -y libsodium23 libtinfo5 libssl1.0
+          command: |
+            curl -fsSL https://deb.nodesource.com/setup_15.x | sudo -E bash -
+            sudo apt-get update && sudo apt-get install -y nodejs libsodium23 libtinfo5 libssl1.0
       - *set_package_path
       - attach_workspace:
           at: *packages_workspace
       - run:
           name: Install JS SDK
-          command: cd ./sdk_smoke_test/aepp-sdk-js && npm install
+          command: cd ./sdk_smoke_test/aepp-sdk-js && npm ci
       - run:
           name: Unzip built node
           command: mkdir node && tar -xvf ${PACKAGE_TARBALL:?} -C ./node
       - run:
           name: Start node
-          command: ./node/bin/aeternity start && sleep 10
+          command: ./node/bin/aeternity start
+      - run:
+          name: Wait for the node api to boot
+          command: curl -4 --retry-connrefused --max-time 60 --retry 6 --connect-timeout 10 http://localhost:3013/v2/status
       - run:
           name: Run js sdk smoke test
           command: cd ./sdk_smoke_test/aepp-sdk-js && npm test
@@ -1308,15 +1307,12 @@ jobs:
 
   db_smoke_test:
     docker:
-      - image: circleci/buildpack-deps:buster
+      - image: circleci/buildpack-deps:bionic
     environment:
       - AE__CHAIN__PERSIST: true
       - PACKAGES_DIR: *packages_workspace
     steps:
       - fixed_checkout
-      - run:
-          name: Prepare Jessie repository
-          command: sudo sh -c "echo \"deb https://deb.debian.org/debian/ jessie main\" > /etc/apt/sources.list.d/jessie.list"
       - run:
           name: Install OS Deps
           command: sudo apt-get update && sudo apt-get install -y libsodium23 libtinfo5 libssl1.0
