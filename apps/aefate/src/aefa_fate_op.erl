@@ -1321,7 +1321,7 @@ clone_common(CloneePK, InitArgsTypes, Value, GasCap, Prot, ES0) ->
                           write({stack, 0}, ?FATE_CONTRACT(ContractPK), ES1_);
                       protected ->
                           case get_op_arg({stack, 0}, ES0_) of
-                              {{variant,[0,1],1,{{tuple,{}}}}, ES1_} ->
+                              {{variant,[0, 1], 1, {{tuple, {}}}}, ES1_} ->
                                   write( {stack, 0}, make_some(?FATE_CONTRACT(ContractPK))
                                        , ES1_
                                        );
