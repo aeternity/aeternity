@@ -188,7 +188,7 @@ store_map_to_list(Pubkey, MapId, #store{cache = Cache} = S) ->
     ?METADATA(RawId, _, _) = get_map_meta(MapId, Meta),
     Subtree = aect_contracts_store:subtree(map_data_key(RawId), Store),
     {[ {aeb_fate_encoding:deserialize(K), aeb_fate_encoding:deserialize(V)}
-      || {K, V} <- maps:to_list(Subtree) ], S1}.
+      || {K, V} <- lists:keysort(1, maps:to_list(Subtree)) ], S1}.
 
 -spec store_map_size(pubkey(), non_neg_integer(), store()) -> {non_neg_integer(), store()}.
 store_map_size(Pubkey, MapId, S) ->
@@ -331,7 +331,7 @@ finalize_entry(Pubkey, Cache = #cache_entry{store = Store}, {Writes, GasLeft}) -
 -spec compute_store_updates(store_meta(), #cache_entry{}) -> {store_meta(), [store_update()]}.
 compute_store_updates(Metadata, #cache_entry{terms = TermCache, store = Store}) ->
     UsedIds = used_map_ids(Metadata),
-    {Regs, Terms} = lists:unzip([{Reg, Term} || {Reg, {Term, Dirty}} <- maps:to_list(TermCache),
+    {Regs, Terms} = lists:unzip([{Reg, Term} || {Reg, {Term, Dirty}} <- lists:keysort(1, maps:to_list(TermCache)),
                                                 Reg > ?META_STORE_POS, Dirty]),
 
     %% Go through the store register and find all maps that we want to put in
@@ -359,7 +359,7 @@ compute_store_updates(Metadata, #cache_entry{terms = TermCache, store = Store}) 
                        (MapId, Map) -> {copy_map, MapId, Map} end,
 
     Updates = [ {push_term, Reg, Term}    || {Reg, Term} <- NewRegs ] ++
-              [ CopyOrInplace(MapId, Map) || {MapId, Map} <- maps:to_list(Maps) ] ++
+              [ CopyOrInplace(MapId, Map) || {MapId, Map} <- lists:keysort(1, maps:to_list(Maps)) ] ++
               [ {gc_map, RawId}           || RawId <- Garbage ],
 
     %% It's important (very!) that copy_map runs before update_map, since
@@ -440,7 +440,7 @@ copy_map(OldMeta, MapId, ?FATE_STORE_MAP(Cache, OldId), {Meta, Store}) ->
     Size    = OldSize + size_delta(OldMap, NewData),
     Meta1   = put_map_meta(MapId, ?METADATA(RawId, RefCount, Size), Meta),
     %% First copy the old data, then update with the new
-    {Store1, Bytes} = write_bin_data(RawId, maps:to_list(OldMap) ++ NewData, Store),
+    {Store1, Bytes} = write_bin_data(RawId, lists:keysort(1, maps:to_list(OldMap)) ++ NewData, Store),
     Store2   = aect_contracts_store:put(map_data_key(RawId), <<0>>, Store1),
     {Meta1, Bytes, Store2}.
 
@@ -484,7 +484,7 @@ cache_to_bin_data(Cache) ->
                            _                   -> aeb_fate_encoding:serialize(V)
                 end,
         {KeyBin, ValBin}
-      end || {K, V} <- maps:to_list(Cache) ].
+      end || {K, V} <- lists:keysort(1, maps:to_list(Cache)) ].
 
 -spec write_bin_data(raw_id(), bin_data(), aect_contracts_store:store()) ->
                         {aect_contracts_store:store(), non_neg_integer()}.
@@ -542,7 +542,7 @@ register_refcounts(Regs, Store) ->
 maps_refcounts(Metadata, Maps, Store) ->
     aeb_fate_maps:refcount_union(
         [ map_refcounts(Metadata, Map, Store)
-          || {_, Map} <- maps:to_list(Maps) ]).
+          || {_, Map} <- lists:keysort(1, maps:to_list(Maps)) ]).
 
 map_refcounts(_Meta, Map, _Store) when ?IS_FATE_MAP(Map) ->
     %% Fresh map, only adds new references.
