@@ -193,7 +193,7 @@
 -include_lib("stdlib/include/assert.hrl").
 
 -include("../include/aecontract.hrl").
--include("../include/address.hrl").
+-include("../include/fate_type_macros.hrl").
 -include("../../aecore/include/blocks.hrl").
 
 -include("include/aect_sophia_vsn.hrl").
@@ -1564,7 +1564,7 @@ call_result(?ABI_FATE_SOPHIA_1, Type, Call) ->
     case aect_call:return_type(Call) of
         ok     ->
             Res = aeb_fate_encoding:deserialize(aect_call:return_value(Call)),
-            case aefa_utils:decode(Res, Type) of
+            case aefa_test_utils:decode(Res, Type) of
                 {variant, [0,1], 0, {}} when element(1, Type) =:= option ->
                     none;
                 {variant, [0,1], 1, {Decoded}} when element(1, Type) =:= option ->
@@ -1576,7 +1576,7 @@ call_result(?ABI_FATE_SOPHIA_1, Type, Call) ->
             {error, aect_call:return_value(Call)};
         revert ->
             Res = aeb_fate_encoding:deserialize(aect_call:return_value(Call)),
-            {revert, aefa_utils:decode(Res)}
+            {revert, aefa_test_utils:decode(Res)}
     end.
 
 account_balance(PubKey, S) ->
@@ -5123,7 +5123,7 @@ sophia_crypto(_Cfg) ->
     String = <<"12345678901234567890123456789012-andsomemore">>,
     Data   = [{none, <<"foo">>}, {{some, 100432}, String}],
     Bin    = ?IF_AEVM(aeb_heap:to_binary(Data),
-                      aeb_fate_encoding:serialize(aefa_utils:encode(Data))),
+                      aeb_fate_encoding:serialize(aefa_test_utils:encode(Data))),
 
     <<Sha3_N:256>>      = Sha3      = aec_hash:hash(evm, Bin),
     <<Sha256_N:256>>    = Sha256    = aec_hash:sha256_hash(Bin),

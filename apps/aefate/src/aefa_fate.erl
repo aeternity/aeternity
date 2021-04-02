@@ -15,7 +15,6 @@
         , tx_env/1
         , verify_init_calldata/1
         , is_valid_calldata/1
-        , make_calldata/2
         ]).
 
 -export([get_trace/1]).
@@ -140,21 +139,6 @@ decode_calldata(CallData) ->
             false
     catch _:_ -> false
     end.
-
-make_calldata(Fun, Args) when is_atom(Fun) ->
-    make_calldata(atom_to_list(Fun), Args); %% For OTP21
-make_calldata(Fun, Args) when is_list(Fun) ->
-    make_calldata(list_to_binary(Fun), Args);
-make_calldata(Fun, Args) ->
-    Args1 = aefa_utils:format_args(if is_tuple(Args) -> Args;
-                                      true -> {Args}
-                                   end),
-    FunctionId = make_fate_function_id(Fun),
-    aeb_fate_encoding:serialize(aefa_utils:encode({FunctionId, Args1})).
-
-
-make_fate_function_id(FunctionName) when is_binary(FunctionName) ->
-    aeb_fate_code:symbol_identifier(FunctionName).
 
 %%%===================================================================
 %%% Internal functions

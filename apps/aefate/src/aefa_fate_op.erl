@@ -1265,41 +1265,22 @@ create(Arg0, Arg1, Arg2, ES0) ->
     ?AVAILABLE_FROM(?VM_FATE_SOPHIA_2, ES0),
     {[?FATE_CONTRACT_BYTEARRAY(Code), InitArgsTypes, Value], ES1} =
         get_op_args([Arg0, Arg1, Arg2], ES0),
-    create_common(Code, InitArgsTypes, Value, no_gas_cap, ES1).
-
-create_common(Code, InitArgsTypes, Value, GasCap, ES0) ->
-    {ContractPK, ES1} = create_contract({new, Code}, Value, ES0),
-    ReplaceInitResult
-        = fun(ES0_) ->
-                  %% init returns unit, so we get rid of it
-                  {{tuple, {}}, ES1_} = get_op_arg({stack, 0}, ES0_),
-                  write({stack, 0}, ?FATE_CONTRACT(ContractPK), ES1_)
-          end,
-    {ok, ES2} = remote_call_common(
-           ?FATE_CONTRACT(ContractPK),
-           init,
-           InitArgsTypes,
-           ?FATE_TYPEREP({tuple, []}),
-           0,
-           GasCap,
-           unprotected,
-           ReplaceInitResult,
-           ES1),
-    {jump, 0, ES2}.
+    deploy_contract({code, Code}, InitArgsTypes, Value, no_gas_cap, false, ES1).
 
 clone(Arg0, Arg1, Arg2, Arg3, ES0) ->
     ?AVAILABLE_FROM(?VM_FATE_SOPHIA_2, ES0),
     {[?FATE_CONTRACT(CloneePK), InitArgsTypes, Value, Prot], ES1} =
         get_op_args([Arg0, Arg1, Arg2, Arg3], ES0),
-    clone_common(CloneePK, InitArgsTypes, Value, no_gas_cap, Prot, ES1).
+    deploy_contract({ref, CloneePK}, InitArgsTypes, Value, no_gas_cap, Prot, ES1).
 
 clone_g(Arg0, Arg1, Arg2, Arg3, Arg4, ES0) ->
     ?AVAILABLE_FROM(?VM_FATE_SOPHIA_2, ES0),
     {[?FATE_CONTRACT(CloneePK), InitArgsTypes, Value, GasCap, Prot], ES1} =
         get_op_args([Arg0, Arg1, Arg2, Arg3, Arg4], ES0),
-    clone_common(CloneePK, InitArgsTypes, Value, {gas_cap, GasCap}, Prot, ES1).
+    deploy_contract({ref, CloneePK}, InitArgsTypes, Value, {gas_cap, GasCap}, Prot, ES1).
 
-clone_common(CloneePK, InitArgsTypes, Value, GasCap, Prot, ES0) ->
+-define(CREATE_GAS(BYTELEN), BYTELEN*10).
+deploy_contract(CodeOrPK, InitArgsTypes, Value, GasCap, Prot, ES0) ->
     Protected =
         case Prot of
             false -> unprotected;
@@ -1307,10 +1288,13 @@ clone_common(CloneePK, InitArgsTypes, Value, GasCap, Prot, ES0) ->
             _     -> aefa_fate:abort({value_does_not_match_type, Prot, bool}, ES0)
         end,
 
-    {ok, FinalCloneePK} =
-        aefa_engine_state:contract_find_final_ref(CloneePK, ES0),
+    ES1 = case CodeOrPK of
+              {ref, _} -> ES0;
+              {code, Code} ->
+                  spend_gas(?CREATE_GAS(size(Code)), ES0)
+          end,
 
-    {ContractPK, ES1} = create_contract({clone, FinalCloneePK}, Value, ES0),
+    {ContractPK, ES2} = put_contract(CodeOrPK, Value, ES1),
     ReplaceInitResult
         = fun(ES0_) ->
                   %% init returns unit, so we get rid of it
@@ -1339,16 +1323,16 @@ clone_common(CloneePK, InitArgsTypes, Value, GasCap, Prot, ES0) ->
            GasCap,
            Protected,
            ReplaceInitResult,
-           ES1)
+           ES2)
     of
-        {ok, ES2} ->
-            {jump, 0, ES2};
-        {failed_protected_call, ES2} ->
-            ES3 = aefa_engine_state:remove_contract(ContractPK, ES2),
-            {next, write({stack, 0}, make_none(), ES3)}
+        {ok, ES3} ->
+            {jump, 0, ES3};
+        {failed_protected_call, ES3} ->
+            ES4 = aefa_engine_state:remove_contract(ContractPK, ES3),
+            {next, write({stack, 0}, make_none(), ES4)}
     end.
 
-create_contract(CodeOrPK, Amount, ES0) ->
+put_contract(CodeOrPK, Amount, ES0) ->
     Current = aefa_engine_state:current_contract(ES0),
 
     AS0              = aefa_engine_state:chain_api(ES0),
@@ -1356,16 +1340,19 @@ create_contract(CodeOrPK, Amount, ES0) ->
 
     Contract0  =
         case CodeOrPK of
-            {new, Code} -> aect_contracts:new(
+            {code, Code} -> aect_contracts:new(
                               Current, Nonce,
                               #{vm => aefa_engine_state:vm_version(ES0)
                               , abi => ?ABI_FATE_SOPHIA_1
                               }, Code, 0);
-            {clone, PK} -> aect_contracts:new_clone(
-                             Current, Nonce,
-                             #{vm => aefa_engine_state:vm_version(ES0)
-                             , abi => ?ABI_FATE_SOPHIA_1
-                             }, PK, 0)
+            {ref, PK} ->
+                {ok, FinalPK} =
+                    aefa_engine_state:contract_find_final_ref(PK, ES0),
+                aect_contracts:new_clone(
+                  Current, Nonce,
+                  #{vm => aefa_engine_state:vm_version(ES0)
+                  , abi => ?ABI_FATE_SOPHIA_1
+                  }, FinalPK, 0)
         end,
     Store      = aefa_stores:initial_contract_store(),
     Contract1  = aect_contracts:set_state(Store, Contract0),
@@ -1377,14 +1364,17 @@ create_contract(CodeOrPK, Amount, ES0) ->
     ES1 = aefa_engine_state:set_chain_api(AS3, ES0),
     {ContractPK, ES1}.
 
+
+-define(BYTECODE_HASH_GAS(BYTELEN), BYTELEN).
 bytecode_hash(Arg0, Arg1, ES0) ->
     ?AVAILABLE_FROM(?VM_FATE_SOPHIA_2, ES0),
     {?FATE_CONTRACT(Pubkey), ES1} = get_op_arg(Arg1, ES0),
     case aefa_engine_state:contract_fate_bytecode(Pubkey, ES1) of
         {ok, ByteCode, ?VM_FATE_SOPHIA_2, ES2} ->
             SerByteCode = aeb_fate_code:serialize(ByteCode),
-            Hashed  = aeb_fate_data:make_hash(aec_hash:hash(fate_code, SerByteCode)),
-            write(Arg0, make_some(Hashed), ES2);
+            ES3         = spend_gas(?BYTECODE_HASH_GAS(size(SerByteCode)), ES2),
+            Hashed      = aeb_fate_data:make_hash(aec_hash:hash(fate_code, SerByteCode)),
+            write(Arg0, make_some(Hashed), ES3);
         error ->
             write(Arg0, make_none(), ES1)
     end.

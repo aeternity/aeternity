@@ -66,9 +66,9 @@ make_calls(ListOfCalls) ->
            },
     [{lists:flatten(io_lib:format("call(~p,~p,~p)->~p~n~p : ~p",
                                   [C,F,A,R,
-                                   aefa_utils:encode(A),
+                                   aefa_test_utils:encode(A),
                                    aeb_fate_encoding:serialize(
-                                     aefa_utils:encode(A))])),
+                                     aefa_test_utils:encode(A))])),
       fun() ->
               Spec = make_call(C,F,A),
               case R of
@@ -83,7 +83,7 @@ make_calls(ListOfCalls) ->
                               ?assertEqual({E, Trace}, {Error, Trace})
                       end;
                   _ ->
-                      FateRes = aefa_utils:encode(R),
+                      FateRes = aefa_test_utils:encode(R),
                       {ok, ES} = aefa_fate:run_with_cache(Spec, Env, Cache),
                       Res = aefa_engine_state:accumulator(ES),
                       Trace = aefa_engine_state:trace(ES),
@@ -293,7 +293,7 @@ make_call(Contract, Function0, Arguments) ->
      , store => aect_contracts_store:new()
      , call => aeb_fate_encoding:serialize(
                  {tuple, {Function, {tuple, list_to_tuple(
-                                              [aefa_utils:encode(A) || A <- Arguments]
+                                              [aefa_test_utils:encode(A) || A <- Arguments]
                                              )}
                          }
                  }
