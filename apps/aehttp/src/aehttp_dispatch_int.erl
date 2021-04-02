@@ -88,7 +88,6 @@ handle_request_(OperationId, Req, _Context)
     when  OperationId =:= 'PostSpend';
           OperationId =:= 'PostContractCreate';
           OperationId =:= 'PostContractCall';
-          OperationId =:= 'DryRunTxs';
           OperationId =:= 'PostNamePreclaim';
           OperationId =:= 'PostNameUpdate';
           OperationId =:= 'PostNameClaim';
