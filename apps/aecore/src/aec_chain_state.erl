@@ -1373,7 +1373,7 @@ ensure_key_headers_height_store() ->
     end.
 
 start_key_headers_height_store_migration() ->
-    lager:info("[Key headers migrations scan] Retriving all key blocks"),
+    lager:info("[Key headers migrations scan] Retriving all key headers"),
     spawn(fun() -> %% Don't use spawn_link here - we can't be killed by the setup process
         %% An error here should bring down the entire node with it!
         try
@@ -1409,7 +1409,7 @@ key_headers_height_store_migration_step(Time, N, {TimeRead, {Headers, Cont}}) ->
         aec_db:ensure_transaction(fun() ->
             lists:foldl(
                 fun({Hash, Header, Height}, Count) ->
-                    mnesia:write(#aec_chain_state{key = {key_block, Height, Hash}, value = Header}),
+                    mnesia:write(#aec_chain_state{key = {key_header, Height, Hash}, value = Header}),
                     Count+1
                 end,
                 0,

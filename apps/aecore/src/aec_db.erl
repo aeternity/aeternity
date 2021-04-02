@@ -353,7 +353,7 @@ write_block(Block, Hash) ->
                                   , height = Height },
             ?t(begin
                    mnesia:write(Headers),
-                   mnesia:write(#aec_chain_state{key = {key_block, Height, Hash}, value = Header})
+                   mnesia:write(#aec_chain_state{key = {key_header, Height, Hash}, value = Header})
                end,
                [{aec_headers, Hash}]);
         micro ->
@@ -521,13 +521,13 @@ find_key_headers_and_hash_at_height(Height) when is_integer(Height), Height >= 0
             [{Hash, aec_headers:from_db_header(Header)}
              || #aec_headers{key = Hash, value = Header} <- R];
         done ->
-            R = mnesia:dirty_select(aec_chain_state, [{#aec_chain_state{key = {key_block, Height, '_'},
+            R = mnesia:dirty_select(aec_chain_state, [{#aec_chain_state{key = {key_header, Height, '_'},
                                                                         value = '_'}
                                                         , []
                                                         , ['$_']
                                                           }]),
             [{Hash, aec_headers:from_db_header(Header)}
-             || #aec_chain_state{key = {key_block, _, Hash}, value = Header} <- R]
+             || #aec_chain_state{key = {key_header, _, Hash}, value = Header} <- R]
     end.
 
 find_discovered_pof(Hash) ->

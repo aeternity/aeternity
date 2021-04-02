@@ -723,14 +723,14 @@ fork_test_chain_ends_and_migration(ExpectedTops, ExpectedBlocks) ->
     F(),
     MaxHeight = lists:max([aec_headers:height(aec_db:get_header(H)) || H <- ExpectedTops]),
     aec_db:ensure_transaction(fun() ->
-        [[mnesia:delete({aec_chain_state, {key_block, H, Hash}})
+        [[mnesia:delete({aec_chain_state, {key_header, H, Hash}})
         || {Hash, _Header} <- aec_db:find_key_headers_and_hash_at_height(H)]
         || H  <- lists:seq(0, MaxHeight)]
     end),
     aec_db:ensure_transaction(fun() ->
         ?assertEqual(
             [],
-            mnesia:dirty_select(aec_chain_state, [{{aec_chain_state, {key_block, '_', '_'}, '_'}
+            mnesia:dirty_select(aec_chain_state, [{{aec_chain_state, {key_header, '_', '_'}, '_'}
                                                   , []
                                                   , ['$_']
                                                   }])
