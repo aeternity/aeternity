@@ -521,13 +521,41 @@ find_key_headers_and_hash_at_height(Height) when is_integer(Height), Height >= 0
             [{Hash, aec_headers:from_db_header(Header)}
              || #aec_headers{key = Hash, value = Header} <- R];
         done ->
-            R = mnesia:dirty_select(aec_chain_state, [{#aec_chain_state{key = {key_header, Height, '_'},
-                                                                        value = '_'}
-                                                        , []
-                                                        , ['$_']
-                                                          }]),
-            [{Hash, aec_headers:from_db_header(Header)}
-             || #aec_chain_state{key = {key_header, _, Hash}, value = Header} <- R]
+            case persistent_term:get(?BYPASS, nobypass) of
+                {rocksdb, #{aec_chain_state := H}} ->
+                    WI = fun(Height, F) ->
+                            {ok, I} = rocksdb:iterator(H,
+                                                       [{iterate_upper_bound,
+                                                         sext:prefix({key_header, Height+1, '_'})}]),
+                            try F(I) after rocksdb:iterator_close(I) end
+                        end,
+                    G = fun G(I, {ok, K ,V}, Height, Acc) ->
+                                case sext:decode(K) of
+                                    {_, Height, Hash} ->
+                                        G(I,
+                                          rocksdb:iterator_move(I, next),
+                                          Height,
+                                          [{Hash, aec_headers:from_db_header(element(3, binary_to_term(V)))}|Acc]);
+                                    _ -> Acc
+                                end;
+                            G(_I, _, _, Acc) -> Acc
+                        end,
+                    WI(Height,
+                       fun(I) ->
+                           G(I,
+                             rocksdb:iterator_move(I, sext:prefix({key_header, Height, '_'})),
+                             Height,
+                             [])
+                       end);
+                nobypass ->
+                    R = mnesia:dirty_select(aec_chain_state,
+                                            [{#aec_chain_state{key = {key_header, Height, '_'},
+                                                               value = '_'}
+                                            , []
+                                            , ['$_']}]),
+                    [{Hash, aec_headers:from_db_header(Header)}
+                     || #aec_chain_state{key = {key_header, _, Hash}, value = Header} <- R]
+            end
     end.
 
 find_discovered_pof(Hash) ->
