@@ -209,7 +209,7 @@ show_store(Store0) ->
 %% -- Updating Sophia maps --
 
 store_maps(Maps0, Store) ->
-    Maps       = maps:to_list(Maps0#maps.maps),
+    Maps       = lists:keysort(1, maps:to_list(Maps0#maps.maps)),
 
     RefCounts  = get_ref_counts(Store),
     OldMapKeys = maps:keys(RefCounts),
@@ -266,7 +266,7 @@ perform_update({new, Id, Map0}, Store0) ->
     Size     = Map0#pmap.size,
     Bin      = aeb_heap:to_binary({Map#pmap.key_t, Map#pmap.val_t}),
     Info = [{<<Id:256>>, ?MapInfo(Id, RefCount, Size, Bin)}],
-    Data = [ {<<Id:256, Key/binary>>, Val} || {Key, Val} <- maps:to_list(Map#pmap.data) ],
+    Data = [ {<<Id:256, Key/binary>>, Val} || {Key, Val} <- lists:keysort(1, maps:to_list(Map#pmap.data)) ],
     lists:foldl(fun({K, V}, S) -> store_put(K, V, S) end, Store, Info ++ Data);
 perform_update({gc, Id}, Store) ->
     RealId = real_id(Id, Store),
@@ -385,7 +385,7 @@ compute_map_updates(Garbage, Maps0) ->
             [ case Val of
                 tombstone -> {delete, Id, ValType, Key};
                 _         -> {insert, Id, ValType, Key, Val}
-              end || {Key, Val} <- maps:to_list(Data) ]]
+              end || {Key, Val} <- lists:keysort(1, maps:to_list(Data)) ]]
            || {Id, #pmap{ parent = Parent, val_t = ValType, data = Data, size = Size }} <- Inplace ]
         , [{gc, Id} || Id <- ActualGarbage ]
         ]).
@@ -453,7 +453,7 @@ store_put(Key, Val, Store) ->
     aect_contracts_store:put(Key, Val, Store).
 
 store_to_list(Id, Store) ->
-    maps:to_list(store_subtree(Id, Store)).
+    lists:keysort(1, maps:to_list(store_subtree(Id, Store))).
 
 store_subtree(Id, Store) ->
     aect_contracts_store:subtree(<<Id:256>>, Store).

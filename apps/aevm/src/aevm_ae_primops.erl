@@ -831,7 +831,7 @@ map_call_tolist(_Gas, Data, State) ->
     [MapId] = get_args([word], Data),
     {KeyType, ValType} = aevm_eeevm_maps:map_type(MapId, State),
     {ok, Map} = aevm_eeevm_maps:get_flat_map(MapId, State),
-    List = maps:to_list(Map),
+    List = lists:keysort(1, maps:to_list(Map)),
     HeapBin = build_heap_list(aevm_eeevm_state:maps(State), KeyType, ValType, List),
     {ok, {ok, HeapBin}, 0, State}.
 
