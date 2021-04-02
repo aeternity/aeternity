@@ -28,6 +28,7 @@
         , set_contract_store/3
         , timestamp_in_msecs/1
         , tx_env/1
+        , tx_event_op/3
         ]).
 
 %% Modifiers
@@ -54,6 +55,7 @@
         , aens_transfer/4
         , aens_update/6
         , aens_lookup/2
+        , eval_primops/2
         ]).
 
 -export([ check_delegation_signature/4
@@ -199,14 +201,26 @@ traverse_to_key_hash(H, KeyHash) ->
     end.
 
 -spec put_contract(aect_contracts:contract(), state()) -> state().
-put_contract(Contract, #state{primop_state = PS0} = S) ->
+put_contract(Contract, #state{primop_state = PS} = S) ->
     PK = aect_contracts:pubkey(Contract),
+    {Payable, PS0} = case aect_contracts:code(Contract) of
+                  {code, SerCode} ->
+                      #{payable := P} = aeser_contract_code:deserialize(SerCode),
+                      {P, PS};
+                  {ref, Clonee} ->
+                      case aeprimop_state:find_account(aeser_id:specialize(Clonee, contract), PS) of
+                          none -> error;
+                          {Acc, PS_} -> {aec_accounts:is_payable(Acc), PS_}
+                      end
+                  end,
     PS1 = aeprimop_state:put_contract(Contract, PS0),
     PS2 = case aeprimop_state:find_account(PK, PS1) of
               none ->
-                  Account = aec_accounts:new(PK, 0),
+                  Account = aec_accounts:new(PK, 0, [non_payable || not Payable]),
                   aeprimop_state:put_account(Account, PS1);
-              _ -> PS1
+              Account0 ->
+                  Account1 = aec_accounts:set_payable(Account0, Payable),
+                  aeprimop_state:put_account(Account1, PS1)
           end,
     S#state{primop_state = PS2}.
 

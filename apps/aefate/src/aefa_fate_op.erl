@@ -1314,6 +1314,22 @@ deploy_contract(CodeOrPK, InitArgsTypes, Value, GasCap, Prot, ES0) ->
                           end
                   end
           end,
+
+    ES3 = aefa_engine_state:set_chain_api(
+            begin
+                {ok, API} = aefa_chain_api:eval_primops(
+                  [ case CodeOrPK of
+                        {ref, Ref} ->
+                            aefa_chain_api:tx_event_op(clone, {Ref, Value, GasCap, ContractPK}, <<"Chain.clone">>);
+                        {code, _} ->
+                            aefa_chain_api:tx_event_op(create, {Value, GasCap, ContractPK}, <<"Chain.create">>)
+                    end
+                  ], aefa_engine_state:chain_api(ES2)),
+                API
+            end,
+            ES2
+           ),
+
     case remote_call_common(
            ?FATE_CONTRACT(ContractPK),
            init,
@@ -1323,13 +1339,13 @@ deploy_contract(CodeOrPK, InitArgsTypes, Value, GasCap, Prot, ES0) ->
            GasCap,
            Protected,
            ReplaceInitResult,
-           ES2)
+           ES3)
     of
-        {ok, ES3} ->
-            {jump, 0, ES3};
-        {failed_protected_call, ES3} ->
-            ES4 = aefa_engine_state:remove_contract(ContractPK, ES3),
-            {next, write({stack, 0}, make_none(), ES4)}
+        {ok, ES4} ->
+            {jump, 0, ES4};
+        {failed_protected_call, ES4} ->
+            ES5 = aefa_engine_state:remove_contract(ContractPK, ES4),
+            {next, write({stack, 0}, make_none(), ES5)}
     end.
 
 put_contract(CodeOrPK, Amount, ES0) ->

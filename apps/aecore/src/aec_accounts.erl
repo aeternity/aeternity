@@ -38,6 +38,8 @@
 -define(ACCOUNT_VSN_3, 3). %% {Flags, Nonce, Balance}
 -define(ACCOUNT_TYPE, account).
 
+-define(FLAG_NON_PAYABLE_VALUE, 1).
+
 -type fun_hash() :: <<_:256>>.
 -type flag()  :: non_payable.
 -type flags() :: [flag()].
@@ -128,6 +130,13 @@ type(#account{ ga_contract = C })         -> contract = aeser_id:specialize_type
 -spec is_payable(account()) -> boolean().
 is_payable(#account{ flags = 0 }) -> true;
 is_payable(#account{ flags = N }) -> not get_flag(non_payable, N).
+
+-spec set_payable(account(), boolean()) -> account().
+set_payable(Acc = #account{ flags = N }, false) ->
+    Acc#account{ flags = (N bsr 1) bsl 1 };
+set_payable(Acc, true) ->
+    #account{ flags = N } = set_payable(Acc, false),
+    Acc#account{ flags = N + ?FLAG_NON_PAYABLE_VALUE }.
 
 -spec serialize(account()) -> deterministic_account_binary_with_pubkey().
 serialize(#account{ flags = 0, ga_contract = undefined } = Account) ->
@@ -253,7 +262,6 @@ serialize_for_client(#account{id      = Id,
                             <<"nonce">>   => Nonce}).
 
 %% Flags
--define(FLAG_NON_PAYABLE_VALUE, 1).
 
 get_flag(non_payable, N) -> ((N div ?FLAG_NON_PAYABLE_VALUE) rem 2) == 1.
 
