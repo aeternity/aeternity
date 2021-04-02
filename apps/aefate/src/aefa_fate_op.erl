@@ -615,7 +615,7 @@ map_to_list(Arg0, Arg1, EngineState) ->
     case Map of
         _ when ?IS_FATE_MAP(Map) ->
             Tuples = [aeb_fate_data:make_tuple({K, V})
-                      || {K, V} <- maps:to_list(?FATE_MAP_VALUE(Map))],
+                      || {K, V} <- lists:keysort(1, maps:to_list(?FATE_MAP_VALUE(Map)))],
             ES2 = write(Arg0, aeb_fate_data:make_list(Tuples), ES1),
             Size = map_size(?FATE_MAP_VALUE(Map)),
             aefa_engine_state:spend_gas_for_new_cells(Size * 2, ES2);
@@ -2597,7 +2597,7 @@ store_map_to_list(Cache, MapId, ES) ->
              (Key, Val, M)                 -> maps:put(Key, Val, M) end,
     Map = maps:fold(Upd, StoreMap, Cache),
     ES2 = aefa_engine_state:set_stores(Store1, ES1),
-    {aeb_fate_data:make_list([ ?FATE_TUPLE(KV) || KV <- maps:to_list(Map) ]), ES2}.
+    {aeb_fate_data:make_list([ ?FATE_TUPLE(KV) || KV <- lists:keysort(1,maps:to_list(Map)) ]), ES2}.
 
 %% ------------------------------------------------------
 %% Comparison instructions
