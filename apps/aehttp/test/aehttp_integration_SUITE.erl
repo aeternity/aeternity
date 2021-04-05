@@ -775,6 +775,11 @@ init_per_group(external_endpoints, Config) ->
     true = aec_blocks:is_key_block(KeyBlock),
     Config;
 
+init_per_group(paying_for_tx, Config) ->
+    case aect_test_utils:latest_protocol_version() >= ?IRIS_PROTOCOL_VSN of
+        true -> Config;
+        false -> {skip, requires_iris_or_newer}
+    end;
 init_per_group(_Group, Config) ->
     Config.
 
