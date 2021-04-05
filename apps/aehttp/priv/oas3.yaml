@@ -2884,6 +2884,7 @@ components:
           description: At least one signature is required unless for Generalized Account
             Meta transactions
           type: array
+          minItems: 0
           items:
             $ref: "#/components/schemas/EncodedValue"
       required:

@@ -2810,6 +2810,22 @@ definitions:
           $ref: '#/definitions/EncodedValue'
     required:
       - tx
+      - block_height
+      - block_hash
+      - hash
+  SignedTx:
+    type: object
+    properties:
+      tx:
+        $ref: '#/definitions/GenericTx'
+      signatures:
+        description: 'At least one signature is required unless for Generalized Account Meta transactions'
+        type: array
+        minItems: 0
+        items:
+          $ref: '#/definitions/EncodedValue'
+    required:
+      - tx
       - signatures
   GenericTx:
     type: object
@@ -3510,7 +3526,7 @@ definitions:
       nonce:
         $ref: '#/definitions/UInt64'
       tx:
-        $ref: '#/definitions/GenericSignedTx'
+        $ref: '#/definitions/SignedTx'
     required:
       - payer_id
       - fee
