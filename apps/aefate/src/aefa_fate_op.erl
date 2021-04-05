@@ -1279,7 +1279,7 @@ clone_g(Arg0, Arg1, Arg2, Arg3, Arg4, ES0) ->
         get_op_args([Arg0, Arg1, Arg2, Arg3, Arg4], ES0),
     deploy_contract({ref, CloneePK}, InitArgsTypes, Value, {gas_cap, GasCap}, Prot, ES1).
 
--define(CREATE_GAS(BYTELEN), BYTELEN*10).
+-define(CREATE_GAS(BYTELEN), BYTELEN * aec_governance:store_byte_gas()).
 deploy_contract(CodeOrPK, InitArgsTypes, Value, GasCap, Prot, ES0) ->
     Protected =
         case Prot of
