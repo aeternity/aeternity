@@ -219,15 +219,15 @@ put_contract(Contract, #state{primop_state = PS} = S) ->
               none ->
                   Account = aec_accounts:new(PK, 0, [non_payable || not Payable]),
                   aeprimop_state:put_account(Account, PS1);
-              Account0 ->
+              {Account0, PS1_0} ->
                   Account1 = aec_accounts:set_payable(Account0, Payable),
-                  aeprimop_state:put_account(Account1, PS1)
+                  aeprimop_state:put_account(Account1, PS1_0)
           end,
     S#state{primop_state = PS2}.
 
 -spec contract_vm_version(pubkey(), state()) -> 'error' |
           {'ok', aect_contracts:vm_version()}.
-contract_vm_version(Pubkey, #state{primop_state = PState} = S0) ->
+contract_vm_version(Pubkey, #state{primop_state = PState}) ->
     case aeprimop_state:find_contract_without_store(Pubkey, PState) of
         none -> error;
         {value, Contract} -> aect_contracts:vm_version(Contract)
