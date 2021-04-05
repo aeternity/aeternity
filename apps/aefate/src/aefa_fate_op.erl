@@ -1349,8 +1349,8 @@ deploy_contract(CodeOrPK, InitArgsTypes, Value, GasCap, Prot, ES0) ->
             ES6 = aefa_engine_state:set_chain_api(
                     begin
                         {ok, API_ILoveErlangScoping} = aefa_chain_api:transfer_value(
-                                      ContractPK, Current, Value,
-                                      aefa_engine_state:chain_api(ES5)),
+                            ContractPK, Current, Value,
+                            aefa_engine_state:chain_api(ES5)),
                         API_ILoveErlangScoping
                     end,
                     ES5),

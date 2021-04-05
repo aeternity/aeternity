@@ -25,6 +25,7 @@
          type/1,
 
          is_payable/1,
+         set_payable/2,
 
          deserialize/2,
          serialize/1,
