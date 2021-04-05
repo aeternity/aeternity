@@ -38,7 +38,7 @@
 -define(ACCOUNT_VSN_3, 3). %% {Flags, Nonce, Balance}
 -define(ACCOUNT_TYPE, account).
 
--define(FLAG_NON_PAYABLE_VALUE, 1).
+-define(FLAG_NON_PAYABLE_VALUE, 2#000001).
 
 -type fun_hash() :: <<_:256>>.
 -type flag()  :: non_payable.

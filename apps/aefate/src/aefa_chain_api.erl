@@ -15,6 +15,7 @@
         , beneficiary/1
         , blockhash/2
         , put_contract/2
+        , contract_vm_version/2
         , contract_fate_bytecode/2
         , contract_find_final_ref/2
         , contract_store/2
@@ -224,6 +225,14 @@ put_contract(Contract, #state{primop_state = PS} = S) ->
           end,
     S#state{primop_state = PS2}.
 
+-spec contract_vm_version(pubkey(), state()) -> 'error' |
+          {'ok', aect_contracts:vm_version()}.
+contract_vm_version(Pubkey, #state{primop_state = PState} = S0) ->
+    case aeprimop_state:find_contract_without_store(Pubkey, PState) of
+        none -> error;
+        {value, Contract} -> aect_contracts:vm_version(Contract)
+    end.
+
 -spec contract_fate_bytecode(pubkey(), state()) -> 'error' |
                                                    {'ok', term(), aect_contracts:vm_version(), state()}.
 contract_fate_bytecode(Pubkey, #state{primop_state = PState} = S0) ->
@@ -254,14 +263,14 @@ contract_fate_bytecode(Pubkey, #state{primop_state = PState} = S0) ->
             end
     end.
 
--spec contract_find_final_ref(pubkey(), state()) -> 'error' | {'ok', pubkey()}.
+-spec contract_find_final_ref(pubkey(), state()) -> 'error' | {'ok', pubkey(), aect_contracts:vm_version()}.
 contract_find_final_ref(Pubkey, #state{primop_state = PState} = S0) ->
     case aeprimop_state:find_contract_without_store(Pubkey, PState) of
         none -> error;
         {value, Contract} ->
             case aect_contracts:code(Contract) of
                 {code, _} ->
-                    {ok, Pubkey};
+                    {ok, Pubkey, aect_contracts:vm_version(Contract)};
                 {ref, Ref} ->
                     RefContractPK = aeser_id:specialize(Ref, contract),
                     contract_find_final_ref(RefContractPK, S0)
@@ -271,8 +280,9 @@ contract_find_final_ref(Pubkey, #state{primop_state = PState} = S0) ->
 -spec remove_contract(pubkey(), state()) -> state().
 remove_contract(Pubkey, #state{primop_state = PState0} = S0) ->
     PState1 = aeprimop_state:delete_contract(Pubkey, PState0),
-    PState2 = aeprimop_state:delete_account(Pubkey, PState1),
-    S0#state{primop_state = PState2}.
+    %% We don't delete the account as it could have existed before
+    %% the contract was created
+    S0#state{primop_state = PState1}.
 
 -spec contract_store(pubkey(), state()) -> {aect_contracts_store:store(), state()}.
 contract_store(Pubkey, #state{primop_state = PState} = S) ->

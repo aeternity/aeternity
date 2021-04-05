@@ -230,7 +230,7 @@ contract_fate_bytecode(Pubkey, #es{chain_api = AS0} = ES0) ->
     end.
 
 -spec contract_find_final_ref(aect_contracts:pubkey(), state()) ->
-          'error' | {'ok', aect_contracts:pubkey()}.
+          'error' | {'ok', aect_contracts:pubkey(), aect_contracts:vm_version()}.
 contract_find_final_ref(PK, ES) ->
     %% References are not considered in the cache, therefore
     %% we need to search in the chain.

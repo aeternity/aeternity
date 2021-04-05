@@ -1344,8 +1344,17 @@ deploy_contract(CodeOrPK, InitArgsTypes, Value, GasCap, Prot, ES0) ->
         {ok, ES4} ->
             {jump, 0, ES4};
         {failed_protected_call, ES4} ->
+            Current = aefa_engine_state:current_contract(ES0),
             ES5 = aefa_engine_state:remove_contract(ContractPK, ES4),
-            {next, write({stack, 0}, make_none(), ES5)}
+            ES6 = aefa_engine_state:set_chain_api(
+                    begin
+                        {ok, API_ILoveErlangScoping} = aefa_chain_api:transfer_value(
+                                      ContractPK, Current, Value,
+                                      aefa_engine_state:chain_api(ES5)),
+                        API_ILoveErlangScoping
+                    end,
+                    ES5),
+            {next, write({stack, 0}, make_none(), ES6)}
     end.
 
 put_contract(CodeOrPK, Amount, ES0) ->
@@ -1362,11 +1371,11 @@ put_contract(CodeOrPK, Amount, ES0) ->
                               , abi => ?ABI_FATE_SOPHIA_1
                               }, Code, 0);
             {ref, PK} ->
-                {ok, FinalPK} =
+                {ok, FinalPK, VMVsn} =
                     aefa_engine_state:contract_find_final_ref(PK, ES0),
                 aect_contracts:new_clone(
                   Current, Nonce,
-                  #{vm => aefa_engine_state:vm_version(ES0)
+                  #{vm => VMVsn
                   , abi => ?ABI_FATE_SOPHIA_1
                   }, FinalPK, 0)
         end,
