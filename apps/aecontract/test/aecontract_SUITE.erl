@@ -1597,7 +1597,7 @@ make_calldata_from_code(Code, Fun, Args) when is_binary(Fun) ->
                     aeb_heap:to_binary({FunHashInt, Args1});
                 {error, _} = Err -> error({bad_function, Fun, Err})
             end;
-        ?ABI_FATE_SOPHIA_1 -> aefa_fate:make_calldata(Fun, Args)
+        ?ABI_FATE_SOPHIA_1 -> aefa_test_utils:make_calldata(Fun, Args)
     end.
 
 make_calldata_from_id(Id, Fun, Args, State) ->
