@@ -37,6 +37,7 @@
         , serialize_to_binary/1
         , serialize_to_client/1
         , deserialize_from_binary_without_backend/1
+        , deserialize_from_db_partial/3
         ]).
 
 -export([ensure_account/2]).
@@ -68,12 +69,12 @@
 -endif.
 
 -record(trees, {
-          accounts  :: aec_accounts_trees:tree(),
-          calls     :: aect_call_state_tree:tree(),
-          channels  :: aesc_state_tree:tree(),
-          contracts :: aect_state_tree:tree(),
-          ns        :: aens_state_tree:tree(),
-          oracles   :: aeo_state_tree:tree()}).
+          accounts  :: aec_accounts_trees:tree() | not_loaded,
+          calls     :: aect_call_state_tree:tree() | not_loaded,
+          channels  :: aesc_state_tree:tree() | not_loaded,
+          contracts :: aect_state_tree:tree() | not_loaded,
+          ns        :: aens_state_tree:tree() | not_loaded,
+          oracles   :: aeo_state_tree:tree() | not_loaded}).
 
 -record(poi, {
           accounts  :: part_poi(),
@@ -402,6 +403,15 @@ sum_auctions({AuctionHash, SerAuction, Iter}, Acc) ->
 
 -spec deserialize_from_db(binary(), boolean()) -> trees().
 deserialize_from_db(Bin, DirtyBackend) when is_binary(Bin), is_boolean(DirtyBackend) ->
+    deserialize_from_db_partial(Bin, DirtyBackend, [contracts, calls,
+                                                    channels, names,
+                                                    oracles, accounts]).
+
+-spec deserialize_from_db_partial(binary(), boolean(), [contracts | calls |
+                                                        channels | names |
+                                                        oracles | accounts ]) -> trees().
+deserialize_from_db_partial(Bin, DirtyBackend, ElementsToLoad)
+    when is_binary(Bin), is_boolean(DirtyBackend), is_list(ElementsToLoad)->
     [ {contracts_hash, Contracts}
     , {calls_hash, Calls}
     , {channels_hash, Channels}
@@ -417,24 +427,60 @@ deserialize_from_db(Bin, DirtyBackend) when is_binary(Bin), is_boolean(DirtyBack
                     db_serialization_template(?AEC_TREES_VERSION),
                     Bin
                    )),
-    case DirtyBackend of
-        false ->
-            #trees{ contracts = aect_state_tree:new_with_backend(Contracts)
-                  , calls     = aect_call_state_tree:new_with_backend(Calls)
-                  , channels  = aesc_state_tree:new_with_backend(Channels)
-                  , ns        = aens_state_tree:new_with_backend(NS, NSCache)
-                  , oracles   = aeo_state_tree:new_with_backend(Oracles, OraclesCache)
-                  , accounts  = aec_accounts_trees:new_with_backend(Accounts)
-            };
-        true ->
-            #trees{ contracts = aect_state_tree:new_with_dirty_backend(Contracts)
-                  , calls     = aect_call_state_tree:new_with_dirty_backend(Calls)
-                  , channels  = aesc_state_tree:new_with_dirty_backend(Channels)
-                  , ns        = aens_state_tree:new_with_dirty_backend(NS, NSCache)
-                  , oracles   = aeo_state_tree:new_with_dirty_backend(Oracles, OraclesCache)
-                  , accounts  = aec_accounts_trees:new_with_dirty_backend(Accounts)
-            }
-    end.
+    lists:foldl(
+        fun(Element, AccumTrees) ->
+            case Element of
+                contracts ->
+                    ContractsT =
+                        case DirtyBackend of
+                            false -> aect_state_tree:new_with_backend(Contracts);
+                            true -> aect_state_tree:new_with_dirty_backend(Contracts)
+                        end,
+                    AccumTrees#trees{contracts = ContractsT};
+                calls ->
+                    CallsT =
+                        case DirtyBackend of
+                            false -> aect_call_state_tree:new_with_backend(Calls);
+                            true -> aect_call_state_tree:new_with_dirty_backend(Calls)
+                        end,
+                    AccumTrees#trees{calls = CallsT};
+                channels ->
+                    ChannelsT =
+                        case DirtyBackend of
+                            false -> aesc_state_tree:new_with_backend(Channels);
+                            true -> aesc_state_tree:new_with_dirty_backend(Channels)
+                        end,
+                    AccumTrees#trees{channels = ChannelsT};
+                names ->
+                    NamesT =
+                        case DirtyBackend of
+                            false -> aens_state_tree:new_with_backend(NS, NSCache);
+                            true -> aens_state_tree:new_with_dirty_backend(NS, NSCache)
+                        end,
+                    AccumTrees#trees{ns = NamesT};
+                oracles ->
+                    OraclesT =
+                        case DirtyBackend of
+                            false -> aeo_state_tree:new_with_backend(Oracles, OraclesCache);
+                            true -> aeo_state_tree:new_with_dirty_backend(Oracles, OraclesCache)
+                        end,
+                    AccumTrees#trees{oracles = OraclesT};
+                accounts ->
+                    AccountsT =
+                        case DirtyBackend of
+                            false -> aec_accounts_trees:new_with_backend(Accounts);
+                            true -> aec_accounts_trees:new_with_dirty_backend(Accounts)
+                        end,
+                    AccumTrees#trees{accounts = AccountsT}
+            end
+        end,
+        #trees{ contracts = not_loaded
+              , calls = not_loaded
+              , channels = not_loaded
+              , ns = not_loaded
+              , oracles = not_loaded
+              , accounts = not_loaded},
+        ElementsToLoad).
 
 -spec serialize_for_db(trees()) -> binary().
 serialize_for_db(#trees{} = Trees) ->
@@ -623,9 +669,9 @@ apply_txs_on_state_trees([SignedTx | Rest], ValidTxs, InvalidTxs, Trees, Env, Op
                     Reason = {Type, What},
                     lager:error("Tx ~p cannot be applied due to an error ~p", [Tx, Reason]),
                     {error, Reason};
-                Type:What:_ST when not Strict ->
+                Type:What:ST when not Strict ->
                     Reason = {Type, What},
-                    %%lager:debug("Stacktrace: ~p", [ST]),
+                    lager:debug("Stacktrace: ~p", [ST]),
                     lager:debug("Tx ~p cannot be applied due to an error ~p", [Tx, Reason]),
                     Invalid1 = [SignedTx| InvalidTxs],
                     apply_txs_on_state_trees(Rest, ValidTxs, Invalid1, Trees, Env, Opts)
