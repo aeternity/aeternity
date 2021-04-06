@@ -84,10 +84,15 @@ make_calls(ListOfCalls) ->
                       end;
                   _ ->
                       FateRes = aefa_test_utils:encode(R),
-                      {ok, ES} = aefa_fate:run_with_cache(Spec, Env, Cache),
-                      Res = aefa_engine_state:accumulator(ES),
-                      Trace = aefa_engine_state:trace(ES),
-                      ?assertEqual({FateRes, Trace}, {Res, Trace})
+                      case aefa_fate:run_with_cache(Spec, Env, Cache) of
+                          {ok, ES} ->
+                              Res = aefa_engine_state:accumulator(ES),
+                              Trace = aefa_engine_state:trace(ES),
+                              ?assertEqual({FateRes, Trace}, {Res, Trace});
+                          {revert, Msg, ES} ->
+                              Trace = aefa_engine_state:trace(ES),
+                              ?assertEqual({FateRes, Trace}, {{revert, Msg}, Trace})
+                      end
               end
       end}
      || {C,F,A,R} <- ListOfCalls].
@@ -447,7 +452,7 @@ contracts() ->
                      ]
                  }
                , {2, [ {'NEQ', {stack, 0}, {stack, 0}, {immediate, 2137}}
-                     , {'JUMPIF', {stack, 0}, {immediate, 10}}
+                     , {'JUMPIF', {stack, 0}, {immediate, 12}}
                      ]
                  }
                , {3,
@@ -462,7 +467,7 @@ contracts() ->
                , {4, [ 'DUPA'
                      , {'VARIANT_TEST', {stack, 0}, {stack, 0}, {immediate, 1}}
                      , {'NOT', {stack, 0}, {stack, 0}}
-                     , {'JUMPIF', {stack, 0}, {immediate, 11}}
+                     , {'JUMPIF', {stack, 0}, {immediate, 13}}
                      ]
                  }
                , {5,
@@ -479,11 +484,10 @@ contracts() ->
                  }
                , {6, [ {'POP', {arg, 0}}
                      , {'NEQ', {arg, 0}, {arg, 0}, {immediate, 2137}}
-                     , {'JUMPIF', {arg, 0}, {immediate, 12}}
+                     , {'JUMPIF', {arg, 0}, {immediate, 14}}
                      ]
                  }
-               , {7,
-                     [ {'PUSH', {immediate, 2138}}
+               , {7, [ {'PUSH', {immediate, 2138}}
                      , {'CLONE',
                         {immediate, aeb_fate_data:make_contract(pad_contract_name(<<"remote">>))},
                         {immediate, {typerep, {tuple, [integer]}}},
@@ -494,17 +498,29 @@ contracts() ->
                  }
                , {8, [ {'VARIANT_TEST', {stack, 0}, {stack, 0}, {immediate, 0}}
                      , {'NOT', {stack, 0}, {stack, 0}}
-                     , {'JUMPIF', {stack, 0}, {immediate, 13}}
+                     , {'JUMPIF', {stack, 0}, {immediate, 15}}
                      ]
                  }
-               , {9,
-                     [ {'RETURNR', {immediate, 2137}}
+               , {9, [ {'CLONE',
+                        {immediate, aeb_fate_data:make_contract(pad_contract_name(<<"abortion">>))},
+                        {immediate, {typerep, {tuple, [integer]}}},
+                        {immediate, 0},
+                        {immediate, true}
+                       }
                      ]
                  }
-               , {10, [{'ABORT', {immediate, <<"CLONE: unprotected bad result">>}}]}
-               , {11, [{'ABORT', {immediate, <<"CLONE: not-Some on success">>}}]}
-               , {12, [{'ABORT', {immediate, <<"CLONE: protected bad result">>}}]}
-               , {13, [{'ABORT', {immediate, <<"CLONE: not-None on fail">>}}]}
+               , {10, [ {'VARIANT_TEST', {stack, 0}, {stack, 0}, {immediate, 0}}
+                      , {'NOT', {stack, 0}, {stack, 0}}
+                      , {'JUMPIF', {stack, 0}, {immediate, 16}}
+                      ]
+                 }
+               , {11, [ {'RETURNR', {immediate, 2137}} ]
+                 }
+               , {12, [{'ABORT', {immediate, <<"CLONE: unprotected bad result">>}}]}
+               , {13, [{'ABORT', {immediate, <<"CLONE: not-Some on success">>}}]}
+               , {14, [{'ABORT', {immediate, <<"CLONE: protected bad result">>}}]}
+               , {15, [{'ABORT', {immediate, <<"CLONE: not-None on type fail">>}}]}
+               , {16, [{'ABORT', {immediate, <<"CLONE: not-None on runtime fail">>}}]}
                ]
              }
            , { <<"create">>, {[], integer}
@@ -772,6 +788,12 @@ contracts() ->
                 }
               , {1, [ 'RETURN' ]
                 }
+              ]
+             }
+           ]
+     , <<"abortion">> => %% this contract is not supposed to be born
+           [ {<<"init">>, {[], {tuple, []}},
+              [ {0, [ {'ABORT', {immediate, <<"thank u from saving me from the pain of existence">>}} ]}
               ]
              }
            ]

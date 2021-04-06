@@ -1310,7 +1310,9 @@ deploy_contract(CodeOrPK, InitArgsTypes, Value, GasCap, Prot, ES0) ->
                                        , ES1_
                                        );
                               {{variant, [0, 1], 0, {}}, ES1_} ->
-                                  write({stack, 0}, make_none(), ES1_)
+                                  %% Call to `init` failed due to runtime error
+                                  ES2_ = unput_contract(ContractPK, Value, ES1_),
+                                  write({stack, 0}, make_none(), ES2_)
                           end
                   end
           end,
@@ -1344,17 +1346,8 @@ deploy_contract(CodeOrPK, InitArgsTypes, Value, GasCap, Prot, ES0) ->
         {ok, ES4} ->
             {jump, 0, ES4};
         {failed_protected_call, ES4} ->
-            Current = aefa_engine_state:current_contract(ES0),
-            ES5 = aefa_engine_state:remove_contract(ContractPK, ES4),
-            ES6 = aefa_engine_state:set_chain_api(
-                    begin
-                        {ok, API_ILoveErlangScoping} = aefa_chain_api:transfer_value(
-                            ContractPK, Current, Value,
-                            aefa_engine_state:chain_api(ES5)),
-                        API_ILoveErlangScoping
-                    end,
-                    ES5),
-            {next, write({stack, 0}, make_none(), ES6)}
+            ES5 = unput_contract(ContractPK, Value, ES4),
+            {next, write({stack, 0}, make_none(), ES5)}
     end.
 
 put_contract(CodeOrPK, Amount, ES0) ->
@@ -1367,7 +1360,7 @@ put_contract(CodeOrPK, Amount, ES0) ->
         case CodeOrPK of
             {code, Code} -> aect_contracts:new(
                               Current, Nonce,
-                              #{vm => aefa_engine_state:vm_version(ES0)
+                              #{vm  => aefa_engine_state:vm_version(ES0)
                               , abi => ?ABI_FATE_SOPHIA_1
                               }, Code, 0);
             {ref, PK} ->
@@ -1388,6 +1381,23 @@ put_contract(CodeOrPK, Amount, ES0) ->
 
     ES1 = aefa_engine_state:set_chain_api(AS3, ES0),
     {ContractPK, ES1}.
+
+%% Removes contract and returns the put tokens.
+%% Does not remove contract's account as it could
+%% have existed before.
+unput_contract(PK, Balance, ES0) ->
+    Current = aefa_engine_state:current_contract(ES0),
+    ES1 = aefa_engine_state:remove_contract(PK, ES0),
+    ES2 = aefa_engine_state:set_chain_api(
+            begin
+                {ok, API_ILoveErlangScoping} =
+                    aefa_chain_api:transfer_value(
+                      PK, Current, Balance,
+                      aefa_engine_state:chain_api(ES1)),
+                API_ILoveErlangScoping
+            end,
+            ES1),
+    ES2.
 
 
 -define(BYTECODE_HASH_GAS(BYTELEN), BYTELEN).
