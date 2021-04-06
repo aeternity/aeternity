@@ -1850,7 +1850,7 @@ paths:
         - transaction
         - debug
       operationId: PostPayingFor
-      description: Get a paying for transaction object
+      description: Get a paying-for transaction object
       parameters:
         - $ref: '#/components/parameters/intAsString'
       requestBody:
@@ -1858,7 +1858,7 @@ paths:
           application/json:
             schema:
               $ref: "#/components/schemas/PayingForTx"
-        description: A paying for transaction
+        description: A paying-for transaction
         required: true
       responses:
         "200":

@@ -1718,7 +1718,7 @@ paths:
         - transaction
         - debug
       operationId: 'PostPayingFor'
-      description: Get a paying for transaction object
+      description: Get a paying-for transaction object
       consumes:
         - application/json
       produces:
