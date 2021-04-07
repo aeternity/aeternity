@@ -2,8 +2,8 @@
 
 %% common_test exports
 -export(
-   [
-    all/0
+   [ all/0
+   , init_per_suite/1
    ]).
 
 %% test case exports
@@ -15,10 +15,17 @@
 -include_lib("aecontract/include/aecontract.hrl").
 -include_lib("aebytecode/include/aeb_opcodes.hrl").
 -include_lib("common_test/include/ct.hrl").
+-include_lib("aecontract/include/hard_forks.hrl").
 
 all() ->
     [
       execute_identity_fun_from_sophia_file ].
+
+init_per_suite(Config) ->
+    case aect_test_utils:latest_protocol_version() < ?IRIS_PROTOCOL_VSN of
+        true -> Config;
+        false -> {skip, aevm_deprecated}
+    end.
 
 execute_identity_fun_from_sophia_file(_Cfg) ->
     {ok, ContractBin} = aect_test_utils:read_contract(identity),

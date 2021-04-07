@@ -582,6 +582,7 @@ init_per_group(protocol_interaction, Cfg) ->
                                lima    => LHeight,
                                iris    => IHeight
                              }},
+             {abi_version, ?ABI_AEVM_SOPHIA_1},
              {protocol, iris} | Cfg];
         _ ->
             {skip, only_test_protocol_interaction_on_latest_protocol}

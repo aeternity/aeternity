@@ -8,6 +8,7 @@
 %% common_test exports
 -export([ all/0
         , groups/0
+        , init_per_suite/1
         ]).
 
 %% test case exports
@@ -19,6 +20,7 @@
 -include_lib("common_test/include/ct.hrl").
 -include_lib("aecore/include/blocks.hrl").
 -include_lib("aecontract/include/aecontract.hrl").
+-include_lib("aecontract/include/hard_forks.hrl").
 
 -define(BENEFICIARY_PUBKEY, <<12345:?BENEFICIARY_PUB_BYTES/unit:8>>).
 -define(BOGUS_PREV_HASH, <<0:?BLOCK_HEADER_HASH_BYTES/unit:8>>).
@@ -44,6 +46,12 @@ groups() ->
     , {contracts, [sequence],
         [ contracts ]}
     ].
+
+init_per_suite(Config) ->
+    case aect_test_utils:latest_protocol_version() < ?IRIS_PROTOCOL_VSN of
+        true -> Config;
+        false -> {skip, aevm_deprecated}
+    end.
 
 %%%===================================================================
 %%% Setup

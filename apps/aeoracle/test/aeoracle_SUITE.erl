@@ -525,7 +525,20 @@ query_oracle_negative_dynamic_fee(Cfg) ->
     ok.
 
 query_oracle_type_check(_Cfg) ->
-    RFmt = aeb_heap:to_binary(word),
+    case aect_test_utils:latest_sophia_abi_version() of
+        ?ABI_AEVM_SOPHIA_1 ->
+            IntType = word,
+            StringType = string,
+            MkType = fun aeb_heap:to_binary/1,
+            MkVal = fun aeb_heap:to_binary/1;
+        ?ABI_FATE_SOPHIA_1 ->
+            IntType = integer,
+            StringType = string,
+            MkType = fun(X) -> iolist_to_binary(aeb_fate_encoding:serialize_type(X)) end,
+            MkVal = fun aeb_fate_encoding:serialize/1
+    end,
+
+    RFmt = MkType(IntType),
     F = fun(QFmt, Query, ABIVersion) ->
                 {OracleKey, S}  = register_oracle([], #{abi_version => ABIVersion,
                                                         query_format => QFmt,
@@ -539,10 +552,10 @@ query_oracle_type_check(_Cfg) ->
                 Tx = aeo_test_utils:query_tx(SenderKey, OracleId, #{query => Query}, S2),
                 aetx:process(Tx, Trees, Env)
         end,
-    Int = aeb_heap:to_binary(1),
-    IntFmt = aeb_heap:to_binary(word),
-    String = aeb_heap:to_binary(<<"foo">>),
-    StringFmt = aeb_heap:to_binary(string),
+    Int = MkVal(1),
+    IntFmt = MkType(IntType),
+    String = MkVal(<<"foo">>),
+    StringFmt = MkType(StringType),
     ABI = aect_test_utils:latest_sophia_abi_version(),
     ?assertEqual({error, bad_format}, F(StringFmt, Int, ABI)),
     ?assertEqual({error, bad_format}, F(StringFmt, <<123>>, ABI)),
@@ -706,8 +719,21 @@ query_response_fee_depends_on_response_size(Cfg) ->
     ok.
 
 query_response_type_check(_Cfg) ->
-    QFmt  = aeb_heap:to_binary(string),
-    Query = aeb_heap:to_binary(<<"who?">>),
+    case aect_test_utils:latest_sophia_abi_version() of
+        ?ABI_AEVM_SOPHIA_1 ->
+            IntType = word,
+            StringType = string,
+            MkType = fun aeb_heap:to_binary/1,
+            MkVal = fun aeb_heap:to_binary/1;
+        ?ABI_FATE_SOPHIA_1 ->
+            IntType = integer,
+            StringType = string,
+            MkType = fun(X) -> iolist_to_binary(aeb_fate_encoding:serialize_type(X)) end,
+            MkVal = fun aeb_fate_encoding:serialize/1
+    end,
+
+    QFmt  = MkType(StringType),
+    Query = MkVal(<<"who?">>),
     F = fun(RFmt, Resp, ABIVersion) ->
                 RegisterOpts = #{abi_version => ABIVersion,
                                  query_format => QFmt,
@@ -720,10 +746,10 @@ query_response_type_check(_Cfg) ->
                 Tx = aeo_test_utils:response_tx(OracleKey, ID, Resp, S),
                 aetx:process(Tx, Trees, Env)
         end,
-    Int = aeb_heap:to_binary(1),
-    IntFmt = aeb_heap:to_binary(word),
-    String = aeb_heap:to_binary(<<"foo">>),
-    StringFmt = aeb_heap:to_binary(string),
+    Int = MkVal(1),
+    IntFmt = MkType(IntType),
+    String = MkVal(<<"foo">>),
+    StringFmt = MkType(StringType),
     ABI = aect_test_utils:latest_sophia_abi_version(),
     ?assertEqual({error, bad_format}, F(StringFmt, Int, ABI)),
     ?assertEqual({error, bad_format}, F(StringFmt, <<123>>, ABI)),

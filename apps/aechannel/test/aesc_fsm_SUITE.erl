@@ -1312,7 +1312,7 @@ leave_reestablish_close_(Cfg) ->
     ok.
 
 leave_reestablish_responder_stays(Cfg) ->
-    Cfg1 = [?SLOGAN 
+    Cfg1 = [?SLOGAN
           , {responder_opts, #{keep_running => true } } | Cfg],
     leave_reestablish_close_(Cfg1).
 
@@ -2994,7 +2994,7 @@ await_min_depth_reached(#{fsm := Fsm}, TxHash, TxType, Timeout) ->
     receive
         {aesc_fsm, Fsm, #{ type := report
                          , tag  := info
-                         , info := #{ event   := min_depth_achieved 
+                         , info := #{ event   := min_depth_achieved
                                     , tx_hash := TxHash
                                     , type    := TxType} }} ->
             ok
@@ -3312,7 +3312,7 @@ apply_updates_modify_amount(Who, Delta, R) ->
             #{responder_amount := RAmt} = R,
             R#{responder_amount => RAmt + Delta}
     end.
-            
+
 role(Pubkey, #{pub               := MyKey
              , role              := Role}) ->
     case {Pubkey, Role} of
@@ -3468,8 +3468,7 @@ attach({Owner, OwnerPrivkey}, Contract, AuthFun, Args, Opts) ->
 attach_({Owner, OwnerPrivkey}, Src, ByteCode, TypeInfo, AuthFun, Args, Opts) ->
     {ok, Nonce} = rpc(dev1, aec_next_nonce, pick_for_account, [Owner]),
     Calldata = aega_test_utils:make_calldata(Src, "init", Args),
-    {ok, AuthFunHash} = aeb_aevm_abi:type_hash_from_function_name(list_to_binary(AuthFun),
-                                                                  TypeInfo),
+    {ok, AuthFunHash} = aega_test_utils:auth_fun_hash(list_to_binary(AuthFun), TypeInfo),
     Options1 = maps:merge(#{nonce => Nonce, code => ByteCode,
                             auth_fun => AuthFunHash, call_data => Calldata},
                           Opts),
@@ -3552,7 +3551,10 @@ account_type_(Pubkey) ->
     aec_accounts:type(Account).
 
 btc_auth(TxHash, Nonce, PrivKey) ->
-    Val = <<32:256, TxHash/binary, (list_to_integer(Nonce)):256>>,
+    Val = case aect_test_utils:latest_protocol_version() < ?IRIS_PROTOCOL_VSN of
+              true -> <<32:256, TxHash/binary, (list_to_integer(Nonce)):256>>;
+              false -> aeb_fate_encoding:serialize({tuple, {{bytes, TxHash}, list_to_integer(Nonce)}})
+          end,
     Sig0 = crypto:sign(ecdsa, sha256, {digest, aec_hash:hash(tx, Val)},
                        [PrivKey, secp256k1]),
     Sig  = aega_test_utils:to_hex_lit(64, aeu_crypto:ecdsa_from_der_sig(Sig0)),
@@ -4304,10 +4306,14 @@ set_debug(Bool, Config) when is_boolean(Bool) ->
 %% nonce out of it. It heavily relies on the state of the contract being
 %% { nonce : int, owner : bytes(64) }
 extract_nonce_from_btc_auth_store(Store) ->
-    #{<<0>> := Encoded0} = rpc(dev1, aect_contracts_store, contents, [Store]),
-    {ok, {Nonce, _}} = aeb_heap:from_binary({tuple, [word, {tuple, [word, word]}]},
-                                Encoded0),
-    Nonce.
+    case rpc(dev1, aect_contracts_store, contents, [Store]) of
+        #{<<0>> := EncodedHeap} ->
+            {ok, {Nonce, _}} = aeb_heap:from_binary({tuple, [word, {tuple, [word, word]}]},
+                                                    EncodedHeap),
+            Nonce;
+        #{<<0, 1>> := FateValue} = X ->
+            aeb_fate_encoding:deserialize(FateValue)
+    end.
 
 peek_message_queue(L, Debug) ->
     {messages, Msgs} = process_info(self(), messages),
@@ -4573,7 +4579,7 @@ deposit_with_failed_onchain(Cfg) ->
     {I1, _} = await_signing_request(deposit_tx, I, Cfg),
     basic_spend(initiator, % from
                 initiator, % to
-                1,         % some amount 
+                1,         % some amount
                 Cfg),
     ok = rpc(dev1, aesc_fsm, strict_checks, [FsmI, false]),
     ok = rpc(dev1, aesc_fsm, strict_checks, [FsmR, false]),
@@ -4589,7 +4595,7 @@ deposit_with_failed_onchain(Cfg) ->
     ok = rpc(dev1, aesc_fsm, strict_checks, [FsmI, true]),
     ok = rpc(dev1, aesc_fsm, strict_checks, [FsmR, true]),
     % Verify changes of fsm state
-    
+
     % Done
     assert_empty_msgq(true),
     check_info(20),
@@ -4618,7 +4624,7 @@ withdraw_with_failed_onchain(Cfg) ->
     {I1, _} = await_signing_request(withdraw_tx, I, Cfg),
     basic_spend(initiator, % from
                 initiator, % to
-                1,         % some amount 
+                1,         % some amount
                 Cfg),
     {R1, _} = await_signing_request(withdraw_created, R, Cfg),
     _SignedTx = await_on_chain_report(R1, #{info => withdraw_created},  ?TIMEOUT),
@@ -4632,7 +4638,7 @@ withdraw_with_failed_onchain(Cfg) ->
     ok = rpc(dev1, aesc_fsm, strict_checks, [FsmI, true]),
     ok = rpc(dev1, aesc_fsm, strict_checks, [FsmR, true]),
     % Verify changes of fsm state
-    
+
     % Done
     assert_empty_msgq(true),
     check_info(20),
@@ -4655,7 +4661,7 @@ close_mutual_with_failed_onchain(Cfg) ->
     {I1, _SignedShutdownTx} = await_signing_request(shutdown, I, Cfg),
     basic_spend(initiator, % from
                 initiator, % to
-                1,         % some amount 
+                1,         % some amount
                 Cfg),
     {R1, _CoSignedShutdownTx} = await_signing_request(shutdown_ack, R, Cfg),
     _CoSignedShutdownTx = await_on_chain_report(R1, ?TIMEOUT), % same tx
@@ -4694,7 +4700,7 @@ close_solo_with_failed_onchain(Cfg) ->
             ok = rpc(dev1, aesc_fsm, strict_checks, [FsmI, false]),
             basic_spend(initiator, % from
                         initiator, % to
-                        1,         % some amount 
+                        1,         % some amount
                         Cfg),
             {I1, _SignedCloseSoloTx} = await_signing_request(close_solo_tx, I, Cfg),
             {ok, _} = receive_from_fsm(conflict, I1, #{info => #{ error_code => 5
@@ -4728,7 +4734,7 @@ snapshot_with_failed_onchain(Cfg) ->
             ok = rpc(dev1, aesc_fsm, snapshot_solo, [FsmI, #{}]),
             basic_spend(initiator, % from
                         initiator, % to
-                        1,         % some amount 
+                        1,         % some amount
                         Cfg),
             {I2, _SignedSnapshotTx} = await_signing_request(snapshot_solo_tx, I1, Cfg),
             %% because we made an off-chain update, the latest stable state is the one
@@ -4783,7 +4789,7 @@ slash_with_failed_onchain(Cfg) ->
             ok = rpc(dev1, aesc_fsm, slash, [FsmI, #{}]),
             basic_spend(initiator, % from
                         initiator, % to
-                        1,         % some amount 
+                        1,         % some amount
                         Cfg),
             {I3, _SignedCloseSoloTx} = await_signing_request(slash_tx, I2, Cfg),
             %% because we made an off-chain update, the latest stable state is the one
@@ -4791,7 +4797,7 @@ slash_with_failed_onchain(Cfg) ->
             {ok, _} = receive_from_fsm(conflict, I3, #{info => #{ error_code => 5
                                                                 , round => 3}},
                                       ?TIMEOUT, Debug),
-            
+
             % Done. Check if we can still make a valid slash and then settle the
             % channel
             ok = rpc(dev1, aesc_fsm, slash, [FsmI, #{}]),
@@ -4868,7 +4874,7 @@ settle_with_failed_onchain(Cfg) ->
             ok = rpc(dev1, aesc_fsm, settle, [FsmI, #{}]),
             basic_spend(initiator, % from
                         initiator, % to
-                        1,         % some amount 
+                        1,         % some amount
                         Cfg),
             {I2, _SignedCloseSoloTx} = await_signing_request(settle_tx, I1, Cfg),
             %% because we made an off-chain update, the latest stable state is the one
@@ -4911,7 +4917,7 @@ force_progress_triggers_slash(Cfg) ->
     {aesc_force_progress_tx, FP0} = aetx:specialize_callback(AetxFP0),
     FP = aesc_force_progress_tx:set_payload(FP0, <<>>),
     AetxFP = aetx:new(aesc_force_progress_tx, FP),
-    
+
 
     {ok, _} = receive_from_fsm(info, R2, fun aborted_update/1, ?TIMEOUT, Debug),
 
@@ -5125,7 +5131,7 @@ force_progress_with_failed_onchain(Cfg) ->
                 aect_test_utils:encode_call_data(aect_test_utils:sophia_version(), BinSrc,
                                                 "tick", []),
             FPArgs = #{ contract    => ContractPubkey
-                      , abi_version => aect_test_utils:abi_version() 
+                      , abi_version => aect_test_utils:abi_version()
                       , amount      => 10
                       , call_data   => CallData
                       , gas         => 1000000
@@ -5133,7 +5139,7 @@ force_progress_with_failed_onchain(Cfg) ->
             ok = rpc(dev1, aesc_fsm, force_progress, [FsmI, FPArgs]),
             basic_spend(initiator, % from
                         initiator, % to
-                        1,         % some amount 
+                        1,         % some amount
                         Cfg),
             {I4, _} = await_signing_request(force_progress_tx, I3, Cfg),
             {ok, _} = receive_from_fsm(conflict, I4, #{info => #{ error_code => 5
@@ -5184,7 +5190,7 @@ create_contract(ContractName, InitArgs, Deposit,
         aect_test_utils:encode_call_data(aect_test_utils:sophia_version(), BinSrc,
                                          "init", InitArgs),
     CreateArgs = #{ vm_version  => aect_test_utils:vm_version()
-                  , abi_version => aect_test_utils:abi_version() 
+                  , abi_version => aect_test_utils:abi_version()
                   , deposit     => Deposit
                   , code        => BinCode
                   , call_data   => CallData},
@@ -5208,7 +5214,7 @@ call_contract(ContractId,
         aect_test_utils:encode_call_data(aect_test_utils:sophia_version(), BinSrc,
                                          FunName, FunArgs),
     CallArgs = #{ contract    => ContractId
-                , abi_version => aect_test_utils:abi_version() 
+                , abi_version => aect_test_utils:abi_version()
                 , amount      => Amount
                 , call_data   => CallData},
     aesc_fsm:upd_call_contract(FsmC, CallArgs),
@@ -5228,7 +5234,7 @@ trigger_force_progress(ContractPubkey,
         aect_test_utils:encode_call_data(aect_test_utils:sophia_version(), BinSrc,
                                          FunName, FunArgs),
     FPArgs = #{ contract    => ContractPubkey
-              , abi_version => aect_test_utils:abi_version() 
+              , abi_version => aect_test_utils:abi_version()
               , amount      => Amount
               , call_data   => CallData
               , gas         => 1000000
@@ -5369,7 +5375,7 @@ auth_contract_props(btc_auth) ->
 
 no_missing_tx(Cfg0) ->
     Debug = get_debug(Cfg0),
-    Cfg = [?SLOGAN 
+    Cfg = [?SLOGAN
           , {responder_opts, #{keep_running => true } } | Cfg0],
     assert_empty_msgq(Debug),
     {I0, R0, Spec0} = channel_spec(Cfg),
@@ -5396,7 +5402,7 @@ no_missing_tx(Cfg0) ->
 
 missing_close_tx(Cfg0) ->
     Debug = get_debug(Cfg0),
-    Cfg = [?SLOGAN 
+    Cfg = [?SLOGAN
           , {responder_opts, #{keep_running => true } } | Cfg0],
     assert_empty_msgq(Debug),
     {I0, R0, Spec0} = channel_spec(Cfg),
@@ -5435,7 +5441,7 @@ missing_close_tx(Cfg0) ->
 
 missing_snapshot_tx(Cfg0) ->
     Debug = get_debug(Cfg0),
-    Cfg = [?SLOGAN 
+    Cfg = [?SLOGAN
           , {responder_opts, #{keep_running => true } } | Cfg0],
     assert_empty_msgq(Debug),
     {I0, R0, Spec0} = channel_spec(Cfg),
@@ -5477,7 +5483,7 @@ missing_snapshot_tx(Cfg0) ->
 
 missing_snapshot_and_close_tx(Cfg0) ->
     Debug = get_debug(Cfg0),
-    Cfg = [?SLOGAN 
+    Cfg = [?SLOGAN
           , {responder_opts, #{keep_running => true } } | Cfg0],
     assert_empty_msgq(Debug),
     {I0, R0, Spec0} = channel_spec(Cfg),
@@ -5528,7 +5534,7 @@ missing_snapshot_and_close_tx(Cfg0) ->
 
 missing_force_progress_tx(Cfg0) ->
     Debug = get_debug(Cfg0),
-    Cfg = [?SLOGAN 
+    Cfg = [?SLOGAN
           , {responder_opts, #{keep_running => true } } | Cfg0],
     assert_empty_msgq(Debug),
     {I0, R0, Spec0} = channel_spec(Cfg),
@@ -5567,7 +5573,7 @@ missing_force_progress_tx(Cfg0) ->
 
 missing_couple_force_progress_tx(Cfg0) ->
     Debug = get_debug(Cfg0),
-    Cfg = [?SLOGAN 
+    Cfg = [?SLOGAN
           , {responder_opts, #{keep_running => true } } | Cfg0],
     assert_empty_msgq(Debug),
     {I0, R0, Spec0} = channel_spec(Cfg),
@@ -5575,7 +5581,7 @@ missing_couple_force_progress_tx(Cfg0) ->
     #{ i := #{ channel_id := _ChannelId
              , pub := PubI
              , fsm := FsmI } = I
-     , r := #{ fsm := _FsmR 
+     , r := #{ fsm := _FsmR
              , pub := PubR } = R} = create_channel_from_spec(I0, R0, Spec, ?PORT, Debug, Cfg),
     {I1, R1, ContractPubkey} = create_contract(counter, ["42"], 10, I, R, Cfg),
     {I2, R2} = call_contract(ContractPubkey, counter, "tick", [], 10, I1, R1, Cfg),
@@ -5623,7 +5629,7 @@ missing_couple_force_progress_tx(Cfg0) ->
 
 missing_close_tx_and_force_progress(Cfg0) ->
     Debug = get_debug(Cfg0),
-    Cfg = [?SLOGAN 
+    Cfg = [?SLOGAN
           , {responder_opts, #{keep_running => true } } | Cfg0],
     assert_empty_msgq(Debug),
     {I0, R0, Spec0} = channel_spec(Cfg),
@@ -5673,7 +5679,7 @@ missing_close_tx_and_force_progress(Cfg0) ->
 
 missing_malicious_close(Cfg0) ->
     Debug = get_debug(Cfg0),
-    Cfg = [?SLOGAN 
+    Cfg = [?SLOGAN
           , {responder_opts, #{keep_running => true } } | Cfg0],
     assert_empty_msgq(Debug),
     #{ i := #{ fsm := FsmI
@@ -5718,7 +5724,7 @@ missing_malicious_close(Cfg0) ->
 
 missing_malicious_forced_progress(Cfg0) ->
     Debug = get_debug(Cfg0),
-    Cfg = [?SLOGAN 
+    Cfg = [?SLOGAN
           , {responder_opts, #{keep_running => true } } | Cfg0],
     assert_empty_msgq(Debug),
     #{ i := #{ channel_id := _ChannelId
@@ -5759,7 +5765,7 @@ missing_malicious_forced_progress(Cfg0) ->
 
 missing_malicious_snapshot(Cfg0) ->
     Debug = get_debug(Cfg0),
-    Cfg = [?SLOGAN 
+    Cfg = [?SLOGAN
           , {responder_opts, #{keep_running => true } } | Cfg0],
     assert_empty_msgq(Debug),
     {I0, R0, Spec0} = channel_spec(Cfg),
@@ -5809,7 +5815,7 @@ missing_malicious_snapshot(Cfg0) ->
 
 missing_malicious_snapshot_and_close_solo_based_on_it(Cfg0) ->
     Debug = get_debug(Cfg0),
-    Cfg = [?SLOGAN 
+    Cfg = [?SLOGAN
           , {responder_opts, #{keep_running => true } } | Cfg0],
     assert_empty_msgq(Debug),
     {I0, R0, Spec0} = channel_spec(Cfg),
@@ -5873,7 +5879,7 @@ missing_malicious_snapshot_and_close_solo_based_on_it(Cfg0) ->
 
 missing_malicious_snapshot_and_fp_based_on_it(Cfg0) ->
     Debug = get_debug(Cfg0),
-    Cfg = [?SLOGAN 
+    Cfg = [?SLOGAN
           , {responder_opts, #{keep_running => true } } | Cfg0],
     assert_empty_msgq(Debug),
     {I0, R0, Spec0} = channel_spec(Cfg),
