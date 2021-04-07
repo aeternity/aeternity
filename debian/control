@@ -1,5 +1,6 @@
 Source: aeternity-node
 Section: misc
+Priority: optional
 Maintainer: Aeternity Team <info@aeternity.com>
 Build-Depends: debhelper, ncurses-dev, libssl-dev, git, curl,
 	       autoconf, build-essential,
