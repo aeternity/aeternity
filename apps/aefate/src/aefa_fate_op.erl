@@ -181,10 +181,12 @@
 -include_lib("aebytecode/include/aeb_fate_data.hrl").
 -include("../../aecontract/include/aecontract.hrl").
 -include("../../aecore/include/blocks.hrl").
+-include("../../aecontract/include/hard_forks.hrl").
 
 -define(AVAILABLE_FROM(When, ES),
     aefa_engine_state:vm_version(ES) >= When
         orelse aefa_fate:abort({primop_error, ?FUNCTION_NAME, not_supported}, ES)).
+-define(PRE_IRIS_MAP_ORDERING, {?MODULE, pre_iris_map_ordering}).
 
 %% ------------------------------------------------------------------------
 %% Operations
@@ -614,16 +616,43 @@ map_to_list(Arg0, Arg1, EngineState) ->
     {Map, ES1} = get_op_arg(Arg1, EngineState),
     case Map of
         _ when ?IS_FATE_MAP(Map) ->
-            Tuples = [aeb_fate_data:make_tuple({K, V})
-                      || {K, V} <- lists:keysort(1, maps:to_list(?FATE_MAP_VALUE(Map)))],
-            ES2 = write(Arg0, aeb_fate_data:make_list(Tuples), ES1),
+            List = map_to_sorted_list(Map, ES1),
+            ES2 = write(Arg0, List, ES1),
             Size = map_size(?FATE_MAP_VALUE(Map)),
             aefa_engine_state:spend_gas_for_new_cells(Size * 2, ES2);
         ?FATE_STORE_MAP(Cache, MapId) ->
-            {List, ES2} = store_map_to_list(Cache, MapId, ES1),
+            {CleanMap, ES2} = store_map_get_clean(Cache, MapId, ES1),
+            List = map_to_sorted_list(CleanMap, ES2),
             ES3 = write(Arg0, List, ES2),
             Size = length(?FATE_LIST_VALUE(List)),
             aefa_engine_state:spend_gas_for_new_cells(Size * 2, ES3)
+    end.
+
+map_to_sorted_list(Map, ES) ->
+    List = maps:to_list(?FATE_MAP_VALUE(Map)),
+    ConsensusVersion = aefa_engine_state:consensus_version(ES),
+    Tuples = if
+        ConsensusVersion < ?IRIS_PROTOCOL_VSN ->
+            MapOrdering = pre_iris_map_ordering(),
+            case maps:get(?FATE_MAP_VALUE(Map), MapOrdering, default) of
+                default ->
+                    [aeb_fate_data:make_tuple(KV)
+                     || KV <- lists:keysort(1, List)];
+                Ordering -> Ordering
+            end;
+        true ->
+            [aeb_fate_data:make_tuple(KV)
+             || KV <- lists:sort(fun ({K1,_}, {K2,_}) -> aeb_fate_data:lt(K1, K2) end, List)]
+    end,
+    aeb_fate_data:make_list(Tuples).
+
+pre_iris_map_ordering() ->
+    case persistent_term:get(?PRE_IRIS_MAP_ORDERING, notloaded) of
+        notloaded ->
+            MapOrdering = aec_fork_block_settings:pre_iris_map_ordering(),
+            persistent_term:put(?PRE_IRIS_MAP_ORDERING, MapOrdering),
+            MapOrdering;
+        MapOrdering -> MapOrdering
     end.
 
 map_size_(Arg0, Arg1, EngineState) ->
@@ -2588,7 +2617,7 @@ store_map_size(Cache, MapId, ES) ->
     ES2 = aefa_engine_state:set_stores(Store1, ES1),
     {maps:fold(Delta, Size, Cache), ES2}.
 
-store_map_to_list(Cache, MapId, ES) ->
+store_map_get_clean(Cache, MapId, ES) ->
     Pubkey              = aefa_engine_state:current_contract(ES),
     {Store, ES1}        = aefa_fate:ensure_contract_store(Pubkey, ES),
     {StoreList, Store1} = aefa_stores:store_map_to_list(Pubkey, MapId, Store),
@@ -2597,7 +2626,7 @@ store_map_to_list(Cache, MapId, ES) ->
              (Key, Val, M)                 -> maps:put(Key, Val, M) end,
     Map = maps:fold(Upd, StoreMap, Cache),
     ES2 = aefa_engine_state:set_stores(Store1, ES1),
-    {aeb_fate_data:make_list([ ?FATE_TUPLE(KV) || KV <- lists:keysort(1,maps:to_list(Map)) ]), ES2}.
+    {Map, ES2}.
 
 %% ------------------------------------------------------
 %% Comparison instructions

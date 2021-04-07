@@ -9,7 +9,8 @@
          lima_accounts/0,
          lima_extra_accounts/0,
          lima_contracts/0,
-         block_whitelist/0
+         block_whitelist/0,
+         pre_iris_map_ordering/0
         ]).
 
 -export([ accounts_file_name/1
@@ -77,10 +78,30 @@ block_whitelist() ->
     end.
 
 whitelist_filename() ->
+    DefaultPath = filename:join([aeu_env:data_dir(aecore), whitelist_json_file()]),
     {ok, F} = aeu_env:find_config([<<"sync">>, <<"whitelist_file">>],
                                   [user_config,
-                                   {value, whitelist_json_file()}]),
+                                   {value, DefaultPath}]),
     filename:absname(setup:expand_value(aecore, F)).
+
+pre_iris_map_ordering() ->
+    P = filename:join([aeu_env:data_dir(aecore), pre_iris_map_ordering_file()]),
+    case filelib:is_file(P) of
+        false ->
+            lager:debug("pre IRIS map ordering file not present"),
+            #{};
+        true ->
+            lager:debug("Loading pre IRIS map ordering"),
+            {ok, Data} = file:read_file(P),
+            MapOrdering = maps:from_list([
+                begin
+                    {contract_bytearray, K2} = aeser_api_encoder:decode(K),
+                    {contract_bytearray, V2} = aeser_api_encoder:decode(V),
+                    {aeb_fate_encoding:deserialize(K2), aeb_fate_encoding:deserialize(V2)}
+                end || {K,V} <- maps:to_list(jsx:decode(Data, [return_maps]))]),
+            lager:debug("Loaded ~p pre iris map orderings", [maps:size(MapOrdering)]),
+            MapOrdering
+    end.
 
 -spec preset_accounts(accounts | extra_accounts, aec_hard_forks:protocol_vsn(), atom()) -> list().
 preset_accounts(Type, Release, ErrorMsg) ->
@@ -245,6 +266,9 @@ contracts_json_file() ->
 whitelist_json_file() ->
     ".block_whitelist.json".
 
+pre_iris_map_ordering_file() ->
+    ".pre_iris_map_ordering.json".
+
 -else.
 accounts_json_file() ->
     case aec_governance:get_network_id() of
@@ -272,5 +296,12 @@ whitelist_json_file() ->
         <<"ae_mainnet">> -> ".block_whitelist.json";
         <<"ae_uat">>     -> ".block_whitelist_uat.json";
         _                -> ".block_whitelist_test.json"
+    end.
+
+pre_iris_map_ordering_file() ->
+    case aec_governance:get_network_id() of
+        <<"ae_mainnet">> -> ".pre_iris_map_ordering.json";
+        <<"ae_uat">>     -> ".pre_iris_map_ordering_uat.json";
+        _                -> ".pre_iris_map_ordering_test.json"
     end.
 -endif.

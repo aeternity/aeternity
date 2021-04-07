@@ -31,6 +31,7 @@
         , stores/1
         , trace/1
         , vm_version/1
+        , consensus_version/1
         ]).
 
 %% Setters
@@ -662,3 +663,9 @@ set_trace(X, ES) ->
 -spec vm_version(state()) -> non_neg_integer().
 vm_version(#es{vm_version = X}) ->
     X.
+
+%%%------------------
+-spec consensus_version(state()) -> non_neg_integer().
+consensus_version(#es{chain_api = Api}) ->
+    TxEnv = aefa_chain_api:tx_env(Api),
+    aetx_env:consensus_version(TxEnv).
