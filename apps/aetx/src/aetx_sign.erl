@@ -24,6 +24,7 @@
          tx/1,
          innermost_tx/1,
          verify/3,
+         verify/4,
          verify_w_env/3,
          verify_half_signed/3,
          verify_one_pubkey/3,
@@ -110,7 +111,7 @@ signatures(#signed_tx{signatures = Sigs}) ->
 verify_w_env(#signed_tx{tx = Tx, signatures = Sigs}, Trees, TxEnv) ->
     Bin      = aetx:serialize_to_binary(Tx),
     Protocol = aetx_env:consensus_version(TxEnv),
-    Prefix = 
+    Prefix =
         case aetx_env:payer(TxEnv) of
             undefined -> undefined;
             P when is_binary(P) -> <<"-inner_tx">>
@@ -127,11 +128,16 @@ verify_w_env(#signed_tx{tx = Tx, signatures = Sigs}, Trees, TxEnv) ->
 %% one being checked
 -spec verify(signed_tx(), aec_trees:trees(), aec_hard_forks:protocol_vsn()) ->
     ok | {error, signature_check_failed}.
-verify(#signed_tx{tx = Tx, signatures = Sigs}, Trees, Protocol) ->
+verify(STx, Trees, Protocol) ->
+    verify(STx, Trees, Protocol, undefined).
+
+-spec verify(signed_tx(), aec_trees:trees(), aec_hard_forks:protocol_vsn(), undefined | binary()) ->
+    ok | {error, signature_check_failed}.
+verify(#signed_tx{tx = Tx, signatures = Sigs}, Trees, Protocol, Prefix) ->
     Bin = aetx:serialize_to_binary(Tx),
     case aetx:signers(Tx, Trees) of
         {ok, Signers} ->
-            verify_signatures(Signers, Bin, Sigs, Protocol);
+            verify_signatures(Signers, Bin, Sigs, Protocol, Prefix);
         {error, _Reason} ->
             {error, signature_check_failed}
     end.
