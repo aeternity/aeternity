@@ -166,12 +166,20 @@ aefa_stores(#es{ chain_api = APIState }) ->
 
 -spec finalize(state()) -> {ok, state()} | {error, out_of_gas}.
 finalize(#es{chain_api = API, stores = Stores} = ES) ->
-    Gas = gas(ES),
     Aefa_stores = aefa_stores(ES),
-    case Aefa_stores:finalize(API, Gas, Stores) of
-        {ok, Stores1, GasLeft} ->
-            {ok, ES#es{chain_api = Stores1, gas = GasLeft}};
-        {error, out_of_gas} ->
+    FixMeMeasureLater = {1, 3},
+    try
+        ES1 = lists:foldl(fun(Val, ES0) -> spend_gas_for_traversal(Val, FixMeMeasureLater, ES0) end,
+                          ES, aefa_stores:terms_to_finalize(Stores)),
+        Gas = gas(ES1),
+        case Aefa_stores:finalize(API, Gas, Stores) of
+            {ok, Stores1, GasLeft} ->
+                {ok, ES1#es{chain_api = Stores1, gas = GasLeft}};
+            {error, out_of_gas} ->
+                {error, out_of_gas}
+        end
+    catch
+        throw:out_of_gas ->
             {error, out_of_gas}
     end.
 
