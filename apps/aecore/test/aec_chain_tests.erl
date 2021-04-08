@@ -654,7 +654,7 @@ total_difficulty_in_chain() ->
 forking_test_() ->
     {foreach,
      fun() ->
-             aec_test_utils:start_chain_db(),
+             aec_test_utils:start_chain_db(disc),
              setup_meck_and_keys()
      end,
      fun(TmpDir) ->
@@ -694,7 +694,7 @@ fork_common(EasyChain, HardChain) ->
     ok.
 
 fork_common_block(EasyChain, TopHashEasy, HardChain, TopHashHard) ->
-    restart_chain_db(),
+    aec_db:clear_db(),
     %% The second chain should take over
     ok = write_blocks_to_chain(EasyChain),
     ?assertEqual(TopHashEasy, top_block_hash()),
@@ -703,7 +703,7 @@ fork_common_block(EasyChain, TopHashEasy, HardChain, TopHashHard) ->
     ?assertEqual(TopHashHard, top_block_hash()),
     fork_test_chain_ends_and_migration([TopHashEasy, TopHashHard], HardChain),
 
-    restart_chain_db(),
+    aec_db:clear_db(),
     %% The second chain should not take over
     ok = write_blocks_to_chain(HardChain),
     ?assertEqual(TopHashHard, top_block_hash()),
