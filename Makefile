@@ -26,6 +26,7 @@ SWAGGER_ENDPOINTS_SPEC = apps/aeutils/src/endpoints.erl
 OAS_ENDPOINTS_SPEC = apps/aeutils/src/oas_endpoints.erl
 OAS_YAML = apps/aehttp/priv/oas3.yaml
 
+#CONTRACT_FILE = apps/aehyperchains/src/contracts/SimpleElection.aes
 CONTRACT_FILE = SimpleElection.aes
 CONTRACT_OBJECT = data/aehyperchains/StakingContract.json
 

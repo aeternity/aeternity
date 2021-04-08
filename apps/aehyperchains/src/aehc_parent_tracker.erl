@@ -344,7 +344,7 @@ data(Connector, Args, Pointer) ->
     #data{
         connector = Connector,
         args = Args,
-        pointer = Pointer,
+        pointer = aeconnector:from_hex(Pointer),
         queue = queue:new()
     }.
 
