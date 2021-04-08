@@ -377,6 +377,7 @@ new_unmined_key_node(PrevNode, PrevKeyNode, Height, Miner, Beneficiary, Protocol
 
 keyblocks_for_unmined_keyblock_adjust() ->
     aec_governance:key_blocks_to_check_difficulty_count().
+
 adjust_unmined_keyblock(Block, AdjHeaders) ->
     Header = aec_blocks:to_header(Block),
     DeltaHeight = aec_governance:key_blocks_to_check_difficulty_count() + 1,

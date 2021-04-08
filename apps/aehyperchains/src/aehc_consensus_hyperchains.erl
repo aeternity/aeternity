@@ -406,7 +406,6 @@ ensure_staking_contract_on_consensus_switch(Trees, TxEnv) ->
     end.
 
 state_pre_transform_key_node(KeyNode, _PrevNode, PrevKeyNode, Trees1) ->
-    %% NOTE ---------------
     Header = aec_block_insertion:node_header(KeyNode),
     TxEnv = node_tx_env(KeyNode),
     case is_hc_pos_header(Header) of
@@ -438,6 +437,7 @@ state_pre_transform_key_node(KeyNode, _PrevNode, PrevKeyNode, Trees1) ->
             %% Perform the leader election
             ParentHash = get_pos_header_parent_hash(Header),
             Commitments = aehc_parent_mng:candidates(ParentHash),
+%%            lager:info("~nParent: ~p ~p~n",[ParentHash, Commitments]),
             %% TODO: actually hardcode the encoding
             Candidates = ["[", lists:join(", ", [aeser_api_encoder:encode(account_pubkey, aehc_commitment_header:hc_delegate(aehc_commitment:header(X))) || X <- Commitments]), "]"],
             Call = lists:flatten(io_lib:format("get_leader(~s, #~s)", [Candidates, lists:flatten([integer_to_list(X,16) || <<X:4>> <= ParentHash])])),
@@ -609,7 +609,8 @@ new_pos_key_node(PrevNode, PrevKeyNode, Height, Miner, Beneficiary, Protocol, In
     %%       When handling PoGF the commitment point is in a different place than usual
     ok = aehc_utils:submit_commitment(PrevKeyNode, Miner), _ = aehc_utils:confirm_commitment(),
     %% TODO: Miner vs Delegate, Which shall register?
-    ParentBlock = aehc_parent_mng:pop(),
+    {_, ParentBlock} = aehc_parent_mng:pop(),
+
     Seal = create_pos_pow_field(aehc_parent_block:hash_block(ParentBlock), ?FAKE_SIGNATURE),
     Header = aec_headers:new_key_header(Height,
                            aec_block_insertion:node_hash(PrevNode),
@@ -623,7 +624,14 @@ new_pos_key_node(PrevNode, PrevKeyNode, Height, Miner, Beneficiary, Protocol, In
                            aeu_time:now_in_msecs(),
                            InfoField,
                            Protocol),
-    aec_chain_state:wrap_header(Header, ?FAKE_BLOCK_HASH).
+    R = aec_chain_state:wrap_header(Header, ?FAKE_BLOCK_HASH),
+    lager:info("~nThe new keyblock: (hash: ~p) (time: ~p) (miner: ~p)~n",
+        [
+            aeser_api_encoder:encode(key_block_hash, aec_headers:prev_key_hash(Header)),
+            aec_headers:time_in_secs(Header),
+            aeser_api_encoder:encode(account_pubkey, aec_headers:miner(Header))
+        ]),
+    R.
 
 keyblocks_for_unmined_keyblock_adjust() ->
     M = fallback_consensus(),
