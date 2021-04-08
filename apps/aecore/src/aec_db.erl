@@ -575,8 +575,8 @@ rocks_iterate_from_to_loop(I, {ok, K, V}, Fun, Acc) ->
                 rocksdb:iterator_move(I, next),
                 Fun,
                 Acc2
-            );
-        stop -> Acc
+            )%;  % Uncomment when used
+        %stop -> Acc
     end;
 rocks_iterate_from_to_loop(_I, _, _, Acc) -> Acc.
 
