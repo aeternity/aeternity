@@ -492,15 +492,20 @@ spend_gas_for_traversal(Term, Cost, ES) ->
                               {non_neg_integer(), pos_integer()},
                               fun((integer()) -> aeb_fate_data:fate_type()),
                               state()) -> state().
-spend_gas_for_traversal(Term, {P, Q}, Unfold, ES = #es{gas = Gas}) ->
-    try
-        case gas_traversal(Gas * Q, P, Unfold, Term) of
-            GasLeft when GasLeft >= 0 -> ES#es{gas = GasLeft div Q};
-            _                         -> aefa_fate:abort(out_of_gas, ES)
-        end
-    catch
-        throw:out_of_gas ->
-            aefa_fate:abort(out_of_gas, ES)
+spend_gas_for_traversal(Term, {P, Q}, Unfold, ES = #es{gas = Gas, chain_api = APIState}) ->
+    Protocol = aetx_env:consensus_version(aefa_chain_api:tx_env(APIState)),
+    case Protocol < ?IRIS_PROTOCOL_VSN of
+        true  -> ES;
+        false ->
+            try
+                case gas_traversal(Gas * Q, P, Unfold, Term) of
+                    GasLeft when GasLeft >= 0 -> ES#es{gas = GasLeft div Q};
+                    _                         -> aefa_fate:abort(out_of_gas, ES)
+                end
+            catch
+                throw:out_of_gas ->
+                    aefa_fate:abort(out_of_gas, ES)
+            end
     end.
 
 gas_traversal(Gas, _Cost, _Unfold, _T) when Gas < 0 -> throw(out_of_gas);
