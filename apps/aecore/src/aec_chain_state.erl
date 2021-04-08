@@ -90,6 +90,7 @@
         , get_fork_result/2
         , get_info_field/2
         , ensure_chain_ends/0
+        , grant_fees/5
         ]).
 
 -import(aetx_env, [no_events/0]).
