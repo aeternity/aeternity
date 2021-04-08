@@ -89,7 +89,7 @@ run_with_cache(Spec, Env, Cache) ->
 
 run(Spec, Env) ->
     try execute(setup_engine(Spec, Env)) of
-        Res -> {ok, Res}
+        ES -> {ok, ES}
     catch
         throw:{?MODULE, revert, S, ES} -> {revert, S, ES};
         throw:{?MODULE, E, ES} -> {error, E, ES}
@@ -669,19 +669,23 @@ unfold_store_maps_in_args(Arity, ES) ->
         aefa_engine_state:set_accumulator_stack(Stack1 ++ Rest, ES1)).
 
 unfold_store_maps(Val, ES) ->
+    FixMeMeasureThis = {1, 3},
+    ES1 = aefa_engine_state:spend_gas_for_traversal(Val, FixMeMeasureThis, ES),
     case aeb_fate_maps:has_store_maps(Val) of
         true ->
-            Pubkey = aefa_engine_state:current_contract(ES),
-            {Store, ES1} = ensure_contract_store(Pubkey, ES),
+            Pubkey = aefa_engine_state:current_contract(ES1),
+            {Store, ES2} = ensure_contract_store(Pubkey, ES1),
             Store1 = aefa_stores:cache_map_metadata(Pubkey, Store),
-            ES2    = aefa_engine_state:set_stores(Store1, ES1),
+            ES3    = aefa_engine_state:set_stores(Store1, ES2),
             Unfold = fun(Id) ->
                         {List, _Store2} = aefa_stores:store_map_to_list(Pubkey, Id, Store1),
                         maps:from_list(List)
                      end,
-            {aeb_fate_maps:unfold_store_maps(Unfold, Val), ES2};
+            FixMeAlsoMeasureThis = {1, 1},
+            ES4 = aefa_engine_state:spend_gas_for_traversal(Val, FixMeAlsoMeasureThis, Unfold, ES3),
+            {aeb_fate_maps:unfold_store_maps(Unfold, Val), ES4};
         false ->
-            {Val, ES}
+            {Val, ES1}
     end.
 
 %% ------------------------------------------------------

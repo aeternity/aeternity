@@ -80,6 +80,8 @@
         , push_return_type_check/4
         , spend_gas/2
         , spend_gas_for_new_cells/2
+        , spend_gas_for_traversal/3
+        , spend_gas_for_traversal/4
         , update_for_remote_call/5
         ]).
 
@@ -468,6 +470,70 @@ spend_gas_for_new_cells(NewCells, #es{ created_cells = Cells } = ES) ->
     TotalCells = Cells + NewCells,
     CellCost = 1 + (TotalCells bsr 10),
     spend_gas(NewCells * CellCost, ES#es{ created_cells = TotalCells }).
+
+%% As spend_gas_for_traversal/4, but do not look inside store maps.
+-spec spend_gas_for_traversal(aeb_fate_data:fate_type(), {non_neg_integer(), pos_integer()}, state()) -> state().
+spend_gas_for_traversal(Term, Cost, ES) ->
+    spend_gas_for_traversal(Term, Cost, fun(_) -> ?FATE_UNIT end, ES).
+
+%% Call this before deep traversals of fate terms to make sure there is enough
+%% gas. Throws an out of gas exception if there's not. Parameterised by the gas
+%% cost (as a rational number) of traversing one node in the term, and an
+%% unfolding function for store maps.
+-spec spend_gas_for_traversal(aeb_fate_data:fate_type(),
+                              {non_neg_integer(), pos_integer()},
+                              fun((integer()) -> aeb_fate_data:fate_type()),
+                              state()) -> state().
+spend_gas_for_traversal(Term, {P, Q}, Unfold, ES = #es{gas = Gas}) ->
+    try
+        case gas_traversal(Gas * Q, P, Unfold, Term) of
+            GasLeft when GasLeft >= 0 -> ES#es{gas = GasLeft div Q};
+            _                         -> aefa_fate:abort(out_of_gas, ES)
+        end
+    catch
+        throw:out_of_gas ->
+            aefa_fate:abort(out_of_gas, ES)
+    end.
+
+gas_traversal(Gas, _Cost, _Unfold, _T) when Gas < 0 -> throw(out_of_gas);
+gas_traversal(Gas, Cost, Unfold, T) -> gas_traversal_t(Gas, Cost, Unfold, T).
+
+gas_traversal_t(Gas, Cost, _Unfold, ?FATE_MAP_TOMBSTONE) -> Gas - Cost;
+gas_traversal_t(Gas, Cost, _Unfold, ?FATE_TRUE         ) -> Gas - Cost;
+gas_traversal_t(Gas, Cost, _Unfold, ?FATE_FALSE        ) -> Gas - Cost;
+gas_traversal_t(Gas, Cost, _Unfold, ?FATE_UNIT         ) -> Gas - Cost;
+gas_traversal_t(Gas, Cost, _Unfold, ?FATE_BITS(_)      ) -> Gas - Cost;
+gas_traversal_t(Gas, Cost, _Unfold, ?FATE_BYTES(_)     ) -> Gas - Cost;
+gas_traversal_t(Gas, Cost, _Unfold, ?FATE_ADDRESS(_)   ) -> Gas - Cost;
+gas_traversal_t(Gas, Cost, _Unfold, ?FATE_CONTRACT(_)  ) -> Gas - Cost;
+gas_traversal_t(Gas, Cost, _Unfold, ?FATE_ORACLE(_)    ) -> Gas - Cost;
+gas_traversal_t(Gas, Cost, _Unfold, ?FATE_ORACLE_Q(_)  ) -> Gas - Cost;
+gas_traversal_t(Gas, Cost, _Unfold, ?FATE_CHANNEL(_)   ) -> Gas - Cost;
+gas_traversal_t(Gas, Cost, _Unfold, ?FATE_TYPEREP(_)   ) -> Gas - Cost;
+gas_traversal_t(Gas, Cost, _Unfold, Val) when ?IS_FATE_INTEGER(Val) -> Gas - Cost;
+gas_traversal_t(Gas, Cost, _Unfold, Val) when ?IS_FATE_STRING(Val)  -> Gas - Cost;
+gas_traversal_t(Gas, Cost, Unfold, ?FATE_TUPLE(Val)) ->
+    gas_traversal_l(Gas - Cost, Cost, Unfold, tuple_to_list(Val));
+gas_traversal_t(Gas, Cost, Unfold, Val) when ?IS_FATE_LIST(Val) ->
+    gas_traversal_l(Gas, Cost, Unfold, ?FATE_LIST_VALUE(Val));
+gas_traversal_t(Gas, Cost, Unfold, ?FATE_VARIANT(_Arities, _Tag, Vals)) ->
+    gas_traversal_l(Gas - Cost, Cost, Unfold, tuple_to_list(Vals));
+gas_traversal_t(Gas, Cost, Unfold, Val) when ?IS_FATE_MAP(Val) ->
+    gas_traversal_m(Gas, Cost, Unfold, ?FATE_MAP_VALUE(Val));
+gas_traversal_t(Gas, Cost, Unfold, ?FATE_STORE_MAP(Cache, Id) ) ->
+    Gas1 = gas_traversal_t(Gas, Cost, Unfold, Unfold(Id)),
+    gas_traversal_m(Gas1, Cost, Unfold, Cache).
+
+gas_traversal_l(Gas, Cost, _Unfold, []) -> Gas - Cost;
+gas_traversal_l(Gas, Cost, Unfold, [H | T]) ->
+    Gas1 = gas_traversal(Gas - Cost, Cost, Unfold, H),
+    gas_traversal_l(Gas1, Cost, Unfold, T).
+
+gas_traversal_m(Gas, Cost, Unfold, Map) ->
+    maps:fold(fun(K, V, Gas1) ->
+                    Gas2 = gas_traversal(Gas1 - Cost, Cost, Unfold, K),
+                    gas_traversal(Gas2, Cost, Unfold, V)
+              end, Gas - Cost, Map).
 
 %%%------------------
 
