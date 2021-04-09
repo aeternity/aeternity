@@ -57,6 +57,7 @@ meta_test_() ->
 make_calls(ListOfCalls) ->
     Cache = setup_contracts_in_cache(),
     Trees = setup_contracts_in_trees(aec_trees:new_without_backend()),
+    aefa_fate_op:load_pre_iris_map_ordering(),
     %% Dummy values since they should not come into play in this test
     Env = #{ trees => Trees
            , caller => <<123:256>>
@@ -190,8 +191,11 @@ map() ->
             ,  {<<"map_to_list">>, [#{ 1 => true, 2 => false, 42 => true}],
                 [{1, true}, {2, false}, {42, true}]}
             % Test really big map to list
-            ,  {<<"map_to_list">>, [BigMap],
-                BigList}
+            , case aec_governance:get_network_id() of
+                <<"local_iris_testnet">> ->
+                    {<<"map_to_list">>, [BigMap], BigList};
+                _ -> {<<"map_to_list">>, [BigMap], maps:to_list(BigMap)}
+              end
             ]
     ].
 
