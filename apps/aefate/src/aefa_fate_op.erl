@@ -176,6 +176,7 @@
         , bytes_to_str/3
         , bytes_concat/4
         , bytes_split/4
+        , load_pre_iris_map_ordering/0
         ]).
 
 -include_lib("aebytecode/include/aeb_fate_data.hrl").
@@ -633,7 +634,7 @@ map_to_sorted_list(Map, ES) ->
     ConsensusVersion = aefa_engine_state:consensus_version(ES),
     Tuples = if
         ConsensusVersion < ?IRIS_PROTOCOL_VSN ->
-            MapOrdering = pre_iris_map_ordering(),
+            MapOrdering = persistent_term:get(?PRE_IRIS_MAP_ORDERING),
             case maps:get(?FATE_MAP_VALUE(Map), MapOrdering, default) of
                 default ->
                     [aeb_fate_data:make_tuple(KV)
@@ -646,14 +647,9 @@ map_to_sorted_list(Map, ES) ->
     end,
     aeb_fate_data:make_list(Tuples).
 
-pre_iris_map_ordering() ->
-    case persistent_term:get(?PRE_IRIS_MAP_ORDERING, notloaded) of
-        notloaded ->
-            MapOrdering = aec_fork_block_settings:pre_iris_map_ordering(),
-            persistent_term:put(?PRE_IRIS_MAP_ORDERING, MapOrdering),
-            MapOrdering;
-        MapOrdering -> MapOrdering
-    end.
+load_pre_iris_map_ordering() ->
+    MapOrdering = aec_fork_block_settings:pre_iris_map_ordering(),
+    persistent_term:put(?PRE_IRIS_MAP_ORDERING, MapOrdering).
 
 map_size_(Arg0, Arg1, EngineState) ->
     {Map, ES1} = get_op_arg(Arg1, EngineState),
