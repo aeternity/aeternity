@@ -1368,7 +1368,7 @@ ensure_key_headers_height_store() ->
                             ok
                     end;
                 in_progress -> %% The migration was interrupted and not finished yet
-                    lager:info("[Orphan key blocks scan] Resuming interrupted scan"),
+                    lager:info("[Key headers migration scan] Resuming interrupted scan"),
                     start_key_headers_height_store_migration()
             end
     end.
@@ -1394,9 +1394,9 @@ start_key_headers_height_store_migration() ->
             aec_db:finish_chain_migration(key_headers)
         catch
             E:R:Stack ->
-                (catch io:format(user, "[Orphan key blocks scan] Terminating node: ~p ~p ~p", [E, R, Stack])),
-                (catch lager:error("[Orphan key blocks scan] Terminating node: ~p ~p ~p", [E, R, Stack])),
-                init:stop("[Orphan key blocks scan] Encountered a fatal error during the migration. Terminating the node")
+                (catch io:format(user, "[Key headers migration scan] Terminating node: ~p ~p ~p", [E, R, Stack])),
+                (catch lager:error("[Key headers migration scan] Terminating node: ~p ~p ~p", [E, R, Stack])),
+                init:stop("[Key headers migration scan] Encountered a fatal error during the migration. Terminating the node")
         end
     end).
 
