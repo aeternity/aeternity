@@ -637,7 +637,7 @@ map_to_sorted_list(Map, ES) ->
             case maps:get(?FATE_MAP_VALUE(Map), MapOrdering, default) of
                 default ->
                     [aeb_fate_data:make_tuple(KV)
-                     || KV <- lists:keysort(1, List)];
+                     || KV <- List];
                 Ordering -> Ordering
             end;
         true ->
@@ -2618,9 +2618,17 @@ store_map_size(Cache, MapId, ES) ->
     {maps:fold(Delta, Size, Cache), ES2}.
 
 store_map_get_clean(Cache, MapId, ES) ->
-    Pubkey              = aefa_engine_state:current_contract(ES),
-    {Store, ES1}        = aefa_fate:ensure_contract_store(Pubkey, ES),
-    {StoreList, Store1} = aefa_stores:store_map_to_list(Pubkey, MapId, Store),
+    Pubkey           = aefa_engine_state:current_contract(ES),
+    {Store, ES1}     = aefa_fate:ensure_contract_store(Pubkey, ES),
+    ConsensusVersion = aefa_engine_state:consensus_version(ES),
+    STORE_MAP_TO_LIST =
+        if
+        ConsensusVersion < ?IRIS_PROTOCOL_VSN ->
+            fun aefa_stores_lima:store_map_to_list/3;
+        true ->
+            fun aefa_stores:store_map_to_list/3
+        end,
+    {StoreList, Store1} = STORE_MAP_TO_LIST(Pubkey, MapId, Store),
     StoreMap            = maps:from_list(StoreList),
     Upd = fun(Key, ?FATE_MAP_TOMBSTONE, M) -> maps:remove(Key, M);
              (Key, Val, M)                 -> maps:put(Key, Val, M) end,
