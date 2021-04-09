@@ -2637,7 +2637,14 @@ bin_comp(Comp, {To, Left, Right}, ES) ->
     {LeftValue1,  ES2} = aefa_fate:unfold_store_maps(LeftValue, ES1),
     {RightValue,  ES3} = get_op_arg(Right, ES2),
     {RightValue1, ES4} = aefa_fate:unfold_store_maps(RightValue, ES3),
-    Result = comp(Comp, LeftValue1, RightValue1),
+    ConsensusVersion = aefa_engine_state:consensus_version(ES),
+    COMP = if
+               ConsensusVersion < ?IRIS_PROTOCOL_VSN ->
+                   fun comp/3;
+               true ->
+                   fun comp_iris/3
+           end,
+    Result = COMP(Comp, LeftValue1, RightValue1),
     write(To, Result, ES4).
 
 comp( lt, A, B) -> A < B;
@@ -2647,6 +2654,16 @@ comp(egt, A, B) -> A >= B;
 comp( eq, A, B) -> A =:= B;
 comp(neq, A, B) -> A =/= B.
 
+comp_iris( lt, A, B) -> aeb_fate_data:lt(A, B);
+comp_iris( gt, A, B) -> aeb_fate_data:lt(B, A);
+% equal or less than <==> not greater than
+comp_iris(elt, A, B) -> not aeb_fate_data:lt(B, A);
+% equal or greater than <==> not less than
+comp_iris(egt, A, B) -> not aeb_fate_data:lt(A, B);
+% equals <==> not less than and not greater than
+comp_iris( eq, A, B) -> (not aeb_fate_data:lt(A, B)) and (not aeb_fate_data:lt(B, A));
+% not equals <==> less than or greater than
+comp_iris(neq, A, B) -> aeb_fate_data:lt(A, B) or aeb_fate_data:lt(B, A).
 
 
 binary_reverse(Binary) ->
