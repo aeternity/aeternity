@@ -559,6 +559,7 @@ rocks_iterate_from_to(Fun, Acc, Handle, From, To) ->
     try
         rocks_iterate_from_to_loop(
             I,
+            sext:prefix(To),
             rocksdb:iterator_move(I, sext:prefix(From)),
             Fun,
             Acc
@@ -567,18 +568,19 @@ rocks_iterate_from_to(Fun, Acc, Handle, From, To) ->
         rocksdb:iterator_close(I)
     end.
 
-rocks_iterate_from_to_loop(I, {ok, K, V}, Fun, Acc) ->
+rocks_iterate_from_to_loop(I, ToBin, {ok, K, V}, Fun, Acc) when ToBin > K ->
     case Fun(sext:decode(K), V, Acc) of
         {cont, Acc2} ->
             rocks_iterate_from_to_loop(
                 I,
+                ToBin,
                 rocksdb:iterator_move(I, next),
                 Fun,
                 Acc2
             )%;  % Uncomment when used
         %stop -> Acc
     end;
-rocks_iterate_from_to_loop(_I, _, _, Acc) -> Acc.
+rocks_iterate_from_to_loop(_I, _, _, _, Acc) -> Acc.
 
 find_discovered_pof(Hash) ->
     case ?t(read(aec_discovered_pof, Hash)) of
