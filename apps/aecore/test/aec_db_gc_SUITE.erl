@@ -255,7 +255,13 @@ node_db_cfg(Node) ->
 
 add_spend_tx(Node, Amount, Fee, Nonce, TTL, Recipient) ->
     Sender = aecore_suite_utils:patron(),
-    SenderId = aeser_id:create(account, maps:get(pubkey, Sender)),
+    add_spend_tx(Node, Amount, Fee, Nonce, TTL, Recipient,
+                 maps:get(pubkey, Sender),
+                 maps:get(privkey, Sender)).
+
+add_spend_tx(Node, Amount, Fee, Nonce, TTL, Recipient, SenderPubkey,
+             SenderPrivkey) ->
+    SenderId = aeser_id:create(account, SenderPubkey),
     RecipientId = aeser_id:create(account, Recipient),
     Params = #{ sender_id    => SenderId,
                 recipient_id => RecipientId,
@@ -265,7 +271,7 @@ add_spend_tx(Node, Amount, Fee, Nonce, TTL, Recipient) ->
                 payload      => <<>>,
                 fee          => Fee },
     {ok, Tx} = aec_spend_tx:new(Params),
-    STx = aec_test_utils:sign_tx(Tx, maps:get(privkey, Sender)),
+    STx = aec_test_utils:sign_tx(Tx, SenderPrivkey),
     Res = rpc:call(Node, aec_tx_pool, push, [STx]),
     {Res, aeser_api_encoder:encode(tx_hash, aetx_sign:hash(STx))}.
 
@@ -273,7 +279,7 @@ new_pubkey() ->
     #{public := PubKey} = enacl:sign_keypair(),
     PubKey.
 
-calls_test(Config) ->
+calls_test(_Config) ->
     [N1] = [aecore_suite_utils:node_name(X) || X <- [dev1]],
     H0 = aec_headers:height(rpc:call(N1, aec_chain, top_header, [])),
     ct:log("Current height is ~p", [H0]),
@@ -344,14 +350,28 @@ calls_test(Config) ->
         add_spend_tx(N1, SeedAmt, 1500000 * aec_test_utils:min_gas_price(), %% fee
                      SpendNonce + 1, 0, OwnerPubkey),
     aecore_suite_utils:mine_blocks_until_txs_on_chain(N1, [ESpendHash2], ?MAX_MINED_BLOCKS),
+    Spend =
+        fun(PubKey, PrivKey) ->
+            {ok, Nonce} = rpc:call(N1, aec_next_nonce, pick_for_account,
+                                        [PubKey]),
+            {ok, EncHash} =
+                add_spend_tx(N1, 1, 1500000 * aec_test_utils:min_gas_price(), %% fee
+                            Nonce, 0, PubKey, PubKey, PrivKey),
+            aecore_suite_utils:mine_blocks_until_txs_on_chain(N1, [EncHash], ?MAX_MINED_BLOCKS)
+        end,
+    Spend(OwnerPubkey, OwnerPrivkey),
+    Spend(OwnerPubkey, OwnerPrivkey),
+    Spend(OwnerPubkey, OwnerPrivkey),
+    Spend(OwnerPubkey, OwnerPrivkey),
     %% mine beyond the GC
-    aecore_suite_utils:mine_key_blocks(N1, 1000),% * ?GC_INTERVAL),
+    aecore_suite_utils:mine_key_blocks(N1, ?GC_INTERVAL + 1),
     H1 = aec_headers:height(rpc:call(N1, aec_chain, top_header, [])),
     ct:log("Current height is ~p", [H1]),
     {ok, 200, _} = aehttp_integration_SUITE:get_contract_call_object(ContractCreateTxHash),
     {ok, 200, _} = aehttp_integration_SUITE:get_contract_call_object(ContractCallTxHash),
     {ok, 200, _} =
         aehttp_integration_SUITE:get_accounts_by_pubkey_sut(OwnerAddress),
+    %% this should fail:
     {ok, 200, _} =
         aehttp_integration_SUITE:get_accounts_by_pubkey_and_height_sut(OwnerAddress, ContractCreateHeight),
     ok.
