@@ -400,12 +400,14 @@ check_return_type(ES) ->
 
 check_return_type(RetType, TVars, ES) ->
     Acc = aefa_engine_state:accumulator(ES),
+    FixmeMeasure = {1, 3},
+    ES1 = aefa_engine_state:spend_gas_for_traversal(Acc, FixmeMeasure, ES),
     case check_type(RetType, Acc) of
-        false -> abort({bad_return_type, Acc, RetType}, ES);
+        false -> abort({bad_return_type, Acc, RetType}, ES1);
         Inst  ->
             case merge_match(Inst, TVars) of
-                false -> abort({bad_return_type, Acc, instantiate_type(TVars, RetType)}, ES);
-                #{}   -> ES
+                false -> abort({bad_return_type, Acc, instantiate_type(TVars, RetType)}, ES1);
+                #{}   -> ES1
             end
     end.
 
