@@ -193,7 +193,7 @@
 -include_lib("stdlib/include/assert.hrl").
 
 -include("../include/aecontract.hrl").
--include("../include/fate_type_macros.hrl").
+-include("../test/include/fate_type_macros.hrl").
 -include("../../aecore/include/blocks.hrl").
 
 -include("include/aect_sophia_vsn.hrl").
