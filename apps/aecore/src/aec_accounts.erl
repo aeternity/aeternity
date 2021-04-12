@@ -134,7 +134,7 @@ is_payable(#account{ flags = N }) -> not get_flag(non_payable, N).
 
 -spec set_payable(account(), boolean()) -> account().
 set_payable(Acc = #account{ flags = N }, false) ->
-    Acc#account{ flags = N band (2#11111111 - ?FLAG_NON_PAYABLE_VALUE) };
+    Acc#account{ flags = N band (bnot ?FLAG_NON_PAYABLE_VALUE) };
 set_payable(Acc = #account{ flags = N }, true) ->
     Acc#account{ flags = N bor ?FLAG_NON_PAYABLE_VALUE }.
 
