@@ -427,51 +427,22 @@ deserialize_from_db_partial(Bin, DirtyBackend, ElementsToLoad)
                     db_serialization_template(?AEC_TREES_VERSION),
                     Bin
                    )),
+    Backend = case DirtyBackend of false -> new_with_backend; true -> new_with_dirty_backend end,
     lists:foldl(
         fun(Element, AccumTrees) ->
             case Element of
                 contracts ->
-                    ContractsT =
-                        case DirtyBackend of
-                            false -> aect_state_tree:new_with_backend(Contracts);
-                            true -> aect_state_tree:new_with_dirty_backend(Contracts)
-                        end,
-                    AccumTrees#trees{contracts = ContractsT};
+                    AccumTrees#trees{contracts = aect_state_tree:Backend(Contracts)};
                 calls ->
-                    CallsT =
-                        case DirtyBackend of
-                            false -> aect_call_state_tree:new_with_backend(Calls);
-                            true -> aect_call_state_tree:new_with_dirty_backend(Calls)
-                        end,
-                    AccumTrees#trees{calls = CallsT};
+                    AccumTrees#trees{calls = aect_call_state_tree:Backend(Calls)};
                 channels ->
-                    ChannelsT =
-                        case DirtyBackend of
-                            false -> aesc_state_tree:new_with_backend(Channels);
-                            true -> aesc_state_tree:new_with_dirty_backend(Channels)
-                        end,
-                    AccumTrees#trees{channels = ChannelsT};
+                    AccumTrees#trees{channels = aesc_state_tree:Backend(Channels)};
                 names ->
-                    NamesT =
-                        case DirtyBackend of
-                            false -> aens_state_tree:new_with_backend(NS, NSCache);
-                            true -> aens_state_tree:new_with_dirty_backend(NS, NSCache)
-                        end,
-                    AccumTrees#trees{ns = NamesT};
+                    AccumTrees#trees{ns = aens_state_tree:Backend(NS, NSCache)};
                 oracles ->
-                    OraclesT =
-                        case DirtyBackend of
-                            false -> aeo_state_tree:new_with_backend(Oracles, OraclesCache);
-                            true -> aeo_state_tree:new_with_dirty_backend(Oracles, OraclesCache)
-                        end,
-                    AccumTrees#trees{oracles = OraclesT};
+                    AccumTrees#trees{oracles = aeo_state_tree:Backend(Oracles, OraclesCache)};
                 accounts ->
-                    AccountsT =
-                        case DirtyBackend of
-                            false -> aec_accounts_trees:new_with_backend(Accounts);
-                            true -> aec_accounts_trees:new_with_dirty_backend(Accounts)
-                        end,
-                    AccumTrees#trees{accounts = AccountsT}
+                    AccumTrees#trees{accounts = aec_accounts_trees:Backend(Accounts)}
             end
         end,
         #trees{ contracts = not_loaded
@@ -669,9 +640,9 @@ apply_txs_on_state_trees([SignedTx | Rest], ValidTxs, InvalidTxs, Trees, Env, Op
                     Reason = {Type, What},
                     lager:error("Tx ~p cannot be applied due to an error ~p", [Tx, Reason]),
                     {error, Reason};
-                Type:What:ST when not Strict ->
+                Type:What:_ST when not Strict ->
                     Reason = {Type, What},
-                    lager:debug("Stacktrace: ~p", [ST]),
+                    %%lager:debug("Stacktrace: ~p", [ST]),
                     lager:debug("Tx ~p cannot be applied due to an error ~p", [Tx, Reason]),
                     Invalid1 = [SignedTx| InvalidTxs],
                     apply_txs_on_state_trees(Rest, ValidTxs, Invalid1, Trees, Env, Opts)

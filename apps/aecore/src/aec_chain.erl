@@ -112,12 +112,7 @@ get_account_at_hash(PubKey, Hash) ->
 get_account_at_height(PubKey, Height) ->
     case aec_chain_state:get_key_block_hash_at_height(Height) of
         error -> {error, chain_too_short};
-        {ok, Hash} ->
-            case get_block_state_partial(Hash, [accounts]) of
-                {ok, Trees} ->
-                    aec_accounts_trees:lookup(PubKey, aec_trees:accounts(Trees));
-                error -> {error, no_state_trees}
-            end
+        {ok, Hash} -> get_account_at_hash(PubKey, Hash)
     end.
 
 -spec all_accounts_balances_at_hash(binary()) ->
@@ -585,7 +580,10 @@ get_block_state(Hash) ->
     end.
 
 get_block_state_partial(Hash, Elements) ->
-    case aec_db:find_block_state_partial(Hash, false, Elements) of
+    get_block_state_partial(Hash, Elements, true).
+
+get_block_state_partial(Hash, Elements, DirtyBackend) ->
+    case aec_db:find_block_state_partial(Hash, DirtyBackend, Elements) of
         {value, Trees} -> {ok, Trees};
         none -> error
     end.

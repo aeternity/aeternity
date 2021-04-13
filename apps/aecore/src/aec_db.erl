@@ -690,7 +690,7 @@ get_block_state_(Hash, DeserializeFun) ->
     ?t(begin
            [#aec_block_state{value = Trees}] =
                mnesia:read(aec_block_state, Hash),
-            DeserializeFun(Trees)
+           DeserializeFun(Trees)
        end).
 
 find_block_state(Hash) ->
