@@ -1,9 +1,14 @@
 # Introduction
 
-This document describes how to build an Aeternity node from source on current Ubuntu 16.04.4 LTS, Ubuntu 18.04 LTS and MacOS (latest).
+This document describes how to build an Aeternity node from source on:
+- Ubuntu 16.04.4 LTS
+- Ubuntu 18.04 LTS
+- MacOS (latest)
+- Archlinux 20210404
+
 The commands below assume you are logged in with `sudo` user.
 
-The node have couple of main dependencies that have to be install to build it from source:
+The node have couple of main dependencies that have to be installed to build it from source:
 
 - [Erlang/OTP](http://erlang.org/doc/installation_guide/INSTALL.html)
 - [Libsodium](https://download.libsodium.org/doc/installation/)
@@ -71,6 +76,15 @@ brew update
 brew install erlang@21 openssl libsodium autoconf gmp
 ```
 
+### Archlinux
+
+Update package database, packages and install the common tools and libraries:
+
+```bash
+sudo pacman -Sy
+sudo pacman -S libsodium gmp git ncurses base-devel erlang22-nox
+```
+
 ## Building
 
 The source code of the Aeternity node can be obtained by cloning the public [GitHub repository](https://github.com/aeternity/aeternity):
@@ -91,20 +105,31 @@ git checkout tags/v${VERSION:?}
 
 ### Production build
 
+On archlinux RocksDB backend is not supported so it has to be turned off:
+```bash
+export AE_DISABLE_ROCKSDB=1
+```
+
 One can create a production build by running:
+
 ```bash
 make prod-build
 ```
 
-Make sure beneficiary account is set in configuration, as this is mandatory to successfully start a node.
-There is no default beneficiary configured.
+**NOTE**: Make sure that database backend is set to `leveled` on archlinux before starting the node, i.e. in `_build/prod/rel/aeternity/aeternity.yaml`
+
+```yml
+chain:
+    db_backend: leveled
+```
 
 See [configuration documentation](configuration.md) for configuration details.
 
 If `prod-build` went fine, configuration is in place, one should be able to navigate to the build artifacts directory and start the Aeternity node:
+
 ```bash
 cd _build/prod/rel/aeternity/
-bin/aeternity start
+bin/aeternity daemon
 ```
 
 See [operation documentation](operation.md) for more details.
@@ -126,14 +151,10 @@ mkdir -p ~/aeternity/node
 tar xf _build/prod/rel/aeternity/aeternity-*.tar.gz -C ~/aeternity/node
 ```
 
-Make sure beneficiary account is set in configuration, as this is mandatory to successfully start a node.
-There is no default beneficiary configured.
+Then start the node in background mode:
 
-See [configuration documentation](configuration.md) for configuration details.
-
-Then start the node:
 ```bash
-~/aeternity/node/bin/aeternity start
+~/aeternity/node/bin/aeternity daemon
 ```
 
 See [operation documentation](operation.md) for more details.
