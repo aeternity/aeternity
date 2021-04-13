@@ -615,7 +615,7 @@ decode_data_(Type, Data) ->
     Return.
 
 decode_data_(fate, _Type, Data) ->
-    try {ok, aefate_test_utils:decode(aeb_fate_encoding:deserialize(Data))}
+    try {ok, aefa_test_utils:decode(aeb_fate_encoding:deserialize(Data))}
     catch _:_ -> {error, <<"bad fate data">>}
     end;
 decode_data_(aevm, Type, Data) ->

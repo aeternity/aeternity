@@ -31,6 +31,7 @@
         , check_type/2
         , get_function_signature/2
         , push_gas_cap/2
+        , push_continuation/2
         , push_return_address/1
         , push_return_type_check/5
         , runtime_exit/2
@@ -278,6 +279,7 @@ step([I|Is], EngineState0) ->
 catch_protected(Err, ES) ->
     case aefa_engine_state:pop_call_stack(ES) of
         {empty, _} -> throw(Err);
+        {modify, Cont, ES1} -> catch_protected(Err, Cont(ES1));
         {return_check, _, protected, _, Stores, API, ES1} ->
             ES2 = aefa_engine_state:set_accumulator(make_none(),
                   aefa_engine_state:set_stores(Stores,
@@ -332,24 +334,13 @@ check_remote(Contract, EngineState) ->
             abort(reentrant_call, EngineState)
     end.
 
-set_remote_function(Caller, ?FATE_CONTRACT(Pubkey), Function, CheckPayable, CheckPrivate, AllowInit, ES) ->
-    CodeCache = aefa_engine_state:code_cache(ES),
-    case maps:get(Pubkey, CodeCache, void) of
-        void ->
-            APIState  = aefa_engine_state:chain_api(ES),
-            case aefa_chain_api:contract_fate_code(Pubkey, APIState) of
-                {ok, {ContractCode, VMV}, APIState1} ->
-                    CodeCache1 = maps:put(Pubkey, {ContractCode, VMV}, CodeCache),
-                    ES1 = aefa_engine_state:set_code_cache(CodeCache1, ES),
-                    ES2 = aefa_engine_state:set_chain_api(APIState1, ES1),
-                    ES3 = aefa_engine_state:update_for_remote_call(Pubkey, ContractCode, VMV, Caller, ES2),
-                    check_flags_and_set_local_function(CheckPayable, CheckPrivate, Function, AllowInit, ES3);
-                error ->
-                    abort({trying_to_call_contract, Pubkey}, ES)
-            end;
-        {ContractCode, VMV} ->
-            ES1 = aefa_engine_state:update_for_remote_call(Pubkey, ContractCode, VMV, Caller, ES),
-            check_flags_and_set_local_function(CheckPayable, CheckPrivate, Function, AllowInit, ES1)
+set_remote_function(Caller, ?FATE_CONTRACT(Pubkey), Function, CheckPayable, CheckPrivate, AllowInit, ES0) ->
+    case aefa_engine_state:contract_fate_bytecode(Pubkey, ES0) of
+        error ->
+            abort({trying_to_call_contract, Pubkey}, ES0);
+        {ok, ContractCode, VMV, ES1} ->
+            ES2 = aefa_engine_state:update_for_remote_call(Pubkey, ContractCode, VMV, Caller, ES1),
+            check_flags_and_set_local_function(CheckPayable, CheckPrivate, Function, AllowInit, ES2)
     end.
 
 check_flags_and_set_local_function(false, false, Function, AllowInit, ES) ->
@@ -585,6 +576,9 @@ push(V, ES) ->
 %% ------------------------------------------------------
 %% Call stack
 
+push_continuation(Continuation, ES) ->
+    aefa_engine_state:push_continuation(Continuation, ES).
+
 push_return_address(ES) ->
     aefa_engine_state:push_call_stack(ES).
 
@@ -609,7 +603,7 @@ push_gas_cap(Gas, ES) when ?IS_FATE_INTEGER(Gas) ->
     GasInt = ?FATE_INTEGER_VALUE(Gas),
     case GasInt > 0 of
         false ->
-            abort({call_error, bad_gas_cap}, ES);
+            abort({call_error, {bad_gas_cap, GasInt}}, ES);
         true ->
             aefa_engine_state:push_gas_cap(GasInt, ES)
     end.
@@ -619,6 +613,8 @@ pop_call_stack(ES) ->
         {empty, ES1} ->
             ES2 = unfold_store_maps(ES1),
             {stop, ES2};
+        {modify, Continuation, ES1} ->
+            pop_call_stack(Continuation(ES1));
         {return_check, TVars, Protected, RetType, Stores, API, ES1} ->
             ES2 = check_return_type_protected(Protected, RetType, TVars, Stores, API, ES1),
             pop_call_stack(ES2);

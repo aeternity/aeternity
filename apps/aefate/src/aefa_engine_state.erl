@@ -64,6 +64,9 @@
         , dup_accumulator/1
         , dup_accumulator/2
         , drop_accumulator/2
+        , contract_fate_bytecode/2
+        , contract_find_final_ref/2
+        , remove_contract/2
         , in_auth_context/1
         , is_onchain/1
         , pop_accumulator/1
@@ -72,6 +75,7 @@
         , push_arguments/2
         , push_call_stack/1
         , push_gas_cap/2
+        , push_continuation/2
         , push_return_type_check/4
         , spend_gas/2
         , spend_gas_for_new_cells/2
@@ -206,6 +210,38 @@ in_auth_context(#es{chain_api = APIState}) ->
     undefined =/= aetx_env:ga_tx_hash(aefa_chain_api:tx_env(APIState)).
 
 
+-spec contract_fate_bytecode(pubkey(), state()) -> 'error' |
+          {'ok', term(), aect_contracts:vm_version(), state()}.
+contract_fate_bytecode(Pubkey, #es{chain_api = AS0} = ES0) ->
+    CodeCache = code_cache(ES0),
+    case maps:get(Pubkey, CodeCache, void) of
+        void ->
+            case aefa_chain_api:contract_fate_bytecode(Pubkey, AS0) of
+                {ok, ContractCode, VMV, AS1} ->
+                    CodeCache1 = maps:put(Pubkey, {ContractCode, VMV}, CodeCache),
+                    ES1 = set_code_cache(CodeCache1, ES0),
+                    ES2 = set_chain_api(AS1, ES1),
+                    {ok, ContractCode, VMV, ES2};
+                error ->
+                    error
+            end;
+        {ContractCode, VMV} ->
+            {ok, ContractCode, VMV, ES0}
+    end.
+
+-spec contract_find_final_ref(aect_contracts:pubkey(), state()) ->
+          'error' | {'ok', aect_contracts:pubkey(), aect_contracts:vm_version()}.
+contract_find_final_ref(PK, ES) ->
+    %% References are not considered in the cache, therefore
+    %% we need to search in the chain.
+    aefa_chain_api:contract_find_final_ref(PK, chain_api(ES)).
+
+-spec remove_contract(pubkey(), state()) -> state().
+remove_contract(Pubkey, #es{chain_api = AS0} = ES0) ->
+    ES1 = set_chain_api(aefa_chain_api:remove_contract(Pubkey, AS0), ES0),
+    CodeCache = aefa_engine_state:code_cache(ES1),
+    set_code_cache(maps:remove(Pubkey, CodeCache), ES1).
+
 %%%------------------
 %%% Accumulator stack
 
@@ -239,6 +275,7 @@ push_call_stack(#es{ current_bb = BB
 %% TODO: Make better types for all these things
 -spec pop_call_stack(state()) ->
                             {'empty', state()} |
+                            {'modify', fun((state()) -> state()), state()} |
                             {'return_check', map(), protected | unprotected, aeb_fate_data:fate_type_type(),
                                              aefa_stores:store(), aefa_chain_api:state(), state()} |
                             {'local', _, map(), non_neg_integer(), state()} |
@@ -249,6 +286,8 @@ pop_call_stack(#es{accumulator = ReturnValue,
                    current_contract = Current} = ES) ->
     case Stack of
         [] -> {empty, ES};
+        [{modify, Continuation}| Rest] ->
+            {modify, Continuation, ES#es{call_stack = Rest}};
         [{return_check, TVars, Protected, Stores, API, ReturnType}| Rest] ->
             {return_check, TVars, Protected, ReturnType, Stores, API, ES#es{ call_stack = Rest}};
         [{gas_store, StoredGas}| Rest] ->
@@ -300,6 +339,8 @@ collect_gas_stores_on_revert(#es{call_stack = Stack, gas = Gas}) ->
 
 collect_gas_stores([{gas_store, Gas}|Left], AccGas) ->
     collect_gas_stores(Left, AccGas + Gas);
+collect_gas_stores([{modify, _}|Left], AccGas) ->
+    collect_gas_stores(Left, AccGas);
 collect_gas_stores([{return_check, _, _, _, _, _}|Left], AccGas) ->
     collect_gas_stores(Left, AccGas);
 collect_gas_stores([{_, _, _, _, _, _, _, _, _}|Left], AccGas) ->
@@ -323,6 +364,10 @@ push_gas_cap(GasCap, #es{ gas = AvailableGas
     ES#es{ call_stack = [{gas_store, AvailableGas - GasCap}|Stack]
          , gas        = GasCap
          }.
+
+-spec push_continuation(fun((state()) -> state()), state()) -> state().
+push_continuation(Cont, #es{ call_stack = Stack } = ES) ->
+    ES#es{ call_stack = [{modify, Cont}|Stack]}.
 
 -spec push_return_type_check(aeb_fate_data:fate_type_type(), #{}, unprotected | protected, state()) -> state().
 push_return_type_check(RetType, TVars, Protected, #es{ call_stack = Stack, stores = Stores, chain_api = API } = ES) ->

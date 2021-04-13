@@ -17,6 +17,7 @@
         , get_contract/3
         , get_contract_with_code/2
         , get_contract_with_code/3
+        , delete_contract/2
         , insert_contract/2
         , enter_contract/2
         , is_contract/2
@@ -103,6 +104,11 @@ insert_contract(Contract, Tree = #contract_tree{ contracts = CtTree }) ->
     CtTree1    = aeu_mtrees:insert(Pubkey, Serialized, CtTree),
     CtTree2    = insert_store(Contract, CtTree1),
     Tree#contract_tree{ contracts = CtTree2 }.
+
+-spec delete_contract(aect_contracts:pubkey(), tree()) -> tree().
+delete_contract(PK, Tree = #contract_tree{ contracts = CtTree }) ->
+    CtTree1 = aeu_mtrees:delete(PK, CtTree),
+    Tree#contract_tree{ contracts = CtTree1 }.
 
 -spec copy_contract_store(aect_contracts:contract(),
                           aect_contracts:pubkey(), tree()) -> tree().

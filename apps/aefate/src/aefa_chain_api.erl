@@ -11,9 +11,13 @@
 
 %% Getters
 -export([ account_balance/2
+        , next_nonce/2
         , beneficiary/1
         , blockhash/2
-        , contract_fate_code/2
+        , put_contract/2
+        , contract_vm_version/2
+        , contract_fate_bytecode/2
+        , contract_find_final_ref/2
         , contract_store/2
         , difficulty/1
         , final_trees/1
@@ -25,11 +29,13 @@
         , set_contract_store/3
         , timestamp_in_msecs/1
         , tx_env/1
+        , tx_event_op/3
         ]).
 
 %% Modifiers
 -export([ spend/4
         , transfer_value/4
+        , remove_contract/2
         , oracle_extend/4
         , oracle_get_answer/5
         , oracle_get_question/5
@@ -50,6 +56,7 @@
         , aens_transfer/4
         , aens_update/6
         , aens_lookup/2
+        , eval_primops/2
         ]).
 
 -export([ check_delegation_signature/4
@@ -194,9 +201,41 @@ traverse_to_key_hash(H, KeyHash) ->
         _Height -> traverse_to_key_hash(H, aec_headers:prev_key_hash(Header))
     end.
 
--spec contract_fate_code(pubkey(), state()) -> 'error' |
-                                               {'ok', {term(), aect_contracts:vm_version()}, state()}.
-contract_fate_code(Pubkey, #state{primop_state = PState} = S) ->
+-spec put_contract(aect_contracts:contract(), state()) -> state().
+put_contract(Contract, #state{primop_state = PS} = S) ->
+    PK = aect_contracts:pubkey(Contract),
+    {Payable, PS0} = case aect_contracts:code(Contract) of
+                  {code, SerCode} ->
+                      #{payable := P} = aeser_contract_code:deserialize(SerCode),
+                      {P, PS};
+                  {ref, Clonee} ->
+                      case aeprimop_state:find_account(aeser_id:specialize(Clonee, contract), PS) of
+                          none -> error;
+                          {Acc, PS_} -> {aec_accounts:is_payable(Acc), PS_}
+                      end
+                  end,
+    PS1 = aeprimop_state:put_contract(Contract, PS0),
+    PS2 = case aeprimop_state:find_account(PK, PS1) of
+              none ->
+                  Account = aec_accounts:new(PK, 0, [non_payable || not Payable]),
+                  aeprimop_state:put_account(Account, PS1);
+              {Account0, PS1_0} ->
+                  Account1 = aec_accounts:set_payable(Account0, Payable),
+                  aeprimop_state:put_account(Account1, PS1_0)
+          end,
+    S#state{primop_state = PS2}.
+
+-spec contract_vm_version(pubkey(), state()) -> 'error' |
+          {'ok', aect_contracts:vm_version()}.
+contract_vm_version(Pubkey, #state{primop_state = PState}) ->
+    case aeprimop_state:find_contract_without_store(Pubkey, PState) of
+        none -> error;
+        {value, Contract} -> aect_contracts:vm_version(Contract)
+    end.
+
+-spec contract_fate_bytecode(pubkey(), state()) -> 'error' |
+                                                   {'ok', term(), aect_contracts:vm_version(), state()}.
+contract_fate_bytecode(Pubkey, #state{primop_state = PState} = S0) ->
     case aeprimop_state:find_contract_without_store(Pubkey, PState) of
         none -> error;
         {value, Contract} ->
@@ -208,18 +247,42 @@ contract_fate_code(Pubkey, #state{primop_state = PState} = S) ->
                             {ref, Ref} ->
                                 RefContractPK = aeser_id:specialize(Ref, contract),
                                 {value, RefContract} = aeprimop_state:find_contract_without_store(RefContractPK, PState),
-                                {code, Code} = aect_contracts:code(RefContract),
-                                Code
+                                case aect_contracts:code(RefContract) of
+                                    {ref, RefBad} ->
+                                        error({found_deep_reference, RefBad});
+                                    {code, Code} -> Code
+                                end
                         end,
                     #{ byte_code := ByteCode} = aect_sophia:deserialize(SerCode),
                     try aeb_fate_code:deserialize(ByteCode) of
-                        FateCode -> {ok, {FateCode, VMV}, S#state{primop_state = PState}}
+                        FateCode -> {ok, FateCode, VMV, S0#state{primop_state = PState}}
                     catch _:_ -> error
                     end;
                 _ ->
                     error
             end
     end.
+
+-spec contract_find_final_ref(pubkey(), state()) -> 'error' | {'ok', pubkey(), aect_contracts:vm_version()}.
+contract_find_final_ref(Pubkey, #state{primop_state = PState} = S0) ->
+    case aeprimop_state:find_contract_without_store(Pubkey, PState) of
+        none -> error;
+        {value, Contract} ->
+            case aect_contracts:code(Contract) of
+                {code, _} ->
+                    {ok, Pubkey, aect_contracts:vm_version(Contract)};
+                {ref, Ref} ->
+                    RefContractPK = aeser_id:specialize(Ref, contract),
+                    contract_find_final_ref(RefContractPK, S0)
+            end
+    end.
+
+-spec remove_contract(pubkey(), state()) -> state().
+remove_contract(Pubkey, #state{primop_state = PState0} = S0) ->
+    PState1 = aeprimop_state:delete_contract(Pubkey, PState0),
+    %% We don't delete the account as it could have existed before
+    %% the contract was created
+    S0#state{primop_state = PState1}.
 
 -spec contract_store(pubkey(), state()) -> {aect_contracts_store:store(), state()}.
 contract_store(Pubkey, #state{primop_state = PState} = S) ->
@@ -245,6 +308,38 @@ account_balance(Pubkey, #state{primop_state = PState,
                 {Account, OPState1} ->
                     Balance = aeb_fate_data:make_integer(aec_accounts:balance(Account)),
                     {ok, Balance, S#state{onchain_primop_state = {onchain, OPState1}}};
+                none ->
+                    error
+            end
+    end.
+
+-spec next_nonce(pubkey(), state()) -> 'error' |
+                                       {'ok', integer(), state()}.
+next_nonce(Pubkey, #state{primop_state = PState0,
+                          onchain_primop_state = Onchain} = S) ->
+    case aeprimop_state:find_account(Pubkey, PState0) of
+        {Account, PState1} ->
+            Nonce = aec_accounts:nonce(Account) + 1,
+            case eval_primops(
+                   [aeprimop:force_inc_account_nonce_op(Pubkey, Nonce)],
+                   S#state{primop_state = PState1}) of
+                {ok, S1} -> {ok, Nonce, S1};
+                Err -> Err
+            end;
+        none when Onchain =:= none ->
+            error;
+        none ->
+            %% Try to find this onchain as well.
+            {onchain, OPState} = Onchain,
+            case aeprimop_state:find_account(Pubkey, OPState) of
+                {Account, OPState1} ->
+                    Nonce = aec_accounts:nonce(Account) + 1,
+                    case eval_primops(
+                           [aeprimop:force_inc_account_nonce_op(Pubkey, Nonce)],
+                           S#state{onchain_primop_state = {onchain, OPState1}}) of
+                        {ok, S1} -> {ok, Nonce, S1};
+                        Err -> Err
+                    end;
                 none ->
                     error
             end

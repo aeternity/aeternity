@@ -51,10 +51,14 @@ variant_test_() ->
 bits_test_() ->
     make_calls(bits()).
 
+meta_test_() ->
+    make_calls(meta()).
+
 make_calls(ListOfCalls) ->
-    Cache = setup_contracts(),
+    Cache = setup_contracts_in_cache(),
+    Trees = setup_contracts_in_trees(aec_trees:new_without_backend()),
     %% Dummy values since they should not come into play in this test
-    Env = #{ trees => aec_trees:new_without_backend()
+    Env = #{ trees => Trees
            , caller => <<123:256>>
            , origin => <<123:256>>
            , gas_price => 1
@@ -62,9 +66,9 @@ make_calls(ListOfCalls) ->
            },
     [{lists:flatten(io_lib:format("call(~p,~p,~p)->~p~n~p : ~p",
                                   [C,F,A,R,
-                                   aefate_test_utils:encode(A),
+                                   aefa_test_utils:encode(A),
                                    aeb_fate_encoding:serialize(
-                                     aefate_test_utils:encode(A))])),
+                                     aefa_test_utils:encode(A))])),
       fun() ->
               Spec = make_call(C,F,A),
               case R of
@@ -79,11 +83,16 @@ make_calls(ListOfCalls) ->
                               ?assertEqual({E, Trace}, {Error, Trace})
                       end;
                   _ ->
-                      FateRes = aefate_test_utils:encode(R),
-                      {ok, ES} = aefa_fate:run_with_cache(Spec, Env, Cache),
-                      Res = aefa_engine_state:accumulator(ES),
-                      Trace = aefa_engine_state:trace(ES),
-                      ?assertEqual({FateRes, Trace}, {Res, Trace})
+                      FateRes = aefa_test_utils:encode(R),
+                      case aefa_fate:run_with_cache(Spec, Env, Cache) of
+                          {ok, ES} ->
+                              Res = aefa_engine_state:accumulator(ES),
+                              Trace = aefa_engine_state:trace(ES),
+                              ?assertEqual({FateRes, Trace}, {Res, Trace});
+                          {revert, Msg, ES} ->
+                              Trace = aefa_engine_state:trace(ES),
+                              ?assertEqual({FateRes, Trace}, {{revert, Msg}, Trace})
+                      end
               end
       end}
      || {C,F,A,R} <- ListOfCalls].
@@ -265,6 +274,22 @@ bits() ->
             ]
     ].
 
+meta() ->
+    [ {<<"meta">>, <<"bytecode_hash">>, [],
+       {variant, [0,1], 1, {{bytes,
+                             <<7,159,155,183,53,227,53,68,
+                               77,156,86,211,100,186,212,51,
+                               177,245,45,103,173,181,44,224,
+                               247,185,222,195,77,77,212,73>>
+                            }}}}
+    , {<<"meta">>, <<"bytecode_hash_fail">>, [],
+       {variant, [0,1], 0, {}}}
+    , {<<"meta">>, <<"create">>, [], 2137}
+    , {<<"meta">>, <<"clone">>, [], 2137}
+    , {<<"meta">>, <<"clone_created">>, [], 2137}
+    , {<<"meta">>, <<"clone_gas_limit">>, [], {variant, [0,1], 0, {}}}
+    ].
+
 make_call(Contract, Function0, Arguments) ->
     Function = aeb_fate_code:symbol_identifier(Function0),
     #{ contract  => pad_contract_name(Contract)
@@ -273,7 +298,7 @@ make_call(Contract, Function0, Arguments) ->
      , store => aect_contracts_store:new()
      , call => aeb_fate_encoding:serialize(
                  {tuple, {Function, {tuple, list_to_tuple(
-                                              [aefate_test_utils:encode(A) || A <- Arguments]
+                                              [aefa_test_utils:encode(A) || A <- Arguments]
                                              )}
                          }
                  }
@@ -282,11 +307,50 @@ make_call(Contract, Function0, Arguments) ->
      , allow_init => true
      }.
 
-setup_contracts() ->
+setup_contracts_in_cache() ->
     Cs = contracts(),
     NewCs = [{pad_contract_name(C), {setup_contract(Functions), ?VM_FATE_SOPHIA_2}}
              || {C, Functions} <- maps:to_list(Cs)],
     maps:from_list(NewCs).
+
+setup_contracts_in_trees(Trees) ->
+    Cs = contracts(),
+    {NewTrees, _} = lists:foldl(
+      fun({C, Functions}, {Ts0, Nonce}) ->
+              FateCode = setup_contract(Functions),
+              ByteCode = aeb_fate_code:serialize(FateCode),
+              Code     = aeser_contract_code:serialize(
+                           #{byte_code => ByteCode,
+                             type_info => [],
+                             contract_source =>
+                                 %% Ode to the idea of making this field mandatory
+                                 "main :: IO ()\n" ++
+                                 "main = putStrLn \"what are you staring at?\"\n"
+                           }),
+
+              PK = pad_contract_name(C),
+              Acct = aec_accounts:new(PK, 1000000),
+              Contr0 = aect_contracts:new(
+                        _Owner = pad_contract_name(<<"mother_test">>),
+                        _Nonce = Nonce,
+                        _CTVersion = #{vm  => ?VM_FATE_SOPHIA_2,
+                                       abi => ?ABI_FATE_SOPHIA_1},
+                        _Code = Code,
+                        _Deposit = 0
+                       ),
+              Contr1 = aect_contracts:set_pubkey(PK, Contr0),
+
+              Ts1 = aec_trees:set_contracts(Ts0,
+                aect_state_tree:insert_contract(Contr1, aec_trees:contracts(Ts0))),
+              Ts2 = aec_trees:set_accounts(Ts1,
+                aec_accounts_trees:enter(Acct, aec_trees:accounts(Ts1))),
+              {Ts2, Nonce + 1}
+      end,
+      {Trees, 0},
+      maps:to_list(Cs)
+     ),
+
+    NewTrees.
 
 pad_contract_name(Name) ->
     PadSize = 32 - byte_size(Name),
@@ -310,7 +374,9 @@ contracts() ->
            , {<<"jumps">>, {[], integer},
               [ {0, [ {'PUSH', {immediate, 0}}
                     , {'JUMP', {immediate, 3}}]}
-              , {1, [ 'NOP' ]}
+              , {1, [ 'NOP'
+                    , {'JUMP', {immediate, 2}}
+                    ]}
               , {2, [ 'NOP'
                     , 'RETURN']}
               , {3, [ 'NOP'
@@ -349,10 +415,398 @@ contracts() ->
                ]
              }
            ]
+    , <<"meta">> =>
+           [ { <<"bytecode_hash">>, {[], {variant, [{tuple, []}, {tuple, [{bytes, 32}]}]}}
+             , [ {0, [ {'BYTECODE_HASH',
+                        {stack, 0},
+                        {immediate, aeb_fate_data:make_contract(pad_contract_name(<<"remote">>))}}
+                     , 'RETURN']}
+               ]
+             }
+           , { <<"bytecode_hash_fail">>, {[], {variant, [{tuple, []}, {tuple, [{bytes, 32}]}]}}
+             , [ {0, [ {'BYTECODE_HASH',
+                        {stack, 0},
+                        {immediate, aeb_fate_data:make_contract(pad_contract_name(<<"nonexistent_dude">>))}}
+                     , 'RETURN']}
+               ]
+             }
+           , { <<"clone">>, {[], integer}
+             , [ {0, [ {'CLONE',
+                        {immediate, aeb_fate_data:make_contract(pad_contract_name(<<"remote">>))},
+                        {immediate, {typerep, {tuple, []}}},
+                        {immediate, 0},
+                        {immediate, false}
+                       }
+                     ]
+                 }
+               , {1, [ 'DUPA'
+                     , {'POP', {arg, 0}}
+                     , {'PUSH', {immediate, 2132}}
+                     , {'CALL_R',
+                        {arg, 0},
+                        {immediate, aeb_fate_code:symbol_identifier(<<"add_five">>)},
+                        {immediate, {typerep, {tuple, [integer]}}},
+                        {immediate, {typerep, integer}},
+                        {immediate, 0}
+                       }
+                     ]
+                 }
+               , {2, [ {'NEQ', {stack, 0}, {stack, 0}, {immediate, 2137}}
+                     , {'JUMPIF', {stack, 0}, {immediate, 12}}
+                     ]
+                 }
+               , {3,
+                     [ {'CLONE',
+                        {immediate, aeb_fate_data:make_contract(pad_contract_name(<<"remote">>))},
+                        {immediate, {typerep, {tuple, []}}},
+                        {immediate, 0},
+                        {immediate, true}
+                       }
+                     ]
+                 }
+               , {4, [ 'DUPA'
+                     , {'VARIANT_TEST', {stack, 0}, {stack, 0}, {immediate, 1}}
+                     , {'NOT', {stack, 0}, {stack, 0}}
+                     , {'JUMPIF', {stack, 0}, {immediate, 13}}
+                     ]
+                 }
+               , {5,
+                     [ {'VARIANT_ELEMENT', {arg, 0}, {stack, 0}, {immediate, 0}}
+                     , {'PUSH', {immediate, 2132}}
+                     , {'CALL_R',
+                        {arg, 0},
+                        {immediate, aeb_fate_code:symbol_identifier(<<"add_five">>)},
+                        {immediate, {typerep, {tuple, [integer]}}},
+                        {immediate, {typerep, integer}},
+                        {immediate, 0}
+                       }
+                     ]
+                 }
+               , {6, [ {'POP', {arg, 0}}
+                     , {'NEQ', {arg, 0}, {arg, 0}, {immediate, 2137}}
+                     , {'JUMPIF', {arg, 0}, {immediate, 14}}
+                     ]
+                 }
+               , {7, [ {'PUSH', {immediate, 2138}}
+                     , {'CLONE',
+                        {immediate, aeb_fate_data:make_contract(pad_contract_name(<<"remote">>))},
+                        {immediate, {typerep, {tuple, [integer]}}},
+                        {immediate, 0},
+                        {immediate, true}
+                       }
+                     ]
+                 }
+               , {8, [ {'VARIANT_TEST', {stack, 0}, {stack, 0}, {immediate, 0}}
+                     , {'NOT', {stack, 0}, {stack, 0}}
+                     , {'JUMPIF', {stack, 0}, {immediate, 15}}
+                     ]
+                 }
+               , {9, [ {'CLONE',
+                        {immediate, aeb_fate_data:make_contract(pad_contract_name(<<"abortion">>))},
+                        {immediate, {typerep, {tuple, [integer]}}},
+                        {immediate, 0},
+                        {immediate, true}
+                       }
+                     ]
+                 }
+               , {10, [ {'VARIANT_TEST', {stack, 0}, {stack, 0}, {immediate, 0}}
+                      , {'NOT', {stack, 0}, {stack, 0}}
+                      , {'JUMPIF', {stack, 0}, {immediate, 16}}
+                      ]
+                 }
+               , {11, [ {'RETURNR', {immediate, 2137}} ]
+                 }
+               , {12, [{'ABORT', {immediate, <<"CLONE: unprotected bad result">>}}]}
+               , {13, [{'ABORT', {immediate, <<"CLONE: not-Some on success">>}}]}
+               , {14, [{'ABORT', {immediate, <<"CLONE: protected bad result">>}}]}
+               , {15, [{'ABORT', {immediate, <<"CLONE: not-None on type fail">>}}]}
+               , {16, [{'ABORT', {immediate, <<"CLONE: not-None on runtime fail">>}}]}
+               ]
+             }
+           , { <<"create">>, {[], integer}
+             , [ {0, [ {'PUSH', {immediate, 2}}
+                     , {'CREATE',
+                        {immediate,
+                         %% payable contract C =
+                         %%     type state = int
+                         %% entrypoint init(x) =
+                         %%    Contract.balance * 1000 + Chain.balance(Contract.address) * 100 + Call.value * 10 + x
+                         %% stateful entrypoint set(x) = put(x)
+                         %% entrypoint get() = state
+                         %% payable entrypoint value() = Call.value
+                         %% entrypoint caller_is_creator() = Call.caller == Contract.creator
+                         %% entrypoint balance() = Contract.balance
+                         aeb_fate_data:make_contract_bytearray(
+                           <<248,242,70,3,160,56,23,62,19,216,177,213,230,73,200,76,
+                             41,93,71,122,234,59,177,235,92,237,179,132,224,17,244,
+                             149,141,110,23,252,67,192,184,197,184,113,254,12,124,37,
+                             201,0,55,0,23,125,0,85,0,32,0,0,254,47,134,91,217,0,55,
+                             0,7,1,2,130,254,68,214,68,31,0,55,1,7,55,0,11,0,22,48,
+                             20,94,0,115,0,22,48,111,36,83,0,22,48,111,130,3,168,20,
+                             0,20,0,20,18,130,0,1,3,63,254,180,140,22,132,0,55,0,7,
+                             83,0,0,254,214,48,121,144,4,55,0,7,11,0,0,254,232,196,
+                             94,182,0,55,1,7,55,0,26,6,130,0,1,3,63,184,77,47,6,17,
+                             12,124,37,201,69,99,97,108,108,101,114,95,105,115,95,99,
+                             114,101,97,116,111,114,17,47,134,91,217,13,103,101,116,
+                             17,68,214,68,31,17,105,110,105,116,17,180,140,22,132,29,
+                             98,97,108,97,110,99,101,17,214,48,121,144,21,118,97,108,
+                             117,101,17,232,196,94,182,13,115,101,116,130,47,0,133,
+                             52,46,51,46,48,1>>)},
+                        {immediate, {typerep, {tuple, [integer]}}},
+                        {immediate, 1}
+                       }]}
+               , {1, [ 'DUPA' %% Save the contract address
+
+                       %% Check if state was set correctly
+                       %% Since init does what it does it also checks the initial value
+                     , {'CALL_R',
+                       {stack, 0},
+                       {immediate, aeb_fate_code:symbol_identifier(<<"get">>)},
+                       {immediate, {typerep, {tuple, []}}},
+                       {immediate, {typerep, integer}},
+                       {immediate, 0}
+                      }
+                     ]}
+               , {2, [ {'NEQ', {stack, 0}, {stack, 0}, {immediate, 1102}}
+                     , {'JUMPIF', {stack, 0}, {immediate, 12}}
+                     ]
+                 }
+               , {3,
+                     [ 'DUPA'
+
+                       %% Check if the balance has been preserved
+                     , {'CALL_R',
+                        {stack, 0},
+                        {immediate, aeb_fate_code:symbol_identifier(<<"balance">>)},
+                        {immediate, {typerep, {tuple, []}}},
+                        {immediate, {typerep, integer}},
+                        {immediate, 0}
+                       }
+                     ]}
+               , {4, [ {'NEQ', {stack, 0}, {stack, 0}, {immediate, 1}}
+                     , {'JUMPIF', {stack, 0}, {immediate, 13}}
+                     ]
+                 }
+               , {5,
+                     [ 'DUPA'
+
+                       %% Check if value is transferred correctly
+                     , {'CALL_R',
+                        {stack, 0},
+                        {immediate, aeb_fate_code:symbol_identifier(<<"value">>)},
+                        {immediate, {typerep, {tuple, []}}},
+                        {immediate, {typerep, integer}},
+                        {immediate, 2136}
+                       }
+                     ]}
+               , {6, [ {'NEQ', {stack, 0}, {stack, 0}, {immediate, 2136}}
+                     , {'JUMPIF', {stack, 0}, {immediate, 14}}
+                     ]
+                 }
+               , {7,
+                     [ 'DUPA'
+
+                       %% Check if the value has been registered in the balance
+                     , {'CALL_R',
+                        {stack, 0},
+                        {immediate, aeb_fate_code:symbol_identifier(<<"balance">>)},
+                        {immediate, {typerep, {tuple, []}}},
+                        {immediate, {typerep, integer}},
+                        {immediate, 0}
+                       }
+                     ]}
+               , {8, [ {'NEQ', {stack, 0}, {stack, 0}, {immediate, 2137}}
+                     , {'JUMPIF', {stack, 0}, {immediate, 15}}
+                     ]
+                 }
+               , {9,
+                     [ 'DUPA'
+
+                       %% Check if the creator is set to this contract
+                     , {'CALL_R',
+                        {stack, 0},
+                        {immediate, aeb_fate_code:symbol_identifier(<<"caller_is_creator">>)},
+                        {immediate, {typerep, {tuple, []}}},
+                        {immediate, {typerep, boolean}},
+                        {immediate, 0}
+                       }
+                     ]}
+               , {10, [ {'NOT', {stack, 0}, {stack, 0}}
+                     , {'JUMPIF', {stack, 0}, {immediate, 16}}
+                     ]
+                 }
+               , {11, %% Success
+                  [ {'RETURNR', {immediate, 2137}} ]}
+
+                 %% Return error
+               , {12, [{'ABORT', {immediate, <<"CREATE: wrong initial state or initial funds">>}}]}
+               , {13, [{'ABORT', {immediate, <<"CREATE: wrong balance returned">>}}]}
+               , {14, [{'ABORT', {immediate, <<"CREATE: wrong Call.value">>}}]}
+               , {15, [{'ABORT', {immediate, <<"CREATE: call with value didn't add funds">>}}]}
+               , {16, [{'ABORT', {immediate, <<"CREATE: creator is not the caller">>}}]}
+               ]
+             }
+           , {<<"clone_created">>, {[], integer},
+              [ {0, [ {'PUSH', {immediate, 666}}
+                    , {'CREATE',
+                       {immediate,
+                        %% payable contract C =
+                        %%   type state = int
+                        %%   entrypoint init(x) = x
+                        %%   stateful entrypoint check() =
+                        %%     if(Contract.creator == Call.caller)
+                        %%       state * 10 + Contract.balance
+                        %%     else -1
+                        aeb_fate_data:make_contract_bytearray(
+                          <<248,121,70,3,160,134,111,75,0,216,33,138,236,11,52,253,
+                            5,19,156,55,72,210,164,173,168,49,181,72,217,97,200,88,
+                            101,166,14,101,222,192,184,76,176,254,68,214,68,31,0,55,
+                            1,7,55,0,26,6,130,0,1,3,63,254,175,10,64,88,0,55,0,7,85,
+                            0,125,0,32,0,7,12,4,1,3,130,83,0,22,56,130,20,20,0,0,
+                            151,47,2,17,68,214,68,31,17,105,110,105,116,17,175,10,
+                            64,88,21,99,104,101,99,107,130,47,0,133,52,46,51,46,48,1
+                          >>)
+                       },
+                       {immediate, {typerep, {tuple, [integer]}}},
+                       {immediate, 0}
+                      }
+                    ]
+                }
+                %% [C]
+              , {1, [ {'POP', {arg, 0}}
+                      %% [] arg0=C
+                    , {'PUSH', {immediate, 1}}
+                      %% [1] arg0=C
+                    , {'CLONE',
+                       {arg, 0},
+                       {immediate, {typerep, {tuple, [integer]}}},
+                       {immediate, 3},
+                       {immediate, false}
+                      }
+                    ]}
+                %% [C1]
+              , {2, [ 'DUPA'
+                      %% [C1, C1]
+                    , {'POP', {arg, 0}}
+                      %% [C1] arg0=C1
+                    , {'PUSH', {immediate, 2}}
+                      %% [2, C1] arg0=C1
+                    , {'CLONE_G',
+                       {arg, 0},
+                       {immediate, {typerep, {tuple, [integer]}}},
+                       {immediate, 4},
+                       {immediate, 1000000},
+                       {immediate, false}
+                      }
+                    ]
+                }
+                %% [C2, C1]
+                %% Assert they are different
+              , {3, [ {'DUP', {immediate, 1}}
+                      %% [C1, C2, C1]
+                    , {'DUP', {immediate, 1}}
+                      %% [C2, C1, C2, C1]
+                    , {'POP', {arg, 0}}
+                      %% [C1, C2, C1] arg0=C2
+                    , {'EQ', {stack, 0}, {stack, 0}, {arg, 0}}
+                      %% [C1==C2, C2, C1]
+                    , {'JUMPIF', {stack, 0}, {immediate, 10}}
+                    ]
+                }
+                %% [C2, C1]
+                %% Assert they have same bytecode hash
+              , {4, [ {'DUP', {immediate, 1}}
+                      %% [C1, C2, C1]
+                    , {'DUP', {immediate, 1}}
+                      %% [C2, C1, C2, C1]
+                    , {'BYTECODE_HASH', {arg, 0}, {stack, 0}}
+                      %% [C1, C2, C1] arg0=#C2
+                    , {'BYTECODE_HASH', {stack, 0}, {stack, 0}}
+                      %% [#C1, C2, C1] arg0=#C2
+                    , {'EQ', {stack, 0}, {arg, 0}, {stack, 0}}
+                      %% [#C2==#C1, C2, C1]
+                    , {'NOT', {stack, 0}, {stack, 0}}
+                      %% [#C2!=#C1, C2, C1]
+                    , {'JUMPIF', {stack, 0}, {immediate, 11}}
+                    ]
+                }
+                %% [C2, C1]
+                %% Check that values and states are kept separately
+                %% Also ensure that the creator is set correctly
+              , {5, [ {'CALL_R',
+                       {stack, 0},
+                       {immediate, aeb_fate_code:symbol_identifier(<<"check">>)},
+                       {immediate, {typerep, {tuple, []}}},
+                       {immediate, {typerep, integer}},
+                       {immediate, 0}
+                      }
+                    ]
+                }
+                %% [C2.check, C1]
+              , {6, [ {'EQ', {stack, 0}, {stack, 0}, {immediate, 24}}
+                      %% [C2.check==29, C1]
+                    , {'NOT', {stack, 0}, {stack, 0}}
+                      %% [C2.check!=29, C1]
+                    , {'JUMPIF', {stack, 0}, {immediate, 12}}
+                    ]
+                }
+                %% [C1]
+                %% Check previous contract as well
+              , {7, [ {'CALL_R',
+                       {stack, 0},
+                       {immediate, aeb_fate_code:symbol_identifier(<<"check">>)},
+                       {immediate, {typerep, {tuple, []}}},
+                       {immediate, {typerep, integer}},
+                       {immediate, 0}
+                      }
+                    ]
+                }
+                %% [C1.check]
+              , {8, [ {'EQ', {stack, 0}, {stack, 0}, {immediate, 13}}
+                      %% [C1.check==18]
+                    , {'NOT', {stack, 0}, {stack, 0}}
+                      %% [C1.check!=18]
+                    , {'JUMPIF', {stack, 0}, {immediate, 13}}
+                    ]
+                }
+              , {9, [{'RETURNR', {immediate, 2137}}]}
+              , {10, [{'ABORT', {immediate, <<"CLONED CONTRACT HAS THE SAME PK">>}}]}
+              , {11, [{'ABORT', {immediate, <<"CLONED CONTRACT HAS DIFFERENT CODEHASH">>}}]}
+              , {12, [{'ABORT', {immediate, <<"BAD STATE/VALUE SEPARATION ON YOUNG">>}}]}
+              , {13, [{'ABORT', {immediate, <<"BAD STATE/VALUE SEPARATION ON OLD">>}}]}
+              ]
+             }
+           , {<<"clone_gas_limit">>, {[], integer},
+              [ {0, [ {'CLONE_G',
+                       {immediate, aeb_fate_data:make_contract(pad_contract_name(<<"remote">>))},
+                       {immediate, {typerep, {tuple, []}}},
+                       {immediate, 0},
+                       {immediate, 1},
+                       {immediate, true}
+                      }
+                    ]
+                }
+              , {1, [ 'RETURN' ]
+                }
+              ]
+             }
+           ]
+     , <<"abortion">> => %% this contract is not supposed to be born
+           [ {<<"init">>, {[], {tuple, []}},
+              [ {0, [ {'ABORT', {immediate, <<"thank u from saving me from the pain of existence">>}} ]}
+              ]
+             }
+           ]
      , <<"remote">> =>
            [ {<<"add_five">>, {[integer], integer},
-              [{0, [{'ADD', {stack, 0}, {immediate, 5}, {arg, 0}}
+              [{0, [ {'ADD', {stack, 0}, {immediate, 5}, {arg, 0}}
                     , 'RETURN']}]
+             }
+           , {<<"init">>, {[], {tuple, []}},
+              [ {0, [ {'TUPLE', {stack, 0}, {immediate, 0}}
+                    , 'RETURN'
+                    ]}
+              ]
              }
            ]
      , <<"bool">> =>
@@ -430,7 +884,9 @@ contracts() ->
                      , {'EQ', {stack, 0}, {stack, 0}, {arg, 0}}
                      , {'JUMPIF', {stack, 0}, {immediate, 2}}
                      ]}
-               , {1, [ {'INC', {stack, 0}} ]}
+               , {1, [ {'INC', {stack, 0}}
+                     , {'JUMP', {immediate, 2}}
+                     ]}
                , {2, [ 'RETURN']}
                ]}
            ]

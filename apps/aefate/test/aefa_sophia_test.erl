@@ -123,7 +123,7 @@ make_store(_, Store) ->
 
 make_call_spec(Contract, Function0, Arguments, Store) ->
     Function = aeb_fate_code:symbol_identifier(Function0),
-    EncArgs  = list_to_tuple([aefate_test_utils:encode(A) || A <- Arguments]),
+    EncArgs  = list_to_tuple([aefa_test_utils:encode(A) || A <- Arguments]),
     Calldata = {tuple, {Function, {tuple, EncArgs}}},
     CtStore  = make_store(Function0, Store),
     #{ contract   => pad_contract_name(Contract),

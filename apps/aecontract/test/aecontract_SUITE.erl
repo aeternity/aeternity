@@ -193,6 +193,7 @@
 -include_lib("stdlib/include/assert.hrl").
 
 -include("../include/aecontract.hrl").
+-include("../test/include/fate_type_macros.hrl").
 -include("../../aecore/include/blocks.hrl").
 
 -include("include/aect_sophia_vsn.hrl").
@@ -219,16 +220,6 @@
 -define(CONTRACT_SERIALIZATION_VSN_ROMA,    1).
 -define(CONTRACT_SERIALIZATION_VSN_MINERVA, 2).
 -define(CONTRACT_SERIALIZATION_VSN_LIMA,    3).
-
-%% Arguments like <<_:256>> are encoded as addresses.
-%% For FATE we need to distinguish between the type of object.
-%% For test cases that is run both for FATE and AEVM, wrap args in
-%% the constructors below.
--define(cid(__X__), {'@ct', __X__}).
--define(hsh(__X__), {'#', __X__}).
--define(sig(__X__), {'$sg', __X__}).
--define(oid(__X__), {'@ok', __X__}).
--define(qid(__X__), {'@oq', __X__}).
 
 
 -define(assertMatchAEVM(Res, ExpVm1, ExpVm2, ExpVm3, ExpVm4),
@@ -1573,7 +1564,7 @@ call_result(?ABI_FATE_SOPHIA_1, Type, Call) ->
     case aect_call:return_type(Call) of
         ok     ->
             Res = aeb_fate_encoding:deserialize(aect_call:return_value(Call)),
-            case aefate_test_utils:decode(Res, Type) of
+            case aefa_test_utils:decode(Res, Type) of
                 {variant, [0,1], 0, {}} when element(1, Type) =:= option ->
                     none;
                 {variant, [0,1], 1, {Decoded}} when element(1, Type) =:= option ->
@@ -1585,7 +1576,7 @@ call_result(?ABI_FATE_SOPHIA_1, Type, Call) ->
             {error, aect_call:return_value(Call)};
         revert ->
             Res = aeb_fate_encoding:deserialize(aect_call:return_value(Call)),
-            {revert, aefate_test_utils:decode(Res)}
+            {revert, aefa_test_utils:decode(Res)}
     end.
 
 account_balance(PubKey, S) ->
@@ -1606,17 +1597,8 @@ make_calldata_from_code(Code, Fun, Args) when is_binary(Fun) ->
                     aeb_heap:to_binary({FunHashInt, Args1});
                 {error, _} = Err -> error({bad_function, Fun, Err})
             end;
-        ?ABI_FATE_SOPHIA_1 ->
-            %% TODO: Move this into aefa_fate
-            Args1 = format_fate_args(if is_tuple(Args) -> Args;
-                                        true -> {Args}
-                                     end),
-            FunctionId = make_fate_function_id(Fun),
-            aeb_fate_encoding:serialize(aefate_test_utils:encode({FunctionId, Args1}))
+        ?ABI_FATE_SOPHIA_1 -> aefa_test_utils:make_calldata(Fun, Args)
     end.
-
-make_fate_function_id(FunctionName) when is_binary(FunctionName) ->
-    aeb_fate_code:symbol_identifier(FunctionName).
 
 make_calldata_from_id(Id, Fun, Args, State) ->
     {{value, C}, _S} = lookup_contract_by_id(Id, State),
@@ -1661,28 +1643,6 @@ to_words(Bin) ->
     Padded = <<Bin/binary, 0:(PadN - N)/unit:8>>,
     [ W || <<W:32/unit:8>> <= Padded ].
 
-format_fate_args(?cid(B)) ->
-    {contract, B};
-format_fate_args(?hsh(B)) ->
-    {bytes, B};
-format_fate_args(?sig(B)) ->
-    {bytes, B};
-format_fate_args(?oid(B)) ->
-    {oracle, B};
-format_fate_args(?qid(B)) ->
-    {oracle_query, B};
-format_fate_args(<<_:256>> = B) ->
-    {address, B}; %% Assume it is an address
-format_fate_args({bytes, B}) ->
-    {bytes, B};
-format_fate_args([H|T]) ->
-    [format_fate_args(H) | format_fate_args(T)];
-format_fate_args(T) when is_tuple(T) ->
-    list_to_tuple(format_fate_args(tuple_to_list(T)));
-format_fate_args(M) when is_map(M) ->
-    maps:from_list(format_fate_args(maps:to_list(M)));
-format_fate_args(X) ->
-    X.
 
 sophia_list_comp(_Cfg) ->
     ?skipRest(sophia_version() =< ?SOPHIA_FORTUNA, no_list_comprehensions_in_fortuna),
@@ -5163,7 +5123,7 @@ sophia_crypto(_Cfg) ->
     String = <<"12345678901234567890123456789012-andsomemore">>,
     Data   = [{none, <<"foo">>}, {{some, 100432}, String}],
     Bin    = ?IF_AEVM(aeb_heap:to_binary(Data),
-                      aeb_fate_encoding:serialize(aefate_test_utils:encode(Data))),
+                      aeb_fate_encoding:serialize(aefa_test_utils:encode(Data))),
 
     <<Sha3_N:256>>      = Sha3      = aec_hash:hash(evm, Bin),
     <<Sha256_N:256>>    = Sha256    = aec_hash:sha256_hash(Bin),

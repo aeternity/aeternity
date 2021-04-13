@@ -248,7 +248,7 @@ new(RTx) ->
 new(Owner, Nonce, CTVersion, Code, Deposit) ->
     new_internal(Owner, Nonce, CTVersion, {code, Code}, Deposit).
 
-%% NOTE: When cloning passed CodeRefPK has to have code_ref=no_ref (NO INDIRECT CODE REFERENCE)
+%% NOTE: When cloning passed CodeRefPK has to have code={code, _} (NO INDIRECT CODE REFERENCE)
 -spec new_clone(aec_keys:pubkey(), ct_nonce(), version(), aec_keys:pubkey(), amount()) -> contract().
 new_clone(Owner, Nonce, CTVersion, CodeRefPK, Deposit) ->
     CodeRef = aeser_id:create(contract, CodeRefPK),
