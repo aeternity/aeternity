@@ -1,6 +1,7 @@
 # Introduction
 
 This document describes how to build an Aeternity node from source on:
+
 - Ubuntu 16.04.4 LTS
 - Ubuntu 18.04 LTS
 - Ubuntu 20.04 LTS
@@ -8,12 +9,19 @@ This document describes how to build an Aeternity node from source on:
 - Archlinux 20210404
 - openSUSE Leap 15.2
 
+While the package should build on most linux distributions that's not verified (in CI) for each release on other than the below platforms:
+
+- Ubuntu 16.04.4 LTS
+- Ubuntu 18.04 LTS
+- MacOS (latest)
+
 The commands below assume you are logged in with `sudo` user.
 
 The node have couple of main dependencies that have to be installed to build it from source:
 
 - [Erlang/OTP](http://erlang.org/doc/installation_guide/INSTALL.html)
 - [Libsodium](https://download.libsodium.org/doc/installation/)
+- [Libgmp](https://gmplib.org)
 
 ## Dependencies
 
