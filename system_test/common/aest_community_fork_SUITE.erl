@@ -75,7 +75,7 @@
 
 -define(NODE4,
         #{name            => node4,
-          peers           => [node1, node2, node3],
+          peers           => [node3],
           mining          => #{autostart => true},
           fork_management => #{fork => ?FORK_DISABLED},
           backend         => aest_docker,
