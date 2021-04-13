@@ -84,7 +84,7 @@ Update package database, packages and install the common tools and libraries:
 
 ```bash
 sudo pacman -Sy
-sudo pacman -S libsodium gmp git ncurses base-devel erlang22-nox
+sudo pacman -S git base-devel cmake ncurses erlang22-nox libsodium gmp
 ```
 
 ### openSUSE Leap 15.2
@@ -114,25 +114,11 @@ git checkout tags/v${VERSION:?}
 
 ### Production build
 
-On archlinux RocksDB backend is not supported so it has to be turned off:
-```bash
-export AE_DISABLE_ROCKSDB=1
-```
-
 One can create a production build by running:
 
 ```bash
 make prod-build
 ```
-
-**NOTE**: Make sure that database backend is set to `leveled` on archlinux before starting the node, i.e. in `_build/prod/rel/aeternity/aeternity.yaml`
-
-```yml
-chain:
-    db_backend: leveled
-```
-
-See [configuration documentation](configuration.md) for configuration details.
 
 If `prod-build` went fine, configuration is in place, one should be able to navigate to the build artifacts directory and start the Aeternity node:
 
