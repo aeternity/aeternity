@@ -29,7 +29,7 @@
 
 %=== MACROS ====================================================================
 
--define(MINING_TIMEOUT,   5000).
+-define(MINING_TIMEOUT,   10 * 1000).
 
 -define(SIGNALLING_START_HEIGHT, 5).
 -define(SIGNALLING_END_HEIGHT, 15).
