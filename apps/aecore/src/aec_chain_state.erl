@@ -90,6 +90,7 @@
         , get_fork_result/2
         , get_info_field/2
         , ensure_chain_ends/0
+        , ensure_key_headers_height_store/0
         , grant_fees/5
         ]).
 
@@ -126,6 +127,7 @@
 
 -include("aec_block_insertion.hrl").
 -include("blocks.hrl").
+-include("aec_db.hrl").
 
 -type events() :: aetx_env:events().
 
@@ -1012,9 +1014,9 @@ db_get_header(Hash) when is_binary(Hash) ->
 %% The usual result of this function call is one header, sometimes two headers. On heavy generations on a good SSD
 %% using the rocksdb backend this right now takes 13-14ms which is bad in the hot path... This should take at most 100us -.-
 db_find_key_nodes_at_height(Height) when is_integer(Height) ->
-    case aec_db:find_headers_and_hash_at_height(Height) of
+    case aec_db:find_key_headers_and_hash_at_height(Height) of
         [_|_] = Headers ->
-            case [wrap_header(H, Hash) || {Hash, H} <- Headers, aec_headers:type(H) =:= key] of
+            case [wrap_header(H, Hash) || {Hash, H} <- Headers] of
                 [] -> error;
                 List -> {ok, List}
             end;
@@ -1269,11 +1271,11 @@ ensure_chain_ends() ->
     case aec_db:get_top_block_hash() of
         undefined -> ok; %% Fresh DB
         _ -> %% Ok this is not a fresh DB
-            case aec_db:chain_end_migration_status() of
+            case aec_db:chain_migration_status(chain_ends) of
                 done -> %% No migration is in progress
                     case aec_db:find_chain_end_hashes() of
                         [] -> %% Ok this is an old DB - migration required
-                            aec_db:start_chain_end_migration(),
+                            aec_db:start_chain_migration(chain_ends),
                             start_chain_ends_migration();
                         _ -> %% No migration required
                             ok
@@ -1327,7 +1329,7 @@ chain_ends_finish_migration(OldTops0) ->
     ok = aec_db:ensure_transaction(fun() ->
         NewTops = aec_db:find_chain_end_hashes(),
         chain_ends_maybe_apply(OldTops, NewTops, NewTops),
-        aec_db:finish_chain_end_migration(),
+        aec_db:finish_chain_migration(chain_ends),
         ok
       end).
 
@@ -1347,3 +1349,78 @@ chain_ends_maybe_apply([H1|T1] = OldTops, [H2|T2], NewTops) -> %% Check if H1 is
             lager:info("[Orphan key blocks scan] ignoring deleted header: find_common_ancestor(~p, ~p)", [EH1, EH2]),
             chain_ends_maybe_apply(T1, NewTops, NewTops)
     end.
+
+
+% We use aec_chain_state to store all key block headers with heights.
+% This allows for cheap retrieval of key header by height.
+-spec ensure_key_headers_height_store() -> ok | pid().
+ensure_key_headers_height_store() ->
+    case aec_db:get_top_block_hash() of
+        undefined -> ok; %% Fresh DB
+        _ -> %% Ok this is not a fresh DB
+            case aec_db:chain_migration_status(key_headers) of
+                done -> %% No migration is in progress
+                    case aec_db:find_key_headers_and_hash_at_height(1) of
+                        [] -> %% Ok this is an old DB - migration required
+                            aec_db:start_chain_migration(key_headers),
+                            start_key_headers_height_store_migration();
+                        _ -> %% No migration required
+                            ok
+                    end;
+                in_progress -> %% The migration was interrupted and not finished yet
+                    lager:info("[Key headers migration scan] Resuming interrupted scan"),
+                    start_key_headers_height_store_migration()
+            end
+    end.
+
+start_key_headers_height_store_migration() ->
+    lager:info("[Key headers migrations scan] Retriving all key headers"),
+    spawn(fun() -> %% Don't use spawn_link here - we can't be killed by the setup process
+        %% An error here should bring down the entire node with it!
+        try
+            mnesia:activity(async_dirty, fun () ->
+                Res = timer:tc(fun() ->
+                    mnesia:select(aec_headers,
+                                  [{ {aec_headers, '$1', '$2', '$3'}
+                                  , [{'=:=', {element, 1, '$2'}, key_header}]
+                                  , [{{'$1', '$2', '$3'}}]
+                                  }],
+                                  10000,
+                                  read)
+                end),
+                {TotalTime, TotalCount} = key_headers_height_store_migration_step(Res),
+                lager:info("[Key headers migrations scan] DONE: In total migrated ~p headers in ~p microseconds", [TotalCount, TotalTime])
+            end),
+            aec_db:finish_chain_migration(key_headers)
+        catch
+            E:R:Stack ->
+                (catch io:format(user, "[Key headers migration scan] Terminating node: ~p ~p ~p", [E, R, Stack])),
+                (catch lager:error("[Key headers migration scan] Terminating node: ~p ~p ~p", [E, R, Stack])),
+                init:stop("[Key headers migration scan] Encountered a fatal error during the migration. Terminating the node")
+        end
+    end).
+
+key_headers_height_store_migration_step(First) ->
+    key_headers_height_store_migration_step(0, 0, First).
+key_headers_height_store_migration_step(Time, N, {TimeAdd, '$end_of_table'}) ->
+    {Time + TimeAdd, N};
+key_headers_height_store_migration_step(Time, N, {TimeRead, {Headers, Cont}}) ->
+    lager:info("[Key headers migrations scan] Read headers in ~p microseconds", [TimeRead]),
+    {TimeWrite, Count} = timer:tc(fun() ->
+        aec_db:ensure_transaction(fun() ->
+            lists:foldl(
+                fun({Hash, Header, Height}, Count) ->
+                    mnesia:write(#aec_chain_state{key = {key_header, Height, Hash}, value = Header}),
+                    Count+1
+                end,
+                0,
+                Headers
+            )
+        end)
+    end),
+    lager:info("[Key headers migrations scan] Wrote ~p headers in ~p microseconds", [Count, TimeWrite]),
+    key_headers_height_store_migration_step(
+        Time + TimeRead + TimeWrite,
+        N + Count,
+        timer:tc(fun() -> mnesia:select(Cont) end)
+    ).

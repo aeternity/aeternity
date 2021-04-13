@@ -654,7 +654,7 @@ total_difficulty_in_chain() ->
 forking_test_() ->
     {foreach,
      fun() ->
-             aec_test_utils:start_chain_db(),
+             aec_test_utils:start_chain_db(disc),
              setup_meck_and_keys()
      end,
      fun(TmpDir) ->
@@ -694,38 +694,62 @@ fork_common(EasyChain, HardChain) ->
     ok.
 
 fork_common_block(EasyChain, TopHashEasy, HardChain, TopHashHard) ->
-    restart_chain_db(),
+    aec_db:clear_db(),
     %% The second chain should take over
     ok = write_blocks_to_chain(EasyChain),
     ?assertEqual(TopHashEasy, top_block_hash()),
-    fork_test_chain_ends_and_migration([TopHashEasy]),
+    fork_test_chain_ends_and_migration([TopHashEasy], EasyChain),
     ok = write_blocks_to_chain(HardChain),
     ?assertEqual(TopHashHard, top_block_hash()),
-    fork_test_chain_ends_and_migration([TopHashEasy, TopHashHard]),
+    fork_test_chain_ends_and_migration([TopHashEasy, TopHashHard], HardChain),
 
-    restart_chain_db(),
+    aec_db:clear_db(),
     %% The second chain should not take over
     ok = write_blocks_to_chain(HardChain),
     ?assertEqual(TopHashHard, top_block_hash()),
-    fork_test_chain_ends_and_migration([TopHashHard]),
+    fork_test_chain_ends_and_migration([TopHashHard], HardChain),
     ok = write_blocks_to_chain(EasyChain),
     ?assertEqual(TopHashHard, top_block_hash()),
-    fork_test_chain_ends_and_migration([TopHashEasy, TopHashHard]),
+    fork_test_chain_ends_and_migration([TopHashEasy, TopHashHard], HardChain),
     ok.
 
-fork_test_chain_ends_and_migration(Expected) ->
-    F = fun() -> ?assertEqual( lists:usort(Expected)
-                             , lists:usort(aec_db:find_chain_end_hashes())) end,
+fork_test_chain_ends_and_migration(ExpectedTops, ExpectedBlocks) ->
+    F = fun() -> ?assertEqual( lists:usort(ExpectedTops)
+                             , lists:usort(aec_db:find_chain_end_hashes())),
+                 ?assertEqual( [ aec_blocks:to_header(Block) || Block <- ExpectedBlocks]
+                             , [ header_by_height(H) ||
+                                 H <- lists:seq(0, aec_blocks:height(lists:last(ExpectedBlocks)))])
+        end,
     F(),
-    [aec_db:unmark_chain_end_hash(H) || H <- Expected],
-    case aec_chain_state:ensure_chain_ends() of
-        ok -> error("Migration did not trigger!");
-        Pid ->
-            MRef = erlang:monitor(process, Pid),
-            receive {'DOWN', MRef, process, _, _} -> ok end,
-            F(),
-            ok = aec_chain_state:ensure_chain_ends() %% Already migrated
-    end.
+    MaxHeight = lists:max([aec_headers:height(aec_db:get_header(H)) || H <- ExpectedTops]),
+    aec_db:ensure_transaction(fun() ->
+        [[mnesia:delete({aec_chain_state, {key_header, H, Hash}})
+        || {Hash, _Header} <- aec_db:find_key_headers_and_hash_at_height(H)]
+        || H  <- lists:seq(0, MaxHeight)]
+    end),
+    aec_db:ensure_transaction(fun() ->
+        ?assertEqual(
+            [],
+            mnesia:dirty_select(aec_chain_state, [{{aec_chain_state, {key_header, '_', '_'}, '_'}
+                                                  , []
+                                                  , ['$_']
+                                                  }])
+        )
+    end),
+    [aec_db:unmark_chain_end_hash(H) || H <- ExpectedTops],
+    PidEnds = aec_chain_state:ensure_chain_ends(),
+    ?assertNotEqual(ok, PidEnds),
+    PidHeight = aec_chain_state:ensure_key_headers_height_store(),
+    ?assertNotEqual(ok, PidHeight),
+    await_pid(PidEnds),
+    await_pid(PidHeight),
+    F(),
+    ok = aec_chain_state:ensure_chain_ends(), %% Already migrated
+    ok = aec_chain_state:ensure_key_headers_height_store().
+
+await_pid(Pid) ->
+    MRef = erlang:monitor(process, Pid),
+    receive {'DOWN', MRef, process, _, _} -> ok end.
 
 fork_get_by_height() ->
     CommonChain = gen_block_chain_with_state_by_target([?GENESIS_TARGET, ?GENESIS_TARGET, 1, 1], 111),
@@ -852,7 +876,7 @@ fork_on_micro_block() ->
 
     {ok, KB2ForkHash} = aec_blocks:hash_internal_representation(KB2Fork),
     ?assertEqual(KB2ForkHash, aec_chain:top_block_hash()),
-    fork_test_chain_ends_and_migration([KB2ForkHash]),
+    fork_test_chain_ends_and_migration([KB2ForkHash], [KB0, KB1, KB2Fork]),
 
     %% Insert main chain
     ok = insert_block(MB2),
@@ -862,7 +886,7 @@ fork_on_micro_block() ->
     %% Check main chain took over
     {ok, KB3Hash} = aec_blocks:hash_internal_representation(KB3),
     ?assertEqual(KB3Hash, aec_chain:top_block_hash()),
-    fork_test_chain_ends_and_migration([KB2ForkHash, KB3Hash]),
+    fork_test_chain_ends_and_migration([KB2ForkHash, KB3Hash], [KB0, KB1, KB2, KB3]),
     ok.
 
 fork_on_old_fork_point() ->
@@ -1891,6 +1915,10 @@ extend_chain_with_state(Base, Targets, Nonce, TxsFun) ->
 
 block_hash(Block) ->
     {ok, H} = aec_blocks:hash_internal_representation(Block),
+    H.
+
+header_by_height(Height) ->
+    {ok, H} = aec_chain:get_key_header_by_height(Height),
     H.
 
 make_spend_tx(Sender, SenderNonce, Recipient) ->

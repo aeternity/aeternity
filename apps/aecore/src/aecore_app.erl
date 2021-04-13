@@ -21,6 +21,7 @@ start(_StartType, _StartArgs) ->
     case aec_db:persisted_valid_genesis_block() of
         true ->
             aec_chain_state:ensure_chain_ends(),
+            aec_chain_state:ensure_key_headers_height_store(),
             aecore_sup:start_link();
         false ->
             lager:error("Persisted chain has a different genesis block than "
