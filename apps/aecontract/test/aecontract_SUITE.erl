@@ -544,6 +544,7 @@ init_tests(Release, VMName) ->
     init_per_testcase_common(interactive, Cfg).
 
 init_per_suite(Config) ->
+    aefa_fate_op:load_pre_iris_map_ordering(),
     aec_test_utils:ensure_no_mocks(),
     Config.
 
