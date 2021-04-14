@@ -65,10 +65,10 @@
         , sophia_list_comp/1
         , sophia_stdlib_tests/1
         , sophia_remote_identity/1
-        , sophia_vm_interaction/1
         , fate_vm_interaction/1
         , fate_vm_version_switching/1
         , contract_init_on_chain_fate/1
+        , aevm_version_interaction/1
         , sophia_state/1
         , sophia_match_bug/1
         , sophia_spend/1
@@ -338,7 +338,7 @@ all() ->
 groups() ->
     [ {aevm, [], ?ALL_TESTS ++ ?AEVM_SPECIFIC}
     , {fate, [], ?ALL_TESTS ++ ?FATE_SPECIFIC}
-    , {protocol_interaction, [], [ sophia_vm_interaction
+    , {protocol_interaction, [], [ aevm_version_interaction
                                  , create_contract_init_error_no_create_account
                                  ]}
     , {protocol_interaction_fate, [], [ fate_vm_interaction
@@ -568,12 +568,12 @@ init_per_group(protocol_interaction, Cfg) ->
                      (H) when H >= IHeight -> ?IRIS_PROTOCOL_VSN
                   end,
             meck:expect(aec_hard_forks, protocol_effective_at_height, Fun),
-            [{sophia_version, ?SOPHIA_MINERVA}, {vm_version, ?VM_AEVM_SOPHIA_2},
-             {fork_heights, #{ minerva => MHeight,
+            [{fork_heights, #{ minerva => MHeight,
                                fortuna => FHeight,
                                lima    => LHeight,
                                iris    => IHeight
                              }},
+             {abi_version, ?ABI_AEVM_SOPHIA_1},
              {protocol, iris} | Cfg];
         _ ->
             {skip, only_test_protocol_interaction_on_latest_protocol}
@@ -620,6 +620,10 @@ end_per_group(_Grp, Cfg) ->
     Cfg.
 
 %% Process dict magic in the right process ;-)
+init_per_testcase(TC, Config) when TC == aevm_version_interaction;
+                                   TC == create_contract_init_error_no_create_account ->
+    Config1 = [{sophia_version, ?SOPHIA_MINERVA}, {vm_version, ?VM_AEVM_SOPHIA_2} | Config],
+    init_per_testcase_common(TC, Config1);
 init_per_testcase(fate_environment, Config) ->
     meck:new(aefa_chain_api, [passthrough]),
     meck:expect(aefa_chain_api, blockhash,
@@ -1970,7 +1974,7 @@ sophia_auth_tx(_Cfg) ->
     ok.
 
 
-sophia_vm_interaction(Cfg) ->
+aevm_version_interaction(Cfg) ->
     state(aect_test_utils:new_state()),
     ForkHeights   = ?config(fork_heights, Cfg),
     RomaHeight    = maps:get(minerva, ForkHeights) - 1,
@@ -2015,8 +2019,8 @@ sophia_vm_interaction(Cfg) ->
     RemCFortuna = ?call(create_contract_with_code, Acc, RemCode, {}, FortunaSpec),
     IdCLima     = ?call(create_contract_with_code, Acc, IdCode2, {}, LimaSpec),
     RemCLima    = ?call(create_contract_with_code, Acc, RemCode2, {}, LimaSpec),
-    IdCIris     = ?call(create_contract_with_code, Acc, IdCode2, {}, IrisSpec),
-    RemCIris    = ?call(create_contract_with_code, Acc, RemCode2, {}, IrisSpec),
+    {error, illegal_vm_version} = ?call(tx_fail_create_contract_with_code, Acc, IdCode2, {}, IrisSpec),
+    {error, illegal_vm_version} = ?call(tx_fail_create_contract_with_code, Acc, RemCode2, {}, IrisSpec),
 
     %% Check that we cannot create contracts with old vms after the forks
     BadSpec1   = RomaSpec#{height => MinervaHeight},
@@ -2025,8 +2029,8 @@ sophia_vm_interaction(Cfg) ->
     {error, illegal_vm_version} = ?call(tx_fail_create_contract_with_code, Acc, IdCode, {}, BadSpec2),
     BadSpec3   = MinervaSpec#{height => LimaHeight},
     {error, illegal_vm_version} = ?call(tx_fail_create_contract_with_code, Acc, IdCode, {}, BadSpec3),
-    %% BadSpec4   = LimaSpec#{height => IrisHeight},
-    %% {error, illegal_vm_version} = ?call(tx_fail_create_contract_with_code, Acc, IdCode, {}, BadSpec4),
+    BadSpec4   = LimaSpec#{height => IrisHeight},
+    {error, illegal_vm_version} = ?call(tx_fail_create_contract_with_code, Acc, IdCode, {}, BadSpec4),
 
     LatestCallSpec = #{height => IrisHeight,
                        gas_price => MinGasPrice,
@@ -2047,17 +2051,12 @@ sophia_vm_interaction(Cfg) ->
                      , {RemCMinerva, IdCRoma}
                      , {RemCFortuna, IdCRoma}
                      , {RemCLima,    IdCRoma}
-                     , {RemCIris,    IdCRoma}
                      , {RemCMinerva, IdCMinerva}
                      , {RemCFortuna, IdCMinerva}
                      , {RemCLima,    IdCMinerva}
-                     , {RemCIris,    IdCMinerva}
                      , {RemCFortuna, IdCFortuna}
                      , {RemCLima,    IdCFortuna}
-                     , {RemCIris,    IdCFortuna}
                      , {RemCLima,    IdCLima}
-                     , {RemCIris,    IdCLima}
-                     , {RemCIris,    IdCIris}
                      ]],
 
     %% Call newVM -> oldVM -> oldVM
@@ -2066,13 +2065,9 @@ sophia_vm_interaction(Cfg) ->
      || {Rem1, Id, Rem2} <- [ {RemCMinerva, IdCRoma, RemCRoma}
                             , {RemCFortuna, IdCRoma, RemCRoma}
                             , {RemCLima,    IdCRoma, RemCRoma}
-                            , {RemCIris,    IdCRoma, RemCRoma}
                             , {RemCFortuna, IdCMinerva, RemCMinerva}
                             , {RemCLima,    IdCMinerva, RemCMinerva}
-                            , {RemCIris,    IdCMinerva, RemCMinerva}
                             , {RemCLima,    IdCFortuna, RemCFortuna}
-                            , {RemCIris,    IdCFortuna, RemCFortuna}
-                            , {RemCIris,    IdCLima, RemCLima}
                             ]],
 
     %% Fail calling oldVM -> newVM
@@ -2081,13 +2076,9 @@ sophia_vm_interaction(Cfg) ->
      || {Rem, Id} <- [ {RemCRoma, IdCMinerva}
                      , {RemCRoma, IdCFortuna}
                      , {RemCRoma, IdCLima}
-                     , {RemCRoma, IdCIris}
                      , {RemCMinerva, IdCFortuna}
                      , {RemCMinerva, IdCLima}
-                     , {RemCMinerva, IdCIris}
                      , {RemCFortuna, IdCLima}
-                     , {RemCFortuna, IdCIris}
-                     %% , {RemCLima, IdCIris}
                     ]],
     ok.
 
@@ -6690,7 +6681,7 @@ fate_vm_version_switching(Cfg) ->
                  gas_price => MinGasPrice,
                  fee => 1000000 * MinGasPrice},
     {ok, DetectorContract} = compile_contract(vm_detector),
-    {ok, RemCode} = compile_contract(remote_call),
+    {ok, _RemCode} = compile_contract(remote_call),
 
     %% Create contracts on both sides of the fork
     DetC1Lima = ?call(create_contract_with_code, Acc, DetectorContract, {}, LimaSpec),
@@ -6875,9 +6866,9 @@ store_rand_hash({DimX, DimY, DimZ}, M) ->
     M_x = 41850756719,
     M_y = 74482681767,
     lists:foldl(
-        fun(X, Acc) -> (Acc*M_x + lists:foldl(
-            fun(Y, Acc) -> (Acc*M_y + lists:foldl(
-                fun(Z, Acc) -> (Acc*P_z + maps:get(Z,maps:get(Y, maps:get(X, M)))) rem P_mod end,
+        fun(X, AccX) -> (AccX*M_x + lists:foldl(
+            fun(Y, AccY) -> (AccY*M_y + lists:foldl(
+                fun(Z, AccZ) -> (AccZ*P_z + maps:get(Z,maps:get(Y, maps:get(X, M)))) rem P_mod end,
                 0,
                 lists:seq(1,DimZ)
             )) rem P_mod end,
@@ -6902,19 +6893,19 @@ store_rand_do_op({copy2, {X1, Y1, X2, Y2}}, M) ->
     maps:put(X1, maps:put(Y1, maps:get(Y2, maps:get(X2, M)), maps:get(X1, M)), M).
 
 store_rand_random_write({DimX, DimY, DimZ}) ->
-    {write, {random:uniform(DimX), random:uniform(DimY), random:uniform(DimZ), random:uniform(10000)}}.
+    {write, {rand:uniform(DimX), rand:uniform(DimY), rand:uniform(DimZ), rand:uniform(10000)}}.
 
-store_rand_random_op({DimX, DimY, DimZ} = Dim) ->
-    case random:uniform(5) of
-        1 -> {swap1, {random:uniform(DimX), random:uniform(DimX)}};
-        2 -> {swap2, {random:uniform(DimX), random:uniform(DimY), random:uniform(DimX), random:uniform(DimY)}};
+store_rand_random_op({DimX, DimY, _DimZ} = Dim) ->
+    case rand:uniform(5) of
+        1 -> {swap1, {rand:uniform(DimX), rand:uniform(DimX)}};
+        2 -> {swap2, {rand:uniform(DimX), rand:uniform(DimY), rand:uniform(DimX), rand:uniform(DimY)}};
         3 -> store_rand_random_write(Dim);
-        4 -> {copy1, {random:uniform(DimX), random:uniform(DimX)}};
-        5 -> {copy2, {random:uniform(DimX), random:uniform(DimY), random:uniform(DimX), random:uniform(DimY)}}
+        4 -> {copy1, {rand:uniform(DimX), rand:uniform(DimX)}};
+        5 -> {copy2, {rand:uniform(DimX), rand:uniform(DimY), rand:uniform(DimX), rand:uniform(DimY)}}
     end.
 
-store_rand_random_swap2({DimX, DimY, DimZ}) ->
-    {swap2, {random:uniform(DimX), random:uniform(DimY), random:uniform(DimX), random:uniform(DimY)}}.
+store_rand_random_swap2({DimX, DimY, _DimZ}) ->
+    {swap2, {rand:uniform(DimX), rand:uniform(DimY), rand:uniform(DimX), rand:uniform(DimY)}}.
 
 store_rand_encode({T,V}) ->
     Arrities = [2,4,4,2,4],
@@ -6927,7 +6918,7 @@ store_rand_encode({T,V}) ->
                         end, V}.
 
 store_rand_exe_oplist(Ops, State, Dim, Tester, Acc, Spec) ->
-    State2 = lists:foldl(fun(X, Acc) -> store_rand_do_op(X, Acc) end, State, Ops),
+    State2 = lists:foldl(fun(X, AccX) -> store_rand_do_op(X, AccX) end, State, Ops),
     ?assertEqual({}, ?call(call_contract, Acc, Tester, do_op_list, {tuple, []},
     {lists:map(fun(X) -> store_rand_encode(X) end, Ops)}, Spec)),
     ?assertEqual(store_rand_hash(Dim, State2), ?call(call_contract, Acc, Tester, getHash, word, {}, Spec)),
@@ -6937,7 +6928,7 @@ store_rand_exe_oplist(Ops, State, Dim, Tester, Acc, Spec) ->
 %% Actual Tests
 %%%%%%%%%%%%%%%%
 
-store_single_ops(Cfg) ->
+store_single_ops(_Cfg) ->
     state(aect_test_utils:new_state()),
     Dim={5,5,5},
     InitialState = store_rand_initial_state(Dim),
@@ -6970,7 +6961,7 @@ store_single_ops(Cfg) ->
     ok.
 
 
-store_multiple_random_ops(Cfg) ->
+store_multiple_random_ops(_Cfg) ->
     state(aect_test_utils:new_state()),
     Dim={5,5,5},
     InitialState = store_rand_initial_state(Dim),
@@ -7005,7 +6996,7 @@ store_multiple_random_ops(Cfg) ->
     ok.
 
 
-store_onetype_random_ops(Cfg) ->
+store_onetype_random_ops(_Cfg) ->
     state(aect_test_utils:new_state()),
     Dim={5,5,5},
     InitialState = store_rand_initial_state(Dim),

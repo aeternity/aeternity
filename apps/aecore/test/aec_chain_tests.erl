@@ -1693,7 +1693,7 @@ token_supply_ga() ->
      , src      := Src} = CodeMap,
     {ok, InitCallData} = aect_test_utils:encode_call_data(list_to_binary(Src), <<"init">>, [<<"123">>]),
     {ok, MetaCallData} = aect_test_utils:encode_call_data(list_to_binary(Src), <<"authorize">>, [<<"123">>, <<"1">>]),
-    {ok, AuthFunHash}  = aeb_aevm_abi:type_hash_from_function_name(<<"authorize">>, TypeInfo),
+    {ok, AuthFunHash}  = aega_test_utils:auth_fun_hash(<<"authorize">>, TypeInfo),
     AttachTx = make_ga_attach_tx(PubKey, ByteCode, AuthFunHash, InitCallData, 1,
                                  Fee, Gas, GasPrice),
     SAttachTx = aec_test_utils:sign_tx(AttachTx, [PrivKey]),
@@ -1979,7 +1979,7 @@ make_channel_create_tx(InitiatorPubkey, Nonce, ResponderPubkey, Amount, Fee) ->
     Delegates =
         case aecore_suite_utils:latest_protocol_version() >= ?IRIS_PROTOCOL_VSN of
             true -> {[], []};
-            false -> [] 
+            false -> []
         end,
     {ok, Tx} = aesc_create_tx:new(#{initiator_id       => InitiatorId,
                                     initiator_amount   => Amount,
