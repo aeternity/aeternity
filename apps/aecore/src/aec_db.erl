@@ -989,8 +989,13 @@ find_tx_with_location(STxHash) ->
 add_tx(STx) ->
     Hash = aetx_sign:hash(STx),
     ?t(case mnesia:read(aec_signed_tx, Hash) of
-           [_] ->
-               {error, already_exists};
+           [#aec_signed_tx{value = STx}] ->
+              case mnesia:read(aec_tx_location, Hash) of
+                   [] -> %% the transaction had either been GCed or is in mempool
+                      add_tx_hash_to_mempool(Hash), %% ensure in mempool
+                      {ok, Hash};
+                   [_] -> {error, already_exists}
+              end;
            [] ->
                Obj = #aec_signed_tx{key = Hash, value = STx},
                mnesia:write(Obj),

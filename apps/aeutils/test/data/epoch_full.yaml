@@ -77,6 +77,8 @@ mempool:
     nonce_offset: 5
     # Maximum nonce accepted when pubkey is not present in state
     nonce_baseline: 1
+    # Maximum cached transactions
+    cache_size: 200
 
 http:
     cors:

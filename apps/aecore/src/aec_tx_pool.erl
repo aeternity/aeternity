@@ -170,7 +170,8 @@ push(Tx, Event) ->
 push(Tx, Event = tx_received, Timeout) ->
     TxHash = safe_tx_hash(Tx),
     case aec_tx_gossip_cache:in_cache(TxHash) of
-        true -> ok;
+        true ->
+            ok;
         false ->
             aec_jobs_queues:run(tx_pool_push, fun() -> push_(Tx, TxHash, Event, Timeout) end)
     end;
@@ -746,10 +747,8 @@ check_pool_db_put(Tx, TxHash, Event) ->
         mempool ->
             %% lager:debug("Already have tx: ~p in ~p", [TxHash, mempool]),
             ignore;
-        none ->
-            lager:debug("Already have GC:ed tx: ~p", [TxHash]),
-            ignore;
-        not_found ->
+        UnknownOrGCed when UnknownOrGCed =:= not_found;
+                           UnknownOrGCed =:= none ->
             {Block, BlockHash, Trees} = get_onchain_env(),
             Checks = [ fun check_valid_at_protocol/6
                      , fun check_signature/6
@@ -786,6 +785,8 @@ do_pool_db_put(Key, Tx, Hash, Event,
     case ets:member(Db, Key) of
         true ->
             lager:debug("Pool db key already present (~p)", [Key]),
+            aec_db:add_tx(Tx),
+            aec_events:publish(Event, Tx),
             %% TODO: We should make a decision whether to switch the tx.
             {ok, St};
         false ->
@@ -949,9 +950,8 @@ int_gas_price(Tx) ->
     end.
 
 tx_ttl() ->
-%%    aeu_env:user_config_or_env([<<"mempool">>, <<"tx_ttl">>],
-%%                               aecore, mempool_tx_ttl, ?DEFAULT_TX_TTL).
-    ?DEFAULT_TX_TTL.
+    aeu_env:user_config_or_env([<<"mempool">>, <<"tx_ttl">>],
+                               aecore, mempool_tx_ttl, ?DEFAULT_TX_TTL).
 
 invalid_tx_ttl() ->
     aeu_env:user_config_or_env([<<"mempool">>, <<"invalid_tx_ttl">>],
