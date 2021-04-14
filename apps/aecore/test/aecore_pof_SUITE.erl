@@ -164,6 +164,7 @@ siblings_common(TopBlock, N1, N2, Account1, Account2) ->
       10000),
 
     N1KeyBlocksCount = aec_blocks:height(TopBlock),
+    ct:log("Node1 keyblocks: ~p", [N1KeyBlocksCount]),
     SpendFee = 17000 * aec_test_utils:min_gas_price(),
 
     ct:pal("Starting to test fraud"),
@@ -172,7 +173,7 @@ siblings_common(TopBlock, N1, N2, Account1, Account2) ->
     {ok, Micro1, _} =  rpc:call(N1, aec_block_micro_candidate, create, [TopBlock]),
     {ok, Micro1S} = rpc:call(N1, aec_keys, sign_micro_block, [Micro1]),
 
-    %% Add another transaction and create the second micro block
+    %% Add another transaction and create the alternative micro block
     {ok, _Tx2} = add_spend_tx(N1, 1000, SpendFee,  2,  10, Account1, new_pubkey()),
     {ok, Micro2, _} =  rpc:call(N1, aec_block_micro_candidate, create, [TopBlock]),
     {ok, Micro2S} = rpc:call(N1, aec_keys, sign_micro_block, [Micro2]),
@@ -181,6 +182,7 @@ siblings_common(TopBlock, N1, N2, Account1, Account2) ->
     ok = rpc:call(N2, aec_conductor, post_block, [Micro1S]),
     ok = rpc:call(N2, aec_conductor, post_block, [Micro2S]),
     FraudHeight = aec_blocks:height(Micro1),
+    ct:log("FraudHeight: ~p", [FraudHeight]),
 
     %% Make N2 mine a key block to start the next generation.
     {ok, [Key2]} = aecore_suite_utils:mine_key_blocks(N2, 1),
@@ -239,11 +241,16 @@ siblings_common(TopBlock, N1, N2, Account1, Account2) ->
             Reward1 = lists:sum([aec_governance:block_mine_reward(X)
                                 || X <- lists:seq(2, N1KeyBlocksCount),
                                     X =/= FraudHeight]) + Block1Reward,
+            ct:log("Reward1 is ~p, being calculated for gens 2 - ~p",
+                   [Reward1, N1KeyBlocksCount]),
+
             FraudReward = aec_governance:fraud_report_reward(FraudHeight),
             %% The last PofDelay blocks are not included in the reward.
             Reward2 = lists:sum([aec_governance:block_mine_reward(X)
                                 || X <- lists:seq(N1KeyBlocksCount + 1, N2Height - PofDelay),
                                     X =/= FraudHeight]) + FraudReward,
+            ct:log("Reward2 is ~p, being calculated for gens ~p - ~p",
+                   [Reward2, N1KeyBlocksCount + 1, N2Height - PofDelay]),
             BenefTotal = rpc:call(N2, aec_dev_reward, total_shares, []),
             BenefFactor = rpc:call(N2, aec_dev_reward, allocated_shares, []),
             FoundationBenefs = rpc:call(N2, aec_dev_reward, beneficiaries, []),
@@ -251,13 +258,21 @@ siblings_common(TopBlock, N1, N2, Account1, Account2) ->
                                            {value, Acc} = rpc:call(N2, aec_chain, get_account, [PK]),
                                            aec_accounts:balance(Acc)
                                        end || {PK, _} <- FoundationBenefs]),
+            ct:log("FoundationBal ~p", [FoundationBal]),
 
             %% Foundation gets some fraction of the reward. The foundation reward then
             %% must be deducted from the reward to get the actual reward that goes to
             %% the beneficiary.
             FoundationReward1 = (Reward1 - Block1Reward) * BenefFactor div BenefTotal,
+            ct:log("FoundationReward1 ~p\n(~p - ~p) * ~p div ~p",
+                   [FoundationReward1, Reward1, Block1Reward, BenefFactor, BenefTotal]),
             FoundationReward2 = Reward2 * BenefFactor div BenefTotal,
+            ct:log("FoundationReward2 ~p\n(~p - ~p) * ~p div ~p",
+                   [FoundationReward2, Reward2, Block1Reward, BenefFactor, BenefTotal]),
 
+
+            ct:log("FoundationBal - FoundationReward1 - FoundationReward2 = ~p",
+                   [FoundationBal - FoundationReward1 - FoundationReward2]),
             %% There are no tx fees included in the calculation so the FoundationBal
             %% must be at least the sum of all foundation rewards (without the fees).
             true = FoundationBal >= (FoundationReward1 + FoundationReward2),
