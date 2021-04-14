@@ -267,8 +267,8 @@ siblings_common(TopBlock, N1, N2, Account1, Account2) ->
             ct:log("FoundationReward1 ~p\n(~p - ~p) * ~p div ~p",
                    [FoundationReward1, Reward1, Block1Reward, BenefFactor, BenefTotal]),
             FoundationReward2 = Reward2 * BenefFactor div BenefTotal,
-            ct:log("FoundationReward2 ~p\n(~p - ~p) * ~p div ~p",
-                   [FoundationReward2, Reward2, Block1Reward, BenefFactor, BenefTotal]),
+            ct:log("FoundationReward2 ~p\n~p * ~p div ~p",
+                   [FoundationReward2, Reward2, BenefFactor, BenefTotal]),
 
 
             ct:log("FoundationBal - FoundationReward1 - FoundationReward2 = ~p",
