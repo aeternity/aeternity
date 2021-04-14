@@ -57,6 +57,7 @@ meta_test_() ->
 make_calls(ListOfCalls) ->
     Cache = setup_contracts_in_cache(),
     Trees = setup_contracts_in_trees(aec_trees:new_without_backend()),
+    aefa_fate_op:load_pre_iris_map_ordering(),
     %% Dummy values since they should not come into play in this test
     Env = #{ trees => Trees
            , caller => <<123:256>>
@@ -175,6 +176,8 @@ tuple() ->
     ].
 
 map() ->
+    BigList = [{I, I rem 2 == 0} || I <- lists:seq(0, 100)],
+    BigMap = maps:from_list(BigList),
     [ {<<"map">>, F, A, R} ||
         {F,A,R} <-
             [ {<<"make_empty_map">>, [], #{}}
@@ -185,6 +188,14 @@ map() ->
             ,  {<<"map_member">>, [#{42 => false}, 17], false}
             ,  {<<"map_from_list">>, [[{1, true}, {2, false}, {42, true}]],
                 #{ 1 => true, 2 => false, 42 => true}}
+            ,  {<<"map_to_list">>, [#{ 1 => true, 2 => false, 42 => true}],
+                [{1, true}, {2, false}, {42, true}]}
+            % Test really big map to list
+            , case aec_governance:get_network_id() of
+                <<"local_iris_testnet">> ->
+                    {<<"map_to_list">>, [BigMap], BigList};
+                _ -> {<<"map_to_list">>, [BigMap], maps:to_list(BigMap)}
+              end
             ]
     ].
 
@@ -1034,6 +1045,11 @@ contracts() ->
            , {<<"map_from_list">>
              , {[{list, {tuple, [integer, boolean]}}], {map, integer, boolean}}
                , [ {0, [ {'MAP_FROM_LIST', {stack, 0}, {arg, 0}}
+                       , 'RETURN']}
+                 ]}
+           , {<<"map_to_list">>
+             , {[{map, integer, boolean}], {list, {tuple, [integer, boolean]}}}
+               , [ {0, [ {'MAP_TO_LIST', {stack, 0}, {arg, 0}}
                        , 'RETURN']}
                  ]}
              ]

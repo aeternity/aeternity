@@ -130,6 +130,7 @@ application_test(Config) ->
     meck:expect(aec_fork_block_settings, lima_extra_accounts, 0, []),
     meck:expect(aec_fork_block_settings, lima_contracts, 0, []),
     meck:expect(aec_fork_block_settings, block_whitelist, 0, #{}),
+    meck:expect(aec_fork_block_settings, pre_iris_map_ordering, 0, #{}),
     meck:new(aeu_info, []),
     meck:expect(aeu_info, block_info, 0, 591),
     {ok,_} = application:ensure_all_started(aecore),

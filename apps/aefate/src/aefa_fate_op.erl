@@ -176,15 +176,18 @@
         , bytes_to_str/3
         , bytes_concat/4
         , bytes_split/4
+        , load_pre_iris_map_ordering/0
         ]).
 
 -include_lib("aebytecode/include/aeb_fate_data.hrl").
 -include("../../aecontract/include/aecontract.hrl").
 -include("../../aecore/include/blocks.hrl").
+-include("../../aecontract/include/hard_forks.hrl").
 
 -define(AVAILABLE_FROM(When, ES),
     aefa_engine_state:vm_version(ES) >= When
         orelse aefa_fate:abort({primop_error, ?FUNCTION_NAME, not_supported}, ES)).
+-define(PRE_IRIS_MAP_ORDERING, {?MODULE, pre_iris_map_ordering}).
 
 %% ------------------------------------------------------------------------
 %% Operations
@@ -614,17 +617,39 @@ map_to_list(Arg0, Arg1, EngineState) ->
     {Map, ES1} = get_op_arg(Arg1, EngineState),
     case Map of
         _ when ?IS_FATE_MAP(Map) ->
-            Tuples = [aeb_fate_data:make_tuple({K, V})
-                      || {K, V} <- maps:to_list(?FATE_MAP_VALUE(Map))],
-            ES2 = write(Arg0, aeb_fate_data:make_list(Tuples), ES1),
+            List = map_to_sorted_list(Map, ES1),
+            ES2 = write(Arg0, List, ES1),
             Size = map_size(?FATE_MAP_VALUE(Map)),
             aefa_engine_state:spend_gas_for_new_cells(Size * 2, ES2);
         ?FATE_STORE_MAP(Cache, MapId) ->
-            {List, ES2} = store_map_to_list(Cache, MapId, ES1),
+            {CleanMap, ES2} = store_map_get_clean(Cache, MapId, ES1),
+            List = map_to_sorted_list(CleanMap, ES2),
             ES3 = write(Arg0, List, ES2),
             Size = length(?FATE_LIST_VALUE(List)),
             aefa_engine_state:spend_gas_for_new_cells(Size * 2, ES3)
     end.
+
+map_to_sorted_list(Map, ES) ->
+    List = maps:to_list(?FATE_MAP_VALUE(Map)),
+    ConsensusVersion = aefa_engine_state:consensus_version(ES),
+    Tuples = if
+        ConsensusVersion < ?IRIS_PROTOCOL_VSN ->
+            MapOrdering = persistent_term:get(?PRE_IRIS_MAP_ORDERING),
+            case maps:get(?FATE_MAP_VALUE(Map), MapOrdering, default) of
+                default ->
+                    [aeb_fate_data:make_tuple(KV)
+                     || KV <- List];
+                Ordering -> Ordering
+            end;
+        true ->
+            [aeb_fate_data:make_tuple(KV)
+             || KV <- lists:sort(fun ({K1,_}, {K2,_}) -> aeb_fate_data:lt(K1, K2) end, List)]
+    end,
+    aeb_fate_data:make_list(Tuples).
+
+load_pre_iris_map_ordering() ->
+    MapOrdering = aec_fork_block_settings:pre_iris_map_ordering(),
+    persistent_term:put(?PRE_IRIS_MAP_ORDERING, MapOrdering).
 
 map_size_(Arg0, Arg1, EngineState) ->
     {Map, ES1} = get_op_arg(Arg1, EngineState),
@@ -2588,16 +2613,24 @@ store_map_size(Cache, MapId, ES) ->
     ES2 = aefa_engine_state:set_stores(Store1, ES1),
     {maps:fold(Delta, Size, Cache), ES2}.
 
-store_map_to_list(Cache, MapId, ES) ->
-    Pubkey              = aefa_engine_state:current_contract(ES),
-    {Store, ES1}        = aefa_fate:ensure_contract_store(Pubkey, ES),
-    {StoreList, Store1} = aefa_stores:store_map_to_list(Pubkey, MapId, Store),
+store_map_get_clean(Cache, MapId, ES) ->
+    Pubkey           = aefa_engine_state:current_contract(ES),
+    {Store, ES1}     = aefa_fate:ensure_contract_store(Pubkey, ES),
+    ConsensusVersion = aefa_engine_state:consensus_version(ES),
+    STORE_MAP_TO_LIST =
+        if
+        ConsensusVersion < ?IRIS_PROTOCOL_VSN ->
+            fun aefa_stores_lima:store_map_to_list/3;
+        true ->
+            fun aefa_stores:store_map_to_list/3
+        end,
+    {StoreList, Store1} = STORE_MAP_TO_LIST(Pubkey, MapId, Store),
     StoreMap            = maps:from_list(StoreList),
     Upd = fun(Key, ?FATE_MAP_TOMBSTONE, M) -> maps:remove(Key, M);
              (Key, Val, M)                 -> maps:put(Key, Val, M) end,
     Map = maps:fold(Upd, StoreMap, Cache),
     ES2 = aefa_engine_state:set_stores(Store1, ES1),
-    {aeb_fate_data:make_list([ ?FATE_TUPLE(KV) || KV <- maps:to_list(Map) ]), ES2}.
+    {Map, ES2}.
 
 %% ------------------------------------------------------
 %% Comparison instructions
@@ -2608,7 +2641,14 @@ bin_comp(Comp, {To, Left, Right}, ES) ->
     {LeftValue1,  ES2} = aefa_fate:unfold_store_maps(LeftValue, ES1),
     {RightValue,  ES3} = get_op_arg(Right, ES2),
     {RightValue1, ES4} = aefa_fate:unfold_store_maps(RightValue, ES3),
-    Result = comp(Comp, LeftValue1, RightValue1),
+    ConsensusVersion = aefa_engine_state:consensus_version(ES),
+    COMP = if
+               ConsensusVersion < ?IRIS_PROTOCOL_VSN ->
+                   fun comp/3;
+               true ->
+                   fun comp_iris/3
+           end,
+    Result = COMP(Comp, LeftValue1, RightValue1),
     write(To, Result, ES4).
 
 comp( lt, A, B) -> A < B;
@@ -2618,6 +2658,16 @@ comp(egt, A, B) -> A >= B;
 comp( eq, A, B) -> A =:= B;
 comp(neq, A, B) -> A =/= B.
 
+comp_iris( lt, A, B) -> aeb_fate_data:lt(A, B);
+comp_iris( gt, A, B) -> aeb_fate_data:lt(B, A);
+% equal or less than <==> not greater than
+comp_iris(elt, A, B) -> not aeb_fate_data:lt(B, A);
+% equal or greater than <==> not less than
+comp_iris(egt, A, B) -> not aeb_fate_data:lt(A, B);
+% equals <==> not less than and not greater than
+comp_iris( eq, A, B) -> (not aeb_fate_data:lt(A, B)) and (not aeb_fate_data:lt(B, A));
+% not equals <==> less than or greater than
+comp_iris(neq, A, B) -> aeb_fate_data:lt(A, B) or aeb_fate_data:lt(B, A).
 
 
 binary_reverse(Binary) ->

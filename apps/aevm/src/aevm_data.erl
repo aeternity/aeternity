@@ -157,7 +157,7 @@ convert(Input, Output, MaxSize, Store, Visited, {list, T}, Val, Heap, BaseAddr) 
     end;
 convert(Input, binary, MaxSize, Store, _Visited, {map, KeyT, ValT}, MapId, Heap, BaseAddr) ->
     {_NoMaps, Map} = convert_map(Input, binary, Store, KeyT, ValT, MapId, Heap),
-    KVs  = maps:to_list(Map#pmap.data),
+    KVs  = lists:keysort(1, maps:to_list(Map#pmap.data)),
     Size = maps:size(Map#pmap.data),
     {RMem, FinalBase} =
         lists:foldl(fun({Key, Val}, {Mem, Base}) ->
@@ -257,7 +257,7 @@ convert_map(Input, Output, Store, KeyT, ValT, Ptr, Heap) ->
 convert_map_values(_, _, _Store, _ValT, stored, Heap) ->
     {aeb_heap:maps_with_next_id(Heap), stored};
 convert_map_values(Input, Output, Store, ValT, Data, Heap) ->
-    KVs = maps:to_list(Data),
+    KVs = lists:keysort(1, maps:to_list(Data)),
     {Maps, Data1} =
         lists:foldl(fun({K, V}, {VMaps, D}) ->
                         Heap1 = aeb_heap:set_next_id(Heap, VMaps#maps.next_id),
