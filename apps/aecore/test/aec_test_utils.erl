@@ -67,6 +67,7 @@
         , co_sign_tx/2
         , substitute_innermost_tx/2
         , sign_tx/3
+        , sign_tx/4
         , sign_tx_hash/2
         , sign_pay_for_inner_tx/2
         , signed_spend_tx/1

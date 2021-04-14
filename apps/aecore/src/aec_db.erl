@@ -56,6 +56,7 @@
          dirty_get_finalized_height/0,
          get_block_state/1,
          get_block_state/2,
+         get_block_state_partial/3,
          get_block_from_micro_header/2
         ]).
 
@@ -106,6 +107,7 @@
 
 -export([ find_block_state/1
         , find_block_state/2
+        , find_block_state_partial/3
         , find_block_difficulty/1
         , find_block_fees/1
         , find_block_fork_id/1
@@ -740,19 +742,49 @@ get_block_state(Hash) ->
     get_block_state(Hash, false).
 
 get_block_state(Hash, DirtyBackend) ->
+    DeserializeFun =
+        fun(Trees) ->
+           aec_trees:deserialize_from_db(Trees, DirtyBackend)
+        end,
+    get_block_state_(Hash, DeserializeFun).
+
+get_block_state_partial(Hash, DirtyBackend, Elements) ->
+    DeserializeFun =
+        fun(Trees) ->
+            aec_trees:deserialize_from_db_partial(Trees, DirtyBackend,
+                                                  Elements)
+        end,
+    get_block_state_(Hash, DeserializeFun).
+
+get_block_state_(Hash, DeserializeFun) ->
     ?t(begin
            [#aec_block_state{value = Trees}] =
                mnesia:read(aec_block_state, Hash),
-           aec_trees:deserialize_from_db(Trees, DirtyBackend)
+           DeserializeFun(Trees)
        end).
 
 find_block_state(Hash) ->
     find_block_state(Hash, false).
 
 find_block_state(Hash, DirtyBackend) ->
+    DeserializeFun =
+        fun(Trees) ->
+            aec_trees:deserialize_from_db(Trees, DirtyBackend)
+        end,
+    find_block_state_(Hash, DeserializeFun).
+
+find_block_state_partial(Hash, DirtyBackend, Elements) ->
+    DeserializeFun =
+        fun(Trees) ->
+            aec_trees:deserialize_from_db_partial(Trees, DirtyBackend,
+                                                  Elements)
+        end,
+    find_block_state_(Hash, DeserializeFun).
+
+find_block_state_(Hash, DeserializeFun) ->
     case ?t(mnesia:read(aec_block_state, Hash)) of
         [#aec_block_state{value = Trees}] ->
-            {value, aec_trees:deserialize_from_db(Trees, DirtyBackend)};
+            {value, DeserializeFun(Trees)};
         [] -> none
     end.
 

@@ -27,7 +27,9 @@
    , get_names_entry_by_name_sut/1
    , get_commitment_id/2
    , get_accounts_by_pubkey_sut/1
+   , get_accounts_by_pubkey_and_height_sut/2
    , get_transactions_by_hash_sut/1
+   , get_contract_call_object/1
    , get_top_block/1
    , get_top_header/1
    , get_chain_ends/1
@@ -77,7 +79,11 @@
     post_spend_tx/1,
     post_spend_tx_w_hash_sig/1,
     post_contract_and_call_tx/1,
-    nonce_limit/1
+    nonce_limit/1,
+    get_contract_create/1,
+    get_contract_call/1,
+    get_contract_bytecode/1,
+    encode_call_data/3
    ]).
 
 -export(
@@ -1489,7 +1495,7 @@ nonce_limit(Config) ->
     ok.
 
 post_contract_and_call_tx(_Config) ->
-    Pubkey = get_pubkey(),
+    Pubkey = get_miner_address(),
 
     {ok, EncodedCode} = get_contract_bytecode(identity),
     {ok, EncodedInitCallData} = encode_call_data(identity, "init", []),
@@ -1562,7 +1568,7 @@ get_contract(_Config) ->
     aecore_suite_utils:mine_key_blocks(aecore_suite_utils:node_name(?NODE), 3),
 
     {ok, 200, _} = get_balance_at_top(),
-    MinerAddress = get_pubkey(),
+    MinerAddress = get_miner_address(),
     {ok, MinerPubkey} = aeser_api_encoder:safe_decode(account_pubkey, MinerAddress),
     {ok, EncodedCode} = get_contract_bytecode(identity),
 
@@ -1920,7 +1926,7 @@ save_config([], _Config, Acc) ->
 contract_transactions(_Config) ->    % miner has an account
     aecore_suite_utils:mine_key_blocks(aecore_suite_utils:node_name(?NODE), 3),
     {ok, 200, _} = get_balance_at_top(),
-    MinerAddress = get_pubkey(),
+    MinerAddress = get_miner_address(),
     {ok, MinerPubkey} = aeser_api_encoder:safe_decode(account_pubkey, MinerAddress),
     {ok, EncodedCode} = get_contract_bytecode(identity),
 
@@ -2114,7 +2120,7 @@ contract_transactions(_Config) ->    % miner has an account
 contract_create_transaction_init_error(_Config) ->
     % miner has an account
     {ok, 200, _} = get_balance_at_top(),
-    MinerAddress = get_pubkey(),
+    MinerAddress = get_miner_address(),
     {ok, MinerPubkey} = aeser_api_encoder:safe_decode(account_pubkey, MinerAddress),
 
     % contract_create_tx positive test
@@ -2173,7 +2179,7 @@ contract_create_transaction_init_error(_Config) ->
 
 oracle_transactions(_Config) ->
     {ok, 200, _} = get_balance_at_top(),
-    MinerAddress = get_pubkey(),
+    MinerAddress = get_miner_address(),
     {ok, MinerPubkey} = aeser_api_encoder:safe_decode(account_pubkey, MinerAddress),
     OracleAddress = aeser_api_encoder:encode(oracle_pubkey, MinerPubkey),
 
@@ -2335,7 +2341,7 @@ oracle_transactions(_Config) ->
 
 named_oracle_transactions(_Config) ->
     {ok, 200, _} = get_balance_at_top(),
-    MinerAddress = get_pubkey(),
+    MinerAddress = get_miner_address(),
     {ok, MinerPubkey} = aeser_api_encoder:safe_decode(account_pubkey, MinerAddress),
     OracleAddress = aeser_api_encoder:encode(oracle_pubkey, MinerPubkey),
 
@@ -2404,7 +2410,7 @@ named_oracle_transactions(_Config) ->
 nameservice_transactions(_Config) ->
     {ok, 200, _} = get_balance_at_top(),
     {ok, 200, #{<<"top_block_height">> := Height}} = get_status_sut(),
-    MinerAddress = get_pubkey(),
+    MinerAddress = get_miner_address(),
     {ok, MinerPubkey} = aeser_api_encoder:safe_decode(account_pubkey, MinerAddress),
     nameservice_transaction_preclaim(MinerAddress, MinerPubkey),
     nameservice_transaction_claim(MinerAddress, MinerPubkey, Height),
@@ -2592,7 +2598,7 @@ nameservice_transaction_revoke(MinerAddress, MinerPubkey) ->
 %% GET channel_settle_tx unsigned transaction
 state_channels_onchain_transactions(_Config) ->
     {ok, 200, _} = get_balance_at_top(),
-    MinerAddress = get_pubkey(),
+    MinerAddress = get_miner_address(),
     {ok, MinerPubkey} = aeser_api_encoder:safe_decode(account_pubkey, MinerAddress),
     ParticipantPubkey = random_hash(),
     ok = give_tokens(ParticipantPubkey, 100),
@@ -2892,7 +2898,7 @@ state_channels_settle(ChannelId, MinerPubkey) ->
 %% GET spend_tx unsigned transaction
 spend_transaction(_Config) ->
     {ok, 200, _} = get_balance_at_top(),
-    MinerAddress = get_pubkey(),
+    MinerAddress = get_miner_address(),
     {ok, MinerPubkey} = aeser_api_encoder:safe_decode(account_pubkey, MinerAddress),
     RandAddress = random_hash(),
     Payload = <<"hejsan svejsan">>,
@@ -2927,7 +2933,7 @@ spend_transaction(_Config) ->
 %% GET spend_tx unsigned transaction with an non-present key in request
 unknown_atom_in_spend_tx(_Config) ->
     {ok, 200, _} = get_balance_at_top(),
-    MinerAddress = get_pubkey(),
+    MinerAddress = get_miner_address(),
     RandAddress = random_hash(),
     Encoded = #{sender_id => MinerAddress,
                 recipient_id => aeser_api_encoder:encode(account_pubkey, RandAddress),
@@ -2971,7 +2977,7 @@ unsigned_tx_positive_test(Data, Params0, HTTPCallFun, NewFun, Pubkey,
     {ok, Tx}.
 
 get_transaction(_Config) ->
-    EncodedPubKey = get_pubkey(),
+    EncodedPubKey = get_miner_address(),
     aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 2),
     TxHashes = add_spend_txs(),
     aecore_suite_utils:mine_key_blocks(aecore_suite_utils:node_name(?NODE), 2),
@@ -3715,10 +3721,10 @@ get_commitment_id(Name, Salt) ->
     http_request(Host, get, "debug/names/commitment-id", [{name, Name}, {salt, Salt}]).
 
 get_balance_at_top() ->
-    EncodedPubKey = get_pubkey(),
+    EncodedPubKey = get_miner_address(),
     get_accounts_by_pubkey_sut(EncodedPubKey).
 
-get_pubkey() ->
+get_miner_address() ->
     {_, Pubkey} = aecore_suite_utils:sign_keys(?NODE),
     aeser_api_encoder:encode(account_pubkey, Pubkey).
 

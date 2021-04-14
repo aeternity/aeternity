@@ -37,6 +37,7 @@
         , serialize_to_binary/1
         , serialize_to_client/1
         , deserialize_from_binary_without_backend/1
+        , deserialize_from_db_partial/3
         ]).
 
 -export([ensure_account/2]).
@@ -68,12 +69,12 @@
 -endif.
 
 -record(trees, {
-          accounts  :: aec_accounts_trees:tree(),
-          calls     :: aect_call_state_tree:tree(),
-          channels  :: aesc_state_tree:tree(),
-          contracts :: aect_state_tree:tree(),
-          ns        :: aens_state_tree:tree(),
-          oracles   :: aeo_state_tree:tree()}).
+          accounts  :: aec_accounts_trees:tree() | not_loaded,
+          calls     :: aect_call_state_tree:tree() | not_loaded,
+          channels  :: aesc_state_tree:tree() | not_loaded,
+          contracts :: aect_state_tree:tree() | not_loaded,
+          ns        :: aens_state_tree:tree() | not_loaded,
+          oracles   :: aeo_state_tree:tree() | not_loaded}).
 
 -record(poi, {
           accounts  :: part_poi(),
@@ -402,6 +403,15 @@ sum_auctions({AuctionHash, SerAuction, Iter}, Acc) ->
 
 -spec deserialize_from_db(binary(), boolean()) -> trees().
 deserialize_from_db(Bin, DirtyBackend) when is_binary(Bin), is_boolean(DirtyBackend) ->
+    deserialize_from_db_partial(Bin, DirtyBackend, [contracts, calls,
+                                                    channels, names,
+                                                    oracles, accounts]).
+
+-spec deserialize_from_db_partial(binary(), boolean(), [contracts | calls |
+                                                        channels | names |
+                                                        oracles | accounts ]) -> trees().
+deserialize_from_db_partial(Bin, DirtyBackend, ElementsToLoad)
+    when is_binary(Bin), is_boolean(DirtyBackend), is_list(ElementsToLoad)->
     [ {contracts_hash, Contracts}
     , {calls_hash, Calls}
     , {channels_hash, Channels}
@@ -417,24 +427,31 @@ deserialize_from_db(Bin, DirtyBackend) when is_binary(Bin), is_boolean(DirtyBack
                     db_serialization_template(?AEC_TREES_VERSION),
                     Bin
                    )),
-    case DirtyBackend of
-        false ->
-            #trees{ contracts = aect_state_tree:new_with_backend(Contracts)
-                  , calls     = aect_call_state_tree:new_with_backend(Calls)
-                  , channels  = aesc_state_tree:new_with_backend(Channels)
-                  , ns        = aens_state_tree:new_with_backend(NS, NSCache)
-                  , oracles   = aeo_state_tree:new_with_backend(Oracles, OraclesCache)
-                  , accounts  = aec_accounts_trees:new_with_backend(Accounts)
-            };
-        true ->
-            #trees{ contracts = aect_state_tree:new_with_dirty_backend(Contracts)
-                  , calls     = aect_call_state_tree:new_with_dirty_backend(Calls)
-                  , channels  = aesc_state_tree:new_with_dirty_backend(Channels)
-                  , ns        = aens_state_tree:new_with_dirty_backend(NS, NSCache)
-                  , oracles   = aeo_state_tree:new_with_dirty_backend(Oracles, OraclesCache)
-                  , accounts  = aec_accounts_trees:new_with_dirty_backend(Accounts)
-            }
-    end.
+    Backend = case DirtyBackend of false -> new_with_backend; true -> new_with_dirty_backend end,
+    lists:foldl(
+        fun(Element, AccumTrees) ->
+            case Element of
+                contracts ->
+                    AccumTrees#trees{contracts = aect_state_tree:Backend(Contracts)};
+                calls ->
+                    AccumTrees#trees{calls = aect_call_state_tree:Backend(Calls)};
+                channels ->
+                    AccumTrees#trees{channels = aesc_state_tree:Backend(Channels)};
+                names ->
+                    AccumTrees#trees{ns = aens_state_tree:Backend(NS, NSCache)};
+                oracles ->
+                    AccumTrees#trees{oracles = aeo_state_tree:Backend(Oracles, OraclesCache)};
+                accounts ->
+                    AccumTrees#trees{accounts = aec_accounts_trees:Backend(Accounts)}
+            end
+        end,
+        #trees{ contracts = not_loaded
+              , calls = not_loaded
+              , channels = not_loaded
+              , ns = not_loaded
+              , oracles = not_loaded
+              , accounts = not_loaded},
+        ElementsToLoad).
 
 -spec serialize_for_db(trees()) -> binary().
 serialize_for_db(#trees{} = Trees) ->
