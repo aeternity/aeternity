@@ -227,6 +227,11 @@ siblings_common(TopBlock, N1, N2, Account1, Account2) ->
             N2Height = aec_blocks:height(TopKeyBlock),
             Beneficiary2 = aec_blocks:beneficiary(TopKeyBlock),
 
+            aec_test_utils:wait_for_it_or_timeout(
+              fun() -> rpc:call(N1, aec_chain, top_key_block, []) end,
+              TopKeyBlock,
+              10000),
+
             %% Check the rewards
             {value, Acc1} = rpc:call(N2, aec_chain, get_account, [Beneficiary1]),
             {value, Acc2} = rpc:call(N2, aec_chain, get_account, [Beneficiary2]),
