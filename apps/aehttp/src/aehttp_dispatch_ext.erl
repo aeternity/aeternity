@@ -529,10 +529,7 @@ handle_request_('GetOracleByPubkey', Params, _Context) ->
 handle_request_('GetOracleQueriesByPubkey', Params, _Context) ->
     case aeser_api_encoder:safe_decode(oracle_pubkey, maps:get(pubkey, Params)) of
         {ok, Pubkey} ->
-            Limit = case maps:get(limit, Params) of
-                        N when N =/= undefined -> N;
-                        undefined -> 20
-                    end,
+            Limit = maps:get(limit, Params),
             FromQueryId = case maps:get(from, Params) of
                               Id when Id =/= undefined ->
                                   {ok, OracleQueryId} = aeser_api_encoder:safe_decode(oracle_query_id, Id),

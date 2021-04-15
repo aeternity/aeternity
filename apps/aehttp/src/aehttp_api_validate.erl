@@ -127,12 +127,23 @@ populate_param(Param, Req, Validator, EndpointsMod) ->
     Name = proplists:get_value("name", Param),
     case get_param_value(In, Name, Req) of
         {ok, Value, Req1} ->
-            case prepare_param(Param, Value, Name, Validator, EndpointsMod) of
+            case prepare_param(params_priority(Param), Value, Name, Validator, EndpointsMod) of
                 {ok, NewName, NewValue} -> {ok, NewName, NewValue, Req1};
                 {error, Reason} -> {error, Reason, Req1}
             end;
         Error -> Error
     end.
+
+params_priority(Rules) ->
+    Priority =
+        fun("default") -> 1;
+           (_) -> 100
+        end,
+    lists:sort(
+        fun({K1, _}, {K2, _}) ->
+            Priority(K1) =< Priority(K2)
+        end,
+        Rules).
 
 prepare_param([], Value, Name, _, _) -> {ok, Name, Value};
 prepare_param([ Rule | Rules ], Value, Name, Validator, EndpointsMod) ->
@@ -148,13 +159,11 @@ prepare_param_({"in", _}, _, _, _, _) -> ok;
 prepare_param_({"name", _}, _, _, _, _) -> ok;
 prepare_param_({"description", _}, _, _, _, _) -> ok;
 prepare_param_({"example", _}, _, _, _, _) -> ok;
-prepare_param_({"default", Default}, undefined, _, _, _) -> {ok, Default};
+prepare_param_({"default", Default}, _Val = undefined, _, _, _) -> {ok, Default};
 prepare_param_({"default", _Default}, _, _, _, _) -> ok;
 % required
 prepare_param_({"required",true}, undefined, Name, _, _) -> param_error(required, Name);
 prepare_param_({"required",_}, _, _, _, _) -> ok;
-prepare_param_(_, undefined, _, _, _) -> ok;
-% {type, _}
 prepare_param_({"type", "binary"}, Value, Name, _, _) ->
     case is_binary(Value) of
         true -> ok;
@@ -220,9 +229,13 @@ prepare_param_({"schema", #{<<"$ref">> := FullRef}},
             Info2 = proplists:delete(invalid, Info1),
             param_error({schema, Info2}, Name)
     end;
-prepare_param_({"schema",#{<<"type">> := _}}, _, _, _, _) -> ok;
-prepare_param_({"schema",[{"type",  _} | _]}, _, _, _, _) -> ok;
-% enum
+prepare_param_({"schema", [{"type",  _} = _Type | _] = Schema}, Value, Name, Validator,
+               EndpointsMod) ->
+    case prepare_param(params_priority(Schema), Value, Name, Validator, EndpointsMod) of
+        {ok, NewName, NewValue} -> {ok, NewValue, NewName};
+        {error, Err} -> 
+            param_error_(Name, #{error => Err, schema => Schema, value => Value})
+    end;
 prepare_param_({"enum", Values0}, Value0, Name, _, _) ->
     try
         Values = [ to_atom(Acc) || Acc <- Values0 ],

@@ -763,6 +763,7 @@ paths:
           required: false
           schema:
             type: integer
+            default: 20
             minimum: 1
             maximum: 1000
             example: 1
@@ -772,6 +773,7 @@ paths:
           required: false
           schema:
             type: string
+            default: all
             enum:
               - open
               - closed
@@ -3518,8 +3520,9 @@ components:
       name: "int-as-string"
       description: 'If this flag is set to true, the response will have all integers set as strings'
       required: false
-      type: boolean
-      default: false
+      schema:
+        type: boolean
+        default: false
     blockHash:
       in: path
       name: hash
