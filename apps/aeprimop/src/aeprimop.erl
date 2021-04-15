@@ -955,12 +955,17 @@ name_update({OwnerPubkey, NameHash, TTL, ClientTTL, Pointers}, S) ->
     ClientTTL1 = if ClientTTL == undefined -> aens_names:client_ttl(Rec);
                     true -> ClientTTL
                  end,
-    Pointers1  = if Pointers == undefined -> aens_names:pointers(Rec);
-                    is_list(Pointers) -> Pointers
-                 end,
     assert_ttl(TTL1, S1),
     assert_name_owner(Rec, OwnerPubkey),
     assert_name_claimed(Rec),
+    %% 'undefined' means we got here from FATE - thus we don't expect to
+    %% fail on legacy invalid pointers - so explicitly sanitize them.
+    Pointers1  = if Pointers == undefined ->
+                        aens_pointer:sanitize_pointers(aens_names:pointers(Rec));
+                    is_list(Pointers) ->
+                        assert_name_pointers(Pointers, S#state.protocol),
+                        Pointers
+                 end,
     Rec1 = aens_names:update(Rec, TTL1, ClientTTL1, Pointers1),
     put_name(Rec1, S1).
 
@@ -1958,8 +1963,6 @@ assert_valid_overbid(NewNameFee, OldNameFee) ->
             runtime_error(name_fee_increment_too_low)
     end.
 
-
-
 assert_name_registrar(Registrar, Protocol) ->
     case lists:member(Registrar, aec_governance:name_registrars(Protocol)) of
         true  -> ok;
@@ -1982,6 +1985,14 @@ assert_name_claimed(Name) ->
     case aens_names:status(Name) of
         claimed -> ok;
         revoked -> runtime_error(name_revoked)
+    end.
+
+assert_name_pointers(_, Protocol) when Protocol < ?IRIS_PROTOCOL_VSN ->
+    ok;
+assert_name_pointers(Pointers, _) ->
+    case Pointers == aens_pointer:sanitize_pointers(Pointers) of
+        true  -> ok;
+        false -> runtime_error(invalid_pointers)
     end.
 
 %% Note: returns deserialized Code to avoid extra work

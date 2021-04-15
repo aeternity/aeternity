@@ -187,6 +187,7 @@
         , store_onetype_random_ops/1
         , fate_vm_cross_protocol_store_big/1
         , fate_vm_cross_protocol_store_multi_small/1
+        , bad_aens_pointer_handling_lima_to_iris/1
         ]).
 
 -include_lib("common_test/include/ct.hrl").
@@ -330,6 +331,7 @@ all() ->
                        , sophia_auth_tx
                        , sophia_strings
                        , {group, store_map_ops}
+                       , bad_aens_pointer_handling_lima_to_iris
                        ]).
 
 -define(FATE_TODO, [
@@ -451,6 +453,7 @@ groups() ->
                                  sophia_use_memory_gas,
                                  sophia_compiler_version,
                                  sophia_protected_call,
+                                 bad_aens_pointer_handling_lima_to_iris,
                                  lima_migration
                                ]}
     , {sophia_oracles_ttl, [],
@@ -657,6 +660,23 @@ init_per_testcase(TC, Config) when TC == sophia_auth_tx;
         true  -> init_per_testcase_common(TC, Config);
         false -> {skip, {requires_protocol, iris, TC}}
     end;
+init_per_testcase(TC = bad_aens_pointer_handling_lima_to_iris, Config) ->
+    case aect_test_utils:latest_protocol_version() of
+        ?IRIS_PROTOCOL_VSN ->
+            IHeight = 25,
+            Fun = fun(H) when H <  IHeight -> ?LIMA_PROTOCOL_VSN;
+                     (H) when H >= IHeight -> ?IRIS_PROTOCOL_VSN
+                  end,
+            meck:expect(aec_hard_forks, protocol_effective_at_height, Fun),
+            meck:expect(aec_governance, name_claim_bid_timeout, fun(_, _) -> 0 end),
+            Config1 =
+                [{sophia_version, ?SOPHIA_IRIS_FATE}, {vm_version, ?VM_FATE_SOPHIA_2},
+                 {fork_heights, #{ iris    => IHeight }},
+                 {protocol, iris} | Config],
+            init_per_testcase_common(TC, Config1);
+        _ ->
+            {skip, only_test_bad_aens_poiner_handling_in_iris}
+    end;
 
 init_per_testcase(TC, Config) ->
     init_per_testcase_common(TC, Config).
@@ -704,6 +724,10 @@ end_per_testcase(TC, _Config) when TC == sophia_aens_resolve;
                                    TC == sophia_aens_transactions;
                                    TC == sophia_aens_update_transaction ->
     meck:unload(aec_governance),
+    ok;
+end_per_testcase(bad_aens_pointer_handling_lima_to_iris, _Config) ->
+    meck:unload(aec_governance),
+    meck:unload(aec_hard_forks),
     ok;
 end_per_testcase(_TC, _Config) ->
     ok.
@@ -6039,7 +6063,7 @@ sophia_aens_resolve(Cfg) ->
     APubkey  = 1,
     OPubkey  = 2,
     CPubkey  = 3,
-    %% TODO: Improve checks in aens_unpdate_tx
+    %% TODO: Improve checks in aens_update_tx
     Pointers = [aens_pointer:new(<<"account_pubkey">>, aeser_id:create(account, <<APubkey:256>>)),
                 aens_pointer:new(<<"oracle_pubkey">>, aeser_id:create(oracle, <<OPubkey:256>>)),
                 aens_pointer:new(<<"contract_pubkey">>, aeser_id:create(contract, <<CPubkey:256>>))
@@ -6262,6 +6286,69 @@ sophia_aens_update_transaction(_Cfg) ->
         ?call(call_contract, Acc, Ct, update, {tuple, []},
               {Ct, Name1, None, None, Some([1, 2, 3])},
               #{ height => 18 }),
+
+    ok.
+
+bad_aens_pointer_handling_lima_to_iris(Cfg) ->
+    IrisHeight = maps:get(iris, ?config(fork_heights, Cfg)),
+
+    state(aect_test_utils:new_state()),
+    Acc      = ?call(new_account, 40000000000000 * aec_test_utils:min_gas_price()),
+
+    Name1    = aens_test_utils:fullname(<<"foo">>),
+    Name2    = aens_test_utils:fullname(<<"bar">>),
+    Name3    = aens_test_utils:fullname(<<"baz">>),
+
+    NameFee  = aec_governance:name_claim_fee(Name1, ?config(protocol, Cfg)),
+    Salt1    = ?call(aens_preclaim, Acc, Name1),
+    Salt2    = ?call(aens_preclaim, Acc, Name2),
+    Salt3    = ?call(aens_preclaim, Acc, Name3),
+
+    Hash1    = ?call(aens_claim, Acc, Name1, Salt1, NameFee),
+    Hash2    = ?call(aens_claim, Acc, Name2, Salt2, NameFee),
+    Hash3    = ?call(aens_claim, Acc, Name3, Salt3, NameFee),
+
+    BadPts1  = [aens_pointer:new(<<1:(8*257)>>, aeser_id:create(account, <<1:256>>))],
+    BadPts2  = [aens_pointer:new(<<N:128>>, aeser_id:create(account, <<1:256>>)) || N <- lists:seq(1, 33) ],
+    BadPts3  = [aens_pointer:new(<<1:128>>, aeser_id:create(account, <<N:256>>)) || N <- lists:seq(1, 2) ],
+
+    ok       = ?call(aens_update, Acc, Hash1, BadPts1),
+    ok       = ?call(aens_update, Acc, Hash2, BadPts2),
+    ok       = ?call(aens_update, Acc, Hash3, BadPts3),
+
+    %% Now contract!
+    Ct       = ?call(create_contract, Acc, aens, {},
+                     #{ height => IrisHeight, amount => 20000000000000 * aec_test_utils:min_gas_price() }),
+
+    NameSig1 = sign(<<Acc/binary, Hash1/binary, Ct/binary>>, Acc),
+    NameSig2 = sign(<<Acc/binary, Hash2/binary, Ct/binary>>, Acc),
+    NameSig3 = sign(<<Acc/binary, Hash3/binary, Ct/binary>>, Acc),
+
+    GetNameRecord   = fun (NH) ->
+                              NSTree = aec_trees:ns(aect_test_utils:trees(state())),
+                              {value, Rec} = aens_state_tree:lookup_name(NH, NSTree),
+                              Rec
+                      end,
+
+    %% First check that we can still resolve the bad keys!
+    {some, {address, 1}} = ?call(call_contract, Acc, Ct, resolve_account, {option, word}, {Name1, <<1:(8*257)>>}, #{height => IrisHeight}),
+    {some, {address, 1}} = ?call(call_contract, Acc, Ct, resolve_account, {option, word}, {Name2, <<33:128>>}, #{height => IrisHeight}),
+    {some, {address, 1}} = ?call(call_contract, Acc, Ct, resolve_account, {option, word}, {Name3, <<1:128>>}, #{height => IrisHeight}),
+
+    %% Now try to update the pointers, just re-setting them (none) should be good enough...
+    {} = ?call(call_contract, Acc, Ct, signedUpdate, {tuple, []}, {Acc, Name1, none, none, none, NameSig1}, #{height => IrisHeight}),
+    {} = ?call(call_contract, Acc, Ct, signedUpdate, {tuple, []}, {Acc, Name2, none, none, none, NameSig2}, #{height => IrisHeight}),
+    {} = ?call(call_contract, Acc, Ct, signedUpdate, {tuple, []}, {Acc, Name3, none, none, none, NameSig3}, #{height => IrisHeight}),
+
+    %% Now check that we can't resolve the bad keys!
+    none = ?call(call_contract, Acc, Ct, resolve_account, {option, word}, {Name1, <<1:(8*257)>>}, #{height => IrisHeight}),
+    none = ?call(call_contract, Acc, Ct, resolve_account, {option, word}, {Name2, <<33:128>>}, #{height => IrisHeight}),
+    %% So the duplicate wasn't bad... It is still there :-)
+    {some, {address, 1}} = ?call(call_contract, Acc, Ct, resolve_account, {option, word}, {Name3, <<1:128>>}, #{height => IrisHeight}),
+
+    %% Double check the duplicate key is no longer there...
+    Rec3 = GetNameRecord(Hash3),
+    ?assertEqual(length(aens_names:pointers(Rec3)), 1),
 
     ok.
 

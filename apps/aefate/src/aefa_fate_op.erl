@@ -1868,9 +1868,12 @@ aens_lookup(Arg0, Arg1, EngineState) ->
             ES2 = aefa_engine_state:set_chain_api(API1, ES1),
             Owner = ?FATE_ADDRESS(maps:get(owner, NameObj)),
             TTL   = ?FATE_ABS_TTL(aeb_fate_data:make_integer(maps:get(ttl, NameObj))),
-            MkKey    = fun(Pt) -> ?FATE_STRING(aens_pointer:key(Pt)) end,
-            Pointers = lists:foldl(fun(Pt, M) -> M#{ MkKey(Pt) => mk_fate_pointee(Pt) } end,
-                                   #{}, maps:get(pointers, NameObj)),
+            MkKey = fun(Pt) -> ?FATE_STRING(aens_pointer:key(Pt)) end,
+            %% Pointers are serialized as a list, pre-Iris pointers might not
+            %% necessarily be valid, so explicitly sanitize the pointers
+            Pointers = maps:from_list(
+                         [ {MkKey(Pt), mk_fate_pointee(Pt)}
+                           || Pt <- aens_pointer:sanitize_pointers(maps:get(pointers, NameObj)) ]),
             Res = make_some(aeb_fate_data:make_variant([3], 0, {Owner, TTL, Pointers})),
             write(Arg0, Res, ES2);
         none ->

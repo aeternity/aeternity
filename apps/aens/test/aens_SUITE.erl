@@ -610,6 +610,33 @@ update_negative(Cfg) ->
     {ok, Tx5} = aens_update_tx:new(TxSpec5),
     {error, name_does_not_exist} = aetx:process(Tx5, Trees, Env),
 
+    %% Too long pointer key - from IRIS
+    BadPts1  = [aens_pointer:new(<<1:(8*257)>>, aeser_id:create(account, <<1:256>>))],
+    TxSpec5b = aens_test_utils:update_tx_spec(PubKey, NHash, #{pointers => BadPts1}, S1),
+    {ok, Tx5b} = aens_update_tx:new(TxSpec5b),
+    case Protocol >= ?IRIS_PROTOCOL_VSN of
+        true  -> {error, invalid_pointers} = aetx:process(Tx5b, Trees, Env);
+        false -> {ok, _, _}                = aetx:process(Tx5b, Trees, Env)
+    end,
+
+    %% Too many pointers - from IRIS
+    BadPts2  = [aens_pointer:new(<<N:256>>, aeser_id:create(account, <<1:256>>)) || N <- lists:seq(1, 33) ],
+    TxSpec5c = aens_test_utils:update_tx_spec(PubKey, NHash, #{pointers => BadPts2}, S1),
+    {ok, Tx5c} = aens_update_tx:new(TxSpec5c),
+    case Protocol >= ?IRIS_PROTOCOL_VSN of
+        true  -> {error, invalid_pointers} = aetx:process(Tx5c, Trees, Env);
+        false -> {ok, _, _}                = aetx:process(Tx5c, Trees, Env)
+    end,
+
+    %% Duplicate pointer keys - from IRIS
+    BadPts3  = [aens_pointer:new(<<1:256>>, aeser_id:create(account, <<N:256>>)) || N <- lists:seq(1, 2) ],
+    TxSpec5d = aens_test_utils:update_tx_spec(PubKey, NHash, #{pointers => BadPts3}, S1),
+    {ok, Tx5d} = aens_update_tx:new(TxSpec5d),
+    case Protocol >= ?IRIS_PROTOCOL_VSN of
+        true  -> {error, invalid_pointers} = aetx:process(Tx5d, Trees, Env);
+        false -> {ok, _, _}                = aetx:process(Tx5d, Trees, Env)
+    end,
+
     %% Test name not owned
     {PubKey2, S3} = aens_test_utils:setup_new_account(S1),
     Trees3 = aens_test_utils:trees(S3),
@@ -625,6 +652,7 @@ update_negative(Cfg) ->
     {ok, Tx7} = aens_update_tx:new(TxSpec7),
     {error, name_revoked} =
         aetx:process(Tx7, aens_test_utils:trees(S4), Env),
+
     ok.
 
 %%%===================================================================

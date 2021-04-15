@@ -23,6 +23,8 @@
          name_claim_preclaim_delta/0,
          name_registrars/1,
          name_max_length_starting_auction/0,
+         name_pointers_max_count/1,
+         name_pointer_max_key_size/1,
          non_test_registrars/0,
          possible_name_registrars/0,
          micro_block_cycle/0,
@@ -259,6 +261,18 @@ name_claim_max_expiration(Protocol) when Protocol < ?IRIS_PROTOCOL_VSN ->
     50000;
 name_claim_max_expiration(_Protocol) ->
     180000. %% At 480 generations per day this is 375 days, i.e. ~1 year.
+
+-spec name_pointers_max_count(aec_hard_forks:protocol_vsn()) -> non_neg_integer() | inifinity.
+name_pointers_max_count(Protocol) when Protocol < ?IRIS_PROTOCOL_VSN ->
+    infinity;
+name_pointers_max_count(_Protocol) ->
+    32.
+
+-spec name_pointer_max_key_size(aec_hard_forks:protocol_vsn()) -> non_neg_integer() | inifinity.
+name_pointer_max_key_size(Protocol) when Protocol < ?IRIS_PROTOCOL_VSN ->
+    infinity;
+name_pointer_max_key_size(_Protocol) ->
+    256.
 
 name_protection_period() ->
     2016.
