@@ -4702,7 +4702,7 @@ sophia_map_of_maps(_Cfg) ->
 sophia_maps_gc(_Cfg) ->
     ?skipRest(vm_version() =< ?VM_AEVM_SOPHIA_3, only_lima),
     state(aect_test_utils:new_state()),
-    Acc = ?call(new_account, 10000000 * aec_test_utils:min_gas_price()),
+    Acc = ?call(new_account, 20000000 * aec_test_utils:min_gas_price()),
     %% Big to make sure it ends up in the store.
     InitA = maps:from_list([ {integer_to_binary(I), integer_to_binary(I + 100)}
                              || I <- lists:seq(1, 100) ]),
@@ -4723,7 +4723,7 @@ sophia_maps_gc(_Cfg) ->
 
     A1 = InitA#{ KeyA1 => ValA },
     B1 = InitA#{ KeyA2 => ValA },
-    {ResA1, ResB1} = ?call(call_contract, Acc, Ct, get_state, StateT, {}),
+    {ResA1, ResB1} = ?call(call_contract, Acc, Ct, get_state, StateT, {}, #{gas => 5000000}),
     ?assertEqual({Prune(A1), Prune(B1)}, {Prune(ResA1), Prune(ResB1)}),
 
     KeyB1 = <<"KeyB1">>,
@@ -4733,7 +4733,7 @@ sophia_maps_gc(_Cfg) ->
 
     A2 = B1#{ KeyB1 => ValB },
     B2 = B1#{ KeyB2 => ValB },
-    {ResA2, ResB2} = ?call(call_contract, Acc, Ct, get_state, StateT, {}),
+    {ResA2, ResB2} = ?call(call_contract, Acc, Ct, get_state, StateT, {}, #{gas => 5000000}),
     ?assertEqual({Prune(A2), Prune(B2)}, {Prune(ResA2), Prune(ResB2)}),
     ok.
 
@@ -6444,12 +6444,14 @@ sophia_state_gas_arguments(_Cfg) ->
     ?assertEqual(Gas0, Gas1),
 
     %% Test that one more key in map does mean more gas when used as an argument
-    %% to a remote call on AEVM but not on FATE.
+    %% to a remote call on AEVM but not on FATEv1.
     ?call(call_contract, Acc, Ct1, update_m, UnitT, {#{}}),
     {{}, Gas2} = ?call(call_contract, Acc, Ct1, pass_it, UnitT, {?cid(Ct0)}, #{ return_gas_used => true }),
     ?call(call_contract, Acc, Ct1, update_m, UnitT, {#{1 => 1}}),
     {{}, Gas3} = ?call(call_contract, Acc, Ct1, pass_it, UnitT, {?cid(Ct0)}, #{ return_gas_used => true }),
-    ?assertMatchVM(true, false, Gas3 > Gas2),
+    ?assertMatchAEVM(true, Gas3 > Gas2),
+    ?assertMatchFATE(false, true, Gas3 > Gas2),
+
 
     %% Test that a longer string means more gas for AEVM
     ?call(call_contract, Acc, Ct1, update_s, UnitT, {<<"short">>}),
@@ -6498,11 +6500,13 @@ sophia_state_gas_store_size(_Cfg) ->
     BigMap = maps:from_list([{X, X} || X <- lists:seq(1, 1000)]),
     {{}, _} = ?call(call_contract, Acc, Ct1, update_m, UnitT, {BigMap}, #{ return_gas_used => true }),
 
-    %% Updating one key in the store map should cost the same even if the old key didn't exist.
+    %% Updating one key in the store map
     {{}, Gas4} = ?call(call_contract, Acc, Ct1, update_mk, UnitT, {1, 2}, #{ return_gas_used => true }),
     {{}, Gas5} = ?call(call_contract, Acc, Ct1, update_mk, UnitT, {2, 1}, #{ return_gas_used => true }),
-    {{}, Gas6} = ?call(call_contract, Acc, Ct1, update_mk, UnitT, {0, 1}, #{ return_gas_used => true }),
     ?assertEqual(Gas4, Gas5),
+
+    %% Updating a non-existing key - same cost
+    {{}, Gas6} = ?call(call_contract, Acc, Ct1, update_mk, UnitT, {3, 1}, #{ return_gas_used => true }),
     ?assertEqual(Gas5, Gas6),
 
     %% Updating one key in the store map should cost more if the value takes up more space
