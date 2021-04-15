@@ -26,7 +26,7 @@
         , pop_args/2
         , bind_args/2
         , ensure_contract_store/2
-        , unfold_store_maps/2
+        , unfold_store_maps/3
         , unfold_store_maps_in_args/2
         , check_type/2
         , get_function_signature/2
@@ -400,8 +400,7 @@ check_return_type(ES) ->
 
 check_return_type(RetType, TVars, ES) ->
     Acc = aefa_engine_state:accumulator(ES),
-    FixmeMeasure = {1, 3},
-    ES1 = aefa_engine_state:spend_gas_for_traversal(Acc, FixmeMeasure, ES),
+    ES1 = aefa_engine_state:spend_gas_for_traversal(Acc, simple, ES),
     case check_type(RetType, Acc) of
         false -> abort({bad_return_type, Acc, RetType}, ES1);
         Inst  ->
@@ -657,7 +656,7 @@ check_return_type_protected(protected, RetType, TVars, Stores, API, ES) ->
     end.
 
 unfold_store_maps(ES) ->
-    {Acc, ES1} = unfold_store_maps(aefa_engine_state:accumulator(ES), ES),
+    {Acc, ES1} = unfold_store_maps(aefa_engine_state:accumulator(ES), ES, unfold),
     aefa_engine_state:set_accumulator(Acc, ES1).
 
 unfold_store_maps_in_args(0, ES)     -> ES;
@@ -665,14 +664,13 @@ unfold_store_maps_in_args(Arity, ES) ->
     Acc   = aefa_engine_state:accumulator(ES),
     Stack = aefa_engine_state:accumulator_stack(ES),
     {Args, Rest} = lists:split(min(Arity, length(Stack) + 1), [Acc | Stack]),
-    {Args1, ES1} = unfold_store_maps(?MAKE_FATE_LIST(Args), ES),
+    {Args1, ES1} = unfold_store_maps(?MAKE_FATE_LIST(Args), ES, simple),
     [Acc1 | Stack1] = ?FATE_LIST_VALUE(Args1),
     aefa_engine_state:set_accumulator(Acc1,
         aefa_engine_state:set_accumulator_stack(Stack1 ++ Rest, ES1)).
 
-unfold_store_maps(Val, ES) ->
-    FixMeMeasureThis = {1, 3},
-    ES1 = aefa_engine_state:spend_gas_for_traversal(Val, FixMeMeasureThis, ES),
+unfold_store_maps(Val, ES, CostModel) ->
+    ES1 = aefa_engine_state:spend_gas_for_traversal(Val, simple, ES),
     case aeb_fate_maps:has_store_maps(Val) of
         true ->
             Pubkey = aefa_engine_state:current_contract(ES1),
@@ -683,8 +681,11 @@ unfold_store_maps(Val, ES) ->
                         {List, _Store2} = aefa_stores:store_map_to_list(Pubkey, Id, Store1),
                         maps:from_list(List)
                      end,
-            FixMeAlsoMeasureThis = {1, 1},
-            ES4 = aefa_engine_state:spend_gas_for_traversal(Val, FixMeAlsoMeasureThis, Unfold, ES3),
+            MapSize = fun(Id) ->
+                          {Size, _Store2} = aefa_stores:store_map_size(Pubkey, Id, Store1),
+                          Size
+                      end,
+            ES4 = aefa_engine_state:spend_gas_for_traversal(Val, CostModel, {MapSize, Unfold}, ES3),
             {aeb_fate_maps:unfold_store_maps(Unfold, Val), ES4};
         false ->
             {Val, ES1}

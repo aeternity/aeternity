@@ -267,7 +267,7 @@ remote_call_common(Contract, Function, ?FATE_TYPEREP({tuple, ArgTypes}), ?FATE_T
     Caller       = aeb_fate_data:make_address(Current),
     Arity        = length(ArgTypes),
     {Args0, ES1} = aefa_fate:pop_args(Arity, EngineState),
-    {Args, ES2}  = aefa_fate:unfold_store_maps(Args0, ES1),
+    {Args, ES2}  = aefa_fate:unfold_store_maps(Args0, ES1, unfold),
     protect(Protected, fun() ->
             ES3       = aefa_fate:push_return_address(ES2),
             ES4       = case GasCap of
@@ -2226,7 +2226,7 @@ un_op(Op, {To, What}, ES) ->
 
 un_op_unfold(Op, {To, What}, ES) ->
     {Value0, ES1} = get_op_arg(What, ES),
-    {Value,  ES2} = aefa_fate:unfold_store_maps(Value0, ES1),
+    {Value,  ES2} = aefa_fate:unfold_store_maps(Value0, ES1, unfold_serial),
     Result = gop(Op, Value, ES2),
     write(To, Result, ES2).
 
@@ -2658,9 +2658,9 @@ store_map_get_clean(Cache, MapId, ES) ->
 
 bin_comp(Comp, {To, Left, Right}, ES) ->
     {LeftValue,   ES1} = get_op_arg(Left, ES),
-    {LeftValue1,  ES2} = aefa_fate:unfold_store_maps(LeftValue, ES1),
+    {LeftValue1,  ES2} = aefa_fate:unfold_store_maps(LeftValue, ES1, unfold_compare),
     {RightValue,  ES3} = get_op_arg(Right, ES2),
-    {RightValue1, ES4} = aefa_fate:unfold_store_maps(RightValue, ES3),
+    {RightValue1, ES4} = aefa_fate:unfold_store_maps(RightValue, ES3, unfold_compare),
     ConsensusVersion = aefa_engine_state:consensus_version(ES),
     COMP = if
                ConsensusVersion < ?IRIS_PROTOCOL_VSN ->
