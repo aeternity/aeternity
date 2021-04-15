@@ -29,7 +29,7 @@
 
 %=== MACROS ====================================================================
 
--define(MINING_TIMEOUT,   3000).
+-define(MINING_TIMEOUT,   10 * 1000).
 
 -define(SIGNALLING_START_HEIGHT, 5).
 -define(SIGNALLING_END_HEIGHT, 15).
@@ -75,7 +75,7 @@
 
 -define(NODE4,
         #{name            => node4,
-          peers           => [node1, node2, node3],
+          peers           => [node3],
           mining          => #{autostart => true},
           fork_management => #{fork => ?FORK_DISABLED},
           backend         => aest_docker,
@@ -109,32 +109,32 @@ fork_chain(Cfg) ->
     setup_nodes([?NODE1, ?NODE2, ?NODE3, ?NODE4], Cfg),
 
     %% Supports new protocol, mining.
-    start_node(node1, Cfg),
+    start_node(name(?NODE1), Cfg),
     %% Supports new protocol, mining.
-    start_node(node2, Cfg),
+    start_node(name(?NODE2), Cfg),
     %% Doesn't support new protocol, not mining to make sure the blocks in the
     %% signalling interval have the signal supporting the new protocol.
-    start_node(node3, Cfg),
+    start_node(name(?NODE3), Cfg),
     %% node4 is started later. It's mining and not supporting the new
     %% protocol. If it was started from the beginning it could mine more blocks
     %% than node1 and node2 and they wouldn't switch to a new protocol.
 
-    wait_for_startup([node1, node2, node3], 1, Cfg),
+    wait_for_startup([name(?NODE1), name(?NODE2), name(?NODE3)], 1, Cfg),
     %% Check node picked user config
-    #{network_id := <<"ae_system_test">>} = get_status(node1),
-    #{network_id := <<"ae_system_test">>} = get_status(node2),
-    #{network_id := <<"ae_system_test">>} = get_status(node3),
+    #{network_id := <<"ae_system_test">>} = get_status(name(?NODE1)),
+    #{network_id := <<"ae_system_test">>} = get_status(name(?NODE2)),
+    #{network_id := <<"ae_system_test">>} = get_status(name(?NODE3)),
 
     %% All the three node have the same chain until the last signalling
     %% block. One block after the signalling block the node3 stays with the
     %% current protocol and node1 and node2 switch to the new protocol.
     LastSigBlockHeight = ?SIGNALLING_END_HEIGHT - 1,
-    wait_for_value({height, LastSigBlockHeight}, [node1, node2, node3],
+    wait_for_value({height, LastSigBlockHeight}, [name(?NODE1), name(?NODE2), name(?NODE3)],
                    LastSigBlockHeight * ?MINING_TIMEOUT, Cfg),
 
-    #{hash := LastSigBlockHash1, version := LastSigBlockVsn1} = get_block(node1, LastSigBlockHeight),
-    #{hash := LastSigBlockHash2, version := LastSigBlockVsn2} = get_block(node1, LastSigBlockHeight),
-    #{hash := LastSigBlockHash3, version := LastSigBlockVsn3} = get_block(node1, LastSigBlockHeight),
+    #{hash := LastSigBlockHash1, version := LastSigBlockVsn1} = get_block(name(?NODE1), LastSigBlockHeight),
+    #{hash := LastSigBlockHash2, version := LastSigBlockVsn2} = get_block(name(?NODE1), LastSigBlockHeight),
+    #{hash := LastSigBlockHash3, version := LastSigBlockVsn3} = get_block(name(?NODE1), LastSigBlockHeight),
 
     ?assertEqual(LastSigBlockHash1, LastSigBlockHash2),
     ?assertEqual(LastSigBlockHash1, LastSigBlockHash3),
@@ -147,25 +147,25 @@ fork_chain(Cfg) ->
     %% it cannot produce the blocks with the old protocol, so node4 is started
     %% (which is mining the old protocol blocks) to verify that node3 can still
     %% add old protocol blocks to the chain.
-    start_node(node4, Cfg),
-    wait_for_startup([node4], 1, Cfg),
+    start_node(name(?NODE4), Cfg),
+    wait_for_startup([name(?NODE4)], 1, Cfg),
     %% Check node picked user config
-    #{network_id := <<"ae_system_test">>} = get_status(node4),
+    #{network_id := <<"ae_system_test">>} = get_status(name(?NODE4)),
 
-    wait_for_value({height, LastSigBlockHeight}, [node4],
+    wait_for_value({height, LastSigBlockHeight}, [name(?NODE4)],
                    LastSigBlockHeight * ?MINING_TIMEOUT, Cfg),
 
     %% All the nodes are one block before the fork height. node1 and node2 will
     %% upgrade the protocol, node3 and node4 stay with the old protocol.
 
     AfterForkHeight = ?FORK_HEIGHT + 1,
-    wait_for_value({height, AfterForkHeight}, [node1, node2, node3, node4],
+    wait_for_value({height, AfterForkHeight}, [name(?NODE1), name(?NODE2), name(?NODE3), name(?NODE4)],
                    (AfterForkHeight - LastSigBlockHeight) * ?MINING_TIMEOUT, Cfg),
 
-    #{hash := ForkBlockHash1, version := ForkBlockVsn1} = get_block(node1, ?FORK_HEIGHT),
-    #{hash := ForkBlockHash2, version := ForkBlockVsn2} = get_block(node2, ?FORK_HEIGHT),
-    #{hash := ForkBlockHash3, version := ForkBlockVsn3} = get_block(node3, ?FORK_HEIGHT),
-    #{hash := ForkBlockHash4, version := ForkBlockVsn4} = get_block(node4, ?FORK_HEIGHT),
+    #{hash := ForkBlockHash1, version := ForkBlockVsn1} = get_block(name(?NODE1), ?FORK_HEIGHT),
+    #{hash := ForkBlockHash2, version := ForkBlockVsn2} = get_block(name(?NODE2), ?FORK_HEIGHT),
+    #{hash := ForkBlockHash3, version := ForkBlockVsn3} = get_block(name(?NODE3), ?FORK_HEIGHT),
+    #{hash := ForkBlockHash4, version := ForkBlockVsn4} = get_block(name(?NODE4), ?FORK_HEIGHT),
 
     ?assertEqual(ForkBlockHash1, ForkBlockHash2),
     ?assertEqual(ForkBlockVsn1, ForkBlockVsn2),
@@ -178,15 +178,15 @@ fork_chain(Cfg) ->
 
     ?assert(ForkBlockVsn1 > ForkBlockVsn3),
 
-    ?assert(has_status_new_protocol(node1, {?VERSION, ?FORK_HEIGHT})),
-    ?assert(has_status_new_protocol(node2, {?VERSION, ?FORK_HEIGHT})),
-    ?assertNot(has_status_new_protocol(node3, {?VERSION, ?FORK_HEIGHT})),
-    ?assertNot(has_status_new_protocol(node4, {?VERSION, ?FORK_HEIGHT})),
+    ?assert(has_status_new_protocol(name(?NODE1), {?VERSION, ?FORK_HEIGHT})),
+    ?assert(has_status_new_protocol(name(?NODE2), {?VERSION, ?FORK_HEIGHT})),
+    ?assertNot(has_status_new_protocol(name(?NODE3), {?VERSION, ?FORK_HEIGHT})),
+    ?assertNot(has_status_new_protocol(name(?NODE4), {?VERSION, ?FORK_HEIGHT})),
 
-    stop_node(node1, 10000, Cfg),
-    stop_node(node2, 10000, Cfg),
-    stop_node(node3, 10000, Cfg),
-    stop_node(node4, 10000, Cfg),
+    stop_node(name(?NODE1), 10000, Cfg),
+    stop_node(name(?NODE2), 10000, Cfg),
+    stop_node(name(?NODE3), 10000, Cfg),
+    stop_node(name(?NODE4), 10000, Cfg),
 
     ok.
 
@@ -194,3 +194,5 @@ fork_chain(Cfg) ->
 has_status_new_protocol(Node, {Protocol, Height}) ->
     #{protocols := Protocols} = get_status(Node),
     lists:member(#{version => Protocol, <<"effective_at_height">> => Height}, Protocols).
+
+name(#{name := Name}) -> Name.
