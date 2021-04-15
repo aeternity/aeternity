@@ -225,6 +225,8 @@
     wrong_http_method_peers/1
     ]).
 
+-export([post_paying_for_tx/1]).
+
 -include_lib("common_test/include/ct.hrl").
 -include_lib("aecontract/include/hard_forks.hrl").
 
@@ -271,7 +273,8 @@ groups() ->
        {group, debug_endpoints},
        {group, swagger_validation},
        {group, wrong_http_method_endpoints},
-       {group, naming}
+       {group, naming},
+       {group, paying_for_tx}
       ]},
 
      %% /key-blocks/* /micro-blocks/* /generations/*
@@ -540,7 +543,8 @@ groups() ->
        {group, debug_endpoints},
        {group, swagger_validation},
        {group, wrong_http_method_endpoints},
-       {group, naming}
+       {group, naming},
+       {group, paying_for_tx}
       ]},
      {oas_block_endpoints, [sequence],
       [
@@ -567,7 +571,10 @@ groups() ->
        get_generation_current,
        get_generation_by_hash,
        get_generation_by_height
-      ]}
+      ]},
+     %% /oracles/*
+     {paying_for_tx, [sequence],
+      [post_paying_for_tx]}
     ].
 
 suite() ->
@@ -774,6 +781,11 @@ init_per_group(external_endpoints, Config) ->
     true = aec_blocks:is_key_block(KeyBlock),
     Config;
 
+init_per_group(paying_for_tx, Config) ->
+    case aect_test_utils:latest_protocol_version() >= ?IRIS_PROTOCOL_VSN of
+        true -> Config;
+        false -> {skip, requires_iris_or_newer}
+    end;
 init_per_group(_Group, Config) ->
     Config.
 
@@ -3694,6 +3706,10 @@ get_channel_settle(Data) ->
     Host = internal_address(),
     http_request(Host, post, "debug/channels/settle", Data).
 
+get_paying_for(Data) ->
+    Host = internal_address(),
+    http_request(Host, post, "debug/transactions/paying-for", Data).
+
 get_pending_transactions() ->
     Host = internal_address(),
     http_request(Host, get, "debug/transactions/pending", []).
@@ -4255,3 +4271,63 @@ get_top_header(_Config) ->
     Version = binary_to_integer(VersionStr),
     ok.
 
+post_paying_for_tx(Config) ->
+    [ {NodeId, Node} | _ ] = ?config(nodes, Config),
+    {AlicePubKey, AlicePrivKey} = initialize_account(100000000 * aec_test_utils:min_gas_price()),
+    {BobPubKey, BobPrivKey} = initialize_account(100000000 * aec_test_utils:min_gas_price()),
+
+    {ok, Nonce} = rpc(aec_next_nonce, pick_for_account, [AlicePubKey]),
+    {ok, SpendTx} =
+        aec_spend_tx:new(
+          #{sender_id => aeser_id:create(account, AlicePubKey),
+            recipient_id => aeser_id:create(account, random_hash()),
+            amount => 1,
+            fee => ?SPEND_FEE,
+            nonce => Nonce,
+            payload => <<"foo">>}),
+    %% note that the inner tx has a different network id and is invalid
+    %% without the paying-for wrapper
+    SignedSpendTx = aec_test_utils:sign_pay_for_inner_tx(SpendTx, AlicePrivKey),
+    PayingForData0 =
+        #{payer_id => aeser_api_encoder:encode(account_pubkey, BobPubKey),
+          fee => 3 * ?SPEND_FEE},
+    PayingForData = PayingForData0#{tx => aetx_sign:serialize_for_client_inner(SignedSpendTx, #{})},
+    %% get the node to produce the tx:
+    {ok, 200, #{<<"tx">> := EncodedPayingForTx}} = get_paying_for(PayingForData),
+
+    %% post the tx
+    {ok, SerializedUnsignedTx} = aeser_api_encoder:safe_decode(transaction, EncodedPayingForTx),
+    PayingForTx = aetx:deserialize_from_binary(SerializedUnsignedTx),
+    SignAndPost =
+        fun(Aetx, PrivKey) ->
+            STx = aec_test_utils:sign_tx(Aetx, PrivKey),
+            EncodedSignedTx = aeser_api_encoder:encode(transaction, aetx_sign:serialize_to_binary(STx)),
+            {ok, _Code, _} = Res = post_transactions_sut(EncodedSignedTx),
+            {STx, Res}
+        end,
+    {SignedTx, {ok, 200, _}} = SignAndPost(PayingForTx, BobPrivKey),
+
+    #{<<"tx">> := ClientRepresentationPayingFor,
+      <<"signatures">> := EncSigs} = PendingPayingFor = aetx_sign:serialize_for_client_pending(SignedTx),
+    {ok, [SignedTx]} = rpc:call(Node, aec_tx_pool, peek, [infinity]), %% same tx
+    {ok, 200, #{<<"transactions">> := [PendingPayingFor]}} = get_pending_transactions(), %% still same tx
+    TxHash = mine_tx(NodeId, SignedTx),
+    {ok, 200, #{<<"tx">> := ClientRepresentationPayingFor,
+                <<"signatures">> := EncSigs,
+                <<"block_hash">> := BlockHash } = MinedPayingForTx} = get_transactions_by_hash_sut(TxHash),
+    {ok, 200, #{<<"transactions">> := [MinedPayingForTx]}} = get_micro_blocks_transactions_by_hash_sut(BlockHash),
+
+    %% lets test that we get a proper message when inner tx is wrongly signed
+    WronglySignedInnerTx = aec_test_utils:sign_tx(SpendTx, AlicePrivKey, true, <<"some other network id suffix">>),
+    PayingForData1 =
+        PayingForData0#{tx => aetx_sign:serialize_for_client_inner(WronglySignedInnerTx, #{})},
+    {ok, 400, #{<<"reason">> := <<"Inner tx: invalid authentication">>}} = get_paying_for(PayingForData1),
+    ok.
+
+mine_tx(Node, SignedTx) ->
+    NodeName = aecore_suite_utils:node_name(Node),
+    TxHash = aeser_api_encoder:encode(tx_hash, aetx_sign:hash(SignedTx)),
+    {ok, _Blocks} = aecore_suite_utils:mine_blocks_until_txs_on_chain(NodeName,
+                                                                      [TxHash],
+                                                                      10), %% max keyblocks
+    TxHash.

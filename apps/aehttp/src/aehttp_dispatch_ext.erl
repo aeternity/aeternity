@@ -1,6 +1,6 @@
 -module(aehttp_dispatch_ext).
 
--export([forbidden/1]).
+-export([forbidden/2]).
 -export([handle_request/3]).
 
 -import(aeu_debug, [pp/1]).
@@ -38,8 +38,8 @@
 
 -define(TC(Expr, Msg), begin {Time, Res} = timer:tc(fun() -> Expr end), lager:debug("[~p] Msg = ~p", [Time, Msg]), Res end).
 
--spec forbidden( OperationID :: atom() ) -> boolean().
-forbidden(_OpId) -> false.
+-spec forbidden( Mod :: module(), OperationID :: atom() ) -> boolean().
+forbidden(_Mod, _OpId) -> false.
 
 -spec handle_request(
         OperationID :: atom(),
@@ -468,7 +468,8 @@ handle_request_('PostTransaction', #{<<"tx">> := Tx}, _Context) ->
                         ok ->
                             Hash = aetx_sign:hash(SignedTx),
                             {200, [], #{<<"tx_hash">> => aeser_api_encoder:encode(tx_hash, Hash)}};
-                        {error, _} ->
+                        {error, E} ->
+                            lager:debug("Transaciton ~p failed to be pushed to pool because: ~p", [SignedTx, E]),
                             {400, [], #{reason => <<"Invalid tx">>}}
                     end;
                 {error, broken_tx} ->
@@ -701,4 +702,3 @@ deserialize_transaction(Tx) ->
     catch
         _:_ -> {error, broken_tx}
     end.
-
