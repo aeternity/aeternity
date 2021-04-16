@@ -1880,7 +1880,7 @@ workflows:
       #           - env/dev2
       #           - system-tests
 
-      - upload_build_packages:
+      - publish_build_packages:
           requires:
             - ubuntu_package
           # filters:
