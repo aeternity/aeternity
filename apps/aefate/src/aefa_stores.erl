@@ -326,7 +326,7 @@ finalize_entry(Pubkey, Cache = #cache_entry{store = Store}, {Writes, GasLeft}) -
     {[{Pubkey, Store1} | Writes], GasLeft1}.
 
 %% These are the terms we need to pay traversal gas for before finalizing.
--spec terms_to_finalize(store()) -> [aefa_fate:fate_type()].
+-spec terms_to_finalize(store()) -> [fate_val()].
 terms_to_finalize(#store{cache = Cache}) ->
   [ Term || #cache_entry{dirty = true, terms = Terms} <- maps:values(Cache),
             {Term, true} <- maps:values(Terms) ].
