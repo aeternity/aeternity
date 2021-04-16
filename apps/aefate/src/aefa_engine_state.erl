@@ -503,10 +503,10 @@ cost(unfold_compare) ->
 cost(unfold_serial) ->
   #cost{ node = 800, leaf = 300, unfold = 20000000 };
 
-cost(unfold_final) ->
-  #cost{ node = 800, leaf = 1000, unfold = 20000000 }.
+cost(final) ->
+  #cost{ node = 800, leaf = 1000, unfold = 0 }.
 
--type cost_model() :: simple | serial | unfold | unfold_compare | unfold_serial | unfold_final.
+-type cost_model() :: simple | serial | unfold | unfold_compare | unfold_serial | final.
 
 %% As spend_gas_for_traversal/4, but do not look inside store maps.
 -spec spend_gas_for_traversal(aeb_fate_data:fate_type(), cost_model(), state()) -> state().

@@ -251,7 +251,11 @@ loop(Instructions, EngineState) ->
     case step(Instructions, EngineState) of
         {stop, FinalState} ->
             case aefa_engine_state:finalize(FinalState) of
-                {ok, ES} -> ES;
+                {ok, ES} ->
+                    %% We have already unfolded the result, but the result
+                    %% is also serialized, so a final gas cost.
+                    aefa_engine_state:spend_gas_for_traversal(
+                        aefa_engine_state:accumulator(ES), final, ES);
                 {error, What} -> abort(What, FinalState)
             end;
         {jump, BB, NewState} ->
