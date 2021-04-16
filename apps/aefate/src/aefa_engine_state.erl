@@ -603,8 +603,8 @@ leaf_size(_) -> 0.
 
 int_size(N) -> int_size(N, 1).
 
-int_size(0, Sz) -> Sz;
-int_size(N, Sz) -> int_size(N div 256, Sz + 1).
+int_size(N, Sz) when abs(N) < 256 -> Sz;
+int_size(N, Sz)                   -> int_size(N div 256, Sz + 1).
 
 %%%------------------
 
