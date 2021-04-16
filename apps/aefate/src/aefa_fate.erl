@@ -167,25 +167,31 @@ runtime_revert(Value, ES) when ?IS_FATE_STRING(Value) ->
     throw({?MODULE, revert, Value, ES1}).
 
 %% Runtime error messages for dry run and debugging.
-%% Should result on one tyhpe of runtime error and use all gas when
+%% Should result in one type of runtime error and use all gas when
 %% executed on chain.
+-ifdef(TEST).
+-define(MAX_TERM_DEPTH, 20).
+-else.
+-define(MAX_TERM_DEPTH, 10).
+-endif.
+
 -spec abort(term(), aefa_engine_state:state()) -> no_return().
 abort({invalid_tuple_size, Size}, ES) ->
-    ?t("Invalid tuple size: ~p", [Size], ES);
+    ?t("Invalid tuple size: ~P", [Size, ?MAX_TERM_DEPTH], ES);
 abort({element_index_out_of_bounds, Index}, ES) ->
-    ?t("Bad index argument to element, Index: ~p", [Index], ES);
+    ?t("Bad index argument to element, Index: ~P", [Index, ?MAX_TERM_DEPTH], ES);
 abort({bad_variant_tag, Tag}, ES) ->
-    ?t("Type error in switch: tag ~p is larger than switch op", [Tag], ES);
+    ?t("Type error in switch: tag ~P is larger than switch op", [Tag, ?MAX_TERM_DEPTH], ES);
 abort({bad_variant_size, Size}, ES) ->
-    ?t("Type error in switch: wrong size ~p", [Size], ES);
+    ?t("Type error in switch: wrong size ~P", [Size, ?MAX_TERM_DEPTH], ES);
 abort({type_error, Op, Args}, ES) ->
-    ?t("Bad arguments to ~p: ~p", [Op, Args], ES);
+    ?t("Bad arguments to ~P: ~P", [Op, ?MAX_TERM_DEPTH, Args, ?MAX_TERM_DEPTH], ES);
 abort(hd_on_empty_list, ES) ->
     ?t("Head on empty list", [], ES);
 abort(tl_on_empty_list, ES) ->
     ?t("Tail on empty list", [], ES);
 abort({arithmetic_error, Reason}, ES) ->
-    ?t("Arithmetic error: ~p", [Reason], ES);
+    ?t("Arithmetic error: ~P", [Reason, ?MAX_TERM_DEPTH], ES);
 abort(division_by_zero, ES) ->
     ?t("Arithmetic error: division by zero", [], ES);
 abort(mod_by_zero, ES) ->
@@ -197,41 +203,41 @@ abort(missing_map_key, ES) ->
 abort(bad_store_map_id, ES) ->
     ?t("Maps: Map does not exist", [], ES);
 abort({undefined_var, Var}, ES) ->
-    ?t("Undefined var: ~p", [Var], ES);
+    ?t("Undefined var: ~P", [Var, ?MAX_TERM_DEPTH], ES);
 abort({bad_return_type, Val, Type}, ES) ->
-    ?t("Type error on return: ~p is not of type ~p", [Val, Type], ES);
+    ?t("Type error on return: ~P is not of type ~P", [Val, ?MAX_TERM_DEPTH, Type, ?MAX_TERM_DEPTH], ES);
 abort(remote_type_mismatch, ES) ->
     ?t("Type of remote function does not match expected type", [], ES);
 abort({function_arity_mismatch, Got, Expected}, ES) ->
-    ?t("Expected ~p arguments, got ~p", [Expected, Got], ES);
+    ?t("Expected ~P arguments, got ~P", [Expected, ?MAX_TERM_DEPTH, Got, ?MAX_TERM_DEPTH], ES);
 abort({value_does_not_match_type, Val, Type}, ES) ->
-    ?t("Type error on call: ~p is not of type ~p", [Val, Type], ES);
+    ?t("Type error on call: ~P is not of type ~P", [Val, ?MAX_TERM_DEPTH, Type, ?MAX_TERM_DEPTH], ES);
 abort({trying_to_reach_bb, BB}, ES) ->
-    ?t("Trying to jump to non existing bb: ~p", [BB], ES);
+    ?t("Trying to jump to non existing bb: ~P", [BB, ?MAX_TERM_DEPTH], ES);
 abort({trying_to_call_function, Name}, ES) ->
-    ?t("Trying to call undefined function: ~w", [Name], ES);
+    ?t("Trying to call undefined function: ~W", [Name, ?MAX_TERM_DEPTH], ES);
 abort(invalid_init_call, ES) ->
     ?t("Calling init is not allowed in this context", [], ES);
 abort({trying_to_call_contract, Pubkey}, ES) ->
     ?t("Trying to call invalid contract: ~w", [Pubkey], ES);
 abort({not_allowed_in_auth_context, Op}, ES) ->
-    ?t("Operation ~p not allowed in GA Authentication context", [Op], ES);
+    ?t("Operation ~P not allowed in GA Authentication context", [Op, ?MAX_TERM_DEPTH], ES);
 abort({not_allowed_offchain, Op}, ES) ->
-    ?t("Operation ~p not allowed off chain", [Op], ES);
+    ?t("Operation ~P not allowed off chain", [Op, ?MAX_TERM_DEPTH], ES);
 abort(negative_value_in_call, ES) ->
     ?t("Trying to transfer negative value in call", [], ES);
 abort({call_error, What}, ES) ->
-    ?t("Error in call: ~w", [What], ES);
+    ?t("Error in call: ~W", [What, ?MAX_TERM_DEPTH], ES);
 abort({function_is_not_payable, Fun}, ES) ->
-    ?t("Function with hash ~w is not payable", [Fun], ES);
+    ?t("Function with hash ~W is not payable", [Fun, ?MAX_TERM_DEPTH], ES);
 abort({function_is_private, Fun}, ES) ->
-    ?t("Function with hash ~w is private", [Fun], ES);
+    ?t("Function with hash ~W is private", [Fun, ?MAX_TERM_DEPTH], ES);
 abort({primop_error, Which, What}, ES) ->
-    ?t("Error in ~w: ~w", [Which, What], ES);
+    ?t("Error in ~W: ~W", [Which, ?MAX_TERM_DEPTH, What, ?MAX_TERM_DEPTH], ES);
 abort(reentrant_call, ES) ->
     ?t("Reentrant call", [], ES);
 abort({log_illegal_int, N}, ES) ->
-    ?t("Illegal integer in log: ~w", [N], ES);
+    ?t("Illegal integer in log: ~W", [N, ?MAX_TERM_DEPTH], ES);
 abort(log_illegal_bits, ES) ->
     ?t("Illegal bits in log", [], ES);
 abort(out_of_gas, ES) ->
@@ -239,7 +245,7 @@ abort(out_of_gas, ES) ->
 abort(bad_bytecode, ES) ->
     ?t("Bad byte code", [], ES);
 abort({disabled_operation, Op}, ES) ->
-    ?t("Error: operation ~p is disabled", [Op], ES).
+    ?t("Error: operation ~P is disabled", [Op, ?MAX_TERM_DEPTH], ES).
 
 abort(E) -> throw({add_engine_state, E}).
 
