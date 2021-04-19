@@ -224,6 +224,7 @@ references:
         ERLANG_ROCKSDB_OPTS: "-DWITH_BUNDLE_LZ4=ON -DWITH_BUNDLE_SNAPPY=ON"
       command: |
         make distclean
+        make prod-deb-package
         mkdir ${PACKAGES_DIR:?}
         mv _build/../../*aeternity-node_*.deb ${PACKAGES_DIR:?}
 
