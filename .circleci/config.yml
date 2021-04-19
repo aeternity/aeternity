@@ -219,22 +219,13 @@ references:
         # This prevents the presence of broken/dummy debian/rules file without
         # clean targets. For example when running debuild directly without
         # `make prod-deb-package`.
+        DEB_SKIP_DH_AUTO_CLEAN: "true"
         ERLANG_ROCKSDB_BUILDOPTS: "-j2"
         ERLANG_ROCKSDB_OPTS: "-DWITH_BUNDLE_LZ4=ON -DWITH_BUNDLE_SNAPPY=ON"
       command: |
-        make prod-clean
-        make clean
         make distclean
-        if [ "$CIRCLE_TAG" ];
-        then
-          make prod-deb-package DEB_SKIP_DH_AUTO_CLEAN=true ;
-        else
-          make VERSION
-          AE_DEB_PKG_VERSION=$(cat VERSION)~git$(date +%Y%m%d%H%M%S).${CIRCLE_SHA1:0:8}-1
-          make prod-deb-package DEB_SKIP_DH_AUTO_CLEAN=true AE_DEB_PKG_VERSION=$AE_DEB_PKG_VERSION;
-        fi
         mkdir ${PACKAGES_DIR:?}
-        mv _build/../../*aeternity-node_$(cat VERSION)*.deb ${PACKAGES_DIR:?}
+        mv _build/../../*aeternity-node_*.deb ${PACKAGES_DIR:?}
 
   test_arch_os_dependencies: &test_arch_os_dependencies
     run:
@@ -704,6 +695,8 @@ commands:
 
   publish_ubuntu_package:
     parameters:
+      packages_dir:
+        type: string
       component:
         type: string
     steps:
@@ -714,10 +707,11 @@ commands:
       - run:
           name: Add deb packages
           command: |
-            cp $PACKAGES_DIR/aeternity-node*.deb apt-repo/inbox/aeternity-node/testing/
+            cp << parameters.packages_dir >>/aeternity-node*.deb apt-repo/inbox/aeternity-node/<< parameters.component >>/
       - run:
           name: Setup git
           command: |
+            git config --global push.default simple
             git config --global user.email "35604848+aeternity-bot@users.noreply.github.com"
             git config --global user.name "Aeternity node CI"
       - run:
@@ -764,6 +758,7 @@ commands:
       - attach_workspace:
           at: *packages_workspace
       - publish_ubuntu_package:
+          packages_dir: *packages_workspace
           component: testing
       - *fail_notification
 
@@ -1463,8 +1458,6 @@ jobs:
 
   publish_build_packages:
     executor: buildpack
-    environment:
-      PACKAGES_DIR: *packages_workspace
     steps:
       - publish_build_packages
 
