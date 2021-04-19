@@ -723,6 +723,44 @@ commands:
             && git commit -m "Add aeternity node package to << parameters.component >>" \
             && git push
 
+  publish_osx_package:
+    parameters:
+      packages_dir:
+        type: string
+      branch:
+        type: string
+    steps:
+      - run:
+          name: Checkout Homebrew repository
+          command: |
+            git clone git@github.com:aeternity/homebrew-aeternity.git --branch << parameters.branch >> --single-branch
+      - run:
+          name: Update the Homebrew formula
+          command: |
+            make VERSION
+            VERSION=$(cat VERSION)
+            PACKAGE_URL=https://github.com/aeternity/aeternity/releases/download/v$VERSION/aeternity-$VERSION-macos-x86_64.tar.gz
+            SHA256=$(sha256sum << parameters.packages_dir >>/aeternity-*-macos-x86_64.tar.gz | head -1 | cut -f 1 -d " ")
+            cd homebrew-aeternity/
+            sed -i .bak \"s|url .*|url \"$PACKAGE_URL\"|g" Formula/aeternity-node.rb
+            sed -i .bak "s|version .*|version \"$VERSION\"|g" Formula/aeternity-node.rb
+            sed -i .bak "s|sha256 .*|sha256 \"$SHA256\"|g" Formula/aeternity-node.rb
+      - run:
+          name: Setup git
+          command: |
+            git config --global push.default simple
+            git config --global user.email "35604848+aeternity-bot@users.noreply.github.com"
+            git config --global user.name "Aeternity node CI"
+      - run:
+          name: Commit and push
+          command: |
+            make VERSION
+            VERSION=$(cat VERSION)
+            cd homebrew-aeternity/
+            git add Formula/aeternity-node.rb
+            git commit -m "Update aeternity-node formula to $VERSION" \
+            git push
+
   upload_build_artifacts:
     steps:
       - fixed_checkout
@@ -753,15 +791,6 @@ commands:
       - upload_aws_latest_artifacts
       - *fail_notification
 
-  publish_build_packages:
-    steps:
-      - fixed_checkout
-      - attach_workspace:
-          at: *packages_workspace
-      - publish_ubuntu_package:
-          packages_dir: *packages_workspace
-          component: testing
-      - *fail_notification
 
 jobs:
   build:
@@ -1460,7 +1489,27 @@ jobs:
   publish_build_packages:
     executor: buildpack
     steps:
-      - publish_build_packages
+      - fixed_checkout
+      - attach_workspace:
+          at: *packages_workspace
+      - publish_ubuntu_package:
+          packages_dir: *packages_workspace
+          component: testing
+      - *fail_notification
+
+  publish_release_packages:
+    executor: buildpack
+    steps:
+      - fixed_checkout
+      - attach_workspace:
+          at: *packages_workspace
+      - publish_ubuntu_package:
+          packages_dir: *packages_workspace
+          component: testing
+      - publish_osx_package:
+          packages_dir: *packages_workspace
+          branch: test
+      - *fail_notification
 
   # upload_packages_windows:
   #   executor: infrastructure_container_stable
@@ -1881,21 +1930,32 @@ workflows:
       #           - env/dev2
       #           - system-tests
 
-      - publish_build_packages:
-          requires:
-            - ubuntu_package
+      - osx_package:
+          requires: []
           # filters:
           #   branches:
           #     only:
           #       - /releases\/.*/
           #       - *master_branch
 
-      # - osx_package:
+      # - publish_build_packages:
+      #     requires:
+      #       - ubuntu_package
       #     filters:
       #       branches:
       #         only:
       #           - /releases\/.*/
       #           - *master_branch
+
+      - publish_release_packages:
+          requires:
+            - ubuntu_package
+            - osx_package
+          # filters:
+          #   branches:
+          #     only:
+          #       - /releases\/.*/
+          #       - *master_branch
 
       # - deploy_integration:
       #     context: ae-node-builds
