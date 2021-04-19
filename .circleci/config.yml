@@ -756,8 +756,6 @@ commands:
   publish_build_packages:
     steps:
       - fixed_checkout
-      - *set_package_path
-      - setup_secrets
       - attach_workspace:
           at: *packages_workspace
       - publish_ubuntu_package:
