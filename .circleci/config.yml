@@ -704,11 +704,11 @@ commands:
       - run:
           name: Checkout APT repository
           command: |
-            git clone git@github.com:aeternity/apt-repo.git --branch inbox --single-branch
+            git clone git@github.com:aeternity/apt-repo.git --branch inbox --single-branch ~/apt-repo
       - run:
           name: Add deb packages
           command: |
-            cp << parameters.packages_dir >>/aeternity-node*.deb apt-repo/inbox/aeternity-node/<< parameters.component >>/
+            cp << parameters.packages_dir >>/aeternity-node*.deb ~/apt-repo/inbox/aeternity-node/<< parameters.component >>/
       - run:
           name: Setup git
           command: |
@@ -718,10 +718,10 @@ commands:
       - run:
           name: Commit and push
           command: |
-            cd apt-repo \
-            && git add -A \
-            && git commit -m "Add aeternity node package to << parameters.component >>" \
-            && git push
+            cd ~/apt-repo
+            git add -A
+            git commit -m "Add aeternity node package to << parameters.component >>" || true
+            git push
 
   publish_osx_package:
     parameters:
@@ -733,7 +733,7 @@ commands:
       - run:
           name: Checkout Homebrew repository
           command: |
-            git clone git@github.com:aeternity/homebrew-aeternity.git --branch << parameters.branch >> --single-branch
+            git clone git@github.com:aeternity/homebrew-aeternity.git --branch << parameters.branch >> --single-branch ~/homebrew-aeternity
       - run:
           name: Update the Homebrew formula
           command: |
@@ -741,8 +741,8 @@ commands:
             VERSION=$(cat VERSION)
             PACKAGE_URL=https://github.com/aeternity/aeternity/releases/download/v$VERSION/aeternity-$VERSION-macos-x86_64.tar.gz
             SHA256=$(sha256sum << parameters.packages_dir >>/aeternity-*-macos-x86_64.tar.gz | head -1 | cut -f 1 -d " ")
-            cd homebrew-aeternity/
-            sed -i .bak \"s|url .*|url \"$PACKAGE_URL\"|g" Formula/aeternity-node.rb
+            cd ~/homebrew-aeternity/
+            sed -i .bak "s|url .*|url \"$PACKAGE_URL\"|g" Formula/aeternity-node.rb
             sed -i .bak "s|version .*|version \"$VERSION\"|g" Formula/aeternity-node.rb
             sed -i .bak "s|sha256 .*|sha256 \"$SHA256\"|g" Formula/aeternity-node.rb
       - run:
@@ -756,7 +756,7 @@ commands:
           command: |
             make VERSION
             VERSION=$(cat VERSION)
-            cd homebrew-aeternity/
+            cd ~/homebrew-aeternity/
             git add Formula/aeternity-node.rb
             git commit -m "Update aeternity-node formula to $VERSION" \
             git push
