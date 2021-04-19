@@ -1083,6 +1083,10 @@ jobs:
       - fixed_checkout
       - *build_ubuntu_package
       - *store_package_artifacts
+      - persist_to_workspace:
+          root: *packages_workspace
+          paths:
+            - "*.deb"
       - *fail_notification
 
   osx_package:
