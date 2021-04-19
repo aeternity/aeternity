@@ -1778,17 +1778,26 @@ assert_payable_account(Account, spend) ->
         false -> runtime_error(account_is_not_payable)
     end.
 
+%% Ensures existence of an account keeping its flags (defaults to [] on new account)
 ensure_account(Key, S) ->
-    ensure_account(Key, [], S).
+    ensure_account(Key, keep, S).
 
+%% Ensures existence of an account overriding its flags on collision
 ensure_account(Key, Flags, #state{} = S) ->
-    case find_account(Key, S) of
-        none ->
+    case {find_account(Key, S), Flags} of
+        {none, _} ->
+            NewFlags = case Flags of
+                           keep -> [];
+                           _ -> Flags
+                       end,
             Pubkey = get_var(Key, account, S),
-            Account = aec_accounts:new(Pubkey, 0, Flags),
+            Account = aec_accounts:new(Pubkey, 0, NewFlags),
             {Account, put_account(Account, S)};
-        {Account, S1} ->
-            {Account, S1}
+        {{Account, S1}, keep} ->
+            {Account, S1};
+        {{Account0, S1}, NewFlags} ->
+            Account1 = aec_accounts:set_flags(Account0, NewFlags),
+            {Account1, put_account(Account1, S1)}
     end.
 
 assert_not_oracle(Pubkey, S) ->

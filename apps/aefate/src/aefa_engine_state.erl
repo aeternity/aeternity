@@ -551,7 +551,7 @@ gas_traversal_t(Gas, Cost, _Unfold, ?FATE_CONTRACT(_)  = Val) -> Gas - Cost#cost
 gas_traversal_t(Gas, Cost, _Unfold, ?FATE_ORACLE(_)    = Val) -> Gas - Cost#cost.node - leaf_cost(Cost, Val);
 gas_traversal_t(Gas, Cost, _Unfold, ?FATE_ORACLE_Q(_)  = Val) -> Gas - Cost#cost.node - leaf_cost(Cost, Val);
 gas_traversal_t(Gas, Cost, _Unfold, ?FATE_CHANNEL(_)   = Val) -> Gas - Cost#cost.node - leaf_cost(Cost, Val);
-gas_traversal_t(Gas, Cost, _Unfold, ?FATE_TYPEREP(_)   = Val) -> Gas - Cost#cost.node - leaf_cost(Cost, Val);
+gas_traversal_t(Gas, Cost, _Unfold, ?FATE_TYPEREP(T)) -> gas_traversal_type(Gas - Cost#cost.node, Cost, T);
 gas_traversal_t(Gas, Cost, _Unfold, Val) when ?IS_FATE_INTEGER(Val) -> Gas - Cost#cost.node - leaf_cost(Cost, Val);
 gas_traversal_t(Gas, Cost, _Unfold, Val) when ?IS_FATE_STRING(Val)  -> Gas - Cost#cost.node - leaf_cost(Cost, Val);
 gas_traversal_t(Gas, Cost, Unfold, ?FATE_TUPLE(Val)) ->
@@ -572,8 +572,8 @@ gas_traversal_t(Gas, Cost, {MapSize, Unfold}, ?FATE_STORE_MAP(Cache, Id) ) ->
     end.
 
 gas_traversal_l(Gas, Cost, _Unfold, []) -> Gas - Cost#cost.node;
-gas_traversal_l(Gas, Cost, Unfold, [H | T]) ->
-    Gas1 = gas_traversal(Gas - Cost#cost.node, Cost, Unfold, H),
+gas_traversal_l(Gas0, Cost, Unfold, [H | T]) ->
+    Gas1 = gas_traversal(Gas0 - Cost#cost.node, Cost, Unfold, H),
     gas_traversal_l(Gas1, Cost, Unfold, T).
 
 gas_traversal_m(Gas, Cost, Unfold, Map) ->
@@ -581,6 +581,32 @@ gas_traversal_m(Gas, Cost, Unfold, Map) ->
                     Gas2 = gas_traversal(Gas1 - Cost#cost.node, Cost, Unfold, K),
                     gas_traversal(Gas2, Cost, Unfold, V)
               end, Gas - Cost#cost.node, Map).
+
+gas_traversal_type(Gas, _Cost, _T) when Gas < 0 -> throw(out_of_gas);
+gas_traversal_type(Gas, Cost, {tuple, L}) when is_list(L) ->
+    gas_traversal_type(Gas - Cost#cost.node, Cost, L);
+gas_traversal_type(Gas, Cost, {variant, L}) when is_list(L) ->
+    gas_traversal_type(Gas - Cost#cost.node, Cost, L);
+gas_traversal_type(Gas, Cost, {list, T}) ->
+    gas_traversal_type(Gas - Cost#cost.node, Cost, T);
+gas_traversal_type(Gas0, Cost, {map, K, V}) ->
+    Gas1 = gas_traversal_type(Gas0 - Cost#cost.node, Cost, K),
+    gas_traversal_type(Gas1, Cost, V);
+gas_traversal_type(Gas, Cost, integer)   -> Gas - Cost#cost.leaf;
+gas_traversal_type(Gas, Cost, boolean)   -> Gas - Cost#cost.leaf;
+gas_traversal_type(Gas, Cost, address)   -> Gas - Cost#cost.leaf;
+gas_traversal_type(Gas, Cost, hash)      -> Gas - Cost#cost.leaf;
+gas_traversal_type(Gas, Cost, signature) -> Gas - Cost#cost.leaf;
+gas_traversal_type(Gas, Cost, contract)  -> Gas - Cost#cost.leaf;
+gas_traversal_type(Gas, Cost, oracle)    -> Gas - Cost#cost.leaf;
+gas_traversal_type(Gas, Cost, channel)   -> Gas - Cost#cost.leaf;
+gas_traversal_type(Gas, Cost, bits)      -> Gas - Cost#cost.leaf;
+gas_traversal_type(Gas, Cost, string)    -> Gas - Cost#cost.leaf;
+gas_traversal_type(Gas, Cost, contract_bytearray) -> Gas - Cost#cost.leaf;
+gas_traversal_type(Gas0, Cost, [H|T]) ->
+    Gas1 = gas_traversal_type(Gas0, Cost, H),
+    gas_traversal_type(Gas1, Cost, T);
+gas_traversal_type(Gas, Cost, []) -> Gas - Cost#cost.leaf.
 
 leaf_cost(#cost{ leaf = 0 }, _)          -> 0;
 leaf_cost(#cost{ leaf = LeafCost }, Val) -> LeafCost * leaf_size(Val).

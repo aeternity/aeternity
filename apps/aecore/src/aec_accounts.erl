@@ -16,13 +16,14 @@
          ga_auth_fun/1,
          ga_contract/1,
          nonce/1,
+         type/1,
 
          attach_ga_contract/3,
          earn/2,
          spend/3,
          spend_without_nonce_bump/2,
          set_nonce/2,
-         type/1,
+         set_flags/2,
 
          is_payable/1,
          set_payable/2,
@@ -127,6 +128,10 @@ spend_without_nonce_bump(#account{balance = Balance0} = Account0, Amount) ->
 -spec type(account()) -> basic | generalized.
 type(#account{ ga_contract = undefined }) -> basic;
 type(#account{ ga_contract = C })         -> contract = aeser_id:specialize_type(C), generalized.
+
+-spec set_flags(account(), flags()) -> account().
+set_flags(Acct, Flags) ->
+    Acct#account{flags = set_flags(Flags)}.
 
 -spec is_payable(account()) -> boolean().
 is_payable(#account{ flags = 0 }) -> true;
