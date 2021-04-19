@@ -396,7 +396,7 @@ distclean: clean
 	@rm -rf _build/
 
 multi-build: VERSION dev1-build
-	$(eval VER=$(hell cat VERSION))
+	$(eval VER=$(shell cat VERSION))
 	@$(MAKE) dev2-distclean
 	@$(MAKE) dev3-distclean
 	@for x in dev2 dev3; do \
