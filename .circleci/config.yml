@@ -742,9 +742,9 @@ commands:
             PACKAGE_URL=https://github.com/aeternity/aeternity/releases/download/v$VERSION/aeternity-$VERSION-macos-x86_64.tar.gz
             SHA256=$(sha256sum << parameters.packages_dir >>/aeternity-*-macos-x86_64.tar.gz | head -1 | cut -f 1 -d " ")
             cd ~/homebrew-aeternity/
-            sed -i "s|url .*|url \"$PACKAGE_URL\"|g" Formula/aeternity-node.rb
-            sed -i "s|version .*|version \"$VERSION\"|g" Formula/aeternity-node.rb
-            sed -i "s|sha256 .*|sha256 \"$SHA256\"|g" Formula/aeternity-node.rb
+            sed -i "s|^  url .*|  url \"$PACKAGE_URL\"|g" Formula/aeternity-node.rb
+            sed -i "s|^  version .*|  version \"$VERSION\"|g" Formula/aeternity-node.rb
+            sed -i "s|^  sha256 .*|  sha256 \"$SHA256\"|g" Formula/aeternity-node.rb
       - run:
           name: Setup git
           command: |
@@ -758,7 +758,8 @@ commands:
             VERSION=$(cat VERSION)
             cd ~/homebrew-aeternity/
             git add Formula/aeternity-node.rb
-            git commit -m "Update aeternity-node formula to $VERSION" \
+            git diff --staged
+            git commit -m "Update aeternity-node formula to $VERSION"
             git push
 
   upload_build_artifacts:
