@@ -1506,7 +1506,7 @@ oracle_register_(Arg0, ?FATE_BYTES(Signature), ?FATE_ADDRESS(Address),
     end.
 
 oracle_query(Arg0, Arg1, Arg2, Arg3, Arg4, Arg5, Arg6, Arg7, EngineState) ->
-    {[Oracle, Question, QFee, QTTL, RTTL, QType, RType], ES1} =
+    {[Oracle, Question0, QFee, QTTL, RTTL, QType, RType], ES1} =
         get_op_args([Arg1, Arg2, Arg3, Arg4, Arg5, Arg6, Arg7], EngineState),
     if
         not ?IS_FATE_ORACLE(Oracle) ->
@@ -1533,23 +1533,30 @@ oracle_query(Arg0, Arg1, Arg2, Arg3, Arg4, Arg5, Arg6, Arg7, EngineState) ->
              _ ->
                 aefa_fate:abort({primop_error, oracle_query, bad_ttl}, ES1)
         end,
+    {Question, ES2} =
+        case aefa_engine_state:vm_version(ES1) =< ?VM_FATE_SOPHIA_2 of
+            true ->
+                {Question0, ES1};
+            false ->
+                aefa_fate:unfold_store_maps(Question0, ES1, unfold_serial)
+        end,
     ?FATE_ORACLE(OraclePubkey) = Oracle,
-    SenderPubkey = aefa_engine_state:current_contract(ES1),
+    SenderPubkey = aefa_engine_state:current_contract(ES2),
     QFeeVal = ?FATE_INTEGER_VALUE(QFee),
-    API = aefa_engine_state:chain_api(ES1),
+    API = aefa_engine_state:chain_api(ES2),
     case aefa_chain_api:oracle_query(OraclePubkey, SenderPubkey, Question,
                                      QFeeVal, QTTLType, QTTLVal, RTTLVal,
                                      ?ABI_FATE_SOPHIA_1, QType, RType, API) of
         {ok, QueryId, DynamicGas, API1} ->
-            ES2 = aefa_engine_state:set_chain_api(API1, ES1),
-            ES3 = spend_gas(DynamicGas, ES2),
-            write(Arg0, aeb_fate_data:make_oracle_query(QueryId), ES3);
+            ES3 = aefa_engine_state:set_chain_api(API1, ES2),
+            ES4 = spend_gas(DynamicGas, ES3),
+            write(Arg0, aeb_fate_data:make_oracle_query(QueryId), ES4);
         {error, What} ->
-            aefa_fate:abort({primop_error, oracle_query, What}, ES1)
+            aefa_fate:abort({primop_error, oracle_query, What}, ES2)
     end.
 
 oracle_respond(Arg0, Arg1, Arg2, Arg3, Arg4, Arg5, EngineState) ->
-    {[Signature, Oracle, Query, Response, QType, RType], ES1} =
+    {[Signature, Oracle, Query, Response0, QType, RType], ES1} =
         get_op_args([Arg0, Arg1, Arg2, Arg3, Arg4, Arg5], EngineState),
     if
         not ?IS_FATE_ORACLE(Oracle) ->
@@ -1563,18 +1570,25 @@ oracle_respond(Arg0, Arg1, Arg2, Arg3, Arg4, Arg5, EngineState) ->
         true ->
             ok
     end,
+    {Response, ES2} =
+        case aefa_engine_state:vm_version(ES1) =< ?VM_FATE_SOPHIA_2 of
+            true ->
+                {Response0, ES1};
+            false ->
+                aefa_fate:unfold_store_maps(Response0, ES1, unfold_serial)
+        end,
     ?FATE_ORACLE_Q(QueryId) = Query,
     ?FATE_ORACLE(OraclePubkey) = Oracle,
     ?FATE_BYTES(SignBin) = Signature,
-    ES2 = check_delegation_signature(oracle_respond, {OraclePubkey, QueryId}, SignBin, ES1),
-    API = aefa_engine_state:chain_api(ES2),
+    ES3 = check_delegation_signature(oracle_respond, {OraclePubkey, QueryId}, SignBin, ES2),
+    API = aefa_engine_state:chain_api(ES3),
     case aefa_chain_api:oracle_respond(OraclePubkey, QueryId, Response,
                                        ?ABI_FATE_SOPHIA_1, QType, RType, API) of
         {ok, DynamicGas, API1} ->
-            ES3 = spend_gas(DynamicGas, ES2),
-            aefa_engine_state:set_chain_api(API1, ES3);
+            ES4 = spend_gas(DynamicGas, ES3),
+            aefa_engine_state:set_chain_api(API1, ES4);
         {error, What} ->
-            aefa_fate:abort({primop_error, oracle_respond, What}, ES2)
+            aefa_fate:abort({primop_error, oracle_respond, What}, ES3)
     end.
 
 oracle_extend(Arg0, Arg1, Arg2, EngineState) ->
