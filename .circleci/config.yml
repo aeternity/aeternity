@@ -1506,10 +1506,10 @@ jobs:
           at: *packages_workspace
       - publish_ubuntu_package:
           packages_dir: *packages_workspace
-          component: testing
+          component: main
       - publish_osx_package:
           packages_dir: *packages_workspace
-          branch: test
+          branch: master
       - *fail_notification
 
   # upload_packages_windows:
