@@ -172,7 +172,7 @@ runtime_revert(Value, ES) when ?IS_FATE_STRING(Value) ->
 -ifdef(TEST).
 -define(MAX_TERM_DEPTH, 20).
 -else.
--define(MAX_TERM_DEPTH, 10).
+-define(MAX_TERM_DEPTH, 6).
 -endif.
 
 -spec abort(term(), aefa_engine_state:state()) -> no_return().
