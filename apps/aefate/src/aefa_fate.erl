@@ -22,6 +22,7 @@
 -export([ check_remote/2
         , check_return_type/1
         , check_signature/3
+        , infer_type/1
         , pop_args_from_signature/2
         , pop_args/2
         , bind_args/2

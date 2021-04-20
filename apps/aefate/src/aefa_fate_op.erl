@@ -748,12 +748,21 @@ str_from_list(Arg0, Arg1, EngineState) ->
         aefa_fate:abort({value_does_not_match_type, Value, {list, char}}, ES1);
        true -> ok
     end,
-    case unicode:characters_to_nfc_binary(Value) of
-        {error, _, _} -> aefa_fate:abort({value_does_not_match_type, Value, {list, char}}, ES1);
-        Str ->
-            Cells = string_cells(?FATE_STRING_VALUE(Str)),
-            ES2 = aefa_engine_state:spend_gas_for_new_cells(Cells + 1, ES1),
-            write(Arg0, aeb_fate_data:make_string(Str), ES2)
+    ES2 = aefa_engine_state:spend_gas_for_traversal(Value, simple, ES1),
+    try aefa_fate:infer_type(Value) of
+        {list, integer} ->
+            case unicode:characters_to_nfc_binary(Value) of
+                {error, _, _} ->
+                    aefa_fate:abort({value_does_not_match_type, Value, {list, char}}, ES2);
+                Str ->
+                    Cells = string_cells(?FATE_STRING_VALUE(Str)),
+                    ES3 = aefa_engine_state:spend_gas_for_new_cells(Cells + 1, ES2),
+                    write(Arg0, aeb_fate_data:make_string(Str), ES3)
+            end;
+        _ ->
+            aefa_fate:abort({value_does_not_match_type, Value, {list, char}}, ES2)
+    catch throw:_Err ->
+        aefa_fate:abort({value_does_not_match_type, Value, {list, char}}, ES2)
     end.
 
 str_to_upper(Arg0, Arg1, EngineState) ->
