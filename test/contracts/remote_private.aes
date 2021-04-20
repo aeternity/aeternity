@@ -1,5 +1,5 @@
 
-contract Remote =
+contract interface Remote =
   entrypoint exported_endpoint : (int) => int
   entrypoint private_endpoint : (int) => int
 

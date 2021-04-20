@@ -1,9 +1,8 @@
 
-contract Remote =
-  entrypoint main : (int, int) => int // Too many arguments!
+contract interface Remote =
+  entrypoint main_ : (int, int) => int // Too many arguments!
 
 contract Main =
 
   entrypoint fail(r : Remote) =
-    r.main(1, 1000) + 2
-
+    r.main_(1, 1000) + 2

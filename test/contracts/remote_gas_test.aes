@@ -1,4 +1,4 @@
-contract Remote1 =
+contract interface Remote1 =
   entrypoint set : (int) => int
   entrypoint bogus_return : (int) => string
 

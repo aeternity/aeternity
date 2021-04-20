@@ -1,5 +1,5 @@
 
-contract OtherContract =
+contract interface OtherContract =
 
   entrypoint multiply : (int, int) => int
 

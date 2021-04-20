@@ -1,5 +1,5 @@
 include "String.aes"
-contract Remote =
+contract interface Remote =
   entrypoint upd     : ('k, 'v, map('k, 'v)) => map('k, 'v)
   entrypoint upd_bad : ('k, 'v, map('k, 'v)) => map('k, 'v)
 

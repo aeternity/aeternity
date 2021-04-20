@@ -34,7 +34,7 @@ namespace Tuple =
     switch(tuple)
       (_, e) => e
 
-contract Poll =
+contract interface Poll =
   entrypoint title : () => string
   entrypoint close_height : () => option(int)
 

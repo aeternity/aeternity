@@ -1,5 +1,5 @@
 
-contract MapServer =
+contract interface MapServer =
 
   entrypoint insert : (string, string, map(string, string)) => map(string, string)
   entrypoint delete : (string, map(string, string)) => map(string, string)
