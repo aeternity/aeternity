@@ -169,6 +169,7 @@
         , sophia_address_checks/1
         , sophia_remote_gas/1
         , sophia_higher_order_state/1
+        , sophia_clone_test/1
         , sophia_bignum/1
         , sophia_strings/1
         , sophia_call_caller/1
@@ -449,6 +450,7 @@ groups() ->
                                  sophia_bignum,
                                  sophia_call_caller,
                                  sophia_higher_order_state,
+                                 sophia_clone_test,
                                  sophia_use_memory_gas,
                                  sophia_compiler_version,
                                  sophia_protected_call,
@@ -786,7 +788,7 @@ create_contract_init_error_call_wrong_function(_Cfg) ->
     S0 = aect_test_utils:setup_miner_account(?MINER_PUBKEY, S),
     {PubKey, S1} = aect_test_utils:setup_new_account(S0),
     {ok, Code}   = compile_contract(identity),
-    CallData     = make_calldata_from_code(Code, <<"main">>, {42}),
+    CallData     = make_calldata_from_code(Code, <<"main_">>, {42}),
     Options      = #{call_data => CallData},
     {{error, bad_init_function}, _} = tx_fail_create_contract_with_code(PubKey, Code, {}, Options, S1),
     ok.
@@ -1127,7 +1129,7 @@ call_contract_negative_insufficient_funds(_Cfg) ->
     Value = 10,
     Bal = Fee + Value - 2,
     S = aect_test_utils:set_account_balance(Acc1, Bal, state()),
-    CallData = make_calldata_from_id(IdC, main, 42, S),
+    CallData = make_calldata_from_id(IdC, main_, 42, S),
     CallTx = aect_test_utils:call_tx(Acc1, IdC,
                                      #{call_data => CallData,
                                        gas_price => aec_test_utils:min_gas_price(),
@@ -1187,7 +1189,7 @@ call_contract_(ContractCallTxGasPrice) ->
     %% Now check that we can call it.
     Fee           = 600000 * aec_test_utils:min_gas_price(),
     Value         = 52,
-    CallData = make_calldata_from_code(IdContract, main, 42),
+    CallData = make_calldata_from_code(IdContract, main_, 42),
     CallTx = aect_test_utils:call_tx(Caller, ContractKey,
                                      #{call_data => CallData,
                                        gas_price => ContractCallTxGasPrice,
@@ -1709,7 +1711,7 @@ sophia_identity(_Cfg) ->
     state(aect_test_utils:new_state()),
     Acc1 = ?call(new_account, 10000000 * aec_test_utils:min_gas_price()),
     IdC   = ?call(create_contract, Acc1, identity, {}),
-    42    = ?call(call_contract,   Acc1, IdC, main, word, 42),
+    42    = ?call(call_contract,   Acc1, IdC, main_, word, 42),
     ok.
 
 sophia_remote_identity(_Cfg) ->
@@ -1718,7 +1720,7 @@ sophia_remote_identity(_Cfg) ->
     %% Remote calling the identity contract
     IdC   = ?call(create_contract, Acc1, identity, {}),
     RemC  = ?call(create_contract, Acc1, remote_call, {}, #{amount => 100}),
-    42    = ?call(call_contract,   Acc1, IdC, main, word, 42),
+    42    = ?call(call_contract,   Acc1, IdC, main_, word, 42),
     99    = ?call(call_contract,   Acc1, RemC, call, word, {?cid(IdC), 99}),
     RemC2 = ?call(create_contract, Acc1, remote_call, {}, #{amount => 100}),
     77    = ?call(call_contract,   Acc1, RemC2, staged_call, word, {?cid(IdC), ?cid(RemC), 77}),
@@ -1768,6 +1770,17 @@ sophia_higher_order_state(_Cfg) ->
     3   = ?call(call_contract, Acc, Ct, apply, word, {1}),
     {}  = ?call(call_contract, Acc, Ct, inc,  {tuple, []}, {}),
     4   = ?call(call_contract, Acc, Ct, apply, word, {1}),
+    ok.
+
+sophia_clone_test(_Cfg) ->
+    ?skipRest(vm_version() < ?VM_FATE_SOPHIA_2, clone_not_pre_iris),
+    state(aect_test_utils:new_state()),
+    Acc = ?call(new_account, 1000000000 * aec_test_utils:min_gas_price()),
+    Remote  = ?call(create_contract, Acc, higher_order_state, {}),
+    Ct  = ?call(create_contract, Acc, clone_test, {}),
+    Cloned1 = ?call(call_contract, Acc, Ct, run_clone, address, {Remote, Remote}),
+    Cloned2 = ?call(call_contract, Acc, Ct, run_clone, address, {Cloned1, Cloned1}),
+    ?assert(Cloned1 =/= Cloned2),
     ok.
 
 sophia_bignum(_Cfg) ->
@@ -5570,13 +5583,13 @@ sophia_protected_call(_Cfg) ->
                 {Fun, MinGas, MaxGas, Res, NewState - OldState, [ClientBal1 - ClientBal0, ProxyBal1 - ProxyBal0, ServerBal1 - ServerBal0]}
            end,
     {test_ok, _, _, {116, _}, _, _} = Test(test_ok, word, 0, 0),
-    Results = [ Test(test_wrong_ret,     {option, bool}, 150, 200)
-              , Test(test_wrong_arg,     {option, word}, 130, 200)
-              , Test(test_wrong_arity,   {option, word}, 130, 200)
-              , Test(test_missing,       {option, word}, 130, 200)
-              , Test(test_missing_con,   {option, word}, 130, 200)
-              , Test(test_nonpayable,    {option, word}, 130, 200)
-              , Test(test_out_of_funds,  {option, word}, 130, 200)
+    Results = [ Test(test_wrong_ret,     {option, bool}, 150, 500)
+              , Test(test_wrong_arg,     {option, word}, 130, 500)
+              , Test(test_wrong_arity,   {option, word}, 130, 500)
+              , Test(test_missing,       {option, word}, 130, 500)
+              , Test(test_missing_con,   {option, word}, 130, 500)
+              , Test(test_nonpayable,    {option, word}, 130, 500)
+              , Test(test_out_of_funds,  {option, word}, 130, 500)
               , Test(test_hacked,        {option, word}, 12400, 12700)
               , Test(test_revert,        {option, word}, 12400, 12700)
               , Test(test_crash,         {option, word}, 12400, 12700)
@@ -5591,9 +5604,10 @@ sophia_protected_call(_Cfg) ->
               , Test(test_revert_r,      {option, word}, 17400, 17800)
               , Test(test_crash_r,       {option, word}, 17400, 17800)
               , Test(test_out_of_gas_r,  {option, word}, 5000, 5500) ],
-    [] = [ Res || Res = {_, MinGas, MaxGas, {R, Gas}, State, Bal} <- Results,
-                  R /= none orelse Gas < MinGas orelse Gas > MaxGas orelse State /= 0 orelse
-                  lists:any(fun(N) -> N /= 0 end, Bal) ],
+    ?assertMatch(
+       [], [Res || Res = {_, MinGas, MaxGas, {R, Gas}, State, Bal} <- Results,
+                   R /= none orelse Gas < MinGas orelse Gas > MaxGas orelse State /= 0 orelse
+                       lists:any(fun(N) -> N /= 0 end, Bal) ]),
     ok.
 
 sophia_aevm_bad_code(_Cfg) ->
@@ -5611,7 +5625,7 @@ sophia_aevm_bad_code(_Cfg) ->
     HackedCode2 = hack_dup(6, 139, Code),
     C2 = ?call(create_contract_with_code, Acc, HackedCode2, {}, #{}),
     try
-        {error, <<"unknown_error">>} = ?call(call_contract, Acc, C2, main, word, 10)
+        {error, <<"unknown_error">>} = ?call(call_contract, Acc, C2, main_, word, 10)
     catch _:_ -> error(call_contract) end,
 
     ok.
@@ -6733,7 +6747,7 @@ fate_vm_interaction(Cfg) ->
                        fee => 1000000 * MinGasPrice},
 
     %% Call directly old VMs
-    [?assertEqual(42, ?call(call_contract, Acc, Id, main, word, 42, LatestCallSpec))
+    [?assertEqual(42, ?call(call_contract, Acc, Id, main_, word, 42, LatestCallSpec))
         || Id <- [ IdCLima
                  , IdCIris
                  ]],

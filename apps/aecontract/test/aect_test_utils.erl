@@ -368,7 +368,7 @@ compile_(SophiaVsn, File) when SophiaVsn == ?SOPHIA_IRIS_FATE ->
                   yes_automatic -> [{aci, json}];
                   _ -> []
               end,
-    case aeso_compiler:from_string(Source, [{backend, fate}] ++ ACIFlag) of
+    case aeso_compiler:from_string(Source, [{backend, fate}, {src_file, File}] ++ ACIFlag) of
         {ok, Map} ->
             case Map of
                 #{aci := JAci} ->
