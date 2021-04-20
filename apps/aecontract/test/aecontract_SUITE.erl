@@ -17,6 +17,8 @@
         ]).
 
 -include_lib("aecontract/include/hard_forks.hrl").
+-include_lib("aebytecode/include/aeb_fate_data.hrl").
+-include_lib("aeutils/include/aeu_stacktrace.hrl").
 
 %% for testing from a shell
 -export([ init_tests/2 ]).
@@ -169,7 +171,10 @@
         , sophia_address_checks/1
         , sophia_remote_gas/1
         , sophia_higher_order_state/1
-        , sophia_clone_test/1
+        , sophia_clone/1
+        , sophia_create/1
+        , sophia_bytecode_hash/1
+        , sophia_factories/1
         , sophia_bignum/1
         , sophia_strings/1
         , sophia_call_caller/1
@@ -450,7 +455,10 @@ groups() ->
                                  sophia_bignum,
                                  sophia_call_caller,
                                  sophia_higher_order_state,
-                                 sophia_clone_test,
+                                 sophia_clone,
+                                 sophia_create,
+                                 sophia_bytecode_hash,
+                                 sophia_factories,
                                  sophia_use_memory_gas,
                                  sophia_compiler_version,
                                  sophia_protected_call,
@@ -1772,7 +1780,7 @@ sophia_higher_order_state(_Cfg) ->
     4   = ?call(call_contract, Acc, Ct, apply, word, {1}),
     ok.
 
-sophia_clone_test(_Cfg) ->
+sophia_clone(_Cfg) ->
     ?skipRest(vm_version() < ?VM_FATE_SOPHIA_2, clone_not_pre_iris),
     state(aect_test_utils:new_state()),
     Acc = ?call(new_account, 1000000000 * aec_test_utils:min_gas_price()),
@@ -1781,6 +1789,36 @@ sophia_clone_test(_Cfg) ->
     Cloned1 = ?call(call_contract, Acc, Ct, run_clone, address, {Remote, Remote}),
     Cloned2 = ?call(call_contract, Acc, Ct, run_clone, address, {Cloned1, Cloned1}),
     ?assert(Cloned1 =/= Cloned2),
+    ok.
+
+sophia_create(_Cfg) ->
+    ok.
+
+sophia_bytecode_hash(_Cfg) ->
+    ?skipRest(vm_version() < ?VM_FATE_SOPHIA_2, clone_not_pre_iris),
+    state(aect_test_utils:new_state()),
+    Acc = ?call(new_account, 1000000000 * aec_test_utils:min_gas_price()),
+    Remote  = ?call(create_contract, Acc, higher_order_state, {}),
+    Ct  = ?call(create_contract, Acc, bytecode_hash_test, {}),
+    HashComputed = ?call(call_contract, Acc, Ct, hash, hash, {?cid(Remote)}),
+    HashChain =
+        begin
+            Trees = aect_test_utils:trees(state()),
+            CTTrees = aec_trees:contracts(Trees),
+            ExtractedMaybe = aect_state_tree:lookup_contract(Remote, CTTrees),
+            ?assertMatch({value, _}, ExtractedMaybe),
+            {value, Extracted} = ExtractedMaybe,
+            {code, SerCode} = aect_contracts:code(Extracted),
+            #{ byte_code := SerByteCode} = aect_sophia:deserialize(SerCode),
+            Hashed = aeb_fate_data:make_hash(aec_hash:hash(fate_code, SerByteCode)),
+            Hashed
+        end,
+    ?assertEqual(HashChain, HashComputed),
+    ?assert(    ?call(call_contract, Acc, Ct, hash_valid, bool, {?cid(Remote)})),
+    ?assert(not ?call(call_contract, Acc, Ct, hash_valid, bool, {?cid(Acc)})),
+    ok.
+
+sophia_factories(_Cfg) ->
     ok.
 
 sophia_bignum(_Cfg) ->
@@ -7313,7 +7351,7 @@ fate_environment(_Cfg) ->
     %% since we don't have a chain.
     BHHeight = 1000,
     %% Behavior at current height changed in FATE_VM2.
-    ?assertMatchFATE(none, {some, {bytes, <<BBHeight:256>>}},
+    ?assertMatchFATE(none, {some, {bytes, <<BHHeight:256>>}},
         ?call(call_contract, Acc, Contract, block_hash, {option, word}, {BHHeight}, #{height => BHHeight})),
     ?assertEqual(none, ?call(call_contract, Acc, Contract, block_hash, {option, word}, {BHHeight + 1},
                           #{height => BHHeight})),
