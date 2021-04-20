@@ -1621,443 +1621,433 @@ workflows:
       #       tags:
       #         only: *tag_regex
 
-      # - build:
-      #     filters:
-      #       branches:
-      #         ignore:
-      #           - env/dev1
-      #           - env/dev2
-      #           - system-tests
+      - build:
+          filters:
+            branches:
+              ignore:
+                - env/dev1
+                - env/dev2
+                - system-tests
 
-      # - build_otp21:
-      #     filters:
-      #       branches:
-      #         ignore:
-      #           - env/dev1
-      #           - env/dev2
-      #           - system-tests
+      - build_otp21:
+          filters:
+            branches:
+              ignore:
+                - env/dev1
+                - env/dev2
+                - system-tests
 
-      # - build_nix:
-      #     filters:
-      #       branches:
-      #         only:
-      #           - *master_branch
+      - build_nix:
+          filters:
+            branches:
+              only:
+                - *master_branch
 
-      # - docker_smoke_tests:
-      #     context: ae-node-builds
-      #     filters:
-      #       branches:
-      #         ignore:
-      #           - env/dev1
-      #           - env/dev2
-      #           - system-tests
-      #           - /releases\/.*/
-      #           - *master_branch
+      - docker_smoke_tests:
+          context: ae-node-builds
+          filters:
+            branches:
+              ignore:
+                - env/dev1
+                - env/dev2
+                - system-tests
+                - /releases\/.*/
+                - *master_branch
 
-      # - docker_js_sdk_smoke_test:
-      #     context: ae-node-builds
-      #     requires:
-      #       - docker_smoke_tests
-      #     filters:
-      #       branches:
-      #         ignore:
-      #           - env/dev1
-      #           - env/dev2
-      #           - system-tests
-      #           - /releases\/.*/
-      #           - *master_branch
+      - docker_js_sdk_smoke_test:
+          context: ae-node-builds
+          requires:
+            - docker_smoke_tests
+          filters:
+            branches:
+              ignore:
+                - env/dev1
+                - env/dev2
+                - system-tests
+                - /releases\/.*/
+                - *master_branch
 
-      # - docker_db_smoke_test:
-      #     context: ae-node-builds
-      #     requires:
-      #       - docker_smoke_tests
-      #     filters:
-      #       branches:
-      #         ignore:
-      #           - env/dev1
-      #           - env/dev2
-      #           - system-tests
-      #           - /releases\/.*/
-      #           - *master_branch
+      - docker_db_smoke_test:
+          context: ae-node-builds
+          requires:
+            - docker_smoke_tests
+          filters:
+            branches:
+              ignore:
+                - env/dev1
+                - env/dev2
+                - system-tests
+                - /releases\/.*/
+                - *master_branch
 
-      # - docker_system_smoke_tests:
-      #     requires: []
-      #     filters:
-      #       branches:
-      #         ignore:
-      #           - env/dev1
-      #           - env/dev2
-      #           - system-tests
+      - docker_system_smoke_tests:
+          requires: []
+          filters:
+            branches:
+              ignore:
+                - env/dev1
+                - env/dev2
+                - system-tests
 
-      # - js_sdk_smoke_test:
-      #     requires:
-      #       - linux_package
-      #     filters:
-      #       branches:
-      #         ignore:
-      #           - env/dev1
-      #           - env/dev2
-      #           - system-tests
+      - js_sdk_smoke_test:
+          requires:
+            - linux_package
+          filters:
+            branches:
+              ignore:
+                - env/dev1
+                - env/dev2
+                - system-tests
 
-      # - db_smoke_test:
-      #     requires:
-      #       - linux_package
-      #     filters:
-      #       branches:
-      #         ignore:
-      #           - env/dev1
-      #           - env/dev2
-      #           - system-tests
+      - db_smoke_test:
+          requires:
+            - linux_package
+          filters:
+            branches:
+              ignore:
+                - env/dev1
+                - env/dev2
+                - system-tests
 
-      # - test_roma:
-      #     requires:
-      #       - build
-      #     filters:
-      #       branches:
-      #         ignore:
-      #           - env/dev1
-      #           - env/dev2
-      #           - system-tests
+      - test_roma:
+          requires:
+            - build
+          filters:
+            branches:
+              ignore:
+                - env/dev1
+                - env/dev2
+                - system-tests
 
-      # - test_minerva:
-      #     requires:
-      #       - build
-      #     filters:
-      #       branches:
-      #         ignore:
-      #           - env/dev1
-      #           - env/dev2
-      #           - system-tests
+      - test_minerva:
+          requires:
+            - build
+          filters:
+            branches:
+              ignore:
+                - env/dev1
+                - env/dev2
+                - system-tests
 
-      # - test_fortuna:
-      #     requires:
-      #       - build
-      #     filters:
-      #       branches:
-      #         ignore:
-      #           - env/dev1
-      #           - env/dev2
-      #           - system-tests
+      - test_fortuna:
+          requires:
+            - build
+          filters:
+            branches:
+              ignore:
+                - env/dev1
+                - env/dev2
+                - system-tests
 
-      # - test_lima:
-      #     requires:
-      #       - build
-      #     filters:
-      #       branches:
-      #         ignore:
-      #           - env/dev1
-      #           - env/dev2
-      #           - system-tests
+      - test_lima:
+          requires:
+            - build
+          filters:
+            branches:
+              ignore:
+                - env/dev1
+                - env/dev2
+                - system-tests
 
-      # - test_latest:
-      #     requires:
-      #       - build
-      #     filters:
-      #       branches:
-      #         ignore:
-      #           - env/dev1
-      #           - env/dev2
-      #           - system-tests
+      - test_latest:
+          requires:
+            - build
+          filters:
+            branches:
+              ignore:
+                - env/dev1
+                - env/dev2
+                - system-tests
 
-      # - test_latest_with_aesophia_compiler:
-      #     requires:
-      #       - build
-      #     filters:
-      #       branches:
-      #         ignore:
-      #           - env/dev1
-      #           - env/dev2
-      #           - system-tests
+      - test_latest_with_aesophia_compiler:
+          requires:
+            - build
+          filters:
+            branches:
+              ignore:
+                - env/dev1
+                - env/dev2
+                - system-tests
 
-      # - test_latest_otp21:
-      #     requires:
-      #       - build_otp21
-      #     filters:
-      #       branches:
-      #         ignore:
-      #           - env/dev1
-      #           - env/dev2
-      #           - system-tests
+      - test_latest_otp21:
+          requires:
+            - build_otp21
+          filters:
+            branches:
+              ignore:
+                - env/dev1
+                - env/dev2
+                - system-tests
 
-      # - test_mnesia_leveled:
-      #     requires:
-      #       - build
-      #     filters:
-      #       branches:
-      #         ignore:
-      #           - env/dev1
-      #           - env/dev2
-      #           - system-tests
+      - test_mnesia_leveled:
+          requires:
+            - build
+          filters:
+            branches:
+              ignore:
+                - env/dev1
+                - env/dev2
+                - system-tests
 
-      # - test_mnesia_rocksdb:
-      #     requires:
-      #       - build
-      #     filters:
-      #       branches:
-      #         ignore:
-      #           - env/dev1
-      #           - env/dev2
-      #           - system-tests
+      - test_mnesia_rocksdb:
+          requires:
+            - build
+          filters:
+            branches:
+              ignore:
+                - env/dev1
+                - env/dev2
+                - system-tests
 
-      # - eunit_roma:
-      #     requires:
-      #       - build
-      #     filters:
-      #       branches:
-      #         ignore:
-      #           - env/dev1
-      #           - env/dev2
-      #           - system-tests
-      #       tags:
-      #         only: *tag_regex
+      - eunit_roma:
+          requires:
+            - build
+          filters:
+            branches:
+              ignore:
+                - env/dev1
+                - env/dev2
+                - system-tests
+            tags:
+              only: *tag_regex
 
-      # - eunit_minerva:
-      #     requires:
-      #       - build
-      #     filters:
-      #       branches:
-      #         ignore:
-      #           - env/dev1
-      #           - env/dev2
-      #           - system-tests
-      #       tags:
-      #         only: *tag_regex
+      - eunit_minerva:
+          requires:
+            - build
+          filters:
+            branches:
+              ignore:
+                - env/dev1
+                - env/dev2
+                - system-tests
+            tags:
+              only: *tag_regex
 
-      # - eunit_fortuna:
-      #     requires:
-      #       - build
-      #     filters:
-      #       branches:
-      #         ignore:
-      #           - env/dev1
-      #           - env/dev2
-      #           - system-tests
-      #       tags:
-      #         only: *tag_regex
+      - eunit_fortuna:
+          requires:
+            - build
+          filters:
+            branches:
+              ignore:
+                - env/dev1
+                - env/dev2
+                - system-tests
+            tags:
+              only: *tag_regex
 
-      # - eunit_lima:
-      #     requires:
-      #       - build
-      #     filters:
-      #       branches:
-      #         ignore:
-      #           - env/dev1
-      #           - env/dev2
-      #           - system-tests
-      #       tags:
-      #         only: *tag_regex
+      - eunit_lima:
+          requires:
+            - build
+          filters:
+            branches:
+              ignore:
+                - env/dev1
+                - env/dev2
+                - system-tests
+            tags:
+              only: *tag_regex
 
-      # - eunit_latest:
-      #     requires:
-      #       - build
-      #     filters:
-      #       branches:
-      #         ignore:
-      #           - env/dev1
-      #           - env/dev2
-      #           - system-tests
-      #       tags:
-      #         only: *tag_regex
+      - eunit_latest:
+          requires:
+            - build
+          filters:
+            branches:
+              ignore:
+                - env/dev1
+                - env/dev2
+                - system-tests
+            tags:
+              only: *tag_regex
 
-      # - aevm_tests:
-      #     requires:
-      #       - build
-      #     filters:
-      #       branches:
-      #         ignore:
-      #           - env/dev1
-      #           - env/dev2
-      #           - system-tests
-      #       tags:
-      #         only: *tag_regex
+      - aevm_tests:
+          requires:
+            - build
+          filters:
+            branches:
+              ignore:
+                - env/dev1
+                - env/dev2
+                - system-tests
+            tags:
+              only: *tag_regex
 
-      # - docker_system_tests:
-      #     filters:
-      #       branches:
-      #         only: system-tests
+      - docker_system_tests:
+          filters:
+            branches:
+              only: system-tests
 
-      # - static_analysis:
-      #     requires:
-      #       - build
-      #     filters:
-      #       branches:
-      #         ignore:
-      #           - env/dev1
-      #           - env/dev2
-      #           - system-tests
+      - static_analysis:
+          requires:
+            - build
+          filters:
+            branches:
+              ignore:
+                - env/dev1
+                - env/dev2
+                - system-tests
 
-      # - static_analysis_otp21:
-      #     requires:
-      #       - build_otp21
-      #     filters:
-      #       branches:
-      #         ignore:
-      #           - env/dev1
-      #           - env/dev2
-      #           - system-tests
+      - static_analysis_otp21:
+          requires:
+            - build_otp21
+          filters:
+            branches:
+              ignore:
+                - env/dev1
+                - env/dev2
+                - system-tests
 
-      # - rebar_lock_check:
-      #     requires:
-      #       - build
-      #     filters:
-      #       branches:
-      #         ignore:
-      #           - env/dev1
-      #           - env/dev2
-      #           - system-tests
+      - rebar_lock_check:
+          requires:
+            - build
+          filters:
+            branches:
+              ignore:
+                - env/dev1
+                - env/dev2
+                - system-tests
 
-      # - linux_package:
-      #     filters:
-      #       branches:
-      #         ignore:
-      #           - system-tests
+      - linux_package:
+          filters:
+            branches:
+              ignore:
+                - system-tests
 
       - ubuntu_package:
           requires: []
-          # filters:
-          #   branches:
-          #     only:
-          #       - /releases\/.*/
-          #       - *master_branch
+          filters:
+            branches:
+              only:
+                - /releases\/.*/
+                - *master_branch
 
-      # - upload_build_artifacts:
-      #     context: ae-node-builds
-      #     requires:
-      #       - linux_package
-      #     filters:
-      #       branches:
-      #         ignore:
-      #           - env/dev1
-      #           - env/dev2
-      #           - system-tests
+      - upload_build_artifacts:
+          context: ae-node-builds
+          requires:
+            - linux_package
+          filters:
+            branches:
+              ignore:
+                - env/dev1
+                - env/dev2
+                - system-tests
 
       - osx_package:
           requires: []
-          # filters:
-          #   branches:
-          #     only:
-          #       - /releases\/.*/
-          #       - *master_branch
+          filters:
+            branches:
+              only:
+                - /releases\/.*/
+                - *master_branch
 
-      # - publish_build_packages:
-      #     requires:
-      #       - ubuntu_package
-      #     filters:
-      #       branches:
-      #         only:
-      #           - /releases\/.*/
-      #           - *master_branch
-
-      - publish_release_packages:
+      - publish_build_packages:
           requires:
             - ubuntu_package
-            - osx_package
-          # filters:
-          #   branches:
-          #     only:
-          #       - /releases\/.*/
-          #       - *master_branch
+          filters:
+            branches:
+              only:
+                - /releases\/.*/
+                - *master_branch
 
-      # - deploy_integration:
-      #     context: ae-node-builds
-      #     requires:
-      #       - docker_db_smoke_test
-      #       - db_smoke_test
-      #       - test_roma
-      #       - test_minerva
-      #       - test_fortuna
-      #       - test_lima
-      #       - test_latest
-      #       - test_latest_with_aesophia_compiler
-      #       - test_mnesia_leveled
-      #       - test_mnesia_rocksdb
-      #       - eunit_roma
-      #       - eunit_minerva
-      #       - eunit_fortuna
-      #       - eunit_lima
-      #       - eunit_latest
-      #       - aevm_tests
-      #       - static_analysis
-      #       - rebar_lock_check
-      #       - linux_package
-      #       - build_uml_diagrams
-      #     filters:
-      #       branches:
-      #         only: master
+      - deploy_integration:
+          context: ae-node-builds
+          requires:
+            - docker_db_smoke_test
+            - db_smoke_test
+            - test_roma
+            - test_minerva
+            - test_fortuna
+            - test_lima
+            - test_latest
+            - test_latest_with_aesophia_compiler
+            - test_mnesia_leveled
+            - test_mnesia_rocksdb
+            - eunit_roma
+            - eunit_minerva
+            - eunit_fortuna
+            - eunit_lima
+            - eunit_latest
+            - aevm_tests
+            - static_analysis
+            - rebar_lock_check
+            - linux_package
+            - build_uml_diagrams
+          filters:
+            branches:
+              only: master
 
-      # - docker_test_push_branch:
-      #     context: ae-node-builds
-      #     requires:
-      #       - test_roma
-      #       - test_minerva
-      #       - test_fortuna
-      #       - test_lima
-      #       - test_latest
-      #       - test_latest_with_aesophia_compiler
-      #       - test_mnesia_leveled
-      #       - test_mnesia_rocksdb
-      #       - eunit_roma
-      #       - eunit_minerva
-      #       - eunit_fortuna
-      #       - eunit_lima
-      #       - eunit_latest
-      #       - aevm_tests
-      #       - static_analysis
-      #       - rebar_lock_check
-      #     filters:
-      #       branches:
-      #         only:
-      #           - *master_branch
+      - docker_test_push_branch:
+          context: ae-node-builds
+          requires:
+            - test_roma
+            - test_minerva
+            - test_fortuna
+            - test_lima
+            - test_latest
+            - test_latest_with_aesophia_compiler
+            - test_mnesia_leveled
+            - test_mnesia_rocksdb
+            - eunit_roma
+            - eunit_minerva
+            - eunit_fortuna
+            - eunit_lima
+            - eunit_latest
+            - aevm_tests
+            - static_analysis
+            - rebar_lock_check
+          filters:
+            branches:
+              only:
+                - *master_branch
 
-      # - deploy_next:
-      #     context: ae-node-builds
-      #     requires:
-      #       - test_roma
-      #       - test_minerva
-      #       - test_fortuna
-      #       - test_lima
-      #       - test_latest
-      #       - test_latest_with_aesophia_compiler
-      #       - test_mnesia_leveled
-      #       - test_mnesia_rocksdb
-      #       - eunit_roma
-      #       - eunit_minerva
-      #       - eunit_fortuna
-      #       - eunit_lima
-      #       - eunit_latest
-      #       - aevm_tests
-      #       - static_analysis
-      #       - rebar_lock_check
-      #       - linux_package
-      #     filters:
-      #       branches:
-      #         only: *master_branch
+      - deploy_next:
+          context: ae-node-builds
+          requires:
+            - test_roma
+            - test_minerva
+            - test_fortuna
+            - test_lima
+            - test_latest
+            - test_latest_with_aesophia_compiler
+            - test_mnesia_leveled
+            - test_mnesia_rocksdb
+            - eunit_roma
+            - eunit_minerva
+            - eunit_fortuna
+            - eunit_lima
+            - eunit_latest
+            - aevm_tests
+            - static_analysis
+            - rebar_lock_check
+            - linux_package
+          filters:
+            branches:
+              only: *master_branch
 
-      # - deploy_dev1:
-      #     context: ae-node-builds
-      #     requires:
-      #       - linux_package
-      #     filters:
-      #       branches:
-      #         only: env/dev1
+      - deploy_dev1:
+          context: ae-node-builds
+          requires:
+            - linux_package
+          filters:
+            branches:
+              only: env/dev1
 
-      # - deploy_dev2:
-      #     context: ae-node-builds
-      #     requires:
-      #       - linux_package
-      #     filters:
-      #       branches:
-      #         only: env/dev2
+      - deploy_dev2:
+          context: ae-node-builds
+          requires:
+            - linux_package
+          filters:
+            branches:
+              only: env/dev2
 
-      # - build_uml_diagrams:
-      #     requires:
-      #       - build
-      #     filters:
-      #       branches:
-      #         ignore:
-      #           - env/dev1
-      #           - env/dev2
-      #           - system-tests
+      - build_uml_diagrams:
+          requires:
+            - build
+          filters:
+            branches:
+              ignore:
+                - env/dev1
+                - env/dev2
+                - system-tests
 
   release:
     jobs:
@@ -2183,6 +2173,17 @@ workflows:
       - upload_latest_packages_osx:
           context: ae-node-builds
           requires:
+            - osx_package
+            - hodl_latest
+          filters:
+            branches:
+              ignore: /.*/
+            tags:
+              only: *tag_regex
+
+      - publish_release_packages:
+          requires:
+            - linux_package
             - osx_package
             - hodl_latest
           filters:
