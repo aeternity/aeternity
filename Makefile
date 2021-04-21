@@ -248,7 +248,9 @@ REVISION:
 	@git rev-parse HEAD > $@ || echo "unknown" > $@
 
 VERSION:
-	@git describe --tags | sed -E "s/^v([0-9]+)\.([0-9]+)\.([[0-9]+)(-.*)?$$/\1.\2.\3/" > $@
+	@git describe --tags | \
+		sed -E "s/^v(.*)\-([0-9]+)\-g([a-f0-9]+)$$/\1+\2.\3/" | \
+		sed -E "s/^v([0-9]+)\.([0-9]+)\.([0-9]+)$$/\1.\2.\3/" > $@
 
 eunit-%: KIND=test
 eunit-%: internal-build
@@ -394,7 +396,7 @@ distclean: clean
 	@rm -rf _build/
 
 multi-build: VERSION dev1-build
-	$(eval VER=$(hell cat VERSION))
+	$(eval VER=$(shell cat VERSION))
 	@$(MAKE) dev2-distclean
 	@$(MAKE) dev3-distclean
 	@for x in dev2 dev3; do \
@@ -442,10 +444,10 @@ internal-ct: test-build
 	fi
 
 $(DEB_PKG_CHANGELOG_FILE): VERSION REVISION
-	export AE_DEB_PKG_VERSION=$(or $(AE_DEB_PKG_VERSION),`cat VERSION`); \
-	export AE_DEB_DCH_REL_NOTE="Release notes are available in /usr/share/doc/aeternity-node/docs/release-notes/RELEASE-NOTES-`cat VERSION`.md"; \
-	@export DEBEMAIL=$(AE_DEB_MAINT_EMAIL); \
-	export DEBFULLNAME=$(AE_DEB_MAINT_NAME) ; \
+	export DEBEMAIL=$(AE_DEB_MAINT_EMAIL); \
+	export DEBFULLNAME=$(AE_DEB_MAINT_NAME); \
+	AE_DEB_PKG_VERSION=`cat VERSION | sed -E s/\-/\~/`-1; \
+	AE_DEB_DCH_REL_NOTE="Release notes are available in /usr/share/doc/aeternity-node/docs/release-notes/RELEASE-NOTES-`cat VERSION`.md"; \
 	dch --create --package=$(AE_DEB_PKG_NAME) -v $$AE_DEB_PKG_VERSION $$AE_DEB_DCH_REL_NOTE; \
 	dch -r $$AE_DEB_DCH_REL_NOTE
 

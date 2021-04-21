@@ -1,10 +1,12 @@
 const { Universal, Node, MemoryAccount, Crypto } = require('@aeternity/aepp-sdk')
+const forceCompatibility = process.env.FORCE_COMPATIBILITY || true
 
 const f = async () => {
     console.log("Starting JS SDK smoke test")
     const node = await Node({
         url: "http://localhost:3013",
         internalUrl: "http://localhost:3113",
+        forceCompatibility,
     });
 
     const sdk = await Universal({

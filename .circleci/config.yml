@@ -219,22 +219,14 @@ references:
         # This prevents the presence of broken/dummy debian/rules file without
         # clean targets. For example when running debuild directly without
         # `make prod-deb-package`.
+        DEB_SKIP_DH_AUTO_CLEAN: "true"
         ERLANG_ROCKSDB_BUILDOPTS: "-j2"
         ERLANG_ROCKSDB_OPTS: "-DWITH_BUNDLE_LZ4=ON -DWITH_BUNDLE_SNAPPY=ON"
       command: |
-        make prod-clean
-        make clean
         make distclean
-        if [ "$CIRCLE_TAG" ];
-        then
-          make prod-deb-package DEB_SKIP_DH_AUTO_CLEAN=true ;
-        else
-          make VERSION
-          AE_DEB_PKG_VERSION=$(cat VERSION)~git$(date +%Y%m%d%H%M%S).${CIRCLE_SHA1:0:8}-1
-          make prod-deb-package DEB_SKIP_DH_AUTO_CLEAN=true AE_DEB_PKG_VERSION=$AE_DEB_PKG_VERSION;
-        fi
+        make prod-deb-package
         mkdir ${PACKAGES_DIR:?}
-        mv _build/../../*aeternity-node_$(cat VERSION)*.deb ${PACKAGES_DIR:?}
+        mv _build/../../*aeternity-node_*.deb ${PACKAGES_DIR:?}
 
   test_arch_os_dependencies: &test_arch_os_dependencies
     run:
@@ -702,6 +694,74 @@ commands:
               owner=${CIRCLE_PROJECT_USERNAME} repo=${CIRCLE_PROJECT_REPONAME} \
               tag=${CIRCLE_TAG} ASSETS=${PACKAGES_DIR:?}/*
 
+  publish_ubuntu_package:
+    parameters:
+      packages_dir:
+        type: string
+      component:
+        type: string
+    steps:
+      - run:
+          name: Checkout APT repository
+          command: |
+            git clone git@github.com:aeternity/apt-repo.git --branch inbox --single-branch ~/apt-repo
+      - run:
+          name: Add deb packages
+          command: |
+            cp << parameters.packages_dir >>/aeternity-node*.deb ~/apt-repo/inbox/aeternity-node/<< parameters.component >>/
+      - run:
+          name: Setup git
+          command: |
+            git config --global push.default simple
+            git config --global user.email "35604848+aeternity-bot@users.noreply.github.com"
+            git config --global user.name "Aeternity node CI"
+      - run:
+          name: Commit and push
+          command: |
+            cd ~/apt-repo
+            git add -A
+            git commit -m "Add aeternity node package to << parameters.component >>" || true
+            git push
+
+  publish_osx_package:
+    parameters:
+      packages_dir:
+        type: string
+      branch:
+        type: string
+    steps:
+      - run:
+          name: Checkout Homebrew repository
+          command: |
+            git clone git@github.com:aeternity/homebrew-aeternity.git --branch << parameters.branch >> --single-branch ~/homebrew-aeternity
+      - run:
+          name: Update the Homebrew formula
+          command: |
+            make VERSION
+            VERSION=$(cat VERSION)
+            PACKAGE_URL=https://github.com/aeternity/aeternity/releases/download/v$VERSION/aeternity-$VERSION-macos-x86_64.tar.gz
+            SHA256=$(sha256sum << parameters.packages_dir >>/aeternity-*-macos-x86_64.tar.gz | head -1 | cut -f 1 -d " ")
+            cd ~/homebrew-aeternity/
+            sed -i "s|^  url .*|  url \"$PACKAGE_URL\"|g" Formula/aeternity-node.rb
+            sed -i "s|^  version .*|  version \"$VERSION\"|g" Formula/aeternity-node.rb
+            sed -i "s|^  sha256 .*|  sha256 \"$SHA256\"|g" Formula/aeternity-node.rb
+      - run:
+          name: Setup git
+          command: |
+            git config --global push.default simple
+            git config --global user.email "35604848+aeternity-bot@users.noreply.github.com"
+            git config --global user.name "Aeternity node CI"
+      - run:
+          name: Commit and push
+          command: |
+            make VERSION
+            VERSION=$(cat VERSION)
+            cd ~/homebrew-aeternity/
+            git add Formula/aeternity-node.rb
+            git diff --staged
+            git commit -m "Update aeternity-node formula to $VERSION"
+            git push
+
   upload_build_artifacts:
     steps:
       - fixed_checkout
@@ -731,6 +791,7 @@ commands:
           at: *packages_workspace
       - upload_aws_latest_artifacts
       - *fail_notification
+
 
 jobs:
   build:
@@ -1053,6 +1114,10 @@ jobs:
       - fixed_checkout
       - *build_ubuntu_package
       - *store_package_artifacts
+      - persist_to_workspace:
+          root: *packages_workspace
+          paths:
+            - "*.deb"
       - *fail_notification
 
   osx_package:
@@ -1421,6 +1486,31 @@ jobs:
       PACKAGES_DIR: *packages_workspace
     steps:
       - upload_release_artifacts
+
+  publish_build_packages:
+    executor: buildpack
+    steps:
+      - fixed_checkout
+      - attach_workspace:
+          at: *packages_workspace
+      - publish_ubuntu_package:
+          packages_dir: *packages_workspace
+          component: testing
+      - *fail_notification
+
+  publish_release_packages:
+    executor: buildpack
+    steps:
+      - fixed_checkout
+      - attach_workspace:
+          at: *packages_workspace
+      - publish_ubuntu_package:
+          packages_dir: *packages_workspace
+          component: main
+      - publish_osx_package:
+          packages_dir: *packages_workspace
+          branch: master
+      - *fail_notification
 
   # upload_packages_windows:
   #   executor: infrastructure_container_stable
@@ -1823,6 +1913,7 @@ workflows:
                 - system-tests
 
       - ubuntu_package:
+          requires: []
           filters:
             branches:
               only:
@@ -1841,6 +1932,16 @@ workflows:
                 - system-tests
 
       - osx_package:
+          requires: []
+          filters:
+            branches:
+              only:
+                - /releases\/.*/
+                - *master_branch
+
+      - publish_build_packages:
+          requires:
+            - ubuntu_package
           filters:
             branches:
               only:
@@ -2072,6 +2173,17 @@ workflows:
       - upload_latest_packages_osx:
           context: ae-node-builds
           requires:
+            - osx_package
+            - hodl_latest
+          filters:
+            branches:
+              ignore: /.*/
+            tags:
+              only: *tag_regex
+
+      - publish_release_packages:
+          requires:
+            - linux_package
             - osx_package
             - hodl_latest
           filters:
