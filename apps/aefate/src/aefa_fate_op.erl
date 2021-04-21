@@ -186,7 +186,10 @@
 -include("../../aecontract/include/hard_forks.hrl").
 
 -define(AVAILABLE_FROM(When, ES),
-    aefa_engine_state:vm_version(ES) >= When
+        aefa_engine_state:vm_version(ES) >= When
+        orelse aefa_fate:abort({primop_error, ?FUNCTION_NAME, not_supported}, ES)).
+-define(UNAVAILABLE_FROM(When, ES),
+        aefa_engine_state:vm_version(ES) < When
         orelse aefa_fate:abort({primop_error, ?FUNCTION_NAME, not_supported}, ES)).
 -define(PRE_IRIS_MAP_ORDERING, {?MODULE, pre_iris_map_ordering}).
 
@@ -685,6 +688,8 @@ tl(Arg0, Arg1, EngineState) ->
     un_op(tl, {Arg0, Arg1}, EngineState).
 
 length(Arg0, Arg1, EngineState) ->
+    %% if you want this back, please fix the gas cost to be linear
+    ?UNAVAILABLE_FROM(?VM_FATE_SOPHIA_2, EngineState),
     un_op(length, {Arg0, Arg1}, EngineState).
 
 append(Arg0, Arg1, Arg2, EngineState) ->
