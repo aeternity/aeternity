@@ -405,16 +405,28 @@ store(Arg0, Arg1, EngineState) ->
 %% ------------------------------------------------------
 
 inc(EngineState) ->
-    un_op(inc, {{stack, 0}, {stack, 0}}, EngineState).
+    inc({stack, 0}, EngineState).
 
 inc(Arg0, EngineState) ->
-    un_op(inc, {Arg0, Arg0}, EngineState).
+    {Val, ES1} = get_op_arg(Arg0, EngineState),
+    case ?IS_FATE_INTEGER(Val) orelse aefa_engine_state:vm_version(ES1) < ?VM_FATE_SOPHIA_2 of
+        true ->
+            write(Arg0, Val + 1, ES1);
+        false ->
+            aefa_fate:abort({value_does_not_match_type, Val, integer}, ES1)
+    end.
 
 dec(EngineState) ->
-    un_op(dec, {{stack, 0}, {stack, 0}}, EngineState).
+    dec({stack, 0}, EngineState).
 
 dec(Arg0, EngineState) ->
-    un_op(dec, {Arg0, Arg0}, EngineState).
+    {Val, ES1} = get_op_arg(Arg0, EngineState),
+    case ?IS_FATE_INTEGER(Val) orelse aefa_engine_state:vm_version(ES1) < ?VM_FATE_SOPHIA_2 of
+        true ->
+            write(Arg0, Val - 1, ES1);
+        false ->
+            aefa_fate:abort({value_does_not_match_type, Val, integer}, ES1)
+    end.
 
 add(Arg0, Arg1, Arg2, EngineState) ->
     {A, ES1} = get_op_arg(Arg1, EngineState),
@@ -495,7 +507,13 @@ or_op(Arg0, Arg1, Arg2, EngineState) ->
     bin_op('or', {Arg0, Arg1, Arg2}, EngineState).
 
 not_op(Arg0, Arg1, EngineState) ->
-    un_op('not', {Arg0, Arg1}, EngineState).
+    {Val, ES1} = get_op_arg(Arg1, EngineState),
+    case ?IS_FATE_BOOLEAN(Val) orelse aefa_engine_state:vm_version(ES1) < ?VM_FATE_SOPHIA_2 of
+        true ->
+            write(Arg0, not Val, ES1);
+        false ->
+            aefa_fate:abort({value_does_not_match_type, Val, boolean}, ES1)
+    end.
 
 %% ------------------------------------------------------
 %% Tuple instructions
@@ -2332,12 +2350,6 @@ make_variant(Arities, Tag, NoElements, ES) ->
 %% Unary operations
 op(get, A) ->
     A;
-op(inc, A) ->
-    A + 1;
-op(dec, A) ->
-    A - 1;
-op('not', A) ->
-    not A;
 op(map_from_list, A) when ?IS_FATE_LIST(A) ->
     KeyValues = [T || ?FATE_TUPLE(T) <- ?FATE_LIST_VALUE(A)],
     aeb_fate_data:make_map(maps:from_list(KeyValues));
