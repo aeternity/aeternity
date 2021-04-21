@@ -1783,7 +1783,7 @@ ensure_account(Key, S) ->
     ensure_account(Key, keep, S).
 
 %% Ensures existence of an account overriding its flags on collision
-ensure_account(Key, Flags, #state{} = S) ->
+ensure_account(Key, Flags, #state{protocol = Protocol} = S) ->
     case {find_account(Key, S), Flags} of
         {none, _} ->
             NewFlags = case Flags of
@@ -1793,7 +1793,7 @@ ensure_account(Key, Flags, #state{} = S) ->
             Pubkey = get_var(Key, account, S),
             Account = aec_accounts:new(Pubkey, 0, NewFlags),
             {Account, put_account(Account, S)};
-        {{Account, S1}, keep} ->
+        {{Account, S1}, _} when Protocol =< ?LIMA_PROTOCOL_VSN orelse Flags =:= keep ->
             {Account, S1};
         {{Account0, S1}, NewFlags} ->
             Account1 = aec_accounts:set_flags(Account0, NewFlags),
