@@ -334,7 +334,7 @@ jumpif(Arg0, Arg1, EngineState) ->
 
 switch(Arg0, Arg1, Arg2, EngineState) ->
     {Value, ES1} = get_op_arg(Arg0, EngineState),
-    VM = aefa_engine_state:vm_version(EngineState),
+    Protocol = aefa_engine_state:consensus_version(EngineState),
     if ?IS_FATE_VARIANT(Value) ->
             ?FATE_VARIANT(Arities, Tag, _T) = Value,
             if length(Arities) =:= 2 ->
@@ -342,7 +342,7 @@ switch(Arg0, Arg1, Arg2, EngineState) ->
                     case Tag of
                         0 -> {jump, Arg1, ES1};
                         1 -> {jump, Arg2, ES1};
-                        _ when VM >= ?VM_FATE_SOPHIA_2 ->
+                        _ when Protocol >= ?IRIS_PROTOCOL_VSN ->
                             aefa_fate:abort({bad_variant_tag, Tag}, ES1)
                     end;
                true -> aefa_fate:abort({bad_variant_size, length(Arities)}, ES1)
@@ -352,7 +352,7 @@ switch(Arg0, Arg1, Arg2, EngineState) ->
 
 switch(Arg0, Arg1, Arg2, Arg3, EngineState) ->
     {Value, ES1} = get_op_arg(Arg0, EngineState),
-    VM = aefa_engine_state:vm_version(EngineState),
+    Protocol = aefa_engine_state:consensus_version(EngineState),
     if ?IS_FATE_VARIANT(Value) ->
             ?FATE_VARIANT(Arities, Tag, _T) = Value,
             if length(Arities) =:= 3 ->
@@ -361,7 +361,7 @@ switch(Arg0, Arg1, Arg2, Arg3, EngineState) ->
                         0 -> {jump, Arg1, ES1};
                         1 -> {jump, Arg2, ES1};
                         2 -> {jump, Arg3, ES1};
-                        _ when VM >= ?VM_FATE_SOPHIA_2 ->
+                        _ when Protocol >= ?IRIS_PROTOCOL_VSN ->
                             aefa_fate:abort({bad_variant_tag, Tag}, ES1)
                     end;
                true -> aefa_fate:abort({bad_variant_size, length(Arities)}, ES1)
@@ -415,7 +415,8 @@ inc(EngineState) ->
 
 inc(Arg0, EngineState) ->
     {Val, ES1} = get_op_arg(Arg0, EngineState),
-    case ?IS_FATE_INTEGER(Val) orelse aefa_engine_state:vm_version(ES1) < ?VM_FATE_SOPHIA_2 of
+    case ?IS_FATE_INTEGER(Val) orelse
+         aefa_engine_state:consensus_version(ES1) < ?IRIS_PROTOCOL_VSN of
         true ->
             write(Arg0, Val + 1, ES1);
         false ->
@@ -427,7 +428,8 @@ dec(EngineState) ->
 
 dec(Arg0, EngineState) ->
     {Val, ES1} = get_op_arg(Arg0, EngineState),
-    case ?IS_FATE_INTEGER(Val) orelse aefa_engine_state:vm_version(ES1) < ?VM_FATE_SOPHIA_2 of
+    case ?IS_FATE_INTEGER(Val) orelse
+         aefa_engine_state:consensus_version(ES1) < ?IRIS_PROTOCOL_VSN of
         true ->
             write(Arg0, Val - 1, ES1);
         false ->
@@ -514,7 +516,8 @@ or_op(Arg0, Arg1, Arg2, EngineState) ->
 
 not_op(Arg0, Arg1, EngineState) ->
     {Val, ES1} = get_op_arg(Arg1, EngineState),
-    case ?IS_FATE_BOOLEAN(Val) orelse aefa_engine_state:vm_version(ES1) < ?VM_FATE_SOPHIA_2 of
+    case ?IS_FATE_BOOLEAN(Val) orelse
+         aefa_engine_state:consensus_version(ES1) < ?IRIS_PROTOCOL_VSN of
         true ->
             write(Arg0, not Val, ES1);
         false ->
@@ -778,10 +781,10 @@ str_from_list(Arg0, Arg1, EngineState) ->
         aefa_fate:abort({value_does_not_match_type, Value, {list, char}}, ES1);
        true -> ok
     end,
-    VM = aefa_engine_state:vm_version(EngineState),
+    Protocol = aefa_engine_state:consensus_version(EngineState),
     ES2 = aefa_engine_state:spend_gas_for_traversal(Value, simple, ES1),
     case check_char_list(Value) of
-        false when VM >= ?VM_FATE_SOPHIA_2 ->
+        false when Protocol >= ?IRIS_PROTOCOL_VSN ->
             aefa_fate:abort({value_does_not_match_type, Value, {list, char}}, ES2);
         _ ->
             case unicode:characters_to_nfc_binary(Value) of
@@ -829,10 +832,10 @@ char_to_int(Arg0, Arg1, EngineState) ->
 
 char_from_int(Arg0, Arg1, EngineState) ->
     {Int, ES1} = get_op_arg(Arg1, EngineState),
-    VM = aefa_engine_state:vm_version(EngineState),
+    Protocol = aefa_engine_state:consensus_version(EngineState),
     if not ?IS_FATE_INTEGER(Int) ->
         aefa_fate:abort({value_does_not_match_type, Int, int}, ES1);
-       not ?IS_CHAR(Int) andalso VM >= ?VM_FATE_SOPHIA_2 ->
+       not ?IS_CHAR(Int) andalso Protocol >= ?IRIS_PROTOCOL_VSN ->
         aefa_fate:abort({value_does_not_match_type, Int, char}, ES1);
        true -> ok
     end,
@@ -1580,7 +1583,7 @@ oracle_query(Arg0, Arg1, Arg2, Arg3, Arg4, Arg5, Arg6, Arg7, EngineState) ->
                 aefa_fate:abort({primop_error, oracle_query, bad_ttl}, ES1)
         end,
     {Question, ES2} =
-        case aefa_engine_state:vm_version(ES1) =< ?VM_FATE_SOPHIA_2 of
+        case aefa_engine_state:consensus_version(ES1) < ?IRIS_PROTOCOL_VSN of
             true ->
                 {Question0, ES1};
             false ->
@@ -1617,7 +1620,7 @@ oracle_respond(Arg0, Arg1, Arg2, Arg3, Arg4, Arg5, EngineState) ->
             ok
     end,
     {Response, ES2} =
-        case aefa_engine_state:vm_version(ES1) =< ?VM_FATE_SOPHIA_2 of
+        case aefa_engine_state:consensus_version(ES1) < ?IRIS_PROTOCOL_VSN of
             true ->
                 {Response0, ES1};
             false ->
@@ -2343,9 +2346,9 @@ make_variant(Arities, Tag, NoElements, ES)  when ?IS_FATE_LIST(Arities)
                                                , NoElements >= 0
                                                , Tag < length(?FATE_LIST_VALUE(Arities))
                                                , Tag >= 0 ->
-    case aefa_engine_state:vm_version(ES) of
-        ?VM_FATE_SOPHIA_1 -> make_variant1(Arities, Tag, NoElements, ES);
-        _VM               -> make_variant2(Arities, Tag, NoElements, ES)
+    case aefa_engine_state:consensus_version(ES) < ?IRIS_PROTOCOL_VSN of
+        true  -> make_variant1(Arities, Tag, NoElements, ES);
+        false -> make_variant2(Arities, Tag, NoElements, ES)
     end;
 make_variant(Arities, Tag, NoElements, ES) ->
     aefa_fate:abort({type_error, make_variant, [Arities, Tag, NoElements]}, ES).

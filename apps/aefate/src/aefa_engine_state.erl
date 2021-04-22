@@ -468,8 +468,11 @@ spend_gas(X, #es{gas = Gas} = ES) ->
 
 %% The gas price per cell increases by 1 for each kibiword (each 1024 64-bit word) used.
 -spec spend_gas_for_new_cells(integer(), state()) -> state().
-spend_gas_for_new_cells(NewCells, #es{ vm_version = VM } = ES) when NewCells =< 0, VM >= ?VM_FATE_SOPHIA_2 ->
-    spend_gas_for_new_cells(abs(NewCells) + 2, ES);
+spend_gas_for_new_cells(NewCells, ES) when NewCells =< 0 ->
+    case consensus_version(ES) of
+        P when P < ?IRIS_PROTOCOL_VSN  -> spend_gas_for_new_cells(NewCells, ES);
+        P when P >= ?IRIS_PROTOCOL_VSN -> spend_gas_for_new_cells(abs(NewCells) + 2, ES)
+    end;
 spend_gas_for_new_cells(NewCells, #es{ created_cells = Cells } = ES) when NewCells + Cells =< 1024 ->
     TotalCells = Cells + NewCells,
     spend_gas(NewCells, ES#es{ created_cells = TotalCells });
