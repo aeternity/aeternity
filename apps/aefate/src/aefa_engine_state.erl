@@ -624,7 +624,6 @@ leaf_size(?FATE_CONTRACT(_)  ) -> 32;
 leaf_size(?FATE_ORACLE(_)    ) -> 32;
 leaf_size(?FATE_ORACLE_Q(_)  ) -> 32;
 leaf_size(?FATE_CHANNEL(_)   ) -> 32;
-leaf_size(?FATE_TYPEREP(_)   ) -> 10;
 leaf_size(Val) when ?IS_FATE_INTEGER(Val) -> int_size(Val);
 leaf_size(Val) when ?IS_FATE_STRING(Val)  -> byte_size(Val);
 leaf_size(_) -> 0.
