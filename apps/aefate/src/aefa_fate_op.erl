@@ -726,6 +726,7 @@ append(Arg0, Arg1, Arg2, EngineState) ->
 %% ------------------------------------------------------
 %% String instructions
 %% ------------------------------------------------------
+-define(IS_CHAR(C), (C >= 0 andalso C =< 16#10ffff)).
 
 str_join(Arg0, Arg1, Arg2, EngineState) ->
     {LeftValue, ES1} = get_op_arg(Arg1, EngineState),
@@ -777,9 +778,12 @@ str_from_list(Arg0, Arg1, EngineState) ->
         aefa_fate:abort({value_does_not_match_type, Value, {list, char}}, ES1);
        true -> ok
     end,
+    VM = aefa_engine_state:vm_version(EngineState),
     ES2 = aefa_engine_state:spend_gas_for_traversal(Value, simple, ES1),
-    try aefa_fate:infer_type(Value) of
-        {list, integer} ->
+    case check_char_list(Value) of
+        false when VM >= ?VM_FATE_SOPHIA_2 ->
+            aefa_fate:abort({value_does_not_match_type, Value, {list, char}}, ES2);
+        _ ->
             case unicode:characters_to_nfc_binary(Value) of
                 {error, _, _} ->
                     aefa_fate:abort({value_does_not_match_type, Value, {list, char}}, ES2);
@@ -787,12 +791,13 @@ str_from_list(Arg0, Arg1, EngineState) ->
                     Cells = string_cells(?FATE_STRING_VALUE(Str)),
                     ES3 = aefa_engine_state:spend_gas_for_new_cells(Cells + 1, ES2),
                     write(Arg0, aeb_fate_data:make_string(Str), ES3)
-            end;
-        _ ->
-            aefa_fate:abort({value_does_not_match_type, Value, {list, char}}, ES2)
-    catch throw:_Err ->
-        aefa_fate:abort({value_does_not_match_type, Value, {list, char}}, ES2)
+            end
     end.
+
+check_char_list([]) -> true;
+check_char_list([C | Cs]) when ?IS_FATE_INTEGER(C), ?IS_CHAR(C) ->
+    check_char_list(Cs);
+check_char_list(_)  -> false.
 
 str_to_upper(Arg0, Arg1, EngineState) ->
     {Value, ES1} = get_op_arg(Arg1, EngineState),
@@ -824,8 +829,11 @@ char_to_int(Arg0, Arg1, EngineState) ->
 
 char_from_int(Arg0, Arg1, EngineState) ->
     {Int, ES1} = get_op_arg(Arg1, EngineState),
+    VM = aefa_engine_state:vm_version(EngineState),
     if not ?IS_FATE_INTEGER(Int) ->
         aefa_fate:abort({value_does_not_match_type, Int, int}, ES1);
+       not ?IS_CHAR(Int) andalso VM >= ?VM_FATE_SOPHIA_2 ->
+        aefa_fate:abort({value_does_not_match_type, Int, char}, ES1);
        true -> ok
     end,
     case unicode:characters_to_nfc_list([Int]) of
