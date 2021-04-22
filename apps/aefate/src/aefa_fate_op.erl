@@ -334,21 +334,25 @@ jumpif(Arg0, Arg1, EngineState) ->
 
 switch(Arg0, Arg1, Arg2, EngineState) ->
     {Value, ES1} = get_op_arg(Arg0, EngineState),
+    VM = aefa_engine_state:vm_version(EngineState),
     if ?IS_FATE_VARIANT(Value) ->
             ?FATE_VARIANT(Arities, Tag, _T) = Value,
             if length(Arities) =:= 2 ->
                     %% Tag can only be 0 or 1 or the variant is broken.
                     case Tag of
                         0 -> {jump, Arg1, ES1};
-                        1 -> {jump, Arg2, ES1}
+                        1 -> {jump, Arg2, ES1};
+                        _ when VM >= ?VM_FATE_SOPHIA_2 ->
+                            aefa_fate:abort({bad_variant_tag, Tag}, ES1)
                     end;
                true -> aefa_fate:abort({bad_variant_size, length(Arities)}, ES1)
             end;
-       true -> aefa_fate:abort({value_does_not_match_type,Value, variant}, ES1)
+       true -> aefa_fate:abort({value_does_not_match_type, Value, variant}, ES1)
     end.
 
 switch(Arg0, Arg1, Arg2, Arg3, EngineState) ->
     {Value, ES1} = get_op_arg(Arg0, EngineState),
+    VM = aefa_engine_state:vm_version(EngineState),
     if ?IS_FATE_VARIANT(Value) ->
             ?FATE_VARIANT(Arities, Tag, _T) = Value,
             if length(Arities) =:= 3 ->
@@ -356,7 +360,9 @@ switch(Arg0, Arg1, Arg2, Arg3, EngineState) ->
                     case Tag of
                         0 -> {jump, Arg1, ES1};
                         1 -> {jump, Arg2, ES1};
-                        2 -> {jump, Arg3, ES1}
+                        2 -> {jump, Arg3, ES1};
+                        _ when VM >= ?VM_FATE_SOPHIA_2 ->
+                            aefa_fate:abort({bad_variant_tag, Tag}, ES1)
                     end;
                true -> aefa_fate:abort({bad_variant_size, length(Arities)}, ES1)
             end;
