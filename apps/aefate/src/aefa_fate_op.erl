@@ -2322,19 +2322,39 @@ make_none() ->
 make_some(Val) ->
     aeb_fate_data:make_variant([0,1], 1, {Val}).
 
+
 make_variant(Arities, Tag, NoElements, ES)  when ?IS_FATE_LIST(Arities)
-                                              , ?IS_FATE_INTEGER(Tag)
-                                              , ?IS_FATE_INTEGER(NoElements)
-                                              , NoElements >= 0
-                                              , Tag < length(?FATE_LIST_VALUE(Arities))
-                                              , Tag >= 0 ->
+                                               , ?IS_FATE_INTEGER(Tag)
+                                               , ?IS_FATE_INTEGER(NoElements)
+                                               , NoElements >= 0
+                                               , Tag < length(?FATE_LIST_VALUE(Arities))
+                                               , Tag >= 0 ->
+    case aefa_engine_state:vm_version(ES) of
+        ?VM_FATE_SOPHIA_1 -> make_variant1(Arities, Tag, NoElements, ES);
+        _VM               -> make_variant2(Arities, Tag, NoElements, ES)
+    end;
+make_variant(Arities, Tag, NoElements, ES) ->
+    aefa_fate:abort({type_error, make_variant, [Arities, Tag, NoElements]}, ES).
+
+make_variant1(Arities, Tag, NoElements, ES) ->
     {Elements, ES2} = aefa_fate:pop_n(NoElements, ES),
     Values = list_to_tuple(Elements),
     Cells = length(?FATE_LIST_VALUE(Arities)) * 2 + NoElements + 4,
     ES3 = aefa_engine_state:spend_gas_for_new_cells(Cells, ES2),
-    {aeb_fate_data:make_variant(Arities, Tag, Values), ES3};
-make_variant(Arities, Tag, NoElements, ES) ->
-    aefa_fate:abort({type_error, make_variant, [Arities, Tag, NoElements]}, ES).
+    {aeb_fate_data:make_variant(Arities, Tag, Values), ES3}.
+
+make_variant2(Arities, Tag, NoElements, ES) ->
+    %% Check for bad arities
+    case lists:filter(fun(A) -> not is_integer(A) orelse abs(A) > 255 end, Arities) of
+        []      -> ok;
+        [_ | _] -> aefa_fate:abort({type_error, make_variant, [Arities, Tag, NoElements]}, ES)
+    end,
+    %% Check arity
+    case lists:nth(Tag + 1, Arities) == NoElements of
+        true  -> ok;
+        false -> aefa_fate:abort({type_error, make_variant, [Arities, Tag, NoElements]}, ES)
+    end,
+    make_variant1(Arities, Tag, NoElements, ES).
 
 -define(FATE_FR(X), ?FATE_BYTES(X)).
 -define(FATE_FP(X), ?FATE_BYTES(X)).
