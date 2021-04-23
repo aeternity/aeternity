@@ -2373,8 +2373,8 @@ make_variant2(Arities, Tag, NoElements, ES) ->
     end,
     make_variant1(Arities, Tag, NoElements, ES).
 
--define(FATE_FR(X), ?FATE_BYTES(X)).
--define(FATE_FP(X), ?FATE_BYTES(X)).
+-define(FATE_FR(X), ?FATE_BYTES(<<(X):32/binary>>)).
+-define(FATE_FP(X), ?FATE_BYTES(<<(X):48/binary>>)).
 -define(FATE_FP2(X1, X2), ?FATE_TUPLE({?FATE_FP(X1), ?FATE_FP(X2)})).
 
 -define(FATE_G1(X, Y, Z), ?FATE_TUPLE({?FATE_FP(X), ?FATE_FP(Y), ?FATE_FP(Z)})).
@@ -2383,6 +2383,9 @@ make_variant2(Arities, Tag, NoElements, ES) ->
 -define(FATE_GT(X1, X2, X3, X4, X5, X6, X7, X8, X9, X10, X11, X12),
         ?FATE_TUPLE({?FATE_FP(X1), ?FATE_FP(X2), ?FATE_FP(X3), ?FATE_FP(X4), ?FATE_FP(X5), ?FATE_FP(X6),
                      ?FATE_FP(X7), ?FATE_FP(X8), ?FATE_FP(X9), ?FATE_FP(X10), ?FATE_FP(X11), ?FATE_FP(X12)})).
+
+-define(MAX_FR, 16#73eda753299d7d483339d80809a1d80553bda402fffe5bfeffffffff00000000).
+-define(MAX_FP, 16#1a0111ea397fe69a4b1ba7b6434bacd764774b84f38512bf6730d2a0f6b0f6241eabfffeb153ffffb9feffffffffaaab).
 
 %% Unary operations
 op(get, A) ->
@@ -2479,10 +2482,10 @@ op(bls12_381_gt_is_one, ?FATE_GT(X11, X12, X13, X14, X15, X16, X17, X18, X19, X1
 op(bls12_381_final_exp, ?FATE_GT(X11, X12, X13, X14, X15, X16, X17, X18, X19, X110, X111, X112)) ->
     P = emcl:bn_final_exp(gt_to_emcl(X11, X12, X13, X14, X15, X16, X17, X18, X19, X110, X111, X112)),
     gt_to_fate(P);
-op(bls12_381_int_to_fr, I) when ?IS_FATE_INTEGER(I) ->
+op(bls12_381_int_to_fr, I) when ?IS_FATE_INTEGER(I), I >= 0, I < ?MAX_FR ->
     Fr = emcl:mk_Fr(?FATE_INTEGER_VALUE(I)),
     ?FATE_FR(emcl:bnFr_to_bin(Fr));
-op(bls12_381_int_to_fp, I) when ?IS_FATE_INTEGER(I) ->
+op(bls12_381_int_to_fp, I) when ?IS_FATE_INTEGER(I), I >= 0, I < ?MAX_FP ->
     Fp = emcl:mk_Fp(?FATE_INTEGER_VALUE(I)),
     ?FATE_FP(emcl:bnFp_to_bin(Fp));
 op(bls12_381_fr_to_int, ?FATE_FR(X)) ->

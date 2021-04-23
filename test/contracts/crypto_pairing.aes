@@ -7,6 +7,9 @@ contract PairingTest =
   type g2 = BLS12_381.g2
   type gt = BLS12_381.gt
 
+  entrypoint fr_idempotent(x : int) = x == BLS12_381.fr_to_int(BLS12_381.int_to_fr(x))
+  entrypoint fp_idempotent(x : int) = x == BLS12_381.fp_to_int(BLS12_381.int_to_fp(x))
+
   entrypoint g1_neg(g1 : g1) = BLS12_381.g1_neg(g1)
   entrypoint g1_norm(g1 : g1) = BLS12_381.g1_norm(g1)
   entrypoint g1_valid(g1 : g1) = BLS12_381.g1_valid(g1)

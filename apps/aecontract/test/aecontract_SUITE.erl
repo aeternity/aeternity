@@ -5348,6 +5348,17 @@ sophia_crypto_pairing_(_Cfg) ->
     FromFateG1 = fun({{bytes, X}, {bytes, Y}, {bytes, Z}}) -> {g1, {fp, X}, {fp, Y}, {fp, Z}} end,
     G1Type = {tuple, [{bytes, 48}, {bytes, 48}, {bytes, 48}]},
 
+    true = ?call(call_contract, Acc, C, fr_idempotent, bool, {123435521545}),
+    true = ?call(call_contract, Acc, C, fp_idempotent, bool, {123435521545}),
+
+    {error, <<"Bad arguments to bls12_381_int_to_fr: [-234]">>} = ?call(call_contract, Acc, C, fr_idempotent, bool, {-234}),
+    {error, <<"Bad arguments to bls12_381_int_to_fp: [-234]">>} = ?call(call_contract, Acc, C, fp_idempotent, bool, {-234}),
+
+    {error, <<"Bad arguments to bls12_381_int_to_fr: [52435875175126190479447740508185965837690552500527637822603658699938581184512]">>} =
+        ?call(call_contract, Acc, C, fr_idempotent, bool, {16#73eda753299d7d483339d80809a1d80553bda402fffe5bfeffffffff00000000}),
+    {error, <<"Bad arguments to bls12_381_int_to_fp: [4002409555221667393417789825735904156556882819939007885332058136124031650490837864442687629129015664037894272559787]">>} =
+        ?call(call_contract, Acc, C, fp_idempotent, bool, {16#1a0111ea397fe69a4b1ba7b6434bacd764774b84f38512bf6730d2a0f6b0f6241eabfffeb153ffffb9feffffffffaaab}),
+
     Res1 = ?call(call_contract, Acc, C, g1_neg, G1Type, {ToFateG1(G1a)}),
     ?assert(emcl:is_eq(emcl:bnG1_neg(G1a), FromFateG1(Res1))),
 
