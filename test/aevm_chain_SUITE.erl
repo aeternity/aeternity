@@ -9,6 +9,7 @@
 -export([ all/0
         , groups/0
         , init_per_suite/1
+        , end_per_suite/1
         ]).
 
 %% test case exports
@@ -52,6 +53,9 @@ init_per_suite(Config) ->
         true -> Config;
         false -> {skip, aevm_deprecated}
     end.
+
+end_per_suite(_Config) ->
+    ok.
 
 %%%===================================================================
 %%% Setup

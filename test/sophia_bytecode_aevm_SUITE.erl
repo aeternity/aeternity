@@ -4,6 +4,7 @@
 -export(
    [ all/0
    , init_per_suite/1
+   , end_per_suite/1
    ]).
 
 %% test case exports
@@ -26,6 +27,9 @@ init_per_suite(Config) ->
         true -> Config;
         false -> {skip, aevm_deprecated}
     end.
+
+end_per_suite(_Config) ->
+    ok.
 
 execute_identity_fun_from_sophia_file(_Cfg) ->
     {ok, ContractBin} = aect_test_utils:read_contract(identity),
