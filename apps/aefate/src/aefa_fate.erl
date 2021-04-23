@@ -22,7 +22,6 @@
 -export([ check_remote/2
         , check_return_type/1
         , check_signature/3
-        , infer_type/1
         , pop_args_from_signature/2
         , pop_args/2
         , bind_args/2
@@ -675,7 +674,7 @@ unfold_store_maps_in_args(Arity, ES) ->
     Acc   = aefa_engine_state:accumulator(ES),
     Stack = aefa_engine_state:accumulator_stack(ES),
     {Args, Rest} = lists:split(min(Arity, length(Stack) + 1), [Acc | Stack]),
-    {Args1, ES1} = unfold_store_maps(?MAKE_FATE_LIST(Args), ES, simple),
+    {Args1, ES1} = unfold_store_maps(?MAKE_FATE_LIST(Args), ES, unfold),
     [Acc1 | Stack1] = ?FATE_LIST_VALUE(Args1),
     aefa_engine_state:set_accumulator(Acc1,
         aefa_engine_state:set_accumulator_stack(Stack1 ++ Rest, ES1)).

@@ -520,8 +520,7 @@ spend_gas_for_traversal(Term, CostModel, ES) ->
 
 %% Call this before deep traversals of fate terms to make sure there is enough
 %% gas. Throws an out of gas exception if there's not. Parameterised by the gas
-%% cost (as a rational number) of traversing one node in the term, and an
-%% unfolding function for store maps.
+%% cost model. And an unfolding function for store maps.
 -spec spend_gas_for_traversal(aeb_fate_data:fate_type(),
                               cost_model(),
                               {fun((integer()) -> non_neg_integer()), fun((integer()) -> aeb_fate_data:fate_type())},
