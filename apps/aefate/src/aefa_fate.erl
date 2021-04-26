@@ -66,6 +66,7 @@
 -endif.
 
 -include_lib("aebytecode/include/aeb_fate_data.hrl").
+-include("../../aecontract/include/hard_forks.hrl").
 
 -ifdef(TEST).
 -define(trace(I,S), aefa_engine_state:add_trace(I, S)).
@@ -245,7 +246,9 @@ abort(out_of_gas, ES) ->
 abort(bad_bytecode, ES) ->
     ?t("Bad byte code", [], ES);
 abort({disabled_operation, Op}, ES) ->
-    ?t("Error: operation ~P is disabled", [Op, ?MAX_TERM_DEPTH], ES).
+    ?t("Error: operation ~P is disabled", [Op, ?MAX_TERM_DEPTH], ES);
+abort({pop_empty_stack, N}, ES) ->
+    ?t("Stack overflow when pop:ing ~P elements", [N, ?MAX_TERM_DEPTH], ES).
 
 abort(E) -> throw({add_engine_state, E}).
 
@@ -437,7 +440,13 @@ pop_args(N, ES) ->
     Tail  = aefa_engine_state:accumulator_stack(ES),
     Stack = [aefa_engine_state:accumulator(ES) | Tail],
     Args  = lists:sublist(Stack, N),
-    {Args, drop(N, ES)}.
+    Protocol = aefa_engine_state:consensus_version(ES),
+    case length(Args) == N of
+        false when Protocol >= ?IRIS_PROTOCOL_VSN ->
+            abort({pop_empty_stack, N}, ES);
+        _ ->
+            {Args, drop(N, ES)}
+    end.
 
 bind_args(Args, ES) ->
     bind_args(0, Args, #{}, ES).

@@ -401,6 +401,13 @@ push_accumulator(V, #es{ accumulator = X
     spend_gas_for_new_cells(1, ES1).
 
 -spec pop_accumulator(state()) -> {aeb_fate_data:fate_type(), state()}.
+pop_accumulator(#es{accumulator = ?FATE_VOID, accumulator_stack = [], created_cells = C} = ES) ->
+    case consensus_version(ES) >= ?IRIS_PROTOCOL_VSN of
+        true ->
+            aefa_fate:abort({pop_empty_stack, 1}, ES);
+        false ->
+            {?FATE_VOID, ES#es{created_cells = C - 1}}
+    end;
 pop_accumulator(#es{accumulator = X, accumulator_stack = [], created_cells = C} = ES) ->
     {X, ES#es{ accumulator = ?FATE_VOID
              , created_cells = C - 1}};
