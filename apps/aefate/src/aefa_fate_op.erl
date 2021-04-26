@@ -1276,6 +1276,7 @@ generation(Arg0, EngineState) ->
     API = aefa_engine_state:chain_api(EngineState),
     write(Arg0, aefa_chain_api:generation(API), EngineState).
 
+-spec microblock(_, _) -> no_return().
 microblock(_Arg0, EngineState) ->
     Protocol = aefa_engine_state:consensus_version(EngineState),
     case Protocol >= ?IRIS_PROTOCOL_VSN of
@@ -1350,6 +1351,7 @@ log_(Args, EngineState) ->
     Gas = Size * aec_governance:byte_gas(),
     spend_gas(Gas, aefa_engine_state:add_log(LogEntry, ES1)).
 
+-spec deactivate(_) -> no_return().
 deactivate(EngineState) ->
     Protocol = aefa_engine_state:consensus_version(EngineState),
     case Protocol >= ?IRIS_PROTOCOL_VSN of

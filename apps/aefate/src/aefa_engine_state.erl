@@ -423,7 +423,7 @@ pop_accumulator(#es{accumulator = X,
 dup_accumulator(ES) ->
     dup_accumulator(0, ES).
 
--spec dup_accumulator(pos_integer(), state()) -> state().
+-spec dup_accumulator(non_neg_integer(), state()) -> state().
 dup_accumulator(N, #es{accumulator = X, accumulator_stack = Stack} = ES) ->
     Protocol = consensus_version(ES),
     case is_integer(N) andalso N >= 0 andalso N =< length(Stack) andalso (N > 0 orelse X /= ?FATE_VOID) of
