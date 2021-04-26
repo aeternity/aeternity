@@ -599,6 +599,7 @@ map_empty(Arg0, EngineState) ->
 
 map_lookup(Arg0, Arg1, Arg2, EngineState) ->
     {[Map, Key], ES1} = get_op_args([Arg1, Arg2], EngineState),
+    map_check(map_lookup, Map, EngineState),
     {Result, ES2} = map_lookup1(Key, Map, ES1),
     case Result of
         error     -> aefa_fate:abort(missing_map_key, ES2);
@@ -607,6 +608,7 @@ map_lookup(Arg0, Arg1, Arg2, EngineState) ->
 
 map_lookup(Arg0, Arg1, Arg2, Arg3, EngineState) ->
     {[Map, Key, Default], ES1} = get_op_args([Arg1, Arg2, Arg3], EngineState),
+    map_check(map_lookupd, Map, EngineState),
     {Result, ES2} = map_lookup1(Key, Map, ES1),
     case Result of
         error     -> write(Arg0, Default, ES2);
@@ -615,6 +617,7 @@ map_lookup(Arg0, Arg1, Arg2, Arg3, EngineState) ->
 
 map_member(Arg0, Arg1, Arg2, EngineState) ->
     {[Map, Key], ES1} = get_op_args([Arg1, Arg2], EngineState),
+    map_check(map_member, Map, EngineState),
     case Map of
         _ when ?IS_FATE_MAP(Map) ->
             write(Arg0, aeb_fate_data:make_boolean(maps:is_key(Key, ?FATE_MAP_VALUE(Map))), ES1);
@@ -649,6 +652,7 @@ map_from_list(Arg0, Arg1, EngineState) ->
 
 map_to_list(Arg0, Arg1, EngineState) ->
     {Map, ES1} = get_op_arg(Arg1, EngineState),
+    map_check(map_to_list, Map, EngineState),
     case Map of
         _ when ?IS_FATE_MAP(Map) ->
             List = map_to_sorted_list(Map, ES1),
@@ -687,6 +691,7 @@ load_pre_iris_map_ordering() ->
 
 map_size_(Arg0, Arg1, EngineState) ->
     {Map, ES1} = get_op_arg(Arg1, EngineState),
+    map_check(map_size, Map, EngineState),
     case Map of
         _ when ?IS_FATE_MAP(Map) ->
             Size = aeb_fate_data:make_integer(map_size(?FATE_MAP_VALUE(Map))),
@@ -694,6 +699,15 @@ map_size_(Arg0, Arg1, EngineState) ->
         ?FATE_STORE_MAP(Cache, MapId) ->
             {Size, ES2} = store_map_size(Cache, MapId, ES1),
             write(Arg0, Size, ES2)
+    end.
+
+map_check(Op, Map, ES) ->
+    Protocol = aefa_engine_state:consensus_version(ES),
+    case ?IS_FATE_MAP(Map) orelse ?IS_FATE_STORE_MAP(Map) of
+        false when Protocol >= ?IRIS_PROTOCOL_VSN ->
+            aefa_fate:abort({bad_map, Op, Map}, ES);
+        _ ->
+            ok
     end.
 
 %% ------------------------------------------------------

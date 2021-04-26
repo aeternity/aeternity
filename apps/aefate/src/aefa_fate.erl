@@ -248,7 +248,9 @@ abort(bad_bytecode, ES) ->
 abort({disabled_operation, Op}, ES) ->
     ?t("Error: operation ~P is disabled", [Op, ?MAX_TERM_DEPTH], ES);
 abort({pop_empty_stack, N}, ES) ->
-    ?t("Stack overflow when pop:ing ~P elements", [N, ?MAX_TERM_DEPTH], ES).
+    ?t("Stack overflow when pop:ing ~P elements", [N, ?MAX_TERM_DEPTH], ES);
+abort({bad_map, Op, Map}, ES) ->
+    ?t("Operation ~P expected a map as argument, got ~P", [Op, ?MAX_TERM_DEPTH, Map, ?MAX_TERM_DEPTH], ES).
 
 abort(E) -> throw({add_engine_state, E}).
 
