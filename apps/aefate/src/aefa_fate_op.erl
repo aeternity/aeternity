@@ -1167,6 +1167,7 @@ gasprice(Arg0, EngineState) ->
     write(Arg0, aefa_chain_api:gas_price(API), EngineState).
 
 fee(Arg0, EngineState) ->
+    ?AVAILABLE_FROM(?VM_FATE_SOPHIA_2, EngineState),
     API = aefa_engine_state:chain_api(EngineState),
     write(Arg0, aefa_chain_api:fee(API), EngineState).
 
