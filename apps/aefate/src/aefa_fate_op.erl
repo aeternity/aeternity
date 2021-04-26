@@ -327,9 +327,12 @@ jump(Arg0, EngineState) ->
 
 jumpif(Arg0, Arg1, EngineState) ->
     {Value, ES1} = get_op_arg(Arg0, EngineState),
+    Protocol = aefa_engine_state:consensus_version(EngineState),
     case Value of
         true -> {jump, Arg1, ES1};
-        false -> {next, ES1}
+        false -> {next, ES1};
+        _ when Protocol >= ?IRIS_PROTOCOL_VSN ->
+            aefa_fate:abort({value_does_not_match_type, Value, boolean}, ES1)
     end.
 
 switch(Arg0, Arg1, Arg2, EngineState) ->
