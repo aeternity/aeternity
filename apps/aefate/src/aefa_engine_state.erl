@@ -420,17 +420,21 @@ pop_accumulator(#es{accumulator = X,
              }}.
 
 -spec dup_accumulator(state()) -> state().
-dup_accumulator(#es{accumulator = X, accumulator_stack = Stack} = ES) ->
-    ES1 = ES#es{ accumulator = X
-               , accumulator_stack = [X|Stack]},
-    spend_gas_for_new_cells(1, ES1).
+dup_accumulator(ES) ->
+    dup_accumulator(0, ES).
 
 -spec dup_accumulator(pos_integer(), state()) -> state().
 dup_accumulator(N, #es{accumulator = X, accumulator_stack = Stack} = ES) ->
-    {X1, Stack1} = get_n(N, [X|Stack]),
-    ES1 = ES#es{ accumulator = X1
-               , accumulator_stack = [X|Stack1]},
-    spend_gas_for_new_cells(1, ES1).
+    Protocol = consensus_version(ES),
+    case is_integer(N) andalso N >= 0 andalso N =< length(Stack) andalso (N > 0 orelse X /= ?FATE_VOID) of
+        false when Protocol >= ?IRIS_PROTOCOL_VSN ->
+            aefa_fate:abort({type_error, dup, N});
+        _ ->
+            {X1, Stack1} = get_n(N, [X|Stack]),
+            ES1 = ES#es{ accumulator = X1
+                       , accumulator_stack = [X|Stack1]},
+            spend_gas_for_new_cells(1, ES1)
+    end.
 
 get_n(0, [X|XS]) -> {X, [X|XS]};
 get_n(N, [X|XS]) ->
