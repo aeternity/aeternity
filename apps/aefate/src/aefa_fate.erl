@@ -250,7 +250,9 @@ abort({disabled_operation, Op}, ES) ->
 abort({pop_empty_stack, N}, ES) ->
     ?t("Stack overflow when pop:ing ~P elements", [N, ?MAX_TERM_DEPTH], ES);
 abort({bad_map, Op, Map}, ES) ->
-    ?t("Operation ~P expected a map as argument, got ~P", [Op, ?MAX_TERM_DEPTH, Map, ?MAX_TERM_DEPTH], ES).
+    ?t("Operation ~P expected a map as argument, got ~P", [Op, ?MAX_TERM_DEPTH, Map, ?MAX_TERM_DEPTH], ES);
+abort({op_not_implemented, Op}, ES) ->
+    ?t("Operation ~P is not implemented", [Op, ?MAX_TERM_DEPTH], ES).
 
 abort(E) -> throw({add_engine_state, E}).
 

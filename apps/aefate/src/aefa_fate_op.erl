@@ -1276,7 +1276,12 @@ generation(Arg0, EngineState) ->
     API = aefa_engine_state:chain_api(EngineState),
     write(Arg0, aefa_chain_api:generation(API), EngineState).
 
-microblock(_Arg0, _EngineState) -> exit({error, op_not_implemented_yet}).
+microblock(_Arg0, EngineState) ->
+    Protocol = aefa_engine_state:consensus_version(EngineState),
+    case Protocol >= ?IRIS_PROTOCOL_VSN of
+        true  -> aefa_fate:abort({op_not_implemented, microblock}, EngineState);
+        false -> exit({error, op_not_implemented_yet})
+    end.
 
 difficulty(Arg0, EngineState) ->
     API = aefa_engine_state:chain_api(EngineState),
@@ -1345,7 +1350,12 @@ log_(Args, EngineState) ->
     Gas = Size * aec_governance:byte_gas(),
     spend_gas(Gas, aefa_engine_state:add_log(LogEntry, ES1)).
 
-deactivate(_EngineState) -> exit({error, op_not_implemented_yet}).
+deactivate(EngineState) ->
+    Protocol = aefa_engine_state:consensus_version(EngineState),
+    case Protocol >= ?IRIS_PROTOCOL_VSN of
+        true  -> aefa_fate:abort({op_not_implemented, microblock}, EngineState);
+        false -> exit({error, op_not_implemented_yet})
+    end.
 
 spend(Arg0, Arg1, ES0) ->
     FromPubkey = aefa_engine_state:current_contract(ES0),
