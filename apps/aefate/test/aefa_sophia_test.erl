@@ -31,6 +31,7 @@ dummy_spec(Cache, Stores) ->
        caller    => Caller,
        origin    => Caller,
        gas_price => 1,
+       fee       => 621,
        tx_env    => aetx_env:tx_env(1) }.
 
 dummy_trees(Caller, Cache, Stores) ->

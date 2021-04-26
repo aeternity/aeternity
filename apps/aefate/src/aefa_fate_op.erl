@@ -91,6 +91,7 @@
         , origin/2
         , caller/2
         , gasprice/2
+        , fee/2
         , blockhash/3
         , beneficiary/2
         , timestamp/2
@@ -1164,6 +1165,11 @@ caller(Arg0, EngineState) ->
 gasprice(Arg0, EngineState) ->
     API = aefa_engine_state:chain_api(EngineState),
     write(Arg0, aefa_chain_api:gas_price(API), EngineState).
+
+fee(Arg0, EngineState) ->
+    API = aefa_engine_state:chain_api(EngineState),
+    write(Arg0, aefa_chain_api:fee(API), EngineState).
+
 
 blockhash(Arg0, Arg1, ES) ->
     case get_op_arg(Arg1, ES) of
