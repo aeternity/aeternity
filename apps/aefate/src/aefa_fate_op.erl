@@ -2325,7 +2325,11 @@ op(addr_to_str, A) when ?IS_FATE_ADDRESS(A) ->
     Val = ?FATE_ADDRESS_VALUE(A),
     aeser_api_encoder:encode(account_pubkey, Val);
 op(str_reverse, A) when ?IS_FATE_STRING(A) ->
-    aeb_fate_data:make_string(binary_reverse(?FATE_STRING_VALUE(A)));
+    Bin = ?FATE_STRING_VALUE(A),
+    CharList = unicode:characters_to_nfc_list(Bin),
+    CharListR = lists:reverse(CharList),
+    BinR = unicode:characters_to_nfc_binary(CharListR),
+    aeb_fate_data:make_string(BinR);
 op(bits_all, N)  when ?IS_FATE_INTEGER(N) ->
     ?FATE_BITS((1 bsl (N)) - 1);
 op(bits_sum, A)  when ?IS_FATE_BITS(A) ->
@@ -2671,12 +2675,6 @@ comp_iris(egt, A, B) -> not aeb_fate_data:lt(A, B);
 comp_iris( eq, A, B) -> (not aeb_fate_data:lt(A, B)) and (not aeb_fate_data:lt(B, A));
 % not equals <==> less than or greater than
 comp_iris(neq, A, B) -> aeb_fate_data:lt(A, B) or aeb_fate_data:lt(B, A).
-
-
-binary_reverse(Binary) ->
-    Size = erlang:size(Binary)*8,
-    <<X:Size/integer-little>> = Binary,
-    <<X:Size/integer-big>>.
 
 pow(A, B, ES) ->
     power(A, B, 1, ES).
