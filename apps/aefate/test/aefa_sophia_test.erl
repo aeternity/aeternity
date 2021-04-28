@@ -108,7 +108,7 @@ compile_contract(Code, Options) ->
     end.
 
 -define(CALL_GAS, 6000000).
--define(CALL_GAS, 5000000).
+-define(CALL_FEE, 5000000).
 
 make_store(<<"init">>, _) -> aefa_stores:initial_contract_store();
 make_store(_, none) ->
