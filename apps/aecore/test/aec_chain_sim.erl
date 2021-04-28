@@ -512,9 +512,6 @@ maybe_update_trees(_, #{txs := []} = Block, _Chain) ->
     Block;
 maybe_update_trees(ForkId, #{txs := Txs} = Block, Chain) ->
     Blocks = blocks(ForkId, Chain),
-    #{header := TopHdr} = hd(Blocks),
-    Height = aec_headers:height(TopHdr),
-    Protocol = aec_hard_forks:protocol_effective_at_height(Height),
     Trees = case trees(Blocks) of
                 {ok, Ts} ->
                     Ts;
@@ -523,7 +520,7 @@ maybe_update_trees(ForkId, #{txs := Txs} = Block, Chain) ->
             end,
     NewTrees = lists:foldl(
                  fun(Tx, Ts) ->
-                         update_trees(Tx, Ts, Protocol)
+                         update_trees(Tx, Ts)
                  end, Trees, Txs),
     Block#{ trees => NewTrees }.
 
@@ -539,18 +536,18 @@ trees(Blocks) ->
     end.
 
 update_trees(#{ mod := aesc_create_tx
-              , channel_id := ChId } = Tx, Trees, Protocol) ->
+              , channel_id := ChId } = Tx, Trees) ->
     case maps:is_key({channel, ChId}, Trees) of
         true ->
             error({channel_exists, ChId});
         false ->
-            Trees#{ {channel, ChId} => new_channel(Tx, Protocol) }
+            Trees#{ {channel, ChId} => new_channel(Tx) }
     end;
 update_trees(#{ mod        := aesc_deposit_tx
               , channel_id := ChId
               , amount     := Amount
               , round      := Round
-              , state_hash := StateHash }, Trees, _Protocol) ->
+              , state_hash := StateHash }, Trees) ->
     Ch = maps:get({channel, ChId}, Trees),
     Ch1 = aesc_channels:deposit(Ch, Amount, Round, StateHash),
     Trees#{ {channel, ChId} => Ch1 }.
@@ -664,14 +661,14 @@ new_channel(#{ channel_id       := _ChId
              , channel_reserve  := ChanReserve
              , lock_period      := LockPeriod
              , state_hash       := StateHash
-             , nonce            := Nonce
-             , delegate_ids     := Delegates } = _CreateTx, Protocol) ->
+             , nonce            := Nonce } = _CreateTx) ->
+    Protocol = 5,    %% LIMA protocol, not that it's likely to matter here
     Initiator = aeser_id:specialize(InitiatorId, account),
     Responder = aeser_id:specialize(ResponderId, account),
     %% TODO: assert that the above ChId is the same as for the channel object
     aesc_channels:new(aec_accounts:new(Initiator, InitiatorAmt), InitiatorAmt,
                       aec_accounts:new(Responder, ResponderAmt), ResponderAmt,
-                      ChanReserve, Delegates, StateHash,
+                      ChanReserve, _Delegates = [], StateHash,
                       LockPeriod, Nonce, Protocol, _Round = 1).
 
 find_block_tx_hashes_(Hash, Chain) ->
