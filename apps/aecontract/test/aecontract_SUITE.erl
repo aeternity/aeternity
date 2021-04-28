@@ -1783,15 +1783,21 @@ sophia_higher_order_state(_Cfg) ->
 sophia_clone(_Cfg) ->
     ?skipRest(vm_version() < ?VM_FATE_SOPHIA_2, clone_not_pre_iris),
     state(aect_test_utils:new_state()),
-    Acc = ?call(new_account, 1000000000 * aec_test_utils:min_gas_price()),
+    Acc     = ?call(new_account, 1000000000 * aec_test_utils:min_gas_price()),
     Remote  = ?call(create_contract, Acc, higher_order_state, {}),
-    Ct  = ?call(create_contract, Acc, clone_test, {}),
+    Ct      = ?call(create_contract, Acc, clone_test, {}),
     Cloned1 = ?call(call_contract, Acc, Ct, run_clone, address, {Remote, Remote}),
     Cloned2 = ?call(call_contract, Acc, Ct, run_clone, address, {Cloned1, Cloned1}),
     ?assert(Cloned1 =/= Cloned2),
     ok.
 
 sophia_create(_Cfg) ->
+    ?skipRest(vm_version() < ?VM_FATE_SOPHIA_2, clone_not_pre_iris),
+    state(aect_test_utils:new_state()),
+    Acc = ?call(new_account, 1000000000000000000000 * aec_test_utils:min_gas_price()),
+    Ct  = ?call(create_contract, Acc, create_test, {}, #{gas => 1000000000000}),
+    R1  = ?call(call_contract, Acc, Ct, 'calculateSomething', word, {3}, #{gas => 1000000000000, amount => 100}),
+    ?assertEqual(2140, R1),
     ok.
 
 sophia_bytecode_hash(_Cfg) ->
