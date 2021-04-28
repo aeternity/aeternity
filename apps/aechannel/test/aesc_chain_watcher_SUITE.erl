@@ -60,6 +60,8 @@
 -define(TYPE, {type, ?LINE}).   % unique type info for min-depth callback
 -define(FORK, {fork, ?LINE}).   % fork id
 
+-define(BIG_AMOUNT, 10000000000000000000000000000 * aec_test_utils:min_gas_price()).
+
 all() ->
     [{group, all_tests}].
 
@@ -162,10 +164,11 @@ kill_client(Client) ->
     end.
 
 set_up_channel(Config) ->
-    #{ channel_id := ChId
-     , tx_hash    := TxHash
-     , signed_tx  := SignedTx } = CreateTx = create_tx(Config),
-    ok = push(CreateTx),
+    SignedTx = create_tx(Config),
+    TxHash = aetx_sign:hash(SignedTx),
+    {ok, ChId} = aesc_utils:channel_pubkey(SignedTx),
+    none = aec_chain:find_tx_with_location(TxHash),
+    ok = push(SignedTx),
     {mempool, SignedTx} = aec_chain:find_tx_with_location(TxHash),
     ClientIxs = [1,2,3],
     [C1,C2,C3] = Cs = [spawn_client(N, ChId) || N <- ClientIxs],
@@ -176,7 +179,7 @@ set_up_channel(Config) ->
     add_microblock(),
     ok = watchers_notified(
            fun({channel_changed_on_chain, I}, _C) ->
-                   #{tx := SignedTx} = I,
+                   #{tx := CreateTx} = I,
                    ok
            end, Watchers),
     %%
@@ -200,8 +203,8 @@ deposit(Config) ->
 deposit_(ChId, Setup, Config) ->
     Cs = maps:get(clients, Setup),
     Watchers = maps:get(watchers, Setup),
-    #{ tx_hash   := TxHash
-     , signed_tx := SignedTx } = DepositTx = deposit_tx(ChId, Config),
+    DepositTx = deposit_tx(ChId, Config),
+    TxHash = aetx_sign:hash(DepositTx),
     push(DepositTx),
     C1 = hd(Cs),
     ok = set_min_depth_watch(C1, ChId, TxHash, MinDepth = 3, MType1 = ?TYPE),
@@ -209,7 +212,7 @@ deposit_(ChId, Setup, Config) ->
     add_microblock(),
     ok = watchers_notified(
            fun({channel_changed_on_chain, I}, _C) ->
-                   #{tx := SignedTx} = I,
+                   #{tx := _SignedTx} = I,
                    ok
            end, Watchers),
     verify_min_depth([{C1,MType1}], ChId, TxHash, MinDepth, Cs -- [C1]),
@@ -225,7 +228,8 @@ flush_cache(_Config) ->
 innocent_fork(_Config) ->
     ChSetup = get_channel_setup(),
     #{clients := Cs} = maps:get(hd(maps:keys(ChSetup)), ChSetup),
-    {ok, #{hash := ForkHash}} = add_keyblock(),
+    {ok, ForkBlock} = add_keyblock(),
+    {ok, ForkHash} = aec_blocks:hash_internal_representation(ForkBlock),
     {ok, _} = fork_from_hash(ForkId = ?FORK, ForkHash),
     add_microblock(ForkId),
     add_microblock(ForkId),
@@ -237,13 +241,16 @@ fork_touches(Config) ->
     ChId = hd(maps:keys(ChSetup)),
     #{ clients    := Cs
      , watchers   := Watchers } = maps:get(ChId, ChSetup),
-    #{ tx_hash := TxHash } = DepositTx = deposit_tx(ChId, Config),
-    {ok, #{ hash := ForkPoint }} = add_keyblock(),
+    DepositTx = deposit_tx(ChId, Config),
+    TxHash = aetx_sign:hash(DepositTx),
+    {ok, ForkBlock} = add_keyblock(),
+    {ok, ForkPoint} = aec_blocks:hash_internal_representation(ForkBlock),
     push(DepositTx),
     C1 = hd(Cs),
     ok = set_min_depth_watch(C1, ChId, TxHash, _MinDepth = 3, _MType = ?TYPE),
     assert_no_events(Cs),
-    {ok, #{ hash := MicroHash }} = add_microblock(),
+    {ok, MicroBlock} = add_microblock(),
+    {ok, MicroHash} = aec_blocks:hash_internal_representation(MicroBlock),
     ok = watchers_notified(
            fun({channel_changed_on_chain, I}, _C) ->
                    #{tx := _SignedTx} = I,
@@ -262,13 +269,15 @@ fork_evicts(Config) ->
     #{ clients    := Cs
      , watchers   := Watchers } = maps:get(ChId, ChSetup),
     StateHash1 = channel_state_hash(ChId), % fallback state hash
-    #{ tx_hash := TxHash } = DepositTx = deposit_tx(ChId, Config),
-    {ok, #{ hash := ForkPoint }} = add_keyblock(),
+    DepositTx = deposit_tx(ChId, Config),
+    TxHash = aetx_sign:hash(DepositTx),
+    {ok, ForkBlock} = add_keyblock(),
+    {ok, ForkPoint} = aec_blocks:hash_internal_representation(ForkBlock),
     push(DepositTx),
     C1 = hd(Cs),
     ok = set_min_depth_watch(C1, ChId, TxHash, _MinDepth = 3, _MType = ?TYPE),
     assert_no_events(Cs),
-    {ok, #{ hash := _MicroHash }} = add_microblock(),
+    {ok, _} = add_microblock(),
     ok = watchers_notified(
            fun({channel_changed_on_chain, I}, _C) ->
                    #{tx := _SignedTx} = I,
@@ -543,17 +552,12 @@ log(Fmt0, Args0, L, true) ->
 log(_, _, _, _) ->
     ok.
 
-create_and_sign_tx(#{mod := Mod} = TxInfo) ->
+create_and_sign_tx(#{mod := Mod} = TxInfo, SKs) ->
     try
-        {ok, Tx} = Mod:new(maps:merge(#{fee => 1, nonce => 1},
+        {ok, Tx} = Mod:new(maps:merge(#{fee => 50000 * aec_test_utils:min_gas_price(), nonce => 1},
                                       maps:remove(mod, TxInfo))),
         ?LOG("Tx = ~p", [Tx]),
-        SignedTx = aetx_sign:new(Tx, []),
-        TxHash = aetx_sign:hash(SignedTx),
-        {ok, ChId} = aesc_utils:channel_pubkey(SignedTx),
-        TxInfo#{ tx_hash    => TxHash
-               , signed_tx  => SignedTx
-               , channel_id => ChId }
+        aec_test_utils:sign_tx(Tx, SKs)
     catch
         error:Err ->
             ?LOG("CAUGHT error:~p / ~p", [Err, erlang:get_stacktrace()]),
@@ -576,6 +580,8 @@ new_keypair() ->
 create_tx(Config) ->
     I = ?config(initiator, Config),
     R = ?config(responder, Config),
+    ISK = ?config(initiator_sk, Config),
+    RSK = ?config(responder_sk, Config),
     TopHash = aec_chain:top_block_hash(),
     Nonce = next_nonce(I),
     Tx0 = #{ mod              => aesc_create_tx
@@ -585,28 +591,30 @@ create_tx(Config) ->
            , responder_amount => 10
            , channel_reserve  => 10
            , lock_period      => 3
-           , fee              => 1
+           , fee              => 50000 * aec_test_utils:min_gas_price()
            , state_hash       => <<>>
            , nonce            => Nonce
            , delegate_ids     => no_delegates()},
     StateHash = state_hash(TopHash, term_to_binary(Tx0)),
-    create_and_sign_tx(Tx0#{state_hash => StateHash}).
+    create_and_sign_tx(Tx0#{state_hash => StateHash}, [RSK, ISK]).
 
 deposit_tx(ChId, Config) ->
-    Round = channel_round(ChId),
+    Round = channel_round(ChId) + 1,
     I = ?config(initiator, Config),
+    ISK = ?config(initiator_sk, Config),
+    RSK = ?config(responder_sk, Config),
     TopHash = aec_chain:top_block_hash(),
     Nonce = next_nonce(I),
     Tx0 = #{ mod            => aesc_deposit_tx
            , channel_id     => aeser_id:create(channel, ChId)
            , from_id        => I
            , amount         => 10
-           , fee            => 1
+           , fee            => 50000 * aec_test_utils:min_gas_price()
            , state_hash     => <<>>
            , round          => Round
            , nonce          => Nonce },
     StateHash = state_hash(TopHash, term_to_binary(Tx0)),
-    create_and_sign_tx(Tx0#{state_hash => StateHash}).
+    create_and_sign_tx(Tx0#{state_hash => StateHash}, [RSK, ISK]).
 
 channel_state_hash(ChId) ->
     case aec_chain:get_channel(ChId) of
@@ -671,12 +679,8 @@ init_per_suite(Config0) ->
     {ok, Apps1} = application:ensure_all_started(lager),
     {ok, Apps2} = application:ensure_all_started(crypto),
     {ok, Apps3} = application:ensure_all_started(enacl),
-    #{pubkey := Initiator} = new_keypair(),
-    #{pubkey := Responder} = new_keypair(),
     aec_chain_sim:setup_meck(),
     [ {started_apps, StartedApps ++ [mnesia] ++ Apps1 ++ Apps2 ++ Apps3}
-    , {initiator, aeser_id:create(account, Initiator)}
-    , {responder, aeser_id:create(account, Responder)}
     | Config ].
 
 end_per_suite(Config) ->
@@ -693,12 +697,20 @@ init_per_group(GrpName, Config) ->
             Config;
         _ ->
             {ok, ChainP} = start_chain_process(),
+            {ok, #{pubkey := Initiator, privkey := InitiatorSK}} = aec_chain_sim:new_account(?BIG_AMOUNT),
+            {ok, #{pubkey := Responder, privkey := ResponderSK}} = aec_chain_sim:new_account(?BIG_AMOUNT),
             {ok, Watcher} = start_chain_watcher(),
             %% mine a few keyblocks so we are on the right protocol
             lists:foreach(
                 fun(_) -> add_keyblock() end,
                 lists:seq(1, 2)),
-            [{watcher, Watcher}, {chain_process, ChainP} | Config]
+            [ {watcher, Watcher}
+            , {chain_process, ChainP}
+            , {initiator, aeser_id:create(account, Initiator)}
+            , {responder, aeser_id:create(account, Responder)}
+            , {initiator_sk, InitiatorSK}
+            , {responder_sk, ResponderSK}
+            | Config]
     end.
 
 end_per_group(GrpName, Config) ->
