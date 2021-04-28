@@ -176,6 +176,9 @@ dev1-build: internal-build
 dev1-start: KIND=dev1
 dev1-start: internal-start
 
+dev1-console: KIND=dev1
+dev1-console: internal-console
+
 dev1-stop: KIND=dev1
 dev1-stop: internal-stop
 
@@ -188,8 +191,14 @@ dev1-clean: internal-clean
 dev1-distclean: KIND=dev1
 dev1-distclean: internal-distclean
 
+dev2-build: KIND=dev2
+dev2-build: internal-build
+
 dev2-start: KIND=dev2
 dev2-start: internal-start
+
+dev2-console: KIND=dev2
+dev2-console: internal-console
 
 dev2-stop: KIND=dev2
 dev2-stop: internal-stop
@@ -203,8 +212,14 @@ dev2-clean: internal-clean
 dev2-distclean: KIND=dev2
 dev2-distclean: internal-distclean
 
+dev3-build: KIND=dev3
+dev3-build: internal-build
+
 dev3-start: KIND=dev3
 dev3-start: internal-start
+
+dev3-console: KIND=dev3
+dev3-console: internal-console
 
 dev3-stop: KIND=dev3
 dev3-stop: internal-stop
@@ -420,6 +435,9 @@ internal-build: VERSION REVISION internal-compile-deps endpoints
 
 internal-start:
 	@./_build/$(KIND)/$(CORE) start
+
+internal-console:
+	@./_build/$(KIND)/$(CORE) console
 
 internal-stop:
 	@./_build/$(KIND)/$(CORE) stop
