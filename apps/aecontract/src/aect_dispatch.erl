@@ -80,6 +80,7 @@ run(_, #{ call := Call} = _CallDef) ->
                              , caller
                              , origin
                              , gas_price
+                             , fee
                              ]).
 
 run_common(#{vm := VMVersion, abi := ABIVersion},
