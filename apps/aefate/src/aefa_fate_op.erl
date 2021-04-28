@@ -814,7 +814,11 @@ addr_to_str(Arg0, Arg1, EngineState) ->
 
 str_reverse(Arg0, Arg1, EngineState) ->
     {LeftValue, ES1} = get_op_arg(Arg1, EngineState),
-    Result = gop(str_reverse, LeftValue, ES1),
+    Op = case aefa_engine_state:vm_version(EngineState) >= ?VM_FATE_SOPHIA_2 of
+             true  -> str_reverse_unicode;
+             false -> str_reverse
+         end,
+    Result = gop(Op, LeftValue, ES1),
     Cells = string_cells(Result),
     ES2 = aefa_engine_state:spend_gas_for_new_cells(Cells + 1, ES1),
     write(Arg0, Result, ES2).
@@ -2326,6 +2330,12 @@ op(addr_to_str, A) when ?IS_FATE_ADDRESS(A) ->
     aeser_api_encoder:encode(account_pubkey, Val);
 op(str_reverse, A) when ?IS_FATE_STRING(A) ->
     aeb_fate_data:make_string(binary_reverse(?FATE_STRING_VALUE(A)));
+op(str_reverse_unicode, A) when ?IS_FATE_STRING(A) ->
+    Bin = ?FATE_STRING_VALUE(A),
+    CharList = unicode:characters_to_nfc_list(Bin),
+    CharListR = lists:reverse(CharList),
+    BinR = unicode:characters_to_nfc_binary(CharListR),
+    aeb_fate_data:make_string(BinR);
 op(bits_all, N)  when ?IS_FATE_INTEGER(N) ->
     ?FATE_BITS((1 bsl (N)) - 1);
 op(bits_sum, A)  when ?IS_FATE_BITS(A) ->
