@@ -1083,7 +1083,7 @@ make_fate_tx(Aetx, GAMetas, PayFor, ES) ->
             MkWrapper = fun(PK, F) ->
                             aeb_fate_data:make_variant([2], 0, {?FATE_ADDRESS(PK), F})
                         end,
-            {Cells0, FateBaseTx} = make_fate_base_tx(BaseTxType, BaseTx),
+            {Cells0, FateBaseTx} = make_fate_base_tx(BaseTxType, BaseTx, ES),
             {Cells1, FatePayFor} =
                 case PayFor of
                     undefined -> {8, make_none()};
@@ -1100,7 +1100,7 @@ make_fate_tx(Aetx, GAMetas, PayFor, ES) ->
              make_some(Res)}
     end.
 
-make_fate_base_tx(BaseTxType, BaseTx) ->
+make_fate_base_tx(BaseTxType, BaseTx, ES) ->
     Arities = [3, 0, 0, 0, 0, 0, 1, 1, 1, 2, 1, 2, 2, 1, 1, 1, 1, 1, 1, 1, 2, 0],
     MkVar   = fun(Tag, Args) -> aeb_fate_data:make_variant(Arities, Tag, Args) end,
     VarGas  = fun(NArgs) -> 2 * length(Arities) + NArgs + 4 end,
@@ -1173,7 +1173,10 @@ make_fate_base_tx(BaseTxType, BaseTx) ->
             {VarGas(2) + AddrGas + AmtGas, MkVar(20, {?FATE_ADDRESS(Ct), Amount})};
 
         ga_attach_tx ->
-            {VarGas(0), MkVar(21, {})}
+            {VarGas(0), MkVar(21, {})};
+
+        InvalidTx ->
+            aefa_fate:abort({auth_tx_type_not_handled, InvalidTx}, ES)
     end.
 
 auth_tx_hash(Arg0, EngineState) ->

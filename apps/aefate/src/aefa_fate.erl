@@ -252,7 +252,9 @@ abort({pop_empty_stack, N}, ES) ->
 abort({bad_map, Op, Map}, ES) ->
     ?t("Operation ~P expected a map as argument, got ~P", [Op, ?MAX_TERM_DEPTH, Map, ?MAX_TERM_DEPTH], ES);
 abort({op_not_implemented, Op}, ES) ->
-    ?t("Operation ~P is not implemented", [Op, ?MAX_TERM_DEPTH], ES).
+    ?t("Operation ~P is not implemented", [Op, ?MAX_TERM_DEPTH], ES);
+abort({auth_tx_type_not_handled, TxType}, ES) ->
+    ?t("Tx type ~P is not handled by Auth.tx", [TxType, ?MAX_TERM_DEPTH], ES).
 
 abort(E) -> throw({add_engine_state, E}).
 
