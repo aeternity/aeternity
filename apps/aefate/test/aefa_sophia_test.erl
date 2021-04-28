@@ -108,6 +108,7 @@ compile_contract(Code, Options) ->
     end.
 
 -define(CALL_GAS, 6000000).
+-define(CALL_GAS, 5000000).
 
 make_store(<<"init">>, _) -> aefa_stores:initial_contract_store();
 make_store(_, none) ->
@@ -129,6 +130,7 @@ make_call_spec(Contract, Function0, Arguments, Store) ->
     CtStore  = make_store(Function0, Store),
     #{ contract   => pad_contract_name(Contract),
        gas        => ?CALL_GAS,
+       fee        => ?CALL_FEE,
        value      => 0,
        call       => aeb_fate_encoding:serialize(Calldata),
        store      => CtStore,

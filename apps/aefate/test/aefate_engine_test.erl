@@ -312,6 +312,7 @@ make_call(Contract, Function0, Arguments) ->
     Function = aeb_fate_code:symbol_identifier(Function0),
     #{ contract  => pad_contract_name(Contract)
      , gas => 100000
+     , fee => 621
      , value => 0
      , store => aect_contracts_store:new()
      , call => aeb_fate_encoding:serialize(
