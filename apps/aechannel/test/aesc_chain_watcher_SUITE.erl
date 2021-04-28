@@ -179,7 +179,7 @@ set_up_channel(Config) ->
     add_microblock(),
     ok = watchers_notified(
            fun({channel_changed_on_chain, I}, _C) ->
-                   #{tx := CreateTx} = I,
+                   #{tx := _CreateTx} = I,
                    ok
            end, Watchers),
     %%
@@ -569,10 +569,6 @@ create_and_sign_tx(#{mod := Mod} = TxInfo, SKs) ->
 %% right state is reported.
 state_hash(BlockHash, Bin) when is_binary(BlockHash), is_binary(Bin) ->
     aec_hash:hash(state_trees, <<BlockHash/binary, Bin/binary>>).
-
-new_keypair() ->
-    #{public := PK, secret := SK} = enacl:sign_keypair(),
-    #{pubkey => PK, privkey => SK}.
 
 %% Tx creation - most values don't matter for the tests, but must be present
 %% in order to create the transaction objects
