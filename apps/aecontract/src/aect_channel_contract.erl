@@ -5,7 +5,7 @@
 
 -export([new/6,
          run_new/6,
-         run/12,
+         run/13,
          get_call/4,
          insert_failed_call/6
         ]).
@@ -40,7 +40,7 @@ run_new(ContractPubKey, Call, CallData, Trees0, OnChainTrees,
     {Contract, Trees1} = prepare_init_call(VmVersion, Protocol, Contract0, Code, Trees0),
     Store = aect_contracts:state(Contract),
     CallDef = make_call_def(OwnerPubKey, OwnerPubKey, ContractPubKey,
-                            _Gas = 1000000, _GasPrice = 1,
+                            _Gas = 1000000, _Fee = 0, _GasPrice = 1,
                             _Amount = 0, %TODO: make this configurable
                             CallData, _AllowInit = true, CallStack, Code, Store, Call, OnChainTrees, OnChainEnv, Trees1),
     CTVersion = aect_contracts:ct_version(Contract),
@@ -140,11 +140,11 @@ assert_init_function(CallData, VMVersion, SerializedCode) when ?IS_AEVM_SOPHIA(V
 
 -spec run(aect_contracts:pubkey(), aect_contracts:abi_version(), aect_call:call(),
           binary(), [non_neg_integer()], aec_trees:trees(),
-          non_neg_integer(), non_neg_integer(), non_neg_integer(),
+          non_neg_integer(), non_neg_integer(), non_neg_integer(), non_neg_integer(),
           aec_trees:trees(), aetx_env:env(), aec_keys:pubkey()) ->
     {aec_trees:trees(), aect_call:call()}.
 run(ContractPubKey, ABIVersion, Call, CallData, CallStack, Trees0,
-    Amount, GasPrice, Gas, OnChainTrees, OnChainEnv, CallerPubkey) ->
+    Amount, GasPrice, Fee, Gas, OnChainTrees, OnChainEnv, CallerPubkey) ->
     ContractsTree  = aec_trees:contracts(Trees0),
     {Contract, Code} = aect_state_tree:get_contract_with_code(ContractPubKey, ContractsTree),
     OwnerPubkey = aect_contracts:owner_pubkey(Contract),
@@ -156,7 +156,7 @@ run(ContractPubKey, ABIVersion, Call, CallData, CallStack, Trees0,
         true                                 -> erlang:error(wrong_vm_version);
         false                                -> erlang:error(wrong_abi_version)
     end,
-    CallDef = make_call_def(CallerPubkey, OwnerPubkey, ContractPubKey, Gas, GasPrice, Amount,
+    CallDef = make_call_def(CallerPubkey, OwnerPubkey, ContractPubKey, Gas, Fee, GasPrice, Amount,
               CallData, _AllowInit = false, CallStack, Code, Store, Call, OnChainTrees, OnChainEnv, Trees0),
     {CallRes, Trees, _} = aect_dispatch:run(#{vm => VmVersion, abi => ABIVersion}, CallDef),
     UpdatedTrees = aect_utils:insert_call_in_trees(CallRes, Trees),
@@ -164,12 +164,13 @@ run(ContractPubKey, ABIVersion, Call, CallData, CallStack, Trees0,
 
 
 
-make_call_def(CallerPubkey, OwnerPubKey, ContractPubKey, GasLimit, GasPrice, Amount,
+make_call_def(CallerPubkey, OwnerPubKey, ContractPubKey, GasLimit, Fee, GasPrice, Amount,
               CallData, AllowInit, CallStack, Code, Store, Call, OnChainTrees, OnChainEnv,
               OffChainTrees) ->
     #{caller          => CallerPubkey
     , contract        => ContractPubKey
     , gas             => GasLimit
+    , fee             => Fee
     , gas_price       => GasPrice
     , call_data       => CallData
     , amount          => Amount

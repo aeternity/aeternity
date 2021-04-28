@@ -208,6 +208,7 @@ apply_on_trees(Update, Trees0, OnChainTrees, OnChainEnv, Round, Reserve) ->
                        abi_version = ABIVersion, amount = Amount,
                        call_data = CallData, call_stack = CallStack,
                        gas_price = GasPrice, gas = Gas} ->
+            Fee    = 0,
             Caller = account_pubkey(CallerId),
             ContractPubKey = contract_pubkey(ContractId),
             Trees1 = remove_tokens(Caller, Amount, Trees0, Reserve),
@@ -216,7 +217,7 @@ apply_on_trees(Update, Trees0, OnChainTrees, OnChainEnv, Round, Reserve) ->
             {Trees, CallRes}
                 = aect_channel_contract:run(ContractPubKey, ABIVersion, Call,
                                             CallData, CallStack,
-                                            Trees2, Amount, GasPrice, Gas,
+                                            Trees2, Amount, GasPrice, Fee, Gas,
                                             OnChainTrees, OnChainEnv,
                                             Caller),
             case aect_call:return_type(CallRes) of
