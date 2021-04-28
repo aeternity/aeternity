@@ -80,6 +80,7 @@ run(_, #{ call := Call} = _CallDef) ->
                              , caller
                              , origin
                              , gas_price
+                             , fee
                              ]).
 
 run_common(#{vm := VMVersion, abi := ABIVersion},
@@ -92,6 +93,7 @@ run_common(#{vm := VMVersion, abi := ABIVersion},
             , store       := Store
             , contract    := <<_:?PUB_SIZE/unit:8>> = ContractAddress
             , gas         := Gas
+            , fee         := Fee
             , gas_price   :=_GasPrice
             , trees       := Trees
             , tx_env      := TxEnv0
@@ -108,6 +110,7 @@ run_common(#{vm := VMVersion, abi := ABIVersion},
                     , code       => Code
                     , store      => Store
                     , gas        => Gas
+                    , fee        => Fee
                     , value      => Value
                     , vm_version => VMVersion
                     , allow_init => maps:get(allow_init, CallDef, false)

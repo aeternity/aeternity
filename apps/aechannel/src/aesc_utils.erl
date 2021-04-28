@@ -692,6 +692,7 @@ verify_meta_tx(SignerId, StoreKey, AuthContractId, MetaTx, Trees, Env, TxType)
             CallDef = #{ caller      => SignerPK
                        , contract    => AuthContractPK
                        , gas         => aega_meta_tx:gas_limit(MetaTx, Height, Protocol)
+                       , fee         => aega_meta_tx:fee(MetaTx)
                        , gas_price   => aega_meta_tx:gas_price(MetaTx)
                        , call_data   => aega_meta_tx:auth_data(MetaTx)
                        , amount      => 0

@@ -1216,7 +1216,7 @@ contract_call({CallerPubKey, ContractPubkey, CallData, GasLimit, GasPrice,
     %% Avoid writing the store back by skipping this state.
     Contract = get_contract_no_cache(ContractPubkey, S4),
     ContractCall = fun() ->
-                           run_contract(CallerId, Contract, GasLimit, GasPrice,
+                           run_contract(CallerId, Contract, GasLimit, Fee, GasPrice,
                                         CallData, _AllowInit = false, Origin, Amount, CallStack, Nonce, S4)
                    end,
     {Call, S5} = timed_contract_call(contract_call, ContractCall, CallData, CTVersion),
@@ -1349,7 +1349,7 @@ ga_meta({OwnerPK, AuthData, ABIVersion, GasLimit, GasPrice, Fee, InnerTx}, S) ->
     Contract = get_contract_no_cache(AuthContractPK, S2),
     CallerId   = aeser_id:create(account, OwnerPK),
     ContractCall = fun() ->
-                           run_contract(CallerId, Contract, GasLimit, GasPrice,
+                           run_contract(CallerId, Contract, GasLimit, Fee, GasPrice,
                                         AuthData, _AllowInit = false, OwnerPK, _Amount = 0, _CallStack = [], _Nonce = 0, S2)
                    end,
     {Call, S3} = timed_contract_call(ga_meta, ContractCall, AuthData, CTVersion),
@@ -1457,7 +1457,7 @@ init_contract(Context, OwnerId, Code, Contract, GasLimit, GasPrice, CallData,
               OwnerPubkey, Fee, Nonce, RollbackS, S, MetricType, CTVersion) ->
     {InitContract, ChainContract, S1} = prepare_init_call(Code, Contract, S),
     ContractCall = fun() ->
-                           run_contract(OwnerId, Code, InitContract, GasLimit, GasPrice,
+                           run_contract(OwnerId, Code, InitContract, GasLimit, Fee, GasPrice,
                                         CallData, _AllowInit = true, OwnerPubkey, _InitAmount = 0,
                                         _CallStack = [], Nonce, S1)
                    end,
@@ -1603,7 +1603,7 @@ contract_call_fail(Call0, Fee, S) ->
     {Account, S3} = get_account(Payer, S2),
     account_spend(Account, UsedAmount, S3).
 
-run_contract(CallerId, Contract, GasLimit, GasPrice, CallData, AllowInit,
+run_contract(CallerId, Contract, GasLimit, Fee, GasPrice, CallData, AllowInit,
              Origin, Amount, CallStack, Nonce, S) ->
     Code =
         case aect_contracts:code(Contract) of
@@ -1614,10 +1614,10 @@ run_contract(CallerId, Contract, GasLimit, GasPrice, CallData, AllowInit,
                 {code, C} = aect_contracts:code(RefContract),
                 C
         end,
-    run_contract(CallerId, Code, Contract, GasLimit,
+    run_contract(CallerId, Code, Contract, GasLimit, Fee,
                  GasPrice, CallData, AllowInit, Origin, Amount, CallStack, Nonce, S).
 
-run_contract(CallerId, Code, Contract, GasLimit, GasPrice, CallData, AllowInit,
+run_contract(CallerId, Code, Contract, GasLimit, Fee, GasPrice, CallData, AllowInit,
              Origin, Amount, CallStack, Nonce, S) ->
     %% We need to push all to the trees before running a contract.
     S1 = aeprimop_state:cache_write_through(S),
@@ -1627,6 +1627,7 @@ run_contract(CallerId, Code, Contract, GasLimit, GasPrice, CallData, AllowInit,
     CallDef = #{ caller      => CallerPubKey
                , contract    => aect_contracts:pubkey(Contract)
                , gas         => GasLimit
+               , fee         => Fee
                , gas_price   => GasPrice
                , call_data   => CallData
                , amount      => Amount
