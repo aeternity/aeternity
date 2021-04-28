@@ -45,6 +45,7 @@
 %% Utility functions.
 -export([parse_peer_address/1]).
 -export([encode_peer_address/1]).
+-export([local_peer_address/0]).
 
 %% API only to be used by aec_peer_connection.
 -export([peer_connected/2]).
@@ -294,6 +295,13 @@ parse_peer_address(PeerAddress) ->
 encode_peer_address(#{ pubkey := PubKey, host := Host, port := Port }) ->
     list_to_binary(["aenode://", aeser_api_encoder:encode(peer_pubkey, PubKey), "@",
                     Host, ":", integer_to_list(Port)]).
+
+%% @doc Obtains the local peer address
+-spec local_peer_address() -> binary().
+local_peer_address() ->
+    {ok, PubKey} = aec_keys:peer_pubkey(),
+    LocalExternalPort = aec_connection_sup:ext_sync_port(),
+    aec_peers:encode_peer_address(aec_peer:info(PubKey, <<"127.0.0.1">>, LocalExternalPort)).
 
 %--- CONNECTION MANAGMENT FUNCTIONS FOR aec_peer_connection ONLY ---------------
 
