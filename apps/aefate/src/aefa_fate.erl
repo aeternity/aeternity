@@ -306,6 +306,7 @@ setup_engine(#{ contract := <<_:256>> = ContractPubkey
 setup_engine(#{ contract := <<_:256>> = ContractPubkey
               , call := Call
               , gas := Gas
+              , fee := _Fee
               , value := Value
               , store := Store
               , vm_version := VMVersion
