@@ -745,8 +745,10 @@ lookup_in_store(N, ES) ->
         {ok, Val} ->
             {Val, ES1};
         {ok, Val, Stores1} ->
-            ES2 = aefa_engine_state:set_stores(Stores1, ES1),
-            {Val, ES2};
+            %% Lookup in store costs extra from IRIS
+            ES2 = aefa_engine_state:spend_gas([{?IRIS_PROTOCOL_VSN, 2000}, {?LIMA_PROTOCOL_VSN, 0}], ES1),
+            ES3 = aefa_engine_state:set_stores(Stores1, ES2),
+            {Val, ES3};
         error ->
             abort({undefined_in_store, N}, ES1)
     end.
