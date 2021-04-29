@@ -26,8 +26,6 @@ SWAGGER_ENDPOINTS_SPEC = apps/aeutils/src/endpoints.erl
 OAS_ENDPOINTS_SPEC = apps/aeutils/src/oas_endpoints.erl
 OAS_YAML = apps/aehttp/priv/oas3.yaml
 
-PACKAGE_SPEC_WIN32 ?= ../.circleci/windows/package.cfg
-
 # Packages from master MUST be pre-releases. Git master version
 # usually is higher then the last stable release. However
 # packages with newer stable version MUST always have higher version
