@@ -18,7 +18,7 @@ While this method is the easiest one it is not recomended for production systems
 
 ## Package Install
 
-Installing from a package manager is the recomended way of installing the aeternity node,
+Installing from a package manager is the recommended way of installing the aeternity node,
 as it also automatically installs the additional requirements and makes the updates much more simple.
 
 ### Ubuntu
