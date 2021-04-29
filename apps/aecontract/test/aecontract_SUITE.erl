@@ -4748,7 +4748,7 @@ sophia_maps_gc_bug(_Cfg) ->
                   || _ <- lists:seq(1, 20) ],
     {{}, Gas} = ?call(call_contract, Acc, Ct, set, {tuple, []}, {<<"foo">>}, #{ return_gas_used => true }),
     case protocol_version() >= ?IRIS_PROTOCOL_VSN of
-        true  -> ?assertMatch({_, '<', _, true}, {Gas, '<', 1000, Gas < 1000});
+        true  -> ?assertMatch({_, '<', _, true}, {Gas, '<', 3000, Gas < 3000});
         false -> ?assertMatch({_, '>', _, true}, {Gas, '>', 4000, Gas > 4000})
     end.
 
@@ -5578,9 +5578,9 @@ sophia_protected_call(_Cfg) ->
               , Test(test_missing_con,   {option, word}, 130, 200)
               , Test(test_nonpayable,    {option, word}, 130, 200)
               , Test(test_out_of_funds,  {option, word}, 130, 200)
-              , Test(test_hacked,        {option, word}, 500, 800)
-              , Test(test_revert,        {option, word}, 500, 800)
-              , Test(test_crash,         {option, word}, 500, 800)
+              , Test(test_hacked,        {option, word}, 2500, 2800)
+              , Test(test_revert,        {option, word}, 2500, 2800)
+              , Test(test_crash,         {option, word}, 2500, 2800)
               , Test(test_out_of_gas,    {option, word}, 500, 800)
               , Test(test_wrong_ret_r,   {option, bool}, 150, 200)
               , Test(test_wrong_arg_r,   {option, word}, 130, 200)
@@ -5588,9 +5588,9 @@ sophia_protected_call(_Cfg) ->
               , Test(test_missing_r,     {option, word}, 130, 200)
               , Test(test_missing_con_r, {option, word}, 130, 200)
               , Test(test_nonpayable_r,  {option, word}, 130, 200)
-              , Test(test_hacked_r,      {option, word}, 600, 900)
-              , Test(test_revert_r,      {option, word}, 600, 900)
-              , Test(test_crash_r,       {option, word}, 600, 900)
+              , Test(test_hacked_r,      {option, word}, 2600, 2900)
+              , Test(test_revert_r,      {option, word}, 2600, 2900)
+              , Test(test_crash_r,       {option, word}, 2600, 2900)
               , Test(test_out_of_gas_r,  {option, word}, 300, 500) ],
     [] = [ Res || Res = {_, MinGas, MaxGas, {R, Gas}, State, Bal} <- Results,
                   R /= none orelse Gas < MinGas orelse Gas > MaxGas orelse State /= 0 orelse

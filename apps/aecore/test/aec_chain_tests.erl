@@ -1685,7 +1685,7 @@ token_supply_ga() ->
     PresetAmount = 10000000 * min_gas_price(),
     PresetAccounts = [{PubKey, PresetAmount}],
     Fee     = 100000 * min_gas_price(),
-    Gas     = 1000,
+    Gas     = 5000,
     GasPrice = min_gas_price(),
     {ok, CodeMap} = aega_test_utils:get_contract("simple_auth.aes"),
     #{ bytecode := ByteCode
