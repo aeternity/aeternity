@@ -1143,7 +1143,7 @@ events_contract(Config) ->
         false -> ?assertMatch(FATE, Res)
     end).
 
--define(assertMatchVM(ExpVm1, ExpVm2, ExpVm3, ExpVm4, ExpFate, Res),
+-define(assertMatchVM(ExpVm1, ExpVm2, ExpVm3, ExpVm4, ExpFate1, ExpFate2, Res),
     case aect_test_utils:vm_version() of
         ?VM_AEVM_SOPHIA_1 -> ?assertMatch(ExpVm1, Res);
         ?VM_AEVM_SOPHIA_2 -> ?assertMatch(ExpVm2, Res);
@@ -1176,7 +1176,7 @@ remote_gas_test_contract(Config) ->
     call_get(APub, APriv, EncC2Pub, Contract, 100),
     force_fun_calls(Node),
     Balance1 = get_balance(APub),
-    ?assertMatchVM(1600596, 1600596, 1600596, 1600916, 1600022, (Balance0 - Balance1) div ?DEFAULT_GAS_PRICE),
+    ?assertMatchVM(1600596, 1600596, 1600596, 1600916, 1600022, 1600024, (Balance0 - Balance1) div ?DEFAULT_GAS_PRICE),
 
     %% Test remote call with limited gas
     %% Call contract remote set function with limited gas
@@ -1184,13 +1184,13 @@ remote_gas_test_contract(Config) ->
     call_get(APub, APriv, EncC2Pub, Contract, 1),
     force_fun_calls(Node),
     Balance2 = get_balance(APub),
-    ?assertMatchVM(1610855, 1610855, 1610855, 1611335, 1600231, (Balance1 - Balance2) div ?DEFAULT_GAS_PRICE),
+    ?assertMatchVM(1610855, 1610855, 1610855, 1611335, 1600231, 1600231, (Balance1 - Balance2) div ?DEFAULT_GAS_PRICE),
 
     %% Test remote call with limited gas (3) that fails (out of gas).
     [] = call_func(APub, APriv, EncC1Pub, Contract, "call", [EncC2Pub, "2", "3"], error),
     force_fun_calls(Node),
     Balance3 = get_balance(APub),
-    ?assertMatchVM(809981, 800147, (Balance2 - Balance3) div ?DEFAULT_GAS_PRICE),
+    ?assertMatchVM(809981, 809981, 809981, 809981, 800147, 800150, (Balance2 - Balance3) div ?DEFAULT_GAS_PRICE),
 
     %% Check that store/state not changed (we tried to write 2).
     call_get(APub, APriv, EncC2Pub, Contract, 1),
@@ -1202,7 +1202,7 @@ remote_gas_test_contract(Config) ->
     [] = call_func(APub, APriv, EncC1Pub, Contract, "call", [ZeroContract, "2", "1"], error),
     force_fun_calls(Node),
     Balance5 = get_balance(APub),
-    ?assertMatchVM(900000, 800145, (Balance4 - Balance5) div ?DEFAULT_GAS_PRICE),
+    ?assertMatchVM(900000, 900000, 900000, 900000, 800145, 800148, (Balance4 - Balance5) div ?DEFAULT_GAS_PRICE),
 
     ok.
 

@@ -80,11 +80,15 @@
         , push_return_type_check/4
         , spend_gas/2
         , spend_gas_for_new_cells/2
+        , spend_gas_for_traversal/3
+        , spend_gas_for_traversal/4
         , update_for_remote_call/5
         ]).
 
 -ifdef(TEST).
 -export([ add_trace/2
+        , gas_traversal/4
+        , cost/1
         ]).
 -endif.
 
@@ -164,12 +168,19 @@ aefa_stores(#es{ chain_api = APIState }) ->
 
 -spec finalize(state()) -> {ok, state()} | {error, out_of_gas}.
 finalize(#es{chain_api = API, stores = Stores} = ES) ->
-    Gas = gas(ES),
     Aefa_stores = aefa_stores(ES),
-    case Aefa_stores:finalize(API, Gas, Stores) of
-        {ok, Stores1, GasLeft} ->
-            {ok, ES#es{chain_api = Stores1, gas = GasLeft}};
-        {error, out_of_gas} ->
+    try
+        ES1 = lists:foldl(fun(Val, ES0) -> spend_gas_for_traversal(Val, serial, ES0) end,
+                          ES, aefa_stores:terms_to_finalize(Stores)),
+        Gas = gas(ES1),
+        case Aefa_stores:finalize(API, Gas, Stores) of
+            {ok, Stores1, GasLeft} ->
+                {ok, ES1#es{chain_api = Stores1, gas = GasLeft}};
+            {error, out_of_gas} ->
+                {error, out_of_gas}
+        end
+    catch
+        throw:out_of_gas ->
             {error, out_of_gas}
     end.
 
@@ -390,6 +401,13 @@ push_accumulator(V, #es{ accumulator = X
     spend_gas_for_new_cells(1, ES1).
 
 -spec pop_accumulator(state()) -> {aeb_fate_data:fate_type(), state()}.
+pop_accumulator(#es{accumulator = ?FATE_VOID, accumulator_stack = [], created_cells = C} = ES) ->
+    case consensus_version(ES) >= ?IRIS_PROTOCOL_VSN of
+        true ->
+            aefa_fate:abort({pop_empty_stack, 1}, ES);
+        false ->
+            {?FATE_VOID, ES#es{created_cells = C - 1}}
+    end;
 pop_accumulator(#es{accumulator = X, accumulator_stack = [], created_cells = C} = ES) ->
     {X, ES#es{ accumulator = ?FATE_VOID
              , created_cells = C - 1}};
@@ -402,17 +420,21 @@ pop_accumulator(#es{accumulator = X,
              }}.
 
 -spec dup_accumulator(state()) -> state().
-dup_accumulator(#es{accumulator = X, accumulator_stack = Stack} = ES) ->
-    ES1 = ES#es{ accumulator = X
-               , accumulator_stack = [X|Stack]},
-    spend_gas_for_new_cells(1, ES1).
+dup_accumulator(ES) ->
+    dup_accumulator(0, ES).
 
--spec dup_accumulator(pos_integer(), state()) -> state().
+-spec dup_accumulator(non_neg_integer(), state()) -> state().
 dup_accumulator(N, #es{accumulator = X, accumulator_stack = Stack} = ES) ->
-    {X1, Stack1} = get_n(N, [X|Stack]),
-    ES1 = ES#es{ accumulator = X1
-               , accumulator_stack = [X|Stack1]},
-    spend_gas_for_new_cells(1, ES1).
+    Protocol = consensus_version(ES),
+    case is_integer(N) andalso N >= 0 andalso N =< length(Stack) andalso (N > 0 orelse X /= ?FATE_VOID) of
+        false when Protocol >= ?IRIS_PROTOCOL_VSN ->
+            aefa_fate:abort({type_error, dup, N});
+        _ ->
+            {X1, Stack1} = get_n(N, [X|Stack]),
+            ES1 = ES#es{ accumulator = X1
+                       , accumulator_stack = [X|Stack1]},
+            spend_gas_for_new_cells(1, ES1)
+    end.
 
 get_n(0, [X|XS]) -> {X, [X|XS]};
 get_n(N, [X|XS]) ->
@@ -447,27 +469,192 @@ current_bb_instructions(#es{current_bb = BB, bbs = BBS} = ES) ->
 
 %%%------------------
 
--spec spend_gas(non_neg_integer(), state()) -> state().
-spend_gas(X, #es{gas = Gas} = ES) ->
+-spec spend_gas(non_neg_integer() | list({non_neg_integer(), non_neg_integer()}), state()) -> state().
+spend_gas(X, #es{gas = Gas} = ES) when is_integer(X) ->
     NewGas = Gas - X,
     case NewGas < 0 of
         true  -> aefa_fate:abort(out_of_gas, ES);
         false -> ES#es{gas = NewGas}
-    end.
+    end;
+spend_gas(GasOpts, ES) when is_list(GasOpts) ->
+    Protocol = consensus_version(ES),
+    spend_gas(get_gas(Protocol, GasOpts), ES).
+
+get_gas(_Protocol, [{_, Gas}])                                       -> Gas;
+get_gas(Protocol, [{Protocol1, Gas} | _]) when Protocol >= Protocol1 -> Gas;
+get_gas(Protocol, [_ | Rest])                                        -> get_gas(Protocol, Rest).
 
 %% The gas price per cell increases by 1 for each kibiword (each 1024 64-bit word) used.
--spec spend_gas_for_new_cells(non_neg_integer(), state()) -> state().
-spend_gas_for_new_cells(NewCells, #es{ created_cells = Cells } = ES) when NewCells + Cells =< 1024 ->
+-spec spend_gas_for_new_cells(integer(), state()) -> state().
+spend_gas_for_new_cells(NewCells, ES) when NewCells < 0 ->
+    case consensus_version(ES) of
+        P when P < ?IRIS_PROTOCOL_VSN  -> spend_gas_for_new_cells1(NewCells, ES);
+        P when P >= ?IRIS_PROTOCOL_VSN -> spend_gas_for_new_cells1(abs(NewCells) + 2, ES)
+    end;
+spend_gas_for_new_cells(NewCells, ES) ->
+    spend_gas_for_new_cells1(NewCells, ES).
+
+spend_gas_for_new_cells1(NewCells, #es{ created_cells = Cells } = ES) when NewCells + Cells =< 1024 ->
     TotalCells = Cells + NewCells,
     spend_gas(NewCells, ES#es{ created_cells = TotalCells });
-spend_gas_for_new_cells(1, #es{ created_cells = Cells } = ES) ->
+spend_gas_for_new_cells1(1, #es{ created_cells = Cells } = ES) ->
     TotalCells = Cells + 1,
     CellCost = 1 + (TotalCells bsr 10),
     spend_gas(CellCost, ES#es{ created_cells = TotalCells });
-spend_gas_for_new_cells(NewCells, #es{ created_cells = Cells } = ES) ->
+spend_gas_for_new_cells1(NewCells, #es{ created_cells = Cells } = ES) ->
     TotalCells = Cells + NewCells,
     CellCost = 1 + (TotalCells bsr 10),
     spend_gas(NewCells * CellCost, ES#es{ created_cells = TotalCells }).
+
+
+-define(GAS_DENOMINATOR, 1000).
+
+-record(cost, { node   = 0  %% mGas per node
+              , leaf   = 0  %% mGas per byte
+              , unfold = 0  %% mGas per unfold
+              }).
+
+cost(simple) ->
+  #cost{ node = 800, leaf = 0, unfold = 0 };
+
+cost(serial) ->
+  #cost{ node = 800, leaf = 300, unfold = 0};
+
+cost(unfold) ->
+  #cost{ node = 800, leaf = 0, unfold = 20000000 };
+
+cost(unfold_compare) ->
+  #cost{ node = 800, leaf = 4, unfold = 20000000 };
+
+cost(unfold_serial) ->
+  #cost{ node = 800, leaf = 300, unfold = 20000000 };
+
+cost(final) ->
+  #cost{ node = 800, leaf = 1000, unfold = 0 }.
+
+-type cost_model() :: simple | serial | unfold | unfold_compare | unfold_serial | final.
+
+%% As spend_gas_for_traversal/4, but do not look inside store maps.
+-spec spend_gas_for_traversal(aeb_fate_data:fate_type(), cost_model(), state()) -> state().
+spend_gas_for_traversal(Term, CostModel, ES) ->
+    spend_gas_for_traversal(Term, CostModel, {fun(_) -> 0 end, fun(_) -> ?FATE_UNIT end}, ES).
+
+%% Call this before deep traversals of fate terms to make sure there is enough
+%% gas. Throws an out of gas exception if there's not. Parameterised by the gas
+%% cost model. And an unfolding function for store maps.
+-spec spend_gas_for_traversal(aeb_fate_data:fate_type(),
+                              cost_model(),
+                              {fun((integer()) -> non_neg_integer()), fun((integer()) -> aeb_fate_data:fate_type())},
+                              state()) -> state().
+spend_gas_for_traversal(Term, CostModel, Unfold, ES = #es{gas = Gas, chain_api = APIState}) ->
+    Protocol = aetx_env:consensus_version(aefa_chain_api:tx_env(APIState)),
+    case Protocol < ?IRIS_PROTOCOL_VSN of
+        true  -> ES;
+        false ->
+            try
+                case gas_traversal(Gas * ?GAS_DENOMINATOR, cost(CostModel), Unfold, Term) of
+                    GasLeft when GasLeft >= 0 -> ES#es{gas = GasLeft div ?GAS_DENOMINATOR};
+                    _                         -> aefa_fate:abort(out_of_gas, ES)
+                end
+            catch
+                throw:out_of_gas ->
+                    aefa_fate:abort(out_of_gas, ES)
+            end
+    end.
+
+gas_traversal(Gas, _Cost, _Unfold, _T) when Gas < 0 -> throw(out_of_gas);
+gas_traversal(Gas, Cost, Unfold, T) -> gas_traversal_t(Gas, Cost, Unfold, T).
+
+gas_traversal_t(Gas, Cost, _Unfold, ?FATE_MAP_TOMBSTONE= Val) -> Gas - Cost#cost.node - leaf_cost(Cost, Val);
+gas_traversal_t(Gas, Cost, _Unfold, ?FATE_TRUE         = Val) -> Gas - Cost#cost.node - leaf_cost(Cost, Val);
+gas_traversal_t(Gas, Cost, _Unfold, ?FATE_FALSE        = Val) -> Gas - Cost#cost.node - leaf_cost(Cost, Val);
+gas_traversal_t(Gas, Cost, _Unfold, ?FATE_UNIT         = Val) -> Gas - Cost#cost.node - leaf_cost(Cost, Val);
+gas_traversal_t(Gas, Cost, _Unfold, ?FATE_BITS(_)      = Val) -> Gas - Cost#cost.node - leaf_cost(Cost, Val);
+gas_traversal_t(Gas, Cost, _Unfold, ?FATE_BYTES(_)     = Val) -> Gas - Cost#cost.node - leaf_cost(Cost, Val);
+gas_traversal_t(Gas, Cost, _Unfold, ?FATE_ADDRESS(_)   = Val) -> Gas - Cost#cost.node - leaf_cost(Cost, Val);
+gas_traversal_t(Gas, Cost, _Unfold, ?FATE_CONTRACT(_)  = Val) -> Gas - Cost#cost.node - leaf_cost(Cost, Val);
+gas_traversal_t(Gas, Cost, _Unfold, ?FATE_ORACLE(_)    = Val) -> Gas - Cost#cost.node - leaf_cost(Cost, Val);
+gas_traversal_t(Gas, Cost, _Unfold, ?FATE_ORACLE_Q(_)  = Val) -> Gas - Cost#cost.node - leaf_cost(Cost, Val);
+gas_traversal_t(Gas, Cost, _Unfold, ?FATE_CHANNEL(_)   = Val) -> Gas - Cost#cost.node - leaf_cost(Cost, Val);
+gas_traversal_t(Gas, Cost, _Unfold, ?FATE_TYPEREP(T)) -> gas_traversal_type(Gas - Cost#cost.node, Cost, T);
+gas_traversal_t(Gas, Cost, _Unfold, Val) when ?IS_FATE_INTEGER(Val) -> Gas - Cost#cost.node - leaf_cost(Cost, Val);
+gas_traversal_t(Gas, Cost, _Unfold, Val) when ?IS_FATE_STRING(Val)  -> Gas - Cost#cost.node - leaf_cost(Cost, Val);
+gas_traversal_t(Gas, Cost, Unfold, ?FATE_TUPLE(Val)) ->
+    gas_traversal_l(Gas - Cost#cost.node, Cost, Unfold, tuple_to_list(Val));
+gas_traversal_t(Gas, Cost, Unfold, Val) when ?IS_FATE_LIST(Val) ->
+    gas_traversal_l(Gas, Cost, Unfold, ?FATE_LIST_VALUE(Val));
+gas_traversal_t(Gas, Cost, Unfold, ?FATE_VARIANT(_Arities, _Tag, Vals)) ->
+    gas_traversal_l(Gas - Cost#cost.node, Cost, Unfold, tuple_to_list(Vals));
+gas_traversal_t(Gas, Cost, Unfold, Val) when ?IS_FATE_MAP(Val) ->
+    gas_traversal_m(Gas, Cost, Unfold, ?FATE_MAP_VALUE(Val));
+gas_traversal_t(Gas, Cost, {MapSize, Unfold}, ?FATE_STORE_MAP(Cache, Id) ) ->
+    Gas1 = Gas - MapSize(Id) * Cost#cost.unfold - Cost#cost.node,
+    case Gas1 < 0 of
+        true  -> throw(out_of_gas);
+        false ->
+            Gas2 = gas_traversal(Gas1, Cost, {MapSize, Unfold}, Unfold(Id)),
+            gas_traversal_m(Gas2, Cost, {MapSize, Unfold}, Cache)
+    end.
+
+gas_traversal_l(Gas, Cost, _Unfold, []) -> Gas - Cost#cost.node;
+gas_traversal_l(Gas0, Cost, Unfold, [H | T]) ->
+    Gas1 = gas_traversal(Gas0 - Cost#cost.node, Cost, Unfold, H),
+    gas_traversal_l(Gas1, Cost, Unfold, T).
+
+gas_traversal_m(Gas, Cost, Unfold, Map) ->
+    maps:fold(fun(K, V, Gas1) ->
+                    Gas2 = gas_traversal(Gas1 - Cost#cost.node, Cost, Unfold, K),
+                    gas_traversal(Gas2, Cost, Unfold, V)
+              end, Gas - Cost#cost.node, Map).
+
+gas_traversal_type(Gas, _Cost, _T) when Gas < 0 -> throw(out_of_gas);
+gas_traversal_type(Gas, Cost, {tuple, L}) when is_list(L) ->
+    gas_traversal_type(Gas - Cost#cost.node, Cost, L);
+gas_traversal_type(Gas, Cost, {variant, L}) when is_list(L) ->
+    gas_traversal_type(Gas - Cost#cost.node, Cost, L);
+gas_traversal_type(Gas, Cost, {list, T}) ->
+    gas_traversal_type(Gas - Cost#cost.node, Cost, T);
+gas_traversal_type(Gas0, Cost, {map, K, V}) ->
+    Gas1 = gas_traversal_type(Gas0 - Cost#cost.node, Cost, K),
+    gas_traversal_type(Gas1, Cost, V);
+gas_traversal_type(Gas, Cost, integer)   -> Gas - Cost#cost.leaf;
+gas_traversal_type(Gas, Cost, boolean)   -> Gas - Cost#cost.leaf;
+gas_traversal_type(Gas, Cost, address)   -> Gas - Cost#cost.leaf;
+gas_traversal_type(Gas, Cost, hash)      -> Gas - Cost#cost.leaf;
+gas_traversal_type(Gas, Cost, signature) -> Gas - Cost#cost.leaf;
+gas_traversal_type(Gas, Cost, contract)  -> Gas - Cost#cost.leaf;
+gas_traversal_type(Gas, Cost, oracle)    -> Gas - Cost#cost.leaf;
+gas_traversal_type(Gas, Cost, channel)   -> Gas - Cost#cost.leaf;
+gas_traversal_type(Gas, Cost, bits)      -> Gas - Cost#cost.leaf;
+gas_traversal_type(Gas, Cost, string)    -> Gas - Cost#cost.leaf;
+gas_traversal_type(Gas, Cost, contract_bytearray) -> Gas - Cost#cost.leaf;
+gas_traversal_type(Gas0, Cost, [H|T]) ->
+    Gas1 = gas_traversal_type(Gas0, Cost, H),
+    gas_traversal_type(Gas1, Cost, T);
+gas_traversal_type(Gas, Cost, []) -> Gas - Cost#cost.leaf.
+
+leaf_cost(#cost{ leaf = 0 }, _)          -> 0;
+leaf_cost(#cost{ leaf = LeafCost }, Val) -> LeafCost * leaf_size(Val).
+
+leaf_size(?FATE_MAP_TOMBSTONE) -> 1;
+leaf_size(?FATE_TRUE         ) -> 1;
+leaf_size(?FATE_FALSE        ) -> 1;
+leaf_size(?FATE_UNIT         ) -> 1;
+leaf_size(?FATE_BITS(B)      ) -> int_size(B);
+leaf_size(?FATE_BYTES(B)     ) -> byte_size(B);
+leaf_size(?FATE_ADDRESS(_)   ) -> 32;
+leaf_size(?FATE_CONTRACT(_)  ) -> 32;
+leaf_size(?FATE_ORACLE(_)    ) -> 32;
+leaf_size(?FATE_ORACLE_Q(_)  ) -> 32;
+leaf_size(?FATE_CHANNEL(_)   ) -> 32;
+leaf_size(Val) when ?IS_FATE_INTEGER(Val) -> int_size(Val);
+leaf_size(Val) when ?IS_FATE_STRING(Val)  -> byte_size(Val);
+leaf_size(_) -> 0.
+
+int_size(N) -> int_size(N, 1).
+
+int_size(N, Sz) when abs(N) < 256 -> Sz;
+int_size(N, Sz)                   -> int_size(N div 256, Sz + 1).
 
 %%%------------------
 

@@ -186,7 +186,10 @@
 -include("../../aecontract/include/hard_forks.hrl").
 
 -define(AVAILABLE_FROM(When, ES),
-    aefa_engine_state:vm_version(ES) >= When
+        aefa_engine_state:vm_version(ES) >= When
+        orelse aefa_fate:abort({primop_error, ?FUNCTION_NAME, not_supported}, ES)).
+-define(UNAVAILABLE_FROM(When, ES),
+        aefa_engine_state:vm_version(ES) < When
         orelse aefa_fate:abort({primop_error, ?FUNCTION_NAME, not_supported}, ES)).
 -define(PRE_IRIS_MAP_ORDERING, {?MODULE, pre_iris_map_ordering}).
 
@@ -267,7 +270,7 @@ remote_call_common(Contract, Function, ?FATE_TYPEREP({tuple, ArgTypes}), ?FATE_T
     Caller       = aeb_fate_data:make_address(Current),
     Arity        = length(ArgTypes),
     {Args0, ES1} = aefa_fate:pop_args(Arity, EngineState),
-    {Args, ES2}  = aefa_fate:unfold_store_maps(Args0, ES1),
+    {Args, ES2}  = aefa_fate:unfold_store_maps(Args0, ES1, unfold),
     protect(Protected, fun() ->
             ES3       = aefa_fate:push_return_address(ES2),
             ES4       = case GasCap of
@@ -324,28 +327,35 @@ jump(Arg0, EngineState) ->
 
 jumpif(Arg0, Arg1, EngineState) ->
     {Value, ES1} = get_op_arg(Arg0, EngineState),
+    Protocol = aefa_engine_state:consensus_version(EngineState),
     case Value of
         true -> {jump, Arg1, ES1};
-        false -> {next, ES1}
+        false -> {next, ES1};
+        _ when Protocol >= ?IRIS_PROTOCOL_VSN ->
+            aefa_fate:abort({value_does_not_match_type, Value, boolean}, ES1)
     end.
 
 switch(Arg0, Arg1, Arg2, EngineState) ->
     {Value, ES1} = get_op_arg(Arg0, EngineState),
+    Protocol = aefa_engine_state:consensus_version(EngineState),
     if ?IS_FATE_VARIANT(Value) ->
             ?FATE_VARIANT(Arities, Tag, _T) = Value,
             if length(Arities) =:= 2 ->
                     %% Tag can only be 0 or 1 or the variant is broken.
                     case Tag of
                         0 -> {jump, Arg1, ES1};
-                        1 -> {jump, Arg2, ES1}
+                        1 -> {jump, Arg2, ES1};
+                        _ when Protocol >= ?IRIS_PROTOCOL_VSN ->
+                            aefa_fate:abort({bad_variant_tag, Tag}, ES1)
                     end;
                true -> aefa_fate:abort({bad_variant_size, length(Arities)}, ES1)
             end;
-       true -> aefa_fate:abort({value_does_not_match_type,Value, variant}, ES1)
+       true -> aefa_fate:abort({value_does_not_match_type, Value, variant}, ES1)
     end.
 
 switch(Arg0, Arg1, Arg2, Arg3, EngineState) ->
     {Value, ES1} = get_op_arg(Arg0, EngineState),
+    Protocol = aefa_engine_state:consensus_version(EngineState),
     if ?IS_FATE_VARIANT(Value) ->
             ?FATE_VARIANT(Arities, Tag, _T) = Value,
             if length(Arities) =:= 3 ->
@@ -353,7 +363,9 @@ switch(Arg0, Arg1, Arg2, Arg3, EngineState) ->
                     case Tag of
                         0 -> {jump, Arg1, ES1};
                         1 -> {jump, Arg2, ES1};
-                        2 -> {jump, Arg3, ES1}
+                        2 -> {jump, Arg3, ES1};
+                        _ when Protocol >= ?IRIS_PROTOCOL_VSN ->
+                            aefa_fate:abort({bad_variant_tag, Tag}, ES1)
                     end;
                true -> aefa_fate:abort({bad_variant_size, length(Arities)}, ES1)
             end;
@@ -402,16 +414,30 @@ store(Arg0, Arg1, EngineState) ->
 %% ------------------------------------------------------
 
 inc(EngineState) ->
-    un_op(inc, {{stack, 0}, {stack, 0}}, EngineState).
+    inc({stack, 0}, EngineState).
 
 inc(Arg0, EngineState) ->
-    un_op(inc, {Arg0, Arg0}, EngineState).
+    {Val, ES1} = get_op_arg(Arg0, EngineState),
+    case ?IS_FATE_INTEGER(Val) orelse
+         aefa_engine_state:consensus_version(ES1) < ?IRIS_PROTOCOL_VSN of
+        true ->
+            write(Arg0, Val + 1, ES1);
+        false ->
+            aefa_fate:abort({value_does_not_match_type, Val, integer}, ES1)
+    end.
 
 dec(EngineState) ->
-    un_op(dec, {{stack, 0}, {stack, 0}}, EngineState).
+    dec({stack, 0}, EngineState).
 
 dec(Arg0, EngineState) ->
-    un_op(dec, {Arg0, Arg0}, EngineState).
+    {Val, ES1} = get_op_arg(Arg0, EngineState),
+    case ?IS_FATE_INTEGER(Val) orelse
+         aefa_engine_state:consensus_version(ES1) < ?IRIS_PROTOCOL_VSN of
+        true ->
+            write(Arg0, Val - 1, ES1);
+        false ->
+            aefa_fate:abort({value_does_not_match_type, Val, integer}, ES1)
+    end.
 
 add(Arg0, Arg1, Arg2, EngineState) ->
     {A, ES1} = get_op_arg(Arg1, EngineState),
@@ -492,7 +518,14 @@ or_op(Arg0, Arg1, Arg2, EngineState) ->
     bin_op('or', {Arg0, Arg1, Arg2}, EngineState).
 
 not_op(Arg0, Arg1, EngineState) ->
-    un_op('not', {Arg0, Arg1}, EngineState).
+    {Val, ES1} = get_op_arg(Arg1, EngineState),
+    case ?IS_FATE_BOOLEAN(Val) orelse
+         aefa_engine_state:consensus_version(ES1) < ?IRIS_PROTOCOL_VSN of
+        true ->
+            write(Arg0, not Val, ES1);
+        false ->
+            aefa_fate:abort({value_does_not_match_type, Val, boolean}, ES1)
+    end.
 
 %% ------------------------------------------------------
 %% Tuple instructions
@@ -566,6 +599,7 @@ map_empty(Arg0, EngineState) ->
 
 map_lookup(Arg0, Arg1, Arg2, EngineState) ->
     {[Map, Key], ES1} = get_op_args([Arg1, Arg2], EngineState),
+    map_check(map_lookup, Map, EngineState),
     {Result, ES2} = map_lookup1(Key, Map, ES1),
     case Result of
         error     -> aefa_fate:abort(missing_map_key, ES2);
@@ -574,6 +608,7 @@ map_lookup(Arg0, Arg1, Arg2, EngineState) ->
 
 map_lookup(Arg0, Arg1, Arg2, Arg3, EngineState) ->
     {[Map, Key, Default], ES1} = get_op_args([Arg1, Arg2, Arg3], EngineState),
+    map_check(map_lookupd, Map, EngineState),
     {Result, ES2} = map_lookup1(Key, Map, ES1),
     case Result of
         error     -> write(Arg0, Default, ES2);
@@ -582,6 +617,7 @@ map_lookup(Arg0, Arg1, Arg2, Arg3, EngineState) ->
 
 map_member(Arg0, Arg1, Arg2, EngineState) ->
     {[Map, Key], ES1} = get_op_args([Arg1, Arg2], EngineState),
+    map_check(map_member, Map, EngineState),
     case Map of
         _ when ?IS_FATE_MAP(Map) ->
             write(Arg0, aeb_fate_data:make_boolean(maps:is_key(Key, ?FATE_MAP_VALUE(Map))), ES1);
@@ -616,6 +652,7 @@ map_from_list(Arg0, Arg1, EngineState) ->
 
 map_to_list(Arg0, Arg1, EngineState) ->
     {Map, ES1} = get_op_arg(Arg1, EngineState),
+    map_check(map_to_list, Map, EngineState),
     case Map of
         _ when ?IS_FATE_MAP(Map) ->
             List = map_to_sorted_list(Map, ES1),
@@ -654,6 +691,7 @@ load_pre_iris_map_ordering() ->
 
 map_size_(Arg0, Arg1, EngineState) ->
     {Map, ES1} = get_op_arg(Arg1, EngineState),
+    map_check(map_size, Map, EngineState),
     case Map of
         _ when ?IS_FATE_MAP(Map) ->
             Size = aeb_fate_data:make_integer(map_size(?FATE_MAP_VALUE(Map))),
@@ -661,6 +699,15 @@ map_size_(Arg0, Arg1, EngineState) ->
         ?FATE_STORE_MAP(Cache, MapId) ->
             {Size, ES2} = store_map_size(Cache, MapId, ES1),
             write(Arg0, Size, ES2)
+    end.
+
+map_check(Op, Map, ES) ->
+    Protocol = aefa_engine_state:consensus_version(ES),
+    case ?IS_FATE_MAP(Map) orelse ?IS_FATE_STORE_MAP(Map) of
+        false when Protocol >= ?IRIS_PROTOCOL_VSN ->
+            aefa_fate:abort({bad_map, Op, Map}, ES);
+        _ ->
+            ok
     end.
 
 %% ------------------------------------------------------
@@ -685,6 +732,8 @@ tl(Arg0, Arg1, EngineState) ->
     un_op(tl, {Arg0, Arg1}, EngineState).
 
 length(Arg0, Arg1, EngineState) ->
+    %% if you want this back, please fix the gas cost to be linear
+    ?UNAVAILABLE_FROM(?VM_FATE_SOPHIA_2, EngineState),
     un_op(length, {Arg0, Arg1}, EngineState).
 
 append(Arg0, Arg1, Arg2, EngineState) ->
@@ -697,6 +746,7 @@ append(Arg0, Arg1, Arg2, EngineState) ->
 %% ------------------------------------------------------
 %% String instructions
 %% ------------------------------------------------------
+-define(IS_CHAR(C), (C >= 0 andalso C =< 16#10ffff)).
 
 str_join(Arg0, Arg1, Arg2, EngineState) ->
     {LeftValue, ES1} = get_op_arg(Arg1, EngineState),
@@ -748,13 +798,26 @@ str_from_list(Arg0, Arg1, EngineState) ->
         aefa_fate:abort({value_does_not_match_type, Value, {list, char}}, ES1);
        true -> ok
     end,
-    case unicode:characters_to_nfc_binary(Value) of
-        {error, _, _} -> aefa_fate:abort({value_does_not_match_type, Value, {list, char}}, ES1);
-        Str ->
-            Cells = string_cells(?FATE_STRING_VALUE(Str)),
-            ES2 = aefa_engine_state:spend_gas_for_new_cells(Cells + 1, ES1),
-            write(Arg0, aeb_fate_data:make_string(Str), ES2)
+    Protocol = aefa_engine_state:consensus_version(EngineState),
+    ES2 = aefa_engine_state:spend_gas_for_traversal(Value, simple, ES1),
+    case check_char_list(Value) of
+        false when Protocol >= ?IRIS_PROTOCOL_VSN ->
+            aefa_fate:abort({value_does_not_match_type, Value, {list, char}}, ES2);
+        _ ->
+            case unicode:characters_to_nfc_binary(Value) of
+                {error, _, _} ->
+                    aefa_fate:abort({value_does_not_match_type, Value, {list, char}}, ES2);
+                Str ->
+                    Cells = string_cells(?FATE_STRING_VALUE(Str)),
+                    ES3 = aefa_engine_state:spend_gas_for_new_cells(Cells + 1, ES2),
+                    write(Arg0, aeb_fate_data:make_string(Str), ES3)
+            end
     end.
+
+check_char_list([]) -> true;
+check_char_list([C | Cs]) when ?IS_FATE_INTEGER(C), ?IS_CHAR(C) ->
+    check_char_list(Cs);
+check_char_list(_)  -> false.
 
 str_to_upper(Arg0, Arg1, EngineState) ->
     {Value, ES1} = get_op_arg(Arg1, EngineState),
@@ -786,8 +849,11 @@ char_to_int(Arg0, Arg1, EngineState) ->
 
 char_from_int(Arg0, Arg1, EngineState) ->
     {Int, ES1} = get_op_arg(Arg1, EngineState),
+    Protocol = aefa_engine_state:consensus_version(EngineState),
     if not ?IS_FATE_INTEGER(Int) ->
         aefa_fate:abort({value_does_not_match_type, Int, int}, ES1);
+       not ?IS_CHAR(Int) andalso Protocol >= ?IRIS_PROTOCOL_VSN ->
+        aefa_fate:abort({value_does_not_match_type, Int, char}, ES1);
        true -> ok
     end,
     case unicode:characters_to_nfc_list([Int]) of
@@ -1017,7 +1083,7 @@ make_fate_tx(Aetx, GAMetas, PayFor, ES) ->
             MkWrapper = fun(PK, F) ->
                             aeb_fate_data:make_variant([2], 0, {?FATE_ADDRESS(PK), F})
                         end,
-            {Cells0, FateBaseTx} = make_fate_base_tx(BaseTxType, BaseTx),
+            {Cells0, FateBaseTx} = make_fate_base_tx(BaseTxType, BaseTx, ES),
             {Cells1, FatePayFor} =
                 case PayFor of
                     undefined -> {8, make_none()};
@@ -1034,7 +1100,7 @@ make_fate_tx(Aetx, GAMetas, PayFor, ES) ->
              make_some(Res)}
     end.
 
-make_fate_base_tx(BaseTxType, BaseTx) ->
+make_fate_base_tx(BaseTxType, BaseTx, ES) ->
     Arities = [3, 0, 0, 0, 0, 0, 1, 1, 1, 2, 1, 2, 2, 1, 1, 1, 1, 1, 1, 1, 2, 0],
     MkVar   = fun(Tag, Args) -> aeb_fate_data:make_variant(Arities, Tag, Args) end,
     VarGas  = fun(NArgs) -> 2 * length(Arities) + NArgs + 4 end,
@@ -1107,7 +1173,10 @@ make_fate_base_tx(BaseTxType, BaseTx) ->
             {VarGas(2) + AddrGas + AmtGas, MkVar(20, {?FATE_ADDRESS(Ct), Amount})};
 
         ga_attach_tx ->
-            {VarGas(0), MkVar(21, {})}
+            {VarGas(0), MkVar(21, {})};
+
+        InvalidTx ->
+            aefa_fate:abort({auth_tx_type_not_handled, InvalidTx}, ES)
     end.
 
 auth_tx_hash(Arg0, EngineState) ->
@@ -1210,7 +1279,13 @@ generation(Arg0, EngineState) ->
     API = aefa_engine_state:chain_api(EngineState),
     write(Arg0, aefa_chain_api:generation(API), EngineState).
 
-microblock(_Arg0, _EngineState) -> exit({error, op_not_implemented_yet}).
+-spec microblock(_, _) -> no_return().
+microblock(_Arg0, EngineState) ->
+    Protocol = aefa_engine_state:consensus_version(EngineState),
+    case Protocol >= ?IRIS_PROTOCOL_VSN of
+        true  -> aefa_fate:abort({op_not_implemented, microblock}, EngineState);
+        false -> exit({error, op_not_implemented_yet})
+    end.
 
 difficulty(Arg0, EngineState) ->
     API = aefa_engine_state:chain_api(EngineState),
@@ -1279,7 +1354,13 @@ log_(Args, EngineState) ->
     Gas = Size * aec_governance:byte_gas(),
     spend_gas(Gas, aefa_engine_state:add_log(LogEntry, ES1)).
 
-deactivate(_EngineState) -> exit({error, op_not_implemented_yet}).
+-spec deactivate(_) -> no_return().
+deactivate(EngineState) ->
+    Protocol = aefa_engine_state:consensus_version(EngineState),
+    case Protocol >= ?IRIS_PROTOCOL_VSN of
+        true  -> aefa_fate:abort({op_not_implemented, microblock}, EngineState);
+        false -> exit({error, op_not_implemented_yet})
+    end.
 
 spend(Arg0, Arg1, ES0) ->
     FromPubkey = aefa_engine_state:current_contract(ES0),
@@ -1506,7 +1587,7 @@ oracle_register_(Arg0, ?FATE_BYTES(Signature), ?FATE_ADDRESS(Address),
     end.
 
 oracle_query(Arg0, Arg1, Arg2, Arg3, Arg4, Arg5, Arg6, Arg7, EngineState) ->
-    {[Oracle, Question, QFee, QTTL, RTTL, QType, RType], ES1} =
+    {[Oracle, Question0, QFee, QTTL, RTTL, QType, RType], ES1} =
         get_op_args([Arg1, Arg2, Arg3, Arg4, Arg5, Arg6, Arg7], EngineState),
     if
         not ?IS_FATE_ORACLE(Oracle) ->
@@ -1533,23 +1614,30 @@ oracle_query(Arg0, Arg1, Arg2, Arg3, Arg4, Arg5, Arg6, Arg7, EngineState) ->
              _ ->
                 aefa_fate:abort({primop_error, oracle_query, bad_ttl}, ES1)
         end,
+    {Question, ES2} =
+        case aefa_engine_state:consensus_version(ES1) < ?IRIS_PROTOCOL_VSN of
+            true ->
+                {Question0, ES1};
+            false ->
+                aefa_fate:unfold_store_maps(Question0, ES1, unfold_serial)
+        end,
     ?FATE_ORACLE(OraclePubkey) = Oracle,
-    SenderPubkey = aefa_engine_state:current_contract(ES1),
+    SenderPubkey = aefa_engine_state:current_contract(ES2),
     QFeeVal = ?FATE_INTEGER_VALUE(QFee),
-    API = aefa_engine_state:chain_api(ES1),
+    API = aefa_engine_state:chain_api(ES2),
     case aefa_chain_api:oracle_query(OraclePubkey, SenderPubkey, Question,
                                      QFeeVal, QTTLType, QTTLVal, RTTLVal,
                                      ?ABI_FATE_SOPHIA_1, QType, RType, API) of
         {ok, QueryId, DynamicGas, API1} ->
-            ES2 = aefa_engine_state:set_chain_api(API1, ES1),
-            ES3 = spend_gas(DynamicGas, ES2),
-            write(Arg0, aeb_fate_data:make_oracle_query(QueryId), ES3);
+            ES3 = aefa_engine_state:set_chain_api(API1, ES2),
+            ES4 = spend_gas(DynamicGas, ES3),
+            write(Arg0, aeb_fate_data:make_oracle_query(QueryId), ES4);
         {error, What} ->
-            aefa_fate:abort({primop_error, oracle_query, What}, ES1)
+            aefa_fate:abort({primop_error, oracle_query, What}, ES2)
     end.
 
 oracle_respond(Arg0, Arg1, Arg2, Arg3, Arg4, Arg5, EngineState) ->
-    {[Signature, Oracle, Query, Response, QType, RType], ES1} =
+    {[Signature, Oracle, Query, Response0, QType, RType], ES1} =
         get_op_args([Arg0, Arg1, Arg2, Arg3, Arg4, Arg5], EngineState),
     if
         not ?IS_FATE_ORACLE(Oracle) ->
@@ -1563,18 +1651,25 @@ oracle_respond(Arg0, Arg1, Arg2, Arg3, Arg4, Arg5, EngineState) ->
         true ->
             ok
     end,
+    {Response, ES2} =
+        case aefa_engine_state:consensus_version(ES1) < ?IRIS_PROTOCOL_VSN of
+            true ->
+                {Response0, ES1};
+            false ->
+                aefa_fate:unfold_store_maps(Response0, ES1, unfold_serial)
+        end,
     ?FATE_ORACLE_Q(QueryId) = Query,
     ?FATE_ORACLE(OraclePubkey) = Oracle,
     ?FATE_BYTES(SignBin) = Signature,
-    ES2 = check_delegation_signature(oracle_respond, {OraclePubkey, QueryId}, SignBin, ES1),
-    API = aefa_engine_state:chain_api(ES2),
+    ES3 = check_delegation_signature(oracle_respond, {OraclePubkey, QueryId}, SignBin, ES2),
+    API = aefa_engine_state:chain_api(ES3),
     case aefa_chain_api:oracle_respond(OraclePubkey, QueryId, Response,
                                        ?ABI_FATE_SOPHIA_1, QType, RType, API) of
         {ok, DynamicGas, API1} ->
-            ES3 = spend_gas(DynamicGas, ES2),
-            aefa_engine_state:set_chain_api(API1, ES3);
+            ES4 = spend_gas(DynamicGas, ES3),
+            aefa_engine_state:set_chain_api(API1, ES4);
         {error, What} ->
-            aefa_fate:abort({primop_error, oracle_respond, What}, ES2)
+            aefa_fate:abort({primop_error, oracle_respond, What}, ES3)
     end.
 
 oracle_extend(Arg0, Arg1, Arg2, EngineState) ->
@@ -2226,7 +2321,7 @@ un_op(Op, {To, What}, ES) ->
 
 un_op_unfold(Op, {To, What}, ES) ->
     {Value0, ES1} = get_op_arg(What, ES),
-    {Value,  ES2} = aefa_fate:unfold_store_maps(Value0, ES1),
+    {Value,  ES2} = aefa_fate:unfold_store_maps(Value0, ES1, unfold_serial),
     Result = gop(Op, Value, ES2),
     write(To, Result, ES2).
 
@@ -2276,22 +2371,42 @@ make_none() ->
 make_some(Val) ->
     aeb_fate_data:make_variant([0,1], 1, {Val}).
 
+
 make_variant(Arities, Tag, NoElements, ES)  when ?IS_FATE_LIST(Arities)
-                                              , ?IS_FATE_INTEGER(Tag)
-                                              , ?IS_FATE_INTEGER(NoElements)
-                                              , NoElements >= 0
-                                              , Tag < length(?FATE_LIST_VALUE(Arities))
-                                              , Tag >= 0 ->
+                                               , ?IS_FATE_INTEGER(Tag)
+                                               , ?IS_FATE_INTEGER(NoElements)
+                                               , NoElements >= 0
+                                               , Tag < length(?FATE_LIST_VALUE(Arities))
+                                               , Tag >= 0 ->
+    case aefa_engine_state:consensus_version(ES) < ?IRIS_PROTOCOL_VSN of
+        true  -> make_variant1(Arities, Tag, NoElements, ES);
+        false -> make_variant2(Arities, Tag, NoElements, ES)
+    end;
+make_variant(Arities, Tag, NoElements, ES) ->
+    aefa_fate:abort({type_error, make_variant, [Arities, Tag, NoElements]}, ES).
+
+make_variant1(Arities, Tag, NoElements, ES) ->
     {Elements, ES2} = aefa_fate:pop_n(NoElements, ES),
     Values = list_to_tuple(Elements),
     Cells = length(?FATE_LIST_VALUE(Arities)) * 2 + NoElements + 4,
     ES3 = aefa_engine_state:spend_gas_for_new_cells(Cells, ES2),
-    {aeb_fate_data:make_variant(Arities, Tag, Values), ES3};
-make_variant(Arities, Tag, NoElements, ES) ->
-    aefa_fate:abort({type_error, make_variant, [Arities, Tag, NoElements]}, ES).
+    {aeb_fate_data:make_variant(Arities, Tag, Values), ES3}.
 
--define(FATE_FR(X), ?FATE_BYTES(X)).
--define(FATE_FP(X), ?FATE_BYTES(X)).
+make_variant2(Arities, Tag, NoElements, ES) ->
+    %% Check for bad arities
+    case lists:filter(fun(A) -> not is_integer(A) orelse abs(A) > 255 end, Arities) of
+        []      -> ok;
+        [_ | _] -> aefa_fate:abort({type_error, make_variant, [Arities, Tag, NoElements]}, ES)
+    end,
+    %% Check arity
+    case lists:nth(Tag + 1, Arities) == NoElements of
+        true  -> ok;
+        false -> aefa_fate:abort({type_error, make_variant, [Arities, Tag, NoElements]}, ES)
+    end,
+    make_variant1(Arities, Tag, NoElements, ES).
+
+-define(FATE_FR(X), ?FATE_BYTES(<<(X):32/binary>>)).
+-define(FATE_FP(X), ?FATE_BYTES(<<(X):48/binary>>)).
 -define(FATE_FP2(X1, X2), ?FATE_TUPLE({?FATE_FP(X1), ?FATE_FP(X2)})).
 
 -define(FATE_G1(X, Y, Z), ?FATE_TUPLE({?FATE_FP(X), ?FATE_FP(Y), ?FATE_FP(Z)})).
@@ -2301,15 +2416,12 @@ make_variant(Arities, Tag, NoElements, ES) ->
         ?FATE_TUPLE({?FATE_FP(X1), ?FATE_FP(X2), ?FATE_FP(X3), ?FATE_FP(X4), ?FATE_FP(X5), ?FATE_FP(X6),
                      ?FATE_FP(X7), ?FATE_FP(X8), ?FATE_FP(X9), ?FATE_FP(X10), ?FATE_FP(X11), ?FATE_FP(X12)})).
 
+-define(MAX_FR, 16#73eda753299d7d483339d80809a1d80553bda402fffe5bfeffffffff00000000).
+-define(MAX_FP, 16#1a0111ea397fe69a4b1ba7b6434bacd764774b84f38512bf6730d2a0f6b0f6241eabfffeb153ffffb9feffffffffaaab).
+
 %% Unary operations
 op(get, A) ->
     A;
-op(inc, A) ->
-    A + 1;
-op(dec, A) ->
-    A - 1;
-op('not', A) ->
-    not A;
 op(map_from_list, A) when ?IS_FATE_LIST(A) ->
     KeyValues = [T || ?FATE_TUPLE(T) <- ?FATE_LIST_VALUE(A)],
     aeb_fate_data:make_map(maps:from_list(KeyValues));
@@ -2402,10 +2514,10 @@ op(bls12_381_gt_is_one, ?FATE_GT(X11, X12, X13, X14, X15, X16, X17, X18, X19, X1
 op(bls12_381_final_exp, ?FATE_GT(X11, X12, X13, X14, X15, X16, X17, X18, X19, X110, X111, X112)) ->
     P = emcl:bn_final_exp(gt_to_emcl(X11, X12, X13, X14, X15, X16, X17, X18, X19, X110, X111, X112)),
     gt_to_fate(P);
-op(bls12_381_int_to_fr, I) when ?IS_FATE_INTEGER(I) ->
+op(bls12_381_int_to_fr, I) when ?IS_FATE_INTEGER(I), I >= 0, I < ?MAX_FR ->
     Fr = emcl:mk_Fr(?FATE_INTEGER_VALUE(I)),
     ?FATE_FR(emcl:bnFr_to_bin(Fr));
-op(bls12_381_int_to_fp, I) when ?IS_FATE_INTEGER(I) ->
+op(bls12_381_int_to_fp, I) when ?IS_FATE_INTEGER(I), I >= 0, I < ?MAX_FP ->
     Fp = emcl:mk_Fp(?FATE_INTEGER_VALUE(I)),
     ?FATE_FP(emcl:bnFp_to_bin(Fp));
 op(bls12_381_fr_to_int, ?FATE_FR(X)) ->
@@ -2658,9 +2770,9 @@ store_map_get_clean(Cache, MapId, ES) ->
 
 bin_comp(Comp, {To, Left, Right}, ES) ->
     {LeftValue,   ES1} = get_op_arg(Left, ES),
-    {LeftValue1,  ES2} = aefa_fate:unfold_store_maps(LeftValue, ES1),
+    {LeftValue1,  ES2} = aefa_fate:unfold_store_maps(LeftValue, ES1, unfold_compare),
     {RightValue,  ES3} = get_op_arg(Right, ES2),
-    {RightValue1, ES4} = aefa_fate:unfold_store_maps(RightValue, ES3),
+    {RightValue1, ES4} = aefa_fate:unfold_store_maps(RightValue, ES3, unfold_compare),
     ConsensusVersion = aefa_engine_state:consensus_version(ES),
     COMP = if
                ConsensusVersion < ?IRIS_PROTOCOL_VSN ->

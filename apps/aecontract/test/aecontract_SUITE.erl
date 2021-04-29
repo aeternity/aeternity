@@ -4702,7 +4702,7 @@ sophia_map_of_maps(_Cfg) ->
 sophia_maps_gc(_Cfg) ->
     ?skipRest(vm_version() =< ?VM_AEVM_SOPHIA_3, only_lima),
     state(aect_test_utils:new_state()),
-    Acc = ?call(new_account, 10000000 * aec_test_utils:min_gas_price()),
+    Acc = ?call(new_account, 20000000 * aec_test_utils:min_gas_price()),
     %% Big to make sure it ends up in the store.
     InitA = maps:from_list([ {integer_to_binary(I), integer_to_binary(I + 100)}
                              || I <- lists:seq(1, 100) ]),
@@ -4723,7 +4723,7 @@ sophia_maps_gc(_Cfg) ->
 
     A1 = InitA#{ KeyA1 => ValA },
     B1 = InitA#{ KeyA2 => ValA },
-    {ResA1, ResB1} = ?call(call_contract, Acc, Ct, get_state, StateT, {}),
+    {ResA1, ResB1} = ?call(call_contract, Acc, Ct, get_state, StateT, {}, #{gas => 5000000}),
     ?assertEqual({Prune(A1), Prune(B1)}, {Prune(ResA1), Prune(ResB1)}),
 
     KeyB1 = <<"KeyB1">>,
@@ -4733,7 +4733,7 @@ sophia_maps_gc(_Cfg) ->
 
     A2 = B1#{ KeyB1 => ValB },
     B2 = B1#{ KeyB2 => ValB },
-    {ResA2, ResB2} = ?call(call_contract, Acc, Ct, get_state, StateT, {}),
+    {ResA2, ResB2} = ?call(call_contract, Acc, Ct, get_state, StateT, {}, #{gas => 5000000}),
     ?assertEqual({Prune(A2), Prune(B2)}, {Prune(ResA2), Prune(ResB2)}),
     ok.
 
@@ -4748,7 +4748,7 @@ sophia_maps_gc_bug(_Cfg) ->
                   || _ <- lists:seq(1, 20) ],
     {{}, Gas} = ?call(call_contract, Acc, Ct, set, {tuple, []}, {<<"foo">>}, #{ return_gas_used => true }),
     case protocol_version() >= ?IRIS_PROTOCOL_VSN of
-        true  -> ?assertMatch({_, '<', _, true}, {Gas, '<', 1000, Gas < 1000});
+        true  -> ?assertMatch({_, '<', _, true}, {Gas, '<', 3000, Gas < 3000});
         false -> ?assertMatch({_, '>', _, true}, {Gas, '>', 4000, Gas > 4000})
     end.
 
@@ -5348,6 +5348,17 @@ sophia_crypto_pairing_(_Cfg) ->
     FromFateG1 = fun({{bytes, X}, {bytes, Y}, {bytes, Z}}) -> {g1, {fp, X}, {fp, Y}, {fp, Z}} end,
     G1Type = {tuple, [{bytes, 48}, {bytes, 48}, {bytes, 48}]},
 
+    true = ?call(call_contract, Acc, C, fr_idempotent, bool, {123435521545}),
+    true = ?call(call_contract, Acc, C, fp_idempotent, bool, {123435521545}),
+
+    {error, <<"Bad arguments to bls12_381_int_to_fr: [-234]">>} = ?call(call_contract, Acc, C, fr_idempotent, bool, {-234}),
+    {error, <<"Bad arguments to bls12_381_int_to_fp: [-234]">>} = ?call(call_contract, Acc, C, fp_idempotent, bool, {-234}),
+
+    {error, <<"Bad arguments to bls12_381_int_to_fr: [52435875175126190479447740508185965837690552500527637822603658699938581184512]">>} =
+        ?call(call_contract, Acc, C, fr_idempotent, bool, {16#73eda753299d7d483339d80809a1d80553bda402fffe5bfeffffffff00000000}),
+    {error, <<"Bad arguments to bls12_381_int_to_fp: [4002409555221667393417789825735904156556882819939007885332058136124031650490837864442687629129015664037894272559787]">>} =
+        ?call(call_contract, Acc, C, fp_idempotent, bool, {16#1a0111ea397fe69a4b1ba7b6434bacd764774b84f38512bf6730d2a0f6b0f6241eabfffeb153ffffb9feffffffffaaab}),
+
     Res1 = ?call(call_contract, Acc, C, g1_neg, G1Type, {ToFateG1(G1a)}),
     ?assert(emcl:is_eq(emcl:bnG1_neg(G1a), FromFateG1(Res1))),
 
@@ -5567,9 +5578,9 @@ sophia_protected_call(_Cfg) ->
               , Test(test_missing_con,   {option, word}, 130, 200)
               , Test(test_nonpayable,    {option, word}, 130, 200)
               , Test(test_out_of_funds,  {option, word}, 130, 200)
-              , Test(test_hacked,        {option, word}, 500, 800)
-              , Test(test_revert,        {option, word}, 500, 800)
-              , Test(test_crash,         {option, word}, 500, 800)
+              , Test(test_hacked,        {option, word}, 2500, 2800)
+              , Test(test_revert,        {option, word}, 2500, 2800)
+              , Test(test_crash,         {option, word}, 2500, 2800)
               , Test(test_out_of_gas,    {option, word}, 500, 800)
               , Test(test_wrong_ret_r,   {option, bool}, 150, 200)
               , Test(test_wrong_arg_r,   {option, word}, 130, 200)
@@ -5577,9 +5588,9 @@ sophia_protected_call(_Cfg) ->
               , Test(test_missing_r,     {option, word}, 130, 200)
               , Test(test_missing_con_r, {option, word}, 130, 200)
               , Test(test_nonpayable_r,  {option, word}, 130, 200)
-              , Test(test_hacked_r,      {option, word}, 600, 900)
-              , Test(test_revert_r,      {option, word}, 600, 900)
-              , Test(test_crash_r,       {option, word}, 600, 900)
+              , Test(test_hacked_r,      {option, word}, 2600, 2900)
+              , Test(test_revert_r,      {option, word}, 2600, 2900)
+              , Test(test_crash_r,       {option, word}, 2600, 2900)
               , Test(test_out_of_gas_r,  {option, word}, 300, 500) ],
     [] = [ Res || Res = {_, MinGas, MaxGas, {R, Gas}, State, Bal} <- Results,
                   R /= none orelse Gas < MinGas orelse Gas > MaxGas orelse State /= 0 orelse
@@ -6444,12 +6455,14 @@ sophia_state_gas_arguments(_Cfg) ->
     ?assertEqual(Gas0, Gas1),
 
     %% Test that one more key in map does mean more gas when used as an argument
-    %% to a remote call on AEVM but not on FATE.
+    %% to a remote call on AEVM but not on FATEv1.
     ?call(call_contract, Acc, Ct1, update_m, UnitT, {#{}}),
     {{}, Gas2} = ?call(call_contract, Acc, Ct1, pass_it, UnitT, {?cid(Ct0)}, #{ return_gas_used => true }),
     ?call(call_contract, Acc, Ct1, update_m, UnitT, {#{1 => 1}}),
     {{}, Gas3} = ?call(call_contract, Acc, Ct1, pass_it, UnitT, {?cid(Ct0)}, #{ return_gas_used => true }),
-    ?assertMatchVM(true, false, Gas3 > Gas2),
+    ?assertMatchAEVM(true, Gas3 > Gas2),
+    ?assertMatchFATE(false, true, Gas3 > Gas2),
+
 
     %% Test that a longer string means more gas for AEVM
     ?call(call_contract, Acc, Ct1, update_s, UnitT, {<<"short">>}),
@@ -6498,11 +6511,13 @@ sophia_state_gas_store_size(_Cfg) ->
     BigMap = maps:from_list([{X, X} || X <- lists:seq(1, 1000)]),
     {{}, _} = ?call(call_contract, Acc, Ct1, update_m, UnitT, {BigMap}, #{ return_gas_used => true }),
 
-    %% Updating one key in the store map should cost the same even if the old key didn't exist.
+    %% Updating one key in the store map
     {{}, Gas4} = ?call(call_contract, Acc, Ct1, update_mk, UnitT, {1, 2}, #{ return_gas_used => true }),
     {{}, Gas5} = ?call(call_contract, Acc, Ct1, update_mk, UnitT, {2, 1}, #{ return_gas_used => true }),
-    {{}, Gas6} = ?call(call_contract, Acc, Ct1, update_mk, UnitT, {0, 1}, #{ return_gas_used => true }),
     ?assertEqual(Gas4, Gas5),
+
+    %% Updating a non-existing key - same cost
+    {{}, Gas6} = ?call(call_contract, Acc, Ct1, update_mk, UnitT, {3, 1}, #{ return_gas_used => true }),
     ?assertEqual(Gas5, Gas6),
 
     %% Updating one key in the store map should cost more if the value takes up more space
@@ -6549,9 +6564,9 @@ sophia_use_memory_gas(_Cfg) ->
                        #{ return_gas_used => true }),
     ?assertEqual({true, Gas1, Gas2}, {Gas1 < Gas2, Gas1, Gas2}),
 
-    %% Test that strings taking as many machine words cost the same amount of gas
+    %% Test that a slightly longer string cost the same (AEVM) or slightly more (FATE)...
     {_, Gas3} = ?call(call_contract, Acc, Ct0, str_concat, string, {<<"short">>, <<"string">>}, #{ return_gas_used => true }),
-    ?assertEqual({true, Gas1, Gas3}, {Gas1 == Gas3, Gas1, Gas3}),
+    ?assertEqual({true, Gas1, Gas3}, {Gas1 =< Gas3 andalso Gas1 + 5 >= Gas3, Gas1, Gas3}),
 
     %% Test that building a large string is ok, but costs lots of gas. size = 5*pow(2,10)
     {_, Gas4} = ?call(call_contract, Acc, Ct0, dup_str, string, {<<"short">>, 10}, #{ return_gas_used => true

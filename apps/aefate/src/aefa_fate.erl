@@ -26,7 +26,7 @@
         , pop_args/2
         , bind_args/2
         , ensure_contract_store/2
-        , unfold_store_maps/2
+        , unfold_store_maps/3
         , unfold_store_maps_in_args/2
         , check_type/2
         , get_function_signature/2
@@ -66,6 +66,7 @@
 -endif.
 
 -include_lib("aebytecode/include/aeb_fate_data.hrl").
+-include("../../aecontract/include/hard_forks.hrl").
 
 -ifdef(TEST).
 -define(trace(I,S), aefa_engine_state:add_trace(I, S)).
@@ -89,7 +90,7 @@ run_with_cache(Spec, Env, Cache) ->
 
 run(Spec, Env) ->
     try execute(setup_engine(Spec, Env)) of
-        Res -> {ok, Res}
+        ES -> {ok, ES}
     catch
         throw:{?MODULE, revert, S, ES} -> {revert, S, ES};
         throw:{?MODULE, E, ES} -> {error, E, ES}
@@ -167,25 +168,31 @@ runtime_revert(Value, ES) when ?IS_FATE_STRING(Value) ->
     throw({?MODULE, revert, Value, ES1}).
 
 %% Runtime error messages for dry run and debugging.
-%% Should result on one tyhpe of runtime error and use all gas when
+%% Should result in one type of runtime error and use all gas when
 %% executed on chain.
+-ifdef(TEST).
+-define(MAX_TERM_DEPTH, 20).
+-else.
+-define(MAX_TERM_DEPTH, 6).
+-endif.
+
 -spec abort(term(), aefa_engine_state:state()) -> no_return().
 abort({invalid_tuple_size, Size}, ES) ->
-    ?t("Invalid tuple size: ~p", [Size], ES);
+    ?t("Invalid tuple size: ~P", [Size, ?MAX_TERM_DEPTH], ES);
 abort({element_index_out_of_bounds, Index}, ES) ->
-    ?t("Bad index argument to element, Index: ~p", [Index], ES);
+    ?t("Bad index argument to element, Index: ~P", [Index, ?MAX_TERM_DEPTH], ES);
 abort({bad_variant_tag, Tag}, ES) ->
-    ?t("Type error in switch: tag ~p is larger than switch op", [Tag], ES);
+    ?t("Type error in switch: tag ~P is larger than switch op", [Tag, ?MAX_TERM_DEPTH], ES);
 abort({bad_variant_size, Size}, ES) ->
-    ?t("Type error in switch: wrong size ~p", [Size], ES);
+    ?t("Type error in switch: wrong size ~P", [Size, ?MAX_TERM_DEPTH], ES);
 abort({type_error, Op, Args}, ES) ->
-    ?t("Bad arguments to ~p: ~p", [Op, Args], ES);
+    ?t("Bad arguments to ~P: ~P", [Op, ?MAX_TERM_DEPTH, Args, ?MAX_TERM_DEPTH], ES);
 abort(hd_on_empty_list, ES) ->
     ?t("Head on empty list", [], ES);
 abort(tl_on_empty_list, ES) ->
     ?t("Tail on empty list", [], ES);
 abort({arithmetic_error, Reason}, ES) ->
-    ?t("Arithmetic error: ~p", [Reason], ES);
+    ?t("Arithmetic error: ~P", [Reason, ?MAX_TERM_DEPTH], ES);
 abort(division_by_zero, ES) ->
     ?t("Arithmetic error: division by zero", [], ES);
 abort(mod_by_zero, ES) ->
@@ -197,41 +204,41 @@ abort(missing_map_key, ES) ->
 abort(bad_store_map_id, ES) ->
     ?t("Maps: Map does not exist", [], ES);
 abort({undefined_var, Var}, ES) ->
-    ?t("Undefined var: ~p", [Var], ES);
+    ?t("Undefined var: ~P", [Var, ?MAX_TERM_DEPTH], ES);
 abort({bad_return_type, Val, Type}, ES) ->
-    ?t("Type error on return: ~p is not of type ~p", [Val, Type], ES);
+    ?t("Type error on return: ~P is not of type ~P", [Val, ?MAX_TERM_DEPTH, Type, ?MAX_TERM_DEPTH], ES);
 abort(remote_type_mismatch, ES) ->
     ?t("Type of remote function does not match expected type", [], ES);
 abort({function_arity_mismatch, Got, Expected}, ES) ->
-    ?t("Expected ~p arguments, got ~p", [Expected, Got], ES);
+    ?t("Expected ~P arguments, got ~P", [Expected, ?MAX_TERM_DEPTH, Got, ?MAX_TERM_DEPTH], ES);
 abort({value_does_not_match_type, Val, Type}, ES) ->
-    ?t("Type error on call: ~p is not of type ~p", [Val, Type], ES);
+    ?t("Type error on call: ~P is not of type ~P", [Val, ?MAX_TERM_DEPTH, Type, ?MAX_TERM_DEPTH], ES);
 abort({trying_to_reach_bb, BB}, ES) ->
-    ?t("Trying to jump to non existing bb: ~p", [BB], ES);
+    ?t("Trying to jump to non existing bb: ~P", [BB, ?MAX_TERM_DEPTH], ES);
 abort({trying_to_call_function, Name}, ES) ->
-    ?t("Trying to call undefined function: ~w", [Name], ES);
+    ?t("Trying to call undefined function: ~W", [Name, ?MAX_TERM_DEPTH], ES);
 abort(invalid_init_call, ES) ->
     ?t("Calling init is not allowed in this context", [], ES);
 abort({trying_to_call_contract, Pubkey}, ES) ->
     ?t("Trying to call invalid contract: ~w", [Pubkey], ES);
 abort({not_allowed_in_auth_context, Op}, ES) ->
-    ?t("Operation ~p not allowed in GA Authentication context", [Op], ES);
+    ?t("Operation ~P not allowed in GA Authentication context", [Op, ?MAX_TERM_DEPTH], ES);
 abort({not_allowed_offchain, Op}, ES) ->
-    ?t("Operation ~p not allowed off chain", [Op], ES);
+    ?t("Operation ~P not allowed off chain", [Op, ?MAX_TERM_DEPTH], ES);
 abort(negative_value_in_call, ES) ->
     ?t("Trying to transfer negative value in call", [], ES);
 abort({call_error, What}, ES) ->
-    ?t("Error in call: ~w", [What], ES);
+    ?t("Error in call: ~W", [What, ?MAX_TERM_DEPTH], ES);
 abort({function_is_not_payable, Fun}, ES) ->
-    ?t("Function with hash ~w is not payable", [Fun], ES);
+    ?t("Function with hash ~W is not payable", [Fun, ?MAX_TERM_DEPTH], ES);
 abort({function_is_private, Fun}, ES) ->
-    ?t("Function with hash ~w is private", [Fun], ES);
+    ?t("Function with hash ~W is private", [Fun, ?MAX_TERM_DEPTH], ES);
 abort({primop_error, Which, What}, ES) ->
-    ?t("Error in ~w: ~w", [Which, What], ES);
+    ?t("Error in ~W: ~W", [Which, ?MAX_TERM_DEPTH, What, ?MAX_TERM_DEPTH], ES);
 abort(reentrant_call, ES) ->
     ?t("Reentrant call", [], ES);
 abort({log_illegal_int, N}, ES) ->
-    ?t("Illegal integer in log: ~w", [N], ES);
+    ?t("Illegal integer in log: ~W", [N, ?MAX_TERM_DEPTH], ES);
 abort(log_illegal_bits, ES) ->
     ?t("Illegal bits in log", [], ES);
 abort(out_of_gas, ES) ->
@@ -239,7 +246,15 @@ abort(out_of_gas, ES) ->
 abort(bad_bytecode, ES) ->
     ?t("Bad byte code", [], ES);
 abort({disabled_operation, Op}, ES) ->
-    ?t("Error: operation ~p is disabled", [Op], ES).
+    ?t("Error: operation ~P is disabled", [Op, ?MAX_TERM_DEPTH], ES);
+abort({pop_empty_stack, N}, ES) ->
+    ?t("Stack overflow when pop:ing ~P elements", [N, ?MAX_TERM_DEPTH], ES);
+abort({bad_map, Op, Map}, ES) ->
+    ?t("Operation ~P expected a map as argument, got ~P", [Op, ?MAX_TERM_DEPTH, Map, ?MAX_TERM_DEPTH], ES);
+abort({op_not_implemented, Op}, ES) ->
+    ?t("Operation ~P is not implemented", [Op, ?MAX_TERM_DEPTH], ES);
+abort({auth_tx_type_not_handled, TxType}, ES) ->
+    ?t("Tx type ~P is not handled by Auth.tx", [TxType, ?MAX_TERM_DEPTH], ES).
 
 abort(E) -> throw({add_engine_state, E}).
 
@@ -251,7 +266,11 @@ loop(Instructions, EngineState) ->
     case step(Instructions, EngineState) of
         {stop, FinalState} ->
             case aefa_engine_state:finalize(FinalState) of
-                {ok, ES} -> ES;
+                {ok, ES} ->
+                    %% We have already unfolded the result, but the result
+                    %% is also serialized, so a final gas cost.
+                    aefa_engine_state:spend_gas_for_traversal(
+                        aefa_engine_state:accumulator(ES), final, ES);
                 {error, What} -> abort(What, FinalState)
             end;
         {jump, BB, NewState} ->
@@ -400,12 +419,13 @@ check_return_type(ES) ->
 
 check_return_type(RetType, TVars, ES) ->
     Acc = aefa_engine_state:accumulator(ES),
+    ES1 = aefa_engine_state:spend_gas_for_traversal(Acc, simple, ES),
     case check_type(RetType, Acc) of
-        false -> abort({bad_return_type, Acc, RetType}, ES);
+        false -> abort({bad_return_type, Acc, RetType}, ES1);
         Inst  ->
             case merge_match(Inst, TVars) of
-                false -> abort({bad_return_type, Acc, instantiate_type(TVars, RetType)}, ES);
-                #{}   -> ES
+                false -> abort({bad_return_type, Acc, instantiate_type(TVars, RetType)}, ES1);
+                #{}   -> ES1
             end
     end.
 
@@ -426,7 +446,13 @@ pop_args(N, ES) ->
     Tail  = aefa_engine_state:accumulator_stack(ES),
     Stack = [aefa_engine_state:accumulator(ES) | Tail],
     Args  = lists:sublist(Stack, N),
-    {Args, drop(N, ES)}.
+    Protocol = aefa_engine_state:consensus_version(ES),
+    case length(Args) == N of
+        false when Protocol >= ?IRIS_PROTOCOL_VSN ->
+            abort({pop_empty_stack, N}, ES);
+        _ ->
+            {Args, drop(N, ES)}
+    end.
 
 bind_args(Args, ES) ->
     bind_args(0, Args, #{}, ES).
@@ -655,7 +681,7 @@ check_return_type_protected(protected, RetType, TVars, Stores, API, ES) ->
     end.
 
 unfold_store_maps(ES) ->
-    {Acc, ES1} = unfold_store_maps(aefa_engine_state:accumulator(ES), ES),
+    {Acc, ES1} = unfold_store_maps(aefa_engine_state:accumulator(ES), ES, unfold),
     aefa_engine_state:set_accumulator(Acc, ES1).
 
 unfold_store_maps_in_args(0, ES)     -> ES;
@@ -663,25 +689,31 @@ unfold_store_maps_in_args(Arity, ES) ->
     Acc   = aefa_engine_state:accumulator(ES),
     Stack = aefa_engine_state:accumulator_stack(ES),
     {Args, Rest} = lists:split(min(Arity, length(Stack) + 1), [Acc | Stack]),
-    {Args1, ES1} = unfold_store_maps(?MAKE_FATE_LIST(Args), ES),
+    {Args1, ES1} = unfold_store_maps(?MAKE_FATE_LIST(Args), ES, unfold),
     [Acc1 | Stack1] = ?FATE_LIST_VALUE(Args1),
     aefa_engine_state:set_accumulator(Acc1,
         aefa_engine_state:set_accumulator_stack(Stack1 ++ Rest, ES1)).
 
-unfold_store_maps(Val, ES) ->
+unfold_store_maps(Val, ES, CostModel) ->
+    ES1 = aefa_engine_state:spend_gas_for_traversal(Val, simple, ES),
     case aeb_fate_maps:has_store_maps(Val) of
         true ->
-            Pubkey = aefa_engine_state:current_contract(ES),
-            {Store, ES1} = ensure_contract_store(Pubkey, ES),
+            Pubkey = aefa_engine_state:current_contract(ES1),
+            {Store, ES2} = ensure_contract_store(Pubkey, ES1),
             Store1 = aefa_stores:cache_map_metadata(Pubkey, Store),
-            ES2    = aefa_engine_state:set_stores(Store1, ES1),
+            ES3    = aefa_engine_state:set_stores(Store1, ES2),
             Unfold = fun(Id) ->
                         {List, _Store2} = aefa_stores:store_map_to_list(Pubkey, Id, Store1),
                         maps:from_list(List)
                      end,
-            {aeb_fate_maps:unfold_store_maps(Unfold, Val), ES2};
+            MapSize = fun(Id) ->
+                          {Size, _Store2} = aefa_stores:store_map_size(Pubkey, Id, Store1),
+                          Size
+                      end,
+            ES4 = aefa_engine_state:spend_gas_for_traversal(Val, CostModel, {MapSize, Unfold}, ES3),
+            {aeb_fate_maps:unfold_store_maps(Unfold, Val), ES4};
         false ->
-            {Val, ES}
+            {Val, ES1}
     end.
 
 %% ------------------------------------------------------
@@ -713,8 +745,10 @@ lookup_in_store(N, ES) ->
         {ok, Val} ->
             {Val, ES1};
         {ok, Val, Stores1} ->
-            ES2 = aefa_engine_state:set_stores(Stores1, ES1),
-            {Val, ES2};
+            %% Lookup in store costs extra from IRIS
+            ES2 = aefa_engine_state:spend_gas([{?IRIS_PROTOCOL_VSN, 2000}, {?LIMA_PROTOCOL_VSN, 0}], ES1),
+            ES3 = aefa_engine_state:set_stores(Stores1, ES2),
+            {Val, ES3};
         error ->
             abort({undefined_in_store, N}, ES1)
     end.
