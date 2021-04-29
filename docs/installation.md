@@ -23,7 +23,6 @@ bash <(curl -s https://install.aeternity.io/install.sh)
 
 The release binaries are published on [GitHub][releases] and are tested on the following platforms:
 
-* Ubuntu 16.04.3 LTS (x86-64);
 * Ubuntu 18.04 LTS (x86-64);
 * macOS Mojave 10.14 (x86-64).
 * Windows 10 (x86-64)
@@ -53,23 +52,6 @@ The Ubuntu release binaries are built with `libssl1.0.0` (default Ubuntu 18.04 v
 
 ```bash
 sudo apt-get install libssl1.0.0
-```
-
-#### Ubuntu 16.04
-
-As Ubuntu 16.04 ships with older libsodium version than required, it must be installed from source.
-A C compiler and related tools must be installed beforehand by running:
-
-```bash
-sudo apt-get install build-essential
-```
-
-then the library:
-
-```bash
-curl -O https://download.libsodium.org/libsodium/releases/libsodium-1.0.16.tar.gz
-tar -xf libsodium-1.0.16.tar.gz && cd libsodium-1.0.16
-./configure && make && sudo make install && sudo ldconfig
 ```
 
 ### macOS package
