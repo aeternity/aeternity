@@ -11,7 +11,6 @@ There is also additional documentation on mining with CUDA and build and/or join
 - [Operation](operation.md)
 - [Docker](docker.md)
 - [Build from source](build.md)
-- [Build from source (Windows)](build-windows.md)
 - [CUDA Miner](cuda-miner.md)
 - [Stratum](stratum.md)
 - [Network Monitoring](monitoring.md)

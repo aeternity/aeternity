@@ -11,7 +11,7 @@ this document is towards issues related to packaging Aeternity code.
 Following the official Debian documentation for packaging, the
 information here might refer to `Debian (packaging)`, but it is
 implied that the same applies to Ubuntu as a Debian derivative. All
-the steps are tested on Ubuntu 16.04 and 18.04.
+the steps are tested on 18.04.
 
 For full documentation about Debian packages, please review the
 following documents:
@@ -69,27 +69,10 @@ try to follow best practises, and check a lot of details of the final
 package. This includes shared libraries and dependencies checks,
 packaging config files issues etc. 
 
-As such, software not installed from a package usually does not work
-(well) with the packaging tools. For that reason, special measures
-must be taken for Ubuntu 16.04, so a package can be compiled and
-packaged with the Debian packaging tools.
-
 To be able to build packages, the `devscripts` package is required. It
 provides various tools needed for the packaging process.
 
-To build the source code of Aeternity, Erlang is also required. The
-[build documentation](build.md) states that version `20.1` is the
-minimal requirement.
-
-Ubuntu 16.04, however does not provide a recent version of Erlang that
-can be used for building.
-
-## Ubuntu 16.04 fixes
-
-As mentioned earlier, it is best to have all requirements for a
-software to be packaged as a Debian package. This requires some
-work-arounds for Ubuntu 16.04, so the packaging process can be
-successful.
+To build the source code of Aeternity, Erlang is also required.
 
 ### Erlang version
 
@@ -127,8 +110,6 @@ Add the additional package repository for Erlang.
 deb https://packages.erlang-solutions.com/ubuntu xenial contrib
 ```
 
-This repository will provide recent Erlang version for Ubuntu 16.04.
-
 Add the repository key to apt
 
 ```
@@ -143,12 +124,10 @@ Update the sources:
 sudo apt-get update
 ```
 
-### TODO : Add steps for libsodium work-around on Ubuntu 16.04
-
 
 ## General requirements
 
-The rest of the steps should work on both Ubuntu 16.04 and 18.04.
+The rest of the steps should work on Ubuntu 18.04.
 
 To install all build and packaging dependencies run:
 
