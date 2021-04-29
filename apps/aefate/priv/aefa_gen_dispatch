@@ -44,6 +44,7 @@ do_main(Filename) ->
     file:close(File).
 
 gen_eval(#{ constructor := Constructor, gas := Gas } = Op) ->
+    check_descending(Constructor, Gas),
     Cmd = io_lib:format("aefa_fate_op:~w(~saefa_engine_state:spend_gas(~w, EngineState))",
                         [Constructor, gen_cargs(Op), Gas]),
     Body = [gen_allowed_offchain(Op),
@@ -92,4 +93,9 @@ gen_arg_matches([li | Rest], N) ->
 gen_arg_matches([ii | Rest], N) ->
     io_lib:format(", {immediate, Arg~w}", [N]) ++ gen_arg_matches(Rest, N+1).
 
-
+check_descending(_Op, X) when is_integer(X) -> ok;
+check_descending(_Op, [_]) -> ok;
+check_descending(Op, [{P1, _}, {P2, _} = G | Rest]) when P2 < P1 ->
+    check_descending(Op, [G | Rest]);
+check_descending(Op, _) ->
+    error({Op, gas_options_not_descending}).

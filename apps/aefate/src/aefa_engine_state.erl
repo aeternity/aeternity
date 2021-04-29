@@ -469,13 +469,20 @@ current_bb_instructions(#es{current_bb = BB, bbs = BBS} = ES) ->
 
 %%%------------------
 
--spec spend_gas(non_neg_integer(), state()) -> state().
-spend_gas(X, #es{gas = Gas} = ES) ->
+-spec spend_gas(non_neg_integer() | list({non_neg_integer(), non_neg_integer()}), state()) -> state().
+spend_gas(X, #es{gas = Gas} = ES) when is_integer(X) ->
     NewGas = Gas - X,
     case NewGas < 0 of
         true  -> aefa_fate:abort(out_of_gas, ES);
         false -> ES#es{gas = NewGas}
-    end.
+    end;
+spend_gas(GasOpts, ES) when is_list(GasOpts) ->
+    Protocol = consensus_version(ES),
+    spend_gas(get_gas(Protocol, GasOpts), ES).
+
+get_gas(_Protocol, [{_, Gas}])                                       -> Gas;
+get_gas(Protocol, [{Protocol1, Gas} | _]) when Protocol >= Protocol1 -> Gas;
+get_gas(Protocol, [_ | Rest])                                        -> get_gas(Protocol, Rest).
 
 %% The gas price per cell increases by 1 for each kibiword (each 1024 64-bit word) used.
 -spec spend_gas_for_new_cells(integer(), state()) -> state().
