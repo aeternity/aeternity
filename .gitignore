@@ -52,8 +52,6 @@ data/aecore/keys
 _checkouts/
 tmp/
 rebar3.crashdump
-aeternity*windows*.zip
-aeternity*windows*.exe
 debian/.debhelper/
 debian/aeternity-node*
 debian/changelog

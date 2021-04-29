@@ -1,8 +1,5 @@
 version: 2.1
 
-orbs:
-  win: circleci/windows@1.0.0
-
 executors:
   infrastructure_container_unstable:
     docker:
@@ -474,40 +471,6 @@ references:
     - *store_rebar3_crashdump
     - *fail_notification
 
-  # Windows
-  windows_cache_version: &windows_cache_version "v1"
-  windows_artifacts: &windows_artifacts C:\Users\circleci\project\packages
-  windows_working_directory: &windows_working_directory C:\Users\circleci\project
-
-  windows_env: &windows_env
-    OTP_VERSION: << parameters.otp_version >>
-    WIN_OTP_PATH: << parameters.otp_install_path >>
-    WIN_MSYS2_ROOT: << parameters.msys_install_path >>
-    MSYSCON: defterm
-    ANSICON: true
-    MSVC_VERSION: 14.22.27905
-    VCVARSALL: C:\Program Files (x86)\Microsoft Visual Studio\2019\Community\VC\Auxiliary\Build\vcvarsall
-
-  windows_container: &windows_container
-    executor:
-      name: win/vs2019
-      shell: cmd.exe
-    parameters:
-      msys_install_path:
-        default: C:\tools\msys64
-        type: string
-      otp_install_path:
-        default: C:\tools\erl
-        type: string
-      otp_version:
-        default: "21.3"
-        type: string
-      artifacts_path:
-        default: *windows_artifacts
-        type: string
-    working_directory: *windows_working_directory
-    environment: *windows_env
-
 commands:
   fixed_checkout:
     steps:
@@ -559,105 +522,6 @@ commands:
             until [ "`docker inspect -f {{.State.Health.Status}} ae_${CIRCLE_SHA1:?}`"=="healthy" ]; do
                 sleep 1;
             done;
-
-  restore_windows_package_cache:
-    parameters:
-      windows_cache_version:
-        default: *windows_cache_version
-        type: string
-    steps:
-     - restore_cache:
-        keys:
-          - windows-package-cache-<< parameters.windows_cache_version >>-{{ .Branch }}-
-          - windows-package-cache-<< parameters.windows_cache_version >>-master-
-          - windows-package-cache-<< parameters.windows_cache_version >>-
-
-  save_windows_package_cache:
-    parameters:
-      windows_cache_version:
-        type: string
-        default: *windows_cache_version
-      install_path:
-        type: string
-    steps:
-      - save_cache:
-          key: windows-package-cache-<< parameters.windows_cache_version >>-{{ .Branch }}-
-          paths:
-            - << parameters.install_path >>
-
-  install_win_msys2:
-    parameters:
-      install_path:
-        default: C:\tools\msys64
-        type: string
-    steps:
-      - restore_windows_package_cache
-      - run:
-          name: Install MSYS2
-          command: .circleci\windows\msys2_prepare
-      - save_windows_package_cache:
-          install_path: << parameters.install_path >>
-
-  restore_windows_erl_cache:
-    parameters:
-      windows_cache_version:
-        default: *windows_cache_version
-        type: string
-      otp_version:
-        type: string
-    steps:
-      - restore_cache:
-          keys:
-            - windows-erl<< parameters.otp_version >>-cache-<< parameters.windows_cache_version >>-{{ .Branch }}-
-            - windows-erl<< parameters.otp_version >>-cache-<< parameters.windows_cache_version >>-master-
-            - windows-erl<< parameters.otp_version >>-cache-<< parameters.windows_cache_version >>-
-
-  save_windows_erl_cache:
-    parameters:
-      windows_cache_version:
-        default: *windows_cache_version
-        type: string
-      install_path:
-        type: string
-      otp_version:
-        type: string
-    steps:
-      - save_cache:
-          key: windows-erl<< parameters.otp_version >>-cache-<< parameters.windows_cache_version >>-{{ .Branch }}-
-          paths:
-            - << parameters.install_path >>
-
-  install_win_otp:
-    parameters:
-      install_path:
-        type: string
-      otp_version:
-        type: string
-    steps:
-      - restore_windows_erl_cache:
-          otp_version: << parameters.otp_version >>
-      - run:
-          name: Install Erlang/OTP << parameters.otp_version >>
-          command: scripts\windows\install_erlang << parameters.otp_version >> << parameters.install_path >>
-      - save_windows_erl_cache:
-          otp_version: << parameters.otp_version >>
-          install_path: << parameters.install_path >>
-
-  windows_install_deps:
-    parameters:
-      msys_install_path:
-        type: string
-      otp_install_path:
-        type: string
-      otp_version:
-        type: string
-    steps:
-      - fixed_checkout
-      - install_win_otp:
-          install_path: << parameters.otp_install_path >>
-          otp_version: << parameters.otp_version >>
-      - install_win_msys2:
-          install_path: << parameters.msys_install_path >>
 
   upload_aws_build_artifacts:
     steps:
@@ -1512,17 +1376,6 @@ jobs:
           branch: master
       - *fail_notification
 
-  # upload_packages_windows:
-  #   executor: infrastructure_container_stable
-  #   <<: *infrastructure_config
-  #   environment:
-  #     <<: *infrastructure_config_environment
-  #     PKG_TARGET_OS: windows
-  #     PKG_EXT: -experimental.zip
-  #     PACKAGES_DIR: *packages_workspace
-  #   steps:
-  #     - upload_release_artifacts
-
   upload_latest_packages_osx:
     executor: infrastructure_container_stable
     <<: *infrastructure_config
@@ -1539,17 +1392,6 @@ jobs:
     environment:
       <<: *infrastructure_config_environment
       PKG_TARGET_OS: ubuntu
-      PACKAGES_DIR: *packages_workspace
-    steps:
-      - upload_latest_artifacts
-
-  upload_latest_packages_windows:
-    executor: infrastructure_container_stable
-    <<: *infrastructure_config
-    environment:
-      <<: *infrastructure_config_environment
-      PKG_TARGET_OS: windows
-      PKG_EXT: -experimental.zip
       PACKAGES_DIR: *packages_workspace
     steps:
       - upload_latest_artifacts
@@ -1580,29 +1422,6 @@ jobs:
           path: docs/state-channels
       - *fail_notification
 
-  # Windows jobs
-  windows_package:
-    <<: *windows_container
-    steps:
-      - run: systeminfo
-      - windows_install_deps:
-          otp_install_path: << parameters.otp_install_path >>
-          otp_version: << parameters.otp_version >>
-          msys_install_path: << parameters.msys_install_path >>
-      - run:
-          name: Build packages
-          command: .circleci\windows\build
-      - run:
-          name: Smoke test
-          command: .circleci\windows\test
-      - store_artifacts:
-          path: *windows_artifacts
-          destination: packages-<< parameters.otp_version >>
-      - persist_to_workspace:
-          root: *windows_artifacts
-          paths:
-            - "*.zip"
-
 # CircleCI skips a job for a tag by default.
 # A job must have a filters tags section to run as a part of a tag push
 # and all its transitively dependent jobs must also have a filters tags section.
@@ -1610,17 +1429,6 @@ workflows:
   version: 2
   build_test_deploy:
     jobs:
-      # FIXME: Disabled until Windows build is fixed
-      # - windows_package:
-      #     otp_version: "21.3"
-      #     context: ae-node-builds
-      #     filters:
-      #       branches:
-      #         ignore:
-      #           - system-tests
-      #       tags:
-      #         only: *tag_regex
-
       - build:
           filters:
             branches:
