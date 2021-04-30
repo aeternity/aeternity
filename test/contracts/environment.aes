@@ -20,7 +20,7 @@ contract Environment =
   // Address
   entrypoint contract_address() : address = Contract.address
   entrypoint nested_address(who) : address =
-    who.contract_address(gas = 1000)
+    who.contract_address(gas = 10000)
 
   // Balance
   entrypoint contract_balance() : int = Contract.balance
