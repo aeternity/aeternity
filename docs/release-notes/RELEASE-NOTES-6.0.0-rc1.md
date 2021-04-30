@@ -4,7 +4,7 @@
 
 It:
 
-* Fix buggy serialization of contract information - this means the compiler version is actually
+* Fixed buggy serialization of contract information - this means the compiler version is actually
   stored on chain, and isn't replaced by "unknown".
 
 * Added `AENS.update` to FATE VM
