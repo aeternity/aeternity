@@ -1296,7 +1296,7 @@ call_contract_error_value(_Cfg) ->
     ?assertEqual(Bal(RemC, S3), Bal(RemC, S4)),
     ?assertEqual(Bal(IdC, S3), Bal(IdC, S4)),
     %% Check that you can limit the amount of gas in an error call
-    LimitedGas = 1234,
+    LimitedGas = 12345,
     {{Err5, GasUsed5}, S5} = call_contract(Acc1, RemC, callErrLimitGas, word, {?cid(IdC), 7, LimitedGas}, DefaultOpts#{amount := 13, return_gas_used => true}, S4),
     ?assertMatchVM({error, _}, {revert, _}, Err5),
     ?assert(GasUsed5 < G),
@@ -5563,7 +5563,7 @@ sophia_protected_call(_Cfg) ->
                 ClientBal0 = ?call(call_contract, Acc, Client, get_balance, word, {}),
                 ProxyBal0  = ?call(call_contract, Acc, Proxy,  get_balance, word, {}),
                 OldState   = ?call(call_contract, Acc, Server, get_state, word, {}),
-                Res        = ?call(call_contract, Acc, Client, Fun, Type, Args, #{return_gas_used => true, gas => 10000}),
+                Res        = ?call(call_contract, Acc, Client, Fun, Type, Args, #{return_gas_used => true, gas => 100000}),
                 NewState   = ?call(call_contract, Acc, Server, get_state, word, {}),
                 ServerBal1 = ?call(call_contract, Acc, Server, get_balance, word, {}),
                 ClientBal1 = ?call(call_contract, Acc, Client, get_balance, word, {}),
@@ -5578,20 +5578,20 @@ sophia_protected_call(_Cfg) ->
               , Test(test_missing_con,   {option, word}, 130, 200)
               , Test(test_nonpayable,    {option, word}, 130, 200)
               , Test(test_out_of_funds,  {option, word}, 130, 200)
-              , Test(test_hacked,        {option, word}, 2500, 2800)
-              , Test(test_revert,        {option, word}, 2500, 2800)
-              , Test(test_crash,         {option, word}, 2500, 2800)
-              , Test(test_out_of_gas,    {option, word}, 500, 800)
-              , Test(test_wrong_ret_r,   {option, bool}, 150, 200)
-              , Test(test_wrong_arg_r,   {option, word}, 130, 200)
-              , Test(test_wrong_arity_r, {option, word}, 130, 200)
-              , Test(test_missing_r,     {option, word}, 130, 200)
-              , Test(test_missing_con_r, {option, word}, 130, 200)
-              , Test(test_nonpayable_r,  {option, word}, 130, 200)
-              , Test(test_hacked_r,      {option, word}, 2600, 2900)
-              , Test(test_revert_r,      {option, word}, 2600, 2900)
-              , Test(test_crash_r,       {option, word}, 2600, 2900)
-              , Test(test_out_of_gas_r,  {option, word}, 300, 500) ],
+              , Test(test_hacked,        {option, word}, 12400, 12700)
+              , Test(test_revert,        {option, word}, 12400, 12700)
+              , Test(test_crash,         {option, word}, 12400, 12700)
+              , Test(test_out_of_gas,    {option, word}, 5500, 5800)
+              , Test(test_wrong_ret_r,   {option, bool}, 5050, 5200)
+              , Test(test_wrong_arg_r,   {option, word}, 5050, 5200)
+              , Test(test_wrong_arity_r, {option, word}, 5050, 5200)
+              , Test(test_missing_r,     {option, word}, 5050, 5200)
+              , Test(test_missing_con_r, {option, word}, 5050, 5200)
+              , Test(test_nonpayable_r,  {option, word}, 5050, 5200)
+              , Test(test_hacked_r,      {option, word}, 17400, 17800)
+              , Test(test_revert_r,      {option, word}, 17400, 17800)
+              , Test(test_crash_r,       {option, word}, 17400, 17800)
+              , Test(test_out_of_gas_r,  {option, word}, 5000, 5500) ],
     [] = [ Res || Res = {_, MinGas, MaxGas, {R, Gas}, State, Bal} <- Results,
                   R /= none orelse Gas < MinGas orelse Gas > MaxGas orelse State /= 0 orelse
                   lists:any(fun(N) -> N /= 0 end, Bal) ],

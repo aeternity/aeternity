@@ -128,7 +128,7 @@ contract ProtectedCall =
   stateful entrypoint
     test_crash       (r : Remote) : option('a)   = r.crash      (protected = true)
   stateful entrypoint
-    test_out_of_gas  (r : Remote) : option('a)   = r.out_of_gas (protected = true, value = 100, gas = 500)
+    test_out_of_gas  (r : Remote) : option('a)   = r.out_of_gas (protected = true, value = 100, gas = 5500)
   stateful entrypoint
     test_nonpayable  (r : Remote) : option(int)  = r.nonpayable (protected = true, value = 100)
   stateful entrypoint
@@ -151,7 +151,7 @@ contract ProtectedCall =
   stateful entrypoint
     test_crash_r      (r : Remote, p : ProxyRemote) : option('a)   = p.call_crash      (protected = true, value = 100, r)
   stateful entrypoint
-    test_out_of_gas_r (r : Remote, p : ProxyRemote) : option('a)   = p.call_out_of_gas (protected = true, value = 100, gas = 500, r)
+    test_out_of_gas_r (r : Remote, p : ProxyRemote) : option('a)   = p.call_out_of_gas (protected = true, value = 100, gas = 5500, r)
   stateful entrypoint
     test_nonpayable_r (r : Remote, p : ProxyRemote) : option(int)  = p.call_nonpayable (protected = true, value = 100, r)
   stateful entrypoint
