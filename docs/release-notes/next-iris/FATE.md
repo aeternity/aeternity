@@ -18,3 +18,9 @@ switch(Auth.tx)
 * Added functions related to strings. It introduces `to_list` and `from_list`
   primitives that enables flexible string manipulation. `Strings.aes` standard
   library functions include many useful string functions.
+
+* Revisited gas prices and gas charging mechanism. The main change is that gas
+  will, in some cases, be charged earlier - i.e. contracts run out of gas
+  before expensive operations rather than after. This should make the FATE VM
+  more efficient. Gas prices have also been adjusted and new operations have
+  been calibrated.
