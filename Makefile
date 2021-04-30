@@ -248,7 +248,7 @@ REVISION:
 VERSION:
 	@git describe --tags | \
 		sed -E "s/^v(.*)\-([0-9]+)\-g([a-f0-9]+)$$/\1+\2.\3/" | \
-		sed -E "s/^v([0-9]+)\.([0-9]+)\.([0-9]+)$$/\1.\2.\3/" > $@
+		sed -E "s/^v(.*)$$/\1/" > $@
 
 eunit-%: KIND=test
 eunit-%: internal-build
