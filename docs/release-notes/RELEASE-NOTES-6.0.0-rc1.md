@@ -4,7 +4,7 @@
 
 It:
 
-* Fix buggy serialization of contract information - this means compiler version is actually
+* Fix buggy serialization of contract information - this means the compiler version is actually
   stored on chain, and isn't replaced by "unknown".
 
 * Added `AENS.update` to FATE VM
@@ -22,39 +22,39 @@ It:
   previously it returned `None`. With Bitcoin-NG we do have the block hash of
   the current generation, so no reason not to allow this.
 
-* Extend AENS name max expiration time from 50000 generations (~100 days) to
+* Extended AENS name max expiration time from 50000 generations (~100 days) to
   180000 generations (~375 days).
 
-* Changes how a meta transaction TTL's is being validated: so far it used to
+* Changed how a meta transaction TTL's is being validated: so far it used to
   be the outermost transaction's ttl that was taken into account, now it is
   the innermost one instead. Meta transactions no longer have TTL.
 
-* Fixes a protocol issue: a valid force progress call with invalid CallData or
-  failing call will result in on-chain transaction but tokens from the caller
+* Fixed a protocol issue: a valid force progress call with invalid CallData or
+  failing call would result in on-chain transaction but tokens from the caller
   would still be moved to the forced contract. This is fixed and failed calls
   in successful force progress transactions result in rollback of the
   off-chain balances.
 
-* Improves the functionality of State Channel delegates: now they can provide
+* Improved the functionality of State Channel delegates: now they can provide
   `channel_solo_snapshot_tx` as well. This is really handy in cases one party
   is missing and the other is doing malicious force progess on-chain while the
   channel is still open.
 
-* Revisits the State Channel delegates: so far they were a shared list for
+* Revisited the State Channel delegates: so far they were a shared list for
   both participants. From Iris on, delegates are per peer: there is a list of
   delegates for the `initiator` and another one for the `responder`. Old
   channel objects can still be used but users are strongly recomended to reset
   their `delegates` list if they had any. Note that the HTTP representations
   are changed accordingly.
 
-* Allows delegates to force progress on behalf of the user that authorized
+* Allowed delegates to force progress on behalf of the user that authorized
   them to do so.
 
 * Improved garbage collector for all Fate contracts form Iris
 
-* Fate contracts of different versions can call eachother (Fate1 can call Fate2 and vice-versa)
+* Fate contracts of different versions can now call each other (Fate1 can call Fate2 and vice-versa)
 
-* Opcode availability and behaviour depends on VM version of the contract
+* Opcode availability and behaviour now depends on VM version of the contract
   (Fate2 opcodes are available both when Fate2 contract is called directly and
   when called by another (possibly Fate1) contract)
 
@@ -74,19 +74,19 @@ switch(Auth.tx)
   primitives that enables flexible string manipulation. `Strings.aes` standard
   library functions include many useful string functions.
 
-* Adds the possibility to query a an oracle by name hash. A name pointer can
+* Added the possibility to query a an oracle by name hash. A name pointer can
   map `oracle_pubkey` to a an oracle to enable query by name hash.
 
-* Adds a new transaction to the protocol. PayingForTx allows an account to pay
+* Added a new transaction to the protocol. `PayingForTx` allows an account to pay
   for a transaction on behalf of someone else. This means paying for fees and
   gas cost, but it will **not** cover the amount spent by the transaction just
   the "the cost of the transaction" (and the extra size added by wrapping the
   original transaction).
 
-* Fix a bug in the contract store garbage collector causing maps to me
+* Fixed a bug in the contract store garbage collector causing maps to be
   more expensive than they should be.
 
-* Add support for protected contract calls. Making a contract call with the named
+* Added support for protected contract calls. Making a contract call with the named
   argument `protected` set to `true` wraps the result of the call in an
   `option` type, returning `Some(res)` if the call succeeds with result `res`
   and `None` if the call fails for any reason. If the call fails, any
@@ -99,30 +99,30 @@ switch(Auth.tx)
   When a name is updated, or looked up, inside a Sophia contract keys
   that are no longer valid are automatically removed.
 
-* Add support for `CREATE` opcode
+* Added support for `CREATE` opcode
 
-* Add support for `CLONE` opcode
+* Added support for `CLONE` opcode
 
-* Add support for `CLONE_G` opcode
+* Added support for `CLONE_G` opcode
 
-* Add support for `BYTECODE_HASH` opcode
+* Added support for `BYTECODE_HASH` opcode
 
-* Include full FATE 2 code with init in state trees. This also applies to offchain contracts in state channels
+* Included full FATE 2 code with init in state trees. This also applies to off-chain contracts in state channels
 
-* changed comparison and MAP\_TO\_LIST FATE opcodes to follow ordering as defined in aebytecode
+* Changed comparison and MAP\_TO\_LIST FATE opcodes to follow ordering as defined in `aebytecode`
 
-* Adds a new FEE opcode that returns call transaction fee
+* Added a new FEE opcode that returns call transaction fee
 
-* Fixes STR_REVERSE to reverse on unicode codepoints instead of raw bytes
+* Fixed `STR_REVERSE` to reverse on unicode codepoints instead of raw bytes
 
-* Deprecate Ubuntu 16.04 support. EOL Apr 2021.
+* Deprecated Ubuntu 16.04 support. EOL Apr 2021.
 
-* Introduces a new HTTP API for asking the node to provide a correct
+* Introduced a new HTTP API for asking the node to provide a correct
   `paying_for_tx`. It is marked as `debug` and it is intended to be used while
   developing tools that produce that transaction. This API must not be used in
   real-life scenarios. Since the inner transaction has a specific
   `network_id`, a proper check has been added to the API so attempts to create
-  an erronous `paying_for_tx` will fail.
+  an erroneous `paying_for_tx` will fail.
 
 * Revisited gas prices and gas charging mechanism. The main change is that gas
   will, in some cases, be charged earlier - i.e. contracts run out of gas
@@ -153,4 +153,3 @@ Troubleshooting of common issues is documented [in the wiki](https://github.com/
 For an overview of the installation process for different platforms,
 building the package from source, configuration and operation of the Aeternity
 node please refer to [Aeternity node documentation](https://docs.aeternity.io/).
-
