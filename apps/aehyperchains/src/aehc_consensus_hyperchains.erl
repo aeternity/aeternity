@@ -673,7 +673,7 @@ next_nonce_for_sealing(?NONCE_HC_ENABLED, _) -> ?NONCE_HC_ENABLED;
 next_nonce_for_sealing(?NONCE_HC_POGF, _) -> ?NONCE_HC_POGF;
 next_nonce_for_sealing(Nonce, MinerConfig) ->
     M = fallback_consensus(),
-    M:next_nonce(Nonce, MinerConfig).
+    M:next_nonce_for_sealing(Nonce, MinerConfig).
 
 trim_sealing_nonce(?NONCE_HC_ENABLED, _) -> ?NONCE_HC_ENABLED;
 trim_sealing_nonce(?NONCE_HC_POGF, _) -> ?NONCE_HC_POGF;
