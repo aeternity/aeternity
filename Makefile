@@ -26,6 +26,9 @@ SWAGGER_ENDPOINTS_SPEC = apps/aeutils/src/endpoints.erl
 OAS_ENDPOINTS_SPEC = apps/aeutils/src/oas_endpoints.erl
 OAS_YAML = apps/aehttp/priv/oas3.yaml
 
+CONTRACT_FILE = SimpleElection.aes
+CONTRACT_OBJECT = data/aehyperchains/StakingContract.json
+
 PACKAGE_SPEC_WIN32 ?= ../.circleci/windows/package.cfg
 
 # Packages from master MUST be pre-releases. Git master version
