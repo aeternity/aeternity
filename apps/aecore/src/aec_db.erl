@@ -1202,6 +1202,15 @@ handle_table_errors(Tables, Mode, [{missing_table, aec_peers = Table} | Tl]) ->
 handle_table_errors(Tables, Mode, [{missing_table, aesc_state_cache_v2} | Tl]) ->
     aesc_db:create_tables(Mode),
     handle_table_errors(Tables, Mode, Tl);
+handle_table_errors(Tables, Mode, [{missing_table, Table} | Tl]) when Table == hc_db_pogf;
+                                                                      Table == hc_db_commitment_header;
+                                                                      Table == hc_db_parent_block_header;
+                                                                      Table == hc_db_parent_block_state;
+                                                                      Table == hc_db_parent_state;
+                                                                      Table == hc_db_delegate_state ->
+    %% The table is new in Hyperchains node version
+    new_table_migration(Table, Tables),
+    handle_table_errors(Tables, Mode, Tl);
 handle_table_errors(Tables, Mode, [{callback, {Mod, Fun, Args}} | Tl]) ->
     apply(Mod, Fun, Args),
     handle_table_errors(Tables, Mode, Tl);
