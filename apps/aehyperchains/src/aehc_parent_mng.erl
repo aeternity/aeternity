@@ -6,13 +6,12 @@
 %% This component is responsible for orchestration of the Hyperchains backends (parent chains) through:
 %% - dedicated state machines (trackers);
 %% - blockchain interfaces (https://github.com/aeternity/aeconnector/wiki);
-%% The component traverses parent chain data via lazy evaluation mode (on demand)
+%% The component traverses parent chain data in lazy evaluation mode (on demand)
 %% TODO: To provide HTTP API for scheduled commitments
 %% TODO: To show dialog about registry record (show notify + address in telegram, throw error on commitment)
 %% a) Setup #1 (monolith)
 %% b) Setup #2 (replica)
 %% c) Setup #3 (shard: history keeper/election master)
-
 %% Used patterns:
 %% - https://www.enterpriseintegrationpatterns.com/patterns/messaging/ProcessManager.html)
 %%% @end
@@ -28,7 +27,8 @@
 -export([start_link/0]).
 
 -export([commit/1]).
--export([candidates/1]).
+-export([commitments/1]).
+-export([delegates/1]).
 -export([pop/0]).
 
 -export([register/1]).
@@ -51,6 +51,8 @@
 -type commitment() ::  aehc_commitment:commitment().
 -type parent_block() :: aehc_parent_block:parent_block().
 
+-type pubkey() :: aec_keys:pubkey().
+
 %% API.
 
 -spec start_link() ->
@@ -66,9 +68,20 @@ commit(Commitment) ->
     gen_statem:call(?MODULE, {commit, Commitment}).
 
 %% TODO To support method "sync to to"
--spec candidates(binary()) -> [parent_block()].
-candidates(Hash) ->
-    gen_statem:call(?MODULE, {candidates, Hash}).
+-spec commitments(binary()) -> [commitment()].
+commitments(Hash) ->
+    ParentBlock = gen_statem:call(?MODULE, {process, Hash}),
+
+    Candidates = aehc_parent_block:commitments_in_block(ParentBlock),
+    Candidates.
+
+-spec delegates(binary()) -> [{binary(), pubkey()}].
+delegates(Hash) ->
+    _ = gen_statem:call(?MODULE, {process, Hash}),
+
+    Trees = aehc_parent_db:get_parent_block_state(Hash),
+    _Delegates = aehc_parent_trees:delegates(Trees).
+
 
 %% NOTE The starter app should check the empty stack condition at the initialization stage
 %% To extract the block from a queue (FIFO)
@@ -76,14 +89,14 @@ candidates(Hash) ->
 pop() ->
     gen_statem:call(?MODULE, {pop}).
 
-%% The announcement of new parent top
+%% The announcement of a new parent top
 -spec announce(pid(), binary()) -> ok.
 announce(From, Top) ->
     gen_statem:cast(?MODULE, {announce, From, Top}).
 
 -spec register(binary()) -> ok.
-register(Hash) ->
-    gen_statem:call(?MODULE, {register, Hash}).
+register(PubKey) ->
+    gen_statem:call(?MODULE, {register, PubKey}).
 
 -spec stop() -> ok.
 stop() ->
@@ -92,9 +105,10 @@ stop() ->
 %%%===================================================================
 %%%  gen_statem behaviour
 %%%===================================================================
-
+%% Should be replaced by parent_tracker state
 -record(tracker, {
-    pid :: term(), ref :: term(),
+    pid :: term(),
+    ref :: term(),
     %% The the real world blockchain interface: https://github.com/aeternity/aeconnector/wiki
     module :: connector(),
     %% Connector configuration which should be passed the module:connect/2
@@ -111,7 +125,7 @@ stop() ->
     %% Backend mode (monolith, replica, shard)
     mode::atom(),
     %% Effective height.
-    %% The point where primary blockchain reaches the level of maturity and replicas should be detached
+    %% The point where primary blockchain reaches the level of maturity and replicas can be detached
     height::integer() | infinity,
     %% The primary (election) state machine
     primary::tracker(),
@@ -125,11 +139,10 @@ stop() ->
 
 init(Data) ->
     process_flag(trap_exit, true),
-%%    [mnesia:clear_table(Tab) || Tab <- [hc_db_parent_state, hc_db_pogf, hc_db_commitment_header, hc_db_parent_block_header]],
-    Mode = mode(Data),
     Primary = primary(Data),
     {ok, Pid} = start_tracker(Primary), Ref = erlang:monitor(process, Pid),
     Data2 = primary(Data, Primary#tracker{ pid = Pid, ref = Ref }),
+    Mode = mode(Data),
 
     {ok, Mode, Data2}.
 
@@ -137,9 +150,9 @@ callback_mode() ->
     [state_functions, state_enter].
 
 terminate(_Reason, _State, Data) ->
-    Replicas = replicas(Data),
-    [ok = stop_tracker(Tracker) || Tracker <- Replicas],
+    Replicas = replicas(Data), [ok = stop_tracker(Tracker) || Tracker <- Replicas],
     Primary = primary(Data),
+
     ok = stop_tracker(Primary).
 
 %%%===================================================================
@@ -147,50 +160,49 @@ terminate(_Reason, _State, Data) ->
 %%%===================================================================
 
 monolith(enter, _OldState, Data) ->
+    %% NOTE Monolith setup assumes a solo "primary" state machine
+    {keep_state, Data, []};
+
+monolith({call, From}, {pop}, Data) ->
+    Primary = primary(Data), Pid = Primary#tracker.pid,
+    _ = aehc_parent_tracker:pop(Pid, From),
+
     {keep_state, Data, []};
 
 monolith({call, From}, {commit, Commitment}, Data) ->
-    Data2 = in(Commitment, Data),
-    Primary = primary(Data2),
+    Data2 = in(Commitment, Data), Primary = primary(Data2),
     Data3 = commit(Primary, Data2, From),
 
     {keep_state, Data3, []};
 
-monolith({call, From}, {pop}, Data) ->
+monolith({call, From}, {process, Hash}, Data) ->
     Primary = primary(Data), Pid = Primary#tracker.pid,
-    aehc_parent_tracker:pop(Pid, From),
+    _ = aehc_parent_tracker:process_block(Pid, Hash, From),
 
     {keep_state, Data, []};
 
-monolith({call, From}, {candidates, Hash}, Data) ->
+monolith({call, From}, {register, PubKey}, Data) ->
     Primary = primary(Data), Pid = Primary#tracker.pid,
-    aehc_parent_tracker:candidates(Pid, 1, Hash, From),
+    Payload = aehc_parent_data:delegate(PubKey),
+    _ = aehc_parent_tracker:send_tx(Pid, Payload, From),
 
     {keep_state, Data, []};
 
 monolith(cast, {announce, _From, Top}, Data) ->
-    aec_events:publish(parent_top_changed, Top),
+    _ = aec_events:publish(parent_top_changed, Top),
 
     {keep_state, Data, []};
 
-monolith({call, From}, {register, Hash}, Data) ->
-    Primary = primary(Data), Pid = Primary#tracker.pid,
-    Payload = aehc_parent_data:registry(Hash),
-
-    aehc_parent_tracker:post(Pid, Payload, From),
-    {keep_state, Data, []};
-
-monolith(_Event, _Req, Data) ->
-    %% TODO
+monolith(Event, Req, Data) ->
+    lager:info("~n~p:monolith(~p, ~p, ~p)~n",[Event, Req, Data]),
     {keep_state, Data, [postpone]}.
 
 replica(enter, _OldState, Data) ->
-    %% NOTE Replica setup assumes the primary backend and arbitrary replica list
+    %% NOTE Replica setup assumes provision by attached replica state machines
     Replicas =
         lists:foldl(
             fun (Tracker, Acc) ->
-                {ok, Pid} = start_tracker(Tracker),
-                Ref = erlang:monitor(process, Pid),
+                {ok, Pid} = start_tracker(Tracker), Ref = erlang:monitor(process, Pid),
                 [Tracker#tracker{ pid = Pid, ref = Ref }|Acc]
             end,
             [],
@@ -205,10 +217,9 @@ replica(_Event, _Req, Data) ->
     {keep_state, Data, [postpone]}.
 
 shard(enter, _OldState, Data) ->
-    %% NOTE Shard setup assumes the two backends: election master and history keeper
+    %% NOTE Shard setup assumes decomposition of state machines onto election master and history keeper
     [Tracker] = replicas(Data),
-    {ok, Pid} = start_tracker(Tracker),
-    Ref = erlang:monitor(process, Pid),
+    {ok, Pid} = start_tracker(Tracker), Ref = erlang:monitor(process, Pid),
     Data2 = replicas(Data, [Tracker#tracker{ pid = Pid, ref = Ref }]),
 
     {keep_state, Data2, []};
@@ -236,12 +247,11 @@ commit(Tracker, Data, From) ->
             %% Design notes:
             %% a) We could utilize compose algorithms to apply the list of commitments as a package
             %% b) We could route commitments between parent chains (based on setup)
-            [Commitment|_]  = Queue,
+            [Commitment|_] = Queue,
             Primary = primary(Data), Pid = Primary#tracker.pid,
-
             Payload = aehc_parent_data:commitment(Commitment),
 
-            aehc_parent_tracker:post(Pid, Payload, From),
+            ok = aehc_parent_tracker:send_tx(Pid, Payload, From),
             queue(Data, queue:new());
         true ->
             Data

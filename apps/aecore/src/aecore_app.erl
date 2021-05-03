@@ -36,7 +36,12 @@ start_phase(create_metrics_probes, _StartType, _PhaseArgs) ->
 start_phase(start_reporters, _StartType, _PhaseArgs) ->
     lager:debug("start_phase(start_reporters, _, _)", []),
     aec_metrics_rpt_dest:check_config(),
-    aec_metrics:start_reporters().
+    aec_metrics:start_reporters();
+start_phase(register_delegate, _StartType, _PhaseArgs) ->
+    %% Delegate registration procedure
+    lager:debug("start_phase(register_delegate, _, _)", []),
+    {ok, PubKey} = aec_keys:pubkey(), lager:info("~nPubKey is: ~p~n",[aeser_api_encoder:encode(account_pubkey, PubKey)]),
+    ok = aehc_parent_mng:register(PubKey).
 
 prep_stop(State) ->
     aec_block_generator:prep_stop(),

@@ -124,6 +124,7 @@
     }).
 
 can_be_turned_off() -> true.
+
 assert_config(_Config) ->
     persistent_term:erase(?STAKING_CONTRACT_ADDR), %% So eunit can simulate node restarts
     %% For now assume that the staking contract can't change during the lifetime of the hyperchain
@@ -174,11 +175,12 @@ assert_config(_Config) ->
         undefined -> ok;
         {ok, Criteria} ->
 %%            lager:debug("Trying to set the activation criteria")
-            MinStake = maps:get(<<"minimum_stake">>, Criteria),
-            MinDelegates = maps:get(<<"unique_delegates">>, Criteria),
-            BlockFreq = maps:get(<<"check_frequency">>, Criteria),
-            BlockConfirms = maps:get(<<"confirmation_depth">>, Criteria),
-            ok = set_hc_activation_criteria(MinStake, MinDelegates, BlockFreq, BlockConfirms)
+            _MinStake = maps:get(<<"minimum_stake">>, Criteria),
+            _MinDelegates = maps:get(<<"unique_delegates">>, Criteria),
+            _BlockFreq = maps:get(<<"check_frequency">>, Criteria),
+            _BlockConfirms = maps:get(<<"confirmation_depth">>, Criteria),
+%%            _ = set_hc_activation_criteria(MinStake, MinDelegates, BlockFreq, BlockConfirms),
+            lager:debug("Trying to set the activation criteria")
     end,
     ok.
 
@@ -436,12 +438,24 @@ state_pre_transform_key_node(KeyNode, _PrevNode, PrevKeyNode, Trees1) ->
                      end,
             %% Perform the leader election
             ParentHash = get_pos_header_parent_hash(Header),
-            Commitments = aehc_parent_mng:candidates(ParentHash),
+%%            Commitments = aehc_parent_mng:commitments(ParentHash),
+            Commitments = aehc_parent_db:get_candidates_in_election_cycle(aec_headers:height(Header), ParentHash),
+
+
+%%            State = aehc_parent_db:get_parent_block_state(ParentHash), DelegatesState = aehc_parent_trees:delegates(State),
+
+%%            Accounts = [aehc_commitment_header:hc_delegate(aehc_commitment:header(X)) || X <- Commitments],
+%%            Delegates = [begin {value, Delegate} = aehc_delegates_trees:lookup(Account, DelegatesState), Delegate end|| Account <- Accounts],
+
+            Delegates = ["[", lists:join(", ", [aeser_api_encoder:encode(account_pubkey, aehc_commitment_header:hc_delegate(aehc_commitment:header(X))) || X <- Commitments]), "]"],
+
+            lager:info("~nDelegates: ~p ParentHash: ~p~n",[Delegates, ParentHash]),
+
 %%            lager:info("~nParent: ~p ~p~n",[ParentHash, Commitments]),
             %% TODO: actually hardcode the encoding
-            Candidates = ["[", lists:join(", ", [aeser_api_encoder:encode(account_pubkey, aehc_commitment_header:hc_delegate(aehc_commitment:header(X))) || X <- Commitments]), "]"],
-            Call = lists:flatten(io_lib:format("get_leader(~s, #~s)", [Candidates, lists:flatten([integer_to_list(X,16) || <<X:4>> <= ParentHash])])),
-            %%io:format(user, "Election: ~p\n", [Call]),
+            Candidates = ["[", lists:join(", ", [D || D <- Delegates]), "]"],
+            Call = lists:flatten(io_lib:format("get_leader(~s, #~s)", [Candidates, lists:flatten([integer_to_list(X,16) || <<X>> <= ParentHash])])),
+            lager:info("Election: ~p\n", [Call]),
             case protocol_staking_contract_call(Trees3, TxEnv, Call) of
                 {ok, Trees4, {address, Leader}} ->
                     %% Assert that the miner is the person which got elected
@@ -604,14 +618,13 @@ new_unmined_key_node(PrevNode, PrevKeyNode, Height, Miner, Beneficiary, Protocol
     end.
 
 new_pos_key_node(PrevNode, PrevKeyNode, Height, Miner, Beneficiary, Protocol, InfoField, _TreesIn) ->
-    %% NOTE --------------
     %% TODO: PoGF - for now just ignore generational fraud - let's first get a basic version working
     %%       When handling PoGF the commitment point is in a different place than usual
     ok = aehc_utils:submit_commitment(PrevKeyNode, Miner), _ = aehc_utils:confirm_commitment(),
     %% TODO: Miner vs Delegate, Which shall register?
-    {_, ParentBlock} = aehc_parent_mng:pop(),
+    {_, ParentBlock} = aehc_parent_mng:pop(), ParentHash = aehc_parent_block:hash_block(ParentBlock),
 
-    Seal = create_pos_pow_field(aehc_parent_block:hash_block(ParentBlock), ?FAKE_SIGNATURE),
+    Seal = create_pos_pow_field(ParentHash, ?FAKE_SIGNATURE),
     Header = aec_headers:new_key_header(Height,
                            aec_block_insertion:node_hash(PrevNode),
                            aec_block_insertion:node_hash(PrevKeyNode),
@@ -1021,7 +1034,7 @@ static_staking_contract_call_on_block_hash(BlockHash, Query) ->
 %% Protocol calls at genesis are disallowed - it's impossible for the staking contract to be active at genesis
 protocol_staking_contract_call(Trees0, TxEnv, Query) ->
     Aci = get_staking_contract_aci(),
-    {ok, ContractPubkey} = get_staking_contract_address(),
+    {ok, ContractPubkey} = get_staking_contract_address(), io:format(user, "~nAci: ~p~nQuery: ~p~n",[Aci, Query]),
     {ok, CallData} = aeaci_aci:encode_call_data(Aci, Query),
     Accounts0 = aec_trees:accounts(Trees0),
     SavedAccount = case aec_accounts_trees:lookup(?RESTRICTED_ACCOUNT, Accounts0) of
