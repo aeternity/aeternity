@@ -105,6 +105,11 @@ protocols_from_network_id(<<"ae_uat">>) ->
      , ?LIMA_PROTOCOL_VSN =>  154300
 %%%  , ?IRIS_PROTOCOL_VSN =>  Not yet decided
      };
+
+protocols_from_network_id(<<"ae_hc_devnet">>) ->
+    #{ ?LIMA_PROTOCOL_VSN     => 0
+    };
+
 protocols_from_network_id(<<"local_roma_testnet">>) ->
     #{ ?ROMA_PROTOCOL_VSN     => 0
      %%, ?MINERVA_PROTOCOL_VSN  => Excluded for testing old protocol
