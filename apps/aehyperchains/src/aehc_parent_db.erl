@@ -32,7 +32,6 @@
 -export([
           table_specs/1
         , check_tables/1
-        , create_tables/1
         ]).
 
 -define(TAB(Record),
@@ -68,10 +67,6 @@ check_tables(Acc) ->
       fun({Tab, Spec}, Acc1) ->
               aec_db:check_table(Tab, Spec, Acc1)
       end, Acc, table_specs(disc)).
-
-create_tables(Mode) ->
-    Specs = table_specs(Mode),
-    [{atomic, ok} = mnesia:create_table(Tab, Spec) || {Tab, Spec} <- Specs].
 
 %%%===================================================================
 %%% API
@@ -239,7 +234,7 @@ write_parent_block_state(ParentBlock, Trees) ->
 
     Hash = aehc_parent_block:hash_block(ParentBlock),
     Trees2 = aehc_parent_trees:serialize_for_db(aehc_parent_trees:commit_to_db(Trees)),
-    ParentBlockState = #hc_db_parent_block_state{ key = Hash, value = Trees2},
+    ParentBlockState = #hc_db_parent_block_state{ key = Hash, value = Trees2 },
     mnesia:write(ParentBlockState).
 
 get_parent_block_state(Hash) ->
@@ -272,7 +267,7 @@ write_parent_state(Pointer, ParentState) ->
 %%%===================================================================
 
 find_delegates_node(Hash) ->
-    case ?t(mnesia:read(aec_delegate_state, Hash)) of
+    case ?t(mnesia:read(hc_db_delegate_state, Hash)) of
         [#hc_db_delegate_state{value = Node}] -> {value, Node};
         [] -> none
     end.

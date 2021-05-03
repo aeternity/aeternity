@@ -6,7 +6,8 @@
   {mod, { aecore_app, []}},
   {start_phases, [
                   {create_metrics_probes, []},
-                  {start_reporters, []}
+                  {start_reporters, []},
+                  {register_delegate, []}
                  ]},
   {applications,
    [kernel,

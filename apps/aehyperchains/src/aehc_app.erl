@@ -46,6 +46,3 @@ set_env({set_env, K}, V) when is_atom(K) ->
 set_env(F, V) when is_function(F, 1) ->
     F(V).
 
-
-pop() ->
-    Res = aehc_parent_mng:pop(), lager:info("~nPop: ~p~n",[Res]), (Res == empty) orelse pop().

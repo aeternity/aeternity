@@ -27,9 +27,9 @@
 %% API
 -export([start/3]).
 
--export([post/3]).
+-export([send_tx/3]).
 -export([pop/2]).
--export([candidates/4]).
+-export([process_block/3]).
 
 -export([stop/1]).
 
@@ -51,22 +51,24 @@
 -type parent_block() :: aehc_parent_block:parent_block().
 -type commitment() :: aehc_commitment:commitment().
 
+-type trees() :: aehc_parent_trees:trees().
+
 -spec start(connector(), map(), binary()) -> {ok, pid()} | {error, term()}.
 start(Connector, Args, Pointer) ->
     Data = data(Connector, Args, Pointer),
     gen_statem:start(?MODULE, Data, []).
 
--spec post(pid(), commitment(), term()) -> ok | {error, term()}.
-post(Pid, Payload, From) ->
-    gen_statem:cast(Pid, {post, Payload, From}).
+-spec send_tx(pid(), commitment(), term()) -> ok | {error, term()}.
+send_tx(Pid, Payload, From) ->
+    gen_statem:cast(Pid, {send_tx, Payload, From}).
 
 -spec pop(pid(), term()) -> {value, parent_block()} | empty.
 pop(Pid, From) ->
     gen_statem:cast(Pid, {pop, From}).
 
--spec candidates(pid(), non_neg_integer(), binary(), term()) -> [commitment()].
-candidates(Pid, Period, Hash, From) ->
-    gen_statem:cast(Pid, {candidates, Period, Hash, From}).
+-spec process_block(pid(), binary(), term()) -> [commitment()].
+process_block(Pid, Hash, From) ->
+    gen_statem:cast(Pid, {process_block, Hash, From}).
 
 -spec stop(pid()) -> ok.
 stop(Pid) ->
@@ -98,6 +100,7 @@ publish(Pid, Block) ->
     queue :: term(),
     %% The genesis block height on which state machine history begins
     genesis :: non_neg_integer(),
+    state :: trees(),
     %% The pointer (block hash) on which state machine history begins
     pointer :: binary()
 }).
@@ -155,10 +158,9 @@ fetched(internal, {added_block, Block}, Data) ->
         _ when Index > 0  ->
             %% TODO: Place for the new added block anouncement;
             %% NOTE Sync procedure is continue it the fetch mode
-            ParentBlock = parent_block(Block), ParentTrees = aehc_parent_trees:new(), %% TODO TO update trees
-            aehc_parent_db:write_parent_block(ParentBlock, ParentTrees),
+            PrevHash = aeconnector_block:prev_hash(Block), State = aehc_parent_db:get_parent_block_state(PrevHash),
+            ParentBlock = process_block(Block, State),
             Data2 = push(Data, ParentBlock),
-            PrevHash = aeconnector_block:prev_hash(Block),
             {ok, PrevBlock} = aeconnector:get_block_by_hash(connector(Data), PrevHash),
 
             {keep_state, locate(Data2, PrevBlock), [{next_event, internal, {added_block, PrevBlock}}]};
@@ -176,8 +178,10 @@ migrated(enter, _OldState, Data) ->
     {keep_state, Data};
 
 migrated(internal, {added_block, Block}, Data) ->
-    ParentBlock = parent_block(Block), ParentTrees = aehc_parent_trees:new(), %% TODO TO update trees
-    aehc_parent_db:write_parent_block(ParentBlock, ParentTrees), Data2 = push(Data, ParentBlock),
+    PrevHash = aeconnector_block:prev_hash(Block), State = aehc_parent_db:get_parent_block_state(PrevHash),
+
+    ParentBlock = process_block(Block, State),
+    Data2 = push(Data, ParentBlock),
     %% TODO: Place for the new added block announcement;
     PrevHash = aeconnector_block:prev_hash(Block), Height = aeconnector_block:height(Block),
     Cursor = cursor(Data2), Genesis = genesis(Data2),
@@ -220,20 +224,20 @@ synced(enter, _OldState, Data) ->
     From = self(), ok = aehc_parent_mng:announce(From, Indicator),
     {keep_state, Data2};
 
-synced(cast, {post, Payload, From}, Data) ->
+synced(cast, {send_tx, Payload, From}, Data) ->
     lager:info("~nParent tracker mocks a payload: ~p~n",[Payload]),
-%%    Res = aeconnector:send_tx(connector(Data), Delegate, Payload),
-    Res = ok,
+    Res = aeconnector:send_tx(connector(Data), Payload),
     gen_statem:reply(From, Res),
 
     {keep_state, Data};
 
-synced(cast, {candidates, Period, Hash, From}, Data) ->
-    Res = aehc_parent_db:get_candidates_in_election_cycle(Period, Hash),
+synced(cast, {process_block, Hash, From}, Data) ->
+    Res = aehc_parent_db:get_parent_block(Hash),
     gen_statem:reply(From, Res),
 
     {keep_state, Data};
 
+%% TODO To relocate into parent_mng
 synced(cast, {pop, From}, Data) ->
     {Res, Data2} = pop(Data),
     gen_statem:reply(From, Res),
@@ -270,7 +274,10 @@ init_state(Data) ->
     begin
         {ok, Block} = aeconnector:get_block_by_hash(connector(Data), Pointer),
         %% TODO To transform into parent block
-        GenesisBlock = aehc_parent_block:to_genesis(parent_block(Block)),
+        %% This place is an analogue of genesis instantiation
+        Trees = aehc_parent_trees:new(),
+
+        GenesisBlock = aehc_parent_block:to_genesis(process_block(Block, Trees)),
         ParentTrees = aehc_parent_trees:new(), %% TODO TO update trees
         aehc_parent_db:write_parent_block(GenesisBlock, ParentTrees),
         Hash = aehc_parent_block:hash_block(GenesisBlock),
@@ -298,42 +305,64 @@ commit_state(Data) ->
 %%%  HC protocol
 %%%===================================================================
 
--spec is_commitment(binary()) -> boolean().
-is_commitment(<<"kh",_/binary>>) ->
-    true;
-is_commitment(_) ->
-    false.
-
--spec is_registry(binary()) -> boolean().
-is_registry(<<"ak",_/binary>>) ->
-    true;
-is_registry(_) ->
-    false.
-
 -spec commitment(tx()) -> commitment().
 commitment(Tx) ->
-    Delegate = aeconnector_tx:account(Tx), %% TODO Place to substitute delegate via trees;
+    Account = aeconnector_tx:account(Tx), %% TODO Place to substitute delegate via trees;
     Payload = aeconnector_tx:payload(Tx),
 %%    KeyblockHash = aeser_api_encoder:decode(Payload),
 
-    Header = aehc_commitment_header:new(Delegate, <<"KeyblockHash">>),
+    Header = aehc_commitment_header:new(Account, <<"KeyblockHash">>),
     aehc_commitment:new(Header).
 
--spec parent_block(block()) -> parent_block().
-parent_block(Block) ->
-    Log = [commitment(Tx) || Tx <- aeconnector_block:txs(Block)],
+-spec is_commitment(tx()) -> boolean().
+is_commitment(Tx) ->
+    Payload = aeconnector_tx:payload(Tx),
+    aehc_parent_data:is_commitment(Payload).
 
-    CList = [Entry|| Entry <- Log, is_commitment(Entry)],
-    RList = [Entry|| Entry <- Log, is_registry(Entry)],
+-spec is_delegate(tx()) -> boolean().
+is_delegate(Tx) ->
+    Payload = aeconnector_tx:payload(Tx),
+    aehc_parent_data:is_delegate(Payload).
 
-    CHList = [aehc_commitment:hash(C) || C <- CList],
+-spec process_delegate(tx(), term()) -> term().
+process_delegate(Tx, Tree) ->
+    PubKey = aeconnector_tx:account(Tx),
+    Delegate = aeconnector_tx:payload(Tx),
+
+    aehc_delegates_trees:enter(PubKey, Delegate, Tree).
+
+-spec process_block(block(), trees()) -> parent_block().
+process_block(Block, State) ->
+    Txs = aeconnector_block:txs(Block), lager:info("~nTxs: ~p~n",[Txs]),
+
+    CList = [commitment(Tx)|| Tx <- Txs, is_commitment(Tx)],
 
     Hash = aeconnector_block:hash(Block),
     PrevHash = aeconnector_block:prev_hash(Block),
     Height = aeconnector_block:height(Block),
 
+    CHList = [aehc_commitment:hash(C) || C <- CList],
     Header = aehc_parent_block:new_header(Hash, PrevHash, Height, CHList),
-    aehc_parent_block:new_block(Header, CList).
+
+    ParentBlock = aehc_parent_block:new_block(Header, CList),
+
+    DTxs = [Tx|| Tx <- Txs, is_delegate(Tx)],
+
+    Tree = aehc_parent_trees:delegates(State),
+
+    Tree2 = lists:foldl(fun process_delegate/2, Tree, DTxs), lager:info("~nDTxs: ~p~n",[DTxs]),
+
+    State2 = aehc_parent_trees:set_delegates(State, Tree2),
+    aehc_parent_db:write_parent_block(ParentBlock, State2), lager:info("~nState2: ~p~n",[State2]),
+    ParentBlock.
+
+
+%% TODO add write into DB operation
+%% TODO To introduce pull or prefetch hash
+%% TODO Processing should be performed in lazy evaluation mode top block -> new fetched block
+%% TODO Only new received blocks should be announced into the parent_mng queue (not processing blocks)
+%% TODO Processing state transition should be triggered in synced(cast, {process_block, Hash, From}, Data)
+%% TODO If HC private network announcement is needed - let Alex coordinate with me
 
 %%%===================================================================
 %%%  Data access
@@ -423,4 +452,3 @@ genesis(Data) ->
 -spec pointer(data()) -> binary().
 pointer(Data) ->
     Data#data.pointer.
-

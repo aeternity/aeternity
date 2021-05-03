@@ -8,15 +8,15 @@
 %%% @end
 %%%-------------------------------------------------------------------
 -module(aehc_parent_data).
--author("sojourner").
 
 %% API
 -export([commitment/1]).
--export([registry/1]).
+-export([delegate/1]).
 
--export([is_commitment/1, is_registry/1]).
+-export([is_commitment/1, is_delegate/1]).
 
 -type commitment() :: aehc_commitment:commitment().
+-type pubkey() :: aec_keys:pubkey().
 
 -type payload() :: binary().
 
@@ -26,8 +26,8 @@ commitment(Commitment) ->
     KeyBlock = aehc_commitment_header:hc_keyblock(Header),
     aeser_api_encoder:encode(key_block_hash, KeyBlock).
 
--spec registry(binary()) -> payload().
-registry(PubKey) ->
+-spec delegate(pubkey()) -> payload().
+delegate(PubKey) ->
     aeser_api_encoder:encode(account_pubkey, PubKey).
 
 -spec is_commitment(binary()) -> boolean().
@@ -36,8 +36,8 @@ is_commitment(<<"kh",_/binary>>) ->
 is_commitment(_) ->
     false.
 
--spec is_registry(binary()) -> boolean().
-is_registry(<<"ak",_/binary>>) ->
+-spec is_delegate(binary()) -> boolean().
+is_delegate(<<"ak",_/binary>>) ->
     true;
-is_registry(_) ->
+is_delegate(_) ->
     false.

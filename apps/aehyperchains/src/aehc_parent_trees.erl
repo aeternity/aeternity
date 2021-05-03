@@ -27,7 +27,7 @@ new() ->
 delegates(Trees) ->
     Trees#trees.delegates.
 
--spec set_delegates(aehc_delegates_trees:tree(), trees()) -> trees().
+-spec set_delegates(trees(), aehc_delegates_trees:tree()) -> trees().
 set_delegates(Trees, Delegates) ->
     Trees#trees{ delegates = Delegates }.
 
@@ -41,10 +41,10 @@ set_delegates(Trees, Delegates) ->
 -spec deserialize_from_db(binary()) -> trees().
 deserialize_from_db(Bin) when is_binary(Bin) ->
     List = aeser_chain_objects:deserialize(trees_db, ?VSN, ?TEMPLATE, Bin),
-    [{delegates_hash, Delegates}] = [db_deserialize_hash(Obj) || Obj <- List],
+    [{delegates_hash, Hash}] = [db_deserialize_hash(Obj) || Obj <- List],
 
     #trees{
-        delegates = aehc_delegates_trees:new_with_backend(Delegates)
+        delegates = aehc_delegates_trees:new_with_backend(Hash)
     }.
 
 db_deserialize_hash({Field, [Hash]}) -> {Field, Hash};
