@@ -2,13 +2,13 @@
 
 -export([ hc_enabled/0
         , submit_commitment/2
-        , confirm_commitment/0
-        , lookup_delegate/2
+        , delegates/1
         ]).
 
 -export([stake/0]).
 
--type pubkey() :: aec_keys:pubkey().
+-include("../../aecore/include/blocks.hrl").
+-include("aehc_utils.hrl").
 
 -spec hc_enabled() -> boolean().
 hc_enabled() ->
@@ -18,29 +18,26 @@ hc_enabled() ->
 
 -spec submit_commitment(node(), binary()) -> aehc_parent_block:parent_block().
 submit_commitment(KeyNode, Delegate) ->
+    aec_events:subscribe(parent_top_changed),
+
     C = aehc_commitment:new(aehc_commitment_header:new(Delegate, aec_block_insertion:node_hash(KeyNode)), no_pogf),
-    error(todo).
+    ok = aehc_parent_mng:commit(C),
 
-%%-spec submit_commitment(node(), binary()) -> ok.
-%%submit_commitment(KeyNode, Delegate) ->
-%%    aec_events:subscribe(parent_top_changed),
-%%
-%%    C = aehc_commitment:new(aehc_commitment_header:new(Delegate, aec_block_insertion:node_hash(KeyNode)), no_pogf),
-%%    ok = aehc_parent_mng:commit(C).
-
--spec confirm_commitment() -> aehc_parent_block:parent_block().
-confirm_commitment() ->
     receive
         {gproc_ps_event, parent_top_changed, _Info} ->
             ok
-    end.
+    end,
+    {_, ParentBlock} = aehc_parent_mng:pop(),
 
--spec lookup_delegate(binary(), binary()) -> none | {value, pubkey()}.
-lookup_delegate(Pubkey, Hash) ->
-    Trees = aehc_parent_mng:delegates(Hash),
+    ParentBlock.
 
-    aehc_delegates_trees:lookup(Pubkey, Trees).
+-spec delegates(block_header_hash()) -> [commiter_pubkey()].
+delegates(ParentHash) ->
+    Commitments = aehc_parent_mng:commitments(ParentHash),
+    Accounts = [aehc_commitment_header:hc_delegate(aehc_commitment:header(X)) || X <- Commitments],
 
+    State = aehc_parent_trees:delegates(aehc_parent_db:get_parent_block_state(ParentHash)),
+    [begin {value, Delegate} = aehc_delegates_trees:lookup(A, State), Delegate end|| A <- Accounts].
 
 stake() ->
     {ok, ContractAddress} = aehc_consensus_hyperchains:get_staking_contract_address(),
