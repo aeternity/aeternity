@@ -228,6 +228,7 @@ hc_from_genesis_test_() ->
                     assert_static_staking_call_result({ok, false}, "enabled()"),
                     assert_static_staking_call_result({ok, 1 * ?AE}, "balance()"),
                     %% Now we create the block at 10 - the first HC block :)
+                    meck:expect(aehc_utils, delegates, fun (_) -> [PatronPubkey] end),
                     meck:expect(aehc_utils, submit_commitment,
                         fun(KeyNode, Delegate) ->
                             PatronPubkey = Delegate,
@@ -237,7 +238,7 @@ hc_from_genesis_test_() ->
                             ParentBlockHeader = aehc_parent_block:new_header(?PARENT_GENESIS_HASH, ?PARENT_GENESIS_HASH, 1, CHList),
                             ParentBlock = aehc_parent_block:new_block(ParentBlockHeader, CList),
                             aehc_parent_db:write_parent_block(ParentBlock, aehc_parent_trees:new()),
-                            ok
+                            ParentBlock
                         end),
                     Chain2 = aec_test_utils:extend_block_chain_with_key_blocks(Chain1, 1, PatronPubkey, PatronPubkey, #{}),
                     insert_blocks(aec_test_utils:blocks_only_chain(Chain2)),
@@ -255,7 +256,7 @@ hc_from_genesis_test_() ->
                             ParentBlockHeader = aehc_parent_block:new_header(?PARENT_HASH1, ?PARENT_GENESIS_HASH, 2, CHList),
                             ParentBlock = aehc_parent_block:new_block(ParentBlockHeader, CList),
                             aehc_parent_db:write_parent_block(ParentBlock, aehc_parent_trees:new()),
-                            ok
+                            ParentBlock
                         end),
                     Chain3 = aec_test_utils:extend_block_chain_with_key_blocks(Chain2, 1, PatronPubkey, PatronPubkey, #{}),
                     insert_blocks(aec_test_utils:blocks_only_chain(Chain3)),
@@ -309,6 +310,7 @@ hc_from_genesis_test_() ->
                     assert_static_staking_call_result({ok, 2 * ?AE}, "balance()"),
                     %% Now we create the block at 10 - the first HC block :)
                     %% Only delegate1 commits to the block at 9
+                    meck:expect(aehc_utils, delegates, fun (_) -> [D1Pub] end),
                     meck:expect(aehc_utils, submit_commitment,
                         fun(KeyNode, Delegate) ->
                             PatronPubkey = Delegate,
@@ -318,13 +320,14 @@ hc_from_genesis_test_() ->
                             ParentBlockHeader = aehc_parent_block:new_header(?PARENT_GENESIS_HASH, ?PARENT_GENESIS_HASH, 1, CHList),
                             ParentBlock = aehc_parent_block:new_block(ParentBlockHeader, CList),
                             aehc_parent_db:write_parent_block(ParentBlock, aehc_parent_trees:new()),
-                            ok
+                            ParentBlock
                         end),
                     Chain2 = aec_test_utils:extend_block_chain_with_key_blocks(Chain1, 1, D1Pub, D1Pub, #{}),
                     insert_blocks(aec_test_utils:blocks_only_chain(Chain2)),
                     assert_static_staking_call_result({ok, true}, "enabled()"),
                     assert_static_staking_call_result({ok, {variant, [0, 1], 1, {{address, D1Pub}}}}, "get_computed_leader()"),
                     assert_static_staking_call_result({ok, 2 * ?AE}, "balance()"),
+                    meck:expect(aehc_utils, delegates, fun (_) -> [D2Pub] end),
                     %% Emit a block by delegate2
                     meck:expect(aehc_utils, submit_commitment,
                         fun(KeyNode, Delegate) ->
@@ -335,7 +338,7 @@ hc_from_genesis_test_() ->
                             ParentBlockHeader = aehc_parent_block:new_header(?PARENT_HASH1, ?PARENT_GENESIS_HASH, 2, CHList),
                             ParentBlock = aehc_parent_block:new_block(ParentBlockHeader, CList),
                             aehc_parent_db:write_parent_block(ParentBlock, aehc_parent_trees:new()),
-                            ok
+                            ParentBlock
                         end),
                     Chain3 = aec_test_utils:extend_block_chain_with_key_blocks(Chain2, 1, D2Pub, D2Pub, #{}),
                     insert_blocks(aec_test_utils:blocks_only_chain(Chain3)),
@@ -348,6 +351,7 @@ hc_from_genesis_test_() ->
                     {error,miner_not_leader} = aec_chain_state:insert_block(B2),
                     %% Time to make a more complicated election
                     %% Commit 1 and 2
+                    meck:expect(aehc_utils, delegates, fun (_) -> [D1Pub, D2Pub] end),
                     meck:expect(aehc_utils, submit_commitment,
                         fun(KeyNode, Delegate) ->
                             PatronPubkey = Delegate,
@@ -358,7 +362,7 @@ hc_from_genesis_test_() ->
                             ParentBlockHeader = aehc_parent_block:new_header(?PARENT_HASH2, ?PARENT_HASH1, 3, CHList),
                             ParentBlock = aehc_parent_block:new_block(ParentBlockHeader, CList),
                             aehc_parent_db:write_parent_block(ParentBlock, aehc_parent_trees:new()),
-                            ok
+                            ParentBlock
                         end),
                     Chain4 = aec_test_utils:extend_block_chain_with_key_blocks(Chain3, 1, D2Pub, D2Pub, #{}),
                     insert_blocks(aec_test_utils:blocks_only_chain(Chain4)),
@@ -512,7 +516,7 @@ hc_switchover_at_10_test_() ->
                 true = aehc_utils:hc_enabled(),
                 [_ | Timestamps] = [aec_blocks:time_in_msecs(B) || B <- ExpectedChain, key =:= aec_blocks:type(B)],
                 try
-                    _ = aehc_consensus_hyperchains:get_hc_activation_criteria(),
+                    error = aehc_consensus_hyperchains:get_hc_activation_criteria(),
                     aehc_consensus_hyperchains:set_predeploy_address(ContractAddress),
                     %% Check compatibility with plain PoW
                     ensure_same_chains(ExpectedChain,

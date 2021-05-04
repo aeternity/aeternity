@@ -175,12 +175,11 @@ assert_config(_Config) ->
         undefined -> ok;
         {ok, Criteria} ->
 %%            lager:debug("Trying to set the activation criteria")
-            _MinStake = maps:get(<<"minimum_stake">>, Criteria),
-            _MinDelegates = maps:get(<<"unique_delegates">>, Criteria),
-            _BlockFreq = maps:get(<<"check_frequency">>, Criteria),
-            _BlockConfirms = maps:get(<<"confirmation_depth">>, Criteria),
-%%            _ = set_hc_activation_criteria(MinStake, MinDelegates, BlockFreq, BlockConfirms),
-            lager:debug("Trying to set the activation criteria")
+            MinStake = maps:get(<<"minimum_stake">>, Criteria),
+            MinDelegates = maps:get(<<"unique_delegates">>, Criteria),
+            BlockFreq = maps:get(<<"check_frequency">>, Criteria),
+            BlockConfirms = maps:get(<<"confirmation_depth">>, Criteria),
+            _ = set_hc_activation_criteria(MinStake, MinDelegates, BlockFreq, BlockConfirms)
     end,
     ok.
 
@@ -432,30 +431,17 @@ state_pre_transform_key_node(KeyNode, _PrevNode, PrevKeyNode, Trees1) ->
                                      {ok, Trees2, {tuple, {}}} -> Trees2;
                                      Err1 -> aec_block_insertion:abort_state_transition({activation_failed, Err1})
                                  end,
-                             %% NOTE Setup of parent chain pointer
-
+                             %% TODO To setup parent chain pointer
                              Res
                      end,
             %% Perform the leader election
             ParentHash = get_pos_header_parent_hash(Header),
-%%            Commitments = aehc_parent_mng:commitments(ParentHash),
-            Commitments = aehc_parent_db:get_candidates_in_election_cycle(aec_headers:height(Header), ParentHash),
-
-
-%%            State = aehc_parent_db:get_parent_block_state(ParentHash), DelegatesState = aehc_parent_trees:delegates(State),
-
-%%            Accounts = [aehc_commitment_header:hc_delegate(aehc_commitment:header(X)) || X <- Commitments],
-%%            Delegates = [begin {value, Delegate} = aehc_delegates_trees:lookup(Account, DelegatesState), Delegate end|| Account <- Accounts],
-
-            Delegates = ["[", lists:join(", ", [aeser_api_encoder:encode(account_pubkey, aehc_commitment_header:hc_delegate(aehc_commitment:header(X))) || X <- Commitments]), "]"],
-
-            lager:info("~nDelegates: ~p ParentHash: ~p~n",[Delegates, ParentHash]),
-
-%%            lager:info("~nParent: ~p ~p~n",[ParentHash, Commitments]),
+            Delegates = aehc_utils:delegates(ParentHash),
             %% TODO: actually hardcode the encoding
-            Candidates = ["[", lists:join(", ", [D || D <- Delegates]), "]"],
-            Call = lists:flatten(io_lib:format("get_leader(~s, #~s)", [Candidates, lists:flatten([integer_to_list(X,16) || <<X>> <= ParentHash])])),
-            lager:info("Election: ~p\n", [Call]),
+            Arg1 = ["[", lists:join(", ", [aeser_api_encoder:encode(account_pubkey, X)  || X <- Delegates]), "]"],
+            Arg2 = lists:flatten([integer_to_list(X,16) || <<X:4>> <= ParentHash]),
+            Call = lists:flatten(io_lib:format("get_leader(~s, #~s)", [Arg1, Arg2])),
+            io:format(user, "Election: ~p\n", [Call]),
             case protocol_staking_contract_call(Trees3, TxEnv, Call) of
                 {ok, Trees4, {address, Leader}} ->
                     %% Assert that the miner is the person which got elected
@@ -620,11 +606,10 @@ new_unmined_key_node(PrevNode, PrevKeyNode, Height, Miner, Beneficiary, Protocol
 new_pos_key_node(PrevNode, PrevKeyNode, Height, Miner, Beneficiary, Protocol, InfoField, _TreesIn) ->
     %% TODO: PoGF - for now just ignore generational fraud - let's first get a basic version working
     %%       When handling PoGF the commitment point is in a different place than usual
-    ok = aehc_utils:submit_commitment(PrevKeyNode, Miner), _ = aehc_utils:confirm_commitment(),
     %% TODO: Miner vs Delegate, Which shall register?
-    {_, ParentBlock} = aehc_parent_mng:pop(), ParentHash = aehc_parent_block:hash_block(ParentBlock),
+    ParentBlock = aehc_utils:submit_commitment(PrevKeyNode, Miner),
+    Seal = create_pos_pow_field(aehc_parent_block:hash_block(ParentBlock), ?FAKE_SIGNATURE),
 
-    Seal = create_pos_pow_field(ParentHash, ?FAKE_SIGNATURE),
     Header = aec_headers:new_key_header(Height,
                            aec_block_insertion:node_hash(PrevNode),
                            aec_block_insertion:node_hash(PrevKeyNode),
