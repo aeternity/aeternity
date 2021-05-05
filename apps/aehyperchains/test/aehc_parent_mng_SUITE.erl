@@ -246,5 +246,6 @@ key_header(Height) ->
         aec_headers:pow(RawKey),
         aec_headers:nonce(RawKey),
         aec_headers:time_in_msecs(RawKey),
-        default,
+        0,  % Can't use `default` as we are unable to read VERSION file in tests.
+            % This is much easier than solving the real problem...
         ?FORTUNA_PROTOCOL_VSN).

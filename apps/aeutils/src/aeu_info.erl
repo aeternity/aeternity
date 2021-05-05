@@ -41,7 +41,7 @@ vendor() ->
 read_trimmed_file(Filename) ->
     case file:read_file(Filename) of
         {error, enoent} ->
-            <<>>;
+            error({not_found, Filename});
         {ok, Content} ->
             trim_ending_whitespace(Content)
     end.
