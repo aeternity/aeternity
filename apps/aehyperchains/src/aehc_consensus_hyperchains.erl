@@ -178,7 +178,7 @@ assert_config(_Config) ->
             MinDelegates = maps:get(<<"unique_delegates">>, Criteria),
             BlockFreq = maps:get(<<"check_frequency">>, Criteria),
             BlockConfirms = maps:get(<<"confirmation_depth">>, Criteria),
-            _ = set_hc_activation_criteria(MinStake, MinDelegates, BlockFreq, BlockConfirms)
+            ok = set_hc_activation_criteria(MinStake, MinDelegates, BlockFreq, BlockConfirms)
     end,
     ok.
 
