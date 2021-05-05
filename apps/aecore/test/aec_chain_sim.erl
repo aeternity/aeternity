@@ -262,7 +262,7 @@ top_block_hash() ->
 %%
 add_keyblock(ForkId) ->
     chain_req({add_key, ForkId}).
-
+apps/aechannel/test/aesc_chain_watcher_SUITE.erl
 -spec add_microblock() -> {ok, aec_blocks:micro_block()}.
 %%
 %% Equivalent to add_microblock(main)
@@ -736,7 +736,8 @@ get_top_state_(Chain) ->
 
 hash_is_in_main_chain_(Hash, TopHash, Chain) ->
     BlockHash = fun(B) ->
-                        {ok, H} = aec_headers:hash_header(aec_blocks:to_header(B)),
+                        Block = maps:get(block, B),
+                        {ok, H} = aec_headers:hash_header(aec_blocks:to_header(Block)),
                         H
                 end,
     case blocks_until_hash(TopHash, blocks(Chain)) of

@@ -5,6 +5,12 @@ contract SpendContract =
 
 payable contract SpendTest =
 
+  type state = int
+  entrypoint init() =
+    Chain.balance(Contract.address) * 100 + Call.value * 10 + Contract.balance
+
+  entrypoint check() = state
+
   stateful entrypoint spend(to, amount) =
     let total = Contract.balance
     Chain.spend(to, amount)

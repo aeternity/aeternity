@@ -54,9 +54,9 @@ init_per_suite(Cfg) ->
         ?ROMA_PROTOCOL_VSN -> {skip, stratum_payout_account_unsupported_in_roma};
         ?MINERVA_PROTOCOL_VSN -> {skip, stratum_payout_account_unsupported_in_minerva};
         LatestProtocolVersion when LatestProtocolVersion =:= ?FORTUNA_PROTOCOL_VSN;
-                                   LatestProtocolVersion =:= ?LIMA_PROTOCOL_VSN;
-                                   LatestProtocolVersion =:= ?IRIS_PROTOCOL_VSN ->
-            init_per_suite_(Cfg)
+                                   LatestProtocolVersion =:= ?LIMA_PROTOCOL_VSN ->
+            init_per_suite_(Cfg);
+        ?IRIS_PROTOCOL_VSN -> {skip, stratum_not_yet_working_in_iris}
     end.
 
 init_per_suite_(Cfg) ->
@@ -466,8 +466,23 @@ write_stratum_keys(Dir, Cfg) ->
 
 latest_version(Top) ->
     Vsns = filelib:wildcard(filename:join([Top, "lib", "aestratum-*"])),
-    %% TODO: make sort respect semantic versioning (not necessarily alphanumeric order)
-    lists:last(lists:sort(Vsns)).
+    lists:last(lists:sort(fun vsn_cmp/2, Vsns)).
+
+vsn_cmp(A, B) ->
+    sortable_vsn(A) =< sortable_vsn(B).
+
+sortable_vsn(Path) ->
+    {match, VsnStr} = re:run(Path, "-([a-zA-Z0-9\\.]+)$", [{capture,[1],list}]),
+    Parts = re:split(VsnStr, "\\.", [{return, list}]),
+    [leading_num(V) || V <- Parts].
+
+leading_num(V) ->
+    case re:run(V, "([0-9]+)([^0-9].*)", [{capture,[1,2],list}]) of
+        nomatch ->
+            [list_to_integer(V)];
+        {match, [N,A]} ->
+            [list_to_integer(N), A]
+    end.
 
 del_stratum_keys(Cfg) ->
     StratumKeysDir = ?config(stratum_keys_dir, Cfg),
@@ -652,12 +667,14 @@ retry_(_, S) ->
 
 
 deploy_payout_contract(#{pubkey := PubKey, privkey := PrivKey}, Nonce) ->
-    {ok, CData}       = rpc(?MINING_NODE, aeb_aevm_abi, create_calldata,
-                            ["init", [], [], {tuple, [typerep, {tuple, []}]}]),
+    {ok, BinSrc} = aect_test_utils:read_contract(payout_contract),
+    {ok, CCode}  = aect_test_utils:compile_contract(payout_contract),
+    {ok, CallData} = aect_test_utils:encode_call_data(BinSrc, "init", []),
+
     {ok, WrappedTx}   =
         aect_create_tx:new(#{owner_id    => aeser_id:create(account, PubKey),
                              nonce       => Nonce,
-                             code        => compiled_contract(),
+                             code        => CCode,
                              vm_version  => aect_test_utils:latest_sophia_vm_version(),
                              abi_version => aect_test_utils:latest_sophia_abi_version(),
                              deposit     => 0,
@@ -665,7 +682,7 @@ deploy_payout_contract(#{pubkey := PubKey, privkey := PrivKey}, Nonce) ->
                              gas         => 100000,
                              gas_price   => ?DEFAULT_GAS_PRICE,
                              fee         => 1400000 * ?DEFAULT_GAS_PRICE,
-                             call_data   => CData}),
+                             call_data   => CallData}),
     {_, CreateTx} = aetx:specialize_type(WrappedTx),
     CtPubkey = aect_create_tx:contract_pubkey(CreateTx),
     BinaryTx = aec_governance:add_network_id(aetx:serialize_to_binary(WrappedTx)),
@@ -674,8 +691,3 @@ deploy_payout_contract(#{pubkey := PubKey, privkey := PrivKey}, Nonce) ->
     ok       = rpc(?MINING_NODE, aec_tx_pool, push, [SignedTx]),
     {ok, TxHash, CtPubkey}.
 
-
-%% result of: aeso_compiler:from_string(ContractSourceCode, [])
-compiled_contract() ->
-  {ok, ByteCode} = aect_test_utils:compile_contract(payout_contract),
-  ByteCode.

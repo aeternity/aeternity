@@ -52,6 +52,7 @@
         , spend_fee_op/2
         , spend_op/3
         , transfer_value_op/3
+        , contract_create_op/11
         , tx_event_op/2
         , tx_event_op/3
         ]).
@@ -359,7 +360,8 @@ contract_call_from_contract_instructions(CallerPubKey, ContractPubkey, CallData,
     ].
 
 -spec channel_create_tx_instructions(
-        pubkey(), amount(), pubkey(), amount(), amount(), [pubkey()],
+        pubkey(), amount(), pubkey(), amount(), amount(),
+        [pubkey()] | {[pubkey()], [pubkey()]},
         hash(), ttl(), fee(), nonce(), non_neg_integer(),
         pubkey()) -> [op()].
 channel_create_tx_instructions(InitiatorPubkey, InitiatorAmount,
@@ -953,12 +955,17 @@ name_update({OwnerPubkey, NameHash, TTL, ClientTTL, Pointers}, S) ->
     ClientTTL1 = if ClientTTL == undefined -> aens_names:client_ttl(Rec);
                     true -> ClientTTL
                  end,
-    Pointers1  = if Pointers == undefined -> aens_names:pointers(Rec);
-                    is_list(Pointers) -> Pointers
-                 end,
     assert_ttl(TTL1, S1),
     assert_name_owner(Rec, OwnerPubkey),
     assert_name_claimed(Rec),
+    %% 'undefined' means we got here from FATE - thus we don't expect to
+    %% fail on legacy invalid pointers - so explicitly sanitize them.
+    Pointers1  = if Pointers == undefined ->
+                        aens_pointer:sanitize_pointers(aens_names:pointers(Rec));
+                    is_list(Pointers) ->
+                        assert_name_pointers(Pointers, S#state.protocol),
+                        Pointers
+                 end,
     Rec1 = aens_names:update(Rec, TTL1, ClientTTL1, Pointers1),
     put_name(Rec1, S1).
 
@@ -989,12 +996,20 @@ channel_create_op(InitiatorPubkey, InitiatorAmount,
                         ?IS_HASH(ResponderPubkey),
                         ?IS_NON_NEG_INTEGER(ReserveAmount),
                         ?IS_NON_NEG_INTEGER(ReserveAmount),
-                        is_list(DelegatePubkeys),
                         ?IS_HASH(StateHash),
                         ?IS_NON_NEG_INTEGER(LockPeriod),
                         ?IS_NON_NEG_INTEGER(Nonce),
                         ?IS_NON_NEG_INTEGER(Round) ->
-    true = lists:all(fun(X) -> ?IS_HASH(X) end, DelegatePubkeys),
+    %% assert delegagate pubkeys
+    ValidateHashes =
+        fun(L) -> true = lists:all(fun(X) -> ?IS_HASH(X) end, L) end,
+    case DelegatePubkeys of
+        L when is_list(L) ->
+            ValidateHashes(L);
+        {IL, RL} when is_list(IL), is_list(RL) ->
+            ValidateHashes(IL),
+            ValidateHashes(RL)
+    end,
     {channel_create, {InitiatorPubkey, InitiatorAmount,
                       ResponderPubkey, ResponderAmount,
                       ReserveAmount, DelegatePubkeys,
@@ -1202,7 +1217,7 @@ contract_call({CallerPubKey, ContractPubkey, CallData, GasLimit, GasPrice,
     Contract = get_contract_no_cache(ContractPubkey, S4),
     ContractCall = fun() ->
                            run_contract(CallerId, Contract, GasLimit, GasPrice,
-                                        CallData, Origin, Amount, CallStack, Nonce, S4)
+                                        CallData, _AllowInit = false, Origin, Amount, CallStack, Nonce, S4)
                    end,
     {Call, S5} = timed_contract_call(contract_call, ContractCall, CallData, CTVersion),
     case aect_call:return_type(Call) of
@@ -1335,7 +1350,7 @@ ga_meta({OwnerPK, AuthData, ABIVersion, GasLimit, GasPrice, Fee, InnerTx}, S) ->
     CallerId   = aeser_id:create(account, OwnerPK),
     ContractCall = fun() ->
                            run_contract(CallerId, Contract, GasLimit, GasPrice,
-                                        AuthData, OwnerPK, _Amount = 0, _CallStack = [], _Nonce = 0, S2)
+                                        AuthData, _AllowInit = false, OwnerPK, _Amount = 0, _CallStack = [], _Nonce = 0, S2)
                    end,
     {Call, S3} = timed_contract_call(ga_meta, ContractCall, AuthData, CTVersion),
     case aect_call:return_type(Call) of
@@ -1443,7 +1458,7 @@ init_contract(Context, OwnerId, Code, Contract, GasLimit, GasPrice, CallData,
     {InitContract, ChainContract, S1} = prepare_init_call(Code, Contract, S),
     ContractCall = fun() ->
                            run_contract(OwnerId, Code, InitContract, GasLimit, GasPrice,
-                                        CallData, OwnerPubkey, _InitAmount = 0,
+                                        CallData, _AllowInit = true, OwnerPubkey, _InitAmount = 0,
                                         _CallStack = [], Nonce, S1)
                    end,
     {InitCall, S2} = timed_contract_call(MetricType, ContractCall, CallData, CTVersion),
@@ -1464,7 +1479,12 @@ prepare_init_call(Code, Contract, S = #state{protocol = Protocol}) ->
         #{vm := V} when ?IS_FATE_SOPHIA(V) ->
             #{ byte_code := ByteCode } = Code,
             FateCode  = aeb_fate_code:deserialize(ByteCode),
-            FateCode1 = aeb_fate_code:strip_init_function(FateCode),
+            FateCode1 =
+                if
+                    % Before FATE 2 we do not include init function in code put in trees
+                    V == ?VM_FATE_SOPHIA_1 -> aeb_fate_code:strip_init_function(FateCode);
+                    true -> FateCode
+                end,
             ByteCode1 = aeb_fate_code:serialize(FateCode1),
             Code1     = Code#{ byte_code := ByteCode1 },
             %% The serialization was broken in the Lima release - setting the
@@ -1583,12 +1603,21 @@ contract_call_fail(Call0, Fee, S) ->
     {Account, S3} = get_account(Payer, S2),
     account_spend(Account, UsedAmount, S3).
 
-run_contract(CallerId, Contract, GasLimit, GasPrice, CallData,
+run_contract(CallerId, Contract, GasLimit, GasPrice, CallData, AllowInit,
              Origin, Amount, CallStack, Nonce, S) ->
-    run_contract(CallerId, aect_contracts:code(Contract), Contract, GasLimit,
-                 GasPrice, CallData, Origin, Amount, CallStack, Nonce, S).
+    Code =
+        case aect_contracts:code(Contract) of
+            {code, C} -> C;
+            {ref, Ref} ->
+                RefContractPK = aeser_id:specialize(Ref, contract),
+                {ok, RefContract} = get_contract_no_cache(RefContractPK, S),
+                {code, C} = aect_contracts:code(RefContract),
+                C
+        end,
+    run_contract(CallerId, Code, Contract, GasLimit,
+                 GasPrice, CallData, AllowInit, Origin, Amount, CallStack, Nonce, S).
 
-run_contract(CallerId, Code, Contract, GasLimit, GasPrice, CallData,
+run_contract(CallerId, Code, Contract, GasLimit, GasPrice, CallData, AllowInit,
              Origin, Amount, CallStack, Nonce, S) ->
     %% We need to push all to the trees before running a contract.
     S1 = aeprimop_state:cache_write_through(S),
@@ -1610,6 +1639,7 @@ run_contract(CallerId, Code, Contract, GasLimit, GasPrice, CallData,
                , off_chain   => false
                , origin      => Origin
                , creator     => aect_contracts:owner_pubkey(Contract)
+               , allow_init  => AllowInit
                },
     CTVersion = aect_contracts:ct_version(Contract),
     {Call1, Trees1, Env1} = aect_dispatch:run(CTVersion, CallDef),
@@ -1933,8 +1963,6 @@ assert_valid_overbid(NewNameFee, OldNameFee) ->
             runtime_error(name_fee_increment_too_low)
     end.
 
-
-
 assert_name_registrar(Registrar, Protocol) ->
     case lists:member(Registrar, aec_governance:name_registrars(Protocol)) of
         true  -> ok;
@@ -1957,6 +1985,14 @@ assert_name_claimed(Name) ->
     case aens_names:status(Name) of
         claimed -> ok;
         revoked -> runtime_error(name_revoked)
+    end.
+
+assert_name_pointers(_, Protocol) when Protocol < ?IRIS_PROTOCOL_VSN ->
+    ok;
+assert_name_pointers(Pointers, _) ->
+    case Pointers == aens_pointer:sanitize_pointers(Pointers) of
+        true  -> ok;
+        false -> runtime_error(invalid_pointers)
     end.
 
 %% Note: returns deserialized Code to avoid extra work

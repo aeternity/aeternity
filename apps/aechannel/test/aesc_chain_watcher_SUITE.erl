@@ -51,6 +51,7 @@
 
 -include_lib("common_test/include/ct.hrl").
 -include_lib("aeutils/include/aeu_stacktrace.hrl").
+-include_lib("aecontract/include/hard_forks.hrl").
 
 -define(LOG(_Fmt, _Args), log(_Fmt, _Args, ?LINE, true)).
 -define(LOG(_D, _Fmt, _Args), log(_Fmt, _Args, ?LINE, _D)).
@@ -178,7 +179,7 @@ set_up_channel(Config) ->
     add_microblock(),
     ok = watchers_notified(
            fun({channel_changed_on_chain, I}, _C) ->
-                   #{tx := CreateTx} = I,
+                   #{tx := _CreateTx} = I,
                    ok
            end, Watchers),
     %%
@@ -569,10 +570,6 @@ create_and_sign_tx(#{mod := Mod} = TxInfo, SKs) ->
 state_hash(BlockHash, Bin) when is_binary(BlockHash), is_binary(Bin) ->
     aec_hash:hash(state_trees, <<BlockHash/binary, Bin/binary>>).
 
-new_keypair() ->
-    #{public := PK, secret := SK} = enacl:sign_keypair(),
-    #{pubkey => PK, privkey => SK}.
-
 %% Tx creation - most values don't matter for the tests, but must be present
 %% in order to create the transaction objects
 %%
@@ -592,7 +589,8 @@ create_tx(Config) ->
            , lock_period      => 3
            , fee              => 50000 * aec_test_utils:min_gas_price()
            , state_hash       => <<>>
-           , nonce            => Nonce },
+           , nonce            => Nonce
+           , delegate_ids     => no_delegates()},
     StateHash = state_hash(TopHash, term_to_binary(Tx0)),
     create_and_sign_tx(Tx0#{state_hash => StateHash}, [RSK, ISK]).
 
@@ -698,6 +696,10 @@ init_per_group(GrpName, Config) ->
             {ok, #{pubkey := Initiator, privkey := InitiatorSK}} = aec_chain_sim:new_account(?BIG_AMOUNT),
             {ok, #{pubkey := Responder, privkey := ResponderSK}} = aec_chain_sim:new_account(?BIG_AMOUNT),
             {ok, Watcher} = start_chain_watcher(),
+            %% mine a few keyblocks so we are on the right protocol
+            lists:foreach(
+                fun(_) -> add_keyblock() end,
+                lists:seq(1, 2)),
             [ {watcher, Watcher}
             , {chain_process, ChainP}
             , {initiator, aeser_id:create(account, Initiator)}

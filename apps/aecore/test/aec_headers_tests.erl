@@ -185,7 +185,7 @@ info_test_() ->
                              ?TEST_MODULE:time_in_msecs(RawKey),
                              default,
                              ?MINERVA_PROTOCOL_VSN),
-               Info = ?KEY_HEADER_INFO_LIMA_POINT_RELEASE,
+               Info = aeu_info:block_info(),
                ?assertEqual(Info, ?TEST_MODULE:info(WithInfo))
        end},
       {"Default value of the info field in the pre release of Fortuna: Roma protocol",
@@ -223,7 +223,7 @@ info_test_() ->
                              ?TEST_MODULE:time_in_msecs(RawKey),
                              default,
                              ?FORTUNA_PROTOCOL_VSN),
-               Info = ?KEY_HEADER_INFO_LIMA_POINT_RELEASE,
+               Info = aeu_info:block_info(),
                ?assertEqual(Info, ?TEST_MODULE:info(WithInfo))
        end}
      ]}.

@@ -312,7 +312,7 @@ handle_info({gproc_ps_event, Event, #{info := Info}},
             %% with other chains, we just keep them in mempool
             enqueue(tx, Info, PeerIds);
         tx_received when GossipTxs ->
-            enqueue(tx, Info, NonSyncingPeerIds);
+            enqueue(tx, Info, PeerIds);
         _             -> ignore
     end,
     {noreply, State};

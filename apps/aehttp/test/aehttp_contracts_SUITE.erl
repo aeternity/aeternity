@@ -1285,17 +1285,30 @@ paying_for_contract(Config) ->
     {BrokePub1, BrokePriv1} = aecore_suite_utils:generate_key_pair(),
     %% {BrokePub2, BrokePriv2} = aecore_suite_utils:generate_key_pair(),
 
+    MakeSignSerialize =
+      fun(SignedInnerTx) ->
+        {ok, PayingForTx} = aec_paying_for_tx:new(#{payer_id => aeser_id:create(account, APub),
+                                                    nonce    => get_online_nonce(APub),
+                                                    fee      => 10000 * aec_test_utils:min_gas_price(),
+                                                    tx       => SignedInnerTx}),
+        SignedPayingForTx = aec_test_utils:sign_tx(PayingForTx, APriv),
+        aeser_api_encoder:encode(transaction, aetx_sign:serialize_to_binary(SignedPayingForTx))
+      end,
+
     SpendTx = aega_test_utils:spend_tx(#{ sender_id => aeser_id:create(account, BPub)
                                         , recipient_id => aeser_id:create(account, BrokePub1)
                                         , nonce => get_online_nonce(BPub) }),
     SignSpendTx = aec_test_utils:sign_pay_for_inner_tx(SpendTx, BPriv),
-    {ok, PayingForTx1} = aec_paying_for_tx:new(#{payer_id => aeser_id:create(account, APub),
-                                                 nonce    => get_online_nonce(APub),
-                                                 fee      => 10000 * aec_test_utils:min_gas_price(),
-                                                 tx       => SignSpendTx}),
-    SignPayingForTx1 = aec_test_utils:sign_tx(PayingForTx1, APriv),
-    SerSignPayingForTx1 = aeser_api_encoder:encode(transaction, aetx_sign:serialize_to_binary(SignPayingForTx1)),
+
+    SerSignPayingForTx1 = MakeSignSerialize(SignSpendTx),
+
     {ok, 200, #{<<"tx_hash">> := SignPayingForTx1Hash}} = post_tx(SerSignPayingForTx1),
+
+    %% Negative test
+    BadSignSpendTx = aec_test_utils:sign_tx_hash(SpendTx, BPriv),
+    BadSerialTx = MakeSignSerialize(BadSignSpendTx),
+
+    {ok,400,#{<<"reason">> := <<"Invalid tx">>}} = post_tx(BadSerialTx),
 
 
     APre = get_balance(APub),
@@ -1323,12 +1336,8 @@ paying_for_contract(Config) ->
     Call1Tx = aect_test_utils:call_tx(BrokePub1, DecP, CallSpec1, #{}),
 
     SignCall1Tx = aec_test_utils:sign_pay_for_inner_tx(Call1Tx, BrokePriv1),
-    {ok, PayingForTx2} = aec_paying_for_tx:new(#{payer_id => aeser_id:create(account, APub),
-                                                 nonce    => get_online_nonce(APub),
-                                                 fee      => 10000 * aec_test_utils:min_gas_price(),
-                                                 tx       => SignCall1Tx}),
-    SignPayingForTx2 = aec_test_utils:sign_tx(PayingForTx2, APriv),
-    SerSignPayingForTx2 = aeser_api_encoder:encode(transaction, aetx_sign:serialize_to_binary(SignPayingForTx2)),
+
+    SerSignPayingForTx2 = MakeSignSerialize(SignCall1Tx),
     {ok, 200, #{<<"tx_hash">> := SignPayingForTx2Hash}} = post_tx(SerSignPayingForTx2),
 
     APre2 = get_balance(APub),

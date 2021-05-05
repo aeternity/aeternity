@@ -11,6 +11,7 @@
         , contract_bytearray_params_decode/1
         , ttl_decode/1
         , poi_decode/1
+        , delegates_decode/1
         , relative_ttl_decode/1
         , nameservice_pointers_decode/1
         , get_nonce/1
@@ -34,6 +35,7 @@
 -export([ get_transaction/2
         , encode_transaction/2
         , decode_pointers/1
+        , decode_transaction/1
         ]).
 
 -export([ ok_response/1
@@ -267,12 +269,12 @@ get_contract_code(ContractKey, CodeKey) ->
         TopBlockHash = aec_chain:top_block_hash(),
         {ok, Trees} = aec_chain:get_block_state(TopBlockHash),
         Tree = aec_trees:contracts(Trees),
-        case aect_state_tree:lookup_contract(ContractPubKey, Tree) of
+        case aect_state_tree:lookup_contract_with_code(ContractPubKey, Tree) of
             none ->
                 Msg = "Contract address for key " ++ atom_to_list(ContractKey) ++ " not found",
                 {error, {404, [], #{<<"reason">> => list_to_binary(Msg)}}};
-            {value, Contract} ->
-                {ok, maps:put(CodeKey, aect_contracts:code(Contract), State)}
+            {value, _Contract, Code} ->
+                {ok, maps:put(CodeKey, Code, State)}
         end
     end.
 
@@ -495,6 +497,43 @@ poi_decode(PoIKey) ->
         catch
             _:_ ->
                 {error, {400, [], #{<<"reason">> => <<"Invalid proof of inclusion">>}}}
+        end
+    end.
+
+delegates_decode(DelegatesKey) ->
+    fun(_Req, State) ->
+        Type = {id_hash, [account_pubkey]},
+        Decode =
+            fun(Ids) ->
+                lists:foldr(
+                    fun(_, error) -> error;
+                       (EncodedId, Accum) ->
+                        case aeser_api_encoder:safe_decode(Type, EncodedId) of
+                            {ok, PK} -> [PK | Accum];
+                            {error, _} -> error
+                        end
+                    end,
+                    [],
+                    Ids)
+            end,
+        Delegates =
+            case maps:get(DelegatesKey, State) of
+                L when is_list(L) -> Decode(L);
+                #{initiator := IIds, responder := RIds}
+                    when is_list(IIds),
+                         is_list(RIds) ->
+                    case {Decode(IIds), Decode(RIds)} of
+                        {error, _} -> error;
+                        {_, error} -> error;
+                        {_DecodedIIds, _DecodedRIds} = Dels -> Dels
+                    end;
+                _ -> error
+            end,
+        case Delegates of
+            error ->
+                {error, {400, [], #{<<"reason">> => <<"Invalid hash: delegate_ids">>}}};
+            _ ->
+                {ok, maps:put(DelegatesKey, Delegates, State)}
         end
     end.
 
@@ -822,7 +861,8 @@ get_poi(Type, KeyName, PutKey) when Type =:= account
         end
     end.
 
--spec safe_binary_to_atom(binary()) -> {ok, atom()} | {error, non_existing}.
+-spec safe_binary_to_atom(atom() | binary()) -> {ok, atom()} | {error, non_existing}.
+safe_binary_to_atom(A) when is_atom(A) -> {ok, A};
 safe_binary_to_atom(Binary) when is_binary(Binary) ->
     try binary_to_existing_atom(Binary, utf8) of
         Atom -> {ok, Atom}
@@ -888,6 +928,21 @@ get_block_hash_optionally_by_hash_or_height(PutKey) ->
                 {ok, maps:put(PutKey, BlockHash, State)}
         end
     end.
+
+decode_transaction(ParamName) ->
+    params_read_fun([ParamName],
+        fun(Name, _, State) ->
+            Tx = maps:get(Name, State),
+            case aeser_api_encoder:safe_decode(transaction, Tx) of
+                {error, _} -> error;
+                {ok, TxDec} ->
+                    try {ok, aetx_sign:deserialize_from_binary(TxDec)}
+                    catch 
+                        _:_ -> error
+                    end
+            end
+        end,
+        "Invalid inner transaction").
 
 safe_get_txs(Block) ->
     case aec_blocks:type(Block) of

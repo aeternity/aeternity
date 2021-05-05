@@ -97,10 +97,11 @@ init_state() ->
     #state{}.
 
 in_cache(TxHash, State = #state{ size = S, evict_q = Q, cache = C, hit = H, miss = M }) ->
+    MaxCacheSize = max_cache_size(),
     case maps:is_key(TxHash, C) of
         true ->
             {true, State#state{ hit = H + 1 }};
-        false when S == ?CACHE_SIZE ->
+        false when S >= MaxCacheSize ->
             {{value, Evicted}, Q1} = queue:out(Q),
             C1 = maps:put(TxHash, x, maps:remove(Evicted, C)),
             {false, State#state{ evict_q = queue:in(TxHash, Q1), cache = C1, miss = M + 1 }};
@@ -108,3 +109,7 @@ in_cache(TxHash, State = #state{ size = S, evict_q = Q, cache = C, hit = H, miss
             {false, State#state{ size = S + 1, evict_q = queue:in(TxHash, Q),
                                  cache = maps:put(TxHash, x, C), miss = M + 1 }}
     end.
+
+max_cache_size() ->
+    aeu_env:user_config_or_env([<<"mempool">>, <<"cache_size">>], aecore,
+                               cache_size, ?CACHE_SIZE).

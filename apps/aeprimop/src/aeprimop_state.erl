@@ -8,6 +8,8 @@
 -module(aeprimop_state).
 
 -export([ delete_x/3
+        , delete_account/2
+        , delete_contract/2
         , final_trees/1
         , find_account/2
         , find_auth_call/3
@@ -85,6 +87,9 @@ runtime_error(Error) ->
 %%%===================================================================
 %%% Access to cache or trees
 
+delete_account(Key, S) ->
+    delete_x(account, Key, S).
+
 find_account(Key, S) ->
     find_x(account, Key, S).
 
@@ -122,6 +127,9 @@ put_channel(Object, S) ->
     cache_put(channel, Object, S).
 
 %%----------
+
+delete_contract(Key, S) ->
+    delete_x(contract, Key, S).
 
 get_contract(Key, S) ->
     get_x(contract, Key, contract_does_not_exist, S).
@@ -241,6 +249,16 @@ delete_x(name_auction, Hash, #state{trees = Trees} = S) ->
     NTree  = aec_trees:ns(Trees),
     NTree1 = aens_state_tree:delete_name_auction(Hash, NTree),
     S1#state{trees = aec_trees:set_ns(Trees, NTree1)};
+delete_x(contract, PK, #state{trees = Trees} = S) ->
+    S1 = cache_drop(contract, PK, S),
+    NTree  = aec_trees:contracts(Trees),
+    NTree1 = aect_state_tree:delete_contract(PK, NTree),
+    S1#state{trees = aec_trees:set_contracts(Trees, NTree1)};
+delete_x(account, PK, #state{trees = Trees} = S) ->
+    S1 = cache_drop(account, PK, S),
+    NTree  = aec_trees:accounts(Trees),
+    NTree1 = aec_accounts_trees:delete(PK, NTree),
+    S1#state{trees = aec_trees:set_accounts(Trees, NTree1)};
 delete_x(commitment, Hash, #state{trees = Trees} = S) ->
     S1 = cache_drop(commitment, Hash, S),
     NTree  = aec_trees:ns(Trees),
@@ -309,6 +327,10 @@ cache_drop(channel, Hash, #state{cache = C} = S) ->
     S#state{cache = dict:erase({channel, Hash}, C)};
 cache_drop(name_auction, Hash, #state{cache = C} = S) ->
     S#state{cache = dict:erase({name_auction, Hash}, C)};
+cache_drop(contract, PK, #state{cache = C} = S) ->
+    S#state{cache = dict:erase({contract, PK}, C)};
+cache_drop(account, PK, #state{cache = C} = S) ->
+    S#state{cache = dict:erase({account, PK}, C)};
 cache_drop(commitment, Hash, #state{cache = C} = S) ->
     S#state{cache = dict:erase({commitment, Hash}, C)}.
 

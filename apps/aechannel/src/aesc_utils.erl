@@ -19,10 +19,12 @@
          check_slash_payload/8,
          check_solo_snapshot_payload/7,
          check_force_progress/3,
+         check_set_delegates/9,
          process_solo_close/9,
          process_slash/9,
          process_force_progress/7,
          process_solo_snapshot/7,
+         process_set_delegates/9,
          is_offchain_tx/1,
          verify_signatures_offchain/4,
          verify_signatures_offchain/5,
@@ -92,7 +94,7 @@ check_is_closing(Channel) ->
 -spec check_round_greater_than_last(aesc_channels:channel(),
                                     non_neg_integer(),
                                     solo_close | slash | force_progress |
-                                    deposit | withdrawal
+                                    deposit | withdrawal | solo_close
                                     )
     -> ok | {error, old_round | same_round}.
 check_round_greater_than_last(Channel, Round, Type) ->
@@ -122,9 +124,9 @@ check_round_greater_than_last(Channel, Round, Type) ->
             {error, old_round}
     end.
 
--spec check_is_peer(aec_keys:pubkey(), list(aec_keys:pubkey())) -> ok | {error, account_not_peer}.
-check_is_peer(PubKey, Peers) ->
-    case lists:member(PubKey, Peers) of
+-spec check_is_peer(aec_keys:pubkey(), aesc_channels:channel()) -> ok | {error, account_not_peer}.
+check_is_peer(PubKey, Channel) ->
+    case lists:member(PubKey, aesc_channels:peers(Channel)) of
         true  -> ok;
         false -> {error, account_not_peer}
     end.
@@ -199,10 +201,10 @@ censor_ws_req(Req) ->
     Req#{qs => ?REDACTED}.
 
 %%%===================================================================
-%%% Check payload for slash, solo close and snapshot
+%%% Check payload for slash, solo close, snapshot and set delegates
 %%%===================================================================
 
--spec check_solo_close_payload(aec_keys:pubkey(), aec_keys:pubkey(),
+-spec check_solo_close_payload(aesc_channels:pubkey(), aec_keys:pubkey(),
                                non_neg_integer(), non_neg_integer(), binary(),
                                aec_trees:poi(), aec_trees:trees(),
                                aetx_env:env()) ->
@@ -228,7 +230,7 @@ check_solo_close_payload(ChannelPubKey, FromPubKey, Nonce, Fee, Payload,
         {ok, [Channel, last_onchain]} ->
             Checks =
                 [fun() -> check_account(FromPubKey, Trees, Nonce, Fee, Env) end,
-                 fun() -> check_is_peer(FromPubKey, aesc_channels:peers(Channel)) end,
+                 fun() -> check_is_peer(FromPubKey, Channel) end,
                  fun() -> check_is_active(Channel) end,
                  fun() -> check_root_hash_in_channel(Channel, PoI) end,
                  fun() -> check_peers_and_amounts_in_poi(Channel, PoI) end
@@ -245,7 +247,94 @@ check_solo_close_payload(ChannelPubKey, FromPubKey, Nonce, Fee, Payload,
             aeu_validation:run(Checks)
     end.
 
--spec check_slash_payload(aec_keys:pubkey(), aec_keys:pubkey(),
+-spec check_set_delegates(aesc_channels:pubkey(), aec_keys:pubkey(),
+                          non_neg_integer(), non_neg_integer(), binary(),
+                          binary(), non_neg_integer(),
+                          aec_trees:trees(), aetx_env:env())
+    -> ok |
+       {error, channel_does_not_exist |
+               bad_offchain_state_type |
+               payload_deserialization_failed |
+               account_not_found |
+               insufficient_funds |
+               tx_nonce_already_used_for_account |
+               tx_nonce_too_high_for_account |
+               nonce_in_ga_tx_should_be_zero |
+               bad_ga_tx_env |
+               account_not_peer |
+               channel_not_active |
+               unexpected_state_hash |
+               unexpected_round }.
+check_set_delegates(ChannelPubKey, FromPubKey, Nonce, Fee, Payload, StateHash,
+                    Round, Trees, Env) ->
+    case get_vals([get_channel(ChannelPubKey, Trees),
+                   deserialize_payload(Payload)]) of
+        {error, _} = E -> E;
+        {ok, [Channel, last_onchain]} ->
+            Checks =
+                [ fun() -> check_account(FromPubKey, Trees, Nonce, Fee, Env) end,
+                  fun() -> check_is_peer(FromPubKey, Channel) end,
+                  fun() -> check_is_active(Channel) end,
+                  fun() ->
+                      case aesc_channels:state_hash(Channel) =:= StateHash of
+                          true -> ok;
+                          false -> {error, unexpected_state_hash}
+                      end
+                  end,
+                  fun() ->
+                      case aesc_channels:round(Channel) =:= Round of
+                          true -> ok;
+                          false -> {error, unexpected_round}
+                      end
+                  end
+                ],
+            aeu_validation:run(Checks);
+        {ok, [Channel, {SignedState, PayloadTx}]} ->
+            Checks =
+                [ fun() -> check_account(FromPubKey, Trees, Nonce, Fee, Env) end,
+                  fun() -> check_is_active(Channel) end,
+                  fun() -> check_payload(Channel, PayloadTx, FromPubKey, SignedState,
+                                          Trees, Env, set_delegates) end,
+                  fun() ->
+                      case aesc_offchain_tx:state_hash(PayloadTx) =:= StateHash of
+                          true -> ok;
+                          false -> {error, unexpected_state_hash}
+                      end
+                  end,
+                  fun() ->
+                      case aesc_offchain_tx:round(PayloadTx) =:= Round of
+                          true -> ok;
+                          false -> {error, unexpected_round}
+                      end
+                  end
+                ],
+            aeu_validation:run(Checks)
+    end.
+
+
+-spec process_set_delegates(aesc_channels:pubkey(), aec_keys:pubkey(),
+                            [aec_keys:pubkey()], [aec_keys:pubkey()],
+                            binary(),
+                            non_neg_integer(), non_neg_integer(),
+                            aec_trees:trees(), aetx_env:env()) ->
+    {ok, aec_trees:trees(), aetx_env:env()}.
+process_set_delegates(ChannelPubKey, FromPubKey, IDelegates,
+                      RDelegates, Payload, Nonce, Fee, Trees, Env) ->
+    ChannelsTree0 = aec_trees:channels(Trees),
+    Channel0 = aesc_state_tree:get(ChannelPubKey, ChannelsTree0),
+    Channel1 = aesc_channels:set_delegates(Channel0, IDelegates, RDelegates),
+    Channel =
+        case aesc_utils:deserialize_payload(Payload) of
+            {ok, _SignedTx, PayloadTx} ->
+                aesc_channels:snapshot_solo(Channel1, PayloadTx);
+            {ok, last_onchain} ->
+                Channel1
+        end,
+    Trees1 = set_channel(Channel, Trees),
+    Trees2 = spend(FromPubKey, Fee, Nonce, Trees1, Env),
+    add_event(Trees2, ChannelPubKey, Env).
+
+-spec check_slash_payload(aesc_channels:pubkey(), aec_keys:pubkey(),
                           non_neg_integer(), non_neg_integer(), binary(),
                           aec_trees:poi(), aec_trees:trees(),
                           aetx_env:env()) ->
@@ -345,14 +434,35 @@ check_force_progress_(PayloadHash, PayloadRound,
               check_round_greater_than_last(Channel, NextRound,
                                             force_progress)
           end,
+          %% the caller of the off-chain update must be a participant in the
+          %% channel. The Force progress transaction can be provided by this
+          %% caller or by an authorized delegate (from Iris on)
           fun() ->
               CallerPubKey = aesc_offchain_update:extract_caller(Update),
               case CallerPubKey =:= FromPubKey of
-                  true -> ok;
-                  false -> {error, not_caller}
+                  true -> check_is_peer(FromPubKey, Channel);
+                  false ->
+                      aeu_validation:run([
+                          fun() ->
+                              case Protocol < ?IRIS_PROTOCOL_VSN of
+                                  true -> {error, not_caller};
+                                  false -> ok
+                              end
+                          end,
+                          fun() -> check_is_closing(Channel) end,
+                          fun() ->
+                              case aesc_channels:role_by_pubkey(Channel, CallerPubKey) of
+                                  none -> {error, not_caller_or_delegate};
+                                  Role ->
+                                      case is_delegate(Channel, FromPubKey, Role) of
+                                          ok -> ok;
+                                          {error, account_not_delegate} ->
+                                              {error, not_caller_or_delegate}
+                                      end
+                              end
+                          end])
               end
           end,
-          fun() -> check_is_peer(FromPubKey, aesc_channels:peers(Channel)) end,
           fun() ->
               case PayloadRound =:= NextRound - 1 of
                   true -> ok;
@@ -365,13 +475,12 @@ check_force_progress_(PayloadHash, PayloadRound,
               aeu_validation:run([
                   fun() ->
                       ContractTrees = aec_trees:contracts(OffChainTrees),
-                      case aect_state_tree:lookup_contract(ContractPubkey,
-                                                           ContractTrees) of
+                      case aect_state_tree:lookup_contract_with_code(ContractPubkey,
+                                                                     ContractTrees) of
                           none -> {error, contract_missing};
-                          {value, Contract} ->
+                          {value, Contract, Code} ->
                             ABIVersion = aesc_offchain_update:extract_abi_version(Update),
                             CTVersion = aect_contracts:ct_version(Contract),
-                            Code = aect_contracts:code(Contract),
                             case check_abi_version(CTVersion, ABIVersion, Protocol) of
                                 ok ->
                                     check_code_serialization(Code, CTVersion, Protocol);
@@ -393,6 +502,15 @@ check_account(FromPK, Trees, Nonce, Amount, Env) ->
     Payer = establish_payer(FromPK, Env),
     check_account(FromPK, Payer, Trees, Nonce, Amount, Env).
 
+-spec check_account(aec_keys:pubkey(), aec_keys:pubkey(), aec_trees:trees(),
+                    non_neg_integer(), non_neg_integer(), aetx_env:env())
+    -> ok |
+       {error, account_not_found |
+               insufficient_funds |
+               tx_nonce_already_used_for_account |
+               tx_nonce_too_high_for_account |
+               nonce_in_ga_tx_should_be_zero |
+               bad_ga_tx_env}.
 check_account(FromPK, FromPK, Trees, Nonce, Amount, Env) ->
     aetx_utils:check_account(FromPK, Trees, Nonce, Amount, Env);
 check_account(FromPK, Payer, Trees, Nonce, Amount, Env) ->
@@ -422,7 +540,7 @@ check_abi_version(#{abi := ABI} = Version, ABI, Protocol) ->
 check_abi_version(_, _, _) ->
     {error, wrong_abi_version}.
 
--spec check_solo_snapshot_payload(aec_keys:pubkey(), aec_keys:pubkey(),
+-spec check_solo_snapshot_payload(aesc_channels:pubkey(), aec_keys:pubkey(),
                                non_neg_integer(), non_neg_integer(), binary(),
                                aec_trees:trees(), aetx_env:env()) ->
     ok | {error, payload_deserialization_failed
@@ -436,15 +554,15 @@ check_abi_version(_, _, _) ->
                | same_round
                | old_round
                | signature_check_failed }.
-check_solo_snapshot_payload(ChannelId, FromPubKey, Nonce, Fee, Payload,
+check_solo_snapshot_payload(ChannelPubkey, FromPubKey, Nonce, Fee, Payload,
                             Trees, Env) ->
-    case get_vals([aesc_utils:get_channel(ChannelId, Trees),
+    case get_vals([aesc_utils:get_channel(ChannelPubkey, Trees),
                    aesc_utils:deserialize_payload(Payload)]) of
         {error, _} = E -> E;
         {ok, [_Channel, last_onchain]} ->
             {error, snapshot_must_have_payload};
         {ok, [Channel, {SignedState, PayloadTx}]} ->
-            ChannelId = aesc_channels:pubkey(Channel),
+            ChannelPubkey = aesc_channels:pubkey(Channel),
             Checks =
                 [ fun() -> check_account(FromPubKey, Trees, Nonce, Fee, Env) end,
                   fun() -> check_is_active(Channel) end,
@@ -462,12 +580,10 @@ check_poi(Channel, PayloadTx, PoI) ->
     aeu_validation:run(Checks).
 
 check_payload(Channel, PayloadTx, FromPubKey, SignedState, Trees, Env, Type) ->
-    ChannelId = aesc_channels:id(Channel),
     Checks =
         [ fun() -> check_channel_id_in_payload(Channel, PayloadTx) end,
           fun() -> check_round_in_payload(Channel, PayloadTx, Type) end,
-          fun() -> is_peer_or_delegate(ChannelId, FromPubKey, SignedState,
-                                       Trees, Type, Env) end,
+          fun() -> is_peer_or_delegate(Channel, FromPubKey, Type, Env) end,
           fun() -> verify_signatures_offchain(Channel, SignedState, Trees, Env) end
         ],
     aeu_validation:run(Checks).
@@ -492,42 +608,22 @@ check_peers_and_amounts_in_poi(Channel, PoI) ->
             end
     end.
 
-is_peer_or_delegate(ChannelId, FromPubKey, SignedState, Trees, Type, Env) ->
-    case is_peer(FromPubKey, SignedState, Trees) of
+is_peer_or_delegate(Channel, FromPubKey, Type, Env) ->
+    case check_is_peer(FromPubKey, Channel) of
         ok -> ok;
         {error, account_not_peer} = E0 ->
             Protocol =
                 aec_hard_forks:protocol_effective_at_height(aetx_env:height(Env)),
             case is_delegatable_tx_type(Type, Protocol) of
                 true ->
-                    case is_delegate(ChannelId, FromPubKey, Trees) of
+                    case is_delegate(Channel, FromPubKey) of
                         ok -> ok;
                         {error, account_not_delegate} ->
-                            {error, account_not_peer_or_delegate};
-                        {error,_} = E ->
-                            E
+                            {error, account_not_peer_or_delegate}
                     end;
                 false ->
                     E0
             end
-    end.
-
-is_peer(FromPubKey, SignedState, Trees) ->
-    Tx = aetx_sign:tx(SignedState),
-    case signers(Tx, Trees) of
-        {ok, Signers} ->
-            case lists:member(FromPubKey, Signers) of
-                true  -> ok;
-                false -> {error, account_not_peer}
-            end;
-        {error, _Reason}=Err -> Err
-    end.
-
-signers(Tx, Trees) ->
-    case aetx:specialize_type(Tx) of
-        {channel_offchain_tx, _} -> aetx:signers(Tx, Trees);
-        {ga_meta_tx, MetaTx}  ->
-            signers(aetx_sign:tx(aega_meta_tx:tx(MetaTx)), Trees)
     end.
 
 verify_signatures_offchain(Channel, SignedTx, Trees, Env) ->
@@ -590,9 +686,9 @@ verify_meta_tx(SignerId, StoreKey, AuthContractId, MetaTx, Trees, Env, TxType)
     Call = aect_call:new(SignerId, 0, AuthContractId, Height,
                          aega_meta_tx:gas_price(MetaTx)),
     CTree = aec_trees:contracts(Trees),
-    case {aect_state_tree:lookup_contract(AuthContractPK, CTree, [no_store]),
+    case {aect_state_tree:lookup_contract_with_code(AuthContractPK, CTree, [no_store]),
           aect_state_tree:read_contract_store(StoreKey, CTree)} of
-        {{value, Contract}, {ok, Store}} ->
+        {{value, Contract, Code}, {ok, Store}} ->
             CallDef = #{ caller      => SignerPK
                        , contract    => AuthContractPK
                        , gas         => aega_meta_tx:gas_limit(MetaTx, Height, Protocol)
@@ -600,7 +696,7 @@ verify_meta_tx(SignerId, StoreKey, AuthContractId, MetaTx, Trees, Env, TxType)
                        , call_data   => aega_meta_tx:auth_data(MetaTx)
                        , amount      => 0
                        , call_stack  => []
-                       , code        => aect_contracts:code(Contract)
+                       , code        => Code
                        , store       => Store
                        , call        => Call
                        , trees       => Trees
@@ -680,8 +776,7 @@ is_delegatable_tx_type(Type, Protocol) ->
 delegatable_tx_types(Protocol) when Protocol < ?IRIS_PROTOCOL_VSN ->
     [slash];
 delegatable_tx_types(_PostIrisProtocol) ->
-    %%[slash, solo_snapshot, force_progress].
-    [slash, solo_snapshot].
+    [slash, solo_snapshot, force_progress].
 
 -spec verify_signatures_onchain(aetx_sign:signed_tx(), aec_trees:trees(),
                                 aetx_env:env()) -> ok | {error, atom()}.
@@ -741,27 +836,18 @@ is_basic_signers(CheckFun, [Signer | Signers], Trees) ->
         Err = {error, _} -> Err
     end.
 
--spec is_delegate(aesc_channels:id(), aec_keys:pubkey(),
-                  aec_trees:trees())
-                  -> ok | {error, atom()}.
-is_delegate(ChannelId, FromPubKey, Trees) ->
-    ChannelPubKey = aeser_id:specialize(ChannelId, channel),
-    with_channel(fun(Channel) ->
-                         is_delegate_(Channel, FromPubKey)
-                 end, ChannelPubKey, Trees).
+is_delegate(Channel, FromPubKey) ->
+    is_delegate(Channel, FromPubKey, any).
 
-is_delegate_(Channel, FromPubKey) ->
-    case lists:member(FromPubKey, aesc_channels:delegate_pubkeys(Channel)) of
+-spec is_delegate(aesc_channels:channel(), aec_keys:pubkey(),
+                  initiator | responder | any) -> ok | {error, atom()}.
+is_delegate(Channel, FromPubKey, Role) ->
+    case lists:member(FromPubKey, aesc_channels:delegate_pubkeys(Channel,
+                                                                 Role)) of
         true ->
             ok;
         false ->
             {error, account_not_delegate}
-    end.
-
-with_channel(F, ChannelPubKey, Trees) ->
-    case get_channel(ChannelPubKey, Trees) of
-        {ok, Channel}  -> F(Channel);
-        {error, _} = E -> E
     end.
 
 check_channel_id_in_payload(Channel, PayloadTx) ->
@@ -1059,7 +1145,7 @@ count_authentications(SignedTx, GAs) ->
             ordsets:size(GAs) + length(aetx_sign:signatures(SignedTx))
     end.
 
--spec channel_pubkey(aetx_sign:signed_tx()) -> {ok, aec_keys:pubkey()} |
+-spec channel_pubkey(aetx_sign:signed_tx()) -> {ok, aesc_channels:pubkey()} |
                                                {error, not_channel_tx}.
 channel_pubkey(SignedTx) ->
     case aetx:specialize_callback(aetx_sign:innermost_tx(SignedTx)) of

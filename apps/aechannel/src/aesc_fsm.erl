@@ -51,6 +51,7 @@
         , upd_transfer/4          %% (fsm() , from(), to(), amount())
         , upd_transfer/5          %% (fsm() , from(), to(), amount(), #{})
         , upd_withdraw/2          %% (fsm() , map())
+        , assume_minimum_depth/2  %% (fsm() , tx_hash())
         , where/2
         ]).
 
@@ -136,6 +137,9 @@
         , get_state/1
         , pr_stacktrace/1
         ]).
+-define(ST(E), pr_stacktrace(E)).
+-else.
+-define(ST(E), E).
 -endif.
 
 %% ==================================================================
@@ -289,6 +293,9 @@ where(ChanId, Role) when Role == initiator; Role == responder ->
         undefined ->
             undefined
     end.
+
+assume_minimum_depth(Fsm, TxHash) ->
+    gen_statem:call(Fsm, {assume_minimum_depth, TxHash}).
 
 %% ==================================================================
 %% Inspection and configuration functions
@@ -533,31 +540,35 @@ awaiting_leave_ack(Type, Msg, D) ->
 
 awaiting_locked(enter, _OldSt, _D) -> keep_state_and_data;
 awaiting_locked(cast, {?MIN_DEPTH_ACHIEVED, ChainId, ?WATCH_FND, TxHash},
-                #data{op = #op_min_depth{ tag = ?WATCH_FND
-                                        , tx_hash = TxHash % same tx hash
-                                        , data = OpData}} = D) ->
+                #data{chain_op = #op_min_depth{ tag = ?WATCH_FND
+                                              , tx_hash = TxHash % same tx hash
+                                              , data = OpData}} = D) ->
     D1 = report(info, own_funding_locked, D),
     next_state(
       signed, send_funding_locked_msg(D1#data{ on_chain_id = ChainId
+                                             , chain_op = ?NO_OP
                                              , op = #op_lock{ tag = create
-                                                            , data = OpData}}));
+                                                           , data = OpData}}));
 awaiting_locked(cast, {?MIN_DEPTH_ACHIEVED, ChainId, ?WATCH_DEP, TxHash},
                 #data{ on_chain_id = ChainId
-                     , op = #op_min_depth{ tag = ?WATCH_DEP
-                                         , tx_hash = TxHash % same tx hash
-                                         , data = OpData}} = D) ->
+                     , chain_op = #op_min_depth{ tag = ?WATCH_DEP
+                                               , tx_hash = TxHash % same tx hash
+                                               , data = OpData}} = D) ->
     D1 = report(info, own_deposit_locked, D),
     next_state(dep_signed,
-        send_deposit_locked_msg(TxHash, D1#data{op = #op_lock{ tag = deposit
-                                                             , data = OpData}}));
+        send_deposit_locked_msg(TxHash, D1#data{
+                                           chain_op = ?NO_OP
+                                         , op = #op_lock{ tag = deposit
+                                                       , data = OpData}}));
 awaiting_locked(cast, {?MIN_DEPTH_ACHIEVED, ChainId, ?WATCH_WDRAW, TxHash},
                 #data{ on_chain_id = ChainId
-                     , op = #op_min_depth{ tag = ?WATCH_WDRAW
-                                         , tx_hash = TxHash % same tx hash
-                                         , data = OpData}} = D) ->
+                     , chain_op = #op_min_depth{ tag = ?WATCH_WDRAW
+                                               , tx_hash = TxHash % same tx hash
+                                               , data = OpData}} = D) ->
     D1 = report(info, own_withdraw_locked, D),
     next_state(wdraw_signed,
-        send_withdraw_locked_msg(TxHash, D1#data{ op = #op_lock{ tag = withdraw
+        send_withdraw_locked_msg(TxHash, D1#data{ chain_op = ?NO_OP
+                                                , op = #op_lock{ tag = withdraw
                                                                , data = OpData}}));
 awaiting_locked(cast, {?FND_LOCKED, _Msg}, D) ->
     postpone(D);
@@ -566,14 +577,14 @@ awaiting_locked(cast, {?DEP_LOCKED, _Msg}, D) ->
 awaiting_locked(cast, {?WDRAW_LOCKED, _Msg}, D) ->
     postpone(D);
 awaiting_locked(cast, {?DEP_ERR, #{error_code := ?ERR_ONCHAIN_REJECTED} = _Msg},
-                #data{op = #op_min_depth{tag = ?WATCH_DEP}} = D) ->
+                #data{chain_op = #op_min_depth{tag = ?WATCH_DEP}} = D) ->
     %% TODO: try posting the co-signed tx
-    {ok, D1} = fall_back_to_stable_state(D),
+    {ok, D1} = fall_back_to_stable_state(D#data{chain_op = ?NO_OP}),
     handle_recoverable_error(#{ code => ?ERR_ONCHAIN_REJECTED
                               , msg_type => ?DEP_SIGNED
                               , respond => false}, D1);
 awaiting_locked(cast, {?WDRAW_ERR, #{error_code := ?ERR_ONCHAIN_REJECTED} = _Msg},
-                #data{op = #op_min_depth{tag = ?WATCH_WDRAW}} = D) ->
+                #data{chain_op = #op_min_depth{tag = ?WATCH_WDRAW}} = D) ->
     %% TODO: try posting the co-signed tx
     {ok, D1} = fall_back_to_stable_state(D),
     handle_recoverable_error(#{ code => ?ERR_ONCHAIN_REJECTED
@@ -970,16 +981,16 @@ channel_closed(enter, _OldSt, D) ->
     keep_state(clear_ongoing(D));
 channel_closed(cast, {?MIN_DEPTH_ACHIEVED, ChainId, ?WATCH_CLOSED, TxHash},
                #data{ on_chain_id = ChainId
-                    , op = #op_min_depth{ tag = ?WATCH_CLOSED
-                                        , tx_hash = TxHash % same tx hash
-                                        } } = D) ->
+                    , chain_op = #op_min_depth{ tag = ?WATCH_CLOSED
+                                              , tx_hash = TxHash % same tx hash
+                                              } } = D) ->
     close(closed_confirmed, D);
 channel_closed(cast, {?CHANNEL_CHANGED, #{ tx_hash := TxHash
                                          , chan_id := ChannelId } },
                #data{ on_chain_id = ChannelId %% same channel id
-                    , op = #op_min_depth{ tag = ?WATCH_CLOSED
-                                        , tx_hash = TxHash % same tx hash
-                                        } } = D) ->
+                    , chain_op = #op_min_depth{ tag = ?WATCH_CLOSED
+                                              , tx_hash = TxHash % same tx hash
+                                              } } = D) ->
     %% The close mutual transaction ended up in a micro fork but was included
     %% again. This is an expected scenario
     keep_state(D#data{last_channel_change = TxHash});
@@ -1968,12 +1979,18 @@ create_tx_for_signing(#data{opts = #{ initiator        := Initiator
                                     , responder_amount := RAmt
                                     , channel_reserve  := ChannelReserve
                                     , lock_period      := LockPeriod } = Opts } = D) ->
+    NoDelegates =
+        case curr_protocol() of
+            Protocol when Protocol < ?IRIS_PROTOCOL_VSN -> [];
+            _PostIris -> {[], []}
+        end,
     Obligatory =
         #{ acct => Initiator
          , initiator_amount => IAmt
          , responder_amount => RAmt
          , channel_reserve  => ChannelReserve
-         , lock_period      => LockPeriod },
+         , lock_period      => LockPeriod
+         , delegate_ids     => NoDelegates},
     %% nonce is not exposed to the client via WebSocket but is used in tests
     %% shall we expose it to the client as well?
     Optional = maps:with([nonce, fee, gas_price], Opts),
@@ -2251,8 +2268,9 @@ check_funding_created_msg(#{ temporary_channel_id := ChanId
 
 send_funding_signed_msg(SignedTx, #data{ channel_id = Ch
                                        , session    = Sn
-                                       , op = #op_min_depth{ tag = ?WATCH_FND
-                                                           , data = OpData}} = Data) ->
+                                       , chain_op = #op_min_depth{
+                                                       tag = ?WATCH_FND
+                                                     , data = OpData}} = Data) ->
     TxBin = aetx_sign:serialize_to_binary(SignedTx),
     #op_data{block_hash = BlockHash} = OpData,
     Msg = #{ temporary_channel_id  => Ch
@@ -2352,8 +2370,8 @@ check_deposit_created_msg(#{ channel_id := ChanId
 
 send_deposit_signed_msg(SignedTx, #data{ on_chain_id = Ch
                                        , session     = Sn
-                                       , op = #op_min_depth{ tag  = ?WATCH_DEP
-                                                           , data = OpData}} = Data) ->
+                                       , chain_op = #op_min_depth{ tag  = ?WATCH_DEP
+                                                                 , data = OpData}} = Data) ->
     TxBin = aetx_sign:serialize_to_binary(SignedTx),
     #op_data{block_hash = BlockHash} = OpData,
     Msg = #{ channel_id  => Ch
@@ -2523,8 +2541,8 @@ check_withdraw_created_msg(_, _) ->
 
 send_withdraw_signed_msg(SignedTx, #data{ on_chain_id = Ch
                                         , session = Sn
-                                        , op = #op_min_depth{ tag  = ?WATCH_WDRAW
-                                                            , data = OpData}} = Data) ->
+                                        , chain_op = #op_min_depth{ tag  = ?WATCH_WDRAW
+                                                                  , data = OpData}} = Data) ->
     TxBin = aetx_sign:serialize_to_binary(SignedTx),
     #op_data{block_hash = BlockHash} = OpData,
     Msg = #{ channel_id  => Ch
@@ -3194,7 +3212,7 @@ watcher_request(Type, SignedTx, Updates, #data{ op = Op
             Op1 = #op_min_depth{ tag = Sub
                                , tx_hash = TxHash
                                , data = OpData },
-            D2 = D1#data{op = Op1},
+            D2 = D1#data{chain_op = Op1},
             {ok, D2};
         {?MIN_DEPTH, Sub} ->
             ok = ask_watcher(OnChainId, min_depth_req(TxHash, MinDepth, Sub)),
@@ -3202,7 +3220,7 @@ watcher_request(Type, SignedTx, Updates, #data{ op = Op
                                , tx_hash = TxHash
                                , data = OpData },
             lager:debug("New Op = ~p", [Op1]),
-            D2 = D1#data{op = Op1},
+            D2 = D1#data{chain_op = Op1},
             {ok, D2};
         unlock ->
             ok = ask_watcher(OnChainId, unlock_req()),
@@ -3336,10 +3354,10 @@ maybe_act_on_tx(channel_snapshot_solo_tx, SignedTx, D) ->
     case call_cb(aetx_sign:innermost_tx(SignedTx), origin, []) of
         MyPubkey ->
             lager:debug("snapshot_solo_tx from my client", []),
-            #data{op = OrigOp} = D,
+            #data{chain_op = OrigOp} = D,
             %% We want to order a local min_depth watch, but not log it as a wait state op.
             {ok, D1} = watcher_request({?MIN_DEPTH, ?WATCH_SNAPSHOT_SOLO}, SignedTx, [], D),
-            D1#data{op = OrigOp};
+            D1#data{chain_op = OrigOp};
         OtherPubkey ->
             lager:debug("snapshot_solo_tx from other client (~p)", [OtherPubkey]),
             D
@@ -4831,6 +4849,25 @@ handle_call_(channel_closing, {attach_responder, #{ reestablish := true
             lager:debug("Attach failed with ~p", [Error]),
             keep_state(D, [{reply, From, {error, invalid_attach}}])
     end;
+handle_call_(St, {assume_minimum_depth, TxHash}, From, #data{ chain_op = #op_min_depth{
+                                                                            tag = Tag
+                                                                           , tx_hash = TxHash }
+                                                            , on_chain_id = ChainId
+                                                            , past_assumptions = Past} = D) ->
+    %% We allow short-cutting a min-depth wait when we are actually waiting for one,
+    %% and also impose a limit on how many times min-depth checks can be assumed
+    %% without actually collecting the results. This is mainly to keep an fsm to blow
+    %% the RAM of the serving node.
+    Allowed = (St == awaiting_locked orelse St == channel_closed)
+        andalso (gb_sets:size(Past) =< ?MAX_ASSUMPTIONS),
+    if Allowed ->
+            StuffedEvent = {?MIN_DEPTH_ACHIEVED, ChainId, Tag, TxHash},
+            D1 = D#data{past_assumptions = gb_sets:add(TxHash, Past)},
+            keep_state(D1, [ {reply, From, ok}
+                          , {next_event, cast, StuffedEvent} ]);
+       true ->
+            keep_state(D, [ {reply, {error, From, not_allowed_now}} ])
+    end;
 handle_call_(_, {strict_checks, Strict}, From, #data{} = D) when
         is_boolean(Strict) ->
     keep_state(D#data{strict_checks = Strict}, [{reply, From, ok}]);
@@ -4915,7 +4952,7 @@ handle_common_event_(timeout, Info, _St, _M, D) when D#data.ongoing_update == tr
 handle_common_event_(timeout, St = T, St, _, #data{ role = Role
                                                   , opts = Opts } = D) ->
     KeepRunning = maps:get(keep_running, Opts, false),
-    case KeepRunning andalso D#data.role =:= responder of
+    case KeepRunning andalso Role =:= responder of
         true ->
             keep_state(D);
         false ->
@@ -4962,7 +4999,7 @@ handle_common_event_(cast, {?CHANNEL_CHANGED, #{ tx_hash := TxHash
         true ->
             process_incoming_forced_progress(St, Info, D1);
         false ->
-            case D1#data.op of
+            case D1#data.chain_op of
                 #op_min_depth{tx_hash = LatestTxHash} when TxHash =/= LatestTxHash ->
                     %% This is a problem: channel changed while waiting to confirm
                     %% other tx hash
@@ -4995,6 +5032,22 @@ handle_common_event_(cast, {?CHANNEL_CLOSING, #{tx_hash := TxHash} = Info} = Msg
             lager:debug("Received a channel closing event for not closing channel", []),
             keep_state(D1)
     end;
+handle_common_event_(cast, {?CHANNEL_CHANGED, #{tx_hash := TxHash} = Info} = Msg,
+                     _St, _, D) ->
+    lager:debug("Got ?CHANNEL_CHANGED; tx_hash := ~p", [TxHash]),
+    D1 = log(rcv, msg_type(Msg), Msg, D),
+    case D1#data.chain_op of
+        #op_min_depth{tx_hash = LatestTxHash} when TxHash =/= LatestTxHash ->
+            %% This is a problem: channel changed while waiting to confirm
+            %% other tx hash
+            close({error, unexpected_tx_on_chain}, D);
+        _ ->
+            lager:debug("Fsm notes channel change ~p", [Info]),
+            SignedTx = maps:get(tx, Info),
+            Type = signed_tx_type(SignedTx),
+            report_on_chain_tx(channel_changed, Type, SignedTx, D1),
+            keep_state(maybe_act_on_tx(Type, SignedTx, D1))
+    end;
 handle_common_event_(cast, {?MIN_DEPTH_ACHIEVED, _ChainId,
                             ?WATCH_SNAPSHOT_SOLO, TxHash}, _St, _, D) ->
     %% This min_depth notification is handled unconventionally, since only the
@@ -5005,6 +5058,36 @@ handle_common_event_(cast, {?MIN_DEPTH_ACHIEVED, _ChainId,
                        , type => aesc_snapshot_solo_tx:type()
                        , tx_hash => TxHash }, D),
     keep_state(D1);
+handle_common_event_(cast, {?MIN_DEPTH_ACHIEVED, _ChainId, Tag, TxHash} = Msg, _St, Mode,
+                     #data{past_assumptions = Past} = D) when TxHash =/= undefined ->
+    %% If user has called `assume_minimum_depth`, we could get straggler min-depth
+    %% events. Pass them along to the client.
+    %% The locked_until wait on solo close is also reported as min_depth_achieved,
+    %% but with TxHash == undefined. We make sure not to match on those.
+    {DoReport, D1} = case gb_sets:is_element(TxHash, Past) of
+                         true ->
+                             {true, D#data{past_assumptions = gb_sets:delete(TxHash, Past)}};
+                         false ->
+                             {false, D}
+                     end,
+    case DoReport of
+        true ->
+            lager:debug("Received min_depth confirmation while not waiting: ~p/~p, St = ~p",
+                        [Tag, TxHash, _St]),
+            D2 = report_with_notice(info, #{ event => minimum_depth_achieved
+                                           , tx_type  => min_depth_op_type(Tag)
+                                           , tx_hash => TxHash }, already_assumed, D1),
+            keep_state(D2);
+        false ->
+            case Mode of
+                E when E == error; E == error_all ->
+                    close(protocol_error, D1);
+                postpone ->
+                    postpone(D1);
+                discard ->
+                    keep_state(log(drop, msg_type(Msg), Msg, D1))
+            end
+    end;
 handle_common_event_(cast, {?CHANNEL_CLOSED = OpTag, #{ tx_hash := TxHash
                                                       , tx := SignedTx} = _Info} = Msg, _St, _, D) ->
     %% Start a minimum-depth watch, then (if confirmed) terminate
@@ -5062,7 +5145,7 @@ is_solo_tx_from_op(Op) ->
 op_data_from_op(#op_sign{data = OpData}) -> OpData;
 op_data_from_op(#op_ack{data = OpData}) -> OpData;
 op_data_from_op(#op_lock{data = OpData}) -> OpData;
-op_data_from_op(#op_min_depth{data = OpData}) -> OpData;
+%% op_data_from_op(#op_min_depth{data = OpData}) -> OpData;
 op_data_from_op(#op_watch{data = OpData}) -> OpData;
 op_data_from_op(#op_close{data = OpData}) -> OpData.
 
@@ -5209,6 +5292,13 @@ safe_watched_action_report(SignedTx, Msg, D, Updates, ActionFun, WatchTag,
                  ActionFun(SignedTx, D2)
          end,
     report_on_chain_tx(ReportTag, SignedTx, D3).
+
+min_depth_op_type(?WATCH_FND   ) -> aesc_create_tx:type();
+min_depth_op_type(?WATCH_DEP   ) -> aesc_deposit_tx:type();
+min_depth_op_type(?WATCH_WDRAW ) -> aesc_withdraw_tx:type();
+min_depth_op_type(?WATCH_CLOSED) -> close;
+min_depth_op_type(Tag) ->
+    Tag.
 
 push_to_mempool(SignedTx) ->
     case aec_tx_pool:push(SignedTx) of
@@ -5421,7 +5511,7 @@ process_incoming_forced_progress_(#{ tx := SignedTx
                                   Channel,
                                   #data{ state = State
                                        , opts = Opts
-                                       , on_chain_id = ChannelPubkey } = D) ->
+                                       , on_chain_id = _ChannelPubkey } = D) ->
     %% we don't check the authentication of the incoming transaction as at
     %% this point it had already been included in a microblock and this block
     %% had been accepted as valid by our own node. Relying on those checks, we

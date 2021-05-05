@@ -14,12 +14,23 @@
 %% test case exports
 -export(
    [
-    create_dev1_chain/1,
-    create_dev2_chain/1,
-    sync_fork_in_wrong_order/1,
     add_dev3_node/1,
     dev3_failed_attack/1,
-    dev3_syncs_to_community/1
+    dev3_syncs_to_community/1,
+    start_dev1/1,
+    start_dev2/1,
+    stop_dev1/1,
+    stop_dev2/1,
+    mine_a_key_block_on_dev1/1,
+    mine_a_key_block_on_dev2/1,
+    spend_on_dev1/1,
+    spend_on_dev2/1,
+    mine_a_micro_block_on_dev1/1,
+    mine_a_micro_block_on_dev2/1,
+    start_nodes_and_wait_sync_dev1_chain_wins/1,
+    start_nodes_and_wait_sync_dev2_chain_wins/1,
+    assert_orphaned_tx_in_pool_dev1_receives/1,
+    assert_orphaned_tx_in_pool_dev2_receives/1
    ]).
 
 %% tr_ttb behavior callbacks
@@ -30,6 +41,7 @@
 -include_lib("stdlib/include/assert.hrl").
 
 -define(MINE_RATE, 100).
+-define(SPEND_FEE, 20000 * aec_test_utils:min_gas_price()).
 
 all() ->
     [
@@ -38,15 +50,83 @@ all() ->
 
 groups() ->
     [
-     {all_nodes, [sequence], [{group, two_nodes}, {group, three_nodes}]},
+     {all_nodes, [sequence],
+      [{group, two_nodes},
+       {group, three_nodes},
+       {group, orphaned_txs_get_included}]},
      {two_nodes, [sequence],
-      [create_dev1_chain,
-       create_dev2_chain,
-       sync_fork_in_wrong_order]},
+      [start_dev1,
+       mine_a_key_block_on_dev1,
+       mine_a_key_block_on_dev1,
+       stop_dev1,
+       start_dev2,
+       mine_a_key_block_on_dev2,
+       stop_dev2,
+       start_nodes_and_wait_sync_dev1_chain_wins,
+       stop_dev1,
+       stop_dev2]},
      {three_nodes, [sequence],
       [add_dev3_node,
        dev3_failed_attack,
-       dev3_syncs_to_community]}
+       dev3_syncs_to_community]},
+     {orphaned_txs_get_included, [sequence],
+      [{group, on_micro_block},
+       {group, on_key_block}
+      ]},
+     {on_micro_block, [sequence],
+      [start_dev1,
+       start_dev2,
+       %% mine more than 2 blocks so the beneficiary has some tokens to spend
+       mine_a_key_block_on_dev1,
+       mine_a_key_block_on_dev1,
+       mine_a_key_block_on_dev1,
+       stop_dev2,
+       mine_a_key_block_on_dev1,
+       spend_on_dev1,
+       mine_a_micro_block_on_dev1,
+       mine_a_key_block_on_dev1,
+       stop_dev1,
+       start_dev2,
+       mine_a_key_block_on_dev2,
+       mine_a_key_block_on_dev2,
+       mine_a_key_block_on_dev2,
+       mine_a_key_block_on_dev2,
+       mine_a_key_block_on_dev2,
+       mine_a_key_block_on_dev2,
+       mine_a_key_block_on_dev2,
+       stop_dev2,
+       start_nodes_and_wait_sync_dev2_chain_wins,
+       assert_orphaned_tx_in_pool_dev2_receives,
+       mine_a_micro_block_on_dev2,
+       stop_dev1,
+       stop_dev2
+       ]},
+     {on_key_block, [sequence],
+      [start_dev1,
+       start_dev2,
+       %% mine more than 2 blocks so the beneficiary has some tokens to spend
+       mine_a_key_block_on_dev1,
+       mine_a_key_block_on_dev1,
+       mine_a_key_block_on_dev1,
+       stop_dev2,
+       mine_a_key_block_on_dev1,
+       spend_on_dev1,
+       mine_a_micro_block_on_dev1,
+       stop_dev1,
+       start_dev2,
+       mine_a_key_block_on_dev2,
+       mine_a_key_block_on_dev2,
+       mine_a_key_block_on_dev2,
+       mine_a_key_block_on_dev2,
+       mine_a_key_block_on_dev2,
+       mine_a_key_block_on_dev2,
+       stop_dev2,
+       start_nodes_and_wait_sync_dev2_chain_wins,
+       assert_orphaned_tx_in_pool_dev2_receives,
+       mine_a_micro_block_on_dev2,
+       stop_dev1,
+       stop_dev2
+       ]}
     ].
 
 suite() ->
@@ -57,8 +137,12 @@ init_per_suite(Config) ->
     aecore_suite_utils:init_per_suite([dev1, dev2, dev3],
                                       #{ <<"sync">> =>
                                              #{<<"sync_allowed_height_from_top">> => 0}
+                                       , <<"mempool">> =>
+                                             #{ <<"sync_interval">> => 1000} %% every second
                                        , <<"mining">> =>
-                                             #{ <<"expected_mine_rate">> => ?MINE_RATE } },
+                                             #{ <<"expected_mine_rate">> => ?MINE_RATE,
+                                                %% this is important so beneficiary can spend
+                                                <<"beneficiary_reward_delay">> => 2}},
                                       [{add_peers, true}],
                                       [{symlink_name, "latest.fork"},
                                        {test_module, ?MODULE}]
@@ -74,6 +158,9 @@ init_per_group(two_nodes, Config) ->
 init_per_group(three_nodes, Config) ->
     [{nodes, [aecore_suite_utils:node_tuple(D) ||
                  D <- [dev1, dev2, dev3]]} | Config];
+init_per_group(orphaned_txs_get_included, Config) ->
+    [{nodes, [aecore_suite_utils:node_tuple(D) ||
+                 D <- [dev1, dev2]]} | Config];
 init_per_group(_Group, Config) ->
     Config.
 
@@ -95,58 +182,6 @@ end_per_testcase(_Case, Config) ->
 %% ============================================================
 %% Test cases
 %% ============================================================
-
-create_dev1_chain(Config) ->
-    aecore_suite_utils:start_node(dev1, Config),
-    N1 = aecore_suite_utils:node_name(dev1),
-    aecore_suite_utils:connect(N1),
-    {ok, Blocks} = mine_key_blocks(N1, 20),
-    true = (length(lists:usort(Blocks)) >= 20),
-    N1Top = rpc:call(N1, aec_chain, top_block, [], 5000),
-    ct:log("top of chain dev1: ~p (mined ~p)", [N1Top, lists:last(Blocks)]),
-    N1Top = lists:last(Blocks),
-    ok = stop_and_check([dev1], Config),    %% make sure we do not sync with dev2.
-    ok.
-
-create_dev2_chain(Config) ->
-    aecore_suite_utils:start_node(dev2, Config),
-    N2 = aecore_suite_utils:node_name(dev2),
-    aecore_suite_utils:connect(N2),
-    mine_key_blocks(N2, 1),
-    ForkTop = rpc:call(N2, aec_chain, top_block, [], 5000),
-    ct:log("top of fork dev2: ~p", [ ForkTop ]),
-    ok = stop_and_check([dev2], Config),
-    ok.
-
-sync_fork_in_wrong_order(Config) ->
-    aecore_suite_utils:start_node(dev1, Config),
-    N1 = aecore_suite_utils:node_name(dev1),
-    aecore_suite_utils:connect(N1),
-    N1Top = rpc:call(N1, aec_chain, top_block, [], 5000),
-    ct:log("top of chain dev1: ~p", [ N1Top ]),
-    aecore_suite_utils:stop_node(dev1, Config),
-
-    aecore_suite_utils:start_node(dev2, Config),
-    N2 = aecore_suite_utils:node_name(dev2),
-    aecore_suite_utils:connect(N2),
-    ForkTop = rpc:call(N2, aec_chain, top_block, [], 5000),
-    ct:log("top of chain dev2: ~p", [ ForkTop ]),
-
-    false = (ForkTop == N1Top),
-    timer:sleep(100),
-    %% unexepctedly last block of dev1 arrives before rest of the chain
-    %% This is no longer allowed, so it should fail.
-    ?assertMatch({error, {illegal_orphan, _}},
-                  rpc:call(N2, aec_conductor, post_block, [N1Top], 5000)),
-
-    T0 = os:timestamp(),
-    aecore_suite_utils:start_node(dev1, Config),
-    aecore_suite_utils:connect(N1),
-    done = aecore_suite_utils:await_sync_complete(T0, [N2]),
-    aec_test_utils:wait_for_it(
-      fun() -> rpc:call(N2, aec_chain, top_block, [], 5000) end,
-      N1Top),
-    ok = stop_and_check([dev1, dev2], Config).
 
 add_dev3_node(Config) ->
     %% dev1 and dev2 are in sync
@@ -247,6 +282,7 @@ dev3_failed_attack(Config) ->
     NewTop = rpc:call(N2, aec_chain, top_block, [], 5000),
     ct:log("dev2 synced against N1 - not N3", []),
     %%
+    %%
     %% Stop and restart dev2, but this time without fork resistance.
     %% The finalized depth entry will still be in the DB, but not acted on,
     %% since FR is configured to be disabled. N2 should sync against N3.
@@ -277,9 +313,6 @@ stop_and_check(Ns, Config) ->
 mine_key_blocks(Node, N) ->
     aecore_suite_utils:mine_blocks(Node, N, ?MINE_RATE, key, #{}).
 
-with_trace(F, Config, File) ->
-    aecore_suite_ttb:with_trace(F, Config, File, ?MODULE).
-
 patterns() ->
     [ {aec_sync, '_', '_', []}
     , {aec_resilience, '_', '_', []}
@@ -288,3 +321,104 @@ patterns() ->
 
 flags() ->
     {all, call}.
+
+start_node(Node, Config) ->
+    aecore_suite_utils:start_node(Node, Config),
+    aecore_suite_utils:connect(aecore_suite_utils:node_name(Node)),
+    ok = aecore_suite_utils:check_for_logs([Node], Config),
+    ok.
+
+start_dev1(Config) -> start_node(dev1, Config).
+
+start_dev2(Config) -> start_node(dev2, Config).
+
+stop_dev1(Config) -> stop_and_check([dev1], Config).
+
+stop_dev2(Config) -> stop_and_check([dev2], Config).
+
+mine_a_key_block(Node) ->
+    NName= aecore_suite_utils:node_name(Node),
+    {ok, [Block]} = mine_key_blocks(NName, 1),
+    Top = rpc:call(NName, aec_chain, top_block, [], 5000),
+    ct:log("top of chain ~p: ~p (mined ~p)", [Node, Top, Block]),
+    {Top, Top} = {Top, Block},
+    Top.
+
+mine_a_key_block_on_dev1(_Config) -> mine_a_key_block(dev1).
+
+mine_a_key_block_on_dev2(_Config) -> mine_a_key_block(dev2).
+
+mine_a_micro_block_on_dev1(_Config) -> mine_a_micro_block(dev1).
+mine_a_micro_block_on_dev2(_Config) -> mine_a_micro_block(dev2).
+
+mine_a_micro_block(Node) -> 
+    NName = aecore_suite_utils:node_name(Node),
+    aecore_suite_utils:mine_blocks(NName, 1, ?MINE_RATE, micro, #{}).
+
+spend(Node) ->
+    {_, Pub} = aecore_suite_utils:sign_keys(Node),
+    NName = aecore_suite_utils:node_name(Node),
+    {ok, Tx} = aecore_suite_utils:spend(NName, Pub, Pub, 1, ?SPEND_FEE),
+    {ok, [Tx]} = rpc:call(NName, aec_tx_pool, peek, [infinity]),
+    ct:log("Spend tx ~p", [Tx]),
+    Tx.
+
+spend_on_dev1(_Config) -> spend(dev1).
+spend_on_dev2(_Config) -> spend(dev2).
+
+wait_nodes_to_sync(ExpectedTop, WrongForkNode, T0) ->
+    WFNName = aecore_suite_utils:node_name(WrongForkNode),
+    done = aecore_suite_utils:await_sync_complete(T0, [WFNName]),
+    aec_test_utils:wait_for_it(
+        fun() -> rpc:call(WFNName, aec_chain, top_block, [], 5000) end,
+        ExpectedTop),
+    ok.
+
+start_nodes_and_wait_sync_dev1_chain_wins(Config) ->
+    start_nodes_and_wait_sync(dev1, dev2, Config).
+
+start_nodes_and_wait_sync_dev2_chain_wins(Config) ->
+    start_nodes_and_wait_sync(dev2, dev1, Config).
+
+start_nodes_and_wait_sync(CorrectForkNode, OtherNode, Config) ->
+    start_node(CorrectForkNode, Config), 
+    CFNName = aecore_suite_utils:node_name(CorrectForkNode),
+    CFTop = rpc:call(CFNName, aec_chain, top_block, [], 5000),
+    ct:log("top of chain ~p: ~p", [ CorrectForkNode, CFTop ]),
+    stop_and_check([CorrectForkNode], Config), 
+
+    start_node(OtherNode, Config), 
+    ForkNName = aecore_suite_utils:node_name(OtherNode),
+    ForkTop = rpc:call(ForkNName, aec_chain, top_block, [], 5000),
+    ct:log("top of chain ~p: ~p", [ OtherNode, ForkTop ]),
+
+    false = (ForkTop == CFTop),
+    timer:sleep(100),
+    %% unexepctedly last block of dev1 arrives before rest of the chain
+    %% This is no longer allowed, so it should fail.
+    ?assertMatch({error, {illegal_orphan, _}},
+                  rpc:call(ForkNName, aec_conductor, post_block, [CFTop], 5000)),
+
+    T0 = os:timestamp(),
+    start_node(CorrectForkNode, Config), 
+    wait_nodes_to_sync(CFTop, OtherNode, T0),
+    ok.
+
+assert_orphaned_tx_in_pool_dev1_receives(Config) ->
+    assert_orphaned_tx_in_pool(dev1, dev2, Config).
+
+assert_orphaned_tx_in_pool_dev2_receives(Config) ->
+    assert_orphaned_tx_in_pool(dev2, dev1, Config).
+
+assert_orphaned_tx_in_pool(CorrectForkNode, OtherNode, _Config) ->
+    NName = aecore_suite_utils:node_name(OtherNode),
+    {ok, [SignedTx]} = rpc:call(NName, aec_tx_pool, peek, [infinity], 5000),
+    TxHash = aetx_sign:hash(SignedTx),
+
+    timer:sleep(100),
+    N2Name = aecore_suite_utils:node_name(CorrectForkNode),
+    TxLocation = rpc:call(N2Name, aec_chain, find_tx_location, [TxHash], 5000),
+    {true, _} = {(TxLocation =/= none), none}, %% tx had been GCed
+    {true, _} = {(TxLocation =/= not_found), not_found},%% tx had not been seen on the node yet
+    {ok, [SignedTx]} = rpc:call(N2Name, aec_tx_pool, peek, [infinity], 5000),
+    ok.

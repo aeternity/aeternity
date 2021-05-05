@@ -625,6 +625,11 @@ ga_spend_tx([Nonce|Nonces], AccPK, AccSK, InnerTx, MetaFee, AuthGas) ->
     ga_spend_tx(Nonces, AccPK, AccSK, MetaTx, MetaFee, AuthGas).
 
 sc_create_tx(APK, BPK) ->
+    Delegates =
+        case aect_test_utils:latest_protocol_version() of
+            PostIris when PostIris >= ?IRIS_PROTOCOL_VSN -> {[], []};
+            _ -> []
+        end,
     SCMap = #{ initiator_id => aeser_id:create(account, APK),
                responder_id => aeser_id:create(account, BPK),
                nonce => 0,
@@ -633,7 +638,8 @@ sc_create_tx(APK, BPK) ->
                fee => 20000 * aec_test_utils:min_gas_price(),
                channel_reserve => 100,
                state_hash => <<0:32/unit:8>>,
-               lock_period => 42 },
+               lock_period => 42,
+               delegate_ids => Delegates},
     {ok, Tx} = aesc_create_tx:new(SCMap),
     Tx.
 

@@ -100,6 +100,7 @@ find_keys({Key, Val, Iter}, Map) ->
 serialize_for_client(Store) ->
     maps:from_list(
         [ {aeser_api_encoder:encode(contract_store_key, Key),
-           aeser_api_encoder:encode(contract_store_value, Val)} || {Key, Val} <- maps:to_list(contents(Store)) ]
+           aeser_api_encoder:encode(contract_store_value, Val)}
+          || {Key, Val} <- lists:keysort(1, maps:to_list(contents(Store))) ]
     ).
 

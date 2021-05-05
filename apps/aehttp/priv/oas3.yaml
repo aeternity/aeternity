@@ -763,6 +763,7 @@ paths:
           required: false
           schema:
             type: integer
+            default: 20
             minimum: 1
             maximum: 1000
             example: 1
@@ -772,6 +773,7 @@ paths:
           required: false
           schema:
             type: string
+            default: all
             enum:
               - open
               - closed
@@ -1544,6 +1546,35 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+  /debug/channels/set-delegates:
+    post:
+      tags:
+        - internal
+        - channel
+        - debug
+      operationId: PostChannelSetDelegates
+      description: 'Get a channel_set_delegates_tx transaction object'
+      parameters:
+        - $ref: '#/components/parameters/intAsString'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChannelSetDelegatesTx"
+        required: true
+      responses:
+        "200":
+          description: Successful operation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UnsignedTx"
+        "400":
+          description: Invalid transaction
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
   /debug/channels/close/mutual:
     post:
       tags:
@@ -1814,6 +1845,42 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+  /debug/transactions/paying-for:
+    post:
+      tags:
+        - internal
+        - transaction
+        - debug
+      operationId: PostPayingFor
+      description: Get a paying-for transaction object
+      parameters:
+        - $ref: '#/components/parameters/intAsString'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PayingForTx"
+        description: A paying-for transaction
+        required: true
+      responses:
+        "200":
+          description: Successful operation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UnsignedTx"
+        "400":
+          description: Invalid transaction
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Payer account not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
   "/debug/token-supply/height/{height}":
     get:
       tags:
@@ -1959,10 +2026,6 @@ components:
         - signature
         - time
         - version
-    Header:
-      anyOf:
-        - $ref: "#/components/schemas/KeyBlock"
-        - $ref: "#/components/schemas/MicroBlockHeader"
     Account:
       type: object
       properties:
@@ -2348,6 +2411,21 @@ components:
       required:
         - key
         - id
+    Delegates:
+      oneOf:
+        - type: array
+          items:
+            $ref: "#/components/schemas/EncodedPubkey"
+        - type: object
+          properties:
+            initiator:
+              type: array
+              items:
+                $ref: "#/components/schemas/EncodedPubkey"
+            responder:
+              type: array
+              items:
+                $ref: "#/components/schemas/EncodedPubkey"
     Channel:
       type: object
       properties:
@@ -2366,9 +2444,7 @@ components:
         channel_reserve:
           $ref: "#/components/schemas/UInt"
         delegate_ids:
-          type: array
-          items:
-            $ref: "#/components/schemas/EncodedPubkey"
+          $ref: "#/components/schemas/Delegates"
         state_hash:
           $ref: "#/components/schemas/EncodedHash"
         round:
@@ -2419,9 +2495,7 @@ components:
         state_hash:
           $ref: "#/components/schemas/EncodedHash"
         delegate_ids:
-          type: array
-          items:
-            $ref: "#/components/schemas/EncodedPubkey"
+          $ref: "#/components/schemas/Delegates"
       required:
         - initiator_id
         - initiator_amount
@@ -2631,6 +2705,42 @@ components:
         - from_id
         - payload
         - fee
+    ChannelSetDelegatesTx:
+      type: object
+      properties:
+        channel_id:
+          $ref: "#/components/schemas/EncodedPubkey"
+        from_id:
+          $ref: "#/components/schemas/EncodedPubkey"
+        initiator_delegate_ids:
+          type: array
+          items:
+            $ref: "#/components/schemas/EncodedPubkey"
+        responder_delegate_ids:
+          type: array
+          items:
+            $ref: "#/components/schemas/EncodedPubkey"
+        state_hash:
+          $ref: "#/components/schemas/EncodedPubkey"
+        round:
+          $ref: '#/components/schemas/UInt64'
+        payload:
+          $ref: '#/components/schemas/EncodedByteArray'
+        ttl:
+          $ref: '#/components/schemas/UInt64'
+        fee:
+          $ref: '#/components/schemas/UInt'
+        nonce:
+          $ref: '#/components/schemas/UInt64'
+      required:
+        - channel_id
+        - from_id
+        - initiator_delegate_ids
+        - responder_delegate_ids
+        - state_hash
+        - round
+        - payload
+        - fee
     PeerPubKey:
       type: object
       properties:
@@ -2776,13 +2886,11 @@ components:
           description: At least one signature is required unless for Generalized Account
             Meta transactions
           type: array
+          minItems: 0
           items:
             $ref: "#/components/schemas/EncodedValue"
       required:
         - tx
-        - block_height
-        - block_hash
-        - hash
         - signatures
     Tx:
       allOf:
@@ -2804,6 +2912,7 @@ components:
                       ChannelSlashTx,
                       ChannelSettleTx,
                       ChannelSnapshotSoloTx,
+                      ChannelSetDelegatesTx,
                       OracleRegisterTx,
                       OracleExtendTx,
                       OracleQueryTx,
@@ -2816,7 +2925,8 @@ components:
                       ContractCreateTx,
                       ContractCallTx,
                       GAAttachTx,
-                      GAMetaTx ]
+                      GAMetaTx,
+                      PayingForTx ]
           required:
             - version
             - type
@@ -2831,6 +2941,7 @@ components:
           - $ref: "#/components/schemas/ChannelSlashTx"
           - $ref: "#/components/schemas/ChannelSettleTx"
           - $ref: "#/components/schemas/ChannelSnapshotSoloTx"
+          - $ref: "#/components/schemas/ChannelSetDelegatesTx"
           - $ref: "#/components/schemas/OracleRegisterTx"
           - $ref: "#/components/schemas/OracleExtendTx"
           - $ref: "#/components/schemas/OracleQueryTx"
@@ -2844,6 +2955,7 @@ components:
           - $ref: "#/components/schemas/ContractCallTx"
           - $ref: "#/components/schemas/GAAttachTx"
           - $ref: "#/components/schemas/GAMetaTx"
+          - $ref: "#/components/schemas/PayingForTx"
     TxInfoObject:
       type: object
       properties:
@@ -3383,6 +3495,21 @@ components:
         - fee
         - auth_data
         - tx
+    PayingForTx:
+      type: object
+      properties:
+        payer_id:
+          $ref: "#/components/schemas/EncodedPubkey"
+        fee:
+          $ref: "#/components/schemas/UInt"
+        nonce:
+          $ref: "#/components/schemas/UInt64"
+        tx:
+          $ref: "#/components/schemas/SignedTx"
+      required:
+        - payer_id
+        - fee
+        - tx
     Header:
       anyOf:
         - $ref: "#/components/schemas/KeyBlock"
@@ -3393,8 +3520,9 @@ components:
       name: "int-as-string"
       description: 'If this flag is set to true, the response will have all integers set as strings'
       required: false
-      type: boolean
-      default: false
+      schema:
+        type: boolean
+        default: false
     blockHash:
       in: path
       name: hash

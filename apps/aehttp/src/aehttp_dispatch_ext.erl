@@ -1,6 +1,6 @@
 -module(aehttp_dispatch_ext).
 
--export([forbidden/1]).
+-export([forbidden/2]).
 -export([handle_request/3]).
 
 -import(aeu_debug, [pp/1]).
@@ -38,8 +38,8 @@
 
 -define(TC(Expr, Msg), begin {Time, Res} = timer:tc(fun() -> Expr end), lager:debug("[~p] Msg = ~p", [Time, Msg]), Res end).
 
--spec forbidden( OperationID :: atom() ) -> boolean().
-forbidden(_OpId) -> false.
+-spec forbidden( Mod :: module(), OperationID :: atom() ) -> boolean().
+forbidden(_Mod, _OpId) -> false.
 
 -spec handle_request(
         OperationID :: atom(),
@@ -468,7 +468,8 @@ handle_request_('PostTransaction', #{<<"tx">> := Tx}, _Context) ->
                         ok ->
                             Hash = aetx_sign:hash(SignedTx),
                             {200, [], #{<<"tx_hash">> => aeser_api_encoder:encode(tx_hash, Hash)}};
-                        {error, _} ->
+                        {error, E} ->
+                            lager:debug("Transaciton ~p failed to be pushed to pool because: ~p", [SignedTx, E]),
                             {400, [], #{reason => <<"Invalid tx">>}}
                     end;
                 {error, broken_tx} ->
@@ -494,10 +495,9 @@ handle_request_('GetContractCode', Req, _Context) ->
     case aeser_api_encoder:safe_decode(contract_pubkey, maps:get(pubkey, Req)) of
         {error, _} -> {400, [], #{reason => <<"Invalid public key">>}};
         {ok, PubKey} ->
-            case aec_chain:get_contract(PubKey) of
+            case aec_chain:get_contract_with_code(PubKey) of
                 {error, _} -> {404, [], #{reason => <<"Contract not found">>}};
-                {ok, Contract} ->
-                    Code = aect_contracts:code(Contract),
+                {ok, _Contract, Code} ->
                     {200, [], #{ <<"bytecode">> => aeser_api_encoder:encode(contract_bytearray, Code) }}
             end
     end;
@@ -529,10 +529,7 @@ handle_request_('GetOracleByPubkey', Params, _Context) ->
 handle_request_('GetOracleQueriesByPubkey', Params, _Context) ->
     case aeser_api_encoder:safe_decode(oracle_pubkey, maps:get(pubkey, Params)) of
         {ok, Pubkey} ->
-            Limit = case maps:get(limit, Params) of
-                        N when N =/= undefined -> N;
-                        undefined -> 20
-                    end,
+            Limit = maps:get(limit, Params),
             FromQueryId = case maps:get(from, Params) of
                               Id when Id =/= undefined ->
                                   {ok, OracleQueryId} = aeser_api_encoder:safe_decode(oracle_query_id, Id),
@@ -702,4 +699,3 @@ deserialize_transaction(Tx) ->
     catch
         _:_ -> {error, broken_tx}
     end.
-
