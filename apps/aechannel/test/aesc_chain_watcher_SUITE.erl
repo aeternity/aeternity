@@ -797,3 +797,8 @@ stop_chain_watcher(Config) ->
 
 %%
 %% ======================================================================
+no_delegates() ->
+    case aec_hard_forks:protocol_effective_at_height(100) < ?IRIS_PROTOCOL_VSN of
+        true -> [];
+        false -> {[], []}
+    end.

@@ -262,7 +262,7 @@ top_block_hash() ->
 %%
 add_keyblock(ForkId) ->
     chain_req({add_key, ForkId}).
-apps/aechannel/test/aesc_chain_watcher_SUITE.erl
+
 -spec add_microblock() -> {ok, aec_blocks:micro_block()}.
 %%
 %% Equivalent to add_microblock(main)
