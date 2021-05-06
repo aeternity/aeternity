@@ -349,10 +349,8 @@ get_mpt(Height) ->
     {ok, Hash} = aec_chain_state:get_key_block_hash_at_height(Height),
     try get_mpt_from_hash(Hash) of
         MPT -> MPT
-    catch
-        error:{hash_not_present_in_db, MissingHash} ->
-            Stacktrace = erlang:get_stacktrace(),
-            error({hash_not_present_in_db_at_height, Height, MissingHash, Stacktrace})
+    catch error:{hash_not_present_in_db, MissingHash}:Stacktrace ->
+        error({hash_not_present_in_db_at_height, Height, MissingHash, Stacktrace})
     end.
 
 get_mpt_from_hash(Hash) ->
