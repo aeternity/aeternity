@@ -304,9 +304,9 @@ commit_state(Data) ->
 commitment(Tx) ->
     Account = aeconnector_tx:account(Tx), %% TODO Place to substitute delegate via trees;
     Payload = aeconnector_tx:payload(Tx),
-%%    KeyblockHash = aeser_api_encoder:decode(Payload),
+    KeyblockHash = aeser_api_encoder:decode(Payload),
 
-    Header = aehc_commitment_header:new(Account, <<"KeyblockHash">>),
+    Header = aehc_commitment_header:new(Account, KeyblockHash),
     aehc_commitment:new(Header).
 
 -spec is_commitment(tx()) -> boolean().
