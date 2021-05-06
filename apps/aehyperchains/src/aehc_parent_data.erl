@@ -30,6 +30,7 @@ commitment(Commitment) ->
 delegate(PubKey) ->
     aeser_api_encoder:encode(account_pubkey, PubKey).
 
+%% TODO Add byte size check
 -spec is_commitment(binary()) -> boolean().
 is_commitment(<<"kh",_/binary>>) ->
     true;

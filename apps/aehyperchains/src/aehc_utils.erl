@@ -7,6 +7,8 @@
 
 -export([stake/0]).
 
+-export([pub/0, priv/0]).
+
 -include("../../aecore/include/blocks.hrl").
 -include("aehc_utils.hrl").
 
@@ -46,13 +48,14 @@ stake() ->
     Fee = 1 bsl 60,
     Gas = 1 bsl 30,
     GasPrice = 1 bsl 30,
-    MkCallF = fun(#{ pubkey := Pub, privkey := Priv }, Nonce, Amount, Call) ->
-        Tx = make_contract_call_tx(Pub, ContractAddress, Call, Nonce, Amount, Fee, Gas, GasPrice),
-        sign_tx(Tx, Priv, false, undefined)
-              end,
+    MkCallF =
+        fun(#{ pubkey := Pub, privkey := Priv }, Nonce, Amount, Call) ->
+            Tx = make_contract_call_tx(Pub, ContractAddress, Call, Nonce, Amount, Fee, Gas, GasPrice),
+            sign_tx(Tx, Priv, false, undefined)
+        end,
     {ok, CallDepositStake} = aeaci_aci:encode_call_data(Aci, "deposit_stake()"),
-    R = MkCallF(patron(), 1, 1 * 1000000000000000000, CallDepositStake), lager:info("~nStake res: ~p~n",[R]),
-    Res = aec_tx_pool:push(R), lager:info("~nRes: ~p~n",[Res]), Res.
+    R = MkCallF(patron(), 1, 1 * 1000000000000000000, CallDepositStake),
+    aec_tx_pool:push(R).
 
 make_contract_call_tx(Pubkey, ContractPubkey, CallData, Nonce, Amount, Fee,
     Gas, GasPrice) ->
@@ -94,12 +97,13 @@ sign_tx(Tx, PrivKeys, SignHash, AdditionalPrefix) when is_list(PrivKeys) ->
     aetx_sign:new(Tx, Signatures).
 
 patron() ->
-    #{pubkey  => <<206,167,173,228,112,201,249,157,157,78,64,8,128,168,111,29,
-        73,187,68,75,98,241,26,158,187,100,187,207,235,115,254,243>>,
-        privkey => <<230,169,29,99,60,119,207,87,113,50,157,51,84,179,188,239,27,
-            197,224,50,196,61,112,182,211,90,249,35,206,30,183,77,206,
-            167,173,228,112,201,249,157,157,78,64,8,128,168,111,29,73,
-            187,68,75,98,241,26,158,187,100,187,207,235,115,254,243>>}.
+    #{
+        pubkey  => pub(),
+        privkey => priv()
+    }.
 
-%% And a random person which will help us with testing
-%%#{ public := RandomPubKey} = Random = enacl:sign_keypair(),
+pub() ->
+    <<206,167,173,228,112,201,249,157,157,78,64,8,128,168,111,29, 73,187,68,75,98,241,26,158,187,100,187,207,235,115,254,243>>.
+
+priv() ->
+    <<230,169,29,99,60,119,207,87,113,50,157,51,84,179,188,239,27, 197,224,50,196,61,112,182,211,90,249,35,206,30,183,77,206, 167,173,228,112,201,249,157,157,78,64,8,128,168,111,29,73, 187,68,75,98,241,26,158,187,100,187,207,235,115,254,243>>.

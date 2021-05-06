@@ -438,7 +438,7 @@ state_pre_transform_key_node(KeyNode, _PrevNode, PrevKeyNode, Trees1) ->
             ParentHash = get_pos_header_parent_hash(Header),
             Delegates = aehc_utils:delegates(ParentHash),
             %% TODO: actually hardcode the encoding
-            Arg1 = ["[", lists:join(", ", [aeser_api_encoder:encode(account_pubkey, X)  || X <- Delegates]), "]"],
+            Arg1 = ["[", lists:join(", ", [X  || X <- Delegates]), "]"],
             Arg2 = lists:flatten([integer_to_list(X,16) || <<X:4>> <= ParentHash]),
             Call = lists:flatten(io_lib:format("get_leader(~s, #~s)", [Arg1, Arg2])),
             io:format(user, "Election: ~p\n", [Call]),
@@ -488,15 +488,18 @@ ensure_hc_activation_criteria_at_trees(TxEnv, Trees,
                         , minimum_stake = MinimumStake
                         }) ->
     case { static_contract_call(Trees, TxEnv, "balance()")
-         , static_contract_call(Trees, TxEnv, "unique_delegates_count()") } of
+        , static_contract_call(Trees, TxEnv, "unique_delegates_count()") } of
+        %% TODO (temporary hack, must'n be in production)
+%%        {{ok, _Stake}, {ok, _Delegates}} ->
+%%            ok;
         {{ok, Stake}, {ok, Delegates}} when Stake >= MinimumStake, Delegates >= MinimumDelegates ->
             ok;
         {{ok, Stake}, _} when Stake < MinimumStake ->
             {error, not_enough_stake};
         {_, {ok, _Delegates}} ->
             {error, not_enough_delegates};
-        {{error, Err}, _} -> {error, {failed_call, Err}};
-        {_, {error, Err}} -> {error, {failed_call, Err}}
+        {Err, _} -> {error, {failed_call, Err}};
+        {_, Err} -> {error, {failed_call, Err}}
     end.
 
 state_pre_transform_micro_node(_Node, _PrevNode, _PrevKeyNode, Trees) -> Trees.
@@ -623,7 +626,9 @@ new_pos_key_node(PrevNode, PrevKeyNode, Height, Miner, Beneficiary, Protocol, In
                            InfoField,
                            Protocol),
     R = aec_chain_state:wrap_header(Header, ?FAKE_BLOCK_HASH),
-    lager:info("~nThe new keyblock: (hash: ~p) (time: ~p) (miner: ~p)~n",
+    %% TODO To reflect Tx pool in debug (stake should be reflected here)
+    %% TODO To consider stake via config
+    lager:info("~nThe new PoS keyblock: (hash: ~p) (time: ~p) (miner: ~p)~n",
         [
             aeser_api_encoder:encode(key_block_hash, aec_headers:prev_key_hash(Header)),
             aec_headers:time_in_secs(Header),
@@ -1019,7 +1024,8 @@ static_staking_contract_call_on_block_hash(BlockHash, Query) ->
 %% Protocol calls at genesis are disallowed - it's impossible for the staking contract to be active at genesis
 protocol_staking_contract_call(Trees0, TxEnv, Query) ->
     Aci = get_staking_contract_aci(),
-    {ok, ContractPubkey} = get_staking_contract_address(), io:format(user, "~nAci: ~p~nQuery: ~p~n",[Aci, Query]),
+    {ok, ContractPubkey} = get_staking_contract_address(),
+    lager:info("~nContract call (Aci ~p)~n(Query: ~p)~n",[Aci, Query]),
     {ok, CallData} = aeaci_aci:encode_call_data(Aci, Query),
     Accounts0 = aec_trees:accounts(Trees0),
     SavedAccount = case aec_accounts_trees:lookup(?RESTRICTED_ACCOUNT, Accounts0) of

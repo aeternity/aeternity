@@ -499,6 +499,7 @@ check_candidate(Db, #dbs{gc_db = GCDb} = _Dbs,
     Tx1 = aetx_sign:tx(Tx),
     TxTTL = aetx:ttl(Tx1),
     TxGas = aetx:gas_limit(Tx1, Height, Protocol),
+    io:format(user, "~nCheck canditate in pool: ~p~n",[Tx1]),
     case Height < TxTTL andalso TxGas > 0
          andalso ok =:= int_check_account(Tx, AccountsTree, check_candidate)
          andalso MinMinerGasPrice =< aetx:min_gas_price(Tx1, Height, Protocol) of
