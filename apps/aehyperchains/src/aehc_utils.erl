@@ -13,5 +13,6 @@ hc_enabled() ->
 %% Right now used for mocking :)
 -spec submit_commitment(node(), binary()) -> aehc_parent_block:parent_block().
 submit_commitment(KeyNode, Delegate) ->
-    C = aehc_commitment:new(aehc_commitment_header:new(Delegate, aec_block_insertion:node_hash(KeyNode)), no_pogf),
+    %% Mock or not, tidiness first :)
+    _C = aehc_commitment:new(aehc_commitment_header:new(Delegate, aec_block_insertion:node_hash(KeyNode)), no_pogf),
     error(todo).
