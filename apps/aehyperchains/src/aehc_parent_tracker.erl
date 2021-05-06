@@ -147,10 +147,6 @@ fetched(internal, {added_block, Block}, Data) ->
     Hash = aeconnector_block:hash(Block),
     Cursor = cursor(Data), Index = index(Data),
 
-    io:format(user, "~nIndex: ~p~n",[Index]),
-    io:format(user, "~nCursor: ~p~n",[Cursor]),
-    io:format(user, "~nHash: ~p~n",[Hash]), io:format(user, "~nPrevHash: ~p~n",[aeconnector_block:prev_hash(Block)]),
-
     case Index of
         _ when Hash == Cursor ->
             %% NOTE Sync is done in the fetch mode
@@ -225,7 +221,6 @@ synced(enter, _OldState, Data) ->
     {keep_state, Data2};
 
 synced(cast, {send_tx, Payload, From}, Data) ->
-    lager:info("~nParent tracker mocks a payload: ~p~n",[Payload]),
     Res = aeconnector:send_tx(connector(Data), Payload),
     gen_statem:reply(From, Res),
 
@@ -333,7 +328,8 @@ process_delegate(Tx, Tree) ->
 
 -spec process_block(block(), trees()) -> parent_block().
 process_block(Block, State) ->
-    Txs = aeconnector_block:txs(Block), lager:info("~nTxs: ~p~n",[Txs]),
+    lager:info("~nProcess parent block: ~p~n",[Block]),
+    Txs = aeconnector_block:txs(Block),
 
     CList = [commitment(Tx)|| Tx <- Txs, is_commitment(Tx)],
 
@@ -350,10 +346,10 @@ process_block(Block, State) ->
 
     Tree = aehc_parent_trees:delegates(State),
 
-    Tree2 = lists:foldl(fun process_delegate/2, Tree, DTxs), lager:info("~nDTxs: ~p~n",[DTxs]),
+    Tree2 = lists:foldl(fun process_delegate/2, Tree, DTxs),
 
     State2 = aehc_parent_trees:set_delegates(State, Tree2),
-    aehc_parent_db:write_parent_block(ParentBlock, State2), lager:info("~nState2: ~p~n",[State2]),
+    aehc_parent_db:write_parent_block(ParentBlock, State2),
     ParentBlock.
 
 

@@ -228,7 +228,10 @@ hc_from_genesis_test_() ->
                     assert_static_staking_call_result({ok, false}, "enabled()"),
                     assert_static_staking_call_result({ok, 1 * ?AE}, "balance()"),
                     %% Now we create the block at 10 - the first HC block :)
-                    meck:expect(aehc_utils, delegates, fun (_) -> [PatronPubkey] end),
+                    meck:expect(aehc_utils, delegates,
+                        fun (_) ->
+                            [aeser_api_encoder:encode(account_pubkey, PatronPubkey)]
+                        end),
                     meck:expect(aehc_utils, submit_commitment,
                         fun(KeyNode, Delegate) ->
                             PatronPubkey = Delegate,
@@ -310,7 +313,10 @@ hc_from_genesis_test_() ->
                     assert_static_staking_call_result({ok, 2 * ?AE}, "balance()"),
                     %% Now we create the block at 10 - the first HC block :)
                     %% Only delegate1 commits to the block at 9
-                    meck:expect(aehc_utils, delegates, fun (_) -> [D1Pub] end),
+                    meck:expect(aehc_utils, delegates,
+                        fun (_) ->
+                            [aeser_api_encoder:encode(account_pubkey, D1Pub)]
+                        end),
                     meck:expect(aehc_utils, submit_commitment,
                         fun(KeyNode, Delegate) ->
                             PatronPubkey = Delegate,
@@ -327,7 +333,10 @@ hc_from_genesis_test_() ->
                     assert_static_staking_call_result({ok, true}, "enabled()"),
                     assert_static_staking_call_result({ok, {variant, [0, 1], 1, {{address, D1Pub}}}}, "get_computed_leader()"),
                     assert_static_staking_call_result({ok, 2 * ?AE}, "balance()"),
-                    meck:expect(aehc_utils, delegates, fun (_) -> [D2Pub] end),
+                    meck:expect(aehc_utils, delegates,
+                        fun (_) ->
+                            [aeser_api_encoder:encode(account_pubkey, D2Pub)]
+                        end),
                     %% Emit a block by delegate2
                     meck:expect(aehc_utils, submit_commitment,
                         fun(KeyNode, Delegate) ->
@@ -351,7 +360,10 @@ hc_from_genesis_test_() ->
                     {error,miner_not_leader} = aec_chain_state:insert_block(B2),
                     %% Time to make a more complicated election
                     %% Commit 1 and 2
-                    meck:expect(aehc_utils, delegates, fun (_) -> [D1Pub, D2Pub] end),
+                    meck:expect(aehc_utils, delegates,
+                        fun (_) ->
+                            [aeser_api_encoder:encode(account_pubkey, Key) || Key <- [D1Pub, D2Pub]]
+                        end),
                     meck:expect(aehc_utils, submit_commitment,
                         fun(KeyNode, Delegate) ->
                             PatronPubkey = Delegate,

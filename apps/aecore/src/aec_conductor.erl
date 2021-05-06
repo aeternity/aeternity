@@ -148,6 +148,7 @@ is_leader() ->
 
 -spec post_block(aec_blocks:block()) -> 'ok' | {'error', any()}.
 post_block(Block) ->
+    io:format(user, "~nPost block: ~p~n",[Block]),
     Height = aec_blocks:height(Block),
     Protocol = aec_hard_forks:protocol_effective_at_height(Height),
     case aec_validation:validate_block(Block, Protocol) of
@@ -1221,6 +1222,7 @@ handle_successfully_added_block(Block, Hash, true, PrevKeyHeader, Events, State,
     maybe_publish_tx_events(Events, Hash, Origin),
     maybe_publish_block(Origin, Block),
     State1 = maybe_consensus_change(State, Block),
+    io:format(user, "~nAdded Block: ~p~n",[Block]),
     case preempt_on_new_top(State1, Block, Hash, Origin) of
         {micro_changed, State2 = #state{ consensus = Cons }} ->
             {ok, setup_loop(State2, false, Cons#consensus.leader, Origin)};
