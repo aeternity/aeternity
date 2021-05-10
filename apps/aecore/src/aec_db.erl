@@ -21,7 +21,6 @@
 
 -export([ensure_transaction/1,
          ensure_transaction/2,
-         ensure_transaction/3,
          ensure_activity/2]).
 
 %% Mimicking the aec_persistence API used by aec_conductor_chain
@@ -290,10 +289,7 @@ backend_mode(<<"rocksdb">>, #{persist := true } = M) ->
         M#{ module => mnesia_rocksdb
           , alias => rocksdb_copies
           , user_properties => [ {rocksdb_opts,
-                                  [ {on_write_error, error}
-                                    %% This refers to the process managing the table as well.
-                                  , {on_write_error_store, aec_db_error_store}
-                                  ]}
+                                  [ {on_write_error, error} ]}
                                ]
           };
 backend_mode(<<"leveled">>, #{persist := true } = M) ->
@@ -306,32 +302,29 @@ backend_mode(<<"mnesia">>, #{persist := true } = M) ->
           }.
 
 ensure_transaction(Fun) when is_function(Fun, 0) ->
-    ensure_transaction(Fun, []).
+    ensure_transaction(Fun, transaction).
 
-ensure_transaction(Fun, ErrorKeys) when is_function(Fun, 0) ->
-    ensure_transaction(Fun, ErrorKeys, transaction).
-
-ensure_transaction(Fun, ErrorKeys, TxType) when is_function(Fun, 0) ->
+ensure_transaction(Fun, TxType) when is_function(Fun, 0) ->
     %% TODO: actually, some non-transactions also have an activity state
     case get(mnesia_activity_state) of
         undefined ->
-            try_activity(TxType, Fun, ErrorKeys);
+            try_activity(TxType, Fun);
         {_, _, non_transaction} ->
             %% Transaction inside a dirty context; rely on mnesia to handle it
-            try_activity(TxType, Fun, ErrorKeys);
+            try_activity(TxType, Fun);
         _ ->
             %% We are already in a transaction, thus no custom retry is
-            %% attempted via `try_activity/3` since this only works outside of a
+            %% attempted via `try_activity/2` since this only works outside of a
             %% transaction.
             Fun()
     end.
 
 ensure_activity(transaction, Fun) when is_function(Fun, 0) ->
     ensure_transaction(Fun);
-ensure_activity(PreferedType, Fun) when is_function(Fun, 0) ->
+ensure_activity(PreferredType, Fun) when is_function(Fun, 0) ->
     case get(mnesia_activity_state) of
         undefined ->
-            mnesia:activity(PreferedType, Fun);
+            mnesia:activity(PreferredType, Fun);
         _ ->
             Fun()
     end.
@@ -1289,11 +1282,11 @@ default_dir() ->
             Dir
     end.
 
-try_activity(Type, Fun, ErrorKeys) ->
+try_activity(Type, Fun) ->
     %% If no configuration is found, we only retry once.
     MaxRetries = aeu_env:user_config_or_env([<<"chain">>, <<"db_write_max_retries">>],
                                             aecore, db_write_max_retries, 1),
-    try_activity(Type, Fun, ErrorKeys, MaxRetries).
+    try_activity(Type, Fun, MaxRetries).
 
 %% @doc Run function in an mnesia activity context. If retries is 0 or less, the
 %% operation will not be retried upon failure. If retries is greater than 0, the
@@ -1301,26 +1294,16 @@ try_activity(Type, Fun, ErrorKeys) ->
 %% decremented.
 %% This function must not be called from inside another transaction because this
 %% will mess with Mnesia's internal retry mechanism.
-try_activity(Type, Fun, ErrorKeys, Retries) when Retries =< 0 ->
-    handle_activity_result(do_activity(Type, Fun), ErrorKeys);
-try_activity(Type, Fun, ErrorKeys, Retries) ->
+-spec try_activity(atom(), fun(()->Res), non_neg_integer()) -> mnesia:t_result(Res) | Res.
+try_activity(Type, Fun, Retries) when Retries =< 0 ->
+    do_activity(Type, Fun);
+try_activity(Type, Fun, Retries) ->
     try
-        handle_activity_result(do_activity(Type, Fun), ErrorKeys)
+        do_activity(Type, Fun)
     catch
         exit:Reason ->
             lager:warning("Mnesia activity Type=~p exit with Reason=~p, retrying", [Type, Reason]),
-            try_activity(Type, Fun, ErrorKeys, Retries - 1)
-    end.
-
-handle_activity_result(Res, ErrorKeys) ->
-    case aec_db_error_store:check(ErrorKeys) of
-        [] ->
-            Res;
-        [{_, Err, _} | _] ->
-            %% For simplicity reasons we only report the first error, since that
-            %% is enough to indicate that something went wrong on the storage
-            %% layer.
-            exit(Err)
+            try_activity(Type, Fun, Retries - 1)
     end.
 
 do_activity(transaction, Fun) ->
