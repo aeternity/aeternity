@@ -227,6 +227,9 @@
 
 -export([post_paying_for_tx/1]).
 
+-export([attach_ga/1,
+         meta_ga/1]).
+
 -include_lib("common_test/include/ct.hrl").
 -include_lib("aecontract/include/hard_forks.hrl").
 
@@ -236,6 +239,16 @@
 -define(SPEND_FEE, 20000 * aec_test_utils:min_gas_price()).
 
 -define(MAX_MINED_BLOCKS, 20).
+
+-define(SECP256K1_PRIV, <<61,194,116,40,192,100,75,189,11,148,242,211,52,100,55,
+                          188,165,162,142,65,19,181,89,25,9,228,120,175,152,249,
+                          83,234>>).
+
+-define(SECP256K1_PUB,  <<80,118,213,110,10,210,229,6,53,195,79,174,91,179,150,
+                          239,241,145,147,201,2,48,7,221,141,221,250,110,105,29,
+                          90,39,75,16,175,218,92,200,158,78,172,106,64,159,90,180,
+                          147,171,9,70,251,21,150,252,90,63,233,252,123,104,198,
+                          103,79,255>>).
 
 all() ->
     [
@@ -274,7 +287,8 @@ groups() ->
        {group, swagger_validation},
        {group, wrong_http_method_endpoints},
        {group, naming},
-       {group, paying_for_tx}
+       {group, paying_for_tx},
+       {group, generalized_accounts}
       ]},
 
      %% /key-blocks/* /micro-blocks/* /generations/*
@@ -544,7 +558,8 @@ groups() ->
        {group, swagger_validation},
        {group, wrong_http_method_endpoints},
        {group, naming},
-       {group, paying_for_tx}
+       {group, paying_for_tx},
+       {group, generalized_accounts}
       ]},
      {oas_block_endpoints, [sequence],
       [
@@ -572,9 +587,11 @@ groups() ->
        get_generation_by_hash,
        get_generation_by_height
       ]},
-     %% /oracles/*
      {paying_for_tx, [sequence],
-      [post_paying_for_tx]}
+      [post_paying_for_tx]},
+     {generalized_accounts, [sequence],
+      [attach_ga,
+       meta_ga]}
     ].
 
 suite() ->
@@ -785,6 +802,11 @@ init_per_group(paying_for_tx, Config) ->
     case aect_test_utils:latest_protocol_version() >= ?IRIS_PROTOCOL_VSN of
         true -> Config;
         false -> {skip, requires_iris_or_newer}
+    end;
+init_per_group(generalized_accounts, Config) ->
+    case aect_test_utils:latest_protocol_version() >= ?FORTUNA_PROTOCOL_VSN of
+        true -> Config;
+        false -> {skip, requires_fortuna_or_newer}
     end;
 init_per_group(_Group, Config) ->
     Config.
@@ -4331,3 +4353,109 @@ mine_tx(Node, SignedTx) ->
                                                                       [TxHash],
                                                                       10), %% max keyblocks
     TxHash.
+
+attach_ga(Config) ->
+    %% create a new account
+    {PubKey, PrivKey} = initialize_account(100000000 * aec_test_utils:min_gas_price()),
+    EncodedPubKey = aeser_api_encoder:encode(account_pubkey, PubKey),
+    GAContract = "bitcoin_auth",
+    GAAuthFun = "authorize",
+    GAParams = [aega_test_utils:to_hex_lit(64, ?SECP256K1_PUB)],
+    EncTxHash = attach(Config, {PubKey, PrivKey}, GAContract, GAAuthFun, GAParams),
+    {ok, 200, _AttachTx} = get_transactions_by_hash_sut(EncTxHash),
+    %% ensure that the account is available through the API
+    {ok, 200, _ } = get_accounts_by_pubkey_sut(EncodedPubKey),
+    ok.
+
+meta_ga(Config) ->
+    %% create a new account
+    [ {NodeId, _Node} | _ ] = ?config(nodes, Config),
+    {PubKey, PrivKey} = initialize_account(100000000 * aec_test_utils:min_gas_price()),
+    GAContract = "bitcoin_auth",
+    GAAuthFun = "authorize",
+    GAParams = [aega_test_utils:to_hex_lit(64, ?SECP256K1_PUB)],
+    _EncTxHash = attach(Config, {PubKey, PrivKey}, GAContract, GAAuthFun, GAParams),
+
+    SpendProps = #{ sender_id    => aeser_id:create(account, PubKey)
+                  , recipient_id => aeser_id:create(account, PubKey)
+                  , amount       => 1
+                  , fee          => 20000 * aec_test_utils:min_gas_price()
+                  , nonce        => 0
+                  , payload      => <<>>
+                  },
+    {ok, SpendAetx} = aec_spend_tx:new(SpendProps),
+    SignedTx = meta(PubKey, GAContract, aetx_sign:new(SpendAetx, [])),
+    {ok, 200, #{<<"tx_hash">> := EncTxHash}} =
+        post_transactions_sut(aeser_api_encoder:encode(transaction,
+                                                       aetx_sign:serialize_to_binary(SignedTx))),
+    _TxHash = mine_tx(NodeId, SignedTx),
+    {ok, 200, _MetaTx} = get_transactions_by_hash_sut(EncTxHash),
+    ok.
+
+attach(Config, {Owner, OwnerPrivkey}, Contract, AuthFun, Args) ->
+    attach(Config, {Owner, OwnerPrivkey}, Contract, AuthFun, Args, #{}).
+attach(Config, {Owner, OwnerPrivkey}, Contract, AuthFun, Args, Opts) ->
+    case get_contract_(Contract) of
+        {ok, #{src := Src, bytecode := C, map := #{type_info := TI}}} ->
+            attach_(Config, {Owner, OwnerPrivkey}, Src, C, TI, AuthFun, Args, Opts);
+        _ ->
+            error(bad_contract)
+    end.
+
+attach_(Config, {Owner, OwnerPrivkey}, Src, ByteCode, TypeInfo, AuthFun, Args, Opts) ->
+    [ {NodeId, _Node} | _ ] = ?config(nodes, Config),
+    {ok, Nonce} = rpc(dev1, aec_next_nonce, pick_for_account, [Owner]),
+    Calldata = aega_test_utils:make_calldata(Src, "init", Args),
+    {ok, AuthFunHash} = aeb_aevm_abi:type_hash_from_function_name(list_to_binary(AuthFun),
+                                                                  TypeInfo),
+    Options1 = maps:merge(#{nonce => Nonce, code => ByteCode,
+                            auth_fun => AuthFunHash, call_data => Calldata},
+                          Opts),
+    AttachTx = aega_test_utils:ga_attach_tx(Owner, Options1),
+
+    SignedTx = aec_test_utils:sign_tx(AttachTx, [OwnerPrivkey]),
+    {ok, 200, #{<<"tx_hash">> := EncTxHash}} =
+        post_transactions_sut(aeser_api_encoder:encode(transaction,
+                                                       aetx_sign:serialize_to_binary(SignedTx))),
+    _TxHash =
+      mine_tx(NodeId, SignedTx),
+    EncTxHash.
+
+get_contract_(Name) ->
+    aega_test_utils:get_contract(aect_test_utils:latest_sophia_version(), Name).
+
+btc_auth(TxHash, Nonce, PrivKey) ->
+    Val = <<32:256, TxHash/binary, (list_to_integer(Nonce)):256>>,
+    Sig0 = crypto:sign(ecdsa, sha256, {digest, aec_hash:hash(tx, Val)},
+                       [PrivKey, secp256k1]),
+    Sig  = aega_test_utils:to_hex_lit(64, aeu_crypto:ecdsa_from_der_sig(Sig0)),
+    aega_test_utils:make_calldata("bitcoin_auth", "authorize", [Nonce, Sig]).
+
+meta(Owner, Contract, SignedTx) ->
+    %% authenticate the inner tx, that could be a transaction instance or yet
+    %% another meta
+    AuthData =
+        case Contract of
+            "bitcoin_auth" ->
+                Nonce = get_btc_auth_nonce(Owner),
+                TxBin = aec_governance:add_network_id(aetx:serialize_to_binary(aetx_sign:tx(SignedTx))),
+                btc_auth(aec_hash:hash(tx, TxBin), integer_to_list(Nonce), ?SECP256K1_PRIV)
+        end,
+    %% produce the new layer of meta authenticating the inner tx and not the
+    %% innermost one, but include the inner tx
+    aecore_suite_utils:meta_tx(Owner, #{}, AuthData, SignedTx).
+
+get_btc_auth_nonce(PubKey) ->
+    {value, Account} = rpc(dev1, aec_chain, get_account, [PubKey]),
+    ContractPubkey = aeser_id:specialize(aec_accounts:ga_contract(Account),
+                                         contract),
+    {ok, Contract} = rpc(dev1, aec_chain, get_contract, [ContractPubkey]),
+    extract_nonce_from_btc_auth_store(aect_contracts:state(Contract)).
+
+
+extract_nonce_from_btc_auth_store(Store) ->
+    #{<<0>> := Encoded0} = rpc(dev1, aect_contracts_store, contents, [Store]),
+    {ok, {Nonce, _}} = aeb_heap:from_binary({tuple, [word, {tuple, [word, word]}]},
+                                Encoded0),
+    Nonce.
+
