@@ -138,9 +138,6 @@ local-attach: internal-attach
 prod-package: KIND=prod
 prod-package: internal-package
 
-prod-compile-deps: KIND=prod
-prod-compile-deps: internal-compile-deps
-
 prod-build: KIND=prod
 prod-build: internal-build
 
@@ -415,13 +412,10 @@ multi-build: VERSION dev1-build
 # Build rules
 #
 
-internal-compile-deps: hc-compile-staking-contract
-	@$(REBAR) as $(KIND) compile -d
-
-internal-package: VERSION REVISION internal-compile-deps endpoints
+internal-package: VERSION REVISION endpoints
 	@$(REBAR) as $(KIND) tar
 
-internal-build: VERSION REVISION internal-compile-deps endpoints
+internal-build: VERSION REVISION endpoints
 	@$(REBAR) as $(KIND) release
 
 internal-start:
@@ -477,8 +471,8 @@ test-arch-os-dependencies: KIND=test
 test-arch-os-dependencies:
 	make ct-latest SUITE=apps/aecontract/test/aecontract GROUP=sophia TEST=sophia_crypto
 
-hc-compile-staking-contract:
-	./rebar3 aesophia -s v4.3.1 -c ./apps/aehyperchains/src/contracts/SimpleElection.aes -o ./data/aehyperchains/StakingContract.json
+#hc-compile-staking-contract:
+#	./rebar3 aesophia -s v4.3.1 -c ./apps/aehyperchains/src/contracts/SimpleElection.aes -o ./data/aehyperchains/StakingContract.json
 
 # TODO: Verify release packages
 hc-verify-staking-contract:
@@ -488,12 +482,12 @@ hc-verify-staking-contract:
 	all console hyperchains-console \
 	test-build \
 	local-build local-start local-stop local-attach \
-	prod-build prod-start prod-stop prod-attach prod-package prod-compile-deps \
+	prod-build prod-start prod-stop prod-attach prod-package \
 	multi-build multi-start multi-stop multi-clean multi-distclean \
 	dev1-start dev1-stop dev1-attach dev1-clean dev1-distclean \
 	dev2-start dev2-stop dev2-attach dev2-clean dev2-distclean \
 	dev3-start dev3-stop dev3-attach dev3-clean dev3-distclean \
-	internal-start internal-stop internal-attach internal-clean internal-compile-deps internal-ct \
+	internal-start internal-stop internal-attach internal-clean internal-ct \
 	dialyzer \
 	docker docker-clean dockerignore-check \
 	test smoke-test smoke-test-run system-test aevm-test-deps \
@@ -508,4 +502,4 @@ hc-verify-staking-contract:
 	VERSION \
 	prod-deb-package \
 	regen-fate \
-	hc-compile-staking-contract hc-verify-staking-contract
+	hc-verify-staking-contract
