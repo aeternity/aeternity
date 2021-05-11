@@ -39,9 +39,10 @@ vendor() ->
 %% Internals
 
 read_trimmed_file(Filename) ->
-    case file:read_file(Filename) of
+    Path = filename:join([filename:dirname(setup:data_dir()), Filename]),
+    case file:read_file(Path) of
         {error, enoent} ->
-            error({not_found, Filename});
+            error({not_found, Path});
         {ok, Content} ->
             trim_ending_whitespace(Content)
     end.
