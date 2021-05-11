@@ -40,7 +40,8 @@
          deserialize_from_binary/1]).
 
 -ifdef(TEST).
--export([set_tx/2]).
+-export([set_tx/2,
+         serialize_for_client/4]).
 -endif.
 
 -export_type([signed_tx/0,

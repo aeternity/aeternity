@@ -45,7 +45,7 @@ validator(SpecVsn) ->
 
 -spec response(
     OperationId :: atom(),
-    Methohd :: binary(),
+    Method :: binary(),
     Code :: 200..599,
     Response :: jesse:json_term(),
     Validator :: jesse_state:state(),
