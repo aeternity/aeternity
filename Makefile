@@ -471,9 +471,6 @@ test-arch-os-dependencies: KIND=test
 test-arch-os-dependencies:
 	make ct-latest SUITE=apps/aecontract/test/aecontract GROUP=sophia TEST=sophia_crypto
 
-#hc-compile-staking-contract:
-#	./rebar3 aesophia -s v4.3.1 -c ./apps/aehyperchains/src/contracts/SimpleElection.aes -o ./data/aehyperchains/StakingContract.json
-
 # TODO: Verify release packages
 hc-verify-staking-contract:
 	./rebar3 aesophia -s v4.3.1 -c ./apps/aehyperchains/src/contracts/SimpleElection.aes -o ./data/aehyperchains/StakingContract.json -v
