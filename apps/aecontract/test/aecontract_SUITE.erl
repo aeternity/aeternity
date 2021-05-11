@@ -1792,16 +1792,16 @@ sophia_clone(_Cfg) ->
     ok.
 
 sophia_create(_Cfg) ->
-    ?skipRest(vm_version() < ?VM_FATE_SOPHIA_2, clone_not_pre_iris),
+    ?skipRest(vm_version() < ?VM_FATE_SOPHIA_2, create_not_pre_iris),
     state(aect_test_utils:new_state()),
     Acc = ?call(new_account, 1000000000000000000000 * aec_test_utils:min_gas_price()),
     Ct  = ?call(create_contract, Acc, create_test, {}, #{gas => 1000000000000}),
-    R1  = ?call(call_contract, Acc, Ct, 'calculateSomething', word, {3}, #{gas => 1000000000000, amount => 100}),
+    R1  = ?call(call_contract, Acc, Ct, increaseByThree, word, {2137}, #{gas => 1000000000000, amount => 1000000}),
     ?assertEqual(2140, R1),
     ok.
 
 sophia_bytecode_hash(_Cfg) ->
-    ?skipRest(vm_version() < ?VM_FATE_SOPHIA_2, clone_not_pre_iris),
+    ?skipRest(vm_version() < ?VM_FATE_SOPHIA_2, bytecode_hash_not_pre_iris),
     state(aect_test_utils:new_state()),
     Acc = ?call(new_account, 1000000000 * aec_test_utils:min_gas_price()),
     Remote  = ?call(create_contract, Acc, higher_order_state, {}),
@@ -1825,6 +1825,14 @@ sophia_bytecode_hash(_Cfg) ->
     ok.
 
 sophia_factories(_Cfg) ->
+    ?skipRest(vm_version() < ?VM_FATE_SOPHIA_2, factories_not_pre_iris),
+    state(aect_test_utils:new_state()),
+    Acc = ?call(new_account, 1000000000000000000000 * aec_test_utils:min_gas_price()),
+    Ct  = ?call(create_contract, Acc, factories, {}, #{gas => 10000000000000}),
+    ?assertEqual(1, ?call(call_contract, Acc, Ct, add, word, {1}, #{gas => 1000000000000000})),
+    ?assertEqual(2, ?call(call_contract, Acc, Ct, add, word, {2}, #{gas => 1000000000000000})),
+    ?assertEqual(3, ?call(call_contract, Acc, Ct, add, word, {3}, #{gas => 1000000000000000})),
+    ?assertEqual(6, ?call(call_contract, Acc, Ct, sum, word, {},  #{gas => 1000000000000000})),
     ok.
 
 sophia_bignum(_Cfg) ->
