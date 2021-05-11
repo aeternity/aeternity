@@ -186,7 +186,7 @@
 %% Creates a fake key node used for creating new keyblocks - can be blocking
 %% For POW it's a simple operation, for HC a commitment transaction might be submitted to another blockchain
 %%        new_unmined_key_node(Prev,    PrevKey, Height,    Miner,             Beneficiary,       Protocol,  InfoField,          TreesIn)
--callback new_unmined_key_node(#node{}, #node{}, integer(), aec_keys:pubkey(), aec_keys:pubkey(), integer(), aec_headers:info(), aec_trees:trees()) -> #node{}.
+-callback new_unmined_key_node(#node{}, #node{}, integer(), aec_keys:pubkey(), aec_keys:pubkey(), integer(), aec_blocks:info(), aec_trees:trees()) -> #node{}.
 
 %% After creating a new unmined keynode and calculating the new state adjusts the block based on recent keyheaders
 %% For POW it adjusts the target based on recent blocks, for HC it's a nop operation as the work is done in new_unmined_key_node

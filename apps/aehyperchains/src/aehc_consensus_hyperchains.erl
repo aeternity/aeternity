@@ -450,7 +450,7 @@ state_pre_transform_key_node(KeyNode, _PrevNode, PrevKeyNode, Trees1) ->
             Trees1
     end.
 
--spec ensure_hc_activation_criteria(node(), aetx_env:env(), aec_trees:trees()) -> ok | {error, any()}.
+-spec ensure_hc_activation_criteria(aec_block_insertion:chain_node(), aetx_env:env(), aec_trees:trees()) -> ok | {error, any()}.
 ensure_hc_activation_criteria(KeyNode, TxEnv, Trees) ->
     {ok,
         #activation_criteria{ check_frequency = CheckFrequency
@@ -520,7 +520,7 @@ genesis_transform_trees(Trees0, #{}) ->
             TxEnv = genesis_tx_env(),
             %% We don't need to check the protocol version against the block
             %% The insertion of the genesis block bypasses the version check
-            Trees1 = case ?HC_GENESIS_VERSION of
+            Trees1 = case hc_genesis_version() of  %% Call a function here to make dialyzer happy
                 ?LIMA_PROTOCOL_VSN -> aec_block_fork:apply_lima(Trees0, TxEnv);
                 ?IRIS_PROTOCOL_VSN -> Trees0; %% No special changes
                 _ -> aec_consensus:config_assertion_failed("Hyperchains from genesis require at least LIMA at genesis", "", [])
@@ -1044,3 +1044,5 @@ protocol_staking_contract_call(Trees0, TxEnv, Query) ->
 %% TODO: customize
 fallback_consensus() ->
     aec_consensus_bitcoin_ng.
+
+hc_genesis_version() -> ?HC_GENESIS_VERSION.
