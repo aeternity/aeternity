@@ -898,13 +898,12 @@ verify_existing_staking_contract(Address, Trees, TxEnv) ->
             case aec_accounts:is_payable(Account) of
                 true -> ErrF("Contract can't be payable");
                 false ->
-                    case aect_state_tree:lookup_contract(Address, aec_trees:contracts(Trees), [no_store]) of
+                    case aect_state_tree:lookup_contract_with_code(Address, aec_trees:contracts(Trees), [no_store]) of
                         none ->
                             ErrF("Contract not found");
-                        {value, Contract} ->
+                        {value, Contract, OnchainCode} ->
                             OnchainAbi = aect_contracts:abi_version(Contract),
                             OnchainVm = aect_contracts:vm_version(Contract),
-                            OnchainCode = aect_contracts:code(Contract),
 
                             %% TODO: Remove the stripping for IRIS...
                             Code0 = aeser_contract_code:deserialize(get_staking_contract_bytecode()),
@@ -917,7 +916,7 @@ verify_existing_staking_contract(Address, Trees, TxEnv) ->
 
                             if  OnchainAbi /= ?ABI_VERSION -> ErrF("Wrong ABI version");
                                 OnchainVm /= ?VM_VERSION -> ErrF("Wrong VM version");
-                                LocalCode /= OnchainCode -> ErrF("Invalid staking contract bytecode");
+                                LocalCode /= OnchainCode -> ErrF({"Invalid staking contract bytecode"});
                                 true ->
                                     set_staking_contract_address(Address),
                                     {ok, {address, Restricted}} = static_contract_call(Trees, TxEnv, "restricted_address()"),

@@ -74,7 +74,7 @@ hc_chain_eunit_testcase(Consensus, What) ->
      fun() ->
              ok = application:ensure_started(gproc),
              {ok, _} = aec_db_error_store:start_link(),
-             aec_test_utils:start_chain_db(),
+             ok = aec_test_utils:start_chain_db(),
              %% somehow setup:find_env_vars can't find this hook in eunit tests
              aehc_db:create_tables(ram),
              Tabs = [Tab || {Tab, _} <- aehc_parent_db:table_specs(ram)],
@@ -89,6 +89,7 @@ hc_chain_eunit_testcase(Consensus, What) ->
              ok = application:set_env(aecore, beneficiary, aeser_api_encoder:encode(account_pubkey, PubKey)),
              {ok, _} = aec_tx_pool:start_link(),
              aec_consensus:set_genesis_hash(),
+             aefa_fate_op:load_pre_iris_map_ordering(),
              {ok, _} = aec_conductor:start_link([{autostart, false}]),
              TmpDir
      end,
@@ -99,7 +100,7 @@ hc_chain_eunit_testcase(Consensus, What) ->
              ok = application:stop(gproc),
              meck:unload(aec_mining),
              meck:unload(aec_events),
-             aec_test_utils:stop_chain_db(),
+             ok = aec_test_utils:stop_chain_db(),
              ok = aec_db_error_store:stop(),
              aec_test_utils:aec_keys_cleanup(TmpDir)
      end, What}])]).

@@ -17,7 +17,7 @@
 -define(PARENT_GENESIS_HEADER,
     aehc_parent_block:new_header(?PARENT_GENESIS_HASH, ?PARENT_GENESIS_HASH, 1)).
 
-hyperchains_unable_to_use_normal_db_test_() ->
+hyperchains_unable_to_use_normal_db_test_ignore() ->
     {foreach,
      fun() ->
              InitialApps = {running_apps(), loaded_apps()},
@@ -40,6 +40,7 @@ hyperchains_unable_to_use_normal_db_test_() ->
              meck:expect(aec_chain_state, ensure_chain_ends, 0, ok),
              meck:expect(aec_chain_state, ensure_key_headers_height_store, 0, ok),
              meck:new(aec_consensus, [passthrough]),
+             aefa_fate_op:load_pre_iris_map_ordering(),
              aec_test_utils:mock_genesis_and_forks(),
              ok = lager:start(),
 
@@ -54,7 +55,7 @@ hyperchains_unable_to_use_normal_db_test_() ->
              meck:unload(aec_db),
              meck:unload(aeu_env),
              ok = restore_stopped_and_unloaded_apps(OldRunningApps, OldLoadedApps)
-end,
+     end,
      [{"HC Genesis block != Mainnet Genesis block",
        fun() ->
             try
