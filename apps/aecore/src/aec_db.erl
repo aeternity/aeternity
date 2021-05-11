@@ -1162,7 +1162,7 @@ expand_mode(disc) -> disc_backend_mode();
 expand_mode(M) when is_map(M) -> M.
 
 run_hooks(Hook, Mode) ->
-    lager:info("~nHooks list is: ~p~n",[setup:find_env_vars(Hook)]),
+    lager:info("~nHooks list is: ~p (Hook: ~p, Mode: ~p)~n",[setup:find_env_vars(Hook), Hook, Mode]),
     [M:F(Mode) || {_App, {M,F}} <- setup:find_env_vars(Hook)].
 
 fold_hooks(Hook, Acc0) ->
