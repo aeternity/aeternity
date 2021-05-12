@@ -2127,7 +2127,6 @@ assert_auth_call_object_not_exist(Call, S) ->
         {value, _} -> runtime_error(auth_call_object_already_exist)
     end.
 
-
 assert_not_channel(ChannelPubkey, S) ->
     case find_channel(ChannelPubkey, S) of
         none -> ok;

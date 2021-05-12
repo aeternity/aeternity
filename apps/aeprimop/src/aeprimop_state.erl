@@ -67,16 +67,29 @@
     | name_not_preclaimed
     | name_not_in_auction.
 -type pubkey() :: aec_keys:pubkey().
+-type hash() :: aec_hash:hash().
 -type call_id() :: aect_call:id().
--type tag() :: account
+-type tag() :: auction
+    | account
     | auth_call
     | channel
     | contract
+    | call
     | name
     | oracle
     | oracle_query
     | commitment
     | name_auction.
+-type object() :: aec_accounts:account()
+    | aect_call:call()
+    | aect_contracts:contract()
+    | aens_auctions:auction()
+    | aens_commitments:commitment()
+    | aens_names:name()
+    | aeo_oracles:oracle()
+    | aeo_query:query()
+    | aesc_channels:channel().
+-type channel_key() :: binary() | {var | binary(), atom() | binary()}.
 
 %%%===================================================================
 %%% API
@@ -111,19 +124,19 @@ runtime_error(Error) ->
 %%%===================================================================
 %%% Access to cache or trees
 
--spec delete_account(term(), state()) -> state().
+-spec delete_account(binary(), state()) -> state().
 delete_account(Key, S) ->
     delete_x(account, Key, S).
 
--spec find_account(term(), state()) -> {term(), state()} | none.
+-spec find_account(binary(), state()) -> {term(), state()} | none.
 find_account(Key, S) ->
     find_x(account, Key, S).
 
--spec get_account(term(), state()) -> {term(), state()} | none.
+-spec get_account(binary(), state()) -> {term(), state()} | none.
 get_account(Key, S) ->
     get_x(account, Key, account_not_found, S).
 
--spec put_account(term(), state()) -> state().
+-spec put_account(object(), state()) -> state().
 put_account(Object, S) ->
     cache_put(account, Object, S).
 
@@ -133,30 +146,37 @@ put_account(Object, S) ->
 find_auth_call(Pubkey, AuthCallId, S) ->
     find_x(auth_call, {Pubkey, AuthCallId}, S).
 
+-spec get_auth_call(pubkey(), call_id(), state()) -> {term(), state()} | none.
 get_auth_call(Pubkey, AuthCallId, S) ->
     get_x(auth_call, {Pubkey, AuthCallId}, auth_call_not_found, S).
 
+-spec put_auth_call(aect_call:call(), state()) -> state().
 put_auth_call(AuthCall, S) ->
     cache_put(auth_call, AuthCall, S).
 
 %%----------
 
+-spec put_call(aect_call:call(), state()) -> state().
 put_call(Object, S) ->
     cache_put(call, Object, S).
 
 %%----------
 
+-spec find_channel(channel_key(), state()) -> {term(), state()} | none.
 find_channel(Key, S) ->
     find_x(channel, Key, S).
 
+-spec get_channel(channel_key(), state()) -> {term(), state()}.
 get_channel(Key, S) ->
     get_x(channel, Key, channel_does_not_exist, S).
 
+-spec put_channel(object(), state()) -> state().
 put_channel(Object, S) ->
     cache_put(channel, Object, S).
 
 %%----------
 
+-spec delete_contract(channel_key(), state()) -> state().
 delete_contract(Key, S) ->
     delete_x(contract, Key, S).
 
@@ -240,6 +260,7 @@ put_commitment(Object, S) ->
 
 %%----------
 
+-spec find_name_auction(channel_key(), state()) -> {term(), state()} | none.
 find_name_auction(Hash, S) ->
     find_x(name_auction, Hash, S).
 
@@ -248,8 +269,10 @@ get_name_auction(Hash, Error, S) ->
 
 put_name_auction(Object, S) ->
     cache_put(name_auction, Object, S).
+
 %%----------
 
+-spec find_x(tag(), channel_key(), state()) -> {term(), state()} | none.
 find_x(Tag, Key, S) ->
     case cache_find(Tag, Key, S) of
         none ->
@@ -262,13 +285,14 @@ find_x(Tag, Key, S) ->
             {Val, S}
     end.
 
--spec get_x(tag(), term(), runtime_error(), state()) -> {term(), state()} | no_return().
+-spec get_x(tag(), channel_key(), runtime_error(), state()) -> {term(), state()} | no_return().
 get_x(Tag, Key, Error, S) when is_atom(Error) ->
     case find_x(Tag, Key, S) of
         none -> runtime_error(Error);
         {_, _} = Ret -> Ret
     end.
 
+-spec delete_x(tag(), hash(), state()) -> state().
 delete_x(channel, Hash, #state{trees = Trees} = S) ->
     S1 = cache_drop(channel, Hash, S),
     CTree = aec_trees:channels(Trees),
@@ -364,6 +388,7 @@ cache_drop(account, PK, #state{cache = C} = S) ->
 cache_drop(commitment, Hash, #state{cache = C} = S) ->
     S#state{cache = dict:erase({commitment, Hash}, C)}.
 
+-spec cache_put(tag(), object(), state()) -> state().
 cache_put(account, Val, #state{cache = C} = S) ->
     Pubkey = aec_accounts:pubkey(Val),
     S#state{cache = dict:store({account, Pubkey}, Val, C)};
