@@ -2,7 +2,6 @@
 
 -include_lib("common_test/include/ct.hrl").
 -include_lib("stdlib/include/assert.hrl").
--include("../../aeoracle/include/oracle_txs.hrl").
 
 %% common_test exports
 -export([
@@ -325,7 +324,7 @@ oracle_register_tx(Config) ->
     Opts = oracle_register_tx_opts(),
     test_transaction_validation(Config, aeo_register_tx, Opts),
     test_transaction_validation(Config, aeo_register_tx,
-                                Opts#{oracle_ttl => {?ttl_block_atom, 1}}),
+                                Opts#{oracle_ttl => {block, 1}}),
     ok.
 
 oracle_register_tx_opts() ->
@@ -334,7 +333,7 @@ oracle_register_tx_opts() ->
       abi_version => 1,
       response_format => <<>>,
       query_fee => 1,
-      oracle_ttl => {?ttl_delta_atom, 1},
+      oracle_ttl => {delta, 1},
       fee => ?FEE,
       nonce => 1}.
 
@@ -345,7 +344,7 @@ oracle_extend_tx(Config) ->
 
 oracle_extend_tx_opts() ->
     #{oracle_id => aeser_id:create(oracle, ?PUBKEY),
-      oracle_ttl => {?ttl_delta_atom, 1},
+      oracle_ttl => {delta, 1},
       fee => ?FEE,
       nonce => 1}.
 
@@ -353,7 +352,7 @@ oracle_query_tx(Config) ->
     Opts = oracle_query_tx_opts(),
     test_transaction_validation(Config, aeo_query_tx, Opts),
     test_transaction_validation(Config, aeo_query_tx,
-                                Opts#{query_ttl => {?ttl_block_atom, 1}}),
+                                Opts#{query_ttl => {block, 1}}),
     test_transaction_validation(Config, aeo_query_tx,
                                 Opts#{oracle_id => aeser_id:create(name, ?PUBKEY)}),
     ok.
@@ -363,8 +362,8 @@ oracle_query_tx_opts() ->
           oracle_id => aeser_id:create(oracle, ?PUBKEY),
           query => <<>>,
           query_fee => 1,
-          query_ttl => {?ttl_delta_atom, 1},
-          response_ttl => {?ttl_delta_atom, 1},
+          query_ttl => {delta, 1},
+          response_ttl => {delta, 1},
           fee => ?FEE,
           nonce => 1}.
 
@@ -377,7 +376,7 @@ oracle_response_tx_opts() ->
     #{oracle_id => aeser_id:create(oracle, ?PUBKEY),
       query_id => <<>>,
       response => <<>>,
-      response_ttl => {?ttl_delta_atom, 1},
+      response_ttl => {delta, 1},
       fee => ?FEE,
       nonce => 1}.
 
