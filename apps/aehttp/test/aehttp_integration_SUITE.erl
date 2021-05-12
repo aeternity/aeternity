@@ -572,7 +572,6 @@ groups() ->
        get_generation_by_hash,
        get_generation_by_height
       ]},
-     %% /oracles/*
      {paying_for_tx, [sequence],
       [post_paying_for_tx]}
     ].
@@ -1665,6 +1664,10 @@ post_oracle_register(Config) ->
     ok = post_tx(TxHash, Tx),
     ok = wait_for_tx_hash_on_chain(TxHash),
     {ok, 200, Resp} = get_oracles_by_pubkey_sut(OracleId),
+    {ok, 200, #{<<"oracle_queries">> := []}} = get_oracles_queries_by_pubkey_sut(OracleId, #{type => "all"}),
+    {ok, 200, #{<<"oracle_queries">> := []}} = get_oracles_queries_by_pubkey_sut(OracleId, #{}),
+    {ok, 200, #{<<"oracle_queries">> := []}} = get_oracles_queries_by_pubkey_sut(OracleId, #{type => "open"}),
+    {ok, 200, #{<<"oracle_queries">> := []}} = get_oracles_queries_by_pubkey_sut(OracleId, #{type => "closed"}),
     ?assertEqual(OracleId, maps:get(<<"id">>, Resp)),
     {save_config, save_config([account_id, oracle_id, oracle_ttl_value], Config)}.
 

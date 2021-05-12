@@ -808,6 +808,7 @@ paths:
           name: type
           description: 'The type of a query: open, closed or all'
           required: false
+          default: all
           type: string
           enum: [open, closed, all]
       responses:
