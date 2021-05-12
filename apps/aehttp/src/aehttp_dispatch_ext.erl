@@ -429,7 +429,6 @@ handle_request_('GetTransactionByHash', Params, _Config) ->
                 {BlockHash, Tx} ->
                     {ok, Header} = aec_chain:get_header(BlockHash),
                     Response = aetx_sign:serialize_for_client(Header, Tx),
-                    lager:debug("ASDF ~p", [Response]),
                     {200, [], Response}
             end;
         {error, _} ->
