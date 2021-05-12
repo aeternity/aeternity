@@ -147,8 +147,7 @@
 -type abi_version() :: aect_contracts:abi_version().
 -type vm_version()  :: aect_contracts:vm_version().
 
--export_type([ op/0
-             ]).
+-export_type([op/0]).
 
 
 %%%===================================================================

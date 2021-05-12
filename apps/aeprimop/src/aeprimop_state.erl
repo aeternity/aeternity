@@ -7,100 +7,129 @@
 %%%-------------------------------------------------------------------
 -module(aeprimop_state).
 
--export([ delete_x/3
-        , delete_account/2
-        , delete_contract/2
-        , final_trees/1
-        , find_account/2
-        , find_auth_call/3
-        , find_channel/2
-        , find_commitment/2
-        , find_name_auction/2
-        , find_contract_without_store/2
-        , find_name/2
-        , find_oracle/2
-        , find_oracle_query/3
-        , get_account/2
-        , get_auth_call/3
-        , get_channel/2
-        , get_commitment/3
-        , get_name_auction/3
-        , get_contract/2
-        , get_contract_no_cache/2
-        , get_contract_without_store/2
-        , get_name/2
-        , get_oracle/3
-        , get_oracle_query/3
-        , get_var/3
-        , new/2
-        , put_account/2
-        , put_auth_call/2
-        , put_call/2
-        , put_channel/2
-        , put_commitment/2
-        , put_name_auction/2
-        , put_contract/2
-        , put_name/2
-        , put_oracle/2
-        , put_oracle_query/2
-        ]).
+-export([delete_x/3
+    , delete_account/2
+    , delete_contract/2
+    , final_trees/1
+    , find_account/2
+    , find_auth_call/3
+    , find_channel/2
+    , find_commitment/2
+    , find_name_auction/2
+    , find_contract_without_store/2
+    , find_name/2
+    , find_oracle/2
+    , find_oracle_query/3
+    , get_account/2
+    , get_auth_call/3
+    , get_channel/2
+    , get_commitment/3
+    , get_name_auction/3
+    , get_contract/2
+    , get_contract_no_cache/2
+    , get_contract_without_store/2
+    , get_name/2
+    , get_oracle/3
+    , get_oracle_query/3
+    , get_var/3
+    , new/2
+    , put_account/2
+    , put_auth_call/2
+    , put_call/2
+    , put_channel/2
+    , put_commitment/2
+    , put_name_auction/2
+    , put_contract/2
+    , put_name/2
+    , put_oracle/2
+    , put_oracle_query/2
+]).
 
--export([ cache_write_through/1
-        , set_var/4
-        , tx_env/1
-        ]).
+-export([cache_write_through/1
+    , set_var/4
+    , tx_env/1
+]).
 
 -include("aeprimop_state.hrl").
 
 -type state() :: #state{}.
 
--export_type([ state/0
-             ]).
+-export_type([state/0]).
+
+-type runtime_error() :: account_not_found
+    | auth_call_not_found
+    | channel_does_not_exist
+    | contract_does_not_exist
+    | name_does_not_exist
+    | oracle_does_not_exist
+    | no_matching_oracle_query
+    | account_is_not_an_active_oracle
+    | name_not_preclaimed
+    | name_not_in_auction.
+-type pubkey() :: aec_keys:pubkey().
+-type call_id() :: aect_call:id().
+-type tag() :: account
+    | auth_call
+    | channel
+    | contract
+    | name
+    | oracle
+    | oracle_query
+    | commitment
+    | name_auction.
 
 %%%===================================================================
 %%% API
 %%%===================================================================
 
+-spec new(aec_trees:trees(), aetx_env:env()) -> state().
 new(Trees, TxEnv) ->
-    #state{ trees = Trees
-          , cache = dict:new()
-          , env   = dict:new()
-          , height = aetx_env:height(TxEnv)
-          , tx_env = TxEnv
-          , protocol = aetx_env:consensus_version(TxEnv)
-          }.
+    #state{trees = Trees
+        , cache = dict:new()
+        , env = dict:new()
+        , height = aetx_env:height(TxEnv)
+        , tx_env = TxEnv
+        , protocol = aetx_env:consensus_version(TxEnv)
+    }.
 
+-spec final_trees(state()) -> aec_trees:trees().
 final_trees(State) ->
-    #state{ trees = Trees} = cache_write_through(State),
+    #state{trees = Trees} = cache_write_through(State),
     Trees.
 
+-spec tx_env(state()) -> aetx_env:env().
 tx_env(#state{tx_env = TxEnv}) ->
     TxEnv.
 
 %%%===================================================================
 %%% Error handling
 
--spec runtime_error(term()) -> no_return().
+-spec runtime_error(runtime_error()) -> no_return().
 runtime_error(Error) ->
     error({?MODULE, Error}).
 
 %%%===================================================================
 %%% Access to cache or trees
 
+-spec delete_account(term(), state()) -> state().
 delete_account(Key, S) ->
     delete_x(account, Key, S).
 
+-spec find_account(term(), state()) -> {term(), state()} | none.
 find_account(Key, S) ->
     find_x(account, Key, S).
 
+-spec get_account(term(), state()) -> {term(), state()} | none.
 get_account(Key, S) ->
     get_x(account, Key, account_not_found, S).
 
+-spec put_account(term(), state()) -> state().
 put_account(Object, S) ->
     cache_put(account, Object, S).
 
 %%----------
 
+-spec find_auth_call(pubkey(), call_id(), state()) -> {term(), state()} | none.
 find_auth_call(Pubkey, AuthCallId, S) ->
     find_x(auth_call, {Pubkey, AuthCallId}, S).
 
@@ -139,7 +168,7 @@ put_contract(Object, S) ->
 
 %% Used from fate that has its own store cache management
 get_contract_no_cache(Key, S) ->
-    {Contract, _}  = get_x(contract, Key, contract_does_not_exist, S),
+    {Contract, _} = get_x(contract, Key, contract_does_not_exist, S),
     Contract.
 
 %% NOTE: This does not cache the contract to avoid over-writing
@@ -233,6 +262,7 @@ find_x(Tag, Key, S) ->
             {Val, S}
     end.
 
+-spec get_x(tag(), term(), runtime_error(), state()) -> {term(), state()} | no_return().
 get_x(Tag, Key, Error, S) when is_atom(Error) ->
     case find_x(Tag, Key, S) of
         none -> runtime_error(Error);
@@ -241,27 +271,27 @@ get_x(Tag, Key, Error, S) when is_atom(Error) ->
 
 delete_x(channel, Hash, #state{trees = Trees} = S) ->
     S1 = cache_drop(channel, Hash, S),
-    CTree  = aec_trees:channels(Trees),
+    CTree = aec_trees:channels(Trees),
     CTree1 = aesc_state_tree:delete(Hash, CTree),
     S1#state{trees = aec_trees:set_channels(Trees, CTree1)};
 delete_x(name_auction, Hash, #state{trees = Trees} = S) ->
     S1 = cache_drop(name_auction, Hash, S),
-    NTree  = aec_trees:ns(Trees),
+    NTree = aec_trees:ns(Trees),
     NTree1 = aens_state_tree:delete_name_auction(Hash, NTree),
     S1#state{trees = aec_trees:set_ns(Trees, NTree1)};
 delete_x(contract, PK, #state{trees = Trees} = S) ->
     S1 = cache_drop(contract, PK, S),
-    NTree  = aec_trees:contracts(Trees),
+    NTree = aec_trees:contracts(Trees),
     NTree1 = aect_state_tree:delete_contract(PK, NTree),
     S1#state{trees = aec_trees:set_contracts(Trees, NTree1)};
 delete_x(account, PK, #state{trees = Trees} = S) ->
     S1 = cache_drop(account, PK, S),
-    NTree  = aec_trees:accounts(Trees),
+    NTree = aec_trees:accounts(Trees),
     NTree1 = aec_accounts_trees:delete(PK, NTree),
     S1#state{trees = aec_trees:set_accounts(Trees, NTree1)};
 delete_x(commitment, Hash, #state{trees = Trees} = S) ->
     S1 = cache_drop(commitment, Hash, S),
-    NTree  = aec_trees:ns(Trees),
+    NTree = aec_trees:ns(Trees),
     NTree1 = aens_state_tree:delete_commitment(Hash, NTree),
     S1#state{trees = aec_trees:set_ns(Trees, NTree1)}.
 
@@ -305,22 +335,22 @@ trees_find(oracle_query, Key, #state{trees = Trees} = S) ->
 %%% Cache
 
 -define(IS_TAG(X), ((X =:= account)
-                    orelse (X =:= auth_call)
-                    orelse (X =:= call)
-                    orelse (X =:= channel)
-                    orelse (X =:= contract)
-                    orelse (X =:= oracle)
-                    orelse (X =:= oracle_query)
-                    orelse (X =:= commitment)
-                    orelse (X =:= name_auction)
-                    orelse (X =:= name)
-                   )
-       ).
+    orelse (X =:= auth_call)
+    orelse (X =:= call)
+    orelse (X =:= channel)
+    orelse (X =:= contract)
+    orelse (X =:= oracle)
+    orelse (X =:= oracle_query)
+    orelse (X =:= commitment)
+    orelse (X =:= name_auction)
+    orelse (X =:= name)
+)
+).
 
 cache_find(Tag, Key, #state{cache = C} = S) when ?IS_TAG(Tag) ->
     case dict:find({Tag, get_var(Key, Tag, S)}, C) of
         {ok, Val} -> {value, Val};
-        error     -> none
+        error -> none
     end.
 
 cache_drop(channel, Hash, #state{cache = C} = S) ->
@@ -338,7 +368,7 @@ cache_put(account, Val, #state{cache = C} = S) ->
     Pubkey = aec_accounts:pubkey(Val),
     S#state{cache = dict:store({account, Pubkey}, Val, C)};
 cache_put(auth_call, Val, #state{cache = C} = S) ->
-    Id     = aect_call:id(Val),
+    Id = aect_call:id(Val),
     Pubkey = aect_call:caller_pubkey(Val),
     S#state{cache = dict:store({auth_call, {Pubkey, Id}}, Val, C)};
 cache_put(call, Val, #state{cache = C} = S) ->
@@ -372,26 +402,26 @@ cache_write_through(#state{cache = C, trees = T} = S) ->
     S#state{trees = Trees, cache = dict:new()}.
 
 %% TODO: Should have a dirty flag.
-cache_write_through_fun({account,_Pubkey}, Account, Trees) ->
-    ATrees  = aec_trees:accounts(Trees),
+cache_write_through_fun({account, _Pubkey}, Account, Trees) ->
+    ATrees = aec_trees:accounts(Trees),
     ATrees1 = aec_accounts_trees:enter(Account, ATrees),
     aec_trees:set_accounts(Trees, ATrees1);
 cache_write_through_fun({auth_call, {_Pubkey, _Id}}, Call, Trees) ->
-    CTree  = aec_trees:calls(Trees),
+    CTree = aec_trees:calls(Trees),
     CTree1 = aect_call_state_tree:enter_auth_call(Call, CTree),
     aec_trees:set_calls(Trees, CTree1);
-cache_write_through_fun({call,_Id}, Call, Trees) ->
-    CTree  = aec_trees:calls(Trees),
+cache_write_through_fun({call, _Id}, Call, Trees) ->
+    CTree = aec_trees:calls(Trees),
     CTree1 = aect_call_state_tree:insert_call(Call, CTree),
     aec_trees:set_calls(Trees, CTree1);
-cache_write_through_fun({channel,_Pubkey}, Channel, Trees) ->
-    CTree  = aec_trees:channels(Trees),
+cache_write_through_fun({channel, _Pubkey}, Channel, Trees) ->
+    CTree = aec_trees:channels(Trees),
     CTree1 = aesc_state_tree:enter(Channel, CTree),
     aec_trees:set_channels(Trees, CTree1);
 cache_write_through_fun({contract, Pubkey}, Contract, Trees) ->
     %% NOTE: There is a semantical difference between inserting a new contract
     %%       and updating one.
-    CTree  = aec_trees:contracts(Trees),
+    CTree = aec_trees:contracts(Trees),
     case aect_state_tree:lookup_contract(Pubkey, CTree, [no_store]) of
         {value, _} ->
             CTree1 = aect_state_tree:enter_contract(Contract, CTree),
@@ -400,24 +430,24 @@ cache_write_through_fun({contract, Pubkey}, Contract, Trees) ->
             CTree1 = aect_state_tree:insert_contract(Contract, CTree),
             aec_trees:set_contracts(Trees, CTree1)
     end;
-cache_write_through_fun({commitment,_Hash}, Commitment, Trees) ->
-    NTree  = aec_trees:ns(Trees),
+cache_write_through_fun({commitment, _Hash}, Commitment, Trees) ->
+    NTree = aec_trees:ns(Trees),
     NTree1 = aens_state_tree:enter_commitment(Commitment, NTree),
     aec_trees:set_ns(Trees, NTree1);
-cache_write_through_fun({name_auction,_Hash}, Name, Trees) ->
-    NTree  = aec_trees:ns(Trees),
+cache_write_through_fun({name_auction, _Hash}, Name, Trees) ->
+    NTree = aec_trees:ns(Trees),
     NTree1 = aens_state_tree:enter_name_auction(Name, NTree),
     aec_trees:set_ns(Trees, NTree1);
-cache_write_through_fun({name,_Hash}, Name, Trees) ->
-    NTree  = aec_trees:ns(Trees),
+cache_write_through_fun({name, _Hash}, Name, Trees) ->
+    NTree = aec_trees:ns(Trees),
     NTree1 = aens_state_tree:enter_name(Name, NTree),
     aec_trees:set_ns(Trees, NTree1);
-cache_write_through_fun({oracle,_Pubkey}, Oracle, Trees) ->
-    OTrees  = aec_trees:oracles(Trees),
+cache_write_through_fun({oracle, _Pubkey}, Oracle, Trees) ->
+    OTrees = aec_trees:oracles(Trees),
     OTrees1 = aeo_state_tree:enter_oracle(Oracle, OTrees),
     aec_trees:set_oracles(Trees, OTrees1);
 cache_write_through_fun({oracle_query, {_Pubkey, _Id}}, Query, Trees) ->
-    OTrees  = aec_trees:oracles(Trees),
+    OTrees = aec_trees:oracles(Trees),
     OTrees1 = aeo_state_tree:enter_query(Query, OTrees),
     aec_trees:set_oracles(Trees, OTrees1).
 
@@ -428,16 +458,16 @@ get_var({var, X}, Tag, #state{env = E}) when is_atom(X) ->
     {Tag, Val} = dict:fetch(X, E),
     Val;
 get_var({X, Y} = Res, oracle_query, #state{}) when is_binary(X),
-                                                   is_binary(Y) ->
+    is_binary(Y) ->
     Res;
 get_var({X, Y} = Res, auth_call, #state{}) when is_binary(X),
-                                                is_binary(Y) ->
+    is_binary(Y) ->
     Res;
-get_var(X,_Tag, #state{}) when is_binary(X) ->
+get_var(X, _Tag, #state{}) when is_binary(X) ->
     X.
 
 set_var({var, X}, account = Tag, Pubkey, #state{} = S) when is_atom(X),
-                                                            is_binary(Pubkey) ->
+    is_binary(Pubkey) ->
     S#state{env = dict:store(X, {Tag, Pubkey}, S#state.env)};
-set_var(Var, Tag, Pubkey,_S) ->
+set_var(Var, Tag, Pubkey, _S) ->
     error({illegal_assignment, Var, Tag, Pubkey}).
