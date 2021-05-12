@@ -489,8 +489,8 @@ ensure_hc_activation_criteria_at_trees(TxEnv, Trees,
             {error, not_enough_stake};
         {_, {ok, _Delegates}} ->
             {error, not_enough_delegates};
-        {Err, _} -> {error, {failed_call, Err}}
-%%        {_, Err} -> {error, {failed_call, Err}} % Already matched
+        {{error, Err}, _} -> {error, {failed_call, Err}};
+        {_, {error, Err}} -> {error, {failed_call, Err}}
     end.
 
 state_pre_transform_micro_node(_Node, _PrevNode, _PrevKeyNode, Trees) -> Trees.
