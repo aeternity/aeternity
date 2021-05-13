@@ -1610,7 +1610,7 @@ run_contract(CallerId, Contract, GasLimit, Fee, GasPrice, CallData, AllowInit,
             {code, C} -> C;
             {ref, Ref} ->
                 RefContractPK = aeser_id:specialize(Ref, contract),
-                {ok, RefContract} = get_contract_no_cache(RefContractPK, S),
+                RefContract = get_contract_no_cache(RefContractPK, S),
                 {code, C} = aect_contracts:code(RefContract),
                 C
         end,
