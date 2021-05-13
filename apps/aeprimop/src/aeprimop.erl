@@ -146,6 +146,7 @@
 -type oracle_type_format() :: aeo_oracles:type_format().
 -type abi_version() :: aect_contracts:abi_version().
 -type vm_version()  :: aect_contracts:vm_version().
+-type internal_state() :: aeprimop_state:state().
 
 -export_type([op/0]).
 
@@ -2119,18 +2120,20 @@ assert_contract_call_stack(CallStack, S) ->
         _Other -> runtime_error(nonempty_call_stack)
     end.
 
+-spec assert_auth_call_object_not_exist(aect_call:call(), internal_state()) -> ok | no_return().
 assert_auth_call_object_not_exist(Call, S) ->
     AuthCallId = aect_call:id(Call),
     Pubkey     = aect_call:caller_pubkey(Call),
     case find_auth_call(Pubkey, AuthCallId, S) of
         none -> ok;
-        {value, _} -> runtime_error(auth_call_object_already_exist)
+        {_, _} -> runtime_error(auth_call_object_already_exist)
     end.
 
+-spec assert_not_channel(aeprimop_state:channel_key(), internal_state()) -> ok | no_return().
 assert_not_channel(ChannelPubkey, S) ->
     case find_channel(ChannelPubkey, S) of
         none -> ok;
-        {value, _} -> runtime_error(channel_exists)
+        {_, _} -> runtime_error(channel_exists)
     end.
 
 assert_channel_reserve_amount(ReserveAmount, InitiatorAmount, ResponderAmount) ->

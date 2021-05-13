@@ -54,7 +54,7 @@
 
 -type state() :: #state{}.
 
--export_type([state/0]).
+-export_type([state/0, channel_key/0]).
 
 -type runtime_error() :: account_not_found
     | auth_call_not_found
@@ -68,6 +68,8 @@
     | name_not_in_auction.
 -type pubkey() :: aec_keys:pubkey().
 -type hash() :: aec_hash:hash().
+-type auction_hash() :: aens_hash:auction_hash().
+-type trees() :: aec_trees:trees().
 -type call_id() :: aect_call:id().
 -type tag() :: auction
     | account
@@ -90,12 +92,13 @@
     | aeo_query:query()
     | aesc_channels:channel().
 -type channel_key() :: binary() | {var | binary(), atom() | binary()}.
+-type contract() :: aect_contracts:contract().
 
 %%%===================================================================
 %%% API
 %%%===================================================================
 
--spec new(aec_trees:trees(), aetx_env:env()) -> state().
+-spec new(trees(), aetx_env:env()) -> state().
 new(Trees, TxEnv) ->
     #state{trees = Trees
         , cache = dict:new()
@@ -105,7 +108,7 @@ new(Trees, TxEnv) ->
         , protocol = aetx_env:consensus_version(TxEnv)
     }.
 
--spec final_trees(state()) -> aec_trees:trees().
+-spec final_trees(state()) -> trees().
 final_trees(State) ->
     #state{trees = Trees} = cache_write_through(State),
     Trees.
@@ -124,15 +127,15 @@ runtime_error(Error) ->
 %%%===================================================================
 %%% Access to cache or trees
 
--spec delete_account(binary(), state()) -> state().
+-spec delete_account(hash(), state()) -> state().
 delete_account(Key, S) ->
     delete_x(account, Key, S).
 
--spec find_account(binary(), state()) -> {term(), state()} | none.
+-spec find_account(hash(), state()) -> {term(), state()} | none.
 find_account(Key, S) ->
     find_x(account, Key, S).
 
--spec get_account(binary(), state()) -> {term(), state()} | none.
+-spec get_account(hash(), state()) -> {term(), state()} | none.
 get_account(Key, S) ->
     get_x(account, Key, account_not_found, S).
 
@@ -142,7 +145,7 @@ put_account(Object, S) ->
 
 %%----------
 
--spec find_auth_call(pubkey(), call_id(), state()) -> {term(), state()} | none.
+-spec find_auth_call(pubkey(), call_id(), state()) -> {object(), state()} | none.
 find_auth_call(Pubkey, AuthCallId, S) ->
     find_x(auth_call, {Pubkey, AuthCallId}, S).
 
@@ -180,19 +183,23 @@ put_channel(Object, S) ->
 delete_contract(Key, S) ->
     delete_x(contract, Key, S).
 
+-spec get_contract(channel_key(), state()) -> {object(), state()} | no_return().
 get_contract(Key, S) ->
     get_x(contract, Key, contract_does_not_exist, S).
 
+-spec put_contract(object(), state()) -> state().
 put_contract(Object, S) ->
     cache_put(contract, Object, S).
 
 %% Used from fate that has its own store cache management
+-spec get_contract_no_cache(pubkey(), state()) -> contract().
 get_contract_no_cache(Key, S) ->
     {Contract, _} = get_x(contract, Key, contract_does_not_exist, S),
     Contract.
 
 %% NOTE: This does not cache the contract to avoid over-writing
 %% the correct store later
+-spec find_contract_without_store(pubkey(), state()) -> {value, contract()} | none.
 find_contract_without_store(Pubkey, S) ->
     case cache_find(contract, Pubkey, S) of
         {value, _} = Res -> Res;
@@ -203,6 +210,7 @@ find_contract_without_store(Pubkey, S) ->
 
 %% NOTE: This does not cache the contract to avoid over-writing
 %% the correct store later
+-spec get_contract_without_store(pubkey(), state()) -> contract() | no_return().
 get_contract_without_store(Pubkey, S) ->
     case cache_find(contract, Pubkey, S) of
         {value, C} -> C;
@@ -216,45 +224,57 @@ get_contract_without_store(Pubkey, S) ->
 
 %%----------
 
+-spec find_name(channel_key(), state()) -> {object(), state()} | none.
 find_name(Key, S) ->
     find_x(name, Key, S).
 
+-spec get_name(channel_key(), state()) -> {object(), state()} | no_return().
 get_name(Key, S) ->
     get_x(name, Key, name_does_not_exist, S).
 
+-spec put_name(object(), state()) -> state().
 put_name(Object, S) ->
     cache_put(name, Object, S).
 
 %%----------
 
+-spec find_oracle(channel_key(), state()) -> {object(), state()} | none.
 find_oracle(Key, S) ->
     find_x(oracle, Key, S).
 
+-spec get_oracle(channel_key(), runtime_error(), state()) -> {object(), state()} | no_return().
 get_oracle(Key, Error, S) ->
     get_x(oracle, Key, Error, S).
 
+-spec put_oracle(object(), state()) -> state().
 put_oracle(Object, S) ->
     cache_put(oracle, Object, S).
 
 %%----------
 
+-spec find_oracle_query(channel_key(), atom() | binary(), state()) -> {object(), state()} | none.
 find_oracle_query(OraclePubkey, QueryId, S) ->
     find_x(oracle_query, {OraclePubkey, QueryId}, S).
 
+-spec get_oracle_query(channel_key(), atom() | binary(), state()) -> {object(), state()} | no_return().
 get_oracle_query(OraclePubkey, QueryId, S) ->
     get_x(oracle_query, {OraclePubkey, QueryId}, no_matching_oracle_query, S).
 
+-spec put_oracle_query(object(), state()) -> state().
 put_oracle_query(Object, S) ->
     cache_put(oracle_query, Object, S).
 
 %%----------
 
+-spec find_commitment(hash(), state()) -> {object(), state()} | none.
 find_commitment(Hash, S) ->
     find_x(commitment, Hash, S).
 
+-spec get_commitment(hash(), runtime_error(), state()) -> {object(), state()} | no_return().
 get_commitment(Hash, Error, S) ->
     get_x(commitment, Hash, Error, S).
 
+-spec put_commitment(object(), state()) -> state().
 put_commitment(Object, S) ->
     cache_put(commitment, Object, S).
 
@@ -264,15 +284,17 @@ put_commitment(Object, S) ->
 find_name_auction(Hash, S) ->
     find_x(name_auction, Hash, S).
 
+-spec get_name_auction(auction_hash(), runtime_error(), state()) -> {object(), state()} | no_return().
 get_name_auction(Hash, Error, S) ->
     get_x(name_auction, Hash, Error, S).
 
+-spec put_name_auction(object(), state()) -> state().
 put_name_auction(Object, S) ->
     cache_put(name_auction, Object, S).
 
 %%----------
 
--spec find_x(tag(), channel_key(), state()) -> {term(), state()} | none.
+-spec find_x(tag(), channel_key(), state()) -> {object(), state()} | none.
 find_x(Tag, Key, S) ->
     case cache_find(Tag, Key, S) of
         none ->
@@ -285,7 +307,7 @@ find_x(Tag, Key, S) ->
             {Val, S}
     end.
 
--spec get_x(tag(), channel_key(), runtime_error(), state()) -> {term(), state()} | no_return().
+-spec get_x(tag(), channel_key(), runtime_error(), state()) -> {object(), state()} | no_return().
 get_x(Tag, Key, Error, S) when is_atom(Error) ->
     case find_x(Tag, Key, S) of
         none -> runtime_error(Error);
