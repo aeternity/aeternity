@@ -2480,8 +2480,6 @@ components:
           $ref: "#/components/schemas/EncodedPubkey"
         responder_amount:
           $ref: "#/components/schemas/UInt"
-        push_amount:
-          $ref: "#/components/schemas/UInt"
         channel_reserve:
           $ref: "#/components/schemas/UInt"
         lock_period:
@@ -2501,7 +2499,6 @@ components:
         - initiator_amount
         - responder_id
         - responder_amount
-        - push_amount
         - channel_reserve
         - lock_period
         - fee
@@ -2891,7 +2888,6 @@ components:
             $ref: "#/components/schemas/EncodedValue"
       required:
         - tx
-        - signatures
     Tx:
       allOf:
         - type: object
@@ -3457,7 +3453,7 @@ components:
         auth_fun:
           description: Contract authorization function hash (hex encoded)
           type: string
-          pattern: ^(0x|0X)?[a-fA-F0-9]+$'
+          pattern: "^(0x|0X)?[a-fA-F0-9]+$"
       required:
         - owner_id
         - code

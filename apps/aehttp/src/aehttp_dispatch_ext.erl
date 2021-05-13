@@ -428,7 +428,8 @@ handle_request_('GetTransactionByHash', Params, _Config) ->
                     {200, [], SerializedTx};
                 {BlockHash, Tx} ->
                     {ok, Header} = aec_chain:get_header(BlockHash),
-                    {200, [], aetx_sign:serialize_for_client(Header, Tx)}
+                    Response = aetx_sign:serialize_for_client(Header, Tx),
+                    {200, [], Response}
             end;
         {error, _} ->
             {400, [], #{reason => <<"Invalid hash">>}}

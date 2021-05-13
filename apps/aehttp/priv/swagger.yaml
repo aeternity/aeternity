@@ -2413,8 +2413,6 @@ definitions:
         $ref: '#/definitions/EncodedPubkey'
       responder_amount:
         $ref: '#/definitions/UInt'
-      push_amount:
-        $ref: '#/definitions/UInt'
       channel_reserve:
         $ref: '#/definitions/UInt'
       lock_period:
@@ -3504,7 +3502,7 @@ definitions:
       auth_fun:
         description: Contract authorization function hash (hex encoded)
         type: string
-        pattern: ^(0x|0X)?[a-fA-F0-9]+$'
+        pattern: "^(0x|0X)?[a-fA-F0-9]+$"
     required:
       - owner_id
       - code
