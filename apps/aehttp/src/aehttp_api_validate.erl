@@ -239,7 +239,12 @@ prepare_param_({"schema", [{"type",  _} = _Type | _] = Schema}, Value, Name, Val
 prepare_param_({"enum", Values0}, Value0, Name, _, _) ->
     try
         Values = [ to_atom(Acc) || Acc <- Values0 ],
-        Value = to_existing_atom(Value0),
+        Value = 
+            case Value0 of
+                undefined -> %% maybe a missing default value?
+                    undefined;
+                _ -> to_existing_atom(Value0)
+            end,
         case lists:member(Value, Values) of
             true -> {ok, Value};
             false -> param_error({enum, Value0}, Name)
