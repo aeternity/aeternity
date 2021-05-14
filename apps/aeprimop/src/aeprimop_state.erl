@@ -54,7 +54,7 @@
 
 -type state() :: #state{}.
 
--export_type([state/0, channel_key/0]).
+-export_type([state/0, channel_key/0, trees/0]).
 
 -type runtime_error() :: account_not_found
     | auth_call_not_found
@@ -344,6 +344,7 @@ delete_x(commitment, Hash, #state{trees = Trees} = S) ->
 %%%===================================================================
 %%% Access to trees
 
+-spec trees_find(tag(), channel_key(), state()) -> {value, object()} | none.
 trees_find(account, Key, #state{trees = Trees} = S) ->
     ATree = aec_trees:accounts(Trees),
     aec_accounts_trees:lookup(get_var(Key, account, S), ATree);
@@ -389,16 +390,17 @@ trees_find(oracle_query, Key, #state{trees = Trees} = S) ->
     orelse (X =:= oracle_query)
     orelse (X =:= commitment)
     orelse (X =:= name_auction)
-    orelse (X =:= name)
-)
+    orelse (X =:= name))
 ).
 
+-spec cache_find(tag(), channel_key(), state()) -> {value, object()} | none.
 cache_find(Tag, Key, #state{cache = C} = S) when ?IS_TAG(Tag) ->
     case dict:find({Tag, get_var(Key, Tag, S)}, C) of
         {ok, Val} -> {value, Val};
         error -> none
     end.
 
+-spec cache_drop(tag(), hash(), state()) -> state().
 cache_drop(channel, Hash, #state{cache = C} = S) ->
     S#state{cache = dict:erase({channel, Hash}, C)};
 cache_drop(name_auction, Hash, #state{cache = C} = S) ->
@@ -444,11 +446,13 @@ cache_put(oracle_query, Val, #state{cache = C} = S) ->
     QueryId = aeo_query:id(Val),
     S#state{cache = dict:store({oracle_query, {Pubkey, QueryId}}, Val, C)}.
 
+-spec cache_write_through(state()) -> state().
 cache_write_through(#state{cache = C, trees = T} = S) ->
     Trees = dict:fold(fun cache_write_through_fun/3, T, C),
     S#state{trees = Trees, cache = dict:new()}.
 
 %% TODO: Should have a dirty flag.
+-spec cache_write_through_fun({tag(), _}, object(), trees()) -> trees().
 cache_write_through_fun({account, _Pubkey}, Account, Trees) ->
     ATrees = aec_trees:accounts(Trees),
     ATrees1 = aec_accounts_trees:enter(Account, ATrees),
@@ -501,6 +505,7 @@ cache_write_through_fun({oracle_query, {_Pubkey, _Id}}, Query, Trees) ->
 %%%===================================================================
 %%% Variable environment
 
+-spec get_var(channel_key(), _, state()) -> any().
 get_var({var, X}, Tag, #state{env = E}) when is_atom(X) ->
     {Tag, Val} = dict:fetch(X, E),
     Val;
@@ -513,6 +518,7 @@ get_var({X, Y} = Res, auth_call, #state{}) when is_binary(X),
 get_var(X, _Tag, #state{}) when is_binary(X) ->
     X.
 
+-spec set_var(channel_key(), tag(), pubkey(), state()) -> state().
 set_var({var, X}, account = Tag, Pubkey, #state{} = S) when is_atom(X),
     is_binary(Pubkey) ->
     S#state{env = dict:store(X, {Tag, Pubkey}, S#state.env)};

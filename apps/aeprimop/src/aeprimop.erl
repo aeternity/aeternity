@@ -96,6 +96,7 @@
                         , put_oracle_query/2
                         ]).
 
+-export_type([op/0]).
 
 -ifdef(TEST).
 -export([evaluate/1, do_eval/3]).
@@ -111,6 +112,7 @@
 
 
 -include("aeprimop_state.hrl").
+-include("aeprimop_opcodes.hrl").
 -include("../../aecore/include/aec_hash.hrl").
 -include("../../aecontract/include/hard_forks.hrl").
 -include("../../aecontract/include/aecontract.hrl").
@@ -133,7 +135,8 @@
                                                     orelse element(1, _X_) =:= fixed_ttl)
                                            andalso ?IS_NON_NEG_INTEGER(element(2, _X_))))).
 
--opaque op() :: {atom(), tuple()}.
+%%-opaque op() :: {atom(), tuple()}.
+-opaque op() :: generic_op().
 
 -type pubkey() :: aec_keys:pubkey().
 -type id()     :: aeser_id:id().
@@ -146,9 +149,11 @@
 -type oracle_type_format() :: aeo_oracles:type_format().
 -type abi_version() :: aect_contracts:abi_version().
 -type vm_version()  :: aect_contracts:vm_version().
--type internal_state() :: aeprimop_state:state().
-
--export_type([op/0]).
+-type state() :: aeprimop_state:state().
+-type trees() :: aeprimop_state:trees().
+-type code() :: map().
+-type payable() :: #{payable => boolean()}.
+-type cache_write_through_flag() :: cache_write_through | {cache_write_through, false}.
 
 
 %%%===================================================================
@@ -167,6 +172,8 @@ evaluate(_Instructions) ->
     ok.
 -endif.
 
+-spec do_eval([op()], trees(), aetx_env:env()) ->
+    {ok, trees(), aetx_env:env()} | any() | no_return().
 do_eval(Instructions, Trees, TxEnv) ->
     S = aeprimop_state:new(Trees, TxEnv),
     case int_eval(Instructions, S) of
@@ -443,6 +450,11 @@ int_eval(Instructions, S, Opts) ->
             {error, What}
     end.
 
+-spec eval_instructions([op()], state(), [cache_write_through_flag()]) ->
+    {ok, state()} |
+    {ok, binary(), state()} |
+    {ok, aect_call:call(), state()} |
+    no_return().
 eval_instructions([I|Left], S, Opts) ->
     case eval_one(I, S) of
         #state{} = S1 ->
@@ -465,6 +477,8 @@ cache_write_through(S, Opts) ->
             S
     end.
 
+-spec eval_one({opcode(), tuple()}, state()) ->
+    state() | {return, any(), state()} | no_return().
 eval_one({Op, Args}, S) ->
     case Op of
         inc_account_nonce         -> inc_account_nonce(Args, S);
@@ -1284,7 +1298,7 @@ ga_attach({OwnerPubkey, GasLimit, GasPrice, ABIVersion,
                                         SerializedCode, 0),
     ContractPubkey  = aect_contracts:pubkey(Contract),
     Payable         = is_payable_contract(Code),
-    {_CAccount, S3} = ensure_account(ContractPubkey, [non_payable || not Payable], S2),
+    {_CAccount, S3} = ensure_account(ContractPubkey, [non_payable || (not Payable)], S2),
     OwnerId         = aect_contracts:owner_id(Contract),
     init_contract({attach, AuthFun}, OwnerId, Code, Contract, GasLimit, GasPrice,
                   CallData, OwnerPubkey, Fee, Nonce, RollbackS, S3,
@@ -2120,7 +2134,7 @@ assert_contract_call_stack(CallStack, S) ->
         _Other -> runtime_error(nonempty_call_stack)
     end.
 
--spec assert_auth_call_object_not_exist(aect_call:call(), internal_state()) -> ok | no_return().
+-spec assert_auth_call_object_not_exist(aect_call:call(), state()) -> ok | no_return().
 assert_auth_call_object_not_exist(Call, S) ->
     AuthCallId = aect_call:id(Call),
     Pubkey     = aect_call:caller_pubkey(Call),
@@ -2129,7 +2143,7 @@ assert_auth_call_object_not_exist(Call, S) ->
         {_, _} -> runtime_error(auth_call_object_already_exist)
     end.
 
--spec assert_not_channel(aeprimop_state:channel_key(), internal_state()) -> ok | no_return().
+-spec assert_not_channel(aeprimop_state:channel_key(), state()) -> ok | no_return().
 assert_not_channel(ChannelPubkey, S) ->
     case find_channel(ChannelPubkey, S) of
         none -> ok;
@@ -2182,8 +2196,9 @@ assert_channel_withdraw_amount(Channel, Amount) ->
     Reserve = aesc_channels:channel_reserve(Channel),
     assert(ChannelAmount >= 2*Reserve + Amount, not_enough_channel_funds).
 
-is_payable_contract(#{ payable := Payable }) -> Payable;
-is_payable_contract(_)                       -> runtime_error(bad_bytecode).
+-spec is_payable_contract(payable() | any()) -> boolean() | no_return().
+is_payable_contract(#{payable := Payable}) -> Payable;
+is_payable_contract(_)                     -> runtime_error(bad_bytecode).
 
 %%%===================================================================
 %%% Error handling
@@ -2192,6 +2207,7 @@ is_payable_contract(_)                       -> runtime_error(bad_bytecode).
 runtime_error(Error) ->
     throw({?MODULE, Error}).
 
+%%-spec sanitize_error(aec_hard_forks:protocol_vsn(), aetx_env:env(), ??call) -> ??call.
 sanitize_error(P, _Env, Call) when P =< ?FORTUNA_PROTOCOL_VSN ->
     Call;
 sanitize_error(_P, Env, Call) ->
