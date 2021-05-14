@@ -286,6 +286,7 @@ read_config(Mode) when Mode =:= silent; Mode =:= report ->
     end.
 
 apply_os_env() ->
+    ok = application:ensure_started(gproc),
     try
     Pfx = "AE",  %% TODO: make configurable
     %% We sort on variable names to allow specific values to override object
