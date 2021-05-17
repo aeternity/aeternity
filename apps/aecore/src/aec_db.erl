@@ -1162,7 +1162,7 @@ expand_mode(disc) -> disc_backend_mode();
 expand_mode(M) when is_map(M) -> M.
 
 run_hooks(Hook, Mode) ->
-    lager:info("~nHooks list is: ~p (Hook: ~p, Mode: ~p)~n",[setup:find_env_vars(Hook), Hook, Mode]),
+    lager:info("~nHooks list is: ~p (Hook: ~p, Mode: ~p, Env: ~p)~n",[setup:find_env_vars(Hook), Hook, Mode, setup:find_env_vars(Hook)]),
     [M:F(Mode) || {_App, {M,F}} <- setup:find_env_vars(Hook)].
 
 fold_hooks(Hook, Acc0) ->
@@ -1181,6 +1181,7 @@ add_index_plugins() ->
 
 ensure_mnesia_tables(Mode, Storage) ->
     Tables = tables(Mode),
+    lager:info("~nThe current storage is: ~p (~p mode)~n",[Storage, Mode]),
     case Storage of
         existing_schema ->
             handle_table_errors(Tables, Mode, check_mnesia_tables(Tables, []));
