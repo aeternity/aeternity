@@ -48,6 +48,8 @@
          }).
 
 -opaque tx() :: #ns_revoke_tx{}.
+-type trees() :: aec_trees:trees().
+-type env() :: aetx_env:env().
 
 -export_type([tx/0]).
 
@@ -102,11 +104,11 @@ origin(#ns_revoke_tx{} = Tx) ->
     account_pubkey(Tx).
 
 -spec check(tx(), aec_trees:trees(), aetx_env:env()) -> {ok, aec_trees:trees()} | {error, term()}.
-check(#ns_revoke_tx{}, Trees,_Env) ->
+check(#ns_revoke_tx{}, Trees, _Env) ->
     %% Checks are in process/3
     {ok, Trees}.
 
--spec process(tx(), aec_trees:trees(), aetx_env:env()) -> {ok, aec_trees:trees()} | {error, term()}.
+-spec process(tx(), aec_trees:trees(), aetx_env:env()) -> {ok, aec_trees:trees(), env()} | {error, term()}.
 process(#ns_revoke_tx{} = Tx, Trees, Env) ->
     Instructions =
         aeprimop:name_revoke_tx_instructions(

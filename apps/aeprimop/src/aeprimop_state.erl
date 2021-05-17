@@ -7,48 +7,48 @@
 %%%-------------------------------------------------------------------
 -module(aeprimop_state).
 
--export([delete_x/3
-    , delete_account/2
-    , delete_contract/2
-    , final_trees/1
-    , find_account/2
-    , find_auth_call/3
-    , find_channel/2
-    , find_commitment/2
-    , find_name_auction/2
-    , find_contract_without_store/2
-    , find_name/2
-    , find_oracle/2
-    , find_oracle_query/3
-    , get_account/2
-    , get_auth_call/3
-    , get_channel/2
-    , get_commitment/3
-    , get_name_auction/3
-    , get_contract/2
-    , get_contract_no_cache/2
-    , get_contract_without_store/2
-    , get_name/2
-    , get_oracle/3
-    , get_oracle_query/3
-    , get_var/3
-    , new/2
-    , put_account/2
-    , put_auth_call/2
-    , put_call/2
-    , put_channel/2
-    , put_commitment/2
-    , put_name_auction/2
-    , put_contract/2
-    , put_name/2
-    , put_oracle/2
-    , put_oracle_query/2
-]).
+-export([ delete_x/3
+        , delete_account/2
+        , delete_contract/2
+        , final_trees/1
+        , find_account/2
+        , find_auth_call/3
+        , find_channel/2
+        , find_commitment/2
+        , find_name_auction/2
+        , find_contract_without_store/2
+        , find_name/2
+        , find_oracle/2
+        , find_oracle_query/3
+        , get_account/2
+        , get_auth_call/3
+        , get_channel/2
+        , get_commitment/3
+        , get_name_auction/3
+        , get_contract/2
+        , get_contract_no_cache/2
+        , get_contract_without_store/2
+        , get_name/2
+        , get_oracle/3
+        , get_oracle_query/3
+        , get_var/3
+        , new/2
+        , put_account/2
+        , put_auth_call/2
+        , put_call/2
+        , put_channel/2
+        , put_commitment/2
+        , put_name_auction/2
+        , put_contract/2
+        , put_name/2
+        , put_oracle/2
+        , put_oracle_query/2
+        ]).
 
--export([cache_write_through/1
-    , set_var/4
-    , tx_env/1
-]).
+-export([ cache_write_through/1
+        , set_var/4
+        , tx_env/1
+        ]).
 
 -include("aeprimop_state.hrl").
 
@@ -70,6 +70,7 @@
 -type hash() :: aec_hash:hash().
 -type auction_hash() :: aens_hash:auction_hash().
 -type trees() :: aec_trees:trees().
+-type env() :: aetx_env:env().
 -type call_id() :: aect_call:id().
 -type tag() :: auction
     | account
@@ -98,7 +99,7 @@
 %%% API
 %%%===================================================================
 
--spec new(trees(), aetx_env:env()) -> state().
+-spec new(trees(), env()) -> state().
 new(Trees, TxEnv) ->
     #state{trees = Trees
         , cache = dict:new()
@@ -113,7 +114,7 @@ final_trees(State) ->
     #state{trees = Trees} = cache_write_through(State),
     Trees.
 
--spec tx_env(state()) -> aetx_env:env().
+-spec tx_env(state()) -> env().
 tx_env(#state{tx_env = TxEnv}) ->
     TxEnv.
 

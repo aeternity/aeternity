@@ -51,6 +51,8 @@
           }).
 
 -opaque tx() :: #oracle_response_tx{}.
+-type trees() :: aec_trees:trees().
+-type env() :: aetx_env:env().
 
 -export_type([tx/0]).
 
@@ -125,7 +127,7 @@ check(#oracle_response_tx{}, Trees,_Env) ->
 signers(#oracle_response_tx{} = Tx, _) ->
     {ok, [oracle_pubkey(Tx)]}.
 
--spec process(tx(), aec_trees:trees(), aetx_env:env()) -> {ok, aec_trees:trees()} | {error, term()}.
+-spec process(tx(), trees(), env()) -> {ok, trees(), env()} | {error, term()}.
 process(#oracle_response_tx{} = RTx, Trees, Env) ->
     {delta, RTTL} = response_ttl(RTx),
     {oracle, OraclePubkey} = aeser_id:specialize(oracle_id(RTx)),

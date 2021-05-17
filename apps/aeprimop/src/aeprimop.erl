@@ -135,7 +135,6 @@
                                                     orelse element(1, _X_) =:= fixed_ttl)
                                            andalso ?IS_NON_NEG_INTEGER(element(2, _X_))))).
 
-%%-opaque op() :: {atom(), tuple()}.
 -opaque op() :: generic_op().
 
 -type pubkey() :: aec_keys:pubkey().
@@ -150,18 +149,21 @@
 -type abi_version() :: aect_contracts:abi_version().
 -type vm_version()  :: aect_contracts:vm_version().
 -type state() :: aeprimop_state:state().
--type trees() :: aeprimop_state:trees().
+-type trees() :: aec_trees:trees().
+-type env() :: aetx_env:env().
+-type call() :: aect_call:call().
 -type code() :: map().
 -type payable() :: #{payable => boolean()}.
+-type payment_mode() :: transfer_value | spend | lock.
 -type cache_write_through_flag() :: cache_write_through | {cache_write_through, false}.
-
+-type options() :: [cache_write_through_flag()].
+-type return_val() :: term().
 
 %%%===================================================================
 %%% API
 %%%===================================================================
 
--spec eval([op()], aec_trees:trees(), aetx_env:env()) ->
-                  {ok, aec_trees:trees(), aetx_env:env()} | {error, atom()}.
+-spec eval([op()], trees(), env()) -> {ok, trees(), env()} | {error, atom()}.
 eval([_|_] = Instructions, Trees, TxEnv) ->
     %% The macro below makes mocking possible in QuickCheck tests
     ?do_eval(Instructions, Trees, TxEnv).
@@ -172,8 +174,7 @@ evaluate(_Instructions) ->
     ok.
 -endif.
 
--spec do_eval([op()], trees(), aetx_env:env()) ->
-    {ok, trees(), aetx_env:env()} | any() | no_return().
+-spec do_eval([op()], trees(), env()) -> {ok, trees(), env()} | {error, term()} | no_return().
 do_eval(Instructions, Trees, TxEnv) ->
     S = aeprimop_state:new(Trees, TxEnv),
     case int_eval(Instructions, S) of
@@ -185,10 +186,8 @@ do_eval(Instructions, Trees, TxEnv) ->
             Err
     end.
 
--type return_val() :: term().
--spec eval_with_return([op()], aec_trees:trees(), aetx_env:env()) ->
-                              {ok, return_val(), aec_trees:trees(), aetx_env:env()}
-                                  | {error, atom()}.
+-spec eval_with_return([op()], trees(), env()) ->
+    {ok, return_val(), trees(), env()} | {error, atom()}.
 eval_with_return([_|_] = Instructions, Trees, TxEnv) ->
     S = aeprimop_state:new(Trees, TxEnv),
     case int_eval(Instructions, S) of
@@ -197,10 +196,10 @@ eval_with_return([_|_] = Instructions, Trees, TxEnv) ->
         {error, _} = Err -> Err
     end.
 
--spec eval_on_primop_state([op()], aeprimop_state:state()) ->
-                                  {ok, aeprimop_state:state()}
-                                      | {ok, return_val(), aeprimop_state:state()}
-                                      | {error, atom()}.
+-spec eval_on_primop_state([op()], state()) ->
+    {ok, state()} |
+    {ok, return_val(), state()} |
+    {error, atom()}.
 eval_on_primop_state([_|_] = Instructions, State) ->
     int_eval(Instructions, State, [{cache_write_through, false}]).
 
@@ -318,7 +317,7 @@ ga_meta_tx_instructions(OwnerPubkey, AuthData, ABIVersion,
                  GasLimit, GasPrice, Fee, InnerTx)
     ].
 
--spec ga_set_meta_tx_res_instructions(pubkey(), binary(), 'ok' | {error, term()}) -> [op()].
+-spec ga_set_meta_tx_res_instructions(pubkey(), binary(), ok | {error, term()}) -> [op()].
 ga_set_meta_tx_res_instructions(OwnerPubkey, AuthData, Result) ->
     [ ga_set_meta_res_op(OwnerPubkey, AuthData, Result) ].
 
@@ -438,9 +437,17 @@ channel_settle_tx_instructions(FromPubkey, ChannelPubkey,
 %%%===================================================================
 %%% Instruction evaluation
 
+-spec int_eval([op()], state()) ->
+    {ok, state()} |
+    {ok, binary() | call(), state()} |
+    {error, term()}.
 int_eval(Instructions, S) ->
     int_eval(Instructions, S, [cache_write_through]).
 
+-spec int_eval([op()], state(), options()) ->
+    {ok, state()} |
+    {ok, binary() | call(), state()} |
+    {error, term()}.
 int_eval(Instructions, S, Opts) ->
     try eval_instructions(Instructions, S, Opts)
     catch
@@ -450,10 +457,10 @@ int_eval(Instructions, S, Opts) ->
             {error, What}
     end.
 
--spec eval_instructions([op()], state(), [cache_write_through_flag()]) ->
+-spec eval_instructions([op()], state(), options()) ->
     {ok, state()} |
     {ok, binary(), state()} |
-    {ok, aect_call:call(), state()} |
+    {ok, call(), state()} |
     no_return().
 eval_instructions([I|Left], S, Opts) ->
     case eval_one(I, S) of
@@ -469,6 +476,7 @@ eval_instructions([], S, Opts) ->
     S1 = cache_write_through(S, Opts),
     {ok, S1}.
 
+-spec cache_write_through(state(), options()) -> state().
 cache_write_through(S, Opts) ->
     case proplists:get_bool(cache_write_through, Opts) of
         true ->
@@ -477,7 +485,7 @@ cache_write_through(S, Opts) ->
             S
     end.
 
--spec eval_one({opcode(), tuple()}, state()) ->
+-spec eval_one({opcode(), args()}, state()) ->
     state() | {return, any(), state()} | no_return().
 eval_one({Op, Args}, S) ->
     case Op of
@@ -513,14 +521,20 @@ eval_one({Op, Args}, S) ->
 %%% Operations
 %%%
 
+-spec inc_account_nonce_op(pubkey(), nonce()) ->
+    {inc_account_nonce, {pubkey(), nonce(), false}}.
 inc_account_nonce_op(Pubkey, Nonce) when ?IS_HASH(Pubkey),
                                          ?IS_NON_NEG_INTEGER(Nonce) ->
     {inc_account_nonce, {Pubkey, Nonce, false}}.
 
+-spec force_inc_account_nonce_op(pubkey(), nonce()) ->
+    {inc_account_nonce, {pubkey(), nonce(), true}}.
 force_inc_account_nonce_op(Pubkey, Nonce) when ?IS_HASH(Pubkey),
                                                ?IS_NON_NEG_INTEGER(Nonce) ->
     {inc_account_nonce, {Pubkey, Nonce, true}}.
 
+-spec inc_account_nonce({pubkey(), nonce(), boolean()}, state()) ->
+    state() | no_return().
 inc_account_nonce({Pubkey, Nonce, Force}, #state{ tx_env = Env } = S) ->
     %% If someone else is paying the Tx can be performed by a
     %% non-existing account - thus `ensure_account` in this case.
@@ -571,6 +585,8 @@ transfer_value_op(From, To, Amount) when ?IS_HASH(From),
                                          ?IS_NON_NEG_INTEGER(Amount) ->
     {spend, {From, To, Amount, transfer_value}}.
 
+-spec spend({pubkey(), var_or_hash(), non_neg_integer(), payment_mode()}, state()) ->
+    state().
 spend({From, To, Amount, Mode}, #state{} = S) when is_integer(Amount), Amount >= 0 ->
     {Sender1, S1}   = get_account(From, S),
     assert_account_balance(Sender1, Amount),
@@ -586,6 +602,7 @@ spend({From, To, Amount, Mode}, #state{} = S) when is_integer(Amount), Amount >=
 %%% For Lima auctioned names, the lock fee is returned
 %%% in case of overbidding
 
+-spec lock_namefee(payment_mode(), pubkey(), non_neg_integer(), state()) -> state() | no_return().
 lock_namefee(Kind, From, Amount, #state{protocol = Protocol} = S) ->
     LockFee = aec_governance:name_claim_locked_fee(),
     {Account, S1} = get_account(From, S),
@@ -603,20 +620,25 @@ lock_namefee(Kind, From, Amount, #state{protocol = Protocol} = S) ->
 
 %%%-------------------------------------------------------------------
 
+-spec spend_fee_op(pubkey(), non_neg_integer()) -> {spend_fee, {pubkey(), non_neg_integer(), 0}}.
 spend_fee_op(From, Amount) when ?IS_HASH(From),
                                 ?IS_NON_NEG_INTEGER(Amount) ->
     {spend_fee, {From, Amount, 0}}.
 
+-spec spend_fee_op(pubkey(), non_neg_integer(), non_neg_integer()) ->
+    {spend_fee, {pubkey(), non_neg_integer(), non_neg_integer()}}.
 spend_fee_op(From, DelegatedAmount, Amount) when ?IS_HASH(From)
                                                , ?IS_NON_NEG_INTEGER(DelegatedAmount)
                                                , ?IS_NON_NEG_INTEGER(Amount) ->
     {spend_fee, {From, DelegatedAmount, Amount}}.
 
+-spec spend_fee({pubkey(), non_neg_integer(), non_neg_integer()}, state()) -> state().
 spend_fee({From, DelegatedAmount, Amount}, #state{} = S)
         when ?IS_NON_NEG_INTEGER(DelegatedAmount + Amount) ->
     Delegated = establish_payer(From, S),
     spend_fee(From, Delegated, Amount, DelegatedAmount, S).
 
+-spec spend_fee(pubkey(), pubkey(), non_neg_integer(), non_neg_integer(), state()) -> state().
 spend_fee(From, From, Amount, DelegatedAmount, S) ->
     spend_fee(From, Amount + DelegatedAmount, S);
 spend_fee(From, _, Amount, 0, S) ->
@@ -627,6 +649,7 @@ spend_fee(From, Delegated, Amount, DelegatedAmount, S) ->
     S1 = spend_fee(From, Amount, S),
     spend_fee(Delegated, DelegatedAmount, S1).
 
+-spec spend_fee(pubkey(), non_neg_integer(), state()) -> state().
 spend_fee(From, Amount, S) ->
     {Spender1, S1} = get_account(From, S),
     assert_account_balance(Spender1, Amount),
@@ -634,14 +657,18 @@ spend_fee(From, Amount, S) ->
 
 %%%-------------------------------------------------------------------
 
+-spec resolve_account_op(account | name, aeser_id:val(), {var, recipient}) ->
+    {resolve_account, {account | name, aeser_id:val(), {var, recipient}}}.
 resolve_account_op(GivenType, Hash, Var) when ?IS_NAME_RESOLVE_TYPE(GivenType),
                                               ?IS_HASH(Hash),
                                               ?IS_VAR(Var) ->
     {resolve_account, {GivenType, Hash, Var}}.
 
+-spec resolve_account({account | name, aeser_id:val(), {var, recipient}}, state()) -> state().
 resolve_account({GivenType, Hash, Var}, S) ->
     resolve_name(account, GivenType, Hash, Var, S).
 
+-spec resolve_name(account, account | name, aeprimop_state:channel_key(), {var, atom()}, state()) -> state().
 resolve_name(account, account, Pubkey, Var, S) ->
     aeprimop_state:set_var(Var, account, Pubkey, S);
 resolve_name(account, name, NameHash, Var, S) ->
@@ -1697,6 +1724,7 @@ account_spend(Account, Amount, S) ->
     {ok, Account1} = aec_accounts:spend_without_nonce_bump(Account, Amount),
     put_account(Account1, S).
 
+-spec specialize_account(aeser_id:id()) -> {aeser_id:tag(), aeser_id:val()}.
 specialize_account(RecipientID) ->
     case aeser_id:specialize(RecipientID) of
         {name, NameHash}   -> {name, NameHash};
@@ -2207,7 +2235,6 @@ is_payable_contract(_)                     -> runtime_error(bad_bytecode).
 runtime_error(Error) ->
     throw({?MODULE, Error}).
 
-%%-spec sanitize_error(aec_hard_forks:protocol_vsn(), aetx_env:env(), ??call) -> ??call.
 sanitize_error(P, _Env, Call) when P =< ?FORTUNA_PROTOCOL_VSN ->
     Call;
 sanitize_error(_P, Env, Call) ->

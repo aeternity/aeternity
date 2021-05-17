@@ -32,4 +32,5 @@
     | spend
     | spend_fee
     | tx_event.
--type generic_op() :: {opcode(), tuple()}.
+-type args() :: tuple().
+-type generic_op() :: {opcode(), args()}.

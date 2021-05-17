@@ -50,6 +50,8 @@
          }).
 
 -opaque tx() :: #ns_preclaim_tx{}.
+-type trees() :: aec_trees:trees().
+-type env() :: aetx_env:env().
 
 -export_type([tx/0]).
 
@@ -95,12 +97,12 @@ nonce(#ns_preclaim_tx{nonce = Nonce}) ->
 origin(#ns_preclaim_tx{} = Tx) ->
     account_pubkey(Tx).
 
--spec check(tx(), aec_trees:trees(), aetx_env:env()) -> {ok, aec_trees:trees()} | {error, term()}.
+-spec check(tx(), trees(), env()) -> {ok, trees()} | {error, term()}.
 check(#ns_preclaim_tx{} = _Tx, Trees,_Env) ->
     %% Checks are in process/3
     {ok, Trees}.
 
--spec process(tx(), aec_trees:trees(), aetx_env:env()) -> {ok, aec_trees:trees()} | {error, term()}.
+-spec process(tx(), trees(), env()) -> {ok, trees(), env()} | {error, term()}.
 process(#ns_preclaim_tx{} = PreclaimTx, Trees, Env) ->
     Instructions =
         aeprimop:name_preclaim_tx_instructions(
