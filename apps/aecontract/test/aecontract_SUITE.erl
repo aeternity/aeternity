@@ -1786,9 +1786,13 @@ sophia_clone(_Cfg) ->
     Acc     = ?call(new_account, 1000000000 * aec_test_utils:min_gas_price()),
     Remote  = ?call(create_contract, Acc, higher_order_state, {}),
     Ct      = ?call(create_contract, Acc, clone_test, {}),
-    Cloned1 = ?call(call_contract, Acc, Ct, run_clone, address, {Remote, Remote}),
-    Cloned2 = ?call(call_contract, Acc, Ct, run_clone, address, {Cloned1, Cloned1}),
+    Cloned1 = ?call(call_contract, Acc, Ct, run_clone, word, {?cid(Remote), ?cid(Remote)}),
+    Cloned2 = ?call(call_contract, Acc, Ct, run_clone, word, {?cid(Cloned1), ?cid(Cloned1)}),
     ?assert(Cloned1 =/= Cloned2),
+
+    {contract, Cloned1Id} = Cloned1,
+    Cloned1Addr = <<Cloned1Id:256>>,
+    ?assertEqual(3, ?call(call_contract, Acc, Cloned1Addr, apply, word, {10})),
     ok.
 
 sophia_create(_Cfg) ->
