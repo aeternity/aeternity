@@ -16,10 +16,13 @@ start(_StartType, _StartArgs) ->
     ok = lager:info("Starting aecore node"),
     ok = aec_jobs_queues:start(),
     ok = application:ensure_started(mnesia),
+    _ = aeu_info:block_info(), %% init the cache so this process is the owner of the table
     aec_db:load_database(),
+    aefa_fate_op:load_pre_iris_map_ordering(),
     case aec_db:persisted_valid_genesis_block() of
         true ->
             aec_chain_state:ensure_chain_ends(),
+            aec_chain_state:ensure_key_headers_height_store(),
             aecore_sup:start_link();
         false ->
             lager:error("Persisted chain has a different genesis block than "

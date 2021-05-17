@@ -117,7 +117,7 @@ latest_sophia_vm_version() ->
         ?MINERVA_PROTOCOL_VSN -> ?VM_AEVM_SOPHIA_2;
         ?FORTUNA_PROTOCOL_VSN -> ?VM_AEVM_SOPHIA_3;
         ?LIMA_PROTOCOL_VSN    -> ?VM_AEVM_SOPHIA_4;
-        ?IRIS_PROTOCOL_VSN    -> ?VM_AEVM_SOPHIA_4
+        ?IRIS_PROTOCOL_VSN    -> ?VM_FATE_SOPHIA_2
     end.
 
 latest_sophia_abi_version() ->
@@ -126,7 +126,7 @@ latest_sophia_abi_version() ->
         ?MINERVA_PROTOCOL_VSN -> ?ABI_AEVM_SOPHIA_1;
         ?FORTUNA_PROTOCOL_VSN -> ?ABI_AEVM_SOPHIA_1;
         ?LIMA_PROTOCOL_VSN    -> ?ABI_AEVM_SOPHIA_1;
-        ?IRIS_PROTOCOL_VSN    -> ?ABI_AEVM_SOPHIA_1
+        ?IRIS_PROTOCOL_VSN    -> ?ABI_FATE_SOPHIA_1
     end.
 
 latest_sophia_version() ->
@@ -135,7 +135,7 @@ latest_sophia_version() ->
         ?MINERVA_PROTOCOL_VSN -> ?SOPHIA_MINERVA;
         ?FORTUNA_PROTOCOL_VSN -> ?SOPHIA_FORTUNA;
         ?LIMA_PROTOCOL_VSN    -> ?SOPHIA_LIMA_AEVM;
-        ?IRIS_PROTOCOL_VSN    -> ?SOPHIA_LIMA_AEVM
+        ?IRIS_PROTOCOL_VSN    -> ?SOPHIA_IRIS_FATE
     end.
 
 latest_sophia_contract_version() ->
@@ -625,7 +625,7 @@ decode_data_(Type, Data) ->
     Return.
 
 decode_data_(fate, _Type, Data) ->
-    try {ok, aefate_test_utils:decode(aeb_fate_encoding:deserialize(Data))}
+    try {ok, aefa_test_utils:decode(aeb_fate_encoding:deserialize(Data))}
     catch _:_ -> {error, <<"bad fate data">>}
     end;
 decode_data_(aevm, Type, Data) ->

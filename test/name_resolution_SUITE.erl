@@ -204,7 +204,12 @@ spend_to_name(_Cfg) ->
     spend_to_name_(fun pointers/2).
 
 spend_to_name_when_multiple_pointer_entries(_Cfg) ->
-    spend_to_name_(fun pointers_with_duplicated_key_at_end/2).
+    Protocol = aec_hard_forks:protocol_effective_at_height(1),
+    case Protocol >= ?IRIS_PROTOCOL_VSN of
+        true -> ok;
+        false ->
+            spend_to_name_(fun pointers_with_duplicated_key_at_end/2)
+    end.
 
 spend_to_name_(PointersFun) ->
     {[Pubkey1, Pubkey2], S1} = init_state(2),
@@ -235,7 +240,12 @@ transfer_name_to_named_account(_Cfg) ->
     transfer_name_to_named_account_(fun pointers/2).
 
 transfer_name_to_named_account_when_multiple_pointer_entries(_Cfg) ->
-    transfer_name_to_named_account_(fun pointers_with_duplicated_key_at_end/2).
+    Protocol = aec_hard_forks:protocol_effective_at_height(1),
+    case Protocol >= ?IRIS_PROTOCOL_VSN of
+        true -> ok;
+        false ->
+            transfer_name_to_named_account_(fun pointers_with_duplicated_key_at_end/2)
+    end.
 
 transfer_name_to_named_account_(PointersFun) ->
     {[Pubkey1, Pubkey2, Pubkey3], S1} = init_state(3),

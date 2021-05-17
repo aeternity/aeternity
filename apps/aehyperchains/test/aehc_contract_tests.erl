@@ -99,7 +99,7 @@ make_calldata(Fun, Args) when is_binary(Fun) ->
                                 true -> {Args}
                              end),
     FunctionId = aeb_fate_code:symbol_identifier(Fun),
-    aeb_fate_encoding:serialize(aefate_test_utils:encode({FunctionId, Args1})).
+    aeb_fate_encoding:serialize(aefa_test_utils:encode({FunctionId, Args1})).
 
 format_fate_args(?cid(B)) ->
     {contract, B};
@@ -223,7 +223,7 @@ get_result(Type, CallId) ->
     Result = case aect_call:return_type(Call) of
                  ok ->
                      Res = aeb_fate_encoding:deserialize(aect_call:return_value(Call)),
-                     case aefate_test_utils:decode(Res, Type) of
+                     case aefa_test_utils:decode(Res, Type) of
                         {variant, [0,1], 0, {}} when element(1, Type) =:= option ->
                             none;
                         {variant, [0,1], 1, {Decoded}} when element(1, Type) =:= option ->
@@ -235,7 +235,7 @@ get_result(Type, CallId) ->
                      {error, aect_call:return_value(Call)};
                  revert ->
                      Res = aeb_fate_encoding:deserialize(aect_call:return_value(Call)),
-                     {revert, aefate_test_utils:decode(Res)}
+                     {revert, aefa_test_utils:decode(Res)}
              end,
     {Result, aect_call:gas_used(Call)}.
 

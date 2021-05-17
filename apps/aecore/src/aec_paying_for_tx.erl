@@ -122,9 +122,17 @@ check(#paying_for_tx{}, Trees, _Env) ->
     %% Checks in process/3
     {ok, Trees}.
 
--spec signers(tx(), aec_trees:trees()) -> {ok, [aec_keys:pubkey()]}.
-signers(#paying_for_tx{} = Tx, _) ->
-    {ok, [payer_pubkey(Tx)]}.
+-spec signers(tx(), aec_trees:trees()) ->
+    {ok, [aec_keys:pubkey()]} | {error, inner_tx_incorrectly_signed}.
+signers(#paying_for_tx{tx = STx} = Tx, Trees) ->
+    %% PayingForTx was introduced in IRIS, so pass that as protocol version -
+    %% since signers don't get protocol version argument
+    case aetx_sign:verify(STx, Trees, ?IRIS_PROTOCOL_VSN, <<"-inner_tx">>) of
+        ok ->
+            {ok, [payer_pubkey(Tx)]};
+        {error, _Reason} ->
+            {error, inner_tx_incorrectly_signed}
+    end.
 
 -spec process(tx(), aec_trees:trees(), aetx_env:env()) -> {ok, aec_trees:trees(), aetx_env:env()}.
 process(#paying_for_tx{tx = STx} = Tx, Trees, Env0) ->

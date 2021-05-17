@@ -1286,7 +1286,13 @@ ga_channel_create(Initiator, AuthOpts1, Responder, AuthOpts2, OffState, Opts, S)
     Opts1 = maps:merge(#{nonce => 0, initiator_amount => IAmnt, state_hash => SHash,
                          responder_amount => RAmnt, lock_period => 5}, maps:without([height], Opts)),
 
-    {ok, SCCreateTx} = aesc_create_tx:new(aesc_test_utils:create_tx_spec(Initiator, Responder, Opts1, S)),
+    Delegates =
+        case aect_test_utils:latest_protocol_version() >= ?IRIS_PROTOCOL_VSN of
+            true -> {[], []};
+            false -> []
+        end,
+    DefaultSpec = aesc_test_utils:create_tx_spec(Initiator, Responder, Opts1, S),
+    {ok, SCCreateTx} = aesc_create_tx:new(DefaultSpec#{delegate_ids => Delegates}),
 
     meta(Initiator, AuthOpts1, sign_tx(Responder, AuthOpts2, SCCreateTx, S), Opts, S).
 

@@ -65,7 +65,10 @@
         , sophia_list_comp/1
         , sophia_stdlib_tests/1
         , sophia_remote_identity/1
-        , sophia_vm_interaction/1
+        , fate_vm_interaction/1
+        , fate_vm_version_switching/1
+        , contract_init_on_chain_fate/1
+        , aevm_version_interaction/1
         , sophia_state/1
         , sophia_match_bug/1
         , sophia_spend/1
@@ -179,12 +182,19 @@
         , merge_new_zero_value/1
         , sophia_use_memory_gas/1
         , lima_migration/1
+        , store_single_ops/1
+        , store_multiple_random_ops/1
+        , store_onetype_random_ops/1
+        , fate_vm_cross_protocol_store_big/1
+        , fate_vm_cross_protocol_store_multi_small/1
+        , bad_aens_pointer_handling_lima_to_iris/1
         ]).
 
 -include_lib("common_test/include/ct.hrl").
 -include_lib("stdlib/include/assert.hrl").
 
 -include("../include/aecontract.hrl").
+-include("../test/include/fate_type_macros.hrl").
 -include("../../aecore/include/blocks.hrl").
 
 -include("include/aect_sophia_vsn.hrl").
@@ -211,16 +221,6 @@
 -define(CONTRACT_SERIALIZATION_VSN_ROMA,    1).
 -define(CONTRACT_SERIALIZATION_VSN_MINERVA, 2).
 -define(CONTRACT_SERIALIZATION_VSN_LIMA,    3).
-
-%% Arguments like <<_:256>> are encoded as addresses.
-%% For FATE we need to distinguish between the type of object.
-%% For test cases that is run both for FATE and AEVM, wrap args in
-%% the constructors below.
--define(cid(__X__), {'@ct', __X__}).
--define(hsh(__X__), {'#', __X__}).
--define(sig(__X__), {'$sg', __X__}).
--define(oid(__X__), {'@ok', __X__}).
--define(qid(__X__), {'@oq', __X__}).
 
 
 -define(assertMatchAEVM(Res, ExpVm1, ExpVm2, ExpVm3, ExpVm4),
@@ -265,6 +265,10 @@
 
 -define(assertMatchFATE(__ExpVm1, __ExpVm2, __Res),
     case vm_version() of
+        ?VM_AEVM_SOPHIA_1 -> ok;
+        ?VM_AEVM_SOPHIA_2 -> ok;
+        ?VM_AEVM_SOPHIA_3 -> ok;
+        ?VM_AEVM_SOPHIA_4 -> ok;
         ?VM_FATE_SOPHIA_1 -> ?assertMatch(__ExpVm1, __Res);
         ?VM_FATE_SOPHIA_2 -> ?assertMatch(__ExpVm2, __Res)
     end).
@@ -326,6 +330,8 @@ all() ->
                        , sophia_crypto_pairing
                        , sophia_auth_tx
                        , sophia_strings
+                       , {group, store_map_ops}
+                       , bad_aens_pointer_handling_lima_to_iris
                        ]).
 
 -define(FATE_TODO, [
@@ -334,9 +340,15 @@ all() ->
 groups() ->
     [ {aevm, [], ?ALL_TESTS ++ ?AEVM_SPECIFIC}
     , {fate, [], ?ALL_TESTS ++ ?FATE_SPECIFIC}
-    , {protocol_interaction, [], [ sophia_vm_interaction
+    , {protocol_interaction, [], [ aevm_version_interaction
                                  , create_contract_init_error_no_create_account
                                  ]}
+    , {protocol_interaction_fate, [], [ fate_vm_interaction
+                                      , fate_vm_version_switching
+                                      , fate_vm_cross_protocol_store_big
+                                      , fate_vm_cross_protocol_store_multi_small
+                                      , contract_init_on_chain_fate
+                                      ]}
     , {transactions, [], [ create_contract
                          , create_contract_init_error
                          , create_contract_init_error_call_wrong_function
@@ -441,6 +453,7 @@ groups() ->
                                  sophia_use_memory_gas,
                                  sophia_compiler_version,
                                  sophia_protected_call,
+                                 bad_aens_pointer_handling_lima_to_iris,
                                  lima_migration
                                ]}
     , {sophia_oracles_ttl, [],
@@ -506,6 +519,11 @@ groups() ->
                           , store_zero_value
                           , merge_new_zero_value
                           ]}
+    , {store_map_ops, [], [
+          store_single_ops
+        , store_multiple_random_ops
+        , store_onetype_random_ops
+    ]}
     ].
 
 %% For interactive use
@@ -529,6 +547,7 @@ init_tests(Release, VMName) ->
     init_per_testcase_common(interactive, Cfg).
 
 init_per_suite(Config) ->
+    aefa_fate_op:load_pre_iris_map_ordering(),
     aec_test_utils:ensure_no_mocks(),
     Config.
 
@@ -553,10 +572,30 @@ init_per_group(protocol_interaction, Cfg) ->
                      (H) when H >= IHeight -> ?IRIS_PROTOCOL_VSN
                   end,
             meck:expect(aec_hard_forks, protocol_effective_at_height, Fun),
-            [{sophia_version, ?SOPHIA_MINERVA}, {vm_version, ?VM_AEVM_SOPHIA_2},
-             {fork_heights, #{ minerva => MHeight,
+            [{fork_heights, #{ minerva => MHeight,
                                fortuna => FHeight,
                                lima    => LHeight,
+                               iris    => IHeight
+                             }},
+             {abi_version, ?ABI_AEVM_SOPHIA_1},
+             {protocol, iris} | Cfg];
+        _ ->
+            {skip, only_test_protocol_interaction_on_latest_protocol}
+    end;
+init_per_group(protocol_interaction_fate, Cfg) ->
+    case aect_test_utils:latest_protocol_version() of
+        ?IRIS_PROTOCOL_VSN ->
+            LHeight = 20,
+            IHeight = 25,
+            Fun = fun(H) when H <  LHeight -> ?FORTUNA_PROTOCOL_VSN;
+                (H) when H <  IHeight -> ?LIMA_PROTOCOL_VSN;
+                (H) when H >= IHeight -> ?IRIS_PROTOCOL_VSN
+                  end,
+            meck:expect(aec_hard_forks, protocol_effective_at_height, Fun),
+            [{sophia_version, ?SOPHIA_IRIS_FATE},
+             {vm_version, ?VM_FATE_SOPHIA_2},
+             {abi_version, ?ABI_FATE_SOPHIA_1},
+             {fork_heights, #{ lima    => LHeight,
                                iris    => IHeight
                              }},
              {protocol, iris} | Cfg];
@@ -578,10 +617,17 @@ init_per_group(Group, Cfg) ->
 end_per_group(protocol_interaction, Cfg) ->
     meck:unload(aec_hard_forks),
     Cfg;
+end_per_group(protocol_interaction_fate, Cfg) ->
+    meck:unload(aec_hard_forks),
+    Cfg;
 end_per_group(_Grp, Cfg) ->
     Cfg.
 
 %% Process dict magic in the right process ;-)
+init_per_testcase(TC, Config) when TC == aevm_version_interaction;
+                                   TC == create_contract_init_error_no_create_account ->
+    Config1 = [{sophia_version, ?SOPHIA_MINERVA}, {vm_version, ?VM_AEVM_SOPHIA_2} | Config],
+    init_per_testcase_common(TC, Config1);
 init_per_testcase(fate_environment, Config) ->
     meck:new(aefa_chain_api, [passthrough]),
     meck:expect(aefa_chain_api, blockhash,
@@ -613,6 +659,23 @@ init_per_testcase(TC, Config) when TC == sophia_auth_tx;
     case ProtocolVsn >= ?IRIS_PROTOCOL_VSN of
         true  -> init_per_testcase_common(TC, Config);
         false -> {skip, {requires_protocol, iris, TC}}
+    end;
+init_per_testcase(TC = bad_aens_pointer_handling_lima_to_iris, Config) ->
+    case aect_test_utils:latest_protocol_version() of
+        ?IRIS_PROTOCOL_VSN ->
+            IHeight = 25,
+            Fun = fun(H) when H <  IHeight -> ?LIMA_PROTOCOL_VSN;
+                     (H) when H >= IHeight -> ?IRIS_PROTOCOL_VSN
+                  end,
+            meck:expect(aec_hard_forks, protocol_effective_at_height, Fun),
+            meck:expect(aec_governance, name_claim_bid_timeout, fun(_, _) -> 0 end),
+            Config1 =
+                [{sophia_version, ?SOPHIA_IRIS_FATE}, {vm_version, ?VM_FATE_SOPHIA_2},
+                 {fork_heights, #{ iris    => IHeight }},
+                 {protocol, iris} | Config],
+            init_per_testcase_common(TC, Config1);
+        _ ->
+            {skip, only_test_bad_aens_poiner_handling_in_iris}
     end;
 
 init_per_testcase(TC, Config) ->
@@ -661,6 +724,10 @@ end_per_testcase(TC, _Config) when TC == sophia_aens_resolve;
                                    TC == sophia_aens_transactions;
                                    TC == sophia_aens_update_transaction ->
     meck:unload(aec_governance),
+    ok;
+end_per_testcase(bad_aens_pointer_handling_lima_to_iris, _Config) ->
+    meck:unload(aec_governance),
+    meck:unload(aec_hard_forks),
     ok;
 end_per_testcase(_TC, _Config) ->
     ok.
@@ -1351,7 +1418,7 @@ state_tree(_Cfg) ->
     Call1 = ?call(get_call, Ct1, Call1),
     Call2 = ?call(get_call, Ct1, Call2),
     Ct1   = ?call(get_contract, Ct1),
-    <<"Code for C1">> = aect_contracts:code(Ct1),
+    {code, <<"Code for C1">>} = aect_contracts:code(Ct1),
     ok.
 
 %%%===================================================================
@@ -1526,7 +1593,7 @@ call_result(?ABI_FATE_SOPHIA_1, Type, Call) ->
     case aect_call:return_type(Call) of
         ok     ->
             Res = aeb_fate_encoding:deserialize(aect_call:return_value(Call)),
-            case aefate_test_utils:decode(Res, Type) of
+            case aefa_test_utils:decode(Res, Type) of
                 {variant, [0,1], 0, {}} when element(1, Type) =:= option ->
                     none;
                 {variant, [0,1], 1, {Decoded}} when element(1, Type) =:= option ->
@@ -1538,7 +1605,7 @@ call_result(?ABI_FATE_SOPHIA_1, Type, Call) ->
             {error, aect_call:return_value(Call)};
         revert ->
             Res = aeb_fate_encoding:deserialize(aect_call:return_value(Call)),
-            {revert, aefate_test_utils:decode(Res)}
+            {revert, aefa_test_utils:decode(Res)}
     end.
 
 account_balance(PubKey, S) ->
@@ -1559,21 +1626,13 @@ make_calldata_from_code(Code, Fun, Args) when is_binary(Fun) ->
                     aeb_heap:to_binary({FunHashInt, Args1});
                 {error, _} = Err -> error({bad_function, Fun, Err})
             end;
-        ?ABI_FATE_SOPHIA_1 ->
-            %% TODO: Move this into aefa_fate
-            Args1 = format_fate_args(if is_tuple(Args) -> Args;
-                                        true -> {Args}
-                                     end),
-            FunctionId = make_fate_function_id(Fun),
-            aeb_fate_encoding:serialize(aefate_test_utils:encode({FunctionId, Args1}))
+        ?ABI_FATE_SOPHIA_1 -> aefa_test_utils:make_calldata(Fun, Args)
     end.
-
-make_fate_function_id(FunctionName) when is_binary(FunctionName) ->
-    aeb_fate_code:symbol_identifier(FunctionName).
 
 make_calldata_from_id(Id, Fun, Args, State) ->
     {{value, C}, _S} = lookup_contract_by_id(Id, State),
-    make_calldata_from_code(aect_contracts:code(C), Fun, Args).
+    {code, Code} = aect_contracts:code(C),
+    make_calldata_from_code(Code, Fun, Args).
 
 format_aevm_type({bytes, N}) ->
     case lists:seq(1, N, 32) of
@@ -1613,28 +1672,6 @@ to_words(Bin) ->
     Padded = <<Bin/binary, 0:(PadN - N)/unit:8>>,
     [ W || <<W:32/unit:8>> <= Padded ].
 
-format_fate_args(?cid(B)) ->
-    {contract, B};
-format_fate_args(?hsh(B)) ->
-    {bytes, B};
-format_fate_args(?sig(B)) ->
-    {bytes, B};
-format_fate_args(?oid(B)) ->
-    {oracle, B};
-format_fate_args(?qid(B)) ->
-    {oracle_query, B};
-format_fate_args(<<_:256>> = B) ->
-    {address, B}; %% Assume it is an address
-format_fate_args({bytes, B}) ->
-    {bytes, B};
-format_fate_args([H|T]) ->
-    [format_fate_args(H) | format_fate_args(T)];
-format_fate_args(T) when is_tuple(T) ->
-    list_to_tuple(format_fate_args(tuple_to_list(T)));
-format_fate_args(M) when is_map(M) ->
-    maps:from_list(format_fate_args(maps:to_list(M)));
-format_fate_args(X) ->
-    X.
 
 sophia_list_comp(_Cfg) ->
     ?skipRest(sophia_version() =< ?SOPHIA_FORTUNA, no_list_comprehensions_in_fortuna),
@@ -1962,7 +1999,7 @@ sophia_auth_tx(_Cfg) ->
     ok.
 
 
-sophia_vm_interaction(Cfg) ->
+aevm_version_interaction(Cfg) ->
     state(aect_test_utils:new_state()),
     ForkHeights   = ?config(fork_heights, Cfg),
     RomaHeight    = maps:get(minerva, ForkHeights) - 1,
@@ -2007,8 +2044,8 @@ sophia_vm_interaction(Cfg) ->
     RemCFortuna = ?call(create_contract_with_code, Acc, RemCode, {}, FortunaSpec),
     IdCLima     = ?call(create_contract_with_code, Acc, IdCode2, {}, LimaSpec),
     RemCLima    = ?call(create_contract_with_code, Acc, RemCode2, {}, LimaSpec),
-    IdCIris     = ?call(create_contract_with_code, Acc, IdCode2, {}, IrisSpec),
-    RemCIris    = ?call(create_contract_with_code, Acc, RemCode2, {}, IrisSpec),
+    {error, illegal_vm_version} = ?call(tx_fail_create_contract_with_code, Acc, IdCode2, {}, IrisSpec),
+    {error, illegal_vm_version} = ?call(tx_fail_create_contract_with_code, Acc, RemCode2, {}, IrisSpec),
 
     %% Check that we cannot create contracts with old vms after the forks
     BadSpec1   = RomaSpec#{height => MinervaHeight},
@@ -2017,8 +2054,8 @@ sophia_vm_interaction(Cfg) ->
     {error, illegal_vm_version} = ?call(tx_fail_create_contract_with_code, Acc, IdCode, {}, BadSpec2),
     BadSpec3   = MinervaSpec#{height => LimaHeight},
     {error, illegal_vm_version} = ?call(tx_fail_create_contract_with_code, Acc, IdCode, {}, BadSpec3),
-    %% BadSpec4   = LimaSpec#{height => IrisHeight},
-    %% {error, illegal_vm_version} = ?call(tx_fail_create_contract_with_code, Acc, IdCode, {}, BadSpec4),
+    BadSpec4   = LimaSpec#{height => IrisHeight},
+    {error, illegal_vm_version} = ?call(tx_fail_create_contract_with_code, Acc, IdCode, {}, BadSpec4),
 
     LatestCallSpec = #{height => IrisHeight,
                        gas_price => MinGasPrice,
@@ -2039,17 +2076,12 @@ sophia_vm_interaction(Cfg) ->
                      , {RemCMinerva, IdCRoma}
                      , {RemCFortuna, IdCRoma}
                      , {RemCLima,    IdCRoma}
-                     , {RemCIris,    IdCRoma}
                      , {RemCMinerva, IdCMinerva}
                      , {RemCFortuna, IdCMinerva}
                      , {RemCLima,    IdCMinerva}
-                     , {RemCIris,    IdCMinerva}
                      , {RemCFortuna, IdCFortuna}
                      , {RemCLima,    IdCFortuna}
-                     , {RemCIris,    IdCFortuna}
                      , {RemCLima,    IdCLima}
-                     , {RemCIris,    IdCLima}
-                     , {RemCIris,    IdCIris}
                      ]],
 
     %% Call newVM -> oldVM -> oldVM
@@ -2058,13 +2090,9 @@ sophia_vm_interaction(Cfg) ->
      || {Rem1, Id, Rem2} <- [ {RemCMinerva, IdCRoma, RemCRoma}
                             , {RemCFortuna, IdCRoma, RemCRoma}
                             , {RemCLima,    IdCRoma, RemCRoma}
-                            , {RemCIris,    IdCRoma, RemCRoma}
                             , {RemCFortuna, IdCMinerva, RemCMinerva}
                             , {RemCLima,    IdCMinerva, RemCMinerva}
-                            , {RemCIris,    IdCMinerva, RemCMinerva}
                             , {RemCLima,    IdCFortuna, RemCFortuna}
-                            , {RemCIris,    IdCFortuna, RemCFortuna}
-                            , {RemCIris,    IdCLima, RemCLima}
                             ]],
 
     %% Fail calling oldVM -> newVM
@@ -2073,13 +2101,9 @@ sophia_vm_interaction(Cfg) ->
      || {Rem, Id} <- [ {RemCRoma, IdCMinerva}
                      , {RemCRoma, IdCFortuna}
                      , {RemCRoma, IdCLima}
-                     , {RemCRoma, IdCIris}
                      , {RemCMinerva, IdCFortuna}
                      , {RemCMinerva, IdCLima}
-                     , {RemCMinerva, IdCIris}
                      , {RemCFortuna, IdCLima}
-                     , {RemCFortuna, IdCIris}
-                     %% , {RemCLima, IdCIris}
                     ]],
     ok.
 
@@ -5115,7 +5139,7 @@ sophia_crypto(_Cfg) ->
     String = <<"12345678901234567890123456789012-andsomemore">>,
     Data   = [{none, <<"foo">>}, {{some, 100432}, String}],
     Bin    = ?IF_AEVM(aeb_heap:to_binary(Data),
-                      aeb_fate_encoding:serialize(aefate_test_utils:encode(Data))),
+                      aeb_fate_encoding:serialize(aefa_test_utils:encode(Data))),
 
     <<Sha3_N:256>>      = Sha3      = aec_hash:hash(evm, Bin),
     <<Sha256_N:256>>    = Sha256    = aec_hash:sha256_hash(Bin),
@@ -5498,7 +5522,8 @@ sophia_compiler_version(_Cfg) ->
     Acc = ?call(new_account, 10000000 * aec_test_utils:min_gas_price()),
     IdC = ?call(create_contract, Acc, identity, {}, #{}),
     {value, C} = ?call(lookup_contract_by_id, IdC),
-    CMap = aeser_contract_code:deserialize(aect_contracts:code(C)),
+    {code, Code} = aect_contracts:code(C),
+    CMap = aeser_contract_code:deserialize(Code),
     ?assertMatchProtocol(maps:get(compiler_version, CMap, undefined),
                          undefined, <<"2.1.0">>, <<"3.2.0">>, <<"unknown">>, <<"4.3.0">>),
     ok.
@@ -6038,7 +6063,7 @@ sophia_aens_resolve(Cfg) ->
     APubkey  = 1,
     OPubkey  = 2,
     CPubkey  = 3,
-    %% TODO: Improve checks in aens_unpdate_tx
+    %% TODO: Improve checks in aens_update_tx
     Pointers = [aens_pointer:new(<<"account_pubkey">>, aeser_id:create(account, <<APubkey:256>>)),
                 aens_pointer:new(<<"oracle_pubkey">>, aeser_id:create(oracle, <<OPubkey:256>>)),
                 aens_pointer:new(<<"contract_pubkey">>, aeser_id:create(contract, <<CPubkey:256>>))
@@ -6261,6 +6286,69 @@ sophia_aens_update_transaction(_Cfg) ->
         ?call(call_contract, Acc, Ct, update, {tuple, []},
               {Ct, Name1, None, None, Some([1, 2, 3])},
               #{ height => 18 }),
+
+    ok.
+
+bad_aens_pointer_handling_lima_to_iris(Cfg) ->
+    IrisHeight = maps:get(iris, ?config(fork_heights, Cfg)),
+
+    state(aect_test_utils:new_state()),
+    Acc      = ?call(new_account, 40000000000000 * aec_test_utils:min_gas_price()),
+
+    Name1    = aens_test_utils:fullname(<<"foo">>),
+    Name2    = aens_test_utils:fullname(<<"bar">>),
+    Name3    = aens_test_utils:fullname(<<"baz">>),
+
+    NameFee  = aec_governance:name_claim_fee(Name1, ?config(protocol, Cfg)),
+    Salt1    = ?call(aens_preclaim, Acc, Name1),
+    Salt2    = ?call(aens_preclaim, Acc, Name2),
+    Salt3    = ?call(aens_preclaim, Acc, Name3),
+
+    Hash1    = ?call(aens_claim, Acc, Name1, Salt1, NameFee),
+    Hash2    = ?call(aens_claim, Acc, Name2, Salt2, NameFee),
+    Hash3    = ?call(aens_claim, Acc, Name3, Salt3, NameFee),
+
+    BadPts1  = [aens_pointer:new(<<1:(8*257)>>, aeser_id:create(account, <<1:256>>))],
+    BadPts2  = [aens_pointer:new(<<N:128>>, aeser_id:create(account, <<1:256>>)) || N <- lists:seq(1, 33) ],
+    BadPts3  = [aens_pointer:new(<<1:128>>, aeser_id:create(account, <<N:256>>)) || N <- lists:seq(1, 2) ],
+
+    ok       = ?call(aens_update, Acc, Hash1, BadPts1),
+    ok       = ?call(aens_update, Acc, Hash2, BadPts2),
+    ok       = ?call(aens_update, Acc, Hash3, BadPts3),
+
+    %% Now contract!
+    Ct       = ?call(create_contract, Acc, aens, {},
+                     #{ height => IrisHeight, amount => 20000000000000 * aec_test_utils:min_gas_price() }),
+
+    NameSig1 = sign(<<Acc/binary, Hash1/binary, Ct/binary>>, Acc),
+    NameSig2 = sign(<<Acc/binary, Hash2/binary, Ct/binary>>, Acc),
+    NameSig3 = sign(<<Acc/binary, Hash3/binary, Ct/binary>>, Acc),
+
+    GetNameRecord   = fun (NH) ->
+                              NSTree = aec_trees:ns(aect_test_utils:trees(state())),
+                              {value, Rec} = aens_state_tree:lookup_name(NH, NSTree),
+                              Rec
+                      end,
+
+    %% First check that we can still resolve the bad keys!
+    {some, {address, 1}} = ?call(call_contract, Acc, Ct, resolve_account, {option, word}, {Name1, <<1:(8*257)>>}, #{height => IrisHeight}),
+    {some, {address, 1}} = ?call(call_contract, Acc, Ct, resolve_account, {option, word}, {Name2, <<33:128>>}, #{height => IrisHeight}),
+    {some, {address, 1}} = ?call(call_contract, Acc, Ct, resolve_account, {option, word}, {Name3, <<1:128>>}, #{height => IrisHeight}),
+
+    %% Now try to update the pointers, just re-setting them (none) should be good enough...
+    {} = ?call(call_contract, Acc, Ct, signedUpdate, {tuple, []}, {Acc, Name1, none, none, none, NameSig1}, #{height => IrisHeight}),
+    {} = ?call(call_contract, Acc, Ct, signedUpdate, {tuple, []}, {Acc, Name2, none, none, none, NameSig2}, #{height => IrisHeight}),
+    {} = ?call(call_contract, Acc, Ct, signedUpdate, {tuple, []}, {Acc, Name3, none, none, none, NameSig3}, #{height => IrisHeight}),
+
+    %% Now check that we can't resolve the bad keys!
+    none = ?call(call_contract, Acc, Ct, resolve_account, {option, word}, {Name1, <<1:(8*257)>>}, #{height => IrisHeight}),
+    none = ?call(call_contract, Acc, Ct, resolve_account, {option, word}, {Name2, <<33:128>>}, #{height => IrisHeight}),
+    %% So the duplicate wasn't bad... It is still there :-)
+    {some, {address, 1}} = ?call(call_contract, Acc, Ct, resolve_account, {option, word}, {Name3, <<1:128>>}, #{height => IrisHeight}),
+
+    %% Double check the duplicate key is no longer there...
+    Rec3 = GetNameRecord(Hash3),
+    ?assertEqual(length(aens_names:pointers(Rec3)), 1),
 
     ok.
 
@@ -6591,9 +6679,174 @@ lima_migration(_Config) ->
     ok.
 
 
+fate_vm_interaction(Cfg) ->
+    state(aect_test_utils:new_state()),
+    ForkHeights = ?config(fork_heights, Cfg),
+    LimaHeight = maps:get(lima, ForkHeights),
+    IrisHeight = maps:get(iris, ForkHeights),
+    Protocol = aec_hard_forks:protocol_effective_at_height(LimaHeight),
+    GasPrice = aec_governance:minimum_gas_price(Protocol),
+    MinerMinGasPrice = aec_tx_pool:minimum_miner_gas_price(),
+    MinGasPrice = max(GasPrice, MinerMinGasPrice),
+    Acc = ?call(new_account, 10000000000 * MinGasPrice),
+    LimaSpec = #{height => LimaHeight,
+                 vm_version => ?VM_FATE_SOPHIA_1,
+                 amount => 100,
+                 gas_price => MinGasPrice,
+                 fee => 1000000 * MinGasPrice},
+    IrisSpec = #{height => IrisHeight,
+                 vm_version => ?VM_FATE_SOPHIA_2,
+                 amount => 100,
+                 gas_price => MinGasPrice,
+                 fee => 1000000 * MinGasPrice},
+    {ok, IdCode}  = compile_contract(identity),
+    {ok, RemCode} = compile_contract(remote_call),
+
+    %% Create contracts on both sides of the fork
+    IdCLima   = ?call(create_contract_with_code, Acc, IdCode, {}, LimaSpec),
+    RemCLima  = ?call(create_contract_with_code, Acc, RemCode, {}, LimaSpec),
+    Rem2CLima = ?call(create_contract_with_code, Acc, RemCode, {}, LimaSpec),
+    IdCIris   = ?call(create_contract_with_code, Acc, IdCode, {}, IrisSpec),
+    RemCIris  = ?call(create_contract_with_code, Acc, RemCode, {}, IrisSpec),
+    Rem2CIris = ?call(create_contract_with_code, Acc, RemCode, {}, IrisSpec),
+
+    %% Check that we cannot create contracts with old vms after the forks
+    BadSpec = LimaSpec#{height => IrisHeight},
+    {error, illegal_vm_version} = ?call(tx_fail_create_contract_with_code, Acc, IdCode, {}, BadSpec),
+
+    LatestCallSpec = #{height => IrisHeight,
+                       gas_price => MinGasPrice,
+                       fee => 1000000 * MinGasPrice},
+
+    %% Call directly old VMs
+    [?assertEqual(42, ?call(call_contract, Acc, Id, main, word, 42, LatestCallSpec))
+        || Id <- [ IdCLima
+                 , IdCIris
+                 ]],
+
+    %% Call new/oldVM -> old/newVM
+    [?assertEqual(98, ?call(call_contract, Acc, Rem, call, word, {?cid(Id), 98},
+        LatestCallSpec))
+        || {Rem, Id} <- [ {RemCLima, IdCLima}
+                        , {RemCIris, IdCLima}
+                        , {RemCLima, IdCIris}
+                        , {RemCIris, IdCIris}
+                        ]],
+
+    %% Call new/oldVM -> new/oldVM -> new/oldVM in different orders
+    [?assertEqual(77, ?call(call_contract, Acc, Rem1, staged_call, word,
+        {?cid(Id), ?cid(Rem2), 77}, LatestCallSpec))
+        || {Rem1, Id, Rem2} <- [ {RemCIris, IdCIris, Rem2CLima}
+                               , {RemCIris, IdCIris, Rem2CIris}
+                               , {RemCIris, IdCLima, Rem2CIris}
+                               , {RemCIris, IdCLima, Rem2CLima}
+                               , {RemCLima, IdCIris, Rem2CLima}
+                               , {RemCLima, IdCIris, Rem2CIris}
+                               , {RemCLima, IdCLima, Rem2CLima}
+                               , {RemCLima, IdCLima, Rem2CIris}
+                               ]],
+    ok.
 
 
+fate_vm_version_switching(Cfg) ->
+    state(aect_test_utils:new_state()),
+    ForkHeights = ?config(fork_heights, Cfg),
+    LimaHeight = maps:get(lima, ForkHeights),
+    IrisHeight = maps:get(iris, ForkHeights),
+    Protocol = aec_hard_forks:protocol_effective_at_height(LimaHeight),
+    GasPrice = aec_governance:minimum_gas_price(Protocol),
+    MinerMinGasPrice = aec_tx_pool:minimum_miner_gas_price(),
+    MinGasPrice = max(GasPrice, MinerMinGasPrice),
+    Acc = ?call(new_account, 10000000000 * MinGasPrice),
+    LimaSpec = #{height => LimaHeight,
+                 vm_version => ?VM_FATE_SOPHIA_1,
+                 amount => 100,
+                 gas_price => MinGasPrice,
+                 fee => 1000000 * MinGasPrice},
+    IrisSpec = #{height => IrisHeight,
+                 vm_version => ?VM_FATE_SOPHIA_2,
+                 amount => 100,
+                 gas_price => MinGasPrice,
+                 fee => 1000000 * MinGasPrice},
+    {ok, DetectorContract} = compile_contract(vm_detector),
+    {ok, _RemCode} = compile_contract(remote_call),
 
+    %% Create contracts on both sides of the fork
+    DetC1Lima = ?call(create_contract_with_code, Acc, DetectorContract, {}, LimaSpec),
+    DetC2Lima = ?call(create_contract_with_code, Acc, DetectorContract, {}, LimaSpec),
+    DetC3Lima = ?call(create_contract_with_code, Acc, DetectorContract, {}, LimaSpec),
+    DetC1Iris = ?call(create_contract_with_code, Acc, DetectorContract, {}, IrisSpec),
+    DetC2Iris = ?call(create_contract_with_code, Acc, DetectorContract, {}, IrisSpec),
+    DetC3Iris = ?call(create_contract_with_code, Acc, DetectorContract, {}, IrisSpec),
+
+    LatestCallSpec = #{height => IrisHeight,
+                       gas_price => MinGasPrice,
+                       fee => 1000000 * MinGasPrice},
+
+    %% Call directly old VMs
+    ?assertEqual(1, ?call(call_contract, Acc, DetC1Lima, detect, word, {}, LatestCallSpec)),
+    ?assertEqual(2, ?call(call_contract, Acc, DetC1Iris, detect, word, {}, LatestCallSpec)),
+    %% Call new/oldVM -> old/newVM
+    [?assertEqual({V1, V2}, ?call(call_contract, Acc, Det1, Func, {tuple, [word, word]}, {?cid(Det2)},
+        LatestCallSpec))
+        || {Det1, V1} <- [{DetC1Lima, 1}, {DetC1Iris, 2}]
+        ,  {Det2, V2} <- [{DetC2Lima, 1}, {DetC2Iris, 2}]
+        ,  Func <- [call_detect, detect_call]
+    ],
+
+    %% Call new/oldVM -> new/oldVM -> new/oldVM in different orders
+    [?assertEqual({V1, V2, V3}, ?call(call_contract, Acc, Det1, Func, {tuple, [word, word, word]}, {?cid(Det2), ?cid(Det3)},
+                                  LatestCallSpec))
+     || {Det1, V1} <- [{DetC1Lima, 1}, {DetC1Iris, 2}]
+     ,  {Det2, V2} <- [{DetC2Lima, 1}, {DetC2Iris, 2}]
+     ,  {Det3, V3} <- [{DetC3Lima, 1}, {DetC3Iris, 2}]
+     ,  Func <- [call_call_detect, detect_call_call]
+    ],
+    ok.
+
+
+contract_init_on_chain_fate(Cfg) ->
+    state(aect_test_utils:new_state()),
+    ForkHeights = ?config(fork_heights, Cfg),
+    LimaHeight = maps:get(lima, ForkHeights),
+    IrisHeight = maps:get(iris, ForkHeights),
+    Protocol = aec_hard_forks:protocol_effective_at_height(LimaHeight),
+    GasPrice = aec_governance:minimum_gas_price(Protocol),
+    MinerMinGasPrice = aec_tx_pool:minimum_miner_gas_price(),
+    MinGasPrice = max(GasPrice, MinerMinGasPrice),
+    Acc = ?call(new_account, 10000000000 * MinGasPrice),
+    LimaSpec = #{height => LimaHeight,
+                 vm_version => ?VM_FATE_SOPHIA_1,
+                 amount => 100,
+                 gas_price => MinGasPrice,
+                 fee => 1000000 * MinGasPrice},
+    IrisSpec = #{height => IrisHeight,
+                 vm_version => ?VM_FATE_SOPHIA_2,
+                 amount => 100,
+                 gas_price => MinGasPrice,
+                 fee => 1000000 * MinGasPrice},
+    {ok, IdCode} = compile_contract(identity),
+
+    GetFunctionsOnHardFork =
+        fun(CallSpec) ->
+            Id = ?call(create_contract_with_code, Acc, IdCode, {}, CallSpec),
+            {value, Contract} = ?call(lookup_contract_by_id, Id),
+            aeb_fate_code:functions(
+                aeb_fate_code:deserialize(
+                    aect_contracts:code(Contract)))
+        end,
+
+    HasInit =
+        fun(Functions) ->
+            InitIdentifier = aeb_fate_code:symbol_identifier(<<"init">>),
+            maps:is_key(InitIdentifier, Functions)
+        end,
+
+    FunctionsLima = GetFunctionsOnHardFork(LimaSpec),
+    ?assertEqual(false, HasInit(FunctionsLima)),
+    FunctionsIris = GetFunctionsOnHardFork(IrisSpec),
+    ?assertEqual(true, HasInit(FunctionsIris)),
+    ok.
 
 %%%===================================================================
 %%% Store
@@ -6675,6 +6928,267 @@ merge_new_zero_value(_Cfg) ->
 enter_contract(Contract, S) ->
     Contracts = aect_state_tree:enter_contract(Contract, aect_test_utils:contracts(S)),
     {Contract, aect_test_utils:set_contracts(Contracts, S)}.
+
+
+%%%===================================================================
+%%% Store randomized map tests
+%%%===================================================================
+
+%%%%%%%%%%%%%%
+%% Test Utils
+%%%%%%%%%%%%%%
+store_rand_initial_state({DimX, DimY, DimZ}) ->
+    maps:from_list(
+        [{X,
+          maps:from_list(
+              [{Y,
+                maps:from_list(
+                    [{Z,Z+10*(Y+10*X)}
+                     || Z <- lists:seq(1,DimZ)])
+               } || Y <- lists:seq(1,DimY)])
+         } || X <- lists:seq(1,DimX)]).
+
+store_rand_hash({DimX, DimY, DimZ}, M) ->
+    P_z = 100003,
+    P_mod = 200000000041,
+    M_x = 41850756719,
+    M_y = 74482681767,
+    lists:foldl(
+        fun(X, AccX) -> (AccX*M_x + lists:foldl(
+            fun(Y, AccY) -> (AccY*M_y + lists:foldl(
+                fun(Z, AccZ) -> (AccZ*P_z + maps:get(Z,maps:get(Y, maps:get(X, M)))) rem P_mod end,
+                0,
+                lists:seq(1,DimZ)
+            )) rem P_mod end,
+            0,
+            lists:seq(1,DimY)
+        )) rem P_mod end,
+        0,
+        lists:seq(1,DimX)
+    ).
+
+store_rand_do_op({swap1, {X1, X2}}, M) ->
+    M1=maps:put(X1, maps:get(X2, M), M),
+    maps:put(X2, maps:get(X1, M), M1);
+store_rand_do_op({swap2, {X1, Y1, X2, Y2}}, M) ->
+    M1=maps:put(X1, maps:put(Y1, maps:get(Y2, maps:get(X2, M)), maps:get(X1, M)), M),
+    maps:put(X2, maps:put(Y2, maps:get(Y1, maps:get(X1, M)), maps:get(X2, M1)), M1);
+store_rand_do_op({write, {X, Y, Z, Val}}, M) ->
+    maps:put(X, maps:put(Y, maps:put(Z, Val, maps:get(Y, maps:get(X, M))), maps:get(X, M)), M);
+store_rand_do_op({copy1, {X1, X2}}, M) ->
+    maps:put(X1, maps:get(X2, M), M);
+store_rand_do_op({copy2, {X1, Y1, X2, Y2}}, M) ->
+    maps:put(X1, maps:put(Y1, maps:get(Y2, maps:get(X2, M)), maps:get(X1, M)), M).
+
+store_rand_random_write({DimX, DimY, DimZ}) ->
+    {write, {rand:uniform(DimX), rand:uniform(DimY), rand:uniform(DimZ), rand:uniform(10000)}}.
+
+store_rand_random_op({DimX, DimY, _DimZ} = Dim) ->
+    case rand:uniform(5) of
+        1 -> {swap1, {rand:uniform(DimX), rand:uniform(DimX)}};
+        2 -> {swap2, {rand:uniform(DimX), rand:uniform(DimY), rand:uniform(DimX), rand:uniform(DimY)}};
+        3 -> store_rand_random_write(Dim);
+        4 -> {copy1, {rand:uniform(DimX), rand:uniform(DimX)}};
+        5 -> {copy2, {rand:uniform(DimX), rand:uniform(DimY), rand:uniform(DimX), rand:uniform(DimY)}}
+    end.
+
+store_rand_random_swap2({DimX, DimY, _DimZ}) ->
+    {swap2, {rand:uniform(DimX), rand:uniform(DimY), rand:uniform(DimX), rand:uniform(DimY)}}.
+
+store_rand_encode({T,V}) ->
+    Arrities = [2,4,4,2,4],
+    {variant, Arrities, case T of
+                            swap1 -> 0;
+                            swap2 -> 1;
+                            write -> 2;
+                            copy1 -> 3;
+                            copy2 -> 4
+                        end, V}.
+
+store_rand_exe_oplist(Ops, State, Dim, Tester, Acc, Spec) ->
+    State2 = lists:foldl(fun(X, AccX) -> store_rand_do_op(X, AccX) end, State, Ops),
+    ?assertEqual({}, ?call(call_contract, Acc, Tester, do_op_list, {tuple, []},
+    {lists:map(fun(X) -> store_rand_encode(X) end, Ops)}, Spec)),
+    ?assertEqual(store_rand_hash(Dim, State2), ?call(call_contract, Acc, Tester, getHash, word, {}, Spec)),
+    State2.
+
+%%%%%%%%%%%%%%%%
+%% Actual Tests
+%%%%%%%%%%%%%%%%
+
+store_single_ops(_Cfg) ->
+    state(aect_test_utils:new_state()),
+    Dim={5,5,5},
+    InitialState = store_rand_initial_state(Dim),
+    Acc = ?call(new_account, 1000000000000000000000000000000000000000 * aec_test_utils:min_gas_price()),
+    Spec = #{gas => 10000000000},
+    {ok, TesterContract} = compile_contract(storage_tester),
+    Tester = ?call(create_contract_with_code, Acc, TesterContract, {}, Spec),
+
+    %% Check initial hash
+    ?assertEqual(133682544366, store_rand_hash(Dim, InitialState)),
+    ?assertEqual(133682544366, ?call(call_contract, Acc, Tester, getHash, word, {}, Spec)),
+
+    TestOp = fun(Op, State) ->
+        State2 = store_rand_do_op(Op,State),
+        ?assertEqual({}, ?call(call_contract, Acc, Tester, do_op, {tuple, []}, {store_rand_encode(Op)}, Spec)),
+        ?assertEqual(store_rand_hash(Dim, State2), ?call(call_contract, Acc, Tester, getHash, word, {}, Spec)),
+        State2
+    end,
+
+    lists:foldl(TestOp,InitialState,
+        [
+            {swap1, {1, 2}},
+            {swap2, {1, 2, 3, 4}},
+            {swap2, {1, 2, 1, 5}},
+            {write, {1, 2, 3, 1337}},
+            {copy1, {2, 5}},
+            {copy2, {3, 1, 4, 1}},
+            {copy2, {3, 2, 3, 5}}
+        ]),
+    ok.
+
+
+store_multiple_random_ops(_Cfg) ->
+    state(aect_test_utils:new_state()),
+    Dim={5,5,5},
+    InitialState = store_rand_initial_state(Dim),
+    Acc           = ?call(new_account, 1000000000000000000000000000000000000000 * aec_test_utils:min_gas_price()),
+    Spec      = #{gas => 10000000000},
+    {ok, TesterContract} = compile_contract(storage_tester),
+
+    %% Create contracts on both sides of the fork
+    Tester = ?call(create_contract_with_code, Acc, TesterContract, {}, Spec),
+
+    %% Check initial hash
+    ?assertEqual(133682544366, store_rand_hash(Dim, InitialState)),
+    ?assertEqual(133682544366, ?call(call_contract, Acc, Tester, getHash, word, {}, Spec)),
+
+    TestOps = fun(Ops, State) -> store_rand_exe_oplist(Ops, State, Dim, Tester, Acc, Spec) end,
+
+    State2 = lists:foldl(
+        fun(_, State) -> TestOps([store_rand_random_op(Dim) || _ <- lists:seq(1,2)], State) end,
+        InitialState,
+        lists:seq(1,50)
+    ),
+    State3 = lists:foldl(
+        fun(_, State) -> TestOps([store_rand_random_op(Dim) || _ <- lists:seq(1,5)], State) end,
+        State2,
+        lists:seq(1,50)
+    ),
+    lists:foldl(
+        fun(_, State) -> TestOps([store_rand_random_op(Dim) || _ <- lists:seq(1,20)], State) end,
+        State3,
+        lists:seq(1,50)
+    ),
+    ok.
+
+
+store_onetype_random_ops(_Cfg) ->
+    state(aect_test_utils:new_state()),
+    Dim={5,5,5},
+    InitialState = store_rand_initial_state(Dim),
+    Acc = ?call(new_account, 1000000000000000000000000000000000000000 * aec_test_utils:min_gas_price()),
+    Spec = #{gas => 10000000000},
+    {ok, TesterContract} = compile_contract(storage_tester),
+    Tester = ?call(create_contract_with_code, Acc, TesterContract, {}, Spec),
+
+    %% Check initial hash
+    ?assertEqual(133682544366, store_rand_hash(Dim, InitialState)),
+    ?assertEqual(133682544366, ?call(call_contract, Acc, Tester, getHash, word, {}, Spec)),
+
+    TestOps = fun(Ops, State) -> store_rand_exe_oplist(Ops, State, Dim, Tester, Acc, Spec) end,
+
+    State2 = lists:foldl(
+        fun(_, State) -> TestOps([store_rand_random_swap2(Dim) || _ <- lists:seq(1,2)], State) end,
+        InitialState,
+        lists:seq(1,50)
+    ),
+    State3 = lists:foldl(
+        fun(_, State) -> TestOps([store_rand_random_swap2(Dim) || _ <- lists:seq(1,5)], State) end,
+        State2,
+        lists:seq(1,50)
+    ),
+    State4 = lists:foldl(
+        fun(_, State) -> TestOps([store_rand_random_swap2(Dim) || _ <- lists:seq(1,20)], State) end,
+        State3,
+        lists:seq(1,50)
+    ),
+    State5 = lists:foldl(
+        fun(_, State) -> TestOps([store_rand_random_write(Dim) || _ <- lists:seq(1,2)], State) end,
+        State4,
+        lists:seq(1,50)
+    ),
+    State6 = lists:foldl(
+        fun(_, State) -> TestOps([store_rand_random_write(Dim) || _ <- lists:seq(1,5)], State) end,
+        State5,
+        lists:seq(1,50)
+    ),
+    lists:foldl(
+        fun(_, State) -> TestOps([store_rand_random_write(Dim) || _ <- lists:seq(1,20)], State) end,
+        State6,
+        lists:seq(1,50)
+    ),
+    ok.
+
+fate_vm_cross_protocol_store_big(Cfg) ->
+    state(aect_test_utils:new_state()),
+    Dim={5,5,5},
+    InitialState = store_rand_initial_state(Dim),
+    ForkHeights   = ?config(fork_heights, Cfg),
+    LimaHeight = maps:get(lima, ForkHeights),
+    IrisHeight = maps:get(iris, ForkHeights),
+    Acc = ?call(new_account, 1000000000000000000000000000000000000000 * aec_test_utils:min_gas_price()),
+    LimaSpec      = #{height => LimaHeight, vm_version => ?VM_FATE_SOPHIA_1, gas => 10000000000},
+    IrisSpec      = #{height => IrisHeight, vm_version => ?VM_FATE_SOPHIA_2, gas => 10000000000},
+    {ok, TesterContract} = compile_contract(storage_tester),
+    Tester = ?call(create_contract_with_code, Acc, TesterContract, {}, LimaSpec),
+    TestOps = fun(Ops, State, Spec) -> store_rand_exe_oplist(Ops, State, Dim, Tester, Acc, Spec) end,
+
+    % Do a bunch of operations on Lima
+    State2 = lists:foldl(
+        fun(_, State) -> TestOps([store_rand_random_op(Dim) || _ <- lists:seq(1,5)], State, LimaSpec) end,
+        InitialState,
+        lists:seq(1,50)
+    ),
+    % Do operations on Iris
+    lists:foldl(
+        fun(_, State) -> TestOps([store_rand_random_op(Dim) || _ <- lists:seq(1,5)], State, IrisSpec) end,
+        State2,
+        lists:seq(1,50)
+    ),
+    ok.
+
+fate_vm_cross_protocol_store_multi_small(Cfg) ->
+    state(aect_test_utils:new_state()),
+    Dim={5,5,5},
+    InitialState = store_rand_initial_state(Dim),
+    ForkHeights   = ?config(fork_heights, Cfg),
+    LimaHeight = maps:get(lima, ForkHeights),
+    IrisHeight = maps:get(iris, ForkHeights),
+    Acc = ?call(new_account, 1000000000000000000000000000000000000000 * aec_test_utils:min_gas_price()),
+    LimaSpec      = #{height => LimaHeight, vm_version => ?VM_FATE_SOPHIA_1, gas => 10000000000},
+    IrisSpec      = #{height => IrisHeight, vm_version => ?VM_FATE_SOPHIA_2, gas => 10000000000},
+    {ok, TesterContract} = compile_contract(storage_tester),
+
+    DoTest = fun() ->
+        Tester = ?call(create_contract_with_code, Acc, TesterContract, {}, LimaSpec),
+        TestOps = fun(Ops, State, Spec) -> store_rand_exe_oplist(Ops, State, Dim, Tester, Acc, Spec) end,
+        % Do a bunch of operations on Lima
+        State2 = lists:foldl(
+            fun(_, State) -> TestOps([store_rand_random_op(Dim) || _ <- lists:seq(1,5)], State, LimaSpec) end,
+            InitialState,
+            lists:seq(1,3)
+        ),
+        % Do operations on Iris
+        lists:foldl(
+            fun(_, State) -> TestOps([store_rand_random_op(Dim) || _ <- lists:seq(1,5)], State, IrisSpec) end,
+            State2,
+            lists:seq(1,3)
+        )
+    end,
+    [DoTest() || _ <- lists:seq(1,20)],
+    ok.
 
 %%%===================================================================
 %%% Remote call type errors
@@ -6953,5 +7467,6 @@ sophia_no_calls_to_init(_Cfg) ->
 
     Res = ?call(call_contract_with_calldata, Acc, C, word, CallData, #{}),
     ?assertMatchAEVM(Res, 32, 32, 32, {error, <<"unknown_function">>}),
-    ?assertMatchFATE({error, <<"Trying to call undefined function: <<68,214,68,31>>">>}, Res),
+    ?assertMatchFATE({error,<<"Trying to call undefined function: <<68,214,68,31>>">>},
+                     {error, <<"Calling init is not allowed in this context">>}, Res),
     ok.

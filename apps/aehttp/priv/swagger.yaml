@@ -803,6 +803,7 @@ paths:
           type: integer
           minimum: 1
           maximum: 1000
+          default: 20
         - in: query
           name: type
           description: 'The type of a query: open, closed or all'
@@ -1178,6 +1179,8 @@ paths:
         - debug
       operationId: PostNamePreclaim
       description: 'Get a name_preclaim transaction object'
+      consumes:
+        - application/json
       produces:
         - application/json
       parameters:
@@ -1207,6 +1210,8 @@ paths:
         - debug
       operationId: PostNameClaim
       description: 'Get a name_claim transaction object'
+      consumes:
+        - application/json
       produces:
         - application/json
       parameters:
@@ -1236,6 +1241,8 @@ paths:
         - debug
       operationId: PostNameUpdate
       description: 'Get a name_update transaction object'
+      consumes:
+        - application/json
       produces:
         - application/json
       parameters:
@@ -1265,6 +1272,8 @@ paths:
         - debug
       operationId: PostNameTransfer
       description: 'Get a name_transfer transaction object'
+      consumes:
+        - application/json
       produces:
         - application/json
       parameters:
@@ -1294,6 +1303,8 @@ paths:
         - debug
       operationId: PostNameRevoke
       description: 'Get a name_revoke transaction object'
+      consumes:
+        - application/json
       produces:
         - application/json
       parameters:
@@ -1355,6 +1366,8 @@ paths:
         - debug
       operationId: PostChannelCreate
       description: 'Get a channel_create transaction object'
+      consumes:
+        - application/json
       produces:
         - application/json
       parameters:
@@ -1384,6 +1397,8 @@ paths:
         - debug
       operationId: PostChannelDeposit
       description: 'Get a channel_deposit transaction object'
+      consumes:
+        - application/json
       produces:
         - application/json
       parameters:
@@ -1409,6 +1424,8 @@ paths:
         - debug
       operationId: PostChannelWithdraw
       description: 'Get a channel_withdrawal transaction object'
+      consumes:
+        - application/json
       produces:
         - application/json
       parameters:
@@ -1434,6 +1451,8 @@ paths:
         - debug
       operationId: PostChannelSnapshotSolo
       description: 'Get a channel_snapshot_solo transaction object'
+      consumes:
+        - application/json
       produces:
         - application/json
       parameters:
@@ -1451,6 +1470,33 @@ paths:
           description: Invalid transaction
           schema:
             $ref: '#/definitions/Error'
+  /debug/channels/set-delegates:
+    post:
+      tags:
+        - internal
+        - channel
+        - debug
+      operationId: PostChannelSetDelegates
+      description: 'Get a channel_set_delegates_tx transaction object'
+      consumes:
+        - application/json
+      produces:
+        - application/json
+      parameters:
+        - in: body
+          name: body
+          required: true
+          schema:
+            $ref: '#/definitions/ChannelSetDelegatesTx'
+      responses:
+        '200':
+          description: Successful operation
+          schema:
+            $ref: '#/definitions/UnsignedTx'
+        '400':
+          description: Invalid transaction
+          schema:
+            $ref: '#/definitions/Error'
   /debug/channels/close/mutual:
     post:
       tags:
@@ -1459,6 +1505,8 @@ paths:
         - debug
       operationId: PostChannelCloseMutual
       description: 'Get a channel_close_mutual transaction object'
+      consumes:
+        - application/json
       produces:
         - application/json
       parameters:
@@ -1484,6 +1532,8 @@ paths:
         - debug
       operationId: PostChannelCloseSolo
       description: 'Get a channel_close_solo transaction object'
+      consumes:
+        - application/json
       produces:
         - application/json
       parameters:
@@ -1509,6 +1559,8 @@ paths:
         - debug
       operationId: PostChannelSlash
       description: 'Get a channel_slash transaction object'
+      consumes:
+        - application/json
       produces:
         - application/json
       parameters:
@@ -1534,6 +1586,8 @@ paths:
         - debug
       operationId: PostChannelSettle
       description: 'Get a channel_settle transaction object'
+      consumes:
+        - application/json
       produces:
         - application/json
       parameters:
@@ -1684,6 +1738,38 @@ paths:
             $ref: '#/definitions/DryRunResults'
         '403':
           description: Invalid input
+          schema:
+            $ref: '#/definitions/Error'
+  /debug/transactions/paying-for:
+    post:
+      tags:
+        - internal
+        - transaction
+        - debug
+      operationId: 'PostPayingFor'
+      description: Get a paying-for transaction object
+      consumes:
+        - application/json
+      produces:
+        - application/json
+      parameters:
+        - in: body
+          name: body
+          description: transactions
+          required: true
+          schema:
+            $ref: '#/definitions/PayingForTx'
+      responses:
+        '200':
+          description: Successful operation
+          schema:
+            $ref: '#/definitions/UnsignedTx'
+        '400':
+          description: Invalid transaction
+          schema:
+            $ref: '#/definitions/Error'
+        '404':
+          description: Payer account not found
           schema:
             $ref: '#/definitions/Error'
   /debug/token-supply/height/{height}:
@@ -2290,9 +2376,7 @@ definitions:
       channel_reserve:
         $ref: '#/definitions/UInt'
       delegate_ids:
-        type: array
-        items:
-          $ref: '#/definitions/EncodedPubkey'
+        $ref: '#/definitions/Delegates'
       state_hash:
         $ref: '#/definitions/EncodedHash'
       round:
@@ -2344,9 +2428,7 @@ definitions:
         description: 'Root hash of the channel''s internal state tree'
         $ref: '#/definitions/EncodedHash'
       delegate_ids:
-        type: array
-        items:
-          $ref: '#/definitions/EncodedPubkey'
+        $ref: '#/definitions/Delegates'
     required:
       - initiator_id
       - initiator_amount
@@ -2566,6 +2648,38 @@ definitions:
       - from_id
       - payload
       - fee
+  ChannelSetDelegatesTx:
+    type: object
+    properties:
+      channel_id:
+        $ref: '#/definitions/EncodedPubkey'
+      from_id:
+        $ref: '#/definitions/EncodedPubkey'
+      initiator_delegate_ids:
+        $ref: '#/definitions/Delegates'
+      responder_delegate_ids:
+        $ref: '#/definitions/Delegates'
+      state_hash:
+        $ref: '#/definitions/EncodedHash'
+      round:
+        $ref: '#/definitions/UInt64'
+      payload:
+        $ref: '#/definitions/EncodedByteArray'
+      ttl:
+        $ref: '#/definitions/UInt64'
+      fee:
+        $ref: '#/definitions/UInt'
+      nonce:
+        $ref: '#/definitions/UInt64'
+    required:
+      - channel_id
+      - from_id
+      - initiator_delegate_ids
+      - responder_delegate_ids
+      - state_hash
+      - round
+      - payload
+      - fee
   PeerPubKey:
     type: object
     properties:
@@ -2728,6 +2842,20 @@ definitions:
       - block_height
       - block_hash
       - hash
+  SignedTx:
+    type: object
+    properties:
+      tx:
+        $ref: '#/definitions/GenericTx'
+      signatures:
+        description: 'At least one signature is required unless for Generalized Account Meta transactions'
+        type: array
+        minItems: 0
+        items:
+          $ref: '#/definitions/EncodedValue'
+    required:
+      - tx
+      - signatures
   GenericTx:
     type: object
     discriminator: type
@@ -2831,6 +2959,10 @@ definitions:
     allOf:
       - $ref: '#/definitions/GenericTx'
       - $ref: '#/definitions/GAMetaTx'
+  PayingForTxJSON:
+    allOf:
+      - $ref: '#/definitions/GenericTx'
+      - $ref: '#/definitions/PayingForTx'
   TxInfoObject:
      type: object
      properties:
@@ -3413,6 +3545,38 @@ definitions:
       - fee
       - auth_data
       - tx
+  PayingForTx:
+    type: object
+    properties:
+      payer_id:
+        $ref: '#/definitions/EncodedPubkey'
+      fee:
+        $ref: '#/definitions/UInt'
+      nonce:
+        $ref: '#/definitions/UInt64'
+      tx:
+        $ref: '#/definitions/SignedTx'
+    required:
+      - payer_id
+      - fee
+      - tx
+  DelegatesList:
+    type: array
+    items:
+      $ref: '#/definitions/EncodedPubkey'
+  DelegatesObject:
+    type: object
+    properties:
+      initiator:
+        description: Initiator's delegates 
+        $ref: '#/definitions/DelegatesList'
+      responder:
+        description: Responder's delegates 
+        $ref: '#/definitions/DelegatesList'
+  Delegates:
+    oneOf:
+      - $ref: '#/definitions/DelegatesList'
+      - $ref: '#/definitions/DelegatesObject'
 
 externalDocs:
   description: Find out more about Aeternity

@@ -20,7 +20,7 @@ compile_contracts(Contracts) ->
     compile_contracts(Contracts, default_options()).
 
 compile_contracts(Contracts, Options) ->
-    maps:from_list([ {pad_contract_name(Name), compile_contract(Code, Options)}
+    maps:from_list([ {pad_contract_name(Name), {compile_contract(Code, Options), ?VM_FATE_SOPHIA_2}}
                      || {Name, Code} <- Contracts ]).
 
 make_contract(Name) -> aeb_fate_data:make_contract(pad_contract_name(Name)).
@@ -123,7 +123,7 @@ make_store(_, Store) ->
 
 make_call_spec(Contract, Function0, Arguments, Store) ->
     Function = aeb_fate_code:symbol_identifier(Function0),
-    EncArgs  = list_to_tuple([aefate_test_utils:encode(A) || A <- Arguments]),
+    EncArgs  = list_to_tuple([aefa_test_utils:encode(A) || A <- Arguments]),
     Calldata = {tuple, {Function, {tuple, EncArgs}}},
     CtStore  = make_store(Function0, Store),
     #{ contract   => pad_contract_name(Contract),
@@ -131,7 +131,8 @@ make_call_spec(Contract, Function0, Arguments, Store) ->
        value      => 0,
        call       => aeb_fate_encoding:serialize(Calldata),
        store      => CtStore,
-       vm_version => ?VM_FATE_SOPHIA_2
+       vm_version => ?VM_FATE_SOPHIA_2,
+       allow_init => true
      }.
 
 pad_contract_name(Name) ->

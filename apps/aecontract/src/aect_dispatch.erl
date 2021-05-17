@@ -110,6 +110,7 @@ run_common(#{vm := VMVersion, abi := ABIVersion},
                     , gas        => Gas
                     , value      => Value
                     , vm_version => VMVersion
+                    , allow_init => maps:get(allow_init, CallDef, false)
                     },
             Env0 = maps:with(?FATE_VM_SPEC_FIELDS, CallDef),
             Env1  = Env0#{ tx_env   => aetx_env:set_context(TxEnv0, aetx_contract)

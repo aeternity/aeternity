@@ -12,7 +12,7 @@ fi
 
 PKG_SUFFIX="${PKG_TARGET_OS}-"`uname -m`
 
-VERSION=${CIRCLE_SHA1:-unknown}
+VERSION=$(git rev-parse HEAD)
 if [[ -n $CIRCLE_TAG && $CIRCLE_TAG =~ ^v([0-9]+\.[0-9]+\.[0-9]+(-[a-z0-9\.\+]+)*)$ ]]; then
     VERSION=${BASH_REMATCH[1]}
 fi

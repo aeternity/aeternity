@@ -81,8 +81,13 @@ all() -> [ execute_identity_fun_from_sophia_file,
            oracles].
 
 init_per_testcase(_, Config) ->
-    put('$protocol_version', aect_test_utils:latest_protocol_version()),
-    Config.
+    case aect_test_utils:latest_protocol_version() of
+        Protocol when Protocol < ?IRIS_PROTOCOL_VSN ->
+            put('$protocol_version', Protocol),
+            Config;
+        _Protocol ->
+            {skip, aevm_deprecated_in_iris}
+    end.
 
 end_per_testcase(_Case, _Config) ->
     ok.

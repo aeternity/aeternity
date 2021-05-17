@@ -25,6 +25,7 @@
          type/1,
 
          is_payable/1,
+         set_payable/2,
 
          deserialize/2,
          serialize/1,
@@ -37,6 +38,8 @@
 -define(ACCOUNT_VSN_2, 2). %% {Flags, Nonce, Balance, GA_Contract, GA_AuthFun}
 -define(ACCOUNT_VSN_3, 3). %% {Flags, Nonce, Balance}
 -define(ACCOUNT_TYPE, account).
+
+-define(FLAG_NON_PAYABLE_VALUE, 2#000001).
 
 -type fun_hash() :: <<_:256>>.
 -type flag()  :: non_payable.
@@ -128,6 +131,12 @@ type(#account{ ga_contract = C })         -> contract = aeser_id:specialize_type
 -spec is_payable(account()) -> boolean().
 is_payable(#account{ flags = 0 }) -> true;
 is_payable(#account{ flags = N }) -> not get_flag(non_payable, N).
+
+-spec set_payable(account(), boolean()) -> account().
+set_payable(Acc = #account{ flags = N }, false) ->
+    Acc#account{ flags = N band (bnot ?FLAG_NON_PAYABLE_VALUE) };
+set_payable(Acc = #account{ flags = N }, true) ->
+    Acc#account{ flags = N bor ?FLAG_NON_PAYABLE_VALUE }.
 
 -spec serialize(account()) -> deterministic_account_binary_with_pubkey().
 serialize(#account{ flags = 0, ga_contract = undefined } = Account) ->
@@ -224,19 +233,18 @@ serialize_for_client(#account{id      = Id,
                 %% This code is not defensive, we are guaranteed that contract and function hash exist
                 %% If not, just crash
                 {contract, ContractPK} = aeser_id:specialize(Account#account.ga_contract),
-                {ok, Contract} = aec_chain:get_contract(ContractPK),
+                {ok, Contract, Code} = aec_chain:get_contract_with_code(ContractPK),
                 AuthFunName =
                     case aect_contracts:abi_version(Contract) of
                         ?ABI_AEVM_SOPHIA_1 ->
-                            #{type_info := TypeInfo} = aect_sophia:deserialize(
-                                                         aect_contracts:code(Contract)),
+                            #{type_info := TypeInfo} = aect_sophia:deserialize(Code),
                             {ok, AuthFunName0} =
                                 aeb_aevm_abi:function_name_from_type_hash(
                                   Account#account.ga_auth_fun, TypeInfo),
                             AuthFunName0;
                         ?ABI_FATE_SOPHIA_1 ->
                             #{byte_code := ByteCode} =
-                                aect_sophia:deserialize(aect_contracts:code(Contract)),
+                                aect_sophia:deserialize(Code),
                             {ok, AuthFunName0} =
                                 aeb_fate_abi:get_function_name_from_function_hash(
                                     Account#account.ga_auth_fun, aeb_fate_code:deserialize(ByteCode)),
@@ -254,7 +262,6 @@ serialize_for_client(#account{id      = Id,
                             <<"nonce">>   => Nonce}).
 
 %% Flags
--define(FLAG_NON_PAYABLE_VALUE, 1).
 
 get_flag(non_payable, N) -> ((N div ?FLAG_NON_PAYABLE_VALUE) rem 2) == 1.
 

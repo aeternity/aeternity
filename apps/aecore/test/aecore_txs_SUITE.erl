@@ -49,13 +49,13 @@ init_per_suite(Config) ->
         <<"mempool">> => #{ <<"invalid_tx_ttl">> => 2
                           , <<"nonce_baseline">> => 10 }
     },
-    Config1 = aecore_suite_utils:init_per_suite([dev1, dev2], DefCfg, 
+    Config1 = aecore_suite_utils:init_per_suite([dev1, dev2], DefCfg,
                                                 [{add_peers, true}],
                                                 [{symlink_name, "latest.txs"},
-                                                 {instant_mining, true}, 
-                                                 {test_module, ?MODULE}, 
-                                                 {micro_block_cycle, 
-                                                  MicroBlockCycle}] ++ 
+                                                 {instant_mining, true},
+                                                 {test_module, ?MODULE},
+                                                 {micro_block_cycle,
+                                                  MicroBlockCycle}] ++
                                                 Config),
     pforeach(fun(N) ->
         aecore_suite_utils:start_node(N, Config1),
@@ -105,11 +105,11 @@ txs_gc(Config) ->
     %%          the generation where TxH2 was mined needs to contain at least 2
     %%          microblocks in order for GC1 to be marked for GC at 3
     %% Add a bunch of transactions...
-    {ok, _, TxH1} = add_spend_tx(N1, 1000, 20000 * aec_test_utils:min_gas_price(),  1,  10), %% Ok
+    {ok, _,_TxH1} = add_spend_tx(N1, 1000, 20000 * aec_test_utils:min_gas_price(),  1,  10), %% Ok
     {ok, _, _GC1} = add_spend_tx(N1, 1000, 20000 * aec_test_utils:min_gas_price(),  2,  10), %% Should expire ?EXPIRE_TX_TTL after
                                                          %% TxH2 is on chain = ~1 + 2 = ~3
-    {ok, _, TxH2} = add_spend_tx(N1, 1000, 20001 * aec_test_utils:min_gas_price(),  2,  10), %% Duplicate should be preferred
-    {ok, _, TxH3} = add_spend_tx(N1, 1000, 20000 * aec_test_utils:min_gas_price(),  3,  10), %% Ok
+    {ok, _,_TxH2} = add_spend_tx(N1, 1000, 20001 * aec_test_utils:min_gas_price(),  2,  10), %% Duplicate should be preferred
+    {ok, _,_TxH3} = add_spend_tx(N1, 1000, 20000 * aec_test_utils:min_gas_price(),  3,  10), %% Ok
 
     {ok, _, TxH5} = add_spend_tx(N1, 1000, 20000 * aec_test_utils:min_gas_price(),  5,  10), %% Non consecutive nonce
     {ok, _, _}    = add_spend_tx(N1, 1000, 20000 * aec_test_utils:min_gas_price(),  7,  10), %% Non consecutive nonce
@@ -195,7 +195,7 @@ pool_peek(Node) ->
     rpc:call(Node, sys, get_status, [aec_tx_pool_gc]),
     rpc:call(Node, aec_tx_pool, peek, [infinity]).
 
-missing_tx_gossip(Config) ->
+missing_tx_gossip(_Config) ->
     N1 = aecore_suite_utils:node_name(dev1),
     N2 = aecore_suite_utils:node_name(dev2),
 
@@ -238,7 +238,7 @@ missing_tx_gossip(Config) ->
     ok.
 
 %% CT Consensus does not change the coinbase
-check_coinbase_validation(Config) ->
+check_coinbase_validation(_Config) ->
     %% Mine on a node a contract tx using coinbase.
     N1 = aecore_suite_utils:node_name(dev1),
     aecore_suite_utils:reinit_with_ct_consensus(dev1),

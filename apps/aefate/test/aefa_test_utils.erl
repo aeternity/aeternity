@@ -4,14 +4,29 @@
 %%% @end
 %%%-------------------------------------------------------------------
 
--module(aefate_test_utils).
+-module(aefa_test_utils).
 
 -export([encode/1,
          decode/1,
-         decode/2
+         decode/2,
+         format_args/1,
+         make_calldata/2
         ]).
 
+-include("../../aecontract/test/include/fate_type_macros.hrl").
 -include_lib("aebytecode/include/aeb_fate_data.hrl").
+
+
+make_calldata(Fun, Args) when is_atom(Fun) ->
+    make_calldata(atom_to_list(Fun), Args); %% For OTP21
+make_calldata(Fun, Args) when is_list(Fun) ->
+    make_calldata(list_to_binary(Fun), Args);
+make_calldata(Fun, Args) ->
+    Args1 = aefa_test_utils:format_args(if is_tuple(Args) -> Args;
+                                      true -> {Args}
+                                   end),
+    FunctionId = aeb_fate_code:symbol_identifier(Fun),
+    aeb_fate_encoding:serialize(aefa_test_utils:encode({FunctionId, Args1})).
 
 %% Encode is a convinience function for testing, encoding an Erlang term
 %% to a Fate term, but it can not distinguish between e.g. 32-byte strings
@@ -133,4 +148,27 @@ decode_variant([], [], _N, _Values, '$undefined$') ->
 decode_variant([], [], _N, _Values, Acc) ->
     Acc.
 
-
+format_args(?cid(B)) ->
+    {contract, B};
+format_args(?hsh(B)) ->
+    {bytes, B};
+format_args(?sig(B)) ->
+    {bytes, B};
+format_args(?oid(B)) ->
+    {oracle, B};
+format_args(?qid(B)) ->
+    {oracle_query, B};
+format_args(<<_:256>> = B) ->
+    {address, B}; %% Assume it is an address
+format_args({bytes, B}) ->
+    {bytes, B};
+format_args({bytecode, B}) ->
+    {bytecode, B};
+format_args([H|T]) ->
+    [format_args(H) | format_args(T)];
+format_args(T) when is_tuple(T) ->
+    list_to_tuple(format_args(tuple_to_list(T)));
+format_args(M) when is_map(M) ->
+    maps:from_list(format_args(maps:to_list(M)));
+format_args(X) ->
+    X.

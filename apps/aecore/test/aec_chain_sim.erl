@@ -736,7 +736,8 @@ get_top_state_(Chain) ->
 
 hash_is_in_main_chain_(Hash, TopHash, Chain) ->
     BlockHash = fun(B) ->
-                        {ok, H} = aec_headers:hash_header(aec_blocks:to_header(B)),
+                        Block = maps:get(block, B),
+                        {ok, H} = aec_headers:hash_header(aec_blocks:to_header(Block)),
                         H
                 end,
     case blocks_until_hash(TopHash, blocks(Chain)) of

@@ -49,12 +49,14 @@
          get_header/1,
          get_genesis_hash/0,
          get_signed_tx/1,
+         dirty_get_signed_tx/1,
          get_top_block_hash/0,
          get_top_block_node/0,
          get_finalized_height/0,
          dirty_get_finalized_height/0,
          get_block_state/1,
          get_block_state/2,
+         get_block_state_partial/3,
          get_block_from_micro_header/2
         ]).
 
@@ -105,6 +107,7 @@
 
 -export([ find_block_state/1
         , find_block_state/2
+        , find_block_state_partial/3
         , find_block_difficulty/1
         , find_block_fees/1
         , find_block_fork_id/1
@@ -122,9 +125,9 @@
 -export([ find_chain_end_hashes/0
         , mark_chain_end_hash/1
         , unmark_chain_end_hash/1
-        , start_chain_end_migration/0
-        , finish_chain_end_migration/0
-        , chain_end_migration_status/0
+        , start_chain_migration/1
+        , finish_chain_migration/1
+        , chain_migration_status/1
         ]).
 
 %%
@@ -350,7 +353,10 @@ write_block(Block, Hash) ->
             Headers = #aec_headers{ key = Hash
                                   , value = Header
                                   , height = Height },
-            ?t(mnesia:write(Headers),
+            ?t(begin
+                   mnesia:write(Headers),
+                   mnesia:write(#aec_chain_state{key = {key_header, Height, Hash}, value = Header})
+               end,
                [{aec_headers, Hash}]);
         micro ->
             Txs = aec_blocks:txs(Block),
@@ -507,11 +513,76 @@ find_headers_and_hash_at_height(Height) when is_integer(Height), Height >= 0 ->
 %% When benchmarked on an cloud SSD it is faster then mnesia:index_read followed by filter
 -spec find_key_headers_and_hash_at_height(pos_integer()) -> [{binary(), aec_headers:key_header()}].
 find_key_headers_and_hash_at_height(Height) when is_integer(Height), Height >= 0 ->
-    R = mnesia:dirty_select(aec_headers, [{ #aec_headers{key = '_', value = '$1', height = Height}
-                                          , [{'=:=', {element, 1, '$1'}, key_header}]
-                                          , ['$_']
-                                          }]),
-    [{Hash, aec_headers:from_db_header(Header)} || #aec_headers{key = Hash, value = Header} <- R].
+    case persistent_term:get({?MODULE, chain_migration, key_headers}, done) of
+        in_progress ->
+            R = mnesia:dirty_select(aec_headers, [{ #aec_headers{key = '_',
+                                                                 value = '$1',
+                                                                 height = Height}
+                                                  , [{'=:=', {element, 1, '$1'}, key_header}]
+                                                  , ['$_']}]),
+            [{Hash, aec_headers:from_db_header(Header)}
+             || #aec_headers{key = Hash, value = Header} <- R];
+        done ->
+            case persistent_term:get(?BYPASS, nobypass) of
+                {rocksdb, #{aec_chain_state := H}} ->
+                    rocks_iterate_from_to(
+                        fun({_, _, Hash}, V, Acc) ->
+                            {cont,
+                             [{Hash,
+                               aec_headers:from_db_header(element(3, binary_to_term(V)))
+                              } | Acc]}
+                        end,
+                        [],
+                        H,
+                        {key_header, Height, '_'},
+                        {key_header, Height+1, '_'}
+                    );
+                nobypass ->
+                    R = mnesia:dirty_select(aec_chain_state,
+                                            [{#aec_chain_state{key = {key_header, Height, '_'},
+                                                               value = '_'}
+                                            , []
+                                            , ['$_']}]),
+                    [{Hash, aec_headers:from_db_header(Header)}
+                     || #aec_chain_state{key = {key_header, _, Hash}, value = Header} <- R]
+            end
+    end.
+
+-spec rocks_iterate_from_to( fun((tuple(), binary(), Acc) -> {cont, Acc} | stop)
+                           , Acc
+                           , term()
+                           , tuple()
+                           , tuple()) -> Acc.
+rocks_iterate_from_to(Fun, Acc, Handle, From, To) ->
+    {ok, I} = rocksdb:iterator(
+        Handle,
+        [{iterate_upper_bound, sext:prefix(To)}]
+    ),
+    try
+        rocks_iterate_from_to_loop(
+            I,
+            sext:prefix(To),
+            rocksdb:iterator_move(I, sext:prefix(From)),
+            Fun,
+            Acc
+        )
+    after
+        rocksdb:iterator_close(I)
+    end.
+
+rocks_iterate_from_to_loop(I, ToBin, {ok, K, V}, Fun, Acc) when ToBin > K ->
+    case Fun(sext:decode(K), V, Acc) of
+        {cont, Acc2} ->
+            rocks_iterate_from_to_loop(
+                I,
+                ToBin,
+                rocksdb:iterator_move(I, next),
+                Fun,
+                Acc2
+            )%;  % Uncomment when used
+        %stop -> Acc
+    end;
+rocks_iterate_from_to_loop(_I, _, _, _, Acc) -> Acc.
 
 find_discovered_pof(Hash) ->
     case ?t(read(aec_discovered_pof, Hash)) of
@@ -599,17 +670,19 @@ unmark_chain_end_hash(Hash) when is_binary(Hash) ->
 find_chain_end_hashes() ->
     mnesia:dirty_select(aec_chain_state, [{ #aec_chain_state{key = {end_block_hash, '$1'}, _ = '_'}, [], ['$1'] }]).
 
-start_chain_end_migration() ->
+start_chain_migration(Key) ->
     %% Writes occur before the error store is initialized - if error keys are present then this will crash
     %% Fortunately this write will be correctly handled by the rocksdb bypass logic
-    ?t(mnesia:write(#aec_chain_state{key = chain_end_migration_lock, value = chain_end_migration_lock})).
+    ?t(mnesia:write(#aec_chain_state{key = {chain_migration_lock, Key}, value = lock})),
+    persistent_term:put({?MODULE, chain_migration, Key}, in_progress).
 
-finish_chain_end_migration() ->
-    ?t(mnesia:delete(aec_chain_state, chain_end_migration_lock, write)).
+finish_chain_migration(Key) ->
+    ?t(mnesia:delete(aec_chain_state, {chain_migration_lock, Key}, write)),
+    persistent_term:erase({?MODULE, chain_migration, Key}).
 
--spec chain_end_migration_status() -> in_progress | done.
-chain_end_migration_status() ->
-    case ?t(mnesia:read(aec_chain_state, chain_end_migration_lock)) of
+-spec chain_migration_status(atom()) -> in_progress | done.
+chain_migration_status(Key) ->
+    case ?t(mnesia:read(aec_chain_state, {chain_migration_lock, Key})) of
         [#aec_chain_state{}] -> in_progress;
         _ -> done
     end.
@@ -669,19 +742,49 @@ get_block_state(Hash) ->
     get_block_state(Hash, false).
 
 get_block_state(Hash, DirtyBackend) ->
+    DeserializeFun =
+        fun(Trees) ->
+           aec_trees:deserialize_from_db(Trees, DirtyBackend)
+        end,
+    get_block_state_(Hash, DeserializeFun).
+
+get_block_state_partial(Hash, DirtyBackend, Elements) ->
+    DeserializeFun =
+        fun(Trees) ->
+            aec_trees:deserialize_from_db_partial(Trees, DirtyBackend,
+                                                  Elements)
+        end,
+    get_block_state_(Hash, DeserializeFun).
+
+get_block_state_(Hash, DeserializeFun) ->
     ?t(begin
            [#aec_block_state{value = Trees}] =
                mnesia:read(aec_block_state, Hash),
-           aec_trees:deserialize_from_db(Trees, DirtyBackend)
+           DeserializeFun(Trees)
        end).
 
 find_block_state(Hash) ->
     find_block_state(Hash, false).
 
 find_block_state(Hash, DirtyBackend) ->
+    DeserializeFun =
+        fun(Trees) ->
+            aec_trees:deserialize_from_db(Trees, DirtyBackend)
+        end,
+    find_block_state_(Hash, DeserializeFun).
+
+find_block_state_partial(Hash, DirtyBackend, Elements) ->
+    DeserializeFun =
+        fun(Trees) ->
+            aec_trees:deserialize_from_db_partial(Trees, DirtyBackend,
+                                                  Elements)
+        end,
+    find_block_state_(Hash, DeserializeFun).
+
+find_block_state_(Hash, DeserializeFun) ->
     case ?t(mnesia:read(aec_block_state, Hash)) of
         [#aec_block_state{value = Trees}] ->
-            {value, aec_trees:deserialize_from_db(Trees, DirtyBackend)};
+            {value, DeserializeFun(Trees)};
         [] -> none
     end.
 
@@ -854,6 +957,12 @@ get_signed_tx(Hash) ->
     [#aec_signed_tx{value = DBSTx}] = ?t(read(aec_signed_tx, Hash)),
     aetx_sign:from_db_format(DBSTx).
 
+dirty_get_signed_tx(Hash) ->
+    case ?dirty_dirty_read(aec_signed_tx, Hash) of
+        [#aec_signed_tx{value = DBSTx}] -> {ok, aetx_sign:from_db_format(DBSTx)};
+        [] -> none
+    end.
+
 find_signed_tx(Hash) ->
     case ?t(read(aec_signed_tx, Hash)) of
         []                            -> none;
@@ -912,8 +1021,13 @@ find_tx_with_location(STxHash) ->
 add_tx(STx) ->
     Hash = aetx_sign:hash(STx),
     ?t(case mnesia:read(aec_signed_tx, Hash) of
-           [_] ->
-               {error, already_exists};
+           [#aec_signed_tx{value = STx}] ->
+              case mnesia:read(aec_tx_location, Hash) of
+                   [] -> %% the transaction had either been GCed or is in mempool
+                      add_tx_hash_to_mempool(Hash), %% ensure in mempool
+                      {ok, Hash};
+                   [_] -> {error, already_exists}
+              end;
            [] ->
                Obj = #aec_signed_tx{key = Hash, value = STx},
                mnesia:write(Obj),

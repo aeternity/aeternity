@@ -7,7 +7,8 @@
          init_per_testcase/2, end_per_testcase/2]).
 
 %% test case exports
--export([main_test/1]).
+-export([main_test/1,
+         calls_test/1]).
 
 -include_lib("common_test/include/ct.hrl").
 
@@ -21,9 +22,12 @@ all() ->
     [{group, all_nodes}].
 
 groups() ->
-    [{all_nodes, [sequence], [{group, two_nodes}]},
+    [{all_nodes, [sequence], [{group, two_nodes},
+                              {group, one_node}]},
      {two_nodes, [sequence],
-      [main_test]}].
+      [main_test]},
+     {one_node, [sequence],
+      [calls_test]}].
 
 suite() ->
     [].
@@ -50,7 +54,7 @@ init_per_suite(Config0) ->
                                                                    <<"garbage_collection">> =>
                                                                        #{<<"enabled">> => false}}}}],
                                                 [{instant_mining, true},
-                                                 {symlink_name, "latest.sync"},
+                                                 {symlink_name, "latest.gc"},
                                                  {test_module, ?MODULE},
                                                  {accounts, Accounts} | Config1]),
     aecore_suite_utils:start_node(dev1, Config2),
@@ -88,7 +92,8 @@ end_per_suite(Config) ->
                aecore_suite_utils:delete_node_db_if_persisted(DbCfg)
            end || X <- [dev1, dev2]].
 
-init_per_group(two_nodes, Config) ->
+init_per_group(Group, Config) when Group =:= two_nodes;
+                                   Group =:= one_node ->
     Config1 = config(Config),
     InitialApps = {aec_test_utils:running_apps(), aec_test_utils:loaded_apps()},
     {ok, _} = application:ensure_all_started(exometer_core),
@@ -97,7 +102,8 @@ init_per_group(two_nodes, Config) ->
 init_per_group(all_nodes, Config) ->
     Config.
 
-end_per_group(two_nodes, Config) ->
+end_per_group(Group, Config) when Group =:= two_nodes;
+                                   Group =:= one_node ->
     ct:log("Metrics: ~p", [aec_metrics_test_utils:fetch_data()]),
     ok = aec_metrics_test_utils:stop_statsd_loggers(),
     {_, {OldRunningApps, OldLoadedApps}} = proplists:lookup(initial_apps, Config),
@@ -249,7 +255,13 @@ node_db_cfg(Node) ->
 
 add_spend_tx(Node, Amount, Fee, Nonce, TTL, Recipient) ->
     Sender = aecore_suite_utils:patron(),
-    SenderId = aeser_id:create(account, maps:get(pubkey, Sender)),
+    add_spend_tx(Node, Amount, Fee, Nonce, TTL, Recipient,
+                 maps:get(pubkey, Sender),
+                 maps:get(privkey, Sender)).
+
+add_spend_tx(Node, Amount, Fee, Nonce, TTL, Recipient, SenderPubkey,
+             SenderPrivkey) ->
+    SenderId = aeser_id:create(account, SenderPubkey),
     RecipientId = aeser_id:create(account, Recipient),
     Params = #{ sender_id    => SenderId,
                 recipient_id => RecipientId,
@@ -259,10 +271,122 @@ add_spend_tx(Node, Amount, Fee, Nonce, TTL, Recipient) ->
                 payload      => <<>>,
                 fee          => Fee },
     {ok, Tx} = aec_spend_tx:new(Params),
-    STx = aec_test_utils:sign_tx(Tx, maps:get(privkey, Sender)),
+    STx = aec_test_utils:sign_tx(Tx, SenderPrivkey),
     Res = rpc:call(Node, aec_tx_pool, push, [STx]),
     {Res, aeser_api_encoder:encode(tx_hash, aetx_sign:hash(STx))}.
 
 new_pubkey() ->
     #{public := PubKey} = enacl:sign_keypair(),
     PubKey.
+
+calls_test(_Config) ->
+    [N1] = [aecore_suite_utils:node_name(X) || X <- [dev1]],
+    H0 = aec_headers:height(rpc:call(N1, aec_chain, top_header, [])),
+    ct:log("Current height is ~p", [H0]),
+    %% create a new account and seed it with tokens
+    #{ public := OwnerPubkey, secret := OwnerPrivkey } = enacl:sign_keypair(),
+    OwnerAddress = aeser_api_encoder:encode(account_pubkey, OwnerPubkey),
+    SeedAmt = 1000000 * aec_test_utils:min_gas_price(),
+    {ok, SpendNonce} = rpc:call(N1, aec_next_nonce, pick_for_account,
+                                [maps:get(pubkey,aecore_suite_utils:patron())]),
+    {ok, ESpendHash} =
+        add_spend_tx(N1, SeedAmt, 1500000 * aec_test_utils:min_gas_price(), %% fee
+                     SpendNonce, 0, OwnerPubkey),
+    aecore_suite_utils:mine_blocks_until_txs_on_chain(N1, [ESpendHash], ?MAX_MINED_BLOCKS),
+
+    %% create a contract and call it
+    {ok, EncodedCode} = aehttp_integration_SUITE:get_contract_bytecode(identity),
+    {ok, EncodedInitCallData} = aehttp_integration_SUITE:encode_call_data(identity, "init", []),
+    ValidEncoded = #{ owner_id    => OwnerAddress,
+                      code        => EncodedCode,
+                      vm_version  => latest_sophia_vm(),
+                      abi_version => latest_sophia_abi(),
+                      deposit     => 2,
+                      amount      => 1,
+                      gas         => 600,
+                      gas_price   => aec_test_utils:min_gas_price(),
+                      fee         => 400000 * aec_test_utils:min_gas_price(),
+                      call_data   => EncodedInitCallData},
+
+    %% prepare a contract_create_tx and post it
+    {ok, 200, #{<<"tx">> := EncodedUnsignedContractCreateTx,
+                <<"contract_id">> := EncodedContractPubKey}} =
+        aehttp_integration_SUITE:get_contract_create(ValidEncoded),
+    {ok, ContractCreateTxHash} = sign_and_post_tx(EncodedUnsignedContractCreateTx, OwnerPrivkey, N1),
+
+    {ok, 200, #{<<"block_height">> := -1}} = aehttp_integration_SUITE:get_transactions_by_hash_sut(ContractCreateTxHash),
+    {ok, 404, #{<<"reason">> := <<"Tx not mined">>}} = aehttp_integration_SUITE:get_contract_call_object(ContractCreateTxHash),
+
+    % mine the contract create
+    aecore_suite_utils:mine_blocks_until_txs_on_chain(N1, [ContractCreateTxHash], ?MAX_MINED_BLOCKS),
+    %% now the call object is available
+    {ok, 200, #{<<"block_height">> := ContractCreateHeight,
+                <<"block_hash">> := ContractCreateBlockHash }} =
+        aehttp_integration_SUITE:get_transactions_by_hash_sut(ContractCreateTxHash),
+    ct:log("Contract had been included in a microblock ~p at height ~p",
+           [ContractCreateBlockHash, ContractCreateHeight]),
+    {ok, 200, _} = aehttp_integration_SUITE:get_contract_call_object(ContractCreateTxHash),
+
+    %% create a call
+    {ok, EncodedCallData} = aehttp_integration_SUITE:encode_call_data(identity, "main", ["42"]),
+    ContractCallEncoded = #{ caller_id   => OwnerAddress,
+                             contract_id => EncodedContractPubKey,
+                             abi_version => latest_sophia_abi(),
+                             amount      => 1,
+                             gas         => 1000,
+                             gas_price   => aec_test_utils:min_gas_price(),
+                             fee         => 500000 * aec_test_utils:min_gas_price(),
+                             call_data   => EncodedCallData},
+    {ok, 200, #{<<"tx">> := EncodedUnsignedContractCallTx}} = aehttp_integration_SUITE:get_contract_call(ContractCallEncoded),
+    {ok, ContractCallTxHash} = sign_and_post_tx(EncodedUnsignedContractCallTx, OwnerPrivkey, N1),
+    {ok, 200, #{<<"block_height">> := -1}} = aehttp_integration_SUITE:get_transactions_by_hash_sut(ContractCallTxHash),
+    {ok, 404, #{<<"reason">> := <<"Tx not mined">>}} = aehttp_integration_SUITE:get_contract_call_object(ContractCallTxHash),
+    %% mine the contract call
+    aecore_suite_utils:mine_blocks_until_txs_on_chain(N1, [ContractCallTxHash], ?MAX_MINED_BLOCKS),
+    {ok, 200, #{<<"block_height">> := ContractCallHeight}} = aehttp_integration_SUITE:get_transactions_by_hash_sut(ContractCallTxHash),
+    ct:log("Contract call had been included in a microblock at height ~p", [ContractCallHeight]),
+    {ok, 200, _} = aehttp_integration_SUITE:get_contract_call_object(ContractCallTxHash),
+    {ok, ESpendHash2} =
+        add_spend_tx(N1, SeedAmt, 1500000 * aec_test_utils:min_gas_price(), %% fee
+                     SpendNonce + 1, 0, OwnerPubkey),
+    aecore_suite_utils:mine_blocks_until_txs_on_chain(N1, [ESpendHash2], ?MAX_MINED_BLOCKS),
+    Spend =
+        fun(PubKey, PrivKey) ->
+            {ok, Nonce} = rpc:call(N1, aec_next_nonce, pick_for_account,
+                                        [PubKey]),
+            {ok, EncHash} =
+                add_spend_tx(N1, 1, 1500000 * aec_test_utils:min_gas_price(), %% fee
+                            Nonce, 0, PubKey, PubKey, PrivKey),
+            aecore_suite_utils:mine_blocks_until_txs_on_chain(N1, [EncHash], ?MAX_MINED_BLOCKS)
+        end,
+    Spend(OwnerPubkey, OwnerPrivkey),
+    Spend(OwnerPubkey, OwnerPrivkey),
+    Spend(OwnerPubkey, OwnerPrivkey),
+    Spend(OwnerPubkey, OwnerPrivkey),
+    %% mine beyond the GC
+    aecore_suite_utils:mine_key_blocks(N1, ?GC_INTERVAL + 1),
+    H1 = aec_headers:height(rpc:call(N1, aec_chain, top_header, [])),
+    ct:log("Current height is ~p", [H1]),
+    {ok, 200, _} = aehttp_integration_SUITE:get_contract_call_object(ContractCreateTxHash),
+    {ok, 200, _} = aehttp_integration_SUITE:get_contract_call_object(ContractCallTxHash),
+    {ok, 200, _} =
+        aehttp_integration_SUITE:get_accounts_by_pubkey_sut(OwnerAddress),
+    %% this should fail:
+    {ok, 200, _} =
+        aehttp_integration_SUITE:get_accounts_by_pubkey_and_height_sut(OwnerAddress, ContractCreateHeight),
+    ok.
+
+latest_sophia_abi() ->
+    aect_test_utils:latest_sophia_abi_version().
+
+latest_sophia_vm() ->
+    aect_test_utils:latest_sophia_vm_version().
+
+sign_and_post_tx(EncodedUnsignedTx, SenderPrivkey, Node) ->
+    {ok, SerializedUnsignedTx} = aeser_api_encoder:safe_decode(transaction, EncodedUnsignedTx),
+    UnsignedTx = aetx:deserialize_from_binary(SerializedUnsignedTx),
+    SignedTx = aec_test_utils:sign_tx(UnsignedTx, SenderPrivkey),
+    Res = rpc:call(Node, aec_tx_pool, push, [SignedTx]),
+    {Res, aeser_api_encoder:encode(tx_hash, aetx_sign:hash(SignedTx))}.
+
+

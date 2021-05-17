@@ -678,19 +678,34 @@ aens_revoke_(Tx, Signature, State) ->
 
 %% @doc Get the type signature of a remote contract
 get_contract_fun_types(Target, VMVersion, TypeHash, State) ->
-    Trees = get_top_trees(State),
-    CT = aec_trees:contracts(Trees),
-    case aect_state_tree:lookup_contract(Target, CT, [no_store]) of  %% no store
-        {value, Contract} ->
+    case get_contract_with_code(Target, State) of
+        {ok, Contract, SerializedCode} ->
             ContractVMVersion = aect_contracts:ct_version(Contract),
             case aect_contracts:is_legal_call(VMVersion, ContractVMVersion) of
                 true ->
-                    SerializedCode = aect_contracts:code(Contract),
                     #{type_info := TypeInfo} = aect_sophia:deserialize(SerializedCode),
                     aeb_aevm_abi:typereps_from_type_hash(TypeHash, TypeInfo);
                 false ->
                     {error, {wrong_vm_version, ContractVMVersion}}
             end;
+        {error, _} = Err -> Err
+    end.
+
+get_contract_with_code(Target, State) ->
+    Trees = get_top_trees(State),
+    CT = aec_trees:contracts(Trees),
+    case aect_state_tree:lookup_contract(Target, CT, [no_store]) of  %% no store
+        {value, Contract} ->
+            SerializedCode =
+                case aect_contracts:code(Contract) of
+                    {code, Code} -> Code;
+                    {ref, Ref} ->
+                        RefContractPK = aeser_id:specialize(Ref, contract),
+                        {value, RefContract} = aect_state_tree:lookup_contract(RefContractPK, CT, [no_store]),
+                        {code, Code} = aect_contracts:code(RefContract),
+                        Code
+                end,
+            {ok, Contract, SerializedCode};
         none ->
             {error, {no_such_contract, Target}}
     end.

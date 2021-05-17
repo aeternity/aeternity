@@ -659,6 +659,18 @@ process_request(#{<<"method">> := <<"channels.force_progress">> = M,
               end);
         _ -> {error, {broken_encoding, [account]}}
     end;
+process_request(#{ <<"method">> := <<"channels.assume_minimum_depth">> = M
+                 , <<"params">> := #{ <<"tx_hash">> := EncTxHash } = Params }, FsmPid) ->
+    lager:debug("Channel WS: assume minimum depth: ~p", [EncTxHash]),
+    case aeser_api_encoder:safe_decode(tx_hash, EncTxHash) of
+        {ok, TxHash} ->
+            apply_with_optional_params(
+              M, #{tx_hash => TxHash}, Params,
+              fun(XOpts) ->
+                      aesc_fsm:assume_minimum_depth(FsmPid, maps:get(tx_hash, XOpts))
+              end);
+        _ -> {error, {broken_encoding, [tx_hash]}}
+    end;
 process_request(#{<<"method">> := _} = Unhandled, _FsmPid) ->
     lager:warning("Channel WS: unhandled action received ~p", [Unhandled]),
     {error, unhandled};
@@ -866,6 +878,7 @@ optional_params(<<"channels.close_solo">>   ) -> onchain_params();
 optional_params(<<"channels.snapshot_solo">>) -> onchain_params();
 optional_params(<<"channels.slash">>        ) -> onchain_params();
 optional_params(<<"channels.settle">>       ) -> onchain_params();
+optional_params(<<"channels.assume_minimum_depth">>) -> [];
 optional_params(<<"channels.force_progress">>) -> [nonce_param()].
 
 check_optional_params(OptionalKeys, Params) ->

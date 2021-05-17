@@ -228,6 +228,19 @@ event_to_payload(Tag, Event, Msg, Mod) ->
              , fsm_id => aesc_fsm_id:retrieve_for_client(FsmIdWrapper)};
         {info, _} when is_atom(Event) ->
             maybe_add_fsm_id(Msg, #{event => atom_to_binary(Event, utf8)});
+        {info, #{ event := minimum_depth_achieved
+                , tx_hash := TxHash
+                , tx_type := TxType }} ->
+            EncodedHash = aeser_api_encoder:encode(tx_hash, TxHash),
+            P = #{ event => <<"minimum_depth_achieved">>
+                 , tx_hash => EncodedHash
+                 , tx_type => atom_to_binary(TxType, utf8)},
+            case maps:find(notice, Msg) of
+                {ok, Notice} ->
+                    P#{notice => atom_to_binary(Notice, utf8)};
+                error ->
+                    P
+            end;
         {info, #{event := _} = Info} ->
             Info;
         {on_chain_tx, #{tx := Tx} = Info} ->

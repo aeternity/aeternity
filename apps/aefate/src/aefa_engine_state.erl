@@ -31,6 +31,7 @@
         , stores/1
         , trace/1
         , vm_version/1
+        , consensus_version/1
         ]).
 
 %% Setters
@@ -64,6 +65,9 @@
         , dup_accumulator/1
         , dup_accumulator/2
         , drop_accumulator/2
+        , contract_fate_bytecode/2
+        , contract_find_final_ref/2
+        , remove_contract/2
         , in_auth_context/1
         , is_onchain/1
         , pop_accumulator/1
@@ -72,10 +76,11 @@
         , push_arguments/2
         , push_call_stack/1
         , push_gas_cap/2
+        , push_continuation/2
         , push_return_type_check/4
         , spend_gas/2
         , spend_gas_for_new_cells/2
-        , update_for_remote_call/4
+        , update_for_remote_call/5
         ]).
 
 -ifdef(TEST).
@@ -88,6 +93,7 @@
 
 -include_lib("aebytecode/include/aeb_fate_data.hrl").
 -include("../../aecontract/include/aecontract.hrl").
+-include("../../aecontract/include/hard_forks.hrl").
 
 -type void_or_fate() :: ?FATE_VOID | aeb_fate_data:fate_type().
 -type pubkey() :: <<_:256>>.
@@ -149,8 +155,9 @@ new(Gas, Value, Spec, Stores, APIState, CodeCache, VMVersion) ->
        , vm_version        = VMVersion
        }.
 
-aefa_stores(#es{ vm_version = Version }) ->
-    case Version >= ?VM_FATE_SOPHIA_2 of
+aefa_stores(#es{ chain_api = APIState }) ->
+    Protocol = aetx_env:consensus_version(aefa_chain_api:tx_env(APIState)),
+    case Protocol >= ?IRIS_PROTOCOL_VSN of
         true  -> aefa_stores;
         false -> aefa_stores_lima
     end.
@@ -175,11 +182,12 @@ add_trace(I, #es{trace = Trace} = ES) ->
     ES#es{trace = [{I, erlang:process_info(self(), reductions)}|Trace]}.
 -endif.
 
--spec update_for_remote_call(pubkey(), term(), aeb_fate_data:fate_address(), state()) -> state().
-update_for_remote_call(Contract, ContractCode, Caller, ES) ->
+-spec update_for_remote_call(pubkey(), term(), aect_contracts:vm_version(), aeb_fate_data:fate_address(), state()) -> state().
+update_for_remote_call(Contract, ContractCode, VMV, Caller, ES) ->
     ES#es{ functions = aeb_fate_code:functions(ContractCode)
          , current_contract = Contract
          , caller = Caller
+         , vm_version = VMV
          }.
 
 -spec check_reentrant_remote(aeb_fate_data:fate_contract(), state()) ->
@@ -203,6 +211,38 @@ in_auth_context(#es{chain_api = APIState}) ->
     undefined =/= aetx_env:ga_tx_hash(aefa_chain_api:tx_env(APIState)).
 
 
+-spec contract_fate_bytecode(pubkey(), state()) -> 'error' |
+          {'ok', term(), aect_contracts:vm_version(), state()}.
+contract_fate_bytecode(Pubkey, #es{chain_api = AS0} = ES0) ->
+    CodeCache = code_cache(ES0),
+    case maps:get(Pubkey, CodeCache, void) of
+        void ->
+            case aefa_chain_api:contract_fate_bytecode(Pubkey, AS0) of
+                {ok, ContractCode, VMV, AS1} ->
+                    CodeCache1 = maps:put(Pubkey, {ContractCode, VMV}, CodeCache),
+                    ES1 = set_code_cache(CodeCache1, ES0),
+                    ES2 = set_chain_api(AS1, ES1),
+                    {ok, ContractCode, VMV, ES2};
+                error ->
+                    error
+            end;
+        {ContractCode, VMV} ->
+            {ok, ContractCode, VMV, ES0}
+    end.
+
+-spec contract_find_final_ref(aect_contracts:pubkey(), state()) ->
+          'error' | {'ok', aect_contracts:pubkey(), aect_contracts:vm_version()}.
+contract_find_final_ref(PK, ES) ->
+    %% References are not considered in the cache, therefore
+    %% we need to search in the chain.
+    aefa_chain_api:contract_find_final_ref(PK, chain_api(ES)).
+
+-spec remove_contract(pubkey(), state()) -> state().
+remove_contract(Pubkey, #es{chain_api = AS0} = ES0) ->
+    ES1 = set_chain_api(aefa_chain_api:remove_contract(Pubkey, AS0), ES0),
+    CodeCache = aefa_engine_state:code_cache(ES1),
+    set_code_cache(maps:remove(Pubkey, CodeCache), ES1).
+
 %%%------------------
 %%% Accumulator stack
 
@@ -220,6 +260,7 @@ push_arguments([A|As], Acc, Stack, ES) ->
 push_call_stack(#es{ current_bb = BB
                    , current_function = Function
                    , current_contract = Contract
+                   , vm_version = VmVersion
                    , current_tvars    = TVars
                    , accumulator = Acc
                    , accumulator_stack = AccS
@@ -230,11 +271,12 @@ push_call_stack(#es{ current_bb = BB
     AccS1 = [Acc || Acc /= void] ++ AccS,
     ES#es{accumulator       = void,
           accumulator_stack = [],
-          call_stack        = [{Caller, Contract, Function, TVars, BB + 1, AccS1, Mem, Value}|Stack]}.
+          call_stack        = [{Caller, Contract, VmVersion, Function, TVars, BB + 1, AccS1, Mem, Value}|Stack]}.
 
 %% TODO: Make better types for all these things
 -spec pop_call_stack(state()) ->
                             {'empty', state()} |
+                            {'modify', fun((state()) -> state()), state()} |
                             {'return_check', map(), protected | unprotected, aeb_fate_data:fate_type_type(),
                                              aefa_stores:store(), aefa_chain_api:state(), state()} |
                             {'local', _, map(), non_neg_integer(), state()} |
@@ -245,6 +287,8 @@ pop_call_stack(#es{accumulator = ReturnValue,
                    current_contract = Current} = ES) ->
     case Stack of
         [] -> {empty, ES};
+        [{modify, Continuation}| Rest] ->
+            {modify, Continuation, ES#es{call_stack = Rest}};
         [{return_check, TVars, Protected, Stores, API, ReturnType}| Rest] ->
             {return_check, TVars, Protected, ReturnType, Stores, API, ES#es{ call_stack = Rest}};
         [{gas_store, StoredGas}| Rest] ->
@@ -252,7 +296,7 @@ pop_call_stack(#es{accumulator = ReturnValue,
                        , call_stack = Rest
                        },
             pop_call_stack(ES1);
-        [{_Caller, Current, Function, TVars, BB, AccS, Mem, Value}| Rest] ->
+        [{_Caller, Current, _VmVersion, Function, TVars, BB, AccS, Mem, Value}| Rest] ->
             {local, Function, TVars, BB,
              ES#es{ call_value = Value
                   , accumulator = ReturnValue
@@ -260,7 +304,7 @@ pop_call_stack(#es{accumulator = ReturnValue,
                   , memory = Mem
                   , call_stack = Rest
                   }};
-        [{Caller, Pubkey, Function, TVars, BB, AccS, Mem, Value}| Rest] ->
+        [{Caller, Pubkey, VmVersion, Function, TVars, BB, AccS, Mem, Value}| Rest] ->
             Seen = pop_seen_contracts(Pubkey, ES),
             NewCurrent =
                 case aefa_chain_api:generation(ES#es.chain_api) of
@@ -278,6 +322,7 @@ pop_call_stack(#es{accumulator = ReturnValue,
                   , call_stack = Rest
                   , seen_contracts = Seen
                   , current_contract = NewCurrent
+                  , vm_version = VmVersion
                   }}
     end.
 
@@ -295,9 +340,11 @@ collect_gas_stores_on_revert(#es{call_stack = Stack, gas = Gas}) ->
 
 collect_gas_stores([{gas_store, Gas}|Left], AccGas) ->
     collect_gas_stores(Left, AccGas + Gas);
+collect_gas_stores([{modify, _}|Left], AccGas) ->
+    collect_gas_stores(Left, AccGas);
 collect_gas_stores([{return_check, _, _, _, _, _}|Left], AccGas) ->
     collect_gas_stores(Left, AccGas);
-collect_gas_stores([{_, _, _, _, _, _, _, _}|Left], AccGas) ->
+collect_gas_stores([{_, _, _, _, _, _, _, _, _}|Left], AccGas) ->
     collect_gas_stores(Left, AccGas);
 collect_gas_stores([], AccGas) ->
     AccGas.
@@ -318,6 +365,10 @@ push_gas_cap(GasCap, #es{ gas = AvailableGas
     ES#es{ call_stack = [{gas_store, AvailableGas - GasCap}|Stack]
          , gas        = GasCap
          }.
+
+-spec push_continuation(fun((state()) -> state()), state()) -> state().
+push_continuation(Cont, #es{ call_stack = Stack } = ES) ->
+    ES#es{ call_stack = [{modify, Cont}|Stack]}.
 
 -spec push_return_type_check(aeb_fate_data:fate_type_type(), #{}, unprotected | protected, state()) -> state().
 push_return_type_check(RetType, TVars, Protected, #es{ call_stack = Stack, stores = Stores, chain_api = API } = ES) ->
@@ -612,3 +663,9 @@ set_trace(X, ES) ->
 -spec vm_version(state()) -> non_neg_integer().
 vm_version(#es{vm_version = X}) ->
     X.
+
+%%%------------------
+-spec consensus_version(state()) -> non_neg_integer().
+consensus_version(#es{chain_api = Api}) ->
+    TxEnv = aefa_chain_api:tx_env(Api),
+    aetx_env:consensus_version(TxEnv).

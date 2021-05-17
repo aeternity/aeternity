@@ -43,7 +43,7 @@
                     "type" : "integer"
                 },
                 "sync_interval" : {
-                    "description" : "Interval between mempool (re-)synchronization (in ms)",
+                   "description" : "Interval between mempool (re-)synchronization (in ms)",
                    "type" : "integer"
                 },
                 "nonce_offset" : {
@@ -52,6 +52,10 @@
                 },
                 "nonce_baseline" : {
                     "description" : "Maximum nonce accepted when pubkey is not present in state",
+                    "type" : "integer"
+                },
+                "cache_size" : {
+                    "description" : "Maximum number of recently received cached transactions",
                     "type" : "integer"
                 }
             }

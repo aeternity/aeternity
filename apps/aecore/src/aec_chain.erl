@@ -64,6 +64,7 @@
 
 %%% Contracts API
 -export([ get_contract/1
+        , get_contract_with_code/1
         , get_contract_call/3
         ]).
 
@@ -102,7 +103,7 @@ get_account(PubKey) ->
     end.
 
 get_account_at_hash(PubKey, Hash) ->
-    case get_block_state(Hash) of
+    case get_block_state_partial(Hash, [accounts]) of
         {ok, Trees} ->
             aec_accounts_trees:lookup(PubKey, aec_trees:accounts(Trees));
         error -> {error, no_state_trees}
@@ -111,19 +112,14 @@ get_account_at_hash(PubKey, Hash) ->
 get_account_at_height(PubKey, Height) ->
     case aec_chain_state:get_key_block_hash_at_height(Height) of
         error -> {error, chain_too_short};
-        {ok, Hash} ->
-            case get_block_state(Hash) of
-                {ok, Trees} ->
-                    aec_accounts_trees:lookup(PubKey, aec_trees:accounts(Trees));
-                error -> {error, no_state_trees}
-            end
+        {ok, Hash} -> get_account_at_hash(PubKey, Hash)
     end.
 
 -spec all_accounts_balances_at_hash(binary()) ->
                                            {'ok', [{aec_keys:pubkey(), non_neg_integer()}]}
                                                | {'error', 'no_state_trees'}.
 all_accounts_balances_at_hash(Hash) when is_binary(Hash) ->
-    case get_block_state(Hash) of
+    case get_block_state_partial(Hash, [accounts]) of
         {ok, Trees} ->
             ATrees = aec_trees:accounts(Trees),
             {ok, aec_accounts_trees:get_all_accounts_balances(ATrees)};
@@ -211,7 +207,7 @@ get_channel(ChannelPubkey, Trees) ->
 -spec get_channel_at_hash(aesc_channels:pubkey(), binary()) ->
     {ok, aesc_channels:channel()} | {error, no_state_trees | not_found}.
 get_channel_at_hash(ChannelPubkey, Hash) ->
-    case get_block_state(Hash) of
+    case get_block_state_partial(Hash, [channels]) of
         {ok, Trees} ->
             get_channel(ChannelPubkey, Trees);
         error -> {error, no_state_trees}
@@ -263,11 +259,30 @@ get_contract(PubKey) ->
         error -> {error, no_state_trees}
     end.
 
+-spec get_contract_with_code(aec_keys:pubkey()) ->
+    {'ok', aect_contracts:contract(), binary()} |
+    {'error', atom()}.
+get_contract_with_code(PubKey) ->
+    case get_contract(PubKey) of
+        {ok, Contract} ->
+            Code =
+                case aect_contracts:code(Contract) of
+                    {code, C} -> C;
+                    {ref, Ref} ->
+                        RefContractPK = aeser_id:specialize(Ref, contract),
+                        {ok, RefContract} = get_contract(RefContractPK),
+                        {code, C} = aect_contracts:code(RefContract),
+                        C
+                end,
+            {ok, Contract, Code};
+        {error, _} = Err -> Err
+    end.
+
 -spec get_contract_call(aect_contracts:id() | binary(), aect_call:id(), binary()) ->
                                {'ok', aect_call:call()} |
                                {'error', atom()}.
 get_contract_call(ContractId, CallId, BlockHash) ->
-    case get_block_state(BlockHash) of
+    case get_block_state_partial(BlockHash, [calls]) of
         error -> {error, no_state_trees};
         {ok, Trees} ->
             CallTree = aec_trees:calls(Trees),
@@ -288,7 +303,7 @@ get_ga_call(Owner, AuthId, BlockHash) ->
     {value, Account} = get_account(Owner),
     {_, AuthCtPK}    = aeser_id:specialize(aec_accounts:ga_contract(Account)),
     CallId = aect_call:ga_id(AuthId, AuthCtPK),
-    case get_block_state(BlockHash) of
+    case get_block_state_partial(BlockHash, [calls]) of
         error -> {error, no_state_trees};
         {ok, Trees} ->
             CallTree = aec_trees:calls(Trees),
@@ -560,6 +575,15 @@ get_top_state() ->
 
 get_block_state(Hash) ->
     case aec_db:find_block_state(Hash) of
+        {value, Trees} -> {ok, Trees};
+        none -> error
+    end.
+
+get_block_state_partial(Hash, Elements) ->
+    get_block_state_partial(Hash, Elements, true).
+
+get_block_state_partial(Hash, Elements, DirtyBackend) ->
+    case aec_db:find_block_state_partial(Hash, DirtyBackend, Elements) of
         {value, Trees} -> {ok, Trees};
         none -> error
     end.

@@ -203,7 +203,7 @@ authenticate_contract_tx_(Config) ->
     DecodeRes =
         fun(SerRVal, Type) ->
             {ok, RValBin} = aeser_api_encoder:safe_decode(contract_bytearray, SerRVal),
-            aefate_test_utils:decode(aeb_fate_encoding:deserialize(RValBin), Type)
+            aefa_test_utils:decode(aeb_fate_encoding:deserialize(RValBin), Type)
         end,
 
     {ok, 200, #{ <<"results">> := [_CreateRes,
@@ -271,7 +271,7 @@ authenticate_contract_(Config) ->
                     ?ABI_AEVM_SOPHIA_1 ->
                         aeb_heap:from_binary({option, word}, RValBin);
                     ?ABI_FATE_SOPHIA_1 ->
-                        {ok, aefate_test_utils:decode(aeb_fate_encoding:deserialize(RValBin), {option, int})}
+                        {ok, aefa_test_utils:decode(aeb_fate_encoding:deserialize(RValBin), {option, int})}
                 end,
             RVal
         end,

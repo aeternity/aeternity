@@ -35,6 +35,7 @@
         , update_tx/2
         , valid_at_protocol/2
         , check_protocol/2
+        , swagger_name_to_type/1
         ]).
 
 -ifdef(TEST).
@@ -82,6 +83,7 @@
                  | channel_slash_tx
                  | channel_settle_tx
                  | channel_snapshot_solo_tx
+                 | channel_set_delegates_tx
                  | channel_offchain_tx
                  | channel_client_reconnect_tx
                  | paying_for_tx.
@@ -112,6 +114,7 @@
 %%                      | aesc_slash_tx:tx()
 %%                      | aesc_settle_tx:tx()
 %%                      | aesc_snapshot_solo_tx:tx()
+%%                      | aesc_set_delegates_tx:tx()
 %%                      | aesc_offchain_tx:tx()
 %%                      | aec_paying_for_tx:tx().
 
@@ -576,6 +579,7 @@ type_to_cb(channel_close_mutual_tx)     -> aesc_close_mutual_tx;
 type_to_cb(channel_slash_tx)            -> aesc_slash_tx;
 type_to_cb(channel_settle_tx)           -> aesc_settle_tx;
 type_to_cb(channel_snapshot_solo_tx)    -> aesc_snapshot_solo_tx;
+type_to_cb(channel_set_delegates_tx)    -> aesc_set_delegates_tx;
 type_to_cb(channel_offchain_tx)         -> aesc_offchain_tx.
 
 type_to_swagger_name(spend_tx)                    -> <<"SpendTx">>;
@@ -602,8 +606,38 @@ type_to_swagger_name(channel_close_mutual_tx)     -> <<"ChannelCloseMutualTx">>;
 type_to_swagger_name(channel_slash_tx)            -> <<"ChannelSlashTx">>;
 type_to_swagger_name(channel_settle_tx)           -> <<"ChannelSettleTx">>;
 type_to_swagger_name(channel_snapshot_solo_tx)    -> <<"ChannelSnapshotSoloTx">>;
+type_to_swagger_name(channel_set_delegates_tx)    -> <<"ChannelSetDelegatesTx">>;
 %% not exposed in HTTP API:
 type_to_swagger_name(channel_offchain_tx)         -> <<"ChannelOffchainTx">>.
+
+-spec swagger_name_to_type(binary()) -> tx_type().
+swagger_name_to_type(<<"SpendTx">>)                   -> spend_tx;
+swagger_name_to_type(<<"OracleRegisterTx">>)          -> oracle_register_tx;
+swagger_name_to_type(<<"OracleExtendTx">>)            -> oracle_extend_tx;
+swagger_name_to_type(<<"OracleQueryTx">>)             -> oracle_query_tx;
+swagger_name_to_type(<<"OracleRespondTx">>)           -> oracle_response_tx;
+swagger_name_to_type(<<"NamePreclaimTx">>)            -> name_preclaim_tx;
+swagger_name_to_type(<<"NameClaimTx">>)               -> name_claim_tx;
+swagger_name_to_type(<<"NameTransferTx">>)            -> name_transfer_tx;
+swagger_name_to_type(<<"NameUpdateTx">>)              -> name_update_tx;
+swagger_name_to_type(<<"NameRevokeTx">>)              -> name_revoke_tx;
+swagger_name_to_type(<<"ContractCallTx">>)            -> contract_call_tx;
+swagger_name_to_type(<<"ContractCreateTx">>)          -> contract_create_tx;
+swagger_name_to_type(<<"GAAttachTx">>)                -> ga_attach_tx;
+swagger_name_to_type(<<"GAMetaTx">>)                  -> ga_meta_tx;
+swagger_name_to_type(<<"PayingForTx">>)               -> paying_for_tx;
+swagger_name_to_type(<<"ChannelCreateTx">>)           -> channel_create_tx;
+swagger_name_to_type(<<"ChannelDepositTx">>)          -> channel_deposit_tx;
+swagger_name_to_type(<<"ChannelWithdrawTx">>)         -> channel_withdraw_tx;
+swagger_name_to_type(<<"ChannelForceProgressTx">>)    -> channel_force_progress_tx;
+swagger_name_to_type(<<"ChannelCloseSoloTx">>)        -> channel_close_solo_tx;
+swagger_name_to_type(<<"ChannelCloseMutualTx">>)      -> channel_close_mutual_tx;
+swagger_name_to_type(<<"ChannelSlashTx">>)            -> channel_slash_tx;
+swagger_name_to_type(<<"ChannelSettleTx">>)           -> channel_settle_tx;
+swagger_name_to_type(<<"ChannelSnapshotSoloTx">>)     -> channel_snapshot_solo_tx;
+swagger_name_to_type(<<"ChannelSetDelegatesTx">>)     -> channel_set_delegates_tx;
+%% not exposed in HTTP API:
+swagger_name_to_type(<<"ChannelOffchainTx">>)         -> channel_offchain_tx.
 
 -spec specialize_type(Tx :: tx()) -> {tx_type(), tx_instance()}.
 specialize_type(#aetx{ type = Type, tx = Tx }) -> {Type, Tx}.

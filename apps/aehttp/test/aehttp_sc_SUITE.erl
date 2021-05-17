@@ -166,7 +166,7 @@
 
 -define(ARBITRARY_BIG_FEE, 123456789876543).
 
-all() -> [{group, plain}, {group, aevm}, {group, fate}].
+all() -> [{group, plain}, {group, assume_min_depth}, {group, aevm}, {group, fate}].
 
 groups() ->
     [{plain, [],
@@ -199,6 +199,9 @@ groups() ->
         {group, only_one_signs},
         {group, both_sign}
       ]},
+
+     {assume_min_depth, [],
+      [ sc_ws_basic_open_close ]},
 
      {with_meta, [],
       [ sc_ws_update_transfer,
@@ -412,6 +415,8 @@ init_per_group(sc_contracts, Config) ->
     sc_ws_open_(reset_participants(sc_contracts, Config));
 init_per_group(plain, Config) ->
     reset_participants(plain, Config);
+init_per_group(assume_min_depth, Config) ->
+    [{assume_min_depth, true} | reset_participants(plain, Config)];
 init_per_group(client_reconnect, Config) ->
     reset_participants(client_reconnect, Config);
 init_per_group(pinned_env, Config) ->
@@ -754,6 +759,7 @@ sc_ws_open_(Config, ChannelOpts0, MinBlocksToMine, LogDir) ->
     channel_send_conn_open_infos(RConnPid, IConnPid, Config),
 
     SignedCrTx = channel_create(Config, IConnPid, RConnPid),
+    CrTxHash = aetx_sign:hash(SignedCrTx),
     CrTx = aetx_sign:innermost_tx(SignedCrTx),
     {ok, ChPubkey} = aesc_utils:channel_pubkey(SignedCrTx),
     {channel_create_tx, Tx} = aetx:specialize_type(CrTx),
@@ -771,6 +777,8 @@ sc_ws_open_(Config, ChannelOpts0, MinBlocksToMine, LogDir) ->
                {channel_start_amounts, #{ initiator => IStartAmt
                                         , responder => RStartAmt }},
                {create_tx, SignedCrTx},
+               {create_tx_hash, CrTxHash},
+               {min_blocks_to_mine, MinBlocksToMine},
                {channel_options, ChannelOpts} | Config],
     %%
     case proplists:get_value(mine_create_tx, Config, true) of
@@ -846,8 +854,14 @@ finish_sc_ws_open(Config, MinBlocksToMine, Register) ->
     assert_balance_at_most(RPubkey, RStartAmt - RAmt),
 
     %% mine min depth
-    aecore_suite_utils:mine_key_blocks(aecore_suite_utils:node_name(?NODE),
-                                       MinBlocksToMine),
+    case proplists:get_bool(assume_min_depth, Config) of
+        true ->
+            tell_participants_to_assume_min_depth(
+              [IConnPid, RConnPid], SignedCrTx);
+        false ->
+            aecore_suite_utils:mine_key_blocks(aecore_suite_utils:node_name(?NODE),
+                                               MinBlocksToMine)
+    end,
 
     {ok, ChId} = channel_send_locking_infos(IConnPid, RConnPid, Config),
 
@@ -858,7 +872,32 @@ finish_sc_ws_open(Config, MinBlocksToMine, Register) ->
     %%
     ok.
 
+maybe_collect_deferred_min_depth_msg(Config) ->
+    case proplists:get_bool(assume_min_depth, Config) of
+        true ->
+            collect_deferred_min_depth_msg(Config);
+        false ->
+            ok
+    end.
 
+collect_deferred_min_depth_msg(Config) ->
+    {_, MinBlocksToMine} = lists:keyfind(min_blocks_to_mine, 1, Config),
+    #{ initiator := IConnPid
+     , responder := RConnPid } = proplists:get_value(channel_clients, Config),
+    {_, CrTxHash} = lists:keyfind(create_tx_hash, 1, Config),
+    EncHash = aeser_api_encoder:encode(tx_hash, CrTxHash),
+    with_registered_events(
+      [info], [IConnPid, RConnPid],
+      fun() ->
+              aecore_suite_utils:mine_key_blocks(aecore_suite_utils:node_name(?NODE),
+                                                 MinBlocksToMine),
+              {ok, E} = wait_for_channel_event_full(IConnPid, info, Config),
+              ct:log("Deferred min-depth Msg E = ~p", [E]),
+              #{data := #{ <<"event">> := <<"minimum_depth_achieved">>
+                         , <<"tx_hash">> := EncHash }} = E,
+              {ok, E} = wait_for_channel_event_full(RConnPid, info, Config),
+              ok
+      end).
 
 make_two_gen_messages_volleys(IConnPid, IPubkey, RConnPid,
                                   RPubkey, Config) ->
@@ -990,6 +1029,20 @@ maybe_mine_create_tx(SignedCrTx, Config, IConnPid, RConnPid) ->
             channel_create_mined(SignedCrTx, Config, IConnPid, RConnPid);
         true ->
             ok
+    end.
+
+tell_participants_to_assume_min_depth(ConnPids, SignedTx) ->
+    TxHash = aeser_api_encoder:encode(tx_hash, aetx_sign:hash(SignedTx)),
+    ct:log("Will tell ~p to assume min_depth for ~p", [ConnPids, TxHash]),
+    [ ok = assume_min_depth(Pid, TxHash) || Pid <- ConnPids],
+    ok.
+
+assume_min_depth(Pid, TxHash) ->
+    case ?WS:json_rpc_call(
+            Pid, #{ <<"method">> => <<"channels.assume_minimum_depth">>
+                  , <<"params">> => #{ <<"tx_hash">> => TxHash } }) of
+        <<"ok">> -> ok;
+        Other    -> {error, Other}
     end.
 
 channel_create_mined(SignedCrTx, Config, IConnPid, RConnPid) ->
@@ -3035,6 +3088,7 @@ sc_ws_min_depth_is_modifiable(Config0) ->
 sc_ws_basic_open_close(Config0) ->
     Config = sc_ws_open_(Config0),
     ok = sc_ws_update_(Config),
+    ok = maybe_collect_deferred_min_depth_msg(Config),
     ok = sc_ws_close_(Config).
 
 sc_ws_basic_open_close_server(Config0) ->
@@ -4158,6 +4212,8 @@ log_basename(Config) ->
                 filename:join([Protocol, "force_progress"]);
             reconnects ->
                 filename:join([Protocol, "reconnects"]);
+            assume_min_depth ->
+                filename:join([Protocol, "assume_min_depth"]);
             plain -> Protocol
         end,
     filename:join("channel_docs", SubDir).
