@@ -14,6 +14,7 @@ main contract C =
     let s1 = Chain.clone(ref=s)
     let Some(s2) = Chain.clone(ref=s, protected = true)
     let None = Chain.clone(ref=s, protected=true, gas=1)
+    // This should fail because `l` is a `HigherOrderState` actually
     let None = Chain.clone(ref=l, protected = true, 123)
     let s3 = Chain.clone(ref=s1)
     require(s1.apply(2137) == 2137, "APPLY_S1_0")

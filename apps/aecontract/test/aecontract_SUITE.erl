@@ -1640,8 +1640,12 @@ make_calldata_from_code(Code, Fun, Args) when is_binary(Fun) ->
 
 make_calldata_from_id(Id, Fun, Args, State) ->
     {{value, C}, _S} = lookup_contract_by_id(Id, State),
-    {code, Code} = aect_contracts:code(C),
-    make_calldata_from_code(Code, Fun, Args).
+    case aect_contracts:code(C) of
+        {code, Code} ->
+            make_calldata_from_code(Code, Fun, Args);
+        {ref, {id, contract, Id1}} ->
+            make_calldata_from_id(Id1, Fun, Args, State)
+    end.
 
 format_aevm_type({bytes, N}) ->
     case lists:seq(1, N, 32) of
@@ -1786,13 +1790,23 @@ sophia_clone(_Cfg) ->
     Acc     = ?call(new_account, 1000000000 * aec_test_utils:min_gas_price()),
     Remote  = ?call(create_contract, Acc, higher_order_state, {}),
     Ct      = ?call(create_contract, Acc, clone_test, {}),
-    Cloned1 = ?call(call_contract, Acc, Ct, run_clone, word, {?cid(Remote), ?cid(Remote)}),
-    Cloned2 = ?call(call_contract, Acc, Ct, run_clone, word, {?cid(Cloned1), ?cid(Cloned1)}),
-    ?assert(Cloned1 =/= Cloned2),
 
+    Cloned1 = ?call(call_contract, Acc, Ct, run_clone, word, {?cid(Remote), ?cid(Remote)}),
     {contract, Cloned1Id} = Cloned1,
     Cloned1Addr = <<Cloned1Id:256>>,
-    ?assertEqual(3, ?call(call_contract, Acc, Cloned1Addr, apply, word, {10})),
+
+    Cloned2 = ?call(call_contract, Acc, Ct, run_clone, word, {?cid(Cloned1Addr), ?cid(Cloned1Addr)}),
+    {contract, Cloned2Id} = Cloned2,
+    Cloned2Addr = <<Cloned2Id:256>>,
+
+    ?assertNotEqual(Cloned1, Cloned2),
+
+    ?assertEqual({}, ?call(call_contract, Acc, Cloned1Addr, inc, {tuple, []}, {})),
+
+    ?assertEqual(13, ?call(call_contract, Acc, Cloned1Addr, apply, word, {10})),
+    ?assertEqual(12, ?call(call_contract, Acc, Cloned2Addr, apply, word, {10})),
+
+
     ok.
 
 sophia_create(_Cfg) ->
@@ -5604,7 +5618,7 @@ sophia_compiler_version(_Cfg) ->
     {code, Code} = aect_contracts:code(C),
     CMap = aeser_contract_code:deserialize(Code),
     ?assertMatchProtocol(maps:get(compiler_version, CMap, undefined),
-                         undefined, <<"2.1.0">>, <<"3.2.0">>, <<"unknown">>, <<"4.3.0">>),
+                         undefined, <<"2.1.0">>, <<"3.2.0">>, <<"4.3.0">>, <<"5.0.0">>),
     ok.
 
 sophia_protected_call(_Cfg) ->
