@@ -39,8 +39,8 @@ pow_from_genesis_test_() ->
              end,
              fun(TmpDir) ->
                      aec_test_utils:aec_keys_cleanup(TmpDir),
-                     aec_test_utils:unmock_genesis_and_forks(),
-                     aec_test_utils:stop_chain_db()
+                     aec_test_utils:stop_chain_db(),
+                     aec_test_utils:unmock_genesis_and_forks()
              end,
              [ {"HC specific methods don't work when we use only PoW",
                  fun() ->

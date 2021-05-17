@@ -822,7 +822,7 @@ get_block_(Hash, Chain) ->
         [BlockEntry|_] ->
             {ok, maps:get(block, BlockEntry)};
         [] ->
-            error
+            not_found
     end.
 
 get_channel_(ChId, Chain) ->

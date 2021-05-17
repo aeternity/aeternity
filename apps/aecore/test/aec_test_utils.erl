@@ -20,8 +20,8 @@
         , mock_fast_and_deterministic_cuckoo_pow/0
         , mock_prebuilt_cuckoo_pow/1
         , mock_genesis_and_forks/0
+        , mock_genesis_and_forks_no_link/0
         , mock_genesis_and_forks/1
-        , mock_genesis_and_forks/2
         , unmock_genesis_and_forks/0
         , ensure_not_mocked/1
         , ensure_no_mocks/0
@@ -153,14 +153,17 @@ mock_cuckoo_pow({_EdgeBits, _Miners} = Cfg) ->
                        meck:passthrough([App, Key, Def])
                end).
 
+mock_genesis_and_forks_no_link() ->
+    mock_genesis_and_forks(genesis_accounts(), #{},[passthrough, no_link]).
+
 mock_genesis_and_forks() ->
-    mock_genesis_and_forks(genesis_accounts()).
+    mock_genesis_and_forks(genesis_accounts(), #{}, [passthrough]).
 
 mock_genesis_and_forks(PresetAccounts) ->
-    mock_genesis_and_forks(PresetAccounts, #{}).
+    mock_genesis_and_forks(PresetAccounts, #{}, [passthrough]).
 
-mock_genesis_and_forks(PresetAccounts, Whitelist) ->
-    meck:new(aec_fork_block_settings, [passthrough]),
+mock_genesis_and_forks(PresetAccounts, Whitelist, MeckOptions) ->
+    meck:new(aec_fork_block_settings, MeckOptions),
     meck:expect(aec_fork_block_settings, genesis_accounts, 0, PresetAccounts),
     meck:expect(aec_fork_block_settings, minerva_accounts, 0, []),
     meck:expect(aec_fork_block_settings, fortuna_accounts, 0, []),
@@ -168,7 +171,7 @@ mock_genesis_and_forks(PresetAccounts, Whitelist) ->
     meck:expect(aec_fork_block_settings, lima_extra_accounts, 0, []),
     meck:expect(aec_fork_block_settings, lima_contracts, 0, []),
     meck:expect(aec_fork_block_settings, block_whitelist, 0, Whitelist),
-    meck:new(aec_resilience, [passthrough]),
+    meck:new(aec_resilience, MeckOptions),
     meck:expect(aec_resilience, fork_resistance_active, 0, no),
     meck:expect(aec_resilience, fork_resistance_configured, 0, no),
     meck:expect(aec_fork_block_settings, hc_staking_contract_file, 0,

@@ -69,41 +69,45 @@ with_mocked_fork_settings(What) ->
 
 hc_chain_eunit_testcase(Consensus, What) ->
     aehc_test_utils:with_mocked_fork_settings([
-    aec_test_utils:eunit_with_consensus(Consensus, [
-    {foreach,
-     fun() ->
-             ok = application:ensure_started(gproc),
-             {ok, _} = aec_db_error_store:start_link(),
-             ok = aec_test_utils:start_chain_db(),
-             %% somehow setup:find_env_vars can't find this hook in eunit tests
-             aehc_db:create_tables(ram),
-             Tabs = [Tab || {Tab, _} <- aehc_parent_db:table_specs(ram)],
-             ok = mnesia:wait_for_tables(Tabs, 10000),
+        aec_test_utils:eunit_with_consensus(Consensus, [
+        {foreach,
+         fun() ->
+                 aefa_fate_op:load_pre_iris_map_ordering(),
+                 ok = application:ensure_started(gproc),
+                 {ok, _} = aec_db_error_store:start_link(),
+                 ok = aec_test_utils:start_chain_db(),
+                 %% somehow setup:find_env_vars can't find this hook in eunit tests
+                 aehc_db:create_tables(ram),
+                 Tabs = [Tab || {Tab, _} <- aehc_parent_db:table_specs(ram)],
+                 ok = mnesia:wait_for_tables(Tabs, 10000),
 
-             meck:new(aec_mining, [passthrough]),
-             meck:expect(aec_mining, verify, fun(_, _, _, _) -> true end),
-             meck:new(aec_events, [passthrough]),
-             meck:expect(aec_events, publish, fun(_, _) -> ok end),
-             TmpDir = aec_test_utils:aec_keys_setup(),
-             {ok, PubKey} = aec_keys:pubkey(),
-             ok = application:set_env(aecore, beneficiary, aeser_api_encoder:encode(account_pubkey, PubKey)),
-             {ok, _} = aec_tx_pool:start_link(),
-             aec_consensus:set_genesis_hash(),
-             aefa_fate_op:load_pre_iris_map_ordering(),
-             {ok, _} = aec_conductor:start_link([{autostart, false}]),
-             TmpDir
-     end,
-     fun(TmpDir) ->
-             ok = application:unset_env(aecore, beneficiary),
-             ok = aec_conductor:stop(),
-             ok = aec_tx_pool:stop(),
-             ok = application:stop(gproc),
-             meck:unload(aec_mining),
-             meck:unload(aec_events),
-             ok = aec_test_utils:stop_chain_db(),
-             ok = aec_db_error_store:stop(),
-             aec_test_utils:aec_keys_cleanup(TmpDir)
-     end, What}])]).
+                 meck:new(aec_mining, [passthrough]),
+                 meck:expect(aec_mining, verify, fun(_, _, _, _) -> true end),
+                 meck:new(aec_events, [passthrough]),
+                 meck:expect(aec_events, publish, fun(_, _) -> ok end),
+                 TmpDir = aec_test_utils:aec_keys_setup(),
+
+                 {ok, PubKey} = aec_keys:pubkey(),
+                 ok = application:set_env(aecore, beneficiary, aeser_api_encoder:encode(account_pubkey, PubKey)),
+                 {ok, _} = aec_tx_pool:start_link(),
+                 aec_consensus:set_genesis_hash(),
+                 {ok, _} = aec_conductor:start_link([{autostart, false}]),
+                 TmpDir
+         end,
+         fun(TmpDir) ->
+                 ok = aec_conductor:stop(),
+                 ok = aec_tx_pool:stop(),
+                 ok = application:unset_env(aecore, beneficiary),
+                 aec_test_utils:aec_keys_cleanup(TmpDir),
+                 meck:unload(aec_mining),
+                 meck:unload(aec_events),
+                 ok = aec_db_error_store:stop(),
+                 ok = aec_test_utils:stop_chain_db(),
+                 ok = application:stop(gproc)
+         end,
+         What}
+        ])
+    ]).
 
 gen_blocks_only_chain(Count) ->
     aec_test_utils:gen_blocks_only_chain(Count, genesis_accounts()).

@@ -40,14 +40,16 @@ setup() ->
     mock_protocol(),
     ok = lager:start(),
     group_leader(setup_log_file(), self()),
-    aec_keys:start_link(),
+    {ok, _} = aec_keys:start_link(),
     {ok, _} = aec_chain_sim:start(),
     ok.
 
 unsetup(ok) ->
     aec_chain_sim:stop(),
+    aec_keys:stop(),
     unmock_protocol(),
-    aec_test_utils:unmock_genesis_and_forks().
+    aec_test_utils:unmock_genesis_and_forks(),
+    ok = application:stop(gproc).
 
 
 mock_protocol() ->
