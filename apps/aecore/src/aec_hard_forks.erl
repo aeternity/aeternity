@@ -2,7 +2,7 @@
 
 -export([ensure_env/0]).
 -export([protocols/0,
-	 protocols_from_network_id/1,
+         protocols_from_network_id/1,
          protocol_effective_at_height/1,
          protocol_vsn_name/1,
          protocol_vsn/1
