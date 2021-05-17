@@ -174,11 +174,11 @@ etag_generation_hash(Hash) ->
 etag_transaction_hash(Hash) ->
     case aec_chain:find_tx_with_location(Hash) of
         {mempool, _Tx} ->
-            {ok, aeu_hex:bin_to_hex(Hash)};
+            {ok, list_to_binary(aeu_hex:bin_to_hex(Hash))};
         {BlockHash, _Tx} when is_binary(BlockHash) ->
             H = <<Hash/binary, BlockHash/binary>>,
             ETag = aeu_hex:bin_to_hex(crypto:hash(md5, H)),
-            {ok,  ETag};
+            {ok,  list_to_binary(ETag)};
         _ ->
             undefined
     end.
