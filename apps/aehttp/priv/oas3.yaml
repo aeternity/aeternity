@@ -31,6 +31,8 @@ tags:
     description: Debug endpoints
   - name: obsolete
     description: Old endpoints that will be removed
+  - name: dry-run
+    description: External dry run endpoint.
 externalDocs:
   description: Find out more about Aeternity
   url: http://www.aeternity.com
@@ -541,6 +543,35 @@ paths:
           content:
             application/json:
               schema:
+  /dry-run:
+    post:
+      tags:
+        - external
+        - dry-run
+      operationId: ProtectedDryRunTxs
+      description: Dry-run transactions on top of a given block. Supports all TXs except GAMetaTx, PayingForTx and OffchainTx. The maximum gas limit of all calls is capped. The maximum gas limit per request is a global node setting. Since DryRunCallReq object do not have a mandatory gas field, if not set a default value of 1000000 is being used instead.
+      parameters:
+        - $ref: '#/components/parameters/intAsString'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DryRunInput"
+        description: transactions
+        required: true
+      responses:
+        "200":
+          description: Dry-run result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DryRunResults"
+        "403":
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
                 $ref: "#/components/schemas/Error"
   "/transactions/{hash}":
     get:

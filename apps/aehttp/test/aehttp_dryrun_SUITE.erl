@@ -18,6 +18,8 @@
         , authenticate_contract/1
         , authenticate_contract_tx/1
         , accounts/1
+        , a_lot_of_gas_limit_passes/1
+        , a_lot_of_gas_limit_fails/1
         ]).
 
 -import(aecore_suite_utils, [http_request/4, internal_address/0, external_address/0, rpc/4]).
@@ -26,6 +28,7 @@
 -define(NODE, dev1).
 
 -define(MAX_MINED_BLOCKS, 20).
+-define(API_GAS_LIMIT, 6000000).
 
 -define(assertMatchVM(AEVM, FATE, Res),
     case ?IS_AEVM_SOPHIA(aect_test_utils:vm_version()) of
@@ -34,13 +37,18 @@
     end).
 
 all() ->
-    [ {group, aevm}
-    , {group, fate}
+    [
+      {group, all}
     ].
 
 groups() ->
-    [ {aevm, [], [{group, dry_run}]}
-    , {fate, [], [{group, dry_run}]}
+    [ {all, [sequence], [{group, swagger2}, {group, oas3}]}
+    , {swagger2, [sequence], [{group, aevm}, {group, fate}]}
+    , {oas3, [sequence], [{group, aevm}, {group, fate}]}
+    , {aevm, [], [{group, internal}, {group, external}]}
+    , {fate, [], [{group, internal}, {group, external}]}
+    , {internal, [], [{group, dry_run}, a_lot_of_gas_limit_passes]}
+    , {external, [], [{group, dry_run}, a_lot_of_gas_limit_fails]}
     , {dry_run, [],
         [ spend_txs
         , identity_contract
@@ -55,7 +63,9 @@ suite() -> [].
 init_per_suite(Config) ->
     Forks = aecore_suite_utils:forks(),
     DefCfg = #{<<"chain">> => #{<<"persist">> => false,
-                                <<"hard_forks">> => Forks}},
+                                <<"hard_forks">> => Forks},
+               <<"http">> => #{<<"endpoints">> => #{<<"dry-run">> => true},
+                               <<"external">> => #{<<"gas_limit">> => ?API_GAS_LIMIT}}},
     Config1 = aecore_suite_utils:init_per_suite([?NODE], DefCfg, [ {instant_mining, true}
                                                                  , {symlink_name, "latest.http_dryrun"}
                                                                  , {test_module, ?MODULE}] ++ Config),
@@ -68,9 +78,15 @@ end_per_suite(Config) ->
     aecore_suite_utils:stop_node(?NODE, Config),
     ok.
 
+init_per_group(SwaggerVsn, Config) when SwaggerVsn =:= swagger2;
+                                        SwaggerVsn =:= oas3 ->
+    [{swagger_version, SwaggerVsn} | Config];
 init_per_group(VM, Config) when VM == aevm; VM == fate ->
     aect_test_utils:init_per_group(VM, Config);
-init_per_group(dry_run, Config) ->
+init_per_group(Interface, Config) when Interface =:= internal;
+                                       Interface =:= external ->
+    [{interface, Interface} | Config];
+init_per_group(all, Config) ->
     aecore_suite_utils:reinit_with_ct_consensus(?NODE),
     NodeName = aecore_suite_utils:node_name(?NODE),
 
@@ -105,12 +121,20 @@ init_per_group(dry_run, Config) ->
                             priv_key => DPrivkey,
                             start_amt => StartAmt}},
     {ok, TopHash} = aec_blocks:hash_internal_representation(Top),
-    [{top_hash, TopHash}, {accounts, Accounts}, {node_name, NodeName} | Config].
+    [{top_hash, TopHash}, {accounts, Accounts}, {node_name, NodeName} | Config];
+init_per_group(_, Config) -> Config.
 
 end_per_group(_VM, _Config) ->
     ok.
 
 init_per_testcase(_Case, Config) ->
+    SwaggerVsn = proplists:get_value(swagger_version, Config),
+    aecore_suite_utils:use_swagger(SwaggerVsn),
+    put('$vm_version',     ?config(vm_version,     Config)),
+    put('$abi_version',    ?config(abi_version,    Config)),
+    put('$sophia_version', ?config(sophia_version, Config)),
+    [{_, Node} | _] = ?config(nodes, Config),
+    aecore_suite_utils:mock_mempool_nonce_offset(Node, 100),
     aect_test_utils:setup_testcase(Config),
     [{tc_start, os:timestamp()}|Config].
 
@@ -136,10 +160,10 @@ spend_txs(Config) ->
     {ok, 200, #{ <<"results">> := [#{ <<"result">> := <<"ok">>,
                                       <<"type">> := <<"spend">> },
                                    #{ <<"result">> := <<"ok">> }] }} =
-        dry_run(TopHash, [Tx1, Tx2]),
+        dry_run(Config, TopHash, [Tx1, Tx2]),
 
     {ok, 200, #{ <<"results">> := [#{ <<"result">> := <<"error">> }, #{ <<"result">> := <<"ok">> }] }} =
-        dry_run(TopHash, [Tx2, Tx1]),
+        dry_run(Config, TopHash, [Tx2, Tx1]),
 
     ok.
 
@@ -164,10 +188,10 @@ identity_contract(Config) ->
                                       <<"type">> := <<"contract_call">>,
                                       <<"call_obj">> := #{ <<"gas_used">> := _ } }
                                   ] }} =
-        dry_run(TopHash, [CreateTx, CallTx]),
+        dry_run(Config, TopHash, [CreateTx, CallTx]),
 
     {ok, 200, #{ <<"results">> := [#{ <<"result">> := <<"error">> }, #{ <<"result">> := <<"ok">> }] }} =
-        dry_run(TopHash, [BadCallTx, CreateTx]),
+        dry_run(Config, TopHash, [BadCallTx, CreateTx]),
 
     ok.
 
@@ -211,7 +235,7 @@ authenticate_contract_tx_(Config) ->
                                       <<"type">> := <<"contract_call">>,
                                       <<"call_obj">> := CallObj }
                                   ] }} =
-        dry_run(TopHash, [CreateTx, CallTx]),
+        dry_run(Config, TopHash, [CreateTx, CallTx]),
 
     ?assertEqual(true, DecodeRes(maps:get(<<"return_value">>, CallObj), bool)),
 
@@ -220,9 +244,11 @@ authenticate_contract_tx_(Config) ->
                  <<"abi_version">> => aect_test_utils:abi_version()},
     EncSpend = aeser_api_encoder:encode(transaction, aetx:serialize_to_binary(SpendTx)),
     CallReq1 = {call_req, CallReq#{<<"context">> => #{tx => EncSpend,
-                                                      stateful => true}}},
+                                                      stateful => true},
+                                   <<"gas">> => 100000}},
     CallReq2 = {call_req, CallReq#{<<"context">> => #{tx => EncSpend,
                                                       stateful => false},
+                                   <<"gas">> => 100000,
                                    <<"nonce">> => 2}},
     {ok, 200, #{ <<"results">> := [_CreateRes,
                                    #{ <<"result">> := <<"ok">>,
@@ -235,7 +261,7 @@ authenticate_contract_tx_(Config) ->
                                       <<"type">> := <<"contract_call">>,
                                       <<"call_obj">> := CallObj3 }
                                   ] }} =
-        dry_run(TopHash, [CreateTx, CallReq1, CallReq2, CallReq2]),
+        dry_run(Config, TopHash, [CreateTx, CallReq1, CallReq2, CallReq2]),
 
     ?assertEqual(true, DecodeRes(maps:get(<<"return_value">>, CallObj2), bool)),
     ?assertEqual(true, DecodeRes(maps:get(<<"return_value">>, CallObj3), bool)),
@@ -281,7 +307,7 @@ authenticate_contract_(Config) ->
                                       <<"type">> := <<"contract_call">>,
                                       <<"call_obj">> := CallObj }
                                   ] }} =
-        dry_run(TopHash, [CreateTx, CallTx]),
+        dry_run(Config, TopHash, [CreateTx, CallTx]),
 
     ?assertEqual(none, DecodeOption(maps:get(<<"return_value">>, CallObj))),
 
@@ -289,9 +315,11 @@ authenticate_contract_(Config) ->
                  <<"calldata">> => aeser_api_encoder:encode(contract_bytearray, CallCallData),
                  <<"abi_version">> => aect_test_utils:abi_version()},
     CallReq1 = {call_req, CallReq#{<<"context">> => #{tx_hash => aeser_api_encoder:encode(tx_hash, <<12345:32/unit:8>>),
-                                                      stateful => true}}},
+                                                      stateful => true},
+                                   <<"gas">> => 100000}},
     CallReq2 = {call_req, CallReq#{<<"context">> => #{tx_hash => aeser_api_encoder:encode(tx_hash, <<12345:32/unit:8>>),
                                                       stateful => false},
+                                   <<"gas">> => 100000,
                                    <<"nonce">> => 2}},
     {ok, 200, #{ <<"results">> := [_CreateRes,
                                    #{ <<"result">> := <<"ok">>,
@@ -304,7 +332,7 @@ authenticate_contract_(Config) ->
                                       <<"type">> := <<"contract_call">>,
                                       <<"call_obj">> := CallObj3 }
                                   ] }} =
-        dry_run(TopHash, [CreateTx, CallReq1, CallReq2, CallReq2]),
+        dry_run(Config, TopHash, [CreateTx, CallReq1, CallReq2, CallReq2]),
 
     ?assertMatchVM({some, 12345}, {some, {bytes, <<12345:256>>}}, DecodeOption(maps:get(<<"return_value">>, CallObj2))),
     ?assertMatchVM({some, 12345}, {some, {bytes, <<12345:256>>}}, DecodeOption(maps:get(<<"return_value">>, CallObj3))),
@@ -323,22 +351,22 @@ accounts(Config) ->
 
     %% Should work on TopHash
     {ok, 200, #{ <<"results">> := [#{ <<"result">> := <<"ok">> }, #{ <<"result">> := <<"ok">> }] }} =
-        dry_run(TopHash, [Tx1, Tx2]),
+        dry_run(Config, TopHash, [Tx1, Tx2]),
 
     %% Should not work on GenHash
     {ok, 200, #{ <<"results">> := [#{ <<"result">> := <<"error">> }, #{ <<"result">> := <<"error">> }] }} =
-        dry_run(GenHash, [Tx1, Tx2]),
+        dry_run(Config, GenHash, [Tx1, Tx2]),
 
     %% Should work on GenHash with APub
     {ok, 200, #{ <<"results">> := [#{ <<"result">> := <<"ok">> }, #{ <<"result">> := <<"ok">> }] }} =
-        dry_run(TopHash, [Tx1, Tx2], [#{ pub_key => APub, amount => 100000000}]),
+        dry_run(Config, TopHash, [Tx1, Tx2], [#{ pub_key => APub, amount => 100000000}]),
 
     {ok, 200, #{ <<"results">> := [#{ <<"result">> := <<"error">> }, #{ <<"result">> := <<"ok">> }] }} =
-        dry_run(TopHash, [Tx2, Tx1]),
+        dry_run(Config, TopHash, [Tx2, Tx1]),
 
     %% Should work on GenHash if we create and top up EPub
     {ok, 200, #{ <<"results">> := [#{ <<"result">> := <<"ok">> }, #{ <<"result">> := <<"ok">> }] }} =
-        dry_run(TopHash, [Tx2, Tx1], [#{ pub_key => EPub, amount => 1000000000000000}]),
+        dry_run(Config, TopHash, [Tx2, Tx1], [#{ pub_key => EPub, amount => 1000000000000000}]),
 
     ok.
 
@@ -353,13 +381,20 @@ contract_id(Tx) ->
     {_, CTx} = aetx:specialize_callback(Tx),
     aect_create_tx:contract_pubkey(CTx).
 
-dry_run(TopHash, Txs) ->
-    dry_run(TopHash, Txs, []).
+dry_run(Config, TopHash, Txs) ->
+    dry_run(Config, TopHash, Txs, []).
 
-dry_run(TopHash, Txs, Accounts) ->
+dry_run(Config, TopHash, Txs, Accounts) ->
     EncTx = fun(Tx) -> try aeser_api_encoder:encode(transaction, aetx:serialize_to_binary(Tx))
                        catch _:_ -> Tx end end,
-    http_request(internal_address(), post, "debug/transactions/dry-run",
+    {Host, URI} =
+        case ?config(interface, Config) of
+            internal ->
+                {internal_address(), "debug/transactions/dry-run"};
+            external ->
+                {external_address(), "dry-run"}
+        end,
+    http_request(Host, post, URI,
                  #{ top => aeser_api_encoder:encode(key_block_hash, TopHash),
                     accounts => [ A#{pub_key => aeser_api_encoder:encode(account_pubkey, PK)}
                                   || A = #{pub_key := PK } <- Accounts ],
@@ -387,6 +422,9 @@ create_spend_tx(Sender, Recipient, Amount, Fee, Nonce, TTL) ->
     Tx.
 
 create_contract_tx(Owner, Nonce, Code, CallData) ->
+    create_contract_tx(Owner, Nonce, Code, CallData, 100000).
+
+create_contract_tx(Owner, Nonce, Code, CallData, Gas) ->
     OwnerId = aeser_id:create(account, Owner),
     Params = #{ owner_id => OwnerId,
                 code => Code,
@@ -395,7 +433,7 @@ create_contract_tx(Owner, Nonce, Code, CallData) ->
                 abi_version => aect_test_utils:abi_version(),
                 deposit => 0,
                 amount => 0,      %Initial balance
-                gas => 100000,     %May need a lot of gas
+                gas => Gas,     %May need a lot of gas
                 gas_price => aec_test_utils:min_gas_price(),
                 fee => 1400000 * aec_test_utils:min_gas_price(),
                 nonce => Nonce },
@@ -417,4 +455,53 @@ call_contract_tx(Caller, Contract, Nonce, CallData) ->
     {ok, Tx} = aect_call_tx:new(Params),
     Tx.
 
+a_lot_of_gas_limit_passes(Config) ->
+    #{acc_a := #{pub_key := APub}} = proplists:get_value(accounts, Config),
+    TopHash = proplists:get_value(top_hash, Config),
 
+    {ok, Code}   = aect_test_utils:compile_contract(identity),
+
+    InitCallData = make_call_data(identity, <<"init">>, []),
+
+    CreateTx  = {tx, create_contract_tx(APub, 1, Code, InitCallData, ?API_GAS_LIMIT + 1)},
+
+    {ok, 200, #{ <<"results">> := [#{ <<"result">> := <<"ok">>,
+                                      <<"type">> := <<"contract_create">>,
+                                      <<"call_obj">> := #{ <<"gas_used">> := _ } }
+                                  ] }} =
+        dry_run(Config, TopHash, [CreateTx]),
+
+    ok.
+
+a_lot_of_gas_limit_fails(Config) ->
+    #{acc_a := #{pub_key := APub}} = proplists:get_value(accounts, Config),
+    TopHash = proplists:get_value(top_hash, Config),
+
+    {ok, Code}   = aect_test_utils:compile_contract(identity),
+
+    InitCallData = make_call_data(identity, <<"init">>, []),
+
+    CreateTx  = {tx, create_contract_tx(APub, 1, Code, InitCallData, ?API_GAS_LIMIT + 1)},
+
+    {ok, 403, #{<<"reason">> := <<"Over the gas limit">>}} =
+        dry_run(Config, TopHash, [CreateTx]),
+    HalfLimit = ?API_GAS_LIMIT div 2,
+
+    CreateTx1 = {tx, create_contract_tx(APub, 1, Code, InitCallData, HalfLimit + 1)},
+    CreateTx2 = {tx, create_contract_tx(APub, 1, Code, InitCallData, HalfLimit + 1)},
+    {ok, 403, #{<<"reason">> := <<"Over the gas limit">>}} =
+        dry_run(Config, TopHash, [CreateTx1, CreateTx2]),
+
+    CreateGas = 100000,
+    CreateTx3 = {tx, create_contract_tx(APub, 1, Code, InitCallData, CreateGas)},
+    CallCallData = make_call_data(identity, <<"main">>, [<<"42">>]),
+    CPub      = contract_id(element(2, CreateTx3)),
+
+    CallReqData = #{<<"contract">> => aeser_api_encoder:encode(contract_pubkey, CPub),
+                    <<"calldata">> => aeser_api_encoder:encode(contract_bytearray, CallCallData),
+                    <<"abi_version">> => aect_test_utils:abi_version(),
+                    <<"gas">> => ?API_GAS_LIMIT - CreateGas + 1},
+    CallReq = {call_req, CallReqData},
+    {ok, 403, #{<<"reason">> := <<"Over the gas limit">>}} =
+        dry_run(Config, TopHash, [CreateTx3, CallReq]),
+    ok.

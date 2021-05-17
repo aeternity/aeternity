@@ -28,6 +28,7 @@
                         , read_optional_param/3
                         , get_poi/3
                         , get_block_hash_optionally_by_hash_or_height/1
+                        , do_dry_run/0
                         ]).
 
 -compile({parse_transform, lager_transform}).
@@ -35,6 +36,10 @@
 -define(READ_Q, http_read).
 -define(WRITE_Q, http_update).
 -define(NO_Q, no_queue).
+
+%% dry run limits
+-define(DEFAULT_GAS_LIMIT, 6000000).
+-define(DEFAULT_CALL_REQ_GAS_LIMIT, 1000000).
 
 -define(TC(Expr, Msg), begin {Time, Res} = timer:tc(fun() -> Expr end), lager:debug("[~p] Msg = ~p", [Time, Msg]), Res end).
 
@@ -661,6 +666,38 @@ handle_request_('GetStatus', _Params, _Context) ->
 
 handle_request_('GetChainEnds', _Params, _Context) ->
     {200, [], [aeser_api_encoder:encode(key_block_hash, H) || H <- aec_db:find_chain_end_hashes()]};
+
+handle_request_('ProtectedDryRunTxs', #{ 'DryRunInput' := Req }, _Context) ->
+    ParseFuns = [ parse_map_to_atom_keys(),
+                  read_required_params([txs]),
+                  read_optional_params([{top, top, top}, {accounts, accounts, []},
+                                        {tx_events, tx_events, false}]),
+                  fun(_Req, #{txs := Txs} = State) ->
+                      TopBlock = aec_chain:top_block(),
+                      Height = aec_blocks:height(TopBlock),
+                      Protocol = aec_hard_forks:protocol_effective_at_height(Height),
+                      TxGasLimit= lists:sum(
+                          lists:map(
+                              fun(#{<<"tx">> := ETx}) ->
+                                  case aeser_api_encoder:safe_decode(transaction, ETx) of
+                                      {ok, DTx} ->
+                                          Tx = aetx:deserialize_from_binary(DTx),
+                                          aetx:gas_limit(Tx, Height, Protocol);
+                                      {error, Err} -> 0 %% this is handled later on
+                                  end;
+                                 (#{<<"call_req">> := CallReq}) ->
+                                    maps:get(<<"gas">>, CallReq, ?DEFAULT_CALL_REQ_GAS_LIMIT)
+                              end,
+                              Txs)),
+                      MaxGas = aeu_env:config_value([<<"http">>, <<"external">>, <<"gas_limit">>],
+                                                    aehttp, [external, gas_limit], ?DEFAULT_GAS_LIMIT),
+                      case TxGasLimit =< MaxGas of
+                          true -> {ok, State};
+                          false -> {error, {403, [], #{<<"reason">> => <<"Over the gas limit">>}}}
+                      end
+                  end,
+                  do_dry_run()],
+    process_request(ParseFuns, Req);
 
 handle_request_(OperationID, Req, Context) ->
     error_logger:error_msg(
