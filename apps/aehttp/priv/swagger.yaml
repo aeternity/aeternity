@@ -568,6 +568,33 @@ paths:
           description: 'Account not found'
           schema:
             $ref: '#/definitions/Error'
+  /dry-run:
+    post:
+      tags:
+        - external 
+        - dry-run
+      operationId: 'ProtectedDryRunTxs'
+      description: 'Dry-run transactions on top of a given block. Supports all TXs except GAMetaTx, PayingForTx and OffchainTx. The maximum gas limit of all calls is capped. The maximum gas limit per request is a global node setting. Since DryRunCallReq object do not have a mandatory gas field, if not set a default value of 1000000 is being used instead.'
+      consumes:
+        - application/json
+      produces:
+        - application/json
+      parameters:
+        - in: body
+          name: body
+          description: transactions
+          required: true
+          schema:
+            $ref: '#/definitions/DryRunInput'
+      responses:
+        '200':
+          description: Dry-run result
+          schema:
+            $ref: '#/definitions/DryRunResults'
+        '403':
+          description: Invalid input
+          schema:
+            $ref: '#/definitions/Error'
   /transactions/{hash}:
     get:
       tags:
@@ -1720,7 +1747,7 @@ paths:
         - internal
         - debug
       operationId: 'DryRunTxs'
-      description: 'Dry-run transactions on top of a given block. Supports all TXs except GAMetaTx, PayingForTx and OffchainTx'
+      description: 'Dry-run transactions on top of a given block. Supports all TXs except GAMetaTx, PayingForTx and OffchainTx.'
       consumes:
         - application/json
       produces:

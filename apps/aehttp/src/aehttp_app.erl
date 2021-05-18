@@ -61,7 +61,8 @@ check_env() ->
                       <<"channel">>      => true,
                       <<"node_info">>    => true,
                       <<"debug">>        => true,
-                      <<"obsolete">>     => true
+                      <<"obsolete">>     => true,
+                      <<"dry-run">>      => false
                       },
     EnabledGroups =
         lists:foldl(
@@ -77,7 +78,7 @@ check_env() ->
             end,
             [],
             maps:to_list(GroupDefaults)),
-        application:set_env(aehttp, enabled_endpoint_groups, EnabledGroups),
+    application:set_env(aehttp, enabled_endpoint_groups, EnabledGroups),
     ok.
 
 %%====================================================================

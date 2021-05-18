@@ -306,6 +306,11 @@
                             "description" : "Number of acceptors in external pool",
                             "type" : "integer",
                             "default" : 10
+                        },
+                        "gas_limit" : {
+                            "description" : "Maximum gas allowed to be available to a single dry-run call.",
+                            "type" : "integer",
+                            "default" : 1000000
                         }
                     }
                 },
@@ -366,6 +371,10 @@
                     },
                     "obsolete" : {
                         "description" : "Old endpoints that will be removed",
+                        "type" : "boolean"
+                    },
+                    "dry-run" : {
+                        "description" : "External protected dry run endpoint",
                         "type" : "boolean"
                     }
                 },
