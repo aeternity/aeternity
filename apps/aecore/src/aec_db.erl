@@ -1139,7 +1139,7 @@ check_db() ->
         Storage = ensure_schema_storage_mode(Mode),
         ok = application:ensure_started(mnesia),
         ok = assert_schema_node_name(Mode),
-        initialize_db(Mode, Storage)
+        initialize_db(Mode, Storage), lager:info("~nMnesia info: ~p~n",[mnesia:system_info(all)])
     ?_catch_(error, Reason, StackTrace)
         error_logger:error_msg("CAUGHT error:~p / ~p~n", [Reason, StackTrace]),
         erlang:error(Reason)
