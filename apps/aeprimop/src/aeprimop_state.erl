@@ -136,7 +136,7 @@ delete_account(Key, S) ->
 find_account(Key, S) ->
     find_x(account, Key, S).
 
--spec get_account(hash(), state()) -> {term(), state()} | none.
+-spec get_account(hash(), state()) -> {object(), state()}.
 get_account(Key, S) ->
     get_x(account, Key, account_not_found, S).
 
@@ -150,7 +150,7 @@ put_account(Object, S) ->
 find_auth_call(Pubkey, AuthCallId, S) ->
     find_x(auth_call, {Pubkey, AuthCallId}, S).
 
--spec get_auth_call(pubkey(), call_id(), state()) -> {term(), state()} | none.
+-spec get_auth_call(pubkey(), call_id(), state()) -> {object(), state()}.
 get_auth_call(Pubkey, AuthCallId, S) ->
     get_x(auth_call, {Pubkey, AuthCallId}, auth_call_not_found, S).
 
