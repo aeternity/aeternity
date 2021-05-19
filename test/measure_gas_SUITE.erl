@@ -72,7 +72,7 @@ create_identity_contract_test(_Cfg) ->
 
     ct:log("Fate cheaper than AEVM: ~p per create", [balance_diff(Trees1, 2, 1)]),
 
-    {Trees2, _Env2, _Calls} = call_contract(1, Trees1, Env1, [{fate, Fate, 2, id(2,1)}, {aevm, Aevm, 1, id(1,1)}], "main", ["42"]),
+    {Trees2, _Env2, _Calls} = call_contract(1, Trees1, Env1, [{fate, Fate, 2, id(2,1)}, {aevm, Aevm, 1, id(1,1)}], "main_", ["42"]),
     [ ct:log("Account ~p now ~p (total cost: ~p)", [Account, balance(Trees2, Account),
                                                     balance_dec(Trees1, Trees2, Account)])
       || Account <- [1,2] ],
@@ -91,7 +91,7 @@ create_multiple_identity_contracts_test(_Cfg) ->
     {Trees, Env}   = init(),
     {Trees1, Env1} = create_contract(Sample, Trees, Env, [{fate, Fate, 2, undefined}, {aevm, Aevm, 1, undefined}], "init", []),
 
-    {Trees2, _Env2, _Calls} = call_contract(Sample, Trees1, Env1, [{fate, Fate, 4, id(2,2)}, {aevm, Aevm, 3, id(1,2)}], "main", ["42"]),
+    {Trees2, _Env2, _Calls} = call_contract(Sample, Trees1, Env1, [{fate, Fate, 4, id(2,2)}, {aevm, Aevm, 3, id(1,2)}], "main_", ["42"]),
 
     {_Trees3, _Env3} = mine(1, Trees2),
     ok.

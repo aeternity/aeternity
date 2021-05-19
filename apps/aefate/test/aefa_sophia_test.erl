@@ -583,7 +583,7 @@ higher_order_test_() -> mk_test([higher_order()], higher_order_tests()).
 
 remote() ->
     [{<<"main">>,
-      "contract Remote =\n"
+      "contract interface Remote =\n"
       "  entrypoint remote : int => int\n"
       "contract Main =\n"
       "  function bla(r : Remote) = r.remote\n"

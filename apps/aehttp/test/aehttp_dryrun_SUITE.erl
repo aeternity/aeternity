@@ -174,7 +174,7 @@ identity_contract(Config) ->
     {ok, Code}   = aect_test_utils:compile_contract(identity),
 
     InitCallData = make_call_data(identity, <<"init">>, []),
-    CallCallData = make_call_data(identity, <<"main">>, [<<"42">>]),
+    CallCallData = make_call_data(identity, <<"main_">>, [<<"42">>]),
 
     CreateTx  = {tx, create_contract_tx(APub, 1, Code, InitCallData)},
     CPub      = contract_id(element(2, CreateTx)),

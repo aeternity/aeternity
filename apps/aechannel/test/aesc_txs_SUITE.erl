@@ -3015,7 +3015,7 @@ fp_use_remote_call(Cfg) ->
                                          _Deposit2  = 2),
                 SaveContract(second_contract),
                 LoadContract(remote_contract),
-                force_call_contract_first(Forcer, <<"main">>, [<<"42">>],
+                force_call_contract_first(Forcer, <<"main_">>, [<<"42">>],
                                           FPRound),
                 assert_last_channel_result(42, word),% it works
 
@@ -3214,7 +3214,7 @@ fp_not_participant(Cfg) ->
                 get_onchain_balances(before_force),
                 set_prop(round, Round),
                 fun(#{contract_id := ContractId, contract_file := CName} = Props) ->
-                    (create_contract_call_payload(ContractId, CName, <<"main">>,
+                    (create_contract_call_payload(ContractId, CName, <<"main_">>,
                                                   [<<"42">>], 1))(Props)
                 end,
                 set_prop(fee, 100000 * aec_test_utils:min_gas_price()),
@@ -3416,7 +3416,7 @@ fp_solo_payload_invalid_state_hash(Cfg) ->
                 set_prop(round, Round),
                 set_prop(fake_solo_state_hash, FakeStateHash),
                 fun(#{contract_id := ContractId, contract_file := CName} = Props) ->
-                    (create_contract_call_payload(ContractId, CName, <<"main">>,
+                    (create_contract_call_payload(ContractId, CName, <<"main_">>,
                                                   [<<"42">>], 1))(Props)
                 end,
                 set_prop(fee, 100000 * aec_test_utils:min_gas_price()),
@@ -3470,7 +3470,7 @@ fp_solo_payload_closing_overflowing_balances(Cfg) ->
                 create_contract_poi_and_payload(Round - 1, ContractRound, Owner),
                 set_prop(round, Round),
                 fun(#{contract_id := ContractId, contract_file := CName} = Props) ->
-                    (create_contract_call_payload(ContractId, CName, <<"main">>,
+                    (create_contract_call_payload(ContractId, CName, <<"main_">>,
                                                   [<<"42">>], 1))(Props)
                 end,
                 set_prop(fee, 100000 * aec_test_utils:min_gas_price()),
@@ -3596,7 +3596,7 @@ fp_solo_payload_broken_update_(Cfg, Update, Error) ->
                 set_prop(solo_payload_update, Update),
                 set_prop(fake_solo_state_hash, FakeStateHash),
                 fun(#{contract_id := ContractId, contract_file := CName} = Props) ->
-                    (create_contract_call_payload(ContractId, CName, <<"main">>,
+                    (create_contract_call_payload(ContractId, CName, <<"main_">>,
                                                   [<<"42">>], 1))(Props)
                 end,
                 set_prop(fee, 100000 * aec_test_utils:min_gas_price()),
@@ -3635,7 +3635,7 @@ fp_solo_payload_broken_call(Cfg) ->
                 end,
                 set_prop(fake_solo_state_hash, FakeStateHash),
                 fun(#{contract_id := ContractId, contract_file := CName} = Props) ->
-                    (create_contract_call_payload(ContractId, CName, <<"main">>,
+                    (create_contract_call_payload(ContractId, CName, <<"main_">>,
                                                   [<<"42">>], 1))(Props)
                 end,
                 set_prop(fee, 100000 * aec_test_utils:min_gas_price()),
@@ -4529,7 +4529,7 @@ negative_force_progress_sequence(Cfg, Round, Forcer, ErrMsg) ->
             set_prop(round, Round),
             fun(#{ contract_id := ContractId
                   , contract_file := CName} = Props) ->
-                (create_contract_call_payload(ContractId, CName, <<"main">>,
+                (create_contract_call_payload(ContractId, CName, <<"main_">>,
                                               [<<"42">>], DepositAmt))(Props)
             end,
             fun(Props) ->
@@ -4553,7 +4553,7 @@ force_progress_sequence(Round, Forcer) ->
     fun(Props0) ->
         DepositAmt = maps:get(call_deposit, Props0, 1),
         {FunName, FunParams} = maps:get(contract_function_call, Props0,
-                                        {<<"main">>, [<<"42">>]}),
+                                        {<<"main_">>, [<<"42">>]}),
         run(Props0,
            [get_onchain_balances(before_force),
             fun(#{state_hash := StateHash, offchain_trees := OffChainTrees} = Props) ->
@@ -5795,7 +5795,7 @@ fp_sophia_versions(Cfg) ->
                       set_prop(gas_price, aec_governance:minimum_gas_price(Protocol)),
                       %% recompute the update with the new gas price
                       fun(#{contract_id := ContractId, contract_file := CName} = Props) ->
-                          (create_contract_call_payload(ContractId, CName, <<"main">>,
+                          (create_contract_call_payload(ContractId, CName, <<"main_">>,
                                                         [<<"42">>], 1))(Props)
                       end,
                       fun(Props) ->
@@ -5832,7 +5832,7 @@ fp_sophia_versions(Cfg) ->
                 set_prop(height, RomaHeight),
                 set_prop(round, Round),
                 fun(#{contract_id := ContractId, contract_file := CName} = Props) ->
-                    (create_contract_call_payload(ContractId, CName, <<"main">>,
+                    (create_contract_call_payload(ContractId, CName, <<"main_">>,
                                                   [<<"42">>], 1))(Props)
                 end,
                 fun(#{contract_id := ContractId,
@@ -6159,7 +6159,7 @@ fp_from_delegate_after_iris(Cfg) ->
                                 set_prop(round, FPRound),
                                 set_prop(fee, 100000 * aec_test_utils:min_gas_price()),
                                   fun(#{contract_id := ContractId, contract_file := CName} = Props1) ->
-                                      (create_contract_call_payload(ContractId, CName, <<"main">>,
+                                      (create_contract_call_payload(ContractId, CName, <<"main_">>,
                                                                     [<<"42">>], 1))(Props1)
                                   end,
                                 positive(fun force_progress_/2)

@@ -1538,7 +1538,7 @@ post_contract_and_call_tx(_Config) ->
     ?assertMatch({ok, 200, _}, get_transactions_by_hash_sut(ContractCreateTxHash)),
     ?assertMatch({ok, 200, _}, get_contract_call_object(ContractCreateTxHash)),
 
-    {ok, EncodedCallData} = encode_call_data(identity, "main", ["42"]),
+    {ok, EncodedCallData} = encode_call_data(identity, "main_", ["42"]),
     ContractCallEncoded = #{ caller_id   => Pubkey,
                              contract_id => EncodedContractPubKey,
                              abi_version => latest_sophia_abi(),
@@ -2031,7 +2031,7 @@ contract_transactions(_Config) ->    % miner has an account
     {ok, 200, #{<<"balance">> := ContractInitBalance}} =
         get_accounts_by_pubkey_sut(EncodedContractPubKey),
 
-    {ok, EncodedCallData} = encode_call_data(identity, "main", ["42"]),
+    {ok, EncodedCallData} = encode_call_data(identity, "main_", ["42"]),
 
     ContractCallEncoded = #{ caller_id => MinerAddress,
                              contract_id => EncodedContractPubKey,

@@ -199,10 +199,10 @@ identity_contract(Config) ->
     {EncCPub,_,_} = create_contract(Node, CPub, CPriv, Contract, []),
 
     %% Call contract main function by Carl.
-    call_func(CPub, CPriv, EncCPub, Contract, "main", ["42"], {"identity", "main", 42}),
+    call_func(CPub, CPriv, EncCPub, Contract, "main_", ["42"], {"identity", "main_", 42}),
 
     %% Call contract main function by Diana.
-    call_func(DPub, DPriv, EncCPub, Contract, "main", ["42"], {"identity", "main", 42}),
+    call_func(DPub, DPriv, EncCPub, Contract, "main_", ["42"], {"identity", "main_", 42}),
 
     force_fun_calls(Node),
 

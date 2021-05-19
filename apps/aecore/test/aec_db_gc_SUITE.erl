@@ -328,7 +328,7 @@ calls_test(_Config) ->
     {ok, 200, _} = aehttp_integration_SUITE:get_contract_call_object(ContractCreateTxHash),
 
     %% create a call
-    {ok, EncodedCallData} = aehttp_integration_SUITE:encode_call_data(identity, "main", ["42"]),
+    {ok, EncodedCallData} = aehttp_integration_SUITE:encode_call_data(identity, "main_", ["42"]),
     ContractCallEncoded = #{ caller_id   => OwnerAddress,
                              contract_id => EncodedContractPubKey,
                              abi_version => latest_sophia_abi(),

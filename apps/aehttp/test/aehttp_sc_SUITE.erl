@@ -2279,7 +2279,7 @@ sc_ws_remote_call_contract_(Owner, GetVolley, CreateContract, ConnPid1, ConnPid2
     CallIdentity =
         fun(Who, Val) ->
             ValB = integer_to_list(Val),
-            ContractCall(Who, IdentityCPubKey, identity, <<"main">>,
+            ContractCall(Who, IdentityCPubKey, identity, <<"main_">>,
                          [ValB], Val, _Amount = 0)
         end,
     EncIdPubkey = aeser_api_encoder:encode(contract_pubkey, IdentityCPubKey),
@@ -2699,7 +2699,7 @@ create_contract_(TestName, InitArgument, SenderConnPid, UpdateVolley, Config,
 
 contract_calls_(identity = TestName, ContractPubKey, SenderConnPid, UpdateVolley,
                 AckConnPid, _ , _, Config) ->
-    FunctionName = "main",
+    FunctionName = "main_",
     Args = ["42"],
     ExpectedResult = 42,
     #{tx := UnsignedStateTx, updates := Updates} =
@@ -4523,7 +4523,7 @@ sc_ws_broken_init_code_(Owner, GetVolley, _CreateContract, _ConnPid1, _ConnPid2,
     %% Example broken init code will be calling not the init function
     {ok, EncodedCode} = get_contract_bytecode(identity),
     %% call main instead of init
-    {ok, EncodedInitData} = encode_call_data(identity, "main", ["1"]),
+    {ok, EncodedInitData} = encode_call_data(identity, "main_", ["1"]),
     {_CreateVolley, OwnerConnPid, _OwnerPubKey} = GetVolley(Owner),
     ws_send_tagged(OwnerConnPid, <<"channels.update.new_contract">>,
                    #{vm_version  => aect_test_utils:vm_version(),
