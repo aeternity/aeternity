@@ -156,17 +156,17 @@
 %%      * height is consecutive
 %%      * prev_block points to the same generation as prev_key_block
 %% Do not crash as it's called in dirty context
--callback dirty_validate_key_node_with_ctx(#node{}, aec_blocks:micro_block(), #insertion_ctx{}) -> ok | {error, term()}.
--callback dirty_validate_micro_node_with_ctx(#node{}, aec_blocks:micro_block(), #insertion_ctx{}) -> ok | {error, term()}.
+-callback dirty_validate_key_node_with_ctx(#chain_node{}, aec_blocks:micro_block(), #insertion_ctx{}) -> ok | {error, term()}.
+-callback dirty_validate_micro_node_with_ctx(#chain_node{}, aec_blocks:micro_block(), #insertion_ctx{}) -> ok | {error, term()}.
 
 %% Customized state transitions - in case of keyblocks the callbacks are called with pruned state trees
 %% Those callbacks run in a DB context - to abort the execution please call aec_block_insertion:abort_state_transition(Reason)
 %% Performs initial state transformation when the previous block used a different consensus algorithm
--callback state_pre_transform_key_node_consensus_switch(#node{}, #node{}, #node{}, aec_trees:trees()) -> aec_trees:trees() | no_return().
+-callback state_pre_transform_key_node_consensus_switch(#chain_node{}, #chain_node{}, #chain_node{}, aec_trees:trees()) -> aec_trees:trees() | no_return().
 %% State pre transformations on every keyblock
--callback state_pre_transform_key_node(#node{}, #node{}, #node{}, aec_trees:trees()) -> aec_trees:trees() | no_return().
+-callback state_pre_transform_key_node(#chain_node{}, #chain_node{}, #chain_node{}, aec_trees:trees()) -> aec_trees:trees() | no_return().
 %% State pre transformations on every microblock
--callback state_pre_transform_micro_node(#node{}, #node{}, #node{}, aec_trees:trees()) -> aec_trees:trees() | no_return().
+-callback state_pre_transform_micro_node(#chain_node{}, #chain_node{}, #chain_node{}, aec_trees:trees()) -> aec_trees:trees() | no_return().
 
 %% Block rewards :)
 -callback state_grant_reward(aec_keys:pubkey(), aec_trees:trees(), non_neg_integer()) -> aec_trees:trees() | no_return().
@@ -186,7 +186,7 @@
 %% Creates a fake key node used for creating new keyblocks - can be blocking
 %% For POW it's a simple operation, for HC a commitment transaction might be submitted to another blockchain
 %%        new_unmined_key_node(Prev,    PrevKey, Height,    Miner,             Beneficiary,       Protocol,  InfoField,          TreesIn)
--callback new_unmined_key_node(#node{}, #node{}, integer(), aec_keys:pubkey(), aec_keys:pubkey(), integer(), aec_blocks:info(), aec_trees:trees()) -> #node{}.
+-callback new_unmined_key_node(#chain_node{}, #chain_node{}, integer(), aec_keys:pubkey(), aec_keys:pubkey(), integer(), aec_blocks:info(), aec_trees:trees()) -> #chain_node{}.
 
 %% After creating a new unmined keynode and calculating the new state adjusts the block based on recent keyheaders
 %% For POW it adjusts the target based on recent blocks, for HC it's a nop operation as the work is done in new_unmined_key_node
@@ -365,6 +365,7 @@ get_genesis_hash() ->
 
 %% Brings down the entire node!
 %% Tries to inform the user what went wrong using any means
+-spec config_assertion_failed(string(), string(), list()) -> ok | no_return().
 config_assertion_failed(Msg, Format, Args) ->
     (catch io:format(user, Msg ++ Format, Args)),
     (catch lager:error(Msg ++ Format, Args)),

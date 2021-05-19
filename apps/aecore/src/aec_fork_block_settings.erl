@@ -108,6 +108,7 @@ pre_iris_map_ordering() ->
             MapOrdering
     end.
 
+-spec hc_staking_contract_file() -> string().
 hc_staking_contract_file() ->
     filename:join(aeu_env:data_dir(aehyperchains), "StakingContract.json").
 
