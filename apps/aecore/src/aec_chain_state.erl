@@ -331,8 +331,7 @@ persist_state(OldState, NewState) ->
             true
     end.
 
-db_write_top_block_node(#chain_node{ header = Header
-                             , hash   = Hash }) ->
+db_write_top_block_node(#chain_node{header = Header, hash = Hash}) ->
     aec_db:write_top_block_node(Hash, Header).
 
 db_get_top_block_node() ->
