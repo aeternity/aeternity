@@ -18,6 +18,7 @@
     sc_ws_broken_open_params/1,
     sc_ws_min_depth_not_reached_timeout/1,
     sc_ws_min_depth_is_modifiable/1,
+    sc_ws_min_depth_is_modifiable_plain/1,
     sc_ws_basic_open_close/1,
     sc_ws_basic_open_close_server/1,
     sc_ws_failed_update/1,
@@ -173,6 +174,7 @@ groups() ->
         sc_ws_timeout_open,
         sc_ws_min_depth_not_reached_timeout,
         sc_ws_min_depth_is_modifiable,
+        sc_ws_min_depth_is_modifiable_plain,
         sc_ws_basic_open_close,
         sc_ws_basic_open_close_server,
         sc_ws_opening_ping_pong,
@@ -3088,6 +3090,12 @@ sc_ws_reconnect_early(Config) ->
 
 sc_ws_min_depth_is_modifiable(Config0) ->
     Config = sc_ws_open_(Config0, #{minimum_depth => 0}, 2),
+    ok = sc_ws_update_(Config),
+    ok = sc_ws_close_(Config).
+
+sc_ws_min_depth_is_modifiable_plain(Config0) ->
+    Config = sc_ws_open_(Config0, #{ minimum_depth => 0
+                                   , minimum_depth_strategy => plain}, 2),
     ok = sc_ws_update_(Config),
     ok = sc_ws_close_(Config).
 
