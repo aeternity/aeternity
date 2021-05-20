@@ -21,6 +21,8 @@
 -export([ simple_full_node/1
         ]).
 
+-define(BIG_AMOUNT, 10000000000000000000000000000 * aec_test_utils:min_gas_price()).
+
 all() ->
     [{group, full_node}].
 
@@ -51,8 +53,30 @@ end_per_testcase(_, _Config) ->
     ok.
 
 simple_full_node(_Config) ->
-    ct:pal("Running test case simple_full_node/1~n", []),
+    %% init_per_testcase?
     application:ensure_started(gproc),
-    DefaultGenesisState = aec_block_genesis:genesis_block_with_state(),
-    {ok, Pid} = aehc_chain_sim_connector:start_link(#{<<"genesis_state">> => DefaultGenesisState}),
+    GenesisState = aec_block_genesis:genesis_block_with_state(),
+    {ok, _} = aehc_chain_sim_connector:start_link(#{<<"genesis_state">> => GenesisState}),
+
+    %% Start aehc_parent_mng process to receive commitments
+    {ok, AehcSupPid} = aehc_sup:start_link(),
+    true = is_pid(AehcSupPid),
+
+    %% Setup some accounts
+    {ok, #{privkey := Sk1, pubkey := Pk1}} = aec_chain_sim:new_account(?BIG_AMOUNT),
+    Account1 = aeser_id:create(account, Pk1),
+
+    %% use account's private key to sign
+    meck:expect(aec_keys, sign_privkey, 0, {ok, Sk1}),
+
+    %% dry-run
+    ok = aehc_chain_sim_connector:dry_send_tx(Account1, <<"Test commitment">>, aehc_pogf:hash(no_pogf)),
+
+    %% send_tx to submit commitment
+    ok = aehc_chain_sim_connector:send_tx(Account1, <<"Test commitment">>, aehc_pogf:hash(no_pogf)),
+
+    %% move tx from mempool to microblock on "parent chain"
+    aec_chain_sim:add_microblock(),
+
+    %% TODO: handle commitments in new microblock
     ok.

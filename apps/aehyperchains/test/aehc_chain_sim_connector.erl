@@ -70,12 +70,11 @@ handle_call({send_tx, Delegate, Commitment, PoGF}, _From, State) ->
     Header = aehc_commitment_header:new(Delegate, Commitment, PoGF),
     Payload = term_to_binary(aehc_commitment:new(Header), [compressed]),
     {ok, Tx} = aec_spend_tx:new(#{ sender_id => Delegate, recipient_id => Delegate, amount => 1,
-                                        fee => 5, nonce => 1, payload => Payload, ttl => 0 }),
+                                   fee => aec_test_utils:min_gas_price(),
+                                   nonce => 1, payload => Payload, ttl => 0 }),
     BinaryTx = aec_governance:add_network_id(aetx:serialize_to_binary(Tx)),
     SignedTx = aetx_sign:new(Tx, [enacl:sign_detached(BinaryTx, PrivKey)]),
-    TxHash = aetx_sign:hash(SignedTx),
-    %% The next format is prepared accordingly to simualtor internal representation;
-    Res = aec_chain_sim:push(#{ tx_hash => TxHash, signed_tx  => SignedTx }),
+    Res = aec_chain_sim:push(SignedTx),
     {reply, Res, State};
 
 handle_call({get_top_block}, _From, State) ->
