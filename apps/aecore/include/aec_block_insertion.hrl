@@ -17,16 +17,18 @@
 %% ForkId is local with regards to the node and for recently gossiped blocks
 %% nodes might disagree about the exact value - fork_id is eventually consistent
 %% across the network
--record(fork_info, {fork_id
+-record(fork_info, {
+    fork_id
     , difficulty
     , fees
     , fraud
 }).
 
 %% Cache entry for recently inserted blocks
--record(recent_blocks, {key :: binary()
+-record(recent_blocks, {
+    key :: binary()
     %% Window of recent statistics of the chain
-    %% The head of this list is always the node coresponding to the key
+    %% The head of this list is always the node corresponding to the key
     %% Invariant: key =:= node_hash(hd(recents))
     %% The remaining entries are {hash, term()}
     %% The first element of the tuple is used for maintaining the cache
@@ -34,7 +36,7 @@
     %% Please keep in mind that the cache is never filled by 2 engines at the same time
     %% When a consensus change occurs the cache is regenerated
     , recents :: [aec_headers:header() | term()]
-    %% current length of the header window
+    %% Current length of the header window
     , len :: non_neg_integer()
 }).
 
@@ -42,7 +44,7 @@
 %% The data present in the context is sufficient for fully validating
 %% the block headers outside a DB transaction.
 -record(insertion_ctx, {
-    %% window of last N keyheaders newest first
+    %% Window of last N keyheaders newest first
     window_len = 0 :: non_neg_integer(),
     %% Recent key headers -> ALWAYS stripped
     recent_key_headers = [] :: [term()],

@@ -259,10 +259,11 @@ dirty_db_find_node(Hash) when is_binary(Hash) ->
     end.
 
 wrap_header(Header, Hash) ->
-    #chain_node{ header = Header
-         , hash = Hash
-         , type = aec_headers:type(Header)
-         }.
+    #chain_node{
+        header = Header
+        , hash = Hash
+        , type = aec_headers:type(Header)
+    }.
 
 update_recent_cache(#chain_node{type = micro}, _InsertCtx) -> ok;
 update_recent_cache(#chain_node{type = key, hash = H} = Node, #insertion_ctx{window_len = N, recent_key_headers = Recents}) ->

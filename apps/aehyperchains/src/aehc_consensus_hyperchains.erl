@@ -232,11 +232,7 @@ extra_from_header(Header) ->
                 end
         end,
     %% We can't really switch to another consensus right now as we rely on the global consensus setting most of the time
-    maps:merge(PoSMeta,
-        #{consensus => ?MODULE
-            , type => Type2
-            , pos => IsPoS2
-        }).
+    maps:merge(PoSMeta, #{consensus => ?MODULE, type => Type2, pos => IsPoS2}).
 
 -spec create_pos_pow_field(hash(), signature()) -> [non_neg_integer()].
 create_pos_pow_field(ParentHash, Signature)
@@ -575,7 +571,8 @@ new_unmined_key_node(PrevNode, PrevKeyNode, Height, Miner, Beneficiary,
     %% If the PrevKeyNode is a PoS block then we are a PoS block
     %% Otherwise check if we are at a possible HC activation point
     %% If yes the evaluate the activation criteria using the provided Trees
-    Header = aec_headers:new_key_header(Height,
+    Header = aec_headers:new_key_header(
+        Height,
         aec_block_insertion:node_hash(PrevNode),
         aec_block_insertion:node_hash(PrevKeyNode),
         ?FAKE_STATE_HASH,
@@ -612,7 +609,8 @@ new_pos_key_node(PrevNode, PrevKeyNode, Height, Miner, Beneficiary, Protocol, In
     %%       When handling PoGF the commitment point is in a different place than usual
     ParentBlock = aehc_utils:submit_commitment(PrevKeyNode, Miner), %% TODO: Miner vs Delegate, Which shall register?
     Seal = create_pos_pow_field(aehc_parent_block:hash_block(ParentBlock), ?FAKE_SIGNATURE),
-    Header = aec_headers:new_key_header(Height,
+    Header = aec_headers:new_key_header(
+        Height,
         aec_block_insertion:node_hash(PrevNode),
         aec_block_insertion:node_hash(PrevKeyNode),
         ?FAKE_STATE_HASH,
