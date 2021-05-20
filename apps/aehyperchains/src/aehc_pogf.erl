@@ -5,7 +5,6 @@
 %%% Proof of generational fraud
 %%% @end
 %%%-------------------------------------------------------------------
-
 -module(aehc_pogf).
 
 -export([ new/2
@@ -20,8 +19,8 @@
 
 -export([validate/1]).
 
--include("../../aecore/include/blocks.hrl").
--include("aehc_utils.hrl").
+-include_lib("aecore/include/aec_block_insertion.hrl").
+-include_lib("aehyperchains/include/aehc_types.hrl").
 
 %% Two different keyheaders with the same prev_key pointer signed by the same leader
 -record(hc_pogf, {

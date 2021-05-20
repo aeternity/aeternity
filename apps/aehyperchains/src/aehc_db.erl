@@ -1,6 +1,14 @@
+%%% -*- erlang-indent-level: 4 -*-
+%%% -------------------------------------------------------------------
+%%% @copyright (C) 2020, Aeternity Anstalt
+%%% @doc
+%%%
+%%% @end
+%%% -------------------------------------------------------------------
 -module(aehc_db).
--export([ create_tables/1    %% (Mode) -> ok
-        , check_tables/1     %% (Acc)  -> Acc1
+
+-export([create_tables/1    %% (Mode) -> ok
+        , check_tables/1    %% (Acc)  -> Acc1
         ]).
 
 %% Place here for mocking

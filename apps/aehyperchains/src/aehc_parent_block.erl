@@ -6,7 +6,6 @@
 %%%
 %%% @end
 %%%-------------------------------------------------------------------
-
 -module(aehc_parent_block).
 
 -export([ new_header/3
@@ -19,11 +18,10 @@
         , hash_block/1
         , height_block/1
         , block_header/1
-        , is_hc_parent_block/1
-        ]).
+        , is_hc_parent_block/1]).
 
--include("../../aecore/include/blocks.hrl").
--include("aehc_utils.hrl").
+-include_lib("aecore/include/aec_block_insertion.hrl").
+-include_lib("aehyperchains/include/aehc_types.hrl").
 
 %% TODO: Split up the header and the block to separate modules
 -record(hc_parent_block_header, {

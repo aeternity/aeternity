@@ -21,101 +21,85 @@
 
 -behavior(aec_consensus).
 
--define(STAKING_CONTRACT, {?MODULE, staking_contract}).
--define(STAKING_CONTRACT_ADDR, {?MODULE, staking_contract_addr}).
-%% Lima or Iris as we need the FATE VM at genesis
-%% In case that's unwanted then start up another consensus before hyperchains
--define(HC_GENESIS_VERSION, ?LIMA_PROTOCOL_VSN).
-
-%% Magic nonces
--define(NONCE_HC_ENABLED, 16#ffffffffffffffff - 1).
--define(NONCE_HC_POGF, 16#ffffffffffffffff).
--define(NONCE_HC_GENESIS, 2). %% Hyperchain at genesis :)
-
 %% Consensus API
 -export([can_be_turned_off/0
-    , assert_config/1
-    , start/1
-    , stop/0
-    , is_providing_extra_http_endpoints/0
-    , client_request/1
-    %% Deserialization
-    , extra_from_header/1
-    %% Building the Insertion Ctx
-    , recent_cache_n/0
-    , recent_cache_trim_key_header/1
-    %% Preconductor hook
-    , dirty_validate_block_pre_conductor/1
-    , dirty_validate_header_pre_conductor/1
-    , dirty_validate_key_hash_at_height/2
-    %% Dirty validation before starting the state transition
-    , dirty_validate_key_node_with_ctx/3
-    , dirty_validate_micro_node_with_ctx/3
-    %% State transition
-    , state_pre_transform_key_node_consensus_switch/4
-    , state_pre_transform_key_node/4
-    , state_pre_transform_micro_node/4
-    %% Block rewards
-    , state_grant_reward/3
-    %% PoGF
-    , pogf_detected/2
-    %% Genesis block
-    , genesis_transform_trees/2
-    , genesis_raw_header/0
-    , genesis_difficulty/0
-    %% Keyblock creation
-    , new_unmined_key_node/8
-    , keyblocks_for_unmined_keyblock_adjust/0
-    , adjust_unmined_keyblock/2
-    %% Keyblock sealing
-    , key_header_for_sealing/1
-    , validate_key_header_seal/2
-    , generate_key_header_seal/5
-    , set_key_block_seal/2
-    , nonce_for_sealing/1
-    , next_nonce_for_sealing/2
-    , trim_sealing_nonce/2
-    %% Block target and difficulty
-    , default_target/0
-    , assert_key_target_range/1
-    , key_header_difficulty/1]).
+        , assert_config/1
+        , start/1
+        , stop/0
+        , is_providing_extra_http_endpoints/0
+        , client_request/1
+        %% Deserialization
+        , extra_from_header/1
+        %% Building the Insertion Ctx
+        , recent_cache_n/0
+        , recent_cache_trim_key_header/1
+        %% Preconductor hook
+        , dirty_validate_block_pre_conductor/1
+        , dirty_validate_header_pre_conductor/1
+        , dirty_validate_key_hash_at_height/2
+        %% Dirty validation before starting the state transition
+        , dirty_validate_key_node_with_ctx/3
+        , dirty_validate_micro_node_with_ctx/3
+        %% State transition
+        , state_pre_transform_key_node_consensus_switch/4
+        , state_pre_transform_key_node/4
+        , state_pre_transform_micro_node/4
+        %% Block rewards
+        , state_grant_reward/3
+        %% PoGF
+        , pogf_detected/2
+        %% Genesis block
+        , genesis_transform_trees/2
+        , genesis_raw_header/0
+        , genesis_difficulty/0
+        %% Keyblock creation
+        , new_unmined_key_node/8
+        , keyblocks_for_unmined_keyblock_adjust/0
+        , adjust_unmined_keyblock/2
+        %% Keyblock sealing
+        , key_header_for_sealing/1
+        , validate_key_header_seal/2
+        , generate_key_header_seal/5
+        , set_key_block_seal/2
+        , nonce_for_sealing/1
+        , next_nonce_for_sealing/2
+        , trim_sealing_nonce/2
+        %% Block target and difficulty
+        , default_target/0
+        , assert_key_target_range/1
+        , key_header_difficulty/1]).
 
 %% Staking contract helpers
 -export([get_staking_contract_aci/0
-    , get_staking_contract_bytecode/0
-    , get_staking_contract_address/0
-    , static_staking_contract_call_on_top_block/1
-    , static_staking_contract_call_on_block_hash/2
-    , load_staking_contract_address/0
-]).
+        , get_staking_contract_bytecode/0
+        , get_staking_contract_address/0
+        , static_staking_contract_call_on_top_block/1
+        , static_staking_contract_call_on_block_hash/2
+        , load_staking_contract_address/0]).
 
 %% Staking contract predeploy
 -export([get_predeploy_address/0
-    , set_predeploy_address/1
-    , unset_predeploy_address/0
-]).
+        , set_predeploy_address/1
+        , unset_predeploy_address/0]).
 
 %% Hyperchains activation criteria
 -export([get_hc_activation_criteria/0
-    , set_hc_activation_criteria/1
-    , unset_hc_activation_criteria/0
-]).
+        , set_hc_activation_criteria/1
+        , unset_hc_activation_criteria/0]).
 
 %% General helpers
 -export([hc_header_type/1
-    , is_hc_pos_header/1
-    , get_pos_header_parent_hash/1
-    , get_pos_header_miner_signature/1
-    , set_pos_header_parent_hash/2
-    , set_pos_header_miner_signature/2
-    , create_pos_pow_field/2
-    , deserialize_pos_pow_field/1
-]).
+        , is_hc_pos_header/1
+        , get_pos_header_parent_hash/1
+        , get_pos_header_miner_signature/1
+        , set_pos_header_parent_hash/2
+        , set_pos_header_miner_signature/2
+        , create_pos_pow_field/2
+        , deserialize_pos_pow_field/1]).
 
--include_lib("aecontract/include/hard_forks.hrl").
--include("../../aecore/include/blocks.hrl").
 -include_lib("aeminer/include/aeminer.hrl").
--include("../../aecore/include/aec_block_insertion.hrl").
+-include_lib("aecore/include/aec_block_insertion.hrl").
+-include_lib("aehyperchains/include/aehc_types.hrl").
 
 -record(activation_criteria, {
     minimum_stake :: integer(),
@@ -123,20 +107,7 @@
     check_frequency :: integer(),
     confirmations :: integer()
 }).
-
 -type activation_criteria() :: #activation_criteria{}.
--type pubkey() :: aec_keys:pubkey().
--type hash() :: aec_hash:hash().
--type signature() :: <<_:512>>. %% 64 bytes
--type header() :: aec_headers:header().
--type block() :: aec_blocks:block().
--type chain_node() :: #chain_node{}.
--type trees() :: aec_trees:trees().
--type env() :: aetx_env:env().
--type amount() :: non_neg_integer().
--type nonce() :: non_neg_integer().
--type account() :: aec_accounts:account().
--type query() :: binary() | string().
 
 
 %% API
@@ -815,7 +786,7 @@ get_hc_activation_criteria() ->
     %% TODO: Expose in config
     case application:get_env(aehyperchains, activation_criteria, error) of
         error -> error;
-        Criteria -> {ok, Criteria}
+        Criteria -> {ok, Criteria} %%TODO: Also, check for conversion to record maybe?
     end.
 
 %% Deploys the staking contract using a free system account :)

@@ -34,6 +34,8 @@
 -export([publish_block/2]).
 
 -include_lib("aeutils/include/aeu_stacktrace.hrl").
+
+
 %% API.
 
 -spec start_link() ->
