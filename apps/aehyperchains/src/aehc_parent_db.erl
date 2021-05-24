@@ -65,7 +65,7 @@ table_specs(Mode) ->
 check_tables(Acc) ->
     lists:foldl(
       fun({Tab, Spec}, Acc1) ->
-              aec_db:check_table(Tab, Spec, Acc1)
+              R = aec_db:check_table(Tab, Spec, Acc1), lager:info("~nCheck table (~p) res: ~p~n",[Tab, R]), R
       end, Acc, table_specs(disc)).
 
 %%%===================================================================
