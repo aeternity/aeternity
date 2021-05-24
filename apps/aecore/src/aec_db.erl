@@ -1172,7 +1172,7 @@ run_hooks(Hook, Mode) ->
     [M:F(Mode) || {_App, {M,F}} <- setup:find_env_vars(Hook)].
 
 fold_hooks(Hook, Acc0) ->
-    lager:info("~nFold Hooks list (Hook: ~p, Mode: ~p, Env: ~p)~n",[Hook, setup:find_env_vars(Hook)]),
+    lager:info("~nFold Hooks list (Hook: ~p, Acc: ~p, Env: ~p)~n",[Hook, Acc0, setup:find_env_vars(Hook)]),
     lists:foldl(
       fun({_App, {M,F}}, Acc) ->
               M:F(Acc)
