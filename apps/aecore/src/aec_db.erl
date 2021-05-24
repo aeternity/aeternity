@@ -200,6 +200,12 @@ tables(Mode) ->
    , ?TAB(aec_discovered_pof)
    , ?TAB(aec_signal_count)
    , ?TAB(aec_peers)
+%%   , ?TAB(hc_db_pogf)
+%%   , ?TAB(hc_db_commitment_header)
+%%   , ?TAB(hc_db_parent_block_header)
+%%   , ?TAB(hc_db_parent_block_state)
+%%   , ?TAB(hc_db_parent_state)
+%%   , ?TAB(hc_db_delegate_state)
     ].
 
 tab(Mode0, Record, Attributes, Extra) ->
@@ -1162,10 +1168,11 @@ expand_mode(disc) -> disc_backend_mode();
 expand_mode(M) when is_map(M) -> M.
 
 run_hooks(Hook, Mode) ->
-    lager:info("~nHooks list is: ~p (Hook: ~p, Mode: ~p, Env: ~p)~n",[setup:find_env_vars(Hook), Hook, Mode, setup:find_env_vars(Hook)]),
+    lager:info("~nRun Hooks list (Hook: ~p, Mode: ~p, Env: ~p)~n",[Hook, Mode, setup:find_env_vars(Hook)]),
     [M:F(Mode) || {_App, {M,F}} <- setup:find_env_vars(Hook)].
 
 fold_hooks(Hook, Acc0) ->
+    lager:info("~nFold Hooks list (Hook: ~p, Mode: ~p, Env: ~p)~n",[Hook, setup:find_env_vars(Hook)]),
     lists:foldl(
       fun({_App, {M,F}}, Acc) ->
               M:F(Acc)
