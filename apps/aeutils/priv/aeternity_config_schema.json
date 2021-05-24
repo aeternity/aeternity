@@ -1389,7 +1389,7 @@
           },
           "args":{
             "type":"object",
-            "description": "Connector configuration which should be passed the module:connect/2"
+            "description": "Connector configuration which should be passed to module:connect/2"
           },
           "capacity":{
             "type": "integer",
