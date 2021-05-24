@@ -1,5 +1,5 @@
 // the only difference is lack of the `interface` word
-@compiler =< 4.3
+
 contract Remote =
   entrypoint main_ : (int) => int
 
