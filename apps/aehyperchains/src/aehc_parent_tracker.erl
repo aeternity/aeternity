@@ -28,7 +28,6 @@
 
 -define(SERVER(Name), {via, gproc, {n, l, {?MODULE, Name}}}).
 
--include_lib("aecore/include/aec_block_insertion.hrl").
 -include_lib("aehyperchains/include/aehc_types.hrl").
 
 %% The data record represents the current synchronized view of a particular parent chain within state machine;

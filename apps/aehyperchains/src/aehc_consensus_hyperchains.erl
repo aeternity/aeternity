@@ -98,7 +98,6 @@
         , deserialize_pos_pow_field/1]).
 
 -include_lib("aeminer/include/aeminer.hrl").
--include_lib("aecore/include/aec_block_insertion.hrl").
 -include_lib("aehyperchains/include/aehc_types.hrl").
 
 -record(activation_criteria, {

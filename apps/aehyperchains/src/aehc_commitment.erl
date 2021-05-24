@@ -17,7 +17,6 @@
         , hash/1]).
 -export_type([commitment/0]).
 
--include_lib("aecore/include/aec_block_insertion.hrl").
 -include_lib("aehyperchains/include/aehc_types.hrl").
 
 -record(hc_commitment, {

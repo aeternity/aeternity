@@ -5,7 +5,6 @@
 -behaviour(aehc_connector).
 -behaviour(gen_server).
 
--include_lib("aecore/include/aec_block_insertion.hrl").
 -include_lib("aehyperchains/include/aehc_types.hrl").
 
 

@@ -21,7 +21,6 @@
         , is_hc_parent_block/1]).
 -export_type([parent_block_header/0, parent_block/0]).
 
--include_lib("aecore/include/aec_block_insertion.hrl").
 -include_lib("aehyperchains/include/aehc_types.hrl").
 
 %% TODO: Split up the header and the block to separate modules

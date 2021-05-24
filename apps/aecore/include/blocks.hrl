@@ -19,7 +19,7 @@
 -type(block_header_hash() :: <<_:(?BLOCK_HEADER_HASH_BYTES*8)>>).
 -type(block_signature() :: <<_:(?BLOCK_SIGNATURE_BYTES*8)>>).
 
--type(block_type() :: 'key' | 'micro').
+-type block_type() :: key | micro.
 
--type(header_binary() :: binary()).
--type(deterministic_header_binary() :: binary()).
+-type header_binary() :: binary().
+-type deterministic_header_binary() :: binary().

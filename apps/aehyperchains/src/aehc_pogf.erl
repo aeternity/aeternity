@@ -18,7 +18,6 @@
 
 -export_type([pogf/0]).
 
--include_lib("aecore/include/aec_block_insertion.hrl").
 -include_lib("aehyperchains/include/aehc_types.hrl").
 
 -type key_header() :: aec_headers:key_header().

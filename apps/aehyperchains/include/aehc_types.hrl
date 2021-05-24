@@ -28,7 +28,7 @@
 -type signature() :: <<_:512>>. %% 64 bytes
 -type header() :: aec_headers:header().
 -type block() :: aec_blocks:block().
--type chain_node() :: #chain_node{}. %%TODO Factor 'chain_node' into separate module.
+-type chain_node() :: aec_chain_node:chain_node().
 -type trees() :: aec_trees:trees().
 -type env() :: aetx_env:env().
 -type amount() :: non_neg_integer().

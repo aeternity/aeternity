@@ -129,6 +129,7 @@
 -export_type([ header/0
              , key_header/0
              , micro_header/0
+             , block_header_hash/0
              ]).
 
 -deprecated([{pow, 1, eventually}, {set_nonce_and_pow, 3, eventually}]).

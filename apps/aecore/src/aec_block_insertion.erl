@@ -36,13 +36,45 @@
         , get_n_key_headers_from/2
         , get_top_hash/0
         , get_top_header/0
-        , get_top_height/0
-        ]).
+        , get_top_height/0]).
 
--include("aec_block_insertion.hrl").
+-export_type([insertion_ctx/0]).
 
--opaque chain_node() :: #chain_node{}. % type 'node' is Erlang internal!
--export_type([chain_node/0]).
+-type chain_node() :: aec_chain_node:chain_node().
+
+%% Cache entry for recently inserted blocks
+-record(recent_blocks, {
+    key :: binary()
+    %% Window of recent statistics of the chain
+    %% The head of this list is always the node corresponding to the key
+    %% Invariant: key =:= node_hash(hd(recents))
+    %% The remaining entries are {hash, term()}
+    %% The first element of the tuple is used for maintaining the cache
+    %% The second element is defined by the currently active consensus engine
+    %% Please keep in mind that the cache is never filled by 2 engines at the same time
+    %% When a consensus change occurs the cache is regenerated
+    , recents :: [aec_headers:header() | term()]
+    %% current length of the header window
+    , len :: non_neg_integer()
+}).
+-type recent_blocks() :: #recent_blocks{}.
+
+%% Insertion context - cached data used during block insertion
+%% The data present in the context is sufficient for fully validating
+%% the block headers outside a DB transaction.
+-record(insertion_ctx, {
+    %% window of last N keyheaders newest first
+    window_len = 0 :: non_neg_integer(),
+    %% Recent key headers -> ALWAYS stripped
+    recent_key_headers = [] :: [term()],
+    prev_node = aec_chain_node:new() :: chain_node(),
+    prev_key_node = aec_chain_node:new() :: chain_node()
+}).
+-type insertion_ctx() :: #insertion_ctx{}.
+
+-type block_header_hash() :: aec_headers:block_header_hash().
+-type height() :: aec_blocks:height().
+-type difficulty() :: non_neg_integer().
 
 %% Let's not add another entry to the supervision tree
 -on_load(setup_ets_cache/0).
@@ -76,38 +108,49 @@ start_state_transition(Fun) ->
 abort_state_transition(Reason) ->
     throw(?internal_error(Reason)).
 
-node_prev_hash(#chain_node{header = H}) -> aec_headers:prev_hash(H).
+-spec node_prev_hash(chain_node()) -> block_header_hash().
+node_prev_hash(N) -> aec_headers:prev_hash(aec_chain_node:header(N)).
 
-node_prev_key_hash(#chain_node{header = H}) -> aec_headers:prev_key_hash(H).
+-spec node_prev_key_hash(chain_node()) -> block_header_hash().
+node_prev_key_hash(N) -> aec_headers:prev_key_hash(aec_chain_node:header(N)).
 
-node_height(#chain_node{header = H}) -> aec_headers:height(H).
+-spec node_height(chain_node()) -> height().
+node_height(N) -> aec_headers:height(aec_chain_node:header(N)).
 
-node_difficulty(#chain_node{type = micro}) -> 0;
-node_difficulty(#chain_node{header = H}) -> aec_headers:difficulty(H).
+-spec node_difficulty(chain_node()) -> difficulty().
+node_difficulty(N) ->
+    case aec_chain_node:type(N) of
+        micro -> 0;
+        _ -> aec_headers:difficulty(aec_chain_node:header(N))
+    end.
 
-node_target(#chain_node{header = H}) -> aec_headers:target(H).
+-spec node_target(chain_node()) -> aec_consensus:key_target().
+node_target(ChainNode) -> aec_headers:target(aec_chain_node:header(ChainNode)).
 
-node_root_hash(#chain_node{header = H}) -> aec_headers:root_hash(H).
+-spec node_root_hash(chain_node()) -> list().
+node_root_hash(ChainNode) -> aec_headers:root_hash(aec_chain_node:header(ChainNode)).
 
-node_miner(#chain_node{header = H}) -> aec_headers:miner(H).
+node_miner(ChainNode) -> aec_headers:miner(aec_chain_node:header(ChainNode)).
 
-node_beneficiary(#chain_node{header = H}) -> aec_headers:beneficiary(H).
+node_beneficiary(ChainNode) ->
+    aec_headers:beneficiary(aec_chain_node:header(ChainNode)).
 
-node_type(#chain_node{type = T}) -> T.
+node_type(ChainNode) -> aec_chain_node:type(ChainNode).
 
-node_time(#chain_node{header = H}) -> aec_headers:time_in_msecs(H).
+node_time(ChainNode) -> aec_headers:time_in_msecs(aec_chain_node:header(ChainNode)).
 
-node_version(#chain_node{header = H}) -> aec_headers:version(H).
+node_version(ChainNode) -> aec_headers:version(aec_chain_node:header(ChainNode)).
 
 node_is_key_block(N) -> node_type(N) =:= key.
 
 node_is_micro_block(N) -> node_type(N) =:= micro.
 
-node_hash(#chain_node{hash = Hash}) -> Hash.
+node_hash(ChainNode) -> aec_chain_node:hash(ChainNode).
 
-node_header(#chain_node{header = H}) -> H.
+node_header(ChainNode) -> aec_chain_node:header(ChainNode).
 
-node_consensus(#chain_node{header = H}) -> aec_headers:consensus_module(H).
+node_consensus(ChainNode) ->
+    aec_headers:consensus_module(aec_chain_node:header(ChainNode)).
 
 ctx_prev(#insertion_ctx{prev_node = PrevNode}) -> PrevNode.
 ctx_prev_key(#insertion_ctx{prev_key_node = PrevKeyNode}) -> PrevKeyNode.
@@ -228,25 +271,35 @@ build_insertion_ctx_prev(Node, PrevKeyNode) ->
                     %% Ok so the prev keyblock is present but not the prev block?
                     %% this shouldn't be the case even for the genesis block
                     {error, {illegal_orphan, node_hash(Node)}};
-                {ok, #chain_node{type = key}} ->
-                    {error, prev_key_hash_inconsistency};
                 {ok, PrevNode} ->
-                    case node_prev_key_hash(PrevNode) =:= PrevKeyHash of
-                        true ->
+                    case {aec_chain_node:type(PrevNode), node_prev_key_hash(PrevNode) =:= PrevKeyHash} of
+                        {key, _} -> {error, prev_key_hash_inconsistency};
+                        {_, false} -> {error, prev_key_hash_inconsistency};
+                        {_, true} ->
                             %% Now assert heights
-                            build_insertion_ctx_check_prev_height(Node, PrevNode, PrevKeyNode);
-                        false ->
-                            {error, prev_key_hash_inconsistency}
+                            build_insertion_ctx_check_prev_height(Node, PrevNode, PrevKeyNode)
                     end
             end
    end.
 
-build_insertion_ctx_check_prev_height(#chain_node{type = key} = Node, PrevNode, PrevKeyNode) ->
+-spec build_insertion_ctx_check_prev_height(
+    chain_node(), chain_node(), chain_node()) ->
+    {ok, chain_node(), chain_node()} | {error, atom()}.
+build_insertion_ctx_check_prev_height(Node, PrevNode, PrevKeyNode) ->
+    case aec_chain_node:type(Node) of
+        key ->
+            build_insertion_ctx_check_prev_height_key(Node, PrevNode, PrevKeyNode);
+        micro ->
+            build_insertion_ctx_check_prev_height_micro(Node, PrevNode, PrevKeyNode)
+    end.
+
+build_insertion_ctx_check_prev_height_key(Node, PrevNode, PrevKeyNode) ->
     case node_height(PrevNode) =:= (node_height(Node) - 1) of
         true -> {ok, PrevNode, PrevKeyNode};
         false -> {error, height_inconsistent_for_keyblock_with_previous_hash}
-    end;
-build_insertion_ctx_check_prev_height(#chain_node{type = micro} = Node, PrevNode, PrevKeyNode) ->
+    end.
+
+build_insertion_ctx_check_prev_height_micro(Node, PrevNode, PrevKeyNode) ->
     case node_height(PrevNode) =:= node_height(Node) of
         true -> {ok, PrevNode, PrevKeyNode};
         false -> {error, height_inconsistent_for_microblock_with_previous_hash}
@@ -258,29 +311,57 @@ dirty_db_find_node(Hash) when is_binary(Hash) ->
         none -> error
     end.
 
+-spec wrap_header(block_header_hash(), aec_chain_node:hash()) -> chain_node().
 wrap_header(Header, Hash) ->
-    #chain_node{ header = Header
-         , hash = Hash
-         , type = aec_headers:type(Header)
-         }.
+    aec_chain_node:new(Header, Hash, aec_headers:type(Header)).
 
-update_recent_cache(#chain_node{type = micro}, _InsertCtx) -> ok;
-update_recent_cache(#chain_node{type = key, hash = H} = Node, #insertion_ctx{window_len = N, recent_key_headers = Recents}) ->
-    Consensus = node_consensus(Node),
-    Entry =
-        case N < Consensus:recent_cache_n() of
-            true ->
-                #recent_blocks{key = H, len = N+1, recents = [Node|Recents]};
-            false ->
-                %% Evict the cache for the oldest entry to ensure an upper bound on the used memory
-                {ToEvict, _} = lists:last(Recents),
-                ets:delete(?RECENT_CACHE, ToEvict),
-                #recent_blocks{key = H, len = N, recents = [Node|lists:droplast(Recents)]}
-        end,
-    ets:insert(?RECENT_CACHE, Entry).
+%%update_recent_cache(#chain_node{type = micro}, _InsertCtx) -> ok;
+%%update_recent_cache(#chain_node{type = key, hash = H} = Node, #insertion_ctx{window_len = N, recent_key_headers = Recents}) ->
+%%    Consensus = node_consensus(Node),
+%%    Entry =
+%%        case N < Consensus:recent_cache_n() of
+%%            true ->
+%%                #recent_blocks{key = H, len = N+1, recents = [Node|Recents]};
+%%            false ->
+%%                %% Evict the cache for the oldest entry to ensure an upper bound on the used memory
+%%                {ToEvict, _} = lists:last(Recents),
+%%                ets:delete(?RECENT_CACHE, ToEvict),
+%%                #recent_blocks{key = H, len = N, recents = [Node|lists:droplast(Recents)]}
+%%        end,
+%%    ets:insert(?RECENT_CACHE, Entry).
 
-update_top(#chain_node{} = Node) ->
-    ets:insert(?REGISTRY_CACHE, {top_node, Node}).
+-spec update_recent_cache(chain_node(), insertion_ctx()) -> recent_blocks().
+update_recent_cache(Node,
+    #insertion_ctx{window_len = N, recent_key_headers = Recents}) ->
+    case aec_chain_node:type(Node) of
+        micro -> ok;
+        key ->
+            Consensus = node_consensus(Node),
+            NodeHash = aec_chain_node:hash(Node),
+            Entry =
+                case N < Consensus:recent_cache_n() of
+                    true ->
+                        #recent_blocks{
+                            key = NodeHash,
+                            len = N+1,
+                            recents = [Node | Recents]
+                        };
+                    false ->
+                        %% Evict the cache for the oldest entry to ensure an upper bound on the used memory
+                        {ToEvict, _} = lists:last(Recents),
+                        ets:delete(?RECENT_CACHE, ToEvict),
+                        #recent_blocks{
+                            key = NodeHash,
+                            len = N,
+                            recents = [Node | lists:droplast(Recents)]
+                        }
+                end,
+            ets:insert(?RECENT_CACHE, Entry)
+    end.
+
+-spec update_top(chain_node()) -> true.
+update_top(ChainNode) ->
+    ets:insert(?REGISTRY_CACHE, {top_node, ChainNode}).
 
 get_top_node() ->
     ets:lookup_element(?REGISTRY_CACHE, top_node, 2).

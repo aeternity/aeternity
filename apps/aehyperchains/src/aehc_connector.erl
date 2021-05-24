@@ -14,7 +14,6 @@
         , accept/1]).
 -export_type([connector/0]).
 
--include_lib("aecore/include/aec_block_insertion.hrl").
 -include_lib("aehyperchains/include/aehc_types.hrl").
 
 -type connector() :: atom().

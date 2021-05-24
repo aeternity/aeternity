@@ -122,7 +122,6 @@
 -export([calc_rewards/6, internal_insert_transaction/4]).
 -endif.
 
--include("aec_block_insertion.hrl").
 -include("blocks.hrl").
 -include("aec_db.hrl").
 
@@ -135,7 +134,7 @@
 -type events() :: aetx_env:events().
 -type pof() :: aec_pof:pof().
 -type fork_info() :: aec_fork_info:fork_info().
--type chain_node() :: #chain_node{}. %TODO Fix when it's time to wrap #chain_node{}.
+-type chain_node() :: aec_chain_node:chain_node().
 -type header() :: aec_headers:header().
 -type maybe_keyheader() :: aec_headers:key_header() | undefined.
 
@@ -292,6 +291,7 @@ calculate_new_unmined_keyblock(PrevHeader, PrevHash, Miner, Beneficiary, Protoco
 
 -define(DEFAULT_GOSSIP_ALLOWED_HEIGHT_FROM_TOP, 5).
 
+-spec gossip_allowed_height_from_top() -> height().
 gossip_allowed_height_from_top() ->
     aeu_env:user_config_or_env(
         [<<"sync">>, <<"gossip_allowed_height_from_top">>],
@@ -300,10 +300,9 @@ gossip_allowed_height_from_top() ->
     ).
 
 -define(POF_REPORT_DELAY, 2).
+proof_of_fraud_report_delay() -> ?POF_REPORT_DELAY.
 
-proof_of_fraud_report_delay() ->
-    ?POF_REPORT_DELAY.
-
+-spec get_fork_result(block(), map()) -> {ok, boolean()} | {error, not_last_signalling_block}.
 get_fork_result(Block, Fork) ->
     case is_last_signalling_block(Block, Fork) of
         true ->
@@ -320,6 +319,7 @@ get_fork_result(Block, Fork) ->
             {error, not_last_signalling_block}
     end.
 
+-spec get_info_field(height(), map()) -> default | boolean().
 get_info_field(Height, Fork) when Fork =/= undefined ->
     case is_height_in_signalling_interval(Height, Fork) of
         true -> maps:get(info_field, Fork);
@@ -346,7 +346,9 @@ persist_state(OldState, NewState) ->
             true
     end.
 
-db_write_top_block_node(#chain_node{header = Header, hash = Hash}) ->
+-spec db_write_top_block_node(chain_node()) -> ok | no_return().
+db_write_top_block_node(N) ->
+    {Header, Hash, _} = aec_chain_node:decompose(N),
     aec_db:write_top_block_node(Hash, Header).
 
 db_get_top_block_node() ->
@@ -376,12 +378,14 @@ maybe_set_finalized_height(State) ->
         micro -> ok
     end.
 
-get_top_block_hash(#{top_block_node := #chain_node{hash = H}}) -> H;
-get_top_block_hash(_) -> undefined.
+-spec get_top_block_hash(chain_node()) -> hash() | undefined.
+get_top_block_hash(ChainNode) ->
+    try aec_chain_node:hash(ChainNode) catch _ -> undefined end.
 
 get_top_block_node(#{top_block_node := N}) -> N.
 
-set_top_block_node(#chain_node{} = N, State) -> State#{top_block_node => N}.
+-spec set_top_block_node(chain_node(), map()) -> state().
+set_top_block_node(ChainNode, State) -> State#{top_block_node => ChainNode}.
 
 prev_version(Node) ->
     H = node_height(Node),
@@ -405,12 +409,14 @@ wrap_block(Block) ->
     Header = aec_blocks:to_header(Block),
     wrap_header(Header).
 
+-spec wrap_header(header()) -> chain_node().
 wrap_header(Header) ->
     {ok, Hash} = aec_headers:hash_header(Header),
     wrap_header(Header, Hash).
 
+-spec wrap_header(header(), hash()) -> chain_node().
 wrap_header(Header, Hash) ->
-    #chain_node{header = Header, hash = Hash, type = aec_headers:type(Header)}.
+    aec_chain_node:new(Header, Hash, aec_headers:type(Header)).
 
 %% NOTE: Only return nodes in the main chain.
 %%       The function assumes that a node is in the main chain if
@@ -548,8 +554,8 @@ maybe_cache_new_top({pof, true, _PrevKeyHdr, _PoF, _Events}, Node) ->
 maybe_cache_new_top(_, _) ->
     ok.
 
-cache_new_top(#chain_node{} = Node) ->
-    aec_block_insertion:update_top(Node).
+-spec cache_new_top(chain_node()) -> true.
+cache_new_top(ChainNode) -> aec_block_insertion:update_top(ChainNode).
 
 internal_insert_transaction(Node, Block, Origin, Ctx) ->
     Consensus = aec_block_insertion:node_consensus(Node),
@@ -565,7 +571,8 @@ internal_insert_transaction(Node, Block, Origin, Ctx) ->
     ok = db_put_node(Block, node_hash(Node)),
     {State3, Events} = update_state_tree(Node, State2, Ctx),
     TopChanged = persist_state(State1, State3),
-    #chain_node{header = PrevKeyHeader} = aec_block_insertion:ctx_prev_key(Ctx),
+    PrevNode = aec_block_insertion:ctx_prev_key(Ctx),
+    PrevKeyHeader = aec_chain_node:header(PrevNode),
     case maps:get(found_pogf, State3) of
         no_fraud -> ok;
         {H1, H2} ->
