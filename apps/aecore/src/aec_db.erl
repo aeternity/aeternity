@@ -144,6 +144,8 @@
 
 -include("blocks.hrl").
 -include("aec_db.hrl").
+
+-include_lib("aehyperchains/include/aehc_parent_db.hrl").
 -include_lib("aeutils/include/aeu_stacktrace.hrl").
 
 %% - transactions
@@ -200,12 +202,12 @@ tables(Mode) ->
    , ?TAB(aec_discovered_pof)
    , ?TAB(aec_signal_count)
    , ?TAB(aec_peers)
-%%   , ?TAB(hc_db_pogf)
-%%   , ?TAB(hc_db_commitment_header)
-%%   , ?TAB(hc_db_parent_block_header)
-%%   , ?TAB(hc_db_parent_block_state)
-%%   , ?TAB(hc_db_parent_state)
-%%   , ?TAB(hc_db_delegate_state)
+   , ?TAB(hc_db_pogf)
+   , ?TAB(hc_db_commitment_header)
+   , ?TAB(hc_db_parent_block_header)
+   , ?TAB(hc_db_parent_block_state)
+   , ?TAB(hc_db_parent_state)
+   , ?TAB(hc_db_delegate_state)
     ].
 
 tab(Mode0, Record, Attributes, Extra) ->

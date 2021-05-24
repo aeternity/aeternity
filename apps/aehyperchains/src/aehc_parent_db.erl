@@ -44,14 +44,8 @@
 -define(t(Expr, ErrorKeys), aec_db:ensure_transaction(fun() -> Expr end, ErrorKeys)).
 
 -include("../../aecore/include/blocks.hrl").
+-include("aehc_parent_db.hrl").
 -include("aehc_utils.hrl").
-
--record(hc_db_pogf, {key, value}).
--record(hc_db_commitment_header, {key, value}).
--record(hc_db_parent_block_header, {key, value}).
--record(hc_db_parent_block_state, {key, value}).
--record(hc_db_parent_state, {key, value}).
--record(hc_db_delegate_state, {key, value}).
 
 table_specs(Mode) ->
     [ ?TAB(hc_db_pogf)
