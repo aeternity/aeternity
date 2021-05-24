@@ -1696,7 +1696,12 @@ decode_call_result(Name0, Fun, Type, Val) ->
     end.
 
 simple_auth(Args) ->
-    aega_test_utils:make_calldata("simple_auth", "authorize", Args).
+    SophiaVsn = sophia_version(),
+    if SophiaVsn < ?SOPHIA_IRIS_FATE ->
+            aega_test_utils:make_calldata("simple_auth", "authorize", Args);
+       true ->
+            aega_test_utils:make_calldata("simple_auth_old", "authorize", Args)
+    end.
 
 tx_auth(_GA, Nonce, S) ->
     {aega_test_utils:make_calldata("tx_auth", "authorize", [Nonce]), S}.

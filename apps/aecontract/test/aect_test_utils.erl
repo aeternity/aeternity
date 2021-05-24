@@ -411,7 +411,8 @@ compiler_cmd(Vsn) ->
         ?SOPHIA_MINERVA   -> filename:join([BaseDir, "v2.1.0", "aesophia_cli"]);
         ?SOPHIA_FORTUNA   -> filename:join([BaseDir, "v3.2.0", "aesophia_cli"]);
         ?SOPHIA_LIMA_AEVM -> filename:join([BaseDir, "v4.3.1", "aesophia_cli"]) ++ " --backend=aevm";
-        ?SOPHIA_LIMA_FATE -> filename:join([BaseDir, "v4.3.1", "aesophia_cli"])
+        ?SOPHIA_LIMA_FATE -> filename:join([BaseDir, "v4.3.1", "aesophia_cli"]);
+        ?SOPHIA_IRIS_FATE -> filename:join([BaseDir, "v5.1.0", "aesophia_cli"])
     end.
 
 aci_json_enabled(Vsn) ->
