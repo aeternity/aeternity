@@ -72,10 +72,9 @@
 %%%
 %%% @end
 %%%-------------------------------------------------------------------
-
 -module(aec_chain_state).
 
--export([ calculate_new_unmined_keyblock/5
+-export([calculate_new_unmined_keyblock/5
         , find_common_ancestor/2
         , find_predecessor_at_height/2
         , get_key_block_hash_at_height/1
@@ -95,12 +94,10 @@
         , grant_fees/5
         , wrap_block/1
         , wrap_header/1
-        , wrap_header/2
-        ]).
+        , wrap_header/2]).
 
 -import(aetx_env, [no_events/0]).
--import(aec_block_insertion,
-                        [ node_hash/1
+-import(aec_block_insertion, [node_hash/1
                         , node_prev_hash/1
                         , node_prev_key_hash/1
                         , node_height/1
@@ -114,50 +111,59 @@
                         , node_version/1
                         , node_is_key_block/1
                         , node_is_micro_block/1
-                        , node_header/1] ).
+                        , node_header/1]).
 
 %% For tests
--export([ get_top_block_hash/1
+-export([get_top_block_hash/1
         , get_key_block_hash_at_height/2
-        , calculate_gas_fee/1
-        ]).
+        , calculate_gas_fee/1]).
 
 -ifdef(TEST).
--export([calc_rewards/6,
-         internal_insert_transaction/4
-        ]).
+-export([calc_rewards/6, internal_insert_transaction/4]).
 -endif.
 
 -include("aec_block_insertion.hrl").
 -include("blocks.hrl").
 -include("aec_db.hrl").
 
+-type state() :: map().
+-type hash() :: binary().
+-type pubkey() :: aec_keys:pubkey().
+-type trees() :: aec_trees:trees().
+-type block() :: aec_blocks:block().
+-type height() :: aec_blocks:height().
 -type events() :: aetx_env:events().
+-type pof() :: aec_pof:pof().
+-type fork_info() :: aec_fork_info:fork_info().
+-type chain_node() :: #chain_node{}. %TODO Fix when it's time to wrap #chain_node{}.
+-type header() :: aec_headers:header().
+-type maybe_keyheader() :: aec_headers:key_header() | undefined.
+
 
 %%%===================================================================
 %%% API
 %%%===================================================================
 
--spec get_key_block_hash_at_height(aec_blocks:height()) -> {'ok', binary()} | 'error'.
+-spec get_key_block_hash_at_height(height()) ->
+    {ok, hash()} | error.
 get_key_block_hash_at_height(Height) when is_integer(Height), Height >= 0 ->
     get_key_block_hash_at_height(Height, new_state_from_persistence()).
 
--spec get_n_key_headers_backward_from(aec_headers:header(), non_neg_integer()) ->
-                                             {ok, [aec_headers:header()]} | 'error'.
+-spec get_n_key_headers_backward_from(header(), non_neg_integer()) ->
+    {ok, [header()]} | error.
 get_n_key_headers_backward_from(Header, N) ->
     Node = wrap_header(Header),
     aec_block_insertion:get_n_key_headers_from(Node, N).
 
--spec insert_block(aec_blocks:block()) -> {'ok', events()}
-                                        | {'pof', aec_pof:pof(), events()}
-                                        | {'error', any()}.
+-spec insert_block(block()) ->
+    {ok, events()} | {pof, pof(), events()} | {error, any()}.
 insert_block(Block) ->
     insert_block_strip_res(do_insert_block(Block, undefined)).
 
--spec insert_block_conductor(aec_blocks:block(), atom()) ->
-    {'ok', boolean(), aec_headers:key_header() | undefined, events()}
-    | {'pof', boolean(), aec_headers:key_header() | undefined, aec_pof:pof(), events()}
-    | {'error', any()}.
+-spec insert_block_conductor(block(), atom()) ->
+    {ok, boolean(), maybe_keyheader(), events()} |
+    {pof, boolean(), maybe_keyheader(), pof(), events()} |
+    {error, any()}.
 insert_block_conductor(Block, block_synced) ->
     do_insert_block(Block, sync);
 insert_block_conductor(Block, _Origin) ->
@@ -165,19 +171,20 @@ insert_block_conductor(Block, _Origin) ->
 
 %% We should not check the height distance to top for synced block, so
 %% we have to keep track of the origin here.
--spec insert_block(aec_blocks:block(), atom()) ->
-        {'ok', events()}
-      | {'pof', aec_pof:pof(), events()}
-      | {'error', any()}.
+-spec insert_block(block(), block_synced) ->
+    {ok, events()} | {pof, pof(), events()} | {error, any()}.
 insert_block(Block, block_synced) ->
     insert_block_strip_res(do_insert_block(Block, sync));
 insert_block(Block, _Origin) ->
     insert_block_strip_res(do_insert_block(Block, undefined)).
 
+-spec insert_block_strip_res({ok | pof(), term(), term(), events()}) ->
+    {ok, events()} | {pof, term(), events()} | term.
 insert_block_strip_res({ok, _, _, Events}) -> {ok, Events};
 insert_block_strip_res({pof, _, _, PoF, Events}) -> {pof, PoF, Events};
 insert_block_strip_res(Other) -> Other.
 
+-spec do_insert_block(block(), sync | undefined) -> term().
 do_insert_block(Block, Origin) ->
     aec_blocks:assert_block(Block),
     Node = wrap_block(Block),
@@ -191,15 +198,15 @@ do_insert_block(Block, Origin) ->
     end,
     Res.
 
--spec hash_is_connected_to_genesis(binary()) -> boolean().
+-spec hash_is_connected_to_genesis(hash()) -> boolean().
 hash_is_connected_to_genesis(Hash) ->
     case db_find_fork_id(Hash) of
-        {ok,_ForkId} -> true;
+        {ok, _ForkId} -> true;
         error -> false
     end.
 
--spec find_common_ancestor(binary(), binary()) ->
-                                  {'ok', binary()} | {error, atom()}.
+-spec find_common_ancestor(hash(), hash()) ->
+    {ok, binary()} | {error, atom()}.
 find_common_ancestor(Hash1, Hash2) ->
     find_common_ancestor(undefined, Hash1, undefined, Hash2).
 
@@ -225,7 +232,7 @@ find_common_ancestor(MaybeNode1, Hash1, MaybeNode2, Hash2) ->
                                     {ok, H};
                                 _ ->
                                     case find_fork_point(Node1, Hash1, Node2, Hash2) of
-                                        error          -> {error, not_found};
+                                        error -> {error, not_found};
                                         {ok, ForkHash} -> {ok, ForkHash}
                                     end
                             end;
@@ -237,7 +244,7 @@ find_common_ancestor(MaybeNode1, Hash1, MaybeNode2, Hash2) ->
             {error, unknown_hash}
     end.
 
--spec hash_is_in_main_chain(binary()) -> boolean().
+-spec hash_is_in_main_chain(hash()) -> boolean().
 hash_is_in_main_chain(Hash) ->
     case db_find_node(Hash) of
         {ok, Node} ->
@@ -245,51 +252,52 @@ hash_is_in_main_chain(Hash) ->
             case get_top_block_hash(State) of
                 undefined -> false;
                 TopHash ->
-                    Height        = node_height(Node),
-                    TopNode       = db_get_node(TopHash),
-                    TopHeight     = node_height(TopNode),
+                    Height = node_height(Node),
+                    TopNode = db_get_node(TopHash),
+                    TopHeight = node_height(TopNode),
                     {ok, {MaybeChokeNode, ChokePt}} = choke_point(Height, TopHeight, TopNode, TopHash),
                     hash_is_in_main_chain(Node, Hash, MaybeChokeNode, ChokePt)
             end;
         error -> false
     end.
 
--spec calculate_new_unmined_keyblock(
-        aec_headers:key_header(),
-        binary(),
-        aec_keys:pubkey(),
-        aec_keys:pubkey(),
-        aec_hard_forks:protocol_vsn()) -> {'ok', aec_blocks:key_block(), aec_trees:trees()} | 'error'.
+-spec calculate_new_unmined_keyblock(aec_headers:key_header(),
+    hash(), pubkey(), pubkey(), aec_hard_forks:protocol_vsn()) ->
+    {ok, aec_blocks:key_block(), aec_trees:trees()} | error.
 calculate_new_unmined_keyblock(PrevHeader, PrevHash, Miner, Beneficiary, Protocol) ->
-    aec_db:ensure_transaction(fun() ->
-        PrevNode = wrap_header(PrevHeader, PrevHash),
-        Height = node_height(PrevNode) + 1,
-        PrevKeyHash = case node_type(PrevNode) of
-                  key   -> node_hash(PrevNode);
-                  micro -> node_prev_key_hash(PrevNode)
-              end,
-        {ok, PrevKeyNode} = db_find_node(PrevKeyHash),
-        case get_state_trees_in(PrevNode, true) of
-            error -> error;
-            {ok, TreesIn, ForkInfoIn} ->
-                Consensus = aec_consensus:get_consensus_module_at_height(Height),
-                Fork = aeu_env:get_env(aecore, fork, undefined),
-                InfoField = aec_chain_state:get_info_field(Height, Fork),
-                UnminedNode  = Consensus:new_unmined_key_node(PrevNode, PrevKeyNode, Height, Miner, Beneficiary, Protocol, InfoField, TreesIn),
-                State = new_state_from_persistence(),
-                {Trees,_Fees,_Events} = apply_node_transactions(UnminedNode, PrevNode, PrevKeyNode, TreesIn,
-                                                                ForkInfoIn, State),
-                UnminedHeader = aec_headers:set_root_hash(node_header(UnminedNode), aec_trees:hash(Trees)),
-                {ok, aec_blocks:new_key_from_header(UnminedHeader), Trees}
-        end
-    end).
+    aec_db:ensure_transaction(
+        fun() ->
+            PrevNode = wrap_header(PrevHeader, PrevHash),
+            Height = node_height(PrevNode) + 1,
+            PrevKeyHash =
+                case node_type(PrevNode) of
+                    key -> node_hash(PrevNode);
+                    micro -> node_prev_key_hash(PrevNode)
+                end,
+            {ok, PrevKeyNode} = db_find_node(PrevKeyHash),
+            case get_state_trees_in(PrevNode, true) of
+                error -> error;
+                {ok, TreesIn, ForkInfoIn} ->
+                    Consensus = aec_consensus:get_consensus_module_at_height(Height),
+                    Fork = aeu_env:get_env(aecore, fork, undefined),
+                    InfoField = aec_chain_state:get_info_field(Height, Fork),
+                    UnminedNode = Consensus:new_unmined_key_node(PrevNode, PrevKeyNode, Height, Miner, Beneficiary, Protocol, InfoField, TreesIn),
+                    State = new_state_from_persistence(),
+                    {Trees, _Fees, _Events} =
+                        apply_node_transactions(UnminedNode, PrevNode, PrevKeyNode, TreesIn, ForkInfoIn, State),
+                    UnminedHeader = aec_headers:set_root_hash(node_header(UnminedNode), aec_trees:hash(Trees)),
+                    {ok, aec_blocks:new_key_from_header(UnminedHeader), Trees}
+            end
+        end).
 
 -define(DEFAULT_GOSSIP_ALLOWED_HEIGHT_FROM_TOP, 5).
 
 gossip_allowed_height_from_top() ->
-    aeu_env:user_config_or_env([<<"sync">>, <<"gossip_allowed_height_from_top">>],
-                               aecore, gossip_allowed_height_from_top,
-                               ?DEFAULT_GOSSIP_ALLOWED_HEIGHT_FROM_TOP).
+    aeu_env:user_config_or_env(
+        [<<"sync">>, <<"gossip_allowed_height_from_top">>],
+        aecore, gossip_allowed_height_from_top,
+        ?DEFAULT_GOSSIP_ALLOWED_HEIGHT_FROM_TOP
+    ).
 
 -define(POF_REPORT_DELAY, 2).
 
@@ -314,7 +322,7 @@ get_fork_result(Block, Fork) ->
 
 get_info_field(Height, Fork) when Fork =/= undefined ->
     case is_height_in_signalling_interval(Height, Fork) of
-        true  -> maps:get(info_field, Fork);
+        true -> maps:get(info_field, Fork);
         false -> default
     end;
 get_info_field(_Height, undefined) ->
@@ -325,10 +333,7 @@ get_info_field(_Height, undefined) ->
 %%%===================================================================
 
 new_state_from_persistence() ->
-    Fun = fun() ->
-                  #{ top_block_node        => db_get_top_block_node()
-                   }
-          end,
+    Fun = fun() -> #{top_block_node => db_get_top_block_node()} end,
     aec_db:ensure_transaction(Fun).
 
 persist_state(OldState, NewState) ->
@@ -341,16 +346,15 @@ persist_state(OldState, NewState) ->
             true
     end.
 
-db_write_top_block_node(#chain_node{ header = Header
-                             , hash   = Hash }) ->
+db_write_top_block_node(#chain_node{header = Header, hash = Hash}) ->
     aec_db:write_top_block_node(Hash, Header).
 
 db_get_top_block_node() ->
     case aec_db:get_top_block_node() of
         undefined ->
             undefined;
-        #{ hash := Hash
-         , header := Header } ->
+        #{hash := Hash
+            , header := Header} ->
             wrap_header(Header, Hash)
     end.
 
@@ -365,14 +369,11 @@ maybe_set_finalized_height(State) ->
                     case TopHeight - FRHeight - 1 of
                         H when H > 0 ->
                             aec_db:write_finalized_height(H);
-                        _ ->
-                            ok
+                        _ -> ok
                     end;
-                _ ->
-                    ok
+                _ -> ok
             end;
-        micro ->
-            ok
+        micro -> ok
     end.
 
 get_top_block_hash(#{top_block_node := #chain_node{hash = H}}) -> H;
@@ -385,17 +386,18 @@ set_top_block_node(#chain_node{} = N, State) -> State#{top_block_node => N}.
 prev_version(Node) ->
     H = node_height(Node),
     case H =:= aec_block_genesis:height() of
-        true  -> undefined;
+        true -> undefined;
         %% Might return different protocols for the same height due to block signaling
         false -> node_version(db_get_node(node_prev_hash(Node)))
     end.
 
 maybe_add_pof(State, Block) ->
     case aec_blocks:type(Block) of
-        key   -> State#{pof => no_fraud};
+        key -> State#{pof => no_fraud};
         micro -> State#{pof => aec_blocks:pof(Block)}
     end.
 
+-spec node_is_genesis(chain_node()) -> boolean().
 node_is_genesis(Node) ->
     node_hash(Node) =:= aec_consensus:get_genesis_hash().
 
@@ -408,10 +410,7 @@ wrap_header(Header) ->
     wrap_header(Header, Hash).
 
 wrap_header(Header, Hash) ->
-    #chain_node{ header = Header
-         , hash = Hash
-         , type = aec_headers:type(Header)
-         }.
+    #chain_node{header = Header, hash = Hash, type = aec_headers:type(Header)}.
 
 %% NOTE: Only return nodes in the main chain.
 %%       The function assumes that a node is in the main chain if
@@ -427,9 +426,9 @@ get_key_block_hash_at_height(Height, State) when is_integer(Height), Height >= 0
                 true -> error;
                 false ->
                     case db_find_key_nodes_at_height(Height) of
-                        error        -> error({broken_chain, Height});
+                        error -> error({broken_chain, Height});
                         {ok, [Node]} -> {ok, node_hash(Node)};
-                        {ok, [_|_] = Nodes} ->
+                        {ok, [_ | _] = Nodes} ->
                             {ok, {MaybeChokeNode, ChokePt}} = choke_point(Height, TopHeight, TopNode, TopHash),
                             keyblock_hash_in_main_chain(Nodes, MaybeChokeNode, ChokePt)
                     end
@@ -438,17 +437,18 @@ get_key_block_hash_at_height(Height, State) when is_integer(Height), Height >= 0
 
 %% The assumption is that forks are short (normally a handful of blocks) and
 %% not too frequent. Or else this isn't much of an optimization.
-choke_point(Height, TopHeight, MaybeTopNode, TopHash) when Height >= TopHeight -> {ok, {MaybeTopNode, TopHash}};
+choke_point(Height, TopHeight, MaybeTopNode, TopHash) when Height >= TopHeight ->
+    {ok, {MaybeTopNode, TopHash}};
 choke_point(Height, TopHeight, MaybeTopNode, TopHash) ->
     case db_find_key_nodes_at_height(Height + 1) of
-        error        -> {ok, {MaybeTopNode, TopHash}};
+        error -> {ok, {MaybeTopNode, TopHash}};
         {ok, [Node]} -> {ok, {Node, node_hash(Node)}};
-        {ok, _}      -> choke_point(Height + 1, TopHeight, MaybeTopNode, TopHash)
+        {ok, _} -> choke_point(Height + 1, TopHeight, MaybeTopNode, TopHash)
     end.
 
-keyblock_hash_in_main_chain([Node|Left], MaybeTopNode, TopHash) ->
+keyblock_hash_in_main_chain([Node | Left], MaybeTopNode, TopHash) ->
     case hash_is_in_main_chain(Node, node_hash(Node), MaybeTopNode, TopHash) of
-        true  -> {ok, node_hash(Node)};
+        true -> {ok, node_hash(Node)};
         false -> keyblock_hash_in_main_chain(Left, MaybeTopNode, TopHash)
     end;
 keyblock_hash_in_main_chain([], _MaybeTopNode, _TopHash) ->
@@ -493,27 +493,31 @@ internal_insert_genesis(Node, Block) ->
     %% Avoid unnecessary branching and an extra DB lookup for the genesis hash in the general case
     %% by hardcoding the "genesis" case we may omit a lot of checks in the general case and simplify many preconditions
     %% Surprisingly this decreased keyblock insertion time from 300us down to 200us...
-    aec_block_insertion:start_state_transition(fun() ->
-        Assert = fun (X, X, _Err) -> ok;
-                     (_Expected, _Actual, Err) -> aec_block_insertion:abort_state_transition(Err) end,
-        Assert(undefined, aec_db:get_top_block_hash(), genesis_already_inserted),
-        Assert(undefined, aec_db:get_genesis_hash(), genesis_already_inserted),
-        Trees = aec_block_genesis:genesis_populated_trees(),
-        Assert(node_root_hash(Node), aec_trees:hash(Trees), inconsistent_genesis_block),
-        NewTopHash = node_hash(Node),
-        ok = aec_db:write_block(Block, NewTopHash),
-        ok = aec_db:write_block_state(
+    aec_block_insertion:start_state_transition(
+        fun() ->
+            Assert =
+                fun
+                    (X, X, _Err) -> ok;
+                    (_Expected, _Actual, Err) -> aec_block_insertion:abort_state_transition(Err)
+                end,
+            Assert(undefined, aec_db:get_top_block_hash(), genesis_already_inserted),
+            Assert(undefined, aec_db:get_genesis_hash(), genesis_already_inserted),
+            Trees = aec_block_genesis:genesis_populated_trees(),
+            Assert(node_root_hash(Node), aec_trees:hash(Trees), inconsistent_genesis_block),
+            NewTopHash = node_hash(Node),
+            ok = aec_db:write_block(Block, NewTopHash),
+            ok = aec_db:write_block_state(
                 NewTopHash,
                 Trees,
                 aec_block_genesis:genesis_difficulty() + node_difficulty(Node),
                 NewTopHash,
                 0,
                 false),
-        ok = aec_db:write_genesis_hash(NewTopHash),
-        ok = db_write_top_block_node(Node),
-        ok = aec_db:mark_chain_end_hash(NewTopHash),
-        {ok, true, undefined, no_events()}
-    end).
+            ok = aec_db:write_genesis_hash(NewTopHash),
+            ok = db_write_top_block_node(Node),
+            ok = aec_db:mark_chain_end_hash(NewTopHash),
+            {ok, true, undefined, no_events()}
+        end).
 
 internal_insert_normal(Node, Block, Origin) ->
     %% Build the insertion context using dirty reads to the DB and possibly
@@ -523,9 +527,7 @@ internal_insert_normal(Node, Block, Origin) ->
     %% Only add the block if we can do the whole
     %% transitive operation (i.e., calculate all the state
     %% trees, and update the pointers)
-    Fun = fun() ->
-                  internal_insert_transaction(Node, Block, Origin, InsertCtx)
-          end,
+    Fun = fun() -> internal_insert_transaction(Node, Block, Origin, InsertCtx) end,
     case InsertCtx of
         {error, _} = Err -> Err;
         _ ->
@@ -579,14 +581,14 @@ internal_insert_transaction(Node, Block, Origin, Ctx) ->
             ok
     end,
     case maps:get(found_pof, State3) of
-        no_fraud  -> {ok, TopChanged, PrevKeyHeader, Events};
-        PoF       -> {pof, TopChanged, PrevKeyHeader, PoF, Events}
+        no_fraud -> {ok, TopChanged, PrevKeyHeader, Events};
+        PoF -> {pof, TopChanged, PrevKeyHeader, PoF, Events}
     end.
 
 assert_not_illegal_fork_or_orphan(Node, Origin, State) ->
-    Top       = get_top_block_node(State),
+    Top = get_top_block_node(State),
     TopHeight = node_height(Top),
-    Height    = node_height(Node),
+    Height = node_height(Node),
     case assert_height_delta(Origin, Height, TopHeight) of
         true -> ok;
         false ->
@@ -612,7 +614,7 @@ assert_height_delta(sync, Height, TopHeight) ->
             end
     end;
 assert_height_delta(undefined, Height, TopHeight) ->
-    Height >= ( TopHeight - gossip_allowed_height_from_top() ).
+    Height >= (TopHeight - gossip_allowed_height_from_top()).
 
 update_state_tree(Node, State, Ctx) ->
     {ok, Trees, ForkInfoIn} = get_state_trees_in(aec_block_insertion:ctx_prev(Ctx), true),
@@ -624,29 +626,32 @@ update_state_tree(Node, State, Ctx) ->
     handle_top_block_change(OldTopNode, NewTopDifficulty, Node, Events, State3).
 
 update_state_tree(Node, PrevNode, PrevKeyNode, TreesIn, ForkInfo, State) ->
-     case db_find_state(node_hash(Node), true) of
-         {ok, FoundTrees, FoundForkInfo} ->
+    case db_find_state(node_hash(Node), true) of
+        {ok, FoundTrees, FoundForkInfo} ->
             {Trees, _Fees, Events} = apply_node_transactions(Node, PrevNode, PrevKeyNode, TreesIn,
-                                                             ForkInfo, State),
+                ForkInfo, State),
             case aec_trees:hash(Trees) =:= aec_trees:hash(FoundTrees) of
                 true -> %% race condition, we've already inserted this block
                     %% in case of fork, set the correct top:
                     State1 = set_top_block_node(Node, State),
-                    {State1,
-                     FoundForkInfo#fork_info.difficulty, %% keep correct difficulty
-                     Events};
+                    %% keep correct difficulty
+                    {State1, aec_fork_info:difficulty(FoundForkInfo), Events};
                 false ->
                     %% NOTE: This is an internal inconsistency check,
                     %% so don't use aec_block_insertion:abort_state_transition
                     error({found_already_calculated_state, node_hash(Node)})
             end;
-         error ->
-             {DifficultyOut, Events} = apply_and_store_state_trees(Node, PrevNode, PrevKeyNode, TreesIn,
-                                                        ForkInfo, State),
+        error ->
+            {DifficultyOut, Events} =
+                apply_and_store_state_trees(
+                    Node, PrevNode, PrevKeyNode,
+                    TreesIn, ForkInfo, State),
             State1 = set_top_block_node(Node, State),
             {State1, DifficultyOut, Events}
     end.
 
+-spec maybe_set_new_fork_id(chain_node(), fork_info(), map()) ->
+    {fork_info(), [header()], [header()]}.
 maybe_set_new_fork_id(Node, ForkInfoIn, State) ->
     case {get_top_block_hash(State), node_prev_hash(Node)} of
         {H, H} ->
@@ -658,12 +663,14 @@ maybe_set_new_fork_id(Node, ForkInfoIn, State) ->
             %% When benchmarking it turned out that this is very expensive to calculate
             %% Execute it only when it's possible for siblings to exist
             case db_sibling_blocks(Node) of
-                #{key_siblings   := [],
-                  micro_siblings := []} ->
+                #{key_siblings := [], micro_siblings := []} ->
                     {ForkInfoIn, [], []};
-                #{ micro_siblings := MicSibs
-                 , key_siblings := KeySibs} ->
-                    {ForkInfoIn#fork_info{fork_id = node_hash(Node)}, MicSibs, KeySibs}
+                #{micro_siblings := MicSibs, key_siblings := KeySibs} ->
+                    {
+                        aec_fork_info:id(ForkInfoIn, node_hash(Node)),
+                        MicSibs,
+                        KeySibs
+                    }
             end
     end.
 
@@ -675,9 +682,10 @@ get_state_trees_in(PrevNode, DirtyBackend) ->
             %% 1. Fees, to accumulate new fees for generation
             %% 2. Fraud, since a new generation starts fresh
             case node_type(PrevNode) of
-                key   -> {ok, Trees, ForkInfo#fork_info{fees = 0,
-                                                        fraud = false}};
-                micro -> {ok, Trees, ForkInfo}
+                key ->
+                    {ok, Trees, aec_fork_info:fees_fraud(ForkInfo, 0, false)};
+                micro ->
+                    {ok, Trees, ForkInfo}
             end;
         error -> error
     end.
@@ -685,23 +693,21 @@ get_state_trees_in(PrevNode, DirtyBackend) ->
 apply_and_store_state_trees(Node, PrevNode, PrevKeyNode, TreesIn, ForkInfoIn, State) ->
     {Trees, Fees, Events} = apply_node_transactions(Node, PrevNode, PrevKeyNode, TreesIn, ForkInfoIn, State),
     assert_state_hash_valid(Trees, Node),
-    DifficultyOut = ForkInfoIn#fork_info.difficulty + node_difficulty(Node),
+    DifficultyOut = aec_fork_info:difficulty(ForkInfoIn) + node_difficulty(Node),
     Fraud = update_fraud_info(ForkInfoIn, Node, State),
-    ForkInfoInNode = ForkInfoIn#fork_info{ fees = Fees
-                                         , difficulty = DifficultyOut
-                                         , fraud = Fraud
-                                         },
+    ForkInfoInNode =
+        aec_fork_info:fees_fraud_difficulty(ForkInfoIn, Fees, Fraud, DifficultyOut),
     ok = db_put_state(node_hash(Node), Trees, ForkInfoInNode),
     ok = db_put_found_pof(Node, maps:get(found_pof, State)),
     {DifficultyOut, Events}.
 
 update_fraud_info(ForkInfoIn, Node, State) ->
     case maps:get(pof, State) =:= no_fraud of
-        true  ->
-            ForkInfoIn#fork_info.fraud;
+        true ->
+            aec_fork_info:fraud(ForkInfoIn);
         false ->
-            case ForkInfoIn#fork_info.fraud of
-                true  -> aec_block_insertion:abort_state_transition({double_reported_fraud, node_hash(Node)});
+            case aec_fork_info:fraud(ForkInfoIn) of
+                true -> aec_block_insertion:abort_state_transition({double_reported_fraud, node_hash(Node)});
                 false -> true
             end
     end.
@@ -727,8 +733,8 @@ handle_top_block_change(OldTopNode, NewTopDifficulty, Node, Events, State) ->
                             State1 = set_top_block_node(OldTopNode, State), %% Reset
                             {State1, Events};
                         false ->
-                            State1 = update_main_chain(OldTopHash, NewTopHash,
-                                                       ForkHash, State),
+                            State1 =
+                                update_main_chain(OldTopHash, NewTopHash, ForkHash, State),
                             {State1, Events}
                     end
             end
@@ -745,27 +751,30 @@ update_main_chain(OldTopHash, NewTopHash, ForkHash, State) ->
             State
     end.
 
-remove_locations(Hash, Hash) ->
-    ok;
+-spec remove_locations(hash(), hash()) -> ok.
+remove_locations(Hash, Hash) -> ok;
 remove_locations(StopHash, CurrentHash) ->
-    lists:foreach(fun(TxHash) ->
-                          aec_db:remove_tx_location(TxHash),
-                          aec_db:add_tx_hash_to_mempool(TxHash),
-                          {ok, Tx} = aec_db:dirty_get_signed_tx(TxHash),
-                          aec_events:publish(tx_received, Tx)
-                  end, db_safe_get_tx_hashes(CurrentHash)),
+    lists:foreach(
+        fun(TxHash) ->
+            aec_db:remove_tx_location(TxHash),
+            aec_db:add_tx_hash_to_mempool(TxHash),
+            {ok, Tx} = aec_db:dirty_get_signed_tx(TxHash),
+            aec_events:publish(tx_received, Tx)
+        end,
+        db_safe_get_tx_hashes(CurrentHash)),
     remove_locations(StopHash, db_get_prev_hash(CurrentHash)).
 
-add_locations(Hash, Hash) ->
-    ok;
+-spec add_locations(hash(), hash()) -> ok.
+add_locations(Hash, Hash) -> ok;
 add_locations(StopHash, CurrentHash) ->
-    lists:foreach(fun(TxHash) ->
-                          aec_db:add_tx_location(TxHash, CurrentHash),
-                          aec_db:remove_tx_from_mempool(TxHash)
-                  end, db_safe_get_tx_hashes(CurrentHash)),
+    lists:foreach(
+        fun(TxHash) ->
+            aec_db:add_tx_location(TxHash, CurrentHash),
+            aec_db:remove_tx_from_mempool(TxHash)
+        end, db_safe_get_tx_hashes(CurrentHash)),
     add_locations(StopHash, db_get_prev_hash(CurrentHash)).
 
-
+-spec assert_state_hash_valid(trees(), chain_node()) -> ok.
 assert_state_hash_valid(Trees, Node) ->
     RootHash = aec_trees:hash(Trees),
     Expected = node_root_hash(Node),
@@ -778,28 +787,29 @@ apply_node_transactions(Node, PrevNode, PrevKeyNode, Trees, ForkInfo, State) ->
     Consensus = aec_block_insertion:node_consensus(Node),
     case node_is_micro_block(Node) of
         true ->
-            #fork_info{fees = FeesIn} = ForkInfo,
+            FeesIn = aec_fork_info:fees(ForkInfo),
             Trees1 = Consensus:state_pre_transform_micro_node(Node, PrevNode, PrevKeyNode, Trees),
             apply_micro_block_transactions(Node, FeesIn, Trees1);
         false ->
-            #fork_info{fees = FeesIn, fraud = FraudStatus} = ForkInfo,
+            {FeesIn, FraudStatus} = aec_fork_info:fees_fraud(ForkInfo),
             Height = node_height(Node),
-            PrevConsensus = aec_consensus:get_consensus_module_at_height(Height-1),
+            PrevConsensus = aec_consensus:get_consensus_module_at_height(Height - 1),
             PrevVersion = prev_version(Node),
             GasFees = calculate_gas_fee(aec_trees:calls(Trees)),
             TotalFees = GasFees + FeesIn,
             Header = node_header(Node),
             Env = aetx_env:tx_env_from_key_header(Header, node_hash(Node),
-                                                  node_time(Node), node_prev_hash(Node)),
+                node_time(Node), node_prev_hash(Node)),
 
             Trees1 = aec_trees:perform_pre_transformations(Trees, Env, PrevVersion),
             Trees2 = if Consensus =:= PrevConsensus -> Trees1;
-                        true -> Consensus:state_pre_transform_key_node_consensus_switch(Node, PrevNode, PrevKeyNode, Trees1)
+                         true ->
+                             Consensus:state_pre_transform_key_node_consensus_switch(Node, PrevNode, PrevKeyNode, Trees1)
                      end,
             Trees3 = Consensus:state_pre_transform_key_node(Node, PrevNode, PrevKeyNode, Trees2),
-            Delay  = aec_governance:beneficiary_reward_delay(),
+            Delay = aec_governance:beneficiary_reward_delay(),
             case Height > aec_block_genesis:height() + Delay of
-                true  -> {grant_fees(Node, Trees3, Delay, FraudStatus, State), TotalFees, no_events()};
+                true -> {grant_fees(Node, Trees3, Delay, FraudStatus, State), TotalFees, no_events()};
                 false -> {Trees3, TotalFees, no_events()}
             end
     end.
@@ -825,7 +835,7 @@ find_predecessor_at_height(Node, Height) ->
             end
     end.
 
-find_one_predecessor([N|Left], Node) ->
+find_one_predecessor([N | Left], Node) ->
     Hash1 = node_hash(N),
     Hash2 = node_hash(Node),
     case find_common_ancestor(N, Hash1, Node, Hash2) of
@@ -850,10 +860,10 @@ grant_fees(Node, Trees, Delay, FraudStatus, _State) ->
     KeyNode1 = db_get_node(node_prev_key_hash(KeyNode2)),
     FraudStatus1 = db_get_fraud_status(node_hash(KeyNode3)),
     FraudStatus2 = case KeyNode4 =:= Node of
-                       true  -> FraudStatus;
+                       true -> FraudStatus;
                        false -> db_get_fraud_status(node_hash(KeyNode4))
                    end,
-    KeyFees  = db_get_fees(node_hash(KeyNode2)),
+    KeyFees = db_get_fees(node_hash(KeyNode2)),
     Beneficiary1 = node_beneficiary(KeyNode1),
     Beneficiary2 = node_beneficiary(KeyNode2),
 
@@ -864,53 +874,51 @@ grant_fees(Node, Trees, Delay, FraudStatus, _State) ->
     FraudReward1 = aec_governance:fraud_report_reward(node_height(KeyNode1)),
     {BeneficiaryReward1, BeneficiaryReward2, LockAmount} =
         calc_rewards(FraudStatus1, FraudStatus2, KeyFees, MineReward2,
-                     FraudReward1, node_is_genesis(KeyNode1)),
+            FraudReward1, node_is_genesis(KeyNode1)),
 
     OldestBeneficiaryVersion = node_version(KeyNode1),
     {{AdjustedReward1, AdjustedReward2}, DevRewards} =
         aec_dev_reward:split(BeneficiaryReward1, BeneficiaryReward2,
-                             OldestBeneficiaryVersion),
+            OldestBeneficiaryVersion),
 
     Trees1 = lists:foldl(
-               fun({K, Amt}, TreesAccum) when Amt > 0 ->
-                       Consensus:state_grant_reward(K, TreesAccum, Amt);
-                  (_, TreesAccum) -> TreesAccum
-               end,
-               Trees,
-               [{Beneficiary1, AdjustedReward1},
-                {Beneficiary2, AdjustedReward2} | DevRewards]),
+        fun({K, Amt}, TreesAccum) when Amt > 0 ->
+            Consensus:state_grant_reward(K, TreesAccum, Amt);
+            (_, TreesAccum) -> TreesAccum
+        end,
+        Trees,
+        [{Beneficiary1, AdjustedReward1},
+            {Beneficiary2, AdjustedReward2} | DevRewards]),
     Accounts0 = aec_trees:accounts(Trees1),
     Accounts = aec_accounts_trees:lock_coins(LockAmount, Accounts0),
     aec_trees:set_accounts(Trees1, Accounts).
 
-
 calculate_gas_fee(Calls) ->
     F = fun(_, SerCall, GasFeeIn) ->
-                Call = aect_call:deserialize(<<>>, SerCall),
-                GasFee = aect_call:gas_used(Call) * aect_call:gas_price(Call),
-                GasFee + GasFeeIn
+        Call = aect_call:deserialize(<<>>, SerCall),
+        GasFee = aect_call:gas_used(Call) * aect_call:gas_price(Call),
+        GasFee + GasFeeIn
         end,
     aeu_mtrees:fold(F, 0, aect_call_state_tree:iterator(Calls)).
-
 
 apply_micro_block_transactions(Node, FeesIn, Trees) ->
     Txs = db_get_txs(node_hash(Node)),
     KeyHeader = db_get_header(node_prev_key_hash(Node)),
     Env = aetx_env:tx_env_from_key_header(KeyHeader, node_prev_key_hash(Node),
-                                          node_time(Node), node_prev_hash(Node)),
+        node_time(Node), node_prev_hash(Node)),
     case timer:tc(aec_block_micro_candidate, apply_block_txs_strict, [Txs, Trees, Env]) of
         {Time, {ok, _, NewTrees, Events}} ->
             aec_metrics:try_update([ae, epoch, aecore, blocks, micro, txs_execution_time, success], Time),
             if map_size(Events) > 0 -> lager:debug("tx_events = ~p", [Events]);
-               true -> ok
+                true -> ok
             end,
             TotalFees = lists:foldl(
-                          fun(SignedTx, AccFee) ->
-                                  Fee = aetx:deep_fee(aetx_sign:tx(SignedTx), NewTrees),
-                                  AccFee + Fee
-                          end, FeesIn, Txs),
+                fun(SignedTx, AccFee) ->
+                    Fee = aetx:deep_fee(aetx_sign:tx(SignedTx), NewTrees),
+                    AccFee + Fee
+                end, FeesIn, Txs),
             {NewTrees, TotalFees, Events};
-        {Time, {error,_What}} ->
+        {Time, {error, _What}} ->
             aec_metrics:try_update([ae, epoch, aecore, blocks, micro, txs_execution_time, error], Time),
             aec_block_insertion:abort_state_transition(invalid_transactions_in_block)
     end.
@@ -918,7 +926,7 @@ apply_micro_block_transactions(Node, FeesIn, Trees) ->
 find_fork_point(Node1, Hash1, Node2, Hash2) ->
     find_fork_point(Node1, Hash1, db_find_fork_id(Hash1), Node2, Hash2, db_find_fork_id(Hash2)).
 
-find_fork_point(_, Hash,  {ok, FHash}, _, Hash,  {ok, FHash}) ->
+find_fork_point(_, Hash, {ok, FHash}, _, Hash, {ok, FHash}) ->
     {ok, Hash};
 find_fork_point(MaybeNode1, Hash1, {ok, FHash}, MaybeNode2, Hash2, {ok, FHash}) ->
     Node1 = maybe_db_get_node(MaybeNode1, Hash1),
@@ -926,8 +934,8 @@ find_fork_point(MaybeNode1, Hash1, {ok, FHash}, MaybeNode2, Hash2, {ok, FHash}) 
     Height1 = node_height(Node1),
     Height2 = node_height(Node2),
     if
-        Height1  >  Height2 -> {ok, Hash2};
-        Height1  <  Height2 -> {ok, Hash1};
+        Height1 > Height2 -> {ok, Hash2};
+        Height1 < Height2 -> {ok, Hash1};
         Height1 =:= Height2 -> find_micro_fork_point(Hash1, Hash2) %% Microblock keeps height.
     end;
 find_fork_point(MaybeNode1, Hash1, {ok, FHash1}, MaybeNode2, Hash2, {ok, FHash2}) ->
@@ -964,11 +972,11 @@ find_micro_fork_point(Hash1, Hash2) ->
             Res
     end.
 
-do_find_micro_fork_point(Hash, Hash)   -> {ok, Hash};
+do_find_micro_fork_point(Hash, Hash) -> {ok, Hash};
 do_find_micro_fork_point(Hash1, Hash2) ->
     Node = db_get_node(Hash1),
     case node_is_key_block(Node) of
-        true  -> error;
+        true -> error;
         false -> do_find_micro_fork_point(node_prev_hash(Node), Hash2)
     end.
 
@@ -996,7 +1004,7 @@ db_get_node(Hash) when is_binary(Hash) ->
     Node.
 
 db_get_header(Hash) when is_binary(Hash) ->
-    {value, Header} =  aec_db:find_header(Hash),
+    {value, Header} = aec_db:find_header(Hash),
     Header.
 
 %% TODO: This primitive is being used heavily(sync, block insertion, user api) and the current implementation is slowish
@@ -1004,7 +1012,7 @@ db_get_header(Hash) when is_binary(Hash) ->
 %% using the rocksdb backend this right now takes 13-14ms which is bad in the hot path... This should take at most 100us -.-
 db_find_key_nodes_at_height(Height) when is_integer(Height) ->
     case aec_db:find_key_headers_and_hash_at_height(Height) of
-        [_|_] = Headers ->
+        [_ | _] = Headers ->
             case [wrap_header(H, Hash) || {Hash, H} <- Headers] of
                 [] -> error;
                 List -> {ok, List}
@@ -1013,15 +1021,10 @@ db_find_key_nodes_at_height(Height) when is_integer(Height) ->
     end.
 
 db_put_state(Hash, Trees, ForkInfo) when is_binary(Hash) ->
-    #fork_info{ difficulty      = Difficulty
-              , fork_id         = ForkId
-              , fees            = Fees
-              , fraud           = Fraud
-              } = ForkInfo,
-    ok = aec_db:write_block_state(Hash, Trees, Difficulty, ForkId, Fees, Fraud).
+    {Id, Difficulty, Fees, Fraud} = aec_fork_info:decompose(ForkInfo),
+    ok = aec_db:write_block_state(Hash, Trees, Difficulty, Id, Fees, Fraud).
 
-db_put_found_pof(_Node, no_fraud) ->
-    ok;
+db_put_found_pof(_Node, no_fraud) -> ok;
 db_put_found_pof(Node, PoF) ->
     %% We only store the pof if the node has not been reported yet.
     PrevKeyHash = node_prev_key_hash(Node),
@@ -1033,12 +1036,10 @@ db_put_found_pof(Node, PoF) ->
 db_find_state(Hash, DirtyBackend) ->
     case aec_db:find_block_state_and_data(Hash, DirtyBackend) of
         {value, Trees, Difficulty, ForkId, Fees, Fraud} ->
-            {ok, Trees,
-             #fork_info{ difficulty = Difficulty
-                       , fork_id = ForkId
-                       , fees = Fees
-                       , fraud = Fraud
-                       }
+            {
+                ok,
+                Trees,
+                aec_fork_info:new(ForkId, Difficulty, Fees, Fraud)
             };
         none -> error
     end.
@@ -1084,22 +1085,26 @@ db_find_prev_hash(Hash) when is_binary(Hash) ->
     end.
 
 db_sibling_blocks(Node) ->
-    Height   = node_height(Node),
-    Hash     = node_hash(Node),
+    Height = node_height(Node),
+    Hash = node_hash(Node),
     PrevHash = node_prev_hash(Node),
     case node_type(Node) of
         key ->
-            #{ key_siblings   => match_prev_at_height(Height    , PrevHash, Hash)
-             , micro_siblings => match_prev_at_height(Height - 1, PrevHash, Hash)};
+            #{
+                key_siblings => match_prev_at_height(Height, PrevHash, Hash)
+                , micro_siblings => match_prev_at_height(Height - 1, PrevHash, Hash)
+            };
         micro ->
-            #{ key_siblings   => match_prev_at_height(Height + 1, PrevHash, Hash)
-             , micro_siblings => match_prev_at_height(Height    , PrevHash, Hash)}
+            #{
+                key_siblings => match_prev_at_height(Height + 1, PrevHash, Hash)
+                , micro_siblings => match_prev_at_height(Height, PrevHash, Hash)
+            }
     end.
 
 db_find_signal_count(Hash) ->
     case aec_db:find_signal_count(Hash) of
         {value, Count} -> {ok, Count};
-        none           -> error
+        none -> error
     end.
 
 db_put_signal_count(Hash, Count) ->
@@ -1107,8 +1112,8 @@ db_put_signal_count(Hash, Count) ->
 
 match_prev_at_height(Height, PrevHash, Hash) ->
     [Header || {H, Header} <- aec_db:find_headers_and_hash_at_height(Height),
-               H =/= Hash,
-               aec_headers:prev_hash(Header) =:= PrevHash].
+        H =/= Hash,
+        aec_headers:prev_hash(Header) =:= PrevHash].
 
 update_found_pof(Node, MicroSibHeaders, State, Ctx) ->
     State#{found_pof => maybe_pof(Node, MicroSibHeaders, Ctx)}.
@@ -1116,19 +1121,18 @@ update_found_pof(Node, MicroSibHeaders, State, Ctx) ->
 update_found_pogf(Node, KeySibHeaders, State) ->
     State#{found_pogf => maybe_pogf(Node, KeySibHeaders)}.
 
-maybe_pof(_Node, [], _Ctx) ->
-    no_fraud;
+maybe_pof(_Node, [], _Ctx) -> no_fraud;
 maybe_pof(Node, MicroSibHeaders, Ctx) ->
     case node_type(Node) of
         key -> no_fraud;
         micro ->
             Miner = node_miner(aec_block_insertion:ctx_prev_key(Ctx)),
-            [Header| _] = MicroSibHeaders,
+            [Header | _] = MicroSibHeaders,
             aec_pof:new(node_header(Node), Header, Miner)
     end.
 
 maybe_pogf(_Node, []) -> no_fraud;
-maybe_pogf(Node, [Sibling|T]) ->
+maybe_pogf(Node, [Sibling | T]) ->
     case node_type(Node) of
         micro -> no_fraud;
         key ->
@@ -1149,7 +1153,7 @@ maybe_pogf(Node, [Sibling|T]) ->
 % don't award her with mining reward but we lock the excess of coins on the
 % next granting of fees. This way we can compute properly the locked amount.
 calc_rewards(FraudStatus1, FraudStatus2, GenerationFees,
-             K2MineReward, K1FraudReward, IsKey1Genesis) ->
+    K2MineReward, K1FraudReward, IsKey1Genesis) ->
     B1FeesPart = GenerationFees * 4 div 10,
     B2FeesPart = GenerationFees - B1FeesPart,
     B2FullReward = B2FeesPart + K2MineReward,
@@ -1171,13 +1175,13 @@ calc_rewards(FraudStatus1, FraudStatus2, GenerationFees,
                 %% but that reward will come later.
                 %% Lock just the fees
                 case IsKey1Genesis of
-                    true  -> {0,          0};
+                    true -> {0, 0};
                     false -> {B1FeesPart, 0}
                 end;
             {false, false} ->
                 %% No fraud in sight. Well done!
                 case IsKey1Genesis of
-                    true  -> {0,          B2FullReward};
+                    true -> {0, B2FullReward};
                     false -> {B1FeesPart, B2FullReward}
                 end
         end,
@@ -1187,13 +1191,12 @@ calc_rewards(FraudStatus1, FraudStatus2, GenerationFees,
 %%%-------------------------------------------------------------------
 %%% Fork signalling related functions
 %%%-------------------------------------------------------------------
+maybe_put_signal_count(_Block, _Hash, undefined) -> ok;
 maybe_put_signal_count(Block, Hash, Fork) when Fork =/= undefined ->
     case count_blocks_with_signal(Block, Fork) of
-        {ok, Count}   -> db_put_signal_count(Hash, Count);
+        {ok, Count} -> db_put_signal_count(Hash, Count);
         {error, _Rsn} -> ok
-    end;
-maybe_put_signal_count(_Block, _Hash, undefined) ->
-    ok.
+    end.
 
 count_blocks_with_signal(Block, Fork) ->
     BlockHeight = aec_blocks:height(Block),
@@ -1227,7 +1230,7 @@ count_blocks_with_signal(Block, Fork, Count) ->
     end.
 
 is_height_in_signalling_interval(Height, #{signalling_start_height := StartHeight,
-                                           signalling_end_height := EndHeight}) ->
+    signalling_end_height := EndHeight}) ->
     %% Block at EndHeight doesn't belong to the signalling interval! EndHeight
     %% is fork height and the signalling result must be known at this height.
     (Height >= StartHeight) andalso (Height < EndHeight).
@@ -1238,7 +1241,7 @@ is_first_signalling_block(Block, #{signalling_start_height := StartHeight}) ->
 is_last_signalling_block(Block, #{signalling_end_height := EndHeight}) ->
     aec_blocks:height(Block) =:= (EndHeight - 1).
 
-count_inc(true)  -> 1;
+count_inc(true) -> 1;
 count_inc(false) -> 0.
 
 is_matching_info_present(Block, #{info_field := InfoField}) ->
@@ -1286,17 +1289,17 @@ start_chain_ends_migration() ->
             %% Retrieves tuples {hash, prev_key_hash, height} and should work for legacy header formats
             %% Takes up at most a few MB of RAM
             {Time, R0} = timer:tc(fun() ->
-                mnesia:dirty_select(aec_headers, [{ {aec_headers, '$1', '$2', '$3'}
-                                                  , [{'=:=', {element, 1, '$2'}, key_header}]
-                                                  , [{{'$1', {element, 4, '$2'}, '$3'}}]
-                                                  }])
-              end),
+                mnesia:dirty_select(aec_headers, [{{aec_headers, '$1', '$2', '$3'}
+                    , [{'=:=', {element, 1, '$2'}, key_header}]
+                    , [{{'$1', {element, 4, '$2'}, '$3'}}]
+                }])
+                                  end),
             lager:info("[Orphan key blocks scan] Retrieved the key header chain in ~p microseconds", [Time]),
             R1 = lists:keysort(3, R0),
             S = lists:foldl(fun({Hash, PrevKeyHash, _}, S0) ->
                 S1 = sets:del_element(PrevKeyHash, S0),
                 sets:add_element(Hash, S1)
-              end, sets:new(), R1),
+                            end, sets:new(), R1),
             chain_ends_finish_migration(S)
         catch
             E:R:Stack ->
@@ -1304,7 +1307,7 @@ start_chain_ends_migration() ->
                 (catch lager:error("[Orphan key blocks scan] Terminating node: ~p ~p ~p", [E, R, Stack])),
                 init:stop("[Orphan key blocks scan] Encountered a fatal error during the migration. Terminating the node")
         end
-      end).
+          end).
 
 %% Finishes the DB migration - this is kind of tricky as the migration was done while the node was running
 %% We insert a orphan top to the DB only when we don't have already a newer orphan which is a predecessor
@@ -1320,15 +1323,15 @@ chain_ends_finish_migration(OldTops0) ->
         chain_ends_maybe_apply(OldTops, NewTops, NewTops),
         aec_db:finish_chain_migration(chain_ends),
         ok
-      end).
+                                   end).
 
 chain_ends_maybe_apply([], _, _) -> ok; %% Done
-chain_ends_maybe_apply([H|T], [], NewTops) -> %% No objections
+chain_ends_maybe_apply([H | T], [], NewTops) -> %% No objections
     aec_db:mark_chain_end_hash(H),
     chain_ends_maybe_apply(T, NewTops, NewTops);
-chain_ends_maybe_apply([H|T], [H|_], NewTops) -> %% Already found
+chain_ends_maybe_apply([H | T], [H | _], NewTops) -> %% Already found
     chain_ends_maybe_apply(T, NewTops, NewTops);
-chain_ends_maybe_apply([H1|T1] = OldTops, [H2|T2], NewTops) -> %% Check if H1 is a direct predecessor of H2
+chain_ends_maybe_apply([H1 | T1] = OldTops, [H2 | T2], NewTops) -> %% Check if H1 is a direct predecessor of H2
     case find_common_ancestor(H1, H2) of
         {ok, H1} -> chain_ends_maybe_apply(T1, NewTops, NewTops); %% H2 is more recent than H1
         {ok, _} -> chain_ends_maybe_apply(OldTops, T2, NewTops); %% H1 might be new
@@ -1367,19 +1370,19 @@ start_key_headers_height_store_migration() ->
     spawn(fun() -> %% Don't use spawn_link here - we can't be killed by the setup process
         %% An error here should bring down the entire node with it!
         try
-            mnesia:activity(async_dirty, fun () ->
+            mnesia:activity(async_dirty, fun() ->
                 Res = timer:tc(fun() ->
                     mnesia:select(aec_headers,
-                                  [{ {aec_headers, '$1', '$2', '$3'}
-                                  , [{'=:=', {element, 1, '$2'}, key_header}]
-                                  , [{{'$1', '$2', '$3'}}]
-                                  }],
-                                  10000,
-                                  read)
-                end),
+                        [{{aec_headers, '$1', '$2', '$3'}
+                            , [{'=:=', {element, 1, '$2'}, key_header}]
+                            , [{{'$1', '$2', '$3'}}]
+                        }],
+                        10000,
+                        read)
+                               end),
                 {TotalTime, TotalCount} = key_headers_height_store_migration_step(Res),
                 lager:info("[Key headers migrations scan] DONE: In total migrated ~p headers in ~p microseconds", [TotalCount, TotalTime])
-            end),
+                                         end),
             aec_db:finish_chain_migration(key_headers)
         catch
             E:R:Stack ->
@@ -1387,7 +1390,7 @@ start_key_headers_height_store_migration() ->
                 (catch lager:error("[Key headers migration scan] Terminating node: ~p ~p ~p", [E, R, Stack])),
                 init:stop("[Key headers migration scan] Encountered a fatal error during the migration. Terminating the node")
         end
-    end).
+          end).
 
 key_headers_height_store_migration_step(First) ->
     key_headers_height_store_migration_step(0, 0, First).
@@ -1400,13 +1403,13 @@ key_headers_height_store_migration_step(Time, N, {TimeRead, {Headers, Cont}}) ->
             lists:foldl(
                 fun({Hash, Header, Height}, Count) ->
                     mnesia:write(#aec_chain_state{key = {key_header, Height, Hash}, value = Header}),
-                    Count+1
+                    Count + 1
                 end,
                 0,
                 Headers
             )
-        end)
-    end),
+                                  end)
+                                  end),
     lager:info("[Key headers migrations scan] Wrote ~p headers in ~p microseconds", [Count, TimeWrite]),
     key_headers_height_store_migration_step(
         Time + TimeRead + TimeWrite,

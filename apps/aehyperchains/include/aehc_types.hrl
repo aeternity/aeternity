@@ -24,6 +24,7 @@
 
 -type pubkey() :: aec_keys:pubkey().
 -type hash() :: aec_hash:hash().
+-type height() :: non_neg_integer().
 -type signature() :: <<_:512>>. %% 64 bytes
 -type header() :: aec_headers:header().
 -type block() :: aec_blocks:block().

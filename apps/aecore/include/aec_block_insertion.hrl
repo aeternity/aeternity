@@ -13,20 +13,11 @@
     , type :: key | micro
 }).
 
-%% Metadata about the given fork
-%% ForkId is local with regards to the node and for recently gossiped blocks
-%% nodes might disagree about the exact value - fork_id is eventually consistent
-%% across the network
--record(fork_info, {fork_id
-    , difficulty
-    , fees
-    , fraud
-}).
-
 %% Cache entry for recently inserted blocks
--record(recent_blocks, {key :: binary()
+-record(recent_blocks, {
+    key :: binary()
     %% Window of recent statistics of the chain
-    %% The head of this list is always the node coresponding to the key
+    %% The head of this list is always the node corresponding to the key
     %% Invariant: key =:= node_hash(hd(recents))
     %% The remaining entries are {hash, term()}
     %% The first element of the tuple is used for maintaining the cache

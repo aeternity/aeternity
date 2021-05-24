@@ -84,6 +84,8 @@ terminate(_Reason, _State) ->
 
 %% Implementation
 
+%%TODO Fix the situation with this stub.
+-dialyzer({nowarn_function, stub_block/0}).
 stub_block() ->
     Header = aehc_parent_block:new_header(<<"Hash">>, <<"PrevHash">>, 1000),
     aehc_parent_block:new_block(Header, []).

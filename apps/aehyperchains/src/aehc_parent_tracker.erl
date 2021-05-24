@@ -11,77 +11,69 @@
 %% a) fetched (adding a new blocks);
 %% b) orphaned (fork switching);
 %% c) synced (consistent, ready to use mode).
-
 %%% @end
 -module(aehc_parent_tracker).
 
 -behaviour(gen_statem).
 
 %% API
--export([start_link/2]).
--export([publish_block/2]).
--export([init/1]).
--export([fetched/3, orphaned/3, synced/3]).
--export([terminate/3]).
--export([callback_mode/0]).
+-export([start_link/2
+        , publish_block/2
+        , fetched/3
+        , orphaned/3
+        , synced/3]).
+
+%% gen_statem callbacks
+-export([init/1, terminate/3, callback_mode/0]).
 
 -define(SERVER(Name), {via, gproc, {n, l, {?MODULE, Name}}}).
+
+-include_lib("aecore/include/aec_block_insertion.hrl").
+-include_lib("aehyperchains/include/aehc_types.hrl").
 
 %% The data record represents the current synchronized view of a particular parent chain within state machine;
 -record(data, {
     %% The name of dedicated parent chain state machine;
     name :: binary(),
     %% The genesis hash from the config;
-    genesis_hash :: binary(),
+    genesis_hash :: hash(),
     %% The genesis height;
-    genesis_height :: undefined | non_neg_integer(),
+    genesis_height :: undefined | height(),
     %% Responsible connector module;
     connector :: aehc_connector:connector(),
     %% The current synchronized top block hash from the Db;
-    current_hash :: binary(),
+    current_hash :: hash(),
     %% The current synchronized top block height from the Db;
-    current_height :: non_neg_integer(),
+    current_height :: height(),
     %% Textual description of a parent chain view;
     note :: binary()
 }).
 -type data() :: #data{}.
 
--spec start_link(term(), map()) ->
-    {ok, pid()} | ignore | {error, term()}.
+-type fetch_action() :: enter | internal.
+-type state_action() :: keep_state | next_state.
+-type sync_action() :: enter | cast.
+-type synchronicity() :: synced | orphaned.
+
+
+%% API
+
+-spec start_link(term(), map()) -> {ok, pid()} | ignore | {error, term()}.
 start_link(View, Conf) ->
     gen_statem:start_link(?SERVER(View), ?MODULE, Conf, []).
 
--spec publish_block(binary(), aehc_parent_block:parent_block()) ->
-    ok.
+-spec publish_block(binary(), aehc_parent_block:parent_block()) -> ok.
 publish_block(View, Block) ->
     gen_server:cast(?SERVER(View), {publish_block, Block}).
 
-%%%===================================================================
-%%%  State machine callbacks
-%%%===================================================================
-
-init(Conf) ->
-    Data = conf_data(Conf),
-    %% Execute acceptance procedure;
-    ok = aehc_connector:accept(Conf),
-    %% Db initialization
-    InitData = init_data(Data),
-    %% The top block from the connector;
-    {ok, Block} = aehc_connector:get_top_block(connector(InitData)),
-    %% The top block of the current view;
-    SynchedBlock = aehc_parent_db:get_parent_block(current_hash(InitData)),
-    %% Apply fetched top block as the top of view;
-    SyncData = sync_data(InitData, Block),
-    {ok, fetched, SyncData, [{next_event, internal, {added_block, Block, SynchedBlock}}]}.
-
-callback_mode() ->
-    [state_functions, state_enter].
-
 %% Entering into parent chain fetching log state;
+-spec fetched(fetch_action(), tuple(), data()) ->
+    {state_action(), data()} |
+    {state_action(), synchronicity(), data()} |
+    {keep_state, data(), [postpone]}.
 fetched(enter, _OldState, Data) ->
     %% TODO: Place for the sync initiation announcement;
     {keep_state, Data};
-
 %% Processing parent chain fetching log state;
 fetched(internal, {added_block, Block, SynchedBlock}, Data) ->
     Hash = aehc_parent_block:hash_block(Block),
@@ -108,15 +100,14 @@ fetched(internal, {added_block, Block, SynchedBlock}, Data) ->
             %% (we passed the synced height but the matched condition isn't satisfied);
             {next_state, orphaned, Data, [{next_event, internal, {added_block, Block, SynchedBlock}}]}
     end;
-
 %% Postponing service requests until fetching is done;
 fetched(_, _, Data) ->
     {keep_state, Data, [postpone]}.
 
 %% Parent chain switching state (fork);
+-spec orphaned(fetch_action(), tuple(), data()) -> {state_action(), data()}.
 orphaned(enter, _OldState, Data) ->
     {keep_state, Data};
-
 orphaned(internal, {added_block, Block, SynchedBlock}, Data) ->
     Hash = aehc_parent_block:hash_block(Block),
     PrevHash = aehc_parent_block:prev_hash_block(Block),
@@ -151,56 +142,75 @@ orphaned(internal, {added_block, Block, SynchedBlock}, Data) ->
             lager:info(Info, [GenesisHash, SynchedHash, Height, Note]),
             {next_state, synced, Data}
     end;
-
 %% Postponing service requests until fork solving is done;
 orphaned(_, _, Data) ->
     {keep_state, Data, [postpone]}.
 
 %% Synchronized state (ready to use);
+-spec synced(sync_action(), tuple(), data()) -> {state_action(), data()}.
 synced(enter, _OldState, Data) ->
-    %% TODO: Place for the sync finalization anouncement;
+    %% TODO: Place for the sync finalization announcement;
     SynchedHash = current_hash(Data),
     CurrentHeight = current_height(Data),
     Note = note(Data),
     Info = "Parent chain state machine has synched (synched: ~p, height: ~p, note: ~p)",
     lager:info(Info, [SynchedHash, CurrentHeight, Note]),
     {keep_state, Data};
-
 synced(cast, {publish_block, Block}, Data) ->
     SynchedBlock = aehc_parent_db:get_parent_block(current_hash(Data)),
     {next_state, fetched, Data, [{next_event, internal, {added_block, Block, SynchedBlock}}]}.
 
-terminate(_Reason, _State, _Data) ->
-    ok.
+%%%===================================================================
+%%%  State machine callbacks
+%%%===================================================================
+
+init(Conf) ->
+    Data = conf_data(Conf),
+    %% Execute acceptance procedure;
+    ok = aehc_connector:accept(Conf),
+    %% Db initialization
+    InitData = init_data(Data),
+    %% The top block from the connector;
+    {ok, Block} = aehc_connector:get_top_block(connector(InitData)),
+    %% The top block of the current view;
+    SynchedBlock = aehc_parent_db:get_parent_block(current_hash(InitData)),
+    %% Apply fetched top block as the top of view;
+    SyncData = sync_data(InitData, Block),
+    {ok, fetched, SyncData, [{next_event, internal, {added_block, Block, SynchedBlock}}]}.
+
+callback_mode() -> [state_functions, state_enter].
+
+terminate(_Reason, _State, _Data) -> ok.
 
 %%%===================================================================
 %%%  Data access layer
 %%%===================================================================
--spec current_height(data()) -> non_neg_integer().
+
+-spec current_height(data()) -> height().
 current_height(Data) ->
     Data#data.current_height.
 
--spec current_height(data(), non_neg_integer()) -> data().
+-spec current_height(data(), height()) -> data().
 current_height(Data, Height) ->
     Data#data{current_height = Height}.
 
--spec current_hash(data()) -> binary().
+-spec current_hash(data()) -> hash().
 current_hash(Data) ->
     Data#data.current_hash.
 
--spec current_hash(data(), binary()) -> data().
+-spec current_hash(data(), hash()) -> data().
 current_hash(Data, Hash) ->
     Data#data{current_hash = Hash}.
 
--spec genesis_hash(data()) -> binary().
+-spec genesis_hash(data()) -> hash().
 genesis_hash(Data) ->
     Data#data.genesis_hash.
 
--spec genesis_height(data()) -> non_neg_integer().
+-spec genesis_height(data()) -> height().
 genesis_height(Data) ->
     Data#data.genesis_height.
 
--spec genesis_height(data(), non_neg_integer()) -> data().
+-spec genesis_height(data(), height()) -> data().
 genesis_height(Data, Height) ->
     Data#data{genesis_height = Height}.
 
@@ -215,6 +225,7 @@ note(Data) ->
 %%%===================================================================
 %%%  Data constructor
 %%%===================================================================
+
 %% Initialization of the view within Db;
 %% Initial Db keeps pinpointed genesis hash address as the top of the parent view + fetched block;
 -spec init_data(data()) -> data().
@@ -245,6 +256,7 @@ sync_data(Data, Block) ->
 %%%===================================================================
 %%%  Configuration access layer
 %%%===================================================================
+
 -spec conf_data(map()) -> data().
 conf_data(Conf) ->
     GenesisHash = maps:get(<<"genesis_hash">>, Conf),

@@ -576,8 +576,11 @@ new_unmined_key_node(PrevNode, PrevKeyNode, Height, Miner, Beneficiary,
             end
     end.
 
--spec new_pos_key_node(chain_node(), chain_node(), non_neg_integer(), hash(), pubkey(),
-    non_neg_integer(), non_neg_integer(), trees()) -> chain_node() | no_return().
+%%TODO Finish the BL here.
+-dialyzer({nowarn_function, new_pos_key_node/8}).
+-spec new_pos_key_node(chain_node(), chain_node(), non_neg_integer(),
+    hash(), pubkey(), non_neg_integer(), non_neg_integer(), trees()) ->
+    chain_node() | no_return().
 new_pos_key_node(PrevNode, PrevKeyNode, Height, Miner, Beneficiary, Protocol, InfoField, _TreesIn) ->
     %% TODO: PoGF - for now just ignore generational fraud - let's first get a basic version working
     %%       When handling PoGF the commitment point is in a different place than usual

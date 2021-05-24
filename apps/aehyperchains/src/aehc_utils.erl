@@ -1,7 +1,13 @@
+%%% -*- erlang-indent-level: 4 -*-
+%%%-------------------------------------------------------------------
+%%% @copyright (C) 2021, Aeternity Anstalt
+%%% @doc
+%%
+%%% @end
 -module(aehc_utils).
+
 -export([ hc_enabled/0
-        , submit_commitment/2
-        ]).
+        , submit_commitment/2]).
 
 -spec hc_enabled() -> boolean().
 hc_enabled() ->
