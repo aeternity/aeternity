@@ -21,9 +21,9 @@
 
 %% Header along with it's hash
 -record(chain_node, {
-    header :: header()
-    , hash :: hash()
-    , type :: type()
+    header = undefined :: header() | undefined
+    , hash = undefined :: hash() | undefined
+    , type = undefined :: type() | undefined
 }).
 -opaque chain_node() :: #chain_node{}. % type 'node' is Erlang internal!
 

@@ -137,14 +137,16 @@
 -type chain_node() :: aec_chain_node:chain_node().
 -type header() :: aec_headers:header().
 -type maybe_keyheader() :: aec_headers:key_header() | undefined.
+-type maybe_chain_node() :: chain_node() | undefined.
+-type maybe_sync() :: sync | undefined.
+-type insertion_ctx() :: aec_block_insertion:insertion_ctx().
 
 
 %%%===================================================================
 %%% API
 %%%===================================================================
 
--spec get_key_block_hash_at_height(height()) ->
-    {ok, hash()} | error.
+-spec get_key_block_hash_at_height(height()) -> {ok, hash()} | error.
 get_key_block_hash_at_height(Height) when is_integer(Height), Height >= 0 ->
     get_key_block_hash_at_height(Height, new_state_from_persistence()).
 
@@ -183,7 +185,7 @@ insert_block_strip_res({ok, _, _, Events}) -> {ok, Events};
 insert_block_strip_res({pof, _, _, PoF, Events}) -> {pof, PoF, Events};
 insert_block_strip_res(Other) -> Other.
 
--spec do_insert_block(block(), sync | undefined) -> term().
+-spec do_insert_block(block(), maybe_sync()) -> term().
 do_insert_block(Block, Origin) ->
     aec_blocks:assert_block(Block),
     Node = wrap_block(Block),
@@ -204,43 +206,40 @@ hash_is_connected_to_genesis(Hash) ->
         error -> false
     end.
 
--spec find_common_ancestor(hash(), hash()) ->
-    {ok, binary()} | {error, atom()}.
+-spec find_common_ancestor(hash(), hash()) -> {ok, binary()} | {error, atom()}.
 find_common_ancestor(Hash1, Hash2) ->
     find_common_ancestor(undefined, Hash1, undefined, Hash2).
 
+-spec find_common_ancestor(maybe_chain_node(), hash(), maybe_chain_node(), hash()) ->
+    {ok, hash()} | {error, not_found | unknown_hash}.
 find_common_ancestor(_, H, _, H) -> {ok, H};
 find_common_ancestor(MaybeNode1, Hash1, MaybeNode2, Hash2) ->
     case maybe_db_find_node(MaybeNode2, Hash2) of
         {ok, Node2} ->
             case {node_prev_hash(Node2), node_prev_key_hash(Node2)} of
-                {Hash1, _} ->
-                    {ok, Hash1};
-                {_, Hash1} ->
-                    {ok, Hash1};
+                {Hash1, _} -> {ok, Hash1};
+                {_, Hash1} -> {ok, Hash1};
                 _ ->
                     %% Don't fold this case to the above one! IO is expensive!
                     case maybe_db_find_node(MaybeNode1, Hash1) of
                         {ok, Node1} ->
                             case {node_prev_hash(Node1), node_prev_key_hash(Node1), node_prev_hash(Node2), node_prev_key_hash(Node2)} of
-                                {Hash2, _, _, _} ->
-                                    {ok, Hash2};
-                                {_, Hash2, _, _} ->
-                                    {ok, Hash2};
-                                {H, _, H, _} ->
-                                    {ok, H};
-                                _ ->
-                                    case find_fork_point(Node1, Hash1, Node2, Hash2) of
-                                        error -> {error, not_found};
-                                        {ok, ForkHash} -> {ok, ForkHash}
-                                    end
+                                {Hash2, _, _, _} -> {ok, Hash2};
+                                {_, Hash2, _, _} -> {ok, Hash2};
+                                {H, _, H, _} -> {ok, H};
+                                _ -> fork_point(Node1, Hash1, Node2, Hash2)
                             end;
-                        _ ->
-                            {error, unknown_hash}
+                        _ -> {error, unknown_hash}
                     end
             end;
-        _ ->
-            {error, unknown_hash}
+        _ -> {error, unknown_hash}
+    end.
+
+-spec fork_point(chain_node(), hash(), chain_node(), hash()) -> {ok, hash()} | {error, not_found}.
+fork_point(Node1, Hash1, Node2, Hash2) ->
+    case find_fork_point(Node1, Hash1, Node2, Hash2) of
+        error -> {error, not_found};
+        {ok, ForkHash} -> {ok, ForkHash}
     end.
 
 -spec hash_is_in_main_chain(hash()) -> boolean().
@@ -300,6 +299,7 @@ gossip_allowed_height_from_top() ->
     ).
 
 -define(POF_REPORT_DELAY, 2).
+-spec proof_of_fraud_report_delay() -> non_neg_integer().
 proof_of_fraud_report_delay() -> ?POF_REPORT_DELAY.
 
 -spec get_fork_result(block(), map()) -> {ok, boolean()} | {error, not_last_signalling_block}.
@@ -319,19 +319,19 @@ get_fork_result(Block, Fork) ->
             {error, not_last_signalling_block}
     end.
 
--spec get_info_field(height(), map()) -> default | boolean().
+-spec get_info_field(height(), map() | undefined) -> default | boolean().
+get_info_field(_Height, undefined) -> default;
 get_info_field(Height, Fork) when Fork =/= undefined ->
     case is_height_in_signalling_interval(Height, Fork) of
         true -> maps:get(info_field, Fork);
         false -> default
-    end;
-get_info_field(_Height, undefined) ->
-    default.
+    end.
 
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
 
+-spec new_state_from_persistence() -> map().
 new_state_from_persistence() ->
     Fun = fun() -> #{top_block_node => db_get_top_block_node()} end,
     aec_db:ensure_transaction(Fun).
@@ -351,13 +351,11 @@ db_write_top_block_node(N) ->
     {Header, Hash, _} = aec_chain_node:decompose(N),
     aec_db:write_top_block_node(Hash, Header).
 
+-spec db_get_top_block_node() -> chain_node() | undefined.
 db_get_top_block_node() ->
     case aec_db:get_top_block_node() of
-        undefined ->
-            undefined;
-        #{hash := Hash
-            , header := Header} ->
-            wrap_header(Header, Hash)
+        undefined -> undefined;
+        #{hash := Hash, header := Header} -> wrap_header(Header, Hash)
     end.
 
 maybe_set_finalized_height(State) ->
@@ -378,9 +376,10 @@ maybe_set_finalized_height(State) ->
         micro -> ok
     end.
 
--spec get_top_block_hash(chain_node()) -> hash() | undefined.
-get_top_block_hash(ChainNode) ->
-    try aec_chain_node:hash(ChainNode) catch _ -> undefined end.
+-spec get_top_block_hash(state()) -> hash() | undefined.
+get_top_block_hash(#{top_block_node := Node}) ->
+    try aec_chain_node:hash(Node) catch _ -> undefined end;
+get_top_block_hash(_) -> undefined.
 
 get_top_block_node(#{top_block_node := N}) -> N.
 
@@ -405,6 +404,7 @@ maybe_add_pof(State, Block) ->
 node_is_genesis(Node) ->
     node_hash(Node) =:= aec_consensus:get_genesis_hash().
 
+-spec wrap_block(block()) -> chain_node().
 wrap_block(Block) ->
     Header = aec_blocks:to_header(Block),
     wrap_header(Header).
@@ -460,6 +460,7 @@ keyblock_hash_in_main_chain([Node | Left], MaybeTopNode, TopHash) ->
 keyblock_hash_in_main_chain([], _MaybeTopNode, _TopHash) ->
     error.
 
+-spec hash_is_in_main_chain(hash(), hash()) -> boolean().
 hash_is_in_main_chain(Hash, TopHash) ->
     hash_is_in_main_chain(undefined, Hash, undefined, TopHash).
 
@@ -474,6 +475,7 @@ hash_is_in_main_chain(MaybeNode, Hash, MaybeTopNode, TopHash) ->
 %%% Chain operations
 %%%-------------------------------------------------------------------
 
+-spec internal_insert(chain_node(), block(), maybe_sync()) -> ok.
 internal_insert(Node, Block, Origin) ->
     CanBeGenesis = node_height(Node) == aec_block_genesis:height(),
     IsKeyblock = node_is_key_block(Node),
@@ -525,6 +527,7 @@ internal_insert_genesis(Node, Block) ->
             {ok, true, undefined, no_events()}
         end).
 
+-spec internal_insert_normal(chain_node(), block(), maybe_sync()) -> ok.
 internal_insert_normal(Node, Block, Origin) ->
     %% Build the insertion context using dirty reads to the DB and possibly
     %% The ets cache, the insertion context depends on the type of block being inserted
@@ -557,6 +560,10 @@ maybe_cache_new_top(_, _) ->
 -spec cache_new_top(chain_node()) -> true.
 cache_new_top(ChainNode) -> aec_block_insertion:update_top(ChainNode).
 
+-spec internal_insert_transaction(chain_node(), block(),
+    maybe_sync(), insertion_ctx()) ->
+    {ok, boolean(), header(), non_neg_integer()} |
+    {pof, boolean(), header(), map(), boolean()}.
 internal_insert_transaction(Node, Block, Origin, Ctx) ->
     Consensus = aec_block_insertion:node_consensus(Node),
     State1 = new_state_from_persistence(),
@@ -657,7 +664,7 @@ update_state_tree(Node, PrevNode, PrevKeyNode, TreesIn, ForkInfo, State) ->
             {State1, DifficultyOut, Events}
     end.
 
--spec maybe_set_new_fork_id(chain_node(), fork_info(), map()) ->
+-spec maybe_set_new_fork_id(chain_node(), fork_info(), state()) ->
     {fork_info(), [header()], [header()]}.
 maybe_set_new_fork_id(Node, ForkInfoIn, State) ->
     case {get_top_block_hash(State), node_prev_hash(Node)} of
@@ -821,6 +828,7 @@ apply_node_transactions(Node, PrevNode, PrevKeyNode, Trees, ForkInfo, State) ->
             end
     end.
 
+-spec find_predecessor_at_height(chain_node(), height()) -> chain_node().
 find_predecessor_at_height(Node, Height) ->
     case node_height(Node) of
         Height -> Node;
@@ -842,6 +850,7 @@ find_predecessor_at_height(Node, Height) ->
             end
     end.
 
+-spec find_one_predecessor([chain_node()], chain_node()) -> chain_node().
 find_one_predecessor([N | Left], Node) ->
     Hash1 = node_hash(N),
     Hash2 = node_hash(Node),
@@ -858,6 +867,7 @@ find_one_predecessor([N | Left], Node) ->
 %% NOTE: If the restriction of reporting a miner in the next
 %% generation is lifted, we need to do something more elaborate.
 
+-spec grant_fees(chain_node(), trees(), non_neg_integer(), boolean(), map()) -> trees().
 grant_fees(Node, Trees, Delay, FraudStatus, _State) ->
     Consensus = aec_block_insertion:node_consensus(Node),
     NewestBlockHeight = node_height(Node) - Delay + ?POF_REPORT_DELAY,
@@ -1040,6 +1050,7 @@ db_put_found_pof(Node, PoF) ->
         {value, _} -> ok
     end.
 
+-spec db_find_state(hash(), boolean()) -> {ok, trees(), fork_info()} | error.
 db_find_state(Hash, DirtyBackend) ->
     case aec_db:find_block_state_and_data(Hash, DirtyBackend) of
         {value, Trees, Difficulty, ForkId, Fees, Fraud} ->
@@ -1069,7 +1080,6 @@ db_get_txs(Hash) when is_binary(Hash) ->
 db_get_fees(Hash) when is_binary(Hash) ->
     {value, Fees} = aec_db:find_block_fees(Hash),
     Fees.
-
 
 db_get_fraud_status(Hash) when is_binary(Hash) ->
     {value, FraudStatus} = aec_db:find_block_fraud_status(Hash),
@@ -1325,12 +1335,13 @@ chain_ends_finish_migration(OldTops0) ->
     OldTops = sets:to_list(OldTops0),
     lager:debug("[Orphan key blocks scan] Finished - found ~p orphans", [length(OldTops)]),
     %% This needs to respect ACID!
-    ok = aec_db:ensure_transaction(fun() ->
-        NewTops = aec_db:find_chain_end_hashes(),
-        chain_ends_maybe_apply(OldTops, NewTops, NewTops),
-        aec_db:finish_chain_migration(chain_ends),
-        ok
-                                   end).
+    ok = aec_db:ensure_transaction(
+        fun() ->
+            NewTops = aec_db:find_chain_end_hashes(),
+            chain_ends_maybe_apply(OldTops, NewTops, NewTops),
+            aec_db:finish_chain_migration(chain_ends),
+            ok
+        end).
 
 chain_ends_maybe_apply([], _, _) -> ok; %% Done
 chain_ends_maybe_apply([H | T], [], NewTops) -> %% No objections
@@ -1348,7 +1359,6 @@ chain_ends_maybe_apply([H1 | T1] = OldTops, [H2 | T2], NewTops) -> %% Check if H
             lager:info("[Orphan key blocks scan] ignoring deleted header: find_common_ancestor(~p, ~p)", [EH1, EH2]),
             chain_ends_maybe_apply(T1, NewTops, NewTops)
     end.
-
 
 % We use aec_chain_state to store all key block headers with heights.
 % This allows for cheap retrieval of key header by height.
@@ -1374,30 +1384,33 @@ ensure_key_headers_height_store() ->
 
 start_key_headers_height_store_migration() ->
     lager:info("[Key headers migrations scan] Retriving all key headers"),
-    spawn(fun() -> %% Don't use spawn_link here - we can't be killed by the setup process
+    spawn(
+        %% Don't use spawn_link here - we can't be killed by the setup process
         %% An error here should bring down the entire node with it!
-        try
-            mnesia:activity(async_dirty, fun() ->
-                Res = timer:tc(fun() ->
-                    mnesia:select(aec_headers,
-                        [{{aec_headers, '$1', '$2', '$3'}
-                            , [{'=:=', {element, 1, '$2'}, key_header}]
-                            , [{{'$1', '$2', '$3'}}]
-                        }],
-                        10000,
-                        read)
-                               end),
-                {TotalTime, TotalCount} = key_headers_height_store_migration_step(Res),
-                lager:info("[Key headers migrations scan] DONE: In total migrated ~p headers in ~p microseconds", [TotalCount, TotalTime])
-                                         end),
-            aec_db:finish_chain_migration(key_headers)
-        catch
-            E:R:Stack ->
-                (catch io:format(user, "[Key headers migration scan] Terminating node: ~p ~p ~p", [E, R, Stack])),
-                (catch lager:error("[Key headers migration scan] Terminating node: ~p ~p ~p", [E, R, Stack])),
-                init:stop("[Key headers migration scan] Encountered a fatal error during the migration. Terminating the node")
-        end
-          end).
+        fun() ->
+            try
+                mnesia:activity(async_dirty,
+                    fun() ->
+                        Res = timer:tc(
+                            fun() ->
+                                mnesia:select(aec_headers, [
+                                    {{aec_headers, '$1', '$2', '$3'}
+                                        , [{'=:=', {element, 1, '$2'}, key_header}]
+                                        , [{{'$1', '$2', '$3'}}]
+                                    }],
+                                    10000, read)
+                            end),
+                        {TotalTime, TotalCount} = key_headers_height_store_migration_step(Res),
+                        lager:info("[Key headers migrations scan] DONE: In total migrated ~p headers in ~p microseconds", [TotalCount, TotalTime])
+                    end),
+                aec_db:finish_chain_migration(key_headers)
+            catch
+                E:R:Stacktrace ->
+                    (catch io:format(user, "[Key headers migration scan] Terminating node: ~p ~p ~p", [E, R, Stacktrace])),
+                    (catch lager:error("[Key headers migration scan] Terminating node: ~p ~p ~p", [E, R, Stacktrace])),
+                    init:stop("[Key headers migration scan] Encountered a fatal error during the migration. Terminating the node")
+            end
+        end).
 
 key_headers_height_store_migration_step(First) ->
     key_headers_height_store_migration_step(0, 0, First).

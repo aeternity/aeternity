@@ -11,7 +11,7 @@
 -module(aec_fork_info).
 -author("ra").
 
--export([new/4
+-export([new/1, new/4
         , decompose/1
         , difficulty/1
         , id/1, id/2
@@ -36,6 +36,9 @@
 
 
 %% API
+
+-spec new(hash()) -> fork_info().
+new(ForkId) -> #fork_info{fork_id = ForkId}.
 
 -spec new(hash(), difficulty(), fees(), boolean()) -> fork_info().
 new(ForkId, Difficulty, Fees, Fraud) ->

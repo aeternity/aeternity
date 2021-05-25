@@ -40,6 +40,8 @@
 
 -export_type([insertion_ctx/0]).
 
+-include("blocks.hrl").
+
 -type chain_node() :: aec_chain_node:chain_node().
 
 %% Cache entry for recently inserted blocks
@@ -72,7 +74,6 @@
 }).
 -type insertion_ctx() :: #insertion_ctx{}.
 
--type block_header_hash() :: aec_headers:block_header_hash().
 -type height() :: aec_blocks:height().
 -type difficulty() :: non_neg_integer().
 
@@ -127,7 +128,7 @@ node_difficulty(N) ->
 -spec node_target(chain_node()) -> aec_consensus:key_target().
 node_target(ChainNode) -> aec_headers:target(aec_chain_node:header(ChainNode)).
 
--spec node_root_hash(chain_node()) -> list().
+-spec node_root_hash(chain_node()) -> state_hash().
 node_root_hash(ChainNode) -> aec_headers:root_hash(aec_chain_node:header(ChainNode)).
 
 node_miner(ChainNode) -> aec_headers:miner(aec_chain_node:header(ChainNode)).
@@ -311,26 +312,11 @@ dirty_db_find_node(Hash) when is_binary(Hash) ->
         none -> error
     end.
 
--spec wrap_header(block_header_hash(), aec_chain_node:hash()) -> chain_node().
+-spec wrap_header(aec_headers:key_header(), aec_chain_node:hash()) -> chain_node().
 wrap_header(Header, Hash) ->
     aec_chain_node:new(Header, Hash, aec_headers:type(Header)).
 
-%%update_recent_cache(#chain_node{type = micro}, _InsertCtx) -> ok;
-%%update_recent_cache(#chain_node{type = key, hash = H} = Node, #insertion_ctx{window_len = N, recent_key_headers = Recents}) ->
-%%    Consensus = node_consensus(Node),
-%%    Entry =
-%%        case N < Consensus:recent_cache_n() of
-%%            true ->
-%%                #recent_blocks{key = H, len = N+1, recents = [Node|Recents]};
-%%            false ->
-%%                %% Evict the cache for the oldest entry to ensure an upper bound on the used memory
-%%                {ToEvict, _} = lists:last(Recents),
-%%                ets:delete(?RECENT_CACHE, ToEvict),
-%%                #recent_blocks{key = H, len = N, recents = [Node|lists:droplast(Recents)]}
-%%        end,
-%%    ets:insert(?RECENT_CACHE, Entry).
-
--spec update_recent_cache(chain_node(), insertion_ctx()) -> recent_blocks().
+-spec update_recent_cache(chain_node(), insertion_ctx()) -> ok | true.
 update_recent_cache(Node,
     #insertion_ctx{window_len = N, recent_key_headers = Recents}) ->
     case aec_chain_node:type(Node) of
