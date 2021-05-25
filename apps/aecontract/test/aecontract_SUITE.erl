@@ -2144,7 +2144,7 @@ aevm_version_interaction(Cfg) ->
                        fee => 1000000 * MinGasPrice},
 
     %% Call directly old VMs
-    [?assertEqual(42, ?call(call_contract, Acc, Id, main, word, 42, LatestCallSpec))
+    [?assertEqual(42, ?call(call_contract, Acc, Id, main_, word, 42, LatestCallSpec))
      || Id <- [ IdCRoma
               , IdCMinerva
               , IdCFortuna
