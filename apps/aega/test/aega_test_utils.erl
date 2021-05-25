@@ -191,8 +191,6 @@ get_contract(Name) ->
     SophiaVersion = aega_SUITE:sophia_version(),
     get_contract(SophiaVersion, Name).
 
-get_contract(SophiaVersion, "simple_auth.aes") when SophiaVersion < ?SOPHIA_IRIS_FATE ->
-    get_contract(SophiaVersion, "simple_auth_old.aes");
 get_contract(SophiaVersion, Name) ->
     {ok, Serial} = aect_test_utils:compile_contract(SophiaVersion, Name),
     {ok, BinSrc} = aect_test_utils:read_contract(SophiaVersion, Name),

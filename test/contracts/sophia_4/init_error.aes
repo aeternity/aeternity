@@ -1,0 +1,9 @@
+contract Remote =
+  entrypoint missing : (int) => int
+
+contract Init_error =
+
+  record state = {value : int}
+
+  entrypoint init(r : Remote, x : int) =
+    {value = r.missing(x)}
