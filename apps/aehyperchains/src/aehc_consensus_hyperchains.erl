@@ -174,7 +174,6 @@ assert_config(_Config) ->
     case aeu_env:user_config([<<"hyperchains">>, <<"activation_criteria">>]) of
         undefined -> ok;
         {ok, Criteria} ->
-%%            lager:debug("Trying to set the activation criteria")
             MinStake = maps:get(<<"minimum_stake">>, Criteria),
             MinDelegates = maps:get(<<"unique_delegates">>, Criteria),
             BlockFreq = maps:get(<<"check_frequency">>, Criteria),

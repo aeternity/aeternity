@@ -53,7 +53,8 @@
         %% Block target and difficulty
         , default_target/0
         , assert_key_target_range/1
-        , key_header_difficulty/1 ]).
+        , key_header_difficulty/1
+        , keyblocks_for_target_calc/0 ]).
 
 -ifdef(TEST).
 -export([load_whitelist/0]).
@@ -447,3 +448,6 @@ key_header_difficulty(Header) ->
 load_whitelist() ->
     W = aec_fork_block_settings:block_whitelist(),
     persistent_term:put(?WHITELIST, W).
+
+keyblocks_for_target_calc() ->
+    1.

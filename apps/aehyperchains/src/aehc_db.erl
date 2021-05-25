@@ -9,12 +9,8 @@
 create_tables(Mode) ->
     case aehc_utils:hc_enabled() of
         true ->
-            lager:info("~nHC is enabled ~p~n",[?LINE]),
-            AllSpecs = all_specs(Mode), lager:debug("~nAllSpecs: ~p~n",[AllSpecs]),
+            AllSpecs = all_specs(Mode),
             Specs = lists:flatten([proplists:lookup(Table, AllSpecs) || {missing_table, Table} <- check_tables([])]),
-
-            lager:info("~nSpecs: ~p~n",[Specs]),
-            lager:info("~ncheck_tables/1: ~p~n",[check_tables([])]),
 
             [{atomic, ok} = mnesia:create_table(Tab, Spec) || {Tab, Spec} <- Specs];
         false ->
