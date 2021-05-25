@@ -59,7 +59,7 @@ table_specs(Mode) ->
 check_tables(Acc) ->
     lists:foldl(
       fun({Tab, Spec}, Acc1) ->
-              R = aec_db:check_table(Tab, Spec, Acc1), lager:info("~nCheck table (~p) res: ~p~n",[Tab, R]), R
+              aec_db:check_table(Tab, Spec, Acc1)
       end, Acc, table_specs(disc)).
 
 %%%===================================================================
@@ -205,7 +205,6 @@ write_commitments(ParentBlock) ->
     ParentBlockHeader = aehc_parent_block:block_header(ParentBlock),
     Commitments = aehc_parent_block:commitments_in_block(ParentBlock),
     CommitmentHashes = aehc_parent_block:commitment_hashes(ParentBlockHeader),
-    lager:info("~nCommitmentHashes: ~p Commitments: ~p ParentBlockHeader: ~p~n",[CommitmentHashes, Commitments, ParentBlockHeader]),
     DBCommitments = lists:map(
         fun({K,V}) ->
             #hc_db_commitment_header{key = K, value = aehc_commitment:header(V)}
