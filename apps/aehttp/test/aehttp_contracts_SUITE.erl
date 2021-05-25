@@ -1530,7 +1530,7 @@ check_value(Contract, Fun, ResType, ResValue, ExpVal) ->
 decode_call_result(Contract = #{}, Fun, ResType, ResValue) ->
     decode_call_result(maps:get(name, Contract), Fun, ResType, ResValue);
 decode_call_result(ContractName, Fun, ResType, ResValue) ->
-    {ok, BinCode} = aect_test_utils:read_contract(?SOPHIA_LIMA_AEVM, ContractName),
+    {ok, BinCode} = aect_test_utils:read_contract(?SOPHIA_IRIS_FATE, ContractName),
     aect_test_utils:decode_call_result(binary_to_list(BinCode), Fun, ResType, ResValue).
 
 call_func(Pub, Priv, EncCPub, Contract, Fun, Args) ->

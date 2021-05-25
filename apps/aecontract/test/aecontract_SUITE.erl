@@ -698,8 +698,8 @@ init_per_testcase_common(TC, Config) ->
                           roma    -> ?ROMA_PROTOCOL_VSN;
                           minerva -> ?MINERVA_PROTOCOL_VSN;
                           fortuna -> ?FORTUNA_PROTOCOL_VSN;
-                          iris    -> ?IRIS_PROTOCOL_VSN;
-                          lima    -> ?LIMA_PROTOCOL_VSN
+                          lima    -> ?LIMA_PROTOCOL_VSN;
+                          iris    -> ?IRIS_PROTOCOL_VSN
                       end,
     AciDisabled = case os:getenv("SOPHIA_NO_ACI") of
                   false ->
@@ -5618,7 +5618,7 @@ sophia_compiler_version(_Cfg) ->
     {code, Code} = aect_contracts:code(C),
     CMap = aeser_contract_code:deserialize(Code),
     ?assertMatchProtocol(maps:get(compiler_version, CMap, undefined),
-                         undefined, <<"2.1.0">>, <<"3.2.0">>, <<"4.3.0">>, <<"5.1.0">>),
+                         undefined, <<"2.1.0">>, <<"3.2.0">>, <<"unknown">>, <<"5.1.0">>),
     ok.
 
 sophia_protected_call(_Cfg) ->
