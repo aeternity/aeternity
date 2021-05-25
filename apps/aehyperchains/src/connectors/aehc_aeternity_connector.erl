@@ -18,8 +18,6 @@
 
 -record(state, {stub :: boolean()}).
 
--type connector() :: aehc_connector:connector().
-
 
 %% API.
 

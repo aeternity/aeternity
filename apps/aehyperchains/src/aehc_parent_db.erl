@@ -12,16 +12,13 @@
         , get_parent_top_block/1
         , get_parent_block/1
         , get_candidates_in_election_cycle/2
-        , write_parent_block/1
-]).
+        , write_parent_block/1]).
 
 -export([write_parent_chain_view/2
-        , get_parent_chain_view/1
-]).
+        , get_parent_chain_view/1]).
 
 -export([table_specs/1
-        , check_tables/1
-]).
+        , check_tables/1]).
 
 -define(TAB(Record),
     {Record, aec_db:tab(Mode, Record, record_info(fields, Record), [])}).
@@ -39,10 +36,10 @@
 -record(hc_db_parent_block_header, {key, value}).
 -record(hc_db_parent_chain_view, {key, value}).
 
--type hc_db_pogf() :: #hc_db_pogf{}.
--type hc_db_commitment_header() :: #hc_db_commitment_header{}.
--type hc_db_parent_block_header() :: #hc_db_parent_block_header{}.
--type hc_db_parent_chain_view() :: #hc_db_parent_chain_view{}.
+%%-type hc_db_pogf() :: #hc_db_pogf{}.
+%%-type hc_db_commitment_header() :: #hc_db_commitment_header{}.
+%%-type hc_db_parent_block_header() :: #hc_db_parent_block_header{}.
+%%-type hc_db_parent_chain_view() :: #hc_db_parent_chain_view{}.
 
 -type mode() :: disc | ram | map().
 
@@ -143,7 +140,9 @@ get_candidates_in_election_cycle_(ParentBlockHash, Acc, N) ->
 -spec write_parent_block(aehc_parent_block:parent_block()) -> ok.
 write_parent_block(ParentBlock) ->
     ParentBlockHeader = aehc_parent_block:block_header(ParentBlock),
-    DBHeader = #hc_db_parent_block_header{key = aehc_parent_block:hash_block(ParentBlock)
+    DBHeader = #hc_db_parent_block_header
+    {
+        key = aehc_parent_block:hash_block(ParentBlock)
         , value = ParentBlockHeader
     },
     Commitments = aehc_parent_block:commitments_in_block(ParentBlock),

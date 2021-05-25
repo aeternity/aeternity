@@ -99,6 +99,7 @@
 
 -include_lib("aeminer/include/aeminer.hrl").
 -include_lib("aehyperchains/include/aehc_types.hrl").
+-include_lib("aehyperchains/include/aehc_fallback_funs.hrl").
 
 -record(activation_criteria, {
     minimum_stake :: integer(),
@@ -135,7 +136,7 @@ assert_config(_Config) ->
             ok = set_hc_activation_criteria(decompose_activation_criteria(Criteria))
     end.
 
--spec start(any()) -> ok | no_return().
+-spec start(map()) -> ok | no_return().
 start(_Config) ->
     %% We can't load the staking contract address in assert_config as the DB is not ready yet
     ok = load_staking_contract_address(),
@@ -479,6 +480,7 @@ pogf_detected(_H1, _H2) ->
 %% -------------------------------------------------------------------
 %% Genesis block
 -spec genesis_transform_trees(trees(), map()) -> trees() | no_return().
+-dialyzer({nowarn_function, genesis_transform_trees/2}).
 genesis_transform_trees(Trees0, #{}) ->
     %% At genesis no ordinary user could possibly deploy the contract
     case get_predeploy_address() of
@@ -492,12 +494,13 @@ genesis_transform_trees(Trees0, #{}) ->
             TxEnv = genesis_tx_env(),
             %% We don't need to check the protocol version against the block
             %% The insertion of the genesis block bypasses the version check
-            Trees1 = case hc_genesis_version() of  %% Call a function here to make dialyzer happy
-                         ?LIMA_PROTOCOL_VSN -> aec_block_fork:apply_lima(Trees0, TxEnv);
-                         ?IRIS_PROTOCOL_VSN -> Trees0; %% No special changes
-                         _ ->
-                             aec_consensus:config_assertion_failed("Hyperchains from genesis require at least LIMA at genesis", "", [])
-                     end,
+            Trees1 =
+                case hc_genesis_version() of  %% Call a function here to make dialyzer happy
+                    ?LIMA_PROTOCOL_VSN -> aec_block_fork:apply_lima(Trees0, TxEnv);
+                    ?IRIS_PROTOCOL_VSN -> Trees0; %% No special changes
+                _ ->
+                    aec_consensus:config_assertion_failed("Hyperchains from genesis require at least LIMA at genesis", "", [])
+                end,
             deploy_staking_contract_by_system(Trees1, TxEnv)
     end.
 
@@ -1072,24 +1075,23 @@ load_hc_staking_contract() ->
 %% TODO: customize
 fallback_consensus() -> aec_consensus_bitcoin_ng.
 
+-spec hc_genesis_version() -> non_neg_integer().
 hc_genesis_version() -> ?HC_GENESIS_VERSION.
 
 
 %% Helpers
 
--spec apply_fallback(atom()) -> term().
+-spec apply_fallback(fallback_funs()) -> term().
 apply_fallback(Function) -> apply_fallback(Function, []).
 
--spec apply_fallback(atom(), [term()]) -> term().
+-spec apply_fallback(fallback_funs(), [term()]) -> term().
 apply_fallback(Function, Args) -> apply(fallback_consensus(), Function, Args).
 
 -spec jsx_decode(jsx:json_text()) -> map() | no_return().
 jsx_decode(Data) ->
     case jsx:decode(Data, [{return_maps, true}, {labels, binary}]) of
-        Map when is_map(Map) ->
-            Map;
-        [Map] when is_map(Map) ->
-            Map
+        Map when is_map(Map) -> Map;
+        [Map] when is_map(Map) -> Map
     end.
 
 -spec encode_contract_pubkey(pubkey()) -> binary().
