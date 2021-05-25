@@ -401,7 +401,7 @@ ensure_staking_contract_on_consensus_switch(Trees, TxEnv) ->
             {ok, false} = is_hc_enabled(Trees, TxEnv),
             Trees;
         error ->
-            deploy_staking_contract_by_system(Trees, TxEnv)
+            error
     end.
 
 state_pre_transform_key_node(KeyNode, _PrevNode, PrevKeyNode, Trees1) ->
@@ -513,19 +513,7 @@ genesis_transform_trees(Trees0, #{}) ->
         {ok, Address} ->
             aec_consensus:config_assertion_failed("Unable to find already deployed staking contract", " At ~p", [Address]);
         error ->
-            %% WARNING: We fake the genesis hash and the height here -
-            %% the init function of the contract MUST NOT rely on the block hash or the height
-            %% In case we would need to rely on the hash in the init function then
-            %% forbid inserting the contract at genesis
-            TxEnv = genesis_tx_env(),
-            %% We don't need to check the protocol version against the block
-            %% The insertion of the genesis block bypasses the version check
-            Trees1 = case hc_genesis_version() of  %% Call a function here to make dialyzer happy
-                ?LIMA_PROTOCOL_VSN -> aec_block_fork:apply_lima(Trees0, TxEnv);
-                ?IRIS_PROTOCOL_VSN -> Trees0; %% No special changes
-                _ -> aec_consensus:config_assertion_failed("Hyperchains from genesis require at least LIMA at genesis", "", [])
-            end,
-            deploy_staking_contract_by_system(Trees1, TxEnv)
+            error
     end.
 genesis_raw_header() ->
     aec_headers:new_key_header(
@@ -817,54 +805,6 @@ get_hc_activation_criteria() ->
 -define(WITHDRAW_DELAY, 10).
 -define(DRY_RUN_ACCOUNT, <<1:32/unit:8>>).
 -define(RESTRICTED_ACCOUNT, <<2:32/unit:8>>).
-deploy_staking_contract_by_system(Trees0, TxEnv) ->
-    lager:debug("Deploying the staking contract by a system account"),
-    Deployer = ?RESTRICTED_ACCOUNT,
-    lager:debug("Staking contract will be deployed by ~p", [aeser_api_encoder:encode(account_pubkey, Deployer)]),
-    %% Grant the fresh account enough funds to deploy the contract
-    {Trees1, OldA} = prepare_system_owner(Deployer, Trees0),
-    Bytecode = get_staking_contract_bytecode(),
-    Aci = get_staking_contract_aci(),
-    Args = lists:flatten(io_lib:format("init({deposit_delay = ~p, stake_retraction_delay = ~p, withdraw_delay = ~p}, {}, ~s)",
-        [?DEPOSIT_DELAY, ?STAKE_RETRACTION_DELAY, ?WITHDRAW_DELAY, aeser_api_encoder:encode(account_pubkey, ?RESTRICTED_ACCOUNT)])),
-    {ok, CtorCall} = aeaci_aci:encode_call_data(Aci, Args),
-    Nonce = 1,
-    TxSpec = #{ owner_id => aeser_id:create(account, Deployer)
-              , nonce => aec_accounts:nonce(OldA) + 1
-              , code => Bytecode
-              , vm_version => ?VM_VERSION
-              , abi_version => ?ABI_VERSION
-              , deposit => 0
-              , amount => 0
-              , gas => 1 bsl 30
-              , gas_price => 1 bsl 30
-              , call_data => CtorCall
-              , fee => 1 bsl 60
-              },
-    {ok, Tx} = aect_create_tx:new(TxSpec),
-    case aetx:process(Tx, Trees1, TxEnv) of
-        {ok, Trees2, _} ->
-            ContractPubkey = aect_contracts:compute_contract_pubkey(Deployer, Nonce),
-            CallPubkey     = aect_call:id(Deployer, Nonce, ContractPubkey),
-            CallTree       = aec_trees:calls(Trees2),
-            {value, Call}  = aect_call_state_tree:lookup_call(ContractPubkey, CallPubkey, CallTree),
-            case aect_call:return_type(Call) of
-                ok ->
-                    lager:debug("System account successfully deployed staking contract at ~p", [aeser_api_encoder:encode(contract_pubkey, ContractPubkey)]),
-                    %% Ok contract deployed :)
-                    set_staking_contract_address(ContractPubkey),
-                    %% Sanity check the deployment - should never fail
-                    verify_existing_staking_contract(ContractPubkey, Trees2, TxEnv),
-                    {ok, false} = is_hc_enabled(Trees2, TxEnv),
-                    Trees2;
-                What ->
-                    Value = aect_call:return_type(Call),
-                    aec_consensus:config_assertion_failed("Failed to deploy staking contract", " Error: ~p Ret: ~p\n", [What, Value])
-            end,
-            cleanup_system_owner(OldA, Trees2);
-        {error, What} ->
-            aec_consensus:config_assertion_failed("Unable to deploy staking contract by system", " Error: ~p\n", [What])
-    end.
 
 %% Temporarily grants a lot of funds for the system account
 prepare_system_owner(Deployer, Trees) ->
