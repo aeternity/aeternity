@@ -91,8 +91,8 @@ block_header(#hc_parent_block{header = Header}) ->
 
 -spec to_genesis(parent_block()) -> parent_block().
 to_genesis(#hc_parent_block{header = Header, commitments = Commitments}) ->
-    #hc_parent_block_header{ hash = Hash, height = Height } = Header,
-    Header2 = new_header(Hash, Hash, Height),
+    #hc_parent_block_header{ hash = Hash } = Header,
+    Header2 = Header#hc_parent_block_header{ prev_hash = Hash },
     new_block(Header2, Commitments).
 
 -spec is_hc_parent_block(any()) -> boolean().
