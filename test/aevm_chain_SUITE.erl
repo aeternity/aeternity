@@ -108,7 +108,7 @@ sign_and_apply_transaction(Tx, PrivKey, S1) ->
 
 call_data(Arg) ->
     {ok, Source} = aect_test_utils:read_contract(identity),
-    {ok, CallData} = aect_test_utils:encode_call_data(Source, <<"main">>, [Arg]),
+    {ok, CallData} = aect_test_utils:encode_call_data(Source, <<"main_">>, [Arg]),
     CallData.
 
 %%%===================================================================

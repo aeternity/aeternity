@@ -11,7 +11,7 @@ contract Identity =
   //let baz() = {age:3, name:(4:int)}
   //let foo(a,b,c) = c
   // let rec fac(n) = if((n:int)==0) 1 else (n*fac(n-1))
-  //    and main(x) = x::[x+1]
+  //    and main_(x) = x::[x+1]
   // let lentr(l) = lent(0,l)
   // let rec len(l) =
   //    switch(l) {
@@ -34,7 +34,7 @@ contract Identity =
   //   | x::xs => revt(xs,x::r)
   //   }
   // let rev(l) = revt(l,[])
-  // let main(x:int) = {
+  // let main_(x:int) = {
   //   switch(rev([1,2,3])) {
   //   | h::_ => h
   //   }
@@ -42,25 +42,25 @@ contract Identity =
   //let fac(n:int) = {
   //  if (n==0) 1 else (n*fac(n-1))
   //}
-  //let main(x) = switch((12,34)) {
+  //let main_(x) = switch((12,34)) {
   //| (13,_) => x
   //| (_,a) => x+a
   //    | y => y+1
   //  }
-  //let main(x) = ({y:0>1, x:x==0}:point(bool))
-  //let main(x) = x
-  //let main(x) = len(1::2::[])
-  //let main(x) = ((x,x):list('a))
-  // let main(x) = switch("a") {
+  //let main_(x) = ({y:0>1, x:x==0}:point(bool))
+  //let main_(x) = x
+  //let main_(x) = len(1::2::[])
+  //let main_(x) = ((x,x):list('a))
+  // let main_(x) = switch("a") {
   //    	  |  "b" => 0
   // 	  |  "a" => 1
   // 	  |  "c" => 2
   // 	  }
-  //let main(x) = x.color+1
-  //let main(x) = switch(({x:x, y:x+1}:cp(int))) {
+  //let main_(x) = x.color+1
+  //let main_(x) = switch(({x:x, y:x+1}:cp(int))) {
   //              | {y:xx} => xx
   //		}
-  //let main(x) = {x:0, y:1, z:2}
+  //let main_(x) = {x:0, y:1, z:2}
   // let id(x) = x
   // let double(x) = x+x
   // let pair(x) = (1,2)
@@ -84,17 +84,17 @@ contract Identity =
   //let twice(f,x) = f(f(x))
   // let twice(f,x) = f(f(x))
   // let double(x) = x+x
-  // let main(x) = twice((y=>y+y),x)
+  // let main_(x) = twice((y=>y+y),x)
   // let rec map(f,xs) = switch(xs) {
   // | [] => []
   // | (x::ys) => f(x)::map(f,ys)
   // }
   // let id(x) = x
-  // let main(xs) = map(double,xs)
+  // let main_(xs) = map(double,xs)
   function z(f,x) = x
   private function s(n) = (f,x)=>f(n(f,x))
   private function add(m,n) = (f,x)=>m(f,n(f,x))
-  function main(_) =
+  function main_(_) =
     let three=s(s(s(z)))
     add(three,three)
        (((i)=>i+1),0)
