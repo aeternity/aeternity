@@ -11,7 +11,6 @@
     sext,
     aeconnector
    ]},
-  {mod,{aehc_app,[]}},
   {env,[
          {'$aec_db_create_tables', {aehc_db, create_tables}}
        , {'$aec_db_check_tables' , {aehc_db, check_tables}}
