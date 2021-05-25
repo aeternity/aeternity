@@ -38,9 +38,9 @@ start_phase(start_reporters, _StartType, _PhaseArgs) ->
     aec_metrics_rpt_dest:check_config(),
     aec_metrics:start_reporters();
 start_phase(register_delegate, _StartType, _PhaseArgs) ->
-    %% Delegate registration procedure
+    %% Delegate registry procedure
     lager:debug("start_phase(register_delegate, _, _)", []),
-    ok = aehc_parent_mng:register(aehc_utils:pub()).
+    ok = aehc_parent_mng:register(aehc_utils:delegate()).
 
 prep_stop(State) ->
     aec_block_generator:prep_stop(),
