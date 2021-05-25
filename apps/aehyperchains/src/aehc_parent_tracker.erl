@@ -328,7 +328,6 @@ process_delegate(Tx, Tree) ->
 
 -spec process_block(block(), trees()) -> parent_block().
 process_block(Block, State) ->
-    lager:info("~nProcess parent block: ~p~n",[Block]),
     Txs = aeconnector_block:txs(Block),
 
     CList = [commitment(Tx)|| Tx <- Txs, is_commitment(Tx)],
@@ -341,6 +340,7 @@ process_block(Block, State) ->
     Header = aehc_parent_block:new_header(Hash, PrevHash, Height, CHList),
 
     ParentBlock = aehc_parent_block:new_block(Header, CList),
+    lager:info("~nProcess parent block: ~p (CList: ~p, CHList: ~p)~n",[ParentBlock, CList, CHList]),
 
     DTxs = [Tx|| Tx <- Txs, is_delegate(Tx)],
 
