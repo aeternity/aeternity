@@ -10,12 +10,7 @@
         ]).
 
 start(_StartType, _StartArgs) ->
-    Res = aehc_sup:start_link(),
-    %% NOTE: In order to start and the common sync procedure HC performs:
-    %% - fetching the parent chain data via network interface (connector);
-    %% - processing thq queue of parent chain blocks via acknowledgement interface
-    aehc_utils:hc_enabled(), %% andalso begin aehc_utils:confirm_commitment(), pop() end,
-    Res.
+    ok.
 
 start_phase(_Phase, _StartType, _PhaseArgs) ->
     ok.

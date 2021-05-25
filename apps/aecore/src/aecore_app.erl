@@ -188,3 +188,10 @@ if_running(App, F) ->
 %% [sequential](https://github.com/erlang/otp/blob/OTP-20.3.8/erts/preloaded/src/init.erl#L787).
 is_app_running(App) ->
     lists:keymember(App, 1, application:which_applications()).
+
+
+
+%% NOTE: In order to start and the common sync procedure HC performs:
+%% - fetching the parent chain data via network interface (connector);
+%% - processing thq queue of parent chain blocks via acknowledgement interface
+%% andalso begin aehc_utils:confirm_commitment(), pop() end,

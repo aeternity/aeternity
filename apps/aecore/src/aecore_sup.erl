@@ -63,6 +63,7 @@ init([]) ->
     ChildSpecs =
         [watchdog_childspec()]
         ++ maybe_upnp_worker()
+        ++ maybe_parent_mng_worker()
         ++ [?CHILD(aec_metrics_rpt_dest, 5000, worker),
             ?CHILD(aec_keys, 5000, worker),
             ?CHILD(aec_tx_pool, 5000, worker),
@@ -89,4 +90,13 @@ maybe_upnp_worker() ->
     case aec_upnp:is_enabled() of
         true  -> [?CHILD(aec_upnp, 5000, worker)];
         false -> []
+    end.
+
+maybe_parent_mng_worker() ->
+    case aehc_utils:hc_enabled() of
+        true ->
+            lager:info("Starting Hyperchains...."),
+            [?CHILD(aehc_parent_mng, 5000, worker)];
+        false ->
+            []
     end.
