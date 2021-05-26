@@ -16,7 +16,7 @@
         , pubkey/1
         , validate/1]).
 
--export_type([pogf/0]).
+-export_type([pogf/0, maybe_pogf/0]).
 
 -include_lib("aehyperchains/include/aehc_types.hrl").
 
@@ -27,7 +27,8 @@
     hc_header1 :: key_header(),
     hc_header2 :: key_header()
 }).
--type pogf() :: #hc_pogf{} | no_pogf.
+-type pogf() :: #hc_pogf{}.
+-type maybe_pogf() :: pogf() | no_pogf.
 
 
 %% API
@@ -39,7 +40,7 @@ new(Header1, Header2) ->
 -spec from_db(tuple()) -> pogf().
 from_db(#hc_pogf{} = PoGF) -> PoGF.
 
--spec hash(pogf()) -> pogf_hash().
+-spec hash(maybe_pogf()) -> pogf_hash().
 hash(no_pogf) -> <<0:?POGF_HASH_BYTES>>;
 hash(#hc_pogf{hc_header1 = Header1, hc_header2 = Header2}) ->
     {ok, H1} = aec_headers:hash_header(Header1),
@@ -75,14 +76,14 @@ validate(#hc_pogf{hc_header1 = Header1, hc_header2 = Header2}) ->
         {error, Reason} -> {error, Reason}
     end.
 
--spec check_headers_are_different(header(), header()) -> ok | {error, term()}.
+-spec check_headers_are_different(header(), header()) -> ok | {error, same_header}.
 check_headers_are_different(Header1, Header2) ->
     case aec_headers:hash_header(Header1) =:= aec_headers:hash_header(Header2) of
         true -> {error, same_header};
         false -> ok
     end.
 
--spec check_key_siblings(header(), header()) -> ok | {error, term()}.
+-spec check_key_siblings(header(), header()) -> ok | {error, not_siblings}.
 check_key_siblings(Header1, Header2) ->
     case (aec_headers:type(Header1) =:= key)
         andalso (aec_headers:type(Header2) =:= key)
@@ -99,12 +100,12 @@ check_same_leader(Header1, Header2) ->
         false -> ok
     end.
 
--spec check_key_signatures(header(), header()) -> ok | {error, term()}.
+-spec check_key_signatures(header(), header()) -> ok.
 check_key_signatures(_Header1, _Header2) ->
     %% TODO: Check whether Headers were signed by the same leader
     ok.
 
--spec check_correct_leader(header()) -> ok | {error, term()}.
+-spec check_correct_leader(header()) -> ok.
 check_correct_leader(Header) ->
     _PrevHCKeyHash = aec_headers:prev_key_hash(Header),
     %% TODO: abstract out this snippet and perform the election at PrevHCKeyHash

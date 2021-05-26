@@ -60,6 +60,7 @@
     , len :: non_neg_integer()
 }).
 -type recent_blocks() :: #recent_blocks{}.
+-type maybe_recent_blocks() :: recent_blocks() | undefined.
 
 %% Insertion context - cached data used during block insertion
 %% The data present in the context is sufficient for fully validating
@@ -204,6 +205,8 @@ build_insertion_ctx(Node, Block) ->
 %% Please note that this is called in dirty context without a try
 %% clause - don't hard crash here.
 %% Performs basic checks to ensure the chain consistency
+-spec build_insertion_ctx(atom(), chain_node(), block_type(),
+    maybe_recent_blocks()) -> insertion_ctx() | {error, term()}.
 build_insertion_ctx(_Consensus, Node, micro, undefined) ->
     % Microblocks only require the prev node and prev_key_node for validation
     case build_insertion_ctx_prev(Node, undefined) of

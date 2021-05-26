@@ -60,9 +60,11 @@ new(Delegate, KeyblockHash) ->
 -spec new(commiter_pubkey(), block_header_hash(), pogf_hash()) ->
     commitment_header().
 new(Delegate, KeyblockHash, PoGFHash) ->
-    #hc_commitment_header{hc_delegate = Delegate
+    #hc_commitment_header{
+        hc_delegate = Delegate
         , hc_keyblock = KeyblockHash
-        , hc_pogf_hash = PoGFHash}.
+        , hc_pogf_hash = PoGFHash
+    }.
 
 -spec from_db(commitment_header()) -> commitment_header().
 from_db(#hc_commitment_header{} = Header) -> Header.
@@ -88,8 +90,8 @@ hc_pogf_hash(CommitmentHeader) ->
     CommitmentHeader#hc_commitment_header.hc_pogf_hash.
 
 -spec hash(commitment_header()) -> commitment_hash().
-hash(#hc_commitment_header{hc_delegate = Delegate
-    , hc_keyblock = Keyblock
-    , hc_pogf_hash = PoGFHash}) ->
-    aec_hash:hash(hc_commitment,
-        <<Delegate/binary, Keyblock/binary, PoGFHash/binary>>).
+hash(#hc_commitment_header{
+    hc_delegate = D
+    , hc_keyblock = K
+    , hc_pogf_hash = H}) ->
+    aec_hash:hash(hc_commitment, <<D/binary, K/binary, H/binary>>).

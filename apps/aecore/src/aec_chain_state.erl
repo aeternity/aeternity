@@ -527,7 +527,7 @@ internal_insert_genesis(Node, Block) ->
             {ok, true, undefined, no_events()}
         end).
 
--spec internal_insert_normal(chain_node(), block(), maybe_sync()) -> ok.
+-spec internal_insert_normal(chain_node(), block(), maybe_sync()) -> term().
 internal_insert_normal(Node, Block, Origin) ->
     %% Build the insertion context using dirty reads to the DB and possibly
     %% The ets cache, the insertion context depends on the type of block being inserted
@@ -899,22 +899,26 @@ grant_fees(Node, Trees, Delay, FraudStatus, _State) ->
             OldestBeneficiaryVersion),
 
     Trees1 = lists:foldl(
-        fun({K, Amt}, TreesAccum) when Amt > 0 ->
-            Consensus:state_grant_reward(K, TreesAccum, Amt);
+        fun
+            ({K, Amt}, TreesAccum) when Amt > 0 ->
+                Consensus:state_grant_reward(K, TreesAccum, Amt);
             (_, TreesAccum) -> TreesAccum
         end,
         Trees,
-        [{Beneficiary1, AdjustedReward1},
-            {Beneficiary2, AdjustedReward2} | DevRewards]),
+        [
+            {Beneficiary1, AdjustedReward1},
+            {Beneficiary2, AdjustedReward2} | DevRewards
+        ]),
     Accounts0 = aec_trees:accounts(Trees1),
     Accounts = aec_accounts_trees:lock_coins(LockAmount, Accounts0),
     aec_trees:set_accounts(Trees1, Accounts).
 
 calculate_gas_fee(Calls) ->
-    F = fun(_, SerCall, GasFeeIn) ->
-        Call = aect_call:deserialize(<<>>, SerCall),
-        GasFee = aect_call:gas_used(Call) * aect_call:gas_price(Call),
-        GasFee + GasFeeIn
+    F =
+        fun(_, SerCall, GasFeeIn) ->
+            Call = aect_call:deserialize(<<>>, SerCall),
+            GasFee = aect_call:gas_used(Call) * aect_call:gas_price(Call),
+            GasFee + GasFeeIn
         end,
     aeu_mtrees:fold(F, 0, aect_call_state_tree:iterator(Calls)).
 
@@ -1165,12 +1169,11 @@ maybe_pogf(Node, [Sibling | T]) ->
 % instead.
 % if a miner reports a fraudulent previous miner - the reporter receives a
 % as a bonus a fraction of the previous miner's reward, the rest is locked.
-% Mining reward is awared with the previous generation (K2 mining reward is
-% awared with GenerationK1's fees) and thus when a miner is fraudulent we
+% Mining reward is awarded with the previous generation (K2 mining reward is
+% awarded with GenerationK1's fees) and thus when a miner is fraudulent we
 % don't award her with mining reward but we lock the excess of coins on the
 % next granting of fees. This way we can compute properly the locked amount.
-calc_rewards(FraudStatus1, FraudStatus2, GenerationFees,
-    K2MineReward, K1FraudReward, IsKey1Genesis) ->
+calc_rewards(FraudStatus1, FraudStatus2, GenerationFees, K2MineReward, K1FraudReward, IsKey1Genesis) ->
     B1FeesPart = GenerationFees * 4 div 10,
     B2FeesPart = GenerationFees - B1FeesPart,
     B2FullReward = B2FeesPart + K2MineReward,
@@ -1265,10 +1268,9 @@ is_matching_info_present(Block, #{info_field := InfoField}) ->
     Info = aec_headers:info(aec_blocks:to_header(Block)),
     Info =:= InfoField.
 
-fork_result(Count, #{signalling_block_count := SigCount}) when Count >= SigCount ->
-    true;
-fork_result(_Count, _Fork) ->
-    false.
+fork_result(Count, #{signalling_block_count := SigCount})
+    when Count >= SigCount -> true;
+fork_result(_Count, _Fork) -> false.
 
 %% Ok this is a DB migration which is pretty heavy to execute
 %% as it involves a DFS search of the ENTIRE header chain starting from genesis
@@ -1297,34 +1299,43 @@ ensure_chain_ends() ->
 
 start_chain_ends_migration() ->
     lager:info("[Orphan key blocks scan] Scanning the DB for orphan keyblocks in the background"),
-    spawn(fun() -> %% Don't use spawn_link here - we can't be killed by the setup process
-        %% An error here should bring down the entire node with it!
-        try
-            %% On a cloud ssd it executed in 158s compared to 1.5h by doing it without hacks
-            %% The reason why it's so fast is that mnesia_rocksdb creates an iterator object and while iterating
-            %% rocksdb aggressively prefetches the data in increasingly bigger chunks
-            %% Retrieves tuples {hash, prev_key_hash, height} and should work for legacy header formats
-            %% Takes up at most a few MB of RAM
-            {Time, R0} = timer:tc(fun() ->
-                mnesia:dirty_select(aec_headers, [{{aec_headers, '$1', '$2', '$3'}
-                    , [{'=:=', {element, 1, '$2'}, key_header}]
-                    , [{{'$1', {element, 4, '$2'}, '$3'}}]
-                }])
-                                  end),
-            lager:info("[Orphan key blocks scan] Retrieved the key header chain in ~p microseconds", [Time]),
-            R1 = lists:keysort(3, R0),
-            S = lists:foldl(fun({Hash, PrevKeyHash, _}, S0) ->
-                S1 = sets:del_element(PrevKeyHash, S0),
-                sets:add_element(Hash, S1)
-                            end, sets:new(), R1),
-            chain_ends_finish_migration(S)
-        catch
-            E:R:Stack ->
-                (catch io:format(user, "[Orphan key blocks scan] Terminating node: ~p ~p ~p", [E, R, Stack])),
-                (catch lager:error("[Orphan key blocks scan] Terminating node: ~p ~p ~p", [E, R, Stack])),
-                init:stop("[Orphan key blocks scan] Encountered a fatal error during the migration. Terminating the node")
-        end
-          end).
+    Outer =
+        fun() ->
+            try
+                %% On a cloud ssd it executed in 158s compared to 1.5h by doing it without hacks
+                %% The reason why it's so fast is that mnesia_rocksdb creates an iterator object and while iterating
+                %% rocksdb aggressively prefetches the data in increasingly bigger chunks
+                %% Retrieves tuples {hash, prev_key_hash, height} and should work for legacy header formats
+                %% Takes up at most a few MB of RAM
+                Inner =
+                    fun() ->
+                        mnesia:dirty_select(aec_headers, [
+                            {
+                                {aec_headers, '$1', '$2', '$3'},
+                                [{'=:=', {element, 1, '$2'}, key_header}],
+                                [{{'$1', {element, 4, '$2'}, '$3'}}]
+                            }]
+                        )
+                    end,
+                {Time, R0} = timer:tc(Inner),
+                lager:info("[Orphan key blocks scan] Retrieved the key header chain in ~p microseconds", [Time]),
+                R1 = lists:keysort(3, R0),
+                S = lists:foldl(
+                    fun({Hash, PrevKeyHash, _}, S0) ->
+                        S1 = sets:del_element(PrevKeyHash, S0),
+                        sets:add_element(Hash, S1)
+                    end, sets:new(), R1),
+                chain_ends_finish_migration(S)
+            catch
+                E:R:Stacktrace ->
+                    (catch io:format(user, "[Orphan key blocks scan] Terminating node: ~p ~p ~p", [E, R, Stacktrace])),
+                    (catch lager:error("[Orphan key blocks scan] Terminating node: ~p ~p ~p", [E, R, Stacktrace])),
+                    init:stop("[Orphan key blocks scan] Encountered a fatal error during the migration. Terminating the node")
+            end
+        end,
+    %% Don't use spawn_link here - we can't be killed by the setup process
+    %% An error here should bring down the entire node with it!
+    spawn(Outer).
 
 %% Finishes the DB migration - this is kind of tricky as the migration was done while the node was running
 %% We insert a orphan top to the DB only when we don't have already a newer orphan which is a predecessor
@@ -1384,25 +1395,26 @@ ensure_key_headers_height_store() ->
 
 start_key_headers_height_store_migration() ->
     lager:info("[Key headers migrations scan] Retriving all key headers"),
-    spawn(
-        %% Don't use spawn_link here - we can't be killed by the setup process
-        %% An error here should bring down the entire node with it!
+    Outer =
         fun() ->
             try
                 mnesia:activity(async_dirty,
                     fun() ->
-                        Res = timer:tc(
+                        Inner =
                             fun() ->
                                 mnesia:select(aec_headers, [
-                                    {{aec_headers, '$1', '$2', '$3'}
-                                        , [{'=:=', {element, 1, '$2'}, key_header}]
-                                        , [{{'$1', '$2', '$3'}}]
-                                    }],
-                                    10000, read)
-                            end),
+                                    {
+                                        {aec_headers, '$1', '$2', '$3'},
+                                        [{'=:=', {element, 1, '$2'}, key_header}],
+                                        [{{'$1', '$2', '$3'}}]
+                                    }], 10000, read
+                                )
+                            end,
+                        Res = timer:tc(Inner),
                         {TotalTime, TotalCount} = key_headers_height_store_migration_step(Res),
                         lager:info("[Key headers migrations scan] DONE: In total migrated ~p headers in ~p microseconds", [TotalCount, TotalTime])
-                    end),
+                    end
+                ),
                 aec_db:finish_chain_migration(key_headers)
             catch
                 E:R:Stacktrace ->
@@ -1410,7 +1422,10 @@ start_key_headers_height_store_migration() ->
                     (catch lager:error("[Key headers migration scan] Terminating node: ~p ~p ~p", [E, R, Stacktrace])),
                     init:stop("[Key headers migration scan] Encountered a fatal error during the migration. Terminating the node")
             end
-        end).
+        end,
+    %% Don't use spawn_link here - we can't be killed by the setup process
+    %% An error here should bring down the entire node with it!
+    spawn(Outer).
 
 key_headers_height_store_migration_step(First) ->
     key_headers_height_store_migration_step(0, 0, First).
@@ -1418,18 +1433,21 @@ key_headers_height_store_migration_step(Time, N, {TimeAdd, '$end_of_table'}) ->
     {Time + TimeAdd, N};
 key_headers_height_store_migration_step(Time, N, {TimeRead, {Headers, Cont}}) ->
     lager:info("[Key headers migrations scan] Read headers in ~p microseconds", [TimeRead]),
-    {TimeWrite, Count} = timer:tc(fun() ->
-        aec_db:ensure_transaction(fun() ->
-            lists:foldl(
-                fun({Hash, Header, Height}, Count) ->
-                    mnesia:write(#aec_chain_state{key = {key_header, Height, Hash}, value = Header}),
-                    Count + 1
-                end,
-                0,
-                Headers
-            )
-                                  end)
-                                  end),
+    {TimeWrite, Count} = timer:tc(
+        fun() ->
+            aec_db:ensure_transaction(
+                fun() ->
+                    lists:foldl(
+                        fun({Hash, Header, Height}, Count) ->
+                            mnesia:write(
+                                #aec_chain_state{
+                                    key = {key_header, Height, Hash},
+                                    value = Header
+                                }),
+                            Count + 1
+                        end, 0, Headers)
+                end)
+        end),
     lager:info("[Key headers migrations scan] Wrote ~p headers in ~p microseconds", [Count, TimeWrite]),
     key_headers_height_store_migration_step(
         Time + TimeRead + TimeWrite,

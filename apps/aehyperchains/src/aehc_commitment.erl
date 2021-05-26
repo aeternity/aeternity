@@ -21,7 +21,7 @@
 
 -record(hc_commitment, {
     header :: aehc_commitment_header:commitment_header(),
-    pogf :: aehc_pogf:pogf()
+    pogf :: aehc_pogf:maybe_pogf()
 }).
 -type commitment() :: #hc_commitment{}.
 
@@ -30,7 +30,7 @@ new(Header) ->
     new(Header, no_pogf).
 
 -spec new(aehc_commitment_header:commitment_header(),
-    aehc_pogf:pogf()) -> commitment().
+    aehc_pogf:maybe_pogf()) -> commitment().
 new(Header, PoGF) ->
     #hc_commitment{header = Header, pogf = PoGF}.
 

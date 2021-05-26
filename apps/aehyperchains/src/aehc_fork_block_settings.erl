@@ -2,5 +2,5 @@
 
 -export([genesis_accounts/0]).
 
--spec genesis_accounts() -> list().
+-spec genesis_accounts() -> [].
 genesis_accounts() -> [].
