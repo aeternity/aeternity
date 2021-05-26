@@ -11,19 +11,7 @@ It:
 * Set height for `iris` hard fork to happen on block 441444, on 10 June 2021,
   around 9:11am UTC
 
-Please test the **iris** protocol by activating it in the configuration file as below:
-
-```yaml
-  chain:
-    hard_forks:
-      "1": 0
-      "5": 1
-
- fork_management:
-    network_id: "my_test_iris"
-```
-
-You can also join `testnet`, the hard fork kicked in there at [height 425900](https://github.com/aeternity/aeternity/blob/v6.0.0-rc2/apps/aecore/src/aec_hard_forks.erl#L106).
+You can join `testnet`, the hard fork kicked in there at [height 425900](https://github.com/aeternity/aeternity/blob/v6.0.0-rc2/apps/aecore/src/aec_hard_forks.erl#L106).
 
 Please let us know if you have any problems by [opening a ticket](https://github.com/aeternity/aeternity/issues).
 Troubleshooting of common issues is documented [in the wiki](https://github.com/aeternity/aeternity/wiki/Troubleshooting).
