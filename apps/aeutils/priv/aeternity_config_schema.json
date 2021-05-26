@@ -310,7 +310,7 @@
                         "gas_limit" : {
                             "description" : "Maximum gas allowed to be available to a single dry-run call.",
                             "type" : "integer",
-                            "default" : 1000000
+                            "default" : 6000000
                         }
                     }
                 },
