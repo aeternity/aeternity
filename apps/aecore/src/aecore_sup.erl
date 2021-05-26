@@ -9,7 +9,6 @@
 %%%       aecore_sup
 %%%     (one_for_one)
 %%%           |
-<<<<<<< HEAD
 %%%           -----------------------------------------
 %%%           |         |         |           |       |
 %%%           |   aec_metrics  aec_keys  aec_tx_pool  |
@@ -20,7 +19,6 @@
 %%%           |                                       ---------------------
 %%%           |                                       |                   |
 %%%           |                                 aec_block_generator  aec_conductor
-=======
 %%%           |-------------------------------------------------------------------------------------
 %%%           |      |      |            |        |          |             |             |         |
 %%%           | watchdog aec_upnp  aec_metrics aec_keys  aec_tx_pool  aec_tx_pool_gc  aec_db_gc    |
@@ -31,7 +29,6 @@
 %%%           |                                                                           ---------------------
 %%%           |                                                                           |                   |
 %%%           |                                                                   aec_block_generator   aec_conductor
->>>>>>> edd6e52d... aec_db_error_store removed
 %%%           |
 %%%           -------------------------------------------------------------------
 %%%           |                    |         |            |                     |
