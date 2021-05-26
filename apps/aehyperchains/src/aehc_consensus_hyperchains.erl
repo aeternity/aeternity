@@ -881,18 +881,20 @@ cleanup_system_owner(OldA, Trees) ->
 verify_existing_staking_contract(Address, Trees, TxEnv) ->
     UserAddr = encode_contract_pubkey(Address),
     ldebug("Validating the existing staking contract at ~p", [UserAddr]),
-    ErrF = fun(Err) ->
-        aec_consensus:config_assertion_failed("Staking contract validation failed", " Addr: ~p, Reason: ~p\n", [UserAddr, Err]) end,
+    ErrF =
+        fun(Err) ->
+            aec_consensus:config_assertion_failed(
+                "Staking contract validation failed",
+                " Addr: ~p, Reason: ~p\n", [UserAddr, Err])
+        end,
     case aec_accounts_trees:lookup(Address, aec_trees:accounts(Trees)) of
-        none ->
-            ErrF("Contract not found");
+        none -> ErrF("Contract not found");
         {value, Account} ->
             case aec_accounts:is_payable(Account) of
                 true -> ErrF("Contract can't be payable");
                 false ->
                     case aect_state_tree:lookup_contract_with_code(Address, aec_trees:contracts(Trees), [no_store]) of
-                        none ->
-                            ErrF("Contract not found");
+                        none -> ErrF("Contract not found");
                         {value, Contract, OnchainCode} ->
                             OnchainAbi = aect_contracts:abi_version(Contract),
                             OnchainVm = aect_contracts:vm_version(Contract),
