@@ -29,6 +29,8 @@
 %% gen_server.
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2]).
 
+-import(aehc_log, [ldebug/1, ldebug/2, lerror/2, linfo/2]).
+
 -include_lib("aeutils/include/aeu_stacktrace.hrl").
 
 
@@ -66,12 +68,12 @@ init([]) ->
 
 handle_call({start_view, View, Conf}, _From, State) ->
     Res = aehc_sup:start_view(View, Conf),
-    lager:info("~p start parent view: ~p (~p)", [View, aehc_app:tracker_name(Conf)]),
+    linfo("~p start parent view: ~p (~p)", [View, aehc_app:tracker_name(Conf)]),
     {reply, Res, State};
 
 handle_call({terminate_view, View}, _From, State) ->
     Res = aehc_sup:terminate_view(View),
-    lager:info("~p terminate parent view: ~p", [View]),
+    linfo("~p terminate parent view: ~p", [View]),
     {reply, Res, State}.
 
 handle_cast(_Msg, State) ->
@@ -86,7 +88,7 @@ handle_info({publish_block, View, Block}, #state{} = State) ->
         %% %% Fork synchronization by by the new arrived block;
         aehc_parent_tracker:publish_block(View, Block)
     catch E:R:StackTrace ->
-        lager:error("CRASH: ~p; ~p", [E, StackTrace]),
+        lerror("CRASH: ~p; ~p", [E, StackTrace]),
         {error, E, R}
     end,
     {noreply, State};

@@ -97,6 +97,8 @@
         , create_pos_pow_field/2
         , deserialize_pos_pow_field/1]).
 
+-import(aehc_log, [ldebug/1, ldebug/2]).
+
 -include_lib("aeminer/include/aeminer.hrl").
 -include_lib("aehyperchains/include/aehc_types.hrl").
 -include_lib("aehyperchains/include/aehc_fallback_funs.hrl").
@@ -109,12 +111,18 @@
 }).
 -type activation_criteria() :: #activation_criteria{}.
 
+-type hc_header_type() :: key_pos | key_pos_pogf | key_pow | micro.
+-type activation_criteria_error() :: invalid_criteria_evaluation_point
+    | not_enough_delegates
+    | not_enough_stake
+    | {failed_call, term()}.
+
 
 %% API
 
 can_be_turned_off() -> true.
 
--spec assert_config(any()) -> ok | no_return().
+-spec assert_config(map()) -> ok | no_return().
 assert_config(_Config) ->
     persistent_term:erase(?STAKING_CONTRACT_ADDR), %% So eunit can simulate node restarts
     %% For now assume that the staking contract can't change during the lifetime of the hyperchain.
@@ -172,12 +180,21 @@ start(_Config) ->
 stop() -> ok.
 
 is_providing_extra_http_endpoints() -> false.
+
+-spec client_request(any()) -> no_return().
 client_request(_) -> error(todo).
 
 %% -------------------------------------------------------------------
 %% Deserialization
 
--spec extra_from_header(aec_headers:header()) -> map().
+-spec extra_from_header(header()) ->
+    #{
+        consensus := ?MODULE,
+        pos := boolean(),
+        type := hc_header_type(),
+        miner_signature => aec_keys:privkey(),
+        parent_hash => hash()
+    }.
 extra_from_header(Header) ->
     %% Check if we use a special nonce - if yes then we MIGHT be a PoS block
     Type1 =
@@ -204,7 +221,8 @@ extra_from_header(Header) ->
         end,
     %% We can't really switch to another consensus right now as we rely on the global consensus setting most of the time
     maps:merge(PoSMeta,
-        #{consensus => ?MODULE
+        #{
+            consensus => ?MODULE
             , type => Type2
             , pos => IsPoS2
         }).
@@ -230,8 +248,7 @@ deserialize_pos_pow_field([H1, H2, H3, H4, H5, H6, H7, H8, S1, S2, S3, S4, S5, S
     end;
 deserialize_pos_pow_field(_) -> error.
 
--spec hc_header_type(header()) ->
-    key_pos | key_pos_pogf | key_pow | micro | no_return().
+-spec hc_header_type(header()) -> hc_header_type() | no_return().
 hc_header_type(Header) ->
     maps:get(type, aec_headers:extra(Header)).
 
@@ -419,7 +436,8 @@ state_pre_transform_key_node(KeyNode, _PrevNode, PrevKeyNode, Trees1) ->
             Trees1
     end.
 
--spec ensure_hc_activation_criteria(chain_node(), env(), any()) -> ok | {error, term()}.
+-spec ensure_hc_activation_criteria(chain_node(), env(), any()) ->
+    ok | {error, activation_criteria_error()}.
 ensure_hc_activation_criteria(KeyNode, TxEnv, Trees) ->
     {
         ok,
@@ -1118,8 +1136,3 @@ decompose_activation_criteria(Criteria) ->
     } = Criteria,
     {MinStake, MinDelegates, BlockFreq, BlockConfirms}.
 
--spec ldebug(string()) -> ok.
-ldebug(Msg) -> lager:debug(Msg).
-
--spec ldebug(string(), [term()]) -> ok.
-ldebug(Msg, Data) -> lager:debug(Msg, Data).
