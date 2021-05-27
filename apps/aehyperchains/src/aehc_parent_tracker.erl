@@ -26,6 +26,8 @@
 %% gen_statem callbacks
 -export([init/1, terminate/3, callback_mode/0]).
 
+-import(aehc_log, [linfo/2]).
+
 -define(SERVER(Name), {via, gproc, {n, l, {?MODULE, Name}}}).
 
 -include_lib("aehyperchains/include/aehc_types.hrl").
@@ -138,7 +140,7 @@ orphaned(internal, {added_block, Block, SynchedBlock}, Data) ->
             Info = "Parent chain state machine got exceeded genesis entry (genesis: ~p, synched: ~p, height: ~p, note: ~p)",
             GenesisHash = genesis_hash(Data),
             Note = note(Data),
-            lager:info(Info, [GenesisHash, SynchedHash, Height, Note]),
+            linfo(Info, [GenesisHash, SynchedHash, Height, Note]),
             {next_state, synced, Data}
     end;
 %% Postponing service requests until fork solving is done;
@@ -153,7 +155,7 @@ synced(enter, _OldState, Data) ->
     CurrentHeight = current_height(Data),
     Note = note(Data),
     Info = "Parent chain state machine has synched (synched: ~p, height: ~p, note: ~p)",
-    lager:info(Info, [SynchedHash, CurrentHeight, Note]),
+    linfo(Info, [SynchedHash, CurrentHeight, Note]),
     {keep_state, Data};
 synced(cast, {publish_block, Block}, Data) ->
     SynchedBlock = aehc_parent_db:get_parent_block(current_hash(Data)),

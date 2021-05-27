@@ -213,7 +213,7 @@ hc_from_genesis_test_() ->
                     GasPrice = 1 bsl 30,
                     MkCallF = fun(#{ pubkey := Pub, privkey := Priv }, Nonce, Amount, Call) ->
                                 Tx = make_contract_call_tx(Pub, ContractAddress, Call, Nonce, Amount, Fee, Gas, GasPrice),
-                                aec_test_utils:sign_tx(Tx, Priv)``
+                                aec_test_utils:sign_tx(Tx, Priv)
                              end,
                     {ok, CallDepositStake} = aeaci_aci:encode_call_data(Aci, "deposit_stake()"),
                     %% The overall picture of what's going on in the chain
