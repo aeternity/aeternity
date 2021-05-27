@@ -1268,8 +1268,8 @@ jobs:
           name: Test DB compatibility
           command: |
             cp -r ./node_stable/data/mnesia ./node_new/data/
-            ./node_new/bin/aeternity start
-            sleep 30
+            ./node_new/bin/aeternity daemon
+            sleep 60
             curl http://localhost:3013/v2/status
             ./node_new/bin/aeternity stop
 
