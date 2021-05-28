@@ -97,8 +97,6 @@
         , create_pos_pow_field/2
         , deserialize_pos_pow_field/1]).
 
--import(aehc_log, [ldebug/1, ldebug/2]).
-
 -include_lib("aeminer/include/aeminer.hrl").
 -include_lib("aehyperchains/include/aehc_types.hrl").
 -include_lib("aehyperchains/include/aehc_fallback_funs.hrl").
@@ -134,7 +132,7 @@ assert_config(_Config) ->
     case aeu_env:user_config([<<"hyperchains">>, <<"staking_contract_address">>]) of
         undefined -> ok;
         {ok, EAddr} ->
-            ldebug("Trying to set the staking contract address"),
+            lager:debug("Trying to set the staking contract address"),
             {contract_address, Addr} = decode(EAddr),
             ok = set_staking_contract_address(Addr)
     end,
@@ -497,8 +495,9 @@ pogf_detected(_H1, _H2) ->
 
 %% -------------------------------------------------------------------
 %% Genesis block
--spec genesis_transform_trees(trees(), map()) -> trees() | no_return().
+%% Shouldn't dia-check here unless hc_genesis_version/0 is made non-constant.
 -dialyzer({nowarn_function, genesis_transform_trees/2}).
+-spec genesis_transform_trees(trees(), map()) -> trees() | no_return().
 genesis_transform_trees(Trees0, #{}) ->
     %% At genesis no ordinary user could possibly deploy the contract
     case get_predeploy_address() of
@@ -596,7 +595,8 @@ new_unmined_key_node(PrevNode, PrevKeyNode, Height, Miner, Beneficiary,
             end
     end.
 
-%%TODO Finish the BL here.
+%%TODO Finish the BL here, then
+%%TODO Remove dialyzer cheat after FAKE_BLOCK_HASH is replaced with an actual parameter.
 -dialyzer({nowarn_function, new_pos_key_node/8}).
 -spec new_pos_key_node(chain_node(), chain_node(), non_neg_integer(),
     hash(), pubkey(), non_neg_integer(), non_neg_integer(), trees()) ->
@@ -823,9 +823,9 @@ get_hc_activation_criteria() ->
 -define(RESTRICTED_ACCOUNT, <<2:32/unit:8>>).
 -spec deploy_staking_contract_by_system(trees(), env()) -> trees() | no_return().
 deploy_staking_contract_by_system(Trees0, TxEnv) ->
-    ldebug("Deploying the staking contract by a system account"),
+    lager:debug("Deploying the staking contract by a system account"),
     Deployer = ?RESTRICTED_ACCOUNT,
-    ldebug("Staking contract will be deployed by ~p", [encode_account_pubkey(Deployer)]),
+    lager:debug("Staking contract will be deployed by ~p", [encode_account_pubkey(Deployer)]),
     %% Grant the fresh account enough funds to deploy the contract
     {Trees1, OldA} = prepare_system_owner(Deployer, Trees0),
     Bytecode = get_staking_contract_bytecode(),
@@ -855,7 +855,7 @@ deploy_staking_contract_by_system(Trees0, TxEnv) ->
             {value, Call} = aect_call_state_tree:lookup_call(ContractPubkey, CallPubkey, CallTree),
             case aect_call:return_type(Call) of
                 ok ->
-                    ldebug("System account successfully deployed staking contract at ~p", [encode_contract_pubkey(ContractPubkey)]),
+                    lager:debug("System account successfully deployed staking contract at ~p", [encode_contract_pubkey(ContractPubkey)]),
                     %% Ok contract deployed :)
                     set_staking_contract_address(ContractPubkey),
                     %% Sanity check the deployment - should never fail
@@ -898,7 +898,7 @@ cleanup_system_owner(OldA, Trees) ->
 -spec verify_existing_staking_contract(pubkey(), trees(), env()) -> ok.
 verify_existing_staking_contract(Address, Trees, TxEnv) ->
     UserAddr = encode_contract_pubkey(Address),
-    ldebug("Validating the existing staking contract at ~p", [UserAddr]),
+    lager:debug("Validating the existing staking contract at ~p", [UserAddr]),
     ErrF =
         fun(Err) ->
             aec_consensus:config_assertion_failed(
@@ -934,7 +934,7 @@ verify_existing_staking_contract(Address, Trees, TxEnv) ->
                                     {ok, {address, Restricted}} = static_contract_call(Trees, TxEnv, "restricted_address()"),
                                     case Restricted of
                                         ?RESTRICTED_ACCOUNT ->
-                                            ldebug("Staking contract at ~p is safe to use", [UserAddr]);
+                                            lager:debug("Staking contract at ~p is safe to use", [UserAddr]);
                                         _ ->
                                             ErrF("Invalid restricted account")
                                     end
@@ -1075,7 +1075,7 @@ load_hc_staking_contract() ->
                 "Hyperchains staking contract not present.",
                 " Terminating the node - file not found ~p", [P])
     end,
-    ldebug("Loading hyperchains staking contract"),
+    lager:debug("Loading hyperchains staking contract"),
     {ok, Data} = file:read_file(P),
     try
         #{

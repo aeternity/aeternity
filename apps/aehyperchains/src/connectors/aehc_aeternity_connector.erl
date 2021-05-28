@@ -5,8 +5,6 @@
 -behaviour(aehc_connector).
 -behaviour(gen_server).
 
--import(aehc_log, [linfo/2]).
-
 -include_lib("aehyperchains/include/aehc_types.hrl").
 
 
@@ -68,7 +66,7 @@ handle_call({get_block_by_hash, _Hash}, _From, #state{stub = true} = State) ->
     {reply, stub_block(), State};
 
 handle_call({dry_send_tx, Delegate, Commitment, PoGF}, _From, #state{stub = true} = State) ->
-    linfo("~p: ~p = dry_send_tx(~p, ~p, ~p)", [?MODULE, ok, Delegate, Commitment, PoGF]),
+    lager:info("~p: ~p = dry_send_tx(~p, ~p, ~p)", [?MODULE, ok, Delegate, Commitment, PoGF]),
     {reply, ok, State}.
 
 handle_cast(_Msg, State) ->

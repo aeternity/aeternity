@@ -11,8 +11,6 @@
 
 -export([trackers_config/0, tracker_name/1, tracker_note/1]).
 
--import(aehc_log, [linfo/1]).
-
 
 %% API
 
@@ -38,9 +36,9 @@ stop(_State) ->
 check_env() ->
     case aehc_utils:hc_enabled() of
         true ->
-            linfo("Hyperchains are enabled");
+            lager:info("Hyperchains are enabled");
         false ->
-            linfo("Hyperchains are disabled"),
+            lager:info("Hyperchains are disabled"),
             ok
     end.
 

@@ -14,8 +14,6 @@
         , accept/1]).
 -export_type([connector/0]).
 
--import(aehc_log, [linfo/2]).
-
 -include_lib("aehyperchains/include/aehc_types.hrl").
 
 -type connector() :: atom().
@@ -122,7 +120,7 @@ accept_top_block(Conf) ->
     Hash = aehc_parent_block:hash_block(TopBlock),
     Height = aehc_parent_block:height_block(TopBlock),
     Info = "Accept get_top_block procedure has passed (connector: ~p, hash: ~p, height: ~p)",
-    linfo(Info, [Module, Hash, Height]).
+    lager:info(Info, [Module, Hash, Height]).
 
 %% Acceptance check (request genesis block);
 -spec accept_block_by_hash(map()) -> ok | no_return().
@@ -133,7 +131,7 @@ accept_block_by_hash(Conf) ->
     Hash = aehc_parent_block:hash_block(Block),
     Height = aehc_parent_block:height_block(Block),
     Info = "Accept get_block_by_hash procedure has passed (connector: ~p, hash: ~p, height: ~p)",
-    linfo(Info, [Module, Hash, Height]).
+    lager:info(Info, [Module, Hash, Height]).
 
 %% Acceptance check (commitment call preliminary check);
 -spec accept_dry_send_tx(map()) -> ok | no_return().
@@ -147,7 +145,7 @@ accept_dry_send_tx(Conf) ->
             PoGF = aehc_pogf:hash(no_pogf),
             dry_send_tx(Module, Delegate, KeyblockHash, PoGF),
             Info = "Accept dry_send_tx procedure has passed (connector: ~p, delegate: ~p, hash: ~p, pogf: ~p)",
-            linfo(Info, [Module, Delegate, KeyblockHash, PoGF])
+            lager:info(Info, [Module, Delegate, KeyblockHash, PoGF])
         end.
 
 %%%===================================================================
