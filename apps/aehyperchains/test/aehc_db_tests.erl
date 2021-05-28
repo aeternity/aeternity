@@ -17,7 +17,7 @@
 -define(PARENT_GENESIS_HEADER,
     aehc_parent_block:new_header(?PARENT_GENESIS_HASH, ?PARENT_GENESIS_HASH, 1)).
 
-hyperchains_unable_to_use_normal_db_test_ignore() ->
+hyperchains_unable_to_use_normal_db_test() ->
     {foreach,
      fun() ->
              InitialApps = {running_apps(), loaded_apps()},
