@@ -1294,7 +1294,8 @@ try_activity(Type, Fun) ->
 %% decremented.
 %% This function must not be called from inside another transaction because this
 %% will mess with Mnesia's internal retry mechanism.
--spec try_activity(atom(), fun(()->Res), non_neg_integer()) -> mnesia:t_result(Res) | Res.
+-spec try_activity(atom(), fun(() -> Res), non_neg_integer()) ->
+    Res | {atomic, Res} | {aborted, term()}.
 try_activity(Type, Fun, Retries) when Retries =< 0 ->
     do_activity(Type, Fun);
 try_activity(Type, Fun, Retries) ->
