@@ -77,8 +77,8 @@ switch(Auth.tx)
   primitives that enables flexible string manipulation. `Strings.aes` standard
   library functions include many useful string functions.
 
-* Added the possibility to query a an oracle by name hash. A name pointer can
-  map `oracle_pubkey` to a an oracle to enable query by name hash.
+* Added the possibility to query an oracle by name hash. A name pointer can
+  map `oracle_pubkey` to an oracle to enable query by name hash.
 
 * Added a new transaction to the protocol. `PayingForTx` allows an account to pay
   for a transaction on behalf of someone else. This means paying for fees and
