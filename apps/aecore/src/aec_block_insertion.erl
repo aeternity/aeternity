@@ -3,6 +3,7 @@
 %%% @copyright (C) 2020, Aeternity Anstalt
 %%% @doc Helpers for ADT's used during block insertion, those helpers are meant
 %%%      mainly for aec_chain_state and consensus modules
+%%% @end
 %%%
 -module(aec_block_insertion).
 
@@ -41,12 +42,9 @@
 
 -include("aec_block_insertion.hrl").
 
-<<<<<<< HEAD
-=======
 -opaque chain_node() :: #chain_node{}. % type 'node' is Erlang internal!
 -export_type([chain_node/0]).
 
->>>>>>> 2f92aaea... Refactoring, dialyzer coverage
 %% Let's not add another entry to the supervision tree
 -on_load(setup_ets_cache/0).
 
