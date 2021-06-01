@@ -20,7 +20,7 @@
 %% API.
 
 -spec start_link(Args::map()) ->
-    {ok, pid()} | ingnore | {error, term()}.
+    {ok, pid()} | ignore | {error, term()}.
 start_link(Args) ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, Args, []).
 
@@ -74,7 +74,7 @@ handle_call({send_tx, Delegate, Commitment, PoGF}, _From, State) ->
     BinaryTx = aec_governance:add_network_id(aetx:serialize_to_binary(Tx)),
     SignedTx = aetx_sign:new(Tx, [enacl:sign_detached(BinaryTx, PrivKey)]),
     TxHash = aetx_sign:hash(SignedTx),
-    %% The next format is prepared accordingly to simualtor internal representation;
+    %% The next format is prepared accordingly to simulator internal representation;
     Res = aec_chain_sim:push(#{ tx_hash => TxHash, signed_tx  => SignedTx }),
     {reply, Res, State};
 

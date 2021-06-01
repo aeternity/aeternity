@@ -21,7 +21,7 @@
 
 %% API.
 
--spec start_link(Args :: term()) -> {ok, pid()} | ingnore | {error, term()}.
+-spec start_link(Args :: term()) -> {ok, pid()} | ignore | {error, term()}.
 start_link(Args) ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, Args, []).
 
@@ -51,7 +51,7 @@ dry_send_tx(Delegate, Commitment, PoGF) ->
 
 init(Args) ->
     process_flag(trap_exit, true),
-    %% Stub mode allows to pass acceptance procedure without parent node (only for dev purpouses);
+    %% Stub mode allows to pass acceptance procedure without parent node (only for dev purposes);
     Stub = maps:get(<<"stub">>, Args, false),
     {ok, #state{stub = Stub}}.
 
