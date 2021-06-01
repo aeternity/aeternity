@@ -75,7 +75,6 @@
 -export([ fold_mempool/2
         ]).
 
-
 %% MP trees backend
 -export([ find_accounts_node/1
         , find_calls_node/1
@@ -332,11 +331,13 @@ ensure_activity(PreferredType, Fun) when is_function(Fun, 0) ->
 read(Tab, Key) ->
     mnesia:read(Tab, Key).
 
+-spec write_block(aec_blocks:block()) -> ok.
 write_block(Block) ->
     Header = aec_blocks:to_header(Block),
     {ok, Hash} = aec_headers:hash_header(Header),
     write_block(Block, Hash).
 
+-spec write_block(aec_blocks:block(), aec_hash:hash()) -> ok.
 write_block(Block, Hash) ->
     Header = aec_headers:strip_extra(aec_blocks:to_header(Block)),
     Height = aec_headers:height(Header),
