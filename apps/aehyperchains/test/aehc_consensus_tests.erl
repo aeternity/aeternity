@@ -8,6 +8,7 @@
 -module(aehc_consensus_tests).
 
 -include_lib("eunit/include/eunit.hrl").
+-include_lib("aecontract/include/aecontract.hrl").
 
 %% Magic nonces
 -define(NONCE_HC_ENABLED, 16#ffffffffffffffff - 1).
@@ -22,7 +23,7 @@
     aehc_parent_block:new_header(?PARENT_GENESIS_HASH, ?PARENT_GENESIS_HASH, 1)).
 
 -define(PROTOCOL_GATE(X), case init:get_argument(network_id) of
-                              {ok,[["local_lima_testnet"]]} -> X;
+                              {ok,[["local_iris_testnet"]]} -> X;
                               _ -> []
                           end).
 
@@ -626,8 +627,8 @@ make_spend_tx(Sender, SenderNonce, Recipient, Amount) ->
                                        payload => <<>>}),
     SpendTx.
 
-staking_contract_vm() -> 5.
-staking_contract_abi() -> 3.
+staking_contract_vm() -> ?VM_FATE_SOPHIA_2.
+staking_contract_abi() -> ?ABI_FATE_SOPHIA_1.
 
 make_contract_create_tx(Pubkey, Code, CallData, Nonce, Deposit, Amount, Fee,
                         Gas, GasPrice) ->
