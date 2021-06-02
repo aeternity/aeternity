@@ -34,7 +34,6 @@
 
 -export([delete/2]).
 
-
 %% API - misc
 -export([ get_all_accounts_balances/1
         , lock_coins/2]).

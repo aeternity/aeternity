@@ -130,6 +130,14 @@
         , chain_migration_status/1
         ]).
 
+%% For Hyperchains
+%% TODO: Until the DB gets refactored we need to share tables in order to not regress on performance
+%%       Context: Every table is backed right now by a separate full blown DB -.-
+-export([ write_hc_staking_contract_address/1
+        , find_hc_staking_contract_address/0
+        , delete_hc_staking_contract_address/0
+        ]).
+
 %%
 %% for testing
 -export([backend_mode/0]).
@@ -687,6 +695,18 @@ chain_migration_status(Key) ->
         _ -> done
     end.
 
+write_hc_staking_contract_address(Address) when is_binary(Address) ->
+    ?t(mnesia:write(#aec_chain_state{key = hc_staking_contract_address, value = Address})).
+
+find_hc_staking_contract_address() ->
+    case ?t(mnesia:read(aec_chain_state, hc_staking_contract_address)) of
+        [#aec_chain_state{value = Address}] -> {value, Address};
+        [] -> none
+    end.
+
+delete_hc_staking_contract_address() ->
+    ?t(mnesia:delete(aec_chain_state, hc_staking_contract_address, write)).
+
 write_signal_count(Hash, Count) when is_binary(Hash), is_integer(Count) ->
     ?t(mnesia:write(#aec_signal_count{key = Hash, value = Count}),
        [{aec_signal_count, Hash}]).
@@ -1181,6 +1201,15 @@ handle_table_errors(Tables, Mode, [{missing_table, aec_peers = Table} | Tl]) ->
     handle_table_errors(Tables, Mode, Tl);
 handle_table_errors(Tables, Mode, [{missing_table, aesc_state_cache_v2} | Tl]) ->
     aesc_db:create_tables(Mode),
+    handle_table_errors(Tables, Mode, Tl);
+handle_table_errors(Tables, Mode, [{missing_table, Table} | Tl]) when Table == hc_db_pogf;
+                                                                      Table == hc_db_commitment_header;
+                                                                      Table == hc_db_parent_block_header;
+                                                                      Table == hc_db_parent_block_state;
+                                                                      Table == hc_db_parent_state;
+                                                                      Table == hc_db_delegate_state ->
+    %% The table is new in Hyperchains node version
+    new_table_migration(Table, Tables),
     handle_table_errors(Tables, Mode, Tl);
 handle_table_errors(Tables, Mode, [{callback, {Mod, Fun, Args}} | Tl]) ->
     apply(Mod, Fun, Args),

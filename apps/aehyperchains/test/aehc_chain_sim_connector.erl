@@ -6,7 +6,7 @@
 -behaviour(gen_server).
 
 %% API.
--export([start_link/1]).
+-export([start_link/1, stop/0]).
 
 %% gen_server.
 -export([init/1]).
@@ -23,6 +23,9 @@
     {ok, pid()} | ingnore | {error, term()}.
 start_link(Args) ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, Args, []).
+
+stop() ->
+    gen_server:stop(?MODULE).
 
 %%%===================================================================
 %%%  aehc_connector behaviour

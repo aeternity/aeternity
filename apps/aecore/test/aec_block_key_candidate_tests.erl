@@ -66,7 +66,7 @@ difficulty_recalculation_test_() ->
 
                  Consensus = aec_blocks:consensus_module(Block0),
                  aec_consensus_bitcoin_ng = Consensus,
-                 {ok, Block} = Consensus:keyblock_create_adjust_target(Block0, Chain),
+                 {ok, Block} = Consensus:adjust_unmined_keyblock(Block0, Chain),
 
                  NewDifficulty = ?HIGHEST_TARGET_INT / aeminer_pow:scientific_to_integer(aec_blocks:target(Block)),
 
@@ -92,7 +92,7 @@ difficulty_recalculation_test_() ->
 
                  Consensus = aec_blocks:consensus_module(Block0),
                  aec_consensus_bitcoin_ng = Consensus,
-                 {ok, Block} = Consensus:keyblock_create_adjust_target(Block0, Chain),
+                 {ok, Block} = Consensus:adjust_unmined_keyblock(Block0, Chain),
 
                  NewDifficulty = ?HIGHEST_TARGET_INT / aeminer_pow:scientific_to_integer(aec_blocks:target(Block)),
                  ?assert(NewDifficulty < GoodDifficulty),
@@ -116,7 +116,7 @@ difficulty_recalculation_test_() ->
 
                  Consensus = aec_blocks:consensus_module(Block0),
                  aec_consensus_bitcoin_ng = Consensus,
-                 {ok, Block} = Consensus:keyblock_create_adjust_target(Block0, Chain),
+                 {ok, Block} = Consensus:adjust_unmined_keyblock(Block0, Chain),
 
                  NewDifficulty = ?HIGHEST_TARGET_INT / aeminer_pow:scientific_to_integer(aec_blocks:target(Block)),
                  ?assert(NewDifficulty > GoodDifficulty),

@@ -3,6 +3,9 @@
         , check_tables/1     %% (Acc)  -> Acc1
         ]).
 
+%% Place here for mocking
+%% write_persisted_staking_contract_address(Address) -
+
 create_tables(Mode) ->
     case aehc_utils:hc_enabled() of
         true ->

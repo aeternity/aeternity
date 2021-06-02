@@ -38,7 +38,8 @@
 %% COMMON TEST CALLBACK FUNCTIONS
 %%--------------------------------------------------------------------
 all() ->
-    [{group, fetch}, {group, post}].
+    [{group, fetch},
+     {group, post}].
 
 groups() ->
     [
@@ -56,42 +57,42 @@ end_per_suite(_Config) ->
     ok.
 
 init_per_group(_, Config) ->
-    %% aec_chain_sim related apps;
     application:ensure_started(gproc),
-    ok = application:ensure_started(crypto),
-    meck:new(aehc_utils, [passthrough]),
+    meck:new(aehc_utils, [passthrough, no_link]),
     meck:expect(aehc_utils, hc_enabled, 0, true),
-    %% aec_chain_sim_ related mocks;
-    aec_test_utils:mock_genesis_and_forks(),
-    Dir = aec_test_utils:aec_keys_setup(),
+    %% aec_chain_sim related mocks;
+    aec_test_utils:mock_genesis_and_forks_no_link(),
     %% aehc_tracker related install;
     aec_test_utils:start_chain_db(),
     aehc_db:create_tables(ram),
     Tabs = [Tab || {Tab, _} <- aehc_parent_db:table_specs(ram)],
     ok = mnesia:wait_for_tables(Tabs, 10000),
-
     GenesisState = aec_block_genesis:genesis_block_with_state(),
-    [{dir, Dir}, {genesis_state, GenesisState}|Config].
+    %% aehc_parent_mng related mocks
+    meck:new(aehc_app, [passthrough, no_link]),
+    meck:expect(aehc_app, trackers_config, 0, trackers_conf(GenesisState)),
+    Pid = self(),
+    [{ppid, Pid},{genesis_state, GenesisState}|Config].
 
 end_per_group(_, _Config) ->
-%%    aec_test_utils:aec_keys_cleanup(?config(dir, Config)),
-    %% aehc_tracker related uninstall;
-    ok = aec_test_utils:stop_chain_db().
+    meck:unload(aehc_app),
+    ok = aec_test_utils:stop_chain_db(),
+    aec_test_utils:unmock_genesis_and_forks(),
+    %% aec_chain_sim related apps;
+    ok = application:stop(gproc),
+    meck:unload(aehc_utils).
+
 
 init_per_testcase(_, Config) ->
     %% aehc_parent_mng related mocks;
-    meck:new(aehc_utils, [passthrough]),
-    meck:expect(aehc_utils, hc_enabled, 0, true),
-    meck:new(aehc_app, [passthrough]),
-    meck:expect(aehc_app, trackers_config, 0, trackers_conf(?config(genesis_state, Config))),
     {ok, _} = aec_db_error_store:start_link(),
+    true = aehc_utils:hc_enabled(),
     {ok, Pid} = aehc_sup:start_link(), true = is_pid(Pid),
     [{ok, _} = aehc_parent_mng:start_view(aehc_app:tracker_name(Conf), Conf) || Conf <- aehc_app:trackers_config()],
     [{pid, Pid}|Config].
 
 end_per_testcase(_, Config) ->
-    %% aehc_parent_mng related mocks;
-    meck:unload(aehc_app),
+    [ok = aehc_parent_mng:terminate_view(aehc_app:tracker_name(Conf)) || Conf <- aehc_app:trackers_config()],
     exit(?config(pid, Config), normal),
     ok = aec_db_error_store:stop().
 
@@ -139,7 +140,6 @@ fetch_fork(Config) ->
     ok.
 
 post_commitment(_Config) ->
-    Dir = aec_test_utils:aec_keys_setup(),
     Delegate = account(),
     %% The main intention of this call is to emulate post action with signed payload from delegate;
     %% Fee, nonce, ttl and amount fields have decorated nature;
@@ -152,11 +152,9 @@ post_commitment(_Config) ->
     aec_chain_sim:sign_and_push(Delegate, Tx),
     aec_chain_sim:add_keyblock(),
 
-    aec_test_utils:aec_keys_cleanup(Dir),
     ok.
 
 post_pogf(_Config) ->
-    Dir = aec_test_utils:aec_keys_setup(),
     Delegate = account(),
     %% The main intention of this call is to emulate post action with signed payload from delegate;
     %% Fee, nonce, ttl and amount fields have decorated nature;
@@ -170,8 +168,6 @@ post_pogf(_Config) ->
     %% The next format is prepared accordingly to simualtor internal representation;
     aec_chain_sim:sign_and_push(Delegate, Tx),
     aec_chain_sim:add_keyblock(),
-
-    aec_test_utils:aec_keys_cleanup(Dir),
     ok.
 
 %%%===================================================================

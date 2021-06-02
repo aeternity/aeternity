@@ -16,9 +16,7 @@
 hyperchains_simulator_test_() ->
     {foreach,
         fun() ->
-            application:ensure_started(gproc),
-            ok = application:ensure_started(crypto),
-
+            ok = application:ensure_started(gproc),
             aec_test_utils:mock_genesis_and_forks(),
             Dir = aec_test_utils:aec_keys_setup(),
             GenesisState = aec_block_genesis:genesis_block_with_state(),
@@ -26,8 +24,10 @@ hyperchains_simulator_test_() ->
             Dir
         end,
         fun(TmpDir) ->
+            ok = aehc_chain_sim_connector:stop(),
             aec_test_utils:aec_keys_cleanup(TmpDir),
-            aec_test_utils:unmock_genesis_and_forks()
+            aec_test_utils:unmock_genesis_and_forks(),
+            ok = application:stop(gproc)
         end,
         [{"Sent payload == Requested payload",
             fun() ->

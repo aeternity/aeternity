@@ -73,7 +73,7 @@ mining_step(Chain = [{Top, _} | _], PoWCapacity) ->
     Consensus = aec_blocks:consensus_module(Block),
     aec_consensus_bitcoin_ng = Consensus,
     {ok, NewBlock} =
-        Consensus:keyblock_create_adjust_target(
+        Consensus:adjust_unmined_keyblock(
           aec_blocks:set_time_in_msecs(Block, TopTime + MiningTime),
           [ aec_blocks:to_header(B) || B <- lists:sublist(aec_test_utils:blocks_only_chain(Chain), 18) ]),
     {NewBlock, BlockState}.

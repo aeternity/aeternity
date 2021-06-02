@@ -17,7 +17,7 @@
 -define(PARENT_GENESIS_HEADER,
     aehc_parent_block:new_header(?PARENT_GENESIS_HASH, ?PARENT_GENESIS_HASH, 1)).
 
-hyperchains_unable_to_use_normal_db_test_() ->
+hyperchains_unable_to_use_normal_db_test() ->
     {foreach,
      fun() ->
              InitialApps = {running_apps(), loaded_apps()},
@@ -30,6 +30,8 @@ hyperchains_unable_to_use_normal_db_test_() ->
 
              meck:new(aec_db, [passthrough]),
              meck:expect(aec_db, load_database, 0, ok),
+             meck:expect(aec_db, find_hc_staking_contract_address, 0, none),
+             meck:expect(aec_db, write_hc_staking_contract_address, 1, ok),
              meck:new(aecore_sup, [passthrough]),
              meck:expect(aecore_sup, start_link, 0, {ok, pid}),
              meck:new(aec_jobs_queues, [passthrough]),
@@ -38,11 +40,14 @@ hyperchains_unable_to_use_normal_db_test_() ->
              meck:expect(aec_chain_state, ensure_chain_ends, 0, ok),
              meck:expect(aec_chain_state, ensure_key_headers_height_store, 0, ok),
              meck:new(aec_consensus, [passthrough]),
+             aefa_fate_op:load_pre_iris_map_ordering(),
+             aec_test_utils:mock_genesis_and_forks(),
              ok = lager:start(),
 
              InitialApps
      end,
      fun({OldRunningApps, OldLoadedApps}) ->
+             aec_test_utils:unmock_genesis_and_forks(),
              meck:unload(aec_consensus),
              meck:unload(aec_chain_state),
              meck:unload(aec_jobs_queues),
@@ -50,7 +55,7 @@ hyperchains_unable_to_use_normal_db_test_() ->
              meck:unload(aec_db),
              meck:unload(aeu_env),
              ok = restore_stopped_and_unloaded_apps(OldRunningApps, OldLoadedApps)
-end,
+     end,
      [{"HC Genesis block != Mainnet Genesis block",
        fun() ->
             try
@@ -101,41 +106,7 @@ end,
      ]}.
 
 write_parent_chain_test_() ->
-    aec_test_utils:eunit_with_consensus(aehc_test_utils:hc_from_genesis(), [
-    {foreach,
-     fun() ->
-             ok = application:ensure_started(gproc),
-             {ok, _} = aec_db_error_store:start_link(),
-             aec_test_utils:start_chain_db(),
-             %% somehow setup:find_env_vars can't find this hook in eunit tests
-             aehc_db:create_tables(ram),
-             Tabs = [Tab || {Tab, _} <- aehc_parent_db:table_specs(ram)],
-             ok = mnesia:wait_for_tables(Tabs, 10000),
-
-             meck:new(aec_mining, [passthrough]),
-             meck:expect(aec_mining, verify, fun(_, _, _, _) -> true end),
-             meck:new(aec_events, [passthrough]),
-             meck:expect(aec_events, publish, fun(_, _) -> ok end),
-             aec_test_utils:mock_genesis_and_forks(),
-             TmpDir = aec_test_utils:aec_keys_setup(),
-             {ok, PubKey} = aec_keys:pubkey(),
-             ok = application:set_env(aecore, beneficiary, aeser_api_encoder:encode(account_pubkey, PubKey)),
-             {ok, _} = aec_tx_pool:start_link(),
-             {ok, _} = aec_conductor:start_link([{autostart, false}]),
-             TmpDir
-     end,
-     fun(TmpDir) ->
-             ok = application:unset_env(aecore, beneficiary),
-             ok = aec_conductor:stop(),
-             ok = aec_tx_pool:stop(),
-             ok = application:stop(gproc),
-             meck:unload(aec_mining),
-             meck:unload(aec_events),
-             aec_test_utils:unmock_genesis_and_forks(),
-             aec_test_utils:stop_chain_db(),
-             ok = aec_db_error_store:stop(),
-             aec_test_utils:aec_keys_cleanup(TmpDir)
-     end,
+    aehc_test_utils:hc_chain_eunit_testcase(aehc_test_utils:hc_from_genesis(),
      [{"Write and read back pinpointed genesis block",
        fun() ->
              ParentBlock = aehc_parent_block:new_block(?PARENT_GENESIS_HEADER, []),
@@ -157,4 +128,4 @@ write_parent_chain_test_() ->
             ?assertEqual(ParentBlock, aehc_parent_db:get_parent_block(?PARENT_GENESIS_HASH)),
             ?assertEqual(CList, aehc_parent_db:get_candidates_in_election_cycle(1337, ?PARENT_GENESIS_HASH))
        end}
-     ]}]).
+     ]).

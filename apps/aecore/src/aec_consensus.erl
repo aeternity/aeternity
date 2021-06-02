@@ -64,6 +64,7 @@
         , get_genesis_consensus_module/0
         , get_genesis_consensus_config/0
         , get_genesis_hash/0 %% Cached access to the genesis hash using persistent term :)
+        , config_assertion_failed/3
         ]).
 
 -include("aec_block_insertion.hrl").
@@ -135,10 +136,6 @@
 -callback recent_cache_n() -> non_neg_integer().
 -callback recent_cache_trim_key_header(aec_headers:header()) -> term().
 
--callback keyblocks_for_target_calc() -> non_neg_integer().
--callback keyblock_create_adjust_target(aec_blocks:block(), list(aec_headers:header())) ->
-    {ok, aec_blocks:block()} | {error, term()}.
-
 %% Pre conductor validation - filters blocks before passing it to the conductor
 %% The idea is that "dev mode" can ensure that after it gets enabled no REAL block
 %% can get inserted via the mining conductor. "dev mode" should avoid mutating the real
@@ -165,11 +162,11 @@
 %% Customized state transitions - in case of keyblocks the callbacks are called with pruned state trees
 %% Those callbacks run in a DB context - to abort the execution please call aec_block_insertion:abort_state_transition(Reason)
 %% Performs initial state transformation when the previous block used a different consensus algorithm
--callback state_pre_transform_key_node_consensus_switch(#node{}, aec_trees:trees()) -> aec_trees:trees() | no_return().
+-callback state_pre_transform_key_node_consensus_switch(#node{}, #node{}, #node{}, aec_trees:trees()) -> aec_trees:trees() | no_return().
 %% State pre transformations on every keyblock
--callback state_pre_transform_key_node(#node{}, aec_trees:trees()) -> aec_trees:trees() | no_return().
+-callback state_pre_transform_key_node(#node{}, #node{}, #node{}, aec_trees:trees()) -> aec_trees:trees() | no_return().
 %% State pre transformations on every microblock
--callback state_pre_transform_micro_node(#node{}, aec_trees:trees()) -> aec_trees:trees() | no_return().
+-callback state_pre_transform_micro_node(#node{}, #node{}, #node{}, aec_trees:trees()) -> aec_trees:trees() | no_return().
 
 %% Block rewards :)
 -callback state_grant_reward(aec_keys:pubkey(), aec_trees:trees(), non_neg_integer()) -> aec_trees:trees() | no_return().
@@ -182,6 +179,20 @@
 -callback genesis_transform_trees(aec_trees:trees(), consensus_config()) -> aec_trees:trees().
 -callback genesis_raw_header() -> aec_headers:key_header().
 -callback genesis_difficulty() -> key_difficulty().
+
+%% -------------------------------------------------------------------
+%% Keyblock creation
+%% -------------------------------------------------------------------
+%% Creates a fake key node used for creating new keyblocks - can be blocking
+%% For POW it's a simple operation, for HC a commitment transaction might be submitted to another blockchain
+%%        new_unmined_key_node(Prev,    PrevKey, Height,    Miner,             Beneficiary,       Protocol,  InfoField,          TreesIn)
+-callback new_unmined_key_node(#node{}, #node{}, integer(), aec_keys:pubkey(), aec_keys:pubkey(), integer(), aec_blocks:info(), aec_trees:trees()) -> #node{}.
+
+%% After creating a new unmined keynode and calculating the new state adjusts the block based on recent keyheaders
+%% For POW it adjusts the target based on recent blocks, for HC it's a nop operation as the work is done in new_unmined_key_node
+-callback keyblocks_for_unmined_keyblock_adjust() -> non_neg_integer().
+-callback adjust_unmined_keyblock(aec_blocks:block(), list(aec_headers:header())) ->
+    {ok, aec_blocks:block()} | {error, term()}.
 
 %% -------------------------------------------------------------------
 %% Block sealing
@@ -351,3 +362,10 @@ get_genesis_hash() ->
         Consensus ->
             Consensus
     end.
+
+%% Brings down the entire node!
+%% Tries to inform the user what went wrong using any means
+config_assertion_failed(Msg, Format, Args) ->
+    (catch io:format(user, Msg ++ Format, Args)),
+    (catch lager:error(Msg ++ Format, Args)),
+    init:stop(Msg).

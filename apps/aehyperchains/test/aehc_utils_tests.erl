@@ -12,14 +12,7 @@
 -include_lib("eunit/include/eunit.hrl").
 
 is_hc_enabled_test_() ->
-    { foreach,
-      fun() ->
-          ?assertEqual(false, aehc_utils:hc_enabled()),
-          ok
-      end,
-      fun(_) ->
-          ?assertEqual(false, aehc_utils:hc_enabled())
-      end,
+    aehc_test_utils:with_mocked_fork_settings(
       [ aec_test_utils:eunit_with_consensus(aehc_test_utils:hc_from_genesis(),
           [{ "Test consensus eunit helper - HC consensus"
            , fun() ->
@@ -50,5 +43,4 @@ is_hc_enabled_test_() ->
                   ?assertEqual(true, aehc_utils:hc_enabled())
              end
            }])
-     ]
-    }.
+     ]).
