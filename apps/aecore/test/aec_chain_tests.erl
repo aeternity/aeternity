@@ -714,11 +714,15 @@ fork_common_block(EasyChain, TopHashEasy, HardChain, TopHashHard) ->
     ok.
 
 fork_test_chain_ends_and_migration(ExpectedTops, ExpectedBlocks) ->
-    F = fun() -> ?assertEqual( lists:usort(ExpectedTops)
-                             , lists:usort(aec_db:find_chain_end_hashes())),
-                 ?assertEqual( [ aec_blocks:to_header(Block) || Block <- ExpectedBlocks]
-                             , [ header_by_height(H) ||
-                                 H <- lists:seq(0, aec_blocks:height(lists:last(ExpectedBlocks)))])
+    ExpectedTopsSorted = lists:usort(ExpectedTops),
+    F =
+        fun() ->
+            EndHashesSorted = lists:usort(aec_db:find_chain_end_hashes()),
+            ?assertEqual(ExpectedTopsSorted, EndHashesSorted),
+            ExpectedHeaders = [aec_blocks:to_header(Block) || Block <- ExpectedBlocks],
+            HeadersByHeight = [header_by_height(H) ||
+                H <- lists:seq(0, aec_blocks:height(lists:last(ExpectedBlocks)))],
+            ?assertEqual(ExpectedHeaders, HeadersByHeight)
         end,
     F(),
     MaxHeight = lists:max([aec_headers:height(aec_db:get_header(H)) || H <- ExpectedTops]),
@@ -1864,11 +1868,10 @@ teardown_meck_and_keys(TmpDir) ->
     meck:unload(aec_events),
     aec_test_utils:aec_keys_cleanup(TmpDir).
 
+write_blocks_to_chain([]) -> ok;
 write_blocks_to_chain([H|T]) ->
     ok = insert_block(H),
-    write_blocks_to_chain(T);
-write_blocks_to_chain([]) ->
-    ok.
+    write_blocks_to_chain(T).
 
 gen_blocks_only_chain(Data) ->
     gen_blocks_only_chain(aec_test_utils:genesis_accounts(), Data).
