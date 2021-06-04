@@ -101,9 +101,6 @@
 
 -export_type([privkey/0, pubkey/0]).
 
--include_lib("aeutils/include/aeu_stacktrace.hrl").
-
-
 %%%===================================================================
 %%% API
 %%%===================================================================
@@ -344,7 +341,7 @@ enter_worker(Parent, PeerPwd, KeysDir) ->
         {ok, State} ->
             parent_state_update(pubkeys, State),
             worker_loop(State)
-    ?_catch_(Type, What, StackTrace)
+    catch Type:What:StackTrace ->
         lager:debug("Error starting worker: ~p", [{Type, What, StackTrace}]),
         lager:error("aec_keys worker_failed"),
         error(init_failed)

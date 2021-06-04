@@ -24,7 +24,6 @@
 -export_type([handler/0]).
 
 -define(ERROR_TO_CLIENT(Err), {?MODULE, send_to_client, {error, Err}}).
--include_lib("aeutils/include/aeu_stacktrace.hrl").
 -include_lib("aechannel/src/aechannel.hrl").     % ?CATCH_LOG/1 macro
 
 %% ===========================================================================

@@ -119,7 +119,6 @@
         ]).
 
 -include_lib("aecontract/include/hard_forks.hrl").
--include_lib("aeutils/include/aeu_stacktrace.hrl").
 -include("aesc_codec.hrl").
 -include("aechannel.hrl").
 -include("aesc_fsm.hrl").

@@ -67,7 +67,6 @@
 
 -include("aec_tx_pool.hrl").
 -include_lib("aecontract/include/hard_forks.hrl").
--include_lib("aeutils/include/aeu_stacktrace.hrl").
 -include("aec_plugin.hrl").
 
 -pluggable[instant_tx_confirm_hook/1, instant_tx_confirm_enabled/0].
@@ -584,7 +583,7 @@ do_update_sync_top(NewSyncTop, GCHeight, Parent, Dbs) ->
             aec_tx_pool_gc:adjust_ttl(GCHeight - NewGCHeight, Dbs);
         false ->
             ok
-    ?_catch_(error, E, StackTrace)
+    catch error:E:StackTrace ->
         lager:error(
           "do_update_sync_top(~p,~p,~p), LocalTop=~p, NewGCHeight=~p ERROR: ~p/~p",
           [NewSyncTop, GCHeight, Parent, LocalTop, NewGCHeight, E, StackTrace])

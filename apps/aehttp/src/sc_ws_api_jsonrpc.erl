@@ -66,7 +66,6 @@
                                 <<"channels.force_progress_sign">>-> force_progress_tx
                             end).
 
--include_lib("aeutils/include/aeu_stacktrace.hrl").
 -include_lib("aechannel/src/aesc_codec.hrl").
 
 %%%==================================================================
@@ -290,7 +289,7 @@ process_incoming(Msg, FsmPid) ->
                         {error, Err}   -> {error, Err};
                         no_reply       -> no_reply;
                         {reply, Reply} -> Reply
-                    ?_catch_(error, Reason, StackTrace)
+                    catch error:Reason:StackTrace ->
                         case Reason of
                             {validation_error, not_a_number} -> {error, not_a_number};
                             _ ->

@@ -15,7 +15,6 @@
 -include_lib("eunit/include/eunit.hrl").
 -include("../../aecontract/include/aecontract.hrl").
 -include("../../aecontract/include/hard_forks.hrl").
--include_lib("aeutils/include/aeu_stacktrace.hrl").
 
 -define(opt_format(___Opts__, ___Fmt___, ___Args___),
         case maps:get(trace, ___Opts__, false) of
@@ -25,7 +24,7 @@
 
 -define(wrap_run(___Expr___),
         try ___Expr___
-        ?_catch_(___X___,___Y___, ___ST___)
+        catch ___X___:___Y___:___ST___ ->
             error({___X___, ___Y___, ___ST___})
         end).
 

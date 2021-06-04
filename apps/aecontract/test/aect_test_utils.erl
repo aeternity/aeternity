@@ -57,7 +57,6 @@
         ]).
 
 -include_lib("common_test/include/ct.hrl").
--include_lib("aeutils/include/aeu_stacktrace.hrl").
 -include_lib("aecontract/include/aecontract.hrl").
 -include_lib("aecontract/include/hard_forks.hrl").
 -include_lib("aecontract/test/include/aect_sophia_vsn.hrl").
@@ -503,7 +502,7 @@ slow_encode_call_data_(Vsn, Code, Fun, Args0, _Backend) ->
     try
         [_, CalldataStr] = string:lexemes(Output, "\n"),
         aeser_api_encoder:safe_decode(contract_bytearray, list_to_binary(CalldataStr))
-    ?_catch_(_, Err, StackTrace)
+    catch _:Err:StackTrace ->
         {error, {<<"Compiler error">>, Err, StackTrace}}
     after
         cleanup_tempfiles()
@@ -568,7 +567,7 @@ generate_json_aci_(Vsn, Backend, Code) when Vsn == ?SOPHIA_IRIS_FATE ->
     try
         {ok, JAci} = aeso_aci:contract_interface(json, to_str(Code), [{backend, Backend}]),
         aeaci_aci:from_string(jsx:encode(JAci), #{backend => Backend})
-    ?_catch_(Err, Reason, Stack)
+    catch Err:Reason:Stack ->
         ct:log("Aci generation failed ~p ~p ~p\n", [Err, Reason, Stack]),
         {error, <<"bad argument">>}
     end;
@@ -587,7 +586,7 @@ generate_json_aci_(Vsn, Backend, Code) ->
                     list_to_binary(Output)
             end,
         aeaci_aci:from_string(Output1, #{backend => Backend})
-    ?_catch_(Err, Reason, Stack)
+    catch Err:Reason:Stack ->
         ct:log("Aci generation failed ~p ~p ~p\n", [Err, Reason, Stack]),
         {error, <<"bad argument">>}
     after
