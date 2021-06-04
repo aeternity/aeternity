@@ -1775,13 +1775,9 @@ contract_call_fail(Call0, Fee, S) ->
     {Account, S3} = get_account(Payer, S2),
     account_spend(Account, UsedAmount, S3).
 
-<<<<<<< HEAD
-run_contract(CallerId, Contract, GasLimit, Fee, GasPrice, CallData, AllowInit,
-=======
--spec run_contract(id(), contract(), number(), non_neg_integer(), binary(),
+-spec run_contract(id(), contract(), number(), fee(), non_neg_integer(), binary(),
     false, binary(), amount(), list(), nonce(), state()) -> {call(), state()}.
-run_contract(CallerId, Contract, GasLimit, GasPrice, CallData, AllowInit,
->>>>>>> 46bce978... Final fixes, dialyzer coverage
+run_contract(CallerId, Contract, GasLimit, Fee, GasPrice, CallData, AllowInit,
              Origin, Amount, CallStack, Nonce, S) ->
     Code =
         case aect_contracts:code(Contract) of
@@ -1795,13 +1791,9 @@ run_contract(CallerId, Contract, GasLimit, GasPrice, CallData, AllowInit,
     run_contract(CallerId, Code, Contract, GasLimit, Fee,
                  GasPrice, CallData, AllowInit, Origin, Amount, CallStack, Nonce, S).
 
-<<<<<<< HEAD
-run_contract(CallerId, Code, Contract, GasLimit, Fee, GasPrice, CallData, AllowInit,
-=======
--spec run_contract(id(), code() | binary(), contract(), number(), non_neg_integer(), binary(),
+-spec run_contract(id(), code() | binary(), contract(), number(), fee(), non_neg_integer(), binary(),
     boolean(), binary(), amount(), list(), nonce(), state()) -> {call(), state()}.
-run_contract(CallerId, Code, Contract, GasLimit, GasPrice, CallData, AllowInit,
->>>>>>> 46bce978... Final fixes, dialyzer coverage
+run_contract(CallerId, Code, Contract, GasLimit, Fee, GasPrice, CallData, AllowInit,
              Origin, Amount, CallStack, Nonce, S) ->
     %% We need to push all to the trees before running a contract.
     S1 = aeprimop_state:cache_write_through(S),
