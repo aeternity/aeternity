@@ -115,7 +115,6 @@
 -include_lib("common_test/include/ct.hrl").
 -include_lib("aecontract/include/hard_forks.hrl").
 -include_lib("aecontract/include/aecontract.hrl").
--include_lib("aeutils/include/aeu_stacktrace.hrl").
 -include("../../aecontract/test/include/aect_sophia_vsn.hrl").
 
 -define(NODE, dev1).
@@ -4623,7 +4622,7 @@ with_trace(F, Config, File, When) ->
     TTBRes = aesc_ttb:on_nodes([node()|get_nodes()], File),
     ct:log("Trace set up: ~p", [TTBRes]),
     try F(Config)
-    ?_catch_(E, R, Stack)
+    catch E:R:Stack ->
         case E of
             error ->
                 ct:pal("Error ~p~nStack = ~p", [R, Stack]),

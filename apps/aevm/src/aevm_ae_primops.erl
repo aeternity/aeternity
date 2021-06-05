@@ -16,7 +16,6 @@
 
 -include_lib("aebytecode/include/aeb_opcodes.hrl").
 -include("../../aecontract/include/aecontract.hrl").
--include_lib("aeutils/include/aeu_stacktrace.hrl").
 -include("aevm_ae_primops.hrl").
 
 -record(chain, {api, state, abi_version, vm_version}).
@@ -29,7 +28,8 @@
             error:undef -> ok
         end).
 -else.
--define(TEST_LOG(Format, Data), ok).
+%% call a (traceable) dummy function mainly to avoid compiler warnings
+-define(TEST_LOG(Format, Data), tr_ttb:event({Format,Data})).
 -endif.
 
 -spec call(Gas::non_neg_integer(), Value :: non_neg_integer(), Data::binary(), StateIn) ->
@@ -98,9 +98,9 @@ call_(Gas, Value, Data, StateIn) ->
             Ok;
         {error, _} = OuterErr ->
             OuterErr
-    ?_catch_(_T, _Err, _ST)
+    catch Type:CaughtErr:ST ->
         ?TEST_LOG("Primop illegal call ~p:~p:~p~n~p:~p(~p, ~p, State)",
-                  [_T, _Err,_ST, ?MODULE, ?FUNCTION_NAME, Value, Data]),
+                  [Type, CaughtErr,ST, ?MODULE, ?FUNCTION_NAME, Value, Data]),
         %% TODO: Better error for illegal call.
         {error, illegal_primop_call}
     end.
@@ -469,7 +469,7 @@ oracle_call_extend(_Value, Data, #chain{api = API, state = State} = Chain) ->
                             end,
                     StateGas = state_gas(oracle_extend_tx, DeltaTTL),
                     ?TEST_LOG("~s computed gas ~p - state gas: ~p (relative TTL: ~p)",
-                                [?FUNCTION_NAME, StateGas, StateGas, DeltaTTL]),
+                              [?FUNCTION_NAME, StateGas, StateGas, DeltaTTL]),
                     {ok, StateGas, fun() -> cast_chain(Callback, Chain) end}
             end
     end.

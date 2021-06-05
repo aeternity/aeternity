@@ -55,8 +55,6 @@
 -export([get_txs_since_tx/2,
          get_txs_since_block/2]).
 
--include_lib("aeutils/include/aeu_stacktrace.hrl").
-
 -define(SERVER, ?MODULE).
 
 -ifdef(TEST).
@@ -620,7 +618,7 @@ check_status(#{ prev_hash  := PHash } = I, #st{ last_top = PHash } = St) ->
     check_status_(I, St);
 check_status(#{} = I, #st{} = St) ->
     try check_status_on_fork_switch(I, St)
-    ?_catch_(error, E, StackTrace)
+    catch error:E:StackTrace ->
          lager:error("CAUGHT ~p / ~p", [E, StackTrace]),
          lager:error("Smaller trace ~p", [compact_trace(StackTrace)]),
          error(E)
@@ -715,7 +713,8 @@ check_requests(Reqs, St, C, []) ->
             Reqs1 = reset_if_fork_switch(Reqs, C),
             check_requests_(Reqs1, St, C)
         end
-    ?_catch_(EType, E, EType==error; EType==exit, StackTrace)
+    catch EType:E:StackTrace when EType==error
+                                ; EType==exit ->
         lager:error("CAUGHT ~p:~p / ~p", [EType, E, StackTrace]),
         lager:error("Smaller trace ~p", [compact_trace(StackTrace)]),
          error(E)
@@ -808,7 +807,8 @@ do_dirty(F) ->
       async_dirty,
       fun() ->
               try F()
-              ?_catch_(EType, E, EType==error; EType==exit, StackTrace)
+              catch EType:E:StackTrace when EType==error
+                                          ; EType==exit ->
                   lager:error("CAUGHT ~p / ~p", [E, StackTrace]),
                   error(E)
               end
@@ -1385,7 +1385,8 @@ get_and_cache(F, Key, C) when is_function(F, 1), is_map(C) ->
 
 log_tx(TxInfo, #st{tx_log = TxLog} = St) ->
     try St#st{tx_log = log_tx_(TxInfo, TxLog)}
-    ?_catch_(EType, E, EType==error; EType==exit, StackTrace)
+    catch EType:E:StackTrace when EType==error
+                                ; EType==exit ->
         lager:error("CAUGHT ~p / ~p", [E, StackTrace]),
         error(E)
     end.

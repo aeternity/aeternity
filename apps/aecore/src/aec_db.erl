@@ -136,7 +136,6 @@
 
 -include("blocks.hrl").
 -include("aec_db.hrl").
--include_lib("aeutils/include/aeu_stacktrace.hrl").
 
 %% - transactions
 %% - headers
@@ -1120,7 +1119,7 @@ check_db() ->
         ok = application:ensure_started(mnesia),
         ok = assert_schema_node_name(Mode),
         initialize_db(Mode, Storage)
-    ?_catch_(error, Reason, StackTrace)
+    catch error:Reason:StackTrace ->
         error_logger:error_msg("CAUGHT error:~p / ~p~n", [Reason, StackTrace]),
         erlang:error(Reason)
     end.

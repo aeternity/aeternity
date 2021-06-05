@@ -683,7 +683,7 @@ handle_request_('ProtectedDryRunTxs', #{ 'DryRunInput' := Req }, _Context) ->
                                       {ok, DTx} ->
                                           Tx = aetx:deserialize_from_binary(DTx),
                                           aetx:gas_limit(Tx, Height, Protocol);
-                                      {error, Err} -> 0 %% this is handled later on
+                                      {error, _Err} -> 0 %% this is handled later on
                                   end;
                                  (#{<<"call_req">> := CallReq}) ->
                                     maps:get(<<"gas">>, CallReq, ?DEFAULT_CALL_REQ_GAS_LIMIT)

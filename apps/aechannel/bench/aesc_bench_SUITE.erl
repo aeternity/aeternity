@@ -33,7 +33,6 @@
 -include("../../aecontract/include/aecontract.hrl").
 -include("../../aecontract/test/include/aect_sophia_vsn.hrl").
 -include_lib("aecontract/include/hard_forks.hrl").
--include_lib("aeutils/include/aeu_stacktrace.hrl").
 
 -define(TIMEOUT, 10000).
 -define(LONG_TIMEOUT, 60000).
@@ -143,7 +142,7 @@ init_per_group_(Config) ->
                         , {port, ?PORT}
                         ], Config)
         end
-    ?_catch_(error, Reason, Trace)
+    catch error:Reason:Trace ->
         catch stop_node(dev1, Config),
         error(Reason, Trace)
     end.
@@ -657,7 +656,7 @@ create_channel_from_spec(I, R, Spec, Port, UseAny, Debug, Cfg) ->
     ?LOG(Debug, "channel paired: ~p", [Info]),
     ?LOG(Debug, "FSMs, I = ~p, R = ~p", [FsmI, FsmR]),
     {I2, R2} = try await_create_tx_i(I1, R1, Debug, Cfg)
-               ?_catch_(error, Err, ST)
+               catch error:Err:ST ->
                    ?LOG("Caught Err = ~p", [Err]),
                    ?PEEK_MSGQ(Debug),
                    error(Err, ST)
@@ -1338,7 +1337,7 @@ with_trace(F, Config0, File, When) ->
     Config = [{trace_destination, File}|Config0],
     trace_checkpoint(?TR_START, Config),
     try F(Config)
-    ?_catch_(Error, Reason, Stack)
+    catch Error:Reason:Stack ->
         case {Error, Reason} of
             {error, R} ->
                 ct:pal("Error ~p~nStack = ~p", [R, Stack]),

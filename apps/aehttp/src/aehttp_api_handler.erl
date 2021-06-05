@@ -21,8 +21,6 @@
     endpoints :: module()
 }).
 
--include_lib("aeutils/include/aeu_stacktrace.hrl").
-
 -define(DEFAULT_HTTP_CACHE_ENABLED, false).
 
 init(Req, {SpecVsn, OperationId, AllowedMethod, LogicHandler}) ->
@@ -98,7 +96,7 @@ handle_request_json(Req0, State = #state{
             Body = jsx:encode(to_error(Reason)),
             Req = cowboy_req:reply(400, #{}, Body, Req1),
             {stop, Req, State}
-    ?_catch_(error, Error, StackTrace)
+    catch error:Error:StackTrace ->
         lager:warning("Unexpected validate result: ~p / ~p", [Error, StackTrace]),
         Body = jsx:encode(to_error({validation_error, <<>>, <<>>})),
         {stop, cowboy_req:reply(400, #{}, Body, Req0), State}

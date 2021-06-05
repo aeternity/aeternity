@@ -8,7 +8,6 @@
 -export([application_test/1]).
 
 -include_lib("common_test/include/ct.hrl").
--include_lib("aeutils/include/aeu_stacktrace.hrl").
 -compile({parse_transform, ct_eunit_xform}).
 
 -define(STARTED_APPS_WHITELIST,
@@ -143,7 +142,7 @@ application_test(Config) ->
 
 prepare_app_start(App, Config) ->
     try prepare_app_start_(App, Config)
-    ?_catch_(error, Reason, StackTrace)
+    catch error:Reason:StackTrace ->
         error({Reason, StackTrace})
     end.
 

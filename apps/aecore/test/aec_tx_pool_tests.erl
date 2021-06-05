@@ -7,7 +7,6 @@
 
 -include_lib("eunit/include/eunit.hrl").
 -include("../../aecontract/include/aecontract.hrl").
--include_lib("aeutils/include/aeu_stacktrace.hrl").
 -include("../../aecontract/include/hard_forks.hrl").
 
 -define(TAB, aec_tx_pool_test_keys).
@@ -951,7 +950,7 @@ sign(PubKey, Tx) ->
         {ok, Signers} = aetx:signers(Tx, Trees),
         true = lists:member(PubKey, Signers),
         {ok, aec_test_utils:sign_tx(Tx, PrivKey)}
-    ?_catch_(error, Err, StackTrace)
+    catch error:Err:StackTrace ->
         erlang:error({Err, StackTrace})
     end.
 

@@ -115,7 +115,6 @@
 -include("../../aecontract/include/aecontract.hrl").
 -include("../../aecontract/test/include/aect_sophia_vsn.hrl").
 -include_lib("aecontract/include/hard_forks.hrl").
--include_lib("aeutils/include/aeu_stacktrace.hrl").
 
 -define(TIMEOUT, 500).
 -define(SLIGHTLY_LONGER_TIMEOUT, 2000).
@@ -1376,7 +1375,7 @@ check_fsm_log(Log, Participant, Cfg) ->
 
 check_log(Expected, Log, Participant) ->
     try check_log_(Expected, Log, Participant)
-    ?_catch_(error, Reason, _Trace)
+    catch error:Reason ->
              ?LOG("Expected = ~p", [Expected]),
              ?LOG("Actual = ~p", [Log]),
              error(Reason)
@@ -2343,7 +2342,7 @@ retry(0, _, _, E, ST) ->
     error(E, ST);
 retry(N, T, F, _, _) when N > 0 ->
     try F()
-    ?_catch_(error, E, ST)
+    catch error:E:ST ->
         timer:sleep(T),
         retry(N-1, T, F, E, ST)
     end.
@@ -2493,7 +2492,7 @@ create_channel_from_spec(I, R, Spec0, Port, UseAny, Debug, Cfg) ->
     ?LOG(Debug, "channel paired: ~p", [Info]),
     ?LOG(Debug, "FSMs, I = ~p, R = ~p", [FsmI, FsmR]),
     {I2, R2} = try await_create_tx_i(I1, R1, Debug, Cfg)
-               ?_catch_(error, Err, ST)
+               catch error:Err:ST ->
                    ?LOG("Caught Err = ~p", [Err]),
                    ?PEEK_MSGQ(Debug),
                    error(Err, ST)
@@ -3388,7 +3387,7 @@ with_trace(F, Config0, File, When) ->
     Config = [{trace_destination, File}|Config0],
     trace_checkpoint(?TR_START, Config),
     try F(Config)
-    ?_catch_(Error, Reason, Stack)
+    catch Error:Reason:Stack ->
         case {Error, Reason} of
             {error, R} ->
                 ct:pal("Error ~p~nStack = ~p", [R, Stack]),

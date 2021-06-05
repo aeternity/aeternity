@@ -21,8 +21,6 @@
 -export([event_to_payload/4]).
 
 -include_lib("trace_runner/include/trace_runner.hrl").
--include_lib("aeutils/include/aeu_stacktrace.hrl").
-
 
 %%%===================================================================
 %%% Behaviour definition
@@ -117,7 +115,7 @@ try_seq(Seq, #{msg := Msg} = Data0) ->
         {ok, _Data}          -> no_reply;
         {reply, Resp}        -> {reply, Resp};
         stop                 -> stop
-    ?_catch_(E, R, StackTrace)
+    catch E:R:StackTrace ->
         case {E, R} of
             {throw, {decode_error, Reason}} ->
                 lager:debug("CAUGHT THROW {decode_error, ~p} (Msg = ~p)",
