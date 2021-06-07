@@ -103,10 +103,6 @@ pre_iris_map_ordering() ->
             MapOrdering
     end.
 
--spec hc_staking_contract_file() -> string().
-hc_staking_contract_file() ->
-    filename:join(aeu_env:data_dir(aehyperchains), "StakingContract.json").
-
 -spec preset_accounts(accounts | extra_accounts, aec_hard_forks:protocol_vsn(), atom()) -> list().
 preset_accounts(Type, Release, ErrorMsg) ->
     case read_preset(Type, Release) of
