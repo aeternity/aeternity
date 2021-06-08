@@ -634,8 +634,6 @@ write_top_block_node(Hash, Hdr) when is_binary(Hash) ->
         }
     },
     ?t(mnesia:write(State)).
-%%?t(mnesia:write(#aec_chain_state{key = top_block_node, value = #{ hash => Hash
-%%    , header => Hdr} })).
 
 write_finalized_height(0) ->
     lager:debug("clearing finalized height", []),
