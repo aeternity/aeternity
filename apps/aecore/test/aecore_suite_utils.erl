@@ -7,7 +7,7 @@
 
 -export([top_dir/1,
          make_shortcut/1,
-         epoch_config/2,
+         node_config/2,
          create_config/4,
          make_multi/2,
          node_shortcut/2,
@@ -172,10 +172,10 @@ init_per_suite(NodesList, CustomNodeCfg, NodeCfgOpts, CTConfig) ->
     make_multi(CTConfig1, NodesList),
     CTConfig1.
 
-epoch_config(Node, CTConfig) ->
-    EpochConfig = epoch_config_dir(Node, CTConfig),
-    [OrigCfg] = jsx:consult(EpochConfig, [return_maps]),
-    backup_config(EpochConfig),
+node_config(Node, CTConfig) ->
+    NodeConfig = node_config_dir(Node, CTConfig),
+    [OrigCfg] = jsx:consult(NodeConfig, [return_maps]),
+    backup_config(NodeConfig),
     OrigCfg.
 
 create_configs(NodesList, CTConfig, CustomConfig, Options) ->
@@ -188,8 +188,8 @@ create_config(Node, CTConfig, CustomConfig, Options) ->
         Backend ->
             #{<<"chain">> => #{<<"db_backend">> => binary:list_to_bin(Backend)}}
     end,
-    EpochCfgPath = epoch_config_dir(Node, CTConfig),
-    ok = filelib:ensure_dir(EpochCfgPath),
+    NodeCfgPath = node_config_dir(Node, CTConfig),
+    ok = filelib:ensure_dir(NodeCfgPath),
     MergedCfg = maps_merge(default_config(Node, CTConfig), CustomConfig),
     MergedCfg1 = aec_metrics_test_utils:maybe_set_statsd_port_in_user_config(Node, MergedCfg, CTConfig),
     MergedCfg2 = maps_merge(MergedCfg1, DbBackendConfig),
@@ -213,7 +213,7 @@ create_config(Node, CTConfig, CustomConfig, Options) ->
                  end,
     Config = config_apply_options(Node, MergedCfg3, Options),
     write_keys(Node, Config),
-    write_config(EpochCfgPath, Config).
+    write_config(NodeCfgPath, Config).
 
 maps_merge(V1, V2) when not is_map(V1); not is_map(V2) ->
     V2;
@@ -232,8 +232,8 @@ make_multi(Config, NodesList, RefRebarProfile) ->
     ct:log("RefRebarProfile = ~p", [RefRebarProfile]),
     Top = ?config(top_dir, Config),
     ct:log("Top = ~p", [Top]),
-    Epoch = filename:join(Top, "_build/" ++ RefRebarProfile ++ "/rel/aeternity"),
-    [setup_node(N, Top, Epoch, Config) || N <- NodesList].
+    Root = filename:join(Top, "_build/" ++ RefRebarProfile ++ "/rel/aeternity"),
+    [setup_node(N, Top, Root, Config) || N <- NodesList].
 
 make_shortcut(Config) ->
     PrivDir  = priv_dir(Config),
@@ -845,22 +845,22 @@ await_aehttp(N) ->
     unsubscribe(N, app_started),
     ok.
 
-setup_node(N, Top, Epoch, Config) ->
+setup_node(N, Top, Root, Config) ->
     ct:log("setup_node(~p,Config)", [N]),
     DDir = node_shortcut(N, Config),
     filelib:ensure_dir(filename:join(DDir, "foo")),
-    cp_dir(filename:join(Epoch, "releases"), DDir ++ "/"),
-    cp_dir(filename:join(Epoch, "bin"), DDir ++ "/"),
-    symlink(filename:join(Epoch, "lib"), filename:join(DDir, "lib")),
-    symlink(filename:join(Epoch, "patches"), filename:join(DDir, "patches"), true),
-    {ok, VerContents} = file:read_file(filename:join(Epoch, "VERSION")),
+    cp_dir(filename:join(Root, "releases"), DDir ++ "/"),
+    cp_dir(filename:join(Root, "bin"), DDir ++ "/"),
+    symlink(filename:join(Root, "lib"), filename:join(DDir, "lib")),
+    symlink(filename:join(Root, "patches"), filename:join(DDir, "patches"), true),
+    {ok, VerContents} = file:read_file(filename:join(Root, "VERSION")),
     [VerB |_ ] = binary:split(VerContents, [<<"\n">>, <<"\r">>], [global]),
     Version = binary_to_list(VerB),
     %%
     CfgD = filename:join([Top, "config/", N]),
     RelD = filename:dirname(filename:join([DDir, "releases", Version, "aeternity.rel"])),
     [cp_file(filename:join(CfgD, F), filename:join(RelD, F)) || F <- ["vm.args", "sys.config"]],
-    [cp_file(filename:join(Epoch, F), filename:join(DDir, F)) || F <- ["VERSION", "REVISION"]],
+    [cp_file(filename:join(Root, F), filename:join(DDir, F)) || F <- ["VERSION", "REVISION"]],
     delete_file(filename:join(RelD, "vm.args.orig")),
     delete_file(filename:join(RelD, "sys.config.orig")),
     TestsDir = filename:dirname(code:which(?MODULE)),
@@ -868,7 +868,7 @@ setup_node(N, Top, Epoch, Config) ->
     ConfigFilename = proplists:get_value(config_name, Config, "default") ++ ".config",
     cp_file(filename:join(TestD, ConfigFilename),
             filename:join(DDir , ConfigFilename)),
-    aec_test_utils:copy_forks_dir(Epoch, DDir).
+    aec_test_utils:copy_forks_dir(Root, DDir).
 
 
 cp_dir(From, To) ->
@@ -882,6 +882,7 @@ cp_dir(From, To) ->
     cp_dir(file:list_dir(From), From, ToDir).
 
 cp_dir({ok, Fs}, From, To) ->
+    ct:log("cp_dir({ok, ~p}, ~p, ~p)", [Fs, From, To]),
     Res =
         lists:foldl(
             fun(F, Acc) ->
@@ -894,7 +895,7 @@ cp_dir({ok, Fs}, From, To) ->
                     false ->
                         Tgt = filename:join(To, F),
                         ok = filelib:ensure_dir(Tgt),
-                        {ok,_} = file:copy(FullF, Tgt),
+                        ok = file_copy(FullF, Tgt),
                         ok = match_mode(FullF, Tgt),
                         [FullF|Acc]
                 end
@@ -904,6 +905,15 @@ cp_dir({ok, Fs}, From, To) ->
 cp_dir({error, _} = Error, From, To) ->
     ct:log("cp_dir(~p, ~p) -> ~p", [From, To, Error]),
     Error.
+
+file_copy(From, To) ->
+    case file:copy(From, To) of
+        {ok, _} ->
+            ok;
+        Other ->
+            ct:log("ERROR in file:copy(~p, ~p):~n   ~p", [From, To, Other]),
+            error(Other, [From, To])
+    end.
 
 match_mode(A, B) ->
     case {file:read_link_info(A), file:read_file_info(B)} of
@@ -1079,7 +1089,7 @@ default_config(N, Config) ->
       <<"include_default_peers">> => false
      }.
 
-epoch_config_dir(N, Config) ->
+node_config_dir(N, Config) ->
     filename:join(data_dir(N, Config), "aeternity.json").
 
 %% dirs
@@ -1118,12 +1128,13 @@ pubkey(N) ->
     {N, {_, PubKey}} = lists:keyfind(N, 1, peer_keys()),
     PubKey.
 
-backup_config(EpochConfig) ->
-    Dir = filename:dirname(EpochConfig),
-    Ext = filename:extension(EpochConfig),
+backup_config(NodeConfig) ->
+    Dir = filename:dirname(NodeConfig),
+    Ext = filename:extension(NodeConfig),
+    Base = filename:basename(NodeConfig, Ext),
     {A,B,C} = os:timestamp(),
     BackupBase = lists:flatten(
-                   ["epoch-",
+                   [Base, "-",
                     integer_to_list(A),
                     "-",
                     integer_to_list(B),
@@ -1131,8 +1142,8 @@ backup_config(EpochConfig) ->
                     integer_to_list(C),
                     Ext]),
     Backup = filename:join(Dir, BackupBase),
-    ct:log("Back up ~p to ~p", [EpochConfig, Backup]),
-    cp_file(EpochConfig, Backup).
+    ct:log("Back up ~p to ~p", [NodeConfig, Backup]),
+    cp_file(NodeConfig, Backup).
 
 
 %% ============================================================

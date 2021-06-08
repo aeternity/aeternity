@@ -272,9 +272,9 @@ init_per_group(config_overwrites_defaults, Config) ->
     Dev1 = dev1,
     aecore_suite_utils:stop_node(Dev1, Config),
     Config1 = config({devs, [Dev1]}, Config),
-    EpochCfg0 = aecore_suite_utils:epoch_config(Dev1, Config),
-    EpochCfg = EpochCfg0#{<<"include_default_peers">> => true},
-    aecore_suite_utils:create_config(Dev1, Config1, EpochCfg,
+    NodeCfg0 = aecore_suite_utils:node_config(Dev1, Config),
+    NodeCfg = NodeCfg0#{<<"include_default_peers">> => true},
+    aecore_suite_utils:create_config(Dev1, Config1, NodeCfg,
                                             [no_peers
                                             ]),
     Config1;
@@ -305,8 +305,8 @@ init_per_group(Group, Config) when Group =:= one_blocked;
     {ok, _} = application:ensure_all_started(exometer_core),
     ok = aec_metrics_test_utils:start_statsd_loggers(aec_metrics_test_utils:port_map(Config1)),
     [Dev1, Dev2 | _] = proplists:get_value(devs, Config1),
-    EpochCfg = aecore_suite_utils:epoch_config(Dev1, Config),
-    aecore_suite_utils:create_config(Dev1, Config, EpochCfg,
+    NodeCfg = aecore_suite_utils:node_config(Dev1, Config),
+    aecore_suite_utils:create_config(Dev1, Config, NodeCfg,
                                             [{block_peers, [ Dev2 ]},
                                              {add_peers, true}
                                             ]),
@@ -332,9 +332,9 @@ end_per_group(Group, Config) when Group =:= one_blocked;
     %% reset dev1 config to no longer block any peers.
     Config1 = config({devs, [dev1]}, Config),
     [Dev1 | _] = proplists:get_value(devs, Config1),
-    EpochCfg = aecore_suite_utils:epoch_config(Dev1, Config),
+    NodeCfg = aecore_suite_utils:node_config(Dev1, Config),
     aecore_suite_utils:create_config(Dev1, Config,
-                                     maps:without([<<"blocked_peers">>], EpochCfg),
+                                     maps:without([<<"blocked_peers">>], NodeCfg),
                                      [{add_peers, true}]),
     ok;
 end_per_group(mempool_sync, Config) ->
@@ -367,9 +367,9 @@ end_per_group(Benchmark, _Config) when
     ok;
 end_per_group(config_overwrites_defaults, Config) ->
     Dev1 = dev1,
-    EpochCfg0 = aecore_suite_utils:epoch_config(Dev1, Config),
-    EpochCfg = EpochCfg0#{<<"include_default_peers">> => false},
-    aecore_suite_utils:create_config(Dev1, Config, EpochCfg,
+    NodeCfg0 = aecore_suite_utils:node_config(Dev1, Config),
+    NodeCfg = NodeCfg0#{<<"include_default_peers">> => false},
+    aecore_suite_utils:create_config(Dev1, Config, NodeCfg,
                                             [{add_peers, true}]),
     ok;
 end_per_group(persistence, _Config) ->
@@ -887,10 +887,10 @@ restart_with_different_defaults(Config) ->
     N1 = aecore_suite_utils:node_name(Dev1),
     aecore_suite_utils:stop_node(Dev1, Config),
     Peer = random_peer(),
-    EpochCfg0 = aecore_suite_utils:epoch_config(Dev1, Config),
-    EpochCfg = EpochCfg0#{<<"peers">> => [aec_peer:peer_config_info(Peer)],
+    NodeCfg0 = aecore_suite_utils:node_config(Dev1, Config),
+    NodeCfg = NodeCfg0#{<<"peers">> => [aec_peer:peer_config_info(Peer)],
                           <<"include_default_peers">> => false},
-    aecore_suite_utils:create_config(Dev1, Config, EpochCfg,
+    aecore_suite_utils:create_config(Dev1, Config, NodeCfg,
                                             []),
     start_first_node(Config),
     1 = rpc:call(N1, aec_peers, count, [verified], 5000),
@@ -908,11 +908,11 @@ start_with_trusted_peers(Config) ->
     Peer2 = random_peer(),
     Peer3 = random_peer(),
 
-    EpochCfg = aecore_suite_utils:epoch_config(Dev1, Config),
+    NodeCfg = aecore_suite_utils:node_config(Dev1, Config),
     Peers = [encode_peer_for_config(Peer1),
              encode_peer_for_config(Peer2),
              encode_peer_for_config(Peer3)],
-    aecore_suite_utils:create_config(Dev1, Config, EpochCfg,
+    aecore_suite_utils:create_config(Dev1, Config, NodeCfg,
                                             [{trusted_peers, Peers}
                                             ]),
     start_first_node(Config),
@@ -928,8 +928,8 @@ start_with_trusted_peers(Config) ->
 restart_with_no_trusted_peers(Config) ->
     Dev1 = dev1,
     N1 = aecore_suite_utils:node_name(Dev1),
-    EpochCfg = aecore_suite_utils:epoch_config(Dev1, Config),
-    aecore_suite_utils:create_config(Dev1, Config, EpochCfg,
+    NodeCfg = aecore_suite_utils:node_config(Dev1, Config),
+    aecore_suite_utils:create_config(Dev1, Config, NodeCfg,
                                             [{trusted_peers, []}
                                             ]),
     start_first_node(Config),
@@ -943,8 +943,8 @@ restart_with_no_trusted_peers(Config) ->
 add_and_delete_untrusted_peers_and_restart(Config) ->
     Dev1 = dev1,
     N1 = aecore_suite_utils:node_name(Dev1),
-    EpochCfg = aecore_suite_utils:epoch_config(Dev1, Config),
-    aecore_suite_utils:create_config(Dev1, Config, EpochCfg,
+    NodeCfg = aecore_suite_utils:node_config(Dev1, Config),
+    aecore_suite_utils:create_config(Dev1, Config, NodeCfg,
                                             [{trusted_peers, []}
                                             ]),
     start_first_node(Config),
@@ -1064,8 +1064,8 @@ trusted_peer_is_untrusted_after_a_restart(Config) ->
     assert_all_peers(N1, unverified, [Peer1, Peer2]),
     Dev2 = dev2,
     N2 = aecore_suite_utils:node_name(Dev2),
-    EpochCfg = aecore_suite_utils:epoch_config(Dev2, Config),
-    aecore_suite_utils:create_config(Dev2, Config, EpochCfg,
+    NodeCfg = aecore_suite_utils:node_config(Dev2, Config),
+    aecore_suite_utils:create_config(Dev2, Config, NodeCfg,
                                             [{trusted_peers, []}
                                             ]),
     start_second_node(Config),
@@ -1383,13 +1383,13 @@ start_third_with_enabled_node_info_no_analytics(Cfg) ->
     start_a_node_with_node_info_and_analytics(Cfg, dev3, true, false).
 
 start_a_node_with_node_info_and_analytics(Cfg, Node, NodeInfoFlag, AnalyticsFlag) ->
-    EpochCfg0 = aecore_suite_utils:epoch_config(Node, Cfg),
-    Sync0 = maps:get(<<"sync">>, EpochCfg0, #{}),
+    NodeCfg0 = aecore_suite_utils:node_config(Node, Cfg),
+    Sync0 = maps:get(<<"sync">>, NodeCfg0, #{}),
     Sync = Sync0#{ <<"provide_node_info">> => NodeInfoFlag
                  , <<"peer_analytics">> => AnalyticsFlag
                  },
-    EpochCfg = EpochCfg0#{<<"sync">> => Sync},
-    aecore_suite_utils:create_config(Node, Cfg, EpochCfg,
+    NodeCfg = NodeCfg0#{<<"sync">> => Sync},
+    aecore_suite_utils:create_config(Node, Cfg, NodeCfg,
                                             [
                                             ]),
     aecore_suite_utils:start_node(Node, Cfg),
