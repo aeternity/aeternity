@@ -336,6 +336,7 @@ new_state_from_persistence() ->
     Fun = fun() -> #{top_block_node => db_get_top_block_node()} end,
     aec_db:ensure_transaction(Fun).
 
+-spec persist_state(state(), state()) -> boolean().
 persist_state(OldState, NewState) ->
     case {get_top_block_hash(OldState), get_top_block_hash(NewState)} of
         {TH, TH} -> false;

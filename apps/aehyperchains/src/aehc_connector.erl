@@ -32,7 +32,7 @@
 
 %% This API should be used by connector's developer as a wrapper
 %% around internal abstract commitments data type
--spec commitment(commiter_pubkey(), KeyblockHash :: binary()) ->
+-spec commitment(committer_pubkey(), KeyblockHash :: binary()) ->
     commitment().
 commitment(Delegate, KeyblockHash) when
     is_binary(Delegate), is_binary(KeyblockHash) ->

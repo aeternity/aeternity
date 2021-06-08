@@ -30,6 +30,8 @@
 
 -include_lib("aehyperchains/include/aehc_types.hrl").
 
+-type height() :: non_neg_integer().
+
 %% The data record represents the current synchronized view of a particular parent chain within state machine;
 -record(data, {
     %% The name of dedicated parent chain state machine;
@@ -88,7 +90,7 @@ fetched(internal, {added_block, Block, SynchedBlock}, Data) ->
             %% This case is also applicable for the initial DB state too (For the initial run Current == Genesis);
             {next_state, synced, Data};
         _ when Height > SynchedHeight ->
-            %% TODO: Place for the new added block anouncement;
+            %% TODO: Place for the new added block announcement;
             %% Sync procedure is continue it the fetch mode (the current persisted block isn't achieved);
             %% To persist the fetched block;
             aehc_parent_db:write_parent_block(Block),
@@ -120,8 +122,8 @@ orphaned(internal, {added_block, Block, SynchedBlock}, Data) ->
             %% Sync is done in the fork mode;
             {next_state, synced, Data};
         _ when Height > GenesisHeight ->
-            %% TODO: Place for the new added block anouncement;
-            %% TODO: Place for abandoned block anouncement;
+            %% TODO: Place for the new added block announcement;
+            %% TODO: Place for abandoned block announcement;
             %% Sync procedure is continue it the fetch mode (the current persisted block isn't achived);
             aehc_parent_db:write_parent_block(Block),
             {ok, PrevBlock} = aehc_connector:get_block_by_hash(connector(Data), PrevHash),

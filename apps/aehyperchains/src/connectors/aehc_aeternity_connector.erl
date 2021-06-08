@@ -29,7 +29,7 @@ start_link(Args) ->
 %%%  aehc_connector behaviour
 %%%===================================================================
 
--spec send_tx(commiter_pubkey(), commitment_hash(), pogf_hash()) -> ok.
+-spec send_tx(committer_pubkey(), commitment_hash(), pogf_hash()) -> ok.
 send_tx(Delegate, Commitment, PoGF) ->
     gen_server:call(?MODULE, {send_tx, Delegate, Commitment, PoGF}).
 
@@ -41,7 +41,7 @@ get_top_block() ->
 get_block_by_hash(Hash) ->
     gen_server:call(?MODULE, {get_block_by_hash, Hash}).
 
--spec dry_send_tx(commiter_pubkey(), commitment_hash(), pogf_hash()) -> ok.
+-spec dry_send_tx(committer_pubkey(), commitment_hash(), pogf_hash()) -> ok.
 dry_send_tx(Delegate, Commitment, PoGF) ->
     gen_server:call(?MODULE, {dry_send_tx, Delegate, Commitment, PoGF}).
 
@@ -81,7 +81,8 @@ terminate(_Reason, _State) ->
 
 %% Implementation
 
-%%TODO Fix the situation with this stub.
+%% <<"Hash">> and <<"PrevHash">> are obviously not really hashes,
+%% so we don't want to provoke dialyzer into too much plunging here.
 -dialyzer({nowarn_function, stub_block/0}).
 stub_block() ->
     Header = aehc_parent_block:new_header(<<"Hash">>, <<"PrevHash">>, 1000),

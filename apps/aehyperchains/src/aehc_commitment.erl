@@ -38,7 +38,7 @@ new(Header, PoGF) ->
 has_pogf(#hc_commitment{pogf = no_pogf}) -> false;
 has_pogf(#hc_commitment{pogf = _}) -> true.
 
--spec pogf(commitment()) -> aehc_pogf:pogf().
+-spec pogf(commitment()) -> aehc_pogf:maybe_pogf().
 pogf(#hc_commitment{pogf = PoGF}) -> PoGF.
 
 -spec pogf_hash(commitment()) -> pogf_hash().

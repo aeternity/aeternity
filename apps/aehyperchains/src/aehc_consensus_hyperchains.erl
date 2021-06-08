@@ -114,6 +114,16 @@
     | not_enough_delegates
     | not_enough_stake
     | {failed_call, term()}.
+-type query() :: binary() | string().
+-type account() :: aec_accounts:account().
+-type nonce() :: non_neg_integer().
+-type amount() :: non_neg_integer().
+-type signature() :: <<_:512>>. %% 64 bytes
+-type block() :: aec_blocks:block().
+-type chain_node() :: aec_chain_node:chain_node().
+-type trees() :: aec_trees:trees().
+-type env() :: aetx_env:env().
+-type pubkey() :: aec_keys:pubkey().
 
 
 %% API
@@ -133,7 +143,7 @@ assert_config(_Config) ->
         undefined -> ok;
         {ok, EAddr} ->
             lager:debug("Trying to set the staking contract address"),
-            {contract_address, Addr} = decode(EAddr),
+            {contract_address, Addr} = aeser_api_encoder:decode(EAddr),
             ok = set_staking_contract_address(Addr)
     end,
     case aeu_env:user_config([<<"hyperchains">>, <<"activation_criteria">>]) of
@@ -154,7 +164,10 @@ start(_Config) ->
             aec_consensus:config_assertion_failed(
                 "Predeploy address is different from the already deployed contract",
                 " Deployed: ~p, Predeploy: ~p",
-                [encode_contract_pubkey(X), encode_contract_pubkey(Y)]);
+                [
+                    aeser_api_encoder:encode(contract_pubkey, X),
+                    aeser_api_encoder:encode(contract_pubkey, Y)
+                ]);
         {_, _} -> ok
     end,
     case ContractAddress of
@@ -417,7 +430,7 @@ state_pre_transform_key_node(KeyNode, _PrevNode, PrevKeyNode, Trees1) ->
             ParentHash = get_pos_header_parent_hash(Header),
             Commitments = aehc_parent_db:get_candidates_in_election_cycle(aec_headers:height(Header), ParentHash),
             %% TODO: actually hardcode the encoding
-            Candidates = ["[", lists:join(", ", [encode_account_pubkey(aehc_commitment_header:hc_delegate(aehc_commitment:header(X))) || X <- Commitments]), "]"],
+            Candidates = ["[", lists:join(", ", [aeser_api_encoder:encode(account_pubkey, aehc_commitment_header:hc_delegate(aehc_commitment:header(X))) || X <- Commitments]), "]"],
             Call = lists:flatten(io_lib:format("get_leader(~s, #~s)", [Candidates, lists:flatten([integer_to_list(X, 16) || <<X:4>> <= ParentHash])])),
             %%io:format(user, "Election: ~p\n", [Call]),
             case protocol_staking_contract_call(Trees3, TxEnv, Call) of
@@ -757,7 +770,7 @@ get_predeploy_address() ->
 %% 4. The confirmation depth of the criteria
 %%    The first HC PoS block MUST fulfill the activation criteria(the state on which we base the block on MUST fulfill the criteria) and the Nth-key predecessor must also fulfill them
 %%    For instance when the config is (100AE, 2, 10, 2) and the criteria were first meet at one microblock in the generation with height 19 then:
-%%    - HC can't be enabled at the keyblock at height 20 - although the criteria were meet at the predecesor, the keyblock predecesor at height 18 doesn't pass the criteria
+%%    - HC can't be enabled at the keyblock at height 20 - although the criteria were meet at the predecessor, the keyblock predecessor at height 18 doesn't pass the criteria
 %%    - We never run the check at keyblocks with heights not divisible by 10(21-29 in the example)
 %%    - HC gets enabled at the keyblock at height 30 - the criteria pass at the direct predecessor and the keyblock at height 28
 %%      making the keyblock with height 30 eligible to be the first HC block - validators commit to block 29, block 30 is the FIRST to deviate from PoW
@@ -825,13 +838,19 @@ get_hc_activation_criteria() ->
 deploy_staking_contract_by_system(Trees0, TxEnv) ->
     lager:debug("Deploying the staking contract by a system account"),
     Deployer = ?RESTRICTED_ACCOUNT,
-    lager:debug("Staking contract will be deployed by ~p", [encode_account_pubkey(Deployer)]),
+    lager:debug("Staking contract will be deployed by ~p",
+        [aeser_api_encoder:encode(account_pubkey, Deployer)]),
     %% Grant the fresh account enough funds to deploy the contract
     {Trees1, OldA} = prepare_system_owner(Deployer, Trees0),
     Bytecode = get_staking_contract_bytecode(),
     Aci = get_staking_contract_aci(),
     Args = lists:flatten(io_lib:format("init({deposit_delay = ~p, stake_retraction_delay = ~p, withdraw_delay = ~p}, {}, ~s)",
-        [?DEPOSIT_DELAY, ?STAKE_RETRACTION_DELAY, ?WITHDRAW_DELAY, encode_account_pubkey(?RESTRICTED_ACCOUNT)])),
+        [
+            ?DEPOSIT_DELAY,
+            ?STAKE_RETRACTION_DELAY,
+            ?WITHDRAW_DELAY,
+            aeser_api_encoder:encode(account_pubkey, ?RESTRICTED_ACCOUNT)
+        ])),
     {ok, CtorCall} = aeaci_aci:encode_call_data(Aci, Args),
     Nonce = 1,
     TxSpec = #{owner_id => aeser_id:create(account, Deployer)
@@ -855,7 +874,8 @@ deploy_staking_contract_by_system(Trees0, TxEnv) ->
             {value, Call} = aect_call_state_tree:lookup_call(ContractPubkey, CallPubkey, CallTree),
             case aect_call:return_type(Call) of
                 ok ->
-                    lager:debug("System account successfully deployed staking contract at ~p", [encode_contract_pubkey(ContractPubkey)]),
+                    lager:debug("System account successfully deployed staking contract at ~p",
+                        [aeser_api_encoder:encode(contract_pubkey, ContractPubkey)]),
                     %% Ok contract deployed :)
                     set_staking_contract_address(ContractPubkey),
                     %% Sanity check the deployment - should never fail
@@ -887,7 +907,7 @@ prepare_system_owner(Deployer, Trees) ->
     Accounts1 = aec_accounts_trees:enter(NewA, Accounts0),
     {aec_trees:set_accounts(Trees, Accounts1), OldA}.
 
-%% Ensures the system account has the same balace as before(we don't touch the inflation curve) and bumped nonce
+%% Ensures the system account has the same balance as before(we don't touch the inflation curve) and bumped nonce
 -spec cleanup_system_owner(account(), trees()) -> trees().
 cleanup_system_owner(OldA, Trees) ->
     Accounts0 = aec_trees:accounts(Trees),
@@ -897,7 +917,7 @@ cleanup_system_owner(OldA, Trees) ->
 
 -spec verify_existing_staking_contract(pubkey(), trees(), env()) -> ok.
 verify_existing_staking_contract(Address, Trees, TxEnv) ->
-    UserAddr = encode_contract_pubkey(Address),
+    UserAddr = aeser_api_encoder:encode(contract_pubkey, Address),
     lager:debug("Validating the existing staking contract at ~p", [UserAddr]),
     ErrF =
         fun(Err) ->
@@ -1083,7 +1103,7 @@ load_hc_staking_contract() ->
             <<"aci">> := JText
         } = jsx_decode(Data),
         CompiledACI = aeaci_aci:from_string(JText, #{backend => fate}),
-        {contract_bytearray, Bytecode} = decode(B),
+        {contract_bytearray, Bytecode} = aeser_api_encoder:decode(B),
         persistent_term:put(?STAKING_CONTRACT, #{bytecode => Bytecode, aci => CompiledACI})
     catch E:R:Stacktrace ->
         aec_consensus:config_assertion_failed(
@@ -1114,17 +1134,6 @@ jsx_decode(Data) ->
         [Map] when is_map(Map) -> Map
     end.
 
--spec encode_contract_pubkey(pubkey()) -> binary().
-encode_contract_pubkey(Pubkey) -> aeser_api_encoder:encode(contract_pubkey, Pubkey).
-
--spec encode_account_pubkey(pubkey()) -> binary().
-encode_account_pubkey(Pubkey) -> aeser_api_encoder:encode(account_pubkey, Pubkey).
-
-%% Typing here is not perfect, we need to have known_type() and payload()
-%% exported from aeser_api_encoder
--spec decode(binary()) -> {atom(), binary()}.
-decode(Binary) -> aeser_api_encoder:decode(Binary).
-
 -spec decompose_activation_criteria(map()) ->
     {integer(), integer(), integer(), integer()} | no_return().
 decompose_activation_criteria(Criteria) ->
@@ -1135,4 +1144,3 @@ decompose_activation_criteria(Criteria) ->
         <<"confirmation_depth">> := BlockConfirms
     } = Criteria,
     {MinStake, MinDelegates, BlockFreq, BlockConfirms}.
-

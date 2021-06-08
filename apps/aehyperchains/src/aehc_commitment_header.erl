@@ -35,8 +35,8 @@
 
 -record(hc_commitment_header, {
     %% Delegate who submitted the commitment
-    hc_delegate = <<0:?COMMITER_PUB_BYTES/unit:8>> :: commiter_pubkey(),
-    %% Hyperchain keyblock to which the delegate commited
+    hc_delegate = <<0:?COMMITTER_PUB_BYTES/unit:8>> :: committer_pubkey(),
+    %% Hyperchain keyblock to which the delegate committed
     hc_keyblock = <<0:?BLOCK_HEADER_HASH_BYTES/unit:8>> :: block_header_hash(),
     %% Hash of PoGF object
     hc_pogf_hash = <<0:?POGF_HASH_BYTES>> :: pogf_hash(),
@@ -53,11 +53,11 @@
 
 %% API
 
--spec new(commiter_pubkey(), block_header_hash()) -> commitment_header().
+-spec new(committer_pubkey(), block_header_hash()) -> commitment_header().
 new(Delegate, KeyblockHash) ->
     new(Delegate, KeyblockHash, aehc_pogf:hash(no_pogf)).
 
--spec new(commiter_pubkey(), block_header_hash(), pogf_hash()) ->
+-spec new(committer_pubkey(), block_header_hash(), pogf_hash()) ->
     commitment_header().
 new(Delegate, KeyblockHash, PoGFHash) ->
     #hc_commitment_header{
@@ -77,7 +77,7 @@ set_auth_data(CommitmentHeader, AuthData) ->
 set_pogf_hash(CommitmentHeader, PoGFHash) ->
     CommitmentHeader#hc_commitment_header{hc_pogf_hash = PoGFHash}.
 
--spec hc_delegate(commitment_header()) -> commiter_pubkey().
+-spec hc_delegate(commitment_header()) -> committer_pubkey().
 hc_delegate(CommitmentHeader) ->
     CommitmentHeader#hc_commitment_header.hc_delegate.
 

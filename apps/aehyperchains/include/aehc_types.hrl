@@ -14,24 +14,13 @@
 -define(NONCE_HC_POGF, 16#ffffffffffffffff).
 -define(NONCE_HC_GENESIS, 2). %% Hyperchain at genesis :)
 
--define(COMMITER_PUB_BYTES, 32).
+-define(COMMITTER_PUB_BYTES, 32).
 -define(POGF_HASH_BYTES, 32).
 -define(COMMITMENT_HASH_BYTES, 32).
 
--type commiter_pubkey() :: <<_:(?COMMITER_PUB_BYTES*8)>>.
+-type committer_pubkey() :: <<_:(?COMMITTER_PUB_BYTES*8)>>.
 -type pogf_hash() :: <<_:(?POGF_HASH_BYTES*8)>>.
 -type commitment_hash() :: <<_:(?COMMITMENT_HASH_BYTES*8)>>.
 
--type pubkey() :: aec_keys:pubkey().
 -type hash() :: aec_hash:hash().
--type height() :: non_neg_integer().
--type signature() :: <<_:512>>. %% 64 bytes
 -type header() :: aec_headers:header().
--type block() :: aec_blocks:block().
--type chain_node() :: aec_chain_node:chain_node().
--type trees() :: aec_trees:trees().
--type env() :: aetx_env:env().
--type amount() :: non_neg_integer().
--type nonce() :: non_neg_integer().
--type account() :: aec_accounts:account().
--type query() :: binary() | string().
