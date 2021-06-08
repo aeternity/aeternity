@@ -1,3 +1,4 @@
+
 [
   { kernel,
     [
@@ -8,15 +9,14 @@
   { aehttp, [
       {external, [
           {acceptors, 10},
-          {port, 3023}
+          {port, 3013}
           ]},
       {internal, [
           {acceptors, 10},
-          {port, 3123},
-          {debug_endpoints, true}
+          {port, 3113}
           ]},
       {channel, [
-          {websocket, [ {port, 3024},
+          {websocket, [ {port, 3014},
                         {handlers, 100},
                         {listen_address, <<"127.0.0.1">>}
                       ]}
@@ -31,25 +31,40 @@
    ]},
 
   {aecore, [
-      {sync_port, 3025},
-
-      {peers, [<<"aenode://pp_ySU7cHqsymnuBP9iSe4rMnH1Rz2FStx5rnoewYMJcuPhdaqPk@localhost:3015">>,
-               <<"aenode://pp_2M9oPohzsWgJrBBCFeYi3PVT4YF7F2botBtq6J1EGcVkiutx3R@localhost:3035">>]},
-
-      {metrics_port, 0},
+      {peers, []},
+      {mainnet_peers, [
+        <<"aenode://pp_2gPZjuPnJnTVEbrB9Qgv7f4MdhM4Jh6PD22mB2iBA1g7FRvHTk@52.220.198.72:3015">>,
+        <<"aenode://pp_H4ooofyixJE6weqsgzKMKTdjZwEWb2BMSWqdFqbwZjssvtUEZ@18.217.69.24:3015">>,
+        <<"aenode://pp_2eu9njAqnd2s9nfSHNCHMbw96dajSATz1rgT6PokH2Lsa531Sp@3.17.15.122:3015">>,
+        <<"aenode://pp_21DNLkjdBuoN7EajkK3ePfRMHbyMkhcuW5rJYBQsXNPDtu3v9n@35.166.231.86:3015">>,
+        <<"aenode://pp_RKVZjm7UKPLGvyKWqVZN1pXN6CTCxfmYz2HkNL2xiAhLVd2ho@52.11.110.179:3015">>,
+        <<"aenode://pp_sGegC48UrvDA7cvvUU3GPTze9wNUnnK1P4q46mL5jAFddNrbD@13.250.144.60:3015">>,
+        <<"aenode://pp_2R7a7JHzfZQU5Ta7DJnFiqRr7ayCcAVakqYzJ2mvZj5k4ms5mV@3.17.15.239:3015">>,
+        <<"aenode://pp_8nn6ypcwkaXxJfPGq7DCpBpf9FNfmkXPvGCjJFnLzvwjhCMEH@52.26.157.37:3015">>,
+        <<"aenode://pp_QkNjQbJL3Ab1TVG5GesKuZTixBdXEutUtxG677mVu9D4mMNRr@13.228.202.140:3015">>,
+        <<"aenode://pp_7N7dkCbg39MYzQv3vCrmjVNfy6QkoVmJe3VtiZ3HRncvTWAAX@13.53.114.199:3015">>,
+        <<"aenode://pp_2LnQXCmGqEJymtHAeUGjgcXU7dPLBbsut9rAXDG3nb7sCQK4fN@13.53.213.137:3015">>,
+        <<"aenode://pp_NPrJPXfzBU8da5Ufy2o2LmyHXhLX733NPHER2Xh3cTcbK2BDD@13.53.78.163:3015">>
+      ]},
+      {testnet_peers, [
+        <<"aenode://pp_QU9CvhAQH56a2kA15tCnWPRJ2srMJW8ZmfbbFTAy7eG4o16Bf@52.10.46.160:3015">>,
+        <<"aenode://pp_2vhFb3HtHd1S7ynbpbFnEdph1tnDXFSfu4NGtq46S2eM5HCdbC@18.195.109.60:3015">>,
+        <<"aenode://pp_27xmgQ4N1E3QwHyoutLtZsHW5DSW4zneQJ3CxT5JbUejxtFuAu@13.250.162.250:3015">>,
+        <<"aenode://pp_2i8N6XsjCGe1wkdMhDRs7t7xzijrjJDN4xA22RoNGCgt6ay9QB@31.13.249.70:3015">>
+      ]},
       {peer_password, <<"secret">>},
-      {persist, false},
-      {aec_mining, {15, [{<<"mean15-generic">>, <<"-t 5">>, false, 10, undefined, <<"aecuckoo">>}]}},
-      {ping_interval, 500}
+      {aec_mining, {29, [{<<"mean29-generic">>, <<"-t 1">>, false, 1, undefined, <<"aecuckoo">>}]}}
     ]
   },
 
   {lager, [
+      {log_root, "${ROOTDIR}/log"},
       {error_logger_flush_queue, false},
       {handlers, [
+          {lager_console_backend, [{level, info}]},
           {lager_file_backend,
             [{file, "aeternity.log"}, {level, debug},
-             {size, 4194303}, {date, "$D0"}, {count, 100}]}
+             {size, 4194303}, {date, "$D0"}, {count, 10}]}
       ]},
       {suppress_supervisor_start_stop, true},
       {traces, [
@@ -63,7 +78,7 @@
                {lager_file_backend, [
                   {file, "aeternity_mining.log"},
                   {level, info},
-                  {size, 4194303}, {date, "$D0"}, {count, 100}
+                  {size, 4194303}, {date, "$D0"}, {count, 3}
                ]}
              ]}
            ]},
@@ -87,24 +102,29 @@
 	           ]}
 	         ]}
 	       ]},
-           {epoch_sync_lager_event, [
+          {epoch_sync_lager_event, [
              {handlers, [
                 {lager_console_backend, [{level, info}]},
                 {lager_file_backend, [
                   {file, "aeternity_sync.log"}, {level, debug},
-                  {size, 4194303}, {date, "$D0"}, {count, 100}
+                  {size, 4194303}, {date, "$D0"}, {count, 3}
                ]}
              ]}
            ]},
-           {aestratum_lager_event, [
+          {aestratum_lager_event, [
              {handlers, [
-                {lager_file_backend, [
-                  {file, "aestratum.log"}, {level, debug},
+               {lager_file_backend, [
+                  {file, "aestratum.log"},
+                  {level, info},
                   {size, 4194303}, {date, "$D0"}, {count, 3}
                ]}
              ]}
            ]}
       ]}
+  ]},
+
+  {sasl, [
+    {sasl_error_logger, false}
   ]},
 
   {mnesia, [{dir, "data/mnesia"}]},
