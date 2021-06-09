@@ -710,11 +710,16 @@ fork_common_block(EasyChain, TopHashEasy, HardChain, TopHashHard) ->
     ok.
 
 fork_test_chain_ends_and_migration(ExpectedTops, ExpectedBlocks) ->
-    F = fun() -> ?assertEqual( lists:usort(ExpectedTops)
-                             , lists:usort(aec_db:find_chain_end_hashes())),
-                 ?assertEqual( [ aec_blocks:to_header(Block) || Block <- ExpectedBlocks]
-                             , [ header_by_height(H) ||
-                                 H <- lists:seq(0, aec_blocks:height(lists:last(ExpectedBlocks)))])
+    ExpectedTopsSorted = lists:usort(ExpectedTops),
+    F =
+        fun() ->
+                EndHashesSorted = lists:usort(aec_db:find_chain_end_hashes()),
+                ?assertEqual(ExpectedTopsSorted, EndHashesSorted),
+                ExpectedHeaders = [aec_blocks:to_header(Block) || Block <- ExpectedBlocks],
+                HeadersByHeight = [header_by_height(H)
+                                   || H <- lists:seq(0, aec_blocks:height(
+                                                          lists:last(ExpectedBlocks)))],
+                ?assertEqual(ExpectedHeaders, HeadersByHeight)
         end,
     F(),
     MaxHeight = lists:max([aec_headers:height(aec_db:get_header(H)) || H <- ExpectedTops]),
