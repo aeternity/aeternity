@@ -119,7 +119,7 @@ do_update(State = #s{stats = Stats}) ->
 handle_monitor(PID, Trigger, Info, State = #s{updates = Count, stats = Stats}) ->
     Stat = [ae,epoch,system,monitor,Trigger],
     NewStats = maps:update_with(Stat, fun increment/1, Stats),
-    ok = lager:warning("PID ~p triggered monitor ~p with ~p", [PID, Trigger, Info]),
+    ok = lager:debug("PID ~p triggered monitor ~p with ~p", [PID, Trigger, Info]),
     State#s{updates = Count + 1, stats = NewStats}.
 
 increment(Count) -> Count + 1.
