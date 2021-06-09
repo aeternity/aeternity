@@ -48,8 +48,8 @@
          }).
 
 -opaque tx() :: #ns_revoke_tx{}.
--type trees() :: aec_trees:trees().
--type env() :: aetx_env:env().
+-type aec_trees() :: aec_trees:trees().
+-type aetx_env() :: aetx_env:env().
 
 -export_type([tx/0]).
 
@@ -103,19 +103,20 @@ name_id(#ns_revoke_tx{name_id = NameId}) ->
 origin(#ns_revoke_tx{} = Tx) ->
     account_pubkey(Tx).
 
--spec check(tx(), aec_trees:trees(), aetx_env:env()) -> {ok, aec_trees:trees()} | {error, term()}.
+-spec check(tx(), aec_trees(), aetx_env()) -> {ok, aec_trees()} | {error, term()}.
 check(#ns_revoke_tx{}, Trees, _Env) ->
     %% Checks are in process/3
     {ok, Trees}.
 
--spec process(tx(), aec_trees:trees(), aetx_env:env()) -> {ok, aec_trees:trees(), env()} | {error, term()}.
+-spec process(tx(), aec_trees(), aetx_env()) ->
+    {ok, aec_trees(), aetx_env()} | {error, term()}.
 process(#ns_revoke_tx{} = Tx, Trees, Env) ->
     Instructions =
         aeprimop:name_revoke_tx_instructions(
           account_pubkey(Tx), name_hash(Tx), fee(Tx), nonce(Tx)),
     aeprimop:eval(Instructions, Trees, Env).
 
--spec signers(tx(), aec_trees:trees()) -> {ok, [aec_keys:pubkey()]}.
+-spec signers(tx(), aec_trees()) -> {ok, [aec_keys:pubkey()]}.
 signers(#ns_revoke_tx{} = Tx, _) ->
     {ok, [account_pubkey(Tx)]}.
 

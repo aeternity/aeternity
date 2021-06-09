@@ -137,48 +137,48 @@
 
 -opaque op() :: generic_op().
 
--type pubkey() :: aec_keys:pubkey().
--type id() :: aeser_id:id().
--type hash() :: aec_hash:hash().
--type nonce() :: non_neg_integer().
--type ttl() :: non_neg_integer().
--type possible_ttl() :: undefined
+-type pubkey()                   :: aec_keys:pubkey().
+-type id()                       :: aeser_id:id().
+-type hash()                     :: aec_hash:hash().
+-type nonce()                    :: non_neg_integer().
+-type ttl()                      :: non_neg_integer().
+-type possible_ttl()             :: undefined
     | ttl()
     | {relative_ttl, ttl()}
     | {fixed_ttl, ttl()}
     | {delta, ttl()}
     | {block, ttl()}.
--type fee()    :: non_neg_integer().
--type amount() :: number().
--type round() :: non_neg_integer().
--type var_or_hash() :: {var, term()} | hash().
--type oracle_type_format() :: aeo_oracles:type_format().
--type abi_version() :: aect_contracts:abi_version().
--type vm_version()  :: aect_contracts:vm_version().
--type ct_version() :: #{vm => vm_version(), abi => abi_version()}.
--type contract() :: aect_contracts:contract().
--type contract_type() :: contract | {attach, binary()}.
--type contract_call_type() :: contract_call | contract_create | ga_attach | ga_meta.
--type state() :: aeprimop_state:state().
--type trees() :: aec_trees:trees().
--type env() :: aetx_env:env().
--type call() :: aect_call:call().
--type account() :: aec_accounts:account().
--type channel() :: aesc_channels:channel().
--type code() :: map().
--type payable() :: #{payable => boolean()}.
--type payment_mode() :: transfer_value | spend | lock.
+-type fee()                      :: non_neg_integer().
+-type amount()                   :: number().
+-type round()                    :: non_neg_integer().
+-type var_or_hash()              :: {var, term()} | hash().
+-type oracle_type_format()       :: aeo_oracles:type_format().
+-type abi_version()              :: aect_contracts:abi_version().
+-type vm_version()               :: aect_contracts:vm_version().
+-type ct_version()               :: #{vm => vm_version(), abi => abi_version()}.
+-type contract()                 :: aect_contracts:contract().
+-type contract_type()            :: contract | {attach, binary()}.
+-type contract_call_type()       :: contract_call | contract_create | ga_attach | ga_meta.
+-type state()                    :: aeprimop_state:state().
+-type aec_trees()                :: aec_trees:trees().
+-type aetx_env()                 :: aetx_env:env().
+-type call()                     :: aect_call:call().
+-type account()                  :: aec_accounts:account().
+-type channel()                  :: aesc_channels:channel().
+-type code()                     :: map().
+-type payable()                  :: #{payable => boolean()}.
+-type payment_mode()             :: transfer_value | spend | lock.
 -type cache_write_through_flag() :: cache_write_through | {cache_write_through, false}.
--type options() :: [cache_write_through_flag()].
--type commitment() :: aens_commitments:commitment().
--type pointers() :: [aens_pointer:pointer()].
--type return_val() :: term().
+-type options()                  :: [cache_write_through_flag()].
+-type commitment()               :: aens_commitments:commitment().
+-type pointers()                 :: [aens_pointer:pointer()].
+-type return_val()               :: term().
 
 %%%===================================================================
 %%% API
 %%%===================================================================
 
--spec eval([op()], trees(), env()) -> {ok, trees(), env()} | {error, atom()}.
+-spec eval([op()], aec_trees(), aetx_env()) -> {ok, aec_trees(), aetx_env()} | {error, atom()}.
 eval([_|_] = Instructions, Trees, TxEnv) ->
     %% The macro below makes mocking possible in QuickCheck tests
     ?do_eval(Instructions, Trees, TxEnv).
@@ -189,7 +189,7 @@ evaluate(_Instructions) ->
     ok.
 -endif.
 
--spec do_eval([op()], trees(), env()) -> {ok, trees(), env()} | {error, term()} | no_return().
+-spec do_eval([op()], aec_trees(), aetx_env()) -> {ok, aec_trees(), aetx_env()} | {error, term()} | no_return().
 do_eval(Instructions, Trees, TxEnv) ->
     S = aeprimop_state:new(Trees, TxEnv),
     case int_eval(Instructions, S) of
@@ -201,8 +201,8 @@ do_eval(Instructions, Trees, TxEnv) ->
             Err
     end.
 
--spec eval_with_return([op()], trees(), env()) ->
-    {ok, return_val(), trees(), env()} | {error, atom()}.
+-spec eval_with_return([op()], aec_trees(), aetx_env()) ->
+    {ok, return_val(), aec_trees(), aetx_env()} | {error, atom()}.
 eval_with_return([_|_] = Instructions, Trees, TxEnv) ->
     S = aeprimop_state:new(Trees, TxEnv),
     case int_eval(Instructions, S) of
@@ -1719,7 +1719,7 @@ contract_init_call_success(Type, InitCall, Contract, GasLimit, Fee, RollbackS, S
                     ga_attach_success(InitCall1, GasLimit, AuthFun, S)
             end;
         #{vm := ?VM_AEVM_SOLIDITY_1} ->
-            %% Solidity inital call returns the code to store in the contract.
+            %% Solidity initial call returns the code to store in the contract.
             Contract1 = aect_contracts:set_code(ReturnValue, Contract),
             S1 = put_contract(Contract1, S),
             contract_call_success(InitCall1, GasLimit, S1)
@@ -2380,7 +2380,7 @@ is_payable_contract(_)                     -> runtime_error(bad_bytecode).
 runtime_error(Error) ->
     throw({?MODULE, Error}).
 
--spec sanitize_error(non_neg_integer(), env(), call()) -> call().
+-spec sanitize_error(non_neg_integer(), aetx_env(), call()) -> call().
 sanitize_error(P, _Env, Call) when P =< ?FORTUNA_PROTOCOL_VSN ->
     Call;
 sanitize_error(_P, Env, Call) ->

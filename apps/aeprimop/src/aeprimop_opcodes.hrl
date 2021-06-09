@@ -5,7 +5,6 @@
 %%%      Primitive operations list
 %%% @end
 %%%-------------------------------------------------------------------
--author("ra").
 
 -type opcode() :: inc_account_nonce
     | channel_create

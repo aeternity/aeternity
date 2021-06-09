@@ -54,7 +54,7 @@
 
 -type state() :: #state{}.
 
--export_type([state/0, channel_key/0, trees/0]).
+-export_type([state/0, channel_key/0]).
 
 -type runtime_error() :: account_not_found
     | auth_call_not_found
@@ -69,8 +69,8 @@
 -type pubkey() :: aec_keys:pubkey().
 -type hash() :: aec_hash:hash().
 -type auction_hash() :: aens_hash:auction_hash().
--type trees() :: aec_trees:trees().
--type env() :: aetx_env:env().
+-type aec_trees() :: aec_trees:trees().
+-type aetx_env() :: aetx_env:env().
 -type call_id() :: aect_call:id().
 -type tag() :: auction
     | account
@@ -99,22 +99,22 @@
 %%% API
 %%%===================================================================
 
--spec new(trees(), env()) -> state().
+-spec new(aec_trees(), aetx_env()) -> state().
 new(Trees, TxEnv) ->
-    #state{trees = Trees
-        , cache = dict:new()
-        , env = dict:new()
-        , height = aetx_env:height(TxEnv)
-        , tx_env = TxEnv
-        , protocol = aetx_env:consensus_version(TxEnv)
-    }.
+    #state{ trees = Trees
+          , cache = dict:new()
+          , env = dict:new()
+          , height = aetx_env:height(TxEnv)
+          , tx_env = TxEnv
+          , protocol = aetx_env:consensus_version(TxEnv)
+          }.
 
--spec final_trees(state()) -> trees().
+-spec final_trees(state()) -> aec_trees().
 final_trees(State) ->
     #state{trees = Trees} = cache_write_through(State),
     Trees.
 
--spec tx_env(state()) -> env().
+-spec tx_env(state()) -> aetx_env().
 tx_env(#state{tx_env = TxEnv}) ->
     TxEnv.
 
@@ -453,7 +453,7 @@ cache_write_through(#state{cache = C, trees = T} = S) ->
     S#state{trees = Trees, cache = dict:new()}.
 
 %% TODO: Should have a dirty flag.
--spec cache_write_through_fun({tag(), _}, object(), trees()) -> trees().
+-spec cache_write_through_fun({tag(), _}, object(), aec_trees()) -> aec_trees().
 cache_write_through_fun({account, _Pubkey}, Account, Trees) ->
     ATrees = aec_trees:accounts(Trees),
     ATrees1 = aec_accounts_trees:enter(Account, ATrees),
@@ -511,17 +511,17 @@ get_var({var, X}, Tag, #state{env = E}) when is_atom(X) ->
     {Tag, Val} = dict:fetch(X, E),
     Val;
 get_var({X, Y} = Res, oracle_query, #state{}) when is_binary(X),
-    is_binary(Y) ->
+                                                   is_binary(Y) ->
     Res;
 get_var({X, Y} = Res, auth_call, #state{}) when is_binary(X),
-    is_binary(Y) ->
+                                                is_binary(Y) ->
     Res;
 get_var(X, _Tag, #state{}) when is_binary(X) ->
     X.
 
 -spec set_var(channel_key(), tag(), pubkey(), state()) -> state().
-set_var({var, X}, account = Tag, Pubkey, #state{} = S) when is_atom(X),
-    is_binary(Pubkey) ->
+set_var({var, X}, account = Tag, Pubkey, #state{} = S)
+    when is_atom(X), is_binary(Pubkey) ->
     S#state{env = dict:store(X, {Tag, Pubkey}, S#state.env)};
 set_var(Var, Tag, Pubkey, _S) ->
     error({illegal_assignment, Var, Tag, Pubkey}).
