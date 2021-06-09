@@ -53,6 +53,7 @@ stop(_State) ->
 %% trivially. Basically, the aeternity.rel file must be pre-sorted and passed
 %% to relx.
 check_env() ->
+    expand_lager_log_root(),
     check_env([{[<<"logging">>, <<"hwm">>]     , fun set_hwm/1},
                {[<<"logging">>, <<"level">>]   , fun set_level/1},
                {[<<"mining">>, <<"autostart">>], {set_env, autostart}},
@@ -60,6 +61,33 @@ check_env() ->
                {[<<"mining">>, <<"attempt_timeout">>], {set_env, mining_attempt_timeout}},
                {[<<"chain">>, <<"persist">>]   , {set_env, persist}},
                {[<<"chain">>, <<"db_path">>]   , fun set_mnesia_dir/1}]).
+
+%% See https://github.com/erlang-lager/lager/issues/557
+%% There are different ways to ensure that the log root is a stable
+%% absolute path (once initialized). This could also be done using
+%% sys.config.src (e.g. `{log_root, "${ROOTDIR}/log"}`, but at the time
+%% of writing, `rebar3 ct` doesn't support `sys_config_src`, and it gets messy
+%% to support both types.
+%%
+%% This setup hook code will likely run after lager has started, but it still
+%% fixes the log root for later. One possible scenario might be that someone
+%% pecks around in an aeternity node shell, changes the current working directory
+%% and forgets to restore it. This would effectively move the logical log_root
+%% in lager, if the setting is a relative path (which is the default).
+%%
+expand_lager_log_root() ->
+    case application:get_env(lager, log_root) of
+        {ok, Root} when is_list(Root) ->
+            case filename:pathtype(Root) of
+                relative ->
+                    application:set_env(lager, log_root,
+                                        filename:absname(Root));
+                absolute ->
+                    ok
+            end;
+        _ ->
+            application:set_env(lager, log_root, setup:log_dir())
+    end.
 
 check_env(Spec) ->
     lists:foreach(
