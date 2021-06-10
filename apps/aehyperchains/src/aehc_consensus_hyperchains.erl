@@ -25,7 +25,7 @@
 -define(STAKING_CONTRACT_ADDR, {?MODULE, staking_contract_addr}).
 %% Lima or Iris as we need the FATE VM at genesis
 %% In case that's unwanted then start up another consensus before hyperchains
--define(HC_GENESIS_VERSION, ?LIMA_PROTOCOL_VSN).
+-define(HC_GENESIS_VERSION, aec_hard_forks:protocol_vsn(iris)).
 
 %% Magic nonces
 -define(NONCE_HC_ENABLED, 16#ffffffffffffffff - 1).
@@ -112,8 +112,9 @@
         , deserialize_pos_pow_field/1
         ]).
 
+-include_lib("aecontract/include/aecontract.hrl").
 -include_lib("aecontract/include/hard_forks.hrl").
--include("../../aecore/include/blocks.hrl").
+-include_lib("aecore/include/blocks.hrl").
 -include_lib("aeminer/include/aeminer.hrl").
 
 -record(activation_criteria, {
@@ -435,7 +436,6 @@ state_pre_transform_key_node(KeyNode, _PrevNode, PrevKeyNode, Trees1) ->
             %% TODO: actually hardcode the encoding
             Candidates = ["[", lists:join(", ", [aeser_api_encoder:encode(account_pubkey, aehc_commitment_header:hc_delegate(aehc_commitment:header(X))) || X <- Commitments]), "]"],
             Call = lists:flatten(io_lib:format("get_leader(~s, #~s)", [Candidates, lists:flatten([integer_to_list(X,16) || <<X:4>> <= ParentHash])])),
-            %%io:format(user, "Election: ~p\n", [Call]),
             case protocol_staking_contract_call(Trees3, TxEnv, Call) of
                 {ok, Trees4, {address, Leader}} ->
                     %% Assert that the miner is the person which got elected
@@ -507,7 +507,7 @@ pogf_detected(_H1, _H2) -> ok. %% TODO: we can't punish for forks due to forking
 
 %% -------------------------------------------------------------------
 %% Genesis block
-genesis_transform_trees(Trees0, #{}) ->
+genesis_transform_trees(Trees, #{}) ->
     %% At genesis no ordinary user could possibly deploy the contract
     case get_predeploy_address() of
         {ok, Address} ->
@@ -520,13 +520,9 @@ genesis_transform_trees(Trees0, #{}) ->
             TxEnv = genesis_tx_env(),
             %% We don't need to check the protocol version against the block
             %% The insertion of the genesis block bypasses the version check
-            Trees1 = case hc_genesis_version() of  %% Call a function here to make dialyzer happy
-                ?LIMA_PROTOCOL_VSN -> aec_block_fork:apply_lima(Trees0, TxEnv);
-                ?IRIS_PROTOCOL_VSN -> Trees0; %% No special changes
-                _ -> aec_consensus:config_assertion_failed("Hyperchains from genesis require at least LIMA at genesis", "", [])
-            end,
-            deploy_staking_contract_by_system(Trees1, TxEnv)
+            deploy_staking_contract_by_system(Trees, TxEnv)
     end.
+
 genesis_raw_header() ->
     aec_headers:new_key_header(
         0,
@@ -810,8 +806,8 @@ get_hc_activation_criteria() ->
 
 %% Deploys the staking contract using a free system account :)
 %% TODO: For now just hardcode the settings
--define(VM_VERSION, 5).
--define(ABI_VERSION, 3).
+-define(VM_VERSION, ?VM_FATE_SOPHIA_2).
+-define(ABI_VERSION, ?ABI_FATE_SOPHIA_1).
 -define(DEPOSIT_DELAY, 5).
 -define(STAKE_RETRACTION_DELAY, 5).
 -define(WITHDRAW_DELAY, 10).
@@ -904,15 +900,7 @@ verify_existing_staking_contract(Address, Trees, TxEnv) ->
                         {value, Contract, OnchainCode} ->
                             OnchainAbi = aect_contracts:abi_version(Contract),
                             OnchainVm = aect_contracts:vm_version(Contract),
-
-                            %% TODO: Remove the stripping for IRIS...
-                            Code0 = aeser_contract_code:deserialize(get_staking_contract_bytecode()),
-                            FateCode0  = aeb_fate_code:deserialize(maps:get(byte_code, Code0)),
-                            FateCode1 = aeb_fate_code:strip_init_function(FateCode0),
-                            Bytecode = aeb_fate_code:serialize(FateCode1),
-                            LocalCode = aeser_contract_code:serialize(Code0#{ byte_code => Bytecode
-                                                                            , compiler_version => <<"unknown">>
-                                                                            }),
+                            LocalCode = get_staking_contract_bytecode(),
 
                             if  OnchainAbi /= ?ABI_VERSION -> ErrF("Wrong ABI version");
                                 OnchainVm /= ?VM_VERSION -> ErrF("Wrong VM version");
@@ -1043,5 +1031,3 @@ protocol_staking_contract_call(Trees0, TxEnv, Query) ->
 %% TODO: customize
 fallback_consensus() ->
     aec_consensus_bitcoin_ng.
-
-hc_genesis_version() -> ?HC_GENESIS_VERSION.
