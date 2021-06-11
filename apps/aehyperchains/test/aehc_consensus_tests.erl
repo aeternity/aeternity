@@ -27,7 +27,6 @@
 
 protocol_gate(X) ->
     case init:get_argument(network_id) of
-        {ok, [["local_lima_testnet"]]} -> X;
         {ok, [["local_iris_testnet"]]} -> X;
         {ok, OtherTestnet} ->
             io:format(user, "Not a relevant testnet: ~p~n", [OtherTestnet]),
@@ -37,8 +36,72 @@ protocol_gate(X) ->
             []
     end.
 
+%% Stateless functions coverage
+stateless_hc_support_test_() ->
+    protocol_gate([
+        {"POS&POW field structure", fun pos_pow_structure/0},
+        {"Genesis header", fun genesis_header/0}
+    ]).
+
+pos_pow_structure() ->
+    ?assertEqual(error, aehc_consensus_hyperchains:deserialize_pos_pow_field(no_value)),
+    ?assertEqual(error, aehc_consensus_hyperchains:deserialize_pos_pow_field(0)),
+    H = list_to_binary(lists:seq(1, 32)),
+    S = list_to_binary(lists:seq(1, 64)),
+    Field = aehc_consensus_hyperchains:create_pos_pow_field(H, S),
+    ?assertEqual({ok, H, S}, aehc_consensus_hyperchains:deserialize_pos_pow_field(Field)).
+
+genesis_header() ->
+    % Hardcoded values from external tooling
+    Header = {
+        key_header, 0,
+        <<
+            158, 79, 89, 57, 49, 136, 245, 229,
+            211, 220, 44, 167, 79, 151, 117, 42,
+            149, 176, 13, 160, 196, 61, 156, 179,
+            95, 106, 250, 133, 59, 93, 3, 170
+        >>,
+        <<
+            0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0
+        >>,
+        <<
+            0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0
+        >>,
+        553713663, 2, 0, 5, no_value,
+        <<
+            0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0
+        >>,
+        <<
+            0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0
+        >>,
+        <<0, 0, 0, 0>>,
+        #{consensus => aec_consensus_bitcoin_ng}
+    },
+    ?assertEqual(Header, aehc_consensus_hyperchains:genesis_raw_header()).
+
+
+%% Persistent storage related functions coverage
+persistence_support_test_() ->
+    protocol_gate([
+        %
+        %%
+    ]).
+
+
 %% PoW genesis - aec_conductor is not started
-pow_from_genesis_test() ->
+pow_from_genesis_test_() ->
     Tests = protocol_gate([
         {foreach,
             fun() ->
@@ -54,45 +117,43 @@ pow_from_genesis_test() ->
                 aec_test_utils:unmock_genesis_and_forks()
             end,
             [
+                {"HC plain generation", fun hc_plain_generation/0},
+                {"Empty HC generic failings", fun hc_generic_failings/0},
                 {"HC specific methods don't work when we only use PoW", fun hc_specifics_failing/0}
             ]
         }
     ]),
     aec_test_utils:eunit_with_consensus(aehc_test_utils:cuckoo_pow_from_genesis(), Tests).
 
+hc_plain_generation() ->
+    simple_generation_fun(aehc_test_utils:gen_blocks_only_chain(10)).
+
+hc_generic_failings() ->
+    ?assertEqual(undefined, aec_chain:top_block()),
+    ?assertException(error, badarg, aehc_consensus_hyperchains:get_staking_contract_aci()),
+    ?assertEqual({error, missing_top_block}, aehc_consensus_hyperchains:static_staking_contract_call_on_top_block("enabled()")),
+    ok.
+
 hc_specifics_failing() ->
     ?assertEqual(undefined, aec_chain:top_block()),
     FailFun =
         fun() ->
             ?assertException(error, badarg, aehc_consensus_hyperchains:get_staking_contract_aci()),
-            not_deployed = aehc_consensus_hyperchains:get_staking_contract_address()
+            ?assertEqual(not_deployed, aehc_consensus_hyperchains:get_staking_contract_address())
         end,
     Chain = aehc_test_utils:gen_blocks_only_chain(3),
     FailFun(),
     {error, missing_top_block} = aehc_consensus_hyperchains:static_staking_contract_call_on_top_block("enabled()"),
-    [begin
-         {ok, _} = aec_chain_state:insert_block(B),
-         ?assertNotEqual(undefined, aec_chain:top_block()),
-         FailFun(),
-         ?assertException(exit, {badarg, _}, aehc_consensus_hyperchains:static_staking_contract_call_on_top_block("enabled()"))
-     end || B <- Chain].
+    PostFun =
+        fun() ->
+            FailFun(),
+            ?assertException(exit, {badarg, _}, aehc_consensus_hyperchains:static_staking_contract_call_on_top_block("enabled()"))
+        end,
+    simple_generation_fun(Chain, PostFun).
 
-dummy_key_header_with_nonce_and_seal(Nonce, Seal) ->
-    aec_headers:new_key_header(1337,
-        <<1337:32/unit:8>>,
-        <<13371337:32/unit:8>>,
-        <<133713371337:32/unit:8>>,
-        <<1337133713371337:32/unit:8>>,
-        <<13371337133713371337:32/unit:8>>,
-        1337,
-        Seal,
-        Nonce,
-        aeu_time:now_in_msecs(),
-        default,
-        3).
 
 %% Check the structure of a hyperchains block
-pos_block_structure_test() ->
+pos_block_structure_test_() ->
     Tests = protocol_gate([
         {"Parent hash and miner signature roundtrip", fun parent_hash_and_signature_roundtrip/0},
         {"PoS keyheader binary roundtrip", fun pos_keyheader_binary_roundtrip/0},
@@ -103,14 +164,13 @@ pos_block_structure_test() ->
     aehc_test_utils:hc_chain_eunit_testcase(aehc_test_utils:hc_from_genesis(), Tests).
 
 parent_hash_and_signature_roundtrip() ->
-    error = aehc_consensus_hyperchains:deserialize_pos_pow_field(no_value),
-    error = aehc_consensus_hyperchains:deserialize_pos_pow_field(0),
-    RoundtripF = fun(H, S) ->
-        Seal = aehc_consensus_hyperchains:create_pos_pow_field(H, S),
-        {ok, H, S} = aehc_consensus_hyperchains:deserialize_pos_pow_field(Seal),
-        error = aehc_consensus_hyperchains:deserialize_pos_pow_field([1 | Seal]),
-        error = aehc_consensus_hyperchains:deserialize_pos_pow_field(tl(Seal) ++ [1])
-                 end,
+    RoundtripF =
+        fun(H, S) ->
+            Seal = aehc_consensus_hyperchains:create_pos_pow_field(H, S),
+            {ok, H, S} = aehc_consensus_hyperchains:deserialize_pos_pow_field(Seal),
+            ?assertEqual(error, aehc_consensus_hyperchains:deserialize_pos_pow_field([1 | Seal])),
+            ?assertEqual(error, aehc_consensus_hyperchains:deserialize_pos_pow_field(tl(Seal) ++ [1]))
+        end,
     RoundtripF(<<0:32/unit:8>>, <<0:64/unit:8>>),
     RoundtripF(<<0:32/unit:8>>, <<1337:64/unit:8>>),
     RoundtripF(<<1337:32/unit:8>>, <<0:64/unit:8>>),
@@ -125,27 +185,31 @@ pos_keyheader_binary_roundtrip() ->
     Seal = aehc_consensus_hyperchains:create_pos_pow_field(ParentHash, MinerSignature),
     [begin
          Header = dummy_key_header_with_nonce_and_seal(Nonce, Seal),
-         true = aehc_consensus_hyperchains:is_hc_pos_header(Header),
+         ?assertEqual(true, aehc_consensus_hyperchains:is_hc_pos_header(Header)),
          Type = aehc_consensus_hyperchains:hc_header_type(Header),
          Serialized = aec_headers:serialize_to_binary(Header),
-         Header = aec_headers:deserialize_from_binary(Serialized)
-     end || {Nonce, Type} <- [{?NONCE_HC_ENABLED, key_pos}
-        , {?NONCE_HC_POGF, key_pos_pogf}
-    ]],
+         ?assertEqual(Header, aec_headers:deserialize_from_binary(Serialized))
+     end || {Nonce, Type} <- [{?NONCE_HC_ENABLED, key_pos}, {?NONCE_HC_POGF, key_pos_pogf}]],
     ok.
 
 key_header_special_nonce_no_seal_is_pow() ->
-    [false = aehc_consensus_hyperchains:is_hc_pos_header(dummy_key_header_with_nonce_and_seal(Nonce, no_value)) || Nonce <- [?NONCE_HC_ENABLED, ?NONCE_HC_POGF]],
-    [key_pow = aehc_consensus_hyperchains:hc_header_type(dummy_key_header_with_nonce_and_seal(Nonce, no_value)) || Nonce <- [?NONCE_HC_ENABLED, ?NONCE_HC_POGF]],
+    [?assertEqual(false,
+        aehc_consensus_hyperchains:is_hc_pos_header(dummy_key_header_with_nonce_and_seal(Nonce, no_value)))
+        || Nonce <- [?NONCE_HC_ENABLED, ?NONCE_HC_POGF]],
+    [?assertEqual(key_pow,
+        aehc_consensus_hyperchains:hc_header_type(dummy_key_header_with_nonce_and_seal(Nonce, no_value)))
+        || Nonce <- [?NONCE_HC_ENABLED, ?NONCE_HC_POGF]],
     ok.
 
 key_header_special_nonce_special_seal_is_pos() ->
     ParentHash = list_to_binary(lists:seq(1, 32)),
     MinerSignature = list_to_binary(lists:reverse(lists:seq(1, 64))),
     Seal = aehc_consensus_hyperchains:create_pos_pow_field(ParentHash, MinerSignature),
-    [true = aehc_consensus_hyperchains:is_hc_pos_header(dummy_key_header_with_nonce_and_seal(Nonce, Seal)) || Nonce <- [?NONCE_HC_ENABLED, ?NONCE_HC_POGF]],
-    key_pos = aehc_consensus_hyperchains:hc_header_type(dummy_key_header_with_nonce_and_seal(?NONCE_HC_ENABLED, Seal)),
-    key_pos_pogf = aehc_consensus_hyperchains:hc_header_type(dummy_key_header_with_nonce_and_seal(?NONCE_HC_POGF, Seal)),
+    [?assertEqual(true,
+        aehc_consensus_hyperchains:is_hc_pos_header(dummy_key_header_with_nonce_and_seal(Nonce, Seal)))
+        || Nonce <- [?NONCE_HC_ENABLED, ?NONCE_HC_POGF]],
+    ?assertEqual(key_pos, aehc_consensus_hyperchains:hc_header_type(dummy_key_header_with_nonce_and_seal(?NONCE_HC_ENABLED, Seal))),
+    ?assertEqual(key_pos_pogf, aehc_consensus_hyperchains:hc_header_type(dummy_key_header_with_nonce_and_seal(?NONCE_HC_POGF, Seal))),
     ok.
 
 parent_hash_and_signature_setter_getter() ->
@@ -156,28 +220,29 @@ parent_hash_and_signature_setter_getter() ->
     Seal = aehc_consensus_hyperchains:create_pos_pow_field(ParentHash1, MinerSignature1),
     [begin
          Header1 = dummy_key_header_with_nonce_and_seal(Nonce, Seal),
-         ParentHash1 = aehc_consensus_hyperchains:get_pos_header_parent_hash(Header1),
-         MinerSignature1 = aehc_consensus_hyperchains:get_pos_header_miner_signature(Header1),
+         ?assertEqual(ParentHash1, aehc_consensus_hyperchains:get_pos_header_parent_hash(Header1)),
+         ?assertEqual(MinerSignature1, aehc_consensus_hyperchains:get_pos_header_miner_signature(Header1)),
 
          Header2 = aehc_consensus_hyperchains:set_pos_header_parent_hash(Header1, ParentHash2),
-         ParentHash2 = aehc_consensus_hyperchains:get_pos_header_parent_hash(Header2),
-         MinerSignature1 = aehc_consensus_hyperchains:get_pos_header_miner_signature(Header2),
+         ?assertEqual(ParentHash2, aehc_consensus_hyperchains:get_pos_header_parent_hash(Header2)),
+         ?assertEqual(MinerSignature1, aehc_consensus_hyperchains:get_pos_header_miner_signature(Header2)),
 
          Header3 = aehc_consensus_hyperchains:set_pos_header_miner_signature(Header1, MinerSignature2),
-         ParentHash1 = aehc_consensus_hyperchains:get_pos_header_parent_hash(Header3),
-         MinerSignature2 = aehc_consensus_hyperchains:get_pos_header_miner_signature(Header3),
+         ?assertEqual(ParentHash1, aehc_consensus_hyperchains:get_pos_header_parent_hash(Header3)),
+         ?assertEqual(MinerSignature2, aehc_consensus_hyperchains:get_pos_header_miner_signature(Header3)),
 
          Header4 = aehc_consensus_hyperchains:set_pos_header_miner_signature(Header2, MinerSignature2),
          Header4 = aehc_consensus_hyperchains:set_pos_header_parent_hash(Header3, ParentHash2),
-         ParentHash2 = aehc_consensus_hyperchains:get_pos_header_parent_hash(Header4),
-         MinerSignature2 = aehc_consensus_hyperchains:get_pos_header_miner_signature(Header4)
+         ?assertEqual(ParentHash2, aehc_consensus_hyperchains:get_pos_header_parent_hash(Header4)),
+         ?assertEqual(MinerSignature2, aehc_consensus_hyperchains:get_pos_header_miner_signature(Header4))
      end || Nonce <- [?NONCE_HC_ENABLED, ?NONCE_HC_POGF]],
     ok.
+
 
 %% HC genesis - aec_conductor is started
 hc_from_genesis_test_() ->
     Tests = protocol_gate([
-        {"Can mine some blocks", fun can_mine_10_blocks/0},
+        {"Can mine 10 blocks", fun can_mine_10_blocks/0},
         {"Staking contract gets deployed at genesis and is harmless in beginning", fun contract_deployed_at_genesis_harmless/0},
         {"One delegate, HC activation at 10. Activation criteria (1AE, 1, 5, 0)", fun one_delegate_at_10_criteria_1_1_5_0/0},
         {"Two delegates, HC activation at 10. Activation criteria (1AE, 1, 5, 0)", fun two_delegates_at_10_criteria_1_1_5_0/0}
@@ -186,11 +251,8 @@ hc_from_genesis_test_() ->
 
 can_mine_10_blocks() ->
     [GB | Blocks] = aehc_test_utils:gen_blocks_only_chain(10),
-    GB = aec_chain:top_block(),
-    [begin
-         {ok, _} = aec_chain_state:insert_block(B),
-         B = aec_chain:top_block()
-     end || B <- Blocks],
+    ?assertEqual(GB, aec_chain:top_block()),
+    simple_generation_fun(Blocks),
     ok.
 
 contract_deployed_at_genesis_harmless() ->
@@ -201,24 +263,20 @@ contract_deployed_at_genesis_harmless() ->
     %% Without stake the HC consensus fallbacks to PoW
     false = aehc_consensus_hyperchains:is_hc_pos_header(aec_blocks:to_header(GB)), %% The genesis case is separate
     [false = aehc_consensus_hyperchains:is_hc_pos_header(aec_blocks:to_header(B)) || B <- Blocks],
-    GB = aec_chain:top_block(),
+    ?assertEqual(GB, aec_chain:top_block()),
     %% Sanity check the system deployed staking contract object
     ContractObj = sanity_check_staking_contract_deployment(ContractAddress),
-    F = fun() ->
-        %% Sanity check contract calls
-        assert_static_staking_call_result({ok, false}, "enabled()"),
-        assert_static_staking_call_result({ok, 0}, "balance()"),
-        assert_static_staking_call_result({ok, {address, <<2:32/unit:8>>}}, "restricted_address()"),
-        %% Static calls never mutate the state of the contract
-        ensure_same_staking_contract(ContractAddress, ContractObj)
+    F =
+        fun() ->
+            %% Sanity check contract calls
+            assert_static_staking_call_result({ok, false}, "enabled()"),
+            assert_static_staking_call_result({ok, 0}, "balance()"),
+            assert_static_staking_call_result({ok, {address, <<2:32/unit:8>>}}, "restricted_address()"),
+            %% Static calls never mutate the state of the contract
+            ensure_same_staking_contract(ContractAddress, ContractObj)
         end,
     F(),
-    [begin
-         {ok, _} = aec_chain_state:insert_block(B),
-         B = aec_chain:top_block(),
-         F()
-     end || B <- Blocks],
-    ok.
+    simple_generation_fun(Blocks, F).
 
 one_delegate_at_10_criteria_1_1_5_0() ->
     try
@@ -304,24 +362,26 @@ two_delegates_at_10_criteria_1_1_5_0() ->
         Fee = 1 bsl 60,
         Gas = 1 bsl 30,
         GasPrice = 1 bsl 30,
-        MkCallF = fun(#{public := Pub, secret := Priv}, Nonce, Amount, Call) ->
-            Tx = make_contract_call_tx(Pub, ContractAddress, Call, Nonce, Amount, Fee, Gas, GasPrice),
-            aec_test_utils:sign_tx(Tx, Priv)
-                  end,
-        MkFundingF = fun(#{public := Dest}, Nonce, Amount) ->
-            aec_test_utils:sign_tx(make_spend_tx(PatronPubKey, Nonce, Dest, Amount), PatronPrivKey) end,
+        MkCallF =
+            fun(#{public := Pub, secret := Priv}, Nonce, Amount, Call) ->
+                Tx = make_contract_call_tx(Pub, ContractAddress, Call, Nonce, Amount, Fee, Gas, GasPrice),
+                aec_test_utils:sign_tx(Tx, Priv)
+            end,
+        MkFundingF =
+            fun(#{public := Dest}, Nonce, Amount) ->
+                aec_test_utils:sign_tx(make_spend_tx(PatronPubKey, Nonce, Dest, Amount), PatronPrivKey)
+            end,
         {ok, CallDepositStake} = aeaci_aci:encode_call_data(Aci, "deposit_stake()"),
         %% The overall picture of what's going on in the chain
         TxFuns =
             fun %% Fund the accounts with 2 AE
-                (2) -> [MkFundingF(Delegate1, 1, 4 * ?AE)
-                    , MkFundingF(Delegate2, 2, 4 * ?AE)
-                ];
+                (2) ->
+                    [MkFundingF(Delegate1, 1, 4 * ?AE)
+                        , MkFundingF(Delegate2, 2, 4 * ?AE)];
                 %% Delegate1 stakes 1AE, Delegate2 stakes 1AE
                 (5) ->
                     [MkCallF(Delegate1, 1, 1 * ?AE, CallDepositStake)
-                        , MkCallF(Delegate2, 1, 1 * ?AE, CallDepositStake)
-                    ];
+                        , MkCallF(Delegate2, 1, 1 * ?AE, CallDepositStake)];
                 (_) -> []
             end,
         Targets = [?GENESIS_TARGET || _ <- lists:seq(1, 9)],
@@ -404,13 +464,9 @@ can_mine_accepts_pow() ->
     not_deployed = aehc_consensus_hyperchains:get_staking_contract_address(),
     Chain = [GB | Blocks] = aehc_test_utils:gen_blocks_only_chain(20),
     {ok, _} = aehc_consensus_hyperchains:get_staking_contract_address(),
-    GB = aec_chain:top_block(),
+    ?assertEqual(GB, aec_chain:top_block()),
     [false = aehc_consensus_hyperchains:is_hc_pos_header(aec_blocks:to_header(B)) || B <- Chain],
-    [begin
-         {ok, _} = aec_chain_state:insert_block(B),
-         B = aec_chain:top_block()
-     end || B <- Blocks],
-    ok.
+    simple_generation_fun(Blocks).
 
 no_predeployment_then_system_deploys_contract() ->
     aehc_consensus_hyperchains:load_staking_contract_address(),
@@ -422,24 +478,22 @@ no_predeployment_then_system_deploys_contract() ->
     aehc_consensus_hyperchains:load_staking_contract_address(),
     [_ | PowBlocks] = lists:sublist(Chain, 10),
     [TransientBlock | HCBlocks] = lists:sublist(Chain, 11, 10),
-    [begin
-         {ok, _} = aec_chain_state:insert_block(B),
-         B = aec_chain:top_block(),
-         not_deployed = aehc_consensus_hyperchains:get_staking_contract_address(),
-         error = aehc_consensus_hyperchains:get_predeploy_address()
-     end || B <- PowBlocks],
+    PowFun =
+        fun() ->
+            ?assertEqual(not_deployed, aehc_consensus_hyperchains:get_staking_contract_address()),
+            ?assertEqual(error, aehc_consensus_hyperchains:get_predeploy_address())
+        end,
+    simple_generation_fun(PowBlocks, PowFun),
     {ok, _} = aec_chain_state:insert_block(TransientBlock),
     TransientBlock = aec_chain:top_block(),
     {ok, ContractAddress} = aehc_consensus_hyperchains:get_staking_contract_address(),
     ContractObj = sanity_check_staking_contract_deployment(ContractAddress),
-    [begin
-         {ok, _} = aec_chain_state:insert_block(B),
-         B = aec_chain:top_block(),
-         {ok, ContractAddress} = aehc_consensus_hyperchains:get_staking_contract_address(),
-         error = aehc_consensus_hyperchains:get_predeploy_address(),
-         ensure_same_staking_contract(ContractAddress, ContractObj)
-     end || B <- HCBlocks],
-    ok.
+    HCFun =
+        fun() ->
+            ?assertEqual(error, aehc_consensus_hyperchains:get_predeploy_address()),
+            ensure_same_staking_contract(ContractAddress, ContractObj)
+        end,
+    simple_generation_fun(HCBlocks, HCFun).
 
 contract_deployed_by_user_hc_doesnt_deviate_from_pow() ->
     %% Ok this test will be slightly messy - CT suites are more suited for this but well unit tests are important!
@@ -454,22 +508,24 @@ contract_deployed_by_user_hc_doesnt_deviate_from_pow() ->
     Fee = 1 bsl 60,
     Gas = 1 bsl 30,
     GasPrice = 1 bsl 30,
-    MkCallF = fun(#{public := Pub, secret := Priv}, Nonce, Amount, Call) ->
-        Tx = make_contract_call_tx(Pub, ContractAddress, Call, Nonce, Amount, Fee, Gas, GasPrice),
-        aec_test_utils:sign_tx(Tx, Priv)
-              end,
-    CallResF = fun(Address, Nonce) ->
-        CallPubkey = aect_call:id(Address, Nonce, ContractAddress),
-        {_, Trees} = aec_chain:top_block_with_state(),
-        CallTree = aec_trees:calls(Trees),
-        {value, Call} = aect_call_state_tree:lookup_call(ContractAddress, CallPubkey, CallTree),
-        case aect_call:return_type(Call) of
-            ok ->
-                {ok, aeb_fate_encoding:deserialize(aect_call:return_value(Call))};
-            What ->
-                {error, {What, aect_call:return_type(Call)}}
-        end
-               end,
+    MkCallF =
+        fun(#{public := Pub, secret := Priv}, Nonce, Amount, Call) ->
+            Tx = make_contract_call_tx(Pub, ContractAddress, Call, Nonce, Amount, Fee, Gas, GasPrice),
+            aec_test_utils:sign_tx(Tx, Priv)
+        end,
+    CallResF =
+        fun(Address, Nonce) ->
+            CallPubkey = aect_call:id(Address, Nonce, ContractAddress),
+            {_, Trees} = aec_chain:top_block_with_state(),
+            CallTree = aec_trees:calls(Trees),
+            {value, Call} = aect_call_state_tree:lookup_call(ContractAddress, CallPubkey, CallTree),
+            case aect_call:return_type(Call) of
+                ok ->
+                    {ok, aeb_fate_encoding:deserialize(aect_call:return_value(Call))};
+                What ->
+                    {error, {What, aect_call:return_type(Call)}}
+            end
+        end,
     {ok, CallEnabled} = aeaci_aci:encode_call_data(Aci, "enabled()"),
     {ok, CallProtocolEnable} = aeaci_aci:encode_call_data(Aci, "protocol_enable()"),
     {ok, CallRestrictedAddress} = aeaci_aci:encode_call_data(Aci, "restricted_address()"),
@@ -480,7 +536,8 @@ contract_deployed_by_user_hc_doesnt_deviate_from_pow() ->
             (5) ->
                 SpendTx1 = make_spend_tx(PatronPubKey, 1, DeployerPubKey, Fee * 40),
                 SpendTx2 = make_spend_tx(PatronPubKey, 2, RandomPubKey, Fee * 40),
-                [aec_test_utils:sign_tx(SpendTx1, PatronPrivKey)
+                [
+                    aec_test_utils:sign_tx(SpendTx1, PatronPrivKey)
                     , aec_test_utils:sign_tx(SpendTx2, PatronPrivKey)
                 ];
             %% Deploy the staking contract at 6
@@ -495,7 +552,8 @@ contract_deployed_by_user_hc_doesnt_deviate_from_pow() ->
             (8) ->
                 Arg4 = lists:flatten(io_lib:format("staked_tokens(~s)", [aeser_api_encoder:encode(account_pubkey, DeployerPubKey)])),
                 {ok, Call4} = aeaci_aci:encode_call_data(Aci, Arg4),
-                [MkCallF(Deployer, 2, 0, CallEnabled)
+                [
+                    MkCallF(Deployer, 2, 0, CallEnabled)
                     , MkCallF(Random, 1, 0, CallRestrictedAddress)
                     , MkCallF(Deployer, 3, Fee, CallDepositStake)
                     , MkCallF(Random, 2, 0, Call4)
@@ -503,7 +561,8 @@ contract_deployed_by_user_hc_doesnt_deviate_from_pow() ->
             (9) ->
                 Arg1 = lists:flatten(io_lib:format("staked_tokens(~s)", [aeser_api_encoder:encode(account_pubkey, RandomPubKey)])),
                 {ok, Call1} = aeaci_aci:encode_call_data(Aci, Arg1),
-                [MkCallF(Deployer, 4, 0, Call1)
+                [
+                    MkCallF(Deployer, 4, 0, Call1)
                     , MkCallF(Random, 3, Fee, CallDepositStake)
                     , MkCallF(Deployer, 5, 0, Call1)
                     , MkCallF(Deployer, 6, 0, CallProtocolEnable)
@@ -512,12 +571,14 @@ contract_deployed_by_user_hc_doesnt_deviate_from_pow() ->
             (10) -> []; %% HC should activate here
             %% Make some stateful and stateless staking contract calls AFTER the switchover
             (12) ->
-                [MkCallF(Deployer, 7, Fee, CallDepositStake)
+                [
+                    MkCallF(Deployer, 7, Fee, CallDepositStake)
                     , MkCallF(Random, 5, Fee, CallDepositStake)
                     , MkCallF(Deployer, 8, 0, CallEnabled)
                 ];
             (16) ->
-                [MkCallF(Deployer, 9, 0, CallEnabled)
+                [
+                    MkCallF(Deployer, 9, 0, CallEnabled)
                     , MkCallF(Random, 6, 0, CallEnabled)
                     , MkCallF(Deployer, 10, 0, CallProtocolEnable)
                     , MkCallF(Random, 7, 0, CallProtocolEnable)
@@ -526,13 +587,14 @@ contract_deployed_by_user_hc_doesnt_deviate_from_pow() ->
         end,
     %% Ensure that both old nodes and new nodes can cooperate until the time comes
     Targets = [?GENESIS_TARGET || _ <- lists:seq(1, 18)],
-    ExpectedChain = try
-                        aehc_test_utils:enable_pow_cuckoo_from_genesis(),
-                        false = aehc_utils:hc_enabled(),
-                        aec_test_utils:blocks_only_chain(aehc_test_utils:gen_block_chain_with_state(Targets, TxFuns))
-                    after
-                        aehc_test_utils:enable_consensus(aehc_test_utils:pow_to_hc_switch(10))
-                    end,
+    ExpectedChain =
+        try
+            aehc_test_utils:enable_pow_cuckoo_from_genesis(),
+            false = aehc_utils:hc_enabled(),
+            aec_test_utils:blocks_only_chain(aehc_test_utils:gen_block_chain_with_state(Targets, TxFuns))
+        after
+            aehc_test_utils:enable_consensus(aehc_test_utils:pow_to_hc_switch(10))
+        end,
     true = aehc_utils:hc_enabled(),
     [_ | Timestamps] = [aec_blocks:time_in_msecs(B) || B <- ExpectedChain, key =:= aec_blocks:type(B)],
     try
@@ -544,7 +606,8 @@ contract_deployed_by_user_hc_doesnt_deviate_from_pow() ->
         %% Insert the generated chain to the DB and verify call results along the way
         %% TODO: Either make more assertions at height 5 or use lists:sublist to make this match cleaner...
         %%       Right now just match the entire chain...
-        [_GB
+        [
+            _GB
             , B1, B2, B3, B4, B5
             , M1, M2 %% Funding
             , B6
@@ -603,6 +666,33 @@ contract_deployed_by_user_hc_doesnt_deviate_from_pow() ->
 
 %% ------------------------------------------------------------------
 %% Support methods
+
+dummy_key_header_with_nonce_and_seal(Nonce, Seal) ->
+    aec_headers:new_key_header(1337,
+        <<1337:32/unit:8>>,
+        <<13371337:32/unit:8>>,
+        <<133713371337:32/unit:8>>,
+        <<1337133713371337:32/unit:8>>,
+        <<13371337133713371337:32/unit:8>>,
+        1337,
+        Seal,
+        Nonce,
+        aeu_time:now_in_msecs(),
+        default,
+        3).
+
+simple_generation_fun(Blocks, PostFun) ->
+    Fun =
+        fun(Block) ->
+            ?assertEqual({ok, []}, aec_chain_state:insert_block(Block)),
+            ?assertEqual(Block, aec_chain:top_block()),
+            PostFun()
+        end,
+    [Fun(B) || B <- Blocks],
+    ok.
+
+simple_generation_fun(Blocks) ->
+    simple_generation_fun(Blocks, fun() -> ok end).
 
 sanity_check_staking_contract_deployment(ContractAddress) ->
     {_, Trees} = aec_chain:top_block_with_state(),
