@@ -9,6 +9,7 @@ There is also additional documentation on mining with CUDA and build and/or join
 - [Installation](installation.md)
 - [Configuration](configuration.md)
 - [Operation](operation.md)
+- [Update](update.md)
 - [Docker](docker.md)
 - [Build from source](build.md)
 - [CUDA Miner](cuda-miner.md)
