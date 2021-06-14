@@ -96,6 +96,7 @@
                         , put_oracle_query/2
                         ]).
 
+-export_type([op/0]).
 
 -ifdef(TEST).
 -export([evaluate/1, do_eval/3]).
@@ -111,6 +112,7 @@
 
 
 -include("aeprimop_state.hrl").
+-include("aeprimop_opcodes.hrl").
 -include("../../aecore/include/aec_hash.hrl").
 -include("../../aecontract/include/hard_forks.hrl").
 -include("../../aecontract/include/aecontract.hrl").
@@ -133,30 +135,50 @@
                                                     orelse element(1, _X_) =:= fixed_ttl)
                                            andalso ?IS_NON_NEG_INTEGER(element(2, _X_))))).
 
--opaque op() :: {atom(), tuple()}.
+-opaque op() :: generic_op().
 
--type pubkey() :: aec_keys:pubkey().
--type id()     :: aeser_id:id().
--type hash()   :: aec_hash:hash().
--type nonce()  :: non_neg_integer().
--type ttl()    :: non_neg_integer().
--type fee()    :: non_neg_integer().
--type amount() :: non_neg_integer().
--type var_or_hash() :: {var, term()} | hash().
--type oracle_type_format() :: aeo_oracles:type_format().
--type abi_version() :: aect_contracts:abi_version().
--type vm_version()  :: aect_contracts:vm_version().
-
--export_type([ op/0
-             ]).
-
+-type pubkey()                   :: aec_keys:pubkey().
+-type id()                       :: aeser_id:id().
+-type hash()                     :: aec_hash:hash().
+-type nonce()                    :: non_neg_integer().
+-type ttl()                      :: non_neg_integer().
+-type possible_ttl()             :: undefined
+    | ttl()
+    | {relative_ttl, ttl()}
+    | {fixed_ttl, ttl()}
+    | {delta, ttl()}
+    | {block, ttl()}.
+-type fee()                      :: non_neg_integer().
+-type amount()                   :: number().
+-type round()                    :: non_neg_integer().
+-type var_or_hash()              :: {var, term()} | hash().
+-type oracle_type_format()       :: aeo_oracles:type_format().
+-type abi_version()              :: aect_contracts:abi_version().
+-type vm_version()               :: aect_contracts:vm_version().
+-type ct_version()               :: #{vm => vm_version(), abi => abi_version()}.
+-type contract()                 :: aect_contracts:contract().
+-type contract_type()            :: contract | {attach, binary()}.
+-type contract_call_type()       :: contract_call | contract_create | ga_attach | ga_meta.
+-type state()                    :: aeprimop_state:state().
+-type aec_trees()                :: aec_trees:trees().
+-type aetx_env()                 :: aetx_env:env().
+-type call()                     :: aect_call:call().
+-type account()                  :: aec_accounts:account().
+-type channel()                  :: aesc_channels:channel().
+-type code()                     :: map().
+-type payable()                  :: #{payable => boolean()}.
+-type payment_mode()             :: transfer_value | spend | lock.
+-type cache_write_through_flag() :: cache_write_through | {cache_write_through, false}.
+-type options()                  :: [cache_write_through_flag()].
+-type commitment()               :: aens_commitments:commitment().
+-type pointers()                 :: [aens_pointer:pointer()].
+-type return_val()               :: term().
 
 %%%===================================================================
 %%% API
 %%%===================================================================
 
--spec eval([op()], aec_trees:trees(), aetx_env:env()) ->
-                  {ok, aec_trees:trees(), aetx_env:env()} | {error, atom()}.
+-spec eval([op()], aec_trees(), aetx_env()) -> {ok, aec_trees(), aetx_env()} | {error, atom()}.
 eval([_|_] = Instructions, Trees, TxEnv) ->
     %% The macro below makes mocking possible in QuickCheck tests
     ?do_eval(Instructions, Trees, TxEnv).
@@ -167,6 +189,7 @@ evaluate(_Instructions) ->
     ok.
 -endif.
 
+-spec do_eval([op()], aec_trees(), aetx_env()) -> {ok, aec_trees(), aetx_env()} | {error, term()} | no_return().
 do_eval(Instructions, Trees, TxEnv) ->
     S = aeprimop_state:new(Trees, TxEnv),
     case int_eval(Instructions, S) of
@@ -178,10 +201,8 @@ do_eval(Instructions, Trees, TxEnv) ->
             Err
     end.
 
--type return_val() :: term().
--spec eval_with_return([op()], aec_trees:trees(), aetx_env:env()) ->
-                              {ok, return_val(), aec_trees:trees(), aetx_env:env()}
-                                  | {error, atom()}.
+-spec eval_with_return([op()], aec_trees(), aetx_env()) ->
+    {ok, return_val(), aec_trees(), aetx_env()} | {error, atom()}.
 eval_with_return([_|_] = Instructions, Trees, TxEnv) ->
     S = aeprimop_state:new(Trees, TxEnv),
     case int_eval(Instructions, S) of
@@ -190,10 +211,10 @@ eval_with_return([_|_] = Instructions, Trees, TxEnv) ->
         {error, _} = Err -> Err
     end.
 
--spec eval_on_primop_state([op()], aeprimop_state:state()) ->
-                                  {ok, aeprimop_state:state()}
-                                      | {ok, return_val(), aeprimop_state:state()}
-                                      | {error, atom()}.
+-spec eval_on_primop_state([op()], state()) ->
+    {ok, state()} |
+    {ok, return_val(), state()} |
+    {error, atom()}.
 eval_on_primop_state([_|_] = Instructions, State) ->
     int_eval(Instructions, State, [{cache_write_through, false}]).
 
@@ -225,7 +246,7 @@ oracle_extend_tx_instructions(Pubkey, DeltaTTL, Fee, Nonce) ->
     , oracle_extend_op(Pubkey, DeltaTTL)
     ].
 
--spec oracle_query_tx_instructions(aeser_id:id() | pubkey(), pubkey(), binary(), fee(),
+-spec oracle_query_tx_instructions(id() | pubkey(), pubkey(), binary(), fee(),
                                    ttl(), ttl(), fee(), nonce()) -> [op()].
 oracle_query_tx_instructions(OraclePubkey, SenderPubkey, Query,
                              QueryFee, QTTL, RTTL, TxFee, Nonce) ->
@@ -311,7 +332,7 @@ ga_meta_tx_instructions(OwnerPubkey, AuthData, ABIVersion,
                  GasLimit, GasPrice, Fee, InnerTx)
     ].
 
--spec ga_set_meta_tx_res_instructions(pubkey(), binary(), 'ok' | {error, term()}) -> [op()].
+-spec ga_set_meta_tx_res_instructions(pubkey(), binary(), ok | {error, term()}) -> [op()].
 ga_set_meta_tx_res_instructions(OwnerPubkey, AuthData, Result) ->
     [ ga_set_meta_res_op(OwnerPubkey, AuthData, Result) ].
 
@@ -431,9 +452,17 @@ channel_settle_tx_instructions(FromPubkey, ChannelPubkey,
 %%%===================================================================
 %%% Instruction evaluation
 
+-spec int_eval([op()], state()) ->
+    {ok, state()} |
+    {ok, binary() | call(), state()} |
+    {error, term()}.
 int_eval(Instructions, S) ->
     int_eval(Instructions, S, [cache_write_through]).
 
+-spec int_eval([op()], state(), options()) ->
+    {ok, state()} |
+    {ok, binary() | call(), state()} |
+    {error, term()}.
 int_eval(Instructions, S, Opts) ->
     try eval_instructions(Instructions, S, Opts)
     catch
@@ -443,6 +472,11 @@ int_eval(Instructions, S, Opts) ->
             {error, What}
     end.
 
+-spec eval_instructions([op()], state(), options()) ->
+    {ok, state()} |
+    {ok, binary(), state()} |
+    {ok, call(), state()} |
+    no_return().
 eval_instructions([I|Left], S, Opts) ->
     case eval_one(I, S) of
         #state{} = S1 ->
@@ -457,6 +491,7 @@ eval_instructions([], S, Opts) ->
     S1 = cache_write_through(S, Opts),
     {ok, S1}.
 
+-spec cache_write_through(state(), options()) -> state().
 cache_write_through(S, Opts) ->
     case proplists:get_bool(cache_write_through, Opts) of
         true ->
@@ -465,6 +500,8 @@ cache_write_through(S, Opts) ->
             S
     end.
 
+-spec eval_one({opcode(), args()}, state()) ->
+    state() | {return, any(), state()} | no_return().
 eval_one({Op, Args}, S) ->
     case Op of
         inc_account_nonce         -> inc_account_nonce(Args, S);
@@ -499,14 +536,20 @@ eval_one({Op, Args}, S) ->
 %%% Operations
 %%%
 
+-spec inc_account_nonce_op(pubkey(), nonce()) ->
+    {inc_account_nonce, {pubkey(), nonce(), false}}.
 inc_account_nonce_op(Pubkey, Nonce) when ?IS_HASH(Pubkey),
                                          ?IS_NON_NEG_INTEGER(Nonce) ->
     {inc_account_nonce, {Pubkey, Nonce, false}}.
 
+-spec force_inc_account_nonce_op(pubkey(), nonce()) ->
+    {inc_account_nonce, {pubkey(), nonce(), true}}.
 force_inc_account_nonce_op(Pubkey, Nonce) when ?IS_HASH(Pubkey),
                                                ?IS_NON_NEG_INTEGER(Nonce) ->
     {inc_account_nonce, {Pubkey, Nonce, true}}.
 
+-spec inc_account_nonce({pubkey(), nonce(), boolean()}, state()) ->
+    state() | no_return().
 inc_account_nonce({Pubkey, Nonce, Force}, #state{ tx_env = Env } = S) ->
     %% If someone else is paying the Tx can be performed by a
     %% non-existing account - thus `ensure_account` in this case.
@@ -557,6 +600,8 @@ transfer_value_op(From, To, Amount) when ?IS_HASH(From),
                                          ?IS_NON_NEG_INTEGER(Amount) ->
     {spend, {From, To, Amount, transfer_value}}.
 
+-spec spend({pubkey(), var_or_hash(), non_neg_integer(), payment_mode()}, state()) ->
+    state().
 spend({From, To, Amount, Mode}, #state{} = S) when is_integer(Amount), Amount >= 0 ->
     {Sender1, S1}   = get_account(From, S),
     assert_account_balance(Sender1, Amount),
@@ -572,6 +617,7 @@ spend({From, To, Amount, Mode}, #state{} = S) when is_integer(Amount), Amount >=
 %%% For Lima auctioned names, the lock fee is returned
 %%% in case of overbidding
 
+-spec lock_namefee(payment_mode(), pubkey(), non_neg_integer(), state()) -> state() | no_return().
 lock_namefee(Kind, From, Amount, #state{protocol = Protocol} = S) ->
     LockFee = aec_governance:name_claim_locked_fee(),
     {Account, S1} = get_account(From, S),
@@ -589,20 +635,25 @@ lock_namefee(Kind, From, Amount, #state{protocol = Protocol} = S) ->
 
 %%%-------------------------------------------------------------------
 
+-spec spend_fee_op(pubkey(), non_neg_integer()) -> {spend_fee, {pubkey(), non_neg_integer(), 0}}.
 spend_fee_op(From, Amount) when ?IS_HASH(From),
                                 ?IS_NON_NEG_INTEGER(Amount) ->
     {spend_fee, {From, Amount, 0}}.
 
+-spec spend_fee_op(pubkey(), non_neg_integer(), non_neg_integer()) ->
+    {spend_fee, {pubkey(), non_neg_integer(), non_neg_integer()}}.
 spend_fee_op(From, DelegatedAmount, Amount) when ?IS_HASH(From)
                                                , ?IS_NON_NEG_INTEGER(DelegatedAmount)
                                                , ?IS_NON_NEG_INTEGER(Amount) ->
     {spend_fee, {From, DelegatedAmount, Amount}}.
 
+-spec spend_fee({pubkey(), non_neg_integer(), non_neg_integer()}, state()) -> state().
 spend_fee({From, DelegatedAmount, Amount}, #state{} = S)
         when ?IS_NON_NEG_INTEGER(DelegatedAmount + Amount) ->
     Delegated = establish_payer(From, S),
     spend_fee(From, Delegated, Amount, DelegatedAmount, S).
 
+-spec spend_fee(pubkey(), pubkey(), non_neg_integer(), non_neg_integer(), state()) -> state().
 spend_fee(From, From, Amount, DelegatedAmount, S) ->
     spend_fee(From, Amount + DelegatedAmount, S);
 spend_fee(From, _, Amount, 0, S) ->
@@ -613,6 +664,7 @@ spend_fee(From, Delegated, Amount, DelegatedAmount, S) ->
     S1 = spend_fee(From, Amount, S),
     spend_fee(Delegated, DelegatedAmount, S1).
 
+-spec spend_fee(pubkey(), non_neg_integer(), state()) -> state().
 spend_fee(From, Amount, S) ->
     {Spender1, S1} = get_account(From, S),
     assert_account_balance(Spender1, Amount),
@@ -620,14 +672,18 @@ spend_fee(From, Amount, S) ->
 
 %%%-------------------------------------------------------------------
 
+-spec resolve_account_op(account | name, aeser_id:val(), {var, recipient}) ->
+    {resolve_account, {account | name, aeser_id:val(), {var, recipient}}}.
 resolve_account_op(GivenType, Hash, Var) when ?IS_NAME_RESOLVE_TYPE(GivenType),
                                               ?IS_HASH(Hash),
                                               ?IS_VAR(Var) ->
     {resolve_account, {GivenType, Hash, Var}}.
 
+-spec resolve_account({account | name, aeser_id:val(), {var, recipient}}, state()) -> state().
 resolve_account({GivenType, Hash, Var}, S) ->
     resolve_name(account, GivenType, Hash, Var, S).
 
+-spec resolve_name(account, account | name, aeprimop_state:channel_key(), {var, atom()}, state()) -> state().
 resolve_name(account, account, Pubkey, Var, S) ->
     aeprimop_state:set_var(Var, account, Pubkey, S);
 resolve_name(account, name, NameHash, Var, S) ->
@@ -636,6 +692,8 @@ resolve_name(account, name, NameHash, Var, S) ->
 
 %%%-------------------------------------------------------------------
 
+-spec oracle_register_op(pubkey(), binary(), binary(), fee(), ttl(), non_neg_integer()) ->
+    {oracle_register, {pubkey(), binary(), binary(), fee(), ttl(), non_neg_integer()}}.
 oracle_register_op(Pubkey, QFormat, RFormat, QFee,
                    DeltaTTL, ABIVersion) when ?IS_HASH(Pubkey),
                                              is_binary(QFormat),
@@ -645,6 +703,8 @@ oracle_register_op(Pubkey, QFormat, RFormat, QFee,
                                              ?IS_NON_NEG_INTEGER(ABIVersion) ->
     {oracle_register, {Pubkey, QFormat, RFormat, QFee, DeltaTTL, ABIVersion}}.
 
+-spec oracle_register({pubkey(), binary(), binary(), fee(), ttl(), non_neg_integer()}, state()) ->
+    state() | no_return().
 oracle_register({Pubkey, QFormat, RFormat, QFee, DeltaTTL, ABIVersion}, S) ->
     assert_not_oracle(Pubkey, S),
     assert_oracle_abi_version(ABIVersion, S),
@@ -654,17 +714,20 @@ oracle_register({Pubkey, QFormat, RFormat, QFee, DeltaTTL, ABIVersion}, S) ->
     try aeo_oracles:new(Pubkey, QFormat, RFormat, QFee, AbsoluteTTL, ABIVersion) of
         Oracle -> put_oracle(Oracle, S)
     catch
-        error:{illegal,_Field,_X} = Err ->
+        error:{illegal, _Field, _X} = Err ->
             lager:debug("Failed oracle register: ~p", [Err]),
             runtime_error(illegal_oracle_spec)
     end.
 
 %%%-------------------------------------------------------------------
 
+-spec oracle_extend_op(pubkey(), ttl()) ->
+    {oracle_extend, {pubkey(), ttl()}}.
 oracle_extend_op(Pubkey, DeltaTTL) when ?IS_HASH(Pubkey),
                                         ?IS_NON_NEG_INTEGER(DeltaTTL) ->
     {oracle_extend, {Pubkey, DeltaTTL}}.
 
+-spec oracle_extend({pubkey(), ttl()}, state()) -> state().
 oracle_extend({PubKey, DeltaTTL}, S) ->
     [runtime_error(zero_relative_oracle_extension_ttl) || DeltaTTL =:= 0],
     {Oracle, S1} = get_oracle(PubKey, account_is_not_an_active_oracle, S),
@@ -673,11 +736,19 @@ oracle_extend({PubKey, DeltaTTL}, S) ->
 
 %%%-------------------------------------------------------------------
 
+-spec oracle_query_op_with_return(pubkey() | id(), pubkey(), non_neg_integer(),
+    binary(), fee(), ttl(), ttl()) ->
+    {oracle_query, {id(), pubkey(), non_neg_integer(),
+        binary(), fee(), ttl(), ttl(), true}}.
 oracle_query_op_with_return(OraclePubkey, SenderPubkey, SenderNonce,
                             Query, QueryFee, QTTL, RTTL) ->
     oracle_query_op(OraclePubkey, SenderPubkey, SenderNonce, Query, QueryFee,
                     QTTL, RTTL, true).
 
+-spec oracle_query_op(aeser_id:val() | id(), pubkey(), non_neg_integer(),
+    binary(), fee(), ttl(), ttl(), boolean()) ->
+    {oracle_query, {id(), pubkey(), non_neg_integer(),
+        binary(), fee(), ttl(), ttl(), boolean()}}.
 oracle_query_op(OraclePubkey, SenderPubkey, SenderNonce, Query, QueryFee,
                 QTTL, RTTL, Return) when ?IS_HASH(OraclePubkey),
                                          ?IS_HASH(SenderPubkey),
@@ -703,7 +774,6 @@ oracle_query_op(OracleId, SenderPubkey, SenderNonce, Query, QueryFee,
     {oracle_query, {OracleId, SenderPubkey, SenderNonce,
                     Query, QueryFee, QTTL, RTTL, Return}}.
 
-
 oracle_query({OracleId, SenderPubkey, SenderNonce,
               Query, QueryFee, QTTL, RTTL, Return}, S) ->
     case aeser_id:specialize(OracleId) of
@@ -717,7 +787,6 @@ oracle_query({OracleId, SenderPubkey, SenderNonce,
             oracle_query({OraclePubkey, OracleId, SenderPubkey, SenderNonce,
                           Query, QueryFee, QTTL, RTTL, Return}, S1)
     end;
-
 oracle_query({OraclePubkey, OriginalIdent, SenderPubkey, SenderNonce,
              Query, QueryFee, QTTL, RTTL, Return}, S) when is_binary(OraclePubkey) ->
     {Oracle, S1} = get_oracle(OraclePubkey, oracle_does_not_exist, S),
@@ -756,18 +825,23 @@ oracle_query({OraclePubkey, OriginalIdent, SenderPubkey, SenderNonce,
 
 %%%-------------------------------------------------------------------
 
+-spec oracle_respond_op(pubkey(), hash(), binary(), ttl()) ->
+    {oracle_respond, {pubkey(), hash(), binary(), ttl()}}.
 oracle_respond_op(OraclePubkey, QueryId, Response, RTTL
                  ) when ?IS_HASH(OraclePubkey),
                         ?IS_HASH(QueryId),
                         ?IS_NON_NEG_INTEGER(RTTL) ->
     {oracle_respond, {OraclePubkey, QueryId, Response, RTTL}}.
 
+-spec oracle_respond_op(pubkey(), hash(), binary()) ->
+    {oracle_respond, {pubkey(), hash(), binary(), default}}.
 oracle_respond_op(OraclePubkey, QueryId, Response
                  ) when ?IS_HASH(OraclePubkey),
                         ?IS_HASH(QueryId) ->
     %% Using the default TTL for the query.  Only used from FATE.
     {oracle_respond, {OraclePubkey, QueryId, Response, default}}.
 
+-spec oracle_respond({pubkey(), hash(), binary(), ttl()}, state()) -> state().
 oracle_respond({OraclePubkey, QueryId, Response, RTTL}, S) ->
     {QueryObject, S1} = get_oracle_query(OraclePubkey, QueryId, S),
     assert_oracle_response_ttl(QueryObject, RTTL),
@@ -781,10 +855,12 @@ oracle_respond({OraclePubkey, QueryId, Response, RTTL}, S) ->
 
 %%%-------------------------------------------------------------------
 
+-spec oracle_earn_query_fee_op(pubkey(), hash()) -> {oracle_earn_query_fee, {pubkey(), hash()}}.
 oracle_earn_query_fee_op(OraclePubkey, QueryId) when ?IS_HASH(OraclePubkey),
                                                      ?IS_HASH(QueryId) ->
     {oracle_earn_query_fee, {OraclePubkey, QueryId}}.
 
+-spec oracle_earn_query_fee({pubkey(), hash()}, state()) -> state().
 oracle_earn_query_fee({OraclePubkey, QueryId}, S) ->
     {Account, S1} = get_account(OraclePubkey, S),
     {Query, S2} = get_oracle_query(OraclePubkey, QueryId, S1),
@@ -793,12 +869,15 @@ oracle_earn_query_fee({OraclePubkey, QueryId}, S) ->
 
 %%%-------------------------------------------------------------------
 
+-spec name_preclaim_op(pubkey(), hash(), ttl()) ->
+    {name_preclaim, {pubkey(), hash(), ttl()}}.
 name_preclaim_op(AccountPubkey, CommitmentHash, DeltaTTL
                 ) when ?IS_HASH(AccountPubkey),
                        ?IS_HASH(CommitmentHash),
                        ?IS_NON_NEG_INTEGER(DeltaTTL) ->
     {name_preclaim, {AccountPubkey, CommitmentHash, DeltaTTL}}.
 
+-spec name_preclaim({pubkey(), hash(), ttl()}, state()) -> state().
 name_preclaim({AccountPubkey, CommitmentHash, DeltaTTL}, S) ->
     assert_not_commitment(CommitmentHash, S),
     Id      = aeser_id:create(commitment, CommitmentHash),
@@ -808,6 +887,8 @@ name_preclaim({AccountPubkey, CommitmentHash, DeltaTTL}, S) ->
 
 %%%-------------------------------------------------------------------
 
+-spec name_claim_op(pubkey(), binary(), non_neg_integer(), fee(), non_neg_integer()) ->
+    {name_claim, {pubkey(), binary(), non_neg_integer(), fee(), non_neg_integer()}}.
 name_claim_op(AccountPubkey, PlainName, NameSalt, NameFee, PreclaimDelta
              ) when ?IS_HASH(AccountPubkey),
                     is_binary(PlainName),
@@ -816,6 +897,8 @@ name_claim_op(AccountPubkey, PlainName, NameSalt, NameFee, PreclaimDelta
                     ?IS_NON_NEG_INTEGER(PreclaimDelta) ->
     {name_claim, {AccountPubkey, PlainName, NameSalt, NameFee, PreclaimDelta}}.
 
+-spec name_claim({pubkey(), binary(),
+    non_neg_integer(), fee(), non_neg_integer()}, state()) -> state().
 name_claim({AccountPubkey, PlainName, NameSalt, NameFee, PreclaimDelta}, S) ->
     NameAscii = name_to_ascii(PlainName),
     NameRegistrar = name_registrar(PlainName),
@@ -863,10 +946,13 @@ name_claim({AccountPubkey, PlainName, NameSalt, NameFee, PreclaimDelta}, S) ->
             put_name_auction(Auction, S2)
     end.
 
+-spec commitment_hash(binary(), non_neg_integer()) -> hash() | no_return().
 commitment_hash(NameAscii, NameSalt) ->
     try aens_hash:commitment_hash(NameAscii, NameSalt)
     catch _:R -> runtime_error(R) end.
 
+-spec assert_claim_after_preclaim({pubkey(), commitment(), binary(), binary(),
+    non_neg_integer(), integer()}, state()) -> ok | no_return().
 assert_claim_after_preclaim({AccountPubkey, Commitment, NameAscii, NameRegistrar, NameFee, PreclaimDelta}, S) ->
     NameHash = aens_hash:name_hash(NameAscii),
     assert_commitment_owner(Commitment, AccountPubkey),
@@ -877,6 +963,7 @@ assert_claim_after_preclaim({AccountPubkey, Commitment, NameAscii, NameRegistrar
     assert_name_registrar(NameRegistrar, S#state.protocol),
     assert_name_bid_fee(NameAscii, NameFee, S#state.protocol).  %% always ok pre Lima.
 
+-spec name_to_ascii(binary()) -> binary() | no_return().
 name_to_ascii(PlainName) ->
     case aens_utils:to_ascii(PlainName) of
         {error, What} ->
@@ -885,7 +972,7 @@ name_to_ascii(PlainName) ->
             NameAscii
     end.
 
-
+-spec name_registrar(binary()) -> binary() | no_return().
 %% Note that this raises an exception for empty binary as name
 name_registrar(PlainName) ->
     lists:last(aens_utils:name_parts(PlainName)).
@@ -893,12 +980,15 @@ name_registrar(PlainName) ->
 
 %%%-------------------------------------------------------------------
 
+-spec name_revoke_op(pubkey(), hash(), ttl()) ->
+    {name_revoke, {pubkey(), hash(), ttl()}}.
 name_revoke_op(AccountPubkey, NameHash, ProtectedDeltaTTL
               ) when ?IS_HASH(AccountPubkey),
                      ?IS_HASH(NameHash),
                      ?IS_NON_NEG_INTEGER(ProtectedDeltaTTL) ->
     {name_revoke, {AccountPubkey, NameHash, ProtectedDeltaTTL}}.
 
+-spec name_revoke({pubkey(), hash(), ttl()}, state()) -> state().
 name_revoke({AccountPubkey, NameHash, ProtectedDeltaTTL}, S) ->
     {Name, S1} = get_name(NameHash, S),
     assert_name_owner(Name, AccountPubkey),
@@ -908,6 +998,8 @@ name_revoke({AccountPubkey, NameHash, ProtectedDeltaTTL}, S) ->
 
 %%%-------------------------------------------------------------------
 
+-spec name_transfer_op(pubkey(), name | account, hash(), hash()) ->
+    {name_transfer, {pubkey(), name | account, hash(), hash()}}.
 name_transfer_op(OwnerPubkey, RecipientType, RecipientHash, NameHash
                 ) when ?IS_HASH(OwnerPubkey),
                        (RecipientType =:= name orelse RecipientType =:= account),
@@ -915,6 +1007,7 @@ name_transfer_op(OwnerPubkey, RecipientType, RecipientHash, NameHash
                        ?IS_HASH(NameHash) ->
     {name_transfer, {OwnerPubkey, RecipientType, RecipientHash, NameHash}}.
 
+-spec name_transfer({pubkey(), name | account, hash(), hash()}, state()) -> state().
 name_transfer({OwnerPubkey, RecipientType, RecipientHash, NameHash}, S) ->
     {Name, S1} = get_name(NameHash, S),
     assert_name_owner(Name, OwnerPubkey),
@@ -931,6 +1024,8 @@ name_transfer({OwnerPubkey, RecipientType, RecipientHash, NameHash}, S) ->
 
 %%%-------------------------------------------------------------------
 
+-spec name_update_op(pubkey(), hash(), possible_ttl(), ttl(), pointers()) ->
+    {name_update, {pubkey(), hash(), possible_ttl(), ttl(), pointers()}}.
 name_update_op(OwnerPubkey, NameHash, DeltaTTL, ClientTTL, Pointers
               ) when ?IS_HASH(OwnerPubkey),
                      ?IS_HASH(NameHash),
@@ -938,7 +1033,8 @@ name_update_op(OwnerPubkey, NameHash, DeltaTTL, ClientTTL, Pointers
                      ?IS_NON_NEG_INTEGER(ClientTTL),
                      is_list(Pointers) ->
     {name_update,
-     {OwnerPubkey, NameHash, {relative_ttl, DeltaTTL}, ClientTTL, Pointers}};
+        {OwnerPubkey, NameHash, {relative_ttl, DeltaTTL}, ClientTTL, Pointers}
+    };
 name_update_op(OwnerPubkey, NameHash, TTL, ClientTTL, Pointers
               ) when ?IS_HASH(OwnerPubkey),
                      ?IS_HASH(NameHash),
@@ -947,7 +1043,8 @@ name_update_op(OwnerPubkey, NameHash, TTL, ClientTTL, Pointers
                      (Pointers == undefined orelse is_list(Pointers)) ->
     {name_update, {OwnerPubkey, NameHash, TTL, ClientTTL, Pointers}}.
 
-
+-spec name_update({pubkey(), hash(), possible_ttl(), ttl(), pointers()}, state()) ->
+    state().
 name_update({OwnerPubkey, NameHash, TTL, ClientTTL, Pointers}, S) ->
     TTL /= undefined andalso assert_ttl(TTL, S),
     {Rec, S1} = get_name(NameHash, S),
@@ -969,12 +1066,16 @@ name_update({OwnerPubkey, NameHash, TTL, ClientTTL, Pointers}, S) ->
     Rec1 = aens_names:update(Rec, TTL1, ClientTTL1, Pointers1),
     put_name(Rec1, S1).
 
+-spec ttl_or_from(possible_ttl(), tuple(), state()) -> ttl().
 ttl_or_from({relative_ttl, _} = TTL, _, S) -> ttl_val(TTL, S);
 ttl_or_from({fixed_ttl, _} = TTL, _, S) -> ttl_val(TTL, S);
 ttl_or_from(undefined, {Rec, Getter}, _S) -> aens_names:Getter(Rec).
+
+-spec ttl_val({relative_ttl, ttl()} | {fixed_ttl, ttl()}, state()) -> ttl().
 ttl_val({relative_ttl, Delta}, S) -> S#state.height + Delta;
 ttl_val({fixed_ttl, Abs}, _S) -> Abs.
 
+-spec assert_ttl(possible_ttl(), state()) -> true | no_return().
 assert_ttl({relative_ttl, Delta}, #state{protocol = P}) when ?IS_NON_NEG_INTEGER(Delta) ->
     Delta =< aec_governance:name_claim_max_expiration(P) orelse runtime_error(ttl_too_high);
 assert_ttl({fixed_ttl, Abs}, #state{height = Current} = S) when ?IS_NON_NEG_INTEGER(Abs) ->
@@ -987,6 +1088,11 @@ assert_ttl(_, _) ->
 
 %%%-------------------------------------------------------------------
 
+-spec channel_create_op(pubkey(), amount(), pubkey(), amount(),
+    amount(), [pubkey()], hash(), non_neg_integer(), nonce(), round()) ->
+    {channel_create,
+        {pubkey(), amount(), pubkey(), amount(), amount(), [pubkey()],
+            hash(), non_neg_integer(), nonce(), amount()}} | no_return().
 channel_create_op(InitiatorPubkey, InitiatorAmount,
                   ResponderPubkey, ResponderAmount,
                   ReserveAmount, DelegatePubkeys,
@@ -994,7 +1100,6 @@ channel_create_op(InitiatorPubkey, InitiatorAmount,
                  ) when ?IS_HASH(InitiatorPubkey),
                         ?IS_NON_NEG_INTEGER(InitiatorAmount),
                         ?IS_HASH(ResponderPubkey),
-                        ?IS_NON_NEG_INTEGER(ReserveAmount),
                         ?IS_NON_NEG_INTEGER(ReserveAmount),
                         ?IS_HASH(StateHash),
                         ?IS_NON_NEG_INTEGER(LockPeriod),
@@ -1015,6 +1120,9 @@ channel_create_op(InitiatorPubkey, InitiatorAmount,
                       ReserveAmount, DelegatePubkeys,
                       StateHash, LockPeriod, Nonce, Round}}.
 
+-spec channel_create({pubkey(), amount(), pubkey(), amount(),
+    amount(), [pubkey()], hash(), non_neg_integer(), nonce(), round()}, state()) ->
+    state() | no_return().
 channel_create({InitiatorPubkey, InitiatorAmount,
                 ResponderPubkey, ResponderAmount,
                 ReserveAmount, DelegatePubkeys,
@@ -1040,13 +1148,14 @@ channel_create({InitiatorPubkey, InitiatorAmount,
     S4 = copy_contract_state_for_auth(Channel, RespAccount, S3),
     put_channel(Channel, S4).
 
-copy_contract_state_for_auth(Ch, Account, S) ->
+-spec copy_contract_state_for_auth(channel(), account(), state()) -> state().
+copy_contract_state_for_auth(Channel, Account, S) ->
     case aec_accounts:type(Account) of
         basic -> S;
         generalized ->
             {_, ContractPK} = aeser_id:specialize(aec_accounts:ga_contract(Account)),
             Contract = get_contract_no_cache(ContractPK, S),
-            StoreKey = aesc_channels:auth_store_key(aec_accounts:id(Account), Ch),
+            StoreKey = aesc_channels:auth_store_key(aec_accounts:id(Account), Channel),
             Trees    = S#state.trees,
             CtTree   = aec_trees:contracts(Trees),
             CtTree1  = aect_state_tree:copy_contract_store(Contract, StoreKey, CtTree),
@@ -1055,9 +1164,12 @@ copy_contract_state_for_auth(Ch, Account, S) ->
 
 %%%-------------------------------------------------------------------
 
+-spec channel_deposit_op(pubkey(), pubkey(), amount(), hash(), round()) ->
+    {channel_deposit, {pubkey(), pubkey(), amount(), hash(), round()}}.
 channel_deposit_op(FromPubkey, ChannelPubkey, Amount, StateHash, Round) ->
     {channel_deposit, {FromPubkey, ChannelPubkey, Amount, StateHash, Round}}.
 
+-spec channel_deposit({pubkey(), pubkey(), amount(), hash(), round()}, state()) -> state().
 channel_deposit({FromPubkey, ChannelPubkey, Amount, StateHash, Round}, S) ->
     {Channel, S1} = get_channel(ChannelPubkey, S),
     assert_channel_active(Channel),
@@ -1069,6 +1181,8 @@ channel_deposit({FromPubkey, ChannelPubkey, Amount, StateHash, Round}, S) ->
 
 %%%-------------------------------------------------------------------
 
+-spec channel_withdraw_op(pubkey(), pubkey(), amount(), hash(), round()) ->
+    {channel_withdraw, {pubkey(), pubkey(), amount(), hash(), round()}}.
 channel_withdraw_op(ToPubkey, ChannelPubkey, Amount, StateHash, Round
                    ) when ?IS_HASH(ToPubkey),
                           ?IS_HASH(ChannelPubkey),
@@ -1077,6 +1191,7 @@ channel_withdraw_op(ToPubkey, ChannelPubkey, Amount, StateHash, Round
                           ?IS_NON_NEG_INTEGER(Round) ->
     {channel_withdraw, {ToPubkey, ChannelPubkey, Amount, StateHash, Round}}.
 
+-spec channel_withdraw({pubkey(), pubkey(), amount(), hash(), round()}, state()) -> state().
 channel_withdraw({ToPubkey, ChannelPubkey, Amount, StateHash, Round}, S) ->
     {Channel, S1} = get_channel(ChannelPubkey, S),
     assert_channel_active(Channel),
@@ -1091,6 +1206,10 @@ channel_withdraw({ToPubkey, ChannelPubkey, Amount, StateHash, Round}, S) ->
 
 %%%-------------------------------------------------------------------
 
+-spec channel_close_mutual_op(pubkey(), pubkey(), amount(), amount(),
+    fee(), non_neg_integer()) ->
+    {channel_close_mutual, {pubkey(), pubkey(), amount(), amount(),
+        fee(), non_neg_integer()}}.
 channel_close_mutual_op(FromPubkey, ChannelPubkey,
                         InitiatorAmount, ResponderAmount, Fee, ConsensusVersion
                        ) when ?IS_HASH(FromPubkey),
@@ -1102,6 +1221,8 @@ channel_close_mutual_op(FromPubkey, ChannelPubkey,
     {channel_close_mutual, {FromPubkey, ChannelPubkey,
                             InitiatorAmount, ResponderAmount, Fee, ConsensusVersion}}.
 
+-spec channel_close_mutual({pubkey(), pubkey(), amount(), amount(),
+    fee(), non_neg_integer()}, state()) -> state().
 channel_close_mutual({FromPubkey, ChannelPubkey,
                       InitiatorAmount, ResponderAmount, Fee, ConsensusVersion}, S) ->
     {Channel, S1} = get_channel(ChannelPubkey, S),
@@ -1132,6 +1253,8 @@ channel_close_mutual({FromPubkey, ChannelPubkey,
 
 %%%-------------------------------------------------------------------
 
+-spec channel_settle_op(pubkey(), pubkey(), amount(), amount()) ->
+    {channel_settle, {pubkey(), pubkey(), amount(), amount()}}.
 channel_settle_op(FromPubkey, ChannelPubkey, InitiatorAmount, ResponderAmount
                  ) when ?IS_HASH(FromPubkey),
                         ?IS_HASH(ChannelPubkey),
@@ -1140,6 +1263,7 @@ channel_settle_op(FromPubkey, ChannelPubkey, InitiatorAmount, ResponderAmount
     {channel_settle, {FromPubkey, ChannelPubkey,
                       InitiatorAmount, ResponderAmount}}.
 
+-spec channel_settle({pubkey(), pubkey(), amount(), amount()}, state()) -> state().
 channel_settle({FromPubkey, ChannelPubkey,
                 InitiatorAmount, ResponderAmount}, S) ->
     {Channel, S1} = get_channel(ChannelPubkey, S),
@@ -1164,9 +1288,13 @@ channel_settle({FromPubkey, ChannelPubkey,
 
 %%%-------------------------------------------------------------------
 
-contract_call_op(CallerPubKey, ContractPubkey, CallData, GasLimit, GasPrice,
+-spec contract_call_op(pubkey(), pubkey(), binary(), non_neg_integer(), non_neg_integer(),
+    amount(), abi_version(), hash(), list(), fee(), nonce()) ->
+    {contract_call, {pubkey(), pubkey(), binary(), non_neg_integer(), non_neg_integer(),
+        amount(), abi_version(), hash(), list(), fee(), nonce()}}.
+contract_call_op(CallerPubkey, ContractPubkey, CallData, GasLimit, GasPrice,
                  Amount, ABIVersion, Origin, CallStack, Fee, Nonce
-                ) when ?IS_HASH(CallerPubKey),
+                ) when ?IS_HASH(CallerPubkey),
                        ?IS_HASH(ContractPubkey),
                        is_binary(CallData),
                        ?IS_NON_NEG_INTEGER(GasLimit),
@@ -1177,26 +1305,29 @@ contract_call_op(CallerPubKey, ContractPubkey, CallData, GasLimit, GasPrice,
                        is_list(CallStack),
                        ?IS_NON_NEG_INTEGER(Fee),
                        ?IS_NON_NEG_INTEGER(Nonce) ->
-    {contract_call, {CallerPubKey, ContractPubkey, CallData, GasLimit, GasPrice,
+    {contract_call, {CallerPubkey, ContractPubkey, CallData, GasLimit, GasPrice,
                      Amount, ABIVersion, Origin, CallStack, Fee, Nonce}}.
 
+-spec split_payment(amount(), amount(), state()) -> {amount(), state()}.
 split_payment(TotalAmount, Amount, S) ->
     PayerAmount = TotalAmount - Amount,
     case aetx_env:payer(S#state.tx_env) of
-        PayerPubKey when is_binary(PayerPubKey), PayerAmount > 0 ->
-            {PayerAccount, S1} = get_account(PayerPubKey, S),
+        PayerPubkey when is_binary(PayerPubkey), PayerAmount > 0 ->
+            {PayerAccount, S1} = get_account(PayerPubkey, S),
             assert_account_balance(PayerAccount, PayerAmount),
             {Amount, account_spend(PayerAccount, PayerAmount, S1)};
         _ ->
             {TotalAmount, S}
     end.
 
-contract_call({CallerPubKey, ContractPubkey, CallData, GasLimit, GasPrice,
+-spec contract_call({pubkey(), pubkey(), binary(), non_neg_integer(), non_neg_integer(),
+    amount(), abi_version(), hash(), list(), fee(), nonce()}, state()) -> state().
+contract_call({CallerPubkey, ContractPubkey, CallData, GasLimit, GasPrice,
                Amount, ABIVersion, Origin, CallStack, Fee, Nonce}, S) ->
-    {CallerId, TotalAmount} = get_call_env_specific(CallerPubKey, GasLimit,
+    {CallerId, TotalAmount} = get_call_env_specific(CallerPubkey, GasLimit,
                                                     GasPrice, Amount, Fee, S),
     {CallerAmount, S0}  = split_payment(TotalAmount, Amount, S),
-    {CallerAccount, S1} = get_account(CallerPubKey, S0),
+    {CallerAccount, S1} = get_account(CallerPubkey, S0),
     assert_account_balance(CallerAccount, CallerAmount),
     CTVersion = assert_contract_call_version(ContractPubkey, ABIVersion, S),
     assert_contract_call_stack(CallStack, S),
@@ -1237,16 +1368,23 @@ contract_call({CallerPubKey, ContractPubkey, CallData, GasLimit, GasPrice,
             end
     end.
 
-get_call_env_specific(CallerPubKey, GasLimit, GasPrice, Amount, Fee, S) ->
+-spec get_call_env_specific(pubkey(), non_neg_integer(), non_neg_integer(),
+    amount(), fee(), state()) -> {id(), amount()}.
+get_call_env_specific(CallerPubkey, GasLimit, GasPrice, Amount, Fee, S) ->
     case aetx_env:context(S#state.tx_env) of
         aetx_contract ->
-            {aeser_id:create(contract, CallerPubKey), Amount};
+            {aeser_id:create(contract, CallerPubkey), Amount};
         Other when Other == aetx_transaction; Other == aetx_ga ->
-            {aeser_id:create(account, CallerPubKey), Fee + GasLimit * GasPrice + Amount}
+            {aeser_id:create(account, CallerPubkey), Fee + GasLimit * GasPrice + Amount}
     end.
 
 %%%-------------------------------------------------------------------
 
+-spec ga_attach_op(pubkey(), non_neg_integer(), non_neg_integer(), abi_version(),
+    vm_version(), binary(), binary(), binary(), fee(), nonce()) ->
+    {ga_attach, {pubkey(), non_neg_integer(), non_neg_integer(),
+        abi_version(), vm_version(),
+        binary(), binary(), binary(), fee(), nonce()}}.
 ga_attach_op(OwnerPubkey, GasLimit, GasPrice, ABIVersion, VMVersion,
              SerializedCode, AuthFun, CallData, Fee, Nonce
             ) when ?IS_HASH(OwnerPubkey),
@@ -1262,6 +1400,8 @@ ga_attach_op(OwnerPubkey, GasLimit, GasPrice, ABIVersion, VMVersion,
      {OwnerPubkey, GasLimit, GasPrice, ABIVersion, VMVersion,
       SerializedCode, AuthFun, CallData, Fee, Nonce}}.
 
+-spec ga_attach({pubkey(), non_neg_integer(), non_neg_integer(), abi_version(),
+    vm_version(), binary(), binary(), binary(), fee(), nonce()}, state()) -> state() | no_return().
 ga_attach({OwnerPubkey, GasLimit, GasPrice, ABIVersion,
            VMVersion, SerializedCode, AuthFun, CallData, Fee, Nonce}, S) ->
     assert_ga_active(S),
@@ -1284,15 +1424,18 @@ ga_attach({OwnerPubkey, GasLimit, GasPrice, ABIVersion,
                                         SerializedCode, 0),
     ContractPubkey  = aect_contracts:pubkey(Contract),
     Payable         = is_payable_contract(Code),
-    {_CAccount, S3} = ensure_account(ContractPubkey, [non_payable || not Payable], S2),
+    {_CAccount, S3} = ensure_account(ContractPubkey, [non_payable || (not Payable)], S2),
     OwnerId         = aect_contracts:owner_id(Contract),
     init_contract({attach, AuthFun}, OwnerId, Code, Contract, GasLimit, GasPrice,
                   CallData, OwnerPubkey, Fee, Nonce, RollbackS, S3,
                   ga_attach, CTVersion).
 
+-spec ga_set_meta_res_op(pubkey(), binary(), ok | {error, term()}) ->
+    {ga_set_meta_res, {pubkey(), binary(), ok | {error, term()}}}.
 ga_set_meta_res_op(OwnerPubkey, AuthData, Res) ->
     {ga_set_meta_res, {OwnerPubkey, AuthData, Res}}.
 
+-spec ga_set_meta_res({pubkey(), binary(), ok | {error, term()}}, state()) -> state().
 ga_set_meta_res({OwnerPubkey, AuthData, Res}, S) ->
     {Account, S1} = get_account(OwnerPubkey, S),
     assert_generalized_account(Account),
@@ -1313,6 +1456,7 @@ ga_set_meta_res({OwnerPubkey, AuthData, Res}, S) ->
         end,
     put_auth_call(AuthCall1, S2).
 
+-spec error_to_binary(atom() | binary() | any()) -> binary().
 error_to_binary(Atom) when is_atom(Atom) ->
     atom_to_binary(Atom, utf8);
 error_to_binary(Bin) when is_binary(Bin) ->
@@ -1320,6 +1464,10 @@ error_to_binary(Bin) when is_binary(Bin) ->
 error_to_binary(_) ->
     <<"unknown_error">>.
 
+-spec ga_meta_op(pubkey(), binary(), abi_version(),
+    non_neg_integer(), non_neg_integer(), fee(), aetx_sign:signed_tx()) ->
+    {ga_meta, {pubkey(), binary(), abi_version(),
+        non_neg_integer(), non_neg_integer(), fee(), aetx_sign:signed_tx()}}.
 ga_meta_op(OwnerPubkey, AuthData, ABIVersion, GasLimit, GasPrice, Fee, InnerTx
           ) when ?IS_HASH(OwnerPubkey),
                  ?IS_NON_NEG_INTEGER(GasLimit),
@@ -1330,6 +1478,8 @@ ga_meta_op(OwnerPubkey, AuthData, ABIVersion, GasLimit, GasPrice, Fee, InnerTx
     {ga_meta,
      {OwnerPubkey, AuthData, ABIVersion, GasLimit, GasPrice, Fee, InnerTx}}.
 
+-spec ga_meta({pubkey(), binary(), abi_version(), non_neg_integer(),
+    non_neg_integer(), fee(), aetx_sign:signed_tx()}, state()) -> state().
 ga_meta({OwnerPK, AuthData, ABIVersion, GasLimit, GasPrice, Fee, InnerTx}, S) ->
     assert_ga_active(S),
     CheckAmount       = Fee + GasLimit * GasPrice,
@@ -1374,6 +1524,7 @@ ga_meta({OwnerPK, AuthData, ABIVersion, GasLimit, GasPrice, Fee, InnerTx}, S) ->
             runtime_error(authentication_failed)
     end.
 
+-spec decode_auth_call_result(abi_version(), binary()) -> {ok, boolean()} | {error, term()}.
 decode_auth_call_result(?ABI_AEVM_SOPHIA_1, Result) ->
     case aeb_heap:from_binary(word, Result) of
         {ok, 1}          -> {ok, true};
@@ -1389,6 +1540,10 @@ decode_auth_call_result(?ABI_FATE_SOPHIA_1, Result) ->
 
 %%%-------------------------------------------------------------------
 
+-spec contract_create_op(pubkey(), amount(), amount(), non_neg_integer(),
+    non_neg_integer(), abi_version(), vm_version(), binary(), binary(), fee(), nonce()) ->
+    {contract_create, {pubkey(), amount(), amount(), non_neg_integer(),
+        non_neg_integer(), abi_version(), vm_version(), binary(), binary(), fee(), nonce()}}.
 contract_create_op(OwnerPubkey, Amount, Deposit, GasLimit,
                    GasPrice, ABIVersion, VMVersion, SerializedCode,
                    CallData, Fee, Nonce
@@ -1408,6 +1563,9 @@ contract_create_op(OwnerPubkey, Amount, Deposit, GasLimit,
       GasPrice, ABIVersion, VMVersion, SerializedCode,
       CallData, Fee, Nonce}}.
 
+-spec contract_create({pubkey(), amount(), amount(), non_neg_integer(),
+    non_neg_integer(), abi_version(), vm_version(), binary(), binary(),
+    fee(), nonce()}, state()) -> state().
 contract_create({OwnerPubkey, Amount, Deposit, GasLimit, GasPrice,
                  ABIVersion, VMVersion, SerializedCode, CallData, Fee, Nonce0},
                 S) ->
@@ -1440,12 +1598,14 @@ contract_create({OwnerPubkey, Amount, Deposit, GasLimit, GasPrice,
 
 %%%-------------------------------------------------------------------
 
+-spec tx_event_op(channel, pubkey()) -> {tx_event, {channel, pubkey()}}.
 tx_event_op(Kind, Name) ->
     {tx_event, {Kind, Name}}.
 
 tx_event_op(Kind, Name, Info) ->
     {tx_event, {Kind, Name, Info}}.
 
+-spec tx_event({channel, pubkey()}, state()) -> state().
 tx_event({Kind, Name}, #state{tx_env = Env} = S) ->
     S#state{tx_env = aetx_env:tx_event(Kind, Name, Env)};
 tx_event({Kind, Name, Info}, #state{tx_env = Env} = S) ->
@@ -1453,6 +1613,10 @@ tx_event({Kind, Name, Info}, #state{tx_env = Env} = S) ->
 
 %%%-------------------------------------------------------------------
 
+-spec init_contract(contract_type(), id(), code(), contract(),
+    number(), number(), binary(),
+    pubkey(), fee(), nonce(), state(), state(), contract_create | ga_attach,
+    ct_version()) -> state().
 init_contract(Context, OwnerId, Code, Contract, GasLimit, GasPrice, CallData,
               OwnerPubkey, Fee, Nonce, RollbackS, S, MetricType, CTVersion) ->
     {InitContract, ChainContract, S1} = prepare_init_call(Code, Contract, S),
@@ -1474,6 +1638,7 @@ init_contract(Context, OwnerId, Code, Contract, GasLimit, GasPrice, CallData,
 
 %% Prepare 2 contracts, one for the InitCall and one (without the init
 %% function) to store on chain.
+-spec prepare_init_call(code(), contract(), state()) -> {contract(), contract(), state()}.
 prepare_init_call(Code, Contract, S = #state{protocol = Protocol}) ->
     case aect_contracts:ct_version(Contract) of
         #{vm := V} when ?IS_FATE_SOPHIA(V) ->
@@ -1521,6 +1686,8 @@ prepare_init_call(Code, Contract, S = #state{protocol = Protocol}) ->
             {Contract, Contract, S}
     end.
 
+-spec contract_init_call_success(contract_type(), call(), contract(),
+    number(), fee(), state(), state()) -> state().
 contract_init_call_success(Type, InitCall, Contract, GasLimit, Fee, RollbackS, S) ->
     ReturnValue = aect_call:return_value(InitCall),
     %% The return value is cleared for successful init calls.
@@ -1552,7 +1719,7 @@ contract_init_call_success(Type, InitCall, Contract, GasLimit, Fee, RollbackS, S
                     ga_attach_success(InitCall1, GasLimit, AuthFun, S)
             end;
         #{vm := ?VM_AEVM_SOLIDITY_1} ->
-            %% Solidity inital call returns the code to store in the contract.
+            %% Solidity initial call returns the code to store in the contract.
             Contract1 = aect_contracts:set_code(ReturnValue, Contract),
             S1 = put_contract(Contract1, S),
             contract_call_success(InitCall1, GasLimit, S1)
@@ -1561,6 +1728,7 @@ contract_init_call_success(Type, InitCall, Contract, GasLimit, Fee, RollbackS, S
 %%%===================================================================
 %%% Helpers for instructions
 
+-spec set_call_object_id(call(), state()) -> call().
 set_call_object_id(Call, #state{ tx_env = TxEnv }) ->
     case aetx_env:ga_nonce(TxEnv, aect_call:caller_pubkey(Call)) of
         {value, Nonce} ->
@@ -1570,22 +1738,26 @@ set_call_object_id(Call, #state{ tx_env = TxEnv }) ->
             Call
     end.
 
+-spec establish_payer(pubkey(), state()) -> pubkey() | undefined.
 establish_payer(NormalPayer, S) ->
     case aetx_env:payer(S#state.tx_env) of
         undefined -> NormalPayer;
         X         -> X
     end.
 
+-spec refund_payer(call(), number(), state()) -> state().
 refund_payer(Call, GasLimit, S) ->
     Refund = (GasLimit - aect_call:gas_used(Call)) * aect_call:gas_price(Call),
     Payer = establish_payer(aect_call:caller_pubkey(Call), S),
     {CallerAccount, S1} = get_account(Payer, S),
     account_earn(CallerAccount, Refund, S1).
 
+-spec contract_call_success(call(), number(), state()) -> state().
 contract_call_success(Call, GasLimit, S) ->
     S1 = refund_payer(Call, GasLimit, S),
     put_call(set_call_object_id(Call, S1), S1).
 
+-spec contract_call_fail(call(), number(), state()) -> state().
 contract_call_fail(Call0, Fee, S) ->
     Call1 = set_call_object_id(Call0, S),
     Call  = sanitize_error(S#state.protocol, S#state.tx_env, Call1),
@@ -1603,6 +1775,8 @@ contract_call_fail(Call0, Fee, S) ->
     {Account, S3} = get_account(Payer, S2),
     account_spend(Account, UsedAmount, S3).
 
+-spec run_contract(id(), contract(), number(), fee(), non_neg_integer(), binary(),
+    false, binary(), amount(), list(), nonce(), state()) -> {call(), state()}.
 run_contract(CallerId, Contract, GasLimit, Fee, GasPrice, CallData, AllowInit,
              Origin, Amount, CallStack, Nonce, S) ->
     Code =
@@ -1617,6 +1791,8 @@ run_contract(CallerId, Contract, GasLimit, Fee, GasPrice, CallData, AllowInit,
     run_contract(CallerId, Code, Contract, GasLimit, Fee,
                  GasPrice, CallData, AllowInit, Origin, Amount, CallStack, Nonce, S).
 
+-spec run_contract(id(), code() | binary(), contract(), number(), fee(), non_neg_integer(), binary(),
+    boolean(), binary(), amount(), list(), nonce(), state()) -> {call(), state()}.
 run_contract(CallerId, Code, Contract, GasLimit, Fee, GasPrice, CallData, AllowInit,
              Origin, Amount, CallStack, Nonce, S) ->
     %% We need to push all to the trees before running a contract.
@@ -1646,6 +1822,7 @@ run_contract(CallerId, Code, Contract, GasLimit, Fee, GasPrice, CallData, AllowI
     {Call1, Trees1, Env1} = aect_dispatch:run(CTVersion, CallDef),
     {Call1, S1#state{trees = Trees1, tx_env = Env1}}.
 
+-spec ga_attach_success(call(), number(), hash(), state()) -> state().
 ga_attach_success(Call, GasLimit, AuthFun, S) ->
     S1 = refund_payer(Call, GasLimit, S),
     {CallerAccount, S2} = get_account(aect_call:caller_pubkey(Call), S1),
@@ -1654,6 +1831,7 @@ ga_attach_success(Call, GasLimit, AuthFun, S) ->
     S3 = put_account(CallerAccount1, S2),
     put_call(set_call_object_id(Call, S3), S3).
 
+-spec int_lock_amount(non_neg_integer(), state()) -> state().
 int_lock_amount(0, #state{} = S) ->
     %% Don't risk creating an account for the locked amount if there is none.
     S;
@@ -1662,6 +1840,7 @@ int_lock_amount(Amount, S) when ?IS_NON_NEG_INTEGER(Amount) ->
     {Account, S1} = ensure_account(LockPubkey, S),
     account_earn(Account, Amount, S1).
 
+-spec int_resolve_name(hash(), binary(), state()) -> {pubkey(), state()} | no_return().
 int_resolve_name(NameHash, Key, S) ->
     {Name, S1} = get_name(NameHash, S),
     case aens:resolve_from_name_object(Key, Name) of
@@ -1674,15 +1853,17 @@ int_resolve_name(NameHash, Key, S) ->
             runtime_error(What)
     end.
 
-
+-spec account_earn(account(), amount(), state()) -> state().
 account_earn(Account, Amount, S) ->
     {ok, Account1} = aec_accounts:earn(Account, Amount),
     put_account(Account1, S).
 
+-spec account_spend(account(), amount(), state()) -> state().
 account_spend(Account, Amount, S) ->
     {ok, Account1} = aec_accounts:spend_without_nonce_bump(Account, Amount),
     put_account(Account1, S).
 
+-spec specialize_account(id()) -> {aeser_id:tag(), aeser_id:val()}.
 specialize_account(RecipientID) ->
     case aeser_id:specialize(RecipientID) of
         {name, NameHash}   -> {name, NameHash};
@@ -1691,36 +1872,41 @@ specialize_account(RecipientID) ->
         {account, Pubkey}  -> {account, Pubkey}
     end.
 
+-spec assert(ok | {error, term()}) -> ok | no_return().
 assert(ok) -> ok;
 assert({error, Error}) -> runtime_error(Error).
 
-assert(true,_Error) -> ok;
+-spec assert(boolean(), term()) -> ok | no_return().
+assert(true, _Error) -> ok;
 assert(false, Error) -> runtime_error(Error).
 
 assert_not_equal(X, X, Error) -> runtime_error(Error);
 assert_not_equal(_, _, _) -> ok.
 
+-spec assert_basic_account(account()) -> ok | no_return().
 assert_basic_account(Account) ->
     case aec_accounts:type(Account) of
         basic       -> ok;
         generalized -> runtime_error(not_a_basic_account)
     end.
 
+-spec assert_generalized_account(account()) -> ok | no_return().
 assert_generalized_account(Account) ->
     case aec_accounts:type(Account) of
         generalized -> ok;
         basic       -> runtime_error(not_a_generalized_account)
     end.
 
-assert_relevant_signature(AccountPK, STx, State) ->
+-spec assert_relevant_signature(pubkey(), aetx_sign:signed_tx(), state()) -> ok | no_return().
+assert_relevant_signature(AccountPubkey, STx, State) ->
     Tx = aetx_sign:tx(STx),
     case aetx:specialize_type(Tx) of
         {ga_meta_tx, GAMetaTx} ->
-            assert_relevant_signature(AccountPK, aega_meta_tx:tx(GAMetaTx), State);
+            assert_relevant_signature(AccountPubkey, aega_meta_tx:tx(GAMetaTx), State);
         {_, _} ->
             case aetx:signers(Tx, State#state.trees) of
                 {ok, Signers} ->
-                    case lists:member(AccountPK, Signers) of
+                    case lists:member(AccountPubkey, Signers) of
                         true  -> ok;
                         false -> runtime_error(non_relevant_signature)
                     end;
@@ -1729,7 +1915,7 @@ assert_relevant_signature(AccountPK, STx, State) ->
             end
     end.
 
-
+-spec assert_ga_env(pubkey(), nonce(), state()) -> ok | no_return().
 assert_ga_env(Pubkey, Nonce, #state{tx_env = Env}) ->
     GANonce = aetx_env:ga_nonce(Env, Pubkey),
     if Nonce =/= 0     -> runtime_error(nonce_in_ga_tx_should_be_zero);
@@ -2085,6 +2271,7 @@ assert_auth_function(?ABI_FATE_SOPHIA_1, Hash, _TypeInfo, ByteCode) ->
         {error, _}               -> runtime_error(bad_function_hash)
     end.
 
+-spec assert_contract_create_version(abi_version(), vm_version(), state()) -> ok | no_return().
 assert_contract_create_version(ABIVersion, VMVersion, #state{protocol = Protocol}) ->
     CTVersion = #{abi => ABIVersion, vm => VMVersion},
     case aect_contracts:is_legal_version_at_protocol(create, CTVersion, Protocol) of
@@ -2120,19 +2307,20 @@ assert_contract_call_stack(CallStack, S) ->
         _Other -> runtime_error(nonempty_call_stack)
     end.
 
+-spec assert_auth_call_object_not_exist(aect_call:call(), state()) -> ok | no_return().
 assert_auth_call_object_not_exist(Call, S) ->
     AuthCallId = aect_call:id(Call),
     Pubkey     = aect_call:caller_pubkey(Call),
     case find_auth_call(Pubkey, AuthCallId, S) of
         none -> ok;
-        {value, _} -> runtime_error(auth_call_object_already_exist)
+        {_, _} -> runtime_error(auth_call_object_already_exist)
     end.
 
-
+-spec assert_not_channel(aeprimop_state:channel_key(), state()) -> ok | no_return().
 assert_not_channel(ChannelPubkey, S) ->
     case find_channel(ChannelPubkey, S) of
         none -> ok;
-        {value, _} -> runtime_error(channel_exists)
+        {_, _} -> runtime_error(channel_exists)
     end.
 
 assert_channel_reserve_amount(ReserveAmount, InitiatorAmount, ResponderAmount) ->
@@ -2181,8 +2369,9 @@ assert_channel_withdraw_amount(Channel, Amount) ->
     Reserve = aesc_channels:channel_reserve(Channel),
     assert(ChannelAmount >= 2*Reserve + Amount, not_enough_channel_funds).
 
-is_payable_contract(#{ payable := Payable }) -> Payable;
-is_payable_contract(_)                       -> runtime_error(bad_bytecode).
+-spec is_payable_contract(payable() | any()) -> boolean() | no_return().
+is_payable_contract(#{payable := Payable}) -> Payable;
+is_payable_contract(_)                     -> runtime_error(bad_bytecode).
 
 %%%===================================================================
 %%% Error handling
@@ -2191,6 +2380,7 @@ is_payable_contract(_)                       -> runtime_error(bad_bytecode).
 runtime_error(Error) ->
     throw({?MODULE, Error}).
 
+-spec sanitize_error(non_neg_integer(), aetx_env(), call()) -> call().
 sanitize_error(P, _Env, Call) when P =< ?FORTUNA_PROTOCOL_VSN ->
     Call;
 sanitize_error(_P, Env, Call) ->
@@ -2209,18 +2399,22 @@ sanitize_error(_P, Env, Call) ->
 %%%===================================================================
 %%% Metrics helper functions
 
+-spec timed_contract_call(contract_call_type(), fun(), binary(), ct_version()) ->
+    {call(), state()}.
 timed_contract_call(Type, Fun, CallData, CTVersion) ->
     %% Execute call
     {Time, {Call, State}} = timer:tc(Fun),
 
     %% Spawn process to calculate and update metrics, as we don't want to block
     %% the call logic any further.
-    spawn(fun() ->
-                  process_timed_contract_call(Time, Type, Call, CallData, State, CTVersion)
-          end),
-
+    spawn(
+        fun() ->
+            process_timed_contract_call(Time, Type, Call, CallData, State, CTVersion)
+        end),
     {Call, State}.
 
+-spec process_timed_contract_call(integer(), contract_call_type(), call(), binary(),
+    state(), ct_version()) -> ok.
 process_timed_contract_call(Time, Type, Call, CallData, _State,
                             #{vm := CtVMVsn, abi := CtABIVsn}) ->
     ReturnType = aect_call:return_type(Call),
@@ -2244,8 +2438,8 @@ process_timed_contract_call(Time, Type, Call, CallData, _State,
     %                    Metrics
     %            end,
     lists:foreach(
-     fun({M, V}) ->
-             Metric = [ae, epoch, aecore, contracts, CtABIVsn, CtVMVsn, Type, ReturnType, M],
-             aec_metrics:try_update_or_create(Metric, V)
-     end, Metrics),
+        fun({M, V}) ->
+            Metric = [ae, epoch, aecore, contracts, CtABIVsn, CtVMVsn, Type, ReturnType, M],
+            aec_metrics:try_update_or_create(Metric, V)
+        end, Metrics),
     ok.

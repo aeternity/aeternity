@@ -50,6 +50,8 @@
          }).
 
 -opaque tx() :: #ns_preclaim_tx{}.
+-type aec_trees() :: aec_trees:trees().
+-type aetx_env() :: aetx_env:env().
 
 -export_type([tx/0]).
 
@@ -95,12 +97,13 @@ nonce(#ns_preclaim_tx{nonce = Nonce}) ->
 origin(#ns_preclaim_tx{} = Tx) ->
     account_pubkey(Tx).
 
--spec check(tx(), aec_trees:trees(), aetx_env:env()) -> {ok, aec_trees:trees()} | {error, term()}.
+-spec check(tx(), aec_trees(), aetx_env()) -> {ok, aec_trees()} | {error, term()}.
 check(#ns_preclaim_tx{} = _Tx, Trees,_Env) ->
     %% Checks are in process/3
     {ok, Trees}.
 
--spec process(tx(), aec_trees:trees(), aetx_env:env()) -> {ok, aec_trees:trees()} | {error, term()}.
+-spec process(tx(), aec_trees(), aetx_env()) ->
+    {ok, aec_trees(), aetx_env()} | {error, term()}.
 process(#ns_preclaim_tx{} = PreclaimTx, Trees, Env) ->
     Instructions =
         aeprimop:name_preclaim_tx_instructions(
@@ -111,7 +114,7 @@ process(#ns_preclaim_tx{} = PreclaimTx, Trees, Env) ->
           nonce(PreclaimTx)),
     aeprimop:eval(Instructions, Trees, Env).
 
--spec signers(tx(), aec_trees:trees()) -> {ok, [aec_keys:pubkey()]}.
+-spec signers(tx(), aec_trees()) -> {ok, [aec_keys:pubkey()]}.
 signers(#ns_preclaim_tx{} = Tx, _) ->
     {ok, [account_pubkey(Tx)]}.
 
@@ -193,4 +196,3 @@ version(_) ->
 -spec valid_at_protocol(aec_hard_forks:protocol_vsn(), tx()) -> boolean().
 valid_at_protocol(_, _) ->
     true.
-
