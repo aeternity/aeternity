@@ -29,10 +29,10 @@ protocol_gate(X) ->
     case init:get_argument(network_id) of
         {ok, [["local_iris_testnet"]]} -> X;
         {ok, OtherTestnet} ->
-            io:format(user, "Not a relevant testnet: ~p~n", [OtherTestnet]),
+            io:format(user, "~nNot a relevant testnet: ~p~n", [OtherTestnet]),
             [];
         Other ->
-            io:format(user, "Not a testnet: ~p~n", [Other]),
+            io:format(user, "~nNot a testnet: ~p~n", [Other]),
             []
     end.
 
@@ -40,7 +40,8 @@ protocol_gate(X) ->
 stateless_hc_support_test_() ->
     protocol_gate([
         {"POS&POW field structure", fun pos_pow_structure/0},
-        {"Genesis header", fun genesis_header/0}
+        {"Genesis header", fun genesis_header/0},
+        {"Extra from header", fun extra_from_header/0}
     ]).
 
 pos_pow_structure() ->
@@ -91,13 +92,22 @@ genesis_header() ->
     },
     ?assertEqual(Header, aehc_consensus_hyperchains:genesis_raw_header()).
 
+extra_from_header() ->
+    Header = aehc_consensus_hyperchains:genesis_raw_header(),
+    Extra = #{consensus => aehc_consensus_hyperchains, pos => false, type => key_pow},
+    ?assertEqual(Extra, aehc_consensus_hyperchains:extra_from_header(Header)).
+
 
 %% Persistent storage related functions coverage
 persistence_support_test_() ->
     protocol_gate([
-        %
-        %%
+        {"Staking contract undeployed", fun staking_contract_bytecode/0}
     ]).
+
+staking_contract_bytecode() ->
+    ?assertException(error, badarg, aehc_consensus_hyperchains:get_staking_contract_bytecode()),
+    ?assertException(error, badarg, aehc_consensus_hyperchains:get_staking_contract_aci()),
+    ?assertEqual(not_deployed, aehc_consensus_hyperchains:get_staking_contract_address()).
 
 
 %% PoW genesis - aec_conductor is not started
