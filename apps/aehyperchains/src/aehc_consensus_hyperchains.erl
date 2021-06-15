@@ -450,7 +450,6 @@ state_pre_transform_key_node(KeyNode, _PrevNode, PrevKeyNode, Trees1) ->
             Trees1
     end.
 
--spec ensure_hc_activation_criteria(aec_block_insertion:chain_node(), aetx_env:env(), aec_trees:trees()) -> ok | {error, any()}.
 ensure_hc_activation_criteria(KeyNode, TxEnv, Trees) ->
     {ok,
         #activation_criteria{ check_frequency = CheckFrequency
@@ -507,6 +506,9 @@ pogf_detected(_H1, _H2) -> ok. %% TODO: we can't punish for forks due to forking
 
 %% -------------------------------------------------------------------
 %% Genesis block
+%%TODO Const hc_genesis_version/0 won't let dialyzer do its job;
+%%     remove after rebasing on the refactored branch.
+-dialyzer({nowarn_function, genesis_transform_trees/2}).
 genesis_transform_trees(Trees0, #{}) ->
     %% At genesis no ordinary user could possibly deploy the contract
     case get_predeploy_address() of
@@ -595,6 +597,8 @@ new_unmined_key_node(PrevNode, PrevKeyNode, Height, Miner, Beneficiary, Protocol
             end
     end.
 
+%%TODO Same as genesis_transform_trees/2. FAKE_BLOCK_HASH breaks hash() type contract.
+-dialyzer({nowarn_function, new_pos_key_node/8}).
 new_pos_key_node(PrevNode, PrevKeyNode, Height, Miner, Beneficiary, Protocol, InfoField, _TreesIn) ->
     %% TODO: PoGF - for now just ignore generational fraud - let's first get a basic version working
     %%       When handling PoGF the commitment point is in a different place than usual
