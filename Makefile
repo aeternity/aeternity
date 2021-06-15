@@ -421,7 +421,7 @@ internal-compile-deps:
 internal-package: VERSION REVISION internal-compile-deps endpoints
 	@$(REBAR) as $(KIND) tar
 
-internal-build: VERSION REVISION endpoints
+internal-build: VERSION REVISION internal-compile-deps endpoints
 	@$(REBAR) as $(KIND) release
 
 internal-start:
