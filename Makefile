@@ -52,7 +52,7 @@ all:	local-build
 
 endpoints: VERSION
 	$(REBAR) swagger_endpoints
-	$(REBAR) swagger_endpoints --file=$(OAS_YAML) --out=$(OAS_ENDPOINTS_SPEC) 
+	$(REBAR) swagger_endpoints --file=$(OAS_YAML) --out=$(OAS_ENDPOINTS_SPEC)
 
 null  :=
 space := $(null) # space
@@ -103,7 +103,7 @@ endif
 export AEVM_EXTERNAL_TEST_DIR=aevm_external
 export AEVM_EXTERNAL_TEST_VERSION=348b0633f4a6ee3c100368bf0f4fca71394b4d01
 
-console: VERSION REVISION endpoints 
+console: VERSION REVISION endpoints
 	@$(REBAR) as local shell --config config/dev.config --sname aeternity@localhost
 
 hyperchains-console: $(SWAGGER_ENDPOINTS_SPEC)
@@ -137,6 +137,9 @@ local-attach: internal-attach
 
 prod-package: KIND=prod
 prod-package: internal-package
+
+prod-compile-deps: KIND=prod
+prod-compile-deps: internal-compile-deps
 
 prod-build: KIND=prod
 prod-build: internal-build
@@ -225,7 +228,7 @@ dialyzer-install: endpoints
 	@$(REBAR) tree
 	@$(REBAR) dialyzer -u true -s false
 
-dialyzer: endpoints 
+dialyzer: endpoints
 	@$(REBAR) dialyzer
 
 edoc: VERSION
@@ -412,7 +415,10 @@ multi-build: VERSION dev1-build
 # Build rules
 #
 
-internal-package: VERSION REVISION endpoints
+internal-compile-deps:
+	@$(REBAR) as $(KIND) compile -d
+
+internal-package: VERSION REVISION internal-compile-deps endpoints
 	@$(REBAR) as $(KIND) tar
 
 internal-build: VERSION REVISION endpoints
@@ -479,12 +485,12 @@ hc-verify-staking-contract:
 	all console hyperchains-console \
 	test-build \
 	local-build local-start local-stop local-attach \
-	prod-build prod-start prod-stop prod-attach prod-package \
+	prod-build prod-start prod-stop prod-attach prod-package prod-compile-deps \
 	multi-build multi-start multi-stop multi-clean multi-distclean \
 	dev1-start dev1-stop dev1-attach dev1-clean dev1-distclean \
 	dev2-start dev2-stop dev2-attach dev2-clean dev2-distclean \
 	dev3-start dev3-stop dev3-attach dev3-clean dev3-distclean \
-	internal-start internal-stop internal-attach internal-clean internal-ct \
+	internal-start internal-stop internal-attach internal-clean internal-compile-deps internal-ct \
 	dialyzer \
 	docker docker-clean dockerignore-check \
 	test smoke-test smoke-test-run system-test aevm-test-deps \
