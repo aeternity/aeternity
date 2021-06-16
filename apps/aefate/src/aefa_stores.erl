@@ -604,9 +604,9 @@ compute_copy_refcounts(Meta, Reuse, Maps, Store) ->
                           MapId ->
                               %% Subtract refcounts for entries overwritten by the Cache.
                               ?METADATA(RawId, _RefCount, _Size) = get_map_meta(Id, Meta),
-                              NewKeys = [ aeb_fate_encoding:serialize(Key) || Key <- maps:keys(Cache) ],
-                              OldBin  = maps:with(NewKeys, aect_contracts_store:subtree(map_data_key(RawId), Store)),
-                              Removed = aeb_fate_maps:refcount([ aeb_fate_encoding:deserialize(Val) || Val <- maps:values(OldBin) ]),
+                              RemovedValues = [ Val || Key <- maps:keys(Cache),
+                                                       {ok, Val} <- [find_in_store(map_data_key(RawId, Key), Store)] ],
+                              Removed = aeb_fate_maps:refcount(RemovedValues),
                               aeb_fate_maps:refcount_diff(Count, Removed);
                           _ ->
                               %% Note that we already added refcounts for the Cache.
