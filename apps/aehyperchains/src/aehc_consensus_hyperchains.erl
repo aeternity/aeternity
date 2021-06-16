@@ -174,11 +174,11 @@ assert_config(_Config) ->
     case aeu_env:user_config([<<"hyperchains">>, <<"activation_criteria">>]) of
         undefined -> ok;
         {ok, Criteria} ->
-            MinStake = maps:get(<<"minimum_stake">>, Criteria),
-            MinDelegates = maps:get(<<"unique_delegates">>, Criteria),
-            BlockFreq = maps:get(<<"check_frequency">>, Criteria),
-            BlockConfirms = maps:get(<<"confirmation_depth">>, Criteria),
-            _ = set_hc_activation_criteria(MinStake, MinDelegates, BlockFreq, BlockConfirms)
+            MinStake = proplists:get_value(<<"minimum_stake">>, Criteria),
+            MinDelegates = proplists:get_value(<<"unique_delegates">>, Criteria),
+            BlockFreq = proplists:get_value(<<"check_frequency">>, Criteria),
+            BlockConfirms = proplists:get_value(<<"confirmation_depth">>, Criteria),
+            ok = set_hc_activation_criteria(MinStake, MinDelegates, BlockFreq, BlockConfirms)
     end,
     ok.
 
@@ -440,7 +440,6 @@ state_pre_transform_key_node(KeyNode, _PrevNode, PrevKeyNode, Trees1) ->
             Arg1 = ["[", lists:join(", ", [X  || X <- Delegates]), "]"],
             Arg2 = lists:flatten([integer_to_list(X,16) || <<X:4>> <= ParentHash]),
             Call = lists:flatten(io_lib:format("get_leader(~s, #~s)", [Arg1, Arg2])),
-            io:format(user, "Election: ~p\n", [Call]),
             case protocol_staking_contract_call(Trees3, TxEnv, Call) of
                 {ok, Trees4, {address, Leader}} ->
                     %% Assert that the miner is the person which got elected
@@ -488,17 +487,14 @@ ensure_hc_activation_criteria_at_trees(TxEnv, Trees,
                         }) ->
     case { static_contract_call(Trees, TxEnv, "balance()")
         , static_contract_call(Trees, TxEnv, "unique_delegates_count()") } of
-        %% TODO (temporary hack, must'n be in production)
-%%        {{ok, _Stake}, {ok, _Delegates}} ->
-%%            ok;
         {{ok, Stake}, {ok, Delegates}} when Stake >= MinimumStake, Delegates >= MinimumDelegates ->
             ok;
         {{ok, Stake}, _} when Stake < MinimumStake ->
             {error, not_enough_stake};
         {_, {ok, _Delegates}} ->
             {error, not_enough_delegates};
-        {Err, _} -> {error, {failed_call, Err}};
-        {_, Err} -> {error, {failed_call, Err}}
+        {{error, Err}, _} -> {error, {failed_call, Err}};
+        {_, {error, Err}} -> {error, {failed_call, Err}}
     end.
 
 state_pre_transform_micro_node(_Node, _PrevNode, _PrevKeyNode, Trees) -> Trees.
@@ -624,16 +620,7 @@ new_pos_key_node(PrevNode, PrevKeyNode, Height, Miner, Beneficiary, Protocol, In
                            aeu_time:now_in_msecs(),
                            InfoField,
                            Protocol),
-    R = aec_chain_state:wrap_header(Header, ?FAKE_BLOCK_HASH),
-    %% TODO To reflect Tx pool in debug (stake should be reflected here)
-    %% TODO To consider stake via config
-    lager:info("~nThe new PoS keyblock: (hash: ~p) (time: ~p) (miner: ~p)~n",
-        [
-            aeser_api_encoder:encode(key_block_hash, aec_headers:prev_key_hash(Header)),
-            aec_headers:time_in_secs(Header),
-            aeser_api_encoder:encode(account_pubkey, aec_headers:miner(Header))
-        ]),
-    R.
+    aec_chain_state:wrap_header(Header, ?FAKE_BLOCK_HASH).
 
 keyblocks_for_unmined_keyblock_adjust() ->
     M = fallback_consensus(),
@@ -1024,7 +1011,6 @@ static_staking_contract_call_on_block_hash(BlockHash, Query) ->
 protocol_staking_contract_call(Trees0, TxEnv, Query) ->
     Aci = get_staking_contract_aci(),
     {ok, ContractPubkey} = get_staking_contract_address(),
-    lager:info("~nContract call (Aci ~p)~n(Query: ~p)~n",[Aci, Query]),
     {ok, CallData} = aeaci_aci:encode_call_data(Aci, Query),
     Accounts0 = aec_trees:accounts(Trees0),
     SavedAccount = case aec_accounts_trees:lookup(?RESTRICTED_ACCOUNT, Accounts0) of

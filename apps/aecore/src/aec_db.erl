@@ -1147,7 +1147,7 @@ check_db() ->
         Storage = ensure_schema_storage_mode(Mode),
         ok = application:ensure_started(mnesia),
         ok = assert_schema_node_name(Mode),
-        initialize_db(Mode, Storage), lager:info("~nMnesia info: ~p~n",[mnesia:system_info(all)])
+        initialize_db(Mode, Storage)
     ?_catch_(error, Reason, StackTrace)
         error_logger:error_msg("CAUGHT error:~p / ~p~n", [Reason, StackTrace]),
         erlang:error(Reason)
@@ -1170,11 +1170,9 @@ expand_mode(disc) -> disc_backend_mode();
 expand_mode(M) when is_map(M) -> M.
 
 run_hooks(Hook, Mode) ->
-    lager:info("~nRun Hooks list (Hook: ~p, Mode: ~p, Env: ~p)~n",[Hook, Mode, setup:find_env_vars(Hook)]),
     [M:F(Mode) || {_App, {M,F}} <- setup:find_env_vars(Hook)].
 
 fold_hooks(Hook, Acc0) ->
-    lager:info("~nFold Hooks list (Hook: ~p, Acc: ~p, Env: ~p)~n",[Hook, Acc0, setup:find_env_vars(Hook)]),
     lists:foldl(
       fun({_App, {M,F}}, Acc) ->
               M:F(Acc)
@@ -1190,7 +1188,6 @@ add_index_plugins() ->
 
 ensure_mnesia_tables(Mode, Storage) ->
     Tables = tables(Mode),
-    lager:info("~nThe current storage is: ~p (~p mode)~n",[Storage, Mode]),
     case Storage of
         existing_schema ->
             handle_table_errors(Tables, Mode, check_mnesia_tables(Tables, []));
@@ -1226,7 +1223,6 @@ handle_table_errors(Tables, Mode, [{callback, {Mod, Fun, Args}} | Tl]) ->
     apply(Mod, Fun, Args),
     handle_table_errors(Tables, Mode, Tl);
 handle_table_errors(_Tables, _Mode, Errors) ->
-    lager:error("Database check failed: ~p", [Errors]),
     erlang:error({table_check, Errors}).
 
 check_mnesia_tables([{Table, Spec}|Left], Acc) ->

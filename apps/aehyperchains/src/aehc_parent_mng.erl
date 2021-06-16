@@ -72,15 +72,14 @@ commit(Commitment) ->
 commitments(Hash) ->
     ParentBlock = gen_statem:call(?MODULE, {process, Hash}),
 
-    Candidates = aehc_parent_block:commitments_in_block(ParentBlock),
-    Candidates.
+    aehc_parent_block:commitments_in_block(ParentBlock).
 
 -spec delegates(binary()) -> [{binary(), pubkey()}].
 delegates(Hash) ->
     _ = gen_statem:call(?MODULE, {process, Hash}),
 
     Trees = aehc_parent_db:get_parent_block_state(Hash),
-    _Delegates = aehc_parent_trees:delegates(Trees).
+    aehc_parent_trees:delegates(Trees).
 
 
 %% NOTE The starter app should check the empty stack condition at the initialization stage
@@ -247,6 +246,7 @@ commit(Tracker, Data, From) ->
             %% Design notes:
             %% a) We could utilize compose algorithms to apply the list of commitments as a package
             %% b) We could route commitments between parent chains (based on setup)
+            %% TODO To support registry check before commitment
             [Commitment|_] = Queue,
             Primary = primary(Data), Pid = Primary#tracker.pid,
             Payload = aehc_parent_data:commitment(Commitment),
