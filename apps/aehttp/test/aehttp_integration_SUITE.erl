@@ -3509,6 +3509,7 @@ encode_call_data(Name, Fun, Args) when is_atom(Name) ->
 encode_call_data(Src, Fun, Args) ->
     {ok, CallData} = aect_test_utils:encode_call_data(Src, Fun, Args),
     {ok, aeser_api_encoder:encode(contract_bytearray, CallData)}.
+
 wait_for_tx_hash_on_chain(TxHash) ->
     Node = aecore_suite_utils:node_name(?NODE),
     case rpc:call(Node, aec_chain, find_tx_location, [TxHash]) of

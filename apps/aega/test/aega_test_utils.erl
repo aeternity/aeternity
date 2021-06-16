@@ -49,10 +49,10 @@ ga_meta_tx_default(PubKey) ->
     Protocol = aect_test_utils:latest_protocol_version(),
     Def0 =
         #{ fee         => 1000000 * aec_test_utils:min_gas_price()
-        , ga_id       => aeser_id:create(account, PubKey)
-        , abi_version => aega_SUITE:abi_version()
-        , gas         => 20000
-        , gas_price   => 1000 * aec_test_utils:min_gas_price()
+         , ga_id       => aeser_id:create(account, PubKey)
+         , abi_version => aega_SUITE:abi_version()
+         , gas         => 20000
+         , gas_price   => 1000 * aec_test_utils:min_gas_price()
         },
     case Protocol < ?IRIS_PROTOCOL_VSN of
         true -> Def0#{ttl => 0};
@@ -179,12 +179,15 @@ basic_auth_sign(Nonce, TxHash, PrivKey) ->
 %%% Helper functions
 %%%===================================================================
 
-make_calldata(Name, Fun, Args) when length(Name) < 20 ->
-    {ok, Src} = read_contract(Name),
-    make_calldata(Src, Fun, Args);
 make_calldata(Code, Fun, Args) ->
+    make_calldata(aega_SUITE:sophia_version(), Code, Fun, Args).
+
+make_calldata(SophiaVersion, Name, Fun, Args) when length(Name) < 20 ->
+    {ok, Src} = read_contract(Name),
+    make_calldata(SophiaVersion, Src, Fun, Args);
+make_calldata(SophiaVersion, Code, Fun, Args) ->
     %% Use the memoized version to not waste 500 ms each time we make a meta tx with the same nonce -.-
-    {ok, CallData} = aect_test_utils:encode_call_data(aega_SUITE:sophia_version(), Code, Fun, Args),
+    {ok, CallData} = aect_test_utils:encode_call_data(SophiaVersion, Code, Fun, Args),
     CallData.
 
 get_contract(Name) ->
