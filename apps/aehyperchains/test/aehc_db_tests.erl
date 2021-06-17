@@ -17,7 +17,7 @@
 -define(PARENT_GENESIS_HEADER,
     aehc_parent_block:new_header(?PARENT_GENESIS_HASH, ?PARENT_GENESIS_HASH, 1)).
 
-hyperchains_unable_to_use_normal_db_test() ->
+hyperchains_unable_to_use_normal_db_test_1() ->
     {foreach,
      fun() ->
              InitialApps = {running_apps(), loaded_apps()},
@@ -105,7 +105,7 @@ hyperchains_unable_to_use_normal_db_test() ->
        end}
      ]}.
 
-write_parent_chain_test_() ->
+write_parent_chain_test_1() ->
     aehc_test_utils:hc_chain_eunit_testcase(aehc_test_utils:hc_from_genesis(),
      [{"Write and read back pinpointed genesis block",
        fun() ->
