@@ -7,6 +7,7 @@
 -include_lib("eunit/include/eunit.hrl").
 
 -include("../../aecore/include/blocks.hrl").
+-include_lib("aecontract/include/hard_forks.hrl").
 
 -define(TEST_MODULE, aetx).
 
@@ -108,7 +109,11 @@ check_used_gas_test_() ->
                 end,
             Test(#{}, 16580),
             Test(#{payload => <<"hello">>}, 16680),
-            Test(#{fee => 20000 * aec_governance:minimum_gas_price(Protocol)}, 16640)
+            case Protocol > ?ROMA_PROTOCOL_VSN of
+                true -> %% higher gas price, so a bit more of gas consumed for the bigger size of the transaction
+                    Test(#{fee => 20000 * aec_governance:minimum_gas_price(Protocol)}, 16640);
+                false -> pass
+            end
        end
       }
      ]}.
