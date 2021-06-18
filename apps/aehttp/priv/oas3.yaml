@@ -543,6 +543,38 @@ paths:
           content:
             application/json:
               schema:
+                $ref: "#/components/schemas/Error"
+  "/accounts/{pubkey}/next-nonce":
+    get:
+      tags:
+        - external
+        - account
+      operationId: GetAcountNextNonce
+      description: Get an account's next nonce; This is being computed according to whatever is the current account nonce and what transactions are currently present in the transaction pool
+      parameters:
+        - $ref: '#/components/parameters/intAsString'
+        - $ref: '#/components/parameters/accountPubkey'
+      responses:
+        "200":
+          description: Successful operation
+          content:
+            application/json:
+              schema:
+                properties:
+                  next_nonce:
+                    type: integer
+        "400":
+          description: Invalid public key
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Account not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
   /dry-run:
     post:
       tags:

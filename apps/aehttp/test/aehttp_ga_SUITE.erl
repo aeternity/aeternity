@@ -202,6 +202,11 @@ attach_account(Pub, Priv, _Config) ->
     {ok, 200, Account1} = account_by_pubkey(Addr),
     Bal1 = maps:get(<<"balance">>, Account1),
 
+    %% nonce is 0 from now on
+    AccId = aeser_api_encoder:encode(account_pubkey, Pub),
+    {ok, 200, #{<<"next_nonce">> := 0}} = aehttp_integration_SUITE:get_accounts_next_nonce_sut(AccId),
+
+
     %% test that we can return GAAttachTx via http interface
     {ok, 200, #{<<"tx">> := #{<<"type">> := <<"GAAttachTx">>}}} = get_tx(AttachTx),
     {ok, 200, #{<<"call_info">> := #{<<"gas_used">> := Gas}}} = get_contract_call_object(AttachTx),
@@ -608,6 +613,7 @@ make_attach_tx_map(AccPK) ->
     AccId = aeser_api_encoder:encode(account_pubkey, AccPK),
     {ok, 200, #{<<"nonce">> := Nonce0}} = account_by_pubkey(AccId),
     Nonce = Nonce0 + 1,
+    {ok, 200, #{<<"next_nonce">> := Nonce}} = aehttp_integration_SUITE:get_accounts_next_nonce_sut(AccId),
 
     {ok, #{bytecode := Code, src := Src, map := #{type_info := TI}}} =
         aega_test_utils:get_contract("basic_auth"),
@@ -619,7 +625,7 @@ make_attach_tx_map(AccPK) ->
     #{ nonce => Nonce, code => Code, auth_fun => AuthFun, call_data => CallData }.
 
 %% GA spend
-spend_tx (AccPK, _AccSK, Nonce, Recipient, Amount, Fee) ->
+spend_tx(AccPK, _AccSK, Nonce, Recipient, Amount, Fee) ->
     SpendTxMap = #{ sender_id => aeser_id:create(account, AccPK)
                   , recipient_id => aeser_id:create(account, Recipient)
                   , amount => Amount

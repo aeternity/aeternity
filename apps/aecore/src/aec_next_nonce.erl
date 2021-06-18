@@ -15,6 +15,7 @@
                                     {error, account_not_found}.
 pick_for_account(Pubkey) ->
     case get_state_tree_nonce(Pubkey) of
+        generalized_account -> {ok, 0};
         {ok, StateTreeNonce} ->
             MempoolNonce = get_mempool_nonce(Pubkey),
             NextNonce = pick_higher_nonce(StateTreeNonce, MempoolNonce) + 1,
@@ -30,7 +31,11 @@ pick_for_account(Pubkey) ->
 get_state_tree_nonce(AccountPubkey) ->
     case aec_chain:get_account(AccountPubkey) of
         {value, Account} ->
-            {ok, aec_accounts:nonce(Account)};
+            case aec_accounts:type(Account) of
+                basic ->
+                    {ok, aec_accounts:nonce(Account)};
+                generalized -> generalized_account
+            end;
         none ->
             {error, account_not_found}
     end.

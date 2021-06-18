@@ -28,6 +28,7 @@
    , get_commitment_id/2
    , get_accounts_by_pubkey_sut/1
    , get_accounts_by_pubkey_and_height_sut/2
+   , get_accounts_next_nonce_sut/1
    , get_transactions_by_hash_sut/1
    , get_contract_call_object/1
    , get_top_block/1
@@ -1404,6 +1405,10 @@ get_pending_account_transactions_by_pubkey(true, Config) ->
 get_accounts_by_pubkey_sut(Id) ->
     Host = external_address(),
     http_request(Host, get, "accounts/" ++ http_uri:encode(Id), []).
+
+get_accounts_next_nonce_sut(Id) ->
+    Host = external_address(),
+    http_request(Host, get, "accounts/" ++ binary_to_list(Id) ++ "/next-nonce", []).
 
 get_accounts_by_pubkey_and_hash_sut(Id, Hash) ->
     Host = external_address(),
@@ -2915,6 +2920,9 @@ spend_transaction(_Config) ->
     {ok, 200, _} = get_balance_at_top(),
     MinerAddress = get_miner_address(),
     {ok, MinerPubkey} = aeser_api_encoder:safe_decode(account_pubkey, MinerAddress),
+    MinerID = aeser_api_encoder:encode(account_pubkey, MinerPubkey),
+    %% fetch what would be the next nonce
+    {ok, 200, #{<<"next_nonce">> := NextNonce}} = get_accounts_next_nonce_sut(MinerID),
     RandAddress = random_hash(),
     Payload = <<"hejsan svejsan">>,
     Encoded = #{sender_id => MinerAddress,
@@ -2932,6 +2940,11 @@ spend_transaction(_Config) ->
                                   fun get_spend/1,
                                   fun aec_spend_tx:new/1, MinerPubkey),
     {spend_tx, SpendTx} = aetx:specialize_type(T),
+    %% assert expected nonce
+    SpendNonce = aec_spend_tx:nonce(SpendTx),
+    {true, SpendNonce} = {SpendNonce =:= NextNonce, SpendNonce},
+    %% since the transaction is not posted, it is the same
+    {ok, 200, #{<<"next_nonce">> := NextNonce}} = get_accounts_next_nonce_sut(MinerID),
     ?assertEqual(Payload, aec_spend_tx:payload(SpendTx)),
 
     %% Test that we can also still pass unencoded payload.
@@ -3004,6 +3017,7 @@ get_transaction(_Config) ->
         end,
       TxHashes),
 
+    {ok, 200, #{<<"next_nonce">> := NextNonce}} = get_accounts_next_nonce_sut(EncodedPubKey),
     %% test in mempool
     RandAddress = random_hash(),
     Encoded = #{sender_id => EncodedPubKey,
@@ -3015,6 +3029,8 @@ get_transaction(_Config) ->
     {ok, SpendTxBin} = aeser_api_encoder:safe_decode(transaction, EncodedSpendTx),
     SpendTx = aetx:deserialize_from_binary(SpendTxBin),
     {ok, SignedSpendTx} = aecore_suite_utils:sign_on_node(?NODE, SpendTx),
+    Nonce = aetx:nonce(aetx_sign:tx(SignedSpendTx)),
+    {Nonce, Nonce} = {Nonce, NextNonce},
     TxHash = aeser_api_encoder:encode(tx_hash, aetx_sign:hash(SignedSpendTx)),
 
     SerializedSpendTx = aetx_sign:serialize_to_binary(SignedSpendTx),
@@ -3022,8 +3038,11 @@ get_transaction(_Config) ->
     {ok, 200, PendingTx} = get_transactions_by_hash_sut(TxHash),
     Expected = aetx_sign:serialize_for_client_pending(SignedSpendTx),
     Expected = PendingTx,
+    {ok, 200, #{<<"next_nonce">> := NextNextNonce}} = get_accounts_next_nonce_sut(EncodedPubKey),
+    {NextNextNonce, NextNextNonce} = {NextNextNonce, NextNonce + 1},
 
     aecore_suite_utils:mine_key_blocks(aecore_suite_utils:node_name(?NODE), 2),
+    {ok, 200, #{<<"next_nonce">> := NextNextNonce}} = get_accounts_next_nonce_sut(EncodedPubKey),
     ok.
 
 %% Maybe this test should be broken into a couple of smaller tests

@@ -568,6 +568,37 @@ paths:
           description: 'Account not found'
           schema:
             $ref: '#/definitions/Error'
+  /accounts/{pubkey}/next-nonce:
+    get:
+      tags:
+        - external
+        - account
+      operationId: GetAcountNextNonce
+      description: "Get an account's next nonce; This is being computed according to whatever is the current account nonce and what transactions are currently present in the transaction pool"
+      produces:
+        - application/json
+      parameters:
+        - in: path
+          name: pubkey
+          description: 'The public key of the account'
+          required: true
+          type: string
+      responses:
+        '200':
+          description: 'Successful operation'
+          schema:
+            type: object
+            properties:
+              next_nonce:
+                type: integer
+        '400':
+          description: 'Invalid public key'
+          schema:
+            $ref: '#/definitions/Error'
+        '404':
+          description: 'Account not found'
+          schema:
+            $ref: '#/definitions/Error'
   /dry-run:
     post:
       tags:
