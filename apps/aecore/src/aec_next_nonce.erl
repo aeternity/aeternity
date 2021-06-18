@@ -27,7 +27,8 @@ pick_for_account(Pubkey) ->
 %% Internals
 
 -spec get_state_tree_nonce(aec_keys:pubkey()) -> {ok, non_neg_integer()} |
-                                        {error, account_not_found}.
+                                                 generalized_account |
+                                                 {error, account_not_found}.
 get_state_tree_nonce(AccountPubkey) ->
     case aec_chain:get_account(AccountPubkey) of
         {value, Account} ->
