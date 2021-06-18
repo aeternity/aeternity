@@ -57,6 +57,7 @@ end_per_suite(_Config) ->
     ok.
 
 init_per_group(_, Config) ->
+    ok = lager:start(),
     application:ensure_started(gproc),
     meck:new(aehc_utils, [passthrough, no_link]),
     meck:expect(aehc_utils, hc_enabled, 0, true),

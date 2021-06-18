@@ -72,6 +72,7 @@ hc_chain_eunit_testcase(Consensus, What) ->
         aec_test_utils:eunit_with_consensus(Consensus, [
         {foreach,
          fun() ->
+                 ok = lager:start(),
                  aefa_fate_op:load_pre_iris_map_ordering(),
                  ok = application:ensure_started(gproc),
                  {ok, _} = aec_db_error_store:start_link(),

@@ -185,21 +185,22 @@ genesis_difficulty() -> 0.
 
 %% -------------------------------------------------------------------
 %% Keyblock creation
-new_unmined_key_node(PrevNode, PrevKeyNode, Height, Miner, Beneficiary, Protocol, InfoField, TreesIn) ->
+new_unmined_key_node(PrevNode, PrevKeyNode, Height, Miner, Beneficiary, Protocol, InfoField, _TreesIn) ->
     FakeBlockHash = <<0:?BLOCK_HEADER_HASH_BYTES/unit:8>>,
     FakeStateHash = <<1337:?STATE_HASH_BYTES/unit:8>>,
-    Header = aec_headers:new_key_header(Height,
-                               aec_block_insertion:node_hash(PrevNode),
-                               aec_block_insertion:node_hash(PrevKeyNode),
-                               FakeStateHash,
-                               Miner,
-                               Beneficiary,
-                               default_target(),
-                               no_value,
-                               0,
-                               aeu_time:now_in_msecs(),
-                               InfoField,
-                               Protocol),
+    Header = aec_headers:new_key_header(
+        Height,
+        aec_block_insertion:node_hash(PrevNode),
+        aec_block_insertion:node_hash(PrevKeyNode),
+        FakeStateHash,
+        Miner,
+        Beneficiary,
+        default_target(),
+        no_value,
+        0,
+        aeu_time:now_in_msecs(),
+        InfoField,
+        Protocol),
     aec_chain_state:wrap_header(Header, FakeBlockHash).
 
 keyblocks_for_unmined_keyblock_adjust() -> 0.
