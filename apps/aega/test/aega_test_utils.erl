@@ -221,7 +221,10 @@ hash_lit_to_bin("#" ++ Hex) ->
     end.
 
 auth_fun_hash(Name, AEVMTypeInfo) ->
-    case ?IS_AEVM_SOPHIA(aega_SUITE:vm_version()) of
+    auth_fun_hash(Name, AEVMTypeInfo, aega_SUITE:vm_version()).
+
+auth_fun_hash(Name, AEVMTypeInfo, VMVersion) ->
+    case ?IS_AEVM_SOPHIA(VMVersion) of
         true  -> aeb_aevm_abi:type_hash_from_function_name(Name, AEVMTypeInfo);
         false -> {ok, <<(aeb_fate_code:symbol_identifier(Name)):4/binary, 0:(28*8)>>}
     end.

@@ -223,34 +223,33 @@ used_gas_test_() ->
           %% enabled, so we set it
           Block0 = set_protocol_and_version(Block00, Protocol, Height),
           ContractName = identity,
-          Test =
-              fun(VM) ->
-                  case aect_test_utils:sophia_version(VM, Protocol) of
-                      {error, _} -> skip;
-                      SophiaVersion ->
-                        GasLimit = 1000000,
-                        CallOpts0 = 
-                            #{vm_version  => aect_test_utils:vm_version(VM, Protocol),
-                              abi_version => aect_test_utils:abi_version(VM,Protocol),
-                              gas => GasLimit},
-                        CreateTx = sign(contract_create_tx(?TEST_PUB,
-                                                           SophiaVersion,
-                                                           ContractName, "init", [],
-                                                           Trees0, CallOpts0), ?TEST_PRIV),
+          VM = 
+              case Protocol >= ?IRIS_PROTOCOL_VSN of
+                  true -> fate;
+                  false -> aevm
+              end,
+          case aect_test_utils:sophia_version(VM, Protocol) of
+              {error, _} -> skip;
+              SophiaVersion ->
+                GasLimit = 1000000,
+                CallOpts0 = 
+                    #{vm_version  => aect_test_utils:vm_version(VM, Protocol),
+                      abi_version => aect_test_utils:abi_version(VM,Protocol),
+                      gas => GasLimit},
+                CreateTx = sign(contract_create_tx(?TEST_PUB,
+                                                    SophiaVersion,
+                                                    ContractName, "init", [],
+                                                    Trees0, CallOpts0), ?TEST_PRIV),
 
-                        meck_expect_candidate_prerequisites(1234567890, Trees0, [CreateTx]),
-                        {ok, _Block1, #{ trees := Trees1 }} = aec_block_micro_candidate:create(Block0),
-                        %% actual gas used is the consumed gas + the gas
-                        %% required for the contract call tx itself (~98480)
-                        Used = aetx:used_gas(aetx_sign:tx(CreateTx), Height, Protocol, Trees1),
-                        TxLimit = aetx:gas_limit(aetx_sign:tx(CreateTx), Height, Protocol),
-                        {true, Used} = {Used < GasLimit, Used},
-                        {true, TxLimit} = {GasLimit < TxLimit, TxLimit},
-                        ok
-                end
-            end,
-            VMs = [fate, aevm],
-            lists:foreach(Test, VMs)
+                meck_expect_candidate_prerequisites(1234567890, Trees0, [CreateTx]),
+                {ok, _Block1, #{ trees := Trees1 }} = aec_block_micro_candidate:create(Block0),
+                %% actual gas used is the consumed gas + the gas
+                %% required for the contract call tx itself (~98480)
+                Used = aetx:used_gas(aetx_sign:tx(CreateTx), Height, Protocol, Trees1),
+                TxLimit = aetx:gas_limit(aetx_sign:tx(CreateTx), Height, Protocol),
+                {true, Used} = {Used < GasLimit, Used},
+                {true, TxLimit} = {GasLimit < TxLimit, TxLimit}
+            end
         end
       },
       {"Check consumed gas by a contract call tx",
@@ -263,50 +262,50 @@ used_gas_test_() ->
           %% enabled, so we set it
           Block0 = set_protocol_and_version(Block00, Protocol, Height),
           ContractName = identity,
-          Test =
-              fun(VM) ->
-                  case aect_test_utils:sophia_version(VM, Protocol) of
-                      {error, _} -> skip;
-                      SophiaVersion ->
-                        GasLimit = 1000000,
-                        CallOpts0 = 
-                            #{vm_version  => aect_test_utils:vm_version(VM, Protocol),
-                              abi_version => aect_test_utils:abi_version(VM,Protocol),
-                              gas => GasLimit},
-                        CreateTx = sign(contract_create_tx(?TEST_PUB,
-                                                           SophiaVersion,
-                                                           ContractName, "init", [],
-                                                           Trees0, CallOpts0), ?TEST_PRIV),
-                        Time1 = 1234567890,
-                        meck_expect_candidate_prerequisites(Time1, Trees0, [CreateTx]),
-                        {ok, Block1, #{ trees := Trees1 }} = aec_block_micro_candidate:create(Block0),
-                        [CreateTx] = aec_blocks:txs(Block1),
+          VM = 
+              case Protocol >= ?IRIS_PROTOCOL_VSN of
+                  true -> fate;
+                  false -> aevm
+              end,
+          case aect_test_utils:sophia_version(VM, Protocol) of
+              {error, _} -> skip;
+              SophiaVersion ->
+                GasLimit = 1000000,
+                CallOpts0 = 
+                    #{vm_version  => aect_test_utils:vm_version(VM, Protocol),
+                      abi_version => aect_test_utils:abi_version(VM,Protocol),
+                      gas => GasLimit},
+                CreateTx = sign(contract_create_tx(?TEST_PUB,
+                                                    SophiaVersion,
+                                                    ContractName, "init", [],
+                                                    Trees0, CallOpts0), ?TEST_PRIV),
+                Time1 = 1234567890,
+                meck_expect_candidate_prerequisites(Time1, Trees0, [CreateTx]),
+                {ok, Block1, #{ trees := Trees1 }} = aec_block_micro_candidate:create(Block0),
+                [CreateTx] = aec_blocks:txs(Block1),
 
-                        
+                
 
-                        {aect_create_tx, CrTx} = aetx:specialize_callback(aetx_sign:tx(CreateTx)),
-                        ContractPubkey = aect_create_tx:contract_pubkey(CrTx),
-                        CallTx = 
-                            sign(contract_call_tx(?TEST_PUB, SophiaVersion, ContractPubkey,
-                                                  ContractName, "main", ["42"], Trees1, CallOpts0),
-                                 ?TEST_PRIV),
-                        meck_expect_candidate_prerequisites(Time1 + 3 * 1000, Trees1, [CallTx]),
-                        %% since the previous block - Block1 - is a
-                        %% microblock, we must meck also this call:
-                        PrevKeyHash = aec_blocks:prev_key_hash(Block1),
-                        meck:expect(aec_chain, get_block, fun(PrevKeyHash) -> {ok, Block0} end),
-                        {ok, Block2, #{ trees := Trees2 }} = aec_block_micro_candidate:create(Block1),
+                {aect_create_tx, CrTx} = aetx:specialize_callback(aetx_sign:tx(CreateTx)),
+                ContractPubkey = aect_create_tx:contract_pubkey(CrTx),
+                CallTx = 
+                    sign(contract_call_tx(?TEST_PUB, SophiaVersion, ContractPubkey,
+                                          ContractName, "main", ["42"], Trees1, CallOpts0),
+                          ?TEST_PRIV),
+                meck_expect_candidate_prerequisites(Time1 + 3 * 1000, Trees1, [CallTx]),
+                %% since the previous block - Block1 - is a
+                %% microblock, we must meck also this call:
+                PrevKeyHash = aec_blocks:prev_key_hash(Block1),
+                meck:expect(aec_chain, get_block, fun(PrevKeyHash) -> {ok, Block0} end),
+                {ok, Block2, #{ trees := Trees2 }} = aec_block_micro_candidate:create(Block1),
 
-                        [CallTx] = aec_blocks:txs(Block2),
-                        Used = aetx:used_gas(aetx_sign:tx(CallTx), Height, Protocol, Trees2),
-                        TxLimit = aetx:gas_limit(aetx_sign:tx(CallTx), Height, Protocol),
-                        {true, Used} = {Used < GasLimit, Used},
-                        {true, TxLimit} = {GasLimit < TxLimit, TxLimit},
-                        ok
-                end
-            end,
-            VMs = [fate, aevm],
-            lists:foreach(Test, VMs)
+                [CallTx] = aec_blocks:txs(Block2),
+                Used = aetx:used_gas(aetx_sign:tx(CallTx), Height, Protocol, Trees2),
+                TxLimit = aetx:gas_limit(aetx_sign:tx(CallTx), Height, Protocol),
+                {true, Used} = {Used < GasLimit, Used},
+                {true, TxLimit} = {GasLimit < TxLimit, TxLimit},
+                ok
+            end
         end
       },
       {"Check consumed gas by a paying for",
@@ -353,38 +352,31 @@ used_gas_test_() ->
                     Block0 = set_protocol_and_version(Block00, Protocol, Height),
                     Time = 1234567890,
                     ContractName = identity,
-                    Test =
-                        fun(VM) ->
-                            case aect_test_utils:sophia_version(VM, Protocol) of
-                                {error, _} -> skip;
-                                SophiaVersion ->
-                                  GasLimit = 1000000,
-                                  CallOpts0 = 
-                                      #{vm_version  => aect_test_utils:vm_version(VM, Protocol),
-                                        abi_version => aect_test_utils:abi_version(VM,Protocol),
-                                        gas => GasLimit},
-                                  CreateTx = sign_inner(contract_create_tx(?TEST_PUB,
-                                                                          SophiaVersion,
-                                                                          ContractName, "init", [],
-                                                                          Trees0, CallOpts0), ?TEST_PRIV),
-                                  PNonce = next_nonce(?PAYER_PUB, Trees0), PayingFor = sign(paying_for_tx(?PAYER_PUB, 20000 *
-                        aec_test_utils:min_gas_price(), CreateTx,
-                                                                PNonce),
-                                                  ?PAYER_PRIV),
-                                  meck_expect_candidate_prerequisites(Time, Trees0, [PayingFor]),
-                                  {ok, Block1, #{ trees := Trees1 }} = aec_block_micro_candidate:create(Block0),
-                                  [PayingFor] = aec_blocks:txs(Block1),
-                                  %% actual gas used is the consumed gas + the gas
-                                  %% required for the contract call tx itself (~98480)
-                                  Used = aetx:used_gas(aetx_sign:tx(PayingFor), Height, Protocol, Trees1),
-                                  TxLimit = aetx:gas_limit(aetx_sign:tx(PayingFor), Height, Protocol),
-                                  {true, Used} = {Used < GasLimit, Used},
-                                  {true, TxLimit} = {GasLimit < TxLimit, TxLimit},
-                                  ok
-                          end
-                      end,
-                      VMs = [fate, aevm],
-                      lists:foreach(Test, VMs);
+                    VM = fate, %% only FATE after iris
+                    case aect_test_utils:sophia_version(VM, Protocol) of
+                        {error, _} -> skip;
+                        SophiaVersion ->
+                          GasLimit = 1000000,
+                          CallOpts0 = 
+                              #{vm_version  => aect_test_utils:vm_version(VM, Protocol),
+                                abi_version => aect_test_utils:abi_version(VM,Protocol),
+                                gas => GasLimit},
+                          CreateTx = sign_inner(contract_create_tx(?TEST_PUB,
+                                                                  SophiaVersion,
+                                                                  ContractName, "init", [],
+                                                                  Trees0, CallOpts0), ?TEST_PRIV),
+                          PNonce = next_nonce(?PAYER_PUB, Trees0), PayingFor = sign(paying_for_tx(?PAYER_PUB, 20000 * aec_test_utils:min_gas_price(), CreateTx, PNonce),
+                                          ?PAYER_PRIV),
+                          meck_expect_candidate_prerequisites(Time, Trees0, [PayingFor]),
+                          {ok, Block1, #{ trees := Trees1 }} = aec_block_micro_candidate:create(Block0),
+                          [PayingFor] = aec_blocks:txs(Block1),
+                          %% actual gas used is the consumed gas + the gas
+                          %% required for the contract call tx itself (~98480)
+                          Used = aetx:used_gas(aetx_sign:tx(PayingFor), Height, Protocol, Trees1),
+                          TxLimit = aetx:gas_limit(aetx_sign:tx(PayingFor), Height, Protocol),
+                          {true, Used} = {Used < GasLimit, Used},
+                          {true, TxLimit} = {GasLimit < TxLimit, TxLimit}
+                    end;
                 false -> pass
             end
         end
@@ -404,52 +396,54 @@ used_gas_test_() ->
                     Block0 = set_protocol_and_version(Block00, Protocol, Height),
                     Time = 1234567890,
                     GasLimit = 1000000,
-                    Test =
-                        fun(VM) ->
-                            case aect_test_utils:sophia_version(VM, Protocol) of
-                                {error, _} -> skip;
-                                SophiaVersion ->
-                                  CallOpts0 = 
-                                      #{vm_version  => aect_test_utils:vm_version(VM, Protocol),
-                                        abi_version => aect_test_utils:abi_version(VM,Protocol),
-                                        gas => GasLimit},
-                                    AttachTx = sign(attach_tx(?TEST_PUB, SophiaVersion, "basic_auth", "init", [],
-                                                              CallOpts0, Trees0), ?TEST_PRIV),
-                                    meck_expect_candidate_prerequisites(Time, Trees0, [AttachTx]),
-                                    {ok, Block1, #{ trees := Trees1 }} = aec_block_micro_candidate:create(Block0),
-                                    [AttachTx] = aec_blocks:txs(Block1),
-                                    Used = aetx:used_gas(aetx_sign:tx(AttachTx), Height, Protocol, Trees1),
-                                    TxLimit = aetx:gas_limit(aetx_sign:tx(AttachTx), Height, Protocol),
-                                    {true, Used} = {Used < GasLimit, Used},
-                                    {true, TxLimit} = {GasLimit < TxLimit, TxLimit},
-
-                                    %% use meta tx
-                                    Spend = spend_tx(#{}, Trees0),
-                                    GANonce = "1",
-                                    TxHash    = aec_hash:hash(tx, aec_governance:add_network_id(aetx:serialize_to_binary(Spend))),
-                                    Signature = aega_test_utils:basic_auth_sign(list_to_integer(GANonce), TxHash, ?TEST_PRIV),
-                                    AuthData  = aega_test_utils:make_calldata(SophiaVersion, "basic_auth", "authorize",
-                                        [GANonce, aega_test_utils:to_hex_lit(64, Signature)]),
-
-                                    PrevKeyHash = aec_blocks:prev_key_hash(Block1),
-                                    meck:expect(aec_chain, get_block, fun(PrevKeyHash) -> {ok, Block0} end),
-                                    STx = aetx_sign:new(meta_tx(Spend,
-                                                                ?TEST_PUB,
-                                                                AuthData,
-                                                                CallOpts0), []),
-                                    meck_expect_candidate_prerequisites(Time, Trees1, [STx]),
-                                    {ok, Block2, #{ trees := Trees2 }} = aec_block_micro_candidate:create(Block1),
-                                    [STx] = aec_blocks:txs(Block2),
-
-                                    SpendUsed = aetx:used_gas(Spend, Height, Protocol, Trees2),
-                                    MetaUsed = aetx:used_gas(aetx_sign:tx(STx), Height, Protocol, Trees2),
-                                    MetaLimit = aetx:gas_limit(aetx_sign:tx(STx), Height, Protocol),
-                                    {true, MetaUsed} = {MetaUsed < GasLimit + SpendUsed, MetaUsed},
-                                    ok
-                            end
+                    VM = 
+                        case Protocol >= ?IRIS_PROTOCOL_VSN of
+                            true -> fate;
+                            false -> aevm
                         end,
-                    VMs = [fate, aevm],
-                    lists:foreach(Test, VMs);
+                    case aect_test_utils:sophia_version(VM, Protocol) of
+                        {error, _} -> skip;
+                        SophiaVersion ->
+                            VMVersion = aect_test_utils:vm_version(VM, Protocol),
+                            CallOpts0 = 
+                                #{vm_version  => VMVersion,
+                                  abi_version => aect_test_utils:abi_version(VM,Protocol),
+                                  gas => GasLimit},
+                            AttachTx = sign(attach_tx(?TEST_PUB, SophiaVersion, "basic_auth", "init", [],
+                                                      CallOpts0, Trees0, VMVersion), ?TEST_PRIV),
+                            meck_expect_candidate_prerequisites(Time, Trees0, [AttachTx]),
+                            {ok, Block1, #{ trees := Trees1 }} = aec_block_micro_candidate:create(Block0),
+                            [AttachTx] = aec_blocks:txs(Block1),
+                            Used = aetx:used_gas(aetx_sign:tx(AttachTx), Height, Protocol, Trees1),
+                            TxLimit = aetx:gas_limit(aetx_sign:tx(AttachTx), Height, Protocol),
+                            {true, Used} = {Used < GasLimit, Used},
+                            {true, TxLimit} = {GasLimit < TxLimit, TxLimit},
+
+                            %% use meta tx
+                            Spend = spend_tx(#{}, Trees0),
+                            GANonce = "1",
+                            TxHash    = aec_hash:hash(tx, aec_governance:add_network_id(aetx:serialize_to_binary(Spend))),
+                            Signature = aega_test_utils:basic_auth_sign(list_to_integer(GANonce), TxHash, ?TEST_PRIV),
+                            AuthData  = aega_test_utils:make_calldata(SophiaVersion, "basic_auth", "authorize",
+                                [GANonce, aega_test_utils:to_hex_lit(64, Signature)]),
+
+                            PrevKeyHash = aec_blocks:prev_key_hash(Block1),
+                            meck:expect(aec_chain, get_block, fun(PrevKeyHash) -> {ok, Block0} end),
+                            STx = aetx_sign:new(meta_tx(Spend,
+                                                        ?TEST_PUB,
+                                                        AuthData,
+                                                        CallOpts0), []),
+                            meck_expect_candidate_prerequisites(Time, Trees1, [STx]),
+                            {ok, Block2, #{ trees := Trees2 }} = aec_block_micro_candidate:create(Block1),
+                            [STx] = aec_blocks:txs(Block2),
+
+                            SpendUsed = aetx:used_gas(Spend, Height, Protocol, Trees2),
+                            MetaUsed = aetx:used_gas(aetx_sign:tx(STx), Height, Protocol, Trees2),
+                            MetaLimit = aetx:gas_limit(aetx_sign:tx(STx), Height, Protocol),
+                            {true, MetaUsed} = {MetaUsed < GasLimit + SpendUsed, MetaUsed},
+                            ok
+                    end,
+                    ok;
                 false -> pass
             end
         end
@@ -530,16 +524,17 @@ next_nonce(Pubkey, Trees) ->
     end.
 
 
-attach_tx(Pubkey, SophiaVersion, ContractName, Fun, Args, Opts, Trees) ->
+attach_tx(Pubkey, SophiaVersion, ContractName, Fun, Args, Opts, Trees, VMVersion) ->
     AccId = aeser_api_encoder:encode(account_pubkey, Pubkey),
     Nonce = next_nonce(Pubkey, Trees),
 
     {ok, #{bytecode := Code, src := Src, map := #{type_info := TI}}} =
         aega_test_utils:get_contract(SophiaVersion, ContractName),
 
-    CallData = aega_test_utils:make_calldata(Src, "init", []),
+    CallData = aega_test_utils:make_calldata(SophiaVersion, Src, "init", []),
 
-    {ok, AuthFun} = aega_test_utils:auth_fun_hash(<<"authorize">>, TI),
+    {ok, AuthFun} = aega_test_utils:auth_fun_hash(<<"authorize">>, TI,
+                                                  VMVersion),
 
     Map = Opts#{ nonce => Nonce, code => Code, auth_fun => AuthFun,
                  call_data => CallData},
