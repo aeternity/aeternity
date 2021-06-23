@@ -1,6 +1,7 @@
 -module(aec_next_nonce).
 
--export([pick_for_account/1]).
+-export([pick_for_account/1,
+         pick_for_account/2]).
 
 -include("blocks.hrl").
 
@@ -14,12 +15,45 @@
 -spec pick_for_account(aec_keys:pubkey()) -> {ok, non_neg_integer()} |
                                     {error, account_not_found}.
 pick_for_account(Pubkey) ->
+    pick_for_account(Pubkey, max).
+
+-spec pick_for_account(aec_keys:pubkey(), max | continuity) ->
+    {ok, non_neg_integer()} | {error, account_not_found}.
+pick_for_account(Pubkey, Strategy) ->
     case get_state_tree_nonce(Pubkey) of
         generalized_account -> {ok, 0};
         {ok, StateTreeNonce} ->
-            MempoolNonce = get_mempool_nonce(Pubkey),
-            NextNonce = pick_higher_nonce(StateTreeNonce, MempoolNonce) + 1,
-            {ok, NextNonce};
+            case Strategy of
+                max ->
+                    MempoolNonce = get_mempool_nonce(Pubkey),
+                    NextNonce = pick_higher_nonce(StateTreeNonce, MempoolNonce) + 1,
+                    {ok, NextNonce};
+                continuity ->
+                    {ok, AllTxs} = aec_tx_pool:peek(infinity, Pubkey),
+                    %% get all nonces from the pool sorted asc
+                    AllNoncesInPool = lists:sort([aetx:nonce(aetx_sign:tx(T)) ||
+                                                      T <- AllTxs]),
+                    %% prepend the account nonce this relies on it being
+                    %% smallest number (we don't keep invalid txs in the pool)
+                    AllNonces = [StateTreeNonce | AllNoncesInPool],
+                    Missing =
+                        lists:foldl(
+                            fun(_, {missing, M}) -> {missing, M};
+                               (Current, Expected) ->
+                                  case Current =:= Expected of
+                                      true -> Expected + 1;
+                                      false -> {missing, Expected}
+                                  end
+                            end,
+                            StateTreeNonce,
+                            AllNonces),
+                    case Missing of
+                        {missing, M} -> {ok, M};
+                        _ ->
+                            Greatest = hd(lists:reverse(AllNonces)),
+                            {ok, Greatest + 1}
+                    end
+            end;
         {error, account_not_found} = Error ->
             Error
     end.

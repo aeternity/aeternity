@@ -583,6 +583,13 @@ paths:
           description: 'The public key of the account'
           required: true
           type: string
+        - in: query
+          name: strategy
+          description: "What strategy to use in order to determine the next nonce: shall it check for continuity or return the largest nonce seen + 1. If you choose strategy max - the greatest nonce seen in the account or currently in the transaction pool is incremented with 1 and returned. If you choose the strategy continuity - transactions in the mempool are checked if there are gaps - missing nonces that prevent transactions with greater nonces to get included." 
+          required: false
+          default: max
+          type: string
+          enum: [max, continuity]
       responses:
         '200':
           description: 'Successful operation'

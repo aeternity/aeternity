@@ -132,6 +132,7 @@
     named_oracle_transactions/1,
     nameservice_transactions/1,
     spend_transaction/1,
+    next_nonce_missing_nonce/1,
     state_channels_onchain_transactions/1,
     unknown_atom_in_spend_tx/1,
 
@@ -446,6 +447,7 @@ groups() ->
         named_oracle_transactions,
         nameservice_transactions,
         spend_transaction,
+        next_nonce_missing_nonce,
         state_channels_onchain_transactions,
         unknown_atom_in_spend_tx,
 
@@ -1409,6 +1411,11 @@ get_accounts_by_pubkey_sut(Id) ->
 get_accounts_next_nonce_sut(Id) ->
     Host = external_address(),
     http_request(Host, get, "accounts/" ++ binary_to_list(Id) ++ "/next-nonce", []).
+
+get_accounts_next_nonce_sut(Id, Strategy) when Strategy =:= max; Strategy =:= continuity ->
+    StrategyL = atom_to_list(Strategy),
+    Host = external_address(),
+    http_request(Host, get, "accounts/" ++ binary_to_list(Id) ++ "/next-nonce?strategy=" ++ StrategyL, []).
 
 get_accounts_by_pubkey_and_hash_sut(Id, Hash) ->
     Host = external_address(),
@@ -2923,6 +2930,8 @@ spend_transaction(_Config) ->
     MinerID = aeser_api_encoder:encode(account_pubkey, MinerPubkey),
     %% fetch what would be the next nonce
     {ok, 200, #{<<"next_nonce">> := NextNonce}} = get_accounts_next_nonce_sut(MinerID),
+    {ok, 200, #{<<"next_nonce">> := NextNonce}} = get_accounts_next_nonce_sut(MinerID, max),
+    {ok, 200, #{<<"next_nonce">> := NextNonce}} = get_accounts_next_nonce_sut(MinerID, continuity),
     RandAddress = random_hash(),
     Payload = <<"hejsan svejsan">>,
     Encoded = #{sender_id => MinerAddress,
@@ -2955,6 +2964,82 @@ spend_transaction(_Config) ->
     test_invalid_hash({account_pubkey, MinerPubkey}, sender_id, Encoded, fun get_spend/1),
     test_invalid_hash({account_pubkey, MinerPubkey}, {recipient_id, recipient_id}, Encoded, fun get_spend/1),
     test_missing_address(sender_id, Encoded, fun get_spend/1),
+    ok.
+
+next_nonce_missing_nonce(_Config) ->
+    MinerAddress = get_miner_address(),
+    {ok, MinerPubkey} = aeser_api_encoder:safe_decode(account_pubkey, MinerAddress),
+    MinerID = aeser_api_encoder:encode(account_pubkey, MinerPubkey),
+    %% fetch what would be the next nonce
+    {ok, 200, #{<<"next_nonce">> := NextNonce}} = get_accounts_next_nonce_sut(MinerID),
+    {ok, 200, #{<<"next_nonce">> := NextNonce}} = get_accounts_next_nonce_sut(MinerID, max),
+    {ok, 200, #{<<"next_nonce">> := NextNonce}} = get_accounts_next_nonce_sut(MinerID, continuity),
+    RandAddress = random_hash(),
+    PostSpendTxFun =
+        fun(Nonce) ->
+            Opts = #{ sender_id => aeser_id:create(account, MinerPubkey),
+                      recipient_id => aeser_id:create(account, RandAddress),
+                      amount => 2,
+                      fee => 100000 * aec_test_utils:min_gas_price(),
+                      nonce => Nonce,
+                      ttl => 43,
+                      payload => <<>>
+                      },
+            {ok, S} = aec_spend_tx:new(Opts),
+            {ok, SignedSpendTx} = aecore_suite_utils:sign_on_node(?NODE, S),
+            SerializedSpendTx = aetx_sign:serialize_to_binary(SignedSpendTx),
+            {ok, 200, _} = post_transactions_sut(aeser_api_encoder:encode(transaction, SerializedSpendTx)),
+            SignedSpendTx
+        end,
+    Node = aecore_suite_utils:node_name(?NODE),
+    MineTxFun =
+        fun(PendingTxs) ->
+            PendingTxHashes =
+                [aeser_api_encoder:encode(tx_hash, aetx_sign:hash(Tx))
+                    || Tx <- PendingTxs],
+            ct:log("Pending txs: ~p", [PendingTxs]),
+            ct:log("Pending tx hashes: ~p", [PendingTxHashes]),
+            aecore_suite_utils:mine_blocks_until_txs_on_chain(Node, PendingTxHashes, ?MAX_MINED_BLOCKS)
+        end,
+
+    Spend = PostSpendTxFun(NextNonce),
+    NextNonce1 = NextNonce + 1,
+    {ok, 200, #{<<"next_nonce">> := NextNonce1}} = get_accounts_next_nonce_sut(MinerID),
+    {ok, 200, #{<<"next_nonce">> := NextNonce1}} = get_accounts_next_nonce_sut(MinerID, max),
+    {ok, 200, #{<<"next_nonce">> := NextNonce1}} = get_accounts_next_nonce_sut(MinerID, continuity),
+
+    MineTxFun([Spend]),
+    {ok, 200, #{<<"next_nonce">> := NextNonce1}} = get_accounts_next_nonce_sut(MinerID),
+    {ok, 200, #{<<"next_nonce">> := NextNonce1}} = get_accounts_next_nonce_sut(MinerID, max),
+    {ok, 200, #{<<"next_nonce">> := NextNonce1}} = get_accounts_next_nonce_sut(MinerID, continuity),
+
+    %% skip a nonce
+    NextNonce2 = NextNonce1 + 1,
+    NextNonce3 = NextNonce2 + 1,
+    Spend2 = PostSpendTxFun(NextNonce2),
+
+    {ok, 200, #{<<"next_nonce">> := NextNonce3}} = get_accounts_next_nonce_sut(MinerID),
+    {ok, 200, #{<<"next_nonce">> := NextNonce3}} = get_accounts_next_nonce_sut(MinerID, max),
+    {ok, 200, #{<<"next_nonce">> := NextNonce1}} = get_accounts_next_nonce_sut(MinerID, continuity),
+    Spend1 = PostSpendTxFun(NextNonce1),
+    MineTxFun([Spend1, Spend2]),
+    {ok, 200, #{<<"next_nonce">> := NextNonce3}} = get_accounts_next_nonce_sut(MinerID),
+    {ok, 200, #{<<"next_nonce">> := NextNonce3}} = get_accounts_next_nonce_sut(MinerID, max),
+    {ok, 200, #{<<"next_nonce">> := NextNonce3}} = get_accounts_next_nonce_sut(MinerID, continuity),
+
+    %% skip a couple of nonces, only the first is returned
+    NextNonce4 = NextNonce3 + 1,
+    NextNonce5 = NextNonce4 + 1,
+    NextNonce6 = NextNonce5 + 1,
+    NextNonce7 = NextNonce6 + 1,
+    Spend6 = PostSpendTxFun(NextNonce6),
+    {ok, 200, #{<<"next_nonce">> := NextNonce7}} = get_accounts_next_nonce_sut(MinerID),
+    {ok, 200, #{<<"next_nonce">> := NextNonce7}} = get_accounts_next_nonce_sut(MinerID, max),
+    {ok, 200, #{<<"next_nonce">> := NextNonce3}} = get_accounts_next_nonce_sut(MinerID, continuity),
+    Spend3 = PostSpendTxFun(NextNonce3),
+    Spend4 = PostSpendTxFun(NextNonce4),
+    Spend5 = PostSpendTxFun(NextNonce5),
+    MineTxFun([Spend3, Spend4, Spend5, Spend6]),
     ok.
 
 %% tests the following

@@ -426,7 +426,12 @@ handle_request_('GetPendingAccountTransactionsByPubkey', Params, _Context) ->
 handle_request_('GetAcountNextNonce', Params, _Context) ->
     case aeser_api_encoder:safe_decode(account_pubkey, maps:get(pubkey, Params)) of
         {ok, Pubkey} ->
-            case aec_next_nonce:pick_for_account(Pubkey) of
+            Strategy =
+                case maps:get(strategy, Params) of
+                    max -> max;
+                    continuity -> continuity
+                end,
+            case aec_next_nonce:pick_for_account(Pubkey, Strategy) of
                 {ok, NextNonce} ->
                     {200, [], #{next_nonce => NextNonce}};
                 {error, account_not_found} ->
