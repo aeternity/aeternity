@@ -217,6 +217,35 @@ handle_request_('GetNetworkStatus', _Req, _Context) ->
             {200, [], aec_peer_analytics:get_stats_for_client()}
     end;
 
+handle_request_('GetCheckTxInPool', Req, _Context) ->
+    ParseFuns = [ parse_map_to_atom_keys(),
+                  read_required_params([hash]),
+                  api_decode([{hash, hash, tx_hash}]),
+                  fun(_Req, #{hash := TxHash}) ->
+                      case aec_chain:find_tx_with_location(TxHash) of
+                          none -> {error, {404, [], #{<<"reason">> => <<"tx_not_found">>}}};
+                          {BlockHash, _Tx} when is_binary(BlockHash) ->
+                              {ok, {200, [], #{<<"status">> => <<"included">>}}};
+                          {mempool, SignedTx} ->
+                              {Env, Trees} = aetx_env:tx_env_and_trees_from_top(aetx_transaction),
+                              Env1 = aetx_env:set_signed_tx(Env, {value, SignedTx}),
+                              Tx = aetx_sign:tx(SignedTx),
+                              try aetx:process(Tx, Trees, Env1) of
+                                  {ok, _Trees1, _Env20} ->
+                                      {ok, {200, [], #{<<"status">> => <<"includable">>}}};
+                                  {error, Reason} ->
+                                      {error, {400, [], #{<<"reason">> => atom_to_binary(Reason, utf8)}}}
+                              catch
+                                  Type:What ->
+                                      Reason = {Type, What},
+                                      lager:error("HTTP API: tx ~p cannot be applied due to an error ~p", [Tx, Reason]),
+                                      {error, {400, [], #{<<"reason">> => <<"unhandled">>}}}
+                              end
+                      end
+                  end
+                ],
+    process_request(ParseFuns, Req);
+
 handle_request_(OperationID, Req, Context) ->
     error_logger:error_msg(
       ">>> Got not implemented request to process: ~p~n",

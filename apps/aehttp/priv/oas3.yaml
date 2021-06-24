@@ -1912,6 +1912,40 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+  /debug/check-tx/pool/{hash}:
+    get:
+      tags:
+        - internal
+        - debug
+      operationId: GetCheckTxInPool
+      description: "Check if a transaction in the pool can be merged or it is blocked by something: not enough tokens, missing nonce or something else"
+      parameters:
+        - $ref: '#/components/parameters/intAsString'
+        - $ref: '#/components/parameters/txHash'
+      responses:
+        "200":
+          description: The transaction can be included or is already included
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                required:
+                  - status
+        "400":
+          description: Transaction is blocked
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Transaction is not in transaction pool
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
   "/debug/token-supply/height/{height}":
     get:
       tags:
