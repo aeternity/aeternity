@@ -10,7 +10,7 @@ This document describes how to update an Aeternity node using a release binary:
 
 Be sure to have a backup of your files, don't remove your node database.
 
-Download the latest version of æternity node (Iris is 6.0.0)
+Download the latest version of the æternity node
 
 ```
 curl -Lf -o aeternity.tar.gz  https://releases.aeternity.io/aeternity-{version}-ubuntu-x86_64.tar.gz
