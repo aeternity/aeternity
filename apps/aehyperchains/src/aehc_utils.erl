@@ -32,11 +32,12 @@ submit_commitment(KeyNode, Delegate) ->
 
 -spec delegates(block_header_hash()) -> [commiter_pubkey()].
 delegates(ParentHash) ->
-    Commitments = aehc_parent_mng:commitments(ParentHash),
+    {ok, Block, Trees} = aehc_parent_mng:get_block_by_hash(ParentHash),
+
+    Commitments = aehc_parent_block:commitments_in_block(Block),
     Accounts = [aehc_commitment_header:hc_delegate(aehc_commitment:header(X)) || X <- Commitments],
 
-    State = aehc_parent_trees:delegates(aehc_parent_db:get_parent_block_state(ParentHash)),
-    [begin {value, Delegate} = aehc_delegates_trees:lookup(A, State), Delegate end|| A <- Accounts].
+    [begin {value, Delegate} = aehc_delegates_trees:lookup(A, Trees), Delegate end|| A <- Accounts].
 
 delegate() ->
     %% TODO The delegate address should be should  be distinguished via PoS configuration scope

@@ -614,32 +614,21 @@
                   }
                 }
               },
-              "setup":{
-                "type": "object",
-                "additionalProperties": false,
-                "properties": {
-                  "mode": {
-                    "type": "string",
-                    "enum": [ "monolith", "replica", "shard" ],
-                    "default": "monolith",
-                    "description": "Connector's setup: https://github.com/aeternity/aeconnector"
+              "tracker":{
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                      "connector": {
+                          "description": "The the real world blockchain interface: https://github.com/aeternity/aeconnector/wiki",
+                          "type": "string",
+                          "default": "aeconnector_btc_full_node"
+                      },
+                      "args":{
+                          "type":"object",
+                          "description": "Connector configuration which should be passed to module:connect/2"
+                      }
                   },
-                  "primary":{
-                    "$ref": "#/definitions/backend"
-                  },
-                  "height":{
-                    "type": "integer",
-                    "description": "Effective height. The point of maturity of the primary chain"
-                  },
-                  "replicas":{
-                    "type": "array",
-                    "items":{
-                      "uniqueItems": true,
-                      "$ref": "#/definitions/backend"
-                    }
-                  }
-                },
-                "description": "Deployment setup configuration"
+                  "description": "Parent chain tracker configuration"
               }
             }
         },
@@ -1377,30 +1366,6 @@
     "definitions" : {
         "key_value_pattern": {
             "pattern" : "^[a-zA-Z0-9\\-_\\.]+\\h*:\\h*[0-9]+(\\h*,\\h*[a-zA-Z_]+\\h*:\\h*[0-9]+)*"
-        },
-      "backend":{
-        "type":"object",
-        "description": "State machine which represents the attached blockchain (parent chain)",
-        "properties": {
-          "module": {
-            "description": "The the real world blockchain interface: https://github.com/aeternity/aeconnector/wiki",
-            "type": "string",
-            "default": "aeconnector_btc_full_node"
-          },
-          "args":{
-            "type":"object",
-            "description": "Connector configuration which should be passed to module:connect/2"
-          },
-          "capacity":{
-            "type": "integer",
-            "default": 0,
-            "description": "Commitment capacity. The blocks count accumulated in one commitment transaction"
-          },
-          "address":{
-            "description" : "The block address on which state machine history begins",
-            "type" : "string"
-          }
         }
-      }
     }
 }
