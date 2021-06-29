@@ -1924,7 +1924,7 @@ paths:
         - $ref: '#/components/parameters/txHash'
       responses:
         "200":
-          description: The transaction can be included or is already included
+          description: The transaction status
           content:
             application/json:
               schema:
@@ -1934,12 +1934,6 @@ paths:
                     type: string
                 required:
                   - status
-        "400":
-          description: Transaction is blocked
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
         "404":
           description: Transaction is not in transaction pool
           content:

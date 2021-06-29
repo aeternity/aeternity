@@ -3079,7 +3079,7 @@ check_transaction_in_pool(_Config) ->
     Nonce2 = NextNonceFun(),
     Tx3 = PostSpendTxFun(Nonce2 + 1), %% there is a gap in the nonce
     Tx3Hash = aeser_api_encoder:encode(tx_hash, aetx_sign:hash(Tx3)),
-    {ok, 400, #{<<"reason">> := <<"tx_nonce_too_high_for_account">>}} = check_transaction_in_pool_sut(Tx3Hash),
+    {ok, 200, #{<<"status">> := <<"tx_nonce_too_high_for_account">>}} = check_transaction_in_pool_sut(Tx3Hash),
     Tx2 = PostSpendTxFun(Nonce2),
     Tx2Hash = aeser_api_encoder:encode(tx_hash, aetx_sign:hash(Tx2)),
     MineTxFun([Tx2, Tx3]),

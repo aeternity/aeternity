@@ -1818,7 +1818,7 @@ paths:
           type: string
       responses:
         '200':
-          description: The transaction can be included or is already included
+          description: The transaction status
           schema:
             type: object
             properties:
@@ -1826,10 +1826,6 @@ paths:
                 type: string
             required:
               - status
-        '400':
-          description: Transaction is blocked
-          schema:
-            $ref: '#/definitions/Error'
         '404':
           description: Transaction is not in transaction pool
           schema:
