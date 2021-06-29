@@ -550,7 +550,7 @@ paths:
         - external
         - account
       operationId: GetAcountNextNonce
-      description: Get an account's next nonce; This is being computed according to whatever is the current account nonce and what transactions are currently present in the transaction pool
+      description: Get an account's next nonce; This is computed according to whatever is the current account nonce and what transactions are currently present in the transaction pool
       parameters:
         - $ref: '#/components/parameters/intAsString'
         - $ref: '#/components/parameters/accountPubkey'
