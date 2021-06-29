@@ -48,12 +48,15 @@
         ]).
 
 -export([ abi_version/0
+        , abi_version/2
         , backend/0
         , init_per_group/2
         , init_per_group/3
         , setup_testcase/1
         , sophia_version/0
+        , sophia_version/2
         , vm_version/0
+        , vm_version/2
         ]).
 
 -include_lib("common_test/include/ct.hrl").
@@ -670,39 +673,51 @@ get_oracle_queries(OracleId, Max, State) ->
 init_per_group(Vm, Cfg) ->
     init_per_group(Vm, Cfg, fun(X) -> X end).
 
-init_per_group(aevm, Cfg, Cont) ->
-    case aect_test_utils:latest_protocol_version() of
-        ?ROMA_PROTOCOL_VSN ->
-            ct:pal("Running tests under Roma protocol"),
-            Cont([{sophia_version, ?SOPHIA_ROMA}, {vm_version, ?VM_AEVM_SOPHIA_1},
-                  {abi_version, ?ABI_AEVM_SOPHIA_1}, {protocol, roma} | Cfg]);
-        ?MINERVA_PROTOCOL_VSN ->
-            ct:pal("Running tests under Minerva protocol"),
-            Cont([{sophia_version, ?SOPHIA_MINERVA}, {vm_version, ?VM_AEVM_SOPHIA_2},
-                  {abi_version, ?ABI_AEVM_SOPHIA_1}, {protocol, minerva} | Cfg]);
-        ?FORTUNA_PROTOCOL_VSN ->
-            ct:pal("Running tests under Fortuna protocol"),
-            Cont([{sophia_version, ?SOPHIA_FORTUNA}, {vm_version, ?VM_AEVM_SOPHIA_3},
-                  {abi_version, ?ABI_AEVM_SOPHIA_1}, {protocol, fortuna} | Cfg]);
-        ?LIMA_PROTOCOL_VSN ->
-            ct:pal("Running tests under Lima protocol"),
-            Cont([{sophia_version, ?SOPHIA_LIMA_AEVM}, {vm_version, ?VM_AEVM_SOPHIA_4},
-                  {abi_version, ?ABI_AEVM_SOPHIA_1}, {protocol, lima} | Cfg]);
-        ?IRIS_PROTOCOL_VSN ->
-            {skip, aevm_deprecated}
-    end;
-init_per_group(fate, Cfg, Cont) ->
-    case aect_test_utils:latest_protocol_version() of
-        ?LIMA_PROTOCOL_VSN ->
-            ct:pal("Running tests under Lima protocol in FATE"),
-            Cont([{sophia_version, ?SOPHIA_LIMA_FATE}, {vm_version, ?VM_FATE_SOPHIA_1},
-                  {abi_version, ?ABI_FATE_SOPHIA_1}, {protocol, lima} | Cfg]);
-        ?IRIS_PROTOCOL_VSN ->
-            ct:pal("Running tests under Iris protocol in FATE"),
-            Cont([{sophia_version, ?SOPHIA_IRIS_FATE}, {vm_version, ?VM_FATE_SOPHIA_2},
-                  {abi_version, ?ABI_FATE_SOPHIA_1}, {protocol, iris} | Cfg]);
+sophia_version(aevm, ?ROMA_PROTOCOL_VSN) -> ?SOPHIA_ROMA;
+sophia_version(aevm, ?MINERVA_PROTOCOL_VSN) -> ?SOPHIA_MINERVA;
+sophia_version(aevm, ?FORTUNA_PROTOCOL_VSN) -> ?SOPHIA_FORTUNA;
+sophia_version(aevm, ?LIMA_PROTOCOL_VSN) -> ?SOPHIA_LIMA_AEVM;
+sophia_version(aevm, _) -> {error, aevm_deprecated};
+sophia_version(fate, ?LIMA_PROTOCOL_VSN) -> ?SOPHIA_LIMA_FATE;
+sophia_version(fate, ?IRIS_PROTOCOL_VSN) -> ?SOPHIA_IRIS_FATE;
+sophia_version(fate, Protocol) when Protocol < ?LIMA_PROTOCOL_VSN -> {error, fate_not_available}.
+
+vm_version(aevm, ?ROMA_PROTOCOL_VSN) -> ?VM_AEVM_SOPHIA_1;
+vm_version(aevm, ?MINERVA_PROTOCOL_VSN) -> ?VM_AEVM_SOPHIA_2;
+vm_version(aevm, ?FORTUNA_PROTOCOL_VSN) -> ?VM_AEVM_SOPHIA_3;
+vm_version(aevm, ?LIMA_PROTOCOL_VSN) -> ?VM_AEVM_SOPHIA_4;
+vm_version(aevm, _) -> {error, aevm_deprecated};
+vm_version(fate, ?LIMA_PROTOCOL_VSN) -> ?VM_FATE_SOPHIA_1;
+vm_version(fate, ?IRIS_PROTOCOL_VSN) -> ?VM_FATE_SOPHIA_2;
+vm_version(fate, Protocol) when Protocol < ?LIMA_PROTOCOL_VSN -> {error, fate_not_available}.
+
+abi_version(aevm, ?ROMA_PROTOCOL_VSN) -> ?ABI_AEVM_SOPHIA_1;
+abi_version(aevm, ?MINERVA_PROTOCOL_VSN) -> ?ABI_AEVM_SOPHIA_1;
+abi_version(aevm, ?FORTUNA_PROTOCOL_VSN) -> ?ABI_AEVM_SOPHIA_1;
+abi_version(aevm, ?LIMA_PROTOCOL_VSN) -> ?ABI_AEVM_SOPHIA_1;
+abi_version(aevm, _) -> {error, aeavm_deprecated};
+abi_version(fate, ?LIMA_PROTOCOL_VSN) -> ?ABI_FATE_SOPHIA_1;
+abi_version(fate, ?IRIS_PROTOCOL_VSN) -> ?ABI_FATE_SOPHIA_1;
+abi_version(fate, Protocol) when Protocol < ?LIMA_PROTOCOL_VSN -> {error, fate_not_available}.
+
+init_per_group(VM, Cfg, Cont) ->
+    Protocol = aect_test_utils:latest_protocol_version(),
+    case sophia_version(VM, Protocol) of
+        {error, Err} -> {skip, Err};
         _ ->
-            {skip, fate_not_available}
+            ProtocolAtom =
+                case Protocol of
+                    ?ROMA_PROTOCOL_VSN -> roma;
+                    ?MINERVA_PROTOCOL_VSN -> minerva;
+                    ?FORTUNA_PROTOCOL_VSN -> fortuna;
+                    ?LIMA_PROTOCOL_VSN -> lima;
+                    ?IRIS_PROTOCOL_VSN -> iris
+                end,
+            ct:pal("Running tests under ~p protocol using ~p", [ProtocolAtom, VM]),
+            Cont([{sophia_version, sophia_version(VM, Protocol)},
+                  {vm_version, vm_version(VM, Protocol)},
+                  {abi_version, abi_version(VM, Protocol)},
+                  {protocol, ProtocolAtom} | Cfg])
     end.
 
 setup_testcase(Config) ->

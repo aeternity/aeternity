@@ -15,6 +15,7 @@
         , fee/1
         , from_db_format/1
         , gas_limit/3
+        , used_gas/4
         , inner_gas_limit/3
         , fee_gas/3
         , gas_price/1
@@ -290,6 +291,30 @@ gas_limit(#aetx{ type = channel_offchain_tx }, _Height, _Version) ->
     0;
 gas_limit(#aetx{ type = channel_client_reconnect_tx }, _Height, _Version) ->
     0.
+
+used_gas(#aetx{ type = paying_for_tx, cb = CB, size = Size, tx = Tx }, Height, Version, Trees) ->
+    InnerTx = #aetx{ size = ISize } = aetx_sign:tx(CB:tx(Tx)),
+    PayingForTxGas = base_gas(paying_for_tx, Version) + size_gas(Size - ISize),
+    InnerTxGas = used_gas(InnerTx, Height, Version, Trees),
+    PayingForTxGas + InnerTxGas;
+used_gas(#aetx{ type = ga_meta_tx, cb = CB, size = Size, tx = Tx }, Height, Version, Trees) ->
+    %% note that this is different than how gas_limit/3 works!
+    InnerTx = #aetx{ size = ISize } = aetx_sign:tx(CB:tx(Tx)),
+    CallsTrees = aec_trees:calls(Trees),
+    Pubkey = CB:ga_pubkey(Tx),
+    AuthCallId = CB:call_id(Tx, Trees),
+    AuthCall = aect_call_state_tree:get_call(Pubkey, AuthCallId, CallsTrees),
+    AuthGas = aect_call:gas_used(AuthCall),
+    base_gas(ga_meta_tx, Version, CB:abi_version(Tx)) + size_gas(Size) + AuthGas + used_gas(aetx_sign:tx(CB:tx(Tx)), Height, Version, Trees);
+used_gas(#aetx{type = Type, cb = CB, size = Size, tx = Tx}, _Height, Version,
+        Trees) when ?IS_CONTRACT_TX(Type) ->
+    CallsTrees = aec_trees:calls(Trees),
+    ContractPubkey = CB:contract_pubkey(Tx),
+    CallId = CB:call_id(Tx),
+    Call = aect_call_state_tree:get_call(ContractPubkey, CallId, CallsTrees),
+    base_gas(Type, Version, CB:abi_version(Tx)) + size_gas(Size) + aect_call:gas_used(Call);
+used_gas(#aetx{type = Type} = Aetx, Height, Version, _Trees) when not ?IS_CONTRACT_TX(Type) ->
+    gas_limit(Aetx, Height, Version).
 
 -spec inner_gas_limit(Tx :: tx(), Height :: aec_blocks:height(), Version :: aec_hard_forks:protocol_vsn()) ->
                              Gas :: non_neg_integer().

@@ -207,3 +207,4 @@ insert_failed_call(ContractPubkey, CallerPubkey, Round, GasPrice, GasLimit, Call
     Call2 = aect_call:set_return_type(error, Call1),
     Call = aect_call:set_return_value(<<"invalid_call">>, Call2),
     aect_call_state_tree:insert_call(Call, CallsTree).
+
