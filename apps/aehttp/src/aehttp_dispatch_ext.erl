@@ -423,7 +423,7 @@ handle_request_('GetPendingAccountTransactionsByPubkey', Params, _Context) ->
             {400, [], #{reason => <<"Invalid public key">>}}
     end;
 
-handle_request_('GetAcountNextNonce', Params, _Context) ->
+handle_request_('GetAccountNextNonce', Params, _Context) ->
     case aeser_api_encoder:safe_decode(account_pubkey, maps:get(pubkey, Params)) of
         {ok, Pubkey} ->
             Strategy =
