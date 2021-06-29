@@ -72,7 +72,7 @@ handle_info({gproc_ps_event, chain_sync, #{info := {chain_sync_done, _}}}, St) -
     %% For now, at least, we try to enable fork resistance as soon as we are in sync
     %% with at least one peer
     note_chain_sync_done(true),
-    aec_events:unsubscribe(chain_sync),
+    aec_events:ensure_unsubscribed(chain_sync),
     maybe_enable_fork_resistance(),
     {noreply, St};
 handle_info({gproc_ps_event, update_config,
