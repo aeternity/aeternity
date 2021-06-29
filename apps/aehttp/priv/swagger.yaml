@@ -573,8 +573,8 @@ paths:
       tags:
         - external
         - account
-      operationId: GetAcountNextNonce
-      description: "Get an account's next nonce; This is being computed according to whatever is the current account nonce and what transactions are currently present in the transaction pool"
+      operationId: GetAccountNextNonce
+      description: "Get an account's next nonce; This is computed according to whatever is the current account nonce and what transactions are currently present in the transaction pool"
       produces:
         - application/json
       parameters:
