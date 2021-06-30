@@ -234,12 +234,12 @@ handle_request_('GetCheckTxInPool', Req, _Context) ->
                                   {ok, _Trees1, _Env20} ->
                                       {ok, {200, [], #{<<"status">> => <<"includable">>}}};
                                   {error, Reason} ->
-                                      {error, {200, [], #{<<"status">> => atom_to_binary(Reason, utf8)}}}
+                                      {ok, {200, [], #{<<"status">> => atom_to_binary(Reason, utf8)}}}
                               catch
                                   Type:What ->
                                       Reason = {Type, What},
                                       lager:error("HTTP API: tx ~p cannot be applied due to an error ~p", [Tx, Reason]),
-                                      {error, {200, [], #{<<"status">> => <<"unhandled">>}}}
+                                      {ok, {200, [], #{<<"status">> => <<"unhandled">>}}}
                               end
                       end
                   end
