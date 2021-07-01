@@ -1918,7 +1918,7 @@ paths:
         - internal
         - debug
       operationId: GetCheckTxInPool
-      description: "Check if a transaction in the pool can be merged or it is blocked by something: not enough tokens, missing nonce or something else"
+      description: "Check if a transaction in the pool can be merged or if it is blocked by something: not enough tokens, missing nonce or something else"
       parameters:
         - $ref: '#/components/parameters/intAsString'
         - $ref: '#/components/parameters/txHash'
