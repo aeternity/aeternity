@@ -52,17 +52,18 @@ stop(_State) ->
 
 check_env() ->
     %TODO: we need to validate that all tags are present
-    GroupDefaults = #{<<"chain">>        => true,
-                      <<"transaction">>  => true,
-                      <<"account">>      => true,
-                      <<"contract">>     => true,
-                      <<"oracle">>       => true,
-                      <<"name_service">> => true,
-                      <<"channel">>      => true,
-                      <<"node_info">>    => true,
-                      <<"debug">>        => true,
-                      <<"obsolete">>     => true,
-                      <<"dry-run">>      => false
+    GroupDefaults = #{<<"chain">>         => true,
+                      <<"transaction">>   => true,
+                      <<"account">>       => true,
+                      <<"contract">>      => true,
+                      <<"oracle">>        => true,
+                      <<"name_service">>  => true,
+                      <<"channel">>       => true,
+                      <<"node_info">>     => true,
+                      <<"debug">>         => true,
+                      <<"obsolete">>      => true,
+                      <<"dry-run">>       => false,
+                      <<"node-operator">> => false
                       },
     EnabledGroups =
         lists:foldl(

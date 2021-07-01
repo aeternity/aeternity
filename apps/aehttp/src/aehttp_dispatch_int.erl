@@ -209,6 +209,23 @@ handle_request_('GetTokenSupplyByHeight', Req, _Context) ->
             {400, [], #{reason => <<"Chain too short">>}}
     end;
 
+handle_request_('DeleteTxFromMempool', Req, _Context) ->
+    ParseFuns = [ parse_map_to_atom_keys(),
+                  read_required_params([hash]),
+                  api_decode([{hash, hash, tx_hash}]),
+                  fun(_Req, #{hash := TxHash}) ->
+                      case aec_tx_pool:delete(TxHash) of
+                          ok ->
+                              {ok, {200, [], #{<<"status">> => <<"deleted">>}}};
+                          {error, already_accepted} ->
+                              {ok, {200, [], #{<<"status">> => <<"included">>}}};
+                          {error, not_found} ->
+                              {ok, {404, [], #{<<"reason">> => <<"not_found">>}}}
+                      end
+                  end],
+
+    process_request(ParseFuns, Req);
+
 handle_request_('GetNetworkStatus', _Req, _Context) ->
     case aec_peer_analytics:enabled() of
         false ->

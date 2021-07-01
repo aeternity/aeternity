@@ -38,7 +38,6 @@
         , get_max_nonce/1
         , minimum_miner_gas_price/0
         , maximum_auth_fun_gas/0
-        , new_sync_top_target/1
         , peek/1
         , peek/2
         , push/1
@@ -48,6 +47,7 @@
         , top_change/3
         , top_change/4
         , dbs/0
+        , delete/1
         ]).
 
 %% exports used by GC (should perhaps be in a common lib module)
@@ -77,6 +77,8 @@
 -export([peek_db/0]).
 -export([peek_visited/0]).
 -export([peek_nonces/0]).
+-export([nonce_offset/0]).
+-export([tx_ttl/0]).
 -endif.
 
 %% gen_server callbacks
@@ -256,6 +258,10 @@ peek(MaxN) when is_integer(MaxN), MaxN >= 0; MaxN =:= infinity ->
 peek(MaxN, Account) when is_integer(MaxN), MaxN >= 0; MaxN =:= infinity ->
     gen_server:call(?SERVER, {peek, MaxN, Account}).
 
+-spec delete(binary()) -> ok | {error, not_found | already_accepted}.
+delete(TxHash) ->
+    gen_server:call(?SERVER, {delete, TxHash}).
+    
 -spec get_candidate(pos_integer(), binary()) -> {ok, [aetx_sign:signed_tx()]}.
 get_candidate(MaxGas, BlockHash) when is_integer(MaxGas), MaxGas > 0,
                                       is_binary(BlockHash) ->
@@ -273,11 +279,6 @@ top_change(Type, OldHash, NewHash, PrevNewHash) when Type==key; Type==micro ->
 top_change(Type, OldHash, NewHash) when Type==key; Type==micro ->
     gen_server:call(?SERVER, {top_change, Type, OldHash, NewHash},
                     ?LONG_CALL_TIMEOUT).
-
--spec new_sync_top_target(aec_blocks:height()) -> ok.
-new_sync_top_target(NewSyncTop) ->
-    lager:debug("new_sync_top_target()", []),
-    gen_server:cast(?SERVER, {new_sync_top_target, NewSyncTop}).
 
 -spec size() -> non_neg_integer() | undefined.
 size() ->
@@ -334,6 +335,7 @@ init([]) ->
     ets:delete(Handled),
     lager:debug("init: GCHeight = ~p", [GCHeight]),
     gproc_reg(),
+    aec_events:subscribe(top_changed),
     {ok, #state{gc_height = GCHeight}}.
 
 handle_call(Req, From, St) ->
@@ -358,6 +360,21 @@ handle_call_({peek, MaxNumberOfTxs, Account}, _From, #state{dbs = Dbs} = State)
        MaxNumberOfTxs =:= infinity ->
     Txs = pool_db_peek(Dbs, MaxNumberOfTxs, Account, all),
     {reply, {ok, Txs}, State};
+handle_call_({delete, TxHash}, _From, #state{dbs = Dbs} = State) ->
+    #dbs{gc_db = GCDb} = Dbs,
+    Res =
+        case aec_chain:find_tx_with_location(TxHash) of
+            {BlockHash, _} when is_binary(BlockHash) ->
+                {error, already_accepted};
+            {mempool, Tx} ->
+                Key = pool_db_key(Tx),
+                pool_db_raw_delete(Dbs, Key),
+                aec_tx_pool_gc:delete_hash(GCDb, TxHash),
+                aec_db:remove_tx_from_mempool(TxHash),
+                ok;
+            none -> {error, not_found}
+        end,
+    {reply, Res, State};
 handle_call_(dbs, _From, #state{dbs = Dbs} = State) ->
     {reply, Dbs, State};
 handle_call_(Request, From, State) ->
@@ -367,8 +384,6 @@ handle_call_(Request, From, State) ->
 handle_cast(Msg, St) ->
     ?TC(handle_cast_(Msg, St), Msg).
 
-handle_cast_({new_sync_top_target, NewSyncTop}, State) ->
-    {noreply, do_update_sync_top_target(NewSyncTop, State)};
 handle_cast_(garbage_collect, State) ->
     case State of
         #state{gc_height = undefined, sync_top_calc = P} when is_pid(P) ->
@@ -389,6 +404,14 @@ handle_info_({P, new_gc_height, GCHeight}, #state{sync_top_calc = P} = State) ->
     aec_tx_pool_gc:gc(GCHeight, State#state.dbs),
     {noreply, State#state{sync_top_calc = undefined, gc_height = GCHeight}};
 handle_info_({'ETS-TRANSFER', _, _, _}, State) ->
+    {noreply, State};
+handle_info_({gproc_ps_event, top_changed, #{info := #{block_type := key,
+                                                      height := Height}}},
+            State) ->
+    {noreply, do_update_sync_top_target(Height, State)};
+handle_info_({gproc_ps_event, top_changed, #{info := #{block_type := micro,
+                                                      height := Height}}},
+            State) ->
     {noreply, State};
 handle_info_(Info, State) ->
     lager:warning("Ignoring unknown info: ~p", [Info]),
@@ -718,13 +741,13 @@ update_pool_on_tx_hash(TxHash, {#dbs{gc_db = GCDb} = Dbs, OriginsCache, GCHeight
             ets:insert(Handled, {TxHash}),
             {ok, Tx} = aec_db:dirty_get_signed_tx(TxHash),
             case aec_db:is_in_tx_pool(TxHash) of
-                false ->
+                true ->
                     %% Added to chain
                     Key = pool_db_key(Tx),
                     pool_db_raw_delete(Dbs, Key),
                     aec_tx_pool_gc:delete_hash(GCDb, TxHash),
                     add_to_origins_cache(OriginsCache, Tx);
-                true ->
+                false ->
                     Key = pool_db_key(Tx),
                     pool_db_raw_put(Dbs, GCHeight, Key, Tx, TxHash)
             end
@@ -801,10 +824,17 @@ pool_db_raw_delete(#dbs{db = Db, visited_db = VDb, nonce_db = NDb}, Key) ->
     ets:delete(Db, Key).
 
 pool_db_raw_put(#dbs{db = Db, nonce_db = NDb, gc_db = GCDb},
-                GCHeight, Key, Tx, TxHash) ->
+                GCHeight0, Key, Tx, TxHash) ->
     ets:insert(Db, {Key, Tx}),
     insert_nonce(NDb, Key),
-    enter_tx_gc(GCDb, TxHash, Key, min(GCHeight + tx_ttl(), aetx:ttl(aetx_sign:tx(Tx)))).
+    GCHeight =
+        case aetx:ttl(aetx_sign:tx(Tx)) of
+            0 -> %% default no ttl
+                GCHeight0 + tx_ttl();
+            TxTTL ->
+                min(GCHeight0 + tx_ttl(), TxTTL)
+        end,
+    enter_tx_gc(GCDb, TxHash, Key, GCHeight).
 
 insert_nonce(NDb, ?KEY(_, _, Account, Nonce, TxHash)) ->
     ets:insert(NDb, {{Account, Nonce, TxHash}}).

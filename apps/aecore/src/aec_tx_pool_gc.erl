@@ -70,6 +70,7 @@ adjust_ttl(Diff, Dbs) ->
     gen_server:cast(?SERVER, {adjust_ttl, Diff, Dbs}).
 
 delete_hash(MempoolGC, TxHash) ->
+    aec_db:remove_tx_from_mempool(TxHash),
     ets:delete(MempoolGC, TxHash).
 
 -spec gc(aec_blocks:height(), aec_tx_pool:dbs()) -> ok.
@@ -164,6 +165,7 @@ do_gc_([{TxHash, Key} | TxHashes], Dbs, GCDb) ->
     case aec_db:gc_tx(TxHash) of
         ok ->
             aec_tx_pool:raw_delete(Dbs, Key),
+            aec_db:remove_tx_from_mempool(TxHash),
             ets:delete(GCDb, TxHash),
             aec_metrics:try_update([ae,epoch,aecore,tx_pool,gced], 1),
             lager:debug("Garbage collected ~p", [pp(TxHash)]);
