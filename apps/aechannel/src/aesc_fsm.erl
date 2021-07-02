@@ -4495,11 +4495,11 @@ close_(Reason, D) ->
          end,
     {stop, Reason, D1}.
 
-handle_call(_St, {?RECONNECT_CLIENT, Pid, FsmIdWrapper} = Msg, From,
+handle_call(_, {?RECONNECT_CLIENT, Pid, FsmIdWrapper} = Msg, From,
             #data{ client_connected = false
                  , client_mref      = undefined
                  , client           = undefined } = D0) ->
-    lager:debug("Client reconnect request with no client (cur state: ~p)", [_St]),
+    lager:debug("Client reconnect request with no client", []),
     D = log(rcv, msg_type(Msg), Msg, D0),
     case authenticate_reconnect(FsmIdWrapper, D) of
         true ->
@@ -4534,8 +4534,7 @@ handle_call(_St, _Req, From, D) ->
     keep_state(D, [{reply, From, {error, unknown_request}}]).
 
 handle_call_(awaiting_signature, {abort_update, Code, Tag}, From,
-             #data{ op = #op_sign{tag = Tag}
-                  , on_chain_id = ChannelId} = D) ->
+             #data{ op = #op_sign{tag = Tag}} = D) ->
     case { lists:member(Tag, ?CANCEL_SIGN_TAGS)
          , lists:member(Tag, ?CANCEL_ACK_TAGS )} of
         {SoloAction, AckAction} when SoloAction orelse AckAction ->

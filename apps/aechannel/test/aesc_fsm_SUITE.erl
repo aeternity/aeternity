@@ -1142,7 +1142,7 @@ op_with_signer_disconnect(Op, Args, SignTag1, RptTag2, SignTag2, Cfg) ->
     rpc(dev1, aesc_fsm, Op, Args(FsmR, 1, Spec)),
     {_, _} = await_signing_request(SignTag1, R, Debug, Cfg),
     {ok, _} = receive_from_fsm(info, I, RptTag2, ?TIMEOUT, Debug),
-    SignedTx = signer_disconnects(SignTag2, I, ?TIMEOUT, Debug),
+    _SignedTx = signer_disconnects(SignTag2, I, ?TIMEOUT, Debug),
     Pat = #{info => #{error_code => ?ERR_CLIENT_DISCONNECTED,
                       round => Round0}},
     {ok, _} = receive_from_fsm(conflict, R, Pat, ?TIMEOUT, Debug),
@@ -3041,9 +3041,6 @@ signer_disconnects(Tag, #{fsm := Fsm, proxy := Proxy}, Timeout, Debug) ->
             error(timeout)
     end.
 
-map_key(initiator) -> i;
-map_key(responder) -> r.
-
 sign_tx(Signer, Tx, Cfg) ->
     co_sign_tx(Signer, aetx_sign:new(Tx, []), Cfg).
 
@@ -3261,8 +3258,8 @@ match_msgs(Pat, M, Cont) when is_map(M), is_map(Pat) ->
     try match_info(M, Pat),
         {ok, M}
     catch
-        error:_E when Cont ->
-            ?LOG("CAUGHT ~p (M = ~p)", [_E, M]),
+        error:E when Cont ->
+            ?LOG("CAUGHT ~p (M = ~p)", [E, M]),
             throw(continue)
     end;
 match_msgs(_, _, true) ->
