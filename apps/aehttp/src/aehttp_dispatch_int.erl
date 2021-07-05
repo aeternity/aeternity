@@ -47,7 +47,7 @@ patterns() ->
 -spec forbidden( Mod :: module(), OperationID :: atom() ) -> boolean().
 forbidden(Mod, OpId) ->
     OpSpec = Mod:operation(OpId),
-    [ #{ tags := Tags } | _ ] = maps:values(OpSpec),
+    Tags = maps:get(tags, OpSpec),
     case lists:member(<<"debug">>, Tags) of
         true -> not aehttp_app:enable_internal_debug_endpoints();
         false -> false

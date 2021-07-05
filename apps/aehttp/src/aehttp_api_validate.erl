@@ -64,7 +64,7 @@ response_(_OperationId, _Method0, Code, _Response, _Validator, _EndpointsMod) wh
     ok;
 response_(OperationId, Method0, Code, Response, Validator, EndpointsMod) ->
     Method = to_method(Method0),
-    #{responses := Resps} = maps:get(Method, EndpointsMod:operation(OperationId)),
+    #{responses := Resps} = EndpointsMod:operation(OperationId),
     case maps:get(Code, Resps, not_found) of
         undefined -> ok;
         not_found -> throw({error, {Code, unspecified_response_code}});
@@ -109,7 +109,7 @@ fix_def_refs(_, X) ->
 
 request(OperationId, Method0, Req, Validator, EndpointsMod) ->
     Method = to_method(Method0),
-    #{parameters := Params} = maps:get(Method, EndpointsMod:operation(OperationId)),
+    #{parameters := Params} = EndpointsMod:operation(OperationId),
     params(Params, #{}, Req, Validator, EndpointsMod).
 
 params([], Model, Req, _, _) -> {ok, Model, Req};
