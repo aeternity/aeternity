@@ -9,13 +9,13 @@
 %% Required config values: int_http, ext_http
 %% Optional config values: ct_log (true by default)
 request(OpId, Params, Cfg) ->
-    Op = endpoints:operation(OpId),
-    {Method, Interface} = operation_spec(Op),
+    #{method := Method} = Op = endpoints:operation(OpId),
+    {MethodAtom, Interface} = operation_spec(Op),
     BaseUrl = string:trim(proplists:get_value(Interface, Cfg), trailing, "/"),
     Path = endpoints:path(Method, OpId, Params),
     Query = endpoints:query(Method, OpId, Params),
     {ok, _} = application:ensure_all_started(inets),
-    request(Method, BaseUrl, Path, Query, Params, [], [{timeout, 15000}], [{socket_opts, [{reuseaddr, true}]}], default, Cfg).
+    request(MethodAtom, BaseUrl, Path, Query, Params, [], [{timeout, 15000}], [{socket_opts, [{reuseaddr, true}]}], default, Cfg).
 
 request(get, BaseUrl, Path, Query, _Params, Headers, HttpOpts, Opts, Profile, Cfg) ->
     Url = binary_to_list(iolist_to_binary([BaseUrl, Path, Query])),
@@ -58,10 +58,18 @@ log(Fmt, Params, Cfg) ->
         false -> ok
     end.
 
-operation_spec(#{get := GetSpec}) ->
-    {get, operation_interface(GetSpec)};
-operation_spec(#{post := PostSpec}) ->
-    {post, operation_interface(PostSpec)}.
+operation_spec(#{method := Method0} = Spec) ->
+    Method =
+        case Method0 of
+            "get" -> get;
+            "post" -> post;
+            "put" -> put;
+            "patch" -> patch;
+            "delete" -> delete;
+            "head" -> head;
+            "options" -> options
+        end,
+    {Method, operation_interface(Spec)}.
 
 operation_interface(#{tags := Tags}) ->
     IsExt = lists:member(<<"external">>, Tags),
