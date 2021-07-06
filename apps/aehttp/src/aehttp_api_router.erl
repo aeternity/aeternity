@@ -29,8 +29,7 @@ get_paths(Target, LogicHandler) ->
                 end,
             [{path(Path), aehttp_api_handler,
                 {SpecVsn, OperationId, method(Method), LogicHandler}}
-                || {OperationId, Spec} <- maps:to_list(Endpoints:operations()),
-                    {Method, #{path := Path, tags := Tags}} <- maps:to_list(Spec),
+                || {OperationId, #{path := Path, tags := Tags, method := Method}} <- maps:to_list(Endpoints:operations()),
                     is_enabled(Target, Tags, EnabledGroups)
             ]
         end,
@@ -44,8 +43,8 @@ path(Path0) ->
     Path1 = binary:replace(Path0, <<"}">>, <<"">>, [global]),
     binary:replace(Path1, <<"{">>, <<":">>, [global]).
 
-method(Atom) ->
-    list_to_binary(string:uppercase(atom_to_list(Atom))).
+method(Method) ->
+    list_to_binary(string:uppercase(Method)).
 
 is_enabled(Target, Tags, EnabledGroups) when is_atom(Target) ->
     TargetBin = atom_to_binary(Target, utf8),
