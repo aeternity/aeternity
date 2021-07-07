@@ -35,24 +35,10 @@ pick_for_account(Pubkey, Strategy) ->
                                                       T <- AllTxs]),
                     %% prepend the account nonce this relies on it being
                     %% smallest number (we don't keep invalid txs in the pool)
-                    AllNonces = [StateTreeNonce | AllNoncesInPool],
-                    Missing =
-                        lists:foldl(
-                            fun(_, {missing, M}) -> {missing, M};
-                               (Current, Expected) ->
-                                  case Current =:= Expected of
-                                      true -> Expected + 1;
-                                      false -> {missing, Expected}
-                                  end
-                            end,
-                            StateTreeNonce,
-                            AllNonces),
-                    case Missing of
-                        {missing, M} -> {ok, M};
-                        _ ->
-                            Greatest = hd(lists:reverse(AllNonces)),
-                            {ok, Greatest + 1}
-                    end
+                    Next = hd(lists:seq(StateTreeNonce + 1, StateTreeNonce + length(AllNoncesInPool) + 1) --
+                              AllNoncesInPool),
+                    {ok, Next}
+
             end;
         {error, account_not_found} = Error ->
             Error
