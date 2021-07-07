@@ -1806,7 +1806,7 @@ paths:
         - internal
         - debug
       operationId: GetCheckTxInPool
-      description: "Check if a transaction in the pool can be merged or if it is blocked by something: not enough tokens, missing nonce or something else"
+      description: "Check if a transaction in the pool is valid in the current state of the chain and can be included in a microblock or if it is blocked by something: not enough tokens, missing nonce or something else"
       produces:
         - application/json
       parameters:
