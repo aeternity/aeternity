@@ -5652,13 +5652,13 @@ sophia_protected_call(_Cfg) ->
                 {Fun, MinGas, MaxGas, Res, NewState - OldState, [ClientBal1 - ClientBal0, ProxyBal1 - ProxyBal0, ServerBal1 - ServerBal0]}
            end,
     {test_ok, _, _, {116, _}, _, _} = Test(test_ok, word, 0, 0),
-    Results = [ Test(test_wrong_ret,     {option, bool}, 150, 500)
-              , Test(test_wrong_arg,     {option, word}, 130, 500)
-              , Test(test_wrong_arity,   {option, word}, 130, 500)
-              , Test(test_missing,       {option, word}, 130, 500)
-              , Test(test_missing_con,   {option, word}, 130, 500)
-              , Test(test_nonpayable,    {option, word}, 130, 500)
-              , Test(test_out_of_funds,  {option, word}, 130, 500)
+    Results = [ Test(test_wrong_ret,     {option, bool}, 150, 200)
+              , Test(test_wrong_arg,     {option, word}, 130, 200)
+              , Test(test_wrong_arity,   {option, word}, 130, 200)
+              , Test(test_missing,       {option, word}, 130, 200)
+              , Test(test_missing_con,   {option, word}, 130, 200)
+              , Test(test_nonpayable,    {option, word}, 130, 200)
+              , Test(test_out_of_funds,  {option, word}, 130, 200)
               , Test(test_hacked,        {option, word}, 12400, 12700)
               , Test(test_revert,        {option, word}, 12400, 12700)
               , Test(test_crash,         {option, word}, 12400, 12700)
