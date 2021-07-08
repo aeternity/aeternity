@@ -29,6 +29,7 @@
    , get_accounts_by_pubkey_sut/1
    , get_accounts_by_pubkey_and_height_sut/2
    , get_transactions_by_hash_sut/1
+   , check_transaction_in_pool_sut/1
    , get_contract_call_object/1
    , get_top_block/1
    , get_top_header/1
@@ -135,6 +136,7 @@
     unknown_atom_in_spend_tx/1,
 
     get_transaction/1,
+    check_transaction_in_pool/1,
 
     % sync gossip
     pending_transactions/1,
@@ -449,6 +451,7 @@ groups() ->
         unknown_atom_in_spend_tx,
 
         get_transaction,
+        check_transaction_in_pool,
 
         % sync gossip
         pending_transactions,
@@ -1564,6 +1567,10 @@ post_contract_and_call_tx(_Config) ->
 get_transactions_by_hash_sut(Hash) ->
     Host = external_address(),
     http_request(Host, get, "transactions/" ++ http_uri:encode(Hash), []).
+
+check_transaction_in_pool_sut(Hash) ->
+    Host = internal_address(),
+    http_request(Host, get, "debug/check-tx/pool/" ++ http_uri:encode(Hash), []).
 
 get_transaction_info_by_hash_sut(Hash) ->
     Host = external_address(),
@@ -3024,6 +3031,63 @@ get_transaction(_Config) ->
     Expected = PendingTx,
 
     aecore_suite_utils:mine_key_blocks(aecore_suite_utils:node_name(?NODE), 2),
+    ok.
+
+check_transaction_in_pool(_Config) ->
+    Node = aecore_suite_utils:node_name(?NODE),
+    MineTxFun =
+        fun(PendingTxs) ->
+            PendingTxHashes =
+                [aeser_api_encoder:encode(tx_hash, aetx_sign:hash(Tx))
+                    || Tx <- PendingTxs],
+            ct:log("Pending txs: ~p", [PendingTxs]),
+            ct:log("Pending tx hashes: ~p", [PendingTxHashes]),
+            aecore_suite_utils:mine_blocks_until_txs_on_chain(Node, PendingTxHashes, ?MAX_MINED_BLOCKS)
+        end,
+    {ok, HangingOldTxs} = rpc(aec_tx_pool, peek, [infinity]),
+    MineTxFun(HangingOldTxs),
+    {ok, []} = rpc(aec_tx_pool, peek, [infinity]), % empty
+    MinerAddress = get_miner_address(),
+    {ok, MinerPubkey} = aeser_api_encoder:safe_decode(account_pubkey, MinerAddress),
+    RandAddress = random_hash(),
+    NextNonceFun =
+        fun() ->
+            {ok, N} = rpc(aec_next_nonce, pick_for_account, [MinerPubkey]),
+            N
+        end,
+    PostSpendTxFun =
+        fun(Nonce) ->
+            Opts = #{ sender_id => aeser_id:create(account, MinerPubkey),
+                      recipient_id => aeser_id:create(account, RandAddress),
+                      amount => 2,
+                      fee => 100000 * aec_test_utils:min_gas_price(),
+                      nonce => Nonce,
+                      ttl => 43,
+                      payload => <<>>
+                      },
+            {ok, S} = aec_spend_tx:new(Opts),
+            {ok, SignedSpendTx} = aecore_suite_utils:sign_on_node(?NODE, S),
+            SerializedSpendTx = aetx_sign:serialize_to_binary(SignedSpendTx),
+            {ok, 200, _} = post_transactions_sut(aeser_api_encoder:encode(transaction, SerializedSpendTx)),
+            SignedSpendTx
+        end,
+    Tx1 = PostSpendTxFun(NextNonceFun()),
+    Tx1Hash = aeser_api_encoder:encode(tx_hash, aetx_sign:hash(Tx1)),
+    {ok, 200, #{<<"status">> := <<"includable">>}} = check_transaction_in_pool_sut(Tx1Hash),
+    MineTxFun([Tx1]),
+    {ok, 200, #{<<"status">> := <<"included">>}} = check_transaction_in_pool_sut(Tx1Hash),
+    Nonce2 = NextNonceFun(),
+    Tx3 = PostSpendTxFun(Nonce2 + 1), %% there is a gap in the nonce
+    Tx3Hash = aeser_api_encoder:encode(tx_hash, aetx_sign:hash(Tx3)),
+    {ok, 200, #{<<"status">> := <<"tx_nonce_too_high_for_account">>}} = check_transaction_in_pool_sut(Tx3Hash),
+    Tx2 = PostSpendTxFun(Nonce2),
+    Tx2Hash = aeser_api_encoder:encode(tx_hash, aetx_sign:hash(Tx2)),
+    MineTxFun([Tx2, Tx3]),
+    {ok, 200, #{<<"status">> := <<"included">>}} = check_transaction_in_pool_sut(Tx1Hash),
+    {ok, 200, #{<<"status">> := <<"included">>}} = check_transaction_in_pool_sut(Tx2Hash),
+    {ok, 200, #{<<"status">> := <<"included">>}} = check_transaction_in_pool_sut(Tx3Hash),
+    MissingHash = aeser_api_encoder:encode(tx_hash, random_hash()),
+    {ok, 404, #{<<"reason">> := <<"tx_not_found">>}} = check_transaction_in_pool_sut(MissingHash),
     ok.
 
 %% Maybe this test should be broken into a couple of smaller tests

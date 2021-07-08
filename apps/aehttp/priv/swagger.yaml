@@ -1800,6 +1800,36 @@ paths:
           description: Payer account not found
           schema:
             $ref: '#/definitions/Error'
+  /debug/check-tx/pool/{hash}:
+    get:
+      tags:
+        - internal
+        - debug
+      operationId: GetCheckTxInPool
+      description: "Check if a transaction in the pool is valid in the current state of the chain and can be included in a microblock or if it is blocked by something: not enough tokens, missing nonce or something else"
+      produces:
+        - application/json
+      parameters:
+        - in: path
+          name: hash
+          description: The hash of the transaction
+          required: true
+          # UInt64
+          type: string
+      responses:
+        '200':
+          description: The transaction status
+          schema:
+            type: object
+            properties:
+              status:
+                type: string
+            required:
+              - status
+        '404':
+          description: Transaction is not in transaction pool
+          schema:
+            $ref: '#/definitions/Error'
   /debug/token-supply/height/{height}:
     get:
       tags:
