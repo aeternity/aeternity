@@ -84,6 +84,7 @@ queue('GetGenerationByHeight')                  -> ?READ_Q;
 queue('GetAccountByPubkey')                     -> ?READ_Q;
 queue('GetAccountByPubkeyAndHeight')            -> ?READ_Q;
 queue('GetPendingAccountTransactionsByPubkey')  -> ?READ_Q;
+queue('GetAccountNextNonce')                     -> ?READ_Q;
 queue('GetTransactionByHash')                   -> ?READ_Q;
 queue('GetTransactionInfoByHash')               -> ?READ_Q;
 queue('GetContract')                            -> ?READ_Q;
@@ -416,6 +417,24 @@ handle_request_('GetPendingAccountTransactionsByPubkey', Params, _Context) ->
                     Txs = [aetx_sign:serialize_for_client_pending(T) || T <- Txs0],
                     {200, [], #{transactions => Txs}};
                 _ ->
+                    {404, [], #{reason => <<"Account not found">>}}
+            end;
+        {error, _} ->
+            {400, [], #{reason => <<"Invalid public key">>}}
+    end;
+
+handle_request_('GetAccountNextNonce', Params, _Context) ->
+    case aeser_api_encoder:safe_decode(account_pubkey, maps:get(pubkey, Params)) of
+        {ok, Pubkey} ->
+            Strategy =
+                case maps:get(strategy, Params) of
+                    max -> max;
+                    continuity -> continuity
+                end,
+            case aec_next_nonce:pick_for_account(Pubkey, Strategy) of
+                {ok, NextNonce} ->
+                    {200, [], #{next_nonce => NextNonce}};
+                {error, account_not_found} ->
                     {404, [], #{reason => <<"Account not found">>}}
             end;
         {error, _} ->

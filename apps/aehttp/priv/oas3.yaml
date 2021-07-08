@@ -543,6 +543,49 @@ paths:
           content:
             application/json:
               schema:
+                $ref: "#/components/schemas/Error"
+  "/accounts/{pubkey}/next-nonce":
+    get:
+      tags:
+        - external
+        - account
+      operationId: GetAccountNextNonce
+      description: Get an account's next nonce; This is computed according to whatever is the current account nonce and what transactions are currently present in the transaction pool
+      parameters:
+        - $ref: '#/components/parameters/intAsString'
+        - $ref: '#/components/parameters/accountPubkey'
+        - in: query
+          name: "strategy"
+          description: "What strategy to use in order to determine the next nonce: shall it check for continuity or return the largest nonce seen + 1. If you choose strategy max, then the greatest nonce seen in the account or currently in the transaction pool is incremented with 1 and returned. If you choose the strategy continuity, then transactions in the mempool are checked if there are gaps - missing nonces that prevent transactions with greater nonces to get included." 
+          required: false
+          schema:
+            type: string
+            default: max
+            enum:
+              - max
+              - continuity
+            example: max
+      responses:
+        "200":
+          description: Successful operation
+          content:
+            application/json:
+              schema:
+                properties:
+                  next_nonce:
+                    type: integer
+        "400":
+          description: Invalid public key
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Account not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
   /dry-run:
     post:
       tags:
