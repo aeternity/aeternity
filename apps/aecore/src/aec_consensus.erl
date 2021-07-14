@@ -158,17 +158,17 @@
 %%      * height is consecutive
 %%      * prev_block points to the same generation as prev_key_block
 %% Do not crash as it's called in dirty context
--callback dirty_validate_key_node_with_ctx(#node{}, aec_blocks:micro_block(), #insertion_ctx{}) -> ok | {error, term()}.
--callback dirty_validate_micro_node_with_ctx(#node{}, aec_blocks:micro_block(), #insertion_ctx{}) -> ok | {error, term()}.
+-callback dirty_validate_key_node_with_ctx(#chain_node{}, aec_blocks:micro_block(), #insertion_ctx{}) -> ok | {error, term()}.
+-callback dirty_validate_micro_node_with_ctx(#chain_node{}, aec_blocks:micro_block(), #insertion_ctx{}) -> ok | {error, term()}.
 
 %% Customized state transitions - in case of keyblocks the callbacks are called with pruned state trees
 %% Those callbacks run in a DB context - to abort the execution please call aec_block_insertion:abort_state_transition(Reason)
 %% Performs initial state transformation when the previous block used a different consensus algorithm
--callback state_pre_transform_key_node_consensus_switch(#node{}, aec_trees:trees()) -> aec_trees:trees() | no_return().
+-callback state_pre_transform_key_node_consensus_switch(#chain_node{}, aec_trees:trees()) -> aec_trees:trees() | no_return().
 %% State pre transformations on every keyblock
--callback state_pre_transform_key_node(#node{}, aec_trees:trees()) -> aec_trees:trees() | no_return().
+-callback state_pre_transform_key_node(#chain_node{}, aec_trees:trees()) -> aec_trees:trees() | no_return().
 %% State pre transformations on every microblock
--callback state_pre_transform_micro_node(#node{}, aec_trees:trees()) -> aec_trees:trees() | no_return().
+-callback state_pre_transform_micro_node(#chain_node{}, aec_trees:trees()) -> aec_trees:trees() | no_return().
 
 %% Block rewards :)
 -callback state_grant_reward(aec_keys:pubkey(), aec_trees:trees(), non_neg_integer()) -> aec_trees:trees() | no_return().

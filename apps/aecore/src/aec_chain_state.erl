@@ -331,8 +331,7 @@ persist_state(OldState, NewState) ->
             true
     end.
 
-db_write_top_block_node(#node{ header = Header
-                             , hash   = Hash }) ->
+db_write_top_block_node(#chain_node{header = Header, hash = Hash}) ->
     aec_db:write_top_block_node(Hash, Header).
 
 db_get_top_block_node() ->
@@ -365,12 +364,12 @@ maybe_set_finalized_height(State) ->
             ok
     end.
 
-get_top_block_hash(#{top_block_node := #node{hash = H}}) -> H;
+get_top_block_hash(#{top_block_node := #chain_node{hash = H}}) -> H;
 get_top_block_hash(_) -> undefined.
 
 get_top_block_node(#{top_block_node := N}) -> N.
 
-set_top_block_node(#node{} = N, State) -> State#{top_block_node => N}.
+set_top_block_node(#chain_node{} = N, State) -> State#{top_block_node => N}.
 
 prev_version(Node) ->
     H = node_height(Node),
@@ -416,7 +415,7 @@ wrap_header(Header) ->
     wrap_header(Header, Hash).
 
 wrap_header(Header, Hash) ->
-    #node{ header = Header
+    #chain_node{ header = Header
          , hash = Hash
          , type = aec_headers:type(Header)
          }.
@@ -554,7 +553,7 @@ maybe_cache_new_top({pof, true, _PrevKeyHdr, _PoF, _Events}, Node) ->
 maybe_cache_new_top(_, _) ->
     ok.
 
-cache_new_top(#node{} = Node) ->
+cache_new_top(#chain_node{} = Node) ->
     aec_block_insertion:update_top(Node).
 
 internal_insert_transaction(Node, Block, Origin, Ctx) ->
@@ -571,7 +570,7 @@ internal_insert_transaction(Node, Block, Origin, Ctx) ->
     ok = db_put_node(Block, node_hash(Node)),
     {State3, Events} = update_state_tree(Node, State2, Ctx),
     TopChanged = persist_state(State1, State3),
-    #node{header = PrevKeyHeader} = aec_block_insertion:ctx_prev_key(Ctx),
+    #chain_node{header = PrevKeyHeader} = aec_block_insertion:ctx_prev_key(Ctx),
     case maps:get(found_pogf, State3) of
         no_fraud -> ok;
         {H1, H2} ->

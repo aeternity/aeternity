@@ -3,8 +3,8 @@
 %%% @copyright (C) 2020, Aeternity Anstalt
 %%% @doc Helpers for ADT's used during block insertion, those helpers are meant
 %%%      mainly for aec_chain_state and consensus modules
+%%% @end
 %%%
-
 -module(aec_block_insertion).
 
 -export([ start_state_transition/1
@@ -39,7 +39,11 @@
         , get_top_header/0
         , get_top_height/0
         ]).
+
 -include("aec_block_insertion.hrl").
+
+-opaque chain_node() :: #chain_node{}. % type 'node' is Erlang internal!
+-export_type([chain_node/0]).
 
 %% Let's not add another entry to the supervision tree
 -on_load(setup_ets_cache/0).
@@ -73,38 +77,38 @@ start_state_transition(Fun) ->
 abort_state_transition(Reason) ->
     throw(?internal_error(Reason)).
 
-node_prev_hash(#node{header = H}) -> aec_headers:prev_hash(H).
+node_prev_hash(#chain_node{header = H}) -> aec_headers:prev_hash(H).
 
-node_prev_key_hash(#node{header = H}) -> aec_headers:prev_key_hash(H).
+node_prev_key_hash(#chain_node{header = H}) -> aec_headers:prev_key_hash(H).
 
-node_height(#node{header = H}) -> aec_headers:height(H).
+node_height(#chain_node{header = H}) -> aec_headers:height(H).
 
-node_difficulty(#node{type = micro}) -> 0;
-node_difficulty(#node{header = H}) -> aec_headers:difficulty(H).
+node_difficulty(#chain_node{type = micro}) -> 0;
+node_difficulty(#chain_node{header = H}) -> aec_headers:difficulty(H).
 
-node_target(#node{header = H}) -> aec_headers:target(H).
+node_target(#chain_node{header = H}) -> aec_headers:target(H).
 
-node_root_hash(#node{header = H}) -> aec_headers:root_hash(H).
+node_root_hash(#chain_node{header = H}) -> aec_headers:root_hash(H).
 
-node_miner(#node{header = H}) -> aec_headers:miner(H).
+node_miner(#chain_node{header = H}) -> aec_headers:miner(H).
 
-node_beneficiary(#node{header = H}) -> aec_headers:beneficiary(H).
+node_beneficiary(#chain_node{header = H}) -> aec_headers:beneficiary(H).
 
-node_type(#node{type = T}) -> T.
+node_type(#chain_node{type = T}) -> T.
 
-node_time(#node{header = H}) -> aec_headers:time_in_msecs(H).
+node_time(#chain_node{header = H}) -> aec_headers:time_in_msecs(H).
 
-node_version(#node{header = H}) -> aec_headers:version(H).
+node_version(#chain_node{header = H}) -> aec_headers:version(H).
 
 node_is_key_block(N) -> node_type(N) =:= key.
 
 node_is_micro_block(N) -> node_type(N) =:= micro.
 
-node_hash(#node{hash = Hash}) -> Hash.
+node_hash(#chain_node{hash = Hash}) -> Hash.
 
-node_header(#node{header = H}) -> H.
+node_header(#chain_node{header = H}) -> H.
 
-node_consensus(#node{header = H}) -> aec_headers:consensus_module(H).
+node_consensus(#chain_node{header = H}) -> aec_headers:consensus_module(H).
 
 ctx_prev(#insertion_ctx{prev_node = PrevNode}) -> PrevNode.
 ctx_prev_key(#insertion_ctx{prev_key_node = PrevKeyNode}) -> PrevKeyNode.
@@ -225,7 +229,7 @@ build_insertion_ctx_prev(Node, PrevKeyNode) ->
                     %% Ok so the prev keyblock is present but not the prev block?
                     %% this shouldn't be the case even for the genesis block
                     {error, {illegal_orphan, node_hash(Node)}};
-                {ok, #node{type = key}} ->
+                {ok, #chain_node{type = key}} ->
                     {error, prev_key_hash_inconsistency};
                 {ok, PrevNode} ->
                     case node_prev_key_hash(PrevNode) =:= PrevKeyHash of
@@ -238,12 +242,12 @@ build_insertion_ctx_prev(Node, PrevKeyNode) ->
             end
    end.
 
-build_insertion_ctx_check_prev_height(#node{type = key} = Node, PrevNode, PrevKeyNode) ->
+build_insertion_ctx_check_prev_height(#chain_node{type = key} = Node, PrevNode, PrevKeyNode) ->
     case node_height(PrevNode) =:= (node_height(Node) - 1) of
         true -> {ok, PrevNode, PrevKeyNode};
         false -> {error, height_inconsistent_for_keyblock_with_previous_hash}
     end;
-build_insertion_ctx_check_prev_height(#node{type = micro} = Node, PrevNode, PrevKeyNode) ->
+build_insertion_ctx_check_prev_height(#chain_node{type = micro} = Node, PrevNode, PrevKeyNode) ->
     case node_height(PrevNode) =:= node_height(Node) of
         true -> {ok, PrevNode, PrevKeyNode};
         false -> {error, height_inconsistent_for_microblock_with_previous_hash}
@@ -256,13 +260,14 @@ dirty_db_find_node(Hash) when is_binary(Hash) ->
     end.
 
 wrap_header(Header, Hash) ->
-    #node{ header = Header
-         , hash = Hash
-         , type = aec_headers:type(Header)
-         }.
+    #chain_node{
+        header = Header
+        , hash = Hash
+        , type = aec_headers:type(Header)
+    }.
 
-update_recent_cache(#node{type = micro}, _InsertCtx) -> ok;
-update_recent_cache(#node{type = key, hash = H} = Node, #insertion_ctx{window_len = N, recent_key_headers = Recents}) ->
+update_recent_cache(#chain_node{type = micro}, _InsertCtx) -> ok;
+update_recent_cache(#chain_node{type = key, hash = H} = Node, #insertion_ctx{window_len = N, recent_key_headers = Recents}) ->
     Consensus = node_consensus(Node),
     Entry =
         case N < Consensus:recent_cache_n() of
@@ -276,7 +281,7 @@ update_recent_cache(#node{type = key, hash = H} = Node, #insertion_ctx{window_le
         end,
     ets:insert(?RECENT_CACHE, Entry).
 
-update_top(#node{} = Node) ->
+update_top(#chain_node{} = Node) ->
     ets:insert(?REGISTRY_CACHE, {top_node, Node}).
 
 get_top_node() ->
