@@ -16,7 +16,6 @@
 
 setup_minimal() ->
     ok = application:ensure_started(gproc),
-    {ok, _} = aec_db_error_store:start_link(),
     ok = aec_test_utils:start_chain_db(),
     aec_block_generator:start_link(),
 
@@ -46,7 +45,6 @@ teardown_minimal(TmpKeysDir) ->
     aec_test_utils:unmock_genesis_and_forks(),
     aec_test_utils:unmock_time(),
     ok = aec_test_utils:stop_chain_db(),
-    ok = aec_db_error_store:stop(),
     aec_test_utils:aec_keys_cleanup(TmpKeysDir),
     ok.
 
@@ -640,7 +638,6 @@ throughput_ram_test_() ->
                  accepted_future_block_time_shift, fun() -> 352 * 24 * 60 * 60 * 1000 end),
              Persist = application:get_env(aecore, persist),
              application:set_env(aecore, persist, true),
-             {ok, _} = aec_db_error_store:start_link(),
              aec_db:check_db(),
              aec_db:prepare_mnesia_bypass(),
              aec_db:clear_db(),
@@ -665,7 +662,6 @@ throughput_ram_test_() ->
              aec_test_utils:unmock_genesis_and_forks(),
              aec_test_utils:aec_keys_cleanup(TmpDir),
              application:set_env(aecore, persist, Persist),
-             ok = aec_db_error_store:stop(),
              ok = meck:unload(mnesia_rocksdb_lib),
              meck:unload(aeminer_pow_cuckoo),
              ok = mnesia:delete_schema([node()]),
@@ -712,7 +708,6 @@ throughput_disc_test_() ->
                  accepted_future_block_time_shift, fun() -> 352 * 24 * 60 * 60 * 1000 end),
              Persist = application:get_env(aecore, persist),
              application:set_env(aecore, persist, true),
-             {ok, _} = aec_db_error_store:start_link(),
              aec_db:check_db(),
              aec_db:prepare_mnesia_bypass(),
              aec_db:clear_db(),
@@ -737,7 +732,6 @@ throughput_disc_test_() ->
              aec_test_utils:unmock_genesis_and_forks(),
              aec_test_utils:aec_keys_cleanup(TmpDir),
              application:set_env(aecore, persist, Persist),
-             ok = aec_db_error_store:stop(),
              ok = meck:unload(mnesia_rocksdb_lib),
              meck:unload(aeminer_pow_cuckoo),
              ok = mnesia:delete_schema([node()]),

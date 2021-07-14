@@ -333,7 +333,6 @@ start_chain_db(disc) ->
     Persist = application:get_env(aecore, persist),
     persistent_term:put({?MODULE, db_mode}, {disc, Persist}),
     application:set_env(aecore, persist, true),
-    {ok, _} = aec_db_error_store:start_link(),
     aec_db:check_db(),
     aec_db:prepare_mnesia_bypass(),
     aec_db:clear_db(),
@@ -346,7 +345,6 @@ stop_chain_db(ram) ->
 stop_chain_db({disc, Persist}) ->
     application:stop(mnesia),
     application:set_env(aecore, persist, Persist),
-    ok = aec_db_error_store:stop(),
     ok = meck:unload(mnesia_rocksdb_lib),
     ok = mnesia:delete_schema([node()]).
 
@@ -883,14 +881,14 @@ run_throughput_test(TestFun, Blocks, Opts) ->
     Mean = TotalRuntime div length(Timings),
     Median = lists:nth(ceil(length(Timings) / 2), TimingsSorted),
     Counts = lists:foldl(
-               fun(N, Acc) ->
-                       case lists:keyfind(N, 1, Acc) of
-                           false ->
-                               [{N, 1} | Acc];
-                           {N, Count} ->
-                               lists:keyreplace(N, 1, Acc, {N, Count + 1})
-                       end
-               end, [], Timings),
+        fun(N, Acc) ->
+            case lists:keyfind(N, 1, Acc) of
+                false ->
+                    [{N, 1} | Acc];
+                {N, Count} ->
+                    lists:keyreplace(N, 1, Acc, {N, Count + 1})
+            end
+        end, [], Timings),
     [{Mode, _} | _] = lists:keysort(2, Counts),
 
     DbInfo = case maps:get(db_mode, Opts, ram) of
@@ -901,25 +899,24 @@ run_throughput_test(TestFun, Blocks, Opts) ->
     {Mod, Fun} = maps:get(test_fun, Opts),
     TestFunInfo = atom_to_list(Mod) ++ [$:] ++ atom_to_list(Fun),
     BlockInfo = case maps:get(block_type, Opts) of
-                    key ->
-                        "key";
+                    key -> "key";
                     micro ->
                         TxsPerBlock = maps:get(txs_per_block, Opts),
                         "micro (txs per block: " ++ integer_to_list(TxsPerBlock) ++ ")"
                 end,
 
     io:format(user,
-              "~nThroughput testing results (in microseconds) " ++ DbInfo ++ "~n~n"
-              "Tested function\t\t= " ++ TestFunInfo ++ "~n"
-              "Block type inserted\t= " ++ BlockInfo ++ "~n"
-              "# of blocks inserted\t= ~p~n"
-              "Total runtime\t\t= ~p~n~n"
-              "Min\t= ~p~n"
-              "Max\t= ~p~n"
-              "Mean\t= ~p~n"
-              "Mode\t= ~p~n"
-              "Range\t= ~p~n"
-              "Median\t= ~p~n",
-              [length(Blocks), TotalRuntime, Min, Max, Mean, Mode, Range, Median]
-             ),
+        "~nThroughput testing results (in microseconds) " ++ DbInfo ++ "~n~n"
+        "Tested function\t\t= " ++ TestFunInfo ++ "~n"
+        "Block type inserted\t= " ++ BlockInfo ++ "~n"
+        "# of blocks inserted\t= ~p~n"
+        "Total runtime\t\t= ~p~n~n"
+        "Min\t= ~p~n"
+        "Max\t= ~p~n"
+        "Mean\t= ~p~n"
+        "Mode\t= ~p~n"
+        "Range\t= ~p~n"
+        "Median\t= ~p~n",
+        [length(Blocks), TotalRuntime, Min, Max, Mean, Mode, Range, Median]
+    ),
     ok.

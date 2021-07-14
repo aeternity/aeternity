@@ -14,7 +14,6 @@
 
 setup_minimal() ->
     ok = application:ensure_started(gproc),
-    {ok, _} = aec_db_error_store:start_link(),
     ok = aec_test_utils:start_chain_db(),
     aec_block_generator:start_link(),
 
@@ -44,7 +43,6 @@ teardown_minimal(TmpKeysDir) ->
     aec_test_utils:unmock_genesis_and_forks(),
     aec_test_utils:unmock_time(),
     ok = aec_test_utils:stop_chain_db(),
-    ok = aec_db_error_store:stop(),
     aec_test_utils:aec_keys_cleanup(TmpKeysDir),
     ok.
 

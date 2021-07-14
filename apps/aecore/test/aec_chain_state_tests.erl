@@ -179,7 +179,6 @@ chain_test_() ->
              meck:expect(aec_trees, perform_pre_transformations, fun(Trees, _, _) -> Trees end),
              aec_test_utils:mock_genesis_and_forks(),
              aec_test_utils:mock_governance(),
-             {ok, _} = aec_db_error_store:start_link(),
              aec_test_utils:start_chain_db(),
              aec_consensus_bitcoin_ng:load_whitelist(),
              aec_test_utils:aec_keys_setup()
@@ -188,7 +187,6 @@ chain_test_() ->
              meck:unload(aec_trees),
              aec_test_utils:aec_keys_cleanup(TmpDir),
              aec_test_utils:stop_chain_db(),
-             ok = aec_db_error_store:stop(),
              aec_test_utils:unmock_governance(),
              aec_test_utils:unmock_genesis_and_forks()
      end,
@@ -399,7 +397,6 @@ throughput_disc_test_() ->
      fun() ->
              Persist = application:get_env(aecore, persist),
              application:set_env(aecore, persist, true),
-             {ok, _} = aec_db_error_store:start_link(),
              aec_db:check_db(),
              aec_db:prepare_mnesia_bypass(),
              aec_db:clear_db(),
@@ -415,7 +412,6 @@ throughput_disc_test_() ->
              aec_test_utils:unmock_genesis_and_forks(),
              aec_test_utils:aec_keys_cleanup(TmpDir),
              application:set_env(aecore, persist, Persist),
-             ok = aec_db_error_store:stop(),
              ok = meck:unload(mnesia_rocksdb_lib),
              ok = mnesia:delete_schema([node()])
      end,
@@ -501,7 +497,6 @@ accept_existing_db_node_test_() ->
      fun() ->
              Persist = application:get_env(aecore, persist),
              application:set_env(aecore, persist, true),
-             {ok, _} = aec_db_error_store:start_link(),
              aec_db:check_db(),
              aec_db:prepare_mnesia_bypass(),
              aec_db:clear_db(),
@@ -517,7 +512,6 @@ accept_existing_db_node_test_() ->
              aec_test_utils:unmock_genesis_and_forks(),
              aec_test_utils:aec_keys_cleanup(TmpDir),
              application:set_env(aecore, persist, Persist),
-             ok = aec_db_error_store:stop(),
              ok = meck:unload(mnesia_rocksdb_lib),
              ok = mnesia:delete_schema([node()])
      end,

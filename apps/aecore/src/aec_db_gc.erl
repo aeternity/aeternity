@@ -310,7 +310,7 @@ write_nodes(SrcMod, SrcTab, TgtTab) ->
                      iter(fun (Hash, Node) ->
                                   aec_db:write_accounts_node(TgtTab, Hash, Node)
                           end, SrcMod, SrcTab)
-             end, [], sync_transaction)).
+             end, sync_transaction)).
 
 store_cache(SrcHashes, TgtTab) ->
     NodesCount = ets:info(SrcHashes, size),
