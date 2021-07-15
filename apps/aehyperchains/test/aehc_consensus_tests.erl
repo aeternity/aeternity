@@ -109,7 +109,6 @@ staking_contract_bytecode() ->
     ?assertException(error, badarg, aehc_consensus_hyperchains:get_staking_contract_aci()),
     ?assertEqual(not_deployed, aehc_consensus_hyperchains:get_staking_contract_address()).
 
-
 %% PoW genesis - aec_conductor is not started
 pow_from_genesis_test_() ->
     Tests = protocol_gate([

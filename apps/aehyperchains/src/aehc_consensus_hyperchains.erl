@@ -23,7 +23,7 @@
 
 -define(STAKING_CONTRACT, {?MODULE, staking_contract}).
 -define(STAKING_CONTRACT_ADDR, {?MODULE, staking_contract_addr}).
-%% Lima or Iris as we need the FATE VM at genesis
+%% Iris as we need the FATE VM at genesis
 %% In case that's unwanted then start up another consensus before hyperchains
 -define(HC_GENESIS_VERSION, aec_hard_forks:protocol_vsn(iris)).
 
