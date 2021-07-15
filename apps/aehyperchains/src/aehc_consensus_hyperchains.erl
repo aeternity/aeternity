@@ -436,7 +436,6 @@ state_pre_transform_key_node(KeyNode, _PrevNode, PrevKeyNode, Trees1) ->
             %% TODO: actually hardcode the encoding
             Candidates = ["[", lists:join(", ", [aeser_api_encoder:encode(account_pubkey, aehc_commitment_header:hc_delegate(aehc_commitment:header(X))) || X <- Commitments]), "]"],
             Call = lists:flatten(io_lib:format("get_leader(~s, #~s)", [Candidates, lists:flatten([integer_to_list(X,16) || <<X:4>> <= ParentHash])])),
-            %%io:format(user, "Election: ~p\n", [Call]),
             case protocol_staking_contract_call(Trees3, TxEnv, Call) of
                 {ok, Trees4, {address, Leader}} ->
                     %% Assert that the miner is the person which got elected
@@ -523,6 +522,7 @@ genesis_transform_trees(Trees, #{}) ->
             %% The insertion of the genesis block bypasses the version check
             deploy_staking_contract_by_system(Trees, TxEnv)
     end.
+
 genesis_raw_header() ->
     aec_headers:new_key_header(
         0,
