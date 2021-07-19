@@ -59,7 +59,6 @@ commit(Commitment) ->
 get_block_by_hash(Hash) ->
     gen_server:call(?MODULE, {get_block_by_hash, Hash}).
 
-%% To extract the block from a queue (FIFO)
 -spec pop() -> {value, parent_block()} | empty.
 pop() ->
     gen_server:call(?MODULE, {pop}).

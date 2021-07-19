@@ -10,8 +10,9 @@
 %% - to emit appropriate state change events on aehc_parent_mng queue
 
 %% The main operational states are:
-%% a) fetched (adding a new blocks);
-%% b) migrated (fork switching)
+%% a) initialized (performs syncing procedure)
+%% b) fetched (performs new block announcements);
+%% c) migrated (performs fork switch procedure)
 
 %% Used patterns:
 %% - https://martinfowler.com/eaaCatalog/dataMapper.html
@@ -29,8 +30,6 @@
 -export([send_tx/3]).
 -export([get_block_by_hash/3]).
 
--export([subscribe/2]).
-
 -export([stop/1]).
 
 -export([publish/2]).
@@ -41,7 +40,7 @@
 -export([callback_mode/0]).
 
 %% state transitions
--export([synced/3, subscribed/3, migrated/3]).
+-export([initialized/3, fetched/3, migrated/3]).
 
 -type connector() :: aeconnector:connector().
 -type args() :: map().
@@ -66,10 +65,6 @@ send_tx(Pid, Payload, From) ->
 -spec get_block_by_hash(pid(), binary(), term()) -> {ok, parent_block()} | {error, term()}.
 get_block_by_hash(Pid, Hash, From) ->
     gen_statem:cast(Pid, {get_block_by_hash, Hash, From}).
-
--spec subscribe(pid(), term()) -> ok | {error, term()}.
-subscribe(Pid, From) ->
-    gen_statem:cast(Pid, {activate, From}).
 
 -spec stop(pid()) -> ok.
 stop(Pid) ->
@@ -124,52 +119,51 @@ disconnect(Data) ->
 %%%===================================================================
 %%%  State machine callbacks
 %%%===================================================================
-synced(enter, _OldState, Data) ->
-    %% TODO: Place for the sync initiation announcement;
+initialized(enter, _OldState, Data) ->
     {keep_state, Data};
 
-synced(cast, {get_block_by_hash, Hash, From}, Data) ->
+initialized(cast, {get_block_by_hash, Hash, From}, Data) ->
     Trees = state(Data),
-    Data2 = case
-                aehc_parent_db:find_parent_block(Hash) of
-                none ->
-                    {ok, Block} = aeconnector:get_block_by_hash(connector(Data), Hash),
 
-                    Hash = aeconnector_block:hash(Block),
-                    Height = aeconnector_block:height(Block),
+    {ok, Block} = aeconnector:get_block_by_hash(connector(Data), Hash),
 
-                    ok = process(Block, Trees),
+    Hash = aeconnector_block:hash(Block),
+    Height = aeconnector_block:height(Block),
 
-                    ParentBlock = aehc_parent_db:get_parent_block(Hash),
-                    Trees2 = aehc_parent_db:get_parent_block_state(Hash),
+    ok = process(Block, Trees),
 
-                    gen_statem:reply(From, {ok, ParentBlock, Trees2}),
+    ParentBlock = aehc_parent_db:get_parent_block(Hash),
+    Trees2 = aehc_parent_db:get_parent_block_state(Hash),
 
-                    height(hash(Data, Hash), Height);
-                {value, ParentBlock} ->
-                    gen_statem:reply(From, {ok, ParentBlock, Trees}),
-                    Data
-            end,
+    gen_statem:reply(From, {ok, ParentBlock, Trees2}),
+
+    Data2 = height(hash(Data, Hash), Height),
     {keep_state, Data2};
 
-synced(cast, {subscribe, From}, Data) ->
-    {ok, Hash} = aeconnector:get_top_block(connector(Data)), Data2 = hash(Data, Hash),
-    lager:info("~nParent chain got subscribed on top with hash ~p~n",[Hash]),
-    gen_statem:reply(From, ok),
+initialized(_, _, Data) ->
+    {keep_state, Data, []}.
 
-    {next_state, activated, Data2, []}.
+fetched(enter, _OldState, Data) ->
+    Hash = hash(Data),
+    lager:info("~nParent chain got fetched on top with hash ~p~n",[Hash]),
 
-subscribed(enter, _OldState, Data) ->
-    %% TODO: Place for the sync initiation announcement;
     {keep_state, Data};
 
-subscribed(cast, {send_tx, Payload, From}, Data) ->
+fetched(cast, {send_tx, Payload, From}, Data) ->
     Res = aeconnector:send_tx(connector(Data), Payload),
     gen_statem:reply(From, Res),
 
     {keep_state, Data};
 
-subscribed(cast, {publish, Block}, Data) ->
+fetched(cast, {get_block_by_hash, Hash, From}, Data) ->
+    ParentBlock = aehc_parent_db:get_parent_block(Hash),
+    Trees = aehc_parent_db:get_parent_block_state(Hash),
+
+    gen_statem:reply(From, {ok, ParentBlock, Trees}),
+
+    {keep_state, Data};
+
+fetched(cast, {publish, Block}, Data) ->
     Hash = aeconnector_block:hash(Block), PrevHash = aeconnector_block:prev_hash(Block),
     Height = aeconnector_block:height(Block),
 

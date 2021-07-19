@@ -1,5 +1,4 @@
 FROM aeternity/builder:1804 as builder
-
 # Add required files to download and compile only the dependencies
 ADD rebar.config rebar.lock Makefile rebar3 rebar.config.script /app/
 ADD apps/aehyperchains/src/contracts/SimpleElection.aes /app/apps/aehyperchains/src/contracts/
@@ -29,6 +28,9 @@ RUN ln -fs librocksdb.so.6.13.3 /usr/local/lib/librocksdb.so.6.13 \
 
 # Deploy application code from builder container
 COPY --from=builder /app/_build/prod/rel/aeternity /home/aeternity/node
+
+# COPY VERSION build artefact
+COPY --from=builder /app/VERSION /home/aeternity/node/
 
 # Aeternity app won't run as root for security reasons
 RUN useradd --shell /bin/bash aeternity \
