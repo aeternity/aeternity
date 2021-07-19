@@ -571,7 +571,7 @@ start_node(Config) ->
 reset_participants(Grp, Config) ->
     Node = ?config(node, Config),
 
-    StartAmt = 70000000000 * aec_test_utils:min_gas_price(),
+    StartAmt = 7000000000 * aec_test_utils:min_gas_price(),
         %% case aect_test_utils:latest_protocol_version() >= ?LIMA_PROTOCOL_VSN of
         %%     false -> 50000000000 * aec_test_utils:min_gas_price();
         %%     true  ->
@@ -581,8 +581,8 @@ reset_participants(Grp, Config) ->
     Initiator = {IPub, IPriv} = aecore_suite_utils:generate_key_pair(),
     Responder = {RPub, RPriv} = aecore_suite_utils:generate_key_pair(),
 
-    ITx = initialize_account(StartAmt, Initiator, false),
-    RTx = initialize_account(StartAmt, Responder, false),
+    ITx = initialize_account(StartAmt, Initiator),
+    RTx = initialize_account(StartAmt, Responder),
     aecore_suite_utils:mine_blocks_until_txs_on_chain(Node, [ITx, RTx], ?MAX_MINED_BLOCKS),
 
     Participants = #{initiator => #{pub_key => IPub,
@@ -2497,11 +2497,16 @@ initialize_account(Amount, {Pubkey, _Privkey}, Check) ->
     MaxMined = ?MAX_MINED_BLOCKS + (Amount div aec_governance:block_mine_reward(1)),
     ct:pal("Mining ~p blocks at most for ~p tokens", [MaxMined, Amount]),
 
+    {_, MinerPubkey} = proplists:get_value(?NODE, aecore_suite_utils:sign_keys()),
+    MinerAddress = aeser_api_encoder:encode(account_pubkey, MinerPubkey),
+    {ok, 200, #{<<"balance">> := _ActualBalance}} =
+        get_accounts_by_pubkey_sut(MinerAddress),
+
     {ok, 200, #{<<"tx">> := SpendTx}} =
         post_spend_tx(aeser_api_encoder:encode(account_pubkey, Pubkey), Amount, Fee),
     TxHash = sign_and_post_tx(SpendTx),
     if Check ->
-        aecore_suite_utils:mine_blocks_until_txs_on_chain(Node, [TxHash], MaxMined),
+        {ok, _} = aecore_suite_utils:mine_blocks_until_txs_on_chain(Node, [TxHash], MaxMined),
         assert_balance_at_least(Pubkey, Amount),
         ok;
        true ->
