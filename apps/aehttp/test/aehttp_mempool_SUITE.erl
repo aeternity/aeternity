@@ -296,7 +296,7 @@ delete_tx_from_mempool(Config) ->
     %% those can be included
     {ok, _} = ?MINE_TXS([SpendTxHash1, SpendTxHash3]),
     [] = pending_txs(),
-    {ok, 200, #{<<"status">> := <<"included">>}} =
+    {ok, 404, #{<<"reason">> := <<"included">>}} =
         aehttp_integration_SUITE:delete_tx_from_mempool_sut(SpendTxHash1),
     MissingTxHash = aeser_api_encoder:encode(tx_hash, random_hash()),
     {ok, 404, #{<<"reason">> := <<"not_found">>}} =

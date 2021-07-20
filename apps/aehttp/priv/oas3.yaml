@@ -2019,7 +2019,7 @@ paths:
         - $ref: '#/components/parameters/txHash'
       responses:
         "200":
-          description: The transaction had been deleted from the pool or it is already inclued in a block
+          description: The transaction had been deleted from the pool
           content:
             application/json:
               schema:
@@ -2034,7 +2034,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
         "404":
-          description: Transaction not found
+          description: Transaction not in mempool
           content:
             application/json:
               schema:

@@ -218,7 +218,7 @@ handle_request_('DeleteTxFromMempool', Req, _Context) ->
                           ok ->
                               {ok, {200, [], #{<<"status">> => <<"deleted">>}}};
                           {error, already_accepted} ->
-                              {ok, {200, [], #{<<"status">> => <<"included">>}}};
+                              {ok, {404, [], #{<<"reason">> => <<"included">>}}};
                           {error, not_found} ->
                               {ok, {404, [], #{<<"reason">> => <<"not_found">>}}}
                       end
