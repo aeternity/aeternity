@@ -46,9 +46,7 @@ trackers_config() ->
     Trackers.
 
 -spec tracker_name(map()) -> term().
-tracker_name(Conf) ->
-    maps:get(<<"name">>, Conf).
+tracker_name(#{<<"name">> := Name}) -> Name.
 
 -spec tracker_note(map()) -> term().
-tracker_note(Conf) ->
-    maps:get(<<"note">>, Conf).
+tracker_note(#{<<"note">> := Note}) -> Note.

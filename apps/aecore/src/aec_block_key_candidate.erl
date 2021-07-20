@@ -33,7 +33,7 @@ create(Block, Beneficiary) ->
 int_create(BlockHash, Block, Beneficiary, Protocol) ->
     H = aec_blocks:height(Block) + 1,
     Consensus = aec_consensus:get_consensus_module_at_height(H),
-    N = Consensus:keyblocks_for_unmined_keyblock_adjust() + 1,
+    N = Consensus:adjustment_for_unmined_keyblock() + 1,
     case aec_blocks:height(Block) < N of
         true  ->
             int_create(BlockHash, Block, Beneficiary, [], Protocol);

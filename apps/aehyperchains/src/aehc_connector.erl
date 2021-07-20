@@ -2,47 +2,53 @@
 %%%-------------------------------------------------------------------
 -module(aehc_connector).
 
--export([send_tx/4, get_block_by_hash/2, get_top_block/1, dry_send_tx/4]).
+-export([send_tx/4,
+         get_block_by_hash/2,
+         get_top_block/1,
+         dry_send_tx/4]).
 
--export([commitment/2, parent_block/4]).
--export([publish_block/2]).
--export([module/1]).
--export([args/1]).
-
--export([accept/1]).
+-export([commitment/2,
+         parent_block/4,
+         publish_block/2,
+         module/1,
+         args/1,
+         accept/1]).
 
 -type connector() :: atom().
-
 -type commitment() :: aehc_commitment:commitment().
 -type parent_block() :: aehc_parent_block:parent_block().
 
--callback send_tx(binary(), binary(), binary()) -> ok.
--callback get_top_block() -> parent_block().
--callback get_block_by_hash(binary()) -> parent_block().
-
--callback dry_send_tx(binary(), binary(), binary()) -> ok.
-
 -export_type([connector/0]).
+
+-callback get_top_block() -> parent_block().
+-callback get_block_by_hash(Hash) -> parent_block() when Hash :: binary().
+
+-callback send_tx(Delegate, Commitment, PoGF) ->
+    ok when Delegate :: binary(),
+            Commitment :: binary(),
+            PoGF :: binary().
+
+-callback dry_send_tx(Delegate, Commitment, PoGF) ->
+    ok when Delegate :: binary(),
+            Commitment :: binary(),
+            PoGF :: binary().
 
 %%%===================================================================
 %%%  Parent chain simplified proto
 %%%===================================================================
-%% This API should be used by connector's developer as a wrapper around internal abstract commitments data type;
--spec commitment(Delegate::binary(), KeyblockHash::binary()) ->
-    commitment().
+%% This API should be used by connector's developer as a wrapper around
+%% internal abstract commitments data type;
+-spec commitment(Delegate, KeyblockHash) ->
+          commitment() when Delegate :: binary(), KeyblockHash :: binary().
 commitment(Delegate, KeyblockHash) when
     is_binary(Delegate), is_binary(KeyblockHash) ->
     aehc_commitment:new(aehc_commitment_header:new(Delegate, KeyblockHash)).
 
-%% TODO: Opened for discussion with gorbak25 and radrow;
-%%-spec commitment(Delegate::binary(), KeyblockHash::binary(), PoGFHash::binary()) ->
-%%    commitment().
-%%commitment(Delegate, KeyblockHash, PoGFHash) when
-%%    is_binary(Delegate), is_binary(KeyblockHash), is_binary(PoGFHash) ->
-%%    aehc_commitment:new(aehc_commitment_header:new(Delegate, KeyblockHash, PoGFHash)).
-
--spec parent_block(Height::non_neg_integer(), Hash::binary(), PrevHash::binary(), Commitments::[commitment()]) ->
-    parent_block().
+-spec parent_block(Height, Hash, PrevHash, Commitments) ->
+          parent_block() when Height :: non_neg_integer(),
+                              Hash ::binary(),
+                              PrevHash :: binary(),
+                              Commitments :: [commitment()].
 parent_block(Height, Hash, PrevHash, Commitments) when
     is_integer(Height), is_binary(Hash), is_binary(PrevHash), is_list(Commitments) ->
     Hashes = [aehc_commitment:hash(Commitment) || Commitment <- Commitments],
@@ -53,7 +59,9 @@ parent_block(Height, Hash, PrevHash, Commitments) when
 %%%  Parent chain interface
 %%%===================================================================
 
--spec send_tx(connector(), binary(), binary(), binary()) -> ok | {error, {term(), term()}}.
+-spec send_tx(connector(), Delegate, Commitment, PoGF) ->
+          ok | {error, {term(), term()}}
+              when Delegate :: binary(), Commitment :: binary(), PoGF :: binary().
 send_tx(Con, Delegate, Commitment, PoGF) ->
     try
         ok = Con:send_tx(Delegate, Commitment, PoGF)
@@ -70,7 +78,8 @@ get_top_block(Con) ->
         {error, {E, R}}
     end.
 
--spec get_block_by_hash(connector(), binary()) -> {ok, parent_block()} | {error, {term(), term()}}.
+-spec get_block_by_hash(connector(), Hash) ->
+          {ok, parent_block()} | {error, {term(), term()}} when Hash :: binary().
 get_block_by_hash(Con, Hash) ->
     try
         Res = Con:get_block_by_hash(Hash), true = aehc_parent_block:is_hc_parent_block(Res),
@@ -79,7 +88,9 @@ get_block_by_hash(Con, Hash) ->
             {error, {E, R}}
     end.
 
--spec dry_send_tx(connector(), binary(), binary(), binary()) -> ok | {error, {term(), term()}}.
+-spec dry_send_tx(connector(), Delegate, Commitment, PoGF) ->
+          ok | {error, {term(), term()}}
+              when Delegate :: binary(), Commitment :: binary(), PoGF :: binary().
 dry_send_tx(Con, Delegate, Commitment, PoGF) ->
     try
         ok = Con:dry_send_tx(Delegate, Commitment, PoGF)

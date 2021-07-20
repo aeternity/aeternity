@@ -20,7 +20,7 @@
 
 -export([validate/1]).
 
--include("../../aecore/include/blocks.hrl").
+-include_lib("aecore/include/blocks.hrl").
 -include("aehc_utils.hrl").
 
 %% Two different keyheaders with the same prev_key pointer signed by the same leader

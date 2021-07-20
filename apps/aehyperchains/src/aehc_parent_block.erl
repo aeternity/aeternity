@@ -22,7 +22,7 @@
         , is_hc_parent_block/1
         ]).
 
--include("../../aecore/include/blocks.hrl").
+-include_lib("aecore/include/blocks.hrl").
 -include("aehc_utils.hrl").
 
 %% TODO: Split up the header and the block to separate modules
@@ -46,11 +46,17 @@
 -export_type([ parent_block_header/0
              , parent_block/0 ]).
 
--spec new_header(binary(), binary(), non_neg_integer()) -> parent_block_header().
+-spec new_header(Hash, PrevHeader, Height) ->
+          parent_block_header() when Hash :: binary(),
+                                     PrevHeader :: binary(),
+                                     Height :: non_neg_integer().
 new_header(Hash, PrevHeader, Height) ->
     new_header(Hash, PrevHeader, Height, []).
 
--spec new_header(binary(), binary(), non_neg_integer(), [commitment_hash()]) -> parent_block_header().
+-spec new_header(Hash, PrevHeader, Height, [commitment_hash()]) ->
+          parent_block_header() when Hash :: binary(),
+                                     PrevHeader :: binary(),
+                                     Height :: non_neg_integer().
 new_header(Hash, PrevHash, Height, CommitmentHashes) ->
     #hc_parent_block_header{ hash = Hash
                            , prev_hash = PrevHash
@@ -62,7 +68,7 @@ new_header(Hash, PrevHash, Height, CommitmentHashes) ->
 new_block(Header, Commitments) ->
     #hc_parent_block{header = Header, commitments = Commitments}.
 
--spec header_from_db(tuple()) -> parent_block_header().
+-spec header_from_db(#hc_parent_block_header{}) -> parent_block_header().
 header_from_db(#hc_parent_block_header{} = Header) -> Header.
 
 -spec commitment_hashes(parent_block_header()) -> [commitment_hash()].

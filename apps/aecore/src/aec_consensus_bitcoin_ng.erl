@@ -40,7 +40,7 @@
         , genesis_difficulty/0
         %% Keyblock creation
         , new_unmined_key_node/8
-        , keyblocks_for_unmined_keyblock_adjust/0
+        , adjustment_for_unmined_keyblock/0
         , adjust_unmined_keyblock/2
         %% Keyblock sealing
         , key_header_for_sealing/1
@@ -207,7 +207,7 @@ ctx_validate_key_time(Node, _Block, Ctx) ->
 %% To assert key block target calculation we need DeltaHeight headers counted
 %% backwards from the node we want to assert.
 ctx_validate_key_target(Node, _Block, Ctx) ->
-    Delta         = keyblocks_for_unmined_keyblock_adjust() + 1,
+    Delta         = adjustment_for_unmined_keyblock() + 1,
     Height        = aec_block_insertion:node_height(Node),
     GenesisHeight = aec_block_genesis:height(),
     case Delta >= Height - GenesisHeight of
@@ -375,7 +375,7 @@ new_unmined_key_node(PrevNode, PrevKeyNode, Height, Miner, Beneficiary, Protocol
                                Protocol),
     aec_chain_state:wrap_header(Header, FakeBlockHash).
 
-keyblocks_for_unmined_keyblock_adjust() ->
+adjustment_for_unmined_keyblock() ->
     aec_governance:key_blocks_to_check_difficulty_count().
 adjust_unmined_keyblock(Block, AdjHeaders) ->
     Header = aec_blocks:to_header(Block),

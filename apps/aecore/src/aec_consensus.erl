@@ -190,7 +190,7 @@
 
 %% After creating a new unmined keynode and calculating the new state adjusts the block based on recent keyheaders
 %% For POW it adjusts the target based on recent blocks, for HC it's a nop operation as the work is done in new_unmined_key_node
--callback keyblocks_for_unmined_keyblock_adjust() -> non_neg_integer().
+-callback adjustment_for_unmined_keyblock() -> non_neg_integer().
 -callback adjust_unmined_keyblock(aec_blocks:block(), list(aec_headers:header())) ->
     {ok, aec_blocks:block()} | {error, term()}.
 

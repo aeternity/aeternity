@@ -34,7 +34,7 @@
 -define(t(Expr), aec_db:ensure_transaction(fun() -> Expr end)).
 -define(t(Expr, ErrorKeys), aec_db:ensure_transaction(fun() -> Expr end, ErrorKeys)).
 
--include("../../aecore/include/blocks.hrl").
+-include_lib("aecore/include/blocks.hrl").
 -include("aehc_utils.hrl").
 
 -record(hc_db_pogf, {key, value}).

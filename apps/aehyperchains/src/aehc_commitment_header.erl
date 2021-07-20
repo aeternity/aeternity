@@ -32,7 +32,7 @@
         , hash/1
         ]).
 
--include("../../aecore/include/blocks.hrl").
+-include_lib("aecore/include/blocks.hrl").
 -include("aehc_utils.hrl").
 
 -record(hc_commitment_header, {

@@ -1,9 +1,9 @@
 -module(aehc_staking_contract_tests).
 
 
--include("../../aecontract/src/aect_sophia.hrl").
--include("../../aecontract/include/aecontract.hrl").
--include("../../aecontract/test/include/aect_sophia_vsn.hrl").
+-include_lib("aecontract/src/aect_sophia.hrl").
+-include_lib("aecontract/include/aecontract.hrl").
+-include_lib("aecontract/test/include/aect_sophia_vsn.hrl").
 -include_lib("aecontract/include/hard_forks.hrl").
 -include_lib("eunit/include/eunit.hrl").
 

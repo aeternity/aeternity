@@ -46,7 +46,7 @@
         , genesis_difficulty/0
         %% Keyblock creation
         , new_unmined_key_node/8
-        , keyblocks_for_unmined_keyblock_adjust/0
+        , adjustment_for_unmined_keyblock/0
         , adjust_unmined_keyblock/2
         %% Keyblock sealing
         , key_header_for_sealing/1
@@ -202,7 +202,7 @@ new_unmined_key_node(PrevNode, PrevKeyNode, Height, Miner, Beneficiary, Protocol
                                Protocol),
     aec_chain_state:wrap_header(Header, FakeBlockHash).
 
-keyblocks_for_unmined_keyblock_adjust() -> 0.
+adjustment_for_unmined_keyblock() -> 0.
 adjust_unmined_keyblock(Block, []) -> {ok, Block}.
 
 key_header_for_sealing(Header) ->
