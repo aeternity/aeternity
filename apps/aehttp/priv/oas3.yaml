@@ -101,10 +101,7 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  hash:
-                    $ref: "#/components/schemas/EncodedHash"
+                $ref: "#/components/schemas/HashResponse"
         "404":
           description: Block not found
           content:
@@ -126,10 +123,7 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  height:
-                    $ref: "#/components/schemas/UInt64"
+                $ref: "#/components/schemas/HeightResponse"
         "404":
           description: Block not found
           content:
@@ -261,11 +255,7 @@ paths:
           content:
             application/json:
               schema:
-                properties:
-                  transactions:
-                    type: array
-                    items:
-                      $ref: "#/components/schemas/SignedTx"
+                $ref: "#/components/schemas/SignedTxs"
         "400":
           description: Invalid hash
           content:
@@ -331,10 +321,7 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  count:
-                    $ref: "#/components/schemas/UInt32"
+                $ref: "#/components/schemas/CountResponse"
         "400":
           description: Invalid hash
           content:
@@ -527,11 +514,7 @@ paths:
           content:
             application/json:
               schema:
-                properties:
-                  transactions:
-                    type: array
-                    items:
-                      $ref: "#/components/schemas/SignedTx"
+                $ref: "#/components/schemas/SignedTxs"
         "400":
           description: Invalid public key
           content:
@@ -556,7 +539,7 @@ paths:
         - $ref: '#/components/parameters/accountPubkey'
         - in: query
           name: "strategy"
-          description: "What strategy to use in order to determine the next nonce: shall it check for continuity or return the largest nonce seen + 1. If you choose strategy max, then the greatest nonce seen in the account or currently in the transaction pool is incremented with 1 and returned. If you choose the strategy continuity, then transactions in the mempool are checked if there are gaps - missing nonces that prevent transactions with greater nonces to get included." 
+          description: "What strategy to use in order to determine the next nonce: shall it check for continuity or return the largest nonce seen + 1. If you choose strategy max, then the greatest nonce seen in the account or currently in the transaction pool is incremented with 1 and returned. If you choose the strategy continuity, then transactions in the mempool are checked if there are gaps - missing nonces that prevent transactions with greater nonces to get included."
           required: false
           schema:
             type: string
@@ -614,7 +597,6 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Error"
                 $ref: "#/components/schemas/Error"
   "/transactions/{hash}":
     get:
@@ -1028,9 +1010,9 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/EncodedHash"
-###
-## Internal endpoints
-###
+  ###
+  ## Internal endpoints
+  ###
   /key-blocks:
     post:
       tags:
@@ -1781,11 +1763,7 @@ paths:
           content:
             application/json:
               schema:
-                properties:
-                  transactions:
-                    type: array
-                    items:
-                      $ref: "#/components/schemas/SignedTx"
+                $ref: "#/components/schemas/SignedTxs"
   /debug/names/commitment-id:
     get:
       tags:
@@ -3029,31 +3007,31 @@ components:
             - version
             - type
         - anyOf:
-          - $ref: "#/components/schemas/SpendTx"
-          - $ref: "#/components/schemas/ChannelCreateTx"
-          - $ref: "#/components/schemas/ChannelDepositTx"
-          - $ref: "#/components/schemas/ChannelWithdrawTx"
-          - $ref: "#/components/schemas/ChannelForceProgressTx"
-          - $ref: "#/components/schemas/ChannelCloseMutualTx"
-          - $ref: "#/components/schemas/ChannelCloseSoloTx"
-          - $ref: "#/components/schemas/ChannelSlashTx"
-          - $ref: "#/components/schemas/ChannelSettleTx"
-          - $ref: "#/components/schemas/ChannelSnapshotSoloTx"
-          - $ref: "#/components/schemas/ChannelSetDelegatesTx"
-          - $ref: "#/components/schemas/OracleRegisterTx"
-          - $ref: "#/components/schemas/OracleExtendTx"
-          - $ref: "#/components/schemas/OracleQueryTx"
-          - $ref: "#/components/schemas/OracleRespondTx"
-          - $ref: "#/components/schemas/NamePreclaimTx"
-          - $ref: "#/components/schemas/NameClaimTx"
-          - $ref: "#/components/schemas/NameUpdateTx"
-          - $ref: "#/components/schemas/NameTransferTx"
-          - $ref: "#/components/schemas/NameRevokeTx"
-          - $ref: "#/components/schemas/ContractCreateTx"
-          - $ref: "#/components/schemas/ContractCallTx"
-          - $ref: "#/components/schemas/GAAttachTx"
-          - $ref: "#/components/schemas/GAMetaTx"
-          - $ref: "#/components/schemas/PayingForTx"
+            - $ref: "#/components/schemas/SpendTx"
+            - $ref: "#/components/schemas/ChannelCreateTx"
+            - $ref: "#/components/schemas/ChannelDepositTx"
+            - $ref: "#/components/schemas/ChannelWithdrawTx"
+            - $ref: "#/components/schemas/ChannelForceProgressTx"
+            - $ref: "#/components/schemas/ChannelCloseMutualTx"
+            - $ref: "#/components/schemas/ChannelCloseSoloTx"
+            - $ref: "#/components/schemas/ChannelSlashTx"
+            - $ref: "#/components/schemas/ChannelSettleTx"
+            - $ref: "#/components/schemas/ChannelSnapshotSoloTx"
+            - $ref: "#/components/schemas/ChannelSetDelegatesTx"
+            - $ref: "#/components/schemas/OracleRegisterTx"
+            - $ref: "#/components/schemas/OracleExtendTx"
+            - $ref: "#/components/schemas/OracleQueryTx"
+            - $ref: "#/components/schemas/OracleRespondTx"
+            - $ref: "#/components/schemas/NamePreclaimTx"
+            - $ref: "#/components/schemas/NameClaimTx"
+            - $ref: "#/components/schemas/NameUpdateTx"
+            - $ref: "#/components/schemas/NameTransferTx"
+            - $ref: "#/components/schemas/NameRevokeTx"
+            - $ref: "#/components/schemas/ContractCreateTx"
+            - $ref: "#/components/schemas/ContractCallTx"
+            - $ref: "#/components/schemas/GAAttachTx"
+            - $ref: "#/components/schemas/GAMetaTx"
+            - $ref: "#/components/schemas/PayingForTx"
     TxInfoObject:
       type: object
       properties:
@@ -3612,6 +3590,34 @@ components:
       anyOf:
         - $ref: "#/components/schemas/KeyBlock"
         - $ref: "#/components/schemas/MicroBlockHeader"
+    SignedTxs:
+      type: object
+      properties:
+        transactions:
+          type: array
+          items:
+            $ref: "#/components/schemas/SignedTx"
+    HashResponse:
+      type: object
+      properties:
+        hash:
+          type: string
+      required:
+        - hash
+    HeightResponse:
+      type: object
+      properties:
+        height:
+          $ref: "#/components/schemas/UInt64"
+      required:
+        - height
+    CountResponse:
+      type: object
+      properties:
+        count:
+          $ref: "#/components/schemas/UInt32"
+      required:
+        - count
   parameters:
     intAsString:
       in: query
