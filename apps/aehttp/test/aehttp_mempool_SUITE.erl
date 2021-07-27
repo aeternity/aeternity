@@ -12,7 +12,7 @@
 %% use include_lib for aecontract to compile under system test
 -include_lib("aecontract/include/aecontract.hrl").
 -include_lib("aecontract/include/hard_forks.hrl").
--include("../../aecontract/test/include/aect_sophia_vsn.hrl").
+-include_lib("aecontract/test/include/aect_sophia_vsn.hrl").
 
 %% common_test exports
 -export([
