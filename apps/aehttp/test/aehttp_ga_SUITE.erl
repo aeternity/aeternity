@@ -341,7 +341,7 @@ meta_oracle_register(Config) ->
       acc_b := #{pub_key := BPub}} = proplists:get_value(accounts, Config),
     MGP = aec_test_utils:min_gas_price(),
 
-    InnerTx = aeo_test_utils:register_tx(APub, #{}), 
+    InnerTx = aeo_test_utils:register_tx(APub, #{}),
     MetaTx = ga_meta_tx(["1"], APub, APriv, InnerTx, 100000 * MGP, 10000),
     #{tx_hash := MetaTxHash} = post_aetx(MetaTx),
 

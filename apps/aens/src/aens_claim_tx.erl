@@ -35,7 +35,7 @@
          name/1
         ]).
 
--include("../../aecontract/include/hard_forks.hrl").
+-include_lib("aecontract/include/hard_forks.hrl").
 
 %%%===================================================================
 %%% Types

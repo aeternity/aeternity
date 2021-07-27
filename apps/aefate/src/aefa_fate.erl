@@ -66,7 +66,7 @@
 -endif.
 
 -include_lib("aebytecode/include/aeb_fate_data.hrl").
--include("../../aecontract/include/hard_forks.hrl").
+-include_lib("aecontract/include/hard_forks.hrl").
 
 -ifdef(TEST).
 -define(trace(I,S), aefa_engine_state:add_trace(I, S)).

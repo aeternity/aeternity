@@ -52,8 +52,8 @@
           get_contract_fun_types/4
         ]).
 
--include("../include/blocks.hrl").
--include("../../aecontract/include/aecontract.hrl").
+-include("blocks.hrl").
+-include_lib("aecontract/include/aecontract.hrl").
 
 -define(NO_INNER_TREES, no_inner_trees).
 

@@ -29,9 +29,9 @@
 
 -export([with_trace/3]).  % mostly to avoid warning if not used
 
--include_lib("common_test/include/ct.hrl").
--include("../../aecontract/include/aecontract.hrl").
 -include("../../aecontract/test/include/aect_sophia_vsn.hrl").
+-include_lib("common_test/include/ct.hrl").
+-include_lib("aecontract/include/aecontract.hrl").
 -include_lib("aecontract/include/hard_forks.hrl").
 
 -define(TIMEOUT, 10000).
@@ -1278,7 +1278,7 @@ apply_updates_modify_amount(Who, Delta, R) ->
             #{responder_amount := RAmt} = R,
             R#{responder_amount => RAmt + Delta}
     end.
-            
+
 role(Pubkey, #{pub               := MyKey
              , role              := Role}) ->
     case {Pubkey, Role} of
@@ -1540,7 +1540,7 @@ create_contract(ContractName, InitArgs, Deposit,
         aect_test_utils:encode_call_data(aect_test_utils:sophia_version(), BinSrc,
                                          "init", InitArgs),
     CreateArgs = #{ vm_version  => aect_test_utils:vm_version()
-                  , abi_version => aect_test_utils:abi_version() 
+                  , abi_version => aect_test_utils:abi_version()
                   , deposit     => Deposit
                   , code        => BinCode
                   , call_data   => CallData},
@@ -1564,7 +1564,7 @@ call_contract(ContractId,
         aect_test_utils:encode_call_data(aect_test_utils:sophia_version(), BinSrc,
                                          FunName, FunArgs),
     CallArgs = #{ contract    => ContractId
-                , abi_version => aect_test_utils:abi_version() 
+                , abi_version => aect_test_utils:abi_version()
                 , amount      => Amount
                 , call_data   => CallData},
     aesc_fsm:upd_call_contract(FsmC, CallArgs),

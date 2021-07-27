@@ -8,7 +8,7 @@
 	, dry_run/4 ]).
 
 -include("blocks.hrl").
--include("../../aecontract/include/aecontract.hrl").
+-include_lib("aecontract/include/aecontract.hrl").
 
 -define(MR_MAGIC, <<1:32/unit:8>>).
 -define(BIG_AMOUNT, 1000000000000000000000). %% 1000 AE
@@ -36,7 +36,7 @@ dry_run_(Txs, Trees, Env, Opts) ->
     try
         STxs = prepare_txs(Txs),
         {ok, dry_run_int(STxs, Trees, Env, Opts, [])}
-    catch _E:R:ST ->
+    catch _E:R:_ST ->
         {error, iolist_to_binary(io_lib:format("Internal error ~120p", [R]))}
     end.
 

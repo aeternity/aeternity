@@ -62,8 +62,7 @@ response(OperationId, Method, Code, Response, Validator, EndpointsMod) ->
 
 response_(_OperationId, _Method0, Code, _Response, _Validator, _EndpointsMod) when Code >= 500 andalso Code < 600 ->
     ok;
-response_(OperationId, Method0, Code, Response, Validator, EndpointsMod) ->
-    Method = to_method(Method0),
+response_(OperationId, _Method0, Code, Response, Validator, EndpointsMod) ->
     #{responses := Resps} = EndpointsMod:operation(OperationId),
     case maps:get(Code, Resps, not_found) of
         undefined -> ok;
@@ -107,8 +106,7 @@ fix_def_refs(_, X) ->
     {ok, Model :: #{}, cowboy_req:req()}
     | {error, Reason :: any(), cowboy_req:req()}.
 
-request(OperationId, Method0, Req, Validator, EndpointsMod) ->
-    Method = to_method(Method0),
+request(OperationId, _Method0, Req, Validator, EndpointsMod) ->
     #{parameters := Params} = EndpointsMod:operation(OperationId),
     params(Params, #{}, Req, Validator, EndpointsMod).
 
@@ -233,13 +231,13 @@ prepare_param_({"schema", [{"type",  _} = _Type | _] = Schema}, Value, Name, Val
                EndpointsMod) ->
     case prepare_param(params_priority(Schema), Value, Name, Validator, EndpointsMod) of
         {ok, NewName, NewValue} -> {ok, NewValue, NewName};
-        {error, Err} -> 
+        {error, Err} ->
             param_error_(Name, #{error => Err, schema => Schema, value => Value})
     end;
 prepare_param_({"enum", Values0}, Value0, Name, _, _) ->
     try
         Values = [ to_atom(Acc) || Acc <- Values0 ],
-        Value = 
+        Value =
             case Value0 of
                 undefined -> %% maybe a missing default value?
                     undefined;
@@ -392,8 +390,3 @@ to_header(Name) -> string:lowercase(to_binary(Name)).
 to_binding(Name) ->
     Prepared = to_binary(Name),
     binary_to_atom(Prepared, utf8).
-
--spec to_method(binary()) -> atom().
-
-to_method(Method) ->
-    to_existing_atom(string:lowercase(Method)).

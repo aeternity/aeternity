@@ -96,8 +96,8 @@
 -define(FIX_CONTRACT_CHECK_WINDOW_UPPER_LIMIT, 245000).
 
 -include_lib("aebytecode/include/aeb_fate_data.hrl").
--include("../../aecontract/include/aecontract.hrl").
--include("../../aecontract/include/hard_forks.hrl").
+-include_lib("aecontract/include/aecontract.hrl").
+-include_lib("aecontract/include/hard_forks.hrl").
 
 -type void_or_fate() :: ?FATE_VOID | aeb_fate_data:fate_type().
 -type pubkey() :: <<_:256>>.

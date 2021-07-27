@@ -8,8 +8,8 @@
 
 -behavior(aetx).
 
--include("../../aecontract/include/aecontract.hrl").
--include("../../aecontract/include/hard_forks.hrl").
+-include_lib("aecontract/include/aecontract.hrl").
+-include_lib("aecontract/include/hard_forks.hrl").
 
 %% Behavior API
 -export([new/1,
@@ -218,4 +218,3 @@ check_tx(STx) ->
         X = channel_client_reconnect_tx -> {error, {not_allowed_to_pay_for, X}};
         _X                              -> ok
     end.
-

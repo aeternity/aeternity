@@ -34,7 +34,7 @@
 -export([new/2]).
 -endif.
 
--include("../../aecontract/include/aecontract.hrl").
+-include_lib("aecontract/include/aecontract.hrl").
 
 %%%===================================================================
 %%% Types

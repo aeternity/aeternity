@@ -68,8 +68,8 @@
              ]).
 
 -include_lib("aebytecode/include/aeb_fate_data.hrl").
--include("../../aecontract/include/aecontract.hrl").
--include("../../aecore/include/blocks.hrl").
+-include_lib("aecontract/include/aecontract.hrl").
+-include_lib("aecore/include/blocks.hrl").
 
 %%%-------------------------------------------------------------------
 %%% NOTE: We accept that this module causes havoc in the dependency

@@ -1,7 +1,7 @@
 -module(aect_clone_dereference_test).
 
 -include_lib("eunit/include/eunit.hrl").
--include("../include/aecontract.hrl").
+-include("aecontract.hrl").
 
 dereference_test() ->
     T0 = aect_state_tree:empty(),

@@ -112,8 +112,8 @@
 -export([with_trace/3]).  % mostly to avoid warning if not used
 
 -include_lib("common_test/include/ct.hrl").
--include("../../aecontract/include/aecontract.hrl").
 -include("../../aecontract/test/include/aect_sophia_vsn.hrl").
+-include_lib("aecontract/include/aecontract.hrl").
 -include_lib("aecontract/include/hard_forks.hrl").
 
 -define(TIMEOUT, 500).
@@ -6059,4 +6059,3 @@ force_progress_and_conflict(Cfg) ->
     check_info(20),
     shutdown_(I, R, Cfg),
     ok.
-
