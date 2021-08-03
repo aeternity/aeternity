@@ -1116,6 +1116,9 @@ check_db() ->
         lager:start(),
         Mode = backend_mode(),
         Storage = ensure_schema_storage_mode(Mode),
+        lager:info("Database persist mode ~p", [maps:get(persist, Mode)]),
+        lager:info("Database backend ~p", [maps:get(module, Mode)]),
+        lager:info("Database directory ~s", [mnesia:system_info(directory)]),
         ok = application:ensure_started(mnesia),
         ok = assert_schema_node_name(Mode),
         initialize_db(Mode, Storage)
