@@ -62,7 +62,7 @@ response(OperationId, Method, Code, Response, Validator, EndpointsMod) ->
 
 response_(_OperationId, _Method0, Code, _Response, _Validator, _EndpointsMod) when Code >= 500 andalso Code < 600 ->
     ok;
-response_(OperationId, _Method0, Code, Response, Validator, EndpointsMod) ->
+response_(OperationId, _Method, Code, Response, Validator, EndpointsMod) ->
     #{responses := Resps} = EndpointsMod:operation(OperationId),
     case maps:get(Code, Resps, not_found) of
         undefined -> ok;
