@@ -106,7 +106,7 @@ fix_def_refs(_, X) ->
     {ok, Model :: #{}, cowboy_req:req()}
     | {error, Reason :: any(), cowboy_req:req()}.
 
-request(OperationId, _Method0, Req, Validator, EndpointsMod) ->
+request(OperationId, _Method, Req, Validator, EndpointsMod) ->
     #{parameters := Params} = EndpointsMod:operation(OperationId),
     params(Params, #{}, Req, Validator, EndpointsMod).
 
