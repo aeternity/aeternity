@@ -62,9 +62,9 @@
 -include_lib("common_test/include/ct.hrl").
 -include_lib("aecontract/include/aecontract.hrl").
 -include_lib("aecontract/include/hard_forks.hrl").
+-include_lib("aecontract/test/include/aect_sophia_vsn.hrl").
 -include_lib("aecontract/test/include/aect_contract_cache.hrl").
--include("../../aecontract/test/include/aect_sophia_vsn.hrl").
--include("aect_sophia.hrl").
+-include("../src/aect_sophia.hrl").
 
 %%%===================================================================
 %%% Test state
