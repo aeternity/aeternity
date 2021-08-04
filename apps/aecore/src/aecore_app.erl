@@ -129,7 +129,6 @@ set_level(L) when is_binary(L) ->
     case lists:member(Level, levels()) of
         true ->
             lager_set_level_env(Level),
-            adjust_sinks(Level),
             if_running(lager, fun() -> live_set_level(Level) end);
         false ->
             lager:error("Unknown log level: ~p", [Level]),
@@ -137,58 +136,40 @@ set_level(L) when is_binary(L) ->
     end.
 
 lager_set_level_env(L) ->
-    Hs = application:get_env(lager, handlers, []),
-    case lists:keyfind(lager_file_backend, 1, Hs) of
-        {_, Opts} ->
-            Opts1 = lists:keystore(level, 1, Opts, {level, L}),
-            application:set_env(
-              lager, handlers,
-              lists:keyreplace(lager_file_backend, 1, Hs,
-                               {lager_file_backend, Opts1}));
-        false ->
-            lager:warning("Cannot find 'aeternity.log' file backend", []),
-            ignore
-    end.
+    Handlers = application:get_env(lager, handlers, []),
+    application:set_env(lager, handlers, set_level_opt(L, Handlers)),
 
-adjust_sinks(L) ->
     Sinks = application:get_env(lager, extra_sinks, []),
-    Sinks1 =
-        lists:map(
-          fun({epoch_mining_lager_event = K, Opts}) ->
-                  {K, set_sink_level(L, Opts)};
-             ({aeminer_lager_event = K, Opts}) ->
-                  {K, set_sink_level(L, Opts)};
-             ({epoch_sync_lager_event = K, Opts}) ->
-                  {K, set_sink_level(L, Opts)};
-             (X) ->
-                  X
-          end, Sinks),
-    application:set_env(lager, extra_sinks, Sinks1).
+    NewSinks = lists:map(
+                 fun({K, Opts}) ->
+                         {_, Hs} = lists:keyfind(handlers, 1, Opts),
+                         NewHs = set_level_opt(L, Hs),
+                         {K, lists:keystore(handlers, 1, Opts, {handlers, NewHs})}
+                 end, Sinks),
+    application:set_env(lager, extra_sinks, NewSinks).
 
-set_sink_level(L, Opts) ->
-    {handlers, Hs} = lists:keyfind(handlers, 1, Opts),
-    NewHs =
-        case lists:keyfind(lager_file_backend, 1, Hs) of
-            {_, Opts1} ->
-                lists:keyreplace(
-                  lager_file_backend, 1, Hs,
-                  {lager_file_backend,
-                   lists:keystore(level, 1, Opts1, {level, L})});
-            false ->
-                Hs
-        end,
-    lists:keyreplace(handlers, 1, Opts, {handlers, NewHs}).
+set_level_opt(Level, Handlers) ->
+    [{H, lists:keystore(level, 1, Opts, {level, Level})} || {H, Opts} <- Handlers].
 
 live_set_level(L) ->
-    lager:set_loglevel({lager_file_backend, "log/aeternity.log"}, L),
+    lager:set_loglevel(lager_console_backend, L),
+    lager:set_loglevel({lager_file_backend, "aeternity.log"}, L),
     lager:set_loglevel(epoch_mining_lager_event,
-                       {lager_file_backend, "log/aeternity_mining.log"},
+                       {lager_file_backend, "aeternity_mining.log"},
+                       undefined, L),
+    lager:set_loglevel(epoch_metrics_lager_event,
+                       {lager_file_backend, "aeternity_metrics.log"},
                        undefined, L),
     lager:set_loglevel(aeminer_lager_event,
-                       {lager_file_backend, "log/aeternity_pow_cuckoo.log"},
+                       {lager_file_backend, "aeternity_pow_cuckoo.log"},
                        undefined, L),
     lager:set_loglevel(epoch_sync_lager_event,
-                       {lager_file_backend, "log/aeternity_sync.log"},
+                       lager_console_backend, undefined, L),
+    lager:set_loglevel(epoch_sync_lager_event,
+                       {lager_file_backend, "aeternity_sync.log"},
+                       undefined, L),
+    lager:set_loglevel(aestratum_lager_event,
+                       {lager_file_backend, "aestratum.log"},
                        undefined, L).
 
 levels() ->
