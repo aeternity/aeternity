@@ -173,7 +173,7 @@ mine_5_txs_from_the_same_account(Config) ->
     %% the nonce offset for an account is 5
     5 = rpc:call(?NODENAME, aec_tx_pool, nonce_offset, []),
     %% posting a new tx with a higher nonce will fail:
-    SpendTx6= sign_tx(spend_tx(Alice, Alice, 1, Fee), AlicePrivkey),
+    SpendTx6 = sign_tx(spend_tx(Alice, Alice, 1, Fee), AlicePrivkey),
     {ok, 400, #{<<"reason">> := <<"Invalid tx">>}} = post_tx(SpendTx6),
     {ok, _} = ?MINE_TXS([SpendTxHash1, SpendTxHash2, SpendTxHash3,
                          SpendTxHash4, SpendTxHash5]),
@@ -201,7 +201,7 @@ txs_without_balance_are_not_mined(Config) ->
     {ok, 200, #{<<"tx_hash">> := SpendTxHash2}} = post_tx(SpendTx2),
     {ok, _} = ?MINE_TXS([SpendTxHash1]),
     %% we can not mine this tx
-    {error,max_reached} = ?MINE_TXS([SpendTxHash2]),
+    {error, max_reached} = ?MINE_TXS([SpendTxHash2]),
     SpendTx3 = sign_tx(spend_tx(Alice, EmptyAccPubkey, Fee + 1, Fee), AlicePrivkey),
     {ok, 200, #{<<"tx_hash">> := SpendTxHash3}} = post_tx(SpendTx3),
     {ok, _} = ?MINE_TXS([SpendTxHash2, SpendTxHash3]),
@@ -215,7 +215,7 @@ gc_txs(Config) ->
         ?config(accounts, Config),
     Fee = 20000 * ?DEFAULT_GAS_PRICE,
     ?TX_TTL = rpc:call(?NODENAME, aec_tx_pool, tx_ttl, []),
-    %% use a bigger nonce so the txs are not include
+    %% use a bigger nonce so the txs are not included
     Nonce = next_nonce(AccPubkey),
     SpendTx2 = sign_tx(spend_tx(AccPubkey, AccPubkey, 2, Fee, <<"blocked tx">>,
                                 Nonce + 1),
@@ -223,18 +223,18 @@ gc_txs(Config) ->
     PendingSpendTx2 = for_client_pending(SpendTx2),
     {ok, 200, #{<<"tx_hash">> := SpendTxHash2}} = post_tx(SpendTx2),
     %% assert a tx in pool
-    [PendingSpendTx2]  = pending_txs(),
+    [PendingSpendTx2] = pending_txs(),
     
     ?MINE_BLOCKS(?TX_TTL - 1),
     %% assert still a tx in pool
-    [PendingSpendTx2]  = pending_txs(),
+    [PendingSpendTx2] = pending_txs(),
 
     ?MINE_BLOCKS(1),
     timer:sleep(1000),
     %% assert pool is empty
     [] = pending_txs(),
     {ok, 200, #{<<"tx_hash">> := _SpendTxHash2}} = post_tx(SpendTx2),
-    [PendingSpendTx2]  = pending_txs(),
+    [PendingSpendTx2] = pending_txs(),
     %% add missing tx with nonce
     SpendTx1 = sign_tx(spend_tx(AccPubkey, AccPubkey, 2, Fee, <<"unblocking tx">>,
                                 Nonce),
@@ -286,7 +286,7 @@ delete_tx_from_mempool(Config) ->
     timer:sleep(1000),
     %% assert the tx has beed GCed
     [] = pending_txs(),
-    %% post the tx after it had been GCed
+    %% post the tx after it has been GCed
     {ok, 200, #{<<"tx_hash">> := SpendTxHash1}} = post_tx(SpendTx1),
     [PendingSpendTx1]  = pending_txs(),
     %% post the ublocking tx with the correct nonce
@@ -333,12 +333,12 @@ spend_tx(FromPubkey, ToPubkey, Amount, Fee, Payload, Nonce) ->
     To = aeser_api_encoder:encode(account_pubkey, ToPubkey),
     {ok, 200, #{<<"tx">> := EncodedSpendTx}} =
         aehttp_integration_SUITE:get_spend(
-            #{sender_id => From,
-              nonce => Nonce,
+            #{sender_id    => From,
+              nonce        => Nonce,
               recipient_id => To, 
-              amount => Amount,
-              fee => Fee,
-              payload => Payload}),
+              amount       => Amount,
+              fee          => Fee,
+              payload      => Payload}),
     {ok, TxSer} = aeser_api_encoder:safe_decode(transaction, EncodedSpendTx),
     AeTx = aetx:deserialize_from_binary(TxSer),
     AeTx.
