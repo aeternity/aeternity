@@ -145,7 +145,7 @@ protocols_from_network_id(_ID) ->
     case aeu_env:user_map_or_env([<<"chain">>, <<"hard_forks">>], aecore, hard_forks, undefined) of
         undefined ->
             #{ ?ROMA_PROTOCOL_VSN  => 0
-             , ?LIMA_PROTOCOL_VSN  => 1 %% Update after switching to IRIS
+             , ?IRIS_PROTOCOL_VSN  => 1
              };
         M when is_map(M) ->
             maps:fold(fun(K, V, Acc) ->
