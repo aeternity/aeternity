@@ -1,7 +1,8 @@
 -module(aect_channel_contract).
--include("../../aecontract/include/hard_forks.hrl").
--include("../../aecore/include/blocks.hrl").
+
 -include("aecontract.hrl").
+-include_lib("aecontract/include/hard_forks.hrl").
+-include_lib("aecore/include/blocks.hrl").
 
 -export([new/6,
          run_new/6,
@@ -207,4 +208,3 @@ insert_failed_call(ContractPubkey, CallerPubkey, Round, GasPrice, GasLimit, Call
     Call2 = aect_call:set_return_type(error, Call1),
     Call = aect_call:set_return_value(<<"invalid_call">>, Call2),
     aect_call_state_tree:insert_call(Call, CallsTree).
-

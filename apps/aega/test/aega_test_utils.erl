@@ -8,7 +8,7 @@
 -compile([export_all, nowarn_export_all]).
 
 -include("../../aecontract/test/include/aect_sophia_vsn.hrl").
--include("../../aecontract/include/aecontract.hrl").
+-include_lib("aecontract/include/aecontract.hrl").
 -include_lib("aecontract/include/hard_forks.hrl").
 
 %%%===================================================================

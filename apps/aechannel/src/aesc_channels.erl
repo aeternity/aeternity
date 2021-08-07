@@ -61,7 +61,7 @@
          set_solo_closing/2]).
 -endif.
 
--include("../../aecontract/include/hard_forks.hrl").
+-include_lib("aecontract/include/hard_forks.hrl").
 -include("aesc_values.hrl").
 
 %%%===================================================================
@@ -84,7 +84,7 @@
              ]).
 
 -type id() :: aeser_id:id().
--type pubkey() :: aec_keys:pubkey(). 
+-type pubkey() :: aec_keys:pubkey().
 -type delegate_ids() :: [id()] | #{initiator => [id()], responder => [id()]}.
 -type amount() :: non_neg_integer().
 -type seq_number() :: non_neg_integer().
@@ -382,7 +382,7 @@ new(InitiatorAcc, InitiatorAmount, ResponderAcc, ResponderAmount,
              initiator_amount     = InitiatorAmount,
              responder_amount     = ResponderAmount,
              channel_reserve      = ReserveAmount,
-             delegate_ids         = DelegateIds, 
+             delegate_ids         = DelegateIds,
              state_hash           = StateHash,
              round                = Round,
              solo_round           = ?LAST_ROUND_MUTUAL,
@@ -553,7 +553,7 @@ serialize_for_client(#channel{id                  = Id,
       <<"initiator_amount">>      => InitiatorAmount,
       <<"responder_amount">>      => ResponderAmount,
       <<"channel_reserve">>       => ChannelReserve,
-      <<"delegate_ids">>          => EncDelegates, 
+      <<"delegate_ids">>          => EncDelegates,
       <<"state_hash">>            => aeser_api_encoder:encode(state, StateHash),
       <<"round">>                 => Round,
       <<"solo_round">>            => SoloRound,
@@ -705,4 +705,3 @@ auth_for_id(_, _) ->
 auth_store_key(Id, Ch) ->
     {_, PK} = aeser_id:specialize(Id),
     aec_hash:hash(pubkey, <<(pubkey(Ch)):?PUB_SIZE/binary, PK:?PUB_SIZE/binary>>).
-

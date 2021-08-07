@@ -219,10 +219,10 @@
         ]).
 
 -include_lib("common_test/include/ct.hrl").
--include("../../aecore/include/blocks.hrl").
+-include_lib("aecore/include/blocks.hrl").
 -include_lib("stdlib/include/assert.hrl").
--include("../../aecontract/include/aecontract.hrl").
--include("../../aecontract/include/hard_forks.hrl").
+-include_lib("aecontract/include/aecontract.hrl").
+-include_lib("aecontract/include/hard_forks.hrl").
 -include("../../aecontract/test/include/aect_sophia_vsn.hrl").
 
 -define(MINER_PUBKEY, <<12345:?MINER_PUB_BYTES/unit:8>>).
@@ -1843,7 +1843,7 @@ settle_delegate_not_allowed(Cfg) ->
                 positive(fun close_solo_with_payload/2),
                 set_prop(height, Height),
                 fun(#{delegate_ids := Ds, state := S} = Props) ->
-                    D1 = pick_random_delegate(Ds), 
+                    D1 = pick_random_delegate(Ds),
                     D1Pubkey = aeser_id:specialize(D1, account),
                     D1PrivKey = aesc_test_utils:priv_key(D1Pubkey, S),
                     Props#{from_pubkey => D1Pubkey, from_privkey => D1PrivKey}
@@ -6068,7 +6068,7 @@ fp_from_delegate_after_iris_not_closing(Cfg) ->
                           set_from(WhosDelegate),
                           fun(#{ initiator_pubkey := Initiator
                               , responder_pubkey := Responder
-                              , from_pubkey      := From 
+                              , from_pubkey      := From
                               , delegate_pubkey  := Delegate} = Props1) ->
                               ?TEST_LOG("Initiator: ~p,\nresponder: ~p,\ndelegate: ~p",
                                         [Initiator, Responder, Delegate]),
@@ -6121,7 +6121,7 @@ fp_from_delegate_after_iris(Cfg) ->
                           set_from(WhosDelegate),
                           fun(#{ initiator_pubkey := Initiator
                               , responder_pubkey := Responder
-                              , from_pubkey      := From 
+                              , from_pubkey      := From
                               , delegate_pubkey  := Delegate} = Props1) ->
                               ?TEST_LOG("Initiator: ~p,\nresponder: ~p,\ndelegate: ~p",
                                         [Initiator, Responder, Delegate]),
@@ -6196,7 +6196,7 @@ fp_wrong_delegate_after_iris(Cfg) ->
                           set_from(CallFrom),
                           fun(#{ initiator_pubkey := Initiator
                                , responder_pubkey := Responder
-                               , from_pubkey      := From 
+                               , from_pubkey      := From
                                , delegate_pubkey  := Delegate} = Props1) ->
                               ?TEST_LOG("Initiator: ~p,\nresponder: ~p,\ndelegate: ~p",
                                         [Initiator, Responder, Delegate]),
@@ -6225,7 +6225,7 @@ fp_wrong_delegate_after_iris(Cfg) ->
                           rename_prop(delegate_privkey, from_privkey, keep_old)
                         ])
                   end,
-            Err = 
+            Err =
                 case PreIris of
                     true  when NonEmptyPayload -> account_not_peer;
                     true  -> not_caller;
@@ -6445,7 +6445,7 @@ set_delegates_unknown_from(Config) ->
     TestWithPayload(),
 
     StateHashSize = aeser_api_encoder:byte_size_for_type(state),
-    
+
     TestWithoutPayload =
         fun(Snapshoter) ->
             run(#{cfg => Config, height => Height},
@@ -6562,7 +6562,7 @@ set_delegates_state_hash_mismatch(Config) ->
             ?TEST_LOG("Test Setter is ~p", [Setter]),
             run(#{cfg => Config
                 , initiator_delegate_ids => []
-                , responder_delegate_ids => [] 
+                , responder_delegate_ids => []
                 , height => Height},
                [positive(fun create_channel_/2),
                 set_from(Setter),
@@ -6586,7 +6586,7 @@ set_delegates_round_mismatch(Config) ->
             ?TEST_LOG("Test Setter is ~p", [Setter]),
             run(#{cfg => Config
                 , initiator_delegate_ids => []
-                , responder_delegate_ids => [] 
+                , responder_delegate_ids => []
                 , height => Height},
                [positive(fun create_channel_/2),
                 set_from(Setter),
@@ -6598,4 +6598,3 @@ set_delegates_round_mismatch(Config) ->
         end,
     [Test(Role) || Role <- ?ROLES],
     ok.
-

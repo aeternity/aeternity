@@ -47,8 +47,8 @@
 -define(TEST_LOG(Format, Data), ok).
 -endif.
 
--include("../../aecontract/include/aecontract.hrl").
--include("../../aecontract/include/hard_forks.hrl").
+-include_lib("aecontract/include/aecontract.hrl").
+-include_lib("aecontract/include/hard_forks.hrl").
 
 -include("aesc_values.hrl").
 

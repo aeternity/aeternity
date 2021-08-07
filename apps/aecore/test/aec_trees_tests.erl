@@ -6,9 +6,8 @@
 
 -include_lib("eunit/include/eunit.hrl").
 
--include("../include/blocks.hrl").
-
--include("../../aecontract/include/aecontract.hrl").
+-include("blocks.hrl").
+-include_lib("aecontract/include/aecontract.hrl").
 
 -define(TEST_MODULE, aec_trees).
 -define(MINER_PUBKEY, <<42:?MINER_PUB_BYTES/unit:8>>).

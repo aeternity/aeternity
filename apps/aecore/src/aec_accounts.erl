@@ -33,7 +33,7 @@
          serialize_for_client/1]).
 
 -include_lib("aecontract/include/hard_forks.hrl").
--include("../../aecontract/include/aecontract.hrl").
+-include_lib("aecontract/include/aecontract.hrl").
 
 -define(ACCOUNT_VSN_1, 1). %% {Nonce, Balance}
 -define(ACCOUNT_VSN_2, 2). %% {Flags, Nonce, Balance, GA_Contract, GA_AuthFun}

@@ -13,7 +13,7 @@
          make_calldata/2
         ]).
 
--include("../../aecontract/test/include/fate_type_macros.hrl").
+-include_lib("aecontract/test/include/fate_type_macros.hrl").
 -include_lib("aebytecode/include/aeb_fate_data.hrl").
 
 

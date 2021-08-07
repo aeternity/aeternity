@@ -47,8 +47,8 @@
 -export_type([signed_tx/0,
               binary_signed_tx/0]).
 
--include("../../aecore/include/blocks.hrl").
--include("../../aecontract/include/hard_forks.hrl").
+-include_lib("aecore/include/blocks.hrl").
+-include_lib("aecontract/include/hard_forks.hrl").
 
 -record(signed_tx,
         { tx                         :: aetx:tx(),

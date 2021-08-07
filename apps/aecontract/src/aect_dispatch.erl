@@ -6,8 +6,8 @@
 %%%-------------------------------------------------------------------
 -module(aect_dispatch).
 
--include("../../aecore/include/blocks.hrl").
--include("../include/aecontract.hrl").
+-include("aecontract.hrl").
+-include_lib("aecore/include/blocks.hrl").
 
 %% API
 -export([run/2]).

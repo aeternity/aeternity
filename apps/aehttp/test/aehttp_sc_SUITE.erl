@@ -324,7 +324,7 @@ groups() ->
     ].
 
 conflicts_sequence() ->
-    [ 
+    [
       sc_ws_conflict_two_offchain_updates,
       sc_ws_conflict_deposit_and_offchain_update,
       sc_ws_conflict_two_deposits,
@@ -1949,7 +1949,7 @@ sc_ws_contract_generic_(Origin, ContractSource, Fun, Config, Opts) ->
     WrappedFun =
         fun(Owner, OwnerPubkey, OtherPubkey) ->
             with_registered_events(EventTags, [SenderConnPid, AckConnPid],
-                fun() ->            
+                fun() ->
                     Fun(Owner, GetVolley, CreateContract, SenderConnPid,
                         AckConnPid, OwnerPubkey, OtherPubkey, Opts, Config)
                 end)
@@ -3561,7 +3561,7 @@ sc_ws_conflict_new_tx_(StarterAction, AckAction, Config) ->
         [initiator,
          responder]),
     ok.
-    
+
 
 update_params(ParticipantA, ParticipantB, Amount) ->
     {<<"channels.update.new">>,
@@ -3947,7 +3947,7 @@ call_fetch_rpc(ConnPid, Params) ->
     ?WS:json_rpc_call(
        ConnPid, #{ <<"method">> => <<"channels.history.fetch">>
                  , <<"params">> => Params }).
-    
+
 
 sc_ws_fsm_id_errors(Roles, ReestablishOptions, Config) ->
     TestError =
@@ -4848,7 +4848,7 @@ sc_ws_pinned_withdraw(Cfg) ->
 sc_ws_pinned_error_update(Cfg) ->
     sc_ws_pinned_error_(
         <<"channels.update.new">>,
-        fun(SenderPubkey, AckPubkey) ->                
+        fun(SenderPubkey, AckPubkey) ->
             #{from => aeser_api_encoder:encode(account_pubkey, SenderPubkey),
               to => aeser_api_encoder:encode(account_pubkey, AckPubkey),
               amount => 1}
@@ -4858,7 +4858,7 @@ sc_ws_pinned_error_update(Cfg) ->
 sc_ws_pinned_error_deposit(Cfg) ->
     sc_ws_pinned_error_(
         <<"channels.deposit">>,
-        fun(_SenderPubkey, _AckPubkey) ->                
+        fun(_SenderPubkey, _AckPubkey) ->
             #{amount => 1}
         end,
         <<"channels.deposit_tx">>, Cfg).
@@ -4866,7 +4866,7 @@ sc_ws_pinned_error_deposit(Cfg) ->
 sc_ws_pinned_error_withdraw(Cfg) ->
     sc_ws_pinned_error_(
         <<"channels.withdraw">>,
-        fun(_SenderPubkey, _AckPubkey) ->                
+        fun(_SenderPubkey, _AckPubkey) ->
             #{amount => 1}
         end,
         <<"channels.withdraw_tx">>, Cfg).
@@ -5821,7 +5821,7 @@ sc_ws_force_progress_(Origin, ContractPubkey,
     {ok, Channel1} = get_channel(ChannelId),
     Round1 = aesc_channels:round(Channel1),
     StateHash1 = aesc_channels:state_hash(Channel1),
-  
+
     ct:log("Force progress asserts:~nOld round ~p, New round ~p",
            [Round0, Round1]),
     ?assertNotEqual(StateHash0, StateHash1),
@@ -5876,4 +5876,3 @@ sc_ws_leave_responder_does_not_timeout(Config0) ->
     ok = sc_ws_update_(Config2),
     ct:log("*** Closing ... ***", []),
     ok = sc_ws_close_(Config2).
-

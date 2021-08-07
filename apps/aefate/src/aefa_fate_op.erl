@@ -181,9 +181,9 @@
         ]).
 
 -include_lib("aebytecode/include/aeb_fate_data.hrl").
--include("../../aecontract/include/aecontract.hrl").
--include("../../aecore/include/blocks.hrl").
--include("../../aecontract/include/hard_forks.hrl").
+-include_lib("aecontract/include/aecontract.hrl").
+-include_lib("aecore/include/blocks.hrl").
+-include_lib("aecontract/include/hard_forks.hrl").
 
 -define(AVAILABLE_FROM(When, ES),
         aefa_engine_state:vm_version(ES) >= When

@@ -5,8 +5,7 @@
 -module(aega_meta_tx_tests).
 
 -include_lib("eunit/include/eunit.hrl").
-
--include("../../aecore/include/blocks.hrl").
+-include_lib("aecore/include/blocks.hrl").
 -include_lib("aecontract/include/hard_forks.hrl").
 
 -define(TEST_MODULE, aetx).
@@ -18,7 +17,7 @@
                   false -> []
               end
         end).
-      
+
 
 %%%-------------------------------------------------------------------
 %%% Test that the proper TTL is fetched
@@ -169,4 +168,3 @@ meta(InnerTx, Opts) ->
           fee         => 20000,
           tx          => InnerTx},
     {ok, _MetaTx} = aega_meta_tx:new(maps:merge(DefaultOpts, Opts)).
-

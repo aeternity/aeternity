@@ -35,7 +35,7 @@
 
 -export([patterns/0]).
 
--include("../../aecontract/include/aecontract.hrl").
+-include_lib("aecontract/include/aecontract.hrl").
 
 patterns() ->
     [{?MODULE, F, A, []} || {F, A} <- [ {handle_request, 3}
@@ -130,7 +130,7 @@ handle_request_('PostPayingFor', #{'PayingForTx' := Req}, _Context) ->
                                       {error, _} = E -> E;
                                       {ok, TxDec} ->
                                           try {ok, aetx:deserialize_from_binary(TxDec)}
-                                          catch 
+                                          catch
                                               _:_ -> error
                                           end
                                   end,
@@ -585,4 +585,3 @@ tx_swagger_name_from_operation_id('PostOracleRegister') -> 'OracleRegisterTx';
 tx_swagger_name_from_operation_id('PostOracleExtend') -> 'OracleExtendTx';
 tx_swagger_name_from_operation_id('PostOracleQuery') -> 'OracleQueryTx';
 tx_swagger_name_from_operation_id('PostOracleRespond') -> 'OracleRespondTx'.
-
