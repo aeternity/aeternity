@@ -21,6 +21,11 @@
     mine_key_blocks_to_gc_txs/1,
     invalid_GCed_tx_does_not_reenter_pool/1,
     repush_tx_skipped_nonce_is_stopped_by_cache/1,
+    skipped_nonce_specific_cleanup/1,
+    insufficient_funds_specific_cleanup/1,
+    name_claim_to_unknown_commitement_cleanup/1,
+    test_defaults/1,
+    test_disabled/1,
     stop_node/1
    ]).
 
@@ -32,9 +37,15 @@
 -define(NODES, [dev1]).
 -define(ACCOUNT_NONCE_LIMIT, 7).
 -define(REWARD_DELAY, 2).
--define(GC_TTL, 8). %% HARDCODED IN THE CODE
+-define(GC_TTL, 20).
 -define(CACHE_SIZE, 2). %% HARDCODED IN THE CODE
 
+-define(COMMON_DEFAULT, 4).
+-define(SPEND_DEFAULT, 5).
+-define(INSUFFICIENT_FUNDS, 6).
+-define(NONCE_TOO_HIGH, 7).
+
+%% we use Alice to send txs to it
 -define(ALICE, {
     <<177,181,119,188,211,39,203,57,229,94,108,2,107,214, 167,74,27,
       53,222,108,6,80,196,174,81,239,171,117,158,65,91,102>>,
@@ -42,6 +53,25 @@
       207,230,147,95,173,161,192,86,195,165,186,115,251,177,181,119,
       188,211,39,203,57,229,94,108,2,107,214,167,74,27,53,222,108,6,
       80,196,174,81,239,171,117,158,65,91,102>>}).
+
+%% we use Bob to initiate microblocks
+-define(BOB, {
+    <<103,28,85,70,70,73,69,117,178,180,148,246,81,104,
+      33,113,6,99,216,72,147,205,210,210,54,3,122,84,195,
+      62,238,132>>,
+    <<59,130,10,50,47,94,36,188,50,163,253,39,81,120,89,219,72,88,68,
+      154,183,225,78,92,9,216,215,59,108,82,203,25,103,28,85,70,70,
+      73,69,117,178,180,148,246,81,104,33,113,6,99,216,72,147,205,
+      210,210,54,3,122,84,195,62,238,132>>}).
+
+-define(CAROL, {
+    <<200,171,93,11,3,93,177,65,197,27,123,127,177,165,
+      190,211,20,112,79,108,85,78,88,181,26,207,191,211,
+      40,225,138,154>>,
+    <<237,12,20,128,115,166,32,106,220,142,111,97,141,104,201,130,56,
+      100,64,142,139,163,87,166,185,94,4,159,217,243,160,169,200,171,
+      93,11,3,93,177,65,197,27,123,127,177,165,190,211,20,112,79,108,
+      85,78,88,181,26,207,191,211,40,225,138,154>>}).
 
 all() ->
     [
@@ -52,7 +82,8 @@ groups() ->
     [
      {all, [sequence],
       [{group, tx_created},
-       {group, tx_received}
+       {group, tx_received},
+       {group, failed_attempts}
        ]},
      {tx_created, [sequence],
       [{group, common_tests}]},
@@ -84,6 +115,14 @@ groups() ->
        maybe_push_tx_out_cache,
        mine_key_blocks_to_gc_txs,
        push_tx_skipped_nonce
+      ]},
+     {failed_attempts, [sequence],
+      [
+       skipped_nonce_specific_cleanup,
+       insufficient_funds_specific_cleanup,
+       name_claim_to_unknown_commitement_cleanup,
+       test_defaults,
+       test_disabled
       ]}
     ].
 
@@ -98,7 +137,17 @@ init_per_suite(Config) ->
                                        , <<"mempool">> =>
                                              #{ <<"tx_ttl">> => ?GC_TTL, %% default 2 weeks
                                                 <<"nonce_offset">> => ?ACCOUNT_NONCE_LIMIT, %% default 5
-                                                <<"cache_size">> => ?CACHE_SIZE %% default 200
+                                                <<"cache_size">> => ?CACHE_SIZE, %% default 200
+                                                <<"tx_failures">> =>
+                                                    #{<<"common">> =>
+                                                        #{<<"fallback">> => ?COMMON_DEFAULT,
+                                                          <<"tx_nonce_too_high_for_account">> => ?NONCE_TOO_HIGH
+                                                         },
+                                                      <<"spend_tx">> =>
+                                                        #{<<"fallback">> => ?SPEND_DEFAULT,
+                                                          <<"insufficient_funds">> => ?INSUFFICIENT_FUNDS
+                                                         }
+                                                     }
                                               }
                                        , <<"mining">> =>
                                              #{ <<"expected_mine_rate">> => ?MINE_RATE,
@@ -119,6 +168,11 @@ init_per_group(EventType, Config) when EventType =:= tx_created;
                                        EventType =:= tx_received ->
     [{push_event, EventType} | Config];
 init_per_group(common_tests, Config) ->
+    Config;
+init_per_group(failed_attempts, Config0) ->
+    Config = [{push_event, tx_received} | Config0],
+    start_node(Config),
+    seed_account(pubkey(?BOB), Config),
     Config;
 init_per_group(_Group, Config) ->
     start_node(Config),
@@ -259,8 +313,7 @@ push_tx_skipped_nonce(Config) ->
     SpendTx = prepare_spend_tx(Node, #{nonce => NextNonce + 1}),
     ct:log("Spend tx: ~p", [SpendTx]),
     ok = push(NodeName, SpendTx, Config),
-    {ok, [SpendTx]} = rpc:call(NodeName, aec_tx_pool, peek, [infinity]),
-    ok.
+    {ok, [_SpendTx]} = rpc:call(NodeName, aec_tx_pool, peek, [infinity]).
 
 repush_tx_skipped_nonce_is_stopped_by_cache(Config) ->
     Node = dev1,
@@ -344,10 +397,6 @@ invalid_GCed_tx_does_not_reenter_pool(Config) ->
     ok = push(NodeName, InvalidSpendTx, Config),
     ok.
 
-
-prepare_spend_tx(Node) ->
-    prepare_spend_tx(Node, #{}).
-
 prepare_spend_tx(Node, Opts) ->
     {Priv, Pub} = aecore_suite_utils:sign_keys(Node),
     prepare_spend_tx(Node, Opts, Pub, Priv).
@@ -362,9 +411,9 @@ prepare_spend_tx(Node, Opts, Pub, Priv) ->
               amount       => 1,
               fee          => ?SPEND_FEE,
               nonce        => Nonce,
-              payload      => <<"">>},
+              payload      => random_hash()},
             Opts),
-
+    ct:log("Preparing a spend tx: ~p", [Params]),
     {ok, Tx} = aec_spend_tx:new(Params),
     aec_test_utils:sign_tx(Tx, Priv, false).
 
@@ -385,3 +434,185 @@ mine_tx(Node, SignedTx) ->
     aecore_suite_utils:mine_blocks_until_txs_on_chain(NodeName,
                                                       [TxHash],
                                                       10). %% max keyblocks
+
+skipped_nonce_specific_cleanup(Config) ->
+    Node = dev1,
+    NodeName = aecore_suite_utils:node_name(Node),
+    {ok, [SkippedNonceTx]} = push_tx_skipped_nonce(Config),
+    CleanupTTL = ?NONCE_TOO_HIGH,
+    %% assert the assumption
+    {ok, CleanupTTL} = rpc:call(NodeName, aec_tx_pool_failures, limit, [SkippedNonceTx, tx_nonce_too_high_for_account]),
+    make_microblock_attempts(1, Config),
+    {ok, _} = aecore_suite_utils:mine_blocks(NodeName, 1, ?MINE_RATE, key, #{}),
+    %% the tx is still here
+    {ok, [SkippedNonceTx]} = rpc:call(NodeName, aec_tx_pool, peek, [infinity]),
+    %% mine some more blocks to check the tx is not cleaned up too early
+    make_microblock_attempts(CleanupTTL - 2, Config),
+    {ok, [SkippedNonceTx]} = rpc:call(NodeName, aec_tx_pool, peek, [infinity]),
+    %% it should be cleaned up at the next height
+    make_microblock_attempts(1, Config),
+    %%{ok, _} = aecore_suite_utils:mine_blocks(NodeName, 1, ?MINE_RATE, key, #{}),
+    timer:sleep(100), %% provide some time for the tx pool to process the message
+    {ok, []} = rpc:call(NodeName, aec_tx_pool, peek, [infinity]),
+    ok.
+
+insufficient_funds_specific_cleanup(Config) ->
+    Node = dev1,
+    NodeName = aecore_suite_utils:node_name(Node),
+    %% ensure an account for Carol
+    seed_account(pubkey(?CAROL), 1, Config),
+    SpendTx = prepare_spend_tx(Node, #{amount => 100000000}, pubkey(?CAROL), privkey(?CAROL)),
+    ok = push(NodeName, SpendTx, Config),
+    CleanupTTL = ?INSUFFICIENT_FUNDS,
+    %% assert the assumption
+    {ok, CleanupTTL} = rpc:call(NodeName, aec_tx_pool_failures, limit, [SpendTx, insufficient_funds]),
+    make_microblock_attempts(1, Config),
+    %% the tx is still here
+    {ok, [SpendTx]} = rpc:call(NodeName, aec_tx_pool, peek, [infinity]),
+    %% mine some more blocks to check the tx is not cleaned up too early
+    make_microblock_attempts(CleanupTTL - 2, Config),
+    %% it should be cleaned up at the next height
+    make_microblock_attempts(1, Config),
+    timer:sleep(100), %% provide some time for the tx pool to process the message
+    {ok, []} = rpc:call(NodeName, aec_tx_pool, peek, [infinity]),
+    ok.
+
+%% this tests the fallback to the defaults in the schema
+name_claim_to_unknown_commitement_cleanup(Config) ->
+    Node = dev1,
+    NodeName = aecore_suite_utils:node_name(Node),
+    {Priv, Pub} = aecore_suite_utils:sign_keys(Node),
+    {ok, NextNonce} = rpc:call(NodeName, aec_next_nonce, pick_for_account, [Pub]),
+    {ok, Tx} =
+        aens_claim_tx:new(#{account_id => aeser_id:create(account, Pub),
+                            nonce => NextNonce,
+                            name => <<"asdf.chain">>,
+                            name_salt => 123,
+                            fee => ?SPEND_FEE * 10}),
+    SignedTx = aec_test_utils:sign_tx(Tx, Priv, false),
+    ok = push(NodeName, SignedTx, Config),
+    {ok, [SignedTx]} = rpc:call(NodeName, aec_tx_pool, peek, [infinity]),
+    {ok, 1} = rpc:call(NodeName, aec_tx_pool_failures, limit, [SignedTx, bad_transaction]),
+    make_microblock_attempts(1, Config),
+    timer:sleep(100), %% provide some time for the tx pool to process the message
+    {ok, []} = rpc:call(NodeName, aec_tx_pool, peek, [infinity]),
+    ok.
+
+seed_account(Pubkey, Config) ->
+    seed_account(Pubkey, ?SPEND_FEE * 10000, Config).
+
+seed_account(Pubkey, Amount, Config) ->
+    Node = dev1,
+    NodeName = aecore_suite_utils:node_name(Node),
+    %% precondition
+    {ok, []} = rpc:call(NodeName, aec_tx_pool, peek, [infinity]),
+    ct:log("Seed spend tx", []),
+    SpendTx = prepare_spend_tx(Node, #{recipient_id => aeser_id:create(account, Pubkey),
+                                       amount => Amount}),
+    ok = push(NodeName, SpendTx, Config),
+    {ok, [_SpendTx]} = rpc:call(NodeName, aec_tx_pool, peek, [infinity]),
+    mine_tx(Node, SpendTx),
+    ok.
+
+make_microblock_attempts(Cnt, _Config) ->
+    Node = dev1,
+    NodeName = aecore_suite_utils:node_name(Node),
+    lists:foreach(
+        fun(_) -> attempt_microblock(NodeName) end,
+        lists:seq(1, Cnt)),
+    ok.
+
+attempt_microblock(NodeName) ->
+    TopHash = rpc:call(NodeName, aec_chain, top_block_hash, []),
+    {ok, MicroBlock, _} = rpc:call(NodeName, aec_block_micro_candidate,
+                                   create, [TopHash]),
+    ok.
+
+test_defaults(Config) ->
+    Settings =
+        #{<<"enabled">> => true,
+          <<"common">> => #{<<"fallback">> => 5}},
+    %% there is a generic catch-all fallback for all txs, even if not set
+    test_(Settings, 5, Config),
+    %% the tx specific fallback wins
+    test_(Settings#{<<"spend_tx">> => #{<<"fallback">> => 4}}, 4, Config),
+    %% the tx specific error wins over the fallback
+    test_(Settings#{<<"spend_tx">> => #{<<"fallback">> => 4, <<"insufficient_funds">> => 3}}, 3, Config),
+    %% the generic error wins over the generic fallback
+    test_(Settings#{<<"common">> => #{<<"fallback">> => 5, <<"insufficient_funds">> => 3}}, 3, Config),
+    %% the generic error messages wins over the tx specific fallback
+    test_(Settings#{<<"common">> => #{<<"fallback">> => 5, <<"insufficient_funds">> => 3},
+                    <<"spend_tx">> => #{<<"fallback">> => 4}}, 3, Config),
+    %% tx specific error still wins over the generic one
+    test_(Settings#{<<"common">> => #{<<"fallback">> => 5, <<"insufficient_funds">> => 7},
+                    <<"spend_tx">> => #{<<"fallback">> => 4, <<"insufficient_funds">> => 3}}, 3, Config),
+    ok.
+
+test_(Settings, ExpectedCleanupTTL, Config) ->
+    Node = dev1,
+    NodeName = aecore_suite_utils:node_name(Node),
+    %% cache the defaults so we can set them at the end and we don't corrupt
+    %% the state of the node
+    DefaultSettings = rpc:call(NodeName, aec_tx_pool_failures, settings, []),
+    true = rpc:call(NodeName, aec_tx_pool_failures, set, [Settings]),
+    %% ensure new settings are into effect:
+    Settings = rpc:call(NodeName, aec_tx_pool_failures, settings, []),
+    %% ensure an account for Carol
+    seed_account(pubkey(?CAROL), 1, Config),
+    SpendTx = prepare_spend_tx(Node, #{amount => 100000000}, pubkey(?CAROL), privkey(?CAROL)),
+    ok = push(NodeName, SpendTx, Config),
+    {ok, CleanupTTL} = rpc:call(NodeName, aec_tx_pool_failures, limit, [SpendTx, insufficient_funds]),
+    %% assert the assumption
+    {CleanupTTL, CleanupTTL} = {ExpectedCleanupTTL, CleanupTTL},
+    make_microblock_attempts(1, Config),
+    %% the tx is still here
+    {ok, [SpendTx]} = rpc:call(NodeName, aec_tx_pool, peek, [infinity]),
+    %% do some more attempts to check the tx is not cleaned up too early
+    make_microblock_attempts(CleanupTTL - 2, Config),
+    %% it should be cleaned up at the next attempt
+    make_microblock_attempts(1, Config),
+    timer:sleep(100), %% provide some time for the tx pool to process the message
+    {ok, []} = rpc:call(NodeName, aec_tx_pool, peek, [infinity]),
+    rpc:call(NodeName, aec_tx_pool_failures, set, [DefaultSettings]),
+    ok.
+
+test_disabled(Config) ->
+    Node = dev1,
+    NodeName = aecore_suite_utils:node_name(Node),
+    %% cache the defaults so we can set them at the end and we don't corrupt
+    %% the state of the node
+    DefaultSettings = rpc:call(NodeName, aec_tx_pool_failures, settings, []),
+    Settings = #{<<"enabled">> => false},
+    true = rpc:call(NodeName, aec_tx_pool_failures, set, [Settings]),
+    %% ensure new settings are into effect:
+    Settings = rpc:call(NodeName, aec_tx_pool_failures, settings, []),
+    %% ensure an account for Carol
+    seed_account(pubkey(?CAROL), 1, Config),
+    SpendTx = prepare_spend_tx(Node, #{amount => 100000000}, pubkey(?CAROL), privkey(?CAROL)),
+    ok = push(NodeName, SpendTx, Config),
+    no_limit = rpc:call(NodeName, aec_tx_pool_failures, limit, [SpendTx, insufficient_funds]),
+    %% assert that no limit is being applied
+    lists:foreach(
+        fun(_) ->
+            make_microblock_attempts(1, Config),
+            %% the tx is still here
+            {ok, [SpendTx]} = rpc:call(NodeName, aec_tx_pool, peek, [infinity])
+        end,
+        lists:seq(1, 2 * ?GC_TTL)),
+    {ok, _} = aecore_suite_utils:mine_blocks(NodeName, ?GC_TTL - 1, ?MINE_RATE, key, #{}),
+    {ok, [SpendTx]} = rpc:call(NodeName, aec_tx_pool, peek, [infinity]),
+    %% it should be cleaned up at the next height
+    {ok, _} = aecore_suite_utils:mine_blocks(NodeName, 1, ?MINE_RATE, key, #{}),
+    timer:sleep(100), %% provide some time for the tx pool to process the message
+    {ok, []} = rpc:call(NodeName, aec_tx_pool, peek, [infinity]),
+    rpc:call(NodeName, aec_tx_pool_failures, set, [DefaultSettings]),
+    ok.
+
+
+random_hash() ->
+    HList =
+        lists:map(
+            fun(_) -> rand:uniform(255) end,
+            lists:seq(1, 32)),
+    list_to_binary(HList).
+

@@ -364,6 +364,8 @@ init_per_suite(Config) ->
     DefCfg = #{<<"chain">> =>
                    #{<<"persist">> => false,
                      <<"hard_forks">> => Forks},
+                     <<"mempool">> =>
+                        #{<<"tx_failures">> => #{ <<"enabled">> => false}},
                <<"mining">> =>
                    #{<<"micro_block_cycle">> => 1,
                      %% disable name claim auction

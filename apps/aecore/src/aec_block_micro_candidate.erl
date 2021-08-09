@@ -56,7 +56,9 @@ create_with_state(Block, KeyBlock, Txs, Trees) ->
                       aetx_env:env()) ->
         {ok, list(aetx_sign:signed_tx()), aec_trees:trees(), aetx_env:events()}.
 apply_block_txs(Txs, Trees, Env) ->
-    int_apply_block_txs(Txs, Trees, Env, false).
+    {ok, Txs1, _InvalidTxs, Trees1, Events} = int_apply_block_txs(Txs, Trees, Env, false),
+    {ok, Txs1, Trees1, Events}.
+                                                                  
 
 -spec apply_block_txs_strict(list(aetx_sign:signed_tx()), aec_trees:trees(),
                              aetx_env:env()) ->
@@ -114,7 +116,12 @@ int_create_block(PrevBlockHash, PrevBlock, KeyBlock, Trees, Txs) ->
     KeyHeader = aec_blocks:to_header(KeyBlock),
     Env = aetx_env:tx_env_from_key_header(KeyHeader, PrevKeyHash,
                                           Time, PrevBlockHash),
-    {ok, Txs1, Trees2, Events} = int_apply_block_txs(Txs, Trees, Env, false),
+    {ok, Txs1, InvalidTxs, Trees2, Events} = int_apply_block_txs(Txs, Trees, Env, false),
+    case length(InvalidTxs) > 0 of
+        true ->
+            ok = aec_tx_pool:failed_txs(InvalidTxs);
+        false -> pass
+    end,
 
     TxsTree = aec_txs_trees:from_txs(Txs1),
     TxsRootHash = aec_txs_trees:pad_empty(aec_txs_trees:root_hash(TxsTree)),
@@ -165,9 +172,9 @@ get_pof(KeyBlock, PrevBlockHash, PrevBlock) ->
 
 %% Non-strict
 int_apply_block_txs(Txs, Trees, Env, false) ->
-    {ok, Txs1, _InvalidTxs, Trees1, Events} =
+    {ok, Txs1, InvalidTxs, Trees1, Events} =
         aec_trees:apply_txs_on_state_trees(Txs, Trees, Env),
-    {ok, Txs1, Trees1, Events};
+    {ok, Txs1, InvalidTxs, Trees1, Events};
 %% strict
 int_apply_block_txs(Txs, Trees, Env, true) ->
     case aec_trees:apply_txs_on_state_trees_strict(Txs, Trees, Env) of

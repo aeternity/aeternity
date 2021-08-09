@@ -47,7 +47,9 @@ init_per_suite(Config) ->
             <<"micro_block_cycle">> => MicroBlockCycle
         },
         <<"mempool">> => #{ <<"invalid_tx_ttl">> => 2
-                          , <<"nonce_baseline">> => 10 }
+                          , <<"nonce_baseline">> => 10
+                          , <<"tx_failures">> => #{ <<"enabled">> => false}
+                          }
     },
     Config1 = aecore_suite_utils:init_per_suite([dev1, dev2], DefCfg,
                                                 [{add_peers, true}],
