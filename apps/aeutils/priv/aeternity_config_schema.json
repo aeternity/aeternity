@@ -359,7 +359,8 @@
                     },
                     "node_operator" : {
                         "description" : "Node operator endpoints",
-                        "type" : "boolean"
+                        "type" : "boolean",
+                        "default" : false
                     },
                     "dev" : {
                         "description" : "Development only API - for validation of client implementations. Should not be used in real life scenarios",

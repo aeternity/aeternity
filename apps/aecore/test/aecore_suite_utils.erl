@@ -1339,6 +1339,13 @@ http_request(Host, post, Path, Params) ->
     %% lager:debug("Type = ~p; Body = ~p", [Type, Body]),
     ct:log("POST ~p, type ~p, Body ~p", [URL, Type, Body]),
     R = httpc_request(post, {URL, [], Type, Body}, [], []),
+    process_http_return(R);
+http_request(Host, delete, Path, Params) ->
+    Prefix = get(api_prefix, "/v2/"),
+    URL = binary_to_list(
+            iolist_to_binary([Host, Prefix, Path, encode_get_params(Params)])),
+    ct:log("DELETE ~p", [URL]),
+    R = httpc_request(delete, {URL, []}, [], []),
     process_http_return(R).
 
 httpc_request(Method, Request, HTTPOptions, Options) ->

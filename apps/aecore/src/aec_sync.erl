@@ -512,7 +512,6 @@ valid_sync_tasks(#state{sync_tasks = STs}) ->
     [ST || #sync_task{suspect = false} = ST <- STs].
 
 update_top_target(TopTarget, State) ->
-    aec_tx_pool:new_sync_top_target(TopTarget),
     State#state{ top_target = TopTarget }.
 
 do_update_sync_task(State, STId, Update) ->

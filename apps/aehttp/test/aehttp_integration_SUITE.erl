@@ -38,6 +38,11 @@
    , wait_for_tx_hash_on_chain/1
    , sign_and_post_tx/2
    , end_per_testcase_all/1
+   , get_spend/1
+   , post_transactions_sut/1
+   , get_transactions_pending_sut/0
+   , delete_tx_from_mempool_sut/1
+   , get_key_blocks_current_height_sut/0
    ]).
 
 -export(
@@ -1435,6 +1440,16 @@ get_accounts_transactions_pending_by_pubkey_sut(Id) ->
     Host = external_address(),
     Id1 = binary_to_list(Id),
     http_request(Host, get, "accounts/" ++ http_uri:encode(Id1) ++ "/transactions/pending", []).
+
+get_transactions_pending_sut() ->
+    Host = internal_address(),
+    http_request(Host, get, "debug/transactions/pending", []).
+
+delete_tx_from_mempool_sut(Hash) when is_binary(Hash) ->
+    delete_tx_from_mempool_sut(binary_to_list(Hash));
+delete_tx_from_mempool_sut(Hash) when is_list(Hash) ->
+    Host = internal_address(),
+    http_request(Host, delete, "node/operator/mempool/hash/" ++ Hash, []).
 
 %% /transactions/*
 
