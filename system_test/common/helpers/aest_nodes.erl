@@ -435,7 +435,7 @@ post_create_state_channel_tx(Node, Initiator, Responder, #{nonce := Nonce} = Map
                                             lock_period => 0,
                                             ttl => 100000,
                                             fee => 50000 * gas_price(),
-                                            delegates => {[], []},
+                                            delegate_ids => {[], []},
                                             channel_reserve => 40}, Map)),
     BothSigned = aec_test_utils:sign_tx(CreateTx, [InSecKey, RespSecKey]),
     Transaction = aeser_api_encoder:encode(transaction, aetx_sign:serialize_to_binary(BothSigned)),
