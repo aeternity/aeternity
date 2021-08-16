@@ -1,6 +1,6 @@
 # About this release
 
-[This](https://github.com/aeternity/aeternity/releases/tag/v6.1.1) is a maintenance Iris release.
+[This](https://github.com/aeternity/aeternity/releases/tag/v6.2.0) is a maintenance Iris release.
 
 It:
 
@@ -30,6 +30,8 @@ It:
   not enough tokens, skipped nonce or something else. The endpoint is
   `/debug/check-tx/pool/{transaction-hash}`. It is a debug endpoint and should
   not be used in production.
+* Fixes a bug in the logging setup: now node operator can set a global log
+  level.
  
 
 
