@@ -230,7 +230,7 @@ simple_channel_test(ChannelOpts, InitiatorNodeBaseSpec, ResponderNodeBaseSpec, C
 
 precompile_identity_contract(Config1) ->
     %% Precompile a simple contract for testing
-    Config2 = aect_test_utils:init_per_group(aevm, Config1),
+    Config2 = aect_test_utils:init_per_group(fate, Config1),
     aect_test_utils:setup_testcase(Config2),
     SimpleContractName = "identity",
     {ok, BinSrc} = aect_test_utils:read_contract(aect_test_utils:sophia_version(), SimpleContractName),
