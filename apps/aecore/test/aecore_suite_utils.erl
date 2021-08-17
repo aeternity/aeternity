@@ -26,6 +26,7 @@
          stop_node/2,
          reinit_with_bitcoin_ng/1,
          reinit_with_ct_consensus/1,
+         reinit_nodes_with_ct_consensus/1,
          get_node_db_config/1,
          delete_node_db_if_persisted/1,
          expected_mine_rate/0,
@@ -62,6 +63,7 @@
          peer_info/1,
          connect/1,
          connect/2,
+         connect_wait/2,
          subscribe/2,
          unsubscribe/2,
          events_since/3,
@@ -286,6 +288,18 @@ reinit_with_bitcoin_ng(N) ->
     Node = node_name(N),
     ok = set_env(Node, aecore, consensus, #{<<"0">> => #{<<"name">> => <<"pow_cuckoo">>}}),
     ok = rpc:call(Node, aec_conductor, reinit_chain, []).
+
+reinit_nodes_with_ct_consensus(Nodes) ->
+    NodeNames = [node_name(N) || N <- Nodes],
+    Timeout = 5000,
+    [{ok, maintenance} = rpc:call(NN, app_ctrl, set_and_await_mode, [maintenance, Timeout])
+     || NN <- NodeNames],
+    [ok = set_env(NN, aecore, consensus, #{<<"0">> => #{<<"name">> => <<"ct_tests">>}})
+     || NN <- NodeNames],
+    [ok = rpc:call(NN, aec_conductor, reinit_chain, []) || NN <- NodeNames],
+    [{ok, normal} = rpc:call(NN, app_ctrl, set_and_await_mode, [normal, Timeout])
+     || NN <- NodeNames],
+    ok.
 
 reinit_with_ct_consensus(N) ->
     ct:log("Reinitializing chain on ~p with ct_tests consensus", [N]),
@@ -614,7 +628,11 @@ connect(N, Mocks) when is_list(Mocks) ->
 
 -spec connect(atom()) -> ok.
 connect(N) ->
-    connect_(N, 50),
+    connect_wait(N, aehttp).
+
+-spec connect_wait(atom(), atom()) -> ok.
+connect_wait(N, WaitForApp) ->
+    connect_(N, 50, WaitForApp),
     report_node_config(N),
     ok.
 
@@ -791,18 +809,18 @@ delete_file(F) ->
 %%% Internal functions
 %%%=============================================================================
 
-connect_(N, Timeout) when Timeout < 10000 ->
+connect_(N, Timeout, WaitForApp) when Timeout < 10000 ->
     timer:sleep(Timeout),
     case net_kernel:hidden_connect_node(N) of
         true ->
             ct:log("hidden_connect_node(~p) -> true", [N]),
-            await_aehttp(N),
+            await_app(N, WaitForApp),
             true;
         false ->
             ct:log("hidden_connect_node(~p) -> false, retrying ...", [N]),
-            connect_(N, Timeout * 2)
+            connect_(N, Timeout * 2, WaitForApp)
     end;
-connect_(N, _) ->
+connect_(N, _, _) ->
     ct:log("exhausted retries (~p)", [N]),
     erlang:error({could_not_connect, N}).
 
@@ -826,20 +844,23 @@ end_mock(N, Mock) ->
     rpc:call(N, Module, FinishF, [], 2000).
 
 await_aehttp(N) ->
+    await_app(N, aehttp).
+
+await_app(N, App) ->
     subscribe(N, app_started),
     Events = events_since(N, app_started, 0),
     ct:log("`app_started` Events since 0: ~p", [Events]),
-    case [true || #{info := aehttp} <- Events] of
+    case [true || #{info := A} <- Events, A == App] of
         [] ->
             receive
-                {app_started, #{info := aehttp}} ->
-                    ct:log("aehttp started", []),
+                {app_started, #{info := App}} ->
+                    ct:log("~p started", [App]),
                     ok
             after 30000 ->
-                    error(timeout_waiting_for_aehttp)
+                    error(list_to_atom("timeout_waiting_for_" ++ atom_to_list(App)))
             end;
         [_|_] ->
-            ct:log("aehttp already started", []),
+            ct:log("~p already started", [App]),
             ok
     end,
     unsubscribe(N, app_started),

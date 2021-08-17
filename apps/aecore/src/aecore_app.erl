@@ -45,6 +45,7 @@ prep_stop(State) ->
     aec_upnp:prep_stop().
 
 stop(_State) ->
+    lager:info("Stopping aecore app", []),
     ok.
 
 set_app_ctrl_mode() ->

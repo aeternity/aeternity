@@ -221,6 +221,7 @@ stratum_reply({Nonce, Evd}, ForSealing) ->
 %%%===================================================================
 
 init(Options) ->
+    lager:debug("Options = ~p", [Options]),
     process_flag(trap_exit, true),
     ok     = init_chain_state(),
     TopBlockHash0 = aec_chain:top_block_hash(),
@@ -272,17 +273,32 @@ reinit_chain_state() ->
     %% let's clear the db in a separate db tx
     %% this is ok as anyway this is only a test endpoint used in one place:
     %% apps/aehttp/test/aehttp_integration_SUITE.erl
+    in_maintenance_mode(fun reinit_chain_state_/0).
+
+reinit_chain_state_() ->
     ok = supervisor:terminate_child(aecore_sup, aec_tx_pool),
     ok = supervisor:terminate_child(aecore_sup, aec_tx_pool_gc),
-    ok = supervisor:terminate_child(aecore_sup, aec_connection_sup),
     aec_db:ensure_transaction(fun aec_db:clear_db/0),
     aec_db:ensure_transaction(fun init_chain_state/0),
-    {ok, _} = supervisor:restart_child(aecore_sup, aec_connection_sup),
     {ok, _} = supervisor:restart_child(aecore_sup, aec_tx_pool_gc),
     {ok, _} = supervisor:restart_child(aecore_sup, aec_tx_pool),
     ok.
 
-reinit_chain_impl(State1 = #state{ consensus = #consensus{consensus_module = ActiveConsensus} = Cons }) ->
+in_maintenance_mode(F) when is_function(F,0) ->
+    case app_ctrl:get_mode() of
+        normal ->
+            app_ctrl:set_and_await_mode(maintenance, 10000),
+            Res = F(),
+            app_ctrl:set_and_await_mode(normal, 5000),
+            Res;
+        _ ->
+            F()
+    end.
+
+reinit_chain_impl(State) ->
+    in_maintenance_mode(fun() -> reinit_chain_impl_(State) end).
+
+reinit_chain_impl_(State1 = #state{ consensus = #consensus{consensus_module = ActiveConsensus} = Cons }) ->
     lager:info("Reinitializing chain"),
     %% NOTE: ONLY FOR TEST
     ActiveConsensus:stop(),
@@ -374,6 +390,19 @@ handle_call(is_leader, _From, State = #state{ consensus = Cons }) ->
     {reply, Cons#consensus.leader, State};
 handle_call(reinit_chain, _From, State) ->
     reinit_chain_impl(State);
+handle_call({trace,Bool}, _From, State) ->
+    case Bool of
+        true ->
+            dbg:tracer(),
+            dbg:tpl(?MODULE, x),
+            dbg:tpl(aecore_suite_utils,x),
+            dbg:p(self(), [c]);
+        false ->
+            dbg:ctpl(?MODULE),
+            dbg:ctpl(aecore_suite_utils),
+            dbg:stop()
+    end,
+    {reply, ok, State};
 handle_call(Request, _From, State) ->
     epoch_mining:error("Received unknown request: ~p", [Request]),
     Reply = ok,
@@ -395,6 +424,10 @@ handle_info({gproc_ps_event, candidate_block, #{info := new_candidate}}, State) 
             {noreply, State#state{ micro_block_candidate = undefined }}
     end;
 handle_info(init_continue, State) ->
+    %% As conductor and block_generator are both under a rest_for_one sup,
+    %% and the generator starts after the conductor, we use gproc to wait
+    %% for the generator to become available (should be almost immediate).
+    aec_block_generator:await(),
     {noreply, start_mining_(State)};
 handle_info({worker_reply, Pid, Res}, State) ->
     State1 = handle_worker_reply(Pid, Res, State),
@@ -410,7 +443,8 @@ handle_info(Other, State) ->
     epoch_mining:error("Received unknown info message: ~p", [Other]),
     {noreply, State}.
 
-terminate(_Reason, State) ->
+terminate(Reason, State) ->
+    lager:debug("Reason = ~p", [Reason]),
     kill_all_workers(State),
     ok.
 

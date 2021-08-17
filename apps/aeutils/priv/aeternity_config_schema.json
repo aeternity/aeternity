@@ -10,7 +10,7 @@
                 "maintenance_mode" : {
                     "description" : "When true, the node disables sync, mining, http endpoints etc",
                     "type" : "boolean",
-                    "default" : true
+                    "default" : false
                 }
             }
         },

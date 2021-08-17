@@ -241,8 +241,9 @@ missing_tx_gossip(_Config) ->
 check_coinbase_validation(_Config) ->
     %% Mine on a node a contract tx using coinbase.
     N1 = aecore_suite_utils:node_name(dev1),
-    aecore_suite_utils:reinit_with_ct_consensus(dev1),
-    aecore_suite_utils:reinit_with_ct_consensus(dev2),
+    aecore_suite_utils:reinit_nodes_with_ct_consensus([dev1, dev2]),
+    %% aecore_suite_utils:reinit_with_ct_consensus(dev1),
+    %% aecore_suite_utils:reinit_with_ct_consensus(dev2),
     {ok, TxH1, Ct1, Code} =
         create_contract_tx(N1, chain, [],  300000 * aec_test_utils:min_gas_price(),  1,  100),
     {ok, TxH2} =

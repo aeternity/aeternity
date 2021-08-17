@@ -12,8 +12,8 @@
 start(_StartType, _StartArgs) ->
     aec_connection_sup:start_link().
 
-start_phase(startup_check, _StartType, _PhaseArgs) ->
-    aenode_ctrl:startup_check().
+start_phase(_Phase, _StartType, _PhaseArgs) ->
+    ok.
 
 prep_stop(_State) ->
     ok.
