@@ -189,7 +189,10 @@ get_key_block_candidate() ->
 -ifdef(TEST).
 -spec reinit_chain() -> aec_headers:header().
 reinit_chain() ->
-    gen_server:call(?SERVER, reinit_chain).
+    ok = gen_server:call(?SERVER, reinit_chain),
+    ok = supervisor:terminate_child(aecore_sup, aec_conductor_sup),
+    {ok,_} = supervisor:restart_child(aecore_sup, aec_conductor_sup),
+    ok.
 -endif.
 
 %%%===================================================================
@@ -316,7 +319,8 @@ reinit_chain_impl_(State1 = #state{ consensus = #consensus{consensus_module = Ac
     Cons1 = Cons#consensus{consensus_module = ConsensusModule},
     epoch_mining:info("Mining stopped"),
     State3 = kill_all_workers(State2),
-    hard_reset_block_generator(),
+    %% Not sure if this code is actually needed, since the conductor will be restarted
+    %% anyway, but we'll keep it around for now.
     State =
         case State2#state.mining_state of
             stopped  ->
@@ -390,19 +394,6 @@ handle_call(is_leader, _From, State = #state{ consensus = Cons }) ->
     {reply, Cons#consensus.leader, State};
 handle_call(reinit_chain, _From, State) ->
     reinit_chain_impl(State);
-handle_call({trace,Bool}, _From, State) ->
-    case Bool of
-        true ->
-            dbg:tracer(),
-            dbg:tpl(?MODULE, x),
-            dbg:tpl(aecore_suite_utils,x),
-            dbg:p(self(), [c]);
-        false ->
-            dbg:ctpl(?MODULE),
-            dbg:ctpl(aecore_suite_utils),
-            dbg:stop()
-    end,
-    {reply, ok, State};
 handle_call(Request, _From, State) ->
     epoch_mining:error("Received unknown request: ~p", [Request]),
     Reply = ok,
@@ -424,10 +415,6 @@ handle_info({gproc_ps_event, candidate_block, #{info := new_candidate}}, State) 
             {noreply, State#state{ micro_block_candidate = undefined }}
     end;
 handle_info(init_continue, State) ->
-    %% As conductor and block_generator are both under a rest_for_one sup,
-    %% and the generator starts after the conductor, we use gproc to wait
-    %% for the generator to become available (should be almost immediate).
-    aec_block_generator:await(),
     {noreply, start_mining_(State)};
 handle_info({worker_reply, Pid, Res}, State) ->
     State1 = handle_worker_reply(Pid, Res, State),
@@ -1312,21 +1299,6 @@ is_leader(NewTopBlock, PrevKeyHeader) ->
         {ok, MinerKey} -> LeaderKey =:= MinerKey;
         {error, _}     -> false
     end.
-
--ifdef(TEST).
-hard_reset_block_generator() ->
-    %% Hard reset of aec_block_generator
-    exit(whereis(aec_block_generator), kill),
-    flush_candidate().
-
-flush_candidate() ->
-    receive
-        {gproc_ps_event, candidate_block, _} ->
-            flush_candidate()
-    after 10 ->
-            ok
-    end.
--endif.
 
 setup_loop(State = #state{ consensus = Cons }, RestartMining, IsLeader, Origin) ->
     State1 = State#state{ consensus = Cons#consensus{ leader = IsLeader } },

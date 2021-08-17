@@ -41,6 +41,5 @@ start_link() ->
 %%====================================================================
 
 init([]) ->
-    {ok, {{rest_for_one, 5, 50}, [?CHILD(aec_conductor, 5000, worker),
-                                  ?CHILD(aec_block_generator, 5000, worker)]}}.
-
+    {ok, {{one_for_all, 5, 50}, [?CHILD(aec_block_generator, 5000, worker),
+                                 ?CHILD(aec_conductor, 5000, worker)]}}.

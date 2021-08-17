@@ -14,7 +14,6 @@
 -export([ get_generation_state/0
         , start_generation/0
         , stop_generation/0
-        , await/0
         ]).
 
 -export([prep_stop/0]).
@@ -47,12 +46,6 @@ get_candidate() ->
         {error, no_candidate}
     end.
 
-await() ->
-    gproc:await(gproc_name()).
-
-gproc_name() ->
-    {n, l, ?MODULE}.
-
 start_generation() ->
     gen_server:cast(?MODULE, start_generation).
 
@@ -69,7 +62,6 @@ prep_stop() ->
 %% -- gen_server callbacks ---------------------------------------------------
 
 init([]) ->
-    gproc:reg(gproc_name()),
     aec_events:subscribe(tx_created),
     aec_events:subscribe(tx_received),
     aec_events:subscribe(top_changed),
