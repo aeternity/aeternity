@@ -2,11 +2,11 @@
 %%%=============================================================================
 %%% @copyright 2018, Aeternity Anstalt
 %%% @doc
-%%%    Supervisor (resr_for_one) for block candidate generation and conductor
+%%%    Supervisor (one_for_all) for block candidate generation and conductor
 %%%
 %%%  Supervision tree is
 %%%```
-%%%   aec_conductor_sup (rest_for_one)
+%%%   aec_conductor_sup (one_for_all)
 %%%         |
 %%%         ---------------------
 %%%         |                   |

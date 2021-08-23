@@ -189,10 +189,14 @@ get_key_block_candidate() ->
 -ifdef(TEST).
 -spec reinit_chain() -> aec_headers:header().
 reinit_chain() ->
-    ok = gen_server:call(?SERVER, reinit_chain),
-    ok = supervisor:terminate_child(aecore_sup, aec_conductor_sup),
-    {ok,_} = supervisor:restart_child(aecore_sup, aec_conductor_sup),
-    ok.
+
+    in_maintenance_mode(
+      fun() ->
+              ok = gen_server:call(?SERVER, reinit_chain),
+              ok = supervisor:terminate_child(aecore_sup, aec_conductor_sup),
+              {ok,_} = supervisor:restart_child(aecore_sup, aec_conductor_sup),
+              ok
+      end).
 -endif.
 
 %%%===================================================================
@@ -298,10 +302,7 @@ in_maintenance_mode(F) when is_function(F,0) ->
             F()
     end.
 
-reinit_chain_impl(State) ->
-    in_maintenance_mode(fun() -> reinit_chain_impl_(State) end).
-
-reinit_chain_impl_(State1 = #state{ consensus = #consensus{consensus_module = ActiveConsensus} = Cons }) ->
+reinit_chain_impl(State1 = #state{ consensus = #consensus{consensus_module = ActiveConsensus} = Cons }) ->
     lager:info("Reinitializing chain"),
     %% NOTE: ONLY FOR TEST
     ActiveConsensus:stop(),

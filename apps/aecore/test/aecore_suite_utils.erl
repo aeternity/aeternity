@@ -64,6 +64,7 @@
          connect/1,
          connect/2,
          connect_wait/2,
+         connect_await_mode/1,
          subscribe/2,
          unsubscribe/2,
          events_since/3,
@@ -632,9 +633,12 @@ connect(N) ->
 
 -spec connect_wait(atom(), atom()) -> ok.
 connect_wait(N, WaitForApp) ->
-    connect_(N, 50, WaitForApp),
+    connect_(N, 50, fun() -> await_app(N, WaitForApp) end),
     report_node_config(N),
     ok.
+
+connect_await_mode(N) ->
+    connect_(N, 50, fun() -> rpc:call(N, app_ctrl, await_stable_mode, [30000]) end).
 
 subscribe(N, Event) ->
     call_proxy(N, {subscribe, Event}).
@@ -809,16 +813,16 @@ delete_file(F) ->
 %%% Internal functions
 %%%=============================================================================
 
-connect_(N, Timeout, WaitForApp) when Timeout < 10000 ->
+connect_(N, Timeout, WaitF) when Timeout < 10000, is_function(WaitF, 0) ->
     timer:sleep(Timeout),
     case net_kernel:hidden_connect_node(N) of
         true ->
             ct:log("hidden_connect_node(~p) -> true", [N]),
-            await_app(N, WaitForApp),
+            WaitF(),
             true;
         false ->
             ct:log("hidden_connect_node(~p) -> false, retrying ...", [N]),
-            connect_(N, Timeout * 2, WaitForApp)
+            connect_(N, Timeout * 2, WaitF)
     end;
 connect_(N, _, _) ->
     ct:log("exhausted retries (~p)", [N]),
