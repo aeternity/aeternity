@@ -90,3 +90,9 @@ $ curl http://127.0.0.1:3013/v2/key-blocks/pending
 ```
 Height would be +1 of what is in the `/blocks/top` of the remote node but this is not
 as strong guarantee as the `prev_hash`.
+
+## Maintenance mode
+
+It is possible to start the node in "maintenance mode", where mining, sync and HTTP
+endpoints are disabled. To do so, start the node with `AE__SYSTEM__MAINTENANCE_MODE=true`.
+This can be useful when debugging or performing maintenance tasks on the system.
