@@ -24,6 +24,7 @@
                         , contract_bytearray_params_decode/1
                         , unsigned_tx_response/1
                         , ok_response/1
+                        , when_stable/1
                         , process_request/2
                         , do_dry_run/0
                         , dry_run_results/1
@@ -32,7 +33,6 @@
 
 -define(READ_Q, http_read).
 -define(WRITE_Q, http_update).
--define(MODE_WAIT_TIMEOUT, 30000).
 
 -export([patterns/0]).
 
@@ -73,15 +73,8 @@ handle_request(OperationID, Req, Context) ->
     catch
         error:{rejected, _} ->
             {503, [], #{reason => <<"Temporary overload">>}};
-        exit:timeout ->
+        error:timeout ->
             {503, [], #{reason => <<"Not yet started">>}}
-    end.
-
-when_stable(F) ->
-    case app_ctrl:await_stable_mode(?MODE_WAIT_TIMEOUT) of
-        {ok, _} -> F();
-        {timeout,_} ->
-            exit(timeout)
     end.
 
 handle_request_('PostKeyBlock', #{'KeyBlock' := Data}, _Context) ->

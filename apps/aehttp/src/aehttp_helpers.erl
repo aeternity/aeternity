@@ -1,6 +1,7 @@
 -module(aehttp_helpers).
 
 -export([ process_request/2
+        , when_stable/1
         , parse_map_to_atom_keys/0
         , read_required_params/1
         , read_optional_params/1
@@ -43,6 +44,8 @@
 
 -import(aeu_debug, [pp/1]).
 
+-define(MODE_WAIT_TIMEOUT, 30000).
+
 process_request(FunsList, Req) ->
     process_request(FunsList, Req, #{}).
 
@@ -60,6 +63,13 @@ process_request([Fun | T], Req, Result0) ->
             process_request(T, Req1, Result);
         {error, ErrMsg}->
             ErrMsg
+    end.
+
+when_stable(F) ->
+    case app_ctrl:await_stable_mode(?MODE_WAIT_TIMEOUT) of
+        {ok, _} -> F();
+        {timeout,_} ->
+            error(timeout)
     end.
 
 read_required_params(ParamNames) ->
