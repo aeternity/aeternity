@@ -30,7 +30,7 @@
   0},
  {<<"app_ctrl">>,
   {git,"https://github.com/aeternity/app_ctrl.git",
-      {ref,"9c1569a3fca1f4925bb039897ad65970c42ebaf3"}},
+      {ref,"a2d9d4df6a3126ef988d53831c1e42175ec1dcda"}},
   0},
  {<<"base58">>,
   {git,"https://github.com/aeternity/erl-base58.git",

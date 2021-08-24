@@ -32,6 +32,7 @@
 
 -define(READ_Q, http_read).
 -define(WRITE_Q, http_update).
+-define(MODE_WAIT_TIMEOUT, 30000).
 
 -export([patterns/0]).
 
@@ -63,11 +64,24 @@ queue(_)                  -> ?WRITE_Q.
                    ) -> {Status :: cowboy:http_status(), Headers :: list(), Body :: map()}.
 
 handle_request(OperationID, Req, Context) ->
-    try aec_jobs_queues:run(queue(OperationID),
-                            fun() -> handle_request_(OperationID, Req, Context) end)
+    try when_stable(
+          fun() ->
+                  aec_jobs_queues:run(
+                    queue(OperationID),
+                    fun() -> handle_request_(OperationID, Req, Context) end)
+          end)
     catch
         error:{rejected, _} ->
-            {503, [], #{reason => <<"Temporary overload">>}}
+            {503, [], #{reason => <<"Temporary overload">>}};
+        exit:timeout ->
+            {503, [], #{reason => <<"Not yet started">>}}
+    end.
+
+when_stable(F) ->
+    case app_ctrl:await_stable_mode(?MODE_WAIT_TIMEOUT) of
+        {ok, _} -> F();
+        {timeout,_} ->
+            exit(timeout)
     end.
 
 handle_request_('PostKeyBlock', #{'KeyBlock' := Data}, _Context) ->
