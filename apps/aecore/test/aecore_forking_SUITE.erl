@@ -353,7 +353,6 @@ whitelist_and_rollback(Config) ->
     N2Top2 = rpc:call(N2, aec_chain, top_height, []),
     ct:log("N2Top2 = ~p", [N2Top2]),
     ok = stop_and_check([dev2], Config).
-    
 
 stop_and_check(Ns, Config) ->
     lists:foreach(
@@ -403,7 +402,7 @@ mine_a_key_block_on_dev2(_Config) -> mine_a_key_block(dev2).
 mine_a_micro_block_on_dev1(_Config) -> mine_a_micro_block(dev1).
 mine_a_micro_block_on_dev2(_Config) -> mine_a_micro_block(dev2).
 
-mine_a_micro_block(Node) -> 
+mine_a_micro_block(Node) ->
     NName = aecore_suite_utils:node_name(Node),
     aecore_suite_utils:mine_blocks(NName, 1, ?MINE_RATE, micro, #{}).
 
@@ -433,13 +432,13 @@ start_nodes_and_wait_sync_dev2_chain_wins(Config) ->
     start_nodes_and_wait_sync(dev2, dev1, Config).
 
 start_nodes_and_wait_sync(CorrectForkNode, OtherNode, Config) ->
-    start_node(CorrectForkNode, Config), 
+    start_node(CorrectForkNode, Config),
     CFNName = aecore_suite_utils:node_name(CorrectForkNode),
     CFTop = rpc:call(CFNName, aec_chain, top_block, [], 5000),
     ct:log("top of chain ~p: ~p", [ CorrectForkNode, CFTop ]),
-    stop_and_check([CorrectForkNode], Config), 
+    stop_and_check([CorrectForkNode], Config),
 
-    start_node(OtherNode, Config), 
+    start_node(OtherNode, Config),
     ForkNName = aecore_suite_utils:node_name(OtherNode),
     ForkTop = rpc:call(ForkNName, aec_chain, top_block, [], 5000),
     ct:log("top of chain ~p: ~p", [ OtherNode, ForkTop ]),
@@ -452,7 +451,7 @@ start_nodes_and_wait_sync(CorrectForkNode, OtherNode, Config) ->
                   rpc:call(ForkNName, aec_conductor, post_block, [CFTop], 5000)),
 
     T0 = os:timestamp(),
-    start_node(CorrectForkNode, Config), 
+    start_node(CorrectForkNode, Config),
     wait_nodes_to_sync(CFTop, OtherNode, T0),
     ok.
 

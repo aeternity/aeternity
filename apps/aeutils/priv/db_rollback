@@ -8,7 +8,7 @@
 %% with its own arguments. This spec (no command specified) describes the top level.
 %%
 %% We only provide the user-level arguments. The node connection arguments, which
-%% are automatically 
+%% are automatically provided by the script wrappers, are specified in aeu_ext_scripts.erl
 spec() -> #{ arguments => args() }.
 
 args() ->

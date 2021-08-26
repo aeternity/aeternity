@@ -114,7 +114,7 @@ check_args(Args, _) ->
     io:fwrite("Unknown arguments: ~p~n", [Args]),
     error({unknown_arguments, Args}).
 
-to_integer(Str, Arg) ->            
+to_integer(Str, Arg) ->
     try list_to_integer(Str)
     catch
         error:_ ->
