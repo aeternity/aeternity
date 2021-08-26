@@ -939,7 +939,8 @@ add_blocks([B | Bs]) ->
     try aec_conductor:add_synced_block(B) of
         ok -> add_blocks(Bs);
         Err -> Err
-    catch _:_ ->
+    catch C:E:ST ->
+        lager:debug("CAUGHT ~p:~p / ~p", [C,E,ST]),
         lager:warning("Timeout adding_synced block: ~p", [B]),
         {error, timeout}
     end.

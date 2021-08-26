@@ -189,7 +189,14 @@ get_key_block_candidate() ->
 -ifdef(TEST).
 -spec reinit_chain() -> aec_headers:header().
 reinit_chain() ->
-    gen_server:call(?SERVER, reinit_chain).
+
+    in_maintenance_mode(
+      fun() ->
+              ok = gen_server:call(?SERVER, reinit_chain),
+              ok = supervisor:terminate_child(aecore_sup, aec_conductor_sup),
+              {ok,_} = supervisor:restart_child(aecore_sup, aec_conductor_sup),
+              ok
+      end).
 -endif.
 
 %%%===================================================================
@@ -221,6 +228,7 @@ stratum_reply({Nonce, Evd}, ForSealing) ->
 %%%===================================================================
 
 init(Options) ->
+    lager:debug("Options = ~p", [Options]),
     process_flag(trap_exit, true),
     ok     = init_chain_state(),
     TopBlockHash0 = aec_chain:top_block_hash(),
@@ -272,15 +280,27 @@ reinit_chain_state() ->
     %% let's clear the db in a separate db tx
     %% this is ok as anyway this is only a test endpoint used in one place:
     %% apps/aehttp/test/aehttp_integration_SUITE.erl
+    in_maintenance_mode(fun reinit_chain_state_/0).
+
+reinit_chain_state_() ->
     ok = supervisor:terminate_child(aecore_sup, aec_tx_pool),
     ok = supervisor:terminate_child(aecore_sup, aec_tx_pool_gc),
-    ok = supervisor:terminate_child(aecore_sup, aec_connection_sup),
     aec_db:ensure_transaction(fun aec_db:clear_db/0),
     aec_db:ensure_transaction(fun init_chain_state/0),
-    {ok, _} = supervisor:restart_child(aecore_sup, aec_connection_sup),
     {ok, _} = supervisor:restart_child(aecore_sup, aec_tx_pool_gc),
     {ok, _} = supervisor:restart_child(aecore_sup, aec_tx_pool),
     ok.
+
+in_maintenance_mode(F) when is_function(F,0) ->
+    case app_ctrl:get_mode() of
+        normal ->
+            app_ctrl:set_and_await_mode(maintenance, 10000),
+            Res = F(),
+            app_ctrl:set_and_await_mode(normal, 5000),
+            Res;
+        _ ->
+            F()
+    end.
 
 reinit_chain_impl(State1 = #state{ consensus = #consensus{consensus_module = ActiveConsensus} = Cons }) ->
     lager:info("Reinitializing chain"),
@@ -300,7 +320,8 @@ reinit_chain_impl(State1 = #state{ consensus = #consensus{consensus_module = Act
     Cons1 = Cons#consensus{consensus_module = ConsensusModule},
     epoch_mining:info("Mining stopped"),
     State3 = kill_all_workers(State2),
-    hard_reset_block_generator(),
+    %% Not sure if this code is actually needed, since the conductor will be restarted
+    %% anyway, but we'll keep it around for now.
     State =
         case State2#state.mining_state of
             stopped  ->
@@ -410,7 +431,8 @@ handle_info(Other, State) ->
     epoch_mining:error("Received unknown info message: ~p", [Other]),
     {noreply, State}.
 
-terminate(_Reason, State) ->
+terminate(Reason, State) ->
+    lager:debug("Reason = ~p", [Reason]),
     kill_all_workers(State),
     ok.
 
@@ -1278,21 +1300,6 @@ is_leader(NewTopBlock, PrevKeyHeader) ->
         {ok, MinerKey} -> LeaderKey =:= MinerKey;
         {error, _}     -> false
     end.
-
--ifdef(TEST).
-hard_reset_block_generator() ->
-    %% Hard reset of aec_block_generator
-    exit(whereis(aec_block_generator), kill),
-    flush_candidate().
-
-flush_candidate() ->
-    receive
-        {gproc_ps_event, candidate_block, _} ->
-            flush_candidate()
-    after 10 ->
-            ok
-    end.
--endif.
 
 setup_loop(State = #state{ consensus = Cons }, RestartMining, IsLeader, Origin) ->
     State1 = State#state{ consensus = Cons#consensus{ leader = IsLeader } },

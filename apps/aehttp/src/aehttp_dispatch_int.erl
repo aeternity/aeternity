@@ -24,6 +24,7 @@
                         , contract_bytearray_params_decode/1
                         , unsigned_tx_response/1
                         , ok_response/1
+                        , when_stable/1
                         , process_request/2
                         , do_dry_run/0
                         , dry_run_results/1
@@ -63,11 +64,17 @@ queue(_)                  -> ?WRITE_Q.
                    ) -> {Status :: cowboy:http_status(), Headers :: list(), Body :: map()}.
 
 handle_request(OperationID, Req, Context) ->
-    try aec_jobs_queues:run(queue(OperationID),
-                            fun() -> handle_request_(OperationID, Req, Context) end)
+    try when_stable(
+          fun() ->
+                  aec_jobs_queues:run(
+                    queue(OperationID),
+                    fun() -> handle_request_(OperationID, Req, Context) end)
+          end)
     catch
         error:{rejected, _} ->
-            {503, [], #{reason => <<"Temporary overload">>}}
+            {503, [], #{reason => <<"Temporary overload">>}};
+        error:timeout ->
+            {503, [], #{reason => <<"Not yet started">>}}
     end.
 
 handle_request_('PostKeyBlock', #{'KeyBlock' := Data}, _Context) ->

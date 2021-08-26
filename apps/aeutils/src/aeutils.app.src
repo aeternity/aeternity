@@ -11,6 +11,7 @@
     exometer_core,
     yamerl
    ]},
+  {mod, {aeutils_app, []}},
   {env,[
         {'$setup_hooks',
          [

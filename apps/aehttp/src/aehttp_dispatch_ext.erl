@@ -24,6 +24,7 @@
                         , unsigned_tx_response/1
                         , get_transaction/2
                         , encode_transaction/2
+                        , when_stable/1
                         , ok_response/1
                         , read_optional_param/3
                         , get_poi/3
@@ -59,10 +60,15 @@ handle_request(OperationID, Req, Context) ->
 
 %% run(no_queue, F) -> F();
 run(Queue, F) ->
-    try aec_jobs_queues:run(Queue, F)
+    try when_stable(
+          fun() ->
+                  aec_jobs_queues:run(Queue, F)
+          end)
     catch
         error:{rejected, _} ->
-            {503, [], #{reason => <<"Temporary overload">>}}
+            {503, [], #{reason => <<"Temporary overload">>}};
+        error:timeout ->
+            {503, [], #{reason => <<"Not yet started">>}}
     end.
 
 %% read transactions
