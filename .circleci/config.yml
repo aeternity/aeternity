@@ -1344,6 +1344,14 @@ workflows:
                 - env/dev2
                 - system-tests
 
+      - build_otp23:
+          filters:
+            branches:
+              ignore:
+                - env/dev1
+                - env/dev2
+                - system-tests
+
       - build_nix:
           filters:
             branches:
