@@ -404,20 +404,6 @@ references:
     - *store_rebar3_crashdump
     - *fail_notification
 
-  eunit_steps_otp23: &eunit_steps_otp23
-    - fixed_checkout
-    - *restore_rebar_cache
-    - *restore_build_otp23_cache
-    - run:
-        name: Test
-        command: |
-          epmd -daemon
-          make ${MAKE_TARGET:?}
-    - store_test_results:
-        path: eunit_report
-    - *store_rebar3_crashdump
-    - *fail_notification
-
   eunit_steps_otp22: &eunit_steps_otp22
     - fixed_checkout
     - *restore_rebar_cache
