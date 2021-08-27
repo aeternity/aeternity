@@ -7,15 +7,6 @@ executors:
   infrastructure_container_stable:
     docker:
       - image: aeternity/infrastructure:stable
-  builder_container_otp21:
-    docker:
-      - image: aeternity/builder:otp21
-        user: builder
-    working_directory: ~/aeternity
-    environment:
-      OTP_VERSION: 21.3.8.17
-      ERLANG_ROCKSDB_BUILDOPTS: "-j2"
-      ERLANG_ROCKSDB_OPTS: "-DWITH_SYSTEM_ROCKSDB=ON -DWITH_SNAPPY=ON -DWITH_LZ4=ON -DWITH_BZ2=ON -DWITH_ZSTD=ON"
   builder_container_otp22:
     docker:
       - image: aeternity/builder:otp22
@@ -62,7 +53,6 @@ executors:
       LIBSODIUM_VERSION: "1.0.16"
 
 references:
-  container_otp21_plt: &container_otp21_plt _build/default/rebar3_21.3.8.17_plt
   container_otp22_plt: &container_otp22_plt _build/default/rebar3_22.3.4.9_plt
   container_otp23_plt: &container_otp23_plt _build/default/rebar3_23.0.3_plt
 
@@ -128,11 +118,6 @@ references:
   restore_rebar_cache: &restore_rebar_cache
     restore_cache:
       key: *rebar_cache_key
-
-  build_otp21_cache_key: &build_otp21_cache_key build-otp21-cache-v6-{{ .Revision }}
-  restore_build_otp21_cache: &restore_build_otp21_cache
-    restore_cache:
-      key: *build_otp21_cache_key
 
   build_otp22_cache_key: &build_otp22_cache_key build-otp22-cache-v3-{{ .Revision }}
   restore_build_otp22_cache: &restore_build_otp22_cache
@@ -371,30 +356,6 @@ references:
           find _build/test/logs -iname extensions | xargs rm -rf
           find _build/test/logs -iname hooks | xargs rm -rf
 
-  test_steps_otp21: &test_steps_otp21
-    - fixed_checkout
-    - *restore_rebar_cache
-    - *restore_build_otp21_cache
-    - run:
-        name: Test
-        command: |
-          epmd -daemon
-          make ${MAKE_TARGET:?} CT_TEST_FLAGS="--suite=$(.circleci/split_suites.sh)"
-    # Isolates the junit.xml report because additional files in _build/test/logs
-    # are somehow causing issue with xunit report upload, parsing and merging
-    - run:
-        name: move test report
-        command: |
-          mkdir _build/test/reports
-          mv _build/test/logs/junit.xml _build/test/reports/
-    - store_test_results:
-        path: _build/test/reports
-    - *trim_test_artifacts
-    - store_artifacts:
-        path: _build/test/logs
-    - *store_rebar3_crashdump
-    - *fail_notification
-
   test_steps_otp22: &test_steps_otp22
     - fixed_checkout
     - *restore_rebar_cache
@@ -443,10 +404,10 @@ references:
     - *store_rebar3_crashdump
     - *fail_notification
 
-  eunit_steps_otp21: &eunit_steps_otp21
+  eunit_steps_otp23: &eunit_steps_otp23
     - fixed_checkout
     - *restore_rebar_cache
-    - *restore_build_otp21_cache
+    - *restore_build_otp23_cache
     - run:
         name: Test
         command: |
@@ -470,6 +431,21 @@ references:
         path: eunit_report
     - *store_rebar3_crashdump
     - *fail_notification
+
+  eunit_steps_otp23: &eunit_steps_otp23
+    - fixed_checkout
+    - *restore_rebar_cache
+    - *restore_build_otp23_cache
+    - run:
+        name: Test
+        command: |
+          epmd -daemon
+          make ${MAKE_TARGET:?}
+    - store_test_results:
+        path: eunit_report
+    - *store_rebar3_crashdump
+    - *fail_notification
+
 
 commands:
   fixed_checkout:
@@ -501,7 +477,7 @@ commands:
       - run:
           name: Build branch docker image
           command: |
-            docker pull aeternity/builder:otp21
+            docker pull aeternity/builder:otp22
             docker build -t ${DOCKERHUB_REPO:?}:${CIRCLE_BRANCH/\//_} .
       - run:
           name: Start branch docker image
@@ -677,25 +653,6 @@ jobs:
       - *store_rebar3_crashdump
       - *fail_notification
 
-  build_otp21:
-    executor: builder_container_otp21
-    steps:
-      - fixed_checkout
-      - *restore_rebar_cache
-      - run:
-          name: Build
-          command: make test-build
-      - save_cache:
-          key: *build_otp21_cache_key
-          paths:
-            - "_build"
-      - save_cache:
-          key: *rebar_cache_key
-          paths:
-            - .cache/rebar3
-      - *store_rebar3_crashdump
-      - *fail_notification
-
   build_otp23:
     executor: builder_container_otp23
     steps:
@@ -777,13 +734,6 @@ jobs:
     environment:
       - MAKE_TARGET: ct-latest-no-aci
     steps: *test_steps_otp22
-
-  test_latest_otp21:
-    executor: builder_container_otp21
-    parallelism: 3
-    environment:
-      - MAKE_TARGET: ct-latest
-    steps: *test_steps_otp21
 
   test_latest_otp23:
     executor: builder_container_otp23
@@ -869,35 +819,6 @@ jobs:
           key: dialyzer-otp22-cache-v5-{{ .Branch }}-{{ .Revision }}
           paths:
             - *container_otp22_plt
-      - run:
-          name: Run dialyzer
-          no_output_timeout: 20m
-          command: make dialyzer
-      - run:
-          name: Check OTP version (for effective CI caching)
-          # How to retrieve OTP version in installed OTP development system: http://erlang.org/doc/system_principles/versions.html
-          command: test "${OTP_VERSION:?}" = $(cat $(erl -noinput -eval 'io:format("~s", [filename:join([code:root_dir(), "releases", erlang:system_info(otp_release), "OTP_VERSION"])]), init:stop().'))
-      - *store_rebar3_crashdump
-      - *fail_notification
-
-  static_analysis_otp21:
-    executor: builder_container_otp21
-    steps:
-      - fixed_checkout
-      - *restore_rebar_cache
-      - *restore_build_otp21_cache
-      - restore_cache:
-          keys:
-            - dialyzer-otp21-cache-v2-{{ .Branch }}-{{ .Revision }}
-            - dialyzer-otp21-cache-v2-{{ .Branch }}-
-            - dialyzer-otp21-cache-v2-
-      - run:
-          name: Update dialyzer PLT
-          command: make dialyzer-install
-      - save_cache:
-          key: dialyzer-otp21-cache-v2-{{ .Branch }}-{{ .Revision }}
-          paths:
-            - *container_otp21_plt
       - run:
           name: Run dialyzer
           no_output_timeout: 20m
@@ -1074,7 +995,7 @@ jobs:
       - run:
           name: Build branch docker image
           command: |
-            docker pull aeternity/builder:otp21
+            docker pull aeternity/builder:otp22
             docker build -t ${DOCKERHUB_REPO:?}:${CIRCLE_BRANCH/\//_} .
       - run:
           name: Start container
@@ -1437,14 +1358,6 @@ workflows:
                 - env/dev2
                 - system-tests
 
-      - build_otp21:
-          filters:
-            branches:
-              ignore:
-                - env/dev1
-                - env/dev2
-                - system-tests
-
       - build_nix:
           filters:
             branches:
@@ -1577,9 +1490,9 @@ workflows:
                 - env/dev2
                 - system-tests
 
-      - test_latest_otp21:
+      - test_latest_otp23:
           requires:
-            - build_otp21
+            - build_otp23
           filters:
             branches:
               ignore:
@@ -1694,9 +1607,9 @@ workflows:
                 - env/dev2
                 - system-tests
 
-      - static_analysis_otp21:
+      - static_analysis_otp23:
           requires:
-            - build_otp21
+            - build_otp23
           filters:
             branches:
               ignore:
