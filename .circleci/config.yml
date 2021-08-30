@@ -22,7 +22,7 @@ executors:
         user: builder
     working_directory: ~/aeternity
     environment:
-      OTP_VERSION: 23.0.3
+      OTP_VERSION: 23.3.4.5
       ERLANG_ROCKSDB_BUILDOPTS: "-j2"
       ERLANG_ROCKSDB_OPTS: "-DWITH_SYSTEM_ROCKSDB=ON -DWITH_SNAPPY=ON -DWITH_LZ4=ON -DWITH_BZ2=ON -DWITH_ZSTD=ON"
   builder_container_nix_alpine:
@@ -49,7 +49,7 @@ executors:
     working_directory: ~/aeternity
     environment:
       DOCKERHUB_REPO: aeternity/aeternity
-      OTP_VERSION: 21.3.8.17
+      OTP_VERSION: 22.3.4.9
       LIBSODIUM_VERSION: "1.0.16"
 
 references:
