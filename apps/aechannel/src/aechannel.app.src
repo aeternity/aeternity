@@ -8,6 +8,7 @@
     stdlib,
     lager,
     gproc,
+    aecore,
     aecontract,
     sext
    ]},

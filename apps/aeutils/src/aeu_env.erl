@@ -288,6 +288,8 @@ read_config(Mode) when Mode =:= silent; Mode =:= report ->
 apply_os_env() ->
     ok = application:ensure_started(gproc),
     try
+    %% Make sure gproc is started, since we use it in update_config/1
+    application:ensure_started(gproc),
     Pfx = "AE",  %% TODO: make configurable
     %% We sort on variable names to allow specific values to override object
     %% definitions at a higher level (e.g. AE__MEMPOOL followed by AE__MEMPOOL__TX_TTL)

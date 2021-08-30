@@ -25,6 +25,7 @@
         , xmerl
         , aecuckoo
         , aecuckooprebuilt
+        , argparse
         , getopt
         , eblake2
         , ecrecover
