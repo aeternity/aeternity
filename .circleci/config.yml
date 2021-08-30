@@ -824,14 +824,14 @@ jobs:
       - *restore_build_otp23_cache
       - restore_cache:
           keys:
-            - dialyzer-otp23-cache-v1-{{ .Branch }}-{{ .Revision }}
-            - dialyzer-otp23-cache-v1-{{ .Branch }}-
-            - dialyzer-otp23-cache-v1-
+            - dialyzer-otp23-cache-v2-{{ .Branch }}-{{ .Revision }}
+            - dialyzer-otp23-cache-v2-{{ .Branch }}-
+            - dialyzer-otp23-cache-v2-
       - run:
           name: Update dialyzer PLT
           command: make dialyzer-install
       - save_cache:
-          key: dialyzer-otp23-cache-v1-{{ .Branch }}-{{ .Revision }}
+          key: dialyzer-otp23-cache-v2-{{ .Branch }}-{{ .Revision }}
           paths:
             - *container_otp23_plt
       - run:
