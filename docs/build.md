@@ -17,7 +17,7 @@ The commands below assume you are logged in with `sudo` user.
 
 The node have couple of main dependencies that have to be installed to build it from source:
 
-- [Erlang/OTP](http://erlang.org/doc/installation_guide/INSTALL.html)
+- [Erlang/OTP 22.3.4.9](http://erlang.org/doc/installation_guide/INSTALL.html)
 - [Libsodium](https://download.libsodium.org/doc/installation/)
 - [Libgmp](https://gmplib.org)
 
@@ -44,7 +44,7 @@ The easiest way to install package on MacOS is Homebrew, it can be installed by 
 Then install the build dependencies using the `brew` command:
 ```
 brew update
-brew install erlang@21 openssl libsodium autoconf gmp
+brew install erlang@22 openssl libsodium autoconf gmp
 ```
 
 ### Archlinux
