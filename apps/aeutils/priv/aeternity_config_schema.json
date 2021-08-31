@@ -11,6 +11,19 @@
                     "description" : "When true, the node disables sync, mining, http endpoints etc",
                     "type" : "boolean",
                     "default" : false
+                },
+                "plugin_path" : {
+                    "description" : "Directory containing Aeternity node plugins",
+                    "type" : "string",
+                    "default" : ""
+                },
+                "plugins" : {
+                    "description" : "List of application names of plugins to load",
+                    "type" : "array",
+                    "items" : {
+                        "type" : "string",
+                        "description" : "Erlang application name of plugin"
+                    }
                 }
             }
         },

@@ -8,6 +8,7 @@
 -module(aec_db).
 
 -export([check_db/0,                    % called from setup hook
+         start_db/0,                    %  ------ " ------
          initialize_db/1,               % assumes mnesia started
          load_database/0,               % called in aecore app start phase
          tables/1,                      % for e.g. test database setup
@@ -1125,6 +1126,20 @@ check_db() ->
     catch error:Reason:StackTrace ->
         error_logger:error_msg("CAUGHT error:~p / ~p~n", [Reason, StackTrace]),
         erlang:error(Reason)
+    end.
+
+start_db() ->
+    load_database(),
+    aefa_fate_op:load_pre_iris_map_ordering(),
+    case aec_db:persisted_valid_genesis_block() of
+        true ->
+            aec_chain_state:ensure_chain_ends(),
+            aec_chain_state:ensure_key_headers_height_store(),
+            ok;
+        false ->
+            lager:error("Persisted chain has a different genesis block than "
+                        ++ "the one being expected. Aborting", []),
+            error(inconsistent_database)
     end.
 
 %% Test interface
