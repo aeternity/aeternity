@@ -195,7 +195,7 @@
                 "log_peer_connection_count_interval" : {
                     "description": "Time (milliseconds) between logging info about connected peers",
                     "type" : "integer",
-                    "default": 5000
+                    "default": 300000
                 },
                 "peer_pool" : {
                     "type" : "object",
