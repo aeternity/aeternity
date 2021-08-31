@@ -83,7 +83,7 @@
 -define(DEFAULT_RESOLVE_MAX_RETRY,             7).
 -define(DEFAULT_RESOLVE_BACKOFF_TIMES,
         [5000, 15000, 30000, 60000, 120000, 300000, 600000]).
--define(DEFAULT_LOG_PEER_CONNECTION_COUNT_INTERVAL, 5000).
+-define(DEFAULT_LOG_PEER_CONNECTION_COUNT_INTERVAL, 300000).
 
 %=== TYPES =====================================================================
 
