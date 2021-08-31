@@ -54,7 +54,7 @@ executors:
 
 references:
   container_otp22_plt: &container_otp22_plt _build/default/rebar3_22.3.4.9_plt
-  container_otp23_plt: &container_otp23_plt _build/default/rebar3_23.0.3_plt
+  container_otp23_plt: &container_otp23_plt _build/default/rebar3_23.3.4.5_plt
 
   infrastructure_config_environment: &infrastructure_config_environment
     DOCKERHUB_REPO: aeternity/aeternity
