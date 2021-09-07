@@ -8,7 +8,8 @@
 
 -type mode() :: atom().
 
-parse_opts(Args, #{arguments := Args0} = Spec0) ->
+parse_opts(Args, Spec0) when is_map(Spec0) ->
+    Args0 = maps:get(arguments, Spec0, []),
     Spec = Spec0#{arguments => Args0 ++ node_arguments()},
     try parse_opts_(Args, Spec)
     catch
@@ -19,12 +20,28 @@ parse_opts(Args, #{arguments := Args0} = Spec0) ->
     end.
 
 parse_opts_(Args, Spec) ->
-    Opts = argparse:parse(Args, Spec, #{progname => escript:script_name()}),
+    #{arg_map := Opts} = ParseRes =
+        parse(Args, Spec, #{progname => script_name()}),
     NodeKeys = ['$cookie','$sname','$name'],
     ConnOpts = maps:with(NodeKeys, Opts),
     UserOpts = maps:without(NodeKeys, Opts),
-    #{ opts => UserOpts
-     , connect => check_conn_opts(ConnOpts) }.
+    ParseRes#{ opts => UserOpts
+             , connect => check_conn_opts(ConnOpts) }.
+
+parse(Args, Spec, Opts) ->
+    case argparse:parse(Args, Spec, Opts) of
+        {ArgMap, CmdSpec} ->
+            #{arg_map => ArgMap, cmd_spec => CmdSpec};
+        ArgMap when is_map(ArgMap) ->
+            #{arg_map => ArgMap}
+    end.
+
+script_name() ->
+    try escript:script_name()
+    catch
+        error:_ ->
+            "erl"
+    end.
 
 usage(Error, Spec) ->
     io:fwrite(standard_error, format_error(Spec, Error), []),
