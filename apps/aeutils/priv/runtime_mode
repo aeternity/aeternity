@@ -12,17 +12,20 @@
 spec() -> #{ commands => cmds()
            , arguments => [ #{ name => 'timeout'
                              , short => $t
+                             , help => "Timeout when waiting for mode change"
                              , type => {int, [{min, 0}]}
                              , default => 10000 }
                           ] }.
 
 cmds() ->
-    #{ "set" => #{commands => #{ "maintenance" => #{}
-                               , "normal" => #{} }}
-     , "get" => #{} }.
+    Subs = #{ "maintenance" => #{}
+            , "normal" => #{} },
+    #{ "set" => #{ commands => Subs
+                 , help => "Set the runtime mode. Alternatives: " ++ alts(Subs)}
+     , "get" => #{ help => "Get the current runtime mode" } }.
 
 main(Args) ->
-    Opts = aeu_ext_scripts:parse_opts(Args, spec()),
+    Opts = aeu_ext_scripts:parse_opts(Args, spec(), #{progname => runtime_mode}),
     {ok, Node} = aeu_ext_scripts:connect_node(Opts),
     case Opts of
         #{cmd_spec := {["set", Mode], _}, opts := #{'timeout' := Timeout}} ->
@@ -46,3 +49,7 @@ get_mode(Node) ->
     Res = rpc:call(Node, app_ctrl, get_mode, []),
     io:fwrite("~p~n", [Res]),
     erlang:halt(0).
+
+alts(Cmds) ->
+    [H | T] = maps:keys(Cmds),
+    lists:flatten([H | [[" | ", X] || X <- T]]).

@@ -1,6 +1,7 @@
 -module(aeu_ext_scripts).
 
 -export([ parse_opts/2
+        , parse_opts/3
         , connect_node/1
         , ensure_mode/1
         , restore_mode/1
@@ -8,28 +9,40 @@
 
 -type mode() :: atom().
 
-parse_opts(Args, Spec0) when is_map(Spec0) ->
+parse_opts(Args, Spec) ->
+    parse_opts(Args, Spec, #{}).
+
+parse_opts(Args, Spec0, Opts) when is_map(Spec0) ->
     Args0 = maps:get(arguments, Spec0, []),
     Spec = Spec0#{arguments => Args0 ++ node_arguments()},
-    try parse_opts_(Args, Spec)
+    try parse_opts_(Args, Spec, Opts)
     catch
         error:{argparse, Error} ->
-            usage(Error, Spec);
+            usage(Error, Spec, Opts);
         error:{?MODULE, _} = Error ->
-            usage(Error, Spec)
+            usage(Error, Spec, Opts);
+        Tag:E ->
+            io:fwrite("CAUGHT ~p:~p~n", [Tag, E]),
+            usage(E, Spec, Opts)
     end.
 
-parse_opts_(Args, Spec) ->
-    #{arg_map := Opts} = ParseRes =
-        parse(Args, Spec, #{progname => script_name()}),
-    NodeKeys = ['$cookie','$sname','$name'],
+parse_opts_(Args, Spec, Opts0) ->
+    #{arg_map := Opts} = ParseRes = parse(Args, Spec, options(Opts0)),
+    NodeKeys = nodekeys(),
     ConnOpts = maps:with(NodeKeys, Opts),
     UserOpts = maps:without(NodeKeys, Opts),
     ParseRes#{ opts => UserOpts
              , connect => check_conn_opts(ConnOpts) }.
 
+nodekeys() ->
+    ['$cookie','$sname','$name'].
+
+options(Opts0) ->
+    maps:merge(#{progname => script_name()}, Opts0).
+
 parse(Args, Spec, Opts) ->
-    case argparse:parse(Args, Spec, Opts) of
+    Res = argparse:parse(Args, Spec, Opts),
+    case Res of
         {ArgMap, CmdSpec} ->
             #{arg_map => ArgMap, cmd_spec => CmdSpec};
         ArgMap when is_map(ArgMap) ->
@@ -37,16 +50,34 @@ parse(Args, Spec, Opts) ->
     end.
 
 script_name() ->
-    try escript:script_name()
+    try escript:script_name() of
+        SName ->
+            tidy_script_name(SName)
     catch
         error:_ ->
             "erl"
     end.
 
-usage(Error, Spec) ->
+tidy_script_name(N) ->
+    case ["aeternity", "bin"] -- filename:split(N) of
+        [] ->
+            filename:join("aeternity/bin", filename:basename(N));
+        _ ->
+            N
+    end.
+
+usage(Error, Spec, Opts) ->
     io:fwrite(standard_error, format_error(Spec, Error), []),
-    argparse:help(Spec),
+    Help = argparse:help(remove_nodekeys(Spec), Opts),
+    io:put_chars(Help),
     halt(1).
+
+remove_nodekeys(#{arguments := Args} = Spec) ->
+    Args1 = lists:filter(fun(#{name := N}) ->
+                                 not lists:member(N, nodekeys());
+                            (_) -> true
+                         end, Args),
+    Spec#{arguments => Args1}.
 
 node_arguments() ->
     Arg = #{ required => false, type => string, nargs => 1 },
