@@ -132,7 +132,9 @@ txs_not_in_microblock(MB, TxHashes) ->
 
 tx_in_microblock(MB, TxHash) ->
     lists:any(fun(STx) ->
-                      aeser_api_encoder:encode(tx_hash, aetx_sign:hash(STx)) == TxHash
+                      Hash = aetx_sign:hash(STx),
+                      Hash == TxHash orelse
+                          aeser_api_encoder:encode(tx_hash, Hash) == TxHash
               end, aec_blocks:txs(MB)).
 
 extra_from_header(_) ->
