@@ -41,7 +41,7 @@
         ]).
 -include("aec_block_insertion.hrl").
 
--opaque chain_node() :: #node{}.  %% type node is Erlang internal!
+-type chain_node() :: #node{}. %% type node is Erlang internal!
 -export_type([chain_node/0]).
 
 %% Let's not add another entry to the supervision tree
