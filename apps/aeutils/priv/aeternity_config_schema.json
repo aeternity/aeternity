@@ -21,8 +21,22 @@
                     "description" : "List of application names of plugins to load",
                     "type" : "array",
                     "items" : {
-                        "type" : "string",
-                        "description" : "Erlang application name of plugin"
+                        "type" : "object",
+                        "description" : "Plugin name and properties",
+                        "required": ["name"],
+                        "properties": {
+                            "name": {
+                                "description": "Erlang application name of plugin",
+                                "type": "string"
+                            },
+                            "config": {
+                                "description": "Configuration for the given plugin",
+                                "type": "object",
+                                "oneOf": [
+                                    {"properties": {}}
+                                ]
+                            }
+                        }
                     }
                 }
             }

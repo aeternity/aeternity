@@ -2,8 +2,14 @@
 
 -export([load_plugins/0]).
 
+-export([validate_config/2]).
 
+validate_config(JSON, SchemaFilename) ->
+    [Schema] = jsx:consult(SchemaFilename, [return_maps]),
+    validate(JSON, Schema).
 
+validate(JSON, Schema) when is_map(JSON) ->
+    jesse:validate_with_schema(Schema, JSON, []).
 
 load_plugins() ->
     case aeu_env:find_config([<<"system">>, <<"plugin_path">>],
@@ -26,7 +32,9 @@ load_plugin_apps(Path) ->
                              [user_config, schema_default]) of
         {ok, []} ->
             ok;
-        {ok, NameStrs} ->
+        {ok, Objs} ->
+            lager:info("Plugin Objs = ~p", [Objs]),
+            NameStrs = [Name || #{<<"name">> := Name} <- Objs],
             case names_not_found(NameStrs, Path) of
                 [] ->
                     case try_patch_apps(NameStrs, setup:lib_dirs_under_path(Path)) of
