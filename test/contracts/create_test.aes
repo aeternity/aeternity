@@ -1,0 +1,28 @@
+contract IntegerAdder =
+  entrypoint init() = ()
+  entrypoint addIntegers(x, y) = x + y
+
+contract IntegerAdderHolder =
+  type state = IntegerAdder
+  stateful entrypoint init() = Chain.create() : IntegerAdder
+  entrypoint get() = state
+
+contract IntegerAdderFactory =
+  entrypoint init() = ()
+  stateful entrypoint new() =
+    let i = Chain.create() : IntegerAdderHolder
+    i.get()
+
+payable contract ValueAdder =
+  entrypoint init() = ()
+  stateful entrypoint addValue(x) =
+    let integerAdderFactory = Chain.create()
+    let adder = integerAdderFactory.new()
+    adder.addIntegers(x, Contract.balance)
+
+main contract EnterpriseContract =
+  entrypoint init() = ()
+  stateful payable entrypoint increaseByThree(x) =
+    require(Call.value >= 3, "Price for addition = 3AEtto, insufficient funds")
+    let threeAdder = Chain.create(value = 3)
+    threeAdder.addValue(x)

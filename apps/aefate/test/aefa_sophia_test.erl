@@ -96,8 +96,9 @@ compile_contract(Code, Options) ->
     try
         Ast       = aeso_parser:string(Code, Options),
         {_, TypedAst}  = aeso_ast_infer_types:infer(Ast, Options),
-        FCode     = aeso_ast_to_fcode:ast_to_fcode(TypedAst, Options),
-        Fate      = aeso_fcode_to_fate:compile(FCode, Options),
+        {#{child_con_env := ChildContracts}, FCode}
+                       = aeso_ast_to_fcode:ast_to_fcode(TypedAst, Options),
+        Fate      = aeso_fcode_to_fate:compile(ChildContracts, FCode, Options),
         case aeb_fate_code:deserialize(aeb_fate_code:serialize(Fate)) of
             Fate  -> Fate;
             Other -> {error, {Other, '/=', Fate}}
@@ -583,7 +584,7 @@ higher_order_test_() -> mk_test([higher_order()], higher_order_tests()).
 
 remote() ->
     [{<<"main">>,
-      "contract Remote =\n"
+      "contract interface Remote =\n"
       "  entrypoint remote : int => int\n"
       "contract Main =\n"
       "  function bla(r : Remote) = r.remote\n"

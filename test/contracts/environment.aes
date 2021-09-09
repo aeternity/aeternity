@@ -1,6 +1,6 @@
 
 // Testing primitives for accessing the block chain environment
-contract Interface =
+contract interface Interface =
   entrypoint contract_address : () => address
   entrypoint contract_creator : () => address
   entrypoint call_origin      : () => address

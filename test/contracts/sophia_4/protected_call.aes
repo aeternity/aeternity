@@ -1,0 +1,158 @@
+
+contract Remote =
+  entrypoint id          : int => int
+  entrypoint wrong_ret   : int => bool
+  entrypoint wrong_arg   : bool => int
+  entrypoint wrong_arity : () => int
+  entrypoint hacked      : int => int
+  entrypoint missing     : int => int
+  entrypoint revert      : () => 'a
+  entrypoint crash       : () => 'a
+  entrypoint out_of_gas  : () => 'a
+  entrypoint get_state   : () => int
+  entrypoint nonpayable  : () => int
+
+contract ProxyRemote =
+  entrypoint call_wrong_ret   : Remote => bool
+  entrypoint call_wrong_arg   : Remote => int
+  entrypoint call_wrong_arity : Remote => int
+  entrypoint call_hacked      : Remote => int
+  entrypoint call_missing     : Remote => int
+  entrypoint call_revert      : Remote => 'a
+  entrypoint call_crash       : Remote => 'a
+  entrypoint call_out_of_gas  : Remote => 'a
+  entrypoint call_nonpayable  : Remote => int
+  entrypoint call_missing_con : () => int
+
+contract ProtectedCall =
+
+  type state = int
+
+  entrypoint init() = 0
+  entrypoint get_state() = state
+  entrypoint get_balance() = Contract.balance
+
+  payable stateful entrypoint
+    id(n : int) = n
+
+  payable stateful entrypoint
+    wrong_ret(n : int) =
+      side_effects()
+      n
+
+  payable stateful entrypoint
+    wrong_arg(n : int) =
+      side_effects()
+      n
+
+  payable stateful entrypoint
+    wrong_arity(n : int) =
+      side_effects()
+      n
+
+  payable stateful entrypoint
+    hacked(n : int) =    // We'll hack the byte code to change the stated type to int => int
+      side_effects()
+      false
+
+    // missing(n : int) = n
+
+  payable stateful entrypoint
+    revert() =
+      side_effects()
+      abort("oops")
+
+  payable stateful entrypoint
+    crash() =
+      side_effects()
+      1 / 0
+
+  payable stateful entrypoint
+    out_of_gas() = out_of_gas()
+
+  stateful entrypoint nonpayable() =
+    side_effects()
+    0
+
+  function spend_gas() = [1..5] // about 250 gas
+
+  stateful function side_effects() =
+    inc()
+    Chain.spend(ak_11111111111111111111111111111111273Yts, 50)
+    spend_gas()
+
+  stateful function inc() = put(state + 1)
+
+  function higher_order(r : Remote) =
+    r.id
+
+  entrypoint test_ok(r : Remote) =
+    let f = higher_order(r)
+    let Some(n) = r.id(protected = true, 10)
+    let Some(m) = f(protected = true, 5)
+    n + m + r.id(protected = false, 100) + f(1)
+
+  payable stateful entrypoint
+    call_wrong_ret  (r : Remote) : bool = r.wrong_ret(0)
+  payable stateful entrypoint
+    call_wrong_arg  (r : Remote) : int  = r.wrong_arg(false)
+  payable stateful entrypoint
+    call_wrong_arity(r : Remote) : int  = r.wrong_arity()
+  payable stateful entrypoint
+    call_hacked     (r : Remote) : int  = r.hacked(0)
+  payable stateful entrypoint
+    call_missing    (r : Remote) : int  = r.missing(0)
+  payable stateful entrypoint
+    call_revert     (r : Remote) : 'a   = r.revert()
+  payable stateful entrypoint
+    call_crash      (r : Remote) : 'a   = r.crash()
+  payable stateful entrypoint
+    call_out_of_gas (r : Remote) : 'a   = r.out_of_gas(gas = 200)
+  payable stateful entrypoint
+    call_nonpayable (r : Remote) : int  = r.nonpayable(value = 70)
+  payable stateful entrypoint
+    call_missing_con() : int = ct_1111111111111111111111111111112JF6Dz72.id(value = 70, 0)
+
+  stateful entrypoint
+    test_wrong_ret   (r : Remote) : option(bool) = r.wrong_ret  (protected = true, value = 100, 0)
+  stateful entrypoint
+    test_wrong_arg   (r : Remote) : option(int)  = r.wrong_arg  (protected = true, value = 100, false)
+  stateful entrypoint
+    test_wrong_arity (r : Remote) : option(int)  = r.wrong_arity(protected = true, value = 100)
+  stateful entrypoint
+    test_hacked      (r : Remote) : option(int)  = r.hacked     (protected = true, value = 100, 0)
+  stateful entrypoint
+    test_missing     (r : Remote) : option(int)  = r.missing    (protected = true, value = 100, 0)
+  stateful entrypoint
+    test_revert      (r : Remote) : option('a)   = r.revert     (protected = true)
+  stateful entrypoint
+    test_crash       (r : Remote) : option('a)   = r.crash      (protected = true)
+  stateful entrypoint
+    test_out_of_gas  (r : Remote) : option('a)   = r.out_of_gas (protected = true, value = 100, gas = 5500)
+  stateful entrypoint
+    test_nonpayable  (r : Remote) : option(int)  = r.nonpayable (protected = true, value = 100)
+  stateful entrypoint
+    test_out_of_funds(r : Remote) : option(int)  = r.id         (protected = true, value = 1_000_000_000_000_000_000_000_000_000, 0)
+  stateful entrypoint
+    test_missing_con (r : Remote) : option(int)  = ct_1111111111111111111111111111112JF6Dz72.id(protected = true, value = 100, 0)
+
+  stateful entrypoint
+    test_wrong_ret_r  (r : Remote, p : ProxyRemote) : option(bool) = p.call_wrong_ret  (protected = true, value = 100, r)
+  stateful entrypoint
+    test_wrong_arg_r  (r : Remote, p : ProxyRemote) : option(int)  = p.call_wrong_arg  (protected = true, value = 100, r)
+  stateful entrypoint
+    test_wrong_arity_r(r : Remote, p : ProxyRemote) : option(int)  = p.call_wrong_arity(protected = true, value = 100, r)
+  stateful entrypoint
+    test_hacked_r     (r : Remote, p : ProxyRemote) : option(int)  = p.call_hacked     (protected = true, value = 100, r)
+  stateful entrypoint
+    test_missing_r    (r : Remote, p : ProxyRemote) : option(int)  = p.call_missing    (protected = true, value = 100, r)
+  stateful entrypoint
+    test_revert_r     (r : Remote, p : ProxyRemote) : option('a)   = p.call_revert     (protected = true, value = 100, r)
+  stateful entrypoint
+    test_crash_r      (r : Remote, p : ProxyRemote) : option('a)   = p.call_crash      (protected = true, value = 100, r)
+  stateful entrypoint
+    test_out_of_gas_r (r : Remote, p : ProxyRemote) : option('a)   = p.call_out_of_gas (protected = true, value = 100, gas = 5500, r)
+  stateful entrypoint
+    test_nonpayable_r (r : Remote, p : ProxyRemote) : option(int)  = p.call_nonpayable (protected = true, value = 100, r)
+  stateful entrypoint
+    test_missing_con_r(r : Remote, p : ProxyRemote) : option(int)  = p.call_missing_con(protected = true, value = 100)

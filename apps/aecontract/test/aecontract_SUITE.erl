@@ -17,6 +17,7 @@
         ]).
 
 -include_lib("aecontract/include/hard_forks.hrl").
+-include_lib("aebytecode/include/aeb_fate_data.hrl").
 
 %% for testing from a shell
 -export([ init_tests/2 ]).
@@ -169,6 +170,10 @@
         , sophia_address_checks/1
         , sophia_remote_gas/1
         , sophia_higher_order_state/1
+        , sophia_clone/1
+        , sophia_create/1
+        , sophia_bytecode_hash/1
+        , sophia_factories/1
         , sophia_bignum/1
         , sophia_strings/1
         , sophia_call_caller/1
@@ -449,6 +454,10 @@ groups() ->
                                  sophia_bignum,
                                  sophia_call_caller,
                                  sophia_higher_order_state,
+                                 sophia_clone,
+                                 sophia_create,
+                                 sophia_bytecode_hash,
+                                 sophia_factories,
                                  sophia_use_memory_gas,
                                  sophia_compiler_version,
                                  sophia_protected_call,
@@ -688,8 +697,8 @@ init_per_testcase_common(TC, Config) ->
                           roma    -> ?ROMA_PROTOCOL_VSN;
                           minerva -> ?MINERVA_PROTOCOL_VSN;
                           fortuna -> ?FORTUNA_PROTOCOL_VSN;
-                          iris    -> ?IRIS_PROTOCOL_VSN;
-                          lima    -> ?LIMA_PROTOCOL_VSN
+                          lima    -> ?LIMA_PROTOCOL_VSN;
+                          iris    -> ?IRIS_PROTOCOL_VSN
                       end,
     AciDisabled = case os:getenv("SOPHIA_NO_ACI") of
                   false ->
@@ -786,7 +795,7 @@ create_contract_init_error_call_wrong_function(_Cfg) ->
     S0 = aect_test_utils:setup_miner_account(?MINER_PUBKEY, S),
     {PubKey, S1} = aect_test_utils:setup_new_account(S0),
     {ok, Code}   = compile_contract(identity),
-    CallData     = make_calldata_from_code(Code, <<"main">>, {42}),
+    CallData     = make_calldata_from_code(Code, <<"main_">>, {42}),
     Options      = #{call_data => CallData},
     {{error, bad_init_function}, _} = tx_fail_create_contract_with_code(PubKey, Code, {}, Options, S1),
     ok.
@@ -1127,7 +1136,7 @@ call_contract_negative_insufficient_funds(_Cfg) ->
     Value = 10,
     Bal = Fee + Value - 2,
     S = aect_test_utils:set_account_balance(Acc1, Bal, state()),
-    CallData = make_calldata_from_id(IdC, main, 42, S),
+    CallData = make_calldata_from_id(IdC, main_, 42, S),
     CallTx = aect_test_utils:call_tx(Acc1, IdC,
                                      #{call_data => CallData,
                                        gas_price => aec_test_utils:min_gas_price(),
@@ -1187,7 +1196,7 @@ call_contract_(ContractCallTxGasPrice) ->
     %% Now check that we can call it.
     Fee           = 600000 * aec_test_utils:min_gas_price(),
     Value         = 52,
-    CallData = make_calldata_from_code(IdContract, main, 42),
+    CallData = make_calldata_from_code(IdContract, main_, 42),
     CallTx = aect_test_utils:call_tx(Caller, ContractKey,
                                      #{call_data => CallData,
                                        gas_price => ContractCallTxGasPrice,
@@ -1630,8 +1639,12 @@ make_calldata_from_code(Code, Fun, Args) when is_binary(Fun) ->
 
 make_calldata_from_id(Id, Fun, Args, State) ->
     {{value, C}, _S} = lookup_contract_by_id(Id, State),
-    {code, Code} = aect_contracts:code(C),
-    make_calldata_from_code(Code, Fun, Args).
+    case aect_contracts:code(C) of
+        {code, Code} ->
+            make_calldata_from_code(Code, Fun, Args);
+        {ref, {id, contract, Id1}} ->
+            make_calldata_from_id(Id1, Fun, Args, State)
+    end.
 
 format_aevm_type({bytes, N}) ->
     case lists:seq(1, N, 32) of
@@ -1709,7 +1722,7 @@ sophia_identity(_Cfg) ->
     state(aect_test_utils:new_state()),
     Acc1 = ?call(new_account, 10000000 * aec_test_utils:min_gas_price()),
     IdC   = ?call(create_contract, Acc1, identity, {}),
-    42    = ?call(call_contract,   Acc1, IdC, main, word, 42),
+    42    = ?call(call_contract,   Acc1, IdC, main_, word, 42),
     ok.
 
 sophia_remote_identity(_Cfg) ->
@@ -1718,7 +1731,7 @@ sophia_remote_identity(_Cfg) ->
     %% Remote calling the identity contract
     IdC   = ?call(create_contract, Acc1, identity, {}),
     RemC  = ?call(create_contract, Acc1, remote_call, {}, #{amount => 100}),
-    42    = ?call(call_contract,   Acc1, IdC, main, word, 42),
+    42    = ?call(call_contract,   Acc1, IdC, main_, word, 42),
     99    = ?call(call_contract,   Acc1, RemC, call, word, {?cid(IdC), 99}),
     RemC2 = ?call(create_contract, Acc1, remote_call, {}, #{amount => 100}),
     77    = ?call(call_contract,   Acc1, RemC2, staged_call, word, {?cid(IdC), ?cid(RemC), 77}),
@@ -1768,6 +1781,75 @@ sophia_higher_order_state(_Cfg) ->
     3   = ?call(call_contract, Acc, Ct, apply, word, {1}),
     {}  = ?call(call_contract, Acc, Ct, inc,  {tuple, []}, {}),
     4   = ?call(call_contract, Acc, Ct, apply, word, {1}),
+    ok.
+
+sophia_clone(_Cfg) ->
+    ?skipRest(vm_version() < ?VM_FATE_SOPHIA_2, clone_not_pre_iris),
+    state(aect_test_utils:new_state()),
+    Acc     = ?call(new_account, 1000000000 * aec_test_utils:min_gas_price()),
+    Remote  = ?call(create_contract, Acc, higher_order_state, {}),
+    Ct      = ?call(create_contract, Acc, clone_test, {}),
+
+    Cloned1 = ?call(call_contract, Acc, Ct, run_clone, word, {?cid(Remote), ?cid(Remote)}),
+    {contract, Cloned1Id} = Cloned1,
+    Cloned1Addr = <<Cloned1Id:256>>,
+
+    Cloned2 = ?call(call_contract, Acc, Ct, run_clone, word, {?cid(Cloned1Addr), ?cid(Cloned1Addr)}),
+    {contract, Cloned2Id} = Cloned2,
+    Cloned2Addr = <<Cloned2Id:256>>,
+
+    ?assertNotEqual(Cloned1, Cloned2),
+
+    ?assertEqual({}, ?call(call_contract, Acc, Cloned1Addr, inc, {tuple, []}, {})),
+
+    ?assertEqual(13, ?call(call_contract, Acc, Cloned1Addr, apply, word, {10})),
+    ?assertEqual(12, ?call(call_contract, Acc, Cloned2Addr, apply, word, {10})),
+
+
+    ok.
+
+sophia_create(_Cfg) ->
+    ?skipRest(vm_version() < ?VM_FATE_SOPHIA_2, create_not_pre_iris),
+    state(aect_test_utils:new_state()),
+    Acc = ?call(new_account, 1000000000000000000000 * aec_test_utils:min_gas_price()),
+    Ct  = ?call(create_contract, Acc, create_test, {}, #{gas => 1000000000000}),
+    R1  = ?call(call_contract, Acc, Ct, increaseByThree, word, {2137}, #{gas => 1000000000000, amount => 1000000}),
+    ?assertEqual(2140, R1),
+    ok.
+
+sophia_bytecode_hash(_Cfg) ->
+    ?skipRest(vm_version() < ?VM_FATE_SOPHIA_2, bytecode_hash_not_pre_iris),
+    state(aect_test_utils:new_state()),
+    Acc = ?call(new_account, 1000000000 * aec_test_utils:min_gas_price()),
+    Remote  = ?call(create_contract, Acc, higher_order_state, {}),
+    Ct  = ?call(create_contract, Acc, bytecode_hash_test, {}),
+    HashComputed = ?call(call_contract, Acc, Ct, hash, hash, {?cid(Remote)}),
+    HashChain =
+        begin
+            Trees = aect_test_utils:trees(state()),
+            CTTrees = aec_trees:contracts(Trees),
+            ExtractedMaybe = aect_state_tree:lookup_contract(Remote, CTTrees),
+            ?assertMatch({value, _}, ExtractedMaybe),
+            {value, Extracted} = ExtractedMaybe,
+            {code, SerCode} = aect_contracts:code(Extracted),
+            #{ byte_code := SerByteCode} = aect_sophia:deserialize(SerCode),
+            Hashed = aeb_fate_data:make_hash(aec_hash:hash(fate_code, SerByteCode)),
+            Hashed
+        end,
+    ?assertEqual(HashChain, HashComputed),
+    ?assert(    ?call(call_contract, Acc, Ct, hash_valid, bool, {?cid(Remote)})),
+    ?assert(not ?call(call_contract, Acc, Ct, hash_valid, bool, {?cid(Acc)})),
+    ok.
+
+sophia_factories(_Cfg) ->
+    ?skipRest(vm_version() < ?VM_FATE_SOPHIA_2, factories_not_pre_iris),
+    state(aect_test_utils:new_state()),
+    Acc = ?call(new_account, 1000000000000000000000 * aec_test_utils:min_gas_price()),
+    Ct  = ?call(create_contract, Acc, factories, {}, #{gas => 10000000000000}),
+    ?assertEqual(1, ?call(call_contract, Acc, Ct, add, word, {1}, #{gas => 1000000000000000})),
+    ?assertEqual(2, ?call(call_contract, Acc, Ct, add, word, {2}, #{gas => 1000000000000000})),
+    ?assertEqual(3, ?call(call_contract, Acc, Ct, add, word, {3}, #{gas => 1000000000000000})),
+    ?assertEqual(6, ?call(call_contract, Acc, Ct, sum, word, {},  #{gas => 1000000000000000})),
     ok.
 
 sophia_bignum(_Cfg) ->
@@ -2061,7 +2143,7 @@ aevm_version_interaction(Cfg) ->
                        fee => 1000000 * MinGasPrice},
 
     %% Call directly old VMs
-    [?assertEqual(42, ?call(call_contract, Acc, Id, main, word, 42, LatestCallSpec))
+    [?assertEqual(42, ?call(call_contract, Acc, Id, main_, word, 42, LatestCallSpec))
      || Id <- [ IdCRoma
               , IdCMinerva
               , IdCFortuna
@@ -5535,7 +5617,7 @@ sophia_compiler_version(_Cfg) ->
     {code, Code} = aect_contracts:code(C),
     CMap = aeser_contract_code:deserialize(Code),
     ?assertMatchProtocol(maps:get(compiler_version, CMap, undefined),
-                         undefined, <<"2.1.0">>, <<"3.2.0">>, <<"unknown">>, <<"4.3.0">>),
+                         undefined, <<"2.1.0">>, <<"3.2.0">>, <<"unknown">>, <<"6.0.0">>),
     ok.
 
 sophia_protected_call(_Cfg) ->
@@ -5591,9 +5673,10 @@ sophia_protected_call(_Cfg) ->
               , Test(test_revert_r,      {option, word}, 17400, 17800)
               , Test(test_crash_r,       {option, word}, 17400, 17800)
               , Test(test_out_of_gas_r,  {option, word}, 5000, 5500) ],
-    [] = [ Res || Res = {_, MinGas, MaxGas, {R, Gas}, State, Bal} <- Results,
-                  R /= none orelse Gas < MinGas orelse Gas > MaxGas orelse State /= 0 orelse
-                  lists:any(fun(N) -> N /= 0 end, Bal) ],
+    ?assertMatch(
+       [], [Res || Res = {_, MinGas, MaxGas, {R, Gas}, State, Bal} <- Results,
+                   R /= none orelse Gas < MinGas orelse Gas > MaxGas orelse State /= 0 orelse
+                       lists:any(fun(N) -> N /= 0 end, Bal) ]),
     ok.
 
 sophia_aevm_bad_code(_Cfg) ->
@@ -5611,7 +5694,7 @@ sophia_aevm_bad_code(_Cfg) ->
     HackedCode2 = hack_dup(6, 139, Code),
     C2 = ?call(create_contract_with_code, Acc, HackedCode2, {}, #{}),
     try
-        {error, <<"unknown_error">>} = ?call(call_contract, Acc, C2, main, word, 10)
+        {error, <<"unknown_error">>} = ?call(call_contract, Acc, C2, main_, word, 10)
     catch _:_ -> error(call_contract) end,
 
     ok.
@@ -6733,7 +6816,7 @@ fate_vm_interaction(Cfg) ->
                        fee => 1000000 * MinGasPrice},
 
     %% Call directly old VMs
-    [?assertEqual(42, ?call(call_contract, Acc, Id, main, word, 42, LatestCallSpec))
+    [?assertEqual(42, ?call(call_contract, Acc, Id, main_, word, 42, LatestCallSpec))
         || Id <- [ IdCLima
                  , IdCIris
                  ]],
@@ -7299,7 +7382,7 @@ fate_environment(_Cfg) ->
     %% since we don't have a chain.
     BHHeight = 1000,
     %% Behavior at current height changed in FATE_VM2.
-    ?assertMatchFATE(none, {some, {bytes, <<BBHeight:256>>}},
+    ?assertMatchFATE(none, {some, {bytes, <<BHHeight:256>>}},
         ?call(call_contract, Acc, Contract, block_hash, {option, word}, {BHHeight}, #{height => BHHeight})),
     ?assertEqual(none, ?call(call_contract, Acc, Contract, block_hash, {option, word}, {BHHeight + 1},
                           #{height => BHHeight})),

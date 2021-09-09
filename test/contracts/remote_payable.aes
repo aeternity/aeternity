@@ -1,4 +1,4 @@
-contract Remote =
+contract interface Remote =
   payable entrypoint foo : (int) => bool
   entrypoint bar : (int) => bool
 

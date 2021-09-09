@@ -1,0 +1,27 @@
+contract Interface =
+  entrypoint do_abort : (int, string) => unit
+  entrypoint get_value : () => int
+  entrypoint put_value : (int) => unit
+  entrypoint get_values : () => list(int)
+  entrypoint put_values : (int) => unit
+
+contract AbortTestInt =
+
+  record state = {r : Interface, value : int}
+
+  entrypoint init(r : Interface, value : int) =
+    {r = r, value = value}
+
+  // Aborting
+  stateful entrypoint do_abort(v : int, s : string) =
+    put_value(v)
+    state.r.do_abort(v + 100, s)
+
+  // Accessing the value
+  stateful entrypoint put_value(v : int) = put(state{value = v})
+  entrypoint get_value() = state.value
+  entrypoint get_values() : list(int) =
+    state.value :: state.r.get_values()
+  stateful entrypoint put_values(v : int) =
+    put_value(v)
+    state.r.put_values(v + 1000)

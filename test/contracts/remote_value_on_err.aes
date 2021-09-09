@@ -1,4 +1,4 @@
-contract ValueOnErr =
+contract interface ValueOnErr =
   entrypoint err : () => int
   entrypoint ok  : () => int
 

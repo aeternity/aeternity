@@ -1,6 +1,6 @@
 // An implementation of the factorial entrypoint where each recursive
 // call is to another contract. Not the cheapest way to compute factorial.
-contract FactorialServer =
+contract interface FactorialServer =
   entrypoint fac : (int) => int
 
 contract Factorial =

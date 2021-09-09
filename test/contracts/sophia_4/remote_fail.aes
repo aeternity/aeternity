@@ -1,0 +1,8 @@
+
+contract Remote =
+  entrypoint main_ : (int, int) => int // Too many arguments!
+
+contract Main =
+
+  entrypoint fail(r : Remote) =
+    r.main_(1, 1000) + 2

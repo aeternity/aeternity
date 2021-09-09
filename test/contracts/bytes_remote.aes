@@ -1,4 +1,4 @@
-contract BytesRemote =
+contract interface BytesRemote =
   entrypoint identity : (bytes(4)) => bytes(4)
 
 contract BytesX =

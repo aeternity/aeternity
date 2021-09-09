@@ -1,0 +1,96 @@
+contract Oracles =
+
+  entrypoint registerOracle :
+    (address,
+     int,
+     Chain.ttl) => oracle(string, int)
+
+  entrypoint createQuery :
+    (oracle(string, int),
+     string,
+     int,
+     Chain.ttl,
+     Chain.ttl) => oracle_query(string, int)
+
+  entrypoint unsafeCreateQuery :
+    (oracle(string, int),
+     string,
+     int,
+     Chain.ttl,
+     Chain.ttl) => oracle_query(string, int)
+
+  entrypoint respond :
+    (oracle(string, int),
+     oracle_query(string, int),
+     int) => unit
+
+contract OraclesErr =
+
+  entrypoint unsafeCreateQueryThenErr :
+    (oracle(string, int),
+     string,
+     int,
+     Chain.ttl,
+     Chain.ttl) => oracle_query(string, int)
+
+contract RemoteOracles =
+
+  entrypoint callRegisterOracle(
+      r    : Oracles,
+      acct : address,
+      qfee : int,
+      ttl  : Chain.ttl) : oracle(string, int) =
+    r.registerOracle(acct, qfee, ttl)
+
+  stateful payable entrypoint callCreateQuery(
+    r     : Oracles,
+    value : int,
+    o     : oracle(string, int),
+    q     : string,
+    qfee  : int,
+    qttl  : Chain.ttl,
+    rttl  : Chain.ttl) : oracle_query(string, int) =
+    require(value =< Call.value, "insufficient value")
+    r.createQuery(value = value, o, q, qfee, qttl, rttl)
+
+  // Do not use in production!
+  stateful payable entrypoint callUnsafeCreateQuery(
+    r     : Oracles,
+    value : int,
+    o     : oracle(string, int),
+    q     : string,
+    qfee  : int,
+    qttl  : Chain.ttl,
+    rttl  : Chain.ttl) : oracle_query(string, int) =
+    r.unsafeCreateQuery(value = value, o, q, qfee, qttl, rttl)
+
+  // Do not use in production!
+  stateful entrypoint callUnsafeCreateQueryThenErr(
+    r     : OraclesErr,
+    value : int,
+    o     : oracle(string, int),
+    q     : string,
+    qfee  : int,
+    qttl  : Chain.ttl,
+    rttl  : Chain.ttl) : oracle_query(string, int) =
+    r.unsafeCreateQueryThenErr(value = value, o, q, qfee, qttl, rttl)
+
+  // Do not use in production!
+  stateful entrypoint callUnsafeCreateQueryAndThenErr(
+    r     : Oracles,
+    value : int,
+    o     : oracle(string, int),
+    q     : string,
+    qfee  : int,
+    qttl  : Chain.ttl,
+    rttl  : Chain.ttl) : oracle_query(string, int) =
+    let x = r.unsafeCreateQuery(value = value, o, q, qfee, qttl, rttl)
+    switch(0) 1 => ()
+    x // Never reached.
+
+  entrypoint callRespond(
+    r    : Oracles,
+    o    : oracle(string, int),
+    q    : oracle_query(string, int),
+    qr   : int) =
+    r.respond(o, q, qr)

@@ -1,0 +1,10 @@
+contract HigherOrderState =
+  entrypoint init : () => void
+
+contract C =
+  entrypoint hash(c : HigherOrderState) =
+    switch(Chain.bytecode_hash(c))
+      Some(h) => h
+      None => abort("BAD_CONTRACT")
+  entrypoint hash_valid(c : HigherOrderState) =
+    Chain.bytecode_hash(c) != None

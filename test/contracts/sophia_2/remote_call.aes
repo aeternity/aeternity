@@ -1,6 +1,6 @@
 
 contract Remote1 =
-  function main : (int) => int
+  function main_ : (int) => int
 
 contract Remote2 =
   function call : (Remote1, int) => int
@@ -12,7 +12,7 @@ contract Remote3 =
 contract RemoteCall =
 
     stateful function call(r : Remote1, x : int) : int =
-        r.main(gas = 10000, value = 10, x)
+        r.main_(gas = 10000, value = 10, x)
 
     function staged_call(r1 : Remote1, r2 : Remote2, x : int) =
         r2.call(r1, x)
@@ -26,4 +26,4 @@ contract RemoteCall =
     function plus(x, y) = x + y
 
     function gas_limit_call(r : Remote1, x : int, y : int) =
-        r.main(gas = y, x)
+        r.main_(gas = y, x)

@@ -1,4 +1,4 @@
-contract Remote =
+contract interface Remote =
   entrypoint missing : (int) => int
 
 contract Init_error =

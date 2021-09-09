@@ -1,5 +1,5 @@
 
-contract Remote =
+contract interface Remote =
   type state = string
   entrypoint set_state : state => unit
   entrypoint get_state : () => state

@@ -1,5 +1,5 @@
 contract Remote =
-  function main : (int) => int
+  function main_ : (int) => int
 
 contract Auth1 =
   record state = { secret : int }

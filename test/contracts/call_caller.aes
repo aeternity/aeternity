@@ -1,7 +1,7 @@
-contract Identity =
-  entrypoint main : (int) => int
+contract interface Identity =
+  entrypoint main_ : (int) => int
 
-contract Middle =
+contract interface Middle =
   entrypoint call_id : (Identity) => int
   entrypoint call_id_check : (Identity) => bool
 
@@ -10,7 +10,7 @@ contract CallCaller =
     Call.caller
 
   entrypoint f2(r : Identity) =
-    r.main(42)
+    r.main_(42)
     Call.caller
 
   entrypoint f3(r : Identity, m : Middle) =
@@ -23,9 +23,9 @@ contract CallCaller =
     res1 && (a == Call.caller)
 
   entrypoint call_id(r : Identity) =
-    r.main(42)
+    r.main_(42)
 
   entrypoint call_id_check(r : Identity) =
     let a = Call.caller
-    r.main(42)
+    r.main_(42)
     Call.caller == a

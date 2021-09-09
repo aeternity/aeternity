@@ -371,7 +371,7 @@ compile_(SophiaVsn, File) when SophiaVsn == ?SOPHIA_IRIS_FATE ->
                   yes_automatic -> [{aci, json}];
                   _ -> []
               end,
-    case aeso_compiler:from_string(Source, [{backend, fate}] ++ ACIFlag) of
+    case aeso_compiler:from_string(Source, [{backend, fate}, {src_file, File}] ++ ACIFlag) of
         {ok, Map} ->
             case Map of
                 #{aci := JAci} ->
@@ -414,7 +414,8 @@ compiler_cmd(Vsn) ->
         ?SOPHIA_MINERVA   -> filename:join([BaseDir, "v2.1.0", "aesophia_cli"]);
         ?SOPHIA_FORTUNA   -> filename:join([BaseDir, "v3.2.0", "aesophia_cli"]);
         ?SOPHIA_LIMA_AEVM -> filename:join([BaseDir, "v4.3.1", "aesophia_cli"]) ++ " --backend=aevm";
-        ?SOPHIA_LIMA_FATE -> filename:join([BaseDir, "v4.3.1", "aesophia_cli"])
+        ?SOPHIA_LIMA_FATE -> filename:join([BaseDir, "v4.3.1", "aesophia_cli"]);
+        ?SOPHIA_IRIS_FATE -> filename:join([BaseDir, "v6.0.0", "aesophia_cli"])
     end.
 
 aci_json_enabled(Vsn) ->

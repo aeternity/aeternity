@@ -1,5 +1,5 @@
 
-contract MapUpdater =
+contract interface MapUpdater =
   entrypoint update_map : (int, string, map(int, string)) => map(int, string)
 
 contract Benchmark =

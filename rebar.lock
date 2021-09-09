@@ -22,7 +22,7 @@
   0},
  {<<"aesophia_aci_encoder">>,
   {git,"https://github.com/aeternity/aesophia_aci_encoder",
-      {ref,"41d0427391ad9c153a5af1a4dcb9b361c4f425b0"}},
+      {ref,"5a07585d0cc6786b2afa0dcf3b5252e482ca38f7"}},
   0},
  {<<"aestratum_lib">>,
   {git,"https://github.com/aeternity/aestratum_lib.git",

@@ -1,0 +1,29 @@
+
+contract interface HigherOrderState =
+  entrypoint init : () => void
+  entrypoint apply : int => int
+  stateful entrypoint inc : () => unit
+
+contract interface LowerDisorderAnarchy =
+  entrypoint init : int => void
+
+
+main contract C =
+  // both `s` and `l` should be of type `HigherOrderState` in this test
+  stateful entrypoint run_clone(s : HigherOrderState, l : LowerDisorderAnarchy) : HigherOrderState =
+    let s1 = Chain.clone(ref=s)
+    let Some(s2) = Chain.clone(ref=s, protected = true)
+    let None = Chain.clone(ref=s, protected=true, gas=1)
+    // This should fail because `l` is a `HigherOrderState` actually
+    let None = Chain.clone(ref=l, protected = true, 123)
+    let s3 = Chain.clone(ref=s1)
+    require(s1.apply(2137) == 2137, "APPLY_S1_0")
+    require(s2.apply(2137) == 2137, "APPLY_S2_0")
+    require(s3.apply(2137) == 2137, "APPLY_S3_0")
+    s1.inc()
+    s2.inc()
+    s1.inc()
+    require(s1.apply(2137) == 2139, "APPLY_S1_2")
+    require(s2.apply(2137) == 2138, "APPLY_S2_1")
+    require(s3.apply(2137) == 2137, "APPLY_S3_0")
+    s1

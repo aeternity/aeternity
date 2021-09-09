@@ -36,12 +36,12 @@ execute_identity_fun_from_sophia_file(_Cfg) ->
     {ok, Compiled}    = aect_test_utils:compile_contract(identity),
     #{ byte_code := Code,
        type_info := TypeInfo} = aect_sophia:deserialize(Compiled),
-    {ok, ArgType} = aeb_aevm_abi:arg_typerep_from_function(<<"main">>, TypeInfo),
+    {ok, ArgType} = aeb_aevm_abi:arg_typerep_from_function(<<"main_">>, TypeInfo),
     CallDataType = {tuple, [word, ArgType]},
     OutType = word,
 
     %% Create the call data
-    {ok, CallData} = aect_test_utils:encode_call_data(ContractBin, <<"main">>, [<<"42">>]),
+    {ok, CallData} = aect_test_utils:encode_call_data(ContractBin, <<"main_">>, [<<"42">>]),
     ABI = aect_test_utils:latest_sophia_abi_version(),
     VM = aect_test_utils:latest_sophia_vm_version(),
     {ok, Store} = aevm_eeevm_store:from_sophia_state(

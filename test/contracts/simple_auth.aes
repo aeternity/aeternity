@@ -1,5 +1,5 @@
-contract Remote =
-  entrypoint main : (int) => int
+contract interface Remote =
+  entrypoint main_ : (int) => int
 
 contract Auth1 =
   record state = { secret : int }

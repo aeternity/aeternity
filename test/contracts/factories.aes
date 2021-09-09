@@ -1,0 +1,14 @@
+include "List.aes"
+
+contract IntegerHolder =
+  type state = int
+  entrypoint init(x) = x
+  entrypoint get() = state
+
+main contract IntegerCollection =
+  record state = {template: IntegerHolder, payload: list(IntegerHolder)}
+  stateful entrypoint init() = {template = Chain.create(0), payload = []}
+  stateful entrypoint add(x) =
+    put(state{payload @ p = Chain.clone(ref=state.template, x) :: p})
+    x
+  entrypoint sum() = List.sum(List.map((h) => h.get(), state.payload))

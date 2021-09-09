@@ -1,4 +1,4 @@
-contract Remote =
+contract interface Remote =
   entrypoint get : () => int
   entrypoint can_resolve : (string, string) => bool
 
