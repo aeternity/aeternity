@@ -197,7 +197,7 @@ read_store(Pubkey, ES) ->
                          || <<0, Reg/binary>> <- maps:keys(aect_contracts_store:contents(CtStore)) ],
         Value = fun(Key) ->
                     {ok, Val, _} = aefa_stores:find_value(Pubkey, Key, Store),
-                    {Val1, _}    = aefa_fate:unfold_store_maps(Val, ES1),
+                    {Val1, _}    = aefa_fate:unfold_store_maps(Val, ES1, unfold),
                     Val1
                 end,
         {maps:from_list([ {Key, Value(Key)} || Key <- Keys, Key > 0 ]), CtStore}
@@ -232,6 +232,10 @@ run_call(Code, Fun, Args, Options) ->
             io:format("Store:\n  ~p\n", [Store1]),
             print_logs(EventMap, Logs),
             aefa_engine_state:accumulator(ES);
+        {Time, {revert, Reason, ES}} ->
+            print_run_stats(Time, ES),
+            io:format("Revert: ~ts\n", [Reason]),
+            {error, revert};
         {Time, {error, <<"Out of gas">>, ES}} ->
             print_run_stats(Time, ES),
             {error, out_of_gas};

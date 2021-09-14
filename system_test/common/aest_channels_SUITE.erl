@@ -390,7 +390,7 @@ test_offchain_operations(Chan, Cfg) ->
         SimpleContract = proplists:get_value(simple_contract, Cfg),
         {ok, CallData} = encode_calldata(SimpleContract, "init", []),
         {ok, SimpleContract1} = sc_deploy_contract(Chan, Who, SimpleContract, CallData),
-        {ok, CallData1} = encode_calldata(SimpleContract, "main", ["42"]),
+        {ok, CallData1} = encode_calldata(SimpleContract, "main_", ["42"]),
         {ok, CallRes} = sc_call_contract(Chan, Who, SimpleContract1, CallData1),
         #{ <<"return_type">>       := <<"ok">>
          , <<"return_value">>      := _} = CallRes %% TODO: check if return value matches
