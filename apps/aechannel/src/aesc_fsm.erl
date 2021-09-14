@@ -5093,6 +5093,21 @@ handle_common_event_(cast, {?CHANNEL_CLOSED = OpTag, #{ tx_hash := TxHash
     D1 = D#data{last_channel_change = TxHash},
     D2 = safe_watched_action_report(SignedTx, Msg, D1, [], undefined, ?WATCH_CLOSED, OpTag, msg_type(Msg)),
     next_state(channel_closed, D2);
+handle_common_event_(cast, {ErrTag, #{ channel_id := ChanId, error_code := ?ERR_CONFLICT}} = Msg,
+                     _St, _,
+                     #data{ on_chain_id = ChanId } = D) when ErrTag == ?UPDATE_ERR;
+                                                              ErrTag == ?DEP_ERR;
+                                                              ErrTag == ?WDRAW_ERR ->
+    %% When a conflict (race) occurs, one or both of the FSMs may detect it.
+    %% When the FSM detects it, it notifies its client AND the peer FSM, then rolls back
+    %% to the 'open' state. If the peer also detected the race, an ?ERR_CONFLICT message
+    %% may be received, and should be discarded. If a new update has been initiated, the
+    %% conflict notice may arrive in almost any state. When we catch it here, it hasn't
+    %% matched the patters looking out for a conflict in the ongoing exchange, so we
+    %% discard it.
+    lager:debug("Straggler conflict notification (discard): ~p", [Msg]),
+    %% Should we log it in the history? As what?
+    keep_state(D);
 handle_common_event_({call, From}, Req, St, Mode, D) ->
     case Mode of
         error_all ->
