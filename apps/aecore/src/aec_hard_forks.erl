@@ -141,6 +141,8 @@ protocols_from_network_id(<<"local_iris_testnet">>) ->
      %%, ?LIMA_PROTOCOL_VSN     => Excluded for testing new protocol
      , ?IRIS_PROTOCOL_VSN     => 1
      };
+protocols_from_network_id(<<"ae_dev">>) ->
+    #{ ?IRIS_PROTOCOL_VSN => 0 };
 protocols_from_network_id(_ID) ->
     case aeu_env:user_map_or_env([<<"chain">>, <<"hard_forks">>], aecore, hard_forks, undefined) of
         undefined ->

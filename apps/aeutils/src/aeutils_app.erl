@@ -7,6 +7,7 @@
         , stop/1 ]).
 
 start(_StartType, _StartArgs) ->
+    _ = aeu_info:block_info(), %% init the cache so this process is the owner of the table
     aeutils_sup:start_link().
 
 start_phase(_Phase, _Type, _Args) ->
