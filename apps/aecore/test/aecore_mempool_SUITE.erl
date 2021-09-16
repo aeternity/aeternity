@@ -31,6 +31,7 @@
 
 -include_lib("common_test/include/ct.hrl").
 -include_lib("stdlib/include/assert.hrl").
+-include_lib("aecontract/include/hard_forks.hrl").
 
 -define(MINE_RATE, 100).
 -define(SPEND_FEE, 20000 * aec_test_utils:min_gas_price()).
@@ -494,7 +495,13 @@ name_claim_to_unknown_commitement_cleanup(Config) ->
     SignedTx = aec_test_utils:sign_tx(Tx, Priv, false),
     ok = push(NodeName, SignedTx, Config),
     {ok, [SignedTx]} = rpc:call(NodeName, aec_tx_pool, peek, [infinity]),
-    {ok, 1} = rpc:call(NodeName, aec_tx_pool_failures, limit, [SignedTx, bad_transaction]),
+    Error =
+        case aect_test_utils:latest_protocol_version() of
+            PostFortuna when PostFortuna > ?FORTUNA_PROTOCOL_VSN ->
+                bad_transaction;
+            _ -> name_not_preclaimed
+        end,
+    {ok, 1} = rpc:call(NodeName, aec_tx_pool_failures, limit, [SignedTx, Error]),
     make_microblock_attempts(1, Config),
     timer:sleep(100), %% provide some time for the tx pool to process the message
     {ok, []} = rpc:call(NodeName, aec_tx_pool, peek, [infinity]),

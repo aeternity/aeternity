@@ -192,6 +192,11 @@
                                     "type" : "integer",
                                     "default" : 1
                                 },
+                                "name_not_preclaimed" : {
+                                    "description" : "If the origin of the transaction does not have ownership to the commitment. Legacy. Clean up.",
+                                    "type" : "integer",
+                                    "default" : 1
+                                },
                                 "commitment_not_owned" : {
                                     "description" : "If the origin of the transaction does not have ownership to the commitment. Clean up.",
                                     "type" : "integer",
