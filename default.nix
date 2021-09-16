@@ -1,27 +1,28 @@
 let
-  stable = import (fetchTarball { # 19.09
-    url = https://github.com/NixOS/nixpkgs-channels/archive/a22b0189002.tar.gz;
-    sha256 = "0rgd0cbxg9mrzb830hgjlvy134ivpfcnkyhbnlvvn8vl4y20zqmz";
-  }) {};
+  pkgs = import (builtins.fetchGit {
+    url = "https://github.com/NixOS/nixpkgs/";                       
+    ref = "refs/heads/nixos-unstable";                     
+    rev = "860b56be91fb874d48e23a950815969a7b832fbc";                                           
+  }) {};  
 in {
-  aeternityEnv = stable.stdenv.mkDerivation {
+  aeternityEnv = pkgs.stdenv.mkDerivation {
     name = "aeternity";
     ## required to compile the C parts of cuckoo
     hardeningDisable = [ "format" ];
-    nativeBuildInputs = [ stable.cmake ];
+    nativeBuildInputs = [ pkgs.cmake ];
     buildInputs = [
       ## base
-      stable.stdenv
+      pkgs.stdenv
       ## erlang
-      stable.erlangR21 # OTP 21.3.5.2
+      pkgs.erlangR23 # OTP 23.3.4.4
       ## crypto
-      stable.libsodium
+      pkgs.libsodium
       ## rocksdb build deps
-      stable.automake
-      stable.autoconf
-      stable.which
+      pkgs.automake
+      pkgs.autoconf
+      pkgs.which
       ## emcl's dependencies
-      stable.gmp
+      pkgs.gmp
     ];
     ## required to start the node locally
     shellHooks = ''
