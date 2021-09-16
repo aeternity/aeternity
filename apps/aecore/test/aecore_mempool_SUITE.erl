@@ -310,7 +310,7 @@ push_tx_skipped_nonce(Config) ->
     {ok, []} = rpc:call(NodeName, aec_tx_pool, peek, [infinity]),
     {ok, NextNonce} = rpc:call(NodeName, aec_next_nonce, pick_for_account, [Pub]),
     ct:log("NextNonce: ~p", [NextNonce]),
-    SpendTx = prepare_spend_tx(Node, #{nonce => NextNonce + 1}),
+    SpendTx = prepare_spend_tx(Node, #{nonce => NextNonce + 1, payload => <<"skiped nonce">>}),
     ct:log("Spend tx: ~p", [SpendTx]),
     ok = push(NodeName, SpendTx, Config),
     {ok, [_SpendTx]} = rpc:call(NodeName, aec_tx_pool, peek, [infinity]).
@@ -318,10 +318,12 @@ push_tx_skipped_nonce(Config) ->
 repush_tx_skipped_nonce_is_stopped_by_cache(Config) ->
     Node = dev1,
     NodeName = aecore_suite_utils:node_name(Node),
+    %% test requirement: empty pool
+    {ok, []} = rpc:call(NodeName, aec_tx_pool, peek, [infinity]),
     {_, Pub} = aecore_suite_utils:sign_keys(Node),
     {ok, NextNonce} = rpc:call(NodeName, aec_next_nonce, pick_for_account, [Pub]),
     ct:log("NextNonce: ~p", [NextNonce]),
-    SpendTx = prepare_spend_tx(Node, #{nonce => NextNonce + 1}),
+    SpendTx = prepare_spend_tx(Node, #{nonce => NextNonce + 1, payload => <<"skiped nonce">>}),
     ct:log("Spend tx: ~p", [SpendTx]),
     ok = push(NodeName, SpendTx, Config),
     {ok, []} = rpc:call(NodeName, aec_tx_pool, peek, [infinity]),
