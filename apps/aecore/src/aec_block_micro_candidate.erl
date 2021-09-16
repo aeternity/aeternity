@@ -172,9 +172,8 @@ get_pof(KeyBlock, PrevBlockHash, PrevBlock) ->
 
 %% Non-strict
 int_apply_block_txs(Txs, Trees, Env, false) ->
-    {ok, Txs1, InvalidTxs, Trees1, Events} =
-        aec_trees:apply_txs_on_state_trees(Txs, Trees, Env),
-    {ok, Txs1, InvalidTxs, Trees1, Events};
+    {ok, _Txs1, _InvalidTxs, _Trees1, _Events} =
+        aec_trees:apply_txs_on_state_trees(Txs, Trees, Env);
 %% strict
 int_apply_block_txs(Txs, Trees, Env, true) ->
     case aec_trees:apply_txs_on_state_trees_strict(Txs, Trees, Env) of

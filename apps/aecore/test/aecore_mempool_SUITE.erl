@@ -612,9 +612,5 @@ test_disabled(Config) ->
 
 
 random_hash() ->
-    HList =
-        lists:map(
-            fun(_) -> rand:uniform(255) end,
-            lists:seq(1, 32)),
-    list_to_binary(HList).
+    crypto:strong_rand_bytes(32).
 
