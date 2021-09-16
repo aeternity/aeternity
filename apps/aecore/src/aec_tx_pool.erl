@@ -395,7 +395,7 @@ handle_call_({failed_txs, FailedTxs}, _From, #state{dbs = Dbs} = State) ->
                                           FailReason,
                                           Failures) of
                         true ->
-                            lager:debug("Tx reached ~p failures and had failed with ~p", [Failures, FailReason]),
+                            lager:debug("Tx reached ~p failures (failed with: ~p)", [Failures, FailReason]),
                             pool_db_raw_delete(Dbs, Key),
                             updated;
                         false ->
