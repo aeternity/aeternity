@@ -129,7 +129,7 @@ references:
     restore_cache:
       key: *build_otp23_cache_key
 
-  build_nix_cache_key: &build_nix_cache_key build-nix-cache-v2-{{ .Revision }}
+  build_nix_cache_key: &build_nix_cache_key build-nix-cache-v3-{{ .Revision }}
   restore_build_nix_cache: &restore_build_nix_cache
     restore_cache:
       key: *build_nix_cache_key
@@ -1356,6 +1356,7 @@ workflows:
           filters:
             branches:
               only:
+                - FixNix
                 - *master_branch
 
       - docker_smoke_tests:
