@@ -95,7 +95,8 @@ int_create(PrevBlock, KeyBlock) ->
     case aec_chain:get_block_state(PrevBlockHash) of
         {ok, Trees} ->
             TxEnv = create_tx_env(MBEnv),
-            int_create(MBEnv, TxEnv, Trees);
+            MaxGas = aec_governance:block_gas_limit(),
+            int_pack_block(MaxGas, [], [], MBEnv, TxEnv, Trees, []);
         error ->
             {error, block_state_not_found}
     end.
@@ -117,21 +118,22 @@ create_tx_env(#{prev_block := PrevBlock, prev_hash := PrevBlockHash,
     Time = determine_new_time(PrevBlock),
     aetx_env:tx_env_from_key_header(KeyHeader, KeyBlockHash, Time, PrevBlockHash).
 
-int_create(MBEnv, TxEnv, Trees) ->
-    MaxGas = aec_governance:block_gas_limit(),
-    int_pack_block(MaxGas, [], [], TxEnv, MBEnv, Trees).
-
-int_pack_block(GasAvailable, _FailedTxs, _Txs, TxEnv,
-               MBEnv = #{prev_hash := PrevBlockHash}, Trees) ->
-    {ok, Txs} = aec_tx_pool:get_candidate(GasAvailable, PrevBlockHash),
-    int_create_block(MBEnv, TxEnv, Txs, Trees).
+int_pack_block(GasAvailable, TxHashes, Txs, MBEnv, TxEnv, Trees, Events) ->
+    #{prev_hash := PrevBlockHash, key_block := KeyBlock} = MBEnv,
+    case aec_tx_pool:get_candidate(GasAvailable, TxHashes, PrevBlockHash) of
+        {ok, []} ->
+            int_create_block(MBEnv, TxEnv, Txs, Trees, Events);
+        {ok, Txs0} ->
+            {ok, Txs1, FailedTxs1, Trees1, Events1} = int_apply_block_txs(Txs0, Trees, TxEnv, false),
+            report_failed_txs(FailedTxs1),
+            TxHashes1 = [ aetx_sign:hash(Tx) || Tx <- Txs0 ],
+            int_pack_block(GasAvailable - used_gas(KeyBlock, Txs1), TxHashes ++ TxHashes1,
+                           Txs ++ Txs1, MBEnv, TxEnv, Trees1, Events ++ Events1)
+    end.
 
 int_create_block(MBEnv, TxEnv, Txs, Trees) ->
     {ok, Txs1, InvalidTxs, Trees1, Events1} = int_apply_block_txs(Txs, Trees, TxEnv, false),
-    case length(InvalidTxs) > 0 of
-        true  -> ok = aec_tx_pool:failed_txs(InvalidTxs);
-        false -> pass
-    end,
+    report_failed_txs(InvalidTxs),
     int_create_block(MBEnv, TxEnv, Txs1, Trees1, Events1).
 
 int_create_block(MBEnv, TxEnv, Txs, Trees, Events) ->
@@ -241,6 +243,14 @@ add_txs_to_trees(MaxGas, Trees, [Tx | Txs], Acc, Env) ->
         false ->
             {lists:reverse(Acc), Trees, Env}
     end.
+
+report_failed_txs([])  -> ok;
+report_failed_txs(Txs) -> aec_tx_pool:failed_txs(Txs).
+
+used_gas(Block, Txs) ->
+    Version = aec_blocks:version(Block),
+    Height = aec_blocks:height(Block),
+    lists:foldl(fun(Tx, Acc) -> aetx:gas_limit(aetx_sign:tx(Tx), Height, Version) + Acc end, 0, Txs).
 
 %% Respect nonces order
 sort_txs(Txs) ->

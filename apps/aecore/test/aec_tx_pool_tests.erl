@@ -798,6 +798,9 @@ tx_pool_test_() ->
         end},
       {"Test Origins cache GC",
        fun() ->
+               %% Disable the failure mechanism it is too efficient for this test to work...
+               meck:expect(aec_tx_pool, failed_txs, 1, ok),
+
                %% Initialize chain
                aec_test_utils:stop_chain_db(),
 
