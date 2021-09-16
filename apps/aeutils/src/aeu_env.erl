@@ -253,7 +253,7 @@ schema_default_values(Path) ->
             RecoursiveDefault =
                 fun R(_PName,
                       #{<<"type">> := <<"object">>, <<"properties">> := Props}) ->
-                          maps:map(fun(_PN, #{<<"type">> := <<"object">>} = PP) -> R(PN, PP);
+                          maps:map(fun(PN, #{<<"type">> := <<"object">>} = PP) -> R(PN, PP);
                                       (_PN, #{<<"default">> := Def}) -> Def
                                     end, Props);
                     R(_PName, #{<<"default">> := Def}) ->
