@@ -1356,7 +1356,6 @@ workflows:
           filters:
             branches:
               only:
-                - FixNix
                 - *master_branch
 
       - docker_smoke_tests:
