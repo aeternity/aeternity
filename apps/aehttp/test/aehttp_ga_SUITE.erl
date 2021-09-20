@@ -110,7 +110,9 @@ init_per_suite(Config0) ->
     DefCfg = #{<<"chain">> =>
                    #{<<"persist">> => false,
                      <<"hard_forks">> => Forks},
-               <<"mempool">> => #{<<"tx_ttl">> => 100},
+               <<"mempool">> => #{<<"tx_ttl">> => 100,
+                                  <<"tx_failures">> => #{ <<"enabled">> => false}
+                                  },
               <<"http">> =>
                    #{<<"cache">> => #{<<"enabled">> => false}}},
     Config1 = [{instant_mining, true}, {symlink_name, "latest.http_ga"}, {test_module, ?MODULE}] ++ Config0,
