@@ -22,7 +22,8 @@
 -export([find_config/2]).
 -export([nested_map_get/2]).
 -export([read_config/0]).
--export([apply_os_env/0]).
+-export([apply_os_env/0,
+         apply_os_env/3]).
 -export([parse_key_value_string/1]).
 -export([data_dir/1]).
 -export([check_config/1, check_config/2]).
@@ -214,8 +215,11 @@ schema() ->
             S
     end.
 
-schema([H|T]) ->
-    case schema() of
+schema(Key) ->
+    schema_(Key, schema()).
+
+schema_([H|T], Schema) ->
+    case Schema of
         #{<<"$schema">> := _, <<"properties">> := #{H := Tree}} ->
             schema_find(T, Tree);
         #{H := Tree} ->
@@ -223,10 +227,10 @@ schema([H|T]) ->
         _ ->
             undefined
     end;
-schema([]) ->
-    {ok, schema()};
-schema(Key) ->
-    case maps:find(Key, schema()) of
+schema_([], Schema) ->
+    {ok, Schema};
+schema_(Key, Schema) ->
+    case maps:find(Key, Schema) of
         {ok, _} = Ok -> Ok;
         error        -> undefined
     end.
@@ -305,23 +309,36 @@ read_config(Mode) when Mode =:= silent; Mode =:= report ->
 
 apply_os_env() ->
     ok = application:ensure_started(gproc),
-    try
-    %% Make sure gproc is started, since we use it in update_config/1
-    application:ensure_started(gproc),
     Pfx = "AE",  %% TODO: make configurable
+    ConfigMap = application:get_env(aeutils, '$user_map', #{}),
+    case apply_os_env(Pfx, schema(), ConfigMap, true) of
+        NewConfig when is_map(NewConfig) ->
+            cache_config(NewConfig),
+            NewConfig;
+        Other ->
+            Other
+    end.
+
+%% Plugin API version, using plugin schema and config, and withough notification.
+%% The plugin API might decide to publish a specific event...
+apply_os_env(Pfx, Schema, ConfigMap) ->
+    apply_os_env(Pfx, Schema, ConfigMap, false).
+
+apply_os_env(Pfx, Schema, ConfigMap, Notify) when is_boolean(Notify) ->
     %% We sort on variable names to allow specific values to override object
     %% definitions at a higher level (e.g. AE__MEMPOOL followed by AE__MEMPOOL__TX_TTL)
     %% Note that all schema name parts are converted to uppercase.
-    Names = lists:keysort(1, schema_key_names(Pfx)),
+    try
+    Names = lists:keysort(1, schema_key_names(Pfx, Schema)),
     error_logger:info_msg("OS env config: ~p~n", [Names]),
     Map = lists:foldl(
             fun({_Name, Key, Value}, Acc) ->
-                    Value1 = coerce_type(Key, Value),
+                    Value1 = coerce_type(Key, Value, Schema),
                     update_map(to_map(Key, Value1), Acc)
             end, #{}, Names),
     error_logger:info_msg("Map fr OS env config: ~p~n", [Map]),
     if map_size(Map) > 0 ->
-            update_config(Map);
+            update_config(Map, ConfigMap, Schema, Notify);
        true ->
             no_change
     end
@@ -341,8 +358,8 @@ to_map([H|T], Val, M) ->
     M#{H => to_map(T, Val, SubMap)}.
             
 
-coerce_type(Key, Value) ->
-    case schema(Key) of
+coerce_type(Key, Value, Schema) ->
+    case schema_(Key, Schema) of
         {ok, #{<<"type">> := Type}} ->
             case Type of
                 <<"integer">> -> to_integer(Value);
@@ -370,7 +387,10 @@ to_bool(Other) ->
     error({expected_boolean, Other}).
 
 schema_key_names(Prefix) ->
-    case schema() of
+    schema_key_names(Prefix, schema()).
+
+schema_key_names(Prefix, Schema) ->
+    case Schema of
         #{<<"$schema">> := _, <<"properties">> := Props} ->
             schema_key_names(Prefix, [], Props, []);
         _ ->
@@ -463,10 +483,14 @@ do_read_config(F, Schema, Action, Mode) ->
         {".yaml", check} -> check_config_(catch read_yaml(F, Schema, Mode))
     end.
 
-store([Vars0]) ->
-    Vars = to_tree(Vars0),
-    set_env(aeutils, '$user_config', Vars),
-    set_env(aeutils, '$user_map', Vars0).
+store([Vars0]) when is_map(Vars0) ->
+    cache_config(Vars0).
+
+cache_config(ConfigMap) when is_map(ConfigMap) ->
+    set_env(aeutils, '$user_map', ConfigMap),
+    ConfigTree = to_tree(ConfigMap),
+    set_env(aeutils, '$user_config', ConfigTree),
+    ok.
 
 check_config_({yamerl_exception, _StackTrace} = Error) ->
     {error, Error};
@@ -560,15 +584,22 @@ lst(E) -> [E].
 
 update_config(Map) when is_map(Map) ->
     Schema = application:get_env(aeutils, '$schema', #{}),
+    ConfigMap = application:get_env(aeutils, '$user_map', #{}),
+    ConfigMap1 = update_config(Map, Schema, ConfigMap, _Notify = true),
+    cache_config(ConfigMap1),
+    ok.
+
+update_config(Map, ConfigMap, Schema, Notify) ->
     check_validation([jesse:validate_with_schema(Schema, Map, [])],
                      [Map], update_config, report),
-    ConfigMap = application:get_env(aeutils, '$user_map', #{}),
-    ConfigMap1 = update_map(Map, ConfigMap),
-    ConfigTree1 = to_tree(ConfigMap1),
-    set_env(aeutils, '$user_map', ConfigMap1),
-    set_env(aeutils, '$user_config', ConfigTree1),
-    aec_events:publish(update_config, Map),
-    ok.
+    NewConfig = update_map(Map, ConfigMap),
+    if Notify ->
+            aec_events:publish(update_config, Map);
+       true ->
+            ok
+    end,
+    NewConfig.
+
 
 update_map(With, Map) when is_map(With), is_map(Map) ->
     maps:fold(
