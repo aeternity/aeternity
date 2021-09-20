@@ -880,6 +880,10 @@ jobs:
       - *fail_notification
 
   linux_package:
+    parameters:
+      aeplugin_devmode:
+        type: boolean
+        default: false
     executor: builder_container_otp22
     steps:
       - fixed_checkout
@@ -1042,8 +1046,15 @@ jobs:
       tag_suffix:
         type: string
         default: ""
+      aeplugin_devmode:
+        type: boolean
+        default: false
     steps:
       - fixed_checkout
+      - when:
+          condition: << parameters.aeplugin_devmode >>
+          steps:
+            - aeplugin_install_devmode
       - *setup_remote_docker
       - docker_build_branch:
           tag_suffix: <<parameters.tag_suffix>>
@@ -1766,6 +1777,7 @@ workflows:
           name: docker_push_test_branch
           context: ae-node-builds
           tag_suffix: "-bundle"
+          aeplugin_devmode: true
           filters:
             branches:
               only:
