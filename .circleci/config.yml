@@ -472,16 +472,23 @@ commands:
             docker login -u $(</secrets/DOCKER_USER) -p $(</secrets/DOCKER_PASS)
 
   docker_build_branch:
+    parameters:
+      tag_suffix:
+        type: string
+        default: ""
     steps:
       - run:
           name: Build branch docker image
           command: |
             docker pull aeternity/builder:bionic-otp22
-            docker build -t ${DOCKERHUB_REPO:?}:${CIRCLE_BRANCH/\//_} .
+            docker build -t ${DOCKERHUB_REPO:?}:${CIRCLE_BRANCH/\//_}<< parameters.tag_suffix >> .
       - run:
           name: Start branch docker image
           command: |
-            docker run -d -e AE__CHAIN__PERSIST -e AE__FORK_MANAGEMENT__NETWORK_ID --name ae_${CIRCLE_SHA1:?} ${DOCKERHUB_REPO:?}:${CIRCLE_BRANCH/\//_} bin/aeternity console -noinput -network_id ae_test
+            docker run -d -e AE__CHAIN__PERSIST -e AE__FORK_MANAGEMENT__NETWORK_ID \
+              --name ae_${CIRCLE_SHA1:?} \
+              ${DOCKERHUB_REPO:?}:${CIRCLE_BRANCH/\//_}<< parameters.tag_suffix >> \
+              bin/aeternity console -noinput -network_id ae_test
       - run:
           name: Display logs from branch docker image
           command: |
@@ -1042,19 +1049,28 @@ jobs:
 
   docker_test_push_branch:
     executor: buildpack
+    parameters:
+      tag_suffix:
+        type: string
+        default: ""
     steps:
       - fixed_checkout
       - *setup_remote_docker
-      - docker_build_branch
+      - docker_build_branch:
+          tag_suffix: <<parameters.tag_suffix>>
       - run:
           name: Push Docker image to DockerHub
           command: |
             docker login -u $DOCKER_USER -p $DOCKER_PASS
-            docker push ${DOCKERHUB_REPO:?}:${CIRCLE_BRANCH/\//_}
+            docker push ${DOCKERHUB_REPO:?}:${CIRCLE_BRANCH/\//_}<<parameters.tag_suffix>>
       - *fail_notification
 
   docker_push_latest:
     executor: infrastructure_container_stable
+    parameters:
+      tag_suffix:
+        type: string
+        default: ""
     <<: *infrastructure_config
     steps:
       - fixed_checkout
@@ -1064,11 +1080,15 @@ jobs:
           name: Build and push Docker image to DockerHub
           command: |
             docker pull ${DOCKERHUB_REPO:?}:${CIRCLE_TAG:?}
-            docker tag ${DOCKERHUB_REPO:?}:${CIRCLE_TAG:?} ${DOCKERHUB_REPO:?}:latest
-            docker push ${DOCKERHUB_REPO:?}:latest
+            docker tag ${DOCKERHUB_REPO:?}:${CIRCLE_TAG:?} ${DOCKERHUB_REPO:?}:latest<< parameters.tag_suffix >>
+            docker push ${DOCKERHUB_REPO:?}:latest<< parameters.tag_suffix >>
 
   docker_push_tag:
     executor: infrastructure_container_stable
+    parameters:
+      tag_suffix:
+        type: string
+        default: ""
     <<: *infrastructure_config
     steps:
       - fixed_checkout
@@ -1077,8 +1097,8 @@ jobs:
       - run:
           name: Build and push Docker image to DockerHub
           command: |
-            docker build -t ${DOCKERHUB_REPO:?}:${CIRCLE_TAG:?} .
-            docker push ${DOCKERHUB_REPO:?}:${CIRCLE_TAG:?}
+            docker build -t ${DOCKERHUB_REPO:?}:${CIRCLE_TAG:?}<< parameters.tag_suffix >> .
+            docker push ${DOCKERHUB_REPO:?}:${CIRCLE_TAG:?}<< parameters.tag_suffix >>
 
   docker_system_tests:
     executor: machine_1604
@@ -1727,6 +1747,7 @@ workflows:
               only: master
 
       - docker_test_push_branch:
+          name: docker_push_branch
           context: ae-node-builds
           requires:
             - test_roma
@@ -1749,6 +1770,15 @@ workflows:
             branches:
               only:
                 - *master_branch
+
+      - docker_test_push_branch:
+          name: docker_push_test_branch
+          context: ae-node-builds
+          tag_suffix: "-bundle"
+          filters:
+            branches:
+              only:
+                - bundle_package
 
       - deploy_next:
           context: ae-node-builds
