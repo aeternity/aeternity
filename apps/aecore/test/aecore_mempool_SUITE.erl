@@ -454,8 +454,6 @@ skipped_nonce_specific_cleanup(Config) ->
     timer:sleep(100), %% provide some time for the tx pool to process the message
     {ok, []} = rpc:call(NodeName, aec_tx_pool, peek, [infinity]),
     %% the tx can reenter the pool:
-    timer:sleep(4000), %% provide some time for the tx pool to process the message
-    ct:log("Pushing again the tx", []),
     ok = push(NodeName, SkippedNonceTx, Config),
     {ok, [SkippedNonceTx]} = rpc:call(NodeName, aec_tx_pool, peek, [infinity]),
     make_microblock_attempts(CleanupTTL, Config),
