@@ -450,6 +450,19 @@ commands:
           name: Setup environment secrets
           command: cd /infrastructure && make secrets SECRETS_OUTPUT_DIR=/secrets
 
+  aeplugin_enable_devmode:
+    parameters:
+      version:
+        type: string
+    steps:
+      - run:
+          name: Download devmode plugin
+          command: |
+                DOWNLOAD_URL="https://github.com/aeternity/aeplugin_dev_mode/archive/refs/tags/v<< parameters.version >>.tar.gz" \
+                && curl -fsSL -o aeplugin_devmode-src.tar.gz "$DOWNLOAD_URL" \
+                && mkdir -p $CIRCLE_WORKING_DIRECTORY/apps/aeplugin_dev_mode \
+                && tar -zxf aeplugin_devmode-src.tar.gz -C $CIRCLE_WORKING_DIRECTORY/apps/aeplugin_dev_mode --strip-components=1
+
   docker_login:
     steps:
       - setup_secrets
@@ -872,6 +885,23 @@ jobs:
           path: /tmp/package_tests/node3/log
       - *store_package_artifacts
       - *store_rebar3_crashdump
+      - persist_to_workspace:
+          root: *packages_workspace
+          paths:
+            - "*.tar.gz"
+      - *fail_notification
+
+  linux_package_bundle:
+    executor: builder_container_otp22
+    environment:
+      PKG_KIND: bundle
+    steps:
+      - fixed_checkout
+      - aeplugin_enable_devmode:
+          version: 0.1.0
+      - *set_package_path
+      - *build_package
+      - *store_package_artifacts
       - persist_to_workspace:
           root: *packages_workspace
           paths:
@@ -1622,6 +1652,12 @@ workflows:
                 - system-tests
 
       - linux_package:
+          filters:
+            branches:
+              ignore:
+                - system-tests
+
+      - linux_package_bundle:
           filters:
             branches:
               ignore:

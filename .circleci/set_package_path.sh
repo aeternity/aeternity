@@ -12,6 +12,10 @@ fi
 
 PKG_SUFFIX="${PKG_TARGET_OS}-"`uname -m`
 
+if [ -n "${PKG_KIND}" ]; then
+    PKG_SUFFIX="${PKG_SUFFIX}-${PKG_KIND}"
+fi
+
 VERSION=$(git rev-parse HEAD)
 if [[ -n $CIRCLE_TAG && $CIRCLE_TAG =~ ^v([0-9]+\.[0-9]+\.[0-9]+(-[a-z0-9\.\+]+)*)$ ]]; then
     VERSION=${BASH_REMATCH[1]}
