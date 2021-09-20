@@ -52,7 +52,7 @@
             {roles,
              [ {basic, []}
              , {active, [aesync, aehttp, aemon, aestratum]}
-             , {dev, []}
+             , {dev, [aehttp]}
              ]}
           , {mode, normal}
           , {modes,
