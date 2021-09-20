@@ -171,7 +171,7 @@ init_per_group(EventType, Config) when EventType =:= tx_created;
 init_per_group(common_tests, Config) ->
     Config;
 init_per_group(failed_attempts, Config0) ->
-    Config = [{push_event, tx_received} | Config0],
+    Config = [{push_event, tx_created} | Config0], %% so it goes around cache check
     start_node(Config),
     seed_account(pubkey(?BOB), Config),
     Config;
@@ -310,9 +310,7 @@ push_tx_skipped_nonce(Config) ->
     %% precondition
     {ok, []} = rpc:call(NodeName, aec_tx_pool, peek, [infinity]),
     {ok, NextNonce} = rpc:call(NodeName, aec_next_nonce, pick_for_account, [Pub]),
-    ct:log("NextNonce: ~p", [NextNonce]),
-    SpendTx = prepare_spend_tx(Node, #{nonce => NextNonce + 1, payload => <<"skiped nonce">>}),
-    ct:log("Spend tx: ~p", [SpendTx]),
+    SpendTx = prepare_spend_tx(Node, #{nonce => NextNonce + 1, payload => <<"skipped nonce">>}),
     ok = push(NodeName, SpendTx, Config),
     {ok, [_SpendTx]} = rpc:call(NodeName, aec_tx_pool, peek, [infinity]).
 
@@ -323,9 +321,7 @@ repush_tx_skipped_nonce_is_stopped_by_cache(Config) ->
     {ok, []} = rpc:call(NodeName, aec_tx_pool, peek, [infinity]),
     {_, Pub} = aecore_suite_utils:sign_keys(Node),
     {ok, NextNonce} = rpc:call(NodeName, aec_next_nonce, pick_for_account, [Pub]),
-    ct:log("NextNonce: ~p", [NextNonce]),
-    SpendTx = prepare_spend_tx(Node, #{nonce => NextNonce + 1, payload => <<"skiped nonce">>}),
-    ct:log("Spend tx: ~p", [SpendTx]),
+    SpendTx = prepare_spend_tx(Node, #{nonce => NextNonce + 1, payload => <<"skipped nonce">>}),
     ok = push(NodeName, SpendTx, Config),
     {ok, []} = rpc:call(NodeName, aec_tx_pool, peek, [infinity]),
     ok.
@@ -455,6 +451,14 @@ skipped_nonce_specific_cleanup(Config) ->
     %% it should be cleaned up at the next height
     make_microblock_attempts(1, Config),
     %%{ok, _} = aecore_suite_utils:mine_blocks(NodeName, 1, ?MINE_RATE, key, #{}),
+    timer:sleep(100), %% provide some time for the tx pool to process the message
+    {ok, []} = rpc:call(NodeName, aec_tx_pool, peek, [infinity]),
+    %% the tx can reenter the pool:
+    timer:sleep(4000), %% provide some time for the tx pool to process the message
+    ct:log("Pushing again the tx", []),
+    ok = push(NodeName, SkippedNonceTx, Config),
+    {ok, [SkippedNonceTx]} = rpc:call(NodeName, aec_tx_pool, peek, [infinity]),
+    make_microblock_attempts(CleanupTTL, Config),
     timer:sleep(100), %% provide some time for the tx pool to process the message
     {ok, []} = rpc:call(NodeName, aec_tx_pool, peek, [infinity]),
     ok.

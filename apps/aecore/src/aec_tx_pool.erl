@@ -396,7 +396,11 @@ handle_call_({failed_txs, FailedTxs}, _From, #state{dbs = Dbs} = State) ->
                                           Failures) of
                         true ->
                             lager:debug("Tx reached ~p failures (failed with: ~p)", [Failures, FailReason]),
+                            #dbs{gc_db = GCDb} = Dbs,
                             pool_db_raw_delete(Dbs, Key),
+                            TxHash = aetx_sign:hash(SignedTx),
+                            aec_tx_pool_gc:delete_hash(GCDb, TxHash),
+                            aec_db:remove_tx_from_mempool(TxHash),
                             updated;
                         false ->
                             lager:debug("Tx failed with reason ~p, this attempt ~p", [FailReason, Failures]),
