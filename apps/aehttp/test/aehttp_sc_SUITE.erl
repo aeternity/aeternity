@@ -126,7 +126,7 @@
 -define(MAX_MINED_BLOCKS, 20).
 -define(BOGUS_STATE_HASH, <<42:32/unit:8>>).
 -define(BOGUS_FSM_ID, <<"Invalid">>).
--define(SPEND_FEE, 20000 * aec_test_utils:min_gas_price()).
+-define(SPEND_FEE, 20000 * min_gas_price()).
 
 -define(SLOGAN, slogan(?FUNCTION_NAME, ?LINE)).
 -define(SLOGAN(Param), slogan(?FUNCTION_NAME, ?LINE, Param)).
@@ -438,7 +438,7 @@ init_per_group(optional_fee, Config) ->
         end,
     [{fee_computation, {Opts, CheckFun}} |Config];
 init_per_group(optional_gas_price, Config) ->
-    GasPrice = aec_test_utils:min_gas_price() + 1234,
+    GasPrice = min_gas_price() + 1234,
     Opts = #{gas_price => GasPrice},
     CheckFun =
         fun(SignedTx) ->
@@ -453,7 +453,7 @@ init_per_group(optional_gas_price, Config) ->
         end,
     [{fee_computation, {Opts, CheckFun}} |Config];
 init_per_group(optional_fee_higher_than_gas_price, Config) ->
-    GasPrice = aec_test_utils:min_gas_price(),
+    GasPrice = min_gas_price(),
     Fee = ?ARBITRARY_BIG_FEE * 2,
     Opts = #{ gas_price => GasPrice
             , fee => Fee},
@@ -468,7 +468,7 @@ init_per_group(optional_fee_higher_than_gas_price, Config) ->
         end,
     [{fee_computation, {Opts, CheckFun}} |Config];
 init_per_group(optional_fee_lower_than_gas_price, Config) ->
-    GasPrice = aec_test_utils:min_gas_price() + 1234,
+    GasPrice = min_gas_price() + 1234,
     Opts = #{ gas_price => GasPrice
             , fee => 1}, % some small fee so it is being ignored in favour of gas price based computed fee
     CheckFun =
@@ -575,11 +575,11 @@ start_node(Config) ->
 reset_participants(Grp, Config) ->
     Node = ?config(node, Config),
 
-    StartAmt = 7000000000 * aec_test_utils:min_gas_price(),
+    StartAmt = 7000000000 * min_gas_price(),
         %% case aect_test_utils:latest_protocol_version() >= ?LIMA_PROTOCOL_VSN of
-        %%     false -> 50000000000 * aec_test_utils:min_gas_price();
+        %%     false -> 50000000000 * min_gas_price();
         %%     true  ->
-        %%         100 * 50000000000 * aec_test_utils:min_gas_price()
+        %%         100 * 50000000000 * min_gas_price()
         %% end,
 
     Initiator = {IPub, IPriv} = aecore_suite_utils:generate_key_pair(),
@@ -734,9 +734,9 @@ sc_ws_open_(Config, ChannelOpts0, MinBlocksToMine, LogDir) ->
     {ok, 200, #{<<"balance">> := RStartAmt}} =
                  get_accounts_by_pubkey_sut(aeser_api_encoder:encode(account_pubkey, RPubkey)),
     IAmt = maps:get(initiator_amount, ChannelOpts0,
-                    70000 * aec_test_utils:min_gas_price()),
+                    70000 * min_gas_price()),
     RAmt = maps:get(responder_amount, ChannelOpts0,
-                    40000 * aec_test_utils:min_gas_price()),
+                    40000 * min_gas_price()),
 
     {IStartAmt, RStartAmt} = channel_participants_balances(IPubkey, RPubkey),
 
@@ -1968,7 +1968,7 @@ sc_ws_oracle_contract_(Owner, GetVolley, CreateContract, ConnPid1, ConnPid2,
     %% Register an oracle. It will be used in an off-chain contract
     %% Oracle ask itself a question and answers it
     {OraclePubkey, OraclePrivkey} = ?CAROL,
-    ok = initialize_account(2000000 * aec_test_utils:min_gas_price(), ?CAROL),
+    ok = initialize_account(2000000 * min_gas_price(), ?CAROL),
 
     SophiaStringType =
         case aect_test_utils:backend() of
@@ -2137,7 +2137,7 @@ sc_ws_nameservice_contract_(Owner, GetVolley, CreateContract, ConnPid1, ConnPid2
     %% Register an oracle. It will be used in an off-chain contract
     %% Oracle ask itself a question and answers it
     {NamePubkey, NamePrivkey} = ?CAROL,
-    ok = initialize_account(4000000000000 * aec_test_utils:min_gas_price(), ?CAROL),
+    ok = initialize_account(4000000000000 * min_gas_price(), ?CAROL),
 
     EncodedCode = contract_byte_code("channel_on_chain_contract_name_resolution"),
     {ok, EncodedInitData} = encode_call_data(channel_on_chain_contract_name_resolution,
@@ -2385,7 +2385,7 @@ sc_ws_remote_call_contract_refering_onchain_data_(Owner, GetVolley, CreateContra
 
     % registering the name on-chain
     {NamePubkey, NamePrivkey} = ?CAROL,
-    ok = initialize_account(4000000000000 * aec_test_utils:min_gas_price(), ?CAROL),
+    ok = initialize_account(4000000000000 * min_gas_price(), ?CAROL),
     Protocol = aect_test_utils:latest_protocol_version(),
     NameFee =
         case  Protocol >= ?LIMA_PROTOCOL_VSN of
@@ -3011,8 +3011,8 @@ sc_ws_min_depth_not_reached_timeout_(Config) ->
     #{initiator := #{pub_key := IPubkey},
       responder := #{pub_key := RPubkey}} = proplists:get_value(participants, Config),
 
-    IAmt = 70000 * aec_test_utils:min_gas_price(),
-    RAmt = 40000 * aec_test_utils:min_gas_price(),
+    IAmt = 70000 * min_gas_price(),
+    RAmt = 40000 * min_gas_price(),
     %% Set the `timeout_funding_lock` to something short enough that the test case completes in
     %% reasonable time, but not so short that the fsms time out before the `channel_create` has
     %% time to collect the `on_chain_tx` notifications for the `create_tx`. Also, not so long
@@ -3431,7 +3431,7 @@ sc_ws_failed_update(Config) ->
             {ok, _, #{ <<"reason">> := <<"insufficient_balance">>
                      , <<"request">> := _Request0 }} =
                 channel_update_fail(ChannelClients, Sender, Participants,
-                                    10000000 * aec_test_utils:min_gas_price(), % try sending too much
+                                    10000000 * min_gas_price(), % try sending too much
                                     Config),
             ?WS:log(LogPid, info, "Failing update, negative amount"),
             {ok, _, #{ <<"reason">> := <<"negative_amount">>
@@ -3849,7 +3849,7 @@ sc_ws_cheating_close_solo_(Config, ChId, Poi, WhoCloses) ->
     #{pub_key := PubKey, priv_key := PrivKey} = Keys,
     {ok, Nonce} = rpc(aec_next_nonce, pick_for_account, [PubKey]),
     TTL = current_height() + 10,
-    Fee = 30000 * aec_test_utils:min_gas_price(),
+    Fee = 30000 * min_gas_price(),
     ct:log("Will try to create close_solo_tx~n"
            "ChId = ~p~n"
            "PubKey = ~p~n", [ChId, PubKey]),
@@ -5067,9 +5067,9 @@ sc_ws_optional_params_fail_create(Cfg0) ->
     #{initiator := #{pub_key := IPubkey},
       responder := #{pub_key := RPubkey}} = proplists:get_value(participants, Config),
     IAmt = maps:get(initiator_amount, ChannelOpts0,
-                    70000 * aec_test_utils:min_gas_price()),
+                    70000 * min_gas_price()),
     RAmt = maps:get(responder_amount, ChannelOpts0,
-                    40000 * aec_test_utils:min_gas_price()),
+                    40000 * min_gas_price()),
 
     TestEvents = [info, get, sign, on_chain_tx, update],
     ChannelOpts = channel_options(IPubkey, RPubkey, IAmt, RAmt, ChannelOpts0, Config),
@@ -5247,7 +5247,7 @@ sc_ws_optional_params_fail_force_progress(Cfg0) ->
         fun(Config) ->
             [ContractPubkey] = contract_ids(Config),
             {ok, EncodedData} = encode_call_data(ContractName, Function, Arguments),
-            GasPrice = aec_test_utils:min_gas_price() + rand:uniform(10000),
+            GasPrice = min_gas_price() + rand:uniform(10000),
             #{ contract_id => aeser_api_encoder:encode(contract_pubkey, ContractPubkey)
             , abi_version => aect_test_utils:abi_version()
             , amount      => 10
@@ -5660,7 +5660,7 @@ make_close_solo_args(SignedOffChainTx, OffchainTrees, Pubkeys) ->
     #{ channel_id => ChannelId
      , payload    => Payload
      , poi        => PoI
-     , fee        => 40000 * aec_test_utils:min_gas_price()}.
+     , fee        => 40000 * min_gas_price()}.
 
 sc_ws_can_not_abort_while_open(Cfg0) ->
     Cfg = sc_ws_open_(Cfg0),
@@ -5798,7 +5798,7 @@ sc_ws_force_progress_(Origin, ContractPubkey,
 
     %% force progress
     %% using random gas_price to check no hardcoded one
-    GasPrice = aec_test_utils:min_gas_price() + rand:uniform(10000),
+    GasPrice = min_gas_price() + rand:uniform(10000),
     FPOpts =
         XOpts#{ contract_id => aeser_api_encoder:encode(contract_pubkey, ContractPubkey)
               , abi_version => aect_test_utils:abi_version()
@@ -5891,3 +5891,6 @@ sc_ws_leave_responder_does_not_timeout(Config0) ->
     ok = sc_ws_update_(Config2),
     ct:log("*** Closing ... ***", []),
     ok = sc_ws_close_(Config2).
+
+min_gas_price() ->
+    rpc(aec_test_utils, min_gas_price, []).

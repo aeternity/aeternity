@@ -38,7 +38,7 @@ stop(_State) ->
 set_app_ctrl_mode() ->
     MMode = ok(aeu_env:find_config([<<"system">>, <<"maintenance_mode">>],
                                    [user_config, schema_default])),
-    DevMode = is_dev_mode_consensus(),
+    DevMode = aecore_env:is_dev_mode(),
     Mode = case {MMode, DevMode} of
                {true , _}     -> maintenance;
                {false, true}  -> dev_mode;
@@ -50,11 +50,3 @@ set_app_ctrl_mode() ->
 
 ok({ok, Value}) ->
     Value.
-
-%% TODO: This should probably be part of some lower-level API
-is_dev_mode_consensus() ->
-    TopHeight = case aec_chain:top_height() of
-                    undefined -> 0;
-                    H -> H
-                end,
-    aec_consensus_on_demand == aec_consensus:get_consensus_module_at_height(TopHeight).

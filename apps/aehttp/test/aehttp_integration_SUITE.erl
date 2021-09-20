@@ -672,9 +672,10 @@ init_per_group(on_micro_block, Config) ->
     {ok, [Tx]} = rpc:call(Node, aec_tx_pool, peek, [infinity]),
     ct:log("Spend tx ~p", [Tx]),
     case aecore_suite_utils:mine_micro_block_emptying_mempool_or_fail(Node) of
-        {ok, [KeyBlock, MicroBlock]} ->
-            true = aec_blocks:is_key_block(KeyBlock),
+        {ok, [_|_] = Blocks} ->
+            MicroBlock = lists:last(Blocks),
             false = aec_blocks:is_key_block(MicroBlock),
+            KeyBlock = get_prev_key_block(Blocks),
             {ok, PendingKeyBlock} = wait_for_key_block_candidate(),
             [{prev_key_block, KeyBlock},
              {prev_key_block_hash, hash(key, KeyBlock)},
@@ -738,7 +739,9 @@ init_per_group(tx_is_pending, Config) ->
 init_per_group(tx_is_on_chain = _Group, Config) ->
     Node = aecore_suite_utils:node_name(?NODE),
     case aecore_suite_utils:mine_micro_block_emptying_mempool_or_fail(Node) of
-        {ok, [KeyBlock, MicroBlock]} ->
+        {ok, Blocks} ->
+            MicroBlock = lists:last(Blocks),
+            KeyBlock = get_prev_key_block(Blocks),
             true = aec_blocks:is_key_block(KeyBlock),
             false = aec_blocks:is_key_block(MicroBlock),
             [Tx] = aec_blocks:txs(MicroBlock),
@@ -4542,3 +4545,11 @@ mine_tx(Node, SignedTx) ->
                                                                       [TxHash],
                                                                       10), %% max keyblocks
     TxHash.
+
+get_prev_key_block([KB, _MB]) ->
+    true = aec_blocks:is_key_block(KB),
+    KB;
+get_prev_key_block([MB]) ->
+    PrevKeyHash = aec_blocks:prev_key_hash(MB),
+    {ok, KB} = rpc(aec_chain, get_block, [PrevKeyHash]),
+    KB.
