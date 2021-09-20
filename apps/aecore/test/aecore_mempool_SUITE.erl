@@ -23,7 +23,7 @@
     repush_tx_skipped_nonce_is_stopped_by_cache/1,
     skipped_nonce_specific_cleanup/1,
     insufficient_funds_specific_cleanup/1,
-    name_claim_to_unknown_commitement_cleanup/1,
+    name_claim_to_unknown_commitment_cleanup/1,
     test_defaults/1,
     test_disabled/1,
     stop_node/1
@@ -121,7 +121,7 @@ groups() ->
       [
        skipped_nonce_specific_cleanup,
        insufficient_funds_specific_cleanup,
-       name_claim_to_unknown_commitement_cleanup,
+       name_claim_to_unknown_commitment_cleanup,
        test_defaults,
        test_disabled
       ]}
@@ -450,7 +450,6 @@ skipped_nonce_specific_cleanup(Config) ->
     {ok, [SkippedNonceTx]} = rpc:call(NodeName, aec_tx_pool, peek, [infinity]),
     %% it should be cleaned up at the next height
     make_microblock_attempts(1, Config),
-    %%{ok, _} = aecore_suite_utils:mine_blocks(NodeName, 1, ?MINE_RATE, key, #{}),
     timer:sleep(100), %% provide some time for the tx pool to process the message
     {ok, []} = rpc:call(NodeName, aec_tx_pool, peek, [infinity]),
     %% the tx can reenter the pool:
@@ -483,7 +482,7 @@ insufficient_funds_specific_cleanup(Config) ->
     ok.
 
 %% this tests the fallback to the defaults in the schema
-name_claim_to_unknown_commitement_cleanup(Config) ->
+name_claim_to_unknown_commitment_cleanup(Config) ->
     Node = dev1,
     NodeName = aecore_suite_utils:node_name(Node),
     {Priv, Pub} = aecore_suite_utils:sign_keys(Node),
@@ -595,7 +594,7 @@ test_disabled(Config) ->
     DefaultSettings = rpc:call(NodeName, aec_tx_pool_failures, settings, []),
     Settings = #{<<"enabled">> => false},
     true = rpc:call(NodeName, aec_tx_pool_failures, set, [Settings]),
-    %% ensure new settings are into effect:
+    %% ensure new settings are in effect:
     Settings = rpc:call(NodeName, aec_tx_pool_failures, settings, []),
     %% ensure an account for Carol
     seed_account(pubkey(?CAROL), 1, Config),

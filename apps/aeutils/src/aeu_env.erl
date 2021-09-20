@@ -250,7 +250,7 @@ schema_default_values(Path) ->
     case schema(Path) of
         undefined -> undefined;
         {ok, Tree} ->
-            RecoursiveDefault =
+            RecursiveDefault =
                 fun R(_PName,
                       #{<<"type">> := <<"object">>, <<"properties">> := Props}) ->
                           maps:map(fun(PN, #{<<"type">> := <<"object">>} = PP) -> R(PN, PP);
@@ -259,7 +259,7 @@ schema_default_values(Path) ->
                     R(_PName, #{<<"default">> := Def}) ->
                         Def
                 end,
-            Res = RecoursiveDefault(<<"root">>, Tree),
+            Res = RecursiveDefault(<<"root">>, Tree),
             {ok, Res}
       end.
 

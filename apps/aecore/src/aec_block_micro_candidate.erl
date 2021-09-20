@@ -117,7 +117,7 @@ int_create_block(PrevBlockHash, PrevBlock, KeyBlock, Trees, Txs) ->
     Env = aetx_env:tx_env_from_key_header(KeyHeader, PrevKeyHash,
                                           Time, PrevBlockHash),
     {ok, Txs1, InvalidTxs, Trees2, Events} = int_apply_block_txs(Txs, Trees, Env, false),
-    case length(InvalidTxs) > 0 of
+    case InvalidTxs =/= [] of
         true ->
             ok = aec_tx_pool:failed_txs(InvalidTxs);
         false -> pass
