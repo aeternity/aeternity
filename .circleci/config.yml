@@ -3,7 +3,7 @@ version: 2.1
 parameters:
   aeplugin_devmode_version:
     type: string
-    default: "0.1.0"
+    default: "0.2.0"
 
 executors:
   infrastructure_container_unstable:
