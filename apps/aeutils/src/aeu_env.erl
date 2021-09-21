@@ -585,7 +585,7 @@ lst(E) -> [E].
 update_config(Map) when is_map(Map) ->
     Schema = application:get_env(aeutils, '$schema', #{}),
     ConfigMap = application:get_env(aeutils, '$user_map', #{}),
-    ConfigMap1 = update_config(Map, Schema, ConfigMap, _Notify = true),
+    ConfigMap1 = update_config(Map, ConfigMap, Schema, _Notify = true),
     cache_config(ConfigMap1),
     ok.
 
