@@ -29,6 +29,9 @@ RUN ln -fs librocksdb.so.6.13.3 /usr/local/lib/librocksdb.so.6.13 \
 # Deploy application code from builder container
 COPY --from=builder /app/_build/prod/rel/aeternity /home/aeternity/node
 
+# Deploy any plugins
+COPY --from=builder /app/plugins /home/aeternity/node/plugins
+
 # Aeternity app won't run as root for security reasons
 RUN useradd --shell /bin/bash aeternity \
     && chown -R aeternity:aeternity /home/aeternity
