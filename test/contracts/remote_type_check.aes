@@ -1,4 +1,4 @@
-contract Remote =
+contract interface Remote =
   entrypoint id : ('a) => 'a
   entrypoint missing : ('a) => 'a
   entrypoint bogus_string_string_arg : (string) => string

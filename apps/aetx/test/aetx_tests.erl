@@ -6,7 +6,7 @@
 
 -include_lib("eunit/include/eunit.hrl").
 
--include("../../aecore/include/blocks.hrl").
+-include_lib("aecore/include/blocks.hrl").
 -include_lib("aecontract/include/hard_forks.hrl").
 
 -define(TEST_MODULE, aetx).
@@ -117,5 +117,3 @@ check_used_gas_test_() ->
        end
       }
      ]}.
-
-

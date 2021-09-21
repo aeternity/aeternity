@@ -7,7 +7,6 @@
     stdlib,
     aeserialization,
     aecontract,
-    aechannel,
     aens,
     aeoracle
    ]},

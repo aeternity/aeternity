@@ -230,7 +230,7 @@ simple_channel_test(ChannelOpts, InitiatorNodeBaseSpec, ResponderNodeBaseSpec, C
 
 precompile_identity_contract(Config1) ->
     %% Precompile a simple contract for testing
-    Config2 = aect_test_utils:init_per_group(aevm, Config1),
+    Config2 = aect_test_utils:init_per_group(fate, Config1),
     aect_test_utils:setup_testcase(Config2),
     SimpleContractName = "identity",
     {ok, BinSrc} = aect_test_utils:read_contract(aect_test_utils:sophia_version(), SimpleContractName),
@@ -390,7 +390,7 @@ test_offchain_operations(Chan, Cfg) ->
         SimpleContract = proplists:get_value(simple_contract, Cfg),
         {ok, CallData} = encode_calldata(SimpleContract, "init", []),
         {ok, SimpleContract1} = sc_deploy_contract(Chan, Who, SimpleContract, CallData),
-        {ok, CallData1} = encode_calldata(SimpleContract, "main", ["42"]),
+        {ok, CallData1} = encode_calldata(SimpleContract, "main_", ["42"]),
         {ok, CallRes} = sc_call_contract(Chan, Who, SimpleContract1, CallData1),
         #{ <<"return_type">>       := <<"ok">>
          , <<"return_value">>      := _} = CallRes %% TODO: check if return value matches

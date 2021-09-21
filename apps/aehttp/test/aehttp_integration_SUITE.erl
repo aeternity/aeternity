@@ -38,6 +38,11 @@
    , wait_for_tx_hash_on_chain/1
    , sign_and_post_tx/2
    , end_per_testcase_all/1
+   , get_spend/1
+   , post_transactions_sut/1
+   , get_transactions_pending_sut/0
+   , delete_tx_from_mempool_sut/1
+   , get_key_blocks_current_height_sut/0
    ]).
 
 -export(
@@ -1436,6 +1441,16 @@ get_accounts_transactions_pending_by_pubkey_sut(Id) ->
     Id1 = binary_to_list(Id),
     http_request(Host, get, "accounts/" ++ http_uri:encode(Id1) ++ "/transactions/pending", []).
 
+get_transactions_pending_sut() ->
+    Host = internal_address(),
+    http_request(Host, get, "debug/transactions/pending", []).
+
+delete_tx_from_mempool_sut(Hash) when is_binary(Hash) ->
+    delete_tx_from_mempool_sut(binary_to_list(Hash));
+delete_tx_from_mempool_sut(Hash) when is_list(Hash) ->
+    Host = internal_address(),
+    http_request(Host, delete, "node/operator/mempool/hash/" ++ Hash, []).
+
 %% /transactions/*
 
 get_transaction_by_hash(Config) ->
@@ -1553,7 +1568,7 @@ post_contract_and_call_tx(_Config) ->
     ?assertMatch({ok, 200, _}, get_transactions_by_hash_sut(ContractCreateTxHash)),
     ?assertMatch({ok, 200, _}, get_contract_call_object(ContractCreateTxHash)),
 
-    {ok, EncodedCallData} = encode_call_data(identity, "main", ["42"]),
+    {ok, EncodedCallData} = encode_call_data(identity, "main_", ["42"]),
     ContractCallEncoded = #{ caller_id   => Pubkey,
                              contract_id => EncodedContractPubKey,
                              abi_version => latest_sophia_abi(),
@@ -2050,7 +2065,7 @@ contract_transactions(_Config) ->    % miner has an account
     {ok, 200, #{<<"balance">> := ContractInitBalance}} =
         get_accounts_by_pubkey_sut(EncodedContractPubKey),
 
-    {ok, EncodedCallData} = encode_call_data(identity, "main", ["42"]),
+    {ok, EncodedCallData} = encode_call_data(identity, "main_", ["42"]),
 
     ContractCallEncoded = #{ caller_id => MinerAddress,
                              contract_id => EncodedContractPubKey,

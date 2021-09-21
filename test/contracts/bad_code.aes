@@ -1,2 +1,2 @@
 contract BadCode =
-  entrypoint main(x : int) = x mod x
+  entrypoint main_(x : int) = x mod x

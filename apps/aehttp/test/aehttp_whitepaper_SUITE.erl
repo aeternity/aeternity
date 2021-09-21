@@ -113,7 +113,7 @@ end_per_suite(Config) ->
     aehttp_sc_SUITE:stop_node(Config).
 
 init_per_group(Group, Config0) ->
-    VM = fate, 
+    VM = fate,
     Config1 = aect_test_utils:init_per_group(VM, Config0),
     Config2 = aehttp_sc_SUITE:reset_participants(Group, Config1),
     Config2.
@@ -271,7 +271,7 @@ can_insure_after_expiration(Cfg0) ->
         call_offchain_contract(responder, ContractPubkey,
                               ContractName, "get_insurance_range", [], 0, Cfg),
 
-    %% since insurance expired, the interval is reset 
+    %% since insurance expired, the interval is reset
     true = InsuredFrom1 < InsuredFrom2,
     %% the range is expected
     ExpectedInsuredTo = InsuredFrom2 + Generations2,
@@ -1158,7 +1158,7 @@ ask_oracle_service(City, Timestamp, Cfg) ->
         fun(S0) ->
             S = list_to_binary(S0),
             case aect_test_utils:backend() of
-                fate -> S 
+                fate -> S
             end
         end,
     Question = {tuple, {SophiaString(City), Timestamp}},

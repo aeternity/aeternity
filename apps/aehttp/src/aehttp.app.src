@@ -13,6 +13,7 @@
     lager,
     jesse,
     aecore,
+    aechannel,
     gproc,
     ephemeral
    ]},

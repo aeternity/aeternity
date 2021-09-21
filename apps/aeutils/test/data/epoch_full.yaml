@@ -52,7 +52,7 @@ sync:
     # Allowed height difference from current top for incoming blocks (via gossip)
     gossip_allowed_height_from_top: 5
     # Time (milliseconds) between logging info about connected peers
-    log_peer_connection_count_interval: 5000
+    log_peer_connection_count_interval: 300000
     # Peer pool
     peer_pool:
       # Probability of selecting a peer from the verified pool

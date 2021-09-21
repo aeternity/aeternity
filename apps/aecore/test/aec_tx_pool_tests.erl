@@ -6,8 +6,8 @@
 -module(aec_tx_pool_tests).
 
 -include_lib("eunit/include/eunit.hrl").
--include("../../aecontract/include/aecontract.hrl").
--include("../../aecontract/include/hard_forks.hrl").
+-include_lib("aecontract/include/aecontract.hrl").
+-include_lib("aecontract/include/hard_forks.hrl").
 
 -define(TAB, aec_tx_pool_test_keys).
 
@@ -111,6 +111,7 @@ tx_pool_test_() ->
        end},
       {"ensure nonce limit",
        fun() ->
+            persistent_term:put({aec_consensus_bitcoin_ng, whitelist}, #{}),
             aec_test_utils:stop_chain_db(),
             PK = new_pubkey(),
             meck:expect(aec_fork_block_settings, genesis_accounts, 0, [{PK, 100000}]),

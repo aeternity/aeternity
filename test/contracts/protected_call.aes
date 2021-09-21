@@ -1,5 +1,5 @@
 
-contract Remote =
+contract interface Remote =
   entrypoint id          : int => int
   entrypoint wrong_ret   : int => bool
   entrypoint wrong_arg   : bool => int
@@ -12,7 +12,7 @@ contract Remote =
   entrypoint get_state   : () => int
   entrypoint nonpayable  : () => int
 
-contract ProxyRemote =
+contract interface ProxyRemote =
   entrypoint call_wrong_ret   : Remote => bool
   entrypoint call_wrong_arg   : Remote => int
   entrypoint call_wrong_arity : Remote => int

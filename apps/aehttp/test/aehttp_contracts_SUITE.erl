@@ -199,10 +199,10 @@ identity_contract(Config) ->
     {EncCPub,_,_} = create_contract(Node, CPub, CPriv, Contract, []),
 
     %% Call contract main function by Carl.
-    call_func(CPub, CPriv, EncCPub, Contract, "main", ["42"], {"identity", "main", 42}),
+    call_func(CPub, CPriv, EncCPub, Contract, "main_", ["42"], {"identity", "main_", 42}),
 
     %% Call contract main function by Diana.
-    call_func(DPub, DPriv, EncCPub, Contract, "main", ["42"], {"identity", "main", 42}),
+    call_func(DPub, DPriv, EncCPub, Contract, "main_", ["42"], {"identity", "main_", 42}),
 
     force_fun_calls(Node),
 
@@ -1530,7 +1530,7 @@ check_value(Contract, Fun, ResType, ResValue, ExpVal) ->
 decode_call_result(Contract = #{}, Fun, ResType, ResValue) ->
     decode_call_result(maps:get(name, Contract), Fun, ResType, ResValue);
 decode_call_result(ContractName, Fun, ResType, ResValue) ->
-    {ok, BinCode} = aect_test_utils:read_contract(?SOPHIA_LIMA_AEVM, ContractName),
+    {ok, BinCode} = aect_test_utils:read_contract(?SOPHIA_IRIS_FATE, ContractName),
     aect_test_utils:decode_call_result(binary_to_list(BinCode), Fun, ResType, ResValue).
 
 call_func(Pub, Priv, EncCPub, Contract, Fun, Args) ->

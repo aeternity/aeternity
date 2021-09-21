@@ -24,6 +24,7 @@
                         , contract_bytearray_params_decode/1
                         , unsigned_tx_response/1
                         , ok_response/1
+                        , when_stable/1
                         , process_request/2
                         , do_dry_run/0
                         , dry_run_results/1
@@ -35,7 +36,7 @@
 
 -export([patterns/0]).
 
--include("../../aecontract/include/aecontract.hrl").
+-include_lib("aecontract/include/aecontract.hrl").
 
 patterns() ->
     [{?MODULE, F, A, []} || {F, A} <- [ {handle_request, 3}
@@ -63,11 +64,17 @@ queue(_)                  -> ?WRITE_Q.
                    ) -> {Status :: cowboy:http_status(), Headers :: list(), Body :: map()}.
 
 handle_request(OperationID, Req, Context) ->
-    try aec_jobs_queues:run(queue(OperationID),
-                            fun() -> handle_request_(OperationID, Req, Context) end)
+    try when_stable(
+          fun() ->
+                  aec_jobs_queues:run(
+                    queue(OperationID),
+                    fun() -> handle_request_(OperationID, Req, Context) end)
+          end)
     catch
         error:{rejected, _} ->
-            {503, [], #{reason => <<"Temporary overload">>}}
+            {503, [], #{reason => <<"Temporary overload">>}};
+        error:timeout ->
+            {503, [], #{reason => <<"Not yet started">>}}
     end.
 
 handle_request_('PostKeyBlock', #{'KeyBlock' := Data}, _Context) ->
@@ -130,7 +137,7 @@ handle_request_('PostPayingFor', #{'PayingForTx' := Req}, _Context) ->
                                       {error, _} = E -> E;
                                       {ok, TxDec} ->
                                           try {ok, aetx:deserialize_from_binary(TxDec)}
-                                          catch 
+                                          catch
                                               _:_ -> error
                                           end
                                   end,
@@ -208,6 +215,23 @@ handle_request_('GetTokenSupplyByHeight', Req, _Context) ->
         {error, chain_too_short} ->
             {400, [], #{reason => <<"Chain too short">>}}
     end;
+
+handle_request_('DeleteTxFromMempool', Req, _Context) ->
+    ParseFuns = [ parse_map_to_atom_keys(),
+                  read_required_params([hash]),
+                  api_decode([{hash, hash, tx_hash}]),
+                  fun(_Req, #{hash := TxHash}) ->
+                      case aec_tx_pool:delete(TxHash) of
+                          ok ->
+                              {ok, {200, [], #{<<"status">> => <<"deleted">>}}};
+                          {error, already_accepted} ->
+                              {ok, {404, [], #{<<"reason">> => <<"included">>}}};
+                          {error, not_found} ->
+                              {ok, {404, [], #{<<"reason">> => <<"not_found">>}}}
+                      end
+                  end],
+
+    process_request(ParseFuns, Req);
 
 handle_request_('GetNetworkStatus', _Req, _Context) ->
     case aec_peer_analytics:enabled() of
@@ -585,4 +609,3 @@ tx_swagger_name_from_operation_id('PostOracleRegister') -> 'OracleRegisterTx';
 tx_swagger_name_from_operation_id('PostOracleExtend') -> 'OracleExtendTx';
 tx_swagger_name_from_operation_id('PostOracleQuery') -> 'OracleQueryTx';
 tx_swagger_name_from_operation_id('PostOracleRespond') -> 'OracleRespondTx'.
-

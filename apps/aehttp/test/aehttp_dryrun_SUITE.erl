@@ -174,7 +174,7 @@ identity_contract(Config) ->
     {ok, Code}   = aect_test_utils:compile_contract(identity),
 
     InitCallData = make_call_data(identity, <<"init">>, []),
-    CallCallData = make_call_data(identity, <<"main">>, [<<"42">>]),
+    CallCallData = make_call_data(identity, <<"main_">>, [<<"42">>]),
 
     CreateTx  = {tx, create_contract_tx(APub, 1, Code, InitCallData)},
     CPub      = contract_id(element(2, CreateTx)),
@@ -494,7 +494,7 @@ a_lot_of_gas_limit_fails(Config) ->
 
     CreateGas = 100000,
     CreateTx3 = {tx, create_contract_tx(APub, 1, Code, InitCallData, CreateGas)},
-    CallCallData = make_call_data(identity, <<"main">>, [<<"42">>]),
+    CallCallData = make_call_data(identity, <<"main_">>, [<<"42">>]),
     CPub      = contract_id(element(2, CreateTx3)),
 
     CallReqData = #{<<"contract">> => aeser_api_encoder:encode(contract_pubkey, CPub),

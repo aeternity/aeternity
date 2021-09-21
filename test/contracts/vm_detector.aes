@@ -1,9 +1,9 @@
 @compiler >= 4.3
 
-contract DetectorInterface2 =
+contract interface DetectorInterface2 =
   entrypoint detect : () => int
 
-contract DetectorInterface =
+contract interface DetectorInterface =
   entrypoint detect : () => int
   entrypoint call_detect : (DetectorInterface2) => (int * int)
   entrypoint detect_call : (DetectorInterface2) => (int * int)

@@ -1,0 +1,27 @@
+contract Remote =
+  entrypoint main_ : (int) => int
+
+payable contract Auth1 =
+  record state = { secret : int }
+
+  datatype auth_test = Spend(address, int)
+                     | OracleReg
+                     | RemoteCall(Remote)
+
+  entrypoint init(s : int) = { secret = s }
+
+  entrypoint authorize(s : int, x : int) : bool =
+    state.secret == s
+
+  stateful entrypoint do_auth_test(at : auth_test) : bool =
+    switch(at)
+      Spend(to, tokens) =>
+        Chain.spend(to, tokens)
+      OracleReg         =>
+        Oracle.register(Contract.address, 12345, RelativeTTL(1000)) : oracle(int, int)
+        ()
+      RemoteCall(r)     =>
+        r.main_(42)
+        ()
+    true
+

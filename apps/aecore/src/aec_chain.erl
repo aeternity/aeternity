@@ -40,6 +40,7 @@
         , top_block_with_state/0
         , top_header/0
         , top_header_hash_and_state/0
+        , top_height/0
         ]).
 
 %%% Accounts API
@@ -399,6 +400,13 @@ top_header() ->
             Header;
         undefined ->
             undefined
+    end.
+
+-spec top_height() -> 'undefined' | non_neg_integer().
+top_height() ->
+    case top_header() of
+        undefined -> undefined;
+        Header -> aec_headers:height(Header)
     end.
 
 -spec top_block() -> 'undefined' | aec_blocks:block().

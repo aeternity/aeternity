@@ -1,5 +1,5 @@
 contract Identity =
-  function main : (int) => int
+  function main_ : (int) => int
 
 contract Middle =
   function call_id : (Identity) => int
@@ -10,7 +10,7 @@ contract CallCaller =
     Call.caller
 
   function f2(r : Identity) =
-    r.main(42)
+    r.main_(42)
     Call.caller
 
   function f3(r : Identity, m : Middle) =
@@ -23,9 +23,9 @@ contract CallCaller =
     res1 && (a == Call.caller)
 
   function call_id(r : Identity) =
-    r.main(42)
+    r.main_(42)
 
   function call_id_check(r : Identity) =
     let a = Call.caller
-    r.main(42)
+    r.main_(42)
     Call.caller == a

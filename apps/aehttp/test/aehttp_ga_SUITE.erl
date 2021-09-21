@@ -110,6 +110,9 @@ init_per_suite(Config0) ->
     DefCfg = #{<<"chain">> =>
                    #{<<"persist">> => false,
                      <<"hard_forks">> => Forks},
+               <<"mempool">> => #{<<"tx_ttl">> => 100,
+                                  <<"tx_failures">> => #{ <<"enabled">> => false}
+                                  },
               <<"http">> =>
                    #{<<"cache">> => #{<<"enabled">> => false}}},
     Config1 = [{instant_mining, true}, {symlink_name, "latest.http_ga"}, {test_module, ?MODULE}] ++ Config0,
@@ -341,7 +344,7 @@ meta_oracle_register(Config) ->
       acc_b := #{pub_key := BPub}} = proplists:get_value(accounts, Config),
     MGP = aec_test_utils:min_gas_price(),
 
-    InnerTx = aeo_test_utils:register_tx(APub, #{}), 
+    InnerTx = aeo_test_utils:register_tx(APub, #{}),
     MetaTx = ga_meta_tx(["1"], APub, APriv, InnerTx, 100000 * MGP, 10000),
     #{tx_hash := MetaTxHash} = post_aetx(MetaTx),
 

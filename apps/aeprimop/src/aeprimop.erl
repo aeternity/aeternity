@@ -113,9 +113,9 @@
 
 -include("aeprimop_state.hrl").
 -include("aeprimop_opcodes.hrl").
--include("../../aecore/include/aec_hash.hrl").
--include("../../aecontract/include/hard_forks.hrl").
--include("../../aecontract/include/aecontract.hrl").
+-include_lib("aecore/include/aec_hash.hrl").
+-include_lib("aecontract/include/hard_forks.hrl").
+-include_lib("aecontract/include/aecontract.hrl").
 
 -define(IS_HASH(_X_), (is_binary(_X_) andalso byte_size(_X_) =:= ?HASH_BYTES)).
 -define(IS_VAR(_X_), (is_tuple(_X_)

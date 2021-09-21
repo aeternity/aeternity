@@ -33,6 +33,8 @@ tags:
     description: Old endpoints that will be removed
   - name: dry-run
     description: External dry run endpoint.
+  - name: node-operator
+    description: Endpoints to help the node oprator interract with the node
 externalDocs:
   description: Find out more about Aeternity
   url: http://www.aeternity.com
@@ -1980,6 +1982,37 @@ paths:
                 $ref: "#/components/schemas/TokenSupply"
         "400":
           description: Height not available
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  "/node/operator/mempool/hash/{hash}":
+    delete:
+      tags:
+        - internal
+        - node-operator
+      operationId: DeleteTxFromMempool
+      description: Delete a pending transaction from the mempool
+      parameters:
+        - $ref: '#/components/parameters/txHash'
+      responses:
+        "200":
+          description: The transaction was deleted from the pool
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+        "400":
+          description: Invalid tx hash
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Transaction not in mempool
           content:
             application/json:
               schema:

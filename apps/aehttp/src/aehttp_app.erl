@@ -43,6 +43,9 @@ start(_StartType, _StartArgs) ->
 
 %%--------------------------------------------------------------------
 stop(_State) ->
+    _ = cowboy:stop_listener(internal),
+    _ = cowboy:stop_listener(external),
+    _ = cowboy:stop_listener(channels_socket),
     ok.
 
 
@@ -51,18 +54,23 @@ stop(_State) ->
 %%------------------------------------------------------------------------------
 
 check_env() ->
+    {ok, MMode} = aeu_env:find_config([<<"system">>, <<"maintenance_mode">>],
+                                      [user_config, schema_default]),
+    Default0 = not MMode,
+    %% TODO: Consider which endpoints might be enabled by default during maintenance mode
     %TODO: we need to validate that all tags are present
-    GroupDefaults = #{<<"chain">>        => true,
-                      <<"transaction">>  => true,
-                      <<"account">>      => true,
-                      <<"contract">>     => true,
-                      <<"oracle">>       => true,
-                      <<"name_service">> => true,
-                      <<"channel">>      => true,
-                      <<"node_info">>    => true,
-                      <<"debug">>        => true,
-                      <<"obsolete">>     => true,
-                      <<"dry-run">>      => false
+    GroupDefaults = #{<<"chain">>         => Default0,
+                      <<"transaction">>   => Default0,
+                      <<"account">>       => Default0,
+                      <<"contract">>      => Default0,
+                      <<"oracle">>        => Default0,
+                      <<"name_service">>  => Default0,
+                      <<"channel">>       => Default0,
+                      <<"node_info">>     => Default0,
+                      <<"debug">>         => true,
+                      <<"obsolete">>      => Default0,
+                      <<"dry-run">>       => false,
+                      <<"node-operator">> => false
                       },
     EnabledGroups =
         lists:foldl(

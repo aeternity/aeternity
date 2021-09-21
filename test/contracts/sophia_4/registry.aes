@@ -1,0 +1,117 @@
+// ISC License
+//
+// Copyright (c) 2019, aeternity developers
+//
+// Permission to use, copy, modify, and/or distribute this software for any
+// purpose with or without fee is hereby granted, provided that the above
+// copyright notice and this permission notice appear in all copies.
+//
+// THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH
+// REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY
+// AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT,
+// INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM
+// LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE
+// OR OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
+// PERFORMANCE OF THIS SOFTWARE.
+
+
+// THIS IS NOT SECURITY AUDITED
+// DO NEVER USE THIS WITHOUT SECURITY AUDIT FIRST
+
+namespace List =
+  function filter(f : ('a) => bool, l : list('a)) = filter'(f, l, [])
+  private function filter'(f : ('a) => bool, l : list('a), acc : list('a)) =
+    switch(l)
+      [] => acc
+      e :: l' =>
+        if(f(e))
+          filter'(f, l', e :: acc)
+        else
+          filter'(f, l', acc)
+
+namespace Tuple =
+  function pair_second(tuple) =
+    switch(tuple)
+      (_, e) => e
+
+contract Poll =
+  entrypoint title : () => string
+  entrypoint close_height : () => option(int)
+
+// ACTUAL CONTRACT
+
+contract Registry =
+
+  record poll_data =
+    { poll : Poll
+    , is_listed : bool
+    , title : string
+    , close_height : option(int) }
+
+  type polls = map(int, poll_data)
+
+  // delegation from delegator to delegatee, delegatee will be globally allowed to take power of delegator
+  // votes by delegator will overwrite delegation for one poll
+  type delegations = map(address, address)
+
+  record state =
+    { polls : polls
+    , seq_id : int
+    , delegations : delegations
+    , created_height : int }
+
+  entrypoint init() : state =
+    { polls = {},
+      seq_id = 0,
+      delegations = {},
+      created_height = Chain.block_height }
+
+  datatype event =
+      AddPoll(Poll, int)
+    | Delegation(address, address)
+    | RevokeDelegation(address)
+
+  // STATEFULL FUNCTIONS
+
+  stateful entrypoint add_poll(poll : Poll, is_listed : bool) : int =
+    let poll_seq_id = state.seq_id
+    let poll_data = { poll = poll, is_listed = is_listed, title = poll.title(), close_height = poll.close_height() }
+    put(state{ polls[state.seq_id] = poll_data, seq_id = state.seq_id + 1 })
+    Chain.event(AddPoll(poll, poll_seq_id))
+    poll_seq_id
+
+  stateful entrypoint delegate(delegatee : address) =
+    require(Call.caller != delegatee, "CALLER_IS_DELEGATEE_DISALLOWED")
+    put(state{ delegations[Call.caller] = delegatee })
+    Chain.event(Delegation(Call.caller, delegatee))
+
+  stateful entrypoint revoke_delegation() =
+    put(state{ delegations = Map.delete(Call.caller, state.delegations) })
+    Chain.event(RevokeDelegation(Call.caller))
+
+  // STATELESS PUBLIC FUNCTIONS
+
+  entrypoint created_height() : int = state.created_height
+
+  entrypoint delegations() : delegations = state.delegations
+
+  entrypoint polls() : polls = state.polls
+
+  entrypoint poll(poll_id) : poll_data = require_poll_by_id(poll_id)
+
+  entrypoint delegatee(account : address) : option(address) =
+    Map.lookup(account, state.delegations)
+
+  entrypoint delegators(account : address) : delegations =
+    let filter_delegations_account = (delegation_tuple) => Tuple.pair_second(delegation_tuple) == account
+    Map.from_list(List.filter(filter_delegations_account, Map.to_list(state.delegations)))
+
+  entrypoint version() : int = 1
+
+  // INTERNAL HELPER FUNCTIONS
+
+  function require_poll_by_id(poll_id : int) : poll_data =
+    switch(Map.lookup(poll_id, state.polls))
+      None => abort("POLL_ID_NOT_KNOWN")
+      Some(poll_data) => poll_data
+

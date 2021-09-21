@@ -8,15 +8,18 @@
     lager,
     gproc,
     jobs,
+    argparse,
     exometer_core,
     yamerl
    ]},
+  {mod, {aeutils_app, []}},
   {env,[
         {'$setup_hooks',
          [
           {normal, [
                     {100, {aeu_env, read_config, []}},
-                    {101, {aeu_env, apply_os_env, []}}
+                    {101, {aeu_env, apply_os_env, []}},
+                    {102, {aeu_plugins, load_plugins, []}}
                    ]}
          ]}
        ]}

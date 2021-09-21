@@ -223,7 +223,7 @@ used_gas_test_() ->
           %% enabled, so we set it
           Block0 = set_protocol_and_version(Block00, Protocol, Height),
           ContractName = identity,
-          VM = 
+          VM =
               case Protocol >= ?IRIS_PROTOCOL_VSN of
                   true -> fate;
                   false -> aevm
@@ -232,7 +232,7 @@ used_gas_test_() ->
               {error, _} -> skip;
               SophiaVersion ->
                 GasLimit = 1000000,
-                CallOpts0 = 
+                CallOpts0 =
                     #{vm_version  => aect_test_utils:vm_version(VM, Protocol),
                       abi_version => aect_test_utils:abi_version(VM,Protocol),
                       gas => GasLimit},
@@ -262,7 +262,7 @@ used_gas_test_() ->
           %% enabled, so we set it
           Block0 = set_protocol_and_version(Block00, Protocol, Height),
           ContractName = identity,
-          VM = 
+          VM =
               case Protocol >= ?IRIS_PROTOCOL_VSN of
                   true -> fate;
                   false -> aevm
@@ -271,7 +271,7 @@ used_gas_test_() ->
               {error, _} -> skip;
               SophiaVersion ->
                 GasLimit = 1000000,
-                CallOpts0 = 
+                CallOpts0 =
                     #{vm_version  => aect_test_utils:vm_version(VM, Protocol),
                       abi_version => aect_test_utils:abi_version(VM,Protocol),
                       gas => GasLimit},
@@ -284,13 +284,13 @@ used_gas_test_() ->
                 {ok, Block1, #{ trees := Trees1 }} = aec_block_micro_candidate:create(Block0),
                 [CreateTx] = aec_blocks:txs(Block1),
 
-                
+
 
                 {aect_create_tx, CrTx} = aetx:specialize_callback(aetx_sign:tx(CreateTx)),
                 ContractPubkey = aect_create_tx:contract_pubkey(CrTx),
-                CallTx = 
+                CallTx =
                     sign(contract_call_tx(?TEST_PUB, SophiaVersion, ContractPubkey,
-                                          ContractName, "main", ["42"], Trees1, CallOpts0),
+                                          ContractName, "main_", ["42"], Trees1, CallOpts0),
                           ?TEST_PRIV),
                 meck_expect_candidate_prerequisites(Time1 + 3 * 1000, Trees1, [CallTx]),
                 %% since the previous block - Block1 - is a
@@ -325,7 +325,7 @@ used_gas_test_() ->
                     STx = sign_inner(spend_tx(#{}, Trees0), ?TEST_PRIV),
                     PNonce = next_nonce(?PAYER_PUB, Trees0),
                     PayingFor =
-                        sign(paying_for_tx(?PAYER_PUB, 20000 * aec_test_utils:min_gas_price(), 
+                        sign(paying_for_tx(?PAYER_PUB, 20000 * aec_test_utils:min_gas_price(),
                                            STx, PNonce),
                              ?PAYER_PRIV),
                     meck_expect_candidate_prerequisites(Time, Trees0, [PayingFor]),
@@ -358,7 +358,7 @@ used_gas_test_() ->
                         {error, _} -> skip;
                         SophiaVersion ->
                           GasLimit = 1000000,
-                          CallOpts0 = 
+                          CallOpts0 =
                               #{vm_version  => aect_test_utils:vm_version(VM, Protocol),
                                 abi_version => aect_test_utils:abi_version(VM,Protocol),
                                 gas => GasLimit},
@@ -400,7 +400,7 @@ used_gas_test_() ->
                     Block0 = set_protocol_and_version(Block00, Protocol, Height),
                     Time = 1234567890,
                     GasLimit = 1000000,
-                    VM = 
+                    VM =
                         case Protocol >= ?IRIS_PROTOCOL_VSN of
                             true -> fate;
                             false -> aevm
@@ -409,7 +409,7 @@ used_gas_test_() ->
                         {error, _} -> skip;
                         SophiaVersion ->
                             VMVersion = aect_test_utils:vm_version(VM, Protocol),
-                            CallOpts0 = 
+                            CallOpts0 =
                                 #{vm_version  => VMVersion,
                                   abi_version => aect_test_utils:abi_version(VM,Protocol),
                                   gas => GasLimit},
@@ -500,7 +500,7 @@ sign_inner(Tx, Privkey) ->
     aec_test_utils:sign_pay_for_inner_tx(Tx, Privkey).
 
 set_protocol_and_version(KeyBlock, Protocol, Height) ->
-    Header = aec_blocks:to_header(KeyBlock),  
+    Header = aec_blocks:to_header(KeyBlock),
     Header1 = aec_headers:set_version_and_height(Header, Protocol, Height),
     aec_blocks:new_key_from_header(Header1).
 

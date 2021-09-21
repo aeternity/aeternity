@@ -1,5 +1,5 @@
 
-contract Remote =
+contract interface Remote =
   entrypoint up_to       : (int)               => list(int)
   entrypoint sum         : (list(int))         => int
   entrypoint some_string : ()                  => string

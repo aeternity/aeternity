@@ -281,7 +281,7 @@ execute_identity_fun_from_sophia_file(_Cfg) ->
     Code = compile_contract(identity),
     Env0 = initial_state(#{}),
     Env  = create_contract(101, Code, [], Env0),
-    42   = successful_call_(101, word, main, ["42"], Env),
+    42   = successful_call_(101, word, main_, ["42"], Env),
     ok.
 
 sophia_remote_call(_Cfg) ->

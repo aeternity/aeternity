@@ -7,7 +7,7 @@
 
 -include("blocks.hrl").
 -include_lib("eunit/include/eunit.hrl").
--include("../../aecontract/include/aecontract.hrl").
+-include_lib("aecontract/include/aecontract.hrl").
 -include_lib("aecontract/include/hard_forks.hrl").
 
 backwards_compatibility_test_() ->

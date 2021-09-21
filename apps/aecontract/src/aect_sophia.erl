@@ -7,10 +7,10 @@
 
 -module(aect_sophia).
 
--include("../include/aecontract.hrl").
--include("../../aecore/include/blocks.hrl").
--include("../../aecontract/include/hard_forks.hrl").
--include("../../aecontract/src/aect_sophia.hrl").
+-include("aecontract.hrl").
+-include_lib("aecore/include/blocks.hrl").
+-include_lib("aecontract/include/hard_forks.hrl").
+-include_lib("aecontract/src/aect_sophia.hrl").
 
 -export([ serialize/2
         , deserialize/1

@@ -79,7 +79,7 @@ groups() ->
         long_key
       ]},
      {sequential_events, [sequence],
-      [ 
+      [
        can_have_a_couple_of_sequential_games,
        can_play_after_casino_dispute,
        can_play_after_player_dispute
@@ -134,7 +134,7 @@ init_per_group(player_is_initiator, Config) ->
 init_per_group(player_is_responder, Config) ->
     [{roles, {responder, initiator}} | Config];
 init_per_group(Group, Config0) ->
-    VM = fate, 
+    VM = fate,
     Config1 = aect_test_utils:init_per_group(VM, Config0),
     Config2 = aehttp_sc_SUITE:reset_participants(Group, Config1),
     Config2.
@@ -199,7 +199,7 @@ casino_wins_heads(Cfg) ->
                   _CasinoGuess = ?HEADS,
                   _ActualSide = ?HEADS,
                   _Outcome = win).
-    
+
 casino_loses_heads(Cfg) ->
     {Player, Casino} = ?config(roles, Cfg),
     Stake = 10,
@@ -529,7 +529,7 @@ provide_hash_fails(Cfg0) ->
                                ContractName, "compute_hash",
                                [add_quotes("this is irrelevant but yet different"), add_quotes(ActualSide)], 0, Cfg),
     true = OtherHash =/= Hash,
-    %% casino can not provide hash 
+    %% casino can not provide hash
     {revert, <<"not_player">>} =
         call_offchain_contract(Casino, ContractPubkey,
                                ContractName, "provide_hash",
@@ -539,12 +539,12 @@ provide_hash_fails(Cfg0) ->
         call_offchain_contract(Player, ContractPubkey,
                                ContractName, "provide_hash",
                                [Hash], Stake, Cfg),
-    %% casino still can not replace hash 
+    %% casino still can not replace hash
     {revert, <<"not_player">>} =
         call_offchain_contract(Casino, ContractPubkey,
                                ContractName, "provide_hash",
                                [OtherHash], Stake, Cfg),
-    %% player can not replace hash 
+    %% player can not replace hash
     {revert, <<"already_has_hash">>} =
         call_offchain_contract(Player, ContractPubkey,
                                ContractName, "provide_hash",
@@ -554,12 +554,12 @@ provide_hash_fails(Cfg0) ->
         call_offchain_contract(Casino, ContractPubkey,
                               ContractName, "casino_pick",
                               [add_quotes(ActualSide)], Stake, Cfg),
-    %% casino still can not replace hash 
+    %% casino still can not replace hash
     {revert, <<"not_player">>} =
         call_offchain_contract(Casino, ContractPubkey,
                                ContractName, "provide_hash",
                                [OtherHash], Stake, Cfg),
-    %% player can not replace hash 
+    %% player can not replace hash
     {revert, <<"already_has_hash">>} =
         call_offchain_contract(Player, ContractPubkey,
                                ContractName, "provide_hash",
@@ -583,7 +583,7 @@ casino_pick_fails(Cfg0) ->
     Args = [PlayerAddress, CasinoAddress, integer_to_list(ReactionTime)],
     ContractName = coin_toss,
     ContractPubkey = create_offchain_contract(Player, ContractName, Args, Cfg),
-    %% player can not call casino_pick 
+    %% player can not call casino_pick
     {revert, <<"not_casino">>} =
         call_offchain_contract(Player, ContractPubkey,
                                ContractName, "casino_pick",
@@ -634,7 +634,7 @@ casino_pick_fails(Cfg0) ->
         call_offchain_contract(Player, ContractPubkey,
                                ContractName, "casino_pick",
                                [add_quotes(Bet)], Stake, Cfg),
-    %% casino can not overwrite 
+    %% casino can not overwrite
     {revert, <<"there_is_a_pick_already">>} =
         call_offchain_contract(Casino, ContractPubkey,
                                ContractName, "casino_pick",
@@ -1087,5 +1087,3 @@ participant_address(Who, Cfg) ->
     Participants = proplists:get_value(participants, Cfg),
     #{pub_key := Pubkey} = maps:get(Who, Participants),
     aeser_api_encoder:encode(account_pubkey, Pubkey).
-
-

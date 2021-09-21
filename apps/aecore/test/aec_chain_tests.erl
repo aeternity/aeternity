@@ -9,9 +9,9 @@
 
 -include_lib("eunit/include/eunit.hrl").
 
--include_lib("aeminer/include/aeminer.hrl").
--include("../../aecontract/include/aecontract.hrl").
 -include("../../aecontract/test/include/aect_sophia_vsn.hrl").
+-include_lib("aeminer/include/aeminer.hrl").
+-include_lib("aecontract/include/aecontract.hrl").
 -include_lib("aecore/include/blocks.hrl").
 -include_lib("aecontract/include/hard_forks.hrl").
 
@@ -2283,4 +2283,3 @@ get_transactions_between_two_microblocks() ->
 
 min_gas_price() ->
     aec_test_utils:min_gas_price() * 1000000000.
-

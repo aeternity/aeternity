@@ -48,7 +48,7 @@
                             or (T =:= ga_meta_tx) or (T =:= ga_attach_tx))).
 -define(HAS_GAS_TX(T), (?IS_CONTRACT_TX(T) or (T =:= channel_force_progress_tx))).
 
--include("../../aecontract/include/hard_forks.hrl").
+-include_lib("aecontract/include/hard_forks.hrl").
 
 %%%===================================================================
 %%% Types
@@ -299,7 +299,6 @@ used_gas(#aetx{ type = paying_for_tx, cb = CB, size = Size, tx = Tx }, Height, V
     PayingForTxGas + InnerTxGas;
 used_gas(#aetx{ type = ga_meta_tx, cb = CB, size = Size, tx = Tx }, Height, Version, Trees) ->
     %% note that this is different than how gas_limit/3 works!
-    InnerTx = #aetx{ size = ISize } = aetx_sign:tx(CB:tx(Tx)),
     CallsTrees = aec_trees:calls(Trees),
     Pubkey = CB:ga_pubkey(Tx),
     AuthCallId = CB:call_id(Tx, Trees),

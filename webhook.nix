@@ -1,16 +1,13 @@
 let
-  stable = import (fetchTarball { # 19.09
-    url = https://github.com/NixOS/nixpkgs-channels/archive/a22b0189002.tar.gz;
-    sha256 = "0rgd0cbxg9mrzb830hgjlvy134ivpfcnkyhbnlvvn8vl4y20zqmz";
-  }) {};
+  pkgs = import (fetchTarball "https://github.com/NixOS/nixpkgs/archive/860b56be91fb874d48e23a950815969a7b832fbc.tar.gz") {};
 in {
-  aeternityEnv = stable.stdenv.mkDerivation {
+  aeternityEnv = pkgs.stdenv.mkDerivation {
     name = "aeternity-webhook";
     buildInputs = [
       ## base
-      stable.stdenv
+      pkgs.stdenv
       ## curl
-      stable.curl
+      pkgs.curl
     ];
   };
 }

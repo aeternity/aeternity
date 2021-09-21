@@ -14,6 +14,7 @@
 -export([user_config/0, user_config/1, user_config/2]).
 -export([user_map/0, user_map/1]).
 -export([schema/0, schema/1]).
+-export([schema_default_values/1]).
 -export([user_config_or_env/3, user_config_or_env/4]).
 -export([user_map_or_env/4]).
 -export([env_or_user_map/4]).
@@ -245,6 +246,23 @@ schema_find([], S) ->
 default(Key) when is_list(Key) ->
     schema(Key ++ [<<"default">>]).
 
+schema_default_values(Path) ->
+    case schema(Path) of
+        undefined -> undefined;
+        {ok, Tree} ->
+            RecursiveDefault =
+                fun R(_PName,
+                      #{<<"type">> := <<"object">>, <<"properties">> := Props}) ->
+                          maps:map(fun(PN, #{<<"type">> := <<"object">>} = PP) -> R(PN, PP);
+                                      (_PN, #{<<"default">> := Def}) -> Def
+                                    end, Props);
+                    R(_PName, #{<<"default">> := Def}) ->
+                        Def
+                end,
+            Res = RecursiveDefault(<<"root">>, Tree),
+            {ok, Res}
+      end.
+
 parse_key_value_string(Bin) when is_binary(Bin) ->
     %% Parse: expect (binary) string of type "S1:L1 [, ...] Sn:Ln", where
     %% Sx is a string or non-negative integer, and Lx is a non-neg integer;
@@ -288,6 +306,8 @@ read_config(Mode) when Mode =:= silent; Mode =:= report ->
 apply_os_env() ->
     ok = application:ensure_started(gproc),
     try
+    %% Make sure gproc is started, since we use it in update_config/1
+    application:ensure_started(gproc),
     Pfx = "AE",  %% TODO: make configurable
     %% We sort on variable names to allow specific values to override object
     %% definitions at a higher level (e.g. AE__MEMPOOL followed by AE__MEMPOOL__TX_TTL)

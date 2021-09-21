@@ -1,0 +1,63 @@
+
+// Testing primitives for accessing the block chain environment
+contract Interface =
+  entrypoint contract_address : () => address
+  entrypoint call_origin      : () => address
+  entrypoint call_caller      : () => address
+  entrypoint call_value       : () => int
+
+contract Environment =
+
+  // Address
+  entrypoint contract_address() : address = Contract.address
+  entrypoint remote_address(who) : address =
+    who.contract_address(gas = 1000)
+
+  // Balance
+  entrypoint contract_balance() : int = Contract.balance
+
+  // -- Information about the current call ---
+
+  // Origin
+  entrypoint call_origin()   : address = Call.origin
+  entrypoint remote_call_origin(remote : Interface) : address =
+    remote.call_origin()
+
+  // Caller
+  entrypoint call_caller() : address = Call.caller
+  entrypoint remote_call_caller(remote : Interface) : address =
+    remote.call_caller()
+
+  // Value
+  payable entrypoint call_value() : int = Call.value
+  stateful payable entrypoint remote_call_value(remote : Interface, value : int) : int =
+    remote.call_value(value = value / 2)
+
+  // Gas price
+  entrypoint call_gas_price() : int = Call.gas_price
+
+  // -- Information about the chain ---
+
+  // Account balances
+  entrypoint get_balance(acct : address) : int = Chain.balance(acct)
+
+  // Block hash
+  entrypoint block_hash(height : int) = Chain.block_hash(height)
+
+  // Coinbase
+  entrypoint beneficiary() : address = Chain.coinbase
+
+  // Block timestamp
+  entrypoint timestamp() : int = Chain.timestamp
+
+  // Block height
+  entrypoint generation() : int = Chain.block_height
+
+  // Difficulty
+  entrypoint difficulty() : int = Chain.difficulty
+
+  // Gas limit
+  entrypoint gas_limit() : int = Chain.gas_limit
+
+  // Gas
+  entrypoint gas_left() : int = Call.gas_left()

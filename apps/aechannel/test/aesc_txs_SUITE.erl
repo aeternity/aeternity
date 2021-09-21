@@ -219,10 +219,10 @@
         ]).
 
 -include_lib("common_test/include/ct.hrl").
--include("../../aecore/include/blocks.hrl").
+-include_lib("aecore/include/blocks.hrl").
 -include_lib("stdlib/include/assert.hrl").
--include("../../aecontract/include/aecontract.hrl").
--include("../../aecontract/include/hard_forks.hrl").
+-include_lib("aecontract/include/aecontract.hrl").
+-include_lib("aecontract/include/hard_forks.hrl").
 -include("../../aecontract/test/include/aect_sophia_vsn.hrl").
 
 -define(MINER_PUBKEY, <<12345:?MINER_PUB_BYTES/unit:8>>).
@@ -1843,7 +1843,7 @@ settle_delegate_not_allowed(Cfg) ->
                 positive(fun close_solo_with_payload/2),
                 set_prop(height, Height),
                 fun(#{delegate_ids := Ds, state := S} = Props) ->
-                    D1 = pick_random_delegate(Ds), 
+                    D1 = pick_random_delegate(Ds),
                     D1Pubkey = aeser_id:specialize(D1, account),
                     D1PrivKey = aesc_test_utils:priv_key(D1Pubkey, S),
                     Props#{from_pubkey => D1Pubkey, from_privkey => D1PrivKey}
@@ -3015,7 +3015,7 @@ fp_use_remote_call(Cfg) ->
                                          _Deposit2  = 2),
                 SaveContract(second_contract),
                 LoadContract(remote_contract),
-                force_call_contract_first(Forcer, <<"main">>, [<<"42">>],
+                force_call_contract_first(Forcer, <<"main_">>, [<<"42">>],
                                           FPRound),
                 assert_last_channel_result(42, word),% it works
 
@@ -3214,7 +3214,7 @@ fp_not_participant(Cfg) ->
                 get_onchain_balances(before_force),
                 set_prop(round, Round),
                 fun(#{contract_id := ContractId, contract_file := CName} = Props) ->
-                    (create_contract_call_payload(ContractId, CName, <<"main">>,
+                    (create_contract_call_payload(ContractId, CName, <<"main_">>,
                                                   [<<"42">>], 1))(Props)
                 end,
                 set_prop(fee, 100000 * aec_test_utils:min_gas_price()),
@@ -3416,7 +3416,7 @@ fp_solo_payload_invalid_state_hash(Cfg) ->
                 set_prop(round, Round),
                 set_prop(fake_solo_state_hash, FakeStateHash),
                 fun(#{contract_id := ContractId, contract_file := CName} = Props) ->
-                    (create_contract_call_payload(ContractId, CName, <<"main">>,
+                    (create_contract_call_payload(ContractId, CName, <<"main_">>,
                                                   [<<"42">>], 1))(Props)
                 end,
                 set_prop(fee, 100000 * aec_test_utils:min_gas_price()),
@@ -3470,7 +3470,7 @@ fp_solo_payload_closing_overflowing_balances(Cfg) ->
                 create_contract_poi_and_payload(Round - 1, ContractRound, Owner),
                 set_prop(round, Round),
                 fun(#{contract_id := ContractId, contract_file := CName} = Props) ->
-                    (create_contract_call_payload(ContractId, CName, <<"main">>,
+                    (create_contract_call_payload(ContractId, CName, <<"main_">>,
                                                   [<<"42">>], 1))(Props)
                 end,
                 set_prop(fee, 100000 * aec_test_utils:min_gas_price()),
@@ -3596,7 +3596,7 @@ fp_solo_payload_broken_update_(Cfg, Update, Error) ->
                 set_prop(solo_payload_update, Update),
                 set_prop(fake_solo_state_hash, FakeStateHash),
                 fun(#{contract_id := ContractId, contract_file := CName} = Props) ->
-                    (create_contract_call_payload(ContractId, CName, <<"main">>,
+                    (create_contract_call_payload(ContractId, CName, <<"main_">>,
                                                   [<<"42">>], 1))(Props)
                 end,
                 set_prop(fee, 100000 * aec_test_utils:min_gas_price()),
@@ -3635,7 +3635,7 @@ fp_solo_payload_broken_call(Cfg) ->
                 end,
                 set_prop(fake_solo_state_hash, FakeStateHash),
                 fun(#{contract_id := ContractId, contract_file := CName} = Props) ->
-                    (create_contract_call_payload(ContractId, CName, <<"main">>,
+                    (create_contract_call_payload(ContractId, CName, <<"main_">>,
                                                   [<<"42">>], 1))(Props)
                 end,
                 set_prop(fee, 100000 * aec_test_utils:min_gas_price()),
@@ -4529,7 +4529,7 @@ negative_force_progress_sequence(Cfg, Round, Forcer, ErrMsg) ->
             set_prop(round, Round),
             fun(#{ contract_id := ContractId
                   , contract_file := CName} = Props) ->
-                (create_contract_call_payload(ContractId, CName, <<"main">>,
+                (create_contract_call_payload(ContractId, CName, <<"main_">>,
                                               [<<"42">>], DepositAmt))(Props)
             end,
             fun(Props) ->
@@ -4553,7 +4553,7 @@ force_progress_sequence(Round, Forcer) ->
     fun(Props0) ->
         DepositAmt = maps:get(call_deposit, Props0, 1),
         {FunName, FunParams} = maps:get(contract_function_call, Props0,
-                                        {<<"main">>, [<<"42">>]}),
+                                        {<<"main_">>, [<<"42">>]}),
         run(Props0,
            [get_onchain_balances(before_force),
             fun(#{state_hash := StateHash, offchain_trees := OffChainTrees} = Props) ->
@@ -5795,7 +5795,7 @@ fp_sophia_versions(Cfg) ->
                       set_prop(gas_price, aec_governance:minimum_gas_price(Protocol)),
                       %% recompute the update with the new gas price
                       fun(#{contract_id := ContractId, contract_file := CName} = Props) ->
-                          (create_contract_call_payload(ContractId, CName, <<"main">>,
+                          (create_contract_call_payload(ContractId, CName, <<"main_">>,
                                                         [<<"42">>], 1))(Props)
                       end,
                       fun(Props) ->
@@ -5832,7 +5832,7 @@ fp_sophia_versions(Cfg) ->
                 set_prop(height, RomaHeight),
                 set_prop(round, Round),
                 fun(#{contract_id := ContractId, contract_file := CName} = Props) ->
-                    (create_contract_call_payload(ContractId, CName, <<"main">>,
+                    (create_contract_call_payload(ContractId, CName, <<"main_">>,
                                                   [<<"42">>], 1))(Props)
                 end,
                 fun(#{contract_id := ContractId,
@@ -6068,7 +6068,7 @@ fp_from_delegate_after_iris_not_closing(Cfg) ->
                           set_from(WhosDelegate),
                           fun(#{ initiator_pubkey := Initiator
                               , responder_pubkey := Responder
-                              , from_pubkey      := From 
+                              , from_pubkey      := From
                               , delegate_pubkey  := Delegate} = Props1) ->
                               ?TEST_LOG("Initiator: ~p,\nresponder: ~p,\ndelegate: ~p",
                                         [Initiator, Responder, Delegate]),
@@ -6121,7 +6121,7 @@ fp_from_delegate_after_iris(Cfg) ->
                           set_from(WhosDelegate),
                           fun(#{ initiator_pubkey := Initiator
                               , responder_pubkey := Responder
-                              , from_pubkey      := From 
+                              , from_pubkey      := From
                               , delegate_pubkey  := Delegate} = Props1) ->
                               ?TEST_LOG("Initiator: ~p,\nresponder: ~p,\ndelegate: ~p",
                                         [Initiator, Responder, Delegate]),
@@ -6159,7 +6159,7 @@ fp_from_delegate_after_iris(Cfg) ->
                                 set_prop(round, FPRound),
                                 set_prop(fee, 100000 * aec_test_utils:min_gas_price()),
                                   fun(#{contract_id := ContractId, contract_file := CName} = Props1) ->
-                                      (create_contract_call_payload(ContractId, CName, <<"main">>,
+                                      (create_contract_call_payload(ContractId, CName, <<"main_">>,
                                                                     [<<"42">>], 1))(Props1)
                                   end,
                                 positive(fun force_progress_/2)
@@ -6196,7 +6196,7 @@ fp_wrong_delegate_after_iris(Cfg) ->
                           set_from(CallFrom),
                           fun(#{ initiator_pubkey := Initiator
                                , responder_pubkey := Responder
-                               , from_pubkey      := From 
+                               , from_pubkey      := From
                                , delegate_pubkey  := Delegate} = Props1) ->
                               ?TEST_LOG("Initiator: ~p,\nresponder: ~p,\ndelegate: ~p",
                                         [Initiator, Responder, Delegate]),
@@ -6225,7 +6225,7 @@ fp_wrong_delegate_after_iris(Cfg) ->
                           rename_prop(delegate_privkey, from_privkey, keep_old)
                         ])
                   end,
-            Err = 
+            Err =
                 case PreIris of
                     true  when NonEmptyPayload -> account_not_peer;
                     true  -> not_caller;
@@ -6445,7 +6445,7 @@ set_delegates_unknown_from(Config) ->
     TestWithPayload(),
 
     StateHashSize = aeser_api_encoder:byte_size_for_type(state),
-    
+
     TestWithoutPayload =
         fun(Snapshoter) ->
             run(#{cfg => Config, height => Height},
@@ -6562,7 +6562,7 @@ set_delegates_state_hash_mismatch(Config) ->
             ?TEST_LOG("Test Setter is ~p", [Setter]),
             run(#{cfg => Config
                 , initiator_delegate_ids => []
-                , responder_delegate_ids => [] 
+                , responder_delegate_ids => []
                 , height => Height},
                [positive(fun create_channel_/2),
                 set_from(Setter),
@@ -6586,7 +6586,7 @@ set_delegates_round_mismatch(Config) ->
             ?TEST_LOG("Test Setter is ~p", [Setter]),
             run(#{cfg => Config
                 , initiator_delegate_ids => []
-                , responder_delegate_ids => [] 
+                , responder_delegate_ids => []
                 , height => Height},
                [positive(fun create_channel_/2),
                 set_from(Setter),
@@ -6598,4 +6598,3 @@ set_delegates_round_mismatch(Config) ->
         end,
     [Test(Role) || Role <- ?ROLES],
     ok.
-

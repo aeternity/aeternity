@@ -512,7 +512,6 @@ valid_sync_tasks(#state{sync_tasks = STs}) ->
     [ST || #sync_task{suspect = false} = ST <- STs].
 
 update_top_target(TopTarget, State) ->
-    aec_tx_pool:new_sync_top_target(TopTarget),
     State#state{ top_target = TopTarget }.
 
 do_update_sync_task(State, STId, Update) ->
@@ -940,7 +939,8 @@ add_blocks([B | Bs]) ->
     try aec_conductor:add_synced_block(B) of
         ok -> add_blocks(Bs);
         Err -> Err
-    catch _:_ ->
+    catch C:E:ST ->
+        lager:debug("CAUGHT ~p:~p / ~p", [C,E,ST]),
         lager:warning("Timeout adding_synced block: ~p", [B]),
         {error, timeout}
     end.

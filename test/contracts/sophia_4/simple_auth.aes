@@ -1,0 +1,14 @@
+contract Remote =
+  entrypoint main_ : (int) => int
+
+contract Auth1 =
+  record state = { secret : int }
+
+  datatype auth_test = Spend(address, int)
+                     | OracleReg
+                     | RemoteCall(Remote)
+
+  entrypoint init(s : int) = { secret = s }
+
+  entrypoint authorize(s : int, x : int) : bool =
+    state.secret == s

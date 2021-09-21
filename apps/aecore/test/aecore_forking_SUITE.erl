@@ -16,7 +16,7 @@
    [
     add_dev3_node/1,
     dev3_failed_attack/1,
-    dev3_syncs_to_community/1,
+    whitelist_and_rollback/1,
     start_dev1/1,
     start_dev2/1,
     stop_dev1/1,
@@ -68,7 +68,7 @@ groups() ->
      {three_nodes, [sequence],
       [add_dev3_node,
        dev3_failed_attack,
-       dev3_syncs_to_community]},
+       whitelist_and_rollback]},
      {orphaned_txs_get_included, [sequence],
       [{group, on_micro_block},
        {group, on_key_block}
@@ -161,14 +161,15 @@ init_per_group(three_nodes, Config) ->
 init_per_group(orphaned_txs_get_included, Config) ->
     [{nodes, [aecore_suite_utils:node_tuple(D) ||
                  D <- [dev1, dev2]]} | Config];
+init_per_group(whitelist, Config) ->
+    [{nodes, [aecore_suite_utils:node_tuple(dev1)]}
+    | Config];
 init_per_group(_Group, Config) ->
     Config.
 
 end_per_group(_Group, _Config) ->
     ok.
 
-init_per_testcase(dev3_syncs_to_community, _Config) ->
-    {skip, "Not yet implemented"};
 init_per_testcase(_Case, Config) ->
     ct:log("testcase pid: ~p", [self()]),
     [{tc_start, os:timestamp()}|Config].
@@ -218,6 +219,7 @@ dev3_failed_attack(Config) ->
     {ok, BlocksN3} = mine_key_blocks(N3, 20),
     N3Top = lists:last(BlocksN3),
     ct:log("top of fork dev3 (N3Top): ~p", [ N3Top ]),
+    ct:log("dev3 difficulty: ~p", [ aec_blocks:difficulty(N3Top) ]),
     ok = stop_and_check([dev3], Config),
     %%
     %% restart N1 (dev1), N2 (dev2), sync, mine some blocks and set fork resilience
@@ -232,6 +234,7 @@ dev3_failed_attack(Config) ->
     NewTop = rpc:call(N1, aec_chain, top_block, [], 5000),
     NewTopHeight = aec_blocks:height(NewTop),
     ct:log("top of fork dev1 (NewTop): ~p", [ NewTop ]),
+    ct:log("dev1 difficulty: ~p", [ aec_blocks:difficulty(NewTop) ]),
     aec_test_utils:wait_for_it(
       fun() -> rpc:call(N2, aec_chain, top_block, [], 5000) end,
       NewTop),
@@ -298,10 +301,60 @@ dev3_failed_attack(Config) ->
     ct:log("Without fork resistance, N2 synced against N3", []),
     ok = stop_and_check([dev1, dev2, dev3], Config).
 
-
-dev3_syncs_to_community(_Config) ->
-    %% This has not yet been implemented
-    ok.
+whitelist_and_rollback(Config) ->
+    %%
+    %% Start dev1 to produce a whitelist
+    %%
+    [N1, N2, _N3] = [aecore_suite_utils:node_name(N) || N <- [dev1, dev2, dev3]],
+    aecore_suite_utils:start_node(dev1, Config),
+    aecore_suite_utils:connect(N1),
+    N1Top = rpc:call(N1, aec_chain, top_height, []),
+    ct:log("TopHeight on dev1: ~p", [N1Top]),
+    SetupHome = rpc:call(N1, setup, home, []),
+    AeCmd = filename:join([SetupHome, "bin", "aeternity"]),
+    ct:log("SetupHome = ~p", [SetupHome]),
+    ct:log("AeCmd = ~p", [AeCmd]),
+    {ok, N1Cwd} = rpc:call(N1, file, get_cwd, []),
+    WLCmd = AeCmd ++ " create_whitelist -start 5 -n 10 -o ./wl.json",
+    ct:log("WLCmd = ~p", [WLCmd]),
+    WhiteListRes = os:cmd(WLCmd, #{}),
+    ct:log("WhiteListRes =~n"
+           "=========================================~n"
+           "~s~n"
+           "=========================================", [WhiteListRes]),
+    ok = stop_and_check([dev1], Config),
+    %%
+    %% Start dev2, which at this point should be on the evil dev3 fork
+    %%
+    WLFile = filename:join(N1Cwd, "wl.json"),
+    Env = [{"AE__SYNC__WHITELIST_FILE", WLFile}],
+    aecore_suite_utils:start_node(dev2, Config, Env),
+    aecore_suite_utils:connect(N2),
+    N2Top = rpc:call(N2, aec_chain, top_height, []),
+    true = N2Top > N1Top,
+    ct:log("N2Top = ~p, higher than N1Top (~p)", [N2Top, N1Top]),
+    ct:log("Whitelist:~n"
+           "~p", [rpc:call(N2, aec_consensus_bitcoin_ng, get_whitelist, [])]),
+    %% Prepare a call to the rollback script
+    N2SetupHome = rpc:call(N2, setup, home, []),
+    N2AeCmd = filename:join([N2SetupHome, "bin", "aeternity"]),
+    N2RBCmd = N2AeCmd ++ " db_rollback -w",
+    N2RBRes = os:cmd(N2RBCmd),
+    ct:log("N2RBRes =~n"
+           "=========================================~n"
+           "~s~n"
+           "=========================================", [N2RBRes]),
+    %%
+    %% ensure that the rollback script restored the 'normal' mode
+    %%
+    normal = rpc:call(N2, app_ctrl, get_mode, []),
+    ct:log("Mode on dev2 is 'normal' after running rollback script", []),
+    %%
+    %% dev2 should now be rolled back to a top below that of dev1's
+    %%
+    N2Top2 = rpc:call(N2, aec_chain, top_height, []),
+    ct:log("N2Top2 = ~p", [N2Top2]),
+    ok = stop_and_check([dev2], Config).
 
 stop_and_check(Ns, Config) ->
     lists:foreach(
@@ -351,7 +404,7 @@ mine_a_key_block_on_dev2(_Config) -> mine_a_key_block(dev2).
 mine_a_micro_block_on_dev1(_Config) -> mine_a_micro_block(dev1).
 mine_a_micro_block_on_dev2(_Config) -> mine_a_micro_block(dev2).
 
-mine_a_micro_block(Node) -> 
+mine_a_micro_block(Node) ->
     NName = aecore_suite_utils:node_name(Node),
     aecore_suite_utils:mine_blocks(NName, 1, ?MINE_RATE, micro, #{}).
 
@@ -381,13 +434,13 @@ start_nodes_and_wait_sync_dev2_chain_wins(Config) ->
     start_nodes_and_wait_sync(dev2, dev1, Config).
 
 start_nodes_and_wait_sync(CorrectForkNode, OtherNode, Config) ->
-    start_node(CorrectForkNode, Config), 
+    start_node(CorrectForkNode, Config),
     CFNName = aecore_suite_utils:node_name(CorrectForkNode),
     CFTop = rpc:call(CFNName, aec_chain, top_block, [], 5000),
     ct:log("top of chain ~p: ~p", [ CorrectForkNode, CFTop ]),
-    stop_and_check([CorrectForkNode], Config), 
+    stop_and_check([CorrectForkNode], Config),
 
-    start_node(OtherNode, Config), 
+    start_node(OtherNode, Config),
     ForkNName = aecore_suite_utils:node_name(OtherNode),
     ForkTop = rpc:call(ForkNName, aec_chain, top_block, [], 5000),
     ct:log("top of chain ~p: ~p", [ OtherNode, ForkTop ]),
@@ -400,7 +453,7 @@ start_nodes_and_wait_sync(CorrectForkNode, OtherNode, Config) ->
                   rpc:call(ForkNName, aec_conductor, post_block, [CFTop], 5000)),
 
     T0 = os:timestamp(),
-    start_node(CorrectForkNode, Config), 
+    start_node(CorrectForkNode, Config),
     wait_nodes_to_sync(CFTop, OtherNode, T0),
     ok.
 

@@ -21,7 +21,7 @@
 
 -include_lib("common_test/include/ct.hrl").
 -include_lib("stdlib/include/assert.hrl").
--include("../../aecontract/include/aecontract.hrl").
+-include_lib("aecontract/include/aecontract.hrl").
 
 -import(aecore_suite_utils, [patron/0]).
 
@@ -47,7 +47,9 @@ init_per_suite(Config) ->
             <<"micro_block_cycle">> => MicroBlockCycle
         },
         <<"mempool">> => #{ <<"invalid_tx_ttl">> => 2
-                          , <<"nonce_baseline">> => 10 }
+                          , <<"nonce_baseline">> => 10
+                          , <<"tx_failures">> => #{ <<"enabled">> => false}
+                          }
     },
     Config1 = aecore_suite_utils:init_per_suite([dev1, dev2], DefCfg,
                                                 [{add_peers, true}],
@@ -241,8 +243,7 @@ missing_tx_gossip(_Config) ->
 check_coinbase_validation(_Config) ->
     %% Mine on a node a contract tx using coinbase.
     N1 = aecore_suite_utils:node_name(dev1),
-    aecore_suite_utils:reinit_with_ct_consensus(dev1),
-    aecore_suite_utils:reinit_with_ct_consensus(dev2),
+    aecore_suite_utils:reinit_nodes_with_ct_consensus([dev1, dev2]),
     {ok, TxH1, Ct1, Code} =
         create_contract_tx(N1, chain, [],  300000 * aec_test_utils:min_gas_price(),  1,  100),
     {ok, TxH2} =

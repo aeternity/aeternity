@@ -324,7 +324,7 @@ groups() ->
     ].
 
 conflicts_sequence() ->
-    [ 
+    [
       sc_ws_conflict_two_offchain_updates,
       sc_ws_conflict_deposit_and_offchain_update,
       sc_ws_conflict_two_deposits,
@@ -364,6 +364,8 @@ init_per_suite(Config) ->
     DefCfg = #{<<"chain">> =>
                    #{<<"persist">> => false,
                      <<"hard_forks">> => Forks},
+                     <<"mempool">> =>
+                        #{<<"tx_failures">> => #{ <<"enabled">> => false}},
                <<"mining">> =>
                    #{<<"micro_block_cycle">> => 1,
                      %% disable name claim auction
@@ -571,7 +573,7 @@ start_node(Config) ->
 reset_participants(Grp, Config) ->
     Node = ?config(node, Config),
 
-    StartAmt = 70000000000 * aec_test_utils:min_gas_price(),
+    StartAmt = 7000000000 * aec_test_utils:min_gas_price(),
         %% case aect_test_utils:latest_protocol_version() >= ?LIMA_PROTOCOL_VSN of
         %%     false -> 50000000000 * aec_test_utils:min_gas_price();
         %%     true  ->
@@ -581,8 +583,8 @@ reset_participants(Grp, Config) ->
     Initiator = {IPub, IPriv} = aecore_suite_utils:generate_key_pair(),
     Responder = {RPub, RPriv} = aecore_suite_utils:generate_key_pair(),
 
-    ITx = initialize_account(StartAmt, Initiator, false),
-    RTx = initialize_account(StartAmt, Responder, false),
+    ITx = initialize_account(StartAmt, Initiator),
+    RTx = initialize_account(StartAmt, Responder),
     aecore_suite_utils:mine_blocks_until_txs_on_chain(Node, [ITx, RTx], ?MAX_MINED_BLOCKS),
 
     Participants = #{initiator => #{pub_key => IPub,
@@ -1949,7 +1951,7 @@ sc_ws_contract_generic_(Origin, ContractSource, Fun, Config, Opts) ->
     WrappedFun =
         fun(Owner, OwnerPubkey, OtherPubkey) ->
             with_registered_events(EventTags, [SenderConnPid, AckConnPid],
-                fun() ->            
+                fun() ->
                     Fun(Owner, GetVolley, CreateContract, SenderConnPid,
                         AckConnPid, OwnerPubkey, OtherPubkey, Opts, Config)
                 end)
@@ -2279,7 +2281,7 @@ sc_ws_remote_call_contract_(Owner, GetVolley, CreateContract, ConnPid1, ConnPid2
     CallIdentity =
         fun(Who, Val) ->
             ValB = integer_to_list(Val),
-            ContractCall(Who, IdentityCPubKey, identity, <<"main">>,
+            ContractCall(Who, IdentityCPubKey, identity, <<"main_">>,
                          [ValB], Val, _Amount = 0)
         end,
     EncIdPubkey = aeser_api_encoder:encode(contract_pubkey, IdentityCPubKey),
@@ -2497,11 +2499,16 @@ initialize_account(Amount, {Pubkey, _Privkey}, Check) ->
     MaxMined = ?MAX_MINED_BLOCKS + (Amount div aec_governance:block_mine_reward(1)),
     ct:pal("Mining ~p blocks at most for ~p tokens", [MaxMined, Amount]),
 
+    {_, MinerPubkey} = proplists:get_value(?NODE, aecore_suite_utils:sign_keys()),
+    MinerAddress = aeser_api_encoder:encode(account_pubkey, MinerPubkey),
+    {ok, 200, #{<<"balance">> := _ActualBalance}} =
+        get_accounts_by_pubkey_sut(MinerAddress),
+
     {ok, 200, #{<<"tx">> := SpendTx}} =
         post_spend_tx(aeser_api_encoder:encode(account_pubkey, Pubkey), Amount, Fee),
     TxHash = sign_and_post_tx(SpendTx),
     if Check ->
-        aecore_suite_utils:mine_blocks_until_txs_on_chain(Node, [TxHash], MaxMined),
+        {ok, _} = aecore_suite_utils:mine_blocks_until_txs_on_chain(Node, [TxHash], MaxMined),
         assert_balance_at_least(Pubkey, Amount),
         ok;
        true ->
@@ -2699,7 +2706,7 @@ create_contract_(TestName, InitArgument, SenderConnPid, UpdateVolley, Config,
 
 contract_calls_(identity = TestName, ContractPubKey, SenderConnPid, UpdateVolley,
                 AckConnPid, _ , _, Config) ->
-    FunctionName = "main",
+    FunctionName = "main_",
     Args = ["42"],
     ExpectedResult = 42,
     #{tx := UnsignedStateTx, updates := Updates} =
@@ -3561,7 +3568,7 @@ sc_ws_conflict_new_tx_(StarterAction, AckAction, Config) ->
         [initiator,
          responder]),
     ok.
-    
+
 
 update_params(ParticipantA, ParticipantB, Amount) ->
     {<<"channels.update.new">>,
@@ -3947,7 +3954,7 @@ call_fetch_rpc(ConnPid, Params) ->
     ?WS:json_rpc_call(
        ConnPid, #{ <<"method">> => <<"channels.history.fetch">>
                  , <<"params">> => Params }).
-    
+
 
 sc_ws_fsm_id_errors(Roles, ReestablishOptions, Config) ->
     TestError =
@@ -4298,7 +4305,7 @@ ws_get_decoded_result_(ConnPid1, ConnPid2, Contract, Function, [Update], Unsigne
     decode_call_result(Contract, Function, ok, ReturnValue).
 
 decode_call_result(ContractName, Fun, ResType, ResValue) ->
-    {ok, BinCode} = aect_test_utils:read_contract(?SOPHIA_LIMA_AEVM, ContractName),
+    {ok, BinCode} = aect_test_utils:read_contract(?SOPHIA_IRIS_FATE, ContractName),
     aect_test_utils:decode_call_result(binary_to_list(BinCode), Fun, ResType, ResValue).
 
 
@@ -4523,7 +4530,7 @@ sc_ws_broken_init_code_(Owner, GetVolley, _CreateContract, _ConnPid1, _ConnPid2,
     %% Example broken init code will be calling not the init function
     {ok, EncodedCode} = get_contract_bytecode(identity),
     %% call main instead of init
-    {ok, EncodedInitData} = encode_call_data(identity, "main", ["1"]),
+    {ok, EncodedInitData} = encode_call_data(identity, "main_", ["1"]),
     {_CreateVolley, OwnerConnPid, _OwnerPubKey} = GetVolley(Owner),
     ws_send_tagged(OwnerConnPid, <<"channels.update.new_contract">>,
                    #{vm_version  => aect_test_utils:vm_version(),
@@ -4848,7 +4855,7 @@ sc_ws_pinned_withdraw(Cfg) ->
 sc_ws_pinned_error_update(Cfg) ->
     sc_ws_pinned_error_(
         <<"channels.update.new">>,
-        fun(SenderPubkey, AckPubkey) ->                
+        fun(SenderPubkey, AckPubkey) ->
             #{from => aeser_api_encoder:encode(account_pubkey, SenderPubkey),
               to => aeser_api_encoder:encode(account_pubkey, AckPubkey),
               amount => 1}
@@ -4858,7 +4865,7 @@ sc_ws_pinned_error_update(Cfg) ->
 sc_ws_pinned_error_deposit(Cfg) ->
     sc_ws_pinned_error_(
         <<"channels.deposit">>,
-        fun(_SenderPubkey, _AckPubkey) ->                
+        fun(_SenderPubkey, _AckPubkey) ->
             #{amount => 1}
         end,
         <<"channels.deposit_tx">>, Cfg).
@@ -4866,7 +4873,7 @@ sc_ws_pinned_error_deposit(Cfg) ->
 sc_ws_pinned_error_withdraw(Cfg) ->
     sc_ws_pinned_error_(
         <<"channels.withdraw">>,
-        fun(_SenderPubkey, _AckPubkey) ->                
+        fun(_SenderPubkey, _AckPubkey) ->
             #{amount => 1}
         end,
         <<"channels.withdraw_tx">>, Cfg).
@@ -5821,7 +5828,7 @@ sc_ws_force_progress_(Origin, ContractPubkey,
     {ok, Channel1} = get_channel(ChannelId),
     Round1 = aesc_channels:round(Channel1),
     StateHash1 = aesc_channels:state_hash(Channel1),
-  
+
     ct:log("Force progress asserts:~nOld round ~p, New round ~p",
            [Round0, Round1]),
     ?assertNotEqual(StateHash0, StateHash1),
@@ -5876,4 +5883,3 @@ sc_ws_leave_responder_does_not_timeout(Config0) ->
     ok = sc_ws_update_(Config2),
     ct:log("*** Closing ... ***", []),
     ok = sc_ws_close_(Config2).
-

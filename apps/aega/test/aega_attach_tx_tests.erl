@@ -8,7 +8,7 @@
 -module(aega_attach_tx_tests).
 
 -include_lib("eunit/include/eunit.hrl").
--include("../../aecontract/include/aecontract.hrl").
+-include_lib("aecontract/include/aecontract.hrl").
 
 basic_test_() ->
     [ {"Gas-related getters test", fun gas_getters/0}

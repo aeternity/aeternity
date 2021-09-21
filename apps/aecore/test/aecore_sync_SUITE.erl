@@ -407,7 +407,7 @@ end_per_testcase(_Case, Config) ->
 
 start_first_node(Config) ->
     aecore_suite_utils:start_node(dev1, Config),
-    aecore_suite_utils:connect(aecore_suite_utils:node_name(dev1)),
+    connect(aecore_suite_utils:node_name(dev1)),
     ok = aecore_suite_utils:check_for_logs([dev1], Config),
     ok.
 
@@ -419,7 +419,7 @@ start_second_node(Config) ->
     N1 = aecore_suite_utils:node_name(Dev1),
     N2 = aecore_suite_utils:node_name(Dev2),
     aecore_suite_utils:start_node(Dev2, Config),
-    aecore_suite_utils:connect(N2),
+    connect(N2),
     aecore_suite_utils:await_aehttp(N2),
     ct:log("Connected peers on dev2: ~p",
            [rpc:call(N2, aec_peers, connected_peers, [], 5000)]),
@@ -432,7 +432,7 @@ start_third_node(Config) ->
     N3 = aecore_suite_utils:node_name(Dev3),
     T0 = os:timestamp(),
     aecore_suite_utils:start_node(Dev3, Config),
-    aecore_suite_utils:connect(N3),
+    connect(N3),
     aecore_suite_utils:await_aehttp(N3),
     ct:log("Connected peers on dev3: ~p",
            [rpc:call(N3, aec_peers, connected_peers, [], 5000)]),
@@ -456,7 +456,7 @@ start_blocked_second(Config) ->
     N1 = aecore_suite_utils:node_name(Dev1),
     N2 = aecore_suite_utils:node_name(Dev2),
     aecore_suite_utils:start_node(Dev2, Config),
-    aecore_suite_utils:connect(N2),
+    connect(N2),
     timer:sleep(2000),
 
     %% Check that there is only one non-blocked peer (dev3) and no connected peers
@@ -608,7 +608,7 @@ crash_syncing_worker(Config) ->
     spawn_link(fun() -> kill_sync_worker(N2, PeerId) end),
 
     aecore_suite_utils:start_node(Dev2, Config),
-    aecore_suite_utils:connect(N2),
+    connect(N2),
     ct:log("node connected ~p", [N2]),
 
     %% Set the same mining_rate to validate target
@@ -665,7 +665,7 @@ restart_node(Nr, Config) ->
     T0 = os:timestamp(),
     aecore_suite_utils:start_node(Dev, Config),
     N = aecore_suite_utils:node_name(Dev),
-    aecore_suite_utils:connect(N),
+    connect(N),
     ct:log("~w restarted", [Dev]),
     true = expect_same(T0, Config).
 
@@ -839,7 +839,7 @@ measure_second_node_sync_time(Config) ->
     N2 = aecore_suite_utils:node_name(Dev2),
     aecore_suite_utils:start_node(Dev2, Config),
     {T, _} = timer:tc(fun() ->
-        aecore_suite_utils:connect(N2),
+        connect(N2),
         aecore_suite_utils:reinit_with_ct_consensus(Dev2),
         Self = self(),
         Watcher = rpc:call(N2, erlang, spawn, [fun() ->
@@ -1393,6 +1393,9 @@ start_a_node_with_node_info_and_analytics(Cfg, Node, NodeInfoFlag, AnalyticsFlag
                                             [
                                             ]),
     aecore_suite_utils:start_node(Node, Cfg),
-    aecore_suite_utils:connect(aecore_suite_utils:node_name(Node)),
+    connect(aecore_suite_utils:node_name(Node)),
     ok = aecore_suite_utils:check_for_logs([Node], Cfg),
     ok.
+
+connect(Node) ->
+    aecore_suite_utils:connect_wait(Node, aesync).

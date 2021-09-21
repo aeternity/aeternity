@@ -96,8 +96,9 @@ compile_contract(Code, Options) ->
     try
         Ast       = aeso_parser:string(Code, Options),
         {_, TypedAst}  = aeso_ast_infer_types:infer(Ast, Options),
-        FCode     = aeso_ast_to_fcode:ast_to_fcode(TypedAst, Options),
-        Fate      = aeso_fcode_to_fate:compile(FCode, Options),
+        {#{child_con_env := ChildContracts}, FCode}
+                       = aeso_ast_to_fcode:ast_to_fcode(TypedAst, Options),
+        Fate      = aeso_fcode_to_fate:compile(ChildContracts, FCode, Options),
         case aeb_fate_code:deserialize(aeb_fate_code:serialize(Fate)) of
             Fate  -> Fate;
             Other -> {error, {Other, '/=', Fate}}
@@ -196,7 +197,7 @@ read_store(Pubkey, ES) ->
                          || <<0, Reg/binary>> <- maps:keys(aect_contracts_store:contents(CtStore)) ],
         Value = fun(Key) ->
                     {ok, Val, _} = aefa_stores:find_value(Pubkey, Key, Store),
-                    {Val1, _}    = aefa_fate:unfold_store_maps(Val, ES1),
+                    {Val1, _}    = aefa_fate:unfold_store_maps(Val, ES1, unfold),
                     Val1
                 end,
         {maps:from_list([ {Key, Value(Key)} || Key <- Keys, Key > 0 ]), CtStore}
@@ -231,6 +232,10 @@ run_call(Code, Fun, Args, Options) ->
             io:format("Store:\n  ~p\n", [Store1]),
             print_logs(EventMap, Logs),
             aefa_engine_state:accumulator(ES);
+        {Time, {revert, Reason, ES}} ->
+            print_run_stats(Time, ES),
+            io:format("Revert: ~ts\n", [Reason]),
+            {error, revert};
         {Time, {error, <<"Out of gas">>, ES}} ->
             print_run_stats(Time, ES),
             {error, out_of_gas};
@@ -583,7 +588,7 @@ higher_order_test_() -> mk_test([higher_order()], higher_order_tests()).
 
 remote() ->
     [{<<"main">>,
-      "contract Remote =\n"
+      "contract interface Remote =\n"
       "  entrypoint remote : int => int\n"
       "contract Main =\n"
       "  function bla(r : Remote) = r.remote\n"
