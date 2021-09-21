@@ -48,6 +48,7 @@
         , top_change/4
         , dbs/0
         , delete/1
+        , failed_txs/1
         ]).
 
 %% exports used by GC (should perhaps be in a common lib module)
@@ -117,6 +118,10 @@
 -type negated_fee() :: non_pos_integer().
 -type non_pos_integer() :: neg_integer() | 0.
 -type tx_hash() :: binary().
+
+-record(tx, { hash          :: binary(),
+              signed_tx     :: aetx_sign:signed_tx(),
+              failures  = 0 :: non_neg_integer() }).
 
 -type pool_db_key() :: ?KEY(negated_fee(), aect_contracts:amount(),
                             aec_keys:pubkey(), non_neg_integer(), binary()).
@@ -228,11 +233,11 @@ restore_mempool() ->
 
 peek_db() ->
     #dbs{db = Db} = dbs(),
-    [Tx || {_, Tx} <- ets:tab2list(Db)].
+    [Tx#tx.signed_tx || {_, Tx} <- ets:tab2list(Db)].
 
 peek_visited() ->
     #dbs{visited_db = VDb} = dbs(),
-    [Tx || {_, Tx} <- ets:tab2list(VDb)].
+    [Tx#tx.signed_tx || {_, Tx} <- ets:tab2list(VDb)].
 
 peek_nonces() ->
     #dbs{nonce_db = NDb} = dbs(),
@@ -261,6 +266,10 @@ peek(MaxN, Account) when is_integer(MaxN), MaxN >= 0; MaxN =:= infinity ->
 -spec delete(binary()) -> ok | {error, not_found | already_accepted}.
 delete(TxHash) ->
     gen_server:call(?SERVER, {delete, TxHash}).
+
+-spec failed_txs([{aetx_sign:signed_tx(), atom()}]) -> ok.
+failed_txs(FailedTxs) ->
+    gen_server:call(?SERVER, {failed_txs, FailedTxs}).
     
 -spec get_candidate(pos_integer(), binary()) -> {ok, [aetx_sign:signed_tx()]}.
 get_candidate(MaxGas, BlockHash) when is_integer(MaxGas), MaxGas > 0,
@@ -323,7 +332,7 @@ init([]) ->
     {ok, _NonceDb} = pool_db_open(pool_db_nonce()),
     %% The gc db should be owned by this process to ensure that the gc state
     %% is consistent with the actual mempool if any of the servers restart.
-    {ok, _GCDb} = pool_db_open(pool_db_gc(), [{keypos, #tx.hash}]),
+    {ok, _GCDb} = pool_db_open(pool_db_gc(), [{keypos, #gc_tx.hash}]),
     origins_cache_open(origins_cache()),
     GCHeight = top_height(),
     Handled  = ets:new(init_tx_pool, [private]),
@@ -375,6 +384,42 @@ handle_call_({delete, TxHash}, _From, #state{dbs = Dbs} = State) ->
             none -> {error, not_found}
         end,
     {reply, Res, State};
+handle_call_({failed_txs, FailedTxs}, _From, #state{dbs = Dbs} = State) ->
+    #dbs{db = Db, visited_db = VisitedDb} = Dbs,
+    TryUpdating =
+        fun(DBHandle, Key, SignedTx, FailReason) ->
+            case ets:lookup(DBHandle, Key) of
+                [{Key, #tx{failures = Failures0} = TxRec0}] ->
+                    Failures = Failures0 + 1,
+                    case should_delete_tx(SignedTx,
+                                          FailReason,
+                                          Failures) of
+                        true ->
+                            lager:debug("Tx reached ~p failures (failed with: ~p)", [Failures, FailReason]),
+                            #dbs{gc_db = GCDb} = Dbs,
+                            pool_db_raw_delete(Dbs, Key),
+                            TxHash = aetx_sign:hash(SignedTx),
+                            aec_tx_pool_gc:delete_hash(GCDb, TxHash),
+                            aec_db:remove_tx_from_mempool(TxHash),
+                            updated;
+                        false ->
+                            lager:debug("Tx failed with reason ~p, this attempt ~p", [FailReason, Failures]),
+                            TxRec = TxRec0#tx{failures = Failures},
+                            ets:insert(DBHandle, {Key, TxRec}),
+                            updated
+                    end;
+                [] -> not_found
+            end
+        end,
+    lists:foreach(fun({SignedTx, FailReason}) ->
+                      Key = pool_db_key(SignedTx),
+                      case TryUpdating(VisitedDb, Key, SignedTx, FailReason) of
+                          updated -> pass;
+                          not_found -> TryUpdating(Db, Key, SignedTx, FailReason)
+                      end
+                  end,
+                  FailedTxs),
+    {reply, ok, State};
 handle_call_(dbs, _From, #state{dbs = Dbs} = State) ->
     {reply, Dbs, State};
 handle_call_(Request, From, State) ->
@@ -410,7 +455,7 @@ handle_info_({gproc_ps_event, top_changed, #{info := #{block_type := key,
             State) ->
     {noreply, do_update_sync_top_target(Height, State)};
 handle_info_({gproc_ps_event, top_changed, #{info := #{block_type := micro,
-                                                      height := Height}}},
+                                                      height := _Height}}},
             State) ->
     {noreply, State};
 handle_info_(Info, State) ->
@@ -461,7 +506,7 @@ int_get_candidate(MaxGas, BlockHash, #dbs{db = Db} = DBs) ->
     %% Move Txs to visited *after* revisiting visited!
     AllVisited = gb_trees:values(AccTree) ++ lists:reverse(AccTxs) ++ lists:reverse(AccBadTxs),
     Txs = [ begin
-                move_to_visited(DbX, DBs, KeyX, TxX),
+                move_to_visited(DbX, DBs, KeyX),
                 TxX
             end || {DbX, KeyX, TxX} <- AllVisited ],
 
@@ -502,9 +547,10 @@ fold_txs([Tx|Txs], Gas, MinTxGas, MinMinerGasPrice, Db, Dbs, AccountsTree, Heigh
 fold_txs([], Gas, _, _, _, _, _, _, _, Acc) ->
     {Gas, Acc}.
 
-int_get_candidate_({?KEY(_, _, Account, Nonce, _) = Key, Tx},
+int_get_candidate_({?KEY(_, _, Account, Nonce, _) = Key, TxRec},
                    Gas, MinMinerGasPrice, Db, Dbs, AccountsTree, Height, Protocol,
                    Acc = #{ tree := AccTree }) ->
+    Tx = TxRec#tx.signed_tx,
     case gb_trees:is_defined({Account, Nonce}, AccTree) of
         true when Nonce > 0 ->
             %% The earlier non-meta Tx must have had higher fee. Skip this tx.
@@ -544,11 +590,12 @@ check_candidate(Db, #dbs{gc_db = GCDb} = _Dbs,
             {Gas, Acc#{ bad_txs := [{Db, Key, Tx} | maps:get(bad_txs, Acc)] }}
     end.
 
-move_to_visited(VDb, #dbs{visited_db = VDb}, _, _) ->
+move_to_visited(VDb, #dbs{visited_db = VDb}, _) ->
     %% already in visited
     ignore;
-move_to_visited(Db, #dbs{visited_db = VDb}, Key, Tx) ->
-    ets:insert(VDb, {Key, Tx}),
+move_to_visited(Db, #dbs{visited_db = VDb}, Key) ->
+    [{Key, TxRec}] = ets:lookup(Db, Key), 
+    ets:insert(VDb, {Key, TxRec}),
     ets:delete(Db, Key),
     ok.
 
@@ -654,9 +701,9 @@ pool_db_peek(#dbs{db = Db, visited_db = VDb}, Max, Account, MaxNonce) ->
 pool_db_peek_(VDb, Db, Pat, Max) ->
     case sel_return(ets_select(VDb, Pat, Max)) of
         [] ->
-            [Tx || {_, Tx} <- sel_return(ets_select(Db, Pat, Max))];
+            [Tx#tx.signed_tx || {_, Tx} <- sel_return(ets_select(Db, Pat, Max))];
         Vs ->
-            pool_db_merge(Vs, sel_return(ets_select(Db, Pat, Max)), Max)
+            [Tx#tx.signed_tx || Tx <- pool_db_merge(Vs, sel_return(ets_select(Db, Pat, Max)), Max)]
     end.
 
 pool_db_merge(L1, L2, infinity) ->
@@ -825,7 +872,7 @@ pool_db_raw_delete(#dbs{db = Db, visited_db = VDb, nonce_db = NDb}, Key) ->
 
 pool_db_raw_put(#dbs{db = Db, nonce_db = NDb, gc_db = GCDb},
                 GCHeight0, Key, Tx, TxHash) ->
-    ets:insert(Db, {Key, Tx}),
+    ets:insert(Db, {Key, #tx{hash = TxHash, signed_tx = Tx}}), %% this resets any failed attempts
     insert_nonce(NDb, Key),
     GCHeight =
         case aetx:ttl(aetx_sign:tx(Tx)) of
@@ -1001,3 +1048,11 @@ minimum_miner_gas_price() ->
 maximum_auth_fun_gas() ->
     aeu_env:user_config_or_env([<<"mining">>, <<"max_auth_fun_gas">>],
                                aecore, mining_max_auth_fun_gas, ?DEFAULT_MAX_AUTH_FUN_GAS).
+
+should_delete_tx(SignedTx, FailReason, Failures) ->
+    case aec_tx_pool_failures:limit(SignedTx, FailReason) of
+        no_limit -> false;
+        {ok, MaxFailures} when MaxFailures > Failures -> false;
+        {ok, _} -> true
+    end.
+

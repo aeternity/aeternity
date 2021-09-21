@@ -219,6 +219,7 @@ dev3_failed_attack(Config) ->
     {ok, BlocksN3} = mine_key_blocks(N3, 20),
     N3Top = lists:last(BlocksN3),
     ct:log("top of fork dev3 (N3Top): ~p", [ N3Top ]),
+    ct:log("dev3 difficulty: ~p", [ aec_blocks:difficulty(N3Top) ]),
     ok = stop_and_check([dev3], Config),
     %%
     %% restart N1 (dev1), N2 (dev2), sync, mine some blocks and set fork resilience
@@ -233,6 +234,7 @@ dev3_failed_attack(Config) ->
     NewTop = rpc:call(N1, aec_chain, top_block, [], 5000),
     NewTopHeight = aec_blocks:height(NewTop),
     ct:log("top of fork dev1 (NewTop): ~p", [ NewTop ]),
+    ct:log("dev1 difficulty: ~p", [ aec_blocks:difficulty(NewTop) ]),
     aec_test_utils:wait_for_it(
       fun() -> rpc:call(N2, aec_chain, top_block, [], 5000) end,
       NewTop),

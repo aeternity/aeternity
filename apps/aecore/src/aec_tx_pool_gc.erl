@@ -62,8 +62,8 @@
 add_hash(MempoolGC, TxHash, Key, TTL) ->
     %% Use update_counter with a threshold to do the compare and maybe update
     %% efficiently.
-    ets:update_counter(MempoolGC, TxHash, {#tx.ttl, 0, TTL, TTL},
-                       #tx{hash = TxHash, ttl = TTL, key = Key}).
+    ets:update_counter(MempoolGC, TxHash, {#gc_tx.ttl, 0, TTL, TTL},
+                       #gc_tx{hash = TxHash, ttl = TTL, key = Key}).
 
 -spec adjust_ttl(integer(), aec_tx_pool:dbs()) -> ok.
 adjust_ttl(Diff, Dbs) ->
@@ -148,13 +148,13 @@ do_adjust_ttl(GCDb, Diff) ->
 do_adjust_ttl(_GCDb, '$end_of_table', _Diff) ->
     ok;
 do_adjust_ttl(GCDb, TxHash, Diff) ->
-    ets:update_counter(GCDb, TxHash, {#tx.ttl, -Diff}),
+    ets:update_counter(GCDb, TxHash, {#gc_tx.ttl, -Diff}),
     do_adjust_ttl(GCDb, ets:next(GCDb, TxHash), Diff).
 
 do_gc(Height, Dbs) ->
     GCDb = aec_tx_pool:gc_db(Dbs),
     GCTxs = ets:select(
-              GCDb, [{ #tx{hash = '$1', ttl = '$2', key = '$3', _ = '_'},
+              GCDb, [{ #gc_tx{hash = '$1', ttl = '$2', key = '$3', _ = '_'},
                        [{'=<', '$2', Height}],
                        [{{'$1', '$3'}}] }]),
     do_gc_(GCTxs, Dbs, GCDb).

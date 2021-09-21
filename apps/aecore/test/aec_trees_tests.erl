@@ -101,12 +101,20 @@ process_txs_test_() ->
             TreesIn = aec_test_utils:create_state_tree_with_account(Account),
             Env = aetx_env:tx_env(1),
 
-            meck:expect(aetx, process, fun(_, _, _) -> error(foo) end),
-
-            {ok, ValidTxs, SignedTxs, _Trees, _Events} =
+            meck:expect(aetx, process, fun(_, _, _) -> {error, foo} end),
+            {ok, ValidTxs, InvalidTxs1, _Trees, _Events} =
                 ?TEST_MODULE:apply_txs_on_state_trees(SignedTxs, TreesIn, Env),
             ?assertEqual([], ValidTxs),
-            {error, {error, foo}} =
+            ?assertEqual([{SignedSpend, foo}], InvalidTxs1),
+            {error, foo} =
+                ?TEST_MODULE:apply_txs_on_state_trees_strict(SignedTxs, TreesIn, Env),
+
+            meck:expect(aetx, process, fun(_, _, _) -> error(bar) end),
+            {ok, ValidTxs, InvalidTxs2, _Trees, _Events} =
+                ?TEST_MODULE:apply_txs_on_state_trees(SignedTxs, TreesIn, Env),
+            ?assertEqual([], ValidTxs),
+            ?assertEqual([{SignedSpend, crash}], InvalidTxs2),
+            {error, {error, bar}} =
                 ?TEST_MODULE:apply_txs_on_state_trees_strict(SignedTxs, TreesIn, Env),
             ok
         end}

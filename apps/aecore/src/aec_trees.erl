@@ -600,15 +600,39 @@ internal_commit_to_db(Trees) ->
                , accounts  = aec_accounts_trees:commit_to_db(accounts(Trees))
                }.
 
+-type apply_result() :: {ok, ValidTxs:: [aetx_sign:signed_tx()],
+                             InvalidTxs:: [{aetx_sign:signed_tx(), Error :: atom()}],
+                             Trees1 :: aec_trees:trees(), aetx_env:events()}
+                      | {error, atom()}.
+
+-spec apply_txs_on_state_trees([aetx_sign:signed_tx()],
+                               aec_trees:trees(),
+                               aetx_env:env()) -> apply_result().
 apply_txs_on_state_trees(SignedTxs, Trees, Env) ->
     apply_txs_on_state_trees(SignedTxs, [], [], Trees, Env, []).
 
+-spec apply_txs_on_state_trees_strict([aetx_sign:signed_tx()],
+                                      aec_trees:trees(),
+                                      aetx_env:env()) -> apply_result().
 apply_txs_on_state_trees_strict(SignedTxs, Trees, Env) ->
     apply_txs_on_state_trees(SignedTxs, [], [], Trees, Env, [strict, tx_events]).
 
+-spec apply_txs_on_state_trees([aetx_sign:signed_tx()],
+                               aec_trees:trees(),
+                               aetx_env:env(),
+                               list()) -> apply_result().
 apply_txs_on_state_trees(SignedTxs, Trees, Env, Opts) ->
     apply_txs_on_state_trees(SignedTxs, [], [], Trees, Env, Opts).
 
+-spec apply_txs_on_state_trees([aetx_sign:signed_tx()],
+                               [aetx_sign:signed_tx()],
+                               [{aetx_sign:signed_tx(), atom()}],
+                               aec_trees:trees(),
+                               aetx_env:env(),
+                               list()) ->
+    {ok, ValidTxs:: [aetx_sign:signed_tx()], InvalidTxs:: [{aetx_sign:signed_tx(), Error :: atom()}],
+     Trees1 :: aec_trees:trees(), aetx_env:events()}
+    | {error, atom()}.
 apply_txs_on_state_trees([], ValidTxs, InvalidTxs, Trees,Env,Opts) ->
     Events = case proplists:get_bool(tx_events, Opts) of
                  true -> aetx_env:events(Env);
@@ -633,7 +657,7 @@ apply_txs_on_state_trees([SignedTx | Rest], ValidTxs, InvalidTxs, Trees, Env, Op
                     {error, Reason};
                 {error, Reason} when not Strict ->
                     lager:debug("Tx ~p cannot be applied due to an error ~p", [Tx, Reason]),
-                    Invalid1 = [SignedTx | InvalidTxs],
+                    Invalid1 = [{SignedTx, Reason} | InvalidTxs],
                     apply_txs_on_state_trees(Rest, ValidTxs, Invalid1, Trees, Env, Opts)
             catch
                 Type:What when Strict ->
@@ -644,7 +668,7 @@ apply_txs_on_state_trees([SignedTx | Rest], ValidTxs, InvalidTxs, Trees, Env, Op
                     Reason = {Type, What},
                     %%lager:debug("Stacktrace: ~p", [ST]),
                     lager:debug("Tx ~p cannot be applied due to an error ~p", [Tx, Reason]),
-                    Invalid1 = [SignedTx| InvalidTxs],
+                    Invalid1 = [{SignedTx, crash} | InvalidTxs],
                     apply_txs_on_state_trees(Rest, ValidTxs, Invalid1, Trees, Env, Opts)
             end;
         {error, signature_check_failed} = E when Strict ->
@@ -652,7 +676,7 @@ apply_txs_on_state_trees([SignedTx | Rest], ValidTxs, InvalidTxs, Trees, Env, Op
             E;
         {error, signature_check_failed} when not Strict ->
             lager:debug("Signed tx ~p is not correctly signed.", [SignedTx]),
-            Invalid1 = [SignedTx | InvalidTxs],
+            Invalid1 = [{SignedTx, signature_check_failed} | InvalidTxs],
             apply_txs_on_state_trees(Rest, ValidTxs, Invalid1, Trees, Env, Opts)
     end.
 
