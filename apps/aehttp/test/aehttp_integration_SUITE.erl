@@ -1471,6 +1471,11 @@ get_transaction_by_hash([{TxHash, _ExpectedTx}], Config) ->
     BlockWithTxsHash = ?config(block_with_txs_hash, Config),
     BlockWithTxsHeight = ?config(block_with_txs_height, Config),
     {ok, 200, Tx} = get_transactions_by_hash_sut(TxHash),
+    case ?config(swagger_version, Config) of
+        swagger2 -> pass;
+        oas3 ->
+            {ok, 200, _Tx} = get_transactions_by_hash_int_as_string_sut(TxHash)
+    end,
     ?assertEqual(TxHash, maps:get(<<"hash">>, Tx)),
     ?assertEqual(BlockWithTxsHash, maps:get(<<"block_hash">>, Tx)),
     ?assertEqual(BlockWithTxsHeight, maps:get(<<"block_height">>, Tx)),
@@ -1594,6 +1599,10 @@ post_contract_and_call_tx(_Config) ->
 get_transactions_by_hash_sut(Hash) ->
     Host = external_address(),
     http_request(Host, get, "transactions/" ++ http_uri:encode(Hash), []).
+
+get_transactions_by_hash_int_as_string_sut(Hash) ->
+    Host = external_address(),
+    http_request(Host, get, "transactions/" ++ binary_to_list(http_uri:encode(Hash)) ++ "?int-as-string", []).
 
 check_transaction_in_pool_sut(Hash) ->
     Host = internal_address(),
