@@ -16,7 +16,7 @@ executors:
     docker:
       - image: aeternity/builder:bionic-otp22
         user: builder
-    working_directory: ~/aeternity
+    working_directory: /home/builder/aeternity
     environment:
       OTP_VERSION: 22.3.4.9
       ERLANG_ROCKSDB_BUILDOPTS: "-j2"
@@ -25,7 +25,7 @@ executors:
     docker:
       - image: aeternity/builder:bionic-otp23
         user: builder
-    working_directory: ~/aeternity
+    working_directory: /home/builder/aeternity
     environment:
       OTP_VERSION: 23.3.4.5
       ERLANG_ROCKSDB_BUILDOPTS: "-j2"
@@ -33,17 +33,18 @@ executors:
   builder_container_nix_alpine:
     docker:
       - image: nixorg/nix:circleci
-    working_directory: ~/aeternity
+    working_directory: /home/circleci/aeternity
     environment:
       ERLANG_ROCKSDB_BUILDOPTS: "-j2"
   builder_container_1804:
     docker:
       - image: aeternity/builder:1804
         user: builder
-    working_directory: ~/aeternity
+    working_directory: /home/builder/aeternity
   buildpack:
     docker:
       - image: circleci/buildpack-deps:xenial
+    working_directory: /home/circleci/aeternity
     environment:
       DOCKERHUB_REPO: aeternity/aeternity
   machine_1604:
@@ -51,7 +52,7 @@ executors:
     machine:
       image: ubuntu-1604:201903-01
       docker_layer_caching: true
-    working_directory: ~/aeternity
+    working_directory: /home/circleci/aeternity
     environment:
       DOCKERHUB_REPO: aeternity/aeternity
       OTP_VERSION: 22.3.4.9
@@ -68,7 +69,7 @@ references:
 
   infrastructure_config: &infrastructure_config
     resource_class: large
-    working_directory: ~/aeternity
+    working_directory: /home/builder/aeternity
     environment:
       <<: *infrastructure_config_environment
 
@@ -910,7 +911,7 @@ jobs:
 
   ubuntu_package:
     executor: builder_container_1804
-    working_directory: ~/aeternity_deb
+    working_directory: /home/builder/aeternity_deb
     steps:
       - fixed_checkout
       - *build_ubuntu_package
@@ -924,7 +925,7 @@ jobs:
   osx_package:
     macos:
       xcode: "11.1.0" # 11.1.0 is macOS 10.14.4
-    working_directory: ~/aeternity
+    working_directory: /home/circleci/aeternity
     steps:
       - fixed_checkout
       - *restore_macos_package_cache
@@ -1749,7 +1750,7 @@ workflows:
               only: master
 
       - docker_test_push_branch:
-          name: docker_push_branch
+          name: docker_push_master
           context: ae-node-builds
           requires:
             - test_roma
