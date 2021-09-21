@@ -54,11 +54,18 @@ load_plugin_apps(Path) ->
 names_not_found(Names, Dir) ->
     case file:list_dir(Dir) of
         {ok, Fs} ->
-            FsBins = [list_to_binary(F) || F <- Fs],
-            Names -- FsBins;
+            [N || N <- Names,
+                  not app_name_is_member(N, Fs)];
         {error, Reason} ->
             error({cannot_read_plugin_path, Reason})
     end.
+
+app_name_is_member(Name, Fs) ->
+    %% Regexp copied from setup:is_app_dir/2
+    Pat = << Name/binary, "(-[0-9]+(\\..+)?)?" >>,
+    lists:any(fun(F) ->
+                      re:run(F, Pat, []) =/= nomatch
+              end, Fs).
 
 try_patch_apps([Name|Ns], LibDirs) ->
     App = binary_to_atom(Name, utf8),
