@@ -463,7 +463,8 @@ commands:
           command: |
             export PLUGIN_VERSION=<< pipeline.parameters.aeplugin_devmode_version >>
             curl -fsSLOJ https://github.com/aeternity/aeplugin_dev_mode/releases/download/v$PLUGIN_VERSION/aeplugin_dev_mode.tar.gz
-            tar -zxf aeplugin_dev_mode.tar.gz -C $CIRCLE_WORKING_DIRECTORY/plugins
+            mkdir -p plugins/
+            tar -zxf aeplugin_dev_mode.tar.gz -C plugins/
 
   docker_login:
     steps:
