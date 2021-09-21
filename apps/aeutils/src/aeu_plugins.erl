@@ -66,14 +66,26 @@ load_plugins() ->
         {ok, <<>>} ->
             ok;
         {ok, Path} ->
-            Abs = filename:absname(binary_to_list(Path)),
+            Abs = binary_to_list(maybe_expand_relpath(Path)),
             case filelib:is_dir(Abs) of
                 true ->
                     lager:info("Plugin lib dir: ~s", [Abs]),
                     load_plugin_apps(Abs);
                 false ->
-                    error(plugin_path_enotdir)
+                    lager:info("Plugin dir doesn't exist: ~s", [Abs]),
+                    no_plugin_lib_dir
             end
+    end.
+
+maybe_expand_relpath(Path) ->
+    case filename:pathtype(Path) of
+        relative ->
+            Abs = filename:absname(Path),
+            aeu_env:update_config(#{<<"system">> =>
+                                        #{<<"plugin_path">> => Abs}}, false),
+            Abs;
+        _ ->
+            Path
     end.
 
 load_plugin_apps(Path) ->

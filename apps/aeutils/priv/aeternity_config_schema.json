@@ -15,7 +15,7 @@
                 "plugin_path" : {
                     "description" : "Directory containing Aeternity node plugins",
                     "type" : "string",
-                    "default" : ""
+                    "default" : "plugins"
                 },
                 "plugins" : {
                     "description" : "List of application names of plugins to load",

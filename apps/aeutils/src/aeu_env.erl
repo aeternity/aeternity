@@ -28,7 +28,8 @@
 -export([data_dir/1]).
 -export([check_config/1, check_config/2]).
 
--export([update_config/1]).
+-export([update_config/1,
+         update_config/2]).
 
 -type basic_type() :: number() | binary() | boolean().
 -type basic_or_list()  :: basic_type() | [basic_type()].
@@ -583,9 +584,12 @@ lst(L) when is_list(L) -> L;
 lst(E) -> [E].
 
 update_config(Map) when is_map(Map) ->
+    update_config(Map, _Notify = true).
+
+update_config(Map, Notify) when is_map(Map), is_boolean(Notify) ->
     Schema = application:get_env(aeutils, '$schema', #{}),
     ConfigMap = application:get_env(aeutils, '$user_map', #{}),
-    ConfigMap1 = update_config(Map, ConfigMap, Schema, _Notify = true),
+    ConfigMap1 = update_config(Map, ConfigMap, Schema, Notify),
     cache_config(ConfigMap1),
     ok.
 
