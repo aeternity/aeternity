@@ -312,20 +312,18 @@ apply_os_env() ->
     ok = application:ensure_started(gproc),
     Pfx = "AE",  %% TODO: make configurable
     ConfigMap = application:get_env(aeutils, '$user_map', #{}),
-    case apply_os_env(Pfx, schema(), ConfigMap, true) of
+    case apply_os_env(Pfx, schema(), ConfigMap) of
         NewConfig when is_map(NewConfig) ->
             cache_config(NewConfig),
+            notify_update_config(NewConfig),
             NewConfig;
         Other ->
             Other
     end.
 
-%% Plugin API version, using plugin schema and config, and withough notification.
+%% Plugin API version, using plugin schema and config.
 %% The plugin API might decide to publish a specific event...
 apply_os_env(Pfx, Schema, ConfigMap) ->
-    apply_os_env(Pfx, Schema, ConfigMap, false).
-
-apply_os_env(Pfx, Schema, ConfigMap, Notify) when is_boolean(Notify) ->
     %% We sort on variable names to allow specific values to override object
     %% definitions at a higher level (e.g. AE__MEMPOOL followed by AE__MEMPOOL__TX_TTL)
     %% Note that all schema name parts are converted to uppercase.
@@ -339,7 +337,7 @@ apply_os_env(Pfx, Schema, ConfigMap, Notify) when is_boolean(Notify) ->
             end, #{}, Names),
     error_logger:info_msg("Map fr OS env config: ~p~n", [Map]),
     if map_size(Map) > 0 ->
-            update_config(Map, ConfigMap, Schema, Notify);
+            update_config(Map, ConfigMap, Schema);
        true ->
             no_change
     end
@@ -589,19 +587,22 @@ update_config(Map) when is_map(Map) ->
 update_config(Map, Notify) when is_map(Map), is_boolean(Notify) ->
     Schema = application:get_env(aeutils, '$schema', #{}),
     ConfigMap = application:get_env(aeutils, '$user_map', #{}),
-    ConfigMap1 = update_config(Map, ConfigMap, Schema, Notify),
+    ConfigMap1 = update_config(Map, ConfigMap, Schema),
     cache_config(ConfigMap1),
-    ok.
-
-update_config(Map, ConfigMap, Schema, Notify) ->
-    check_validation([jesse:validate_with_schema(Schema, Map, [])],
-                     [Map], update_config, report),
-    NewConfig = update_map(Map, ConfigMap),
     if Notify ->
-            aec_events:publish(update_config, Map);
+            notify_update_config(Map);
        true ->
             ok
     end,
+    ok.
+
+notify_update_config(Map) ->
+    aec_events:publish(update_config, Map).
+
+update_config(Map, ConfigMap, Schema) ->
+    check_validation([jesse:validate_with_schema(Schema, Map, [])],
+                     [Map], update_config, report),
+    NewConfig = update_map(Map, ConfigMap),
     NewConfig.
 
 
@@ -619,7 +620,6 @@ update_map(With, Map) when is_map(With), is_map(Map) ->
       end, Map, With).
 
 set_env(App, K, V) ->
-    error_logger:info_msg("Set config (~p): ~p = ~p~n", [App, K, V]),
     application:set_env(App, K, V).
 
 read_json(F, Schema, Mode) ->
