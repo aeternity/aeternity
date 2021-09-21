@@ -461,10 +461,9 @@ commands:
       - run:
           name: Download devmode plugin
           command: |
-                DOWNLOAD_URL="https://github.com/aeternity/aeplugin_dev_mode/archive/refs/tags/v<< pipeline.parameters.aeplugin_devmode_version >>.tar.gz" \
-                && curl -fsSL -o aeplugin_devmode-src.tar.gz "$DOWNLOAD_URL" \
-                && mkdir -p $CIRCLE_WORKING_DIRECTORY/apps/aeplugin_dev_mode \
-                && tar -zxf aeplugin_devmode-src.tar.gz -C $CIRCLE_WORKING_DIRECTORY/apps/aeplugin_dev_mode --strip-components=1
+            export PLUGIN_VERSION=<< pipeline.parameters.aeplugin_devmode_version >>
+            curl -fsSLOJ https://github.com/aeternity/aeplugin_dev_mode/releases/download/v$PLUGIN_VERSION/aeplugin_dev_mode.tar.gz
+            tar -zxf aeplugin_dev_mode.tar.gz -C $CIRCLE_WORKING_DIRECTORY/plugins
 
   docker_login:
     steps:
