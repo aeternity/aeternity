@@ -884,6 +884,11 @@ jobs:
       aeplugin_devmode:
         type: boolean
         default: false
+      package_kind:
+        type: string
+        default: ""
+    environment:
+      PKG_KIND: << parameters.package_kind >>
     executor: builder_container_otp22
     steps:
       - fixed_checkout
@@ -922,11 +927,24 @@ jobs:
       - *fail_notification
 
   osx_package:
+    parameters:
+      aeplugin_devmode:
+        type: boolean
+        default: false
+      package_kind:
+        type: string
+        default: ""
     macos:
       xcode: "11.1.0" # 11.1.0 is macOS 10.14.4
     working_directory: /home/circleci/aeternity
+    environment:
+      PKG_KIND: << parameters.package_kind >>
     steps:
       - fixed_checkout
+      - when:
+          condition: << parameters.aeplugin_devmode >>
+          steps:
+            - aeplugin_install_devmode
       - *restore_macos_package_cache
       - run:
           name: Install required tools
@@ -1071,9 +1089,16 @@ jobs:
       tag_suffix:
         type: string
         default: ""
+      aeplugin_devmode:
+        type: boolean
+        default: false
     <<: *infrastructure_config
     steps:
       - fixed_checkout
+      - when:
+          condition: << parameters.aeplugin_devmode >>
+          steps:
+            - aeplugin_install_devmode
       - *setup_remote_docker
       - docker_login
       - run:
@@ -1089,9 +1114,16 @@ jobs:
       tag_suffix:
         type: string
         default: ""
+      aeplugin_devmode:
+        type: boolean
+        default: false
     <<: *infrastructure_config
     steps:
       - fixed_checkout
+      - when:
+          condition: << parameters.aeplugin_devmode >>
+          steps:
+            - aeplugin_install_devmode
       - *setup_remote_docker
       - docker_login
       - run:
@@ -1679,9 +1711,8 @@ workflows:
 
       - linux_package:
           name: linux_package_bundle
-          environment:
-            PKG_KIND: bundle
           aeplugin_devmode: true
+          package_kind: bundle
           filters:
             branches:
               ignore:
@@ -1716,9 +1747,8 @@ workflows:
 
       - osx_package:
           name: osx_package_bundle
-          environment:
-            PKG_KIND: bundle
           aeplugin_devmode: true
+          package_kind: bundle
           filters:
             branches:
               only:
@@ -1874,9 +1904,8 @@ workflows:
 
       - linux_package:
           name: linux_package_bundle
-          environment:
-            PKG_KIND: bundle
           aeplugin_devmode: true
+          package_kind: bundle
           filters:
             branches:
               ignore: /.*/
@@ -1899,9 +1928,8 @@ workflows:
 
       - osx_package:
           name: osx_package_bundle
-          environment:
-            PKG_KIND: bundle
           aeplugin_devmode: true
+          package_kind: bundle
           filters:
             branches:
               ignore: /.*/
