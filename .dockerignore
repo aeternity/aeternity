@@ -5,6 +5,7 @@
 !rebar3
 !rebar.config.script
 !apps
+!plugins
 !.git
 !otp_patches
 !test/ct_eunit_xform.erl

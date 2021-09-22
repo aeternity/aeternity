@@ -1,5 +1,10 @@
 version: 2.1
 
+parameters:
+  aeplugin_devmode_version:
+    type: string
+    default: "0.2.0"
+
 executors:
   infrastructure_container_unstable:
     docker:
@@ -11,7 +16,7 @@ executors:
     docker:
       - image: aeternity/builder:bionic-otp22
         user: builder
-    working_directory: ~/aeternity
+    working_directory: /home/builder/aeternity
     environment:
       OTP_VERSION: 22.3.4.9
       ERLANG_ROCKSDB_BUILDOPTS: "-j2"
@@ -20,7 +25,7 @@ executors:
     docker:
       - image: aeternity/builder:bionic-otp23
         user: builder
-    working_directory: ~/aeternity
+    working_directory: /home/builder/aeternity
     environment:
       OTP_VERSION: 23.3.4.5
       ERLANG_ROCKSDB_BUILDOPTS: "-j2"
@@ -28,17 +33,18 @@ executors:
   builder_container_nix_alpine:
     docker:
       - image: nixorg/nix:circleci
-    working_directory: ~/aeternity
+    working_directory: /home/circleci/aeternity
     environment:
       ERLANG_ROCKSDB_BUILDOPTS: "-j2"
   builder_container_1804:
     docker:
       - image: aeternity/builder:1804
         user: builder
-    working_directory: ~/aeternity
+    working_directory: /home/builder/aeternity
   buildpack:
     docker:
       - image: circleci/buildpack-deps:xenial
+    working_directory: /home/circleci/aeternity
     environment:
       DOCKERHUB_REPO: aeternity/aeternity
   machine_1604:
@@ -46,7 +52,7 @@ executors:
     machine:
       image: ubuntu-1604:201903-01
       docker_layer_caching: true
-    working_directory: ~/aeternity
+    working_directory: /home/circleci/aeternity
     environment:
       DOCKERHUB_REPO: aeternity/aeternity
       OTP_VERSION: 22.3.4.9
@@ -63,7 +69,7 @@ references:
 
   infrastructure_config: &infrastructure_config
     resource_class: large
-    working_directory: ~/aeternity
+    working_directory: /home/builder/aeternity
     environment:
       <<: *infrastructure_config_environment
 
@@ -450,6 +456,15 @@ commands:
           name: Setup environment secrets
           command: cd /infrastructure && make secrets SECRETS_OUTPUT_DIR=/secrets
 
+  aeplugin_install_devmode:
+    steps:
+      - run:
+          name: Download devmode plugin
+          command: |
+            export PLUGIN_VERSION=<< pipeline.parameters.aeplugin_devmode_version >>
+            curl -fsSLOJ https://github.com/aeternity/aeplugin_dev_mode/releases/download/v$PLUGIN_VERSION/aeplugin_dev_mode.tar.gz
+            tar -zxf aeplugin_dev_mode.tar.gz -C plugins/
+
   docker_login:
     steps:
       - setup_secrets
@@ -459,16 +474,23 @@ commands:
             docker login -u $(</secrets/DOCKER_USER) -p $(</secrets/DOCKER_PASS)
 
   docker_build_branch:
+    parameters:
+      tag_suffix:
+        type: string
+        default: ""
     steps:
       - run:
           name: Build branch docker image
           command: |
             docker pull aeternity/builder:bionic-otp22
-            docker build -t ${DOCKERHUB_REPO:?}:${CIRCLE_BRANCH/\//_} .
+            docker build -t ${DOCKERHUB_REPO:?}:${CIRCLE_BRANCH/\//_}<< parameters.tag_suffix >> .
       - run:
           name: Start branch docker image
           command: |
-            docker run -d -e AE__CHAIN__PERSIST -e AE__FORK_MANAGEMENT__NETWORK_ID --name ae_${CIRCLE_SHA1:?} ${DOCKERHUB_REPO:?}:${CIRCLE_BRANCH/\//_} bin/aeternity console -noinput -network_id ae_test
+            docker run -d -e AE__CHAIN__PERSIST -e AE__FORK_MANAGEMENT__NETWORK_ID \
+              --name ae_${CIRCLE_SHA1:?} \
+              ${DOCKERHUB_REPO:?}:${CIRCLE_BRANCH/\//_}<< parameters.tag_suffix >> \
+              bin/aeternity console -noinput -network_id ae_test
       - run:
           name: Display logs from branch docker image
           command: |
@@ -858,9 +880,22 @@ jobs:
       - *fail_notification
 
   linux_package:
+    parameters:
+      aeplugin_devmode:
+        type: boolean
+        default: false
+      package_kind:
+        type: string
+        default: ""
+    environment:
+      PKG_KIND: << parameters.package_kind >>
     executor: builder_container_otp22
     steps:
       - fixed_checkout
+      - when:
+          condition: << parameters.aeplugin_devmode >>
+          steps:
+            - aeplugin_install_devmode
       - *set_package_path
       - *test_arch_os_dependencies
       - *build_package
@@ -880,7 +915,7 @@ jobs:
 
   ubuntu_package:
     executor: builder_container_1804
-    working_directory: ~/aeternity_deb
+    working_directory: /home/builder/aeternity_deb
     steps:
       - fixed_checkout
       - *build_ubuntu_package
@@ -892,11 +927,24 @@ jobs:
       - *fail_notification
 
   osx_package:
+    parameters:
+      aeplugin_devmode:
+        type: boolean
+        default: false
+      package_kind:
+        type: string
+        default: ""
     macos:
       xcode: "11.1.0" # 11.1.0 is macOS 10.14.4
-    working_directory: ~/aeternity
+    working_directory: /home/circleci/aeternity
+    environment:
+      PKG_KIND: << parameters.package_kind >>
     steps:
       - fixed_checkout
+      - when:
+          condition: << parameters.aeplugin_devmode >>
+          steps:
+            - aeplugin_install_devmode
       - *restore_macos_package_cache
       - run:
           name: Install required tools
@@ -1012,43 +1060,77 @@ jobs:
 
   docker_test_push_branch:
     executor: buildpack
+    parameters:
+      tag_suffix:
+        type: string
+        default: ""
+      aeplugin_devmode:
+        type: boolean
+        default: false
     steps:
       - fixed_checkout
+      - when:
+          condition: << parameters.aeplugin_devmode >>
+          steps:
+            - aeplugin_install_devmode
       - *setup_remote_docker
-      - docker_build_branch
+      - docker_build_branch:
+          tag_suffix: <<parameters.tag_suffix>>
       - run:
           name: Push Docker image to DockerHub
           command: |
             docker login -u $DOCKER_USER -p $DOCKER_PASS
-            docker push ${DOCKERHUB_REPO:?}:${CIRCLE_BRANCH/\//_}
+            docker push ${DOCKERHUB_REPO:?}:${CIRCLE_BRANCH/\//_}<<parameters.tag_suffix>>
       - *fail_notification
 
   docker_push_latest:
     executor: infrastructure_container_stable
+    parameters:
+      tag_suffix:
+        type: string
+        default: ""
+      aeplugin_devmode:
+        type: boolean
+        default: false
     <<: *infrastructure_config
     steps:
       - fixed_checkout
+      - when:
+          condition: << parameters.aeplugin_devmode >>
+          steps:
+            - aeplugin_install_devmode
       - *setup_remote_docker
       - docker_login
       - run:
           name: Build and push Docker image to DockerHub
           command: |
             docker pull ${DOCKERHUB_REPO:?}:${CIRCLE_TAG:?}
-            docker tag ${DOCKERHUB_REPO:?}:${CIRCLE_TAG:?} ${DOCKERHUB_REPO:?}:latest
-            docker push ${DOCKERHUB_REPO:?}:latest
+            docker tag ${DOCKERHUB_REPO:?}:${CIRCLE_TAG:?} ${DOCKERHUB_REPO:?}:latest<< parameters.tag_suffix >>
+            docker push ${DOCKERHUB_REPO:?}:latest<< parameters.tag_suffix >>
 
   docker_push_tag:
     executor: infrastructure_container_stable
+    parameters:
+      tag_suffix:
+        type: string
+        default: ""
+      aeplugin_devmode:
+        type: boolean
+        default: false
     <<: *infrastructure_config
     steps:
       - fixed_checkout
+      - when:
+          condition: << parameters.aeplugin_devmode >>
+          steps:
+            - aeplugin_install_devmode
       - *setup_remote_docker
       - docker_login
       - run:
           name: Build and push Docker image to DockerHub
           command: |
-            docker build -t ${DOCKERHUB_REPO:?}:${CIRCLE_TAG:?} .
-            docker push ${DOCKERHUB_REPO:?}:${CIRCLE_TAG:?}
+            docker build -t ${DOCKERHUB_REPO:?}:${CIRCLE_TAG:?}<< parameters.tag_suffix >> .
+            docker push ${DOCKERHUB_REPO:?}:${CIRCLE_TAG:?}<< parameters.tag_suffix >>
 
   docker_system_tests:
     executor: machine_1604
@@ -1627,6 +1709,15 @@ workflows:
               ignore:
                 - system-tests
 
+      - linux_package:
+          name: linux_package_bundle
+          aeplugin_devmode: true
+          package_kind: bundle
+          filters:
+            branches:
+              ignore:
+                - system-tests
+
       - ubuntu_package:
           requires: []
           filters:
@@ -1648,6 +1739,16 @@ workflows:
 
       - osx_package:
           requires: []
+          filters:
+            branches:
+              only:
+                - /releases\/.*/
+                - *master_branch
+
+      - osx_package:
+          name: osx_package_bundle
+          aeplugin_devmode: true
+          package_kind: bundle
           filters:
             branches:
               only:
@@ -1691,7 +1792,35 @@ workflows:
               only: master
 
       - docker_test_push_branch:
+          name: docker_push_master
           context: ae-node-builds
+          requires:
+            - test_roma
+            - test_minerva
+            - test_fortuna
+            - test_lima
+            - test_latest
+            - test_latest_with_aesophia_compiler
+            - test_mnesia_leveled
+            - test_mnesia_rocksdb
+            - eunit_roma
+            - eunit_minerva
+            - eunit_fortuna
+            - eunit_lima
+            - eunit_latest
+            - aevm_tests
+            - static_analysis
+            - rebar_lock_check
+          filters:
+            branches:
+              only:
+                - *master_branch
+
+      - docker_test_push_branch:
+          name: docker_push_master_bundle
+          context: ae-node-builds
+          tag_suffix: "-bundle"
+          aeplugin_devmode: true
           requires:
             - test_roma
             - test_minerva
@@ -1773,6 +1902,16 @@ workflows:
             tags:
               only: *tag_regex
 
+      - linux_package:
+          name: linux_package_bundle
+          aeplugin_devmode: true
+          package_kind: bundle
+          filters:
+            branches:
+              ignore: /.*/
+            tags:
+              only: *tag_regex
+
       - ubuntu_package:
           filters:
             branches:
@@ -1781,6 +1920,16 @@ workflows:
               only: *tag_regex
 
       - osx_package:
+          filters:
+            branches:
+              ignore: /.*/
+            tags:
+              only: *tag_regex
+
+      - osx_package:
+          name: osx_package_bundle
+          aeplugin_devmode: true
+          package_kind: bundle
           filters:
             branches:
               ignore: /.*/
@@ -1799,6 +1948,7 @@ workflows:
           context: ae-node-builds
           requires:
             - linux_package
+            - linux_package_bundle
             - hodl_artifact_upload
           filters:
             branches:
@@ -1810,6 +1960,7 @@ workflows:
           context: ae-node-builds
           requires:
             - osx_package
+            - osx_package_bundle
             - hodl_artifact_upload
           filters:
             branches:
@@ -1819,6 +1970,19 @@ workflows:
 
       - docker_push_tag:
           context: ae-node-builds
+          requires:
+            - hodl_artifact_upload
+          filters:
+            branches:
+              ignore: /.*/
+            tags:
+              only: *tag_regex
+
+      - docker_push_tag:
+          name: docker_push_tag_bundle
+          context: ae-node-builds
+          tag_suffix: "-bundle"
+          aeplugin_devmode: true
           requires:
             - hodl_artifact_upload
           filters:
@@ -1909,6 +2073,20 @@ workflows:
 
       - docker_push_latest:
           context: ae-node-builds
+          requires:
+            - docker_push_tag
+            - hodl_latest
+          filters:
+            branches:
+              ignore: /.*/
+            tags:
+              only: *tag_regex
+
+      - docker_push_latest:
+          name: docker_push_latest_bundle
+          context: ae-node-builds
+          tag_suffix: "-bundle"
+          aeplugin_devmode: true
           requires:
             - docker_push_tag
             - hodl_latest
