@@ -916,6 +916,7 @@ get_chain_ends(Config) ->
 
 get_chain_ends(CurrentBlockType, CurrentBlockHash, _Config) when
       CurrentBlockType =:= genesis_block; CurrentBlockType =:= key_block ->
+    ct:log("CurrentBlockHash = ~p", [CurrentBlockHash]),
     ?assertMatch({ok, 200, [CurrentBlockHash]}, get_chain_ends_sut()),
     ok;
 get_chain_ends(micro_block, CurrentBlockHash, Config) ->
@@ -934,9 +935,16 @@ get_chain_ends_sut() ->
 %% /blocks/top
 
 get_top_block(Config) ->
-    get_top_block(?config(current_block_type, Config),
-                  ?config(current_block_hash, Config),
-                  Config).
+    TopHdr = rpc(aec_chain, top_header, []),
+    Height = aec_headers:height(TopHdr),
+    IntType = aec_headers:type(TopHdr),
+    Type = case {Height, IntType} of
+               {0, _    } -> genesis_block;
+               {_, key  } -> key_block;
+               {_, micro} -> micro_block
+           end,
+    Hash = hash_header(IntType, TopHdr),
+    get_top_block(Type, Hash, Config).
 
 get_top_block(CurrentBlockType, CurrentBlockHash, _Config) when
       CurrentBlockType =:= genesis_block; CurrentBlockType =:= key_block ->
@@ -1945,6 +1953,13 @@ hash(micro, Block) ->
     {ok, Hash0} = aec_blocks:hash_internal_representation(Block),
     aeser_api_encoder:encode(micro_block_hash, Hash0).
 
+hash_header(key, Hdr) ->
+    {ok, Hash0} = aec_headers:hash_header(Hdr),
+    aeser_api_encoder:encode(key_block_hash, Hash0);
+hash_header(micro, Hdr) ->
+    {ok, Hash0} = aec_headers:hash_header(Hdr),
+    aeser_api_encoder:encode(micro_block_hash, Hash0).
+
 wait_for_key_block_candidate() -> wait_for_key_block_candidate(10).
 
 wait_for_key_block_candidate(0) -> {error, not_found};
@@ -1965,7 +1980,7 @@ save_config([], _Config, Acc) ->
     Acc.
 
 
-%% enpoints
+%% endpoints
 
 %% tests the following
 %% GET contract_create_tx unsigned transaction

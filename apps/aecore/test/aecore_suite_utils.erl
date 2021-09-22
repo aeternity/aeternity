@@ -333,6 +333,9 @@ delete_node_db_if_persisted({true, {ok, MnesiaDir}}) ->
 rpc_test_consensus_enabled(Node) ->
     aec_consensus_common_tests =:= rpc:call(Node, aec_conductor, get_active_consensus_module, []).
 
+rpc_on_demand_consensus_enabled(Node) ->
+  aec_consensus_on_demand =:= rpc:call(Node, aec_conductor, get_active_consensus_module, []).  
+
 rpc_consensus_request(Node, Request) ->
     rpc:call(Node, aec_conductor, consensus_request, [Request]).
 
@@ -361,7 +364,8 @@ mine_blocks(Node, NumBlocksToMine, MiningRate, Opts) ->
     mine_blocks(Node, NumBlocksToMine, MiningRate, any, Opts).
 
 mine_blocks(Node, NumBlocksToMine, MiningRate, Type, Opts) ->
-    case rpc_test_consensus_enabled(Node) of
+    case rpc_test_consensus_enabled(Node)
+        orelse rpc_on_demand_consensus_enabled(Node) of
         true ->
             rpc_consensus_request(Node, {mine_blocks, NumBlocksToMine, Type});
         false ->
@@ -413,7 +417,8 @@ mine_blocks_until_txs_on_chain(Node, TxHashes, MiningRate, Max) ->
 mine_blocks_until_txs_on_chain(Node, TxHashes, MiningRate, Max, Opts) ->
     %% Fail early rather than having to wait until max_reached if txs already on-chain
     ok = assert_not_already_on_chain(Node, TxHashes),
-    case rpc_test_consensus_enabled(Node) of
+    case rpc_test_consensus_enabled(Node)
+        orelse rpc_on_demand_consensus_enabled(Node) of
         true ->
             rpc_consensus_request(Node, {mine_blocks_until_txs_on_chain, TxHashes, Max});
         false ->
@@ -424,7 +429,8 @@ mine_blocks_until_txs_on_chain(Node, TxHashes, MiningRate, Max, Opts) ->
     end.
 
 mine_micro_block_emptying_mempool_or_fail(Node) ->
-    case rpc_test_consensus_enabled(Node) of
+    case rpc_test_consensus_enabled(Node)
+        orelse rpc_on_demand_consensus_enabled(Node) of
         true ->
             rpc_consensus_request(Node, mine_micro_block_emptying_mempool_or_fail);
         false ->
