@@ -1679,6 +1679,8 @@ workflows:
 
       - linux_package:
           name: linux_package_bundle
+          environment:
+            PKG_KIND: bundle
           aeplugin_devmode: true
           filters:
             branches:
@@ -1706,6 +1708,17 @@ workflows:
 
       - osx_package:
           requires: []
+          filters:
+            branches:
+              only:
+                - /releases\/.*/
+                - *master_branch
+
+      - osx_package:
+          name: osx_package_bundle
+          environment:
+            PKG_KIND: bundle
+          aeplugin_devmode: true
           filters:
             branches:
               only:
@@ -1774,14 +1787,31 @@ workflows:
                 - *master_branch
 
       - docker_test_push_branch:
-          name: docker_push_test_branch
+          name: docker_push_master_bundle
           context: ae-node-builds
           tag_suffix: "-bundle"
           aeplugin_devmode: true
+          requires:
+            - test_roma
+            - test_minerva
+            - test_fortuna
+            - test_lima
+            - test_latest
+            - test_latest_with_aesophia_compiler
+            - test_mnesia_leveled
+            - test_mnesia_rocksdb
+            - eunit_roma
+            - eunit_minerva
+            - eunit_fortuna
+            - eunit_lima
+            - eunit_latest
+            - aevm_tests
+            - static_analysis
+            - rebar_lock_check
           filters:
             branches:
               only:
-                - bundle_package
+                - *master_branch
 
       - deploy_next:
           context: ae-node-builds
@@ -1842,6 +1872,17 @@ workflows:
             tags:
               only: *tag_regex
 
+      - linux_package:
+          name: linux_package_bundle
+          environment:
+            PKG_KIND: bundle
+          aeplugin_devmode: true
+          filters:
+            branches:
+              ignore: /.*/
+            tags:
+              only: *tag_regex
+
       - ubuntu_package:
           filters:
             branches:
@@ -1850,6 +1891,17 @@ workflows:
               only: *tag_regex
 
       - osx_package:
+          filters:
+            branches:
+              ignore: /.*/
+            tags:
+              only: *tag_regex
+
+      - osx_package:
+          name: osx_package_bundle
+          environment:
+            PKG_KIND: bundle
+          aeplugin_devmode: true
           filters:
             branches:
               ignore: /.*/
@@ -1868,6 +1920,7 @@ workflows:
           context: ae-node-builds
           requires:
             - linux_package
+            - linux_package_bundle
             - hodl_artifact_upload
           filters:
             branches:
@@ -1879,6 +1932,7 @@ workflows:
           context: ae-node-builds
           requires:
             - osx_package
+            - osx_package_bundle
             - hodl_artifact_upload
           filters:
             branches:
@@ -1888,6 +1942,19 @@ workflows:
 
       - docker_push_tag:
           context: ae-node-builds
+          requires:
+            - hodl_artifact_upload
+          filters:
+            branches:
+              ignore: /.*/
+            tags:
+              only: *tag_regex
+
+      - docker_push_tag:
+          name: docker_push_tag_bundle
+          context: ae-node-builds
+          tag_suffix: "-bundle"
+          aeplugin_devmode: true
           requires:
             - hodl_artifact_upload
           filters:
@@ -1978,6 +2045,20 @@ workflows:
 
       - docker_push_latest:
           context: ae-node-builds
+          requires:
+            - docker_push_tag
+            - hodl_latest
+          filters:
+            branches:
+              ignore: /.*/
+            tags:
+              only: *tag_regex
+
+      - docker_push_latest:
+          name: docker_push_latest_bundle
+          context: ae-node-builds
+          tag_suffix: "-bundle"
+          aeplugin_devmode: true
           requires:
             - docker_push_tag
             - hodl_latest
