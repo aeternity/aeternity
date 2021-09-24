@@ -389,8 +389,16 @@ get_network_id() ->
     case init:get_argument(network_id) of
         {ok, [[NetworkId]]} -> list_to_binary(NetworkId);
         _ ->
-            aeu_env:user_config_or_env([<<"fork_management">>, <<"network_id">>],
-                                       aecore, network_id, ?NETWORK_ID)
+            case aeu_env:user_config_or_env([<<"fork_management">>, <<"network_id">>],
+                                            aecore, network_id, undefined) of
+                undefined ->
+                    case aecore_env:is_dev_mode() of
+                        true ->
+                            <<"ae_dev">>;
+                        false ->
+                            ?NETWORK_ID
+                    end
+            end
     end.
 
 -spec contributors_messages_hash() -> binary().

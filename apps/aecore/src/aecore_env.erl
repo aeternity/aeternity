@@ -1,7 +1,10 @@
 -module(aecore_env).
 
 -export([ check_env/0
+        , is_dev_mode/0
         ]).
+
+-export([patron_keypair_for_testing/0]).
 
 %% Checking user-provided configs. The logic is somewhat complicated
 %% by the fact that 'setup' is not guaranteed to start before lager,
@@ -19,6 +22,19 @@ check_env() ->
                {[<<"mining">>, <<"attempt_timeout">>], {set_env, mining_attempt_timeout}},
                {[<<"chain">>, <<"persist">>]   , {set_env, persist}},
                {[<<"chain">>, <<"db_path">>]   , fun set_mnesia_dir/1}]).
+
+is_dev_mode() ->
+    case aeu_env:user_config([<<"system">>, <<"dev_mode">>]) of
+        {ok, Bool} ->
+            Bool;
+        undefined ->
+            case aeu_env:user_config([<<"fork_management">>, <<"network_id">>]) of
+                {ok, <<"ae_dev">>} ->
+                    true;
+                _ ->
+                    false
+            end
+    end.
 
 %% See https://github.com/erlang-lager/lager/issues/557
 %% There are different ways to ensure that the log root is a stable
@@ -158,3 +174,20 @@ if_running(App, F) ->
 %% [sequential](https://github.com/erlang/otp/blob/OTP-20.3.8/erts/preloaded/src/init.erl#L787).
 is_app_running(App) ->
     lists:keymember(App, 1, application:which_applications()).
+
+
+%% This key pair corresponds to the pubkey
+%% ak_2a1j2Mk9YSmC1gioUq4PWRm3bsv887MbuRVwyv4KaUGoR1eiKi
+%% defined in data/aecore/.genesis/accounts_test.json
+%%
+%% The key pair used to be hard-coded in aecore_suite_utils, but in order to
+%% make it usable also in dev_mode, it is moved here.
+%%
+patron_keypair_for_testing() ->
+    #{ pubkey  => <<206,167,173,228,112,201,249,157,157,78,64,8,128,168,111,29,
+                    73,187,68,75,98,241,26,158,187,100,187,207,235,115,254,243>>, 
+       privkey => <<230,169,29,99,60,119,207,87,113,50,157,51,84,179,188,239,27,
+                    197,224,50,196,61,112,182,211,90,249,35,206,30,183,77,206,
+                    167,173,228,112,201,249,157,157,78,64,8,128,168,111,29,73,
+                    187,68,75,98,241,26,158,187,100,187,207,235,115,254,243>>
+     }.

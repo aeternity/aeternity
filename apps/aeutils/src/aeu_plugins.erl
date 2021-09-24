@@ -3,7 +3,9 @@
 -export([load_plugins/0]).
 
 -export([ check_config/3
-        , validate_config/2 ]).
+        , validate_config/2
+        , is_dev_mode/0
+        , suggest_beneficiary/1 ]).
 
 check_config(PluginName, SchemaFilename, OsEnvPrefix) ->
     case aeu_env:find_config([<<"system">>, <<"plugins">>],
@@ -38,6 +40,23 @@ check_config(PluginName, SchemaFilename, OsEnvPrefix) ->
 validate_config(JSON, SchemaFilename) ->
     Schema = load_schema(SchemaFilename),
     validate(JSON, Schema).
+
+is_dev_mode() ->
+    aecore_env:is_dev_mode().
+
+%% Checks if a beneficiary is set via the main user config. If not,
+%% the suggested pubkey is used to update the config. The suggested
+%% key can be in either internal or external (encoded) format.
+suggest_beneficiary(PubKey) ->
+    case aec_conductor:get_beneficiary() of
+        {ok, _} ->
+            {error, already_configured};
+        {error, beneficiary_not_configured} ->
+            EncPubKey = ensure_encoded_pubkey(PubKey),
+            aeu_env:update_config(#{<<"mining">> =>
+                                        #{<<"beneficiary">> => EncPubKey}}, false),
+            ok
+    end.
 
 load_schema(SchemaFilename) ->
     {ok, AppName} = application:get_application(),
@@ -169,3 +188,11 @@ bin(B) when is_binary(B) ->
     B;
 bin(Str) ->
     iolist_to_binary(Str).
+
+ensure_encoded_pubkey(Key) ->
+    case aeser_api_encoder:safe_decode(account_pubkey, Key) of
+        {ok, _} ->
+            Key;
+        {error, _} ->
+            aeser_api_encoder:encode(account_pubkey, Key)
+    end.
