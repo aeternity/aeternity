@@ -25,7 +25,8 @@
         , ask_all_for_node_info/0
         , ask_all_for_node_info/1]).
 
--export([is_syncing/0,
+-export([sync_running/0,
+         is_syncing/0,
          sync_progress/0]).
 
 %% gen_server callbacks
@@ -43,6 +44,14 @@
 %%% API
 %%%=============================================================================
 
+sync_running() ->
+    case whereis(?MODULE) of
+        undefined ->
+            app_ctrl_server:should_i_run(aesync);
+        _Pid ->
+            true
+    end.
+
 start_sync(PeerId, RemoteHash, RemoteDifficulty) ->
     gen_server:cast(?MODULE, {start_sync, PeerId, RemoteHash, RemoteDifficulty}).
 
@@ -59,7 +68,8 @@ ask_all_for_node_info() ->
 %% While this function will timeout in Timeout milliseconds, the acutal
 %% timeout for the peer to respond is Timeout - 3000
 ask_all_for_node_info(Timeout) when Timeout > 3000 ->
-    gen_server:call(?MODULE, {ask_all_for_node_info, Timeout - 500}, Timeout).
+    opt_call({ask_all_for_node_info, Timeout - 500}, Timeout,
+             fun() -> process_infos([]) end).
 
 schedule_ping(PeerId) ->
     gen_server:cast(?MODULE, {schedule_ping, PeerId}).
@@ -67,22 +77,22 @@ schedule_ping(PeerId) ->
 -ifdef(TEST).
 %% Only used by test
 worker_for_peer(PeerId) ->
-    gen_server:call(?MODULE, {worker_for_peer, PeerId}).
+    opt_call({worker_for_peer, PeerId}, fun() -> error(not_running) end).
 
 gossip_txs(GossipTxs) ->
-    gen_server:call(?MODULE, {gossip_txs, GossipTxs}).
+    opt_call({gossip_txs, GossipTxs}, fun() -> error(not_running) end).
 -endif.
 
 sync_in_progress(PeerId) ->
-    gen_server:call(?MODULE, {sync_in_progress, PeerId}).
+    opt_call({sync_in_progress, PeerId}, false).
 
 -spec sync_progress() -> {boolean(), float()}.
 sync_progress() ->
-    gen_server:call(?MODULE, sync_progress).
+    opt_call(sync_progress, {false, 100.0}).
 
 -spec is_syncing() -> boolean().
 is_syncing() ->
-    gen_server:call(?MODULE, is_syncing).
+    opt_call(is_syncing, false).
 
 known_chain(Chain, ExtraInfo) ->
     gen_server:call(?MODULE, {known_chain, Chain, ExtraInfo}).
@@ -99,6 +109,23 @@ handle_worker(Task, Action) ->
 %%%=============================================================================
 %%% gen_server functions
 %%%=============================================================================
+
+opt_call(Req, Else) ->
+    case sync_running() of
+        true  -> gen_server:call(?MODULE, Req);
+        false -> else(Else)
+    end.
+
+opt_call(Req, Timeout, Else) ->
+    case sync_running() of
+        true  -> gen_server:call(?MODULE, Req, Timeout);
+        false -> else(Else)
+    end.
+
+else(F) when is_function(F, 0) ->
+    F();
+else(Else) ->
+    Else.
 
 %% When we Ping a node with at least as much difficulty as we have,
 %% then we are going to sync with it.
