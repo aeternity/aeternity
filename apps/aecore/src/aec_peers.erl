@@ -183,8 +183,12 @@ peers_running() ->
             true
     end.
 
+%% This is called via a fun largely because we need to apply a fun (raising
+%% an exception) in the test-compiled code. But if we only provide a fun as
+%% default in test-compiled code, Dialyzer will complain about the fun clause
+%% not being reachable when not test-compiled.
 err_not_running() ->
-    ?ERR_NOT_RUNNING.
+    {error, not_running}.
 
 %--- PEER MANAGMENT FUNCTIONS --------------------------------------------------
 
