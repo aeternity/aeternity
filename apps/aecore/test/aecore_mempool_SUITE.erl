@@ -14,13 +14,13 @@
    [
     start_node/1,
     mine_a_key_block/1,
-    push_7_txs/1,
     transaction_over_the_account_nonce_limit_fails/1,
+    garbage_collected_tx_can_not_enter_the_pool/1,
+    garbage_collected_tx_can_not_enter_the_pool_if_stopped_by_cache/1,
     push_tx_skipped_nonce/1,
     maybe_push_tx_out_cache/1,
     mine_key_blocks_to_gc_txs/1,
     invalid_GCed_tx_does_not_reenter_pool/1,
-    repush_tx_skipped_nonce_is_stopped_by_cache/1,
     skipped_nonce_specific_cleanup/1,
     insufficient_funds_specific_cleanup/1,
     name_claim_to_unknown_commitment_cleanup/1,
@@ -90,36 +90,16 @@ groups() ->
       [{group, common_tests}]},
      {tx_received, [sequence],
       [{group, common_tests},
-       {group, garbage_collected_tx_can_not_enter_the_pool_if_stopped_by_cache}]},
+       {group, gc_and_cache}]},
      {common_tests, [sequence],
-      [{group, tx_push},
-       {group, garbage_collected_tx_can_enter_the_pool}
+       [transaction_over_the_account_nonce_limit_fails,
+        garbage_collected_tx_can_not_enter_the_pool
        ]},
-     {tx_push, [sequence],
-      [push_7_txs,
-       transaction_over_the_account_nonce_limit_fails
-      ]},
-     {garbage_collected_tx_can_enter_the_pool, [sequence],
-      [push_tx_skipped_nonce,
-       maybe_push_tx_out_cache,
-       mine_key_blocks_to_gc_txs,
-       %% this pushes the exact same transaction again
-       push_tx_skipped_nonce,
-       mine_key_blocks_to_gc_txs,
-       invalid_GCed_tx_does_not_reenter_pool
-      ]},
-     {garbage_collected_tx_can_not_enter_the_pool_if_stopped_by_cache, [sequence],
-      [push_tx_skipped_nonce,
-       mine_key_blocks_to_gc_txs,
-       repush_tx_skipped_nonce_is_stopped_by_cache,
-       %% if other transactions push this one out of cache, it is still accepted
-       maybe_push_tx_out_cache,
-       mine_key_blocks_to_gc_txs,
-       push_tx_skipped_nonce
-      ]},
+     {gc_and_cache, [sequence],
+      [garbage_collected_tx_can_not_enter_the_pool_if_stopped_by_cache
+       ]},
      {failed_attempts, [sequence],
-      [
-       skipped_nonce_specific_cleanup,
+      [skipped_nonce_specific_cleanup,
        insufficient_funds_specific_cleanup,
        name_claim_to_unknown_commitment_cleanup,
        test_defaults,
@@ -168,8 +148,6 @@ init_per_group(all, Config) ->
 init_per_group(EventType, Config) when EventType =:= tx_created;
                                        EventType =:= tx_received ->
     [{push_event, EventType} | Config];
-init_per_group(common_tests, Config) ->
-    Config;
 init_per_group(failed_attempts, Config0) ->
     Config = [{push_event, tx_created} | Config0], %% so it goes around cache check
     start_node(Config),
@@ -210,7 +188,10 @@ stop_and_check(Ns, Config) ->
     ok = aecore_suite_utils:check_for_logs(Ns, Config).
 
 start_node(Node, Config) ->
-    aecore_suite_utils:start_node(Node, Config),
+    start_node(Node, Config, []).
+
+start_node(Node, Config, Extra) ->
+    aecore_suite_utils:start_node(Node, Config, Extra),
     aecore_suite_utils:connect(aecore_suite_utils:node_name(Node)),
     ok = aecore_suite_utils:check_for_logs([Node], Config),
     ok.
@@ -290,7 +271,8 @@ push_7_txs(Config) ->
     SortedPoolPayloads = SortedPayloads,
     ok.
 
-transaction_over_the_account_nonce_limit_fails(_Config) ->
+transaction_over_the_account_nonce_limit_fails(Config) ->
+    push_7_txs(Config),
     Node = dev1,
     NodeName = aecore_suite_utils:node_name(Node),
     {_, Pub} = aecore_suite_utils:sign_keys(Node),
@@ -301,27 +283,40 @@ transaction_over_the_account_nonce_limit_fails(_Config) ->
     CurrentNonce = aec_accounts:nonce(Acc),
     ct:log("Account nonce: ~p", [CurrentNonce]),
     {CurrentNonce, NextNonce} = {CurrentNonce, CurrentNonce + 1 + ?ACCOUNT_NONCE_LIMIT},
+    {ok, _} = aecore_suite_utils:mine_blocks(NodeName, ?GC_TTL, ?MINE_RATE, key, #{}),
+    {ok, []} = rpc:call(NodeName, aec_tx_pool, peek, [infinity]),
     ok.
 
 push_tx_skipped_nonce(Config) ->
     Node = dev1,
     NodeName = aecore_suite_utils:node_name(Node),
     {_, Pub} = aecore_suite_utils:sign_keys(Node),
+    {ok, NextNonce} = rpc:call(NodeName, aec_next_nonce, pick_for_account, [Pub]),
+    SpendTx = prepare_spend_tx(Node, #{nonce => NextNonce + 1}),
+    push_tx_skipped_nonce(Config, SpendTx).
+
+push_tx_skipped_nonce(Config, Tx) ->
+    Node = dev1,
+    NodeName = aecore_suite_utils:node_name(Node),
     %% precondition
     {ok, []} = rpc:call(NodeName, aec_tx_pool, peek, [infinity]),
-    {ok, NextNonce} = rpc:call(NodeName, aec_next_nonce, pick_for_account, [Pub]),
-    SpendTx = prepare_spend_tx(Node, #{nonce => NextNonce + 1, payload => <<"skipped nonce">>}),
-    ok = push(NodeName, SpendTx, Config),
-    {ok, [_SpendTx]} = rpc:call(NodeName, aec_tx_pool, peek, [infinity]).
+    ok = push(NodeName, Tx, Config),
+    {ok, [_Tx]} = rpc:call(NodeName, aec_tx_pool, peek, [infinity]).
 
-repush_tx_skipped_nonce_is_stopped_by_cache(Config) ->
+
+repush_tx_skipped_nonce_is_stopped_by_cache(Config, SpendTx) ->
     Node = dev1,
     NodeName = aecore_suite_utils:node_name(Node),
     %% test requirement: empty pool
     {ok, []} = rpc:call(NodeName, aec_tx_pool, peek, [infinity]),
-    {_, Pub} = aecore_suite_utils:sign_keys(Node),
-    {ok, NextNonce} = rpc:call(NodeName, aec_next_nonce, pick_for_account, [Pub]),
-    SpendTx = prepare_spend_tx(Node, #{nonce => NextNonce + 1, payload => <<"skipped nonce">>}),
+    ok = push(NodeName, SpendTx, Config),
+    {ok, []} = rpc:call(NodeName, aec_tx_pool, peek, [infinity]),
+    ok.
+
+repush_tx_skipped_nonce_is_stopped_because_in_db(Config, SpendTx) ->
+    Node = dev1,
+    NodeName = aecore_suite_utils:node_name(Node),
+    %% test requirement: empty pool
     ok = push(NodeName, SpendTx, Config),
     {ok, []} = rpc:call(NodeName, aec_tx_pool, peek, [infinity]),
     ok.
@@ -343,7 +338,7 @@ maybe_push_tx_out_cache(Config) ->
                     ct:log("Spend tx: ~p", [SpendTx]),
                     ok = push(NodeName, SpendTx, Config)
                 end,
-                lists:seq(1, ?CACHE_SIZE)),
+                lists:seq(1, ?CACHE_SIZE + 1)),
             ok
     end.
 
@@ -452,11 +447,8 @@ skipped_nonce_specific_cleanup(Config) ->
     make_microblock_attempts(1, Config),
     timer:sleep(100), %% provide some time for the tx pool to process the message
     {ok, []} = rpc:call(NodeName, aec_tx_pool, peek, [infinity]),
-    %% the tx can reenter the pool:
+    %% the tx can not reenter the pool:
     ok = push(NodeName, SkippedNonceTx, Config),
-    {ok, [SkippedNonceTx]} = rpc:call(NodeName, aec_tx_pool, peek, [infinity]),
-    make_microblock_attempts(CleanupTTL, Config),
-    timer:sleep(100), %% provide some time for the tx pool to process the message
     {ok, []} = rpc:call(NodeName, aec_tx_pool, peek, [infinity]),
     ok.
 
@@ -622,3 +614,30 @@ test_disabled(Config) ->
 random_hash() ->
     crypto:strong_rand_bytes(32).
 
+garbage_collected_tx_can_not_enter_the_pool(Config) ->
+    {ok, [SpendTx]} = push_tx_skipped_nonce(Config),
+    maybe_push_tx_out_cache(Config),
+    mine_key_blocks_to_gc_txs(Config),
+    repush_tx_skipped_nonce_is_stopped_because_in_db(Config, SpendTx),
+    ok.
+
+garbage_collected_tx_can_not_enter_the_pool_if_stopped_by_cache(Config) ->
+    Node = dev1,
+    NodeName = aecore_suite_utils:node_name(Node),
+    {ok, [SpendTx]} = push_tx_skipped_nonce(Config),
+    mine_key_blocks_to_gc_txs(Config),
+    repush_tx_skipped_nonce_is_stopped_by_cache(Config, SpendTx),
+    %% if other transactions push this one out of cache, it is still accepted
+    maybe_push_tx_out_cache(Config),
+    mine_key_blocks_to_gc_txs(Config),
+    repush_tx_skipped_nonce_is_stopped_because_in_db(Config, SpendTx),
+    %% assumptions: by default - false
+    false = rpc:call(NodeName, aec_tx_pool, allow_reentry, []),
+    stop_and_check([Node], Config),
+    %% allow reentry
+    start_node(Node, Config, [{"AE__MEMPOOL__ALLOW_REENTRY_OF_TXS", "true"}]),
+    true = rpc:call(NodeName, aec_tx_pool, allow_reentry, []),
+    push_tx_skipped_nonce(Config, SpendTx),
+    stop_and_check([Node], Config),
+    start_node(Node, Config),
+    ok.

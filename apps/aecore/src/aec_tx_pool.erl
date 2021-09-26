@@ -80,6 +80,7 @@
 -export([peek_nonces/0]).
 -export([nonce_offset/0]).
 -export([tx_ttl/0]).
+-export([allow_reentry/0]).
 -endif.
 
 %% gen_server callbacks
@@ -809,15 +810,21 @@ add_to_origins_cache(OriginsCache, SignedTx) ->
 -spec check_pool_db_put(aetx_sign:signed_tx(), tx_hash(), event()) ->
                                ignore | ok | {error, atom()}.
 check_pool_db_put(Tx, TxHash, Event) ->
+    AllowReentryOfDeletedTx = allow_reentry(),
     case aec_chain:find_tx_location(TxHash) of
         BlockHash when is_binary(BlockHash) ->
             lager:debug("Already have tx: ~p in ~p", [TxHash, BlockHash]),
             {error, already_accepted};
-        mempool ->
-            %% lager:debug("Already have tx: ~p in ~p", [TxHash, mempool]),
+        mempool ->  ignore;
+        none when AllowReentryOfDeletedTx ->
+            lager:debug("Tx ~p had been deleted already, it reenters",
+                        [TxHash]),
+            ok;
+        none when not AllowReentryOfDeletedTx ->
+            lager:debug("Tx ~p had been deleted already, it is not allowed to reenter",
+                        [TxHash]),
             ignore;
-        UnknownOrGCed when UnknownOrGCed =:= not_found;
-                           UnknownOrGCed =:= none ->
+        Unknown when Unknown =:= not_found ->
             {Block, BlockHash, Trees} = get_onchain_env(),
             Checks = [ fun check_valid_at_protocol/6
                      , fun check_signature/6
@@ -1040,6 +1047,10 @@ nonce_baseline() ->
 nonce_offset() ->
     aeu_env:user_config_or_env([<<"mempool">>, <<"nonce_offset">>],
                                aecore, mempool_nonce_offset, ?DEFAULT_NONCE_OFFSET).
+
+allow_reentry() ->
+    aeu_env:user_config_or_env([<<"mempool">>, <<"allow_reentry_of_txs">>],
+                               aecore, mempool_allow_reentry, false).
 
 minimum_miner_gas_price() ->
     aeu_env:user_config_or_env([<<"mining">>, <<"min_miner_gas_price">>],
