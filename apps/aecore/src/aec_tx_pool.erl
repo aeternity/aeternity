@@ -817,11 +817,11 @@ check_pool_db_put(Tx, TxHash, Event) ->
             {error, already_accepted};
         mempool ->  ignore;
         none when AllowReentryOfDeletedTx ->
-            lager:debug("Tx ~p had been deleted already, it reenters",
+            lager:debug("Tx ~p has been deleted already, reintroduce it",
                         [TxHash]),
             ok;
         none when not AllowReentryOfDeletedTx ->
-            lager:debug("Tx ~p had been deleted already, it is not allowed to reenter",
+            lager:debug("Tx ~p has been deleted already, it is not allowed to reenter",
                         [TxHash]),
             ignore;
         Unknown when Unknown =:= not_found ->
