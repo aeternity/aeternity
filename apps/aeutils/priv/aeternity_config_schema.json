@@ -97,7 +97,7 @@
                     "type" : "integer"
                 },
                 "allow_reentry_of_txs" : {
-                    "description" : "Maximum number of recently received cached transactions",
+                    "description" : "Allow already deleted transactions to reenter the tx-pool.",
                     "type" : "boolean",
                     "default": false
                 },
