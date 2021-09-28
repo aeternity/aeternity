@@ -704,7 +704,9 @@ init_per_group(on_micro_block, Config) ->
     {ok, [Tx]} = rpc:call(Node, aec_tx_pool, peek, [infinity]),
     ct:log("Spend tx ~p", [Tx]),
     case aecore_suite_utils:mine_micro_block_emptying_mempool_or_fail(Node) of
-        {ok, [KeyBlock, MicroBlock]} ->
+        {ok, Blocks} ->
+            MicroBlock = lists:last(Blocks),
+            KeyBlock = get_prev_key_block(Blocks),
             true = aec_blocks:is_key_block(KeyBlock),
             false = aec_blocks:is_key_block(MicroBlock),
             [{prev_key_block, KeyBlock},
@@ -1532,3 +1534,11 @@ post_paying_for_tx(Config) ->
 
 min_gas_price() ->
     aec_test_utils:min_gas_price().
+
+get_prev_key_block([KB, _MB]) ->
+    true = aec_blocks:is_key_block(KB),
+    KB;
+get_prev_key_block([MB]) ->
+    PrevKeyHash = aec_blocks:prev_key_hash(MB),
+    {ok, KB} = rpc(aec_chain, get_block, [PrevKeyHash]),
+    KB.
