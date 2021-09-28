@@ -49,6 +49,7 @@
         , withdraw_high_amount_short_confirmation_time/1
         , withdraw_low_amount_long_confirmation_time/1
         , withdraw_low_amount_long_confirmation_time_negative_test/1
+        , withdraw_plain_min_depth/1
         , channel_detects_close_solo_and_settles/1
         , close_mutual_with_failed_onchain/1
         , close_solo_with_failed_onchain/1
@@ -316,6 +317,7 @@ transactions_sequence() ->
       , withdraw_high_amount_short_confirmation_time
       , withdraw_low_amount_long_confirmation_time
       , withdraw_low_amount_long_confirmation_time_negative_test
+      , withdraw_plain_min_depth
       , channel_detects_close_solo_and_settles
       , leave_reestablish_responder_stays
       , leave_reestablish_close
@@ -1174,6 +1176,16 @@ withdraw_high_amount_static_confirmation_time(Cfg) ->
                        , {minimum_depth_factor, 0}
                        ], Cfg),
     Amount = 300000,
+    Round = 1,
+    ok = withdraw_full_cycle_(Amount, #{}, Round, Cfg1).
+
+withdraw_plain_min_depth(Cfg) ->
+    Cfg1 = set_configs([ ?SLOGAN
+                       , {assume_min_depth, false}
+                       , {minimum_depth, 1}
+                       , {minimum_depth_channel, 1}
+                       , {minimum_depth_strategy, plain} ], Cfg),
+    Amount = 30000,
     Round = 1,
     ok = withdraw_full_cycle_(Amount, #{}, Round, Cfg1).
 
@@ -4225,14 +4237,19 @@ channel_spec(Cfg, XOpts) ->
     %% dynamic key negotiation
     Proto = <<"Noise_NN_25519_ChaChaPoly_BLAKE2b">>,
 
+    MDStrategy = config(minimum_depth_strategy, Cfg, ?MINIMUM_DEPTH_STRATEGY),
+    MDepth = min_depth(MDStrategy, Cfg),
+    LockPeriod = lock_period(MDStrategy, MDepth),
+
     Spec0 = #{ initiator            => maps:get(pub, I)
              , responder            => maps:get(pub, R)
              , initiator_amount     => config(initiator_amount, Cfg, ?INITIATOR_AMOUNT)
              , responder_amount     => config(responder_amount, Cfg, ?RESPONDER_AMOUNT)
              , push_amount          => config(push_amount, Cfg, ?PUSH_AMOUNT)
-             , lock_period          => 10
+             , lock_period          => LockPeriod
              , channel_reserve      => config(channel_reserve, Cfg, ?CHANNEL_RESERVE)
-             , minimum_depth        => config(minimum_depth_factor, Cfg, ?MINIMUM_DEPTH_FACTOR)
+             , minimum_depth        => MDepth
+             , minimum_depth_strategy => MDStrategy
              , client               => self()
              , noise                => [{noise, Proto}]
              , timeouts             => #{idle => 200000}
@@ -4251,6 +4268,15 @@ channel_spec(Cfg, XOpts) ->
           Spec1,
           [nonce, block_hash_delta]),
     {I, R, Spec2}.
+
+min_depth(plain, Cfg) -> config(minimum_depth, Cfg, ?MINIMUM_DEPTH_FACTOR);
+min_depth(txfee, Cfg) -> config(minimum_depth_factor, Cfg, ?MINIMUM_DEPTH_FACTOR).
+
+lock_period(plain, Depth) ->
+    Depth;
+lock_period(_, _) ->
+    %% Was hard-coded before
+    10.
 
 log(Fmt, Args, L, #{debug := true}) ->
     log(Fmt, Args, L, true);

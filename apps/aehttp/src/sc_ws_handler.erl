@@ -459,7 +459,7 @@ read_channel_options(Params) ->
     sc_ws_utils:check_params(
       [ Read(<<"minimum_depth">>, minimum_depth, #{type => integer, mandatory => false})
       , Read(<<"minimum_depth_strategy">>, minimum_depth_strategy,
-             #{type => atom, enum => [txfee], mandatory => false})
+             #{type => atom, enum => [txfee, plain], mandatory => false})
       , Read(<<"ttl">>, ttl, #{type => integer, mandatory => false})
       , Read(<<"fee">>, fee, #{type => integer, mandatory => false})
       , Read(<<"gas_price">>, gas_price, #{type => integer, mandatory => false})

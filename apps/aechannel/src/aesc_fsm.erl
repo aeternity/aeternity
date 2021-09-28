@@ -3193,6 +3193,7 @@ watcher_request(Type, SignedTx, Updates, #data{ op = Op
     #{ minimum_depth := MinDepthFactor
      , minimum_depth_strategy := MinDepthStrategy } = Opts,
     MinDepth = min_depth(MinDepthStrategy, MinDepthFactor, SignedTx),
+    lager:debug("Calculated min_depth: ~p", [MinDepth]),
     BlockHash = block_hash_from_op(Op),
     {Mod, Tx} = aetx:specialize_callback(aetx_sign:innermost_tx(SignedTx)),
     TxHash = aetx_sign:hash(SignedTx),
@@ -3801,7 +3802,11 @@ callback_mode() ->
 init(#{opts := Opts} = Arg) ->
     case check_limits(Opts) of
         ok ->
-            init_(Arg);
+            try init_(Arg)
+            catch
+                throw:{invalid, _} = Invalid ->
+                    {stop, Invalid}
+            end;
         {error, Reason} ->
             {stop, Reason}
     end.
@@ -4001,6 +4006,8 @@ check_change_config(_, _) ->
 %% the nth root of the transaction fee divided by the minimum gas, where n is
 %% the given minimum_depth factor.
 -spec min_depth(minimum_depth_strategy(), minimum_depth_factor(), aetx_sign:signed_tx()) -> non_neg_integer().
+min_depth(plain, MinDepth, _) ->
+    MinDepth;
 min_depth(txfee, MinDepthFactor, SignedTx) when
       MinDepthFactor =/= undefined ->
     Tx = aetx_sign:tx(SignedTx),
@@ -4018,19 +4025,41 @@ min_depth(txfee, MinDepthFactor, SignedTx) when
                 [MinDepth, FeeCoefficient, MinDepthFactor, TxFee, MinGas]),
     MinDepth.
 
-%% @doc Set default minimum depth parameters. If the role is initiator, no
-%% change is made because the responder might provide these defaults when the
-%% channel is accepted.
+%% @doc Set default minimum depth parameters.
 -spec check_minimum_depth_opt(opts()) -> opts().
-check_minimum_depth_opt(#{role := initiator} = Opts) ->
-    Opts;
-check_minimum_depth_opt(Opts) ->
-    MinDepthStrategy = maps:get(minimum_depth_strategy, Opts, ?DEFAULT_MINIMUM_DEPTH_STRATEGY),
-    MinDepthFactor = maps:get(minimum_depth, Opts, default_minimum_depth(MinDepthStrategy)),
-    lager:debug("Final minimum_depth parameters for responder: ~p / ~p",
-                [MinDepthStrategy, MinDepthFactor]),
-    Opts#{ minimum_depth          => MinDepthFactor
-         , minimum_depth_strategy => MinDepthStrategy }.
+check_minimum_depth_opt(#{role := Role} = Opts) ->
+    case {maps:find(minimum_depth_strategy, Opts), maps:find(minimum_depth, Opts)} of
+        {error, error} ->
+            case Role of
+                initiator ->
+                    lager:debug("No minimum_depth preference set for initiator", []),
+                    Opts;
+                responder ->
+                    S = ?DEFAULT_MINIMUM_DEPTH_STRATEGY,
+                    Opts#{ minimum_depth => default_minimum_depth(S)
+                         , minimum_depth_strategy => S }
+            end;
+        {error, {ok, D}} ->
+            assert_valid_minimum_depth(D),
+            Opts#{minimum_depth_strategy => ?DEFAULT_MINIMUM_DEPTH_STRATEGY};
+        {{ok,S}, error} ->
+            assert_valid_minimum_depth_strategy(S),
+            Opts#{minimum_depth => default_minimum_depth(S)};
+        {{ok,S}, {ok,D}} ->
+            assert_valid_minimum_depth_strategy(S),
+            assert_valid_minimum_depth(D),
+            Opts
+    end.
+
+assert_valid_minimum_depth(D) ->
+    assert(is_valid_minimum_depth({ok,D}), {minimum_depth, D}).
+
+assert_valid_minimum_depth_strategy(S) ->
+    assert(is_valid_minimum_depth_strategy({ok,S}), {minimum_depth_strategy, S}).
+
+assert(true, _) -> ok;
+assert(false, What) ->
+    invalid(What).
 
 check_timeout_opt(#{timeouts := TOs} = Opts) ->
     TOs1 = maps:merge(?DEFAULT_TIMEOUTS, TOs),
@@ -4103,6 +4132,9 @@ check_opts([], Opts) ->
     Opts;
 check_opts([H|T], Opts) ->
     check_opts(T, H(Opts)).
+
+invalid(What) ->
+    throw({invalid, What}).
 
 prepare_for_reestablish(#data{ opts = Opts
                              , on_chain_id = ChanId } = D) ->
@@ -5255,6 +5287,7 @@ maybe_use_minimum_depth_params(Msg, Opts) ->
     end.
 
 is_valid_minimum_depth_strategy({ok, txfee}) -> true;
+is_valid_minimum_depth_strategy({ok, plain}) -> true;
 is_valid_minimum_depth_strategy(_)           -> false.
 
 is_valid_minimum_depth({ok, Value}) when is_integer(Value) -> Value >= 0;
@@ -5265,8 +5298,8 @@ default_minimum_depth() ->
 
 default_minimum_depth(Strategy) ->
     case Strategy of
-        txfee ->
-            10;
+        txfee -> 10;
+        plain ->  3;
         _ ->
             error(unknown_minimum_depth_strategy)
     end.
