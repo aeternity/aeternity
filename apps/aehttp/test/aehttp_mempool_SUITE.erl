@@ -233,18 +233,6 @@ gc_txs(Config) ->
     timer:sleep(1000),
     %% assert pool is empty
     [] = pending_txs(),
-    {ok, 200, #{<<"tx_hash">> := _SpendTxHash2}} = post_tx(SpendTx2),
-    [PendingSpendTx2] = pending_txs(),
-    %% add missing tx with nonce
-    SpendTx1 = sign_tx(spend_tx(AccPubkey, AccPubkey, 2, Fee, <<"unblocking tx">>,
-                                Nonce),
-                       AccPrivkey),
-    {ok, 200, #{<<"tx_hash">> := SpendTxHash1}} = post_tx(SpendTx1),
-    PendingTxs = pending_txs(),
-    %% assert 2 txs in pool
-    2 = length(PendingTxs),
-    {ok, _} = ?MINE_TXS([SpendTxHash1, SpendTxHash2]),
-    [] = pending_txs(),
     ok.
 
 delete_tx_from_mempool(Config) ->
@@ -275,32 +263,9 @@ delete_tx_from_mempool(Config) ->
     ?MINE_BLOCKS(3),
     %% assert pool is empty
     [] = pending_txs(),
-    %% tx can still be posted
+    %% tx can no longer be posted
     {ok, 200, #{<<"tx_hash">> := SpendTxHash1}} = post_tx(SpendTx1),
-    %% tx can be GCed
-    [PendingSpendTx1]  = pending_txs(),
-    ?MINE_BLOCKS(?TX_TTL - 1),
-    %% assert still in the pool
-    [PendingSpendTx1]  = pending_txs(),
-    ?MINE_BLOCKS(1),
-    timer:sleep(1000),
-    %% assert the tx has beed GCed
     [] = pending_txs(),
-    %% post the tx after it has been GCed
-    {ok, 200, #{<<"tx_hash">> := SpendTxHash1}} = post_tx(SpendTx1),
-    [PendingSpendTx1]  = pending_txs(),
-    %% post the ublocking tx with the correct nonce
-    SpendTx3 = sign_tx(spend_tx(Alice, Alice, 1, Fee, <<"">>,
-                                Nonce), AlicePrivkey),
-    {ok, 200, #{<<"tx_hash">> := SpendTxHash3}} = post_tx(SpendTx3),
-    %% those can be included
-    {ok, _} = ?MINE_TXS([SpendTxHash1, SpendTxHash3]),
-    [] = pending_txs(),
-    {ok, 404, #{<<"reason">> := <<"included">>}} =
-        aehttp_integration_SUITE:delete_tx_from_mempool_sut(SpendTxHash1),
-    MissingTxHash = aeser_api_encoder:encode(tx_hash, random_hash()),
-    {ok, 404, #{<<"reason">> := <<"not_found">>}} =
-        aehttp_integration_SUITE:delete_tx_from_mempool_sut(MissingTxHash),
     ok.
 
 
