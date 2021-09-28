@@ -397,7 +397,9 @@ get_network_id() ->
                             <<"ae_dev">>;
                         false ->
                             ?NETWORK_ID
-                    end
+                    end;
+                NetworkId when is_binary(NetworkId) ->
+                    NetworkId
             end
     end.
 

@@ -5,7 +5,7 @@
 -export([ check_config/3
         , validate_config/2
         , is_dev_mode/0
-        , suggest_beneficiary/1 ]).
+        , suggest_config/2 ]).
 
 check_config(PluginName, SchemaFilename, OsEnvPrefix) ->
     case aeu_env:find_config([<<"system">>, <<"plugins">>],
@@ -44,17 +44,15 @@ validate_config(JSON, SchemaFilename) ->
 is_dev_mode() ->
     aecore_env:is_dev_mode().
 
-%% Checks if a beneficiary is set via the main user config. If not,
-%% the suggested pubkey is used to update the config. The suggested
-%% key can be in either internal or external (encoded) format.
-suggest_beneficiary(PubKey) ->
-    case aec_conductor:get_beneficiary() of
+%% Checks if a given config key (list of binary keys corresponding to the AE
+%% config schema) is already configured. If not, the suggested value is used.
+suggest_config(Key, Value) ->
+    case aeu_env:user_config(Key) of
         {ok, _} ->
             {error, already_configured};
-        {error, beneficiary_not_configured} ->
-            EncPubKey = ensure_encoded_pubkey(PubKey),
-            aeu_env:update_config(#{<<"mining">> =>
-                                        #{<<"beneficiary">> => EncPubKey}}, false),
+        undefined ->
+            Map = kv_to_config_map(Key, Value),
+            aeu_env:update_config(Map, false),
             ok
     end.
 
@@ -189,10 +187,7 @@ bin(B) when is_binary(B) ->
 bin(Str) ->
     iolist_to_binary(Str).
 
-ensure_encoded_pubkey(Key) ->
-    case aeser_api_encoder:safe_decode(account_pubkey, Key) of
-        {ok, _} ->
-            Key;
-        {error, _} ->
-            aeser_api_encoder:encode(account_pubkey, Key)
-    end.
+kv_to_config_map([H], V) ->
+    #{H => V};
+kv_to_config_map([H|T], V) ->
+    #{H => kv_to_config_map(T, V)}.
