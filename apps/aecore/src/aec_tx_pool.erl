@@ -594,9 +594,13 @@ move_to_visited(VDb, #dbs{visited_db = VDb}, _) ->
     %% already in visited
     ignore;
 move_to_visited(Db, #dbs{visited_db = VDb}, Key) ->
-    [{Key, TxRec}] = ets:lookup(Db, Key), 
-    ets:insert(VDb, {Key, TxRec}),
-    ets:delete(Db, Key),
+    case ets:lookup(Db, Key) of
+        [{Key, TxRec}] ->
+            ets:insert(VDb, {Key, TxRec}),
+            ets:delete(Db, Key);
+        [] -> %% GCed
+            pass
+    end,
     ok.
 
 revisit(#dbs{db = Db, visited_db = VDb}) ->
