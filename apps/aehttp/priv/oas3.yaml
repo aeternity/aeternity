@@ -575,7 +575,7 @@ paths:
               schema:
                 properties:
                   next_nonce:
-                    type: integer
+                    $ref: "#/components/schemas/UInt"
         "400":
           description: Invalid public key
           content:
@@ -2065,9 +2065,11 @@ components:
           maximum: 18446744073709552000
         - type: string
     TxBlockHeight:
-      type: integer
-      minimum: -1
-      maximum: 18446744073709552000
+      oneOf:
+        - type: integer
+          minimum: -1
+          maximum: 18446744073709552000
+        - type: string
     EncodedHash:
       description: Base58Check encoded tagged hash
       type: string
