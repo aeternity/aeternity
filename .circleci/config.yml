@@ -936,7 +936,7 @@ jobs:
         default: ""
     macos:
       xcode: "11.1.0" # 11.1.0 is macOS 10.14.4
-    working_directory: /home/circleci/aeternity
+    working_directory: /Users/distiller/aeternity
     environment:
       PKG_KIND: << parameters.package_kind >>
     steps:
