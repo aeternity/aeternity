@@ -77,11 +77,16 @@ client_request(emit_kb) ->
     ok = aec_conductor:add_synced_block(Block),
     Block;
 client_request(emit_mb) ->
-    TopHash = aec_chain:top_block_hash(),
-    {ok, MicroBlock, _} = aec_block_micro_candidate:create(TopHash),
-    {ok, MicroBlockS} = aec_keys:sign_micro_block(MicroBlock),
-    ok = aec_conductor:post_block(MicroBlockS),
-    MicroBlockS;
+    case tx_pool_empty() of
+        true ->
+            error(no_transactions);
+        false ->
+            TopHash = aec_chain:top_block_hash(),
+            {ok, MicroBlock, _} = aec_block_micro_candidate:create(TopHash),
+            {ok, MicroBlockS} = aec_keys:sign_micro_block(MicroBlock),
+            ok = aec_conductor:post_block(MicroBlockS),
+            MicroBlockS
+    end;
 client_request({mine_blocks, NumBlocksToMine, Type}) ->
     case {aec_conductor:is_leader(), Type} of
         {_, any} ->
@@ -105,7 +110,7 @@ client_request(mine_micro_block_emptying_mempool_or_fail) ->
     Pre = ensure_leader(),
     MB = client_request(emit_mb),
     %% If instant mining is enabled then we can't have microforks :)
-    {ok, []} = aec_tx_pool:peek(infinity),
+    true = tx_pool_empty(),
     {ok, Pre ++ [MB]};
 client_request({mine_blocks_until_txs_on_chain, TxHashes, Max}) ->
     mine_blocks_until_txs_on_chain(TxHashes, Max, []).
@@ -125,6 +130,14 @@ mine_blocks_until_txs_on_chain(TxHashes, Max, Blocks) ->
                 []        -> {ok, lists:reverse(NewAcc)};
                 TxHashes1 -> mine_blocks_until_txs_on_chain(TxHashes1, Max - 1, NewAcc)
             end
+    end.
+
+tx_pool_empty() ->
+    case aec_tx_pool:peek(1) of
+        {ok, []} ->
+            true;
+        {ok, _} ->
+            false
     end.
 
 ensure_leader() ->

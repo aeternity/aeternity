@@ -25,6 +25,7 @@
                 "plugins" : {
                     "description" : "List of application names of plugins to load",
                     "type" : "array",
+                    "default" : [],
                     "items" : {
                         "type" : "object",
                         "description" : "Plugin name and properties",
