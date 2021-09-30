@@ -35,6 +35,7 @@
 
 -export([ garbage_collect/0
         , get_candidate/2
+        , get_candidate/3
         , get_max_nonce/1
         , minimum_miner_gas_price/0
         , maximum_auth_fun_gas/0
@@ -271,12 +272,16 @@ delete(TxHash) ->
 -spec failed_txs([{aetx_sign:signed_tx(), atom()}]) -> ok.
 failed_txs(FailedTxs) ->
     gen_server:call(?SERVER, {failed_txs, FailedTxs}).
-    
+
 -spec get_candidate(pos_integer(), binary()) -> {ok, [aetx_sign:signed_tx()]}.
-get_candidate(MaxGas, BlockHash) when is_integer(MaxGas), MaxGas > 0,
-                                      is_binary(BlockHash) ->
-    ?TC(int_get_candidate(MaxGas, BlockHash, dbs()),
-        {get_candidate, MaxGas, BlockHash}).
+get_candidate(MaxGas, BlockHash) ->
+    get_candidate(MaxGas, [], BlockHash).
+
+-spec get_candidate(pos_integer(), [binary()], binary()) -> {ok, [aetx_sign:signed_tx()]}.
+get_candidate(MaxGas, IgnoreTxHashes, BlockHash) when is_integer(MaxGas), MaxGas > 0,
+                                                      is_binary(BlockHash) ->
+    ?TC(int_get_candidate(MaxGas, IgnoreTxHashes, BlockHash, dbs()),
+        {get_candidate, MaxGas, IgnoreTxHashes, BlockHash}).
 
 %% It assumes that the persisted mempool has been updated.
 -spec top_change(key | micro, binary(), binary(), binary()) -> ok.
@@ -490,13 +495,13 @@ int_get_max_nonce(NonceDb, Sender) ->
 %% considered for another microblock until the next leader cycle.
 %% ... Unless no matching txs can be found in the regular mempool.
 %%
-int_get_candidate(MaxGas, BlockHash, #dbs{db = Db} = DBs) ->
+int_get_candidate(MaxGas, IgnoreTxs, BlockHash, #dbs{db = Db} = DBs) ->
     {ok, Trees} = aec_chain:get_block_state(BlockHash),
     {ok, Header} = aec_chain:get_header(BlockHash),
     lager:debug("size(Db) = ~p", [ets:info(Db, size)]),
     MinMinerGasPrice = aec_tx_pool:minimum_miner_gas_price(),
     MinTxGas = aec_governance:min_tx_gas(),
-    Acc0     = #{ tree => gb_trees:empty(), txs => [], bad_txs => [] },
+    Acc0     = #{ ignore_txs => IgnoreTxs, tree => gb_trees:empty(), txs => [], bad_txs => [] },
     {ok, RemGas, Acc} = int_get_candidate(Db, MaxGas, MinTxGas, MinMinerGasPrice, Trees,
                                           Header, DBs, Acc0),
     {ok, _, Acc1} = int_get_candidate(
@@ -548,17 +553,22 @@ fold_txs([Tx|Txs], Gas, MinTxGas, MinMinerGasPrice, Db, Dbs, AccountsTree, Heigh
 fold_txs([], Gas, _, _, _, _, _, _, _, Acc) ->
     {Gas, Acc}.
 
-int_get_candidate_({?KEY(_, _, Account, Nonce, _) = Key, TxRec},
+int_get_candidate_({?KEY(_, _, Account, Nonce, TxHash) = Key, TxRec},
                    Gas, MinMinerGasPrice, Db, Dbs, AccountsTree, Height, Protocol,
-                   Acc = #{ tree := AccTree }) ->
-    Tx = TxRec#tx.signed_tx,
-    case gb_trees:is_defined({Account, Nonce}, AccTree) of
-        true when Nonce > 0 ->
-            %% The earlier non-meta Tx must have had higher fee. Skip this tx.
+                   Acc = #{ tree := AccTree, ignore_txs := IgnoreTxs }) ->
+    case lists:member(TxHash, IgnoreTxs) of
+        true ->
             {Gas, Acc};
         false ->
-            check_candidate(
-              Db, Dbs, Key, Tx, AccountsTree, Height, Gas, MinMinerGasPrice, Protocol, Acc)
+            Tx = TxRec#tx.signed_tx,
+            case gb_trees:is_defined({Account, Nonce}, AccTree) of
+                true when Nonce > 0 ->
+                    %% The earlier non-meta Tx must have had higher fee. Skip this tx.
+                    {Gas, Acc};
+                false ->
+                    check_candidate(
+                      Db, Dbs, Key, Tx, AccountsTree, Height, Gas, MinMinerGasPrice, Protocol, Acc)
+            end
     end.
 
 check_candidate(Db, #dbs{gc_db = GCDb} = _Dbs,

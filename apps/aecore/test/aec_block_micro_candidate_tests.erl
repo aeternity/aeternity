@@ -56,12 +56,12 @@ block_extension_test_() ->
 
           meck:expect(aeu_time, now_in_msecs, 0, 1234567890),
           meck:expect(aec_chain, get_block_state, 1, {ok, Trees0}),
-          meck:expect(aec_tx_pool, get_candidate, 2, {ok, [STx]}),
+          meck_tx_pool_get_candidate([STx]),
           meck:expect(aec_keys, pubkey, 0, {ok, ?TEST_PUB}),
           meck:expect(aec_db, find_discovered_pof, 1, none),
           {ok, Block1A, #{ trees := Trees1A }} = aec_block_micro_candidate:create(Block0),
 
-          meck:expect(aec_tx_pool, get_candidate, 2, {ok, []}),
+          meck_tx_pool_get_candidate([]),
           {ok, Block1B0, BInfo} = aec_block_micro_candidate:create(Block0),
 
           {ok, Block1B, #{ trees := Trees1A }} =
@@ -94,7 +94,7 @@ block_extension_test_() ->
 
           meck:expect(aeu_time, now_in_msecs, 0, 1234567890),
           meck:expect(aec_chain, get_block_state, 1, {ok, Trees0}),
-          meck:expect(aec_tx_pool, get_candidate, 2, {ok, [STx]}),
+          meck_tx_pool_get_candidate([STx]),
           meck:expect(aec_keys, pubkey, 0, {ok, ?TEST_PUB}),
           meck:expect(aec_db, find_discovered_pof, 1, none),
 
@@ -125,7 +125,7 @@ block_extension_test_() ->
           ?assertEqual(get_miner_account_balance(Trees1A), %% NG: Not yet + GasUsed * GasPrice,
                        get_miner_account_balance(Trees1B)),
 
-          meck:expect(aec_tx_pool, get_candidate, 2, {ok, []}),
+          meck_tx_pool_get_candidate([]),
           {ok, Block1C0, BInfo} = aec_block_micro_candidate:create(Block0),
 
           {ok, Block1C, #{ trees := _Trees1B }} =
@@ -179,7 +179,7 @@ block_extension_test_() ->
             meck:expect(aec_db, find_discovered_pof, 1, none),
 
             %% Create full block, then check that attempting to add one tx fails.
-            meck:expect(aec_tx_pool, get_candidate, 2, {ok, FillingTxs}),
+            meck_tx_pool_get_candidate(FillingTxs),
             {ok, FullBlock, FullBlockInfo} = aec_block_micro_candidate:create(Block0),
             ?assertEqual(FillingTxs, aec_blocks:txs(FullBlock)), %% Hardcoded expectation - in case any txs discarded for e.g. insufficient funds.
             ?assertEqual(
@@ -296,7 +296,7 @@ used_gas_test_() ->
                 %% since the previous block - Block1 - is a
                 %% microblock, we must meck also this call:
                 PrevKeyHash = aec_blocks:prev_key_hash(Block1),
-                meck:expect(aec_chain, get_block, fun(PrevKeyHash) -> {ok, Block0} end),
+                meck:expect(aec_chain, get_block, fun(Hash) -> if Hash == PrevKeyHash -> {ok, Block0} end end),
                 {ok, Block2, #{ trees := Trees2 }} = aec_block_micro_candidate:create(Block1),
 
                 [CallTx] = aec_blocks:txs(Block2),
@@ -432,7 +432,7 @@ used_gas_test_() ->
                                 [GANonce, aega_test_utils:to_hex_lit(64, Signature)]),
 
                             PrevKeyHash = aec_blocks:prev_key_hash(Block1),
-                            meck:expect(aec_chain, get_block, fun(PrevKeyHash) -> {ok, Block0} end),
+                            meck:expect(aec_chain, get_block, fun(Hash) -> if Hash == PrevKeyHash -> {ok, Block0} end end),
                             STx = aetx_sign:new(meta_tx(Spend,
                                                         ?TEST_PUB,
                                                         AuthData,
@@ -443,7 +443,7 @@ used_gas_test_() ->
 
                             SpendUsed = aetx:used_gas(Spend, Height, Protocol, Trees2),
                             MetaUsed = aetx:used_gas(aetx_sign:tx(STx), Height, Protocol, Trees2),
-                            MetaLimit = aetx:gas_limit(aetx_sign:tx(STx), Height, Protocol),
+                            _MetaLimit = aetx:gas_limit(aetx_sign:tx(STx), Height, Protocol),
                             {true, MetaUsed} = {MetaUsed < GasLimit + SpendUsed, MetaUsed},
                             ok
                     end,
@@ -469,19 +469,12 @@ spend_tx(Data) ->
     {ok, Tx} = aec_spend_tx:new(maps:merge(DefaultData, Data)),
     Tx.
 
-contract_create_tx(Owner, SophiaVersion, ContractName, Fun, Args, Trees) ->
-    contract_create_tx(Owner, SophiaVersion, ContractName, Fun, Args, Trees, #{}).
-
 contract_create_tx(Owner, SophiaVersion, ContractName, Fun, Args, Trees, Data) ->
     State = aect_test_utils:set_trees(Trees, #{}),
     {ok, Code} = aect_test_utils:compile_contract(SophiaVersion, ContractName),
     _Tx = aect_test_utils:create_tx(Owner, Data#{call_data => call_data(SophiaVersion, ContractName, Fun, Args),
                                                  code => Code },
                                     State).
-
-
-contract_call_tx(Caller, SophiaVersion, Contract, ContractName, Fun, Args, Trees) ->
-    contract_call_tx(Caller, SophiaVersion, Contract, ContractName, Fun, Args, Trees, #{}).
 
 contract_call_tx(Caller, SophiaVersion, Contract, ContractName, Fun, Args, Trees, Data) ->
     State = aect_test_utils:set_trees(Trees, #{}),
@@ -507,9 +500,15 @@ set_protocol_and_version(KeyBlock, Protocol, Height) ->
 meck_expect_candidate_prerequisites(Time, Trees, Txs) ->
     meck:expect(aeu_time, now_in_msecs, 0, Time),
     meck:expect(aec_chain, get_block_state, 1, {ok, Trees}),
-    meck:expect(aec_tx_pool, get_candidate, 2, {ok, Txs}),
+    meck_tx_pool_get_candidate(Txs),
     meck:expect(aec_db, find_discovered_pof, 1, none).
 
+%% New block packing will call get_candidate (at least) twice - meck this!
+meck_tx_pool_get_candidate(Txs) ->
+    meck:expect(aec_tx_pool, get_candidate,
+                fun(_, [], _) -> {ok, Txs};
+                   (_, _, _)  -> {ok, []}
+                end).
 
 paying_for_tx(Payer, Fee, InnerTx, Nonce) ->
     {ok, Tx} =
@@ -528,8 +527,7 @@ next_nonce(Pubkey, Trees) ->
     end.
 
 
-attach_tx(Pubkey, SophiaVersion, ContractName, Fun, Args, Opts, Trees, VMVersion) ->
-    AccId = aeser_api_encoder:encode(account_pubkey, Pubkey),
+attach_tx(Pubkey, SophiaVersion, ContractName, _Fun, _Args, Opts, Trees, VMVersion) ->
     Nonce = next_nonce(Pubkey, Trees),
 
     {ok, #{bytecode := Code, src := Src, map := #{type_info := TI}}} =
@@ -542,11 +540,10 @@ attach_tx(Pubkey, SophiaVersion, ContractName, Fun, Args, Opts, Trees, VMVersion
 
     Map = Opts#{ nonce => Nonce, code => Code, auth_fun => AuthFun,
                  call_data => CallData},
-    _AttachTx = aega_test_utils:ga_attach_tx(Pubkey, Map).
+    aega_test_utils:ga_attach_tx(Pubkey, Map).
 
-meta_tx(InnerTx, Pubkey, AuthData, Opts) ->
-    AccId = aeser_api_encoder:encode(account_pubkey, Pubkey),
-    MetaTx = aega_test_utils:ga_meta_tx(Pubkey,
-                    #{ auth_data => AuthData,
-                       tx => aetx_sign:new(InnerTx, []), fee => 20000 * aec_test_utils:min_gas_price() }).
+meta_tx(InnerTx, Pubkey, AuthData, _Opts) ->
+    aega_test_utils:ga_meta_tx(Pubkey,
+                               #{ auth_data => AuthData,
+                                  tx => aetx_sign:new(InnerTx, []), fee => 20000 * aec_test_utils:min_gas_price() }).
 -endif.

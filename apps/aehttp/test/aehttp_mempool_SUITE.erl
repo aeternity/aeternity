@@ -27,6 +27,7 @@
           mine_2_txs/1
         , mine_5_txs_from_the_same_account/1
         , txs_without_balance_are_not_mined/1
+        , block_pack/1
         , gc_txs/1
         , delete_tx_from_mempool/1
         ]).
@@ -38,7 +39,7 @@
 -define(TX_TTL, 11).
 -define(MINE_BLOCKS(N), aecore_suite_utils:mine_key_blocks(?NODENAME, N)).
 -define(MINE_TXS(Txs, MaxKeyBlocks), aecore_suite_utils:mine_blocks_until_txs_on_chain(?NODENAME, Txs, MaxKeyBlocks)).
--define(MINE_TXS(Txs), ?MINE_TXS(Txs, ?MAX_MINED_BLOCKS)). 
+-define(MINE_TXS(Txs), ?MINE_TXS(Txs, ?MAX_MINED_BLOCKS)).
 
 all() ->
     [{group, oas3}
@@ -51,6 +52,7 @@ groups() ->
       [ mine_2_txs
       , mine_5_txs_from_the_same_account
       , txs_without_balance_are_not_mined
+      , block_pack
       , gc_txs
       , delete_tx_from_mempool
       ]}
@@ -86,8 +88,8 @@ init_per_group(SwaggerVsn, Config0) when SwaggerVsn =:= oas3 ->
     Config = [{swagger_version, SwaggerVsn} | Config0],
     VM =
         case aect_test_utils:latest_protocol_version() of
-            PreIris when PreIris < ?IRIS_PROTOCOL_VSN -> aevm; 
-            PostIris -> fate
+            PreIris when PreIris < ?IRIS_PROTOCOL_VSN -> aevm;
+            _PostIris -> fate
         end,
     aect_test_utils:init_per_group(VM, Config);
 init_per_group(_GAGroup, Config) ->
@@ -101,13 +103,15 @@ init_per_group(_GAGroup, Config) ->
     {APK, ASK, STx1} = new_account(StartAmt),
     {BPK, BSK, STx2} = new_account(StartAmt),
     {CPK, CSK, STx3} = new_account(1),
+    {DPK, DSK, STx4} = new_account(1),
 
-    {ok, _} = ?MINE_TXS([STx1, STx2, STx3]),
+    {ok, _} = ?MINE_TXS([STx1, STx2, STx3, STx4]),
 
     %% Save account information
     Accounts = #{acc_a => #{pub_key => APK, priv_key => ASK},
                  acc_b => #{pub_key => BPK, priv_key => BSK},
-                 acc_empty => #{pub_key => CPK, priv_key => CSK}
+                 acc_empty  => #{pub_key => CPK, priv_key => CSK},
+                 acc_empty2 => #{pub_key => DPK, priv_key => DSK}
                 },
     [{accounts, Accounts} | Config].
 
@@ -186,7 +190,6 @@ mine_5_txs_from_the_same_account(Config) ->
     [] = pending_txs(),
     ok.
 
-    
 txs_without_balance_are_not_mined(Config) ->
     %% precondition - no txs in the pool
     [] = pending_txs(),
@@ -208,6 +211,73 @@ txs_without_balance_are_not_mined(Config) ->
     [] = pending_txs(),
     ok.
 
+block_pack(Config) ->
+    [] = pending_txs(),
+    #{acc_a := #{pub_key := Alice, priv_key := AlicePrivkey},
+      acc_empty := #{pub_key := Empty, priv_key := EmptyPrivkey},
+      acc_empty2 := #{pub_key := Empty2, priv_key := Empty2Privkey} } =
+        ?config(accounts, Config),
+    Fee = fun(X) -> X * ?DEFAULT_GAS_PRICE end,
+
+    prepare_fixed_amount_account(Empty, EmptyPrivkey, Alice, AlicePrivkey, Fee(50000)),
+    prepare_fixed_amount_account(Empty2, Empty2Privkey, Alice, AlicePrivkey, Fee(50000)),
+
+    %% The trick is to post two transactions with the same nonce and then make sure that the
+    %% more valuable one (higher fee makes the miner prioritize it) non-valid, but only
+    %% non-valid after the previous Tx has been processed
+    Nonce = next_nonce(Empty),
+    SpendTx1 = sign_tx(spend_tx(Empty, Alice, Fee(200), Fee(20000), <<>>,  Nonce), EmptyPrivkey),
+    %% After SpendTx1 we have only 29.8k left... But both should be accepted by the tx-pool!
+    SpendTx2a = sign_tx(spend_tx(Empty, Alice, Fee(200), Fee(30000), <<>>,  Nonce + 1), EmptyPrivkey),
+    SpendTx2b = sign_tx(spend_tx(Empty, Alice, Fee(200), Fee(20000), <<>>,  Nonce + 1), EmptyPrivkey),
+    {ok, 200, #{<<"tx_hash">> := SpendTxHash1}} = post_tx(SpendTx1),
+    {ok, 200, #{<<"tx_hash">> := _SpendTxHash2a}} = post_tx(SpendTx2a),
+    {ok, 200, #{<<"tx_hash">> := SpendTxHash2b}} = post_tx(SpendTx2b),
+
+    Nonce2 = next_nonce(Empty2),
+    SpendTx3 = sign_tx(spend_tx(Empty2, Alice, Fee(200), Fee(20000), <<>>,  Nonce2), Empty2Privkey),
+    %% After SpendTx3 we have only 29.8k left... But both should be accepted by the tx-pool!
+    SpendTx4a = sign_tx(spend_tx(Empty2, Alice, Fee(200), Fee(20000), <<>>,  Nonce2 + 1), Empty2Privkey),
+    SpendTx4b = sign_tx(spend_tx(Empty2, Alice, Fee(200), Fee(30000), <<>>,  Nonce2 + 1), Empty2Privkey),
+    {ok, 200, #{<<"tx_hash">> := SpendTxHash3}} = post_tx(SpendTx3),
+    {ok, 200, #{<<"tx_hash">> := SpendTxHash4a}} = post_tx(SpendTx4a),
+    {ok, 200, #{<<"tx_hash">> := _SpendTxHash4b}} = post_tx(SpendTx4b),
+
+    {ok, _} = ?MINE_TXS([SpendTxHash1, SpendTxHash2b, SpendTxHash3, SpendTxHash4a]),
+    BlockHash1 = block_for_tx(SpendTxHash1),
+    BlockHash2 = block_for_tx(SpendTxHash2b),
+    BlockHash3 = block_for_tx(SpendTxHash3),
+    BlockHash4 = block_for_tx(SpendTxHash4a),
+    BlockHash1 = BlockHash2,
+    BlockHash2 = BlockHash3,
+    BlockHash3 = BlockHash4,
+    ?MINE_BLOCKS(?TX_TTL - 1),
+    ok.
+
+prepare_fixed_amount_account(Pubkey, Privkey, PatreonPub, PatreonPriv, Amount) ->
+    Fee = fun(X) -> X * ?DEFAULT_GAS_PRICE end,
+    CurrentBalance = account_balance(Pubkey),
+
+    Txs =
+        case CurrentBalance - (Amount + Fee(20000)) of
+            Diff when Diff > 0 ->
+                SpendTx = sign_tx(spend_tx(Pubkey, PatreonPub, Diff, Fee(20000), <<>>, next_nonce(Pubkey)), Privkey),
+                [SpendTx];
+            _ ->
+                SpendTx1 = sign_tx(spend_tx(PatreonPub, Pubkey, Amount + Fee(20000) + 1, Fee(20000), <<>>, next_nonce(PatreonPub)), PatreonPriv),
+                SpendTx2 = sign_tx(spend_tx(Pubkey, PatreonPub, CurrentBalance + 1, Fee(20000), <<>>, next_nonce(Pubkey)), Privkey),
+                [SpendTx1, SpendTx2]
+        end,
+    mine_txs(Txs).
+
+mine_txs(Txs) -> mine_txs(Txs, []).
+
+mine_txs([], TxHashes) ->
+    ?MINE_TXS(TxHashes);
+mine_txs([Tx | Txs], TxHashes) ->
+    {ok, 200, #{<<"tx_hash">> := TxHash}} = post_tx(Tx),
+    mine_txs(Txs, [TxHash | TxHashes]).
+
 gc_txs(Config) ->
     %% precondition - no txs in the pool
     [] = pending_txs(),
@@ -224,7 +294,7 @@ gc_txs(Config) ->
     {ok, 200, #{<<"tx_hash">> := SpendTxHash2}} = post_tx(SpendTx2),
     %% assert a tx in pool
     [PendingSpendTx2] = pending_txs(),
-    
+
     ?MINE_BLOCKS(?TX_TTL - 1),
     %% assert still a tx in pool
     [PendingSpendTx2] = pending_txs(),
@@ -300,7 +370,7 @@ spend_tx(FromPubkey, ToPubkey, Amount, Fee, Payload, Nonce) ->
         aehttp_integration_SUITE:get_spend(
             #{sender_id    => From,
               nonce        => Nonce,
-              recipient_id => To, 
+              recipient_id => To,
               amount       => Amount,
               fee          => Fee,
               payload      => Payload}),
@@ -311,7 +381,6 @@ spend_tx(FromPubkey, ToPubkey, Amount, Fee, Payload, Nonce) ->
 sign_tx(Tx, Privkey) ->
     STx = aec_test_utils:sign_tx(Tx, [Privkey]),
     aeser_api_encoder:encode(transaction, aetx_sign:serialize_to_binary(STx)).
-
 
 patron_pubkey() ->
     maps:get(pubkey, aecore_suite_utils:patron()).
@@ -333,6 +402,15 @@ for_client_pending(<<"tx_", _/binary>> = EncodedTx) ->
     for_client_pending(SignedTx);
 for_client_pending(SignedTx) ->
     aetx_sign:serialize_for_client_pending(SignedTx).
+
+block_for_tx(EncTxHash) ->
+    {ok, TxHash} = aeser_api_encoder:safe_decode(tx_hash, EncTxHash),
+    {Block, _} = rpc:call(?NODENAME, aec_chain, find_tx_with_location, [TxHash]),
+    Block.
+
+account_balance(PubKey) ->
+    {value, Account} = rpc:call(?NODENAME, aec_chain, get_account, [PubKey]),
+    aec_accounts:balance(Account).
 
 random_hash() ->
     HList =
