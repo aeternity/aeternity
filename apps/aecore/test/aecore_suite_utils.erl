@@ -328,7 +328,7 @@ rpc_test_consensus_enabled(Node) ->
     aec_consensus_common_tests =:= rpc:call(Node, aec_conductor, get_active_consensus_module, []).
 
 rpc_on_demand_consensus_enabled(Node) ->
-  aec_consensus_on_demand =:= rpc:call(Node, aec_conductor, get_active_consensus_module, []).  
+  aec_consensus_on_demand =:= rpc:call(Node, aec_conductor, get_active_consensus_module, []).
 
 rpc_consensus_request(Node, Request) ->
     rpc:call(Node, aec_conductor, consensus_request, [Request]).

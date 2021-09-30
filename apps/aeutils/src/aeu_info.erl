@@ -19,18 +19,19 @@ get_revision() ->
 
 block_info() ->
     try
-    cached_file(block_info,
-                fun(block_info) ->
-                    binary_to_integer(re:replace(cached_file(?VERSION_FILE), "^(\\d+)\\.(\\d+)\\.(\\d+).*", "\\1\\2\\3",
-                                                 [{return, binary}, global]))
-
-                end)
-        catch
-            error:Error:ST ->
-                lager:debug("CAUGHT error:~p / ~p", [Error, ST]),
-                error(Error)
-        end.
-
+        cached_file(block_info,
+                    fun(block_info) ->
+                            binary_to_integer(
+                              re:replace(
+                                cached_file(?VERSION_FILE),
+                                "^(\\d+)\\.(\\d+)\\.(\\d+).*", "\\1\\2\\3",
+                                [{return, binary}, global]))
+                    end)
+    catch
+        error:Error:ST ->
+            lager:debug("CAUGHT error:~p / ~p", [Error, ST]),
+            error(Error)
+    end.
 
 get_os() ->
     Bin = fun(A) when is_atom(A)    -> atom_to_binary(A, utf8)
