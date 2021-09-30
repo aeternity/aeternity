@@ -142,13 +142,7 @@ sign_keys(Node) ->
     {Priv, Pub}.
 
 patron() ->
-    #{ pubkey  => <<206,167,173,228,112,201,249,157,157,78,64,8,128,168,111,29,
-                    73,187,68,75,98,241,26,158,187,100,187,207,235,115,254,243>>, %% ak_2a1j2Mk9YSmC1gioUq4PWRm3bsv887MbuRVwyv4KaUGoR1eiKi
-       privkey => <<230,169,29,99,60,119,207,87,113,50,157,51,84,179,188,239,27,
-                    197,224,50,196,61,112,182,211,90,249,35,206,30,183,77,206,
-                    167,173,228,112,201,249,157,157,78,64,8,128,168,111,29,73,
-                    187,68,75,98,241,26,158,187,100,187,207,235,115,254,243>>
-      }.
+    aecore_env:patron_keypair_for_testing().
 
 -spec known_mocks() -> #{atom() => #mock_def{}}.
 known_mocks() -> #{}.
@@ -334,7 +328,7 @@ rpc_test_consensus_enabled(Node) ->
     aec_consensus_common_tests =:= rpc:call(Node, aec_conductor, get_active_consensus_module, []).
 
 rpc_on_demand_consensus_enabled(Node) ->
-  aec_consensus_on_demand =:= rpc:call(Node, aec_conductor, get_active_consensus_module, []).  
+  aec_consensus_on_demand =:= rpc:call(Node, aec_conductor, get_active_consensus_module, []).
 
 rpc_consensus_request(Node, Request) ->
     rpc:call(Node, aec_conductor, consensus_request, [Request]).

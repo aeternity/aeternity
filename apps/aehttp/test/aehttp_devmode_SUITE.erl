@@ -242,7 +242,7 @@
 -define(NODE, dev1).
 -define(DEFAULT_TESTS_COUNT, 5).
 -define(BOGUS_STATE_HASH, <<42:32/unit:8>>).
--define(SPEND_FEE, 20000 * aec_test_utils:min_gas_price()).
+-define(SPEND_FEE, 20000 * min_gas_price()).
 
 -define(MAX_MINED_BLOCKS, 20).
 
@@ -616,7 +616,9 @@ init_per_suite(Config) ->
     aecore_suite_utils:start_node(?NODE, Config2),
     Node = aecore_suite_utils:node_name(?NODE),
     aecore_suite_utils:connect(Node, []),
-    [{node, Node} | Config2].
+    true = rpc(aecore_env, is_dev_mode, []),
+    Mocks = add_rpc_mocks(),
+    [{node, Node}, {mocks, Mocks} | Config2].
 
 end_per_suite(Config) ->
     case ?config(old_network_id, Config) of
@@ -626,10 +628,26 @@ end_per_suite(Config) ->
             ok
     end,
     aecore_suite_utils:stop_node(?NODE, Config),
+    remove_rpc_mocks(Config),
     [application:stop(A) ||
         A <- lists:reverse(
                proplists:get_value(started_apps, Config, []))],
     ok.
+
+add_rpc_mocks() ->
+    ok = meck:new(aec_hard_forks, [passthrough, no_link]),
+    ok = meck:expect(aec_hard_forks,
+                     protocol_effective_at_height,
+                     fun(H) ->
+                             ct:log("CALLING protocol_effective_at_height(~p) via RPC", [H]),
+                             rpc(aec_hard_forks, protocol_effective_at_height, [H])
+                     end),
+    ct:log("Mocked aec_hard_forks:protocol_effective_at_height/1 into rpc version"),
+    [aec_hard_forks].
+
+remove_rpc_mocks(Config) ->
+    Mocks = proplists:get_value(mocks, Config, []),
+    [meck:unload(M) || M <- Mocks].
 
 init_per_group(all, Config) ->
     Config;
@@ -681,11 +699,14 @@ init_per_group(on_micro_block, Config) ->
     {ok, [_KeyBlock0]} = aecore_suite_utils:mine_key_blocks(Node, 1),
     %% Send spend tx so it gets included into micro block.
     {_, Pub} = aecore_suite_utils:sign_keys(NodeId),
+    rpc(lager, log, [debug, test_case, "init_per_group(on_micro_block, Config)"]),
     {ok, Tx} = aecore_suite_utils:spend(Node, Pub, Pub, 1, ?SPEND_FEE),
     {ok, [Tx]} = rpc:call(Node, aec_tx_pool, peek, [infinity]),
     ct:log("Spend tx ~p", [Tx]),
     case aecore_suite_utils:mine_micro_block_emptying_mempool_or_fail(Node) of
-        {ok, [KeyBlock, MicroBlock]} ->
+        {ok, Blocks} ->
+            MicroBlock = lists:last(Blocks),
+            KeyBlock = get_prev_key_block(Blocks),
             true = aec_blocks:is_key_block(KeyBlock),
             false = aec_blocks:is_key_block(MicroBlock),
             [{prev_key_block, KeyBlock},
@@ -807,16 +828,19 @@ cur_config(Config) ->
     IntType = aec_blocks:type(TopBlock),
     BlockHash = hash(IntType, TopBlock),
     Height = aec_blocks:height(TopBlock),
+    Txs = rpc(aec_blocks, txs, [TopBlock]),
     Type = case {Height, IntType} of
                {0, key} -> genesis_block;
                {_, key} -> key_block;
                {_, micro} -> micro_block
            end,
-    [ {current_block, TopBlock}
-    , {current_block_hash, BlockHash}
-    , {current_block_height, Height}
-    , {current_block_type, Type} | Config].
-    
+    Config1 = [ {current_block, TopBlock}
+              , {current_block_hash, BlockHash}
+              , {current_block_height, Height}
+              , {current_block_type, Type}
+              , {current_block_txs, Txs} | Config],
+    ct:log("curr_config => ~p", [Config1]),
+    Config1.
 
 %% ============================================================
 %% Test cases
@@ -907,7 +931,7 @@ get_micro_block_header_by_hash(Config) ->
     aehttp_integration_SUITE:get_micro_block_header_by_hash(Config).
 
 get_micro_block_transactions_by_hash(Config) ->
-    aehttp_integration_SUITE:get_micro_block_transactions_by_hash(Config).
+    aehttp_integration_SUITE:get_micro_block_transactions_by_hash(cur_config(Config)).
 
 get_micro_block_transactions_count_by_hash(Config) ->
     aehttp_integration_SUITE:get_micro_block_transactions_count_by_hash(Config).
@@ -1506,3 +1530,14 @@ get_top_header(_Config) ->
 
 post_paying_for_tx(Config) ->
     aehttp_integration_SUITE:post_paying_for_tx(Config).
+
+min_gas_price() ->
+    aec_test_utils:min_gas_price().
+
+get_prev_key_block([KB, _MB]) ->
+    true = aec_blocks:is_key_block(KB),
+    KB;
+get_prev_key_block([MB]) ->
+    PrevKeyHash = aec_blocks:prev_key_hash(MB),
+    {ok, KB} = rpc(aec_chain, get_block, [PrevKeyHash]),
+    KB.

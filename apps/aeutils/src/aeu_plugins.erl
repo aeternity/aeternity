@@ -3,7 +3,9 @@
 -export([load_plugins/0]).
 
 -export([ check_config/3
-        , validate_config/2 ]).
+        , validate_config/2
+        , is_dev_mode/0
+        , suggest_config/2 ]).
 
 check_config(PluginName, SchemaFilename, OsEnvPrefix) ->
     case aeu_env:find_config([<<"system">>, <<"plugins">>],
@@ -38,6 +40,21 @@ check_config(PluginName, SchemaFilename, OsEnvPrefix) ->
 validate_config(JSON, SchemaFilename) ->
     Schema = load_schema(SchemaFilename),
     validate(JSON, Schema).
+
+is_dev_mode() ->
+    aecore_env:is_dev_mode().
+
+%% Checks if a given config key (list of binary keys corresponding to the AE
+%% config schema) is already configured. If not, the suggested value is used.
+suggest_config(Key, Value) ->
+    case aeu_env:user_config(Key) of
+        {ok, _} ->
+            {error, already_configured};
+        undefined ->
+            Map = kv_to_config_map(Key, Value),
+            aeu_env:update_config(Map, false),
+            ok
+    end.
 
 load_schema(SchemaFilename) ->
     {ok, AppName} = application:get_application(),
@@ -109,7 +126,9 @@ load_plugin_apps(Path) ->
                     end;
                 Missing ->
                     error({missing_plugins, Missing})
-            end
+            end;
+        undefined ->
+            ok
     end.
 
 names_not_found(Names, Dir) ->
@@ -169,3 +188,8 @@ bin(B) when is_binary(B) ->
     B;
 bin(Str) ->
     iolist_to_binary(Str).
+
+kv_to_config_map([H], V) ->
+    #{H => V};
+kv_to_config_map([H|T], V) ->
+    #{H => kv_to_config_map(T, V)}.
