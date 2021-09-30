@@ -126,7 +126,9 @@ load_plugin_apps(Path) ->
                     end;
                 Missing ->
                     error({missing_plugins, Missing})
-            end
+            end;
+        undefined ->
+            ok
     end.
 
 names_not_found(Names, Dir) ->
