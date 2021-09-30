@@ -2,11 +2,60 @@
 
 -export([load_plugins/0]).
 
--export([validate_config/2]).
+-export([ check_config/3
+        , validate_config/2 ]).
+
+check_config(PluginName, SchemaFilename, OsEnvPrefix) ->
+    case aeu_env:find_config([<<"system">>, <<"plugins">>],
+                             [user_config, schema_default]) of
+        {ok, Objs} ->
+            NameBin = bin(PluginName),
+            case [Conf || #{<<"name">> := N, <<"config">> := Conf} <- Objs,
+                          N == NameBin] of
+                [Config] ->
+                    Schema = load_schema(SchemaFilename),
+                    {ok, Config1} = validate(Config, Schema),
+                    case aeu_env:apply_os_env(OsEnvPrefix, Schema, Config1) of
+                        no_change ->
+                            Config1;
+                        {error, E} ->
+                            error(E);
+                        Config2 when is_map(Config2) ->
+                            Config2
+                    end;
+                [] ->
+                    lager:warning("Could not fetch plugin config object (~p)",
+                                  [PluginName]),
+                    not_found
+            end;
+        _ ->
+            lager:warning("Could not fetch plugin config object (~p)",
+                          [PluginName]),
+            not_found
+    end.
+
 
 validate_config(JSON, SchemaFilename) ->
-    [Schema] = jsx:consult(SchemaFilename, [return_maps]),
+    Schema = load_schema(SchemaFilename),
     validate(JSON, Schema).
+
+load_schema(SchemaFilename) ->
+    {ok, AppName} = application:get_application(),
+    Fname = case filename:pathtype(SchemaFilename) of
+                relative ->
+                    filename:join(code:priv_dir(AppName), SchemaFilename);
+                _Other ->
+                    SchemaFilename
+            end,
+    case filelib:is_regular(Fname) of
+        true ->
+            lager:info("Reading plugin schema (~p) ~p", [AppName, Fname]),
+            [Schema] = jsx:consult(Fname, [return_maps]),
+            Schema;
+        false ->
+            lager:warning("Cannot locate plugin schema (~p) ~p", [AppName, Fname]),
+            error(cannot_locate_schema)
+    end.
 
 validate(JSON, Schema) when is_map(JSON) ->
     jesse:validate_with_schema(Schema, JSON, []).
@@ -17,14 +66,26 @@ load_plugins() ->
         {ok, <<>>} ->
             ok;
         {ok, Path} ->
-            Abs = filename:absname(binary_to_list(Path)),
+            Abs = binary_to_list(maybe_expand_relpath(Path)),
             case filelib:is_dir(Abs) of
                 true ->
                     lager:info("Plugin lib dir: ~s", [Abs]),
                     load_plugin_apps(Abs);
                 false ->
-                    error(plugin_path_enotdir)
+                    lager:info("Plugin dir doesn't exist: ~s", [Abs]),
+                    no_plugin_lib_dir
             end
+    end.
+
+maybe_expand_relpath(Path) ->
+    case filename:pathtype(Path) of
+        relative ->
+            Abs = filename:absname(Path),
+            aeu_env:update_config(#{<<"system">> =>
+                                        #{<<"plugin_path">> => Abs}}, false),
+            Abs;
+        _ ->
+            Path
     end.
 
 load_plugin_apps(Path) ->
@@ -103,3 +164,8 @@ is_runnable(App) ->
 ensure_started(App) ->
     Res = application:ensure_all_started(App),
     lager:info("ensure_started(~p) -> ~p", [App, Res]).
+
+bin(B) when is_binary(B) ->
+    B;
+bin(Str) ->
+    iolist_to_binary(Str).
