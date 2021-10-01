@@ -19,7 +19,7 @@ enacl_test_() ->
            #{public := Pub, secret := Priv} = enacl:sign_keypair(),
            Message = crypto:strong_rand_bytes(64),
            Signature = enacl:sign_detached(Message, Priv),
-           ?assertMatch({ok, Message}, enacl:sign_verify_detached(Signature, Message, Pub)),
+           ?assert(enacl:sign_verify_detached(Signature, Message, Pub)),
 
            StaticPub  = <<246,140,72,238,41,186,66,239,124,218,138,115,69,158,69,171,163,194,140,186,39,209,164,226,12,98,24,194,134,0,122,204>>,
            StaticPriv = <<131,67,249,129,201,243,37,202,91,210,80,199,52,52,248,19,247,218,216,121,41,137,152,133,247,188,147,10,2,61,223,96,246,140,72,238,41,186,66,239,124,218,138,115,69,158,69,171,163,194,140,186,39,209,164,226,12,98,24,194,134,0,122,204>>,
@@ -27,12 +27,12 @@ enacl_test_() ->
            StaticSig  = <<116,35,216,74,185,30,21,169,166,182,3,68,98,132,160,55,102,8,87,113,155,65,189,172,216,201,231,11,161,5,246,90,115,178,93,48,246,73,194,52,76,153,142,49,13,196,160,201,109,88,243,55,209,60,98,230,73,104,133,113,222,140,223,13>>,
            ?assertEqual(StaticSig, enacl:sign_detached(StaticMsg, StaticPriv)),
 
-           ?assertMatch({ok, StaticMsg}, enacl:sign_verify_detached(StaticSig, StaticMsg, StaticPub))
+           ?assert(enacl:sign_verify_detached(StaticSig, StaticMsg, StaticPub))
        end},
 
       {"Enacl secretbox - nonce size",
        fun() ->
-           ?assertEqual(24, enacl:secretbox_nonce_size())
+           ?assertEqual(24, enacl:secretbox_NONCEBYTES())
        end},
 
       {"Enacl secretbox",
@@ -42,7 +42,7 @@ enacl_test_() ->
            Message     = <<"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890">>,
            StaticBox   = <<134,6,79,169,32,80,168,70,37,172,70,94,16,244,105,153,143,4,249,31,152,211,79,38,60,212,83,74,104,88,102,135,73,171,187,174,230,35,71,67,50,133,145,126,180,190,105,181,121,186,165,127,132,102,211,250,75,110,106,174,52,148,98,253,240,181,144,62,141,121,141,79,233,184,236,22,161,76>>,
            Box         = enacl:secretbox(Message, StaticNonce, StaticKey),
-           ?assertEqual(byte_size(StaticNonce), enacl:secretbox_nonce_size()),
+           ?assertEqual(byte_size(StaticNonce), enacl:secretbox_NONCEBYTES()),
            ?assertEqual(Box, StaticBox),
            ?assertMatch({ok, Message}, enacl:secretbox_open(StaticBox, StaticNonce, StaticKey)),
            ok
@@ -62,7 +62,7 @@ enacl_test_() ->
        fun() ->
            StaticData   = <<89,199,79,141,149,221,0,175,13,88,31,208,216,157,234,13,9,170,129,154,135,218,205,203,103,30,239,207,246,240,202,233>>,
            StaticHash32 = <<149,207,37,128,131,108,217,217,85,9,146,49,223,17,139,45,33,83,42,109,201,238,20,21,69,85,230,253,22,32,213,205>>,
-           {ok, Hash32} = enacl:generichash(32, StaticData),
+           Hash32 = enacl:generichash(32, StaticData),
            ?assertEqual(StaticHash32, Hash32)
        end},
 

@@ -540,7 +540,7 @@ p_save_keys(Pwd, PubFile, PubKey, PrivFile, PrivKey) ->
 check_sign_keys(PubKey, PrivKey) ->
     SampleMsg = <<"random message">>,
     Signature = enacl:sign_detached(SampleMsg, PrivKey),
-    {ok, SampleMsg} == enacl:sign_verify_detached(Signature, SampleMsg, PubKey).
+    enacl:sign_verify_detached(Signature, SampleMsg, PubKey).
 
 check_peer_keys(PubKey, PrivKey) ->
     PubKey == enacl:curve25519_scalarmult_base(PrivKey).

@@ -532,8 +532,8 @@ check_signature(AKey, _CKey, Binary, Signature, State) ->
                 basic ->
                     BinaryForNetwork = aec_governance:add_network_id(Binary),
                     case enacl:sign_verify_detached(Signature, BinaryForNetwork, AKey) of
-                       {ok, _}    -> ok;
-                       {error, _} -> {error, signature_check_failed}
+                       true  -> ok;
+                       false -> {error, signature_check_failed}
                     end
             end
     end.

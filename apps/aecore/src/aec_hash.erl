@@ -30,8 +30,7 @@ hash(_ObjType, Bin) when is_binary(Bin) ->
 %%------------------------------------------------------------------------------
 -spec blake2b_256_hash(hashable()) -> hash().
 blake2b_256_hash(Bin) ->
-    {ok, Hash} = enacl:generichash(?HASH_BYTES, Bin),
-    Hash.
+    enacl:generichash(?HASH_BYTES, Bin).
 
 %%------------------------------------------------------------------------------
 %% Calculate the SHA256 hash value of a binary

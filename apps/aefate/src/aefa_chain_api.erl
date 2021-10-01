@@ -365,8 +365,8 @@ check_delegation_signature(Pubkey, Binary, Signature,
                 basic ->
                     BinaryForNetwork = aec_governance:add_network_id(Binary),
                     case enacl:sign_verify_detached(Signature, BinaryForNetwork, Pubkey) of
-                        {ok, _}    -> {ok, State#state{primop_state = PState1}};
-                        {error, _} -> error
+                        true  -> {ok, State#state{primop_state = PState1}};
+                        false -> error
                     end
             end;
         none ->
