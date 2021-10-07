@@ -5869,7 +5869,7 @@ get_channel(ChannelId) ->
 sc_ws_leave_responder_does_not_timeout(Config0) ->
     ct:log("opening channel", []),
     ct:log("Config0 = ~p", [Config0]),
-    IdleTimeout = 1000,
+    IdleTimeout = 5000,
     Config = sc_ws_open_([{slogan, ?SLOGAN}|Config0],
                          #{ responder_opts => #{keep_running => true}
                           , timeout_idle => IdleTimeout}),
