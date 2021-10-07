@@ -469,9 +469,10 @@ start_blocked_second(Config) ->
     0 = Standby,
 
     %% Also check that they have different top blocks
-    B1 = rpc:call(N1, aec_chain, top_block, [], 5000),
-    B2 = rpc:call(N2, aec_chain, top_block, [], 5000),
-    true = (B1 /= B2),
+    {ok, _} =
+        aec_test_utils:wait_for_pred_or_timeout(
+          fun() -> rpc:multicall([N1, N2], aec_chain, top_block, [], 5000) end,
+          fun({[B1, B2], []}) -> B1 =/= B2 end, 5000),
 
     %% Unblock dev2 at dev1 and check that peers sync
     rpc:call(N1, aec_peers, unblock_all, [], 5000),
@@ -707,43 +708,42 @@ expect_same(T0, Config) ->
     expect_same_tx(Nodes).
 
 expect_same_top(Nodes, Tries) when Tries > 0 ->
-    Blocks = lists:map(
-               fun(N) ->
-                       B = rpc:call(N, aec_chain, top_block, [], 5000),
-                       {N, B}
-               end, Nodes),
-    case lists:ukeysort(2, Blocks) of
-        [_] ->
-            ok;
-        [_,_|_] = Dups ->
-            ct:log("Blocks differ, retrying:~n~p", [Dups]),
-            timer:sleep(2000),
-            expect_same_top(Nodes, Tries-1)
-    end;
-expect_same_top(Nodes, _) ->
-    ct:log("tries exhausted", []),
-    erlang:error({top_blocks_differ, Nodes}).
+    Pred = fun(Txs) ->
+                   case lists:usort(Txs) of
+                       [_] -> true;
+                       _   -> false
+                   end
+           end,
+    pred_or_timeout_bool(
+      fun() ->
+              {Bs, []} = rpc:multicall(Nodes, aec_chain, top_block, [], 5000),
+              Bs
+      end, Pred, 5000).
 
 expect_same_tx(Nodes) ->
-    retry(fun() ->
-                  expect_same_tx_(Nodes)
-          end, {?LINE, expect_same_tx, Nodes}).
+    Pred = fun(Txs) ->
+                   case lists:usort(Txs) of
+                       [X] when X =/= error -> true;
+                       _ -> false
+                   end
+           end,
+    pred_or_timeout_bool(
+           fun() ->
+                   {Res, []} =
+                       rpc:multicall(Nodes, aec_tx_pool, peek, [infinity], 5000),
+                   lists:map(
+                     fun({ok, T}) -> T;
+                        (_Other)  -> error
+                     end, Res)
+           end,
+           Pred, 5000).
 
-expect_same_tx_(Nodes) ->
-    Txs = lists:map(
-            fun(N) ->
-                    case rpc:call(N, aec_tx_pool, peek, [infinity], 5000) of
-                        {ok, T} ->
-                            ct:log("Txs (~p): ~p", [N, T]),
-                            T;
-                        Other ->
-                            ct:log("Txs ERROR (~p): ~p", [N, Other]),
-                            error
-                    end
-            end, Nodes),
-    case lists:usort(Txs) of
-        [X] when X =/= error -> true;
-        _ -> false
+pred_or_timeout_bool(Fun, Pred, Timeout) ->
+    case aec_test_utils:wait_for_pred_or_timeout(Fun, Pred, Timeout) of
+        {ok, _} -> true;
+        Other ->
+            ct:log("wait_for_pred_or_timeout failed: ~p", [Other]),
+            false
     end.
 
 large_msgs(Config) ->
@@ -917,8 +917,8 @@ start_with_trusted_peers(Config) ->
                                             ]),
     start_first_node(Config),
     timer:sleep(200),
-    3 = rpc:call(N1, aec_peers, count, [verified], 5000),
-    0 = rpc:call(N1, aec_peers, count, [unverified], 5000),
+    {ok, 3} = expect_val(N1, aec_peers, count, [verified], 3, 5000),
+    {ok, 0} = expect_val(N1, aec_peers, count, [unverified], 0, 5000),
     assert_all_peers(N1, verified, [Peer1, Peer2, Peer3]),
     assert_all_peers(N1, unverified, []),
     aecore_suite_utils:stop_node(Dev1, Config),
@@ -1399,3 +1399,8 @@ start_a_node_with_node_info_and_analytics(Cfg, Node, NodeInfoFlag, AnalyticsFlag
 
 connect(Node) ->
     aecore_suite_utils:connect_wait(Node, aesync).
+
+expect_val(N, M, F, A, Val, Timeout) ->
+    aec_test_utils:wait_for_it_or_timeout(
+      fun() -> rpc:call(N, M, F, A) end,
+      Val, Timeout).
