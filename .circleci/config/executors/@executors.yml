@@ -1,0 +1,57 @@
+infrastructure_container_unstable:
+  docker:
+    - image: aeternity/infrastructure:latest
+  resource_class: large
+
+infrastructure_container_stable:
+  docker:
+    - image: aeternity/infrastructure:stable
+  resource_class: large
+
+builder_container_otp22:
+  docker:
+    - image: aeternity/builder:bionic-otp22
+      user: builder
+  working_directory: /home/builder/aeternity
+  environment:
+    OTP_VERSION: 22.3.4.9
+    ERLANG_ROCKSDB_BUILDOPTS: "-j2"
+    ERLANG_ROCKSDB_OPTS: "-DWITH_SYSTEM_ROCKSDB=ON -DWITH_SNAPPY=ON -DWITH_LZ4=ON -DWITH_BZ2=ON -DWITH_ZSTD=ON"
+
+builder_container_otp23:
+  docker:
+    - image: aeternity/builder:bionic-otp23
+      user: builder
+  working_directory: /home/builder/aeternity
+  environment:
+    OTP_VERSION: 23.3.4.5
+    ERLANG_ROCKSDB_BUILDOPTS: "-j2"
+    ERLANG_ROCKSDB_OPTS: "-DWITH_SYSTEM_ROCKSDB=ON -DWITH_SNAPPY=ON -DWITH_LZ4=ON -DWITH_BZ2=ON -DWITH_ZSTD=ON"
+
+builder_container_nix_alpine:
+  docker:
+    - image: nixorg/nix:circleci
+  working_directory: /home/circleci/aeternity
+  environment:
+    ERLANG_ROCKSDB_BUILDOPTS: "-j2"
+
+builder_container_1804:
+  docker:
+    - image: aeternity/builder:1804
+      user: builder
+  working_directory: /home/builder/aeternity
+
+buildpack:
+  docker:
+    - image: circleci/buildpack-deps:xenial
+  working_directory: /home/circleci/aeternity
+
+machine_1604:
+  resource_class: large
+  machine:
+    image: ubuntu-1604:201903-01
+    docker_layer_caching: true
+  working_directory: /home/circleci/aeternity
+  environment:
+    OTP_VERSION: 22.3.4.9
+    LIBSODIUM_VERSION: "1.0.16"

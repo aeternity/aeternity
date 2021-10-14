@@ -1,0 +1,23 @@
+deploy_env:
+  parameters:
+    env:
+      type: string
+    color:
+      type: string
+      default: ""
+    downtime:
+      type: integer
+      default: 0
+    package_path:
+      type: string
+  steps:
+    - run:
+        name: Deploy
+        command: |
+          export DEPLOY_ENV=<< parameters.env >>
+          export DEPLOY_COLOR=<< parameters.color >>
+          export DEPLOY_DOWNTIME=<< parameters.downtime >>
+          export PACKAGE=<< parameters.package_path >>
+          export DEPLOY_DB_VERSION=$(cat deployment/DB_VERSION)
+
+          cd /infrastructure && make deploy

@@ -1,0 +1,15 @@
+fixed_checkout:
+  steps:
+    - checkout
+    - run:
+        name: Reset to proper SHA1
+        command: |
+          if [ -n "$CIRCLE_TAG" ]; then
+            git reset --hard $(git rev-parse "$CIRCLE_TAG")
+          fi
+
+setup_secrets:
+  steps:
+    - run:
+        name: Setup environment secrets
+        command: cd /infrastructure && make secrets SECRETS_OUTPUT_DIR=/secrets

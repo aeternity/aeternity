@@ -1,0 +1,343 @@
+jobs:
+  - build:
+      name: build-<< matrix.otp >>
+      matrix:
+        parameters:
+          otp: ["otp22", "otp23"]
+      filters:
+        branches:
+          ignore:
+            - env/dev1
+            - env/dev2
+            - system-tests
+
+  - build_nix:
+      filters:
+        branches:
+          only:
+            - << pipeline.parameters.master_branch >>
+
+  - test:
+      matrix:
+        parameters:
+          otp: ["otp22", "otp23"]
+          target:
+            - "ct-roma"
+            - "ct-minerva"
+            - "ct-fortuna"
+            - "ct-lima"
+            - "ct-latest"
+            - "ct-latest-no-aci"
+            - "ct-mnesia-leveled"
+            - "ct-mnesia-rocksdb"
+        exclude:
+          - {otp: "otp23", target: "ct-roma"}
+          - {otp: "otp23", target: "ct-minerva"}
+          - {otp: "otp23", target: "ct-fortuna"}
+          - {otp: "otp23", target: "ct-lima"}
+          - {otp: "otp23", target: "ct-latest-no-aci"}
+          - {otp: "otp23", target: "ct-mnesia-leveled"}
+          - {otp: "otp23", target: "ct-mnesia-rocksdb"}
+      requires:
+        - build-<< matrix.otp >>
+      filters:
+        branches:
+          ignore:
+            - env/dev1
+            - env/dev2
+            - system-tests
+
+  - eunit:
+      matrix:
+        parameters:
+          otp: ["otp22"]
+          target:
+            - "roma"
+            - "minerva"
+            - "fortuna"
+            - "lima"
+            - "latest"
+      requires:
+        - build-<< matrix.otp >>
+      filters:
+        branches:
+          ignore:
+            - env/dev1
+            - env/dev2
+            - system-tests
+
+  - aevm-test:
+      requires:
+        - build-otp22
+      filters:
+        branches:
+          ignore:
+            - env/dev1
+            - env/dev2
+            - system-tests
+
+  - static-analysis:
+      matrix:
+        parameters:
+          otp: ["otp22", "otp23"]
+      requires:
+        - build-<< matrix.otp >>
+      filters:
+        branches:
+          ignore:
+            - env/dev1
+            - env/dev2
+            - system-tests
+
+  - docker-smoke-test:
+      context: ae-node-builds
+      filters:
+        branches:
+          ignore:
+            - env/dev1
+            - env/dev2
+            - system-tests
+            - /releases\/.*/
+            - << pipeline.parameters.master_branch >>
+
+  - docker-system-smoke-test:
+      filters:
+        branches:
+          ignore:
+            - env/dev1
+            - env/dev2
+            - system-tests
+
+  - docker-system-test:
+      filters:
+        branches:
+          only: system-tests
+
+  - docker-js-sdk-smoke-test:
+      context: ae-node-builds
+      requires:
+        - docker-smoke-test
+      filters:
+        branches:
+          ignore:
+            - env/dev1
+            - env/dev2
+            - system-tests
+            - /releases\/.*/
+            - << pipeline.parameters.master_branch >>
+
+  - docker-db-smoke-test:
+      context: ae-node-builds
+      requires:
+        - docker-smoke-test
+      filters:
+        branches:
+          ignore:
+            - env/dev1
+            - env/dev2
+            - system-tests
+            - /releases\/.*/
+            - << pipeline.parameters.master_branch >>
+
+  - js-sdk-smoke-test:
+      requires:
+        - linux-tarball
+      filters:
+        branches:
+          ignore:
+            - env/dev1
+            - env/dev2
+            - system-tests
+
+  - db-smoke-test:
+      requires:
+        - linux-tarball
+      filters:
+        branches:
+          ignore:
+            - env/dev1
+            - env/dev2
+            - system-tests
+
+  - rebar_lock_check:
+      requires:
+        - build-otp22
+      filters:
+        branches:
+          ignore:
+            - env/dev1
+            - env/dev2
+            - system-tests
+
+  - linux-tarball:
+      name: linux-tarball
+      package_name: aeternity-$CIRCLE_SHA1-ubuntu-x86_64.tar.gz
+      filters:
+        branches:
+          ignore:
+            - system-tests
+
+  - linux-tarball:
+      name: linux-tarball-bundle
+      package_name: aeternity-bundle-$CIRCLE_SHA1-ubuntu-x86_64.tar.gz
+      aeplugin_devmode: true
+      filters:
+        branches:
+          ignore:
+            - env/dev1
+            - env/dev2
+            - system-tests
+
+  - ubuntu_package:
+      requires: []
+      filters:
+        branches:
+          only:
+            - /releases\/.*/
+            - << pipeline.parameters.master_branch >>
+
+  - upload-tarballs-s3:
+      name: upload-tarballs-s3
+      bucket: << pipeline.parameters.s3_builds_bucket >>
+      context: ae-node-builds
+      requires:
+        - linux-tarball
+        - linux-tarball-bundle
+      filters:
+        branches:
+          ignore:
+            # Forked pull requests have CIRCLE_BRANCH set to pull/XXX
+            - /pull\/[0-9]+/
+            - env/dev1
+            - env/dev2
+            - system-tests
+
+  - promote-tarball-s3:
+      name: promote-tarball-s3
+      uri: s3://<< pipeline.parameters.s3_builds_bucket >>/aeternity-$CIRCLE_SHA1-ubuntu-x86_64.tar.gz
+      context: ae-node-builds
+      requires:
+        - upload-tarballs-s3
+      filters:
+        branches:
+          only:
+            - /releases\/.*/
+            - << pipeline.parameters.master_branch >>
+
+  - macos-tarball:
+      name: macos-tarball
+      package_name: aeternity-$CIRCLE_SHA1-macos-x86_64.tar.gz
+      requires: []
+      filters:
+        branches:
+          only:
+            - /releases\/.*/
+            - << pipeline.parameters.master_branch >>
+
+  - macos-tarball:
+      name: macos-tarball-bundle
+      package_name: aeternity-bundle-$CIRCLE_SHA1-macos-x86_64.tar.gz
+      aeplugin_devmode: true
+      filters:
+        branches:
+          only:
+            - /releases\/.*/
+            - << pipeline.parameters.master_branch >>
+
+  - publish-build-packages:
+      requires:
+        - ubuntu_package
+      filters:
+        branches:
+          only:
+            - /releases\/.*/
+            - << pipeline.parameters.master_branch >>
+
+  - deploy:
+      name: deploy-integration
+      version: $CIRCLE_SHA1
+      env: integration
+      downtime: 900 #15m
+      context: ae-node-builds
+      requires:
+        - test
+        - eunit
+        - docker-db-smoke-test
+        - db-smoke-test
+        - aevm-test
+        - static-analysis
+        - rebar_lock_check
+        - linux-tarball
+      filters:
+        branches:
+          only: << pipeline.parameters.master_branch >>
+
+  - docker-image:
+      name: docker-image-mainline
+      context: ae-node-builds
+      tag: $CIRCLE_BRANCH
+      requires:
+        - test
+        - eunit
+        - aevm-test
+        - static-analysis
+        - rebar_lock_check
+      filters:
+        branches:
+          only:
+            - << pipeline.parameters.master_branch >>
+
+  - docker-image:
+      name: docker-image-mainline-bundle
+      context: ae-node-builds
+      aeplugin_devmode: true
+      tag: $CIRCLE_BRANCH-bundle
+      requires:
+        - test
+        - eunit
+        - aevm-test
+        - static-analysis
+        - rebar_lock_check
+      filters:
+        branches:
+          only:
+            - << pipeline.parameters.master_branch >>
+
+  - deploy:
+      name: deploy-next
+      version: $CIRCLE_SHA1
+      env: next
+      downtime: 900 #15m
+      context: ae-node-builds
+      requires:
+        - test
+        - eunit
+        - aevm-test
+        - static-analysis
+        - rebar_lock_check
+        - linux-tarball
+      filters:
+        branches:
+          only: << pipeline.parameters.master_branch >>
+
+  - deploy:
+      name: deploy-dev1
+      version: $CIRCLE_SHA1
+      env: dev1
+      context: ae-node-builds
+      requires:
+        - linux-tarball
+      filters:
+        branches:
+          only: env/dev1
+
+  - deploy:
+      name: deploy-dev2
+      version: $CIRCLE_SHA1
+      env: dev2
+      context: ae-node-builds
+      requires:
+        - linux-tarball
+      filters:
+        branches:
+          only: env/dev2

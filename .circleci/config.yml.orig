@@ -1,3 +1,12 @@
+<<<<<<< HEAD
+version: 2.1
+
+parameters:
+  aeplugin_devmode_version:
+    type: string
+    default: "0.3.1"
+
+=======
 commands:
     aeplugin_install_devmode:
         steps:
@@ -579,6 +588,7 @@ commands:
                 command: |
                     envdir /secrets aws s3 sync --acl public-read << pipeline.parameters.packages_workspace >> s3://<< parameters.bucket >>/
                 name: Upload artifacts to s3
+>>>>>>> be6e611ed (Refactor CirleCI config)
 executors:
     builder_container_1804:
         docker:
