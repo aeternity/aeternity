@@ -1137,20 +1137,14 @@ events_contract(Config) ->
 
     force_fun_calls(Node).
 
--define(assertMatchVM(AEVM, FATE, Res),
-    case ?IS_AEVM_SOPHIA(aect_test_utils:vm_version()) of
-        true  -> ?assertMatch(AEVM, Res);
-        false -> ?assertMatch(FATE, Res)
-    end).
-
 -define(assertMatchVM(ExpVm1, ExpVm2, ExpVm3, ExpVm4, ExpFate1, ExpFate2, Res),
     case aect_test_utils:vm_version() of
         ?VM_AEVM_SOPHIA_1 -> ?assertMatch(ExpVm1, Res);
         ?VM_AEVM_SOPHIA_2 -> ?assertMatch(ExpVm2, Res);
         ?VM_AEVM_SOPHIA_3 -> ?assertMatch(ExpVm3, Res);
         ?VM_AEVM_SOPHIA_4 -> ?assertMatch(ExpVm4, Res);
-        ?VM_FATE_SOPHIA_1 -> ?assertMatch(ExpFate, Res);
-        ?VM_FATE_SOPHIA_2 -> ?assertMatch(ExpFate, Res)
+        ?VM_FATE_SOPHIA_1 -> ?assertMatch(ExpFate1, Res);
+        ?VM_FATE_SOPHIA_2 -> ?assertMatch(ExpFate2, Res)
     end).
 
 remote_gas_test_contract(Config) ->
@@ -1176,7 +1170,7 @@ remote_gas_test_contract(Config) ->
     call_get(APub, APriv, EncC2Pub, Contract, 100),
     force_fun_calls(Node),
     Balance1 = get_balance(APub),
-    ?assertMatchVM(1600596, 1600596, 1600596, 1600916, 1600022, 1600024, (Balance0 - Balance1) div ?DEFAULT_GAS_PRICE),
+    ?assertMatchVM(1600596, 1600596, 1600596, 1600916, 1600022, 1604028, (Balance0 - Balance1) div ?DEFAULT_GAS_PRICE),
 
     %% Test remote call with limited gas
     %% Call contract remote set function with limited gas
@@ -1184,7 +1178,7 @@ remote_gas_test_contract(Config) ->
     call_get(APub, APriv, EncC2Pub, Contract, 1),
     force_fun_calls(Node),
     Balance2 = get_balance(APub),
-    ?assertMatchVM(1610855, 1610855, 1610855, 1611335, 1600231, 1600231, (Balance1 - Balance2) div ?DEFAULT_GAS_PRICE),
+    ?assertMatchVM(1610855, 1610855, 1610855, 1611335, 1600231, 1609144, (Balance1 - Balance2) div ?DEFAULT_GAS_PRICE),
 
     %% Test remote call with limited gas (3) that fails (out of gas).
     [] = call_func(APub, APriv, EncC1Pub, Contract, "call", [EncC2Pub, "2", "3"], error),

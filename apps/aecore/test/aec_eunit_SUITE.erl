@@ -164,7 +164,7 @@ prepare_app_start_(App, Config) ->
 app_stop(Apps0, TempDir) ->
     Apps = lists:reverse(Apps0),
     ct:log("app_stop: ~p", [Apps]),
-    [ {ok,A} = {application:stop(App),App} || App <- Apps ],
+    [ {ok,_A} = {application:stop(App),App} || App <- Apps ],
     aec_test_utils:remove_temp_key_dir(TempDir),
     ok.
 

@@ -85,7 +85,7 @@ abort_large_insertion(Config) ->
     true = aec_blocks:is_key_block(KB0),
     Fee = 1500000 * aec_test_utils:min_gas_price(),
     TxOk = [element(1, create_spend_tx(10, Fee, Nonce, 100, PK)) || {Nonce, PK} <- lists:zip(lists:seq(1, length(Accounts)), Accounts)],
-    {MB0, Trees1} = rpc:call(N, aec_block_micro_candidate, create_with_state, [KB0, KB0, TxOk, Trees0]),
+    {MB0, _Trees1} = rpc:call(N, aec_block_micro_candidate, create_with_state, [KB0, KB0, TxOk, Trees0]),
     %% MB0 is now valid - let's add one more TX to ensure its not valid but will process the transactions
     {BadTx, _} = create_spend_tx(10, Fee, 2, 100, hd(Accounts)), %% It's not valid as the nonce is reused
     Txs = TxOk ++ [BadTx],

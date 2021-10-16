@@ -20,9 +20,6 @@ dereference_test() ->
     ?assertMatch({C1, Code1}, aect_state_tree:get_contract_with_code(aect_contracts:pubkey(C1), T3)),
     ?assertMatch({C2, Code0}, aect_state_tree:get_contract_with_code(aect_contracts:pubkey(C2), T3)).
 
-new_contract() ->
-    new_contract(#{}).
-
 new_contract(Override) ->
     Map = #{ owner_id    => aeser_id:create(account, <<4711:32/unit:8>>)
            , nonce       => 42

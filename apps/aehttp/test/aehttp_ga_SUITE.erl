@@ -340,8 +340,7 @@ meta_spend(Config) ->
 
 meta_oracle_register(Config) ->
     %% Get account information.
-    #{acc_a := #{pub_key := APub, priv_key := APriv},
-      acc_b := #{pub_key := BPub}} = proplists:get_value(accounts, Config),
+    #{acc_a := #{pub_key := APub, priv_key := APriv}} = proplists:get_value(accounts, Config),
     MGP = aec_test_utils:min_gas_price(),
 
     InnerTx = aeo_test_utils:register_tx(APub, #{}),

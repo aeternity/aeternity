@@ -474,12 +474,10 @@ end_per_group(Group, Config) ->
                                       responder_is_ga, both_are_ga]) of
                 true ->
                     ok;
-                    %%_Config1 = stop_node(dev1, Config);
                 false -> pass
             end;
         false ->
             ok
-            %%_Config1 = stop_node(dev1, Config)
     end,
     ok.
 
@@ -505,10 +503,6 @@ init_per_testcase(_, Config) ->
 end_per_testcase(_Case, _Config) ->
     bump_idx(),
     ok.
-
-stop_node(N, Config) ->
-    aecore_suite_utils:stop_node(N, Config),
-    Config.
 
 %%%===================================================================
 %%% Test state
@@ -3956,34 +3950,6 @@ reestablish_(Info, SignedTx, Port, Debug) ->
     % Done
     Info#{i => I4, r => R4, spec => Spec}.
 
-reestablish_wrong_fsm_id(Info, SignedTx, Port, Debug) ->
-    assert_empty_msgq(Debug),
-    #{ i := #{ channel_id := ChId
-             , initiator_amount := IAmt
-             , responder_amount := RAmt } = I0
-     , r := #{ initiator_amount := IAmt
-             , responder_amount := RAmt } = R0
-     , spec := Spec0
-     } = Info,
-
-    Spec = Spec0#{ existing_channel_id => ChId
-                 , offchain_tx => SignedTx
-                 , initiator_amount => IAmt
-                 , responder_amount => RAmt
-                 },
-
-    % Fail to start new FSMs
-    BogusFsmId1 = aesc_fsm_id:retrieve(aesc_fsm_id:new()),
-    BogusFsmId2 = aesc_fsm_id:retrieve(aesc_fsm_id:new()),
-    ISpec = move_fsm_id_to_spec(I0#{fsm_id => BogusFsmId1}, Spec),
-    RSpec = move_fsm_id_to_spec(R0#{fsm_id => BogusFsmId2}, Spec),
-    {error, invalid_fsm_id} = rpc(dev1, aesc_client, respond, [Port, RSpec]),
-    {error, invalid_fsm_id} = rpc(dev1, aesc_client, initiate, ["localhost", Port, ISpec], Debug),
-
-    % Done
-    assert_empty_msgq(Debug),
-    Info#{spec => Spec}.
-
 withdraw_full_cycle_(Amount, Opts, Round, Cfg) ->
     Debug = get_debug(Cfg),
     #{ i := #{} = I
@@ -4336,7 +4302,7 @@ extract_nonce_from_btc_auth_store(Store) ->
             {ok, {Nonce, _}} = aeb_heap:from_binary({tuple, [word, {tuple, [word, word]}]},
                                                     EncodedHeap),
             Nonce;
-        #{<<0, 1>> := FateValue} = X ->
+        #{<<0, 1>> := FateValue} ->
             aeb_fate_encoding:deserialize(FateValue)
     end.
 
@@ -5737,11 +5703,11 @@ missing_malicious_close(Cfg0) ->
     ok = rpc(dev1, aec_tx_pool, push, [SignedCloseSoloTx]),
     TxHash = aeser_api_encoder:encode(tx_hash, aetx_sign:hash(SignedCloseSoloTx)),
     mine_blocks_until_txs_on_chain(dev1, [TxHash]),
-    SlashTx = await_on_chain_report(R2, #{info => can_slash}, ?TIMEOUT),
+    _SlashTx = await_on_chain_report(R2, #{info => can_slash}, ?TIMEOUT),
     {ok,_} = receive_from_fsm(info, R2, fun closing/1, ?TIMEOUT, Debug),
     %% reestablish initiator
     Info = #{i => I3, r => R2, spec => Spec},
-    #{i := #{fsm_id := _IFsmId1} = I4, r := #{fsm_id := _RFsmId1} = R3} =
+    #{i := #{fsm_id := _IFsmId1} = I4, r := #{fsm_id := _RFsmId1}} =
         reestablish_(Info, SignedTx, ?PORT, Debug),
     SignedCloseSoloTx = await_on_chain_report(I4, #{info => can_slash}, ?TIMEOUT),
     assert_empty_msgq(Debug),
@@ -6058,7 +6024,7 @@ snapshot_and_conflict(Cfg) ->
 
 force_progress_and_conflict(Cfg) ->
     Debug = get_debug(Cfg),
-    #{ i := #{fsm := FsmI} = I
+    #{ i := #{fsm := _FsmI} = I
      , r := #{fsm := FsmR} = R
      , spec := #{ initiator := PubI
                 , responder := PubR }} = create_channel_([?SLOGAN|Cfg]),

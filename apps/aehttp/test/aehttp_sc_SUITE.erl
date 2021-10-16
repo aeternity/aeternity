@@ -1103,7 +1103,7 @@ channel_conflict(#{initiator := IConnPid, responder :=RConnPid},
     ok = ?WS:register_test_for_channel_events(RConnPid, [sign, error, conflict]),
 
     SignUpdate =
-        fun TrySignUpdate(ConnPid, Privkey, EncSignedTx0, Method) ->
+        fun(ConnPid, Privkey, EncSignedTx0, Method) ->
                 {ok, SignedBinTx} =
                     aeser_api_encoder:safe_decode(transaction, EncSignedTx0),
                 STx = aetx_sign:deserialize_from_binary(SignedBinTx),
@@ -3595,11 +3595,6 @@ withdraw_params(Amount) ->
      #{amount => Amount},
      <<"withdraw_tx">>}.
 
-snapshot_params() ->
-    {<<"channels.snapshot_solo">>,
-     #{},
-     <<"snapshot_solo_tx">>}.
-
 sc_ws_conflict_(StarterAction, AckAction, Config) ->
     Participants = proplists:get_value(participants, Config),
     ChannelClients = proplists:get_value(channel_clients, Config),
@@ -5873,8 +5868,7 @@ sc_ws_leave_responder_does_not_timeout(Config0) ->
     Config = sc_ws_open_([{slogan, ?SLOGAN}|Config0],
                          #{ responder_opts => #{keep_running => true}
                           , timeout_idle => IdleTimeout}),
-    #{ responder_fsm_id := RFsmId
-     , responder        := RConnPid } = proplists:get_value(channel_clients, Config),
+    #{ responder := RConnPid } = proplists:get_value(channel_clients, Config),
     ct:log("channel opened", []),
     ct:log("Config = ~p", [Config]),
     ct:log("*** Leaving channel ***", []),

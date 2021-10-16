@@ -5490,9 +5490,6 @@ test_delegate_not_allowed(Cfg, Fun, InitProps, Err) ->
         negative(Fun, {error, Err})]),
     ok.
 
-test_delegate_allowed(Cfg, Fun) ->
-    test_delegate_allowed(Cfg, Fun, #{}).
-
 test_delegate_allowed(Cfg, Fun, InitProps) ->
     Height = 100,
     run(InitProps#{ cfg => Cfg

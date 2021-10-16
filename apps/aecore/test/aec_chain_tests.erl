@@ -133,10 +133,6 @@ out_of_order_test_() ->
         fun out_of_order_test_block_chain/0}
      ]}.
 
-restart_chain_db() ->
-    aec_test_utils:stop_chain_db(),
-    aec_test_utils:start_chain_db().
-
 out_of_order_test_block_chain() ->
     %% Create a chain with both key and micro blocks
     #{ public := PubKey, secret := PrivKey } = enacl:sign_keypair(),

@@ -526,7 +526,7 @@ make_microblock_attempts(Cnt, _Config) ->
 
 attempt_microblock(NodeName) ->
     TopHash = rpc:call(NodeName, aec_chain, top_block_hash, []),
-    {ok, MicroBlock, _} = rpc:call(NodeName, aec_block_micro_candidate,
+    {ok, _MicroBlock, _} = rpc:call(NodeName, aec_block_micro_candidate,
                                    create, [TopHash]),
     ok.
 
