@@ -29,7 +29,8 @@
 -export([check_config/1, check_config/2]).
 
 -export([update_config/1,
-         update_config/2]).
+         update_config/2,
+         update_config/3]).
 
 -type basic_type() :: number() | binary() | boolean().
 -type basic_or_list()  :: basic_type() | [basic_type()].
@@ -584,10 +585,13 @@ lst(E) -> [E].
 update_config(Map) when is_map(Map) ->
     update_config(Map, _Notify = true).
 
-update_config(Map, Notify) when is_map(Map), is_boolean(Notify) ->
+update_config(Map, Notify) ->
+    update_config(Map, Notify, report).
+
+update_config(Map, Notify, Mode) when is_map(Map), is_boolean(Notify) ->
     Schema = application:get_env(aeutils, '$schema', #{}),
     ConfigMap = application:get_env(aeutils, '$user_map', #{}),
-    ConfigMap1 = update_config(Map, ConfigMap, Schema),
+    ConfigMap1 = update_config(Map, ConfigMap, Schema, Mode),
     cache_config(ConfigMap1),
     if Notify ->
             notify_update_config(Map);
@@ -599,9 +603,10 @@ update_config(Map, Notify) when is_map(Map), is_boolean(Notify) ->
 notify_update_config(Map) ->
     aec_events:publish(update_config, Map).
 
-update_config(Map, ConfigMap, Schema) ->
+update_config(Map, ConfigMap, Schema, Mode) when Mode =:= silent;
+                                                 Mode =:= report ->
     check_validation([jesse:validate_with_schema(Schema, Map, [])],
-                     [Map], update_config, report),
+                     [Map], update_config, Mode),
     NewConfig = update_map(Map, ConfigMap),
     NewConfig.
 

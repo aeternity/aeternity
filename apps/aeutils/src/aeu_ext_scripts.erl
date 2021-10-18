@@ -67,9 +67,7 @@ tidy_script_name(N) ->
     end.
 
 usage(Error, Spec, Opts) ->
-    io:fwrite(standard_error, format_error(Spec, Error), []),
-    Help = argparse:help(remove_nodekeys(Spec), Opts),
-    io:put_chars(Help),
+    io:fwrite(standard_error, format_error(remove_nodekeys(Spec), Error, Opts), []),
     halt(1).
 
 remove_nodekeys(#{arguments := Args} = Spec) ->
@@ -183,12 +181,12 @@ connect_and_ping(Node) ->
             NotResp()
     end.
 
-format_error(_Spec, {?MODULE, no_name_or_sname}) ->
+format_error(_Spec, {?MODULE, no_name_or_sname}, _) ->
     "Either -sname or -name option required~n";
-format_error(_Spec, {?MODULE, both_sname_and_name}) ->
+format_error(_Spec, {?MODULE, both_sname_and_name}, _) ->
     "Cannot have both -sname and -name~n";
-format_error(_Spec, Error) ->
-    argparse:format_error(Error).
+format_error(Spec, Error, Opts) ->
+    argparse:format_error(Error, Spec, Opts).
 
 append_node_suffix(Name, Suffix) ->
     case re:split(Name, "@", [{return, list}, unicode]) of

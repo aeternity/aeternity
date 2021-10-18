@@ -11,6 +11,7 @@
 -module(aec_tx_pool).
 
 -behaviour(gen_server).
+-compile({no_auto_import, [size/1]}).
 
 -define(MEMPOOL, mempool).
 -define(MEMPOOL_VISITED, mempool_visited).
@@ -44,10 +45,13 @@
         , push/1
         , push/2
         , push/3
+        , force_push/2
         , size/0
+        , size/1
         , top_change/1
         , dbs/0
         , delete/1
+        , inspect/1
         , failed_txs/1
         ]).
 
@@ -189,10 +193,13 @@ push(Tx, Event = tx_received, Timeout) ->
         true ->
             ok;
         false ->
-            aec_jobs_queues:run(tx_pool_push, fun() -> push_(Tx, TxHash, Event, Timeout) end)
+            aec_jobs_queues:run(tx_pool_push, fun() -> push_(Tx, TxHash, Event, Timeout, false) end)
     end;
 push(Tx, Event = tx_created, Timeout) ->
-    push_(Tx, safe_tx_hash(Tx), Event, Timeout).
+    push_(Tx, safe_tx_hash(Tx), Event, Timeout, false).
+
+force_push(Tx, Timeout) ->
+    push_(Tx, safe_tx_hash(Tx), tx_created, Timeout, true).
 
 safe_tx_hash(Tx) ->
     try aetx_sign:hash(Tx)
@@ -201,19 +208,31 @@ safe_tx_hash(Tx) ->
             error({illegal_transaction, Tx})
     end.
 
-push_(Tx, TxHash, Event, Timeout) ->
-    case check_pool_db_put(Tx, TxHash, Event) of
-        ignore ->
-            incr([push, ignore]),
-            ok;
-        {error,_} = E ->
-            incr([push, error]),
-            E;
-        ok ->
+push_(Tx, TxHash, Event, Timeout, Forced) ->
+    Push =
+        fun() ->
             incr([push]),
             Res = gen_server:call(?SERVER, {push, Tx, TxHash, Event}, Timeout),
             instant_tx_confirm_hook(TxHash),
             Res
+        end,
+    case Forced of
+        true -> Push();
+        false ->
+            case check_pool_db_put(Tx, TxHash, Event) of
+                ignore ->
+                    incr([push, ignore]),
+                    %% this should probably be an error?
+                    ok;
+                {error,_} = E ->
+                    incr([push, error]),
+                    E;
+                ok ->
+                    incr([push]),
+                    Res = gen_server:call(?SERVER, {push, Tx, TxHash, Event}, Timeout),
+                    instant_tx_confirm_hook(TxHash),
+                    Res
+            end
     end.
 
 instant_tx_confirm_hook(_) -> ok.
@@ -277,6 +296,21 @@ peek(MaxN, Account) when is_integer(MaxN), MaxN >= 0; MaxN =:= infinity ->
 delete(TxHash) ->
     gen_server:call(?SERVER, {delete, TxHash}).
 
+-spec inspect(binary()) -> {ok, Failures :: non_neg_integer(), Visited :: boolean(), TTL :: non_neg_integer()} 
+                           | {error, not_found | already_accepted}.
+inspect(TxHash) ->
+    case gen_server:call(?SERVER, {failures_cnt, TxHash}) of
+        {error, _} = Err -> Err;
+        {ok, Failures, Visited} ->
+            Dbs = dbs(),
+            case aec_tx_pool_gc:ttl(TxHash, Dbs) of
+                {error, not_found} -> %% just GCed
+                    {error, not_found};
+                {ok, TTL} ->
+                    {ok, Failures, Visited, TTL}
+            end
+    end.
+
 -spec failed_txs([{aetx_sign:signed_tx(), atom()}]) -> ok.
 failed_txs(FailedTxs) ->
     gen_server:call(?SERVER, {failed_txs, FailedTxs}).
@@ -297,10 +331,15 @@ top_change(#{type := Type} = Info)
   when Type==key; Type==micro ->
     gen_server:call(?SERVER, {top_change, Info}, ?LONG_CALL_TIMEOUT).
 
--spec size() -> non_neg_integer() | undefined.
+-spec size() -> non_neg_integer().
 size() ->
-    ensure_num(ets:info(?MEMPOOL, size))
-        + ensure_num(ets:info(?MEMPOOL_VISITED, size)).
+    size(not_visited) + size(visited).
+
+-spec size(visited | not_visited) -> non_neg_integer().
+size(not_visited) ->
+    ensure_num(ets:info(?MEMPOOL, size));
+size(visited) ->
+    ensure_num(ets:info(?MEMPOOL_VISITED, size)).
 
 ensure_num(undefined) -> 0;
 ensure_num(N) when is_integer(N) -> N.
@@ -383,6 +422,27 @@ handle_call_({delete, TxHash}, _From, #state{dbs = Dbs} = State) ->
                 aec_tx_pool_gc:delete_hash(GCDb, TxHash),
                 aec_db:remove_tx_from_mempool(TxHash),
                 ok;
+            none -> {error, not_found}
+        end,
+    {reply, Res, State};
+handle_call_({failures_cnt, TxHash}, _From, #state{dbs = Dbs} = State) ->
+    Res =
+        case aec_chain:find_tx_with_location(TxHash) of
+            {BlockHash, _} when is_binary(BlockHash) ->
+                {error, already_accepted};
+            {mempool, Tx} ->
+                Key = pool_db_key(Tx),
+                #dbs{db = Db, visited_db = VisitedDb} = Dbs,
+                case ets:lookup(Db, Key) of
+                    [{Key, #tx{failures = Failures}}] ->
+                        {ok, Failures, false};
+                    [] ->
+                        case ets:lookup(VisitedDb, Key) of
+                            [{Key, #tx{failures = Failures}}] ->
+                                {ok, Failures, true};
+                            [] -> {error, not_found} %% there could be a race with GC
+                        end
+                end;
             none -> {error, not_found}
         end,
     {reply, Res, State};
