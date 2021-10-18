@@ -45,6 +45,7 @@
                 mining_opts             = #{}     :: mining_opts(),
                 top_block_hash                    :: binary() | 'undefined',
                 top_key_block_hash                :: binary() | 'undefined',
+                top_height                        :: aec_blocks:height(),
                 workers                 = []      :: workers(),
                 miner_instances         = []      :: miner_instances(),
                 consensus                         :: #consensus{},

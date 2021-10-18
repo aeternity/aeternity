@@ -243,11 +243,17 @@ init(Options) ->
                           , leader = false
                           , consensus_module = ConsensusModule },
 
-    TopBlockHash = aec_chain:top_block_hash(),
-    TopKeyBlockHash = aec_chain:top_key_block_hash(),
+    {TopBlockHash, TopKeyBlockHash, TopHeight} =
+        aec_db:ensure_transaction(
+          fun() ->
+                  {aec_chain:top_block_hash(),
+                   aec_chain:top_key_block_hash(),
+                   aec_chain:top_height()}
+          end),
 
     State1 = #state{ top_block_hash     = TopBlockHash,
                      top_key_block_hash = TopKeyBlockHash,
+                     top_height         = TopHeight,
                      consensus          = Consensus},
     State2 = set_option(autostart, Options, State1),
     State3 = set_option(strictly_follow_top, Options, State2),
@@ -312,11 +318,13 @@ reinit_chain_impl(State1 = #state{ consensus = #consensus{consensus_module = Act
     TopBlockHash = aec_chain:top_block_hash(),
     TopKeyBlockHash = aec_chain:top_key_block_hash(),
     {ok, TopHeader} = aec_chain:get_header(TopBlockHash),
+    TopHeight = aec_headers:height(TopHeader),
     ConsensusModule = aec_headers:consensus_module(TopHeader),
     ConsensusConfig = aec_consensus:get_consensus_config_at_height(aec_headers:height(TopHeader)),
     ConsensusModule:start(ConsensusConfig), %% Might do nothing or it might spawn a genserver :P
     State2 = State1#state{top_block_hash = TopBlockHash,
-                          top_key_block_hash = TopKeyBlockHash},
+                          top_key_block_hash = TopKeyBlockHash,
+                          top_height = TopHeight},
     Cons1 = Cons#consensus{consensus_module = ConsensusModule},
     epoch_mining:info("Mining stopped"),
     State3 = kill_all_workers(State2),
@@ -787,19 +795,26 @@ deregister_miner_instance(Pid, #state{miner_instances = MinerInstances0} = State
 %%% Preemption of workers if the top of the chain changes.
 
 preempt_on_new_top(#state{ top_block_hash = OldHash,
-                           top_key_block_hash = OldKeyHash } = State, NewBlock, NewHash, Origin) ->
+                           top_key_block_hash = OldKeyHash,
+                           top_height = OldHeight } = State, NewBlock, NewHash, Origin) ->
     BlockType = aec_blocks:type(NewBlock),
     PrevNewHash = aec_blocks:prev_hash(NewBlock),
-    aec_tx_pool:top_change(BlockType, OldHash, NewHash, PrevNewHash),
     Hdr = aec_blocks:to_header(NewBlock),
     Height = aec_headers:height(Hdr),
+    aec_tx_pool:top_change(#{type => BlockType,
+                             old_hash => OldHash,
+                             new_hash => NewHash,
+                             old_height => OldHeight,
+                             new_height => Height,
+                             prev_new_hash => PrevNewHash}),
     aec_events:publish(top_changed, #{ block_hash => NewHash
                                      , block_type => BlockType
                                      , prev_hash  => aec_headers:prev_hash(Hdr)
                                      , height     => Height }),
     maybe_publish_top(Origin, NewBlock),
     aec_metrics:try_update([ae,epoch,aecore,chain,height], Height),
-    State1 = State#state{top_block_hash = NewHash},
+    State1 = State#state{top_block_hash = NewHash,
+                         top_height = Height},
     KeyHash = aec_blocks:prev_key_hash(NewBlock),
     %% A new micro block from the same generation should
     %% not cause a pre-emption or full re-generation of key-block.

@@ -139,12 +139,22 @@ do_rollback_(ForkPoint, Height, TopHeight) ->
                   Del = element(2, T),
                   ok = mnesia:delete(aec_headers, Del, write),
                   ok = mnesia:delete(aec_blocks, Del, write),
-                  ok = mnesia:delete(aec_block_state, Del, write)
+                  ok = mnesia:delete(aec_block_state, Del, write),
+                  ok = remove_tx_locations(Del)
               end || T <- mnesia:index_read(aec_headers, H, height)]
          end || H <- lists:seq(Height+1, TopHeight+SafetyMargin)],
         aec_db:write_top_block_node(ForkPoint, FPHeader)
       end),
     ok.
+
+remove_tx_locations(Hash) ->
+    case aec_db:find_block_tx_hashes(Hash) of
+        none ->
+            ok;
+        {value, TxHashes} ->
+            [aec_db:remove_tx_location(TxHash) || TxHash <- TxHashes],
+            ok
+    end.
 
 ensure_gc_disabled() ->
     case aec_db_gc:config() of

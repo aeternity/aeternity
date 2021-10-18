@@ -156,8 +156,13 @@ init_per_group(two_nodes, Config) ->
     [{nodes, [aecore_suite_utils:node_tuple(dev1),
               aecore_suite_utils:node_tuple(dev2)]} | Config];
 init_per_group(three_nodes, Config) ->
-    [{nodes, [aecore_suite_utils:node_tuple(D) ||
-                 D <- [dev1, dev2, dev3]]} | Config];
+    Nodes = [aecore_suite_utils:node_tuple(D) ||
+                D <- [dev1, dev2, dev3]],
+    Config1 = [{nodes, Nodes} | Config],
+    %% We will add a third node. Note the starting height for the
+    %% two first nodes, once synced.
+    {ok, Height} = ensure_nodes_synced([dev1, dev2], Config1),
+    [{three_nodes_initial_height, Height} | Config1];
 init_per_group(orphaned_txs_get_included, Config) ->
     [{nodes, [aecore_suite_utils:node_tuple(D) ||
                  D <- [dev1, dev2]]} | Config];
@@ -207,6 +212,20 @@ add_dev3_node(Config) ->
     %% Nodes are all in sync
     ok = stop_and_check([dev1, dev2, dev3], Config),
     ok.
+
+ensure_nodes_synced(Nodes, Config) ->
+    NodeNames = [aecore_suite_utils:node_name(N) || N <- Nodes],
+    T0 = os:timestamp(),
+    lists:foreach(
+      fun(N) ->
+              aecore_suite_utils:start_node(N, Config),
+              aecore_suite_utils:connect(aecore_suite_utils:node_name(N))
+      end, Nodes),
+    done = aecore_suite_utils:await_sync_complete(T0, NodeNames),
+    {TopHeights, []} = rpc:multicall(NodeNames, aec_chain, top_height, [], 5000),
+    [_] = lists:usort(TopHeights),
+    ok = stop_and_check(Nodes, Config),
+    {ok, hd(TopHeights)}.
 
 dev3_failed_attack(Config) ->
     [N1, N2, N3] = [aecore_suite_utils:node_name(D) || D <- [dev1, dev2, dev3]],
@@ -306,6 +325,7 @@ whitelist_and_rollback(Config) ->
     %% Start dev1 to produce a whitelist
     %%
     [N1, N2, _N3] = [aecore_suite_utils:node_name(N) || N <- [dev1, dev2, dev3]],
+    InitialHeight = ?config(three_nodes_initial_height, Config),
     aecore_suite_utils:start_node(dev1, Config),
     aecore_suite_utils:connect(N1),
     N1Top = rpc:call(N1, aec_chain, top_height, []),
@@ -354,6 +374,7 @@ whitelist_and_rollback(Config) ->
     %%
     N2Top2 = rpc:call(N2, aec_chain, top_height, []),
     ct:log("N2Top2 = ~p", [N2Top2]),
+    ?assertEqual(N2Top2, InitialHeight),
     ok = stop_and_check([dev2], Config).
 
 stop_and_check(Ns, Config) ->
