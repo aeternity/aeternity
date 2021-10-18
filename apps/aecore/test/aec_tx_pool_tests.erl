@@ -141,7 +141,8 @@ tx_pool_test_() ->
             {ok, Candidate1} = aec_keys:sign_micro_block(USCandidate1),
             {ok, CHash1} = aec_blocks:hash_internal_representation(Candidate1),
             {ok,_} = aec_chain_state:insert_block(Candidate1),
-            aec_tx_pool:top_change(micro, TopBlockHash, CHash1),
+            aec_tx_pool:top_change(#{type => micro, old_hash => TopBlockHash,
+                                     new_hash => CHash1}),
 
             ?assertMatch({ok, [_]}, aec_tx_pool:peek(infinity)), %% nonoce=5 still in mempool
 
@@ -189,7 +190,8 @@ tx_pool_test_() ->
             {ok, Candidate1} = aec_keys:sign_micro_block(USCandidate1),
             {ok, CHash1} = aec_blocks:hash_internal_representation(Candidate1),
             {ok,_} = aec_chain_state:insert_block(Candidate1),
-            aec_tx_pool:top_change(micro, TopBlockHash, CHash1),
+            aec_tx_pool:top_change(#{type => micro, old_hash => TopBlockHash,
+                                     new_hash => CHash1}),
 
             ?assertMatch({ok, [_, _, _, _]}, aec_tx_pool:peek(infinity)),
 
@@ -279,7 +281,8 @@ tx_pool_test_() ->
                ?assertEqual([], aec_tx_pool:peek_db()),
                ?assertMatch([_,_,_,_], aec_tx_pool:peek_visited()),
 
-               aec_tx_pool:top_change(micro, KeyHash, MicroHash),
+               aec_tx_pool:top_change(#{type => micro, old_hash => KeyHash,
+                                        new_hash => MicroHash}),
 
                %% Invalid Txs1_2 tx is still in the pool
                ?assertEqual([], aec_tx_pool:peek_db()),
@@ -356,7 +359,8 @@ tx_pool_test_() ->
                ?assertEqual(lists:sort(Included), lists:sort([STx1, STx2])),
 
                %% Ping tx_pool for top change
-               aec_tx_pool:top_change(micro, TopBlockHash, CHash1),
+               aec_tx_pool:top_change(#{type => micro, old_hash => TopBlockHash,
+                                        new_hash => CHash1}),
 
                %% The mempool should now be empty
                ?assertEqual({ok, []}, aec_tx_pool:peek(infinity)),
@@ -390,7 +394,8 @@ tx_pool_test_() ->
                %% Push the keyblock with the longest chain of micro blocks
                {ok,_} = aec_chain_state:insert_block(KeyBlock3),
                ?assertEqual(CHashFork2, aec_chain:top_block_hash()),
-               aec_tx_pool:top_change(key, CHash1, CHashFork2),
+               aec_tx_pool:top_change(#{type => key, old_hash => CHash1,
+                                        new_hash => CHashFork2}),
                %% The mempool should now be empty
                ?assertEqual({ok, []}, aec_tx_pool:peek(infinity)),
 
@@ -406,7 +411,8 @@ tx_pool_test_() ->
                ?assertEqual(CHashFork1, aec_chain:top_block_hash()),
 
                %% Ping tx_pool for top change
-               aec_tx_pool:top_change(key, CHashFork2, CHashFork1),
+               aec_tx_pool:top_change(#{type => key, old_hash => CHashFork2,
+                                        new_hash => CHashFork1}),
 
                %% The not included transaction should now be back in the pool
                ?assertEqual({ok, [STx4]}, aec_tx_pool:peek(infinity)),
@@ -485,6 +491,7 @@ tx_pool_test_() ->
                PK = new_pubkey(),
                MaxGas = aec_governance:block_gas_limit(),
                TopBlockHash = aec_chain:top_block_hash(),
+               TopHeight = aec_chain:top_height(),
                STx1 = a_signed_tx(PK, me, Nonce1=1, _Fee1=20000),
                ?assertEqual(ok, aec_tx_pool:push(STx1)),
                ?assertEqual([], aec_tx_pool:peek_visited()),
@@ -496,7 +503,8 @@ tx_pool_test_() ->
                ?assertEqual([], aec_tx_pool:peek_db()),
                ?assertEqual(Size, aec_tx_pool:size()),
                %% a 'key' top_change should restore visited to the mempool
-               aec_tx_pool:top_change(key, TopBlockHash, TopBlockHash),
+               aec_tx_pool:top_change(#{type => key, old_hash => TopBlockHash,
+                                        new_hash => TopBlockHash}),
                ?assertEqual([], aec_tx_pool:peek_visited()),
                ?assertEqual([STx1], aec_tx_pool:peek_db()),
                ?assertEqual(Size, aec_tx_pool:size())
@@ -844,7 +852,8 @@ tx_pool_test_() ->
                {ok, Top} = aec_blocks:hash_internal_representation(Candidate1),
                {ok,_} = aec_chain_state:insert_block(Candidate1),
                ?assertEqual(Top, aec_chain:top_block_hash()),
-               aec_tx_pool:top_change(micro, KeyHash1, Top),
+               aec_tx_pool:top_change(#{type => micro, old_hash => KeyHash1,
+                                        new_hash => Top}),
 
                %% Post more transactions from the same origin
                STx41 = a_signed_tx(PubKey, PubKey, 4, 20000),

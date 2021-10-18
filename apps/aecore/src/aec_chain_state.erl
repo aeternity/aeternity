@@ -367,7 +367,7 @@ new_state_from_persistence() ->
 persist_state(OldState, NewState) ->
     case {get_top_block_hash(OldState), get_top_block_hash(NewState)} of
         {TH, TH} -> false;
-        {_, TopBlockHash} ->
+        {_, _TopBlockHash} ->
             Node = get_top_block_node(NewState),
             db_write_top_block_node(Node),
             maybe_set_finalized_height(NewState),

@@ -45,8 +45,7 @@
         , push/2
         , push/3
         , size/0
-        , top_change/3
-        , top_change/4
+        , top_change/1
         , dbs/0
         , delete/1
         , failed_txs/1
@@ -92,7 +91,8 @@
              , origins_cache/0
              , pool_db/0
              , pool_db_key/0
-             , tx_hash/0]).
+             , tx_hash/0
+             , top_change_info/0 ]).
 
 -import(aeu_debug, [pp/1]).
 
@@ -117,9 +117,17 @@
                , gc_height = 0 :: aec_blocks:height() | undefined
                , origins_cache = origins_cache() :: origins_cache() }).
 
+-type top_change_info() :: #{ type := key | micro
+                            , old_hash := binary()
+                            , new_hash := binary()
+                            , old_height => height()
+                            , new_height => height()
+                            , prev_new_hash => binary() }.
+
 -type negated_fee() :: non_pos_integer().
 -type non_pos_integer() :: neg_integer() | 0.
 -type tx_hash() :: binary().
+-type height() :: aec_blocks:height().
 
 -record(tx, { hash          :: binary(),
               signed_tx     :: aetx_sign:signed_tx(),
@@ -284,16 +292,10 @@ get_candidate(MaxGas, IgnoreTxHashes, BlockHash) when is_integer(MaxGas), MaxGas
         {get_candidate, MaxGas, IgnoreTxHashes, BlockHash}).
 
 %% It assumes that the persisted mempool has been updated.
--spec top_change(key | micro, binary(), binary(), binary()) -> ok.
-top_change(Type, OldHash, NewHash, PrevNewHash) when Type==key; Type==micro ->
-    gen_server:call(?SERVER, {top_change, Type, OldHash, NewHash, PrevNewHash},
-                    ?LONG_CALL_TIMEOUT).
-
-%% It assumes that the persisted mempool has been updated.
--spec top_change(key | micro, binary(), binary()) -> ok.
-top_change(Type, OldHash, NewHash) when Type==key; Type==micro ->
-    gen_server:call(?SERVER, {top_change, Type, OldHash, NewHash},
-                    ?LONG_CALL_TIMEOUT).
+-spec top_change(top_change_info()) -> ok.
+top_change(#{type := Type} = Info)
+  when Type==key; Type==micro ->
+    gen_server:call(?SERVER, {top_change, Info}, ?LONG_CALL_TIMEOUT).
 
 -spec size() -> non_neg_integer() | undefined.
 size() ->
@@ -361,14 +363,8 @@ handle_call_({get_max_nonce, Sender}, _From, #state{dbs = #dbs{db = Db}} = State
 handle_call_({push, Tx, Hash, Event}, _From, State) ->
     {Res, State1} = do_pool_db_put(pool_db_key(Tx), Tx, Hash, Event, State),
     {reply, Res, State1};
-handle_call_({top_change, Type, OldHash, NewHash, OldHash}, _From, State) ->
-    {_, State1} = do_top_change(OldHash, Type, OldHash, NewHash, State),
-    {reply, ok, State1};
-handle_call_({top_change, Type, OldHash, NewHash, _}, _From, State) ->
-    {_, State1} = do_top_change(Type, OldHash, NewHash, State),
-    {reply, ok, State1};
-handle_call_({top_change, Type, OldHash, NewHash}, _From, State) ->
-    {_, State1} = do_top_change(Type, OldHash, NewHash, State),
+handle_call_({top_change, Info}, _From, State) ->
+    {_, State1} = do_top_change(Info, State),
     {reply, ok, State1};
 handle_call_({peek, MaxNumberOfTxs, Account}, _From, #state{dbs = Dbs} = State)
   when is_integer(MaxNumberOfTxs), MaxNumberOfTxs >= 0;
@@ -754,7 +750,16 @@ sel_return(L) when is_list(L) -> L;
 sel_return('$end_of_table' ) -> [];
 sel_return({Matches, _Cont}) -> Matches.
 
-do_top_change(Type, OldHash, NewHash, State0) ->
+do_top_change(#{old_height := OldHeight, new_height := NewHeight}, State)
+  when NewHeight < OldHeight ->
+    %% Chain rollback
+    %% We do the same thing as for a normal `top_changed` event. This includes
+    %% detecting if the chain went backwards, and adjusting the GC heights
+    %% We should not have to update the mempool (?), since we essentially assume
+    %% that the transactions in the deleted blocks were thereby undone
+    %% (they may still be in the database, but their location info is gone)
+    {ok, do_update_sync_top_target(NewHeight, State)};
+do_top_change(#{type := Type, old_hash := OldHash, new_hash := NewHash}, State0) ->
     %% NG: does this work for common ancestor for micro blocks?
     {ok, Ancestor} =
         aec_db:ensure_activity(async_dirty,
