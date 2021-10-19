@@ -2423,8 +2423,8 @@ ch_loop(I, R, Parent, Cfg, St) ->
                                   end, I, R, Cfg),
             {I1_, R1_}
             catch
-                error:R ->
-                    ?LOG("CAUGHT ~p / ~p", [R, erlang:get_stacktrace()]),
+                error:R:ST ->
+                    ?LOG("CAUGHT ~p / ~p", [R, ST]),
                     {I, R}
             end,
             Parent ! {self(), loop_ack},

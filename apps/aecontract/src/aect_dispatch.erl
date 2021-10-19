@@ -22,11 +22,9 @@
             error:undef -> ok
         end).
 -define(DEBUG_LOG(Format, Data), begin lager:debug(Format, Data), ?TEST_LOG(Format, Data) end).
--define(ST(), erlang:get_stacktrace()).
 -else.
 -define(TEST_LOG(Format, Data), ok).
 -define(DEBUG_LOG(Format, Data), lager:debug(Format, Data)).
--define(ST(), {}).
 -endif.
 
 %% -- Running contract code on chain ---------------------------------------

@@ -201,8 +201,8 @@ read_store(Pubkey, ES) ->
                     Val1
                 end,
         {maps:from_list([ {Key, Value(Key)} || Key <- Keys, Key > 0 ]), CtStore}
-    catch K:Err ->
-        io:format("~p:~p\n  ~p\n", [K, Err, erlang:get_stacktrace()]),
+    catch K:Err:ST ->
+        io:format("~p:~p\n  ~p\n", [K, Err, ST]),
         {error, none}
     end.
 
