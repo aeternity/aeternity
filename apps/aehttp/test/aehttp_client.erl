@@ -82,5 +82,5 @@ operation_interface(#{tags := Tags}) ->
 make_body(Params, _Path) when is_map(Params) ->
     {"application/json", jsx:encode(Params)};
 make_body([], Path) ->
-    {"application/x-www-form-urlencoded", http_uri:encode(Path)}.
+    {"application/x-www-form-urlencoded", aeu_uri:encode(Path)}.
 

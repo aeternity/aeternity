@@ -1218,7 +1218,7 @@ current_height() ->
 
 get_oracles_by_pubkey_sut(Pubkey) ->
     Host = external_address(),
-    http_request(Host, get, "oracles/" ++ http_uri:encode(Pubkey), []).
+    http_request(Host, get, "oracles/" ++ aeu_uri:encode(Pubkey), []).
 
 initialize_account(Amount, KeyPair) ->
     initialize_account(Amount, KeyPair, true).
@@ -1271,7 +1271,7 @@ assert_balance(Pubkey, ExpectedBalance, Action) ->
 
 get_accounts_by_pubkey_sut(Id) ->
     Host = external_address(),
-    http_request(Host, get, "accounts/" ++ http_uri:encode(Id), []).
+    http_request(Host, get, "accounts/" ++ aeu_uri:encode(Id), []).
 
 add_quotes(B) when is_binary(B) -> <<"\"", B/binary, "\"">>;
 add_quotes(Str) when is_list(Str) -> "\"" ++ Str ++  "\"".

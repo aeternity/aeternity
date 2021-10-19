@@ -1359,7 +1359,7 @@ http_request(Host, post, Path, Params) ->
                            {"application/json", jsx:encode(Params)};
                        [] ->
                            {"application/x-www-form-urlencoded",
-                            http_uri:encode(Path)}
+                            aeu_uri:encode(Path)}
                    end,
     %% lager:debug("Type = ~p; Body = ~p", [Type, Body]),
     ct:log("POST ~p, type ~p, Body ~p", [URL, Type, Body]),
@@ -1409,7 +1409,7 @@ uenc(B) when is_boolean(B) ->
 uenc(I) when is_integer(I) ->
     uenc(integer_to_list(I));
 uenc(V) ->
-    http_uri:encode(V).
+    aeu_uri:encode(V).
 
 process_http_return(R) ->
     case R of

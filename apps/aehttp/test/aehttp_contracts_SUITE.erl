@@ -1728,7 +1728,7 @@ create_spend_tx(SenderId, RecipientId, Amount, Fee, Payload) ->
 
 get_account_by_pubkey(Id) ->
     Host = external_address(),
-    http_request(Host, get, "accounts/" ++ http_uri:encode(Id), []).
+    http_request(Host, get, "accounts/" ++ aeu_uri:encode(Id), []).
 
 post_tx(TxSerialized) ->
     Host = external_address(),

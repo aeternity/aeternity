@@ -618,11 +618,11 @@ get_key_blocks_current_sut() ->
 
 get_accounts_by_pubkey_sut(Id) ->
     Host = external_address(),
-    http_request(Host, get, "accounts/" ++ http_uri:encode(Id), []).
+    http_request(Host, get, "accounts/" ++ aeu_uri:encode(Id), []).
 
 get_transactions_by_hash_sut(Hash) ->
     Host = external_address(),
-    http_request(Host, get, "transactions/" ++ http_uri:encode(Hash), []).
+    http_request(Host, get, "transactions/" ++ aeu_uri:encode(Hash), []).
 
 post_transactions_sut(Tx) ->
     Host = external_address(),
@@ -634,7 +634,7 @@ get_names_entry_by_name_sut(Name) ->
 
 get_oracles_by_pubkey_sut(Pubkey) ->
     Host = external_address(),
-    http_request(Host, get, "oracles/" ++ http_uri:encode(Pubkey), []).
+    http_request(Host, get, "oracles/" ++ aeu_uri:encode(Pubkey), []).
 
 get_balance_at_top() ->
     EncodedPubKey = get_pubkey(),

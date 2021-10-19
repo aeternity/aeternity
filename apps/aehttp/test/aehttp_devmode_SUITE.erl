@@ -963,7 +963,7 @@ get_pending_account_transactions_by_pubkey(Config) ->
 
 get_accounts_by_pubkey_sut(Id) ->
     Host = external_address(),
-    http_request(Host, get, "accounts/" ++ http_uri:encode(Id), []).
+    http_request(Host, get, "accounts/" ++ aeu_uri:encode(Id), []).
 
 get_accounts_next_nonce_sut(Id) ->
     Host = external_address(),
@@ -971,7 +971,7 @@ get_accounts_next_nonce_sut(Id) ->
 
 get_accounts_by_pubkey_and_height_sut(Id, Height) ->
     Host = external_address(),
-    IdS = binary_to_list(http_uri:encode(Id)),
+    IdS = binary_to_list(aeu_uri:encode(Id)),
     HeightS = integer_to_list(Height),
     http_request(Host, get, "accounts/" ++ IdS ++ "/height/" ++ HeightS, []).
 
@@ -1007,15 +1007,15 @@ post_contract_and_call_tx(Config) ->
 
 get_transactions_by_hash_sut(Hash) ->
     Host = external_address(),
-    http_request(Host, get, "transactions/" ++ http_uri:encode(Hash), []).
+    http_request(Host, get, "transactions/" ++ aeu_uri:encode(Hash), []).
 
 check_transaction_in_pool_sut(Hash) ->
     Host = internal_address(),
-    http_request(Host, get, "debug/check-tx/pool/" ++ http_uri:encode(Hash), []).
+    http_request(Host, get, "debug/check-tx/pool/" ++ aeu_uri:encode(Hash), []).
 
 get_transaction_info_by_hash_sut(Hash) ->
     Host = external_address(),
-    http_request(Host, get, "transactions/" ++ http_uri:encode(Hash) ++ "/info", []).
+    http_request(Host, get, "transactions/" ++ aeu_uri:encode(Hash) ++ "/info", []).
 
 post_transactions_sut(Tx) ->
     Host = external_address(),
