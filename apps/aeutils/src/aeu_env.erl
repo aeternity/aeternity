@@ -338,7 +338,7 @@ apply_os_env(Pfx, Schema, ConfigMap) ->
             end, #{}, Names),
     error_logger:info_msg("Map fr OS env config: ~p~n", [Map]),
     if map_size(Map) > 0 ->
-            update_config(Map, ConfigMap, Schema);
+            update_config_(Map, ConfigMap, Schema, report);
        true ->
             no_change
     end
@@ -591,7 +591,7 @@ update_config(Map, Notify) ->
 update_config(Map, Notify, Mode) when is_map(Map), is_boolean(Notify) ->
     Schema = application:get_env(aeutils, '$schema', #{}),
     ConfigMap = application:get_env(aeutils, '$user_map', #{}),
-    ConfigMap1 = update_config(Map, ConfigMap, Schema, Mode),
+    ConfigMap1 = update_config_(Map, ConfigMap, Schema, Mode),
     cache_config(ConfigMap1),
     if Notify ->
             notify_update_config(Map);
@@ -603,7 +603,7 @@ update_config(Map, Notify, Mode) when is_map(Map), is_boolean(Notify) ->
 notify_update_config(Map) ->
     aec_events:publish(update_config, Map).
 
-update_config(Map, ConfigMap, Schema, Mode) when Mode =:= silent;
+update_config_(Map, ConfigMap, Schema, Mode) when Mode =:= silent;
                                                  Mode =:= report ->
     check_validation([jesse:validate_with_schema(Schema, Map, [])],
                      [Map], update_config, Mode),
