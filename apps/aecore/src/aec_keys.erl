@@ -342,9 +342,10 @@ enter_worker(Parent, PeerPwd, KeysDir) ->
             parent_state_update(pubkeys, State),
             worker_loop(State)
     catch Type:What:StackTrace ->
+        io:format(user, "~p~n", [{Type, What, StackTrace}]),
         lager:debug("Error starting worker: ~p", [{Type, What, StackTrace}]),
         lager:error("aec_keys worker_failed"),
-        error(init_failed)
+        error({Type, What, StackTrace})
     end.
 
 worker_init(Parent, PeerPwd, KeysDir) ->
@@ -475,10 +476,10 @@ hash(Bin) ->
 %% INFO: keep separate APIs and encrypt both priv & pub to protect external HDs
 %%       (there is known atack vector using master pub)
 encrypt_key(Password, Bin) ->
-    crypto:block_encrypt(aes_ecb, hash(Password),  Bin).
+    crypto:crypto_one_time(aes_256_ecb, hash(Password),  Bin, true).
 
 decrypt_key(Password, Bin, Size) ->
-    <<Key:Size/binary>> = crypto:block_decrypt(aes_ecb, hash(Password), Bin),
+    <<Key:Size/binary>> = crypto:crypto_one_time(aes_256_ecb, hash(Password), Bin, false),
     Key.
 
 p_gen_new_keypair() ->

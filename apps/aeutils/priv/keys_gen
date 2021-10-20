@@ -60,7 +60,7 @@ save_keys(Pwd, PubFile, PubKey, PrivFile, PrivKey) ->
     ok = file:write_file(PrivFile, EncPriv).
 
 encrypt_key(Password, Bin) ->
-    crypto:block_encrypt(aes_ecb, hash(Password), Bin).
+    crypto:crypto_one_time(aes_256_ecb, hash(Password), Bin, true).
 
 hash(Bin) ->
     crypto:hash(sha256, Bin).
