@@ -357,7 +357,8 @@ calls_test(_Config) ->
             {ok, EncHash} =
                 add_spend_tx(N1, 1, 1500000 * aec_test_utils:min_gas_price(), %% fee
                             Nonce, 0, PubKey, PubKey, PrivKey),
-            aecore_suite_utils:mine_blocks_until_txs_on_chain(N1, [EncHash], ?MAX_MINED_BLOCKS)
+            aecore_suite_utils:mine_blocks_until_txs_on_chain(N1, [EncHash], ?MAX_MINED_BLOCKS),
+            aecore_suite_utils:mine_key_blocks(N1, 1)
         end,
     Spend(OwnerPubkey, OwnerPrivkey),
     Spend(OwnerPubkey, OwnerPrivkey),

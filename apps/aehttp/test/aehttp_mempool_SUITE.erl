@@ -334,7 +334,7 @@ delete_tx_from_mempool(Config) ->
     %% assert pool is empty
     [] = pending_txs(),
     %% tx can no longer be posted
-    {ok, 200, #{<<"tx_hash">> := SpendTxHash1}} = post_tx(SpendTx1),
+    {ok, 400, #{<<"reason">> := <<"Invalid tx">>}} = post_tx(SpendTx1),
     [] = pending_txs(),
     ok.
 

@@ -79,7 +79,7 @@ tx_pool_test_() ->
                ?assertEqual({ok, [STx1]}, aec_tx_pool:peek(1)),
 
                %% Add it again and see that it is not added twice
-               ?assertEqual(ok, aec_tx_pool:push(STx1, tx_received)),
+               ?assertEqual({error, already_known}, aec_tx_pool:push(STx1, tx_received)),
                ?assertEqual({ok, [STx1]}, aec_tx_pool:peek(2)),
 
                %% Other tx received from a peer.
@@ -541,7 +541,8 @@ tx_pool_test_() ->
 
                aec_tx_pool:restore_mempool(),
                %% Replace same nonce with the higher fee
-               STx3 = a_signed_tx(PK, me, Nonce1=1, 20000),
+               STx3 = a_signed_tx(PK, me, Nonce1=1, 20000000),
+               ?assertNotEqual(STx1, STx3),
                ?assertEqual(ok, aec_tx_pool:push(STx3)),
                ?assertEqual({ok, [STx3, STx2]}, aec_tx_pool:get_candidate(MaxGas, aec_chain:top_block_hash())),
 

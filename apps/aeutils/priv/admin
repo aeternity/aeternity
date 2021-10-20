@@ -135,7 +135,7 @@ push_tx_to_pool(Node, #{ 'tx' := EncTx, 'force' := Force, 'timeout' := Timeout} 
         ok ->
             io:fwrite("The transaction is being put in the pool.~n", []),
             erlang:halt(0);
-        {error, Msg} -> throw({process_error, io_lib:format("Transaction push failed: ~p~n",
+        {error, Msg} -> throw({process_error, io_lib:format("Transaction push failed: ~p",
                                                             [Msg])})
     end.
 
@@ -147,8 +147,8 @@ inspect_tx_in_pool(Node, #{ 'tx_hash' := EncTxHash} = ArgsList) ->
                       "Visited : ~p~n"
                       "TTL     : ~p~n", [Failures, Visited, TTL]),
             erlang:halt(0);
-        {error, not_found} -> throw({process_error, "Transaction not present in the tx-pool~n"});
-        {error, already_accepted} -> throw({process_error, "Transaction already accepted~n"})
+        {error, not_found} -> throw({process_error, "Transaction not present in the tx-pool"});
+        {error, already_accepted} -> throw({process_error, "Transaction already accepted"})
     end.
 
 tx_pool_size(Node, #{ 'show' := "all"} = ArgsList) ->

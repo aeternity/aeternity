@@ -317,7 +317,7 @@ repush_tx_skipped_nonce_is_stopped_because_in_db(Config, SpendTx) ->
     Node = dev1,
     NodeName = aecore_suite_utils:node_name(Node),
     %% test requirement: empty pool
-    ok = push(NodeName, SpendTx, Config),
+    {error, already_known} = push(NodeName, SpendTx, Config),
     {ok, []} = rpc:call(NodeName, aec_tx_pool, peek, [infinity]),
     ok.
 
@@ -448,7 +448,7 @@ skipped_nonce_specific_cleanup(Config) ->
     timer:sleep(100), %% provide some time for the tx pool to process the message
     {ok, []} = rpc:call(NodeName, aec_tx_pool, peek, [infinity]),
     %% the tx can not reenter the pool:
-    ok = push(NodeName, SkippedNonceTx, Config),
+    {error, already_known} = push(NodeName, SkippedNonceTx, Config),
     {ok, []} = rpc:call(NodeName, aec_tx_pool, peek, [infinity]),
     ok.
 

@@ -222,8 +222,7 @@ push_(Tx, TxHash, Event, Timeout, Forced) ->
             case check_pool_db_put(Tx, TxHash, Event) of
                 ignore ->
                     incr([push, ignore]),
-                    %% this should probably be an error?
-                    ok;
+                    {error, already_known};
                 {error,_} = E ->
                     incr([push, error]),
                     E;

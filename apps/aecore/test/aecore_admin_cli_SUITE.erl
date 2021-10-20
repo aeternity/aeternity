@@ -119,9 +119,8 @@ push_tx(Config) ->
     TxNotInDB = "Transaction not present in the tx-pool\n",
     TxNotInDB = cli(["tx_pool", "delete", tx_hash(Tx)], Config),
     %% test `tx_pool push <tx>`
-    %% TODO: make the pool retrun an error when the tx is being stopped by
-    %% cache or DB
-    Res = cli(["tx_pool", "push", EncTx], Config),
+    ErrRes = cli(["tx_pool", "push", EncTx], Config),
+    ErrRes = "Transaction push failed: already_known\n",
     "0" = cli(["tx_pool", "size"], Config),
     "0" = cli(["tx_pool", "size", "--show=all"], Config),
     "0" = cli(["tx_pool", "size", "--show=not_visited"], Config),
@@ -160,7 +159,8 @@ inspect_tx(Config) ->
     {ok, _} = aecore_suite_utils:mine_blocks(?NODE_NAME, 1, ?MINE_RATE, key, #{}),
     InspectRes = cli(["tx_pool", "inspect", tx_hash(Tx)], Config),
     %% pushing again the same tx does not change anything
-    Res = cli(["tx_pool", "push", EncTx], Config),
+    ErrRes = cli(["tx_pool", "push", EncTx], Config),
+    ErrRes = "Transaction push failed: already_known\n",
     InspectRes = cli(["tx_pool", "inspect", tx_hash(Tx)], Config),
     %% force pushed does not change TTL as well
     Res = cli(["tx_pool", "push -f", EncTx], Config),
