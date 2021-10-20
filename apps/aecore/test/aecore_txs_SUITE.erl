@@ -16,6 +16,7 @@
    , missing_tx_gossip/1
    , txs_gc/1
    , check_coinbase_validation/1
+   , rollback_releases_tx/1
    ]).
 
 
@@ -32,6 +33,7 @@ all() ->
     %% Bitcoin NG
       missing_tx_gossip
     , micro_block_cycle
+    , rollback_releases_tx
     %% CT Consensus
     , txs_gc
     , check_coinbase_validation
@@ -312,12 +314,54 @@ micro_block_cycle(Config) ->
 
     ok = aecore_suite_utils:check_for_logs([dev1], Config).
 
+rollback_releases_tx(Config) ->
+    N1 = aecore_suite_utils:node_name(dev1),
+    N2 = aecore_suite_utils:node_name(dev2),
+    aecore_suite_utils:reinit_with_bitcoin_ng(dev1),
+    aecore_suite_utils:reinit_with_bitcoin_ng(dev2),
+    ok = aecore_suite_utils:stop_node(dev2, Config),
+
+    aecore_suite_utils:mine_key_blocks(N1, 1),
+    TopHeight = rpc:call(N1, aec_chain, top_height, []),
+
+    {ok, STx, _} = add_spend_tx(N1, 1000, 20000 * aec_test_utils:min_gas_price(), next, 10000),
+    ct:log("STx = ~p", [STx]),
+    TxHash = aetx_sign:hash(STx),
+    EncTxHash = aeser_api_encoder:encode(tx_hash, TxHash),
+    ct:log("TxHash = ~p", [TxHash]),
+    aecore_suite_utils:mine_blocks_until_txs_on_chain(N1, [EncTxHash], 10),
+
+    Where = rpc:call(N1, aec_db, find_tx_location, [TxHash]),
+    ?assertNotEqual(none, Where),
+
+    N1SetupHome = rpc:call(N1, setup, home, []),
+    N1AeCmd = filename:join([N1SetupHome, "bin", "aeternity"]),
+    N1RBCmd = N1AeCmd ++ " db_rollback -h " ++ integer_to_list(TopHeight),
+    N1RBCmdRes = os:cmd(N1RBCmd),
+    ct:log("N1RBCmdRes = ~n"
+           "=========================================~n"
+           "~s~n"
+           "=========================================", [N1RBCmdRes]),
+    TopHeight = rpc:call(N1, aec_chain, top_height, []),
+    none = rpc:call(N1, aec_db, find_tx_location, [TxHash]),
+    {ok,_,_} = aecore_suite_utils:start_node(dev2, Config),
+    aecore_suite_utils:connect(N2),
+    ok.
+
 add_spend_tx(Node, Amount, Fee, Nonce, TTL) ->
     add_spend_tx(Node, Amount, Fee, Nonce, TTL, patron(), new_pubkey()).
 
-add_spend_tx(Node, Amount, Fee, Nonce, TTL, Sender, Recipient) ->
+add_spend_tx(Node, Amount, Fee, Nonce0, TTL, Sender, Recipient) ->
     SenderId = aeser_id:create(account, maps:get(pubkey, Sender)),
     RecipientId = aeser_id:create(account, Recipient),
+    Nonce = case Nonce0 of
+                next ->
+                    {ok, N} = rpc:call(Node, aec_next_nonce, pick_for_account,
+                                       [maps:get(pubkey, Sender)]),
+                    N;
+                _ when is_integer(Nonce0) ->
+                    Nonce0
+            end,
     Params = #{ sender_id    => SenderId,
                 recipient_id => RecipientId,
                 amount       => Amount,
@@ -329,7 +373,6 @@ add_spend_tx(Node, Amount, Fee, Nonce, TTL, Sender, Recipient) ->
     STx = aec_test_utils:sign_tx(Tx, maps:get(privkey, Sender)),
     Res = rpc:call(Node, aec_tx_pool, push, [STx]),
     {Res, STx, aeser_api_encoder:encode(tx_hash, aetx_sign:hash(STx))}.
-
 
 create_contract_tx(Node, Name, Args, Fee, Nonce, TTL) ->
     OwnerKey = maps:get(pubkey, patron()),
