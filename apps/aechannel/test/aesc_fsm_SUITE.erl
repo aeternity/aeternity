@@ -110,6 +110,24 @@
 -export([ create_channel_on_port/1
         ]).
 
+%% exports for aesc_htlc_SUITE
+-export([ create_channel_/3
+        , channel_shutdown/3
+        , prepare_contract_create_args/3
+        , load_contract/4
+        , call_contract/8
+        , receive_log/2
+        , set_configs/2
+        , get_debug/1
+        , log/4
+        , peek_message_queue/2
+        , prepare_patron/1
+        , prep_initiator/2
+        , prep_responder/2
+        , rpc/4
+        , receive_from_fsm/4
+        ]).
+
 -export([with_trace/3]).  % mostly to avoid warning if not used
 
 -include_lib("common_test/include/ct.hrl").
@@ -363,11 +381,12 @@ init_per_suite(Config) ->
     TableOwner = new_config_table(),
     ct:log("network_id ~p", [aec_governance:get_network_id()]),
     Miner = aeser_api_encoder:encode(account_pubkey, PubKey),
+    SymLink = proplists:get_value(symlink, Config, "latest.aesc_fsm"),
     DefCfg = #{<<"chain">> => #{<<"persist">> => false},
                <<"mining">> => #{<<"micro_block_cycle">> => 1,
                                  <<"beneficiary">> => Miner,
                                  <<"beneficiary_reward_delay">> => 2}},
-    Config1 = aecore_suite_utils:init_per_suite([dev1], DefCfg, [{instant_mining, true}, {symlink_name, "latest.aesc_fsm"}, {test_module, ?MODULE}] ++ Config),
+    Config1 = aecore_suite_utils:init_per_suite([dev1], DefCfg, [{instant_mining, true}, {symlink_name, SymLink}, {test_module, ?MODULE}] ++ Config),
     Node = aecore_suite_utils:node_name(dev1),
     aecore_suite_utils:start_node(dev1, Config1),
     aecore_suite_utils:connect(Node),
@@ -2191,6 +2210,9 @@ wait_for_fsm_state(St, FsmPid, Retries, Debug) when Retries > 0 ->
             wait_for_fsm_state(St, FsmPid, Retries-1, Debug)
     end.
 
+channel_shutdown(I, R, Cfg) ->
+    shutdown_(I, R, Cfg).
+
 shutdown_(#{fsm := FsmI, channel_id := ChannelId} = I, R, Cfg) ->
     Debug = get_debug(Cfg),
     assert_empty_msgq(Debug),
@@ -3602,8 +3624,10 @@ new_config_table() ->
           end).
 
 load_idx(Cfg) ->
-    Cfg1 = load_last_idx(initiator, Cfg),
-    load_last_idx(responder, Cfg1).
+    Roles = proplists:get_value(roles, Cfg, [initiator, responder]),
+    lists:foldl(fun load_last_idx/2, Cfg, Roles).
+    %% Cfg1 = load_last_idx(initiator, Cfg),
+    %% load_last_idx(responder, Cfg1).
 
 load_last_idx(Role, Cfg) ->
     OldValue =
@@ -3612,7 +3636,7 @@ load_last_idx(Role, Cfg) ->
             [] -> 1
         end,
     Part = proplists:get_value(Role, Cfg),
-    [{Role, Part#{auth_idx => OldValue}} | Cfg].
+    set_configs([{Role, Part#{auth_idx => OldValue}}], Cfg).
 
 bump_idx() ->
     bump_last_idx(responder, 10000),
@@ -5171,20 +5195,13 @@ force_progress_closing_state(Cfg) ->
 
 
 create_contract(ContractName, InitArgs, Deposit,
-                #{ fsm := FsmC
-                 , pub := Owner} = Creator, Acknowledger, Cfg) ->
+                Creator, Acknowledger, Cfg) ->
+    CreateArgs = prepare_contract_create_args(ContractName, InitArgs, Deposit),
+    load_contract(CreateArgs, Creator, Acknowledger, Cfg).
+
+load_contract(CreateArgs, #{ fsm := FsmC, pub := Owner} = Creator, Acknowledger, Cfg) ->
     Debug = get_debug(Cfg),
     {ok, Round0} = rpc(dev1, aesc_fsm, get_round, [FsmC]),
-    {ok, BinCode} = aect_test_utils:compile_contract(aect_test_utils:sophia_version(), ContractName),
-    {ok, BinSrc} = aect_test_utils:read_contract(aect_test_utils:sophia_version(), ContractName),
-    {ok, CallData} =
-        aect_test_utils:encode_call_data(aect_test_utils:sophia_version(), BinSrc,
-                                         "init", InitArgs),
-    CreateArgs = #{ vm_version  => aect_test_utils:vm_version()
-                  , abi_version => aect_test_utils:abi_version()
-                  , deposit     => Deposit
-                  , code        => BinCode
-                  , call_data   => CallData},
     aesc_fsm:upd_create_contract(FsmC, CreateArgs),
     {Creator1, _} = await_signing_request(update, Creator, Cfg),
     await_update_incoming_report(Acknowledger, ?TIMEOUT, Debug),
@@ -5195,6 +5212,18 @@ create_contract(ContractName, InitArgs, Deposit,
     ContractPubkey = aect_contracts:compute_contract_pubkey(Owner, Round0 + 1),
     assert_empty_msgq(Debug),
     {Creator2, Acknowledger2, ContractPubkey}.
+
+prepare_contract_create_args(ContractName, InitArgs, Deposit) ->
+    {ok, BinCode} = aect_test_utils:compile_contract(aect_test_utils:sophia_version(), ContractName),
+    {ok, BinSrc} = aect_test_utils:read_contract(aect_test_utils:sophia_version(), ContractName),
+    {ok, CallData} =
+        aect_test_utils:encode_call_data(aect_test_utils:sophia_version(), BinSrc,
+                                         "init", InitArgs),
+    _CreateArgs = #{ vm_version  => aect_test_utils:vm_version()
+                   , abi_version => aect_test_utils:abi_version()
+                   , deposit     => Deposit
+                   , code        => BinCode
+                   , call_data   => CallData}.
 
 call_contract(ContractId,
               ContractName, FunName, FunArgs, Amount,
