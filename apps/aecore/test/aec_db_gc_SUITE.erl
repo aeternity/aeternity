@@ -261,6 +261,11 @@ add_spend_tx(Node, Amount, Fee, Nonce, TTL, Recipient) ->
 
 add_spend_tx(Node, Amount, Fee, Nonce, TTL, Recipient, SenderPubkey,
              SenderPrivkey) ->
+    add_spend_tx(Node, Amount, Fee, Nonce, TTL, Recipient, SenderPubkey,
+                SenderPrivkey, <<>>).
+
+add_spend_tx(Node, Amount, Fee, Nonce, TTL, Recipient, SenderPubkey,
+             SenderPrivkey, Payload) ->
     SenderId = aeser_id:create(account, SenderPubkey),
     RecipientId = aeser_id:create(account, Recipient),
     Params = #{ sender_id    => SenderId,
@@ -268,7 +273,7 @@ add_spend_tx(Node, Amount, Fee, Nonce, TTL, Recipient, SenderPubkey,
                 amount       => Amount,
                 nonce        => Nonce,
                 ttl          => TTL,
-                payload      => <<>>,
+                payload      => Payload,
                 fee          => Fee },
     {ok, Tx} = aec_spend_tx:new(Params),
     STx = aec_test_utils:sign_tx(Tx, SenderPrivkey),
@@ -286,7 +291,7 @@ calls_test(_Config) ->
     %% create a new account and seed it with tokens
     #{ public := OwnerPubkey, secret := OwnerPrivkey } = enacl:sign_keypair(),
     OwnerAddress = aeser_api_encoder:encode(account_pubkey, OwnerPubkey),
-    SeedAmt = 1000000 * aec_test_utils:min_gas_price(),
+    SeedAmt = 100000000000 * aec_test_utils:min_gas_price(),
     {ok, SpendNonce} = rpc:call(N1, aec_next_nonce, pick_for_account,
                                 [maps:get(pubkey,aecore_suite_utils:patron())]),
     {ok, ESpendHash} =
@@ -356,8 +361,9 @@ calls_test(_Config) ->
                                         [PubKey]),
             {ok, EncHash} =
                 add_spend_tx(N1, 1, 1500000 * aec_test_utils:min_gas_price(), %% fee
-                            Nonce, 0, PubKey, PubKey, PrivKey),
-            aecore_suite_utils:mine_blocks_until_txs_on_chain(N1, [EncHash], ?MAX_MINED_BLOCKS)
+                            Nonce, 0, PubKey, PubKey, PrivKey,
+                            <<"calls_test">>),
+            {ok, _} = aecore_suite_utils:mine_blocks_until_txs_on_chain(N1, [EncHash], ?MAX_MINED_BLOCKS)
         end,
     Spend(OwnerPubkey, OwnerPrivkey),
     Spend(OwnerPubkey, OwnerPrivkey),

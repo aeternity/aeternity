@@ -13,6 +13,7 @@
 -export([ add_hash/4
         , add_to_origins_cache/3
         , adjust_ttl/2
+        , ttl/2
         , delete_hash/2
         , gc/2
         ]).
@@ -69,6 +70,11 @@ add_hash(MempoolGC, TxHash, Key, TTL) ->
 adjust_ttl(Diff, Dbs) ->
     gen_server:cast(?SERVER, {adjust_ttl, Diff, Dbs}).
 
+-spec ttl(pool_db_gc_key(), aec_tx_pool:dbs()) ->
+    {ok, TTLHeight :: non_neg_integer()} | {error, not_found}.
+ttl(TxHash, Dbs) ->
+    gen_server:call(?SERVER, {ttl, TxHash, Dbs}).
+
 delete_hash(MempoolGC, TxHash) ->
     aec_db:remove_tx_from_mempool(TxHash),
     ets:delete(MempoolGC, TxHash).
@@ -107,6 +113,15 @@ init([]) ->
 handle_call(origins_cache_gc, _From, S) ->
     ok = origins_cache_gc(S),
     {reply, ok, S};
+handle_call({ttl, TxHash, Dbs}, _From, S) ->
+    GCDb = aec_tx_pool:gc_db(Dbs),
+    Res =
+        case ets:lookup(GCDb, TxHash) of
+            [#gc_tx{ttl = TTL}] ->
+                {ok, TTL};
+            [] -> {error, not_found}
+        end,
+    {reply, Res, S};
 handle_call(_Req, _From, S) ->
     {reply, {error, unknown_request}, S}.
 
