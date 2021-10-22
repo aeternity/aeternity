@@ -134,4 +134,4 @@ run_and_check_keys_gen(N, Cmd, UserPassword, ActualPassword, Config) ->
     ok.
 
 decrypt_key(Password, Bin) ->
-    crypto:block_decrypt(aes_ecb, crypto:hash(sha256, Password), Bin).
+    crypto:crypto_one_time(aes_256_ecb, crypto:hash(sha256, Password), Bin, false).

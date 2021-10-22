@@ -692,7 +692,7 @@ uenc(I) when is_integer(I) ->
 uenc(A) when is_atom(A) ->
     uenc(to_binary(A));
 uenc(V) ->
-    http_uri:encode(V).
+    aeu_uri:encode(V).
 
 get_protocol(#{protocol := Proto}, _) ->
     to_atom(Proto);

@@ -1137,7 +1137,7 @@ get_key_blocks_by_height_sut(Height) ->
 
 get_key_blocks_by_hash_sut(Hash) ->
     Host = external_address(),
-    http_request(Host, get, "key-blocks/hash/" ++ http_uri:encode(Hash), []).
+    http_request(Host, get, "key-blocks/hash/" ++ aeu_uri:encode(Hash), []).
 
 post_key_blocks_sut(KeyBlock) ->
     Host = internal_address(),
@@ -1234,23 +1234,23 @@ get_micro_block_transaction_by_hash_and_index(micro_block, Config) ->
 get_micro_blocks_header_by_hash_sut(Hash) ->
     Host = external_address(),
     Hash1 = binary_to_list(Hash),
-    http_request(Host, get, "micro-blocks/hash/" ++ http_uri:encode(Hash1) ++ "/header", []).
+    http_request(Host, get, "micro-blocks/hash/" ++ aeu_uri:encode(Hash1) ++ "/header", []).
 
 get_micro_blocks_transactions_by_hash_sut(Hash) ->
     Host = external_address(),
     Hash1 = binary_to_list(Hash),
-    http_request(Host, get, "micro-blocks/hash/" ++ http_uri:encode(Hash1) ++ "/transactions", []).
+    http_request(Host, get, "micro-blocks/hash/" ++ aeu_uri:encode(Hash1) ++ "/transactions", []).
 
 get_micro_blocks_transactions_count_by_hash_sut(Hash) ->
     Host = external_address(),
     Hash1 = binary_to_list(Hash),
-    http_request(Host, get, "micro-blocks/hash/" ++ http_uri:encode(Hash1) ++ "/transactions/count", []).
+    http_request(Host, get, "micro-blocks/hash/" ++ aeu_uri:encode(Hash1) ++ "/transactions/count", []).
 
 get_micro_blocks_transactions_by_hash_by_index_sut(Hash, Index) ->
     Host = external_address(),
     Hash1 = binary_to_list(Hash),
     Index1 = integer_to_list(Index),
-    Path = "micro-blocks/hash/" ++ http_uri:encode(Hash1) ++ "/transactions/index/" ++ Index1,
+    Path = "micro-blocks/hash/" ++ aeu_uri:encode(Hash1) ++ "/transactions/index/" ++ Index1,
     http_request(Host, get, Path, []).
 
 %% /generations/*
@@ -1331,7 +1331,7 @@ get_generation_current_sut() ->
 
 get_generation_by_hash_sut(Hash) ->
     Host = external_address(),
-    http_request(Host, get, "generations/hash/" ++ http_uri:encode(Hash), []).
+    http_request(Host, get, "generations/hash/" ++ aeu_uri:encode(Hash), []).
 
 get_generation_by_height_sut(Height) ->
     Host = external_address(),
@@ -1425,7 +1425,7 @@ get_pending_account_transactions_by_pubkey(true, Config) ->
 
 get_accounts_by_pubkey_sut(Id) ->
     Host = external_address(),
-    http_request(Host, get, "accounts/" ++ http_uri:encode(Id), []).
+    http_request(Host, get, "accounts/" ++ aeu_uri:encode(Id), []).
 
 get_accounts_next_nonce_sut(Id) ->
     Host = external_address(),
@@ -1438,19 +1438,19 @@ get_accounts_next_nonce_sut(Id, Strategy) when Strategy =:= max; Strategy =:= co
 
 get_accounts_by_pubkey_and_hash_sut(Id, Hash) ->
     Host = external_address(),
-    IdS = binary_to_list(http_uri:encode(Id)),
+    IdS = binary_to_list(aeu_uri:encode(Id)),
     http_request(Host, get, "accounts/" ++ IdS ++ "/hash/" ++ Hash, []).
 
 get_accounts_by_pubkey_and_height_sut(Id, Height) ->
     Host = external_address(),
-    IdS = binary_to_list(http_uri:encode(Id)),
+    IdS = binary_to_list(aeu_uri:encode(Id)),
     HeightS = integer_to_list(Height),
     http_request(Host, get, "accounts/" ++ IdS ++ "/height/" ++ HeightS, []).
 
 get_accounts_transactions_pending_by_pubkey_sut(Id) ->
     Host = external_address(),
     Id1 = binary_to_list(Id),
-    http_request(Host, get, "accounts/" ++ http_uri:encode(Id1) ++ "/transactions/pending", []).
+    http_request(Host, get, "accounts/" ++ aeu_uri:encode(Id1) ++ "/transactions/pending", []).
 
 get_transactions_pending_sut() ->
     Host = internal_address(),
@@ -1609,19 +1609,19 @@ post_contract_and_call_tx(_Config) ->
 
 get_transactions_by_hash_sut(Hash) ->
     Host = external_address(),
-    http_request(Host, get, "transactions/" ++ http_uri:encode(Hash), []).
+    http_request(Host, get, "transactions/" ++ aeu_uri:encode(Hash), []).
 
 get_transactions_by_hash_int_as_string_sut(Hash) ->
     Host = external_address(),
-    http_request(Host, get, "transactions/" ++ binary_to_list(http_uri:encode(Hash)) ++ "?int-as-string", []).
+    http_request(Host, get, "transactions/" ++ binary_to_list(aeu_uri:encode(Hash)) ++ "?int-as-string", []).
 
 check_transaction_in_pool_sut(Hash) ->
     Host = internal_address(),
-    http_request(Host, get, "debug/check-tx/pool/" ++ http_uri:encode(Hash), []).
+    http_request(Host, get, "debug/check-tx/pool/" ++ aeu_uri:encode(Hash), []).
 
 get_transaction_info_by_hash_sut(Hash) ->
     Host = external_address(),
-    http_request(Host, get, "transactions/" ++ http_uri:encode(Hash) ++ "/info", []).
+    http_request(Host, get, "transactions/" ++ aeu_uri:encode(Hash) ++ "/info", []).
 
 post_transactions_sut(Tx) ->
     Host = external_address(),
@@ -1795,19 +1795,19 @@ post_oracle_response(Config) ->
 
 get_oracles_by_pubkey_sut(Pubkey) ->
     Host = external_address(),
-    http_request(Host, get, "oracles/" ++ http_uri:encode(Pubkey), []).
+    http_request(Host, get, "oracles/" ++ aeu_uri:encode(Pubkey), []).
 
 %% TODO: add test for 'limit' and 'from' in HTTP query
 get_oracles_queries_by_pubkey_sut(Pubkey, Params) ->
     Host = external_address(),
     Pubkey1 = binary_to_list(Pubkey),
-    http_request(Host, get, "oracles/" ++ http_uri:encode(Pubkey1) ++ "/queries", Params).
+    http_request(Host, get, "oracles/" ++ aeu_uri:encode(Pubkey1) ++ "/queries", Params).
 
 get_oracles_query_by_pubkey_and_query_id(Pubkey, Id) ->
     Host = external_address(),
     Pubkey1 = binary_to_list(Pubkey),
     Id1 = binary_to_list(Id),
-    http_request(Host, get, "oracles/" ++ http_uri:encode(Pubkey1) ++ "/queries/" ++ http_uri:encode(Id1), []).
+    http_request(Host, get, "oracles/" ++ aeu_uri:encode(Pubkey1) ++ "/queries/" ++ aeu_uri:encode(Id1), []).
 
 %% /names/*
 
@@ -1850,7 +1850,7 @@ get_channel_by_pubkey(_Config) ->
 get_channel_by_pubkey_sut(PubKey) ->
     Host = external_address(),
     PubKey1 = binary_to_list(PubKey),
-    http_request(Host, get, "channels/" ++ http_uri:encode(PubKey1), []).
+    http_request(Host, get, "channels/" ++ aeu_uri:encode(PubKey1), []).
 
 %% /peers/*
 

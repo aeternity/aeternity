@@ -109,6 +109,7 @@ check_solo_snapshot_payload_test_() ->
      , {"Channel is already closing", fun check_solo_snapshot_already_closing/0}
      , {"Payload with wrong channel ID", fun check_solo_snapshot_payload_wrong_channel_id/0}
      , {"Payload with wrong signatures", fun check_solo_snapshot_payload_wrong_signatures/0}
+     , {"Payload with wrong round", fun check_solo_snapshot_payload_wrong_round/0}
      , {"Correct payload", fun check_solo_snapshot_payload_correct/0}
      ]
     }.

@@ -340,8 +340,7 @@ meta_spend(Config) ->
 
 meta_oracle_register(Config) ->
     %% Get account information.
-    #{acc_a := #{pub_key := APub, priv_key := APriv},
-      acc_b := #{pub_key := BPub}} = proplists:get_value(accounts, Config),
+    #{acc_a := #{pub_key := APub, priv_key := APriv}} = proplists:get_value(accounts, Config),
     MGP = aec_test_utils:min_gas_price(),
 
     InnerTx = aeo_test_utils:register_tx(APub, #{}),
@@ -748,17 +747,17 @@ create_spend_tx(SenderId, RecipientId, Amount, Fee, Payload) ->
 
 account_by_pubkey(Id) ->
     Host = aecore_suite_utils:external_address(),
-    http_request(Host, get, "accounts/" ++ http_uri:encode(Id), []).
+    http_request(Host, get, "accounts/" ++ aeu_uri:encode(Id), []).
 
 get_account_by_pubkey_and_height(Id, Height) ->
     Host = aecore_suite_utils:external_address(),
-    IdS = binary_to_list(http_uri:encode(Id)),
+    IdS = binary_to_list(aeu_uri:encode(Id)),
     HeightS = integer_to_list(Height),
     http_request(Host, get, "accounts/" ++ IdS ++ "/height/" ++ HeightS, []).
 
 get_account_by_pubkey_and_hash(Id, Hash) ->
     Host = aecore_suite_utils:external_address(),
-    IdS = binary_to_list(http_uri:encode(Id)),
+    IdS = binary_to_list(aeu_uri:encode(Id)),
     http_request(Host, get, "accounts/" ++ IdS ++ "/hash/" ++ Hash, []).
 
 post_tx(TxSerialized) ->

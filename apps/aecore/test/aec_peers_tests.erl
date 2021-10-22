@@ -36,26 +36,6 @@ end()).
     end
 end()).
 
--define(assertInteractiveMessage(MSG, RESP, TIMEOUT), fun() ->
-    receive
-        {From, Ref, (MSG)} ->
-            From ! {Ref, (RESP)},
-            ok
-    after (TIMEOUT) ->
-        dump_messages(),
-        ?fail("Message ~s not received", [(??MSG)])
-    end
-end()).
-
--define(assertNoInteractiveMessage(MSG, TIMEOUT), fun() ->
-    receive
-        {From, Ref, (MSG)} ->
-            From ! {Ref, error},
-            ?fail("~s called unexpectedly", [(??MSG)])
-    after (TIMEOUT) -> ok
-    end
-end()).
-
 -define(assertCalled(LABEL, ARGS, RESULT, TIMEOUT), fun() ->
     receive
         {(LABEL), (ARGS), Result} ->
@@ -337,7 +317,7 @@ test_duplicating_peer() ->
     PeerId2 = peer_id(PubKey2),
     aec_peers:add_peers(Source, Peer2),
 
-    {ok, Conn1} = ?assertCalled(connect, [#{ conn_type := noise, r_pubkey := PubKey2 }], {ok, _}, 3500),
+    {ok, _Conn1} = ?assertCalled(connect, [#{ conn_type := noise, r_pubkey := PubKey2 }], {ok, _}, 3500),
 
     ?assertMatch([#{ pubkey := TrustedPubKey }], aec_peers:connected_peers()),
     ?assertMatch({error, _}, aec_peers:get_connection(PeerId2)),

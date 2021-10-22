@@ -316,8 +316,8 @@ get_connection(PeerId) ->
 -spec parse_peer_address(binary() | string())
     -> {ok, aec_peer:info()} | {error, term()}.
 parse_peer_address(PeerAddress) ->
-    case http_uri:parse(PeerAddress) of
-        {ok, {aenode, EncPubKey, Host, Port, _Path, _Query}} ->
+    case uri_string:parse(PeerAddress) of
+        #{scheme := <<"aenode">>, host := Host, userinfo := EncPubKey, port := Port} ->
             case aeser_api_encoder:safe_decode(peer_pubkey, to_binary(EncPubKey)) of
                 {ok, PubKey} ->
                     PeerInfo = aec_peer:info(PubKey, Host, Port),
@@ -325,8 +325,8 @@ parse_peer_address(PeerAddress) ->
                 {error, _} = Error ->
                     Error
             end;
-        {error, _Reason} = Error ->
-            Error
+        {error, Atom, Reason} ->
+            {error, {Atom, Reason}}
     end.
 
 %% @doc Encodes peer info map to a peer URI.

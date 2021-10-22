@@ -291,7 +291,7 @@ gc_txs(Config) ->
                                 Nonce + 1),
                        AccPrivkey),
     PendingSpendTx2 = for_client_pending(SpendTx2),
-    {ok, 200, #{<<"tx_hash">> := SpendTxHash2}} = post_tx(SpendTx2),
+    {ok, 200, #{<<"tx_hash">> := _SpendTxHash2}} = post_tx(SpendTx2),
     %% assert a tx in pool
     [PendingSpendTx2] = pending_txs(),
 
@@ -315,7 +315,7 @@ delete_tx_from_mempool(Config) ->
     Nonce = next_nonce(Alice),
     SpendTx1 = sign_tx(spend_tx(Alice, Alice, 1, Fee, <<"to be deleted from pool">>,
                                 Nonce + 1), AlicePrivkey),
-    PendingSpendTx1 = for_client_pending(SpendTx1),
+    %% CHECK PURPOSE PendingSpendTx1 = for_client_pending(SpendTx1),
     SpendTx2 = sign_tx(spend_tx(Bob, Bob, 1, Fee), BobPrivkey),
     {ok, 200, #{<<"tx_hash">> := SpendTxHash1}} = post_tx(SpendTx1),
     {ok, 200, #{<<"tx_hash">> := SpendTxHash2}} = post_tx(SpendTx2),
@@ -411,10 +411,3 @@ block_for_tx(EncTxHash) ->
 account_balance(PubKey) ->
     {value, Account} = rpc:call(?NODENAME, aec_chain, get_account, [PubKey]),
     aec_accounts:balance(Account).
-
-random_hash() ->
-    HList =
-        lists:map(
-            fun(_) -> rand:uniform(255) end,
-            lists:seq(1, 32)),
-    list_to_binary(HList).
