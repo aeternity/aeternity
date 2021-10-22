@@ -1,0 +1,85 @@
+eunit:
+  parameters:
+    otp:
+      type: string
+    target:
+      type: string
+  executor: builder_container_<< parameters.otp >>
+  steps:
+    - eunit:
+        otp: << parameters.otp >>
+        target: << parameters.target >>
+
+test:
+  parameters:
+    otp:
+      type: string
+    target:
+      type: string
+  executor: builder_container_<< parameters.otp >>
+  parallelism: 3
+  steps:
+    - common_tests:
+        otp: << parameters.otp >>
+        target: << parameters.target >>
+
+aevm-test:
+  executor: builder_container_otp22
+  steps:
+    - fixed_checkout
+    - restore_rebar_cache
+    - restore_build_cache:
+        otp: otp22
+    - run:
+        name: AEVM Tests
+        command: |
+          make aevm-test
+    - store_rebar3_crashdump
+    - fail_notification
+
+static-analysis:
+  executor: builder_container_<< parameters.otp >>
+  parameters:
+    otp:
+      type: string
+  steps:
+    - fixed_checkout
+    - run: make dockerignore-check
+    - restore_rebar_cache
+    - restore_build_cache:
+        otp: << parameters.otp >>
+    - run: make edoc
+    - restore_cache:
+        keys:
+          - dialyzer-<< parameters.otp >>-cache-v5-{{ .Branch }}-{{ .Revision }}
+          - dialyzer-<< parameters.otp >>-cache-v5-{{ .Branch }}-
+          - dialyzer-<< parameters.otp >>-cache-v5-
+    - run:
+        name: Update dialyzer PLT
+        command: make dialyzer-install
+    - save_cache:
+        key: dialyzer-<< parameters.otp >>-cache-v5-{{ .Branch }}-{{ .Revision }}
+        paths:
+          - _build/default/rebar3_{{ .Environment.OTP_VERSION }}_plt
+    - run:
+        name: Run dialyzer
+        no_output_timeout: 20m
+        command: make dialyzer
+    - run:
+        name: Check OTP version (for effective CI caching)
+        # How to retrieve OTP version in installed OTP development system: http://erlang.org/doc/system_principles/versions.html
+        command: test "${OTP_VERSION:?}" = $(cat $(erl -noinput -eval 'io:format("~s", [filename:join([code:root_dir(), "releases", erlang:system_info(otp_release), "OTP_VERSION"])]), init:stop().'))
+    - store_rebar3_crashdump
+    - fail_notification
+
+rebar_lock_check:
+  executor: builder_container_otp22
+  steps:
+    - fixed_checkout
+    - run:
+        name: Ensure lock file is up-to-date
+        command: |
+          ./rebar3 upgrade
+          git diff --quiet -- rebar.lock || (echo "rebar.lock is not up-to-date" && exit 1)
+    - store_rebar3_crashdump
+    - fail_notification

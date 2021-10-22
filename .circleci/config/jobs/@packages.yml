@@ -1,0 +1,91 @@
+linux-tarball:
+  parameters:
+    aeplugin_devmode:
+      type: boolean
+      default: false
+    package_name:
+      type: string
+  executor: builder_container_otp22
+  steps:
+    - fixed_checkout
+    - when:
+        condition: << parameters.aeplugin_devmode >>
+        steps:
+          - aeplugin_install_devmode
+    - test_arch_os_dependencies
+    - build_tarball:
+        output: << pipeline.parameters.packages_workspace >>/<< parameters.package_name >>
+    - store_artifacts:
+        path: /tmp/package_tests/node1/log
+    - store_artifacts:
+        path: /tmp/package_tests/node2/log
+    - store_artifacts:
+        path: /tmp/package_tests/node3/log
+    - store_package_artifacts
+    - store_rebar3_crashdump
+    - persist_to_workspace:
+        root: << pipeline.parameters.packages_workspace >>
+        paths:
+          - "*.tar.gz"
+    - fail_notification
+
+ubuntu_package:
+  executor: builder_container_1804
+  working_directory: /home/builder/aeternity_deb
+  steps:
+    - fixed_checkout
+    - build_deb:
+        output: << pipeline.parameters.packages_workspace >>
+    - store_package_artifacts
+    - persist_to_workspace:
+        root: << pipeline.parameters.packages_workspace >>
+        paths:
+          - "*.deb"
+    - fail_notification
+
+macos-tarball:
+  parameters:
+    aeplugin_devmode:
+      type: boolean
+      default: false
+    package_name:
+      type: string
+  macos:
+    xcode: "11.1.0" # 11.1.0 is macOS 10.14.4
+  working_directory: /Users/distiller/aeternity
+  steps:
+    - fixed_checkout
+    - when:
+        condition: << parameters.aeplugin_devmode >>
+        steps:
+          - aeplugin_install_devmode
+    - restore_macos_package_cache
+    - run:
+        name: Install required tools
+        # libsodium headers cannot be found without explicit brew link
+        command: |
+          git -C "/usr/local/Homebrew/Library/Taps/homebrew/homebrew-core" fetch --unshallow
+          git -C "/usr/local/Homebrew/Library/Taps/homebrew/homebrew-cask" fetch --unshallow
+          brew update
+          brew rm python@2
+          brew install gmp libsodium erlang@22 cmake
+          brew link gmp
+          brew link libsodium
+          brew link --force erlang@22
+          brew link cmake
+    - save_macos_package_cache
+    - test_arch_os_dependencies
+    - build_tarball:
+        output: << pipeline.parameters.packages_workspace >>/<< parameters.package_name >>
+    - store_artifacts:
+        path: /tmp/package_tests/node1/log
+    - store_artifacts:
+        path: /tmp/package_tests/node2/log
+    - store_artifacts:
+        path: /tmp/package_tests/node3/log
+    - store_package_artifacts
+    - persist_to_workspace:
+        root: << pipeline.parameters.packages_workspace >>
+        paths:
+          - "*.tar.gz"
+    - fail_notification

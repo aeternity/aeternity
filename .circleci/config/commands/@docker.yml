@@ -1,0 +1,94 @@
+setup_docker:
+  steps:
+    - setup_remote_docker:
+        docker_layer_caching: true
+        version: "17.09.0-ce"
+
+docker_login:
+  steps:
+    - setup_secrets
+    - run:
+        name: Login to Docker Hub
+        command: |
+          docker login -u $(</secrets/DOCKER_USER) -p $(</secrets/DOCKER_PASS)
+
+docker_build:
+  parameters:
+    tag:
+      type: string
+  steps:
+    - run:
+        name: Build docker image
+        command: |
+          docker pull aeternity/builder:bionic-otp22
+          docker build -t << pipeline.parameters.docker_repo >>:<< parameters.tag >> .
+    - run:
+        name: Start docker image
+        command: |
+          docker run -d -e AE__CHAIN__PERSIST -e AE__FORK_MANAGEMENT__NETWORK_ID \
+            --name ae_<< pipeline.git.revision >> \
+            << pipeline.parameters.docker_repo >>:<< parameters.tag >> \
+            bin/aeternity console -noinput -network_id ae_test
+    - run:
+        name: Display logs from docker image
+        command: |
+          docker logs -f ae_<< pipeline.git.revision >>
+        background: true
+    - run:
+        name: Wait for container to be ready
+        command: |
+          docker exec -it ae_<< pipeline.git.revision >> curl -4 --retry-connrefused --max-time 60 --retry 6 --connect-timeout 10 http://localhost:3013/v2/status
+    - run:
+        name: Health check
+        command: |
+          until [ "`docker inspect -f {{.State.Health.Status}} ae_<< pipeline.git.revision >>`"=="healthy" ]; do
+              sleep 1;
+          done;
+
+docker_tag:
+  parameters:
+    src:
+      type: string
+      default:  << pipeline.git.tag >>
+    tag:
+      type: string
+  steps:
+    - docker_login
+    - run:
+        name: Tag docker image
+        command: |
+          docker pull << pipeline.parameters.docker_repo >>:<< parameters.src >>
+          docker tag << pipeline.parameters.docker_repo >>:<< parameters.src >> << pipeline.parameters.docker_repo >>:<< parameters.tag >>
+
+docker_push:
+  parameters:
+    tag:
+      type: string
+  steps:
+    - docker_login
+    - run:
+        name: Push Docker image
+        command: |
+          docker push << pipeline.parameters.docker_repo >>:<< parameters.tag >>
+
+docker_image:
+  parameters:
+    tag:
+      type: string
+    tag_only:
+      type: boolean
+      default: false
+  steps:
+  - when:
+      condition:
+        not: << parameters.tag_only >>
+      steps:
+        - docker_build:
+            tag: << parameters.tag >>
+  - when:
+      condition: << parameters.tag_only >>
+      steps:
+        - docker_tag:
+            tag: << parameters.tag >>
+  - docker_push:
+      tag: << parameters.tag >>

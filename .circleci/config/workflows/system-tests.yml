@@ -1,0 +1,10 @@
+  triggers:
+    - schedule:
+        # run at midnight and noon UTC
+        cron: "0 0,12 * * *"
+        filters:
+          branches:
+            only:
+              - << pipeline.parameters.master_branch >>
+  jobs:
+    - docker-system-test

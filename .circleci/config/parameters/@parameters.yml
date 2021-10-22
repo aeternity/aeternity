@@ -1,0 +1,47 @@
+docker_repo:
+  type: string
+  default: aeternity/aeternity
+
+aeplugin_devmode_version:
+  type: string
+  default: "0.3.1"
+
+tag_regex:
+  type: string
+  default: "/^v.*$/"
+
+master_branch:
+  type: string
+  default: master
+
+packages_workspace:
+  type: string
+  default: /tmp/packages
+
+rebar_cache_key:
+  type: string
+  default: rebar-cache-{{ checksum "rebar.lock" }}-{{ checksum "rebar.config" }}
+
+build_cache_version:
+  type: string
+  default: "v5"
+
+build_nix_cache_key:
+  type: string
+  default: build-nix-cache-v3-{{ .Revision }}
+
+machine_build_cache_key:
+  type: string
+  default: machine-build-cache-v19-{{ .Branch }}-{{ .Revision }}
+
+macos_package_cache_key:
+  type: string
+  default: macos-package-cache-v4
+
+s3_builds_bucket:
+  type: string
+  default: aeternity-node-builds
+
+s3_releases_bucket:
+  type: string
+  default: aeternity-node-releases

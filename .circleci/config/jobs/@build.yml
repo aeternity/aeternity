@@ -1,0 +1,30 @@
+build:
+  parameters:
+    otp:
+      type: string
+  executor: builder_container_<< parameters.otp >>
+  steps:
+    - fixed_checkout
+    - restore_rebar_cache
+    - run:
+        name: Build
+        command: make test-build
+    - save_build_cache:
+        otp: << parameters.otp >>
+    - save_rebar_cache
+    - store_rebar3_crashdump
+    - fail_notification
+
+build_nix:
+  executor: builder_container_nix_alpine
+  steps:
+    - fixed_checkout
+    - restore_rebar_cache
+    - restore_build_nix_cache
+    - run:
+        name: Build
+        command: nix-shell -j auto --run "make KIND=test"
+    - save_build_nix_cache
+    - save_rebar_cache
+    - store_rebar3_crashdump
+    - fail_notification_nix
