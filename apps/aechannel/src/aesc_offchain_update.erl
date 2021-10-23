@@ -85,6 +85,9 @@
 -type update_type() :: transfer | withdraw | deposit | create_contract |
                        call_contract | meta.
 
+-type contract_result() :: {ok, any()} | {failed, any()}.
+-type update_result() :: ok | contract_result().
+
 -export_type([update/0]).
 
 -spec from_db_format(update() | tuple()) -> update().
@@ -176,20 +179,21 @@ op_meta(Data) ->
 
 -spec apply_on_trees(aesc_offchain_update:update(), aec_trees:trees(),
                      aec_trees:trees(), aetx_env:env(),
-                     non_neg_integer(), non_neg_integer()) -> aec_trees:trees().
+                     non_neg_integer(), non_neg_integer()) ->
+          {update_result(), aec_trees:trees()}.
 apply_on_trees(Update, Trees0, OnChainTrees, OnChainEnv, Round, Reserve) ->
     case Update of
         #transfer{from_id = FromId, to_id = ToId, amount = Amount} ->
             From = account_pubkey(FromId),
             To = account_pubkey(ToId),
             Trees = remove_tokens(From, Amount, Trees0, Reserve),
-            add_tokens(To, Amount, Trees);
+            {ok, add_tokens(To, Amount, Trees)};
         #deposit{from_id = FromId, amount = Amount} ->
             From = account_pubkey(FromId),
-            add_tokens(From, Amount, Trees0);
+            {ok, add_tokens(From, Amount, Trees0)};
         #withdraw{to_id = ToId, amount = Amount} ->
             To = account_pubkey(ToId),
-            remove_tokens(To, Amount, Trees0, Reserve);
+            {ok, remove_tokens(To, Amount, Trees0, Reserve)};
         #create_contract{owner_id = OwnerId, vm_version  = VmVersion,
                          abi_version = ABIVersion, code = Code,
                          deposit = Deposit, call_data   = CallData} ->
@@ -202,8 +206,9 @@ apply_on_trees(Update, Trees0, OnChainTrees, OnChainEnv, Round, Reserve) ->
             Trees3 = create_account(ContractPubKey, Trees2),
             Trees4 = add_tokens(ContractPubKey, Deposit, Trees3),
             Call = aect_call:new(OwnerId, Round, ContractId, Round, 0),
-            _Trees = aect_channel_contract:run_new(ContractPubKey, Call, CallData, Trees4,
-                                                   OnChainTrees, OnChainEnv);
+            Trees = aect_channel_contract:run_new(ContractPubKey, Call, CallData, Trees4,
+                                                  OnChainTrees, OnChainEnv),
+            {ok, Trees};
         #call_contract{caller_id = CallerId, contract_id = ContractId,
                        abi_version = ABIVersion, amount = Amount,
                        call_data = CallData, call_stack = CallStack,
@@ -222,7 +227,7 @@ apply_on_trees(Update, Trees0, OnChainTrees, OnChainEnv, Round, Reserve) ->
                                             Caller),
             case aect_call:return_type(CallRes) of
                 ok ->
-                    Trees;
+                    {{ok, CallRes}, Trees};
                 Failed when Failed =:= error;
                             Failed =:= revert ->
                     %% the off-chain contract call failed. Revert the amounts
@@ -235,12 +240,14 @@ apply_on_trees(Update, Trees0, OnChainTrees, OnChainEnv, Round, Reserve) ->
                             %% low as 0 tokens:
                             Trees3 = remove_tokens(ContractPubKey, Amount, Trees,
                                                    0),
-                            _Trees4 = add_tokens(Caller, Amount, Trees3);
-                        false -> Trees
+                            Trees4 = add_tokens(Caller, Amount, Trees3),
+                            {{Failed, CallRes}, Trees4};
+                        false ->
+                            {{Failed, CallRes}, Trees}
                     end
             end;
         #meta{} ->
-            Trees0
+            {ok, Trees0}
     end.
 
 -spec for_client(update()) -> map().

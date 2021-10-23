@@ -4773,9 +4773,11 @@ create_contract_call_payload_with_calldata(Key, ContractId, CallData, Amount) ->
         {UpdatedTrees, StateHash} =
             case maps:get(fake_solo_state_hash, Props, none) of
                 none ->
-                    Trees1 = aesc_offchain_update:apply_on_trees(Update,
-                                                                 aect_call_state_tree:prune_without_backend(Trees0),
-                                                                 OnChainTrees, Env, Round, Reserve),
+                    {_, Trees1} =
+                        aesc_offchain_update:apply_on_trees(
+                          Update,
+                          aect_call_state_tree:prune_without_backend(Trees0),
+                          OnChainTrees, Env, Round, Reserve),
                     StateHash1 = aec_trees:hash(Trees1),
                     {Trees1, StateHash1};
                 SH ->
@@ -4855,8 +4857,8 @@ apply_offchain_update(Props, Round, Update) ->
     OnChainTrees = aesc_test_utils:trees(State),
     Env = tx_env(Props),
     Reserve = maps:get(channel_reserve, Props, 0),
-    Trees = aesc_offchain_update:apply_on_trees(Update, Trees0, OnChainTrees,
-                                                Env, Round, Reserve),
+    {_, Trees} = aesc_offchain_update:apply_on_trees(Update, Trees0, OnChainTrees,
+                                                     Env, Round, Reserve),
     Props#{trees => Trees}.
 
 

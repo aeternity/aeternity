@@ -100,21 +100,30 @@ contract ChannelHTLC =
 
   // Called by the hub to collect the collateral + the fee
   // To be safe, the withdraw should be performed before 
-  stateful entrypoint collect(id : hash, secret : hash) =
+  payable stateful entrypoint collect(
+           receiver'  : address,
+           amount'    : int,
+           hash_lock' : hash,
+           secret'    : hash ) =
     require( Call.caller == state.hub, "Unauthorized")
+    let id : hash = generate_id(state.client, receiver', amount', hash_lock')
     let _send : send = state.sends[id]
-    collectable(_send, secret)
+    collectable(_send, secret')
     Chain.spend(state.hub, _send.amount + _send.fee)
     put(state{sends[id].status = COLLECTED})
-    generate_collect_message(secret, _send.hash_lock)
+    generate_collect_message(secret', _send.hash_lock)
 
   stateful payable entrypoint receive(
-        id : hash, secret : hash ) =
+        sender'  : address,
+        amount'  : int,
+        hash_lock' : hash,
+        secret'    : hash ) =
     require( Call.caller == state.client, "Unauthorized")
+    let id : hash = generate_id(sender', state.client, amount', hash_lock')
     let _recv : recv = state.receives[id]
-    receivable(_recv, secret)
+    receivable(_recv, secret')
     Chain.spend(state.client, _recv.amount)
-    generate_receive_message(secret, _recv.hash_lock)
+    generate_receive_message(secret', _recv.hash_lock)
 
   // Called by client in order to get a refund. This will only be allowed
   // under certain circumstances.

@@ -41,7 +41,7 @@
                         , channel_shutdown/3
                         , prepare_contract_create_args/3
                         , load_contract/4
-                        , call_contract/8
+                        , call_contract/9
                         , receive_log/2
                         , get_debug/1
                         , set_configs/2
@@ -52,6 +52,7 @@
                         , prep_responder/2
                         , rpc/4
                         , receive_from_fsm/4
+                        , get_both_balances/3
                         ]).
 
 -include_lib("common_test/include/ct.hrl").
@@ -97,10 +98,10 @@ suite() ->
     [].
 
 init_per_suite(Config) ->
-    aesc_fsm_SUITE:init_per_suite(Config).
+    aesc_fsm_SUITE:init_per_suite([{symlink, "latest.aesc_htlc"} | Config]).
 
 end_per_suite(Config) ->
-    aesc_fsm_SUITE:end_per_suite([{symlink, "latest.aesc_htlc"} | Config]).
+    aesc_fsm_SUITE:end_per_suite(Config).
 
 init_per_group(_, Config) ->
     init_per_group_(Config).
@@ -189,13 +190,24 @@ create_3_party(Cfg) ->
 alice_pays_bob(Cfg) ->
     #{encoded_pub := AlicePub} = ?config(alice, Cfg),
     #{encoded_pub := BobPub} = ?config(bob, Cfg),
+    [{AlicePub, AB},
+     {BobPub, BB}] = BalancesBefore = check_all_balances([AlicePub, BobPub], Cfg),
     Amount = 1000,
     Fee = 100,
     HashLock = request_hashlock(AlicePub, BobPub, Amount, Cfg),
     ?LOG("Hashlock Res = ~p", [HashLock]),
-    SendRes = new_send(AlicePub, BobPub, Amount, Fee, HashLock, Cfg),
-    ?LOG("SendRes = ~p", [SendRes]),
-    {save_config, Cfg}.
+    {ok, Cfg1} = new_send(AlicePub, BobPub, Amount, Fee, HashLock, Cfg),
+    BalancesAfter = check_all_balances([AlicePub, BobPub], Cfg1),
+    Expected = [{AlicePub, add_amt(client_balance, -(Amount + Fee),
+                                   add_amt(hub_balance, (Amount + Fee), AB))},
+                {BobPub, add_amt(client_balance, Amount,
+                                 add_amt(hub_balance, -Amount, BB))}],
+    ?LOG("Balances~n"
+         "   before: ~p~n"
+         "   after : ~p~n"
+         "   expect: ~p", [BalancesBefore, BalancesAfter, Expected]),
+    {balances_after, BalancesAfter} = {balances_after, Expected},
+    {save_config, [{market, ?config(market, Cfg1)}]}.
 
 shutdown(Config) ->
     Debug = get_debug(Config),
@@ -240,14 +252,26 @@ request_hashlock(A, B, Amount, Cfg) ->
              HashLock/binary >>,
     ok = inband_msg_via_hub(Rep, ChB, ChA, Cfg),
     ?LOG("Inband msg OK:~n~s", [Rep]),
-    HashLock.
+    #{hashlock => HashLock, secret => Secret}.
 
-new_send(A, B, Amount, Fee, HashLock, Cfg) ->
-    #{A := ChA, B := ChB} = ?config(market, Cfg),
-    #{contract := ContractA, client := Ca, hub := Ha} = ChA,
-    Args = [integer_to_list(Amount), B, integer_to_list(Fee), HashLock],
-    call_contract(ContractA, channel_htlc, "new_send", Args, Amount + Fee,
-                  Ca, Ha, Cfg).
+new_send(A, B, Amount, Fee, #{hashlock := HashLock, secret := Secret}, Cfg) ->
+    {_Res1, Cfg1} =
+        client_calls_contract(A, new_send, [{int, Amount}, {addr, B},
+                                            {int, Fee}, {hash, HashLock}],
+                              Amount + Fee, Cfg),
+    {_Res2, Cfg2} =
+        hub_calls_contract(B, new_receive, [{int, Amount}, {addr, A},
+                                            {hash, HashLock}],
+                           Amount, Cfg1),
+    {_Res3, Cfg3} =
+        client_calls_contract(B, 'receive', [{addr, A}, {int, Amount},
+                                             {hash, HashLock}, {hash, Secret}],
+                              0, Cfg2),
+    {_Res4, Cfg4} =
+        hub_calls_contract(A, collect, [{addr, B}, {int, Amount},
+                                        {hash, HashLock}, {hash, Secret}],
+                           0, Cfg3),
+    {ok, Cfg4}.
 
 inband_msg_via_hub(Msg, ChA, ChB, Cfg) ->
     #{ client := #{fsm := FsmC}, hub := #{pub := HubPub} = Ah } = ChA,
@@ -271,7 +295,56 @@ receive_inband(Msg, R) ->
                               ok
                       end, 1000),
     ok.
-    
+
+client_calls_contract(ChId, F, Args, Deposit, Cfg) ->
+    call_contract_({client, hub}, ChId, F, Args, Deposit, Cfg).
+
+hub_calls_contract(ChId, F, Args, Deposit, Cfg) ->
+    call_contract_({hub, client}, ChId, F, Args, Deposit, Cfg).
+
+call_contract_({A, B}, ChId, F, Args, Deposit, Cfg) ->
+    #{ChId := Ch} = ?config(market, Cfg),
+    EncArgs = encode_args(Args),
+    #{contract := Contract, A := Caller, B := Responder} = Ch,
+    {Caller1, Responder1, CallRes} =
+        call_contract(Contract, channel_htlc, to_str(F), EncArgs,
+                      Deposit, Caller, Responder, Cfg, true),
+    Cfg1 = update_market(ChId, Ch#{A := Caller1, B := Responder1}, Cfg),
+    ?LOG("Client contract call -> ~p", [CallRes]),
+    {CallRes, Cfg1}.
+
+update_market(ChId, Ch, Cfg) ->
+    M = ?config(market, Cfg),
+    set_configs([{market, M#{ChId := Ch}}], Cfg).
+
+encode_args(As) ->
+    lists:map(fun encode_arg/1, As).
+
+encode_arg({int , I}) -> integer_to_list(I);
+encode_arg({hash, H}) -> encode_hash(H);
+encode_arg({addr, A}) -> A.
+
+encode_hash(Bin) when byte_size(Bin) == 32 ->
+    "#" ++ aeu_hex:bin_to_hex(Bin).
+
+to_str(S) when is_list(S) ->
+    S;
+to_str(A) when is_atom(A) ->
+    atom_to_list(A).
+
+check_all_balances(Keys, Cfg) ->
+    Market = ?config(market, Cfg),
+    lists:map(fun(K) -> {K, check_channel_balances(K, Market)} end, Keys).
+
+check_channel_balances(Id, Market) ->
+    #{Id := #{client := #{fsm := Fsm, pub := CPub},
+              hub := #{pub := HPub}}} = Market,
+    {CBal, HBal} = get_both_balances(Fsm, CPub, HPub),
+    #{client_balance => CBal,
+      hub_balance => HBal}.
+
+add_amt(K, Amt, Map) ->
+    maps:update_with(K, fun(V) -> V + Amt end, Map).
 
 %%%===================================================================
 %%% Account preparation

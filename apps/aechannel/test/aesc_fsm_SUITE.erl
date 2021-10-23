@@ -115,7 +115,7 @@
         , channel_shutdown/3
         , prepare_contract_create_args/3
         , load_contract/4
-        , call_contract/8
+        , call_contract/9
         , receive_log/2
         , set_configs/2
         , get_debug/1
@@ -126,6 +126,7 @@
         , prep_responder/2
         , rpc/4
         , receive_from_fsm/4
+        , get_both_balances/3
         ]).
 
 -export([with_trace/3]).  % mostly to avoid warning if not used
@@ -601,7 +602,7 @@ responder_accept_timeout(Cfg) ->
                      #{noise => NOpts1}
              end,
     create_channel_([ ?SLOGAN
-                    , {spawn_interval, 500}
+                   , {spawn_interval, 500}
                     , {responder_opts, ROptsF} | Cfg]).
 
 -record(miner, { parent
@@ -5225,9 +5226,14 @@ prepare_contract_create_args(ContractName, InitArgs, Deposit) ->
                    , code        => BinCode
                    , call_data   => CallData}.
 
+call_contract(ContractId, ContractName, FunName, FunArgs,
+              Amount, Caller, Acknowledger, Cfg) ->
+    call_contract(ContractId, ContractName, FunName, FunArgs, Amount,
+                  Caller, Acknowledger, Cfg, false).
+
 call_contract(ContractId,
               ContractName, FunName, FunArgs, Amount,
-              #{fsm := FsmC} = Caller, Acknowledger, Cfg) ->
+              #{fsm := FsmC} = Caller, Acknowledger, Cfg, ReturnResult) ->
     Debug = get_debug(Cfg),
     {ok, BinSrc} = aect_test_utils:read_contract(aect_test_utils:sophia_version(), ContractName),
     {ok, CallData} =
@@ -5236,15 +5242,21 @@ call_contract(ContractId,
     CallArgs = #{ contract    => ContractId
                 , abi_version => aect_test_utils:abi_version()
                 , amount      => Amount
-                , call_data   => CallData},
-    aesc_fsm:upd_call_contract(FsmC, CallArgs),
+                , call_data   => CallData
+                , return_result => true },
+    {ok, CallRes} = aesc_fsm:upd_call_contract(FsmC, CallArgs),
+    ?LOG("CallRes = ~p", [CallRes]),
     {Caller1, _} = await_signing_request(update, Caller, Cfg),
     await_update_incoming_report(Acknowledger, ?TIMEOUT, Debug),
     {Acknowledger1, _} = await_signing_request(update_ack, Acknowledger, Cfg),
     Caller2 = await_update_report(Caller1, ?TIMEOUT, Debug),
     Acknowledger2 = await_update_report(Acknowledger1, ?TIMEOUT, Debug),
     assert_empty_msgq(Debug),
-    {Caller2, Acknowledger2}.
+    if ReturnResult ->
+            {Caller2, Acknowledger2, CallRes};
+       true ->
+            {Caller2, Acknowledger2}
+    end.
 
 trigger_force_progress(ContractPubkey,
                        ContractName, FunName, FunArgs, Amount,
