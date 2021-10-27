@@ -7571,6 +7571,7 @@ sophia_no_calls_to_init(_Cfg) ->
     ok.
 
 sophia_pattern_guards(_Cfg) ->
+    ?skipRest(sophia_version() =< ?SOPHIA_LIMA, no_pattern_guards_until_iris),
     state(aect_test_utils:new_state()),
     Acc = ?call(new_account, 100000000000 * aec_test_utils:min_gas_price()),
     C   = ?call(create_contract, Acc, pattern_guards, {}),
