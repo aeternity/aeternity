@@ -5,7 +5,6 @@ include "Option.aes"
 include "List.aes"
 include "ListInternal.aes"
 include "Pair.aes"
-include "Set.aes"
 include "Triple.aes"
 
 contract StdTest =
@@ -13,7 +12,7 @@ contract StdTest =
     (t, msg) => if(t) () else abort(msg)
 
 
-  // dear programmer from the future – this was written when `==` operator
+  // dear programmer from the future – this was written when `==` operator
   // was not working on any ADT. If you are capable of doing it better – do it.
   function list_int_cmp(l1 : list(int), l2 : list(int)) = switch((l1, l2))
     ([], []) => true
@@ -71,17 +70,4 @@ contract StdTest =
         Some(2)), Some(3)), "(+) <$> Just 1 <*> Just 2")
     , (list_int_cmp(Option.filter_options([Some(1), None, Some(2)]), [1,2]), "filter options")
     , (option_int_cmp(Option.choose_first([None, Some(1), None, Some(2)]), Some(1)), "choose fst")
-    , (Set.size(Set.new()) == 0, "size of new set is 0")
-    , (Set.member("x", Set.from_list(["x", "y", "z"])) == true, "set member found")
-    , (Set.member(4, Set.from_list([1, 2, 3])) == false, "set member not found")
-    , (List.sort((x, y) => x < y, Set.to_list(Set.from_list([1, 2, 3]))) == [1, 2, 3], "set-to-list and list-to-set conversion")
-    , (List.sort((x, y) => x < y, Set.to_list(Set.insert(4, Set.from_list([1, 2, 3])))) == [1, 2, 3, 4], "set insert")
-    , (List.sort((x, y) => x < y, Set.to_list(Set.insert(3, Set.from_list([1, 2, 3])))) == [1, 2, 3], "set insert duplicate")
-    , (List.sort((x, y) => x < y, Set.to_list(Set.delete(4, Set.from_list([1, 2, 3])))) == [1, 2, 3], "set delete non-member")
-    , (List.sort((x, y) => x < y, Set.to_list(Set.delete(4, Set.from_list([1, 2, 3, 4])))) == [1, 2, 3], "set delete")
-    , (List.sort((x, y) => x < y, Set.to_list(Set.filter((x) => x > 5, Set.from_list([4, 8, 8])))) == [8], "set filter")
-    , (Set.fold((x, y) => x + y, 0, Set.from_list([1, 2, 3, 4])) == 10, "set fold")
-    , (Set.subtract(Set.from_list([1, 2, 3]), Set.from_list([2, 3, 4])) == Set.from_list([1]), "set subtract")
-    , (Set.intersection_list([Set.from_list([1, 3]), Set.from_list([2, 3]), Set.from_list([3, 3])]) == Set.from_list([3]), "set intersection")
-    , (Set.union_list([Set.from_list([1]), Set.from_list([2]), Set.from_list([3])]) == Set.from_list([1, 2, 3]), "set union")
     ], assert)

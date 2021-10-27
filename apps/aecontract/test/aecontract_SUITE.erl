@@ -192,6 +192,7 @@
         , fate_vm_cross_protocol_store_big/1
         , fate_vm_cross_protocol_store_multi_small/1
         , bad_aens_pointer_handling_lima_to_iris/1
+        , sophia_pattern_guards/1
         ]).
 
 -include_lib("common_test/include/ct.hrl").
@@ -461,6 +462,7 @@ groups() ->
                                  sophia_use_memory_gas,
                                  sophia_compiler_version,
                                  sophia_protected_call,
+                                 sophia_pattern_guards,
                                  bad_aens_pointer_handling_lima_to_iris,
                                  lima_migration
                                ]}
@@ -5617,7 +5619,7 @@ sophia_compiler_version(_Cfg) ->
     {code, Code} = aect_contracts:code(C),
     CMap = aeser_contract_code:deserialize(Code),
     ?assertMatchProtocol(maps:get(compiler_version, CMap, undefined),
-                         undefined, <<"2.1.0">>, <<"3.2.0">>, <<"unknown">>, <<"6.0.0">>),
+                         undefined, <<"2.1.0">>, <<"3.2.0">>, <<"unknown">>, <<"6.1.0">>),
     ok.
 
 sophia_protected_call(_Cfg) ->
@@ -7566,4 +7568,13 @@ sophia_no_calls_to_init(_Cfg) ->
     ?assertMatchAEVM(Res, 32, 32, 32, {error, <<"unknown_function">>}),
     ?assertMatchFATE({error,<<"Trying to call undefined function: <<68,214,68,31>>">>},
                      {error, <<"Calling init is not allowed in this context">>}, Res),
+    ok.
+
+sophia_pattern_guards(_Cfg) ->
+    ?skipRest(sophia_version() =< ?SOPHIA_LIMA_AEVM, no_pattern_guards_until_iris),
+    ?skipRest(sophia_version() =< ?SOPHIA_LIMA_FATE, no_pattern_guards_until_iris),
+    state(aect_test_utils:new_state()),
+    Acc = ?call(new_account, 100000000000 * aec_test_utils:min_gas_price()),
+    C   = ?call(create_contract, Acc, pattern_guards, {}),
+    {}  = ?call(call_contract, Acc, C, test, {tuple, []}, {}),
     ok.
