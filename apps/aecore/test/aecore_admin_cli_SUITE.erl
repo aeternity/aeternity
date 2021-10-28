@@ -17,11 +17,14 @@
    [ push_tx/1
    , inspect_tx/1
    , miner_gas_price/1
+   , peer_lists/1
    ]).
 
 -include_lib("common_test/include/ct.hrl").
 -define(NODE, dev1).
+-define(NODE2, dev2). %% to be used as a peer
 -define(NODE_NAME, aecore_suite_utils:node_name(dev1)).
+-define(NODE2_NAME, aecore_suite_utils:node_name(dev2)).
 -define(SPEND_FEE, 20000 * aec_test_utils:min_gas_price()).
 -define(MINE_RATE, 100).
 -define(REWARD_DELAY, 2).
@@ -29,7 +32,8 @@
 
 all() ->
     [
-     {group, tx_pool}
+      {group, tx_pool}
+    , {group, peers}
     ].
 
 groups() ->
@@ -37,7 +41,12 @@ groups() ->
      {tx_pool, [sequence],
       [ push_tx
       , inspect_tx
-      , miner_gas_price]}
+      , miner_gas_price]},
+     {peers, [sequence],
+      [
+       peer_lists
+      ]}
+
     ].
 
 suite() ->
@@ -46,7 +55,7 @@ suite() ->
 init_per_suite(Config0) ->
     Config =
         aecore_suite_utils:init_per_suite(
-          [?NODE],
+          [?NODE, ?NODE2],
           #{ <<"mining">> =>
               #{ <<"expected_mine_rate">> => ?MINE_RATE,
                   %% this is important so beneficiary can spend
@@ -77,8 +86,9 @@ init_per_suite(Config0) ->
     Res = os:cmd(Executable ++ " admin --help"),
     ExpectedRes =
         "admin: unrecognised argument: --help\n"
-        "usage: admin  {tx_pool}\n\n"
+        "usage: admin  {peers|tx_pool}\n\n"
         "Subcommands:\n"
+        "  peers   Peer's pool commands\n"
         "  tx_pool Transaction pool commands\n",
     ExpectedRes = Res,
     %% mine keyblocks so the miner receives their first reward and have some
@@ -86,9 +96,16 @@ init_per_suite(Config0) ->
     {ok, _} = aecore_suite_utils:mine_blocks(?NODE_NAME, ?REWARD_DELAY + 1, ?MINE_RATE, key, #{}),
     [{executable, Executable}, {nodes, [aecore_suite_utils:node_tuple(?NODE)]} | Config].
 
+init_per_group(peers, Config) ->
+    aecore_suite_utils:start_node(?NODE2, Config),
+    aecore_suite_utils:connect_wait(?NODE2_NAME, aehttp),
+    Config;
 init_per_group(_, Config) ->
     Config.
 
+end_per_group(peers, Config) ->
+    aecore_suite_utils:stop_node(?NODE2, Config),
+    ok;
 end_per_group(_Group, _Config) ->
     ok.
 
@@ -236,3 +253,45 @@ spend(From, To, Amt, FromPriv, Nonce) ->
 
 tx_hash(Tx) ->
     binary_to_list(aeser_api_encoder:encode(tx_hash, aetx_sign:hash(Tx))).
+
+peer_lists(Config) ->
+    "\n" = cli(["peers", "list", "connected"], Config),
+    "0\n" = cli(["peers", "list", "connected", "--count"], Config),
+    "\n" = cli(["peers", "list", "verified"], Config),
+    "0\n" = cli(["peers", "list", "verified", "--count"], Config),
+    "\n" = cli(["peers", "list", "unverified"], Config),
+    "0\n" = cli(["peers", "list", "unverified", "--count"], Config),
+    "\n" = cli(["peers", "list", "blocked"], Config),
+    "0\n" = cli(["peers", "list", "blocked", "--count"], Config),
+    %% assert assumptions
+    Peer2 = aecore_suite_utils:peer_info(?NODE2),
+
+    "Ok.\n" = cli(["peers", "add", Peer2], Config),
+    timer:sleep(1000),
+    "1\n" = cli(["peers", "list", "connected", "--count"], Config),
+    Peer2Results = binary_to_list(<<Peer2/binary, "\n">>),
+    Peer2Results = cli(["peers", "list", "connected"], Config),
+    "1\n" = cli(["peers", "list", "connected", "--count"], Config),
+    "\n" = cli(["peers", "list", "verified"], Config),
+    "0\n" = cli(["peers", "list", "verified", "--count"], Config),
+    "\n" = cli(["peers", "list", "unverified"], Config),
+    "0\n" = cli(["peers", "list", "unverified", "--count"], Config),
+    "\n" = cli(["peers", "list", "blocked"], Config),
+    "0\n" = cli(["peers", "list", "blocked", "--count"], Config),
+
+
+    aecore_suite_utils:stop_node(?NODE2, Config),
+    timer:sleep(65000),
+    "\n" = cli(["peers", "list", "connected"], Config),
+    "0\n" = cli(["peers", "list", "connected", "--count"], Config),
+    "\n" = cli(["peers", "list", "verified"], Config),
+    "0\n" = cli(["peers", "list", "verified", "--count"], Config),
+    Peer2Results = cli(["peers", "list", "unverified"], Config),
+    "1\n" = cli(["peers", "list", "unverified", "--count"], Config),
+    "\n" = cli(["peers", "list", "blocked"], Config),
+    "0\n" = cli(["peers", "list", "blocked", "--count"], Config),
+
+    aecore_suite_utils:start_node(?NODE2, Config),
+    aecore_suite_utils:connect_wait(?NODE2_NAME, aehttp),
+    ok.
+
