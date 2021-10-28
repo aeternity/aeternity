@@ -48,10 +48,17 @@ The `master` branch tracks the ongoing efforts towards the next stable release t
 
 ## Quick Install
 
+**Linux / Mac**
+
 By using the installer to install the latest stable version:
 ```bash
 bash <(curl -s https://install.aeternity.io/install.sh)
 ```
+See the documentation for [starting](https://docs.aeternity.io/en/stable/operation/#start-the-node) and [configuring](https://docs.aeternity.io/en/stable/configuration/#example) the node.
+
+
+
+**Linux / Mac / Win**
 
 Or running a docker container (latest tag):
 ```bash
