@@ -116,10 +116,9 @@
         , prepare_contract_create_args/3
         , load_contract/4
         , call_contract/9
+        , upd_call_contract/4
         , receive_log/2
         , set_configs/2
-        , get_debug/1
-        , log/4
         , peek_message_queue/2
         , prepare_patron/1
         , prep_initiator/2
@@ -135,6 +134,10 @@
 -include("../../aecontract/test/include/aect_sophia_vsn.hrl").
 -include_lib("aecontract/include/aecontract.hrl").
 -include_lib("aecontract/include/hard_forks.hrl").
+-include("../../aecore/test/aec_test_utils.hrl").
+
+-import(aec_test_utils, [ get_debug/1
+                        , set_debug/2 ]).
 
 -define(TIMEOUT, 500).
 -define(SLIGHTLY_LONGER_TIMEOUT, 2000).
@@ -146,8 +149,8 @@
 -define(BOGUS_BLOCKHASH, <<42:32/unit:8>>).
 
 -define(PEEK_MSGQ(_D), peek_message_queue(?LINE, _D)).
--define(LOG(_Fmt, _Args), log(_Fmt, _Args, ?LINE, true)).
--define(LOG(_D, _Fmt, _Args), log(_Fmt, _Args, ?LINE, _D)).
+%% -define(LOG(_Fmt, _Args), log(_Fmt, _Args, ?LINE, true)).
+%% -define(LOG(_D, _Fmt, _Args), log(_Fmt, _Args, ?LINE, _D)).
 
 %% Default configuration values
 -define(MINIMUM_DEPTH, 5).
@@ -2944,7 +2947,7 @@ sign(Signer, Tag, SignedTx0, Updates, OtherSigs, SignatureType, Action,
                       according_account -> co_sign_tx(S, STx, Cfg);
                       basic ->
                           #{priv := Priv} = S,
-                          {aec_test_utils:co_sign_tx(STx, Priv), S}
+                          {aec_test_utils:co_sign_tx(STx, Priv, Cfg), S}
                   end,
                   {S1, STx1}
           end, SignedTx0, [Signer|OtherSigs]),
@@ -2972,7 +2975,7 @@ co_sign_tx(Signer, SignedTx, Cfg) ->
     #{role := Role, pub := Pubkey, priv := Priv} = Signer,
     case account_type(Signer) of
         basic ->
-            {aec_test_utils:co_sign_tx(SignedTx, Priv), Signer};
+            {aec_test_utils:co_sign_tx(SignedTx, Priv, Cfg), Signer};
         generalized ->
             #{auth_idx := N} = Signer,
             #{auth_params := Auths} = ?config(ga, Cfg),
@@ -4269,12 +4272,12 @@ lock_period(_, _) ->
     %% Was hard-coded before
     10.
 
-log(Fmt, Args, L, #{debug := true}) ->
-    log(Fmt, Args, L, true);
-log(Fmt, Args, L, true) ->
-    ct:log("~p at ~p: " ++ Fmt, [self(), L | Args]);
-log(_, _, _, _) ->
-    ok.
+%% log(Fmt, Args, L, #{debug := true}) ->
+%%     log(Fmt, Args, L, true);
+%% log(Fmt, Args, L, true) ->
+%%     ct:log("~p at ~p: " ++ Fmt, [self(), L | Args]);
+%% log(_, _, _, _) ->
+%%     ok.
 
 config() ->
     Cfg = get(config),
@@ -4311,12 +4314,6 @@ set_config(K, V, Cfg, Replace) when is_list(Cfg) ->
                     Cfg
             end
     end.
-
-get_debug(Config) ->
-    proplists:get_bool(debug, Config).
-
-set_debug(Bool, Config) when is_boolean(Bool) ->
-    lists:keystore(debug, 1, Config -- [debug], {debug, Bool}).
 
 %% @doc This function inspects the bitcoin_auth contract's store and extracts the
 %% nonce out of it. It heavily relies on the state of the contract being
@@ -5215,6 +5212,7 @@ load_contract(CreateArgs, #{ fsm := FsmC, pub := Owner} = Creator, Acknowledger,
     {Creator2, Acknowledger2, ContractPubkey}.
 
 prepare_contract_create_args(ContractName, InitArgs, Deposit) ->
+    ct:log("SophiaVsn = ~p, IrisFate = ~p", [aect_test_utils:sophia_version(), ?SOPHIA_IRIS_FATE]),
     {ok, BinCode} = aect_test_utils:compile_contract(aect_test_utils:sophia_version(), ContractName),
     {ok, BinSrc} = aect_test_utils:read_contract(aect_test_utils:sophia_version(), ContractName),
     {ok, CallData} =
@@ -5239,22 +5237,28 @@ call_contract(ContractId,
     {ok, CallData} =
         aect_test_utils:encode_call_data(aect_test_utils:sophia_version(), BinSrc,
                                          FunName, FunArgs),
+    ct:log("CallData (~p) = ~p", [FunName, CallData]),
     CallArgs = #{ contract    => ContractId
                 , abi_version => aect_test_utils:abi_version()
                 , amount      => Amount
                 , call_data   => CallData
-                , return_result => true },
+                , return_result => ReturnResult },
+    upd_call_contract(Caller, Acknowledger, CallArgs, Cfg).
+
+upd_call_contract(#{fsm := FsmC} = Caller, Acknowledger, CallArgs, Cfg) ->
+    Debug = get_debug(Cfg),
     {ok, CallRes} = aesc_fsm:upd_call_contract(FsmC, CallArgs),
-    ?LOG("CallRes = ~p", [CallRes]),
+    ?LOG(Debug, "CallRes = ~p", [CallRes]),
     {Caller1, _} = await_signing_request(update, Caller, Cfg),
     await_update_incoming_report(Acknowledger, ?TIMEOUT, Debug),
     {Acknowledger1, _} = await_signing_request(update_ack, Acknowledger, Cfg),
     Caller2 = await_update_report(Caller1, ?TIMEOUT, Debug),
     Acknowledger2 = await_update_report(Acknowledger1, ?TIMEOUT, Debug),
     assert_empty_msgq(Debug),
-    if ReturnResult ->
+    case maps:get(return_result, CallArgs, false) of
+        true ->
             {Caller2, Acknowledger2, CallRes};
-       true ->
+        false ->
             {Caller2, Acknowledger2}
     end.
 

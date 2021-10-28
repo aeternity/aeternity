@@ -7,59 +7,64 @@ include "String.aes"
 
 contract ChannelHTLC = 
 
-  record state = { sends       : map(hash, send),
-                   receives    : map(hash, recv),
-                   client      : address,
-                   hub         : address,
-                   minimum_fee : int }
+  record state = { sends           : map(hash, send),
+                   receives        : map(hash, recv),
+                   client          : address,
+                   hub             : address,
+                   minimum_fee     : int,
+                   default_timeout : int }
 
-  datatype status = INVALID | ACTIVE | REFUNDED | COLLECTED | EXPIRED 
+  datatype status = INVALID | ACTIVE | REFUNDED | COLLECTED | EXPIRED
 
   record recv = {
     amount : int,
     hash_lock : hash,
     status    : status,
-    sender    : address }
+    sender    : address,
+    timeout   : int }
 
   record send = {
     amount    : int,
     fee       : int,
     hash_lock : hash,
     status    : status,
-    receiver  : address }
-
-  datatype event =
-    Withdraw(hash, address, address, string)
-    | Refund(hash, address, address, string)
-    | NewSwap(hash, address, address, string)
+    receiver  : address,
+    timeout   : int }
 
   entrypoint init(
-      client : address,
-      minimum_fee : int ) : state =
+      client'        : address,
+      minimum_fee'   : int,
+      default_timeout' : int ) : state =
 
-    { client      = client,
-      hub         = Call.caller,
-      minimum_fee = minimum_fee,
-      sends       = {},
-      receives    = {}
+    { client          = client',
+      hub             = Call.caller,
+      minimum_fee     = minimum_fee',
+      default_timeout = default_timeout',
+      sends           = {},
+      receives        = {}
       }
 
   // Called by the client in order to initiate a new send.
   // Before doing this, the receiver must have provided a hashed secret
   // (passed as `hash_lock`)
+  // Note that timeout' is the relative timeout
   payable stateful entrypoint new_send(
       amount' : int,
       receiver' : address,
       fee' : int,
-      hash_lock' : hash ) =
+      timeout' : int,
+      hash_lock' : hash ) : int =
 
     require( Call.caller == state.client, "Not client" )
     require( fee' >= state.minimum_fee, "Fee too low" )
     require( amount' > 0, "Invalid amount")
     require( Call.value == (amount' + fee'), "Wrong value (should be amount + fee)" )
+    require( timeout' >= 0, "Invalid timeout")
 
     // Do not include fee in id calculation
     let id : hash = generate_id(state.client, receiver', amount', hash_lock')
+
+    let abs_timeout : int = abs_timeout(timeout', state.default_timeout, Chain.block_height)
 
     require(!send_exists(id), "Send entry already exists")
 
@@ -68,19 +73,23 @@ contract ChannelHTLC =
       fee = fee',
       hash_lock = hash_lock',
       status = ACTIVE,
-      receiver = receiver' }
+      receiver = receiver',
+      timeout = abs_timeout }
 
     put(state{ sends[id] = _send })
-    generate_new_send_message(_send)
+    abs_timeout
 
   // Called by the hub on the receiver channel in order to forward
   // the send request. The `hash_lock` is the one provided by the reciever earlier
   // There is no fee here, since the fee is paid by the sender and collected by
   // the hub.
+  //
+  // Note that timeout' here is the absolute timeout
   payable stateful entrypoint new_receive(
       amount' : int,
       sender' : address,
-      hash_lock' : hash ) =
+      timeout' : int,
+      hash_lock' : hash ) : unit =
     require( Call.caller == state.hub, "Not hub" )
     require( amount' > 0, "Invalid amount" )
     require( Call.value == amount', "Wrong value (should be amount)")
@@ -93,10 +102,9 @@ contract ChannelHTLC =
             amount = amount',
             hash_lock = hash_lock',
             status = ACTIVE,
-            sender = sender' }
+            sender = sender',
+            timeout = timeout' }
     put(state{receives[id] = _recv})
-    generate_new_recv_message(_recv)
-
 
   // Called by the hub to collect the collateral + the fee
   // To be safe, the withdraw should be performed before 
@@ -104,32 +112,33 @@ contract ChannelHTLC =
            receiver'  : address,
            amount'    : int,
            hash_lock' : hash,
-           secret'    : hash ) =
+           secret'    : hash ) : unit =
     require( Call.caller == state.hub, "Unauthorized")
     let id : hash = generate_id(state.client, receiver', amount', hash_lock')
     let _send : send = state.sends[id]
     collectable(_send, secret')
     Chain.spend(state.hub, _send.amount + _send.fee)
     put(state{sends[id].status = COLLECTED})
-    generate_collect_message(secret', _send.hash_lock)
 
-  stateful payable entrypoint receive(
+  payable stateful entrypoint receive(
         sender'  : address,
         amount'  : int,
         hash_lock' : hash,
-        secret'    : hash ) =
+        secret'    : hash ) : unit =
     require( Call.caller == state.client, "Unauthorized")
     let id : hash = generate_id(sender', state.client, amount', hash_lock')
     let _recv : recv = state.receives[id]
     receivable(_recv, secret')
     Chain.spend(state.client, _recv.amount)
-    generate_receive_message(secret', _recv.hash_lock)
 
   // Called by client in order to get a refund. This will only be allowed
   // under certain circumstances.
-  stateful entrypoint refund(id : hash) =
-    require(Call.caller == state.client, "Not client")
-
+  payable stateful entrypoint refund(
+        receiver'  : address,
+        amount'    : int,
+        hash_lock' : hash ) : unit =
+    require(Call.caller == state.client, "Unauthorized")
+    let id : hash = generate_id(Call.caller, receiver', amount', hash_lock')
     let _send : send = state.sends[id]
     refundable(_send)
     
@@ -161,35 +170,26 @@ contract ChannelHTLC =
     require(send_exists(id), "SEND_NOT_FOUND")
     state.sends[id]
 
+  function abs_timeout(timeout' : int, default' : int, height' : int) : int =
+    if (timeout' == 0)
+      height' + default'
+    else
+      height' + timeout'
+
   function collectable(_send : send, secret : hash) =
-    require(is_active(_send.status), "SEND_NOT_ACTIVE")
+    require(is_active(_send.status), "NOT_ACTIVE")
     require(_send.hash_lock == Crypto.sha256(secret), "INVALID_SECRET")
+    require(Chain.block_height < _send.timeout + 1, "COLLECT_TIMEOUT")
 
   function receivable(_recv : recv, secret : hash) =
-    require(is_active(_recv.status), "RECV_NOT_ACTIVE")
+    require(is_active(_recv.status), "NOT_ACTIVE")
     require(_recv.hash_lock == Crypto.sha256(secret), "INVALID_SECRET")
+    require(Chain.block_height < _recv.timeout, "RECEIVE_TIMEOUT")
 
   function refundable(_send: send) =
-    require(is_active(_send.status), "SWAP_NOT_ACTIVE")
+    require(is_active(_send.status), "NOT_ACTIVE")
     require(state.client == Call.caller, "INVALID_SENDER")
-
-  function generate_collect_message(secret : hash, hash_lock : hash) : string =
-    concat([Bytes.to_str(secret), Bytes.to_str(hash_lock)])
-
-  function generate_receive_message(secret : hash, hash_lock : hash) : string =
-    concat([Bytes.to_str(secret), Bytes.to_str(hash_lock)])
-
-  function generate_new_send_message(_send : send) : string =
-    concat([
-      Address.to_str(_send.receiver),
-      Int.to_str(_send.amount),
-      Bytes.to_str(_send.hash_lock)])
-  
-  function generate_new_recv_message(_recv : recv) : string =
-    concat([
-      Address.to_str(_recv.sender),
-      Int.to_str(_recv.amount),
-      Bytes.to_str(_recv.hash_lock)])
+    require(Chain.block_height >= _send.timeout + 3, "NOT_YET_REFUNDABLE")
 
   function is_active(x : status) : bool =
     x == ACTIVE

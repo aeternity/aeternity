@@ -22,6 +22,7 @@
 -export([
           create_3_party/1
         , alice_pays_bob/1
+        , alice_tries_early_refund/1
         , shutdown/1
         ]).
 
@@ -37,15 +38,15 @@
 %%% proxy in `init_per_testcase/2`, etc.)
 %%% ========================================================================
 
+-import(aec_test_utils, [ get_debug/1 ]).
+
 -import(aesc_fsm_SUITE, [ create_channel_/3
                         , channel_shutdown/3
                         , prepare_contract_create_args/3
                         , load_contract/4
                         , call_contract/9
                         , receive_log/2
-                        , get_debug/1
                         , set_configs/2
-                        , log/4
                         , peek_message_queue/2
                         , prepare_patron/1
                         , prep_initiator/2
@@ -59,8 +60,10 @@
 -include("../../aecontract/test/include/aect_sophia_vsn.hrl").
 -include_lib("aecontract/include/aecontract.hrl").
 -include_lib("aecontract/include/hard_forks.hrl").
+-include("../../aecore/test/aec_test_utils.hrl").
 
 -define(MINIMUM_FEE, 100).
+-define(DEFAULT_TIMEOUT, 3).
 
 -define(TIMEOUT, 3000).
 -define(SLIGHTLY_LONGER_TIMEOUT, 2000).
@@ -68,8 +71,8 @@
 -define(PORT, 9325).
 
 -define(PEEK_MSGQ(_D), peek_message_queue(?LINE, _D)).
--define(LOG(_Fmt, _Args), log(_Fmt, _Args, ?LINE, true)).
--define(LOG(_D, _Fmt, _Args), log(_Fmt, _Args, ?LINE, _D)).
+%% -define(LOG(_Fmt, _Args), log(_Fmt, _Args, ?LINE, true)).
+%% -define(LOG(_D, _Fmt, _Args), log(_Fmt, _Args, ?LINE, _D)).
 
 -define(MINIMUM_DEPTH, 5).
 -define(MINIMUM_DEPTH_FACTOR, 10).
@@ -91,6 +94,7 @@ groups() ->
     , {happy_path, [sequence],
        [ create_3_party
        , alice_pays_bob
+       , alice_tries_early_refund
        , shutdown ]}
     ].
 
@@ -98,7 +102,12 @@ suite() ->
     [].
 
 init_per_suite(Config) ->
-    aesc_fsm_SUITE:init_per_suite([{symlink, "latest.aesc_htlc"} | Config]).
+    case aec_governance:get_network_id() of
+        <<"local_iris_testnet">> ->
+            aesc_fsm_SUITE:init_per_suite([{symlink, "latest.aesc_htlc"} | Config]);
+        _ ->
+            {skip, only_on_iris}
+    end.
 
 end_per_suite(Config) ->
     aesc_fsm_SUITE:end_per_suite(Config).
@@ -131,7 +140,6 @@ init_per_testcase(TC, Config) ->
                   undefined ->
                       Config;
                   {_Saver, SavedConf} ->
-                      ?LOG("SavedConf = ~p", [SavedConf]),
                       SavedConf ++ Config
               end,
     proxy_register(Config1),
@@ -166,48 +174,97 @@ create_3_party(Cfg) ->
         proxy_do(fun() -> create_channel_(CfgB, #{}, Debug) end, CfgB),
     ?LOG("3-way Channel Market set up (no contract yet).", []),
     %%
+    {Time, CompileRes} = timer:tc(fun compile_contract/0),
+    ct:log("Time to compile contract: ~p", [Time]),
+    ct:log("CompileRes = ~p", [CompileRes]),
+    %%
     %% Contract for Alice
-    CreateArgsA = prepare_contract_create_args(
-                    channel_htlc, htlc_init_args(Alice), 10),
+    CreateArgsA = contract_create_args(
+                    CompileRes, [encpub(Alice), ?MINIMUM_FEE, ?DEFAULT_TIMEOUT], 10),
     {Ha1, Ca1, ContractPubKeyA} =
         proxy_do(fun() -> load_contract(CreateArgsA, Ha, Ca, CfgA) end, CfgA),
     ?LOG("HTLC contract loaded on Alice's channel", []),
     %%
     %% Contract for Bob
-    CreateArgsB = prepare_contract_create_args(
-                    channel_htlc, htlc_init_args(Bob), 10),
+    CreateArgsB = contract_create_args(
+                    CompileRes, [encpub(Bob), ?MINIMUM_FEE, ?DEFAULT_TIMEOUT], 10),
     {Hb1, Cb1, ContractPubKeyB} =
         proxy_do(fun() -> load_contract(CreateArgsB, Hb, Cb, CfgB) end, CfgB),
     ?LOG("HTLC contract loaded on Bob's channel", []),
-    {save_config, [{market, #{ encpub(Alice) => #{ client   => Ca1
-                                                 , hub      => Ha1
-                                                 , contract => ContractPubKeyA }
-                             , encpub(Bob)   => #{ client   => Cb1
-                                                 , hub      => Hb1
-                                                 , contract => ContractPubKeyB } }}
+    {save_config, [ {market, #{ contract_meta => CompileRes
+                              , encpub(Alice) => #{ client   => Ca1
+                                                  , hub      => Ha1
+                                                  , contract => ContractPubKeyA }
+                              , encpub(Bob)   => #{ client   => Cb1
+                                                  , hub      => Hb1
+                                                  , contract => ContractPubKeyB } }}
                   ]}.
 
 alice_pays_bob(Cfg) ->
     #{encoded_pub := AlicePub} = ?config(alice, Cfg),
     #{encoded_pub := BobPub} = ?config(bob, Cfg),
+    ContractMeta = ?config(contract_meta, Cfg),
     [{AlicePub, AB},
      {BobPub, BB}] = BalancesBefore = check_all_balances([AlicePub, BobPub], Cfg),
     Amount = 1000,
     Fee = 100,
+    Timeout = 3,
+    T0 = timestamp(),
     HashLock = request_hashlock(AlicePub, BobPub, Amount, Cfg),
     ?LOG("Hashlock Res = ~p", [HashLock]),
-    {ok, Cfg1} = new_send(AlicePub, BobPub, Amount, Fee, HashLock, Cfg),
-    BalancesAfter = check_all_balances([AlicePub, BobPub], Cfg1),
-    Expected = [{AlicePub, add_amt(client_balance, -(Amount + Fee),
-                                   add_amt(hub_balance, (Amount + Fee), AB))},
-                {BobPub, add_amt(client_balance, Amount,
-                                 add_amt(hub_balance, -Amount, BB))}],
-    ?LOG("Balances~n"
-         "   before: ~p~n"
-         "   after : ~p~n"
-         "   expect: ~p", [BalancesBefore, BalancesAfter, Expected]),
-    {balances_after, BalancesAfter} = {balances_after, Expected},
-    {save_config, [{market, ?config(market, Cfg1)}]}.
+    %%
+    %%
+    {AbsTimeout, Cfg1} = new_send(AlicePub, BobPub, Amount, Fee, Timeout, HashLock, Cfg),
+    {_, Cfg2} = new_receive(AlicePub, BobPub, Amount, AbsTimeout, HashLock, Cfg1),
+    {_, Cfg3} = recv(AlicePub, BobPub, Amount, HashLock, Cfg2),
+    {_, Cfg4} = collect(AlicePub, BobPub, Amount, HashLock, Cfg3),
+    %%
+    %%
+    T1 = timestamp(),
+    ?LOG("Time for Alice Pays Bob: ~p ms", [T1-T0]),
+    {ok, BalancesAfter} =
+        expect_balances(BalancesBefore, [{AlicePub, [{client_balance, -(Amount + Fee)},
+                                                     {hub_balance, (Amount + Fee)}]},
+                                         {BobPub, [{client_balance, Amount},
+                                                   {hub_balance, -Amount}]}], Cfg4),
+    {save_config, [{market, ?config(market, Cfg4)}]}.
+
+alice_tries_early_refund(Cfg) ->
+    #{encoded_pub := AlicePub} = ?config(alice, Cfg),
+    #{encoded_pub := BobPub} = ?config(bob, Cfg),
+    ContractMeta = ?config(contract_meta, Cfg),
+    Before = check_all_balances([AlicePub, BobPub], Cfg),
+    Amount = 1000,
+    Fee = 100,
+    Timeout = 3,
+    T0 = timestamp(),
+    HashLock = request_hashlock(AlicePub, BobPub, Amount, Cfg),
+    ?LOG("Hashlock Res = ~p", [HashLock]),
+    %%
+    %%
+    {AbsTimeout, Cfg1} = new_send(AlicePub, BobPub, Amount, Fee, Timeout, HashLock, Cfg),
+    {{error, <<"NOT_YET_REFUNDABLE">>}, Cfg2} =
+        refund(AlicePub, BobPub, Amount, HashLock, Cfg1),
+    {ok, AfterSend} =
+        expect_balances(Before, [{AlicePub, [{client_balance, -(Amount + Fee)}]}], Cfg2),
+    {ok, Cfg3} = new_receive(AlicePub, BobPub, Amount, AbsTimeout, HashLock, Cfg2),
+    {{error, <<"NOT_YET_REFUNDABLE">>}, Cfg4} =
+        refund(AlicePub, BobPub, Amount, HashLock, Cfg3),
+    {ok, AfterNewRecv} =
+        expect_balances(AfterSend, [{BobPub, [{hub_balance, -Amount}]}], Cfg4),
+    {ok, Cfg5} = recv(AlicePub, BobPub, Amount, HashLock, Cfg4),
+    {{error, <<"NOT_YET_REFUNDABLE">>}, Cfg6} =
+        refund(AlicePub, BobPub, Amount, HashLock, Cfg5),
+    {ok, AfterRecv} =
+        expect_balances(AfterNewRecv, [{BobPub, [{client_balance, Amount}]}], Cfg6),
+    {_, Cfg7} = collect(AlicePub, BobPub, Amount, HashLock, Cfg6),
+    {ok, AfterCollect} =
+        expect_balances(AfterRecv, [{AlicePub, [{hub_balance, (Amount + Fee)}]}], Cfg7),
+    {{error, <<"NOT_ACTIVE">>}, Cfg8} =
+        refund(AlicePub, BobPub, Amount, HashLock, Cfg7),
+    %%
+    %%
+    {save_config, [{market, ?config(market, Cfg8)}]}.
 
 shutdown(Config) ->
     Debug = get_debug(Config),
@@ -220,7 +277,7 @@ shutdown(Config) ->
                                shutdown(C, H, ConfigX, Debug)
                        end, ConfigX),
               ok
-      end, ok, Market),
+      end, ok, maps:remove(contract_meta, Market)),
     ok.
 
 htlc_init_args(Client) ->
@@ -230,6 +287,9 @@ htlc_init_args(Client) ->
 
 encpub(#{encoded_pub := P}) ->
     P.
+
+timestamp() ->
+    erlang:system_time(millisecond).
 
 %%%===================================================================
 %%% Market operations
@@ -254,24 +314,37 @@ request_hashlock(A, B, Amount, Cfg) ->
     ?LOG("Inband msg OK:~n~s", [Rep]),
     #{hashlock => HashLock, secret => Secret}.
 
-new_send(A, B, Amount, Fee, #{hashlock := HashLock, secret := Secret}, Cfg) ->
-    {_Res1, Cfg1} =
-        client_calls_contract(A, new_send, [{int, Amount}, {addr, B},
-                                            {int, Fee}, {hash, HashLock}],
+new_send(A, B, Amount, Fee, Timeout, #{hashlock := HashLock, secret := Secret}, Cfg) ->
+    {{ok, {integer, AbsTimeout}}, Cfg1} =
+        client_calls_contract(A, <<"new_send">>, [Amount, B, Fee, Timeout, HashLock],
                               Amount + Fee, Cfg),
-    {_Res2, Cfg2} =
-        hub_calls_contract(B, new_receive, [{int, Amount}, {addr, A},
-                                            {hash, HashLock}],
-                           Amount, Cfg1),
-    {_Res3, Cfg3} =
-        client_calls_contract(B, 'receive', [{addr, A}, {int, Amount},
-                                             {hash, HashLock}, {hash, Secret}],
-                              0, Cfg2),
-    {_Res4, Cfg4} =
-        hub_calls_contract(A, collect, [{addr, B}, {int, Amount},
-                                        {hash, HashLock}, {hash, Secret}],
-                           0, Cfg3),
-    {ok, Cfg4}.
+    ?LOG("AbsTimeout from new_send(): ~p", [AbsTimeout]),
+    {AbsTimeout, Cfg1}.
+
+new_receive(A, B, Amount, AbsTimeout, #{hashlock := HashLock}, Cfg) ->
+    {{ok, _} = Res, Cfg1} =
+        hub_calls_contract(B, <<"new_receive">>, [Amount, A, AbsTimeout, HashLock],
+                           Amount, Cfg),
+    ?LOG("new_receive: ~p", [Res]),
+    {ok, Cfg1}.
+
+recv(A, B, Amount, #{hashlock := HashLock, secret := Secret}, Cfg) ->
+    {{ok,_} = Res, Cfg1} =
+        client_calls_contract(B, <<"receive">>, [A, Amount, HashLock, Secret], 0, Cfg),
+    ?LOG("receive Res: ~p", [Res]),
+    {ok, Cfg1}.
+
+collect(A, B, Amount, #{hashlock := HashLock, secret := Secret}, Cfg) ->
+    {Res, Cfg1} =
+        hub_calls_contract(A, <<"collect">>, [B, Amount, HashLock, Secret], 0, Cfg),
+    ?LOG("collect Res: ~p", [Res]),
+    {Res, Cfg1}.
+
+refund(A, B, Amount, #{hashlock := HashLock}, Cfg) ->
+    {Res, Cfg1} =
+        client_calls_contract(A, <<"refund">>, [B, Amount, HashLock], 0, Cfg),
+    ?LOG("refund Res: ~p", [Res]),
+    {Res, Cfg1}.
 
 inband_msg_via_hub(Msg, ChA, ChB, Cfg) ->
     #{ client := #{fsm := FsmC}, hub := #{pub := HubPub} = Ah } = ChA,
@@ -303,14 +376,13 @@ hub_calls_contract(ChId, F, Args, Deposit, Cfg) ->
     call_contract_({hub, client}, ChId, F, Args, Deposit, Cfg).
 
 call_contract_({A, B}, ChId, F, Args, Deposit, Cfg) ->
-    #{ChId := Ch} = ?config(market, Cfg),
-    EncArgs = encode_args(Args),
+    Debug = get_debug(Cfg),
+    #{contract_meta := CMeta, ChId := Ch} = ?config(market, Cfg),
     #{contract := Contract, A := Caller, B := Responder} = Ch,
     {Caller1, Responder1, CallRes} =
-        call_contract(Contract, channel_htlc, to_str(F), EncArgs,
-                      Deposit, Caller, Responder, Cfg, true),
+        contract_call(Contract, F, Args, Deposit, Caller, Responder, CMeta, Cfg),
     Cfg1 = update_market(ChId, Ch#{A := Caller1, B := Responder1}, Cfg),
-    ?LOG("Client contract call -> ~p", [CallRes]),
+    ?LOG(Debug, "Client contract call (~p) -> ~p", [F, CallRes]),
     {CallRes, Cfg1}.
 
 update_market(ChId, Ch, Cfg) ->
@@ -327,11 +399,6 @@ encode_arg({addr, A}) -> A.
 encode_hash(Bin) when byte_size(Bin) == 32 ->
     "#" ++ aeu_hex:bin_to_hex(Bin).
 
-to_str(S) when is_list(S) ->
-    S;
-to_str(A) when is_atom(A) ->
-    atom_to_list(A).
-
 check_all_balances(Keys, Cfg) ->
     Market = ?config(market, Cfg),
     lists:map(fun(K) -> {K, check_channel_balances(K, Market)} end, Keys).
@@ -342,6 +409,27 @@ check_channel_balances(Id, Market) ->
     {CBal, HBal} = get_both_balances(Fsm, CPub, HPub),
     #{client_balance => CBal,
       hub_balance => HBal}.
+
+expect_balances(Before, Changes, Cfg) ->
+    Keys = [K || {K, _} <- Before],
+    After = check_all_balances(Keys, Cfg),
+    Expected = lists:foldl(fun({K, Changes1}, Acc) ->
+                                   apply_balance_changes(K, Changes1, Acc)
+                           end, Before, Changes),
+    ?LOG("Balances~n"
+         "   before: ~p~n"
+         "   after : ~p~n"
+         "   expect: ~p", [Before, After, Expected]),
+    {balances_after, After} = {balances_after, Expected},
+    {ok, After}.
+
+apply_balance_changes(K, Changes, Bs) ->
+    lists:map(fun({K1, Map}) when K1 == K ->
+                      {K1, lists:foldl(fun({Side, Amt}, Acc) ->
+                                               add_amt(Side, Amt, Acc)
+                                       end, Map, Changes)};
+                 (Other) -> Other
+              end, Bs).
 
 add_amt(K, Amt, Map) ->
     maps:update_with(K, fun(V) -> V + Amt end, Map).
@@ -436,3 +524,40 @@ proxy_handle_call(Req, _From, St) ->
         {do, F} ->
             {F(), St}
     end.
+
+
+compile_contract() ->
+    Fname = filename:join(code:lib_dir(aecontract),
+                          "../../extras/test/contracts/channel_htlc.aes"),
+    {ok, Res} = aeso_compiler:file(Fname, [{backend, fate}]),
+    Res.
+
+contract_create_args(CompileRes, Args, Deposit) ->
+    {ok, CallData} = aefa_fate_code:encode_calldata(
+                       maps:get(fate_code, CompileRes), <<"init">>, Args),
+    Code = aect_sophia:serialize(CompileRes, _SophiaVsn = 3),
+    #{ vm_version  => aect_test_utils:vm_version()
+     , abi_version => aect_test_utils:abi_version()
+     , deposit     => Deposit
+     , code        => Code
+     , call_data   => CallData }.
+
+contract_call(ContractId, F, Args, Amount, A, B, Meta, Cfg) ->
+    {ok, CallData} = aefa_fate_code:encode_calldata(
+                       maps:get(fate_code, Meta), F, Args),
+    CallArgs = #{ contract      => ContractId
+                , abi_version   => aect_test_utils:abi_version()
+                , amount        => Amount
+                , call_data     => CallData
+                , return_result => true },
+    {A1, B1, CallRes} =
+        aesc_fsm_SUITE:upd_call_contract(A, B, CallArgs, Cfg),
+    {A1, B1, decode_callres(CallRes, F, Meta)}.
+
+%% NOTE: the `unit' data type comes back as `{{tuple, []}, {tuple, {}}}'
+%%
+decode_callres({ok, Value}, F, Meta) ->
+    {ok, aefa_fate_code:decode_result(maps:get(fate_code, Meta), F, Value)};
+decode_callres({Other, Reason}, F, Meta) when Other==error; Other==revert ->
+    {error, aeb_fate_encoding:deserialize(Reason)}.
+
