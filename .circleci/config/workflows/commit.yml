@@ -26,6 +26,7 @@ jobs:
             - "ct-minerva"
             - "ct-fortuna"
             - "ct-lima"
+            - "ct-iris"
             - "ct-latest"
             - "ct-latest-no-aci"
             - "ct-mnesia-leveled"
@@ -35,6 +36,7 @@ jobs:
           - {otp: "otp23", target: "ct-minerva"}
           - {otp: "otp23", target: "ct-fortuna"}
           - {otp: "otp23", target: "ct-lima"}
+          - {otp: "otp23", target: "ct-iris"}
           - {otp: "otp23", target: "ct-latest-no-aci"}
           - {otp: "otp23", target: "ct-mnesia-leveled"}
           - {otp: "otp23", target: "ct-mnesia-rocksdb"}
@@ -56,6 +58,7 @@ jobs:
             - "minerva"
             - "fortuna"
             - "lima"
+            - "iris"
             - "latest"
       requires:
         - build-<< matrix.otp >>
