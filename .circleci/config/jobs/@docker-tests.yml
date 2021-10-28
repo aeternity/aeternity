@@ -22,7 +22,7 @@ docker-js-sdk-smoke-test:
   executor: buildpack
   environment:
     - AE__CHAIN__PERSIST: "false"
-    - AE__FORK_MANAGEMENT__NETWORK_ID: local_iris_testnet
+    - AE__FORK_MANAGEMENT__NETWORK_ID: local_ceres_testnet
   steps:
     - fixed_checkout
     - setup_docker
@@ -98,7 +98,7 @@ js-sdk-smoke-test:
     - image: circleci/buildpack-deps:bionic
   environment:
     - AE__CHAIN__PERSIST: false
-    - AE__FORK_MANAGEMENT__NETWORK_ID: local_iris_testnet
+    - AE__FORK_MANAGEMENT__NETWORK_ID: local_ceres_testnet
     - PACKAGES_DIR: << pipeline.parameters.packages_workspace >>
   steps:
     - fixed_checkout

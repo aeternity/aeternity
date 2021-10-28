@@ -118,7 +118,8 @@ latest_sophia_vm_version() ->
         ?MINERVA_PROTOCOL_VSN -> ?VM_AEVM_SOPHIA_2;
         ?FORTUNA_PROTOCOL_VSN -> ?VM_AEVM_SOPHIA_3;
         ?LIMA_PROTOCOL_VSN    -> ?VM_AEVM_SOPHIA_4;
-        ?IRIS_PROTOCOL_VSN    -> ?VM_FATE_SOPHIA_2
+        ?IRIS_PROTOCOL_VSN    -> ?VM_FATE_SOPHIA_2;
+        ?CERES_PROTOCOL_VSN   -> ?VM_FATE_SOPHIA_2
     end.
 
 latest_sophia_abi_version() ->
@@ -127,7 +128,8 @@ latest_sophia_abi_version() ->
         ?MINERVA_PROTOCOL_VSN -> ?ABI_AEVM_SOPHIA_1;
         ?FORTUNA_PROTOCOL_VSN -> ?ABI_AEVM_SOPHIA_1;
         ?LIMA_PROTOCOL_VSN    -> ?ABI_AEVM_SOPHIA_1;
-        ?IRIS_PROTOCOL_VSN    -> ?ABI_FATE_SOPHIA_1
+        ?IRIS_PROTOCOL_VSN    -> ?ABI_FATE_SOPHIA_1;
+        ?CERES_PROTOCOL_VSN   -> ?ABI_FATE_SOPHIA_1
     end.
 
 latest_sophia_version() ->
@@ -136,7 +138,8 @@ latest_sophia_version() ->
         ?MINERVA_PROTOCOL_VSN -> ?SOPHIA_MINERVA;
         ?FORTUNA_PROTOCOL_VSN -> ?SOPHIA_FORTUNA;
         ?LIMA_PROTOCOL_VSN    -> ?SOPHIA_LIMA_AEVM;
-        ?IRIS_PROTOCOL_VSN    -> ?SOPHIA_IRIS_FATE
+        ?IRIS_PROTOCOL_VSN    -> ?SOPHIA_IRIS_FATE;
+        ?CERES_PROTOCOL_VSN    -> ?SOPHIA_IRIS_FATE
     end.
 
 latest_sophia_contract_version() ->
@@ -145,7 +148,8 @@ latest_sophia_contract_version() ->
         ?MINERVA_PROTOCOL_VSN -> ?SOPHIA_CONTRACT_VSN_2;
         ?FORTUNA_PROTOCOL_VSN -> ?SOPHIA_CONTRACT_VSN_2;
         ?LIMA_PROTOCOL_VSN    -> ?SOPHIA_CONTRACT_VSN_3;
-        ?IRIS_PROTOCOL_VSN    -> ?SOPHIA_CONTRACT_VSN_3
+        ?IRIS_PROTOCOL_VSN    -> ?SOPHIA_CONTRACT_VSN_3;
+        ?CERES_PROTOCOL_VSN    -> ?SOPHIA_CONTRACT_VSN_3
     end.
 
 latest_protocol_version() ->
@@ -681,6 +685,7 @@ sophia_version(aevm, ?LIMA_PROTOCOL_VSN) -> ?SOPHIA_LIMA_AEVM;
 sophia_version(aevm, _) -> {error, aevm_deprecated};
 sophia_version(fate, ?LIMA_PROTOCOL_VSN) -> ?SOPHIA_LIMA_FATE;
 sophia_version(fate, ?IRIS_PROTOCOL_VSN) -> ?SOPHIA_IRIS_FATE;
+sophia_version(fate, ?CERES_PROTOCOL_VSN) -> ?SOPHIA_IRIS_FATE; %% TBD
 sophia_version(fate, Protocol) when Protocol < ?LIMA_PROTOCOL_VSN -> {error, fate_not_available}.
 
 vm_version(aevm, ?ROMA_PROTOCOL_VSN) -> ?VM_AEVM_SOPHIA_1;
@@ -690,6 +695,7 @@ vm_version(aevm, ?LIMA_PROTOCOL_VSN) -> ?VM_AEVM_SOPHIA_4;
 vm_version(aevm, _) -> {error, aevm_deprecated};
 vm_version(fate, ?LIMA_PROTOCOL_VSN) -> ?VM_FATE_SOPHIA_1;
 vm_version(fate, ?IRIS_PROTOCOL_VSN) -> ?VM_FATE_SOPHIA_2;
+vm_version(fate, ?CERES_PROTOCOL_VSN) -> ?VM_FATE_SOPHIA_2; %% TBD
 vm_version(fate, Protocol) when Protocol < ?LIMA_PROTOCOL_VSN -> {error, fate_not_available}.
 
 abi_version(aevm, ?ROMA_PROTOCOL_VSN) -> ?ABI_AEVM_SOPHIA_1;
@@ -699,6 +705,7 @@ abi_version(aevm, ?LIMA_PROTOCOL_VSN) -> ?ABI_AEVM_SOPHIA_1;
 abi_version(aevm, _) -> {error, aeavm_deprecated};
 abi_version(fate, ?LIMA_PROTOCOL_VSN) -> ?ABI_FATE_SOPHIA_1;
 abi_version(fate, ?IRIS_PROTOCOL_VSN) -> ?ABI_FATE_SOPHIA_1;
+abi_version(fate, ?CERES_PROTOCOL_VSN) -> ?ABI_FATE_SOPHIA_1; %% TBD
 abi_version(fate, Protocol) when Protocol < ?LIMA_PROTOCOL_VSN -> {error, fate_not_available}.
 
 init_per_group(VM, Cfg, Cont) ->
@@ -712,7 +719,8 @@ init_per_group(VM, Cfg, Cont) ->
                     ?MINERVA_PROTOCOL_VSN -> minerva;
                     ?FORTUNA_PROTOCOL_VSN -> fortuna;
                     ?LIMA_PROTOCOL_VSN -> lima;
-                    ?IRIS_PROTOCOL_VSN -> iris
+                    ?IRIS_PROTOCOL_VSN -> iris;
+                    ?CERES_PROTOCOL_VSN -> ceres
                 end,
             ct:pal("Running tests under ~p protocol using ~p", [ProtocolAtom, VM]),
             Cont([{sophia_version, sophia_version(VM, Protocol)},
@@ -730,7 +738,8 @@ setup_testcase(Config) ->
                           minerva -> ?MINERVA_PROTOCOL_VSN;
                           fortuna -> ?FORTUNA_PROTOCOL_VSN;
                           lima    -> ?LIMA_PROTOCOL_VSN;
-                          iris    -> ?IRIS_PROTOCOL_VSN
+                          iris    -> ?IRIS_PROTOCOL_VSN;
+                          ceres   -> ?CERES_PROTOCOL_VSN
                       end,
     AciDisabled = case os:getenv("SOPHIA_NO_ACI") of
                       false ->
@@ -768,9 +777,9 @@ backend() ->
         ?ABI_FATE_SOPHIA_1 -> fate
     end.
 
-backend(?SOPHIA_LIMA_FATE) -> fate;
-backend(?SOPHIA_IRIS_FATE) -> fate;
-backend(_                ) -> aevm.
+backend(?SOPHIA_LIMA_FATE)  -> fate;
+backend(?SOPHIA_IRIS_FATE)  -> fate;
+backend(_                )  -> aevm.
 
 aci_disabled() ->
     case get('$aci_disabled') of
