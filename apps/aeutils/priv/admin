@@ -18,6 +18,7 @@
         , list_unverified_peers/2
         , list_blocked_peers/2
         , add_peer/2
+        , remove_peer/2
         ]).
 
 
@@ -122,11 +123,25 @@ peers() ->
                 }
             }
         , "add" =>
-            #{ help => "List connected peers"
+            #{ help => "Add a peer"
               , handler => {fun add_peer/2, not_used}
               , arguments => [#{ name => address
                                , type => string
-                               , help => "The address of the peer"
+                               , help => "The address of the peer: aenode://<peer pubkey>@<host>:<port>"
+                               },
+                              #{ name => trusted 
+                              , long => "-trusted"
+                              , type => boolean
+                              , help => "If the peer is trusted"
+                              , short => $c
+                              , default => false},
+                              timeout_arg()]}
+        , "remove" =>
+            #{ help => "Remove a peer"
+              , handler => {fun remove_peer/2, not_used}
+              , arguments => [#{ name => peer_id 
+                               , type => string
+                               , help => "The peer id"
                                },
                               timeout_arg()]}
         }
@@ -316,10 +331,17 @@ format_peer_info(#{ pubkey  := Pubkey
     io_lib:format("aenode://~s@~s:~B", [aeser_api_encoder:encode(peer_pubkey, Pubkey),
                                Host, Port]).
 
-add_peer(Node, #{'address' := PeerAddress} = ArgsList) ->
+add_peer(Node, #{'address' := PeerAddress, 'trusted' := Trusted} = ArgsList) ->
     case aec_peers:parse_peer_address(PeerAddress) of
         {ok, PeerInfo} ->
-            ok = rpc(Node, aec_peers, add_peers, [undefined, PeerInfo], ArgsList),
+            case Trusted of
+                false ->
+                    ok = rpc(Node, aec_peers, add_peers, [undefined, PeerInfo],
+                             ArgsList);
+                true ->
+                    ok = rpc(Node, aec_peers, add_trusted, [PeerInfo],
+                             ArgsList)
+            end,
             io:fwrite("Ok.~n", []),
             erlang:halt(0);
         {error, _} ->
@@ -327,3 +349,13 @@ add_peer(Node, #{'address' := PeerAddress} = ArgsList) ->
     end,
     ok.
 
+remove_peer(Node, #{'peer_id' := EncPeerPubkey} = ArgsList) ->
+    case aeser_api_encoder:safe_decode(peer_pubkey, EncPeerPubkey) of
+        {ok, PeerPubkey} ->
+            ok = rpc(Node, aec_peers, del_peer, [PeerPubkey],
+                      ArgsList),
+            io:fwrite("Ok.~n", []),
+            erlang:halt(0);
+        {error, _} ->
+            throw({decode_error, peer_id})
+    end.

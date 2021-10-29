@@ -255,17 +255,21 @@ tx_hash(Tx) ->
     binary_to_list(aeser_api_encoder:encode(tx_hash, aetx_sign:hash(Tx))).
 
 peer_lists(Config) ->
-    "\n" = cli(["peers", "list", "connected"], Config),
-    "0\n" = cli(["peers", "list", "connected", "--count"], Config),
-    "\n" = cli(["peers", "list", "verified"], Config),
-    "0\n" = cli(["peers", "list", "verified", "--count"], Config),
-    "\n" = cli(["peers", "list", "unverified"], Config),
-    "0\n" = cli(["peers", "list", "unverified", "--count"], Config),
-    "\n" = cli(["peers", "list", "blocked"], Config),
-    "0\n" = cli(["peers", "list", "blocked", "--count"], Config),
+    AssertNoPeers =
+        fun() ->
+            "\n" = cli(["peers", "list", "connected"], Config),
+            "0\n" = cli(["peers", "list", "connected", "--count"], Config),
+            "\n" = cli(["peers", "list", "verified"], Config),
+            "0\n" = cli(["peers", "list", "verified", "--count"], Config),
+            "\n" = cli(["peers", "list", "unverified"], Config),
+            "0\n" = cli(["peers", "list", "unverified", "--count"], Config),
+            "\n" = cli(["peers", "list", "blocked"], Config),
+            "0\n" = cli(["peers", "list", "blocked", "--count"], Config)
+        end,
+    AssertNoPeers(),
     %% assert assumptions
     Peer2 = aecore_suite_utils:peer_info(?NODE2),
-
+    {ok, #{pubkey := PeerPubkey}} = aec_peers:parse_peer_address(Peer2),
     "Ok.\n" = cli(["peers", "add", Peer2], Config),
     timer:sleep(1000),
     "1\n" = cli(["peers", "list", "connected", "--count"], Config),
@@ -279,19 +283,10 @@ peer_lists(Config) ->
     "\n" = cli(["peers", "list", "blocked"], Config),
     "0\n" = cli(["peers", "list", "blocked", "--count"], Config),
 
+    "Ok.\n" =
+        cli(["peers", "remove", aeser_api_encoder:encode(peer_pubkey, PeerPubkey)],
+            Config),
+    AssertNoPeers(),
 
-    aecore_suite_utils:stop_node(?NODE2, Config),
-    timer:sleep(65000),
-    "\n" = cli(["peers", "list", "connected"], Config),
-    "0\n" = cli(["peers", "list", "connected", "--count"], Config),
-    "\n" = cli(["peers", "list", "verified"], Config),
-    "0\n" = cli(["peers", "list", "verified", "--count"], Config),
-    Peer2Results = cli(["peers", "list", "unverified"], Config),
-    "1\n" = cli(["peers", "list", "unverified", "--count"], Config),
-    "\n" = cli(["peers", "list", "blocked"], Config),
-    "0\n" = cli(["peers", "list", "blocked", "--count"], Config),
-
-    aecore_suite_utils:start_node(?NODE2, Config),
-    aecore_suite_utils:connect_wait(?NODE2_NAME, aehttp),
     ok.
 
