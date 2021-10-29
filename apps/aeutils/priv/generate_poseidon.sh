@@ -12,7 +12,9 @@ SIZE=255
 # PRIME="0x30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000001"
 # SIZE=254
 
-SCRIPT=/Users/hans/Repos/hadeshash/code/generate_parameters_grain.sage
+git clone https://extgit.iaik.tugraz.at/krypto/hadeshash.git /tmp/hadeshash
+
+SCRIPT=/tmp/hadeshash/code/generate_parameters_grain.sage
 
 NMS=$(( ${#TS[@]} + 1 ))
 

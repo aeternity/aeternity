@@ -2137,7 +2137,7 @@ sc_ws_nameservice_contract_(Owner, GetVolley, CreateContract, ConnPid1, ConnPid2
     %% Register an oracle. It will be used in an off-chain contract
     %% Oracle ask itself a question and answers it
     {NamePubkey, NamePrivkey} = ?CAROL,
-    ok = initialize_account(4000000000000 * min_gas_price(), ?CAROL),
+    ok = initialize_account(40000000000 * min_gas_price(), ?CAROL),
 
     EncodedCode = contract_byte_code("channel_on_chain_contract_name_resolution"),
     {ok, EncodedInitData} = encode_call_data(channel_on_chain_contract_name_resolution,
@@ -2385,7 +2385,7 @@ sc_ws_remote_call_contract_refering_onchain_data_(Owner, GetVolley, CreateContra
 
     % registering the name on-chain
     {NamePubkey, NamePrivkey} = ?CAROL,
-    ok = initialize_account(4000000000000 * min_gas_price(), ?CAROL),
+    ok = initialize_account(40000000000 * min_gas_price(), ?CAROL),
     Protocol = aect_test_utils:latest_protocol_version(),
     NameFee =
         case  Protocol >= ?LIMA_PROTOCOL_VSN of

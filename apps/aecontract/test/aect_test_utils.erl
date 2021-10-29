@@ -421,7 +421,7 @@ compiler_cmd(Vsn) ->
         ?SOPHIA_LIMA_AEVM  -> filename:join([BaseDir, "v4.3.1", "aesophia_cli"]) ++ " --backend=aevm";
         ?SOPHIA_LIMA_FATE  -> filename:join([BaseDir, "v4.3.1", "aesophia_cli"]);
         ?SOPHIA_IRIS_FATE  -> filename:join([BaseDir, "v6.1.0", "aesophia_cli"]);
-        ?SOPHIA_CERES_FATE -> filename:join([BaseDir, "v6.1.0", "aesophia_cli"])
+        ?SOPHIA_CERES_FATE -> filename:join([BaseDir, "v6.1.0", "aesophia_cli"]) %% used for ACI generation in tests :rolling_eyes:
     end.
 
 aci_json_enabled(Vsn) ->
@@ -495,7 +495,7 @@ slow_encode_call_data(Vsn, Code, Fun, Args) ->
             Result
     end.
 
-slow_encode_call_data_(Vsn, Code, Fun, Args, Backend) when Vsn == ?SOPHIA_IRIS_FATE ->
+slow_encode_call_data_(Vsn, Code, Fun, Args, Backend) when Vsn == ?SOPHIA_CERES_FATE ->
     try aeso_compiler:create_calldata(to_str(Code), to_str(Fun),
                                       lists:map(fun to_str/1, Args),
                                       [{backend, Backend}])
