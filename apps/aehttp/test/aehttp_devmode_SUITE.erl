@@ -234,6 +234,14 @@
     wrong_http_method_peers/1
     ]).
 
+%%
+%% test case exports
+%% rollback combined with dev mode
+-export([
+    rollback_returns_to_dev_mode/1,
+    repeated_rollbacks/1
+    ]).
+
 -export([post_paying_for_tx/1]).
 
 -include_lib("common_test/include/ct.hrl").
@@ -584,7 +592,11 @@ groups() ->
        get_generation_by_height
       ]},
      {paying_for_tx, [sequence],
-      [post_paying_for_tx]}
+      [post_paying_for_tx]},
+     {rollback, [sequence],
+      [rollback_returns_to_dev_mode,
+       repeated_rollbacks
+      ]}
     ].
 
 suite() ->
@@ -679,7 +691,8 @@ init_per_group(OnGenesis, Config) when OnGenesis =:= on_genesis_block;
      {current_block_hash_wrong_type, hash(micro, GenesisBlock)},
      {current_block_height, 0},
      {current_block_type, genesis_block} | Config];
-init_per_group(on_key_block, Config) ->
+init_per_group(Group, Config) when Group =:= on_key_block;
+                                   Group =:= rollback ->
     Node = aecore_suite_utils:node_name(?NODE),
     %% Mine at least 2 key blocks (fork height may be 0).
     ToMine = max(2, aecore_suite_utils:latest_fork_height()),
@@ -1439,6 +1452,45 @@ wrong_http_method_node_pubkey(_Config) ->
 wrong_http_method_peers(_Config) ->
     Host = internal_address(),
     {ok, 405, _} = http_request(Host, post, "debug/peers", []).
+
+%% ============================================================
+%% rollback test cases
+%% ============================================================
+
+rollback_returns_to_dev_mode(Config) ->
+    [{_, Node}] = ?config(nodes, Config), % important that there is only one
+    dev_mode = rpc:call(Node, app_ctrl, get_mode, []),
+    Height = rpc:call(Node, aec_chain, top_height, []),
+    aecore_suite_utils:mine_key_blocks(aecore_suite_utils:node_name(?NODE), 2),
+    ok = do_rollback(Node, Height),
+    dev_mode = rpc:call(Node, app_ctrl, get_mode, []),
+    ok.
+
+repeated_rollbacks(Config) ->
+    [{_, Node}] = ?config(nodes, Config), % important that there is only one
+    Height = rpc:call(Node, aec_chain, top_height, []),
+    Action = fun() ->
+                     aecore_suite_utils:mine_key_blocks(Node, 1),
+                     ok = post_contract_and_call_tx(Config)
+             end,
+    ok = do_rollback(Node, Height),  % verifies height
+    ok = Action(),
+    ok = do_rollback(Node, Height),
+    ok = Action(),
+    ok = do_rollback(Node, Height),
+    ok = Action().
+
+do_rollback(N, Height) ->
+    NSetupHome = rpc:call(N, setup, home, []),
+    NAeCmd = filename:join([NSetupHome, "bin", "aeternity"]),
+    NRBCmd = NAeCmd ++ " db_rollback -h " ++ integer_to_list(Height),
+    NRBCmdRes = os:cmd(NRBCmd),
+    ct:log("NRBCmdRes = ~n"
+           "=========================================~n"
+           "~s~n"
+           "=========================================", [NRBCmdRes]),
+    Height = rpc:call(N, aec_chain, top_height, []),
+    ok.
 
 %% ============================================================
 %% private functions

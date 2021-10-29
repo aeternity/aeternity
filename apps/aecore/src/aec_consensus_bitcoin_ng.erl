@@ -130,6 +130,7 @@ do_rollback(ForkPoint, Height, TopHeight) ->
     do_rollback_(ForkPoint, Height, TopHeight).
 
 do_rollback_(ForkPoint, Height, TopHeight) ->
+    lager:debug("Perform rollback from ~p to ~p", [TopHeight, Height]),
     ensure_gc_disabled(),
     {value, FPHeader} = aec_db:find_header(ForkPoint),
     SafetyMargin = 1000, %% Why not?
@@ -152,9 +153,12 @@ remove_tx_locations(Hash) ->
         none ->
             ok;
         {value, TxHashes} ->
-            [aec_db:remove_tx_location(TxHash) || TxHash <- TxHashes],
+            lists:foreach(fun remove_tx/1, TxHashes),
             ok
     end.
+
+remove_tx(TxHash) ->
+    aec_db:remove_tx(TxHash).
 
 ensure_gc_disabled() ->
     case aec_db_gc:config() of

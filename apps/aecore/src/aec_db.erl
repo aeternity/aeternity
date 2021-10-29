@@ -64,6 +64,7 @@
 %% Location of chain transactions
 -export([ add_tx_location/2
         , add_tx/1
+        , remove_tx/1
         , add_tx_hash_to_mempool/1
         , is_in_tx_pool/1
         , find_tx_location/1
@@ -983,8 +984,7 @@ add_tx_location(STxHash, BlockHash) when is_binary(STxHash),
        [{aec_tx_location, STxHash}]).
 
 remove_tx_location(TxHash) when is_binary(TxHash) ->
-    ?t(mnesia:delete({aec_tx_location, TxHash}),
-       [{aec_tx_location, TxHash}]).
+    ?t(mnesia:delete({aec_tx_location, TxHash})).
 
 find_tx_location(STxHash) ->
     ?t(case mnesia:read(aec_tx_location, STxHash) of
@@ -1016,6 +1016,13 @@ find_tx_with_location(STxHash) ->
                        {BlockHash, aetx_sign:from_db_format(DBSTx)}
                end;
            [] -> none
+       end).
+
+remove_tx(TxHash) ->
+    ?t(begin
+           remove_tx_from_mempool(TxHash),
+           remove_tx_location(TxHash),
+           mnesia:delete({aec_signed_tx, TxHash})
        end).
 
 add_tx(STx) ->
