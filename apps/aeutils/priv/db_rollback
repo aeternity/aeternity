@@ -15,7 +15,7 @@ args() ->
     [ #{ name => height, short => $h, long => "-height"   , required => false,
          type => int   , help => "Chain height, from which to start deleting"}
     , #{ name => hash  , short => $b, long => "-blockhash", required => false,
-         type => string, help => "Keyblock hash, from which to start deleting"}
+         type => string, help => "Block hash, from which to start deleting"}
     , #{ name => whitelist, short => $w, long => "-whitelist", required => false,
          type => boolean, help => "Roll back based on contents of whitelist",
          default => false }
@@ -48,49 +48,83 @@ rollback(Node, #{opts := Opts}) ->
                         undefined ->
                             abort("Could not rollback from whitelist", []);
                         {H, Hdr} ->
-                            do_rollback(St#{from => #{ height => H
-                                                     , header => Hdr }}, Node, Opts)
+                            do_rollback(St#{ mode => height
+                                           , from => #{ height => H
+                                                      , header => Hdr }}, Node, Opts)
                     end
             end;
+        #{height := H, hash := Hash} ->
+            case check_block_hash(Hash, Node, St#{ mode => height }) of
+                #{from := #{height := H1}} when H1 =/= H ->
+                    abort("Blockhash height and given height do not match");
+                St1 ->
+                    do_rollback(St1, Node, Opts)
+            end;
         #{height := H} ->
-            do_rollback(state_at_height(Node, H, St), Node, Opts);
+            do_rollback(state_at_height(Node, H, St#{mode => height}), Node, Opts);
         #{hash := Hash} ->
-            case aeser_api_encoder:safe_decode(key_block_hash, Hash) of
-                {error, _} ->
-                    abort("Specified hash is not a valid keyblock hash");
-                {ok, DecHash} ->
-                    case rpc:call(Node, aec_chain, get_header, [DecHash]) of
-                        {ok, Hdr} ->
-                            HdrHeight = aec_headers:height(Hdr),
-                            Type = aec_headers:type(Hdr),
-                            case Type of
-                                key ->
-                                    St1 = St#{ from => #{ height  => HdrHeight
-                                                        , header  => Hdr }},
-                                    do_rollback(St1, Node, Opts);
-                                micro ->
-                                    abort("Cannot roll back to a microblock")
-                            end;
-                        error ->
-                            abort("Cannot find specified hash")
-                    end
-            end
+            St1 = check_block_hash(Hash, Node, St#{ mode => hash }),
+            do_rollback(St1, Node, Opts)
+    end.
+
+
+check_block_hash(Hash, Node, St) ->
+    NotValidHash = fun() -> abort("Specified hash is not a valid block hash") end,
+    {Type, DecHash} =
+        try aeser_api_encoder:decode(list_to_binary(Hash)) of
+            {T, H} when T == key_block_hash;
+                        T == micro_block_hash ->
+                {T, H};
+            Other ->
+                abort("Decode result: ~p", [Other]),
+                NotValidHash()
+        catch
+            error:DecErr ->
+                abort("Decode failed with ~p (Hash=~p)", [DecErr, Hash]),
+                NotValidHash()
+        end,
+    case rpc:call(Node, aec_chain, get_header, [DecHash]) of
+        {ok, Hdr} ->
+            HdrHeight = aec_headers:height(Hdr),
+            HdrType = case Type of
+                          micro_block_hash -> micro;
+                          key_block_hash   -> key
+                      end,
+            HdrType = aec_headers:type(Hdr),
+            St#{ from => #{ height  => HdrHeight
+                          , type    => Type
+                          , hash    => DecHash
+                          , header  => Hdr }};
+        error ->
+            abort("Cannot find specified hash")
     end.
 
 do_rollback(Spec, Node, _Opts) ->
     #{ from := #{ height := Height }} = Spec,
     io:fwrite("Will rollback: ~p~n", [Spec]),
     PrevMode = rpc:call(Node, aeu_ext_scripts, ensure_mode, [maintenance]),
-    Res = rpc:call(Node, aec_consensus_bitcoin_ng, rollback, [Height]),
-    io:fwrite(standard_io, "Rollback to height ~p complete: ~p~n", [Height, Res]),
-    ok = rpc:call(Node, aeu_ext_scripts, restore_mode, [PrevMode]),
+    try
+        Res= case Spec of
+                 #{mode := hash, from := #{ hash := Hash }} ->
+                     rpc:call(Node, aec_consensus_bitcoin_ng, rollback_to_hash, [Hash]);
+                 _ ->
+                     rpc:call(Node, aec_consensus_bitcoin_ng, rollback, [Height])
+             end,
+        io:fwrite(standard_io, "Rollback complete. Height: ~p, Res: ~p~n", [Height, Res])
+    after
+        ok = rpc:call(Node, aeu_ext_scripts, restore_mode, [PrevMode])
+    end,
     ok.
 
 state_at_height(_Node, H, #{ top_height := TopHeight }) when H > TopHeight ->
     abort("Rollback height (~p) exceeds current top height (~p)", [H, TopHeight]);
 state_at_height(Node, H, St) ->
+    Hdr = header_by_height(Node, H),
+    Hash = aec_headers:hash_header(Hdr),
     St#{ from => #{ height => H
-                  , header => header_by_height(Node, H) }}.
+                  , hash   => Hash
+                  , type   => key
+                  , header => Hdr }}.
 
 abort(Str) ->
     abort(Str, []).

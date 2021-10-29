@@ -239,7 +239,8 @@
 %% rollback combined with dev mode
 -export([
     rollback_returns_to_dev_mode/1,
-    repeated_rollbacks/1
+    repeated_rollbacks/1,
+    repeated_rollbacks_to_hash/1
     ]).
 
 -export([post_paying_for_tx/1]).
@@ -595,7 +596,8 @@ groups() ->
       [post_paying_for_tx]},
      {rollback, [sequence],
       [rollback_returns_to_dev_mode,
-       repeated_rollbacks
+       repeated_rollbacks,
+       repeated_rollbacks_to_hash
       ]}
     ].
 
@@ -1480,6 +1482,21 @@ repeated_rollbacks(Config) ->
     ok = do_rollback(Node, Height),
     ok = Action().
 
+repeated_rollbacks_to_hash(Config0) ->
+    Config = init_per_group(on_micro_block, Config0),
+    [{_, Node}] = ?config(nodes, Config), % important that there is only one
+    Hash = rpc:call(Node, aec_chain, top_block_hash, []),
+    ct:log("Top hash is ~p", [Hash]),
+    Action = fun() ->
+                     ok = post_contract_and_call_tx(Config)
+             end,
+    ok = do_rollback_to_microblock(Node, Hash),  % verifies hash
+    ok = Action(),
+    ok = do_rollback_to_microblock(Node, Hash),
+    ok = Action(),
+    ok = do_rollback_to_microblock(Node, Hash),
+    ok = Action().
+
 do_rollback(N, Height) ->
     NSetupHome = rpc:call(N, setup, home, []),
     NAeCmd = filename:join([NSetupHome, "bin", "aeternity"]),
@@ -1489,7 +1506,24 @@ do_rollback(N, Height) ->
            "=========================================~n"
            "~s~n"
            "=========================================", [NRBCmdRes]),
-    Height = rpc:call(N, aec_chain, top_height, []),
+    NewHeight = rpc:call(N, aec_chain, top_height, []),
+    {NewHeight, Height} = {Height, NewHeight},
+    ok.
+
+do_rollback_to_microblock(N, Hash) ->
+    Hdr = rpc:call(N, aec_db, get_header, [Hash]),
+    micro = aec_headers:type(Hdr),
+    EncHash = aeser_api_encoder:encode(micro_block_hash, Hash),
+    NSetupHome = rpc:call(N, setup, home, []),
+    NAeCmd = filename:join([NSetupHome, "bin", "aeternity"]),
+    NRBCmd = NAeCmd ++ " db_rollback -b " ++ binary_to_list(EncHash),
+    NRBCmdRes = os:cmd(NRBCmd),
+    ct:log("NRBCmdRes = ~n"
+           "=========================================~n"
+           "~s~n"
+           "=========================================", [NRBCmdRes]),
+    NewTop = rpc:call(N, aec_chain, top_block_hash, []),
+    {NewTop, Hash} = {Hash, NewTop},
     ok.
 
 %% ============================================================

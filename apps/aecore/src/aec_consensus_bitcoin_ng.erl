@@ -55,7 +55,8 @@
         , key_header_difficulty/1 ]).
 
 -export([ get_whitelist/0
-        , rollback/1 ]).
+        , rollback/1
+        , rollback_to_hash/1 ]).
 
 -ifdef(TEST).
 -export([load_whitelist/0]).
@@ -121,32 +122,69 @@ rollback(Height) ->
     F = fun() ->
                 TopHeight = aec_chain:top_height(),
                 {ok, ForkPoint} = aec_chain_state:get_key_block_hash_at_height(Height),
-                do_rollback_(ForkPoint, Height, TopHeight)
+                do_rollback_(ForkPoint, key, Height, TopHeight)
+        end,
+    aec_db:ensure_activity(sync_dirty, F).
+
+rollback_to_hash(Hash) ->
+    F = fun() ->
+                TopHeight = aec_chain:top_height(),
+                case aec_chain:get_header(Hash) of
+                    none ->
+                        {error, hash_not_found};
+                    {ok, Hdr} ->
+                        Type = aec_headers:type(Hdr),
+                        Height = aec_headers:height(Hdr),
+                        do_rollback_(Hash, Type, Height, TopHeight)
+                end
         end,
     aec_db:ensure_activity(sync_dirty, F).
 
 do_rollback(ForkPoint, Height, TopHeight) ->
     lager:info("Jumping to the community fork", []),
-    do_rollback_(ForkPoint, Height, TopHeight).
+    aec_db:ensure_activity(sync_dirty,
+                           fun() ->
+                                   do_rollback_(ForkPoint, key, Height, TopHeight)
+                           end).
 
-do_rollback_(ForkPoint, Height, TopHeight) ->
+do_rollback_(ForkPoint, Type, Height, TopHeight) ->
     lager:debug("Perform rollback from ~p to ~p", [TopHeight, Height]),
     ensure_gc_disabled(),
     {value, FPHeader} = aec_db:find_header(ForkPoint),
     SafetyMargin = 1000, %% Why not?
-    aec_db:ensure_activity(sync_dirty, fun() ->
-        [begin
-             [begin
-                  Del = element(2, T),
-                  ok = remove_tx_locations(Del),
-                  ok = mnesia:delete(aec_headers, Del, write),
-                  ok = mnesia:delete(aec_blocks, Del, write),
-                  ok = mnesia:delete(aec_block_state, Del, write)
-              end || T <- mnesia:index_read(aec_headers, H, height)]
-         end || H <- lists:seq(Height+1, TopHeight+SafetyMargin)],
-        aec_db:write_top_block_node(ForkPoint, FPHeader)
-      end),
+    FromHeight = case Type of
+                     micro -> Height;
+                     key   -> Height + 1
+                 end,
+    lists:foreach(
+      fun(H) ->
+              roll_back_height_(H, Height, ForkPoint, Type)
+      end, lists:seq(FromHeight, TopHeight+SafetyMargin)),
+      aec_db:write_top_block_node(ForkPoint, FPHeader),
     ok.
+
+roll_back_height_(H, H, Hash, micro) ->
+    {ok, #{micro_blocks := MBs}} = aec_chain:get_generation_by_height(H, forward),
+    MBHashes = [ok(aec_blocks:hash_internal_representation(B)) || B <- MBs],
+    MBs1 = micros_after_hash(MBHashes, Hash),
+    lists:foreach(fun remove_block/1, MBs1);
+roll_back_height_(CurH, _Height, _ForkPoint, _Type) ->
+    lists:foreach(fun remove_block/1,
+                  [element(2,T) ||
+                      T <- mnesia:index_read(aec_headers, CurH, height)]).
+
+ok({ok, Res}) -> Res.
+
+micros_after_hash([H|T], H) ->
+    T;
+micros_after_hash([_|T], H) ->
+    micros_after_hash(T, H).
+
+remove_block(Hash) ->
+    ok = remove_tx_locations(Hash),
+    ok = mnesia:delete(aec_headers, Hash, write),
+    ok = mnesia:delete(aec_blocks, Hash, write),
+    ok = mnesia:delete(aec_block_state, Hash, write).
 
 remove_tx_locations(Hash) ->
     case aec_db:find_block_tx_hashes(Hash) of
