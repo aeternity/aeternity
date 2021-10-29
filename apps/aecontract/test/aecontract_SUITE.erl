@@ -235,7 +235,8 @@
         ?VM_AEVM_SOPHIA_3 -> ?assertMatch(ExpVm3, Res);
         ?VM_AEVM_SOPHIA_4 -> ?assertMatch(ExpVm4, Res);
         ?VM_FATE_SOPHIA_1 -> ok;
-        ?VM_FATE_SOPHIA_2 -> ok
+        ?VM_FATE_SOPHIA_2 -> ok;
+        ?VM_FATE_SOPHIA_3 -> ok
     end).
 
 -define(assertMatchProtocol(Res, ExpRoma, ExpMinerva),
@@ -277,7 +278,8 @@
         ?VM_AEVM_SOPHIA_3 -> ok;
         ?VM_AEVM_SOPHIA_4 -> ok;
         ?VM_FATE_SOPHIA_1 -> ?assertMatch(__ExpVm1, __Res);
-        ?VM_FATE_SOPHIA_2 -> ?assertMatch(__ExpVm2, __Res)
+        ?VM_FATE_SOPHIA_2 -> ?assertMatch(__ExpVm2, __Res);
+        ?VM_FATE_SOPHIA_3 -> ?assertMatch(__ExpVm2, __Res) %% For now :-)
     end).
 
 -define(assertMatchVM(AEVM, FATE, Res),
@@ -551,7 +553,11 @@ init_tests(Release, VMName) ->
                 {iris,    {?IRIS_PROTOCOL_VSN,
                            IfAEVM(?SOPHIA_LIMA_AEVM, ?SOPHIA_IRIS_FATE),
                            IfAEVM(?ABI_AEVM_SOPHIA_1, ?ABI_FATE_SOPHIA_1),
-                           IfAEVM(?VM_AEVM_SOPHIA_4, ?VM_FATE_SOPHIA_2)}}],
+                           IfAEVM(?VM_AEVM_SOPHIA_4, ?VM_FATE_SOPHIA_2)}},
+                {ceres,   {?CERES_PROTOCOL_VSN,
+                           IfAEVM(?SOPHIA_LIMA_AEVM, ?SOPHIA_CERES_FATE),
+                           IfAEVM(?ABI_AEVM_SOPHIA_1, ?ABI_FATE_SOPHIA_1),
+                           IfAEVM(?VM_AEVM_SOPHIA_4, ?VM_FATE_SOPHIA_3)}}],
     {Proto, Sophia, ABI, VM} = proplists:get_value(Release, Versions),
     meck:expect(aec_hard_forks, protocol_effective_at_height, fun(_) -> Proto end),
     Cfg = [{sophia_version, Sophia}, {vm_version, VM},
@@ -7574,7 +7580,6 @@ sophia_no_calls_to_init(_Cfg) ->
     ok.
 
 sophia_pattern_guards(_Cfg) ->
-    ?skipRest(sophia_version() =< ?SOPHIA_LIMA_AEVM, no_pattern_guards_until_iris),
     ?skipRest(sophia_version() =< ?SOPHIA_LIMA_FATE, no_pattern_guards_until_iris),
     state(aect_test_utils:new_state()),
     Acc = ?call(new_account, 100000000000 * aec_test_utils:min_gas_price()),

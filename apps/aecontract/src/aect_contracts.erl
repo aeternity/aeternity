@@ -123,11 +123,12 @@ is_legal_call(#{vm := SophiaVM1, abi := X},
                                                  ?IS_AEVM_SOPHIA(SophiaVM2),
                                                  SophiaVM1 >= SophiaVM2 ->
     true;
-is_legal_call(#{vm := SophiaVM1, abi := X},
-              #{vm := SophiaVM2, abi := X}) when ?IS_FATE_SOPHIA(SophiaVM1),
-                                                 ?IS_FATE_SOPHIA(SophiaVM2),
-                                                 SophiaVM1 >= SophiaVM2 ->
-    true;
+%% NOTE: this function is only used for AEVM so this clause is unused/obsolete
+%% is_legal_call(#{vm := SophiaVM1, abi := X},
+%%               #{vm := SophiaVM2, abi := X}) when ?IS_FATE_SOPHIA(SophiaVM1),
+%%                                                  ?IS_FATE_SOPHIA(SophiaVM2),
+%%                                                  SophiaVM1 >= SophiaVM2 ->
+%%     true;
 is_legal_call(_, _) -> false.
 
 -spec is_legal_version_at_protocol(vm_usage_type(), version(), protocol()) -> boolean().
@@ -185,6 +186,12 @@ is_legal_version_at_protocol_(create, #{vm := ?VM_FATE_SOPHIA_2, abi := ?ABI_FAT
         ?IRIS_PROTOCOL_VSN            -> true;
         P when P > ?IRIS_PROTOCOL_VSN -> true
     end;
+is_legal_version_at_protocol_(create, #{vm := ?VM_FATE_SOPHIA_3, abi := ?ABI_FATE_SOPHIA_1}, Protocol) ->
+    case Protocol of
+        P when P < ?IRIS_PROTOCOL_VSN  -> false;
+        ?CERES_PROTOCOL_VSN            -> true;
+        P when P > ?CERES_PROTOCOL_VSN -> true
+    end;
 is_legal_version_at_protocol_(call, #{vm := VMVersion}, Protocol) ->
     case Protocol of
         ?ROMA_PROTOCOL_VSN    when VMVersion =:= ?VM_AEVM_SOPHIA_1 ->
@@ -215,6 +222,12 @@ is_legal_version_at_protocol_(call, #{vm := VMVersion}, Protocol) ->
                                    and
                                    (
                                    (VMVersion =:= ?VM_FATE_SOPHIA_2)
+                                   ) ->
+            true;
+        P                     when (P >= ?CERES_PROTOCOL_VSN)
+                                   and
+                                   (
+                                   (VMVersion =:= ?VM_FATE_SOPHIA_3)
                                    ) ->
             true;
         _                     when VMVersion =:= ?VM_AEVM_SOLIDITY_1 ->
@@ -642,6 +655,7 @@ is_legal_version(#{vm := VM, abi := ABI}) ->
         {?VM_AEVM_SOPHIA_4,   ?ABI_AEVM_SOPHIA_1} -> true;
         {?VM_FATE_SOPHIA_1,   ?ABI_FATE_SOPHIA_1} -> true;
         {?VM_FATE_SOPHIA_2,   ?ABI_FATE_SOPHIA_1} -> true;
+        {?VM_FATE_SOPHIA_3,   ?ABI_FATE_SOPHIA_1} -> true;
         {?VM_AEVM_SOLIDITY_1, ?ABI_SOLIDITY_1}    -> ?VM_AEVM_SOLIDITY_1_enabled;
         _                                         -> false
     end.

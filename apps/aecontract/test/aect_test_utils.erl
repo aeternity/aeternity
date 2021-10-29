@@ -119,7 +119,7 @@ latest_sophia_vm_version() ->
         ?FORTUNA_PROTOCOL_VSN -> ?VM_AEVM_SOPHIA_3;
         ?LIMA_PROTOCOL_VSN    -> ?VM_AEVM_SOPHIA_4;
         ?IRIS_PROTOCOL_VSN    -> ?VM_FATE_SOPHIA_2;
-        ?CERES_PROTOCOL_VSN   -> ?VM_FATE_SOPHIA_2
+        ?CERES_PROTOCOL_VSN   -> ?VM_FATE_SOPHIA_3
     end.
 
 latest_sophia_abi_version() ->
@@ -139,7 +139,7 @@ latest_sophia_version() ->
         ?FORTUNA_PROTOCOL_VSN -> ?SOPHIA_FORTUNA;
         ?LIMA_PROTOCOL_VSN    -> ?SOPHIA_LIMA_AEVM;
         ?IRIS_PROTOCOL_VSN    -> ?SOPHIA_IRIS_FATE;
-        ?CERES_PROTOCOL_VSN    -> ?SOPHIA_IRIS_FATE
+        ?CERES_PROTOCOL_VSN   -> ?SOPHIA_CERES_FATE
     end.
 
 latest_sophia_contract_version() ->
@@ -283,12 +283,13 @@ read_contract(Name) ->
 read_contract(Compiler, Name) ->
     file:read_file(contract_filename(Compiler, Name)).
 
-contract_dirs(?SOPHIA_ROMA)      -> ["sophia_1"      | contract_dirs(?SOPHIA_MINERVA)];
-contract_dirs(?SOPHIA_MINERVA)   -> ["sophia_2"      | contract_dirs(?SOPHIA_FORTUNA)];
-contract_dirs(?SOPHIA_FORTUNA)   -> ["sophia_3"      | contract_dirs(?SOPHIA_LIMA_AEVM)];
-contract_dirs(?SOPHIA_LIMA_AEVM) -> ["sophia_4_aevm" | contract_dirs(?SOPHIA_LIMA_FATE)];
-contract_dirs(?SOPHIA_LIMA_FATE) -> ["sophia_4"      | contract_dirs(?SOPHIA_IRIS_FATE)];
-contract_dirs(?SOPHIA_IRIS_FATE) -> ["sophia_5"].
+contract_dirs(?SOPHIA_ROMA)       -> ["sophia_1"      | contract_dirs(?SOPHIA_MINERVA)];
+contract_dirs(?SOPHIA_MINERVA)    -> ["sophia_2"      | contract_dirs(?SOPHIA_FORTUNA)];
+contract_dirs(?SOPHIA_FORTUNA)    -> ["sophia_3"      | contract_dirs(?SOPHIA_LIMA_AEVM)];
+contract_dirs(?SOPHIA_LIMA_AEVM)  -> ["sophia_4_aevm" | contract_dirs(?SOPHIA_LIMA_FATE)];
+contract_dirs(?SOPHIA_LIMA_FATE)  -> ["sophia_4"      | contract_dirs(?SOPHIA_IRIS_FATE)];
+contract_dirs(?SOPHIA_IRIS_FATE)  -> ["sophia_5"];
+contract_dirs(?SOPHIA_CERES_FATE) -> [].
 
 contract_filenames(Compiler, Name) when is_atom(Name) ->
     contract_filenames(Compiler, atom_to_list(Name));
@@ -368,7 +369,7 @@ compile(Vsn, File) ->
         no -> Result1
     end.
 
-compile_(SophiaVsn, File) when SophiaVsn == ?SOPHIA_IRIS_FATE ->
+compile_(SophiaVsn, File) when SophiaVsn == ?SOPHIA_CERES_FATE ->
     {ok, AsmBin} = file:read_file(File),
     Source = binary_to_list(AsmBin),
     ACIFlag = case aci_json_enabled(SophiaVsn) of
@@ -414,12 +415,13 @@ legacy_compile(Vsn, SrcFile) ->
 compiler_cmd(Vsn) ->
     BaseDir = filename:join([code:priv_dir(aesophia_cli), "bin"]),
     case Vsn of
-        ?SOPHIA_ROMA      -> filename:join([BaseDir, "v1.4.0", "aesophia_cli"]);
-        ?SOPHIA_MINERVA   -> filename:join([BaseDir, "v2.1.0", "aesophia_cli"]);
-        ?SOPHIA_FORTUNA   -> filename:join([BaseDir, "v3.2.0", "aesophia_cli"]);
-        ?SOPHIA_LIMA_AEVM -> filename:join([BaseDir, "v4.3.1", "aesophia_cli"]) ++ " --backend=aevm";
-        ?SOPHIA_LIMA_FATE -> filename:join([BaseDir, "v4.3.1", "aesophia_cli"]);
-        ?SOPHIA_IRIS_FATE -> filename:join([BaseDir, "v6.1.0", "aesophia_cli"])
+        ?SOPHIA_ROMA       -> filename:join([BaseDir, "v1.4.0", "aesophia_cli"]);
+        ?SOPHIA_MINERVA    -> filename:join([BaseDir, "v2.1.0", "aesophia_cli"]);
+        ?SOPHIA_FORTUNA    -> filename:join([BaseDir, "v3.2.0", "aesophia_cli"]);
+        ?SOPHIA_LIMA_AEVM  -> filename:join([BaseDir, "v4.3.1", "aesophia_cli"]) ++ " --backend=aevm";
+        ?SOPHIA_LIMA_FATE  -> filename:join([BaseDir, "v4.3.1", "aesophia_cli"]);
+        ?SOPHIA_IRIS_FATE  -> filename:join([BaseDir, "v6.1.0", "aesophia_cli"]);
+        ?SOPHIA_CERES_FATE -> filename:join([BaseDir, "v6.1.0", "aesophia_cli"])
     end.
 
 aci_json_enabled(Vsn) ->
@@ -685,7 +687,7 @@ sophia_version(aevm, ?LIMA_PROTOCOL_VSN) -> ?SOPHIA_LIMA_AEVM;
 sophia_version(aevm, _) -> {error, aevm_deprecated};
 sophia_version(fate, ?LIMA_PROTOCOL_VSN) -> ?SOPHIA_LIMA_FATE;
 sophia_version(fate, ?IRIS_PROTOCOL_VSN) -> ?SOPHIA_IRIS_FATE;
-sophia_version(fate, ?CERES_PROTOCOL_VSN) -> ?SOPHIA_IRIS_FATE; %% TBD
+sophia_version(fate, ?CERES_PROTOCOL_VSN) -> ?SOPHIA_CERES_FATE;
 sophia_version(fate, Protocol) when Protocol < ?LIMA_PROTOCOL_VSN -> {error, fate_not_available}.
 
 vm_version(aevm, ?ROMA_PROTOCOL_VSN) -> ?VM_AEVM_SOPHIA_1;
@@ -695,7 +697,7 @@ vm_version(aevm, ?LIMA_PROTOCOL_VSN) -> ?VM_AEVM_SOPHIA_4;
 vm_version(aevm, _) -> {error, aevm_deprecated};
 vm_version(fate, ?LIMA_PROTOCOL_VSN) -> ?VM_FATE_SOPHIA_1;
 vm_version(fate, ?IRIS_PROTOCOL_VSN) -> ?VM_FATE_SOPHIA_2;
-vm_version(fate, ?CERES_PROTOCOL_VSN) -> ?VM_FATE_SOPHIA_2; %% TBD
+vm_version(fate, ?CERES_PROTOCOL_VSN) -> ?VM_FATE_SOPHIA_3;
 vm_version(fate, Protocol) when Protocol < ?LIMA_PROTOCOL_VSN -> {error, fate_not_available}.
 
 abi_version(aevm, ?ROMA_PROTOCOL_VSN) -> ?ABI_AEVM_SOPHIA_1;
@@ -705,7 +707,7 @@ abi_version(aevm, ?LIMA_PROTOCOL_VSN) -> ?ABI_AEVM_SOPHIA_1;
 abi_version(aevm, _) -> {error, aeavm_deprecated};
 abi_version(fate, ?LIMA_PROTOCOL_VSN) -> ?ABI_FATE_SOPHIA_1;
 abi_version(fate, ?IRIS_PROTOCOL_VSN) -> ?ABI_FATE_SOPHIA_1;
-abi_version(fate, ?CERES_PROTOCOL_VSN) -> ?ABI_FATE_SOPHIA_1; %% TBD
+abi_version(fate, ?CERES_PROTOCOL_VSN) -> ?ABI_FATE_SOPHIA_1;
 abi_version(fate, Protocol) when Protocol < ?LIMA_PROTOCOL_VSN -> {error, fate_not_available}.
 
 init_per_group(VM, Cfg, Cont) ->
@@ -777,9 +779,10 @@ backend() ->
         ?ABI_FATE_SOPHIA_1 -> fate
     end.
 
-backend(?SOPHIA_LIMA_FATE)  -> fate;
-backend(?SOPHIA_IRIS_FATE)  -> fate;
-backend(_                )  -> aevm.
+backend(?SOPHIA_LIMA_FATE ) -> fate;
+backend(?SOPHIA_IRIS_FATE ) -> fate;
+backend(?SOPHIA_CERES_FATE) -> fate;
+backend(_                 ) -> aevm.
 
 aci_disabled() ->
     case get('$aci_disabled') of
