@@ -92,7 +92,7 @@ check_block_hash(Hash, Node, St) ->
                       end,
             HdrType = aec_headers:type(Hdr),
             St#{ from => #{ height  => HdrHeight
-                          , type    => Type
+                          , type    => HdrType
                           , hash    => DecHash
                           , header  => Hdr }};
         error ->
@@ -105,8 +105,9 @@ do_rollback(Spec, Node, _Opts) ->
     PrevMode = rpc:call(Node, aeu_ext_scripts, ensure_mode, [maintenance]),
     try
         Res= case Spec of
-                 #{mode := hash, from := #{ hash := Hash }} ->
-                     rpc:call(Node, aec_consensus_bitcoin_ng, rollback_to_hash, [Hash]);
+                 #{mode := hash, from := #{ type := Type, hash := Hash }} ->
+                     rpc:call(Node, aec_consensus_bitcoin_ng, rollback_to_hash,
+                              [Type, Hash]);
                  _ ->
                      rpc:call(Node, aec_consensus_bitcoin_ng, rollback, [Height])
              end,

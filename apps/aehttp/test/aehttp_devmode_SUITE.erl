@@ -240,7 +240,9 @@
 -export([
     rollback_returns_to_dev_mode/1,
     repeated_rollbacks/1,
-    repeated_rollbacks_to_hash/1
+    repeated_rollbacks_to_key_hash/1,
+    repeated_rollbacks_to_key_hash_multiple_blocks/1,
+    repeated_rollbacks_to_micro_hash/1
     ]).
 
 -export([post_paying_for_tx/1]).
@@ -597,7 +599,9 @@ groups() ->
      {rollback, [sequence],
       [rollback_returns_to_dev_mode,
        repeated_rollbacks,
-       repeated_rollbacks_to_hash
+       repeated_rollbacks_to_key_hash,
+       repeated_rollbacks_to_key_hash_multiple_blocks,
+       repeated_rollbacks_to_micro_hash
       ]}
     ].
 
@@ -1482,7 +1486,38 @@ repeated_rollbacks(Config) ->
     ok = do_rollback(Node, Height),
     ok = Action().
 
-repeated_rollbacks_to_hash(Config0) ->
+repeated_rollbacks_to_key_hash(Config) ->
+    [{_, Node}] = ?config(nodes, Config), % important that there is only one
+    aecore_suite_utils:mine_key_blocks(aecore_suite_utils:node_name(?NODE), 1),
+    Hash = rpc:call(Node, aec_chain, top_block_hash, []),
+    ct:log("Top hash is ~p", [Hash]),
+    Action = fun() ->
+                     ok = post_contract_and_call_tx(Config)
+             end,
+    ok = do_rollback_to_keyblock(Node, Hash),  % verifies hash
+    ok = Action(),
+    ok = do_rollback_to_keyblock(Node, Hash),
+    ok = Action(),
+    ok = do_rollback_to_keyblock(Node, Hash),
+    ok = Action().
+
+repeated_rollbacks_to_key_hash_multiple_blocks(Config) ->
+    [{_, Node}] = ?config(nodes, Config), % important that there is only one
+    aecore_suite_utils:mine_key_blocks(aecore_suite_utils:node_name(?NODE), 1),
+    Hash = rpc:call(Node, aec_chain, top_block_hash, []),
+    ct:log("Top hash is ~p", [Hash]),
+    Action = fun() ->
+                     aecore_suite_utils:mine_key_blocks(Node, 3),
+                     ok = post_contract_and_call_tx(Config)
+             end,
+    ok = do_rollback_to_keyblock(Node, Hash),  % verifies hash
+    ok = Action(),
+    ok = do_rollback_to_keyblock(Node, Hash),
+    ok = Action(),
+    ok = do_rollback_to_keyblock(Node, Hash),
+    ok = Action().
+
+repeated_rollbacks_to_micro_hash(Config0) ->
     Config = init_per_group(on_micro_block, Config0),
     [{_, Node}] = ?config(nodes, Config), % important that there is only one
     Hash = rpc:call(Node, aec_chain, top_block_hash, []),
@@ -1511,9 +1546,19 @@ do_rollback(N, Height) ->
     ok.
 
 do_rollback_to_microblock(N, Hash) ->
+    do_rollback_to_blockhash(N, micro, Hash).
+
+do_rollback_to_keyblock(N, Hash) ->
+    do_rollback_to_blockhash(N, key, Hash).
+
+do_rollback_to_blockhash(N, Type, Hash) ->
     Hdr = rpc:call(N, aec_db, get_header, [Hash]),
-    micro = aec_headers:type(Hdr),
-    EncHash = aeser_api_encoder:encode(micro_block_hash, Hash),
+    Type = aec_headers:type(Hdr),  % assertion
+    EncType = case Type of
+                  key   -> key_block_hash;
+                  micro -> micro_block_hash
+              end,
+    EncHash = aeser_api_encoder:encode(EncType, Hash),
     NSetupHome = rpc:call(N, setup, home, []),
     NAeCmd = filename:join([NSetupHome, "bin", "aeternity"]),
     NRBCmd = NAeCmd ++ " db_rollback -b " ++ binary_to_list(EncHash),

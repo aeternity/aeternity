@@ -343,7 +343,7 @@ rollback_releases_tx(Config) ->
            "~s~n"
            "=========================================", [N1RBCmdRes]),
     TopHeight = rpc:call(N1, aec_chain, top_height, []),
-    none = rpc:call(N1, aec_db, find_tx_location, [TxHash]),
+    not_found = rpc:call(N1, aec_db, find_tx_location, [TxHash]),
     {ok,_,_} = aecore_suite_utils:start_node(dev2, Config),
     aecore_suite_utils:connect(N2),
     ok.

@@ -56,7 +56,7 @@
 
 -export([ get_whitelist/0
         , rollback/1
-        , rollback_to_hash/1 ]).
+        , rollback_to_hash/2 ]).
 
 -ifdef(TEST).
 -export([load_whitelist/0]).
@@ -64,6 +64,7 @@
 
 -include_lib("aecontract/include/hard_forks.hrl").
 -include("blocks.hrl").
+-include("aec_db.hrl").
 -include_lib("aeminer/include/aeminer.hrl").
 
 -define(WHITELIST, {?MODULE, whitelist}).
@@ -122,20 +123,21 @@ rollback(Height) ->
     F = fun() ->
                 TopHeight = aec_chain:top_height(),
                 {ok, ForkPoint} = aec_chain_state:get_key_block_hash_at_height(Height),
-                do_rollback_(ForkPoint, key, Height, TopHeight)
+                do_rollback_(ForkPoint, height, key, Height, TopHeight)
         end,
     aec_db:ensure_activity(sync_dirty, F).
 
-rollback_to_hash(Hash) ->
+rollback_to_hash(Type, Hash) ->
     F = fun() ->
                 TopHeight = aec_chain:top_height(),
                 case aec_chain:get_header(Hash) of
-                    none ->
+                    error ->
                         {error, hash_not_found};
                     {ok, Hdr} ->
-                        Type = aec_headers:type(Hdr),
+                        Type = aec_headers:type(Hdr),   % assertion
                         Height = aec_headers:height(Hdr),
-                        do_rollback_(Hash, Type, Height, TopHeight)
+                        {_, true} = {height_does_not_exceed_top, (TopHeight >= Height)},
+                        do_rollback_(Hash, hash, Type, Height, TopHeight)
                 end
         end,
     aec_db:ensure_activity(sync_dirty, F).
@@ -144,34 +146,46 @@ do_rollback(ForkPoint, Height, TopHeight) ->
     lager:info("Jumping to the community fork", []),
     aec_db:ensure_activity(sync_dirty,
                            fun() ->
-                                   do_rollback_(ForkPoint, key, Height, TopHeight)
+                                   do_rollback_(ForkPoint, height, key, Height, TopHeight)
                            end).
 
-do_rollback_(ForkPoint, Type, Height, TopHeight) ->
+do_rollback_(ForkPoint, Mode, Type, Height, TopHeight) ->
     lager:debug("Perform rollback from ~p to ~p", [TopHeight, Height]),
     ensure_gc_disabled(),
     {value, FPHeader} = aec_db:find_header(ForkPoint),
     SafetyMargin = 1000, %% Why not?
-    FromHeight = case Type of
-                     micro -> Height;
-                     key   -> Height + 1
+    FromHeight = case Mode of
+                     hash   -> Height;
+                     height -> Height + 1
                  end,
     lists:foreach(
       fun(H) ->
-              roll_back_height_(H, Height, ForkPoint, Type)
+              roll_back_height_(H, Height, ForkPoint, Mode, Type)
       end, lists:seq(FromHeight, TopHeight+SafetyMargin)),
       aec_db:write_top_block_node(ForkPoint, FPHeader),
     ok.
 
-roll_back_height_(H, H, Hash, micro) ->
-    {ok, #{micro_blocks := MBs}} = aec_chain:get_generation_by_height(H, forward),
+roll_back_height_(H, H, Hash, hash, Type) ->
+    %% We know that Hash is at this height, and that Type is correct
+    {ok, #{key_block := KB,
+           micro_blocks := MBs}} = aec_chain:get_generation_by_height(H, forward),
+    KBHash = ok(aec_blocks:hash_internal_representation(KB)),
     MBHashes = [ok(aec_blocks:hash_internal_representation(B)) || B <- MBs],
-    MBs1 = micros_after_hash(MBHashes, Hash),
+    GenHashes = [KBHash | MBHashes],
+    OtherHashes = [Hx || Hx <- hashes_at_height(H),
+                         not lists:member(Hx, GenHashes)],
+    MBs1 = case Type of
+               micro -> micros_after_hash(MBHashes, Hash);
+               key   -> MBHashes
+           end,
+    lists:foreach(fun remove_block/1, OtherHashes),
     lists:foreach(fun remove_block/1, MBs1);
-roll_back_height_(CurH, _Height, _ForkPoint, _Type) ->
-    lists:foreach(fun remove_block/1,
-                  [element(2,T) ||
-                      T <- mnesia:index_read(aec_headers, CurH, height)]).
+roll_back_height_(CurH, _Height, _ForkPoint, _Mode, _Type) ->
+    lists:foreach(fun remove_block/1, hashes_at_height(CurH)).
+
+hashes_at_height(Height) ->
+    [Hash || #aec_headers{key = Hash}
+                 <- mnesia:index_read(aec_headers, Height, height)].
 
 ok({ok, Res}) -> Res.
 
