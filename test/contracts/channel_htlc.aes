@@ -14,7 +14,7 @@ contract ChannelHTLC =
                    minimum_fee     : int,
                    default_timeout : int }
 
-  datatype status = INVALID | ACTIVE | REFUNDED | COLLECTED | EXPIRED
+  datatype status = INVALID | ACTIVE | REFUNDED | COLLECTED
 
   record recv = {
     amount : int,
@@ -89,7 +89,7 @@ contract ChannelHTLC =
       amount' : int,
       sender' : address,
       timeout' : int,
-      hash_lock' : hash ) : unit =
+      hash_lock' : hash ) : hash =
     require( Call.caller == state.hub, "Not hub" )
     require( amount' > 0, "Invalid amount" )
     require( Call.value == amount', "Wrong value (should be amount)")
@@ -105,6 +105,7 @@ contract ChannelHTLC =
             sender = sender',
             timeout = timeout' }
     put(state{receives[id] = _recv})
+    id
 
   // Called by the hub to collect the collateral + the fee
   // To be safe, the withdraw should be performed before 
@@ -130,6 +131,7 @@ contract ChannelHTLC =
     let _recv : recv = state.receives[id]
     receivable(_recv, secret')
     Chain.spend(state.client, _recv.amount)
+    put(state{ receives[id].status = COLLECTED })
 
   // Called by client in order to get a refund. This will only be allowed
   // under certain circumstances.
@@ -147,6 +149,14 @@ contract ChannelHTLC =
 
     put(state{ sends[id].status = REFUNDED })
 
+  // Called by the hub in order to get a refund on the collateral.
+  // This will only be allowed after Timeout + 3 blocks
+  payable stateful entrypoint refund_receive(
+        id' : hash ) : unit =
+    let _recv: recv = state.receives[id']
+    refundable_receive(_recv)
+    Chain.spend(state.hub, _recv.amount)
+    put(state{ receives[id'].status = REFUNDED })
 
   entrypoint get_send_status(id : hash) : status =
     let _send : send = state.sends[id]
@@ -188,8 +198,13 @@ contract ChannelHTLC =
 
   function refundable(_send: send) =
     require(is_active(_send.status), "NOT_ACTIVE")
-    require(state.client == Call.caller, "INVALID_SENDER")
+    require(state.client == Call.caller, "UNAUTHORIZED")
     require(Chain.block_height >= _send.timeout + 3, "NOT_YET_REFUNDABLE")
+
+  function refundable_receive(_recv: recv) =
+    require(is_active(_recv.status), "NOT_ACTIVE")
+    require(state.hub == Call.caller, "UNAUTHORIZED")
+    require(Chain.block_height >= _recv.timeout + 3, "NOT_YET_REFUNDABLE")
 
   function is_active(x : status) : bool =
     x == ACTIVE

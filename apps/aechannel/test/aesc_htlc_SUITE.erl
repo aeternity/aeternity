@@ -23,6 +23,8 @@
           create_3_party/1
         , alice_pays_bob/1
         , alice_tries_early_refund/1
+        , alice_gets_refund_after_timeout/1
+        , bob_tries_receiving_too_late/1
         , shutdown/1
         ]).
 
@@ -95,6 +97,8 @@ groups() ->
        [ create_3_party
        , alice_pays_bob
        , alice_tries_early_refund
+       , alice_gets_refund_after_timeout
+       , bob_tries_receiving_too_late
        , shutdown ]}
     ].
 
@@ -164,7 +168,7 @@ create_3_party(Cfg) ->
     %%
     %% Alice side of the market (Variables: Cx = Client, Hx = Hub)
     CfgA = set_configs([{responder, Ah}, {initiator, Alice}], Cfg),
-    
+
     #{i := Ca, r := Ha} = _ChannelA =
         proxy_do(fun() -> create_channel_(CfgA, #{}, Debug) end, CfgA),
     %%
@@ -179,15 +183,17 @@ create_3_party(Cfg) ->
     ct:log("CompileRes = ~p", [CompileRes]),
     %%
     %% Contract for Alice
+    Fee = ?MINIMUM_FEE,
+    Timeout = ?DEFAULT_TIMEOUT,
     CreateArgsA = contract_create_args(
-                    CompileRes, [encpub(Alice), ?MINIMUM_FEE, ?DEFAULT_TIMEOUT], 10),
+                    CompileRes, [encpub(Alice), Fee, Timeout], 10),
     {Ha1, Ca1, ContractPubKeyA} =
         proxy_do(fun() -> load_contract(CreateArgsA, Ha, Ca, CfgA) end, CfgA),
     ?LOG("HTLC contract loaded on Alice's channel", []),
     %%
     %% Contract for Bob
     CreateArgsB = contract_create_args(
-                    CompileRes, [encpub(Bob), ?MINIMUM_FEE, ?DEFAULT_TIMEOUT], 10),
+                    CompileRes, [encpub(Bob), Fee, Timeout], 10),
     {Hb1, Cb1, ContractPubKeyB} =
         proxy_do(fun() -> load_contract(CreateArgsB, Hb, Cb, CfgB) end, CfgB),
     ?LOG("HTLC contract loaded on Bob's channel", []),
@@ -203,9 +209,8 @@ create_3_party(Cfg) ->
 alice_pays_bob(Cfg) ->
     #{encoded_pub := AlicePub} = ?config(alice, Cfg),
     #{encoded_pub := BobPub} = ?config(bob, Cfg),
-    ContractMeta = ?config(contract_meta, Cfg),
-    [{AlicePub, AB},
-     {BobPub, BB}] = BalancesBefore = check_all_balances([AlicePub, BobPub], Cfg),
+    [{AlicePub, _},
+     {BobPub, _}] = BalancesBefore = check_all_balances([AlicePub, BobPub], Cfg),
     Amount = 1000,
     Fee = 100,
     Timeout = 3,
@@ -213,58 +218,127 @@ alice_pays_bob(Cfg) ->
     HashLock = request_hashlock(AlicePub, BobPub, Amount, Cfg),
     ?LOG("Hashlock Res = ~p", [HashLock]),
     %%
+    %% Transaction
     %%
     {AbsTimeout, Cfg1} = new_send(AlicePub, BobPub, Amount, Fee, Timeout, HashLock, Cfg),
-    {_, Cfg2} = new_receive(AlicePub, BobPub, Amount, AbsTimeout, HashLock, Cfg1),
-    {_, Cfg3} = recv(AlicePub, BobPub, Amount, HashLock, Cfg2),
+    {{ok, _}, Cfg2} = new_receive(AlicePub, BobPub, Amount, AbsTimeout, HashLock, Cfg1),
+    {{ok, _}, Cfg3} = recv(AlicePub, BobPub, Amount, HashLock, Cfg2),
     {_, Cfg4} = collect(AlicePub, BobPub, Amount, HashLock, Cfg3),
     %%
     %%
     T1 = timestamp(),
     ?LOG("Time for Alice Pays Bob: ~p ms", [T1-T0]),
-    {ok, BalancesAfter} =
+    {ok, _BalancesAfter} =
         expect_balances(BalancesBefore, [{AlicePub, [{client_balance, -(Amount + Fee)},
                                                      {hub_balance, (Amount + Fee)}]},
                                          {BobPub, [{client_balance, Amount},
                                                    {hub_balance, -Amount}]}], Cfg4),
-    {save_config, [{market, ?config(market, Cfg4)}]}.
+    save_config(Cfg4).
 
 alice_tries_early_refund(Cfg) ->
-    #{encoded_pub := AlicePub} = ?config(alice, Cfg),
-    #{encoded_pub := BobPub} = ?config(bob, Cfg),
-    ContractMeta = ?config(contract_meta, Cfg),
-    Before = check_all_balances([AlicePub, BobPub], Cfg),
+    #{encoded_pub := A} = ?config(alice, Cfg),
+    #{encoded_pub := B} = ?config(bob, Cfg),
     Amount = 1000,
     Fee = 100,
     Timeout = 3,
-    T0 = timestamp(),
-    HashLock = request_hashlock(AlicePub, BobPub, Amount, Cfg),
+    %%
+    Before = check_all_balances([A, B], Cfg),
+    HashLock = request_hashlock(A, B, Amount, Cfg),
     ?LOG("Hashlock Res = ~p", [HashLock]),
     %%
+    %% Transaction
     %%
-    {AbsTimeout, Cfg1} = new_send(AlicePub, BobPub, Amount, Fee, Timeout, HashLock, Cfg),
+    {AbsTimeout, Cfg1} = new_send(A, B, Amount, Fee, Timeout, HashLock, Cfg),
     {{error, <<"NOT_YET_REFUNDABLE">>}, Cfg2} =
-        refund(AlicePub, BobPub, Amount, HashLock, Cfg1),
+        refund(A, B, Amount, HashLock, Cfg1),
     {ok, AfterSend} =
-        expect_balances(Before, [{AlicePub, [{client_balance, -(Amount + Fee)}]}], Cfg2),
-    {ok, Cfg3} = new_receive(AlicePub, BobPub, Amount, AbsTimeout, HashLock, Cfg2),
+        expect_balances(Before, [{A, [{client_balance, -(Amount + Fee)}]}], Cfg2),
+    {{ok, _}, Cfg3} = new_receive(A, B, Amount, AbsTimeout, HashLock, Cfg2),
     {{error, <<"NOT_YET_REFUNDABLE">>}, Cfg4} =
-        refund(AlicePub, BobPub, Amount, HashLock, Cfg3),
+        refund(A, B, Amount, HashLock, Cfg3),
     {ok, AfterNewRecv} =
-        expect_balances(AfterSend, [{BobPub, [{hub_balance, -Amount}]}], Cfg4),
-    {ok, Cfg5} = recv(AlicePub, BobPub, Amount, HashLock, Cfg4),
+        expect_balances(AfterSend, [{B, [{hub_balance, -Amount}]}], Cfg4),
+    {{ok,_}, Cfg5} = recv(A, B, Amount, HashLock, Cfg4),
     {{error, <<"NOT_YET_REFUNDABLE">>}, Cfg6} =
-        refund(AlicePub, BobPub, Amount, HashLock, Cfg5),
+        refund(A, B, Amount, HashLock, Cfg5),
     {ok, AfterRecv} =
-        expect_balances(AfterNewRecv, [{BobPub, [{client_balance, Amount}]}], Cfg6),
-    {_, Cfg7} = collect(AlicePub, BobPub, Amount, HashLock, Cfg6),
+        expect_balances(AfterNewRecv, [{B, [{client_balance, Amount}]}], Cfg6),
+    {_, Cfg7} = collect(A, B, Amount, HashLock, Cfg6),
     {ok, AfterCollect} =
-        expect_balances(AfterRecv, [{AlicePub, [{hub_balance, (Amount + Fee)}]}], Cfg7),
+        expect_balances(AfterRecv, [{A, [{hub_balance, (Amount + Fee)}]}], Cfg7),
     {{error, <<"NOT_ACTIVE">>}, Cfg8} =
-        refund(AlicePub, BobPub, Amount, HashLock, Cfg7),
+        refund(A, B, Amount, HashLock, Cfg7),
+    {ok, _} = expect_balances(AfterCollect, [], Cfg8),
     %%
     %%
-    {save_config, [{market, ?config(market, Cfg8)}]}.
+    save_config(Cfg8).
+
+alice_gets_refund_after_timeout(Cfg) ->
+    #{encoded_pub := A} = ?config(alice, Cfg),
+    #{encoded_pub := B} = ?config(bob, Cfg),
+    Amount = 1000,
+    Fee = 100,
+    Timeout = 3,
+    %%
+    Before = check_all_balances([A, B], Cfg),
+    HashLock = request_hashlock(A, B, Amount, Cfg),
+    ?LOG("Hashlock Res = ~p", [HashLock]),
+    %%
+    %% Transaction
+    %%
+    {AbsTimeout, Cfg1} = new_send(A, B, Amount, Fee, Timeout, HashLock, Cfg),
+    {ok, AfterSend} =
+        expect_balances(Before, [{A, [{client_balance, -(Amount + Fee)}]}], Cfg1),
+    %% Refund timeout is `Timeout + 3`
+    mine_key_blocks(Timeout),
+    {{error, <<"NOT_YET_REFUNDABLE">>}, Cfg2} =
+        refund(A, B, Amount, HashLock, Cfg1),
+    mine_key_blocks(3),
+    {{ok, _}, Cfg3} =
+        refund(A, B, Amount, HashLock, Cfg2),
+    {ok, _AfterRefund} =
+        expect_balances(AfterSend, [{A, [{client_balance, Amount},
+                                         {hub_balance, Fee}]}], Cfg3),
+    save_config(Cfg3).
+
+bob_tries_receiving_too_late(Cfg) ->
+    #{encoded_pub := A} = ?config(alice, Cfg),
+    #{encoded_pub := B} = ?config(bob, Cfg),
+    Amount = 1000,
+    Fee = 100,
+    Timeout = 3,
+    %%
+    Before = check_all_balances([A, B], Cfg),
+    HashLock = request_hashlock(A, B, Amount, Cfg),
+    ?LOG("Hashlock Res = ~p", [HashLock]),
+    %%
+    %% Transaction
+    %%
+    {AbsTimeout, Cfg1} = new_send(A, B, Amount, Fee, Timeout, HashLock, Cfg),
+    {{ok, {{bytes,32},
+           {bytes, Id}}}, Cfg2} = new_receive(A, B, Amount, AbsTimeout, HashLock, Cfg1),
+    {ok, AfterNewRecv} =
+        expect_balances(Before, [{A, [{client_balance, -(Amount + Fee)}]},
+                                 {B, [{hub_balance, -Amount}]}], Cfg2),
+    mine_key_blocks(Timeout),
+    {{error, <<"RECEIVE_TIMEOUT">>}, Cfg3} =
+        recv(A, B, Amount, HashLock, Cfg2),
+    %%
+    %% Hub must wait Timeout + 3 before claiming a collateral refund
+    %%
+    {{error, <<"NOT_YET_REFUNDABLE">>}, Cfg4} =
+        refund_receive(B, Id, Cfg3),
+    mine_key_blocks(3),
+    {{ok,_}, Cfg5} =
+        refund_receive(B, Id, Cfg4),
+    {ok, AfterRefundRecv} =
+        expect_balances(AfterNewRecv, [{B, [{hub_balance, Amount}]}], Cfg4),
+    {{ok,_}, Cfg6} =
+        refund(A, B, Amount, HashLock, Cfg5),
+    {ok, _} =
+        expect_balances(AfterRefundRecv, [{A, [{client_balance, Amount},
+                                               {hub_balance, Fee}]}], Cfg6),
+    save_config(Cfg6).
 
 shutdown(Config) ->
     Debug = get_debug(Config),
@@ -280,10 +354,8 @@ shutdown(Config) ->
       end, ok, maps:remove(contract_meta, Market)),
     ok.
 
-htlc_init_args(Client) ->
-    ClientPub = encode_pub(Client),
-    MinimumFee = integer_to_list(?MINIMUM_FEE),
-    [ClientPub, MinimumFee].
+save_config(Cfg) ->
+    {save_config, [{market, ?config(market, Cfg)}]}.
 
 encpub(#{encoded_pub := P}) ->
     P.
@@ -297,21 +369,20 @@ timestamp() ->
 
 request_hashlock(A, B, Amount, Cfg) ->
     #{A := ChA, B := ChB} = _Market = ?config(market, Cfg),
-    SeqBin = integer_to_binary(erlang:unique_integer([positive, monotonic])),
-    AmtBin = integer_to_binary(Amount),
-    Req = << "SND REQ ", SeqBin/binary, "\n",
-             A/binary, "\n",
-             B/binary, "\n",
-             AmtBin/binary >>,
+    Seq = erlang:unique_integer([positive, monotonic]),
+    Req = #{ <<"req">> => <<"SEND">>
+           , <<"id">>  => Seq
+           , <<"amount">> => Amount },
     ok = inband_msg_via_hub(Req, ChA, ChB, Cfg),
-    ?LOG("Inband msg send request:~n~s", [Req]),
+    ?LOG("Inband msg send request:~n~p", [Req]),
     %%
     Secret = crypto:strong_rand_bytes(32),
     HashLock = crypto:hash(sha256, Secret),
-    Rep = << "SND OK ", SeqBin/binary, "\n",
-             HashLock/binary >>,
+    Rep = #{ <<"reply">> => <<"OK">>
+           , <<"id">>    => Seq
+           , <<"hash_lock">> => aeser_api_encoder:encode(bytearray, HashLock) },
     ok = inband_msg_via_hub(Rep, ChB, ChA, Cfg),
-    ?LOG("Inband msg OK:~n~s", [Rep]),
+    ?LOG("Inband msg OK:~n~p", [Rep]),
     #{hashlock => HashLock, secret => Secret}.
 
 new_send(A, B, Amount, Fee, Timeout, #{hashlock := HashLock, secret := Secret}, Cfg) ->
@@ -322,17 +393,17 @@ new_send(A, B, Amount, Fee, Timeout, #{hashlock := HashLock, secret := Secret}, 
     {AbsTimeout, Cfg1}.
 
 new_receive(A, B, Amount, AbsTimeout, #{hashlock := HashLock}, Cfg) ->
-    {{ok, _} = Res, Cfg1} =
+    {Res, Cfg1} =
         hub_calls_contract(B, <<"new_receive">>, [Amount, A, AbsTimeout, HashLock],
                            Amount, Cfg),
     ?LOG("new_receive: ~p", [Res]),
-    {ok, Cfg1}.
+    {Res, Cfg1}.
 
 recv(A, B, Amount, #{hashlock := HashLock, secret := Secret}, Cfg) ->
-    {{ok,_} = Res, Cfg1} =
+    {Res, Cfg1} =
         client_calls_contract(B, <<"receive">>, [A, Amount, HashLock, Secret], 0, Cfg),
     ?LOG("receive Res: ~p", [Res]),
-    {ok, Cfg1}.
+    {Res, Cfg1}.
 
 collect(A, B, Amount, #{hashlock := HashLock, secret := Secret}, Cfg) ->
     {Res, Cfg1} =
@@ -346,7 +417,14 @@ refund(A, B, Amount, #{hashlock := HashLock}, Cfg) ->
     ?LOG("refund Res: ~p", [Res]),
     {Res, Cfg1}.
 
-inband_msg_via_hub(Msg, ChA, ChB, Cfg) ->
+refund_receive(B, Id, Cfg) ->
+    {Res, Cfg1} =
+        hub_calls_contract(B, <<"refund_receive">>, [Id], 0, Cfg),
+    ?LOG("refund_receive Res: ~p", [Res]),
+    {Res, Cfg1}.
+
+inband_msg_via_hub(Msg0, ChA, ChB, Cfg) ->
+    Msg = jsx:encode(Msg0),
     #{ client := #{fsm := FsmC}, hub := #{pub := HubPub} = Ah } = ChA,
     #{ hub := #{fsm := FsmH}, client := #{pub := BPub} = Bc } = ChB,
     ok = send_inband(FsmC, HubPub, Msg, Cfg),
@@ -558,6 +636,10 @@ contract_call(ContractId, F, Args, Amount, A, B, Meta, Cfg) ->
 %%
 decode_callres({ok, Value}, F, Meta) ->
     {ok, aefa_fate_code:decode_result(maps:get(fate_code, Meta), F, Value)};
-decode_callres({Other, Reason}, F, Meta) when Other==error; Other==revert ->
+decode_callres({error, Reason}, _, _) ->
+    {error, Reason};
+decode_callres({revert, Reason}, _F, _Meta) ->
     {error, aeb_fate_encoding:deserialize(Reason)}.
 
+mine_key_blocks(N) ->
+    aecore_suite_utils:mine_key_blocks(aecore_suite_utils:node_name(dev1), N).
