@@ -342,7 +342,6 @@ enter_worker(Parent, PeerPwd, KeysDir) ->
             parent_state_update(pubkeys, State),
             worker_loop(State)
     catch Type:What:StackTrace ->
-        io:format(user, "~p~n", [{Type, What, StackTrace}]),
         lager:debug("Error starting worker: ~p", [{Type, What, StackTrace}]),
         lager:error("aec_keys worker_failed"),
         error({Type, What, StackTrace})
