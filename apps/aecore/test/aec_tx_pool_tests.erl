@@ -491,7 +491,6 @@ tx_pool_test_() ->
                PK = new_pubkey(),
                MaxGas = aec_governance:block_gas_limit(),
                TopBlockHash = aec_chain:top_block_hash(),
-               TopHeight = aec_chain:top_height(),
                STx1 = a_signed_tx(PK, me, Nonce1=1, _Fee1=20000),
                ?assertEqual(ok, aec_tx_pool:push(STx1)),
                ?assertEqual([], aec_tx_pool:peek_visited()),
