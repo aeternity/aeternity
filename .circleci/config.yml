@@ -827,7 +827,7 @@ jobs:
     docker-js-sdk-smoke-test:
         environment:
             - AE__CHAIN__PERSIST: "false"
-            - AE__FORK_MANAGEMENT__NETWORK_ID: local_iris_testnet
+            - AE__FORK_MANAGEMENT__NETWORK_ID: local_ceres_testnet
         executor: buildpack
         steps:
             - fixed_checkout
@@ -876,7 +876,7 @@ jobs:
             - image: circleci/buildpack-deps:bionic
         environment:
             - AE__CHAIN__PERSIST: false
-            - AE__FORK_MANAGEMENT__NETWORK_ID: local_iris_testnet
+            - AE__FORK_MANAGEMENT__NETWORK_ID: local_ceres_testnet
             - PACKAGES_DIR: << pipeline.parameters.packages_workspace >>
         steps:
             - fixed_checkout
@@ -1195,6 +1195,8 @@ workflows:
                         - otp: otp23
                           target: ct-lima
                         - otp: otp23
+                          target: ct-iris
+                        - otp: otp23
                           target: ct-latest-no-aci
                         - otp: otp23
                           target: ct-mnesia-leveled
@@ -1209,6 +1211,7 @@ workflows:
                             - ct-minerva
                             - ct-fortuna
                             - ct-lima
+                            - ct-iris
                             - ct-latest
                             - ct-latest-no-aci
                             - ct-mnesia-leveled
@@ -1231,6 +1234,7 @@ workflows:
                             - minerva
                             - fortuna
                             - lima
+                            - iris
                             - latest
                 requires:
                     - build-<< matrix.otp >>
