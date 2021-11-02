@@ -26,9 +26,6 @@ type_sig(Fun, FCode) ->
 encode_args(TypeArgs) ->
     lists:map(fun encode_arg/1, TypeArgs).
 
-%% TODO: Go through aefa_test_utils:encode/1, and include all variants
-%% that are reasonable to support here. Special-case the others in
-%% aefa_test_utils, then have it call this for the rest.
 encode_arg(none)      -> aeb_fate_data:make_variant([0, 1], 0, {});
 encode_arg({some, X}) -> aeb_fate_data:make_variant([0, 1], 1, {encode_arg(X)});
 encode_arg({integer, Val})    when is_integer(Val) -> aeb_fate_data:make_integer(Val);
@@ -67,8 +64,8 @@ make_address(I) when is_integer(I) ->
     aeb_fate_data:make_address(B);
 make_address(B) when bit_size(B) == 256 ->
     aeb_fate_data:make_address(B);
-make_address(Id) when element(1, Id) =:= id ->
-    aeb_fate_data:make_address(encode_id(account, Id)).
+make_address(MaybeId) ->
+    maybe_encode_id(account, fun aeb_fate_data:make_address/1, MaybeId).
 
 make_contract(<<"ct_", _/binary>> = C) ->
     aeb_fate_data:make_contract(encode_address(contract_pubkey, C));
@@ -96,8 +93,8 @@ make_oracle(I) when is_integer(I) ->
     aeb_fate_data:make_oracle(<<I:256>>);
 make_oracle(B) when bit_size(B) =:= 256 ->
     aeb_fate_data:make_oracle(B);
-make_oracle(Id) when element(1, Id) =:= id ->
-    aeb_fate_data:make_oracle(encode_id(oracle, Id)).
+make_oracle(MaybeId) ->
+    maybe_encode_id(oracle, fun aeb_fate_data:make_oracle/1, MaybeId).
 
 make_oracle_query(<<"ov_", _/binary>> = Q) ->
     aeb_fate_data:make_oracle_query(encode_address(oracle_query, Q));
@@ -114,8 +111,8 @@ make_channel("ch_" ++ _ = C) ->
     aeb_fate_data:make_channel(C);
 make_channel(I) when is_integer(I) ->
     aeb_fate_data:make_channel(<<I:256>>);
-make_channel(Id) when element(1, Id) =:= id ->
-    aeb_fate_data:make_channel(encode_id(channel, Id)).
+make_channel(MaybeId) ->
+    maybe_encode_id(channel, fun aeb_fate_data:make_channel/1, MaybeId).
 
 encode_address(Type, S) when is_list(S); is_binary(S) ->
     B = iolist_to_binary(S),
@@ -125,6 +122,15 @@ encode_address(Type, S) when is_list(S); is_binary(S) ->
         _ -> erlang:error({bad_address_encoding, Type, S})
     catch _:_ ->
             erlang:error({bad_address_encoding, Type, S})
+    end.
+
+%% The aeser_id:id() type is opaque, so handling of it is a bit cumbersome
+maybe_encode_id(Type, F, Id) ->
+    case aeser_id:is_id(Id) of
+        true ->
+            F(encode_id(Type, Id));
+        false ->
+            error({unknown_format, Type})
     end.
 
 encode_id(Type, Id) ->

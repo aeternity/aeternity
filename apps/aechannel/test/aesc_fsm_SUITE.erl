@@ -5212,9 +5212,12 @@ load_contract(CreateArgs, #{ fsm := FsmC, pub := Owner} = Creator, Acknowledger,
     {Creator2, Acknowledger2, ContractPubkey}.
 
 prepare_contract_create_args(ContractName, InitArgs, Deposit) ->
-    ct:log("SophiaVsn = ~p, IrisFate = ~p", [aect_test_utils:sophia_version(), ?SOPHIA_IRIS_FATE]),
-    {ok, BinCode} = aect_test_utils:compile_contract(aect_test_utils:sophia_version(), ContractName),
-    {ok, BinSrc} = aect_test_utils:read_contract(aect_test_utils:sophia_version(), ContractName),
+    ct:log("SophiaVsn = ~p, IrisFate = ~p",
+           [aect_test_utils:sophia_version(), ?SOPHIA_IRIS_FATE]),
+    {ok, BinCode} = aect_test_utils:compile_contract(
+                      aect_test_utils:sophia_version(), ContractName),
+    {ok, BinSrc} = aect_test_utils:read_contract(
+                     aect_test_utils:sophia_version(), ContractName),
     {ok, CallData} =
         aect_test_utils:encode_call_data(aect_test_utils:sophia_version(), BinSrc,
                                          "init", InitArgs),
@@ -5229,11 +5232,10 @@ call_contract(ContractId, ContractName, FunName, FunArgs,
     call_contract(ContractId, ContractName, FunName, FunArgs, Amount,
                   Caller, Acknowledger, Cfg, false).
 
-call_contract(ContractId,
-              ContractName, FunName, FunArgs, Amount,
-              #{fsm := FsmC} = Caller, Acknowledger, Cfg, ReturnResult) ->
-    Debug = get_debug(Cfg),
-    {ok, BinSrc} = aect_test_utils:read_contract(aect_test_utils:sophia_version(), ContractName),
+call_contract(ContractId, ContractName, FunName, FunArgs, Amount,
+              Caller, Acknowledger, Cfg, ReturnResult) ->
+    {ok, BinSrc} = aect_test_utils:read_contract(
+                     aect_test_utils:sophia_version(), ContractName),
     {ok, CallData} =
         aect_test_utils:encode_call_data(aect_test_utils:sophia_version(), BinSrc,
                                          FunName, FunArgs),
@@ -5247,8 +5249,8 @@ call_contract(ContractId,
 
 upd_call_contract(#{fsm := FsmC} = Caller, Acknowledger, CallArgs, Cfg) ->
     Debug = get_debug(Cfg),
-    {ok, CallRes} = aesc_fsm:upd_call_contract(FsmC, CallArgs),
-    ?LOG(Debug, "CallRes = ~p", [CallRes]),
+    UpdCallRes = aesc_fsm:upd_call_contract(FsmC, CallArgs),
+    ?LOG(Debug, "UpdCallRes = ~p", [UpdCallRes]),
     {Caller1, _} = await_signing_request(update, Caller, Cfg),
     await_update_incoming_report(Acknowledger, ?TIMEOUT, Debug),
     {Acknowledger1, _} = await_signing_request(update_ack, Acknowledger, Cfg),
@@ -5257,15 +5259,18 @@ upd_call_contract(#{fsm := FsmC} = Caller, Acknowledger, CallArgs, Cfg) ->
     assert_empty_msgq(Debug),
     case maps:get(return_result, CallArgs, false) of
         true ->
+            {ok, CallRes} = UpdCallRes,
             {Caller2, Acknowledger2, CallRes};
         false ->
+            ok = UpdCallRes,
             {Caller2, Acknowledger2}
     end.
 
 trigger_force_progress(ContractPubkey,
                        ContractName, FunName, FunArgs, Amount,
                        #{ fsm := FsmC}) ->
-    {ok, BinSrc} = aect_test_utils:read_contract(aect_test_utils:sophia_version(), ContractName),
+    {ok, BinSrc} = aect_test_utils:read_contract(
+                     aect_test_utils:sophia_version(), ContractName),
     {ok, CallData} =
         aect_test_utils:encode_call_data(aect_test_utils:sophia_version(), BinSrc,
                                          FunName, FunArgs),
