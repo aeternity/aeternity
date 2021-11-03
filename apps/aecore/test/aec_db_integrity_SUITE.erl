@@ -33,7 +33,7 @@ init_per_suite(Config0) ->
     Accounts = [new_pubkey() || _ <- lists:seq(1, 128)],
     B = os:getenv("AETERNITY_TESTCONFIG_DB_BACKEND"),
     try
-        os:set_env_var("AETERNITY_TESTCONFIG_DB_BACKEND", "rocksdb"),
+        os:putenv("AETERNITY_TESTCONFIG_DB_BACKEND", "rocksdb"),
         Config1 = aecore_suite_utils:init_per_suite([dev1], DefCfg, [{symlink_name, "latest.db_integrity"}, {test_module, ?MODULE}] ++ Config0),
         aecore_suite_utils:start_node(dev1, Config1),
         aecore_suite_utils:connect(aecore_suite_utils:node_name(dev1)),
@@ -42,7 +42,7 @@ init_per_suite(Config0) ->
     catch E:R:S ->
         ct:fail("Setup failed ~p ~p ~p", [E, R, S])
     after
-        os:set_env_var("AETERNITY_TESTCONFIG_DB_BACKEND", B),
+        os:putenv("AETERNITY_TESTCONFIG_DB_BACKEND", B),
         Config0
     end.
 
