@@ -149,7 +149,7 @@ check_extra_nonce_bytes(MaxConnections, NumAcceptors, ExtraNonceBytes) ->
 
 check_keypair_roundtrips({PK, SK}) ->
     Sig = enacl:sign_detached(<<"roundtrip">>, SK),
-    is_ok(enacl:sign_verify_detached(Sig, <<"roundtrip">>, PK)).
+    enacl:sign_verify_detached(Sig, <<"roundtrip">>, PK).
 
 read_keys(Dir) ->
     AbsDir = case filename:pathtype(Dir) of

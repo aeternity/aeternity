@@ -84,10 +84,7 @@ ecverify(secp256k1, <<Hash:32/binary>>, <<Addr:20/binary>>, <<Sig:65/binary>>) -
 verify_sig(Msg, PK, Sig) -> verify_sig(curve25519, Msg, PK, Sig).
 
 verify_sig(curve25519, Msg, PK, Sig) ->
-    case enacl:sign_verify_detached(Sig, Msg, PK) of
-        {ok, _}    -> true;
-        {error, _} -> false
-    end;
+    enacl:sign_verify_detached(Sig, Msg, PK);
 verify_sig(secp256k1, Msg, PK0, Sig0) ->
     PK  = ecdsa_to_der_pk(PK0),
     Sig = ecdsa_to_der_sig(Sig0),

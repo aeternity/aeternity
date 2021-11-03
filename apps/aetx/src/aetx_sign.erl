@@ -194,18 +194,18 @@ maybe_add_predix(SignPrefix, Bin) ->
 verify_one_pubkey([Sig|Left], PubKey, Bin, HashSign, Acc, SignPrefix)  ->
     BinForNetwork = aec_governance:add_network_id(maybe_add_predix(SignPrefix, Bin)),
     case enacl:sign_verify_detached(Sig, BinForNetwork, PubKey) of
-        {ok, _} ->
+        true ->
             {ok, Acc ++ Left};
-        {error, _} when HashSign ->
+        false when HashSign ->
             TxHash = aec_hash:hash(signed_tx, Bin),
             BinForNetwork2 =
             aec_governance:add_network_id(maybe_add_predix(SignPrefix, TxHash)),
             case enacl:sign_verify_detached(Sig, BinForNetwork2, PubKey) of
-                {ok, _}    -> {ok, Acc ++ Left};
-                {error, _} -> verify_one_pubkey(Left, PubKey, Bin, HashSign,
-                                                [Sig | Acc], SignPrefix)
+                true  -> {ok, Acc ++ Left};
+                false -> verify_one_pubkey(Left, PubKey, Bin, HashSign,
+                                           [Sig | Acc], SignPrefix)
             end;
-        {error, _} ->
+        false ->
             verify_one_pubkey(Left, PubKey, Bin, HashSign, [Sig|Acc],
                               SignPrefix)
     end;

@@ -342,7 +342,6 @@ enter_worker(Parent, PeerPwd, KeysDir) ->
             parent_state_update(pubkeys, State),
             worker_loop(State)
     catch Type:What:StackTrace ->
-        io:format(user, "~p~n", [{Type, What, StackTrace}]),
         lager:debug("Error starting worker: ~p", [{Type, What, StackTrace}]),
         lager:error("aec_keys worker_failed"),
         error({Type, What, StackTrace})
@@ -541,7 +540,7 @@ p_save_keys(Pwd, PubFile, PubKey, PrivFile, PrivKey) ->
 check_sign_keys(PubKey, PrivKey) ->
     SampleMsg = <<"random message">>,
     Signature = enacl:sign_detached(SampleMsg, PrivKey),
-    {ok, SampleMsg} == enacl:sign_verify_detached(Signature, SampleMsg, PubKey).
+    enacl:sign_verify_detached(Signature, SampleMsg, PubKey).
 
 check_peer_keys(PubKey, PrivKey) ->
     PubKey == enacl:curve25519_scalarmult_base(PrivKey).
