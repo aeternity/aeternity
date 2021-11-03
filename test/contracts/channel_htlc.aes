@@ -215,9 +215,8 @@ contract ChannelHTLC =
   function recieve_exists(id : hash) : bool =
     Map.member(id, state.receives)
 
-  function cc(ss : list(string)) : string =
-   switch(ss)
-    s :: ss => List.foldl(String.concat, s, ss)
+  function cc(s :: ss : list(string)) : string =
+    List.foldl(String.concat, s, ss)
 
   function concat(ss : list(string)) : string =
    cc(List.intersperse(",", ss))

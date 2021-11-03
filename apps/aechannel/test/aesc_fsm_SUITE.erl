@@ -149,8 +149,6 @@
 -define(BOGUS_BLOCKHASH, <<42:32/unit:8>>).
 
 -define(PEEK_MSGQ(_D), peek_message_queue(?LINE, _D)).
-%% -define(LOG(_Fmt, _Args), log(_Fmt, _Args, ?LINE, true)).
-%% -define(LOG(_D, _Fmt, _Args), log(_Fmt, _Args, ?LINE, _D)).
 
 %% Default configuration values
 -define(MINIMUM_DEPTH, 5).
@@ -605,7 +603,7 @@ responder_accept_timeout(Cfg) ->
                      #{noise => NOpts1}
              end,
     create_channel_([ ?SLOGAN
-                   , {spawn_interval, 500}
+                    , {spawn_interval, 500}
                     , {responder_opts, ROptsF} | Cfg]).
 
 -record(miner, { parent
@@ -3630,8 +3628,6 @@ new_config_table() ->
 load_idx(Cfg) ->
     Roles = proplists:get_value(roles, Cfg, [initiator, responder]),
     lists:foldl(fun load_last_idx/2, Cfg, Roles).
-    %% Cfg1 = load_last_idx(initiator, Cfg),
-    %% load_last_idx(responder, Cfg1).
 
 load_last_idx(Role, Cfg) ->
     OldValue =
@@ -4271,13 +4267,6 @@ lock_period(plain, Depth) ->
 lock_period(_, _) ->
     %% Was hard-coded before
     10.
-
-%% log(Fmt, Args, L, #{debug := true}) ->
-%%     log(Fmt, Args, L, true);
-%% log(Fmt, Args, L, true) ->
-%%     ct:log("~p at ~p: " ++ Fmt, [self(), L | Args]);
-%% log(_, _, _, _) ->
-%%     ok.
 
 config() ->
     Cfg = get(config),
@@ -5212,8 +5201,6 @@ load_contract(CreateArgs, #{ fsm := FsmC, pub := Owner} = Creator, Acknowledger,
     {Creator2, Acknowledger2, ContractPubkey}.
 
 prepare_contract_create_args(ContractName, InitArgs, Deposit) ->
-    ct:log("SophiaVsn = ~p, IrisFate = ~p",
-           [aect_test_utils:sophia_version(), ?SOPHIA_IRIS_FATE]),
     {ok, BinCode} = aect_test_utils:compile_contract(
                       aect_test_utils:sophia_version(), ContractName),
     {ok, BinSrc} = aect_test_utils:read_contract(
