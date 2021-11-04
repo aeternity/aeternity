@@ -60,7 +60,7 @@ See the documentation for [starting](https://docs.aeternity.io/en/stable/operati
 
 Alternatively, you can run the node client as a docker container:
 
-**Linux / Mac **
+**Linux / Mac**
 
 Or running a docker container (latest tag):
 ```bash
@@ -70,7 +70,7 @@ docker run -p 3013:3013 -p 3015:3015 \
     -v ~/.aeternity/maindb:/home/aeternity/node/data/mnesia \
     aeternity/aeternity
 ```
-** Win **
+**Windows**
 ```bash
 $ mkdir %APPDATA%\aeternity\maindb
 $ docker pull aeternity/aeternity
