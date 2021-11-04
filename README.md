@@ -56,9 +56,11 @@ bash <(curl -s https://install.aeternity.io/install.sh)
 ```
 See the documentation for [starting](https://docs.aeternity.io/en/stable/operation/#start-the-node) and [configuring](https://docs.aeternity.io/en/stable/configuration/#example) the node.
 
+## Docker
 
+Alternatively, you can run the node client as a docker container:
 
-**Linux / Mac / Win**
+**Linux / Mac **
 
 Or running a docker container (latest tag):
 ```bash
@@ -67,6 +69,12 @@ docker pull aeternity/aeternity
 docker run -p 3013:3013 -p 3015:3015 \
     -v ~/.aeternity/maindb:/home/aeternity/node/data/mnesia \
     aeternity/aeternity
+```
+** Win **
+```bash
+$ mkdir %APPDATA%\aeternity\maindb
+$ docker pull aeternity/aeternity
+$ docker run -p 3013:3013 -p 3015:3015 -v %APPDATA%/aeternity/maindb:/home/aeternity/node/data/mnesia aeternity/aeternity
 ```
 
 #### Restore from snapshot
