@@ -1135,7 +1135,7 @@ parameters:
         default: machine-build-cache-v19-{{ .Branch }}-{{ .Revision }}
         type: string
     macos_package_cache_key:
-        default: macos-package-cache-v4
+        default: macos-package-cache-v5
         type: string
     master_branch:
         default: master
