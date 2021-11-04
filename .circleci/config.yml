@@ -951,6 +951,12 @@ jobs:
                 condition: << parameters.aeplugin_devmode >>
                 steps:
                     - aeplugin_install_devmode
+            - restore_macos_package_cache
+            - run:
+                command: |
+                    brew install gmp libsodium erlang@22 cmake
+                    brew link erlang@22
+                name: Install required tools
             - save_macos_package_cache
             - test_arch_os_dependencies
             - build_tarball:
@@ -1122,7 +1128,7 @@ parameters:
         default: machine-build-cache-v19-{{ .Branch }}-{{ .Revision }}
         type: string
     macos_package_cache_key:
-        default: macos-package-cache-v5
+        default: macos-package-cache-v6
         type: string
     master_branch:
         default: master

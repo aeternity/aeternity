@@ -36,7 +36,7 @@ machine_build_cache_key:
 
 macos_package_cache_key:
   type: string
-  default: macos-package-cache-v5
+  default: macos-package-cache-v6
 
 s3_builds_bucket:
   type: string
