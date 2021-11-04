@@ -34,10 +34,6 @@ machine_build_cache_key:
   type: string
   default: machine-build-cache-v19-{{ .Branch }}-{{ .Revision }}
 
-macos_package_cache_key:
-  type: string
-  default: macos-package-cache-v6
-
 s3_builds_bucket:
   type: string
   default: aeternity-node-builds

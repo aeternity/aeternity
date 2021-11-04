@@ -55,17 +55,3 @@ save_machine_build_cache:
         paths:
           - "_build"
           - ".contracts_test_cache"
-
-restore_macos_package_cache:
-  steps:
-    - restore_cache:
-        key: << pipeline.parameters.macos_package_cache_key >>
-
-save_macos_package_cache:
-  steps:
-    - save_cache:
-        key: << pipeline.parameters.macos_package_cache_key >>
-        paths:
-          - "/usr/local/Homebrew"
-          - "/usr/local/opt"
-          - "/usr/local/Cellar"

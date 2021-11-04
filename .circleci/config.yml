@@ -398,10 +398,6 @@ commands:
                     - << pipeline.parameters.machine_build_cache_key >>
                     - machine-build-cache-v19-{{ .Branch }}-
                     - machine-build-cache-v19-
-    restore_macos_package_cache:
-        steps:
-            - restore_cache:
-                key: << pipeline.parameters.macos_package_cache_key >>
     restore_rebar_cache:
         steps:
             - restore_cache:
@@ -450,14 +446,6 @@ commands:
                 paths:
                     - _build
                     - .contracts_test_cache
-    save_macos_package_cache:
-        steps:
-            - save_cache:
-                key: << pipeline.parameters.macos_package_cache_key >>
-                paths:
-                    - /usr/local/Homebrew
-                    - /usr/local/opt
-                    - /usr/local/Cellar
     save_rebar_cache:
         steps:
             - save_cache:
@@ -951,13 +939,11 @@ jobs:
                 condition: << parameters.aeplugin_devmode >>
                 steps:
                     - aeplugin_install_devmode
-            - restore_macos_package_cache
             - run:
                 command: |
                     brew install gmp libsodium erlang@22 cmake
                     brew link erlang@22
                 name: Install required tools
-            - save_macos_package_cache
             - test_arch_os_dependencies
             - build_tarball:
                 output: << pipeline.parameters.packages_workspace >>/<< parameters.package_name >>
@@ -1126,9 +1112,6 @@ parameters:
         type: string
     machine_build_cache_key:
         default: machine-build-cache-v19-{{ .Branch }}-{{ .Revision }}
-        type: string
-    macos_package_cache_key:
-        default: macos-package-cache-v6
         type: string
     master_branch:
         default: master

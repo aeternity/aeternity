@@ -59,13 +59,11 @@ macos-tarball:
         condition: << parameters.aeplugin_devmode >>
         steps:
           - aeplugin_install_devmode
-    - restore_macos_package_cache
     - run:
         name: Install required tools
         command: |
           brew install gmp libsodium erlang@22 cmake
           brew link erlang@22
-    - save_macos_package_cache
     - test_arch_os_dependencies
     - build_tarball:
         output: << pipeline.parameters.packages_workspace >>/<< parameters.package_name >>
