@@ -233,7 +233,7 @@ jobs:
       requires: []
       filters:
         branches:
-          ignore:
+          only:
             - /releases\/.*/
             - << pipeline.parameters.master_branch >>
 

@@ -1361,7 +1361,7 @@ workflows:
             - macos-tarball:
                 filters:
                     branches:
-                        ignore:
+                        only:
                             - /releases\/.*/
                             - << pipeline.parameters.master_branch >>
                 name: macos-tarball
