@@ -17,125 +17,128 @@
 
 -include_lib("exometer_core/include/exometer.hrl").
 
--define(DATAPOINTS, [updates]).
--define(INITIAL_DATA, [{updates, 0}]).
 
--record(st, {
-          datapoints = ?DATAPOINTS,
-          data
-         }).
+-record(s,
+        {updates = 0       :: non_neg_integer(),
+         stats   = stats() :: #{keys() := integer()}}).
+
+-type keys() :: procs
+              | io_in
+              | io_out
+              | total
+              | processes
+              | processes_used
+              | system
+              | atom
+              | atom_used
+              | binary
+              | code
+              | ets.
+
 
 ad_hoc_spec() ->
     [{module, ?MODULE},
      {type, probe},
      {sample_interval, infinity}].
 
--spec behaviour() -> exometer:behaviour().
-behaviour() ->
-    probe.
 
-probe_init(Name, _, Opts) ->
-    lager:debug("probe_init(~p, _, ~p)", [Name, Opts]),
-    ensure_metrics(),
-    watchdog:add_proc_subscriber(self()),
-    DP = proplists:get_value(datapoints, Opts, ?DATAPOINTS),
-    D = initial_data(DP),
-    {ok, #st{datapoints = DP, data = D}}.
+-spec behaviour() -> exometer:behaviour().
+
+behaviour() -> probe.
+
+
+%%% Lifecycle
+
+probe_init(Name, Type, Options) ->
+    ok = lager:debug("probe_init(~p, ~p, ~p)", [Name, Type, Options]),
+    Stats = stats(),
+    ok = ensure_metrics(Stats),
+    {ok, #s{stats = Stats}}.
+
 
 probe_terminate(Reason) ->
-    lager:debug("eper_metrics probe terminating: ~p", [Reason]),
+    ok = lager:debug("~p terminating: ~p", [?MODULE, Reason]),
     ok.
 
-probe_get_value(DPs, #st{data = Data0,
-                         datapoints = DPs0} = S) ->
-    DPs1 = if DPs =:= default -> DPs0;
-              true -> DPs
-           end,
-    {ok, probe_get_value_(Data0, DPs1), S}.
 
-probe_get_value_(Data, DPs) ->
-    [D || {K,_} = D <- Data,
-          lists:member(K, DPs)].
+%%% External interface
 
-probe_get_datapoints(#st{datapoints = DPs}) ->
-    {ok, DPs}.
+probe_get_value(default, State = #s{updates = Count}) ->
+    {ok, [{updates, Count}], State};
+probe_get_value(Keys, State) ->
+    Values = maps:to_list(maps:with(Keys, all_datapoints(State))),
+    {ok, Values, State}.
+
+
+probe_get_datapoints(State) ->
+    Datapoints = maps:to_list(all_datapoints(State)),
+    {ok, Datapoints}.
+
 
 probe_update(_, _) ->
     {error, not_supported}.
 
-probe_reset(S) ->
-    {ok, S#st{data = initial_data(S#st.datapoints)}}.
+
+probe_reset(State) ->
+    NewState = State#s{stats = stats()},
+    {ok, NewState}.
+
 
 probe_sample(_) ->
     {error, not_supported}.
 
-probe_setopts(_Entry, Opts, S) ->
-    DPs = proplists:get_value(datapoints, Opts, S#st.datapoints),
-    {ok, S#st{datapoints = DPs}}.
 
-probe_handle_msg({watchdog, _Node, _Ts, _Trigger, TriggerData}, S) ->
-    update_metrics(TriggerData),
-    {ok, update_counter(updates, 1, S)};
-probe_handle_msg(_Msg, S) ->
-    lager:debug("Unknown msg: ~p", [_Msg]),
-    {ok, S}.
+probe_setopts(_Entry, Opts, State = #s{stats = Stats}) ->
+    Keys = proplists:get_value(datapoints, Opts, maps:keys(Stats)),
+    NewStats = maps:with(Keys, Stats),
+    NewState = State#s{stats = NewStats},
+    {ok, NewState}.
+
+
+probe_handle_msg(updates, State) ->
+    NewState = do_update(State),
+    {ok, NewState};
+probe_handle_msg(Unexpected, State) ->
+    ok = lager:debug("Unknown msg: ~p", [Unexpected]),
+    {ok, State}.
+
 
 probe_code_change(_, S, _) ->
     {ok, S}.
 
-initial_data(DPs) ->
-    probe_get_value_(?INITIAL_DATA, DPs).
 
-update_counter(K, Value, #st{data = Data} = S) ->
-    Data1 =
-        case lists:keyfind(K, 1, Data) of
-            {_, Prev} ->
-                New = Prev + Value,
-                lists:keyreplace(K, 1, Data, {K, New});
-            false ->
-                [{K, Value}|Data]
-        end,
-    S#st{data = Data1}.
+do_update(State = #s{updates = Count}) ->
+    NewState = State#s{updates = Count + 1, stats = stats()},
+    Datapoints = maps:to_list(all_datapoints(NewState)),
+    NotifyMetrics = fun({N, V}) -> aec_metrics:try_update(N, V) end,
+    ok = lists:foreach(NotifyMetrics, Datapoints),
+    NewState.
 
-ensure_metrics() ->
-    lists:foreach(
-      fun({Name, Type, Opts, _}) ->
-              ok = exometer:ensure(Name, Type, Opts)
-      end, metrics()).
 
--define(PFX, [ae,epoch,system]).
-metrics() ->
-    [{?PFX++[procs]                , gauge, [], [prfSys, procs]},
-     {?PFX++[io,in]                , gauge, [], [prfSys, io_in]},
-     {?PFX++[io,out]               , gauge, [], [prfSys, io_out]},
-     {?PFX++[memory,total]         , gauge, [], [prfSys, total]},
-     {?PFX++[memory,processes]     , gauge, [], [prfSys, processes]},
-     {?PFX++[memory,processes,used], gauge, [], [prfSys, processes_used]},
-     {?PFX++[memory,system]        , gauge, [], [prfSys, system]},
-     {?PFX++[memory,atom]          , gauge, [], [prfSys, atom]},
-     {?PFX++[memory,atom,used]     , gauge, [], [prfSys, atom_used]},
-     {?PFX++[memory,binary]        , gauge, [], [prfSys, binary]},
-     {?PFX++[memory,ets]           , gauge, [], [prfSys, ets]}].
+ensure_metrics(Stats) ->
+    Ensure = fun(Name) -> ok = exometer:ensure(Name, gauge, []) end,
+    lists:foreach(Ensure, maps:keys(Stats)).
 
-update_metrics(Data) ->
-    Metrics = metrics(),
-    lists:foreach(
-      fun({K, Vs}) ->
-              case [{N, T} || {N, _, _, [K1|T]} <- Metrics, K1 =:= K] of
-                  [] -> ok;
-                  [_|_] = Ms ->
-                      update_metrics_(Vs, Ms)
-              end
-      end, Data).
 
-update_metrics_(V, Ms) when is_number(V) ->
-    [aec_metrics:try_update(N, V) || {N, []} <- Ms];
-update_metrics_([_|_] = Vs, Ms) ->
-    lists:foreach(
-      fun({K, Vs1}) ->
-              case [{N, T} || {N, [K1|T]} <- Ms, K1 =:= K] of
-                  [] -> ok;
-                  [_|_] = Ms1 ->
-                       update_metrics_(Vs1, Ms1)
-              end
-      end, Vs).
+%%% Stats busywork
+
+stats() ->
+    {{input, IoIn}, {output, IoOut}} = erlang:statistics(io),
+    Memory = erlang:memory(),
+    #{[ae,epoch,system,procs]                 => erlang:system_info(process_count),
+      [ae,epoch,system,io,in]                 => IoIn,
+      [ae,epoch,system,io,out]                => IoOut,
+      [ae,epoch,system,memory,total]          => proplists:get_value(total, Memory),
+      [ae,epoch,system,memory,processes]      => proplists:get_value(processes, Memory),
+      [ae,epoch,system,memory,processes,used] => proplists:get_value(processes_used, Memory),
+      [ae,epoch,system,memory,system]         => proplists:get_value(system, Memory),
+      [ae,epoch,system,memory,atom]           => proplists:get_value(atom, Memory),
+      [ae,epoch,system,memory,atom,used]      => proplists:get_value(atom_used, Memory),
+      [ae,epoch,system,memory,binary]         => proplists:get_value(binary, Memory),
+      [ae,epoch,system,memory,ets]            => proplists:get_value(ets, Memory)}.
+
+
+% This simply adds the updates count to the stats map as if it were another element.
+
+all_datapoints(#s{updates = Count, stats = Stats}) ->
+    maps:put(updates, Count, Stats).
