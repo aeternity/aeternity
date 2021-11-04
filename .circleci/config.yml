@@ -1385,8 +1385,9 @@ workflows:
             - macos-tarball:
                 filters:
                     branches:
-                        only:
+                        ignore:
                             - /releases\/.*/
+                            - << pipeline.parameters.master_branch >>
                 name: macos-tarball
                 package_name: aeternity-$CIRCLE_SHA1-macos-x86_64.tar.gz
                 requires: []
