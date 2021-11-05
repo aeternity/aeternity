@@ -58,7 +58,16 @@ init_per_suite(Config0) ->
           , {test_module, ?MODULE}] ++ Config0),
     aecore_suite_utils:start_node(?NODE, Config),
     aecore_suite_utils:connect_wait(?NODE_NAME, aehttp),
-    TestDir = "lib.aecore.aecore_admin_cli_SUITE.logs",
+
+    %% TestDir is different when running a single SUITE vs. all SUITES -
+    %% because of, well, reasons I guess.
+    TD1 = "lib.aecore.aecore_admin_cli_SUITE.logs",
+    TD2 = "lib.aecore.logs",
+    TestDir = case file:list_dir([TD1]) of
+                {ok, _} -> TD1;
+                {error, _} -> TD2
+              end,
+
     {ok, Subdirs} = file:list_dir([TestDir]),
     [RunDir] = [D || D <- Subdirs, string:slice(D, 0, 4) =:= "run."],
     Executable =
