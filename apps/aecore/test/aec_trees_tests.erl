@@ -110,7 +110,7 @@ process_txs_test_() ->
                 ?TEST_MODULE:apply_txs_on_state_trees_strict(SignedTxs, TreesIn, Env),
 
             meck:expect(aetx, process, fun(_, _, _) -> error(bar) end),
-            {ok, ValidTxs, InvalidTxs2, _Trees, _Events} =
+            {ok, ValidTxs, InvalidTxs2, _Trees1, _Events1} =
                 ?TEST_MODULE:apply_txs_on_state_trees(SignedTxs, TreesIn, Env),
             ?assertEqual([], ValidTxs),
             ?assertEqual([{SignedSpend, crash}], InvalidTxs2),
