@@ -15,8 +15,6 @@
 
 -export([ad_hoc_spec/0]).
 
--include_lib("exometer_core/include/exometer.hrl").
-
 
 -record(s,
         {updates = 0       :: non_neg_integer(),
@@ -95,7 +93,7 @@ probe_setopts(_Entry, Opts, State = #s{stats = Stats}) ->
     {ok, NewState}.
 
 
-probe_handle_msg(updates, State) ->
+probe_handle_msg(update, State) ->
     NewState = do_update(State),
     {ok, NewState};
 probe_handle_msg(Unexpected, State) ->
