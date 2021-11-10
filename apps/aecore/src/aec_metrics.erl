@@ -164,27 +164,27 @@ prep_stop_logger_(Pid) ->
 
 logger_init_input(_St0) ->
     Me = self(),
-    {ok, spawn_link(fun() ->
-                            %% we register a property so it will work even if we were to
-                            %% add a second logger instance.
-                            gproc:reg({p,l,{?MODULE,logger_input}}),
-                            aec_events:subscribe(metric),
-                            subscriber_loop(Me)
-                    end)}.
+    Register =
+        fun() ->
+            %% we register a property so it will work even if we were to
+            %% add a second logger instance.
+            true = gproc:reg({p,l,{?MODULE,logger_input}}),
+            true = aec_events:subscribe(metric),
+            subscriber_loop(Me)
+         end,
+    {ok, spawn_link(Register)}.
 
 subscriber_loop(Logger) ->
-    receive Msg ->
-            case Msg of
-                {gproc_ps_event, metric, #{info := Data}} ->
-                    Logger ! {plugin, self(), Data},
-                    subscriber_loop(Logger);
-                {?MODULE, prep_stop, Pid} = Msg ->
-                    lager:debug("received prep_stop", []),
-                    Logger ! {plugin, self(), {prep_stop, self(), Pid}},
-                    exit(normal);
-                _ ->
-                    subscriber_loop(Logger)
-            end
+    receive 
+        {gproc_ps_event, metric, #{info := Data}} ->
+            Logger ! {plugin, self(), Data},
+            subscriber_loop(Logger);
+        {?MODULE, prep_stop, Pid} = Msg ->
+            lager:debug("received prep_stop", []),
+            Logger ! {plugin, self(), {prep_stop, self(), Pid}},
+            exit(normal);
+        _ ->
+            subscriber_loop(Logger)
     end.
 
 logger_init_output(filter) ->

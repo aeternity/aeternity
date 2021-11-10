@@ -78,7 +78,7 @@ probe_update(_, _) ->
 
 
 probe_reset(State) ->
-    NewState = State#s{stats = stats()},
+    NewState = State#s{updates = 0, stats = stats()},
     {ok, NewState}.
 
 
