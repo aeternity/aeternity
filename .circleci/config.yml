@@ -396,8 +396,8 @@ commands:
             - restore_cache:
                 keys:
                     - << pipeline.parameters.machine_build_cache_key >>
-                    - machine-build-cache-v19-{{ .Branch }}-
-                    - machine-build-cache-v19-
+                    - machine-build-cache-v20-{{ .Branch }}-
+                    - machine-build-cache-v20-
     restore_macos_package_cache:
         steps:
             - restore_cache:
@@ -1132,7 +1132,7 @@ parameters:
         default: aeternity/aeternity
         type: string
     machine_build_cache_key:
-        default: machine-build-cache-v19-{{ .Branch }}-{{ .Revision }}
+        default: machine-build-cache-v20-{{ .Branch }}-{{ .Revision }}
         type: string
     macos_package_cache_key:
         default: macos-package-cache-v4

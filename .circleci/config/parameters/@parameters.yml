@@ -32,7 +32,7 @@ build_nix_cache_key:
 
 machine_build_cache_key:
   type: string
-  default: machine-build-cache-v19-{{ .Branch }}-{{ .Revision }}
+  default: machine-build-cache-v20-{{ .Branch }}-{{ .Revision }}
 
 macos_package_cache_key:
   type: string
