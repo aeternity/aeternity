@@ -77,8 +77,8 @@ The following snippet can be used to replace the current database with the lates
 
 ```bash
 rm -rf ~/.aeternity/maindb/
-curl -o ~/.aeternity/mnesia_main_v-1_latest.tgz https://aeternity-database-backups.s3.eu-central-1.amazonaws.com/mnesia_main_v-1_latest.tgz
-CHECKSUM=$(curl https://aeternity-database-backups.s3.eu-central-1.amazonaws.com/mnesia_main_v-1_latest.tgz.md5)
+curl -o ~/.aeternity/mnesia_main_v-1_latest.tgz https://aeternity-database-backups.s3.eu-central-1.amazonaws.com/main_backup_v1_full_latest.tar.zst
+CHECKSUM=$(curl https://aeternity-database-backups.s3.eu-central-1.amazonaws.com/main_backup_v1_full_latest.tar.zst.md5)
 diff -qs <(echo $CHECKSUM) <(openssl md5 -r ~/.aeternity/mnesia_main_v-1_latest.tgz | awk '{ print $1; }')
 test $? -eq 0 && tar -xzf ~/.aeternity/mnesia_main_v-1_latest.tgz -C ~/.aeternity/maindb/
 ```
