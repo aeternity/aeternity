@@ -948,7 +948,7 @@ process_force_progress(Tx, OffChainTrees, Payload, TxHash, Height, Trees, Env) -
     %% use in gas payment
     Reserve = aesc_channels:channel_reserve(Channel),
     PrunedOffChainTrees = aect_call_state_tree:prune_without_backend(OffChainTrees),
-    NewOffChainTrees =
+    {_, NewOffChainTrees} =
         try aesc_offchain_update:apply_on_trees(Update,
                                                 PrunedOffChainTrees,
                                                 Trees, Env,

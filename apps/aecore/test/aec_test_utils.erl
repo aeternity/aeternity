@@ -65,9 +65,11 @@
         , sign_micro_block/2
         , sign_tx/2
         , co_sign_tx/2
+        , co_sign_tx/3
         , substitute_innermost_tx/2
         , sign_tx/3
         , sign_tx/4
+        , sign_tx/5
         , sign_tx_hash/2
         , sign_pay_for_inner_tx/2
         , signed_spend_tx/1
@@ -75,11 +77,15 @@
         , min_gas_price/0
         , dev_reward_setup/3
         , run_throughput_test/3
+        , get_debug/1
+        , set_debug/2
+        , log/4
         ]).
 
 -include_lib("eunit/include/eunit.hrl").
 -include_lib("aecontract/include/hard_forks.hrl").
 -include("blocks.hrl").
+-include("aec_test_utils.hrl").
 
 -ifdef(DEBUG).
 -define(ifDebugFmt(Str, Args), ?debugFmt(Str, Args)).
@@ -673,9 +679,14 @@ sign_pay_for_inner_tx(Tx, PrivKey) ->
 sign_tx(Tx, PrivKey, SignHash) ->
     sign_tx(Tx, PrivKey, SignHash, undefined).
 
-sign_tx(Tx, PrivKey, SignHash, AdditionalPrefix) when is_binary(PrivKey) ->
-    sign_tx(Tx, [PrivKey], SignHash, AdditionalPrefix);
-sign_tx(Tx, PrivKeys, SignHash, AdditionalPrefix) when is_list(PrivKeys) ->
+sign_tx(Tx, PrivKey, SignHash, Pfx) ->
+    %% set debug true to meet legacy expectations (?)
+    sign_tx(Tx, PrivKey, SignHash, Pfx, [{debug, true}]).
+
+sign_tx(Tx, PrivKey, SignHash, AdditionalPrefix, Cfg) when is_binary(PrivKey) ->
+    sign_tx(Tx, [PrivKey], SignHash, AdditionalPrefix, Cfg);
+sign_tx(Tx, PrivKeys, SignHash, AdditionalPrefix, Cfg) when is_list(PrivKeys) ->
+    Debug = get_debug(Cfg),
     Bin0 = aetx:serialize_to_binary(Tx),
     Bin1 =
         case SignHash of
@@ -689,9 +700,9 @@ sign_tx(Tx, PrivKeys, SignHash, AdditionalPrefix) when is_list(PrivKeys) ->
               <<"-", AdditionalPrefix/binary, Bin1/binary>>
         end,
     NwId = aec_governance:get_network_id(),
-    ct:log("NwId = ~p", [NwId]),
-    ct:log("This node: ~p", [node()]),
-    ct:log("aecore env = ~p", [application:get_all_env(aecore)]),
+    ?LOG(Debug, "NwId = ~p", [NwId]),
+    ?LOG(Debug, "This node: ~p", [node()]),
+    ?LOG(Debug, "aecore env = ~p", [application:get_all_env(aecore)]),
     BinForNetwork = aec_governance:add_network_id(Bin),
     case lists:filter(fun(PrivKey) -> not (?VALID_PRIVK(PrivKey)) end, PrivKeys) of
         [_|_]=BrokenKeys -> erlang:error({invalid_priv_key, BrokenKeys});
@@ -701,8 +712,12 @@ sign_tx(Tx, PrivKeys, SignHash, AdditionalPrefix) when is_list(PrivKeys) ->
     aetx_sign:new(Tx, Signatures).
 
 co_sign_tx(SignedTx, Priv) ->
+    co_sign_tx(SignedTx, Priv, [{debug, true}]).
+
+co_sign_tx(SignedTx, Priv, Cfg) ->
     Tx = aetx_sign:innermost_tx(SignedTx),
-    [NewSignature] = aetx_sign:signatures(aec_test_utils:sign_tx(Tx, [Priv])),
+    [NewSignature] = aetx_sign:signatures(
+                       aec_test_utils:sign_tx(Tx, [Priv], false, undefined, Cfg)),
     add_signature_to_innermost_signed_tx(SignedTx, NewSignature).
 
 add_signature_to_innermost_signed_tx(TopSignedTx, Signature) ->
@@ -926,4 +941,21 @@ run_throughput_test(TestFun, Blocks, Opts) ->
               "Median\t= ~p~n",
               [length(Blocks), TotalRuntime, Min, Max, Mean, Mode, Range, Median]
              ),
+    ok.
+
+%%%=============================================================================
+%%% Debug logging
+%%%=============================================================================
+
+get_debug(Config) ->
+    proplists:get_bool(debug, Config).
+
+set_debug(Bool, Config) when is_boolean(Bool) ->
+    lists:keystore(debug, 1, Config -- [debug], {debug, Bool}).
+
+log(Fmt, Args, L, #{debug := true}) ->
+    log(Fmt, Args, L, true);
+log(Fmt, Args, L, true) ->
+    ct:log("~p at ~p: " ++ Fmt, [self(), L | Args]);
+log(_, _, _, _) ->
     ok.

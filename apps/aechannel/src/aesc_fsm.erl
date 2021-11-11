@@ -1716,12 +1716,12 @@ new_onchain_tx(channel_deposit_tx, #{acct := FromId,
     Updates = [ aesc_offchain_update:op_deposit(aeser_id:create(account, FromId), Amount)
               | meta_updates(Opts) ],
     ActiveProtocol = aetx_env:consensus_version(OnChainEnv),
-    UpdatedStateTx = aesc_offchain_state:make_update_tx(Updates, State,
-                                                        ChanId,
-                                                        ActiveProtocol,
-                                                        OnChainTrees,
-                                                        OnChainEnv,
-                                                        channel_reserve(ChannelOpts)),
+    {UpdatedStateTx, _} = aesc_offchain_state:make_update_tx(Updates, State,
+                                                             ChanId,
+                                                             ActiveProtocol,
+                                                             OnChainTrees,
+                                                             OnChainEnv,
+                                                             channel_reserve(ChannelOpts)),
     {channel_offchain_tx, UpdatedOffchainTx} = aetx:specialize_type(UpdatedStateTx),
     StateHash = aesc_offchain_tx:state_hash(UpdatedOffchainTx),
 
@@ -1742,12 +1742,12 @@ new_onchain_tx(channel_withdraw_tx, #{acct := ToId,
     Updates = [ aesc_offchain_update:op_withdraw(aeser_id:create(account, ToId), Amount)
               | meta_updates(Opts) ],
     ActiveProtocol = aetx_env:consensus_version(OnChainEnv),
-    UpdatedStateTx = aesc_offchain_state:make_update_tx(Updates, State,
-                                                        ChanId,
-                                                        ActiveProtocol,
-                                                        OnChainTrees,
-                                                        OnChainEnv,
-                                                        channel_reserve(ChannelOpts)),
+    {UpdatedStateTx, _} = aesc_offchain_state:make_update_tx(Updates, State,
+                                                             ChanId,
+                                                             ActiveProtocol,
+                                                             OnChainTrees,
+                                                             OnChainEnv,
+                                                             channel_reserve(ChannelOpts)),
     {channel_offchain_tx, UpdatedOffchainTx} = aetx:specialize_type(UpdatedStateTx),
     StateHash = aesc_offchain_tx:state_hash(UpdatedOffchainTx),
 
@@ -2190,9 +2190,9 @@ new_contract_tx_for_signing(Opts, From, #data{ state = State
     {BlockHash, OnChainEnv, OnChainTrees} = pick_onchain_env(Opts, D),
     ActiveProtocol = aetx_env:consensus_version(OnChainEnv),
     try
-        Tx1 = aesc_offchain_state:make_update_tx(Updates, State, ChannelId, ActiveProtocol,
-                                                 OnChainTrees, OnChainEnv,
-                                                 channel_reserve(ChannelOpts)),
+        {Tx1, _} = aesc_offchain_state:make_update_tx(Updates, State, ChannelId, ActiveProtocol,
+                                                      OnChainTrees, OnChainEnv,
+                                                      channel_reserve(ChannelOpts)),
         case request_signing(?UPDATE, Tx1, Updates, BlockHash, D, defer) of
             {ok, Send, D1, Actions} ->
                 %% reply before sending sig request
@@ -2746,9 +2746,9 @@ handle_upd_transfer(FromPub, ToPub, Amount, From, UOpts, #data{ state = State
         Updates = [aesc_offchain_update:op_transfer(aeser_id:create(account, FromPub),
                                                     aeser_id:create(account, ToPub), Amount)
                    | meta_updates(UOpts)],
-        Tx1 = aesc_offchain_state:make_update_tx(Updates, State, ChannelId, ActiveProtocol,
-                                                 OnChainTrees, OnChainEnv,
-                                                 channel_reserve(Opts)),
+        {Tx1,_} = aesc_offchain_state:make_update_tx(Updates, State, ChannelId, ActiveProtocol,
+                                                     OnChainTrees, OnChainEnv,
+                                                     channel_reserve(Opts)),
         case request_signing(?UPDATE, Tx1, Updates, BlockHash, D, defer) of
             {ok, Send, D1, Actions} ->
                 %% reply before sending sig request
@@ -4648,11 +4648,12 @@ handle_call_(open, {upd_call_contract, Opts, ExecType}, From,
     Updates = [Update | meta_updates(Opts)],
     {BlockHash, OnChainEnv, OnChainTrees} = pick_onchain_env(Opts, D),
     ActiveProtocol = aetx_env:consensus_version(OnChainEnv),
-    try  Tx1 = aesc_offchain_state:make_update_tx(Updates, State,
-                                                  ChannelId,
-                                                  ActiveProtocol,
-                                                  OnChainTrees, OnChainEnv,
-                                                  channel_reserve(ChannelOpts)),
+    try  {Tx1, [CallResult|_]} =
+             aesc_offchain_state:make_update_tx(Updates, State,
+                                                ChannelId,
+                                                ActiveProtocol,
+                                                OnChainTrees, OnChainEnv,
+                                                channel_reserve(ChannelOpts)),
          case ExecType of
             dry_run ->
                 UpdState = aesc_offchain_state:set_signed_tx(
@@ -4669,7 +4670,8 @@ handle_call_(open, {upd_call_contract, Opts, ExecType}, From,
                 case request_signing(?UPDATE, Tx1, Updates, BlockHash, D, defer) of
                     {ok, Send, D1, Actions} ->
                         %% reply before sending sig request
-                        gen_statem:reply(From, ok),
+                        Reply = upd_call_ok_reply(CallResult, Opts),
+                        gen_statem:reply(From, Reply),
                         Send(),
                         next_state(awaiting_signature, set_ongoing(D1), Actions);
                     {error, _} = Error ->
@@ -5484,11 +5486,11 @@ mk_force_progress_tx(Opts, #data{state = State, opts = ChannelOpts,
     Updates = [Update],
     {OnChainEnv, OnChainTrees} = aetx_env:tx_env_and_trees_from_top(aetx_contract),
     ActiveProtocol = aetx_env:consensus_version(OnChainEnv),
-    OffchainTx = aesc_offchain_state:make_update_tx(Updates, State,
-                                                    ChannelPubkey,
-                                                    ActiveProtocol,
-                                                    OnChainTrees, OnChainEnv,
-                                                    channel_reserve(ChannelOpts)),
+    {OffchainTx, _} = aesc_offchain_state:make_update_tx(Updates, State,
+                                                         ChannelPubkey,
+                                                         ActiveProtocol,
+                                                         OnChainTrees, OnChainEnv,
+                                                         channel_reserve(ChannelOpts)),
     {OffChainRound, SignedTx} = aesc_offchain_state:get_latest_signed_tx(State),
     {ok, Channel} = aec_chain:get_channel(ChannelPubkey),
     OnChainRound = aesc_channels:round(Channel),
@@ -5679,7 +5681,13 @@ does_force_progress_interrupt(FSMState) ->
             false
     end.
 
+upd_call_ok_reply(Result, #{return_result := true}) ->
+    {ok, call_result(Result)};
+upd_call_ok_reply(_, _) ->
+    ok.
 
+call_result({Type, Call}) when Type==ok; Type==error; Type==revert ->
+    {Type, aect_call:return_value(Call)}.
 
 check_chain_before_reestablish(#{state := State0} = _StateRecovery,
                                #data{ role = Role
