@@ -28,6 +28,16 @@ builder_container_otp23:
     ERLANG_ROCKSDB_BUILDOPTS: "-j2"
     ERLANG_ROCKSDB_OPTS: "-DWITH_SYSTEM_ROCKSDB=ON -DWITH_SNAPPY=ON -DWITH_LZ4=ON -DWITH_BZ2=ON -DWITH_ZSTD=ON"
 
+builder_container_otp24:
+  docker:
+    - image: aeternity/builder:bionic-otp24
+      user: builder
+  working_directory: /home/builder/aeternity
+  environment:
+    OTP_VERSION: 24.1.3
+    ERLANG_ROCKSDB_BUILDOPTS: "-j2"
+    ERLANG_ROCKSDB_OPTS: "-DWITH_SYSTEM_ROCKSDB=ON -DWITH_SNAPPY=ON -DWITH_LZ4=ON -DWITH_BZ2=ON -DWITH_ZSTD=ON"
+
 builder_container_nix_alpine:
   docker:
     - image: nixorg/nix:circleci
