@@ -1,4 +1,4 @@
--module(aec_eper_metrics_probe).
+-module(aec_monitor_metrics_probe).
 -behavior(exometer_probe).
 
 -export([behaviour/0,
@@ -35,7 +35,7 @@ behaviour() -> probe.
 %%% Lifecycle
 
 probe_init(Name, Type, Options) ->
-    ok = lager:info("probe_init(~p, ~p, ~p)", [Name, Type, Options]),
+    ok = lager:info("~p:probe_init(~p, ~p, ~p)", [?MODULE, Name, Type, Options]),
     _ = erlang:send_after(2000, self(), update),
     Stats = init_stats(),
     ok = ensure_metrics(Stats),
@@ -108,20 +108,20 @@ probe_code_change(_, State, _) ->
     {ok, State}.
 
 
-do_update(State = #s{updates = Count, stats = Stats}) ->
+do_update(State = #s{stats = Stats}) ->
     NewStats = maps:merge(Stats, stats()),
-    NewState = State#s{updates = Count + 1, stats = NewStats},
+    NewState = State#s{stats = NewStats},
     Datapoints = maps:to_list(all_datapoints(NewState)),
     NotifyMetrics = fun({N, V}) -> aec_metrics:try_update(N, V) end,
     ok = lists:foreach(NotifyMetrics, Datapoints),
     NewState.
 
 
-handle_monitor(PID, Trigger, Info, State = #s{stats = Stats}) ->
+handle_monitor(PID, Trigger, Info, State = #s{updates = Count, stats = Stats}) ->
     Stat = [ae,epoch,system,monitor,Trigger],
     NewStats = maps:update_with(Stat, fun increment/1, Stats),
     ok = lager:warning("PID ~p triggered monitor ~p with ~p", [PID, Trigger, Info]),
-    State#s{stats = NewStats}.
+    State#s{updates = Count + 1, stats = NewStats}.
 
 increment(Count) -> Count + 1.
 

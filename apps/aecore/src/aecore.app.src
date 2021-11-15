@@ -85,7 +85,8 @@
          {metrics_probes,
           [{[ae,epoch,aecore,chain], aec_chain_metrics_probe},
            {[ae,epoch,aecore,tx_pool], aec_tx_pool_metrics_probe},
-           {[ae,epoch,aecore,eper] , aec_eper_metrics_probe}]},
+           %% TODO: Change the metric name below from "eper" to "monitor"
+           {[ae,epoch,aecore,eper] , aec_monitor_metrics_probe}]},
          {'$setup_hooks',
           [
            %% The different hooks *could* be placed in the app env of each
