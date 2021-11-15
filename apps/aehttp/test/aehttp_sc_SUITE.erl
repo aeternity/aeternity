@@ -2530,7 +2530,7 @@ update_volley_(FirstPubkey, FirstConnPid, FirstPrivkey, SecondPubkey, SecondConn
                                                    <<"channels.update_ack">>,
                                                    Config),
     {ok, _, #{<<"state">> := _State}} = wait_for_channel_event(FirstConnPid, update, Config),
-    {ok, _,  #{<<"state">> := _State1}} = wait_for_channel_event(SecondConnPid, update, Config),
+    {ok, _,  #{<<"state">> := _}} = wait_for_channel_event(SecondConnPid, update, Config),
     Res.
 
 produce_update_volley_funs(Sender, Config) ->
