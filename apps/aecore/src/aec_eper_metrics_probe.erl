@@ -17,21 +17,8 @@
 
 
 -record(s,
-        {updates = 0       :: non_neg_integer(),
-         stats   = stats() :: #{keys() := integer()}}).
-
--type keys() :: procs
-              | io_in
-              | io_out
-              | total
-              | processes
-              | processes_used
-              | system
-              | atom
-              | atom_used
-              | binary
-              | code
-              | ets.
+        {updates  = 0            :: non_neg_integer(),
+         stats    = init_stats() :: #{[atom()] := integer()}}).
 
 
 ad_hoc_spec() ->
@@ -48,10 +35,22 @@ behaviour() -> probe.
 %%% Lifecycle
 
 probe_init(Name, Type, Options) ->
-    ok = lager:debug("probe_init(~p, ~p, ~p)", [Name, Type, Options]),
-    Stats = stats(),
+    ok = lager:info("probe_init(~p, ~p, ~p)", [Name, Type, Options]),
+    _ = erlang:send_after(2000, self(), update),
+    Stats = init_stats(),
     ok = ensure_metrics(Stats),
+    ok = set_triggers(),
     {ok, #s{stats = Stats}}.
+
+set_triggers() ->
+    Triggers =
+        [{long_gc, 500},
+         {long_schedule, 500},
+         {large_heap, 1024 * 1024},
+         busy_port,
+         busy_dist_port],
+    _ = erlang:system_monitor(self(), Triggers),
+    ok.
 
 
 probe_terminate(Reason) ->
@@ -94,23 +93,37 @@ probe_setopts(_Entry, Opts, State = #s{stats = Stats}) ->
 
 
 probe_handle_msg(update, State) ->
+    _ = erlang:send_after(2000, self(), update),
     NewState = do_update(State),
+    {ok, NewState};
+probe_handle_msg({monitor, PID, Tag, Info}, State) ->
+    NewState = handle_monitor(PID, Tag, Info, State),
     {ok, NewState};
 probe_handle_msg(Unexpected, State) ->
     ok = lager:debug("Unknown msg: ~p", [Unexpected]),
     {ok, State}.
 
 
-probe_code_change(_, S, _) ->
-    {ok, S}.
+probe_code_change(_, State, _) ->
+    {ok, State}.
 
 
-do_update(State = #s{updates = Count}) ->
-    NewState = State#s{updates = Count + 1, stats = stats()},
+do_update(State = #s{updates = Count, stats = Stats}) ->
+    NewStats = maps:merge(Stats, stats()),
+    NewState = State#s{updates = Count + 1, stats = NewStats},
     Datapoints = maps:to_list(all_datapoints(NewState)),
     NotifyMetrics = fun({N, V}) -> aec_metrics:try_update(N, V) end,
     ok = lists:foreach(NotifyMetrics, Datapoints),
     NewState.
+
+
+handle_monitor(PID, Trigger, Info, State = #s{stats = Stats}) ->
+    Stat = [ae,epoch,system,monitor,Trigger],
+    NewStats = maps:update_with(Stat, fun increment/1, Stats),
+    ok = lager:warning("PID ~p triggered monitor ~p with ~p", [PID, Trigger, Info]),
+    State#s{stats = NewStats}.
+
+increment(Count) -> Count + 1.
 
 
 ensure_metrics(Stats) ->
@@ -123,20 +136,30 @@ ensure_metrics(Stats) ->
 stats() ->
     {{input, IoIn}, {output, IoOut}} = erlang:statistics(io),
     Memory = erlang:memory(),
-    #{[ae,epoch,system,procs]                 => erlang:system_info(process_count),
-      [ae,epoch,system,io,in]                 => IoIn,
-      [ae,epoch,system,io,out]                => IoOut,
-      [ae,epoch,system,memory,total]          => proplists:get_value(total, Memory),
-      [ae,epoch,system,memory,processes]      => proplists:get_value(processes, Memory),
-      [ae,epoch,system,memory,processes,used] => proplists:get_value(processes_used, Memory),
-      [ae,epoch,system,memory,system]         => proplists:get_value(system, Memory),
-      [ae,epoch,system,memory,atom]           => proplists:get_value(atom, Memory),
-      [ae,epoch,system,memory,atom,used]      => proplists:get_value(atom_used, Memory),
-      [ae,epoch,system,memory,binary]         => proplists:get_value(binary, Memory),
-      [ae,epoch,system,memory,ets]            => proplists:get_value(ets, Memory)}.
+    #{[ae,epoch,system,procs]                  => erlang:system_info(process_count),
+      [ae,epoch,system,io,in]                  => IoIn,
+      [ae,epoch,system,io,out]                 => IoOut,
+      [ae,epoch,system,memory,total]           => proplists:get_value(total, Memory),
+      [ae,epoch,system,memory,processes]       => proplists:get_value(processes, Memory),
+      [ae,epoch,system,memory,processes,used]  => proplists:get_value(processes_used, Memory),
+      [ae,epoch,system,memory,system]          => proplists:get_value(system, Memory),
+      [ae,epoch,system,memory,atom]            => proplists:get_value(atom, Memory),
+      [ae,epoch,system,memory,atom,used]       => proplists:get_value(atom_used, Memory),
+      [ae,epoch,system,memory,binary]          => proplists:get_value(binary, Memory),
+      [ae,epoch,system,memory,ets]             => proplists:get_value(ets, Memory)}.
+
+init_stats() ->
+    Monitors =
+        #{[ae,epoch,system,monitor,long_gc]        => 0,
+          [ae,epoch,system,monitor,long_schedule]  => 0,
+          [ae,epoch,system,monitor,large_heap]     => 0,
+          [ae,epoch,system,monitor,busy_port]      => 0,
+          [ae,epoch,system,monitor,busy_dist_port] => 0},
+    Stats = stats(),
+    maps:merge(Stats, Monitors).
 
 
-% This simply adds the updates count to the stats map as if it were another element.
+% Adds the updates count to the stats map as if it were another element.
 
 all_datapoints(#s{updates = Count, stats = Stats}) ->
     maps:put(updates, Count, Stats).
