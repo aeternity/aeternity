@@ -40,7 +40,6 @@ jobs:
           - {otp: "otp23", target: "ct-latest-no-aci"}
           - {otp: "otp23", target: "ct-mnesia-leveled"}
           - {otp: "otp23", target: "ct-mnesia-rocksdb"}
-        exclude:
           - {otp: "otp24", target: "ct-roma"}
           - {otp: "otp24", target: "ct-minerva"}
           - {otp: "otp24", target: "ct-fortuna"}
