@@ -179,7 +179,7 @@ subscriber_loop(Logger) ->
         {gproc_ps_event, metric, #{info := Data}} ->
             Logger ! {plugin, self(), Data},
             subscriber_loop(Logger);
-        {?MODULE, prep_stop, Pid} = Msg ->
+        {?MODULE, prep_stop, Pid} ->
             lager:debug("received prep_stop", []),
             Logger ! {plugin, self(), {prep_stop, self(), Pid}},
             exit(normal);
