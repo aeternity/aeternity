@@ -3,6 +3,7 @@
 -behavior(exometer_report_logger).
 
 -export([ update/2
+        , try_update/1
         , try_update/2
         , try_update_or_create/2
         ]).
@@ -59,6 +60,10 @@ update(Metric, Value) ->
 
 update_or_create(Metric, Value) ->
     exometer:update_or_create(Metric, Value).
+
+-spec try_update({exometer:name(), number()}) -> ok | {error, not_found}.
+try_update({Metric, Value}) ->
+    try_update(Metric, Value).
 
 -spec try_update(exometer:name(), number()) -> ok | {error, not_found}.
 try_update(Metric, Value) ->

@@ -46,7 +46,7 @@ set_triggers() ->
     Triggers =
         [{long_gc, 500},
          {long_schedule, 500},
-         {large_heap, 1024 * 1024},
+         {large_heap, 2048 * 1024},
          busy_port,
          busy_dist_port],
     _ = erlang:system_monitor(self(), Triggers),
@@ -112,8 +112,7 @@ do_update(State = #s{stats = Stats}) ->
     NewStats = maps:merge(Stats, stats()),
     NewState = State#s{stats = NewStats},
     Datapoints = maps:to_list(all_datapoints(NewState)),
-    NotifyMetrics = fun({N, V}) -> aec_metrics:try_update(N, V) end,
-    ok = lists:foreach(NotifyMetrics, Datapoints),
+    ok = lists:foreach(fun aec_metrics:try_update/1, Datapoints),
     NewState.
 
 
