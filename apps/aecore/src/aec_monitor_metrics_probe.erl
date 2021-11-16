@@ -93,7 +93,7 @@ probe_setopts(_Entry, Opts, State = #s{stats = Stats}) ->
 
 
 probe_handle_msg(update, State) ->
-    _ = erlang:send_after(2000, self(), update),
+    _ = erlang:send_after(5000, self(), update),
     NewState = do_update(State),
     {ok, NewState};
 probe_handle_msg({monitor, PID, Tag, Info}, State) ->
