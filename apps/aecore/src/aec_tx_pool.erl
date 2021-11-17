@@ -72,9 +72,6 @@
 
 -include("aec_tx_pool.hrl").
 -include_lib("aecontract/include/hard_forks.hrl").
--include("aec_plugin.hrl").
-
--pluggable[instant_tx_confirm_hook/1, instant_tx_confirm_enabled/0].
 
 -ifdef(TEST).
 -export([sync_garbage_collect/1]). %% Only for (Unit-)test

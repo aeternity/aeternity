@@ -45,8 +45,8 @@ restore_machine_build_cache:
     - restore_cache:
         keys:
           - << pipeline.parameters.machine_build_cache_key >>
-          - machine-build-cache-v19-{{ .Branch }}-
-          - machine-build-cache-v19-
+          - machine-build-cache-v20-{{ .Branch }}-
+          - machine-build-cache-v20-
 
 save_machine_build_cache:
   steps:

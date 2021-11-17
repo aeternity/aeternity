@@ -4665,8 +4665,8 @@ close_mutual_with_failed_onchain(Cfg) ->
                 initiator, % to
                 1,         % some amount
                 Cfg),
-    {R1, _CoSignedShutdownTx} = await_signing_request(shutdown_ack, R, Cfg),
-    _CoSignedShutdownTx = await_on_chain_report(R1, ?TIMEOUT), % same tx
+    {R1, CoSignedShutdownTx} = await_signing_request(shutdown_ack, R, Cfg),
+    CoSignedShutdownTx = await_on_chain_report(R1, ?TIMEOUT), % same tx
     {ok,_} = receive_from_fsm(info, R1, #{info => shutdown}, ?TIMEOUT, Debug),
     {ok,_} = receive_from_fsm(info, R1, fun closing/1, ?TIMEOUT, Debug),
     {ok, _} = receive_from_fsm(conflict, I1, #{info => #{ error_code => 5
@@ -4947,8 +4947,8 @@ force_progress_triggers_slash(Cfg) ->
     ok = rpc(dev1, aec_tx_pool, push, [SignedFP]),
     wait_for_signed_transaction_in_block(dev1, SignedFP, Debug),
 
-    _Tx = await_on_chain_report(I4, #{info => can_slash}, ?TIMEOUT),
-    _Tx = await_on_chain_report(R4, #{info => can_slash}, ?TIMEOUT),
+    StashTx1 = await_on_chain_report(I4, #{info => can_slash}, ?TIMEOUT),
+    StashTx1 = await_on_chain_report(R4, #{info => can_slash}, ?TIMEOUT),
     check_info(20),
     ok = rpc(dev1, aesc_fsm, slash, [FsmI, #{}]),
     {_, SignedSlashTx} = await_signing_request(slash_tx, I4, Cfg),

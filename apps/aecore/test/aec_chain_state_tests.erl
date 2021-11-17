@@ -111,9 +111,9 @@ rewards_calculation_test_() ->
       end},
      {"Both miners are fraudulent -> fees are locked but not the coinbase reward",
       fun() ->
-          {_B1Amt  = 0,
-           _B2Amt  = 0,
-           _Locked = ?B1_FEES + ?B2_FEES + ?MINER_REWARD2} =
+          {_B1Amt0  = 0,
+           _B2Amt0  = 0,
+           _Locked0 = ?B1_FEES + ?B2_FEES + ?MINER_REWARD2} =
               rewards(true, true, true),
           {_B1Amt  = 0,
            _B2Amt  = 0,

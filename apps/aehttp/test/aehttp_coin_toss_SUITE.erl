@@ -318,7 +318,7 @@ player_disputes_casino_inactivity(Cfg0) ->
         call_offchain_contract(Player, ContractPubkey,
                                ContractName, "player_dispute_no_pick",
                                [], 0, Cfg),
-    {PlayerBalance1, _CasinoBalance0} = get_offchain_balances(Player, Casino, Cfg),
+    {PlayerBalance1, _CasinoBalance1} = get_offchain_balances(Player, Casino, Cfg),
     %% ensure player got their cash back
     assert_equal(PlayerBalance0, PlayerBalance1 - Stake),
     aehttp_sc_SUITE:sc_ws_close_mutual_(Cfg, Casino),

@@ -2783,7 +2783,7 @@ fp_use_onchain_oracle(Cfg) ->
 
                 % oracle query and answer
                 oracle_query(OQuestion, _ResponseTTL = 100),
-                oracle_response(OResponse, _ResponseTTL = 100),
+                oracle_response(OResponse, _ResponseTTL1 = 100),
                 fun(#{state := S, oracle := Oracle, query_id := QueryId} = Props) ->
                     OTrees = aec_trees:oracles(aesc_test_utils:trees(S)),
                     Q = aeo_state_tree:get_query(Oracle, QueryId, OTrees),

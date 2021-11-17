@@ -1730,7 +1730,7 @@ sc_ws_deposit_(Config, Origin, XOpts) when Origin =:= initiator
     {ok, _, #{<<"event">> := <<"deposit_locked">>}} = wait_for_channel_event(SenderConnPid, info, Config),
     {ok, _, #{<<"event">> := <<"deposit_locked">>}} = wait_for_channel_event(AckConnPid, info, Config),
     {ok, _, #{<<"state">> := _NewState}} = wait_for_channel_event(SenderConnPid, update, Config),
-    {ok, _, #{<<"state">> := _NewState}} = wait_for_channel_event(AckConnPid, update, Config),
+    {ok, _, #{<<"state">> := _}} = wait_for_channel_event(AckConnPid, update, Config),
     ok = ?WS:unregister_test_for_channel_events(SenderConnPid, [sign, info, on_chain_tx,
                                                                 update, error]),
     ok = ?WS:unregister_test_for_channel_events(AckConnPid, [sign, info, on_chain_tx,
@@ -1810,7 +1810,7 @@ sc_ws_withdraw_(Config, Origin, XOpts) when Origin =:= initiator
 
     ct:log("withdraw_locked from both"),
     {ok, _, #{<<"state">> := _NewState}} = wait_for_channel_event(SenderConnPid, update, Config),
-    {ok, _, #{<<"state">> := _NewState}} = wait_for_channel_event(AckConnPid, update, Config),
+    {ok, _, #{<<"state">> := _}} = wait_for_channel_event(AckConnPid, update, Config),
 
     ok = ?WS:unregister_test_for_channel_events(SenderConnPid, [sign, info, on_chain_tx,
                                                                 update, error]),
@@ -2530,7 +2530,7 @@ update_volley_(FirstPubkey, FirstConnPid, FirstPrivkey, SecondPubkey, SecondConn
                                                    <<"channels.update_ack">>,
                                                    Config),
     {ok, _, #{<<"state">> := _State}} = wait_for_channel_event(FirstConnPid, update, Config),
-    {ok, _,  #{<<"state">> := _State}} = wait_for_channel_event(SecondConnPid, update, Config),
+    {ok, _,  #{<<"state">> := _}} = wait_for_channel_event(SecondConnPid, update, Config),
     Res.
 
 produce_update_volley_funs(Sender, Config) ->
@@ -5843,7 +5843,7 @@ sc_ws_force_progress_(Origin, ContractPubkey,
              , <<"type">> := <<"channel_force_progress_tx">>}}
         = wait_for_channel_event(IConnPid, on_chain_tx, Config),
 
-    {ok, _, #{ <<"tx">> := _EncodedSignedWTx
+    {ok, _, #{ <<"tx">> := _EncodedSignedWTx1
              , <<"info">> := <<"consumed_forced_progress">>
              , <<"type">> := <<"channel_force_progress_tx">>}}
         = wait_for_channel_event(RConnPid, on_chain_tx, Config),
