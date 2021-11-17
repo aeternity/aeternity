@@ -165,7 +165,6 @@
 
 %% start a transaction if there isn't already one
 -define(t(Expr), ensure_transaction(fun() -> Expr end)).
--define(t(Expr, ErrorKeys), ensure_transaction(fun() -> Expr end, ErrorKeys)).
 
 -define(TX_IN_MEMPOOL, []).
 -define(PERSIST, true).
@@ -224,8 +223,8 @@ rocksdb_props(Tab, Type, Arity, Props) ->
 
 encoding(aec_chain_state, _, _) -> {term, {value, term}};
 encoding(_Tab, set, 2) -> {raw, {value, term}};
-encoding(_Tab, set, _) -> {raw, {object, term}};
-encoding(_, _, _) -> {sext, {object, sext}}.
+encoding(_Tab, set, _) -> {raw, {object, term}}.
+%% encoding(_, _, _) -> {sext, {object, sext}}.
 
 tab_vsn(_) -> 1.
 
@@ -242,8 +241,7 @@ clear_db() ->
                      Keys = all_keys(T),
                      [delete(T, K) || K <- Keys]
              end, tables())
-       end,
-       [T || {T, _} <- tables()]).
+       end).
 
 persisted_valid_genesis_block() ->
     case application:get_env(aecore, persist, ?PERSIST) of
@@ -343,17 +341,17 @@ ensure_transaction(Fun, TxType) when is_function(Fun, 0) ->
 
 ensure_activity(transaction, Fun) when is_function(Fun, 0) ->
     ensure_transaction(Fun);
-ensure_activity(PreferedType, Fun) when is_function(Fun, 0) ->
+ensure_activity(PreferredType, Fun) when is_function(Fun, 0) ->
     case get(mnesia_activity_state) of
         undefined ->
-            mnesia:activity(PreferedType, Fun);
+            mnesia:activity(PreferredType, Fun);
         _ ->
             Fun()
     end.
 
 %% ======================================================================
 %% mnesia access wrappers
-
+-spec read(atom(), term()) -> [tuple()].
 read(Tab, Key) ->
     ?IF_RDB(mrdb:read(Tab, Key), mnesia:read(Tab, Key)).
 
@@ -367,7 +365,7 @@ write(Obj) ->
     write(element(1, Obj), Obj, write).
 
 write(Tab, Obj, LockKind) ->
-    ?IF_RDB(mrdb:write(Tab, Obj), mnesia:write(Tab, Obj, LockKind)).
+    ?IF_RDB(mrdb:insert(Tab, Obj), mnesia:write(Tab, Obj, LockKind)).
 
 delete(Tab, Key) ->
     delete(Tab, Key, write).
@@ -387,12 +385,13 @@ all_keys(Tab) ->
 
 %%
 %% ======================================================================
-
+-spec write_block(aec_blocks:block()) -> ok.
 write_block(Block) ->
     Header = aec_blocks:to_header(Block),
     {ok, Hash} = aec_headers:hash_header(Header),
     write_block(Block, Hash).
 
+-spec write_block(aec_blocks:block(), aec_hash:hash()) -> ok.
 write_block(Block, Hash) ->
     Header = aec_headers:strip_extra(aec_blocks:to_header(Block)),
     Height = aec_headers:height(Header),
@@ -405,8 +404,7 @@ write_block(Block, Hash) ->
             ?t(begin
                    write(Headers),
                    write(#aec_chain_state{key = {key_header, Height, Hash}, value = Header})
-               end,
-               [{aec_headers, Hash}]);
+               end);
         micro ->
             Txs = aec_blocks:txs(Block),
             SignedTxs = [#aec_signed_tx{key = aetx_sign:hash(STx), value = STx} || STx <- Txs],
@@ -423,10 +421,7 @@ write_block(Block, Hash) ->
                                          , height = Height },
                    write(Block1),
                    write(Headers)
-               end,
-               [ {aec_blocks, Hash}
-               , {aec_headers, Hash}
-               | [{aec_signed_tx, H} || #aec_signed_tx{key = H} <- SignedTxs] ])
+               end)
     end.
 
 -spec get_block(binary()) -> aec_blocks:block().
@@ -648,8 +643,7 @@ find_discovered_pof(Hash) ->
     end.
 
 write_discovered_pof(Hash, PoF) ->
-    ?t(write(#aec_discovered_pof{key = Hash, value = PoF}),
-      [{aec_discovered_pof, Hash}]).
+    ?t(write(#aec_discovered_pof{key = Hash, value = PoF})).
 
 write_block_state(Hash, Trees, AccDifficulty, ForkId, Fees, Fraud) ->
     ?t(begin
@@ -661,65 +655,51 @@ write_block_state(Hash, Trees, AccDifficulty, ForkId, Fees, Fraud) ->
                                         , fees = Fees
                                         , fraud = Fraud },
            write(BlockState)
-       end,
-       [{aec_block_state, Hash}]).
+       end).
 
 write_accounts_node(Hash, Node) ->
-    ?t(write(#aec_account_state{key = Hash, value = Node}),
-       [{aec_account_state, Hash}]).
+    ?t(write(#aec_account_state{key = Hash, value = Node})).
 
 write_accounts_node(Table, Hash, Node) ->
-    ?t(write(Table, #aec_account_state{key = Hash, value = Node}, write),
-       [{aec_account_state, Hash}]).
+    ?t(write(Table, #aec_account_state{key = Hash, value = Node}, write)).
 
 write_calls_node(Hash, Node) ->
-    ?t(write(#aec_call_state{key = Hash, value = Node}),
-       [{aec_call_state, Hash}]).
+    ?t(write(#aec_call_state{key = Hash, value = Node})).
 
 write_channels_node(Hash, Node) ->
-    ?t(write(#aec_channel_state{key = Hash, value = Node}),
-       [{aec_channel_state, Hash}]).
+    ?t(write(#aec_channel_state{key = Hash, value = Node})).
 
 write_contracts_node(Hash, Node) ->
-    ?t(write(#aec_contract_state{key = Hash, value = Node}),
-       [{aec_contract_state, Hash}]).
+    ?t(write(#aec_contract_state{key = Hash, value = Node})).
 
 write_ns_node(Hash, Node) ->
-    ?t(write(#aec_name_service_state{key = Hash, value = Node}),
-       [{aec_name_service_state, Hash}]).
+    ?t(write(#aec_name_service_state{key = Hash, value = Node})).
 
 write_ns_cache_node(Hash, Node) ->
-    ?t(write(#aec_name_service_cache{key = Hash, value = Node}),
-       [{aec_name_service_cache, Hash}]).
+    ?t(write(#aec_name_service_cache{key = Hash, value = Node})).
 
 write_oracles_node(Hash, Node) ->
-    ?t(write(#aec_oracle_state{key = Hash, value = Node}),
-       [{aec_oracle_state, Hash}]).
+    ?t(write(#aec_oracle_state{key = Hash, value = Node})).
 
 write_oracles_cache_node(Hash, Node) ->
-    ?t(write(#aec_oracle_cache{key = Hash, value = Node}),
-       [{aec_oracle_cache, Hash}]).
+    ?t(write(#aec_oracle_cache{key = Hash, value = Node})).
 
 write_genesis_hash(Hash) when is_binary(Hash) ->
-    ?t(write(#aec_chain_state{key = genesis_hash, value = Hash}),
-       [{aec_chain_state, genesis_hash}]).
+    ?t(write(#aec_chain_state{key = genesis_hash, value = Hash})).
 
 write_top_block_node(Hash, Hdr) when is_binary(Hash) ->
     ?t(write(#aec_chain_state{key = top_block_node, value = #{ hash => Hash
-                                                             , header => Hdr} }),
-       [{aec_chain_state, top_block_node}]).
+                                                             , header => Hdr} })).
 
 write_finalized_height(0) ->
     lager:debug("clearing finalized height", []),
     ?t(delete(aec_chain_state, finalized_height, write));
 write_finalized_height(Height) when is_integer(Height), Height > 0 ->
     lager:debug("Height = ~p", [Height]),
-    ?t(write(#aec_chain_state{key = finalized_height, value = Height}),
-       [{aec_chain_state, finalized_height}]).
+    ?t(write(#aec_chain_state{key = finalized_height, value = Height})).
 
 mark_chain_end_hash(Hash) when is_binary(Hash) ->
-    ?t(write(#aec_chain_state{key = {end_block_hash, Hash}, value = []}),
-       [{aec_chain_state, {end_block_hash, Hash}}]).
+    ?t(write(#aec_chain_state{key = {end_block_hash, Hash}, value = []})).
 
 unmark_chain_end_hash(Hash) when is_binary(Hash) ->
     ?t(delete(aec_chain_state, {end_block_hash, Hash}, write)).
@@ -745,8 +725,7 @@ chain_migration_status(Key) ->
     end.
 
 write_signal_count(Hash, Count) when is_binary(Hash), is_integer(Count) ->
-    ?t(write(#aec_signal_count{key = Hash, value = Count}),
-       [{aec_signal_count, Hash}]).
+    ?t(write(#aec_signal_count{key = Hash, value = Count})).
 
 get_genesis_hash() ->
     get_chain_state_value(genesis_hash).
@@ -986,8 +965,7 @@ get_chain_state_value(Key) ->
        end).
 
 delete_chain_state_value(Key) ->
-    ?t(delete(aec_chain_state, Key),
-       [{aec_chain_state, Key}]).
+    ?t(delete(aec_chain_state, Key)).
 
 dirty_get_chain_state_value(Key) ->
     case ?dirty_dirty_read(aec_chain_state, Key) of
@@ -1007,8 +985,7 @@ gc_tx(TxHash) ->
                ok;
            not_found ->
                {error, tx_not_found}
-       end,
-      [{aec_tx_pool, TxHash}]).
+       end).
 
 get_signed_tx(Hash) ->
     [#aec_signed_tx{value = DBSTx}] = ?t(read(aec_signed_tx, Hash)),
@@ -1036,8 +1013,7 @@ find_signal_count(Hash) ->
 
 add_tx_location(STxHash, BlockHash) when is_binary(STxHash),
                                          is_binary(BlockHash) ->
-    ?t(write(#aec_tx_location{key = STxHash, value = BlockHash}),
-       [{aec_tx_location, STxHash}]).
+    ?t(write(#aec_tx_location{key = STxHash, value = BlockHash})).
 
 remove_tx_location(TxHash) when is_binary(TxHash) ->
     ?t(delete(aec_tx_location, TxHash)).
@@ -1095,19 +1071,16 @@ add_tx(STx) ->
                write(Obj),
                add_tx_hash_to_mempool(Hash),
                {ok, Hash}
-       end,
-      [{aec_signed_tx, Hash}]).
+       end).
 
 add_tx_hash_to_mempool(TxHash) when is_binary(TxHash) ->
-    ?t(write(#aec_tx_pool{key = TxHash, value = ?TX_IN_MEMPOOL}),
-      [{aec_tx_pool, TxHash}]).
+    ?t(write(#aec_tx_pool{key = TxHash, value = ?TX_IN_MEMPOOL})).
 
 is_in_tx_pool(TxHash) ->
     ?t(read(aec_tx_pool, TxHash)) =/= ?TX_IN_MEMPOOL.
 
 remove_tx_from_mempool(TxHash) when is_binary(TxHash) ->
-    ?t(delete(aec_tx_pool, TxHash),
-       [{aec_tx_pool, TxHash}]).
+    ?t(delete(aec_tx_pool, TxHash)).
 
 fold_mempool(FunIn, InitAcc) ->
     Fun = fun(#aec_tx_pool{key = Hash}, Acc) ->
@@ -1377,13 +1350,12 @@ default_dir() ->
     end.
 
 do_activity(Type, Fun) ->
-    ?IF_RDB(
-       mrdb:activity(Type, rocksdb_copies, Fun), mnesia:activity(Type, Fun)).
+    ?IF_RDB(mrdb:activity(Type, rocksdb_copies, Fun),
+            mnesia:activity(Type, Fun)).
 
 write_peer(Peer) ->
     PeerId = aec_peer:id(Peer),
-    ?t(write(#aec_peers{key = PeerId, value = Peer}),
-      [{aec_peers, PeerId}]).
+    ?t(write(#aec_peers{key = PeerId, value = Peer})).
 
 delete_peer(Peer) ->
     PeerId = aec_peer:id(Peer),

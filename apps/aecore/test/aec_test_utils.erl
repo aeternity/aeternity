@@ -339,7 +339,6 @@ start_chain_db(disc) ->
     Persist = application:get_env(aecore, persist),
     persistent_term:put({?MODULE, db_mode}, {disc, Persist}),
     application:set_env(aecore, persist, true),
-    {ok, _} = aec_db_error_store:start_link(),
     aec_db:check_db(),
     aec_db:prepare_mnesia_bypass(),
     aec_db:clear_db(),
@@ -352,7 +351,6 @@ stop_chain_db(ram) ->
 stop_chain_db({disc, Persist}) ->
     application:stop(mnesia),
     application:set_env(aecore, persist, Persist),
-    ok = aec_db_error_store:stop(),
     ok = meck:unload(mnesia_rocksdb_lib),
     ok = mnesia:delete_schema([node()]).
 

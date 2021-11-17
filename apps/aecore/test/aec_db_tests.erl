@@ -39,7 +39,6 @@ write_chain_test_() ->
     {foreach,
      fun() ->
              ok = application:ensure_started(gproc),
-             {ok, _} = aec_db_error_store:start_link(),
              aec_test_utils:start_chain_db(),
              meck:new(aec_mining, [passthrough]),
              meck:expect(aec_mining, verify, fun(_, _, _, _) -> true end),
@@ -62,7 +61,6 @@ write_chain_test_() ->
              meck:unload(aec_events),
              aec_test_utils:unmock_genesis_and_forks(),
              aec_test_utils:stop_chain_db(),
-             ok = aec_db_error_store:stop(),
              aec_test_utils:aec_keys_cleanup(TmpDir)
      end,
      [{"Write a block to chain and read it back.",
@@ -239,7 +237,6 @@ persisted_database_write_error_test_() ->
      fun() ->
              Persist = application:get_env(aecore, persist),
              application:set_env(aecore, persist, true),
-             {ok, _} = aec_db_error_store:start_link(),
              aec_db:check_db(),
              aec_db:prepare_mnesia_bypass(),
              aec_db:clear_db(),
@@ -253,7 +250,6 @@ persisted_database_write_error_test_() ->
              aec_test_utils:unmock_genesis_and_forks(),
              aec_test_utils:aec_keys_cleanup(TmpDir),
              application:set_env(aecore, persist, Persist),
-             ok = aec_db_error_store:stop(),
              ok = meck:unload(aec_db_lib),
              ok = mnesia:delete_schema([node()])
      end,
@@ -289,7 +285,6 @@ peers_test_() ->
      fun() ->
           Persist = application:get_env(aecore, persist),
           application:set_env(aecore, persist, true),
-          {ok, _} = aec_db_error_store:start_link(),
           aec_db:check_db(),
           aec_db:prepare_mnesia_bypass(),
           aec_db:clear_db(),
@@ -299,7 +294,6 @@ peers_test_() ->
      fun(Persist) ->
           application:stop(mnesia),
           application:set_env(aecore, persist, Persist),
-          ok = aec_db_error_store:stop(),
           ok = mnesia:delete_schema([node()])
      end,
      [{"Write and retrieve a peer",
