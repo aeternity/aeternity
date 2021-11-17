@@ -260,6 +260,9 @@ siblings_common(TopBlock, N1, N2, Account1, Account2) ->
 
             %% There are no tx fees included in the calculation so the FoundationBal
             %% must be at least the sum of all foundation rewards (without the fees).
+            ct:log("FoundationReward1 = ~p", [FoundationReward1]),
+            ct:log("FoundationReward2 = ~p", [FoundationReward2]),
+            ct:log("FoundationBal = ~p", [FoundationBal]),
             true = FoundationBal >= (FoundationReward1 + FoundationReward2),
 
             case Bal1 >= (Reward1 - FoundationReward1) andalso
