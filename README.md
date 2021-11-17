@@ -64,17 +64,17 @@ Alternatively, you can run the node client as a docker container:
 
 Or running a docker container (latest tag):
 ```bash
-$ mkdir -p ~/.aeternity/maindb
-$ docker pull aeternity/aeternity
-$ docker run -p 3013:3013 -p 3015:3015 \
+mkdir -p ~/.aeternity/maindb
+docker pull aeternity/aeternity
+docker run -p 3013:3013 -p 3015:3015 \
     -v ~/.aeternity/maindb:/home/aeternity/node/data/mnesia \
     aeternity/aeternity
 ```
 **Windows**
 ```bash
-$ mkdir %APPDATA%\aeternity\maindb
-$ docker pull aeternity/aeternity
-$ docker run -p 3013:3013 -p 3015:3015 -v %APPDATA%/aeternity/maindb:/home/aeternity/node/data/mnesia aeternity/aeternity
+mkdir %APPDATA%\aeternity\maindb
+docker pull aeternity/aeternity
+docker run -p 3013:3013 -p 3015:3015 -v %APPDATA%/aeternity/maindb:/home/aeternity/node/data/mnesia aeternity/aeternity
 ```
 
 #### Restore from snapshot
