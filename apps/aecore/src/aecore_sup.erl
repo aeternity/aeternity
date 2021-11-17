@@ -61,8 +61,7 @@ start_link() ->
 
 init([]) ->
     ChildSpecs =
-        [watchdog_childspec()]
-        ++ maybe_upnp_worker()
+        maybe_upnp_worker()
         ++ [?CHILD(aec_metrics_rpt_dest, 5000, worker),
             ?CHILD(aec_keys, 5000, worker),
             ?CHILD(aec_tx_pool, 5000, worker),
@@ -78,10 +77,6 @@ init([]) ->
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
-
-watchdog_childspec() ->
-    {watchdog, {gen_serv, start, [watchdog]},
-     permanent, 5000, worker, [watchdog]}.
 
 maybe_upnp_worker() ->
     case aec_upnp:is_enabled() of
