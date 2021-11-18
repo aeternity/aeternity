@@ -591,8 +591,15 @@ sign_on_node(Id, Tx, SignHash) ->
     sign_on_node(node_tuple(Id), Tx, SignHash).
 
 forks() ->
-    Protocol = list_to_binary(os:getenv("PROTOCOL")),
-    NetworkId = <<"local_", Protocol/binary, "_testnet">>,
+    NetworkId =
+        case os:getenv("PROTOCOL") of
+            false ->
+                {ok, NId} = application:get_env(aecore, network_id),
+                NId;
+            P ->
+                Protocol = list_to_binary(P),
+                <<"local_", Protocol/binary, "_testnet">>
+        end,
     aec_hard_forks:protocols_from_network_id(NetworkId).
 
 latest_fork_height() ->
