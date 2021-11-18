@@ -160,7 +160,15 @@ protocols_from_network_id(<<"local_ceres_testnet">>) ->
      , ?CERES_PROTOCOL_VSN     => 1
      };
 protocols_from_network_id(<<"ae_dev">>) ->
-    #{ ?IRIS_PROTOCOL_VSN => 0 };
+    case aeu_env:user_map_or_env([<<"chain">>, <<"hard_forks">>], aecore, hard_forks, undefined) of
+        undefined ->
+            #{ ?ROMA_PROTOCOL_VSN => 0
+             , ?IRIS_PROTOCOL_VSN => 1 };
+        M when is_map(M) ->
+            maps:fold(fun(K, V, Acc) ->
+                              Acc#{binary_to_integer(K) => V}
+                      end, #{}, M)
+    end;
 protocols_from_network_id(_ID) ->
     case aeu_env:user_map_or_env([<<"chain">>, <<"hard_forks">>], aecore, hard_forks, undefined) of
         undefined ->

@@ -617,8 +617,16 @@ init_per_suite(Config) ->
     Node = aecore_suite_utils:node_name(?NODE),
     aecore_suite_utils:connect(Node, []),
     true = rpc(aecore_env, is_dev_mode, []),
-    Mocks = add_rpc_mocks(),
-    [{node, Node}, {mocks, Mocks} | Config2].
+    %% a bit hacky way but since the CT setup does not come with default hard
+    %% forks, we can not rely on the
+    %% aec_hard_forks:protocols_from_network_id/1 as the ae_dev is a bit
+    %% special. Instead we start the node and use the values set there instead
+    Forks =
+        maps:fold(fun(K, V, Acc) ->
+                          Acc#{integer_to_binary(K) => V}
+                  end, #{}, rpc(aec_hard_forks, protocols, [])),
+    application:set_env(aecore, hard_forks, Forks),
+    [{node, Node} | Config2].
 
 end_per_suite(Config) ->
     case ?config(old_network_id, Config) of
@@ -628,26 +636,10 @@ end_per_suite(Config) ->
             ok
     end,
     aecore_suite_utils:stop_node(?NODE, Config),
-    remove_rpc_mocks(Config),
     [application:stop(A) ||
         A <- lists:reverse(
                proplists:get_value(started_apps, Config, []))],
     ok.
-
-add_rpc_mocks() ->
-    ok = meck:new(aec_hard_forks, [passthrough, no_link]),
-    ok = meck:expect(aec_hard_forks,
-                     protocol_effective_at_height,
-                     fun(H) ->
-                             ct:log("CALLING protocol_effective_at_height(~p) via RPC", [H]),
-                             rpc(aec_hard_forks, protocol_effective_at_height, [H])
-                     end),
-    ct:log("Mocked aec_hard_forks:protocol_effective_at_height/1 into rpc version"),
-    [aec_hard_forks].
-
-remove_rpc_mocks(Config) ->
-    Mocks = proplists:get_value(mocks, Config, []),
-    [meck:unload(M) || M <- Mocks].
 
 init_per_group(all, Config) ->
     Config;
@@ -664,7 +656,18 @@ init_per_group(Group, Config) when
       %%Group =:= channel_endpoints;
       Group =:= peer_endpoints;
       Group =:= status_endpoints ->
-    Config;
+    Node = aecore_suite_utils:node_name(?NODE),
+    ToMine = aecore_suite_utils:latest_fork_height() + 1,
+    aecore_suite_utils:mine_key_blocks(Node, ToMine),
+    Protocols = aec_hard_forks:sorted_protocol_versions(),
+    {ok, KeyBlocks} = aecore_suite_utils:mine_key_blocks(Node, length(Protocols) + 1),
+    KeyBlock = lists:last(KeyBlocks),
+    true = aec_blocks:is_key_block(KeyBlock),
+    [{current_block, KeyBlock},
+     {current_block_hash, hash(key, KeyBlock)},
+     {current_block_hash_wrong_type, hash(micro, KeyBlock)},
+     {current_block_height, aec_blocks:height(KeyBlock)},
+     {current_block_type, key_block} | Config];
 %% block_endpoints
 init_per_group(BlockEndpoints, Config) when BlockEndpoints =:= block_endpoints;
                                             BlockEndpoints =:= oas_block_endpoints ->
@@ -674,6 +677,7 @@ init_per_group(OnGenesis, Config) when OnGenesis =:= on_genesis_block;
                                        OnGenesis =:= oas_on_genesis_block ->
     rpc(aec_conductor, reinit_chain, []),
     GenesisBlock = rpc(aec_chain, genesis_block, []),
+    Protocols = aec_hard_forks:sorted_protocol_versions(),
     [{current_block, GenesisBlock},
      {current_block_hash, hash(key, GenesisBlock)},
      {current_block_hash_wrong_type, hash(micro, GenesisBlock)},
@@ -681,10 +685,11 @@ init_per_group(OnGenesis, Config) when OnGenesis =:= on_genesis_block;
      {current_block_type, genesis_block} | Config];
 init_per_group(on_key_block, Config) ->
     Node = aecore_suite_utils:node_name(?NODE),
-    %% Mine at least 2 key blocks (fork height may be 0).
-    ToMine = max(2, aecore_suite_utils:latest_fork_height()),
+    ToMine = aecore_suite_utils:latest_fork_height() + 1,
     aecore_suite_utils:mine_key_blocks(Node, ToMine),
-    {ok, [KeyBlock]} = aecore_suite_utils:mine_key_blocks(Node, 1),
+    Protocols = aec_hard_forks:sorted_protocol_versions(),
+    {ok, KeyBlocks} = aecore_suite_utils:mine_key_blocks(Node, length(Protocols) + 1),
+    KeyBlock = lists:last(KeyBlocks),
     true = aec_blocks:is_key_block(KeyBlock),
     [{current_block, KeyBlock},
      {current_block_hash, hash(key, KeyBlock)},
@@ -694,7 +699,7 @@ init_per_group(on_key_block, Config) ->
 init_per_group(on_micro_block, Config) ->
     [ {NodeId, Node} | _ ] = ?config(nodes, Config),
     %% Mine at least 2 key blocks (fork height may be 0).
-    ToMine = max(2, aecore_suite_utils:latest_fork_height()),
+    ToMine = aecore_suite_utils:latest_fork_height(),
     aecore_suite_utils:mine_key_blocks(Node, ToMine),
     {ok, [_KeyBlock0]} = aecore_suite_utils:mine_key_blocks(Node, 1),
     %% Send spend tx so it gets included into micro block.
@@ -1048,7 +1053,6 @@ post_oracle_response(Config) ->
 get_name_entry_by_name(_Config) ->
     NonexistentName = <<"Nonexistent_name">>,
     {ok, 400, _Error} = get_names_entry_by_name_sut(NonexistentName),
-    %%?assertEqual(<<"Name not found">>, maps:get(<<"reason">>, Error)),
     ok.
 
 get_names_entry_by_name_sut(Name) ->
@@ -1155,7 +1159,6 @@ post_correct_tx(Config) ->
 
 post_broken_tx(Config) ->
     aehttp_integration_SUITE:post_broken_tx(Config).
-    %% ok.
 
 post_broken_api_encoded_tx(Config) ->
     aehttp_integration_SUITE:post_broken_api_encoded_tx(Config).
@@ -1166,38 +1169,12 @@ broken_spend_tx(Config) ->
 
 node_pubkey(Config) ->
     aehttp_integration_SUITE:node_pubkey(Config).
-    %% {ok, MinerPubKey} = rpc(aec_keys, pubkey, []),
-    %% {ok, 200, #{<<"pub_key">> := EncodedPubKey}} = get_node_pubkey(),
-    %% ct:log("MinerPubkey = ~p~nEncodedPubKey = ~p", [MinerPubKey,
-    %%                                                 EncodedPubKey]),
-    %% {account_pubkey, MinerPubKey} = aeser_api_encoder:decode(EncodedPubKey),
-    %% ok.
 
 node_beneficiary(Config) ->
     aehttp_integration_SUITE:node_beneficiary(Config).
-    %% {ok, 200, #{<<"pub_key">> := SignPubKey0}} = get_node_pubkey(),
-    %% {ok, 200, #{<<"pub_key">> := BeneficiaryPubKey0}} = get_node_beneficiary(),
-
-    %% ?assertMatch({account_pubkey, _}, aeser_api_encoder:decode(BeneficiaryPubKey0)),
-
-    %% aecore_suite_utils:mine_key_blocks(aecore_suite_utils:node_name(?NODE), 3),
-
-    %% {ok, 200, #{<<"pub_key">> := SignPubKey1}} = get_node_pubkey(),
-    %% {ok, 200, #{<<"pub_key">> := BeneficiaryPubKey1}} = get_node_beneficiary(),
-
-    %% ?assertNotEqual(SignPubKey0, SignPubKey1),
-    %% ?assertNotEqual(SignPubKey1, BeneficiaryPubKey1),
-    %% ?assertEqual(BeneficiaryPubKey0, BeneficiaryPubKey1),
-    %% ok.
 
 peer_pub_key(Config) ->
     aehttp_integration_SUITE:peer_pub_key(Config).
-    %% {ok, PeerPubKey} = rpc(aec_keys, peer_pubkey, []),
-    %% {ok, 200, #{<<"pubkey">> := EncodedPubKey}} = get_peer_pub_key(),
-    %% ct:log("PeerPubkey = ~p~nEncodedPubKey = ~p", [PeerPubKey,
-    %%                                                 EncodedPubKey]),
-    %% {ok, PeerPubKey} = aeser_api_encoder:safe_decode(peer_pubkey, EncodedPubKey),
-    %% ok.
 
 naming_system_manage_name(Config) ->
     aehttp_integration_SUITE:naming_system_manage_name(Config).

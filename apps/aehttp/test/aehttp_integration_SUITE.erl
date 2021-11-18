@@ -591,10 +591,8 @@ suite() ->
     [].
 
 init_per_suite(Config) ->
-    Forks = aecore_suite_utils:forks(),
     DefCfg = #{<<"chain">> =>
-                   #{<<"persist">> => false,
-                     <<"hard_forks">> => Forks},
+                   #{<<"persist">> => false},
                <<"mining">> =>
                    #{<<"micro_block_cycle">> => 1,
                      <<"name_claim_bid_timeout">> => 0 %% NO name auctions
