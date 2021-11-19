@@ -185,6 +185,7 @@ create_config(Node, CTConfig, CustomConfig, Options) ->
         Backend ->
             #{<<"chain">> => #{<<"db_backend">> => binary:list_to_bin(Backend)}}
     end,
+    Forks = #{ <<"chain">> => #{<<"hard_forks">> => forks()}},
     NodeCfgPath = node_config_dir(Node, CTConfig),
     ok = filelib:ensure_dir(NodeCfgPath),
     MergedCfg = maps_merge(default_config(Node, CTConfig), CustomConfig),
@@ -208,7 +209,8 @@ create_config(Node, CTConfig, CustomConfig, Options) ->
                                  }
                               })
                  end,
-    Config = config_apply_options(Node, MergedCfg3, Options),
+    MergedCfg4 = maps_merge(MergedCfg3, Forks),
+    Config = config_apply_options(Node, MergedCfg4, Options),
     write_keys(Node, Config),
     write_config(NodeCfgPath, Config).
 
@@ -589,9 +591,16 @@ sign_on_node(Id, Tx, SignHash) ->
     sign_on_node(node_tuple(Id), Tx, SignHash).
 
 forks() ->
-    Vs = aec_hard_forks:sorted_protocol_versions(),
-    Hs = lists:seq(0, (length(Vs) - 1)),
-    maps:from_list(lists:zip(Vs, Hs)).
+    NetworkId =
+        case os:getenv("PROTOCOL") of
+            false ->
+                {ok, NId} = application:get_env(aecore, network_id),
+                NId;
+            P ->
+                Protocol = list_to_binary(P),
+                <<"local_", Protocol/binary, "_testnet">>
+        end,
+    aec_hard_forks:protocols_from_network_id(NetworkId).
 
 latest_fork_height() ->
     lists:max(maps:values(forks())).

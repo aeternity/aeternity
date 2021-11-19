@@ -192,7 +192,7 @@ genesis_raw_header() ->
         0,
         0,
         default,
-        ?IRIS_PROTOCOL_VSN).
+        ?ROMA_PROTOCOL_VSN).
 genesis_difficulty() -> 0.
 
 key_header_for_sealing(Header) ->

@@ -229,6 +229,7 @@ edoc: VERSION
 $(CT_TARGETS):
 	@KIND=test \
 	SYSCONFIG=config/test-$(patsubst ct-%,%,$@).config \
+	PROTOCOL=$(patsubst ct-%,%,$@) \
 	AETERNITY_TESTCONFIG_DB_BACKEND=mnesia \
 	$(MAKE) internal-ct
 
