@@ -117,7 +117,7 @@ peers() ->
                                     , timeout_arg()]}
                  , "blocked" =>
                     #{ help => "List blocked peers"
-                     , handler => {fun list_unverified_peers/2, not_used}
+                     , handler => {fun list_blocked_peers/2, not_used}
                      , arguments => [ count_arg()
                                     , timeout_arg()]}
                 }
@@ -350,12 +350,12 @@ add_peer(Node, #{'address' := PeerAddress, 'trusted' := Trusted} = ArgsList) ->
     ok.
 
 remove_peer(Node, #{'peer_id' := EncPeerPubkey} = ArgsList) ->
-    case aeser_api_encoder:safe_decode(peer_pubkey, EncPeerPubkey) of
+    case aeser_api_encoder:safe_decode(peer_pubkey, list_to_binary(EncPeerPubkey)) of
         {ok, PeerPubkey} ->
             ok = rpc(Node, aec_peers, del_peer, [PeerPubkey],
                       ArgsList),
             io:fwrite("Ok.~n", []),
             erlang:halt(0);
-        {error, _} ->
+        {error, _E} ->
             throw({decode_error, peer_id})
     end.

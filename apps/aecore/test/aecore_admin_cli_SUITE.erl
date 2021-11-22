@@ -266,27 +266,48 @@ peer_lists(Config) ->
             "\n" = cli(["peers", "list", "blocked"], Config),
             "0\n" = cli(["peers", "list", "blocked", "--count"], Config)
         end,
+    Peer2 = aecore_suite_utils:peer_info(?NODE2),
+    Peer2Results = binary_to_list(<<Peer2/binary, "\n">>),
+    AssertOnlyPeer2Connected =
+        fun() ->
+            "1\n" = cli(["peers", "list", "connected", "--count"], Config),
+            Peer2Results = cli(["peers", "list", "connected"], Config),
+            "1\n" = cli(["peers", "list", "connected", "--count"], Config),
+            "\n" = cli(["peers", "list", "verified"], Config),
+            "0\n" = cli(["peers", "list", "verified", "--count"], Config),
+            "\n" = cli(["peers", "list", "unverified"], Config),
+            "0\n" = cli(["peers", "list", "unverified", "--count"], Config),
+            "\n" = cli(["peers", "list", "blocked"], Config),
+            "0\n" = cli(["peers", "list", "blocked", "--count"], Config)
+    end,
+    FakePeerPubkey = aeser_api_encoder:encode(peer_pubkey,
+                                         crypto:strong_rand_bytes(32)),
+    FakePeer = <<"aenode://", FakePeerPubkey/binary, "@127.0.0.1:1234">>,
+
+
     AssertNoPeers(),
     %% assert assumptions
-    Peer2 = aecore_suite_utils:peer_info(?NODE2),
-    {ok, #{pubkey := PeerPubkey}} = aec_peers:parse_peer_address(Peer2),
     "Ok.\n" = cli(["peers", "add", Peer2], Config),
     timer:sleep(1000),
+    %% the peer2 is already connecte
+    AssertOnlyPeer2Connected(),
+    %% add a peer that is not out there
+    "Ok.\n" = cli(["peers", "add", FakePeer], Config),
+    %% ensure fake peer ends up in the unverified list
     "1\n" = cli(["peers", "list", "connected", "--count"], Config),
-    Peer2Results = binary_to_list(<<Peer2/binary, "\n">>),
     Peer2Results = cli(["peers", "list", "connected"], Config),
     "1\n" = cli(["peers", "list", "connected", "--count"], Config),
     "\n" = cli(["peers", "list", "verified"], Config),
     "0\n" = cli(["peers", "list", "verified", "--count"], Config),
-    "\n" = cli(["peers", "list", "unverified"], Config),
-    "0\n" = cli(["peers", "list", "unverified", "--count"], Config),
+    FakePeerResults = binary_to_list(<<FakePeer/binary, "\n">>),
+    FakePeerResults = cli(["peers", "list", "unverified"], Config),
+    "1\n" = cli(["peers", "list", "unverified", "--count"], Config),
     "\n" = cli(["peers", "list", "blocked"], Config),
     "0\n" = cli(["peers", "list", "blocked", "--count"], Config),
 
-    "Ok.\n" =
-        cli(["peers", "remove", aeser_api_encoder:encode(peer_pubkey, PeerPubkey)],
-            Config),
-    AssertNoPeers(),
-
+    %% delete the unreachable peer and make sure peer2 is still connected
+    "Ok.\n" = cli(["peers", "remove", FakePeerPubkey], Config),
+    timer:sleep(1000),
+    AssertOnlyPeer2Connected(),
     ok.
 
