@@ -383,7 +383,7 @@ block_peer(Node, #{'address' := PeerAddress} = ArgsList) ->
             io:fwrite("Ok.~n", []),
             erlang:halt(0);
         {error, _E} ->
-            throw({decode_error, peer_id})
+            throw({decode_error, address})
     end.
 
 unblock_peer(Node, #{'peer_id' := EncPeerPubkey} = ArgsList) ->
