@@ -19,6 +19,8 @@
         , list_blocked_peers/2
         , add_peer/2
         , remove_peer/2
+        , block_peer/2
+        , unblock_peer/2
         ]).
 
 
@@ -125,10 +127,7 @@ peers() ->
         , "add" =>
             #{ help => "Add a peer"
               , handler => {fun add_peer/2, not_used}
-              , arguments => [#{ name => address
-                               , type => string
-                               , help => "The address of the peer: aenode://<peer pubkey>@<host>:<port>"
-                               },
+              , arguments => [peer_address_arg(),
                               #{ name => trusted 
                               , long => "-trusted"
                               , type => boolean
@@ -139,11 +138,15 @@ peers() ->
         , "remove" =>
             #{ help => "Remove a peer"
               , handler => {fun remove_peer/2, not_used}
-              , arguments => [#{ name => peer_id 
-                               , type => string
-                               , help => "The peer id"
-                               },
-                              timeout_arg()]}
+              , arguments => [ peer_id_arg(), timeout_arg()]}
+        , "block" =>
+            #{ help => "Block a peer"
+              , handler => {fun block_peer/2, not_used}
+              , arguments => [peer_address_arg(), timeout_arg()]}
+        , "unblock" =>
+            #{ help => "Unblock a peer"
+              , handler => {fun unblock_peer/2, not_used}
+              , arguments => [ peer_id_arg(), timeout_arg()]}
         }
     }.
 
@@ -166,6 +169,18 @@ count_arg() ->
      , help => "Return only the total count"
      , short => $c
      , default => false}.
+
+peer_id_arg() ->
+    #{ name => peer_id 
+     , type => string
+     , help => "The peer id"
+     }.
+
+peer_address_arg() ->
+    #{ name => address
+     , type => string
+     , help => "The address of the peer: aenode://<peer pubkey>@<host>:<port>"
+     }.
 
 main(Args) ->
     Opts = aeu_ext_scripts:parse_opts(Args, spec(), #{progname => admin}),
@@ -359,3 +374,26 @@ remove_peer(Node, #{'peer_id' := EncPeerPubkey} = ArgsList) ->
         {error, _E} ->
             throw({decode_error, peer_id})
     end.
+
+block_peer(Node, #{'address' := PeerAddress} = ArgsList) ->
+    case aec_peers:parse_peer_address(PeerAddress) of
+        {ok, PeerPubkey} ->
+            ok = rpc(Node, aec_peers, block_peer, [PeerPubkey],
+                      ArgsList),
+            io:fwrite("Ok.~n", []),
+            erlang:halt(0);
+        {error, _E} ->
+            throw({decode_error, peer_id})
+    end.
+
+unblock_peer(Node, #{'peer_id' := EncPeerPubkey} = ArgsList) ->
+    case aeser_api_encoder:safe_decode(peer_pubkey, list_to_binary(EncPeerPubkey)) of
+        {ok, PeerPubkey} ->
+            ok = rpc(Node, aec_peers, unblock_peer, [PeerPubkey],
+                      ArgsList),
+            io:fwrite("Ok.~n", []),
+            erlang:halt(0);
+        {error, _E} ->
+            throw({decode_error, peer_id})
+    end.
+

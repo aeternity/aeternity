@@ -18,6 +18,8 @@
    , inspect_tx/1
    , miner_gas_price/1
    , peer_lists/1
+   , invalid_peers/1
+   , blocking_peers/1
    ]).
 
 -include_lib("common_test/include/ct.hrl").
@@ -43,8 +45,9 @@ groups() ->
       , inspect_tx
       , miner_gas_price]},
      {peers, [sequence],
-      [
-       peer_lists
+      [ invalid_peers
+      , peer_lists
+      , blocking_peers 
       ]}
 
     ].
@@ -270,7 +273,6 @@ peer_lists(Config) ->
     Peer2Results = binary_to_list(<<Peer2/binary, "\n">>),
     AssertOnlyPeer2Connected =
         fun() ->
-            "1\n" = cli(["peers", "list", "connected", "--count"], Config),
             Peer2Results = cli(["peers", "list", "connected"], Config),
             "1\n" = cli(["peers", "list", "connected", "--count"], Config),
             "\n" = cli(["peers", "list", "verified"], Config),
@@ -280,8 +282,7 @@ peer_lists(Config) ->
             "\n" = cli(["peers", "list", "blocked"], Config),
             "0\n" = cli(["peers", "list", "blocked", "--count"], Config)
     end,
-    FakePeerPubkey = aeser_api_encoder:encode(peer_pubkey,
-                                         crypto:strong_rand_bytes(32)),
+    FakePeerPubkey = aeser_api_encoder:encode(peer_pubkey, crypto:strong_rand_bytes(32)),
     FakePeer = <<"aenode://", FakePeerPubkey/binary, "@127.0.0.1:1234">>,
 
 
@@ -289,12 +290,11 @@ peer_lists(Config) ->
     %% assert assumptions
     "Ok.\n" = cli(["peers", "add", Peer2], Config),
     timer:sleep(1000),
-    %% the peer2 is already connecte
+    %% the peer2 is already connected
     AssertOnlyPeer2Connected(),
     %% add a peer that is not out there
     "Ok.\n" = cli(["peers", "add", FakePeer], Config),
     %% ensure fake peer ends up in the unverified list
-    "1\n" = cli(["peers", "list", "connected", "--count"], Config),
     Peer2Results = cli(["peers", "list", "connected"], Config),
     "1\n" = cli(["peers", "list", "connected", "--count"], Config),
     "\n" = cli(["peers", "list", "verified"], Config),
@@ -309,5 +309,68 @@ peer_lists(Config) ->
     "Ok.\n" = cli(["peers", "remove", FakePeerPubkey], Config),
     timer:sleep(1000),
     AssertOnlyPeer2Connected(),
+    ok.
+
+invalid_peers(Config) ->
+    AssertNoPeers =
+        fun() ->
+            "\n" = cli(["peers", "list", "connected"], Config),
+            "0\n" = cli(["peers", "list", "connected", "--count"], Config),
+            "\n" = cli(["peers", "list", "verified"], Config),
+            "0\n" = cli(["peers", "list", "verified", "--count"], Config),
+            "\n" = cli(["peers", "list", "unverified"], Config),
+            "0\n" = cli(["peers", "list", "unverified", "--count"], Config),
+            "\n" = cli(["peers", "list", "blocked"], Config),
+            "0\n" = cli(["peers", "list", "blocked", "--count"], Config)
+        end,
+    AssertNoPeers(),
+    FakePeerPubkey = binary_to_list(aeser_api_encoder:encode(peer_pubkey,
+                                         crypto:strong_rand_bytes(32))),
+    ErrDecodingAddrResponse = "Decode error, the address is invalid\n",
+    ErrDecodingAddrResponse = cli(["peers", "add", FakePeerPubkey ++ "@127.0.0.1:1234"], Config),
+    ErrDecodingAddrResponse = cli(["peers", "add", "aenode://@127.0.0.1:1234"], Config),
+    AssertNoPeers(),
+    BrokenPeerPubkey = binary_to_list(aeser_api_encoder:encode(peer_pubkey,
+                                         crypto:strong_rand_bytes(31))),
+    "Decode error, the peer_id is invalid\n" = cli(["peers", "remove", BrokenPeerPubkey], Config),
+    AssertNoPeers(),
+    ok.
+
+blocking_peers(Config) ->
+    Peer2 = aecore_suite_utils:peer_info(?NODE2),
+    {ok, #{pubkey := Peer2Pubkey}} = aec_peers:parse_peer_address(Peer2),
+    EncPeer2Pubkey = aeser_api_encoder:encode(peer_pubkey, Peer2Pubkey),
+    Peer2Results = binary_to_list(<<Peer2/binary, "\n">>),
+    %% ensure peer2 is connected
+    Peer2Results = cli(["peers", "list", "connected"], Config),
+    "1\n" = cli(["peers", "list", "connected", "--count"], Config),
+    "\n" = cli(["peers", "list", "verified"], Config),
+    "0\n" = cli(["peers", "list", "verified", "--count"], Config),
+    "\n" = cli(["peers", "list", "unverified"], Config),
+    "0\n" = cli(["peers", "list", "unverified", "--count"], Config),
+    "\n" = cli(["peers", "list", "blocked"], Config),
+    "0\n" = cli(["peers", "list", "blocked", "--count"], Config),
+    %% block peer2
+    "Ok.\n" = cli(["peers", "block", Peer2], Config),
+    %% peer2 is blocked
+    "\n" = cli(["peers", "list", "connected"], Config),
+    "0\n" = cli(["peers", "list", "connected", "--count"], Config),
+    "\n" = cli(["peers", "list", "verified"], Config),
+    "0\n" = cli(["peers", "list", "verified", "--count"], Config),
+    "\n" = cli(["peers", "list", "unverified"], Config),
+    "0\n" = cli(["peers", "list", "unverified", "--count"], Config),
+    Peer2Results = cli(["peers", "list", "blocked"], Config),
+    "1\n" = cli(["peers", "list", "blocked", "--count"], Config),
+    %% unblock peer2
+    "Ok.\n" = cli(["peers", "unblock", EncPeer2Pubkey], Config),
+    timer:sleep(1000),
+    %% assert it is connected
+    "1\n" = cli(["peers", "list", "connected", "--count"], Config),
+    "\n" = cli(["peers", "list", "verified"], Config),
+    "0\n" = cli(["peers", "list", "verified", "--count"], Config),
+    "\n" = cli(["peers", "list", "unverified"], Config),
+    "0\n" = cli(["peers", "list", "unverified", "--count"], Config),
+    "\n" = cli(["peers", "list", "blocked"], Config),
+    "0\n" = cli(["peers", "list", "blocked", "--count"], Config),
     ok.
 
