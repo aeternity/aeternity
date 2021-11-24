@@ -618,15 +618,6 @@ executors:
         docker:
             - image: aeternity/infrastructure:latest
         resource_class: large
-    machine_1604:
-        environment:
-            LIBSODIUM_VERSION: 1.0.16
-            OTP_VERSION: 22.3.4.9
-        machine:
-            docker_layer_caching: true
-            image: ubuntu-1604:201903-01
-        resource_class: large
-        working_directory: /home/circleci/aeternity
 jobs:
     aevm-test:
         executor: builder_container_otp22
@@ -848,12 +839,12 @@ jobs:
             - docker_build:
                 tag: $CIRCLE_BRANCH
     docker-system-smoke-test:
-        executor: machine_1604
+        executor: machine_1804
         steps:
             - docker_system_test:
                 smoke: true
     docker-system-test:
-        executor: machine_1604
+        executor: machine_1804
         steps:
             - docker_system_test:
                 smoke: false
