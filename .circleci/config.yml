@@ -618,6 +618,15 @@ executors:
         docker:
             - image: aeternity/infrastructure:latest
         resource_class: large
+    machine_1804:
+        environment:
+            LIBSODIUM_VERSION: 1.0.16
+            OTP_VERSION: 22.3.4.9
+        machine:
+            docker_layer_caching: true
+            image: ubuntu-1804
+        resource_class: large
+        working_directory: /home/circleci/aeternity
 jobs:
     aevm-test:
         executor: builder_container_otp22
