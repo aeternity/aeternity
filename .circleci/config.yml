@@ -624,7 +624,7 @@ executors:
             OTP_VERSION: 22.3.4.9
         machine:
             docker_layer_caching: true
-            image: ubuntu:1804
+            image: ubuntu:18.04
         resource_class: large
         working_directory: /home/circleci/aeternity
 jobs:
