@@ -56,7 +56,7 @@ buildpack:
     - image: circleci/buildpack-deps:xenial
   working_directory: /home/circleci/aeternity
 
-machine_1804:
+machine_2004:
   resource_class: large
   machine:
     image: ubuntu-2004:202111-01

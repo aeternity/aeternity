@@ -618,7 +618,7 @@ executors:
         docker:
             - image: aeternity/infrastructure:latest
         resource_class: large
-    machine_1804:
+    machine_2004:
         environment:
             LIBSODIUM_VERSION: 1.0.16
             OTP_VERSION: 22.3.4.9
@@ -848,12 +848,12 @@ jobs:
             - docker_build:
                 tag: $CIRCLE_BRANCH
     docker-system-smoke-test:
-        executor: machine_1804
+        executor: machine_2004
         steps:
             - docker_system_test:
                 smoke: true
     docker-system-test:
-        executor: machine_1804
+        executor: machine_2004
         steps:
             - docker_system_test:
                 smoke: false
