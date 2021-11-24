@@ -95,7 +95,7 @@ compile_contract(Code) ->
 compile_contract(Code, Options) ->
     try
         Ast       = aeso_parser:string(Code, Options),
-        {_, TypedAst, _Warnings = []}  = aeso_ast_infer_types:infer(Ast, Options),
+        {_, TypedAst}  = aeso_ast_infer_types:infer(Ast, Options),
         {#{child_con_env := ChildContracts}, FCode}
                        = aeso_ast_to_fcode:ast_to_fcode(TypedAst, Options),
         Fate      = aeso_fcode_to_fate:compile(ChildContracts, FCode, Options),
