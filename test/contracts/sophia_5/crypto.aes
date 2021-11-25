@@ -35,5 +35,3 @@ contract CryptoTest =
 
   entrypoint test_recover_secp256k1(msg : hash, sig : bytes(65)) =
     Crypto.ecrecover_secp256k1(msg, sig)
-
-  entrypoint poseidon(x : int, y : int) : int = Crypto.poseidon(x, y)
