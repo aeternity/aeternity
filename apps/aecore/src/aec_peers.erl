@@ -313,7 +313,7 @@ get_connection(PeerId) ->
 %--- UTILITY FUNCTIONS ---------------------------------------------------------
 
 %% @doc Parses a peer URI to a peer info map.
--spec parse_peer_address(binary()| string())
+-spec parse_peer_address(binary() | string())
     -> {ok, aec_peer:info()} | {error, term()}.
 parse_peer_address(PeerAddress) when is_list(PeerAddress) ->
     parse_peer_address(list_to_binary(PeerAddress));
