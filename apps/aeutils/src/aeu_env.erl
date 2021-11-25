@@ -24,6 +24,7 @@
 -export([read_config/0]).
 -export([apply_os_env/0,
          apply_os_env/3]).
+-export([check_env/2]).
 -export([parse_key_value_string/1]).
 -export([data_dir/1]).
 -export([check_config/1, check_config/2]).
@@ -414,6 +415,30 @@ schema_key_names(NamePfx, KeyPfx, Map, Acc0) when is_map(Map) ->
                       schema_key_names(NamePfx1, KeyPfx1, Props, Acc1)
               end
       end, Acc0, Map).
+
+%% ======================================================================
+
+check_env(App, Spec) ->
+    {ok, MMode} = aeu_env:find_config([<<"system">>, <<"maintenance_mode">>],
+                                      [user_config, schema_default]),
+    lists:foreach(
+      fun({K, F}) ->
+              case aeu_env:user_config(K) of
+                  undefined -> ignore;
+                  {ok, V}   -> maybe_set_env(F, V, App, MMode)
+              end
+      end, Spec).
+
+maybe_set_env({maybe_set_env, K}, V, App, _MMode) when is_atom(K) ->
+    io:fwrite("setenv A=~p: K=~p, V=~p~n", [App, K, V]),
+    application:set_env(App, K, V);
+maybe_set_env(F, V, _, _MMode) when is_function(F, 1) ->
+    F(V);
+maybe_set_env(F, V, _, MMode) when is_function(F, 2) ->
+    F(V, MMode).
+
+%% ======================================================================
+
 
 check_config(F) ->
     do_read_config(F, schema_filename(), check, silent).
