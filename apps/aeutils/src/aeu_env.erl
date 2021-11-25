@@ -429,7 +429,7 @@ check_env(App, Spec) ->
               end
       end, Spec).
 
-maybe_set_env({maybe_set_env, K}, V, App, _MMode) when is_atom(K) ->
+maybe_set_env({set_env, K}, V, App, _MMode) when is_atom(K) ->
     io:fwrite("setenv A=~p: K=~p, V=~p~n", [App, K, V]),
     application:set_env(App, K, V);
 maybe_set_env(F, V, _, _MMode) when is_function(F, 1) ->
