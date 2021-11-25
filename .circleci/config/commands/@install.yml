@@ -22,7 +22,7 @@ install_otp:
         name: Install OTP
         command: |
           # Install OTP package deps
-          sudo apt-get update && sudo apt-get install libwxbase3.0-dev libgtk3.0-gtk3-dev libsctp1
+          sudo apt-get update && sudo apt-get install libwxbase3.0-dev libwxgtk3.0-gtk3-dev libsctp1
           # Install OTP binary package
           PACKAGE_NAME=esl-erlang_${OTP_VERSION}-1~ubuntu~focal_amd64.deb
           OTP_DOWNLOAD_URL=https://packages.erlang-solutions.com/erlang/debian/pool/${PACKAGE_NAME}
