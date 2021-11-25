@@ -91,7 +91,7 @@ init_per_suite(Config0) ->
         "admin: unrecognised argument: --help\n"
         "usage: admin  {peers|tx_pool}\n\n"
         "Subcommands:\n"
-        "  peers   Peer's pool commands\n"
+        "  peers   Peer pool commands\n"
         "  tx_pool Transaction pool commands\n",
     ExpectedRes = Res,
     %% mine keyblocks so the miner receives their first reward and have some
