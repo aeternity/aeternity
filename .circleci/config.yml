@@ -360,9 +360,9 @@ commands:
             - run:
                 command: |
                     # Install OTP package deps
-                    sudo apt-get update && sudo apt-get install libsctp1
+                    sudo apt-get update && sudo apt-get install libwxbase3.0-dev libgtk3.0-gtk3-dev libsctp1
                     # Install OTP binary package
-                    PACKAGE_NAME=esl-erlang_${OTP_VERSION}-1~ubuntu~xenial_amd64.deb
+                    PACKAGE_NAME=esl-erlang_${OTP_VERSION}-1~ubuntu~focal_amd64.deb
                     OTP_DOWNLOAD_URL=https://packages.erlang-solutions.com/erlang/debian/pool/${PACKAGE_NAME}
                     curl -fsSL -o ${PACKAGE_NAME} "$OTP_DOWNLOAD_URL"
                     sudo dpkg -i ${PACKAGE_NAME}
