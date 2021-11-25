@@ -3963,7 +3963,8 @@ reestablish_(Info, SignedTx, Port, Debug) ->
                           case IsSoloClosing of
                               true -> R2;
                               false ->
-                                  _R3 = await_open_report(R2, ?TIMEOUT, Debug)
+                                  R21 = await_open_report(R2, ?TIMEOUT, Debug),
+                                  _R3 = await_update_report(R21, ?TIMEOUT, Debug)
                           end,
                       {I3, R3};
                   true ->
