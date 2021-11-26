@@ -197,7 +197,8 @@
 -export([
     cors_not_returned_when_origin_not_sent/1,
     cors_returned_on_preflight_request/1,
-    cors_returned_on_get_request/1]).
+    cors_returned_on_get_request/1,
+    cors_returned_on_error/1]).
 
 %% test case exports for HTTP cache headers
 -export([
@@ -495,7 +496,8 @@ groups() ->
      {cors_headers, [],
       [cors_not_returned_when_origin_not_sent,
        cors_returned_on_preflight_request,
-       cors_returned_on_get_request]},
+       cors_returned_on_get_request,
+       cors_returned_on_error]},
 
      {http_cache, [],
       [expires_cache_header,
@@ -1813,6 +1815,13 @@ get_name_entry_by_name(_Config) ->
     NonexistentName = <<"Nonexistent_name">>,
     {ok, 400, _Error} = get_names_entry_by_name_sut(NonexistentName),
     %%?assertEqual(<<"Name not found">>, maps:get(<<"reason">>, Error)),
+
+    Host = external_address(),
+    Prefix = aecore_suite_utils:http_api_prefix(),
+    {ok, {{_, 400, _}, Headers, _Body}} =
+        httpc_request(get, {Host ++ Prefix ++ "names/%21.chain", [{"origin", "example.com"}]}, [], []),
+
+    "example.com" = proplists:get_value("access-control-allow-origin", Headers),
     ok.
 
 get_names_entry_by_name_sut(Name) ->
@@ -4093,6 +4102,18 @@ cors_returned_on_get_request(_Config) ->
         httpc_request(get, {Host ++ "/v2/blocks/top", [{"origin", "example.com"}]}, [], []),
 
     "example.com" = proplists:get_value("access-control-allow-origin", Headers),
+    ok.
+
+cors_returned_on_error(_Config) ->
+    Host = external_address(),
+    {ok, {{_, 404, _}, Headers1, _}} =
+        httpc_request(get, {Host ++ "/v3/names/nonExistentName.chain", [{"origin", "example.com"}]}, [], []),
+
+    InternalHost = internal_address(),
+    {ok, {{_, 500, _}, Headers2, _}} =
+        httpc_request(get, {InternalHost ++ "/v3/debug/crash", [{"origin", "example.com"}]}, [], []),
+    "example.com" = proplists:get_value("access-control-allow-origin", Headers2),
+
     ok.
 
 %% ============================================================

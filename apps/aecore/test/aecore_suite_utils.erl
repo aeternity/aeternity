@@ -85,6 +85,7 @@
          http_request/4,
          httpc_request/4,
          http_api_version/0,
+         http_api_prefix/0,
          process_http_return/1,
          internal_address/0,
          external_address/0
@@ -1351,6 +1352,9 @@ http_api_version() ->
        "/v2/" -> swagger2;
        "/v3/" -> oas3
     end.
+
+http_api_prefix() ->
+    get(api_prefix, "/v2/").
 
 http_request(Host, get, Path, Params) ->
     Prefix = get(api_prefix, "/v2/"),

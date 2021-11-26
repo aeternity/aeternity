@@ -85,11 +85,14 @@ get_name_hash(Name) when is_binary(Name) ->
 is_name(Bin) ->
     length(aens_utils:name_parts(Bin)) > 1.
 
+-spec name_to_name_hash(binary()) -> {ok, binary()} | {error, atom()}.
 name_to_name_hash(Name) ->
     case aens_utils:to_ascii(Name) of
         {ok, NameAscii} ->
             NameHash = aens_hash:name_hash(NameAscii),
             {ok, NameHash};
+        {error, {bad_label, _}} -> {error, invalid_name};
+        {error, {invalid_codepoint, _}} -> {error, invalid_name};
         {error, _Rsn} = Error ->
             Error
     end.

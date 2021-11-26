@@ -68,7 +68,10 @@ run(Queue, F) ->
         error:{rejected, _} ->
             {503, [], #{reason => <<"Temporary overload">>}};
         error:timeout ->
-            {503, [], #{reason => <<"Not yet started">>}}
+            {503, [], #{reason => <<"Not yet started">>}};
+        Class:Reason:Stacktrace ->
+            lager:error("CRASH ~p ~p, ~p", [Class, Reason, Stacktrace]),
+            {500, [], #{reason => <<"Internal server error">>}}
     end.
 
 %% read transactions

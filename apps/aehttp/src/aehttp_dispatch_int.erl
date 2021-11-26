@@ -74,7 +74,10 @@ handle_request(OperationID, Req, Context) ->
         error:{rejected, _} ->
             {503, [], #{reason => <<"Temporary overload">>}};
         error:timeout ->
-            {503, [], #{reason => <<"Not yet started">>}}
+            {503, [], #{reason => <<"Not yet started">>}};
+        Class:Reason:Stacktrace ->
+            lager:error("CRASH ~p ~p, ~p", [Class, Reason, Stacktrace]),
+            {500, [], #{reason => <<"Internal server error">>}}
     end.
 
 handle_request_('PostKeyBlock', #{'KeyBlock' := Data}, _Context) ->
@@ -215,6 +218,11 @@ handle_request_('GetTokenSupplyByHeight', Req, _Context) ->
         {error, chain_too_short} ->
             {400, [], #{reason => <<"Chain too short">>}}
     end;
+
+handle_request_('GetCrashRequest', Req, _Context) ->
+    1 = Req,
+    ok;
+
 
 handle_request_('DeleteTxFromMempool', Req, _Context) ->
     ParseFuns = [ parse_map_to_atom_keys(),

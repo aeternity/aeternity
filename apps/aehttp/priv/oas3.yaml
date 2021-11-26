@@ -1986,6 +1986,28 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+  "/debug/crash":
+    get:
+      tags:
+        - internal
+        - debug
+      operationId: GetCrashRequest
+      description: This is a sample URI to simulate a request crash. Shall be used only for test purposes only
+      parameters:
+        - $ref: '#/components/parameters/intAsString'
+      responses:
+        "200":
+          description: This will never happen
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TokenSupply"
+        "500":
+          description: We always end up here
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
   "/node/operator/mempool/hash/{hash}":
     delete:
       tags:
