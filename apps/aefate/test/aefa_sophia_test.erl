@@ -20,7 +20,7 @@ compile_contracts(Contracts) ->
     compile_contracts(Contracts, default_options()).
 
 compile_contracts(Contracts, Options) ->
-    maps:from_list([ {pad_contract_name(Name), {compile_contract(Code, Options), ?VM_FATE_SOPHIA_2}}
+    maps:from_list([ {pad_contract_name(Name), {compile_contract(Code, Options), ?VM_FATE_SOPHIA_3}}
                      || {Name, Code} <- Contracts ]).
 
 make_contract(Name) -> aeb_fate_data:make_contract(pad_contract_name(Name)).
@@ -43,7 +43,7 @@ dummy_trees(Caller, Cache, Stores) ->
                                  aec_accounts_trees:enter(Account, Acc)
                          end, aec_trees:accounts(Trees), Pubkeys),
     CTrees = lists:foldl(fun(Pubkey, Acc) ->
-                                 Contract0 = aect_contracts:new(Pubkey, 1, #{vm => 5, abi => 3}, <<>>, 0),
+                                 Contract0 = aect_contracts:new(Pubkey, 1, #{vm => 8, abi => 3}, <<>>, 0),
                                  Contract1 = aect_contracts:set_pubkey(Pubkey, Contract0),
                                  Contract2 = case maps:get(Pubkey, Stores, none) of
                                                 none  -> Contract1;
@@ -95,7 +95,7 @@ compile_contract(Code) ->
 compile_contract(Code, Options) ->
     try
         Ast       = aeso_parser:string(Code, Options),
-        {_, TypedAst}  = aeso_ast_infer_types:infer(Ast, Options),
+        {_, TypedAst, [] = _Warnings} = aeso_ast_infer_types:infer(Ast, Options),
         {#{child_con_env := ChildContracts}, FCode}
                        = aeso_ast_to_fcode:ast_to_fcode(TypedAst, Options),
         Fate      = aeso_fcode_to_fate:compile(ChildContracts, FCode, Options),

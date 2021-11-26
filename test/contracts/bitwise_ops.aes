@@ -1,0 +1,113 @@
+include "List.aes"
+
+contract B =
+  entrypoint test() =
+    let a = 45890
+    let b = 247663932
+    List.foreach(
+      [ (a << 2 == a * 4, "test1")
+      , (a >> 2 == a / 4, "test2")
+      , ((a band b) == __band(a, b), "test3")
+      , ((a bor b) == __bor(a, b), "test4")
+      , ((a bxor b) == __bxor(a, b), "test5")
+      , (bnot a == __bnot(a), "test6")
+      , (bnot b == __bnot(b), "test7")
+      , ((-a band b) == __band(-a, b), "test8")
+      , ((a bor -b) == __bor(a, -b), "test9")
+      , ((-a bxor b) == __bxor(-a, b), "test10")
+      ], assert)
+
+  function assert(p) = switch(p)
+    (t, msg) => if(t) () else abort(msg)
+
+  // bitwise 'and' for arbitrary precision integers
+  function __band(a : int, b : int) : int =
+      if (a >= 0 && b >= 0)
+        uband_(a, b)
+      elif (b >= 0)
+        ubnand_(b, -1 - a)
+      elif (a >= 0)
+        ubnand_(a, -1 - b)
+      else
+        -1 - ubor_(-1 - a, -1 - b)
+
+  // bitwise 'or' for arbitrary precision integers
+  function
+    __bor : (int, int) => int
+    __bor(0, b) = b
+    __bor(a, 0) = a
+    __bor(a : int, b : int) : int =
+      if (a >= 0 && b >= 0)
+        ubor_(a, b)
+      elif (b >= 0)
+        -1 - ubnand_(-1 - a, b)
+      elif (a >= 0)
+        -1 - ubnand_(-1 - b, a)
+      else
+        -1 - uband_(-1 - a, -1 - b)
+
+  // bitwise 'xor' for arbitrary precision integers
+  function
+    __bxor : (int, int) => int
+    __bxor(0, b) = b
+    __bxor(a, 0) = a
+    __bxor(a, b) =
+      if (a >= 0 && b >= 0)
+        ubxor_(a, b)
+      elif (b >= 0)
+        -1 - ubxor_(-1 - a, b)
+      elif (a >= 0)
+        -1 - ubxor_(a, -1 - b)
+      else
+        ubxor_(-1 - a, -1 - b)
+
+  // bitwise 'not' for arbitrary precision integers
+  function __bnot(a : int) = __bxor(a, -1)
+
+  private function uband_(a, b) = uband__(a, b, 1, 0)
+
+  private function
+    uband__(0, b, val, acc) = acc
+    uband__(a, 0, val, acc) = acc
+    uband__(a, b, val, acc) =
+      switch (a mod 2 + b mod 2)
+        2 => uband__(a / 2, b / 2, val * 2, acc + val)
+        _ => uband__(a / 2, b / 2, val * 2, acc)
+
+  private function ubor_(a, b) = ubor__(a, b, 1, 0)
+
+  private function
+    ubor__(0, 0, val, acc) = acc
+    ubor__(a, b, val, acc) =
+      switch (a mod 2 + b mod 2)
+        0 => ubor__(a / 2, b / 2, val * 2, acc)
+        _ => ubor__(a / 2, b / 2, val * 2, acc + val)
+
+  private function ubxor_(a, b) = ubxor__(a, b, 1, 0)
+
+  private function
+    ubxor__(0, 0, val, acc) = acc
+    ubxor__(a, b, val, acc) =
+      switch(a mod 2 + b mod 2)
+        1 => ubxor__(a / 2, b / 2, val * 2, acc + val)
+        _ => ubxor__(a / 2, b / 2, val * 2, acc)
+
+  // Bitwise combined 'and' and 'not' of second argument for positive integers
+  // x 'bnand' y = x 'band' ('bnot' y)
+  // The tricky bit is that after negation the second argument has an infinite number of 1's
+  // use as many as needed!
+  //
+  // NOTE: this function is not symmetric!
+  private function ubnand(a, b) =
+    require(a >= 0 && b >= 0, "ubxor is only defined for non-negative integers")
+    ubnand__(a, b, 1, 0)
+
+  private function ubnand_(a, b) = ubnand__(a, b, 1, 0)
+
+  private function
+    ubnand__(0, b, val, acc) = acc
+    ubnand__(a, b, val, acc) =
+      switch((a mod 2, b mod 2))
+        (1, 0) => ubnand__(a / 2, b / 2, val * 2, acc + val)
+        _      => ubnand__(a / 2, b / 2, val * 2, acc)
+

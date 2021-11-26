@@ -30,6 +30,13 @@
         , divide/4
         , modulo/4
         , pow/4
+        , mulmod/5
+        , bin_and/4
+        , bin_or/4
+        , bin_xor/4
+        , bin_not/3
+        , bin_sl/4
+        , bin_sr/4
         , lt/4
         , gt/4
         , eq/4
@@ -65,6 +72,7 @@
         , str_to_upper/3
         , int_to_str/3
         , addr_to_str/3
+        , addr_to_bytes/3
         , str_reverse/3
         , int_to_addr/3
         , variant/5
@@ -165,6 +173,7 @@
         , sha3/3
         , sha256/3
         , blake2b/3
+        , poseidon/4
         , setelement/5
         , abort/2
         , exit/2
@@ -486,6 +495,52 @@ pow(Arg0, Arg1, Arg2, EngineState) ->
             end
     end.
 
+mulmod(Arg0, Arg1, Arg2, Arg3, EngineState) ->
+    ?AVAILABLE_FROM(?VM_FATE_SOPHIA_3, EngineState),
+    {[A, B, Q], ES1} = get_op_args([Arg1, Arg2, Arg3], EngineState),
+    Res = gop(mulmod, A, B, Q, ES1),
+    ES2 = aefa_engine_state:spend_gas_for_new_cells(words_used(Res), ES1),
+    write(Arg0, Res, ES2).
+
+bin_and(Arg0, Arg1, Arg2, EngineState) ->
+    ?AVAILABLE_FROM(?VM_FATE_SOPHIA_3, EngineState),
+    integer_bin_op('band', Arg0, Arg1, Arg2, EngineState).
+
+bin_or(Arg0, Arg1, Arg2, EngineState) ->
+    ?AVAILABLE_FROM(?VM_FATE_SOPHIA_3, EngineState),
+    integer_bin_op('bor', Arg0, Arg1, Arg2, EngineState).
+
+bin_xor(Arg0, Arg1, Arg2, EngineState) ->
+    ?AVAILABLE_FROM(?VM_FATE_SOPHIA_3, EngineState),
+    integer_bin_op('bxor', Arg0, Arg1, Arg2, EngineState).
+
+bin_sl(Arg0, Arg1, Arg2, EngineState) ->
+    ?AVAILABLE_FROM(?VM_FATE_SOPHIA_3, EngineState),
+    {N, ES1} = get_op_arg(Arg1, EngineState),
+    {I, ES2} = get_op_arg(Arg2, ES1),
+    Cells = I div 64 + 1,
+    ES3 = aefa_engine_state:spend_gas_for_new_cells(Cells, ES2),
+    Res = gop('bsl', N, I, ES3),
+    write(Arg0, Res, ES3).
+
+bin_sr(Arg0, Arg1, Arg2, EngineState) ->
+    ?AVAILABLE_FROM(?VM_FATE_SOPHIA_3, EngineState),
+    integer_bin_op('bsr', Arg0, Arg1, Arg2, EngineState).
+
+bin_not(Arg0, Arg1, EngineState) ->
+    ?AVAILABLE_FROM(?VM_FATE_SOPHIA_3, EngineState),
+    {A, ES1} = get_op_arg(Arg1, EngineState),
+    Res = gop('bnot', A, ES1),
+    ES2 = aefa_engine_state:spend_gas_for_new_cells(words_used(Res), ES1),
+    write(Arg0, Res, ES2).
+
+
+integer_bin_op(Op, Arg0, Arg1, Arg2, EngineState) ->
+    {A, ES1} = get_op_arg(Arg1, EngineState),
+    {B, ES2} = get_op_arg(Arg2, ES1),
+    Res = gop(Op, A, B, ES2),
+    ES3 = aefa_engine_state:spend_gas_for_new_cells(words_used(Res), ES2),
+    write(Arg0, Res, ES3).
 
 %% ------------------------------------------------------
 %% Comparison instructions
@@ -873,11 +928,18 @@ int_to_str(Arg0, Arg1, EngineState) ->
     write(Arg0, Result, ES2).
 
 addr_to_str(Arg0, Arg1, EngineState) ->
-    {LeftValue, ES1} = get_op_arg(Arg1, EngineState),
-    Result = gop(addr_to_str, LeftValue, ES1),
+    {Addr, ES1} = get_op_arg(Arg1, EngineState),
+    Result = gop(addr_to_str, Addr, ES1),
     Cells = string_cells(Result),
     ES2 = aefa_engine_state:spend_gas_for_new_cells(Cells + 1, ES1),
     write(Arg0, Result, ES2).
+
+addr_to_bytes(Arg0, Arg1, EngineState) ->
+    ?AVAILABLE_FROM(?VM_FATE_SOPHIA_3, EngineState),
+    {Addr, ES1} = get_op_arg(Arg1, EngineState),
+    Res = gop(addr_to_bytes, Addr, ES1),
+    ES2 = aefa_engine_state:spend_gas_for_new_cells(bytes_cells(Res) + 1, ES1),
+    write(Arg0, Res, ES2).
 
 str_reverse(Arg0, Arg1, EngineState) ->
     {LeftValue, ES1} = get_op_arg(Arg1, EngineState),
@@ -1522,7 +1584,7 @@ bytecode_hash(Arg0, Arg1, ES0) ->
     ?AVAILABLE_FROM(?VM_FATE_SOPHIA_2, ES0),
     {?FATE_CONTRACT(Pubkey), ES1} = get_op_arg(Arg1, ES0),
     case aefa_engine_state:contract_fate_bytecode(Pubkey, ES1) of
-        {ok, ByteCode, ?VM_FATE_SOPHIA_2, ES2} ->
+        {ok, ByteCode, FateVMVersion, ES2} when FateVMVersion >= ?VM_FATE_SOPHIA_2 ->
             SerByteCode = aeb_fate_code:serialize(ByteCode),
             ES3         = spend_gas(?BYTECODE_HASH_GAS(size(SerByteCode)), ES2),
             Hashed      = aeb_fate_data:make_hash(aec_hash:hash(fate_code, SerByteCode)),
@@ -2268,6 +2330,10 @@ sha256(Arg0, Arg1, EngineState) ->
 blake2b(Arg0, Arg1, EngineState) ->
     un_op_unfold(blake2b, {Arg0, Arg1}, EngineState).
 
+poseidon(Arg0, Arg1, Arg2, EngineState) ->
+    ?AVAILABLE_FROM(?VM_FATE_SOPHIA_3, EngineState),
+    bin_op(poseidon, {Arg0, Arg1, Arg2}, EngineState).
+
 -spec abort(_, _) -> no_return().
 abort(Arg0, EngineState) ->
     {Value, ES1} = get_op_arg(Arg0, EngineState),
@@ -2420,6 +2486,8 @@ make_variant2(Arities, Tag, NoElements, ES) ->
 -define(MAX_FP, 16#1a0111ea397fe69a4b1ba7b6434bacd764774b84f38512bf6730d2a0f6b0f6241eabfffeb153ffffb9feffffffffaaab).
 
 %% Unary operations
+op('bnot', A) when ?IS_FATE_INTEGER(A) ->
+    bnot A;
 op(get, A) ->
     A;
 op(map_from_list, A) when ?IS_FATE_LIST(A) ->
@@ -2447,6 +2515,9 @@ op(int_to_addr, A) when ?IS_FATE_INTEGER(A) ->
 op(addr_to_str, A) when ?IS_FATE_ADDRESS(A) ->
     Val = ?FATE_ADDRESS_VALUE(A),
     aeser_api_encoder:encode(account_pubkey, Val);
+op(addr_to_bytes, A) when ?IS_FATE_ADDRESS(A) ->
+    Val = ?FATE_ADDRESS_VALUE(A),
+    ?FATE_BYTES(Val);
 op(str_reverse, A) when ?IS_FATE_STRING(A) ->
     aeb_fate_data:make_string(binary_reverse(?FATE_STRING_VALUE(A)));
 op(str_reverse_unicode, A) when ?IS_FATE_STRING(A) ->
@@ -2537,25 +2608,40 @@ binary_for_hashing(X) ->
     aeb_fate_encoding:serialize(X).
 
 %% Binary operations
-op(add, A, B)  when ?IS_FATE_INTEGER(A)
-                    , ?IS_FATE_INTEGER(B) ->
+op(add, A, B) when ?IS_FATE_INTEGER(A)
+                 , ?IS_FATE_INTEGER(B) ->
     A + B;
-op(sub, A, B)  when ?IS_FATE_INTEGER(A)
-                    , ?IS_FATE_INTEGER(B) ->
+op(sub, A, B) when ?IS_FATE_INTEGER(A)
+                 , ?IS_FATE_INTEGER(B) ->
     A - B;
-op(mul, A, B)  when ?IS_FATE_INTEGER(A)
-                    , ?IS_FATE_INTEGER(B) ->
+op(mul, A, B) when ?IS_FATE_INTEGER(A)
+                 , ?IS_FATE_INTEGER(B) ->
     A * B;
-op('div', A, B)  when ?IS_FATE_INTEGER(A)
-                    , ?IS_FATE_INTEGER(B) ->
+op('div', A, B) when ?IS_FATE_INTEGER(A)
+                   , ?IS_FATE_INTEGER(B) ->
     if B =:= 0 -> aefa_fate:abort(division_by_zero);
        true -> A div B
     end;
-op(mod, A, B)  when ?IS_FATE_INTEGER(A)
-                    , ?IS_FATE_INTEGER(B) ->
+op(mod, A, B) when ?IS_FATE_INTEGER(A)
+                 , ?IS_FATE_INTEGER(B) ->
     if B =:= 0 -> aefa_fate:abort(mod_by_zero);
        true -> A rem B
     end;
+op('band', A, B) when ?IS_FATE_INTEGER(A)
+                    , ?IS_FATE_INTEGER(B) ->
+    A band B;
+op('bor', A, B) when ?IS_FATE_INTEGER(A)
+                   , ?IS_FATE_INTEGER(B) ->
+    A bor B;
+op('bxor', A, B) when ?IS_FATE_INTEGER(A)
+                    , ?IS_FATE_INTEGER(B) ->
+    A bxor B;
+op('bsl', A, B) when ?IS_FATE_INTEGER(A)
+                   , ?IS_FATE_INTEGER(B) ->
+    A bsl B;
+op('bsr', A, B) when ?IS_FATE_INTEGER(A)
+                   , ?IS_FATE_INTEGER(B) ->
+    A bsr B;
 op('and', A, B)  when ?IS_FATE_BOOLEAN(A)
                     , ?IS_FATE_BOOLEAN(B) ->
     A and B;
@@ -2631,6 +2717,9 @@ op(bits_difference, A, B)
     ?FATE_BITS(BitsA) = A,
     ?FATE_BITS(BitsB) = B,
     ?FATE_BITS((BitsA band BitsB) bxor BitsA);
+op(poseidon, A, B) when ?IS_FATE_INTEGER(A), A >= 0, A < ?MAX_FR
+                      , ?IS_FATE_INTEGER(B), B >= 0, B < ?MAX_FR ->
+    ?MAKE_FATE_INTEGER(aeu_poseidon:hash3(A, B));
 op(ecrecover_secp256k1, Msg, Sig) when ?IS_FATE_BYTES(32, Msg)
                                      , ?IS_FATE_BYTES(65, Sig) ->
     {?FATE_BYTES(Msg1), ?FATE_BYTES(Sig1)} = {Msg, Sig},
@@ -2675,6 +2764,12 @@ op(Op, Arg1, Arg2) ->
     aefa_fate:abort({type_error, Op, [Arg1, Arg2]}).
 
 %% Terinay operations
+op(mulmod, A, B, Q) when ?IS_FATE_INTEGER(A)
+                       , ?IS_FATE_INTEGER(B)
+                       , ?IS_FATE_INTEGER(Q) ->
+    if Q =:= 0 -> aefa_fate:abort(mod_by_zero);
+       true    -> (A * B) rem Q
+    end;
 op(map_update, Map, Key, Value) when ?IS_FATE_MAP(Map),
                               not ?IS_FATE_MAP(Key) ->
     Res = maps:put(Key, Value, ?FATE_MAP_VALUE(Map)),

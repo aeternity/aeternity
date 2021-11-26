@@ -19,7 +19,8 @@
           {normal, [
                     {100, {aeu_env, read_config, []}},
                     {101, {aeu_env, apply_os_env, []}},
-                    {102, {aeu_plugins, load_plugins, []}}
+                    {102, {aeu_logging_env, adjust_log_levels, []}},
+                    {103, {aeu_plugins, load_plugins, []}}
                    ]}
          ]}
        ]}
