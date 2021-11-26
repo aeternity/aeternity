@@ -93,7 +93,7 @@ queue('GetGenerationByHeight')                  -> ?READ_Q;
 queue('GetAccountByPubkey')                     -> ?READ_Q;
 queue('GetAccountByPubkeyAndHeight')            -> ?READ_Q;
 queue('GetPendingAccountTransactionsByPubkey')  -> ?READ_Q;
-queue('GetAccountNextNonce')                     -> ?READ_Q;
+queue('GetAccountNextNonce')                    -> ?READ_Q;
 queue('GetTransactionByHash')                   -> ?READ_Q;
 queue('GetTransactionInfoByHash')               -> ?READ_Q;
 queue('GetContract')                            -> ?READ_Q;

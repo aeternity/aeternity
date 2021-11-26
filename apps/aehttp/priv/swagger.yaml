@@ -1901,7 +1901,7 @@ paths:
         - internal
         - debug
       operationId: GetCrashRequest
-      description: This is a sample URI to simulate a request crash. Shall be used only for test purposes only
+      description: This is a sample URI to simulate a request crash. Shall be used for test purposes only
       produces:
         - application/json
       parameters: []
