@@ -7,13 +7,13 @@ docker-smoke-test:
         tag: $CIRCLE_BRANCH
 
 docker-system-test:
-  executor: machine_1604
+  executor: machine_2004
   steps:
     - docker_system_test:
         smoke: false
 
 docker-system-smoke-test:
-  executor: machine_1604
+  executor: machine_2004
   steps:
     - docker_system_test:
         smoke: true

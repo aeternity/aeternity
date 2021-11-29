@@ -360,9 +360,9 @@ commands:
             - run:
                 command: |
                     # Install OTP package deps
-                    sudo apt-get update && sudo apt-get install libwxbase3.0-dev libwxgtk3.0-dev libsctp1
+                    sudo apt-get update && sudo apt-get install libncurses5 libwxbase3.0-dev libwxgtk3.0-gtk3-dev libsctp1
                     # Install OTP binary package
-                    PACKAGE_NAME=esl-erlang_${OTP_VERSION}-1~ubuntu~xenial_amd64.deb
+                    PACKAGE_NAME=esl-erlang_${OTP_VERSION}-1~ubuntu~focal_amd64.deb
                     OTP_DOWNLOAD_URL=https://packages.erlang-solutions.com/erlang/debian/pool/${PACKAGE_NAME}
                     curl -fsSL -o ${PACKAGE_NAME} "$OTP_DOWNLOAD_URL"
                     sudo dpkg -i ${PACKAGE_NAME}
@@ -618,13 +618,13 @@ executors:
         docker:
             - image: aeternity/infrastructure:latest
         resource_class: large
-    machine_1604:
+    machine_2004:
         environment:
             LIBSODIUM_VERSION: 1.0.16
             OTP_VERSION: 22.3.4.9
         machine:
             docker_layer_caching: true
-            image: ubuntu-1604:201903-01
+            image: ubuntu-2004:202111-01
         resource_class: large
         working_directory: /home/circleci/aeternity
 jobs:
@@ -848,12 +848,12 @@ jobs:
             - docker_build:
                 tag: $CIRCLE_BRANCH
     docker-system-smoke-test:
-        executor: machine_1604
+        executor: machine_2004
         steps:
             - docker_system_test:
                 smoke: true
     docker-system-test:
-        executor: machine_1604
+        executor: machine_2004
         steps:
             - docker_system_test:
                 smoke: false
