@@ -11,6 +11,7 @@
   {applications,
    [kernel,
     stdlib,
+    app_ctrl,
     crypto,
     sext,
     parse_trans,

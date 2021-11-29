@@ -5,6 +5,7 @@
   {applications,
    [kernel,
     stdlib,
+    app_ctrl,
     lager,
     gproc,
     jobs,
