@@ -106,6 +106,7 @@ levels() ->
     %% copied from lager.hrl
     [debug, info, notice, warning, error, critical, alert, emergency, none].
 
+%% This is to enable silencing of apps that can be very chatty at debug level
 set_app_log_level(App, debug) ->
     Key = "AE_" ++ string:to_upper(atom_to_list(App)) ++ "_DEBUG",
     case os:getenv(Key, "false") of
@@ -114,7 +115,9 @@ set_app_log_level(App, debug) ->
         _ ->
             lager:debug("Setting ~p log level to info", [App]),
             logger:set_application_level(App, info)
-    end.
+    end;
+set_app_log_level(_, _) ->
+    ok.
 
 if_running(App, F) ->
     case is_app_running(App) of
