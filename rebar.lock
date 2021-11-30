@@ -42,7 +42,7 @@
   0},
  {<<"app_ctrl">>,
   {git,"https://github.com/aeternity/app_ctrl.git",
-      {ref,"f0d3c542b692f9e08acfd780530a1ac3ffc36f8b"}},
+      {ref,"92b8ae60e3b4995385edcefc23d261bbab572bb8"}},
   0},
  {<<"argparse">>,{pkg,<<"argparse">>,<<"1.1.4">>},0},
  {<<"base58">>,
