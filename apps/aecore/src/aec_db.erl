@@ -327,6 +327,8 @@ ensure_activity(Type, Fun) when is_function(Fun, 0) ->
     ensure_activity(get_backend_module(), Type, Fun).
 
 ensure_activity(mnesia_rocksdb, Type, Fun) ->
+    lager:debug("Backend = mnesia_rocksdb, Type = ~p, F = ~p:~p/0",
+                [Type, fun_info(Fun,module), fun_info(Fun,name)]),
     case mrdb:current_context() of
         undefined ->
             case get(mnesia_activity_state) of
@@ -344,7 +346,8 @@ ensure_activity(mnesia_rocksdb, Type, Fun) ->
         _ ->
             mrdb_activity(Type, Fun)
     end;
-ensure_activity(_, transaction, Fun) when is_function(Fun, 0) ->
+ensure_activity(Backend, transaction, Fun) when is_function(Fun, 0) ->
+    lager:debug("Backend = ~p, Type = transaction", [Backend]),
     case get(mnesia_activity_state) of
         undefined ->
             mnesia:activity(transaction, Fun);
@@ -355,13 +358,18 @@ ensure_activity(_, transaction, Fun) when is_function(Fun, 0) ->
             %% We are already in a transaction.
             Fun()
     end;
-ensure_activity(_, PreferredType, Fun) when is_function(Fun, 0) ->
+ensure_activity(Backend, PreferredType, Fun) when is_function(Fun, 0) ->
+    lager:debug("Backend = ~p, Pref.Type = ~p", [Backend, PreferredType]),
     case get(mnesia_activity_state) of
         undefined ->
             mnesia:activity(PreferredType, Fun);
         _ ->
             Fun()
     end.
+
+fun_info(F, K) ->
+    {K, V} = erlang:fun_info(F, K),
+    V.
 
 mrdb_activity(Type, Fun) ->
     mrdb:activity(Type, rocksdb_copies, Fun).
