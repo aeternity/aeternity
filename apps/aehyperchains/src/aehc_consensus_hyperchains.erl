@@ -612,7 +612,7 @@ new_pos_key_node(PrevNode, PrevKeyNode, Height, Miner, Beneficiary, Protocol, In
 
 keyblocks_for_unmined_keyblock_adjust() ->
     M = fallback_consensus(),
-    max(1, M:keyblocks_for_target_calc()).
+    max(1, M:keyblocks_for_unmined_keyblock_adjust()).
 
 adjust_unmined_keyblock(B, R) ->
     case is_hc_pos_header(aec_blocks:to_header(B)) of
